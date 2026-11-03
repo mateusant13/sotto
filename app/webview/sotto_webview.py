@@ -1214,6 +1214,8 @@ def worker_status_body(state, message):
 # ===========================================================================
 
 _LOG_LOCK = threading.Lock()
+#: A memoria do `log_repeat` (chave -> (ultimo texto, quando)).
+_LOG_REPEAT = {}
 _LOG_FILE = None
 _LOG_QUEUE = None      # the mirror lines, one per log() call
 _LOG_WRITER = None     # the ONE thread that owns the file
@@ -1376,6 +1378,28 @@ def log(message: str) -> None:
         print(line, flush=True)
         if _LOG_FILE is not None:
             _LOG_QUEUE.put(line)
+
+
+def log_repeat(key: str, message: str, every_s: float = 300.0) -> None:
+    """UM `log` QUE NAO CUSTA UM FICHEIRO (2026-11-03).
+
+    MEDIDO: um arranque deste shell escreveu **382** linhas
+    `HOTKEY_OBSERVER_ALIVE`, 720 por hora, num ficheiro que so' roda aos 64 MB;
+    e o `YOUTUBE_TICK_MS` fazia o mesmo a cada 5 s com o `n=` CONGELADO (49, 49,
+    49 ...) -- um numero que nao muda, escrito para sempre. O ficheiro do dono
+    chegou aos **54 MB** nesta sessao.
+
+    A regra: a linha SAI na primeira vez e sempre que o TEXTO MUDA (o que
+    interessa: `n` cresceu, a media subiu); repetida e igual, sai de
+    `every_s` em `every_s`. Nada e' escondido: o nome do que ficou silencioso
+    vai para o log na primeira ocorrencia, e o batimento lento continua a
+    provar que o laco vive.
+    """
+    now = time.monotonic()
+    last = _LOG_REPEAT.get(key)
+    if last is None or last[0] != message or now - last[1] >= every_s:
+        _LOG_REPEAT[key] = (message, now)
+        log(message)
 
 
 def warn(message: str) -> None:
@@ -2375,8 +2399,12 @@ class ExternalCaptionWatcher(threading.Thread):
                 _agg[1] += _tk
                 _agg[2] = max(_agg[2], _tk)
                 if time.monotonic() - _agg[3] >= 5.0:
-                    log('YOUTUBE_TICK_MS avg=%.0f max=%.0f n=%d'
-                        % (_agg[1] / _agg[0], _agg[2], _agg[0]))
+                    # Com o player minimizado (ou sem player) este agregado
+                    # congela em `n=49, avg=0` e era escrito de 5 em 5 s para
+                    # sempre. `log_repeat`: sai quando o numero MUDA.
+                    log_repeat('youtube-tick',
+                               'YOUTUBE_TICK_MS avg=%.0f max=%.0f n=%d'
+                               % (_agg[1] / _agg[0], _agg[2], _agg[0]))
                     _agg[0] = 0
                     _agg[1] = 0.0
                     _agg[2] = 0.0
@@ -5378,12 +5406,25 @@ class PassiveHotkeyThread(threading.Thread):
             self._wake_gap = max(float(getattr(self, '_wake_gap', 0.0)),
                                  _now_loop - _last_loop)
             _last_loop = _now_loop
-            if _now_loop - _last_beat >= 5.0:
+            # O BATIMENTO NAO E' UM RELOGIO (2026-11-03, MEDIDO). A primeira
+            # versao escrevia de 5 em 5 s para sempre: num ficheiro de log que
+            # so' roda aos 64 MB (`LOG_ROTATED cap=64 MB`), o observador de uma
+            # tecla que ninguem esta' a carregar produzia **720 linhas por hora** --
+            # medido neste repo, 54 MB de `_main/webview-run.log` e 382 destas
+            # linhas num unico arranque. As duas informacoes que o batimento
+            # carrega continuam a sair: (a) vive nos primeiros 30 s, seis
+            # batimentos, que e' o que RESPONDE a "a tecla esta' viva?" depois
+            # de um arranque; (b) uma VOLTA PRESA (`max_gap_ms > 200`) sai
+            # imediatamente, porque essa e' a noticia e um batimento liso nao
+            # e'. Depois disso, de 5 em 5 minutos.
+            _gap_ms = round(getattr(self, '_wake_gap', 0.0) * 1000.0)
+            _due = (_beats < 6 and _now_loop - _last_beat >= 5.0) or \
+                   (_now_loop - _last_beat >= 300.0)
+            if _due or _gap_ms > 200:
                 _beats += 1
                 self.log_fn('HOTKEY_OBSERVER_ALIVE role=%s beats=%d '
                             'loops=%d max_gap_ms=%d'
-                            % (self.role, _beats, self.loops,
-                               round(getattr(self, '_wake_gap', 0.0) * 1000.0)))
+                            % (self.role, _beats, self.loops, _gap_ms))
                 self._wake_gap = 0.0
                 _last_beat = _now_loop
             self.loops += 1
@@ -9373,6 +9414,28 @@ class SottoShell:
             if off_message:
                 text, info = off_message
                 self.apply_panel_state(text, 'error', info)
+            # O PRAZO E' DO PROCESSO, NAO DO QUE ELE ESTA' A FAZER
+            # (2026-11-03, MEDIDO). Este `if` vivia no FIM do despacho, depois
+            # de `run_selftest()`: uma instancia largada com `--exit-after 45`
+            # ficou **1 h 50 min** viva (pid 35348, `--mutex-name
+            # SottoPovSelftest-altc-first-caption-59452`) porque o selftest
+            # nunca voltou -- o `BRIDGE_STATS_REPLY` de 60 em 60 s e' o unico
+            # sinal que ela deu. O prazo tem de ser ARMADO ANTES do trabalho,
+            # ou um trabalho que nao acaba e' um prazo que nao existe. Custou
+            # 245 MB (shell + o seu WebView2) durante quase duas horas.
+            if self.args.exit_after:
+                timer = threading.Timer(self.args.exit_after,
+                                        self.request_exit, args=(0,))
+                timer.daemon = True
+                timer.start()
+                # E a REDE: se o desligamento educado tambem ficar preso (tray,
+                # bridge, WebView2), o processo sai a' forca. Uma sonda que nao
+                # morre e' pior do que uma sonda que sai sem despedida.
+                hard = threading.Timer(self.args.exit_after + 15.0,
+                                       os._exit, args=(0,))
+                hard.daemon = True
+                hard.start()
+
             if self.args.probe_stats:
                 # Long enough for the panel's own 1000 ms poll to have run
                 # several times against a worker that published WORKER_STATS.
@@ -9413,11 +9476,6 @@ class SottoShell:
                 timer.start()
             if self.args.memory and not self.args.memory_wait:
                 self.run_memory()
-            if self.args.exit_after:
-                timer = threading.Timer(self.args.exit_after,
-                                        self.request_exit, args=(0,))
-                timer.daemon = True
-                timer.start()
             return
 
         # A re-navigation (hot reload): re-send geometry and keep whatever
@@ -17359,6 +17417,21 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = parse_args(argv)
     _start_startup_stack_watch(args)
+
+    # O PRAZO DE UMA SONDA E' DO PROCESSO (2026-11-03, MEDIDO DUAS VEZES).
+    # `--exit-after` era armado no despacho de probes, ou seja DEPOIS do
+    # arranque inteiro; dois caminhos de arranque nao chegam la': um
+    # `run_selftest()` que nao volta (pid 35348, 1 h 50 min vivo, 245 MB) e um
+    # arranque que morre em `WEBVIEW2_INIT_FAILED` (reproduzido hoje numa
+    # instancia `--exit-after 8`, que continuou viva). Uma sonda que nao morre
+    # e' um recurso emprestado para sempre. Aqui e' o primeiro instante em que
+    # as flags existem: o relogio comeca, e o resto do arranque pode falhar a'
+    # vontade sem deixar um processo a viver.
+    if getattr(args, 'exit_after', 0):
+        def _hard_exit():
+            os._exit(0)
+        threading.Timer(float(args.exit_after) + 15.0, _hard_exit).start()
+        threading.Timer(float(args.exit_after), _hard_exit).start()
 
     # ── THE ENVIRONMENT IS SET HERE, BEFORE ANY WINDOW EXISTS ────────────────
     # `WEBVIEW2_DEFAULT_BACKGROUND_COLOR` is read by WebView2 the moment its
