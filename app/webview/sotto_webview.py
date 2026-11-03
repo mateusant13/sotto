@@ -2263,7 +2263,11 @@ class ExternalCaptionWatcher(threading.Thread):
     #: (60 ms) entre duas leituras -- nenhum chamada Win32 nesse caminho. 10 Hz
     #: e' o dobro da cadencia de desenho e dez vezes a do player.
     INTERVAL_S = 0.10
-    #: Sem player nenhum, 4 Hz. Ver o comment do `wait` no fim do `run`.
+    #: Sem player nenhum, 4 Hz. Ver o comment do `wait` no fim do `run`. Ate'
+    #: 2026-11-03 esta constante era LETRA MORTA: o `wait` do laco pedia
+    #: sempre `INTERVAL_S`, e o laco perguntava 10x/s a janela em primeiro
+    #: plano com o player fechado (o same defeito da familia do `VramGuard`,
+    #: que tinha a espera FORA do laco).
     IDLE_INTERVAL_S = 0.25
     #: A cadencia do DESENHO da legenda do YouTube, entre leituras do UIA. 60 ms
     #: e' mais fino do que o espaco entre palavras do payload (medido: 0, 240,
@@ -2386,6 +2390,24 @@ class ExternalCaptionWatcher(threading.Thread):
                 if self.failures <= 3:
                     log(f'EXTERNAL_CAPTIONS_TICK_FAILED error={exc!r}')
             self._yt_prof("tick", _t_tick)
+            # SEM PLAYER, 10 Hz E' CARGA EMPRESTADA AO JOGO DO DONO
+            # (2026-11-03, MEDIDO). Com o player fechado o laco continuava a
+            # perguntar 10x/s -- `YOUTUBE_TICK_MS avg=0 max=0 n=49` congelado e
+            # 0,1 s de `INTERVAL_S` --, e cada volta resolve a JANELA EM PRIMEIRO
+            # PLANO (`GetForegroundWindow` + titulo) para concluir que nao ha'
+            # player nenhum. O dono joga com o Sotto a viver: enquanto nao houver
+            # leitura de player ha' 5 s, o passo desce para 0,5 s; a primeira
+            # leitura que traga qualquer coisa devolve o passo normal, e o custo
+            # de detetar um video novo sobe 0,4 s -- que o proprio carregamento
+            # do video ja' paga.
+            if got or yt_mode:
+                self._idle_since = 0.0
+            elif not getattr(self, '_idle_since', 0.0):
+                self._idle_since = time.monotonic()
+            _idle_for = (time.monotonic() - self._idle_since
+                         if getattr(self, '_idle_since', 0.0) else 0.0)
+            _step = (self.IDLE_INTERVAL_S if _idle_for >= 5.0
+                     else self.INTERVAL_S)
             # O CUSTO DO DESENHO TAMBEM E' UM NUMERO (2026-11-03). Com a leitura
             # ja' barata (17 Hz medidos) o laco caiu para 0,5-5 Hz noutros
             # momentos: o que sobra e' `_tick`, que pinta a janela. Sem esta
@@ -2451,7 +2473,7 @@ class ExternalCaptionWatcher(threading.Thread):
                             if self.failures <= 3:
                                 log(f'EXTERNAL_CAPTIONS_TICK_FAILED error={exc!r}')
                 continue
-            self.stop_event.wait(self.INTERVAL_S)
+            self.stop_event.wait(_step)
         self._release('stopped')
         log(f'EXTERNAL_CAPTIONS_WATCH stopped=true reads={self.reads} '
             f'failures={self.failures}')
