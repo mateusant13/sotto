@@ -6222,6 +6222,15 @@ def main():
                 buf = buf[asr.chunk :]
                 counters["chunks"] += 1
                 idx = counters["chunks"]
+                # O INSTANTE EM QUE ESTE AUDIO ESTA' COMPLETO, DO LADO DA
+                # CAPTURA (2026-11-03). MEDIDO: o `wall=time.time()` estava
+                # DEPOIS do `run_chunk`, logo a idade publicada no ecra excluia
+                # exactamente a maior parcela -- o decode. O dono perguntou-o
+                # verbatim (*"tem 100% ctz que quando o audio e detectado ja tem
+                # x de tempo passado?"*); com o carimbo aqui, `tap_ms` e' o
+                # instante em que o bloco FICOU COMPLETO e a diferenca ate' ao
+                # pixel inclui AGC + decode + transporte + pintura.
+                _wall_tap = time.time()
                 # ── SPEECH DECISION FIRST, on the PRE-GAIN signal ────────────
                 # (lane SottoSpeechSeparation's gate). `speech` is then handed
                 # to the AGC — which applies gain ONLY when it is True — and to
@@ -6262,7 +6271,7 @@ def main():
                 # bloco de 560 ms e' nada; sem ela nao existe numero nenhum.
                 for event in line_events(former.push(
                     text, _start, _end, continues=asr.chunk_continues,
-                    wall=time.time(),
+                    wall=_wall_tap,
                 )):
                     counters["captions"] += 1
                     emit(model=asr.name, **event)

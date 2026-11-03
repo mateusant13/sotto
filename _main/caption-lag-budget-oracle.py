@@ -33,6 +33,7 @@ O QUE ESTE ORACULO JULGA (o codigo REAL, nao uma copia da regra):
 `push_caption_to_window` (a idade do audio desaparece) -- e exige as arms
 correspondentes a VERMELHO. Um portao cujo mutante passa nao mede nada.
 """
+import ast
 import importlib.util
 import io
 import os
@@ -249,6 +250,49 @@ def arm_coalesce_cumulative(mod, lines, worker_event):
     return ok, ('texto=%r | COALESCE=%s' % (text, 'sim' if coal else 'nao'))
 
 
+def arm_tap_before_decode(path=WORKER):
+    """O CARIMBO ANTES DO DECODE: sem isto a idade exclui a maior parcela.
+
+    Medido 2026-11-03: `wall=time.time()` estava DEPOIS de `asr.run_chunk`, logo
+    o `audio_ms` publicado no ecra excluia o AGC e o decode -- exactamente a
+    pergunta do dono (*"tem 100% ctz que quando o audio e detectado ja tem x de
+    tempo passado?"*). Esta arm le a ORDEM no AST: a atribuicao de `_wall_tap`
+    tem de estar antes da chamada `run_chunk`, e o `wall=` do `former.push` tem
+    de ser esse nome.
+    """
+    tree = ast.parse(io.open(path, encoding='utf-8').read())
+    stamps = []
+    decodes = []
+    pushes = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == '_wall_tap':
+                    stamps.append(node.lineno)
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = getattr(func, 'attr', getattr(func, 'id', ''))
+            if name == 'run_chunk':
+                decodes.append(node.lineno)
+            if name == 'push':
+                for kw in node.keywords:
+                    if kw.arg == 'wall':
+                        pushes.append((node.lineno, kw.value))
+    # O `run_chunk` aparece noutras funcoes: o que conta e' o ULTIMO antes do
+    # `push` que leva o carimbo, i.e. o mesmo laco.
+    push_line, push_wall = (pushes[-1] if pushes else (None, None))
+    before = [n for n in decodes if push_line and n < push_line]
+    decode_line = max(before) if before else None
+    stamp_line = max([n for n in stamps if push_line and n < push_line] or [None])
+    wall_repr = ast.dump(push_wall) if push_wall is not None else 'AUSENTE'
+    ok = (stamp_line is not None and decode_line is not None
+          and stamp_line < decode_line
+          and push_wall is not None
+          and isinstance(push_wall, ast.Name) and push_wall.id == '_wall_tap')
+    return ok, ('carimbo@%s decode@%s wall=%s'
+                % (stamp_line, decode_line, wall_repr[:60]))
+
+
 def arm_panel_apply_age(mod, lines):
     """O PIXEL DA PONTE: `_caption_applied` publica a idade do audio."""
     shell = make_shell(mod, lines)
@@ -311,7 +355,10 @@ def main(argv):
                            '                pass', 1)
         mut4 = src.replace("        tap = getattr(shell, '_last_push_tap_ms', None)",
                            '        tap = None', 1)
-        if mut1 == src or mut2 == src or mut3 == src or mut4 == src:
+        worker_src = io.open(WORKER, encoding='utf-8').read()
+        mut5 = worker_src.replace('                    wall=_wall_tap,',
+                                  '                    wall=time.time(),', 1)
+        if mut1 == src or mut2 == src or mut3 == src or mut4 == src or mut5 == worker_src:
             print('NEG-ARM IMPOSSIVEL: a ancora do mutante nao esta no shell')
             shutil.rmtree(tmpdir, ignore_errors=True)
             return 2
@@ -327,6 +374,9 @@ def main(argv):
         mut4_path = os.path.join(tmpdir, 'sotto_webview_m4.py')
         with io.open(mut4_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut4)
+        mut5_path = os.path.join(tmpdir, 'sotto_worker_m5.py')
+        with io.open(mut5_path, 'w', encoding='utf-8', newline='\n') as handle:
+            handle.write(mut5)
     def run_arms(path, name):
         """Roda as cinco arms contra UM shell (o real, ou uma copia mutada)."""
         mod = load_module(path, name)
@@ -359,6 +409,8 @@ def main(argv):
                      lambda: arm_coalesce_keeps_both(mod, lines, worker_event)),
                     ('coalesce-cumulative-not-joined',
                      lambda: arm_coalesce_cumulative(mod, lines, worker_event)),
+                    ('tap-stamped-before-decode',
+                     lambda: arm_tap_before_decode()),
                     ('panel-apply-carries-audio-age',
                      lambda: arm_panel_apply_age(mod, lines)),
                     ('lag-stats-serie',
@@ -384,9 +436,20 @@ def main(argv):
                     (mut3_path, 'sem juntar as falas',
                      {'coalesce-keeps-both-lines'}),
                     (mut4_path, 'pixel sem idade de audio',
-                     {'panel-apply-carries-audio-age'})):
+                     {'panel-apply-carries-audio-age'}),
+                    (mut5_path, 'carimbo depois do decode',
+                     {'tap-stamped-before-decode'}),):
                 print('=== mutante: %s' % why)
-                rows = run_arms(path, 'sotto_shell_lag_mutant')
+                if path == mut5_path:
+                    # O mutante do WORKER julga-se pela arm de AST, nao por um
+                    # shell que nao existe neste ficheiro.
+                    ok, detail = arm_tap_before_decode(path)
+                    print('%-28s %s %s'
+                          % ('tap-stamped-before-decode',
+                             'PASS' if ok else 'RED', detail[:200]))
+                    rows = [('tap-stamped-before-decode', ok, detail)]
+                else:
+                    rows = run_arms(path, 'sotto_shell_lag_mutant')
                 red = {n for n, ok, _ in rows if not ok}
                 missed = expect - red
                 total += 1
