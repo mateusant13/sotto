@@ -1920,13 +1920,16 @@ class VramGuard(threading.Thread):
                     else:
                         self.low = 0
                         self.high = 0
-                # OCIOSO NAO E' 25 Hz (2026-11-03, MEDIDO). O dono joga com o
-            # Sotto a viver: sem janela de player nao ha' legenda para ler, e
-            # o laco custava o mesmo. Um laco que pergunta 25x/s quando nao ha'
-            # ninguem para responder e' carga emprestada ao jogo dele.
-            _has_player = bool(getattr(self, 'target_hwnd', 0))
-            self.stop_event.wait(self.INTERVAL_S if _has_player
-                                 else self.IDLE_INTERVAL_S)
+                # A ESPERA E' DESTE LACO (2026-11-03, MEDIDO DUAS VEZES).
+                # Aqui esteve, por um patch mal ancorado, um bloco de espera
+                # FORA do `while` -- o `while` ficou sem espera nenhuma e este
+                # thread passou a gastar **97 % de um nucleo** (`THREAD_CPU
+                # total=101% top=sotto-vram-guard:97%`, tres amostras de 30 s
+                # seguidas no pid 36568), a perguntar a' NVML em ciclo fechado.
+                # Medido antes disso: a shell inteira em 102 % de um nucleo com a
+                # app em repouso, e o culpado so' apareceu quando o censo por
+                # NOME de thread passou a existir.
+                self.stop_event.wait(self.INTERVAL_S)
         finally:
             try:
                 pynvml.nvmlShutdown()
