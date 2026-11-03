@@ -7,7 +7,11 @@ A LEI (consultgpt, `.cursor/rules/fix-on-sight.mdc`): *"Any error of any kind is
 fixed on sight -- no workarounds, no silent fallbacks"*. Um `except Exception:
 pass` sem razao escrita e o silencio mais barato que existe: o produto continua a
 correr com uma perna partida e o log nao diz nada. Hoje sao **40** no codigo do
-produto, em **12** ficheiros (medido 2026-11-01, `_main/exception-baseline.json`).
+produto, em **12** ficheiros (medido 2026-11-03, `_main/exception-baseline.json`).
+
+A linha de base SUBIU UMA VEZ em dois ficheiros (sotto_webview 6->7, sotto_worker
+7->8) e o `git blame` mostra que os dois sitios NAO sao de hoje: 2026-10-20 e
+2026-10-06. A linha de base estava atras do codigo, nao o codigo à frente dela.
 
 PORQUE UMA CATRACA E NAO UMA LIMPEZA: mudar 40 tipos de excepcao num turno e como
 se parte um produto a serio -- cada `pass` pode ser um `OSError` de limpeza

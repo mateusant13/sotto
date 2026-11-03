@@ -8761,43 +8761,39 @@ class SottoShell:
         # num nome de thread e uma percentagem.
         self._start_thread_cpu_census(every_s=30.0)
 
-        # SHEDDING POR CARGA (owner, 2026-10-30). Arranca com a app e PUBLICA o
-        # nivel no ficheiro da visibilidade (`shed`), que o worker ja' poll --
-        # `alta` para o ao vivo e deixa o batch, `muito-alta` para os dois e o
-        # audio fica na fila. O lever antigo (`_pause_shell`) foi retirado porque
-        # descarregava os DOIS motores e perdia o audio.
-        # `SOTTO_LOAD_SHED=0` desliga a medicao (e o `shed` deixa de ser escrito).
+        # SHEDDING POR CARGA (owner, 2026-10-30) e a ACCAO que lhe da' um lever
+        # (owner, 2026-11-03): *"os modelos entram e saem conforme a carga do
+        # sistema, e o audio nao processado e' processado sozinho quando a carga
+        # libera -- SEM NUNCA TRAVAR A MAQUINA DO DONO"*.
+        #
+        # O NIVEL ARMA O MODO, NAO MATA O PROCESSO. Medido 2026-11-03: o audio so'
+        # existe DENTRO do worker (quem abre o endpoint e' o `sotto_worker.py`);
+        # matar o worker para libertar a VRAM para a captura no intervalo. O lever
+        # e' o `shed` que o worker JA' poll: `alta` poe-no em batch (larga o
+        # nemotron), `muito-alta` larga os dois e o audio continua a ser capturado
+        # e acumulado. Toda a decisao (piso, histerese, sustentacao) vive em
+        # `load_shedding.py`; a fila e o executor, em `batch_queue.py`.
+        #
+        # `SOTTO_LOAD_SHED=0` desliga a medicao (e o `shed` deixa de ser escrito);
+        # `SOTTO_LOAD_SHED_ACT=0` desarma so' a accao.
         if os.environ.get('SOTTO_LOAD_SHED') != '0':
-            # O LOG FICA FORA DO GUARD DO `.start()`: medido 2026-10-30 10:56:55,
+            # O LOG FICA FORA DO GUARD DO ARRANQUE: medido 2026-10-30 10:56:55,
             # a linha `STARTED` lia o `armed` retirado e, no MESMO `try`, desarmou
             # a funcionalidade toda: diagnostico nao derruba a coisa.
             try:
-                self._load_shedding = LoadSheddingMonitor(self)
-                self._load_shedding.start()
+                # O MONITOR NAO ARRANCA O LACO DELE. Ele mede so' o commit;
+                # `open_action` mede commit E CPU e fica com o estado e o
+                # publicador dele, para haver UM escritor e UM numero no ficheiro.
+                monitor = LoadSheddingMonitor(self)
+                self._load_shedding = monitor
+                self._load_action = load_shedding().open_action(
+                    self, monitor=monitor, log_fn=log)
             except Exception as exc:  # noqa: BLE001 -- nunca impede a app de subir
                 log('LOAD_SHEDDING_START_FAILED error=%r' % (exc,))
             else:
                 try:
                     log('LOAD_SHEDDING_STARTED interval_s=%.0f canal=shed'
                         % LoadSheddingMonitor.INTERVAL_S)
-                except Exception as exc:  # noqa: BLE001 -- uma linha nao desarma nada
-                    log('LOAD_SHEDDING_LOG_FAILED error=%r' % (exc,))
-
-            # A ACCAO (ordem do dono, 2026-11-03): *"os modelos entram e saem
-            # conforme a carga do sistema, e o audio nao processado e'
-            # processado sozinho quando a carga libera -- SEM NUNCA TRAVAR A
-            # MAQUINA DO DONO"*. Publicar o nivel nao liberta VRAM: o unico
-            # lever e' matar o processo do worker, e o audio que ele nao
-            # transcreveu fica numa fila EM DISCO que e' drenada quando a carga
-            # baixa. Toda a logica vive em `load_shedding.py` (accao) e
-            # `batch_queue.py` (fila + executor): a shell chama UMA funcao.
-            # `SOTTO_LOAD_SHED_ACT=0` desarma a accao mantendo a medicao.
-            try:
-                self._load_action = load_shedding().open_action(self, log_fn=log)
-            except Exception as exc:  # noqa: BLE001 -- nunca impede a app de subir
-                log('LOAD_ACTION_START_FAILED error=%r' % (exc,))
-            else:
-                try:
                     state = self._load_action.as_dict()
                     log('LOAD_ACTION_STARTED armed=%s floor_s=%.0f samples=%d'
                         ' queue=%s'
@@ -9918,9 +9914,34 @@ class SottoShell:
         """
         posted = self.emit_nowait(kind, payload)
         if not posted:
+            # UM STATUS ANTES DO FORM NAO SE PERDE -- ESPERA (2026-11-03,
+            # MEDIDO). O pipeline de legendas arranca ANTES do WebView2 (`de
+            # proposito`, para a legenda nao esperar o painel), e o mesmo
+            # arranque publica `Starting worker...`, `boot`, `model-loading`.
+            # Todos esses `emit` caiam aqui e o painel abria sem eles: o dono
+            # via o painel aparecer e so' depois receber estado -- a familia
+            # exacta do "carrega o background e depois a ui" que ele recusa.
+            # Agora o ULTIMO valor de cada `kind` fica guardado (so' o ultimo:
+            # o painel e' funcao do estado, nao de um historico) e e' entregue
+            # no primeiro `emit` que passar. Tecto de 8 kinds, para um caminho
+            # sem form nunca virar memoria retida.
+            q = getattr(self, '_emit_pending', None)
+            if q is None:
+                q = self._emit_pending = {}
+            if len(q) >= 8 and kind not in q:
+                q.pop(next(iter(q)), None)
+            q[kind] = payload
             warn(f'EMIT_DROPPED kind={json.dumps(str(kind))} '
-                 f'reason=no-form posted=false '
+                 f'reason=no-form queued=true '
                  f'payload={json.dumps(payload, separators=(",", ":"))[:120]!r}')
+        else:
+            q = getattr(self, '_emit_pending', None)
+            if q:
+                self._emit_pending = {}
+                for _kind, _payload in q.items():
+                    self.emit_nowait(_kind, _payload)
+                log('EMIT_FLUSHED kinds=%d after-first-post=%s'
+                    % (len(q), json.dumps(str(kind))))
         return posted
 
     def exec_js_post(self, script) -> bool:
