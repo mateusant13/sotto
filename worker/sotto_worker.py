@@ -473,6 +473,36 @@ def limit_threads(n: int = 0) -> int:
 _DLL_DIR_HANDLES = []
 
 
+# ── WORKER_BOOT_PROF: WHERE THE BOOT TIME ACTUALLY GOES ───────────────────────
+# The owner's live log (2026-11-03, `_main/webview-run.log`) has the bridge
+# reporting `BRIDGE_LOAD_MS ms=64954 ... worker_load_s=11.0` and, on a bad run,
+# `BRIDGE_SILENT_LOADING ms=115516 ... because=model-not-loaded`: 65-206 s of
+# nothing on screen while he is gaming. `load_phases_s` already split the three
+# sessions, but it starts AFTER the interpreter, `import torch`, the CUDA DLL
+# directories and the CUDA liveness probe -- so the phases could not name the
+# half of the boot that happens before `StreamAsr` exists.
+#
+# This dict is the whole boot on ONE line, in seconds since this module was
+# imported: `numpy_import`, `ort_import`, `og_import`, `cuda_dirs`, `probe`,
+# each session, `og_model` and `first_decode`. It is a MEASUREMENT, not a knob:
+# nothing reads it to make a decision, and `load_phases_s` keeps its exact
+# shape so every existing reader keeps working.
+_T_PROC = time.time()
+_BOOT_PROF: dict = {}
+
+
+def _prof(mark: str, t: float | None = None) -> float:
+    """Record `mark` at wall time `t` (default now), seconds since import."""
+    _BOOT_PROF[mark] = round((time.time() if t is None else t) - _T_PROC, 3)
+    return _BOOT_PROF[mark]
+
+
+def _prof_publish() -> None:
+    """ONE stderr line: the boot's phases, in order, as `name=value` pairs."""
+    if _BOOT_PROF:
+        err("WORKER_BOOT_PROF " + " ".join(f"{k}={v}" for k, v in _BOOT_PROF.items()))
+
+
 # ── CUDA plumbing ─────────────────────────────────────────────────────────────
 def _add_cuda_dll_dirs() -> None:
     """Make CUDA/cuDNN importable from the torch + nvidia pip wheels.
@@ -485,10 +515,24 @@ def _add_cuda_dll_dirs() -> None:
     import site
 
     candidates = []
+    # THE DLL DIRECTORY, WITHOUT `import torch` — MEASURED 2026-11-03.
+    # This function imported torch ONLY to learn where `torch/lib` is, and the
+    # import is not free: `torch/lib` holds 5.8 GB of DLLs and importing maps a
+    # good part of it. Measured in the real worker (`WORKER_BOOT_PROF`, see
+    # `_main/receipt-20261103-worker-boot.md`): cuda_dirs = 7.9 s warm and
+    # 29.6 s on a busy box — 47 % of the whole boot to `model-loaded`, paid
+    # before a byte of the model is read. `find_spec` answers the same question
+    # (where does torch live) WITHOUT executing it, and CUDA still loads: on
+    # this host the `nvidia/*` wheels alone resolve cublasLt64_13 + cuDNN 9
+    # through the PATH line below (`cuda_nvidia_only` arm of
+    # `worker/_probe/boot-phases.py` -> providers ['CUDAExecutionProvider',
+    # 'CPUExecutionProvider']).
     try:
-        import torch
+        import importlib.util
 
-        candidates.append(os.path.join(os.path.dirname(torch.__file__), "lib"))
+        _spec = importlib.util.find_spec("torch")
+        if _spec is not None and _spec.origin:
+            candidates.append(os.path.join(os.path.dirname(_spec.origin), "lib"))
     except Exception:
         pass
     bases = []
@@ -634,7 +678,8 @@ def _stable_words():
 class StreamAsr:
     """Streaming RNN-T over the encoder/decoder/joint ONNX graphs."""
 
-    def __init__(self, model_dir: str, providers=None, use_vad: bool = False, lang_id=None):
+    def __init__(self, model_dir: str, providers=None, use_vad: bool = False, lang_id=None,
+                 on_sessions_ready=None):
         # `lang_id=None` means the resolver runs its sentinel (host user locale,
         # falling back to the model's auto slot); the shipped CONFIG default is
         # "auto" (autoSlot 101). There is deliberately NO
@@ -642,9 +687,17 @@ class StreamAsr:
         # front of Portuguese audio is the deviation this parameter replaced.
         # Whatever arrives is validated against the model's OWN languages.json
         # and REFUSED if undeclared — see worker/lang_prompt.py.
+        import time as _time
+        _p0 = _time.time()
         import numpy as np
+        _p1 = _time.time()
         import onnxruntime as ort
+        _p2 = _time.time()
         import onnxruntime_genai as og
+        _p3 = _time.time()
+        _prof("numpy_import", _p1)
+        _prof("ort_import", _p2)
+        _prof("og_import", _p3)
 
         self.np = np
         self.ort = ort
@@ -670,28 +723,17 @@ class StreamAsr:
             vocab.pop()
         self.vocab = vocab
 
-        so = ort.SessionOptions()
-        so.log_severity_level = 3
-        # ── A/B DE LOAD, MEDIDO 2026-10-23 ──────────────────────────────────
+        # ── A/B DE LOAD, MEDIDO 2026-10-23 / 2026-11-03 ─────────────────────
         # O proprio worker reporta `load_phases_s`: **encoder 19.013 s** de 22.8 s
-        # (decoder 0.209, joint 0.116), com `cuda_dirs_ms=1824` e
-        # `provider_probe_ms=343`. Ou seja: o custo do arranque nao esta no disco,
-        # nem no decoder, nem no joint -- esta na sessao do ENCODER.
-        # `SOTTO_LOAD_AB` existe para medir UM travao de cada vez sem tocar no
-        # caminho por omissao (o produto fica igual ate a medicao decidir):
-        #   bytes -> os pesos vao do ficheiro directo para a sessao (menos copia)
-        #   basic -> optimizacao de grafo BASIC (menos trabalho no load)
+        # (decoder 0.209, joint 0.116). O custo do arranque do MODELO esta na
+        # sessao do ENCODER, e as opcoes de cada grafo vivem em
+        # `session_options()` -- o encoder leva BASIC, o decoder e o joint ficam
+        # em ALL porque sao chamados por frame e a fusao LSTM do ALL paga-se uma
+        # vez no load e usa-se milhares de vezes.
         _ab = os.environ.get('SOTTO_LOAD_AB', '').strip().lower()
-        if 'bytes' in _ab:
-            try:
-                so.add_session_config_entry('session.use_ort_model_bytes_directly', '1')
-            except Exception:
-                pass
-        if 'basic' in _ab:
-            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+        _threads = None
         try:
-            so.intra_op_num_threads = int(os.environ.get("OMP_NUM_THREADS", "8"))
-            so.inter_op_num_threads = 1
+            _threads = int(os.environ.get("OMP_NUM_THREADS", "8"))
         except (TypeError, ValueError) as exc:
             # UM `OMP_NUM_THREADS` INVALIDO NAO PODE SER SILENCIO: o valor ruim era
             # engolido e o modelo ficava com o numero de threads por omissao, sem
@@ -699,6 +741,8 @@ class StreamAsr:
             # `exception-hygiene`, medido 2026-10-30: esta era uma das 8 linhas
             # silenciosas do ficheiro contra uma linha de base de 7).
             err("OMP_NUM_THREADS invalido (%r); a usar o valor por omissao" % (exc,))
+        so = session_options(ort, _ab, _threads, encoder=False)
+        so_enc = session_options(ort, _ab, _threads, encoder=True)
         # THE OPTIONS GO WITH THE NAMES (see `provider_entries`): without them
         # the GPU arena rounds every allocation up to the next power of two.
         # MEASURED 2026-10-21 on the owner's box: the worker's VRAM delta is
@@ -717,12 +761,15 @@ class StreamAsr:
         # (the driver's first init on the box is the expensive one); the other
         # two carry the graph's own setup.
         _t_load = time.time()
-        self.enc = ort.InferenceSession(os.path.join(model_dir, "encoder.onnx"), so, providers=entries)
+        self.enc = ort.InferenceSession(os.path.join(model_dir, "encoder.onnx"), so_enc, providers=entries)
         _t_enc = time.time()
         self.dec = ort.InferenceSession(os.path.join(model_dir, "decoder.onnx"), so, providers=entries)
         _t_dec = time.time()
         self.joint = ort.InferenceSession(os.path.join(model_dir, "joint.onnx"), so, providers=entries)
         _t_joint = time.time()
+        _prof("sess_encoder", _t_enc)
+        _prof("sess_decoder", _t_dec)
+        _prof("sess_joint", _t_joint)
         self.load_phases_s = {
             'encoder': round(_t_enc - _t_load, 3),
             'decoder': round(_t_dec - _t_enc, 3),
@@ -731,6 +778,33 @@ class StreamAsr:
         }
 
         self.providers = self.enc.get_providers()
+        # THE ANSWER, not the request (see `choose_providers`). A CUDA EP that is
+        # REGISTERED but cannot dlopen leaves a CPU-only session; the encoder
+        # session is created with the full list, so this read-back is the
+        # liveness test the thrown-away probe used to be -- and `note` says so
+        # out loud instead of letting a silent CPU fallback pass as a GPU run.
+        self.provider_note = ""
+        if self.providers and "CUDAExecutionProvider" not in self.providers:
+            _requested = providers if isinstance(providers, (list, tuple)) else [providers]
+            if any(str(p).lower() in ("cuda", "gpu") or "CUDA" in str(p) for p in _requested if p):
+                self.provider_note = "cuda-registered-but-not-loadable"
+
+        # ── THE PRIORITY WINDOW ENDS HERE, BEFORE genai (MEASURED 2026-11-03) ──
+        # `PROCESS_MODE_BACKGROUND_BEGIN` (see `_enter_load_background_mode`)
+        # exists for the WEIGHT load: 1.2 GB of `*onnx.data`, ~2 GB of memory and
+        # the CUDA EP's DLL map. That is what froze the owner's desktop. What
+        # comes next is `og.Model`, which reads 2.7 MB (measured: 7 read ops,
+        # 2.7 MB, `worker/_probe/boot-phases.py og`) and costs CPU init.
+        # MEASURED on this box, same process, same model:
+        #     og.Model at NORMAL priority          2.64 s
+        #     og.Model under BACKGROUND (I/O very low, CPU idle)   9.04 s
+        # and one arm came back at 35.88 s. Paying 9-36 s of IDLE-priority init
+        # to hide 2.7 MB of reads is the wrong trade -- and BELOW_NORMAL, which
+        # this process returns to, is EXACTLY the class the live inference runs
+        # at forever after `model-loaded`. So the desktop is not exposed to
+        # anything it is not already living with.
+        if on_sessions_ready is not None:
+            on_sessions_ready()
 
         # genai owns the cache-aware feature front end for this export.
         # ONE `og.Model` (the weights) and ONE streaming processor per STREAM:
@@ -738,10 +812,22 @@ class StreamAsr:
         # state, so it is per-stream state exactly like `cc/ct/ccl` — see
         # `fresh_processor()`. `self.use_vad` is retained so a rebuilt processor
         # gets the SAME options this one got.
+        #
+        # IT IS BUILT ON A THREAD, NOT HERE (MEASURED 2026-11-03). `og.Model`
+        # reads 2.7 MB and was MEASURED at 2.0-3.2 s alone, 9.0-9.3 s inside this
+        # worker and 35.9 s in one arm — it is the single biggest phase left in
+        # the boot and NOTHING before the first chunk needs it: the panel's
+        # `model-loaded` (what `BRIDGE_LOAD_MS`/the bridge watchdog measure) only
+        # needs the three sessions, and the shell still has to arm capture. So it
+        # starts here and every reader waits for it through `sp` — a property
+        # that joins — which means "the front end is ready" is still an invariant
+        # of every chunk, it is just no longer something the BOOT waits for.
         self._og = og
-        self.model = og.Model(model_dir)
         self.use_vad = bool(use_vad)
-        self.sp = self.fresh_processor()
+        self._sp = None
+        self._fe_thread = None
+        self._fe_error = None
+        self._fe_started = False
 
         self.cc, self.ct, self.ccl = _initial_encoder_caches(np, self.enc, model_dir)
         self.h = np.zeros((2, 1, self.hidden), np.float32)
@@ -831,7 +917,104 @@ class StreamAsr:
         return "".join(parts).replace("\u2581", " ").strip()
 
     def _decode(self, targets, h, c):
+        if "first_decode" not in _BOOT_PROF:
+            # The first decoder call is where the CUDA graph/arena for the
+            # DECODER session is first touched, so it is a boot phase of its
+            # own -- and `BRIDGE_SILENT_LOADING` is exactly this call arriving
+            # too late. Timed once, on the first call, never again.
+            try:
+                return self.dec.run(["decoder_output", "h_out", "c_out"],
+                                    {"targets": targets, "h_in": h, "c_in": c})
+            finally:
+                _prof("first_decode", time.time())
         return self.dec.run(["decoder_output", "h_out", "c_out"], {"targets": targets, "h_in": h, "c_in": c})
+
+    # ── the front end: built on a thread, joined on first use ────────────────
+    @property
+    def sp(self):
+        """The streaming processor, guaranteed built. Joins the builder thread.
+
+        This is the ONLY way the rest of the file reaches the front end, so no
+        caller can observe a half-built one: the property joins, and re-raises
+        the builder's exception if it failed. `asr.sp = ...` (the live loop's
+        pass swap) still assigns, unchanged.
+        """
+        self._join_frontend()
+        return self._sp
+
+    @sp.setter
+    def sp(self, value):
+        self._sp = value
+
+    def start_frontend(self):
+        """Begin building `og.Model` + this stream's processor, off the boot path.
+
+        CALLED BY `main()` AFTER `model-loaded` IS EMITTED, and that position is
+        the whole point: MEASURED 2026-11-03, `og.Model` holds the GIL for its
+        entire duration (a 50 ms loop in the main thread stalls 1.53 s while a
+        builder thread is inside `og.Model` for 1.56 s), so a thread started
+        BEFORE the emit buys nothing -- the emitting thread cannot run while
+        genai is inside that call. Started AFTER the emit, it does what it was
+        meant to do: the bridge and the panel see `model-loaded` when the three
+        sessions exist, while this process spends the next few seconds finishing
+        the feature front end that only the FIRST CHUNK needs.
+
+        Idempotent. Every reader of the front end goes through the `sp` property,
+        so "not built yet" can never reach a decode.
+        """
+        if self._fe_started:
+            return
+        self._fe_started = True
+        self._fe_thread = threading.Thread(target=self._build_frontend,
+                                          name="sotto-frontend", daemon=True)
+        self._fe_thread.start()
+
+    def _build_frontend(self):
+        try:
+            self.model = self._og.Model(self.model_dir)
+            _prof("og_model", time.time())
+            self._sp = self._make_processor()
+            _prof("og_processor", time.time())
+        except BaseException as exc:            # re-raised by `_join_frontend`
+            self._fe_error = exc
+            # LOUD, not silent: this used to fail during the load, where `main()`
+            # turned it into an `error` event. The failure moved AFTER
+            # `model-loaded`, so it has to say so itself or the run would sit
+            # there with no captions and no reason on the wire.
+            try:
+                emit(type="status", state="error", stage="frontend",
+                     detail="%s: %s" % (type(exc).__name__, exc))
+                err("front end failed: %s: %s" % (type(exc).__name__, exc))
+            except Exception:
+                pass
+        finally:
+            # The boot line is published HERE, not at `model-loaded`: this is the
+            # first moment the whole boot exists to be printed, and it is still
+            # ONE line (`WORKER_BOOT_PROF`).
+            _prof_publish()
+
+    def _join_frontend(self):
+        if not self._fe_started:
+            # Nobody started the builder (a probe/`--selftest` path that builds
+            # `StreamAsr` directly and decodes immediately): build it HERE, on
+            # the caller's thread, exactly as the pre-deferral code did.
+            self._fe_started = True
+            self._build_frontend()
+        th = self._fe_thread
+        if th is not None and th is not threading.current_thread() and th.is_alive():
+            th.join()
+        if self._fe_error is not None:
+            exc = self._fe_error
+            self._fe_error = None
+            raise RuntimeError(
+                "onnxruntime_genai front end failed to build: %s: %s"
+                % (type(exc).__name__, exc)) from exc
+
+    def _make_processor(self):
+        """`og.StreamingProcessor` from the built model, with this stream's options."""
+        sp = self.model.create_streaming_processor()
+        sp.set_option("use_vad", "1" if self.use_vad else "0")
+        return sp
 
     def fresh_processor(self):
         """A NEW `og.StreamingProcessor` for THIS model, with the same options.
@@ -859,10 +1042,12 @@ class StreamAsr:
         model whose front end cannot be built must not boot), while the two
         mid-stream callers — `rerun()` and the device-change site — treat it as
         a reported degradation rather than a silent one; see `reset_frontend()`.
+        The construction itself is `_make_processor()`; this entry point JOINs
+        the builder thread first (`_join_frontend`), so "the model is built" is
+        still guaranteed here even though the build happens off the boot path.
         """
-        sp = self.model.create_streaming_processor()
-        sp.set_option("use_vad", "1" if self.use_vad else "0")
-        return sp
+        self._join_frontend()
+        return self._make_processor()
 
     def reset_stream_state(self):
         """Return EVERY piece of stream state to "nothing was heard yet".
@@ -3345,19 +3530,59 @@ def provider_entries(names):
     return entries
 
 
+def session_options(ort, ab: str = "", threads=None, encoder: bool = False):
+    """`SessionOptions` for ONE graph, with the load knobs this file has measured.
+
+    WHY PER-GRAPH AND NOT ONE OBJECT (MEASURED 2026-11-03, `SOTTO_LOAD_AB` arms
+    of `worker/_probe/boot-phases.py`, same process, same session):
+        encoder  ORT_ENABLE_ALL   3.50 s
+        encoder  ORT_ENABLE_BASIC 2.18 s
+        encoder  bytes + BASIC    2.14 s
+    The ENCODER is where the money is (its 24 int4 layers are what ORT's full
+    optimization pass walks); the decoder and the joiner are 0.15 s / 0.22 s and
+    are called per FRAME, so they keep ORT_ENABLE_ALL — its LSTM fusion is paid
+    once at load and re-used thousands of times at inference, and trading it for
+    0.1 s of boot would be paying the owner's latency back in caption time.
+
+    `ab` is the `SOTTO_LOAD_AB` string, kept as the A/B knob it always was:
+      bytes -> weights go from the file straight to the session (no copy)
+      basic / full -> force BASIC / ALL on every graph, including the encoder
+    """
+    so = ort.SessionOptions()
+    so.log_severity_level = 3
+    if "bytes" in ab:
+        try:
+            so.add_session_config_entry("session.use_ort_model_bytes_directly", "1")
+        except Exception:
+            pass
+    level = None
+    if encoder:
+        level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+    if "basic" in ab:
+        level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+    elif "full" in ab:
+        level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    if level is not None:
+        so.graph_optimization_level = level
+    if threads is not None:
+        so.intra_op_num_threads = threads
+    so.inter_op_num_threads = 1
+    return so
+
+
 def choose_providers(requested, model_dir=None):
     """Return (providers, available, note, probed_model).
 
     A registered CUDA provider is not a working one: onnxruntime-gpu registers
     CUDAExecutionProvider and then fails to dlopen it when the CUDA runtime is
-    absent, silently leaving a CPU-only session. So we probe it with a real
-    session and fall back honestly.
+    absent, silently leaving a CPU-only session. The liveness test is now the
+    REAL encoder session (see the tail of this function): the list returned here
+    is the REQUEST, `StreamAsr.providers` is the ANSWER.
 
-    `model_dir` is the model THIS RUN will load. The probe used to open
-    os.path.join(DEFAULT_MODEL, "joint.onnx") — the …-int4 export — no matter what
-    config.json said, so the CUDA liveness test ran against a graph the run never
-    loaded (docs/audit/model-config.md §6.5). The probed path is now derived from
-    the configured model and RETURNED, so a run can print which export it probed.
+    `model_dir` is the model THIS RUN will load, and the returned path names the
+    graph whose session the CUDA decision is read from — the encoder of this run,
+    not the hard-coded …-int4 `joint.onnx` the old probe opened no matter what
+    config.json said (docs/audit/model-config.md §6.5).
     """
     import onnxruntime as ort
 
@@ -3397,25 +3622,30 @@ def choose_providers(requested, model_dir=None):
             order.append("CPUExecutionProvider")
 
     note = ""
-    # Probe the model THIS RUN will load, not a hard-coded export (see docstring).
-    probed_model = os.path.join(model_dir or DEFAULT_MODEL, "joint.onnx")
-    if "CUDAExecutionProvider" in order:
-        try:
-            so = ort.SessionOptions()
-            so.log_severity_level = 4
-            probe = ort.InferenceSession(probed_model, so,
-                                         providers=provider_entries(
-                                             ["CUDAExecutionProvider"]))
-            if "CUDAExecutionProvider" not in probe.get_providers():
-                order.remove("CUDAExecutionProvider")
-                note = "cuda-registered-but-not-loadable"
-            del probe
-        except Exception as exc:
-            if "CUDAExecutionProvider" in order:
-                order.remove("CUDAExecutionProvider")
-            note = f"cuda-unavailable: {type(exc).__name__}: {str(exc)[:160]}"
-    if "CUDAExecutionProvider" not in order and not note:
-        note = "cuda-not-registered"
+    # NO LIVENESS SESSION IS CREATED HERE ANY MORE (MEASURED 2026-11-03).
+    # The old probe opened `joint.onnx` with CUDAExecutionProvider, waited for
+    # `get_providers()`, and dropped the session -- paying the CUDA EP's DLL
+    # load (cublasLt + cuDNN, ~1.5 GB) in a session that was then THROWN AWAY,
+    # and still leaving the real encoder session to do the same load again.
+    # `WORKER_BOOT_PROF` put that phase at 3.5 s warm / 20.9 s on a busy box.
+    #
+    # The encoder session below is the same test, and it is not thrown away: it
+    # is created with the FULL list, ORT falls back to the CPU provider if the
+    # CUDA EP cannot dlopen, and `get_providers()` on the REAL session says which
+    # one answered -- the truth, read off the graph the run will drive. A wrong
+    # request therefore costs nothing extra: there is no second creation.
+    #
+    # What the caller must do with this: the list returned here is the REQUEST.
+    # `StreamAsr.providers` is the ANSWER, and `StreamAsr.provider_note` names a
+    # request that was not honoured. `main()` reports both, the answer under
+    # `providers_selected` so the shell's WORKER_PROVIDERS line -- and the
+    # `worker-providers-oracle` that judges it -- keep meaning what they meant:
+    # a GPU provider that is AVAILABLE but NOT USED is still red, and now it is
+    # red on evidence from the loaded session instead of from a probe session.
+    note = "cuda-not-registered" if "CUDAExecutionProvider" not in order and not note else note
+    # Which graph the CUDA decision is now read off: the encoder of THIS run
+    # (the first session created, and the one that carries the CUDA EP's load).
+    probed_model = os.path.join(model_dir or DEFAULT_MODEL, "encoder.onnx")
     return order, available, note, probed_model
 
 
@@ -5018,24 +5248,18 @@ def main():
 
     _add_cuda_dll_dirs()
     t_cuda = time.time()
+    _prof("cuda_dirs", t_cuda)
     providers, available, note, cuda_probe_model = choose_providers(
         args.providers or cfg.get("model", {}).get("providers"), model_dir
     )
     t_probe = time.time()
-    emit(
-        type="status",
-        state="boot",
-        stage="providers",
-        providers_available=available,
-        providers_selected=providers,
-        note=note,
-        # WHICH export the CUDA liveness probe opened. Printed so a run can prove
-        # the probe matched the model it will load (…-int8) instead of defaulting
-        # to …-int4 (docs/audit/model-config.md §6.5).
-        cuda_probe_model=os.path.basename(os.path.dirname(cuda_probe_model)),
-        cuda_dirs_ms=round((t_cuda - t_boot) * 1000),
-        provider_probe_ms=round((t_probe - t_cuda) * 1000),
-    )
+    _prof("probe", t_probe)
+    # NO PROVIDER EVENT HERE ANY MORE: it moved BELOW the load, where the answer
+    # exists (MEASURED 2026-11-03, see `choose_providers`). Emitting it here meant
+    # emitting the REQUEST, and the shell's `WORKER_PROVIDERS` line -- the one
+    # `worker-providers-oracle` judges -- would then have reported "on the GPU"
+    # for a session that had quietly fallen back to the CPU. After the load it is
+    # `asr.providers`, read off the encoder session that will actually run.
 
     if not os.path.isdir(model_dir):
         emit(type="status", state="error", stage="model", detail=f"model dir not found: {model_dir}")
@@ -5054,8 +5278,22 @@ def main():
     load_mode = _enter_load_background_mode()
     emit(type="status", state="model-loading", stage="priority",
          load_priority=load_mode)
+    _load_window = {"open": True}
+
+    def _end_load_window():
+        """Fechar a janela de prioridade UMA vez (idempotente).
+
+        Chamada do lugar certo -- a primeira, os tres `InferenceSession` feitos;
+        a segunda (o `finally`), o caminho de erro. `PROCESS_MODE_BACKGROUND_END`
+        seguido de `BELOW_NORMAL` e o que `_leave_load_background_mode` ja faz.
+        """
+        if _load_window["open"]:
+            _load_window["open"] = False
+            _leave_load_background_mode(load_mode)
+
     try:
-        asr = StreamAsr(model_dir, providers=providers, use_vad=use_vad, lang_id=lang_id)
+        asr = StreamAsr(model_dir, providers=providers, use_vad=use_vad, lang_id=lang_id,
+                       on_sessions_ready=_end_load_window)
     except Exception as exc:
         emit(
             type="status",
@@ -5067,8 +5305,32 @@ def main():
         return 2
     finally:
         # Caminho feliz E caminho de erro: a prioridade volta sempre.
-        _leave_load_background_mode(load_mode)
+        _end_load_window()
     asr.load_s = time.time() - t0
+    emit(
+        type="status",
+        state="boot",
+        stage="providers",
+        providers_available=available,
+        # THE ANSWER (see `choose_providers`): the providers the encoder session
+        # reports after the load. On a box where CUDA is registered and cannot
+        # dlopen this is ['CPUExecutionProvider'] while `providers_requested`
+        # still says CUDA -- which is exactly the silent fallback the
+        # `worker-providers-oracle` exists to red.
+        providers_selected=asr.providers,
+        providers_requested=providers,
+        note=asr.provider_note or note,
+        # WHICH export the CUDA decision came from: the encoder of THIS run, so a
+        # run can prove it matched the model it loaded (…-int8) instead of
+        # defaulting to …-int4 (docs/audit/model-config.md §6.5).
+        cuda_probe_model=os.path.basename(os.path.dirname(cuda_probe_model)),
+        cuda_dirs_ms=round((t_cuda - t_boot) * 1000),
+        # Kept as the field name every log reader already greps. It now times the
+        # provider LIST selection (a registry query), because the liveness session
+        # that used to fill it — and pay the CUDA EP's DLL load — is gone; that
+        # load is now `load_phases_s.encoder`, where it is not thrown away.
+        provider_probe_ms=round((t_probe - t_cuda) * 1000),
+    )
     emit(
         type="status",
         state="model-loaded",
@@ -5083,7 +5345,19 @@ def main():
         # read at 1.9 GB/s in 0.39 s), so the time is in the SESSION CREATION
         # -- and until the phases were timed nobody could say WHICH part.
         load_phases_s=getattr(asr, 'load_phases_s', None),
+        # The WHOLE boot on the same event, not just the three sessions: the
+        # interpreter, `import torch` behind the CUDA DLL directories, the CUDA
+        # liveness probe and `og.Model` are before `StreamAsr` and were the
+        # invisible half of `BRIDGE_LOAD_MS`. Additive key; every reader of
+        # `load_phases_s` above keeps its exact shape.
+        boot_prof_s=dict(_BOOT_PROF),
         rss_mb=round(current_rss_mb(), 1),
+        # The peak UP TO this event, which no longer includes the genai front end
+        # (`start_frontend()` runs right after this line, and genai's own copy of
+        # the weights is ~700 MB of RSS measured 2026-11-03). Read it as "the
+        # peak the boot reached", not "the run's peak": `boot_prof_s` carries
+        # `og_model`/`og_processor`, and the run's own `WORKER_STATS` carry live
+        # memory after that.
         peak_rss_mb=round(peak_rss_mb(), 1),
         # Read back off the constructed session, not echoed from the request:
         # `lang_id`/`lang` here are what StreamAsr validated and will feed, and
@@ -5092,6 +5366,12 @@ def main():
         lang=asr.lang_tag,
         lang_input=asr.lang_input,
     )
+    # THE FRONT END STARTS NOW, NOT IN `__init__` (see `start_frontend`): it is
+    # the biggest single phase left (`og_model` 7.7-9.3 s measured) and nothing
+    # in `model-loaded` needs it. It is built here, so the emit above is already
+    # out of the process before genai takes the GIL; the first chunk joins it
+    # through the `sp` property, which is unchanged behaviour for a decode.
+    asr.start_frontend()
 
     # ── the speech/music gate (lane SottoSpeechSeparation) ───────────────────
     # OWNER: "que divida musica de fala, isole a fala, e ai aplicamos a legenda

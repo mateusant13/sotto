@@ -2226,7 +2226,16 @@ class ExternalCaptionWatcher(threading.Thread):
     #: (instrumento `_main/_yt-live-latency.py`, 45 s a tocar) saiu com mediana
     #: 318 ms. O alvo e' o player: o resto do orcamento passa a ser 40 ms, para
     #: o periodo ficar so' o custo da leitura.
-    INTERVAL_S = 0.04
+    #: 40 ms DE RESTO ERA 108 % DE UM NUCLEO (2026-11-03, MEDIDO). O laco roda
+    #: a `leitura + INTERVAL_S`; com a leitura em ~50 ms (UIA sobre a janela do
+    #: Chrome), o periodo real ficou em ~90 ms e `YOUTUBE_TICK_MS n=` contou
+    #: **100 ticks a cada 5 s (20 Hz)**, com 95,6 % de um nucleo numa unica
+    #: thread (`GetThreadTimes` no pid 28044, 5 s de amostra). A legenda nao
+    #: precisa de 20 Hz: os cues do YouTube mudam a cada ~2 s, o `_tick` custa
+    #: 0 ms, e a revelacao palavra-a-palavra interpola localmente a `RENDER_S`
+    #: (60 ms) entre duas leituras -- nenhum chamada Win32 nesse caminho. 10 Hz
+    #: e' o dobro da cadencia de desenho e dez vezes a do player.
+    INTERVAL_S = 0.10
     #: Sem player nenhum, 4 Hz. Ver o comment do `wait` no fim do `run`.
     IDLE_INTERVAL_S = 0.25
     #: A cadencia do DESENHO da legenda do YouTube, entre leituras do UIA. 60 ms
@@ -2738,6 +2747,18 @@ class ExternalCaptionWatcher(threading.Thread):
                 self.target_hwnd = int(found)
         if self.target_hwnd and ctypes.windll.user32.IsWindow(
                 wt.HWND(self.target_hwnd)):
+            # A RESPOSTA FICA EM CACHE, VENHA DE ONDE VIER (2026-11-03,
+            # MEDIDO). `_target_cache` so' era escrito no ramo "a janela em
+            # primeiro plano E' o player"; com o JOGO em primeiro plano e a
+            # janela do YouTube lembrada, a funcao refazia a decisao inteira
+            # (titulo, fonte CDP, `find_player_window`) em CADA tick de 40 ms --
+            # `EXTERNAL_CAPTIONS_READ_MS phases={'target': 47..63}` repetido, e
+            # o laco externo a gastar **95,6 % de um nucleo** (medido por
+            # `GetThreadTimes` no pid 28044, 5 s de amostra: uma thread em
+            # 95,6 %, as outras abaixo de 8 %). O cache de 200 ms e' o MESMO
+            # numero do ramo de cima, com a MESMA razao: a janela nao muda a
+            # 25 Hz.
+            self._target_cache = (time.monotonic(), int(self.target_hwnd))
             return int(self.target_hwnd)
         self.target_hwnd = 0
         return 0
@@ -8446,6 +8467,86 @@ class SottoShell:
         except Exception:              # noqa: BLE001
             return False
 
+    def _thread_cpu_census(self, window_s=5.0, log_it=True):
+        """QUEM GASTA O NUCLEO -- por NOME, nao por tid (2026-11-03).
+
+        MEDIDO: a shell viva (pid 6040) gastava **102 % de um nucleo** em repouso,
+        e o instrumento que existia so' sabia dizer `tid 39712 94,8 %`. Um `tid`
+        nao se le: `UI_HUNG_THREAD` escreve `ident=`, e em CPython no Windows esse
+        `ident` E' o tid nativo (`PyThread_get_thread_ident` devolve
+        `GetCurrentThreadId`), logo a tabela `threading.enumerate()` e' o mapa
+        tid->nome que faltava.
+
+        `GetThreadTimes` e' read-only e funciona de medium para high (medido);
+        nao precisa de py-spy nem de administrador. Sem delta entre duas
+        amostras nao ha' numero, por isso a primeira chamada so' guarda a base.
+        """
+        try:
+            import ctypes as _ct
+            from ctypes import wintypes as _wt
+            k32 = _ct.windll.kernel32
+            names = {t.ident: t.name for t in threading.enumerate() if t.ident}
+            if not names:
+                return []
+
+            def _ticks(tid):
+                h = k32.OpenThread(0x0800, False, int(tid))  # QUERY_LIMITED
+                if not h:
+                    return None
+                try:
+                    c = _wt.FILETIME(); e = _wt.FILETIME()
+                    k = _wt.FILETIME(); u = _wt.FILETIME()
+                    if not k32.GetThreadTimes(h, _ct.byref(c), _ct.byref(e),
+                                              _ct.byref(k), _ct.byref(u)):
+                        return None
+                    ft = lambda f: (f.dwHighDateTime << 32) | f.dwLowDateTime  # noqa: E731
+                    return ft(k) + ft(u)
+                finally:
+                    k32.CloseHandle(h)
+
+            now = time.monotonic()
+            cur = {tid: _ticks(tid) for tid in names}
+            base = getattr(self, '_cpu_census_base', None)
+            self._cpu_census_base = (now, cur)
+            if not base:
+                return []
+            t0, prev = base
+            span = max(1e-3, now - t0)
+            rows = []
+            for tid, ticks in cur.items():
+                if ticks is None or prev.get(tid) is None:
+                    continue
+                rows.append(((ticks - prev[tid]) / 1e7 / span * 100.0,
+                             names.get(tid, 'tid-%s' % tid)))
+            rows.sort(reverse=True)
+            if log_it and rows:
+                total = sum(r[0] for r in rows)
+                if total >= 20.0:
+                    log('THREAD_CPU total=%.0f%% top=%s'
+                        % (total, ' '.join('%s:%.0f%%' % (n, p)
+                                           for p, n in rows[:4])))
+            return rows
+        except Exception:                 # noqa: BLE001
+            return []
+
+    def _start_thread_cpu_census(self, every_s=60.0):
+        """Publica `THREAD_CPU` de minuto a minuto (silencioso abaixo de 20 %)."""
+        if getattr(self, '_cpu_census_thread', None) is not None:
+            return
+        if os.environ.get('SOTTO_NO_CPU_CENSUS', '').strip() == '1':
+            log('THREAD_CPU_CENSUS disabled=env')
+            return
+
+        def _loop():
+            self._thread_cpu_census(log_it=False)   # a base
+            while True:
+                time.sleep(every_s)
+                self._thread_cpu_census()
+
+        self._cpu_census_thread = threading.Thread(
+            target=_loop, name='sotto-thread-cpu', daemon=True)
+        self._cpu_census_thread.start()
+
     def _dump_thread_stacks(self, reason):
         """A pilha de cada thread, uma linha por frame: a prova do bloqueio."""
         import traceback
@@ -8567,6 +8668,11 @@ class SottoShell:
                                                  name='sotto-slow-read',
                                                  daemon=True)
         self._slow_read_thread.start()
+
+        # QUEM GASTA O NUCLEO, POR NOME (2026-11-03). O `THREAD_CPU` do
+        # minuto seguinte e' o instrumento que transforma "a app e' pesada"
+        # num nome de thread e uma percentagem.
+        self._start_thread_cpu_census(every_s=30.0)
 
         # SHEDDING POR CARGA (owner, 2026-10-30). Arranca com a app e PUBLICA o
         # nivel no ficheiro da visibilidade (`shed`), que o worker ja' poll --
