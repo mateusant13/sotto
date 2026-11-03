@@ -58,9 +58,23 @@ def load_shell(path=SHELL, name='sotto_webview_oracle_mod'):
 class Clock(object):
     """Uma sequencia de estados de tecla, entregue um por leitura."""
 
-    def __init__(self, states):
+    def __init__(self, states, per_iteration=1):
+        """`per_iteration` = quantas LEITURAS uma volta do laco consome.
+
+        ESTE NUMERO E' O QUE FALTAVA (medido 2026-11-03). A borda da combinacao
+        le' um VK por VARIANTE (`Ctrl` = LCONTROL, RCONTROL e CONTROL) mais a
+        tecla: `Ctrl+Space` consome **4** leituras por volta. O relogio antigo
+        entregava um estado por LEITURA, logo a sequencia `[baixo, baixo,
+        largado, largado]` descrevia uma volta e meia e a arm 3 acusava o
+        produto (`release-then-press-again RED disparos=1`) por um desalinhado
+        do instrumento -- medido: com um relogio por VOLTA o MESMO codigo dispara
+        2 vezes. Um instrumento que inventa o defeito e' tao caro como um que o
+        esconde.
+        """
         self.states = list(states)
+        self.per_iteration = max(1, int(per_iteration))
         self.i = 0
+        self.calls = 0
         self.lock = threading.Lock()
 
     def __call__(self, vk):
@@ -69,14 +83,23 @@ class Clock(object):
                 state = self.states[self.i]
             else:
                 state = self.states[-1] if self.states else set()
-            self.i += 1
+            self.calls += 1
+            if self.calls % self.per_iteration == 0:
+                self.i += 1
         return vk in state
 
 
 def run_sequence(shell_mod, presses, poll_s=0.002, settle=0.05):
     """Poe a combinacao e conta os disparos, com a leitura injectada."""
     fired = []
-    clock = Clock(presses)
+    # Quantas leituras uma volta consome: vem da PROPRIA classe, para o numero
+    # nao ser uma segunda verdade (um `+1` por variante de modificador novo
+    # mudaria isto em silencio).
+    _probe = shell_mod.PassiveHotkeyThread(
+        'Ctrl+Space', lambda: None, log_fn=lambda line: None,
+        key_state=lambda vk: False)
+    per_iteration = sum(len(g) for g in _probe.key_groups) or 1
+    clock = Clock(presses, per_iteration)
     thread = shell_mod.PassiveHotkeyThread(
         'Ctrl+Space', lambda: fired.append(time.monotonic()),
         log_fn=lambda line: None, poll_s=poll_s, key_state=clock)
@@ -141,6 +164,27 @@ def arms(shell_mod):
     wired_panels = re.search(r"else:\s*\n\s*thread = HotkeyThread\(", text) is not None
     out.append(('wiring-by-role', wired_live and wired_panels,
                 'live->passive=%s panels->registered=%s' % (wired_live, wired_panels)))
+
+    # 7. A TECLA DE PEDRA RE-ARMA SOZINHA (2026-11-03). A evidencia do produto:
+    #    `HOTKEY_PRESSED role=live count=1 source=observed` DUAS vezes na historia
+    #    inteira do log do dono (03:22:19 e 04:56:26) e **nunca um `count=2`** --
+    #    dentro de um arranque, a segunda pressao nunca disparou. A descida e'
+    #    perdida com facilidade (o laco publicou `max_gap_ms=219`) e o `held`
+    #    ficava `True` para sempre: a tecla morria ate' reiniciar a app.
+    lines = []
+    fired_stuck = []
+    stuck_clock = Clock([{CTRL, SPACE}] * 4000)
+    th = shell_mod.PassiveHotkeyThread(
+        'Ctrl+Space', lambda: fired_stuck.append(1), log_fn=lines.append,
+        poll_s=0.01, key_state=stuck_clock)
+    th.start()
+    time.sleep(3.4)
+    th.stop()
+    th.join(2.0)
+    said = any('HOTKEY_STATE_STUCK' in l for l in lines)
+    out.append(('stuck-key-rearms', len(fired_stuck) >= 2 and said,
+                'disparos=%d stuck_log=%s (esperado >=2 e a linha)'
+                % (len(fired_stuck), said)))
     return out
 
 
@@ -168,6 +212,35 @@ def neg_arm():
     caught = len(fired) > 1
     print('NEG-ARM %-18s %s  disparos=%d (mutante sem `held` tem de metralhar)'
           % ('held-removed', 'PASS' if caught else 'FAIL', len(fired)))
+
+    # MUTANTE 2: sem o re-armar da tecla de pedra, o arm 7 tem de cair.
+    stuck_anchor = 'elif _now_loop - self._down_since >= 3.0:'
+    if stuck_anchor not in text:
+        print('NEG-ARM: FAIL -- a ancora do re-armar (tecla de pedra) nao esta no ficheiro')
+        return 1
+    mutant2 = text.replace(stuck_anchor, 'elif False:', 1)
+    path2 = os.path.join(tmpdir, 'sotto_webview_stuck.py')
+    io.open(path2, 'w', encoding='utf-8', newline='').write(mutant2)
+    lines2 = []
+    fired2 = []
+    try:
+        module2 = load_shell(path2, name='sotto_webview_oracle_mutant_stuck')
+        th2 = module2.PassiveHotkeyThread(
+            'Ctrl+Space', lambda: fired2.append(1), log_fn=lines2.append,
+            poll_s=0.01, key_state=Clock([{CTRL, SPACE}] * 4000))
+        th2.start()
+        time.sleep(3.4)
+        th2.stop()
+        th2.join(2.0)
+    finally:
+        try:
+            os.remove(path2)
+        except OSError:
+            pass
+    caught2 = not (len(fired2) >= 2 and any('HOTKEY_STATE_STUCK' in l for l in lines2))
+    print('NEG-ARM %-18s %s  disparos=%d (mutante sem re-armar tem de ficar em %d)'
+          % ('stuck-no-rearm', 'PASS' if caught2 else 'FAIL', len(fired2), 1))
+    caught = caught and caught2
     # A CONVENCAO DA BATERIA (2026-11-03): um `red-as-expected` declara rc=1.
     # "Apanhei todos os mutantes" E' o resultado VERMELHO que o `:expectred`
     # exige, senao o passo passa como se fosse um oraculo normal e o mutante

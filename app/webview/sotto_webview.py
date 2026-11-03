@@ -2673,6 +2673,39 @@ class ExternalCaptionWatcher(threading.Thread):
                 _age = None
             if _age is not None and _age <= 8.0:
                 return [], False
+        # A VARREDURA DA PAGINA INTEIRA E' PARA QUEM PINTA A LEGENDA NA PAGINA
+        # (2026-11-03, MEDIDO AO VIVO — e' a queixa do dono, verbatim: *"uma
+        # porra de extrair legenda do youtube e dar display na minha tela nao
+        # era pra ser nem o minimo de pesado"*).
+        #
+        # O QUE ESTAVA A ACONTECER (pid 49892, 10:41; Chrome aberto, nada a
+        # tocar, painel fechado): cada leitura varria a arvore UIA da PAGINA
+        # inteira — 55 ms de CPU MEDIDOS (`external_subs.caption_lines` sobre a
+        # janela do Chrome: 62 / 31 / 16 ms em tres chamadas seguidas) — quatro
+        # vezes por segundo, para concluir que nao ha legenda nenhuma numa
+        # pagina que nao e' um player. Custo medido: `EXTERNAL_CAPTIONS_READ_MS
+        # ms=765..1547` sem parar e **22 % de um nucleo** na shell em REPOUSO.
+        #
+        # A varredura existe por UMA razao: players que PINTAM a legenda na
+        # propria pagina (Stremio/Electron). Isso e' uma IDENTIDADE POSITIVA, e
+        # `player_source` ja' a devolve — entao a varredura passa a exigir essa
+        # identidade em vez de acontecer por omissao. Fonte desconhecida (toda a
+        # janela que nao e' player) nao paga nada; a rede fica a uma varredura de
+        # 5 em 5 s, que e' o tecto do atraso para um pintor que o catalogo ainda
+        # nao conheca.
+        if source != 'external:stremio':
+            _now = time.monotonic()
+            if _now - getattr(self, '_page_scan_at', 0.0) < 5.0:
+                self._page_scan_skipped = int(getattr(self, '_page_scan_skipped', 0)) + 1
+                return [], False
+            self._page_scan_at = _now
+            self._page_scan_scanned = int(getattr(self, '_page_scan_scanned', 0)) + 1
+            log_repeat('PAGE_SCAN_NET',
+                       'PAGE_SCAN_NET source=%r scanned=%d skipped=%d why=a varredura '
+                       'da pagina e so para quem pinta a legenda na pagina (Stremio); '
+                       'o resto nao paga 55 ms'
+                       % (source, self._page_scan_scanned,
+                          int(getattr(self, '_page_scan_skipped', 0))), 60.0)
         return external_subs.caption_lines(hwnd, uia, UIA), False
 
     def _target_window(self, uia, UIA):
@@ -5597,6 +5630,25 @@ class PassiveHotkeyThread(threading.Thread):
                     self.log_fn(f'HOTKEY_GESTURE_FAILED kind=live error={exc!r}')
             elif not down and held:
                 held = False
+                self._down_since = 0.0
+            # A TECLA DE PEDRA (2026-11-03, MEDIDO). O log do dono tem
+            # `HOTKEY_PRESSED role=live count=1 source=observed` DUAS vezes na
+            # historia inteira do ficheiro (03:22:19 e 04:56:26) e **nunca um
+            # `count=2`**: dentro de um arranque, a segunda pressao nunca
+            # disparou. A borda de DESCIDA e' perdida com facilidade -- o laco
+            # ja' publicou `max_gap_ms=219` (o shell a queimar um nucleo inteiro
+            # no `VramGuard`, medido hoje: 102 %) -- e o `held` fica `True` para
+            # sempre: a tecla morre ate' reiniciar a app. Uma tecla que ninguem
+            # esta' a segurar nao fica em baixo 3 s: passado esse tempo o latch
+            # RE-ARMA e o log diz que re-armou, em vez de ficar mudo.
+            if held:
+                if not getattr(self, '_down_since', 0.0):
+                    self._down_since = _now_loop
+                elif _now_loop - self._down_since >= 3.0:
+                    self.log_fn('HOTKEY_STATE_STUCK role=%s seconds=3.0 repinned=true'
+                                % self.role)
+                    held = False
+                    self._down_since = 0.0
             self._stop_requested.wait(self.poll_s)
 
     def wait_ready(self, timeout=None):
