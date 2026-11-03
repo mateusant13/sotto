@@ -370,7 +370,11 @@ def tick_arm():
         visible = True
         _caption_window_shown = False
 
-        def external_caption(self, text, source, final=False, instant=False, rows=None):
+        def external_caption(self, text, source, final=False, instant=False,
+                             rows=None, cue=None):
+            # A ASSINATURA E' A DO PRODUTOR (2026-11-03): o watcher passou a
+            # entregar o `cue` (o relogio do player) e um duplo preso a' forma
+            # antiga derrubava o oraculo com `TypeError` em vez de o medir.
             calls.append((text, bool(final), bool(instant), list(rows or ())))
 
     watcher = sotto_webview.ExternalCaptionWatcher(Shell())

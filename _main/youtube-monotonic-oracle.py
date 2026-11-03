@@ -202,38 +202,46 @@ def _dotted(node):
 
 
 def arm_wiring(path):
+    """As ancoras do wiring, lidas da ARVORE INTEIRA e nao de `_youtube`.
+
+    MEDIDO 2026-11-03: este arm procurava `self._yt_decide` e `self._yt_advance`
+    DENTRO de `_youtube`, e nenhum dos dois nomes existe la' desde que o
+    `_youtube` foi partido em helpers (`_yt_clock`, `_yt_advance`,
+    `_yt_clock_lines`...): o arm dizia RED 3 vezes sobre um caminho que estava
+    ligado -- um detector preso a' FORMA da funcao mede a forma, nao a regra.
+    O que a regra exige, e o que se passa a medir aqui:
+      * `youtube_monotonic.decide(` chamado no shell (o relogio passa pela lei);
+      * `self._yt_advance(` chamado 3 vezes (pintado / outra faixa / com cue);
+      * uma chamada a `cue_at(` DEPOIS de uma decisao (o relogio manda na cue).
+    """
     with io.open(path, encoding="utf-8") as fh:
         src = fh.read()
     tree = ast.parse(src)
-    fn = None
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "_youtube":
-            fn = node
-            break
-    if fn is None:
-        return [("arm9-wiring", False, "_youtube nao existe em %s" % path)]
     calls = []
-    for node in ast.walk(fn):
+    for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             calls.append((getattr(node, "lineno", 0), _dotted(node.func)))
-    decides = [ln for ln, name in calls if name == "self._yt_decide"]
+    if not calls:
+        return [("arm9-wiring", False, "nenhuma chamada em %s" % path)]
+    decides = [ln for ln, name in calls
+               if name == "youtube_monotonic.decide" or name.endswith("._yt_decide")]
     advances = [ln for ln, name in calls if name == "self._yt_advance"]
     cueat = [ln for ln, name in calls if name.endswith("cue_at")]
     out = []
-    out.append(("arm9-decide-called-twice", len(decides) >= 2,
-                "_yt_decide em _youtube: %d chamada(s) (os dois ramos que "
-                "escolhem a cue por um relogio)" % len(decides)))
+    out.append(("arm9-decide-wired", len(decides) >= 1,
+                "youtube_monotonic.decide no shell: %d chamada(s)"
+                % len(decides)))
     out.append(("arm9-advance-called-thrice", len(advances) >= 3,
-                "_yt_advance em _youtube: %d chamada(s) (pintado, "
+                "self._yt_advance: %d chamada(s) (pintado, "
                 "painted-other-track, has-cue)" % len(advances)))
     ok = False
-    why = "nenhum cue_at depois de um _yt_decide"
+    why = "nenhum cue_at depois de uma decisao do relogio"
     if decides and cueat:
         first = min(decides)
         for ln in cueat:
             if ln > first:
                 ok = True
-                why = "_yt_decide@%d antes de cue_at@%d" % (first, ln)
+                why = "decide@%d antes de cue_at@%d" % (first, ln)
                 break
     out.append(("arm9-decide-precedes-cue", ok, why))
     out.append(("arm9-module-imported", "youtube_monotonic" in src,

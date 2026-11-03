@@ -324,6 +324,58 @@ def steps():
 # ---------------------------------------------------------------------------
 # Braco (h): a PassiveHotkeyThread REAL, com o estado das teclas injectado
 # ---------------------------------------------------------------------------
+def module_literals(source: str) -> dict:
+    """Todas as constantes LITERAIS do modulo -- o chao do namespace extraido.
+
+    MEDIDO 2026-11-03: extrair a CLASSE de um ficheiro de 6000 linhas e injectar
+    so' as duas constantes que o autor do oraculo se lembrou deixa o braco a
+    morrer com `NameError` a primeira vez que o shell ganha uma terceira
+    (`_MODIFIER_VARIANTS`, `_HOTKEY_TRACE`...). Na segunda vez ja' nao e' azar: e'
+    o oraculo a correr atras da forma do ficheiro. Este chao pesca TODAS as
+    atribuicoes de valor literal de uma vez, e o que for injectado por cima
+    continua a ganhar.
+    """
+    out = {}
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return out
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            try:
+                value = ast.literal_eval(node.value)
+            except (ValueError, SyntaxError):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    out[target.id] = value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            try:
+                out[node.target.id] = ast.literal_eval(node.value)
+            except (ValueError, SyntaxError, AttributeError):
+                continue
+    # SEGUNDA PASSAGEM: uma constante que nao e' literal mas e' INOFENSIVA de
+    # avaliar (`os.environ.get('SOTTO_HOTKEY_TRACE','') == '1'`) e' avaliada num
+    # namespace com `os`/`sys` -- senao o braco volta a morrer com `NameError`
+    # na proxima constante que o shell ganhar.
+    env = {"os": os, "sys": sys, "__builtins__": __builtins__}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        if not names or all(n in out for n in names):
+            continue
+        try:
+            exec(compile(ast.Module(body=[node], type_ignores=[]),
+                         "<consts>", "exec"), env)
+        except Exception:                                        # noqa: BLE001
+            continue
+        for name in names:
+            if name in env:
+                out[name] = env[name]
+    return out
+
+
 def passive_thread(source: str, gesture, frames, on_hotkey, log_fn):
     """`PassiveHotkeyThread` do ficheiro, alimentada por uma sequencia de frames.
 
@@ -336,15 +388,25 @@ def passive_thread(source: str, gesture, frames, on_hotkey, log_fn):
     cls = _cls(source, "PassiveHotkeyThread")
     if cls is None:
         return None
-    namespace = {
+    namespace = module_literals(source)
+    namespace.update({
         "threading": threading,
+        # OS NOMES DE MODULO QUE O CORPO LE' (2026-11-03): o `run` do
+        # `PassiveHotkeyThread` chama `time.monotonic()`; sem ele o braco
+        # morria com `NameError` e o gesto nao era medido nenhuma vez.
+        "time": time,
         "kernel32": type('K', (), {'GetCurrentThreadId': staticmethod(lambda: 1)})(),
         "user32": type('U', (), {'GetAsyncKeyState': staticmethod(lambda vk: 0)})(),
         "_MODIFIER_VK": module_const(source, '_MODIFIER_VK') or {},
+        # O SHELL PASSOU A TER AS DUAS TABELAS (2026-11-03): `_MODIFIER_VK`
+        # (o vk da tecla) e `_MODIFIER_VARIANTS` (as variantes esquerda e
+        # direita). Extrair so' a classe deixava a segunda indefinida e o
+        # oraculo caia com `NameError` em vez de medir o gesto.
+        "_MODIFIER_VARIANTS": module_const(source, '_MODIFIER_VARIANTS') or {},
         "parse_accelerator": gesture.parse_accelerator,
         "log": log,
         "warn": warn,
-    }
+    })
     module = ast.Module(body=[cls], type_ignores=[])
     exec(compile(module, "<sotto-passive-hotkey>", "exec"), namespace)
     cls = namespace["PassiveHotkeyThread"]

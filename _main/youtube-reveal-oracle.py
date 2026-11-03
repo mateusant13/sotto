@@ -75,19 +75,41 @@ def load_live():
 
 
 def verbatim_live(src):
-    """O ramo pintado devolve as LINHAS do player, e nao uma janela por relogio?
+    """O caminho pintado devolve as LINHAS do player, e nao uma janela por relogio?
 
-    Mede-se no CORPO de `_youtube` (codigo, nao comentario): `_yt_rows(painted)`
-    tem de estar la' e `window_by_paint(` nao -- o `cap` por relogio de palavra e' o
-    que fazia a linha construir-se ao longo do cue (imagem 1 e 2 do dono, 2026-11-02).
+    MEDIDO 2026-11-03: este detector lia so' o corpo de `_youtube`, e o `_youtube`
+    tinha sido partido em helpers com nome (`_yt_untracked_lines`,
+    `_yt_painted_lines_match`, `_yt_aligned_painted`, `_yt_no_clock_lines`) --
+    logo o corpo passou a ter UMA chamada `_yt_rows(painted,` e a arm dizia RED
+    sobre um caminho que estava certo. Um detector preso a' FORMA da funcao
+    envelhece com a funcao; este passa a ler a ARVORE, e conta a chamada em
+    QUALQUER metodo do ficheiro (`_yt_rows` com o `painted` como 1.o argumento).
+
+    `window_by_paint(` continua a ser proibido em TODO o ficheiro: e' a janela
+    por relogio de palavra, o que fazia a linha construir-se ao longo do cue
+    (imagens 1 e 2 do dono, 2026-11-02).
     """
-    shell_src = src or ""
-    start = shell_src.find("    def _youtube(self, hwnd, uia, UIA):")
-    if start < 0:
+    if not src:
         return False
-    end = shell_src.find("\n    def ", start + 10)
-    body = shell_src[start:end if end > 0 else len(shell_src)]
-    return body.count("_yt_rows(painted,") >= 2 and "window_by_paint(" not in body
+    import ast
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return False
+    painted_calls = 0
+    clock_window = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        name = getattr(fn, "attr", None) or getattr(fn, "id", None) or ""
+        if name == "_yt_rows":
+            first = node.args[0] if node.args else None
+            if getattr(first, "id", None) == "painted":
+                painted_calls += 1
+        elif name == "window_by_paint":
+            clock_window += 1
+    return painted_calls >= 2 and clock_window == 0
 
 
 def old_clock_in_code(path):

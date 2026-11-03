@@ -99,11 +99,23 @@ def class_methods(source, cls, names):
 
 
 def words_on_screen(lines):
-    """Quantas palavras o ecra mostra AGORA (a ultima linha e' a que cresce)."""
+    """Quantas palavras o ecra mostra AGORA (a ultima linha e' a que cresce).
+
+    A PALAVRA E' A DE PRODUCAO (2026-11-03): `youtube_reveal.speech_words`, que
+    nao conta o marcador `>>`. Contar por `.split()` aqui punha este instrumento a
+    usar uma definicao e o codigo outra -- a arm 4 acusava o ecra de estar a'
+    frente do relogio quando o que estava a' frente era o MARCADOR, que nao gasta
+    orcamento de revelacao em nenhum dos dois lados.
+    """
     lines = [str(l) for l in (lines or []) if str(l).strip()]
     if not lines:
         return 0
-    return len(lines[-1].split())
+    try:
+        import youtube_reveal as _yr
+        counter = _yr.speech_words
+    except Exception:                                            # noqa: BLE001
+        counter = str.split
+    return len(counter(lines[-1]))
 
 
 def walk(yc, yr, cues, cue_index, steps_ms=60.0, horizon_s=1.6, old_rule=False):
@@ -236,7 +248,11 @@ def run(payload_path: Path) -> int:
         shell = FrameShell()
         ns["time"].now = 100.0
         first = fn(shell)
-        add(first is not None and first[0] == "external:youtube:track",
+        # A FONTE MUDOU DE NOME (2026-11-03): o produtor do frame vivo devolve
+        # `external:youtube:liveframe` (o `:track` e' a leitura do UIA). O que a
+        # arm exige e' um frame do YouTube COM linhas -- o nome do canal e' forma.
+        add(first is not None and str(first[0]).startswith("external:youtube:")
+            and bool(first[1]),
             "com ancora fresco devolve um frame", str(first)[:60])
         # O ANTERIOR: avancar 1,2 s tem de revelar MAIS palavras e nunca menos.
         before = words_on_screen(first[1]) if first else 0
@@ -273,6 +289,10 @@ def run(payload_path: Path) -> int:
         fns["time"].now = 100.0
 
         class FadeShell:
+            # O `_fade_alpha` do OVERLAY le' o botao do fade (2026-11-03,
+            # `caption_overlay.FADE_ON`): um duplo sem ele derrubava o oraculo
+            # com AttributeError em vez de medir a matematica do alfa.
+            FADE_ON = True
             _fade_t0 = None
 
         shell = FadeShell()

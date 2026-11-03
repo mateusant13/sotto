@@ -126,6 +126,37 @@ def painted_prefix_count(hit):
     return max(0, aligned - painted_from)
 
 
+MARKER = ">>"
+
+
+def speech_words(text):
+    """As PALAVRAS de fala de um texto de legenda -- o `>>` nao e' uma delas.
+
+    O DEFEITO MEDIDO (2026-11-03, `_main/youtube-reveal-oracle.py`, 8/16): o
+    alinhamento do que o player PINTou conta as palavras com `_align_tokens`,
+    que tira o marcador de mudanca de falante (`youtube_captions._align_tokens`:
+    `">> No."` -> `["No."]`). O corte do texto, `first_words`, contava o `>>`
+    como palavra -- entao numa linha que comeca pelo marcador o prefixo saia
+    SEMPRE UMA PALAVRA ATRAS:
+
+        first_words(">> No.", 1)          -> ">>"            (o "No." nunca vinha)
+        first_words(">> Then this sword", 3) -> ">> then this" (faltava "sword")
+
+    Um `>>` e um MARCADOR, nao uma palavra: ele fica no texto (o player desenha-o)
+    mas nao gasta orcamento de revelacao. Esta e' a UNICA definicao de palavra
+    usada por quem conta (`word_clock_count`) e por quem corta (`first_words`) --
+    duas definicoes seriam o mesmo defeito a' espera.
+    """
+    out = []
+    for token in str(text or "").split():
+        body = token
+        while body.startswith(MARKER):
+            body = body[len(MARKER):]
+        if body.strip():
+            out.append(token)
+    return out
+
+
 def first_words(text, count):
     """As `count` primeiras palavras do texto, com as quebras internas intactas.
 
@@ -138,6 +169,10 @@ def first_words(text, count):
     desenhou. A contagem continua a ser em PALAVRAS -- a quebra e um separador
     de palavras que fica onde estava -- e o resultado de um texto de uma linha
     e identico ao de antes (`" ".join(words[:count])`).
+
+    O MARCADOR `>>` NAO GASTA ORCAMENTO (2026-11-03): ele conta como zero e
+    continua a sair. A definicao de palavra vive em `speech_words`, a mesma que
+    `word_clock_count` usa.
     """
     if count <= 0:
         return ""
@@ -147,11 +182,18 @@ def first_words(text, count):
         words = line.split()
         if not words:
             continue
-        take = words[:left]
-        left -= len(take)
+        take = []
+        stopped = False
+        for token in words:
+            if speech_words(token):
+                if left <= 0:
+                    stopped = True
+                    break
+                left -= 1
+            take.append(token)
         if take:
             out.append(" ".join(take))
-        if left <= 0 or len(take) < len(words):
+        if left <= 0 or stopped:
             break
     return "\n".join(out)
 
@@ -234,7 +276,7 @@ def word_clock_count(cue, t):
         except (TypeError, ValueError):
             continue
         if start <= limit + 1e-9:
-            count += len(str(word.get("text") or "").split())
+            count += len(speech_words(str(word.get("text") or "")))
     return count
 
 

@@ -1227,6 +1227,26 @@ def main() -> int:
         workdir = tempfile.mkdtemp(prefix="yt-caps-oracle-")
         try:
             mod = load_module(MODULE_PATH, "youtube_captions_live")
+            # CADA ARM VE' A SUA PROPRIA JANELA (2026-11-03, medido).
+            #
+            # `player_time_detail` guarda o ELEMENTO do relogio por hwnd
+            # (`_TIME_TEXT_CACHE`, `_TIME_SLIDER_CACHE`), e isso esta' certo em
+            # producao -- um hwnd e' uma janela. Os arms, porem, passavam todos
+            # `hwnd=1`: o elemento de TEXTO do a31 (`06:13 of 24:43` -> 373 s)
+            # sobrevivia para o a32..a44 e voltava a ser lido em cima de uma
+            # janela fabricada que NAO tinha texto nenhum -- 11 arms diziam RED
+            # com o MESMO detalhe (`text=373.0 slider=50.0`), que e' a assinatura
+            # de um fixture a medir o cache do arm anterior e nao o codigo.
+            # Limpar os dois caches antes de cada chamada devolve ao arm a janela
+            # que ele construiu.
+            _orig_player_time_detail = mod.player_time_detail
+
+            def _fresh_player_time_detail(uia, ui_mod, hwnd, *a, **kw):
+                mod._TIME_TEXT_CACHE.clear()
+                mod._TIME_SLIDER_CACHE.clear()
+                return _orig_player_time_detail(uia, ui_mod, hwnd, *a, **kw)
+
+            mod.player_time_detail = _fresh_player_time_detail
             rows = battery(mod, MODULE_PATH, workdir, source)
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
