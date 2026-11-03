@@ -611,7 +611,16 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
                      "<set-live>", "exec"), lns)
 
         class WatchedShell:
-            ALLOWED = {"_caption_wanted", "show_caption_window"}
+            # `_caption_wanted_store` ENTRA na lista a 2026-11-03, e o criterio
+            # nao afrouxa: a arm continua a exigir que desligar a legenda NAO
+            # nomeie `_pause_shell`/worker/historico/painel (ver o laco abaixo).
+            # O store grava a INTENCAO do dono num ficheiro (escrita atomica, sem
+            # tocar no worker): sem ele o botao LIVE voltava a `false` a cada
+            # arranque e o dono tinha de o carregar outra vez. Ele passou a existir
+            # DEPOIS de esta arm ser escrita, e a arm estava a acusar o que a
+            # regra sempre permitiu -- um flag, nao um motor.
+            ALLOWED = {"_caption_wanted", "_caption_wanted_store",
+                       "show_caption_window"}
 
             def __init__(self):
                 object.__setattr__(self, "touched", [])

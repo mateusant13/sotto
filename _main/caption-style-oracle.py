@@ -270,7 +270,12 @@ def neg_arm():
         pass
     print('NEG-ARM VERDICT: %s (%d/%d)' % ('PASS' if ok == total else 'FAIL',
                                            ok, total))
-    return 0 if ok == total else 1
+    # A CONVENCAO DA BATERIA (2026-11-03): um `red-as-expected` declara rc=1.
+    # "Apanhei todos os mutantes" E' o resultado VERMELHO que o `:expectred`
+    # exige, senao o passo passa como se fosse um oraculo normal e o mutante
+    # nunca e' recusado. rc=0 quando um mutante escapa (o passo fica vermelho
+    # de verdade, e com a frase FAIL no log).
+    return 1 if ok == total else 0
 
 
 def main(argv=None):

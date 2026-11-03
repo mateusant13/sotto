@@ -275,3 +275,4 @@ AGENTS.md.*.bak
 =ro
 _main/_yt-*.json
 _main/_yt-1to1-live*.json
+*.ndjson

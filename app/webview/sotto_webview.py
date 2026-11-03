@@ -2202,6 +2202,27 @@ class ExternalCaptionWatcher(threading.Thread):
                 if self.failures <= 3:
                     log(f'EXTERNAL_CAPTIONS_TICK_FAILED error={exc!r}')
             self._yt_prof("tick", _t_tick)
+            # O CUSTO DO DESENHO TAMBEM E' UM NUMERO (2026-11-03). Com a leitura
+            # ja' barata (17 Hz medidos) o laco caiu para 0,5-5 Hz noutros
+            # momentos: o que sobra e' `_tick`, que pinta a janela. Sem esta
+            # medida a proxima optimizacao seria um palpite.
+            try:
+                _tk = (time.monotonic() - _t_tick) * 1000.0
+                _agg = getattr(self, '_yt_tick_agg', None)
+                if _agg is None:
+                    _agg = self._yt_tick_agg = [0, 0.0, 0.0, time.monotonic()]
+                _agg[0] += 1
+                _agg[1] += _tk
+                _agg[2] = max(_agg[2], _tk)
+                if time.monotonic() - _agg[3] >= 5.0:
+                    log('YOUTUBE_TICK_MS avg=%.0f max=%.0f n=%d'
+                        % (_agg[1] / _agg[0], _agg[2], _agg[0]))
+                    _agg[0] = 0
+                    _agg[1] = 0.0
+                    _agg[2] = 0.0
+                    _agg[3] = time.monotonic()
+            except Exception:                 # noqa: BLE001
+                pass
             # A PALAVRA A PALAVRA NAO CABE NUM INTERVALO DE 300 ms (2026-10-30).
             # O UIA custa, e por isso continua a ser lido a cada `INTERVAL_S`;
             # o que estava caro era o DESENHO. Entre duas leituras o relogio do
@@ -2268,14 +2289,31 @@ class ExternalCaptionWatcher(threading.Thread):
         import external_subs
         _t_all = time.monotonic()
         hwnd = self._target_window(uia, UIA)
+        _yt_mark(self, 'target')
         self._yt_prof("target", _t_all)
         if not hwnd:
             return [], False
         _t_src = time.monotonic()
-        try:
-            source = external_subs.player_source(hwnd, uia, UIA)
-        except Exception:
-            source = ''
+        # QUEM E' A FONTE NAO SE PERGUNTA 20x POR SEGUNDO (2026-11-03, MEDIDO).
+        # `player_source` le' o URL da janela pela arvore de acessibilidade e
+        # custa 60-140 ms -- e uma vez nesta sessao **6,8 s**
+        # (`EXTERNAL_CAPTIONS_READ_MS ms=6797.0`), tempo em que a legenda inteira
+        # parou. A resposta so' muda quando muda a JANELA `hwnd` (que e' barato de
+        # ler) ou quando a pagina navega -- e a navegacao invalida a foto da CDP,
+        # logo `_yt_snap_video()` deixa de responder e voltamos a perguntar.
+        source = ''
+        _cache = getattr(self, '_yt_src_cache', None)
+        _fresh = self._yt_snap_video() if getattr(self, '_yt_cdp_source', None) else None
+        if (_cache and _cache[0] == int(hwnd or 0) and _fresh
+                and time.monotonic() - _cache[2] <= 2.0):
+            source = _cache[1]
+        else:
+            try:
+                source = external_subs.player_source(hwnd, uia, UIA)
+            except Exception:
+                source = ''
+            self._yt_src_cache = (int(hwnd or 0), source, time.monotonic())
+        _yt_mark(self, 'source')
         self._yt_prof("source", _t_src)
         if source == 'external:youtube':
             if os.environ.get("SOTTO_YT_CPROFILE") == "1":
@@ -2330,10 +2368,23 @@ class ExternalCaptionWatcher(threading.Thread):
             except Exception:
                 title = ''
             if not title.startswith('sotto'):
-                try:
-                    src = external_subs.player_source(fg, uia, UIA)
-                except Exception:
-                    src = ''
+                # O VEREDICTO "ESTA JANELA E' UM PLAYER" FICA 2 s (2026-11-03,
+                # MEDIDO). Perguntar isto a' arvore de acessibilidade em cada um
+                # dos ~20 ticks custa 60-140 ms e uma vez custou **6,8 s**
+                # (`EXTERNAL_CAPTIONS_READ_MS ms=6797.0`): seis segundos em que a
+                # legenda nao mudou porque o laco estava preso a' espera do Chrome.
+                # A chave e' (janela, titulo) -- ambos lidos por Win32 em
+                # microssegundos, e navegar muda o titulo.
+                _fc = getattr(self, '_yt_fg_cache', None)
+                if (_fc and _fc[0] == fg and _fc[1] == title
+                        and time.monotonic() - _fc[3] <= 2.0):
+                    src = _fc[2]
+                else:
+                    try:
+                        src = external_subs.player_source(fg, uia, UIA)
+                    except Exception:
+                        src = ''
+                    self._yt_fg_cache = (fg, title, src, time.monotonic())
                 if src:
                     self.target_hwnd = fg
         if not self.target_hwnd or not ctypes.windll.user32.IsWindow(
@@ -2539,7 +2590,8 @@ class ExternalCaptionWatcher(threading.Thread):
             # em cima do Sniper']`. A CDP lê o DOM do player: 10 ms, as linhas
             # que ele tem, e sem nos fantasmas. A UIA continua a ser a rede:
             # quando a porta nao responde, o caminho antigo corre igual.
-            snap = self._yt_cdp_snapshot(hwnd, uia, UIA)
+            snap = self._yt_cdp_snapshot(hwnd, uia, UIA,
+                                        declared=getattr(self, 'yt_video_id', '') or None)
             if snap is not None:
                 # AS LINHAS VEM PRONTAS DO DOM (2026-11-03). O `.caption-visual-line`
                 # E' a linha que o player desenhou: reagrupar por `mid` so' pode
@@ -2612,7 +2664,7 @@ class ExternalCaptionWatcher(threading.Thread):
                     % (_now - since, why))
         return words
 
-    def _yt_cdp_snapshot(self, hwnd, uia, UIA):
+    def _yt_cdp_snapshot(self, hwnd, uia, UIA, declared=None):
         """A legenda do player pela CDP do Chrome, quando a arvore nao a tem.
 
         Devolve o snapshot (`rows`/`items`) ou None. Recusa-se a ler quando a
@@ -2636,11 +2688,18 @@ class ExternalCaptionWatcher(threading.Thread):
             source.start()
         if source is False:
             return None
-        declared = ''
-        try:
-            declared = self._youtube_video_id(hwnd, uia, UIA) or ''
-        except Exception:  # noqa: BLE001
-            declared = ''
+        # O ID JA' FOI LIDO NESTE TICK, UM ANDAR ACIMA (2026-11-03, MEDIDO).
+        # `_youtube` pergunta-o primeiro e guarda-o em `self.yt_video_id`; reler
+        # aqui a' arvore de acessibilidade era um segundo preco de 94-109 ms por
+        # tick -- medido `phases={'vid': 109.0, 'declared': 109.0, 'painted':
+        # 109.0}`, ou seja a MESMA leitura a ser paga duas vezes, e com a maquina
+        # a 69% o laco caia de 21 Hz para 1,2 Hz (`YOUTUBE_LOOP_HZ`).
+        declared = declared if declared is not None else ''
+        if not declared:
+            try:
+                declared = self._youtube_video_id(hwnd, uia, UIA) or ''
+            except Exception:  # noqa: BLE001
+                declared = ''
         _yt_mark(self, 'declared')
         # COM DUAS ABAS ABERTAS, SO' A DO VIDEO QUE ELE LE' (medido 2026-11-03:
         # `list_targets` devolve 2 `watch` nesta maquina). Sem o id, o modulo
@@ -2654,6 +2713,38 @@ class ExternalCaptionWatcher(threading.Thread):
         # e a arvore de acessibilidade (medido 2026-11-03: `why=cdp` e
         # `why=painted` alternados a cada segundo).
         snap = source.snapshot(max_age=1.2)
+        _yt_mark(self, 'snap')
+        # A CADENCIA DO TUBO INTEIRO E' UM NUMERO (2026-11-03). O dono ve' a
+        # legenda a saltar linhas, e a resposta nao pode ser um palpite: esta
+        # linha diz, de 5 em 5 s, quantos ticks o laco fez, em quantos havia
+        # foto fresca, a idade MEDIA dessa foto e o que a fonte acumulou.
+        # `none` alto com `src_reads` a subir = a foto a ser recusada por velha;
+        # `ticks` baixo = o laco empurrado por outra coisa.
+        try:
+            _st = getattr(self, '_yt_rate', None)
+            if _st is None:
+                _st = self._yt_rate = {'t0': time.monotonic(), 'ticks': 0,
+                                       'ok': 0, 'none': 0, 'age': 0.0}
+            _st['ticks'] += 1
+            if snap is not None:
+                _st['ok'] += 1
+                _st['age'] += time.monotonic() - snap['stamp']
+            else:
+                _st['none'] += 1
+            _dt = time.monotonic() - _st['t0']
+            if _dt >= 5.0:
+                log('YOUTUBE_LOOP_HZ ticks=%d ok=%d none=%d age_ms=%.0f hz=%.1f '
+                    'src_reads=%s src_errs=%s'
+                    % (_st['ticks'], _st['ok'], _st['none'],
+                       1000.0 * (_st['age'] / _st['ok'] if _st['ok'] else 0.0),
+                       _st['ticks'] / _dt,
+                       getattr(source, '_reads', None),
+                       getattr(source, '_errors', None)))
+                _st['t0'] = time.monotonic()
+                _st['ticks'] = _st['ok'] = _st['none'] = 0
+                _st['age'] = 0.0
+        except Exception:                     # noqa: BLE001
+            pass
         if snap is not None:
             # O RELOGIO DO PLAYER VEM NO MESMO SNAPSHOT (2026-11-03): `t` e'
             # `video.currentTime`, medido a avancar 56,9 s em 57 s de relogio de
@@ -2815,6 +2906,13 @@ class ExternalCaptionWatcher(threading.Thread):
         if vid != self.yt_video_id:
             self.yt_video_id = vid
             self.yt_cue = ''
+            # TROCAR DE VIDEO NAO DEIXA A LINHA DO ANTERIOR NO ECRA (2026-11-03).
+            # O dono alterna entre videos a toda a hora; a primeira leitura do novo
+            # chega numa foto (dezenas de ms), mas ate' la' o que esta' no ecra e' a
+            # ultima linha do OUTRO video -- duas legendas, uma delas falsa. A
+            # janela apaga-se aqui e a linha nova entra assim que houver.
+            self._yt_switch_at = time.monotonic()
+            self._blank_caption_window('video-changed')
             # A ULTIMA LINHA PINTADA era do video ANTERIOR. It cannot be
             # the line of this one, and it is what the clock is compared
             # with, so it goes with the video.
@@ -2855,6 +2953,16 @@ class ExternalCaptionWatcher(threading.Thread):
         if cdp_rows:
             self.yt_cdp_rows = None
             self.yt_reason = 'cdp-lines'
+            # A TROCA DE VIDEO TEM UM NUMERO (2026-11-03). O dono alterna entre
+            # videos e pediu para eu saber como isso se comporta: daqui sai
+            # `YOUTUBE_SWITCH_FIRST_FRAME ms=..` -- do instante em que o id mudou
+            # ate' a primeira linha do video NOVO no ecra. Sem este numero, uma
+            # troca lenta volta a ser uma impressao.
+            _sw = getattr(self, '_yt_switch_at', None)
+            if _sw is not None:
+                self._yt_switch_at = None
+                log('YOUTUBE_SWITCH_FIRST_FRAME ms=%.0f video_id=%s rows=%d'
+                    % ((time.monotonic() - _sw) * 1000.0, vid, len(cdp_rows)))
             self.yt_cue = ' '.join(cdp_rows)
             self.yt_foreign_t = None
             if self.yt_cue != self.yt_caption_logged:
@@ -3394,6 +3502,25 @@ class ExternalCaptionWatcher(threading.Thread):
         self._yt_clock_thread = threading.Thread(
             target=_loop, name="yt-clock", daemon=True)
         self._yt_clock_thread.start()
+
+    def _yt_snap_video(self):
+        """O id do video da foto MAIS RECENTE, ou None. Sem custo de UIA.
+
+        Existe para o laco poder responder "ainda estou a ler este video do
+        YouTube" sem voltar a perguntar a' arvore de acessibilidade (60-140 ms,
+        e uma vez 6,8 s nesta maquina). Quem consome isto re-pergunta quando o
+        resultado e' None -- e e' None exactamente quando a pagina muda.
+        """
+        src = getattr(self, '_yt_cdp_source', None)
+        if not src or src is False:
+            return None
+        try:
+            snap = src.snapshot(max_age=1.5)
+        except Exception:                     # noqa: BLE001
+            return None
+        if not snap:
+            return None
+        return str(snap.get('videoId') or '') or None
 
     def _youtube_time(self, hwnd, uia, UIA, duration):
         """Where the video is, in seconds -- or None when it is not known.

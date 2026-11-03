@@ -122,6 +122,24 @@ def judge(samples):
             if rows not in seen:
                 invented += 1
             last_rows = rows
+    # O ATRASO, NAO SO' A IGUALDADE (2026-11-03). `igualdade_pct` conta o
+    # instante exacto; uma legenda 300 ms atrasada conta como errada e uma 4 s
+    # atrasada conta igual. Para o dono ("a legenda aparece na hora") o numero
+    # que responde e' a IDADE do texto no ecra: para cada quadro nosso, ha quanto
+    # tempo o player ja' mostrava AQUELE texto.
+    lags = []
+    trail = list(player_changes)
+    for f_t, f_rows in frames:
+        if not f_rows:
+            continue
+        first_seen = None
+        for when, rows in trail:
+            if rows == f_rows:
+                first_seen = when
+                break
+        if first_seen is None:
+            continue
+        lags.append(max(0.0, f_t - first_seen))
     same = 0
     for s in samples:
         if s.get('paused'):
@@ -155,6 +173,9 @@ def judge(samples):
         'idade_max_ms': round(max(ages), 0) if ages else None,
         'idade_mediana_ms': round(sorted(ages)[len(ages) // 2], 0) if ages else None,
         'inventados': invented,
+        'atraso_mediana_ms': round(1000.0 * sorted(lags)[len(lags) // 2], 0) if lags else None,
+        'atraso_p90_ms': round(1000.0 * sorted(lags)[min(len(lags) - 1,
+                                                int(0.9 * len(lags)))], 0) if lags else None,
     }
 
 
@@ -186,6 +207,10 @@ def run(seconds, period):
             ws.close()
         except Exception:                       # noqa: BLE001
             pass
+    if os.environ.get('_YT1TO1_DUMP'):
+        with io.open(os.environ['_YT1TO1_DUMP'], 'w', encoding='utf-8') as fh:
+            for s in samples:
+                fh.write(json.dumps(s) + '\n')
     verdict = judge(samples)
     verdict['video'] = (reading.get('url') or '')[-11:] if samples else ''
     return verdict
@@ -196,7 +221,11 @@ def main(argv=None):
     ap.add_argument('--seconds', type=float, default=120.0)
     ap.add_argument('--period', type=float, default=0.2)
     ap.add_argument('--json', default=None)
+    ap.add_argument('--dump', default=None,
+                    help='grava as amostras cruas (NDJSON), uma linha por leitura')
     args = ap.parse_args(argv)
+    if args.dump:
+        os.environ['_YT1TO1_DUMP'] = args.dump
     out = run(args.seconds, args.period)
     print(json.dumps(out, ensure_ascii=False, indent=1))
     if args.json:
@@ -204,7 +233,8 @@ def main(argv=None):
             json.dumps(out, ensure_ascii=False, indent=1))
     ok = (out.get('igualdade_pct', 0) >= 80.0
           and out.get('inventados', 1) == 0
-          and (out.get('idade_max_ms') or 0) <= 1500.0)
+          and (out.get('idade_max_ms') or 0) <= 1500.0
+           and (out.get('atraso_p90_ms') or 0) <= 1200.0)
     print('VERDICT:', '1:1' if ok else 'NOT-1:1')
     return 0 if ok else 1
 

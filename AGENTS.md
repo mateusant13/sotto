@@ -310,8 +310,23 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-02, 23:5x):** `_main\_audit-verify-all.cmd` = **171635 B**,
-  **2182 CRLF** / 0 bare LF, sha256 `5960C07445FFE54D3EF1DF34083D63B813A20CC2A42CF005356E2A05F24F1CBC`.
+- **PIN do ficheiro (medido 2026-11-03, 02:4x):** `_main\_audit-verify-all.cmd` = **176391 B**,
+  **2233 CRLF** / 0 bare LF, sha256 `D3C318984D39E309227D57B2CB5941450BF3E2B489C59F22B75F2AA2F8376982`.
+  (Este pin substitui o de 173418 B, DEPOIS de o `battery-wiring-oracle` recusar TRES
+  oraculos escritos e fora da bateria -- `caption-producer`, `caption-style` e
+  `hotkey-observed` -- e de os tres passos entrarem com o seu `red-as-expected`.
+  Os tres `--neg-arm` respondiam rc=0 e passavam a rc=1, que e' a convencao da
+  casa: o negativo devolve 1 quando apanha os mutantes, senao o passo passa como
+  um oraculo normal e o mutante nunca e' recusado. Ligados: 82 -> 85.)
+  (Este pin substitui o de 171635 B, DEPOIS do par `youtube-cdp-source` + o seu
+  `red-as-expected`: com a aba do YouTube em segundo plano o Chrome para de expor a
+  legenda na arvore de acessibilidade (medido 2026-11-03: 3 minutos com um UNICO
+  `YOUTUBE_CAPTION`), e a fonte passou a ser o DOM do player pela CDP -- 10 ms, as
+  linhas do `.caption-visual-line`, e o `video.currentTime` no mesmo snapshot. O
+  portao executa as decisoes reais de `app\webview\youtube_cdp_source.py` (7 arms) e
+  o `--neg-arm` derruba cada uma numa COPIA do modulo (3/3). A arm que proibe
+  `Emulation.setFocusEmulationEnabled` nasceu de uma medicao lado a lado: 2-5 ms
+  sem ele, 108 ms de mediana e 5 s de p90 com ele.)
   (Este pin substitui o de 170272 B, DEPOIS do par `youtube-verbatim` + o seu
   `red-as-expected`: as tres imagens do dono de 2026-11-02 sao o mesmo caminho --
   *"sotto devia ta copiando 1:1 sem truncar palavras"*, a linha que se construia ao

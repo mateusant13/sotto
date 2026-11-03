@@ -168,7 +168,12 @@ def neg_arm():
     caught = len(fired) > 1
     print('NEG-ARM %-18s %s  disparos=%d (mutante sem `held` tem de metralhar)'
           % ('held-removed', 'PASS' if caught else 'FAIL', len(fired)))
-    return 0 if caught else 1
+    # A CONVENCAO DA BATERIA (2026-11-03): um `red-as-expected` declara rc=1.
+    # "Apanhei todos os mutantes" E' o resultado VERMELHO que o `:expectred`
+    # exige, senao o passo passa como se fosse um oraculo normal e o mutante
+    # nunca e' recusado. rc=0 quando um mutante escapa (o passo fica vermelho
+    # de verdade, e com a frase FAIL no log).
+    return 1 if caught else 0
 
 
 def main(argv=None):

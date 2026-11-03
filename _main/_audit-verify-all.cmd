@@ -777,6 +777,57 @@ call :expectred red-as-expected-youtube-1to1 !STEP_RC! "%OUT%\youtube-1to1-neg.l
 ) else ( call :expectred red-as-expected-youtube-1to1 MISSING "%OUT%\youtube-1to1-neg.log" "NEG-ARM PASS" )
 
 REM ---------------------------------------------------------------------------
+REM A SEGUNDA FONTE DA LEGENDA DO YOUTUBE (2026-11-03). Com a aba em segundo
+REM plano o Chrome para de expor a legenda na arvore de acessibilidade (medido:
+REM 3 minutos com um UNICO YOUTUBE_CAPTION), e a fonte passa a ser o DOM do
+REM player pela CDP. As arms EXECUTAM as decisoes reais de
+REM `app\webview\youtube_cdp_source.py`: o formato das linhas, o lixo, a
+REM IDENTIDADE (7 abas watch nesta maquina: sem o id, `ambiguous`), o relogio do
+REM player, o recorte pelo `overflow: hidden` e a ausencia de
+REM `Emulation.setFocusEmulationEnabled` -- medido lado a lado, ele leva a
+REM leitura de 2-5 ms para 108 ms de mediana e 5 s de p90, o que e' o instrumento
+REM a criar a lentidao que depois mede. Custo: texto, sem rede e sem janela.
+if exist _main\youtube-cdp-source-oracle.py (
+call :step always youtube-cdp-source 0 "_main\youtube-cdp-source-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py;_main\_yt-live-latency.py" "%OUT%\youtube-cdp-source.log" python _main\youtube-cdp-source-oracle.py
+call :record youtube-cdp-source !STEP_RC!
+) else ( call :record youtube-cdp-source MISSING )
+if exist _main\youtube-cdp-source-oracle.py (
+call :step always red-as-expected-youtube-cdp-source 1 "_main\youtube-cdp-source-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py;_main\_yt-live-latency.py" "%OUT%\youtube-cdp-source-neg.log" python _main\youtube-cdp-source-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-cdp-source !STEP_RC! "%OUT%\youtube-cdp-source-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-youtube-cdp-source MISSING "%OUT%\youtube-cdp-source-neg.log" "NEG-ARM VERDICT: PASS" )
+
+REM ---------------------------------------------------------------------------
+REM ---------------------------------------------------------------------------
+REM AS TRES PORTAS QUE ESTAVAM ESCRITAS E FORA DA BATERIA (2026-11-03). O
+REM `battery-wiring-oracle` recusou-as com razao (`new-unwired: 3 oraculo(s) sem
+REM passo e sem licenca`): um oraculo que nao corre em sitio nenhum e' um ficheiro,
+REM nao um portao. Cada um traz o seu `red-as-expected`, com a convencao da casa --
+REM o negativo responde rc=1 quando apanha os mutantes, e 0 quando um escapa.
+if exist _main\caption-producer-oracle.py (
+call :step always caption-producer 0 "_main\caption-producer-oracle.py;app\webview\youtube_window.py;app\webview\sotto_webview.py" "%OUT%\caption-producer.log" python _main\caption-producer-oracle.py
+call :record caption-producer !STEP_RC!
+) else ( call :record caption-producer MISSING )
+if exist _main\caption-producer-oracle.py (
+call :step always red-as-expected-caption-producer 1 "_main\caption-producer-oracle.py;app\webview\youtube_window.py;app\webview\sotto_webview.py" "%OUT%\caption-producer-neg.log" python _main\caption-producer-oracle.py --neg-arm
+call :expectred red-as-expected-caption-producer !STEP_RC! "%OUT%\caption-producer-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-caption-producer MISSING "%OUT%\caption-producer-neg.log" "NEG-ARM VERDICT: PASS" )
+if exist _main\caption-style-oracle.py (
+call :step always caption-style 0 "_main\caption-style-oracle.py;app\panel\panel.html;app\webview\sotto_webview.py" "%OUT%\caption-style.log" python _main\caption-style-oracle.py
+call :record caption-style !STEP_RC!
+) else ( call :record caption-style MISSING )
+if exist _main\caption-style-oracle.py (
+call :step always red-as-expected-caption-style 1 "_main\caption-style-oracle.py;app\panel\panel.html;app\webview\sotto_webview.py" "%OUT%\caption-style-neg.log" python _main\caption-style-oracle.py --neg-arm
+call :expectred red-as-expected-caption-style !STEP_RC! "%OUT%\caption-style-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-caption-style MISSING "%OUT%\caption-style-neg.log" "NEG-ARM VERDICT: PASS" )
+if exist _main\hotkey-observed-oracle.py (
+call :step always hotkey-observed 0 "_main\hotkey-observed-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-observed.log" python _main\hotkey-observed-oracle.py
+call :record hotkey-observed !STEP_RC!
+) else ( call :record hotkey-observed MISSING )
+if exist _main\hotkey-observed-oracle.py (
+call :step always red-as-expected-hotkey-observed 1 "_main\hotkey-observed-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-observed-neg.log" python _main\hotkey-observed-oracle.py --neg-arm
+call :expectred red-as-expected-hotkey-observed !STEP_RC! "%OUT%\hotkey-observed-neg.log" "NEG-ARM held-removed"
+) else ( call :expectred red-as-expected-hotkey-observed MISSING "%OUT%\hotkey-observed-neg.log" "NEG-ARM held-removed" )
+
 REM A REVELACAO PALAVRA-A-PALAVRA NO CAMINHO VIVO (2026-10-29). O
 REM `youtube-1to1-oracle.py` acima compara o PAYLOAD com os cues servidos: e um
 REM check ESTATICO, e nao ve o caminho vivo. MEDIDO 2026-10-29: o ramo `painted`

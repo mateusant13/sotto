@@ -341,8 +341,18 @@ class CdpCaptionSource:
                     except Exception:                 # noqa: BLE001
                         pass
                     conn = None
-                    self._stop.wait(RETRY_S)
+                    # TROCAR DE VIDEO NAO ESPERA 2 s (2026-11-03). O dono alterna
+                    # entre videos e a legenda tem de aparecer no novo dentro de
+                    # uma foto, nao de um ciclo de retry: o id ja' e' conhecido,
+                    # logo a proxima escolha e' imediata. O contador impede o
+                    # laco apertado quando o id nao existe em aba nenhuma (ele
+                    # ainda nao navegou, ou mudou de janela).
+                    self._switch_fails = getattr(self, '_switch_fails', 0) + 1
+                    if self._switch_fails > 3:
+                        self._switch_fails = 0
+                        self._stop.wait(RETRY_S)
                     continue
+                self._switch_fails = 0
                 self._publish(snap, "attached")
             except Exception as exc:              # noqa: BLE001
                 self._error(exc)

@@ -179,7 +179,12 @@ def main(argv=None):
             bad += 0 if caught else 1
         print("NEG-ARM VERDICT: %s (%d/%d)"
               % ("PASS" if not bad else "FAIL", len(results) - bad, len(results)))
-        return 0 if not bad else 1
+        # A CONVENCAO DA BATERIA (2026-11-03): um `red-as-expected` declara rc=1.
+        # "Apanhei todos os mutantes" E' o resultado VERMELHO que o `:expectred`
+        # exige, senao o passo passa como se fosse um oraculo normal e o mutante
+        # nunca e' recusado. rc=0 quando um mutante escapa (o passo fica vermelho
+        # de verdade, e com a frase FAIL no log).
+        return 1 if not bad else 0
     bad = 0
     for name, ok, note in arms():
         print("%-22s %s  %s" % (name, "PASS" if ok else "FAIL", note))
