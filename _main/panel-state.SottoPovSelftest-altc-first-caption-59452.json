@@ -50,7 +50,7 @@
     "since_ms": 1793689232333,
     "reason": "hotkey-toggle",
     "transitions": 15,
-    "writes": 874,
+    "writes": 2168,
     "errors": 0
   },
   "code": {
@@ -62,7 +62,7 @@
     },
     "shell": {
       "path": "H:\\sotto\\app\\webview\\sotto_webview.py",
-      "disk": "7dc00044eb653fd5",
+      "disk": "a747d430c5a59250",
       "loaded": "ca1db6220f8290e9",
       "stale": true,
       "reloadable": false,
@@ -77,9 +77,9 @@
   "worker": null,
   "schema": "sotto.panel-state/1",
   "reason": "periodic",
-  "sequence": 1272,
-  "writtenAt": "2026-11-03T04:43:07-03:00",
-  "writtenAtEpoch": 1793691787.229,
+  "sequence": 3210,
+  "writtenAt": "2026-11-03T05:47:57-03:00",
+  "writtenAtEpoch": 1793695677.76,
   "ageSeconds": 0.0,
   "ageSecondsNote": "age at write; the authoritative age is now - writtenAtEpoch and is printed by `panel_state.py --read`",
   "staleAfterSeconds": 6.0,

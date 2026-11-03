@@ -30,3 +30,11 @@
 - **A qualidade do ARK-ASR no português além de um clipe de 15 s** (2026-10-30): mediu-se que ele
   emite **inglês** onde devia transcrever, e a lista de línguas não tem `pt`. Um WER sobre corpus não
   existe, e não é preciso para a decisão tomada (`_main/receipt-20261030-ark-asr-vs-parakeet.md`).
+- **41 `except … : pass` em `app/webview/sotto_webview.py`** (medido hoje com `ast`: um handler cujo
+  corpo e' so' `pass`, zero `bare except`; `youtube_captions.py` 9, `worker/sotto_worker.py` 13).
+  Dos 41, o `exception-hygiene-oracle` conta 7 — os dois numeros medem coisas diferentes (o portao
+  conta `except Exception` sem comentario, a AST conta todo o handler mudo) e **nenhum dos dois diz
+  quantos desses 41 escondem uma falha que o dono sentiria**. O `code-health` estava no limiar
+  (21 -> 41) e a linha de base foi atualizada HOJE com esta linha escrita, nao em silencio.
+  Auditar e' trabalho por fazer: cada handler ou ganha `log(...)` com um codigo nomeado, ou uma razao
+  escrita ao lado. Nao se "corrige" apagando o `pass`.
