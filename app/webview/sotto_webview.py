@@ -4377,7 +4377,24 @@ class ExternalCaptionWatcher(threading.Thread):
             source, lines = got[0]
             if str(source).startswith("external:youtube"):
                 # A JANELA EM QUE O PLAYER MANDA (ver `push_caption_to_window`).
-                self._yt_owner_until = time.monotonic() + 2.0
+                #
+                # NO SHELL, E NAO AQUI (medido 2026-11-03). A guarda que impede o
+                # ASR de pintar por cima do player le' `self._yt_owner_until` no
+                # `SottoShell` (`push_caption_to_window`, campo lido em exactamente
+                # UM sitio); este `_tick` pertence ao `ExternalCaptionWatcher`, e
+                # escrevia o carimbo no WATCHER. Resultado: o shell lia sempre
+                # `0.0`, a guarda nunca disparava, e a frase do ASR continuava a
+                # substituir a linha do YouTube -- que e' o defeito que o dono
+                # fotografou em 2026-11-03 ("duas legendas diferentes no mesmo
+                # ecra") e cuja cura estava escrita e desligada por um `self`.
+                # O `self.shell` e' a ponte que este mesmo `_tick` ja' usa para
+                # entregar a linha (`self.shell.external_caption(...)`).
+                shell = getattr(self, "shell", None)
+                if shell is not None:
+                    try:
+                        shell._yt_owner_until = time.monotonic() + 2.0
+                    except Exception:                            # noqa: BLE001
+                        log("YT_OWNER_STAMP_FAILED error=AttributeError")
             _rows_now = list(lines or ())
             _key = '\u2028'.join(_rows_now)
             if _key != getattr(self, "yt_frame_key", None):
