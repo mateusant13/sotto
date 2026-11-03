@@ -256,3 +256,10 @@ _main/shots/
 _main/panel-visibility.json
 _main/shell-relaunch.json
 app/shadowplay/state/gate/gate-log.txt
+
+# O interruptor da legenda e o registo do comparador sao ESTADO da maquina.
+_main/caption-wanted.json
+_main/caption-wanted.json.tmp
+_main/_yt-sync-live.txt
+_main/_yt-cprofile.txt
+_main/overlay-style.png

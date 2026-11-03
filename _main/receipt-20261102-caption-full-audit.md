@@ -122,3 +122,50 @@ python _main/undefined-names-oracle.py                                  :: nomes
 
 O `cProfile` liga-se com `SOTTO_YT_CPROFILE=1` e escreve `_main/_yt-cprofile.txt`; o `YT_PROF` com
 `SOTTO_YT_PROFILE=1`. Os dois são opt-in e custam nada quando desligados.
+
+---
+
+# ADENDA 2026-11-03 00:0x — o ESTILO e o FADE (ordem do dono, com captura)
+
+Duas ordens verbatim, sobre a mesma captura de ecra:
+
+> *"ESSE ESTILO DE LEGENDA E' DO YOUTUBE. NAO SOTTO."*
+> *"e ta com animacao fade in que eu JA MANDEI VOCE TIRAR"*
+
+## O que mudou
+
+| # | defeito | cura | prova |
+|---|---|---|---|
+| D8 | a legenda vestia o design do PAINEL (Segoe UI, placa, farol, alinhamento do painel) | `overlay_paint._THEME_DEFAULT` passa a ser o estilo do player: Arial (Roboto nao esta' instalada -- medido em `C:/Windows/Fonts`), branco, contorno preto solido 5 px, sem placa, alinhado ao centro, peso 400, duas linhas. A shell RECUSA os tokens do painel para a janela da legenda (`set_theme(overlay_paint._THEME_DEFAULT)`), e o log diz de onde veio: `brand=theme-1 plate=no fade=no` | `caption-style-oracle` arms 1, 2, 5 + `--neg-arm` |
+| D9 | `_normalise_theme` recalculava `align`/`strokePx`/`strokeColor` a partir de tokens que nao existiam, e o tema do YouTube saia `align=left, strokePx=6.08, strokeColor=(0,0,0,235)` | um tema que DECLARA o valor fica com ele; o calculo antigo fica como fallback de quem nao declara | arm 1 (`errado={}`) |
+| D10 | fade de entrada na janela inteira (`word_fade`), mais a linha que saia a desvanecer | `NativeCaptionOverlay.FADE_ON = False`: `_fade_alpha` devolve 255 e a linha que sai nao e' desenhada. Sem fade, `_next_delay` deixa de pedir frames intermediarios -- o bitmap so' e' refeito quando o TEXTO muda | arms 3, 4 + `NEG-ARM fade-back` (com o botao ligado o alfa volta a cair: 0 medido, o oraculo apanha) |
+| D11 | o ASR pintava por cima do player: medido 00:01:41-00:01:46, `CAPTION_APPLIED "Pra conseguir."` enquanto o YouTube ja' pintava outra frase | `push_caption_to_window` recusa o caminho do ASR enquanto o player fornecer linhas (janela de 2 s), e conta os recusados (`CAPTION_OVERLAY_DROP reason=external-captions dropped=1,10,50,200,...`) | arm 6 |
+| D12 | a janela mostrava TRES linhas (`rows=3` medido 00:01:34) | `youtube_window.ROWS_CAP = 2`: fica com as DUAS ultimas, que sao as que o roll-up do player deixa no ecra | `caption-producer-oracle` arm `rows-capped-at-2` |
+| D13 | cada relancamento DESLIGAVA a legenda (`_caption_wanted = False`), e um `io.open` num ficheiro que nao importa `io` fazia a restauracao devolver False em SILENCIO | o interruptor grava `_main/caption-wanted.json` e volta no arranque: medido `CAPTION_WANTED_RESTORED on=true` e o primeiro `EXTERNAL_CAPTION_DRAWN` a seguir | log da sessao 00:12:22 |
+
+## O teste que o dono pediu: de 5 em 5 segundos, contra a pagina
+
+`_main/_yt-sync-live.py` le' o DOM do player (`.ytp-caption-segment` + `currentTime`)
+e o ultimo quadro do Sotto, e classifica cada ciclo em `SAME` / `OURS-AHEAD` /
+`OURS-BEHIND` / `TEXT-DIFF`. **Nao clica, nao da play, nao mexe no volume** -- som
+nenhum sai por causa dele.
+
+Primeira leitura (00:12, video EM PAUSA no dono):
+
+| campo | valor |
+|---|---|
+| `currentTime` | 773,951 s |
+| `paused` | true |
+| linhas do player | `['maior pra ficar por último, entendeu?', 'Então eles estão acabando,']` |
+| ultimo `EXTERNAL_CAPTION_DRAWN` | `['maior pra ficar por último, entendeu?', 'Então eles estão acabando,']` |
+| veredicto | `SAME` |
+
+O ciclo de 5 s corre com o video a tocar quando ele o puser a tocar: a pausa mede
+o ACORDO dos textos, nao o atraso.
+
+## O que continua por medir
+
+- **O atraso em video A TOCAR** com todas estas curas: a pausa prova o texto, nao a
+  cadencia. O ciclo de 5 s fica a correr e junta amostras.
+- **A posicao vertical** da legenda: o Sotto desenha 48 px acima da base da area de
+  trabalho; o player desenha dentro do video. Nao foi pedido, e nao foi medido.

@@ -3151,6 +3151,9 @@ class ExternalCaptionWatcher(threading.Thread):
         # com o produtor ao lado (`src=`).
         if got:
             source, lines = got[0]
+            if str(source).startswith("external:youtube"):
+                # A JANELA EM QUE O PLAYER MANDA (ver `push_caption_to_window`).
+                self._yt_owner_until = time.monotonic() + 2.0
             _rows_now = list(lines or ())
             _key = '\u2028'.join(_rows_now)
             if _key != getattr(self, "yt_frame_key", None):
@@ -6675,14 +6678,23 @@ class SottoHost:
             log('CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay '
                 'theme=%r' % (theme.get('theme') or '-'))
             return
+        # O DESIGN DO PAINEL NAO MANDA NA LEGENDA (ordem do dono, 2026-11-03,
+        # verbatim: *"ESSE ESTILO DE LEGENDA E' DO YOUTUBE. NAO SOTTO."*). O
+        # payload continua a ser GUARDADO (`_brand_tokens_last`) porque o painel
+        # o usa; a janela da legenda veste SEMPRE o estilo do player, e o log diz
+        # de onde veio a recusa para o desvio nao passar silencioso.
         try:
-            applied = overlay.set_theme(theme)
+            import overlay_paint
+            applied = overlay.set_theme(overlay_paint._THEME_DEFAULT)
         except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
             log(f'CAPTION_OVERLAY_THEME_FAILED error={exc!r}')
             return
-        log('CAPTION_OVERLAY_THEME_APPLIED theme=%s font=%s live=%.1f'
+        log('CAPTION_OVERLAY_THEME_APPLIED theme=%s font=%s live=%.1f '
+            'brand=%s plate=%s fade=%s'
             % (applied.get('theme') or '-', applied.get('fontFamily'),
-               applied.get('livePx') or 0.0))
+               applied.get('livePx') or 0.0, theme.get('theme') or '-',
+               'yes' if applied.get('plate') else 'no',
+               'yes' if getattr(overlay, 'FADE_ON', False) else 'no'))
 
     def _renderer_ready(self, payload):
         payload = payload or {}
@@ -7137,17 +7149,24 @@ class SottoShell:
         # disagree. `_caption_window_shown` stays the OTHER fact — whether pixels
         # are on screen right now — because silence must be able to blank the
         # overlay without switching the owner off.
-        self._caption_wanted = False
+        # O INTERRUPTOR SOBREVIVE AO ARRANQUE (2026-11-03). Ele liga a legenda
+        # com um HOLD; um reinicio do shell nao e' um pedido para a desligar, e
+        # ate' aqui CADA relancamento voltava ao `False` -- medido hoje em tres
+        # relancamentos seguidos, com o dono a ver a legenda desaparecer sem ter
+        # tocado em nada. Ficheiro de estado, e so' isso: quem desligar com o
+        # mesmo HOLD grava `false` e a janela nao volta.
+        self._caption_wanted = self._caption_wanted_restored()
         try:
             import caption_overlay
             self.caption_overlay = caption_overlay.NativeCaptionOverlay(log=log)
             self.caption_overlay.set_work_area(
                 wa, self.display.get('scaleFactor') or 1.0)
-            if self._brand_tokens_last:
+            if True:
                 try:
-                    self.caption_overlay.set_theme(self._brand_tokens_last)
-                    log('CAPTION_OVERLAY_THEME_REPLAYED theme=%r'
-                        % (self._brand_tokens_last.get('theme') or '-'))
+                    import overlay_paint as _op
+                    self.caption_overlay.set_theme(_op._THEME_DEFAULT)
+                    log('CAPTION_OVERLAY_THEME_REPLAYED theme=youtube brand=%r'
+                        % (((self._brand_tokens_last or {}) or {}).get('theme') or '-'))
                 except Exception as exc:  # noqa: BLE001
                     log(f'CAPTION_OVERLAY_THEME_REPLAY_FAILED error={exc!r}')
             log(f'CAPTION_OVERLAY_MODE native=true hwnd='
@@ -10401,6 +10420,24 @@ class SottoShell:
         # it never calls `caption_wrap` on this channel. The trailing
         # terminator marks even a ONE-row window as pre-broken, so a lone
         # long row cannot be re-wrapped at a word YouTube did not break at.
+        # A LEGENDA DO PLAYER MANDA NA TELA, E O ASR NAO LHE PASSA POR CIMA
+        # (2026-11-03). MEDIDO na sessao do dono, 00:01:41-00:01:46: o ASR
+        # aplicou `"Pra conseguir."` no overlay AS 00:01:42.891 e o YouTube so
+        # comecou a pintar as 00:01:44.868 -- logo durante dois segundos e meio
+        # a janela mostrava uma frase que o player NAO estava a mostrar. Foi
+        # isso que ele fotografou: duas legendas diferentes no mesmo ecra.
+        # A regra: enquanto o player estiver a fornecer linhas (janela de 2 s
+        # desde a ultima leitura externa boa), o caminho do ASR NAO empurra
+        # nada. `rows=` e `instant=True` sao o caminho do player e passam.
+        if rows is None and not instant:
+            owned_until = float(getattr(self, "_yt_owner_until", 0.0) or 0.0)
+            if time.monotonic() < owned_until:
+                self._asr_dropped = int(getattr(self, "_asr_dropped", 0)) + 1
+                if self._asr_dropped in (1, 10, 50, 200) or self._asr_dropped % 500 == 0:
+                    log("CAPTION_OVERLAY_DROP reason=external-captions "
+                        "dropped=%d text=%s"
+                        % (self._asr_dropped, json.dumps(str(text or "")[:60])))
+                return False
         if rows:
             import youtube_reveal
             text = youtube_reveal.rows_text(rows)
@@ -12115,6 +12152,38 @@ class SottoShell:
         log(f'WINDOW_DRAG_DONE surface={surface} to=({clamped_x},{clamped_y}) '
             f'size={width}x{height} from=({x},{y})')
 
+    CAPTION_WANTED_PATH = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), '_main', 'caption-wanted.json')
+
+    def _caption_wanted_restored(self):
+        """O estado do interruptor da legenda, como ficou da ultima sessao."""
+        try:
+            # `io` NAO E' IMPORTADO NESTE FICHEIRO (medido 2026-11-03: o
+            # `NameError` caia no `except` e a restauracao devolvia False em
+            # SILENCIO -- o interruptor nunca voltava). `open` do builtin.
+            with open(self.CAPTION_WANTED_PATH, encoding='utf-8') as handle:
+                data = json.load(handle)
+            on = bool(data.get('on'))
+            log('CAPTION_WANTED_RESTORED on=%s from=%s'
+                % (str(on).lower(), data.get('at') or '-'))
+            return on
+        except Exception:  # noqa: BLE001 -- ausente e' o normal da primeira vez
+            return False
+
+    def _caption_wanted_store(self, on):
+        """Grava o interruptor. Falhar nao pode derrubar o gesto do dono."""
+        try:
+            import datetime
+            tmp = self.CAPTION_WANTED_PATH + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as handle:
+                json.dump({'on': bool(on),
+                           'at': datetime.datetime.now().isoformat(timespec='seconds')},
+                          handle)
+            os.replace(tmp, self.CAPTION_WANTED_PATH)
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_WANTED_STORE_FAILED error={exc!r}')
+
     def _set_live_enabled(self, payload):
         """O interruptor do botao LIVE: mostra/esconde a janela da legenda.
 
@@ -12149,6 +12218,7 @@ class SottoShell:
         on = bool((payload or {}).get('on'))
         try:
             self._caption_wanted = on
+            self._caption_wanted_store(on)
             # O PANEL NAO SE FECHA -- ver a docstring: a ordem de 2026-10-19
             # trocou a de 2026-10-17, e o `hide_panel('caption-on')` que vivia
             # aqui era a causa do "o alt c nao ta ligando ou desligando bem".

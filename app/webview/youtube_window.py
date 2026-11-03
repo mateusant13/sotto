@@ -357,6 +357,10 @@ def _strip_markers(text):
     return out
 
 
+#: As linhas que a caixa do player mostra de cada vez (medido: 2).
+ROWS_CAP = 2
+
+
 def painted_rows(words, items=None):
     """As LINHAS a desenhar a partir do que a janela de legenda entrega.
 
@@ -385,7 +389,17 @@ def painted_rows(words, items=None):
             if text and (not out or out[-1] != text):
                 out.append(text)
         if out:
-            return out
+            # A CAIXA DO PLAYER TEM DUAS LINHAS E NOS DESENHAVAMOS TRES
+            # (2026-11-03). MEDIDO na sessao do dono:
+            #   `EXTERNAL_CAPTION_DRAWN rows=3 lines=['estao tendo um
+            #    desempenho melhor.', 'Talvez, eh, uma boa', 'estrategia...']`
+            # nos instantes em que a pintura trazia tres linhas (a que esta' a
+            # sair, a actual e a que entra). O YouTube mostra DUAS; a terceira
+            # e' conteudo que ele JA' empurrou para fora da caixa, e desenha-la
+            # poe o Sotto a mostrar a linha seguinte antes do player -- que e'
+            # exactamente o *'ta fora de sync'* dele. Fica com as DUAS ultimas,
+            # que sao as que o roll-up deixa no ecra.
+            return out[-ROWS_CAP:] if len(out) > ROWS_CAP else out
     # SEM RECTS: o marcador de fala diz onde cada LINHA do player COMECA (medido
     # 2026-11-02 22:19:36: `['>> Nossa.', '>> ta', 'segurando', 'essa', 'wave,']`
     # -- o `>>` abre a linha 2 e `segurando` continua a mesma linha). Sem marcador

@@ -147,6 +147,12 @@ from overlay_paint import (  # noqa: F401 -- superficie publica deste modulo
 
 
 class NativeCaptionOverlay:
+    #: O fade de entrada esta' DESLIGADO (ordem do dono 2026-11-03). O botao
+    #: fica para o oraculo poder provar as duas metades: com `False`, nenhum
+    #: frame intermedio e' publicado; com `True`, a animacao antiga volta -- e o
+    #: braco negativo do oraculo le exatamente essa diferenca.
+    FADE_ON = False
+
     """A per-pixel-alpha caption window. No WebView2, no plate."""
 
     CLASS_NAME = "SottoNativeCaption"
@@ -292,11 +298,30 @@ class NativeCaptionOverlay:
         return width, height
 
     def _fade_alpha(self):
-        """O `SourceConstantAlpha` deste frame -- 255 sem fade. O fade e' da
-        JANELA inteira: o alfa do `UpdateLayeredWindow` e' um numero por
-        chamada."""
+        """O `SourceConstantAlpha` deste frame -- SEMPRE 255 (sem fade).
+
+        O DONO TIROU O FADE, DUAS VEZES. 2026-10-30 ele pediu a animacao do
+        YouTube; 2026-11-03, sobre uma captura: *"e ta com animacao fade in que
+        eu JA MANDEI VOCE TIRAR"*. A legenda do YouTube NAO faz fade de
+        entrada: a linha nova APARECE, e a que sai desliza para fora com o
+        roll-up. Fade na janela inteira e' invencao nossa, e custa frames:
+        cada alfa intermedio e' um `UpdateLayeredWindow` a mais.
+
+        `FADE_ON` e' o botao: com ele DESLIGADO nada aqui produz alfa
+        intermedio, e o caminho de desenho continua a existir para o oraculo
+        poder provar as duas metades (com ele ligado, a animacao antiga volta).
+        """
+        if not self.FADE_ON:
+            self._fade_t0 = None
+            return 255
         if self._fade_t0 is None:
             return 255
+        import word_fade
+        elapsed = time.monotonic() - self._fade_t0
+        alpha = word_fade.alpha_at(elapsed)
+        if word_fade.done(alpha):
+            self._fade_t0 = None
+        return alpha
         import word_fade
         elapsed = time.monotonic() - self._fade_t0
         alpha = word_fade.alpha_at(elapsed)
@@ -472,9 +497,9 @@ class NativeCaptionOverlay:
             else:
                 live = self._live_for()
                 live.push(full, time.monotonic())
-            # A LINHA MUDOU: fade. `instant` nao o salta -- a janela do YouTube
-            # entra com a mesma animacao (ordo do dono, 2026-10-30).
-            if changed and words:
+            # A LINHA MUDOU: APARECE. Nao se arma fade nenhum -- ver
+            # `_fade_alpha` (o dono mandou tirar; a linha do YouTube aparece).
+            if changed and words and self.FADE_ON:
                 self._fade_t0 = time.monotonic()
             return self._update()
 
@@ -526,7 +551,14 @@ class NativeCaptionOverlay:
             return self._display_text(), None
         import youtube_reveal
         marks = self._live.frame(time.monotonic())
-        self._row_alphas = [mark["alpha"] for mark in marks]
+        if not self.FADE_ON:
+            # SEM FADE: a linha que sai NAO desvanece -- ela desaparece quando o
+            # motor a tira da janela (o roll-up de duas linhas do YouTube nao tem
+            # dissolve, e o dono ja' mandou tirar a animacao duas vezes).
+            marks = [m for m in marks if not m.get("exiting")]
+            self._row_alphas = [255] * len(marks)
+        else:
+            self._row_alphas = [mark["alpha"] for mark in marks]
         if not marks:
             return "", None
         return (youtube_reveal.rows_text([mark["text"] for mark in marks]),

@@ -80,6 +80,21 @@ def arms():
     reuse = ('reuse=None' in captions and 'prev.get("text") == name' in captions)
     out.append(('rect-reuse', reuse, 'reuse=%s' % reuse))
 
+    # 5-bis. A CAIXA TEM DUAS LINHAS (2026-11-03). Tres linhas pintadas tem de
+    # dar as DUAS ULTIMAS -- e' o que o roll-up do player mostra.
+    try:
+        sys.path.insert(0, os.path.join(ROOT, 'app', 'webview'))
+        import youtube_window as _yw
+        items = [{'text': 'a b', 'left': 0, 'top': 100, 'right': 9, 'bottom': 120},
+                 {'text': 'c d', 'left': 0, 'top': 130, 'right': 9, 'bottom': 150},
+                 {'text': 'e f', 'left': 0, 'top': 160, 'right': 9, 'bottom': 180}]
+        got = _yw.painted_rows(['a b', 'c d', 'e f'], items)
+        capped = got == ['c d', 'e f']
+    except Exception as exc:  # noqa: BLE001
+        capped = False
+        got = repr(exc)
+    out.append(('rows-capped-at-2', capped, 'rows=%r' % (got,)))
+
     # 5. Histerese das linhas: crescer passa, encolher espera.
     settle = ('ROWS_SETTLE_S' in shell and 'def _yt_rows_settle' in shell
               and 'rows[-1].startswith(shown[-1])' in shell)

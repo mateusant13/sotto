@@ -87,32 +87,45 @@ _MEASURE_CACHE = {}
 # `window.sotto.dispatch('brand-tokens', …)`; this table is the receiving end,
 # and every field has a default that reproduces the pre-theme overlay EXACTLY.
 _THEME_DEFAULT = {
-    'theme': '',
-    'fontFamily': 'Segoe UI',
-    'livePx': 34.0,
-    'prevPx': 24.0,
-    'leading': 1.35,
-    'prevLeading': 1.35,
-    'liveWeight': 700,
-    'prevWeight': 700,
+    # A LEGENDA DO SOTTO E' A DO YOUTUBE (ordem do dono 2026-11-01 e 2026-11-03,
+    # verbatim: *"ESSE ESTILO DE LEGENDA E' DO YOUTUBE. NAO SOTTO."*). Nao ha'
+    # segundo estilo: o painel pode ter o design que o dono escolher, a legenda
+    # que aparece por cima do jogo e' a do player -- branco, contorno preto, sem
+    # placa, duas linhas, sem animacao de entrada.
+    #
+    # OS NUMEROS: `Roboto` e' a cara por omissao do YouTube; nesta maquina nao
+    # esta' instalada (medido: `C:/Windows/Fonts` tem `arial*.ttf` e nenhum
+    # `roboto*`), e o fallback do proprio Chrome no Windows e' Arial -- a mesma
+    # que o ecra dele mostra na captura de 2026-11-03. `livePx` 38 e `leading`
+    # 1.2 batem com o texto da captura (duas linhas de ~44 px de altura de glifo
+    # num video de 1920). `strokePx` 5 e' o contorno que a captura mostra.
+    'theme': 'youtube',
+    'fontFamily': 'Arial',
+    'livePx': 38.0,
+    'prevPx': 38.0,
+    'leading': 1.2,
+    'prevLeading': 1.2,
+    'liveWeight': 400,
+    'prevWeight': 400,
     'liveItalic': False,
     'prevItalic': False,
     'liveUpper': False,
     'prevUpper': False,
-    'liveColor': (245, 248, 252, 255),
-    'prevColor': (240, 245, 252, 215),
+    'liveColor': (255, 255, 255, 255),
+    'prevColor': (255, 255, 255, 255),
     'strokeColor': (0, 0, 0, 255),
-    'strokePx': 6.0,
+    'strokePx': 5.0,
     'plate': None,
-    'plateRadius': 10.0,
+    'plateRadius': 0.0,
     'ruleW': 0.0,
     'ruleColor': (0, 0, 0, 0),
-    'led': (55, 214, 122, 255),
-    'ledW': 10.0,
-    'ledH': 10.0,
-    'gap': 8.0,
-    # (top, right, bottom, left)
-    'pad': (14.0, 14.0, 14.0, 14.0),
+    'led': None,
+    'ledW': 0.0,
+    'ledH': 0.0,
+    'gap': 0.0,
+    # (top, right, bottom, left). O YouTube nao tem placa; o padding existe so'
+    # para o CONTORNO nao ser cortado na borda do bitmap.
+    'pad': (10.0, 10.0, 10.0, 10.0),
     'align': 'center',
 }
 
@@ -445,11 +458,27 @@ def _normalise_theme(tokens):
     # theme has been normalised twice (the panel -> shell -> layout path does).
     out['ledVisible'] = bool(out['led'])
 
-    out['align'] = 'center' if str(src.get('textAlign') or '').startswith('center') else 'left'
+    # O QUE O TEMA DECLARA, O TEMA MANTEM (2026-11-03). Antes esta funcao
+    # derivava `align`, `strokePx` e `strokeColor` dos tokens do PAINEL, sem
+    # olhar ao que o tema trazia: o estilo do YouTube pedia centro e contorno
+    # preto solido de 5 px e saia `align=left`, `strokePx=6.08`,
+    # `strokeColor=(0,0,0,235)` -- tres numeros do design do painel, nao do
+    # player. Um tema que declara o seu valor fica com ele; o calculo antigo
+    # passa a ser o FALLBACK de quem nao declara nada.
+    want_align = src.get('align') or src.get('textAlign')
+    out['align'] = ('center' if str(want_align or '').startswith('center')
+                    else 'left')
     ink_final = out['liveColor']
-    out['strokePx'] = max(2.0, out['livePx'] * 0.16)
-    out['strokeColor'] = ((0, 0, 0, 235) if _luminance(ink_final) > 110
-                          else (255, 255, 255, 235))
+    if src.get('strokePx') is None:
+        out['strokePx'] = max(2.0, out['livePx'] * 0.16)
+    else:
+        out['strokePx'] = max(2.0, _num(src.get('strokePx'), out['strokePx']))
+    declared_stroke = _rgba(src.get('strokeColor'))
+    if declared_stroke:
+        out['strokeColor'] = declared_stroke
+    else:
+        out['strokeColor'] = ((0, 0, 0, 235) if _luminance(ink_final) > 110
+                              else (255, 255, 255, 235))
     return out
 
 
