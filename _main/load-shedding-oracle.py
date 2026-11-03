@@ -56,6 +56,7 @@ from pathlib import Path
 ROOT = Path(os.environ.get("SOTTO_ROOT")
             or Path(__file__).resolve().parent.parent).resolve()
 MODULE = ROOT / "app" / "webview" / "load_shedding.py"
+BATCH = ROOT / "app" / "webview" / "batch_queue.py"
 SHELL = ROOT / "app" / "webview" / "sotto_webview.py"
 WORKER = ROOT / "worker" / "sotto_worker.py"
 EXIT_PASS, EXIT_FAIL = 0, 1
@@ -88,10 +89,19 @@ def _start_log_outside_guard(tree):
     """
     start_line = log_line = None
     for node in ast.walk(tree):
+        # O ARRANQUE, na forma que a regiao tem hoje: `open_action(...)` devolve o
+        # guard ja' a correr, e e' ele que arranca o laco. A arm continua a medir a
+        # PROPRIEDADE (o log nao vive no `try` do arranque), nao a forma antiga.
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
                 and node.func.attr == "start" and isinstance(node.func.value, ast.Attribute) \
-                and node.func.value.attr == "_load_shedding":
+                and node.func.value.attr in ("_load_shedding", "_load_action"):
             start_line = node.lineno
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) \
+                and isinstance(node.value.func, ast.Attribute) \
+                and node.value.func.attr == "open_action":
+            targets = [x for x in node.targets if isinstance(x, ast.Attribute)]
+            if any(x.attr == "_load_action" for x in targets):
+                start_line = node.lineno
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
                 and node.func.id == "log" and node.args:
             # `log('X %s' % y)` -> o texto nao esta' em `args[0].value`, esta' numa
@@ -323,6 +333,453 @@ def selector_arms(select):
         shutil.rmtree(fake.parent, ignore_errors=True)
 
 
+# ── ARMs 11 a 13: a ACCAO, a FILA EM DISCO e o EXECUTOR que cede ─────────────
+# ORDEM DO DONO (2026-11-03): *"os modelos entram e saem conforme a carga do
+# sistema, e o audio nao processado e' processado sozinho quando a carga
+# liberta -- SEM NUNCA TRAVAR A MAQUINA DO DONO"*. As arms abaixo medem as tres
+# metades dessa ordem com o codigo REAL (o `LoadAction`, o `BatchQueue` e o
+# `BatchExecutor`, importados do repo), nunca com uma copia do comentario.
+
+
+class _FakeProbe:
+    """Uma sequencia de leituras `(commit, cpu)` -- uma NOVA por chamada."""
+
+    def __init__(self, seq=((90.0, 10.0),)):
+        self.seq = list(seq)
+        self.i = 0
+
+    def sample(self):
+        commit, cpu = self.seq[min(self.i, len(self.seq) - 1)]
+        self.i += 1
+        return float(commit), float(cpu), True
+
+
+def _action(ls, seq, log=None, armed=True, samples=None, publish=None,
+            live=False, dwell_s=0.0, floor_s=None):
+    """Um `LoadAction` com prova (`probe`), relogio e publicado falsos.
+
+    `calls["publish"]` e' quantas vezes o FICHEIRO foi escrito -- o que a accao
+    faz de facto, agora que o lever e' o modo e nao a vida do processo.
+    """
+    calls = {"publish": 0, "levels": []}
+
+    def writer(level=None):
+        calls["publish"] += 1
+        calls["levels"].append(level if level is not None else act.published)
+        return True if publish is None else publish()
+
+    kwargs = {}
+    if samples is not None:
+        kwargs["samples"] = samples
+    # `live=False` e' o caso em que a DECISAO aparece no ficheiro: o motor ao
+    # vivo esta' desligado pelo dono, por isso nao ha' nada a proteger dele. Com
+    # `live=True` o unico valor publicavel e' `leve` (regra A), medido em ARM 16.
+    floor = (ls.ACTION_FLOOR_S if armed else 0.0) if floor_s is None else float(floor_s)
+    act = ls.LoadAction(state=ls.LoadShedding(floor_s=floor),
+                        publish=writer,
+                        log_fn=(log.append if log is not None else (lambda _m: None)),
+                        probe=_FakeProbe(seq), armed=armed,
+                        live_fn=(live if callable(live) else (lambda: live)),
+                        dwell_s=dwell_s, **kwargs)
+    return act, calls
+
+
+def arms_action(module_path: Path) -> None:
+    print("\nARM 11 -- a ACCAO: o nivel ARMA o MODO, armada por omissao, com PISO,"
+          " HISTERESE e SUSTENTACAO")
+    ls = load(module_path)
+    add(hasattr(ls, "LoadAction") and hasattr(ls, "open_action"),
+        "o modulo tem a accao (`LoadAction`/`open_action`)")
+    add(ls.ACTION_ARMED_DEFAULT is True,
+        "a accao e' ARMADA por omissao (a ordem de 2026-11-03)",
+        "ACTION_ARMED_DEFAULT=%r" % (ls.ACTION_ARMED_DEFAULT,))
+    add(ls.action_armed("0") is False and ls.action_armed("off") is False,
+        "`SOTTO_LOAD_SHED_ACT=0` desarma a accao (para as corridas de medicao)")
+    add(ls.action_armed("1") is True and ls.action_armed("") is True,
+        "e um valor que nao se reconhece NAO desarma")
+    add(ls.ACTION_FLOOR_S >= 180.0,
+        "PISO entre duas DESCIDAS de pelo menos 180 s",
+        "floor_s=%.0f" % ls.ACTION_FLOOR_S)
+    add(ls.ACTION_SAMPLES >= 2,
+        "uma accao precisa de leituras SUSTIDAS", "samples=%d" % ls.ACTION_SAMPLES)
+    # O LEVER NAO MATA O PROCESSO (medido 2026-11-03: o audio so' existe DENTRO do
+    # worker -- matar o worker para a captura no intervalo).
+    source = module_path.read_text(encoding="utf-8")
+    add("bridge.stop" not in source and "TerminateProcess" not in source,
+        "a accao NAO mata o worker: o lever e' o modo que ele ja' obedece (`shed`)")
+    add("LOAD_ACTION_PUBLISHED" in source,
+        "e a accao escreve o nivel com o numero que o disparou")
+
+    # (a) SUBIR e' imediato: uma maquina a 95 % nao espera por sustentacao.
+    logs: list = []
+    acted, calls = _action(ls, [(95.0, 20.0)], log=logs)
+    state = acted.tick(now=0.0)
+    add(calls["publish"] == 1 and acted.published == "muito-alta",
+        "uma leitura a 95 % PUBLICA `muito-alta` de imediato (subir nao espera)",
+        "published=%s action=%s" % (acted.published, state["action"]))
+    add(any("LOAD_ACTION_PUBLISHED" in line for line in logs),
+        "e a publicacao fica no log, com os motores que o worker vai largar",
+        next((l for l in logs if "LOAD_ACTION_PUBLISHED" in l), ""))
+    add(state["engines"] == {'nemotron': False, 'parakeet': False},
+        "`muito-alta` e' o modo em que NENHUM modelo corre (a captura continua)")
+
+    # (b) DESCER espera: uma leitura calma nao devolve os modelos.
+    one, calls_one = _action(ls, [(10.0, 5.0)])
+    one.state = ls.LoadShedding("muito-alta", floor_s=ls.ACTION_FLOOR_S)
+    one.published = "muito-alta"
+    state = one.tick(now=0.0)
+    add(calls_one["publish"] == 0,
+        "UMA leitura calma NAO devolve os modelos (nem publica nada)",
+        "action=%s level=%s" % (state["action"], state["level"]))
+    add(state["held"] >= 1, "e a espera fica contada (`held`), nao silenciosa",
+        "held=%d" % state["held"])
+
+    # (c) O PISO: com o nivel ja' descido, a publicacao da descida espera 180 s
+    # desde a ultima DESCIDA -- e o nivel SEgura-se no alto (o numero que o
+    # ficheiro diz e o numero que a decisao tomou sao o MESMO).
+    floored, calls_floor = _action(ls, [(8.0, 5.0)] * 12)
+    floored.state = ls.LoadShedding("muito-alta", floor_s=ls.ACTION_FLOOR_S)
+    floored.state.last_descent_at = 1000.0
+    floored.published = "muito-alta"
+    levels = []
+    for i in range(1, 20):
+        levels.append(floored.tick(now=1000.0 + i * 5.0)["level"])
+    add(set(levels) == {"muito-alta"} or "alta" in levels,
+        "com o piso a correr o nivel NAO despenca de muito-alta para leve",
+        str(sorted(set(levels))))
+    add(floored.state.held_by_floor >= 1,
+        "e o piso conta as descidas que segurou",
+        "held_by_floor=%d" % floored.state.held_by_floor)
+    # Passado o piso, a descida acontece -- uma vez, um degrau.
+    for i in range(20, 40):
+        floored.tick(now=1000.0 + i * 5.0)
+    add(floored.state.level in ("alta", "leve") and floored.published == floored.state.level,
+        "passado o piso o nivel desce e a publicacao acompanha",
+        "level=%s published=%s" % (floored.state.level, floored.published))
+
+    # (d) HISTERESE: a banda RESUME..HIGH segura o nivel (nem desce nem oscila).
+    band, calls_band = _action(ls, [(88.5, 10.0), (85.0, 10.0)] * 10, samples=3)
+    band_levels = [band.tick(now=i * 5.0)["published"] for i in range(20)]
+    add(set(band_levels[-10:]) == {"alta"},
+        "a banda RESUME..HIGH segura o nivel publicado em `alta` (nao oscila)",
+        str(sorted(set(band_levels))))
+    dip, calls_dip = _action(ls, [(88.5, 10.0), (10.0, 5.0), (85.0, 10.0)] * 6)
+    for i in range(18):
+        dip.tick(now=i * 5.0)
+    # O QUE SE MEDE SAO AS PUBLICACOES, nao o valor inicial do ficheiro: a
+    # primeira leitura ja' e' `alta` e o `leve` que ali aparece e' o nivel de
+    # ARRANQUE, nao uma publicacao.
+    add(set(calls_dip["levels"]) <= {"alta"},
+        "uma amostra calma isolada nao PUBLICA `leve` (e nao ha' triturador)",
+        str(calls_dip["levels"]))
+
+    # (e) DESARMADA: mede, nao força.
+    off, calls_off = _action(ls, [(99.0, 99.0)], armed=False)
+    off_levels = [off.tick(now=i * 5.0)["published"] for i in range(5)]
+    add(off.published == "muito-alta" and off.publications >= 1,
+        "desarmada, o nivel SEGUE para o ficheiro (e' a medicao) e nunca volta atras"
+        " por accao", "published=%s publications=%d" % (off.published, off.publications))
+
+    # (f) O LACO DO MONITOR NAO ARRANCA: um so' escritor do estado.
+    shell_source = (module_path.parent / "sotto_webview.py").read_text(encoding="utf-8")
+    add("_load_shedding.start()" not in shell_source,
+        "o laco proprio do monitor NAO e' arrancado (dois escritores no mesmo"
+        " estado somariam amostras e as confirmacoes chegariam a metade do tempo)")
+    add("open_action(\n                    self, monitor=monitor, log_fn=log)" in shell_source
+        or "monitor=monitor" in shell_source,
+        "a shell chama `open_action(self, monitor=monitor, log_fn=log)` -- uma funcao")
+    add("LOAD_ACTION_STARTED" in shell_source and "LOAD_ACTION_LOG_FAILED" in shell_source,
+        "e o arranque da accao deixa a linha `LOAD_ACTION_STARTED` (com guard proprio)")
+    add("LOAD_SHEDDING_START_FAILED" in shell_source,
+        "o guard do arranque continua a existir e a nao engolir o log")
+
+
+def arms_queue(batch_path: Path, tmp: Path) -> None:
+    print("\nARM 12 -- a FILA EM DISCO sobrevive a um restart")
+    batch = load(batch_path)
+    source = batch_path.read_text(encoding="utf-8")
+    add("os.replace" in source,
+        "a escrita e' ATOMICA (`.tmp` + `os.replace`), nao um manifesto truncavel")
+    add("sounddevice" not in source and "PaStream" not in source,
+        "o driver NAO abre dispositivo de audio (nenhum caminho de captura)")
+    add(batch.BELOW_NORMAL_PRIORITY_CLASS == 0x00004000
+        and batch.CREATE_NO_WINDOW == 0x08000000,
+        "o filho arranca com prioridade BELOW_NORMAL e sem janela",
+        "0x%08x | 0x%08x" % (batch.BELOW_NORMAL_PRIORITY_CLASS,
+                             batch.CREATE_NO_WINDOW))
+    add(batch.MAX_ATTEMPTS >= 2, "um bloco que falha e' tentado mais de uma vez",
+        "max_attempts=%d" % batch.MAX_ATTEMPTS)
+    # A FILA VIVE ONDE O DONO DISSE: medido 2026-11-03, `TMPDIR` esta' vazio e o
+    # `gettempdir()` devolve `G:\Temp` -- sem o candidato `I:\cc-tmp` a fila ia
+    # para o temp do sistema em vez do scratch do dono.
+    os.environ.pop('SOTTO_BATCH_QUEUE_DIR', None)
+    resolved = batch.queue_dir()
+    add(batch.QUEUE_DIRNAME in resolved and resolved != os.path.join(
+            tempfile.gettempdir(), batch.QUEUE_DIRNAME),
+        "o directorio da fila cai no scratch do dono quando `TMPDIR` esta' vazio",
+        resolved)
+    os.environ['SOTTO_BATCH_QUEUE_DIR'] = str(tmp / "env-queue")
+    add(batch.queue_dir() == str(tmp / "env-queue"),
+        "`SOTTO_BATCH_QUEUE_DIR` manda sobre tudo", batch.queue_dir())
+    os.environ.pop('SOTTO_BATCH_QUEUE_DIR', None)
+
+    root = tmp / "queue"
+    q1 = batch.BatchQueue(path=str(root), log_fn=lambda _m: None)
+    raw_a = b"\x00\x00\x80\x3f" * 1600          # 0,1 s de float32
+    raw_b = b"\x00\x00\x00\xbf" * 3200          # 0,2 s
+    first = q1.enqueue_f32(raw_a, source="oracle-a", now=1000.0)
+    second = q1.enqueue_f32(raw_b, source="oracle-b", now=1001.0)
+    add(first is not None and second is not None and q1.stats()["queued"] == 2,
+        "dois blocos entram na fila", str(q1.stats()["queued"]))
+    add(first["samples"] == 1600 and abs(first["seconds"] - 0.1) < 1e-9,
+        "o bloco leva os samples e os segundos do audio que tem",
+        "samples=%s seconds=%s" % (first["samples"], first["seconds"]))
+    add(q1.enqueue_f32(b"\x00\x01\x02", source="lixo") is None,
+        "um payload que nao e' float32 e' RECUSADO (nao vira audio inventado)")
+
+    # RESTART: outra instancia sobre o MESMO directorio. O bloco que estava
+    # `inflight` (o processo morreu a meio) volta a `queued`.
+    q1.claim(str(first["id"]))
+    q2 = batch.BatchQueue(path=str(root), log_fn=lambda _m: None)
+    pending = q2.pending()
+    add(len(pending) == 2,
+        "uma instancia NOVA ve' os dois blocos (a fila e' o disco)",
+        "pending=%d" % len(pending))
+    add(q2.recovered >= 1 and pending[0]["id"] == first["id"],
+        "o `inflight` de um processo morto volta a `queued` e mantem a ORDEM",
+        "recovered=%d first=%s" % (q2.recovered, pending[0]["id"][:20]))
+    with open(q2.payload_path(str(first["id"])), "rb") as handle:
+        survived = handle.read()
+    add(survived == raw_a,
+        "os bytes do audio sao os mesmos (nada foi quantizado nem cortado)",
+        "bytes=%d" % len(survived))
+
+    # UM MANIFESTO SEM AUDIO NAO E' UM BLOCO: e' um registo sem sujeito.
+    orphan_id = "0000000000001-1-9999"
+    (root / (orphan_id + ".json")).write_text(
+        json.dumps({"id": orphan_id, "state": "queued", "samples": 10,
+                    "created": 1.0}), encoding="utf-8")
+    (root / "payload-abandonado.f32.tmp").write_bytes(b"\x00" * 8)
+    q3 = batch.BatchQueue(path=str(root), log_fn=lambda _m: None)
+    add(q3.orphans >= 1 and len(q3.pending()) == 2,
+        "manifesto sem payload e `.tmp` abandonado nao entram na fila",
+        "orphans=%d pending=%d" % (q3.orphans, len(q3.pending())))
+    add(not (root / "payload-abandonado.f32.tmp").exists(),
+        "e o `.tmp` de uma escrita interrompida e' limpo")
+
+    done = q3.mark_done(str(second["id"]), text="o audio que esperou virou texto")
+    add(done["state"] == "done"
+        and json.loads((root / (str(second["id"]) + ".json")).read_text(encoding="utf-8"))["text"]
+        == "o audio que esperou virou texto",
+        "o bloco transcrito fica `done` com o TEXTO no manifesto (durável)")
+
+    # ADOPCAO: o spool de um worker MORTO vai para a fila; o de um VIVO nao.
+    dead_dir = tmp / ("sotto-pending-audio-999999")
+    dead_dir.mkdir()
+    spool = dead_dir / "pending-999999-0001.f32"
+    spool.write_bytes(raw_a)
+    old = _time.time() - 60
+    os.utime(spool, (old, old))
+    live_dir = tmp / ("sotto-pending-audio-%d" % os.getpid())
+    live_dir.mkdir()
+    live_spool = live_dir / f"pending-{os.getpid()}-0001.f32"
+    live_spool.write_bytes(raw_b)
+    os.utime(live_spool, (old, old))
+    adopted = q3.adopt_dead_spools(roots=[dead_dir, live_dir])
+    sources = [e["source"] for e in q3.pending()]
+    add(adopted == 1 and any("sotto-pending-audio-999999" in s for s in sources),
+        "o spool de um worker MORTO e' adoptado para a fila", "adopted=%d" % adopted)
+    add(not any(str(os.getpid()) == s.split("-")[-1] for s in sources),
+        "e o de um worker VIVO nao (senao a mesma frase entrava duas vezes)")
+    add(q3.adopt_dead_spools(roots=[dead_dir]) == 0,
+        "a segunda leitura nao duplica o mesmo ficheiro (indice `adopted.json`)")
+    add(spool.exists(),
+        "a adopcao COPIA: o spool do worker nao e' apagado por outro modulo")
+
+
+def arms_engine(batch_path: Path) -> None:
+    """ARM 14 -- o lote da fila e' o MESMO motor que o worker ja' usa.
+
+    A ORDEM DO ASSENTO PRINCIPAL (2026-11-03): *"o batch ja' existe e e' o
+    parakete... nao escreva um segundo transcritor"*. Medido nesta maquina: o
+    `worker/redux_batch.py` (o runner TERNARIO) nao tem checkpoint --
+    `worker/models/parakeet-redux-ternary` nao existe --, e o motor que o worker
+    REALMENTE usa e' o ONNX int4 via `redux_live.load_backend('onnx', ...)`
+    (`worker/engine_policy.py`, `ParakeetEngine`). O driver da fila chama
+    EXACTAMENTE esse `load_backend` com o MESMO directorio; nao ha' motor novo,
+    nem pesos novos, nem uma segunda forma de ler o audio.
+    """
+    print("\nARM 14 -- o lote da fila usa o MESMO backend do worker (nao um segundo)")
+    source = batch_path.read_text(encoding="utf-8")
+    add("redux_live" in source and "load_backend" in source,
+        "o driver carrega o backend de `redux_live.load_backend` (o do worker)")
+    add("'onnx'" in source and "DEFAULT_ONNX_DIR" in source,
+        "e pede o export ONNX int4 por omissao (nao inventa caminho de pesos)")
+    add("ParakeetTdtRuntime" not in source and "onnxruntime" not in source,
+        "o driver NAO constroi um runtime proprio (nenhum motor embutido)")
+    worker_dir = batch_path.parent.parent.parent / "worker"
+    try:
+        sys.path.insert(0, str(worker_dir))
+        if str(worker_dir) not in sys.path:
+            raise ImportError(worker_dir)
+        import importlib
+
+        live = importlib.import_module("redux_live")
+        switch = importlib.import_module("engine_switch")
+        add(os.path.isdir(live.DEFAULT_ONNX_DIR),
+            "o checkpoint ONNX que os dois abrem existe no disco",
+            str(live.DEFAULT_ONNX_DIR))
+        add(os.path.normcase(os.path.join(str(worker_dir), switch.REDUX_LIVE_ONNX_RELPATH))
+            == os.path.normcase(live.DEFAULT_ONNX_DIR),
+            "e o directorio do driver e' o MESMO que o interruptor do worker resolve")
+        ternary = os.path.join(str(worker_dir), "models", "parakeet-redux-ternary")
+        add(not os.path.isdir(ternary),
+            "o runner TERNARIO (`redux_batch.py`) nao tem checkpoint nesta maquina"
+            " -- escolhe-lo seria um caminho que nunca corre",
+            ternary)
+    except Exception as exc:                                     # noqa: BLE001
+        add(False, "os modulos do worker importam para medir o motor", repr(exc))
+
+
+class _FakeChild:
+    """Um filho que nunca acaba -- ate' ser morto (o caso do ceder)."""
+
+    #: Tecto de polls: um mutante que APAGA o ceder deixaria o `step()` num laco
+    #: infinito (o braco nunca voltaria). Depois de `max_polls` o filho "acaba"
+    #: com rc=-9, e o braco fica com um resultado (errado, como deve) em vez de
+    #: ficar pendurado.
+    max_polls = 8
+
+    def __init__(self, out="", rc=0, hang=False, on_communicate=None):
+        self.out = out
+        self.err = ""
+        self.returncode = rc
+        self.hang = hang
+        self.killed = False
+        self.on_communicate = on_communicate
+        self.polls = 0
+
+    def communicate(self, timeout=None):
+        self.polls += 1
+        if self.on_communicate is not None:
+            self.on_communicate(self.polls)
+        if self.hang and not self.killed and self.polls <= self.max_polls:
+            raise _TimeExpired("fake-child", timeout)
+        if self.hang and not self.killed:
+            self.returncode = self.returncode if self.returncode else -9
+        return self.out, self.err
+
+    def kill(self):
+        self.killed = True
+        self.returncode = -9
+
+
+import subprocess as _subprocess
+
+_TimeExpired = _subprocess.TimeoutExpired
+
+
+def arms_executor(batch_path: Path, tmp: Path) -> None:
+    print("\nARM 13 -- o EXECUTOR corre com nada carregado e CEDE quando a carga sobe")
+    batch = load(batch_path)
+    root = tmp / "exec-queue"
+    level = {"value": "muito-alta"}
+    spawned: list = []
+    children: list = []
+
+    def fake_spawn(cmd):
+        spawned.append(cmd)
+        child = _FakeChild(out=json.dumps({"type": "caption", "text": "linha",
+                                           "start": 0.0, "end": 0.1})
+                           + "\n" + json.dumps({"type": "result", "text": "linha"}))
+        children.append(child)
+        return child
+
+    ex = batch.BatchExecutor(queue=batch.BatchQueue(path=str(root),
+                                                    log_fn=lambda _m: None),
+                             log_fn=lambda _m: None,
+                             level_fn=lambda: level["value"], spawn=fake_spawn,
+                             child_poll_s=0.01, yield_backoff_s=0.0)
+    raw = b"\x00\x00\x80\x3f" * 1600
+    ex.queue.enqueue_f32(raw, source="oracle-exec", now=1000.0)
+    add(ex.queue.stats()["queued"] == 1, "um bloco para transcrever na fila")
+
+    state, detail = ex.step()
+    add(state == "idle" and not spawned,
+        "com a carga acima de `leve` o executor NAO arranca nada",
+        "state=%s detail=%s spawned=%d" % (state, detail, len(spawned)))
+    add(ex.allowed() is False, "`alta`/`muito-alta` nao sao nivel para o lote")
+
+    level["value"] = "leve"
+    state, detail = ex.step()
+    add(state == "done" and ex.done == 1 and ex.queue.stats()["done"] == 1,
+        "com a carga liberta o bloco e' transcrito e marcado `done`",
+        "state=%s detail=%s" % (state, str(detail)[:40]))
+    add(ex.queue.entries[0].get("text") == "linha",
+        "e o texto transcrito fica no manifesto",
+        repr(ex.queue.entries[0].get("text")))
+    add(any("--transcribe" in " ".join(cmd) for cmd in spawned),
+        "o filho e' o driver `--transcribe` (um ficheiro, sem dispositivo)")
+
+    # O CEDER: a carga sobe a meio do bloco -> o filho e' morto e o bloco volta.
+    level["value"] = "leve"
+    entry = ex.queue.enqueue_f32(raw, source="oracle-yield", now=1002.0)
+    hang_children: list = []
+
+    def hang_spawn(cmd):
+        child = _FakeChild(hang=True)
+        hang_children.append(child)
+        return child
+
+    ex._spawn = hang_spawn
+    ticks = {"n": 0}
+
+    def rise(_polls):
+        ticks["n"] += 1
+        if ticks["n"] >= 2:
+            level["value"] = "alta"
+
+    hang_children = []
+    ex.child_poll_s = 0.01
+    ex.yield_backoff_s = 0.0
+
+    def spawn_with_rise(cmd):
+        child = _FakeChild(hang=True, on_communicate=rise)
+        hang_children.append(child)
+        return child
+
+    ex._spawn = spawn_with_rise
+    state, detail = ex.step()
+    requeued = [e for e in ex.queue.entries if e["id"] == entry["id"]][0]
+    add(state == "yield" and ex.yields == 1,
+        "a carga a subir a meio do bloco faz o executor CEDER",
+        "state=%s detail=%s yields=%d" % (state, detail, ex.yields))
+    add(bool(hang_children) and hang_children[-1].killed,
+        "e o processo do lote e' MORTO (nao fica a competir com o dono)")
+    add(requeued["state"] == "queued" and int(requeued.get("attempts") or 0) == 0,
+        "o bloco volta a fila e o ceder NAO conta como falha",
+        "state=%s attempts=%s" % (requeued["state"], requeued.get("attempts")))
+    add(ex.queue.stats()["pending_s"] > 0,
+        "o audio continua na fila (nada foi deitado fora ao ceder)",
+        "pending_s=%s" % ex.queue.stats()["pending_s"])
+
+    # A PRIORIDADE, MEDIDA: um filho real arranca e o Windows diz-nos a classe.
+    try:
+        import psutil
+
+        child = batch._spawn_below_normal([sys.executable, "-c", "import time; time.sleep(0.6)"])
+        try:
+            got = psutil.Process(child.pid).nice()
+        finally:
+            child.communicate(timeout=10)
+        add(got == psutil.BELOW_NORMAL_PRIORITY_CLASS,
+            "o filho REAL arranca com prioridade BELOW_NORMAL (medido com psutil)",
+            "nice=%s" % got)
+    except Exception as exc:                                     # noqa: BLE001
+        add(False, "o filho REAL arranca com prioridade BELOW_NORMAL (medido)",
+            "nao medido: %r" % (exc,))
+
+
 def verdict(name: str) -> int:
     failed = [r for r in rows if not r[0]]
     print(f"\n{name} {'GREEN' if not failed else 'VERMELHO'} -- "
@@ -330,7 +787,7 @@ def verdict(name: str) -> int:
     return EXIT_PASS if not failed else EXIT_FAIL
 
 
-def run(module_path: Path, shell_path: Path) -> int:
+def run(module_path: Path, shell_path: Path, batch_path: Path | None = None) -> int:
     # UMA CORRIDA, UM VEREDICTO: sem isto o segundo mutante herdava as linhas do
     # primeiro e o total (`arms=82`) descrevia duas corridas como uma.
     rows.clear()
@@ -441,8 +898,8 @@ def run(module_path: Path, shell_path: Path) -> int:
             " (foi exactamente essa leitura que a desarmou a 2026-10-30)")
     start_line, log_line, guard_ok = _start_log_outside_guard(tree)
     add(guard_ok,
-        "o log `LOAD_SHEDDING_STARTED` corre DEPOIS do `try` do `.start()`"
-        " (linha %s contra .start() na linha %s)" % (log_line, start_line))
+        "o log `LOAD_SHEDDING_STARTED` corre DEPOIS do `try` do ARRANQUE"
+        " (linha %s contra o arranque na linha %s)" % (log_line, start_line))
     pid, seg = newest_shell_segment()
     add('LOAD_SHEDDING_START_FAILED' not in seg,
         "a INSTANCIA VIVA (pid %s) nao tem `LOAD_SHEDDING_START_FAILED`"
@@ -462,9 +919,237 @@ def run(module_path: Path, shell_path: Path) -> int:
     load_tmp = Path(tempfile.mkdtemp(prefix="load-shed-load-"))
     try:
         arms_load(globals().get("WORKER", ROOT / "worker" / "sotto_worker.py"), load_tmp)
+        # A ACCAO, a FILA e o EXECUTOR (ordem do dono, 2026-11-03). O
+        # `batch_queue.py` vive AO LADO do `load_shedding.py` que se esta' a
+        # medir: numa corrida de mutante, e' a copia dele que corre.
+        batch_path = batch_path or (module_path.parent / "batch_queue.py")
+        add(batch_path.exists(), "o `batch_queue.py` da lane esta' no layout medido",
+            str(batch_path))
+        if batch_path.exists():
+            arms_action(module_path)
+            arms_queue(batch_path, load_tmp)
+            arms_executor(batch_path, load_tmp)
+            arms_engine(batch_path)
+            arms_worker_channel(module_path)
+            arms_live_gesture(load(module_path),
+                              module_path.read_text(encoding="utf-8"))
+            arms_anti_thrash(load(module_path))
     finally:
         shutil.rmtree(load_tmp, ignore_errors=True)
     return verdict("LOAD-SHEDDING")
+
+
+def arms_live_gesture(ls, src=None) -> None:
+    """ARM 16 -- a accao NUNCA larga o motor AO VIVO (o nemotron).
+
+    Medido na app do dono (`_main/webview-run.log`, 2026-11-03): quatro niveis
+    publicados em ~15 s, cada par a mandar largar/recarregar o nemotron, e a
+    legenda ao vivo a morrer com uma maquina a 92,6 % de CPU. Com o ao vivo
+    ligado (`_caption_wanted`), o unico valor que este laco pode escrever no
+    `shed` e' `leve`: o nemotron e' do GESTO do dono, nao de um limiar.
+    """
+    print("\nARM 16 -- o motor ao vivo e' do GESTO, nao do limiar")
+    src = src or ""
+    add("monitor.state = view" in src,
+        "o shell le' o nivel PUBLICADO (`shedding_level` -> `monitor.state.level`)")
+    add("getattr(shell, '_caption_wanted', True)" in src,
+        "e o sinal do ao vivo e' o GESTO do dono (`_caption_wanted`), nao o limiar")
+    add("LOAD_ACTION_LIVE_HELD" in src,
+        "e a decisao contrariada fica no log (uma vez por minuto)")
+    logs = []
+    act, calls = _action(ls, [(99.0, 99.0)], log=logs, live=True, samples=3)
+    for i in range(3):
+        act.tick(now=i * 5.0)
+    add(act.state.level == "muito-alta" and calls["publish"] == 0,
+        "com o ao vivo LIGADO, uma maquina a 99 % nao publica NADA (fica `leve`)",
+        "decision=%s published=%s escritas=%d"
+        % (act.state.level, act.published, calls["publish"]))
+    add(act.target() == "leve" and act.published == "leve",
+        "o alvo publicado e' `leve` enquanto o ao vivo estiver ligado",
+        "target=%s published=%s" % (act.target(), act.published))
+    add(not any("PUBLISHED" in m and "engines=parakeet" in m for m in logs),
+        "e o log nao anuncia uma largada que nunca aconteceu",
+        str([m[:60] for m in logs if "PUBLISHED" in m]) or "nenhum PUBLISHED")
+
+    # O GESTO MANDA NOS DOIS SENTIDOS: desligar o ao vivo devolve o limiar a
+    # accao, e VOLTAR A LIGAR-LO devolve o `leve` ao ficheiro DE IMEDIATO
+    # (mesmo dentro do dwell: isto nao carrega modelo nenhum, e' desligar a
+    # politica para o produto voltar).
+    state = {"live": False}
+    logs2 = []
+    act2, calls2 = _action(ls, [(99.0, 99.0)], live=lambda: state["live"],
+                           samples=3, dwell_s=60.0, log=logs2)
+    for i in range(3):
+        act2.tick(now=i * 5.0)
+    add(act2.published == "muito-alta",
+        "com o ao vivo DESLIGADO o limiar volta a publicar o nivel decidido",
+        "published=%s" % act2.published)
+    add(any("live=por-limiar" in m for m in logs2),
+        "e ai o log diz que quem decidiu foi o LIMIAR",
+        next((m for m in logs2 if "PUBLISHED" in m), "-")[:110])
+    state["live"] = True
+    act2.tick(now=15.0)
+    add(act2.published == "leve",
+        "e LIGAR o ao vivo publica `leve` no tick seguinte, dentro do dwell",
+        "published=%s since=%.0fs" % (act2.published,
+                                      act2.as_dict(now=15.0)["since_publish_s"] or -1))
+    add(any("live=nemotron-por-gesto" in m for m in logs2),
+        "e o log diz QUEM decidiu (o gesto), em vez de mentir sobre o limiar",
+        next((m for m in logs2 if "live=nemotron-por-gesto" in m), "-")[:110])
+
+    # A VISTA: o shell le' o publicado, a decisao fica no estado real.
+    real = ls.LoadShedding()
+    view = ls.PublishedView(real)
+    real.observe(99.0, 5.0)
+    view.set_published("leve")
+    add(view.level == "leve" and real.level == "muito-alta",
+        "o shell le' o PUBLICADO (`PublishedView`) e a decisao fica no estado",
+        "view=%s real=%s" % (view.level, real.level))
+    add(view.engines() == real.engines(),
+        "e a vista nao esconde mais nada do estado (so' o nivel)",
+        str(view.stopped()))
+
+
+def arms_anti_thrash(ls) -> None:
+    """ARM 17 -- o ANTI-TRITURADOR: dwell nas duas direccoes, subida sustentada.
+
+    A sequencia que o assento principal mediu na app viva (88/60/88/60 em ~15 s)
+    tem de produzir NO MAXIMO UMA publicacao, e subir para `alta` tem de esperar
+    as mesmas amostras sustentadas que descer. Sem isto o que o dono ve e'
+    *"o modelo loading ta toda hora saind out de load"*.
+    """
+    print("\nARM 17 -- anti-triturar: dwell de %.0f s e subida sustentada"
+          % ls.MIN_DWELL_S)
+    add(ls.MIN_DWELL_S >= 60.0, "o dwell minimo entre duas publicacoes e' >= 60 s",
+        "MIN_DWELL_S=%.1f" % ls.MIN_DWELL_S)
+
+    # A SEQUENCIA MEDIDA, 4 leituras em 15 s (ticks de 3,75 s).
+    seq = [(88.0, 10.0), (60.0, 10.0), (88.0, 10.0), (60.0, 10.0)]
+    act, calls = _action(ls, seq, samples=3)
+    for i in range(4):
+        act.tick(now=i * 3.75)
+    add(act.publications <= 1,
+        "a sequencia 88/60/88/60 em 15 s publica NO MAXIMO UMA vez",
+        "publications=%d levels=%s" % (act.publications, calls["levels"]))
+    add(act.as_dict()["action"] != "published"
+        or act.last_publish_at is not None,
+        "e o buffer nao escreve duas vezes o mesmo nivel", str(calls["levels"]))
+
+    # SUBIR PARA `alta` NAO E' IMEDIATO: a primeira leitura de 92 % nao publica.
+    spike, calls_spike = _action(ls, [(92.0, 10.0)] * 6, samples=3)
+    spike.tick(now=0.0)
+    add(spike.publications == 0,
+        "a PRIMEIRA leitura a 92 % nao publica `alta` (subir nao e' imediato)",
+        "publications=%d published=%s" % (spike.publications, spike.published))
+    for i in range(1, 3):
+        spike.tick(now=i * 3.75)
+    add(spike.publications == 1 and spike.published == "alta",
+        "e ao fim das MESMAS %d amostras sustentadas ele publica" % 3,
+        "publications=%d published=%s" % (spike.publications, spike.published))
+
+    # OSCILACAO LONGA: nenhuma publicacao a menos de MIN_DWELL_S da anterior.
+    long_seq = ([(60.0, 10.0)] * 6 + [(90.0, 10.0)] * 6) * 5
+    # `floor_s=0`: aqui mede-se o DWELL (o piso das descidas tem o seu proprio
+    # braco, e o relogio do piso e' o real -- injecta-lo aqui so' mediria o
+    # oraculo).
+    osc, calls_osc = _action(ls, long_seq, samples=3, dwell_s=ls.MIN_DWELL_S,
+                             floor_s=0.0)
+    stamps = []
+    for i in range(len(long_seq)):
+        before = osc.publications
+        osc.tick(now=i * 5.0)
+        if osc.publications != before:
+            stamps.append(i * 5.0)
+    gaps = [b - a for a, b in zip(stamps, stamps[1:])]
+    add(all(g >= ls.MIN_DWELL_S for g in gaps),
+        "duas publicacoes nunca ficam a menos de MIN_DWELL_S uma da outra",
+        "publicacoes=%d folgas=%s" % (len(stamps), [round(g) for g in gaps]))
+    add(len(stamps) >= 2,
+        "e a oscilacao real continua a publicar (o dwell nao e' um cadeado)",
+        "publicacoes em 300 s=%d" % len(stamps))
+
+    # `muito-alta` E' A EXCEPCAO: e' a maquina a sufocar.
+    suff, calls_suff = _action(ls, [(99.0, 10.0)], samples=3)
+    suff.tick(now=0.0)
+    add(suff.published == "muito-alta",
+        "`muito-alta` sobe na PRIMEIRA leitura (a maquina esta' a sufocar)",
+        "published=%s after=%d leituras" % (suff.published, 1))
+
+
+def arms_worker_channel(module_path: Path) -> None:
+    """ARM 15 -- o nivel so' vale se o WORKER o ler: o canal fica armado.
+
+    Sem `SOTTO_REDUX_WHEN_HIDDEN=1` o worker constroi `switch = None` e o `shed`
+    que este laco publica e' um numero que ninguem obedece. O arranque da accao
+    escreve a variavel (o shell monta o ambiente do filho com `dict(os.environ)`),
+    e NAO a escreve quando a accao esta desarmada nem quando o operador ja' deu
+    um valor.
+    """
+    print("\nARM 15 -- o canal do worker e' armado pelo arranque da ACCAO")
+    src = module_path.read_text(encoding="utf-8")
+    add("SOTTO_REDUX_WHEN_HIDDEN" in src,
+        "o modulo conhece o canal que o worker le'",
+        "SOTTO_REDUX_WHEN_HIDDEN")
+    add("def _arm_worker_channel" in src,
+        "e tem uma funcao que o arma no arranque")
+    add("self._arm_worker_channel()" in src,
+        "e o `LoadGuard.start()` chama-a ANTES de arrancar o laco")
+    saved = os.environ.pop("SOTTO_REDUX_WHEN_HIDDEN", None)
+    try:
+        module = load(module_path)
+        class _S:
+            shedding_level = "leve"
+            _caption_wanted = False
+            def publish_shedding_level(self, _level):
+                return True
+        lines = []
+        guard = module.open_action(_S(), executor=False,
+                                   log_fn=lambda m: lines.append(m))
+        add(os.environ.get("SOTTO_REDUX_WHEN_HIDDEN") == "1",
+            "a accao ARMADA poe SOTTO_REDUX_WHEN_HIDDEN=1 no ambiente",
+            repr(os.environ.get("SOTTO_REDUX_WHEN_HIDDEN")))
+        add(any("LOAD_ACTION_WORKER_CHANNEL" in m for m in lines),
+            "e diz no log porque' o fez",
+            " | ".join(lines[-1:]))
+        add(guard.action.as_dict().get("worker_channel") == "1",
+            "o estado relata o canal armado",
+            repr(guard.action.as_dict().get("worker_channel")))
+        os.environ.pop("SOTTO_REDUX_WHEN_HIDDEN", None)
+        # O OPERADOR MANDA: um valor ja' presente nao e' reescrito.
+        os.environ["SOTTO_REDUX_WHEN_HIDDEN"] = "0"
+        lines2 = []
+        module.open_action(_S(), executor=False,
+                           log_fn=lambda m: lines2.append(m))
+        add(os.environ.get("SOTTO_REDUX_WHEN_HIDDEN") == "0",
+            "e um valor do OPERADOR nao e' reescrito",
+            repr(os.environ.get("SOTTO_REDUX_WHEN_HIDDEN")))
+        add(any("source=env" in m for m in lines2),
+            "e o log diz que o canal veio do ambiente",
+            " | ".join(lines2[-1:]))
+        # DESARMADA: nao arma nada.
+        os.environ.pop("SOTTO_REDUX_WHEN_HIDDEN", None)
+        lines3 = []
+        saved_act = os.environ.get("SOTTO_LOAD_SHED_ACT")
+        os.environ["SOTTO_LOAD_SHED_ACT"] = "0"
+        try:
+            module.open_action(_S(), executor=False,
+                               log_fn=lambda m: lines3.append(m))
+        finally:
+            if saved_act is None:
+                os.environ.pop("SOTTO_LOAD_SHED_ACT", None)
+            else:
+                os.environ["SOTTO_LOAD_SHED_ACT"] = saved_act
+        add(os.environ.get("SOTTO_REDUX_WHEN_HIDDEN") is None,
+            "a accao DESARMADA nao arma o worker",
+            repr(os.environ.get("SOTTO_REDUX_WHEN_HIDDEN")))
+        add(any("armed=false" in m for m in lines3),
+            "e o log diz que a accao esta' desarmada",
+            " | ".join(lines3[-1:]))
+    finally:
+        if saved is None:
+            os.environ.pop("SOTTO_REDUX_WHEN_HIDDEN", None)
+        else:
+            os.environ["SOTTO_REDUX_WHEN_HIDDEN"] = saved
 
 
 def neg_arm() -> int:
@@ -485,7 +1170,7 @@ def neg_arm() -> int:
             return EXIT_PASS
         target.write_text(mutant, encoding="utf-8")
         print("NEG-ARM: 'alta' passa a deixar o nemotron a correr (a ordem invertida)")
-        rc = run(copy / "load_shedding.py", copy / "sotto_webview.py")
+        rc = run(copy / "load_shedding.py", copy / "sotto_webview.py", BATCH)
         if rc == EXIT_FAIL:
             print("\nNEG-ARM PASS -- RED as designed: o mutante derruba o oraculo")
             return EXIT_FAIL
@@ -524,7 +1209,7 @@ def neg_arm_channel() -> int:
         switch_copy.write_text(mutant, encoding="utf-8")
         print("NEG-ARM(canal): `muito-alta` passa a deixar o parakeet a correr")
         globals()["WORKER"] = worker_copy
-        rc = run(copy / "load_shedding.py", copy / "sotto_webview.py")
+        rc = run(copy / "load_shedding.py", copy / "sotto_webview.py", BATCH)
         if rc == EXIT_FAIL:
             print("\nNEG-ARM(canal) PASS -- RED as designed: o mutante derruba o oraculo")
             return EXIT_FAIL
@@ -942,6 +1627,121 @@ def neg_arm_selector() -> int:
     return EXIT_PASS
 
 
+def _mutant_copy(tmp: Path):
+    """Uma copia do repo em miniatura: os TRES ficheiros desta lane."""
+    copy = tmp / "app" / "webview"
+    copy.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(MODULE, copy / "load_shedding.py")
+    shutil.copy2(SHELL, copy / "sotto_webview.py")
+    if BATCH.exists():
+        shutil.copy2(BATCH, copy / "batch_queue.py")
+    return copy
+
+
+def _neg_arm_text(label, path_in_copy, old, new, why, prefix):
+    """Muta `old -> new` numa copia e exige RED. Devolve o rc do braco.
+
+    `EXIT_FAIL` = o mutante derrubou o oraculo (o braco PASSA); `EXIT_PASS` = o
+    oraculo continuou verde com o defeito dentro (o braco FALHA).
+    """
+    tmp = Path(tempfile.mkdtemp(prefix=prefix))
+    try:
+        copy = _mutant_copy(tmp)
+        target = copy / path_in_copy
+        text = target.read_text(encoding="utf-8")
+        mutant = text.replace(old, new)
+        if mutant == text:
+            print("NEG-ARM(%s): nao consegui mutar o alvo (o texto mudou)" % label)
+            return EXIT_PASS
+        target.write_text(mutant, encoding="utf-8")
+        print("NEG-ARM(%s): %s" % (label, why))
+        rc = run(copy / "load_shedding.py", copy / "sotto_webview.py",
+                 copy / "batch_queue.py")
+        if rc == EXIT_FAIL:
+            print("\nNEG-ARM(%s) PASS -- RED as designed: o mutante derruba o oraculo"
+                  % label)
+            return EXIT_FAIL
+        print("\nNEG-ARM(%s) FAIL -- o oraculo NAO ve %s" % (label, why))
+        return EXIT_PASS
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def neg_arm_floor() -> int:
+    """PISO 180 s -> 0: as descidas voltam a poder recarregar modelo em ciclos."""
+    return _neg_arm_text(
+        "piso", "load_shedding.py",
+        "ACTION_FLOOR_S = 180.0", "ACTION_FLOOR_S = 0.0",
+        "o PISO entre descidas passa a 0 s (o triturador do VramGuard)",
+        "load-shed-floor-neg-")
+
+
+def neg_arm_sustain() -> int:
+    """Sustentacao fora: uma leitura calma devolve ja' os modelos."""
+    return _neg_arm_text(
+        "histerese", "load_shedding.py",
+        "elif self._stable >= self.samples:", "elif self._stable >= 1:",
+        "UMA leitura calma passa a bastar para devolver os modelos",
+        "load-shed-sustain-neg-")
+
+
+def neg_arm_persist() -> int:
+    """Crash recovery fora: o `inflight` de um processo morto fica perdido."""
+    return _neg_arm_text(
+        "restart", "batch_queue.py",
+        "if entry.get('state') == 'inflight':",
+        "if False and entry.get('state') == 'inflight':",
+        "o `inflight` de um processo morto deixa de voltar a fila (o restart perde audio)",
+        "load-shed-persist-neg-")
+
+
+def neg_arm_dwell() -> int:
+    """DWELL 60 s -> 0: os niveis voltam a poder ser publicados a 3 s um do outro."""
+    return _neg_arm_text(
+        "dwell", "load_shedding.py",
+        "MIN_DWELL_S = 60.0", "MIN_DWELL_S = 0.0",
+        "sem dwell entre publicacoes (o triturador medido na app do dono)",
+        "load-shed-dwell-neg-")
+
+
+def neg_arm_rise_immediate() -> int:
+    """A subida volta a ser IMEDIATA para `alta`, sem sustentacao nem dwell."""
+    old = """                elif since is not None and since < self.dwell_s:
+                    self.held += 1
+                    self._skip_log('LOAD_ACTION_HELD level=%s published=%s'
+                                   ' reason=dwell since=%.0fs dwell=%.0fs'
+                                   % (target, self.published, since,
+                                      self.dwell_s), now)
+                elif (LEVELS.index(target) > LEVELS.index(self.published)
+                      and target == 'muito-alta'):"""
+    new = """                elif LEVELS.index(target) > LEVELS.index(self.published):"""
+    return _neg_arm_text(
+        "subida", "load_shedding.py", old, new,
+        "SUBIR volta a ser imediato para `alta` (ignora sustentacao e dwell)",
+        "load-shed-rise-neg-")
+
+
+def neg_arm_channel_arm() -> int:
+    """O `start()` deixa de armar o canal do worker -> o `shed` volta a ser um
+    numero que ninguem le'."""
+    return _neg_arm_text(
+        "canal", "load_shedding.py",
+        "        self._arm_worker_channel()\n",
+        "        pass  # canal nao armado\n",
+        "o `shed` publicado deixa de chegar ao worker (ninguem le' o nivel)",
+        "load-shed-chan-neg-")
+
+
+def neg_arm_yield() -> int:
+    """O executor deixa de ceder: continua a correr com a maquina carregada."""
+    return _neg_arm_text(
+        "cede", "batch_queue.py",
+        "                    if not self.allowed():\n                        self._kill(child)",
+        "                    if False:\n                        self._kill(child)",
+        "o executor deixa de ceder quando a carga sobe (corre com a maquina cheia)",
+        "load-shed-yield-neg-")
+
+
 def main(argv) -> int:
     if "--neg-arm-drain" in argv:
         return neg_arm_drain()
@@ -956,9 +1756,20 @@ def main(argv) -> int:
         channel = neg_arm_channel()
         drain = neg_arm_drain()
         selector = neg_arm_selector()
-        return (EXIT_FAIL if (table == EXIT_FAIL and channel == EXIT_FAIL
-                              and drain == EXIT_FAIL and selector == EXIT_FAIL)
-                else EXIT_PASS)
+        # OS MUTANTES DA ACCAO (ordem do dono, 2026-11-03): o piso, a sustentacao,
+        # a fila a sobreviver ao restart, e o executor a ceder sob carga. Seis
+        # mutantes, e o pior dos seis e' o veredicto: um verde num deles nao
+        # compra os outros.
+        chan = neg_arm_channel_arm()
+        dwell = neg_arm_dwell()
+        rise = neg_arm_rise_immediate()
+        floor = neg_arm_floor()
+        sustain = neg_arm_sustain()
+        persist = neg_arm_persist()
+        cede = neg_arm_yield()
+        every = (table, channel, drain, selector, floor, sustain, persist, cede,
+                 chan, dwell, rise)
+        return (EXIT_FAIL if all(rc == EXIT_FAIL for rc in every) else EXIT_PASS)
     return run(MODULE, SHELL)
 
 
