@@ -490,6 +490,15 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:                                           # noqa: BLE001
         pass
+    # O AUDIO DO DONO NAO SE TOCA (ordem 2026-11-02). Este oraculo e' um dos
+    # instrumentos que ABREM endpoint; sem a bandeira dele ele nao corre, e diz
+    # SKIPPED -- nunca GREEN, porque um passo saltado nao e' um portao que passou.
+    if str(os.environ.get("SOTTO_OWNER_AUDIO_OK") or "").strip() != "1":
+        print("MUTE-AUDIO VERDICT: SKIPPED")
+        print("recusa: audio do dono (mute-audio-oracle nao corre sem "
+              "SOTTO_OWNER_AUDIO_OK=1)")
+        print("\nVERDICT: SKIPPED")
+        return EXIT_PASS
     if not os.path.isfile(MODULE_PATH):
         print("RED   module missing: %s" % MODULE_PATH)
         return EXIT_FAIL

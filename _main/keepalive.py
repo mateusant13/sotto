@@ -27,9 +27,13 @@ if os.environ.get('SOTTO_LANE_LAUNCH') != '1':
     sys.exit(0)
 
 w('keepalive start pid=%d' % os.getpid())
+# CREATE_NO_WINDOW (0x08000000): sem ele o `cmd.exe` filho ALOCA uma consola e o
+# dono ve a janela. Ordem dele, 2026-11-02: nada em foreground. Portao:
+# `_main/console-window-gate.py`.
 subprocess.Popen(['cmd.exe', '/c', 'Sotto.cmd'], cwd=r'H:\sotto',
                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                 stderr=subprocess.DEVNULL, close_fds=True)
+                 stderr=subprocess.DEVNULL, close_fds=True,
+                 creationflags=0x08000000)
 w('Sotto.cmd lancado sem a bandeira de mostrar; a manter a tarefa viva enquanto a app existir')
 
 try:

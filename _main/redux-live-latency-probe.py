@@ -102,8 +102,9 @@ class Sampler(threading.Thread):
             t = time.perf_counter()
             try:
                 out = subprocess.run(
-                    ["pwsh", "-NoProfile", "-Command", script],
+                    ["pwsh", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script],
                     capture_output=True, text=True, timeout=20,
+                    creationflags=0x08000000,
                 ).stdout.strip()
                 row = json.loads(out) if out else None
             except Exception as exc:  # a failed sample is a HOLE, recorded as one

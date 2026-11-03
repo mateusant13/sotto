@@ -88,7 +88,7 @@ def run_wrapper(path, args, env=None):
     if env:
         full.update(env)
     proc = subprocess.run(["cmd.exe", "/c", path, *args], cwd=ROOT, capture_output=True, text=True,
-                          errors="replace", env=full, timeout=120)
+                          errors="replace", env=full, timeout=120, creationflags=0x08000000)
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
 

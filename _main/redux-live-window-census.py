@@ -118,8 +118,9 @@ def resolve_names(pids) -> dict:
     script = (f"Get-Process -Id {listing} -ErrorAction SilentlyContinue | "
               "Select-Object Id,ProcessName | ConvertTo-Json -Compress")
     try:
-        out = subprocess.run(["pwsh", "-NoProfile", "-Command", script],
-                             capture_output=True, text=True, timeout=30).stdout.strip()
+        out = subprocess.run(["pwsh", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script],
+                             capture_output=True, text=True, timeout=30,
+                             creationflags=0x08000000).stdout.strip()
     except Exception as exc:                      # noqa: BLE001 - reported, never hidden
         print(f"# WARN name resolution failed: {exc!r}")
         return {}

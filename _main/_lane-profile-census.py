@@ -54,8 +54,8 @@ foreach ($s in $shells) {
 
 
 def sample():
-    out = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', PS],
-                         capture_output=True, text=True, timeout=120)
+    out = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', PS],
+                         capture_output=True, text=True, timeout=120, creationflags=0x08000000)
     rows = []
     for line in out.stdout.splitlines():
         parts = [p.strip() for p in line.split('|')]

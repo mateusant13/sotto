@@ -362,6 +362,15 @@ def main(argv: list[str]) -> int:
     secs = args[0] if args else "20"
     os.makedirs(RUNS, exist_ok=True)
 
+    # O AUDIO DO DONO NAO SE TOCA (ordem 2026-11-02): este oraculo RENDERIZA e
+    # abre endpoint. Sem a bandeira dele nao corre -- e diz SKIPPED, nunca GREEN.
+    if str(os.environ.get("SOTTO_OWNER_AUDIO_OK") or "").strip() != "1":
+        print("DEVICE-SILENCE VERDICT: SKIPPED")
+        print("recusa: audio do dono (device-silence nao corre sem "
+              "SOTTO_OWNER_AUDIO_OK=1)")
+        print("\nVERDICT: SKIPPED")
+        return 0
+
     if neg:
         return neg_arm(secs)
 
@@ -389,6 +398,9 @@ def main(argv: list[str]) -> int:
     say({"oracle": "device-silence",
          "verdict": "PASS" if not failures else "FAIL",
          "failures": failures})
+    # A plain line, because the battery's skip-capable accounting greps TEXT and
+    # not the JSON: the same shape the mute oracle already prints.
+    print("DEVICE-SILENCE VERDICT: %s" % ("PASS" if not failures else "FAIL"))
     return 1 if failures else 0
 
 

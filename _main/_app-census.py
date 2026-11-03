@@ -15,8 +15,9 @@ _PS = (
 )
 
 r = subprocess.run(
-    ["powershell", "-NoProfile", "-NonInteractive", "-Command", _PS],
+    ["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", _PS],
     capture_output=True,
+    creationflags=0x08000000,
 )
 out = r.stdout.decode("cp850", "replace")
 for line in out.splitlines():

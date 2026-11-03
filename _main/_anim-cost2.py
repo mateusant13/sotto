@@ -89,8 +89,9 @@ def sweep_profile(prof):
     ps = ("Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'chrome.exe' } | "
           "ForEach-Object { $_.ProcessId.ToString() + '|' + [string]$_.CommandLine }")
     try:
-        out = subprocess.run(['powershell', '-NoProfile', '-Command', ps],
-                             capture_output=True, encoding='utf-8', errors='replace').stdout or ''
+        out = subprocess.run(['powershell', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps],
+                             capture_output=True, encoding='utf-8', errors='replace',
+                             creationflags=0x08000000).stdout or ''
     except OSError:
         out = ''
     for line in out.splitlines():

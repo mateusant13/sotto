@@ -52,7 +52,11 @@ def measure_help():
     try:
         with open(path, "wb") as out:
             proc = subprocess.run(["cmd", "/c", WRAPPER + " --help"], stdout=out,
-                                  stderr=subprocess.STDOUT, cwd=ROOT, timeout=180)
+                                  stderr=subprocess.STDOUT, cwd=ROOT, timeout=180,
+                                  # Sem consola: este passo corre na bateria e um
+                                  # `cmd.exe` sem CREATE_NO_WINDOW pisca uma janela
+                                  # no ecra do dono a cada corrida.
+                                  creationflags=0x08000000)
         body = read_bytes(path)
     finally:
         try:

@@ -65,6 +65,19 @@ DEFAULT_STATE_PATH = os.path.join(HERE, STATE_FILENAME)
 EXIT_OK = 0
 EXIT_FAIL = 1
 EXIT_USAGE = 2
+# A WRITE TO THE OWNER'S AUDIO IS A REFUSAL, NOT A HABIT (owner order,
+# 2026-11-02: *"nunca mais roda nada que vai mutar meu audio ou resetar ele e
+# fazer mutar"*). Reading (`--status`, `--status-all`) is free; every path that
+# WRITES a volume/mute needs this flag in the environment, and the refusal is a
+# distinct exit code so a battery step can never mistake it for a pass.
+EXIT_OWNER_AUDIO = 9
+OWNER_AUDIO_ENV = "SOTTO_OWNER_AUDIO_OK"
+# THE JOURNAL: a kill can skip every `finally`, so the mute protocol's state file
+# is not enough on its own (measured 2026-11-02: a battery killed mid-arm left two
+# endpoints at 0.0 with no saved value anywhere). Before ANY write, the value read
+# is appended here; `--repair` puts every journalled endpoint back and clears it.
+JOURNAL_FILENAME = "audio-journal.json"
+DEFAULT_JOURNAL_PATH = os.path.join(HERE, JOURNAL_FILENAME)
 
 ROLE_NAMES = ("console", "multimedia", "communications")
 
@@ -180,6 +193,94 @@ def _try_restore(backend, device_id: str, saved: float) -> bool:
 
 
 # --------------------------------------------------------------------------
+# the owner's audio is not a test bench
+# --------------------------------------------------------------------------
+def owner_audio_allowed() -> bool:
+    """Is a WRITE to an endpoint sanctioned right now?"""
+    return str(os.environ.get(OWNER_AUDIO_ENV) or "").strip() == "1"
+
+
+def refusal(op: str) -> dict:
+    """The one shape every writer returns when the flag is missing."""
+    return {
+        "state": "refused-owner-audio",
+        "op": op,
+        "why": "recusa: audio do dono",
+        "fix": f"ponha {OWNER_AUDIO_ENV}=1 SO se o dono pediu (ordem 2026-11-02)",
+    }
+
+
+# --------------------------------------------------------------------------
+# the journal -- the last line of defence when a process is KILLED
+# --------------------------------------------------------------------------
+def journal_path() -> str:
+    return os.environ.get("SOTTO_AUDIO_JOURNAL") or DEFAULT_JOURNAL_PATH
+
+
+def _journal_read(path: str) -> list:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    rows = data.get("writes") if isinstance(data, dict) else data
+    return rows if isinstance(rows, list) else []
+
+
+def _journal_write(path: str, rows: list) -> None:
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({"writes": rows}, fh, ensure_ascii=False, indent=1)
+        fh.write("\n")
+    os.replace(tmp, path)
+
+
+def journal_record(device_id: str, device_name: str, prior: float, why: str) -> None:
+    """Append the value ABOUT TO BE OVERWRITTEN, before the write happens.
+
+    Write-before-write is the whole point: a `TerminateProcess` between the two
+    lines leaves the journal on disk, which is what `--repair` reads. Recording
+    after the write would lose exactly the case that cost the owner his audio.
+    """
+    path = journal_path()
+    rows = _journal_read(path)
+    rows.append(
+        {
+            "device_id": device_id,
+            "device_name": device_name,
+            "prior_scalar": float(prior),
+            "why": why,
+            "at": time.time(),
+            "pid": os.getpid(),
+        }
+    )
+    _journal_write(path, rows[-200:])
+
+
+def repair(journal: str | None = None) -> dict:
+    """Put every journalled endpoint back to the value recorded BEFORE the write."""
+    path = journal or journal_path()
+    rows = _journal_read(path)
+    backend = PycawBackend(role="console")
+    done, failed = [], []
+    for row in reversed(rows):
+        did = row.get("device_id")
+        prior = row.get("prior_scalar")
+        if not did or prior is None:
+            continue
+        try:
+            backend.set_volume(did, float(prior))
+            done.append({"device": row.get("device_name") or did, "restored_to": float(prior)})
+        except Exception as exc:                       # noqa: BLE001 - reported, not hidden
+            failed.append({"device": row.get("device_name") or did,
+                           "error": f"{type(exc).__name__}: {exc}"})
+    if done and not failed:
+        _journal_write(path, [])
+    return {"state": "repaired", "restored": done, "failed": failed,
+            "journal": path, "cleared": bool(done and not failed)}
+
+
+# --------------------------------------------------------------------------
 # the library
 # --------------------------------------------------------------------------
 def mute_default_output(reason: str = "", backend=None, state_path=None) -> dict:
@@ -213,6 +314,12 @@ def mute_default_output(reason: str = "", backend=None, state_path=None) -> dict
 
     # THE MUTE. Set it to 0, then READ IT BACK: a write that does not take
     # effect is a mute that did not happen.
+    # JOURNAL FIRST: if this process is killed between the two lines below, the
+    # value that was here is on disk and `--repair` can put it back.
+    try:
+        journal_record(device_id, device_name, saved, reason or "mute")
+    except Exception:
+        pass
     try:
         backend.set_volume(device_id, 0.0)
     except Exception as exc:
@@ -388,9 +495,25 @@ def _cli(argv=None) -> int:
     parser.add_argument("--role", default="console", choices=list(ROLE_NAMES),
                         help="which default-output role to mute")
     parser.add_argument("--reason", default="", help="why it is muted")
+    parser.add_argument("--repair", action="store_true",
+                        help="put back EVERY endpoint recorded in the journal (write; needs the owner flag)")
+    parser.add_argument("--journal-status", action="store_true",
+                        help="print the journal -- read-only")
     args = parser.parse_args(argv)
 
     path = args.state_path or default_state_path()
+    if getattr(args, "journal_status", False):
+        _emit({"state": "journal", "journal": journal_path(),
+               "writes": _journal_read(journal_path())})
+        return EXIT_OK
+    # EVERY WRITE BELOW IS THE OWNER'S AUDIO. Refuse without his flag, and say
+    # why in the shape every reader already parses.
+    if (args.mute or args.unmute or getattr(args, "repair", False)) and not owner_audio_allowed():
+        _emit(refusal("mute" if args.mute else "unmute" if args.unmute else "repair"))
+        return EXIT_OWNER_AUDIO
+    if getattr(args, "repair", False):
+        _emit(repair())
+        return EXIT_OK
     backend = PycawBackend(role=args.role)
 
     if getattr(args, "status_all", False):

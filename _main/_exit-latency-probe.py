@@ -120,8 +120,8 @@ def main():
           '$_.CommandLine -like \'*sotto_worker.py*\' -and '
           '$_.Name -eq \'python.exe\' } | '
           'ForEach-Object { $_.ProcessId }')
-    out = subprocess.run(['powershell', '-NoProfile', '-Command', ps],
-                         capture_output=True, text=True)
+    out = subprocess.run(['powershell', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps],
+                         capture_output=True, text=True, creationflags=0x08000000)
     pids = [ln.strip() for ln in out.stdout.splitlines() if ln.strip()]
     print('  %s' % ('NONE' if not pids else 'pids: ' + ', '.join(pids)))
     return 0

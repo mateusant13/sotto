@@ -1225,8 +1225,8 @@ if exist _main\ui-stall-oracle.py (
 ) else ( call :record ui-stall-oracle MISSING )
 if exist _main\mute-audio-oracle.py (
   call :step always heavy mute-audio 0 "_main\mute-audio-oracle.py" "%OUT%\mute-audio.log" python _main\mute-audio-oracle.py
-  call :record mute-audio !STEP_RC!
-) else ( call :record mute-audio MISSING )
+  call :skipped mute-audio !STEP_RC! "%OUT%\mute-audio.log" "VERDICT: PASS" "MUTE-AUDIO VERDICT: SKIPPED" "VERDICT: SKIPPED"
+) else ( call :skipped mute-audio MISSING "%OUT%\mute-audio.log" "VERDICT: PASS" "MUTE-AUDIO VERDICT: SKIPPED" "VERDICT: SKIPPED" )
 REM `device-silence-oracle.py` e' o CONTRATO do dispositivo que nao entrega nada,
 REM medido com o worker REAL em tres bracos (sem shell, sem janela): (1) um
 REM endpoint que ABRE e nao entrega um unico bloco de callback -- MEDIDO
@@ -1242,12 +1242,45 @@ REM nao por copia. O `--neg-arm` repoe a linha antiga numa COPIA do worker e
 REM exige rc=0 nela (rc=1 por desenho).
 if exist _main\device-silence-oracle.py (
   call :step always heavy device-silence 0 "_main\device-silence-oracle.py;worker\sotto_worker.py;worker\wasapi_loopback.py;app\webview\sotto_webview.py;worker\assets\sample1.flac" "%OUT%\device-silence.log" python _main\device-silence-oracle.py
-  call :record device-silence !STEP_RC!
-) else ( call :record device-silence MISSING )
+  call :skipped device-silence !STEP_RC! "%OUT%\device-silence.log" "DEVICE-SILENCE VERDICT: PASS" "DEVICE-SILENCE VERDICT: SKIPPED" "VERDICT: SKIPPED"
+) else ( call :skipped device-silence MISSING "%OUT%\device-silence.log" "VERDICT: PASS" "DEVICE-SILENCE VERDICT: SKIPPED" "VERDICT: SKIPPED" )
 if exist _main\device-silence-oracle.py (
   call :step always heavy red-as-expected-device-silence 1 "_main\device-silence-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\device-silence-neg.log" python _main\device-silence-oracle.py --neg-arm
-  call :expectred red-as-expected-device-silence !STEP_RC! "%OUT%\device-silence-neg.log" "NEG-ARM PASS"
-) else ( call :expectred red-as-expected-device-silence MISSING "%OUT%\device-silence-neg.log" "NEG-ARM PASS" )
+  call :skipped red-as-expected-device-silence !STEP_RC! "%OUT%\device-silence-neg.log" "NEG-ARM PASS" "DEVICE-SILENCE VERDICT: SKIPPED" "VERDICT: SKIPPED"
+) else ( call :skipped red-as-expected-device-silence MISSING "%OUT%\device-silence-neg.log" "NEG-ARM PASS" "DEVICE-SILENCE VERDICT: SKIPPED" "VERDICT: SKIPPED" )
+
+echo === a secretaria do dono: sem janela, sem audio mutado, com a GPU declarada ===
+REM As tres portas que nasceram das ordens dele de 2026-11-02: (1) nada em foreground
+REM (`console-window-gate`: nenhuma chamada nova a cmd/powershell/.cmd sem
+REM CREATE_NO_WINDOW; a divida anterior esta' congelada em baseline e nao cresce),
+REM (2) o audio dele nao se toca (`owner-audio-gate`: escrever exige
+REM SOTTO_OWNER_AUDIO_OK=1, senao rc=9 com `recusa: audio do dono`), (3) o motor AO
+REM VIVO diz em que provider corre (`worker-providers`: um CUDA disponivel e nao
+REM escolhido e' o fallback silencioso medido hoje, 10,75x contra 2,27x).
+if exist _main\console-window-gate.py (
+  call :step always console-window-gate 0 "_main\console-window-gate.py;_main\console-window-baseline.json" "%OUT%\console-window-gate.log" python _main\console-window-gate.py
+  call :record console-window-gate !STEP_RC!
+) else ( call :record console-window-gate MISSING )
+if exist _main\console-window-gate.py (
+  call :step always red-as-expected-console-window-gate 1 "_main\console-window-gate.py" "%OUT%\console-window-gate-neg.log" python _main\console-window-gate.py --neg-arm
+  call :expectred red-as-expected-console-window-gate !STEP_RC! "%OUT%\console-window-gate-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-console-window-gate MISSING "%OUT%\console-window-gate-neg.log" "NEG-ARM: PASS" )
+if exist _main\owner-audio-gate.py (
+  call :step always owner-audio-gate 0 "_main\owner-audio-gate.py;_main\mute-audio.py" "%OUT%\owner-audio-gate.log" python _main\owner-audio-gate.py
+  call :record owner-audio-gate !STEP_RC!
+) else ( call :record owner-audio-gate MISSING )
+if exist _main\owner-audio-gate.py (
+  call :step always red-as-expected-owner-audio-gate 1 "_main\owner-audio-gate.py;_main\mute-audio.py" "%OUT%\owner-audio-gate-neg.log" python _main\owner-audio-gate.py --neg-arm
+  call :expectred red-as-expected-owner-audio-gate !STEP_RC! "%OUT%\owner-audio-gate-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-owner-audio-gate MISSING "%OUT%\owner-audio-gate-neg.log" "NEG-ARM: PASS" )
+if exist _main\worker-providers-oracle.py (
+  call :step always worker-providers 0 "_main\worker-providers-oracle.py;app\webview\sotto_webview.py" "%OUT%\worker-providers.log" python _main\worker-providers-oracle.py
+  call :skipped worker-providers !STEP_RC! "%OUT%\worker-providers.log" "WORKER-PROVIDERS VERDICT: PASS" "WORKER-PROVIDERS VERDICT: SKIPPED" "VERDICT: SKIPPED"
+) else ( call :skipped worker-providers MISSING "%OUT%\worker-providers.log" "WORKER-PROVIDERS VERDICT: PASS" "WORKER-PROVIDERS VERDICT: SKIPPED" "VERDICT: SKIPPED" )
+if exist _main\worker-providers-oracle.py (
+  call :step always red-as-expected-worker-providers 1 "_main\worker-providers-oracle.py" "%OUT%\worker-providers-neg.log" python _main\worker-providers-oracle.py --neg-arm
+  call :expectred red-as-expected-worker-providers !STEP_RC! "%OUT%\worker-providers-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-worker-providers MISSING "%OUT%\worker-providers-neg.log" "NEG-ARM: PASS" )
 
 echo === the adversary lane's probes (corrected: the filters it wrote were RED-forever) ===
 if exist _main\_review-f1f3.py (
@@ -1726,6 +1759,22 @@ if exist _main\flat-endpoint-oracle.py (
 call :step always flat-endpoint 0 "_main\flat-endpoint-oracle.py;worker\wasapi_loopback.py" "%OUT%\flat-endpoint.log" python _main\flat-endpoint-oracle.py
 call :record flat-endpoint !STEP_RC!
 ) else ( call :record flat-endpoint MISSING )
+
+REM -- A MAQUINA CALADA NAO E' UM DISPOSITIVO PARTIDO (2026-11-02) -------------
+REM Medido na sessao viva pid 4404: 12 clientes WASAPI abertos em 3 minutos com o
+REM desktop em silencio (`device-rotated reason=flat` a cada 15 s, `peak=0.0`), e
+REM cada abertura e' um hitch no motor de audio que o dono partilha. O oraculo
+REM executa a funcao REAL do worker (8 arms) e mais a fiacao no ramo da janela; o
+REM `--neg-arm` desliga a guarda numa COPIA e exige os arms 1-2 vermelhos.
+if exist _main\tap-silent-desktop-oracle.py (
+call :step always tap-silent-desktop 0 "_main\tap-silent-desktop-oracle.py;worker\sotto_worker.py" "%OUT%\tap-silent-desktop.log" python _main\tap-silent-desktop-oracle.py
+call :record tap-silent-desktop !STEP_RC!
+) else ( call :record tap-silent-desktop MISSING )
+
+if exist _main\tap-silent-desktop-oracle.py (
+call :step always red-as-expected-tap-silent-desktop 1 "_main\tap-silent-desktop-oracle.py;worker\sotto_worker.py" "%OUT%\tap-silent-desktop-neg.log" python _main\tap-silent-desktop-oracle.py --neg-arm
+call :expectred red-as-expected-tap-silent-desktop !STEP_RC! "%OUT%\tap-silent-desktop-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-tap-silent-desktop MISSING "%OUT%\tap-silent-desktop-neg.log" "NEG-ARM PASS" )
 
 echo.
 echo =============== BATTERY SUMMARY ===============

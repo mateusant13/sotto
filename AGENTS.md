@@ -185,6 +185,19 @@ só separar audio pra transcrever cada falante?"*
 - **Nunca deixar janela de consola visível.** Lançar python com `pythonw.exe` ou
   `creationflags 0x08000000|0x00000008`. Um censo de janelas corre a cada 60 s e loga `ALERTA-JANELA` com
   o pid. O painel também tem de ficar fora do ecrã sem Alt+C/`--show`.
+- **NADA EM FOREGROUND — NEM O AGENTE, NEM UM SCRIPT DELE (ordem do dono, 2026-11-02).** Ele viu
+  janelas a abrir e a desaparecer na secretária dele enquanto uma lane media, e a pergunta foi direta:
+  *"para de abrir janela de terminal em foreground. é tu? ou um .vbs?"*, e logo *"anota no agents.md pra
+  tu nunca mais fazer nada em foreground ou ter scripts q façam isso"*. A resposta medida: **era eu** —
+  `cmd /c "_main\_audit-verify-all.cmd"` e `powershell -NoProfile -Command …` largados de dentro desta
+  sessão alocam uma consola por invocação, que ele vê a piscar. **A LEI:** nenhum agente desta casa
+  larga `cmd /c`, `powershell`, `.bat`, `.cmd` ou `start` sem esconder a janela — `cmd /c` vai por
+  `_main/hidden-launch.py` (`run(argv)`, que põe `CREATE_NO_WINDOW` + `SW_HIDE`), `powershell` leva
+  `-WindowStyle Hidden -NonInteractive`, e `python` leva `pythonw.exe` ou o `creationflags`. Os
+  `Popen` do repo que largam `cmd`/`powershell`/`run.cmd` passam todos pelo mesmo helper; o portão é
+  `_main/console-window-gate.py`, com a dívida anterior à regra **congelada** num baseline que não pode
+  crescer (a mesma forma do `lane-screen-gate.py`). O detector de campo é o censo `ALERTA-JANELA` e o
+  `powershell` com janela **não** é justificação: `-WindowStyle Hidden` custa uma palavra.
 - **Um filtro de kill nomeia o ARTEFACTO**, nunca uma palavra genérica: `sotto_worker\.py`,
   `sotto_webview\.py`, o caminho do exe webview/electron. Filtrar `sotto` já matou dois processos alheios.
 - **Áudio de teste é MUDO.** Qualquer teste que renderize áudio usa `_main/mute-audio.py --mute/--unmute`
@@ -199,6 +212,18 @@ só separar audio pra transcrever cada falante?"*
   à mão; ele reparou, e com razão. **Um instrumento que RENDERIZA áudio (ARM3 do `device-silence`,
   `feed_cable`, o oráculo do mute) não corre numa lane desta máquina**; só correm os que LÊEM — log,
   DOM, unit arms, e os que importam o shell sem abrir dispositivo.
+- **O ÁUDIO DO DONO NÃO SE TOCA — NUNCA (ordem verbatim, 2026-11-02: *"nunca mais roda nada que vai
+  mutar meu audio ou resetar ele e fazer mutar. acabou de mutar. arruma"*).** A regra anterior dizia
+  quem PODE renderizar; esta diz o que **nenhum** agente pode: **mutar, desmutar, zerar volume, mudar a
+  default, reiniciar o endpoint ou "repor" o estado de áudio dele**. É `MUST NOT` para toda a frota,
+  inclusive para um passo de bateria que a lane larga — medido: a bateria correu `device-silence`/
+  `mute-audio-oracle` e o resultado foi ele a ouvir a máquina calada sem pedir. **A MECÂNICA:** todo
+  instrumento que ESCREVE num endpoint (`mute-audio.py` sem argumentos de leitura, `--mute`, `--unmute`,
+  `executar`/`repor`/`reset` do `device-silence`, qualquer `SetMute`/`SetVolume`) passa a exigir
+  `SOTTO_OWNER_AUDIO_OK=1` no ambiente, com recusa `rc=9` e a frase `recusa: audio do dono` quando a
+  flag falta; o portão é `_main/owner-audio-gate.py` e o braço negativo larga o instrumento **sem** a
+  flag e exige a recusa. E no painel/harness: **ler** é sempre livre (`--status-all`), **escrever** é
+  dele. Uma lane que precise de áudio mudo: pede ao dono, não muda o dele.
 - **`TMPDIR` = `I:\cc-tmp`.** `G:` enche e mata lanes com ENOSPC.
 - **Caminhos nativos `H:\`.** `./node_modules/.bin/electron` não executa (rc=127). E não lançar esse
   binário como app: o Electron está MORTO.
@@ -285,8 +310,26 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-02):** `_main\_audit-verify-all.cmd` = **165353 B**,
-  **2118 CRLF** / 0 bare LF, sha256 `A7B0EC240F51980CDD9CCC77F36EA2D6580A0B171464DEF4702510A2E19FA412`.
+- **PIN do ficheiro (medido 2026-11-02, 23:4x):** `_main\_audit-verify-all.cmd` = **170272 B**,
+  **2167 CRLF** / 0 bare LF, sha256 `9DFEF8F658F35B0B655507973893EB819693FAD4F6195819FEBE32542BE8F4FA`.
+  (Este pin substitui o de 166642 B / 2134 CRLF, DEPOIS das tres portas que nasceram das ordens
+  dele de 2026-11-02 — `console-window-gate` (+neg: nenhuma chamada nova a `cmd`/`powershell`/`.cmd`
+  sem `CREATE_NO_WINDOW`; a divida anterior ficou congelada em `_main/console-window-baseline.json`,
+  hoje **0**), `owner-audio-gate` (+neg: escrever num endpoint exige `SOTTO_OWNER_AUDIO_OK=1`, senao
+  `rc=9` com `recusa: audio do dono`; o journal escreve o volume ANTERIOR antes de o sobrescrever e
+  `--repair` devolve-o) e `worker-providers` (+neg: um CUDA **disponivel e nao escolhido** e' o
+  fallback silencioso medido hoje — 10,75x com CUDA contra 2,27x em CPU). Os passos de audio
+  (`mute-audio`, `device-silence` e o seu negativo) passaram a `:skipped`: sem a bandeira do dono
+  dizem `VERDICT: SKIPPED` e a bateria conta-os como SKIPPED, nunca como verde.
+  O pin anterior, de 166642 B / 2134 CRLF, substituiu o de 165353 B / 2118 CRLF, DEPOIS dos dois passos do `tap-silent-desktop`:
+  a escada de dispositivos abriu **12 clientes WASAPI em 3 minutos** com o desktop em silencio
+  (sessao viva pid 4404, `device-rotated reason=flat` a cada 15 s, sempre `peak=0.0`), e cada
+  abertura e' um hitch no motor de audio que o dono partilha. `silent_desktop_hold` pergunta ao
+  medidor VIVO no fim da janela plana e, quando ninguem esta' a tocar em endpoint nenhum,
+  ESTENDE a mesma tap (6 s -> 12 -> 24 -> 48 -> 60 de tecto) em vez de a fechar e reabrir. O
+  oraculo executa a funcao real com 8 arms e mais 6 bracos de fiacao; o `--neg-arm` desliga a
+  guarda numa COPIA ao lado do original e exige os arms 1-2 vermelhos. `{}` do medidor nunca e'
+  "sem sinal": mantem o comportamento anterior. Texto unico porque o portao do pin le um so'.)
   (Este pin substitui o de 164144 B, DEPOIS dos dois passos do `rss-trend`: o worker publica
   `rss_mb` em cada `WORKER_STATS` e a shell so' o guardava na cauda da morte -- o numero
   existia exactamente quando ja' nao havia o que medir, e "leak" era uma afirmacao sem

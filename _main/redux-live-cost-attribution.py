@@ -84,8 +84,9 @@ def owner_cpu_snapshot() -> dict:
         "$out|ConvertTo-Json -Compress"
     )
     try:
-        raw = subprocess.run(["pwsh", "-NoProfile", "-Command", script],
-                             capture_output=True, text=True, timeout=60).stdout.strip()
+        raw = subprocess.run(["pwsh", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script],
+                             capture_output=True, text=True, timeout=60,
+                             creationflags=0x08000000).stdout.strip()
         if not raw:
             return {}
         parsed = json.loads(raw)

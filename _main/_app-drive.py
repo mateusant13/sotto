@@ -27,9 +27,9 @@ PY = r"C:\Program Files\Python311\python.exe"
 
 
 def _ps(cmd):
-    r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive",
+    r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
                         "-ExecutionPolicy", "Bypass", "-Command", cmd],
-                       capture_output=True)
+                       capture_output=True, creationflags=0x08000000)
     return r.stdout.decode("cp850", "replace"), r.stderr.decode("cp850", "replace")
 
 

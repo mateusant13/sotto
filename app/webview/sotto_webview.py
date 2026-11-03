@@ -13635,6 +13635,21 @@ class WorkerBridge:
                 # A ponte AVISA, nao pinta: `push_caption_to_window` nao existe
                 # na `WorkerBridge` (AttributeError medido, panel-exit3-oracle).
                 self.on_loading_text('carregando modelo…')
+            # O GRAFO QUE CORRE TEM DE APARECER NO LOG (medido 2026-11-02). O worker
+            # decide os providers no arranque (`stage=providers`) e ate' hoje o log
+            # da shell so' guardava o ESTADO, nunca o payload -- por isso "o Sotto
+            # esta' na GPU?" nao se respondia pelo log dele: eu tive de carregar o
+            # modelo num probe a parte e medir 10,75x contra 2,27x em CPU. Uma linha
+            # com os providers ESCOLHIDOS e os DISPONIVEIS fecha essa pergunta com
+            # um grep, e o `onaudio`/`worker-providers` oracle julga-a.
+            if state == 'boot' and str(message.get('stage') or '') == 'providers':
+                sel = message.get('providers_selected') or []
+                avail = message.get('providers_available') or []
+                self.log('WORKER_PROVIDERS selected=%s available=%s note=%s cuda_probe=%s'
+                         % (','.join(str(x) for x in sel),
+                            ','.join(str(x) for x in avail),
+                            str(message.get('note') or '')[:80],
+                            str(message.get('cuda_probe_model') or '')))
             if state == 'model-loaded':
                 # THE LOAD IS OVER, and this shell now says how long it took.
                 # `load_s` is the WORKER's own measurement of the same span

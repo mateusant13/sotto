@@ -334,6 +334,11 @@ def heuristic_loopback_score(name):
 # accept the dead tap, and a higher one would reject quiet speech.
 TAP_WINDOW_S = 6.0
 TAP_PEAK_FLOOR = 0.002
+#: A tap window on a SILENT desktop doubles to this and stops there, and it does so
+#: WITHOUT closing the tap (`silent_desktop_hold`): measured 2026-11-02, twelve
+#: WASAPI clients opened in three minutes on a quiet machine, each one a hitch on
+#: the audio engine the owner shares with every other app.
+TAP_SILENT_DESKTOP_MAX_S = 60.0
 
 # A tap that OPENS is not a tap that HEARS. These two numbers are what turn
 # "the stream started" into a claim that can be wrong, and they exist because
@@ -1162,6 +1167,119 @@ class StreamAsr:
 
 
 # ── device selection ──────────────────────────────────────────────────────────
+def silent_desktop_hold(device_peak, tap_floor, live, window_s, silent_windows=0,
+                        max_window_s=60.0):
+    """A MAQUINA CALADA NAO E' UM DISPOSITIVO PARTIDO -- a janela seguinte, ou None.
+
+    O DEFEITO MEDIDO (2026-11-02, sessao viva pid 4404): desktop em silencio e a
+    escada abriu **12 clientes WASAPI em 3 minutos** (`device-rotated reason=flat`
+    a cada 15 s, sempre `peak=0.0`), ate' um caption chegar por acidente e a
+    limpar. Cada abertura e' um hitch no motor de audio que o dono partilha com as
+    outras apps -- o proprio ficheiro documenta o custo (*"a hard hitch on the
+    audio engine ... which the owner read as a strong freeze every few seconds"*).
+    A pergunta certa no fim de uma janela plana e' "alguem esta' a tocar ALGUMA
+    COISA?", e o medidor VIVO responde-a por todos os endpoints de uma vez.
+
+    CONTRATO (e' o que o oraculo julga):
+      * `live` vazio (`{}`) = NAO CONSEGUI LER. Nunca e' "sem sinal": devolve None
+        e a escada segue a ordem que ja' tem (o comportamento anterior).
+      * `live` nao vazio e TODOS os valores <= `tap_floor`, e a janela desta tap
+        tambem plana -> a maquina esta' calada: devolve o tamanho da janela
+        SEGUINTE (dobra ate' `max_window_s`) e a tap NAO e' fechada nem reaberta.
+      * qualquer endpoint com sinal acima do piso -> None: o audio mudou de sitio,
+        a rotacao e' o movimento certo.
+    """
+    if not live:
+        return None
+    if device_peak is not None and float(device_peak) >= float(tap_floor):
+        return None
+    try:
+        loudest = max(float(v) for v in live.values())
+    except (TypeError, ValueError):
+        return None
+    if loudest > float(tap_floor):
+        return None
+    grown = float(window_s) * (2.0 ** (max(0, int(silent_windows)) + 1))
+    return min(grown, float(max_window_s))
+
+
+def _live_render_peaks():
+    """O medidor de TODOS os endpoints de render, agora. `{}` = nao consegui ler.
+
+    O import fica aqui dentro pela mesma razao que em `signal_ranked_next`: um
+    oraculo que corre de outra pasta nao pode fazer o import ser o que decide a
+    resposta, e "sem leitura" nunca e' "sem sinal".
+    """
+    try:
+        import wasapi_loopback
+        return wasapi_loopback.live_render_peaks() or {}
+    except Exception as exc:                       # noqa: BLE001 - nunca custa a janela
+        err('SILENT_DESKTOP_READ_FAILED error=%r' % (exc,))
+        return {}
+
+
+def tap_ledger_row(dev, device_peak, device_blocks, counters, caps_before, settled, outcome):
+    """A linha do `tap_ledger` que descreve UM candidato, e nao a corrida inteira.
+
+    Extraida do corpo da escada em 2026-11-02 sem mudar um campo: o `main` do worker
+    ja' tinha 2333 linhas e o ratchet do `code-health` recusa cresce-lo, com razao.
+    Os numeros sao os do CANDIDATO -- `counters['peak']` e' o maximo da RUN e citaria
+    um dispositivo que ja' foi fechado.
+    """
+    return {
+        "device": dev["name"],
+        "index": dev["index"],
+        "api": _host_api_name(dev),
+        # WHICH RUNG of the ladder this candidate came from, and why.
+        # Required by the brief: a run must be able to say "I took
+        # rung (a), WASAPI loopback of the default render endpoint",
+        # not merely "I opened something".
+        "rung": dev.get("rung"),
+        "rung_why": dev.get("rung_why"),
+        "peak": round(device_peak["value"], 6),
+        "blocks": device_blocks["value"],
+        "captions": counters["captions"] - caps_before,
+        "settled": settled,
+        "outcome": outcome,
+    }
+
+
+def window_ended(now, dev, device_peak, tap_floor, tap_window, counters, emit=None):
+    """Uma janela plana acabou: ESPERA na mesma tap, ou diz que a escada deve andar.
+
+    Devolve o `window_end` NOVO (a tap fica aberta) ou None (o chamador rotaciona).
+
+    O DEFEITO MEDIDO (2026-11-02, sessao viva pid 4404): desktop em silencio e **12
+    clientes WASAPI abertos em 3 minutos**, `device-rotated reason=flat` a cada ~15 s
+    com `peak=0.0`, ate' um caption chegar por acidente e a limpar. Cada abertura e' um
+    hitch no motor de audio que o dono partilha com as outras apps -- o proprio ficheiro
+    documenta o custo (*"a hard hitch on the audio engine ... which the owner read as a
+    strong freeze every few seconds"*). A pergunta certa no fim de uma janela plana nao
+    e' "que candidato tem caption?" (essa ja' foi feita): e' "alguem esta' a tocar ALGUMA
+    COISA, em endpoint nenhum?", e o medidor VIVO responde-a para todos de uma vez.
+
+    O ESTADO VIVE EM `counters['silent']` para nao acrescentar locais ao `main`: quantas
+    janelas esta tap ja' foi estendida, e se a linha ja' foi escrita (uma por candidato).
+    Quem chama isto por candidato novo limpa a chave antes -- ver o init da janela.
+    """
+    state = counters.get('silent')
+    if state is None:
+        state = counters['silent'] = {'windows': 0, 'logged': False}
+    live = _live_render_peaks()
+    hold_s = silent_desktop_hold(device_peak['value'], tap_floor, live, tap_window,
+                                 state['windows'], TAP_SILENT_DESKTOP_MAX_S)
+    if hold_s is None:
+        return None
+    state['windows'] += 1
+    if not state['logged'] and emit is not None:
+        state['logged'] = True
+        emit(type="status", state="tap-silent-desktop", device=dev.get('name'),
+             window_s=round(hold_s, 1), endpoints=len(live),
+             peak=round(device_peak['value'], 6), floor=tap_floor,
+             why="no endpoint is rendering: keep this tap, do not reopen")
+    return now + hold_s
+
+
 def signal_ranked_next(candidates, k, floor=0.002, peaks=None):
     """Move the candidate that IS PLAYING to slot `k` and return it (None at the end).
 
@@ -6182,6 +6300,7 @@ def main():
             stall_since = time.time()
             stall_backoff = TAP_STALL_S
             stall_reopens = 0
+            counters.pop('silent', None)   # a janela de um candidato novo comeca do zero
             idle_logged = False
             caps_before = counters["captions"]
             window_end = time.time() + tap_window
@@ -6325,8 +6444,13 @@ def main():
                         stop.wait(0.1)
                         continue
                     if now >= window_end:
-                        outcome = "flat"
-                        break
+                        extended = window_ended(now, dev, device_peak, tap_floor,
+                                                tap_window, counters, emit)
+                        if extended:
+                            window_end = extended          # a tap fica ABERTA
+                        else:
+                            outcome = "flat"
+                            break
                     # stop.wait, not time.sleep -- :5989 rule, wakeable.
                     stop.wait(0.05)
             finally:
@@ -6340,24 +6464,7 @@ def main():
             # touch the per-candidate counters, which are the honest figures
             # here — `counters["peak"]` is the run high-water mark and would
             # name a device that is already closed.
-            tap_ledger.append(
-                {
-                    "device": dev["name"],
-                    "index": dev["index"],
-                    "api": _host_api_name(dev),
-                    # WHICH RUNG of the ladder this candidate came from, and why.
-                    # Required by the brief: a run must be able to say "I took
-                    # rung (a), WASAPI loopback of the default render endpoint",
-                    # not merely "I opened something".
-                    "rung": dev.get("rung"),
-                    "rung_why": dev.get("rung_why"),
-                    "peak": round(device_peak["value"], 6),
-                    "blocks": device_blocks["value"],
-                    "captions": counters["captions"] - caps_before,
-                    "settled": settled,
-                    "outcome": outcome,
-                }
-            )
+            tap_ledger.append(tap_ledger_row(dev, device_peak, device_blocks, counters, caps_before, settled, outcome))
             # Remember the LOUDEST candidate that carried signal but produced
             # no caption. Below, when the ladder runs out with no caption, this
             # one is re-entered so the run keeps streaming instead of exiting.
