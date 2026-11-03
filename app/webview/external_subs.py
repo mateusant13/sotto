@@ -256,11 +256,45 @@ def _control_type(el):
 
 
 def _process_name(hwnd):
+    """O nome do processo dono da janela -- SEM psutil (2026-11-03, MEDIDO).
+
+    `psutil.Process(pid).name()` custa um `create_time` (GetProcessTimes) por
+    processo, e este helper e' chamado para CADA janela visivel no censo de
+    `find_player_window`. Numa sessao viva do dono o `UI_HUNG_FRAME` mostrou a
+    thread da legenda presa exactamente aqui (`_enum` -> `_process_name` ->
+    `psutil ... create_time`), dentro de uma leitura de alvo de **9,2 s**
+    (`EXTERNAL_CAPTIONS_READ_MS ms=9203.0 phases={'target': 9203.0}`) que
+    segurou o GIL e deixou o observador do Ctrl+Space **8,6 s** sem correr
+    (`HOTKEY_OBSERVER_ALIVE max_gap_ms=8625`).
+
+    `QueryFullProcessImageNameW` com `PROCESS_QUERY_LIMITED_INFORMATION` e' a
+    leitura directa do mesmo dado: microssegundos, sem `create_time`, e o
+    direito LIMITADO atravessa a fronteira medium->high (e' para isso que ele
+    existe). O que muda para o resto do ficheiro e' nada: o contrato continua a
+    ser o basename em minusculas, ou `""` quando a janela nao tem processo que
+    se possa nomear.
+    """
     try:
-        import psutil
         pid = wt.DWORD()
         ctypes.windll.user32.GetWindowThreadProcessId(wt.HWND(hwnd), ctypes.byref(pid))
-        return (psutil.Process(int(pid.value)).name() or "").lower()
+        if not pid.value:
+            return ""
+        _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid.value))
+        if not h:
+            # Sem direito (processo protegido): nao se inventa um nome. Antes
+            # isto era uma excepcao do psutil devolvida como `""`, e o
+            # chamador ja' trata `""` como "desconhecido".
+            return ""
+        try:
+            buf = ctypes.create_unicode_buffer(1024)
+            size = wt.DWORD(1024)
+            if not k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                return ""
+            return os.path.basename(buf.value).lower()
+        finally:
+            k32.CloseHandle(h)
     except Exception:
         return ""
 

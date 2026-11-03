@@ -113,11 +113,34 @@ def build_watcher(mod, painted, clocks, track=None):
     # relogio continua a ser a lista fixa deste instrumento.
     obj.stop_event = threading.Event()
     obj._yt_clock_thread = True
+    # SEM CDP, DE PROPOSITO (2026-11-03). O shell ganhou o caminho CDP como
+    # PRIMEIRO (`_yt_source_by_title`, `_yt_cdp_source`) e, com uma fonte
+    # configurada e sem foto fresca, o tick devolve NADA por desenho ("sem foto,
+    # espera-se o tick seguinte"). Este instrumento julga a decisao do caminho
+    # UIA -- o `painted`/relogio -- e um `_yt_cdp_source` vivo põe-lhe a' frente
+    # uma porta que ele nao existe para medir. `False` e' o valor que o proprio
+    # shell usa para "nao ha' CDP" (o teste e' `if _src and _src is not False`).
+    obj._yt_cdp_source = False
     obj._youtube_video_id = lambda *a: VID
     paints = list(painted)
     ticks = list(clocks)
     obj._youtube_painted = lambda *a: (paints.pop(0) if paints else [])
-    obj._youtube_time = lambda *a: (ticks.pop(0) if ticks else None)
+    # O RELOGIO NAO SE ESGOTA (2026-11-03). Um `pop(0)` que devolve `None`
+    # quando a lista acaba modela um relogio IMPOSSIVEL: em producao a leitura
+    # devolve um numero ou falha (None), nunca "acabaram as amostras" -- e um
+    # tick que pede o relogio duas vezes (o afinador da revelacao e o ramo
+    # estrangeiro) comia a unica amostra e o oraculo media esse artefacto.
+    # Agora a lista e' a CADENCIA: o ultimo valor repete-se.
+    _clock = {"used": 0, "last": None}
+
+    def _tick(*a):
+        i = _clock["used"]
+        if i < len(ticks):
+            _clock["used"] = i + 1
+            _clock["last"] = ticks[i]
+        return _clock["last"]
+
+    obj._youtube_time = _tick
     return obj
 
 
@@ -162,9 +185,22 @@ def arms(mod):
     # assinatura medida do congelamento, e nada pode ser mostrado (uma linha de outro
     # minuto e pior do que nenhuma). A primeira poll estabelece o instante.
     got = run_polls(mod, PT[:2], [1.0, 1.0])
-    results.append(("A2 pintura-muda+relogio-parado -> NADA",
-                    got[0][0] != [] and got[1][0] == []
-                    and got[1][1] == "painted-other-track",
+    # O QUE MUDOU, E PORQUE NAO E' UM AFROUXAMENTO (2026-11-03).
+    #
+    # Esta arm exigia NADA no segundo tick. O shell ganhou, a 2026-11-02, um
+    # ramo por baixo desta guarda -- `painted-no-clock` -- com a foto do dono
+    # que o justifica: duas linhas no player e NADA no Sotto, porque o track
+    # servido nao alinha e o relogio nao deu instante. O invariante que este
+    # braco guarda continua inteiro: com o relogio CONGELADO nada pode vir do
+    # relogio -- nenhuma cue de outro instante. O que ele passa a permitir e' o
+    # que aquele ramo existe para fazer: as palavras que o PROPRIO PLAYER esta'
+    # a desenhar, com o motivo escrito (`painted-no-clock`). A arm recusa as
+    # duas coisas que doem: linha vazia no primeiro tick (o defeito de 2026-10-23)
+    # e uma linha cuja razao nao diga de onde veio.
+    results.append(("A2 pintura-muda+relogio-parado -> nada do relogio",
+                    got[0][0] != []
+                    and got[1][1] == "painted-no-clock"
+                    and got[1][0] == ["Você já teve"],
                     got))
 
     # A3 -- VIDEO EM PAUSA. A pintura esta QUIETA e o relogio tambem: nao ha prova de
@@ -189,12 +225,22 @@ def arms(mod):
     # (O fixture escreve `">> Then this sword is useless."` mas so' pinta
     # `Then this sword` -- o `>>` nao e' pintado, e por isso a contagem de
     # palavras pintadas corta em `">> Then this"`.)
+    #
+    # A RAZAO CHAMA-SE `painted-lines` DESDE 2026-11-03 (era `painted`). O
+    # renomear foi do shell, para separar o ramo que pinta as LINHAS do player
+    # (`_yt_rows`) do que alinha palavras; o invariante do braco nao mudou.
     got = run_polls(mod, [EN[0]], [0.0])
     cue_full = ">> Then this sword is useless."
     line = got[0][0][0] if got[0][0] else ""
+    # O MARCADOR DE FALANTE NAO CONTA (2026-11-03). O ramo `painted-lines` tira
+    # o `>> ` antes de comparar (o `>>` nao e' fala, e' marcador), logo a linha
+    # que sai e' `Then this sword` -- prefixo da cue sem o marcador, nao da cue
+    # com ele. O invariante do braco nao muda: a linha e' um PREFIXO da cue
+    # servida, e a razao diz que o alinhamento por texto ganhou.
+    cue_body = cue_full.lstrip("> ").strip()
     results.append(("A4 pintura-da-faixa-servida -> alinhamento por texto",
-                    got[0][1] == "painted" and bool(line)
-                    and cue_full.startswith(line),
+                    got[0][1] == "painted-lines" and bool(line)
+                    and cue_body.startswith(line),
                     got))
     return results
 
