@@ -715,7 +715,37 @@ class BatchExecutor(threading.Thread):
             if state == 'yield':
                 continue
             if state == 'idle':
+                # O DIRECTORIO E' A FILA, E A FILA CRESCE POR FORA.
+                #
+                # MEDIDO (2026-11-03, instancia viva pid 41760): um bloco
+                # enfileirado por OUTRO processo (manifesto + `.f32` no MESMO
+                # directorio) ficou `queued` para sempre com `level=leve` e
+                # `poll_s=10` -- o `refresh()` so' corria no `__init__`, portanto o
+                # executor comparava um retrato tirado no arranque com uma pasta
+                # que ja' tinha mudado. Um bloco que ninguem ve' e' audio perdido,
+                # e o audio perdido e' exactamente o que o spool do worker larga
+                # quando larga o modelo: a accao do shedding ficava provada e a
+                # promessa ("o audio nao processado e' processado sozinho") nao.
+                #
+                # A RELEITURA SO' ACONTECE AQUI, com NENHUM filho em voo: o
+                # `refresh()` devolve `inflight` a `queued` (recuperacao de crash),
+                # e faze-lo entre o `claim()` e o fim do filho punha o mesmo bloco
+                # a correr duas vezes.
+                self._refresh_queue()
                 self._stop.wait(self.poll_s)
+
+    def _refresh_queue(self):
+        """Rele' o directorio quando nao ha' nada em voo, e so' diz quando mudou."""
+        try:
+            before = len(self.queue.pending())
+            self.queue.refresh()
+            after = len(self.queue.pending())
+        except Exception as exc:                                 # noqa: BLE001
+            self.log(f'BATCH_QUEUE_REFRESH_FAILED error={exc!r}')
+            return
+        if after != before:
+            self.log(f'BATCH_QUEUE_REFRESH pending={before}->{after} '
+                     f'dir={self.queue.path}')
 
     def stop(self):
         self._stop.set()
