@@ -15888,6 +15888,15 @@ class WorkerBridge:
 
         self.state = 'spawning'
         self.spawns += 1
+        # UM `model-loading` SO' VALE ANTES DO PRIMEIRO `model-loaded` DESTE
+        # FILHO (2026-11-03, MEDIDO). O worker volta a publicar
+        # `model-loading` depois de o modelo ja' estar carregado (recarga,
+        # rotacao de dispositivo) e cada um desses republicava o placeholder
+        # ATRAVES do `push_caption_to_window` -- ou seja, a janela da legenda
+        # trocava a legenda por `carregando modelo…`. Medido ao vivo
+        # (pid 8168): `CAPTION_OVERLAY_PUSH count=50 text="carregando modelo…"`
+        # 5 min DEPOIS de `BRIDGE_LOAD_MS`, com `CAPTION_APPLIED count=1..49`
+        # entre os dois. O portao do primeiro `model-loaded` do filho fecha-o.
         # `stderr_tail` explains THIS death, so it is reset per child. The last
         # stats line and the last device are NOT cleared: each is stamped with
         # the pid that published it (`childPid`), so the snapshot can say whether
@@ -16271,9 +16280,11 @@ class WorkerBridge:
             # O DONO NAO FICA A OLHAR PARA O VAZIO: enquanto o modelo carrega
             # (30-38 s medidos a 2026-10-30) a janela da legenda diz que carrega.
             # O painel nao serve para isto -- `setStatus` esconde a frase.
-            if state == 'model-loading':
+            if state == 'model-loading' and not self.loaded:
                 # A ponte AVISA, nao pinta: `push_caption_to_window` nao existe
                 # na `WorkerBridge` (AttributeError medido, panel-exit3-oracle).
+                # SO' ANTES do primeiro `model-loaded` deste filho: um
+                # `model-loading` atrasado apagava a legenda (ver `_spawn`).
                 self.on_loading_text('carregando modelo…')
             # O GRAFO QUE CORRE TEM DE APARECER NO LOG (medido 2026-11-02). O worker
             # decide os providers no arranque (`stage=providers`) e ate' hoje o log
@@ -16291,7 +16302,7 @@ class WorkerBridge:
                             str(message.get('note') or '')[:80],
                             str(message.get('cuda_probe_model') or '')))
             if state == 'model-loaded':
-                # THE LOAD IS OVER, and this shell now says how long it took.
+                        # THE LOAD IS OVER, and this shell now says how long it took.
                 # `load_s` is the WORKER's own measurement of the same span
                 # (`worker/sotto_worker.py`, `StreamAsr.load_s`); `BRIDGE_LOAD_MS`
                 # is the shell's, from the spawn, so one boot log carries both
