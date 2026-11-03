@@ -429,32 +429,28 @@ def painted_rows(words, items=None):
     return out
 
 
-def rows_from_items(items):
-    """Agrupa os filhos pintados nas LINHAS que o player desenhou.
+def _row_item(item):
+    """Um filho pintado -> {"text", rect...}, ou None quando nao ha' texto.
 
-    Cada item tem `text` e o rectangulo (`left/top/right/bottom`). Duas palavras
-    estao na MESMA linha quando os centros verticais caem dentro de metade da
-    menor altura -- criterio que nao depende de fonte nem de zoom, porque compara
-    uma altura com uma distancia em pixels da mesma janela.
-
-    Devolve as linhas por ordem de cima para baixo, e dentro de cada linha por
-    ordem da esquerda para a direita: a ordem de leitura do ecra. Sem rects
-    utilizaveis (`bottom == top`) devolve `[]` e quem chama usa as palavras soltas.
+    Devolve `False` (nao `None`) quando o rectangulo nao serve: e' o sinal que
+    `rows_from_items` usa para recusar a foto inteira -- geometria a zero em
+    QUALQUER filho quer dizer que a arvore ainda nao acabou de aparecer.
     """
-    rows = []
-    for item in items or ():
-        text = " ".join(str(item.get("text") or "").split())
-        if not text:
-            continue
-        top = int(item.get("top") or 0)
-        bottom = int(item.get("bottom") or 0)
-        left = int(item.get("left") or 0)
-        if bottom <= top:
-            return []
-        rows.append({"text": text, "top": top, "bottom": bottom, "left": left,
-                     "mid": (top + bottom) / 2.0, "h": bottom - top})
-    if not rows:
-        return []
+    text = " ".join(str(item.get("text") or "").split())
+    if not text:
+        return None
+    top = int(item.get("top") or 0)
+    bottom = int(item.get("bottom") or 0)
+    if bottom <= top:
+        return False
+    left = int(item.get("left") or 0)
+    right = int(item.get("right") or 0)
+    return {"text": text, "top": top, "bottom": bottom, "left": left,
+            "right": right, "mid": (top + bottom) / 2.0, "h": bottom - top}
+
+
+def _group_lines(rows):
+    """Agrupa por centro vertical: cada grupo e' uma linha do player."""
     rows.sort(key=lambda r: (r["mid"], r["left"]))
     lines = []
     for row in rows:
@@ -468,11 +464,71 @@ def rows_from_items(items):
                 break
         if not placed:
             lines.append({"mid": row["mid"], "h": row["h"], "items": [row]})
+    return lines
+
+
+def _split_on_markers(ordered):
+    """Parte em cada marcador de fala que apareceu DEPOIS do primeiro item.
+
+    UM MARCADOR DE FALA NO MEIO DA LINHA E' UMA LINHA A MAIS (2026-11-03). O
+    player escreve `>>` quando o falante muda, e ele nunca aparece no meio de
+    uma linha do player. Quando aparece no meio da NOSSA, o que houve foi duas
+    linhas agrupadas pelo `mid`: MEDIDO contra o player,
+    `['da >> o galera. brasil nao pode deixar']` onde ele mostra
+    `['da galera', '>> o brasil nao pode deixar']`. O marcador e' a fronteira.
+    """
+    parts = []
+    current = []
+    for row in ordered:
+        starts = any(row["text"].startswith(m) for m in _SPEAKER_MARKERS)
+        if starts and current:
+            parts.append(current)
+            current = [row]
+        else:
+            current.append(row)
+    if current:
+        parts.append(current)
+    return parts
+
+
+def rows_from_items(items):
+    """Agrupa os filhos pintados nas LINHAS que o player desenhou.
+
+    Cada item tem `text` e o rectangulo (`left/top/right/bottom`). Duas palavras
+    estao na MESMA linha quando os centros verticais caem dentro de metade da
+    menor altura -- criterio que nao depende de fonte nem de zoom, porque compara
+    uma altura com uma distancia em pixels da mesma janela.
+
+    Devolve as linhas por ordem de cima para baixo, e dentro de cada linha por
+    ordem da esquerda para a direita: a ordem de leitura do ecra. Sem rects
+    utilizaveis (`bottom == top`) devolve `[]` e quem chama usa as palavras soltas.
+    """
+    rows = []
+    seen = set()
+    for item in items or ():
+        row = _row_item(item)
+        if row is False:
+            return []
+        if row is None:
+            continue
+        # O MESMO FILHO LIDO DUAS VEZES NAO E' UMA PALAVRA REPETIDA (2026-11-03).
+        # O Chrome expoe o no' antigo e o novo enquanto actualiza a arvore, e a
+        # leitura apanha os dois: MEDIDO contra o player, quadros como
+        # `'aguenta, nao [grito] nao ta ta escrito'` onde o player mostra
+        # `'aguenta, nao [grito] ta escrito'`. Duplicado EXACTO -- mesmo texto e
+        # mesmo rectangulo -- so' pode ser a mesma palavra, e sai.
+        key = (row["text"], row["left"], row["top"], row["right"], row["bottom"])
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(row)
+    if not rows:
+        return []
     out = []
-    for line in lines:
+    for line in _group_lines(rows):
         line["items"].sort(key=lambda r: r["left"])
-        text = " ".join(r["text"] for r in line["items"])
-        text = " ".join(text.split())
-        if text:
-            out.append(text)
+        for part in _split_on_markers(line["items"]):
+            text = " ".join(" ".join(r["text"] for r in part).split())
+            if text:
+                out.append(text)
     return out

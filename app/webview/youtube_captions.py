@@ -2082,7 +2082,7 @@ def _painted_children(el, uia):
     return out
 
 
-def _painted_items(el, uia, with_rect=True, reuse=None):
+def _painted_items(el, uia, with_rect=True):
     """Os filhos de UMA janela de legenda: [{"text", "left", ...}].
 
     `with_rect=False` NAO le o rectangulo de cada filho, e isso e' a diferenca
@@ -2118,16 +2118,19 @@ def _painted_items(el, uia, with_rect=True, reuse=None):
         # UMA leitura que ja' traz rects: os que este filho ja' tinha na posicao em
         # que ele esta' (mesmo indice, mesma palavra) sao reaproveitados, e o resto
         # e' lido. Uma foto por tick, nunca duas.
-        reused = None
-        if reuse is not None and k < len(reuse):
-            prev = reuse[k]
-            if isinstance(prev, dict) and prev.get("text") == name and prev.get("right"):
-                reused = prev
-        if reused is not None:
-            item.update({"left": reused["left"], "top": reused["top"],
-                         "right": reused["right"], "bottom": reused["bottom"]})
-            out.append(item)
-            continue
+        # O RECT REAPROVEITADO POR INDICE FOI APAGADO EM 2026-11-03, e a razao e'
+        # MEDIDA, nao estetica. Ele existia para poupar uma chamada por filho que
+        # "nao mudou" (mesmo indice, mesma palavra) -- mas numa ROLAGEM o player
+        # mantem as mesmas palavras em indices diferentes, e uma palavra que
+        # sobreviveu no mesmo indice pode ter mudado de LINHA. As linhas do Sotto
+        # saiam com a geometria do instante anterior, agrupadas pelo `left`:
+        #   player: ['conseguiu entrar. mas vamos ver, viper', 'ainda esta viva, da para']
+        #   sotto : ['conseguiu ainda esta entrar. viva, da para']
+        # -- palavras certas, ordem trocada, e no pior caso a mesma palavra duas
+        # vezes (`'ainda esta viva, da para da para'`). MEDIDO com
+        # `_main/_yt-live-latency.py` sobre a legenda viva (45 s): 20 quadros
+        # errados deste tipo em 32. Uma foto por tick continua a ser a regra; o que
+        # sai e' reaproveitar a geometria de OUTRA foto.
         if not with_rect:
             out.append(item)
             continue
@@ -2222,7 +2225,7 @@ def _caption_windows(uia, root, hwnd=None):
         _CAPTION_WINDOW_CACHE[key] = out[0]
     return out
 
-def painted_words(uia, UIA, hwnd=None, root=None, with_rect=True, reuse=None):
+def painted_words(uia, UIA, hwnd=None, root=None, with_rect=True):
     """The words the player is painting NOW -> {"words": [...], "why": ...}.
 
     READ-ONLY: it opens nothing, clicks nothing, moves nothing.
@@ -2262,7 +2265,7 @@ def painted_words(uia, UIA, hwnd=None, root=None, with_rect=True, reuse=None):
         # last line, and the app shows it as if the player were painting it now.
         if not _rendered(el):
             continue
-        items = _painted_items(el, uia, with_rect=with_rect, reuse=reuse)
+        items = _painted_items(el, uia, with_rect=with_rect)
         words = [it["text"] for it in items]
         if len(words) >= len(best):
             best = words

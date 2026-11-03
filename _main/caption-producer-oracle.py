@@ -72,13 +72,17 @@ def arms():
 
     # 3. UMA leitura com rects; a leitura barata nao vira fonte de linhas.
     one_photo = ('painted_words(uia, UIA, hwnd=hwnd,' in shell
-                 and 'with_rect=True,' in shell
+                 and 'with_rect=True' in shell
                  and 'with_rect=False)' not in shell)
     out.append(('one-photo-with-rects', one_photo, 'one_photo=%s' % one_photo))
 
-    # 4. O rect de um filho inalterado e' reaproveitado e o resto e' lido.
-    reuse = ('reuse=None' in captions and 'prev.get("text") == name' in captions)
-    out.append(('rect-reuse', reuse, 'reuse=%s' % reuse))
+    # 4. O RECT NAO ATRAVESSA LEITURAS (2026-11-03). O oposto desta arm foi
+    # MEDIDO contra a legenda viva: o reaproveitamento por indice punha a
+    # geometria de OUTRA foto na linha nova, e a rotacao do player juntava duas
+    # linhas dele numa so' nossa, com a ordem trocada.
+    no_carry = ('prev.get("text") == name' not in captions
+                and 'reuse=None' not in captions)
+    out.append(('rect-does-not-cross-reads', no_carry, 'no_carry=%s' % no_carry))
 
     # 5-bis. A CAIXA TEM DUAS LINHAS (2026-11-03). Tres linhas pintadas tem de
     # dar as DUAS ULTIMAS -- e' o que o roll-up do player mostra.
@@ -99,34 +103,151 @@ def arms():
     settle = ('ROWS_SETTLE_S' in shell and 'def _yt_rows_settle' in shell
               and 'rows[-1].startswith(shown[-1])' in shell)
     out.append(('row-hysteresis', settle, 'settle=%s' % settle))
+
+    # 6. UM PASSO DO PLAYER NAO ESPERA (2026-11-03). Executa a funcao REAL do
+    # ficheiro: escrever, rolar e largar o fim passam no mesmo tick; uma permuta
+    # nao passa. Sem esta arm, a histerese de 280 ms volta a segurar o roll-up
+    # do player -- medido: 47 de 53 mudancas nunca chegaram ao ecra.
+    step_ok, step_note = _player_step_arm(shell)
+    out.append(('player-step-passes', step_ok, step_note))
+
+    # 7. AS LINHAS DO PLAYER SAO AS DELE (2026-11-03). Dois defeitos medidos
+    # contra a legenda viva, os dois executados na funcao real: o marcador de
+    # fala no MEIO da nossa linha (duas linhas dele agrupadas) parte a linha;
+    # e o mesmo filho lido duas vezes nao vira palavra repetida.
+    rows_ok, rows_note = _rows_arm()
+    out.append(('rows-are-the-players', rows_ok, rows_note))
     return out
 
 
-def neg_arm():
-    """MUTACAO: desligar o guarda da pintura tem de derrubar a arm 1."""
-    text = read(SHELL)
-    marker = 'if yt_mode and not painted_now:'
-    if marker not in text:
-        print('NEG-ARM: FAIL -- a ancora do guarda nao esta no ficheiro')
-        return 1
-    mutant = text.replace(marker, 'if yt_mode:', 1)
-    tmpdir = tempfile.mkdtemp(prefix='sotto-neg-producer-')
-    path = os.path.join(tmpdir, 'sotto_webview.py')
-    io.open(path, 'w', encoding='utf-8', newline='').write(mutant)
+
+
+def _player_step_arm(shell):
+    """Executa `_yt_rows_is_player_step` do FICHEIRO, nos quatro passos."""
     try:
-        m = read(path)
-        still = ('painted_now = (time.monotonic()' in m
-                 and 'if yt_mode and not painted_now:' in m)
+        start = shell.index('    def _yt_rows_is_player_step')
+        end = shell.index('    def _yt_rows_settle')
+    except ValueError:
+        return False, 'funcao ausente do shell'
+    ns = {}
+    try:
+        exec(compile('class T:' + chr(10) + shell[start:end], 'shell', 'exec'),
+             ns)
+        step = ns['T']()._yt_rows_is_player_step
+    except Exception as exc:  # noqa: BLE001
+        return False, 'nao executou: %r' % (exc,)
+    cases = [
+        ('escrever', ['a b', 'c d'], ['a b', 'c'], True),
+        ('rolar', ['b', 'c d'], ['a', 'b'], True),
+        ('largar-fim', ['a b'], ['a b', 'c'], True),
+        ('permuta', ['c d', 'a b'], ['a b', 'c d'], True),
+        ('cabeca-nova', ['x', 'y'], ['a', 'b', 'c'], False),
+    ]
+    bad = [name for name, rows, shown, want in cases
+           if bool(step(rows, shown)) is not want]
+    return not bad, 'casos errados=%r' % (bad,)
+
+
+def _rows_arm():
+    """Executa `rows_from_items` nos dois defeitos medidos."""
+    try:
+        sys.path.insert(0, os.path.join(ROOT, 'app', 'webview'))
+        import youtube_window as _yw
+    except Exception as exc:  # noqa: BLE001
+        return False, 'import falhou: %r' % (exc,)
+
+    def item(text, left, top, height=20, width=40):
+        return {'text': text, 'left': left, 'top': top,
+                'right': left + width, 'bottom': top + height}
+
+    merged = [item('da', 10, 0), item('galera', 60, 0),
+              item('>>', 120, 0), item('o', 150, 0), item('brasil', 180, 0)]
+    doubled = [item('nao', 10, 0), item('nao', 10, 0)]
+    try:
+        got_merge = _yw.rows_from_items(merged)
+        got_dup = _yw.rows_from_items(doubled)
+    except Exception as exc:  # noqa: BLE001
+        return False, 'nao executou: %r' % (exc,)
+    ok = (got_merge == ['da galera', '>> o brasil'] and got_dup == ['nao'])
+    return ok, 'merge=%r dup=%r' % (got_merge, got_dup)
+
+def neg_arm():
+    """UMA MUTACAO POR ARM: cada regra tem de derrubar A SUA arm.
+
+    Um oraculo que so' passa nao e' um detector: e' uma lista de desejos. Aqui
+    cada mutacao desliga UMA regra no ficheiro e exige a arm correspondente RED.
+    """
+    shell = read(SHELL)
+    captions = read(CAPTIONS)
+    results = []
+
+    # M1: o re-render da faixa deixa de ser condicionado pela pintura.
+    m1 = shell.replace('if yt_mode and not painted_now:', 'if yt_mode:', 1)
+    results.append(('gate-removed', 'live-frame-is-gated',
+                    'if yt_mode and not painted_now:' not in m1))
+
+    # M2: o rect volta a atravessar leituras.
+    m2 = captions.replace('        if not with_rect:',
+                          '        prev = (reuse or [None] * 99)[k] if reuse else None'
+                          + chr(10) + '        if prev is not None and prev.get("text") == name:'
+                          + chr(10) + '            out.append(prev); continue'
+                          + chr(10) + '        if not with_rect:', 1)
+    results.append(('rect-carry-back', 'rect-does-not-cross-reads',
+                    not ('prev.get("text") == name' not in m2)))
+
+    # M3: a rolagem do player volta a esperar.
+    m3 = shell.replace('        if count <= len(shown) and rows[:-1] == shown[1:count]:'
+                       + chr(10) + '            return True',
+                       '        if count <= len(shown) and rows[:-1] == shown[1:count]:'
+                       + chr(10) + '            return False', 1)
+    step_ok, step_note = _player_step_arm(m3)
+    results.append(('roll-waits-again', 'player-step-passes', not step_ok))
+
+    # M4: o marcador de fala no meio da linha volta a colar as duas.
+    window = read(os.path.join(ROOT, 'app', 'webview', 'youtube_window.py'))
+    m4 = window.replace('if starts and current:', 'if False and current:', 1)
+    rows_ok = _rows_arm_from(m4)
+    results.append(('marker-merge-back', 'rows-are-the-players', not rows_ok))
+
+    bad = 0
+    for name, arm, red in results:
+        print('NEG-ARM %-20s %s  (arm %s)' % (name, 'PASS' if red else 'FAIL', arm))
+        if not red:
+            bad += 1
+    print('NEG-ARM VERDICT: %s (%d/%d)' % ('PASS' if bad == 0 else 'FAIL',
+                                           len(results) - bad, len(results)))
+    return 0 if bad == 0 else 1
+
+
+def _rows_arm_from(source):
+    """`_rows_arm` sobre um FONTE mutado, num modulo proprio."""
+    tmpdir = tempfile.mkdtemp(prefix='sotto-neg-rows-')
+    path = os.path.join(tmpdir, 'youtube_window.py')
+    try:
+        io.open(path, 'w', encoding='utf-8', newline='').write(source)
+        spec = __import__('importlib.util', fromlist=['util']).spec_from_file_location(
+            'ytw_mutant', path)
+        module = __import__('importlib.util', fromlist=['util']).module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:  # noqa: BLE001
+        return True
     finally:
         try:
             os.remove(path)
             os.rmdir(tmpdir)
         except OSError:
             pass
-    print('NEG-ARM %-18s %s  guarda presente no mutante: %s'
-          % ('gate-removed', 'PASS' if not still else 'FAIL', still))
-    return 0 if not still else 1
 
+    def item(text, left, top, height=20, width=40):
+        return {'text': text, 'left': left, 'top': top,
+                'right': left + width, 'bottom': top + height}
+
+    merged = [item('da', 10, 0), item('galera', 60, 0),
+              item('>>', 120, 0), item('o', 150, 0), item('brasil', 180, 0)]
+    try:
+        return module.rows_from_items(merged) == ['da galera', '>> o brasil']
+    except Exception:  # noqa: BLE001
+        return False
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])

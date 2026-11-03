@@ -2053,7 +2053,14 @@ class ExternalCaptionWatcher(threading.Thread):
     #: nunca chegava a valer, porque quem mandava era o custo. Depois dos caches
     #: (janela da legenda, relogio em thread propria, cache do `player_source`)
     #: a leitura caiu para 16-125 ms MEDIDOS, e o intervalo passa a ser ele.
-    INTERVAL_S = 0.12
+    #: NAO E' UMA ESPERA OCIOSA, E' O RESTO DO ORCAMENTO (2026-11-03). A
+    #: leitura da pintura custa 62-110 ms MEDIDOS nesta box (`UIA`,
+    #: 12-18 filhos por cue), e o laco esperava mais 120 ms em cima dela: o
+    #: periodo real ficava em ~200-230 ms e o ATRASO medido contra o player
+    #: (instrumento `_main/_yt-live-latency.py`, 45 s a tocar) saiu com mediana
+    #: 318 ms. O alvo e' o player: o resto do orcamento passa a ser 40 ms, para
+    #: o periodo ficar so' o custo da leitura.
+    INTERVAL_S = 0.04
     #: A cadencia do DESENHO da legenda do YouTube, entre leituras do UIA. 60 ms
     #: e' mais fino do que o espaco entre palavras do payload (medido: 0, 240,
     #: 400 ms) e grosso o bastante para nao gastar CPU: recompza texto ja'
@@ -2333,8 +2340,48 @@ class ExternalCaptionWatcher(threading.Thread):
     #: imediato (e' o que o player esta a escrever); ENCOLHER ou ROLAR espera.
     ROWS_SETTLE_S = 0.28
 
+    def _yt_rows_is_player_step(self, rows, shown):
+        """A mudanca e' o PROPRIO passo do player (escrever, rolar, largar)?
+
+        MEDIDO 2026-11-03 contra a legenda viva (instrumento
+        `_main/_yt-live-latency.py`, 45 s a tocar, video `I5NztYu4HL8`):
+        53 mudancas de linhas no player, 6 reproduzidas, 47 perdidas, 23 quadros
+        do Sotto com texto que o player ja' tinha deixado para tras. A histerese
+        de 280 ms e' metade desse numero: um ROLAR legitimo -- o player empurra
+        a linha velha para fora e a nova cresce -- ficava retido, e o ecra
+        mostrava o instante anterior enquanto o player ja' estava no seguinte.
+
+        Os tres passos que o player faz, e que agora passam NO MESMO tick:
+          * **cresceu**: mesma cabeca, a ultima linha alonga-se;
+          * **rolou**: as linhas subiram uma posicao (a primeira saiu da caixa)
+            e a ultima cresceu;
+          * **largou o fim**: as linhas de cima ficaram e a ultima saiu.
+        O que continua a esperar 280 ms e' so' uma mudanca que nao e' nenhum
+        destes -- uma permuta ou um encolher do MEIO, que nao e' um passo do
+        player e por isso pode ser um quadro transitorio da leitura.
+        """
+        rows = list(rows or ())
+        shown = list(shown or ())
+        if not rows or not shown:
+            return False
+        count = len(rows)
+        # escrever: cabeca igual, ultima linha alonga-se
+        if (count == len(shown) and rows[:-1] == shown[:-1]
+                and rows[-1].startswith(shown[-1])):
+            return True
+        # rolar: as de baixo subiram uma posicao e a primeira saiu da caixa. A
+        # linha nova pode CONTINUAR a que estava (`startswith`) ou ser um cue
+        # novo -- as duas sao o passo do player; o que nao passa e' uma cabeca
+        # que nao casa, que so' pode ser um quadro transitorio da leitura.
+        if count <= len(shown) and rows[:-1] == shown[1:count]:
+            return True
+        # largar o fim: as de cima ficaram
+        if count < len(shown) and rows == shown[:count]:
+            return True
+        return False
+
     def _yt_rows_settle(self, rows):
-        """Histerese das LINHAS: cresce ja', encolhe so' se insistir.
+        """Histerese das LINHAS: um passo do player passa ja', o resto insiste.
 
         A regra, medida em 2026-11-02 contra o log:
           * as linhas CRESCERAM (a ultima e' um alongamento da que estava) -> adoptar
@@ -2342,6 +2389,10 @@ class ExternalCaptionWatcher(threading.Thread):
           * qualquer outra mudanca (rolar a velha para fora, 3 -> 2, 2 -> 1) -> so'
             depois de `ROWS_SETTLE_S` com a MESMA proposta. Um quadro transitorio
             do player nao chega ao ecra dele.
+
+        E o que mudou em 2026-11-03: o ROLAR e o LARGAR tambem sao passos do
+        player, e nao quadros transitorios da leitura -- ver
+        `_yt_rows_is_player_step` para a medicao que o obrigou.
         """
         rows = [str(r) for r in (rows or ()) if str(r).strip()]
         shown = getattr(self, "yt_rows_shown", None)
@@ -2349,11 +2400,7 @@ class ExternalCaptionWatcher(threading.Thread):
             self.yt_rows_shown = rows
             self.yt_rows_pending = None
             return rows
-        grew = (bool(shown) and bool(rows)
-                and len(rows) == len(shown)
-                and all(rows[i] == shown[i] for i in range(len(rows) - 1))
-                and rows[-1].startswith(shown[-1]))
-        if grew:
+        if self._yt_rows_is_player_step(rows, shown):
             self.yt_rows_shown = rows
             self.yt_rows_pending = None
             return rows
@@ -2434,11 +2481,18 @@ class ExternalCaptionWatcher(threading.Thread):
             # legenda *"flickando"*, *"sumindo e aperecendo ou trocando a atual e a
             # antiga ao mesmo tempo"*: a leitura barata (so' nomes) montava as linhas
             # com os RECTS do tick anterior, e o desenho alternava entre duas
-            # geometrias. O rect de um filho que nao mudou e' reaproveitado DENTRO da
-            # leitura, entao o custo fica nos nomes + os filhos novos.
+            # geometrias.
+            #
+            # E O RECT NAO SE REAPROVEITA DE OUTRA FOTO (2026-11-03). O
+            # reaproveitamento por indice existia para poupar 4 ms por filho e
+            # custou a 1:1: numa ROLAGEM o player mantem as mesmas palavras em
+            # indices diferentes, a palavra que sobreviveu no mesmo indice ja'
+            # mudou de LINHA, e `rows_from_items` agrupava pelo `left` com a
+            # geometria do instante anterior -- palavras certas, ordem trocada.
+            # MEDIDO com `_main/_yt-live-latency.py`: 20 de 32 quadros errados
+            # desse tipo. Agora cada leitura traz os rects DELA, so' os dela.
             got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd,
-                                                 with_rect=True,
-                                                 reuse=getattr(self, "yt_paint_items", None))
+                                                 with_rect=True)
             if got and got.get("items"):
                 self.yt_paint_items = got["items"]
             self._yt_prof("paint", _t0)
@@ -2469,6 +2523,26 @@ class ExternalCaptionWatcher(threading.Thread):
         if why != self.yt_paint_why:
             self.yt_paint_why = why
             log(f'YOUTUBE_PAINT_STATE why={why} words={len(words)}')
+        # A LEGENDA PODE PARAR COM O PLAYER A PINTAR (2026-11-03, MEDIDO).
+        # Durante uma medicao, o video tocava (`CDP` com `rows` preenchidas) e
+        # a arvore de acessibilidade do Chrome deixou de expor os filhos da
+        # janela de legenda: 4 minutos sem um unico `YOUTUBE_CAPTION` e sem uma
+        # unica linha de log a dizer porque -- a leitura continuava a 62-110 ms,
+        # vazia. Um cliente UIA NOVO, noutro processo, tambem veio vazio, o que
+        # poe o piso no Chrome e nao no Sotto. O que faltava era o NOME da
+        # paragem: esta linha diz ha' quanto tempo a pintura esta' vazia, uma
+        # vez por 5 s, e o silencio deixa de ser um estado nao escrito.
+        _now = time.monotonic()
+        if words:
+            self.yt_paint_stall_since = None
+        elif why.startswith('no-painted-caption'):
+            since = getattr(self, 'yt_paint_stall_since', None)
+            if since is None:
+                self.yt_paint_stall_since = _now
+            elif _now - getattr(self, 'yt_paint_stall_logged', 0.0) > 5.0:
+                self.yt_paint_stall_logged = _now
+                log('YOUTUBE_PAINT_STALL seconds=%.1f why=%s'
+                    % (_now - since, why))
         return words
 
     def _yt_clock_agrees(self, t):
