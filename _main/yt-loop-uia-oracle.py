@@ -47,15 +47,20 @@ ROOT = os.path.normpath(os.path.join(HERE, os.pardir))
 SHELL = os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py')
 MUTANT = os.path.join(os.path.dirname(SHELL), '_uia-neg-shell.py')
 
-#: The two lines the neg arm re-inserts: with a source attached and no snapshot,
-#: ask the accessibility tree anyway (the defect, restored).
+#: The two lines the neg arm re-inserts: with a source attached and an id already
+#: known, ask the accessibility tree anyway (the defect, restored).
+#:
+#: RE-ANCHORED 2026-11-03: the cure's `return` line changed shape (`return '',
+#: _src, True` -- the id comes from the snapshot now), so the old anchor no longer
+#: matched the file and the control reported `NEG-ARM IMPOSSIVEL: ancora ausente`
+#: with rc=2. An anchor is a claim about the source; it ages like one.
 _A = ("            if _src and _src is not False and "
       "getattr(self, 'yt_video_id', ''):\n"
       "                _yt_mark(self, 'vid')\n"
-      "                return [], False\n")
+      "                return '', _src, True\n")
 _I = ("            if False:  # MUTANT: cai na UIA\n"
       "                _yt_mark(self, 'vid')\n"
-      "                return [], False\n")
+      "                return '', _src, True\n")
 #: The shell is CRLF; the anchor is built in the file's own line endings.
 ANCHOR = _A.replace("\n", "\r\n")
 INJECT = _I.replace("\n", "\r\n")
@@ -201,7 +206,9 @@ def main():
         print('NEG-ARM %s -- mutante derrubou: %s'
               % ('PASS (RED as designed)' if caught else 'FAIL',
                  ', '.join(bad) or 'nada'))
-        return 0 if caught else 1
+        # CONTRATO DA BATERIA: rc=1 = o mutante foi apanhado.
+        print('NEG-ARM: %s' % ('PASS' if caught else 'FAIL'))
+        return 1 if caught else 0
     print('VERDICT: %s (arms=%d fail=%d)'
           % ('PASS' if not bad else 'FAIL', len(results), len(bad)))
     return 0 if not bad else 1

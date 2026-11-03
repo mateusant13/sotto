@@ -193,12 +193,31 @@ def arm_no_blackout() -> None:
     print("\nARM 5 -- o ramo `painted-other-track` NAO mostra a lingua pintada")
     import ast as _ast
     src = (WEBVIEW / "sotto_webview.py").read_text(encoding="utf-8")
+    # O RAMO MUDOU DE CASA (2026-11-03). O trecho que decide `painted-other-track`
+    # deixou de estar inline no `_youtube` e passou para `_yt_clock_cue` (o
+    # `_youtube` agora delega). Lido pelo nome antigo, o marcador de comentario
+    # media 0 e as duas arms ficavam VERMELHAS com o codigo certo. Procura-se o
+    # dono ACTUAL do marcador; os nomes ficam em ordem de preferencia para o
+    # braco nao voltar a partir quando o ramo mudar outra vez.
     body = None
+    names = ("_youtube", "_yt_clock_cue", "_yt_no_clock_lines")
+    found = {}
     for node in _ast.parse(src).body:
         if isinstance(node, _ast.ClassDef):
             for item in node.body:
-                if isinstance(item, _ast.FunctionDef) and item.name == "_youtube":
-                    body = _ast.get_source_segment(src, item)
+                if isinstance(item, _ast.FunctionDef) and item.name in names:
+                    found[item.name] = _ast.get_source_segment(src, item)
+    for name in names:
+        seg = found.get(name)
+        # QUEM DECIDE E' QUEM LE A FAIXA. O `_youtube` tambem nomeia a rota
+        # (num comentario), mas quem le a cue servida e' `_yt_clock_cue`: o ramo
+        # e' a funcao que tem a marcacao E a leitura (`cue_at`/`_yt_lines`).
+        if seg and "painted-other-track" in seg and (
+                "cue_at" in seg or "_yt_lines" in seg):
+            body = seg
+            break
+    if body is None:
+        body = found.get("_youtube")
     add(bool(body), "_youtube extraido do ficheiro que corre")
     if not body:
         return
@@ -207,8 +226,17 @@ def arm_no_blackout() -> None:
     # (onde mostrar o pintado E' correcto, porque nao ha' faixa servida) e o
     # braco passava a olhar para o sitio errado.
     start = body.find("THE PLAYER IS PAINTING ANOTHER TRACK")
+    # A SEGUNDA FORMA DO MESMO RAMO: o comentario saiu e a logica mudou de casa
+    # (2026-11-03). Quando o marcador e' o NOME DA ROTA dentro do helper, a fatia
+    # a partir dele comecava DEPOIS da leitura da faixa -- e a arm dizia que o
+    # ramo nao desenha a faixa servida olhando so' para o carimbo do motivo.
+    # Nesse caso o objecto medido e' a FUNCAO inteira, que e' o ramo.
+    if start < 0:
+        branch = body
+        start = body.find("painted-other-track")
+    else:
+        branch = body[start:]
     add(start >= 0, "o ramo existe no ficheiro")
-    branch = body[start:] if start >= 0 else ""
     add("paint_line" not in branch,
         "o ramo nao devolve `paint_line(painted)` (a lingua pintada nao vai ao ecra)")
     add("_yt_lines" in branch or "cue_at" in branch,

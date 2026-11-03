@@ -126,11 +126,21 @@ def arm2(src=None):
 
 
 def mutant(src):
-    """Apaga a chamada do shell -- e nada mais."""
-    return src.replace("                paint_text = youtube_window.paint_line(painted)\n",
-                       "                paint_text = ''\n", 1).replace(
-        "                paint_text = youtube_window.paint_line(painted)\r\n",
-        "                paint_text = ''\r\n", 1)
+    """Apaga a chamada do shell -- e nada mais.
+
+    A ANCORA MEDE A INDENTACAO (2026-11-03). Ela citava 16 espacos e o `try:`
+    real, dentro do metodo, deixa a chamada em 12: a mutacao nao casava, a copia
+    saia IDENTICA ao original e o `--neg-arm` publicava
+    `MUTANTE aplicado=false` com `VERDICT: NEG-ARM FAIL` e rc=2 -- um controlo
+    morto a dizer que nao apanhou nada, no passo `red-as-expected-youtube-paint-first`.
+    Medido no log `_main/_audit-verify/youtube-paint-first-neg.log`.
+    """
+    real = "            paint_text = youtube_window.paint_line(painted)"
+    dead = "            paint_text = ''"
+    out = src
+    for nl in ("\r\n", "\n"):
+        out = out.replace(real + nl, dead + nl, 1)
+    return out
 
 
 def main(argv):

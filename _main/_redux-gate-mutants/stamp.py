@@ -302,6 +302,10 @@ class PanelVisibilityReader:
         self.last_reason = None
         self.last_payload = None
 
+    #: The engine-park reasons the shell may publish under `park` (owner,
+    #: 2026-11-03: the worker must LOSE ITS MODEL, never its PROCESS).
+    PARK_REASONS = ('captions', 'vram')
+
     def shed(self, default='leve'):
         """O nivel de shedding publicado pela shell (`leve` por omissao).
 
@@ -322,6 +326,29 @@ class PanelVisibilityReader:
         if isinstance(level, str) and level.strip() in self.SHED_LEVELS:
             return level.strip()
         return default
+
+    def park(self):
+        """O estacionamento do MOTOR pedido pela shell (`captions`/`vram`).
+
+        ORDEM DO DONO, 2026-11-03. FAIL-SAFE PARA O LADO QUE NAO SILENCIA: uma
+        chave ausente, ilegivel ou inventada le' como **sem pedido**, e o motor
+        fica carregado -- a mesma direccao do `shed`, pelo mesmo motivo (um
+        pedido nascido de um ficheiro partido nao pode calar o unico
+        transcritor desta arvore).
+
+        E' um pedido DIFERENTE do `shed`, por isso vive numa chave diferente e
+        nao os dois no mesmo campo: `shed` e' PRESSao DA MAQUINA (medida), e
+        este e' o ESTACIONAMENTO que o shell decide (o player esta' a fornecer
+        as legendas, ou outro app quer a GPU). Mistura-los faria o monitor de
+        carga a apagar o pedido do shell no tick seguinte.
+        """
+        payload = self.last_payload
+        if not isinstance(payload, dict):
+            return None
+        value = payload.get('park')
+        if isinstance(value, str) and value.strip() in self.PARK_REASONS:
+            return value.strip()
+        return None
 
     def read(self):
         """-> (visible: bool, why: str, age_s: float|None). Never raises."""
@@ -436,7 +463,20 @@ class ReduxHiddenSwitch:
                  wav_dir=None, armed_by="--redux-when-hidden",
                  min_free_mb=REDUX_MIN_FREE_MB_DEFAULT, model_dir=None,
                  engine=None, probe=None, pending=None, spool_dir=None,
-                 engine_min_free_mb=None, engine_window_s=None):
+                 engine_min_free_mb=None, engine_window_s=None,
+                 unload_when_hidden=False):
+        #: O MODELO AO VIVO SO' E' LARGADO POR PRESSAO, NUNCA PELA VISAO
+        #: (ordem do dono, 2026-11-03, verbatim: *"era pra ta com o modelo
+        #: sempre. e so descarregar quando o pc precisa da vram ou gpu em
+        #: outros apps"*). O caminho `hidden_after_s` -- painel escondido ha'
+        #: 20 s -> `batch` -> o nemotron cai -- recarregava o modelo a cada
+        #: abertura de painel (14-26 s medidos de recarga) e o dono via
+        #: `carregando modelo…` ao apertar Ctrl+Espaco com o video a tocar.
+        #: Fica DESLIGADO por omissao; liga-se explicitamente onde o
+        #: comportamento e' o que se esta' a provar (as arms do oraculo).
+        #: A pressao REAL continua a mandar: `_measure` (commit/CPU) e o
+        #: guarda de VRAM seguem a largar o motor sem esta bandeira.
+        self.unload_when_hidden = bool(unload_when_hidden)
         self.enabled = bool(enabled)
         self.reader = reader
         self.runner = runner
@@ -649,13 +689,25 @@ class ReduxHiddenSwitch:
                                    shed_published, measured)
         self._shed_published = shed_published
         self._shed_measured = measured
-        if shed != getattr(self, '_shed', 'leve'):
+        # O ESTACIONAMENTO DO MOTOR VEM DA SHELL, E NAO E' CARGA (2026-11-03).
+        # `captions`: o player esta' a fornecer as legendas -> larga o AO VIVO e
+        # deixa o parakeet no historico. `vram`: outro app quer a GPU -> larga os
+        # dois. Em ambos o PROCESSO e a CAPTURA ficam: era o `bridge.stop()` que
+        # fazia o audio do dono piscar a cada paragem.
+        park = self.reader.park() if hasattr(self.reader, 'park') else None
+        if park:
+            shed = _policy.worse_level(
+                PanelVisibilityReader.SHED_LEVELS, shed,
+                'alta' if park == 'captions' else 'muito-alta')
+        if shed != getattr(self, '_shed', 'leve') or park != getattr(self, '_park', None):
+            self._park = park
             self._shed = shed
             self._shed_why = measured_why
             engines = self._engines_for(shed)
             self.log(
                 f"REDUX_SHEDDING level={shed} published={shed_published} "
-                f"measured={measured} commit_pct={_policy.fmt_num(commit_pct)} "
+                f"measured={measured} park={park or 'none'} "
+                f"commit_pct={_policy.fmt_num(commit_pct)} "
                 f"cpu_pct={_policy.fmt_num(cpu_pct)} "
                 f"engines={','.join('%s:%s' % (k, 'on' if v else 'off') for k, v in engines.items()) or 'n/a'} "
                 f"why={json.dumps(measured_why or 'the shell decided')} "
@@ -665,8 +717,12 @@ class ReduxHiddenSwitch:
         elif shed == "alta":
             wanted = "batch"
         else:
+            # A VISAO NAO LARGA O MODELO (ordem do dono, 2026-11-03). Sem esta
+            # bandeira o painel escondido deixava o motor AO VIVO caído e a
+            # abertura seguinte pagava a recarga -- ver `unload_when_hidden`.
             wanted = "batch" if (
-                not self.visible
+                self.unload_when_hidden
+                and not self.visible
                 and self.hidden_since is not None
                 and (now - self.hidden_since) >= self.hidden_after_s
             ) else "stream"

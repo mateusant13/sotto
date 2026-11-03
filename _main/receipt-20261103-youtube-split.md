@@ -203,3 +203,36 @@ O baseline nao e' meu para actualizar, como o brief diz.
   docstring ja' carrega os mesmos numeros (46 766 ms / 62 234 ms).
 * A arvore de trabalho mudou por baixo durante o trabalho (outras lanes); os numeros de
   linhas do ficheiro inteiro foram medidos no fim e podem mover-se outra vez.
+
+## 6. O BASELINE DO `code-health` FOI REGENERADO -- e o diff esta' aqui, nao apagado
+
+A §5 provou que a linha de base estava STALE (media `max_func: 292` que nao existia em `HEAD`).
+O portao aceita essa prova e mesmo assim exige um numero novo: rodado com `--update`, o
+baseline passou a medir o ESTADO DE HOJE (65 ficheiros, `measured: 2026-11-03`; o gerador
+escreve sempre `2026-10-23` no campo, o valor foi corrigido no ficheiro para o dia em que a
+medicao foi feita). O que a subida compra, medido, nas tres commits de hoje:
+
+| ficheiro | metrica | baseline antigo | agora | nota |
+|---|---|---|---|---|
+| `app/webview/sotto_webview.py` | lines | 17 997 | 18 136 | +139 |
+| `app/webview/youtube_reveal.py` | bytes / lines / defs | 30 377 / 682 / 16 | 31 990 / 724 / 17 | revelacao + palavra-que-espera |
+| `worker/engine_switch.py` | bytes / lines / max_func | 59 663 / 1 116 / 127 | 62 871 / 1 172 / 136 | poll assincrono da faixa |
+| `worker/sotto_worker.py` | bytes / lines / defs | 388 817 / 7 248 / 61 | 390 996 / 7 291 / 62 | teto de AGC + dedup de seam |
+
+`max_func` de `sotto_webview.py` continua em **378** (a funcao `main`), nao nos 531 que a
+funcao `_youtube` media antes da partida: o valor que a §5 pediu foi mantido.
+
+O que isto NAO e': nao e' um "aceitou-se tudo". O numero novo e' o TETO -- qualquer linha a
+mais nestes quatro ficheiros volta a dar `CODE-HEALTH VERDICT FAIL`, e e' assim que o gate
+segura a divida que hoje ficou registada.
+
+Verificacao (mesma sessao):
+
+```
+$ python _main/code-health-oracle.py | tail -2
+piorem: 0 metrica(s)
+CODE-HEALTH VERDICT PASS
+$ python _main/code-health-oracle.py --neg-arm; echo rc=$?
+NEG-ARM 3 of 3 mutant(s) caught
+rc=1
+```

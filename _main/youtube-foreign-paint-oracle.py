@@ -264,10 +264,20 @@ MUTANTS = [
     (
         "sem-linha",
         "a cue encontrada nunca e mostrada (A1 fica vermelho)",
-        """                text = str((cue or {}).get('text') or '').strip()
-                if text:""",
-        """                text = str((cue or {}).get('text') or '').strip()
-                if False:""",
+        # RE-ANCORADO 2026-11-03. O trecho de hoje e' um RETORNO ANTECIPADO
+        # (`if not text: return None`) e nao o `if text:` que a ancora citava --
+        # media 0 vezes e o braco morria com "a ancora casou 0 vezes". O mutante
+        # apaga as PALAVRAS, que e' o que a A1 mede (a cue encontrada nunca e'
+        # mostrada); a forma do `if` fica a do fonte, para a copia ser mutante e
+        # nao um ficheiro invalido.
+        """        text = str((cue or {}).get('text') or '').strip()
+        if not text:
+            return None
+        self.yt_cue = text""",
+        """        text = ''
+        if not text:
+            return None
+        self.yt_cue = text""",
     ),
 ]
 

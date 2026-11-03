@@ -563,7 +563,8 @@ class BatchExecutor(threading.Thread):
 
     def __init__(self, queue=None, log_fn=None, level_fn=None, spawn=None,
                  python=None, window_s=15.0, poll_s=10.0, child_poll_s=3.0,
-                 yield_backoff_s=30.0, adopt_every_s=60.0, session_root=None):
+                 yield_backoff_s=30.0, adopt_every_s=60.0, session_root=None,
+                 adopt_roots=None):
         super().__init__(name='sotto-batch-executor', daemon=True)
         self.queue = queue or BatchQueue(log_fn=log_fn)
         self.log = log_fn or _noop
@@ -576,6 +577,14 @@ class BatchExecutor(threading.Thread):
         self.yield_backoff_s = float(yield_backoff_s)
         self.adopt_every_s = float(adopt_every_s)
         self.session_root = session_root
+        # DE ONDE SE ADOPTAM OS SPOOLS MORTOS. `None` = todos os spools reais
+        # (o comportamento de producao: o audio que um worker largou tem de ser
+        # transcrito). Um INSTRUMENTO passa a raiz do seu proprio directorio
+        # temporario, e entao mede o SEU trabalho e nao o spool de uma sessao
+        # viva na mesma maquina -- medido: sem esta porta, o primeiro braco do
+        # `batch-queue-drain-oracle` via `spawns=1` com a fila VAZIA, porque o
+        # `_last_adopt` arranca em 0.0 e a primeira volta do laco adoptava o
+        # spool real de `I:\cc-tmp`.
         self._stop = threading.Event()
         self._child = None
         self.runs = 0
@@ -707,7 +716,7 @@ class BatchExecutor(threading.Thread):
                 now = time.monotonic()
                 if now - self._last_adopt >= self.adopt_every_s:
                     self._last_adopt = now
-                    self.queue.adopt_dead_spools()
+                    self.queue.adopt_dead_spools(self.adopt_roots)
                 state, detail = self.step()
             except Exception as exc:                             # noqa: BLE001
                 self.log(f'BATCH_EXEC_ERROR error={exc!r}')

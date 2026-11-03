@@ -493,8 +493,49 @@ def run_scenario(mod, scen):
     watcher = mod.ExternalCaptionWatcher(shell)
     watcher.target_hwnd = HWND
     with Sandbox(mod, scen.window) as box:
+        # A FONTE PASSOU A SER PUBLICADA POR UMA THREAD (2026-11-03, MEDIDO no
+        # dono: `phases={'source': 11094.0}` -- onze segundos com a legenda
+        # congelada). `_read` ja' NAO pergunta `player_source` no caminho: le'
+        # `_yt_src_cache`, que a `_yt_src_resolver_start` preenche de 2 em 2 s.
+        # Sem semear a cache, o PRIMEIRO tick de cada cenario via `source=''` e
+        # caia na varredura da pagina -- as doze arms ficavam vermelhas com o
+        # codigo certo (`text []`, `page_reads 1`). O cenario mede a DECISAO a
+        # partir do tick em que a fonte ja' e' conhecida, que e' o estado em que
+        # o dono vive 2 s depois de abrir o video; os 2 s nao sao o objecto.
+        #
+        # A CACHE EXPIRA AOS 6 s e o resolver republica de 2 em 2 s: semear UMA
+        # vez deixava o 2o passo (t=+120 s no a12) a ler uma cache velha e a
+        # cair na varredura da pagina. Por isso o resolver modelado publica a
+        # fonte a CADA tick, que e' o que a thread faz em producao.
+        watcher._yt_src_resolver_start = lambda: None
+        # A PORTA CDP NAO EXISTE NESTE CENARIO (2026-11-03). `_yt_identify`
+        # devolve `wait=True` -- "a proxima foto traz o id" -- quando ha' uma
+        # fonte viva e o id ja' e' conhecido; sem Chrome ligado a fonte que o
+        # `_yt_cdp_ensure` abre nunca publica foto, e o tick devolve `[]` sem
+        # ler a faixa. O objecto deste oraculo e' a rota da FAIXA (`_youtube` ->
+        # `_yt_track_poll` -> `_tick`), nao a da CDP, que tem o seu proprio
+        # instrumento (`_main/_yt-cdp-*`). Com a porta fechada a leitura segue
+        # pela arvore e pela faixa, que e' o caminho que estas doze arms medem.
+        watcher._yt_cdp_ensure = lambda *a, **k: None
         for step in scen.steps:
-            CLOCK.now = step["at"]
+            _t = step.get("t")
+            # O RELOGIO DO PLAYER AVANCA COM O TEMPO DE PAREDE (2026-11-03). A
+            # shell nao le' o relogio do YouTube de forma crua: amostra-o e
+            # interpola com `monotonic()` entre amostras (`_ensure_clock_sampler`).
+            # MEDIDO: com `at` fixo em +2 s e `t` a saltar 19,5 -> 30,0, a leitura
+            # devolvia t=21,5 -- ainda dentro da PRIMEIRA cue -- e o a2 ficava
+            # vermelho com o codigo certo ("o buraco entre duas cues"). O par
+            # (at, t) passa a ser coerente: o mesmo intervalo de parede que o
+            # video andou.
+            if _t is not None:
+                _t0 = scen.steps[0].get("t")
+                if _t0 is not None:
+                    CLOCK.now = step["at"] + (float(_t) - float(_t0))
+                else:
+                    CLOCK.now = step["at"]
+            else:
+                CLOCK.now = step["at"]
+            watcher._yt_src_cache = (HWND, scen.window.source, _fake_monotonic())
             box.current_t = step.get("t")
             shell.youtube_track_thread = FakeTrackThread(step.get("track"))
             got, yt_mode = watcher._read(None, None)
@@ -503,10 +544,26 @@ def run_scenario(mod, scen):
     return {
         "text": shell.text(),
         "window_lines": list(shell.window_lines),
-        "parked": bool(shell._bridge.stops) or shell.external_captions_active,
+        # O ESTACIONAMENTO VIROU UM PEDIDO (2026-11-03): medido no dono,
+        # `BRIDGE_STOP reason=external-captions` matava o PROCESSO e levava o
+        # cliente WASAPI com ele -- agora o pedido e' `set_engine_park('captions')`
+        # e o worker recarrega o motor sozinho. `_bridge.stops` so' conta o
+        # caminho antigo; o facto de hoje e' `shell.parks`.
+        # "parked" = o pedido foi FEITO em algum momento do cenario (um release
+        # no passo seguinte nao apaga o que aconteceu no primeiro).
+        "parked": any(p is not None for p in shell.parks)
+                  or shell.external_captions_active,
         "worker_stops": list(shell._bridge.stops),
+        "parks": list(shell.parks),
+        # O MOTOR VOLTOU = o pedido foi LIMPO (`set_engine_park(None)`) depois
+        # de ter sido feito. `start_worker` continua registado (`spawns`) porque
+        # o processo NAO deve ser largado/relancado para isto -- o oraculo conta
+        # as duas coisas separadas, e um spawn aqui seria a recaida que o dono
+        # mediu (duas cargas de 1,2 GB em tres minutos).
+        "resumes": [None for i, p in enumerate(shell.parks)
+                    if p is None and i and shell.parks[i - 1] is not None],
+        "spawns": list(shell.resumes),
         "releases": shell.releases,
-        "resumes": list(shell.resumes),
         "page_reads": page_reads,
     }
 

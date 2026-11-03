@@ -41,12 +41,12 @@
       "max_func_name": ""
     },
     "app/panel/caption-formulation.js": {
-      "bytes": 51697,
+      "bytes": 52822,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 1070,
+      "lines": 1090,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -221,12 +221,12 @@
       "max_func_name": "_meter_interface"
     },
     "app/webview/batch_queue.py": {
-      "bytes": 36990,
+      "bytes": 39373,
       "classes": 2,
       "defs": 12,
       "except_pass": 9,
       "globals": 0,
-      "lines": 874,
+      "lines": 913,
       "max_func": 67,
       "max_func_name": "step"
     },
@@ -311,13 +311,13 @@
       "max_func_name": "write"
     },
     "app/webview/load_shedding.py": {
-      "bytes": 38133,
+      "bytes": 39639,
       "classes": 5,
-      "defs": 8,
+      "defs": 9,
       "except_pass": 2,
       "globals": 1,
-      "lines": 832,
-      "max_func": 59,
+      "lines": 863,
+      "max_func": 67,
       "max_func_name": "tick"
     },
     "app/webview/overlay_paint.py": {
@@ -381,12 +381,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 953647,
+      "bytes": 962569,
       "classes": 24,
       "defs": 108,
       "except_pass": 41,
       "globals": 4,
-      "lines": 17997,
+      "lines": 18136,
       "max_func": 378,
       "max_func_name": "main"
     },
@@ -441,12 +441,12 @@
       "max_func_name": "advance"
     },
     "app/webview/youtube_reveal.py": {
-      "bytes": 30377,
+      "bytes": 31990,
       "classes": 1,
-      "defs": 16,
+      "defs": 17,
       "except_pass": 0,
       "globals": 0,
-      "lines": 682,
+      "lines": 724,
       "max_func": 66,
       "max_func_name": "window_by_paint"
     },
@@ -501,14 +501,14 @@
       "max_func_name": "run_engine_pass"
     },
     "worker/engine_switch.py": {
-      "bytes": 59663,
+      "bytes": 62871,
       "classes": 2,
       "defs": 9,
       "except_pass": 1,
       "globals": 0,
-      "lines": 1116,
-      "max_func": 127,
-      "max_func_name": "_run_runner"
+      "lines": 1172,
+      "max_func": 136,
+      "max_func_name": "__init__"
     },
     "worker/inspect_model.py": {
       "bytes": 4202,
@@ -581,12 +581,12 @@
       "max_func_name": "main"
     },
     "worker/sotto_worker.py": {
-      "bytes": 388817,
+      "bytes": 390996,
       "classes": 17,
-      "defs": 61,
+      "defs": 62,
       "except_pass": 13,
       "globals": 4,
-      "lines": 7248,
+      "lines": 7291,
       "max_func": 2372,
       "max_func_name": "main"
     },
@@ -651,7 +651,7 @@
       "max_func_name": "_pump"
     }
   },
-  "measured": "2026-10-23",
+  "measured": "2026-11-03",
   "metrics": [
     "bytes",
     "lines",

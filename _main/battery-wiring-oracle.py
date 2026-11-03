@@ -103,11 +103,30 @@ def step_lines(root):
     return [line for line in text.splitlines() if STEP_RE.match(line)]
 
 
+#: UM BASENAME TEM DE CASAR INTEIRO (2026-11-03). A comparacao era `name in line`,
+#: e isso deu um falso "ligado" medido: `der-oracle.py` casava dentro de
+#: `loading-placeholder-oracle.py` -- `placehol`+`der-oracle.py`. Com um passo novo
+#: a nomear o placeholder, `der-oracle.py` passou a contar como ligado e a entrada
+#: dele no baseline virou `baseline-orphans FALHA`. Um ficheiro e' um TOKEN: o que
+#: estiver de cada lado nao pode ser letra, digito, `_`, `-` nem `.`.
+_NAME_RE_CACHE = {}
+
+
+def _name_in(line, name):
+    key = name
+    rx = _NAME_RE_CACHE.get(key)
+    if rx is None:
+        import re
+        rx = re.compile(r'(?<![A-Za-z0-9_.-])' + re.escape(name) + r'(?![A-Za-z0-9_.-])')
+        _NAME_RE_CACHE[key] = rx
+    return rx.search(line) is not None
+
+
 def census(root, pop=None):
     """(population, wired, unwired) -- `wired` = o basename aparece numa linha `call :step`."""
     pop = population(root) if pop is None else set(pop)
     lines = step_lines(root)
-    wired = sorted(name for name in pop if any(name in line for line in lines))
+    wired = sorted(name for name in pop if any(_name_in(line, name) for line in lines))
     unwired = sorted(pop - set(wired))
     return pop, wired, unwired
 

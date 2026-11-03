@@ -904,6 +904,26 @@ function createEngine(options) {
           && agreedPrefixLength(emittedWords, fragWords) === fragWords.length) {
         return;
       }
+      // A LINHA A CRESCER SEM RELOGIO (2026-11-03). O `start` nao veio, logo a
+      // regra de re-leitura acima nao tem por onde disparar -- e o fragmento era
+      // CONCATENADO ao que ja' estava no ecra. MEDIDO no log do dono (pid 18156,
+      // 11:45): o worker mandou, limpo e cumulativo,
+      //   'ig u a galera' / 'ig u a galera do a esquerda' / '... tava gravando.'
+      // e o `CAPTION_APPLIED` publicou
+      //   'Ig u a galera ig u a galera do a esquerda ig u a galera do a esquerda tava gravando.'
+      // O contrato do produtor e' "o fragmento e' a LINHA" (`LineFormer._event`),
+      // e a unica coisa que se prova sem relogio e' o TEXTO: se o que chegou
+      // COMECA com o que ja' esta' escrito, ele E' a mesma linha a crescer ->
+      // SUBSTITUI. Reproduzido no motor real sem `meta` (duplica) e com `meta`
+      // (nao duplica) antes desta correccao.
+
+      if (agreedPrefixLength(emittedWords, fragWords) === emittedWords.length) {
+        committed = [];
+        provisional = [];
+        prevWords = [];
+        lastAudioEnd = null;
+        opening = incoming;
+      }
     }
 
     if (!opening.length) return;

@@ -166,13 +166,36 @@ def wiring_arms(shell_src: str) -> list[dict]:
     def arm(name, ok, evidence):
         rows.append({"arm": name, "ok": bool(ok), "evidence": str(evidence)[:240]})
 
+    # O CORPO CRESCEU PARA FORA DO `_youtube` (2026-11-03). Os dois ramos que
+    # pintam as palavras do player passaram a helpers (`_yt_painted_lines_match`,
+    # `_yt_aligned_painted`, `_yt_no_clock_lines`, `_yt_clock_cue`) e o `_youtube`
+    # delega: lido so' dentro dele, `calls=0` e a arm ficava VERMELHA com o
+    # codigo CERTO. A arm continua a exigir DUAS chamadas reais -- mas contadas
+    # nas FUNCOES que pintam, e nao pelo texto de uma delas.
+    import ast as _ast
     start = shell_src.find("    def _youtube(self, hwnd, uia, UIA):")
     end = shell_src.find("\n    def ", start + 10)
     body = shell_src[start:end if end > 0 else len(shell_src)]
-    # Only the branch that MATCHED the track matters for the old window path; the
-    # foreign-track clock branch keeps its own logic on purpose.
-    arm("shell-calls-painted-lines", body.count("_yt_rows(painted,") >= 2,
-        f"calls={body.count('_yt_rows(painted,')}")
+    PAINTING = ("_youtube", "_yt_painted_lines_match", "_yt_aligned_painted",
+                "_yt_no_clock_lines", "_yt_clock_cue")
+    calls = {}
+    try:
+        tree = _ast.parse(shell_src)
+    except SyntaxError:
+        tree = None
+    if tree is not None:
+        for node in _ast.walk(tree):
+            if not isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                continue
+            if node.name not in PAINTING:
+                continue
+            seg = _ast.get_source_segment(shell_src, node) or ""
+            n = seg.count("_yt_rows(painted,")
+            if n:
+                calls[node.name] = n
+    total = sum(calls.values())
+    arm("shell-calls-painted-lines", total >= 2,
+        f"calls={total} em {sorted(calls) or 'NENHUMA funcao que pinta'}")
     arm("shell-no-window-by-paint-in-matched-branch",
         "window_by_paint(" not in body,
         f"window_by_paint mentions={body.count('window_by_paint(')}")

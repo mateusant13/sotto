@@ -163,7 +163,8 @@
           "log",
           "interval_s",
           "extra",
-          "shed_provider"
+          "shed_provider",
+          "park_provider"
         ],
         "writer.path": "H:\\sotto\\_main\\panel-visibility.json",
         "stats.payload": {
@@ -263,32 +264,32 @@
           "deferred_while_capturing": {
             "restarts": 0,
             "deferred": [
-              "HOT_RELOAD_WORKER_DEFERRED files=1 reason=capturing waited_ms=0 max_defer_ms=600000 code_is_stale=True sha256_disk=966b66d84c3066cb sha256_at_spawn=deadbeefdeadbeef applies_at=next-closed-line-or-ceiling"
+              "HOT_RELOAD_WORKER_DEFERRED files=1 reason=capturing waited_ms=0 max_defer_ms=600000 code_is_stale=True sha256_disk=c85ef07a378a7ff6 sha256_at_spawn=deadbeefdeadbeef applies_at=next-closed-line-or-ceiling"
             ],
             "pending": true
           },
           "closed_line": {
             "restarts": 0,
             "lines": [
-              "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=780",
-              "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=780"
+              "HOT_RELOAD_WORKER_BOUNDARY reason=closed-line files=1 waited_ms=766",
+              "HOT_RELOAD_WORKER_BOUNDARY_APPLIED files=1 reason=closed-line waited_ms=766"
             ],
             "reported": [
-              "HOT_RELOAD_WORKER_REPORTED files=1 reason=boundary-reached-not-applied after_idle_ms=780 waited_ms=780 code_is_stale=True sha256_disk=966b66d84c3066cb sha256_at_spawn=deadbeefdeadbeef action=none -- uma legenda fechou, ou seja, o dono esta a ler; ir buscar ~2 GB ao GPU aqui e o que lhe aconteceu a ele"
+              "HOT_RELOAD_WORKER_REPORTED files=1 reason=boundary-reached-not-applied after_idle_ms=766 waited_ms=766 code_is_stale=True sha256_disk=c85ef07a378a7ff6 sha256_at_spawn=deadbeefdeadbeef action=none -- uma legenda fechou, ou seja, o dono esta a ler; ir buscar ~2 GB ao GPU aqui e o que lhe aconteceu a ele"
             ]
           },
           "ceiling": {
             "restarts": 0,
             "forced": [],
             "reported": [
-              "HOT_RELOAD_WORKER_REPORTED files=1 reason=ceiling-reached-nothing-forced waited_ms=250 code_is_stale=True sha256_disk=966b66d84c3066cb sha256_at_spawn=deadbeefdeadbeef action=none -- ha 25 s que este ceiling \"forçava\" o reinicio, ou seja, no momento em que a maquina esta mais quieta"
+              "HOT_RELOAD_WORKER_REPORTED files=1 reason=ceiling-reached-nothing-forced waited_ms=250 code_is_stale=True sha256_disk=c85ef07a378a7ff6 sha256_at_spawn=deadbeefdeadbeef action=none -- ha 25 s que este ceiling \"forçava\" o reinicio, ou seja, no momento em que a maquina esta mais quieta"
             ],
             "pending": false
           },
           "floor": {
             "restarts": 0,
             "cooldown": [
-              "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=59937 min_interval_ms=60000 waited_ms=63 code_is_stale=True sha256_disk=966b66d84c3066cb sha256_at_spawn=deadbeefdeadbeef applies_when=floor-elapses"
+              "HOT_RELOAD_WORKER_COOLDOWN files=1 left_ms=59937 min_interval_ms=60000 waited_ms=63 code_is_stale=True sha256_disk=c85ef07a378a7ff6 sha256_at_spawn=deadbeefdeadbeef applies_when=floor-elapses"
             ],
             "pending": true
           }

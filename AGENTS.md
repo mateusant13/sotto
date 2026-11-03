@@ -310,8 +310,23 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-03, 02:4x):** `_main\_audit-verify-all.cmd` = **176391 B**,
-  **2233 CRLF** / 0 bare LF, sha256 `D3C318984D39E309227D57B2CB5941450BF3E2B489C59F22B75F2AA2F8376982`.
+- **PIN do ficheiro (medido 2026-11-03, 12:0x):** `_main\_audit-verify-all.cmd` = **182965 B**,
+  **2306 CRLF** / 0 bare LF, sha256 `1821C0A3920C04E21BDCE69D4BBEE02AE03FCF92C427B9A410624C737016419C`.
+  (Este pin substitui o de 177560 B / 2246 CRLF, DEPOIS dos sete oraculos de 2026-11-03 entrarem com
+  o seu braco negativo (`async-track-fetch`, `batch-queue-drain`, `hotkey-live-toggle`,
+  `loading-placeholder`, `youtube-land` -- skip-capable, le o log vivo -- `youtube-land-replay`,
+  `yt-loop-uia`). Duas CORRECCOES DE INSTRUMENTO vieram com eles: a ancora do `yt-loop-uia` citava
+  `return [], False` e a cura devolve hoje `return '', _src, True`, o que dava `NEG-ARM IMPOSSIVEL`
+  com rc=2; e cinco `--neg-arm` saiam 0 ao apanhar o mutante, quando o `:expectred` exige rc=1.
+  O `battery-wiring-oracle` passou a casar o basename inteiro -- media `name in line` e contava
+  `der-oracle.py` como ligado dentro de `loading-placeholder-oracle.py`.)
+  (Este pin substitui o de 176391 B / 2233 CRLF, DEPOIS dos dois passos do `caption-cumulative`:
+  medido no log VIVO do dono (pid 18156, 11:45) que o motor do painel CONCATENAVA a mesma linha
+  quando o `start` nao chegava -- ele leu `Ig u a galera ig u a galera do a esquerda ig u a galera
+  do a esquerda tava gravando.` com o worker a mandar as tres versoes cumulativas limpas. O
+  oraculo empurra as quatro formas pelo motor REAL (sem meta, com meta, frase nova, repeticao
+  exacta) e o braco negativo apaga a cura numa COPIA e exige o braco A vermelho, devolvendo
+  exactamente a linha errada do dono.)
   (Este pin substitui o de 173418 B, DEPOIS de o `battery-wiring-oracle` recusar TRES
   oraculos escritos e fora da bateria -- `caption-producer`, `caption-style` e
   `hotkey-observed` -- e de os tres passos entrarem com o seu `red-as-expected`.

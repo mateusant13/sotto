@@ -120,6 +120,10 @@ PYWEBVIEW_FACTS = {
 }
 
 EVENT_CORE_READY = 'CoreWebView2InitializationCompleted'
+#: O handler que E' o guarda da visibilidade. Sem este nome, `NavigationStarting`
+#: subscreve-se em mais de um sitio (a telemetria `WEBVIEW_NAV` tambem) e o modelo
+#: de fiacao nao consegue dizer qual deles e' o guarda.
+GUARD_HANDLER = '_on_navigation_start'
 EVENT_NAVIGATION = 'NavigationStarting'
 EVENT_BEFORE_SHOW = 'before_show'
 
@@ -397,8 +401,18 @@ def arm_wiring(model):
           f'methods binding {EVENT_BEFORE_SHOW}: {sorted(bound) or "NONE"}')
 
     # W2/W3 — the NavigationStarting registration, and what it is gated behind.
-    nav_sites = sorted(m for m in model.methods
-                       if model.subscribes(m, EVENT_NAVIGATION))
+    # O SITE E' O QUE REGISTA O *GUARDA*, NAO O QUE REGISTA QUALQUER NAVEGACAO
+    # (2026-11-03). `_webview_timeline` (telemetria `WEBVIEW_NAV`) subscreve
+    # `NavigationStarting` com um handler LOCAL e passou a ser lido como "o site
+    # do guarda" -- e como so' e' chamado do handler de
+    # `CoreWebView2InitializationCompleted`, o W4 acusou o guarda de esperar pela
+    # inicializacao quando o guarda ja' estava armado em `_on_before_show`. A
+    # identidade que importa e' o HANDLER (`_on_navigation_start`), e o modelo ja'
+    # a sabe ler (`_augassign_handler_names`); o evento sozinho nao distingue o
+    # guarda de um log.
+    nav_sites = sorted(
+        m for m in model.methods
+        if GUARD_HANDLER in _augassign_handler_names(model, m, EVENT_NAVIGATION))
     check('W2 a method subscribes NavigationStarting',
           bool(nav_sites), f'registration sites: {nav_sites or "NONE"}')
 
@@ -1032,10 +1046,18 @@ MUTANTS = [
                 "self._ui(self._arm_visibility_invariant)",
                 "pass  # pre-fix: there is no arming call here",
             ),
+            # RE-ANCORADO 2026-11-03: o handler ganhou a chamada
+            # `self._webview_timeline()` entre as duas linhas da ancora, e a
+            # ancora antiga deixou de casar -- o mutante `pre-fix-shape` deixou
+            # de poder ser construido e o oraculo saiu RED com `mutation target
+            # not found`. A ancora leva o corpo como ele esta' hoje; o que o
+            # mutante repoe (o guarda registado SO' aqui) nao muda.
             (
                 "        self.core = sender.CoreWebView2\n"
+                "        self._webview_timeline()\n"
                 "        self._install_bootstrap('initialization-completed')",
                 "        self.core = sender.CoreWebView2\n"
+                "        self._webview_timeline()\n"
                 "        self.webview2.NavigationStarting += "
                 "self._on_navigation_start\n"
                 "        self._install_bootstrap('initialization-completed')",

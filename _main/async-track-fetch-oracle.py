@@ -427,13 +427,17 @@ def main():
                 pass
         slow = [f for f in got if f.startswith(('ASYNC', 'DEDUPE', 'READY',
                                                 'SUPERSEDE', 'DOM'))]
-        print('NEG-ARM: %s' % ('RED as expected' if slow else
-                               'STILL GREEN -- the oracle cannot say no'))
+        print('NEG-ARM: %s' % ('PASS' if slow else
+                               'FAIL -- STILL GREEN: the oracle cannot say no'))
         for line in NOTES:
             print('  ' + line)
         for line in got:
             print('   ' + line)
-        return 0 if slow else 1
+        # CONTRATO DA BATERIA (2026-11-03): rc=1 significa "O MUTANTE FOI
+        # APANHADO" -- o `:expectred` recusa rc=0 com "the control did NOT go
+        # red", e um braco que devolve 0 ao apanhar o defeito nao pode ser
+        # declarado como controlo.
+        return 1 if slow else 0
 
     mod = load_shell(SHELL, 'sotto_shell_async_live')
     mod.log = lambda *a, **k: None

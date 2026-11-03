@@ -309,7 +309,9 @@ def main(argv=None):
         print("NEG-ARM carimbo-no-watcher %s %s"
               % ("GREEN (o defeito volta)" if caught else "FAIL", detail))
         bad = [n for n, ok, _ in results if not ok]
-        return 0 if (caught and not bad) else 1
+        # CONTRATO DA BATERIA: rc=1 = o mutante foi apanhado.
+        print("NEG-ARM: %s" % ("PASS" if (caught and not bad) else "FAIL"))
+        return 1 if (caught and not bad) else 0
 
     bad = [n for n, ok, _ in results if not ok]
     print("VERDICT: %s (%d/%d arms)"

@@ -175,6 +175,19 @@ REM (a decisao, o call site `recordHistory` e o escritor da proveniencia) e o br
 REM de baixo exige que os mutantes vao RED.
 call :step redux-transcript-path 0 "_main\_redux-transcript-path.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\redux-transcript-path.log" python _main\_redux-transcript-path.py
 call :record redux-transcript-path !STEP_RC!
+
+REM A LEGENDA NAO PODE CONCATENAR A MESMA LINHA DUAS VEZES (2026-11-03). Medido
+REM no log VIVO do dono (pid 18156, 11:45): o worker publicou as tres versoes
+REM cumulativas limpas e o `CAPTION_APPLIED` publicou a soma delas --
+REM "Ig u a galera ig u a galera do a esquerda ig u a galera do a esquerda tava
+REM gravando.". O motor do painel so' reconhecia a re-leitura pelo `start`;
+REM sem ele o fragmento era concatenado. O oraculo empurra os eventos pelo motor
+REM REAL nas quatro formas (sem meta, com meta, frase nova, repeticao exacta) e o
+REM braco de baixo apaga a cura numa COPIA e exige o braco A vermelho.
+call :step caption-cumulative 0 "_main\caption-cumulative-oracle.js;app\panel\caption-formulation.js" "%OUT%\oracle-caption-cumulative.log" node _main\caption-cumulative-oracle.js
+call :record caption-cumulative !STEP_RC!
+call :step red-as-expected-caption-cumulative 1 "_main\caption-cumulative-oracle.js;app\panel\caption-formulation.js" "%OUT%\caption-cumulative-neg.log" node _main\caption-cumulative-oracle.js --neg-arm
+call :expectred red-as-expected-caption-cumulative !STEP_RC! "%OUT%\caption-cumulative-neg.log" "NEG-ARM: PASS"
 call :step red-as-expected-redux-transcript-path 1 "_main\_redux-transcript-path.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\redux-transcript-path-neg.log" python _main\_redux-transcript-path.py --neg-arm
 call :expectred red-as-expected-redux-transcript-path !STEP_RC! "%OUT%\redux-transcript-path-neg.log" "NEG-ARM: PASS"
 
@@ -709,6 +722,66 @@ if exist _main\receipt-provenance-oracle.py (
   call :expectred red-as-expected-receipt-provenance !STEP_RC! "%OUT%\receipt-provenance-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-receipt-provenance MISSING "%OUT%\receipt-provenance-neg.log" "NEG-ARM PASS" )
 
+REM
+REM === OS SETE ORACULOS QUE FALTAVAM NA BATERIA (2026-11-03) ====================
+REM
+REM O `battery-wiring-oracle` media-os como `new-unwired`: sete oraculos escritos
+REM pelas lanes de 2026-11-03, verdes na linha de comando e SEM passo -- logo nada
+REM os corria e nada garantia que continuassem a descrever a arvore. Cada par abaixo
+REM e' um positivo com as suas dependencias REAIS e o seu braco negativo.
+REM
+REM DUAS CORRECCOES NOS PROPIOS INSTRUMENTOS foram necessarias para os poder
+REM declarar, e ficam escritas porque sao defeitos de instrumento:
+REM  1. `yt-loop-uia-oracle --neg-arm` respondia NEG-ARM IMPOSSIVEL: ancora ausente
+REM     com rc=2: a ancora citava `return [], False` e a cura passou a devolver
+REM     `return '', _src, True`. Uma ancora e' uma afirmacao sobre o fonte e
+REM     envelhece como uma. Re-ancorada, o braco volta a apanhar NO-SNAP e BOOTSTRAP.
+REM  2. cinco dos `--neg-arm` saiam 0 ao APANHAR o mutante. O `:expectred` exige
+REM     rc=1, portanto um controlo que devolve 0 nao podia ser declarado controlo.
+REM     Os cinco passaram a devolver 1 e a dizer `NEG-ARM: PASS`.
+REM
+call :step async-track-fetch 0 "_main\async-track-fetch-oracle.py;app\webview\sotto_webview.py" "%OUT%\async-track-fetch.log" python _main\async-track-fetch-oracle.py
+call :record async-track-fetch !STEP_RC!
+call :step red-as-expected-async-track-fetch 1 "_main\async-track-fetch-oracle.py;app\webview\sotto_webview.py" "%OUT%\async-track-fetch-neg.log" python _main\async-track-fetch-oracle.py --neg-arm
+call :expectred red-as-expected-async-track-fetch !STEP_RC! "%OUT%\async-track-fetch-neg.log" "NEG-ARM: PASS"
+
+call :step batch-queue-drain 0 "_main\batch-queue-drain-oracle.py;app\webview\batch_queue.py" "%OUT%\batch-queue-drain.log" python _main\batch-queue-drain-oracle.py
+call :record batch-queue-drain !STEP_RC!
+call :step red-as-expected-batch-queue-drain 1 "_main\batch-queue-drain-oracle.py;app\webview\batch_queue.py" "%OUT%\batch-queue-drain-neg.log" python _main\batch-queue-drain-oracle.py --neg-arm
+call :expectred red-as-expected-batch-queue-drain !STEP_RC! "%OUT%\batch-queue-drain-neg.log" "NEG-ARM: PASS"
+
+call :step hotkey-live-toggle 0 "_main\hotkey-live-toggle-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-live-toggle.log" python _main\hotkey-live-toggle-oracle.py
+call :record hotkey-live-toggle !STEP_RC!
+call :step red-as-expected-hotkey-live-toggle 1 "_main\hotkey-live-toggle-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-live-toggle-neg.log" python _main\hotkey-live-toggle-oracle.py --neg-arm
+call :expectred red-as-expected-hotkey-live-toggle !STEP_RC! "%OUT%\hotkey-live-toggle-neg.log" "NEG-ARM PASS"
+
+call :step loading-placeholder 0 "_main\loading-placeholder-oracle.py;app\webview\sotto_webview.py" "%OUT%\loading-placeholder.log" python _main\loading-placeholder-oracle.py
+call :record loading-placeholder !STEP_RC!
+call :step red-as-expected-loading-placeholder 1 "_main\loading-placeholder-oracle.py;app\webview\sotto_webview.py" "%OUT%\loading-placeholder-neg.log" python _main\loading-placeholder-oracle.py --neg-arm
+call :expectred red-as-expected-loading-placeholder !STEP_RC! "%OUT%\loading-placeholder-neg.log" "NEG-ARM guard-removed"
+
+REM `youtube-land` le' o LOG VIVO (`_main\webview-run.log`), logo corre SEMPRE e nunca
+REM em cache. Sem `CAPTION_LAND` na sessao viva ele diz `YOUTUBE-LAND VERDICT: SKIPPED`
+REM com rc=0 -- um passo saltado NAO e' um portao que passou, e o `:skipped` conta-o
+REM SKIPPED. O braco negativo corre sobre um log SINTETICO no formato real, portanto
+REM exercita-se hoje mesmo.
+call :step always youtube-land 0 "_main\youtube-land-oracle.py;app\webview\caption_overlay.py;_main\webview-run.log" "%OUT%\youtube-land.log" python _main\youtube-land-oracle.py
+call :skipped youtube-land !STEP_RC! "%OUT%\youtube-land.log" "YOUTUBE-LAND VERDICT: PASS" "YOUTUBE-LAND VERDICT: SKIPPED" "YOUTUBE-LAND VERDICT: SKIPPED"
+call :step red-as-expected-youtube-land 1 "_main\youtube-land-oracle.py;app\webview\caption_overlay.py" "%OUT%\youtube-land-neg.log" python _main\youtube-land-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-land !STEP_RC! "%OUT%\youtube-land-neg.log" "NEG-ARM: PASS"
+
+call :step youtube-land-replay 0 "_main\youtube-land-replay-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-land-replay.log" python _main\youtube-land-replay-oracle.py
+call :record youtube-land-replay !STEP_RC!
+call :step red-as-expected-youtube-land-replay 1 "_main\youtube-land-replay-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-land-replay-neg.log" python _main\youtube-land-replay-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-land-replay !STEP_RC! "%OUT%\youtube-land-replay-neg.log" "NEG-ARM: PASS"
+
+call :step yt-loop-uia 0 "_main\yt-loop-uia-oracle.py;app\webview\sotto_webview.py" "%OUT%\yt-loop-uia.log" python _main\yt-loop-uia-oracle.py
+call :record yt-loop-uia !STEP_RC!
+call :step red-as-expected-yt-loop-uia 1 "_main\yt-loop-uia-oracle.py;app\webview\sotto_webview.py" "%OUT%\yt-loop-uia-neg.log" python _main\yt-loop-uia-oracle.py --neg-arm
+call :expectred red-as-expected-yt-loop-uia !STEP_RC! "%OUT%\yt-loop-uia-neg.log" "NEG-ARM: PASS"
+
+REM === FIM DOS SETE =============================================================
+REM
 REM `_main\sotto-state-page.py` e o P0.2 do roadmap de observabilidade de 2026-10-23: a pagina de
 REM estado (docs\state-generated.md) e GERADA das saidas dos oraculos e recusa-se a inventar -- um
 REM passo que nao correu e `NOT RUN`, nunca um verde. CORRE SEMPRE (`always`): as seis verificacoes

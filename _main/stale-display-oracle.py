@@ -150,6 +150,16 @@ def check(overlay_path, shell_path, label="", worker_path=None):
     bsrc = func_src(st, bl) if bl else ""
     pu = func_node(stree, "push_caption_to_window")
     psrc = func_src(st, pu) if pu else ""
+    # O GUARDA MUDOU DE DONO (2026-11-03). O par (epoch, `set_text`) vive agora no
+    # `_drain_caption_pending`, e nao dentro de `push_caption_to_window`: lido pelo
+    # sitio antigo, `i_guard` vinha -1 e a arm 13 ficava VERMELHA com o codigo
+    # CERTO (`_drain_caption_pending` devolve antes de `ov.set_text`). O que a arm
+    # mede e' a ORDEM dos dois marcadores na funcao que os contem -- e' isso que se
+    # le, e nao o nome de quem os tem.
+    if "CAPTION_DROP_EPOCH" not in psrc:
+        dr = func_node(stree, "_drain_caption_pending")
+        if dr:
+            psrc = func_src(st, dr)
     sw = func_node(stree, "start_worker")
     ssrc = func_src(st, sw) if sw else ""
     arm(f"{label}limpar a janela GASTA um epoch (a fonte mudou)",
@@ -226,21 +236,33 @@ def main() -> int:
 
         # 3. o guarda de epoch removido do `_drain` -- o texto velho volta a
         #    pintar e os arms do epoch tem de ficar vermelhos.
-        guarda = ("            cur = int(getattr(self, '_source_epoch', 0))\n"
-                  "            if epoch != cur:\n")
-        i3 = sh.find(guarda)
-        if i3 < 0:
+        # A ANCORA E' LIDA DO FONTE, NAO ESCRITA A MAO (2026-11-03). Estava
+        # escrita com 12 espacos e o `_drain_caption_pending` usa 8 -- o mutante
+        # nao casava e o braco saia rc=2 com "SETUP: o mutante do epoch nao
+        # encontrou o guarda". A indentacao vem do proprio texto, e o `\r\n` do
+        # ficheiro tambem: escrever a copia com `io.open(p,'w')` sem
+        # `newline=''` converte CRLF em LF e o mutante mede outro ficheiro.
+        import re
+        mm = re.search(r"(?m)^([ \t]*)cur = int\(getattr\(self, '_source_epoch', 0\)\)\r?\n"
+                       r"\1if epoch != cur:\r?\n", sh)
+        if not mm:
             print("SETUP: o mutante do epoch nao encontrou o guarda")
             return 2
-        j3 = sh.find("                return\n", i3)
+        ind = mm.group(1)
+        nl = "\r\n" if "\r\n" in sh else "\n"
+        i3 = mm.start()
+        j3 = sh.find(ind + "return" + nl, i3)
+        if j3 < 0:
+            print("SETUP: o mutante do epoch nao encontrou o `return` do guarda")
+            return 2
         p3 = os.path.join(tmp, "sotto_webview_epoch.py")
-        corpo = (sh[:i3] + "            cur = 0\n"
-                 + sh[j3 + len("                return\n"):])
-        corpo = corpo.replace("            ov.hide()\n", "", 1)
+        corpo = (sh[:i3] + ind + "cur = 0" + nl
+                 + sh[j3 + len(ind + "return" + nl):])
+        corpo = corpo.replace(ind + "ov.hide()" + nl, "", 1)
         corpo = corpo.replace(
-            "        self._external_last_text = ''   # a fonte mudou: nada herda a frase velha\n",
+            "        self._external_last_text = ''   # a fonte mudou: nada herda a frase velha" + nl,
             "", 1)
-        io.open(p3, "w", encoding="utf-8").write(corpo)
+        io.open(p3, "w", encoding="utf-8", newline="").write(corpo)
         RESULTS.clear()
         check(OVERLAY, p3, label="[mutante-epoch] ")
         check_sequence(p3)

@@ -522,8 +522,12 @@ MUTANTS = [
      "                paint_ok = True"),
     # THE FIRST CAPTION WINDOW WINS, NOT THE ONE WITH THE WORDS: the tree
     # carries more than one, and the container (no words) can come first.
+    # RE-ANCORADO 2026-11-03: a comparacao de hoje e' `>=` (a janela EMPATADA
+    # tambem substitui, porque a ultima e' a que o player acabou de pintar) e a
+    # ancora citava `>` -- media 0 vezes e o braco morria com ANCHOR MISSING.
+    # O mutante repoe a regra antiga: a PRIMEIRA janela ganha, sempre.
     ("a-primeira-janela-ganha-em-vez-da-mais-palavras",
-     "        if len(words) > len(best):",
+     "        if len(words) >= len(best):",
      "        if not best:"),
 ]
 

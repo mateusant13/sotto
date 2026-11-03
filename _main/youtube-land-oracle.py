@@ -203,9 +203,17 @@ def report(out, stream):
                         ", ".join(out["violacoes_linhas"][:5])))
     for bad in out["inconsistentes"][:5]:
         stream.write("BAD       %s\n" % bad)
-    stream.write("VERDICT   %s -- %s\n"
-                 % (("PASS" if out["rc"] == 0 else
-                     "FAIL" if out["rc"] == 1 else "SEM DADOS"), out["why"]))
+    word = ("PASS" if out["rc"] == 0 else
+            "FAIL" if out["rc"] == 1 else "SEM DADOS")
+    stream.write("VERDICT   %s -- %s\n" % (word, out["why"]))
+    # AS DUAS FRASES QUE A BATERIA LE' (2026-11-03). Sem elas o passo nao podia ser
+    # declarado skip-capable: `:skipped` exige rc=0 e uma das duas frases, e um
+    # `SEM DADOS` que saia 2 seria contado FAIL -- mas nao ha' portao nenhum que
+    # tenha falhado quando a sessao viva ainda nao escreveu `CAPTION_LAND`, e um
+    # passo saltado NAO e' um portao que passou: conta-se SKIPPED, nunca verde.
+    stream.write("YOUTUBE-LAND VERDICT: %s\n"
+                 % ("PASS" if out["rc"] == 0 else
+                    "FAIL" if out["rc"] == 1 else "SKIPPED"))
 
 
 # ── O BRAÇO NEGATIVO ─────────────────────────────────────────────────────────
@@ -324,10 +332,13 @@ def neg_arm():
             print("NEG-ARM real       saltado: o log vivo ainda nao tem CAPTION_LAND")
     total = len(mutants) + (1 if _real_land_count() else 0)
     print("NEG-ARM %d of %d mutant(s) caught" % (caught, total))
+    # CONTRATO DA BATERIA: rc=1 = o mutante foi apanhado; rc=0 = o controlo
+    # NAO derrubou nada (o `:expectred` le isso como falha).
     if ok and caught == total:
-        print("NEG-ARM PASS")
-        return 0
-    return 2
+        print("NEG-ARM: PASS")
+        return 1
+    print("NEG-ARM: FAIL")
+    return 0
 
 
 def _real_land_count():
@@ -361,7 +372,8 @@ def main(argv=None):
             lines = fh.readlines()
     except OSError as exc:
         print("SEM DADOS -- log ilegivel: %r" % (exc,))
-        return 2
+        print("YOUTUBE-LAND VERDICT: SKIPPED")
+        return 0
     if args.tail and args.tail > 0:
         lines = lines[-args.tail:]
     land, drops, epoch_drops, decided, n_lines = parse(lines)
@@ -369,7 +381,10 @@ def main(argv=None):
           % (args.log, n_lines, len(land)))
     out = evaluate(land, drops, epoch_drops, decided)
     report(out, sys.stdout)
-    return out["rc"]
+    # SEM DADOS (rc=2 do ticket) e' rc=0 NA BATERIA, com a frase de skip: e' a
+    # unica forma de o passo poder ser skip-capable sem transformar um skip num
+    # FAIL nem um skip num verde.
+    return 0 if out["rc"] == 2 else out["rc"]
 
 
 if __name__ == "__main__":

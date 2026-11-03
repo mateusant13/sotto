@@ -75,9 +75,16 @@ def make_executor(mod, path, level='leve', spawns=None, poll_s=0.2):
         return FakeChild('{"type":"caption","text":"ok"}\n'
                          '{"type":"result","text":"ok"}\n')
 
+    # A ADOPCAO APONTA PARA O DIRECTORIO DESTE BRACO. Sem isto o executor
+    # adoptava os spools REAIS de `TMPDIR` na primeira volta (`_last_adopt`
+    # arranca em 0.0) e um braco com a fila vazia via `spawns=1`; foi medido
+    # antes desta porta existir.
+    spool = os.path.join(path, 'spool')
+    os.makedirs(spool, exist_ok=True)
     ex = mod.BatchExecutor(queue=queue, log_fn=lambda _m: None,
                            level_fn=lambda: level, spawn=spawn, poll_s=poll_s,
-                           child_poll_s=0.2, adopt_every_s=3600.0)
+                           child_poll_s=0.2, adopt_every_s=3600.0,
+                           adopt_roots=[spool])
     return ex, queue, spawns
 
 
@@ -207,7 +214,9 @@ def main():
         print('NEG-ARM refresh-desligado %s %s'
               % ('GREEN (o defeito volta)' if caught else 'FAIL', detail))
         bad = [n for n, ok, _ in results if not ok]
-        return 0 if (caught and not bad) else 1
+        # CONTRATO DA BATERIA: rc=1 = o mutante foi apanhado.
+        print('NEG-ARM: %s' % ('PASS' if (caught and not bad) else 'FAIL'))
+        return 1 if (caught and not bad) else 0
 
     bad = [n for n, ok, _ in results if not ok]
     print('VERDICT: %s (%d/%d arms)'
