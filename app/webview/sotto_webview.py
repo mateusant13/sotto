@@ -1382,6 +1382,64 @@ def warn(message: str) -> None:
     log(f'WARN {message}')
 
 
+# O ARRANQUE ESTA' COMPLETO? -- UMA PERGUNTA, UM DONO (2026-11-03, MEDIDO).
+# `run.cmd` roda `--wait-ready <ficheiro>` e APAGA o ficheiro a seguir
+# (`del /q` no fim). A shell, porem, usava esse MESMO ficheiro como a sua
+# propria resposta a "ja arranquei?" -- no `sotto-panel-stall` e no
+# `STARTUP_NOT_READY`. Medido no arranque de 05:19:43 (pid 492):
+# `mark_launch_ready` as 05:19:51, o `del` do run.cmd logo depois, e a
+# partir dali a app passou a achar que NAO tinha arrancado --
+# `PANEL_NAV_STALL s=12 -> re-empurrar a navegacao` (um `load_url` a mais
+# na pagina que ja' estava carregada), `STARTUP_NOT_READY s=15`, e as
+# 05:20:10 um `PANEL_NAV_STALL_FINAL s=25` que chamou `_complete_startup`
+# OUTRA VEZ (daí o segundo `WORKER_AUTOSTART`). O ficheiro e' do
+# largador; o estado de arranque e' da app.
+_STARTUP_READY = {'done': False}
+
+
+def _prune_stale_ready_files(directory, keep='', max_age_s=86400.0):
+    """Os `ready-*.txt` que ficaram de largadas abortadas (2026-11-03).
+
+    MEDIDO nesta box: **64** ficheiros em `_main/`, o mais antigo de 2026-10-07.
+    O `run.cmd` apaga o seu no fim da espera, logo os que sobram sao de
+    largadas que morreram antes disso -- lixo que cresce a cada falha e que o
+    dono paga em espaco. Apaga so' o PADRAO, so' o que passou de um dia, e
+    nunca o ficheiro desta propria largada.
+    """
+    try:
+        now = time.time()
+        keep = os.path.abspath(keep) if keep else ''
+        for name in os.listdir(directory):
+            if not (name.startswith('ready-') and name.endswith('.txt')):
+                continue
+            full = os.path.abspath(os.path.join(directory, name))
+            if keep and full == keep:
+                continue
+            try:
+                if now - os.path.getmtime(full) > max_age_s:
+                    os.remove(full)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
+def startup_is_ready(path=None) -> bool:
+    """Ja' arrancou? Em processo primeiro, ficheiro do largador depois.
+
+    O ficheiro continua a ser aceito porque um arranque DIRECTO (sem
+    `run.cmd`) nao tem `--ready-file`, e ha' quem o crie a' mao.
+    """
+    if _STARTUP_READY['done']:
+        return True
+    if not path:
+        return False
+    try:
+        return os.path.exists(path)
+    except Exception:                 # noqa: BLE001
+        return False
+
+
 def mark_launch_ready(path) -> bool:
     """run.cmd's readiness handshake (gap G3): touch `path` once the app is up.
 
@@ -1400,6 +1458,7 @@ def mark_launch_ready(path) -> bool:
         directory = os.path.dirname(os.path.abspath(path))
         if directory:
             os.makedirs(directory, exist_ok=True)
+            _prune_stale_ready_files(directory, keep=os.path.abspath(path))
         with open(path, 'w', encoding='utf-8') as f:
             f.write(f'ready pid={os.getpid()}\n')
         return True
@@ -9062,10 +9121,9 @@ class SottoShell:
         def _watch():
             path = getattr(self.args, 'ready_file', None)
             def _ready():
-                try:
-                    return bool(path) and os.path.exists(path)
-                except Exception:             # noqa: BLE001
-                    return False
+                # O FICHEIRO E' DO LARGADOR E ELE APAGA-O (2026-11-03);
+                # `startup_is_ready` pergunta primeiro a ESTE processo.
+                return startup_is_ready(path)
             time.sleep(12.0)
             if _ready():
                 return
@@ -9096,6 +9154,7 @@ class SottoShell:
         arrancou. O vigia do painel chama ESTE caminho, entao a app sobe com o
         que precisa mesmo que a pagina do painel fique pendurada.
         """
+        _STARTUP_READY['done'] = True
         mark_launch_ready(self.args.ready_file)
 
         # Startup actions run ONCE per process, not once per navigation. A hot
@@ -17165,7 +17224,7 @@ def _start_startup_stack_watch(args):
             nap = at - (time.monotonic() - started)
             if nap > 0:
                 time.sleep(nap)
-            if os.path.exists(path):
+            if startup_is_ready(path):
                 return
             try:
                 log('STARTUP_NOT_READY s=%.0f threads=%d'
