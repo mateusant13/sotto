@@ -4264,6 +4264,15 @@ class LineFormer:
             # 2026-10-30: *"nunca vai dar display em 'so' sem esperar virar
             # 'sou'"*, e *"'CAUS' quando o falante fala 'cause like'"*.
             estavel, _cauda = _stable_words().proven_text(self._words)
+            # A MESMA CURA NO PARCIAL (medido 2026-11-03, sessao viva). O
+            # `line()` passa por `join_fragments`, que termina em
+            # `dedup_seam_repeat` -- mas o PARCIAL nao: ele vai a' tela pelo
+            # `proven_text`, que junta os fragmentos por conta propria. Medido
+            # depois de a regra ser corrigida: 5 de 35 linhas desta instancia
+            # (pid 4732, 11:43) ainda saiam com a repeticao, e as cinco passam
+            # limpas por `dedup_seam_repeat`. O defeito era a CHAMADA que
+            # faltava, nao a regra.
+            estavel = dedup_seam_repeat(estavel)
             if self._worthy(estavel) and estavel != self._shown:
                 # O texto estavel so vai para o ecra quando MUDA. Um parcial
                 # identico ao anterior e uma reescrita do mesmo texto: o dono

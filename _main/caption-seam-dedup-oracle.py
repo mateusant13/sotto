@@ -111,6 +111,18 @@ def main():
     i = f(LIVE_COMMA_DUP)
     checks.append(("I", i == LIVE_COMMA_LINE, i))
 
+    # J: O PARCIAL. `line()` passa por `join_fragments` (que dedupa); o parcial
+    # vai a' tela pelo `proven_text`, que junta por conta propria. Medido na
+    # sessao de 11:43: 5 de 35 linhas desta instancia ainda repetiam, e todas
+    # passam limpas pela regra -- era a CHAMADA que faltava.
+    lf = w.LineFormer(min_chars=1, emit_partial=True)
+    evs = []
+    evs += lf.push("posi a estava pedindo que posi a estava pedindo", start=0.0, end=1.0)
+    evs += lf.push("que eu fim", start=1.0, end=2.0)
+    evs += lf.push("", start=2.0, end=2.0)
+    bad = [e["text"] for e in evs if f(e["text"]) != e["text"]]
+    checks.append(("J", not bad, bad or "nenhum parcial repetido"))
+
     for name, ok, val in checks:
         print("%s %s %r" % (name, "PASS" if ok else "FAIL", val))
     ok = all(c[1] for c in checks)
@@ -171,7 +183,34 @@ def neg_arm():
                 print("  ", ln)
     else:
         print("NEG-ARM seam-key mutant: ANCORA AUSENTE no worker")
-    caught = caught and caught2
+
+    # TERCEIRO MUTANTE: a CHAMADA no caminho PARCIAL. Sem ela o `line()` continua
+    # curado e o texto que o dono VE nao.
+    needle3 = "            estavel = dedup_seam_repeat(estavel)"
+    caught3 = False
+    if needle3 in text:
+        mutant3 = text.replace(needle3, "            pass", 1)
+        fd3, tmp3 = tempfile.mkstemp(prefix="_mutant_partial_", suffix=".py",
+                                     dir=os.path.dirname(os.path.abspath(WORKER)))
+        os.close(fd3)
+        with open(tmp3, "w", encoding="utf-8", newline="") as fh:
+            fh.write(mutant3)
+        try:
+            proc3 = subprocess.run([sys.executable, os.path.abspath(__file__), "--worker", tmp3],
+                                   capture_output=True, text=True)
+        finally:
+            try:
+                os.unlink(tmp3)
+            except OSError:
+                pass
+        caught3 = proc3.returncode != 0 and "J FAIL" in (proc3.stdout or "")
+        print("NEG-ARM partial mutant rc=%d caught=%s" % (proc3.returncode, caught3))
+        for ln in (proc3.stdout or "").splitlines():
+            if ln.startswith("J "):
+                print("  ", ln)
+    else:
+        print("NEG-ARM partial mutant: ANCORA AUSENTE no worker")
+    caught = caught and caught2 and caught3
     print("NEG-ARM PASS" if caught else "NEG-ARM FAIL")
     # O `:expectred` da bateria exige rc=1 quando o mutante APANHADO: o passo
     # negativo PASSA com um RED (o defeito foi nomeado), nao com um zero.
@@ -194,10 +233,16 @@ if __name__ == "__main__":
         ok_b = w.dedup_seam_repeat("nao nao é isso") == "nao nao é isso"
         ok_a = w.dedup_seam_repeat(MEASURED_DUP) == MEASURED_LINE
         ok_h = w.dedup_seam_repeat(LIVE_GROWING_DUP) == LIVE_GROWING_LINE
+        lf2 = w.LineFormer(min_chars=1, emit_partial=True)
+        e2 = []
+        e2 += lf2.push("posi a estava pedindo que posi a estava pedindo", start=0.0, end=1.0)
+        e2 += lf2.push("que eu fim", start=1.0, end=2.0)
+        ok_j = not [e for e in e2 if w.dedup_seam_repeat(e["text"]) != e["text"]]
         print("A %s" % ("PASS" if ok_a else "FAIL"))
         print("B %s" % ("PASS" if ok_b else "FAIL"))
         print("H %s" % ("PASS" if ok_h else "FAIL"))
-        ok = ok_a and ok_b and ok_h
+        print("J %s" % ("PASS" if ok_j else "FAIL"))
+        ok = ok_a and ok_b and ok_h and ok_j
         print("VERDICT:", "GREEN" if ok else "RED")
         raise SystemExit(0 if ok else 1)
     raise SystemExit(main())
