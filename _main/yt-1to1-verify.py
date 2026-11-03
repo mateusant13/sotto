@@ -187,6 +187,14 @@ def run(seconds, period):
         return {'erro': err}
     samples = []
     started = time.monotonic()
+    # O QUE ESTA' NO ECRA' PERSISTE (2026-11-03). `last_drawn_rows` le' os
+    # ultimos 256 KB do log; quando o log engorda depressa (um despejo de
+    # `UI_HUNG_FRAME`, por exemplo) a cauda pode nao ter NENHUMA linha desenhada
+    # e o instrumento passava a dizer `quadros=0` enquanto a legenda estava no
+    # ecra -- mediu 0 quadros numa janela em que o dono viu a linha congelada.
+    # A ultima linha desenhada continua a ser o que esta' na janela ate' outra
+    # chegar: e' isso que este guarda.
+    last_ours = None
     try:
         while time.monotonic() - started < seconds:
             try:
@@ -194,11 +202,13 @@ def run(seconds, period):
             except Exception as exc:            # noqa: BLE001
                 reading = {'error': type(exc).__name__}
             drawn = last_drawn_rows()
+            if drawn:
+                last_ours = drawn[-1][1]
             samples.append({
                 't': time.monotonic() - started,
                 'paused': reading.get('paused'),
                 'player': reading.get('rows') or [],
-                'ours': drawn[-1][1] if drawn else None,
+                'ours': last_ours,
                 'erro': reading.get('error'),
             })
             time.sleep(period)

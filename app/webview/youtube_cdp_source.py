@@ -202,8 +202,16 @@ def list_targets(port=DEFAULT_PORT, timeout=3.0):
     return youtube, others
 
 
-def pick_target(tabs, video_id=""):
-    """(aba, motivo). Uma aba so'; `ambiguous` quando nao se pode decidir."""
+def pick_target(tabs, video_id="", window_title=""):
+    """(aba, motivo). Uma aba so'; `ambiguous` quando nao se pode decidir.
+
+    COM DUAS ABAS `watch` ABERTAS (MEDIDO 2026-11-03 na maquina do dono,
+    `state=ambiguous` enquanto a legenda esteve parada) a escolha NAO precisa
+    de id nenhum: o titulo da JANELA em primeiro plano esta' o tempo todo na
+    mao do chamador (Win32, microssegundos) e diz qual daquelas abas ele esta'
+    a ver. O id continua a ser a chave mais forte; o titulo resolve o caso
+    comum sem custo nenhum, e so' o que sobra fica `ambiguous`.
+    """
     if video_id:
         named = [t for t in tabs if video_id in str(t.get("url") or "")]
         if named:
@@ -211,6 +219,17 @@ def pick_target(tabs, video_id=""):
         return None, "video-not-open"
     if not tabs:
         return None, "no-youtube-tab"
+    want = str(window_title or "").strip().lower()
+    if want:
+        exact = [t for t in tabs
+                 if str(t.get("title") or "").strip().lower() == want]
+        if len(exact) == 1:
+            return exact[0], "window-title"
+        partial = [t for t in tabs
+                   if str(t.get("title") or "").strip().lower()
+                   and str(t.get("title") or "").strip().lower() in want]
+        if len(partial) == 1:
+            return partial[0], "window-title-partial"
     if len(tabs) > 1:
         return None, "ambiguous"
     return tabs[0], "only-tab"
@@ -239,11 +258,18 @@ class CdpCaptionSource:
         self._errors = 0
         self._last_error = ""
         self._video_id = ""
+        #: O titulo da janela que o dono esta' a ver. Com duas abas `watch`, e'
+        #: isto -- nao o id -- que decide qual delas ler (`pick_target`).
+        self._window_title = ""
 
     # -- ciclo de vida ----------------------------------------------------
     def set_video_id(self, video_id):
         """Qual video o Sotto DECLARA ler. Com mais de uma aba aberta, so' esta."""
         self._video_id = str(video_id or "")
+
+    def set_window_title(self, title):
+        """Qual janela o dono esta' a ver (o que resolve duas abas `watch`)."""
+        self._window_title = str(title or "")
 
     def start(self):
         if self._thread is not None and self._thread.is_alive():
@@ -273,6 +299,45 @@ class CdpCaptionSource:
         if time.monotonic() - snap["stamp"] > max_age:
             return None
         return snap
+
+    def target_video_id(self):
+        """O id da aba que `pick_target` escolhe AGORA ("" se nao decidir).
+
+        E' a resposta que o caso de TRES abas `watch` pedia (medido 2026-11-03:
+        `stats={'reads': 0, 'note': 'ambiguous'}` por minutos, e a legenda parada,
+        enquanto a fonte esperava um id que ninguem lhe dava). O id sai do URL da
+        aba escolhida pelo TITULO DA JANELA -- nada de UIA, nada de varrer a
+        arvore. Uma chamada HTTP por `cache_s`, nao por tick.
+        """
+        now = time.monotonic()
+        cached = getattr(self, '_tid_cache', None)
+        if cached and now - cached[0] < 2.0:
+            return cached[1]
+        vid = ''
+        try:
+            tabs, _others = list_targets(self.port)
+            target, _why = pick_target(tabs, self._video_id, self._window_title)
+            if target is not None:
+                url = str(target.get('url') or '')
+                if 'v=' in url:
+                    vid = url.split('v=', 1)[1].split('&', 1)[0]
+        except Exception:                 # noqa: BLE001
+            vid = ''
+        self._tid_cache = (now, vid)
+        return vid
+
+    def snapshot_age(self):
+        """Quantos segundos tem a foto em maos (`None` = nao ha' foto nenhuma).
+
+        Existe porque um APAGAO nao se diagnostica por ausencia de linhas: medido
+        2026-11-03 no log do dono, 40 s sem `YT_FRAME` com o video a andar, e nada
+        que dissesse se a culpa era da foto velha ou de outra coisa.
+        """
+        with self._lock:
+            snap = self._snap
+        if snap is None:
+            return None
+        return time.monotonic() - snap["stamp"]
 
     def _publish(self, snap, note=None):
         with self._lock:
@@ -388,7 +453,7 @@ class CdpCaptionSource:
             self._error(exc)
             self._publish(None, "port-closed")
             return None
-        target, why = pick_target(tabs, self._video_id)
+        target, why = pick_target(tabs, self._video_id, self._window_title)
         if target is None:
             self._publish(None, why)
             return None

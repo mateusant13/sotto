@@ -203,6 +203,61 @@ def mutex_free():
         k32.CloseHandle(handle)
 
 
+#: O QUE A APP LARGA E QUE SOBREVIVE A ELA. MEDIDO 2026-11-03 03:32: o
+#: `taskkill /PID <app> /T /F` devolveu rc=0, a app morreu, e QUATRO
+#: `msedgewebview2.exe` filhos dela (pids 47376/17224/43896/50940) continuaram
+#: vivos a deter `Local\\SottoShell`: `--check` dizia `instancia viva: NENHUMA`
+#: e `mutex livre: False`, e todas as largadas seguintes abortavam em 20 s. Matar
+#: esses quatro libertou a mutex na hora. Identidade: o PID do filho + o NOME +
+#: `ParentProcessId` == o pid da app (nunca um filtro por palavra).
+LITTER_NAMES = ('msedgewebview2.exe', 'python.exe', 'pythonw.exe', 'cmd.exe')
+
+
+def _children_of(pids):
+    """[(pid, nome, ppid)] de todos os processos, para achar a descendencia."""
+    try:
+        out = subprocess.run(
+            ['powershell', '-NoProfile', '-Command',
+             'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)|$($_.Name)|$($_.ParentProcessId)" }'],
+            capture_output=True, text=True, creationflags=NO_WINDOW, timeout=40)
+    except Exception:                     # noqa: BLE001
+        return []
+    rows = []
+    for line in (out.stdout or '').splitlines():
+        bits = line.strip().split('|')
+        if len(bits) != 3:
+            continue
+        try:
+            rows.append((int(bits[0]), bits[1].lower(), int(bits[2])))
+        except ValueError:
+            continue
+    return rows
+
+
+def _sweep_litter(root_pid, snapshot):
+    """Mata os descendentes que a app larga e que sobrevivem a ela."""
+    want = {root_pid}
+    changed = True
+    while changed:
+        changed = False
+        for pid, name, ppid in snapshot:
+            if ppid in want and pid not in want:
+                want.add(pid)
+                changed = True
+    killed = 0
+    for pid, name, _ppid in snapshot:
+        if pid == root_pid or pid not in want or name not in LITTER_NAMES:
+            continue
+        if not alive(pid):
+            continue
+        result = subprocess.run(['taskkill', '/PID', str(pid), '/F'],
+                                capture_output=True, close_fds=True,
+                                creationflags=NO_WINDOW)
+        w('limpeza pid=%d (%s) rc=%d' % (pid, name, result.returncode))
+        killed += 1
+    return killed
+
+
 def kill(pid):
     """Mata pelo PID que ganhou a mutex -- e, se este processo for `medium`, delega.
 
@@ -222,10 +277,16 @@ def kill(pid):
           % (pid, result.returncode,
              (result.stderr or b'').decode('cp850', 'replace').strip()))
         _kill_via_token(pid)
+    # A DESCENDENCIA E' APANHADA ANTES DA MORTE: depois dela o
+    # `ParentProcessId` deixa de apontar para quem interessa.
+    snapshot = _children_of([pid])
     deadline = time.time() + 15.0
     while time.time() < deadline:
         if not alive(pid):
             w('kill pid=%d confirmado morto' % pid)
+            n = _sweep_litter(pid, snapshot)
+            if n:
+                w('kill pid=%d limpeza=%d descendentes' % (pid, n))
             return True
         time.sleep(POLL_S)
     w('kill pid=%d NAO morreu em 15 s' % pid)
@@ -276,7 +337,7 @@ def launch_via_task():
     return result.returncode == 0
 
 
-def launch_via_token(source_pid, runner=None):
+def launch_via_token(source_pid, runner=None, extra=None):
     """This pane cannot do it itself (medium); borrow the live instance's token.
 
     `runner` exists so a lane can exercise THIS function with a harmless payload
@@ -286,7 +347,16 @@ def launch_via_token(source_pid, runner=None):
     module = _token_launcher()
     cmd = os.path.join(os.environ.get('SYSTEMROOT', r'C:\Windows'), 'System32', 'cmd.exe')
     runner = runner or os.path.join(ROOT, 'app', 'webview', 'run.cmd')
-    ok, err, child = module.launch(source_pid, cmd, ['/c', runner], cwd=ROOT,
+    argv = ['/c', runner]
+    # O AUTO-RELANCAMENTO DA SHELL FORA DA LARGADA DA LANE (2026-11-03).
+    # MEDIDO: cada largada minha deixou DOIS `pythonw.exe` filhos do explorer
+    # (pids 43032/48812 as 03:39) a deter `Local\\SottoShell`, e a largada
+    # seguinte abortava em 20 s. O flag existe exactamente para isto
+    # (`app/webview/shell_relaunch.py`), e a lane nao quer que a app se
+    # relance sozinha por baixo dela.
+    if extra:
+        argv.extend(extra)
+    ok, err, child = module.launch(source_pid, cmd, argv, cwd=ROOT,
                                 flags=NO_WINDOW | 0x00000200)  # + CREATE_NEW_PROCESS_GROUP
     w('CreateProcessAsUser(fonte=%d) ok=%s err=%d filho=%s runner=%s'
       % (source_pid, ok, err, child, runner))
@@ -375,7 +445,7 @@ def main(argv=None):
             w('ABORTA: a mutex %s continua tomada depois de %ds' % (MUTEX, MUTEX_WAIT_S))
             return 3
         w('mutex livre; a largar com o token de %d' % source)
-        if not launch_via_token(source):
+        if not launch_via_token(source, extra=['--no-self-relaunch']):
             w('ABORTA: nao consegui largar o filho high com o token de %d' % source)
             return 6
         new = wait_ready(before)
@@ -403,12 +473,12 @@ def main(argv=None):
     # DEPOIS a tarefa, com o motivo escrito quando nenhum dos dois existe.
     launched = False
     if is_high():
-        launched = launch_via_token(os.getpid())
+        launched = launch_via_token(os.getpid(), extra=['--no-self-relaunch'])
     else:
         source = _token_launcher()._selftest_source()
         if source:
             w('sem instancia viva; a largar com o token de %d' % source)
-            launched = launch_via_token(source)
+            launched = launch_via_token(source, extra=['--no-self-relaunch'])
         else:
             w('sem processo high para emprestar token; a cair na tarefa')
             launched = launch_via_task()

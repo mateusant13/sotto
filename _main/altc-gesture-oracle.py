@@ -243,6 +243,10 @@ class FakeShell:
         self.visible = bool(visible)
         self.surface_applied = surface
         self._caption_wanted = bool(caption)
+        # A OUTRA VERDADE DA LEGENDA (2026-11-03): `_hotkey_resolve` decide pela
+        # JANELA (`_caption_window_shown`), nao pela intencao -- o fake tem de
+        # ter as duas, senao o braco (d) julga um shell que nao existe.
+        self._caption_window_shown = bool(caption)
         self.events: list[tuple] = []
         self.live_calls: list[bool] = []
         SCREEN['visible'] = bool(visible)
@@ -276,6 +280,7 @@ class FakeShell:
         on = bool(payload.get('on'))
         self.live_calls.append(on)
         self._caption_wanted = on
+        self._caption_window_shown = on
         return 'enabled'
 
 

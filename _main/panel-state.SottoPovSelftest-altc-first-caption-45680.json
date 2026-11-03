@@ -1,0 +1,87 @@
+{
+  "namedState": "no-worker",
+  "panel": {
+    "live": {
+      "count": 0,
+      "hidden": true,
+      "hint": "",
+      "lines": [],
+      "provisionalCount": 0,
+      "scroll": {
+        "atBottom": true,
+        "client": 0,
+        "height": 0,
+        "overflowing": false,
+        "top": 0
+      }
+    },
+    "placeholder": {
+      "body": "This shell was started with --no-worker, so no audio is being captured. Start it without that flag (run.cmd, the documented entry) to transcribe.",
+      "hidden": false,
+      "title": "No worker · captions are impossible"
+    },
+    "status": {
+      "kind": "error",
+      "text": "not ready"
+    },
+    "url": "file:///H:/sotto/app/panel/panel.html"
+  },
+  "panelDom": {
+    "ageSeconds": 4.016,
+    "pending": true,
+    "reason": "",
+    "detail": null
+  },
+  "shell": {
+    "visible": false,
+    "hotkey": "Alt+Shift+F12",
+    "rendererReady": true,
+    "bridgeInstalled": true,
+    "lastStatus": "No transcription worker is running (started with --no-worker)",
+    "captionLogCount": 0,
+    "reloadCount": 0,
+    "workerPath": "H:\\sotto\\worker\\sotto_worker.py",
+    "log": "I:\\cc-tmp\\pov-selftest-altc-first-caption-45680.log",
+    "hotReload": false
+  },
+  "panelVisibility": {
+    "path": "H:\\sotto\\_main\\panel-visibility.json",
+    "visible": false,
+    "since_ms": 1793685273009,
+    "reason": "hotkey-toggle",
+    "transitions": 15,
+    "writes": 91,
+    "errors": 0
+  },
+  "code": {
+    "worker": {
+      "path": null,
+      "disk": null,
+      "loaded": null,
+      "stale": false
+    },
+    "shell": {
+      "path": "H:\\sotto\\app\\webview\\sotto_webview.py",
+      "disk": "a7162abf2f005be6",
+      "loaded": "4669d7d264c0867c",
+      "stale": true,
+      "reloadable": false,
+      "restart_hint": "a shell change needs a shell restart"
+    },
+    "pending": null,
+    "pending_ms": null,
+    "max_defer_ms": 25000
+  },
+  "meterPushes": 0,
+  "statsPushes": 0,
+  "worker": null,
+  "schema": "sotto.panel-state/1",
+  "reason": "periodic",
+  "sequence": 102,
+  "writtenAt": "2026-11-03T02:57:55-03:00",
+  "writtenAtEpoch": 1793685475.042,
+  "ageSeconds": 0.0,
+  "ageSecondsNote": "age at write; the authoritative age is now - writtenAtEpoch and is printed by `panel_state.py --read`",
+  "staleAfterSeconds": 6.0,
+  "producerPid": 13136
+}
