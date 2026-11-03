@@ -680,6 +680,10 @@ def _window_is_player(title, proc, url=""):
     return ""
 
 
+#: Cache de `player_source`: (hwnd, titulo) -> (quando, fonte).
+_PLAYER_SOURCE_CACHE = {}
+_PLAYER_SOURCE_TTL_S = 1.0
+
 def player_source(hwnd, uia=None, UIA=None, root=None, url=None):
     """Which player this window is -- or "" for a window that is not one.
 
@@ -699,6 +703,19 @@ def player_source(hwnd, uia=None, UIA=None, root=None, url=None):
     """
     title = _window_title(hwnd)
     proc = _process_name(hwnd)
+    # A JANELA NAO MUDA DE JOGO 3 VEZES POR SEGUNDO (2026-11-02). MEDIDO no
+    # dono: a leitura do laco externo custava 650-1300 ms por tick, e o culpado
+    # era esta funcao -- a barra de endereco do Chrome e' lida pela arvore de
+    # acessibilidade (`_address_bar_url`) em CADA leitura, com o video parado e
+    # o mesmo titulo. O resultado fica em cache por (hwnd, titulo) durante
+    # `_PLAYER_SOURCE_TTL_S`: uma navegacao muda o titulo do YouTube, e o TTL e'
+    # o limite para o caso de nao mudar.
+    cache_key = (int(hwnd or 0), title)
+    hit = _PLAYER_SOURCE_CACHE.get(cache_key)
+    if url is None and hit is not None:
+        age = time.monotonic() - hit[0]
+        if age <= _PLAYER_SOURCE_TTL_S:
+            return hit[1]
     if url is None:
         url = ""
         if uia is not None and UIA is not None:
@@ -709,7 +726,13 @@ def player_source(hwnd, uia=None, UIA=None, root=None, url=None):
                     root = None
             if root is not None and _is_browser(proc):
                 url = _address_bar_url(uia, UIA, root)
-    return _window_is_player(title, proc, url)
+    src = _window_is_player(title, proc, url)
+    # O NEGATIVO TAMBEM ENTRA NO CACHE (2026-11-02): MEDIDO 1672 ms por tick a
+    # sondar uma janela que nao e' player -- o custo e' `_process_name` e a
+    # arvore, nao a resposta. A chave carrega o titulo, e o TTL cobre o caso de
+    # o dono abrir o player na mesma janela sem o titulo mudar.
+    _PLAYER_SOURCE_CACHE[cache_key] = (time.monotonic(), src)
+    return src
 
 
 def edit_values(hwnd, uia, UIA):

@@ -56,7 +56,15 @@ TOKEN_RIGHTS = TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_ASSIGN_PRIMARY
 CREATE_UNICODE_ENVIRONMENT = 0x00000400
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 DETACHED_PROCESS = 0x00000008
-DEFAULT_FLAGS = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+CREATE_NO_WINDOW = 0x08000000
+#: NENHUM POP-UP NA TELA DO DONO (ordem de 2026-11-02: *"para de fazer terminal
+#: ter pop up porra"*). MEDIDO com um censo de janelas a 10 Hz em volta de um
+#: `--relaunch`: `DETACHED_PROCESS` NAO bastava -- o `taskkill.exe` lancado por
+#: este modulo aparecia como `ConsoleWindowClass` visivel na tela dele, porque um
+#: executavel de CONSOLA lancado por um pai sem consola faz o Windows alocar uma
+#: NOVA consola, e essa consola tem janela. `CREATE_NO_WINDOW` impede a alocacao;
+#: os dois flags sao mutuamente exclusivos, e o que se quer aqui e' este.
+DEFAULT_FLAGS = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
 
 TOKEN_INTEGRITY_LEVEL = 25
 INTEGRITY_NAMES = {0x0000: 'UNTRUSTED', 0x1000: 'LOW', 0x2000: 'MEDIUM', 0x3000: 'HIGH',
@@ -196,7 +204,8 @@ def kill_via_high(pid, source=None):
         handle.write('import subprocess, sys, os\n'
                      'rc = subprocess.run([os.path.join(os.environ.get("SYSTEMROOT",\n'
                      '    r"C:\\Windows"), "System32", "taskkill.exe"),\n'
-                     '    "/PID", sys.argv[1], "/T", "/F"]).returncode\n'
+                     '    "/PID", sys.argv[1], "/T", "/F"],\n'
+                     '    creationflags=0x08000000).returncode  # CREATE_NO_WINDOW\n'
                      'sys.exit(rc)\n')
     interpreter = sys.executable.replace('python.exe', 'pythonw.exe')
     ok, err, child = launch(source, interpreter, [helper, str(int(pid))])

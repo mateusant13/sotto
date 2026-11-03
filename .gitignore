@@ -243,3 +243,9 @@ _main/shots/
 # Stray shell-redirect artefacts that landed at the repo root.
 /-
 /=ro
+
+# -- Machine state that must never be versioned (2026-11-02) ---------------
+# 167 MB of code index built by this box, and the agent scratch dirs.
+.codeintel/
+.agent-work/
+.pi/

@@ -1,13 +1,13 @@
 {
   "schema": "sotto.panel-visibility/1",
   "visible": false,
-  "since_ms": 1793665710830,
-  "age_ms": 523042,
-  "pid": 13712,
+  "since_ms": 1793672391426,
+  "age_ms": 294496,
+  "pid": 19228,
   "reason": "boot",
   "transitions": 1,
-  "writtenAt": "2026-11-02T21:37:13-03:00",
-  "writtenAtEpoch": 1793666233.872,
+  "writtenAt": "2026-11-02T23:24:45-03:00",
+  "writtenAtEpoch": 1793672685.922,
   "ageSecondsNote": "age_ms is the age AT WRITE; the authoritative duration is (now_ms - since_ms) and is computed by the READER",
   "staleAfterSeconds": 9.0,
   "shed": "leve",
@@ -21,4 +21,4 @@
     "workWidth": 1920,
     "workHeight": 1032
   }
-}
+}

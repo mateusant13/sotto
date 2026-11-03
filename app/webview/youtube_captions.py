@@ -1568,38 +1568,99 @@ def _slider_seconds(value, vmin, vmax, duration):
     return None
 
 
-def _time_from_text(uia, UIA, root, duration):
+#: O ELEMENTO DO RELOGIO, por janela (2026-11-02). A busca por ControlType e'
+#: SERVER-SIDE mas ainda percorre a arvore inteira do Chrome: MEDIDO no dono,
+#: com a legenda calada, a leitura do laco externo custava 844-3547 ms por tick.
+#: O relogio e' o MESMO elemento durante todo o video -- guarda-se e le-se o
+#: valor por ele (2 chamadas), com a busca de volta quando ele morre.
+_TIME_TEXT_CACHE = {}
+_TIME_SLIDER_CACHE = {}
+
+
+def _cached_el(cache, hwnd):
+    if not hwnd:
+        return None
+    return cache.get(int(hwnd))
+
+
+def _clock_from_text_el(el, duration):
+    """O instante desta Text element, ou None quando ela nao e' o relogio."""
+    name = _name(el).strip()
+    if not name:
+        return None
+    cls = _class_name(el).lower()
+    pair = _parse_time_pair(name)
+    if pair is not None:
+        current, total = pair
+        return {"t": float(current), "source": "text", "raw": name,
+                "total": float(total), "cls": cls}
+    one = _parse_clock(name)
+    if one is None:
+        return None
+    if "time" not in cls:
+        return None
+    # A BARE clock is the current time only if it is NOT the total
+    # duration: the modern YouTube player shows ONLY the duration
+    # ('ytp-time-duration'), and a bare clock equal to the duration is
+    # the total, not the instant.
+    if duration is None:
+        return None
+    if abs(one - float(duration)) < 1.0:
+        return None
+    return {"t": float(one), "source": "text", "raw": name, "cls": cls}
+
+
+def _time_from_text(uia, UIA, root, duration, hwnd=None):
     """The player's own clock, read from the Text elements."""
     best = None
+    cached = _cached_el(_TIME_TEXT_CACHE, hwnd)
+    if cached is not None:
+        try:
+            hit = _clock_from_text_el(cached, duration)
+            if hit is not None:
+                return hit
+        except Exception:  # noqa: BLE001
+            pass
+        if hwnd:
+            _TIME_TEXT_CACHE.pop(int(hwnd), None)
     text_type = _control_type_id(UIA, "UIA_TextControlTypeId", 50020)
     for el in _elements(_find_by_type(uia, UIA, root, text_type)):
-        name = _name(el).strip()
-        if not name:
-            continue
-        cls = _class_name(el).lower()
-        pair = _parse_time_pair(name)
-        if pair is not None:
-            current, total = pair
-            return {"t": float(current), "source": "text", "raw": name,
-                    "total": float(total), "cls": cls}
-        one = _parse_clock(name)
-        if one is None:
-            continue
-        if "time" not in cls:
-            continue
-        # A BARE clock is the current time only if it is NOT the total
-        # duration: the modern YouTube player shows ONLY the duration
-        # ('ytp-time-duration'), and a bare clock equal to the duration is
-        # the total, not the instant.
-        if duration is None:
-            continue
-        if abs(one - float(duration)) < 1.0:
-            continue
-        return {"t": float(one), "source": "text", "raw": name, "cls": cls}
+        hit = _clock_from_text_el(el, duration)
+        if hit is not None:
+            if hwnd:
+                _TIME_TEXT_CACHE[int(hwnd)] = el
+            return hit
     return best
 
 
-def _time_from_slider(uia, UIA, root, duration):
+def _slider_hit(el, UIA, duration):
+    """`(score, hit)` para UMA Slider element. `hit` e' None se nao for relogio."""
+    value, vmin, vmax = _range_value(el, UIA)
+    valuetext = _value_text(el, UIA)
+    pair = _parse_time_pair(valuetext)
+    cls = _class_name(el).lower()
+    score = 0
+    if duration and vmax:
+        d = float(duration)
+        if abs(vmax - d) <= max(1.0, 0.02 * d):
+            score += 4  # the seek bar: its maximum IS the video's length
+    if "progress" in cls:
+        score += 2  # MEASURED: YouTube's seek bar is `ytp-progress-bar`
+    if vmax and vmax > 100.0:
+        score += 1  # a video's length; the volume slider stops at 100
+    if pair is not None:
+        score += 1
+    if pair is not None:
+        return score, {"t": float(pair[0]), "source": "valuetext",
+                       "raw": valuetext, "slider": [value, vmin, vmax]}
+    t = _slider_seconds(value, vmin, vmax, duration)
+    if t is None:
+        return score, None
+    return score, {"t": t, "source": "slider", "raw": valuetext,
+                   "slider": [value, vmin, vmax]}
+
+
+def _time_from_slider(uia, UIA, root, duration, hwnd=None):
     """The player's clock, read from the seek bar.
 
     MEASURED 2026-10-19 on a real YouTube window (the owner's own, a
@@ -1613,39 +1674,49 @@ def _time_from_slider(uia, UIA, root, duration):
     an instant. So the sliders are SCORED and the seek bar is the one whose
     maximum IS the video's length.
     """
+    cached = _cached_el(_TIME_SLIDER_CACHE, hwnd)
+    if cached is not None:
+        try:
+            _score, hit = _slider_hit(cached, UIA, duration)
+            if hit is not None:
+                return hit
+        except Exception:  # noqa: BLE001
+            pass
+        if hwnd:
+            _TIME_SLIDER_CACHE.pop(int(hwnd), None)
     slider_type = _control_type_id(UIA, "UIA_SliderControlTypeId", 50015)
     best = None
     for el in _elements(_find_by_type(uia, UIA, root, slider_type)):
-        value, vmin, vmax = _range_value(el, UIA)
-        valuetext = _value_text(el, UIA)
-        pair = _parse_time_pair(valuetext)
-        cls = _class_name(el).lower()
-        score = 0
-        if duration and vmax:
-            d = float(duration)
-            if abs(vmax - d) <= max(1.0, 0.02 * d):
-                score += 4  # the seek bar: its maximum IS the video's length
-        if "progress" in cls:
-            score += 2  # MEASURED: YouTube's seek bar is `ytp-progress-bar`
-        if vmax and vmax > 100.0:
-            score += 1  # a video's length; the volume slider stops at 100
-        if pair is not None:
-            score += 1
+        score, hit = _slider_hit(el, UIA, duration)
+        if hit is None:
+            continue
         if best is not None and score <= best[0]:
             continue
-        t = None
-        source = None
-        if pair is not None:
-            t, source = float(pair[0]), "valuetext"
-        else:
-            t = _slider_seconds(value, vmin, vmax, duration)
-            source = "slider"
-        if t is None:
-            continue
-        best = (score, {"t": t, "source": source, "raw": valuetext,
-                        "slider": [value, vmin, vmax]})
+        best = (score, hit)
+        if hwnd:
+            _TIME_SLIDER_CACHE[int(hwnd)] = el
     return best[1] if best else None
 
+
+#: O logger do shell, posto por ele (`youtube_captions` nao tem log proprio).
+PROF_HOOK = None
+
+
+def _yt_prof(stage, t0):
+    """`YT_PROF stage=.. ms=..` no log do shell, so' com `SOTTO_YT_PROFILE=1`.
+
+    MEDIDO 2026-11-02 no dono: o relogio do player custava 375-4859 ms por
+    tick, e o desenho custava 47-172 ms. O gargalo tem de ser um numero.
+    """
+    if os.environ.get("SOTTO_YT_PROFILE") != "1":
+        return
+    hook = PROF_HOOK
+    if hook is None:
+        return
+    try:
+        hook('YT_PROF stage=%s ms=%.1f' % (stage, (time.monotonic() - t0) * 1000.0))
+    except Exception:  # noqa: BLE001
+        pass
 
 def player_time_detail(uia, UIA, hwnd, duration=None):
     """Where the video is, and how that was decided.
@@ -1668,8 +1739,12 @@ def player_time_detail(uia, UIA, hwnd, duration=None):
     if root is None:
         out["why"] = "no-root"
         return out
-    text_hit = _time_from_text(uia, UIA, root, duration)
-    slider_hit = _time_from_slider(uia, UIA, root, duration)
+    _t_dbg = time.monotonic()
+    text_hit = _time_from_text(uia, UIA, root, duration, hwnd=hwnd)
+    _yt_prof("clock-text", _t_dbg)
+    _t_dbg = time.monotonic()
+    slider_hit = _time_from_slider(uia, UIA, root, duration, hwnd=hwnd)
+    _yt_prof("clock-slider", _t_dbg)
     if text_hit is not None:
         out.update(text_hit)
         if slider_hit is not None and slider_hit.get("t") is not None:
@@ -2007,8 +2082,19 @@ def _painted_children(el, uia):
     return out
 
 
-def _painted_items(el, uia):
-    """Os filhos de UMA janela de legenda, com o RECT: [{"text", "left", ...}]."""
+def _painted_items(el, uia, with_rect=True, reuse=None):
+    """Os filhos de UMA janela de legenda: [{"text", "left", ...}].
+
+    `with_rect=False` NAO le o rectangulo de cada filho, e isso e' a diferenca
+    entre uma leitura barata e uma cara (2026-11-02). MEDIDO no dono: com o
+    rectangulo de cada filho, uma leitura custa 62-125 ms (cada `CurrentName` e
+    `CurrentBoundingRectangle` e' uma chamada fora do processo, ~4 ms cada, e uma
+    cue tem 12-18 filhos); sem o rectangulo, custa os nomes.
+
+    O rectangulo continua a ser lido -- mas quando o TEXTO MUDA, nao a cada tick:
+    o container da legenda sobrevive a' cue e so' os filhos mudam. Ver
+    `painted_words(with_rect=)` e `sotto_webview._yt_rows`.
+    """
     out = []
     try:
         kids = el.FindAll(0x2, uia.CreateTrueCondition())  # TreeScope_Children
@@ -2023,6 +2109,28 @@ def _painted_items(el, uia):
         if not name:
             continue
         item = {"text": name, "left": 0, "top": 0, "right": 0, "bottom": 0}
+        # O RECT DE UM FILHO QUE NAO MUDOU NAO SE LE OUTRA VEZ (2026-11-02).
+        # Ordem do dono, verbatim: *"as legendas tao flickando. tao bugadas. ficam
+        # sumindo e aperecendo ou trocando a atual e a antiga ao mesmo tempo"*. O
+        # defeito era MISTURAR snapshots: o tick lia so' NOMES e `painted_rows`
+        # montava as linhas com os RECTS da leitura ANTERIOR -- a linha nova saia
+        # com a geometria da velha, e as duas apareciam trocadas. Agora o tick faz
+        # UMA leitura que ja' traz rects: os que este filho ja' tinha na posicao em
+        # que ele esta' (mesmo indice, mesma palavra) sao reaproveitados, e o resto
+        # e' lido. Uma foto por tick, nunca duas.
+        reused = None
+        if reuse is not None and k < len(reuse):
+            prev = reuse[k]
+            if isinstance(prev, dict) and prev.get("text") == name and prev.get("right"):
+                reused = prev
+        if reused is not None:
+            item.update({"left": reused["left"], "top": reused["top"],
+                         "right": reused["right"], "bottom": reused["bottom"]})
+            out.append(item)
+            continue
+        if not with_rect:
+            out.append(item)
+            continue
         try:
             rect = c.CurrentBoundingRectangle
             item["left"] = int(rect.left)
@@ -2063,7 +2171,58 @@ def _rendered(el):
     return True
 
 
-def painted_words(uia, UIA, hwnd=None, root=None):
+#: A ultima janela de legenda que serviu, por janela do sistema (`hwnd`). E' o
+#: cache que evita varrer a arvore de acessibilidade do Chrome inteira a cada
+#: leitura -- ver a nota em `painted_words`.
+_CAPTION_WINDOW_CACHE = {}
+
+
+def _caption_windows(uia, root, hwnd=None):
+    """[(elemento, classname_lower)] das janelas de legenda DESTA raiz.
+
+    Duas metades, e a ordem importa:
+
+      1. A JANELA CACHEADA, quando ela ainda desenha (o container sobrevive a'
+         troca de cue -- medido: o mesmo `ytp-caption-window-container` serve
+         todas as cues de um video). Custa os filhos, nao a arvore.
+      2. A VARREDURA, quando nao ha' cache, quando o elemento morreu (excepcao
+         da UIA) ou quando ele deixou de desenhar. A varredura e' a unica coisa
+         que acha uma janela NOVA (outro video, outro player), por isso nunca sai.
+
+    O cache e' por `hwnd` porque o dono troca de janela: um `root` de outro
+    processo nao pode herdar o elemento do anterior.
+    """
+    key = int(hwnd or 0)
+    cached = _CAPTION_WINDOW_CACHE.get(key)
+    if cached is not None:
+        el, cls = cached
+        try:
+            # NAO SE TESTA `_rendered` AQUI (2026-11-02). Entre duas cues o
+            # container existe mas nao desenha, e testar isso jogava o cache fora
+            # a cada buraco -- a varredura da arvore INTEIRA voltava a' cada tick
+            # (medido: 94 ms de leitura com a legenda calada). Quem decide se
+            # desenha e' `painted_words`, elemento a elemento; aqui o cache so'
+            # cai quando o elemento MORRE (excepcao da UIA).
+            el.CurrentBoundingRectangle
+            return [(el, cls)]
+        except Exception:  # noqa: BLE001 - elemento morto: cai para a varredura
+            _CAPTION_WINDOW_CACHE.pop(key, None)
+    out = []
+    for el in _elements(_all_elements(uia, root)):
+        cls = _class_name(el).lower()
+        if _CAPTION_WINDOW_WORDS not in cls:
+            continue
+        out.append((el, cls))
+    if out and key:
+        # O maior primeiro: e' o que `painted_words` escolhe de qualquer forma.
+        try:
+            out.sort(key=lambda pair: -len(_painted_children(pair[0], uia)))
+        except Exception:  # noqa: BLE001
+            pass
+        _CAPTION_WINDOW_CACHE[key] = out[0]
+    return out
+
+def painted_words(uia, UIA, hwnd=None, root=None, with_rect=True, reuse=None):
     """The words the player is painting NOW -> {"words": [...], "why": ...}.
 
     READ-ONLY: it opens nothing, clicks nothing, moves nothing.
@@ -2085,8 +2244,17 @@ def painted_words(uia, UIA, hwnd=None, root=None):
     best = []
     best_cls = ""
     best_items = []
-    for el in _elements(_all_elements(uia, root)):
-        cls = _class_name(el).lower()
+    # A JANELA DE LEGENDA E' CACHEADA POR HWND (2026-11-02). A varredura antiga
+    # pedia `FindAll(Descendants, TrueCondition)` do Chrome INTEIRO a cada 0,30 s
+    # -- milhares de elementos, cada um uma leitura de propriedade cross-process.
+    # MEDIDO no log do dono: as decisoes de pintura saem a 1,6-3 s de distancia
+    # (`YOUTUBE_CAPTION` 22:36:16.265, :17.632, :19.221, :22.161) enquanto a
+    # legenda do player muda muito mais depressa -- e a imagem dele mostra o
+    # YouTube em `Larocache...` com o Sotto ainda no cue anterior. O container da
+    # legenda NAO muda quando a cue muda (so' os filhos mudam), por isso ele e'
+    # achado uma vez e reaproveitado; a varredura volta quando ele deixa de servir
+    # (`_caption_windows` explica a regra de saida).
+    for el, cls in _caption_windows(uia, root, hwnd=hwnd):
         if _CAPTION_WINDOW_WORDS not in cls:
             continue
         # A CAPTION WINDOW THAT IS NOT ON SCREEN IS NOT A CAPTION (2026-10-22).
@@ -2094,7 +2262,7 @@ def painted_words(uia, UIA, hwnd=None, root=None):
         # last line, and the app shows it as if the player were painting it now.
         if not _rendered(el):
             continue
-        items = _painted_items(el, uia)
+        items = _painted_items(el, uia, with_rect=with_rect, reuse=reuse)
         words = [it["text"] for it in items]
         if len(words) >= len(best):
             best = words

@@ -416,7 +416,7 @@ def wiring_faltas():
         # chamada a `_yt_rows(painted)` nos dois ramos, e a ausencia da
         # janela por relogio de palavra dentro de `_youtube`.
         ("as linhas pintadas sao a legenda, sem janela por relogio",
-         "_yt_rows(painted)", shell),
+         "_yt_rows(painted,", shell),
         ("o _tick entrega todas as linhas",
          "rows = list(lines) if (yt_mode and lines) else None", shell),
         ("o push leva as linhas pelo rows_text",

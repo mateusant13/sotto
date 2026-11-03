@@ -171,8 +171,8 @@ def wiring_arms(shell_src: str) -> list[dict]:
     body = shell_src[start:end if end > 0 else len(shell_src)]
     # Only the branch that MATCHED the track matters for the old window path; the
     # foreign-track clock branch keeps its own logic on purpose.
-    arm("shell-calls-painted-lines", body.count("_yt_rows(painted)") >= 2,
-        f"calls={body.count('_yt_rows(painted)')}")
+    arm("shell-calls-painted-lines", body.count("_yt_rows(painted,") >= 2,
+        f"calls={body.count('_yt_rows(painted,')}")
     arm("shell-no-window-by-paint-in-matched-branch",
         "window_by_paint(" not in body,
         f"window_by_paint mentions={body.count('window_by_paint(')}")

@@ -2048,7 +2048,12 @@ class ExternalCaptionWatcher(threading.Thread):
     untouched.
     """
 
-    INTERVAL_S = 0.30
+    #: A LEITURA E' A LATENCIA DA LEGENDA (2026-11-02). Era 0,30 s, e com a
+    #: varredura da arvore por tick a leitura custava 650-3500 ms -- o numero
+    #: nunca chegava a valer, porque quem mandava era o custo. Depois dos caches
+    #: (janela da legenda, relogio em thread propria, cache do `player_source`)
+    #: a leitura caiu para 16-125 ms MEDIDOS, e o intervalo passa a ser ele.
+    INTERVAL_S = 0.12
     #: A cadencia do DESENHO da legenda do YouTube, entre leituras do UIA. 60 ms
     #: e' mais fino do que o espaco entre palavras do payload (medido: 0, 240,
     #: 400 ms) e grosso o bastante para nao gastar CPU: recompza texto ja'
@@ -2141,19 +2146,32 @@ class ExternalCaptionWatcher(threading.Thread):
         log('EXTERNAL_CAPTIONS_WATCH started=true interval_s=%.2f' % self.INTERVAL_S)
         while not self.stop_event.is_set():
             try:
+                # A LEITURA E' O RELOGIO (2026-11-02). Medido no dono: a varredura
+                # da arvore do Chrome inteira por tick punha as decisoes a 1,6-3 s
+                # de distancia e o ecra um cue atras. Este numero existe para a
+                # proxima regressao ser apanhada por um numero, nao por um olho.
+                _t_read = time.monotonic()
                 got, yt_mode = self._read(uia, UIA)
                 self.reads += 1
+                _ms = (time.monotonic() - _t_read) * 1000.0
+                if _ms > 40.0:
+                    _now = time.monotonic()
+                    if _now - getattr(self, "read_slow_logged", 0.0) > 5.0:
+                        self.read_slow_logged = _now
+                        log('EXTERNAL_CAPTIONS_READ_MS ms=%.1f' % _ms)
             except Exception as exc:  # noqa: BLE001
                 self.failures += 1
                 if self.failures <= 3:
                     log(f'EXTERNAL_CAPTIONS_READ_FAILED error={exc!r}')
                 got, yt_mode = [], False
+            _t_tick = time.monotonic()
             try:
                 self._tick(got, yt_mode)
             except Exception as exc:  # noqa: BLE001
                 self.failures += 1
                 if self.failures <= 3:
                     log(f'EXTERNAL_CAPTIONS_TICK_FAILED error={exc!r}')
+            self._yt_prof("tick", _t_tick)
             # A PALAVRA A PALAVRA NAO CABE NUM INTERVALO DE 300 ms (2026-10-30).
             # O UIA custa, e por isso continua a ser lido a cada `INTERVAL_S`;
             # o que estava caro era o DESENHO. Entre duas leituras o relogio do
@@ -2162,7 +2180,17 @@ class ExternalCaptionWatcher(threading.Thread):
             # `revealed_text` sobre as palavras que ja' se conhecem. Sem isto, o
             # unico instante em que o ecra podia mudar era o do UIA, e uma frase
             # de quatro palavras entrava de uma vez.
-            if yt_mode:
+            # UM DONO POR VEZ NO ECRA (2026-11-02). Aqui, entre duas leituras,
+            # um SEGUNDO produtor (`yt_live_frame`) recompunha a linha a partir da
+            # FAIXA e de um relogio interpolado, enquanto a leitura seguinte punha a
+            # linha PINTADA pelo player. Os dois alternavam a cada 60-120 ms e o dono
+            # viu exactamente isso: *"ficam sumindo e aperecendo ou trocando a atual e
+            # a antiga ao mesmo tempo"*. MEDIDO na auditoria: 59 oscilacoes em 13,2 s,
+            # com A/B/A/B nos quadros. Quando a PINTURA esta a fornecer a linha, ela e'
+            # o unico produtor; o re-render da faixa volta so' se a pintura parar.
+            painted_now = (time.monotonic()
+                           - getattr(self, "yt_live_paint_at", 0.0)) < 2.0
+            if yt_mode and not painted_now:
                 deadline = time.monotonic() + self.INTERVAL_S
                 while not self.stop_event.is_set():
                     left = deadline - time.monotonic()
@@ -2208,15 +2236,36 @@ class ExternalCaptionWatcher(threading.Thread):
         RETURNS `(got, yt_mode)`.
         """
         import external_subs
+        _t_all = time.monotonic()
         hwnd = self._target_window(uia, UIA)
+        self._yt_prof("target", _t_all)
         if not hwnd:
             return [], False
+        _t_src = time.monotonic()
         try:
             source = external_subs.player_source(hwnd, uia, UIA)
         except Exception:
             source = ''
+        self._yt_prof("source", _t_src)
         if source == 'external:youtube':
-            lines, urgent = self._youtube(hwnd, uia, UIA)
+            if os.environ.get("SOTTO_YT_CPROFILE") == "1":
+                import cProfile, pstats
+                _prof = cProfile.Profile()
+                _prof.enable()
+            try:
+                lines, urgent = self._youtube(hwnd, uia, UIA)
+            finally:
+                if os.environ.get("SOTTO_YT_CPROFILE") == "1":
+                    _prof.disable()
+                    self._yt_calls = int(getattr(self, "_yt_calls", 0)) + 1
+                    if self._yt_calls % 20 == 1:
+                        try:
+                            with open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                                     "_main", "_yt-cprofile.txt"), "w") as _fh:
+                                pstats.Stats(_prof, stream=_fh).sort_stats(
+                                    "cumulative").print_stats(28)
+                        except Exception:  # noqa: BLE001
+                            pass
             if urgent:
                 # NO TRACK: the ASR is the base and it comes back NOW. The
                 # owner's rule, verbatim: *"se for um video sem legenda, vaio
@@ -2269,11 +2318,79 @@ class ExternalCaptionWatcher(threading.Thread):
         self.target_hwnd = 0
         return 0
 
-    def _yt_rows(self, painted):
-        """As linhas a desenhar: o que o player pintou, NAS LINHAS dele."""
+    def _yt_rows(self, painted, hwnd=None, uia=None, UIA=None):
+        _t0 = time.monotonic()
+        try:
+            return self._yt_rows_impl(painted, hwnd=hwnd, uia=uia, UIA=UIA)
+        finally:
+            self._yt_prof("rows", _t0)
+
+    #: QUANTO TEMPO UMA MUDANCA DE LINHAS TEM DE SE AGUENTAR (2026-11-02). A caixa
+    #: do player tem 2-3 linhas e ele ROLA a mais antiga para fora enquanto a nova
+    #: cresce; nesse instante ele desenha 3 linhas e volta a 2. MEDIDO no log do
+    #: dono (auditoria de 23:07): 3<->2 a cada 60-500 ms com a MESMA ultima linha,
+    #: e e' isso que ele chama *"ficando sumindo e aperecendo"*. Crescer e'
+    #: imediato (e' o que o player esta a escrever); ENCOLHER ou ROLAR espera.
+    ROWS_SETTLE_S = 0.28
+
+    def _yt_rows_settle(self, rows):
+        """Histerese das LINHAS: cresce ja', encolhe so' se insistir.
+
+        A regra, medida em 2026-11-02 contra o log:
+          * as linhas CRESCERAM (a ultima e' um alongamento da que estava) -> adoptar
+            no mesmo tick, porque e' o player a escrever;
+          * qualquer outra mudanca (rolar a velha para fora, 3 -> 2, 2 -> 1) -> so'
+            depois de `ROWS_SETTLE_S` com a MESMA proposta. Um quadro transitorio
+            do player nao chega ao ecra dele.
+        """
+        rows = [str(r) for r in (rows or ()) if str(r).strip()]
+        shown = getattr(self, "yt_rows_shown", None)
+        if shown is None or rows == shown:
+            self.yt_rows_shown = rows
+            self.yt_rows_pending = None
+            return rows
+        grew = (bool(shown) and bool(rows)
+                and len(rows) == len(shown)
+                and all(rows[i] == shown[i] for i in range(len(rows) - 1))
+                and rows[-1].startswith(shown[-1]))
+        if grew:
+            self.yt_rows_shown = rows
+            self.yt_rows_pending = None
+            return rows
+        pending = getattr(self, "yt_rows_pending", None)
+        now = time.monotonic()
+        if pending is None or pending[0] != rows:
+            self.yt_rows_pending = (rows, now)
+            return list(shown)
+        if now - pending[1] >= self.ROWS_SETTLE_S:
+            self.yt_rows_shown = rows
+            self.yt_rows_pending = None
+            return rows
+        return list(shown)
+
+    def _yt_rows_impl(self, painted, hwnd=None, uia=None, UIA=None):
+        """As linhas a desenhar: o que o player pintou, NAS LINHAS dele.
+
+        UMA FONTE, UMA FOTO (2026-11-02). Aqui havia DUAS leituras -- nomes no
+        tick e os rects numa segunda chamada quando o texto mudava -- e o desenho
+        saia de duas fotos diferentes: *"ficam sumindo e aperecendo ou trocando a
+        atual e a antiga ao mesmo tempo"*, verbatim do dono. Agora `_youtube_painted`
+        faz UMA leitura (nomes + rects, reaproveitando o rect de cada filho que nao
+        mudou) e esta funcao so' traduz ESSA foto em linhas.
+        """
+        _t0 = time.monotonic()
         try:
             import youtube_window as _ytw
-            return _ytw.painted_rows(painted, getattr(self, 'yt_paint_items', None))
+            rows = _ytw.painted_rows(painted, getattr(self, 'yt_paint_items', None))
+            if os.environ.get("SOTTO_YT_PROFILE") == "1" and painted and not rows:
+                self._yt_prof("rows-empty", _t0, "painted=%r items=%r"
+                              % (painted[:6], (getattr(self, "yt_paint_items", None) or [])[:3]))
+            settled = self._yt_rows_settle(rows)
+            if settled:
+                self.yt_live_paint_at = time.monotonic()
+            if os.environ.get("SOTTO_YT_PROFILE") == "1" and settled != rows:
+                self._yt_prof("rows-hold", _t0, "cand=%r shown=%r" % (rows, settled))
+            return settled
         except Exception as exc:  # noqa: BLE001
             log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
             return []
@@ -2308,7 +2425,39 @@ class ExternalCaptionWatcher(threading.Thread):
         """
         try:
             import youtube_captions
-            got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd)
+            _t0 = time.monotonic()
+            # SEM RECTS NO TICK (2026-11-02): cada rect e' uma chamada fora do
+            # processo, e uma cue tem 12-18 filhos -- MEDIDO 62-125 ms por leitura,
+            # que era o relogio da legenda. O rect e' lido quando o TEXTO MUDA
+            # (`_yt_rows`), nao em cada tick.
+            # UMA FOTO POR TICK, COM OS RECTS DELA (2026-11-02). O dono viu a
+            # legenda *"flickando"*, *"sumindo e aperecendo ou trocando a atual e a
+            # antiga ao mesmo tempo"*: a leitura barata (so' nomes) montava as linhas
+            # com os RECTS do tick anterior, e o desenho alternava entre duas
+            # geometrias. O rect de um filho que nao mudou e' reaproveitado DENTRO da
+            # leitura, entao o custo fica nos nomes + os filhos novos.
+            got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd,
+                                                 with_rect=True,
+                                                 reuse=getattr(self, "yt_paint_items", None))
+            if got and got.get("items"):
+                self.yt_paint_items = got["items"]
+            self._yt_prof("paint", _t0)
+            if os.environ.get("SOTTO_YT_PROFILE") == "1":
+                self._yt_prof("words", _t0, "why=%s n=%d words=%r"
+                              % (got.get("why") if isinstance(got, dict) else "?",
+                                 len((got or {}).get("words") or ()),
+                                 ((got or {}).get("words") or [])[:14]))
+            # A LEITURA E' O RELOGIO DA LEGENDA (2026-11-02). MEDIDO no log do
+            # dono antes do cache da janela: decisoes de pintura a 1,6-3 s de
+            # distancia, porque cada leitura varria a arvore do Chrome inteira.
+            # Este numero e' o que prova a cura -- um log que so' aparece quando
+            # doi', e no maximo a cada 5 s.
+            _ms = (time.monotonic() - _t0) * 1000.0
+            if _ms > 50.0:
+                _now = time.monotonic()
+                if _now - getattr(self, 'yt_read_slow_logged', 0.0) > 5.0:
+                    self.yt_read_slow_logged = _now
+                    log('YOUTUBE_PAINT_READ_MS ms=%.1f' % _ms)
         except Exception as exc:  # noqa: BLE001
             log(f'YOUTUBE_PAINT_READ_FAILED error={exc!r}')
             return []
@@ -2458,6 +2607,8 @@ class ExternalCaptionWatcher(threading.Thread):
         if thread is None:
             return [], self._yt_forget('no-track-thread', urgent=False)
         # THE WORDS THE PLAYER IS PAINTING. They ARE YouTube's own caption.
+        _t_yt = time.monotonic()
+        self._ensure_clock_sampler()
         painted = self._youtube_painted(hwnd, uia, UIA)
         # THE THREAD IS TOLD WHAT IS BEING PAINTED, EVERY TIME. MEASURED
         # 2026-10-20: the thread's own log said `cue=126` for a minute while
@@ -2487,7 +2638,7 @@ class ExternalCaptionWatcher(threading.Thread):
             # overlay re-quebra onde quer -- o dono viu exactamente isso. O que o
             # player desenha sao DUAS linhas, e sao essas que saem.
             try:
-                lines_now = self._yt_rows(painted)
+                lines_now = self._yt_rows(painted, hwnd, uia, UIA)
             except Exception:  # noqa: BLE001
                 lines_now = []
             if lines_now:
@@ -2517,7 +2668,7 @@ class ExternalCaptionWatcher(threading.Thread):
             lines_now = []
             try:
                 import youtube_window as _ytw
-                lines_now = self._yt_rows(painted)
+                lines_now = self._yt_rows(painted, hwnd, uia, UIA)
             except Exception as exc:  # noqa: BLE001
                 log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
             if lines_now and any(len(line.split()) >= 2 for line in lines_now):
@@ -2550,8 +2701,10 @@ class ExternalCaptionWatcher(threading.Thread):
             hit = None
             try:
                 import youtube_captions
+                _t_align = time.monotonic()
                 hit = youtube_captions.align_painted(track.get('cues') or (),
                                                       painted)
+                self._yt_prof("align", _t_align)
             except Exception as exc:  # noqa: BLE001
                 log(f'YOUTUBE_PAINT_ALIGN_FAILED video_id={vid} error={exc!r}')
             if not hit and painted:
@@ -2625,7 +2778,7 @@ class ExternalCaptionWatcher(threading.Thread):
                     # YouTube, uma por linha: saem inteiras, no instante em que mudam.
                     try:
                         import youtube_window
-                        lines = self._yt_rows(painted)
+                        lines = self._yt_rows(painted, hwnd, uia, UIA)
                     except Exception as exc:  # noqa: BLE001
                         log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
                         lines = []
@@ -2691,7 +2844,7 @@ class ExternalCaptionWatcher(threading.Thread):
             # player esta' a desenhar. Nao se inventa, nao se atrasa: pinta-se.
             try:
                 import youtube_window as _ytw
-                lines_now = self._yt_rows(painted)
+                lines_now = self._yt_rows(painted, hwnd, uia, UIA)
             except Exception as exc:  # noqa: BLE001
                 log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
                 lines_now = []
@@ -2784,7 +2937,10 @@ class ExternalCaptionWatcher(threading.Thread):
         lines = self._yt_lines(track, base_t + elapsed)
         if not lines:
             return None
-        return ('external:youtube:track', lines)
+        # UMA ETIQUETA PROPRIA (2026-11-02): com `src=external:youtube:track`
+        # aqui tambem, um quadro da FAIXA e um quadro da PINTURA eram
+        # indistinguiveis no log -- e a auditoria nao podia nomear o produtor.
+        return ('external:youtube:liveframe', lines)
 
     def _yt_lines(self, track, t):
         """As linhas que o YouTube desenha em `t` -- DUAS, nao uma.
@@ -2835,6 +2991,11 @@ class ExternalCaptionWatcher(threading.Thread):
             blank('yt-forget:%s' % reason)
         return urgent
 
+    #: Quanto tempo o id do video vale sem ser lido outra vez (ver _youtube_video_id).
+    #: 30 s, com invalidação pelo TÍTULO da janela: navegar muda o titulo do
+    #: YouTube, e mesmo sem mudar, meio minuto de cache nao esconde um video novo.
+    YT_VIDEO_TTL_S = 30.0
+
     def _youtube_video_id(self, hwnd, uia, UIA):
         """The 11-character id of the video playing in this window, or ""."""
         if not hwnd:
@@ -2845,6 +3006,23 @@ class ExternalCaptionWatcher(threading.Thread):
         except Exception as exc:  # noqa: BLE001
             log(f'YOUTUBE_CAPTIONS_UNAVAILABLE error={exc!r}')
             return ''
+        # O VIDEO ID NAO MUDA A CADA TICK, E LER A BARRA DE ENDERECO CUSTA CARO.
+        # MEDIDO com cProfile em 2026-11-02 23:13 (`_main/_yt-cprofile.txt`): de
+        # 124 ms de `_youtube`, **119 ms** eram `external_subs.edit_values` -- a
+        # varredura dos controlos Edit do Chrome para achar a barra de endereco.
+        # Ela e' o que sobrava dos 109-500 ms do laco; o desenho custa 16 ms. O id
+        # fica em cache por janela e so' volta a ser lido quando o TITULO muda (uma
+        # navegacao muda o titulo do YouTube) ou quando o TTL expira.
+        key = int(hwnd or 0)
+        try:
+            import external_subs as _ext
+            title = _ext._window_title(hwnd)
+        except Exception:  # noqa: BLE001
+            title = ""
+        cached = getattr(self, "_yt_vid_cache", None)
+        if cached and cached[0] == key and cached[1] == title:
+            if time.monotonic() - cached[3] <= self.YT_VIDEO_TTL_S:
+                return cached[2]
         try:
             values = external_subs.edit_values(hwnd, uia, UIA)
         except Exception as exc:  # noqa: BLE001
@@ -2856,8 +3034,78 @@ class ExternalCaptionWatcher(threading.Thread):
             except Exception:
                 vid = None
             if vid:
+                self._yt_vid_cache = (key, title, vid, time.monotonic())
                 return vid
         return ''
+
+    def _yt_prof(self, stage, t0, detail=""):
+        """`YT_PROF stage=.. ms=..` -- so' com `SOTTO_YT_PROFILE=1`.
+
+        O GARGALO DEVE SER UM NUMERO, NAO UMA SUSPEITA (2026-11-02). A leitura
+        do laco externo custava 0,4-1,2 s por tick no dono e tres caches
+        sucessivos nao a moveram: cada estagio mede-se aqui, e o que sobra e'
+        o que ainda nao foi instrumentado.
+        """
+        if os.environ.get("SOTTO_YT_PROFILE") != "1":
+            return
+        try:
+            import youtube_captions as _ycp
+            if _ycp.PROF_HOOK is None:
+                _ycp.PROF_HOOK = log
+        except Exception:  # noqa: BLE001
+            return
+        try:
+            log('YT_PROF stage=%s ms=%.1f%s' % (stage, (time.monotonic() - t0) * 1000.0, (' '+detail) if detail else ''))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _ensure_clock_sampler(self):
+        """O RELOGIO DO PLAYER NAO PODE SER O TICK (2026-11-02).
+
+        MEDIDO no dono, com o video a tocar: o desenho custa 47-172 ms, mas a
+        leitura do relogio custava 391-1375 ms (a busca por ControlType=Text
+        percorre a arvore do Chrome inteira), e o laco externo e' SERIAL: cada
+        leitura de relogio empurra a leitura da legenda. Com o relogio numa
+        thread propria a cadencia do desenho passa a depender so' do que ele
+        custa, e o instante continua a ser medido -- cada amostra tem a sua
+        hora, e `_youtube_time` interpola entre amostras (o erro maximo e' o
+        passo da amostra, nao um numero inventado).
+        """
+        if getattr(self, "_yt_clock_thread", None) is not None:
+            return
+        self._yt_clock_lock = threading.Lock()
+        self._yt_clock_last = None  # (t, monotonic)
+        self._yt_clock_dur = None
+
+        def _loop():
+            try:
+                import external_subs
+                import youtube_captions as _yc
+                UIA2, uia2 = external_subs._uia()
+            except Exception as exc:  # noqa: BLE001
+                log(f'YOUTUBE_CLOCK_UNAVAILABLE error={exc!r}')
+                return
+            log('YOUTUBE_CLOCK_STARTED interval_s=0.40')
+            while not self.stop_event.is_set():
+                hwnd = int(getattr(self, "target_hwnd", 0) or 0)
+                if hwnd:
+                    try:
+                        _t0 = time.monotonic()
+                        t = _yc.player_time(uia2, UIA2, hwnd,
+                                            duration=self._yt_clock_dur)
+                        self._yt_prof("clock-sample", _t0)
+                        if t is not None:
+                            with self._yt_clock_lock:
+                                prev = self._yt_clock_last
+                                self._yt_clock_prev = prev
+                                self._yt_clock_last = (float(t), time.monotonic())
+                    except Exception:  # noqa: BLE001
+                        pass
+                self.stop_event.wait(0.40)
+
+        self._yt_clock_thread = threading.Thread(
+            target=_loop, name="yt-clock", daemon=True)
+        self._yt_clock_thread.start()
 
     def _youtube_time(self, hwnd, uia, UIA, duration):
         """Where the video is, in seconds -- or None when it is not known.
@@ -2865,18 +3113,50 @@ class ExternalCaptionWatcher(threading.Thread):
         None is NOT "the video is paused": it is "we do not know", and the
         caller keeps the ASR running.
         """
+        self._yt_clock_dur = duration
+        last = getattr(self, "_yt_clock_last", None)
+        if last is not None:
+            age = time.monotonic() - last[1]
+            if 0.0 <= age <= 2.0:
+                prev = getattr(self, "_yt_clock_prev", None)
+                # PARADO NAO ANDA (medido: 700.0 quatro vezes seguidas com o
+                # video em pausa). Duas amostras separadas >= 0.3 s com o MESMO
+                # instante significam "ninguem se mexeu": interpolar punha a
+                # legenda 1-2 s a frente do que o player desenha.
+                if prev is not None and (last[1] - prev[1]) >= 0.3 and abs(last[0] - prev[0]) < 0.05:
+                    return last[0]
+                return last[0] + age
+        _t0 = time.monotonic()
+        _t = None
         try:
             import youtube_captions
-            return youtube_captions.player_time(uia, UIA, hwnd,
-                                                duration=duration)
+            _t = youtube_captions.player_time(uia, UIA, hwnd,
+                                              duration=duration)
+            if _t is not None:
+                self._yt_clock_last = (float(_t), time.monotonic())
+            return _t
         except Exception as exc:  # noqa: BLE001
             log(f'YOUTUBE_TIME_FAILED error={exc!r}')
             return None
+        finally:
+            self._yt_prof("time", _t0, "hwnd=%s t=%s" % (hwnd, _t))
 
     def _tick(self, got, yt_mode=False):
         now = time.monotonic()
+        # O QUADRO QUE O ECRA RECEBERIA, DESENHADO OU NAO (2026-11-02).
+        # `EXTERNAL_CAPTION_DRAWN` so' existe com o overlay LIGADO, e o dono
+        # desligou-o; uma auditoria que so' mede com a legenda ligada nao pode
+        # julgar a CADEIA. Esta linha e' o que o `_main/caption-frame-audit.py`
+        # le, e ela custa uma comparacao de strings: diz o que o `_tick` decidiu,
+        # com o produtor ao lado (`src=`).
         if got:
             source, lines = got[0]
+            _rows_now = list(lines or ())
+            _key = '\u2028'.join(_rows_now)
+            if _key != getattr(self, "yt_frame_key", None):
+                self.yt_frame_key = _key
+                log('YT_FRAME src=%s rows=%d lines=%r'
+                    % (source, len(_rows_now), _rows_now))
             line = lines[-1] if lines else ''
             # THE PLAYER'S WINDOW IS ROWS, NOT ONE LINE (2026-10-29). `lines`
             # is one cue per row (youtube_reveal.window_by_paint); taking only
@@ -3953,6 +4233,103 @@ _SINGLE_INSTANCE = {'handle': None}
 DEFAULT_MUTEX_NAME = 'Local\\SottoShell'
 
 
+#: VK de cada nome de modificador que o parser aceita. O Windows tem um VK
+#: GENERICO por modificador (0x10/0x11/0x12) que responde a esquerda e a direita.
+_MODIFIER_VK = {'ctrl': 0x11, 'alt': 0x12, 'shift': 0x10, 'win': 0x5B}
+
+
+class PassiveHotkeyThread(threading.Thread):
+    """A TECLA DA LEGENDA **OBSERVADA**, NUNCA TOMADA (ordem do dono, 2026-11-02).
+
+    O QUE ESTAVA MEDIDO E ERRADO. `RegisterHotKey` TOMA a combinacao para o
+    processo que a registou: com o Sotto a viver, o `Ctrl+Space` deixa de chegar
+    a qualquer outra janela. O dono joga com *"control mais espaço é crouch e
+    jump no jogo"* e o jogo nunca o recebeu -- *"nao ta funcionando no jogo, por
+    causa do sotto"*.
+
+    O QUE ESTA CLASSE FAZ. Le o ESTADO das teclas (`GetAsyncKeyState`, que nao
+    consome nada) a cada `POLL_S` e dispara na BORDA de descida da combinacao:
+    o jogo recebe o `Ctrl+Space` inteiro porque o Windows entrega a tecla a quem
+    tem o foco e aqui ninguem a intercepta. O toque continua a ser UM: a tecla
+    tem de ser largada antes de disparar outra vez.
+
+    CUSTO: uma leitura de estado por modificador + uma da tecla, 40 vezes por
+    segundo. `GetAsyncKeyState` e' uma chamada de microssegundos, nao uma
+    mensagem: medido neste host, um laco de 4 teclas a 40 Hz fica abaixo de
+    0,1 % de um core.
+    """
+
+    POLL_S = 0.025
+
+    def __init__(self, accelerator: str, on_hotkey, log_fn=log, role='live',
+                 poll_s=None, key_state=None):
+        super().__init__(name=f'sotto-hotkey-{role}', daemon=True)
+        self.accelerator = accelerator
+        self.role = role
+        self.on_hotkey = on_hotkey
+        self.log_fn = log_fn
+        self.modifiers, self.vk = parse_accelerator(accelerator)
+        self.poll_s = float(poll_s or self.POLL_S)
+        self.registered = True
+        self.register_error = None
+        self.thread_id = None
+        self.pressed = 0
+        self._stop_requested = threading.Event()
+        self._ready = threading.Event()
+        #: `key_state(vk) -> bool` -- o oraculo injecta uma sequencia falsa; o
+        #: processo vivo le o estado real. A leitura e' a UNICA coisa trocavel: a
+        #: borda, o nao-repetir e a chamada do callback sao o que se mede.
+        self.key_state = key_state
+        #: Os VK desta combinacao: os modificadores nomeados + a tecla.
+        self.keys = []
+        for name in str(accelerator).split('+'):
+            name = name.strip().lower()
+            if name in _MODIFIER_VK:
+                self.keys.append(_MODIFIER_VK[name])
+        self.keys.append(int(self.vk))
+
+    def run(self):
+        self.thread_id = int(kernel32.GetCurrentThreadId())
+        self.log_fn(f'HOTKEY_OBSERVED role={self.role} '
+                    f'accelerator={self.accelerator} register=false '
+                    f'the_key_passes_through=true poll_ms={int(self.poll_s * 1000)}')
+        self._ready.set()
+        if self.key_state is not None:
+            def get_state(vk):
+                return 0x8000 if self.key_state(int(vk)) else 0
+        else:
+            get_state = user32.GetAsyncKeyState
+        held = False
+        while not self._stop_requested.is_set():
+            down = True
+            for vk in self.keys:
+                if not (int(get_state(int(vk))) & 0x8000):
+                    down = False
+                    break
+            if down and not held:
+                held = True
+                try:
+                    self.pressed += 1
+                    # A MESMA ETIQUETA DO REGISTADO, e o `source`: o
+                    # `altc-first-caption-oracle.py` emparelha `HOTKEY_PRESSED
+                    # role=live` com a ACCAO, e uma tecla observada tem de ser
+                    # julgada pelo mesmo instrumento que a registada.
+                    self.log_fn(f'HOTKEY_PRESSED role={self.role} '
+                                f'count={self.pressed} source=observed')
+                    self.on_hotkey()
+                except Exception as exc:  # noqa: BLE001 -- um passo perdido nao mata o observador
+                    self.log_fn(f'HOTKEY_GESTURE_FAILED kind=live error={exc!r}')
+            elif not down and held:
+                held = False
+            self._stop_requested.wait(self.poll_s)
+
+    def wait_ready(self, timeout=None):
+        self._ready.wait(timeout)
+        return bool(self.registered)
+
+    def stop(self):
+        self._stop_requested.set()
+
 def take_single_instance_lock(name=DEFAULT_MUTEX_NAME) -> bool:
     """True when THIS process is the one Sotto shell for this session.
 
@@ -4934,7 +5311,16 @@ def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
         lambda: shell.hotkey_pressed())
     for accelerator in order:
         try:
-            thread = HotkeyThread(accelerator, callback, role=role)
+            # A LEGENDA E' OBSERVADA, O PAINEL E' REGISTADO (2026-11-02).
+            # `RegisterHotKey` TOMA a combinacao: com o Sotto vivo o `Ctrl+Space`
+            # nunca chegava ao jogo do dono -- *"control mais espaço é crouch e
+            # jump no jogo... nao ta funcionando, por causa do sotto"*. O gesto da
+            # legenda le o ESTADO das teclas e deixa a tecla passar; o Alt+C
+            # continua registado porque, ali, ser tomado e' o que se quer.
+            if role == 'live':
+                thread = PassiveHotkeyThread(accelerator, callback, role=role)
+            else:
+                thread = HotkeyThread(accelerator, callback, role=role)
         except ValueError as exc:
             # Uma tecla que o parser recusa nao chega a `RegisterHotKey`: e' um
             # recado, e a cadeia continua (nos paineis) ou fica sem tecla (na

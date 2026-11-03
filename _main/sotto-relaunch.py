@@ -94,6 +94,14 @@ def w(msg):
     print(line.rstrip())
 
 
+#: NENHUM POP-UP DE CONSOLA NA TELA DO DONO (ordem de 2026-11-02, verbatim:
+#: *"para de fazer terminal ter pop up porra"*). MEDIDO com um censo de janelas
+#: a 10 Hz durante um `--relaunch`: apareceram DOIS `ConsoleWindowClass` -- um
+#: de `taskkill.exe` (utilitario de consola: uma pai sem consola faz o Windows
+#: alocar uma NOVA, visivel) e um de `cmd.exe` do proprio `run.cmd`. O flag
+#: `CREATE_NO_WINDOW` e' o que impede a alocacao em cada largada.
+NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW
+
 def log_text():
     try:
         with open(LOG, 'r', encoding='utf-8', errors='replace') as fh:
@@ -207,7 +215,8 @@ def kill(pid):
     """
     w('kill pid=%d (identidade: o pid que GANHOU a mutex no log da propria app)' % pid)
     result = subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
-                            capture_output=True, close_fds=True)
+                            capture_output=True, close_fds=True,
+                            creationflags=NO_WINDOW)
     if result.returncode != 0:
         w('kill pid=%d taskkill rc=%d %r -- a delegar a um filho high'
           % (pid, result.returncode,
@@ -263,7 +272,7 @@ def launch_via_task():
     """Fallback launcher: the task runs as HIM, in HIS session, `high`."""
     w('schtasks /run /tn %s' % TASK)
     result = subprocess.run(['schtasks', '/run', '/tn', TASK], capture_output=True,
-                            close_fds=True)
+                            close_fds=True, creationflags=NO_WINDOW)
     return result.returncode == 0
 
 
@@ -277,7 +286,8 @@ def launch_via_token(source_pid, runner=None):
     module = _token_launcher()
     cmd = os.path.join(os.environ.get('SYSTEMROOT', r'C:\Windows'), 'System32', 'cmd.exe')
     runner = runner or os.path.join(ROOT, 'app', 'webview', 'run.cmd')
-    ok, err, child = module.launch(source_pid, cmd, ['/c', runner], cwd=ROOT)
+    ok, err, child = module.launch(source_pid, cmd, ['/c', runner], cwd=ROOT,
+                                flags=NO_WINDOW | 0x00000200)  # + CREATE_NEW_PROCESS_GROUP
     w('CreateProcessAsUser(fonte=%d) ok=%s err=%d filho=%s runner=%s'
       % (source_pid, ok, err, child, runner))
     return bool(ok)

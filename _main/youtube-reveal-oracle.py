@@ -87,7 +87,7 @@ def verbatim_live(src):
         return False
     end = shell_src.find("\n    def ", start + 10)
     body = shell_src[start:end if end > 0 else len(shell_src)]
-    return body.count("_yt_rows(painted)") >= 2 and "window_by_paint(" not in body
+    return body.count("_yt_rows(painted,") >= 2 and "window_by_paint(" not in body
 
 
 def old_clock_in_code(path):
