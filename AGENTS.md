@@ -310,8 +310,13 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-03, 17:5x):** `_main\_audit-verify-all.cmd` = **184217 B**,
-  **2319 CRLF** / 0 bare LF, sha256 `AF9D3D82EDF6DD70F50EF2C77ED7A26DD6E6EDB553F19AF47D1779607A35CD6F`.
+- **PIN do ficheiro (medido 2026-11-03, 19:0x):** `_main\_audit-verify-all.cmd` = **185176 B**,
+  **2328 CRLF** / 0 bare LF, sha256 `C2748E847F940EFC0D4C7755C4396EB4486E8F8AB182801AC63165DC520455CC`.
+  (Este pin substitui o de 184217 B / 2319 CRLF, DEPOIS do par `yt-target-stale` +
+  `red-as-expected-yt-target-stale`: o oraculo do ALVO MORTO, nascido do defeito medido no browser do
+  dono -- o id declarado `m_bJQ4G1Ht8` ficou **164 linhas** no log com a unica aba de video aberta a
+  mostrar outro video, porque `pick_target` filtra as abas por esse id e, sem foto, o id tambem nunca
+  se curava. 7 arms; o `--neg-arm` derruba quatro (STALE-TARGET, STALE-ID, CONNECT, SOURCE-NAME).)
   (Este pin substitui o de 182965 B / 2306 CRLF, DEPOIS do par `caption-lag-budget` +
   `red-as-expected-caption-lag-budget`: a idade do AUDIO que esta' no ecra (`tap_ms` do worker ->
   `CAPTION_PAINT_LAG audio_ms=` na pintura), com o orcamento de 1500 ms a gritar

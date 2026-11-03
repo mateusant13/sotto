@@ -280,6 +280,24 @@ class CdpCaptionSource:
         self._thread.start()
         return self
 
+    def _choose(self, tabs):
+        """(aba, motivo) -- com o id declarado AINDA ABERTO como filtro.
+
+        O ID DECLARADO NAO E' UMA CORRENTE (2026-11-03, medido no browser do
+        dono: 164 leituras de `m_bJQ4G1Ht8` com a unica aba de video aberta a
+        mostrar outro). Quando aquela aba fecha, `pick_target` devolve
+        `video-not-open` e nada mais acontece: sem foto, o id tambem nunca se
+        renova, e o laco fica preso ao video que ja' nao existe. Aqui a ABA
+        manda -- escolhe-se pelo titulo da janela (ou pela unica aba) e o
+        motivo diz que se saltou o id morto.
+        """
+        target, why = pick_target(tabs, self._video_id, self._window_title)
+        if target is None and self._video_id:
+            target, why = pick_target(tabs, '', self._window_title)
+            if target is not None:
+                why = 'stale-declared:' + str(why)
+        return target, why
+
     def stop(self):
         self._stop.set()
 
@@ -316,7 +334,9 @@ class CdpCaptionSource:
         vid = ''
         try:
             tabs, _others = list_targets(self.port)
-            target, _why = pick_target(tabs, self._video_id, self._window_title)
+            target, why = self._choose(tabs)
+            if target is None:
+                self._note = str(why)
             if target is not None:
                 url = str(target.get('url') or '')
                 if 'v=' in url:
@@ -384,7 +404,23 @@ class CdpCaptionSource:
                                                  "returnByValue": True}}))
                 payload = None
                 while True:                       # ignora eventos, espera o id
-                    msg = json.loads(conn.recv())
+                    # UMA RESPOSTA ATRASADA NAO E' LIGACAO MORTA (2026-11-03,
+                    # MEDIDO no dono: com 1 s de prazo a fonte respondia
+                    # `slow (WebSocketTimeoutException)` -> `reconnect` ->
+                    # `attached` a cada 3 s, ou seja re-ligava ao Chrome
+                    # eternamente e nunca publicava foto). A pagina de uma aba em
+                    # SEGUNDO PLANO pode levar segundos a responder ao
+                    # `Runtime.evaluate`: a ligacao fica, o tick seguinte
+                    # pergunta outra vez, e o estado diz que a pagina esta'
+                    # lenta -- nao que a porta fechou.
+                    try:
+                        raw = conn.recv()
+                    except Exception as exc:          # noqa: BLE001
+                        self._publish(None, 'slow (%s)' % type(exc).__name__)
+                        break
+                    if not raw:
+                        raise ValueError('recv vazio')
+                    msg = json.loads(raw)
                     if msg.get("id") == 1:
                         payload = ((msg.get("result") or {})
                                    .get("result") or {}).get("value")
@@ -453,7 +489,7 @@ class CdpCaptionSource:
             self._error(exc)
             self._publish(None, "port-closed")
             return None
-        target, why = pick_target(tabs, self._video_id, self._window_title)
+        target, why = self._choose(tabs)
         if target is None:
             self._publish(None, why)
             return None
@@ -462,7 +498,21 @@ class CdpCaptionSource:
             self._publish(None, "no-ws-url")
             return None
         try:
-            return websocket.create_connection(url, timeout=15.0)
+            conn = websocket.create_connection(url, timeout=15.0)
+            # A RESPOSTA TAMBEM TEM PRAZO (2026-11-03, MEDIDO NO DONO).
+            # `create_connection(timeout=15.0)` so' limita o HANDSHAKE: o `recv`
+            # do laco herdava esse valor e, quando a resposta nao vinha -- a
+            # pagina parada em segundo plano, ou outro cliente CDP a segurar o
+            # mesmo alvo --, a thread ficava DENTRO do `recv` com a foto a
+            # envelhecer. MEDIDO: `YOUTUBE_CDP_HEALTH stats={'reads': 1,
+            # 'errors': 0}` enquanto o laco respondia `YOUTUBE_PAINT_STATE
+            # why=cdp-stale` -- uma leitura, depois silencio, e o `EXTERNAL_
+            # CAPTIONS_READ_MS` a pagar 1 s de varredura a cada volta porque a
+            # fonte deixava de ser reconhecida. Um segundo e' mais do que a
+            # leitura inteira (10 ms medidos); o que passa disso e' ligacao
+            # morta, e trata-se como tal.
+            conn.settimeout(3.0)
+            return conn
         except Exception as exc:                  # noqa: BLE001
             self._error(exc)
             self._publish(None, "ws-failed")

@@ -2424,9 +2424,19 @@ class ExternalCaptionWatcher(threading.Thread):
                     # Com o player minimizado (ou sem player) este agregado
                     # congela em `n=49, avg=0` e era escrito de 5 em 5 s para
                     # sempre. `log_repeat`: sai quando o numero MUDA.
+                    # A DECISAO DO LACO E' UM NUMERO TAMBEM (2026-11-03). Sem
+                    # isto, "nao pinta nada" nao tinha endereco: medido nesta
+                    # sessao, o laco a 4 Hz com `EXTERNAL_CAPTIONS_READ_MS`
+                    # AUSENTE (leitura <40 ms) e nenhuma linha -- ou seja o
+                    # caminho saia CEDO e nada dizia por onde.
+                    _dgs = getattr(self, '_yt_diag', {})
                     log_repeat('youtube-tick',
                                'YOUTUBE_TICK_MS avg=%.0f max=%.0f n=%d'
-                               % (_agg[1] / _agg[0], _agg[2], _agg[0]))
+                               ' src=%r vid=%r cdp_age_ms=%s rows=%s why=%r'
+                               % (_agg[1] / _agg[0], _agg[2], _agg[0],
+                                  _dgs.get('src', '?'), _dgs.get('vid', ''),
+                                  _dgs.get('age', '?'), _dgs.get('rows', '?'),
+                                  _dgs.get('why', '')))
                     _agg[0] = 0
                     _agg[1] = 0.0
                     _agg[2] = 0.0
@@ -2618,7 +2628,43 @@ class ExternalCaptionWatcher(threading.Thread):
         if _cache is None:
             source = ''
         self._yt_src_resolver_start()
+        loc = source
+        # A PORTA DA CDP E' IDENTIDADE, NAO SUSPEITA (2026-11-03): com o Chrome
+        # atras de outra janela o resolver respondia '' e o laco caia na varredura
+        # generica (1,1 s por volta). Uma aba `youtube.com/watch` e' prova
+        # positiva, independente de quem esta' em primeiro plano.
+        if not source:
+            _cdp_src = getattr(self, '_yt_cdp_source', None)
+            if _cdp_src and _cdp_src is not False:
+                # A LISTA DE ABAS E' HTTP, NAO WEBSOCKET (2026-11-03): a foto
+                # depende do `Runtime.evaluate`, que numa aba em segundo plano
+                # fica `slow (WebSocketTimeoutException)`; `/json/list` responde
+                # sempre, e `youtube.com/watch?v=` ali e' a prova da fonte.
+                try:
+                    _tabvid = _cdp_src.target_video_id()
+                except Exception:             # noqa: BLE001
+                    _tabvid = ''
+                if _tabvid:
+                    source = 'external:youtube'
+                    if _tabvid != getattr(self, 'yt_video_id', ''):
+                        _yt_mark(self, 'source-tab')
+                    loc = source
+                    log_repeat('YOUTUBE_SOURCE_BY_CDP',
+                               'YOUTUBE_SOURCE_BY_CDP video_id=%s'
+                               % _tabvid, every_s=60.0)
+        # DUAS FORMAS DO MESMO NOME (2026-11-03, MEDIDO AO VIVO). O resolvedor
+        # publica `_yt_source_by_title`, que devolve a URL
+        # (`https://www.youtube.com/watch?v=...`), e o ramo do YouTube compara com
+        # `'external:youtube'`. Com a porta CDP ligada, essa URL era o valor
+        # unico: o ramo do YouTube NAO rodava, e a varredura generica tambem nao
+        # (a foto estava fresca) -- medido nesta sessao,
+        # `YOUTUBE_TICK_MS src='https://www.youtube.com/watch?v=Rgx8dpiPwpA'
+        # why='cdp-fresh-skip'` a 4 Hz, com tres linhas pintadas no player e NADA
+        # no Sotto. A URL e' a mesma afirmacao; passa a ter o mesmo nome.
+        if source and 'youtube.com/watch' in str(source):
+            source = 'external:youtube'
         _yt_mark(self, 'source')
+        loc = source
         self._yt_prof("source", _t_src)
         if source == 'external:youtube':
             if os.environ.get("SOTTO_YT_CPROFILE") == "1":
@@ -2627,6 +2673,12 @@ class ExternalCaptionWatcher(threading.Thread):
                 _prof.enable()
             try:
                 lines, urgent = self._youtube(hwnd, uia, UIA)
+                # A FASE QUE NAO TINHA NOME (2026-11-03). `EXTERNAL_CAPTIONS_READ_MS
+                # ms=1250.0 phases={'target': 109.0, 'source': 109.0}`: o unico
+                # numero grande era o TOTAL, e a diferenca caia toda dentro desta
+                # chamada sem um marco que a partisse. `youtube` fecha a conta.
+                _yt_mark(self, 'youtube')
+                self._yt_prof("youtube", _t_src)
                 # UM PRODUTOR POR VEZ (2026-11-03, MEDIDO). Quando a leitura
                 # forneceu linhas, o re-render da faixa a 60 ms tem de CALAR: os
                 # dois alternavam no mesmo ecra (log: `src=...track` e
@@ -2671,6 +2723,10 @@ class ExternalCaptionWatcher(threading.Thread):
                 _age = _cdp.snapshot_age()
             except Exception:                 # noqa: BLE001
                 _age = None
+            self._yt_diag = {'src': loc or '?', 'vid': getattr(self, 'yt_video_id', ''),
+                             'age': ('%.0f' % (_age * 1000.0)) if _age is not None else 'None',
+                             'rows': len(getattr(self, 'yt_cdp_rows', None) or []),
+                             'why': 'cdp-fresh-skip'}
             if _age is not None and _age <= 8.0:
                 return [], False
         # A VARREDURA DA PAGINA INTEIRA E' PARA QUEM PINTA A LEGENDA NA PAGINA
@@ -2768,6 +2824,20 @@ class ExternalCaptionWatcher(threading.Thread):
                 # cache longo nao atrasa uma troca de video -- so' deixa de
                 # re-perguntar o que ainda nao mudou.
                 _fast = self._yt_source_by_title(title)
+                if _fast is None:
+                    # UMA FOTO VELHA DA CDP DIZ MAIS DO QUE A UIA (2026-11-03):
+                    # o cache do veredicto expirava a cada 6 s e o laco pagava
+                    # 1,4 s de UIA (0,4 Hz). A porta ligada a uma aba do YouTube
+                    # nao muda por a foto envelhecer.
+                    _cdp_src = getattr(self, '_yt_cdp_source', None)
+                    if _cdp_src and _cdp_src is not False:
+                        try:
+                            _old = _cdp_src.snapshot(max_age=30.0)
+                        except Exception:     # noqa: BLE001
+                            _old = None
+                        if _old and _old.get('videoId'):
+                            _fast = ('https://www.youtube.com/watch?v='
+                                     + str(_old.get('videoId')))
                 if _fast is not None:
                     # A JANELA E' O PLAYER SEM PERGUNTAR A' ARVORE (2026-11-03).
                     # A fonte CDP ja' sabe o titulo do documento e o id do video;
@@ -3589,6 +3659,19 @@ class ExternalCaptionWatcher(threading.Thread):
                 except Exception:         # noqa: BLE001
                     vid = ''
             if _src and _src is not False and getattr(self, 'yt_video_id', ''):
+                # O ID DECLARADO PODE ESTAR MORTO (2026-11-03): uma vez
+                # guardado nunca era reperguntado e o `pick_target` filtra as
+                # abas por ele -- aba fechada, laco preso (164 linhas de
+                # `m_bJQ4G1Ht8` com outra aba a tocar). A ABA MANDA; o custo e'
+                # um HTTP em cache de 2 s. Ver docs/youtube-source-identity.md.
+                try:
+                    _tid = _src.target_video_id() or ''
+                except Exception:             # noqa: BLE001
+                    _tid = ''
+                if _tid and _tid != getattr(self, 'yt_video_id', ''):
+                    log('YOUTUBE_TARGET_REBOUND was=%s now=%s why=aba'
+                        % (getattr(self, 'yt_video_id', '') or '-', _tid))
+                    self._yt_switch_video(_tid, _src)
                 _yt_mark(self, 'vid')
                 return '', _src, True
             vid = self._youtube_video_id(hwnd, uia, UIA)

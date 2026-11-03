@@ -54,13 +54,12 @@ MUTANT = os.path.join(os.path.dirname(SHELL), '_uia-neg-shell.py')
 #: _src, True` -- the id comes from the snapshot now), so the old anchor no longer
 #: matched the file and the control reported `NEG-ARM IMPOSSIVEL: ancora ausente`
 #: with rc=2. An anchor is a claim about the source; it ages like one.
+#: RE-ANCHORED AGAIN 2026-11-03: a cura do ALVO MORTO meteu 20 linhas dentro
+#: do ramo rapido, e o corpo passou a depender da aba viva. O que o mutante tem
+#: de fazer e' so' isto: o ramo rapido deixa de ser tomado, e o tick cai na UIA.
 _A = ("            if _src and _src is not False and "
-      "getattr(self, 'yt_video_id', ''):\n"
-      "                _yt_mark(self, 'vid')\n"
-      "                return '', _src, True\n")
-_I = ("            if False:  # MUTANT: cai na UIA\n"
-      "                _yt_mark(self, 'vid')\n"
-      "                return '', _src, True\n")
+      "getattr(self, 'yt_video_id', ''):\n")
+_I = ("            if False:  # MUTANT: cai na UIA\n")
 #: The shell is CRLF; the anchor is built in the file's own line endings.
 ANCHOR = _A.replace("\n", "\r\n")
 INJECT = _I.replace("\n", "\r\n")

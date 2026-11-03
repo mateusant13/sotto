@@ -793,6 +793,15 @@ call :record yt-loop-uia !STEP_RC!
 call :step red-as-expected-yt-loop-uia 1 "_main\yt-loop-uia-oracle.py;app\webview\sotto_webview.py" "%OUT%\yt-loop-uia-neg.log" python _main\yt-loop-uia-oracle.py --neg-arm
 call :expectred red-as-expected-yt-loop-uia !STEP_RC! "%OUT%\yt-loop-uia-neg.log" "NEG-ARM: PASS"
 
+REM O ALVO MORTO (2026-11-03, MEDIDO no browser do dono): o id declarado `m_bJQ4G1Ht8` ficou 164
+REM linhas no log com a unica aba de video aberta a mostrar OUTRO video -- `pick_target` filtra as
+REM abas por esse id, nao acha, nao produz foto, e sem foto o id tambem nao se cura. O par prova as
+REM duas metades (a escolha e o re-declarar do shell) e o `--neg-arm` derruba quatro bracos.
+call :step yt-target-stale 0 "_main\yt-target-stale-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py" "%OUT%\yt-target-stale.log" python _main\yt-target-stale-oracle.py
+call :record yt-target-stale !STEP_RC!
+call :step red-as-expected-yt-target-stale 1 "_main\yt-target-stale-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py" "%OUT%\yt-target-stale-neg.log" python _main\yt-target-stale-oracle.py --neg-arm
+call :expectred red-as-expected-yt-target-stale !STEP_RC! "%OUT%\yt-target-stale-neg.log" "NEG-ARM PASS"
+
 REM === FIM DOS SETE =============================================================
 REM
 REM `_main\sotto-state-page.py` e o P0.2 do roadmap de observabilidade de 2026-10-23: a pagina de

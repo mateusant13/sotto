@@ -221,12 +221,12 @@
       "max_func_name": "_meter_interface"
     },
     "app/webview/batch_queue.py": {
-      "bytes": 39373,
+      "bytes": 40115,
       "classes": 2,
       "defs": 12,
       "except_pass": 9,
       "globals": 0,
-      "lines": 913,
+      "lines": 923,
       "max_func": 67,
       "max_func_name": "step"
     },
@@ -381,12 +381,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 962569,
+      "bytes": 980159,
       "classes": 24,
       "defs": 108,
       "except_pass": 41,
       "globals": 4,
-      "lines": 18136,
+      "lines": 18416,
       "max_func": 378,
       "max_func_name": "main"
     },
@@ -421,13 +421,13 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 19754,
+      "bytes": 22589,
       "classes": 1,
       "defs": 4,
       "except_pass": 4,
       "globals": 0,
-      "lines": 469,
-      "max_func": 91,
+      "lines": 519,
+      "max_func": 107,
       "max_func_name": "_run"
     },
     "app/webview/youtube_monotonic.py": {
@@ -581,13 +581,13 @@
       "max_func_name": "main"
     },
     "worker/sotto_worker.py": {
-      "bytes": 390996,
+      "bytes": 393738,
       "classes": 17,
       "defs": 62,
       "except_pass": 13,
       "globals": 4,
-      "lines": 7291,
-      "max_func": 2372,
+      "lines": 7330,
+      "max_func": 2386,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {

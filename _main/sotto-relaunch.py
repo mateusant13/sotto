@@ -323,14 +323,27 @@ def kill(pid, source=None):
             w('kill lote: %d pid(s) ainda vivos %s -- a repetir um a um' % (len(failed), failed))
             for target in failed:
                 _kill_via_token(target, source)
-    deadline = time.time() + 15.0
+    # SESSENTA SEGUNDOS, E UMA SEGUNDA TENTATIVA (2026-11-03, MEDIDO NA PROPRIA
+    # SESSAO). Com 15 s o relancador dizia `ABORTA: a instancia antiga nao
+    # morreu` e nao largava nada -- e a instancia morria 20-30 s depois, ou seja
+    # o dono ficava SEM app e sem aviso, que e' o pior dos dois estados. A
+    # desmontagem (WebView2 + worker) leva dezenas de segundos nesta maquina.
+    # Aos 15 s o que resta leva o `taskkill` outra vez, e o desfecho e' o CENSO.
+    deadline = time.time() + 60.0
+    retried = False
     while time.time() < deadline:
         survivors = _live_pids(targets)
         if not survivors:
             w('kill pid=%d confirmado morto (alvos=%d)' % (pid, len(targets)))
             return True
+        if not retried and time.time() > deadline - 45.0:
+            retried = True
+            w('kill pid=%d sem morrer aos 15 s; vivos=%s -- segunda tentativa'
+              % (pid, survivors))
+            for target in survivors:
+                _kill_via_token(target, source)
         time.sleep(POLL_S)
-    w('kill pid=%d NAO morreu em 15 s; vivos=%s' % (pid, survivors))
+    w('kill pid=%d NAO morreu em 60 s; vivos=%s' % (pid, survivors))
     return False
 
 
