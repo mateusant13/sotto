@@ -880,6 +880,11 @@ PROGRESS_TAGS = ('REDUX_BATCH_KICK', 'REDUX_ENGINE_DONE', 'REDUX_MODE')
 #: medido 2026-11-02, o worker morreu duas vezes `rc=1` (19:22:29, 19:36:40) e a
 #: cauda era `WORKER_STATS` + `REDUX_BATCH_KICK` -- o traceback ficou de fora.
 STDERR_TAIL_MAX = 40
+#: Tecto DURO da janela de carga (2026-11-03). A janela conta silencio, mas um
+#: worker que fala SEM NUNCA carregar tambem nao pode viver para sempre: sob
+#: contencao o load medido foi de 10 s a 147 s, entao 15 min e' a fronteira
+#: entre "carrega devagar" e "esta' preso".
+WORKER_LOAD_HARD_CEILING_MS = 900_000.0
 
 
 def parse_worker_stats(line):
@@ -2115,6 +2120,10 @@ def _yt_mark(owner, phase):
         phases[phase] = round((time.monotonic() - start) * 1000.0, 1)
     except Exception:  # noqa: BLE001
         pass
+
+
+#: Instante zero para os marcos `WEBVIEW_NAV t=` (2026-11-03).
+_WEBVIEW_T0 = time.monotonic()
 
 
 class ExternalCaptionWatcher(threading.Thread):
@@ -4697,6 +4706,12 @@ def dock_strip(work, width=STRIP_WIDTH, height=STRIP_HEIGHT,
 # ===========================================================================
 
 SOTTO_ICON = os.path.join(HERE, 'sotto.ico')
+# O PERFIL DO WEBVIEW2 NAO PODE SER TEMPORARIO (2026-11-03). pywebview faz
+# `tempfile.TemporaryDirectory().name` a cada largada quando o modo e' privado
+# (winforms.py:757), e apaga-o no fim. Medido nesta maquina: centenas de
+# `G:\Temp\tmp*\EBWebView` (4-67 MB cada) e uma pagina LOCAL de 700 KB a
+# levar 11-25 s a ficar pronta -- cada arranque paga o perfil a frio.
+SOTTO_CACHE = os.path.join(os.path.dirname(os.path.dirname(HERE)), '_cache')
 SOTTO_APP_USER_MODEL_ID = 'sotto.overlay'
 
 WM_GETICON = 0x007F
@@ -6753,6 +6768,100 @@ BOOTSTRAP_JS = r"""
 """
 
 
+#: O MEDIDOR DO ARRANQUE DA PAGINA (2026-11-03). Corre no MESMO mundo e no MESMO
+#: instante que o resto do preload (antes do primeiro script da pagina), porque
+#: a pergunta e' "quem segurou o parser 25 s" e um medidor que chega depois so'
+#: ve o que aconteceu depois. Nao desenha, nao toca no DOM, nao muda nada: observa
+#: longtasks e marcos e manda UMA linha pela ponte que a pagina ja' usa.
+BOOT_PROFILE_JS = r"""
+;(() => {
+  if (window.__sottoBootProfile) { return; }
+  window.__sottoBootProfile = true;
+  try {
+    const t0 = performance.now();
+    const marks = [];
+    const mark = (n) => { try { marks.push([n, Math.round(performance.now())]); } catch (e) {} };
+    const long = [];
+    try {
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) { long.push(Math.round(e.duration)); }
+      }).observe({ entryTypes: ['longtask'] });
+    } catch (e) {}
+    document.addEventListener('DOMContentLoaded', () => mark('dom'), { once: true });
+    const send = () => {
+      if (window.__sottoBootSent) { return; }
+      window.__sottoBootSent = true;
+      try {
+        mark('load');
+        const nav = (performance.getEntriesByType('navigation') || [])[0] || {};
+        const res = (performance.getEntriesByType('resource') || [])
+          .map((r) => [String(r.name).split('/').pop().split('?')[0],
+                       Math.round(r.duration), Math.round(r.responseEnd)])
+          .sort((a, b) => b[1] - a[1]).slice(0, 10);
+        const fp = (performance.getEntriesByName('first-paint') || [])[0] || {};
+        const box = {
+          marks: marks, longtasks: long.slice(0, 15),
+          slowest: res,
+          firstPaint: Math.round(fp.startTime || 0),
+          domInteractive: Math.round(nav.domInteractive || 0),
+          dcl: Math.round(nav.domContentLoadedEventEnd || 0),
+          loadEvent: Math.round(nav.loadEventEnd || 0),
+        };
+        const api = window.pywebview && window.pywebview.api;
+        if (api && api.dispatch) {
+          api.dispatch(JSON.stringify({ kind: 'boot-profile', payload: box }));
+        } else {
+          setTimeout(send, 250);
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('load', send, { once: true });
+    setTimeout(send, 30000);
+  } catch (e) {}
+})();
+"""
+
+def sweep_stale_webview_profiles(min_age_s=5400.0):
+    """Apaga os perfis WebView2 que as largadas MORTAS deixaram em `%TEMP%`.
+
+    Medido 2026-11-03 nesta maquina: **centenas** de `%TEMP%\\tmp*\\EBWebView`
+    (4-67 MB cada), de todos os arranques que foram mortos a meio. O pywebview
+    so' apaga o seu diretorio temporario numa saida limpa (`clear_user_data`),
+    e um kill nunca e' uma saida limpa. E' o espaco em disco desperdicado que o
+    dono nomeou como inadmissivel.
+
+    A IDADE E' A GUARDA: um perfil com menos de `min_age_s` pode ter dono vivo
+    (uma sonda, uma lane), e apagar o perfil de um processo a correr parte-o.
+    Devolve `(dirs, bytes)` para o registo.
+    """
+    import glob as _glob
+    import shutil as _shutil
+    now = time.time()
+    dirs = 0
+    freed = 0
+    home = os.environ.get('TEMP') or os.environ.get('TMP') or ''
+    if not home:
+        return 0, 0
+    for webview_dir in _glob.glob(os.path.join(home, 'tmp*', 'EBWebView')):
+        try:
+            if now - os.path.getmtime(webview_dir) < min_age_s:
+                continue
+            size = 0
+            for root, _subdirs, files in os.walk(webview_dir):
+                for name in files:
+                    try:
+                        size += os.path.getsize(os.path.join(root, name))
+                    except OSError:
+                        pass
+            parent = os.path.dirname(webview_dir)
+            _shutil.rmtree(parent, ignore_errors=True)
+            if not os.path.exists(parent):
+                dirs += 1
+                freed += size
+        except OSError:
+            continue
+    return dirs, freed
+
 def _bootstrap_js():
     """BOOTSTRAP_JS + the deferred-asset loader, read from disk at import time.
 
@@ -6767,7 +6876,7 @@ def _bootstrap_js():
     except OSError as exc:
         log(f'PANEL_LAZY_LOADER_READ_FAILED error={exc!r}')
         return BOOTSTRAP_JS
-    return BOOTSTRAP_JS + "\n" + loader
+    return BOOTSTRAP_JS + "\n" + loader + "\n" + BOOT_PROFILE_JS
 
 
 #: The `--dump-dom` probe. This is main.js:273-290 VERBATIM, so the two arms
@@ -7348,6 +7457,7 @@ class SottoHost:
             # WITHOUT THIS ENTRY the panel re-skins and the overlay keeps the
             # default Segoe UI caption: two products on one screen.
             'brand-tokens': ('host', '_brand_tokens'),
+            'boot-profile': ('host', '_boot_profile'),
             'renderer-ready': ('host', '_renderer_ready'),
             'page-error': ('host', '_page_error'),
             'pointer': ('host', '_pointer'),
@@ -7582,6 +7692,22 @@ class SottoHost:
                applied.get('livePx') or 0.0, theme.get('theme') or '-',
                'yes' if applied.get('plate') else 'no',
                'yes' if getattr(overlay, 'FADE_ON', False) else 'no'))
+
+    def _boot_profile(self, payload):
+        """ONDE OS 25 S DA PAGINA SAO GASTOS, medido DENTRO do renderer.
+
+        Medido 2026-11-03: `WEBVIEW_NAV start` -> `WEBVIEW_NAV dom` = 25 s para
+        uma pagina LOCAL de 700 KB, e o event `DOMContentLoaded` e' do proprio
+        Chromium: alguem esta' segurando o parser. O `_bootstrap_js` instala um
+        `PerformanceObserver` de longtask antes do primeiro byte de pagina e manda
+        o resultado por `dispatch` no `load`; esta linha e' a unica saida dele.
+        """
+        payload = payload or {}
+        try:
+            log('PANEL_BOOT_PROFILE %s' % json.dumps(payload)[:1200])
+            self._shell._panel_boot_profile = payload
+        except Exception as exc:  # noqa: BLE001
+            log('PANEL_BOOT_PROFILE_FAILED error=%r' % (exc,))
 
     def _renderer_ready(self, payload):
         payload = payload or {}
@@ -8058,6 +8184,14 @@ class SottoShell:
                     log(f'CAPTION_OVERLAY_THEME_REPLAY_FAILED error={exc!r}')
             log(f'CAPTION_OVERLAY_MODE native=true hwnd='
                 f'{self.caption_overlay.hwnd} work={wa["width"]}x{wa["height"]}')
+            # A PRESSAO QUE CHEGOU CEDO E' HONRADA AQUI (2026-11-03).
+            pending = getattr(self, '_caption_show_pending', None)
+            if pending is not None:
+                self._caption_show_pending = None
+                log('CAPTION_WINDOW_DEFERRED_APPLIED on=%s'
+                    % str(bool(pending)).lower())
+                self._caption_window_shown = bool(pending)
+                self.caption_overlay.show(bool(pending))
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_OVERLAY_MODE_FAILED error={exc!r}')
 
@@ -8686,8 +8820,41 @@ class SottoShell:
             log(f'WEBVIEW2_INIT_FAILED error={args.InitializationException}')
             return
         self.core = sender.CoreWebView2
+        self._webview_timeline()
         self._install_bootstrap('initialization-completed')
         self._arm_lazy_gate()
+
+    def _webview_timeline(self):
+        """QUANDO e' que o WebView2 faz o que diz que faz (2026-11-03).
+
+        MEDIDO: `PRELOAD_INSTALLED` as 03:48:48.8 e `STAGING_SEEN` as 03:49:16.3
+        -- 27,5 s entre a janela existir e o `loaded` da pagina de staging, e mais
+        25 s ate' o painel carregar. Sem estes marcos a proxima pergunta era um
+        palpite sobre o WebView2. Cada linha leva `t=` em ms desde o arranque do
+        processo, para o numero ser comparavel entre corridas.
+        """
+        try:
+            core = self.core
+            def _ms():
+                return (time.monotonic() - _WEBVIEW_T0) * 1000.0
+
+            def _nav_start(sender, args):
+                log('WEBVIEW_NAV start t=%.0f uri=%s'
+                    % (_ms(), str(getattr(args, 'Uri', ''))[-46:]))
+
+            def _nav_done(sender, args):
+                log('WEBVIEW_NAV done t=%.0f success=%s'
+                    % (_ms(), str(getattr(args, 'IsSuccess', '?'))))
+
+            def _dom_ready(sender, args):
+                log('WEBVIEW_NAV dom t=%.0f' % _ms())
+
+            core.NavigationStarting += _nav_start
+            core.NavigationCompleted += _nav_done
+            core.DOMContentLoaded += _dom_ready
+            log('WEBVIEW_NAV subscribed t=%.0f' % _ms())
+        except Exception as exc:              # noqa: BLE001
+            log('WEBVIEW_NAV_SUBSCRIBE_FAILED error=%r' % (exc,))
 
     def _install_bootstrap(self, where):
         """Register the preload on the CoreWebView2, on the UI thread.
@@ -8847,15 +9014,10 @@ class SottoShell:
             # this same block, so a worker spawned on this launch always finds
             # the file. The order is the point: see `self.panel_visibility`.
             self.start_panel_visibility()
-            # THE PLAYER'S OWN CAPTIONS (YouTube/Stremio), normal runs only.
-            self.start_external_caption_watcher()
-            # FREE THE GPU WHEN ANOTHER APP NEEDS IT (normal runs only).
-            try:
-                if self._worker_autostart_reason(self.args) in ('default', 'with-worker'):
-                    self.vram_guard = VramGuard(self)
-                    self.vram_guard.start()
-            except Exception as exc:  # noqa: BLE001
-                log(f'VRAM_GUARD_START_FAILED error={exc!r}')
+            # AS LEGENDAS E O WORKER -- IDEMPOTENTE (2026-11-03). O main()
+            # ja' as arranca antes do `webview.start()`; esta chamada serve o
+            # caminho em que a janela nasce tarde, e nao faz nada duas vezes.
+            self.start_caption_pipeline('panel-ready')
             # THE FIRST PRESENT IS PAID HERE, OFF THE SCREEN -- see
             # `_warm_paint`. It must be BEFORE any show, or the first Alt+C
             # pays it with the window on screen (measured: 19 blank frames).
@@ -9388,6 +9550,18 @@ class SottoShell:
                 return False
         try:
             return bool(self._post(_run))
+        except ModuleNotFoundError as exc:
+            # ANTES DO WEBVIEW2 NAO HA' PAGINA (2026-11-03). O pipeline de
+            # legendas passou a arrancar antes do `webview.start` -- de
+            # proposito, para a legenda nao esperar o painel --, e nesse
+            # instante `pythonnet` ainda nao tem `System` carregado: o
+            # `BeginInvoke` rebenta com `No module named 'System'`. Uma
+            # notificacao sem pagina nao e' um defeito, e' cedo de mais;
+            # fica UMA linha, nao um WARN por cada emit.
+            if not getattr(self, '_js_prewebview_logged', False):
+                self._js_prewebview_logged = True
+                log('EXEC_JS_DEFERRED reason=no-form yet (%s)' % (exc,))
+            return False
         except Exception as exc:  # noqa: BLE001
             warn(f'exec_js_post POST failed: {exc!r}')
             return False
@@ -11143,6 +11317,39 @@ class SottoShell:
         log(f'WORKER_PRELOAD done started={str(started).lower()}')
         return bool(started)
 
+    def start_caption_pipeline(self, reason):
+        """LEGENDA E WORKER NAO ESPERAM PELO WEBVIEW2 (2026-11-03).
+
+        MEDIDO nesta maquina: `AddScriptToExecuteOnDocumentCreatedAsync` leva
+        11,6 s, a navegacao do staging fica `done` aos 13,4 s e o evento
+        `loaded` do painel chega 35 s depois disso -- e o worker, o observador
+        das legendas e a legenda nativa so' arrancavam DEPOIS disso, dentro de
+        `_complete_startup`. Resultado medido no dono: Ctrl+Space as 03:22:19
+        com `LIVE_ENABLED on=true` e NADA no ecra, porque metade do pipeline
+        ainda nao existia. A legenda nao depende da pagina do painel: o overlay
+        e' uma janela Win32 nativa e o worker e' um processo a parte.
+        """
+        if getattr(self, '_caption_pipeline_started', False):
+            return False
+        self._caption_pipeline_started = True
+        log('CAPTION_PIPELINE_START reason=%s' % reason)
+        for step, call in (
+                ('watcher', lambda: self.start_external_caption_watcher()),
+                ('worker', lambda: self.start_worker(
+                    self._worker_autostart_reason(self.args))),
+        ):
+            try:
+                call()
+            except Exception as exc:          # noqa: BLE001
+                log('CAPTION_PIPELINE_STEP_FAILED step=%s error=%r' % (step, exc))
+        try:
+            if self._worker_autostart_reason(self.args) in ('default', 'with-worker'):
+                self.vram_guard = VramGuard(self)
+                self.vram_guard.start()
+        except Exception as exc:              # noqa: BLE001
+            log('VRAM_GUARD_START_FAILED error=%r' % (exc,))
+        return True
+
     def start_worker(self, reason):
         if reason not in self.START_REASONS:
             # ── THE RULE'S BINDING HALF, AND IT WAS MISSING UNTIL NOW ─────────
@@ -11452,6 +11659,15 @@ class SottoShell:
         deixou."""
         ov = getattr(self, 'caption_overlay', None)
         if ov is None:
+            # UMA PRESSAO DURANTE O ARRANQUE NAO SE PERDE (2026-11-03).
+            # MEDIDO no dono: Ctrl+Space as 03:22:19.842 com
+            # `LIVE_ENABLED on=true` e NADA no ecra -- o overlay nativo ainda
+            # nao existia, a chamada devolvia False e o pedido morria ali.
+            # Agora fica guardado e e' aplicado no instante em que a janela
+            # passa a existir.
+            self._caption_show_pending = bool(on)
+            log('CAPTION_WINDOW_DEFERRED on=%s reason=no-overlay-yet'
+                % str(bool(on)).lower())
             return False
         self._caption_window_shown = False
         # A FONTE MUDOU: o slot e' do instante ANTERIOR (dono, 2026-10-30).
@@ -14988,6 +15204,7 @@ class WorkerBridge:
         # way the worker can be launched. `_main/app-target-oracle.py` pins this
         # dict to `os.environ + SOTTO_CAPTURE_MODE` (+ the target pid), and that
         # contract is worth keeping.
+        env['PYTHONUNBUFFERED'] = '1'
         env['SOTTO_CAPTURE_MODE'] = self.capture_mode
         if self.device is not None:
             env['SOTTO_AUDIO_DEVICE'] = self.device
@@ -15054,6 +15271,11 @@ class WorkerBridge:
         # make every heartbeat look like a repeat and blind the watchdog.
         self._progress_blocks = None
         self.spawned_at = time.monotonic()
+        #: Quando este filho FALOU pela ultima vez (2026-11-03). A janela de
+        #: carga passou a medir SILENCIO, nao idade: um worker que ainda esta'
+        #: a carregar (35 s, 147 s sob contencao) publica linhas no stdout,
+        #: e matar quem progride custa a carga inteira outra vez.
+        self.last_progress_at = self.spawned_at
 
         # The WHOLE env contract lives in `_child_env`, so it can be asserted
         # without spawning anything (see its docstring). Nothing else in this
@@ -15073,7 +15295,17 @@ class WorkerBridge:
             creationflags |= 0x00004000
 
         try:
-            argv = [self.command, self.worker_path] + list(self.extra_args)
+            # `-u` NAO E' ESTILO: E' A LATENCIA DA LEGENDA (2026-11-03,
+            # MEDIDO). O worker escreve JSONL no stdout e o stdout de um pipe
+            # e' BUFFERIZADO POR BLOCOS (8 KB): sem `-u` a linha de uma
+            # legenda fica presa no buffer do proprio filho ate' o buffer
+            # encher. Medido nesta sessao: o worker publicou
+            # `model-loaded load_s=11.66` e o shell so' a leu em
+            # `BRIDGE_LOAD_MS ms=120859` -- 109 s de linha parada num pipe.
+            # O `PYTHONUNBUFFERED=1` do `_child_env` cobre o mesmo buraco para
+            # qualquer lancamento que nao passe por este argv.
+            argv = [self.command, '-u', self.worker_path] \
+                + list(self.extra_args)
             self.child = subprocess.Popen(
                 argv,
                 cwd=os.path.dirname(self.worker_path) or os.getcwd(),
@@ -15100,7 +15332,10 @@ class WorkerBridge:
             return
 
         self.log(f'BRIDGE_SPAWNED pid={self.child.pid} '
-                 f'argv={json.dumps([self.command, self.worker_path] + list(self.extra_args))} '
+                 # O ARGV QUE CORREU, nao o que se pensa que correu: esta
+                 # linha reconstruia a lista sem o `-u` e o log passou a
+                 # descrever um processo diferente do que existe.
+                 f'argv={json.dumps(argv)} '
                  f'SOTTO_CAPTURE_MODE={self.capture_mode} '
                  'SOTTO_AUDIO_DEVICE=' +
                  (self.device if self.device is not None else '(unset)'))
@@ -15194,6 +15429,8 @@ class WorkerBridge:
             return
         try:
             for line in stream:
+                # QUALQUER LINHA E' PROGRESSO (2026-11-03, ver `_on_silence`).
+                self.last_progress_at = time.monotonic()
                 if name == 'stderr':
                     # O ONNX Runtime escreve em WIDESTRING: lido byte a byte vira
                     # `\u0000\u001b\u0000[` (medido 19:00:24) e a mensagem fica ilegivel.
@@ -15625,6 +15862,18 @@ class WorkerBridge:
                         f'peak={message.get("peak")} '
                         f'floor={message.get("peak_floor")}')
             return None
+        if state == 'tap-silent-desktop':
+            # O WORKER DISSE QUE A MAQUINA ESTA' CALADA (2026-11-03). Sem
+            # esta linha, uma morte DEPOIS desta declaracao virava
+            # `kind=error` -> escada `retry` (1 s, 2 s, 8 s...) e cada
+            # volta RECARREGA o modelo: medido nesta sessao, 04:07-04:17,
+            # tres cargas de 35-56 s para trinta e poucos segundos de
+            # silencio de desktop. A declaracao do proprio worker ja' e' a
+            # sentenca; o que falta e' a escada certa (minutos) e o tecto.
+            return (f'tap-silent-desktop '
+                    f'window_s={message.get("window_s")} '
+                    f'endpoints={message.get("endpoints")} '
+                    f'peak={message.get("peak")}')
         if state == 'done':
             verdict = str(message.get('verdict') or '').strip()
             if verdict and verdict in WORKER_NO_AUDIO_VERDICTS:
@@ -15700,9 +15949,14 @@ class WorkerBridge:
         if not self.loaded:
             elapsed_ms = ((time.monotonic() - self.spawned_at) * 1000.0
                           if self.spawned_at else 0.0)
-            if elapsed_ms < self.load_silence_ms:
-                self.log(f'BRIDGE_SILENT_LOADING ms={round(elapsed_ms)} '
+            quiet_ms = ((time.monotonic()
+                        - getattr(self, 'last_progress_at', self.spawned_at))
+                        * 1000.0)
+            if (quiet_ms < self.load_silence_ms
+                    or elapsed_ms < WORKER_LOAD_HARD_CEILING_MS * 0.5):
+                self.log(f'BRIDGE_SILENT_LOADING ms={round(quiet_ms)} '
                          f'pid={self.child.pid} '
+                         f'total_ms={round(elapsed_ms)} '
                          f'window_ms={self.load_silence_ms} '
                          'because=model-not-loaded')
                 self._arm_silence()
@@ -15839,6 +16093,7 @@ class WorkerBridge:
                      f'cap={self.no_audio_restart_cap} '
                      'why=restarting-cannot-fix-a-routing-problem '
                      'resume=press-Alt+C')
+            self._arm_audio_resume(reason)
             self.pending_error = {
                 'state': NO_AUDIO_STATE,
                 'text': ('Nada foi roteado para o Sotto, e o Sotto parou de '
@@ -15875,6 +16130,50 @@ class WorkerBridge:
                 self.log(f'BRIDGE_RESTART_TIMER_CANCEL_FAILED error={exc!r}')
         self._restart_timer = timer
         timer.start()
+
+    def _arm_audio_resume(self, reason):
+        """O DESKTOP CALADO NAO PODE DEIXAR O WORKER MORTO PARA SEMPRE.
+
+        Medido 2026-11-03: a escada de no-audio acaba por parar (com razao --
+        recarregar o modelo nao arranja uma rotagem errada), e ate' agora a
+        unica forma de ele voltar era o dono apertar Alt+C. Isto devolve a
+        volta ao unico sinal que importa: alguem comecou a tocar ALGUMA COISA
+        (`audio_playing.playing`, que so' LE os medidores dos endpoints).
+        Uma sonda de 3 s por volta, uma lista de dispositivos por sonda; sai
+        no primeiro som e nao toca em mais nada.
+        """
+        if getattr(self, '_audio_resume_armed', False) or self.stopped:
+            return
+        self._audio_resume_armed = True
+
+        def _watch():
+            try:
+                import audio_playing
+            except Exception as exc:  # noqa: BLE001
+                self.log(f'BRIDGE_RESUME_UNAVAILABLE error={exc!r}')
+                self._audio_resume_armed = False
+                return
+            while not self.stopped:
+                time.sleep(3.0)
+                try:
+                    if not audio_playing.playing():
+                        continue
+                except Exception:  # noqa: BLE001
+                    continue
+                self.log('BRIDGE_RESUME_AUDIO reason=audio-detected '
+                         f'after={reason}')
+                with self._locked():
+                    if self.stopped or self.child is not None:
+                        self._audio_resume_armed = False
+                        return
+                    self.no_audio_restarts = 0
+                    self.state = 'restarting'
+                    self._spawn()
+                self._audio_resume_armed = False
+                return
+
+        threading.Thread(target=_watch, name='sotto-audio-resume',
+                         daemon=True).start()
 
     def _restart(self):
         # THE LOCK (row #43, 2026-10-11): this path set the state and spawned with no
@@ -16913,6 +17212,41 @@ def main(argv=None):
         # a dialog on a daemon thread, because a hidden app with a dead hotkey
         # and no message is indistinguishable from a broken app.
         shell.hotkey = arm_hotkey(shell, args.hotkey)
+        # A LEGENDA ARRANCA AQUI, NAO DEPOIS DO WEBVIEW2 (2026-11-03):
+        # o overlay e' nativo e o worker e' outro processo -- nenhum dos dois
+        # precisa da pagina do painel para existir.
+        try:
+            shell.start_caption_pipeline('pre-webview')
+        except Exception as exc:          # noqa: BLE001
+            warn('caption pipeline could not start early: %r' % (exc,))
+        # O WEBVIEW2 ESPERA O MODELO, NAO O CONTRARIO (2026-11-03, MEDIDO).
+        # Lançar o WebView2 ao mesmo tempo que o worker carrega faz o
+        # worker pagar a factura: medido nesta sessao, o modelo ficou
+        # pronto em `load_s=11.99` e o shell so' viu a linha 61 s depois
+        # (`BRIDGE_LOAD_MS ms=61297`), porque as threads do shell nao
+        # corriam enquanto o WebView2 arrancava (722 processos, 92,5% de
+        # commit). A legenda e' o produto; o painel e' opcional e ja'
+        # arrancava escondido. Entao: espera o modelo, com tecto, e so'
+        # depois entrega a maquina ao WebView2. Tecto obrigatorio -- uma
+        # app sem painel e' o defeito que se estava a evitar.
+        try:
+            _wait_model = float(os.environ.get('SOTTO_WEBVIEW_AFTER_LOAD_S',
+                                               '25'))
+        except ValueError:
+            _wait_model = 25.0
+        if _wait_model > 0 and getattr(shell, 'bridge', None) is not None:
+            _t0 = time.monotonic()
+            _loaded = False
+            while time.monotonic() - _t0 < _wait_model:
+                if getattr(shell.bridge, 'loaded', False):
+                    _loaded = True
+                    break
+                time.sleep(0.05)
+            log('SHELL_WEBVIEW_AFTER_LOAD loaded=%s waited_ms=%d '
+                'ceiling_ms=%d'
+                % (str(_loaded).lower(),
+                   round((time.monotonic() - _t0) * 1000.0),
+                   round(_wait_model * 1000.0)))
 
     # HOT RELOAD IS OFF BY DEFAULT, AND IT WAS ON -- WHICH IS THE FREEZE. MEASURED
     # 2026-10-15 on the owner own log: `HOT_RELOAD_EVENT kind=panel file=panel.css`
@@ -16992,6 +17326,35 @@ def main(argv=None):
     # `sys.executable`, i.e. `pythonw.exe`, i.e. THE PYTHON ICON, which is the
     # owner's report. `apply_window_icon` (from `_on_before_show`) re-applies it
     # with an explicit `WM_SETICON`, ICON_SMALL2 included.
+    # PERFIL PERSISTENTE SO' PARA A APP, NUNCA PARA UMA SONDA. Uma sonda
+    # (`--dump-dom`/`--selftest`/`--memory`/`--probe-v2`/`--no-hotkey`, ou uma
+    # mutex privada) larga uma SEGUNDA instancia ao lado da do dono; dois
+    # processos nao partilham o mesmo `EBWebView` (o segundo nao arranca o
+    # WebView2). Por isso o perfil e' da APP e o efemero fica nas sondas.
+    if not lock_excuse:
+        def _sweep():
+            try:
+                dirs, freed = sweep_stale_webview_profiles()
+                log('WEBVIEW2_PROFILE_SWEEP dirs=%d mb=%.1f'
+                    % (dirs, freed / (1024.0 * 1024.0)))
+            except Exception as exc:  # noqa: BLE001
+                log('WEBVIEW2_PROFILE_SWEEP_FAILED error=%r' % (exc,))
+        threading.Thread(target=_sweep, name='sotto-profile-sweep',
+                         daemon=True).start()
+    # PERFIL POR LARGADA, E O LIXO VARRIDO (2026-11-03, MEDIDO). Um perfil
+    # PARTILHADO entre largadas foi tentado e medido no mesmo dia: com o
+    # processo anterior ainda a morrer, o WebView2 do novo arranque bate em
+    # `0x800700AA Recurso solicitado em uso` e a app sobe SEM PAGINA
+    # (`WEBVIEW2_INIT_FAILED`, medido 04:31:48) -- e os `msedgewebview2.exe`
+    # sobrevivem ao kill do shell, portanto o hazard nao desaparece sozinho.
+    # E nao pagava: o perfil a quente nao mudou os 25 s do painel (03:59 e
+    # 04:28 deram o mesmo numero). Fica o perfil efemero do pywebview, e o que
+    # se ganha e' a VARREDURA: cada largada morta deixava 4-67 MB em
+    # `%TEMP%\tmp*\EBWebView` para sempre (centenas deles nesta maquina).
+    log('WEBVIEW2_PROFILE ephemeral reason=%s'
+        % (lock_excuse or ('mutex:' + str(args.mutex_name))
+           if (lock_excuse or args.mutex_name != DEFAULT_MUTEX_NAME)
+           else 'per-launch'))
     webview.start(icon=SOTTO_ICON)
     return shell._exit_code
 

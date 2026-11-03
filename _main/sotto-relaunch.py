@@ -248,12 +248,22 @@ def _sweep_litter(root_pid, snapshot):
     for pid, name, _ppid in snapshot:
         if pid == root_pid or pid not in want or name not in LITTER_NAMES:
             continue
-        if not alive(pid):
-            continue
+        # SEM `alive()` AQUI (2026-11-03). `alive()` abre o processo e um
+        # `high` recusa essa abertura com err=5 -- o filtro declarava
+        # "morto" exactamente o processo que e' preciso matar, e a varredura
+        # nao matava nada. MEDIDO: o `taskkill /T` da app deixou vivos os
+        # `msedgewebview2.exe` 49792/56324 (filhos do pid 12208) a deter
+        # `Local\SottoShell`. Um `taskkill` a um pid morto devolve rc=128 e
+        # nao faz mal a ninguem; o que faz mal e' deixar a mutex presa.
         result = subprocess.run(['taskkill', '/PID', str(pid), '/F'],
                                 capture_output=True, close_fds=True,
                                 creationflags=NO_WINDOW)
         w('limpeza pid=%d (%s) rc=%d' % (pid, name, result.returncode))
+        if result.returncode != 0:
+            # O FILHO DA APP E' `high` COMO ELA (2026-11-03): um `taskkill`
+            # desta pane `medium` devolve rc=1 "Acesso negado" e a mutex
+            # fica presa. O mesmo caminho de token que o `kill()` usa.
+            _kill_via_token(pid)
         killed += 1
     return killed
 
