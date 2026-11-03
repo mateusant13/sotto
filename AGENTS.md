@@ -310,8 +310,18 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-03, 12:0x):** `_main\_audit-verify-all.cmd` = **182965 B**,
-  **2306 CRLF** / 0 bare LF, sha256 `1821C0A3920C04E21BDCE69D4BBEE02AE03FCF92C427B9A410624C737016419C`.
+- **PIN do ficheiro (medido 2026-11-03, 17:5x):** `_main\_audit-verify-all.cmd` = **184217 B**,
+  **2319 CRLF** / 0 bare LF, sha256 `AF9D3D82EDF6DD70F50EF2C77ED7A26DD6E6EDB553F19AF47D1779607A35CD6F`.
+  (Este pin substitui o de 182965 B / 2306 CRLF, DEPOIS do par `caption-lag-budget` +
+  `red-as-expected-caption-lag-budget`: a idade do AUDIO que esta' no ecra (`tap_ms` do worker ->
+  `CAPTION_PAINT_LAG audio_ms=` na pintura), com o orcamento de 1500 ms a gritar
+  `CAPTION_BUDGET_BLOWN`. Nasceu da pergunta do dono, verbatim: *"tu nao tem a porra de um teste
+  ou log que mostra a discrepancia entre audio detectado e display na tela? nao tem nada que grita
+  que o budget de ter mostrado ja passou do ponto?"* -- nao tinha: o `CAPTION_OVERLAY_LAG` media a
+  FILA (0-300 ms) e nao o audio, e o log nem levava `start`/`end`/`final`. Medido na sessao dele
+  (pid 4992, 17:17:59-17:18:03): cinco legendas distintas entraram em 4 s e o painel publicou UMA
+  linha com as cinco encadeadas -- sem numero nenhum no log a dizer de que instante era aquele
+  audio. O braco negativo roda DOIS mutantes (orcamento de 10**9 e `tap_ms` que nao viaja).)
   (Este pin substitui o de 177560 B / 2246 CRLF, DEPOIS dos sete oraculos de 2026-11-03 entrarem com
   o seu braco negativo (`async-track-fetch`, `batch-queue-drain`, `hotkey-live-toggle`,
   `loading-placeholder`, `youtube-land` -- skip-capable, le o log vivo -- `youtube-land-replay`,

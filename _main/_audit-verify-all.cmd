@@ -188,6 +188,19 @@ call :step caption-cumulative 0 "_main\caption-cumulative-oracle.js;app\panel\ca
 call :record caption-cumulative !STEP_RC!
 call :step red-as-expected-caption-cumulative 1 "_main\caption-cumulative-oracle.js;app\panel\caption-formulation.js" "%OUT%\caption-cumulative-neg.log" node _main\caption-cumulative-oracle.js --neg-arm
 call :expectred red-as-expected-caption-cumulative !STEP_RC! "%OUT%\caption-cumulative-neg.log" "NEG-ARM: PASS"
+REM A IDADE DO AUDIO QUE ESTA' NO ECRA (2026-11-03). ORDEM DO DONO, verbatim:
+REM *"tu nao tem a porra de um teste ou log que mostra a discrepancia entre audio
+REM detectado e display na tela? nao tem nada que grita que o budget de ter
+REM mostrado ja passou do ponto?"* -- nao tinha. `tap_ms` viaja do worker (o
+REM relogio de parede do bloco que fechou a linha) ate' a pintura, e as linhas
+REM `CAPTION_IN`/`CAPTION_PAINT_LAG`/`CAPTION_BUDGET_BLOWN`/`CAPTION_LAG_STATS`
+REM publicam audio_ms, queue_ms e o veredicto contra 1500 ms. O braco de baixo
+REM roda DOIS mutantes (orcamento infinito e `tap_ms` que nao viaja) e exige as
+REM arms correspondentes vermelhas.
+call :step caption-lag-budget 0 "_main\caption-lag-budget-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\caption-lag-budget.log" python _main\caption-lag-budget-oracle.py
+call :record caption-lag-budget !STEP_RC!
+call :step red-as-expected-caption-lag-budget 1 "_main\caption-lag-budget-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\caption-lag-budget-neg.log" python _main\caption-lag-budget-oracle.py --neg-arm
+call :expectred red-as-expected-caption-lag-budget !STEP_RC! "%OUT%\caption-lag-budget-neg.log" "NEG-ARM: PASS"
 call :step red-as-expected-redux-transcript-path 1 "_main\_redux-transcript-path.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\redux-transcript-path-neg.log" python _main\_redux-transcript-path.py --neg-arm
 call :expectred red-as-expected-redux-transcript-path !STEP_RC! "%OUT%\redux-transcript-path-neg.log" "NEG-ARM: PASS"
 

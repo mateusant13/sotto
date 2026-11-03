@@ -3642,6 +3642,10 @@ class ExternalCaptionWatcher(threading.Thread):
         self.last_rows = []
         self.finalized = False
         self._caption_pending = None
+        #: O `tap_ms` da ultima linha EMPURRADA (2026-11-03): o pixel do painel
+        #: mede a idade do audio contra ele em `_caption_applied`.
+        self._last_push_tap_ms = None
+        self._last_push_at = 0.0
         blank = getattr(getattr(self, 'shell', None), '_blank_caption_window', None)
         if blank is not None:
             blank('video-changed')
@@ -8089,8 +8093,28 @@ class SottoHost:
         text = (payload or {}).get('text', '')
         self._shell.caption_log.append(text)
         del self._shell.caption_log[:-MAX_CAPTIONS]
+        # ── O PIXEL, COM A IDADE DO AUDIO (2026-11-03) ──────────────────────
+        # O painel confirma que APLICOU a linha; este e' o instante do ecra
+        # nesta maquina. A idade do audio sai daqui e nao do `tap_ms` da
+        # chegada: entre os dois ha' a formulacao, a ponte e a pintura do DOM.
+        shell = self._shell
+        tap = getattr(shell, '_last_push_tap_ms', None)
+        sent_at = getattr(shell, '_last_push_at', None)
+        audio_ms = (int(time.time() * 1000.0) - int(tap)) if tap else None
+        queue_ms = int((time.time() - sent_at) * 1000) if sent_at else None
+        if audio_ms is not None:
+            shell._caption_lag_note(audio_ms, queue_ms=queue_ms)
         log(f'CAPTION_APPLIED text={json.dumps(text)} '
-            f'count={len(self._shell.caption_log)}')
+            f'count={len(self._shell.caption_log)}'
+            + (f' audio_ms={audio_ms} queue_ms={queue_ms}'
+               f' budget_ms={shell.CAPTION_BUDGET_MS}'
+               f' over={str(audio_ms > shell.CAPTION_BUDGET_MS).lower()}'
+               if audio_ms is not None else ''))
+        if audio_ms is not None and audio_ms > shell.CAPTION_BUDGET_MS:
+            log(f'CAPTION_BUDGET_BLOWN audio_ms={audio_ms} '
+                f'budget_ms={shell.CAPTION_BUDGET_MS} '
+                f'queue_ms={queue_ms} blown={shell._caption_lag_blown} '
+                f'path=panel text={json.dumps(text[:60])}')
 
     def _status_applied(self, payload):
         text = (payload or {}).get('text', '')
@@ -12338,6 +12362,45 @@ class SottoShell:
                 pass
 
 
+    #: O ORCAMENTO DO ECRa, EM MILISSEGUNDOS (2026-11-03). Do instante em que o
+    #: audio que a linha descreve acabou ate' ao pixel. NAO e' um numero de
+    #: gosto: o worker entrega um bloco de 560 ms e o decode de um bloco custa
+    #: 120-400 ms nesta maquina, logo um orcamento abaixo de ~1 s esta' a pedir
+    #: ao decode que nao corra. 1500 ms e' o mesmo numero da aceitacao do Alt+C
+    #: (1,5 s para a primeira legenda), para nao haver duas reguas no repo --
+    #: e o passo que o le' diz quantas vezes ele estourou, em vez de decidir se
+    #: a legenda "parece" atrasada.
+    CAPTION_BUDGET_MS = 1500
+
+    def _caption_lag_note(self, audio_ms, queue_ms=0):
+        """Guarda a idade de UMA legenda pintada e publica o resumo da janela.
+
+        O resumo existe porque uma linha por legenda responde "esta linha estava
+        atrasada?", e o dono pergunta "o Sotto esta' atrasado?" -- que e' uma
+        pergunta sobre a SERIE. A cada 25 amostras sai
+        `CAPTION_LAG_STATS n=.. p50=.. p90=.. max=.. over=..` com o orcamento
+        ao lado, que e' o que faz um log passar a gritar sozinho.
+        """
+        if audio_ms <= self.CAPTION_BUDGET_MS:
+            pass
+        else:
+            self._caption_lag_blown = int(getattr(self, '_caption_lag_blown', 0)) + 1
+        ages = getattr(self, '_caption_ages', None)
+        if ages is None:
+            ages = self._caption_ages = []
+        ages.append(int(audio_ms))
+        del ages[:-200]
+        if len(ages) % 25 == 0:
+            ordered = sorted(ages)
+            n = len(ordered)
+
+            def pct(p):
+                return ordered[min(n - 1, int(round(p * (n - 1))))]
+
+            log(f'CAPTION_LAG_STATS n={n} p50={pct(0.5)} p90={pct(0.9)} '
+                f'max={ordered[-1]} over={self._caption_lag_blown} '
+                f'budget_ms={self.CAPTION_BUDGET_MS}')
+
     def _drain_caption_pending(self):
         """Pinta o que esta' no slot. Corre na thread `sotto-caption-paint`."""
         ov = getattr(self, 'caption_overlay', None)
@@ -12353,6 +12416,7 @@ class SottoShell:
         cue = getattr(self, '_caption_pending_cue', None)
         self._caption_drain_posted = False
         pending = getattr(self, '_caption_pending', None)
+        coalesced = int(getattr(self, '_caption_coalesced', 0))
         if pending is None:
             return
         enqueued, new_text, new_prev, epoch = pending
@@ -12388,10 +12452,47 @@ class SottoShell:
                 log(f'CAPTION_OVERLAY_LAG age_ms={age_ms} '
                     f'count={self._overlay_pushes} '
                     f'text={json.dumps(new_text[:60])}')
+            # ── A DISCREPANCIA ENTRE O AUDIO E O ECRa (2026-11-03) ─────────
+            # ORDEM DO DONO, verbatim: *"tu nao tem a porra de um teste ou log
+            # que mostra a discrepancia entre audio detectado e display na tela?
+            # nao tem nada que grita que o budget de ter mostrado ja passou do
+            # ponto?"* -- nao tinha. O `CAPTION_OVERLAY_LAG` mede a FILA (do
+            # enfileirar ao pintar), e a fila era o menor dos dois atrasos: o
+            # audio que a linha descreve ja' podia ter acabado segundos antes.
+            # `tap_ms` e' o instante de parede em que o bloco que FECHOU a linha
+            # entrou no worker; a diferenca ate' aqui e' a idade do audio que o
+            # dono esta' a ler. Uma linha por legenda pintada, com o veredicto.
+            _tap = getattr(self, '_caption_pending_tap_ms', None)
+            if _tap:
+                audio_ms = int(time.time() * 1000.0) - int(_tap)
+                self._caption_lag_note(audio_ms, queue_ms=age_ms)
+                log(f'CAPTION_PAINT_LAG audio_ms={audio_ms} queue_ms={age_ms} '
+                    f'budget_ms={self.CAPTION_BUDGET_MS} '
+                    f'over={str(audio_ms > self.CAPTION_BUDGET_MS).lower()} '
+                    f'coalesced={coalesced} '
+                    f'text={json.dumps(new_text[:60])}')
+                if audio_ms > self.CAPTION_BUDGET_MS:
+                    # O GRITO. Uma linha propria para que um `grep BASTAO`
+                    # responda a pergunta "quantas vezes o orcamento estourou?"
+                    # sem ler o resto.
+                    log(f'CAPTION_BUDGET_BLOWN audio_ms={audio_ms} '
+                        f'budget_ms={self.CAPTION_BUDGET_MS} '
+                        f'queue_ms={age_ms} blown={self._caption_lag_blown} '
+                        f'text={json.dumps(new_text[:60])}')
             if self._overlay_pushes in (1, 50, 500):
                 log(f'CAPTION_OVERLAY_PUSH count={self._overlay_pushes} '
                     f'visible={str(ov.visible).lower()} hwnd={ov.hwnd} '
                     f'text={json.dumps(new_text[:60])}')
+            if coalesced:
+                # NENHUMA FALA DESAPARECE EM SILENCIO (2026-11-03): o slot e'
+                # um so' e a chegada seguinte o substitui -- juntar e' a cura,
+                # mas o numero tem de aparecer. `coalesced=2` diz que DUAS
+                # chegadas distintas se juntaram nesta pintura; `text` mostra
+                # exactamente o que o dono leu.
+                self._caption_coalesced = 0
+                log(f'CAPTION_COALESCE coalesced={coalesced} '
+                    f'audio_ms={int(time.time() * 1000.0) - int(_tap or 0)} '
+                    f'text={json.dumps(new_text[:120])}')
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_OVERLAY_PUSH_FAILED error={exc!r}')
 
@@ -12426,7 +12527,7 @@ class SottoShell:
                     pass
 
     def push_caption_to_window(self, text, previous=None, credits=None, instant=False,
-                               cue=None, rows=None):
+                               cue=None, rows=None, tap_ms=None):
         """A legenda para a JANELA PROPRIA. Silencioso se ela ainda nao existir."""
         ov = getattr(self, 'caption_overlay', None)
         if ov is None:
@@ -12491,7 +12592,33 @@ class SottoShell:
         # sem isto a legenda nunca mais voltava a ser pintada -- trocava-se um
         # atraso por um silencio.
         now = time.time()
-        self._caption_pending = (now, text or '', previous or '',
+        text = text or ''
+        previous = previous or ''
+        # NAO SE DEITA FALA FORA (2026-11-03). O slot e' UM so' e a chegada
+        # seguinte SOBRESCREVE a que ainda nao foi pintada -- o que esta' certo
+        # contra o atraso e ERRADO contra o conteudo. MEDIDO na sessao do dono
+        # (pid 4992, 17:17:59-17:18:03): cinco `CAPTION_IN` distintos em 4 s e
+        # UMA linha publicada com os cinco encadeados; no caminho do YouTube a
+        # mesma janela perdia as linhas interiores. Duas linhas DISTINTAS que
+        # chegam antes do pixel agora ENGROSSAM uma a outra; uma linha nova que
+        # ja' CONTEM a pendente (a re-emissao cumulativa) substitui-a, que e' o
+        # caso em que juntar duplicaria.
+        _pending = getattr(self, '_caption_pending', None)
+        _coalesced = 0
+        if _pending:
+            _old = (_pending[1] or '').strip()
+            _new = text.strip()
+            if _old and _new and _old != _new and _old not in _new:
+                text = _old + ' ' + text
+                _coalesced = int(getattr(self, '_caption_coalesced', 0)) + 1
+                self._caption_coalesced = _coalesced
+                _old_tap = getattr(self, '_caption_pending_tap_ms', None)
+                if _old_tap and tap_ms:
+                    tap_ms = min(int(_old_tap), int(tap_ms))
+            elif _old and _new and _old == _new:
+                # REPETICAO EXACTA da mesma linha: nao ha' nada a juntar.
+                _coalesced = int(getattr(self, '_caption_coalesced', 0)) + 0
+        self._caption_pending = (now, text, previous,
                                  int(getattr(self, '_source_epoch', 0)))
         # O `instant` VIVE NO SLOT (2026-11-03): a pintura deixou de ser
         # uma closure para ser uma thread propria, e um caminho que
@@ -12502,6 +12629,11 @@ class SottoShell:
         #: + `at`), ao lado do `instant`. `None` = nao ha' relogio e o texto
         #: viaja sozinho, como antes.
         self._caption_pending_cue = cue
+        #: QUANDO O AUDIO DESTA LINHA ACABOU, no relogio de parede (2026-11-03).
+        #: Vem do worker (`tap_ms`) e atravessa o slot como o `instant` e o `cue`:
+        #: a idade que interessa ao dono nao e' a da FILA, e' a do AUDIO -- e sem
+        #: este campo a janela pintava sem saber de que instante era o que pinta.
+        self._caption_pending_tap_ms = tap_ms
         dbg = self._overlay_pushes < 3
         if dbg:
             # A ETIQUETA ACOMPANHA O MECANISMO (2026-11-03): a pintura deixou de
@@ -12611,12 +12743,49 @@ class SottoShell:
         # `emit_async`, NAO `emit`: `emit` espera pela pagina (ate' 10 s) na thread
         # que le' o stdout do worker -- a pagina ocupada atrasava a LEITURA.
         self.emit_async('caption', {'text': text, 'meta': meta})
+        # O INSTANTE DO AUDIO QUE ACABOU DE SEGUIR PARA O ECRa (2026-11-03).
+        # A PINTURA NESTA MAQUINA E' O PAINEL (o overlay nativo responde
+        # `CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay`), logo o pixel
+        # acontece em `_caption_applied`, do outro lado da ponte. Sem guardar
+        # aqui o `tap_ms` que saiu, o lado do painel nao tem contra o que medir
+        # a idade e o orcamento nao tem como estourar.
+        _meta = meta if isinstance(meta, dict) else {}
+        self._last_push_tap_ms = _meta.get('tap_ms') or self._last_push_tap_ms
+        self._last_push_at = time.time()
         log(f'BRIDGE_CAPTION_SENT delivered=async text={json.dumps(text)}')
+        # ── O CONTRATO DO AUDIO, NO LOG (2026-11-03) ──────────────────────
+        # ORDEM DO DONO: *"tu nao tem a porra de um teste ou log que mostra a
+        # discrepancia entre audio detectado e display na tela?"*. O log tinha
+        # SO' o texto -- nem `start`, nem `end`, nem `final`, nem `tap_ms`. Sem
+        # eles, "a legenda esta' atrasada" era impossivel de provar e de refutar:
+        # nao havia um campo com que comparar. Esta linha e' o contrato inteiro
+        # que o worker manda, na chegada, com a idade do audio ja' calculada.
+        _m = meta if isinstance(meta, dict) else {}
+        _tap = _m.get('tap_ms')
+        _age_ms = None
+        if _tap:
+            try:
+                _age_ms = int(time.time() * 1000.0) - int(_tap)
+            except (TypeError, ValueError):
+                _age_ms = None
+        log('CAPTION_IN start=%s end=%s final=%s stable=%s tap_ms=%s age_ms=%s '
+            'text=%s'
+            % (_m.get('start'), _m.get('end'),
+               str(bool(_m.get('final'))).lower(),
+               str(bool(_m.get('stable'))).lower(),
+               _tap, _age_ms, json.dumps(text[:60])))
+        if _age_ms is not None and _age_ms > self.CAPTION_BUDGET_MS:
+            # A MESMA REGUA NA CHEGADA: se o audio ja' chegava velho, o defeito
+            # e' do worker/e do tap, nao do desenho -- e o log tem de dizer QUAL
+            # das duas metades estourou.
+            log(f'CAPTION_ARRIVAL_BLOWN age_ms={_age_ms} '
+                f'budget_ms={self.CAPTION_BUDGET_MS} '
+                f'text={json.dumps(text[:60])}')
         # E A JANELA PROPRIA DA LEGENDA RECEBE O MESMO TEXTO. O dono: *"a legenda ao vivo
         # deveria aparecer no MEIO EM BAIXO da minha tela"*. Uma janela propria e a unica
         # forma de ela pousar no fundo da TELA sem a barra no topo do mesmo caixote.
         if bridge is None or getattr(self, 'bridge', None) is bridge:
-            self.push_caption_to_window(text)
+            self.push_caption_to_window(text, tap_ms=_tap)
         else:
             log('BRIDGE_CAPTION_DROP_SUPERSEDED reason=bridge-changed '
                 f'text={json.dumps(text[:60])}')

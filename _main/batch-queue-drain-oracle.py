@@ -164,6 +164,63 @@ def arm_inflight_once(mod, path):
         ex.stop()
 
 
+def arm_run_loop_adopts(mod, path):
+    """O LACO REAL (`run()`) corre a ADOPCAO, e nao so' o `step()`.
+
+    O DEFEITO QUE ESTE BRACO EXISTE PARA APANHAR (medido no dono, 2026-11-03,
+    pid 4992): `run()` chamava `self.queue.adopt_dead_spools(self.adopt_roots)`
+    e `__init__` nunca atribuia `self.adopt_roots`. O `AttributeError` cai no
+    `try` do laco ANTES do `step()`, portanto (a) a adopcao nunca acontecia --
+    o audio que um worker morto largou ficava sem transcricao para sempre -- e
+    (b) a volta em que ele caia perdia um passo da fila.
+
+    Nenhum braco apanhava isto porque todos chamavam `step()` directamente: o
+    defeito vivia entre o `__init__` e o `run()`, e um oraculo que nunca corre o
+    `run()` nao ve' um campo que so' o `run()` le'.
+    """
+    ex, queue, spawns = make_executor(mod, path)
+    # Um spool MORTO no directorio que a adopcao aponta: e' a unica forma de
+    # provar que a chamada ACONTECEU (sem isto, um `adopt_roots` a `None`
+    # devolveria 0 e o braco passaria por ausencia).
+    # O SPOOL TEM A FORMA QUE A ADOPCAO PROCURA (2026-11-03): o directorio
+    # leva o pid no NOME (`sotto-pending-audio-<pid>`), os ficheiros comecam por
+    # `pending-` e acabam em `.f32`, e a idade tem de passar `ADOPT_MIN_AGE_S`
+    # -- sem isto o braco mede uma pasta que a regra REALMENTE ignora e grita
+    # falso. O pid 999999 nao existe (`_pid_alive` devolve False).
+    # O CAMPO E' LIDO COM `getattr` E A AUSENCIA E' UM RED, nao um traceback: no
+    # mutante (`self.adopt_roots` nunca atribuido) este braco tem de dar RED com
+    # o nome do defeito, e nao rebentar o oraculo.
+    if getattr(ex, 'adopt_roots', None) is None:
+        return False, ('adopt_roots nunca e atribuido no __init__ -- o `run()` '
+                       'leria um campo que nao existe')
+    spool = os.path.join(path, mod.SPOOL_DIR_PREFIX + '999999')
+    os.makedirs(spool, exist_ok=True)
+    full = os.path.join(spool, mod.SPOOL_FILE_GLOB + '0001' + mod.SPOOL_SUFFIX)
+    with io.open(full, 'wb') as handle:
+        handle.write(b'\x00\x00\x00\x00' * 6400)
+    old = time.time() - (mod.ADOPT_MIN_AGE_S + 30.0)
+    os.utime(full, (old, old))
+    # ESTE braco aponta a adopcao ao SEU directorio (a forma do nome importa).
+    ex.adopt_roots = [spool]
+    errors = []
+    ex.log = lambda m: errors.append(m)
+    ex.adopt_every_s = 0.0          # a primeira volta do laco adopta
+    ex.start()
+    try:
+        got = wait_for(lambda: queue.stats()['queued'] + queue.stats()['done'] > 0,
+                       timeout=6.0)
+        # SO' O ERRO CONTA: `BATCH_EXEC_DONE`/`BATCH_EXEC_START` sao log normal --
+        # um braco que trata log normal como falha mede a verbosidade do modulo.
+        failures = [m for m in errors if 'BATCH_EXEC_ERROR' in m]
+        ok = got and not failures
+        st = queue.stats()
+        return ok, ('queued=%d inflight=%d done=%d failed=%d errors=%r'
+                    % (st['queued'], st['inflight'], st['done'],
+                       st['failed'], failures[:2]))
+    finally:
+        ex.stop()
+
+
 def neg_arm_mutant():
     """A COPIA com o `refresh` desligado: o arm 1 tem de FALHAR."""
     tmp = tempfile.mkdtemp(prefix='bq-neg-')
@@ -188,6 +245,32 @@ def neg_arm_mutant():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def neg_arm_adopt_field():
+    """A COPIA sem a atribuicao de `adopt_roots`: o braco do laco tem de FALHAR.
+
+    O MESMO DEFEITO DE PRODUCAO, posto de volta: uma linha (`self.adopt_roots =
+    adopt_roots`) apagada numa copia. Se o braco 5 continuar verde sem ela, ele
+    nao mede o campo -- mede outra coisa.
+    """
+    tmp = tempfile.mkdtemp(prefix='bq-neg-adopt-')
+    try:
+        src = io.open(MODULE, encoding='utf-8').read()
+        old = '        self.adopt_roots = adopt_roots'
+        if old not in src:
+            return None, 'o mutante nao encontrou `self.adopt_roots = adopt_roots`'
+        mutated = src.replace(old, '        pass  # MUTANTE: campo nunca atribuido', 1)
+        copy = os.path.join(tmp, 'batch_queue_mutant_adopt.py')
+        with io.open(copy, 'w', encoding='utf-8', newline='') as handle:
+            handle.write(mutated)
+        mod = load_module(copy)
+        path = os.path.join(tmp, 'queue')
+        os.makedirs(path, exist_ok=True)
+        ok, detail = arm_run_loop_adopts(mod, path)
+        return (not ok), detail
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main():
     base = tempfile.mkdtemp(prefix='bq-oracle-')
     mod = load_module(MODULE)
@@ -196,7 +279,8 @@ def main():
         arms = (('foreign-enqueue-is-picked-up', arm_foreign_pickup),
                 ('no-work-stays-idle', arm_no_work),
                 ('level-above-leve-does-not-run', arm_level_blocks),
-                ('inflight-recovers-once', arm_inflight_once))
+                ('inflight-recovers-once', arm_inflight_once),
+                ('run-loop-adopts-dead-spool', arm_run_loop_adopts))
         for index, (name, fn) in enumerate(arms):
             path = os.path.join(base, 'q%d' % index)
             os.makedirs(path, exist_ok=True)
@@ -213,6 +297,13 @@ def main():
             return 1
         print('NEG-ARM refresh-desligado %s %s'
               % ('GREEN (o defeito volta)' if caught else 'FAIL', detail))
+        caught2, detail2 = neg_arm_adopt_field()
+        if caught2 is None:
+            print('NEG-ARM      FAIL %s' % detail2)
+            return 1
+        print('NEG-ARM adopt-roots-apagado %s %s'
+              % ('GREEN (o defeito volta)' if caught2 else 'FAIL', detail2))
+        caught = bool(caught) and bool(caught2)
         bad = [n for n, ok, _ in results if not ok]
         # CONTRATO DA BATERIA: rc=1 = o mutante foi apanhado.
         print('NEG-ARM: %s' % ('PASS' if (caught and not bad) else 'FAIL'))

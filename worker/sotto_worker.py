@@ -3935,6 +3935,14 @@ class LineFormer:
         # the honest gap, and it is what `caption-formulation.js` turns into a
         # comma or a full stop. Reset with the line, like `_start`.
         self._chunk_start = None
+        #: O RELOGIO DE PAREDE DO ULTIMO BLOCO QUE ENTROU NESTA LINHA (2026-11-03).
+        #: `end` diz ONDE no audio a linha acabou; nao diz QUANDO esse audio
+        #: chegou. Sem esse par nao ha' numero possivel para "o que esta no ecra
+        #: descreve audio de ha' quanto tempo" -- e o dono pediu exactamente esse
+        #: numero (*"tu nao tem a porra de um teste ou log que mostra a
+        #: discrepancia entre audio detectado e display na tela?"*). Quem empurra
+        #: o bloco tem o relogio; o `push(wall=...)` e' o canal.
+        self._wall = None
         #: The chunks that make up the OPEN line, as `(start, end, text)`.
         #: The line is cumulative, so a renderer cannot recover an interior
         #: pause from `start`/`end` alone; this list is the raw material for
@@ -4037,6 +4045,17 @@ class LineFormer:
             # (o `panel.js` antigo, o history store) ve o mesmo evento de
             # sempre.
             "stable": bool(stable),
+            # QUANDO ESTE AUDIO CHEGOU, no relogio de parede (2026-11-03). `end`
+            # e' ONDE no audio a linha acabou; este campo e' QUANDO o bloco que a
+            # fechou entrou no worker. O par (end, tap_ms) e' o que permite ao
+            # shell publicar a unica medida que o dono pediu: a idade do audio
+            # que esta' no ecra. Presente SO' quando quem empurra passou o
+            # relogio (`push(wall=...)`), pelo mesmo motivo de `chunk_start`:
+            # `--selftest` e o braco de ficheiro nao tem relogio de captura, e o
+            # conjunto de chaves deles e' pinado por
+            # `_main/per-app-source-plumbing-oracle.py` (CHK-3).
+            **({"tap_ms": int(round(self._wall * 1000.0))}
+               if self._wall is not None else {}),
             # STEP 3 -- WHERE THIS AUDIO CAME FROM. Present ONLY when the former
             # was given a source (every live tap has one; `--selftest` and the
             # file arm have none, so their events stay byte-identical to before
@@ -4209,7 +4228,7 @@ class LineFormer:
         self._closed = []
         return out
 
-    def push(self, text, start=None, end=None, continues=False):
+    def push(self, text, start=None, end=None, continues=False, wall=None):
         """Feed ONE decoded chunk; return the caption events to emit (0..2).
 
         `continues` is `StreamAsr.chunk_continues` — True when the model's own
@@ -4248,6 +4267,12 @@ class LineFormer:
             self._start = start
         if start is not None:
             self._chunk_start = start
+        # O RELOGIO DA CAPTURA (2026-11-03): guardado ANTES do `_event`, porque
+        # e' `_event` que o publica como `tap_ms`. Fica com o ULTIMO bloco que
+        # entrou na linha aberta -- a idade honesta da linha e' a do bloco mais
+        # recente que ela contem.
+        if wall is not None:
+            self._wall = float(wall)
         if start is not None and end is not None:
             self._chunks.append((start, end, frag))
         self._words.append((frag, cont))
@@ -6231,8 +6256,13 @@ def main():
                 # everything is droppable — a stream that runs for hours must not
                 # hold an hour of PCM.
                 seg_pcm[idx] = (seg_in, speech)
+                # O RELOGIO DA CAPTURA, DO LADO DE QUEM A TEM (2026-11-03):
+                # `push` publica-o como `tap_ms` e o shell converte-o na idade do
+                # audio que ele pinta (`CAPTION_PAINT_LAG`). Uma chamada por
+                # bloco de 560 ms e' nada; sem ela nao existe numero nenhum.
                 for event in line_events(former.push(
-                    text, _start, _end, continues=asr.chunk_continues
+                    text, _start, _end, continues=asr.chunk_continues,
+                    wall=time.time(),
                 )):
                     counters["captions"] += 1
                     emit(model=asr.name, **event)

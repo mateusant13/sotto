@@ -577,6 +577,16 @@ class BatchExecutor(threading.Thread):
         self.yield_backoff_s = float(yield_backoff_s)
         self.adopt_every_s = float(adopt_every_s)
         self.session_root = session_root
+        # O CAMPO QUE FALTAVA (2026-11-03, MEDIDO no log VIVO do dono, pid 4992).
+        # `run()` chama `self.queue.adopt_dead_spools(self.adopt_roots)` e este
+        # nome NUNCA era atribuido: `BATCH_EXEC_ERROR error=AttributeError(...'no
+        # attribute 'adopt_roots'')` uma vez por minuto, desde o arranque. Duas
+        # consequencias, ambas medidas: (1) a ADOPCAO dos spools que um worker
+        # morto deixou NUNCA corria -- o audio que o dono gravou e o worker
+        # largou nao era transcrito por ninguem; (2) a excepcao e' apanhada no
+        # `try` do laco ANTES do `self.step()`, logo a volta em que ela cai
+        # perde um passo inteiro da fila (uma por minuto).
+        self.adopt_roots = adopt_roots
         # DE ONDE SE ADOPTAM OS SPOOLS MORTOS. `None` = todos os spools reais
         # (o comportamento de producao: o audio que um worker largou tem de ser
         # transcrito). Um INSTRUMENTO passa a raiz do seu proprio directorio

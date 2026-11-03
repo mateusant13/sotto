@@ -284,3 +284,16 @@ _main/_yt-1to1-live*.json
 .codeintel/
 .agent-work/
 .pi/
+
+# -- Code intelligence index and agent scratch (2026-11-03) --------------
+# `.codeintel/` is a 167 MB SQLite/tree index of this repo: machine state,
+# reproducible by rebuilding, never source.
+.codeintel/
+.agent-work/
+.agent-work
+.pi/
+# Run records of the closure gates (machine state).
+.opencode/.closure-gate.json
+.opencode/.closure-gate-history.json
+.opencode/goal.previous-*.json
+*.bak
