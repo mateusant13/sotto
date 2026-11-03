@@ -169,3 +169,20 @@ o ACORDO dos textos, nao o atraso.
   cadencia. O ciclo de 5 s fica a correr e junta amostras.
 - **A posicao vertical** da legenda: o Sotto desenha 48 px acima da base da area de
   trabalho; o player desenha dentro do video. Nao foi pedido, e nao foi medido.
+
+## Correccao do INSTRUMENTO (00:17) — as 34 `OURS-AHEAD` nao eram atraso
+
+Primeira corrida do comparador (`agent-browser`), 00:13:32-00:16:52:
+
+| janela | veredicto | o que era |
+|---|---|---|
+| 00:13:32-00:13:31 (6 ciclos) | `SAME` | player e Sotto com as mesmas duas linhas, `t=773.951`, em pausa |
+| 00:13:37-00:16:52 (34 ciclos) | `OURS-AHEAD` | **o instrumento**: `t=None`, `player=[]` -- a sessao presa a' aba tinha navegado para `pixeldrain.com` (deixou de ser YouTube) |
+
+Duas curas, as duas mecanicas:
+
+1. `_main/_yt-cdp-probe.py` le' pela CDP (`127.0.0.1:9222`), filtra os alvos por
+   `youtube.com`/`youtu.be` ANTES de abrir ligacao, conta as outras abas sem as ler,
+   e nunca chama `Target.activateTarget` -- ler nao traz a aba para a frente.
+2. `_yt-sync-live.py` deixou de traduzir leitura falhada em veredicto: `NO-YT-TAB`,
+   `NO-VIDEO` e o erro da sonda tem nome proprio e ficam FORA da contagem de sync.

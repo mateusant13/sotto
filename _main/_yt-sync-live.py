@@ -58,16 +58,6 @@ def _cli():
             return found
     return 'agent-browser'
 
-PROBE = """(() => {
-  try {
-    const v = document.querySelector('video');
-    const segs = Array.from(document.querySelectorAll('.ytp-caption-segment'))
-      .map(e => e.textContent.trim()).filter(Boolean);
-    return JSON.stringify({t: v ? Math.round(v.currentTime*1000)/1000 : null,
-      paused: v ? v.paused : null, muted: v ? v.muted : null, rows: segs});
-  } catch (e) { return JSON.stringify({error: String(e)}); }
-})()"""
-
 FRAME = re.compile(r'^(?:\d{4}-\d{2}-\d{2} )?(\d{2}:\d{2}:\d{2}\.\d{3}) .*?'
                    r'(?:YT_FRAME src=\S+ rows=\d+|EXTERNAL_CAPTION_DRAWN rows=\d+) '
                    r'lines=(\[.*\])')
@@ -105,25 +95,19 @@ def read_frame_log():
     return last
 
 
-def probe(tab):
-    script = base64.b64encode(PROBE.encode('utf-8')).decode('ascii')
-    try:
-        out = subprocess.run(
-            [_cli(), '--session', SESSION, 'eval', '-b', script],
-            capture_output=True, text=True, timeout=25)
-    except Exception as exc:  # noqa: BLE001
-        return {'error': repr(exc)}
-    raw = (out.stdout or '').strip()
-    if not raw:
-        return {'error': (out.stderr or 'sem saida').strip()[:200]}
-    try:
-        value = json.loads(raw)
-        if isinstance(value, str):
-            value = json.loads(value)
-        return value
-    except Exception as exc:  # noqa: BLE001
-        return {'error': 'parse %r: %r' % (exc, raw[:160])}
+def probe(_tab=None):
+    """Le' o player pela CDP, sem focar e SO' em aba do YouTube.
 
+    `agent-browser tab t5` trazia a aba para a frente (ordem do dono: rodar no
+    background) e a sessao presa a' aba chegou a ler `pixeldrain.com`. O leitor
+    agora vive em `_main/_yt-cdp-probe.py`: filtra os alvos por `youtube.com`
+    ANTES de abrir ligacao nenhuma e nunca chama `Target.activateTarget`.
+    """
+    sys.path.insert(0, HERE)
+    import importlib
+    mod = importlib.import_module("_yt-cdp-probe")
+    importlib.reload(mod)
+    return mod.probe()
 
 def classify(page_rows, ours):
     """SAME | OURS-AHEAD | OURS-BEHIND | TEXT-DIFF."""
@@ -161,8 +145,15 @@ def main(argv=None):
     ap.add_argument('--tab', default='t5')
     args = ap.parse_args(argv)
 
-    subprocess.run([_cli(), '--session', SESSION, 'tab', args.tab],
-                   capture_output=True, text=True, timeout=40)
+    # NAO SE TROCA DE ABA (ordem do dono, 2026-11-03: *"para de focar o
+    # navegador. roda ele no background"*). `tab t5` TROUXE a aba para a frente
+    # na janela dele; a sessao ja' esta' presa a' aba do video (`--pin-tab`), e
+    # um `eval` na aba presa le' sem focar nada. Se a sessao nao estiver presa a'
+    # aba certa, o instrumento DIZ e nao mexe: trocar de aba e' accao dele.
+    check = probe(args.tab)
+    if check.get('error') or not (check.get('rows') is not None):
+        print('ABORT: a sessao nao esta presa a aba do YouTube: %r' % (check,))
+        return 0
     tally = {}
     with io.open(OUT, 'a', encoding='utf-8') as sink:
         sink.write('\n== %s ==\n'
@@ -172,8 +163,17 @@ def main(argv=None):
             frame = read_frame_log()
             rows = page.get('rows') or []
             ours = frame[1] if frame else []
-            verdict = ('ERROR' if page.get('error')
-                       else classify(rows, ours))
+            # UMA LEITURA FALHADA NAO E' UM VEREDICTO (2026-11-03). As 34
+            # `OURS-AHEAD` das 00:13:37 em diante nao eram atraso: a sessao
+            # presa a' aba tinha navegado para `pixeldrain.com`, o `video`
+            # nao existia e o player devolvia `[]`. Pagina ilegivel ou aba
+            # errada tem nome proprio e fica FORA da contagem de sync.
+            if page.get('error'):
+                verdict = str(page['error'])[:24]
+            elif not page.get('hasVideo'):
+                verdict = 'NO-VIDEO'
+            else:
+                verdict = classify(rows, ours)
             tally[verdict] = tally.get(verdict, 0) + 1
             line = ('%s t=%s paused=%s %-12s player=%r sotto=%r'
                     % (datetime.datetime.now().strftime('%H:%M:%S'),
