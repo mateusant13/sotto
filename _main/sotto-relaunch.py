@@ -234,41 +234,40 @@ def _children_of(pids):
     return rows
 
 
-def _sweep_litter(root_pid, snapshot):
-    """Mata os descendentes que a app larga e que sobrevivem a ela."""
+def _kill_targets(root_pid, snapshot):
+    """O pid que ganhou a mutex + os descendentes que a app larga (que sobrevivem a ela).
+
+    A identidade e' o PID + o NOME + `ParentProcessId` == um pid ja' na lista (nunca um
+    filtro por palavra), a mesma de 2026-11-03.
+    """
     want = {root_pid}
     changed = True
     while changed:
         changed = False
-        for pid, name, ppid in snapshot:
+        for pid, _name, ppid in snapshot:
             if ppid in want and pid not in want:
                 want.add(pid)
                 changed = True
-    killed = 0
+    targets = [root_pid]
     for pid, name, _ppid in snapshot:
-        if pid == root_pid or pid not in want or name not in LITTER_NAMES:
-            continue
-        # SEM `alive()` AQUI (2026-11-03). `alive()` abre o processo e um
-        # `high` recusa essa abertura com err=5 -- o filtro declarava
-        # "morto" exactamente o processo que e' preciso matar, e a varredura
-        # nao matava nada. MEDIDO: o `taskkill /T` da app deixou vivos os
-        # `msedgewebview2.exe` 49792/56324 (filhos do pid 12208) a deter
-        # `Local\SottoShell`. Um `taskkill` a um pid morto devolve rc=128 e
-        # nao faz mal a ninguem; o que faz mal e' deixar a mutex presa.
-        result = subprocess.run(['taskkill', '/PID', str(pid), '/F'],
-                                capture_output=True, close_fds=True,
-                                creationflags=NO_WINDOW)
-        w('limpeza pid=%d (%s) rc=%d' % (pid, name, result.returncode))
-        if result.returncode != 0:
-            # O FILHO DA APP E' `high` COMO ELA (2026-11-03): um `taskkill`
-            # desta pane `medium` devolve rc=1 "Acesso negado" e a mutex
-            # fica presa. O mesmo caminho de token que o `kill()` usa.
-            _kill_via_token(pid)
-        killed += 1
-    return killed
+        if pid != root_pid and pid in want and name in LITTER_NAMES:
+            targets.append(pid)
+    return targets
 
 
-def kill(pid):
+def _live_pids(pids):
+    """O subconjunto de `pids` que AINDA existe, por CENSO (Get-CimInstance).
+
+    NAO usa `alive()` (2026-11-03): `alive()` faz `OpenProcess` e um alvo `high` recusa
+    essa abertura a partir desta pane `medium` com err=5 -- o filtro declarava "morto"
+    exactamente o processo que era preciso matar, e a varredura nao matava nada. O censo
+    de processos nao pede acesso a cada processo, por isso ve' os dois niveis.
+    """
+    present = {pid for pid, _name, _ppid in _children_of([])}
+    return [pid for pid in pids if pid in present]
+
+
+def kill(pid, source=None):
     """Mata pelo PID que ganhou a mutex -- e, se este processo for `medium`, delega.
 
     MEDIDO 2026-10-30: `taskkill /PID <app>` chamado de uma pane `medium` contra o
@@ -277,33 +276,65 @@ def kill(pid):
     da' **rc=0**. Um kill que falha em silencio e' pior do que nenhum: a instancia
     antiga continua a deter `Local\\SottoShell` e a largada seguinte morre entre
     `pre-lock` e `SINGLE_INSTANCE`.
+
+    MEDIDO 2026-11-03: um filho de token POR PID custava 18 s para seis descendentes e
+    a `--relaunch` abortava com "a instancia antiga nao morreu" quando o caminho do
+    token nao era alcancado. Agora o censo e' tirado ANTES da morte, a tentativa
+    directa e' barata (binario nativo), e o caminho do token e' UM filho para o
+    conjunto; um-a-um so' para os pids que o lote reportou como falhados.
     """
     w('kill pid=%d (identidade: o pid que GANHOU a mutex no log da propria app)' % pid)
-    result = subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
-                            capture_output=True, close_fds=True,
-                            creationflags=NO_WINDOW)
-    if result.returncode != 0:
-        w('kill pid=%d taskkill rc=%d %r -- a delegar a um filho high'
-          % (pid, result.returncode,
-             (result.stderr or b'').decode('cp850', 'replace').strip()))
-        _kill_via_token(pid)
-    # A DESCENDENCIA E' APANHADA ANTES DA MORTE: depois dela o
-    # `ParentProcessId` deixa de apontar para quem interessa.
+    # A FONTE HIGH E' RESOLVIDA ANTES DA MORTE: o token da app morre com ela (2026-10-30).
+    source = source or _token_launcher()._selftest_source()
+    # A DESCENDENCIA E' APANHADA ANTES DA MORTE: depois dela o `ParentProcessId`
+    # deixa de apontar para quem interessa.
     snapshot = _children_of([pid])
+    targets = _kill_targets(pid, snapshot)
+    w('kill pid=%d alvos=%d %s fonte=%s' % (pid, len(targets), targets, source))
+    module = _token_launcher()
+    # O CAMINHO BARATO SO' EXISTE SE ESTA PANE PUDER MATAR: `taskkill` directo e' um
+    # binario nativo (nenhuma crianca de token), mas de uma pane `medium` contra um alvo
+    # `high` cada chamada e' um `rc=1` garantido a ~0.5 s de custo (medido 2026-11-03).
+    # Quando este processo ja' e' `high`, o loop e' o unico caminho necessario; quando e'
+    # `medium`, todos os alvos ficam para o LOTE -- uma crianca, nao uma por pid.
+    survivors = targets
+    if is_high():
+        for target in targets:
+            result = subprocess.run(['taskkill', '/PID', str(target), '/T', '/F'],
+                                    capture_output=True, close_fds=True,
+                                    creationflags=NO_WINDOW)
+            w('kill directo pid=%d rc=%d' % (target, result.returncode))
+        survivors = _live_pids(targets)
+    # UM SO' FILHO DE TOKEN PARA O CONJUNTO. `ok` do lote so' e' True com rc==0 em TODOS
+    # os pids, por isso 128 (pid inexistente) nao passa por morto; aqui, para a VARREdura,
+    # um pid que o Windows diz nao existir ja' esta' no estado desejado.
+    if survivors:
+        ok, used, child, results = module.kill_pids_via_high(survivors, source)
+        w('kill lote via token(fonte=%s) ok=%s filho=%s rc=%s' % (used, ok, child, results))
+        by_pid = dict(results)
+        failed = [target for target in survivors if by_pid.get(target) not in (0, 128)]
+        if failed:
+            # O rc do `taskkill` NAO e' a verdade final: um pid a sair devolve rc=1 e
+            # desaparece 1 s depois (medido 2026-11-03 no lote). Quem decide e' o CENSO --
+            # so' o pid que AINDA existe paga a segunda crianca.
+            time.sleep(POLL_S)
+            failed = _live_pids(failed)
+        if failed:
+            w('kill lote: %d pid(s) ainda vivos %s -- a repetir um a um' % (len(failed), failed))
+            for target in failed:
+                _kill_via_token(target, source)
     deadline = time.time() + 15.0
     while time.time() < deadline:
-        if not alive(pid):
-            w('kill pid=%d confirmado morto' % pid)
-            n = _sweep_litter(pid, snapshot)
-            if n:
-                w('kill pid=%d limpeza=%d descendentes' % (pid, n))
+        survivors = _live_pids(targets)
+        if not survivors:
+            w('kill pid=%d confirmado morto (alvos=%d)' % (pid, len(targets)))
             return True
         time.sleep(POLL_S)
-    w('kill pid=%d NAO morreu em 15 s' % pid)
+    w('kill pid=%d NAO morreu em 15 s; vivos=%s' % (pid, survivors))
     return False
 
 
-def _kill_via_token(pid):
+def _kill_via_token(pid, source=None):
     """O MESMO `taskkill`, com o token de um processo `high` desta sessao.
 
     O filho larga `taskkill /PID <pid> /F` e o pai espera o desfecho no ficheiro de
@@ -311,7 +342,7 @@ def _kill_via_token(pid):
     assumir que morreu.
     """
     module = _token_launcher()
-    source = module._selftest_source()
+    source = source or module._selftest_source()
     if not source:
         w('kill pid=%d: nenhum processo high para emprestar token -- NAO matei' % pid)
         return False
@@ -448,6 +479,8 @@ def main(argv=None):
         if not source:
             w('ABORTA: nenhum processo high nesta sessao para emprestar token')
             return 6
+        # `kill` resolve a fonte high ANTES de matar (por dentro); a fonte acima ja'
+        # provou que ela existe, e e' a mesma que a largada vai usar.
         if not kill(pid):
             w('ABORTA: a instancia antiga nao morreu; nao lanco nada')
             return 2

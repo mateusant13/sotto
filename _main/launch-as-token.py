@@ -181,6 +181,97 @@ def integrity_name(sid):
     return INTEGRITY_NAMES.get(level, sid)
 
 
+#: O CORPO DA CRIANCA DE LOTE. Escreve `<state>` (pid rc por linha, `os.replace` para
+#: que a existencia do ficheiro signifique CONTEUDO COMPLETO) e sai com 0 SO' se todos
+#: os pids morreram. Um pid inexistente da' rc=128 do `taskkill` e torna o exit != 0:
+#: o instrumento nunca pode chamar "morto" a um pid que nao existia.
+_KILL_HELPER = '''import os, subprocess, sys
+state = sys.argv[1]
+tk = os.path.join(os.environ.get("SYSTEMROOT", r"C:\\Windows"), "System32", "taskkill.exe")
+lines = []
+worst = 0
+for token in sys.argv[2:]:
+    try:
+        pid = int(token)
+    except ValueError:
+        lines.append("%s -1" % token)
+        worst = 1
+        continue
+    rc = subprocess.run([tk, "/PID", str(pid), "/T", "/F"],
+                        creationflags=0x08000000).returncode  # CREATE_NO_WINDOW
+    lines.append("%d %d" % (pid, rc))
+    if rc != 0:
+        worst = 1
+tmp = state + ".tmp"
+with open(tmp, "w") as fh:
+    fh.write("\\n".join(lines) + "\\n")
+os.replace(tmp, state)
+sys.exit(worst)
+'''
+
+
+def kill_pids_via_high(pids, source=None, timeout=None):
+    """Uma UNICA crianca `high` mata a LISTA de pids. (ok, fonte, filho, [(pid, rc)]).
+
+    MEDIDO 2026-11-03: a `--relaunch` matava um pid de cada vez e cada um pagava
+    CreateProcessAsUser + espera (~2-3 s); seis descendentes custaram 18 s de relogio
+    e a mutex ficou presa quando o caminho do token nao foi alcancado. Uma crianca com
+    a lista inteira paga a criacao UMA vez e devolve o rc de CADA pid.
+
+    `ok` e' True so' quando todos os pids morreram (rc==0), o que exclui o pid que nao
+    existia (rc=128) -- assumir 128 como sucesso seria o relatorio falso que esta
+    primitiva existe para impedir.
+    """
+    import tempfile
+    import time
+    pids = [int(pid) for pid in pids]
+    if not pids:
+        return False, None, None, []
+    source = source or _selftest_source()
+    if not source:
+        return False, None, None, [(pid, None) for pid in pids]
+    # UM INTERPRETADOR A CORRER UM FICHEIRO, nunca codigo inline (medido 2026-10-30):
+    # `cmd /c taskkill ... > ficheiro` criou o ficheiro VAZIO e nao matou nada, e
+    # `pythonw -c "<codigo>"` chegou ao filho com a linha de comando desfeita pelas aspas.
+    # Um ficheiro com os pids como ARGUMENTOS nao tem esse problema.
+    handle, helper = tempfile.mkstemp(prefix='launch-as-token-kill-', suffix='.py')
+    os.close(handle)
+    handle, state = tempfile.mkstemp(prefix='launch-as-token-kill-', suffix='.txt')
+    os.close(handle)
+    os.remove(state)              # o helper so' cria o ficheiro quando tem a lista toda
+    try:
+        with open(helper, 'w', encoding='utf-8') as out:
+            out.write(_KILL_HELPER)
+        interpreter = sys.executable.replace('python.exe', 'pythonw.exe')
+        launched, _err, child = launch(source, interpreter,
+                                       [helper, state] + [str(pid) for pid in pids])
+        results = []
+        if launched:
+            deadline = time.time() + (timeout or (20.0 + 10.0 * len(pids)))
+            while time.time() < deadline and not os.path.exists(state):
+                time.sleep(0.25)
+            try:
+                with open(state, encoding='utf-8') as fh:
+                    for line in fh:
+                        bits = line.split()
+                        if len(bits) == 2 and bits[0].isdigit():
+                            try:
+                                results.append((int(bits[0]), int(bits[1])))
+                            except ValueError:
+                                pass
+            except OSError:
+                results = []
+        by_pid = dict(results)
+        all_ok = bool(launched) and all(by_pid.get(pid) == 0 for pid in pids)
+        return all_ok, source, child, results
+    finally:
+        for path in (helper, state):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
 def kill_via_high(pid, source=None):
     """`taskkill` executado por um filho `high`. (ok, fonte, filho).
 
@@ -189,27 +280,11 @@ def kill_via_high(pid, source=None):
     velha a deter `Local\\SottoShell`, o que mata a largada seguinte entre `pre-lock`
     e `SINGLE_INSTANCE`. Com o token de um processo `high` desta sessao o mesmo
     `taskkill` da' **rc=0**, e e' isso que faz esta funcao existir.
+
+    E' o lote de UM pid: o caminho e' o mesmo que a `--relaunch` usa para uma lista.
     """
-    import subprocess
-    source = source or _selftest_source()
-    if not source:
-        return False, None, None
-    # UM INTERPRETADOR A CORRER UM FICHEIRO, nunca codigo inline (medido 2026-10-30):
-    # `cmd /c taskkill ... > ficheiro` criou o ficheiro VAZIO e nao matou nada, e
-    # `pythonw -c "<codigo>"` chegou ao filho com a linha de comando desfeita pelas aspas.
-    # Um ficheiro com o pid como ARGUMENTO nao tem esse problema.
-    import tempfile
-    helper = os.path.join(tempfile.gettempdir(), 'launch-as-token-kill.py')
-    with open(helper, 'w', encoding='utf-8') as handle:
-        handle.write('import subprocess, sys, os\n'
-                     'rc = subprocess.run([os.path.join(os.environ.get("SYSTEMROOT",\n'
-                     '    r"C:\\Windows"), "System32", "taskkill.exe"),\n'
-                     '    "/PID", sys.argv[1], "/T", "/F"],\n'
-                     '    creationflags=0x08000000).returncode  # CREATE_NO_WINDOW\n'
-                     'sys.exit(rc)\n')
-    interpreter = sys.executable.replace('python.exe', 'pythonw.exe')
-    ok, err, child = launch(source, interpreter, [helper, str(int(pid))])
-    return bool(ok), source, child
+    ok, used, child, _results = kill_pids_via_high([int(pid)], source)
+    return bool(ok), used, child
 
 
 def _selftest_source():
@@ -364,6 +439,16 @@ def main(argv=None):
     if argv and argv[0] == '--kill' and len(argv) > 1:
         ok, source, child = kill_via_high(int(argv[1]))
         print('kill via token pid=%s ok=%s fonte=%s filho=%s' % (argv[1], ok, source, child))
+        return 0 if ok else 1
+    if argv and argv[0] == '--kill-pids' and len(argv) > 1:
+        # UMA crianca para a lista inteira: `--kill-pids 1,2,3`. rc por pid impresso;
+        # exit 0 SO' se todos morreram (um pid inexistente da' rc=128 e derruba o rc).
+        pids = [int(bit) for bit in argv[1].split(',') if bit.strip()]
+        ok, source, child, results = kill_pids_via_high(pids)
+        for pid, rc in results:
+            print('pid=%d rc=%s %s' % (pid, rc, 'morto' if rc == 0 else 'NAO morto'))
+        print('kill-pids via token ok=%s fonte=%s filho=%s n=%d'
+              % (ok, source, child, len(pids)))
         return 0 if ok else 1
     if len(argv) < 2:
         print(__doc__.splitlines()[0])
