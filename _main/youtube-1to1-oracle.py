@@ -164,10 +164,22 @@ WIRING = (
      "youtube_window.revealed_lines(cues, t, 2)"),
     ("o poll do YouTube entrega o prefixo ja revelado",
      "instant=bool(yt_mode)"),
-    ("o external_caption transporta o instant e as linhas",
-     "push_caption_to_window(text, instant=instant, rows=rows)"),
-    ("a janela da legenda pinta o prefixo sem voltar a sproutar",
-     "ov.set_text(new_text, new_prev, instant)"),
+    ("o external_caption transporta o instant, as linhas E o relogio do player",
+     "push_caption_to_window(text, instant=instant, rows=rows, cue=cue)"),
+    # O CUE VAI ATE' AO FIM (2026-11-03). A ancora antiga exigia
+    # `ov.set_text(new_text, new_prev, instant)` -- o caminho em que o overlay
+    # pintava um prefixo que o SHELL ja' tinha revelado. O overlay ganhou o
+    # motor que revela NO RELOGIO DO PLAYER (`_PlayerCue`), e para isso o cue
+    # tem de atravessar a fila inteira: sem `cue=` ele desenha o cue inteiro no
+    # instante da chegada, que e' exactamente o defeito do dono.
+    ("a janela da legenda recebe o cue e revela no relogio do player",
+     "ov.set_text(new_text, new_prev, instant, cue=cue)"),
+    # E O CUE PRECISA DE UM RELOGIO: o par (t do video, monotonic da leitura)
+    # vive em `_yt_anchor`, e e' `_yt_cue_payload` que o transforma no payload
+    # que o overlay le. Sem esta ancora o `cue=` acima podia receber `None`
+    # para sempre e este oraculo continuaria verde.
+    ("o payload do cue carrega o relogio do player",
+     "'at': base_mono"),
 )
 
 

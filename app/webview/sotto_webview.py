@@ -3919,6 +3919,46 @@ class ExternalCaptionWatcher(threading.Thread):
         # indistinguiveis no log -- e a auditoria nao podia nomear o produtor.
         return ('external:youtube:liveframe', lines)
 
+    def _yt_cue_payload(self):
+        """O cue do player COM O RELOGIO DELE, para a janela nativa (2026-11-03).
+
+        PORQUE E' QUE ISTO EXISTE. O overlay tem desde hoje um motor que revela
+        palavra a palavra contra o relogio do PROPRIO player (`caption_overlay.
+        _PlayerCue`), mas o payload que ele recebia era so' texto: sem `cue` ele
+        desenha o cue inteiro no instante da chegada. MEDIDO no log do dono: o
+        relogio do UIA salta de segundo em segundo, portanto a frase entrava de
+        uma vez e ficava parada -- o oposto de 1:1.
+
+        O PAR QUE O OVERLAY QUER e' (instante do video, monotonic da leitura), e
+        `_yt_anchor` ja' e' exactamente isso `(t, monotonic)`, gravado nos tres
+        ramos do `_tick` que servem um cue. As `rows` seguem a forma de
+        `youtube_reveal.rows_from_cues`, com cada palavra no seu `tOffsetMs`.
+
+        A JANELA E' CURTA DE PROPOSITO: a faixa de um video longo tem milhares
+        de cues e o overlay so' precisa dos vizinhos do instante lido; mandar a
+        faixa toda por cue seria pagar o payload inteiro a cada segundo.
+        """
+        anchor = getattr(self, '_yt_anchor', None)
+        track = getattr(self, '_yt_track', None)
+        if not anchor or not track:
+            return None
+        try:
+            base_t, base_mono = float(anchor[0]), float(anchor[1])
+        except Exception:                 # noqa: BLE001
+            return None
+        try:
+            import youtube_reveal
+            rows = youtube_reveal.rows_from_cues(track.get('cues') or ())
+        except Exception as exc:          # noqa: BLE001
+            log('YOUTUBE_CUE_PAYLOAD_FAILED error=%r' % (exc,))
+            return None
+        rows = [r for r in rows
+                if (r.get('end') is None or float(r['end']) >= base_t - 1.0)
+                and float(r.get('start') or 0.0) <= base_t + 3.0]
+        if not rows:
+            return None
+        return {'rows': rows, 't': base_t, 'at': base_mono}
+
     def _yt_lines(self, track, t):
         """As linhas que o YouTube desenha em `t` -- DUAS, nao uma.
 
@@ -4225,17 +4265,20 @@ class ExternalCaptionWatcher(threading.Thread):
                     if self.last_line and not self.finalized:
                         self.shell.external_caption(self.last_line, self.last_source,
                                                     final=True, instant=bool(yt_mode),
-                                                    rows=self.last_rows)
+                                                    rows=self.last_rows,
+                                                    cue=self._yt_cue_payload())
                     self.last_line = line
                     self.last_source = source
                     self.last_rows = rows or []
                     self.last_change = now
                     self.finalized = False
                     self.shell.external_caption(line, source, final=False,
-                                               instant=bool(yt_mode), rows=rows)
+                                               instant=bool(yt_mode), rows=rows,
+                                               cue=self._yt_cue_payload())
                 elif not self.finalized and now - self.last_change >= self.STABLE_FINAL_S:
                     self.shell.external_caption(line, source, final=True,
-                                               instant=bool(yt_mode), rows=rows)
+                                               instant=bool(yt_mode), rows=rows,
+                                               cue=self._yt_cue_payload())
                     self.finalized = True
                 return
         # THE SILENCE ONLY RELEASES FOR THE PAGE READER. That reader knows
@@ -8740,6 +8783,31 @@ class SottoShell:
                 except Exception as exc:  # noqa: BLE001 -- uma linha nao desarma nada
                     log('LOAD_SHEDDING_LOG_FAILED error=%r' % (exc,))
 
+            # A ACCAO (ordem do dono, 2026-11-03): *"os modelos entram e saem
+            # conforme a carga do sistema, e o audio nao processado e'
+            # processado sozinho quando a carga libera -- SEM NUNCA TRAVAR A
+            # MAQUINA DO DONO"*. Publicar o nivel nao liberta VRAM: o unico
+            # lever e' matar o processo do worker, e o audio que ele nao
+            # transcreveu fica numa fila EM DISCO que e' drenada quando a carga
+            # baixa. Toda a logica vive em `load_shedding.py` (accao) e
+            # `batch_queue.py` (fila + executor): a shell chama UMA funcao.
+            # `SOTTO_LOAD_SHED_ACT=0` desarma a accao mantendo a medicao.
+            try:
+                self._load_action = load_shedding().open_action(self, log_fn=log)
+            except Exception as exc:  # noqa: BLE001 -- nunca impede a app de subir
+                log('LOAD_ACTION_START_FAILED error=%r' % (exc,))
+            else:
+                try:
+                    state = self._load_action.as_dict()
+                    log('LOAD_ACTION_STARTED armed=%s floor_s=%.0f samples=%d'
+                        ' queue=%s'
+                        % (str(state.get('armed')).lower(),
+                           float(state.get('floor_s') or 0.0),
+                           int(state.get('samples_required') or 0),
+                           (state.get('batch') or {}).get('queue', {}).get('dir', '-')))
+                except Exception as exc:  # noqa: BLE001 -- uma linha nao desarma nada
+                    log('LOAD_ACTION_LOG_FAILED error=%r' % (exc,))
+
     def _form(self):
         return getattr(self.window, 'native', None)
 
@@ -12067,6 +12135,13 @@ class SottoShell:
         if ov is None:
             return
         instant = bool(getattr(self, '_caption_pending_instant', False))
+        # O CUE DO PLAYER VIAJA AO LADO DO TEXTO (2026-11-03). `caption_overlay`
+        # ganhou o motor que revela palavra a palavra NO RELOGIO DO YOUTUBE
+        # (`_PlayerCue`), mas ate' aqui o shell chamava `set_text(text, prev,
+        # instant)` -- sem `cue=` o overlay recebe `instant=True` e desenha o
+        # cue INTEIRO no instante da chegada, que e' exactamente o defeito que o
+        # dono descreve. O slot segue o mesmo caminho do `instant`.
+        cue = getattr(self, '_caption_pending_cue', None)
         self._caption_drain_posted = False
         pending = getattr(self, '_caption_pending', None)
         if pending is None:
@@ -12083,7 +12158,7 @@ class SottoShell:
         try:
             ov.set_work_area(self.work_area(),
                              (self.display or {}).get('scaleFactor') or 1.0)
-            ov.set_text(new_text, new_prev, instant)
+            ov.set_text(new_text, new_prev, instant, cue=cue)
             ov.show(True)
             self._overlay_pushes += 1
             # O INSTANTE DA PRIMEIRA PINTURA (2026-10-26). A linha de aceitacao
@@ -12142,7 +12217,7 @@ class SottoShell:
                     pass
 
     def push_caption_to_window(self, text, previous=None, credits=None, instant=False,
-                               rows=None):
+                               cue=None, rows=None):
         """A legenda para a JANELA PROPRIA. Silencioso se ela ainda nao existir."""
         ov = getattr(self, 'caption_overlay', None)
         if ov is None:
@@ -12214,6 +12289,10 @@ class SottoShell:
         # depende de uma variavel local de OUTRA funcao nao sobrevive a
         # essa mudanca.
         self._caption_pending_instant = bool(instant)
+        #: O cue com o relogio do player (`youtube_reveal.rows_from_cues` + `t`
+        #: + `at`), ao lado do `instant`. `None` = nao ha' relogio e o texto
+        #: viaja sozinho, como antes.
+        self._caption_pending_cue = cue
         dbg = self._overlay_pushes < 3
         if dbg:
             # A ETIQUETA ACOMPANHA O MECANISMO (2026-11-03): a pintura deixou de
@@ -12338,7 +12417,8 @@ class SottoShell:
         if isinstance(meta, dict) and meta.get('final') is True:
             self._reload_policy.boundary(closed=True, why='closed-line')
 
-    def external_caption(self, text, source, final=False, instant=False, rows=None):
+    def external_caption(self, text, source, final=False, instant=False, rows=None,
+                        cue=None):
         """One line read from the PLAYER's own captions (YouTube/Stremio).
 
         THE OWNER'S TWO COMPLAINTS, 2026-10-18, both fixed HERE because this is
@@ -12418,7 +12498,7 @@ class SottoShell:
             self._external_rows_logged = _key
             log('EXTERNAL_CAPTION_DRAWN rows=%d lines=%r'
                 % (len(_rows_for_log), [r[:70] for r in _rows_for_log]))
-        self.push_caption_to_window(text, instant=instant, rows=rows)
+        self.push_caption_to_window(text, instant=instant, rows=rows, cue=cue)
         if final:
             self._reload_policy.boundary(closed=True, why='external-line')
         return True

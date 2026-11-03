@@ -159,6 +159,22 @@ def build(mod, track):
     watcher.yt_video_id = 'WdaHAGRBB6s'
     watcher._youtube_video_id = lambda *a, **k: 'WdaHAGRBB6s'
     watcher._youtube_painted = lambda *a, **k: ['Lean proofs.']
+    # A PORTA DA CDP FECHA-SE NO FAKE (2026-11-03, MEDIDO). `_youtube` passou
+    # a devolver `[], False` de proposito quando ha' fonte CDP viva E id ja'
+    # conhecido (espera a foto seguinte em vez de pagar 94-109 ms de arvore
+    # por tick). O fake punha `yt_video_id` a mao, logo as armas A1/A5
+    # caiam nesse `return` e nunca chegavam aos dois ramos do relogio que
+    # elas existem para provar: RED (3/5) em `anchor=None`, e o RED era do
+    # FAKE -- confirmado contra `git show HEAD:` do shell, que da o mesmo
+    # RED. Sem fonte, o caminho e' o da arvore, que e' o que estas armas
+    # medem.
+    watcher._yt_cdp_ensure = lambda *a, **k: None
+    # A FAIXA ENTRA PRONTA (2026-11-03). `_youtube` passou a pedi-la por
+    # `_yt_track_poll(thread, vid, painted)`, que decide SE pede (o DOM do
+    # player a entregar linhas recentes dispensa a faixa, que custa um
+    # `yt-dlp`). O fake fixa a resposta: a faixa ja' esta' pronta, e e' o
+    # ramo do RELOGIO que estas armas medem.
+    watcher._yt_track_poll = lambda *a, **k: track
     return watcher, shell
 
 

@@ -26,6 +26,7 @@ The window is:
 from __future__ import annotations
 
 import ctypes
+import json
 import threading
 import time
 from ctypes import wintypes as wt
@@ -146,6 +147,134 @@ from overlay_paint import (  # noqa: F401 -- superficie publica deste modulo
 )
 
 
+# ── A JANELA DO PLAYER NO RELOGIO DO PROPRIO PLAYER (2026-11-03) ─────────────
+#: Quantas linhas o overlay desenha no caminho do player. O YouTube declara
+#: `rcRows: 2` no payload e o dono pediu o mesmo no ecra: no maximo DUAS.
+PLAYER_ROWS = 2
+#: Ate' quando a extrapolacao do relogio do player vale sem uma leitura nova --
+#: o mesmo numero do `YT_ANCHOR_MAX_S` do `sotto_webview`: um video pausado nao
+#: pode continuar a revelar palavras por inercia.
+PLAYER_HOLD_S = 3.0
+
+
+def _clamp_rows(rows, limit=PLAYER_ROWS):
+    """No maximo `limit` linhas FISICAS, com as quebras que o player desenhou.
+
+    Uma linha do payload pode trazer a sua propria quebra (`'\\n'` dentro do
+    texto), logo uma lista de duas linhas pode valer TRES no ecra. Quando passa
+    do tecto saem as do TOPO -- a que esta' a rolar para fora --, nunca a que
+    esta' a crescer.
+    """
+    parts = []
+    for row in rows or ():
+        for part in str(row).splitlines():
+            part = " ".join(part.split())
+            if part:
+                parts.append(part)
+    return parts[-max(1, int(limit)):]
+
+
+class _PlayerCue:
+    """A JANELA QUE O PLAYER ESTA' A DESENHAR, e o relogio que a revela.
+
+    O DEFEITO QUE ISTO CURA (medido 2026-11-03, `_main/webview-run.log`, pid
+    28888): 18 linhas `YOUTUBE_CAPTION ... why=painted-other-track` e o cue a
+    chegar INTEIRO de segundo a segundo. O overlay recebia-o ja' pronto
+    (`set_text(..., instant=True)`) e pintava-o todo no instante da chegada --
+    a frase aparecia de uma vez e a palavra nunca aparecia palavra a palavra,
+    que e' o que o dono pediu (*"surgir palavras ... igual o youtube"*).
+
+    O QUE ESTA CLASSE GUARDA: as LINHAS do player com o relogio de cada palavra
+    (`rows`, a forma de `youtube_reveal.rows_from_cues`: `text`, `words`,
+    `start`, `end`, `cap`) e o instante do VIDEO em que foram lidas (`t`), com o
+    `monotonic()` da leitura (`at`). O relogio em vigor e' `t + (agora - at)`,
+    limitado a `PLAYER_HOLD_S`: entre duas leituras do UIA a palavra seguinte
+    aparece no instante em que o player a desenha -- e nao no instante em que o
+    UIA respondeu, que e' o defeito.
+
+    RESYNC: uma instancia nova por cue (`set_text(..., cue=...)`). O relogio
+    nunca RECUA -- `floor` e' o instante mais adiantado ja' desenhado, e um `t`
+    atrasado (o UIA salta de segundo em segundo) nao apaga palavras reveladas.
+    Um seek para tras NAO leva o `floor` (ver `_cue_from`).
+    """
+
+    def __init__(self, rows, t, at=None, capacity=PLAYER_ROWS):
+        self.rows = []
+        for row in rows or ():
+            if isinstance(row, dict):
+                self.rows.append(dict(row))
+            elif str(row or "").strip():
+                # UMA LINHA SEM RELOGIO NEM PALAVRAS: e' o que o shell tem hoje
+                # (`youtube_window.revealed_lines` devolve TEXTO). Entra inteira
+                # e sem `start` -- `youtube_reveal._drawn` desenha-a sempre, e o
+                # `cue_t0` do cue cai no `t` da leitura em vez de num zero falso
+                # que estragava o `land_lag_ms`.
+                self.rows.append({"text": str(row), "end": None,
+                                  "words": [], "cap": None})
+        self.t = float(t)
+        self.at = time.monotonic() if at is None else float(at)
+        self.floor = None
+        self.capacity = max(1, int(capacity))
+        starts = []
+        for row in self.rows:
+            try:
+                starts.append(float(row.get('start')))
+            except (TypeError, ValueError):
+                continue
+        #: O `start` do cue -- o denominador do `land_lag_ms`. Sem nenhum `start`
+        #: declarado, o cue comeca no instante em que o player estava.
+        self.cue_t0 = min(starts) if starts else self.t
+        #: O relogio do player na PRIMEIRA pintura deste cue (`None` = ainda nao
+        #: pintou nada). E a metade do `land_lag_ms` que nao vem do shell.
+        self.first_paint_t = None
+        self.paint_texts = []
+        self.logged = False
+
+    def clock(self, now=None):
+        now = time.monotonic() if now is None else float(now)
+        elapsed = min(max(0.0, now - self.at), PLAYER_HOLD_S)
+        t = self.t + elapsed
+        if self.floor is not None:
+            t = max(t, self.floor)
+        return t
+
+    def frame(self, now=None):
+        """As linhas desenhadas agora -- prefixo revelado pelo relogio de cada
+        palavra, a MESMA regra do caminho do YouTube (`youtube_reveal.frame`)."""
+        import youtube_reveal
+        # `rollup=0` e `exit_s=0`: a linha que sai nao entra -- o ecra tem no
+        # maximo `PLAYER_ROWS` linhas (ordem do dono).
+        return youtube_reveal.frame(self.rows, self.clock(now),
+                                    self.capacity, 0, 0.0)
+
+    def next_clock(self, now=None):
+        """O proximo instante (monotonic) em que algo muda -- ou `None`.
+
+        E' o unico `Timer` certo para a revelacao: o instante de uma palavra, ou
+        o `start` de uma linha que ainda nao comecou.
+        """
+        now = time.monotonic() if now is None else float(now)
+        cur = self.clock(now)
+        ahead = []
+        for row in self.rows:
+            try:
+                start = float(row.get('start'))
+            except (TypeError, ValueError):
+                start = None
+            if start is not None and start > cur + 1e-6:
+                ahead.append(start)
+            for word in row.get('words') or ():
+                try:
+                    w = float(word.get('start'))
+                except (TypeError, ValueError):
+                    continue
+                if w > cur + 1e-6:
+                    ahead.append(w)
+        if not ahead:
+            return None
+        return now + (min(ahead) - cur)
+
+
 class NativeCaptionOverlay:
     #: O fade de entrada esta' DESLIGADO (ordem do dono 2026-11-03). O botao
     #: fica para o oraculo poder provar as duas metades: com `False`, nenhum
@@ -163,6 +292,8 @@ class NativeCaptionOverlay:
         self.hwnd = None
         self.thread_id = None
         self.visible = False
+        # `_blank` e' "o bitmap actual nao tem pixel nenhum" -- ver `show`.
+        self._blank = True
         self.text = ""
         self.previous = ""
         self.scale = 1.0
@@ -187,6 +318,11 @@ class NativeCaptionOverlay:
         # caminho do YouTube, outra no do ASR) e' exactamente o que produzia duas
         # legendas diferentes no mesmo ecra.
         self._live = None
+        # `_cue` e' o CUE DO PLAYER com o relogio dele (ver `_PlayerCue`). Os dois
+        # motores nunca correm ao mesmo tempo: um cue do player substitui o
+        # `_live` do ASR, e um `set_text(..., instant=False)` volta a substituir o
+        # cue. `set_text` e' quem decide -- aqui so' se guarda.
+        self._cue = None
         # `_row_alphas` e' o alfa POR LINHA do ultimo frame (255 = linha viva); a
         # linha que sai desvanece por dentro do bitmap, porque o
         # `SourceConstantAlpha` do `UpdateLayeredWindow` e' um numero por JANELA.
@@ -356,6 +492,13 @@ class NativeCaptionOverlay:
             if any(mark["exiting"] for mark in self._live.frame(now)):
                 delay = (word_fade.FRAME_S if delay is None
                          else min(delay, word_fade.FRAME_S))
+        # O CUE DO PLAYER: a proxima PALAVRA dele, no relogio dele. Sem isto o
+        # cue esperava pela leitura seguinte do UIA e a frase entrava de uma vez.
+        if self._cue is not None:
+            ahead = self._cue.next_clock(now)
+            if ahead is not None:
+                step = max(word_fade.FRAME_S, float(ahead) - now)
+                delay = step if delay is None else min(delay, step)
         return delay
 
     def _arm_tick(self):
@@ -390,7 +533,15 @@ class NativeCaptionOverlay:
         text, alphas = self._display()
         previous = self.previous or ""
         if not text and not previous:
-            self.hide()
+            if self._cue is not None:
+                # O cue existe mas ainda nao tem palavra revelada (o relogio do
+                # player esta' antes do `start` da linha, ou entre duas linhas):
+                # saem os PIXELS, fica o CUE. `hide()` limpava o estado -- e nao
+                # arma tick nenhum, logo a revelacao nunca voltava.
+                self._blank_pixels()
+            else:
+                self.hide()
+            self._arm_tick()
             return True
         # ONE layout, computed once, handed to the bitmap. Two copies of "how many
         # lines" is how a caption gets measured at one height and drawn at another.
@@ -443,6 +594,8 @@ class NativeCaptionOverlay:
                 self.hwnd, hdc_screen, ctypes.byref(pt_dst),
                 ctypes.byref(size_dst), hdc_mem, ctypes.byref(pt_src),
                 0, ctypes.byref(blend), ULW_ALPHA)
+            # HA' PIXEL NOVO NO ECRA: o `show()` pode voltar a mostra-lo.
+            self._blank = not bool(ok)
             _gdi32.SelectObject(hdc_mem, old)
             _gdi32.DeleteObject(hbmp)
             self._arm_tick()
@@ -451,6 +604,9 @@ class NativeCaptionOverlay:
             if not ok:
                 self.log(f"CAPTION_OVERLAY_UPDATE_FAILED "
                          f"error={ctypes.get_last_error()} size={width}x{height}")
+            # O CARIMBO DA PINTURA DO CUE -- so' depois do `UpdateLayeredWindow`
+            # dizer OK, porque antes disto nao ha' pixel nenhum no ecra.
+            self._log_land()
             return bool(ok)
         except Exception as exc:
             import traceback
@@ -463,16 +619,22 @@ class NativeCaptionOverlay:
             except Exception:
                 pass
 
-    def set_text(self, text, previous="", instant=False):
+    def set_text(self, text, previous="", instant=False, *, cue=None):
         """Uma legenda. `instant=True` e' a JANELA DO PLAYER: chega ja' revelada,
         linha a linha, e nada aqui a volta a temporizar.
 
-        DUAS FONTES, UM MOTOR (`youtube_reveal`):
+        TRES FONTES, DOIS MOTORES (`youtube_reveal`):
 
-          * `instant=True` -- o caminho do YouTube. O texto chega com UMA LINHA
-            POR `\n` (`youtube_reveal.rows_text`), ja' cortado pelo relogio de
-            palavra e pela pintura do player. Aqui so' se desenha; o unico
-            movimento e' o fade da janela na linha nova.
+          * `cue={...}` -- o caminho do YouTube COM O RELOGIO DELE. O payload traz
+            as linhas do player com o instante de cada palavra (`rows`, a forma de
+            `youtube_reveal.rows_from_cues`) e o instante do video em que foram
+            lidas (`t`, com o `monotonic()` da leitura em `at`). O overlay revela
+            palavra a palavra NO RELOGIO DO PLAYER e re-sincroniza a cada cue novo
+            (ver `_PlayerCue`). `text` continua a ser o texto todo, para o
+            `show()` e o `hide()` continuarem a valer.
+          * `instant=True` SEM `cue` -- o texto chega ja' cortado e desenha-se
+            inteiro. E' o comportamento historico; sem relogio nenhum nao ha'
+            como revelar sem inventar tempo.
           * `instant=False` -- o ASR ao vivo. O texto CRESCE. O `LiveRows` da' a
             cada palavra o instante em que ela chegou, quebra as linhas com a
             regra do `caption_wrap` (a mesma de sempre: <= 2 linhas, nunca parte
@@ -483,7 +645,9 @@ class NativeCaptionOverlay:
         das palavras que continuam iguais no prefixo, por isso uma correccao do
         modelo no fim da frase nao reinicia a revelacao da frase inteira -- o
         defeito que `panel.js` descreve como *"a word that blinked and retyped on
-        every fragment would be worse than no reveal at all"*.
+        every fragment would be worse than no reveal at all"*. No caminho do cue
+        o mesmo vem de graca: o relogio de cada palavra e' do PAYLOAD, logo um
+        cue novo nao re-data nada.
         """
         with self.lock:
             self.previous = str(previous or "")
@@ -491,10 +655,14 @@ class NativeCaptionOverlay:
             words = full.split()
             changed = not _same_line(self.text, full)
             self.text = full
-            if instant:
+            if cue is not None:
+                self._cue = self._cue_from(cue)
+            elif instant:
+                self._cue = None
                 self._live = None
                 self._row_alphas = None
             else:
+                self._cue = None
                 live = self._live_for()
                 live.push(full, time.monotonic())
             # A LINHA MUDOU: APARECE. Nao se arma fade nenhum -- ver
@@ -502,6 +670,60 @@ class NativeCaptionOverlay:
             if changed and words and self.FADE_ON:
                 self._fade_t0 = time.monotonic()
             return self._update()
+
+    def _cue_from(self, payload):
+        """O cue novo e o RESYNC do relogio (`_PlayerCue`), com o piso do anterior.
+
+        O PISO SO' VALE NA MESMA LINHA DO TEMPO. Um seek para tras faz o cue novo
+        comecar ANTES do antigo, e herdar o piso prendia a revelacao no instante
+        de onde o video saiu -- a legenda ficava a falar do passado ate' ao fim do
+        cue. `0,05 s` e' a folga para o mesmo cue relido com arredondamento.
+        """
+        old = self._cue
+        try:
+            rows = list((payload or {}).get('rows') or ())
+            t = float((payload or {}).get('t'))
+        except (AttributeError, TypeError, ValueError):
+            self.log('CAPTION_CUE_INVALID payload=%r' % (payload,))
+            return None
+        at = (payload or {}).get('at')
+        new = _PlayerCue(rows, t, at=at)
+        if not new.rows:
+            # SEM LINHAS NAO HA' CUE: o overlay desenha o texto que recebeu, em
+            # vez de ficar vazio -- um payload vazio e' o mesmo caso do
+            # `CAPTION_CUE_INVALID`, so' que silencioso.
+            self.log('CAPTION_CUE_EMPTY t=%.3f' % t)
+            return None
+        if old is not None and new.cue_t0 + 0.05 >= old.cue_t0:
+            new.floor = old.clock()
+        # O CUE QUE NUNCA CHEGOU A PINTAR: conta-se, nao se esconde (o
+        # `cues_descartados` do `_main/youtube-land-oracle.py`).
+        if old is not None and not old.logged:
+            self.log('CAPTION_CUE_DROP cue_t0=%.3f reason=superseded'
+                     % old.cue_t0)
+        self._live = None
+        self._row_alphas = None
+        return new
+
+    def _log_land(self):
+        """O CARIMBO DA PINTURA DO CUE -- a linha que o `youtube-land-oracle` le.
+
+        `lag_ms` e' (relogio do player na PRIMEIRA pintura) - (t0 do cue): quanto
+        a NOSSA legenda entrou depois do player, no relogio do proprio video. Nao
+        e' a idade do texto na fila (isso e' o `CAPTION_OVERLAY_LAG` do shell,
+        medido em relogio de parede): dois numeros, dois desvios diferentes.
+        """
+        cue = self._cue
+        if cue is None or cue.logged or cue.first_paint_t is None:
+            return
+        cue.logged = True
+        lag_ms = int(round((cue.first_paint_t - cue.cue_t0) * 1000.0))
+        self.log('CAPTION_LAND cue_t0=%.3f paint_t=%.3f lag_ms=%d rows=%d '
+                 'words=%d text=%s'
+                 % (cue.cue_t0, cue.first_paint_t, lag_ms,
+                    len(cue.paint_texts),
+                    sum(len(row.split()) for row in cue.paint_texts),
+                    json.dumps(' '.join(cue.paint_texts)[:90])))
 
     def _live_for(self):
         """O motor da legenda ao vivo, criado uma vez."""
@@ -546,6 +768,18 @@ class NativeCaptionOverlay:
         motor, e uma segunda quebra com outra regra e' como uma legenda ganha duas
         geometrias.
         """
+        if self._cue is not None:
+            # ── O CUE DO PLAYER, NO RELOGIO DO PLAYER (2026-11-03) ─────────────
+            # A linha NAO aparece quando chega: aparece ate' onde o relogio do
+            # video ja' chegou. `_cue_texts` le' o relogio de cada palavra do
+            # payload, e `_log_land` carimba a primeira pintura (a metade
+            # `paint_t` do `land_lag_ms`).
+            import youtube_reveal
+            texts = self._cue_texts()
+            self._row_alphas = [255] * len(texts)
+            if not texts:
+                return "", None
+            return youtube_reveal.rows_text(texts), self._row_alphas
         if self._live is None:
             self._row_alphas = None
             return self._display_text(), None
@@ -563,6 +797,36 @@ class NativeCaptionOverlay:
             return "", None
         return (youtube_reveal.rows_text([mark["text"] for mark in marks]),
                 self._row_alphas)
+
+    def _cue_texts(self):
+        """As linhas do cue AGORA, ja' presas a `PLAYER_ROWS` linhas fisicas.
+
+        `frame` ja' corta em `capacity` LINHAS do payload; uma linha que traga a
+        sua propria quebra vale por duas no ecra, e e' `_clamp_rows` que fecha
+        isso.
+        """
+        cue = self._cue
+        now = time.monotonic()
+        marks = cue.frame(now)
+        texts = _clamp_rows([mark.get("text") for mark in marks])
+        if texts and cue.first_paint_t is None:
+            # A PRIMEIRA PINTURA deste cue, no relogio do player.
+            cue.first_paint_t = cue.clock(now)
+            cue.paint_texts = texts
+        return texts
+
+    def _blank_pixels(self):
+        """Esconde os PIXELS sem esquecer o cue em curso (ver `_update`).
+
+        `hide()` e' a limpeza; isto e' so' o pixel. Um cue do player passa
+        legitimamente por instantes sem nada desenhado (antes do `start` da linha,
+        ou entre as duas linhas) e apagar o estado ali matava a revelacao em curso.
+        """
+        self.visible = False
+        self._blank = True
+        if self.hwnd:
+            _user32.ShowWindow(self.hwnd, SW_HIDE)
+        return True
 
     def _display_text(self):
         """O texto inteiro, quando o MOTOR nao e' a fonte (a janela do player).
@@ -584,6 +848,10 @@ class NativeCaptionOverlay:
         try:
             with self.lock:
                 self._live = None
+                # O CUE TAMBEM: um motor partido nao pode ser o dono do ecra para
+                # sempre. Sem isto, cada tick repetia a mesma excepcao e a legenda
+                # nunca chegava a desenhar o texto que ja' tinha.
+                self._cue = None
                 self._row_alphas = None
                 self._update()
             self.log(f"CAPTION_REVEAL_FAILED_OPEN error={exc!r}")
@@ -598,6 +866,12 @@ class NativeCaptionOverlay:
                 if not (self.text or self.previous):
                     return False
                 self._update()
+                # SEM PIXEL NAO SE MOSTRA A JANELA (2026-11-03): o
+                # `UpdateLayeredWindow` nao foi chamado e o bitmap que la' esta'
+                # e' o do cue anterior -- mostrar aqui era a legenda velha a
+                # voltar. O tick armado pinta no instante da palavra seguinte.
+                if self._blank:
+                    return True
                 _user32.SetWindowPos(self.hwnd, HWND_TOPMOST, 0, 0, 0, 0,
                                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
                                      | SWP_SHOWWINDOW)
@@ -617,7 +891,9 @@ class NativeCaptionOverlay:
         self.text = ""
         self.previous = ""
         self._live = None
+        self._cue = None
         self._row_alphas = None
+        self._blank = True
         self._tick_gen += 1
         self.visible = False
         if self.hwnd:
