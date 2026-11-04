@@ -742,69 +742,238 @@ def progress(phase: str) -> None:
         PROGRESS['at'] = time.monotonic()
 
 
-# -- A ESPERA OCIOSA (2026-11-04) -------------------------------------------
-# A ESCADA NAO PODE SER UM CICLO DE RECARGA. Medido na maquina do dono, com a
-# maquina em silencio: `device-exhausted` -> o worker sai limpo (rc=0) -> a shell
-# recarrega os 1,9 GB do modelo. Duas voltas disso em 4 min em `webview-run.log`
-# (03:20:14 e 03:22:43). O teto de rotacoes esta' certo (parar de reabrir
-# endpoint a cada 6 s); o que estava errado era a CONSEQUENCIA dele: um processo
-# que ainda tem o modelo em memoria a ser desligado porque NADA HA' para
-# capturar. Aqui ele espera -- com o modelo residente e o batimento a andar --
-# e sai quando o CENSO DE DISPOSITIVOS muda (um fone entrou), quando o dono
-# pede parada, ou quando a espera acaba.
-IDLE_HOLD_MAX_S = 600.0
-IDLE_HOLD_POLL_S = 10.0
-# Um worker que JACAPTIONOU nao espera: a escada e' dele, ele ja' provou que
-# ha' audio, e a proxima volta e' uma recarga que vale a pena.
+# ── O PARQUE: UM VEREDITO DE DISPOSITIVO NAO FECHA UMA SESSAO CARREGADA ─────
+# (2026-11-04. MEDIDO em `_main/webview-run.log`: 593 `BRIDGE_SPAWNED`, 346
+#  sessoes, 478 `BRIDGE_LOAD_MS` = 10 603 s de carregamento de modelo no
+#  ficheiro. **149** corridas terminaram num veredito de DISPOSITIVO e pagaram
+#  **3 278,8 s (30,9 %)**; os recarregamentos que a shell armou atras de
+#  `ladder=no-audio` foram **102 spawns / 2 366,8 s (22,3 %)** -- esse e' o custo
+#  que este parque apaga. As
+#  quatro linhas do dono, 12:21-12:25: seis `BRIDGE_SPAWNED` e seis cargas de
+#  ~8,5 s, cada uma morta por `tap-dead-endpoint`, `no-callback-blocks` ou
+#  `captions-zero` -- nenhuma por um crash. A auditoria
+#  (`extreme-optimization-audit` §0.5/§3 L1) diz o que fazer com o multiplicador:
+#  "make it a daemon; amortise one init across thousands of units".)
+#
+# O QUE ISTO SUBSTITUI, e porque foi APAGADO e nao afinado: havia uma ESPERA
+# (`hold_idle_slot`) com TETO de 600 s. Passado o teto o processo saia, a shell
+# reabria-o e pagava outra carga -- o teto era exactamente a peca que devolvia o
+# custo. Um teto de TEMPO tambem nao consegue responder a pergunta que importa
+# ("o dono comecou a tocar?"), e essa pergunta ja' tinha uma resposta: reabrir o
+# dispositivo na MESMA escada exponencial que a shell usava para o mesmo caso
+# (`app/webview/sotto_webview.py:1186` `DEVICE_SWITCH_FREE`, `no_audio_backoff_base`
+# = 15 s a dobrar ate' `no_audio_backoff_max` = 300 s) e RETOMAR quando houver
+# blocos ou legendas. O parque nao tem prazo: a sessao vive enquanto o modelo
+# viver. O teto, o censo de 10 s e o `should_hold` foram removidos com ele.
+#
+# O QUE NAO MUDA, porque custou sangue: o backoff exponencial da escada
+# (`stop.wait(float(min(8.0, 2.0 ** (rotations - 1))))`), o piso de 45 s da
+# shell, `SILENT_DESKTOP_HOLD`/`device-rotated reason=flat`, e `WORKER_ALIVE`
+# como PROVA DE PROGRESSO -- o parque chama `progress()` a cada fatia de
+# `PARK_BEAT_S`, por isso o batimento continua a andar ENQUANTO O PARQUE ANDA e
+# cala-se se o laco embrulhar.
+PARK_BACKOFF_BASE_S = 15.0
+PARK_BACKOFF_MAX_S = 300.0
+#: A fatia da espera. Tem de ser bem menor que a janela de silencio de 30 s da
+#: shell (`BRIDGE_SILENT`), porque e' dentro dela que `progress()` anda: um
+#: `stop.wait(300)` de uma vez calava o batimento 300 s e a shell matava uma
+#: sessao viva, que e' o defeito que este parque existe para acabar.
+PARK_BEAT_S = 4.0
+#: Quanto tempo o parque mantem UMA sondagem de tap aberta antes de a fechar.
+PARK_PROBE_S = 3.0
+#: Um veredito de DISPOSITIVO: o aparelho nao deu nada, o modelo nao tem culpa.
+#: Estes NAO fecham a sessao -- parqueiam. A lista e' a do brief mais as palavras
+#: que o proprio worker emite para o mesmo facto (`silent-device` e' a que o log
+#: do dono tem 139 vezes; `all-candidate-taps-flat` e' o `done` do mesmo estado).
+PARK_DEVICE_VERDICTS = frozenset({
+    'no-audio', 'tap-dead-endpoint', 'no-callback-blocks', 'captions-zero',
+    'all-candidate-taps-flat', 'silent-device',
+})
+#: O `outcome` da escada para os mesmos factos. `decide_verdict` traduz uns nos
+#: outros, mas o parque decide ANTES do `done`, e nestes casos o `outcome` e' o
+#: que esta' medido.
+PARK_DEVICE_OUTCOMES = frozenset({
+    'all-flat', 'open-failed', 'rotation-ceiling', 'explicit-flat',
+    'first-block-timeout',
+})
 
 
-def should_hold(outcome: str, captions: int, stopped: bool) -> bool:
-    """Hold instead of exiting only when NOTHING could have been captured."""
-    if stopped or captions:
-        return False
-    return outcome in ('rotation-ceiling', 'all-flat', 'open-failed', 'explicit-flat')
+def park_reason(verdict, outcome, captions, stopped):
+    """A palavra que PARQUEIA esta corrida, ou None. PURE: e' o que o oraculo conduz.
 
-
-def hold_idle_slot(stop, emit, census, outcome, max_hold_s=None, poll_s=None):
-    """Keep the process (and its model) alive while the host has nothing to give.
-
-    `census` returns a hashable snapshot of the input endpoints, taken afresh
-    on every poll: a snapshot that DIFFERS from the one taken at the start is
-    the only event that can change the answer, so it ends the hold at once.
-    Every poll calls `progress()`, so the heartbeat the shell credits keeps
-    moving -- a held worker must never look like a wedged one.
-
-    Returns 'stopped' | 'census-changed' | 'hold-expired'.
+    Nao parqueia quando o dono pediu parada (`stopped`) nem quando a corrida ja'
+    emitiu legenda: um worker que ja' transcreveu tem a escada dele, provou que
+    ha' audio, e a proxima volta nao e' um gasto de 1,9 GB por nada.
     """
-    max_hold_s = IDLE_HOLD_MAX_S if max_hold_s is None else float(max_hold_s)
-    poll_s = IDLE_HOLD_POLL_S if poll_s is None else float(poll_s)
+    if stopped or int(captions or 0) > 0:
+        return None
+    if verdict in PARK_DEVICE_VERDICTS:
+        return str(verdict)
+    if outcome in PARK_DEVICE_OUTCOMES:
+        return str(outcome)
+    return None
 
-    def snap():
-        try:
-            return tuple(census())
-        except Exception:  # noqa: BLE001 -- um censo que falha nao custa a espera
-            return None
 
-    base = snap()
-    emit(type='status', state='worker-idle', reason=outcome,
-         hold_s=max_hold_s, poll_s=poll_s,
-         detail='nothing to capture: the model stays resident, the ladder is not reopened')
+def park_backoff_s(attempt, base=None, cap=None):
+    """A espera antes da `attempt`-esima reabertura: 15, 30, 60, 120, 240, 300...
+
+    O EXPOENTE SATURA: um parque nao tem prazo, por isso `attempt` cresce sem
+    limite enquanto o dono nao tocar nada -- `15 * 2**63` levanta `OverflowError`
+    (medido neste ficheiro, braco de 1000 tentativas) e derrubaria a sessao que o
+    parque existe para salvar. Passado o passe em que o tecto e' alcancado, o
+    valor E' o tecto; a conta nao tem o que melhorar depois disso.
+    """
+    base = PARK_BACKOFF_BASE_S if base is None else float(base)
+    cap = PARK_BACKOFF_MAX_S if cap is None else float(cap)
+    exp = max(1, int(attempt)) - 1
+    if exp > 40:
+        return float(cap)
+    return float(min(cap, base * (2.0 ** exp)))
+
+
+def park_probe_verdict(blocks, peak, floor, captions):
+    """A RAZAO DA RETOMA a partir de UMA sondagem, ou None. PURE.
+
+    `captions` e' o contador de legendas da CORRIDA lido no fim da sonda (o
+    parque so' acontece com `captions == 0`, por `park_reason`, logo o total e' o
+    que a sonda ganhou). `blocks`/`peak` sao os da SONDA, nao os da corrida:
+    `on_block` conta os dois, e um total antigo responderia por uma janela que
+    ja' fechou.
+    """
+    if int(captions or 0) > 0:
+        return 'captions'
+    if int(blocks or 0) > 0 and float(peak or 0.0) >= float(floor):
+        return 'blocks'
+    return None
+
+
+def silent_ledger_rows(tap_ledger, silent_min_blocks, tap_floor):
+    """As linhas do `tap_ledger` que provam SILENCIO DIGITAL medido num candidato.
+
+    UMA definicao, dois leitores: o `done` (que publica a lista e o veredito) e o
+    PARQUE (que decide se um veredito de dispositivo aconteceu de facto). Duas
+    copias deste predicado deixariam o parque e o `done` a discordar sobre a
+    mesma corrida, que e' o defeito que `decide_verdict` passou a existir para
+    impedir um nivel acima.
+    """
+    return [
+        r
+        for r in tap_ledger
+        if not r["settled"] and r["blocks"] >= silent_min_blocks and r["peak"] < tap_floor
+    ]
+
+
+def park_session(stop, probe, reason, emit=None, note=None, floor=0.0,
+                 backoff_base_s=None, backoff_max_s=None, pause=None,
+                 should_end=None):
+    """Manter a SESSAO (modelo e caches residentes) em vez de a fechar.
+
+    `probe(attempt)` reabre o dispositivo e devolve
+    `{'blocks', 'peak', 'captions', 'census'}` -- uma sondagem que falha volta
+    com zero blocos e um `'error'`, nunca levanta: um tap que nao abre nao pode
+    derrubar a sessao que o parque existe para salvar.
+
+    Devolve `{'resumed', 'why', 'parked_s', 'attempts', 'blocks', 'peak',
+    'captions'}`, com `why` em `'blocks' | 'captions' | 'census' | 'stop' |
+    'limited'`. O chamador RETOMA a escada em `resumed`.
+
+    O CUSTO EM CPU: entre sondagens o laco esta' em `stop.wait(...)`, em fatias de
+    `PARK_BEAT_S` que so' servem para mover o batimento -- dos 15..300 s de espera
+    o processo nao acorda mais que ~1 vez por `PARK_BEAT_S`, e cada acordar e'
+    uma leitura de relogio e um `progress()`.
+    """
+    emit_fn = emit if emit is not None else (lambda **kw: None)
+    note_fn = note if note is not None else (lambda msg: None)
+    base = PARK_BACKOFF_BASE_S if backoff_base_s is None else float(backoff_base_s)
+    cap = PARK_BACKOFF_MAX_S if backoff_max_s is None else float(backoff_max_s)
+
     t0 = time.monotonic()
-    held = 'hold-expired'
+    # A LINHA QUE FECHA A ARITMETICA: `loads=1` e' o estado da sessao no
+    # instante do parque. Um parque nao carrega modelo nenhum -- o processo e' o
+    # mesmo que ja' pagou a unica carga -- por isso o custo por corrida passa a
+    # ser 1 carga em vez de 1 carga por cada veredito de dispositivo.
+    note_fn('WORKER_PARKED reason=%s loads=1 backoff_base_s=%g backoff_max_s=%g'
+            % (reason, base, cap))
+    emit_fn(type='status', state='worker-parked', reason=reason, loads=1,
+            backoff_base_s=base, backoff_max_s=cap,
+            detail='a device verdict does not end a loaded session: the model '
+                   'stays resident and the device is reopened on the same '
+                   'exponential backoff the shell used')
+
+    def _expired() -> bool:
+        return bool(should_end is not None and should_end())
+
+    def _wait(seconds: float) -> bool:
+        """True = a espera ACABOU por fora (parada pedida ou limite do chamador).
+
+        As fatias de `PARK_BEAT_S` existem pelo batimento, e o limite e'
+        perguntado em CADA fatia: `--max-seconds` tem de responder DURANTE uma
+        espera de 300 s, nao so' depois dela (medido: sem isto, um parque
+        cronometrado so' olhava para o relogio ao fim da espera inteira, e a
+        corrida de 30 s deste ficheiro ficou 300 s a esperar).
+        """
+        if pause is not None:
+            return bool(pause(seconds))
+        deadline = time.monotonic() + float(seconds)
+        while not stop.is_set():
+            progress('parked')
+            if _expired():
+                return True
+            left = deadline - time.monotonic()
+            if left <= 0:
+                return False
+            if stop.wait(min(PARK_BEAT_S, left)):
+                return True
+        return True
+
+    out = {'resumed': False, 'why': 'stop', 'parked_s': 0.0, 'attempts': 0,
+           'blocks': 0, 'peak': 0.0, 'captions': 0}
+    base_census = None
     while not stop.is_set():
-        progress('idle-wait')
-        if stop.wait(poll_s):
-            held = 'stopped'
+        out['attempts'] += 1
+        attempt = out['attempts']
+        wait_s = park_backoff_s(attempt, base, cap)
+        if _wait(wait_s):
+            out['why'] = 'stop' if stop.is_set() else 'limited'
             break
-        now = snap()
-        if base is not None and now is not None and now != base:
-            held = 'census-changed'
+        if _expired():
+            # `--max-seconds` continua a ser o dono do relogio: um parque nao
+            # pode transformar uma corrida cronometrada num processo eterno.
+            out['why'] = 'limited'
             break
-        if time.monotonic() - t0 >= max_hold_s:
+        measured = {}
+        try:
+            measured = probe(attempt) or {}
+        except Exception as exc:  # noqa: BLE001 -- a sonda nao derruba a sessao
+            measured = {'error': '%s: %s' % (type(exc).__name__, exc)}
+        out['blocks'] = int(measured.get('blocks') or 0)
+        out['peak'] = float(measured.get('peak') or 0.0)
+        out['captions'] = int(measured.get('captions') or 0)
+        decided = park_probe_verdict(out['blocks'], out['peak'], floor,
+                                     out['captions'])
+        census = measured.get('census')
+        if decided is None:
+            if base_census is None:
+                base_census = census
+            elif census is not None and census != base_census:
+                decided = 'census'
+        if decided is not None:
+            out['why'] = decided
+            out['resumed'] = True
             break
-    delta = round(time.monotonic() - t0, 3)
-    emit(type='status', state='worker-idle-end', reason=held, held_s=delta)
-    return held
+        note_fn('WORKER_PARK_RETRY attempt=%d reason=%s backoff_s=%g blocks=%d '
+                'peak=%.6f captions=%d error=%s'
+                % (attempt, reason, wait_s, out['blocks'], out['peak'],
+                   out['captions'], measured.get('error') or '-'))
+    out['parked_s'] = round(time.monotonic() - t0, 3)
+    if out['resumed']:
+        note_fn('WORKER_RESUMED reason=%s parked_s=%g'
+                % (out['why'], out['parked_s']))
+    emit_fn(type='status', state='worker-resumed' if out['resumed'] else 'worker-park-end',
+            reason=out['why'], parked_s=out['parked_s'],
+            attempts=out['attempts'], blocks=out['blocks'],
+            peak=round(out['peak'], 6), captions=out['captions'])
+    return out
 
 
 
@@ -6987,568 +7156,671 @@ def main():
                 f"still be delivering blocks to audio_q and inflating the counters"
             )
 
+    def park_probe(attempt):
+        """REABRE o dispositivo uma vez, durante `PARK_PROBE_S`, e mede.
+
+        Esta e' a unica coisa que o parque faz alem de esperar, e e' o que torna
+        a retoma uma MEDICAO: o censo responde "apareceu um aparelho", mas a
+        pergunta do dono e' "o som voltou NO MESMO aparelho", e so' um tap aberto
+        a responde. O tap e' aberto com o MESMO `on_block` da escada -- logo os
+        blocos que ele ouvir contam para a corrida e chegam ao motor de ASR, e se
+        o dono comecou a tocar a legenda nasce DURANTE o parque e a retoma
+        apanha-a. Nunca levanta: um tap que nao abre volta como zero blocos.
+        """
+        out = {'blocks': 0, 'peak': 0.0, 'captions': counters['captions'],
+               'census': (), 'device': None, 'error': None}
+        try:
+            fresh = device_candidates(audio_cfg, wanted, target_pid=target_pid)
+        except Exception as exc:  # noqa: BLE001 -- um censo que falha nao custa o parque
+            out['error'] = '%s: %s' % (type(exc).__name__, exc)
+            err("PARK_CENSUS_FAILED attempt=%d error=%s" % (attempt, out['error']))
+            return out
+        out['census'] = tuple(d.get('name') for d in fresh)
+        if not fresh:
+            out['error'] = 'no-candidate'
+            return out
+        # QUEM ESTA' A TOCAR AGORA escolhe o alvo -- a mesma pergunta, pelo mesmo
+        # motivo, que a escada faz na rotacao (`signal_ranked_next`).
+        try:
+            pick = signal_ranked_next(fresh, 0, tap_floor)
+        except Exception as exc:  # noqa: BLE001
+            err("PARK_RANK_FAILED attempt=%d error=%r" % (attempt, exc))
+            pick = fresh[0]
+        out['device'] = pick.get('name')
+        device_peak['value'] = 0.0
+        device_blocks['value'] = 0
+        tap, open_error = _open_tap_bounded(pick, on_block, block_ms=block_ms,
+                                            close=close_tap)
+        if open_error is not None:
+            out['error'] = '%s: %s' % (type(open_error).__name__, open_error)
+            err("PARK_PROBE_OPEN_FAILED attempt=%d device=%r error=%s"
+                % (attempt, out['device'], out['error']))
+            return out
+        try:
+            deadline = time.monotonic() + PARK_PROBE_S
+            while not stop.is_set() and time.monotonic() < deadline:
+                progress("park-probe")
+                stop.wait(0.05)
+        finally:
+            tap_holder["tap"] = None
+            tap_holder["gen"] += 1
+            close_tap(tap)
+        out['blocks'] = device_blocks['value']
+        out['peak'] = device_peak['value']
+        out['captions'] = counters['captions']
+        emit(type='status', state='park-probe', attempt=attempt,
+             device=out['device'], blocks=out['blocks'],
+             peak=round(out['peak'], 6), peak_floor=tap_floor,
+             captions=out['captions'])
+        return out
+
     try:
         separation_lost = False
-        for attempt_no, dev in enumerate(candidates):
-            progress("ladder")
-            if target_pid and not dev.get("process_loopback") and not separation_lost:
-                # LOUD, ONCE, and it names what was lost: the ladder has moved
-                # past the app's own tree, so THIS RUN IS TRANSCRIBING THE
-                # ENDPOINT MIX. The owner asked for one app ("separados"), and a
-                # silent fall-back to the mix is the defect this lane exists to
-                # avoid -- so it is reported in the event stream AND on stderr,
-                # and the run carries on with the endpoint rather than dying on
-                # an idle/closed app.
-                separation_lost = True
-                err(f"PER-APP SEPARATION LOST: falling through to {dev['name']!r} "
-                    f"(the whole endpoint) after pid {target_pid}")
-                emit(type="status", state="device-rotated", reason="per-app-tap-lost",
-                     device=f"process loopback: pid {target_pid}", to=dev["name"],
-                     target_pid=target_pid)
-            device = dev
-            # ── ONE PLACE THAT OPENS A CANDIDATE, AND IT RETRIES `DEVICE_IN_USE` ──
-            # Two measured defects live here, both seen on the owner's box with a
-            # video playing (2026-10-07):
-            #
-            # 1. THE OPEN IS IN `start()`, NOT IN THE CONSTRUCTOR. The guard used
-            #    to cover `LoopbackTap(...)` only, while `WasapiLoopbackTap` opens
-            #    the endpoint inside `start()` → `_open()` (its own
-            #    `Initialize(SHARED|LOOPBACK)`, wasapi_loopback.py:878-890). So an
-            #    endpoint that was BUSY raised outside every per-candidate handler
-            #    and the worker died with a traceback: 86 `BRIDGE_DEATH`s, all
-            #    `Initialize(SHARED|LOOPBACK) failed: 0x8889000A`
-            #    (AUDCLNT_E_DEVICE_IN_USE), captions=0, restarted every 2 s
-            #    forever — the app was up, the panel was up, and no candidate ever
-            #    got a chance.
-            # 2. `DEVICE_IN_USE` IS USUALLY OUR OWN PREDECESSOR. The shell
-            #    respawns 2 s after an exit, and the endpoint release can lag the
-            #    process that held it, so the NEXT worker sees its own
-            #    predecessor's endpoint as busy. ROTATING AWAY for that is exactly
-            #    backwards: the busy endpoint is the one that was WORKING (run
-            #    directly, candidate 1 of 10 — `WASAPI loopback: CABLE Input` —
-            #    opened first try and transcribed the video). So a busy endpoint is
-            #    waited for and retried, TWICE, before the ladder moves on; only a
-            #    candidate that fails for any other reason rotates immediately.
-            tap = None
-            open_error = None
-            for retry in range(3):
-                if stop.is_set():
-                    break
-                try:
-                    # THE OPEN IS BOUNDED (2026-10-20). A blocked open used
-                    # to hold the whole ladder: MEASURED ~59 s on the owner's
-                    # box, with the owner's Bluetooth headset as the blocker
-                    # (the open does not come back and it raises nothing).
-                    tap, open_error = _open_tap_bounded(dev, on_block,
-                                                        block_ms=block_ms,
-                                                        close=close_tap)
-                    if open_error is not None:
-                        raise open_error
-                    # STEP 3: the tap carries the identity of the CANDIDATE it
-                    # was opened from, so every event it feeds can name its
-                    # source (`proc:<pid>` / `device:<name>` / `file:<name>`).
-                    tap_holder["tap"] = tap
-                    tap_holder["gen"] += 1
-                    open_error = None
-                    break
-                except Exception as exc:
-                    open_error = exc
-                    detail = f"{type(exc).__name__}: {exc}"
-                    # OWNER FIX (2026-10-17). This used to be `state="error"`, and
-                    # `error` is in the shell's WORKER_ERROR_STATES, so EVERY rung the
-                    # ladder was about to rotate past painted the panel RED before the
-                    # `device-rotated` below had a chance to announce the rotation.
-                    # The owner, verbatim: *"o painel ta com erro vermelho. ta falando
-                    # que 'audio device is in use' sendo q nao e pra acontecer nunca e
-                    # nem depender disso"* -- and he is right: a rung failing to open is
-                    # the ladder WORKING, not a fault. It is still a warm-up state, so
-                    # the shell holds it behind a pending death and never paints it.
-                    #
-                    # The name is load-bearing: `FAILURE_WORDS_RE` in the shell is
-                    # `error|fail|fatal|dead|stopped|crash|denied|missing`, so a name
-                    # containing "failed" or "denied" would be painted red anyway by the
-                    # fall-through at worker_status_kind's last line. "refused" matches
-                    # none of them.
-                    #
-                    # The TERMINAL case is not lost: it is emitted once, below, when the
-                    # ladder is actually spent. Measured before this change: `denials`
-                    # was built at the `append` and read by NOTHING else -- the
-                    # per-rung `error` was the only signal, so exhaustion had no
-                    # terminal event of its own at all.
-                    emit(
-                        type="status",
-                        state="device-open-refused",
-                        stage="open-stream",
-                        device=dev["name"],
-                        api=dev.get("api"),
-                        detail=detail,
-                        retry=retry,
-                        of=len(candidates),
-                    )
-                    # Release whatever the failed open left behind (the client is
-                    # often created before Initialize refuses it) — the F4 rule: a
-                    # tap this run is done with must not keep the endpoint.
-                    if tap is not None:
-                        close_tap(tap)
-                        tap_holder["tap"] = None
-                        tap = None
-                    if not _is_device_in_use(detail) or retry >= 2:
+        while not stop.is_set():
+            for attempt_no, dev in enumerate(candidates):
+                progress("ladder")
+                if target_pid and not dev.get("process_loopback") and not separation_lost:
+                    # LOUD, ONCE, and it names what was lost: the ladder has moved
+                    # past the app's own tree, so THIS RUN IS TRANSCRIBING THE
+                    # ENDPOINT MIX. The owner asked for one app ("separados"), and a
+                    # silent fall-back to the mix is the defect this lane exists to
+                    # avoid -- so it is reported in the event stream AND on stderr,
+                    # and the run carries on with the endpoint rather than dying on
+                    # an idle/closed app.
+                    separation_lost = True
+                    err(f"PER-APP SEPARATION LOST: falling through to {dev['name']!r} "
+                        f"(the whole endpoint) after pid {target_pid}")
+                    emit(type="status", state="device-rotated", reason="per-app-tap-lost",
+                         device=f"process loopback: pid {target_pid}", to=dev["name"],
+                         target_pid=target_pid)
+                device = dev
+                # ── ONE PLACE THAT OPENS A CANDIDATE, AND IT RETRIES `DEVICE_IN_USE` ──
+                # Two measured defects live here, both seen on the owner's box with a
+                # video playing (2026-10-07):
+                #
+                # 1. THE OPEN IS IN `start()`, NOT IN THE CONSTRUCTOR. The guard used
+                #    to cover `LoopbackTap(...)` only, while `WasapiLoopbackTap` opens
+                #    the endpoint inside `start()` → `_open()` (its own
+                #    `Initialize(SHARED|LOOPBACK)`, wasapi_loopback.py:878-890). So an
+                #    endpoint that was BUSY raised outside every per-candidate handler
+                #    and the worker died with a traceback: 86 `BRIDGE_DEATH`s, all
+                #    `Initialize(SHARED|LOOPBACK) failed: 0x8889000A`
+                #    (AUDCLNT_E_DEVICE_IN_USE), captions=0, restarted every 2 s
+                #    forever — the app was up, the panel was up, and no candidate ever
+                #    got a chance.
+                # 2. `DEVICE_IN_USE` IS USUALLY OUR OWN PREDECESSOR. The shell
+                #    respawns 2 s after an exit, and the endpoint release can lag the
+                #    process that held it, so the NEXT worker sees its own
+                #    predecessor's endpoint as busy. ROTATING AWAY for that is exactly
+                #    backwards: the busy endpoint is the one that was WORKING (run
+                #    directly, candidate 1 of 10 — `WASAPI loopback: CABLE Input` —
+                #    opened first try and transcribed the video). So a busy endpoint is
+                #    waited for and retried, TWICE, before the ladder moves on; only a
+                #    candidate that fails for any other reason rotates immediately.
+                tap = None
+                open_error = None
+                for retry in range(3):
+                    if stop.is_set():
                         break
-                    err(f"OPEN_RETRY_RETRY device={dev['name']!r} "
-                        f"reason=device-in-use retry={retry + 1} in_ms=1500 "
-                        f"(the previous worker may still be releasing it)")
-                    stop.wait(1.5)
+                    try:
+                        # THE OPEN IS BOUNDED (2026-10-20). A blocked open used
+                        # to hold the whole ladder: MEASURED ~59 s on the owner's
+                        # box, with the owner's Bluetooth headset as the blocker
+                        # (the open does not come back and it raises nothing).
+                        tap, open_error = _open_tap_bounded(dev, on_block,
+                                                            block_ms=block_ms,
+                                                            close=close_tap)
+                        if open_error is not None:
+                            raise open_error
+                        # STEP 3: the tap carries the identity of the CANDIDATE it
+                        # was opened from, so every event it feeds can name its
+                        # source (`proc:<pid>` / `device:<name>` / `file:<name>`).
+                        tap_holder["tap"] = tap
+                        tap_holder["gen"] += 1
+                        open_error = None
+                        break
+                    except Exception as exc:
+                        open_error = exc
+                        detail = f"{type(exc).__name__}: {exc}"
+                        # OWNER FIX (2026-10-17). This used to be `state="error"`, and
+                        # `error` is in the shell's WORKER_ERROR_STATES, so EVERY rung the
+                        # ladder was about to rotate past painted the panel RED before the
+                        # `device-rotated` below had a chance to announce the rotation.
+                        # The owner, verbatim: *"o painel ta com erro vermelho. ta falando
+                        # que 'audio device is in use' sendo q nao e pra acontecer nunca e
+                        # nem depender disso"* -- and he is right: a rung failing to open is
+                        # the ladder WORKING, not a fault. It is still a warm-up state, so
+                        # the shell holds it behind a pending death and never paints it.
+                        #
+                        # The name is load-bearing: `FAILURE_WORDS_RE` in the shell is
+                        # `error|fail|fatal|dead|stopped|crash|denied|missing`, so a name
+                        # containing "failed" or "denied" would be painted red anyway by the
+                        # fall-through at worker_status_kind's last line. "refused" matches
+                        # none of them.
+                        #
+                        # The TERMINAL case is not lost: it is emitted once, below, when the
+                        # ladder is actually spent. Measured before this change: `denials`
+                        # was built at the `append` and read by NOTHING else -- the
+                        # per-rung `error` was the only signal, so exhaustion had no
+                        # terminal event of its own at all.
+                        emit(
+                            type="status",
+                            state="device-open-refused",
+                            stage="open-stream",
+                            device=dev["name"],
+                            api=dev.get("api"),
+                            detail=detail,
+                            retry=retry,
+                            of=len(candidates),
+                        )
+                        # Release whatever the failed open left behind (the client is
+                        # often created before Initialize refuses it) — the F4 rule: a
+                        # tap this run is done with must not keep the endpoint.
+                        if tap is not None:
+                            close_tap(tap)
+                            tap_holder["tap"] = None
+                            tap = None
+                        if not _is_device_in_use(detail) or retry >= 2:
+                            break
+                        err(f"OPEN_RETRY_RETRY device={dev['name']!r} "
+                            f"reason=device-in-use retry={retry + 1} in_ms=1500 "
+                            f"(the previous worker may still be releasing it)")
+                        stop.wait(1.5)
 
-            if open_error is not None:
-                denials.append(f"{dev['name']} [{dev.get('api')}]: "
-                               f"{type(open_error).__name__}: {open_error}")
-                outcome = ("open-denied"
-                           if all(_is_device_in_use(d) for d in denials)
-                           else "open-failed")
-                if attempt_no + 1 >= len(candidates):
-                    # THE LADDER IS SPENT. This is the ONE place where failing to
-                    # open a device is terminal, and it is terminal ONLY here --
-                    # every rung before this one rotates, so it must not have been
-                    # painting red on the way through.
-                    #
-                    # OWNER, 2026-10-17, verbatim: *"o painel ta com erro vermelho.
-                    # ta falando que 'audio device is in use' sendo q nao e pra
-                    # acontecer nunca e nem depender disso"*. He had seen this
-                    # event before the per-rung fix, and the per-rung fix was not
-                    # enough: this is the line that PAINTED it. The state was
-                    # `error`, which is in the shell's WORKER_ERROR_STATES, and the
-                    # detail carried the raw `0x8889000A`, which
-                    # `human_audio_error` then translated into the red sentence he
-                    # quoted.
-                    #
-                    # What is actually true when the ladder is spent is that Sotto
-                    # found no FREE ENDPOINT at this instant. Nothing is broken, the
-                    # app is up, and the shell respawns this worker and walks the
-                    # ladder again. That is the app WAITING, so it is reported as
-                    # waiting. The name carries none of
-                    # `error|fail|fatal|dead|stopped|crash|denied|missing`, which is
-                    # the shell's whole vocabulary for painting red.
-                    #
-                    # Nothing is lost: `denials` -- which until this run was built at
-                    # the append and read by nothing at all -- goes out in the event
-                    # AND to stderr, so the diagnosis is on the record without being
-                    # on the owner's screen. The run's `outcome` and its exit code
-                    # are untouched: exhaustion is still a failure of this RUN.
+                if open_error is not None:
+                    denials.append(f"{dev['name']} [{dev.get('api')}]: "
+                                   f"{type(open_error).__name__}: {open_error}")
+                    outcome = ("open-denied"
+                               if all(_is_device_in_use(d) for d in denials)
+                               else "open-failed")
+                    if attempt_no + 1 >= len(candidates):
+                        # THE LADDER IS SPENT. This is the ONE place where failing to
+                        # open a device is terminal, and it is terminal ONLY here --
+                        # every rung before this one rotates, so it must not have been
+                        # painting red on the way through.
+                        #
+                        # OWNER, 2026-10-17, verbatim: *"o painel ta com erro vermelho.
+                        # ta falando que 'audio device is in use' sendo q nao e pra
+                        # acontecer nunca e nem depender disso"*. He had seen this
+                        # event before the per-rung fix, and the per-rung fix was not
+                        # enough: this is the line that PAINTED it. The state was
+                        # `error`, which is in the shell's WORKER_ERROR_STATES, and the
+                        # detail carried the raw `0x8889000A`, which
+                        # `human_audio_error` then translated into the red sentence he
+                        # quoted.
+                        #
+                        # What is actually true when the ladder is spent is that Sotto
+                        # found no FREE ENDPOINT at this instant. Nothing is broken, the
+                        # app is up, and the shell respawns this worker and walks the
+                        # ladder again. That is the app WAITING, so it is reported as
+                        # waiting. The name carries none of
+                        # `error|fail|fatal|dead|stopped|crash|denied|missing`, which is
+                        # the shell's whole vocabulary for painting red.
+                        #
+                        # Nothing is lost: `denials` -- which until this run was built at
+                        # the append and read by nothing at all -- goes out in the event
+                        # AND to stderr, so the diagnosis is on the record without being
+                        # on the owner's screen. The run's `outcome` and its exit code
+                        # are untouched: exhaustion is still a failure of this RUN.
+                        emit(
+                            type="status",
+                            state="audio-endpoint-unavailable",
+                            stage="open-stream",
+                            reason="ladder-exhausted",
+                            # NEUTRAL ON PURPOSE, and this is the part that finishes
+                            # the job. `detail` is one of `STATUS_BODY_FIELDS` in the
+                            # shell, so it is RENDERED on the owner's screen and then
+                            # fed to `human_audio_error`, which turns any HRESULT it
+                            # finds into the red sentence. The raw text stays in
+                            # `denials` -- which is NOT in STATUS_BODY_FIELDS, so it
+                            # never reaches the panel -- and in the stderr line below.
+                            # The diagnosis is not lost; it is simply not on the glass.
+                            detail=(f'Sotto tried {attempt_no + 1} of {len(candidates)} '
+                                    f'audio endpoints and none was free at this moment'),
+                            denials=list(denials),
+                            attempt=attempt_no + 1,
+                            of=len(candidates),
+                        )
+                        err(f"OPEN_LADDER_EXHAUSTED denials={len(denials)} "
+                            f"detail={'; '.join(denials) or 'none'}")
+                        break
                     emit(
                         type="status",
-                        state="audio-endpoint-unavailable",
-                        stage="open-stream",
-                        reason="ladder-exhausted",
-                        # NEUTRAL ON PURPOSE, and this is the part that finishes
-                        # the job. `detail` is one of `STATUS_BODY_FIELDS` in the
-                        # shell, so it is RENDERED on the owner's screen and then
-                        # fed to `human_audio_error`, which turns any HRESULT it
-                        # finds into the red sentence. The raw text stays in
-                        # `denials` -- which is NOT in STATUS_BODY_FIELDS, so it
-                        # never reaches the panel -- and in the stderr line below.
-                        # The diagnosis is not lost; it is simply not on the glass.
-                        detail=(f'Sotto tried {attempt_no + 1} of {len(candidates)} '
-                                f'audio endpoints and none was free at this moment'),
-                        denials=list(denials),
+                        state="device-rotated",
+                        reason="open-denied" if outcome == "open-denied" else "open-failed",
+                        to=candidates[attempt_no + 1]["name"],
                         attempt=attempt_no + 1,
                         of=len(candidates),
                     )
-                    err(f"OPEN_LADDER_EXHAUSTED denials={len(denials)} "
-                        f"detail={'; '.join(denials) or 'none'}")
-                    break
+                    rotations += 1
+                    continue
+
                 emit(
                     type="status",
-                    state="device-rotated",
-                    reason="open-denied" if outcome == "open-denied" else "open-failed",
-                    to=candidates[attempt_no + 1]["name"],
+                    state="capture-started",
+                    device=dev["name"],
+                    rate=tap.rate,
+                    block=tap.block,
                     attempt=attempt_no + 1,
                     of=len(candidates),
                 )
-                rotations += 1
-                continue
-
-            emit(
-                type="status",
-                state="capture-started",
-                device=dev["name"],
-                rate=tap.rate,
-                block=tap.block,
-                attempt=attempt_no + 1,
-                of=len(candidates),
-            )
-            # Per-candidate baselines. `device_peak` is reset here so the
-            # settle test and the rotation log both describe THIS device and
-            # not the run's high-water mark from a device already closed.
-            device_peak["value"] = 0.0
-            device_blocks["value"] = 0
-            # The settled-tap watchdog starts its clock with the candidate.
-            stall_blocks = 0
-            stall_since = time.time()
-            stall_backoff = TAP_STALL_S
-            stall_reopens = 0
-            counters.pop('silent', None)   # a janela de um candidato novo comeca do zero
-            # A pergunta "esta' calado ou morto?" (ver `dead_first_block_plan`)
-            # volta a ser feita para ESTE candidato, e para ESTA janela.
-            counters.pop('quiet', None)
-            idle_logged = False
-            caps_before = counters["captions"]
-            first_block_logged = False
-            window_start = time.time()
-            window_end = window_start + tap_window
-            settled = False
-            try:
-                while not stop.is_set():
-                    progress("window")
-                    now = time.time()
-                    if args.max_seconds and (now - t_start) >= args.max_seconds:
-                        outcome = "run-ended"
-                        break
-                    if now >= next_stats:
-                        err(stats_line("tick"))
-                        next_stats = now + args.stats_interval
-                    # THE ACCEPTANCE TEST. A CAPTION is the only evidence that
-                    # settles the ladder, and that is deliberate: `peak >=
-                    # tap_floor` proves the tap HEARS SOMETHING, not that it
-                    # hears SPEECH, and the brief names the cost of conflating
-                    # them — the run "settled on the first non-dead one" and
-                    # then reported captions=0. MEASURED on this box
-                    # (`_main/sdr_idlefloor.out`): with NOTHING rendering the
-                    # loopback of the default render endpoint is DIGITAL
-                    # SILENCE (peak=0.000000, three independent 6 s captures),
-                    # so above-floor really is rendered audio — but rendered
-                    # audio is not speech, and the model's own front end gates
-                    # it (`vad_gated_chunks`). So the ladder KEEPS LOOKING;
-                    # `best_carried` re-enters the loudest non-captioning
-                    # candidate below so the run still streams.
-                    if device_blocks["value"] > 0 and not first_block_logged:
-                        first_block_logged = True
-                        err("TAP_FIRST_BLOCK endpoint=%r wait_ms=%d blocks=%d "
-                            "rotated_from=%r"
-                            % (dev.get("name"),
-                               int((time.time() - window_start) * 1000.0),
-                               device_blocks["value"],
-                               (dev.get("rotated_from") or "-")))
-                    if counters["captions"] > caps_before:
-                        settled = True
-                    elif dev.get("rung") == "fallback" and device_peak["value"] >= tap_floor:
-                        # The ladder has now TRIED EVERY candidate and none
-                        # produced a caption; this is the loudest one that
-                        # carried signal, re-entered so a live run keeps
-                        # streaming instead of exiting on the owner.
-                        settled = True
-                    if settled:
-                        # Proven alive: this tap is the run now, and the window
-                        # no longer applies to it.
-                        if device_blocks["value"] != stall_blocks:
-                            # Still delivering: this tap IS the run.
-                            stall_blocks = device_blocks["value"]
-                            stall_since = now
-                            stall_backoff = TAP_STALL_S
-                        elif now - stall_since >= stall_backoff:
-                            # -- THE TAP STOPPED DELIVERING (added 2026-10-11) -----------------
-                            # A settled tap used to be PERMANENT: this loop then spun at 10 Hz for
-                            # ever and never once asked whether the tap was still delivering.
-                            # MEASURED on the owner box: device_blocks froze at 59 (5.6 s of audio,
-                            # 6 captions) and the worker sat there 34 minutes while the default
-                            # render endpoint carried peak 0.1444 -- the panel read "Audio tap
-                            # silent" and Alt+C showed nothing, for ever. The signal is BLOCK
-                            # ARRIVAL, not peak: a pumped-but-idle endpoint delivers SILENT blocks,
-                            # a starved or dead one delivers none.
-                            stalled_s = now - stall_since
-                            inner = getattr(tap, "stream", tap)
-                            # -- IS IT ACTUALLY BROKEN? (added 2026-10-12) ----------------------
-                            # The cure above treats EVERY stop in block arrival as a stalled tap.
-                            # MEASURED on this box, that is wrong for an idle default endpoint:
-                            # VoiceMeeter delivers NO packets while nothing renders, so block arrival
-                            # stops the instant the desktop is idle, and the worker then re-opened that
-                            # endpoint every 8..60 s (32 times in ONE run) with the pump thread still
-                            # ALIVE -- a hard hitch on the audio engine the owner other apps share,
-                            # which the owner read as a strong freeze every few seconds. The pump is
-                            # the honest witness: a client the engine invalidates makes it BREAK OUT
-                            # with an HRESULT, so pump_exited is the ONLY affirmative dead-client
-                            # signal. A live pump plus an endpoint that renders nothing WAITS.
-                            client_dead = bool(getattr(inner, "pump_exited", False))
-                            stall_reason = tap_stall_reason(client_dead, stalled_s, stall_reopens)
-                            idle_s = stalled_s
-                            if stall_reason == "endpoint-idle":
-                                # NOTHING IS BROKEN -- wait instead of churning the engine. The
-                                # backoff keeps its course, so this is ASKED AGAIN, not spun: a client
-                                # that does break is still cured. The bridge own 30 s silence check
-                                # already tells the owner "Audio tap silent - nothing to transcribe".
-                                if idle_s >= TAP_IDLE_MAX_S + TAP_STALL_MAX_S and not idle_logged:
-                                    err(f"TAP_IDLE device={dev['name']!r} idle_s={idle_s:.0f} "
-                                        f"blocks={device_blocks['value']} reopens={stall_reopens} "
-                                        f"pump_alive=True reason=waiting-not-reopening")
-                                    idle_logged = True
-                                # `stop.wait`, NOT `time.sleep` -- the file's own rule at :5989,
-                                # and it is what makes a stop request land inside the wait instead
-                                # of after it. Measured by the audit that found this file
-                                # contradicting itself: the same delay, a wakeable primitive.
-                                progress("idle-wait")
-                                stop.wait(0.1)
-                                continue
-                            err(f"TAP_STALLED device={dev['name']!r} stalled_s={stalled_s:.1f} "
-                                f"reason={stall_reason} "
-                                f"blocks={device_blocks['value']} captions={counters['captions']} "
-                                f"reopens={stall_reopens} "
-                                f"pump_exited={getattr(inner, 'pump_exited', None)} "
-                                f"pump_hr={getattr(inner, 'pump_exit_hr', None)} "
-                                f"pump_where={getattr(inner, 'pump_exit_where', '')!r} "
-                                f"silent_packets={getattr(inner, 'silent_packets', None)} "
-                                f"gap_packets={getattr(inner, 'position_gap_packets', None)} "
-                                f"disco_packets={getattr(inner, 'discontinuity_packets', None)}")
-                            # Re-open IN PLACE: the first stalls re-open the SAME endpoint (an
-                            # invalidated audio engine is cured by a fresh client); after that the
-                            # audio may simply have MOVED, so take the freshest enumeration first
-                            # endpoint that is not this one. An EXPLICIT device (rung c) is never
-                            # substituted silently, and the process NEVER exits on a stall -- an
-                            # idle desktop must not become a model-load restart loop.
-                            target = dev
-                            if stall_reopens >= TAP_STALL_SAME_DEVICE_TRIES and not (
-                                    wanted and dev.get("rung") == "c"):
-                                for cand in device_candidates(audio_cfg, wanted, target_pid=target_pid):
-                                    if cand.get("endpoint_id") != dev.get("endpoint_id"):
-                                        target = cand
-                                        break
-                            emit(type="status", state="device-rotated", reason=stall_reason,
-                                 to=target["name"], device=dev["name"],
-                                 stalled_s=round(stalled_s, 1), blocks=device_blocks["value"],
-                                 captions=counters["captions"])
-                            try:
-                                close_tap(tap)
-                                tap_holder["tap"] = None
-                                tap_holder["gen"] += 1
-                                tap = LoopbackTap(target, on_block, block_ms=block_ms)
-                                tap.source = tap_source(target)
-                                tap_holder["tap"] = tap
-                                tap_holder["gen"] += 1
-                                tap.stream.start()
-                                dev = target
-                                device_peak["value"] = 0.0
-                                device_blocks["value"] = 0
-                                stall_blocks = 0
-                                stall_reopens += 1
-                                emit(type="status", state="capture-started", device=dev["name"],
-                                     rate=tap.rate, block=tap.block, attempt=attempt_no + 1,
-                                     of=len(candidates), reopened=True)
-                            except Exception as exc:
-                                err(f"TAP_STALLED_REOPEN_FAILED device={target['name']!r} "
-                                    f"detail={type(exc).__name__}: {exc}")
-                            stall_since = time.time()
-                            # No re-open may ever come faster than TAP_REOPEN_MIN_S, whatever
-                            # the state says: the ladder and this cure share that floor.
-                            stall_backoff = max(TAP_REOPEN_MIN_S,
-                                TAP_STALL_S
-                                if stall_reopens < TAP_STALL_SAME_DEVICE_TRIES
-                                else min(stall_backoff * 2.0, TAP_STALL_MAX_S))
-                        # stop.wait, not time.sleep -- :5989 rule, wakeable.
-                        stop.wait(0.1)
-                        continue
-                    # O CANDIDATO MORTO CAI AOS 2 s, NAO AOS 44 (2026-11-04).
-                    # Medido: `capture-started` 09:57:41 -> `device-rotated
-                    # (flat)` 09:58:25, com `device_blocks=0` o tempo todo.
-                    # A pergunta e' feita AQUI porque a janela do tap so' fecha
-                    # ao fim de `tap_window`, e um endpoint aberto e mudo nao
-                    # tem nada a provar sobre o desktop estar parado.
-                    #
-                    # ZERO BLOCOS SAO DUAS COISAS, E O MEDIDOR DIZ QUAL
-                    # (`dead_first_block_plan`, medido 2026-11-04): com sinal a
-                    # sair NOUTRO endpoint o candidato esta' morto e a troca
-                    # acontece AQUI, sem morrer o processo nem recarregar o
-                    # modelo; com a maquina CALADA o candidato nao tem o que
-                    # provar e a regra do desktop parado fica inteira
-                    # (`counters['quiet']` desliga esta pergunta ate' a janela
-                    # mudar de tamanho, que e' onde `window_ended` a re-arma).
-                    if (not settled and device_blocks["value"] == 0
-                            and not counters.get("quiet")):
-                        _dead, _waited_ms = first_block_decided(
-                            window_start, device_blocks["value"], now)
-                        if _dead:
-                            _plan = dead_first_block_plan(
-                                candidates, attempt_no + 1, dev, _live_render_peaks(),
-                                tap_floor, counters.get("dead_switches", 0))
-                            err("TAP_DEAD_FAST endpoint=%r waited_ms=%d action=%s "
-                                "why=%s next=%r peak=%s switches=%d"
-                                % (dev.get("name"), _waited_ms, _plan["action"],
-                                   _plan["why"], (_plan["next"] or {}).get("name"),
-                                   _plan["peak"], _plan["switches"]))
-                            if _plan["action"] == "wait":
-                                # O DESKTOP ESTA' CALADO: nao ha' candidato morto.
-                                counters["quiet"] = True
-                                err("TAP_QUIET_DESKTOP endpoint=%r waited_ms=%d "
-                                    "why=no-endpoint-is-rendering keep-the-tap"
-                                    % (dev.get("name"), _waited_ms))
-                            elif _plan["next"] is not None:
-                                _i = _plan["next_index"]
-                                candidates[attempt_no + 1], candidates[_i] = (
-                                    candidates[_i], candidates[attempt_no + 1])
-                                counters["dead_switches"] = _plan["switches"] + 1
-                                emit(type="status", state="device-rotated",
-                                     reason="dead-endpoint", device=dev.get("name"),
-                                     to=_plan["next"]["name"], waited_ms=_waited_ms,
-                                     peak=round(_plan["peak"] or 0.0, 6),
-                                     attempt=attempt_no + 1, of=len(candidates))
-                                outcome = "dead-switch"
-                                break
-                            else:
-                                _nxt = (_plan["next"] or {}).get("name")
-                                emit(type="status", state="tap-dead-endpoint",
-                                     device=dev.get("name"), waited_ms=_waited_ms,
-                                     next=_nxt or "none", why=_plan["why"])
-                                err("TAP_DEAD_ENDPOINT endpoint=%r waited_ms=%d "
-                                    "next=%r why=%s"
-                                    % (dev.get("name"), _waited_ms, _nxt or "none",
-                                       _plan["why"]))
-                                outcome = "first-block-timeout"
-                                break
-                    if now >= window_end:
-                        extended = window_ended(now, dev, device_peak, tap_floor,
-                                                tap_window, counters, emit)
-                        if extended:
-                            window_end = extended          # a tap fica ABERTA
-                        else:
-                            outcome = "flat"
+                # Per-candidate baselines. `device_peak` is reset here so the
+                # settle test and the rotation log both describe THIS device and
+                # not the run's high-water mark from a device already closed.
+                device_peak["value"] = 0.0
+                device_blocks["value"] = 0
+                # The settled-tap watchdog starts its clock with the candidate.
+                stall_blocks = 0
+                stall_since = time.time()
+                stall_backoff = TAP_STALL_S
+                stall_reopens = 0
+                counters.pop('silent', None)   # a janela de um candidato novo comeca do zero
+                # A pergunta "esta' calado ou morto?" (ver `dead_first_block_plan`)
+                # volta a ser feita para ESTE candidato, e para ESTA janela.
+                counters.pop('quiet', None)
+                idle_logged = False
+                caps_before = counters["captions"]
+                first_block_logged = False
+                window_start = time.time()
+                window_end = window_start + tap_window
+                settled = False
+                try:
+                    while not stop.is_set():
+                        progress("window")
+                        now = time.time()
+                        if args.max_seconds and (now - t_start) >= args.max_seconds:
+                            outcome = "run-ended"
                             break
-                    # stop.wait, not time.sleep -- :5989 rule, wakeable.
-                    stop.wait(0.05)
-            finally:
-                tap_holder["tap"] = None
-                tap_holder["gen"] += 1
-                close_tap(tap)
+                        if now >= next_stats:
+                            err(stats_line("tick"))
+                            next_stats = now + args.stats_interval
+                        # THE ACCEPTANCE TEST. A CAPTION is the only evidence that
+                        # settles the ladder, and that is deliberate: `peak >=
+                        # tap_floor` proves the tap HEARS SOMETHING, not that it
+                        # hears SPEECH, and the brief names the cost of conflating
+                        # them — the run "settled on the first non-dead one" and
+                        # then reported captions=0. MEASURED on this box
+                        # (`_main/sdr_idlefloor.out`): with NOTHING rendering the
+                        # loopback of the default render endpoint is DIGITAL
+                        # SILENCE (peak=0.000000, three independent 6 s captures),
+                        # so above-floor really is rendered audio — but rendered
+                        # audio is not speech, and the model's own front end gates
+                        # it (`vad_gated_chunks`). So the ladder KEEPS LOOKING;
+                        # `best_carried` re-enters the loudest non-captioning
+                        # candidate below so the run still streams.
+                        if device_blocks["value"] > 0 and not first_block_logged:
+                            first_block_logged = True
+                            err("TAP_FIRST_BLOCK endpoint=%r wait_ms=%d blocks=%d "
+                                "rotated_from=%r"
+                                % (dev.get("name"),
+                                   int((time.time() - window_start) * 1000.0),
+                                   device_blocks["value"],
+                                   (dev.get("rotated_from") or "-")))
+                        if counters["captions"] > caps_before:
+                            settled = True
+                        elif dev.get("rung") == "fallback" and device_peak["value"] >= tap_floor:
+                            # The ladder has now TRIED EVERY candidate and none
+                            # produced a caption; this is the loudest one that
+                            # carried signal, re-entered so a live run keeps
+                            # streaming instead of exiting on the owner.
+                            settled = True
+                        if settled:
+                            # Proven alive: this tap is the run now, and the window
+                            # no longer applies to it.
+                            if device_blocks["value"] != stall_blocks:
+                                # Still delivering: this tap IS the run.
+                                stall_blocks = device_blocks["value"]
+                                stall_since = now
+                                stall_backoff = TAP_STALL_S
+                            elif now - stall_since >= stall_backoff:
+                                # -- THE TAP STOPPED DELIVERING (added 2026-10-11) -----------------
+                                # A settled tap used to be PERMANENT: this loop then spun at 10 Hz for
+                                # ever and never once asked whether the tap was still delivering.
+                                # MEASURED on the owner box: device_blocks froze at 59 (5.6 s of audio,
+                                # 6 captions) and the worker sat there 34 minutes while the default
+                                # render endpoint carried peak 0.1444 -- the panel read "Audio tap
+                                # silent" and Alt+C showed nothing, for ever. The signal is BLOCK
+                                # ARRIVAL, not peak: a pumped-but-idle endpoint delivers SILENT blocks,
+                                # a starved or dead one delivers none.
+                                stalled_s = now - stall_since
+                                inner = getattr(tap, "stream", tap)
+                                # -- IS IT ACTUALLY BROKEN? (added 2026-10-12) ----------------------
+                                # The cure above treats EVERY stop in block arrival as a stalled tap.
+                                # MEASURED on this box, that is wrong for an idle default endpoint:
+                                # VoiceMeeter delivers NO packets while nothing renders, so block arrival
+                                # stops the instant the desktop is idle, and the worker then re-opened that
+                                # endpoint every 8..60 s (32 times in ONE run) with the pump thread still
+                                # ALIVE -- a hard hitch on the audio engine the owner other apps share,
+                                # which the owner read as a strong freeze every few seconds. The pump is
+                                # the honest witness: a client the engine invalidates makes it BREAK OUT
+                                # with an HRESULT, so pump_exited is the ONLY affirmative dead-client
+                                # signal. A live pump plus an endpoint that renders nothing WAITS.
+                                client_dead = bool(getattr(inner, "pump_exited", False))
+                                stall_reason = tap_stall_reason(client_dead, stalled_s, stall_reopens)
+                                idle_s = stalled_s
+                                if stall_reason == "endpoint-idle":
+                                    # NOTHING IS BROKEN -- wait instead of churning the engine. The
+                                    # backoff keeps its course, so this is ASKED AGAIN, not spun: a client
+                                    # that does break is still cured. The bridge own 30 s silence check
+                                    # already tells the owner "Audio tap silent - nothing to transcribe".
+                                    if idle_s >= TAP_IDLE_MAX_S + TAP_STALL_MAX_S and not idle_logged:
+                                        err(f"TAP_IDLE device={dev['name']!r} idle_s={idle_s:.0f} "
+                                            f"blocks={device_blocks['value']} reopens={stall_reopens} "
+                                            f"pump_alive=True reason=waiting-not-reopening")
+                                        idle_logged = True
+                                    # `stop.wait`, NOT `time.sleep` -- the file's own rule at :5989,
+                                    # and it is what makes a stop request land inside the wait instead
+                                    # of after it. Measured by the audit that found this file
+                                    # contradicting itself: the same delay, a wakeable primitive.
+                                    progress("idle-wait")
+                                    stop.wait(0.1)
+                                    continue
+                                err(f"TAP_STALLED device={dev['name']!r} stalled_s={stalled_s:.1f} "
+                                    f"reason={stall_reason} "
+                                    f"blocks={device_blocks['value']} captions={counters['captions']} "
+                                    f"reopens={stall_reopens} "
+                                    f"pump_exited={getattr(inner, 'pump_exited', None)} "
+                                    f"pump_hr={getattr(inner, 'pump_exit_hr', None)} "
+                                    f"pump_where={getattr(inner, 'pump_exit_where', '')!r} "
+                                    f"silent_packets={getattr(inner, 'silent_packets', None)} "
+                                    f"gap_packets={getattr(inner, 'position_gap_packets', None)} "
+                                    f"disco_packets={getattr(inner, 'discontinuity_packets', None)}")
+                                # Re-open IN PLACE: the first stalls re-open the SAME endpoint (an
+                                # invalidated audio engine is cured by a fresh client); after that the
+                                # audio may simply have MOVED, so take the freshest enumeration first
+                                # endpoint that is not this one. An EXPLICIT device (rung c) is never
+                                # substituted silently, and the process NEVER exits on a stall -- an
+                                # idle desktop must not become a model-load restart loop.
+                                target = dev
+                                if stall_reopens >= TAP_STALL_SAME_DEVICE_TRIES and not (
+                                        wanted and dev.get("rung") == "c"):
+                                    for cand in device_candidates(audio_cfg, wanted, target_pid=target_pid):
+                                        if cand.get("endpoint_id") != dev.get("endpoint_id"):
+                                            target = cand
+                                            break
+                                emit(type="status", state="device-rotated", reason=stall_reason,
+                                     to=target["name"], device=dev["name"],
+                                     stalled_s=round(stalled_s, 1), blocks=device_blocks["value"],
+                                     captions=counters["captions"])
+                                try:
+                                    close_tap(tap)
+                                    tap_holder["tap"] = None
+                                    tap_holder["gen"] += 1
+                                    tap = LoopbackTap(target, on_block, block_ms=block_ms)
+                                    tap.source = tap_source(target)
+                                    tap_holder["tap"] = tap
+                                    tap_holder["gen"] += 1
+                                    tap.stream.start()
+                                    dev = target
+                                    device_peak["value"] = 0.0
+                                    device_blocks["value"] = 0
+                                    stall_blocks = 0
+                                    stall_reopens += 1
+                                    emit(type="status", state="capture-started", device=dev["name"],
+                                         rate=tap.rate, block=tap.block, attempt=attempt_no + 1,
+                                         of=len(candidates), reopened=True)
+                                except Exception as exc:
+                                    err(f"TAP_STALLED_REOPEN_FAILED device={target['name']!r} "
+                                        f"detail={type(exc).__name__}: {exc}")
+                                stall_since = time.time()
+                                # No re-open may ever come faster than TAP_REOPEN_MIN_S, whatever
+                                # the state says: the ladder and this cure share that floor.
+                                stall_backoff = max(TAP_REOPEN_MIN_S,
+                                    TAP_STALL_S
+                                    if stall_reopens < TAP_STALL_SAME_DEVICE_TRIES
+                                    else min(stall_backoff * 2.0, TAP_STALL_MAX_S))
+                            # stop.wait, not time.sleep -- :5989 rule, wakeable.
+                            stop.wait(0.1)
+                            continue
+                        # O CANDIDATO MORTO CAI AOS 2 s, NAO AOS 44 (2026-11-04).
+                        # Medido: `capture-started` 09:57:41 -> `device-rotated
+                        # (flat)` 09:58:25, com `device_blocks=0` o tempo todo.
+                        # A pergunta e' feita AQUI porque a janela do tap so' fecha
+                        # ao fim de `tap_window`, e um endpoint aberto e mudo nao
+                        # tem nada a provar sobre o desktop estar parado.
+                        #
+                        # ZERO BLOCOS SAO DUAS COISAS, E O MEDIDOR DIZ QUAL
+                        # (`dead_first_block_plan`, medido 2026-11-04): com sinal a
+                        # sair NOUTRO endpoint o candidato esta' morto e a troca
+                        # acontece AQUI, sem morrer o processo nem recarregar o
+                        # modelo; com a maquina CALADA o candidato nao tem o que
+                        # provar e a regra do desktop parado fica inteira
+                        # (`counters['quiet']` desliga esta pergunta ate' a janela
+                        # mudar de tamanho, que e' onde `window_ended` a re-arma).
+                        if (not settled and device_blocks["value"] == 0
+                                and not counters.get("quiet")):
+                            _dead, _waited_ms = first_block_decided(
+                                window_start, device_blocks["value"], now)
+                            if _dead:
+                                _plan = dead_first_block_plan(
+                                    candidates, attempt_no + 1, dev, _live_render_peaks(),
+                                    tap_floor, counters.get("dead_switches", 0))
+                                err("TAP_DEAD_FAST endpoint=%r waited_ms=%d action=%s "
+                                    "why=%s next=%r peak=%s switches=%d"
+                                    % (dev.get("name"), _waited_ms, _plan["action"],
+                                       _plan["why"], (_plan["next"] or {}).get("name"),
+                                       _plan["peak"], _plan["switches"]))
+                                if _plan["action"] == "wait":
+                                    # O DESKTOP ESTA' CALADO: nao ha' candidato morto.
+                                    counters["quiet"] = True
+                                    err("TAP_QUIET_DESKTOP endpoint=%r waited_ms=%d "
+                                        "why=no-endpoint-is-rendering keep-the-tap"
+                                        % (dev.get("name"), _waited_ms))
+                                elif _plan["next"] is not None:
+                                    _i = _plan["next_index"]
+                                    candidates[attempt_no + 1], candidates[_i] = (
+                                        candidates[_i], candidates[attempt_no + 1])
+                                    counters["dead_switches"] = _plan["switches"] + 1
+                                    emit(type="status", state="device-rotated",
+                                         reason="dead-endpoint", device=dev.get("name"),
+                                         to=_plan["next"]["name"], waited_ms=_waited_ms,
+                                         peak=round(_plan["peak"] or 0.0, 6),
+                                         attempt=attempt_no + 1, of=len(candidates))
+                                    outcome = "dead-switch"
+                                    break
+                                else:
+                                    _nxt = (_plan["next"] or {}).get("name")
+                                    emit(type="status", state="tap-dead-endpoint",
+                                         device=dev.get("name"), waited_ms=_waited_ms,
+                                         next=_nxt or "none", why=_plan["why"])
+                                    err("TAP_DEAD_ENDPOINT endpoint=%r waited_ms=%d "
+                                        "next=%r why=%s"
+                                        % (dev.get("name"), _waited_ms, _nxt or "none",
+                                           _plan["why"]))
+                                    outcome = "first-block-timeout"
+                                    break
+                        if now >= window_end:
+                            extended = window_ended(now, dev, device_peak, tap_floor,
+                                                    tap_window, counters, emit)
+                            if extended:
+                                window_end = extended          # a tap fica ABERTA
+                            else:
+                                outcome = "flat"
+                                break
+                        # stop.wait, not time.sleep -- :5989 rule, wakeable.
+                        stop.wait(0.05)
+                finally:
+                    tap_holder["tap"] = None
+                    tap_holder["gen"] += 1
+                    close_tap(tap)
 
-            # The ledger row is written on the way OUT of the window, whatever
-            # ended it, so it describes the CANDIDATE and not the run. It is
-            # written after the tap is closed but before anything else can
-            # touch the per-candidate counters, which are the honest figures
-            # here — `counters["peak"]` is the run high-water mark and would
-            # name a device that is already closed.
-            tap_ledger.append(tap_ledger_row(dev, device_peak, device_blocks, counters, caps_before, settled, outcome))
-            # Remember the LOUDEST candidate that carried signal but produced
-            # no caption. Below, when the ladder runs out with no caption, this
-            # one is re-entered so the run keeps streaming instead of exiting.
-            if (
-                not settled
-                and device_peak["value"] >= tap_floor
-                and device_peak["value"] > best_carried["peak"]
-            ):
-                best_carried["dev"] = dev
-                best_carried["peak"] = device_peak["value"]
-            if settled and not proved_alive["any"]:
-                proved_alive["any"] = True
-                proved_alive["device"] = dev["name"]
-                proved_alive["peak"] = device_peak["value"]
-                proved_alive["reason"] = (
-                    "caption" if counters["captions"] > caps_before else "peak>=floor"
-                )
-
-            if outcome == "dead-switch":
-                # O proximo candidato JA' foi escolhido pelo MEDIDOR, e nao ha'
-                # nada a esperar: a troca E' a cura. Sem este `continue` a
-                # escada parava aqui e o processo morria com a troca ja' feita.
-                continue
-            if outcome != "flat" or stop.is_set():
-                break
-            # RUNG C is an EXPLICIT override and ALWAYS WINS: it is never
-            # rotated away from. If the owner named a device and it carries
-            # nothing, the run reports the NAMED silent-device failure below
-            # rather than silently opening a different endpoint behind his
-            # back -- silent substitution is the defect this ladder removes.
-            if wanted and dev.get("rung") == "c":
-                outcome = "explicit-flat"
-                break
-            # WHO IS PLAYING **NOW** GOES NEXT (ver `signal_ranked_next`): a ordem
-            # estatica foi decidida no arranque, quando ele ainda nao tinha som a
-            # sair; aqui a pergunta e' feita no instante em que a janela plana
-            # acabou.
-            nxt = signal_ranked_next(candidates, attempt_no + 1)
-            if nxt is None:
-                # RE-ENTER — the brief's "keep looking at candidates rather than
-                # settling on the first non-dead one". Every candidate has now
-                # been OPENED once and NONE produced a caption. If one of them
-                # carried signal, commit to the loudest and keep streaming on it
-                # rather than exiting on the owner with nothing. Appending to
-                # `candidates` extends THIS for-loop (Python iterates lists by
-                # index), so the re-entry reuses the same window machinery and
-                # the same ledger; `retried` allows it at most once.
-                if best_carried["dev"] is not None and not best_carried["retried"]:
-                    best_carried["retried"] = True
-                    fb = dict(best_carried["dev"])
-                    fb["rung"] = "fallback"
-                    fb["rung_why"] = (
-                        "loudest signal-carrying candidate, re-entered: the ladder "
-                        "opened every candidate and none produced a caption"
+                # The ledger row is written on the way OUT of the window, whatever
+                # ended it, so it describes the CANDIDATE and not the run. It is
+                # written after the tap is closed but before anything else can
+                # touch the per-candidate counters, which are the honest figures
+                # here — `counters["peak"]` is the run high-water mark and would
+                # name a device that is already closed.
+                tap_ledger.append(tap_ledger_row(dev, device_peak, device_blocks, counters, caps_before, settled, outcome))
+                # Remember the LOUDEST candidate that carried signal but produced
+                # no caption. Below, when the ladder runs out with no caption, this
+                # one is re-entered so the run keeps streaming instead of exiting.
+                if (
+                    not settled
+                    and device_peak["value"] >= tap_floor
+                    and device_peak["value"] > best_carried["peak"]
+                ):
+                    best_carried["dev"] = dev
+                    best_carried["peak"] = device_peak["value"]
+                if settled and not proved_alive["any"]:
+                    proved_alive["any"] = True
+                    proved_alive["device"] = dev["name"]
+                    proved_alive["peak"] = device_peak["value"]
+                    proved_alive["reason"] = (
+                        "caption" if counters["captions"] > caps_before else "peak>=floor"
                     )
-                    candidates.append(fb)
-                    nxt = fb
-                else:
-                    outcome = "all-flat"
+
+                if outcome == "dead-switch":
+                    # O proximo candidato JA' foi escolhido pelo MEDIDOR, e nao ha'
+                    # nada a esperar: a troca E' a cura. Sem este `continue` a
+                    # escada parava aqui e o processo morria com a troca ja' feita.
+                    continue
+                if outcome != "flat" or stop.is_set():
                     break
-            # `from` is a Python keyword, so the payload is built as a dict.
-            emit(
-                **{
-                    "type": "status",
-                    "state": "device-rotated",
-                    "reason": "flat",
-                    "from": dev["name"],
-                    "to": nxt["name"],
-                    "peak": round(device_peak["value"], 6),
-                    "run_peak": round(counters["peak"], 6),
-                    "window_s": tap_window,
-                    "peak_floor": tap_floor,
-                    "attempt": attempt_no + 1,
-                    "of": len(candidates),
-                }
-            )
-            rotations += 1
-            # -- THE CEILING. THE BACKOFF IS A RATE, NOT A STOP. -------------------
-            # `MAX_ROTATIONS_WITHOUT_SIGNAL` (above) is why this exists: the ladder
-            # measured 2 188 flat rotations on this box in ten minutes, reopening an
-            # endpoint every time, and the shell restarting the worker on its way out
-            # reset the backoff so the cycle never ended. A run that has produced
-            # NOTHING stops here and says so, with the numbers that justify it; a run
-            # that is transcribing never reaches this line.
-            if (rotations >= MAX_ROTATIONS_WITHOUT_SIGNAL
-                    and counters["captions"] == 0
-                    and counters["peak"] < tap_floor):
+                # RUNG C is an EXPLICIT override and ALWAYS WINS: it is never
+                # rotated away from. If the owner named a device and it carries
+                # nothing, the run reports the NAMED silent-device failure below
+                # rather than silently opening a different endpoint behind his
+                # back -- silent substitution is the defect this ladder removes.
+                if wanted and dev.get("rung") == "c":
+                    outcome = "explicit-flat"
+                    break
+                # WHO IS PLAYING **NOW** GOES NEXT (ver `signal_ranked_next`): a ordem
+                # estatica foi decidida no arranque, quando ele ainda nao tinha som a
+                # sair; aqui a pergunta e' feita no instante em que a janela plana
+                # acabou.
+                nxt = signal_ranked_next(candidates, attempt_no + 1)
+                if nxt is None:
+                    # RE-ENTER — the brief's "keep looking at candidates rather than
+                    # settling on the first non-dead one". Every candidate has now
+                    # been OPENED once and NONE produced a caption. If one of them
+                    # carried signal, commit to the loudest and keep streaming on it
+                    # rather than exiting on the owner with nothing. Appending to
+                    # `candidates` extends THIS for-loop (Python iterates lists by
+                    # index), so the re-entry reuses the same window machinery and
+                    # the same ledger; `retried` allows it at most once.
+                    if best_carried["dev"] is not None and not best_carried["retried"]:
+                        best_carried["retried"] = True
+                        fb = dict(best_carried["dev"])
+                        fb["rung"] = "fallback"
+                        fb["rung_why"] = (
+                            "loudest signal-carrying candidate, re-entered: the ladder "
+                            "opened every candidate and none produced a caption"
+                        )
+                        candidates.append(fb)
+                        nxt = fb
+                    else:
+                        outcome = "all-flat"
+                        break
+                # `from` is a Python keyword, so the payload is built as a dict.
                 emit(
-                    type="status",
-                    state="device-exhausted",
-                    reason="rotation-ceiling",
-                    rotations=rotations,
-                    of=len(candidates),
-                    run_peak=round(counters["peak"], 6),
-                    peak_floor=tap_floor,
-                    window_s=tap_window,
-                    detail=("%d rotations, %d captions, run peak %.6f < floor %.6f -- "
-                            "stopping instead of reopening an endpoint forever"
-                            % (rotations, counters["captions"],
-                               counters["peak"], tap_floor)),
+                    **{
+                        "type": "status",
+                        "state": "device-rotated",
+                        "reason": "flat",
+                        "from": dev["name"],
+                        "to": nxt["name"],
+                        "peak": round(device_peak["value"], 6),
+                        "run_peak": round(counters["peak"], 6),
+                        "window_s": tap_window,
+                        "peak_floor": tap_floor,
+                        "attempt": attempt_no + 1,
+                        "of": len(candidates),
+                    }
                 )
-                err(f"ROTATION_CEILING reached rotations={rotations} "
-                    f"captions={counters['captions']} "
-                    f"run_peak={counters['peak']:.6f} floor={tap_floor}")
-                outcome = "rotation-ceiling"
+                rotations += 1
+                # -- THE CEILING. THE BACKOFF IS A RATE, NOT A STOP. -------------------
+                # `MAX_ROTATIONS_WITHOUT_SIGNAL` (above) is why this exists: the ladder
+                # measured 2 188 flat rotations on this box in ten minutes, reopening an
+                # endpoint every time, and the shell restarting the worker on its way out
+                # reset the backoff so the cycle never ended. A run that has produced
+                # NOTHING stops here and says so, with the numbers that justify it; a run
+                # that is transcribing never reaches this line.
+                if (rotations >= MAX_ROTATIONS_WITHOUT_SIGNAL
+                        and counters["captions"] == 0
+                        and counters["peak"] < tap_floor):
+                    emit(
+                        type="status",
+                        state="device-exhausted",
+                        reason="rotation-ceiling",
+                        rotations=rotations,
+                        of=len(candidates),
+                        run_peak=round(counters["peak"], 6),
+                        peak_floor=tap_floor,
+                        window_s=tap_window,
+                        detail=("%d rotations, %d captions, run peak %.6f < floor %.6f -- "
+                                "stopping instead of reopening an endpoint forever"
+                                % (rotations, counters["captions"],
+                                   counters["peak"], tap_floor)),
+                    )
+                    err(f"ROTATION_CEILING reached rotations={rotations} "
+                        f"captions={counters['captions']} "
+                        f"run_peak={counters['peak']:.6f} floor={tap_floor}")
+                    outcome = "rotation-ceiling"
+                    break
+                # -- THE LADDER'S OWN BACKOFF (added 2026-10-12) -------------------------
+                # A `flat` rotation used to be IMMEDIATE: close one tap, open the next, serve
+                # out its window, rotate again. With nothing routed into any candidate -- the
+                # measured normal on this box, where every loopback reads digital silence --
+                # the whole ladder is burned at one endpoint per tap_window and the run dies
+                # device-exhausted, which the shell then restarts on its own 2 s/8 s/16 s/30 s
+                # backoff (app/webview/sotto_webview.py:8147). MEASURED in the owner's own
+                # log, this revision: 2 188 `reason=flat` rotations, 60 `device-exhausted`,
+                # 450 BRIDGE_RESTART. Each rotation is an IAudioClient::Initialize on a new
+                # endpoint, so the ladder is the OTHER half of the owner's freeze. One second,
+                # doubling to 8 s per rotation, so a machine with nothing to capture stops
+                # paying for it every few seconds. `stop.wait` (never time.sleep) so `stop`
+                # and --max-seconds still answer at once.
+                stop.wait(float(min(8.0, 2.0 ** (rotations - 1))))
+            # ── UM VEREDITO DE DISPOSITIVO NAO FECHA A SESSAO: PARQUEIA ───────
+            # (ver `park_session`, e o porque em `PARK_BACKOFF_BASE_S`.) A
+            # pergunta e' feita com o MESMO `decide_verdict` que fecha a corrida
+            # e com o MESMO `ran_but_silent` que o `done` publica, para que o
+            # parque e o veredito nao possam discordar sobre o que aconteceu.
+            if file_tap_path is not None:
+                # UM TAP DE FICHEIRO NAO E' UM DISPOSITIVO: nao ha' endpoint a
+                # reabrir, logo nao ha' parque -- a corrida fecha como sempre.
                 break
-            # -- THE LADDER'S OWN BACKOFF (added 2026-10-12) -------------------------
-            # A `flat` rotation used to be IMMEDIATE: close one tap, open the next, serve
-            # out its window, rotate again. With nothing routed into any candidate -- the
-            # measured normal on this box, where every loopback reads digital silence --
-            # the whole ladder is burned at one endpoint per tap_window and the run dies
-            # device-exhausted, which the shell then restarts on its own 2 s/8 s/16 s/30 s
-            # backoff (app/webview/sotto_webview.py:8147). MEASURED in the owner's own
-            # log, this revision: 2 188 `reason=flat` rotations, 60 `device-exhausted`,
-            # 450 BRIDGE_RESTART. Each rotation is an IAudioClient::Initialize on a new
-            # endpoint, so the ladder is the OTHER half of the owner's freeze. One second,
-            # doubling to 8 s per rotation, so a machine with nothing to capture stops
-            # paying for it every few seconds. `stop.wait` (never time.sleep) so `stop`
-            # and --max-seconds still answer at once.
-            stop.wait(float(min(8.0, 2.0 ** (rotations - 1))))
-        # NADA A CAPTURAR NAO E' MOTIVO PARA DESLIGAR (ver `hold_idle_slot`).
-        if should_hold(outcome, counters['captions'], stop.is_set()):
-            outcome = hold_idle_slot(
-                stop, emit,
-                lambda: [d['name'] for d in device_candidates(audio_cfg, wanted, target_pid=target_pid)],
-                outcome)
+            _verdict = decide_verdict(
+                dict(counters,
+                     vad_gated_chunks=asr.vad_gated_chunks,
+                     music_gated_chunks=asr.music_gated_chunks),
+                outcome,
+                bool(silent_ledger_rows(tap_ledger, TAP_SILENT_BLOCKS, tap_floor))
+                and not proved_alive["any"],
+            )
+            _why = park_reason(_verdict, outcome, counters["captions"],
+                               stop.is_set())
+            if _why is None:
+                break
+            _parked = park_session(
+                stop, park_probe, _why, emit=emit, note=err, floor=tap_floor,
+                should_end=lambda: bool(
+                    args.max_seconds and (time.time() - t_start) >= args.max_seconds),
+            )
+            if not _parked["resumed"]:
+                break
+            # A RETOMA. A escada comeca de novo com o censo de AGORA -- um fone
+            # pode ter entrado, e o candidato que falhou ha' cinco minutos pode
+            # ser o que toca. `rotations` e' POR PASSE: o ritmo entre passes e' o
+            # backoff do parque (15..300 s), nao o teto de rotacoes, e mante-lo
+            # faria o passe seguinte parar na primeira rotacao.
+            rotations = 0
+            outcome = "all-flat"
+            counters.pop("quiet", None)
+            counters.pop("silent", None)
+            err("PARK_RESUME_PASS reason=%s parked_s=%s attempts=%d "
+                "probe_blocks=%d"
+                % (_parked["why"], _parked["parked_s"], _parked["attempts"],
+                   _parked["blocks"]))
+            try:
+                _again = device_candidates(audio_cfg, wanted, target_pid=target_pid)
+            except Exception as exc:  # noqa: BLE001 -- fica a escada que ja' existe
+                err("PARK_RESUME_CENSUS_FAILED error=%r -- keeping the ladder"
+                    % (exc,))
+                _again = []
+            if _again:
+                candidates[:] = _again
+                device = candidates[0]
 
     except KeyboardInterrupt:
         pass
@@ -7601,11 +7873,7 @@ def main():
     # window (TAP_SILENT_BLOCKS callbacks) and stayed under the peak floor, with
     # nothing ever proved alive. Computed HERE and handed to the pure function,
     # which reads no state of its own.
-    silent_rows = [
-        r
-        for r in tap_ledger
-        if not r["settled"] and r["blocks"] >= TAP_SILENT_BLOCKS and r["peak"] < tap_floor
-    ]
+    silent_rows = silent_ledger_rows(tap_ledger, TAP_SILENT_BLOCKS, tap_floor)
     ran_but_silent = bool(silent_rows) and not proved_alive["any"]
 
     # ── the verdict: ONE pure function, so a gate can assert the table ───────

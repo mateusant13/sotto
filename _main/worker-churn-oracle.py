@@ -155,19 +155,21 @@ def judge(shell_mod, worker_mod, quiet=False):
           {'before': before, 'after': after,
            'phase': worker_mod.PROGRESS['phase']})
 
-    # -- arm 5: a guarda da ESPERA (so' quando nada podia ter sido capturado) --
-    sh = worker_mod.should_hold
+    # -- arm 5: a guarda do PARQUE (so' quando nada podia ter sido capturado) --
+    pr = worker_mod.park_reason
     guard = {
-        'exhausted-waiting': sh('rotation-ceiling', 0, False),
-        'all-flat-waiting': sh('all-flat', 0, False),
-        'captions-no-wait': sh('rotation-ceiling', 3, False),
-        'stop-no-wait': sh('rotation-ceiling', 0, True),
-        'healthy-no-wait': sh('streaming', 0, False),
+        'silent-device-parks': pr('silent-device', 'all-flat', 0, False),
+        'no-callback-blocks-parks': pr('no-callback-blocks', 'all-flat', 0, False),
+        'captions-zero-parks': pr('captions-zero', 'all-flat', 0, False),
+        'captions-no-park': pr('silent-device', 'all-flat', 3, False),
+        'stop-no-park': pr('silent-device', 'all-flat', 0, True),
+        'healthy-no-park': pr('captions-emitted', 'streaming', 0, False),
     }
-    check('5-hold-only-when-nothing-captured',
-          guard['exhausted-waiting'] and guard['all-flat-waiting']
-          and not guard['captions-no-wait'] and not guard['stop-no-wait']
-          and not guard['healthy-no-wait'], guard)
+    check('5-park-only-when-nothing-captured',
+          all(guard[k] for k in ('silent-device-parks', 'no-callback-blocks-parks',
+                                 'captions-zero-parks'))
+          and not guard['captions-no-park'] and not guard['stop-no-park']
+          and not guard['healthy-no-park'], guard)
 
     class FakeStop:
         def __init__(self, set_after=None):
@@ -182,9 +184,7 @@ def judge(shell_mod, worker_mod, quiet=False):
             self._set = True
 
         def wait(self, t):
-            # O RELOGIO TEM DE ANDAR: sem o `sleep` este laco gira a vapor e um
-            # mutante que desliga a comparacao do censo so' cai ao fim de
-            # `max_hold_s` -- o braco negativo ficava 600 s a girar (medido).
+            # O RELOGIO TEM DE ANDAR: sem o `sleep` este laco gira a vapor.
             time.sleep(min(t, 0.002))
             self.n += 1
             if self.set_after is not None and self.n >= self.set_after:
@@ -192,58 +192,96 @@ def judge(shell_mod, worker_mod, quiet=False):
                 return True
             return False
 
-    def run_hold(census, set_after=None, max_hold_s=1.0, poll_s=0.01):
+    def run_park(probes, should_end=None, set_after=None, probe_count=None):
+        """O laco do parque REAL, com uma sonda de fio e um tecto do chamador."""
         seen = []
         stop = FakeStop(set_after=set_after)
+        queue = list(probes)
         seq_before = worker_mod.PROGRESS['seq']
-        reason = worker_mod.hold_idle_slot(
-            stop, lambda **kw: seen.append(kw), census, 'rotation-ceiling',
-            max_hold_s=max_hold_s, poll_s=poll_s)
-        return reason, seen, stop, worker_mod.PROGRESS['seq'] - seq_before
 
-    # -- arm 6: um dispositivo a aparecer ACABA a espera ----------------------
-    calls = {'n': 0}
+        def probe(attempt):
+            if probe_count is not None:
+                probe_count['n'] += 1
+            return queue.pop(0) if queue else {'blocks': 0, 'peak': 0.0, 'captions': 0}
 
-    def growing():
-        calls['n'] += 1
-        return ['VoiceMeeter Input'] if calls['n'] < 2 else ['VoiceMeeter Input', 'Headset']
+        out = worker_mod.park_session(
+            stop, probe, 'silent-device',
+            emit=lambda **kw: seen.append(kw), note=lambda msg: None, floor=0.002,
+            backoff_base_s=0.01, backoff_max_s=0.02,
+            should_end=should_end or (lambda: False))
+        return out, seen, stop, worker_mod.PROGRESS['seq'] - seq_before
 
-    reason6, seen6, stop6, seq6 = run_hold(growing)
-    check('6-hold-ends-on-census-change',
-          reason6 == 'census-changed'
-          and [e.get('state') for e in seen6] == ['worker-idle', 'worker-idle-end']
-          and seen6[0].get('reason') == 'rotation-ceiling'
+    # -- arm 6: blocos a aparecer RETOMAM o parque ---------------------------
+    # O TECTO DO CHAMADOR E' OBRIGATORIO AQUI: um mutante que nunca retoma
+    # giraria para sempre (medido: o `--neg-arm` ficou 300 s a girar na arm 7
+    # antes de o tecto existir).
+    def _capped(limit):
+        box = {'n': 0}
+
+        def _end():
+            box['n'] += 1
+            return box['n'] > limit
+        return _end
+
+    out6, seen6, stop6, seq6 = run_park([
+        {'blocks': 60, 'peak': 0.0, 'captions': 0},        # silencio: nao retoma
+        {'blocks': 40, 'peak': 0.0625, 'captions': 0},     # sinal: RETOMA
+    ], should_end=_capped(25))
+    check('6-park-resumes-when-blocks-appear',
+          out6['resumed'] and out6['why'] == 'blocks' and out6['attempts'] == 2
+          and seen6[0].get('state') == 'worker-parked'
+          and any(e.get('state') == 'worker-resumed' for e in seen6)
           and seq6 >= 1,
-          {'reason': reason6, 'states': [e.get('state') for e in seen6], 'seq_moved': seq6})
+          {'why': out6['why'], 'attempts': out6['attempts'],
+           'states': [e.get('state') for e in seen6], 'seq_moved': seq6})
 
-    # -- arm 7: o dono pedir parada acaba a espera ----------------------------
-    reason7, seen7, stop7, _ = run_hold(lambda: ['A'], set_after=1)
-    check('7-hold-ends-on-stop', reason7 == 'stopped' and len(seen7) == 2,
-          {'reason': reason7, 'states': [e.get('state') for e in seen7]})
+    # -- arm 7: um dispositivo a APARECER acaba o parque ---------------------
+    out7, seen7, stop7, _ = run_park([
+        {'blocks': 0, 'peak': 0.0, 'captions': 0, 'census': ('VoiceMeeter Input',)},
+        {'blocks': 0, 'peak': 0.0, 'captions': 0,
+         'census': ('VoiceMeeter Input', 'Headset')},
+    ], should_end=_capped(25))
+    check('7-park-resumes-on-census-change',
+          out7['resumed'] and out7['why'] == 'census'
+          and out7['attempts'] == 2, out7)
 
-    # -- arm 8: a espera TEM FIM (nao e' um processo pendurado) --------------
-    reason8, seen8, stop8, _ = run_hold(lambda: ['A'], max_hold_s=0.05, poll_s=0.01)
-    end8 = seen8[-1] if seen8 else {}
-    check('8-hold-expires', reason8 == 'hold-expired' and end8.get('held_s', 0) >= 0.05,
-          {'reason': reason8, 'held_s': end8.get('held_s'), 'polls': stop8.n})
+    # -- arm 8: o parque NAO TEM TECTO -- o defeito que isto substitui -------
+    # A espera anterior (`hold_idle_slot`) fechava aos 600 s e devolvia a sessao
+    # a shell, que pagava outra carga. O parque espera enquanto o modelo viver:
+    # aqui ele e' conduzido por nove sondas de silencio e NAO fecha sozinho.
+    # O tecto conta SONDAGENS, nao chamadas: `_wait` pergunta pelo limite em cada
+    # fatia do batimento, e um contador de chamadas daria 2-3 tentativas (medido).
+    tries = {'n': 0}
+    out8, seen8, stop8, _ = run_park(
+        [{'blocks': 60, 'peak': 0.0, 'captions': 0}] * 10,
+        should_end=lambda: tries['n'] >= 9, probe_count=tries)
+    src8 = io.open(getattr(worker_mod, '__file__', WORKER),
+                   encoding='utf-8', newline='').read()
+    check('8-park-has-no-time-ceiling',
+          out8['attempts'] >= 9 and not out8['resumed']
+          and out8['why'] == 'limited'
+          and 'IDLE_HOLD_MAX_S' not in src8 and 'hold_idle_slot(' not in src8,
+          {'attempts': out8['attempts'], 'why': out8['why'],
+           'ceiling_deleted': 'IDLE_HOLD_MAX_S' not in src8})
 
-    # -- arm 9: a espera MANTEM O BATIMENTO A ANDAR --------------------------
-    check('9-hold-keeps-the-beat-moving',
-          worker_mod.PROGRESS['phase'] == 'idle-wait',
+    # -- arm 9: o parque MANTEM O BATIMENTO A ANDAR --------------------------
+    check('9-park-keeps-the-beat-moving',
+          worker_mod.PROGRESS['phase'] == 'parked',
           {'phase': worker_mod.PROGRESS['phase']})
 
-    # -- arm 10: a espera esta' LIGADA ao caminho do teto (nao so' escrita) --
+    # -- arm 10: o parque esta' LIGADO ao caminho do veredito ----------------
     # O FICHEIRO DO MODULO CARREGADO, nao o do repo: o `--neg-arm` corre sobre uma
     # COPIA mutada, e ler o original deixava o mutante sobreviver (medido).
-    src = io.open(getattr(worker_mod, '__file__', WORKER), encoding='utf-8', newline='').read()
-    call = "if should_hold(outcome, counters['captions'], stop.is_set()):"
-    i_call = src.find(call)
-    i_hold = src.find('outcome = hold_idle_slot(', i_call + 1) if i_call >= 0 else -1
+    src = io.open(getattr(worker_mod, '__file__', WORKER),
+                  encoding='utf-8', newline='').read()
+    gate = '            _why = park_reason(_verdict, outcome, counters["captions"],'
+    i_gate = src.find(gate)
+    i_park = src.find('            _parked = park_session(', i_gate + 1) if i_gate >= 0 else -1
     # o `except` que fecha o `try` do run: a chamada tem de estar DENTRO dele
-    i_except = src.find('    except KeyboardInterrupt:', i_call + 1) if i_call >= 0 else -1
-    wired = (i_call > 0 and i_hold > i_call and 0 < i_except and i_call < i_except)
-    check('10-hold-is-wired-into-the-ceiling-path', wired,
-          {'call_at': i_call, 'hold_at': i_hold, 'except_at': i_except})
+    i_except = src.find('    except KeyboardInterrupt:', i_gate + 1) if i_gate >= 0 else -1
+    wired = (i_gate > 0 and i_park > i_gate and 0 < i_except and i_gate < i_except)
+    check('10-park-is-wired-into-the-device-verdict-path', wired,
+          {'gate_at': i_gate, 'park_at': i_park, 'except_at': i_except})
 
     ok = all(c['ok'] for c in checks)
     return checks, ok
@@ -268,17 +306,28 @@ def mutate_shell(dst):
 
 
 def mutate_worker(dst):
-    """Tres mutacoes no worker: o `progress` parado (arm 4), a guarda da espera
-    desligada (arm 5) e o censo a nunca diferir (arm 6)."""
+    """Quatro mutacoes no worker: o `progress` parado (arm 4), o parque desligado
+    (arm 5), o censo a nunca diferir (arm 7) e o portao do parque ARRANCADO do
+    caminho do veredito (arm 10)."""
     src = io.open(WORKER, encoding='utf-8', newline='').read()
     out = src.replace("        PROGRESS['seq'] += 1\r\n", "", 1)
     assert out != src, 'a ancora do progress nao existe'
-    src, out = out, out.replace("    return outcome in ('rotation-ceiling', 'all-flat', 'open-failed', 'explicit-flat')", '    return False', 1)
-    assert out != src, 'a ancora do should_hold nao existe'
-    src, out = out, out.replace("        if base is not None and now is not None and now != base:", '        if False:', 1)
+    src, out = out, out.replace("    if verdict in PARK_DEVICE_VERDICTS:", '    if False:', 1)
+    assert out != src, 'a ancora do parque nao existe'
+    # O portao le' DUAS listas; matar so' uma deixava a arm 5 verde (medido).
+    src, out = out, out.replace("    if outcome in PARK_DEVICE_OUTCOMES:", '    if False:', 1)
+    assert out != src, 'a ancora do outcome do parque nao existe'
+    src, out = out, out.replace(
+        "            elif census is not None and census != base_census:",
+        '            elif False:', 1)
     assert out != src, 'a ancora do censo nao existe'
-    src, out = out, out.replace("        if should_hold(outcome, counters['captions'], stop.is_set()):", '        if False:', 1)
-    assert out != src, 'a ancora da fiacao da espera nao existe'
+    swapped, n = re.subn(
+        r"(?m)^            _why = park_reason\(_verdict, outcome, counters\[\"captions\"\],\r?\n"
+        r" +stop\.is_set\(\)\)",
+        "            _why = None  # mutante: o portao do parque foi arrancado",
+        out, count=1)
+    assert n == 1, 'a ancora do portao do parque nao existe'
+    out = swapped
     io.open(dst, 'w', encoding='utf-8', newline='').write(out)
 
 
@@ -302,14 +351,14 @@ def main(argv=None):
         red = [c['arm'] for c in checks if not c['ok']]
         caught = ('1-floor-on-clean-exit' in red and '4-worker-progress-moves' in red
                   and '3-reader-counts-the-beat' in red
-                  and '5-hold-only-when-nothing-captured' in red
-                  and '6-hold-ends-on-census-change' in red
-                  and '10-hold-is-wired-into-the-ceiling-path' in red)
+                  and '5-park-only-when-nothing-captured' in red
+                  and '7-park-resumes-on-census-change' in red
+                  and '10-park-is-wired-into-the-device-verdict-path' in red)
         print(f'NEG-ARM arms={len(checks)} caidas={red}')
         for c in checks:
             print(f"  {'RED ' if not c['ok'] else 'green'} {c['arm']} {c['detail']}")
         if caught:
-            print('NEG-ARM: PASS (as seis curas mutadas foram apanhadas)')
+            print('NEG-ARM: PASS (as quatro curas mutadas foram apanhadas)')
             return 1
         print('NEG-ARM: FAIL -- o mutante sobreviveu a um braco')
         return 2

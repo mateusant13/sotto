@@ -176,12 +176,12 @@ def run_checks(mod, tag):
           'os.environ.get("SOTTO_TARGET_PID")' in text)
     check("CHK-8 device_candidates takes the pid as an optional",
           "def device_candidates(cfg_audio=None, wanted=None, target_pid=None):" in text)
-    # EVERY ladder entry, not a pinned count of two: the third entry (the idle
-    # hold's live-meter read, `hold_idle_slot`) was added 2026-11-04 and a check
-    # that counts to 2 turns a NEW caller into a FAILURE instead of asking the
-    # question that matters -- does every read of the ladder carry the owner's
-    # pid? The floor of 2 keeps the check able to say NO when the ladder loses
-    # a site altogether.
+    # EVERY ladder entry, not a pinned count of two: the park's own reopens
+    # (`park_probe` and the resume, `park_session`) replaced the idle hold's
+    # single read 2026-11-04, and a check that counts to 2 turns a NEW caller
+    # into a FAILURE instead of asking the question that matters -- does every
+    # read of the ladder carry the owner's pid? The floor of 2 keeps the check
+    # able to say NO when the ladder loses a site altogether.
     ladder_sites = [ln for ln in lines if "device_candidates(audio_cfg, wanted" in ln]
     blind = [ln.strip()[:60] for ln in ladder_sites if "target_pid=target_pid" not in ln]
     check("CHK-8 the pid reaches every ladder entry",
