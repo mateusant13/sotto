@@ -8302,7 +8302,10 @@ class SottoHost:
         audio_ms = (int(time.time() * 1000.0) - int(tap)) if tap else None
         queue_ms = int((time.time() - sent_at) * 1000) if sent_at else None
         if audio_ms is not None:
-            shell._caption_lag_note(audio_ms, queue_ms=queue_ms)
+            shell._caption_lag_note(
+                audio_ms, queue_ms=queue_ms,
+                kind='final' if getattr(shell, '_last_push_final', False)
+                else 'partial')
         log(f'CAPTION_APPLIED text={json.dumps(text)} '
             f'count={len(self._shell.caption_log)}'
             f' kind={"final" if getattr(shell, "_last_push_final", False) else "partial"}'
@@ -12638,7 +12641,7 @@ class SottoShell:
     #: "o ecra esta' atrasado" de "o painel estava a esperar, de proposito".
     CAPTION_HOLD_BAND_MS = (1490, 1520)
 
-    def _caption_lag_note(self, audio_ms, queue_ms=0):
+    def _caption_lag_note(self, audio_ms, queue_ms=0, kind='partial'):
         """Guarda a idade de UMA legenda pintada e publica o resumo da janela.
 
         O resumo existe porque uma linha por legenda responde "esta linha estava
@@ -12647,21 +12650,41 @@ class SottoShell:
         `CAPTION_LAG_STATS n=.. p50=.. p90=.. max=.. over=..` com o orcamento
         ao lado, que e' o que faz um log passar a gritar sozinho.
         """
+        # A JANELA LEVA O SEGURA JUNTO (medido 2026-11-04). `over` e `held` eram
+        # CONTADORES DE VIDA publicados na MESMA linha de uma janela de 200
+        # amostras: a sessao do dono lia `n=200 p50=182 p90=1645 max=23844
+        # over=162 held=119`, que se le' como "81 % estouraram" quando 162 era
+        # o acumulado desde o arranque. Serie e acumulado na mesma frase e' o
+        # mesmo defeito de instrumento que ja' custou dois numeros errados aqui.
+        # `over`/`held` ficam (ha' quem os leia); a JANELA publica `over_win`
+        # e `held_win`, que sao os que respondem "como esta' agora".
         low, high = self.CAPTION_HOLD_BAND_MS
-        if queue_ms is not None and low <= int(queue_ms) <= high:
+        held = queue_ms is not None and low <= int(queue_ms) <= high
+        if held:
             self._caption_hold = int(getattr(self, '_caption_hold', 0)) + 1
-        if audio_ms <= self.CAPTION_BUDGET_MS:
-            pass
-        else:
+        # SO' A LINHA AO VIVO JULGA O ORCAMENTO (medido 2026-11-04). Uma linha
+        # `final` descreve audio que acabou segundos antes por construcao: a
+        # sessao do dono (608 pinturas) tinha `p90=14140 max=166615` e **41 %**
+        # de estouros, mas as amostras grandes eram TODAS `kind=final`
+        # (`CAPTION_APPLIED text="Can you hear me? Mmm." kind=final audio_ms=166615`)
+        # e a via viva mede `p50=581 ms`. Contar as duas na mesma regua e' o
+        # mesmo erro que publicar acumulado ao lado de serie. O numero continua
+        # no log (`kind=`), o veredicto nao o conta.
+        live = (kind == 'partial')
+        blown = live and audio_ms > self.CAPTION_BUDGET_MS
+        if blown:
             self._caption_lag_blown = int(getattr(self, '_caption_lag_blown', 0)) + 1
         ages = getattr(self, '_caption_ages', None)
         if ages is None:
             ages = self._caption_ages = []
-        ages.append(int(audio_ms))
+        ages.append((int(audio_ms), bool(held), bool(blown), live))
         del ages[:-200]
         if len(ages) % 25 == 0:
-            ordered = sorted(ages)
+            ordered = sorted(a for a, _h, _b, _l in ages)
             n = len(ordered)
+            over_win = sum(1 for _a, _h, b, _l in ages if b)
+            held_win = sum(1 for _a, h, _b, _l in ages if h)
+            live_win = sum(1 for _a, _h, _b, lv in ages if lv)
 
             def pct(p):
                 return ordered[min(n - 1, int(round(p * (n - 1))))]
@@ -12669,6 +12692,7 @@ class SottoShell:
             log(f'CAPTION_LAG_STATS n={n} p50={pct(0.5)} p90={pct(0.9)} '
                 f'max={ordered[-1]} over={self._caption_lag_blown} '
                 f'held={int(getattr(self, "_caption_hold", 0))} '
+                f'over_win={over_win} held_win={held_win} live_win={live_win} '
                 f'budget_ms={self.CAPTION_BUDGET_MS}')
 
     def _drain_caption_pending(self):
@@ -12735,7 +12759,10 @@ class SottoShell:
             _tap = getattr(self, '_caption_pending_tap_ms', None)
             if _tap:
                 audio_ms = int(time.time() * 1000.0) - int(_tap)
-                self._caption_lag_note(audio_ms, queue_ms=age_ms)
+                self._caption_lag_note(
+                    audio_ms, queue_ms=age_ms,
+                    kind='final' if getattr(self, '_last_push_final', False)
+                    else 'partial')
                 log(f'CAPTION_PAINT_LAG audio_ms={audio_ms} queue_ms={age_ms} '
                     f'budget_ms={self.CAPTION_BUDGET_MS} '
                     f'over={str(audio_ms > self.CAPTION_BUDGET_MS).lower()} '
