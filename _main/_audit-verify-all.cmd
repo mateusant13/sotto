@@ -1220,6 +1220,30 @@ if exist _main\caption-style-oracle.py (
 call :step always red-as-expected-caption-style 1 "_main\caption-style-oracle.py;app\panel\panel.html;app\webview\sotto_webview.py" "%OUT%\caption-style-neg.log" python _main\caption-style-oracle.py --neg-arm
 call :expectred red-as-expected-caption-style !STEP_RC! "%OUT%\caption-style-neg.log" "NEG-ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-caption-style MISSING "%OUT%\caption-style-neg.log" "NEG-ARM VERDICT: PASS" )
+
+REM ---- UMA LINHA PROVADA NAO ESPERA O PRAZO (ordem do dono, 2026-11-04) --------
+REM METADE DA LAGEM MEDIDA ERA UM PRAZO, NAO TRABALHO: o painel re-armava
+REM `COMMIT_MAX_HOLD_MS` (1500 ms) em cada fragmento, e 37 % das linhas do proprio log
+REM do dono fechavam DENTRO de [1400,1520] -- o prazo era o relogio. O `stable:true`
+REM do worker prova que as palavras estao inteiras, entao o motor fecha na chegada e o
+REM prazo passa a ser SO a carencia do que ninguem provou (medido: 610 fragmentos
+REM `final:true stable:false` no mesmo log).
+REM O QUE ESTE PORTAO MEDE, e o que ele NAO deixa dizer: as DUAS pernas --
+REM `push -> CAPTION_PROVISIONAL_PAINT` (o OLHO) e `paint -> commit` (a METRICA).
+REM A perna do olho e 0 ms nas DUAS pontas: o pixel ja era servido antes do prazo
+REM expirar, logo a cura compra tempo de historico e honestidade de metrica, nao o
+REM olho -- dito no proprio log do passo, para ninguem ter de deduzir.
+REM A POPULACAO E BIMODAL: um p50 sobre ela fala da janela, nao das linhas, entao o
+REM veredicto e sobre os DOIS MODOS com as suas TAXAS, o p95 e a fracao fora do
+REM orcamento -- nunca sobre um p50.
+if exist _main\panel-commit-stable-oracle.py (
+call :step always panel-commit-stable 0 "_main\panel-commit-stable-oracle.py;_main\panel-commit-stable-replay.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;_main\webview-run.log" "%OUT%\panel-commit-stable.log" python _main\panel-commit-stable-oracle.py
+call :record panel-commit-stable !STEP_RC!
+) else ( call :record panel-commit-stable MISSING )
+if exist _main\panel-commit-stable-oracle.py (
+call :step always red-as-expected-panel-commit-stable 1 "_main\panel-commit-stable-oracle.py;_main\panel-commit-stable-replay.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;_main\webview-run.log" "%OUT%\panel-commit-stable-neg.log" python _main\panel-commit-stable-oracle.py --neg-arm
+call :expectred red-as-expected-panel-commit-stable !STEP_RC! "%OUT%\panel-commit-stable-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-panel-commit-stable MISSING "%OUT%\panel-commit-stable-neg.log" "NEG-ARM: PASS" )
 if exist _main\hotkey-observed-oracle.py (
 call :step always hotkey-observed 0 "_main\hotkey-observed-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-observed.log" python _main\hotkey-observed-oracle.py
 call :record hotkey-observed !STEP_RC!

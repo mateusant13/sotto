@@ -126,26 +126,38 @@ const INTRO_MARKERS = new Set([
 ]);
 
 /**
- * How long a provisional tail may wait for a second opinion before the
- * RENDERER gives up on it and commits it anyway.
+ * THE FALLBACK CEILING — how long a tail may wait for a second opinion when
+ * NOBODY HAS PROVEN IT, before the renderer commits it anyway.
  *
- * This is a DEADLINE, not a condition evaluated inside `ingest`, and that
- * difference is the whole point. Measured 2026-10-06, before this change,
- * on a speaker who paused 11.2 s — so BOTH the audio clock and the wall clock
- * advanced, which is the real world and not the harness's synthetic cadence:
+ * THIS IS NOT THE PRIMARY PATH ANY MORE (owner order, 2026-11-04). It used to
+ * be: measured on the owner's own log, session 2026-11-04 12:22:26-12:51:39
+ * (216 `CAPTION_IN`, 169 matched commits), `push -> CAPTION_APPLIED` had
+ * p50 = 1509 ms and 51.5 % of the lines landed inside [1490,1520] — the
+ * constant, to the millisecond. The fragments in that session arrive p50
+ * 4150 ms apart, so the timer was not a safety net, it was the clock.
  *
- *   reasons : ["audio-gap 11.20s","hold-timeout"]
- *   lines   : ["Going along slush country.","Roads are closed tonight."]
+ * WHAT REPLACED IT. The worker stamps `stable:true` on a partial whose words
+ * it has PROVEN whole (`worker/sotto_worker.py:_event`, `proven_text`) — 2768
+ * of the 2841 fragments of the 2026-11-04 09:58 session, 177 of the 216 of the
+ * measured one. There is nothing left for a second hypothesis to confirm, so
+ * `ingest` now commits on that stamp and the tail never waits (see THE WORKER
+ * PROVED THE TEXT, below).
  *
- * The in-ingest check fired on the very next fragment and committed the
- * first words after the pause ALONE, before a second hypothesis could ever
- * confirm them. That is the fragment salad LocalAgreement-2 exists to end,
- * reintroduced through its own escape hatch.
+ * WHO STILL WAITS — the named population, counted on the same log:
+ *   - `final:true stable:false` fragments: 610. The worker closed the line but
+ *     never proved the words, so the hold is doing its job.
+ *   - producers that stamp NO `stable` at all: the player channel
+ *     (`external:player`), the batch pass, and any worker build from before
+ *     2026-10-30. `stable` absent reads as "no promise" (stable-words.js), so
+ *     these are the only lines this constant can still be the clock for.
  *
- * A hold can only be judged honestly by something that is WAITING. Inside
- * `ingest` a fragment has provably just arrived, so the stream has provably
- * not stopped and there is nothing to escape. The deadline belongs to the
- * renderer's timer; see `armHoldTimer` in panel.js.
+ * WHY IT IS STILL A DEADLINE AND NOT A CHECK INSIDE `ingest`. Measured
+ * 2026-10-06, on a speaker who paused 11.2 s, an in-ingest check fired on the
+ * very next fragment and committed the words after the pause ALONE — before a
+ * second hypothesis could confirm them. A hold can only be judged honestly by
+ * something that is WAITING; inside `ingest` a fragment has provably just
+ * arrived. The deadline belongs to the renderer's timer (`armHoldTimer`), and
+ * the renderer now arms it ONLY while an engine still holds a tail.
  */
 const COMMIT_MAX_HOLD_MS = 1500;
 
@@ -601,6 +613,16 @@ function createEngine(options) {
    *                         10 of 10 lines the owner read as "the live caption"
    *                         carried `reason=status-change`.
    *
+   * `stable` (2026-11-04) joins that list BELOW the worker's vote, and only for
+   * the case where the worker said nothing about the route: a `stable:true`
+   * fragment closes the panel's buffer, but it is a promise about the WORDS, not
+   * a statement that the LINE ended. So a `stable` commit of a producer that
+   * stamps no `final` MUST NOT manufacture a `final` route — that would be a new
+   * way for the live caption to reach the transcript, which is the defect the
+   * `routeSourceFor` block under this doc exists to keep loud. When the worker
+   * DOES vote (`final:false`, the live stream), the first two branches win and
+   * the route is `provisional-draft` whatever the reason.
+   *
    * The worker's vote WINS when it is present (both `final:true` and
    * `final:false`), so once `worker/sotto_worker.py:_event` stamps the flag the
    * panel follows it exactly. See `_main/panel-live-vs-history-probe.js`.
@@ -625,12 +647,17 @@ function createEngine(options) {
    * it is stamped `routeSource:'fallback'`, never the same `'worker-stamped'` a
    * genuine worker vote produces.
    */
-  const PANEL_DEADLINE_REASON = /^(hold-timeout|status-change|flush)/;
+  // THE REASONS THAT ARE THE PANEL'S OWN CLOSE, and none of them may manufacture a
+  // `final` route. Named for what they ARE since 2026-11-04: `hold-timeout` and
+  // `stable` are two halves of the old deadline's job (one gives up on a tail, the
+  // other closes a line the worker proved), and renaming the constant is the
+  // cheapest way to stop the code from claiming a DEADLINE it no longer is.
+  const PANEL_CLOSED_REASON = /^(hold-timeout|status-change|flush|stable)/;
 
   function routeFor(reason) {
     if (bufferFinal) return 'final';
     if (bufferSawFinal) return 'provisional-draft';
-    return PANEL_DEADLINE_REASON.test(String(reason == null ? '' : reason))
+    return PANEL_CLOSED_REASON.test(String(reason == null ? '' : reason))
       ? 'provisional-draft'
       : 'final';
   }
@@ -1059,9 +1086,31 @@ function createEngine(options) {
     // marker, so the marker has to be painted by the same code that decides
     // what the tail shows.
     //
-    // The tail is NOT lost either way: `provisional` keeps every word and
-    // `commit` hands the whole buffer to the line.
-    onProvisional(committed, provisional);
+    // THE WORKER PROVED THE TEXT — SO THE PANEL DOES NOT WAIT (owner order,
+    // 2026-11-04: "the deadline must not be the reason a stable line waits").
+    //
+    // `meta.stable === true` is the worker's OWN promise that every word in this
+    // text is proven whole (`worker/sotto_worker.py:_event` -> `proven_text`;
+    // read by `stable-words.js`, which is why the panel already paints it
+    // untrimmed). There is nothing for a second hypothesis to confirm, so the
+    // only thing the renderer's 1500 ms timer could still do is sit on a finished
+    // line. MEASURED on the owner's log, session 2026-11-04 12:22:26-12:51:39:
+    // `push -> CAPTION_APPLIED` p50 = 1509 ms with 51.5 % of lines inside
+    // [1490,1520] — the constant, i.e. the timer WAS the clock, because the
+    // fragments in that session arrive p50 4150 ms apart.
+    //
+    // THE PAINT STAYS EXACTLY WHERE IT WAS: `onProvisional` runs FIRST, so the
+    // line is still painted by the same code that paints every other line, and
+    // `commit` then retires that row and hands the same text to `addCaption`.
+    // The two legs are separable in the log (`CAPTION_PROVISIONAL_PAINT` then
+    // `CAPTION_APPLIED`) precisely so nobody can claim the EYE got faster when
+    // only the metric did — see `_main/panel-commit-stable-oracle.py`.
+    //
+    // THE TIMER IS NOT DELETED: it is the ceiling for fragments that never arrive
+    // stable (named in the `COMMIT_MAX_HOLD_MS` doc above), and the panel arms it
+    // only while an engine still holds a tail.
+    onProvisional(committed, provisional, lineStart);
+    if (meta && meta.stable === true) commit('stable');
 
   }
 
@@ -1071,13 +1120,15 @@ function createEngine(options) {
   }
 
   /**
-   * Give up on the held tail and commit it.
+   * Give up on the held tail and commit it — THE FALLBACK PATH.
    *
    * Called by the renderer's timer when COMMIT_MAX_HOLD_MS has passed with no
-   * new fragment — the ONLY situation in which abandoning the hold is
-   * correct. Returns the committed line, or '' when nothing was held, so a
-   * timer that fires after the line was already closed by a pause commits
-   * nothing and renders nothing.
+   * new fragment. Since 2026-11-04 this only ever fires for a tail the worker
+   * never proved (`stable` absent or false): a `stable:true` fragment is
+   * committed by `ingest` the moment it arrives, so its engine holds nothing and
+   * the panel does not arm the timer for it. Returns the committed line, or ''
+   * when nothing was held, so a timer that fires after the line was already
+   * closed commits nothing and renders nothing.
    */
   function expireHold() {
     if (!provisional.length) return '';

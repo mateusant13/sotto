@@ -576,6 +576,72 @@ const provisionalRows = new Map();
 const engines = new Map();
 
 /**
+ * THE MISSING INSTRUMENT: WHEN THE EYE IS SERVED, not only when the line is
+ * committed (owner order, 2026-11-04).
+ *
+ * `CAPTION_APPLIED` — the shell's row — measures the COMMIT. But the provisional
+ * text is painted at `renderProvisional`, and NOTHING logged that instant: the
+ * whole 1509 ms leg the audit measured sat between a paint the owner was already
+ * reading and a commit that changed no pixel. Optimising that leg is only honest
+ * if the paint is measured beside it, so this emits ONE row per paint, with the
+ * SAME correlation the commit path uses — the panel's own row identity
+ * (`rowIdentity(source, start)`, what `addCaption` keys the row by) — plus the
+ * visible text, which is the field `CAPTION_APPLIED` carries.
+ *
+ * THE SINK IS INJECTED, NEVER ASSUMED. The page has no log channel of its own
+ * (`window.sotto` exposes `captionApplied`/`statusApplied` and no generic
+ * `log`), so this cannot invent a shell kind: it appends to a bounded in-memory
+ * ring (`window.SottoPaintLog`, read by DOM probes) and forwards the same row to
+ * `window.SottoPaintSink(row)` when one is installed. The oracle installs one
+ * and measures both legs (`_main/panel-commit-stable-oracle.py`); a shell that
+ * adds a `paint-row` kind can install one too, and the row's shape is already
+ * the log's (`CAPTION_PROVISIONAL_PAINT n=… at=… id=… src=… conf=… prov=…
+ * text=…`).
+ */
+const PAINT_ROWS_MAX = 64;
+const paintRows = [];
+let paintSequence = 0;
+
+function noteProvisionalPaint(source, start, confirmed, provisional, text) {
+  paintSequence += 1;
+  const at = Date.now();
+  const row = {
+    tag: 'CAPTION_PROVISIONAL_PAINT',
+    n: paintSequence,
+    at,
+    // THE SAME CORRELATION THE COMMIT ROW USES: `addCaption` finds its row by
+    // this identity, and `recordHistory` writes the same `start` to the file.
+    id: rowIdentity(source, start),
+    src: source,
+    start: start === undefined ? null : start,
+    conf: confirmed,
+    prov: provisional,
+    text,
+  };
+  paintRows.push(row);
+  if (paintRows.length > PAINT_ROWS_MAX) paintRows.shift();
+  if (typeof window.SottoPaintSink === 'function') {
+    try { window.SottoPaintSink(row); } catch (err) { /* a probe must not break the paint */ }
+  }
+  return row;
+}
+
+/** The ring, newest last. Read by probes; never by the renderer. */
+window.SottoPaintLog = function () { return paintRows.slice(); };
+/** The rows' LOG LINE, exactly as a shell would write it. */
+window.SottoPaintLine = function (row) {
+  const r = row || paintRows[paintRows.length - 1];
+  if (!r) return '';
+  return 'CAPTION_PROVISIONAL_PAINT n=' + r.n
+    + ' at=' + r.at
+    + ' id=' + JSON.stringify(r.id)
+    + ' src=' + (r.src === null ? '-' : String(r.src))
+    + ' conf=' + r.conf
+    + ' prov=' + r.prov
+    + ' text=' + JSON.stringify(r.text);
+};
+
+/**
  * `pad3` — the mockup's own width for the line ordinal.
  *
  * KEPT even though nothing paints the ordinal any more: it is the FORMAT the
@@ -994,19 +1060,39 @@ function engineFor(source) {
       retireProvisional(key);
       addCaption(text, reason, meta);
     },
-    onProvisional: (committed, provisional) => renderProvisional(committed, provisional, key),
+    onProvisional: (committed, provisional, start) => renderProvisional(committed, provisional, key, start),
   });
   engines.set(key, StableWords.wrap(engine));
   return engine;
 }
 
 /**
- * Restarted on every caption, and RE-ARMED while ANY engine is still holding a
- * PROVISIONAL line: the deadline no longer writes anything to the transcript
- * (M6 — see `expireHold`), so a timer that fired on a live provisional line
- * must go back to waiting rather than let the line be abandoned. With one engine
- * per source (STEP 4) the question is asked of EVERY engine, because one app's
- * stalled tail is still a reason for the deadline to stay armed.
+ * THE FALLBACK DEADLINE — armed ONLY while an engine is still holding a tail the
+ * worker never proved (owner order, 2026-11-04).
+ *
+ * UNTIL 2026-11-04 this was armed on every caption, unconditionally, and it was
+ * the PRIMARY path: measured on the owner's own log (session 12:22:26-12:51:39,
+ * 216 `CAPTION_IN`), a line committed p50 1509 ms after its fragment arrived and
+ * 51.5 % of them inside [1490,1520] — the constant itself, because fragments in
+ * that session are p50 4150 ms apart. Every one of those fragments carried
+ * `stable:true`, i.e. the worker had already proved every word: the panel was
+ * waiting for a second opinion that could never differ.
+ *
+ * `engine.ingest` now commits such a fragment on arrival, so its engine holds
+ * NOTHING and arming the timer for it would buy nothing but a wake-up 1500 ms
+ * later. `armHoldIfHeld` is the whole rule: arm the deadline only when there is
+ * something to give up on. The population that still lands here is named in the
+ * `COMMIT_MAX_HOLD_MS` doc in `caption-formulation.js`: `final:true stable:false`
+ * fragments (610 of them in the same log), the player channel
+ * (`external:player`), the batch pass, and any worker build predating the
+ * `stable` stamp.
+ *
+ * RE-ARMED while ANY engine still holds a PROVISIONAL line: the deadline no
+ * longer writes anything to the transcript (M6 — see `expireHold`), so a timer
+ * that fired on a live provisional line must go back to waiting rather than let
+ * the line be abandoned. With one engine per source (STEP 4) the question is
+ * asked of EVERY engine, because one app's stalled tail is still a reason for
+ * the deadline to stay armed.
  *
  * F6 — THE GUARD THAT COULD NOT BE TRUE. This read
  * `engine.state().provisionalRoute`, a field `state()` never returned (its
@@ -1032,6 +1118,29 @@ function armHoldTimer() {
     }
     if (held) armHoldTimer();
   }, window.SottoFormulation.COMMIT_MAX_HOLD_MS);
+}
+
+/** Is ANY engine still holding a tail the worker has not proved? */
+function anyTailHeld() {
+  for (const engine of engines.values()) {
+    if (engine.state().provisional.length) return true;
+  }
+  return false;
+}
+
+/**
+ * Arm the deadline IF, and only if, a fragment left a tail behind.
+ *
+ * Called AFTER `ingest`, which is the point where the answer exists: a
+ * `stable:true` fragment commits inside `ingest` and leaves nothing, a fragment
+ * without the promise leaves a tail that the deadline is for. A previous timer is
+ * cleared either way — the deadline always measures from the newest fragment.
+ */
+function armHoldIfHeld() {
+  clearTimeout(holdTimer);
+  holdTimer = null;
+  if (!anyTailHeld()) return;
+  armHoldTimer();
 }
 
 /**
@@ -1105,7 +1214,7 @@ function syncCaptionBox() {
  * for source A therefore cannot find, repaint or retire source B's open row, which
  * is the observable the per-source ENGINES exist for.
  */
-function renderProvisional(committed, provisional, source) {
+function renderProvisional(committed, provisional, source, start) {
   if (!dom.list) return;
   const key = source === null || source === undefined ? null : String(source);
   const confWords = Array.isArray(committed) ? committed.map(t => t.w) : [];
@@ -1252,6 +1361,17 @@ function renderProvisional(committed, provisional, source) {
   // watching. Following only on creation (above) left the newest words below the
   // fold for the whole interesting part of the line (measured 2026-10-07).
   followNewestLine();
+  // ── THE PIXEL IS SERVED HERE, AND THIS IS THE ROW THAT SAYS SO ────────────
+  // Emitted AFTER the words, the mark and the scroll: this is the instant the
+  // text exists on screen and is what the owner's eye has. One row per paint,
+  // carrying the
+  // same identity the commit path keys the row by (`rowIdentity(source, start)`),
+  // so `push -> paint` and `paint -> commit` are two numbers that can be read
+  // apart instead of one number that can only be guessed. See
+  // `noteProvisionalPaint` and `_main/panel-commit-stable-oracle.py`.
+  noteProvisionalPaint(key, start,
+    confWords.length, shownProv.length,
+    (confWords.join(' ') + ' ' + shownProv.join(' ')).trim());
   // ── AND THE FROZEN SKIN, IF THIS THEME HAS ONE (owner, 2026-10-08) ────────
   // The same two word arrays, painted into the MOCKUP'S OWN caption plate instead
   // of ours (`skin-host.js`). `panel.js` stays the single source of the text: the
@@ -1294,15 +1414,19 @@ function wireCaptions() {
   // `meta` carries the audio seconds. They are what let the engine tell a NEW
   // word from a RE-READ one, so they are not optional decoration.
   bridge.onCaption(({ text, meta }) => {
-    // Any fragment at all means the stream is alive, so the previous deadline
-    // is void before the engine decides anything.
-    armHoldTimer();
     // WHICH APP THIS IS (STEP 4). The worker stamps `source` on every caption
     // event (`proc:<pid>` / `device:<name>` / `file:<name>`) and OMITS it when
     // there is none. A non-empty string is the engine key; anything else is the
     // no-source engine — the same fail-closed reading `addCaption` uses for the row.
     const source = meta && typeof meta.source === 'string' && meta.source ? meta.source : null;
     engineFor(source).ingest(String(text || '').trim(), meta || {});
+    // THE DEADLINE IS A FALLBACK, SO IT IS ARMED AFTER THE DECISION, NOT BEFORE
+    // IT (2026-11-04). It used to be armed here unconditionally — "any fragment
+    // at all means the stream is alive" — which made it the clock for lines the
+    // worker had already proven (measured p50 1509 ms). `ingest` commits a
+    // `stable:true` fragment, so there is nothing left to expire; this arms only
+    // when a tail really is held.
+    armHoldIfHeld();
   });
 }
 
@@ -1332,10 +1456,12 @@ function wireExternalCaptions() {
     // the PLAYER while the worker was quiet never got a deadline of its own --
     // and since the worker's status change no longer closes the player's line
     // (see `wireStatus`), the deadline is what keeps that line from being
-    // stranded as a forming row. The timer walks EVERY engine
-    // (`armHoldTimer`), so arming it here is enough.
-    armHoldTimer();
+    // stranded as a forming row. It is still armed AFTER `ingest` and only while
+    // a tail is held (2026-11-04): the player is the fallback population — its
+    // cues carry no `stable` stamp — so this is exactly the case the deadline
+    // exists for, and `flush` below leaves nothing to expire.
     if (meta.final === true) engine.flush('external-final');
+    armHoldIfHeld();
   });
 }
 
