@@ -354,6 +354,36 @@ TAP_SILENT_DESKTOP_MAX_S = 60.0
 TAP_MIN_WINDOW_S = 2.0
 TAP_SILENT_BLOCKS = 20
 
+#: O PRIMEIRO BLOCO NAO ESPERA A ESCADA DO SILENCIO (2026-11-04). MEDIDO no
+#: arranque do dono: `capture-started` as 09:57:41, **zero** callbacks, e a
+#: rotacao so' as 09:58:25 -- 44 s da janela atribuida a um endpoint que estava
+#: aberto e nao entregava NADA. A primeira legenda saiu 65 s depois do
+#: arranque, e a ordem dele e' *"e' pra ser possivel em ate 3 segundos assim que
+#: sotto abrir"*. `silent_desktop_hold` existe para o desktop PARADO (nao abrir
+#: 12 clientes WASAPI em 3 min), e um endpoint aberto e muda nao e' um desktop
+#: parado: e' um candidato MORTO. Este piso so' vale enquanto NENHUM bloco
+#: chegou nesta candidato -- depois do primeiro bloco a politica antiga fica
+#: inteira, para um video em pausa nao provocar rotacao.
+TAP_FIRST_BLOCK_MAX_S = 2.0
+
+
+def first_block_decided(opened_at, blocks, now, budget_s=TAP_FIRST_BLOCK_MAX_S):
+    """(rotacionar?, esperado_ms) para um candidato que AINDA nao entregou nada.
+
+    Funcao pura, e e' o que `_main/tap-first-block-oracle.py` executa: a escada
+    pergunta a ESTA regra antes da escada do silencio, e a resposta tem de ser
+    reproduzivel sem abrir dispositivo nenhum.
+    """
+    try:
+        blocks = int(blocks)
+        waited = float(now) - float(opened_at)
+        budget = float(budget_s)
+    except (TypeError, ValueError):
+        return False, 0
+    if blocks > 0:
+        return False, 0
+    return (waited >= budget), int(max(0.0, waited) * 1000.0)
+
 TAP_STALL_S = 8.0
 TAP_STALL_MAX_S = 60.0
 TAP_STALL_SAME_DEVICE_TRIES = 2
@@ -6927,7 +6957,9 @@ def main():
             counters.pop('silent', None)   # a janela de um candidato novo comeca do zero
             idle_logged = False
             caps_before = counters["captions"]
-            window_end = time.time() + tap_window
+            first_block_logged = False
+            window_start = time.time()
+            window_end = window_start + tap_window
             settled = False
             try:
                 while not stop.is_set():
@@ -6953,6 +6985,14 @@ def main():
                     # it (`vad_gated_chunks`). So the ladder KEEPS LOOKING;
                     # `best_carried` re-enters the loudest non-captioning
                     # candidate below so the run still streams.
+                    if device_blocks["value"] > 0 and not first_block_logged:
+                        first_block_logged = True
+                        err("TAP_FIRST_BLOCK endpoint=%r wait_ms=%d blocks=%d "
+                            "rotated_from=%r"
+                            % (dev.get("name"),
+                               int((time.time() - window_start) * 1000.0),
+                               device_blocks["value"],
+                               (dev.get("rotated_from") or "-")))
                     if counters["captions"] > caps_before:
                         settled = True
                     elif dev.get("rung") == "fallback" and device_peak["value"] >= tap_floor:
@@ -7069,6 +7109,26 @@ def main():
                         # stop.wait, not time.sleep -- :5989 rule, wakeable.
                         stop.wait(0.1)
                         continue
+                    # O CANDIDATO MORTO CAI AOS 2 s, NAO AOS 44 (2026-11-04).
+                    # Medido: `capture-started` 09:57:41 -> `device-rotated
+                    # (flat)` 09:58:25, com `device_blocks=0` o tempo todo.
+                    # A pergunta e' feita AQUI porque a janela do tap so' fecha
+                    # ao fim de `tap_window`, e um endpoint aberto e mudo nao
+                    # tem nada a provar sobre o desktop estar parado.
+                    if not settled and device_blocks["value"] == 0:
+                        _dead, _waited_ms = first_block_decided(
+                            window_start, device_blocks["value"], now)
+                        if _dead:
+                            _nxt = (signal_ranked_next(candidates,
+                                                       attempt_no + 1, tap_floor)
+                                    or {}).get("name") or "none"
+                            emit(type="status", state="tap-dead-endpoint",
+                                 device=dev.get("name"), waited_ms=_waited_ms,
+                                 next=_nxt)
+                            err("TAP_DEAD_ENDPOINT endpoint=%r waited_ms=%d "
+                                "next=%r" % (dev.get("name"), _waited_ms, _nxt))
+                            outcome = "first-block-timeout"
+                            break
                     if now >= window_end:
                         extended = window_ended(now, dev, device_peak, tap_floor,
                                                 tap_window, counters, emit)

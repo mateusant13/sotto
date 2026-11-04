@@ -653,7 +653,7 @@ class NativeCaptionOverlay:
             except Exception:
                 pass
 
-    def set_text(self, text, previous="", instant=False, *, cue=None):
+    def set_text(self, text, previous="", instant=False, *, cue=None, late_s=0.0):
         """Uma legenda. `instant=True` e' a JANELA DO PLAYER: chega ja' revelada,
         linha a linha, e nada aqui a volta a temporizar.
 
@@ -698,7 +698,18 @@ class NativeCaptionOverlay:
             else:
                 self._cue = None
                 live = self._live_for()
-                live.push(full, time.monotonic())
+                # O RELOGIO DA REVELACAO E' O DO AUDIO, NAO O DA CHEGADA
+                # (2026-11-04). Dono, verbatim: *"a legenda do youtube ta fora de
+                # sync. atrasada. depois faz um catch up super rapido e atrasa de
+                # novo"*. A causa: `push(text, time.monotonic())` datava cada
+                # palavra pelo instante em que o ASR a entregou, e o ASR entrega
+                # tarde (`CAPTION_PAINT_LAG audio_ms=1567`), em lotes. Com o
+                # relogio na chegada, a palavra nova nascia no futuro, o lote
+                # seguinte era comprimido (`MAX_LAG_S`) e o ecra apanhava o atraso
+                # de uma vez -- o dente de serra. `late_s` recua a ancora para
+                # quando o audio foi falado: as palavras que ja' passaram aparecem
+                # JUNTAS no sitio certo, e o resto segue ao compasso do YouTube.
+                live.push(full, time.monotonic() - max(0.0, float(late_s or 0.0)))
             # A LINHA MUDOU: APARECE. Nao se arma fade nenhum -- ver
             # `_fade_alpha` (o dono mandou tirar; a linha do YouTube aparece).
             if changed and words and self.FADE_ON:

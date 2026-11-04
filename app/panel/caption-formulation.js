@@ -986,6 +986,19 @@ function createEngine(options) {
     // The tail is NOT lost either way: `provisional` keeps every word and
     // `commit` hands the whole buffer to the line.
     onProvisional(committed, provisional);
+
+    // A LINHA QUE O WORKER FECHOU NAO ESPERA O PRAZO (2026-11-04).
+    // MEDIDO na sessao do dono: `CAPTION_IN` 17:32:17.978 e o commit so' as
+    // 17:32:19.481 -- `queue_ms=1503`, exactamente `COMMIT_MAX_HOLD_MS`. O
+    // fragmento trazia `final=true`, ou seja o PROPRIO worker ja' tinha fechado
+    // a linha, e o prazo de 1500 ms existe para o caso de NAO haver essa
+    // resposta (uma hipotese que precisa de uma segunda para ser confirmada).
+    // Com `tailClosed` a segunda hipotese nao vem: esperar e' atrasar sem
+    // provar nada. E' o mesmo veredicto que o `expireHold` ja' toma, so' que
+    // dito pelo fragmento no instante em que ele chega.
+    if (tailClosed && provisional.length) {
+      commit('line-closed');
+    }
   }
 
   /** Force the current line closed (status change, shutdown, owner action). */

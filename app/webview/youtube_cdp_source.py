@@ -204,6 +204,28 @@ def list_targets(port=DEFAULT_PORT, timeout=3.0):
     return youtube, others
 
 
+def foreground_source(hwnd, tab_video_id):
+    """A fonte da legenda no arranque: com ou SEM jogador em primeiro plano.
+
+    MEDIDO na sessao do dono de 2026-11-04, 09:57:24 -> 09:58:29: o laco das
+    legendas externas perguntava a JANELA em primeiro plano primeiro, e sem
+    jogador nenhum fazia `return` ali mesmo. Resultado no log dele:
+    `YOUTUBE_TICK_MS src='?' vid='' cdp_age_ms=? rows=? why=''` durante os
+    65 s inteiros, com o Chrome aberto num video do YouTube -- a legenda que
+    ele viu era o ASR, nao a faixa do player, e o dono descreveu o defeito
+    como *"nao ta acontecendo nada"*. Uma aba `youtube.com/watch` na lista da
+    CDP e' prova POSITIVA de que ha um player a ser lido, e essa prova nao
+    depende de quem esta' em primeiro plano: `/json/list` e' HTTP.
+
+    Devolve `'external:youtube:foreground'` quando a janela foi resolvida,
+    `'external:youtube'` quando so' a aba prova a fonte, e `''` quando nem uma
+    nem outra -- nesse caso quem pinta a legenda continua a ser o ASR.
+    """
+    if hwnd:
+        return 'external:youtube:foreground'
+    return 'external:youtube' if str(tab_video_id or '').strip() else ''
+
+
 def pick_target(tabs, video_id="", window_title=""):
     """(aba, motivo). Uma aba so'; `ambiguous` quando nao se pode decidir.
 

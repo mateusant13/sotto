@@ -134,6 +134,25 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
     a7 = bool(re.search(r"if lines:\s*\n\s*self\.yt_live_paint_at = "
                         r"time\.monotonic\(\)", shell))
     out.append(("um-produtor-por-vez", a7, "marca-fresca=%s" % a7))
+
+    # A8 -- A ABA E' IDENTIDADE SEM JANELA (2026-11-04). Medido no arranque do
+    # dono: 65 s com `src='?' why=''` e o Chrome aberto num video, porque o laco
+    # perguntava a janela em primeiro plano PRIMEIRO e desistia ali. A decisao
+    # executada e' a real (`foreground_source`), nos tres casos.
+    fg = getattr(mod, "foreground_source", None)
+    a8 = bool(fg) and (
+        fg(0, "vid123") == "external:youtube"
+        and fg(0, "") == ""
+        and fg(4242, "") == "external:youtube:foreground")
+    out.append(("janela-nao-e-obrigatoria", a8,
+                "fg(0,tid)=%r fg(0,'')=%r fg(hwnd)='foreground'"
+                % (fg(0, "vid123") if fg else None, fg(0, "") if fg else None)))
+
+    # A9 -- A SHELL USA-A, e o `why=` deixa de ser vazio quando nao ha' jogador:
+    #      um `return [], False` mudo e' o que fez os 65 s nao terem endereco.
+    a9 = bool(re.search(r"foreground_source\(hwnd, _tabvid\)", shell)) \
+        and bool(re.search(r"why': 'no-player-window'", shell))
+    out.append(("shell-usa-a-decisao", a9, "wired=%s" % a9))
     return out
 
 
@@ -163,6 +182,16 @@ def neg_arm():
                         '        text = str(line.get("text") or "")\n        if False:\n            continue', 1))
         got3 = dict((n, ok) for n, ok, _ in arms(module_path=mut3))
         results.append(("linhas-sem-filtro", not got3.get("linhas-do-player", False)))
+
+        # A ABA NAO PROVA NADA: e' o comportamento de antes de 2026-11-04 -- sem
+        # jogador em primeiro plano o laco desistia e a fonte do player nunca
+        # chegava ao ecra.
+        mut4 = os.path.join(tmp, "aba_nao_prova.py")
+        io.open(mut4, "w", encoding="utf-8").write(
+            src.replace("    return 'external:youtube' if str(tab_video_id or '').strip() else ''",
+                        "    return ''", 1))
+        got4 = dict((n, ok) for n, ok, _ in arms(module_path=mut4))
+        results.append(("aba-nao-prova", not got4.get("janela-nao-e-obrigatoria", False)))
         return results
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -191,7 +220,7 @@ def main(argv=None):
         print("%-22s %s  %s" % (name, "PASS" if ok else "FAIL", note))
         bad += 0 if ok else 1
     print("VERDICT: %s (%d/%d)"
-          % ("PASS" if not bad else "FAIL", 7 - bad, 7))
+          % ("PASS" if not bad else "FAIL", len(arms()) - bad, len(arms())))
     return 0 if not bad else 1
 
 

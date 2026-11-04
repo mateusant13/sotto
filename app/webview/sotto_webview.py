@@ -573,6 +573,91 @@ HISTORY_ROUTES = ('final', 'provisional-draft', 'batch')
 #: produced it. The list must equal the declared set, in both twins.
 HISTORY_ROUTE_SOURCES = ('worker-stamped', 'worker-stamped-producer', 'panel-deadline', 'fallback')
 
+#: UMA LINHA NAO E' UMA LISTA DE EVENTOS (dono, 2026-11-04, verbatim: *"o
+#: historico da legenda e completamente IMBECIL na logica. fica duplicando
+#: frase. fica dando append ou sei la"*). MEDIDO na captura dele, 10:01:44 ->
+#: 10:01:57, a MESMA linha gravada seis vezes enquanto crescia:
+#:   "Because he's going for these uh these people you know those who's going
+#:    for." -> "... for there." -> "... for there is." -> (identica outra vez)
+#: -> "Is a very." -> a linha LONGA outra vez -> "Is a very high chance."
+#: Um escritor append-only com esses dados tem que publicar seis linhas para um
+#: enunciado que o dono le como UM. A regra: o transcript guarda a LINHA, e a
+#: linha e' reescrita enquanto cresce, em vez de acrescentada a cada leitura.
+#:
+#: PORQUE UMA JANELA, e nao "prefixo = mesma linha" para sempre: uma frase
+#: repetida de proposito ("nao nao", ou a mesma abertura dita a seguir) tem de
+#: continuar a entrar. MEDIDO no corpus de 10 ficheiros (`_main/caption-dup-repro.py`,
+#: 2077 linhas): 79 iguais consecutivas, 6 de sobreposicao -- nenhuma delas
+#: separada por mais de 2 s da anterior.
+HISTORY_MERGE_WINDOW_S = 3.0
+
+
+def history_merge(last, new_body, now_s=None, start=None,
+                  window_s=HISTORY_MERGE_WINDOW_S):
+    """O que fazer com UMA linha nova, contra a ULTIMA gravada.
+
+    Devolve `'skip'` (a mesma linha outra vez), `'replace'` (a mesma linha, ainda
+    a crescer: o ficheiro reescreve a ultima em vez de acrescentar) ou `'append'`
+    (linha nova). `last` e' o que `_history_tail` devolve, ou None.
+
+    AS DUAS IDENTIDADES, por ordem de forca:
+      1. O `start=` do worker e' a identidade da LINHA (`sotto_worker.py:_event`).
+         Dois registos com o mesmo `start` sao a mesma linha, mesmo que o texto
+         tenha encolhido -- medido 10:01:48, uma linha MAIS CURTA depois de uma
+         mais longa, o que um append-only nao consegue representar.
+      2. Sem `start`, o prefixo nos dois sentidos dentro da janela: um texto que
+         CONTEM o outro e' a mesma linha a crescer (ou uma re-leitura que a
+         cortou), e a janela impede que uma repeticao legitima seja engolida.
+    """
+    if not last:
+        return 'append'
+    body = str(new_body or '')
+    if not body.strip():
+        return 'skip'
+    if str(last.get('body') or '') == body:
+        return 'skip'
+    _last_start = last.get('start')
+    prev = str(last.get('body') or '')
+    if not prev:
+        return 'append'
+    # A PONTUACAO FINAL NAO E' CONTEUDO (medido na captura dele). A linha cresce
+    # assim: `... going for.` -> `... going for there.` -- o que o renderizador
+    # grava primeiro fecha a frase com ponto, e a leitura seguinte CONTINUA a
+    # mesma frase. Comparar byte a byte fazia esses dois textos "alheios" um ao
+    # outro (o ponto separa) e o ficheiro ganhava uma linha por cada leitura.
+    # O `start=` SOZINHO NAO ADIANTA (medido aqui, 2026-11-04, no caminho do
+    # bridge): com o mesmo `start` e um texto SEM relacao ("Is a very high
+    # chance." sobre a linha anterior) a regra de identidade engolia uma linha
+    # NOVA -- o ficheiro ficou com uma linha so'. A identidade e' o par
+    # (mesma linha do worker, mesmo texto a crescer).
+    grew = (_merge_key(body).startswith(_merge_key(prev))
+            or _merge_key(prev).startswith(_merge_key(body)))
+    same_start = (isinstance(start, (int, float)) and not isinstance(start, bool)
+                  and isinstance(_last_start, (int, float))
+                  and not isinstance(_last_start, bool)
+                  and abs(float(_last_start) - float(start)) <= 0.05)
+    if same_start and grew:
+        return 'replace'
+    if not grew:
+        return 'append'
+    _last_s = last.get('time_s')
+    if now_s is None or _last_s is None:
+        return 'append'
+    try:
+        close = abs(float(now_s) - float(_last_s)) <= float(window_s)
+    except (TypeError, ValueError):
+        return 'append'
+    return 'replace' if close else 'append'
+
+
+
+def _merge_key(text):
+    """O texto sem a pontuacao FINAL, que e' o que separa duas leituras da
+    MESMA frase gravada ('... going for.' e '... going for there.')."""
+    return re.sub(r'[\s.!?…,;:]+$', '', str(text or ''))
+
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # SEARCH. The owner asked, 2026-10-18: make the history search FIND things --
 # *"quando eu procurar uma coisa no historico, eu quero que ele ache"*.
@@ -2631,7 +2716,36 @@ class ExternalCaptionWatcher(threading.Thread):
         _yt_mark(self, 'target')
         self._yt_prof("target", _t_all)
         if not hwnd:
-            return [], False
+            # A ABA E' IDENTIDADE, MESMO SEM JOGADOR EM PRIMEIRO PLANO (2026-11-04).
+            # MEDIDO no arranque do dono (09:57:24 -> 09:58:29): este `return`
+            # disparava antes de a CDP ser questionada, e o log passou os 65 s
+            # em `YOUTUBE_TICK_MS src='?' vid='' cdp_age_ms=? rows=? why=''`
+            # com o Chrome aberto num video. A legenda que ele viu era o ASR;
+            # a faixa do player nunca chegou ao ecra. `/json/list` e' HTTP e
+            # nao precisa de janela nenhuma -- ver
+            # `youtube_cdp_source.foreground_source`.
+            _tabvid = ''
+            try:
+                import youtube_cdp_source
+                _cdp_src = self._yt_cdp_ensure()
+                if _cdp_src and _cdp_src is not False:
+                    _tabvid = _cdp_src.target_video_id() or ''
+                if not youtube_cdp_source.foreground_source(hwnd, _tabvid):
+                    self._yt_diag = {'src': '?', 'vid': '', 'age': '?',
+                                     'rows': 0, 'why': 'no-player-window'}
+                    return [], False
+            except Exception as exc:              # noqa: BLE001
+                log('YOUTUBE_WINDOWLESS_SOURCE_FAILED error=%r' % (exc,))
+                self._yt_diag = {'src': '?', 'vid': '', 'age': '?',
+                                 'rows': 0, 'why': 'no-player-window'}
+                return [], False
+            self._yt_diag = {'src': 'external:youtube', 'vid': _tabvid,
+                             'age': '?',
+                             'rows': len(getattr(self, 'yt_cdp_rows', None) or []),
+                             'why': 'no-foreground-cdp'}
+            log_repeat('YOUTUBE_SOURCE_WINDOWLESS',
+                       'YOUTUBE_SOURCE_WINDOWLESS video_id=%s' % _tabvid,
+                       every_s=60.0)
         _t_src = time.monotonic()
         # QUEM E' A FONTE NAO SE PERGUNTA 20x POR SEGUNDO (2026-11-03, MEDIDO).
         # `player_source` le' o URL da janela pela arvore de acessibilidade e
@@ -3795,6 +3909,14 @@ class ExternalCaptionWatcher(threading.Thread):
                 self.yt_reason = 'cdp-lines'
                 self.yt_cue = ' '.join(_fast_rows)
                 return [('external:youtube:track', _fast_rows)], False
+            return [], False
+        if not hwnd:
+            # SEM JANELA NAO HA' ARVORE DE ACESSIBILIDADE (2026-11-04). O resto
+            # deste metodo (e o `_youtube_painted` que ele chama) pergunta a UIA
+            # da JANELA do jogador; com `hwnd=0` isso e' uma chamada a um handle
+            # que nao existe. Sem foto e sem janela, a resposta honesta e' nenhuma
+            # linha neste tick -- a foto seguinte (80 ms) desenha.
+            self.yt_reason = 'cdp-no-rows-yet'
             return [], False
         return None
 
@@ -11221,12 +11343,15 @@ class SottoShell:
         return ' <!-- ' + ' '.join(parts) + ' -->'
 
     @staticmethod
-    def _history_last_body(path):
-        """O `text` da ULTIMA linha do ficheiro, sem hora e sem proveniencia.
+    def _history_tail(path):
+        """A ULTIMA linha do ficheiro: corpo, hora do dia e `start=` do worker.
 
-        A linha gravada e `- [HH:MM:SS] frase <!-- route=... -->` (ver
-        `_history_provenance`). Para comparar frases, e preciso tirar as duas
-        pontas -- senao duas linhas iguais nunca seriam iguais.
+        A linha gravada e `- [HH:MM:SS] frase <!-- route=... start=... -->` (ver
+        `_history_provenance`). Para decidir se a linha nova e' a MESMA linha a
+        crescer (`history_merge`) e' preciso mais do que o texto: a hora diz se
+        as duas estao perto, e o `start=` e' a identidade da linha que o proprio
+        worker emitiu -- a unica que sobrevive a uma correccao que ENCURTA o
+        texto. Devolve None quando o ficheiro ainda nao tem linha nenhuma.
         """
         try:
             with open(path, 'r', encoding='utf-8', errors='replace') as handle:
@@ -11238,9 +11363,23 @@ class SottoShell:
             return None
         if not last:
             return None
+        out = {'body': '', 'time_s': None, 'start': None}
+        start = re.search(r'\bstart=(-?\d+(?:\.\d+)?)', last)
+        if start:
+            try:
+                out['start'] = float(start.group(1))
+            except ValueError:
+                out['start'] = None
         body = re.sub(r'\s*<!--.*?-->\s*$', '', last)
-        match = re.match(r'^- \[\d{2}:\d{2}:\d{2}\] (.*)$', body)
-        return (match.group(1) if match else body).strip()
+        match = re.match(r'^- \[(\d{2}):(\d{2}):(\d{2})\] (.*)$', body)
+        if match:
+            out['time_s'] = (int(match.group(1)) * 3600
+                             + int(match.group(2)) * 60 + int(match.group(3)))
+            out['body'] = match.group(4).strip()
+        else:
+            out['body'] = body.strip()
+        return out
+
 
     def history_append(self, text, options=None):
         """Append ONE committed caption. Returns the entry as written, or None."""
@@ -11257,33 +11396,73 @@ class SottoShell:
             return None
         now = time.localtime()
         path = self._history_path_for(now)
-        # B5 (dono, verbatim: *"coisa duplicada"*): a MESMA linha nao entra duas
-        # vezes seguidas. Medido no painel de 2026-10-23: `live.count=2` com duas
-        # `[committed]` identicas -- `'Seems more expensive than using Opus 55.'`.
-        # Compara-se so com a ULTIMA linha do ficheiro: uma frase repetida horas
-        # depois e outra frase, e continua a entrar.
-        if self._history_last_body(path) == body:
-            log('HISTORY_DUPLICATE_SKIPPED time=%s bytes=%d'
-                % (time.strftime('%H:%M:%S'), len(body.encode('utf-8'))))
-            return None
+        # A LINHA E' UMA, NAO UM FLUXO (dono, 2026-11-04). Ver `history_merge`:
+        # a mesma linha a crescer reescreve a ultima gravada, a copia identica
+        # nao entra, e so' uma linha nova acrescenta. MEDIDO no painel dele:
+        # seis linhas para um enunciado que se le como um.
+        _now_s = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec
+        _start = None
+        if isinstance(options, dict) and isinstance(options.get('start'), (int, float)):
+            _start = float(options['start'])
+        action = history_merge(self._history_tail(path), body,
+                               now_s=_now_s, start=_start)
         entry = {
             'date': time.strftime('%Y-%m-%d', now),
             'hour': time.strftime('%H', now),
             'time': time.strftime('%H:%M:%S', now),
             'text': body,
             'path': path,
+            #: O que o painel faz na lista dele: `append` (linha nova),
+            #: `replace` (reescreve a ultima) ou `skip`. A DECISAO e' daqui --
+            #: o painel obedece, para nao existirem duas regras para a mesma
+            #: linha (`_main/history-merge-oracle.py` executa esta funcao).
+            'action': action,
         }
+        if action == 'skip':
+            # O `skip` DEVOLVE A ENTRADA (2026-11-04). Devolver None fazia o
+            # painel inventar uma linha de recurso
+            # (`pushEntry(entry || {time, text, path:null})`), que e' metade das
+            # repeticoes que ele fotografou: o ficheiro estava certo e o painel
+            # duplicava. `None` fica reservado a RECUSA (`provisional-draft`).
+            log('HISTORY_DUPLICATE_SKIPPED time=%s bytes=%d'
+                % (time.strftime('%H:%M:%S'), len(body.encode('utf-8'))))
+            return entry
         provenance = self._history_provenance(options)
+        line = f'- [{entry["time"]}] {body}{provenance}\n'
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, 'a', encoding='utf-8') as handle:
-                handle.write(f'- [{entry["time"]}] {body}{provenance}\n')
+            if action == 'replace':
+                # REESCREVER A CAUDA EXIGE LER O FICHEIRO: um ficheiro de hora
+                # cheia tem milhares de linhas pequenas (o maior medido tem
+                # 48 KB/h), e a alternativa -- deixar a linha antiga e escrever
+                # a nova -- e' exactamente as seis linhas que ele reportou.
+                with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+                    rows = handle.readlines()
+                keep = []
+                dropped = False
+                for row in reversed(rows):
+                    if row.strip() and not dropped:
+                        dropped = True
+                        continue
+                    keep.append(row)
+                keep.reverse()
+                keep.append(line)
+                with open(path, 'w', encoding='utf-8', newline='') as handle:
+                    handle.writelines(keep)
+            else:
+                with open(path, 'a', encoding='utf-8') as handle:
+                    handle.write(line)
         except OSError as exc:  # noqa: BLE001 -- a write miss must not kill the app
             warn(f'HISTORY_APPEND_FAILED path={json.dumps(path)} error={exc!r}')
             return None
-        log(f'HISTORY_APPEND path={json.dumps(path)} time={entry["time"]} '
-            f'bytes={len(body.encode("utf-8"))}')
+        if action == 'replace':
+            log('HISTORY_LINE_MERGED path=%s time=%s bytes=%d'
+                % (json.dumps(path), entry['time'], len(body.encode('utf-8'))))
+        else:
+            log(f'HISTORY_APPEND path={json.dumps(path)} time={entry["time"]} '
+                f'bytes={len(body.encode("utf-8"))}')
         return entry
+
 
     def _history_files(self):
         """Every hour file under the root, OLDEST first: [(date, hour, path)]."""
@@ -12965,10 +13144,25 @@ class SottoShell:
                 f'text={json.dumps((new_text or "")[:60])}')
             return
         age_ms = int((time.time() - enqueued) * 1000)
+        # QUANTO O AUDIO DESTA LINHA E' MAIS VELHO DO QUE O ECO (2026-11-04). O
+        # `tap_ms` do worker diz quando o bloco que fechou a linha entrou; a
+        # diferenca ate' agora e' o atraso do ASR. Passa ao overlay para a
+        # revelacao ser ancorada no AUDIO e nao na chegada -- ver a medicao em
+        # `caption_overlay.set_text` (`late_s`) e o dente de serra que ele mata.
+        # Tecto de 3 s: um `tap_ms` velho nao pode mandar a revelacao para o
+        # passado indefinidamente.
+        _late_s = 0.0
+        _tap_now = getattr(self, '_caption_pending_tap_ms', None)
+        if _tap_now:
+            try:
+                _late_s = max(0.0, min(3.0, (time.time() * 1000.0
+                                             - float(_tap_now)) / 1000.0))
+            except (TypeError, ValueError):
+                _late_s = 0.0
         try:
             ov.set_work_area(self.work_area(),
                              (self.display or {}).get('scaleFactor') or 1.0)
-            ov.set_text(new_text, new_prev, instant, cue=cue)
+            ov.set_text(new_text, new_prev, instant, cue=cue, late_s=_late_s)
             ov.show(True)
             self._overlay_pushes += 1
             # O INSTANTE DA PRIMEIRA PINTURA (2026-10-26). A linha de aceitacao

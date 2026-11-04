@@ -41,12 +41,12 @@
       "max_func_name": ""
     },
     "app/panel/caption-formulation.js": {
-      "bytes": 52822,
+      "bytes": 53580,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 1090,
+      "lines": 1103,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -121,12 +121,12 @@
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 197093,
+      "bytes": 199375,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 3956,
+      "lines": 4002,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -241,12 +241,12 @@
       "max_func_name": "census"
     },
     "app/webview/caption_overlay.py": {
-      "bytes": 44756,
+      "bytes": 45678,
       "classes": 6,
       "defs": 2,
       "except_pass": 2,
       "globals": 0,
-      "lines": 967,
+      "lines": 978,
       "max_func": 94,
       "max_func_name": "_update"
     },
@@ -411,12 +411,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1012202,
+      "bytes": 1022612,
       "classes": 24,
-      "defs": 113,
+      "defs": 115,
       "except_pass": 41,
       "globals": 4,
-      "lines": 18978,
+      "lines": 19172,
       "max_func": 391,
       "max_func_name": "main"
     },
@@ -471,12 +471,12 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 23758,
+      "bytes": 24912,
       "classes": 1,
-      "defs": 4,
+      "defs": 5,
       "except_pass": 4,
       "globals": 0,
-      "lines": 541,
+      "lines": 563,
       "max_func": 107,
       "max_func_name": "_run"
     },
@@ -641,13 +641,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 404487,
+      "bytes": 407928,
       "classes": 17,
-      "defs": 67,
+      "defs": 68,
       "except_pass": 14,
       "globals": 5,
-      "lines": 7560,
-      "max_func": 2409,
+      "lines": 7620,
+      "max_func": 2439,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {

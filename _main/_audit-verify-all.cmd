@@ -1559,6 +1559,70 @@ if exist _main\capture-exclude-oracle.py (
   call :step always red-as-expected-capture-exclude 1 "_main\capture-exclude-oracle.py;app\webview\capture_exclusion.py;app\webview\caption_overlay.py" "%OUT%\capture-exclude-neg.log" python _main\capture-exclude-oracle.py --neg-arm
   call :expectred red-as-expected-capture-exclude !STEP_RC! "%OUT%\capture-exclude-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-capture-exclude MISSING "%OUT%\capture-exclude-neg.log" "NEG-ARM PASS" )
+
+REM (`history-merge`: a linha do historico e' UMA linha, nao um fluxo de eventos.
+REM Dono, 2026-11-04, verbatim: *"o historico da legenda e completamente IMBECIL
+REM na logica. fica duplicando frase"* -- medido no painel dele, a mesma frase
+REM gravada seis vezes enquanto crescia. O oraculo executa `history_merge`, o
+REM leitor da cauda e o caminho inteiro `history_append` sobre um HISTORY_ROOT
+REM temporario; o `--neg-arm` muta uma COPIA do shell em dois sentidos (sempre
+REM acrescentar, sempre saltar) e exige o RED do arm correspondente. Nenhum dos
+REM dois abre a app: mexe em ficheiros de um diretorio temporario.)
+if exist _main\history-merge-oracle.py (
+  call :step always history-merge 0 "_main\history-merge-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\history-merge.log" python _main\history-merge-oracle.py
+  call :record history-merge !STEP_RC!
+) else ( call :record history-merge MISSING )
+if exist _main\history-merge-oracle.py (
+  call :step always red-as-expected-history-merge 1 "_main\history-merge-oracle.py;app\webview\sotto_webview.py" "%OUT%\history-merge-neg.log" python _main\history-merge-oracle.py --neg-arm
+  call :expectred red-as-expected-history-merge !STEP_RC! "%OUT%\history-merge-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-history-merge MISSING "%OUT%\history-merge-neg.log" "NEG-ARM PASS" )
+
+REM (`reveal-clock`: a revelacao da legenda e' ancorada no AUDIO, nao na chegada
+REM do ASR. Dono, verbatim: *"a legenda do youtube ta fora de sync. atrasada.
+REM depois faz um catch up super rapido e atrasa de novo"* -- medido no log dele,
+REM 09:58:32 `audio_ms=1567` seguido de `audio_ms=64` e outra vez `audio_ms=2644`.
+REM O oraculo executa o `set_text` REAL de `caption_overlay.py` e conta as
+REM palavras reveladas com e sem o recuo; os dois mutantes (ignorar o recuo,
+REM recuar sempre 3 s) caem em arms DIFERENTES.)
+if exist _main\reveal-clock-oracle.py (
+  call :step always reveal-clock 0 "_main\reveal-clock-oracle.py;app\webview\caption_overlay.py;app\webview\sotto_webview.py" "%OUT%\reveal-clock.log" python _main\reveal-clock-oracle.py
+  call :record reveal-clock !STEP_RC!
+) else ( call :record reveal-clock MISSING )
+if exist _main\reveal-clock-oracle.py (
+  call :step always red-as-expected-reveal-clock 1 "_main\reveal-clock-oracle.py;app\webview\caption_overlay.py" "%OUT%\reveal-clock-neg.log" python _main\reveal-clock-oracle.py --neg-arm
+  call :expectred red-as-expected-reveal-clock !STEP_RC! "%OUT%\reveal-clock-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-reveal-clock MISSING "%OUT%\reveal-clock-neg.log" "NEG-ARM PASS" )
+
+REM (`tap-first-block`: o candidato MORTO cai aos 2 s e nao aos 44. Medido no
+REM arranque do dono, 2026-11-04: `capture-started` as 09:57:41 e a rotacao so'
+REM as 09:58:25, com `blocks=0` o tempo todo -- 65 s ate' a primeira legenda. A
+REM ordem dele e' 3 s. O oraculo executa `first_block_decided` do worker real; o
+REM `--neg-arm` muta uma COPIA (piso de 60 s, rotacionar sempre) e exige o RED de
+REM arms DIFERENTES. Nenhum dos dois abre dispositivo de audio.)
+if exist _main\tap-first-block-oracle.py (
+  call :step always tap-first-block 0 "_main\tap-first-block-oracle.py;worker\sotto_worker.py" "%OUT%\tap-first-block.log" python _main\tap-first-block-oracle.py
+  call :record tap-first-block !STEP_RC!
+) else ( call :record tap-first-block MISSING )
+if exist _main\tap-first-block-oracle.py (
+  call :step always red-as-expected-tap-first-block 1 "_main\tap-first-block-oracle.py;worker\sotto_worker.py" "%OUT%\tap-first-block-neg.log" python _main\tap-first-block-oracle.py --neg-arm
+  call :expectred red-as-expected-tap-first-block !STEP_RC! "%OUT%\tap-first-block-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-tap-first-block MISSING "%OUT%\tap-first-block-neg.log" "NEG-ARM PASS" )
+
+REM (`line-closed`: a linha que o worker FECHOU nao espera o prazo de 1500 ms.
+REM Medido na sessao do dono, 2026-11-04: `CAPTION_IN` 17:32:17.978 com
+REM `final=false` e o commit so' as 17:32:19.481, `queue_ms=1503` -- o
+REM `COMMIT_MAX_HOLD_MS` inteiro a espera de uma segunda hipotese que o worker
+REM ja' tinha dispensado com `final=true` no fragmento seguinte. O oraculo corre
+REM o motor REAL por `node` (sem painel, sem janela, sem dispositivo de audio);
+REM o `--neg-arm` muta uma COPIA e exige A1/A2 vermelhos.)
+if exist _main\line-closed-oracle.py (
+  call :step always line-closed 0 "_main\line-closed-oracle.py;app\panel\caption-formulation.js" "%OUT%\line-closed.log" python _main\line-closed-oracle.py
+  call :record line-closed !STEP_RC!
+) else ( call :record line-closed MISSING )
+if exist _main\line-closed-oracle.py (
+  call :step always red-as-expected-line-closed 1 "_main\line-closed-oracle.py;app\panel\caption-formulation.js" "%OUT%\line-closed-neg.log" python _main\line-closed-oracle.py --neg-arm
+  call :expectred red-as-expected-line-closed !STEP_RC! "%OUT%\line-closed-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-line-closed MISSING "%OUT%\line-closed-neg.log" "NEG-ARM PASS" )
 if exist _main\owner-audio-gate.py (
   call :step always owner-audio-gate 0 "_main\owner-audio-gate.py;_main\mute-audio.py" "%OUT%\owner-audio-gate.log" python _main\owner-audio-gate.py
   call :record owner-audio-gate !STEP_RC!

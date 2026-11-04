@@ -1941,7 +1941,14 @@ function recordHistory(text, reason, meta) {
     .append(body, options)
     .then((r) => {
       const entry = (r && r.entry) || null;
-      pushEntry(entry || { time: clockTime(), text, path: null });
+      // O STORE MANDA (2026-11-04). `null` = a linha foi RECUSADA
+      // (`provisional-draft`, `route` nao canonica) e o painel NAO inventa uma
+      // linha de recurso -- era metade das repeticoes que o dono fotografou
+      // (`pushEntry(entry || {time, text, path: null})`), com o ficheiro certo
+      // e a lista dobrada. `action='skip'` (a mesma linha outra vez) tambem sai
+      // por aqui, e quem o aplica e' `pushEntry`.
+      if (!entry) return;
+      pushEntry(entry);
     })
     .catch((err) => {
       setHistoryNote('History write failed: ' + errorText(err));
@@ -1950,7 +1957,16 @@ function recordHistory(text, reason, meta) {
 }
 
 function pushEntry(entry) {
-  historyEntries.push(entry);
+  const action = entry && typeof entry.action === 'string' ? entry.action : 'append';
+  // A LISTA NAO E' UM LOG DE EVENTOS (dono, 2026-11-04). A decisao vem do
+  // store (`sotto_webview.history_merge`): `skip` = a mesma linha outra vez,
+  // `replace` = a mesma linha ainda a crescer (reescreve a ultima), `append` =
+  // linha nova. Sem isto o painel duplicava a frase que ele fotografou seis
+  // vezes, e o ficheiro ja' tinha a regra certa.
+  if (action === 'skip') return;
+  const merging = action === 'replace' && !searchQuery && historyEntries.length > 0;
+  if (merging) historyEntries[historyEntries.length - 1] = entry;
+  else historyEntries.push(entry);
   while (historyEntries.length > MAX_HISTORY) historyEntries.shift();
 
   if (searchQuery) {
@@ -1967,7 +1983,8 @@ function pushEntry(entry) {
   // of lines the owner had removed (*"tira o historico que ja mostra sozinho"*).
   const api = galleryApi();
   if (api && galleryPick && api.pick([entry], galleryPick.day, galleryPick.hour).length) {
-    appendFeedRow(entry);
+    if (merging) replaceFeedRow(entry);
+    else appendFeedRow(entry);
     return;
   }
   // The list's CONTENT is unchanged in that case (still the hint), so only the
@@ -2174,6 +2191,32 @@ function appendFeedRow(entry) {
   applyTranscriptMode();
 }
 
+/**
+ * REESCREVE a ultima linha da lista em vez de acrescentar outra (dono,
+ * 2026-11-04, verbatim: *"o historico da legenda e completamente IMBECIL na
+ * logica. fica duplicando frase. fica dando append ou sei la"*).
+ *
+ * Quem DECIDE e' o store (`sotto_webview.history_merge`), que devolve
+ * `action='replace'` para a mesma linha a crescer; aqui so' se aplica. Sem
+ * isto o ficheiro ficava com uma linha e o painel com seis, que foi o que ele
+ * fotografou (10:01:44 -> 10:01:57, a mesma frase seis vezes).
+ */
+function replaceFeedRow(entry) {
+  if (!dom.historyList) return;
+  const rows = dom.historyList.querySelectorAll('[data-history-row]');
+  const last = rows.length ? rows[rows.length - 1] : null;
+  if (!last) {
+    appendFeedRow(entry);
+    return;
+  }
+  const fresh = makeRow(entry);
+  fresh.setAttribute('data-history-row', '1');
+  last.replaceWith(fresh);
+  dom.historyList.scrollTop = dom.historyList.scrollHeight;
+  applyTranscriptMode();
+}
+
+
 function clearList() {
   if (!dom.historyList) return;
   dom.historyList.replaceChildren();
@@ -2184,6 +2227,9 @@ function makeRow(entry, hitQuery) {
   const li = document.createElement('li');
   li.className = 'hist';
   li.tabIndex = 0;
+  //: A MARCA DA LINHA, para `replaceFeedRow` saber QUAL reescrever quando o
+  //: store diz que a mesma linha cresceu (ver `replaceFeedRow`).
+  li.dataset.historyRow = '1';
   if (entry.path) li.dataset.path = entry.path;
   if (selectedEntry && sameEntry(selectedEntry, entry)) li.classList.add('hist--selected');
 
