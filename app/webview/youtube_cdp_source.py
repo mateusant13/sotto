@@ -41,12 +41,30 @@ devolve `None` sem ligacao -- nunca levanta, nunca bloqueia a thread que chama.
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 import urllib.request
 
 #: Porta de depuracao que o Chrome do dono ja' tem aberta (medido 2026-11-03).
 DEFAULT_PORT = 9222
+
+
+def resolve_port(port=None):
+    """A porta da CDP: o argumento, ou `SOTTO_YT_CDP_PORT`, ou a 9222.
+
+    O override de ambiente existe por duas razoes medidas: a porta de depuracao
+    do Chrome e' configuravel no atalho dele, e um oraculo tem de poder apontar
+    a ligacao para um servidor de FOTOGRAFIA sem tocar no Chrome do dono --
+    um controle que so' sabe falar com o browser real nao tem controle.
+    """
+    if port is not None:
+        return int(port)
+    env = os.environ.get("SOTTO_YT_CDP_PORT")
+    if env and str(env).strip().isdigit():
+        return int(str(env).strip())
+    return int(DEFAULT_PORT)
+
 
 #: Uma leitura a cada 80 ms. O custo medido de uma ida e volta com
 #: `Runtime.evaluate` e' ~10 ms, e a legenda do player muda a cada 100-300 ms.
@@ -59,6 +77,14 @@ IDLE_STOP_S = 120.0
 #: Espera entre tentativas depois de uma falha, para nao bater a porta a 12 Hz
 #: quando o Chrome esta' fechado.
 RETRY_S = 2.0
+
+#: O PRAZO DE UMA SONDA DE ATTACH (2026-11-04, MEDIDO). Contra uma porta
+#: FECHADA nesta maquina um `/json/list` gasta 2,0 s de `URLError`; com o prazo
+#: de 3 s do `list_targets` um ciclo de retry custava 4 s e o log de motivos
+#: saia uma vez por ciclo, o que parece "nao tenta". 1,5 s e' acima da chamada
+#: mais lenta ja' medida (1125 ms, sob carga) e abaixo do custo de uma porta
+#: morta; o que passar disto esta' registado com o `ms=` de cada tentativa.
+ATTACH_PROBE_TIMEOUT_S = 1.5
 
 _WATCH = "/watch"
 
@@ -259,6 +285,81 @@ def pick_target(tabs, video_id="", window_title=""):
     return tabs[0], "only-tab"
 
 
+#: O ARRANQUE PEDE A LIGACAO, E PEDE-A COM TECTO (2026-11-04). Medido no log
+#: do dono: a app subiu as 10:06:36 e a porta so' ficou `attached` as 10:06:40
+#: -- nao por o Chrome estar fechado, mas porque o pedido de attach morava no
+#: PRIMEIRO TICK do laco da legenda, que por sua vez so' existia depois de o
+#: WebView2 arrancar. As tentativas sao POUCAS e CURTAS (ver abaixo); quem nao
+#: conseguiu continua a tentar dentro da thread (`RETRY_S`), agora com o motivo
+#: escrito a cada tentativa.
+#: TRES tentativas curtas, nao quatro longas (MEDIDO 2026-11-04): um
+#: `/json/list` contra uma porta FECHADA gasta 2,0 s de `URLError` nesta maquina,
+#: e quatro dessas mais as esperas seguravam o arranque ~10 s -- o remedio a
+#: fazer o mesmo estrago que a doenca. Com 0,4 s de prazo por sonda o pior caso
+#: e' ~1,45 s; o Chrome que ainda esta' a abrir a porta e' recuperado pela thread
+#: (`RETRY_S`), que agora diz o motivo de cada tentativa.
+BOOT_ATTACH_ATTEMPTS = 3
+BOOT_ATTACH_DELAY_S = 0.25
+BOOT_ATTACH_TIMEOUT_S = 0.4
+
+
+def video_id_from_url(url):
+    """O `v=` de um URL de `watch` -- `''` quando nao ha' nenhum.
+
+    Uma funcao e nao um par de `split` em cada sitio: o dono le `video_id=` no
+    log de attach e o numero tem de ser o MESMO que a foto publica.
+    """
+    text = str(url or "")
+    if "v=" not in text:
+        return ""
+    return text.split("v=", 1)[1].split("&", 1)[0]
+
+
+def boot_attach(port=None, attempts=BOOT_ATTACH_ATTEMPTS,
+                delay=BOOT_ATTACH_DELAY_S, log=None, sleep=None,
+                timeout=BOOT_ATTACH_TIMEOUT_S):
+    """(ok, motivo) -- pede a ligacao a' aba do YouTube no ARRANQUE, com tecto.
+
+    A pergunta e' a MESMA do laco (`list_targets` + `pick_target`), feita aqui
+    sem janela em primeiro plano, sem evento de painel e sem esperar por tick
+    nenhum: `/json/list` e' HTTP. Cada tentativa escreve UMA linha -- a que
+    falhou com o motivo dela --, para que "nao ligou" deixe de ser um silencio
+    e passe a ser um numero (`YOUTUBE_CDP_BOOT_ATTACH`).
+
+    `ok` diz que ha' uma aba `watch` com `webSocketDebuggerUrl` para onde a
+    thread se pode ligar; nao abre o WebSocket (isso e' `CdpCaptionSource`).
+    """
+    log = log or (lambda _m: None)
+    sleep = sleep or time.sleep
+    port = resolve_port(port)
+    reason = "not-tried"
+    for attempt in range(1, max(1, int(attempts)) + 1):
+        t0 = time.monotonic()
+        target = None
+        try:
+            tabs, others = list_targets(port, timeout=timeout)
+        except Exception as exc:              # noqa: BLE001
+            reason = "port-closed"
+            _extra = "err=%s" % type(exc).__name__
+        else:
+            _extra = "tabs=%d others=%d" % (len(tabs), others)
+            target, reason = pick_target(tabs, "", "")
+            if target is not None and not target.get("webSocketDebuggerUrl"):
+                target, reason = None, "no-ws-url"
+        ms = (time.monotonic() - t0) * 1000.0
+        if target is not None:
+            log("YOUTUBE_CDP_BOOT_ATTACH attempt=%d/%d ok=true reason=%s "
+                "port=%d ms=%.0f %s"
+                % (attempt, attempts, reason, port, ms, _extra))
+            return True, reason
+        log("YOUTUBE_CDP_BOOT_ATTACH attempt=%d/%d ok=false reason=%s "
+            "port=%d ms=%.0f %s"
+            % (attempt, attempts, reason, port, ms, _extra))
+        if attempt < max(1, int(attempts)):
+            sleep(delay)
+    return False, reason
+
+
 # O CUSTO DE PERGUNTAR A ABA. Medido 2026-11-03: um `/json/list` de 1125 ms
 # dentro do laco de leitura; trocar de video e' raro, perder quadros nao e'.
 _TID_SLOW_MS = 500.0
@@ -302,8 +403,8 @@ class CdpCaptionSource:
     aplicacao simplesmente continua com a UIA.
     """
 
-    def __init__(self, port=DEFAULT_PORT, poll_s=POLL_S, log=None):
-        self.port = int(port)
+    def __init__(self, port=None, poll_s=POLL_S, log=None):
+        self.port = resolve_port(port)
         self.poll_s = float(poll_s)
         self._log = log or (lambda _m: None)
         self._lock = threading.Lock()
@@ -598,20 +699,48 @@ class CdpCaptionSource:
             except Exception:                     # noqa: BLE001
                 pass
 
+    #: O MOTIVO DE CADA TENTATIVA DE ATTACH, ESCRITO (2026-11-04). `_publish`
+    #: so' fala quando o estado MUDA, e por isso o dono leu 40 minutos de
+    #: `src='?'` sem uma linha que dissesse "a porta nao abriu". Uma tentativa
+    #: falhada e' um facto por si; as primeiras `_ATTACH_LOG_N` saem todas, e
+    #: depois disso so' uma em cada `_ATTACH_LOG_EVERY` -- o Chrome pode ficar
+    #: fechado a tarde inteira e o log nao pode pagar 30 linhas por minuto.
+    _ATTACH_LOG_N = 20
+    _ATTACH_LOG_EVERY = 50
+
+    def _attach_log(self, attempt, ok, reason, ms=0.0, extra=''):
+        if attempt > self._ATTACH_LOG_N and attempt % self._ATTACH_LOG_EVERY:
+            return
+        self._log('YOUTUBE_CDP_ATTACH_%s attempt=%d ok=%s reason=%s port=%d '
+                  'ms=%.0f %s'
+                  % ('OK' if ok else 'FAILED', attempt, str(bool(ok)).lower(),
+                     reason, self.port, ms, extra))
+
     def _connect(self, websocket):
+        self._attach_tries = int(getattr(self, '_attach_tries', 0)) + 1
+        _n = self._attach_tries
+        _t0 = time.monotonic()
         try:
-            tabs, _others = list_targets(self.port)
+            tabs, _others = list_targets(self.port,
+                                         timeout=ATTACH_PROBE_TIMEOUT_S)
         except Exception as exc:                  # noqa: BLE001
             self._error(exc)
             self._publish(None, "port-closed")
+            self._attach_log(_n, False, "port-closed",
+                             (time.monotonic() - _t0) * 1000.0,
+                             'err=%s' % type(exc).__name__)
             return None
         target, why = self._choose(tabs)
         if target is None:
             self._publish(None, why)
+            self._attach_log(_n, False, why, (time.monotonic() - _t0) * 1000.0,
+                             'tabs=%d' % len(tabs))
             return None
         url = target.get("webSocketDebuggerUrl")
         if not url:
             self._publish(None, "no-ws-url")
+            self._attach_log(_n, False, "no-ws-url",
+                             (time.monotonic() - _t0) * 1000.0)
             return None
         try:
             conn = websocket.create_connection(url, timeout=15.0)
@@ -628,8 +757,14 @@ class CdpCaptionSource:
             # leitura inteira (10 ms medidos); o que passa disso e' ligacao
             # morta, e trata-se como tal.
             conn.settimeout(3.0)
+            self._attach_log(_n, True, why, (time.monotonic() - _t0) * 1000.0,
+                             'video_id=%s' % video_id_from_url(
+                                 target.get("url") or ""))
             return conn
         except Exception as exc:                  # noqa: BLE001
             self._error(exc)
             self._publish(None, "ws-failed")
+            self._attach_log(_n, False, "ws-failed",
+                             (time.monotonic() - _t0) * 1000.0,
+                             'err=%s' % type(exc).__name__)
             return None
