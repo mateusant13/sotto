@@ -692,6 +692,25 @@ if exist _main\freeze-census.py (
  call :step freeze-census 0 "_main\freeze-census.py" "%OUT%\freeze-census.log" python _main\freeze-census.py --selftest
  call :record freeze-census !STEP_RC!
 ) else ( call :record freeze-census MISSING )
+REM `shell-priority-oracle.py` -- A SUPERFICIE VISIVEL NUNCA ABAIXO DE NORMAL.
+REM Medido em 2026-11-04 (audit L10): a shell viva (pid 20448) E o worker corriam a
+REM `BELOW_NORMAL`, e o par de controlo ao lado (explorer, pwsh) corria a `NORMAL` --
+REM logo o tecto vinha do largador/tarefa, nao do codigo. Uma janela onde o dono
+REM escreve a `BELOW_NORMAL` perde todas as corridas contra uma lane de lote. A cura
+REM e' `raise_visible_priority()` no inicio do `main()`; o WORKER fica `BELOW_NORMAL`
+REM de proposito. O oraculo planta a despromocao (`SetPriorityClass` para
+REM BELOW_NORMAL), chama a funcao REAL e exige `NORMAL` de volta, com `was`/`now` no
+REM log (o mutante que apagou a chamada foi o que apanharia uma cura nunca chamada).
+REM Achado do proprio braco: as constantes NAO sao monotonicas (BELOW_NORMAL 0x4000
+REM e' maior que NORMAL 0x20), por isso a comparacao numerica lia "ja' chega".
+if exist _main\shell-priority-oracle.py (
+ call :step shell-priority 0 "_main\shell-priority-oracle.py;app\webview\sotto_webview.py" "%OUT%\shell-priority.log" python _main\shell-priority-oracle.py
+ call :record shell-priority !STEP_RC!
+) else ( call :record shell-priority MISSING )
+if exist _main\shell-priority-oracle.py (
+call :step red-as-expected-shell-priority 1 "_main\shell-priority-oracle.py;app\webview\sotto_webview.py" "%OUT%\shell-priority-neg.log" python _main\shell-priority-oracle.py --neg-arm
+call :expectred red-as-expected-shell-priority !STEP_RC! "%OUT%\shell-priority-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-shell-priority MISSING "%OUT%\shell-priority-neg.log" "NEG-ARM: PASS" )
 REM `tray-menu-oracle.py` -- o icone da bandeja tem de se comportar como o de
 REM qualquer outro app. Ordem do dono de 2026-11-04, verbatim: *"icone do sotto e'
 REM uma merda de mexer. botao direito e' travado pra abrir o menu dele ... tipo o

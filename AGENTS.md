@@ -446,8 +446,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 15:0x):** `_main\_audit-verify-all.cmd` = **222416 B**,
-  **2758 CRLF** / 0 bare LF, sha256 `C6B6DE6051C79CE5C38478A7F4671F5DF8445915A4F7582D991B2EB6EB71E497`.
+- **PIN do ficheiro (medido 2026-11-04, 15:3x):** `_main\_audit-verify-all.cmd` = **224071 B**,
+  **2777 CRLF** / 0 bare LF, sha256 `29C76C018FF136B23287C85C4D84A035CC2D6CD9CF42B1F2C7EA1571887D19EB`.
+  (Dezenove linhas a mais do que o pin de 222416 B / 2758 CRLF: o par `shell-priority` + o seu
+  `--neg-arm`, 4 arms. Nascido do L10 do audit, medido: a shell viva (pid 20448) E o worker corriam
+  a `BELOW_NORMAL` e o par de controlo ao lado (explorer, pwsh) a `NORMAL` -- o tecto vinha do
+  largador. A cura e' `raise_visible_priority()` no inicio do `main()`, com `was`/`now` no log; o
+  worker fica `BELOW_NORMAL` de proposito. O proprio braco achou um defeito meu: as constantes NAO
+  sao monotonicas (BELOW_NORMAL 0x4000 > NORMAL 0x20), por isso a comparacao numerica lia "ja'
+  chega" -- o oraculo plantou a despromocao e apanhou-o.)
   (Quinze linhas a mais do que o pin de 221321 B / 2743 CRLF: o passo `freeze-census`, que corre
   `_main/freeze-census.py --selftest`. Nascido da ordem do dono de 2026-11-04 -- *"o PC inteiro
   trava: herdr, os terminais dentro dele, o chrome, tudo ao mesmo tempo"*. O censo mede commit, procs,

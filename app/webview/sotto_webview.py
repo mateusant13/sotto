@@ -7608,6 +7608,59 @@ class TrayIcon:
         self.log('TRAY_LOOP_EXIT')
 
 
+#: Windows process priority classes, by their constant value, and their real
+#: ORDER -- the constants are NOT monotonic.
+PRIORITY_CLASS_RANK = {0x00000040: 0, 0x00004000: 1, 0x00000020: 2,
+                       0x00008000: 3, 0x00000080: 4, 0x00000100: 5}
+PRIORITY_CLASS_NAMES = {
+    0x00000040: 'IDLE', 0x00004000: 'BELOW_NORMAL', 0x00000020: 'NORMAL',
+    0x00008000: 'ABOVE_NORMAL', 0x00000080: 'HIGH', 0x00000100: 'REALTIME',
+}
+
+
+def raise_visible_priority(log_fn) -> str:
+    """Keep the window the owner looks at at least `NORMAL`.
+
+    Returns the class name the process ended at ('UNKNOWN' if Windows would not
+    say). A raise that happens is logged with `was`/`now`; a raise that is not
+    needed is logged too, because "already normal" and "could not read the class"
+    are different facts and only one of them is fine.
+    """
+    try:
+        kernel32.GetPriorityClass.argtypes = [ctypes.c_void_p]
+        kernel32.GetPriorityClass.restype = ctypes.c_uint32
+        kernel32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel32.SetPriorityClass.restype = ctypes.c_bool
+        handle = kernel32.GetCurrentProcess()
+        was = int(kernel32.GetPriorityClass(handle))
+        if was == 0:
+            log_fn(f'SHELL_PRIORITY was=UNREADABLE err={ctypes.get_last_error()} '
+                   f'now=UNCHANGED')
+            return 'UNKNOWN'
+        # THE CLASS VALUES ARE NOT ORDERED (BELOW_NORMAL is 0x4000, larger
+        # than NORMAL's 0x20), so a numeric comparison is the bug this arm
+        # caught: it read BELOW_NORMAL as "already high enough".
+        if PRIORITY_CLASS_RANK.get(was, 9) >= PRIORITY_CLASS_RANK[0x00000020]:
+            log_fn('SHELL_PRIORITY was=%s now=%s raised=false'
+                   % (PRIORITY_CLASS_NAMES.get(was, hex(was)),
+                      PRIORITY_CLASS_NAMES.get(was, hex(was))))
+            return PRIORITY_CLASS_NAMES.get(was, hex(was))
+        ok = bool(kernel32.SetPriorityClass(handle, 0x00000020))
+        now = int(kernel32.GetPriorityClass(handle)) if ok else was
+        log_fn('SHELL_PRIORITY was=%s now=%s raised=%s err=%s'
+               % (PRIORITY_CLASS_NAMES.get(was, hex(was)),
+                  PRIORITY_CLASS_NAMES.get(now, hex(now)),
+                  'true' if now == 0x00000020 else 'false',
+                  ctypes.get_last_error() if not ok else 0))
+        return PRIORITY_CLASS_NAMES.get(now, hex(now))
+    except Exception as exc:  # noqa: BLE001 -- a niceness knob must not kill the app
+        try:
+            log_fn(f'SHELL_PRIORITY raise_failed {type(exc).__name__}: {exc}')
+        except Exception:  # noqa: BLE001
+            pass
+        return 'UNKNOWN'
+
+
 def menu_items(menu) -> list:
     """The items of an HMENU, as Windows has them — id and text."""
     count = user32.GetMenuItemCount(menu)
@@ -18250,8 +18303,16 @@ class WorkerBridge:
                             if time.monotonic() - self._rss_at >= 60.0:
                                 self._rss_at = time.monotonic()
                                 _f = parsed.get('fields') or {}
-                                self.log('BRIDGE_RSS rss_mb=%s blocks=%s' % (
-                                    _f.get('rss_mb', '-'), _f.get('blocks', '-')))
+                                # `private_mb` viaja ao lado do working set desde
+                                # 2026-11-04: medido no worker vivo, ws 13,6 MB
+                                # contra 3 828 MB de commit privado -- no Windows
+                                # os pesos do modelo nao estao residentes, por isso
+                                # uma fuga so' e' visivel na coluna privada.
+                                self.log('BRIDGE_RSS rss_mb=%s private_mb=%s '
+                                         'blocks=%s' % (
+                                             _f.get('rss_mb', '-'),
+                                             _f.get('private_mb', '-'),
+                                             _f.get('blocks', '-')))
                     continue
 
                 text = line.strip()
@@ -20234,6 +20295,17 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = parse_args(argv)
     _start_startup_stack_watch(args)
+
+    # ── THE VISIBLE SURFACE IS NEVER BELOW NORMAL (measured 2026-11-04) ──────
+    # `extreme-optimization-audit` L10: a launcher, a task or a job object can cap
+    # every descendant regardless of what it asks for, and a surface the owner
+    # types into at `BELOW_NORMAL` loses every race against a batch lane. Measured
+    # on this box: the live shell (pid 20448) AND its worker were both
+    # `BELOW_NORMAL`, and the control pair beside them was `NORMAL` (explorer,
+    # pwsh) -- so the cap came from the launcher, not from the code. This raises
+    # the SHELL only; the worker keeps its own `BELOW_NORMAL` on purpose (the
+    # batch must yield). `was`/`now` are logged so the raise is reversible.
+    raise_visible_priority(log)
 
     # O PRAZO DE UMA SONDA E' DO PROCESSO (2026-11-03, MEDIDO DUAS VEZES).
     # `--exit-after` era armado no despacho de probes, ou seja DEPOIS do

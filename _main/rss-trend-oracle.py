@@ -81,14 +81,32 @@ def judge(values, slope_flag=SLOPE_FLAG_MB_PER_MIN, growth_flag=GROWTH_FLAG_MB,
 
 
 def read_log(path):
-    pat = re.compile(r'BRIDGE_RSS rss_mb=([\d.]+)')
+    """The series the verdict is computed on, and WHICH column it is.
+
+    MEDIDO 2026-11-04 no worker VIVO (pid 36668): working set **13,6 MB** contra
+    **3 828 MB** de commit privado. No Windows as paginas dos pesos do modelo nao
+    estao residentes, por isso `rss_mb` (WorkingSetSize) nao ve' 99,7 % do que o
+    processo custa e nao pode responder "esta' a crescer?". A coluna julgada
+    passou a ser `private_mb` (PagefileUsage); `rss_mb` fica como recurso para
+    linhas antigas, e o nome da coluna vai impresso para o veredicto nunca mudar
+    de significado em silencio.
+    """
+    priv = re.compile(r'BRIDGE_RSS .*?private_mb=([\d.]+)')
+    ws = re.compile(r'BRIDGE_RSS rss_mb=([\d.]+)')
     out = []
+    column = None
     with open(path, encoding='utf-8', errors='replace') as fh:
         for line in fh:
-            m = pat.search(line)
+            m = priv.search(line)
             if m:
                 out.append(float(m.group(1)))
-    return out
+                column = column or 'private_mb'
+                continue
+            m = ws.search(line)
+            if m:
+                out.append(float(m.group(1)))
+                column = column or 'rss_mb'
+    return out, (column or 'none')
 
 
 def arms():
@@ -155,8 +173,9 @@ if __name__ == '__main__':
         raise SystemExit(neg_arm())
     ok = all(arms().values())
     if a.log:
-        vals = read_log(a.log)
+        vals, column = read_log(a.log)
         v, s, g, note = judge(vals)
-        print('SERIE REAL %s: n=%d verdict=%s %s' % (a.log, len(vals), v, note))
+        print('SERIE REAL %s: n=%d column=%s verdict=%s %s'
+              % (a.log, len(vals), column, v, note))
     print('VERDICT:', 'GREEN' if ok else 'RED')
     raise SystemExit(0 if ok else 1)

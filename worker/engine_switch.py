@@ -80,6 +80,21 @@ def current_rss_mb() -> float:
     return c.WorkingSetSize / (1024.0 * 1024.0) if ok else -1.0
 
 
+def current_private_mb() -> float:
+    """The bytes this process COMMITS -- `PagefileUsage`, not the working set.
+
+    MEASURED 2026-11-04 on the live worker (pid 36668): working set **13.6 MB**,
+    private commit **3,828 MB**. On Windows the model's weight pages are not
+    resident, so a leak detector reading `WorkingSetSize` is blind to 99.7 % of
+    what the process actually costs, and `rss_mb` cannot answer "is it growing?".
+    `PagefileUsage` is the number that can. Both are published: the working set
+    because resident bytes are what compete for RAM, the private commit because
+    it is what shows a leak.
+    """
+    ok, c = _pmc()
+    return c.PagefileUsage / (1024.0 * 1024.0) if ok else -1.0
+
+
 def err(msg: str) -> None:
     sys.stderr.write(msg + "\n")
     sys.stderr.flush()

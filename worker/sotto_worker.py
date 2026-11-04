@@ -112,7 +112,8 @@ from engine_switch import (  # noqa: E402,F401 -- superficie historica do worker
     REDUX_MIN_AUDIO_S, REDUX_MIN_FREE_MB_DEFAULT, REDUX_PRODUCER,
     REDUX_RUNNER_DEFAULT, REDUX_RUNNER_TIMEOUT_DEFAULT_S,
     REDUX_VISIBILITY_DEFAULT, ReduxHiddenSwitch, RunnerEngine, TARGET_SR,
-    _SHEDDING_PATH, _free_memory_mb, current_rss_mb, err, peak_rss_mb,
+    _SHEDDING_PATH, _free_memory_mb, current_private_mb, current_rss_mb, err,
+    peak_rss_mb,
     redux_checkpoint_dir, redux_checkpoint_missing, redux_live_dirs,
     redux_live_missing,
 )
@@ -5852,6 +5853,10 @@ def main():
         # `load_phases_s` above keeps its exact shape.
         boot_prof_s=dict(_BOOT_PROF),
         rss_mb=round(current_rss_mb(), 1),
+        # The commit, beside the working set: measured 2026-11-04 on the live
+        # worker, ws 13.6 MB against 3,828 MB of private commit -- a leak
+        # detector on the working set cannot see the model's weight pages.
+        private_mb=round(current_private_mb(), 1),
         # The peak UP TO this event, which no longer includes the genai front end
         # (`start_frontend()` runs right after this line, and genai's own copy of
         # the weights is ~700 MB of RSS measured 2026-11-03). Read it as "the
@@ -6187,7 +6192,8 @@ def main():
             f"queue_drops={counters['queue_drops']} "
             f"queue_evicted={counters.get('queue_evicted', 0)} "
             f"reruns={counters['reruns']} rerun_wall_s={counters['rerun_wall_s']:.2f} "
-            f"audio_s={asr.audio_s:.2f} infer_wall_s={asr.wall:.2f} rss_mb={current_rss_mb():.1f}"
+            f"audio_s={asr.audio_s:.2f} infer_wall_s={asr.wall:.2f} "
+            f"rss_mb={current_rss_mb():.1f} private_mb={current_private_mb():.1f}"
         )
         # ONLY when the switch exists, for the same byte-identity reason as the
         # `done` payload: the shipped WORKER_STATS line keeps its exact fields.
