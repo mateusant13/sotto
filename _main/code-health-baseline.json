@@ -221,12 +221,12 @@
       "max_func_name": "_meter_interface"
     },
     "app/webview/batch_queue.py": {
-      "bytes": 40115,
+      "bytes": 40402,
       "classes": 2,
       "defs": 12,
       "except_pass": 9,
       "globals": 0,
-      "lines": 923,
+      "lines": 928,
       "max_func": 67,
       "max_func_name": "step"
     },
@@ -320,6 +320,16 @@
       "max_func": 67,
       "max_func_name": "tick"
     },
+    "app/webview/no_console.py": {
+      "bytes": 2356,
+      "classes": 0,
+      "defs": 2,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 61,
+      "max_func": 10,
+      "max_func_name": "popen_kwargs"
+    },
     "app/webview/overlay_paint.py": {
       "bytes": 36084,
       "classes": 0,
@@ -351,13 +361,13 @@
       "max_func_name": "format_report"
     },
     "app/webview/power_recovery.py": {
-      "bytes": 12274,
+      "bytes": 13351,
       "classes": 1,
       "defs": 2,
       "except_pass": 2,
       "globals": 0,
-      "lines": 287,
-      "max_func": 76,
+      "lines": 303,
+      "max_func": 92,
       "max_func_name": "_run_window"
     },
     "app/webview/run-cmd-log-append.py": {
@@ -381,23 +391,23 @@
       "max_func_name": "run_selftest"
     },
     "app/webview/shell_relaunch.py": {
-      "bytes": 22035,
+      "bytes": 22054,
       "classes": 1,
       "defs": 9,
       "except_pass": 3,
       "globals": 0,
-      "lines": 510,
+      "lines": 511,
       "max_func": 173,
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1009139,
+      "bytes": 1012202,
       "classes": 24,
-      "defs": 112,
+      "defs": 113,
       "except_pass": 41,
       "globals": 4,
-      "lines": 18925,
-      "max_func": 387,
+      "lines": 18978,
+      "max_func": 391,
       "max_func_name": "main"
     },
     "app/webview/topmost_keepalive.py": {
@@ -409,6 +419,16 @@
       "lines": 113,
       "max_func": 25,
       "max_func_name": "tick"
+    },
+    "app/webview/webview2_args.py": {
+      "bytes": 3446,
+      "classes": 0,
+      "defs": 2,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 80,
+      "max_func": 23,
+      "max_func_name": "plan"
     },
     "app/webview/win32_types.py": {
       "bytes": 1433,
@@ -521,14 +541,14 @@
       "max_func_name": "run_engine_pass"
     },
     "worker/engine_switch.py": {
-      "bytes": 62871,
+      "bytes": 63689,
       "classes": 2,
       "defs": 9,
       "except_pass": 1,
       "globals": 0,
-      "lines": 1172,
-      "max_func": 136,
-      "max_func_name": "__init__"
+      "lines": 1186,
+      "max_func": 141,
+      "max_func_name": "_run_runner"
     },
     "worker/inspect_model.py": {
       "bytes": 4202,

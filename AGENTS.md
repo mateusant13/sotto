@@ -407,8 +407,12 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 08:4x):** `_main\_audit-verify-all.cmd` = **200671 B**,
-  **2513 CRLF** / 0 bare LF, sha256 `6636EEA4922CCDE341EDEF2DAF74BB33626F0ABA419CC89A07B44870B08ECE83`.
+- **PIN do ficheiro (medido 2026-11-04, 09:1x):** `_main\_audit-verify-all.cmd` = **200734 B**,
+  **2513 CRLF** / 0 bare LF, sha256 `1DAFA0FE3DB10B2A209147EA323FD32FBCE558EC2BAFB4E7AEA0BD195E279D8F`.
+  (Sessenta e três bytes depois do pin de 200671 B: as dependencias do passo
+  `console-window-audit` passaram a nomear `_main\console-weakflag-baseline.json` e
+  `app\webview\no_console.py`, sem as quais o censo ficaria em cache a descrever um
+  conjunto de guardas que ja mudou.)
   (Este pin substitui o de 198855 B / 2491 CRLF, DEPOIS dos dois passos do `webview2-args-scope`
   (+ `red-as-expected-webview2-args-scope`): o `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` herdado do
   processo que larga a app abria um porto de depuracao em TODAS as janelas WebView2 dela e fazia o
