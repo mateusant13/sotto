@@ -13,6 +13,40 @@ ordering underneath it. The goal this bundle serves here: YouTube subtitles on s
 ≈1:1 with YouTube — `drift_ms` measured, never a boolean.
 ## Browser: agent-browser default.
 Owner browser: authorized for task-needed authentication; follow this project's access scope.
+
+### USAR O NAVEGADOR E O YOUTUBE SEM APARECER NA TELA DELE (medido 2026-11-04)
+
+Ordem dele, verbatim: *"tu pode usar meu youtube e meu navegador. só que dessa vez, no background. nao
+me atrapalhando. quando descobrir como fazer no background, anota no agents.md"*.
+
+**O metodo, e por que ele e' este:** `agent-browser` ja' e' **headless por omissao**, e no Windows um
+Chrome headless largado pelo CLI **corre num desktop privado** (`skills get core --full`: "locally
+launched headless Chrome uses a private desktop to prevent visible desktop rectangles"). Nao ha janela:
+nao ha o que esconder, e nao ha `--headed` em caminho nenhum desta casa.
+
+MEDIDO, nao lido: censo das janelas `Chrome_WidgetWin_1` VISIVEIS antes e depois de uma sessao headless
+que abriu o YouTube — **4 e 4, o mesmo conjunto** (as dele: Twitch, ChatGPT, Discord, VS Code), e
+`document.title` da sessao deu o titulo real do video (`MOZIBMBHK-8`). A sessao tambem nao pode ser o
+`chrome` dele: nomes de sessao separados, um por tarefa.
+
+```bash
+S=$(agent-browser session id --scope worktree --prefix yt-evidence)
+agent-browser open "https://www.youtube.com/watch?v=<id>" --session "$S"
+agent-browser eval "document.title" --session "$S"
+# as linhas pintadas vem do DOM do player, a mesma fonte que app/webview/youtube_cdp_source.py le:
+agent-browser eval "(()=>{const c=document.querySelectorAll('.ytp-caption-segment');return c.length?c[c.length-1].textContent.slice(0,90):'no-captions'})()" --session "$S"
+agent-browser close --session "$S"
+```
+
+Tres avisos que custaram medicao:
+- **`no-captions` antes de o video tocar** nao e' ausencia de legenda: sem play nao ha cue. Um
+  `eval` que devolve `no-captions` diz isso e mais nada.
+- **O perfil dele NAO se copia.** A skill do `agent-browser` e' explicita ("do not copy a browser
+  profile"), e uma copia do perfil e' uma sessao autenticada a passear por um disco que enche. Para
+  uma pagina que exige o login dele, a via e' `--auto-connect --pin-tab` sobre o Chrome que ja' esta'
+  aberto (nao abre janela; confirmar `title`+URL do tab exacto antes de agir), nunca uma copia.
+- **Nao navegar num tab dele.** `--auto-connect` sem `--pin-tab` no tab certo mexe na sessao que ele
+  esta' a usar. Se o tab necessario nao estiver la', o caminho e' a sessao headless propria.
 ## Herdr panes (mandatory)
 Cap: one visible pane per canonical project across workspaces/worktrees. Create via `python I:/!manager/tools/herdr-visible-pane-budget.py workspace --cwd <root> --label <id>` only; unknown/already-present projects refuse. Reuse main pane; extra workers headless; no raw create/focus/move/close.
 
