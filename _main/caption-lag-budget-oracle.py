@@ -373,6 +373,70 @@ def arm_hold_band_named(mod, lines):
     return ok, (applied or 'AUSENTE')[:150]
 
 
+def arm_final_close_not_counted(mod, shell, lines):
+    """A LINHA FECHADA NAO ENTRA NA SERIE DO ECRA (2026-11-04).
+
+    MEDIDO no log vivo: `CAPTION_APPLIED ... kind=final aged_kind=hold-expired
+    audio_ms=166615` -- a `final` chega pelo `take_closed` SEM `tap_ms`, o shell
+    reusava o tap da ultima parcial e publicava 166 s de idade para uma linha de
+    3 s. `CAPTION_LAG_STATS` dessa sessao dizia `p90=45402 over=109` de 200.
+    O numero continua no log com o nome dele; a CONTA nao o aceita.
+    """
+    shell = make_shell(mod, lines)
+    shell.caption_log = []
+    shell._last_push_tap_ms = int(time.time() * 1000.0) - 166000
+    shell._last_push_at = time.time() - 1.504
+    shell._last_push_final = True
+    handler = types.SimpleNamespace(_shell=shell)
+    for name in dir(mod):
+        obj = getattr(mod, name)
+        if isinstance(obj, type) and hasattr(obj, '_caption_applied'):
+            handler._caption_applied = types.MethodType(obj._caption_applied, handler)
+            break
+    lines[:] = []
+    handler._caption_applied({'text': 'Can you hear me? Mmm.'})
+    applied = take(lines, 'CAPTION_APPLIED')
+    blown = take(lines, 'CAPTION_BUDGET_BLOWN')
+    stats = take(lines, 'CAPTION_LAG_STATS')
+    ok = (applied is not None and 'aged_kind=final-close' in applied
+          and blown is None and stats is None)
+    return ok, ('APPLIED=%s | BLOWN=%s | STATS=%s'
+                % ((applied or 'AUSENTE')[:110],
+                   'sim' if blown else 'nao', 'sim' if stats else 'nao'))
+
+
+def arm_tap_one_paint(mod, lines):
+    """O TAP E' DE UMA PINTURA SO' (2026-11-04).
+
+    O tap usado ficava posto, por isso a pintura SEGUINTE (a `final`, que nao
+    traz carimbo) media a idade contra ele. Medido `audio_ms=166615` num audio
+    de 3 s. Consumido, a segunda pintura nao tem idade -- e nao inventa uma.
+    """
+    shell = make_shell(mod, lines)
+    shell.caption_log = []
+    shell._last_push_tap_ms = int(time.time() * 1000.0) - 120
+    shell._last_push_at = time.time() - 0.02
+    shell._last_push_final = False
+    handler = types.SimpleNamespace(_shell=shell)
+    for name in dir(mod):
+        obj = getattr(mod, name)
+        if isinstance(obj, type) and hasattr(obj, '_caption_applied'):
+            handler._caption_applied = types.MethodType(obj._caption_applied, handler)
+            break
+    lines[:] = []
+    handler._caption_applied({'text': 'primeira'})
+    first = take(lines, 'CAPTION_APPLIED')
+    lines[:] = []
+    handler._caption_applied({'text': 'segunda'})
+    second = take(lines, 'CAPTION_APPLIED')
+    ok = (first is not None and 'audio_ms=' in first
+          and second is not None and 'audio_ms=' not in second
+          and shell._last_push_tap_ms is None)
+    return ok, ('primeira=[%s] segunda=[%s] tap=%r'
+                % ((first or 'AUSENTE')[:80], (second or 'AUSENTE')[:60],
+                   shell._last_push_tap_ms))
+
+
 def arm_stats(mod, shell, lines, worker_event):
     lines[:] = []
     now_ms = int(time.time() * 1000.0)
@@ -410,11 +474,18 @@ def main(argv):
                            '        pass', 1)
         mut7 = src.replace("    CAPTION_HOLD_BAND_MS = (1490, 1520)",
                            '    CAPTION_HOLD_BAND_MS = (0, 0)', 1)
+        # 2026-11-04: o tap de uma pintura so' e a linha fechada fora da serie.
+        mut8 = src.replace("        shell._last_push_tap_ms = None",
+                           '        pass', 1)
+        mut9 = src.replace(
+            "        _is_final = bool(getattr(shell, '_last_push_final', False))",
+            '        _is_final = False', 1)
         worker_src = io.open(WORKER, encoding='utf-8').read()
         mut5 = worker_src.replace('                    wall=_wall_tap,',
                                   '                    wall=time.time(),', 1)
         if (mut1 == src or mut2 == src or mut3 == src or mut4 == src
-                or mut5 == worker_src or mut6 == src or mut7 == src):
+                or mut5 == worker_src or mut6 == src or mut7 == src
+                or mut8 == src or mut9 == src):
             print('NEG-ARM IMPOSSIVEL: a ancora do mutante nao esta no shell')
             shutil.rmtree(tmpdir, ignore_errors=True)
             return 2
@@ -433,6 +504,12 @@ def main(argv):
         mut7_path = os.path.join(tmpdir, 'sotto_webview_m7.py')
         with io.open(mut7_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut7)
+        mut8_path = os.path.join(tmpdir, 'sotto_webview_m8.py')
+        with io.open(mut8_path, 'w', encoding='utf-8', newline='\n') as handle:
+            handle.write(mut8)
+        mut9_path = os.path.join(tmpdir, 'sotto_webview_m9.py')
+        with io.open(mut9_path, 'w', encoding='utf-8', newline='\n') as handle:
+            handle.write(mut9)
         mut6_path = os.path.join(tmpdir, 'sotto_webview_m6.py')
         with io.open(mut6_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut6)
@@ -479,6 +556,10 @@ def main(argv):
                      lambda: arm_panel_apply_age(mod, lines)),
                     ('hold-band-is-named',
                      lambda: arm_hold_band_named(mod, lines)),
+                    ('final-close-not-counted',
+                     lambda: arm_final_close_not_counted(mod, shell, lines)),
+                    ('tap-one-paint',
+                     lambda: arm_tap_one_paint(mod, lines)),
                     ('lag-stats-serie',
                      lambda: arm_stats(mod, shell, lines, worker_event))):
                 ok, detail = fn()
@@ -508,7 +589,11 @@ def main(argv):
                     (mut6_path, 'campo da serie nao declarado',
                      {'init-declares-lag-fields'}),
                     (mut7_path, 'banda do hold desligada',
-                     {'hold-band-is-named'}),):
+                     {'hold-band-is-named'}),
+                    (mut8_path, 'tap reaproveitado na pintura seguinte',
+                     {'tap-one-paint'}),
+                    (mut9_path, 'linha fechada contada como atraso do ecra',
+                     {'final-close-not-counted'}),):
                 print('=== mutante: %s' % why)
                 if path in (mut5_path, mut6_path):
                     # O mutante do WORKER julga-se pela arm de AST, nao por um

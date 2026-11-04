@@ -701,6 +701,21 @@ def _stable_words():
     return stable_words
 
 
+def _silence_tail():
+    """When the SILENCE proves the line's tail word (2026-11-04).
+
+    Same lazy shape and the same reason as `_stable_words` above: its own module
+    because this file is under the `code-health` ratchet, and the measurement
+    that fixes the 0,8 s lives there instead of here.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import silence_tail
+
+    return silence_tail
+
+
 class StreamAsr:
     """Streaming RNN-T over the encoder/decoder/joint ONNX graphs."""
 
@@ -3698,6 +3713,8 @@ def choose_providers(requested, model_dir=None):
 # as `caption-formulation.js:72`; one value, two layers, no second convention.
 SENTENCE_GAP_S = 8.0
 
+
+
 # Hard cap, so a speaker who never pauses cannot grow one line without bound.
 # Same value as `caption-formulation.js:73`.
 SENTENCE_MAX_CHARS = 90
@@ -3910,6 +3927,9 @@ class LineFormer:
         self.emit_partial = bool(emit_partial)
         self.gap_s = float(gap_s)
         self.max_chars = int(max_chars)
+        #: The audio END at which a silence last PUBLISHED the tail, so one
+        #: silence publishes once (see `publish_on_silence`).
+        self._silence_proved_at = None
         # STEP 3: the identity of the tap this former's events come from.
         # NOT reset by `reset()` -- it belongs to the STREAM, not the line.
         self.source = source or None
@@ -4302,6 +4322,9 @@ class LineFormer:
         if start is not None and end is not None:
             self._chunks.append((start, end, frag))
         self._words.append((frag, cont))
+        # A NEW FRAGMENT ENDS ANY SILENCE, so the next silence publishes its own
+        # tail; without this the guard would hold for the life of the line.
+        self._silence_proved_at = None
         if end is not None:
             self._end = end
         # (4) terminal punctuation closes AFTER this chunk — the model has
@@ -4341,6 +4364,23 @@ class LineFormer:
             # NUNCA viu. Uma linha de uma palavra so ("so") ficaria sem
             # aparecer no historico.
         return out
+
+    def publish_on_silence(self, now_end):
+        """A SILENCE in the audio proves the tail: publish the line whole.
+
+        The decision (0,8 s, one publication per silence, the measurement that
+        justifies the number) lives in `worker/silence_tail.py`; this method is
+        the call site. It does NOT close the line: `SENTENCE_GAP_S` decides
+        where lines break. `stable: true` is what stops the panel from holding
+        the last word a second time (`app/panel/stable-words.js`).
+        """
+        text, self._silence_proved_at = _silence_tail().decide(
+            now_end, self._end, tidy_final(self.line()), self._worthy,
+            self._shown, self._silence_proved_at)
+        if text is None:
+            return []
+        self._shown = text
+        return [self._event(text, stable=True)]
 
     def flush(self):
         """End of stream is a boundary: return the line still held, if any."""
@@ -4542,6 +4582,13 @@ def selftest(asr, audio_path, args, min_chars=1, partial=True, done_text_max_cha
             continues=asr.chunk_continues,
         )):
             emit(model=asr.name, **event)
+        # AN EMPTY CHUNK AFTER SPEECH PROVES THE TAIL: publish the line whole
+        # (`publish_on_silence`). On this arm the text ships as a partial, which
+        # is what the arm does for every other line too.
+        if not (text or '').strip():
+            for event in line_events(former.publish_on_silence(
+                    round((i + 1) * asr.chunk / TARGET_SR, 2))):
+                emit(model=asr.name, **event)
         # The close travels OUT OF BAND (M2) and must be published here too: the
         # partial channel suppresses a close whose text was already shown, and
         # MEASURED on this box that left a 14.5 s file-mode run with 3
@@ -6301,6 +6348,16 @@ def main():
                 )):
                     counters["captions"] += 1
                     emit(model=asr.name, **event)
+                # A SILENCE IN THE AUDIO PROVES THE TAIL (2026-11-04): the block
+                # after the last words decodes to nothing, so `push` never runs
+                # and the tail waited for the panel's 1500 ms valve. The line is
+                # NOT closed; its full text ships once, `stable`.
+                # `worker/silence_tail.py` carries the measurement.
+                if not (text or '').strip():
+                    for event in line_events(
+                            former.publish_on_silence(_end)):
+                        counters["captions"] += 1
+                        emit(model=asr.name, **event)
                 publish_captions(drain())
                 keep_from = (
                     idx + 1

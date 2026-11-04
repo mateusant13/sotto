@@ -496,6 +496,46 @@ def main():
     arm("a linha seguinte comeca pelo texto transportado, nao pelo vazio",
         bool(trasportou), False, True)
 
+    # ── A CAUDA PROVADA PELO SILENCIO (2026-11-04) ──────────────────────────
+    # MEDIDO no log vivo do dono (191 pinturas que MUDARAM o texto): a primeira
+    # aparicao e' bimodal -- p50 195 ms, e 45% a 1500 ms+, que e' exatamente a
+    # valvula `COMMIT_MAX_HOLD_MS` do painel. O bloco de audio que vem depois
+    # das ultimas palavras decodifica VAZIO, logo `push` nunca corre e a cauda
+    # nao provada ficava a espera do relogio do painel. `publish_on_silence`
+    # publica a linha inteira, `stable`, ao fim de `TAIL_SILENCE_CLOSE_S`.
+    f2 = W.LineFormer(min_chars=1, emit_partial=True)
+    f2.push("hello wor", 0.0, 1.5, continues=True)
+    curto = f2.publish_on_silence(2.0)
+    provado = f2.publish_on_silence(2.4)
+    repetido = f2.publish_on_silence(3.0)
+    # O CONTROLE: a mesma linha, com o limiar do silencio posto acima de tudo o
+    # que este arm mede -- e' a implementacao de ANTES (o silencio nao publica).
+    # O limiar vive em `worker/silence_tail.py` e e' MUTADO aqui, nao copiado.
+    f3 = W.LineFormer(min_chars=1, emit_partial=True)
+    f3.push("hello wor", 0.0, 1.5, continues=True)
+    _tail = W._silence_tail()
+    _limiar = _tail.SILENCE_PROVE_S
+    try:
+        _tail.SILENCE_PROVE_S = 99.0
+        antes = f3.publish_on_silence(2.4)
+    finally:
+        _tail.SILENCE_PROVE_S = _limiar
+    arm("silencio curto NAO publica; 0,9 s de silencio publica a linha inteira e `stable`",
+        ([e["text"] for e in curto],
+         [(e["text"], bool(e.get("stable"))) for e in provado]),
+        ([], []),
+        ([], [("hello wor", True)]))
+    arm("o MESMO silencio publica uma vez, nunca a cada bloco",
+        [e["text"] for e in repetido], ["hello wor"], [])
+    # A linha continua ABERTA: o silencio prova a cauda, nao fecha a frase
+    # (`SENTENCE_GAP_S = 8.0` e' quem decide onde a LINHA quebra). A fala que
+    # segue JA estava a vista ("hello wor"), por isso o unico fragmento novo
+    # ("world") fica retido pela regra da palavra -- nada a repintar.
+    mais = f2.push("world", 2.4, 3.5, continues=False)
+    arm("depois da publicacao a linha continua a mesma (nao fechou)",
+        ([e["text"] for e in mais], f2.line()), (["fechada"], "hello wor"),
+        ([], "hello wor world"))
+
     failed = RESULTS.count(False)
     print(f"incomplete-word-oracle: {len(RESULTS) - failed} PASS / {failed} FAIL "
           f"({len(RESULTS)} arms)  impl={W.__file__}")

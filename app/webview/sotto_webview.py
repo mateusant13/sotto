@@ -8298,19 +8298,26 @@ class SottoHost:
         # chegada: entre os dois ha' a formulacao, a ponte e a pintura do DOM.
         shell = self._shell
         tap = getattr(shell, '_last_push_tap_ms', None)
+        # O TAP E' DE UMA PINTURA SO' (2026-11-04). A `final` chega sem
+        # `tap_ms` e herdava o da ultima parcial: medido `audio_ms=166615` num
+        # audio de 3 s, `p90=45402`, `over=109` de 200.
+        shell._last_push_tap_ms = None
+        _is_final = bool(getattr(shell, '_last_push_final', False))
         sent_at = getattr(shell, '_last_push_at', None)
         audio_ms = (int(time.time() * 1000.0) - int(tap)) if tap else None
         queue_ms = int((time.time() - sent_at) * 1000) if sent_at else None
-        if audio_ms is not None:
+        # A LINHA FECHADA NAO ENTRA NA SERIE AO VIVO (2026-11-04): o `tap_ms` de
+        # uma `final` e' o do INICIO dela, logo mede a DURACAO da frase.
+        if audio_ms is not None and not _is_final:
             shell._caption_lag_note(
-                audio_ms, queue_ms=queue_ms,
-                kind='final' if getattr(shell, '_last_push_final', False)
-                else 'partial')
+                audio_ms, queue_ms=queue_ms, kind='partial')
         log(f'CAPTION_APPLIED text={json.dumps(text)} '
             f'count={len(self._shell.caption_log)}'
-            f' kind={"final" if getattr(shell, "_last_push_final", False) else "partial"}'
-            + (f' aged_kind={"hold-expired" if (queue_ms is not None and shell.CAPTION_HOLD_BAND_MS[0] <= int(queue_ms) <= shell.CAPTION_HOLD_BAND_MS[1]) else "transport"}'
-               f' audio_ms={audio_ms} queue_ms={queue_ms}'
+            f' kind={"final" if _is_final else "partial"}'
+            + (f' aged_kind=final-close' if _is_final
+               else f' aged_kind={"hold-expired" if (queue_ms is not None and shell.CAPTION_HOLD_BAND_MS[0] <= int(queue_ms) <= shell.CAPTION_HOLD_BAND_MS[1]) else "transport"}'
+               if audio_ms is not None else '')
+            + (f' audio_ms={audio_ms} queue_ms={queue_ms}'
                f' budget_ms={shell.CAPTION_BUDGET_MS}'
                f' over={str(audio_ms > shell.CAPTION_BUDGET_MS).lower()}'
                if audio_ms is not None else ''))
