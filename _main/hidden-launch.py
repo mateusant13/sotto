@@ -59,7 +59,8 @@ def popen(argv, **kwargs):
     if si is not None and "startupinfo" not in kwargs:
         kwargs["startupinfo"] = si
     kwargs.setdefault("stdin", subprocess.DEVNULL)
-    return subprocess.Popen(argv, **kwargs, creationflags=CREATE_NO_WINDOW)
+    # SEM `creationflags=` AQUI: ja' vem em `kwargs` (ver o comentario em `run`).
+    return subprocess.Popen(argv, **kwargs)
 
 
 def run(argv, cwd=None, env=None, capture=False, timeout=None, text=True):
@@ -90,7 +91,13 @@ def run(argv, cwd=None, env=None, capture=False, timeout=None, text=True):
     else:
         kw.update(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        proc = subprocess.Popen(argv, **kw, creationflags=CREATE_NO_WINDOW)
+        # `creationflags` JA' ESTA' em `kw`: passar de novo levanta
+        # `TypeError: got multiple values for keyword argument` e o chamador morre
+        # antes de arrancar o filho. MEDIDO 2026-11-04 (`run(['cmd','/c',...])`
+        # a partir de uma lane: a bateria inteira nunca correu e o `cmd` que eu
+        # via era o do erro). O portao `console-window-gate.py` so' confere a
+        # PRESENCA da bandeira, por isso nao apanhou isto.
+        proc = subprocess.Popen(argv, **kw)
     except FileNotFoundError as exc:
         return (127, "", str(exc))
     try:
