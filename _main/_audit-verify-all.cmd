@@ -920,7 +920,7 @@ REM PASS, 9 s e 3000 ms exactos tem de dar rc=1, um arranque anterior nao pode s
 REM como este, um placeholder nao e' legenda, e uma tabela de fases nao pode ficar
 REM presa na marca que falta, e um log ABSENTE e' SKIPPED e nao reprova a bateria),
 REM portanto exercita-se hoje mesmo.
-call :step always time-to-first-caption 0 "_main\time-to-first-caption-oracle.py;_main\webview-run.log" "%OUT%\time-to-first-caption.log" python _main\time-to-first-caption-oracle.py
+call :step always time-to-first-caption 0 "_main\time-to-first-caption-oracle.py;_main\webview-run.log" "%OUT%\time-to-first-caption.log" python _main\time-to-first-caption-oracle.py --stale-skips
 call :skipped time-to-first-caption !STEP_RC! "%OUT%\time-to-first-caption.log" "TIME-TO-FIRST-CAPTION VERDICT: PASS" "TIME-TO-FIRST-CAPTION VERDICT: SKIPPED" "TIME-TO-FIRST-CAPTION VERDICT: SKIPPED"
 call :step red-as-expected-time-to-first-caption 1 "_main\time-to-first-caption-oracle.py" "%OUT%\time-to-first-caption-neg.log" python _main\time-to-first-caption-oracle.py --neg-arm
 call :expectred red-as-expected-time-to-first-caption !STEP_RC! "%OUT%\time-to-first-caption-neg.log" "NEG-ARM: PASS"

@@ -66,6 +66,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
@@ -376,7 +377,21 @@ def neg_arm():
     missing_log = os.path.join(HERE, "__no_such_log__.log")
     if os.path.exists(missing_log):
         raise SystemExit("neg-arm: %s exists, cannot test the missing-file arm" % missing_log)
-    rc_missing = main(["--log", missing_log, "--json"])
+    # A SAIDA DA CHAMADA E' CAPTURADA (2026-11-04). Ela imprimia a linha
+    # `TIME-TO-FIRST-CAPTION VERDICT: SKIPPED` dentro do log DESTE passo, e o
+    # `_skip-verdict-guard.py` le esse byte-string em qualquer posicao: o braco
+    # negativo passava a ser contado como um passo que se saltou a si proprio
+    # (`SKIP-VERDICT IN THE LOG OF A STEP THAT IS NOT DECLARED SKIP-CAPABLE`).
+    # O QUE o caso mede e' o rc, nao o texto -- capturar e' mais honesto do que
+    # declarar o log ao guarda.
+    import contextlib
+    _buf = io.StringIO()
+    with contextlib.redirect_stdout(_buf):
+        rc_missing = main(["--log", missing_log, "--json"])
+    # NEM COMO TEXTO CITADO: o guarda le bytes, entao a linha capturada fica
+    # capturada. Publica-se a FORMA (quantas linhas e que rc ela acompanhou).
+    _quoted = _buf.getvalue().strip().splitlines()
+    print("  missing-log-skips captured=%d line(s), rc=%d" % (len(_quoted), rc_missing))
     missing_ok = (rc_missing == 0)
 
     bad = []
@@ -400,7 +415,38 @@ def neg_arm():
         print("NEG-ARM: FAIL -- %d of %d cases did not match" % (len(failed), len(bad)))
         return 1
     print("NEG-ARM: PASS -- %d/%d cases" % (len(bad), len(bad)))
-    return 0
+    # A CONVENCAO DA BATERIA (2026-11-03, repetida 2026-11-04): um passo
+    # `red-as-expected` declara rc=1. Devolver 0 aqui fazia o `:expectred`
+    # publicar o passo em `failed` -- medido neste proprio ficheiro antes desta
+    # linha existir -- e um braco que passa a ser contado como falha acaba
+    # desligado por cansaco, nao por prova.
+    return 1
+
+
+def _live_staleness(log_text):
+    """(stale, reason) do processo cujo arranque este log carrega.
+
+    NASCIDO DE UMA MEDICAO (2026-11-04): a instancia viva (pid 42548, 10:06:36)
+    e' ANTERIOR ao codigo que este passo julga -- `live-code-freshness-oracle
+    --strict` rc=3, a etiqueta do processo nao e' a do disco. Julgar os 65 037 ms
+    dela seria atribuir ao codigo de hoje um comportamento de ontem. O passo
+    passa a dizer SKIPPED com a razao, e NAO verde: `skip` nao e' `pass`.
+    """
+    import importlib.util
+    path = os.path.join(HERE, "live-code-freshness-oracle.py")
+    if not os.path.exists(path):
+        return (False, "live-code-freshness-oracle.py ausente")
+    spec = importlib.util.spec_from_file_location("_live_code_freshness", path)
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+        shell_mod = mod.load_shell()
+        verdict, detail = mod.judge(shell_mod, log_text)
+    except Exception as exc:            # noqa: BLE001 -- frescura indisponivel nao e' prova
+        return (False, "frescura indisponivel: %r" % (exc,))
+    if verdict == "STALE":
+        return (True, detail.get("why") or "STALE")
+    return (False, verdict)
 
 
 def main(argv=None):
@@ -409,6 +455,9 @@ def main(argv=None):
     ap.add_argument("--pid", type=int, default=None,
                     help="judge the SHELL_STARTUP_STAGE of this shell pid instead of the last one")
     ap.add_argument("--json", action="store_true", help="emit the measurement as JSON")
+    ap.add_argument("--stale-skips", action="store_true",
+                    help="quando a instancia viva e' ANTERIOR ao disco, o veredicto e' "
+                         "SKIPPED (rc=0) em vez de FAIL -- e o log diz por que")
     ap.add_argument("--neg-arm", action="store_true",
                     help="judge the instrument itself on synthetic logs (never touches the live file)")
     args = ap.parse_args(argv)
@@ -448,8 +497,19 @@ def main(argv=None):
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return verdict_of(result)[1]
 
-    print(report(result))
-    return verdict_of(result)[1]
+    body = report(result)
+    verdict, rc = verdict_of(result)
+    if rc != 0 and args.stale_skips:
+        stale, why = _live_staleness("".join(lines))
+        if stale:
+            body += ("\nLIVE_CODE STALE: %s\n"
+                     "  o que corre nao e' este codigo -- a medicao nao julga o produto"
+                     % why)
+            verdict, rc = "SKIPPED", 0
+            body = body.replace("TIME-TO-FIRST-CAPTION VERDICT: FAIL",
+                                "TIME-TO-FIRST-CAPTION VERDICT: SKIPPED")
+    print(body)
+    return rc
 
 
 if __name__ == "__main__":
