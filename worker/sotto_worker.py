@@ -5135,6 +5135,86 @@ def _redux_done_fields(switch, counters):
     )
 
 
+# ── A RETOMA: a carga liberta e o motor estacionado carrega SOZINHO ──────────
+# ORDEM DO DONO (2026-11-04), verbatim: *"modelos carregados dependendo da carga
+# do sistema ou nao. quando carga liberar, carrega sozinho (NUNCA TRAVAR O PC DO
+# USUARIO OU STUTTER) e processa qualquer audio nao processado, com o parakeet"*.
+#
+# QUEM DECIDE (histerese + re-leitura da carga antes de carregar) e' o
+# `ResumeGate` de `app/webview/load_shedding.py`; QUEM CARREGA e' o
+# `ReduxHiddenSwitch.flush_pending`, que entrega o audio acumulado
+# (`live_queue.PendingAudio`, RAM -> disco, sem perdas) a' thread do lote do
+# parakeet -- o mesmo `run_engine_pass` do `maybe_kick`, sem segundo transcritor.
+#
+# PORQUE AQUI E NAO NO `maybe_kick`: ele so' corre em `mode == "batch"` e
+# respeita o `batch_interval_s`. A retoma acontece tambem quando o nivel desce
+# para `leve` (modo `stream`), onde `maybe_kick` nunca e' chamado -- era esse o
+# caso em que o backlog so' saia no `stop()` do processo.
+
+
+def _resume_gate(switch):
+    """O `ResumeGate` do checkout, lendo o MESMO probe que o interruptor le'.
+
+    `None` quando o checkout nao tem o modulo da decisao: entao nao ha' retoma
+    nenhuma, e o comportamento e' o de antes (o audio espera, nada se perde).
+    """
+    module = _policy.shedding(_SHEDDING_PATH, err) if _policy is not None else None
+    gate_cls = getattr(module, 'ResumeGate', None) if module is not None else None
+    if gate_cls is None:
+        return None
+    return gate_cls(probe=getattr(switch, 'probe', None), log_fn=err)
+
+
+def resume_catch_up(switch, gate=None):
+    """A MARCA DA RETOMA. Devolve o que fez e diz no log o N do audio entregue.
+
+    Chamada a cada bloco (10 Hz) e inerte ate' haver BORDA: enquanto o nivel nao
+    sair de `PARK_LEVELS` sao duas comparacoes de strings. Na borda o `gate` relê
+    a carga e, so' abaixo da banda, o audio que esperou entra no lote do
+    parakeet. `blocks=N` e' o TAMANHO DO BACKLOG ENTREGUE, na mesma linha da
+    retoma: a ordem foi "processa qualquer audio nao processado", e um backlog
+    que ninguem escreve nao prova que ele foi processado.
+    """
+    out = {'resumed': False, 'started': False, 'blocks': 0, 'audio_s': 0.0,
+           'why': 'sem-interruptor'}
+    if switch is None or not getattr(switch, 'armed', False):
+        return out
+    if gate is None:
+        gate = _resume_gate(switch)
+        if gate is None:
+            out['why'] = 'sem-modulo-da-decisao'
+            return out
+    level = getattr(switch, '_shed', 'leve')
+    decision = gate.tick(level)
+    out.update({k: decision[k] for k in ('level', 'parked', 'commit_pct',
+                                         'cpu_pct', 'why')})
+    if not decision.get('resume'):
+        return out
+    counts = switch._pending_counts() if hasattr(switch, '_pending_counts') else {}
+    blocks = int(counts.get('held_blocks') or 0)
+    audio_s = float(counts.get('seconds') or 0.0)
+    started = bool(switch.flush_pending('load-resume'))
+    out.update(resumed=True, started=started, blocks=blocks, audio_s=audio_s)
+    reading = (_policy.shedding(_SHEDDING_PATH, err)
+               if _policy is not None else None)
+    pct = (reading._reading_text(decision.get('commit_pct'), decision.get('cpu_pct'))
+           if reading is not None else 'commit=n/a cpu=n/a')
+    if started:
+        err('LOAD_RESUME level=%s blocks=%d audio_s=%.2f engine=%s %s why=%s — a '
+            'carga libertou: o motor carrega sozinho e o audio que esperou entra no '
+            'lote do parakeet' % (level, blocks, audio_s, switch.batch_kind, pct,
+                                  decision.get('why')))
+    else:
+        # O lote ANTERIOR ainda corre, o audio ainda esta abaixo do piso, ou o
+        # motor esta' em backoff: o audio FICA na espera e a tentativa volta.
+        gate.retry()
+        err('LOAD_RESUME_DEFERRED level=%s blocks=%d audio_s=%.2f engine=%s %s '
+            'why=%s — o audio fica na espera e a retoma e tentada outra vez'
+            % (level, blocks, audio_s, switch.batch_kind, pct,
+               decision.get('why')))
+    return out
+
+
 def main():
     _lower_process_priority()
     ap = argparse.ArgumentParser(description="Sotto caption worker (JSONL on stdout)")
@@ -6064,6 +6144,10 @@ def main():
         # consulted at all when `switch is None` (the flag is off), so this whole
         # block is inert by default.
         mode = "stream"
+        #: A RETOMA (ver `resume_catch_up`): construida no PRIMEIRO bloco, com o
+        #: mesmo probe que o interruptor le'. `None` = ainda nao construida (e,
+        #: sem o modulo da decisao no checkout, fica `None` para sempre).
+        resume_gate = None
         # ── M1: the PCM of the chunks a line may still need ───────────────────
         # The second pass (M3) re-decodes a CLOSED line from its OWN audio, so the
         # POST-GAIN chunk that actually reached the encoder is held here, keyed by
@@ -6392,6 +6476,13 @@ def main():
                     if payload.get("type") == "caption":
                         counters["redux_captions"] += 1
                     emit(**payload)
+                # ── A RETOMA (ordem do dono, 2026-11-04) ──────────────────────
+                # `tick` estaciona; esta chamada e' a outra metade -- quando o
+                # nivel desce abaixo da banda, o motor carrega sozinho e o audio
+                # que esperou entra no lote, com o N no log (`LOAD_RESUME`).
+                if resume_gate is None:
+                    resume_gate = _resume_gate(switch)
+                resume_catch_up(switch, resume_gate)
                 if wanted != mode:
                     # ENTERING THE LIGHT PATH, for whatever reason: the panel went
                     # away OR the machine is under pressure (`shed`). Both close the

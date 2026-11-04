@@ -919,6 +919,10 @@ def run(module_path: Path, shell_path: Path, batch_path: Path | None = None) -> 
     load_tmp = Path(tempfile.mkdtemp(prefix="load-shed-load-"))
     try:
         arms_load(globals().get("WORKER", ROOT / "worker" / "sotto_worker.py"), load_tmp)
+        # A RETOMA (ordem do dono, 2026-11-04): estacionar ja' era medido; estas
+        # arms medem a BORDA -- carrega sozinho, uma vez, com a carga RELIDA.
+        arms_resume(globals().get("WORKER", ROOT / "worker" / "sotto_worker.py"),
+                    load_tmp)
         # A ACCAO, a FILA e o EXECUTOR (ordem do dono, 2026-11-03). O
         # `batch_queue.py` vive AO LADO do `load_shedding.py` que se esta' a
         # medir: numa corrida de mutante, e' a copia dele que corre.
@@ -1559,6 +1563,188 @@ def arms_load(worker_path: Path, tmp: Path) -> None:
         f"mode={mode2}")
 
 
+# ── ARMs 23 a 25: A RETOMA -- a carga liberta e o backlog entra SOZINHO ──────
+# ORDEM DO DONO (2026-11-04), verbatim: *"modelos carregados dependendo da carga
+# do sistema ou nao. quando carga liberar, carrega sozinho (NUNCA TRAVAR O PC DO
+# USUARIO OU STUTTER) e processa qualquer audio nao processado, com o parakeet"*.
+#
+# A METADE QUE FALTAVA. Estacionar ja' existia (ARM 10: 96 % larga o motor) e o
+# audio nunca se perde (ARM 9: 25 blocos, RAM -> disco, `dropped=0`). RETOMAR
+# nao existia em sitio nenhum: `maybe_kick` so' corre em `mode == "batch"` e
+# respeita o `batch_interval_s`, por isso o audio acumulado em `shed` que chegasse
+# a `leve` (modo `stream`) ficava em espera ate' ao `stop()` do processo -- o dono
+# recebia a transcricao quando fechasse a app. Estas arms medem a BORDA: o motor
+# carrega sozinho UMA vez, com a carga RELIDA antes de carregar, e o N do backlog
+# fica no log.
+RESUME_BLOCKS = 25
+
+
+def _parked_switch(sw, tmp: Path, name: str, seq, blocks=RESUME_BLOCKS):
+    """Um interruptor REAL estacionado por carga, com `blocks` de audio a espera.
+
+    O caminho e' o da app: `tick()` le' a carga medrada (o probe), larga o motor
+    em `muito-alta`, e `add_audio` poe os blocos na `PendingAudio` (RAM -> disco).
+    Devolve `(switch, engine, logs, probe)`.
+    """
+    import numpy as np
+
+    logs: list[str] = []
+    eng = _FakeEngine()
+    probe = _FakeProbe(seq)
+    # O `LOAD_RESUME`/`LOAD_RESUME_HELD` sao escritos pelo `err` do worker (o
+    # canal de stderr), nao pelo log do interruptor: sem esta troca a arm
+    # julgaria uma linha que nunca chega a lista que ela le'. E' o mesmo `err`
+    # que `_resume_gate` recebe como `log_fn`.
+    sw.err = logs.append
+    s = sw.ReduxHiddenSwitch(
+        True, _FakeReader(visible=False), str(tmp / "no-runner.py"),
+        logs.append, hidden_after_s=0.0, batch_interval_s=1.0, max_audio_s=1.0,
+        engine=eng, probe=probe, spool_dir=str(tmp / ("spool-" + name)))
+    add(s.tick() == "shed", "a maquina carregada estaciona o motor (mode=shed)",
+        f"level={s._shed} armed={s.armed}")
+    for _i in range(blocks):
+        s.add_audio(np.full(1600, 0.2, dtype=np.float32))
+    held = s._pending_counts()
+    add(held["held_blocks"] == blocks and held["dropped"] == 0,
+        f"os {blocks} blocos ficam todos a espera (nenhum deitado fora)",
+        f"held={held['held_blocks']} dropped={held['dropped']}")
+    return s, eng, logs, probe
+
+
+def _descend(sw, s, gate, ticks=12):
+    """Corre a BORDA como o laco do audio corre: `tick` e depois a retoma."""
+    outs = []
+    for _i in range(ticks):
+        s.tick()
+        outs.append(sw.resume_catch_up(s, gate))
+    if s.in_flight():
+        s._inflight.join(30.0)
+    return outs
+
+
+def arms_resume(worker_path: Path, tmp: Path) -> None:
+    """ARMs 23/24/25 -- a retoma: uma vez, so' com a carga RELIDA, com N no log."""
+    # A FIACAO PRIMEIRO: uma funcao que ninguem chama passa todas as arms abaixo.
+    calls = [line.strip() for line in worker_path.read_text(encoding="utf-8").splitlines()
+             if line.strip().startswith("resume_catch_up(switch")]
+    add(bool(calls),
+        "o laco do audio CHAMA a retoma (o codigo nao e' um ornamento)",
+        calls[0] if calls else "(nenhuma chamada no worker)")
+    try:
+        sw = _load_worker(worker_path)
+    except Exception as exc:                                        # noqa: BLE001
+        add(False, "o worker importa para os arms da retoma", repr(exc))
+        return
+    ls = sw._policy.shedding(sw._SHEDDING_PATH, None) if sw._policy else None
+    add(ls is not None and hasattr(ls, "ResumeGate") and hasattr(ls, "resume_calm"),
+        "o modulo da decisao tem a RETOMA (`ResumeGate`/`resume_calm`)")
+    if ls is None or not hasattr(ls, "ResumeGate"):
+        return
+
+    print("\nARM 23 -- a RETOMA: carga alta -> baixa carrega o motor UMA vez")
+    # A BANDA, primeiro como funcao pura: e' o unico pedaco que decide CARREGAR.
+    add(ls.resume_calm(95.0, 5.0) == (False, 'commit>=%.0f%%' % ls.RESUME_PCT),
+        "95 % de commit NAO autoriza carregar", str(ls.resume_calm(95.0, 5.0)))
+    add(ls.resume_calm(None, 5.0)[0] is False,
+        "uma leitura de commit AUSENTE nao autoriza carregar (a direccao segura)")
+    add(ls.resume_calm(79.0, 69.0)[0] is True,
+        "abaixo da banda nas duas medidas autoriza",
+        str(ls.resume_calm(79.0, 69.0)))
+    add(ls.resume_calm(79.0, 85.0)[0] is False,
+        "commit calmo com CPU acima de CPU_RESUME_PCT NAO autoriza")
+    add(ls.resume_calm(79.0, None)[0] is True,
+        "CPU ausente nao inventa carga (a convencao de `level_for_cpu`)")
+
+    s, eng, logs, _probe = _parked_switch(
+        sw, tmp, "resume", [(96.0, 90.0), (12.0, 6.0)])
+    gate = sw._resume_gate(s)
+    add(gate is not None, "o worker sabe construir o `ResumeGate` do checkout")
+    outs = _descend(sw, s, gate)
+    resumed = [o for o in outs if o.get("resumed")]
+    add(len(resumed) == 1,
+        "a serie alta -> baixa produz EXACTAMENTE UMA retoma",
+        "retomas=%d levels=%s" % (len(resumed), [o.get("level") for o in outs]))
+    add(resumed and resumed[0]["blocks"] == RESUME_BLOCKS,
+        "e o N do backlog entregue e' o N que esperava",
+        "blocks=%s" % (resumed[0]["blocks"] if resumed else None))
+    add(eng.loads == 1, "o motor carregou SOZINHO, uma vez", f"loads={eng.loads}")
+    resume_lines = [l for l in logs if l.startswith("LOAD_RESUME ")]
+    add(len(resume_lines) == 1 and "blocks=%d" % RESUME_BLOCKS in resume_lines[0],
+        "o log da retoma diz `blocks=N` (o tamanho do backlog entregue)",
+        resume_lines[0] if resume_lines else "(sem linha)")
+    after = s._pending_counts()
+    add(after["blocks_in"] == after["blocks_out"] == RESUME_BLOCKS,
+        "contagem: N entrou == N saiu",
+        f"in={after['blocks_in']} out={after['blocks_out']}")
+    add(after["seconds"] == 0.0 and after["dropped"] == 0,
+        "a espera drenou para ZERO e nada se perdeu",
+        f"seconds={after['seconds']} dropped={after['dropped']}")
+    caps = [c for c in s.drain_captions() if c.get("type") == "caption"]
+    add(len(caps) >= 1 and all(c.get("route") == "redux-batch" for c in caps),
+        "o audio que esperou virou legenda do lote", f"{len(caps)} linha(s)")
+    # MAIS TICKS CALMOS: a retoma nao se repete (uma vez por borda).
+    for _i in range(6):
+        s.tick()
+        sw.resume_catch_up(s, gate)
+    if s.in_flight():
+        s._inflight.join(30.0)
+    add(eng.loads == 1 and len([l for l in logs if l.startswith("LOAD_RESUME ")]) == 1,
+        "ticks calmos seguintes NAO voltam a carregar (uma vez por borda)",
+        f"loads={eng.loads}")
+
+    print("\nARM 24 -- carga que sobe DEPOIS da amostra calma mantem o motor parado")
+    # (a) HISTERESE: uma amostra calma isolada nunca chega a nivel `leve`.
+    state = ls.LoadShedding()
+    levels = [state.observe(value, 5.0)[0] for value in (96.0, 12.0, 96.0, 12.0, 96.0)]
+    gate_h = ls.ResumeGate(probe=None)
+    outs_h = [gate_h.tick(lv) for lv in levels]
+    add(all(lv == "muito-alta" for lv in levels),
+        "a serie alta -> UMA baixa -> alta NAO desce o nivel (a confirmacao manda)",
+        str(levels))
+    add(not any(o["resume"] for o in outs_h) and gate_h.resumes == 0,
+        "e a retoma nunca e' autorizada: o motor FICA estacionado",
+        "resumes=%d" % gate_h.resumes)
+
+    # (b) A RE-LEITURA: o nivel desceu, mas a maquina ja' subiu outra vez.
+    s2, eng2, logs2, _p2 = _parked_switch(
+        sw, tmp, "reread",
+        [(96.0, 90.0)] + [(12.0, 6.0)] * 4 + [(97.0, 95.0)])
+    gate2 = sw._resume_gate(s2)
+    outs2 = _descend(sw, s2, gate2)
+    resumed2 = [o for o in outs2 if o.get("resumed")]
+    add(not resumed2,
+        "o nivel desceu mas a RE-LEITURA viu 97 %: nenhuma retoma",
+        "resumed=%d levels=%s" % (len(resumed2),
+                                  sorted({o.get("level") for o in outs2})))
+    add(eng2.loads == 0,
+        "e o motor NAO foi carregado (a leitura velha nao carrega 615 MB)",
+        f"loads={eng2.loads}")
+    add(any("LOAD_RESUME_HELD" in l for l in logs2),
+        "a recusa e' DITA no log (nao e' um silencio)",
+        next((l for l in logs2 if "LOAD_RESUME_HELD" in l), "(sem linha)"))
+    add(not any(l.startswith("LOAD_RESUME ") for l in logs2),
+        "e nenhuma linha de retoma foi escrita")
+    held2 = s2._pending_counts()
+    add(held2["held_blocks"] == RESUME_BLOCKS and held2["dropped"] == 0,
+        "o audio continua TODO a espera (a carga subiu, ele fica para depois)",
+        f"held={held2['held_blocks']} dropped={held2['dropped']}")
+
+    print("\nARM 25 -- N blocos entregues ao lote com N no MESMO log")
+    s3, eng3, logs3, _p3 = _parked_switch(
+        sw, tmp, "count", [(96.0, 90.0), (12.0, 6.0)], blocks=37)
+    gate3 = sw._resume_gate(s3)
+    outs3 = _descend(sw, s3, gate3)
+    line3 = next((l for l in logs3 if l.startswith("LOAD_RESUME ")), "")
+    add("blocks=37" in line3 and "audio_s=3.70" in line3,
+        "a linha da retoma leva o N e o audio_s do backlog entregue", line3)
+    add(any(l.startswith("REDUX_BATCH_KICK") and "audio_s=3.7" in l for l in logs3),
+        "e o lote do parakeet recebeu esse mesmo audio",
+        next((l for l in logs3 if l.startswith("REDUX_BATCH_KICK")), ""))
+    add(eng3.loads == 1 and s3._pending_counts()["seconds"] == 0.0,
+        "37 blocos -> 1 carga do motor -> espera a ZERO",
+        f"loads={eng3.loads} seconds={s3._pending_counts()['seconds']}")
+
+
 def _mutant_layout(tmp: Path):
     """Um repo em miniatura: `tmp/worker/sotto_worker.py` + `tmp/app/webview/`.
 
@@ -1579,6 +1765,11 @@ def _mutant_layout(tmp: Path):
     worker_dir.mkdir(parents=True, exist_ok=True)
     webview.mkdir(parents=True, exist_ok=True)
     shutil.copy2(MODULE, webview / "load_shedding.py")
+    # O PROPRIO WORKER TAMBEM: o docstring prometia-o e sem ele `neg_arm_*`
+    # media um `FileNotFoundError` (o import do worker copiado) e chamava a isso
+    # "RED" -- um braco negativo que passa por o alvo nao existir nao mede mutante
+    # nenhum. Foi o braco da RETOMA que o expos (2026-11-04).
+    shutil.copy2(WORKER, worker_dir / "sotto_worker.py")
     for sibling in ("live_queue.py", "engine_switch.py", "engine_policy.py"):
         shutil.copy2(ROOT / "worker" / sibling, worker_dir / sibling)
     return worker_dir / "sotto_worker.py", webview
@@ -1619,6 +1810,44 @@ def neg_arm_drain() -> int:
             print(f"\nNEG-ARM(derrama) PASS -- RED as designed: {len(failed)} arm(s)")
             return EXIT_FAIL
         print("\nNEG-ARM(derrama) FAIL -- o oraculo NAO ve o bloco deitado fora")
+        return EXIT_PASS
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def neg_arm_resume() -> int:
+    """A RE-LEITURA antes de carregar deixar de existir, e exige RED.
+
+    O mutante e' o defeito plausivel desta metade: o `ResumeGate` autoriza a
+    retoma com o nivel (a histerese) e nunca relê a maquina -- ou seja carrega
+    615 MB com o commit de volta aos 97 %, que e' o stutter que a ordem proibe.
+    Sem este braco, as arms 23-25 podiam passar com o `_reread` a devolver
+    `calm=True` sempre: mediriam a fiacao e nao a guarda.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="load-shed-resume-neg-"))
+    try:
+        worker_copy, webview = _mutant_layout(tmp)
+        target = webview / "load_shedding.py"
+        text = target.read_text(encoding="utf-8")
+        mutant = text.replace(
+            "        calm, why = resume_calm(commit, cpu)\n"
+            "        return calm, commit, cpu, why",
+            "        calm, why = True, 'mutante: a re-leitura nao conta'\n"
+            "        return calm, commit, cpu, why")
+        if mutant == text:
+            print("NEG-ARM(retoma): nao consegui mutar o alvo (o texto mudou)")
+            return EXIT_PASS
+        target.write_text(mutant, encoding="utf-8")
+        print("NEG-ARM(retoma): a retoma deixa de RELER a carga antes de carregar")
+        rows.clear()
+        arms_resume(worker_copy, tmp)
+        failed = [r for r in rows if not r[0]]
+        if failed:
+            for _ok, name, detail in failed:
+                print(f"  RED   {name}  {detail}")
+            print(f"\nNEG-ARM(retoma) PASS -- RED as designed: {len(failed)} arm(s)")
+            return EXIT_FAIL
+        print("\nNEG-ARM(retoma) FAIL -- o oraculo NAO ve a re-leitura a faltar")
         return EXIT_PASS
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -1893,8 +2122,12 @@ def main(argv) -> int:
         persist = neg_arm_persist()
         cede = neg_arm_yield()
         cpu_wiring = neg_arm_cpu_wiring()
+        # O MUTANTE DA RETOMA (ordem do dono, 2026-11-04): a retoma volta a
+        # carregar com a carga AINDA em alta. Treze mutantes, e o pior dos treze
+        # e' o veredicto: um verde num deles nao compra os outros.
+        resume = neg_arm_resume()
         every = (table, channel, drain, selector, floor, sustain, persist, cede,
-                 chan, dwell, rise, cpu_wiring)
+                 chan, dwell, rise, cpu_wiring, resume)
         return (EXIT_FAIL if all(rc == EXIT_FAIL for rc in every) else EXIT_PASS)
     return run(MODULE, SHELL)
 
