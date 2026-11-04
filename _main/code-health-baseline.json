@@ -411,12 +411,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1051369,
-      "classes": 24,
-      "defs": 115,
-      "except_pass": 41,
+      "bytes": 1077489,
+      "classes": 27,
+      "defs": 118,
+      "except_pass": 44,
       "globals": 4,
-      "lines": 19652,
+      "lines": 20173,
       "max_func": 391,
       "max_func_name": "main"
     },
@@ -429,6 +429,26 @@
       "lines": 113,
       "max_func": 25,
       "max_func_name": "tick"
+    },
+    "app/webview/warm_engine.py": {
+      "bytes": 57883,
+      "classes": 8,
+      "defs": 16,
+      "except_pass": 13,
+      "globals": 0,
+      "lines": 1396,
+      "max_func": 56,
+      "max_func_name": "attach"
+    },
+    "app/webview/warm_pipe.py": {
+      "bytes": 19967,
+      "classes": 2,
+      "defs": 17,
+      "except_pass": 3,
+      "globals": 0,
+      "lines": 494,
+      "max_func": 40,
+      "max_func_name": "_declare"
     },
     "app/webview/webview2_args.py": {
       "bytes": 3446,
@@ -641,13 +661,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 412909,
+      "bytes": 423327,
       "classes": 17,
-      "defs": 70,
+      "defs": 71,
       "except_pass": 14,
       "globals": 5,
-      "lines": 7711,
-      "max_func": 2450,
+      "lines": 7891,
+      "max_func": 2515,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
@@ -701,12 +721,12 @@
       "max_func_name": "find_foreign_holders"
     },
     "worker/wasapi_loopback.py": {
-      "bytes": 52369,
+      "bytes": 55288,
       "classes": 6,
-      "defs": 21,
-      "except_pass": 4,
+      "defs": 23,
+      "except_pass": 3,
       "globals": 0,
-      "lines": 1162,
+      "lines": 1216,
       "max_func": 142,
       "max_func_name": "_pump"
     }

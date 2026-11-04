@@ -253,7 +253,14 @@ def mutate_shell(dst):
     """Tira o piso do caminho da saida limpa E a regra do batimento
     (as arms 1 e 3 tem de cair)."""
     src = io.open(SHELL, encoding='utf-8', newline='').read()
-    out = src.replace('if floor_ms and delay < floor_ms:', 'if False:', 1)
+    # DUAS aplicacoes do piso, nao uma: o `_restart_delay` (line ~1083) e o
+    # `_schedule_restart` (~18477) clamparam o MESMO numero, e a partir de
+    # 2026-11-04 a morte por dispositivo passou pelo segundo. Mutar so' a
+    # primeira deixava a arm 1 VERDE com o mutante vivo -- medido: `git diff`
+    # do merge `first capture fast` e `NEG-ARM FAIL`, braco 1 intacto.
+    n_floor = src.count('if floor_ms and delay < floor_ms:')
+    assert n_floor >= 1, 'a ancora do piso nao existe'
+    out = src.replace('if floor_ms and delay < floor_ms:', 'if False:', n_floor)
     assert out != src, 'a ancora do piso nao existe'
     src, out = out, out.replace("    return 'WORKER_ALIVE' in line", '    return False', 1)
     assert out != src, 'a ancora do is_alive_beat nao existe'

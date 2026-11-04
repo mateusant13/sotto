@@ -1,1 +1,14 @@
-{"app/webview/caption_overlay.py": 1, "app/webview/external_subs.py": 3, "app/webview/overlay_paint.py": 2, "app/webview/sotto_webview.py": 7, "app/webview/youtube_captions.py": 2, "worker/inspect_model.py": 4, "worker/lang_prompt.py": 2, "worker/model_vram_pool.py": 6, "worker/redux_live.py": 2, "worker/sotto_worker.py": 8, "worker/vram_residency.py": 2, "worker/wasapi_loopback.py": 3}
+{
+  "app/webview/caption_overlay.py": 1,
+  "app/webview/external_subs.py": 3,
+  "app/webview/overlay_paint.py": 2,
+  "app/webview/sotto_webview.py": 7,
+  "app/webview/youtube_captions.py": 2,
+  "worker/inspect_model.py": 4,
+  "worker/lang_prompt.py": 2,
+  "worker/model_vram_pool.py": 6,
+  "worker/redux_live.py": 2,
+  "worker/sotto_worker.py": 8,
+  "worker/vram_residency.py": 2,
+  "worker/wasapi_loopback.py": 2
+}

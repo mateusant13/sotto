@@ -70,6 +70,10 @@ VERBOSE = False
 #: Per-arm deadline. Six mutants x twenty arms must stay inside a battery step.
 ARM_TIMEOUT_S = 60.0
 CREATE_NO_WINDOW = 0x08000000
+# STARTF_USESHOWWINDOW + SW_HIDE: o cinto ao lado dos suspensorios. Um filho que
+# ignora CREATE_NO_WINDOW (um instalador, um `.vbs` por wscript) honra este.
+STARTF_USESHOWWINDOW = 0x00000001
+SW_HIDE = 0
 
 
 def say(message=""):
@@ -566,9 +570,12 @@ def _spawn_engine(work, tag, pipe, mutex, pid, log, extra=()):
     argv = [sys.executable, "-u", ENGINE, "--no-model", "--session", "oracle",
             "--pipe", pipe, "--mutex", mutex, "--pid-file", pid, "--log-file", log]
     argv.extend(extra)
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= STARTF_USESHOWWINDOW
+    si.wShowWindow = SW_HIDE
     return subprocess.Popen(argv, cwd=WEBVIEW, stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
-                            creationflags=CREATE_NO_WINDOW)
+                            startupinfo=si, creationflags=CREATE_NO_WINDOW)
 
 
 def arm_twin_pipe(mod, work):

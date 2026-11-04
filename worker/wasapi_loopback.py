@@ -577,10 +577,14 @@ def _list_render_endpoints(role, meter_ms):
                         "is_default": ep.endpoint_id is not None and ep.endpoint_id == default_id,
                         "meter_peak": _meter_peak(dev, meter_ms),
                     })
-                except Exception:
+                except Exception as exc:  # noqa: BLE001
                     # One endpoint that cannot be described must not hide the
-                    # others: the ladder still needs the ones that can.
-                    pass
+                    # others: the ladder still needs the ones that can. It is
+                    # NAMED, not swallowed -- an endpoint that vanishes from
+                    # the order silently is exactly the case that cost 3,8 s
+                    # of a dead tap on 2026-11-04.
+                    print('ENDPOINT_UNDESCRIBED index=%d err=%s: %s'
+                          % (i, type(exc).__name__, exc), flush=True)
                 finally:
                     _release(dev)
         finally:
@@ -687,10 +691,14 @@ def _live_endpoint_order(role, meter_ms):
                         "meter_peak": _meter_peak(dev, meter_ms),
                         "is_default": eid == default_id,
                     })
-                except Exception:
+                except Exception as exc:  # noqa: BLE001
                     # One endpoint that cannot be described must not hide the
-                    # others: the ladder still needs the ones that can.
-                    pass
+                    # others: the ladder still needs the ones that can. It is
+                    # NAMED, not swallowed -- an endpoint that vanishes from
+                    # the order silently is exactly the case that cost 3,8 s
+                    # of a dead tap on 2026-11-04.
+                    print('ENDPOINT_UNDESCRIBED index=%d err=%s: %s'
+                          % (i, type(exc).__name__, exc), flush=True)
                 finally:
                     _release(dev)
         finally:
