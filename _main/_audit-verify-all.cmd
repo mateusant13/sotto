@@ -1531,7 +1531,7 @@ REM SOTTO_OWNER_AUDIO_OK=1, senao rc=9 com `recusa: audio do dono`), (3) o motor
 REM VIVO diz em que provider corre (`worker-providers`: um CUDA disponivel e nao
 REM escolhido e' o fallback silencioso medido hoje, 10,75x contra 2,27x).
 if exist _main\console-window-audit.py (
-  call :step always console-window-audit 0 "_main\console-window-audit.py;_main\console-window-watch.py" "%OUT%\console-window-audit.log" python _main\console-window-audit.py
+  call :step always console-window-audit 0 "_main\console-window-audit.py;_main\console-window-watch.py;_main\console-weakflag-baseline.json;app\webview\no_console.py" "%OUT%\console-window-audit.log" python _main\console-window-audit.py
   call :record console-window-audit !STEP_RC!
 ) else ( call :record console-window-audit MISSING )
 if exist _main\console-window-audit.py (
@@ -2016,6 +2016,43 @@ if exist _main\topmost-keepalive-oracle.py (
 call :step always red-as-expected-topmost-keepalive 1 "_main\topmost-keepalive-oracle.py;app\webview\topmost_keepalive.py" "%OUT%\topmost-keepalive-neg.log" python _main\topmost-keepalive-oracle.py --neg-arm
 call :expectred red-as-expected-topmost-keepalive !STEP_RC! "%OUT%\topmost-keepalive-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-topmost-keepalive MISSING "%OUT%\topmost-keepalive-neg.log" "NEG-ARM PASS" )
+
+rem ---- O PORTO DE DEPURACAO DO WEBVIEW2 E' NOSSO, NUNCA DA CAIXA -------
+rem Nascido de um defeito medido a 2026-11-04: o ambiente desta sessao tem
+rem `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333`, e o
+rem loader do WebView2 le essa variavel no ambiente do PROCESSO. Um valor
+rem herdado abre um porto de depuracao em TODAS as janelas WebView2 da app e,
+rem pior, faz o MESMO binario comportar-se diferente na sessao do dono (que nao
+rem tem o valor) e na de uma lane (que tem) -- a medicao verde numa lane deixa
+rem de dizer nada sobre o que ele ve. O produto NAO precisa do porto: a fonte
+rem do YouTube le o browser do dono em 9222. Por isso o valor herdado e' REMOVIDO
+rem e so' `--cdp-port N` / `SOTTO_CDP_PORT=N` o poem. Os dois passos sao
+rem `always`: leem o ficheiro da shell e executam a funcao REAL num processo,
+rem e um resultado em cache descreveria um ficheiro que ja mudou.
+if exist _main\webview2-args-scope-oracle.py (
+call :step always webview2-args-scope 0 "_main\webview2-args-scope-oracle.py;app\webview\webview2_args.py;app\webview\sotto_webview.py" "%OUT%\webview2-args-scope.log" python _main\webview2-args-scope-oracle.py
+call :record webview2-args-scope !STEP_RC!
+) else ( call :record webview2-args-scope MISSING )
+
+if exist _main\webview2-args-scope-oracle.py (
+call :step always red-as-expected-webview2-args-scope 1 "_main\webview2-args-scope-oracle.py;app\webview\webview2_args.py;app\webview\sotto_webview.py" "%OUT%\webview2-args-scope-neg.log" python _main\webview2-args-scope-oracle.py --neg-arm
+call :expectred red-as-expected-webview2-args-scope !STEP_RC! "%OUT%\webview2-args-scope-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-webview2-args-scope MISSING "%OUT%\webview2-args-scope-neg.log" "NEG-ARM PASS" )
+
+if exist _main\power-recovery-oracle.py (
+call :step always power-recovery 0 "_main\power-recovery-oracle.py;app\webview\power_recovery.py;app\webview\sotto_webview.py" "%OUT%\power-recovery.log" python _main\power-recovery-oracle.py
+call :record power-recovery !STEP_RC!
+) else ( call :record power-recovery MISSING )
+
+if exist _main\power-recovery-oracle.py (
+call :step always red-as-expected-power-recovery 1 "_main\power-recovery-oracle.py;app\webview\power_recovery.py;app\webview\sotto_webview.py" "%OUT%\power-recovery-neg.log" python _main\power-recovery-oracle.py --neg-arm
+call :expectred red-as-expected-power-recovery !STEP_RC! "%OUT%\power-recovery-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-power-recovery MISSING "%OUT%\power-recovery-neg.log" "NEG-ARM PASS" )
+
+if exist _main\power-recovery-oracle.py (
+call :step heavy power-recovery-live 0 "_main\power-recovery-oracle.py;app\webview\power_recovery.py;app\webview\sotto_webview.py;_main\keepalive.py" "%OUT%\power-recovery-live.log" python _main\power-recovery-oracle.py --live-arm
+call :record power-recovery-live !STEP_RC!
+) else ( call :record power-recovery-live MISSING )
 
 if exist _main\youtube-sotto-drift-oracle.py (
 call :step always youtube-sotto-drift 0 "_main\youtube-sotto-drift-oracle.py;app\webview\youtube_reveal.py;app\webview\youtube_window.py;app\webview\youtube_captions.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;_main\fixtures\yt-WdaHAGRBB6s.live-compare-20261026.json" "%OUT%\youtube-sotto-drift.log" python _main\youtube-sotto-drift-oracle.py

@@ -350,6 +350,16 @@
       "max_func": 56,
       "max_func_name": "format_report"
     },
+    "app/webview/power_recovery.py": {
+      "bytes": 12274,
+      "classes": 1,
+      "defs": 2,
+      "except_pass": 2,
+      "globals": 0,
+      "lines": 287,
+      "max_func": 76,
+      "max_func_name": "_run_window"
+    },
     "app/webview/run-cmd-log-append.py": {
       "bytes": 3261,
       "classes": 0,
@@ -381,12 +391,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1005653,
+      "bytes": 1009139,
       "classes": 24,
       "defs": 112,
       "except_pass": 41,
       "globals": 4,
-      "lines": 18856,
+      "lines": 18925,
       "max_func": 387,
       "max_func_name": "main"
     },

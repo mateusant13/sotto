@@ -94,6 +94,15 @@ CONSOLE_SCRIPT_EXT = ('.cmd', '.bat', '.ps1', '.vbs')
 NO_WINDOW_TOKENS = ('CREATE_NO_WINDOW', 'CREATE_NEW_CONSOLE_DISABLED',
                     'DETACHED_PROCESS', 'NO_WINDOW', 'NO_WINDOW_FLAGS',
                     'SW_HIDE', 'windowsHide', '0x08000000', '0x00000008')
+#: A GUARDA FORTE (medida 2026-11-04 na cara do dono). `creationflags=
+#: CREATE_NO_WINDOW` sozinho NAO esconde a janela quando o PROCESSO PAI NAO TEM
+#: CONSOLA -- e o pai desta frota nunca tem (a app corre em `pythonw.exe`, uma
+#: lane larga de um processo sem consola). Medido: um `Popen(['cmd','/c','ping',
+#: ...], creationflags=0x08000000)` pintou uma janela visivel no ecran dele. O
+#: par que fecha o caso e' `startupinfo` com `STARTF_USESHOWWINDOW` +
+#: `wShowWindow=SW_HIDE` (e' o que `_main/hidden-launch.py` faz).
+STARTF_TOKENS = ('STARTF_USESHOWWINDOW', 'SW_HIDE', 'wShowWindow',
+                 'startupinfo=', 'STARTUPINFO(')
 #: mapa id(call) -> funcao, preenchido por ficheiro em `audit_python`
 SCOPE = [{}]
 
@@ -282,7 +291,7 @@ def _guards(call, src_segment, flags=None):
     return None
 
 
-def _classify(prog, targets, guard, shell_true, os_func):
+def _classify(prog, targets, guard, shell_true, os_func, src_segment=None):
     if os_func in ('system', 'popen', 'getoutput', 'getstatusoutput'):
         return 'WINDOW', 'os.%s abre um cmd.exe' % os_func
     if os_func == 'startfile':
@@ -292,6 +301,14 @@ def _classify(prog, targets, guard, shell_true, os_func):
     # nasce sem consola. A ordem anterior acusava tres ficheiros que ja'
     # estavam certos, e um portao que acusa quem esta' certo perde a autoridade.
     if guard:
+        # O PAR, NAO O BIT. Ver `STARTF_TOKENS`: um `creationflags` sozinho e'
+        # WEAK-FLAG e FALHA; quem larga um programa de consola tem de trazer o
+        # `startupinfo` (ou usar `_main/hidden-launch.py`).
+        strong = any(tok.lower() in (src_segment or '').lower()
+                     for tok in STARTF_TOKENS)
+        if not strong and guard.startswith('creationflags'):
+            return 'WEAK-FLAG', ('so creationflags (sem startupinfo/STARTF) -- '
+                                 'abre janela quando o pai nao tem consola')
         return 'GUARDED', 'guarda %s' % guard
     if shell_true:
         return 'WINDOW', 'shell=True larga um cmd.exe'
@@ -361,8 +378,8 @@ def audit_python(path):
                              if isinstance(node.keywords[0].value, ast.Name) else '?'))))
             continue
         cls, why = _classify(prog, targets, guard, shell_true,
-                             name if is_os else None)
-        if cls in ('WINDOW', 'NO-FLAG', 'STRING', 'GUARD-EXTERNAL'):
+                             name if is_os else None, src_segment=seg)
+        if cls in ('WINDOW', 'NO-FLAG', 'STRING', 'GUARD-EXTERNAL', 'WEAK-FLAG'):
             rows.append((_rel(path), line, cls, why))
     return rows
 
@@ -473,16 +490,45 @@ def audit_shell_script(path):
     return rows
 
 
-def judge(rows):
-    """O veredicto e' uma funcao pura das linhas, para o `--neg-arm` a mutar."""
+#: O BASELINE DO `WEAK-FLAG`. Medido 2026-11-04: 337 sitios desta arvore largam
+#: um programa de consola com `creationflags` e SEM `startupinfo` -- a maior
+#: parte em copias-mutantes e sondas de `_main/`. Uma regra que nasce vermelha
+#: em 337 sitios nao e' um portao, e' uma lista ignorada; o que ela pode fazer
+#: HOJE e' CONGELAR a divida e recusar qualquer sitio NOVO. O ficheiro guarda
+#: `ficheiro:linha` e nao pode crescer.
+BASELINE = os.path.join(ROOT, '_main', 'console-weakflag-baseline.json')
+
+
+def _baseline():
+    try:
+        data = json.load(io.open(BASELINE, encoding='utf-8'))
+        return set(data.get('sites') or [])
+    except Exception:                          # noqa: BLE001 - sem ficheiro = sem divida
+        return set()
+
+
+def _key(row):
+    return '%s:%d' % (row[0], row[1])
+
+
+def judge(rows, baseline=None):
+    """O veredicto e' uma funcao pura das linhas, para o `--neg-arm` a mutar.
+
+    `WEAK-FLAG` so' falha quando o sitio NAO esta' no baseline: a divida antiga
+    fica congelada e a regra vale a partir de hoje (a mesma forma do
+    `lane-screen-gate`/`console-window-gate`).
+    """
+    frozen = _baseline() if baseline is None else baseline
     bad = [r for r in rows if r[2] in ('WINDOW', 'NO-FLAG')]
+    bad.extend(r for r in rows
+               if r[2] == 'WEAK-FLAG' and _key(r) not in frozen)
     return bad
 
 
 def main(argv):
     neg = '--neg-arm' in argv
     if neg:
-        # o mutante: um ficheiro NOVO com `os.system`, escrito ao lado e apagado.
+        # ---- C1: um ficheiro NOVO com `os.system` (a regra antiga) ----------
         mutant = os.path.join(ROOT, '_main', '_zz_negarm_console.py')
         io.open(mutant, 'w', encoding='utf-8').write(
             'import os\nos.system("echo ola")\n')
@@ -491,10 +537,42 @@ def main(argv):
         finally:
             os.remove(mutant)
         bad = judge(rows)
-        ok = bool(bad) and bad[0][2] == 'WINDOW'
-        print('NEG-ARM %s -- %d achado(s): %s'
-              % ('PASS (o os.system foi apanhado)' if ok else 'FAIL',
-                 len(bad), bad[:1]))
+        c1 = bool(bad) and bad[0][2] == 'WINDOW'
+
+        # ---- C2: o bit SOZINHO. Medido 2026-11-04 no ecran do dono: um
+        # `Popen(['cmd','/c','ping',...], creationflags=0x08000000)` pintou uma
+        # janela visivel. O censo tem de o recusar, e o baseline tem de o
+        # perdoar quando congelado -- as duas metades na MESMA sonda.
+        weak = os.path.join(ROOT, '_main', '_zz_negarm_weak.py')
+        io.open(weak, 'w', encoding='utf-8').write(
+            'import subprocess\n'
+            'subprocess.Popen(["cmd", "/c", "ping", "-n", "1", "127.0.0.1"],\n'
+            '                 creationflags=0x08000000)\n')
+        strong = os.path.join(ROOT, '_main', '_zz_negarm_strong.py')
+        io.open(strong, 'w', encoding='utf-8').write(
+            'import subprocess\n'
+            'si = subprocess.STARTUPINFO()\n'
+            'si.dwFlags |= subprocess.STARTF_USESHOWWINDOW\n'
+            'si.wShowWindow = 0\n'
+            'subprocess.Popen(["cmd", "/c", "ping", "-n", "1", "127.0.0.1"],\n'
+            '                 creationflags=0x08000000, startupinfo=si)\n')
+        try:
+            wrows = audit_python(weak)
+            srows = audit_python(strong)
+        finally:
+            for f in (weak, strong):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+        c2_red = bool(judge(wrows, baseline=set())) and \
+            judge(wrows, baseline=set())[0][2] == 'WEAK-FLAG'
+        c2_frozen = judge(wrows, baseline={_key(r) for r in wrows}) == []
+        c3 = judge(srows, baseline=set()) == []
+        ok = c1 and c2_red and c2_frozen and c3
+        print('NEG-ARM %s -- C1(os.system)=%s C2(bit sozinho RED)=%s '
+              'C2(baseline perdoa)=%s C3(o par passa)=%s'
+              % ('PASS' if ok else 'FAIL', c1, c2_red, c2_frozen, c3))
         return 1 if ok else 0
 
     rows = []
@@ -512,16 +590,24 @@ def main(argv):
         except Exception as exc:               # noqa: BLE001
             rows.append((_rel(path), 0, 'PARSE', repr(exc)[:70]))
 
+    if '--write-baseline' in argv:
+        keys = sorted(_key(r) for r in rows if r[2] == 'WEAK-FLAG')
+        io.open(BASELINE, 'w', encoding='utf-8').write(json.dumps(
+            {'measured': '2026-11-04', 'rule': 'creationflags sem startupinfo',
+             'sites': keys}, indent=1, ensure_ascii=False))
+        print('baseline: %s (%d sitio(s))' % (_rel(BASELINE), len(keys)))
+        return 0
+
     by = {}
     for r in rows:
         by[r[2]] = by.get(r[2], 0) + 1
     # o relatorio leva tudo o que precisa de olhos (WINDOW/NO-FLAG falham;
     # STRING e GUARD-EXTERNAL sao lista de trabalho, nao veredicto)
-    targets = [r for r in rows if r[2] in ('WINDOW', 'NO-FLAG', 'STRING',
-                                           'GUARD-EXTERNAL')]
+    targets = [r for r in rows if r[2] in ('WINDOW', 'NO-FLAG', 'WEAK-FLAG',
+                                           'STRING', 'GUARD-EXTERNAL')]
     print('populacao: %d ficheiro(s) lidos' % files)
-    for k in ('WINDOW', 'NO-FLAG', 'STRING', 'GUARD-EXTERNAL', 'SCRIPT',
-              'USER-GESTURE', 'PARSE'):
+    for k in ('WINDOW', 'NO-FLAG', 'WEAK-FLAG', 'STRING', 'GUARD-EXTERNAL',
+              'SCRIPT', 'USER-GESTURE', 'PARSE'):
         print('  %-8s %d' % (k, by.get(k, 0)))
     per_file = {}
     for f, line, cls, why in targets:

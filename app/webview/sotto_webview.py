@@ -60,6 +60,7 @@ import bridge_census as _bridge_census_mod
 from code_identity import code_identity as _code_identity
 import panel_state
 import topmost_keepalive as _topmost_keepalive
+import power_recovery as _power_recovery
 
 
 # ── O INSTRUMENTO DO SELFTEST VIVE EM `app/webview/selftest_instrument.py` ───
@@ -9343,6 +9344,7 @@ class SottoShell:
                                              daemon=True)
         self._ui_watchdog.start()
         self._start_topmost_keepalive()
+        self._start_power_recovery()
         self._start_slow_read_monitor()
 
     def _start_topmost_keepalive(self):
@@ -9370,6 +9372,73 @@ class SottoShell:
         self._topmost_keepalive.start()
         log('TOPMOST_KEEPALIVE_STARTED hwnd=%s interval_s=%s'
             % (hwnd, _topmost_keepalive.DEFAULT_INTERVAL_S))
+
+    def _start_power_recovery(self):
+        """O Windows DIZ quando a maquina acordou; a app nao perguntava (2026-11-04).
+
+        MEDIDO: `grep -n "WM_POWERBROADCAST\\|WM_WTSSESSION_CHANGE\\|
+        WTSRegisterSessionNotification" app/webview/sotto_webview.py` = zero
+        ocorrencias. As tres consequencias e o PLANO estao no cabecalho de
+        `power_recovery.py`; aqui esta' so' a fiacao das tres accoes ao que a
+        shell ja' sabe fazer.
+
+        A JANELA E' PROPRIA, e nao a da bandeja nem a do painel: a da bandeja e'
+        `HWND_MESSAGE` e o `WM_POWERBROADCAST` e' um BROADCAST -- uma janela
+        message-only nao o recebe; e a form do painel RECRIA o handle quando o
+        WebView2 sobe, o que leva a subclasse consigo (medido 08:0x: `ATTACHED`
+        + `PostMessageW` aceite + ZERO `POWER_RESUME`). A POPUP de tamanho zero
+        que nunca se mostra e' nossa do principio ao fim.
+        """
+        if getattr(self, '_power_recovery', None) is not None:
+            return
+        hwnd = self.hwnd
+        if not hwnd:
+            log('POWER_RECOVERY_SKIPPED reason=no-hwnd')
+            return
+
+        def _topmost(event, act):
+            # O laco de 2 s devolve o bit; este e' o pedido no INSTANTE em que a
+            # maquina acorda, que e' quando o laco ainda ia demorar ate' 2 s.
+            set_topmost(hwnd)
+            log('POWER_RESUME_TOPMOST requested=true event=%s' % event)
+
+        def _worker(event, act):
+            # Nao se reinicia nada: um revive custa 14-26 s (medido) e o cao de
+            # guarda do silencio ja' e' quem decide se o worker ficou surdo. O
+            # que faltava era o NUMERO ficar escrito no instante do resume.
+            bridge = getattr(self, 'bridge', None)
+            alive = bool(getattr(getattr(bridge, 'child', None), 'pid', None))
+            log('POWER_RESUME_WORKER alive=%s silence_ms=%s event=%s '
+                'decision=%s'
+                % (str(alive).lower(), getattr(self, 'silence_ms', '?'), event,
+                   'watchdog' if alive else 'bridge-missing'))
+
+        def _geometry(event, act):
+            snap = self.geometry_snapshot()
+            if not snap:
+                log('POWER_RESUME_GEOMETRY skipped=true reason=no-geometry')
+                return
+            geometry, moved = clamp_geometry(snap, self.work_area())
+            if not moved:
+                log('POWER_RESUME_GEOMETRY moved=false event=%s' % event)
+                return
+            self._apply_window_geometry(geometry, reason='power-resume')
+            log('POWER_RESUME_GEOMETRY moved=true event=%s rect=%dx%d@(%d,%d)'
+                % (event, geometry['width'], geometry['height'],
+                   geometry['x'], geometry['y']))
+
+        self._power_recovery = _power_recovery.PowerRecovery(
+            {_power_recovery.ACT_TOPMOST: _topmost,
+             _power_recovery.ACT_WORKER: _worker,
+             _power_recovery.ACT_GEOMETRY: _geometry},
+            log=log)
+        try:
+            registered = self._power_recovery.attach()
+        except Exception as exc:  # noqa: BLE001 -- nunca impede a app de subir
+            log('POWER_RECOVERY_ATTACH_FAILED error=%r' % (exc,))
+            return
+        log('POWER_RECOVERY_READY hwnd=%s session_notify=%s'
+            % (self._power_recovery.hwnd, str(bool(registered)).lower()))
 
     def _start_slow_read_monitor(self):
         """Despeja pilhas quando a LEITURA DA LEGENDA passa do limite.
@@ -11352,8 +11421,13 @@ class SottoShell:
         shown = os.path.normpath(target)
         command = (f'explorer /select,"{shown}"' if is_file
                    else f'explorer "{shown}"')
+        from no_console import popen_kwargs
         try:
-            subprocess.Popen(command, creationflags=CREATE_NO_WINDOW)
+            # `explorer` e' um programa de JANELA, e e' o objectivo: o dono quer
+            # a pasta aberta. O `startupinfo` SW_HIDE so' evita a consola do
+            # processo intermedio (`CMD /c` implicito do `shell=False` nao
+            # existe), e mantem a regra do par no mesmo sítio que as outras.
+            subprocess.Popen(command, **popen_kwargs())
         except OSError as exc:  # noqa: BLE001 -- report, never crash the panel
             warn(f'REVEAL_FAILED path={json.dumps(shown)} error={exc!r}')
             return False
@@ -16028,10 +16102,11 @@ class SpeakerSidecar:
             self.log(f'SIDECAR_MISSING path={self.sidecar_path} '
                      f'reason={reason} by=SpeakerSidecar.start')
             return False
-        flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000) \
-            if os.name == 'nt' else 0
-        if os.name == 'nt':
-            flags |= 0x00004000          # BELOW_NORMAL_PRIORITY_CLASS
+        # O PAR, NAO O BIT: `CREATE_NO_WINDOW` sozinho deixa a janela aparecer
+        # quando o pai nao tem consola -- e o pai e' `pythonw.exe` (medido
+        # 2026-11-04 no ecran do dono). `no_console.popen_kwargs` traz os dois.
+        from no_console import popen_kwargs
+        extra = 0x00004000 if os.name == 'nt' else 0   # BELOW_NORMAL_PRIORITY_CLASS
         try:
             argv = [self.command, self.sidecar_path] + list(self.extra_args)
             self.child = subprocess.Popen(
@@ -16044,7 +16119,7 @@ class SpeakerSidecar:
                 encoding='utf-8',
                 errors='replace',
                 bufsize=1,
-                creationflags=flags,
+                **popen_kwargs(extra),
             )
         except Exception as exc:                                   # noqa: BLE001
             self.child = None
@@ -16704,8 +16779,13 @@ class WorkerBridge:
         # method was touched when the per-app target was added.
         env = self._child_env()
 
-        creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000) \
-            if os.name == 'nt' else 0
+        # O PAR, NAO O BIT: `CREATE_NO_WINDOW` sozinho NAO esconde a janela
+        # quando o pai nao tem consola, e o pai e' `pythonw.exe` (medido
+        # 2026-11-04 no ecran do dono: um `Popen(['cmd','/c','ping'], 0x08000000)`
+        # pintou uma consola visivel). `no_console.popen_kwargs` traz o
+        # `startupinfo` com SW_HIDE que fecha o caso, e a classe vem a parte.
+        from no_console import popen_kwargs
+        creationflags = 0x00004000 if os.name == 'nt' else 0
         if os.name == 'nt':
             # BELOW_NORMAL_PRIORITY_CLASS. The worker is a background
             # transcriber; it must never outrank the desktop while it reads a
@@ -16739,7 +16819,7 @@ class WorkerBridge:
                 encoding='utf-8',
                 errors='replace',
                 bufsize=1,
-                creationflags=creationflags,
+                **popen_kwargs(creationflags),
             )
         except Exception as exc:
             self.child = None
@@ -18239,6 +18319,10 @@ def parse_args(argv):
                         help='seconds to let the page settle before measuring')
     #: Alt+C closes when the owner clicks outside. ON by default (the owner asked
     #: for it); this turns it off for an arm that must not install a mouse hook.
+    parser.add_argument('--cdp-port', default=None, metavar='N',
+                        help='abre o porto de depuracao CDP do NOSSO WebView2 '
+                             '(sessao de depuracao; o produto nao precisa dele '
+                             'e sem esta bandeira o valor herdado e removido)')
     parser.add_argument('--no-click-outside', action='store_true',
                         help='do not close the panel when clicking outside it')
     #: MEASUREMENT: the three outside-click cases with the panel visible but not
@@ -18375,7 +18459,15 @@ WEBVIEW2_WINDOW_TO_VISUAL_DEFAULT = False
 
 
 def apply_webview2_environment(argv=None):
-    """Set the two knobs above, FIRST-COME-FIRST-KEPT, and report what happened.
+    """Set the three knobs above, and report what happened.
+
+    DOIS KNOBS SAO FIRST-COME-FIRST-KEPT, UM NAO E'. O ambiente do operador
+    ganha sobre o nosso no fundo transparente e no hosting mode, porque sao as
+    saidas de emergencia dele. `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` e' o
+    oposto: ele NUNCA e' herdado (ver `webview2_args.py`), senao um
+    `--remote-debugging-port=9333` exportado no processo que largou a app abre um
+    porto em todas as janelas WebView2 desta app e o comportamento do produto
+    passa a depender de QUEM o largou.
 
     An explicit environment value ALWAYS wins over ours, so an operator who
     measured a different answer on this box can override us without editing
@@ -18411,11 +18503,37 @@ def apply_webview2_environment(argv=None):
     if use_w2v and not had_mode:
         os.environ['COREWEBVIEW2_FORCED_HOSTING_MODE'] = WEBVIEW2_WINDOW_TO_VISUAL
 
+    # O PORTO DE DEPURACAO, ESCOPADO A ESTE PROCESSO. O pedido explicito vem do
+    # `--cdp-port N` (ou de `SOTTO_CDP_PORT`, que existe para nao editar a linha
+    # de comando de um harness); sem pedido, o valor herdado SAI do ambiente, e
+    # `dropped` fica registado para a contaminacao de uma lane nao ser silenciosa.
+    import webview2_args
+    cdp_port = _flag_value(args, '--cdp-port') or os.environ.get('SOTTO_CDP_PORT')
+    wv_args = webview2_args.apply(webview2_args.plan(
+        os.environ.get(webview2_args.INHERIT_VAR), cdp_port))
+
     return {
         'bg': WEBVIEW2_BG_TRANSPARENT, 'bg_overridden': had_bg,
         'window_to_visual': use_w2v, 'reason': why,
         'mode_overridden': had_mode,
+        'browser_args': wv_args,
     }
+
+
+def _flag_value(argv, name):
+    """O valor de `--flag V`/`--flag=V` numa lista de args, ou None.
+
+    Existe porque `apply_webview2_environment()` corre ANTES de o argparse ter
+    falado (o ambiente tem de estar posto antes do `create_window()`), e um
+    `--cdp-port` que so' o parser conhecesse chegaria tarde demais.
+    """
+    want = name + '='
+    for i, tok in enumerate(argv):
+        if tok == name:
+            return argv[i + 1] if i + 1 < len(argv) else None
+        if tok.startswith(want):
+            return tok[len(want):]
+    return None
 
 
 def _start_startup_stack_watch(args):
@@ -18499,6 +18617,10 @@ def main(argv=None):
         % (wv['bg'], ' (env already set)' if wv['bg_overridden'] else '',
            str(wv['window_to_visual']).lower(), wv['reason'],
            ' (env already set)' if wv['mode_overridden'] else ''))
+    _ba = wv['browser_args']
+    log('WEBVIEW2_BROWSER_ARGS action=%s present=%s value=%s dropped=%s'
+        % (_ba['action'], str(_ba['present']).lower(), _ba['value'] or '-',
+           _ba['dropped'] or '-'))
 
     if args.wait_ready:
         # ---- run.cmd's bounded readiness poll: the other half of G3 ---------

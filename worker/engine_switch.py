@@ -1018,15 +1018,29 @@ class ReduxHiddenSwitch:
                 wav_dir, f"redux-{os.getpid()}-{self.batches_kicked}.wav")
             self._write_wav(held, wav_path)
             cmd = [sys.executable, self.runner, "--wav", wav_path, "--json"]
-            # CREATE_NO_WINDOW: the house rule. This worker already runs without
-            # a console; a child python.exe would otherwise open a NEW console
-            # window on the owner's screen, and the 60 s census names the pid.
-            creationflags = 0x08000000 if os.name == "nt" else 0
+            # THE PAIR, NOT THE BIT. The previous comment here asserted that
+            # `CREATE_NO_WINDOW` was "the house rule" and that a child
+            # python.exe "would otherwise open a NEW console window". MEASURED
+            # 2026-11-04 on the owner's screen: `CREATE_NO_WINDOW` ALONE does
+            # not stop it -- a console child of a console-less parent (this
+            # worker runs under `pythonw.exe`) allocates its own console and
+            # Windows shows it. The second half is a STARTUPINFO that says
+            # SW_HIDE; `app/webview/no_console.py` is the canonical copy of the
+            # recipe, duplicated here because the worker has its own sys.path
+            # root and importing across roots at spawn time is worse than four
+            # lines.
+            si = None
+            flags = 0
+            if os.name == "nt":
+                flags = 0x08000000                     # CREATE_NO_WINDOW
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = 0                     # SW_HIDE
             t_runner = time.time()
             proc = subprocess.run(
                 cmd, capture_output=True, text=True, encoding="utf-8",
                 errors="replace", timeout=self.runner_timeout_s,
-                creationflags=creationflags)
+                creationflags=flags, startupinfo=si)
             runner_wall = round(time.time() - t_runner, 2)
             lines = 0
             for raw in (proc.stdout or "").splitlines():

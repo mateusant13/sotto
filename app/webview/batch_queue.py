@@ -544,13 +544,18 @@ def _default_level():
 
 
 def _spawn_below_normal(cmd):
-    """Arranca o filho com prioridade BAIXA e sem janela. Windows-safe."""
-    flags = 0
-    if os.name == 'nt':
-        flags = CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS
+    """Arranca o filho com prioridade BAIXA e sem janela. Windows-safe.
+
+    O PAR, NAO O BIT (medido 2026-11-04 no ecran do dono): `CREATE_NO_WINDOW`
+    sozinho nao esconde a janela quando o pai nao tem consola, e este modulo
+    corre dentro de `pythonw`. `no_console.popen_kwargs` traz o `startupinfo`
+    com `SW_HIDE` que fecha o caso.
+    """
+    from no_console import popen_kwargs
+    extra = BELOW_NORMAL_PRIORITY_CLASS if os.name == 'nt' else 0
     return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             text=True, encoding='utf-8', errors='replace',
-                            creationflags=flags)
+                            **popen_kwargs(extra))
 
 
 class BatchExecutor(threading.Thread):

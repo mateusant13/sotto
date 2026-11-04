@@ -341,8 +341,9 @@ validade - re-correr antes de repetir, e colar os numeros de HOJE.**
 
 A tabela de ficheiros e o que cada um e: **`docs/layout.md`**.
 
-**PIN do `run.cmd --help` (medido 2026-11-01 11:0x):** re-measured 2026-11-01 the output is 7281 B, 112 lines, 112 CRLF / 0 bare LF, rc 0, sha256
-`0F1E61994DFBAA170A52D5131F5CB19DDBB388620B3F64458D13BD55066CFBA1`. O portão do pin é
+**PIN do `run.cmd --help` (medido 2026-11-04 08:4x):** re-measured 2026-11-04 the output is 7538 B, 116 lines, 116 CRLF / 0 bare LF, rc 0, sha256
+`D93CFCF13E95BDF3138FF88A1A30C3EFB3B910126DD6267B514FC1F29648D82A`.
+(Este número substitui o de 7281 B / 112 linhas: quatro linhas novas no `--help` desde 2026-11-01.) O portão do pin é
 `_main/agents-md-pins-oracle.py`: se o `--help` mudar, este número muda, e o gate obriga a re-medir **aqui**.
 (Re-medido 2026-11-01 depois das três lanes que tocaram o `run.cmd` — hotkey, load e youtube; era
 7061 B / 109 linhas, o número de 2026-10-21.)
@@ -406,8 +407,23 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 06:5x):** `_main\_audit-verify-all.cmd` = **197671 B**,
-  **2476 CRLF** / 0 bare LF, sha256 `3A4789DF35A78D3EE9831EE59DAE2A8F3A78CCFDEAABB60D2C4D36AECE5260C1`.
+- **PIN do ficheiro (medido 2026-11-04, 08:4x):** `_main\_audit-verify-all.cmd` = **200671 B**,
+  **2513 CRLF** / 0 bare LF, sha256 `6636EEA4922CCDE341EDEF2DAF74BB33626F0ABA419CC89A07B44870B08ECE83`.
+  (Este pin substitui o de 198855 B / 2491 CRLF, DEPOIS dos dois passos do `webview2-args-scope`
+  (+ `red-as-expected-webview2-args-scope`): o `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` herdado do
+  processo que larga a app abria um porto de depuracao em TODAS as janelas WebView2 dela e fazia o
+  MESMO binario comportar-se diferente na sessao do dono (sem o valor) e na de uma lane (com ele).
+  A shell passou a REMOVER o valor herdado (`app\webview\webview2_args.py`, chamado dentro de
+  `apply_webview2_environment`), com `--cdp-port N` / `SOTTO_CDP_PORT=N` para uma sessao de
+  depuracao explicita, e o oraculo executa a funcao REAL num processo com o ambiente envenenado:
+  12 arms + 3 mutantes. O pin anterior substituia o de 197671 B / 2476 CRLF, DEPOIS de tres passos
+  da RECUPERACAO DE ENERGIA
+  E SESSAO: `power-recovery` (28 arms: `classify`/`plan`/entrega, incluindo uma janela real desta
+  maquina a receber um `WM_POWERBROADCAST` de verdade), o seu `red-as-expected-*` (3 mutantes) e
+  `power-recovery-live` (classe `heavy`: larga a app escondida, entrega `WM_POWERBROADCAST` e
+  `WM_WTSSESSION_CHANGE` ao WndProc REAL e exige as linhas `POWER_RESUME` -- medido 9/9).
+  Nascido de um buraco medido: `grep` de `WM_POWERBROADCAST|WM_WTSSESSION_CHANGE|
+  WTSRegisterSessionNotification` em `app/webview/sotto_webview.py` devolvia ZERO.)
   (Este pin substitui o de 196865 B / 2466 CRLF, DEPOIS de mais dois passos: `topmost-keepalive` --
   o laco de 2 s que devolve `WS_EX_TOPMOST` a uma janela que o perdeu, copiado do RE de 2026-11-04
   (Perssua e Handy) -- e o seu `red-as-expected-*`. Os dois `always`: leem `app\webview\topmost_keepalive.py`,
