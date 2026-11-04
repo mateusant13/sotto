@@ -91,8 +91,12 @@ def main(argv=None):
     print(f'CHECK handler_behaves {"PASS" if beh["handler_behaves"] else "FAIL"} {detail}')
     if '--neg-arm' in argv:
         import tempfile
+        # `TMPDIR` nao esta' sempre definido numa shell desta casa, e um fallback
+        # de `'.'` deixou DOIS diretorios `paintrow-*` na raiz do repo (medido
+        # 2026-11-04). `gettempdir()` e' o que responde quando a variavel falta.
         tmp = tempfile.mkdtemp(prefix='paintrow-',
-                               dir=os.environ.get('TMPDIR') or '.')
+                               dir=os.environ.get('TMPDIR')
+                               or tempfile.gettempdir())
         mutants = {
             'sink_removed': src.replace('window.SottoPaintSink = function',
                                         'window.__dead_sink = function', 1),
