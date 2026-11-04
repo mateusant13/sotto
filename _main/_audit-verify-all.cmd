@@ -1260,6 +1260,22 @@ if exist _main\panel-commit-stable-oracle.py (
 call :step always red-as-expected-panel-commit-stable 1 "_main\panel-commit-stable-oracle.py;_main\panel-commit-stable-replay.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;_main\webview-run.log" "%OUT%\panel-commit-stable-neg.log" python _main\panel-commit-stable-oracle.py --neg-arm
 call :expectred red-as-expected-panel-commit-stable !STEP_RC! "%OUT%\panel-commit-stable-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-panel-commit-stable MISSING "%OUT%\panel-commit-stable-neg.log" "NEG-ARM: PASS" )
+REM A COSTURA DA PERNA DO OLHO (2026-11-04): o painel ja' produzia a linha da
+REM PINTURA PROVISORIA (`CAPTION_PROVISIONAL_PAINT`) e o shell nao instalava o
+REM gancho -- a perna que mede `push -> pintura` so' existia para sondas de DOM,
+REM e o log media o `commit`, o FIM do que o olho ja' tinha visto (medido pela lane:
+REM push->paint p50 0 ms, paint->commit p50 839 / p95 1500 ms). O portao executa os
+REM tres bracos contra o ficheiro que EMBARCA e o braco negativo desarma cada um
+REM numa COPIA (3/3), porque um portao de costura que so' faz grep a um nome e'
+REM decoracao.
+if exist _main\paint-row-seam-oracle.py (
+call :step always paint-row-seam 0 "_main\paint-row-seam-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\paint-row-seam.log" python _main\paint-row-seam-oracle.py
+call :record paint-row-seam !STEP_RC!
+) else ( call :record paint-row-seam MISSING )
+if exist _main\paint-row-seam-oracle.py (
+call :step always red-as-expected-paint-row-seam 1 "_main\paint-row-seam-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\paint-row-seam-neg.log" python _main\paint-row-seam-oracle.py --neg-arm
+call :expectred red-as-expected-paint-row-seam !STEP_RC! "%OUT%\paint-row-seam-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-paint-row-seam MISSING "%OUT%\paint-row-seam-neg.log" "NEG-ARM: PASS" )
 if exist _main\hotkey-observed-oracle.py (
 call :step always hotkey-observed 0 "_main\hotkey-observed-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-observed.log" python _main\hotkey-observed-oracle.py
 call :record hotkey-observed !STEP_RC!

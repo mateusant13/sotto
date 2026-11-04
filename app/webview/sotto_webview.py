@@ -8334,6 +8334,20 @@ BOOTSTRAP_JS = r"""
   // com nome por isso mesmo -- 2026-11-04, medido: o perfil de arranque ficou
   // 24 h a recolher e a descartar (0 `PANEL_BOOT_PROFILE` em 469 587 linhas).
   window.__sotto_post = function (kind, payload) { post(kind, payload); };
+  // O INSTANTE DA PINTURA PROVISORIA ENTRA NO LOG (2026-11-04). A metrica do
+  // painel era `commit`, que e' o fim do que o olho ja' tinha visto: medido pela
+  // lane PanelCommitOnStable, `push` -> `CAPTION_PROVISIONAL_PAINT` esta' em 0 ms
+  // e `paint` -> `commit` pagava a espera toda (p50 839, p95 1 500 ms). O
+  // `panel.js` ja' produz a linha e o gancho (`SottoPaintLine`/`SottoPaintSink`);
+  // faltava o shell instalar o gancho, e sem isso a perna do OLHO so' existia
+  // para sondas de DOM. A linha e' a do painel, cortada em 400 B: um gancho que
+  // deixa a pagina escrever o log sem limite e' um gancho que o log paga.
+  window.SottoPaintSink = function (row) {
+    try {
+      post('paint-row', { line: window.SottoPaintLine(row) });
+    } catch (err) { /* a probe must not break the paint */ }
+  };
+
 
   window.__sotto_info = function (id, json) {
     var resolve = infoPending[id];
@@ -9354,6 +9368,12 @@ class SottoHost:
         try:
             table = {
             'caption-observed': ('host', '_caption_observed'),
+            # O INSTANTE DA PINTURA PROVISORIA (2026-11-04): a linha que o
+            # `panel.js` ja' produzia (`SottoPaintLine`) passa a entrar no log
+            # pelo gancho que o bootstrap instala. Antes dela a perna do OLHO
+            # so' existia para sondas de DOM, e a metrica do painel media o
+            # commit -- o fim do que o olho ja' tinha visto.
+            'paint-row': ('host', '_paint_row'),
             'status-observed': ('host', '_status_observed'),
             'caption-applied': ('host', '_caption_applied'),
             'status-applied': ('host', '_status_applied'),
@@ -9594,6 +9614,20 @@ class SottoHost:
                 f'budget_ms={shell.CAPTION_BUDGET_MS} '
                 f'queue_ms={queue_ms} blown={shell._caption_lag_blown} '
                 f'path=panel text={json.dumps(text[:60])}')
+
+    def _paint_row(self, payload):
+        """A linha `CAPTION_PROVISIONAL_PAINT` do painel, no log da shell.
+
+        O painel escreve `n/at/id/src/conf/prov/text` e a forma ja' e' a do log.
+        Corta em 400 B e recusa qualquer coisa que nao comece pela etiqueta: o
+        gancho e' da pagina, e uma pagina que escreve o log sem limite e' um log
+        que ninguem le (medido: 2 592 B por linha de legenda antes desta cura,
+        n-7 do audit).
+        """
+        line = str((payload or {}).get('line') or '').replace('\r', ' ')
+        line = line.replace('\n', ' ')[:400]
+        if line.startswith('CAPTION_PROVISIONAL_PAINT'):
+            log(line)
 
     def _status_applied(self, payload):
         # SO' NA MUDANCA (2026-11-04). O painel confirma o status a cada

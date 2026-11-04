@@ -446,8 +446,14 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 18:0x):** `_main\_audit-verify-all.cmd` = **230220 B**,
-  **2847 CRLF** / 0 bare LF, sha256 `AD4CEA9D20C8807B0A97B82576433E601EC6425DF14BA6A1369E470CD00764CA`.
+- **PIN do ficheiro (medido 2026-11-04, 18:2x):** `_main\_audit-verify-all.cmd` = **231597 B**,
+  **2863 CRLF** / 0 bare LF, sha256 `F3F6F212FCADDF38D83573C68D607393EA81B3D9E8FA104B40C6C56C93AC3063`.
+  (Dezasseis linhas a mais do que o pin de 230220 B: o par `paint-row-seam` + o seu
+  `red-as-expected`, a costura da perna do OLHO. O painel ja' produzia
+  `CAPTION_PROVISIONAL_PAINT` e o shell nao instalava o gancho, logo a perna que mede
+  `push -> pintura` so' existia para sondas de DOM e o log media o `commit` -- o FIM do que
+  o olho ja' tinha visto. O portao executa os tres bracos contra o ficheiro que embarca e o
+  `--neg-arm` desarma cada um numa COPIA, medido 3/3.)
   (Quatro familias de passos a mais do que o pin de 226610 B: os quatro do `panel-commit-stable`
   (o commit da linha deixa de ser um relogio -- o worker prova `stable:true`), os dois do
   `worker-park` (um veredito de dispositivo estaciona em vez de morrer e recarregar 1,9 GB: 3 278,8 s
