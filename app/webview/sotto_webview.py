@@ -13116,25 +13116,24 @@ class SottoShell:
         # `emit_async`, NAO `emit`: `emit` espera pela pagina (ate' 10 s) na thread
         # que le' o stdout do worker -- a pagina ocupada atrasava a LEITURA.
         self.emit_async('caption', {'text': text, 'meta': meta})
-        # O INSTANTE DO AUDIO QUE ACABOU DE SEGUIR PARA O ECRa (2026-11-03).
-        # A PINTURA NESTA MAQUINA E' O PAINEL (o overlay nativo responde
+        # O INSTANTE DO AUDIO QUE ACABOU DE SEGUIR PARA O ECRa (2026-11-03): a
+        # pintura nesta maquina E' o painel (o overlay nativo responde
         # `CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay`), logo o pixel
-        # acontece em `_caption_applied`, do outro lado da ponte. Sem guardar
-        # aqui o `tap_ms` que saiu, o lado do painel nao tem contra o que medir
-        # a idade e o orcamento nao tem como estourar.
+        # acontece em `_caption_applied`; sem guardar o `tap_ms` que saiu, o lado
+        # do painel nao tem contra o que medir a idade nem quando estourar.
         _meta = meta if isinstance(meta, dict) else {}
-        #: A LINHA ESTA' FECHADA? (2026-11-03). Uma linha `final` so' fecha quando
-        #: o worker a FECHA, e com o audio em silencio a cauda fecha minutos
-        #: depois -- medido 59,9 s as 17:39:38 (desktop mudo). Sem esta etiqueta
-        #: o mesmo numero mistura "o ecra esta' atrasado" com "a linha acabou de
-        #: fechar", que sao perguntas diferentes.
+        #: A LINHA ESTA' FECHADA? (2026-11-03). `final` so' fecha quando o worker
+        #: a fecha, e com o audio em silencio a cauda fecha minutos depois (59,9 s
+        #: medidos as 17:39:38, desktop mudo); sem a etiqueta o mesmo numero
+        #: mistura "o ecra esta' atrasado" com "a linha acabou de fechar".
         self._last_push_final = bool(_meta.get('final'))
-        self._last_push_tap_ms = _meta.get('tap_ms') or self._last_push_tap_ms
+        # getattr: um shell parcial (harness dos probes) morria aqui com
+        # AttributeError na THREAD DO PUMP e engolia as legendas (2026-11-04).
+        self._last_push_tap_ms = _meta.get('tap_ms') or getattr(self, '_last_push_tap_ms', None)
         self._last_push_at = time.time()
-        # AMOSTRADO (2026-11-04): esta linha saia a CADA push -- 51 553 no log
-        # do dono -- e o que um leitor procura nela e' "a ponte entregou?", que
-        # um em cada 20 responde igual. O `final` de uma linha sai sempre: e' o
-        # fecho, e um fecho que falta e' um defeito.
+        # AMOSTRADO (2026-11-04): saia a CADA push -- 51 553 no log do dono -- e o
+        # que se procura nela e' "a ponte entregou?"; um em cada 20 basta. O
+        # `final` sai sempre: um fecho que falta e' um defeito.
         self._caption_sent_count = getattr(self, '_caption_sent_count', 0) + 1
         if _meta.get('final') or self._caption_sent_count == 1 or (
                 self._caption_sent_count % 20 == 0):

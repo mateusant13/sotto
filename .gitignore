@@ -304,3 +304,16 @@ _main/_yt-1to1-live*.json
 .agent-work/
 .pi/
 panel-state.SottoPovSelftest-*.json
+
+# GENERATED MUTANTS AND PROBE REPORTS (2026-11-04). `redux-flag-gate.py` does
+# `rmtree` + rebuild of `_main/_redux-gate-mutants/` on EVERY run (line 424), so
+# those seven copies showed up as dirty after each battery and their bytes in the
+# index described a worker that had already changed. The probe reports below are
+# the INPUT of their own `_oracle` step's re-judgement, written by the run that
+# measured them -- machine state, not source.
+_main/_redux-gate-mutants/
+_main/_strip-reload-probe.json
+_main/_strip-surface-oracle.json
+_main/_audit-verify/_battery-priority.txt
+_main/_audit-verify/_battery-summary.txt
+_main/_audit-verify/_slowest.txt

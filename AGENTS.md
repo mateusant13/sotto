@@ -406,9 +406,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 07:2x):** `_main\_audit-verify-all.cmd` = **195043 B**,
-  **2444 CRLF** / 0 bare LF, sha256 `C6E14C3CD65E70F5EB6009DDC8EE7B11C797FCFE121C3855886F3A969B3B9C40`.
-  (Este pin substitui o de 193503 B / 2427 CRLF, DEPOIS do par `worker-churn` +
+- **PIN do ficheiro (medido 2026-11-04, 08:5x):** `_main\_audit-verify-all.cmd` = **195155 B**,
+  **2446 CRLF** / 0 bare LF, sha256 `608458D9A510E2F79A561FF46015FC27F07C811074E2A1F97E656C0ECD99964A`.
+  (Este pin substitui o de 195043 B / 2444 CRLF, DEPOIS de o `:fastskip` passar a registar o log na
+  lista de skips declarados. Defeito medido por um run completo de 2026-11-04: o
+  `skip-verdict-guard` acusou `1 of 25 step log(s) carry an undeclared skip verdict` para
+  `hotkey-delivery`, `paint-live-show` e `youtube-land` -- os tres SAO classe `heavy` e foram
+  saltados nesse run, mas `:skipped` registava `SKIPLOGS` e o ramo `:fastskip` nao, por isso o log
+  velho (que diz `VERDICT: SKIPPED` desde a ultima vez que correu) ficava sem declaracao ao lado e
+  o guarda lia-o como um passo que mente. As duas linhas novas sao a MESMA instrucao que `:skipped`
+  ja tinha: `for %%F in ("%~3") do set "SKIPLOGS=!SKIPLOGS!%%~nxF,"`.)
+  (Este pin substitui o de 195043 B / 2444 CRLF, DEPOIS do par `worker-churn` +
   `red-as-expected-worker-churn`, que fecham o LACO DE RECARGA medido no log vivo de 2026-11-04:
   `BRIDGE_SILENT ms=30000 pid=26440` as 03:20:13 matou um worker que estava QUIETO porque um tap
   aberto sobre uma maquina quieta nao escreve nada por desenho (`endpoint-idle` ->

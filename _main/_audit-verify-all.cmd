@@ -2358,6 +2358,7 @@ set /a SKIPN+=1
 if defined STEP_HEAVYSKIP (
   set "STEPLIST=!STEPLIST! %~1=heavy-skip"
   set "SKIPLIST=!SKIPLIST! %~1"
+  for %%F in ("%~3") do set "SKIPLOGS=!SKIPLOGS!%%~nxF,
   set "HEAVYLIST=!HEAVYLIST! %~1"
   set /a HEAVYN+=1
   echo [step] %~1 rc=0  [SKIPPED: heavy class] NOT RUN: it opens the owner's screen, his audio device or his GPU -- set SOTTO_BATTERY_HEAVY=1 to run it
@@ -2365,6 +2366,7 @@ if defined STEP_HEAVYSKIP (
 )
 set "STEPLIST=!STEPLIST! %~1=fast-skip"
 set "SKIPLIST=!SKIPLIST! %~1"
+for %%F in ("%~3") do set "SKIPLOGS=!SKIPLOGS!%%~nxF,
 echo [step] %~1 rc=0  [SKIPPED: fast mode] NOT RUN: slower than the threshold in the last run
 exit /b 0
 

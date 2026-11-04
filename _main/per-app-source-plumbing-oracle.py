@@ -48,6 +48,7 @@ WORKER_DIR = os.path.join(ROOT, "worker")
 WORKER = os.path.join(WORKER_DIR, "sotto_worker.py")
 
 SOURCE_GUARD = '**({"source": self.source} if self.source is not None else {}),'
+LADDER_GUARD = "device_candidates(audio_cfg, wanted, target_pid=target_pid)"
 CTYPES_GUARD = "import ctypes\r\n_PLP_DWORD = ctypes.c_ulong"
 CTYPES_GUARD_LF = "import ctypes\n_PLP_DWORD = ctypes.c_ulong"
 
@@ -175,9 +176,17 @@ def run_checks(mod, tag):
           'os.environ.get("SOTTO_TARGET_PID")' in text)
     check("CHK-8 device_candidates takes the pid as an optional",
           "def device_candidates(cfg_audio=None, wanted=None, target_pid=None):" in text)
-    call_shape = "device_candidates(audio_cfg, wanted, target_pid=target_pid)"
-    check("CHK-8 the pid reaches both ladder entries",
-          text.count(call_shape) == 2, "count=%d" % text.count(call_shape))
+    # EVERY ladder entry, not a pinned count of two: the third entry (the idle
+    # hold's live-meter read, `hold_idle_slot`) was added 2026-11-04 and a check
+    # that counts to 2 turns a NEW caller into a FAILURE instead of asking the
+    # question that matters -- does every read of the ladder carry the owner's
+    # pid? The floor of 2 keeps the check able to say NO when the ladder loses
+    # a site altogether.
+    ladder_sites = [ln for ln in lines if "device_candidates(audio_cfg, wanted" in ln]
+    blind = [ln.strip()[:60] for ln in ladder_sites if "target_pid=target_pid" not in ln]
+    check("CHK-8 the pid reaches every ladder entry",
+          len(ladder_sites) >= 2 and not blind,
+          "sites=%d blind=%s" % (len(ladder_sites), blind))
     # CHK-8b -- AND THE MIX IS NEVER SUBSTITUTED SILENTLY for the app the owner
     # asked for: the fall-through is reported once, loudly, with the word.
     check("CHK-8b separation loss is reported as an event",
@@ -237,6 +246,30 @@ def neg_arm():
             print(("  PASS " if ok else "  FAIL ") + "mutant A went RED where it had to: " + str(want))
             if not ok:
                 problems.append("mutant A SURVIVED -- the gate is blind here: %s" % failed_a)
+
+        # MUTANT C -- the pid dropped from the ladder reads (2026-11-04). The
+        # gate is static text, so the mutant removes the keyword from EVERY
+        # site and the check must go RED: a ladder read without the owner's pid
+        # would capture the endpoint mix while the panel claims "one app".
+        hits_c = live_text.count(LADDER_GUARD)
+        if hits_c < 2:
+            decorative += 1
+            problems.append("mutant C anchor %s (%d hit(s)) -- DECORATIVE, not counted"
+                            % ("MISSING" if hits_c == 0 else "AMBIGUOUS", hits_c))
+            print("  FAIL mutant C anchor %s (%d hit(s)) -- DECORATIVE, not counted"
+                  % ("MISSING" if hits_c == 0 else "AMBIGUOUS", hits_c))
+        else:
+            path_c = os.path.join(tmpdir, "mutant-c-ladder-pid-worker.py")
+            with open(path_c, "w", encoding="utf-8", newline="") as fh:
+                fh.write(live_text.replace(LADDER_GUARD, "device_candidates(audio_cfg, wanted)"))
+            mod_c = load_module(path_c, "_plp_neg_ladder_worker")
+            failed_c = run_checks(mod_c, "MUTANT C (pid dropped from the ladder)")
+            want_c = [n for n in failed_c if n.startswith("CHK-8 the pid reaches")]
+            ok = bool(want_c)
+            print(("  PASS " if ok else "  FAIL ")
+                  + "mutant C went RED where it had to: " + str(want_c))
+            if not ok:
+                problems.append("mutant C SURVIVED -- the gate is blind here: %s" % failed_c)
 
         # MUTANT B -- the module-level ctypes import removed (today's real defect).
         # The anchor is the same text in either EOL: exactly ONE occurrence must

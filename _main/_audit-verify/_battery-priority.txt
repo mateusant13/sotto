@@ -1,1 +1,0 @@
-BATTERY-PRIORITY BelowNormal pid=49436
