@@ -925,6 +925,23 @@ call :skipped time-to-first-caption !STEP_RC! "%OUT%\time-to-first-caption.log" 
 call :step red-as-expected-time-to-first-caption 1 "_main\time-to-first-caption-oracle.py" "%OUT%\time-to-first-caption-neg.log" python _main\time-to-first-caption-oracle.py --neg-arm
 call :expectred red-as-expected-time-to-first-caption !STEP_RC! "%OUT%\time-to-first-caption-neg.log" "NEG-ARM: PASS"
 
+REM `first-capture-fast` julga as TRES DECISOES que fazem a primeira legenda chegar
+REM (2026-11-04): a PRIMEIRA PICAGEM (o endpoint que esta' A TOCAR no instante em que a
+REM escada abre), o piso do candidato MORTO (2 s, e a maquina CALADA nao e' um candidato
+REM morto) e a troca de endpoint em 250 ms numa morte por dispositivo -- sem os 15 s de
+REM espera que custaram 48 s no arranque das 12:15 (pid 13904, `_main/webview-run.log`).
+REM Executa as funcoes REAIS e o `WorkerBridge._schedule_restart` real com um Timer
+REM falso. NAO larga a app, NAO abre dispositivo para escrita e NAO silencia nada: a unica
+REM leitura de dispositivo e' o medidor (`IAudioMeterInformation`, so' leitura).
+REM `always` porque a decisao depende da maquina viva; `:record` porque um rc!=0 aqui e'
+REM uma regressao e nao um skip; e o braco negativo muta uma COPIA de cada ficheiro em
+REM quatro defeitos medidos (espera do desktop removida, piso de 60 s, picagem sem
+REM medidor, backoff de 15 s de volta) e sai 1 quando os apanha todos.
+call :step always first-capture-fast 0 "_main\first-capture-fast-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py;worker\wasapi_loopback.py" "%OUT%\first-capture-fast.log" python _main\first-capture-fast-oracle.py
+call :record first-capture-fast !STEP_RC!
+call :step red-as-expected-first-capture-fast 1 "_main\first-capture-fast-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py;worker\wasapi_loopback.py" "%OUT%\first-capture-fast-neg.log" python _main\first-capture-fast-oracle.py --neg-arm
+call :expectred red-as-expected-first-capture-fast !STEP_RC! "%OUT%\first-capture-fast-neg.log" "NEG-ARM: PASS"
+
 call :step youtube-land-replay 0 "_main\youtube-land-replay-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-land-replay.log" python _main\youtube-land-replay-oracle.py
 call :record youtube-land-replay !STEP_RC!
 call :step red-as-expected-youtube-land-replay 1 "_main\youtube-land-replay-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-land-replay-neg.log" python _main\youtube-land-replay-oracle.py --neg-arm

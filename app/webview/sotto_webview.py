@@ -1038,6 +1038,52 @@ WORKER_LOAD_SILENCE_MS = 180000
 #: muito menor que o piso do load-churn (180 s), que governa o reload da APP e nao este.
 CLEAN_EXIT_FLOOR_MS = 20000
 
+#: A MORTE POR DISPOSITIVO NAO ESPERA 15 s (2026-11-04). Medido no arranque do dono
+#: (12:15:34, `_main/webview-run.log`): `BRIDGE_DEATH rc=3 kind=no-audio
+#: last="Worker finished on no-callback-blocks"` -> `BRIDGE_RESTART reason=exit
+#: ladder=no-audio in_ms=15000` -> a primeira legenda 48 s depois do arranque, com
+#: 15 desses segundos a serem SO' A ESPERA. O worker nao tinha falhado: tinha aberto
+#: o endpoint errado (`VoiceMeeter Input`, zero callbacks) enquanto o audio dele saia
+#: noutro sitio -- e a volta seguinte, a mesma escada com o medidor a ver som,
+#: entregou texto. Uma morte por DISPOSITIVO e' uma troca de endpoint, e uma troca
+#: custa 250 ms, nao 15 s. O backoff de 15 s->300 s fica para o caso em que trocar
+#: NAO pode arranjar nada (nada esta' a tocar em endpoint nenhum) e depois de
+#: `DEVICE_SWITCH_FREE` trocas, que e' o tecto contra o laco de recarga de 1,9 GB.
+DEVICE_SWITCH_DELAY_MS = 250
+DEVICE_SWITCH_FREE = 2
+
+
+def device_death_delay(no_audio, switches, can_switch, restarts=0, no_audio_restarts=0,
+                       backoff_base=1000, backoff_max=30000,
+                       no_audio_backoff_base=15000, no_audio_backoff_max=300000,
+                       floor_ms=0):
+    """(delay_ms, ladder, why) -- A espera antes de ressuscitar um worker morto.
+
+    Uma funcao so' e PURA, porque `_main/first-capture-fast-oracle.py` executa-a:
+    a decisao que custou 15 s no arranque de 12:15 tem de ser reproduzivel sem
+    lancar a app.
+
+    * `no_audio` -- a morte que o PROPRIO worker declarou por dispositivo
+      (`kind=no-audio`, rc=3). Nao e' um crash: o codigo saiu inteiro e o que
+      esta' errado e' o endpoint que ele abriu.
+    * `switches` -- quantas trocas rapidas ja' se fizeram nesta serie.
+    * `can_switch` -- ha' som a sair em ALGUM endpoint agora (`audio_playing`)?
+      Sem isso, trocar de endpoint e' reabrir clientes para ouvir o mesmo nada,
+      e o backoff longo e' a resposta certa.
+    """
+    if no_audio and can_switch and switches < DEVICE_SWITCH_FREE:
+        return DEVICE_SWITCH_DELAY_MS, 'device-switch', 'device-death-switch'
+    if no_audio:
+        return (min(no_audio_backoff_max, no_audio_backoff_base * (2 ** no_audio_restarts)),
+                'no-audio',
+                ('device-switch-budget-spent' if can_switch
+                 else 'nothing-is-rendering-a-switch-cannot-help'))
+    delay = min(backoff_max, backoff_base * (2 ** restarts))
+    ladder, why = 'retry', 'crash-or-unknown-death'
+    if floor_ms and delay < floor_ms:
+        return floor_ms, ladder, why + '-clean-exit-floor'
+    return delay, ladder, why
+
 
 #: As linhas de stderr que provam que o worker esta VIVO a trabalhar. `WORKER_STATS` so'
 #: conta quando `blocks` AVANCA (`_note_progress`); num lote longo ele congela -- e o
@@ -18296,10 +18342,42 @@ class WorkerBridge:
             }
             return
         if no_audio:
-            delay = min(self.no_audio_backoff_max,
-                        self.no_audio_backoff_base * (2 ** self.no_audio_restarts))
-            self.no_audio_restarts += 1
-            ladder = 'no-audio'
+            # UMA MORTE POR DISPOSITIVO E' UMA TROCA DE ENDPOINT (2026-11-04).
+            # Medido no arranque de 12:15:34: `rc=3 kind=no-audio` -> 15 s de
+            # espera -> a primeira legenda 48 s depois do arranque, com o audio
+            # dele a sair noutro endpoint. A pergunta "trocar adianta?" e' feita
+            # ao UNICO sinal que a responde -- ha' som a sair agora? -- e essa
+            # leitura e' read-only (`audio_playing.loudest`, medidores).
+            switches = getattr(self, 'device_switches', 0)
+            if getattr(self, 'captions', 0):
+                # Uma corrida que JA' deu legenda nao esta' num ciclo de rotagem:
+                # o episodio e' novo e o orcamento de trocas volta inteiro.
+                switches = 0
+            live_name, live_peak = '', 0.0
+            try:
+                import audio_playing
+                live_name, live_peak = audio_playing.loudest()
+                can_switch = float(live_peak) > audio_playing.PEAK_FLOOR
+            except Exception as exc:  # noqa: BLE001 -- sem leitura nao se troca
+                can_switch = False
+                self.log(f'ENDPOINT_SWITCH_PROBE_FAILED error={exc!r}')
+            delay, ladder, switch_why = device_death_delay(
+                True, switches, can_switch,
+                restarts=self.restarts,
+                no_audio_restarts=self.no_audio_restarts,
+                backoff_base=self.backoff_base, backoff_max=self.backoff_max,
+                no_audio_backoff_base=self.no_audio_backoff_base,
+                no_audio_backoff_max=self.no_audio_backoff_max)
+            if ladder == 'device-switch':
+                switches += 1
+            else:
+                self.no_audio_restarts += 1
+            self.device_switches = switches
+            self.log(f'ENDPOINT_SWITCH reason={switch_why} ladder={ladder} '
+                     f'delay_ms={delay} switch={switches}/{DEVICE_SWITCH_FREE} '
+                     f'dead={json.dumps((getattr(self, "last_device_status", None) or {}).get("device"))} '
+                     f'live={json.dumps(live_name)} peak={float(live_peak or 0.0):.6f} '
+                     f'no_audio_restarts={self.no_audio_restarts}')
         else:
             delay = min(self.backoff_max, self.backoff_base * (2 ** self.restarts))
             self.restarts += 1

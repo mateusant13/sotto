@@ -410,8 +410,19 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 13:2x):** `_main\_audit-verify-all.cmd` = **212778 B**,
-  **2644 CRLF** / 0 bare LF, sha256 `8F342BA6940E3989A351F06FFC6233B1B2224883AF1D7D22715A16195C8C4C5D`.
+- **PIN do ficheiro (medido 2026-11-04, 12:30):** `_main\_audit-verify-all.cmd` = **214451 B**,
+  **2661 CRLF** / 0 bare LF, sha256 `4FCFD951A8B79959D1D1C5325C8679929AB472330723266B4ED8977C8D81536B`.
+  (Dezassete linhas a mais do que o pin de 212778 B / 2644 CRLF, de UM par: `first-capture-fast` +
+  o seu `--neg-arm`. Ele julga as tres decisoes que fazem a PRIMEIRA legenda chegar depois de um
+  arranque -- a primeira picagem pelo medidor VIVO (`signal_ranked_next`), o piso de 2 s do
+  candidato morto SEM confundir "maquina calada" com "candidato morto" (`dead_first_block_plan`), e
+  a morte por dispositivo a reiniciar em 250 ms em vez de 15 s (`device_death_delay`, dentro do
+  `_schedule_restart` REAL com um Timer falso). Medido no arranque dele das 12:15 (pid 13904):
+  15,2 s ate' `capture-started`, 2,0 s ate' o endpoint morto ser declarado, 15 s de espera, e a
+  primeira legenda **48,4 s** depois do arranque. O oraculo corre as funcoes reais e muta uma COPIA
+  de cada ficheiro em quatro defeitos medidos. A primeira frase do paragrafo seguinte diz o pin
+  anterior, e a regra que este repo ja' pagou caro continua a valer: um pin velho obriga a re-medir
+  **aqui** em vez de deixar um número velho.
   (Vinte e oito linhas a mais do que o pin de 210085 B / 2616 CRLF, de dois pares. Quinze:
   `caption-overlay-screen` -- o oraculo que executa o `_screen_proof` REAL contra uma janela LAYERED
   oculta (arm A2 com uma RECONTA independente do predicado), exige `alpha=0` a dar RED por
