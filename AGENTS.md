@@ -412,9 +412,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 12:21):** `_main\_audit-verify-all.cmd` = **213662 B**,
-  **2654 CRLF** / 0 bare LF, sha256 `5DF0BBF5A66969D251B391767596130E7E87A2D9FD0D2FEB08A072960CCC13D6`.
-  (Dez linhas a mais do que o pin de 212778 B / 2644 CRLF: o par do motor quente
+- **PIN do ficheiro (medido 2026-11-04, 12:3x):** `_main\_audit-verify-all.cmd` = **215335 B**,
+  **2671 CRLF** / 0 bare LF, sha256 `CA4760F9E257E979AE0BC1C2714247B00948B920C493839D1CE6BC35DDD4F5D1`.
+  (Dezassete linhas a mais do que o pin de 213662 B / 2654 CRLF, do par `first-capture-fast` + o seu
+  `--neg-arm`: mediu-se que **33,5 s dos 48,4 s** de arranque nao eram o modelo -- a primeira escolha
+  de endpoint abria um `IAudioClient` por endpoint (3,8 s) para devolver um MORTO, a morte por
+  dispositivo custava 15 s e o silencio era indistinguivel de um endpoint morto. Agora a escolha
+  pergunta ao medidor VIVO (735 ms, 6 endpoints, **sem abrir cliente**), o morto declara-se em 2 s com
+  rotacao IN-PROCESS (sem recarregar 1,9 GB) e a morte por dispositivo e' 250 ms. O braco negativo
+  muta quatro vezes e o `--neg-arm` apanha 4/4. A medicao no arranque DO DONO continua UNMEASURED.
+  Dez linhas a mais do que o pin de 212778 B / 2644 CRLF: o par do motor quente
   (`warm-engine` + `red-as-expected-warm-engine`), que roda 22 arms e exige 6/6 mutantes apanhados --
   cada mutante derrubado pela SUA arm, e o `--neg-arm` deixa zero processos e zero `warm-engine.pid`.
   O anexo ao motor mede p95 16 ms em 20 tentativas. A1/A2/A3 (o caminho de 3 s) continuam

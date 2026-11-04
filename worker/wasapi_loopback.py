@@ -614,45 +614,91 @@ def live_render_peaks(meter_ms=0.12):
     Returns {} -- never raises, never guesses -- when the platform or the
     enumeration fails; a caller that gets {} must keep the order it already has.
     """
+    return {e["endpoint_id"]: e["meter_peak"] for e in live_endpoint_order(meter_ms)}
+
+
+def live_endpoint_order(meter_ms=0.12, role=E_CONSOLE):
+    """EVERY ACTIVE render endpoint, ORDERED BY WHO IS RENDERING NOW -- and NO client opened.
+
+    The same question `live_render_peaks` answers, keeping the name and the
+    default flag, because the LADDER needs the order and not only the numbers.
+    `list_render_endpoints` answers it too, but it activates an IAudioClient on
+    every endpoint to parse the mix format -- a client per endpoint on the audio
+    engine the owner shares with every other app. MEASURED on this box 2026-11-04
+    in the owner's own boot: `device_candidates()` (six endpoints, meter_ms=0.4,
+    one activation each) held the ladder for **3,8 s** between the worker's
+    `gate` and `device` stages (`_main/webview-run.log`, pid 13904), and the
+    endpoint it produced was DEAD (`TAP_DEAD_ENDPOINT ... VoiceMeeter Input
+    waited_ms=2014`). This function reads IAudioMeterInformation only: no
+    stream, no mix format, and the spec of the ONE endpoint the ladder opens is
+    read by `WasapiLoopbackTap.__init__` at open time anyway.
+
+    Returns [] -- never raises -- when the platform or the enumeration fails; a
+    caller that gets [] must keep the order it already has.
+    """
     if sys.platform != "win32":
-        return {}
+        return []
     com = _com_init()
     try:
-        ole32 = _ole32()
-        enum = _make_enumerator(ole32)
-        out = {}
-        try:
-            coll = ctypes.c_void_p()
-            hr = _vtbl(enum, 3, HRESULT, wintypes.DWORD, wintypes.DWORD,
-                       ctypes.POINTER(ctypes.c_void_p))(
-                enum, E_RENDER, DEVICE_STATE_ACTIVE, ctypes.byref(coll)
-            )
-            if hr != 0 or not coll:
-                return {}
-            try:
-                count = wintypes.UINT(0)
-                _vtbl(coll, 3, HRESULT, ctypes.POINTER(wintypes.UINT))(coll, ctypes.byref(count))
-                for i in range(count.value):
-                    dev = ctypes.c_void_p()
-                    if _vtbl(coll, 4, HRESULT, wintypes.UINT, ctypes.POINTER(ctypes.c_void_p))(
-                            coll, i, ctypes.byref(dev)) != 0 or not dev:
-                        continue
-                    try:
-                        eid = _endpoint_id(dev, ole32)
-                        if eid:
-                            out[eid] = _meter_peak(dev, meter_ms)
-                    finally:
-                        _release(dev)
-            finally:
-                _release(coll)
-        finally:
-            _release(enum)
-        return out
+        return _live_endpoint_order(role, meter_ms)
     except Exception:
-        return {}
+        return []
     finally:
         if com == COM_REF_TAKEN:
             _com_uninit()
+
+
+def _live_endpoint_order(role, meter_ms):
+    ole32 = _ole32()
+    enum = _make_enumerator(ole32)
+    try:
+        default_id = None
+        dev_default = ctypes.c_void_p()
+        get_default = _vtbl(
+            enum, 4, HRESULT, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p)
+        )
+        if get_default(enum, E_RENDER, role, ctypes.byref(dev_default)) == 0 and dev_default:
+            default_id = _endpoint_id(dev_default, ole32)
+            _release(dev_default)
+
+        coll = ctypes.c_void_p()
+        hr = _vtbl(enum, 3, HRESULT, wintypes.DWORD, wintypes.DWORD,
+                   ctypes.POINTER(ctypes.c_void_p))(
+            enum, E_RENDER, DEVICE_STATE_ACTIVE, ctypes.byref(coll)
+        )
+        if hr != 0 or not coll:
+            return []
+        out = []
+        try:
+            count = wintypes.UINT(0)
+            _vtbl(coll, 3, HRESULT, ctypes.POINTER(wintypes.UINT))(coll, ctypes.byref(count))
+            for i in range(count.value):
+                dev = ctypes.c_void_p()
+                if _vtbl(coll, 4, HRESULT, wintypes.UINT, ctypes.POINTER(ctypes.c_void_p))(
+                        coll, i, ctypes.byref(dev)) != 0 or not dev:
+                    continue
+                try:
+                    eid = _endpoint_id(dev, ole32)
+                    if not eid:
+                        continue
+                    out.append({
+                        "endpoint_id": eid,
+                        "name": _friendly_name(dev),
+                        "meter_peak": _meter_peak(dev, meter_ms),
+                        "is_default": eid == default_id,
+                    })
+                except Exception:
+                    # One endpoint that cannot be described must not hide the
+                    # others: the ladder still needs the ones that can.
+                    pass
+                finally:
+                    _release(dev)
+        finally:
+            _release(coll)
+        out.sort(key=lambda e: (-(e["meter_peak"] or 0.0), not e["is_default"]))
+        return out
+    finally:
+        _release(enum)
 
 
 def endpoint_spec(endpoint_id):

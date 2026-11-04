@@ -384,6 +384,87 @@ def first_block_decided(opened_at, blocks, now, budget_s=TAP_FIRST_BLOCK_MAX_S):
         return False, 0
     return (waited >= budget), int(max(0.0, waited) * 1000.0)
 
+
+#: Quantas trocas o PROPRIO processo faz depois de um candidato morto, antes de
+#: deixar a morte chegar a' shell. Duas -- o mesmo limite que
+#: `device_death_delay` guarda do outro lado (`app/webview/sotto_webview.py`).
+TAP_DEAD_SWITCH_MAX = 2
+
+
+def dead_first_block_plan(candidates, k, dev, live, floor, switches=0):
+    """`first_block_decided` disse "zero blocos": o candidato esta' MORTO, ou a maquina esta' CALADA?
+
+    A MEDICAO QUE OBRIGA A PERGUNTA (arranque do dono, 12:15:15-12:16:03, pid
+    13904 em `_main/webview-run.log`): o primeiro candidato foi `VoiceMeeter
+    Input`, entregou **zero** callbacks em 2 s, o worker MORREU (`rc=3`,
+    `no-callback-blocks`), a shell esperou 15 s e o segundo worker -- agora
+    noutro endpoint -- pintou a primeira legenda 48 s depois do arranque. Ora:
+    naquele instante NADA estava a renderizar na maquina inteira (o audio dele
+    comecou as 12:15:41, seis segundos DEPOIS da morte), portanto "o candidato
+    esta' morto" e "o desktop esta' calado" eram indistinguiveis para a regra dos
+    2 s -- e as duas consequencias sao opostas:
+
+    * ha' sinal a sair NOUTRO endpoint -> este candidato esta' MORTO; trocar e'
+      o que encurta o caminho (2 s + a troca, sem recarregar 1,9 GB de modelo);
+    * nao ha' sinal em endpoint NENHUM (`desktop-quiet`) -> o candidato nao tem
+      nada a provar, e a regra do desktop calado (`silent_desktop_hold`) fica
+      inteira: a tap NAO se fecha, nao se abre cliente novo;
+    * o medidor nao respondeu (`{}`) -> comportamento anterior, a morte chega a'
+      shell (`meter-unreadable`); "sem leitura" nunca e' "sem sinal".
+
+    Funcao PURA sobre `(candidatos, indice, medidor)`: `_main/first-capture-fast-oracle.py`
+    executa-a com um medidor FALSO, sem abrir dispositivo nenhum.
+    """
+    live = live or {}
+    try:
+        mine = float(live.get(dev.get("endpoint_id")))
+    except (TypeError, ValueError):
+        mine = None
+    # O DESKTOP ESTA' CALADO? A pergunta e' feita ao MEDIDOR INTEIRO e nao ao
+    # candidato: um candidato de rung (b) nao tem `endpoint_id` e nunca casaria
+    # com uma leitura, logo "nao casou" nao pode significar "ninguem toca".
+    playing = False
+    for value in live.values():
+        try:
+            if float(value) > float(floor):
+                playing = True
+                break
+        except (TypeError, ValueError):
+            continue
+    best_i, best_v = None, float(floor)
+    for i in range(max(0, int(k)), len(candidates)):
+        try:
+            value = float(live.get(candidates[i].get("endpoint_id")))
+        except (TypeError, ValueError):
+            continue
+        if value > best_v:
+            best_i, best_v = i, value
+    plan = {"mine": mine, "peak": best_v if best_i is not None else None,
+            "switches": int(switches), "next": None, "next_index": None}
+    if not live:
+        # SEM LEITURA NAO E' "SEM SINAL": a morte chega a' shell, como antes.
+        plan.update(action="dead", why="meter-unreadable")
+        return plan
+    if not playing:
+        # NINGUEM RENDERIZA: o candidato nao tem nada a provar, e a tap fica
+        # aberta (`silent_desktop_hold` governa a janela, como sempre).
+        plan.update(action="wait", why="desktop-quiet")
+        return plan
+    if best_i is not None:
+        plan["why"] = "signal-elsewhere"
+        plan["peak"] = best_v
+        if plan["switches"] < TAP_DEAD_SWITCH_MAX:
+            plan.update(action="rotate", next=candidates[best_i], next_index=best_i)
+        else:
+            plan["action"] = "dead"
+        return plan
+    # HA' SOM, e nenhum candidato a frente o transporta: ou este endpoint
+    # renderiza e nao entrega (cliente partido), ou o som esta' num endpoint que
+    # a escada nao oferece. As duas querem a mesma coisa: trocar/morrer depressa.
+    plan.update(action="dead", why="signal-but-no-candidate-carries-it")
+    return plan
+
+
 TAP_STALL_S = 8.0
 TAP_STALL_MAX_S = 60.0
 TAP_STALL_SAME_DEVICE_TRIES = 2
@@ -1686,6 +1767,12 @@ def window_ended(now, dev, device_peak, tap_floor, tap_window, counters, emit=No
     if hold_s is None:
         return None
     state['windows'] += 1
+    # A PERGUNTA "CALADO OU MORTO?" RE-ARMA-SE AQUI (2026-11-04). Uma janela
+    # estendida e' uma janela NOVA para o medidor: o audio pode ter comecado
+    # NOUTRO endpoint durante a espera, e e' `dead_first_block_plan` que o
+    # apanha em 2 s -- sem isto a espera de 12/24/48 s escondia o bloco que ja'
+    # estava a sair noutro sitio (medido: audio dele comecou 6 s depois da morte).
+    counters.pop('quiet', None)
     if not state['logged'] and emit is not None:
         state['logged'] = True
         emit(type="status", state="tap-silent-desktop", device=dev.get('name'),
@@ -1852,20 +1939,48 @@ def device_candidates(cfg_audio=None, wanted=None, target_pid=None):
     # a real speaker endpoint lit up THAT endpoint's loopback at peak 0.429398
     # and left the default at 0.000000 (0 blocks).
     #
-    # `loopback_device_specs()` enumerates them (IMMDeviceEnumerator,
-    # eRender + DEVICE_STATE_ACTIVE), reads each endpoint's LIVE
-    # IAudioMeterInformation peak and sorts on it, so the first candidate is the
-    # endpoint that is actually carrying audio. A machine with no render
-    # endpoint returns [] and the ladder skips to rung B rather than failing.
+    # `live_endpoint_order()` enumerates them (IMMDeviceEnumerator, eRender +
+    # DEVICE_STATE_ACTIVE), reads each endpoint's LIVE IAudioMeterInformation
+    # peak and sorts on it, so the first candidate is the endpoint that is
+    # actually carrying audio. A machine with no render endpoint returns [] and
+    # the ladder skips to rung B rather than failing.
+    #
+    # METER ONLY, AND THAT IS THE 2026-11-04 CURE (measured, not tidier): the
+    # previous call here was `loopback_device_specs()`, which activates an
+    # IAudioClient on EVERY endpoint to parse its mix format -- six endpoints on
+    # this box, and it held the ladder for **3,8 s** (`gate` 12:15:27.263 ->
+    # `device` 12:15:31.059 in the owner's own boot, pid 13904) before handing
+    # back a DEAD endpoint. `WasapiLoopbackTap.__init__` reads the mix format of
+    # the ONE endpoint the ladder opens anyway, so the per-endpoint parsing
+    # bought nothing and cost a client each.
     try:
         import wasapi_loopback
 
-        specs = wasapi_loopback.loopback_device_specs()
+        live = wasapi_loopback.live_endpoint_order()
     except Exception as exc:  # import or enumeration failure -> rung B
-        specs = []
+        live = []
         err(f"loopback rung unavailable: {type(exc).__name__}: {exc}")
-    for spec in specs:
-        offer(spec, "a", spec.get("rung_why"))
+    for e in live:
+        peak = e.get("meter_peak")
+        why = ("WASAPI loopback of the DEFAULT render endpoint"
+               if e.get("is_default")
+               else "WASAPI loopback of an active render endpoint")
+        if peak:
+            why += " (rendering now, meter peak %.3f)" % peak
+        # `rate`/`channels`/`bits` are None ON PURPOSE: the tap reads them from
+        # the endpoint it opens (`endpoint_spec`), and reading them here is the
+        # client-per-endpoint that this change removes.
+        offer({
+            "name": "WASAPI loopback: %s" % e["name"],
+            "index": None,
+            "max_input_channels": None,
+            "default_samplerate": None,
+            "hostapi": None,
+            "hostapi_name": "Windows WASAPI (loopback)",
+            "wasapi_loopback": True,
+            "endpoint_id": e["endpoint_id"],
+            "meter_peak": peak,
+        }, "a", why)
 
     # RUNG B -- heuristic. Score every input by how much its NAME looks like the
     # PC's own output looped back, best first. No literal list is consulted.
@@ -5868,6 +5983,10 @@ def main():
     # (which queries the host's endpoints) is never called on this arm. OFF by
     # default — with the variable unset this is the shipped live path, unchanged.
     file_tap_path = os.environ.get("SOTTO_FILE_TAP")
+    # The window and the floor are decided BEFORE the ladder, because the FIRST
+    # PICK has to be judged against the same floor the window will use.
+    tap_window = args.tap_window if args.tap_window > 0 else TAP_WINDOW_S
+    tap_floor = args.tap_peak_floor if args.tap_peak_floor > 0 else TAP_PEAK_FLOOR
     if file_tap_path:
         if not os.path.exists(file_tap_path):
             emit(type="status", state="error", stage="file-tap",
@@ -5878,16 +5997,32 @@ def main():
         candidates = device_candidates(audio_cfg, wanted, target_pid=target_pid)
         # A ORDEM ESTATICA ERA O ATRASO: a pergunta "quem toca AGORA?" so' se
         # fazia na rotacao, depois de 6 s de janela plana (medidor: 0,76 s).
-        if not wanted:
-            try:
-                signal_ranked_next(candidates, 0)
-            except Exception as exc:  # noqa: BLE001 -- nunca custa o arranque
-                err('SIGNAL_RANK_BOOT_FAILED error=%r' % (exc,))
+        #
+        # E E' A PRIMEIRA JANELA QUE PAGA A CONTA (medido 2026-11-04, pid 13904):
+        # o primeiro candidato foi `VoiceMeeter Input`, entregou zero callbacks e
+        # custou 2 s + a morte + 15 s de espera + uma recarga de modelo antes de a
+        # primeira legenda sair 48 s depois do arranque. O medidor responde a esta
+        # pergunta por 0,7 s (6 endpoints, so' IAudioMeterInformation -- nenhum
+        # cliente aberto), e o numero e' publicado: `probe_ms`.
+        _static_first = candidates[0]["name"] if candidates else None
+        _t0 = time.monotonic()
+        try:
+            # RUNG C ALWAYS WINS: an explicit `--device` / `SOTTO_AUDIO_DEVICE`
+            # is never re-ranked behind the owner's back (the ladder's own law).
+            if not wanted:
+                signal_ranked_next(candidates, 0, tap_floor)
+            _pick_error = None
+        except Exception as exc:  # noqa: BLE001 -- nunca custa o arranque
+            _pick_error = exc
+        err("CAPTURE_FIRST_PICK chosen=%r static_first=%r moved=%s probe_ms=%d "
+            "of=%d floor=%.6f wanted=%r error=%r"
+            % (candidates[0]["name"] if candidates else None, _static_first,
+               str(bool(candidates) and candidates[0]["name"] != _static_first),
+               int((time.monotonic() - _t0) * 1000.0), len(candidates), tap_floor,
+               wanted, None if _pick_error is None else repr(_pick_error)))
     if not candidates:
         emit(type="status", state="error", stage="device", detail="no input device available")
         return 2
-    tap_window = args.tap_window if args.tap_window > 0 else TAP_WINDOW_S
-    tap_floor = args.tap_peak_floor if args.tap_peak_floor > 0 else TAP_PEAK_FLOOR
     emit(
         type="status",
         state="device",
@@ -7046,6 +7181,9 @@ def main():
             stall_backoff = TAP_STALL_S
             stall_reopens = 0
             counters.pop('silent', None)   # a janela de um candidato novo comeca do zero
+            # A pergunta "esta' calado ou morto?" (ver `dead_first_block_plan`)
+            # volta a ser feita para ESTE candidato, e para ESTA janela.
+            counters.pop('quiet', None)
             idle_logged = False
             caps_before = counters["captions"]
             first_block_logged = False
@@ -7206,20 +7344,57 @@ def main():
                     # A pergunta e' feita AQUI porque a janela do tap so' fecha
                     # ao fim de `tap_window`, e um endpoint aberto e mudo nao
                     # tem nada a provar sobre o desktop estar parado.
-                    if not settled and device_blocks["value"] == 0:
+                    #
+                    # ZERO BLOCOS SAO DUAS COISAS, E O MEDIDOR DIZ QUAL
+                    # (`dead_first_block_plan`, medido 2026-11-04): com sinal a
+                    # sair NOUTRO endpoint o candidato esta' morto e a troca
+                    # acontece AQUI, sem morrer o processo nem recarregar o
+                    # modelo; com a maquina CALADA o candidato nao tem o que
+                    # provar e a regra do desktop parado fica inteira
+                    # (`counters['quiet']` desliga esta pergunta ate' a janela
+                    # mudar de tamanho, que e' onde `window_ended` a re-arma).
+                    if (not settled and device_blocks["value"] == 0
+                            and not counters.get("quiet")):
                         _dead, _waited_ms = first_block_decided(
                             window_start, device_blocks["value"], now)
                         if _dead:
-                            _nxt = (signal_ranked_next(candidates,
-                                                       attempt_no + 1, tap_floor)
-                                    or {}).get("name") or "none"
-                            emit(type="status", state="tap-dead-endpoint",
-                                 device=dev.get("name"), waited_ms=_waited_ms,
-                                 next=_nxt)
-                            err("TAP_DEAD_ENDPOINT endpoint=%r waited_ms=%d "
-                                "next=%r" % (dev.get("name"), _waited_ms, _nxt))
-                            outcome = "first-block-timeout"
-                            break
+                            _plan = dead_first_block_plan(
+                                candidates, attempt_no + 1, dev, _live_render_peaks(),
+                                tap_floor, counters.get("dead_switches", 0))
+                            err("TAP_DEAD_FAST endpoint=%r waited_ms=%d action=%s "
+                                "why=%s next=%r peak=%s switches=%d"
+                                % (dev.get("name"), _waited_ms, _plan["action"],
+                                   _plan["why"], (_plan["next"] or {}).get("name"),
+                                   _plan["peak"], _plan["switches"]))
+                            if _plan["action"] == "wait":
+                                # O DESKTOP ESTA' CALADO: nao ha' candidato morto.
+                                counters["quiet"] = True
+                                err("TAP_QUIET_DESKTOP endpoint=%r waited_ms=%d "
+                                    "why=no-endpoint-is-rendering keep-the-tap"
+                                    % (dev.get("name"), _waited_ms))
+                            elif _plan["next"] is not None:
+                                _i = _plan["next_index"]
+                                candidates[attempt_no + 1], candidates[_i] = (
+                                    candidates[_i], candidates[attempt_no + 1])
+                                counters["dead_switches"] = _plan["switches"] + 1
+                                emit(type="status", state="device-rotated",
+                                     reason="dead-endpoint", device=dev.get("name"),
+                                     to=_plan["next"]["name"], waited_ms=_waited_ms,
+                                     peak=round(_plan["peak"] or 0.0, 6),
+                                     attempt=attempt_no + 1, of=len(candidates))
+                                outcome = "dead-switch"
+                                break
+                            else:
+                                _nxt = (_plan["next"] or {}).get("name")
+                                emit(type="status", state="tap-dead-endpoint",
+                                     device=dev.get("name"), waited_ms=_waited_ms,
+                                     next=_nxt or "none", why=_plan["why"])
+                                err("TAP_DEAD_ENDPOINT endpoint=%r waited_ms=%d "
+                                    "next=%r why=%s"
+                                    % (dev.get("name"), _waited_ms, _nxt or "none",
+                                       _plan["why"]))
+                                outcome = "first-block-timeout"
+                                break
                     if now >= window_end:
                         extended = window_ended(now, dev, device_peak, tap_floor,
                                                 tap_window, counters, emit)
@@ -7260,6 +7435,11 @@ def main():
                     "caption" if counters["captions"] > caps_before else "peak>=floor"
                 )
 
+            if outcome == "dead-switch":
+                # O proximo candidato JA' foi escolhido pelo MEDIDOR, e nao ha'
+                # nada a esperar: a troca E' a cura. Sem este `continue` a
+                # escada parava aqui e o processo morria com a troca ja' feita.
+                continue
             if outcome != "flat" or stop.is_set():
                 break
             # RUNG C is an EXPLICIT override and ALWAYS WINS: it is never
