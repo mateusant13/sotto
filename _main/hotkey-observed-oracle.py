@@ -192,11 +192,13 @@ def arms(shell_mod):
 def neg_arm():
     """MUTACAO: sem o guarda `held`, o arm 2 tem de cair."""
     text = io.open(SHELL, encoding='utf-8', errors='replace').read()
-    # A ANCORA ACOMPANHA A CURA (2026-11-04): o guarda passou a aceitar a
-    # primeira borda (`fresh`) e o texto virou `if (down or fresh) and not held:`
-    # -- a ancora antiga ficou ausente e o braco negativo passou a dizer
-    # 'ancora ausente' em vez de apanhar o mutante. O que o mutante faz e' o mesmo.
-    old = '            if (down or fresh) and not held:'
+    # A ANCORA ACOMPANHA A CURA (2026-11-04, terceira vez): o guarda le hoje
+    # `if mods_ready and (fresh or (down and not held)):` -- as duas ancoras anteriores
+    # (`if (down or fresh) and not held:` e `if not any(_v & 0x0001 ...)`) ficaram ausentes
+    # e o braco negativo publicava 'ancora ausente' com rc=1, um rc que a bateria aceita
+    # como se o mutante tivesse caido: o passo passava a provar NADA. O mutante e' o mesmo
+    # (tira o `held`, o guarda metralha), e o --neg-arm exige a frase NEG-ARM no log.
+    old = '            if mods_ready and (fresh or (down and not held)):'
     if old not in text:
         print('NEG-ARM: FAIL -- o corpo do guarda nao esta no ficheiro (ancora ausente)')
         return 1

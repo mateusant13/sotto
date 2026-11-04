@@ -41,14 +41,22 @@ from __future__ import annotations
 import importlib.util
 import io
 import os
+import os
 import sys
 import tempfile
 import threading
 import time
 import types
 
-SHELL = r"H:\sotto\app\webview\sotto_webview.py"
-EDGE = "                if not any(_v & 0x0001 for _v in _st):"
+#: A ARVORE E' A DESTE FICHEIRO (2026-11-04). Era `r"H:\sotto\..."` fixo: um oraculo de lane
+#: julgava a arvore viva em vez da sua, e o `--neg-arm` mutava o shell do dono a partir de um
+#: worktree. `SOTTO_ROOT` continua a poder aponta-lo para outro lado.
+_ROOTE = os.environ.get("SOTTO_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SHELL = os.path.join(_ROOTE, "app", "webview", "sotto_webview.py")
+#: A ANCORA E' A LINHA QUE HOJE GUARDA A BORDA (2026-11-04). Era `& 0x0001`; o gesto passou a ler
+#: `0x8003` (down OU borda) como condicao do modificador, e um `--neg-arm` com a ancora velha
+#: dizia "NEG-ARM IMPOSSIVEL" com rc=2 -- o braco negativo deixava de provar o que quer que fosse.
+EDGE = "                if not any(_v & 0x8003 for _v in _st):"
 
 
 def _stub_system() -> None:
