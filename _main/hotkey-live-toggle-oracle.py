@@ -412,12 +412,11 @@ def passive_thread(source: str, gesture, frames, on_hotkey, log_fn):
         "time": time,
         "kernel32": type('K', (), {'GetCurrentThreadId': staticmethod(lambda: 1)})(),
         "user32": type('U', (), {'GetAsyncKeyState': staticmethod(lambda vk: 0)})(),
-        "_MODIFIER_VK": module_const(source, '_MODIFIER_VK') or {},
-        # O SHELL PASSOU A TER AS DUAS TABELAS (2026-11-03): `_MODIFIER_VK`
-        # (o vk da tecla) e `_MODIFIER_VARIANTS` (as variantes esquerda e
-        # direita). Extrair so' a classe deixava a segunda indefinida e o
-        # oraculo caia com `NameError` em vez de medir o gesto.
-        "_MODIFIER_VARIANTS": module_const(source, '_MODIFIER_VARIANTS') or {},
+        # AS TABELAS DE VK SAIRAM DO SHELL (2026-11-04): o `__init__` do
+        # observador le' `hotkey_numbers()` (o modulo do gesto) para o VK
+        # generico e os laterais. Extrair so' a classe deixava esse nome
+        # indefinido e o oraculo caia com `NameError` em vez de medir.
+        "hotkey_numbers": lambda: gesture,
         "parse_accelerator": gesture.parse_accelerator,
         "log": log,
         "warn": warn,

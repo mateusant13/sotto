@@ -34,6 +34,27 @@ do painel volta no painel. `hide_panel` **não** apaga essa memória — é ela 
 `app/webview/hotkey_gesture.py` (`PANELS_ACCELERATOR = 'Alt+C'`,
 `LIVE_ACCELERATOR = 'Ctrl+Space'`). O shell lê-as por `hotkey_numbers()` /
 `hotkey_config()` e **não tem cópia**; `parse_accelerator` delega no módulo puro.
+
+**Os NÚMEROS também vivem lá desde 2026-11-04.** `MODIFIER_BITS` (nome→bit do
+`RegisterHotKey`), `MODIFIER_VKS` (o VK genérico), `MODIFIER_VK_VARIANTS` (os VK
+laterais) e `POLL_S` (a cadência do observador) estão em `hotkey_gesture.py`,
+expostos por `hotkey_numbers()`; o shell lê-os por aquele acesso e não guarda
+nenhuma das quatro tabelas. Antes disto o shell tinha as três primeiras e o
+parser vivia no módulo — duas verdades sobre a mesma tecla, e a segunda envelhece
+sozinha (`_MOD_BITS`, `_MODIFIER_VK`, `_MODIFIER_VARIANTS` e as constantes
+`MOD_ALT`/`MOD_CONTROL`/`MOD_SHIFT`/`MOD_WIN`, que só existiam para alimentar
+`_MOD_BITS`, foram apagados). A ABI que o shell precisa de escrever —
+`MOD_NOREPEAT`, `WM_HOTKEY`, o id da tecla — fica do lado de quem fala com o
+Windows.
+
+**A pressão do Ctrl+Space é da TECLA, não da combinação** (2026-11-04). O
+observador lê `GetAsyncKeyState`: o modificador é uma **condição** (`0x8000` em
+baixo agora, ou `0x0001` "carregado desde a leitura anterior") e a pressão é a
+**borda do grupo da tecla**. O latch (`held`) é por tecla, então ele só evita que
+a tecla em baixo conte a cada volta; uma borda NOVA conta mesmo com o latch de pé.
+Antes o mesmo teste cobria as duas coisas: uma solta perdida (o laço já publicou
+`max_gap_ms=609`) deixava o latch preso e o `C` martelado não dava segunda
+pressão — o braço (f) do oráculo mede exatamente esse caso.
 O ficheiro do dono é `_main/hotkey-settings.json` (`{"panels": "Alt+C",
 "live": "Ctrl+Space"}`), escrito e validado por `hotkey_settings.write`: tecla
 inválida ou ficheiro estragado **nunca** deixam a app surda — volta à fábrica e o
@@ -65,8 +86,8 @@ app).
 
 | instrumento | veredicto |
 |---|---|
-| `python _main/altc-gesture-oracle.py` | **ALTC-GESTURE GREEN — arms=86 pass=86** (medido 2026-11-01) |
-| `python _main/altc-gesture-oracle.py --neg-arm` | **NEG-ARM PASS**: `defer-400ms` derruba 5 arms (10 pressões → 0 mudanças, `Timer` de 0,4 s armado, as duas pressões a 10 s viram uma) e `hold-threshold` derruba 2 (`HOTKEY_HOLD_MS`/`is_hold` de volta) |
+| `python _main/altc-gesture-oracle.py` | **ALTC-GESTURE GREEN — arms=96 pass=96** (medido 2026-11-04) |
+| `python _main/altc-gesture-oracle.py --neg-arm` | **NEG-ARM PASS, rc=1**: `defer-400ms` derruba 5 arms (10 pressões → 0 mudanças, `Timer` de 0,4 s armado, as duas pressões a 10 s viram uma), `hold-threshold` derruba 2 (`HOTKEY_HOLD_MS`/`is_hold` de volta), `blank-alternation` derruba 10 (o ciclo deixa de esconder: `next_surface` devolve sempre `strip`) e `combination-latch` derruba o braço (f) com o observador a contar **1** pressão em 4 (medido 2026-11-04) |
 | `python _main/altc-first-caption-oracle.py` | mede pressão → acção por **papel** (`role=panels` → `HOTKEY_TOGGLE`, `role=live` → `HOTKEY_LIVE_STEP`); sem log do build do disco dá `NO-MEASURE` (rc=2), que não é verde |
 | `python _main/altc-first-caption-oracle.py --neg-arm` | **NEG-ARM PASS cases=12**, incluindo «pressão de uma tecla creditada com a acção da outra → NO-ACTION», «duas teclas na mesma sessão → vale a pior» e «uma tecla sem acção → NO-MEASURE, não verde» |
 | `python _main/selftest-focus-oracle.py` | **PASS**: o braço «own window took the foreground» continua **RED**, o «control» **GREEN**; a excepção do Alt+C é declarada pela leitura, não presumida |
@@ -88,8 +109,18 @@ Os braços do oráculo (lista impressa no arranque, e é a mesma que ele julga):
 * **(c)** uma pressão com 300 ms de relógio → **uma** mudança, e **nenhum** toggle de
   legenda;
 * **(d)** Ctrl+Space → a legenda comuta **uma vez por pressão**, e nenhum painel mexe;
-* **(e)** o braço VERMELHO: reinstalar o adiamento de 400 ms (ou o limiar de HOLD)
-  derruba o oráculo — corrido, `--neg-arm`.
+* **(e)** o braço VERMELHO: reinstalar o adiamento de 400 ms, o limiar de HOLD,
+  **apagar o ciclo** ou repor o latch por combinação derruba o oráculo — corrido,
+  `--neg-arm` (quatro mutantes, rc=1);
+* **(f)** **4 pressões de `C` com o `Alt` em baixo o tempo inteiro**, pelo caminho
+  real: o corpo de `hotkey_pressed` → `_hotkey_resolve` → `next_surface` → os
+  `show_strip`/`show_side`/`hide_panel` do ficheiro, e depois o **observador real**
+  (`PassiveHotkeyThread.run`, com o estado das teclas injectado). A sequência
+  exigida é `show,hide,show,hide` — **pressão 1 mostra a faixa, 2 esconde, 3 mostra
+  o painel da direita, 4 esconde** — e as quatro contam `count=1..4` mesmo quando a
+  solta entre duas pressões **cai inteira entre duas voltas** do observador (o
+  `max_gap_ms=609` medido). Uma solta perdida atrasa a pressão seguinte; nunca a
+  engole.
 
 **A latência medida no caminho:** o braço (a) executa o corpo real de
 `hotkey_pressed`/`_hotkey_resolve` extraído do ficheiro e cronometra

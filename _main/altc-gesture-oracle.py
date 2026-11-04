@@ -25,7 +25,14 @@ OS BRACOS (a lista e' impressa no arranque, e cada um diz o que julga):
   (c) uma pressao com 300 ms de relogio -> UMA mudanca, e NENHUM toggle de legenda;
   (d) Ctrl+Space -> a legenda comuta uma vez por pressao, e nao toca em painel;
   (e) o braco VERMELHO: reinstalar o adiamento de 400 ms (ou o limiar de HOLD)
-      tem de derrubar o oraculo -- corrido, com o resultado mostrado.
+      tem de derrubar o oraculo -- corrido, com o resultado mostrado;
+  (f) QUATRO pressoes de `C` com o `Alt` EM BAIXO o tempo inteiro, pelo caminho
+      REAL: a decisao do shell (`hotkey_pressed` -> `_hotkey_dispatch` ->
+      `_hotkey_resolve` -> `next_surface` -> show/hide) e o observador real
+      (`PassiveHotkeyThread.run`, com o estado das teclas injectado e as SOLTAS
+      perdidas como o GIL as perde de verdade). A sequencia exigida e'
+      show,hide,show,hide -- pressao 1 mostra a faixa, 2 esconde, 3 mostra o
+      painel da direita, 4 esconde -- e NENHUMA pressao pode ser engolida.
 
 COMO. Os corpos de `hotkey_pressed`, `hotkey_live`, `_hotkey_resolve` e
 `_on_press` sao EXTRAIDOS DO FICHEIRO QUE VAI CORRER com `ast` e exec'd contra um
@@ -48,7 +55,9 @@ import re
 import shutil
 import tempfile
 import textwrap
+import threading
 import time as real_time
+import types
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -67,6 +76,7 @@ ARM_LIST = (
     "(c) uma pressao com 300 ms -> uma mudanca (e nenhuma legenda)",
     "(d) Ctrl+Space comuta a legenda uma vez por pressao",
     "(e) --neg-arm: adiamento de 400 ms / limiar de HOLD reinstalados -> RED",
+    "(f) 4 pressoes de C com o ALT EM BAIXO (soltas perdidas) -> show,hide,show,hide",
 )
 
 
@@ -138,6 +148,63 @@ def def_body(source: str, name: str) -> str:
                 body = body[1:] or [ast.Pass()]
             return "\n".join(ast.unparse(n) for n in body)
     return ""
+
+
+class VirtualClock:
+    """Um relogio que so' avanca quando o laco do observador vai dormir.
+
+    O `run` do observador le' `time.monotonic()` no topo da volta e no fim chama
+    `self._stop_requested.wait(poll_s)`. Aqui o `wait` e' o unico sitio onde o
+    tempo anda, logo a sequencia de teclas e' DETERMINISTICA: a mesma entrada da'
+    o mesmo numero de presses em toda a corrida, sem `sleep` e sem janela.
+    """
+
+    def __init__(self, span_s: float, poll_s: float = 0.025):
+        self.now = 0.0
+        self.polls = 0
+        self.span_s = float(span_s)
+        self.poll_s = float(poll_s)
+
+    def monotonic(self):
+        return self.now
+
+    def is_set(self):
+        return self.now >= self.span_s
+
+    def wait(self, timeout=None):
+        self.polls += 1
+        self.now += self.poll_s if timeout is None else float(timeout)
+        return self.is_set()
+
+
+def exec_observer(source: str, gesture, log_fn, clock):
+    """A CLASSE `PassiveHotkeyThread` do FICHEIRO, exec'd sem ctypes e sem thread.
+
+    O que se injecta e' so' o que toca no sistema: `kernel32` (um id), `user32`
+    (uma leitura que devolve 0) e as duas tabelas de VK -- que agora vem do
+    proprio `hotkey_gesture` por `hotkey_numbers()`. O corpo do `run`, a borda, o
+    latch e a chamada do callback sao os do ficheiro.
+    """
+    tree = ast.parse(source)
+    node = next((n for n in tree.body
+                 if isinstance(n, ast.ClassDef) and n.name == 'PassiveHotkeyThread'),
+                None)
+    if node is None:
+        return None
+    namespace = {
+        'threading': threading,
+        'time': types.SimpleNamespace(monotonic=clock.monotonic),
+        'kernel32': type('K', (), {'GetCurrentThreadId': staticmethod(lambda: 4242)})(),
+        'user32': type('U', (), {'GetAsyncKeyState': staticmethod(lambda vk: 0)})(),
+        '_HOTKEY_TRACE': False,
+        'hotkey_numbers': lambda: gesture,
+        'parse_accelerator': gesture.parse_accelerator,
+        'log': log_fn,
+        '__builtins__': __builtins__,
+    }
+    exec(compile(ast.Module(body=[node], type_ignores=[]),
+                 '<passive-hotkey>', 'exec'), namespace)
+    return namespace['PassiveHotkeyThread']
 
 
 # ---------------------------------------------------------------------------
@@ -652,6 +719,101 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
                           "hide_panel", "show_panel", "worker", "history"):
             add(forbidden not in live_code, f"_set_live_enabled NAO nomeia {forbidden}")
 
+    # -- ARM 8 -----------------------------------------------------------------
+    print("\nARM 8 -- 4 pressoes de C com o ALT EM BAIXO, pelo caminho REAL")
+    # (f-i) A DECISAO, executada do ficheiro: pressao 1 mostra, 2 esconde,
+    #       3 mostra, 4 esconde. As impares MOSTRAM, as pares ESCONDEM.
+    host = FakeShell(ns, visible=False, surface='panel')
+    spies['log'].lines.clear()
+    replay = []
+    for index in range(1, 5):
+        before = len(host.events)
+        ns['hotkey_pressed'](host)
+        replay.append((index, host.events[before:]))
+    flat = [(index, kind, surface) for index, gained in replay
+            for kind, surface in gained]
+    add([kind for _, kind, _ in flat] == ['show', 'hide', 'show', 'hide'],
+        "(f) pressao 1 mostra, 2 esconde, 3 mostra, 4 esconde",
+        " | ".join(f"pressao {i}: {k} {s}" for i, k, s in flat))
+    add(all(len(gained) == 1 for _, gained in replay),
+        "(f) cada pressao fez EXACTAMENTE uma mudanca (nem engolida, nem dupla)",
+        str([len(gained) for _, gained in replay]))
+    add([surface for _, kind, surface in flat if kind == 'show'] == ['strip', 'panel'],
+        "(f) os shows sao a faixa (pressao 1) e o painel da direita (pressao 3)",
+        str([surface for _, kind, surface in flat if kind == 'show']))
+    toggles = [line for line in spies['log'].lines
+               if line.startswith('HOTKEY_TOGGLE ')]
+    add(toggles == ['HOTKEY_TOGGLE step=show surface=strip',
+                    'HOTKEY_TOGGLE step=hide surface=strip',
+                    'HOTKEY_TOGGLE step=show surface=panel',
+                    'HOTKEY_TOGGLE step=hide surface=panel'],
+        "(f) o LOG diz a mesma sequencia, pressao a pressao", str(toggles))
+    add(spies['time'].reads == [] and spies['threading'].timers == [],
+        "(f) o ALT preso nao muda nada: nada neste caminho le' teclado nem relogio",
+        str(spies['time'].reads) or "zero leituras")
+
+    # (f-ii) O OBSERVADOR REAL (`PassiveHotkeyThread.run`, do ficheiro), com o
+    #        estado das teclas injectado: ALT em baixo do principio ao fim, e o C
+    #        martelado. Duas formas de entrada -- a solta VISTA e a solta PERDIDA
+    #        (o laco do observador ja' publicou `max_gap_ms=609`; uma solta mais
+    #        curta que a volta nao existe para ele).
+    probe = exec_observer(source, gesture, FakeLog(), VirtualClock(2.0))
+    if probe is None:
+        add(False, "(f) PassiveHotkeyThread extraido do ficheiro")
+        return verdict("ALTC-GESTURE")
+    add(True, "(f) PassiveHotkeyThread extraido do ficheiro")
+
+    def run_observer(release_seen):
+        """Uma corrida do laco REAL; devolve (presses, accoes, linhas)."""
+        tick = VirtualClock(2.0)
+        log = FakeLog()
+        target = FakeShell(ns, visible=False, surface='panel')
+        windows = ((0.30, 0.45), (0.70, 0.85), (1.10, 1.25), (1.50, 1.65))
+
+        def key_state(vk):
+            vk = int(vk)
+            now = tick.now
+            if vk in (0x12, 0xA4, 0xA5):
+                return 0x8000                    # O ALT, em baixo o tempo todo
+            if vk != 0x43:
+                return 0
+            value = 0
+            for start, end in windows:
+                if start <= now < end:           # a solta so' existe se for vista
+                    value = 0x8000
+                if start <= now < start + 0.025:  # a borda: o bit 0 do Windows
+                    value |= 0x0001
+            if not release_seen and 0.30 <= now < 1.65:
+                # A SOLTA PERDIDA: o C fica em baixo entre as pressoes porque
+                # nenhuma volta caiu na janela em que ele subiu.
+                value |= 0x8000
+            return value
+
+        observer = probe(
+            gesture.PANELS_ACCELERATOR, lambda: ns['hotkey_pressed'](target),
+            log_fn=log, role='panels', poll_s=0.025, key_state=key_state)
+        observer._stop_requested = tick
+        observer.run()
+        return (int(observer.pressed), [event[0] for event in target.events],
+                [line for line in log.lines if 'HOTKEY_PRESSED' in line])
+
+    presses, actions, lines = run_observer(release_seen=True)
+    counts = [line.split('count=')[1].split()[0] for line in lines]
+    add(presses == 4 and actions == ['show', 'hide', 'show', 'hide'],
+        "(f) o ALT em baixo NAO encurta o gesto: 4 presses -> show,hide,show,hide",
+        f"presses={presses} accoes={actions}")
+    add(counts == ['1', '2', '3', '4'],
+        "(f) a linha da entrega diz o INDICE de cada pressao", str(counts))
+
+    presses, actions, lines = run_observer(release_seen=False)
+    add(presses == 4 and actions == ['show', 'hide', 'show', 'hide'],
+        "(f) uma SOLTA PERDIDA atrasa a pressao seguinte, nunca a engole",
+        f"presses={presses} accoes={actions}")
+    add([line.split('count=')[1].split()[0] for line in lines]
+        == ['1', '2', '3', '4'],
+        "(f) as quatro entregas contam 1..4 mesmo com as soltas perdidas",
+        str([line.split('count=')[1].split()[0] for line in lines]))
+
     return verdict("ALTC-GESTURE")
 
 
@@ -685,16 +847,24 @@ def _copy_tree(tmp: Path) -> Path:
 
 
 def neg_arm() -> int:
-    """Muta uma COPIA e exige RED -- duas regressoes, uma de cada lado.
+    """Muta uma COPIA e exige RED -- quatro regressoes, duas de cada lado.
 
     MUTANTE 1: o ADIAMENTO de 400 ms volta a `hotkey_pressed` (o gesto que o dono
     mandou tirar em 2026-10-30: *"tem um delay DO CARALHO pra aparecer os
     painels"*). MUTANTE 2: o LIMIAR de HOLD volta ao modulo do gesto (a duracao
     da segurada volta a decidir, que e' o que ele mandou tirar hoje).
+    MUTANTE 3 (2026-11-04): o CICLO e' APAGADO -- `next_surface` devolve sempre a
+    faixa, logo nenhuma pressao esconde e a alternancia show/hide deixa de
+    existir. E' o mutante da ordem dele (*"alterna entre show e hide"*).
+    MUTANTE 4 (2026-11-04): o LATCH por COMBINACAO volta -- o observador so'
+    re-arma quando TODAS as teclas sobem, e uma solta perdida com o modificador
+    em baixo engole as pressoes seguintes.
     """
     failures = 0
     for name, mutate in (("defer-400ms", _mutate_shell_defer),
-                         ("hold-threshold", _mutate_gesture_hold)):
+                         ("hold-threshold", _mutate_gesture_hold),
+                         ("blank-alternation", _mutate_gesture_blank),
+                         ("combination-latch", _mutate_shell_latch)):
         tmp = Path(tempfile.mkdtemp(prefix="altc-neg-"))
         try:
             webview = _copy_tree(tmp)
@@ -717,7 +887,7 @@ def neg_arm() -> int:
     if failures:
         print("\nNEG-ARM FAIL -- o oraculo nao ve a regressao")
         return EXIT_PASS
-    print("\nNEG-ARM PASS -- RED as designed: as duas regressoes derrubam o oraculo")
+    print("\nNEG-ARM PASS -- RED as designed: as quatro regressoes derrubam o oraculo")
     return EXIT_FAIL
 
 
@@ -743,6 +913,40 @@ def _mutate_gesture_hold(webview: Path):
         + marker, 1)
     target.write_text(text, encoding="utf-8")
     return "limiar de HOLD reinstalado no modulo do gesto"
+
+
+#: O CICLO INTEIRO, apagado: a regra mostra a faixa e nunca esconde.
+GESTURE_BLANK_PATCH = (
+    "    if visible:\n"
+    "        return None\n"
+    "    return 'panel' if str(surface or '') == 'strip' else 'strip'",
+    "    return 'strip'",
+)
+
+#: O LATCH POR COMBINACAO de volta (antes de 2026-11-04): todas as teclas tem de
+#: subir para a pressao seguinte contar.
+SHELL_LATCH_PATCH = (
+    "            if mods_ready and (fresh or (down and not held)):",
+    "            if (down or fresh) and not held:",
+)
+
+
+def _mutate_gesture_blank(webview: Path):
+    target = webview / "hotkey_gesture.py"
+    text = target.read_text(encoding="utf-8")
+    if GESTURE_BLANK_PATCH[0] not in text:
+        return None
+    target.write_text(text.replace(*GESTURE_BLANK_PATCH, 1), encoding="utf-8")
+    return "o ciclo dos paineis apagado (next_surface devolve sempre a faixa)"
+
+
+def _mutate_shell_latch(webview: Path):
+    target = webview / "sotto_webview.py"
+    text = target.read_text(encoding="utf-8")
+    if SHELL_LATCH_PATCH[0] not in text:
+        return None
+    target.write_text(text.replace(*SHELL_LATCH_PATCH, 1), encoding="utf-8")
+    return "latch por COMBINACAO reinstalado no observador"
 
 
 def main(argv) -> int:

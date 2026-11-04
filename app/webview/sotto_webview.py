@@ -1883,10 +1883,6 @@ METER_FRESH_S = 2.0
 #: the worker side): only this log line is, on the same budget as the push.
 METER_LOG_INTERVAL_S = 30.0
 
-MOD_ALT = 0x0001
-MOD_CONTROL = 0x0002
-MOD_SHIFT = 0x0004
-MOD_WIN = 0x0008
 MOD_NOREPEAT = 0x4000
 WM_HOTKEY = 0x0312
 #: A mensagem com que `HotkeyThread.stop` ACORDA o pump: `WaitMessage` dorme ate'
@@ -1894,10 +1890,11 @@ WM_HOTKEY = 0x0312
 WM_APP = 0x8000
 #: `PeekMessageW` flag -- take the message out of the queue.
 PM_REMOVE = 0x0001
-#: O bit do Win32 de cada nome de modificador que `hotkey_gesture` aceita. A ABI
-#: fica deste lado; o VOCABULARIO das teclas fica do lado puro, num sitio so'.
-_MOD_BITS = {'alt': MOD_ALT, 'ctrl': MOD_CONTROL, 'shift': MOD_SHIFT,
-             'win': MOD_WIN}
+#: O bit do Win32 de cada nome de modificador NAO se escreve aqui: ele vive em
+#: `hotkey_gesture.MODIFIER_BITS`, lido por `hotkey_numbers()`. As constantes
+#: `MOD_*` acima continuam a existir porque sao a ABI do `RegisterHotKey`, mas a
+#: tabela nome->bit seria uma SEGUNDA copia do vocabulario, e uma segunda copia
+#: envelhece contra a primeira em silencio.
 #: O botao esquerdo do rato, lido pelo `OutsideClickWatcher` para saber se um
 #: arrasto de edit mode esta' em curso. Sem hook, isto e' a unica fonte.
 VK_LBUTTON = 0x01
@@ -5667,18 +5664,20 @@ def reassert_taskbar_ex_style(hwnd, where: str) -> dict:
 
 
 def parse_accelerator(accelerator: str):
-    """'Alt+C' -> (MOD_ALT, ord('C')); 'Ctrl+Space' -> (MOD_CONTROL, 0x20).
+    """'Alt+C' -> (0x0001, ord('C')); 'Ctrl+Space' -> (0x0002, 0x20).
 
     O VOCABULARIO DAS TECLAS NAO VIVE AQUI. `hotkey_gesture.parse_accelerator`
     conhece os nomes dos modificadores e das teclas (incluindo `Space`), e e' o
     MESMO parser com que `hotkey_settings` valida o ficheiro do dono -- duas
     tabelas de teclas seriam duas verdades, e a segunda envelhece sozinha. Aqui
-    so' se traduz o NOME no bit do Win32 (`_MOD_BITS`): a ABI fica deste lado.
+    so' se traduz o NOME no bit do Win32 (`hotkey_numbers().MODIFIER_BITS`): a
+    tabela vive do lado puro, num sitio so', e o shell nao guarda copia.
     """
-    names, vk = hotkey_numbers().parse_accelerator(accelerator)
+    numbers = hotkey_numbers()
+    names, vk = numbers.parse_accelerator(accelerator)
     mods = 0
     for name in names:
-        mods |= _MOD_BITS[name]
+        mods |= numbers.MODIFIER_BITS[name]
     return mods, vk
 
 
@@ -5881,17 +5880,12 @@ _SINGLE_INSTANCE = {'handle': None}
 DEFAULT_MUTEX_NAME = 'Local\\SottoShell'
 
 
-#: VK de cada nome de modificador que o parser aceita. O Windows tem um VK
-#: GENERICO por modificador (0x10/0x11/0x12) que responde a esquerda e a direita.
-_MODIFIER_VK = {'ctrl': 0x11, 'alt': 0x12, 'shift': 0x10, 'win': 0x5B}
-
-#: Os VK LATERAIS dos mesmos modificadores (2026-11-03). O generico responde
-#: em quase todo o teclado, mas ha' teclados e remappers que so' publicam o
-#: esquerdo/direito -- e o sintoma e' indistinguivel de uma tecla morta: o
-#: observador corre, le' 0, e nunca dispara. Ler os tres e aceitar QUALQUER
-#: deles custa duas leituras e remove a duvida inteira.
-_MODIFIER_VARIANTS = {'ctrl': (0xA2, 0xA3), 'shift': (0xA0, 0xA1),
-                      'alt': (0xA4, 0xA5), 'win': (0x5B, 0x5C)}
+#: Os VK dos modificadores NAO se escrevem aqui. O GENERICO por modificador
+#: (0x10/0x11/0x12 responde aos dois lados) e os LATERAIS (0xA0..0xA5, para
+#: teclados e remappers que so' publicam um lado) vivem em
+#: `hotkey_gesture.MODIFIER_VKS` / `MODIFIER_VK_VARIANTS`, lidos por
+#: `hotkey_numbers()`. Uma segunda tabela aqui seria uma segunda verdade sobre a
+#: mesma tecla.
 
 #: `SOTTO_HOTKEY_TRACE=1` escreve a BORDA do estado das teclas observadas.
 #: Existe porque "carreguei e nao aconteceu nada" precisa de um numero: com
@@ -5909,18 +5903,30 @@ class PassiveHotkeyThread(threading.Thread):
     causa do sotto"*.
 
     O QUE ESTA CLASSE FAZ. Le o ESTADO das teclas (`GetAsyncKeyState`, que nao
-    consome nada) a cada `POLL_S` e dispara na BORDA de descida da combinacao:
-    o jogo recebe o `Ctrl+Space` inteiro porque o Windows entrega a tecla a quem
-    tem o foco e aqui ninguem a intercepta. O toque continua a ser UM: a tecla
-    tem de ser largada antes de disparar outra vez.
+    consome nada) a cada `hotkey_gesture.POLL_S` e dispara na BORDA de descida
+    DA TECLA: o jogo recebe o `Ctrl+Space` inteiro porque o Windows entrega a
+    tecla a quem tem o foco e aqui ninguem a intercepta.
+
+    A PRESSAO E' DA TECLA, NAO DA COMBINACAO (2026-11-04). O latch ja' foi da
+    combinacao inteira: ele so' re-armava quando TODAS as teclas subiam, e uma
+    solta perdida (o laco do observador ja' publicou `max_gap_ms=609`, porque a
+    inferencia segura o GIL) deixava o latch preso -- o Alt/Ctrl fisicamente em
+    baixo e o `C`/`Space` martelado NAO davam uma segunda pressao. Agora:
+
+      * o MODIFICADOR e' so' uma CONDICAO (`0x8000|0x0001` no grupo dele): ele
+        pode ficar em baixo o tempo inteiro;
+      * a PRESSAO e' o bit 0 do grupo DA TECLA -- o Windows guarda a borda e
+        no'-la lemos mesmo com uma volta atrasada;
+      * `key_held` (por tecla, nunca pela combinacao) evita que a tecla em baixo
+        conte como uma pressao nova a cada volta;
+      * uma borda NOVA conta mesmo com `key_held` de pe': uma solta perdida
+        atrasa a proxima pressao, nunca a engole.
 
     CUSTO: uma leitura de estado por modificador + uma da tecla, 40 vezes por
     segundo. `GetAsyncKeyState` e' uma chamada de microssegundos, nao uma
     mensagem: medido neste host, um laco de 4 teclas a 40 Hz fica abaixo de
     0,1 % de um core.
     """
-
-    POLL_S = 0.025
 
     def __init__(self, accelerator: str, on_hotkey, log_fn=log, role='live',
                  poll_s=None, key_state=None):
@@ -5930,7 +5936,7 @@ class PassiveHotkeyThread(threading.Thread):
         self.on_hotkey = on_hotkey
         self.log_fn = log_fn
         self.modifiers, self.vk = parse_accelerator(accelerator)
-        self.poll_s = float(poll_s or self.POLL_S)
+        self.poll_s = float(poll_s or hotkey_numbers().POLL_S)
         self.registered = True
         self.register_error = None
         self.thread_id = None
@@ -5946,18 +5952,25 @@ class PassiveHotkeyThread(threading.Thread):
         #: processo vivo le o estado real. A leitura e' a UNICA coisa trocavel: a
         #: borda, o nao-repetir e a chamada do callback sao o que se mede.
         self.key_state = key_state
-        #: Os VK desta combinacao: os modificadores nomeados + a tecla.
-        # UM GRUPO POR TECLA NOMEADA: basta QUALQUER VK do grupo estar em baixo.
-        self.key_groups = []
+        #: Os VK desta combinacao: os modificadores nomeados + a tecla. As duas
+        #: tabelas vem de `hotkey_numbers()` (o modulo do gesto), nunca de uma
+        #: copia local: o GENERICO de cada modificador e os LATERAIS.
+        numbers = hotkey_numbers()
+        self.modifier_groups = []
         for name in str(accelerator).split('+'):
             name = name.strip().lower()
-            if name in _MODIFIER_VK:
-                _group = [int(_MODIFIER_VK[name])]
-                for _extra in _MODIFIER_VARIANTS.get(name, ()):
+            if name in numbers.MODIFIER_VKS:
+                _group = [int(numbers.MODIFIER_VKS[name])]
+                for _extra in numbers.MODIFIER_VK_VARIANTS.get(name, ()):
                     if int(_extra) not in _group:
                         _group.append(int(_extra))
-                self.key_groups.append(tuple(_group))
-        self.key_groups.append((int(self.vk),))
+                self.modifier_groups.append(tuple(_group))
+        #: UM GRUPO POR TECLA NOMEADA, e a TECLA tem o seu, separado: e' a tecla
+        #: que conta a pressao, e o modificador e' so' a condicao. Misturar os
+        #: dois num grupo unico era o que fazia a 'segurada' ser uma pergunta
+        #: sobre a combinacao inteira (ver `run`).
+        self.key_group = (int(self.vk),)
+        self.key_groups = list(self.modifier_groups) + [self.key_group]
         self.keys = [g[0] for g in self.key_groups]
 
     def run(self):
@@ -6029,25 +6042,37 @@ class PassiveHotkeyThread(threading.Thread):
             # carregada DEPOIS da chamada anterior": o Windows guarda a borda e
             # no'-la lemos mesmo com a volta atrasada -- sem hook global e sem
             # `RegisterHotKey` (que daria so' a descida e roubaria a tecla ao
-            # resto do sistema). 0x8000 continua a ser `down`, o unico caminho
-            # para a DURACAO da segurada; 0x0001 e' a borda.
-            down = True
-            fresh = True
-            for _group in self.key_groups:
+            # resto do sistema). 0x8000 continua a ser `down`; 0x0001 e' a borda.
+            #
+            # A PERGUNTA E' FEITA EM DUAS PARTES, e essa e' a cura de 2026-11-04
+            # (ver a docstring da classe): o MODIFICADOR e' uma CONDICAO --
+            # `0x8000` (em baixo agora) ou `0x0001` (carregado desde a leitura
+            # anterior) -- e a PRESSAO e' a borda do grupo DA TECLA. Antes o
+            # mesmo teste cobria os dois, e uma solta perdida com o Alt em baixo
+            # deixava o latch `held` de pe': o dono martelava o `C` e nao havia
+            # segunda pressao.
+            #
+            # TODOS OS GRUPOS SAO LIDOS EM TODA A VOLTA, sem `break`: ler e' o
+            # que LIMPA o bit 0. Sair mais cedo com um modificador em falta
+            # deixava a borda de um `Space` solitario guardada no Windows, e a
+            # proxima volta com o modificador em baixo a consumia como se fosse
+            # uma pressao que nao aconteceu.
+            mods_ready = True
+            for _group in self.modifier_groups:
                 _st = [int(get_state(int(vk))) for vk in _group]
-                if not any(_v & 0x8000 for _v in _st):
-                    down = False
-                if not any(_v & 0x0001 for _v in _st):
-                    fresh = False
-                if not down and not fresh:
-                    break
-            if _HOTKEY_TRACE and getattr(self, '_trace', None) != down:
-                self._trace = down
-                self.log_fn('HOTKEY_TRACE role=%s down=%s groups=%s'
+                if not any(_v & 0x8003 for _v in _st):
+                    mods_ready = False
+            _st = [int(get_state(int(vk))) for vk in self.key_group]
+            down = any(_v & 0x8000 for _v in _st)
+            fresh = any(_v & 0x0001 for _v in _st) and mods_ready
+            if _HOTKEY_TRACE and getattr(self, '_trace', None) != (down, mods_ready):
+                self._trace = (down, mods_ready)
+                self.log_fn('HOTKEY_TRACE role=%s down=%s mods=%s groups=%s'
                             % (self.role, str(down).lower(),
+                               str(mods_ready).lower(),
                                [[hex(int(v)) for v in g]
                                 for g in self.key_groups]))
-            if (down or fresh) and not held:
+            if mods_ready and (fresh or (down and not held)):
                 held = True
                 try:
                     self.pressed += 1
@@ -18530,7 +18555,14 @@ def app_target_request(args, env=None):
 def parse_args(argv):
     parser = argparse.ArgumentParser(
         prog='sotto-webview',
-        description='The Sotto panel, hosted by WebView2 (pywebview).')
+        description='The Sotto panel, hosted by WebView2 (pywebview).',
+        epilog='THE TWO KEYS. Alt+C -- one press is one step of the panel cycle, '
+               'immediate: from hidden, 1 shows the bottom strip, 2 hides, 3 '
+               'shows the right panel, 4 hides, and it keeps alternating with '
+               'Alt held down the whole time and C spammed. Ctrl+Space -- live '
+               'captions on/off, one press each, and no panel moves; OFF is the '
+               'DISPLAY only (the model, the worker and the history keep '
+               'running). Both accelerators live in app/webview/hotkey_gesture.py.')
     parser.add_argument('--show', action='store_true',
                         help='show the panel at startup instead of waiting '
                              'for Alt+C')

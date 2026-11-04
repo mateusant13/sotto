@@ -26,10 +26,17 @@ pressao que nao faca nada, e e' isso que faz o gesto funcionar com o Alt
 fisicamente em baixo e o C a ser martelado: nao ha janela de toques, nao ha
 limiar, nao ha adiamento, logo nao ha nada para o Alt preso estragar.
 
-    escondido (ultimo show: painel)  -> faixa de BAIXO   (show)
-    faixa de baixo no ecra           -> esconde          (hide)
-    escondido (ultimo show: faixa)   -> painel da DIREITA (show)
-    painel da direita no ecra        -> esconde          (hide)
+    escondido (ultimo show: painel)  -> faixa de BAIXO   (show)   pressao 1
+    faixa de baixo no ecra           -> esconde          (hide)   pressao 2
+    escondido (ultimo show: faixa)   -> painel da DIREITA (show)  pressao 3
+    painel da direita no ecra        -> esconde          (hide)   pressao 4
+
+O INDICE DA PRESSAO e' o `count=` da linha `HOTKEY_PRESSED`: as impares
+MOSTRAM, as pares ESCONDEM, e as mostradas alternam faixa, painel, faixa,
+painel. A linha `HOTKEY_TOGGLE step=...` que se segue e' o resultado dessa
+pressao (a fila e' FIFO, logo a ordem das duas linhas e' a ordem das pressoes).
+A regra nao sabe em que pressao esta' -- ela so' olha para a janela e para a
+superficie aplicada -- e o oraculo prende as duas coisas (o indice ao resultado).
 
 Dez pressoes: dez mudancas de visibilidade, e os shows alternam
 faixa, painel, faixa, painel, faixa. `next_surface` e' a regra inteira, pura,
@@ -61,6 +68,28 @@ MODIFIERS = {'ALT': 'alt', 'MENU': 'alt', 'CTRL': 'ctrl', 'CONTROL': 'ctrl',
 #: e' o que faz `Ctrl+Alt+Space` ser sempre a MESMA string.
 MODIFIER_ORDER = ('ctrl', 'alt', 'shift', 'win')
 MODIFIER_LABELS = {'ctrl': 'Ctrl', 'alt': 'Alt', 'shift': 'Shift', 'win': 'Win'}
+
+#: O bit do Win32 de cada modificador canonico (`RegisterHotKey`). A ABI e' um
+#: numero; o NOME e' vocabulario. Os dois ficam aqui e em mais lado nenhum --
+#: uma segunda tabela de bits envelhece contra esta em silencio.
+MODIFIER_BITS = {'alt': 0x0001, 'ctrl': 0x0002, 'shift': 0x0004, 'win': 0x0008}
+
+#: O VK GENERICO de cada modificador (0x10/0x11/0x12 respondem aos dois lados do
+#: teclado). E' o que o observador le' para saber se o modificador esta' em baixo.
+MODIFIER_VKS = {'ctrl': 0x11, 'alt': 0x12, 'shift': 0x10, 'win': 0x5B}
+
+#: Os VK LATERAIS dos mesmos modificadores (2026-11-03). O generico responde em
+#: quase todo o teclado, mas ha' teclados e remappers que so' publicam o
+#: esquerdo/direito -- e o sintoma e' indistinguivel de uma tecla morta: o
+#: observador corre, le' 0, e nunca dispara. Ler os tres e aceitar QUALQUER deles
+#: custa duas leituras e remove a duvida inteira.
+MODIFIER_VK_VARIANTS = {'ctrl': (0xA2, 0xA3), 'shift': (0xA0, 0xA1),
+                        'alt': (0xA4, 0xA5), 'win': (0x5B, 0x5C)}
+
+#: A cadencia com que a tecla OBSERVADA (Ctrl+Space, que nao e' tomada ao resto
+#: do sistema) le' o estado das teclas. 25 ms: `GetAsyncKeyState` custa
+#: microssegundos, logo isto e' abaixo de 0,1 % de um core.
+POLL_S = 0.025
 
 #: As teclas que NAO sao uma letra. `vk` e' o codigo virtual do Windows da
 #: tecla (`VK_SPACE` == 0x20); uma letra e' `ord('C')`, que e' o mesmo numero
@@ -123,6 +152,31 @@ def normalise_accelerator(text):
     mods, vk = parse_accelerator(text)
     key = _LABELS.get(vk) or chr(vk)
     return '+'.join([MODIFIER_LABELS[name] for name in mods] + [key])
+
+
+def hotkey_numbers():
+    """OS NUMEROS das duas teclas, num dict -- o unico sitio onde eles existem.
+
+    O shell NAO tem copia de nenhum destes numeros: a `hotkey_numbers()` dele
+    devolve ESTE modulo e ele le' os atributos daqui (a ABI do Win32 --
+    `MOD_NOREPEAT`, `WM_HOTKEY`, o id -- fica do lado do shell, que e' quem fala
+    com o sistema; o VOCABULARIO das teclas fica aqui). Antes desta funcao as
+    tres tabelas viviam no shell e o parser vivia aqui: duas verdades sobre a
+    mesma tecla, e a segunda envelhece sozinha.
+
+    Devolve copias rasas das tabelas: um chamador que as mutasse nao pode mudar
+    a fabrica do processo inteiro.
+    """
+    return {
+        'panels': PANELS_ACCELERATOR,
+        'live': LIVE_ACCELERATOR,
+        'modifier_bits': dict(MODIFIER_BITS),
+        'modifier_vks': dict(MODIFIER_VKS),
+        'modifier_vk_variants': {name: tuple(vks)
+                                 for name, vks in MODIFIER_VK_VARIANTS.items()},
+        'modifiers': dict(MODIFIERS),
+        'poll_s': POLL_S,
+    }
 
 
 def next_surface(visible, surface):
