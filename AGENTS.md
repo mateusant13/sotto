@@ -446,7 +446,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 15:3x):** `_main\_audit-verify-all.cmd` = **224071 B**,
+- **PIN do ficheiro (medido 2026-11-04, 16:1x):** `_main\_audit-verify-all.cmd` = **225203 B**,
+  **2791 CRLF** / 0 bare LF, sha256 `EF60698A8BF57AEAB2628A291C94C3C6EB44FAFFA64EBEFDDC1C5EF8B9169C46`.
+  (Catorze linhas a mais do que o pin de 224071 B / 2777 CRLF: o passo `dead-app-exit`, 11 arms com a
+  prova do detector DENTRO do passo (o mutante que desarma o escalonador fica PRESO). Nasceu da ordem
+  do dono de 2026-11-04 e do que o log dele mediu: `UI_WATCHDOG_EXIT code=9` as 13:01:36 e o processo
+  FICOU com 36 threads, 8 de 10 janelas a nao responder e o worker filho com 3,9 GB. A hipotese do
+  `os._exit` preso num read de pipe foi REFUTADA por medicao; o que sobrevive e' o `ExitProcess` a
+  nunca voltar com CLR/WinForms/WebView2/GDI+ carregados. A cura e' `_hard_exit` com escalonamento de
+  2,5 s, um matador externo por HANDLE (4 s, com creation stamp: um pid reciclado nunca e' morto) e
+  reap limitado; o `exit_killer.py` mata os FILHOS primeiro.)
+  (O pin anterior era de 224071 B:
   **2777 CRLF** / 0 bare LF, sha256 `29C76C018FF136B23287C85C4D84A035CC2D6CD9CF42B1F2C7EA1571887D19EB`.
   (Dezenove linhas a mais do que o pin de 222416 B / 2758 CRLF: o par `shell-priority` + o seu
   `--neg-arm`, 4 arms. Nascido do L10 do audit, medido: a shell viva (pid 20448) E o worker corriam

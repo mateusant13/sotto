@@ -692,6 +692,20 @@ if exist _main\freeze-census.py (
  call :step freeze-census 0 "_main\freeze-census.py" "%OUT%\freeze-census.log" python _main\freeze-census.py --selftest
  call :record freeze-census !STEP_RC!
 ) else ( call :record freeze-census MISSING )
+REM `dead-app-exit-oracle.py` -- UMA SAIDA QUE ESCREVEU NO LOG TERMINA. Ordem do dono
+REM de 2026-11-04, medido no log dele: 12:51:31 `UI_HUNG reason=caption-read-slow`,
+REM 13:00:46 e 13:00:54 `UI_WATCHDOG_STRIKE`, 13:01:36 strike 3 e
+REM `UI_WATCHDOG_EXIT code=9` -- e o processo FICOU com 36 threads, 8 de 10 janelas a
+REM nao responder e o worker filho com 3,9 GB. A hipotese do `os._exit` preso num read
+REM de pipe foi REFUTADA por medicao; o mecanismo que sobrevive e' o `ExitProcess` a
+REM nunca voltar com CLR/WinForms/WebView2/GDI+ carregados. A prova do detector vive
+REM DENTRO do passo (arm `mutant-red`): o mutante que desarma o escalonador e o matador
+REM externo fica PRESO, e e' isso que o passo publica -- por isso nao ha um
+REM `red-as-expected` separado, como no `caption-dup-repro`.
+if exist _main\dead-app-exit-oracle.py (
+ call :step dead-app-exit 0 "_main\dead-app-exit-oracle.py;app\webview\sotto_webview.py;app\webview\exit_killer.py" "%OUT%\dead-app-exit.log" python _main\dead-app-exit-oracle.py --neg-arm
+ call :record dead-app-exit !STEP_RC!
+) else ( call :record dead-app-exit MISSING )
 REM `shell-priority-oracle.py` -- A SUPERFICIE VISIVEL NUNCA ABAIXO DE NORMAL.
 REM Medido em 2026-11-04 (audit L10): a shell viva (pid 20448) E o worker corriam a
 REM `BELOW_NORMAL`, e o par de controlo ao lado (explorer, pwsh) corria a `NORMAL` --
