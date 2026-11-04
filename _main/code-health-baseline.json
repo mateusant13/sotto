@@ -311,12 +311,12 @@
       "max_func_name": "write"
     },
     "app/webview/load_shedding.py": {
-      "bytes": 39639,
-      "classes": 5,
+      "bytes": 41850,
+      "classes": 6,
       "defs": 9,
       "except_pass": 2,
       "globals": 1,
-      "lines": 863,
+      "lines": 923,
       "max_func": 67,
       "max_func_name": "tick"
     },
@@ -371,7 +371,7 @@
       "max_func_name": "run_selftest"
     },
     "app/webview/shell_relaunch.py": {
-      "bytes": 21992,
+      "bytes": 22035,
       "classes": 1,
       "defs": 9,
       "except_pass": 3,
@@ -381,12 +381,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 990345,
+      "bytes": 1000322,
       "classes": 24,
-      "defs": 109,
+      "defs": 110,
       "except_pass": 41,
       "globals": 4,
-      "lines": 18599,
+      "lines": 18745,
       "max_func": 387,
       "max_func_name": "main"
     },
@@ -580,14 +580,24 @@
       "max_func": 121,
       "max_func_name": "main"
     },
+    "worker/silence_tail.py": {
+      "bytes": 3316,
+      "classes": 0,
+      "defs": 1,
+      "except_pass": 1,
+      "globals": 0,
+      "lines": 70,
+      "max_func": 32,
+      "max_func_name": "decide"
+    },
     "worker/sotto_worker.py": {
-      "bytes": 394856,
+      "bytes": 404487,
       "classes": 17,
-      "defs": 62,
+      "defs": 67,
       "except_pass": 14,
       "globals": 5,
-      "lines": 7356,
-      "max_func": 2386,
+      "lines": 7560,
+      "max_func": 2409,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
@@ -651,7 +661,7 @@
       "max_func_name": "_pump"
     }
   },
-  "measured": "2026-11-03",
+  "measured": "2026-10-23",
   "metrics": [
     "bytes",
     "lines",
