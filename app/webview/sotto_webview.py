@@ -424,6 +424,76 @@ PAINT_ACK_ARM_JS = (
     '  return String(document.visibilityState || "?");'
     '})(__SEQ__)')
 PAINT_ACK_READ_JS = 'String(window.__sotto_paint_ack === __SEQ__ ? 1 : 0)'
+
+#: ── O GATE DE CONTEUDO (2026-11-04): O MAPA ESPERA PELA PAGINA ──────────────
+#: A ordem que o dono pediu, verbatim: *"o painel dar show, nao deve carregar o
+#: background e mostrar, e depois carregar a ui"*. O ack de 2026-11-01 MEDIU o
+#: show e nao o ORDENOU: `arm_paint_ack` e' postado e o mapa segue sem esperar
+#: nada, portanto a janela fica visivel com a superficie que a pagina ainda nao
+#: vestiu. `set_panel_surface(present=True)` tambem POSTA o `SottoSurfaces.set`
+#: -- e essa e' a chamada que escreve `body[data-surface]`, a regra que esconde
+#: `.panel__header` na faixa (`panel.css:1596`). Um script de mapa que chega
+#: antes do script da superficie pinta a superficie ANTERIOR e o dono ve a UI
+#: "a carregar depois".
+#:
+#: ESTE GATE E' A PERGUNTA QUE O `ShowWindow` NAO FAZ, feita ANTES do mapa: um
+#: unico script que (1) aplica a superficie (idempotente -- `surface.js:69`,
+#: mesmo valor nao notifica ninguem), (2) FORCA recalc de estilo e layout com
+#: `getBoundingClientRect()`, e (3) devolve a impressao digital do estilo JA'
+#: aplicado: o `display` COMPUTADO do `.panel__header` (difere entre as duas
+#: superficies: `none` na faixa), o rect do body e o fundo computado.
+#:
+#: LAYOUT NAO PRECISA DE COMPOSITOR, e e' por isso que este ack e' respondivel
+#: com a janela ESCONDIDA -- ao contrario do rAF de `PAINT_ACK_ARM_JS`, que o
+#: compositor desta maquina nao corre antes do mapa. Evidencia ja' no repo: o
+#: escritor de `panel-state.json` le `PANEL_STATE_PROBE` (que le
+#: `scrollHeight`/`clientHeight`, logo forca layout) a cada 2 s e o ficheiro
+#: tem valores reais com o painel escondido (`_main/panel-state.SottoPovSelftest.json`,
+#: `panel.live.scroll.client=749`).
+#:
+#: FALHA ABERTA. `CONTENT_GATE_TIMEOUT_MS` (250 ms) e depois o mapa acontece e a
+#: linha diz `ack=false why=...`: um Alt+C que nao faz nada e' o defeito que a
+#: casa ja' proibiu, e um show 250 ms mais lento no pior caso e' o preco de um
+#: mapa informado. O oraculo (`_main/paint-live-show-oracle.py`) le a ORDEM:
+#: `PANEL_CONTENT ack=true` tem de estar ANTES do `PANEL_SHOWN`.
+CONTENT_GATE_TIMEOUT_MS = 250.0
+#: A LEITURA DA PAGINA NO CAMINHO DO SHOW NAO ESPERA DEZ SEGUNDOS (2026-11-04).
+#: `_strip_offset_from_page` corre DENTRO de `set_panel_surface`, que e' o passo
+#: ANTERIOR ao mapa; com o orcamento por omissao do `exec_js` (10 s) um UI thread
+#: preso fazia da PRIMEIRA faixa de um processo uma espera de 10 s -- o *"abrir o
+#: sotto trava"* que a casa ja' mediu. A resposta que nao existe ja' tinha um
+#: fallback honesto (a barra no dock, `(0, 0)`); este numero e' o mesmo orcamento
+#: do gate de conteudo, e a leitura que nao responde NAO entra na cache.
+SHOW_PAGE_READ_TIMEOUT_S = 0.25
+CONTENT_GATE_JS = (
+    '(function (name) {'
+    '  var out = {surface: null, style: false, sized: false,'
+    '             w: 0, h: 0, bg: "", head: "", vis: "", error: ""};'
+    '  try {'
+    '    var S = window.SottoSurfaces;'
+    '    if (S && typeof S.set === "function") { S.set(name); }'
+    '    else if (document.body) { document.body.setAttribute("data-surface", name); }'
+    '    out.surface = (S && typeof S.current === "function") ? String(S.current())'
+    '      : (document.body'
+    '         ? String(document.body.getAttribute("data-surface") || "") : "");'
+    '    var b = document.body;'
+    '    var r = (b && b.getBoundingClientRect) ? b.getBoundingClientRect() : null;'
+    '    out.w = r ? Math.round(r.width) : 0;'
+    '    out.h = r ? Math.round(r.height) : 0;'
+    '    out.sized = !!(r && r.width > 0 && r.height > 0);'
+    '    var head = document.querySelector(".panel__header");'
+    '    var hcs = (head && getComputedStyle) ? getComputedStyle(head) : null;'
+    '    var bcs = (b && getComputedStyle) ? getComputedStyle(b) : null;'
+    '    out.head = hcs ? String(hcs.display) : "";'
+    '    out.bg = bcs ? String(bcs.backgroundColor) : "";'
+    '    out.style = (out.surface === name) && (hcs'
+    '      ? (name === "strip" ? out.head === "none" : out.head !== "none")'
+    '      : out.bg !== "");'
+    '    out.vis = String(document.visibilityState || "?");'
+    '  } catch (e) { out.error = String((e && e.message) || e); }'
+    '  return JSON.stringify(out);'
+    '})(__NAME__)')
+
 #: THE EXIT'S DESTROY WAIT (2026-10-21). The window destroy is COSMETIC: the
 #: shell calls `os._exit` right after, so the window dies either way. Waiting
 #: three seconds for it is three seconds the tray thread is not answering the
@@ -10905,6 +10975,73 @@ class SottoShell:
                out['why'], PAINT_ACK_TIMEOUT_MS))
         return out
 
+    def content_gate(self, reason, surface=None) -> dict:
+        """Confirma, ANTES do mapa, que a pagina ja' tem a superficie vestida.
+
+        ── A ORDEM DO DONO, e a parte que faltava da cura ─────────────────────
+        Verbatim: *"o painel dar show, nao deve carregar o background e
+        mostrar, e depois carregar a ui"*. Todo o show mapeia a janela com
+        `ShowWindow`/`SW_SHOW+FOREGROUND` sem perguntar nada a' pagina, e no
+        caminho do show a superficie e' POSTADA (`set_panel_surface(...,
+        present=True)`), portanto nada garante que o `body[data-surface]` que
+        escolhe o layout ja' tenha sido escrito quando o primeiro frame aparece.
+        Este metodo e' a pergunta, e ele corre ANTES de `show_without_activating`
+        / `foreground_unlock` -- ver `CONTENT_GATE_JS` para o porque de o ack
+        ser respondivel com a janela escondida (layout nao precisa de
+        compositor).
+
+        NAO ESPERA COMO UM PEDIDO: espera como um ORCAMENTO. Um UI thread preso
+        devolve `NoAnswer` e o mapa acontece na mesma -- falha aberta, igual ao
+        `wait_paint_ack`, e a linha diz qual dos dois foi.
+        """
+        name = normalise_surface_name(surface if surface is not None else self.surface)
+        out = {'ack': False, 'wait_ms': 0.0, 'why': 'no-surface', 'surface': name,
+               'applied': None, 'style': False, 'sized': False, 'w': 0, 'h': 0,
+               'bg': '', 'head': '', 'vis': '', 'error': ''}
+        if name is None:
+            # SEM SUPERFICIE NAO HA' GATE, e o mapa segue: recusar o show por
+            # causa disto repetiria o defeito de `set_panel_surface` que deixou
+            # o painel sem aparecer (ver `PANEL_SURFACE_REFUSED`).
+            log('PANEL_CONTENT surface=%s ack=false wait_ms=0 why=no-surface '
+                'order=before-map reason=%s'
+                % (json.dumps(str(surface)), reason))
+            self._last_content_gate = out
+            return out
+        script = CONTENT_GATE_JS.replace('__NAME__', json.dumps(name))
+        t0 = time.monotonic()
+        try:
+            answer = self.exec_js(
+                script, timeout=max(0.05, CONTENT_GATE_TIMEOUT_MS / 1000.0))
+        except Exception as exc:  # noqa: BLE001 -- o mapa nao morre por isto
+            answer = None
+            out['error'] = repr(exc)
+        out['wait_ms'] = round((time.monotonic() - t0) * 1000.0, 1)
+        if isinstance(answer, NoAnswer):
+            out['why'] = 'ui-thread-busy'
+        elif isinstance(answer, dict):
+            out['applied'] = answer.get('surface')
+            out['style'] = bool(answer.get('style'))
+            out['sized'] = bool(answer.get('sized'))
+            out['w'] = int(answer.get('w') or 0)
+            out['h'] = int(answer.get('h') or 0)
+            out['bg'] = str(answer.get('bg') or '')
+            out['head'] = str(answer.get('head') or '')
+            out['vis'] = str(answer.get('vis') or '')
+            out['error'] = str(answer.get('error') or '')
+            out['ack'] = bool(out['applied'] == name and out['style'] and out['sized'])
+            out['why'] = 'applied' if out['ack'] else 'not-applied'
+        else:
+            out['why'] = 'bad-answer'
+        log('PANEL_CONTENT surface=%s ack=%s applied=%s style=%s sized=%s '
+            'size=%dx%d head=%s vis=%s wait_ms=%s why=%s order=before-map '
+            'reason=%s timeout_ms=%s'
+            % (name, str(out['ack']).lower(), json.dumps(str(out['applied'])),
+               str(out['style']).lower(), str(out['sized']).lower(),
+               out['w'], out['h'], json.dumps(out['head']), out['vis'],
+               out['wait_ms'], out['why'], reason, CONTENT_GATE_TIMEOUT_MS))
+        self._last_content_gate = out
+        return out
+
     def send_status(self, text, kind=''):
         """Status wire: `{'text': <str>, 'kind': <str>}` — F8 + D3, frozen.
 
@@ -11840,6 +11977,12 @@ class SottoShell:
         # answer is actually possible -- bounded by `PAINT_ACK_TIMEOUT_MS`,
         # failing open, never holding the map.
         ack_seq = self.arm_paint_ack(reason)
+        # ── E A ORDEM: O CONTEUDO JA' APLICADO, DEPOIS O MAPA ────────────────
+        # `content_gate` e' a pergunta que `ShowWindow` nao faz (ver
+        # `CONTENT_GATE_JS`): superficie vestida, estilo recalculado, layout
+        # forçado. Fica ANTES do mapa e falha ABERTA em `CONTENT_GATE_TIMEOUT_MS`,
+        # para um show nunca deixar de acontecer por a pagina nao responder.
+        content = self.content_gate(reason, self.surface_applied)
         # SW_SHOWNOACTIVATE, not Show(): the panel must never take focus away
         # from whatever the owner is typing into (main.js: `focusable=false`).
         show_without_activating(self.hwnd)
@@ -11869,6 +12012,8 @@ class SottoShell:
         log(f'PANEL_SHOWN reason={reason} hwnd={self.hwnd} '
             f'visible={str(self.visible).lower()} '
             f'show=SW_SHOWNOACTIVATE focus_stolen=false '
+            f'content_ack={str(content["ack"]).lower()} '
+            f'content_wait_ms={content["wait_ms"]} '
             f'paint_ack={str(ack["ack"]).lower()} wait_ms={ack["wait_ms"]}')
         # The worker goes back to STREAMING on this line — see the stack law at
         # `PANEL_VISIBILITY_PATH`. `self.visible` is the MEASURED value above,
@@ -12149,6 +12294,12 @@ class SottoShell:
         # for the measured reason (a hidden WebView2 on this box does not answer
         # a script for 10,0 s, so a pre-map wait is a pre-map stall).
         ack_seq = self.arm_paint_ack(reason)
+        # A ORDEM (2026-11-04): o conteudo ja' aplicado, DEPOIS o mapa — ver
+        # `content_gate` e `CONTENT_GATE_JS`. A superficie e' POSTADA por
+        # `set_panel_surface(present=True)`; sem esta pergunta o primeiro frame
+        # pode sair com o `body[data-surface]` anterior, que para o dono e' a UI
+        # a "carregar depois" da faixa.
+        content = self.content_gate(reason, self.surface_applied)
         # THEN the map: `SW_SHOWNOACTIVATE`, and `SW_SHOW+SetForegroundWindow`
         # only when the foreground app holds a POINTER LOCK. See
         # `foreground_unlock`; the old unconditional activation is the defect
@@ -12165,6 +12316,8 @@ class SottoShell:
         log(f'PANEL_SHOWN reason={reason} mode=strip hwnd={self.hwnd} '
             f'visible={str(self.visible).lower()} '
             f'show={fg.get("show")} focus={fg.get("reason")} '
+            f'content_ack={str(content["ack"]).lower()} '
+            f'content_wait_ms={content["wait_ms"]} '
             f'paint_ack={str(ack["ack"]).lower()} wait_ms={ack["wait_ms"]}')
         self.publish_panel_visibility(reason)
         return True
@@ -12211,6 +12364,10 @@ class SottoShell:
             f'already={len(wv["already"])} failed={len(wv["failed"])}')
         # THE ACK, ARMED BEFORE THE MAP AND AWAITED AFTER IT — `show_panel`.
         ack_seq = self.arm_paint_ack(reason)
+        # A ORDEM (2026-11-04): conteudo ja' aplicado, DEPOIS o mapa — o par
+        # `show_strip`/`show_side` tem de gastar a MESMA ordem, senao a cura
+        # depende de qual superficie o ciclo sorteou.
+        content = self.content_gate(reason, self.surface_applied)
         # THEN the map: no activation unless a POINTER LOCK needs freeing.
         fg = foreground_unlock(self.hwnd)
         transparency_hack(self)
@@ -12223,6 +12380,8 @@ class SottoShell:
         log(f'PANEL_SHOWN reason={reason} mode=side hwnd={self.hwnd} '
             f'visible={str(self.visible).lower()} '
             f'show={fg.get("show")} focus={fg.get("reason")} '
+            f'content_ack={str(content["ack"]).lower()} '
+            f'content_wait_ms={content["wait_ms"]} '
             f'paint_ack={str(ack["ack"]).lower()} wait_ms={ack["wait_ms"]}')
         self.publish_panel_visibility(reason)
         return True
@@ -14928,6 +15087,12 @@ class SottoShell:
             except Exception as exc:  # noqa: BLE001
                 log(f'STRIP_OFFSET_CACHE_FAILED error={exc!r}')
                 cached = (0, 0)
+            if cached is None:
+                # NAO RESPONDEU: nao ha' numero para guardar. Devolver (0, 0)
+                # poe a barra no dock nesta exibicao e a proxima volta a
+                # perguntar -- gravar a ausencia seria perder o offset do dono
+                # para o resto do processo.
+                return (0, 0)
             self._strip_offset_cache = cached
         return cached
 
@@ -14981,10 +15146,17 @@ class SottoShell:
                   "     + String(Math.round(Number(v.y) || 0));"
                   "} catch (err) { return null; } })()")
         try:
-            raw = self.exec_js(script)
+            raw = self.exec_js(script, timeout=SHOW_PAGE_READ_TIMEOUT_S)
         except Exception as exc:  # noqa: BLE001
             log(f'STRIP_OFFSET_READ_FAILED error={exc!r}')
             return (0, 0)
+        if isinstance(raw, NoAnswer):
+            # SEM RESPOSTA NAO E' UM OFFSET: a barra vai para o dock AGORA, e a
+            # pergunta fica para o proximo show (`_strip_offset` nao cacheia
+            # isto). Uma leitura muda nao pode virar um numero para o processo
+            # inteiro.
+            log('STRIP_OFFSET_READ_NO_ANSWER reason=%s timeout_s=%s cached=false' % (raw.get('reason'), SHOW_PAGE_READ_TIMEOUT_S))
+            return None
         if not isinstance(raw, str) or ',' not in raw:
             return (0, 0)
         a, _, b = raw.partition(',')
