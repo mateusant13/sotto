@@ -1,0 +1,22 @@
+{
+  "name": "sotto-discord-capture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Per-speaker PCM capture from a Discord voice channel (bot, never a selfbot)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "harness": "node harness/two-speakers.js",
+    "capture": "node src/index.js"
+  },
+  "dependencies": {
+    "@discordjs/opus": "0.11.0",
+    "@discordjs/voice": "0.19.2",
+    "@snazzah/davey": "0.1.9",
+    "discord.js": "14.28.1",
+    "opusscript": "0.1.1",
+    "@noble/ciphers": "2.4.0"
+  }
+}
