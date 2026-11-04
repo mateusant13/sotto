@@ -802,6 +802,27 @@ call :record yt-target-stale !STEP_RC!
 call :step red-as-expected-yt-target-stale 1 "_main\yt-target-stale-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py" "%OUT%\yt-target-stale-neg.log" python _main\yt-target-stale-oracle.py --neg-arm
 call :expectred red-as-expected-yt-target-stale !STEP_RC! "%OUT%\yt-target-stale-neg.log" "NEG-ARM PASS"
 
+REM O ECO DO DONO NAO ABRE NADA (ordem de 2026-11-04: "nao faz nenhum script existente ou novo
+REM abrir coisa na minha tela tipo pop up"). O `owner-screen-gate` le` 987 ficheiros de produto por
+REM `ast` (Python) e com comentarios/strings removidos (JS) e recusa `webbrowser.open`,
+REM `os.startfile`, `tkinter`, `MessageBoxW`, `ShellExecute`, `window.open(`/`alert(` e quaisquer
+REM `subprocess` que largue `start`/`explorer`/`mshta`/`control`/um URL. A janela do PROPRIO Sotto
+REM nao conta: e` o produto. O `--neg-arm` escreve um ficheiro que abre um browser e exige o RED.
+call :step owner-screen 0 "_main\owner-screen-gate.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\owner-screen.log" python _main\owner-screen-gate.py
+call :record owner-screen !STEP_RC!
+call :step red-as-expected-owner-screen 1 "_main\owner-screen-gate.py" "%OUT%\owner-screen-neg.log" python _main\owner-screen-gate.py --neg-arm
+call :expectred red-as-expected-owner-screen !STEP_RC! "%OUT%\owner-screen-neg.log" "NEG-ARM PASS"
+
+REM A ARVORE MORRE COM A SHELL (medido 2026-11-04: `taskkill /T` deixava QUATRO
+REM `msedgewebview2.exe` a deter `Local\SottoShell`, e cada largada seguinte abortava em 20 s).
+REM O `job-object-oracle` larga um pai que dorme um filho e morre com `os._exit`; o filho TEM de
+REM morrer (job kill-on-close). O `--neg-arm` corre o mesmo SEM job e exige o filho VIVO -- sem
+REM esse lado, um filho que morresse por outra razao faria o positivo passar sem provar nada.
+call :step job-object 0 "_main\job-object-oracle.py" "%OUT%\job-object.log" python _main\job-object-oracle.py
+call :record job-object !STEP_RC!
+call :step red-as-expected-job-object 1 "_main\job-object-oracle.py" "%OUT%\job-object-neg.log" python _main\job-object-oracle.py --neg-arm
+call :expectred red-as-expected-job-object !STEP_RC! "%OUT%\job-object-neg.log" "NEG-ARM PASS"
+
 REM === FIM DOS SETE =============================================================
 REM
 REM `_main\sotto-state-page.py` e o P0.2 do roadmap de observabilidade de 2026-10-23: a pagina de

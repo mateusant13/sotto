@@ -5758,6 +5758,95 @@ class PassiveHotkeyThread(threading.Thread):
     def stop(self):
         self._stop_requested.set()
 
+#: O JOB OBJECT QUE MATA A ARVORE (2026-11-04). Guardado aqui para o HANDLE
+#: sobreviver: fechar o ultimo handle do job e' o que dispara o kill, e um handle
+#: recolhido pelo GC mataria os filhos em qualquer momento.
+_JOB = {'handle': None}
+
+
+#: Um estouro de UI tem pilha completa de 10 em 10 min; os do meio, uma linha.
+UI_HUNG_DUMP_EVERY_S = 600.0
+
+
+def _hold_kill_on_close_job():
+    """Poe ESTE processo (e os filhos que ele criar) num job kill-on-close.
+
+    MEDIDO 2026-11-04: tres arvores `msedgewebview2.exe` orfas de instancias
+    mortas, ~390 MB, nesta maquina. O filho herda a pertenca ao job quando e'
+    criado DEPOIS da atribuicao, e o Windows mata tudo quando o ultimo handle do
+    job fecha -- inclusive num `TerminateProcess` do shell, quando nenhum codigo
+    Python corre.
+
+    Nao e' fatal: se a maquina ja' tem este processo num job que proibe
+    breakaway (uma sessao de CI, um sandbox), `AssignProcessToJobObject` devolve
+    erro e a app continua como antes -- a diferenca fica escrita no log, nunca
+    silenciosa.
+    """
+    if _JOB.get('handle'):
+        return True
+    try:
+        class _IO_COUNTERS(ctypes.Structure):
+            _fields_ = [('ReadOperationCount', ctypes.c_ulonglong),
+                        ('WriteOperationCount', ctypes.c_ulonglong),
+                        ('OtherOperationCount', ctypes.c_ulonglong),
+                        ('ReadTransferCount', ctypes.c_ulonglong),
+                        ('WriteTransferCount', ctypes.c_ulonglong),
+                        ('OtherTransferCount', ctypes.c_ulonglong)]
+
+        class _BASIC(ctypes.Structure):
+            _fields_ = [('PerProcessUserTimeLimit', ctypes.c_int64),
+                        ('PerJobUserTimeLimit', ctypes.c_int64),
+                        ('LimitFlags', wt.DWORD),
+                        ('MinimumWorkingSetSize', ctypes.c_size_t),
+                        ('MaximumWorkingSetSize', ctypes.c_size_t),
+                        ('ActiveProcessLimit', wt.DWORD),
+                        ('Affinity', ctypes.c_size_t),
+                        ('PriorityClass', wt.DWORD),
+                        ('SchedulingClass', wt.DWORD)]
+
+        class _EXTENDED(ctypes.Structure):
+            _fields_ = [('BasicLimitInformation', _BASIC),
+                        ('IoInfo', _IO_COUNTERS),
+                        ('ProcessMemoryLimit', ctypes.c_size_t),
+                        ('JobMemoryLimit', ctypes.c_size_t),
+                        ('PeakProcessMemoryUsed', ctypes.c_size_t),
+                        ('PeakJobMemoryUsed', ctypes.c_size_t)]
+
+        kernel32.CreateJobObjectW.restype = wt.HANDLE
+        kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wt.LPCWSTR]
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            log('SHELL_JOB_FAILED stage=create winerror=%d' % ctypes.get_last_error())
+            return False
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+        info = _EXTENDED()
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        ok = kernel32.SetInformationJobObject(
+            wt.HANDLE(job), 9, ctypes.byref(info), ctypes.sizeof(info))
+        if not ok:
+            log('SHELL_JOB_FAILED stage=limits winerror=%d' % ctypes.get_last_error())
+            return False
+        # O HANDLE DE `GetCurrentProcess` E' PSEUDO (-1): sem `argtypes` o ctypes
+        # recusa-o ("int too long to convert") e o job nunca fica armado.
+        kernel32.GetCurrentProcess.restype = wt.HANDLE
+        kernel32.AssignProcessToJobObject.argtypes = [wt.HANDLE, wt.HANDLE]
+        kernel32.AssignProcessToJobObject.restype = wt.BOOL
+        proc = wt.HANDLE(kernel32.GetCurrentProcess())
+        ok = kernel32.AssignProcessToJobObject(wt.HANDLE(job), proc)
+        if not ok:
+            err = ctypes.get_last_error()
+            log('SHELL_JOB_FAILED stage=assign winerror=%d (a arvore nao morre '
+                'sozinha: este processo ja\' esta\' num job que recusa)' % err)
+            kernel32.CloseHandle(wt.HANDLE(job))
+            return False
+        _JOB['handle'] = job
+        log('SHELL_JOB_ARMED pid=%d kill_on_close=true' % os.getpid())
+        return True
+    except Exception as exc:  # noqa: BLE001 -- nunca custa o arranque da app
+        log('SHELL_JOB_FAILED stage=exception error=%r' % (exc,))
+        return False
+
+
 def take_single_instance_lock(name=DEFAULT_MUTEX_NAME) -> bool:
     """True when THIS process is the one Sotto shell for this session.
 
@@ -6995,6 +7084,12 @@ BOOTSTRAP_JS = r"""
     emit(kind, payload);
   };
   window.__sotto_emit.counts = {};
+  // `__sotto_emit` fala com os SUBSCRITORES DA PAGINA (`emit`), nao com o Python.
+  // Um medidor que chega antes de `panel.js` nao tem subscritor nenhum: o
+  // resultado dele morria aqui. Este e' o caminho que ENTREGA (`post`), exposto
+  // com nome por isso mesmo -- 2026-11-04, medido: o perfil de arranque ficou
+  // 24 h a recolher e a descartar (0 `PANEL_BOOT_PROFILE` em 469 587 linhas).
+  window.__sotto_post = function (kind, payload) { post(kind, payload); };
 
   window.__sotto_info = function (id, json) {
     var resolve = infoPending[id];
@@ -7300,6 +7395,7 @@ BOOT_PROFILE_JS = r"""
 ;(() => {
   if (window.__sottoBootProfile) { return; }
   window.__sottoBootProfile = true;
+
   try {
     const t0 = performance.now();
     const marks = [];
@@ -7311,11 +7407,16 @@ BOOT_PROFILE_JS = r"""
       }).observe({ entryTypes: ['longtask'] });
     } catch (e) {}
     document.addEventListener('DOMContentLoaded', () => mark('dom'), { once: true });
-    const send = () => {
-      if (window.__sottoBootSent) { return; }
-      window.__sottoBootSent = true;
+    window.__sottoBootSent = {};
+    const send = (phase) => {
+      // DUAS FASES, DUAS LINHAS (2026-11-04). A guarda era um booleano: a
+      // primeira chamada (no inicio do documento, sem numero nenhum) fechava
+      // a porta e a leitura RICA -- `firstPaint`, `dcl`, os recursos mais
+      // lentos -- nunca saia. `marks=[["load",18]]` foi o que se leu.
+      if (window.__sottoBootSent[phase]) { return; }
+      window.__sottoBootSent[phase] = true;
       try {
-        mark('load');
+        mark(phase);
         const nav = (performance.getEntriesByType('navigation') || [])[0] || {};
         const res = (performance.getEntriesByType('resource') || [])
           .map((r) => [String(r.name).split('/').pop().split('?')[0],
@@ -7323,6 +7424,7 @@ BOOT_PROFILE_JS = r"""
           .sort((a, b) => b[1] - a[1]).slice(0, 10);
         const fp = (performance.getEntriesByName('first-paint') || [])[0] || {};
         const box = {
+          phase: phase,
           marks: marks, longtasks: long.slice(0, 15),
           slowest: res,
           firstPaint: Math.round(fp.startTime || 0),
@@ -7330,6 +7432,18 @@ BOOT_PROFILE_JS = r"""
           dcl: Math.round(nav.domContentLoadedEventEnd || 0),
           loadEvent: Math.round(nav.loadEventEnd || 0),
         };
+        // O CANAL DESTA CASA, NAO O DO PYWEBVIEW (2026-11-04, MEDIDO).
+        // `window.pywebview.api.dispatch` NAO EXISTE aqui: a ponte e'
+        // `chrome.webview.postMessage` e o bootstrap ja' publica
+        // `window.__sotto_emit` por cima dela. O medidor ficou 24 h a
+        // recolher e a descartar o proprio resultado -- `PANEL_BOOT_PROFILE`
+        // nao aparece UMA vez no log de 469 587 linhas. Um instrumento que
+        // coleta e nao publica e' pior do que nenhum.
+        const wire = window.__sotto_post;
+        if (typeof wire === 'function') {
+          wire('boot-profile', JSON.stringify(box));
+          return;
+        }
         const api = window.pywebview && window.pywebview.api;
         if (api && api.dispatch) {
           api.dispatch(JSON.stringify({ kind: 'boot-profile', payload: box }));
@@ -7338,8 +7452,14 @@ BOOT_PROFILE_JS = r"""
         }
       } catch (e) {}
     };
-    window.addEventListener('load', send, { once: true });
-    setTimeout(send, 30000);
+    // DUAS SAIDAS, DE PROPOSITO (2026-11-04): uma no instante em que este
+    // script corre -- se o canal ainda nao abriu, o `post` do bootstrap
+    // ENFILEIRA e o `pywebviewready` descarrega -- e outra no `load`. Se nem a
+    // primeira nem a segunda chegam ao log, o medidor nao tem canal e nao
+    // pode continuar a fingir que mede.
+    try { send('early'); } catch (e) {}
+    window.addEventListener('load', () => { try { send('load'); } catch (e) {} }, { once: true });
+    setTimeout(() => { try { send('late'); } catch (e) {} }, 30000);
   } catch (e) {}
 })();
 """
@@ -8191,15 +8311,35 @@ class SottoHost:
                f' budget_ms={shell.CAPTION_BUDGET_MS}'
                f' over={str(audio_ms > shell.CAPTION_BUDGET_MS).lower()}'
                if audio_ms is not None else ''))
-        if audio_ms is not None and audio_ms > shell.CAPTION_BUDGET_MS:
+        # A LINHA `final` NAO ESTOURA O ORCAMENTO (2026-11-04, MEDIDO).
+        # `audio_ms` sai do `tap_ms` da linha, e uma linha fechada carrega o tap
+        # do INICIO dela: medido `CAPTION_IN ... final=true ... age_ms=13494`
+        # com `CAPTION_PAINT_LAG over=true blown=36` -- trinta e seis estouros
+        # seguidos que eram a DURACAO da frase, nao atraso do ecra. O numero
+        # continua no log (`aged_kind=final-close`), o veredicto nao o conta.
+        if (audio_ms is not None and audio_ms > shell.CAPTION_BUDGET_MS
+                and not getattr(shell, '_last_push_final', False)):
             log(f'CAPTION_BUDGET_BLOWN audio_ms={audio_ms} '
                 f'budget_ms={shell.CAPTION_BUDGET_MS} '
                 f'queue_ms={queue_ms} blown={shell._caption_lag_blown} '
                 f'path=panel text={json.dumps(text[:60])}')
 
     def _status_applied(self, payload):
+        # SO' NA MUDANCA (2026-11-04). O painel confirma o status a cada
+        # repintura e a linha saia sempre: medido `STATUS_APPLIED` a cada 4 s no
+        # log do dono (26 317 linhas). O que interessa e' "o painel aplicou ESTE
+        # texto", e um texto igual ja' foi respondido. A primeira e a mudanca
+        # saem; o silencio das outras prova que nada mudou.
         text = (payload or {}).get('text', '')
-        log(f'STATUS_APPLIED text={json.dumps(text)}')
+        if getattr(self, '_status_applied_last', None) == text:
+            self._status_applied_quiet = getattr(
+                self, '_status_applied_quiet', 0) + 1
+            return
+        quiet = getattr(self, '_status_applied_quiet', 0)
+        self._status_applied_quiet = 0
+        self._status_applied_last = text
+        log(f'STATUS_APPLIED text={json.dumps(text)}'
+            + (f' repetidas_silenciadas={quiet}' if quiet else ''))
 
     def _translation_target(self, payload):
         """The 3-dot menu's translation pick reached the shell. `lang == ''` clears it;
@@ -8939,11 +9079,36 @@ class SottoShell:
         self._cpu_census_thread.start()
 
     def _dump_thread_stacks(self, reason):
-        """A pilha de cada thread, uma linha por frame: a prova do bloqueio."""
+        """A pilha da thread que trava, e so' ela: a prova, sem o volume.
+
+        MEDIDO 2026-11-04: este dump escrevia a pilha de TODAS as threads, uma
+        linha por frame -- 280 linhas por estouro e **23 194** linhas
+        `UI_HUNG_FRAME` no log do dono. O que se pergunta a` pilha e' QUAL
+        thread esta' presa, e a resposta esta' na thread principal: as outras
+        vao cortadas (2, e caladas quando nao tem frame util). Um estouro por
+        `UI_HUNG_DUMP_EVERY_S` (600) tem pilha completa; os do meio contam-se
+        numa linha so'.
+        """
         import traceback
+        now = time.monotonic()
+        last = getattr(self, '_ui_hung_dump_at', 0.0)
+        compact = (now - last) < UI_HUNG_DUMP_EVERY_S
+        self._ui_hung_dump_at = now
         frames = sys._current_frames()
-        log('UI_HUNG reason=%s threads=%d' % (reason, threading.active_count()))
-        for thread in threading.enumerate():
+        main_ident = None
+        try:
+            main_ident = threading.main_thread().ident
+        except Exception:                 # noqa: BLE001
+            main_ident = None
+        log('UI_HUNG reason=%s threads=%d compact=%s'
+            % (reason, threading.active_count(), str(compact).lower()))
+        if compact:
+            return
+        main_thread = threading.main_thread() if main_ident else None
+        # A PRINCIPAL PRIMEIRO, sempre; as outras duas so' como contexto.
+        ordered = ([main_thread] if main_thread is not None else []) + [
+            t for t in threading.enumerate() if t is not main_thread][:2]
+        for thread in ordered:
             frame = frames.get(thread.ident)
             log('UI_HUNG_THREAD name=%s ident=%s daemon=%s'
                 % (thread.name, thread.ident, thread.daemon))
@@ -12863,7 +13028,16 @@ class SottoShell:
         self._last_push_final = bool(_meta.get('final'))
         self._last_push_tap_ms = _meta.get('tap_ms') or self._last_push_tap_ms
         self._last_push_at = time.time()
-        log(f'BRIDGE_CAPTION_SENT delivered=async text={json.dumps(text)}')
+        # AMOSTRADO (2026-11-04): esta linha saia a CADA push -- 51 553 no log
+        # do dono -- e o que um leitor procura nela e' "a ponte entregou?", que
+        # um em cada 20 responde igual. O `final` de uma linha sai sempre: e' o
+        # fecho, e um fecho que falta e' um defeito.
+        self._caption_sent_count = getattr(self, '_caption_sent_count', 0) + 1
+        if _meta.get('final') or self._caption_sent_count == 1 or (
+                self._caption_sent_count % 20 == 0):
+            log(f'BRIDGE_CAPTION_SENT delivered=async n={self._caption_sent_count} '
+                f'final={str(bool(_meta.get("final"))).lower()} '
+                f'text={json.dumps(text)}')
         # ── O CONTRATO DO AUDIO, NO LOG (2026-11-03) ──────────────────────
         # ORDEM DO DONO: *"tu nao tem a porra de um teste ou log que mostra a
         # discrepancia entre audio detectado e display na tela?"*. O log tinha
@@ -18239,6 +18413,15 @@ def main(argv=None):
     # its healthy twin I:\cc-tmp\try1.log, SAME flags plus --no-hotkey, reaches
     # RECEIVER_READY and SHELL_EXIT in under 40 s). A private --mutex-name is NOT
     # coerced: that run skips no lock and may legitimately measure the hotkey.
+    # A ARVORE MORRE COM A SHELL -- OU FICA A PAGAR (2026-11-04, MEDIDO).
+    # Censo desta maquina, app viva: **25** processos `msedgewebview2.exe` em
+    # **750 MB**, de **QUATRO** arvores -- tres delas de instancias que ja' nao
+    # existiam, cada uma com o seu browser+gpu+renderer+utility. Um shell morto
+    # a` force nao leva os filhos consigo: o Windows nao faz isso por omissao.
+    # Um JOB OBJECT com KILL_ON_JOB_CLOSE e' o mecanismo que o faz pelo sistema,
+    # sem depender de nenhum caminho de saida do Python (que nao corre num kill).
+    _hold_kill_on_close_job()
+
     hotkey_off = '--no-hotkey' if args.no_hotkey else None
     if lock_excuse and not args.no_hotkey:
         hotkey_off = f'measurement-flag({lock_excuse})'

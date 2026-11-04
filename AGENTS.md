@@ -198,6 +198,27 @@ só separar audio pra transcrever cada falante?"*
   `_main/console-window-gate.py`, com a dívida anterior à regra **congelada** num baseline que não pode
   crescer (a mesma forma do `lane-screen-gate.py`). O detector de campo é o censo `ALERTA-JANELA` e o
   `powershell` com janela **não** é justificação: `-WindowStyle Hidden` custa uma palavra.
+- **NENHUM SCRIPT ABRE NADA NA TELA DELE — NEM POP-UP, NEM DIÁLOGO, NEM NAVEGADOR (ordem do dono,
+  2026-11-04, verbatim: *"nao faz nenhum script existente ou novo abrir coisa na minha tela tipo pop
+  up"*).** A regra de 2026-11-02 proibia a janela de consola em FOREGROUND; esta proíbe a outra metade
+  que faltava: uma janela que o dono **vê**. Fica proibido, em todo o código deste repo (produto,
+  instrumento, oráculo, braço negativo, harness) e para toda a frota:
+  `webbrowser.open*`, `os.startfile`, `tkinter`/`Tk()`/`Toplevel()`, `MessageBoxW/A`,
+  `ShellExecute*`, `pywebview.create_confirmation_dialog`/`create_file_dialog`,
+  `subprocess` a largar `start`/`explorer`/`mshta`/`rundll32`/`control`/`ms-settings:`/um URL, e no
+  JS `window.open(`/`alert(`/`confirm(`/`prompt(`/`shell.openExternal(`.
+  O que **pode** abrir: a janela do **próprio Sotto** (painel, overlay, `stage`) — é o produto.
+  **O que fazer em vez disso:** escrever o resultado num ficheiro (`out://`, `runs/`, `_main/*.log`) e
+  dizer o caminho; um instrumento que precisa de resposta pergunta por ficheiro e volta a ler o
+  ficheiro, nunca por caixa de diálogo.
+  **Portão:** `_main/owner-screen-gate.py` (987 ficheiros de produto lidos por `ast`/JS sem
+  comentários, **0** achados, `--neg-arm` rc=1 a apanhar o mutante que abre um browser), na bateria
+  com o seu `red-as-expected-owner-screen`. A dívida anterior à regra vive congelada em
+  `_main/owner-screen-baseline.json` e **não pode crescer**.
+  Nota que já custou: um dos incidentes antigos deste repo foi um `messagebox` MODAL na tela dele
+  (`HOTKEY_UNAVAILABLE alert=messagebox`, a app hangada até ser morta) — o portão existe para essa
+  classe, não para uma hipótese.
+
 - **Um filtro de kill nomeia o ARTEFACTO**, nunca uma palavra genérica: `sotto_worker\.py`,
   `sotto_webview\.py`, o caminho do exe webview/electron. Filtrar `sotto` já matou dois processos alheios.
 - **Áudio de teste é MUDO.** Qualquer teste que renderize áudio usa `_main/mute-audio.py --mute/--unmute`
@@ -310,8 +331,18 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-03, 19:0x):** `_main\_audit-verify-all.cmd` = **185176 B**,
-  **2328 CRLF** / 0 bare LF, sha256 `C2748E847F940EFC0D4C7755C4396EB4486E8F8AB182801AC63165DC520455CC`.
+- **PIN do ficheiro (medido 2026-11-04, 01:2x):** `_main\_audit-verify-all.cmd` = **187060 B**,
+  **2349 CRLF** / 0 bare LF, sha256 `FCF2FA9889F7073AFB4581A31F6F852B34CD07284637BD14BDEA36E728945ED8`.
+  (Este pin substitui o de 186207 B / 2339 CRLF, DEPOIS do par `job-object` +
+  `red-as-expected-job-object`: o job object kill-on-close que faz a ARVORE morrer com a shell.
+  Medido antes da cura: um `taskkill /T /F` deixava quatro `msedgewebview2.exe` orfaos a deter o
+  mutex, e as largadas seguintes abortavam em 20 s; medido depois, a arvore de 8 processos morre
+  sozinha (`da arvore ANTIGA ainda vivos: NENHUM`). Os dois bracos: positivo (o filho morre com o pai)
+  e negativo (sem job o filho SOBREVIVE), ambos verdes.)
+  (Este pin substitui o de 185176 B / 2328 CRLF, DEPOIS do par `owner-screen` +
+  `red-as-expected-owner-screen`: o portao que recusa qualquer script abrir janela no ecra do dono --
+  ordem verbatim de 2026-11-04, *"nao faz nenhum script existente ou novo abrir coisa na minha tela
+  tipo pop up"*. 987 ficheiros de produto lidos, **0** achados, `--neg-arm` rc=1.)
   (Este pin substitui o de 184217 B / 2319 CRLF, DEPOIS do par `yt-target-stale` +
   `red-as-expected-yt-target-stale`: o oraculo do ALVO MORTO, nascido do defeito medido no browser do
   dono -- o id declarado `m_bJQ4G1Ht8` ficou **164 linhas** no log com a unica aba de video aberta a

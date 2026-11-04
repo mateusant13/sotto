@@ -381,13 +381,13 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 980159,
+      "bytes": 990345,
       "classes": 24,
-      "defs": 108,
+      "defs": 109,
       "except_pass": 41,
       "globals": 4,
-      "lines": 18416,
-      "max_func": 378,
+      "lines": 18599,
+      "max_func": 387,
       "max_func_name": "main"
     },
     "app/webview/win32_types.py": {
