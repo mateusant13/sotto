@@ -279,6 +279,17 @@ todos os dias. Duas provas, porque uma só mente:
   (`HOTKEY_UNAVAILABLE alert=messagebox`, a app hangada até ser morta) — o portão existe para essa
   classe, não para uma hipótese.
 
+- **NADA ABRE NA TELA DELE — NEM UM SCRIPT EXISTENTE, NEM UM NOVO (ordem do dono, 2026-11-04).**
+  Verbatin: *"nao faz nenhum script existente ou novo abrir coisa na minha tela tipo pop up"*. A
+  regra de 2026-11-02 tratava das consolas do AGENTE; esta fecha as do PRODUTO: um `Popen` sem
+  `CREATE_NO_WINDOW`, um `powershell` sem `-WindowStyle Hidden`, um `.bat`/`.cmd` largado, um
+  `start`, um `os.startfile`, um `webbrowser.open`, um `subprocess` que abre uma janela de
+  consola — todos sao pop-up na tela dele. Portoes: `_main/console-window-gate.py` (censo do
+  codigo, divida congelada em `_main/console-window-baseline.json`, hoje **0**) e
+  `_main/lane-screen-gate.py` (`SOTTO_NEVER_ON_OWNER_SCREEN`). Uma janela que aparece e
+  desaparece em 100 ms continua a ser uma janela na tela dele: o detector de campo e' o censo
+  `ALERTA-JANELA` de 60 s, e um pop-up nao se justifica com "foi rapido".
+
 - **Um filtro de kill nomeia o ARTEFACTO**, nunca uma palavra genérica: `sotto_worker\.py`,
   `sotto_webview\.py`, o caminho do exe webview/electron. Filtrar `sotto` já matou dois processos alheios.
 - **Áudio de teste é MUDO.** Qualquer teste que renderize áudio usa `_main/mute-audio.py --mute/--unmute`

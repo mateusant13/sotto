@@ -41,6 +41,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -154,6 +155,96 @@ def judge(shell_mod, worker_mod, quiet=False):
           {'before': before, 'after': after,
            'phase': worker_mod.PROGRESS['phase']})
 
+    # -- arm 5: a guarda da ESPERA (so' quando nada podia ter sido capturado) --
+    sh = worker_mod.should_hold
+    guard = {
+        'exhausted-waiting': sh('rotation-ceiling', 0, False),
+        'all-flat-waiting': sh('all-flat', 0, False),
+        'captions-no-wait': sh('rotation-ceiling', 3, False),
+        'stop-no-wait': sh('rotation-ceiling', 0, True),
+        'healthy-no-wait': sh('streaming', 0, False),
+    }
+    check('5-hold-only-when-nothing-captured',
+          guard['exhausted-waiting'] and guard['all-flat-waiting']
+          and not guard['captions-no-wait'] and not guard['stop-no-wait']
+          and not guard['healthy-no-wait'], guard)
+
+    class FakeStop:
+        def __init__(self, set_after=None):
+            self.n = 0
+            self.set_after = set_after
+            self._set = False
+
+        def is_set(self):
+            return self._set
+
+        def set(self):
+            self._set = True
+
+        def wait(self, t):
+            # O RELOGIO TEM DE ANDAR: sem o `sleep` este laco gira a vapor e um
+            # mutante que desliga a comparacao do censo so' cai ao fim de
+            # `max_hold_s` -- o braco negativo ficava 600 s a girar (medido).
+            time.sleep(min(t, 0.002))
+            self.n += 1
+            if self.set_after is not None and self.n >= self.set_after:
+                self._set = True
+                return True
+            return False
+
+    def run_hold(census, set_after=None, max_hold_s=1.0, poll_s=0.01):
+        seen = []
+        stop = FakeStop(set_after=set_after)
+        seq_before = worker_mod.PROGRESS['seq']
+        reason = worker_mod.hold_idle_slot(
+            stop, lambda **kw: seen.append(kw), census, 'rotation-ceiling',
+            max_hold_s=max_hold_s, poll_s=poll_s)
+        return reason, seen, stop, worker_mod.PROGRESS['seq'] - seq_before
+
+    # -- arm 6: um dispositivo a aparecer ACABA a espera ----------------------
+    calls = {'n': 0}
+
+    def growing():
+        calls['n'] += 1
+        return ['VoiceMeeter Input'] if calls['n'] < 2 else ['VoiceMeeter Input', 'Headset']
+
+    reason6, seen6, stop6, seq6 = run_hold(growing)
+    check('6-hold-ends-on-census-change',
+          reason6 == 'census-changed'
+          and [e.get('state') for e in seen6] == ['worker-idle', 'worker-idle-end']
+          and seen6[0].get('reason') == 'rotation-ceiling'
+          and seq6 >= 1,
+          {'reason': reason6, 'states': [e.get('state') for e in seen6], 'seq_moved': seq6})
+
+    # -- arm 7: o dono pedir parada acaba a espera ----------------------------
+    reason7, seen7, stop7, _ = run_hold(lambda: ['A'], set_after=1)
+    check('7-hold-ends-on-stop', reason7 == 'stopped' and len(seen7) == 2,
+          {'reason': reason7, 'states': [e.get('state') for e in seen7]})
+
+    # -- arm 8: a espera TEM FIM (nao e' um processo pendurado) --------------
+    reason8, seen8, stop8, _ = run_hold(lambda: ['A'], max_hold_s=0.05, poll_s=0.01)
+    end8 = seen8[-1] if seen8 else {}
+    check('8-hold-expires', reason8 == 'hold-expired' and end8.get('held_s', 0) >= 0.05,
+          {'reason': reason8, 'held_s': end8.get('held_s'), 'polls': stop8.n})
+
+    # -- arm 9: a espera MANTEM O BATIMENTO A ANDAR --------------------------
+    check('9-hold-keeps-the-beat-moving',
+          worker_mod.PROGRESS['phase'] == 'idle-wait',
+          {'phase': worker_mod.PROGRESS['phase']})
+
+    # -- arm 10: a espera esta' LIGADA ao caminho do teto (nao so' escrita) --
+    # O FICHEIRO DO MODULO CARREGADO, nao o do repo: o `--neg-arm` corre sobre uma
+    # COPIA mutada, e ler o original deixava o mutante sobreviver (medido).
+    src = io.open(getattr(worker_mod, '__file__', WORKER), encoding='utf-8', newline='').read()
+    call = "if should_hold(outcome, counters['captions'], stop.is_set()):"
+    i_call = src.find(call)
+    i_hold = src.find('outcome = hold_idle_slot(', i_call + 1) if i_call >= 0 else -1
+    # o `except` que fecha o `try` do run: a chamada tem de estar DENTRO dele
+    i_except = src.find('    except KeyboardInterrupt:', i_call + 1) if i_call >= 0 else -1
+    wired = (i_call > 0 and i_hold > i_call and 0 < i_except and i_call < i_except)
+    check('10-hold-is-wired-into-the-ceiling-path', wired,
+          {'call_at': i_call, 'hold_at': i_hold, 'except_at': i_except})
+
     ok = all(c['ok'] for c in checks)
     return checks, ok
 
@@ -170,10 +261,17 @@ def mutate_shell(dst):
 
 
 def mutate_worker(dst):
-    """Faz o `progress` nao avancar o seq (a arm 4 tem de cair)."""
+    """Tres mutacoes no worker: o `progress` parado (arm 4), a guarda da espera
+    desligada (arm 5) e o censo a nunca diferir (arm 6)."""
     src = io.open(WORKER, encoding='utf-8', newline='').read()
     out = src.replace("        PROGRESS['seq'] += 1\r\n", "", 1)
     assert out != src, 'a ancora do progress nao existe'
+    src, out = out, out.replace("    return outcome in ('rotation-ceiling', 'all-flat', 'open-failed', 'explicit-flat')", '    return False', 1)
+    assert out != src, 'a ancora do should_hold nao existe'
+    src, out = out, out.replace("        if base is not None and now is not None and now != base:", '        if False:', 1)
+    assert out != src, 'a ancora do censo nao existe'
+    src, out = out, out.replace("        if should_hold(outcome, counters['captions'], stop.is_set()):", '        if False:', 1)
+    assert out != src, 'a ancora da fiacao da espera nao existe'
     io.open(dst, 'w', encoding='utf-8', newline='').write(out)
 
 
@@ -196,12 +294,15 @@ def main(argv=None):
         checks, ok = judge(shell_mod, worker_mod, quiet=True)
         red = [c['arm'] for c in checks if not c['ok']]
         caught = ('1-floor-on-clean-exit' in red and '4-worker-progress-moves' in red
-                  and '3-reader-counts-the-beat' in red)
+                  and '3-reader-counts-the-beat' in red
+                  and '5-hold-only-when-nothing-captured' in red
+                  and '6-hold-ends-on-census-change' in red
+                  and '10-hold-is-wired-into-the-ceiling-path' in red)
         print(f'NEG-ARM arms={len(checks)} caidas={red}')
         for c in checks:
             print(f"  {'RED ' if not c['ok'] else 'green'} {c['arm']} {c['detail']}")
         if caught:
-            print('NEG-ARM: PASS (as tres curas mutadas foram apanhadas)')
+            print('NEG-ARM: PASS (as seis curas mutadas foram apanhadas)')
             return 1
         print('NEG-ARM: FAIL -- o mutante sobreviveu a um braco')
         return 2

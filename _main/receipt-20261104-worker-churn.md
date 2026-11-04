@@ -60,10 +60,36 @@ inalcancavel. Duas instancias carregaram a cura — worker a bater `seq=516 phas
 saiu. O `py-spy --locals` no fio `sotto-worker-stderr` mostrou a ultima linha processada a ser o
 proprio batimento, o que apontou o `continue`. O ramo passou para dentro do bloco.
 
+## A SEGUNDA METADE — O TETO DE ROTACOES NAO PODE SER UM CICLO DE RECARGA
+
+Depois de a shell parar de matar o worker quieto, ficou o outro churn, medido no mesmo log:
+
+```
+03:52:17  BRIDGE_LOAD_MS ms=9469 pid=30160
+03:55:18  BRIDGE_EXIT pid=30160 rc=0 killed=False spawns=1 captions=0   <- 181 s, 0 legendas
+```
+
+O worker abriu todos os candidatos, nenhum entregou um bloco (maquina em silencio) e o **teto de
+rotacoes** — que esta' certo, e nasceu dos 2 188 `reason=flat` em dez minutos — fez o processo SAIR.
+A consequencia era a recarga dos 1,9 GB a cada ~3 min.
+
+`hold_idle_slot` (worker, ao lado do batimento): quando **nada podia ter sido capturado**
+(`should_hold`: `captions == 0` e o desfecho e' `rotation-ceiling`/`all-flat`/`open-failed`/
+`explicit-flat`), o processo **fica com o modelo residente**, chama `progress('idle-wait')` a cada
+`IDLE_HOLD_POLL_S` (10 s, bem dentro dos 30 s do cao de guarda) e sai quando:
+
+* o **CENSO DE DISPOSITIVOS muda** (um fone entrou) -> `census-changed`, a shell recarrega em 20 s
+  com um censo fresco;
+* o dono pede parada -> `stopped`;
+* a espera acaba (`IDLE_HOLD_MAX_S` = 600 s) -> `hold-expired`.
+
+Um worker que JA' deu legenda nunca espera: a escada e' dele e a proxima volta vale a pena.
+
 ## PROVA
 
-Oraculo, 5 arms (executa o `WorkerBridge._schedule_restart` REAL com `threading.Timer` falso, a
-regra do LEITOR sobre a linha real e o `progress()` do worker real):
+Oraculo, **10 arms** (executa o `WorkerBridge._schedule_restart` REAL com `threading.Timer` falso, a
+regra do LEITOR sobre a linha real, o `progress()` do worker real, e a espera ociosa com um `stop`
+e um censo FALSOS):
 
 ```
 PASS 1-floor-on-clean-exit   armed_ms=20000 (com piso)
@@ -71,7 +97,15 @@ PASS 2-no-floor-on-crash     armed_ms=1000  (caminho do crash, sem piso)
 PASS 3-reader-counts-the-beat  startswith_would_miss=True (a linha prefixada pelo ONNX conta)
 PASS 3b-reader-ignores-the-meter
 PASS 4-worker-progress-moves
-VERDICT: PASS arms=5 fail=0      --neg-arm: rc=1, 3 arms RED
+PASS 5-hold-only-when-nothing-captured  (captions>0, stop, e um run saudavel NAO esperam)
+PASS 6-hold-ends-on-census-change
+PASS 7-hold-ends-on-stop
+PASS 8-hold-expires          held_s=0.063 polling=0.01
+PASS 9-hold-keeps-the-beat-moving  phase=idle-wait
+VERDICT: PASS arms=10 fail=0
+--neg-arm: rc=1, caidas=[1-floor-on-clean-exit, 3-reader-counts-the-beat,
+                          4-worker-progress-moves, 5-hold-only-when-nothing-captured,
+                          6-hold-ends-on-census-change]   (5/5 curas mutadas)
 ```
 
 Vivo, na instancia `4552` (pid da shell) com o modelo carregado em **9,5 s**:

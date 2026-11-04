@@ -630,6 +630,72 @@ def progress(phase: str) -> None:
         PROGRESS['at'] = time.monotonic()
 
 
+# -- A ESPERA OCIOSA (2026-11-04) -------------------------------------------
+# A ESCADA NAO PODE SER UM CICLO DE RECARGA. Medido na maquina do dono, com a
+# maquina em silencio: `device-exhausted` -> o worker sai limpo (rc=0) -> a shell
+# recarrega os 1,9 GB do modelo. Duas voltas disso em 4 min em `webview-run.log`
+# (03:20:14 e 03:22:43). O teto de rotacoes esta' certo (parar de reabrir
+# endpoint a cada 6 s); o que estava errado era a CONSEQUENCIA dele: um processo
+# que ainda tem o modelo em memoria a ser desligado porque NADA HA' para
+# capturar. Aqui ele espera -- com o modelo residente e o batimento a andar --
+# e sai quando o CENSO DE DISPOSITIVOS muda (um fone entrou), quando o dono
+# pede parada, ou quando a espera acaba.
+IDLE_HOLD_MAX_S = 600.0
+IDLE_HOLD_POLL_S = 10.0
+# Um worker que JACAPTIONOU nao espera: a escada e' dele, ele ja' provou que
+# ha' audio, e a proxima volta e' uma recarga que vale a pena.
+
+
+def should_hold(outcome: str, captions: int, stopped: bool) -> bool:
+    """Hold instead of exiting only when NOTHING could have been captured."""
+    if stopped or captions:
+        return False
+    return outcome in ('rotation-ceiling', 'all-flat', 'open-failed', 'explicit-flat')
+
+
+def hold_idle_slot(stop, emit, census, outcome, max_hold_s=None, poll_s=None):
+    """Keep the process (and its model) alive while the host has nothing to give.
+
+    `census` returns a hashable snapshot of the input endpoints, taken afresh
+    on every poll: a snapshot that DIFFERS from the one taken at the start is
+    the only event that can change the answer, so it ends the hold at once.
+    Every poll calls `progress()`, so the heartbeat the shell credits keeps
+    moving -- a held worker must never look like a wedged one.
+
+    Returns 'stopped' | 'census-changed' | 'hold-expired'.
+    """
+    max_hold_s = IDLE_HOLD_MAX_S if max_hold_s is None else float(max_hold_s)
+    poll_s = IDLE_HOLD_POLL_S if poll_s is None else float(poll_s)
+
+    def snap():
+        try:
+            return tuple(census())
+        except Exception:  # noqa: BLE001 -- um censo que falha nao custa a espera
+            return None
+
+    base = snap()
+    emit(type='status', state='worker-idle', reason=outcome,
+         hold_s=max_hold_s, poll_s=poll_s,
+         detail='nothing to capture: the model stays resident, the ladder is not reopened')
+    t0 = time.monotonic()
+    held = 'hold-expired'
+    while not stop.is_set():
+        progress('idle-wait')
+        if stop.wait(poll_s):
+            held = 'stopped'
+            break
+        now = snap()
+        if base is not None and now is not None and now != base:
+            held = 'census-changed'
+            break
+        if time.monotonic() - t0 >= max_hold_s:
+            break
+    delta = round(time.monotonic() - t0, 3)
+    emit(type='status', state='worker-idle-end', reason=held, held_s=delta)
+    return held
+
+
+
 def start_heartbeat(every_s: float = 8.0) -> threading.Thread:
     """Publish `WORKER_ALIVE` every `every_s` while the loop's seq MOVES.
 
@@ -7140,6 +7206,13 @@ def main():
             # paying for it every few seconds. `stop.wait` (never time.sleep) so `stop`
             # and --max-seconds still answer at once.
             stop.wait(float(min(8.0, 2.0 ** (rotations - 1))))
+        # NADA A CAPTURAR NAO E' MOTIVO PARA DESLIGAR (ver `hold_idle_slot`).
+        if should_hold(outcome, counters['captions'], stop.is_set()):
+            outcome = hold_idle_slot(
+                stop, emit,
+                lambda: [d['name'] for d in device_candidates(audio_cfg, wanted, target_pid=target_pid)],
+                outcome)
+
     except KeyboardInterrupt:
         pass
     finally:
