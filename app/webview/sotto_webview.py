@@ -5659,7 +5659,15 @@ class PassiveHotkeyThread(threading.Thread):
         self._ready.set()
         if self.key_state is not None:
             def get_state(vk):
-                return 0x8000 if self.key_state(int(vk)) else 0
+                # A COSTURA NAO PODE MENTIR SOBRE O VALOR (2026-11-04). Ela
+                # normalizava qualquer verdade em `0x8000` e DESCARTAVA o bit 0
+                # -- que e' exactamente a borda que a cura le. Um `bool` continua
+                # a significar "em baixo"; um `int` atravessa tal e qual, para o
+                # oraculo poder encenar o bit 0 sozinho.
+                _v = self.key_state(int(vk))
+                if isinstance(_v, bool):
+                    return 0x8000 if _v else 0
+                return int(_v)
         else:
             get_state = user32.GetAsyncKeyState
         # O OBSERVADOR DIZ QUE ESTA' VIVO, E DIZ QUANDO PARA (2026-11-03).
@@ -5703,11 +5711,26 @@ class PassiveHotkeyThread(threading.Thread):
                 self._wake_gap = 0.0
                 _last_beat = _now_loop
             self.loops += 1
+            # O BIT 0 DO `GetAsyncKeyState` E' A MEMORIA DA BORDA (2026-11-04).
+            # MEDIDO nesta sessao: `HOTKEY_OBSERVER_ALIVE max_gap_ms=281..609`
+            # -- a thread do observador fica ate' ~0,6 s sem correr (GIL tomado
+            # pela inferencia/UIA), e um toque de Ctrl+Space mais curto que a
+            # volta CAI INTEIRO entre duas leituras: foi assim que o dono viu
+            # *"funciona so' de vez em quando"*. O bit 0 diz "esta tecla foi
+            # carregada DEPOIS da chamada anterior": o Windows guarda a borda e
+            # no'-la lemos mesmo com a volta atrasada -- sem hook global e sem
+            # `RegisterHotKey` (que daria so' a descida e roubaria a tecla ao
+            # resto do sistema). 0x8000 continua a ser `down`, o unico caminho
+            # para a DURACAO da segurada; 0x0001 e' a borda.
             down = True
+            fresh = True
             for _group in self.key_groups:
-                if not any(int(get_state(int(vk))) & 0x8000
-                           for vk in _group):
+                _st = [int(get_state(int(vk))) for vk in _group]
+                if not any(_v & 0x8000 for _v in _st):
                     down = False
+                if not any(_v & 0x0001 for _v in _st):
+                    fresh = False
+                if not down and not fresh:
                     break
             if _HOTKEY_TRACE and getattr(self, '_trace', None) != down:
                 self._trace = down
@@ -5715,19 +5738,29 @@ class PassiveHotkeyThread(threading.Thread):
                             % (self.role, str(down).lower(),
                                [[hex(int(v)) for v in g]
                                 for g in self.key_groups]))
-            if down and not held:
+            if (down or fresh) and not held:
                 held = True
                 try:
                     self.pressed += 1
                     # A MESMA ETIQUETA DO REGISTADO, e o `source`: o
                     # `altc-first-caption-oracle.py` emparelha `HOTKEY_PRESSED
                     # role=live` com a ACCAO, e uma tecla observada tem de ser
-                    # julgada pelo mesmo instrumento que a registada.
+                    # julgada pelo mesmo instrumento que a registada. `via` diz
+                    # qual dos dois caminhos disparou: `state` (ainda em baixo a'
+                    # leitura) ou `latched` (a borda veio do bit 0 -- o toque que
+                    # ANTES se perdia).
                     self.log_fn(f'HOTKEY_PRESSED role={self.role} '
-                                f'count={self.pressed} source=observed')
+                                f'count={self.pressed} source=observed '
+                                f'via={"state" if down else "latched"}')
                     self.on_hotkey()
                 except Exception as exc:  # noqa: BLE001 -- um passo perdido nao mata o observador
                     self.log_fn(f'HOTKEY_GESTURE_FAILED kind=live error={exc!r}')
+                if not down:
+                    # O toque COMPLETOU-SE dentro de uma volta: nao ha segurada
+                    # para medir, e deixar o latch armado comia a proxima
+                    # pressao. Solta-o ja'.
+                    held = False
+                    self._down_since = 0.0
             elif not down and held:
                 held = False
                 self._down_since = 0.0

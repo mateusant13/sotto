@@ -58,7 +58,7 @@ O detalhe medido de cada ordem vive nos docs. **Uma linha por ordem, e é isto q
 
 | # | a ordem | o que é lei | detalhe |
 |---|---|---|---|
-| 1 | track do YouTube na língua original | inglês → inglês; espanhol → **nunca traduzido**; qualquer outra → inglês | `docs/politica-youtube.md` |
+| 1 | track do YouTube na língua original | **en, pt-BR e espanhol: a LÍNGUA ORIGINAL, sem tradução em direcção nenhuma** (ordem de 2026-11-04: *"nao e pra traduzir entre ingles pt br e espanhol. nesses 3, é lingua original que da display"*); qualquer outra → inglês | `docs/politica-youtube.md` |
 | 2 | Alt+C: o gesto é **medido**, não contado | 1 toque = painel de BAIXO · 2 toques = painel da DIREITA · **HOLD** = legenda ao vivo on/off (desligar é só DISPLAY: modelo e histórico continuam) | `docs/hotkey-gestos.md` |
 | 3 | Parakeet é o segundo pass | ao vivo = nemotron só com painel aberto; fundo = Parakeet; retoma atrás de 4 guardas + piso de 45 s | `docs/worker-lifecycle.md` |
 | 4 | testes lentos e pesados | cache por **conteúdo**, classe `heavy` nunca corre sem opt-in, **um passo saltado não é um portão que passou** | `docs/bateria-e-portoes.md` |
@@ -101,9 +101,35 @@ unico — vive em `.opencode/skills/postmortem-sotto/SKILL.md` §Mecanica, com o
 depois de um quase-acidente apanhado.** Com o bug **ACTIVO** nao ha postmortem: fica-se no MODO
 BUG-HUNT acima. Os passos, o tracker, o fecho mecanico e as recusas estao na skill — nao se repetem aqui.
 
+## TRES REGRAS DO DONO, ESCRITAS COMO LEI (2026-11-04)
+
+1. **NAO SE TRADUZ ENTRE INGLES, PT-BR E ESPANHOL.** Verbatim: *"nao e pra traduzir
+   entre ingles pt br e espanhol. nesses 3, é lingua original que da display."* Um
+   vídeo em qualquer um dos três sai **naquela língua**; não há tradução em direcção
+   nenhuma entre eles. Só uma língua fora dos três (chinês, japonês, …) vai para
+   **inglês**. O código já implementa isto em `app/webview/youtube_captions.py`
+   (`UNTRANSLATED_LANGS = ('en', 'pt', 'es')`, com o verbatim de 2026-10-30) -- e a
+   regra é dela, não uma preferência: um `pick` no menu dos 3 pontos que fosse traduzir
+   um destes três é **clampado**, não honrado.
+2. **O NVIDIA NEMOTRON NÃO É TEMPO REAL.** Ele é o motor de transcrição local e o
+   atraso dele é medido, não hipotético: não se promete "ao vivo" a partir dele e
+   não se desenha caminho que dependa de ele acompanhar o áudio. A legenda que chega
+   ao ecrã em tempo real é a do **YouTube** (fonte externa) e, sem ela, a do motor
+   local com o atraso que ele tiver -- dito assim, sem eufemismo.
+3. **LEGENDA AO VIVO DESLIGADA NÃO É MODELO DESLIGADO.** Verbatim: *"se a legenda
+   ao vivo ta desativada, nao signiifca q o modelo ta desativado. é o DISPLAY que ta
+   desativado."* O `LIVE_ENABLED on=false` corta **o display**; o modelo continua
+   carregado, a transcrição continua a correr e o histórico continua a ser escrito
+   (é a mesma lei que o HOLD do Alt+C já carrega). Nenhum caminho pode desligar
+   worker, modelo ou histórico a pretexto de "legenda ao vivo desligada".
+
 ## A LEI DA STACK (decidida pelo dono)
-**nemotron streaming = motor AO VIVO, só com o painel aberto. Parakeet Redux = motor GERAL/de fundo**
+**nemotron streaming = motor LOCAL, só com o painel aberto. Parakeet Redux = motor GERAL/de fundo**
 (batch sobre o áudio acumulado, leve em RAM). *"o nvidia é pro ao vivo, o parakeet redux é pro geral."*
+E a correcção do dono de 2026-11-04 vale por cima dela: **o nemotron NÃO é tempo real** (regra 2
+acima) — "pro ao vivo" quer dizer *o motor que corre enquanto o painel está aberto*, não *o motor que
+acompanha o áudio*.
+
 Escolha do motor de fundo pelo **preço em RAM**, não pelo nome: o ONNX int4 do Redux mede **615 MB** de
 pico contra **3,90 GB** do ternário, com transcrição byte-idêntica.
 
@@ -365,8 +391,14 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 06:4x):** `_main\_audit-verify-all.cmd` = **191938 B**,
-  **2408 CRLF** / 0 bare LF, sha256 `6487F179CBB0EF36859B2163BE6FF90794A01208996778C18CB91B11F38AB6C2`.
+- **PIN do ficheiro (medido 2026-11-04, 07:0x):** `_main\_audit-verify-all.cmd` = **193503 B**,
+  **2427 CRLF** / 0 bare LF, sha256 `0050AE0D9078EF33B12B78319D48688A1D6B817362BB6DB1FFA0B3A77BC54F35`.
+  (Este pin substitui o de 191938 B / 2408 CRLF, DEPOIS do par `hotkey-live-edge` +
+  `red-as-expected-hotkey-live-edge`: o dono reportou *"control espaco nao ta funcionando"* e
+  *"funciona so' de vez em quando"*, e o log vivo mediu `HOTKEY_OBSERVER_ALIVE max_gap_ms=281..609`
+  contra um toque de 120-200 ms -- o toque caia inteiro entre duas voltas. A cura le o bit 0 de
+  `GetAsyncKeyState` (a borda que o Windows guarda), sem hook global; o oraculo corre o observador
+  REAL com `key_state` injectado e o negativo tira o bit 0 de uma COPIA e exige `presses=0`.)
   (Este pin substitui o de 190395 B / 2389 CRLF, DEPOIS do par `emit-prewebview` +
   `red-as-expected-emit-prewebview`: quando o WebView2 NAO inicializa (`WEBVIEW2_INIT_FAILED`
   `0x80010108`, medido 02:48:24 numa instancia propria) o `core` fica a `None` e cada amostra

@@ -352,6 +352,25 @@ if exist _main\emit-prewebview-oracle.py (
   call :expectred red-as-expected-emit-prewebview !STEP_RC! "%OUT%\emit-prewebview-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-emit-prewebview MISSING "%OUT%\emit-prewebview-neg.log" "NEG-ARM PASS" )
 REM
+REM O CTRL+SPACE QUE SO' FUNCIONAVA AS VEZES (2026-11-04, reportado pelo dono:
+REM *"control espaco nao ta funcionando"* e *"funciona so' de vez em quando"*).
+REM MEDIDO no log vivo: `HOTKEY_OBSERVER_ALIVE role=live ... max_gap_ms=281..609`
+REM -- a volta do observador atrasa ate' ~0,6 s (GIL tomado pela inferencia e
+REM pelas leituras de UIA) e um toque de Ctrl+Space de ~120-200 ms cai INTEIRO
+REM entre duas leituras. A cura le o BIT 0 de `GetAsyncKeyState` ("carregada
+REM desde a chamada anterior"): o Windows guarda a borda e no'-la lemos com a
+REM volta atrasada, sem hook global e sem roubar a tecla ao sistema. O oraculo
+REM corre o observador REAL com `key_state` injectado, e o negativo tira a
+REM leitura do bit 0 de uma COPIA e exige `presses=0` na arm do toque.
+if exist _main\hotkey-live-edge-oracle.py (
+  call :step hotkey-live-edge 0 "_main\hotkey-live-edge-oracle.py;app\webview\sotto_webview.py" "%OUT%\hotkey-live-edge.log" python _main\hotkey-live-edge-oracle.py
+  call :record hotkey-live-edge !STEP_RC!
+) else ( call :record hotkey-live-edge MISSING )
+if exist _main\hotkey-live-edge-oracle.py (
+  call :step red-as-expected-hotkey-live-edge 1 "_main\hotkey-live-edge-oracle.py;app\webview\sotto_webview.py" "%OUT%\hotkey-live-edge-neg.log" python _main\hotkey-live-edge-oracle.py --neg-arm
+  call :expectred red-as-expected-hotkey-live-edge !STEP_RC! "%OUT%\hotkey-live-edge-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-hotkey-live-edge MISSING "%OUT%\hotkey-live-edge-neg.log" "NEG-ARM PASS" )
+REM
 REM A TELA DO DONO (2026-10-23). A ordem, verbatim, e ele deu-a DUAS vezes:
 REM "para de abrir essa merda na minha tela. tu vai resolver no teu ambiente ai
 REM sem encher o meu saco", e depois "faz gates ou agents.md". O portao julga
