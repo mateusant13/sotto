@@ -341,8 +341,10 @@ validade - re-correr antes de repetir, e colar os numeros de HOJE.**
 
 A tabela de ficheiros e o que cada um e: **`docs/layout.md`**.
 
-**PIN do `run.cmd --help` (medido 2026-11-04 11:3x):** re-measured 2026-11-04 the output is 7985 B, 123 lines, 123 CRLF / 0 bare LF, rc 0, sha256
-`E99162F0FFC4A9A5BB6373AECCFB6ED0281FCF55FD5E0A59D5A767F9853024CA`.
+**PIN do `run.cmd --help` (medido 2026-11-04 12:0x):** re-measured 2026-11-04 the output is 8544 B, 131 lines, 131 CRLF / 0 bare LF, rc 0, sha256
+`6015D4A76D9C43DD9FA02559CCBC6CC76F0573E8ECBA177CF656FA58D6717DDE`.
+(759 B / 8 linhas a mais do que o pin de 7985 B / 123 CRLF: a help ganhou as duas flags da shell quente,
+`--no-warm-engine` e `--warm-engine-keep`, que o `run.cmd --help` imprime a partir do parser da shell.)
 (Este número substitui o de 7538 B / 116 linhas, depois do bloco `THE TWO KEYS`: o `--help` passou a dizer as
 DUAS teclas -- `Ctrl+Space` para a legenda ao vivo (so' display) e `Alt+C` para os paineis, com o ciclo por
 indice de pressao -- que e' a ordem do dono de 2026-11-04. O pin anterior, de 7281 B / 112 linhas, era o de
@@ -410,9 +412,10 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 11:5x):** `_main\_audit-verify-all.cmd` = **210085 B**,
-  **2616 CRLF** / 0 bare LF, sha256 `FC51B7BC317BB844B0B0961C71F5DFE080DD4980771BE1913BCB78BEFC5418FE`.
-  (Vinte e tres linhas a mais do que o pin de 207838 B / 2597 CRLF: os dois pares que as lanes de hoje
+- **PIN do ficheiro (medido 2026-11-04, 11:5x):** `_main\_audit-verify-all.cmd` = **210969 B**,
+  **2626 CRLF** / 0 bare LF, sha256 `8D03D133CDD1DBB46A33AFC9325D86FB3580FAB25F4BE69529E76DE94E5EE2CC`.
+  (Dez linhas a mais do pin anterior de 210085 B / 2616 CRLF: o par `warm-engine` + o seu
+  `--neg-arm`, que mede as quatro fechaduras do motor quente. Vinte e tres linhas a mais do que o pin de 207838 B / 2597 CRLF: os dois pares que as lanes de hoje
   escreveram e deixaram FORA da bateria -- `youtube-hidden-clock` (a pintura parada com a faixa como
   segunda testemunha) e `youtube-cdp-boot` (o arranque a pedir a porta CDP) -- mais os seus `--neg-arm`.
   O `battery-wiring` acusava-os com razao: `new-unwired 2 oraculo(s) sem passo e sem licenca`.
