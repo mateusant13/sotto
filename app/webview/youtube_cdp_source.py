@@ -264,6 +264,35 @@ def pick_target(tabs, video_id="", window_title=""):
 _TID_SLOW_MS = 500.0
 _TID_SLOW_TTL_S = 10.0
 
+def adopt_decision(declared, seen, declared_open):
+    """O ID DECLARADO FILTRA A ESCOLHA DA ABA, NAO A LEITURA (2026-11-04).
+
+    Devolve `(acao, porque)` com `acao` em `same` | `adopt` | `refuse`:
+
+      `same`   -- nada a decidir: sem id declarado, ou a foto e' do proprio id.
+      `adopt`  -- a foto e' de OUTRO video E o declarado nao esta' aberto: a aba
+                  navegou e quem manda e' ela. MEDIDO no log do dono, 10:16:17:
+                  `wrong-video (vDmjw-c_R2k)` -> `state=ambiguous` -> **13 min
+                  sem uma linha** (`YOUTUBE_TICK_MS src='?' rows=0
+                  cdp_age_ms=789250`) com a faixa do player a pintar na pagina.
+      `refuse` -- a foto e' de outro video E o declarado AINDA esta' aberto: ha'
+                  duas abas e o dono apontou para uma -- ler a outra e' o unico
+                  erro que poe a legenda de um video no ecra de outro.
+
+    Pura de proposito: `_main/youtube-cdp-source-oracle.py` executa ESTA funcao
+    e o laco limit-se a obedecer, para a regra poder ser provada sem Chrome.
+    """
+    declared = str(declared or '')
+    seen = str(seen or '')
+    if not declared or not seen:
+        return 'same', 'no-declared'
+    if seen == declared:
+        return 'same', 'same-video'
+    if not declared_open:
+        return 'adopt', 'declared-closed'
+    return 'refuse', 'wrong-video'
+
+
 class CdpCaptionSource:
     """Le as linhas que o player desenha, em segundo plano, pela CDP.
 
@@ -308,6 +337,31 @@ class CdpCaptionSource:
                                         daemon=True)
         self._thread.start()
         return self
+
+    def _declared_closed(self):
+        """True quando o video DECLARADO nao esta' em aba `watch` nenhuma.
+
+        A pergunta tem de ser respondida pela LISTA de abas (HTTP, barato) e nao
+        pela foto: a foto e' o que estava a envelhecer quando o laco ficou preso.
+        Falha de leitura devolve False -- "nao consegui ver" nunca e' "nao esta'
+        aberto", porque adotar o id errado e' por a legenda de um video no ecra
+        de outro (o unico erro que `_choose` existe para impedir).
+        """
+        vid = str(getattr(self, '_video_id', '') or '')
+        if not vid:
+            return False
+        try:
+            tabs, _others = list_targets(self.port)
+        except Exception:                 # noqa: BLE001
+            return False
+        for tab in tabs or ():
+            try:
+                url = str(tab.get('url') or '')
+            except Exception:             # noqa: BLE001
+                continue
+            if vid in url:
+                return False
+        return True
 
     def _choose(self, tabs):
         """(aba, motivo) -- com o id declarado AINDA ABERTO como filtro.
@@ -478,8 +532,26 @@ class CdpCaptionSource:
                 # declared=vwiIPjpksEU seen=NBCM_ZoWZo8`). Ler a aba errada e' o
                 # unico erro que poe a legenda de um video no ecra de outro: a
                 # ligacao cai e a proxima escolhe pelo ID.
-                if (self._video_id and snap.get("videoId")
-                        and snap["videoId"] != self._video_id):
+                _action, _because = adopt_decision(
+                    self._video_id, snap.get("videoId"),
+                    (not self._declared_closed()) if self._video_id else True)
+                if _action == 'adopt':
+                    _old = self._video_id
+                    self._video_id = str(snap["videoId"])
+                    self._publish(snap, "adopted:%s->%s" % (_old, self._video_id))
+                    self._switch_fails = 0
+                    continue
+                if _action == 'refuse':
+                    # A ABA NAVEGOU E O VIDEO DECLARADO JA' NAO EXISTE (2026-11-04).
+                    # MEDIDO no log do dono: 10:16:17 `wrong-video (vDmjw-c_R2k)`
+                    # seguido de `state=ambiguous`, e a partir dali **13 minutos
+                    # sem uma linha** (`YOUTUBE_TICK_MS src='?' rows=0
+                    # cdp_age_ms=789250`), porque `_choose` procurava um id que
+                    # ja' nao estava em aba nenhuma. O ecra ficou a cargo do ASR
+                    # com o player a pintar a faixa dele. A regra certa: o id
+                    # declarado filtra a ESCOLHA de aba, nao a leitura -- se ele
+                    # nao esta' aberto, quem manda e' a aba a que ja' estamos
+                    # ligados, e o id passa a ser dela.
                     self._publish(None, "wrong-video (%s)" % snap["videoId"])
                     try:
                         conn.close()

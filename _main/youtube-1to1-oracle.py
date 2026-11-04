@@ -172,8 +172,14 @@ WIRING = (
     # motor que revela NO RELOGIO DO PLAYER (`_PlayerCue`), e para isso o cue
     # tem de atravessar a fila inteira: sem `cue=` ele desenha o cue inteiro no
     # instante da chegada, que e' exactamente o defeito do dono.
+    # O `late_s` ENTRA NA MESMA FRASE (2026-11-04): a cortina de revelacao
+    # passou a receber a IDADE do audio (`caption_overlay.set_text(..., late_s)`)
+    # para nao saltar para a frente quando o `tap_ms` ja' e' velho -- medido
+    # `CAPTION_BUDGET_BLOWN audio_ms=1567/2644` na sessao do dono. A ancora
+    # segue o caminho vivo inteiro, cue E recuo, porque um `cue=` sem a idade
+    # volta a ser o defeito que este elemento mede.
     ("a janela da legenda recebe o cue e revela no relogio do player",
-     "ov.set_text(new_text, new_prev, instant, cue=cue)"),
+     "ov.set_text(new_text, new_prev, instant, cue=cue, late_s=_late_s)"),
     # E O CUE PRECISA DE UM RELOGIO: o par (t do video, monotonic da leitura)
     # vive em `_yt_anchor`, e e' `_yt_cue_payload` que o transforma no payload
     # que o overlay le. Sem esta ancora o `cue=` acima podia receber `None`

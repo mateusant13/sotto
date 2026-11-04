@@ -2867,11 +2867,20 @@ class ExternalCaptionWatcher(threading.Thread):
                 _age = _cdp.snapshot_age()
             except Exception:                 # noqa: BLE001
                 _age = None
+            # A ETIQUETA DIZ O QUE ACONTECEU, NAO O RAMO EM QUE ESTAMOS
+            # (2026-11-04). MEDIDO no log do dono: `YOUTUBE_TICK_MS src='?'
+            # rows=0 cdp_age_ms=789250 why='cdp-fresh-skip'` -- 789 s de foto nao
+            # e' "fresh", e este ramo NAO saltou nada: caiu na varredura. Quem
+            # le o log foi procurar o problema no sitio errado porque a palavra
+            # mentia.
+            _fresh = _age is not None and _age <= 8.0
             self._yt_diag = {'src': loc or '?', 'vid': getattr(self, 'yt_video_id', ''),
                              'age': ('%.0f' % (_age * 1000.0)) if _age is not None else 'None',
                              'rows': len(getattr(self, 'yt_cdp_rows', None) or []),
-                             'why': 'cdp-fresh-skip'}
-            if _age is not None and _age <= 8.0:
+                             'why': ('cdp-fresh-skip' if _fresh
+                                     else ('cdp-no-snapshot' if _age is None
+                                           else 'cdp-stale-fallback'))}
+            if _fresh:
                 return [], False
         # A VARREDURA DA PAGINA INTEIRA E' PARA QUEM PINTA A LEGENDA NA PAGINA
         # (2026-11-03, MEDIDO AO VIVO — e' a queixa do dono, verbatim: *"uma
@@ -12666,6 +12675,17 @@ class SottoShell:
             return False
         self._caption_pipeline_started = True
         log('CAPTION_PIPELINE_START reason=%s' % reason)
+        # A PORTA DA CDP ABRE COM O PIPELINE, NAO COM O PRIMEIRO TICK (2026-11-04).
+        # MEDIDO no arranque do dono: 10:06:36.407 `pre-lock`, 38.272 a primeira
+        # leitura (1,9 s), 40.798 `YOUTUBE_CDP_SOURCE state=attached` e 40.889 a
+        # primeira linha do player -- 4,5 s de relogio para uma legenda que o
+        # YouTube ja' tinha pronta na pagina. Abrir a porta aqui custa um
+        # `Thread.start` e corta os 1,4 s que o primeiro tick pagava so' para
+        # chegar ao sitio onde a porta se abre.
+        try:
+            self._yt_cdp_ensure()
+        except Exception as exc:              # noqa: BLE001
+            log('YOUTUBE_CDP_PREOPEN_FAILED error=%r' % (exc,))
         for step, call in (
                 ('watcher', lambda: self.start_external_caption_watcher()),
                 ('worker', lambda: self.start_worker(

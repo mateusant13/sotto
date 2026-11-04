@@ -62,6 +62,8 @@ def _read(path):
 
 
 def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
+    # `module_path=None` = o modulo REAL, so' o SHELL mutado (A11 vive na shell).
+    module_path = module_path or MODULE
     mod = _load(module_path, 'yt_cdp_under_test')
     shell = _read(shell_path)
     out = []
@@ -153,6 +155,37 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
     a9 = bool(re.search(r"foreground_source\(hwnd, _tabvid\)", shell)) \
         and bool(re.search(r"why': 'no-player-window'", shell))
     out.append(("shell-usa-a-decisao", a9, "wired=%s" % a9))
+
+    # A10 -- O ID DECLARADO FILTRA A ESCOLHA, NAO A LEITURA (2026-11-04). MEDIDO
+    # no log do dono: 10:16:17 `wrong-video (vDmjw-c_R2k)` -> `state=ambiguous`
+    # e **13 minutos sem uma linha** (`YOUTUBE_TICK_MS src='?' rows=0
+    # cdp_age_ms=789250`) com a faixa do player a pintar. A funcao executada e' a
+    # REAL (`adopt_decision`), nos quatro casos, e a shell obedece-lhe.
+    ad = getattr(mod, "adopt_decision", None)
+    a10 = bool(ad) and (
+        ad("MOZIBMBHK-8", "vDmjw-c_R2k", False) == ("adopt", "declared-closed")
+        and ad("MOZIBMBHK-8", "vDmjw-c_R2k", True) == ("refuse", "wrong-video")
+        and ad("MOZIBMBHK-8", "MOZIBMBHK-8", True) == ("same", "same-video")
+        and ad("", "vDmjw-c_R2k", True) == ("same", "no-declared"))
+    # A CHAMADA VIVE NO LEITOR (`_run`), nao na shell: um controle no ficheiro
+    # errado diria `wired=False` para sempre.
+    _mod_src = _read(module_path)
+    _wired = "adopt_decision(" in _mod_src and "_declared_closed(" in _mod_src
+    out.append(("adota-a-aba-que-navegou", a10 and _wired,
+                "adopt=%s wired=%s" % (a10, _wired)))
+
+    # A11 -- A PORTA ABRE COM O PIPELINE E NAO COM O PRIMEIRO TICK (2026-11-04).
+    # MEDIDO no arranque do dono: `pre-lock` 10:06:36.407, primeira leitura
+    # 38.272, `attached` 40.798, primeira linha do player 40.889 -- 4,5 s para
+    # uma legenda que a pagina ja' tinha. A chamada tem de estar DENTRO de
+    # `start_caption_pipeline` e ANTES do `start_external_caption_watcher`.
+    _pipe = shell.find("CAPTION_PIPELINE_START")
+    _pre = shell.find("self._yt_cdp_ensure()", _pipe if _pipe > 0 else 0)
+    _watch = shell.find("'watcher', lambda: self.start_external_caption_watcher()",
+                        _pipe if _pipe > 0 else 0)
+    a11 = _pipe > 0 and _pre > _pipe and _watch > _pre
+    out.append(("porta-cdp-abre-no-arranque", a11,
+                "pipeline=%d preopen=%d watcher=%d" % (_pipe, _pre, _watch)))
     return out
 
 
@@ -192,6 +225,23 @@ def neg_arm():
                         "    return ''", 1))
         got4 = dict((n, ok) for n, ok, _ in arms(module_path=mut4))
         results.append(("aba-nao-prova", not got4.get("janela-nao-e-obrigatoria", False)))
+
+        # SEM ADOCAO: a foto de outro video volta a ser recusa incondicional, que
+        # e' o laco preso por 13 min medido no log do dono.
+        mut5 = os.path.join(tmp, "sem_adocao.py")
+        io.open(mut5, "w", encoding="utf-8").write(
+            src.replace("    if not declared_open:\n        return 'adopt', 'declared-closed'",
+                        "    if False:\n        return 'adopt', 'declared-closed'", 1))
+        got5 = dict((n, ok) for n, ok, _ in arms(module_path=mut5))
+        results.append(("sem-adocao", not got5.get("adota-a-aba-que-navegou", False)))
+
+        # SEM PRE-ABERTURA: a chamada sai do arranque e volta a esperar o tick.
+        mut6 = os.path.join(tmp, "sem_preabertura.py")
+        io.open(mut6, "w", encoding="utf-8").write(
+            src.replace("            self._yt_cdp_ensure()\n",
+                        "            pass\n", 1))
+        got6 = dict((n, ok) for n, ok, _ in arms(module_path=None, shell_path=mut6))
+        results.append(("sem-preabertura", not got6.get("porta-cdp-abre-no-arranque", False)))
         return results
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
