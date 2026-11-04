@@ -893,6 +893,13 @@ PROGRESS_TAGS = ('REDUX_BATCH_KICK', 'REDUX_ENGINE_DONE', 'REDUX_MODE',
                  # (o emissor cala-se quando o laco trava), por isso serve de batimento
                  # sem tornar o cao de guarda decorativo.
                  'WORKER_ALIVE')
+
+#: O BATIMENTO DO LACO DO WORKER, reconhecido por CONTER e nao por comecar (2026-11-04).
+#: Medido com o py-spy no worker vivo: `seq=516 phase=window` e nenhuma linha no log -- o
+#: ONNX escreve WIDESTRING e sem newline (o despejo `\u1b00\u5b00...` no log prova a classe),
+#: entao a tag pode chegar precedida de lixo. Uma funcao so', para o oraculo executar ESTA.
+def is_alive_beat(line: str) -> bool:
+    return 'WORKER_ALIVE' in line
 #: Quantas linhas de stderr a morte PUBLICA. Eram TRES, e tres escondem a causa:
 #: medido 2026-11-02, o worker morreu duas vezes `rc=1` (19:22:29, 19:36:40) e a
 #: cauda era `WORKER_STATS` + `REDUX_BATCH_KICK` -- o traceback ficou de fora.
@@ -16290,9 +16297,7 @@ class WorkerBridge:
         #: no-audio (or the reverse).
         self.last_no_audio = None
         self.pending_error = None
-        #: Quando o ultimo `BRIDGE_ALIVE` foi ao log (um por minuto, nao um por
-        #: batimento: o dono paga por cada linha que eu escrevo).
-        self._alive_at = 0.0
+
         #: True once THIS child has published its own verdict that the audio it
         #: opened carries nothing to transcribe (see WORKER_NO_AUDIO_STATES /
         #: WORKER_NO_AUDIO_VERDICTS). Reset on every spawn, because the verdict
@@ -16752,6 +16757,16 @@ class WorkerBridge:
                     # 3 linhas escondiam a causa (2026-11-02: duas mortes `rc=1` com
                     # `WORKER_STATS` no lugar do traceback, que vem ANTES).
                     del self.stderr_tail[:-STDERR_TAIL_MAX]
+                    # O BATIMENTO DE PROGRESSO DO LACO (2026-11-04). Fica DENTRO do
+                    # bloco de stderr, e nao depois dele: o bloco termina num `continue`
+                    # e uma copia colocada depois e' INALCANCAVEL -- medido, duas
+                    # instancias carregaram a cura e nenhuma linha saiu. A busca e' por
+                    # CONTER (o ONNX escreve WIDESTRING sem newline e prefixa a linha).
+                    if is_alive_beat(line):
+                        self._arm_silence()
+                        log_repeat('bridge-alive', 'BRIDGE_ALIVE %s%s' % (
+                            '' if line.startswith('WORKER_ALIVE') else 'garbled=1 ',
+                            line.strip()[:140]), every_s=60.0)
                     # The worker's own counters line, kept whole (see
                     # `last_worker_stats`): the text dump reads `peak` and
                     # `nonzero_blocks` from here, not from a new measurement.
@@ -16788,17 +16803,7 @@ class WorkerBridge:
                                 self.log('BRIDGE_RSS rss_mb=%s blocks=%s' % (
                                     _f.get('rss_mb', '-'), _f.get('blocks', '-')))
                     continue
-                if line.startswith('WORKER_ALIVE'):
-                    # O BATIMENTO NAO E' MENSAGEM DO PROTOCOLO: o `_arm_silence`
-                    # acima ja' o creditou como progresso; sem este `continue` ele
-                    # cairia em `_consume`, contaria `malformed` e escreveria
-                    # `BRIDGE_MALFORMED` a cada 8 s -- e `malformed`, publicado em
-                    # `BRIDGE_EXIT`, tem de significar "o worker escreveu lixo".
-                    # E a prova chega ao log UMA VEZ POR MINUTO, com a fase.
-                    if time.monotonic() - self._alive_at >= 60.0:
-                        self._alive_at = time.monotonic()
-                        self.log('BRIDGE_ALIVE %s' % text[:160])
-                    continue
+
                 text = line.strip()
                 if text:
                     self._consume(text, child)

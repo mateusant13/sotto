@@ -407,6 +407,12 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   worker escreve de facto (arm 3: o batimento conta, `BRIDGE_METER` nao) e o `progress()` do worker
   REAL (arm 4); `--neg-arm` muta o piso numa copia do shell e o `progress` numa copia do worker e
   exigem as duas arms RED.)
+  **A ARMADILHA QUE CUSTOU A TARDE, escrita para nao se repetir:** o bloco de stderr do
+  `_pump` termina num `continue`, e uma copia do ramo colocada DEPOIS dele e' inalcancavel.
+  Medido: duas instancias carregaram a cura (o worker batia `seq=516 phase=window`, provado
+  com o `py-spy`, e o `stderr_tail` mostrava as linhas) e NENHUM `BRIDGE_ALIVE` saiu; o py-spy
+  `--locals` no fio `sotto-worker-stderr` mostrou a ultima linha processada a ser o batimento,
+  o que localizou o `continue`. O ramo vive agora DENTRO do bloco, antes do `continue`.
   (O pin de 193503 B / 2427 CRLF veio do par `hotkey-live-edge` +
   `red-as-expected-hotkey-live-edge`: o dono reportou *"control espaco nao ta funcionando"* e
   *"funciona so' de vez em quando"*, e o log vivo mediu `HOTKEY_OBSERVER_ALIVE max_gap_ms=281..609`

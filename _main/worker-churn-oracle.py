@@ -131,13 +131,18 @@ def judge(shell_mod, worker_mod, quiet=False):
           {'armed_ms': armed_crash, 'log': crash_log.strip().splitlines()[-1:]})
 
     # -- arm 3: a regra do leitor sobre a linha que o worker escreve ----------
+    # A shell reconhece o batimento por `is_alive_beat` (CONTER, nao comecar):
+    # medido com o py-spy, o fio batia `seq=516` e a linha chegava precedida do
+    # lixo WIDESTRING do ONNX, por isso `startswith` perdia-a.
     beat = 'WORKER_ALIVE seq=7 phase=idle-wait age_ms=12'
+    garbled = "\u1b00\u5b00\u3000\u3b00" + beat
     meter = 'BRIDGE_METER count=2230 in_window_s=30.0'
     check('3-reader-counts-the-beat',
-          bool(beat.startswith(shell_mod.PROGRESS_TAGS)),
-          {'tags': list(shell_mod.PROGRESS_TAGS), 'beat': beat})
+          shell_mod.is_alive_beat(beat) and shell_mod.is_alive_beat(garbled),
+          {'beat': beat, 'garbled': garbled[:40],
+           'startswith_would_miss': not garbled.startswith('WORKER_ALIVE')})
     check('3b-reader-ignores-the-meter',
-          not bool(meter.startswith(shell_mod.PROGRESS_TAGS)),
+          not shell_mod.is_alive_beat(meter),
           {'meter': meter})
 
     # -- arm 4: o laco do worker REAL move o seq ------------------------------
@@ -154,10 +159,13 @@ def judge(shell_mod, worker_mod, quiet=False):
 
 
 def mutate_shell(dst):
-    """Tira o piso do caminho da saida limpa (a arm 1 tem de cair)."""
+    """Tira o piso do caminho da saida limpa E a regra do batimento
+    (as arms 1 e 3 tem de cair)."""
     src = io.open(SHELL, encoding='utf-8', newline='').read()
     out = src.replace('if floor_ms and delay < floor_ms:', 'if False:', 1)
     assert out != src, 'a ancora do piso nao existe'
+    src, out = out, out.replace("    return 'WORKER_ALIVE' in line", '    return False', 1)
+    assert out != src, 'a ancora do is_alive_beat nao existe'
     io.open(dst, 'w', encoding='utf-8', newline='').write(out)
 
 
@@ -187,12 +195,13 @@ def main(argv=None):
         worker_mod = load(wk, 'worker_mut')
         checks, ok = judge(shell_mod, worker_mod, quiet=True)
         red = [c['arm'] for c in checks if not c['ok']]
-        caught = ('1-floor-on-clean-exit' in red and '4-worker-progress-moves' in red)
+        caught = ('1-floor-on-clean-exit' in red and '4-worker-progress-moves' in red
+                  and '3-reader-counts-the-beat' in red)
         print(f'NEG-ARM arms={len(checks)} caidas={red}')
         for c in checks:
             print(f"  {'RED ' if not c['ok'] else 'green'} {c['arm']} {c['detail']}")
         if caught:
-            print('NEG-ARM: PASS (as duas curas mutadas foram apanhadas)')
+            print('NEG-ARM: PASS (as tres curas mutadas foram apanhadas)')
             return 1
         print('NEG-ARM: FAIL -- o mutante sobreviveu a um braco')
         return 2

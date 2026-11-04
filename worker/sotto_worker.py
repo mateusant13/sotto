@@ -638,6 +638,15 @@ def start_heartbeat(every_s: float = 8.0) -> threading.Thread:
     """
 
     def _beat() -> None:
+        def say(msg: str) -> None:
+            # O BORDAO DA LINHA E' PARTE DO CONTRATO: o ONNX escreve WIDESTRING e sem
+            # newline, e uma linha que ele deixou a meio faz o `startswith` da shell
+            # FALHAR -- medido 2026-11-04: o fio `sotto-heartbeat` estava vivo no py-spy
+            # e nenhuma das suas linhas chegou ao log. Um `\n` primeiro garante que a
+            # tag comeca a linha; a linha vazia que isso cria e' ignorada pelo leitor.
+            sys.stderr.write('\n' + msg + '\n')
+            sys.stderr.flush()
+
         last = -1
         while True:
             time.sleep(every_s)
@@ -649,12 +658,17 @@ def start_heartbeat(every_s: float = 8.0) -> threading.Thread:
                 continue
             last = seq
             try:
-                err(f"WORKER_ALIVE seq={seq} phase={phase} age_ms={age_ms}")
+                say(f"WORKER_ALIVE seq={seq} phase={phase} age_ms={age_ms}")
             except Exception:  # noqa: BLE001 -- stderr morto: o pai ja' nao le
                 return
 
     th = threading.Thread(target=_beat, name="sotto-heartbeat", daemon=True)
     th.start()
+    # O FIO ARMADO DIZ-SE: sem esta linha, "o batimento nao chegou" e' indistinguivel
+    # de "o batimento nunca foi armado", e foi essa ambiguidade que custou uma
+    # rodada de diagnostico em 2026-11-04.
+    sys.stderr.write('\nWORKER_ALIVE_ARMED every_s=%s thread=%s\n' % (every_s, th.name))
+    sys.stderr.flush()
     return th
 
 
