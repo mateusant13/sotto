@@ -50,6 +50,7 @@ ROW = re.compile(
     r'budget_ms=(\d+)\s+over=(true|false)')
 
 
+FINAL = re.compile(r'aged_kind=final-close')
 REUSED = re.compile(
     r'(?:CAPTION_PAINT_LAG|CAPTION_APPLIED)\s+.*?tap_reused=true')
 
@@ -69,22 +70,35 @@ def parse(text):
 def parse_counts(text):
     rows = []
     reused = 0
+    finals = 0
     for line in text.splitlines():
         if REUSED.search(line):
             reused += 1
             continue
+        if FINAL.search(line) and ROW.search(line):
+            # A LINHA FECHADA NAO E' LATENCIA (regra do proprio repo, escrita no
+            # shell em 2026-11-04): o `tap_ms` de uma `final` e' o do INICIO da
+            # frase, logo mede a DURACAO dela. Medido nesta populacao: 554 das
+            # 5 524 linhas sao `final-close`, e elas SOZINHAS tem p95 15 063 e o
+            # max 666 820 -- 3,3x o maior sobrevivente. Sem esta exclusao o p95
+            # do painel sai 33 % inflado (6 726 em vez de 5 063) e um alvo
+            # perseguiria 554 linhas que nao medem atraso.
+            finals += 1
+            continue
         m = ROW.search(line)
         if m:
             rows.append((int(m.group(1)), int(m.group(2)), int(m.group(3))))
-    return rows, reused
+    return rows, reused, finals
 
 
 _LAST_REUSED = 0
+_LAST_FINALS = 0
 
 
 def read_log(path, minutes=None):
-    global _LAST_REUSED
+    global _LAST_REUSED, _LAST_FINALS
     _LAST_REUSED = 0
+    _LAST_FINALS = 0
     if not os.path.isfile(path):
         return None
     with io.open(path, encoding='utf-8', errors='replace') as fh:
@@ -110,7 +124,7 @@ def read_log(path, minutes=None):
             if stamp and stamp >= edge_s:
                 keep.append(line)
         lines = keep
-    rows, _LAST_REUSED = parse_counts(''.join(lines))
+    rows, _LAST_REUSED, _LAST_FINALS = parse_counts(''.join(lines))
     return rows
 
 
@@ -172,6 +186,9 @@ def render(verdict, d):
         (f'  EXCLUDED {d["reused"]} row(s) marked tap_reused=true -- the same '
          'audio attributed twice; not a latency'
          if d.get('reused') else '  EXCLUDED 0 rows marked tap_reused=true'),
+        (f'  EXCLUDED {d["finals"]} row(s) marked aged_kind=final-close -- the '
+         'tap is the START of the sentence, so the age is its DURATION'
+         if d.get('finals') else '  EXCLUDED 0 rows marked final-close'),
         '  A p50 over this field is a statement about the window: the two modes '
         'and their rates are the verdict.',
     ]
@@ -220,11 +237,25 @@ def arms():
         f'2026-11-04 10:00:{i % 60:02d}.000 sotto: CAPTION_APPLIED text="l{i}" '
         f'count={i} kind=partial aged_kind=transport audio_ms={200 + i % 50} '
         f'queue_ms=4 budget_ms=1500 over=false' for i in range(40))
-    rows_p, reused_p = parse_counts(panel)
+    rows_p, reused_p, finals_p = parse_counts(panel)
     v, d = judge(rows_p)
     res['panel_surface_read'] = (len(rows_p) == 40 and v == 'PASS')
     print(f'ARM 6bis 40 CAPTION_APPLIED  -> rows={len(rows_p)} {v} '
           f'(want 40, PASS: the panel is the majority surface)')
+
+    # ARM 6-ter: `final-close` rows are excluded even when they are the WHOLE
+    # corpus -- a sentence's duration must never become a latency, and a ruler
+    # that quietly counted them would report where the user simply talked longer.
+    finals = '\n'.join(
+        f'2026-11-04 10:00:{i % 60:02d}.000 sotto: CAPTION_APPLIED text="l{i}" '
+        f'count={i} kind=final aged_kind=final-close audio_ms={800 + i % 90} '
+        f'queue_ms=1500 budget_ms=1500 over=false' for i in range(40))
+    rows_f, reused_f, nfinals = parse_counts(finals)
+    v, d = judge(rows_f)
+    res['final_close_excluded'] = (len(rows_f) == 0 and nfinals == 40
+                                   and v == 'UNKNOWN-NOT-RUN')
+    print(f'ARM 6ter 40 final-close      -> rows={len(rows_f)} finals={nfinals} '
+          f'{v} (want 0/40/UNKNOWN-NOT-RUN)')
 
     # ARM 7-9: the predicate that decides whether a paint describes NEW audio,
     # run as it ships. Without it `audio_ms` counts one block many times.
@@ -418,6 +449,7 @@ def main(argv=None):
     rows = read_log(a.log, a.minutes or None)
     verdict, d = judge(rows, a.budget_ms)
     d['reused'] = _LAST_REUSED
+    d['finals'] = _LAST_FINALS
     if a.json:
         print(json.dumps({'verdict': verdict, **d}, indent=1))
     for line in render(verdict, d):
