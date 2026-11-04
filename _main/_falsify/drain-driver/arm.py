@@ -125,7 +125,7 @@ def run_worker(duration_s, shed="muito-alta", visible=False, label="arm",
 
     proc = subprocess.Popen(cmd, cwd=os.path.join(ROOT, "worker"),
                             stdout=out_fh, stderr=err_fh, stdin=subprocess.DEVNULL,
-                            env=env, creationflags=flags)
+                            env=env, creationflags=flags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
     state = {"flip_at": None, "flipped": None, "signal_at": None}
 

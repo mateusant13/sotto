@@ -68,21 +68,21 @@ def child():
 def spawn(flags, mode):
     """mode: pipe captures stdout; file redirects it to a scratch file (and reads it back)."""
     if mode == "pipe":
-        done = subprocess.run(child(), capture_output=True, text=True, creationflags=flags)
+        done = subprocess.run(child(), capture_output=True, text=True, creationflags=flags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         return done.stdout, done.returncode
     path = os.path.join(tempfile.gettempdir(), "channel-class-site.txt")
     if os.path.exists(path):
         os.remove(path)
     with open(path, "w", encoding="utf-8") as handle:
         done = subprocess.run(child(), stdout=handle, stderr=subprocess.DEVNULL,
-                              text=True, creationflags=flags)
+                              text=True, creationflags=flags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     with open(path, encoding="utf-8") as handle:
         return handle.read(), done.returncode
 
 
 def tracked_flagged_sites():
     listing = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True,
-                             creationflags=CREATE_NO_WINDOW)
+                             creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     sites = []
     for name in listing.stdout.splitlines():
         if not name.endswith((".py", ".cmd", ".mjs", ".js")):

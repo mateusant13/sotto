@@ -222,7 +222,7 @@ def run_arm(browser, page, theme, arm, port, motion):
            '--user-data-dir=' + prof, url]
     if motion:
         cmd.insert(1, '--blink-settings=prefersReducedMotion=false')
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     pid = proc.pid
     deadline = time.time() + SECONDS + 45
     try:
@@ -234,7 +234,7 @@ def run_arm(browser, page, theme, arm, port, motion):
         # script started, `/T` for its own children. No text filter anywhere: a
         # filter on the word `msedge` would take the owner's browser with it.
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(pid)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         try:
             proc.wait(timeout=15)
         except subprocess.TimeoutExpired:

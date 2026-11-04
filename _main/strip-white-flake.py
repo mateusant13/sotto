@@ -92,7 +92,7 @@ def kill_everything():
          "Name='python.exe'\" | Where-Object { $_.CommandLine -match "
          "'sotto_webview\\.py|sotto_worker\\.py' } | "
          "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"],
-        capture_output=True, text=True, creationflags=0x08000000)
+        capture_output=True, text=True, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     for _ in range(40):
         if not all_sotto():
             return True
@@ -173,7 +173,7 @@ def one_run(n, secs):
         os.remove(LOG)
     p = subprocess.Popen([sys.executable, SHELL, "--with-worker",
                           "--exit-after", "70", "--log", LOG],
-                         creationflags=0x08000000 | 0x00000008)
+                         creationflags=0x08000000 | 0x00000008, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     t0 = time.time()
     while time.time() - t0 < 40:
         try:

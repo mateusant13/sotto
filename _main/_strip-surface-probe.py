@@ -437,7 +437,7 @@ def launch(tag, extra, census_ms=None, timeout=60.0, settle=0.0):
     err_path = log_path + '.err'
     err_fh = open(err_path, 'wb')
     proc = subprocess.Popen(cmd, cwd=os.path.dirname(SHELL),
-                            creationflags=CREATE_NO_WINDOW,
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                             stdout=subprocess.DEVNULL, stderr=err_fh)
     started = time.time()
     shell_pid = None

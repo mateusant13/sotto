@@ -103,7 +103,7 @@ def run_cli(engine_path: str, args, root: str, tag: str, env=None):
             [sys.executable, engine_path] + list(args),
             stdout=fo, stderr=fe,
             env=env if env is not None else os.environ.copy(),
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     return proc.returncode, read_text(out), read_text(err)
 
 

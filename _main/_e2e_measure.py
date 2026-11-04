@@ -51,7 +51,7 @@ def sample_rss(proc):
 
 
 t0 = time.time()
-proc = subprocess.Popen(CMD, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
+proc = subprocess.Popen(CMD, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 th = threading.Thread(target=sample_rss, args=(proc,), daemon=True)
 th.start()
 out, err = proc.communicate()

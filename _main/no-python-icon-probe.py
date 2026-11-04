@@ -364,7 +364,7 @@ def main() -> int:
            '--exit-after', str(int(args.secs + args.settle)), '--log', log_path]
     creationflags = CREATE_NO_WINDOW
     proc = subprocess.Popen(cmd, cwd=os.path.join(ROOT, 'app', 'webview'),
-                            creationflags=creationflags,
+                            creationflags=creationflags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     pid = proc.pid
     result = {'label': args.label, 'pid': pid, 'log': log_path,

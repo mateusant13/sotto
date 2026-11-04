@@ -46,7 +46,7 @@ TREE = "\n".join([
 def alive(pid):
     try:
         out = subprocess.run(["tasklist", "/FI", "PID eq %d" % pid, "/NH"], capture_output=True,
-                             text=True, creationflags=FLAGS, timeout=30)
+                             text=True, creationflags=FLAGS, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=30)
     except Exception:
         return None
     return str(pid) in (out.stdout or "")
@@ -54,7 +54,7 @@ def alive(pid):
 
 def kill_tree(pid):
     subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True,
-                   creationflags=FLAGS)
+                   creationflags=FLAGS, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
 
 def wait_for(path, seconds=15.0):
@@ -87,7 +87,7 @@ def main(argv=None):
     grandchild = None
     try:
         subprocess.run([sys.executable, tree, pidfile], capture_output=True, text=True,
-                       creationflags=FLAGS, timeout=1.5)
+                       creationflags=FLAGS, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=1.5)
         say("  arm 1: the tree finished inside the timeout -- the orphan cannot be staged here")
     except subprocess.TimeoutExpired:
         grandchild = wait_for(pidfile)
@@ -109,7 +109,7 @@ def main(argv=None):
     parent = None
     try:
         parent = subprocess.Popen([sys.executable, tree, pidfile2], stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE, text=True, creationflags=FLAGS)
+                                  stderr=subprocess.PIPE, text=True, creationflags=FLAGS, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         grandchild2 = wait_for(pidfile2)
         kill_tree(parent.pid)
         time.sleep(0.6)

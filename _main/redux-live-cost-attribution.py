@@ -86,7 +86,7 @@ def owner_cpu_snapshot() -> dict:
     try:
         raw = subprocess.run(["pwsh", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script],
                              capture_output=True, text=True, timeout=60,
-                             creationflags=0x08000000).stdout.strip()
+                             creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0)).stdout.strip()
         if not raw:
             return {}
         parsed = json.loads(raw)

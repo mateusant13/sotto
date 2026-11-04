@@ -256,7 +256,7 @@ def run_arm(browser, page, theme, state, port, arm, direct=False, surface='',
                 '--force-device-scale-factor=2']
     cmd += [url]
     errlog = open(os.path.join(HERE, '_panel-geometry-browser.log'), 'wb')
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=errlog, creationflags=subprocess.CREATE_NO_WINDOW)
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=errlog, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     pid = proc.pid
     deadline = time.time() + 60
     try:
@@ -265,7 +265,7 @@ def run_arm(browser, page, theme, state, port, arm, direct=False, surface='',
     finally:
         # ── THE KILL NAMES THE ARTIFACT AND THE EXACT PID ──────────────────────
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(pid)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         try:
             proc.wait(timeout=15)
         except subprocess.TimeoutExpired:

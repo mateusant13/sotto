@@ -344,7 +344,7 @@ def main():
         proc = subprocess.run(
             ["node", PANEL_ORACLE, arms_json],
             capture_output=True, text=True, timeout=120,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
         )
         if proc.returncode != 0:
             print("PANEL ORACLE rc=%d" % proc.returncode)

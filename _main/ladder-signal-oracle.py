@@ -149,7 +149,7 @@ def run(worker_path=WORKER):
 
     # -- 8. o selftest do proprio modulo prova-o ---------------------------
     proc = subprocess.run([sys.executable, RELAUNCH, '--selftest'],
-                          capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                          capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     add(proc.returncode == 0 and 'SELFTEST PASS' in (proc.stdout or ''),
         'shell_relaunch --selftest continua PASS com os bracos do som',
         (proc.stdout or proc.stderr or '').strip().splitlines()[-1:] or '')

@@ -172,7 +172,7 @@ def launch(tag, timeout=45.0, rect=None):
             seed_after_his_write(rect, wait_s=1.0)
             reseeded = True
     proc = subprocess.Popen(cmd, cwd=os.path.dirname(SHELL),
-                            creationflags=CREATE_NO_WINDOW,
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     deadline = time.time() + timeout
     while time.time() < deadline and proc.poll() is None:

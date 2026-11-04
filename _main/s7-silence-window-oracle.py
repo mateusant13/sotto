@@ -392,7 +392,7 @@ def _run_unit_against(mutant):
     proc = subprocess.run(
         [sys.executable, os.path.abspath(__file__), '--unit'],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        env=env, cwd=HERE, creationflags=CREATE_NO_WINDOW, timeout=300)
+        env=env, cwd=HERE, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=300)
     text = proc.stdout.decode('utf-8', 'replace')
     try:
         return proc.returncode, json.loads(text), text

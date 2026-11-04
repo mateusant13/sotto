@@ -350,9 +350,9 @@ def neg_arm(args):
           % (VICTIM, before.group(1).strip(), INJECTED_SLAB, victim))
 
     me = os.path.abspath(__file__)
-    live = subprocess.run([sys.executable, me, '--gate'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+    live = subprocess.run([sys.executable, me, '--gate'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     mut = subprocess.run([sys.executable, me, '--gate', '--panel', scratch],
-                         capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                         capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     green = live.returncode == 0
     red = mut.returncode != 0
     print('NEG-ARM shipped tree : rc=%d %s'

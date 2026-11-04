@@ -39,7 +39,7 @@ def spawn_worker(out_path, seconds):
     fh = open(out_path, "w", encoding="utf-8")
     p = subprocess.Popen(
         cmd, stdout=fh, stderr=subprocess.STDOUT,
-        creationflags=CREATE_NO_WINDOW, close_fds=True,
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), close_fds=True,
     )
     return p, fh
 
@@ -49,7 +49,7 @@ def spawn_player(seconds):
     devnull = open(os.devnull, "wb")
     p = subprocess.Popen(
         cmd, stdout=devnull, stderr=subprocess.STDOUT,
-        creationflags=CREATE_NO_WINDOW, close_fds=True,
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), close_fds=True,
     )
     return p
 

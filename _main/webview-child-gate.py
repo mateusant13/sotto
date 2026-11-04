@@ -150,7 +150,7 @@ def main():
     user32.SetProcessDPIAware()
     p = subprocess.Popen([sys.executable, SHELL, "--with-worker",
                           "--exit-after", "70", "--log", LOG],
-                         creationflags=0x08000000 | 0x00000008)
+                         creationflags=0x08000000 | 0x00000008, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     print("launched pid=%d (real shell, WORKER ON, nobody asked)" % p.pid)
     t0 = time.time()
     while time.time() - t0 < 40:

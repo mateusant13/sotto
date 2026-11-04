@@ -161,7 +161,7 @@ def run_node(history_js: Path, formulation_js: Path, job: dict, tmpdir: Path) ->
     proc = subprocess.run(
         [NODE, str(driver), str(history_js), str(formulation_js), str(jobfile)],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
-        creationflags=CREATE_NO_WINDOW, timeout=180)
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=180)
     if proc.returncode != 0:
         raise RuntimeError("node rc=" + str(proc.returncode) + " stderr="
                            + proc.stderr[:500])

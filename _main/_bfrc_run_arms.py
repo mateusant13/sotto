@@ -33,7 +33,7 @@ for name, wav in ARMS:
     errf = open(os.path.join(ROOT, "_main", f"bfrc_{name}.err"), "w", encoding="utf-8")
     t0 = time.time()
     p = subprocess.Popen(argv, cwd=ROOT, env=env, stdout=out, stderr=errf,
-                         creationflags=CREATE_NO_WINDOW)
+                         creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     try:
         rc = p.wait(timeout=180)
     except subprocess.TimeoutExpired:

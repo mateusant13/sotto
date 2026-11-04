@@ -107,7 +107,7 @@ def main() -> int:
         return 2
     cmd = argv[argv.index('--') + 1:]
 
-    proc = subprocess.Popen(cmd, creationflags=CREATE_NO_WINDOW,
+    proc = subprocess.Popen(cmd, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     root = proc.pid
     print(f'CENSUS-PID root={root} cadence_ms={int(CADENCE_S * 1000)} '

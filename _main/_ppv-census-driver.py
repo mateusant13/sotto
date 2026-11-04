@@ -37,7 +37,7 @@ def tick(tag: str) -> str:
         [PS, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
          '-File', CENSUS, '-Log', LOG, '-Estado', STATE],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        creationflags=CREATE_NO_WINDOW, timeout=90)
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=90)
     out = proc.stdout.decode('utf-8', 'replace').strip()
     head = f'[{tag}] rc={proc.returncode} ms={int((time.time() - t0) * 1000)}'
     if not out:

@@ -75,7 +75,7 @@ def main():
         cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
     )
     sys.stdout.write(proc.stdout.decode("utf-8", "replace"))
     sys.stdout.flush()

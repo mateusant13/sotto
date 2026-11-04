@@ -162,7 +162,7 @@ def run_panel_arm(panel_js_source: str, absent: bool = False) -> dict:
             [ELECTRON, os.path.join(RENDER_DIR, 'main.js'), '--no-sandbox',
              f'--user-data-dir={profile}', '--disk-cache-size=1'],
             stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-            creationflags=CREATE_NO_WINDOW, cwd=RENDER_DIR, env=env)
+            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), cwd=RENDER_DIR, env=env)
         rc = proc.wait(timeout=180)
     shutil.rmtree(profile, ignore_errors=True)
     text = read(out_path)
@@ -370,7 +370,7 @@ def run_live(args: list[str]) -> tuple[list[str], int]:
     with open(os.path.join(HERE, '_revive-live.stdio.log'), 'wb') as out:
         proc = subprocess.Popen(
             cmd, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-            creationflags=CREATE_NO_WINDOW, cwd=os.path.dirname(SHELL))
+            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), cwd=os.path.dirname(SHELL))
         rc = proc.wait(timeout=400)
     return lines_from(LIVE_LOG), rc
 

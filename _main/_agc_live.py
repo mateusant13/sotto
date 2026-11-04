@@ -91,7 +91,7 @@ def run(arm, agc_on):
     argv = [PYW, WORKER, "--config", CFG, "--stats-interval", "5", "--max-seconds", str(SECONDS)]
     t0 = time.time()
     p = subprocess.Popen(argv, cwd=ROOT, env=env, stdout=out, stderr=errf,
-                         creationflags=CREATE_NO_WINDOW)
+                         creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     try:
         rc = p.wait(timeout=180)
     except subprocess.TimeoutExpired:

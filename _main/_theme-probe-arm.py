@@ -193,7 +193,7 @@ def run_browser(exe, root, extra_hash='', profile=None, allow_file_access=True):
     ]
     if allow_file_access:
         cmd.insert(4, '--allow-file-access-from-files')
-    proc = subprocess.run(cmd, capture_output=True, timeout=180, creationflags=subprocess.CREATE_NO_WINDOW)
+    proc = subprocess.run(cmd, capture_output=True, timeout=180, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     out = proc.stdout.decode('utf-8', 'replace')
     err = proc.stderr.decode('utf-8', 'replace')
     return out, err, proc.returncode, url

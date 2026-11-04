@@ -39,7 +39,7 @@ def main() -> int:
         stdout=out,
         stderr=errf,
         stdin=subprocess.DEVNULL,
-        creationflags=CREATE_NO_WINDOW,
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
         cwd=os.path.dirname(WORKER),
     )
     try:
@@ -50,7 +50,7 @@ def main() -> int:
         # `_main/audit-rows-landmine-child-control.py` (arm r35). `/T` kills the tree, and the
         # target is a PID, never a NAME, so no kill filter can reach an unrelated process.
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                       capture_output=True, creationflags=CREATE_NO_WINDOW)
+                       capture_output=True, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         raise
     out.close()
     errf.close()

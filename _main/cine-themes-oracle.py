@@ -234,7 +234,7 @@ def run_manifest(js_path):
         "process.stdout.write(JSON.stringify(t));"
     )
     proc = subprocess.run(['node', '-e', script, js_path] + appenders, capture_output=True,
-                          timeout=60, creationflags=0x08000000)
+                          timeout=60, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     if proc.returncode != 0:
         raise RuntimeError('node failed on the manifest: %s'
                            % proc.stderr.decode('utf-8', 'replace')[:400])
@@ -427,7 +427,7 @@ class Gate(object):
                 'seed': self.js_path.replace(chr(92), chr(92) * 2),
             })
         proc = subprocess.run([sys.executable, harness], capture_output=True, timeout=300,
-                              creationflags=0x08000000)
+                              creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         if proc.returncode != 0:
             self.check('H1 a fresh generator run reproduces the bytes on disk', False,
                        'the generator exited %d: %s' % (proc.returncode,

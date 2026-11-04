@@ -159,7 +159,7 @@ def kill_tree(proc):
     try:
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       creationflags=CREATE_NO_WINDOW, timeout=30)
+                       creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=30)
     except (OSError, subprocess.SubprocessError):
         pass
     try:
@@ -207,7 +207,7 @@ def run_arm(tag, shell, run_s=RUN_S):
            '--log', log_path, '--exit-after', str(RUN_S)]
     started = time.time()
     proc = subprocess.Popen(cmd, cwd=os.path.dirname(SHELL), env=env,
-                            creationflags=CREATE_NO_WINDOW,
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     # PHASE 1 — the page has to go LIVE. This is the phase the loaded box
     # loses: on 2026-10-20 the page took 63.6 s and the arm never got here.

@@ -588,7 +588,7 @@ def launch_app(env_extra=None):
         env.update(env_extra)
     return subprocess.Popen(
         ["cmd", "/c", RUN_CMD], cwd=os.path.join(ROOT, "app", "webview"),
-        env=env, creationflags=CREATE_NO_WINDOW,
+        env=env, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
 
@@ -630,7 +630,7 @@ def run(args) -> int:
     else:
         child = subprocess.Popen(
             [sys.executable, "-c", PROBE_CHILD, stall_path, stop_path, str(probe_period)],
-            creationflags=CREATE_NO_WINDOW,
+            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     sampler = None if args.solo else Sampler(sink, stop, events)

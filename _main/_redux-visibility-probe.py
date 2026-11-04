@@ -217,7 +217,7 @@ def run_worker(tag, extra_args, visibility_path, seconds, hidden_plan, runner_pa
         exe = PYTHONW if os.path.exists(PYTHONW) else sys.executable
         proc = subprocess.Popen([exe] + cmd[1:], cwd=ROOT, env=env,
                                 stdout=out, stderr=er,
-                                creationflags=CREATE_NO_WINDOW)
+                                creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
         # The schedule is applied in WALL time, and the worker's own `t_start`
         # is the moment the FIRST `capture-started` lands (model loaded, tap

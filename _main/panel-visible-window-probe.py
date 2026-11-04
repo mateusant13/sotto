@@ -281,7 +281,7 @@ def measure(shell: str, extra: list, secs: float, cadence_s: float, idx: int,
         [pythonw(), shell, '--log', alog, '--no-hotkey', '--no-hot-reload',
          '--exit-after', str(secs), *extra],
         stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-        cwd=os.path.dirname(shell), creationflags=CREATE_NO_WINDOW)
+        cwd=os.path.dirname(shell), creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
     t0 = time.perf_counter()
     samples: list = []

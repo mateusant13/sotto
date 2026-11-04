@@ -47,7 +47,7 @@ errf = open(os.path.join(ROOT, "_main", "bfrc_armd.err"), "w", encoding="utf-8")
 argv = [PYW, os.path.join(ROOT, "worker", "sotto_worker.py"),
         "--config", os.path.join(ROOT, "worker", "config.json"),
         "--stats-interval", "60", "--max-seconds", "18"]
-p = subprocess.Popen(argv, cwd=ROOT, stdout=out, stderr=errf, creationflags=CREATE_NO_WINDOW)
+p = subprocess.Popen(argv, cwd=ROOT, stdout=out, stderr=errf, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 rc = p.wait(timeout=180)
 stop.set()
 time.sleep(0.5)

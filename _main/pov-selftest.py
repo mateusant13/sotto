@@ -117,7 +117,7 @@ def launch(exit_after=45, wait=60.0):
     pid = source_pid()
     cmd = [sys.executable, os.path.join(ROOT, '_main', 'launch-as-token.py'),
            str(pid), 'cmd.exe', '/c', RUNNER]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     print(proc.stdout.strip() or proc.stderr.strip())
     deadline = time.time() + wait
     while time.time() < deadline:

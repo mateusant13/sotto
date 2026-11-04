@@ -35,7 +35,7 @@ argv = [PYW, os.path.join(WEBVIEW, "sotto_webview.py"),
 print("argv=%r" % (argv,))
 p = subprocess.Popen(argv, cwd=WEBVIEW, stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     creationflags=CREATE_NO_WINDOW)
+                     creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 deadline = time.time() + 120
 rc = None
 while time.time() < deadline:
@@ -45,7 +45,7 @@ while time.time() < deadline:
     time.sleep(1)
 if rc is None:
     subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     print("TIMEOUT: the shell did not exit within 120 s")
 print("shell rc=%s after %.1fs" % (rc, 120 - (deadline - time.time())))
 

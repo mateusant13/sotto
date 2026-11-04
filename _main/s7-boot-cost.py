@@ -184,7 +184,7 @@ def arm_import(report):
     for _ in range(3):
         proc = subprocess.run([sys.executable, '-c', code],
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                              cwd=HERE, creationflags=CREATE_NO_WINDOW,
+                              cwd=HERE, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                               timeout=180)
         out = proc.stdout.decode('utf-8', 'replace').strip()
         try:

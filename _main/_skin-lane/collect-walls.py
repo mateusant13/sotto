@@ -126,7 +126,7 @@ def main(argv):
             # certificate chain fails), so the download goes through curl.exe.
             p = subprocess.run(['curl.exe', '-sSL', '--fail', '--max-time', '30',
                                 '-o', dest, r['wall_src']],
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
             good = False
             if p.returncode == 0 and os.path.isfile(dest):
                 with io.open(dest, 'rb') as fh:

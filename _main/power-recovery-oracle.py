@@ -209,7 +209,7 @@ def live_arm(timeout_s=120):
                              os.path.join(root, "_main", "keepalive.py")],
                             cwd=root, env=env, stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            creationflags=0x08000000)
+                            creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
     import ctypes
     from ctypes import wintypes as wt

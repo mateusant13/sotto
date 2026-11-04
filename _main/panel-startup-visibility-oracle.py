@@ -266,7 +266,7 @@ def house_census(arm: str, tag: str) -> None:
            '-File', CENSUS, '-Log', clog, '-Estado', cstate]
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=120,
-                           creationflags=CREATE_NO_WINDOW)
+                           creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         tail = (p.stdout or '').strip().replace('\r', '')
         log(f'CENSUS-HOUSE arm={arm} tag={tag} rc={p.returncode} out={tail}')
         if os.path.exists(clog):
@@ -373,7 +373,7 @@ def run_arm(arm: str, shell: str, extra: list, seconds: float) -> dict:
     proc = subprocess.Popen(args, stdout=out, stderr=subprocess.STDOUT,
                             stdin=subprocess.DEVNULL,
                             cwd=os.path.dirname(shell),
-                            creationflags=CREATE_NO_WINDOW)
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     # BASELINE: the first census run of a fresh private state only registers
     # what is already on the desk, so a later run can alarm on the NEW pid.
     house_census(arm, 'baseline')
@@ -391,7 +391,7 @@ def run_arm(arm: str, shell: str, extra: list, seconds: float) -> dict:
         # `_main/audit-rows-landmine-child-control.py` (arm r34). `/T` kills the tree, and the
         # target is a PID, never a NAME, so no kill filter can reach an unrelated process.
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                       capture_output=True, creationflags=CREATE_NO_WINDOW)
+                       capture_output=True, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         raise
     out.close()
     sampler.stop.set()

@@ -125,7 +125,7 @@ def _run(args, tmp):
             [PY, os.path.join(HERE, "multivoice-offline.py"), save_dir,
              "--threads", str(args.threads), "--ignore-load"],
             capture_output=True, text=True, timeout=600,
-            env=dict(os.environ, TMPDIR="I:\\cc-tmp"), creationflags=0x08000000)
+            env=dict(os.environ, TMPDIR="I:\\cc-tmp"), creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         check(proc.returncode != 0,
               "BRACO NEGATIVO: a Fase B recusa um directorio sem clips",
               "rc=%d" % proc.returncode)
@@ -194,7 +194,7 @@ def _run(args, tmp):
          "--threads", str(args.threads), "--ignore-load",
          "--out", os.path.join(tmp, "offline.json")],
         capture_output=True, text=True, timeout=900, env=dict(os.environ, TMPDIR="I:\\cc-tmp"),
-        creationflags=0x08000000)
+        creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     wall = time.perf_counter() - t1
     tail = [l for l in (proc.stdout or "").splitlines()
             if l.strip()][-8:]

@@ -58,7 +58,7 @@ def gpu_used_mib():
     try:
         out = subprocess.run(
             ['nvidia-smi', '--query-gpu=memory.used', '--format=csv,noheader,nounits'],
-            capture_output=True, text=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
+            capture_output=True, text=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except Exception:
         return None
     for line in out.stdout.splitlines():
@@ -76,7 +76,7 @@ def run_arm(name, env_extra, sample, timeout_s):
     proc = subprocess.Popen(cmd, cwd=os.path.join(REPO, 'worker'),
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                             text=True, encoding='utf-8', errors='replace',
-                            env=env, bufsize=1, creationflags=subprocess.CREATE_NO_WINDOW)
+                            env=env, bufsize=1, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     peak = None
     baseline = gpu_used_mib()
     load_s = None

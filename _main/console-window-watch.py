@@ -184,7 +184,7 @@ def main(argv):
     kids = []
     for cmd in runs:
         print('a largar (SEM consola, como a app): %s' % cmd)
-        kids.append(subprocess.Popen(cmd, shell=True, creationflags=NO_WINDOW,
+        kids.append(subprocess.Popen(cmd, shell=True, creationflags=NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                                      stdout=subprocess.DEVNULL,
                                      stderr=subprocess.DEVNULL))
     found = {}

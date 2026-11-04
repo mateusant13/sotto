@@ -25,7 +25,7 @@ for theme in themes:
 jf = os.path.join(wd, 'jobs.json')
 open(jf, 'w', encoding='utf-8').write(json.dumps(jobs, indent=2))
 print('workdir', wd)
-r = subprocess.run(['node', os.path.join(HERE, 'cdp.mjs'), '--jobs', jf], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+r = subprocess.run(['node', os.path.join(HERE, 'cdp.mjs'), '--jobs', jf], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 print(r.stdout[-1500:])
 print(r.stderr[-1000:])
 print('rc', r.returncode)

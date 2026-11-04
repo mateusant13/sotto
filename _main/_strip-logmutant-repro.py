@@ -72,7 +72,7 @@ def cpu_of(pid):
             ['powershell', '-NoProfile', '-Command',
              f'(Get-Process -Id {pid} -ErrorAction SilentlyContinue).CPU'],
             capture_output=True, text=True, timeout=8,
-            creationflags=CREATE_NO_WINDOW)
+            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         return out.stdout.strip() or None
     except Exception:
         return None
@@ -88,7 +88,7 @@ def one_launch(arm, shell, secs, watch):
            '--with-worker', '--worker', STANDIN,
            '--log', log_path, '--exit-after', str(secs)]
     proc = subprocess.Popen(cmd, cwd=os.path.dirname(SHELL), env=env,
-                            creationflags=CREATE_NO_WINDOW,
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     started = time.time()
     last_growth = started

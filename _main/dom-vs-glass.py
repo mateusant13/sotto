@@ -99,7 +99,7 @@ def kill_everything():
          "Name='python.exe'\" | Where-Object { $_.CommandLine -match "
          "'sotto_webview\\.py|sotto_worker\\.py' } | "
          "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"],
-        capture_output=True, text=True, creationflags=0x08000000)
+        capture_output=True, text=True, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     for _ in range(40):
         rows = []
         def cb(h, _):
@@ -132,7 +132,7 @@ def main():
         argv.insert(2, "--no-worker")
     else:
         argv.insert(2, "--with-worker")
-    p = subprocess.Popen(argv, creationflags=0x08000000 | 0x00000008)
+    p = subprocess.Popen(argv, creationflags=0x08000000 | 0x00000008, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     print("launched pid=%d  (dumps at t=%ss)" % (p.pid, wait))
     t0 = time.time()
     while time.time() - t0 < 40:

@@ -45,7 +45,7 @@ def main() -> int:
     if missing:
         wrong.append("not registered in the battery: %s" % ", ".join(missing))
     chk = subprocess.run(["node", "--check", BATTERY], capture_output=True,
-                         text=True, timeout=120, creationflags=subprocess.CREATE_NO_WINDOW)
+                         text=True, timeout=120, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     if chk.returncode != 0:
         wrong.append("the battery does not parse: " + (chk.stderr or "")[:120])
     say("  node --check    : rc=%d" % chk.returncode)

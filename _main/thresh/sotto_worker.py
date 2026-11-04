@@ -2506,7 +2506,7 @@ class ReduxHiddenSwitch:
             proc = subprocess.run(
                 cmd, capture_output=True, text=True, encoding="utf-8",
                 errors="replace", timeout=self.runner_timeout_s,
-                creationflags=creationflags)
+                creationflags=creationflags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
             runner_wall = round(time.time() - t_runner, 2)
             lines = 0
             for raw in (proc.stdout or "").splitlines():

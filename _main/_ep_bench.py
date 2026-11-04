@@ -60,7 +60,7 @@ def _gpu_loop():
                 ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used",
                  "--format=csv,noheader,nounits"],
                 capture_output=True, text=True, timeout=4,
-                creationflags=0x08000000,
+                creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
             ).stdout.strip().splitlines()
             if out:
                 u, m = out[0].split(",")

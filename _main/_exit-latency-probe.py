@@ -66,7 +66,7 @@ def main():
 
     flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
     t0 = time.time()
-    proc = subprocess.Popen(cmd, cwd=REPO, creationflags=flags)
+    proc = subprocess.Popen(cmd, cwd=REPO, creationflags=flags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     print('probe pid=%d  hold=%ss  worker=%s'
           % (proc.pid, args.hold, args.with_worker))
 
@@ -121,7 +121,7 @@ def main():
           '$_.Name -eq \'python.exe\' } | '
           'ForEach-Object { $_.ProcessId }')
     out = subprocess.run(['powershell', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps],
-                         capture_output=True, text=True, creationflags=0x08000000)
+                         capture_output=True, text=True, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     pids = [ln.strip() for ln in out.stdout.splitlines() if ln.strip()]
     print('  %s' % ('NONE' if not pids else 'pids: ' + ', '.join(pids)))
     return 0

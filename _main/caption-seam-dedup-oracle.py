@@ -145,7 +145,7 @@ def neg_arm():
         fh.write(mutant)
     try:
         proc = subprocess.run([sys.executable, os.path.abspath(__file__), "--worker", tmp],
-                              capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                              capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     finally:
         try:
             os.unlink(tmp)
@@ -171,7 +171,7 @@ def neg_arm():
             fh.write(mutant2)
         try:
             proc2 = subprocess.run([sys.executable, os.path.abspath(__file__), "--worker", tmp2],
-                                   capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                                   capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         finally:
             try:
                 os.unlink(tmp2)
@@ -198,7 +198,7 @@ def neg_arm():
             fh.write(mutant3)
         try:
             proc3 = subprocess.run([sys.executable, os.path.abspath(__file__), "--worker", tmp3],
-                                   capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                                   capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         finally:
             try:
                 os.unlink(tmp3)

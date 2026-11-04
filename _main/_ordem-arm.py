@@ -144,7 +144,7 @@ proc = subprocess.Popen(
     [PYEXE, "-u", os.path.join(worker_dir, "sotto_worker.py"),
      "--max-seconds", max_seconds],
     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
-    errors="replace", bufsize=1, creationflags=CREATE_NO_WINDOW, cwd=worker_dir,
+    errors="replace", bufsize=1, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), cwd=worker_dir,
 )
 p("SPAWN mode=%s delay=%.2f argv=%s pid=%d"
   % (mode, play_delay, [PYEXE, os.path.join(worker_dir, "sotto_worker.py")], proc.pid))

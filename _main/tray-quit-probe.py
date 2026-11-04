@@ -224,7 +224,7 @@ def launch(tag, worker=True, mutex_name=None):
         # measurement suppression, which would otherwise decline the worker.
         cmd += ['--with-worker', '--worker', FAKE_WORKER]
     proc = subprocess.Popen(cmd, cwd=os.path.join(ROOT, 'app', 'webview'),
-                            creationflags=CREATE_NO_WINDOW,
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return proc, log_path
 

@@ -295,7 +295,7 @@ def shoot(html_path, out_png, w, h, surface, budget=9000):
            '--virtual-time-budget=%d' % budget,
            '--window-size=%d,%d' % (w, h),
            '--screenshot=%s' % out_png, url]
-    proc = subprocess.run(cmd, capture_output=True, timeout=300, creationflags=subprocess.CREATE_NO_WINDOW)
+    proc = subprocess.run(cmd, capture_output=True, timeout=300, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     try:
         err = (proc.stderr or b'').decode('utf-8', 'replace')[:300]
     except Exception:

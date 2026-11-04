@@ -158,7 +158,7 @@ def run_worker(script: str, out_path: str, device: str, model_dir: str,
             "--tap-window", "60",
         ],
         stdout=out, stderr=errf, stdin=subprocess.DEVNULL,
-        creationflags=CREATE_NO_WINDOW, cwd=WORKER_DIR, env=env,
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), cwd=WORKER_DIR, env=env,
     )
     try:
         rc = proc.wait(timeout=WALL_TIMEOUT_S)

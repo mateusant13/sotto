@@ -1712,7 +1712,7 @@ class WorkerBridge:
                 encoding='utf-8',
                 errors='replace',
                 bufsize=1,
-                creationflags=creationflags,
+                creationflags=creationflags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
             )
         except Exception as exc:
             self.child = None

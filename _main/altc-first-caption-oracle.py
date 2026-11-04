@@ -492,7 +492,7 @@ def drive(tag=None):
     env = dict(os.environ, SOTTO_POV_TAG=tag)
     try:
         proc = subprocess.run([sys.executable, driver, "--run"], env=env,
-                              capture_output=True, text=True, timeout=420, creationflags=subprocess.CREATE_NO_WINDOW)
+                              capture_output=True, text=True, timeout=420, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except Exception as exc:                                    # noqa: BLE001
         print("MEDICAO AUSENTE: o motor da medicao nao correu: %r" % (exc,))
         return log

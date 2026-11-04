@@ -109,7 +109,7 @@ def run_arms(path, label):
     # object has no attribute 'wait'`).
     proc = subprocess.Popen([sys.executable, "-c", CHILD],
                             stderr=subprocess.PIPE, stdout=subprocess.DEVNULL,
-                            text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                            text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     err = proc.stderr.read()
     fake2 = Fake()
     fake2.child = proc
@@ -123,7 +123,7 @@ def run_arms(path, label):
                          "PASS" if c_ok else "FAIL"))
 
     proc2 = subprocess.Popen([sys.executable, "-c", "import sys; sys.exit(1)"],
-                             stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+                             stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     fake3 = Fake()
     fake3.stderr_tail = ["WORKER_STATS tag=tick blocks=10 peak=0.5",
                          "REDUX_BATCH_KICK reason=interval engine=parakeet"]
@@ -162,7 +162,7 @@ def neg_arm():
                      .replace(guard, "if False:", 1))
     try:
         proc = subprocess.run([sys.executable, os.path.abspath(__file__), "--shell", path],
-                              capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                              capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     finally:
         try:
             os.remove(path)

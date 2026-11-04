@@ -51,7 +51,7 @@ def main() -> int:
           '"T|"+$s.TargetPath;"A|"+$s.Arguments;"W|"+$s.WorkingDirectory'
           % START.replace(chr(92), chr(92)*2))
     out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps],
-                         capture_output=True, text=True, timeout=60, creationflags=0x08000000).stdout or ""
+                         capture_output=True, text=True, timeout=60, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0)).stdout or ""
     fields = {}
     for line in out.splitlines():
         if "|" in line:

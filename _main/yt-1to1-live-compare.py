@@ -278,7 +278,7 @@ def start_edge(port=9333):
             "--disable-backgrounding-occluded-windows",
             "--disable-renderer-backgrounding",
             "about:blank"]
-    _EDGE_PROC = subprocess.Popen(args, creationflags=0x08000000)  # CREATE_NO_WINDOW
+    _EDGE_PROC = subprocess.Popen(args, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))  # CREATE_NO_WINDOW
     for _ in range(60):
         time.sleep(0.5)
         try:
@@ -308,7 +308,7 @@ def stop_edge():
     pid = _EDGE_PROC.pid
     try:
         subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                       capture_output=True, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
+                       capture_output=True, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -320,7 +320,7 @@ def stop_edge():
 
 def driver(args, timeout=180):
     p = subprocess.run(["bun", DRIVER] + args, cwd=WORKDIR,
-                       capture_output=True, timeout=timeout, env=_DRIVER_ENV, creationflags=subprocess.CREATE_NO_WINDOW)
+                       capture_output=True, timeout=timeout, env=_DRIVER_ENV, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     raw = ((p.stdout or b"") + (p.stderr or b"")).decode("utf-8", "replace")
     for line in reversed(raw.splitlines()):
         line = line.strip()

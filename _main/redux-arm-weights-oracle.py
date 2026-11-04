@@ -233,7 +233,7 @@ def run_node_store(store_path: Path, root: Path, tokens):
     flags = CREATE_NO_WINDOW if os.name == "nt" else 0
     try:
         proc = subprocess.run([NODE_EXE, "-e", NODE_DRIVER], capture_output=True,
-                              timeout=120, creationflags=flags, env=env)
+                              timeout=120, creationflags=flags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), env=env)
     except FileNotFoundError:
         raise SetupError(f"node not found at {NODE_EXE}")
     except subprocess.TimeoutExpired:

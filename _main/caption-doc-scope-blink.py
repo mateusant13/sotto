@@ -169,7 +169,7 @@ def measure(edge, panel_dir):
                    "--virtual-time-budget=8000", "--window-size=900,900",
                    "--dump-dom", url]
             try:
-                p = subprocess.run(cmd, capture_output=True, timeout=180, creationflags=subprocess.CREATE_NO_WINDOW)
+                p = subprocess.run(cmd, capture_output=True, timeout=180, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
             except subprocess.TimeoutExpired:
                 return None, "Edge timed out on %s" % page
             dom = (p.stdout or b"").decode("utf-8", "replace")

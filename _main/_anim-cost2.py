@@ -91,7 +91,7 @@ def sweep_profile(prof):
     try:
         out = subprocess.run(['powershell', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps],
                              capture_output=True, encoding='utf-8', errors='replace',
-                             creationflags=0x08000000).stdout or ''
+                             creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0)).stdout or ''
     except OSError:
         out = ''
     for line in out.splitlines():
@@ -101,7 +101,7 @@ def sweep_profile(prof):
         if prof.lower() not in cmd.lower():
             continue
         subprocess.run(['taskkill', '/F', '/PID', pid.strip()],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     for _ in range(6):
         shutil.rmtree(prof, ignore_errors=True)
         if not os.path.isdir(prof):
@@ -130,7 +130,7 @@ def run_one(arm_mod, browser, page, theme, motion, ablation, args, port):
         cmd.insert(1, '--blink-settings=prefersReducedMotion=false')
     logfh = open(args.browser_log, 'w', encoding='utf-8', errors='replace') \
         if args.browser_log else open(os.devnull, 'w')
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=logfh, creationflags=subprocess.CREATE_NO_WINDOW)
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=logfh, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     started = time.time()
     try:
         while time.time() - started < args.deadline and arm_mod.Beacon.payload is None:
@@ -140,7 +140,7 @@ def run_one(arm_mod, browser, page, theme, motion, ablation, args, port):
         # The exact pid Popen gave us, `/T` for its own children, never a filter:
         # a filter on `chrome` would take the owner's browser with it.
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         # AND THE LEAVINGS. MEASURED 2026-11-01: `/T` on the launcher's pid left
         # FIVE finished arms alive and their profile dirs in `%TEMP%` (rmtree
         # cannot delete a locked dir), and the next arms' beacons were lost to the

@@ -150,7 +150,7 @@ def run_capture(cmd: list[str], timeout: int = 25) -> tuple[int, str]:
     """Run a console program with NO window (the owner's app is LIVE)."""
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                           creationflags=CREATE_NO_WINDOW, errors="replace")
+                           creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), errors="replace")
         return p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()
     except FileNotFoundError:
         return 127, "NOT FOUND on PATH"

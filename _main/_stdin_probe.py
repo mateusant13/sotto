@@ -11,7 +11,7 @@ CMDS = ["ping", "start", "stop", "record", "cut", "capture.start",
 p = subprocess.Popen([EXE, "--run", "--seconds", "3", "--cut-at", "1",
                       "--out", r"H:\sotto-wt\e2e\_main\build\stdinprobe.mp4"],
                      stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                     stderr=subprocess.STDOUT, text=True, bufsize=1, creationflags=subprocess.CREATE_NO_WINDOW)
+                     stderr=subprocess.STDOUT, text=True, bufsize=1, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
 replies = []
 def reader():

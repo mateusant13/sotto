@@ -85,7 +85,7 @@ def _run_cli(args, env):
     proc = subprocess.run(
         [sys.executable, MODULE] + args,
         capture_output=True, text=True, errors="replace",
-        env=env, timeout=120, creationflags=NO_WINDOW,
+        env=env, timeout=120, creationflags=NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
     )
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 

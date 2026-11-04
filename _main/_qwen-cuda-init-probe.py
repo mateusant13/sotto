@@ -101,7 +101,7 @@ def hr(t: str) -> None:
 def run(cmd: list[str], timeout: int = 25) -> tuple[int, str]:
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                              creationflags=CREATE_NO_WINDOW)
+                              creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         return proc.returncode, ((proc.stdout or "") + (proc.stderr or "")).strip()
     except FileNotFoundError:
         return 127, "NOT FOUND on PATH"

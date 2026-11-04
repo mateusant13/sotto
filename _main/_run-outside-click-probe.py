@@ -21,7 +21,7 @@ if os.path.exists(LOG):
 cmd = [PYW, SHELL, '--no-hotkey', '--no-hot-reload', '--no-tray',
        '--probe-outside-click', '--log', LOG]
 proc = subprocess.Popen(cmd, cwd=os.path.dirname(SHELL),
-                        creationflags=0x08000000,
+                        creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 print(f'pid={proc.pid} log={LOG}')
 try:

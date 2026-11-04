@@ -16,7 +16,7 @@ job = {
 }
 jf = os.path.join(wd, 'jobs.json')
 open(jf, 'w', encoding='utf-8').write(json.dumps([job], indent=2))
-r = subprocess.run(['node', os.path.join(HERE, 'cdp.mjs'), '--jobs', jf], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+r = subprocess.run(['node', os.path.join(HERE, 'cdp.mjs'), '--jobs', jf], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 print(r.stdout[-800:])
 print(r.stderr[-500:])
 print('rc', r.returncode)

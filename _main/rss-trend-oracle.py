@@ -130,7 +130,7 @@ def neg_arm():
         fh.write(src[:at + 1] + 'SLOPE_FLAG_MB_PER_MIN = 1e9' + src[at + 1 + len(needle):])
         path = fh.name
     try:
-        proc = subprocess.run([sys.executable, path], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        proc = subprocess.run([sys.executable, path], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     finally:
         import os
         try:

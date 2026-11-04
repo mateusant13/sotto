@@ -136,7 +136,7 @@ if hr == 0:
             try:
                 import subprocess
                 out = subprocess.run(["tasklist", "/FI", f"PID eq {pid.value}", "/FO", "CSV", "/NH"],
-                                     capture_output=True, text=True, creationflags=0x08000000).stdout.strip()
+                                     capture_output=True, text=True, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0)).stdout.strip()
                 name = out.split(",")[0].strip('"') if out else "?"
             except Exception:
                 pass

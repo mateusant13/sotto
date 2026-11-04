@@ -103,7 +103,7 @@ def run_cycle(duration_s=120, label="arm5_release_reload"):
     flags = 0x08000000 if os.name == "nt" else 0
     proc = subprocess.Popen(cmd, cwd=os.path.join(ROOT, "worker"),
                             stdout=out_fh, stderr=err_fh, stdin=subprocess.DEVNULL,
-                            env=env, creationflags=flags)
+                            env=env, creationflags=flags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
     # THE CYCLE, each step waiting for the worker's own signal.
     steps = [

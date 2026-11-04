@@ -202,7 +202,7 @@ def main(argv=None) -> int:
         ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy",
          "Bypass", "-File", ps1, log, out, cmd, "1" if args.heavy else "0"],
         capture_output=True, text=True, timeout=3600, cwd=ROOT, env=env,
-        creationflags=CREATE_NO_WINDOW,
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
     )
     if not os.path.exists(out):
         print("CENSUS FAILED: the trace produced nothing")

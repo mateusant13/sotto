@@ -55,7 +55,7 @@ def main() -> int:
         err_path = path + '.err'
         with open(err_path, 'wb') as err_file:
             res = subprocess.run(['node', '--check', path],
-                                 stdout=subprocess.DEVNULL, stderr=err_file, creationflags=subprocess.CREATE_NO_WINDOW)
+                                 stdout=subprocess.DEVNULL, stderr=err_file, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         status = 'syntax OK' if res.returncode == 0 else 'SYNTAX ERROR'
         if res.returncode != 0:
             failures.append(name)

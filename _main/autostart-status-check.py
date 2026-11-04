@@ -82,7 +82,7 @@ def read_state(name, keypath):
 
 def shell_answer():
     proc = subprocess.run([PY, os.path.join(ROOT, "app", "webview", "sotto_webview.py"), "--autostart-status"],
-                          capture_output=True, text=True, cwd=ROOT, timeout=120, creationflags=subprocess.CREATE_NO_WINDOW)
+                          capture_output=True, text=True, cwd=ROOT, timeout=120, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
 

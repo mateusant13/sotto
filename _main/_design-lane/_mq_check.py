@@ -24,7 +24,7 @@ for name, extra in ARMS:
     cmd = [edge] + headless + ['--disable-gpu', '--no-first-run', '--user-data-dir=' + prof] + extra + \
           ['--dump-dom', 'file:///' + page.replace('\\', '/')]
     try:
-        p = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=90, creationflags=subprocess.CREATE_NO_WINDOW)
+        p = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=90, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except subprocess.TimeoutExpired:
         print('%-22s TIMEOUT' % name)
         continue

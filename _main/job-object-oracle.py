@@ -94,7 +94,7 @@ def _alive(pid):
           'try { Get-Process -Id %d -ErrorAction Stop | Out-Null; "VIVO" } '
           'catch { "MORTO" }' % pid]
     out = subprocess.run(ps, capture_output=True, text=True,
-                         creationflags=NO_WINDOW, timeout=60).stdout
+                         creationflags=NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=60).stdout
     return 'VIVO' in out
 
 
@@ -103,7 +103,7 @@ def _parent(arm, pidfile):
     if arm and not ok:
         print('JOB_ARM_FAILED %s' % why)
     child = subprocess.Popen([sys.executable, '-c', 'import time;time.sleep(%d)' % SLEEP_S],
-                             creationflags=NO_WINDOW)
+                             creationflags=NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     open(pidfile, 'w').write('%d|%s' % (child.pid, 'armed' if ok else 'disarmed'))
     print('JOB_PARENT job=%s child=%d' % ('armed' if ok else 'disarmed', child.pid))
     time.sleep(0.5)
@@ -128,7 +128,7 @@ def main(argv):
            '--pidfile', pidfile]
     if neg:
         cmd.append('--neg-arm')
-    subprocess.run(cmd, creationflags=NO_WINDOW, timeout=120)
+    subprocess.run(cmd, creationflags=NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=120)
     time.sleep(2.0)
     try:
         pid, mode = open(pidfile).read().split('|')
@@ -139,7 +139,7 @@ def main(argv):
     alive = _alive(pid)
     try:
         subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True,
-                       creationflags=NO_WINDOW)
+                       creationflags=NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except Exception:                     # noqa: BLE001
         pass
 

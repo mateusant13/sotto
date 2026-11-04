@@ -144,7 +144,7 @@ def kill_tree(proc):
     try:
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       creationflags=CREATE_NO_WINDOW, timeout=30)
+                       creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=30)
     except (OSError, subprocess.SubprocessError):
         pass
     try:
@@ -181,7 +181,7 @@ def run_arm(tag, extra, timeout=60.0):
     err_path = log_path + '.err'
     err_fh = open(err_path, 'wb')
     proc = subprocess.Popen(cmd, cwd=os.path.dirname(SHELL),
-                            creationflags=CREATE_NO_WINDOW,
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                             stdout=subprocess.DEVNULL, stderr=err_fh)
     # PHASE 1 — the page has to go LIVE before the DOM says anything.
     seen, waited, alive = wait_ready(proc, log_path, started, READY_DEADLINE_S)

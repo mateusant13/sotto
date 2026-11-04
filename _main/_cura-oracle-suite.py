@@ -102,7 +102,7 @@ def main():
         t0 = time.time()
         try:
             p = subprocess.run([PY] + argv, cwd=REPO, capture_output=True,
-                               timeout=timeout, creationflags=subprocess.CREATE_NO_WINDOW)
+                               timeout=timeout, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
             rc, out, err = p.returncode, p.stdout, p.stderr
             timed_out = False
         except subprocess.TimeoutExpired as exc:

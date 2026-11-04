@@ -449,7 +449,7 @@ def run_wrapper(run_cmd: str, extra, timeout: float = 120.0,
     sink = subprocess.DEVNULL if not capture else subprocess.PIPE
     t0 = time.time()
     p = subprocess.run(argv, stdout=sink, stderr=sink, text=True,
-                       errors='replace', creationflags=CREATE_NO_WINDOW,
+                       errors='replace', creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                        timeout=timeout, cwd=os.path.dirname(run_cmd),
                        env=env)
     return {'args': [str(x) for x in extra], 'rc': p.returncode,
@@ -591,7 +591,7 @@ def wmi_process_info(pids, since_iso: str) -> dict:
         out = subprocess.run(
             ['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
             capture_output=True, text=True, errors='replace',
-            creationflags=CREATE_NO_WINDOW, timeout=60)
+            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=60)
     except Exception:
         return {}
     rows = {}
@@ -660,7 +660,7 @@ def kill_by_pid(pid: int) -> tuple:
     """Kill EXACTLY the pid the app published about itself."""
     out = subprocess.run(['taskkill', '/PID', str(pid), '/F'],
                          capture_output=True, text=True, errors='replace',
-                         creationflags=CREATE_NO_WINDOW)
+                         creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     return out.returncode, ((out.stdout or '') + (out.stderr or '')).strip()
 
 
@@ -1095,7 +1095,7 @@ def arm_gap_pywebview(notes) -> dict:
     pre_shell = os.path.join(os.path.dirname(bcmd), 'sotto_webview.py')
     direct = subprocess.run([sys.executable, pre_shell, '--show'],
                             capture_output=True, text=True, errors='replace',
-                            creationflags=CREATE_NO_WINDOW, env=benv,
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), env=benv,
                             timeout=60)
     checks = [
         ('AFTER: run.cmd REFUSES the launch (non-zero)',
@@ -1401,9 +1401,9 @@ def self_test(pr) -> int:
     """
     sleepy = 'import time; time.sleep(30)'
     ours = subprocess.Popen([sys.executable, '-c', sleepy, 'sotto_webview.py'],
-                             creationflags=CREATE_NO_WINDOW)
+                             creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     theirs = subprocess.Popen([sys.executable, '-c', sleepy, 'unrelated-thing.py'],
-                               creationflags=CREATE_NO_WINDOW)
+                               creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     try:
         time.sleep(1.5)
         found, ignored = leftover_of_ours(pr, os.getpid(), RUN_STARTED_ISO)

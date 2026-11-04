@@ -109,7 +109,7 @@ def main():
     env['PYTHONIOENCODING'] = 'utf-8'
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             cwd=REPO, env=env, text=True, encoding='utf-8',
-                            errors='replace', creationflags=0x08000000)
+                            errors='replace', creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     captions = []
     statuses = []
 

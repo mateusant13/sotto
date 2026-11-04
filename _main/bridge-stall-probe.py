@@ -149,7 +149,7 @@ def burn(count):
     loop = 'while True: pass'
     procs = []
     for _ in range(max(0, int(count))):
-        proc = subprocess.Popen([sys.executable, '-c', loop], creationflags=flags)
+        proc = subprocess.Popen([sys.executable, '-c', loop], creationflags=flags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         try:
             # BELOW_NORMAL_PRIORITY_CLASS = 0x4000
             ctypes.windll.kernel32.SetPriorityClass(
@@ -254,7 +254,7 @@ def launch(tree, p, seconds, census, feeder):
     write_runner(tree, p, seconds, census, feeder)
     cmd = [sys.executable, os.path.join(HERE, 'launch-as-token.py'),
            str(source_pid()), 'cmd.exe', '/c', p['cmd']]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90, creationflags=subprocess.CREATE_NO_WINDOW)
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     return (proc.stdout or '').strip() or (proc.stderr or '').strip()
 
 

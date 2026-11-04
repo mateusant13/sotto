@@ -711,7 +711,7 @@ def arm(tag: str, extra: list, secs: float, shell: str,
     proc = subprocess.Popen(args, stdout=outp, stderr=subprocess.STDOUT,
                             stdin=subprocess.DEVNULL,
                             cwd=os.path.dirname(shell),
-                            creationflags=CREATE_NO_WINDOW)
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     pid = proc.pid
     log(f'=== ARM {tag} extra={extra} pid={pid} secs={secs} '
         f'wait_for_show={wait_for_show} ===')

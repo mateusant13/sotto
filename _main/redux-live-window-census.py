@@ -120,7 +120,7 @@ def resolve_names(pids) -> dict:
     try:
         out = subprocess.run(["pwsh", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script],
                              capture_output=True, text=True, timeout=30,
-                             creationflags=0x08000000).stdout.strip()
+                             creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0)).stdout.strip()
     except Exception as exc:                      # noqa: BLE001 - reported, never hidden
         print(f"# WARN name resolution failed: {exc!r}")
         return {}
@@ -162,7 +162,7 @@ def main() -> int:
           f"pids={len(pre)} sample_titles={json.dumps(pre_titles[:4], ensure_ascii=False)}")
 
     t0 = time.perf_counter()
-    proc = subprocess.Popen(cmd, cwd=str(ROOT), creationflags=CREATE_NO_WINDOW,
+    proc = subprocess.Popen(cmd, cwd=str(ROOT), creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     child = proc.pid
     print(f"# child pid={child} spawned with CREATE_NO_WINDOW")

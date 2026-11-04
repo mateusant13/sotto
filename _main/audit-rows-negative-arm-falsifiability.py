@@ -74,7 +74,7 @@ def write(path, text):
 def run_python(path, cwd, args=()):
     got = subprocess.run([sys.executable, path, *args], cwd=cwd,
                          capture_output=True, text=True, timeout=300,
-                         creationflags=0x08000000)
+                         creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     return {'rc': got.returncode, 'stdout': got.stdout,
             'stderr_tail': got.stderr[-300:]}
 

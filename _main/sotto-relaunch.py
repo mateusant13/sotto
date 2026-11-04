@@ -219,7 +219,7 @@ def _children_of(pids):
         out = subprocess.run(
             ['powershell', '-NoProfile', '-Command',
              'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)|$($_.Name)|$($_.ParentProcessId)" }'],
-            capture_output=True, text=True, creationflags=NO_WINDOW, timeout=40)
+            capture_output=True, text=True, creationflags=NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=40)
     except Exception:                     # noqa: BLE001
         return []
     rows = []
@@ -302,7 +302,7 @@ def kill(pid, source=None):
         for target in targets:
             result = subprocess.run(['taskkill', '/PID', str(target), '/T', '/F'],
                                     capture_output=True, close_fds=True,
-                                    creationflags=NO_WINDOW)
+                                    creationflags=NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
             w('kill directo pid=%d rc=%d' % (target, result.returncode))
         survivors = _live_pids(targets)
     # UM SO' FILHO DE TOKEN PARA O CONJUNTO. `ok` do lote so' e' True com rc==0 em TODOS
@@ -387,7 +387,7 @@ def launch_via_task():
     """Fallback launcher: the task runs as HIM, in HIS session, `high`."""
     w('schtasks /run /tn %s' % TASK)
     result = subprocess.run(['schtasks', '/run', '/tn', TASK], capture_output=True,
-                            close_fds=True, creationflags=NO_WINDOW)
+                            close_fds=True, creationflags=NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     return result.returncode == 0
 
 

@@ -44,7 +44,7 @@ html = html.replace("</body>", PROBE+"</body>")
 with open(hp,"w",encoding="utf-8") as fh: fh.write(html)
 url="file:///"+hp.replace(os.sep,"/")
 cmd=[EDGE,"--headless=new","--disable-gpu","--no-first-run","--no-default-browser-check","--force-device-scale-factor=1","--virtual-time-budget=6000","--window-size=900,170","--dump-dom",url]
-p=subprocess.run(cmd,capture_output=True,timeout=180, creationflags=subprocess.CREATE_NO_WINDOW)
+p=subprocess.run(cmd,capture_output=True,timeout=180, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 dom=(p.stdout or b"").decode("utf-8","replace")
 m=re.search(r'<pre id="probe-out"[^>]*>(.*?)</pre>',dom,re.S)
 if not m:

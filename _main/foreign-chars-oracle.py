@@ -133,7 +133,7 @@ def tracked_files():
     """Os ficheiros versionados que este gate le. `git ls-files` e' a fonte:
     o que esta em disco mas nao esta no repo nao interessa a ninguem."""
     proc = subprocess.run(["git", "-C", ROOT, "ls-files"],
-                          capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                          capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     if proc.returncode != 0:
         return None
     return [line.strip() for line in proc.stdout.splitlines() if line.strip()]

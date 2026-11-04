@@ -24,7 +24,7 @@ with open(a.out, "wb") as fh:
         stdout=fh,
         stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL,
-        creationflags=CREATE_NO_WINDOW,
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
     )
     rc = p.wait()
 

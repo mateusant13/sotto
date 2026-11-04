@@ -118,7 +118,7 @@ def run_one(arm, audio, threads, gate_on, tag, neg_arm):
             # form AND in the FILE form, while 0x08000000 alone -> 23 bytes. This probe
             # READS out_path at :136 (parse) and :141, so it was measuring nothing.
             # Instrument for the whole class: _main/channel-class-site-oracle.py.
-            creationflags=0x08000000,
+            creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
         )
         # Sample RSS/CPU from OUTSIDE, at our own cadence: the worker's own
         # peak_rss_mb is its reading of itself, which is useful but is not an

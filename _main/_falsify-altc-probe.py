@@ -554,7 +554,7 @@ def run_arm(arm, scratch_root, tag, expectation, mutation, timeout=420.0):
     started = time.time()
     try:
         proc = subprocess.run(cmd, env=env, capture_output=True, text=True,
-                              timeout=timeout, cwd=tree, creationflags=subprocess.CREATE_NO_WINDOW)
+                              timeout=timeout, cwd=tree, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         rc, stdout, stderr = proc.returncode, proc.stdout or '', proc.stderr or ''
     except subprocess.TimeoutExpired as exc:
         rc, stdout, stderr = -999, (exc.stdout or ''), (exc.stderr or '')

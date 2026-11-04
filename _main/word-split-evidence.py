@@ -56,7 +56,7 @@ def main():
         with open(os.path.join(HERE, outs[name]), "wb") as fo, \
                 open(os.path.join(HERE, outs[name] + ".err"), "wb") as fe:
             rc = subprocess.call(cmd, stdout=fo, stderr=fe,
-                                 creationflags=CREATE_NO_WINDOW, cwd=REPO)
+                                 creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), cwd=REPO)
         say(f"ARM {name}: rc={rc} wall={time.time() - t0:.1f}s")
         if rc != 0:
             say(f"ARM {name} FAILED rc={rc}")

@@ -134,7 +134,7 @@ def run_worker(argv, env_extra=None, timeout=TIMEOUT_S):
         stderr=subprocess.PIPE,
         cwd=REPO,
         env=env,
-        creationflags=CREATE_NO_WINDOW,
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
     )
     stats = []          # (t, tag, counters)
     stderr_lines = []

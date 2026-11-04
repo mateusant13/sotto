@@ -112,7 +112,7 @@ def resolve_names(pids) -> dict:
              f"Get-Process -Id {csv} -ErrorAction SilentlyContinue | "
              f"Select-Object Id,ProcessName | ConvertTo-Json -Compress"],
             capture_output=True, text=True, timeout=60,
-            creationflags=CREATE_NO_WINDOW)
+            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         raw = (out.stdout or "").strip()
         if not raw:
             return {}
@@ -222,7 +222,7 @@ def main(argv=None) -> int:
     print("spawn: " + " ".join(cmd))
     t0 = time.perf_counter()
     proc = subprocess.run(cmd, cwd=str(ROOT), env=env, capture_output=True,
-                          text=True, timeout=180, creationflags=CREATE_NO_WINDOW)
+                          text=True, timeout=180, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     rc = proc.returncode
     print(f"run.cmd returned rc={rc} after {time.perf_counter() - t0:.2f}s "
           f"(it detaches; the app lives on)")
@@ -241,7 +241,7 @@ def main(argv=None) -> int:
             alive = subprocess.run(
                 ["pwsh", "-NoProfile", "-Command",
                  f"@(Get-Process -Id {rep['shell_pid']} -ErrorAction SilentlyContinue).Count"],
-                capture_output=True, text=True, timeout=30, creationflags=CREATE_NO_WINDOW)
+                capture_output=True, text=True, timeout=30, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
             if (alive.stdout or "").strip().startswith("0"):
                 print(f"shell pid {rep['shell_pid']} gone at "
                       f"+{time.perf_counter() - t0:.1f}s")

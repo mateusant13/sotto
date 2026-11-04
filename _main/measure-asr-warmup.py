@@ -36,7 +36,7 @@ def main() -> int:
         stderr=subprocess.DEVNULL,
         # Belt and braces: even if this were launched from a console, the child
         # is not allowed one.
-        creationflags=0x08000000,
+        creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
         text=True,
         encoding="utf-8",
         errors="replace",

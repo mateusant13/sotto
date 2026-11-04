@@ -31,7 +31,7 @@ url = ('http://127.0.0.1:%d/arm/panel-cost-dbg.html#mode=cost&theme=theme-5&arm=
 cmd = [edge, '--headless=new', '--disable-gpu', '--no-first-run',
        '--user-data-dir=' + prof, '--virtual-time-budget=12000', '--dump-dom', url]
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                     encoding='utf-8', errors='replace', creationflags=subprocess.CREATE_NO_WINDOW)
+                     encoding='utf-8', errors='replace', creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 out, errs = p.communicate(timeout=200)
 print('dom bytes', len(out or ''))
 m = re.search(r'<title>(.*?)</title>', out or '', re.S)

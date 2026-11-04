@@ -1157,7 +1157,7 @@ def fetch_backdrop(d, log):
     try:
         proc = subprocess.run(
             ['curl.exe', '-sSL', '--fail', '--max-time', '25', '-o', path, d['wallpaper']],
-            capture_output=True, timeout=60, creationflags=0x08000000)
+            capture_output=True, timeout=60, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         size = os.path.getsize(path) if os.path.exists(path) else 0
         if proc.returncode != 0 or size < 8192:
             raise ValueError('curl rc=%d, %d B' % (proc.returncode, size))
@@ -1635,7 +1635,7 @@ def main():
     # last thing this generator does is ask node to read its own output.
     try:
         check = subprocess.run(['node', '--check', JS_OUT], capture_output=True,
-                               timeout=60, creationflags=0x08000000)
+                               timeout=60, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except Exception as exc:                                    # noqa: BLE001
         print('FAIL: could not run node --check: %s' % exc, file=sys.stderr)
         return 1

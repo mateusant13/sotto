@@ -153,7 +153,7 @@ def build_variant(tag, uncured_rev='41e7bc6^'):
     else:
         proc = subprocess.run(['git', '-C', ROOT, 'show',
                                '%s:app/webview/sotto_webview.py' % uncured_rev],
-                              capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                              capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         if proc.returncode != 0 or not proc.stdout:
             raise SystemExit('variant %s: git show failed: %s'
                              % (tag, (proc.stderr or '').strip()[:200]))
@@ -400,7 +400,7 @@ def main():
 
     try:
         proc = subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT,
-                                cwd=ROOT, env=env, creationflags=0x08000000)
+                                cwd=ROOT, env=env, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except Exception as exc:
         say('SPAWN FAILED %r' % (exc,))
         raise

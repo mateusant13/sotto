@@ -344,7 +344,7 @@ def _mutate_chrome(src):
 
 def _head_source():
     r = subprocess.run(["git", "-C", REPO, "show", "HEAD:app/webview/external_subs.py"],
-                       capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                       capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     if r.returncode != 0 or not r.stdout:
         return None
     return r.stdout.decode("utf-8")

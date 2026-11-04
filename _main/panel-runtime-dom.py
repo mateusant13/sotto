@@ -381,7 +381,7 @@ def main():
            '--no-default-browser-check', '--user-data-dir=%s' % profile,
            '--virtual-time-budget=%d' % budget,
            '--window-size=380,900', '--dump-dom', url]
-    proc = subprocess.run(cmd, capture_output=True, timeout=300, creationflags=subprocess.CREATE_NO_WINDOW)
+    proc = subprocess.run(cmd, capture_output=True, timeout=300, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     dom = (proc.stdout or b'').decode('utf-8', 'replace')
 
     # TAKE THE LAST ONE. The probe emits a stage line at parse time AND a final

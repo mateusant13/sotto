@@ -72,7 +72,7 @@ def run(mode, segs, timeout_s):
     env = dict(os.environ, TMPDIR="I:\\cc-tmp", PYTHONUNBUFFERED="1")
     p = subprocess.Popen([PY, "-c", CHILD, mode, str(segs)], env=env,
                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                         text=True, creationflags=0x08000000)
+                         text=True, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     series = []
     t0 = time.perf_counter()
     try:

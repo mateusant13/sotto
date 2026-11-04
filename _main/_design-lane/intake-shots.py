@@ -287,7 +287,7 @@ def main():
                 json.dump(misses, fh, indent=1)
             outf = os.path.join(workroot, 'jobs-run-result.json')
             proc = subprocess.run(['node', CDP, '--jobs', runf, '--json', outf],
-                                   capture_output=True, timeout=3600, creationflags=subprocess.CREATE_NO_WINDOW)
+                                   capture_output=True, timeout=3600, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
             sys.stdout.write(proc.stdout.decode('utf-8', 'replace')[-4000:])
             if proc.returncode != 0:
                 sys.stderr.write(proc.stderr.decode('utf-8', 'replace')[-2000:])

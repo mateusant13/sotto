@@ -211,7 +211,7 @@ def main():
     cmd = [NODE, DRIVER, '--url', url, '--w', str(args.w), '--h', str(args.h),
            '--probe', probe_p, '--wait', '2500', '--maxtime', '90000']
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=200, cwd=REPO, creationflags=subprocess.CREATE_NO_WINDOW)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=200, cwd=REPO, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except subprocess.TimeoutExpired:
         raise SystemExit('driver timeout')
     out = (p.stdout or '').strip()

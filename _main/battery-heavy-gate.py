@@ -264,7 +264,7 @@ def _run_harness(cmd_text: str, tmp: str, heavy_env) -> dict:
     proc = subprocess.run(
         ["cmd", "/c", harness],
         capture_output=True, text=True, timeout=180, cwd=ROOT, env=env,
-        creationflags=CREATE_NO_WINDOW,
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
     )
     out = (proc.stdout or "") + (proc.stderr or "")
     counters = {}

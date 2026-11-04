@@ -195,7 +195,7 @@ def _run(args, tmp):
          "--threads", str(args.threads), "--threshold", str(args.threshold),
          "--ignore-load", "--out", os.path.join(tmp, "offline.json")],
         capture_output=True, text=True, timeout=3600,
-        env=dict(os.environ, TMPDIR="I:\\cc-tmp"), creationflags=0x08000000)
+        env=dict(os.environ, TMPDIR="I:\\cc-tmp"), creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     wall_b = time.perf_counter() - t1
     tail = [l for l in (proc.stdout or "").splitlines() if l.strip()][-6:]
     print("\n".join("     " + l for l in tail))

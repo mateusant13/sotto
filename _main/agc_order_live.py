@@ -94,7 +94,7 @@ def run(arm, worker, src, src_sr, seconds, stop):
     argv = [PYW, worker, "--config", CFG, "--stats-interval", "5",
             "--tap-window", "60", "--max-seconds", str(seconds)]
     p = subprocess.Popen(argv, cwd=ROOT, env=env, stdout=out, stderr=errf,
-                         creationflags=CREATE_NO_WINDOW)
+                         creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
     def player():
         while not stop.is_set():

@@ -354,7 +354,7 @@ def main():
     print('jobs: %d' % len(jobs))
     try:
         proc = subprocess.run(['node', CDP, '--jobs', jf, '--json', outf],
-                              capture_output=True, timeout=7200, creationflags=subprocess.CREATE_NO_WINDOW)
+                              capture_output=True, timeout=7200, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         sys.stdout.write(proc.stdout.decode('utf-8', 'replace')[-6000:])
         if proc.returncode != 0:
             sys.stderr.write(proc.stderr.decode('utf-8', 'replace')[-3000:])

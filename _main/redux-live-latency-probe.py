@@ -104,7 +104,7 @@ class Sampler(threading.Thread):
                 out = subprocess.run(
                     ["pwsh", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script],
                     capture_output=True, text=True, timeout=20,
-                    creationflags=0x08000000,
+                    creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                 ).stdout.strip()
                 row = json.loads(out) if out else None
             except Exception as exc:  # a failed sample is a HOLE, recorded as one
@@ -219,7 +219,7 @@ def main(argv=None) -> int:
     t0 = time.perf_counter()
     with out_path.open("wb") as sink:
         proc = subprocess.Popen(cmd, stdout=sink, stderr=subprocess.PIPE,
-                                cwd=str(ROOT), creationflags=CREATE_NO_WINDOW)
+                                cwd=str(ROOT), creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         sampler = Sampler(proc.pid, args.sample_ms / 1000.0)
         sampler.start()
         stop = threading.Event()

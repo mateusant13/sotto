@@ -67,12 +67,12 @@ def main() -> int:
             # detach for us and the app must keep running while we sample.
             subprocess.Popen(argv, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL,
-                             creationflags=CREATE_NO_WINDOW,
+                             creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                              cwd=os.path.dirname(RUN_CMD))
         else:
             subprocess.run(argv, stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL,
-                           creationflags=CREATE_NO_WINDOW,
+                           creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                            cwd=os.path.dirname(RUN_CMD))
         t0 = time.time()
         tracked, ready_at, exit_at, hits = {os.getpid()}, None, None, []

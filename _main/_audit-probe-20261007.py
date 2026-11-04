@@ -167,7 +167,7 @@ def launch(extra, log_path):
     # is the only place a pywebview/WebView2 diagnostic can land.
     out = open(log_path + '.stdout', 'wb')
     err = open(log_path + '.stderr', 'wb')
-    child = subprocess.Popen(argv, cwd=ROOT, creationflags=CREATE_NO_WINDOW,
+    child = subprocess.Popen(argv, cwd=ROOT, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                              stdin=subprocess.DEVNULL, stdout=out, stderr=err)
     child._audit_handles = (out, err)
     return child
@@ -195,7 +195,7 @@ def kill(child):
         return
     if child.poll() is None:
         subprocess.run(['taskkill', '/PID', str(child.pid), '/T', '/F'],
-                       creationflags=CREATE_NO_WINDOW,
+                       creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         child.wait(timeout=10)

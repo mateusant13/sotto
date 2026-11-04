@@ -55,7 +55,7 @@ def main() -> int:
         # (pipe AND file forms), CREATE_NO_WINDOW alone -> 23 bytes. The child still gets
         # no visible console, which is all this flag pair was for.
         # Instrument for the whole class: _main/channel-class-site-oracle.py.
-        creationflags=CREATE_NO_WINDOW,
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
     )
 
     first_status = None

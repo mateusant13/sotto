@@ -35,7 +35,7 @@ def run(script: str, timeout: int = 120) -> int:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        creationflags=FLAGS,
+        creationflags=FLAGS, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
     )
     try:
         out, err = proc.communicate(timeout=timeout)
@@ -44,7 +44,7 @@ def run(script: str, timeout: int = 120) -> int:
         subprocess.run(
             ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
             capture_output=True,
-            creationflags=FLAGS,
+            creationflags=FLAGS, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
         )
         try:
             out, err = proc.communicate(timeout=15)

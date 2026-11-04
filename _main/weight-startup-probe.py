@@ -157,7 +157,7 @@ def run_once(psutil, hold_s, label, launch="lane"):
         # 0x80010108` e `TRAY_ICON_ADD ok=false winerror=5` (UIPI). A app
         # continua a nascer ESCONDIDA; nada aparece no ecra dele.
         subprocess.run(["schtasks", "/run", "/tn", "Sotto"],
-                       capture_output=True, creationflags=0x08000000)
+                       capture_output=True, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     else:
         env = dict(os.environ)
         env["SOTTO_LANE_LAUNCH"] = "1"
@@ -169,7 +169,7 @@ def run_once(psutil, hold_s, label, launch="lane"):
         keep = subprocess.Popen([pw, os.path.join(HERE, "keepalive.py")], cwd=ROOT, env=env,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL,
-                                creationflags=0x08000000)
+                                creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
     stamps = {}
     samples = []
@@ -220,7 +220,7 @@ def run_once(psutil, hold_s, label, launch="lane"):
     denied = []
     if launch == "task":
         subprocess.run(["schtasks", "/end", "/tn", "Sotto"],
-                       capture_output=True, creationflags=0x08000000)
+                       capture_output=True, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         time.sleep(1.0)
     try:
         killed = kill_tree(psutil, list(pids) + ([keep.pid] if keep else []))

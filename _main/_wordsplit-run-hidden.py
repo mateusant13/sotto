@@ -33,7 +33,7 @@ def main():
         return 2
     with open(args.out, "wb") as fo, open(args.err, "wb") as fe:
         rc = subprocess.call(cmd, stdout=fo, stderr=fe,
-                             creationflags=CREATE_NO_WINDOW, cwd=args.cwd)
+                             creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), cwd=args.cwd)
     with open(args.out + ".rc", "w", encoding="utf-8") as fh:
         fh.write(f"{rc}\n")
     return 0

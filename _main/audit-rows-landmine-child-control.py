@@ -222,7 +222,7 @@ def alive(pid):
 def kill_tree(pid):
     if pid:
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(pid)],
-                       capture_output=True, creationflags=CREATE_NO_WINDOW)
+                       capture_output=True, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
 
 def console_channel(flags, label):
@@ -233,7 +233,7 @@ def console_channel(flags, label):
               '$($_.CommandLine)" }')
     out = subprocess.run([PS, '-NoProfile', '-NonInteractive', '-Command',
                           script], capture_output=True, text=True,
-                         creationflags=flags, timeout=180)
+                         creationflags=flags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=180)
     rows = [line for line in out.stdout.splitlines() if line.strip()]
     return {'label': label, 'flags': hex(flags), 'rc': out.returncode,
             'stdout_bytes': len(out.stdout.encode('utf-8', 'replace')),
@@ -257,7 +257,7 @@ def tree_under_timeout(handle_timeout):
     proc = subprocess.Popen([PYW, '-c', child], stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
-                            creationflags=CREATE_NO_WINDOW)
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     grandchild = None
     deadline = time.time() + 20
     while time.time() < deadline:

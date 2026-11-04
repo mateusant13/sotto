@@ -143,7 +143,7 @@ def family():
 
 def _py_spy(args, timeout=300):
     return subprocess.run([PY_SPY] + args, capture_output=True, text=True,
-                          timeout=timeout, errors='replace', creationflags=subprocess.CREATE_NO_WINDOW)
+                          timeout=timeout, errors='replace', creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
 
 def dump(pid):
@@ -184,7 +184,7 @@ def record_spawn(cmd, rate, timeout=900):
     r = subprocess.run([PY_SPY, 'record', '--format', 'raw', '--output', out,
                         '--rate', str(int(rate)), '--'] + list(cmd),
                        capture_output=True, text=True, timeout=timeout,
-                       errors='replace', creationflags=subprocess.CREATE_NO_WINDOW)
+                       errors='replace', creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     body = ''
     if os.path.isfile(out):
         with open(out, encoding='utf-8', errors='replace') as fh:

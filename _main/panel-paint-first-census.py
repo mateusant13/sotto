@@ -692,7 +692,7 @@ def variant_bytes(tag, uncured_rev=None):
         rev = uncured_rev or UNCURED_REV
         proc = subprocess.run(['git', '-C', ROOT, 'show',
                                '%s:app/webview/sotto_webview.py' % rev],
-                              capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+                              capture_output=True, text=True, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         if proc.returncode != 0 or not proc.stdout:
             raise SystemExit('variant uncured: `git show %s:...` failed: %s'
                              % (rev, proc.stderr.strip()[:200] or 'no output'))
@@ -795,7 +795,7 @@ def spawn_app(exit_after, hotkey, shell, log_path, out_path, mutex):
     proc = subprocess.Popen(write_app_launch(exit_after, hotkey, shell, log_path,
                                              mutex),
                             stdout=out, stderr=subprocess.STDOUT,
-                            cwd=ROOT, creationflags=CREATE_NO_WINDOW)
+                            cwd=ROOT, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     _APP['proc'] = proc
     _APP['stdout'] = out
     return 'pid=%d (child of this high process: the app inherits the owner token)' % proc.pid
@@ -825,7 +825,7 @@ def elevate(args):
         pass
     cmd = [sys.executable, LAUNCH_AS_TOKEN, str(source_pid()), sys.executable,
            os.path.abspath(__file__), '--run', '--inner', INNER_OUT] + passthrough
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, creationflags=CREATE_NO_WINDOW)
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     launch = (proc.stdout or proc.stderr or '').strip().replace('\n', ' | ')
     say('  elevation: %s' % (launch[:300] or '(no answer from launch-as-token)'))
     # THE OUTER WAIT COVERS EVERY ARM. One arm costs about the app's own startup

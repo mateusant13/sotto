@@ -1500,7 +1500,7 @@ class Probe:
             with open(child_log, "w", encoding="utf-8") as logfh:
                 child = subprocess.Popen(
                     cmd, stdout=logfh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                    creationflags=CREATE_NO_WINDOW, cwd=workdir)
+                    creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), cwd=workdir)
             self.log("   spawned pid=%d (CREATE_NO_WINDOW, so no console appears)"
                      % child.pid)
             self.results["env"]["child_pid"] = child.pid
@@ -1559,7 +1559,7 @@ class Probe:
             quiet = subprocess.Popen(
                 ["cmd.exe", "/c", "timeout", "/t", "20", "/nobreak"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                stdin=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+                stdin=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
             self.log("   quiet pid=%d (cmd /c timeout /t 20) -- renders nothing" % quiet.pid)
             try:
                 nega = self._arm("NEGATIVE-A (target = non-rendering cmd)", quiet.pid,

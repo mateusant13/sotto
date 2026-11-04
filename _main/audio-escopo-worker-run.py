@@ -38,7 +38,7 @@ with open(jsonl_path, "wb") as out, open(err_path, "wb") as errf:
         stdout=out,
         stderr=errf,
         stdin=subprocess.DEVNULL,
-        creationflags=CREATE_NO_WINDOW,
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
         cwd=os.path.dirname(WORKER),
     )
     rc = proc.wait(timeout=400)

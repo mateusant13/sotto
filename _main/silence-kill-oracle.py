@@ -177,7 +177,7 @@ def neg_arm():
             return 1
         try:
             proc = subprocess.run([sys.executable, os.path.abspath(__file__), "--shell", path],
-                                  capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                                  capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         finally:
             try:
                 os.remove(path)

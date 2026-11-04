@@ -396,7 +396,7 @@ def _run(args, neg, tmp):
     _PIPE_CFG = dict(stdin=_sp.DEVNULL, stdout=_sp.PIPE,
                      stderr=_sp.STDOUT, text=True, encoding="utf-8",
                      errors="replace", bufsize=1,
-                     creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0x08000000))
+                     creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0x08000000), startupinfo=_sp.STARTUPINFO(dwFlags=_sp.STARTF_USESHOWWINDOW, wShowWindow=0))
 
     # A forma honesta de medir "o filho avanca" e' pelo lado que existe nos DOIS
     # casos: com dreno, contar as linhas que chegam ao log da shell. Sem dreno

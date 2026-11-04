@@ -171,7 +171,7 @@ def kill_tree(pid: int) -> str:
     try:
         got = subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
                              capture_output=True, text=True, errors='replace',
-                             creationflags=CREATE_NO_WINDOW, timeout=30)
+                             creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=30)
         return ((got.stdout or '') + (got.stderr or '')).strip().replace('\n', ' | ')
     except Exception as exc:  # noqa: BLE001
         return f'ERROR {exc!r}'
@@ -224,7 +224,7 @@ def cmd_of(pid: int) -> str:
         got = subprocess.run(['powershell', '-NoProfile', '-NonInteractive',
                               '-ExecutionPolicy', 'Bypass', '-File', ps],
                              capture_output=True, text=True, errors='replace',
-                             creationflags=CREATE_NO_WINDOW, timeout=60)
+                             creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=60)
         return (got.stdout or '').strip()
     except Exception as exc:  # noqa: BLE001
         return f'ERROR {exc!r}'
@@ -255,7 +255,7 @@ def arm_owner(oracle, seconds: float) -> dict:
         proc = subprocess.Popen(['cmd', '/c', RUNCMD],
                                 cwd=os.path.dirname(RUNCMD),
                                 stdout=outfile, stderr=subprocess.STDOUT,
-                                creationflags=CREATE_NO_WINDOW)
+                                creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         try:
             rc = proc.wait(timeout=30)
             returned = True
@@ -345,7 +345,7 @@ def arm_flagged(oracle, arm: str, argv: list, seconds: float,
     proc = subprocess.Popen(args, stdout=outfile, stderr=subprocess.STDOUT,
                             stdin=subprocess.DEVNULL, env=env,
                             cwd=os.path.dirname(RUNCMD),
-                            creationflags=CREATE_NO_WINDOW)
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     census = Census(oracle)
     census.add_root(proc.pid)
     census.start()
@@ -432,7 +432,7 @@ def ps_list(needle: str) -> str:
                               '-ExecutionPolicy', 'Bypass', '-File', ps,
                               '-Needle', needle],
                              capture_output=True, text=True, errors='replace',
-                             creationflags=CREATE_NO_WINDOW, timeout=60)
+                             creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=60)
         return (got.stdout or '').strip()
     except Exception as exc:  # noqa: BLE001
         return f'ERROR {exc!r}'
@@ -453,7 +453,7 @@ def arm_bogus(oracle, seconds: float = 8.0) -> dict:
         proc = subprocess.Popen(['cmd', '/c', RUNCMD, '--bogus-flag'],
                                 cwd=os.path.dirname(RUNCMD),
                                 stdout=outfile, stderr=subprocess.STDOUT,
-                                creationflags=CREATE_NO_WINDOW)
+                                creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         rc = proc.wait(timeout=30)
     out = open(outpath, encoding='utf-8', errors='replace').read()
     log(f'ARM bogus run.cmd rc={rc} stdout={out.strip()!r}')
@@ -524,7 +524,7 @@ def main() -> int:
         got = subprocess.run(['cmd', '/c', RUNCMD, '--help'],
                              cwd=os.path.dirname(RUNCMD),
                              capture_output=True, text=True,
-                             creationflags=CREATE_NO_WINDOW, timeout=120)
+                             creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=120)
         log(f'ARM help rc={got.returncode}')
         log(f'ARM help stdout>>>\n{got.stdout}')
         log(f'ARM help stderr>>>\n{got.stderr}')

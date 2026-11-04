@@ -169,7 +169,7 @@ def run_shell(out_path: str, args: list[str], feed_stop=None, env=None) -> int:
     proc = subprocess.Popen(
         [sys.executable, SHELL, *args],
         stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-        creationflags=CREATE_NO_WINDOW,
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
         cwd=os.path.dirname(SHELL),
         env=env,
     )
@@ -181,7 +181,7 @@ def run_shell(out_path: str, args: list[str], feed_stop=None, env=None) -> int:
         # `_main/audit-rows-landmine-child-control.py` (arm r34). `/T` kills the tree, and the
         # target is a PID, never a NAME, so no kill filter can reach an unrelated process.
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                       capture_output=True, creationflags=CREATE_NO_WINDOW)
+                       capture_output=True, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         raise
     out.close()
     if feed_stop is not None:
@@ -786,7 +786,7 @@ def neg_arm(report: dict) -> list[str]:
         [sys.executable, os.path.abspath(__file__), '--unit'],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         env=env, cwd=os.path.dirname(os.path.abspath(__file__)),
-        creationflags=CREATE_NO_WINDOW, timeout=300)
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=300)
     text = proc.stdout.decode('utf-8', 'replace')
     report['neg_arm']['child_rc'] = proc.returncode
     try:
@@ -858,7 +858,7 @@ def neg_arm_e(report: dict) -> list[str]:
         [sys.executable, os.path.abspath(__file__), '--unit'],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         env=env, cwd=os.path.dirname(os.path.abspath(__file__)),
-        creationflags=CREATE_NO_WINDOW, timeout=300)
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=300)
     text = proc.stdout.decode('utf-8', 'replace')
     report['neg_arm_e']['child_rc'] = proc.returncode
     try:
@@ -1061,7 +1061,7 @@ def criterion_neg_arm(report: dict) -> list[str]:
         handle.write(mutant)
     proc = subprocess.run([sys.executable, path, '--criterion-only'],
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          creationflags=CREATE_NO_WINDOW, timeout=120)
+                          creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=120)
     text = proc.stdout.decode('utf-8', 'replace')
     report['neg_arm_criterion'] = {'mutant': path, 'child_rc': proc.returncode}
     try:

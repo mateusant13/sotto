@@ -92,7 +92,7 @@ def js_arms(source_path):
         proc = subprocess.run(
             ['node', harness, source_path],
             capture_output=True, text=True, timeout=120,
-        creationflags=subprocess.CREATE_NO_WINDOW)
+        creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     finally:
         try:
             os.unlink(harness)
@@ -248,7 +248,7 @@ def panel_arms(source_path=None):
         fh.write(JS_PANEL_HARNESS)
     try:
         proc = subprocess.run(['node', harness, PANEL_JS, source_path or SOURCE_JS],
-                              capture_output=True, text=True, timeout=120, creationflags=subprocess.CREATE_NO_WINDOW)
+                              capture_output=True, text=True, timeout=120, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     finally:
         try:
             os.unlink(harness)

@@ -87,7 +87,7 @@ def measure(html_path, w, h, surface):
            '--no-default-browser-check', '--hide-scrollbars',
            '--force-device-scale-factor=1', '--virtual-time-budget=8000',
            '--window-size=%d,%d' % (w, h), '--dump-dom', url]
-    proc = subprocess.run(cmd, capture_output=True, timeout=300, creationflags=subprocess.CREATE_NO_WINDOW)
+    proc = subprocess.run(cmd, capture_output=True, timeout=300, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     return (proc.stdout or b'').decode('utf-8', 'replace')
 
 

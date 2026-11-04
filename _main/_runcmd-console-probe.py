@@ -50,7 +50,7 @@ def main() -> int:
          'h=ctypes.WinDLL("kernel32").GetConsoleWindow();'
          'v=ctypes.WinDLL("user32").IsWindowVisible(ctypes.c_void_p(h)) if h else False;'
          'print(f"CHILD_BARE hwnd={h} visible={bool(v)}")'],
-        capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+        capture_output=True, text=True, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     print(bare.stdout.strip() or f'CHILD_BARE rc={bare.returncode} '
                                 f'stderr={bare.stderr.strip()!r}', flush=True)
 

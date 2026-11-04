@@ -384,7 +384,7 @@ def launch(shell: str, extra: list, secs: float, cadence_s: float, idx: int,
     proc = subprocess.Popen(args, stdout=out, stderr=subprocess.STDOUT,
                             stdin=subprocess.DEVNULL,
                             cwd=os.path.dirname(shell),
-                            creationflags=CREATE_NO_WINDOW)
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     sampler = Sampler(proc.pid, alog, cadence_s)
     sampler.start()
     try:

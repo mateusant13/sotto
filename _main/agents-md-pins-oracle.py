@@ -56,7 +56,7 @@ def measure_help():
                                   # Sem consola: este passo corre na bateria e um
                                   # `cmd.exe` sem CREATE_NO_WINDOW pisca uma janela
                                   # no ecra do dono a cada corrida.
-                                  creationflags=0x08000000)
+                                  creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         body = read_bytes(path)
     finally:
         try:

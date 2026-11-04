@@ -12,7 +12,7 @@ url = ('file:///' + page + '#mode=cost&theme=theme-5&arm=on&port=9&seconds=1&rat
 cmd = [edge, '--headless=new', '--disable-gpu', '--no-first-run',
        '--user-data-dir=' + prof, '--virtual-time-budget=12000', '--dump-dom', url]
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                     encoding='utf-8', errors='replace', creationflags=subprocess.CREATE_NO_WINDOW)
+                     encoding='utf-8', errors='replace', creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 out, errs = p.communicate(timeout=180)
 print('dom bytes', len(out or ''), 'rc', p.returncode)
 m = re.search(r'<title>(.*?)</title>', out or '', re.S)

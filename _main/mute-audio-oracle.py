@@ -218,7 +218,7 @@ def battery(mod, mod_path: str, workdir: str, source: str) -> list:
             run = lambda *a: subprocess.run(
                 [sys.executable, mod_path] + list(a),
                 capture_output=True, text=True, env=env, timeout=60,
-                creationflags=NO_WINDOW)
+                creationflags=NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
             p1 = run("--mute", "--no-wait", "--state-path", st, "--reason", "oracle")
             muted = backend.get_volume(device_id)
             p2 = run("--status", "--state-path", st)
@@ -237,7 +237,7 @@ def battery(mod, mod_path: str, workdir: str, source: str) -> list:
             p = subprocess.run(
                 [sys.executable, mod_path, "--status", "--state-path", st],
                 capture_output=True, text=True, env=env, timeout=60,
-                creationflags=NO_WINDOW)
+                creationflags=NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
             try:
                 payload = json.loads(p.stdout.strip().splitlines()[-1])
             except Exception:                                   # noqa: BLE001

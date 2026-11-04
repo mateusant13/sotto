@@ -68,7 +68,7 @@ def captures(text):
 
 def tracked_files():
     out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True,
-                         creationflags=CREATE_NO_WINDOW)
+                         creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     return [name for name in out.stdout.split("\n") if name.strip()]
 
 
@@ -94,7 +94,7 @@ def scan_tracked():
 
 
 def spawn(child, flags):
-    proc = subprocess.run(child, capture_output=True, text=True, creationflags=flags, timeout=60)
+    proc = subprocess.run(child, capture_output=True, text=True, creationflags=flags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=60)
     return {"rc": proc.returncode, "bytes": len(proc.stdout), "stdout": proc.stdout.strip()[:60],
             "stderr": proc.stderr.strip()[:80]}
 

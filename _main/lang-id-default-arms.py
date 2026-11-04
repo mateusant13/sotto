@@ -43,7 +43,7 @@ def run(name, extra, env_extra):
     with open(out_p, "wb") as fo, open(err_p, "wb") as fe:
         pr = subprocess.run(
             [PY, WORKER, "--selftest"] + extra, cwd=ROOT, stdout=fo, stderr=fe,
-            env=env, creationflags=FLAGS, timeout=1200,
+            env=env, creationflags=FLAGS, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=1200,
         )
     wall = time.time() - t0
     lang = loaded = done = None

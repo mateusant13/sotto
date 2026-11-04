@@ -10,7 +10,7 @@ prof = tempfile.mkdtemp(prefix='sotto-dbg-')
 cmd = [edge, '--headless=new', '--disable-gpu', '--no-first-run',
        '--user-data-dir=' + prof, '--virtual-time-budget=30000',
        '--dump-dom', 'file:///' + page + '#mode=chrome']
-p = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=240, creationflags=subprocess.CREATE_NO_WINDOW)
+p = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=240, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 t = p.stdout or ''
 print('dom bytes', len(t), 'rc', p.returncode)
 m = re.search(r'id="caption-list"[^>]*>(.*?)</ol>', t, re.S)

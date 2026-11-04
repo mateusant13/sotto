@@ -54,7 +54,7 @@ for name, args, extra_env in ARMS:
     with open(out_p, "wb") as fo, open(err_p, "wb") as fe:
         pr = subprocess.run(
             [PY, WORKER] + args, cwd=ROOT, stdout=fo, stderr=fe, env=env,
-            creationflags=FLAGS, timeout=900,
+            creationflags=FLAGS, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), timeout=900,
         )
     wall = time.time() - t0
     lang = loaded = done = None

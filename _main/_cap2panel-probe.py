@@ -104,7 +104,7 @@ def run_arm(tag, worker, window_s):
            '--exit-after', str(int(window_s) + 15)]
     started = time.time()
     proc = subprocess.Popen(cmd, cwd=os.path.dirname(SHELL),
-                            creationflags=CREATE_NO_WINDOW,
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     # Give the caption time to land and the panel time to commit the line.
     deadline = started + window_s

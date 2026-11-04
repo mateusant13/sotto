@@ -88,7 +88,7 @@ def synth(clip_id, voice, text, dest):
         "--text", text,
         "--write-media", mp3,
     ]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180, creationflags=subprocess.CREATE_NO_WINDOW)
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     if r.returncode != 0 or not os.path.exists(mp3):
         raise RuntimeError(f"{clip_id}: edge-tts failed rc={r.returncode} {r.stderr[:400]}")
 

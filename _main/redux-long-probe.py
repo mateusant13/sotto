@@ -263,7 +263,7 @@ def vram() -> tuple:
         p = subprocess.run(
             ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=20,
-            creationflags=CREATE_NO_WINDOW,
+            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
         )
     except (OSError, subprocess.SubprocessError):
         return None, None
@@ -292,7 +292,7 @@ def gpu_proc_mem() -> dict:
     try:
         p = subprocess.run(
             ["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=20, creationflags=CREATE_NO_WINDOW)
+            capture_output=True, text=True, timeout=20, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except (OSError, subprocess.SubprocessError):
         return {}
     out = {}
@@ -339,7 +339,7 @@ def run_case(case: str, device: str, timestamps: str, cadence: float, vram_every
     t0 = time.perf_counter()
     try:
         proc = subprocess.Popen(cmd, cwd=str(R), stdout=fo, stderr=fe,
-                                creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS)
+                                creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except OSError as exc:
         fo.close()
         fe.close()
@@ -363,7 +363,7 @@ def run_case(case: str, device: str, timestamps: str, cadence: float, vram_every
             ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(helper),
              "-TargetPid", str(proc.pid), "-Seconds", str(int(timeout)), "-Out", str(watch_out)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            creationflags=CREATE_NO_WINDOW)
+            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     peak_rss = 0
     peak_wset = 0
     rss_samples = []

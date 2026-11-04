@@ -86,7 +86,7 @@ def main():
         return 1
     print("AUDIO_TRACK target=%s url=%s" % (t.get("id"), (t.get("url") or "")[:70]))
     p = subprocess.run(["bun", DRIVER, "--target", t["id"], "--expr", JS],
-                       cwd=WORKDIR, capture_output=True, timeout=120, creationflags=subprocess.CREATE_NO_WINDOW)
+                       cwd=WORKDIR, capture_output=True, timeout=120, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     raw = ((p.stdout or b"") + (p.stderr or b"")).decode("utf-8", "replace")
     m = None
     for line in raw.splitlines():

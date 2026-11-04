@@ -117,7 +117,7 @@ def main() -> int:
     proc = subprocess.Popen(
         [sys.executable, WORKER, "--max-seconds", str(secs), "--device", DEVICE],
         stdout=out, stderr=errf, stdin=subprocess.DEVNULL,
-        creationflags=CREATE_NO_WINDOW, cwd=os.path.dirname(WORKER),
+        creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0), cwd=os.path.dirname(WORKER),
     )
     rc = proc.wait(timeout=300)
     stop.set()

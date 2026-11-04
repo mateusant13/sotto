@@ -33,7 +33,7 @@ w('keepalive start pid=%d' % os.getpid())
 subprocess.Popen(['cmd.exe', '/c', 'Sotto.cmd'], cwd=r'H:\sotto',
                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                  stderr=subprocess.DEVNULL, close_fds=True,
-                 creationflags=0x08000000)
+                 creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 w('Sotto.cmd lancado sem a bandeira de mostrar; a manter a tarefa viva enquanto a app existir')
 
 try:

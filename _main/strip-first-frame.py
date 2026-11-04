@@ -314,7 +314,7 @@ def main():
     emit('ARM %s  (flat = expect the flat block; clean = expect none)' % arm)
     p = subprocess.Popen([sys.executable, shell, '--no-worker',
                           '--exit-after', '90', '--log', LOG],
-                         creationflags=0x08000000 | 0x00000008)
+                         creationflags=0x08000000 | 0x00000008, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     emit('LAUNCHED pid=%d  (real shell, no worker, real Alt+C -- a MEASUREMENT '
          'run that owns the hotkey)' % p.pid)
     t0 = time.time()

@@ -75,7 +75,7 @@ def kill_everything():
          "Name='python.exe'\" | Where-Object { $_.CommandLine -match "
          "'sotto_webview\\.py|sotto_worker\\.py' } | "
          "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"],
-        capture_output=True, text=True, creationflags=0x08000000)
+        capture_output=True, text=True, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     for _ in range(40):
         if not mapped(0):
             return True
@@ -92,7 +92,7 @@ def main():
         os.remove(LOG)
     p = subprocess.Popen([sys.executable, SHELL, "--with-worker",
                           "--exit-after", "75", "--log", LOG],
-                         creationflags=0x08000000 | 0x00000008)
+                         creationflags=0x08000000 | 0x00000008, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     print("launched pid=%d (real shell, WORKER ON)" % p.pid)
 
     # THE FLASH ARM: watch from process start. Any of OUR windows mapped before

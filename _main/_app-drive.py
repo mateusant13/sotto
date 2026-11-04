@@ -29,7 +29,7 @@ PY = r"C:\Program Files\Python311\python.exe"
 def _ps(cmd):
     r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
                         "-ExecutionPolicy", "Bypass", "-Command", cmd],
-                       capture_output=True, creationflags=0x08000000)
+                       capture_output=True, creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     return r.stdout.decode("cp850", "replace"), r.stderr.decode("cp850", "replace")
 
 
@@ -58,7 +58,7 @@ def kill_app():
     for p in rows:
         if "sotto_webview.py" in p[3]:
             r = subprocess.run(["taskkill", "/F", "/T", "/PID", p[0]],
-                               capture_output=True, creationflags=CREATE_NO_WINDOW)
+                               capture_output=True, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
             killed.append((p[0], r.returncode,
                            r.stdout.decode("cp850", "replace").strip()))
             print("KILL pid=%s rc=%s %s" % (p[0], r.returncode,
@@ -85,7 +85,7 @@ def launch(probe_s, log_path):
     # handles are NUL, run.cmd's own exit is the only thing left to wait for.
     p = subprocess.Popen(args, cwd=WEBVIEW, stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         creationflags=CREATE_NO_WINDOW)
+                         creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     rc = p.wait(timeout=180)
     print("run.cmd rc=%s" % rc)
     return rc
@@ -100,7 +100,7 @@ def play(seconds, device):
                           device, str(seconds)],
                          cwd=ROOT, stdin=subprocess.DEVNULL,
                          stdout=fo, stderr=fe,
-                         creationflags=CREATE_NO_WINDOW)
+                         creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     print("PLAY pid=%s seconds=%s device=%r -> %s" % (p.pid, seconds, device, err))
     return p.pid
 

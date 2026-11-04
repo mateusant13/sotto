@@ -24,7 +24,7 @@ with open(out_path, "w", encoding="utf-8") as out, open(err_path, "w", encoding=
     rc = subprocess.call(
         [sys.executable, "worker/sotto_worker.py", "--config", cfg,
          "--selftest", "--audio", audio],
-        cwd=ROOT, stdout=out, stderr=err, creationflags=CREATE_NO_WINDOW,
+        cwd=ROOT, stdout=out, stderr=err, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
     )
 
 rows = []

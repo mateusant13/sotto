@@ -148,7 +148,7 @@ def _wsl_path(win_path):
         proc = subprocess.run(
             ["wsl", "-d", DISTRO, "-e", "wslpath", "-a", win_path],
             capture_output=True, text=True, timeout=120,
-        creationflags=subprocess.CREATE_NO_WINDOW)
+        creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except (OSError, subprocess.SubprocessError):
         return ""
     if proc.returncode != 0:
@@ -169,7 +169,7 @@ def run_bend_version():
              "export PATH=/root/.bend/bin:$HOME/.elan/bin:$PATH; "
              "bend version; echo '--- lean ---'; lean --version"],
             capture_output=True, text=True, timeout=180,
-        creationflags=subprocess.CREATE_NO_WINDOW)
+        creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except (OSError, subprocess.SubprocessError) as exc:
         return ("INFRA: cannot run wsl: %r" % (exc,), EXIT_INFRA)
     return ((proc.stdout or "") + (proc.stderr or "")).replace("\0", "")
@@ -190,7 +190,7 @@ def run_bend(name):
             ["wsl", "-d", DISTRO, "-e", "bash", "-lc", _wsl_script(),
              "_", core_wsl, name],
             capture_output=True, text=True, timeout=1800,
-        creationflags=subprocess.CREATE_NO_WINDOW)
+        creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except (OSError, subprocess.SubprocessError) as exc:
         return ("INFRA: cannot run wsl: %r" % (exc,), EXIT_INFRA)
     out = (proc.stdout or "") + (proc.stderr or "")
@@ -504,7 +504,7 @@ def run_bend_path(abs_path):
              'cd "$1" && bend --verdict "$2"',
              "_", core_wsl, os.path.basename(abs_path)],
             capture_output=True, text=True, timeout=1800,
-        creationflags=subprocess.CREATE_NO_WINDOW)
+        creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except (OSError, subprocess.SubprocessError) as exc:
         return ("INFRA: cannot run wsl: %r" % (exc,), EXIT_INFRA)
     out = (proc.stdout or "") + (proc.stderr or "")

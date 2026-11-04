@@ -131,7 +131,7 @@ def main():
         encoding="utf-8",
         errors="replace",
         bufsize=1,
-    creationflags=subprocess.CREATE_NO_WINDOW)
+    creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
     q = queue.Queue()
 

@@ -9,7 +9,7 @@ REPO = r'H:\sotto'
 PATH = 'app/webview/sotto_webview.py'
 
 head = subprocess.run(['git', '-C', REPO, 'show', 'HEAD:' + PATH],
-                      capture_output=True, check=True, creationflags=subprocess.CREATE_NO_WINDOW).stdout
+                      capture_output=True, check=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0)).stdout
 
 OLD = b"    y = work['y'] + round((h - panel_height) / 2)\r\n"
 NEW = (

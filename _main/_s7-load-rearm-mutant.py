@@ -5085,7 +5085,7 @@ class SottoShell:
         command = (f'explorer /select,"{shown}"' if is_file
                    else f'explorer "{shown}"')
         try:
-            subprocess.Popen(command, creationflags=CREATE_NO_WINDOW)
+            subprocess.Popen(command, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         except OSError as exc:  # noqa: BLE001 -- report, never crash the panel
             warn(f'REVEAL_FAILED path={json.dumps(shown)} error={exc!r}')
             return False
@@ -7690,7 +7690,7 @@ class WorkerBridge:
                 encoding='utf-8',
                 errors='replace',
                 bufsize=1,
-                creationflags=creationflags,
+                creationflags=creationflags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
             )
         except Exception as exc:
             self.child = None

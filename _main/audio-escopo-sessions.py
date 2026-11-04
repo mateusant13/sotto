@@ -59,7 +59,7 @@ def proc_name(pid):
         out = subprocess.run(
             ["tasklist", "/FI", "PID eq %d" % pid, "/FO", "CSV", "/NH"],
             capture_output=True, text=True, timeout=5,
-            creationflags=0x08000000).stdout.strip()
+            creationflags=0x08000000, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0)).stdout.strip()
         if out and not out.startswith("INFO:"):
             return out.split(",")[0].strip('"')
     except Exception as exc:

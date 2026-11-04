@@ -94,7 +94,7 @@ def run_sidecar(out_path, duration_s, device=None):
         cmd += ["--device", device]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True,
-                            encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW)
+                            encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     return proc
 
 

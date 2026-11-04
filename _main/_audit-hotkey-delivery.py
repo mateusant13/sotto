@@ -161,7 +161,7 @@ def candidate_logs():
 
         common = subprocess.run(
             ['git', '-C', root, 'rev-parse', '--git-common-dir'],
-            capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         if common.returncode == 0 and common.stdout.strip():
             gitdir = os.path.abspath(os.path.join(root, common.stdout.strip()))
             main_log = os.path.join(os.path.dirname(gitdir), '_main',

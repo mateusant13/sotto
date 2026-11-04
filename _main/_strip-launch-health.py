@@ -57,7 +57,7 @@ def one_launch(tag: str, secs: float, watch: float, extra: list[str]) -> dict:
     started = time.monotonic()
     proc = subprocess.Popen(cmd, cwd=os.path.dirname(SHELL),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            creationflags=CREATE_NO_WINDOW)
+                            creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     exited, rc = False, None
     while time.monotonic() - started < watch:
         rc = proc.poll()
@@ -75,7 +75,7 @@ def one_launch(tag: str, secs: float, watch: float, extra: list[str]) -> dict:
                 fh.flush()
                 r = subprocess.run([PY_SPY, 'dump', '--pid', str(proc.pid)],
                                    stdout=fh, stderr=subprocess.STDOUT, timeout=60,
-                                   creationflags=CREATE_NO_WINDOW)
+                                   creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
                 fh.write(f'# py-spy rc={r.returncode}\n')
         except Exception as exc:                                  # noqa: BLE001
             with open(stacks, 'a', encoding='utf-8') as fh:
@@ -84,7 +84,7 @@ def one_launch(tag: str, secs: float, watch: float, extra: list[str]) -> dict:
         try:
             subprocess.run(['taskkill', '/PID', str(proc.pid), '/F'],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           timeout=30, creationflags=CREATE_NO_WINDOW)
+                           timeout=30, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         except Exception:                                          # noqa: BLE001
             pass
         try:
