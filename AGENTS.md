@@ -446,7 +446,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 16:1x):** `_main\_audit-verify-all.cmd` = **225203 B**,
+- **PIN do ficheiro (medido 2026-11-04, 16:4x):** `_main\_audit-verify-all.cmd` = **226581 B**,
+  **2807 CRLF** / 0 bare LF, sha256 `FFDC63DA2F736934A21D7E2EC1EE629EEAE958B982EB6D91CB6B84219E47E109`.
+  (Dezasseis linhas a mais do que o pin de 225203 B / 2791 CRLF: o par do governador
+  `caption-budget-oracle.py`, que o proprio contrato da seccao 0 nomeava e que NAO EXISTIA (n-15 do
+  audit). Medido no log do dono: `CAPTION_PAINT_LAG` e' BIMODAL -- 76,7 % das linhas com `queue_ms`
+  < 100 ms e 2,9 % acima do prazo, 22,4 % a esperar o prazo inteiro com 100 % acima -- por isso o
+  governador publica os dois modos com as taxas, o p95 e a percentagem acima do prazo, e recusa um
+  p50 como veredicto (a fatia de 30 min da espiral deu 2 895 ms e o parse de 42 h deu 6 ms). O
+  `--neg-arm` muta um corpus limpo em tres sitios e exige os tres RED, medido 3/3.)
+  (O pin anterior era de 225203 B / 2791 CRLF:
   **2791 CRLF** / 0 bare LF, sha256 `EF60698A8BF57AEAB2628A291C94C3C6EB44FAFFA64EBEFDDC1C5EF8B9169C46`.
   (Catorze linhas a mais do que o pin de 224071 B / 2777 CRLF: o passo `dead-app-exit`, 11 arms com a
   prova do detector DENTRO do passo (o mutante que desarma o escalonador fica PRESO). Nasceu da ordem

@@ -692,6 +692,22 @@ if exist _main\freeze-census.py (
  call :step freeze-census 0 "_main\freeze-census.py" "%OUT%\freeze-census.log" python _main\freeze-census.py --selftest
  call :record freeze-census !STEP_RC!
 ) else ( call :record freeze-census MISSING )
+REM `caption-budget-oracle.py --neg-arm` -- O GOVERNADOR QUE O PROPRIO CONTRATO
+REM NOMEOU E QUE NAO EXISTIA (n-15 do audit: tres governadores em falta). Medido em
+REM 2026-11-04: a linha `CAPTION_PAINT_LAG audio_ms= queue_ms= budget_ms= over=` e'
+REM BIMODAL -- 76,7 % das linhas fecham com `queue_ms` < 100 ms e o prazo de 1500 ms
+REM nunca dispara; 22,4 % esperam o prazo inteiro. Um p50 sobre esse campo e' uma
+REM afirmacao sobre a JANELA (uma fatia de 30 min da espiral de morte deu 2 895 ms, um
+REM parse de 42 h deu 6 ms), por isso o governador publica os DOIS modos com as suas
+REM TAXAS, o p95 e a percentagem acima do prazo -- e recusa vender um p50 como
+REM veredicto. O `--neg-arm` muta um corpus limpo em tres sitios (audio acima do
+REM prazo, queue a passar o corte, linhas apagadas) e exige os tres RED. NAO e' um
+REM passo que julga o log VIVO do dono: o veredicto sobre a latencia dele e' leitura,
+REM nao portao de repositorio.
+if exist _main\caption-budget-oracle.py (
+call :step red-as-expected-caption-budget 1 "_main\caption-budget-oracle.py" "%OUT%\caption-budget-neg.log" python _main\caption-budget-oracle.py --neg-arm
+call :expectred red-as-expected-caption-budget !STEP_RC! "%OUT%\caption-budget-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-caption-budget MISSING "%OUT%\caption-budget-neg.log" "NEG-ARM: PASS" )
 REM `dead-app-exit-oracle.py` -- UMA SAIDA QUE ESCREVEU NO LOG TERMINA. Ordem do dono
 REM de 2026-11-04, medido no log dele: 12:51:31 `UI_HUNG reason=caption-read-slow`,
 REM 13:00:46 e 13:00:54 `UI_WATCHDOG_STRIKE`, 13:01:36 strike 3 e
