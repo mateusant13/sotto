@@ -412,9 +412,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 13:03):** `_main\_audit-verify-all.cmd` = **217007 B**,
-  **2693 CRLF** / 0 bare LF, sha256 `3C68B7217EE131F97F54FE44DFC00E4923DE4DE7DECD5A47E07BC169951EEDB2`.
-  (Vinte e duas linhas a mais do que o pin de 215335 B / 2671 CRLF: o par `gaming-hotkey` + o seu
+- **PIN do ficheiro (medido 2026-11-04, 13:09):** `_main\_audit-verify-all.cmd` = **218401 B**,
+  **2705 CRLF** / 0 bare LF, sha256 `4CD44B1C58EB7944EB24C2DB0BB53AE83D7B0F0BA2A0F6A99FE73B8C93350DB1`.
+  (Doze linhas a mais do que o pin de 217007 B / 2693 CRLF: o par `youtube-first-at-boot` + o seu
+  `--neg-arm`, 9 arms. Ele mede o gate que faltava -- enquanto o player fornece linha o texto de
+  estado e' RETIDO (`CAPTION_LOADING_TEXT_WITHHELD reason=player-track`), o pipeline publica a
+  ordem (`CAPTION_PIPELINE_ORDER steps=cdp,watcher,worker`), o fallback sai UMA vez por episodio
+  de silencio, e a escolha de aba decide em vez de adiar: `ambiguous` tres vezes seguidas era o
+  `src='?'` medido no log do dono as 12:15:15.
+  Vinte e duas linhas a mais do que o pin de 215335 B / 2671 CRLF: o par `gaming-hotkey` + o seu
   `--neg-arm` (53 arms) e o par `youtube-first-at-boot` + o seu (9 arms). O primeiro nasceu de tres
   medicoes que nao se substituem: `Ctrl+Space register_ok=True` (**a tecla esta' livre**; `Alt+C` da'
   1409 porque a instancia do dono a tem), o caminho do toggle executado com um `user32` gravador

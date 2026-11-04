@@ -146,6 +146,202 @@ EXTRACT_JS = r"""
 """
 
 
+#: QUEM ESTA' A TOCAR, lido DENTRO de cada aba candidata (uma resposta curta).
+#: A lista de abas (`/json/list`) diz que existe um `watch`; nao diz se alguem
+#: esta' a ver. MEDIDO no arranque do dono, 2026-11-04 12:15:15: 5 abas (3
+#: "outras") e o attach recusou `reason=ambiguous` TRES vezes e desistiu, com o
+#: video a tocar numa delas -- a legenda que ele viu era o ASR.
+PLAYING_JS = r"""
+(() => {
+  const m = /[?&]v=([\w-]{11})/.exec(location.href || '');
+  const v = document.querySelector('video');
+  return JSON.stringify({
+    videoId: m ? m[1] : '',
+    t: v ? v.currentTime : null,
+    paused: v ? v.paused : null,
+    ended: v ? v.ended : null,
+    dur: (v && isFinite(v.duration)) ? v.duration : null,
+    vis: document.visibilityState || ''
+  });
+})()
+"""
+
+#: Tecto de abas sondadas por decisao. Uma decisao de boot nao pode custar uma
+#: conexao por aba de um browser com trinta.
+MAX_PROBE_TABS = 6
+
+#: O espaco entre as DUAS leituras de `currentTime`. 120 ms e' mais do que um
+#: `Runtime.evaluate` (10 ms medidos) e menos do que qualquer cambio de cue; o
+#: que interessa nao e' o valor, e' a DIFERENCA entre os dois.
+PLAYING_GAP_S = 0.12
+
+#: Uma decisao de "quem toca" nao se repete a cada pergunta: a lista de abas e'
+#: pedida de 2 em 2 s pelo resolvedor de id, e uma sonda por aba a esse ritmo
+#: seria trabalho emprestado. Reutiliza-se a escolha por este tempo.
+PLAYING_PROBE_TTL_S = 10.0
+
+
+def _ws_eval(conn, expr, msg_id=1):
+    """Um `Runtime.evaluate` numa ligacao ja' aberta; o valor, ou None."""
+    conn.send(json.dumps({"id": msg_id, "method": "Runtime.evaluate",
+                          "params": {"expression": expr,
+                                     "returnByValue": True}}))
+    while True:                       # ignora eventos, espera o id pedido
+        raw = conn.recv()
+        if not raw:
+            raise ValueError('recv vazio')
+        msg = json.loads(raw)
+        if msg.get("id") == msg_id:
+            return ((msg.get("result") or {}).get("result") or {}).get("value")
+
+
+def _as_obj(value):
+    """O payload JSON de uma aba -> dict, ou None. Nao inventa nada."""
+    if isinstance(value, dict):
+        return value
+    try:
+        data = json.loads(value)
+    except (TypeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _default_connect():
+    """O transporte real: `websocket-client`, o mesmo do leitor."""
+    import websocket
+    return websocket.create_connection
+
+
+def _arm_timeout(conn, timeout):
+    """Tecto de tempo na ligacao, quando o objecto o sabe receber.
+
+    `settimeout` num objecto que nao e' um socket (um duplo de teste, um
+    wrapper do `websocket-client`) nao e' motivo para nao ler a aba: devolve
+    False e a leitura seguinte faz-se com o prazo do `pump`.
+    """
+    try:
+        conn.settimeout(timeout)
+    except (AttributeError, OSError, ValueError):
+        return False
+    return True
+
+
+def _drop(conn):
+    """Fecha a ligacao; uma que ja' se fechou sozinha nao e' um erro."""
+    if conn is None:
+        return None
+    try:
+        conn.close()
+    except (AttributeError, OSError):
+        return None
+    return conn
+
+
+def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S):
+    """Sonda cada aba `watch` UMA vez (duas leituras) e devolve os numeros.
+
+    Cada aba custa uma ligacao curta e duas leituras; uma aba que nao responde
+    e' descartada em silencio (o `except` por aba e' o ponto: um alvo morto nao
+    pode impedir a decisao sobre os vivos). `advance` e' `currentTime` da
+    segunda leitura menos o da primeira -- e' ele que separa "a tocar" de
+    "parado", e nao a bandeira `paused`, que a pagina de segundo plano pode
+    mentir.
+    """
+    connect = connect or _default_connect()
+    probes = []
+    for tab in list(tabs or ())[:MAX_PROBE_TABS]:
+        try:
+            url = str(tab.get('webSocketDebuggerUrl') or '')
+        except AttributeError:
+            continue
+        if not url:
+            continue
+        conn = None
+        try:
+            conn = connect(url, timeout=timeout)
+            _arm_timeout(conn, timeout)
+            first = _as_obj(_ws_eval(conn, PLAYING_JS, 1))
+            time.sleep(gap_s)
+            second = _as_obj(_ws_eval(conn, PLAYING_JS, 2))
+        except Exception:                         # noqa: BLE001
+            continue
+        finally:
+            _drop(conn)
+        if not second:
+            continue
+        t1 = _float(second.get('t'))
+        t0 = _float((first or {}).get('t'))
+        probes.append({'videoId': str(second.get('videoId') or ''),
+                       'paused': second.get('paused'),
+                       'ended': second.get('ended'),
+                       't0': t0, 't1': t1,
+                       'advance': (None if (t0 is None or t1 is None)
+                                   else t1 - t0),
+                       'visible': str(second.get('vis') or ''),
+                       'tab': tab})
+    return probes
+
+
+def choose_playing(probes, previous=''):
+    """(video_id, porque) -- QUEM ESTA' A TOCAR, decidido dos numeros.
+
+    Pura de proposito: `_main/youtube-first-at-boot-oracle.py` executa ESTA
+    funcao, para a regra poder ser provada sem Chrome.
+
+    A ordem das regras e' a do dono, nao a do acaso:
+
+      1. `sticky-last` -- o video ja' adotado que AINDA toca fica. Duas abas a
+         tocar ao mesmo tempo (um video em picture-in-picture, dois separadores)
+         nao podem fazer o Sotto saltar entre eles a cada leitura: um ecra que
+         troca de video sozinho e' pior do que um ecra parado.
+      2. `playing` -- entre os que tocam, o que MAIS AVANCOU o `currentTime`
+         entre as duas leituras; empate decide o id lexicografico, que e'
+         estavel entre leituras (um empate nao pode alternar).
+      3. `sticky-last` sobre a lista inteira quando NADA toca mas o ultimo
+         adotado ainda esta' aberto (pausa do dono, video acabado).
+      4. `no-playing` -- sem escolha. Quem chama diz `no-track`, nunca
+         `ambiguous` para sempre.
+    """
+    prev = str(previous or '')
+    listed = [str(p.get('videoId') or '') for p in (probes or ())]
+    live = []
+    for p in probes or ():
+        vid = str(p.get('videoId') or '')
+        if not vid or p.get('paused') is None or p.get('t1') is None:
+            continue
+        if p.get('paused') or p.get('ended'):
+            continue
+        live.append(p)
+    if prev:
+        if prev in [str(p.get('videoId') or '') for p in live]:
+            return prev, 'sticky-last'
+        if not live and prev in listed:
+            return prev, 'sticky-last'
+    if not live:
+        return '', 'no-playing'
+    live.sort(key=lambda p: (-(float(p.get('advance') or 0.0)),
+                             str(p.get('videoId') or '')))
+    return str(live[0].get('videoId') or ''), 'playing'
+
+
+def pick_playing(tabs, previous='', connect=None, timeout=1.0,
+                 gap_s=PLAYING_GAP_S):
+    """(aba, video_id, porque) -- a aba que TOCA, ou `(None, '', motivo)`.
+
+    A sonda e' a cara (uma ligacao curta por aba), por isso quem chama so' a
+    paga quando `pick_target` NAO consegue decidir -- que e' exactamente o
+    `ambiguous` que deixou o dono 65 s sem a legenda do player.
+    """
+    probes = probe_tabs(tabs, connect=connect, timeout=timeout, gap_s=gap_s)
+    vid, why = choose_playing(probes, previous)
+    if not vid:
+        return None, '', why
+    for p in probes:
+        if str(p.get('videoId') or '') == vid:
+            return p.get('tab'), vid, why
+    return None, '', why
+
+
 def parse_snapshot(payload, now=None):
     """A resposta JSON da pagina -> o formato publico, ou None se nao presta.
 
@@ -317,7 +513,7 @@ def video_id_from_url(url):
 
 def boot_attach(port=None, attempts=BOOT_ATTACH_ATTEMPTS,
                 delay=BOOT_ATTACH_DELAY_S, log=None, sleep=None,
-                timeout=BOOT_ATTACH_TIMEOUT_S):
+                timeout=BOOT_ATTACH_TIMEOUT_S, previous='', connect=None):
     """(ok, motivo) -- pede a ligacao a' aba do YouTube no ARRANQUE, com tecto.
 
     A pergunta e' a MESMA do laco (`list_targets` + `pick_target`), feita aqui
@@ -325,6 +521,15 @@ def boot_attach(port=None, attempts=BOOT_ATTACH_ATTEMPTS,
     nenhum: `/json/list` e' HTTP. Cada tentativa escreve UMA linha -- a que
     falhou com o motivo dela --, para que "nao ligou" deixe de ser um silencio
     e passe a ser um numero (`YOUTUBE_CDP_BOOT_ATTACH`).
+
+    E QUANDO A LISTA NAO DECIDE, QUEM DECIDE E' O VIDEO A TOCAR (2026-11-04).
+    MEDIDO no arranque do dono, 12:15:15: 5 abas, `pick_target` sem id e sem
+    titulo de janela -> `reason=ambiguous` nas TRES tentativas ->
+    `YOUTUBE_CDP_BOOT_ATTACH_DEFERRED`, e o ecra mostrou `carregando modelo…`
+    com o video a tocar numa daquelas abas. `pick_playing` sonda as abas e
+    escolhe a que tem `currentTime` a andar (`choose_playing`), com
+    `sticky-last` para o id ja' adotado; so' `no-playing` quando nenhuma toca,
+    e essa e' uma resposta, nao um `ambiguous` repetido.
 
     `ok` diz que ha' uma aba `watch` com `webSocketDebuggerUrl` para onde a
     thread se pode ligar; nao abre o WebSocket (isso e' `CdpCaptionSource`).
@@ -336,6 +541,8 @@ def boot_attach(port=None, attempts=BOOT_ATTACH_ATTEMPTS,
     for attempt in range(1, max(1, int(attempts)) + 1):
         t0 = time.monotonic()
         target = None
+        _pick = ""
+        _picked_why = ""
         try:
             tabs, others = list_targets(port, timeout=timeout)
         except Exception as exc:              # noqa: BLE001
@@ -344,17 +551,27 @@ def boot_attach(port=None, attempts=BOOT_ATTACH_ATTEMPTS,
         else:
             _extra = "tabs=%d others=%d" % (len(tabs), others)
             target, reason = pick_target(tabs, "", "")
+            if target is None:
+                # A LISTA NAO DECIDE -> O VIDEO A TOCAR DECIDE.
+                target, _pick, _picked_why = pick_playing(
+                    tabs, previous, connect=connect, timeout=timeout)
+                if target is not None:
+                    reason = _picked_why or "playing"
+                else:
+                    reason = "no-playing"
             if target is not None and not target.get("webSocketDebuggerUrl"):
                 target, reason = None, "no-ws-url"
         ms = (time.monotonic() - t0) * 1000.0
         if target is not None:
             log("YOUTUBE_CDP_BOOT_ATTACH attempt=%d/%d ok=true reason=%s "
-                "port=%d ms=%.0f %s"
-                % (attempt, attempts, reason, port, ms, _extra))
+                "pick=%s why=%s port=%d ms=%.0f %s"
+                % (attempt, attempts, reason, _pick or '-',
+                   _picked_why or '-', port, ms, _extra))
             return True, reason
         log("YOUTUBE_CDP_BOOT_ATTACH attempt=%d/%d ok=false reason=%s "
-            "port=%d ms=%.0f %s"
-            % (attempt, attempts, reason, port, ms, _extra))
+            "pick=%s why=%s port=%d ms=%.0f %s"
+            % (attempt, attempts, reason, '-', _picked_why or '-', port, ms,
+               _extra))
         if attempt < max(1, int(attempts)):
             sleep(delay)
     return False, reason
@@ -417,6 +634,11 @@ class CdpCaptionSource:
         self._errors = 0
         self._last_error = ""
         self._video_id = ""
+        #: QUEM TOCA ja' foi decidido (2026-11-04): o id da escolha por
+        #: `choose_playing`, para `sticky-last` na leitura seguinte, e a hora
+        #: dessa escolha (a sonda por aba e' cara e tem TTL).
+        self._playing_pick = ""
+        self._playing_pick_cache = None
         #: O titulo da janela que o dono esta' a ver. Com duas abas `watch`, e'
         #: isto -- nao o id -- que decide qual delas ler (`pick_target`).
         self._window_title = ""
@@ -480,7 +702,47 @@ class CdpCaptionSource:
             target, why = pick_target(tabs, '', self._window_title)
             if target is not None:
                 why = 'stale-declared:' + str(why)
+        if target is None:
+            # A LISTA NAO DECIDE -> O VIDEO A TOCAR DECIDE (2026-11-04).
+            # MEDIDO no arranque do dono, 12:15:15: 5 abas, `ambiguous` tres
+            # vezes e o ecra com `carregando modelo…` enquanto o video tocava.
+            # A sonda custa uma ligacao curta por aba, por isso e' RATE-LIMITED
+            # (`PLAYING_PROBE_TTL_S`): enquanto a escolha vale, a lista de abas
+            # responde sem tocar em nenhuma aba.
+            _tab, _vid, _picked = self._playing_pick_for(tabs)
+            if _tab is not None:
+                self._playing_pick = _vid
+                if _vid and not self._video_id:
+                    self._video_id = _vid
+                return _tab, _picked
+            self._note = str(why)
         return target, why
+
+    def _playing_pick_for(self, tabs):
+        """(aba, id, motivo) da escolha por 'a tocar', com cache curta.
+
+        Uma escolha feita ha' menos de `PLAYING_PROBE_TTL_S` e que ainda esteja
+        na lista de abas vale sem sonda nenhuma -- o resolvedor de id pergunta a
+        lista de 2 em 2 s e uma sonda por aba a esse ritmo seria trabalho
+        emprestado ao dono (a queixa e' sempre a mesma: o PC a travar).
+        """
+        now = time.monotonic()
+        cached = getattr(self, '_playing_pick_cache', None)
+        if cached and now - cached[0] < PLAYING_PROBE_TTL_S:
+            _vid = cached[1]
+            if _vid:
+                for tab in tabs or ():
+                    if _vid in str(tab.get('url') or ''):
+                        return tab, _vid, cached[2]
+        try:
+            tab, vid, why = pick_playing(
+                tabs, getattr(self, '_playing_pick', '') or '',
+                connect=getattr(self, '_probe_connect', None))
+        except Exception as exc:              # noqa: BLE001
+            self._log('YOUTUBE_PLAYING_PICK_FAILED error=%r' % (exc,))
+            return None, '', 'probe-failed'
+        self._playing_pick_cache = (now, vid, why)
+        return tab, vid, why
 
     def stop(self):
         self._stop.set()
@@ -758,8 +1020,8 @@ class CdpCaptionSource:
             # morta, e trata-se como tal.
             conn.settimeout(3.0)
             self._attach_log(_n, True, why, (time.monotonic() - _t0) * 1000.0,
-                             'video_id=%s' % video_id_from_url(
-                                 target.get("url") or ""))
+                             'pick=%s' % (video_id_from_url(
+                                 target.get("url") or "") or '-'))
             return conn
         except Exception as exc:                  # noqa: BLE001
             self._error(exc)

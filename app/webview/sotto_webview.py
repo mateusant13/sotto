@@ -1886,6 +1886,60 @@ SWP_FRAMECHANGED = 0x0020
 #: e' do player, nao nossa -- uma janela curta de legenda nao pode custar um load.
 EXTERNAL_PARK_DELAY_S = 20.0
 
+#: O PLAYER MANDA NA SUPERFICIE DA LEGENDA ENQUANTO ELE FORNECER (2026-11-04).
+#: Dono, verbatim: *"é estupido 'carregando o modelo' e nao mostrar
+#: instantaneamente as legendas do youtube, assim que eu abro o app."* MEDIDO no
+#: arranque dele de 12:15:15 (pid 56116): `CAPTION_WINDOW_DEFERRED_APPLIED
+#: on=true` as 15.349 -- a superficie de legenda estava de pe' -- e a PRIMEIRA
+#: coisa que ela pintou foi `CAPTION_PAINT ... text="carregando modelo…"` as
+#: 16.816 (`CAPTION_OVERLAY_PUSH count=1`), com o YouTube aberto em 5 abas e um
+#: video a tocar. O modelo carrega em 5,6-9 s; a linha do player existe antes.
+#:
+#: Uma janela de recencia, e nao um teste de igualdade: `yt_live_paint_at` e'
+#: o instante da ULTIMA linha do player que chegou ao ecra, e o laco da shell
+#: corre a 0,1 s. 10 s cobre uma pausa de cue (o `RELEASE_S` do observador solta
+#: o player so' depois de bem mais) sem manter o texto de estado calado para
+#: sempre se o observador morrer.
+PLAYER_TRACK_FRESH_S = 10.0
+
+
+def player_track_owns(state, now=None, fresh_s=PLAYER_TRACK_FRESH_S):
+    """O estado de um player -> True quando a superficie da legenda e' DELE.
+
+    Pura de proposito: `_main/youtube-first-at-boot-oracle.py` executa ESTA
+    funcao (e a shell que a usa), para a regra poder ser julgada sem Chrome.
+
+    Tres factos, do mais forte para o mais fraco:
+
+      * `rows` / `snap_rows` -- o DOM do player TEM linhas de legenda AGORA
+        (o observador leu-as, ou a foto da CDP as traz). E' prova positiva: o
+        YouTube esta' a desenhar legenda, e o que o ecra deve mostrar e' ela;
+      * `epoch` -- uma janela do player ja' chegou a superficie e nao foi
+        libertada (ver `push_caption_to_window` / `on_external_captions_released`).
+        E' o que mantem o texto de estado fora entre duas cues de um video que
+        esta' a ser lido;
+      * `painted_at` -- ha menos de `fresh_s` o player estava a fornecer. Cobre
+        o instante entre a linha chegar e o observador publica'-la.
+
+    Sem nenhum dos tres, a superficie e' do ASR e o texto de estado e'
+    HONESTO: e' o unico caminho para o caso (c) -- sem faixa, o dono tem de ver
+    que o modelo carrega em vez de um ecra vazio.
+    """
+    if not state:
+        return False
+    if state.get('rows') or state.get('snap_rows'):
+        return True
+    if state.get('epoch'):
+        return True
+    try:
+        painted = float(state.get('painted_at') or 0.0)
+    except (TypeError, ValueError):
+        painted = 0.0
+    if not painted:
+        return False
+    now = time.monotonic() if now is None else float(now)
+    return 0.0 <= (now - painted) <= float(fresh_s)
+
 #: Bottom-strip geometry: wide and short, bottom-centred. The 1040x150 comes
 #: from the strip-surface measurements (height read from `--strip-height` in
 #: the CSS, never hard-coded); STRIP_HEIGHT_FALLBACK exists only so a missing
@@ -2527,6 +2581,9 @@ class ExternalCaptionWatcher(threading.Thread):
         self.last_source = ''
         self.last_change = 0.0
         self.last_seen = 0.0
+        #: A queda JA' foi publicada para este silencio (ver `_release`). Volta
+        #: a False no primeiro quadro que o player servir outra vez.
+        self._released_for_silence = False
         self.finalized = False
         self.failures = 0
         self.reads = 0
@@ -4972,6 +5029,7 @@ class ExternalCaptionWatcher(threading.Thread):
             rows = list(lines) if (yt_mode and lines) else None
             if line:
                 self.last_seen = now
+                self._released_for_silence = False
                 self.shell.external_captions_available = True
                 if line != self.last_line or (rows or []) != self.last_rows:
                     if self.last_line and not self.finalized:
@@ -5015,6 +5073,26 @@ class ExternalCaptionWatcher(threading.Thread):
                 self._release('yt-no-line')
 
     def _release(self, reason):
+        # A QUEDA E' UMA, NAO UMA CADENCIA (2026-11-04). MEDIDO: o `_tick` com
+        # `yt_mode=True` e sem linha volta a este metodo a cada leitura depois de
+        # `YT_RELEASE_S`, e o `if self.last_line` so' guardava a LINHA -- o
+        # `on_external_captions_released()` corria em TODOS os ticks seguintes.
+        # Esse e' o "flicker loop": o worker e' reerguido, a legenda do ASR entra,
+        # o player volta e a superficie troca de dono outra vez. O release
+        # pertence a UMA transicao (havia linha ou a fonte estava ativa), e a
+        # segunda chamada sem transicao nenhuma nao faz nada.
+        had_line = bool(self.last_line)
+        was_owner = bool(getattr(self.shell, 'external_captions_active', False)
+                         or getattr(self.shell, 'external_captions_available', False))
+        # O EPISODIO, E NAO O CARIMBO (2026-11-04). A primeira tentativa foi
+        # perguntar `had_line or was_owner or last_seen`, e ela deixava de fora
+        # o caso honesto: um video SEM faixa, sem uma linha pintada e com as
+        # bandeiras limpas, cuja queda DEVOLVE o microfone (`_main/
+        # youtube-track-wiring-oracle.py` arms a3/a5 -- medido RED 0 != 1). O
+        # que distingue a repeticao nao e' o carimbo, e' o EPISODIO: UMA queda
+        # por silencio, e a seguinte so' quando o player servir outra vez.
+        if self._released_for_silence and not had_line:
+            return False
         if self.last_line:
             if not self.finalized:
                 self.shell.external_caption(self.last_line, self.last_source, final=True)
@@ -5025,6 +5103,14 @@ class ExternalCaptionWatcher(threading.Thread):
             self.finalized = False
         self.shell.external_captions_active = False
         self.shell.external_captions_available = False
+        # O PLAYER DEIXOU DE SER VISTO (2026-11-04). Sem isto, a chamada
+        # SEGUINTE -- ja' sem linha e com as bandeiras limpas -- passava o
+        # portao de cima por via do `last_seen` que o `_tick` tinha acabado de
+        # reescrever, e o resume corria em TODOS os ticks seguintes: o worker
+        # reerguido, o ASR a entrar, o player a voltar. E' o flicker loop, e a
+        # arm (f) de `_main/youtube-first-at-boot-oracle.py` conta-o.
+        self.last_seen = 0.0
+        self._released_for_silence = True
         # O PISO DO ESTACIONAMENTO COMECA DE NOVO a cada janela (2026-11-02): um
         # video que volta a servir linhas abre uma janela nova, e o worker so' e'
         # estacionado depois do mesmo rato -- nunca "herdado" da janela anterior.
@@ -5034,6 +5120,7 @@ class ExternalCaptionWatcher(threading.Thread):
             self.shell.on_external_captions_released()
         except Exception as exc:  # noqa: BLE001
             log(f'EXTERNAL_CAPTIONS_RESUME_FAILED error={exc!r}')
+        return True
 
 
 #: `SetLayeredWindowAttributes` flags. LWA_COLORKEY makes ONE RGB value fully
@@ -13225,19 +13312,43 @@ class SottoShell:
         # sempre: a porta abria no primeiro tick do laco, nunca aqui. O
         # `YOUTUBE_CDP_PREOPEN_FAILED` que nunca apareceu no log do dono e' o
         # proprio sintoma -- a app que ele carrega e' anterior a esta chamada.
-        try:
+        # ── A ORDEM E' UMA SEQUENCIA ESCRITA, NAO UM EFEITO LATERAL ──────────
+        # Dono, verbatim (2026-11-04): *"é estupido 'carregando o modelo' e nao
+        # mostrar instantaneamente as legendas do youtube, assim que eu abro o
+        # app."* A ordem que responde a isso, da esquerda para a direita:
+        #
+        #   1. `cdp`     -- a fonte da legenda do player (Thread; abre a porta e
+        #                   sonda as abas com tecto). NAO carrega modelo nenhum;
+        #   2. `watcher` -- a thread que le e pinta a linha do player;
+        #   3. `worker`  -- o ASR, POR ULTIMO e nunca pre-condicao de 1 e 2.
+        #
+        # MEDIDO no arranque dele as 12:15:15: `BRIDGE_SPAWNED` 15.887 e
+        # `EXTERNAL_CAPTIONS_WATCH started` 16.001 -- o observador so' existia
+        # DEPOIS de o worker ser largado, e a superficie pintou `carregando
+        # modelo…` antes de qualquer linha do player. A sequencia fica numa lista
+        # ORDENADA, com uma linha de log (`CAPTION_PIPELINE_ORDER`) que torna a
+        # ordem medida no log dele, e nao inferida do codigo.
+        def _cdp_step():
+            # Um passo com nome: o portao `_main/youtube-cdp-boot-oracle.py`
+            # (arm A11) e o seu mutante procuram esta CHAMADA no arranque --
+            # e ela continua a ser uma chamada, nao um efeito de um lambda.
             self._yt_cdp_boot_attach()
-        except Exception as exc:              # noqa: BLE001
-            log('YOUTUBE_CDP_PREOPEN_FAILED error=%r' % (exc,))
-        for step, call in (
-                ('watcher', lambda: self.start_external_caption_watcher()),
-                ('worker', lambda: self.start_worker(
-                    self._worker_autostart_reason(self.args))),
-        ):
+
+        steps = (
+            ('cdp', _cdp_step),
+            ('watcher', lambda: self.start_external_caption_watcher()),
+            ('worker', lambda: self.start_worker(
+                self._worker_autostart_reason(self.args))),
+        )
+        _order = []
+        for step, call in steps:
+            _order.append(step)
             try:
                 call()
             except Exception as exc:          # noqa: BLE001
                 log('CAPTION_PIPELINE_STEP_FAILED step=%s error=%r' % (step, exc))
+        self._caption_pipeline_order = _order
+        log('CAPTION_PIPELINE_ORDER steps=%s' % ','.join(_order))
         try:
             if self._worker_autostart_reason(self.args) in ('default', 'with-worker'):
                 self.vram_guard = VramGuard(self)
@@ -13398,7 +13509,9 @@ class SottoShell:
             on_stats=self.on_worker_stats,
             on_meter=self.on_worker_meter,
             # A espera do modelo (30-38 s medidos) vai para a janela da legenda.
-            on_loading_text=self.push_caption_to_window,
+            # O TEXTO DE ESTADO PASSA POR UMA PORTA COM REGRA (2026-11-04):
+            # `on_worker_loading_text` recusa-o enquanto o player fornecer.
+            on_loading_text=self.on_worker_loading_text,
             target_pid=target_pid,
             # MEASURED: este parametro faltava. O --speakers chegava
             # ao SIDECAR mas nunca ao WORKER, que e' quem o consome -- e o
@@ -13926,6 +14039,68 @@ class SottoShell:
                 except Exception:
                     pass
 
+    def _player_track_state(self):
+        """OS FACTOS do player, lidos dos objectos que os tem (nunca copiados).
+
+        O ESTADO VIVE NO OBSERVADOR, NAO NA SHELL (2026-11-03 -- o mesmo erro ja'
+        medido no `_external_caption_owns_screen`): `yt_cdp_rows` e
+        `yt_live_paint_at` sao do `ExternalCaptionWatcher`; a shell so' os le'.
+        A fonte CDP pode estar nos dois sitios (a shell cria-a no arranque e o
+        observador ADOTA-a), por isso procura-se primeiro no observador.
+
+        `snap_rows` e' a pergunta que fecha a corrida do arranque: o worker
+        publica `model-loading` 1,4 s depois do pipeline comecar, e o
+        observador so' pinta no primeiro tick; a FOTO da CDP, essa, ja' tem as
+        linhas do DOM nesse instante. Sem ela o texto de estado entrava ANTES de
+        a primeira linha do player existir, e o dono via exactamente isso.
+        """
+        watcher = getattr(self, 'external_caption_watcher', None)
+        state = {'rows': 0,
+                 'snap_rows': 0,
+                 'painted_at': 0.0,
+                 'epoch': bool(getattr(self, '_player_frame_seen', False))}
+        if watcher is not None:
+            state['rows'] = len(getattr(watcher, 'yt_cdp_rows', None) or ())
+            try:
+                state['painted_at'] = float(
+                    getattr(watcher, 'yt_live_paint_at', 0.0) or 0.0)
+            except (TypeError, ValueError):
+                state['painted_at'] = 0.0
+        source = getattr(watcher, '_yt_cdp_source', None)
+        if source is None or source is False:
+            source = getattr(self, '_yt_cdp_source', None)
+        if source is not None and source is not False:
+            try:
+                snap = source.snapshot(max_age=PLAYER_TRACK_FRESH_S)
+            except Exception:                 # noqa: BLE001
+                snap = None
+            if snap and snap.get('rows'):
+                state['snap_rows'] = len(snap['rows'])
+        return state
+
+    def player_track_owns_surface(self, now=None):
+        """A superficie da legenda e' do player? (ver `player_track_owns`)."""
+        return player_track_owns(self._player_track_state(), now=now)
+
+    def on_worker_loading_text(self, text):
+        """`model-loading` -> a superficie, MAS SO' SE O PLAYER NAO A OCUPAR.
+
+        E' este o callback que a ponte recebe (`on_loading_text`). A regra mora
+        aqui e nao no `push_caption_to_window` porque um push de ESTADO e' uma
+        coisa diferente de uma legenda: o push continua a aceitar tudo o que e'
+        fala (do ASR e do player), e so' o texto de estado passa por esta porta.
+        """
+        try:
+            owned = self.player_track_owns_surface()
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_LOADING_TEXT_GATE_FAILED error=%r' % (exc,))
+            owned = False
+        if owned:
+            log('CAPTION_LOADING_TEXT_WITHHELD reason=player-track text=%s'
+                % json.dumps(str(text or '')[:40]))
+            return False
+        return self.push_caption_to_window(text)
+
     def push_caption_to_window(self, text, previous=None, credits=None, instant=False,
                                cue=None, rows=None, tap_ms=None):
         """A legenda para a JANELA PROPRIA. Silencioso se ela ainda nao existir."""
@@ -13947,6 +14122,12 @@ class SottoShell:
         # desde a ultima leitura externa boa), o caminho do ASR NAO empurra
         # nada. `rows=` e `instant=True` sao o caminho do player e passam.
         self._last_caption_was_player = rows is not None
+        if rows is not None:
+            # A SUPERFICIE E' DO PLAYER ATE' ELE PARAR (2026-11-04): o epoch
+            # so' cai com o release do observador
+            # (`on_external_captions_released`), nao com uma pausa entre cues.
+            # Ver `player_track_owns`.
+            self._player_frame_seen = True
         if rows is None and not instant:
             owned_until = float(getattr(self, "_yt_owner_until", 0.0) or 0.0)
             if time.monotonic() < owned_until:
@@ -14456,6 +14637,12 @@ class SottoShell:
         model). The microphone does not come back because the app is gone; it
         comes back because the app is still there.
         """
+        # O PLAYER LARGOU A SUPERFICIE (2026-11-04). Enquanto ele fornecia, o
+        # texto de estado era recusado; a partir daqui a superficie e' do ASR e
+        # o estado volta a ser honesto. Limpa-se ANTES dos `return` abaixo: um
+        # early-return que deixasse o epoch de pe' calava o `model-loading` de
+        # um worker que ia ser carregado.
+        self._player_frame_seen = False
         if self.exiting.is_set():
             log('EXTERNAL_CAPTIONS_WORKER_RESUME_SKIPPED reason=shell-exiting')
             return False
