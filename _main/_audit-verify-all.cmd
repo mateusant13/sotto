@@ -860,6 +860,24 @@ call :skipped youtube-land !STEP_RC! "%OUT%\youtube-land.log" "YOUTUBE-LAND VERD
 call :step red-as-expected-youtube-land 1 "_main\youtube-land-oracle.py;app\webview\caption_overlay.py" "%OUT%\youtube-land-neg.log" python _main\youtube-land-oracle.py --neg-arm
 call :expectred red-as-expected-youtube-land !STEP_RC! "%OUT%\youtube-land-neg.log" "NEG-ARM: PASS"
 
+REM `time-to-first-caption` e' a ACAO DO DONO medida em ms (2026-11-04: *"uma legenda
+REM ate' 3 s depois de a app estar de pe'"*). Le' o LOG VIVO (`_main\webview-run.log`)
+REM e NUNCA larga a app: nenhuma janela, nenhum dispositivo de audio, nenhum modelo.
+REM Logo corre SEMPRE (nunca em cache) e e' `:skipped`, nao `:record`: sem nenhuma
+REM `CAPTION_PAINT` no arranque em julgamento ele diz `TIME-TO-FIRST-CAPTION VERDICT:
+REM SKIPPED` com rc=0 -- um passo saltado NAO e' um portao que passou e o `:skipped`
+REM conta-o em `skipped=`. Uma medicao >= 3000 ms NAO e' um skip: o oraculo sai 1 e o
+REM `:skipped` reprova o passo, porque o numero e' exactamente a aceitacao.
+REM O braco negativo corre sobre logs SINTETICOS em memoria (9 casos: 1,2 s tem de dar
+REM PASS, 9 s e 3000 ms exactos tem de dar rc=1, um arranque anterior nao pode ser lido
+REM como este, um placeholder nao e' legenda, e uma tabela de fases nao pode ficar
+REM presa na marca que falta, e um log ABSENTE e' SKIPPED e nao reprova a bateria),
+REM portanto exercita-se hoje mesmo.
+call :step always time-to-first-caption 0 "_main\time-to-first-caption-oracle.py;_main\webview-run.log" "%OUT%\time-to-first-caption.log" python _main\time-to-first-caption-oracle.py
+call :skipped time-to-first-caption !STEP_RC! "%OUT%\time-to-first-caption.log" "TIME-TO-FIRST-CAPTION VERDICT: PASS" "TIME-TO-FIRST-CAPTION VERDICT: SKIPPED" "TIME-TO-FIRST-CAPTION VERDICT: SKIPPED"
+call :step red-as-expected-time-to-first-caption 1 "_main\time-to-first-caption-oracle.py" "%OUT%\time-to-first-caption-neg.log" python _main\time-to-first-caption-oracle.py --neg-arm
+call :expectred red-as-expected-time-to-first-caption !STEP_RC! "%OUT%\time-to-first-caption-neg.log" "NEG-ARM: PASS"
+
 call :step youtube-land-replay 0 "_main\youtube-land-replay-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-land-replay.log" python _main\youtube-land-replay-oracle.py
 call :record youtube-land-replay !STEP_RC!
 call :step red-as-expected-youtube-land-replay 1 "_main\youtube-land-replay-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-land-replay-neg.log" python _main\youtube-land-replay-oracle.py --neg-arm
