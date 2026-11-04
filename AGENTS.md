@@ -446,8 +446,14 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 14:3x):** `_main\_audit-verify-all.cmd` = **221321 B**,
-  **2743 CRLF** / 0 bare LF, sha256 `90449F0B0B8FF9B3A56BB98A2F0845C848E531D19920888B6C3A19FE6F87661E`.
+- **PIN do ficheiro (medido 2026-11-04, 15:0x):** `_main\_audit-verify-all.cmd` = **222416 B**,
+  **2758 CRLF** / 0 bare LF, sha256 `C6B6DE6051C79CE5C38478A7F4671F5DF8445915A4F7582D991B2EB6EB71E497`.
+  (Quinze linhas a mais do que o pin de 221321 B / 2743 CRLF: o passo `freeze-census`, que corre
+  `_main/freeze-census.py --selftest`. Nascido da ordem do dono de 2026-11-04 -- *"o PC inteiro
+  trava: herdr, os terminais dentro dele, o chrome, tudo ao mesmo tempo"*. O censo mede commit, procs,
+  threads, handles e CPU da maquina em tres syscalls, ranqueia os que seguram CPU so' de 10 em 10 s,
+  e publica `FREEZE`/`FREEZE_SEVERE` a partir do ATRASO do proprio tick (a maquina esfomeada atrasa
+  o laco). O `--selftest` planta um `time.sleep` de 1500 ms e exige a linha com a magnitude plantada.)
   (Vinte linhas a mais do que o pin de 219712 B / 2723 CRLF: o par `tray-menu` + o seu `--neg-arm`,
   12 arms. Nasceu da ordem do dono de 2026-11-04 -- *"icone do sotto e' uma merda de mexer. botao
   direito e' travado pra abrir o menu dele ... tipo o vanguard"* -- e mede as TRES causas que faziam

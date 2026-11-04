@@ -677,6 +677,21 @@ if exist _main\caption-seam-dedup-oracle.py (
   call :step red-as-expected-caption-seam-dedup 1 "_main\caption-seam-dedup-oracle.py;worker\sotto_worker.py" "%OUT%\caption-seam-dedup-neg.log" python _main\caption-seam-dedup-oracle.py --neg-arm
   call :expectred red-as-expected-caption-seam-dedup !STEP_RC! "%OUT%\caption-seam-dedup-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-caption-seam-dedup MISSING "%OUT%\caption-seam-dedup-neg.log" "NEG-ARM PASS" )
+REM `freeze-census.py --selftest` -- O CENSO DO FREEZE, e o braco que o prova.
+REM Ordem do dono de 2026-11-04: *"o PC inteiro trava: herdr, os terminais dentro
+REM dele, o chrome, tudo ao mesmo tempo"*. Um freeze dura 10-60 s e acaba antes de
+REM alguem conseguir anexar um profiler, por isso a evidencia tem de ser recolhida
+REM CONTINUAMENTE por algo mais barato do que aquilo que vigia: commit/limite,
+REM procs/threads/handles e CPU da maquina em UMA syscall cada, a lista dos que
+REM seguram CPU so' de 10 em 10 s, e o atraso do proprio tick -- se o laco devia
+REM acordar em 2000 ms e acordou em 9000, a maquina estava esfomeada e ESSES sao os
+REM timestamps. O `--selftest` planta um `time.sleep` REAL de 1500 ms no proprio
+REM laco e exige o `FREEZE_SEVERE` com a magnitude plantada: um detector que nunca
+REM disparou e' decoracao.
+if exist _main\freeze-census.py (
+ call :step freeze-census 0 "_main\freeze-census.py" "%OUT%\freeze-census.log" python _main\freeze-census.py --selftest
+ call :record freeze-census !STEP_RC!
+) else ( call :record freeze-census MISSING )
 REM `tray-menu-oracle.py` -- o icone da bandeja tem de se comportar como o de
 REM qualquer outro app. Ordem do dono de 2026-11-04, verbatim: *"icone do sotto e'
 REM uma merda de mexer. botao direito e' travado pra abrir o menu dele ... tipo o
