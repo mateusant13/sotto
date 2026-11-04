@@ -8952,6 +8952,12 @@ class SottoShell:
         # tocado em nada. Ficheiro de estado, e so' isso: quem desligar com o
         # mesmo HOLD grava `false` e a janela nao volta.
         self._caption_wanted = self._caption_wanted_restored()
+        # A RESTAURACAO PEDE OS PIXELS (2026-11-04): `on=true` restaurado com a
+        # janela nunca mostrada era a mentira que fazia a 1a pressao desligar uma
+        # legenda que ele nao via. O pedido entra em `_caption_show_pending` e o
+        # bloco DEFERRED_APPLIED abaixo o aplica quando o overlay existir.
+        if self._caption_wanted:
+            self._caption_show_pending = True
         try:
             import caption_overlay
             self.caption_overlay = caption_overlay.NativeCaptionOverlay(log=log)
@@ -11631,23 +11637,13 @@ class SottoShell:
         executa este corpo a partir do ficheiro que corre.
         """
         if str(kind) == 'live':
-            # A DECISAO LE' O QUE ESTA' NO ECRA, NAO O QUE ELE PEDIU (2026-11-03).
-            # Medido na sessao do dono (`_main/webview-run.log`, 02:45:13-02:45:52):
-            # o interruptor restaurado do arranque (`CAPTION_WANTED_RESTORED on=true`)
-            # e o botao LIVE deixaram `_caption_wanted` a `True` com a janela
-            # ESCONDIDA -- entao a primeira pressao de Ctrl+Space, a unica coisa que
-            # ele fez, "ligava" um interruptor que ja' estava ligado e desligava a
-            # legenda. A tecla e' um INTERRUPTOR DO QUE ELE VE (o mesmo facto que o
-            # lamp do painel pinta, `data-caption-window`), e o que ele ve' e'
-            # `_caption_window_shown`: uma pressao muda SEMPRE o ecra.
-            # O QUE CONTA COMO "NO ECRA" E' O QUE A JANELA MEDE (2026-11-03).
-            # A cache dizia `mostrada` apos um pedido, e no arranque o pedido
-            # vem RESTAURADO (`CAPTION_WANTED_RESTORED on=true`): a primeira
-            # pressao do dono ESCONDIA uma janela que ele talvez nunca tenha
-            # visto, e a leitura dele foi *"to apertando control espaco e nao ta
-            # ligando"*. O painel ja' resolve isto assim (`window_visible`,
-            # "a MEDICAO ao vivo, e nao a cache"); o overlay passa a usar a
-            # mesma regra. Sem janela para medir (oraculo), fica a cache.
+            # A TECLA COMUTA O INTERRUPTOR DO DONO, NAO OS PIXELS (2026-11-04).
+            # Ler `_caption_wanted` gastava a 1a pressao de um arranque
+            # restaurado; ler `_caption_window_shown` IMPEDIA o DESLIGAR depois
+            # do blank de silencio -- medido no log dele (presses 292/293). O
+            # blank apaga PIXELS e mantem o interruptor: a proxima legenda
+            # volta sozinha. `shown` fica na linha como diagnostico; a regra
+            # completa e as 32 arms estao em `_main/hotkey-live-toggle-oracle.py`.
             shown = bool(getattr(self, '_caption_window_shown', False))
             _ov = getattr(self, 'caption_overlay', None)
             if _ov is not None and getattr(_ov, 'hwnd', None):
@@ -11655,10 +11651,11 @@ class SottoShell:
                     shown = bool(window_visible(_ov.hwnd))
                 except Exception as exc:  # noqa: BLE001 -- sem leitura, cache
                     log(f'CAPTION_VISIBLE_READ_FAILED error={exc!r}')
-            on = not shown
+            wanted = bool(getattr(self, '_caption_wanted', False))
+            on = not wanted
             log(f'HOTKEY_LIVE_STEP caption_on={str(on).lower()} '
                 f'shown={str(shown).lower()} '
-                f'wanted={str(bool(getattr(self, "_caption_wanted", False))).lower()}')
+                f'wanted={str(wanted).lower()}')
             return self._set_live_enabled({'on': on})
         # A MEDICAO AO VIVO, e nao a cache: duas outras vias mapeiam e desmapeiam
         # a janela sem passar por aqui (a `form.Show()` da navegacao, gateada, e

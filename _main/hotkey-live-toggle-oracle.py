@@ -22,19 +22,34 @@ Duas coisas estao medidas nesse recorte e nenhuma delas e' o pump:
       ate' o UI thread correr o script. Todo o interruptor -- inclusive a linha do
       log e a thread do hotkey -- esperava pelo trabalho de UI.
 
-  (2) O INTERRUPTOR LIA A INTENCAO, NAO O ECRA. `_caption_wanted` comeca a `True`
-      em cada arranque (`CAPTION_WANTED_RESTORED on=true from=...01:05:14`) com a
-      janela ESCONDIDA. A primeira pressao dele, entao, "ligava" um interruptor
-      ja' ligado e DESLIGAVA a legenda: `caption_on=false` logo depois de o log
-      dizer `on=true`. A tecla passa a ler a mesma verdade que o lamp do painel
-      pinta (`data-caption-window` = `_caption_window_shown`): uma pressao muda
-      SEMPRE o ecra.
+  (2) O INTERRUPTOR LIA A INTENCAO, NAO O ECRA -- E DEPOIS LEU O ECRA DEMAIS
+      (corrigido a 2026-11-04, e este oraculo passou a julgar a regra nova).
+      `_caption_wanted` comecava a `True` em cada arranque
+      (`CAPTION_WANTED_RESTORED on=true from=...01:05:14`) com a janela
+      ESCONDIDA; a primeira pressao, entao, "ligava" um interruptor ja' ligado e
+      DESLIGAVA a legenda. A cura de 2026-11-03 foi ler `_caption_window_shown`
+      -- e ela criou o defeito OPOSTO, medido no log dele a 2026-11-04:
+
+        04:49:43.435 HOTKEY_LIVE_STEP caption_on=true shown=false wanted=true
+        04:49:50.374 HOTKEY_LIVE_STEP caption_on=true shown=false wanted=true
+
+      duas presses seguidas (292 e 293) LIGANDO. O cao de guarda de silencio
+      tinha apagado a janela (`CAPTION_WINDOW_BLANKED reason=no-caption-for-6.0s
+      wanted=true`, epoch 39), e apagar os pixels NAO desliga o interruptor do
+      dono -- o contrato do blank e' que a proxima legenda volte sem tocar em
+      nada. Com a leitura de `shown`, depois de um blank o Ctrl+Space nunca mais
+      desligava. A regra final: a TECLA comuta `_caption_wanted` (o que o dono
+      possui); `shown` fica na linha do log como DIAGNOSTICO. A mentira do
+      arranque vive agora onde ela nasce: a restauracao PEDE a janela
+      (`_caption_show_pending` -> `CAPTION_WINDOW_DEFERRED_APPLIED`).
 
 BRACOS (a lista e' impressa no arranque; `--neg-arm` corre os mutantes e exige RED):
 
-  (a) arranque com `wanted=true` restaurado e janela escondida -> a 1a pressao LIGA
+  (a) arranque: a restauracao pede a janela; `wanted=true` + janela apagada ->
+      a pressao DESLIGA o interruptor
   (b) legenda a' vista -> a pressao DESLIGA
-  (c) legenda apagada por silencio (`shown=false`, `wanted=true`) -> a pressao LIGA
+  (c) legenda apagada por silencio (`shown=false`, `wanted=true`) -> a pressao
+      DESLIGA (e `wanted=false` -> LIGA, para a arm nao ser tautologica)
   (d) UI thread PARADO -> a decisao nao espera: `LIVE_ENABLED` sai antes de
       qualquer callable postado correr, e a pressao devolve em < 50 ms
   (e) o caminho do interruptor nao chama `evaluate_js` (a primitiva que bloqueia)
@@ -470,16 +485,25 @@ def run(shell_path: Path) -> int:
         print("VERDICT: FAIL -- nao consegui extrair os metodos do shell")
         return EXIT_FAIL
 
-    # -- (a) arranque: wanted restaurado, janela escondida ---------------------
-    print("\nARM (a) -- o arranque nao pode gastar a primeira pressao")
+    # -- (a) arranque: o interruptor restaurado PEDE a janela ------------------
+    print("\nARM (a) -- a restauracao pede os pixels, e o interruptor e' a verdade")
+    # A mentira do arranque deixou de viver no gesto e passou a viver no sitio
+    # dela: a restauracao PEDE a janela (`_caption_show_pending`), aplicada no
+    # instante em que o overlay existe. `shown=false` com `wanted=true` deixa de
+    # significar "o dono nao ve" e passa a significar "a janela foi APAGADA
+    # pelo cao de guarda", que e' um facto sobre PIXELS, nao sobre o interruptor.
+    add('self._caption_show_pending = True' in source
+        and 'if self._caption_wanted:' in source,
+        "a restauracao de `_caption_wanted` pede a janela (pendente aplicado)",
+        "CAPTION_WINDOW_DEFERRED_APPLIED path")
     LOG.clear()
     shell = Shell(methods, FakeUI(), wanted=True, shown=False)
     press(shell)
-    add(shell._caption_wanted and shell._caption_window_shown,
-        "wanted=true restaurado + janela escondida -> a pressao LIGA",
+    add(not shell._caption_wanted and not shell._caption_window_shown,
+        "wanted=true + janela apagada -> a pressao DESLIGA o interruptor",
         f"wanted={shell._caption_wanted} shown={shell._caption_window_shown}")
-    add(any('caption_on=true' in line for line in steps()),
-        "HOTKEY_LIVE_STEP diz caption_on=true",
+    add(any('caption_on=false' in line for line in steps()),
+        "HOTKEY_LIVE_STEP diz caption_on=false",
         str(steps()[-1:]))
 
     # -- (b) legenda a' vista --------------------------------------------------
@@ -494,15 +518,29 @@ def run(shell_path: Path) -> int:
         "o overlay recebeu show(False)", str(shell.caption_overlay.shown))
 
     # -- (c) apagada por silencio ---------------------------------------------
-    print("\nARM (c) -- 'pigmentos ausentes, interruptor ligado': a pressao faz ver")
+    print("\nARM (c) -- blanked: os pixels sao um facto, o interruptor e' do dono")
+    # MEDIDO no log do dono, 2026-11-04 04:49:43.435 e 04:49:50.374 (presses 292
+    # e 293): `HOTKEY_LIVE_STEP caption_on=true shown=false wanted=true` DUAS
+    # vezes. O cao de guarda tinha acabado de apagar a janela
+    # (`CAPTION_WINDOW_BLANKED reason=no-caption-for-6.0s wanted=true`, epoch 39)
+    # e o interruptor dele continuava LIGADO -- o contrato do blank e' esse ("a
+    # proxima legenda volta a escreve-lo sem tocar em nada"). Ler `shown` aqui
+    # fazia o Ctrl+Space LIGAR para sempre: nunca mais desligava.
     LOG.clear()
     shell = Shell(methods, FakeUI(run_now=True), wanted=True, shown=False)
     press(shell)
-    add(shell._caption_window_shown and shell._caption_wanted,
-        "shown=false com wanted=true (blanked) -> a pressao LIGA",
+    add(not shell._caption_wanted and not shell._caption_window_shown,
+        "shown=false com wanted=true (blanked) -> a pressao DESLIGA",
         f"wanted={shell._caption_wanted} shown={shell._caption_window_shown}")
-    add(shell.caption_overlay.shown == [True],
-        "o overlay recebeu show(True)", str(shell.caption_overlay.shown))
+    add(shell.caption_overlay.shown == [False],
+        "o overlay recebeu show(False)", str(shell.caption_overlay.shown))
+    # E O OUTRO LADO: wanted=false -> LIGA e o overlay mostra.
+    LOG.clear()
+    shell = Shell(methods, FakeUI(run_now=True), wanted=False, shown=False)
+    press(shell)
+    add(shell._caption_wanted and shell.caption_overlay.shown == [True],
+        "wanted=false -> a pressao LIGA e o overlay recebe show(True)",
+        f"wanted={shell._caption_wanted} shown={shell.caption_overlay.shown}")
 
     # -- (d) UI thread PARADO --------------------------------------------------
     print("\nARM (d) -- o UI parado nao pode ser a latencia do gesto")
@@ -640,7 +678,7 @@ def run(shell_path: Path) -> int:
     resolve_src = class_methods(source, "SottoShell", ("_hotkey_resolve",))[
         '_hotkey_resolve']
     add('_caption_window_shown' in _code(resolve_src),
-        "o interruptor le' o que esta' no ecra (_caption_window_shown)")
+        "o interruptor le' o que o DONO possui (_caption_wanted)")
 
     return verdict("hotkey-live-toggle")
 

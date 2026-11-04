@@ -317,3 +317,7 @@ _main/_strip-surface-oracle.json
 _main/_audit-verify/_battery-priority.txt
 _main/_audit-verify/_battery-summary.txt
 _main/_audit-verify/_slowest.txt
+
+# O CENSO DO PRIMEIRO FRAME ESCREVE O PROPRIO panel-state (2026-11-04): e' o
+# estado de uma INSTANCIA PRIVADA do censo, nao o do dono -- machine state.
+panel-state.SottoPaintFirstCensus-*.json

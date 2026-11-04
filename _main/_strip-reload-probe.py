@@ -912,9 +912,14 @@ def arm_d_and_e(module, tmp):
         fh.write('\n# one byte more\n')
     harness.policy.request([copy_d])
     # The ceiling ends the hold on its own: wait for the REPORT that says so.
+    # O TETO DE ESPERA E' DA SONDA, NAO DO PRODUTO (2026-11-04). Com a maquina
+    # carregada, 8 s nao chegam para o pump do shell entregar o relatorio: a arm
+    # caiu dentro da bateria com a cura a funcionar (3/3 verdes sozinha) e o
+    # `ceiling` do proprio arm e' 1000 ms. O detalhe leva `reported`, para uma
+    # futura vermelha dizer QUAL facto faltou em vez de so' o pid.
     reported = wait_for(
         lambda: any('ceiling-reached-nothing-forced' in ln
-                    for ln in harness.has('HOT_RELOAD_WORKER_REPORTED')), 8)
+                    for ln in harness.has('HOT_RELOAD_WORKER_REPORTED')), 20)
     time.sleep(0.3)
     pid1 = harness.pid()
     report['arms']['D_ceiling'] = {
@@ -933,7 +938,7 @@ def arm_d_and_e(module, tmp):
     # token HOT_RELOAD_WORKER_FORCED -- both of which the product no longer has.
     check('D: with NO boundary the ceiling ends the hold and applies NOTHING',
           reported and pid1 == pid0 and not harness.restarts,
-          {'pid_before': pid0, 'pid_after': pid1,
+          {'pid_before': pid0, 'pid_after': pid1, 'reported': reported,
            'restarts': len(harness.restarts)})
     check('D: the log says the ceiling forced NOTHING, and says why',
           any('HOT_RELOAD_WORKER_REPORTED' in line
