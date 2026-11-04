@@ -134,3 +134,34 @@ de silencio com batimentos e **sem** `BRIDGE_SILENT`/`BRIDGE_KILLED`.
   real de horas): o que este recibo entrega e' **medido na maquina viva**, com braco negativo.
 * O `CAPTION_PAINT_LAG` p90 da serie historica e' 6,7 s (`p50` 208 ms) — a cauda provavelmente
   inclui janelas com a webview escondida (timers congelados). Nao foi investigada nesta lane.
+
+## A MEDICAO DE 04:1x — O QUE ELE SENTE COMO "TRAVA O PC"
+
+Feita com o dono a jogar (`deadlock.exe` a 405 % de CPU, 4 273 MB) e o worker do Sotto a 270 %:
+
+```
+maquina: 20 nucleos logicos, cpu 56 %, memoria 58,6 %
+deadlock.exe  405 % CPU  4 273 MB
+sotto_worker  270 % CPU  1 877 MB   (ja' BELOW_NORMAL: o jogo ganha a fila)
+```
+
+Duas conclusoes medidas, e uma pendencia nomeada:
+
+1. **A prioridade do worker esta' no sitio certo.** Ele entra em `PROCESS_MODE_BACKGROUND_BEGIN`
+   durante o carregamento e volta a `BELOW_NORMAL` (`_leave_load_background_mode`). Medido: 145,8 %
+   -> 5,1 % num instante em que o jogo subiu a 368 %, e de volta a 270 % quando o jogo folgou.
+   Quem cede e' o worker; e' o desenho a funcionar.
+2. **O churn de recarga — o "loading toda hora" dele — e' o que produzia os engasgos mais visiveis**,
+   e e' o que este recibo fecha.
+3. **PENDENCIA (capacidade inalcancavel, a mesma classe de defeito que este repo ja' nomeia):**
+   `load_shedding.LoadShedding.observe(commit_pct, cpu_pct=None)` **aceita CPU**, e
+   `combine(by_commit, by_cpu)` existe com os limiares `CPU_HIGH_PCT = 90` / `CPU_VERY_HIGH_PCT = 98`
+   — mas `LoadSheddingMonitor.run()` chama `self.state.observe(reading)` **sem** `cpu_pct`. A CPU do
+   sistema nunca entra na decisao. Ligar isso exige o oraculo do modulo (26 arms) e uma corrida da
+   bateria, e nao foi feito com ele a jogar.
+
+## O QUE ESTA LANE NAO FAZ ENQUANTO ELE JOGA
+
+Nada pesado: nem bateria, nem largada da app, nem varrimento do log inteiro (61,8 MB). O censo de
+processos de instrumento, medido depois de parar: **0**.
+
