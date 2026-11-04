@@ -38,6 +38,7 @@ docs/webview-shell-20261006.md:
 from __future__ import annotations
 
 import argparse
+import bisect
 import ctypes
 import ctypes.wintypes as wt
 import hashlib
@@ -8859,6 +8860,16 @@ class SottoShell:
         #: exactamente no caso que interessa.
         self._caption_ages = []
         self._caption_lag_blown = 0
+        #: A JANELA INCREMENTAL (2026-11-04): `_caption_ordered` e' a mesma
+        #: janela ORDENADA (`bisect.insort`), os tres contadores sao CORRENTES
+        #: e `_caption_notes` diz quando publicar (a cada 25). Sem eles o resumo
+        #: re-ordenava e re-somava 200 elementos em TODAS as legendas.
+        self._caption_ordered = []
+        self._caption_ordered_src = self._caption_ages
+        self._caption_over_win = 0
+        self._caption_held_win = 0
+        self._caption_live_win = 0
+        self._caption_notes = 0
         self.window = None            # pywebview Window
         self.form = None              # pywebview's WinForms BrowserForm
         self.webview2 = None          # the WebView2 control
@@ -13116,17 +13127,50 @@ class SottoShell:
         blown = live and audio_ms > self.CAPTION_BUDGET_MS
         if blown:
             self._caption_lag_blown = int(getattr(self, '_caption_lag_blown', 0)) + 1
+        # A JANELA E' INCREMENTAL E O RESUMO E' O(1) (2026-11-04). A CAUSA do
+        # custo era o guarda: `len(ages) % 25 == 0` com a janela CHEIA (200) e'
+        # sempre verdadeiro, logo a janela era re-ordenada e re-somada em TODAS
+        # as legendas -- 27,1 us por legenda, 83 % do caminho de aplicacao
+        # (recibo `_main/receipt-20261104-opt-4x.md`). As duas metades: um
+        # CONTADOR proprio diz QUANDO publicar; a janela fica ORDENADA por
+        # insercao e os tres contadores correntes dizem O QUE publicar.
+        # `_caption_ages` mantem a forma de antes (idade, held, blown, live).
         ages = getattr(self, '_caption_ages', None)
         if ages is None:
             ages = self._caption_ages = []
-        ages.append((int(audio_ms), bool(held), bool(blown), live))
-        del ages[:-200]
-        if len(ages) % 25 == 0:
-            ordered = sorted(a for a, _h, _b, _l in ages)
+        ordered = getattr(self, '_caption_ordered', None)
+        if ordered is None or getattr(self, '_caption_ordered_src', None) is not ages:
+            # Um shell que traga a janela de fora (harness, dublê, instancia
+            # antiga) e' reconstruido DELA, nao de um estado implicito: a
+            # janela e' a verdade e o resumo deriva-se uma vez.
+            ordered = sorted(s[0] for s in ages)
+            self._caption_ordered = ordered
+            self._caption_ordered_src = ages
+            self._caption_over_win = sum(1 for s in ages if s[2])
+            self._caption_held_win = sum(1 for s in ages if s[1])
+            self._caption_live_win = sum(1 for s in ages if s[3])
+            self._caption_notes = len(ages)
+        sample = (int(audio_ms), bool(held), bool(blown), live)
+        ages.append(sample)
+        bisect.insort(ordered, sample[0])
+        if sample[2]:
+            self._caption_over_win += 1
+        if sample[1]:
+            self._caption_held_win += 1
+        if live:
+            self._caption_live_win += 1
+        self._caption_notes += 1
+        if len(ages) > 200:
+            dropped = ages.pop(0)
+            del ordered[bisect.bisect_left(ordered, dropped[0])]
+            if dropped[2]:
+                self._caption_over_win -= 1
+            if dropped[1]:
+                self._caption_held_win -= 1
+            if dropped[3]:
+                self._caption_live_win -= 1
+        if self._caption_notes % 25 == 0:
             n = len(ordered)
-            over_win = sum(1 for _a, _h, b, _l in ages if b)
-            held_win = sum(1 for _a, h, _b, _l in ages if h)
-            live_win = sum(1 for _a, _h, _b, lv in ages if lv)
 
             def pct(p):
                 return ordered[min(n - 1, int(round(p * (n - 1))))]
@@ -13134,7 +13178,9 @@ class SottoShell:
             log(f'CAPTION_LAG_STATS n={n} p50={pct(0.5)} p90={pct(0.9)} '
                 f'max={ordered[-1]} over={self._caption_lag_blown} '
                 f'held={int(getattr(self, "_caption_hold", 0))} '
-                f'over_win={over_win} held_win={held_win} live_win={live_win} '
+                f'over_win={self._caption_over_win} '
+                f'held_win={self._caption_held_win} '
+                f'live_win={self._caption_live_win} '
                 f'budget_ms={self.CAPTION_BUDGET_MS}')
 
     def _drain_caption_pending(self):

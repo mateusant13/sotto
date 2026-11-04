@@ -41,12 +41,12 @@
       "max_func_name": ""
     },
     "app/panel/caption-formulation.js": {
-      "bytes": 52824,
+      "bytes": 55224,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 1091,
+      "lines": 1167,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -411,12 +411,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1023926,
+      "bytes": 1007082,
       "classes": 24,
       "defs": 115,
       "except_pass": 41,
       "globals": 4,
-      "lines": 19192,
+      "lines": 19238,
       "max_func": 391,
       "max_func_name": "main"
     },
