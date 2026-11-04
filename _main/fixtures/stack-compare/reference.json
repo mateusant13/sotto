@@ -1,0 +1,31 @@
+{
+  "why": "Um conjunto UNICO de avaliacao para a comparacao de 2026-11-04 (Unified ASR vs nemotron 3.5 vs parakeet redux vs parakeet ultra). Duas lanes com dois clipes diferentes produzem dois numeros que nao se podem comparar -- e a decisao de trocar a stack inteira nao pode viver disso.",
+  "clips": [
+    {
+      "file": "ptbr-radio-14s.wav",
+      "origin": "_main/pt-br-sample.wav (661 544 B, 14,56 s @ 16 kHz mono), audio do proprio dono",
+      "seconds": 14.56,
+      "reference": "radio anunciou que a ponte sobre o rio vai ser interditada na proxima segunda-feira os moradores precisam de um caminho alternativo para chegar ao trabalho",
+      "reference_provenance": "a frase foi transcrita a mao a partir do que todas as hipoteses medidas says (ASR-TRUTH.md secao C) mais a palavra que o modelo DERRUBA de forma consistente ('rio' depois de 'sobre'). O 'rio' esta' na referencia porque o audio o diz; a referencia e' o audio, nao a saida de um modelo.",
+      "known_traps": [
+        "'radio' sem o artigo e' aceite",
+        "'precisam' vs 'precisam de' conta como 1 erro",
+        "o 'rio' e' a palavra que o nemotron 3.5 derruba -- e' o caso de teste"
+      ],
+      "wer_normalisation": "minusculas, sem pontuacao, espacos colapsados, acentos PRESERVADOS (uma troca de acento e' 1 substituicao)",
+      "reference_status": "PROVISORIA. Ninguem OUVIU este clipe nesta sessao: a frase vem das hipoteses ja' medidas em _main/ASR-TRUTH.md (secao C), com a palavra \"rio\" reposta porque o nemotron 3.5 a derruba de forma consistente ali. Consequencia, e e' esta a regra: um WER contra uma referencia provisoria serve para COMPARAR engines entre si, nunca para afirmar \"o WER deste modelo e' X\". Por isso toda lane cola tambem a frase VERBATIM que produziu.",
+      "reference_words": 25
+    }
+  ],
+  "throughput_only": [
+    {
+      "file": "_main/live-sample-cable-input-90s.wav",
+      "why": "sem referencia escrita: serve para RTF, latencia por chunk e RSS, NUNCA para WER"
+    }
+  ],
+  "rules": [
+    "o mesmo ficheiro, a mesma normalizacao e a mesma conta de WER para todas as engines",
+    "reportar WER E a contagem absoluta (subs/ins/del) -- um WER sobre 26 palavras mexe 3,8 % por palavra",
+    "reportar a frase que a engine produziu, verbatim, ao lado do numero"
+  ]
+}

@@ -1,0 +1,61 @@
+{
+ "why": "Fixture set for the Nemotron-Labs-Unified-ASR streaming ladder: the reference is authored text (hand-written by construction), not another engine's output.",
+ "wer_normalisation": "minusculas, sem pontuacao, espacos colapsados, acentos preservados",
+ "clips": [
+  {
+   "id": "ptbr-tts-01",
+   "file": "ptbr-tts-01.wav",
+   "lang": "pt",
+   "seconds": 8.83,
+   "target_seconds": 10.0,
+   "reference": "a reunião de amanhã foi adiada para sexta feira porque o diretor precisa revisar os números do trimestre",
+   "reference_raw": "A reunião de amanhã foi adiada para sexta-feira, porque o diretor precisa revisar os números do trimestre.",
+   "reference_words": 18,
+   "origin": "SAPI TTS, voice Microsoft Maria Desktop - Portuguese(Brazil); reference = authored text"
+  },
+  {
+   "id": "ptbr-tts-02",
+   "file": "ptbr-tts-02.wav",
+   "lang": "pt",
+   "seconds": 13.6,
+   "target_seconds": 13.0,
+   "reference": "o trânsito na avenida principal está completamente parado desde as sete horas da manhã e os motoristas já estão procurando rotas alternativas para chegar ao centro",
+   "reference_raw": "O trânsito na avenida principal está completamente parado desde as sete horas da manhã, e os motoristas já estão procurando rotas alternativas para chegar ao centro.",
+   "reference_words": 26,
+   "origin": "SAPI TTS, voice Microsoft Maria Desktop - Portuguese(Brazil); reference = authored text"
+  },
+  {
+   "id": "ptbr-tts-03",
+   "file": "ptbr-tts-03.wav",
+   "lang": "pt",
+   "seconds": 6.54,
+   "target_seconds": 8.0,
+   "reference": "prefiro café sem açúcar por favor e um copo de água com gelo",
+   "reference_raw": "Prefiro café sem açúcar, por favor, e um copo de água com gelo.",
+   "reference_words": 13,
+   "origin": "SAPI TTS, voice Microsoft Maria Desktop - Portuguese(Brazil); reference = authored text"
+  },
+  {
+   "id": "enus-tts-01",
+   "file": "enus-tts-01.wav",
+   "lang": "en",
+   "seconds": 6.96,
+   "target_seconds": 10.0,
+   "reference": "the quarterly report shows that revenue grew eleven percent while operating costs stayed almost flat",
+   "reference_raw": "The quarterly report shows that revenue grew eleven percent, while operating costs stayed almost flat.",
+   "reference_words": 15,
+   "origin": "SAPI TTS, voice Microsoft Zira Desktop - English (United States); reference = authored text"
+  },
+  {
+   "id": "enus-tts-02",
+   "file": "enus-tts-02.wav",
+   "lang": "en",
+   "seconds": 5.49,
+   "target_seconds": 8.0,
+   "reference": "please remind me to call the dentist on thursday morning before the meeting starts",
+   "reference_raw": "Please remind me to call the dentist on Thursday morning, before the meeting starts.",
+   "reference_words": 14,
+   "origin": "SAPI TTS, voice Microsoft Zira Desktop - English (United States); reference = authored text"
+  }
+ ]
+}
