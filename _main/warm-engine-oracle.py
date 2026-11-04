@@ -668,6 +668,7 @@ class FakeShell:
         self.cold_spawns = 0
         self.task_starts = 0
         self.painted = []
+        self.loading_texts = []
         self._engine_mod = engine_mod
         self._pipe = pipe
 
@@ -675,6 +676,14 @@ class FakeShell:
         self.painted.append((text, meta))
 
     def on_worker_status(self, text, kind, info):
+        return None
+
+    def on_worker_loading_text(self, text):
+        # 2026-11-04: a shell passou a ligar o `on_loading_text` do bridge a
+        # este metodo (o gate que RETEM o texto de estado quando o player
+        # fornece linha). O fake tem de o ter, senao a arm mede um AttributeError
+        # em vez do caminho quente.
+        self.loading_texts.append(text)
         return None
 
     def on_worker_stats(self, payload):
