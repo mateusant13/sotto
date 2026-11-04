@@ -36,6 +36,17 @@ WS_EX_TRANSPARENT = 0x00000020
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_NOACTIVATE = 0x08000000
 WS_EX_TOPMOST = 0x00000008
+
+#: O ESTILO DA JANELA, NUM SO' SITIO (2026-11-04). Era uma conta local dentro de
+#: `_create`; passou a constante do modulo porque o oraculo da captura mede o
+#: VALOR que a janela recebe -- `WS_EX_TRANSPARENT` e' o click-through nativo
+#: (a hit-region do `perssua-re`, sem hook nenhum de input) e `WS_EX_NOACTIVATE`
+#: e' o que impede o overlay de roubar o foco ao video.
+EX_STYLE = (0x00080000      # WS_EX_LAYERED
+            | 0x00000020    # WS_EX_TRANSPARENT  (click-through NATIVO)
+            | 0x00000080    # WS_EX_TOOLWINDOW
+            | 0x08000000    # WS_EX_NOACTIVATE
+            | 0x00000008)   # WS_EX_TOPMOST
 WS_POPUP = 0x80000000
 SW_HIDE = 0
 SW_SHOWNOACTIVATE = 4
@@ -383,10 +394,8 @@ class NativeCaptionOverlay:
 
     def _create(self):
         hinst = _kernel32.GetModuleHandleW(None)
-        ex = (WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW
-              | WS_EX_NOACTIVATE | WS_EX_TOPMOST)
         hwnd = _user32.CreateWindowExW(
-            ex, self.CLASS_NAME, "Sotto caption", WS_POPUP,
+            EX_STYLE, self.CLASS_NAME, "Sotto caption", WS_POPUP,
             -4000, -4000, 900, 120, None, None, hinst, None)
         if not hwnd:
             self.log(f"CAPTION_OVERLAY_CREATE_FAILED error={ctypes.get_last_error()}")
@@ -394,6 +403,24 @@ class NativeCaptionOverlay:
         self.hwnd = hwnd
         self.log(f"CAPTION_OVERLAY_CREATED hwnd={hwnd} layered=true "
                  f"transparent=true noactivate=true")
+        # A EXCLUSAO DE CAPTURA (2026-11-04, portada do `perssua-re`): a janela
+        # continua a pintar para o dono e desaparece de quem grava o ecra. Uma
+        # chamada por janela, e o MODO que fica e' lido de volta -- um 0x11
+        # pedido e nao aplicado conta como falha, nunca como sucesso.
+        try:
+            import capture_exclusion
+            self.capture = capture_exclusion.apply(
+                hwnd, want=capture_exclusion.enabled())
+            self.log('CAPTION_OVERLAY_CAPTURE mode=%s(0x%02x) ok=%s why=%s build=%s '
+                     'ex_style=0x%08x transparent=%s noactivate=%s'
+                     % (capture_exclusion.mode_name(self.capture['mode']),
+                        self.capture['mode'] & 0xff, self.capture['ok'],
+                        self.capture['why'], capture_exclusion.build_number(),
+                        EX_STYLE, bool(EX_STYLE & WS_EX_TRANSPARENT),
+                        bool(EX_STYLE & WS_EX_NOACTIVATE)))
+        except Exception as exc:  # noqa: BLE001 -- a legenda nao pode morrer por isto
+            self.capture = {'mode': -1, 'ok': False, 'why': repr(exc)}
+            self.log(f'CAPTION_OVERLAY_CAPTURE_FAILED error={exc!r}')
 
     def _on_message(self, hwnd, msg, wparam, lparam):
         if msg == 0x0010:  # WM_CLOSE

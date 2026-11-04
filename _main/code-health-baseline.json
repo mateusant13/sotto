@@ -241,12 +241,12 @@
       "max_func_name": "census"
     },
     "app/webview/caption_overlay.py": {
-      "bytes": 43036,
+      "bytes": 44756,
       "classes": 6,
       "defs": 2,
       "except_pass": 2,
       "globals": 0,
-      "lines": 940,
+      "lines": 967,
       "max_func": 94,
       "max_func_name": "_update"
     },
@@ -259,6 +259,16 @@
       "lines": 418,
       "max_func": 61,
       "max_func_name": "_seam_index"
+    },
+    "app/webview/capture_exclusion.py": {
+      "bytes": 4278,
+      "classes": 0,
+      "defs": 6,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 109,
+      "max_func": 28,
+      "max_func_name": "apply"
     },
     "app/webview/code_identity.py": {
       "bytes": 3778,

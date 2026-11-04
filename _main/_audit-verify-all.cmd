@@ -1542,6 +1542,23 @@ if exist _main\console-window-watch.py (
   call :step always red-as-expected-console-window-watch 1 "_main\console-window-watch.py" "%OUT%\console-window-watch-neg.log" python _main\console-window-watch.py --neg-arm
   call :expectred red-as-expected-console-window-watch !STEP_RC! "%OUT%\console-window-watch-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-console-window-watch MISSING "%OUT%\console-window-watch-neg.log" "NEG-ARM PASS" )
+
+REM (`capture-exclude`: a janela da legenda desaparece de QUEM GRAVA o ecra,
+REM ordem do dono de 2026-11-04 -- as features do `perssua-re` que faltavam.
+REM O oraculo cria um HWND REAL e LE DE VOLTA a afinidade: pedir 0x11 e ficar
+REM com 0x00 e' falha. Nove arms (escada para build antiga, interruptor por
+REM env, o `EX_STYLE` do overlay com `WS_EX_TRANSPARENT`/`WS_EX_NOACTIVATE`, e a
+REM chamada viva do caminho do overlay) e quatro mutantes, cada um com o seu
+REM braco. Nenhum dos dois abre janela visivel: e' um HWND escondido em
+REM (-4000,-4000) e fechado no `finally`.)
+if exist _main\capture-exclude-oracle.py (
+  call :step always capture-exclude 0 "_main\capture-exclude-oracle.py;app\webview\capture_exclusion.py;app\webview\caption_overlay.py" "%OUT%\capture-exclude.log" python _main\capture-exclude-oracle.py
+  call :record capture-exclude !STEP_RC!
+) else ( call :record capture-exclude MISSING )
+if exist _main\capture-exclude-oracle.py (
+  call :step always red-as-expected-capture-exclude 1 "_main\capture-exclude-oracle.py;app\webview\capture_exclusion.py;app\webview\caption_overlay.py" "%OUT%\capture-exclude-neg.log" python _main\capture-exclude-oracle.py --neg-arm
+  call :expectred red-as-expected-capture-exclude !STEP_RC! "%OUT%\capture-exclude-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-capture-exclude MISSING "%OUT%\capture-exclude-neg.log" "NEG-ARM PASS" )
 if exist _main\owner-audio-gate.py (
   call :step always owner-audio-gate 0 "_main\owner-audio-gate.py;_main\mute-audio.py" "%OUT%\owner-audio-gate.log" python _main\owner-audio-gate.py
   call :record owner-audio-gate !STEP_RC!
