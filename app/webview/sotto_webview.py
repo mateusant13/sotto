@@ -581,6 +581,24 @@ def gate_verdict(name, payload):
     return out
 
 
+
+def caption_lag_aged(tap_ms, last_counted):
+    """A idade do audio so' se publica quando o tap AINDA NAO contou. Puro.
+
+    Medido no log do dono (2026-11-04, 7 788 `CAPTION_IN`): 37,3 % das linhas
+    re-usam o tap de outra e carregam 85,2 % da soma do atraso -- um bloco
+    atribuido duas vezes, com seis minutos de intervalo. O `p99` do campo move
+    8,5x por causa de 2,4 % das linhas. Logo a pergunta "esta pintura descreve
+    audio NOVO?" tem de ser respondida por identidade do tap, e nao por relogio.
+    """
+    if not tap_ms:
+        return False
+    try:
+        tap = int(tap_ms)
+    except (TypeError, ValueError):
+        return False
+    return tap != last_counted
+
 def gate_should_retry(why, ack, elapsed_s, budget_s):
     """Uma pergunta MAIS, e so' DENTRO do mesmo orcamento. Puro."""
     if ack or why == 'applied':
@@ -14521,7 +14539,28 @@ class SottoShell:
             # entrou no worker; a diferenca ate' aqui e' a idade do audio que o
             # dono esta' a ler. Uma linha por legenda pintada, com o veredicto.
             _tap = getattr(self, '_caption_pending_tap_ms', None)
-            if _tap:
+            # UM TAP QUE JA' ATRIBUIU UMA VEZ NAO ATRIBUI OUTRA (2026-11-04,
+            # MEDIDO). O `tap_ms` e' o instante de parede do bloco que fechou a
+            # linha, e o MESMO tap era re-atribuido a cada repintura do slot:
+            # medido em 7 788 `CAPTION_IN`, 37,3 % das linhas re-usam o tap de
+            # outra (idade p50 742 ms, p95 18 970, max 655 703 -- um bloco
+            # atribuido duas vezes, seis minutos de intervalo) e essas linhas
+            # carregam 85,2 % da soma de atraso. O sintoma: `audio_ms` deixa de
+            # ser uma latencia e o p99 do log move 8,5x por causa de 2,4 % de
+            # linhas (36 269 ms com elas, 4 254 sem). A cura e' de MEDICAO e de
+            # uma condicao no sitio do emit: a idade do audio so' se publica
+            # quando o tap ainda nao contou. A linha continua (o dono ve o
+            # texto), mas sem `audio_ms`/`queue_ms` -- e com a marca que diz por
+            # que, para um leitor futuro nao a ler como "sem atraso".
+            _aged = caption_lag_aged(
+                _tap, getattr(self, '_caption_lag_tap_counted', None))
+            if _tap and not _aged:
+                log(f'CAPTION_PAINT_LAG tap_reused=true '
+                    f'tap_age_ms={int(time.time() * 1000.0) - int(_tap)} '
+                    f'queue_ms={age_ms} coalesced={coalesced} '
+                    f'text={json.dumps(new_text[:60])}')
+            if _tap and _aged:
+                self._caption_lag_tap_counted = int(_tap)
                 audio_ms = int(time.time() * 1000.0) - int(_tap)
                 self._caption_lag_note(
                     audio_ms, queue_ms=age_ms,

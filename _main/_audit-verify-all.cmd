@@ -705,7 +705,7 @@ REM prazo, queue a passar o corte, linhas apagadas) e exige os tres RED. NAO e' 
 REM passo que julga o log VIVO do dono: o veredicto sobre a latencia dele e' leitura,
 REM nao portao de repositorio.
 if exist _main\caption-budget-oracle.py (
-call :step red-as-expected-caption-budget 1 "_main\caption-budget-oracle.py" "%OUT%\caption-budget-neg.log" python _main\caption-budget-oracle.py --neg-arm
+call :step red-as-expected-caption-budget 1 "_main\caption-budget-oracle.py;app\webview\sotto_webview.py" "%OUT%\caption-budget-neg.log" python _main\caption-budget-oracle.py --neg-arm
 call :expectred red-as-expected-caption-budget !STEP_RC! "%OUT%\caption-budget-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-caption-budget MISSING "%OUT%\caption-budget-neg.log" "NEG-ARM: PASS" )
 REM `dead-app-exit-oracle.py` -- UMA SAIDA QUE ESCREVEU NO LOG TERMINA. Ordem do dono

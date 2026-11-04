@@ -446,8 +446,11 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 16:4x):** `_main\_audit-verify-all.cmd` = **226581 B**,
-  **2807 CRLF** / 0 bare LF, sha256 `FFDC63DA2F736934A21D7E2EC1EE629EEAE958B982EB6D91CB6B84219E47E109`.
+- **PIN do ficheiro (medido 2026-11-04, 17:1x):** `_main\_audit-verify-all.cmd` = **226610 B**,
+  **2807 CRLF** / 0 bare LF, sha256 `F1C429963CB5F24767D27F918CE35C34CDA64653B5C17B735688E6AE4314EFF4`.
+  (O passo do `caption-budget` passou a nomear `app\webview\sotto_webview.py` nas dependencias: as
+  arms 7-9 executam o predicado `caption_lag_aged` QUE EMBARCA, e uma dependencia que nao o nomeia
+  deixaria o passo em cache a descrever um shell que ja mudou. Era 226581 B antes.)
   (Dezasseis linhas a mais do que o pin de 225203 B / 2791 CRLF: o par do governador
   `caption-budget-oracle.py`, que o proprio contrato da seccao 0 nomeava e que NAO EXISTIA (n-15 do
   audit). Medido no log do dono: `CAPTION_PAINT_LAG` e' BIMODAL -- 76,7 % das linhas com `queue_ms`

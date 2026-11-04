@@ -44,17 +44,40 @@ ROW = re.compile(
     r'budget_ms=(\d+)\s+over=(true|false)')
 
 
+REUSED = re.compile(r'CAPTION_PAINT_LAG\s+tap_reused=true')
+
+
 def parse(text):
-    """Every measurable row, as (audio_ms, queue_ms, budget_ms)."""
+    """Every measurable row, as (audio_ms, queue_ms, budget_ms).
+
+    A row marked `tap_reused=true` is NOT measurable and is dropped here on
+    purpose: the age fields it omits (or carried) describe audio that already
+    counted once, and 37,3 % of such rows held 85,2 % of the whole lag sum
+    (measured 2026-11-04, 7 788 `CAPTION_IN`). `parse_counts` reports how many
+    were dropped so a smaller N never looks like a quieter app.
+    """
+    return parse_counts(text)[0]
+
+
+def parse_counts(text):
     rows = []
+    reused = 0
     for line in text.splitlines():
+        if REUSED.search(line):
+            reused += 1
+            continue
         m = ROW.search(line)
         if m:
             rows.append((int(m.group(1)), int(m.group(2)), int(m.group(3))))
-    return rows
+    return rows, reused
+
+
+_LAST_REUSED = 0
 
 
 def read_log(path, minutes=None):
+    global _LAST_REUSED
+    _LAST_REUSED = 0
     if not os.path.isfile(path):
         return None
     with io.open(path, encoding='utf-8', errors='replace') as fh:
@@ -80,7 +103,8 @@ def read_log(path, minutes=None):
             if stamp and stamp >= edge_s:
                 keep.append(line)
         lines = keep
-    return parse(''.join(lines))
+    rows, _LAST_REUSED = parse_counts(''.join(lines))
+    return rows
 
 
 def quant(series, q):
@@ -138,6 +162,9 @@ def render(verdict, d):
         f'over={d["fast_over_pct"]}%   (queue_ms<{MODE_SPLIT_MS:.0f})',
         f'  DEADLINE rate={d["deadline_pct"]}% p50={d["deadline_p50"]} '
         f'over={d["deadline_over_pct"]}%   (queue_ms>={MODE_SPLIT_MS:.0f})',
+        (f'  EXCLUDED {d["reused"]} row(s) marked tap_reused=true -- the same '
+         'audio attributed twice; not a latency'
+         if d.get('reused') else '  EXCLUDED 0 rows marked tap_reused=true'),
         '  A p50 over this field is a statement about the window: the two modes '
         'and their rates are the verdict.',
     ]
@@ -179,7 +206,44 @@ def arms():
     v, _ = judge(healthy, budget_ms=50)
     res['threshold_is_read'] = (v == 'FAIL')
     print(f'ARM 6 same corpus, budget=50 -> {v} (threshold is read)')
+
+    # ARM 7-9: the predicate that decides whether a paint describes NEW audio,
+    # run as it ships. Without it `audio_ms` counts one block many times.
+    aged = _load_aged()
+    if aged is None:
+        res['aged_predicate_importable'] = False
+        print('ARM 7 predicate              -> NOT IMPORTABLE')
+        return res
+    seq = [1000, 1000, 2000, 2000, 2000, 3000]
+    last = None
+    counted = 0
+    for tap in seq:
+        if aged(tap, last):
+            counted += 1
+            last = tap
+    res['tap_counts_once'] = (counted == 3)
+    print(f'ARM 7 taps {seq} -> counted={counted} (want 3: once per tap)')
+    res['no_tap_is_not_aged'] = (aged(None, None) is False and aged(0, None) is False)
+    print(f'ARM 8 absent tap             -> aged=None/0 -> {aged(None, None)}/'
+          f'{aged(0, None)} (want False)')
+    res['string_tap_works'] = (aged('4000', 3000) is True)
+    print(f'ARM 9 tap as string "4000"   -> {aged("4000", 3000)} (want True)')
     return res
+
+
+def _load_aged(path=None):
+    """`caption_lag_aged` as it ships, from the shell file, without starting it."""
+    import importlib.util
+    path = path or os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py')
+    if not os.path.isfile(path):
+        return None
+    src = io.open(path, encoding='utf-8', errors='replace').read()
+    m = re.search(r'^def caption_lag_aged\(.*?(?=^def )', src, re.S | re.M)
+    if not m:
+        return None
+    ns = {}
+    exec(compile(m.group(0), path, 'exec'), ns)
+    return ns.get('caption_lag_aged')
 
 
 def neg_arm():
@@ -224,6 +288,34 @@ def neg_arm():
         caught += int(ok)
         print(f'MUTANT {name}: {"CAUGHT" if ok else "NOT-CAUGHT"} verdict={v} '
               f'over={d.get("over_pct")} deadline={d.get("deadline_pct")}')
+    # MUTANT of the shipped predicate: a copy of the shell with the identity
+    # check disarmed must make ARM 7 count six instead of three. Mutating the
+    # corpus would only prove the arithmetic of the arm.
+    shell = os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py')
+    if os.path.isfile(shell):
+        total += 1
+        src = io.open(shell, encoding='utf-8', errors='replace').read()
+        mutant = src.replace('    return tap != last_counted',
+                             '    return True', 1)
+        if mutant == src:
+            ok = False
+            print('MUTANT predicate_disarmed: NEG-ARM IMPOSSIVEL (a ancora '
+                  '`return tap != last_counted` desapareceu do shell)')
+        else:
+            mpath = os.path.join(tmp, 'shell_mutant.py')
+            with io.open(mpath, 'w', encoding='utf-8') as fh:
+                fh.write(mutant)
+            fn = _load_aged(mpath)
+            counted = 0
+            last = None
+            for tap in (1000, 1000, 2000, 2000, 2000, 3000):
+                if fn and fn(tap, last):
+                    counted += 1
+                    last = tap
+            ok = (counted == 6)
+            print(f'MUTANT predicate_disarmed: {"CAUGHT" if ok else "NOT-CAUGHT"} '
+                  f'counted={counted} (want 6 = the defect)')
+        caught += int(ok)
     print(f'NEG-ARM SUMMARY cases={total} caught={caught}')
     print('NEG-ARM: PASS' if caught == total else 'NEG-ARM: FAIL')
     return 1 if caught == total else 0
@@ -241,12 +333,15 @@ def main(argv=None):
         return neg_arm()
     rows = read_log(a.log, a.minutes or None)
     verdict, d = judge(rows, a.budget_ms)
+    d['reused'] = _LAST_REUSED
     if a.json:
         print(json.dumps({'verdict': verdict, **d}, indent=1))
     for line in render(verdict, d):
         print(line)
-    if not arms().get('healthy_zero_red', False):
-        print('ARM FAIL healthy_zero_red')
+    a = arms()
+    bad = [k for k, v in a.items() if not v]
+    if bad:
+        print('ARM FAIL ' + ' '.join(bad))
         return 1
     print('VERDICT:', verdict)
     return 0 if verdict in ('PASS', 'UNKNOWN-NOT-RUN', 'CANNOT-MEASURE') else 1
