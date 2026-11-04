@@ -2252,6 +2252,28 @@ call :expectred red-as-expected-tap-silent-desktop !STEP_RC! "%OUT%\tap-silent-d
 ) else ( call :expectred red-as-expected-tap-silent-desktop MISSING "%OUT%\tap-silent-desktop-neg.log" "NEG-ARM PASS" )
 
 echo.
+
+REM -- CTRL+SPACE EM GAMING, O NAO-ROUBO DE FOCO E A DETECCAO DE JOGO (2026-11-04)
+REM Ordem do dono: *"e em gaming: control espaço nao da display na legenda. nao
+REM faz nada. nem on nem off. fora de gaming: control espaço nao ativa o espaço em
+REM apps. detecta 'gaming' parecido com o que meu projeto !watcher do disco i faz."*
+REM O oraculo executa o observador REAL, o caminho REAL do toggle (com o user32
+REM por tras de um GRAVADOR) e o detector REAL: mede que o toggle nao rouba o
+REM primeiro plano, que nao existe API que coma teclas, que a pressao que cai
+REM dentro de uma volta perdida ainda e' vista (o bit 0), e que o dwell do
+REM !watcher mantem `is_gaming()` pelos ticks que ele manda. Sem janela, sem
+REM tecla sintetica.
+if exist _main\gaming-hotkey-oracle.py (
+call :step always gaming-hotkey 0 "_main\gaming-hotkey-oracle.py;app\webview\gaming_mode.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py;app\webview\caption_overlay.py" "%OUT%\gaming-hotkey.log" python _main\gaming-hotkey-oracle.py
+call :record gaming-hotkey !STEP_RC!
+) else ( call :record gaming-hotkey MISSING )
+
+if exist _main\gaming-hotkey-oracle.py (
+call :step always red-as-expected-gaming-hotkey 1 "_main\gaming-hotkey-oracle.py;app\webview\gaming_mode.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py;app\webview\caption_overlay.py" "%OUT%\gaming-hotkey-neg.log" python _main\gaming-hotkey-oracle.py --neg-arm
+call :expectred red-as-expected-gaming-hotkey !STEP_RC! "%OUT%\gaming-hotkey-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-gaming-hotkey MISSING "%OUT%\gaming-hotkey-neg.log" "NEG-ARM PASS" )
+
+echo.
 echo =============== BATTERY SUMMARY ===============
 echo steps    : !N!   gate=!GATES!  control=!CTRLS!  skipped=!SKIPN!  expect-red=!REDS!  missing=!MISSINGN!  cached=!CACHEDN!
 echo cached   : !CACHEDN! step(s) were reused from the cache (their content and their logs were unchanged)

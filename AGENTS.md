@@ -410,9 +410,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 13:2x):** `_main\_audit-verify-all.cmd` = **212778 B**,
-  **2644 CRLF** / 0 bare LF, sha256 `8F342BA6940E3989A351F06FFC6233B1B2224883AF1D7D22715A16195C8C4C5D`.
-  (Vinte e oito linhas a mais do que o pin de 210085 B / 2616 CRLF, de dois pares. Quinze:
+- **PIN do ficheiro (medido 2026-11-04, 14:1x):** `_main\_audit-verify-all.cmd` = **214450 B**,
+  **2666 CRLF** / 0 bare LF, sha256 `626A2922E898C395C69C80D59910D1B5E886AC896887EA25C3804EA3EF540013`.
+  (Vinte e duas linhas a mais do que o pin de 212778 B / 2644 CRLF: o par `gaming-hotkey` +
+  `red-as-expected-gaming-hotkey`, o oraculo da ordem de 2026-11-04 sobre o Ctrl+Space em gaming --
+  ele executa o observador REAL (a pressao que cai dentro de uma volta perdida, com o GIL tomado,
+  entregue pelo bit 0), o caminho REAL do toggle com o `user32` por tras de um GRAVADOR (nenhuma API
+  de primeiro plano, nenhuma API que coma teclas) e o detector `gaming_mode.py` (dwell do `!watcher`,
+  orcamento do tick medido); `--neg-arm` muta uma COPIA quatro vezes -- foco roubado no toggle, dwell
+  apagado, `in_match` ignorado, observador faminto -- e as quatro tem de dar RED.
+  Cinquenta linhas a mais do que o pin de 210085 B / 2616 CRLF, de dois pares. Quinze:
   `caption-overlay-screen` -- o oraculo que executa o `_screen_proof` REAL contra uma janela LAYERED
   oculta (arm A2 com uma RECONTA independente do predicado), exige `alpha=0` a dar RED por
   `invisible` (a classe do P0 do dono: `visible=true` e nada no ecra) e muta uma COPIA de
