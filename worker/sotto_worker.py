@@ -604,6 +604,60 @@ def emit(**payload) -> None:
         os._exit(0)
 
 
+# ── THE HEARTBEAT THE BRIDGE'S WATCHDOG READS (2026-11-04) ───────────────────
+# The shell kills a worker that writes NOTHING for 30 s -- `BRIDGE_SILENT
+# ms=30000` -> `BRIDGE_KILLED why=the-shell-terminated-it` -- and a tap open on
+# a QUIET machine writes nothing BY DESIGN. MEASURED on this box, 2026-11-04
+# 03:20:13, pid 26440: 130 s after spawn, well past `model-loaded`, the shell
+# terminated it and paid a full ~1.9 GB model reload to come back to the same
+# silence; a second cycle followed two minutes later. A quiet machine is not a
+# jam, so the worker now says it is alive WHILE ITS LOOP IS MOVING.
+#
+# PROGRESS-PROOF, NOT LIVENESS: the beat compares `PROGRESS['seq']` with the
+# one it published last and stays SILENT when the loop has not advanced, so the
+# jam the watchdog exists for (a wedged loop) still goes quiet and is still
+# killed. A thread that just printed "alive" would have turned the watchdog
+# into decoration.
+PROGRESS = {'seq': 0, 'phase': 'boot', 'at': time.monotonic()}
+_PROGRESS_LOCK = threading.Lock()
+
+
+def progress(phase: str) -> None:
+    """One call per loop iteration that CANNOT block: the watchdog's heartbeat."""
+    with _PROGRESS_LOCK:
+        PROGRESS['seq'] += 1
+        PROGRESS['phase'] = phase
+        PROGRESS['at'] = time.monotonic()
+
+
+def start_heartbeat(every_s: float = 8.0) -> threading.Thread:
+    """Publish `WORKER_ALIVE` every `every_s` while the loop's seq MOVES.
+
+    `every_s` is well under the shell's 30 s silence window so a missed beat is
+    survivable; three consecutive missed beats still mean a wedged loop.
+    """
+
+    def _beat() -> None:
+        last = -1
+        while True:
+            time.sleep(every_s)
+            with _PROGRESS_LOCK:
+                seq = PROGRESS['seq']
+                phase = PROGRESS['phase']
+                age_ms = int((time.monotonic() - PROGRESS['at']) * 1000)
+            if seq == last:
+                continue
+            last = seq
+            try:
+                err(f"WORKER_ALIVE seq={seq} phase={phase} age_ms={age_ms}")
+            except Exception:  # noqa: BLE001 -- stderr morto: o pai ja' nao le
+                return
+
+    th = threading.Thread(target=_beat, name="sotto-heartbeat", daemon=True)
+    th.start()
+    return th
+
+
 # ── model ─────────────────────────────────────────────────────────────────────
 
 
@@ -6542,6 +6596,9 @@ def main():
             f"the live stream continues without writing audio")
     worker = threading.Thread(target=asr_thread, name="asr", daemon=True)
     worker.start()
+    # THE BEAT THAT STOPS THE 30 s KILL LOOP (see `start_heartbeat`): armed
+    # once the model is up, because the load has its own window in the shell.
+    start_heartbeat()
     next_stats = time.time() + args.stats_interval if args.stats_interval > 0 else float("inf")
     outcome = "all-flat"
     rotations = 0
@@ -6591,6 +6648,7 @@ def main():
     try:
         separation_lost = False
         for attempt_no, dev in enumerate(candidates):
+            progress("ladder")
             if target_pid and not dev.get("process_loopback") and not separation_lost:
                 # LOUD, ONCE, and it names what was lost: the ladder has moved
                 # past the app's own tree, so THIS RUN IS TRANSCRIBING THE
@@ -6793,6 +6851,7 @@ def main():
             settled = False
             try:
                 while not stop.is_set():
+                    progress("window")
                     now = time.time()
                     if args.max_seconds and (now - t_start) >= args.max_seconds:
                         outcome = "run-ended"
@@ -6870,6 +6929,7 @@ def main():
                                 # and it is what makes a stop request land inside the wait instead
                                 # of after it. Measured by the audit that found this file
                                 # contradicting itself: the same delay, a wakeable primitive.
+                                progress("idle-wait")
                                 stop.wait(0.1)
                                 continue
                             err(f"TAP_STALLED device={dev['name']!r} stalled_s={stalled_s:.1f} "

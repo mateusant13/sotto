@@ -391,9 +391,23 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 07:0x):** `_main\_audit-verify-all.cmd` = **193503 B**,
-  **2427 CRLF** / 0 bare LF, sha256 `0050AE0D9078EF33B12B78319D48688A1D6B817362BB6DB1FFA0B3A77BC54F35`.
-  (Este pin substitui o de 191938 B / 2408 CRLF, DEPOIS do par `hotkey-live-edge` +
+- **PIN do ficheiro (medido 2026-11-04, 07:2x):** `_main\_audit-verify-all.cmd` = **195043 B**,
+  **2444 CRLF** / 0 bare LF, sha256 `C6E14C3CD65E70F5EB6009DDC8EE7B11C797FCFE121C3855886F3A969B3B9C40`.
+  (Este pin substitui o de 193503 B / 2427 CRLF, DEPOIS do par `worker-churn` +
+  `red-as-expected-worker-churn`, que fecham o LACO DE RECARGA medido no log vivo de 2026-11-04:
+  `BRIDGE_SILENT ms=30000 pid=26440` as 03:20:13 matou um worker que estava QUIETO porque um tap
+  aberto sobre uma maquina quieta nao escreve nada por desenho (`endpoint-idle` ->
+  `stop.wait(0.1)`, e `WORKER_STATS` nao conta enquanto `blocks` nao avanca); e `BRIDGE_EXIT rc=0`
+  as 03:22:41 respawnou as 03:22:43 -- **2,0 s**, ou seja 1,9 GB de modelo recarregado para um
+  worker que terminou por vontade propria. O worker publica agora `WORKER_ALIVE` a partir do
+  PROPRIO laco (prova de progresso: cala-se quando o laco trava, para o cao de guarda nao ficar
+  decorativo) e uma saida limpa tem piso de 20 s (`CLEAN_EXIT_FLOOR_MS`). O oraculo corre o
+  `WorkerBridge._schedule_restart` REAL com um `threading.Timer` falso (arm 1 = 20000 ms com piso,
+  arm 2 = 1000 ms sem ele), a regra do LEITOR `line.startswith(PROGRESS_TAGS)` sobre a linha que o
+  worker escreve de facto (arm 3: o batimento conta, `BRIDGE_METER` nao) e o `progress()` do worker
+  REAL (arm 4); `--neg-arm` muta o piso numa copia do shell e o `progress` numa copia do worker e
+  exigem as duas arms RED.)
+  (O pin de 193503 B / 2427 CRLF veio do par `hotkey-live-edge` +
   `red-as-expected-hotkey-live-edge`: o dono reportou *"control espaco nao ta funcionando"* e
   *"funciona so' de vez em quando"*, e o log vivo mediu `HOTKEY_OBSERVER_ALIVE max_gap_ms=281..609`
   contra um toque de 120-200 ms -- o toque caia inteiro entre duas voltas. A cura le o bit 0 de

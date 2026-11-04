@@ -557,6 +557,23 @@ if exist _main\silence-kill-oracle.py (
   call :step red-as-expected-silence-kill 1 "_main\silence-kill-oracle.py;app\webview\sotto_webview.py" "%OUT%\silence-kill-neg.log" python _main\silence-kill-oracle.py --neg-arm
   call :expectred red-as-expected-silence-kill !STEP_RC! "%OUT%\silence-kill-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-silence-kill MISSING "%OUT%\silence-kill-neg.log" "NEG-ARM PASS" )
+REM O CHURN DE RECARGA (2026-11-04). Medido no log do dono, duas metades da mesma
+REM moeda: `BRIDGE_SILENT ms=30000 pid=26440` as 03:20:13 matou um worker que estava
+REM quieto porque o tap aberto sobre uma maquina QUIETA nao escreve nada por desenho
+REM (`endpoint-idle` -> `stop.wait(0.1)`, e `WORKER_STATS` nao conta enquanto `blocks`
+REM nao avanca); e `BRIDGE_EXIT rc=0` as 03:22:41 respawnou as 03:22:43 -- 2,0 s, ou
+REM seja 1,9 GB de modelo recarregado para um worker que terminou por vontade propria.
+REM O worker passou a publicar `WORKER_ALIVE` a partir do LACO (prova de progresso: cala
+REM quando o laco trava) e a saida limpa tem piso de 20 s. O braco negativo muta o piso
+REM numa copia do shell e o `progress` numa copia do worker, e exige as duas arms RED.
+if exist _main\worker-churn-oracle.py (
+  call :step worker-churn 0 "_main\worker-churn-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\worker-churn.log" python _main\worker-churn-oracle.py
+  call :record worker-churn !STEP_RC!
+) else ( call :record worker-churn MISSING )
+if exist _main\worker-churn-oracle.py (
+  call :step red-as-expected-worker-churn 1 "_main\worker-churn-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\worker-churn-neg.log" python _main\worker-churn-oracle.py --neg-arm
+  call :expectred red-as-expected-worker-churn !STEP_RC! "%OUT%\worker-churn-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-worker-churn MISSING "%OUT%\worker-churn-neg.log" "NEG-ARM: PASS" )
 REM `rss-trend-oracle.py` -- A MEMORIA TEM DE SER UMA SERIE. O worker publica `rss_mb` em cada
 REM `WORKER_STATS`, mas a shell so' o guardava na CAUDA DA MORTE: o numero existia exactamente
 REM quando ja' nao havia o que medir, e 'leak' ficava uma afirmacao sem medida. Desde 2026-11-02

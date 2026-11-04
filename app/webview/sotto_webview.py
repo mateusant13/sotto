@@ -871,11 +871,28 @@ WORKER_SILENCE_MS = 30000
 #: docs/audit/load-churn.md): ~40x um load quente e ~6x o pior load frio medido.
 WORKER_LOAD_SILENCE_MS = 180000
 
+#: O PISO DE UMA SAIDA LIMPA (2026-11-04). Medido no log do dono: `BRIDGE_EXIT pid=17044
+#: rc=0` as 03:22:41.214 e `BRIDGE_SPAWNED pid=37212` as 03:22:43.250 -- DOIS SEGUNDOS
+#: depois, ou seja uma recarga de ~1,9 GB de modelo para um worker que terminou por
+#: vontade propria (a escada de dispositivos esgotada, `rc=0`). Um retry de 1 s existe
+#: para um CRASH, onde a volta pode apanhar um dispositivo que ja' ficou livre; para uma
+#: saida limpa ele e' so' o laco de recarga. 20 s > o unico load quente medido (14-26 s) e
+#: muito menor que o piso do load-churn (180 s), que governa o reload da APP e nao este.
+CLEAN_EXIT_FLOOR_MS = 20000
+
 
 #: As linhas de stderr que provam que o worker esta VIVO a trabalhar. `WORKER_STATS` so'
 #: conta quando `blocks` AVANCA (`_note_progress`); num lote longo ele congela -- e o
 #: worker era morto por isso.
-PROGRESS_TAGS = ('REDUX_BATCH_KICK', 'REDUX_ENGINE_DONE', 'REDUX_MODE')
+PROGRESS_TAGS = ('REDUX_BATCH_KICK', 'REDUX_ENGINE_DONE', 'REDUX_MODE',
+                 # O BATIMENTO DO PROPRIO LACO (2026-11-04): um tap aberto sobre
+                 # uma maquina QUIETA nao escreve nada por desenho, e `WORKER_STATS`
+                 # tambem nao conta enquanto `blocks` nao avanca -- medido 03:20:13, o
+                 # shell matou o pid 26440 aos 130 s e pagou 1,9 GB de recarga para
+                 # voltar ao mesmo silencio. `WORKER_ALIVE` e' PROVA DE PROGRESSO
+                 # (o emissor cala-se quando o laco trava), por isso serve de batimento
+                 # sem tornar o cao de guarda decorativo.
+                 'WORKER_ALIVE')
 #: Quantas linhas de stderr a morte PUBLICA. Eram TRES, e tres escondem a causa:
 #: medido 2026-11-02, o worker morreu duas vezes `rc=1` (19:22:29, 19:36:40) e a
 #: cauda era `WORKER_STATS` + `REDUX_BATCH_KICK` -- o traceback ficou de fora.
@@ -16273,6 +16290,9 @@ class WorkerBridge:
         #: no-audio (or the reverse).
         self.last_no_audio = None
         self.pending_error = None
+        #: Quando o ultimo `BRIDGE_ALIVE` foi ao log (um por minuto, nao um por
+        #: batimento: o dono paga por cada linha que eu escrevo).
+        self._alive_at = 0.0
         #: True once THIS child has published its own verdict that the audio it
         #: opened carries nothing to transcribe (see WORKER_NO_AUDIO_STATES /
         #: WORKER_NO_AUDIO_VERDICTS). Reset on every spawn, because the verdict
@@ -16767,6 +16787,17 @@ class WorkerBridge:
                                 _f = parsed.get('fields') or {}
                                 self.log('BRIDGE_RSS rss_mb=%s blocks=%s' % (
                                     _f.get('rss_mb', '-'), _f.get('blocks', '-')))
+                    continue
+                if line.startswith('WORKER_ALIVE'):
+                    # O BATIMENTO NAO E' MENSAGEM DO PROTOCOLO: o `_arm_silence`
+                    # acima ja' o creditou como progresso; sem este `continue` ele
+                    # cairia em `_consume`, contaria `malformed` e escreveria
+                    # `BRIDGE_MALFORMED` a cada 8 s -- e `malformed`, publicado em
+                    # `BRIDGE_EXIT`, tem de significar "o worker escreveu lixo".
+                    # E a prova chega ao log UMA VEZ POR MINUTO, com a fase.
+                    if time.monotonic() - self._alive_at >= 60.0:
+                        self._alive_at = time.monotonic()
+                        self.log('BRIDGE_ALIVE %s' % text[:160])
                     continue
                 text = line.strip()
                 if text:
@@ -17358,7 +17389,8 @@ class WorkerBridge:
                           stderr_note,
                           'A restart is scheduled. Captions stay off until the '
                           'worker reports a caption.') if x)})
-        self._schedule_restart('exit', no_audio=(death_kind == 'no-audio'))
+        self._schedule_restart('exit', no_audio=(death_kind == 'no-audio'),
+                               floor_ms=(CLEAN_EXIT_FLOOR_MS if rc == 0 else 0))
 
     def _kill_and_restart(self, reason):
         child, self.child = self.child, None
@@ -17374,7 +17406,7 @@ class WorkerBridge:
                 self.log(f'BRIDGE_TERMINATE_FAILED pid={child.pid} error={exc!r}')
         self._schedule_restart(reason)
 
-    def _schedule_restart(self, reason, no_audio=False):
+    def _schedule_restart(self, reason, no_audio=False, floor_ms=0):
         if self.stopped:
             return
         # The two ladders. A REAL failure prices itself in seconds and doubles every
@@ -17409,6 +17441,12 @@ class WorkerBridge:
             delay = min(self.backoff_max, self.backoff_base * (2 ** self.restarts))
             self.restarts += 1
             ladder = 'retry'
+        if floor_ms and delay < floor_ms:
+            # UMA SAIDA LIMPA NAO E' UM CRASH (ver `CLEAN_EXIT_FLOOR_MS`): o piso
+            # nomeia-se no log, senao a espera parece um atraso do temporizador.
+            self.log(f'BRIDGE_RESTART_FLOOR ladder={ladder} delay_ms={delay} '
+                     f'floor_ms={floor_ms} why=clean-exit-not-a-crash')
+            delay = floor_ms
         self.log(f'BRIDGE_RESTART reason={reason} ladder={ladder} in_ms={delay} '
                  f'restart={self.restarts}')
         timer = threading.Timer(delay / 1000.0, self._restart)
