@@ -1997,6 +1997,16 @@ call :step always red-as-expected-youtube-rate 1 "_main\youtube-rate-oracle.py;a
 call :expectred red-as-expected-youtube-rate !STEP_RC! "%OUT%\youtube-rate-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-youtube-rate MISSING "%OUT%\youtube-rate-neg.log" "NEG-ARM PASS" )
 
+if exist _main\click-through-applied-oracle.py (
+call :step always click-through-applied 0 "_main\click-through-applied-oracle.py;app\webview\sotto_webview.py" "%OUT%\click-through-applied.log" python _main\click-through-applied-oracle.py
+call :record click-through-applied !STEP_RC!
+) else ( call :record click-through-applied MISSING )
+
+if exist _main\click-through-applied-oracle.py (
+call :step always red-as-expected-click-through-applied 1 "_main\click-through-applied-oracle.py;app\webview\sotto_webview.py" "%OUT%\click-through-applied-neg.log" python _main\click-through-applied-oracle.py --neg-arm
+call :expectred red-as-expected-click-through-applied !STEP_RC! "%OUT%\click-through-applied-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-click-through-applied MISSING "%OUT%\click-through-applied-neg.log" "NEG-ARM PASS" )
+
 if exist _main\youtube-sotto-drift-oracle.py (
 call :step always youtube-sotto-drift 0 "_main\youtube-sotto-drift-oracle.py;app\webview\youtube_reveal.py;app\webview\youtube_window.py;app\webview\youtube_captions.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;_main\fixtures\yt-WdaHAGRBB6s.live-compare-20261026.json" "%OUT%\youtube-sotto-drift.log" python _main\youtube-sotto-drift-oracle.py
 call :record youtube-sotto-drift !STEP_RC!

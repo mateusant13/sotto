@@ -406,12 +406,14 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 09:3x):** `_main\_audit-verify-all.cmd` = **196003 B**,
-  **2456 CRLF** / 0 bare LF, sha256 `3632BDB036A7328AF22BF498A5CD6B2B49CDF998B66CFB9E48623F722F2DAA1C`.
-  (Este pin substitui o de 195155 B / 2446 CRLF, DEPOIS dos dois passos do `youtube-rate`: o
-  `playbackRate` no relogio interpolado da legenda (a 2x o video andava o dobro e a palavra
-  chegava tarde) e a pausa/atraso que deixou de CONGELAR o ecra -- 7 arms e um `--neg-arm` com
-  2/2 mutantes apanhados pelo nome. O `code-health` absorve o crescimento declarado.)
+- **PIN do ficheiro (medido 2026-11-04, 09:5x):** `_main\_audit-verify-all.cmd` = **196865 B**,
+  **2466 CRLF** / 0 bare LF, sha256 `41EA0B755488CF2BCC25A7B2B18FC9A61863CA8EA52D8DE1EAB4E3BB827778FC`.
+  (Este pin substitui o de 196003 B / 2456 CRLF, DEPOIS de mais dois passos: `youtube-rate` --
+  o `playbackRate` no relogio interpolado da legenda (a 2x o video andava o dobro e a palavra
+  chegava tarde) e o atraso de leitura que agora tem NOME (7 arms) -- e
+  `click-through-applied` -- o bit de hit-test que passa a ser LIDO de volta e insistido com
+  `SWP_FRAMECHANGED` quando o Windows o recusa, copiado do Perssua/Live-Subtitles (5 arms),
+  cada um com o seu braco negativo. O `code-health` absorve o crescimento declarado.)
   (Este pin substitui o de 195043 B / 2444 CRLF, DEPOIS de o `:fastskip` passar a registar o log na
   lista de skips declarados. Defeito medido por um run completo de 2026-11-04: o
   `skip-verdict-guard` acusou `1 of 25 step log(s) carry an undeclared skip verdict` para

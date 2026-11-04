@@ -1638,6 +1638,10 @@ HWND_TOPMOST = -1
 SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
 SWP_NOACTIVATE = 0x0010
+SWP_NOZORDER = 0x0004
+#: Faz o Windows recalcular a moldura sem remapear a janela -- e' o que faz um
+#: estilo de hit-test assentar sem o flash de um `ShowWindow` (2026-11-04).
+SWP_FRAMECHANGED = 0x0020
 
 
 #: AS DUAS HOTKEYS DO SOTTO (ordem do dono, 2026-11-01):
@@ -4670,6 +4674,42 @@ def make_click_through(hwnd, enabled: bool) -> int:
     if enabled:
         return set_ex_style(hwnd, add=WS_EX_TRANSPARENT)
     return set_ex_style(hwnd, remove=WS_EX_TRANSPARENT)
+
+def click_through_is_live(hwnd) -> bool:
+    """A LEITURA do bit, nao do pedido (2026-11-04). "Mandei" nao e' "esta"."""
+    try:
+        return bool(user32.GetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_TRANSPARENT)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def apply_click_through(hwnd, enabled: bool, log=None) -> bool:
+    """Pede o bit, LE' DE VOLTA, e insiste uma vez com `SWP_FRAMECHANGED`.
+
+    Copiado do Perssua 0.28.0 (`WindowMouseControl ... reapplied renderer
+    mouse-events request after native window change`) e do `Live-Subtitles
+    overlay.py:247-252`: no Windows o estilo pode nao valer ate' a moldura ser
+    recalculada. O bit era escrito e ninguem o lia -- uma recusa ficava muda, e o
+    sintoma e' o painel a comer cliques. `SWP_FRAMECHANGED` nao remapeia: um
+    `ShowWindow` a mais e' exactamente o flash que o censo do primeiro frame proibe.
+    """
+    want = bool(enabled)
+    make_click_through(hwnd, want)
+    if click_through_is_live(hwnd) == want:
+        return True
+    try:
+        user32.SetWindowPos(hwnd, None, 0, 0, 0, 0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER
+                            | SWP_NOACTIVATE | SWP_FRAMECHANGED)
+    except Exception as exc:  # noqa: BLE001 -- reportar, nunca matar o laco
+        if callable(log):
+            log('CLICK_THROUGH_FRAMECHANGED_FAILED error=%r' % (exc,))
+    make_click_through(hwnd, want)
+    live = click_through_is_live(hwnd)
+    if callable(log) and live != want:
+        log('CLICK_THROUGH_NOT_APPLIED want=%s live=%s'
+            % (str(want).lower(), str(live).lower()))
+    return live == want
 
 
 #: The WebView2 child window's class prefix. Every WebView2 host on Windows uses
@@ -11324,10 +11364,11 @@ class SottoShell:
                 set_ex_style(self.hwnd, add=WS_EX_NOACTIVATE)
         except Exception as exc:  # noqa: BLE001 -- report, never kill the panel
             log(f'POINTER_INTERACTIVE_STYLE_FAILED error={exc!r}')
-        make_click_through(self.hwnd, click_through)
+        applied = apply_click_through(self.hwnd, click_through, log=log)
         self.pointer_interactive = bool(active)
         log(f'POINTER_INTERACTIVE active={str(bool(active)).lower()} '
             f'click_through={str(click_through).lower()} '
+            f'applied={str(bool(applied)).lower()} '
             f'noactivate={str(not active).lower()}')
         return True
 
@@ -11918,20 +11959,21 @@ class SottoShell:
             log(f'TRANSPARENCY_{state} pending=no-hwnd')
             return False
         want = bool(on)
-        live = bool(user32.GetWindowLongW(self.hwnd, GWL_EXSTYLE)
-                    & WS_EX_TRANSPARENT)
+        live = click_through_is_live(self.hwnd)
         if live == want:
             self.transparent = want
             return True
         try:
-            make_click_through(self.hwnd, want)
+            applied = apply_click_through(self.hwnd, want, log=log)
         except Exception as exc:  # noqa: BLE001 -- report, never kill the page
             log(f'TRANSPARENCY_{state}_FAILED error={exc!r}')
             return False
         self.transparent = want
         log(f'TRANSPARENCY_{state} '
-            f'click_through={str(want).lower()} captions=kept')
-        return True
+            f'click_through={str(bool(applied)).lower()} '
+            f'live={str(click_through_is_live(self.hwnd)).lower()} '
+            f'captions=kept')
+        return bool(applied)
 
     # -- page -> host handlers --------------------------------------------
     def info(self):
