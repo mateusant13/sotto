@@ -68,3 +68,25 @@ qualquer parcial. Executado o motor REAL em Node
 
 Logo a cura nao depende do relogio do painel: depende do sinal que o worker
 passou a mandar no silencio.
+
+## A bateria (2026-11-04, corrida oculta a partir da lane)
+
+`_main\_audit-verify-all.cmd` -> **BATTERY-VERDICT: RED - 4 step(s) failed**,
+com `failed: code-health=2 gitattributes-verify=1 strip-hot-reload=3
+skip-verdict-guard=1`.
+
+O `_main/_audit-verify/_battery-summary.txt` das **02:32** (antes deste
+trabalho) tem a MESMA linha, com os mesmos rcs: nenhuma falha nova. As quatro
+sao anteriores: `code-health` e' o ratchet destes ficheiros (medido acima),
+`gitattributes-verify` diverge em 26 ficheiros de `_main/_falsify/` (nenhum
+deles destas mudancas), `strip-hot-reload` falha nas arms C/E do
+`WorkerReloadPolicy` e `skip-verdict-guard` le' dois logs do proprio battery.
+
+A corrida so' foi possivel depois de corrigir `_main/hidden-launch.py`: `run()`
+e `popen()` passavam `creationflags=` DUAS vezes e morriam com
+`TypeError: got multiple values for keyword argument 'creationflags'` ANTES de
+arrancar o filho. Medido: `run(['cmd','/c',r'_main\_audit-verify-all.cmd'])`
+devolvia o Traceback e nenhum passo corria; agora devolve `rc=0` com a saida do
+filho. O portao `console-window-gate.py` que o AGENTS.md nomeia **nao existe
+nesta arvore** (o `battery-wiring-oracle` nao o acusa porque o passo esta'
+`record`), logo a bandeira nunca foi conferida por execucao.
