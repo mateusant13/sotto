@@ -410,8 +410,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 10:5x):** `_main\_audit-verify-all.cmd` = **206081 B**,
-  **2579 CRLF** / 0 bare LF, sha256 `5C4EFCCB4DD9698F7225F53F97B416A14B5B0BB994DA71696C07035806DB3BB1`.
+- **PIN do ficheiro (medido 2026-11-04, 11:5x):** `_main\_audit-verify-all.cmd` = **210085 B**,
+  **2616 CRLF** / 0 bare LF, sha256 `FC51B7BC317BB844B0B0961C71F5DFE080DD4980771BE1913BCB78BEFC5418FE`.
+  (Vinte e tres linhas a mais do que o pin de 207838 B / 2597 CRLF: os dois pares que as lanes de hoje
+  escreveram e deixaram FORA da bateria -- `youtube-hidden-clock` (a pintura parada com a faixa como
+  segunda testemunha) e `youtube-cdp-boot` (o arranque a pedir a porta CDP) -- mais os seus `--neg-arm`.
+  O `battery-wiring` acusava-os com razao: `new-unwired 2 oraculo(s) sem passo e sem licenca`.
+  Antes disso, dezoito linhas: o par `time-to-first-caption` + o seu `--neg-arm`, skip-capable, que le o log VIVO
+  e mede do carimbo de arranque da shell ate' a primeira pintura -- 65 037 ms hoje, e PASS so' abaixo
+  de 3000 ms. O pin anterior, de 206081 B / 2579 CRLF, era o de depois dos passos de `line-closed`
+  serem apagados.)
   (Os passos de `line-closed` foram APAGADOS: o `_panel2-dom-probe.js` acusou a cura
   como regressao -- 94/94 verdes antes, 92/94 com ela, `real=[2,...] want=[1,...]` nas
   duas arms da caixa -- e o caso medido no dono (`CAPTION_IN ... final=false`, espera

@@ -201,6 +201,25 @@ call :step caption-lag-budget 0 "_main\caption-lag-budget-oracle.py;app\webview\
 call :record caption-lag-budget !STEP_RC!
 call :step red-as-expected-caption-lag-budget 1 "_main\caption-lag-budget-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\caption-lag-budget-neg.log" python _main\caption-lag-budget-oracle.py --neg-arm
 call :expectred red-as-expected-caption-lag-budget !STEP_RC! "%OUT%\caption-lag-budget-neg.log" "NEG-ARM: PASS"
+REM `youtube-hidden-clock` (2026-11-04): quando a aba do YouTube esta' escondida o Chrome para
+REM de repintar a legenda e `video.currentTime` continua a andar -- medido no Chrome do dono: 40 s
+REM com UMA unica assinatura em 790 amostras, e um seek para t=300 com as mesmas duas linhas. O
+REM detector so' declara pintura parada com a FAIXA como segunda testemunha (assinatura igual >
+REM STALE_S de relogio de VIDEO * ha cue na faixa * a pintura alinha noutra cue) e desenha a cue da
+REM faixa ate' uma linha distinta provar que a pintura voltou. O braco negativo desliga cada uma das
+REM tres condicoes e exige a arm correspondente vermelha.
+call :step always youtube-hidden-clock 0 "_main\youtube-hidden-clock-oracle.py;app\webview\youtube_monotonic.py;app\webview\sotto_webview.py;_main\fixtures\yt-paint-freeze-20261104.json" "%OUT%\youtube-hidden-clock.log" python _main\youtube-hidden-clock-oracle.py
+call :record youtube-hidden-clock !STEP_RC!
+call :step always red-as-expected-youtube-hidden-clock 1 "_main\youtube-hidden-clock-oracle.py;app\webview\youtube_monotonic.py" "%OUT%\youtube-hidden-clock-neg.log" python _main\youtube-hidden-clock-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-hidden-clock !STEP_RC! "%OUT%\youtube-hidden-clock-neg.log" "NEG-ARM PASS"
+REM `youtube-cdp-boot` (2026-11-04): o arranque chamava `self._yt_cdp_ensure()`, que NAO EXISTE -- o
+REM `AttributeError` era engolido como `YOUTUBE_CDP_PREOPEN_FAILED` e a ligacao nunca era pedida
+REM (medido: 1482 de 3972 linhas `YOUTUBE_TICK_MS` com `src='?'`). O oraculo executa o pedido de
+REM arranque, a adopcao da fonte pelo watcher e o diagnostico sem interrogacao.
+call :step always youtube-cdp-boot 0 "_main\youtube-cdp-boot-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py" "%OUT%\youtube-cdp-boot.log" python _main\youtube-cdp-boot-oracle.py
+call :record youtube-cdp-boot !STEP_RC!
+call :step always red-as-expected-youtube-cdp-boot 1 "_main\youtube-cdp-boot-oracle.py;app\webview\youtube_cdp_source.py" "%OUT%\youtube-cdp-boot-neg.log" python _main\youtube-cdp-boot-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-cdp-boot !STEP_RC! "%OUT%\youtube-cdp-boot-neg.log" "NEG-ARM VERDICT: PASS"
 call :step red-as-expected-redux-transcript-path 1 "_main\_redux-transcript-path.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\redux-transcript-path-neg.log" python _main\_redux-transcript-path.py --neg-arm
 call :expectred red-as-expected-redux-transcript-path !STEP_RC! "%OUT%\redux-transcript-path-neg.log" "NEG-ARM: PASS"
 
