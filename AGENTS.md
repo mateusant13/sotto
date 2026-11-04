@@ -406,8 +406,12 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 08:5x):** `_main\_audit-verify-all.cmd` = **195155 B**,
-  **2446 CRLF** / 0 bare LF, sha256 `608458D9A510E2F79A561FF46015FC27F07C811074E2A1F97E656C0ECD99964A`.
+- **PIN do ficheiro (medido 2026-11-04, 09:3x):** `_main\_audit-verify-all.cmd` = **196003 B**,
+  **2456 CRLF** / 0 bare LF, sha256 `3632BDB036A7328AF22BF498A5CD6B2B49CDF998B66CFB9E48623F722F2DAA1C`.
+  (Este pin substitui o de 195155 B / 2446 CRLF, DEPOIS dos dois passos do `youtube-rate`: o
+  `playbackRate` no relogio interpolado da legenda (a 2x o video andava o dobro e a palavra
+  chegava tarde) e a pausa/atraso que deixou de CONGELAR o ecra -- 7 arms e um `--neg-arm` com
+  2/2 mutantes apanhados pelo nome. O `code-health` absorve o crescimento declarado.)
   (Este pin substitui o de 195043 B / 2444 CRLF, DEPOIS de o `:fastskip` passar a registar o log na
   lista de skips declarados. Defeito medido por um run completo de 2026-11-04: o
   `skip-verdict-guard` acusou `1 of 25 step log(s) carry an undeclared skip verdict` para

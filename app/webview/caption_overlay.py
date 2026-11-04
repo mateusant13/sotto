@@ -198,7 +198,7 @@ class _PlayerCue:
     Um seek para tras NAO leva o `floor` (ver `_cue_from`).
     """
 
-    def __init__(self, rows, t, at=None, capacity=PLAYER_ROWS):
+    def __init__(self, rows, t, at=None, capacity=PLAYER_ROWS, rate=1.0):
         self.rows = []
         for row in rows or ():
             if isinstance(row, dict):
@@ -213,6 +213,13 @@ class _PlayerCue:
                                   "words": [], "cap": None})
         self.t = float(t)
         self.at = time.monotonic() if at is None else float(at)
+        # A VELOCIDADE DO PLAYER (2026-11-04). `clock()` avancava 1 s de video
+        # por 1 s de parede; a 2x a palavra seguinte chegava ao dobro do tempo.
+        try:
+            rate = float(rate)
+        except (TypeError, ValueError):
+            rate = 1.0
+        self.rate = rate if 0.05 <= rate <= 16.0 else 1.0
         self.floor = None
         self.capacity = max(1, int(capacity))
         starts = []
@@ -233,7 +240,7 @@ class _PlayerCue:
     def clock(self, now=None):
         now = time.monotonic() if now is None else float(now)
         elapsed = min(max(0.0, now - self.at), PLAYER_HOLD_S)
-        t = self.t + elapsed
+        t = self.t + elapsed * self.rate
         if self.floor is not None:
             t = max(t, self.floor)
         return t
@@ -687,7 +694,7 @@ class NativeCaptionOverlay:
             self.log('CAPTION_CUE_INVALID payload=%r' % (payload,))
             return None
         at = (payload or {}).get('at')
-        new = _PlayerCue(rows, t, at=at)
+        new = _PlayerCue(rows, t, at=at, rate=(payload or {}).get('rate'))
         if not new.rows:
             # SEM LINHAS NAO HA' CUE: o overlay desenha o texto que recebeu, em
             # vez de ficar vazio -- um payload vazio e' o mesmo caso do

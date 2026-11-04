@@ -1987,6 +1987,16 @@ call :step always youtube-monotonic 0 "_main\youtube-monotonic-oracle.py;app\web
 call :record youtube-monotonic !STEP_RC!
 ) else ( call :record youtube-monotonic MISSING )
 
+if exist _main\youtube-rate-oracle.py (
+call :step always youtube-rate 0 "_main\youtube-rate-oracle.py;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\youtube_cdp_source.py" "%OUT%\youtube-rate.log" python _main\youtube-rate-oracle.py
+call :record youtube-rate !STEP_RC!
+) else ( call :record youtube-rate MISSING )
+
+if exist _main\youtube-rate-oracle.py (
+call :step always red-as-expected-youtube-rate 1 "_main\youtube-rate-oracle.py;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\youtube_cdp_source.py" "%OUT%\youtube-rate-neg.log" python _main\youtube-rate-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-rate !STEP_RC! "%OUT%\youtube-rate-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-youtube-rate MISSING "%OUT%\youtube-rate-neg.log" "NEG-ARM PASS" )
+
 if exist _main\youtube-sotto-drift-oracle.py (
 call :step always youtube-sotto-drift 0 "_main\youtube-sotto-drift-oracle.py;app\webview\youtube_reveal.py;app\webview\youtube_window.py;app\webview\youtube_captions.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;_main\fixtures\yt-WdaHAGRBB6s.live-compare-20261026.json" "%OUT%\youtube-sotto-drift.log" python _main\youtube-sotto-drift-oracle.py
 call :record youtube-sotto-drift !STEP_RC!

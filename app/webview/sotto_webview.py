@@ -3358,6 +3358,15 @@ class ExternalCaptionWatcher(threading.Thread):
             # leitura que continua verdadeira com a aba escondida.
             self.yt_cdp_clock = (float(snap.get('t')), time.monotonic()) \
                 if snap.get('t') is not None else None
+            # A VELOCIDADE DO PLAYER NO MESMO SNAPSHOT (2026-11-04). O relogio
+            # que avanca entre leituras era 1x por construcao: a 2x o video
+            # andava o dobro e a palavra chegava tarde, tanto mais tarde quanto
+            # maior o intervalo sem leitura. `playbackRate` e' a metade que faltava.
+            try:
+                self.yt_cdp_rate = float(snap.get('rate'))
+            except (TypeError, ValueError):
+                self.yt_cdp_rate = 1.0
+
             # VIDEO EM PAUSA NAO E' SILENCIO (2026-11-03, MEDIDO): com o player
             # parado em `t=34.571` o YouTube continua a mostrar a legenda, e o
             # Sotto apagava a dele aos 6 s (`CAPTION_WINDOW_BLANKED
@@ -4148,9 +4157,34 @@ class ExternalCaptionWatcher(threading.Thread):
             return None
         base_t, base_mono = anchor
         elapsed = time.monotonic() - base_mono
-        if elapsed < 0 or elapsed > self.YT_ANCHOR_MAX_S:
+        if elapsed < 0:
             return None
-        lines = self._yt_lines(track, base_t + elapsed)
+        # VELOCIDADE E PAUSA NO MESMO SITIO (2026-11-04). O relogio interpolado era
+        # 1x por construcao: a 2x o video andava o dobro e a palavra chegava
+        # atrasada. E o teto de 3 s, que existia para um video PAUSADO nao revelar
+        # por inercia, congelava tambem a LEITURA falhada (*"sotto was BEFORE with
+        # the youtube, but then it stopped"*): pausa avanca zero e mantem a linha,
+        # atraso avanca ate' `YT_ANCHOR_STALL_S` e diz no log que parou de ler.
+        try:
+            rate = float(getattr(self, 'yt_cdp_rate', 1.0))
+        except (TypeError, ValueError):
+            rate = 1.0
+        if not (0.05 <= rate <= 16.0):
+            rate = 1.0
+        paused = bool(getattr(self, 'yt_cdp_paused', False))
+        if paused:
+            elapsed = 0.0
+        elif elapsed > self.YT_ANCHOR_MAX_S:
+            # O TETO NAO ESCONDE UMA LEITURA FALHADA (2026-11-04): a linha
+            # fica onde esta' -- o overlay nao apaga o que ja' pintou -- mas o
+            # log diz que a FONTE parou de responder, que era o que faltava para
+            # o dono (*"but then it stopped"*) ter um nome em vez de um ecra parado.
+            stamp = getattr(self, '_yt_stall_logged', None)
+            if stamp is None or elapsed - stamp > 5.0:
+                self._yt_stall_logged = elapsed
+                log('YOUTUBE_LIVE_STALLED elapsed_s=%.1f' % (elapsed,))
+            elapsed = self.YT_ANCHOR_MAX_S
+        lines = self._yt_lines(track, base_t + elapsed * rate)
         if not lines:
             return None
         # UMA ETIQUETA PROPRIA (2026-11-02): com `src=external:youtube:track`
@@ -4196,7 +4230,15 @@ class ExternalCaptionWatcher(threading.Thread):
                 and float(r.get('start') or 0.0) <= base_t + 3.0]
         if not rows:
             return None
-        return {'rows': rows, 't': base_t, 'at': base_mono}
+        # O `rate` VAI JUNTO (2026-11-04): o overlay avanca o cue no relogio do
+        # player, e um video a 2x anda o dobro por segundo de parede.
+        try:
+            rate = float(getattr(self, 'yt_cdp_rate', 1.0))
+        except (TypeError, ValueError):
+            rate = 1.0
+        if not (0.05 <= rate <= 16.0):
+            rate = 1.0
+        return {'rows': rows, 't': base_t, 'at': base_mono, 'rate': rate}
 
     def _yt_lines(self, track, t):
         """As linhas que o YouTube desenha em `t` -- DUAS, nao uma.

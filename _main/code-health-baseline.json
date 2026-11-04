@@ -241,12 +241,12 @@
       "max_func_name": "census"
     },
     "app/webview/caption_overlay.py": {
-      "bytes": 42656,
+      "bytes": 43036,
       "classes": 6,
       "defs": 2,
       "except_pass": 2,
       "globals": 0,
-      "lines": 933,
+      "lines": 940,
       "max_func": 94,
       "max_func_name": "_update"
     },
@@ -381,12 +381,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1000322,
+      "bytes": 1002368,
       "classes": 24,
       "defs": 110,
       "except_pass": 41,
       "globals": 4,
-      "lines": 18745,
+      "lines": 18786,
       "max_func": 387,
       "max_func_name": "main"
     },
@@ -421,12 +421,12 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 23662,
+      "bytes": 23758,
       "classes": 1,
       "defs": 4,
       "except_pass": 4,
       "globals": 0,
-      "lines": 539,
+      "lines": 541,
       "max_func": 107,
       "max_func_name": "_run"
     },

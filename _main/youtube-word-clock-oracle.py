@@ -238,6 +238,10 @@ def run(payload_path: Path) -> int:
 
         class FrameShell:
             YT_ANCHOR_MAX_S = 3.0
+            # A VELOCIDADE E A PAUSA CHEGAM AO RELOGIO (2026-11-04): sem os
+            # dois campos o `yt_live_frame` real levantava AttributeError.
+            yt_cdp_rate = 1.0
+            yt_cdp_paused = False
             _yt_anchor = (float(cue.get("start") or 0.0), 100.0)
             _yt_track = {"cues": [cue]}
 

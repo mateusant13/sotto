@@ -73,7 +73,8 @@ EXTRACT_JS = r"""
   const v = document.querySelector('video');
   const out = {videoId: m ? m[1] : '', title: document.title || '',
                rows: [], segs: [], why: 'no-window',
-               t: v ? v.currentTime : null, paused: v ? v.paused : null};
+               t: v ? v.currentTime : null, paused: v ? v.paused : null,
+               rate: v ? v.playbackRate : null};
   const box = document.querySelector('.ytp-caption-window-container');
   if (!box) return JSON.stringify(out);
   const all = Array.prototype.slice.call(
@@ -167,6 +168,7 @@ def parse_snapshot(payload, now=None):
             "videoId": str(data.get("videoId") or ""),
             "t": (_float(data.get("t"))),
             "paused": (None if data.get("paused") is None else bool(data.get("paused"))),
+            "rate": _float(data.get("rate")),
             "title": str(data.get("title") or ""),
             "rows": rows, "items": items,
             "why": str(data.get("why") or ("painted" if rows else "no-painted-caption"))}
