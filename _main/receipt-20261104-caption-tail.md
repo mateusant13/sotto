@@ -257,3 +257,45 @@ FECHOU entra), coerente com 15 s de amostra.
 A app voltou ao modo normal em seguida (`--tag back-to-device-ladder`), para
 não ficar presa na tap de ficheiro: pid 50768, FRESH, `webview2_failed=false`,
 `CAPTION_WINDOW_BLANKED reason=no-caption-for-6.0s` (sem fonte, como deve).
+
+## O Ctrl+Space que so' funcionava as vezes (2026-11-04 03:1x)
+
+Reportado verbatim: *"control espaço nao ta funcionando"*, e logo *"funciona só de
+vez em quando. arruam"*.
+
+**PASSO 0** -- `live-code-freshness-oracle --strict`: `FRESH`
+(`sha256=394B119BCFB1` == disco) depois do relancamento; a app e' a arvore.
+
+**MEDIDO antes de tocar em codigo** (`HOTKEY_OBSERVER_ALIVE`, pid 50768):
+
+```
+role=live beats=8  loops=1218 max_gap_ms=516
+role=live beats=11 loops=1223 max_gap_ms=609
+```
+
+O observador le `GetAsyncKeyState` a cada 25 ms (`POLL_S`), mas a volta atrasa
+ate' ~0,6 s quando a inferencia/UIA seguram o GIL. Um toque de Ctrl+Space dura
+~120-200 ms: um toque mais curto que a volta **cai inteiro entre duas leituras**
+e nao existe. Isso e' a queixa, com numero.
+
+**A cura:** leitura do **bit 0** de `GetAsyncKeyState` ("carregada desde a
+chamada anterior") -- o Windows guarda a borda, e no'-la lemos mesmo com a volta
+atrasada. `0x8000` continua a ser `down` (a unica via para a DURACAO da
+segurada). Sem hook global (proibido nesta arvore) e sem `RegisterHotKey`, que
+daria so' a descida e roubaria a tecla ao resto do sistema. `HOTKEY_PRESSED`
+passou a dizer `via=state|latched`.
+
+|corrida|resultado|
+|---|---|
+|`hotkey-live-edge-oracle.py`|3/3 PASS: `presses=1 via_latched=1` · segurada `counts=['1','2'] via_state=2` · solta perdida `stuck=1`|
+|`--neg-arm` (bit 0 fora de uma COPIA)|`presses=0 via_latched=0`, `NEG-ARM PASS`, rc=1|
+|fiacao|`hotkey-live-edge` + `red-as-expected-hotkey-live-edge`; `battery-wiring` **99 ligados** (tecto 124)|
+
+**Duas correccoes de INSTRUMENTO**, as duas medidas: a costura `key_state`
+(injectada pelos oraculos) normalizava qualquer verdade em `0x8000` e
+**descartava o bit 0** -- um stub nao pode mentir sobre o valor que o codigo le;
+e o stub do oraculo passou a **limpar** o bit 0 na leitura, como o Windows faz
+(sem isso a mesma borda voltava a cada volta e a arm contava **6** presses).
+
+App viva depois da cura: pid 41508, `FRESH`, `HOTKEY_OBSERVED role=live
+accelerator=Ctrl+Space poll_ms=25`, painel escondido no arranque.
