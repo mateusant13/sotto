@@ -360,6 +360,18 @@ class LoadProbe:
         self.samples = 0
         self.fresh = 0
 
+    def reread(self):
+        """Uma leitura NOVA agora, fora da janela de `min_interval_s`.
+
+        PORQUE E' QUE ISTO NAO E' `sample()`. A janela existe para o caminho do
+        audio nao medir a maquina 10x/s; uma RETOMA que reutilizasse a ultima
+        amostra decidiria com o numero que autorizou a descida -- exactamente o
+        numero que pode ja' ter subido. Esta leitura abre a janela de proposito:
+        e' uma so', imediatamente antes de carregar um modelo.
+        """
+        self._last_at = None
+        return self.sample()
+
     def sample(self, now=None):
         """-> `(commit_pct, cpu_pct, fresh)`. `fresh` diz se e' uma leitura nova."""
         now = self._clock() if now is None else float(now)
@@ -446,6 +458,169 @@ def sample_load():
         _PROBE = LoadProbe()
     commit, cpu, _fresh = _PROBE.sample()
     return {'commit_pct': commit, 'cpu_pct': cpu}
+
+# ── A RETOMA: a carga liberta, e o motor estacionado carrega SOZINHO ─────────
+#
+# ORDEM DO DONO (2026-11-04), verbatim: *"modelos carregados dependendo da carga
+# do sistema ou nao. quando carga liberar, carrega sozinho (NUNCA TRAVAR O PC DO
+# USUARIO OU STUTTER) e processa qualquer audio nao processado, com o parakeet"*.
+#
+# A METADE QUE FALTAVA. ESTACIONAR ja' existe (`ReduxHiddenSwitch.tick` larga o
+# motor em `muito-alta`) e o audio que espera nunca se perde
+# (`live_queue.PendingAudio`). RETOMAR nao existia em nenhum sitio: o lote so' e'
+# pedido em `mode == "batch"` (`maybe_kick`) e em `shed` o proprio `tick` diz
+# "sem maybe_kick: acordar o modelo e' o custo que este nivel existe para
+# cortar". Logo, quando o nivel VOLTA, o audio acumulado so' saia por acaso --
+# se ainda houvesse `batch_interval_s` de audio e o modo voltasse a `batch`. Um
+# backlog de 20 s que chegasse a `leve` ficava em RAM/disco ate' ao `stop()` do
+# processo, ou seja o dono recebia a transcricao quando FECHASSE a app. Ele
+# pediu "quando a carga liberar, carrega sozinho".
+#
+# AS DUAS GUARDAS DA RETOMA (a segunda e' o orcamento de stutter):
+#
+#   1. HISTERESE. A retoma le' o NIVEL (que so' desce abaixo de `RESUME_PCT` e
+#      `CPU_RESUME_PCT` com `CONFIRM_SAMPLES` leituras), nunca a leitura crua.
+#      Uma amostra calma isolada nao carrega 615 MB de modelo.
+#   2. RE-LEITURA. Imediatamente ANTES de carregar, a maquina e' lida OUTRA VEZ
+#      (`LoadProbe.reread`). Se ela subiu, o motor FICA estacionado e a recusa e'
+#      dita no log. E' a diferenca entre "a carga liberou" e "a carga liberou
+#      enquanto eu decidia" -- a segunda poria 615 MB de pesos num PC que voltou
+#      aos 95 %, que e' exactamente o stutter que a ordem proibe.
+
+#: De quanto em quanto tempo uma retoma que NAO arrancou (lote anterior ainda a
+#: correr, audio abaixo do piso) volta a tentar. Nao e' 0 (o laco corre a 10 Hz e
+#: cada tentativa le' a maquina) e nao e' `SAMPLE_INTERVAL_S` (5 s) por acaso:
+#: uma tentativa falhada porque o lote anterior ainda moe nao precisa de mais
+#: leituras do que a amostragem normal.
+RESUME_RETRY_S = 5.0
+
+
+def resume_calm(commit_pct, cpu_pct=None):
+    """PURE: esta leitura autoriza CARREGAR um motor? `(bool, why)`.
+
+    Abaixo da banda nas DUAS medidas -- `commit < RESUME_PCT` e
+    `cpu < CPU_RESUME_PCT` --, ou seja exactamente a banda de histerese que faz
+    a descida de nivel. Uma CPU ausente (`None`, psutil/`GetSystemTimes` fora)
+    nao inventa carga, a mesma direccao de `level_for_cpu`.
+
+    Uma leitura de COMMIT ausente (`None`/NaN) NAO autoriza. E' o oposto de
+    `level_for`, e de proposito: ali "nao sei" desliga um motor (seguro); aqui
+    "nao sei" CARREGA 615 MB. Quando nao ha' instrumento nenhum, quem decide e'
+    o nivel (`ResumeGate` com `probe=None`) -- nao uma leitura que nao existe.
+    """
+    try:
+        commit = float(commit_pct)
+    except (TypeError, ValueError):
+        return False, 'sem-leitura-de-commit'
+    if commit != commit:  # NaN
+        return False, 'sem-leitura-de-commit'
+    if commit >= RESUME_PCT:
+        return False, 'commit>=%.0f%%' % RESUME_PCT
+    if cpu_pct is not None:
+        try:
+            cpu = float(cpu_pct)
+        except (TypeError, ValueError):
+            return True, 'commit<%.0f%% (cpu ilegivel)' % RESUME_PCT
+        if cpu == cpu and cpu >= CPU_RESUME_PCT:
+            return False, 'cpu>=%.0f%%' % CPU_RESUME_PCT
+    return True, 'calmo'
+
+
+class ResumeGate:
+    """A BORDA da retoma: estacionado -> calmo = carrega SOZINHO, uma vez.
+
+    `tick(level)` e' chamado no laco do audio (10 Hz) e devolve um dicionario.
+    Enquanto nao ha' BORDA nao le' a maquina: duas comparacoes de strings, e o
+    mesmo custo que o resto do caminho ja' paga. Na borda -- o nivel de carga
+    DEIXOU de estar em `PARK_LEVELS` -- ele relê a maquina (`probe.reread`) e so'
+    autoriza (`resume=True`) se ela estiver abaixo da banda.
+
+    UMA VEZ POR BORDA. `pending` e' consumido na primeira autorizacao; um lote
+    que nao arrancou (in-flight, audio abaixo do piso) volta a tentar por
+    `retry()`, com piso de `RESUME_RETRY_S`, e nao por si mesmo. Sem isso o
+    caminho de 10 Hz carregaria o modelo outra vez a cada bloco.
+
+    `probe=None` = sem instrumento: o NIVEL decide sozinho (o comportamento de
+    antes de haver medicao local), e o log diz isso (`why=o-nivel-decide`).
+    """
+
+    def __init__(self, probe=None, log_fn=None, clock=None,
+                 retry_s=RESUME_RETRY_S):
+        self.probe = probe
+        self.log = log_fn or (lambda _m: None)
+        self._clock = clock or time.monotonic
+        self.retry_s = max(0.0, float(retry_s))
+        self.level = None
+        self.parked = False
+        self.pending = False
+        self.resumes = 0
+        self.holds = 0
+        self.retries = 0
+        self.last_attempt_at = None
+        self.last = None
+
+    # -- a decisao ---------------------------------------------------------
+    def tick(self, level, now=None):
+        """-> dict(level, parked, resume, commit_pct, cpu_pct, why, ...)."""
+        now = self._clock() if now is None else float(now)
+        self.level = level
+        was_parked = self.parked
+        self.parked = level in PARK_LEVELS
+        if self.parked:
+            # ESTACIONADO CANCELA UMA TENTATIVA PENDENTE: a maquina voltou a
+            # pedir os motores, e carregar um modelo AGORA seria contra a
+            # medicao que a acabou de estacionar.
+            self.pending = False
+            return self._out(False, 'estacionado')
+        if was_parked:
+            self.pending = True
+        if not self.pending:
+            return self._out(False, 'sem-borda')
+        if (self.last_attempt_at is not None
+                and (now - self.last_attempt_at) < self.retry_s):
+            return self._out(False, 'a-esperar-a-tentativa-anterior')
+        self.last_attempt_at = now
+        calm, commit, cpu, why = self._reread()
+        if not calm:
+            self.pending = False
+            self.holds += 1
+            self.log('LOAD_RESUME_HELD level=%s %s why=%s — a carga subiu entre a '
+                     'descida e a carga do motor; o motor FICA estacionado e o audio '
+                     'continua a esperar'
+                     % (level, _reading_text(commit, cpu), why))
+            return self._out(False, why, commit, cpu)
+        self.pending = False
+        self.resumes += 1
+        return self._out(True, why, commit, cpu)
+
+    def retry(self):
+        """A retoma foi autorizada mas o lote nao arrancou: volta a tentar depois."""
+        self.retries += 1
+        self.pending = True
+
+    def _reread(self):
+        """`(calm, commit, cpu, why)` -- a maquina AGORA, nao a da decisao."""
+        if self.probe is None:
+            return True, None, None, 'o-nivel-decide'
+        try:
+            reader = getattr(self.probe, 'reread', None)
+            reading = reader() if callable(reader) else self.probe.sample()
+        except Exception as exc:                                 # noqa: BLE001
+            return False, None, None, 'leitura-falhou: %r' % (exc,)
+        try:
+            commit, cpu = reading[0], reading[1]
+        except (TypeError, IndexError, KeyError):
+            return False, None, None, 'leitura-ilegivel'
+        calm, why = resume_calm(commit, cpu)
+        return calm, commit, cpu, why
+
+    def _out(self, resume, why, commit=None, cpu=None):
+        out = {'level': self.level, 'parked': self.parked,
+               'resume': bool(resume), 'commit_pct': commit, 'cpu_pct': cpu,
+               'why': why, 'resumes': self.resumes, 'holds': self.holds,
+               'retries': self.retries}
+        self.last = out
+        return out
 
 # ── A ACCAO: o nivel decide o MODO do worker, e nao a vida do processo ───────
 #
