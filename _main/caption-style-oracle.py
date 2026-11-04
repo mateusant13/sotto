@@ -164,6 +164,41 @@ def arms():
     gated = ('_yt_owner_until' in shell
              and 'CAPTION_OVERLAY_DROP reason=external-captions' in shell)
     out.append(('asr-does-not-override', gated, 'gated=%s' % gated))
+
+    # DOIS LADOS NO MESMO ARM (2026-11-04): o dono viu
+    # `CAPTION_OVERLAY_PUSH visible=true` e NAO VIU a legenda. `visible` e' o que
+    # NOS dissemos ao `ShowWindow`; a pergunta dele e' se a janela esta' DENTRO
+    # de um monitor. O arm executa `_screen_proof` em DUAS janelas que nunca sao
+    # mostradas (uma dentro do ecra, uma fora): se a funcao respondesse sempre
+    # `True`, o caso de fora a derrubava -- o controle negativo vive aqui, nao
+    # num ficheiro mutado.
+    import ctypes as _ct
+    _u = _ct.windll.user32
+    inside = _u.CreateWindowExW(0, 'STATIC', None, 0x80000000, 200, 200, 400, 90,
+                                0, 0, 0, 0)
+    outside = _u.CreateWindowExW(0, 'STATIC', None, 0x80000000, -4000, -4000,
+                                 400, 90, 0, 0, 0, 0)
+    try:
+        ov = caption_overlay.NativeCaptionOverlay.__new__(
+            caption_overlay.NativeCaptionOverlay)
+        ov.hwnd = inside
+        ov.log = lambda m: None
+        a_in = ov._screen_proof()
+        ov2 = caption_overlay.NativeCaptionOverlay.__new__(
+            caption_overlay.NativeCaptionOverlay)
+        ov2.hwnd = outside
+        ov2.log = lambda m: None
+        a_out = ov2._screen_proof()
+    finally:
+        _u.DestroyWindow(inside)
+        _u.DestroyWindow(outside)
+    geom_ok = (a_in[0] is True and a_out[0] is False
+               and isinstance(a_in[1], tuple) and a_in[1][2] == 400)
+    out.append(('geometry-diz-onde-esta', geom_ok,
+                'dentro=%r fora=%r' % (a_in, a_out)))
+    wired = ('CAPTION_OVERLAY_GEOMETRY shown=true' in read(
+        os.path.join(WEBVIEW, 'caption_overlay.py')))
+    out.append(('geometry-publicada-no-show', wired, 'wired=%s' % wired))
     return out
 
 

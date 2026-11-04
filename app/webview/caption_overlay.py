@@ -99,6 +99,11 @@ _user32.DefWindowProcW.restype = ctypes.c_ssize_t
 _user32.SetWindowPos.argtypes = [wt.HWND, wt.HWND, ctypes.c_int, ctypes.c_int,
                                  ctypes.c_int, ctypes.c_int, wt.UINT]
 _user32.ShowWindow.argtypes = [wt.HWND, ctypes.c_int]
+
+
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", ctypes.c_ulong), ("rcMonitor", wt.RECT),
+                ("rcWork", wt.RECT), ("dwFlags", ctypes.c_ulong)]
 _user32.UpdateLayeredWindow.argtypes = [
     wt.HWND, wt.HDC, ctypes.POINTER(wt.POINT), ctypes.POINTER(wt.SIZE),
     wt.HDC, ctypes.POINTER(wt.POINT), wt.DWORD,
@@ -903,6 +908,44 @@ class NativeCaptionOverlay:
         except Exception as exc2:  # noqa: BLE001
             self.log(f"CAPTION_REVEAL_FAILED_OPEN error={exc2!r}")
 
+    def _screen_proof(self):
+        """(on_screen, rect, alpha) MEDIDO do Windows, nao do `self.visible`.
+
+        Nasceu de um `CAPTION_OVERLAY_PUSH visible=true` que o dono NAO VIU. O
+        campo `visible` e' o que NOS chamamos ao `ShowWindow`; a pergunta dele e'
+        outra -- a janela esta' DENTRO de um monitor e o alfa nao e' zero? Uma
+        prova por leitura de estado e' a unica que responde a ela sem abrir a app
+        num ecra que nao e' o dele.
+        """
+        try:
+            rect = wt.RECT()
+            _user32.GetWindowRect(self.hwnd, ctypes.byref(rect))
+            cx = (rect.left + rect.right) // 2
+            cy = (rect.top + rect.bottom) // 2
+            mon = _user32.MonitorFromPoint(wt.POINT(cx, cy), 2)  # NEAREST
+            info = MONITORINFO()
+            info.cbSize = ctypes.sizeof(MONITORINFO)
+            ok = bool(_user32.GetMonitorInfoW(mon, ctypes.byref(info))) if mon else False
+            work = info.rcWork if ok else None
+            on_screen = bool(ok) and (work.left <= cx < work.right
+                                      and work.top <= cy < work.bottom)
+            try:
+                alpha = ctypes.c_ubyte(0)
+                flags = ctypes.c_ulong(0)
+                key = ctypes.c_ulong(0)
+                _user32.GetLayeredWindowAttributes(
+                    self.hwnd, ctypes.byref(key), ctypes.byref(alpha),
+                    ctypes.byref(flags))
+                alpha_v = int(alpha.value)
+            except Exception:                 # noqa: BLE001
+                alpha_v = -1
+            return (on_screen,
+                    (rect.left, rect.top, rect.right - rect.left,
+                     rect.bottom - rect.top), alpha_v)
+        except Exception as exc:              # noqa: BLE001
+            self.log('CAPTION_OVERLAY_GEOMETRY_FAILED error=%r' % (exc,))
+            return (None, None, -1)
+
     def show(self, on=True):
         with self.lock:
             if not self.hwnd:
@@ -922,6 +965,13 @@ class NativeCaptionOverlay:
                                      | SWP_SHOWWINDOW)
                 _user32.ShowWindow(self.hwnd, SW_SHOWNOACTIVATE)
                 self.visible = True
+                if not getattr(self, '_geom_logged', False):
+                    self._geom_logged = True
+                    on_screen, rect, alpha = self._screen_proof()
+                    self.log('CAPTION_OVERLAY_GEOMETRY shown=true '
+                             'on_screen=%s rect=%r alpha=%d hwnd=%d'
+                             % (str(on_screen).lower(), rect, alpha,
+                                int(self.hwnd)))
             else:
                 _user32.ShowWindow(self.hwnd, SW_HIDE)
                 self.visible = False
