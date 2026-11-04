@@ -10,7 +10,7 @@ nada mais: sem audio, sem modelo, sem I/O, sem gravacao. NAO ha' deteccao de
 falantes aqui e nao se acrescenta: a ordem do dono de 2026-11-04 e' *"nao
 queremos a implementacao de detectar falantes ou algo assim. so' o core"*.
 
-A TABELA DE DECISAO (a do plano, escrita como codigo em `_decide`):
+A TABELA DE DECISAO (a do plano, escrita como codigo em `decide_span`):
 
   modelos concordam                -> confirma a do stream (`confirmed`)
   discordam                        -> fica provisoria (`provisional`)
@@ -109,7 +109,7 @@ def align_pair(stream, refined):
     Devolve colunas `(kind, stream_index|None, refined_index|None)` na ordem do
     audio, com `kind` em `match`, `sub`, `stream-only`, `refined-only`.
     Empate resolve-se SEMPRE pelo mesmo lado (diagonal, depois idioma do
-    stream), para que duas chamadas iguais de^em o mesmo resultado -- sem isso a
+    stream), para que duas chamadas iguais deem o mesmo resultado -- sem isso a
     idempotencia do `feed` nao existe.
     """
     n, m = len(stream), len(refined)
@@ -259,28 +259,20 @@ def _diff_ops(committed, target):
     return ops
 
 
-def _revealed_tail(shown_list):
-    """`boundary -> True` quando algo DALI PARA A FRENTE ja' esta' no ecra.
+def _position(rec):
+    """Onde o registo esta' na HIPOTESE (stream), nao na lista do texto."""
+    if rec.get('src') is not None:
+        return rec['src']
+    if rec.get('boundary') is not None:
+        return rec['boundary']
+    return 1 << 30
 
-    A posicao de cada registo e' lida do `src` (indice no stream) ou do
-    `boundary` (palavra so' do finisher), nunca do indice na lista: uma insercao
-    anterior ja' deslocou a lista em relacao a hipotese.
-    """
-    out = []
-    for boundary in range(0, len(shown_list) + 2):
-        tail = False
-        for rec in shown_list:
-            if rec.get('src') is not None:
-                at = rec['src']
-            else:
-                at = rec.get('boundary')
-                if at is None:
-                    at = 1 << 30
-            if at >= boundary and rec.get('revealed'):
-                tail = True
-                break
-        out.append((boundary, tail))
-    return out
+
+def _revealed_tail(shown_list, boundaries):
+    """`boundary -> True` quando algo DALI PARA A FRENTE ja' esta' no ecra."""
+    return dict((b, any(rec.get('revealed') and _position(rec) >= b
+                        for rec in shown_list))
+                for b in boundaries)
 
 
 def _changed_indexes(ops, n_old):
@@ -375,8 +367,9 @@ class Fusion:
         # revelado, e uma insercao que ja' esta' la' nao se duplica.
         chosen = {}
         held = []
-        tail_revealed = dict(_revealed_tail(shown_list))
-        for boundary in sorted(set(wanted) | set(insertions)):
+        boundaries = sorted(set(wanted) | set(insertions))
+        tail_revealed = _revealed_tail(shown_list, boundaries)
+        for boundary in boundaries:
             new = wanted.get(boundary, [])
             have = insertions.get(boundary, [])
             if [r['word'] for r in have] == new:
@@ -463,5 +456,4 @@ class Fusion:
         self._committed = [dict(rec) for rec in target]
         self.history.append({'ops': ops, 'stability': result['stability'],
                              'review': result['review']})
-        return result
         return result
