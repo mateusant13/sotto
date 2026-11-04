@@ -180,7 +180,7 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
     # uma legenda que a pagina ja' tinha. A chamada tem de estar DENTRO de
     # `start_caption_pipeline` e ANTES do `start_external_caption_watcher`.
     _pipe = shell.find("CAPTION_PIPELINE_START")
-    _pre = shell.find("self._yt_cdp_ensure()", _pipe if _pipe > 0 else 0)
+    _pre = shell.find("self._yt_cdp_boot_attach()", _pipe if _pipe > 0 else 0)
     _watch = shell.find("'watcher', lambda: self.start_external_caption_watcher()",
                         _pipe if _pipe > 0 else 0)
     a11 = _pipe > 0 and _pre > _pipe and _watch > _pre
@@ -238,7 +238,7 @@ def neg_arm():
         # SEM PRE-ABERTURA: a chamada sai do arranque e volta a esperar o tick.
         mut6 = os.path.join(tmp, "sem_preabertura.py")
         io.open(mut6, "w", encoding="utf-8").write(
-            src.replace("            self._yt_cdp_ensure()\n",
+            src.replace("            self._yt_cdp_boot_attach()\n",
                         "            pass\n", 1))
         got6 = dict((n, ok) for n, ok, _ in arms(module_path=None, shell_path=mut6))
         results.append(("sem-preabertura", not got6.get("porta-cdp-abre-no-arranque", False)))

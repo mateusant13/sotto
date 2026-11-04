@@ -2533,6 +2533,40 @@ class ExternalCaptionWatcher(threading.Thread):
         self.finalized = False
         self.last_change = 0.0
 
+    def _yt_diag_now(self):
+        """(src, vid, cdp_age_ms, rows, why) -- os cinco campos, SEM `?`.
+
+        MEDIDO no log do dono, 10:56-10:57 (61 linhas seguidas):
+        `YOUTUBE_TICK_MS avg=0 max=0 n=20 src='?' vid='MOZIBMBHK-8'
+        cdp_age_ms=2413609 rows=0 why='cdp-fresh-skip'` com o dono a ver um
+        video. Duas mentiras na mesma linha: `src='?'` porque `_yt_diag` so' e'
+        escrito em dois ramos do `_read` (e os outros nao escrevem nada), e
+        `cdp_age_ms` de 40 MINUTOS porque a idade ficou congelada no instante em
+        que aquele ramo correu, nao no instante em que a linha saiu.
+
+        `src`/`why`/`vid` sao o ultimo ramo CONHECIDO; a IDADE e as LINHAS sao
+        lidas AGORA (um lock e um `len`), porque sao elas que dizem se ha' foto
+        neste instante. Nenhum campo sai `?`: uma etiqueta que nao sabe dizer o
+        que aconteceu e' pior do que nao existir.
+        """
+        d = getattr(self, '_yt_diag', None) or {}
+        vid = str(d.get('vid') or getattr(self, 'yt_video_id', '') or '')
+        src = str(d.get('src') or '')
+        if not src or src == '?':
+            src = 'external:youtube' if vid else 'unattached'
+        age = 'none'
+        src_obj = getattr(self, '_yt_cdp_source', None)
+        if src_obj and src_obj is not False:
+            try:
+                _a = src_obj.snapshot_age()
+            except Exception:                 # noqa: BLE001
+                _a = None
+            if _a is not None:
+                age = '%.0f' % (_a * 1000.0)
+        rows = len(getattr(self, 'yt_cdp_rows', None) or ())
+        why = str(d.get('why') or 'no-frame')
+        return src, vid, age, rows, why
+
     def run(self):
         try:
             import external_subs
@@ -2611,14 +2645,12 @@ class ExternalCaptionWatcher(threading.Thread):
                     # sessao, o laco a 4 Hz com `EXTERNAL_CAPTIONS_READ_MS`
                     # AUSENTE (leitura <40 ms) e nenhuma linha -- ou seja o
                     # caminho saia CEDO e nada dizia por onde.
-                    _dgs = getattr(self, '_yt_diag', {})
+                    _src, _vid, _age_ms, _rows, _why = self._yt_diag_now()
                     log_repeat('youtube-tick',
                                'YOUTUBE_TICK_MS avg=%.0f max=%.0f n=%d'
-                               ' src=%r vid=%r cdp_age_ms=%s rows=%s why=%r'
+                               ' src=%r vid=%r cdp_age_ms=%s rows=%d why=%r'
                                % (_agg[1] / _agg[0], _agg[2], _agg[0],
-                                  _dgs.get('src', '?'), _dgs.get('vid', ''),
-                                  _dgs.get('age', '?'), _dgs.get('rows', '?'),
-                                  _dgs.get('why', '')))
+                                  _src, _vid, _age_ms, _rows, _why))
                     _agg[0] = 0
                     _agg[1] = 0.0
                     _agg[2] = 0.0
@@ -2798,16 +2830,23 @@ class ExternalCaptionWatcher(threading.Thread):
                 if _cdp_src and _cdp_src is not False:
                     _tabvid = _cdp_src.target_video_id() or ''
                 if not youtube_cdp_source.foreground_source(hwnd, _tabvid):
-                    self._yt_diag = {'src': '?', 'vid': '', 'age': '?',
+                    # SEM `?` NENHUM (2026-11-04): ver `_yt_diag_now` -- o campo
+                    # que nao sabe responde `unattached`/`none`, que e' um facto,
+                    # e nunca a interrogacao que fez o dono procurar o defeito no
+                    # sitio errado.
+                    self._yt_diag = {'src': 'unattached', 'vid': '',
+                                     'age': 'none',
                                      'rows': 0, 'why': 'no-player-window'}
                     return [], False
             except Exception as exc:              # noqa: BLE001
                 log('YOUTUBE_WINDOWLESS_SOURCE_FAILED error=%r' % (exc,))
-                self._yt_diag = {'src': '?', 'vid': '', 'age': '?',
-                                 'rows': 0, 'why': 'no-player-window'}
+                self._yt_diag = {'src': 'unattached', 'vid': '',
+                                 'age': 'none',
+                                 'rows': 0,
+                                 'why': 'windowless-source-failed'}
                 return [], False
             self._yt_diag = {'src': 'external:youtube', 'vid': _tabvid,
-                             'age': '?',
+                             'age': 'none',
                              'rows': len(getattr(self, 'yt_cdp_rows', None) or []),
                              'why': 'no-foreground-cdp'}
             log_repeat('YOUTUBE_SOURCE_WINDOWLESS',
@@ -2941,8 +2980,11 @@ class ExternalCaptionWatcher(threading.Thread):
             # le o log foi procurar o problema no sitio errado porque a palavra
             # mentia.
             _fresh = _age is not None and _age <= 8.0
-            self._yt_diag = {'src': loc or '?', 'vid': getattr(self, 'yt_video_id', ''),
-                             'age': ('%.0f' % (_age * 1000.0)) if _age is not None else 'None',
+            self._yt_diag = {'src': (loc or ('external:youtube'
+                                             if getattr(self, 'yt_video_id', '')
+                                             else 'unattached')),
+                             'vid': getattr(self, 'yt_video_id', ''),
+                             'age': ('%.0f' % (_age * 1000.0)) if _age is not None else 'none',
                              'rows': len(getattr(self, 'yt_cdp_rows', None) or []),
                              'why': ('cdp-fresh-skip' if _fresh
                                      else ('cdp-no-snapshot' if _age is None
@@ -3444,6 +3486,20 @@ class ExternalCaptionWatcher(threading.Thread):
         source = getattr(self, '_yt_cdp_source', None)
         if source is False:
             return None
+        if source is None:
+            # A FONTE NASCE NO ARRANQUE E E' UMA SO' (2026-11-04). MEDIDO no
+            # log do dono: `start_caption_pipeline` (SottoShell) chamava
+            # `self._yt_cdp_ensure()` -- um metodo que so' existe NESTE objeto.
+            # O `AttributeError` era apanhado e publicado como
+            # `YOUTUBE_CDP_PREOPEN_FAILED`, portanto o arranque nunca pedia o
+            # attach: a porta abria no primeiro tick do laco (4,4 s depois de a
+            # app subir, medido as 10:06:36 -> 10:06:40). Agora a shell cria a
+            # fonte no arranque e este objeto ADOTA a dela, para nao haver duas
+            # threads a ler a mesma aba.
+            _owned = getattr(getattr(self, 'shell', None), '_yt_cdp_source', None)
+            if _owned is not None and _owned is not False:
+                self._yt_cdp_source = _owned
+                source = _owned
         if source is not None:
             if declared:
                 try:
@@ -3586,6 +3642,17 @@ class ExternalCaptionWatcher(threading.Thread):
                 log('YOUTUBE_CDP_SOURCE refused=video-mismatch declared=%s seen=%s'
                     % (declared, seen))
             return None
+        # A ETIQUETA DA FONTE E' ESCRITA POR QUEM PRODUZ O QUADRO (2026-11-04).
+        # Sem isto os caminhos que NAO passam no ramo do `_read` (o caso normal
+        # quando ha' video) deixavam `_yt_diag` velho, e o log do dono passou a
+        # mostrar `src='?'` com o player a pintar. Aqui o rotulo e' o facto:
+        # esta' foto veio do DOM do player.
+        self._yt_diag = {'src': 'external:youtube:cdp',
+                         'vid': seen or str(getattr(self, 'yt_video_id', '') or ''),
+                         'age': '%.0f' % ((time.monotonic() - snap['stamp'])
+                                          * 1000.0),
+                         'rows': len(snap.get('rows') or ()),
+                         'why': str(snap.get('why') or 'cdp')}
         return snap
     def _yt_clock_agrees(self, t):
         """Is the clock INSIDE the cue the player was painting?
@@ -12939,6 +13006,45 @@ class SottoShell:
         log(f'WORKER_PRELOAD done started={str(started).lower()}')
         return bool(started)
 
+    def _yt_cdp_boot_attach(self):
+        """Pede a ligacao a' aba do YouTube AGORA -- no arranque, sem painel.
+
+        PORQUE EXISTE (MEDIDO 2026-11-04, log do dono 10:56-10:57): o pedido de
+        attach morava no primeiro tick do laco das legendas, e o laco so'
+        existia depois de metade do arranque. Enquanto isso o log publicava
+        `YOUTUBE_TICK_MS src='?' vid='MOZIBMBHK-8' cdp_age_ms=2413609 rows=0`
+        e o ecra mostrava o ASR do audio do video -- nao a faixa do player. A
+        aba TEM de ser adotada no arranque e a adocao nao pode depender de
+        nenhum evento de painel: `/json/list` e' HTTP.
+
+        Devolve a fonte, ou None quando a porta esta desligada por ambiente. A
+        tentativa e' LIMITADA (`boot_attach`: 3 x 0,4 s, uma linha por falha
+        com o motivo); quem nao ligou continua a tentar dentro da thread, que
+        ja' espera `RETRY_S` entre tentativas e agora escreve o motivo de cada
+        uma (`YOUTUBE_CDP_ATTACH_FAILED`). A fonte e' criada AQUI e adotada pelo
+        watcher (`_yt_cdp_ensure`), para nao haver duas threads na mesma aba.
+        """
+        if os.environ.get('SOTTO_YT_CDP', '1') == '0':
+            log('YOUTUBE_CDP_BOOT_ATTACH skipped reason=SOTTO_YT_CDP=0')
+            return None
+        import youtube_cdp_source
+        ok, why = youtube_cdp_source.boot_attach(log=log)
+        source = getattr(self, '_yt_cdp_source', None)
+        if source is None or source is False:
+            source = youtube_cdp_source.CdpCaptionSource(log=log)
+            self._yt_cdp_source = source
+            try:
+                source.start()
+            except Exception as exc:          # noqa: BLE001
+                self._yt_cdp_source = None
+                log('YOUTUBE_CDP_BOOT_SOURCE_FAILED error=%r' % (exc,))
+                return None
+        if not ok:
+            log('YOUTUBE_CDP_BOOT_ATTACH_DEFERRED reason=%s retry_s=%.0f '
+                'by=youtube_cdp_source.retry_interval'
+                % (why, youtube_cdp_source.RETRY_S))
+        return source
+
     def start_caption_pipeline(self, reason):
         """LEGENDA E WORKER NAO ESPERAM PELO WEBVIEW2 (2026-11-03).
 
@@ -12962,8 +13068,16 @@ class SottoShell:
         # YouTube ja' tinha pronta na pagina. Abrir a porta aqui custa um
         # `Thread.start` e corta os 1,4 s que o primeiro tick pagava so' para
         # chegar ao sitio onde a porta se abre.
+        #
+        # E O PEDIDO TEM DE SER FEITO A SÉRIO (2026-11-04). O que estava aqui
+        # era `self._yt_cdp_ensure()` -- um metodo do `ExternalCaptionWatcher`,
+        # chamado sobre a SHELL. O `AttributeError` era apanhado e publicado
+        # como `YOUTUBE_CDP_PREOPEN_FAILED`, e o resultado medido foi o de
+        # sempre: a porta abria no primeiro tick do laco, nunca aqui. O
+        # `YOUTUBE_CDP_PREOPEN_FAILED` que nunca apareceu no log do dono e' o
+        # proprio sintoma -- a app que ele carrega e' anterior a esta chamada.
         try:
-            self._yt_cdp_ensure()
+            self._yt_cdp_boot_attach()
         except Exception as exc:              # noqa: BLE001
             log('YOUTUBE_CDP_PREOPEN_FAILED error=%r' % (exc,))
         for step, call in (
