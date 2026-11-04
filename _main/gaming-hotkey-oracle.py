@@ -60,6 +60,7 @@ import shutil
 import tempfile
 import threading
 import time
+import statistics
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -107,6 +108,24 @@ def add(ok, name, detail=""):
     print("  %s %s%s" % ('GREEN' if ok else 'RED  ', name,
                          ("  " + detail) if detail else ""))
     return bool(ok)
+
+
+def wait_until(cond, timeout=2.0, step=0.005):
+    """Espera ate' `cond()` ser verdade, com prazo. Devolve o que `cond` deu.
+
+    O DETERMINISMO DE UM BRACO NAO PODE SER UM `sleep` (MEDIDO 2026-11-04): num
+    braco de pressao, parar 100 ms depois de soltar a leitura e' uma aposta em
+    que o fio foi servido nesse intervalo -- e numa maquina a correr tres lanes
+    a aposta perde, exactamente as vezes que ensinam a repetir o portao. Quem
+    espera um EVENTO espera pelo evento.
+    """
+    limit = time.monotonic() + float(timeout)
+    while True:
+        if cond():
+            return True
+        if time.monotonic() >= limit:
+            return False
+        time.sleep(step)
 
 
 def load_module(name, path):
@@ -241,6 +260,19 @@ class FakeWindows(object):
         self.down = {}
         self.edge = {}
         self.pending = []
+        #: A LEITURA PRESA (2026-11-04). `gate` ABERTO (posto) == as leituras
+        #: passam; FECHADO == a `state()` seguinte FICA presa e avisa em
+        #: `gate_entered`. E' o que torna a "volta tardia" DETERMINISTICA: a
+        #: ordem (ler / carregar na tecla / soltar) deixa de ser uma corrida de
+        #: relogio de parede e passa a ser um handshake.
+        #:
+        #: O SENTIDO E' "ABERTO", e nao "fechado", por MEDICAO (2026-11-04): com
+        #: `gate.post()` a dizer "bloqueia", um `clear()` que chegasse entre o
+        #: `set()` de `gate_entered` e o `wait()` PERDIA o aviso e o observador
+        #: ficava preso para sempre (`loops=5 depois=5`, medido). `is_set()` em
+        #: laco nao perde nada.
+        self.gate = None
+        self.gate_entered = None
 
     def press(self, vk, hold_s=0.0):
         self.edge[int(vk)] = True
@@ -269,6 +301,13 @@ class FakeWindows(object):
 
     def state(self, vk):
         vk = int(vk)
+        # A VOLTA PRESA, encenada sem relogio: quem le' fica aqui' ate' o
+        # oraculo ter posto a pressao inteira -- e so' o bit 0 a pode salvar.
+        if self.gate is not None and not self.gate.is_set():
+            if self.gate_entered is not None:
+                self.gate_entered.set()
+            while not self.gate.is_set():
+                self.gate.wait(0.05)
         self._apply(self.clock())
         bits = 0
         if self.down.get(vk):
@@ -593,23 +632,60 @@ def run(shell_path, gesture_path, overlay_path, gaming_path):
         "dwell=0 desliga a histerese (o numero e' configuravel, nao magico)")
 
     # -- ARM (g): o custo do tick ---------------------------------------------
-    print("\nARM (g) -- o custo do tick do detector")
-    det_b = gaming.GamingDetector(log=FakeLog())
-    timings = []
+    print("\nARM (g) -- o custo do tick do detector, medido contra o PISO da mesma corrida")
+    # O QUE ESTAVA ERRADO (MEDIDO 2026-11-04): este braco julgava o PIOR de 5
+    # amostras contra 50 ms de relogio de parede. Numa maquina a correr tres
+    # lanes, o escalonador estica uma amostra e o braco fica VERMELHO sem uma
+    # linha de regressao -- medido: 2 de 10 corridas com `worst=51.24 ms` e
+    # `worst=56.72 ms`, e as mesmas corridas verdes minutos depois. Um portao
+    # que fica vermelho por CARGA ensina a todos a repeti-lo.
+    #
+    # A VERDADE DETERMINISTICA sao duas, e nenhuma delas depende de relogio:
+    #   (1) UMA enumeracao por tick (contada na propria costura);
+    #   (2) o custo INTRINSECO do tick (o MINIMO de 9 amostras -- a amostra em
+    #       que o processo teve CPU) nao passa do PISO medido na mesma corrida,
+    #       que e' UMA enumeracao crua: a carga pesa nos dois lados e cancela.
+    #       Uma regressao de verdade (o caminho por `OpenProcess`/pid que este
+    #       repo ja' pagou, 29,05 ms por processo) rompe o racio SEM carga
+    #       nenhuma. O valor absoluto continua a sair no detalhe, e o orcamento
+    #       declarado continua a ser julgado -- sobre o custo, nao sobre a espera.
+    counts = {'n': 0}
+    _real_names = gaming._process_names
+
+    def counted_names():
+        counts['n'] += 1
+        return _real_names()
+
+    det_b = gaming.GamingDetector(log=FakeLog(), read_names=counted_names)
+    floor = []
     for _ in range(5):
+        t0 = time.perf_counter()
+        _real_names()
+        floor.append((time.perf_counter() - t0) * 1000.0)
+    counts['n'] = 0
+    timings = []
+    for _ in range(9):
         t0 = time.perf_counter()
         det_b.tick()
         timings.append((time.perf_counter() - t0) * 1000.0)
+    enum_ms = min(floor)
+    tick_min = min(timings)
+    tick_med = statistics.median(timings)
     worst = max(timings)
-    add(worst < gaming.TICK_BUDGET_MS,
-        "o pior tick custa menos que o orcamento declarado",
-        "worst=%.2f ms budget=%.1f ms n_proc=%d"
-        % (worst, gaming.TICK_BUDGET_MS, len(det_b.last_names)))
-    add(worst < gaming.TICK_S * 1000.0 / 10.0,
+    add(counts['n'] == 9, "uma enumeracao por tick (contada na costura)",
+        "read_names=%d para 9 ticks" % counts['n'])
+    add(tick_min <= enum_ms * 1.5,
+        "o custo do tick fica perto do de UMA enumeracao (o racio nao tem carga)",
+        "tick_min=%.2f ms enum_min=%.2f ms racio=%.2f (n_proc=%d)"
+        % (tick_min, enum_ms, tick_min / max(enum_ms, 0.001), len(det_b.last_names)))
+    add(tick_min < gaming.TICK_BUDGET_MS,
+        "o custo intrinseco (o minimo de 9) cabe no orcamento declarado",
+        "tick_min=%.2f ms budget=%.1f ms | median=%.2f worst=%.2f (a espera do "
+        "escalonador, REPORTADA e nao julgada)"
+        % (tick_min, gaming.TICK_BUDGET_MS, tick_med, worst))
+    add(tick_min < gaming.TICK_S * 1000.0 / 10.0,
         "e gasta menos de um decimo de um tick (antes do orcamento)",
-        "worst=%.2f ms de %.0f ms" % (worst, gaming.TICK_S * 1000.0))
-    add(present is not None, "uma enumeracao por tick",
-        "read_names chamado 5 vezes para 5 ticks")
+        "tick_min=%.2f ms de %.0f ms" % (tick_min, gaming.TICK_S * 1000.0))
 
     # -- o caminho do toggle, do ficheiro -------------------------------------
     print("\nARM (c)/(d) -- o toggle REAL nao rouba foco e nao come teclas")
@@ -721,7 +797,7 @@ def run(shell_path, gesture_path, overlay_path, gaming_path):
         "as duas pressoes foram entregues COM o detector em GAMING", str(press_records))
 
     # -- ARM (h): a volta perdida ---------------------------------------------
-    print("\nARM (h) -- um laco a segurar a maquina (o analogo de um jogo)")
+    print("\nARM (h) -- a volta perdida: a pressao INTEIRA dentro de uma leitura presa")
     windows2 = FakeWindows()
     log6 = FakeLog()
     presses6 = []
@@ -731,27 +807,23 @@ def run(shell_path, gesture_path, overlay_path, gaming_path):
     obs2.start()
     obs2.wait_ready(2.0)
     time.sleep(0.06)
-    hog_stop = threading.Event()
-
-    def hog():
-        """Um processo a comer a maquina: aqui, um fio Python que segura o GIL."""
-        while not hog_stop.is_set():
-            sum(i * i for i in range(20000))
-
-    hog_thread = threading.Thread(target=hog, name='game-hog', daemon=True)
-    hog_thread.start()
-    # A PRESSAO INTEIRA CABE DENTRO DA VOLTA PERDIDA: desce e sobe em 30 ms, e o
-    # `hog` impede o observador de correr nesse intervalo. So' o bit 0 do Windows
-    # (a borda) a pode salvar -- e' exactamente o toque que se perdia.
-    windows2.press(0x11, hold_s=0.03)
-    windows2.press(0x20, hold_s=0.03)
-    time.sleep(0.03)
-    windows2.down[0x20] = False
-    windows2.down[0x11] = False
-    time.sleep(0.15)
-    hog_stop.set()
-    hog_thread.join(1.0)
-    time.sleep(0.15)
+    # O DETERMINISMO E' UM HANDSHAKE, NAO UM `sleep` (MEDIDO 2026-11-04). A versao
+    # anterior punha um fio `hog` a comer o GIL e dois `sleep` de 30/150 ms: uma
+    # LOTERIA. Um fio Python larga o GIL de 5 em 5 ms, por isso o `hog` so' as
+    # vezes apanhava a pressao la' dentro, e a maquina carregada mudava a ordem.
+    # Aqui: fecha-se a LEITURA, espera-se que o observador esteja PRESO dentro
+    # dela (o evento `gate_entered`), poem-se a pressao com as teclas JA'
+    # soltas -- so' o bit 0 -- e abre-se. A ordem deixa de ser corrida.
+    windows2.gate = threading.Event()
+    windows2.gate_entered = threading.Event()
+    windows2.gate.clear()          # FECHADO: a proxima leitura fica presa
+    entered6 = windows2.gate_entered.wait(2.0)
+    windows2.press(0x11)
+    windows2.press(0x20)
+    windows2.gate.set()            # ABERTO: o observador le' a borda guardada
+    wait_until(lambda: bool(presses6), 2.0)
+    loops_at_gate = obs2.loops
+    wait_until(lambda: obs2.loops > loops_at_gate, 2.0)
     obs2.stop()
     obs2.join(2.0)
     beats = [l for l in log6.lines if 'HOTKEY_OBSERVER_ALIVE' in l]
@@ -760,13 +832,16 @@ def run(shell_path, gesture_path, overlay_path, gaming_path):
         match = re.search(r'max_gap_ms=(\d+)', line)
         if match:
             gap = max(gap, int(match.group(1)))
+    add(entered6, "o observador estava PRESO na leitura quando a tecla foi carregada",
+        "gate_entered=%s" % entered6)
     add(len(presses6) == 1,
         "a pressao que caiu inteira na volta perdida FOI vista (uma, e so' uma)",
         "presses=%d" % len(presses6))
-    add(obs2.loops > 0, "o observador continuou a girar durante o laco",
-        "loops=%d max_gap_ms=%d" % (obs2.loops, gap))
-    add(gap > 0, "a volta foi MEDIDA (o laco atrasou-a de facto, nao e' narrativa)",
-        "max_gap_ms=%d poll_ms=%d" % (gap, int(obs2.poll_s * 1000)))
+    add(obs2.loops > loops_at_gate, "e o observador voltou a girar depois da volta presa",
+        "loops=%d depois=%d max_gap_ms=%d" % (loops_at_gate, obs2.loops, gap))
+    add(any('via=latched' in line for line in log6.presses()),
+        "a entrega veio do BIT 0 (via=latched) -- as teclas ja' estavam soltas",
+        str(log6.presses()))
     add(log6.has('HOTKEY_PRESSED role=live count=1'),
         "a linha da pressao tem o count=1 (a entrega e' a do ficheiro)")
 
@@ -781,12 +856,18 @@ def run(shell_path, gesture_path, overlay_path, gaming_path):
     obs3.start()
     obs3.wait_ready(2.0)
     time.sleep(0.06)
-    t_now = time.monotonic()
-    # O Ctrl fica em baixo durante a volta inteira; o SPACE desce e sobe em 30 ms
-    # a 100 ms de distancia -- tudo dentro do buraco em que a thread principal
-    # nao corre. So' o bit 0 do Windows o pode salvar.
-    windows3.schedule(t_now + 0.10, 0x11, hold_s=1.0)
-    windows3.schedule(t_now + 0.10, 0x20, hold_s=0.03)
+    # A PRESSAO E' POSTA ENQUANTO A LEITURA ESTA' PRESA, e o `hold_the_gil` a
+    # seguir torna a volta REALMENTE longa (o `max_gap_ms` que o log do dono
+    # publicou). A versao anterior agendava a pressao em `t_now + 0.10 s` e
+    # entrava no GIL a seguir: se o fio principal fosse despejado por 100 ms
+    # antes de chegar ao GIL, a tecla era lida ao vivo (`via=state`) e o braco
+    # ficava vermelho por CARGA. Agora a ordem e' imposta, nao corrida.
+    windows3.gate = threading.Event()
+    windows3.gate_entered = threading.Event()
+    windows3.gate.clear()          # FECHADO: a leitura fica presa durante o GIL
+    entered7 = windows3.gate_entered.wait(2.0)
+    windows3.press(0x11)
+    windows3.press(0x20)
 
     def hold_the_gil(seconds):
         """Uma chamada C que NAO larga o GIL -- o que a UIA fazia (medido 29 s).
@@ -802,18 +883,26 @@ def run(shell_path, gesture_path, overlay_path, gaming_path):
             pattern.match('a' * 26 + 'b')
 
     hold_the_gil(0.45)
-    time.sleep(0.20)
+    windows3.gate.set()
+    wait_until(lambda: bool(presses7), 2.0)
+    # A VOLTA SO' E' MEDIDA NO INICIO DA SEGUINTE: parar o observador no instante
+    # em que a pressao entra deixaria `max_gap_ms` a zero e o braco media um
+    # numero que nunca foi calculado (medido: gap=0 com o press entregue).
+    loops3 = obs3.loops
+    wait_until(lambda: obs3.loops > loops3, 2.0)
     obs3.stop()
     obs3.join(2.0)
-    gap3 = 0
+    gap3 = int(round(float(getattr(obs3, '_wake_gap', 0.0)) * 1000.0))
     for line in log7.lines:
         match = re.search(r'max_gap_ms=(\d+)', line)
         if match:
             gap3 = max(gap3, int(match.group(1)))
+    add(entered7, "a leitura estava presa quando o GIL foi tomado",
+        "gate_entered=%s" % entered7)
     add(len(presses7) == 1,
         "a pressao que caiu DENTRO do GIL tomado foi vista (uma, e so' uma)",
         "presses=%d" % len(presses7))
-    add(gap3 >= 150, "a volta ficou presa como no log do dono",
+    add(gap3 >= 400, "a volta ficou presa como no log do dono",
         "max_gap_ms=%d (o log dele mediu 203..29266)" % gap3)
     add(any('via=latched' in line for line in log7.presses()),
         "a entrega veio do BIT 0 (via=latched) -- a borda que o Windows guardou",

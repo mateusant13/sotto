@@ -159,7 +159,7 @@ contra um shell falso, um `user32`-GRAVADOR e uma maquina de estados de teclado 
 `GetAsyncKeyState` (0x8000 = em baixo, 0x0001 = carregada desde a leitura anterior). **Nenhuma janela
 e' aberta, nenhum ctypes de input e' tocado, nenhuma tecla sintetica.**
 
-`python _main/gaming-hotkey-oracle.py` -> `GAMING-HOTKEY GREEN -- arms=53 pass=53 fail=0 (rc=0)`
+`python _main/gaming-hotkey-oracle.py` -> `GAMING-HOTKEY GREEN -- arms=56 pass=56 fail=0 (rc=0)`
 
 Os bracos: (a) pressao em GAMING e' vista e liga; (b) a segunda desliga; (c) o toggle nao rouba o
 primeiro plano (flags medidas); (d) nenhuma API que come teclas, e o observador so' le'
@@ -181,12 +181,76 @@ designed: as quatro regressoes derrubam o oraculo`.
 | `in-match-ignored` | `is_game_name -> (True, False)` | (e): `eldenring.exe -> is_gaming()` False, e 6 bracos em cascata |
 | `observer-poll-starved` | volta de 1 s e sem o bit 0 | (a)/(b)/(h)/(h2): `presses=0` |
 
+
+## A FLAKINESS MEDIDA (ordem do assento principal, 2026-11-04)
+
+O assento principal mediu, na arvore ja' mergeada (`0031526` + merges, nada editado no meio):
+**3 corridas seguidas de 11** com `GAMING-HOTKEY VERMELHO -- arms=53 pass=52 fail=1 (rc=1)` e 8
+verdes. Um portao que fica vermelho por CARGA e' pior do que um passo saltado: ensina a repetir.
+
+### Qual braco, medido (e a suspeita do principal, refutada)
+
+Reproduzido aqui com **5 instancias do proprio oraculo em paralelo** (a carga de tres lanes + a app
+do dono, dentro do que este host aguenta): **2 de 10 corridas vermelhas**, e as duas FALHA sao as
+mesmas, no braco do CUSTO:
+
+```
+FALHA: o pior tick custa menos que o orcamento declarado  -- worst=51.24 ms budget=50.0 ms n_proc=616
+FALHA: o pior tick custa menos que o orcamento declarado  -- worst=56.72 ms budget=50.0 ms n_proc=616
+```
+
+**A suspeita do principal — ARM (h), `hold_s=0.03` contra `poll_s=0.025`, contagem 2 ou 0 — esta'
+REFUTADA**: nos 10 corridas o braco (h) e o (h2) ficaram verdes, com `presses=1` nas duas. O que
+flipa e' o (g), e o numero que muda nao e' uma contagem: e' um `worst` em milissegundos.
+
+### Porque o numero se mexe (o codigo nao mudou)
+
+O MESMO tick, medido 9 vezes neste host com a maquina viva:
+
+```
+enum (uma enumeracao crua)  min 27.24  med 47.05  max 62.72 ms
+tick do detector            min 25.42  med 48.09  max 76.99 ms
+```
+
+Um tick custa o mesmo que UMA enumeracao (racio `min 0.93`) — o trabalho e' constante. O que varia
+e' **quanto tempo o escalonador leva a servir o fio**: 25 ms de trabalho, 77 ms de relogio de parede.
+Julgar o PIOR de 5 amostras contra um orcamento de 50 ms de parede e' julgar a carga do Windows, nao o
+detector.
+
+### O que mudou (determinismo, nao tolerancia)
+
+| braco | antes | depois |
+|---|---|---|
+| (g) custo do tick | pior de 5 amostras de relogio de parede `< 50 ms` | (1) `read_names` CONTADO na costura: **9 para 9 ticks**; (2) custo INTRINSECO (o **minimo** de 9 — a amostra em que o fio teve CPU) contra o **PISO medido na mesma corrida** (uma enumeracao crua, racio limite 1.5; medido 0.92–1.03); (3) o orcamento declarado continua a ser julgado, sobre o custo (`tick_min`); **median e worst saem no detalhe, REPORTADOS e nao julgados**. Uma regressao de verdade (o caminho por `OpenProcess`/pid, 29,05 ms por processo) rompe o racio sem carga nenhuma. |
+| (h) volta perdida | fio `hog` a comer o GIL + `sleep` de 30/150 ms — uma LOTERIA (um fio Python larga o GIL de 5 em 5 ms) | `gate`/`gate_entered`: a leitura do observador e' FECHADA, espera-se que ele esteja **provadamente preso dentro dela**, poem-se a pressao com as teclas **ja' soltas** (so' o bit 0) e abre-se. O braco agora exige `via=latched` — o que o antigo nem verificava. |
+| (h2) GIL tomado | pressao agendada em `t_now + 0.10 s` e GIL a seguir: se o fio principal fosse despejado 100 ms antes de entrar no GIL, a tecla era lida ao vivo (`via=state`) e o braco ficava vermelho por carga | a pressao e' posta **enquanto a leitura esta' presa**, e o GIL (0,45 s de retrocesso `sre`, o caso medido) vem depois; `max_gap_ms >= 400` passa a ser garantido pela construcao (medido **1875 ms**) em vez de "se o `sleep` cair dentro" |
+| esperas | `time.sleep` a decidir se um evento aconteceu | `wait_until(cond, 2.0)`: quem espera um EVENTO espera pelo evento |
+
+### O bug que apareceu no caminho (e ficou medido)
+
+O `gate` nasceu com o sentido trocado (`post()` = bloqueia): um `clear()` que chegasse entre o aviso
+`gate_entered` e o `wait()` **perdia o aviso** e o observador ficava preso para sempre —
+`loops=5 depois=5`, com `presses=0`. Corrigido com o sentido "ABERTO" e `is_set()` em laco (sem
+wakeup perdido). Um braco que trava o observador nao e' um braco verde.
+
+### A prova
+
+| medicao | resultado |
+|---|---|
+| 20 corridas em sequencia | **20 GREEN, arms=56 pass=56 fail=0** (101,5 s, `python _stress/run.py 20 1`) |
+| 20 corridas com **5 instancias em paralelo** (a carga que produzia 2 vermelhos em 10) | **20 GREEN, arms=56 pass=56 fail=0** (71,7 s) |
+| `--neg-arm` | **rc=1**, `NEG-ARM PASS -- RED as designed`, 4/4 (incluindo `observer-poll-starved`, que agora derruba (a), (b), (h) e (h2) com `presses=0`) |
+| `battery-wiring` / `battery-class` / `lane-screen-gate` / `undefined-names` | PASS / PASS / PASS / GREEN |
+
+Os bracos passaram de 53 para 56: o `gate_entered` de (h), o de (h2) e o censo de enumeracoes
+substituiram o braco narrativo ("read_names chamado 5 vezes", que so' olhava `present is not None`).
+
 ## Medido antes e depois
 
 | medicao | antes (`HEAD` 62641ec) | depois |
 |---|---|---|
 | `app/webview/gaming_mode.py` | **nao existe** | 493 linhas; `is_gaming()`, 1 linha por transicao |
-| oraculo contra a arvore do `HEAD` | `VERDICT: FAIL -- gaming_mode.py ausente` | `arms=53 pass=53 rc=0` |
+| oraculo contra a arvore do `HEAD` | `VERDICT: FAIL -- gaming_mode.py ausente` | `arms=56 pass=56 rc=0` |
 | prioridade do observador | nunca pedida (0 ocorrencias) | pedida, `1`, lida de volta |
 | custo do tick do detector (521 processos) | — (por `OpenProcess`/pid: **29,05 ms**) | **12,32 ms** tipico / 26,8 ms com a maquina carregada (orcamento declarado 50 ms) |
 | dwell com a vista fora | — (o primeiro corte deste ficheiro dava 9 de 10 ticks) | **10 de 10**, e cai no 11o |
@@ -197,7 +261,7 @@ designed: as quatro regressoes derrubam o oraculo`.
 
 | portao | resultado |
 |---|---|
-| `_main/gaming-hotkey-oracle.py` | `GAMING-HOTKEY GREEN -- arms=53 pass=53 fail=0` (rc=0) |
+| `_main/gaming-hotkey-oracle.py` | `GAMING-HOTKEY GREEN -- arms=56 pass=56 fail=0` (rc=0), 20/20 em sequencia e 20/20 com 5 instancias em paralelo |
 | `--neg-arm` | rc=1, `NEG-ARM PASS`, 4/4 |
 | `_main/agents-md-pins-oracle.py` | `AGENTS-PINS PASS -- 2 pin(s) checked live, 0 failure(s)` (`run.cmd --help` 7985 B intacto; bateria `214450 B`, `2666 CRLF` / 0 bare LF, sha256 `626A2922…3EF540013`) |
 | `_main/battery-class-oracle.py` | `BATTERY-CLASS VERDICT PASS -- arms=3 fail=0` |
@@ -227,7 +291,7 @@ continuam pelo texto. O `--neg-arm` do portao continua a apanhar **4 de 4** muta
 app/webview/gaming_mode.py             NOVO -- detector (snapshot 2 s, regra do !watcher, dwell, 1 linha por transicao)
 app/webview/sotto_webview.py           prioridade do observador + argtypes; arm/stop_gaming_watcher; atributo self.gaming
 app/webview/hotkey_gesture.py          OBSERVER_PRIORITY = 1 (o dono dos numeros da tecla)
-_main/gaming-hotkey-oracle.py          NOVO -- 53 arms, 4 mutantes
+_main/gaming-hotkey-oracle.py          NOVO -- 56 arms, 4 mutantes
 _main/_audit-verify-all.cmd            passo `gaming-hotkey` + `red-as-expected-gaming-hotkey` (+22 linhas, CRLF)
 _main/altc-gesture-oracle.py           namespace do observador: GetCurrentThread/SetThreadPriority
 _main/lane-screen-gate.py              censo de input sintetico por `ast` nos .py
