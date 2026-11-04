@@ -1500,7 +1500,15 @@ class StreamAsr:
                 "cache_last_channel_len_next",
             ],
             {
-                "audio_signal": af.astype(np.float32),
+                # `astype` COPIES ALWAYS, even when the array is already
+                # float32 -- 35 840 B per 560 ms chunk, measured 2026-11-04
+                # (`np.shares_memory` False on the copy). The features arrive
+                # float32-contiguous from the front end in the steady state, so
+                # the copy bought nothing; it is only needed for the dtype or the
+                # layout the encoder graph requires.
+                "audio_signal": (af if af.dtype == np.float32
+                                 and af.flags['C_CONTIGUOUS']
+                                 else np.ascontiguousarray(af, np.float32)),
                 "length": np.array([af.shape[1]], np.int64),
                 "cache_last_channel": self.cc,
                 "cache_last_time": self.ct,

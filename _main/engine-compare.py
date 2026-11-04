@@ -1,11 +1,18 @@
-"""Compara motores no MESMO wav: parakeet-redux ONNX int4 vs nemotron int4.
+"""Compara motores no MESMO wav: parakeet-redux ONNX int4 vs nemotron int4 vs
+Nemotron-Labs-Unified-ASR (buffered chunked streaming).
 
 Nao corrige nada: mede (texto, xRT, RSS de pico) para responder "o ARK-ASR e'
 melhor?" com numeros locais em vez de com o README de quem o publica.
 
-Uso:  python engine-compare.py <wav>[,<wav>] [--engine parakeet|nemotron]
+Uso:  python engine-compare.py <wav>[,<wav>] [--engine parakeet|nemotron|unified]
+      [--unified-config lat160|lat320|lat560|lat1120] [--lang pt-BR]
+
+`unified` e' medido no interpreter ISOLADO (I:/cc-tmp/nemo-venv), porque o NeMo
+nao esta' no Python do sistema: este instrumento larga o `worker/unified_asr.py`
+la' dentro e le as linhas UNIFIED_* que ele imprime.
 """
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -90,11 +97,67 @@ def run_parakeet(wav):
             "text": str(text)[:600]}
 
 
+UNIFIED_PY = Path(r"I:/cc-tmp/nemo-venv/Scripts/python.exe")
+UNIFIED_ENTRY = ROOT / "worker" / "unified_asr.py"
+CREATE_NO_WINDOW = 0x08000000
+
+
+def run_unified(wav, config="lat560", lang="pt-BR"):
+    """Mede o unified ASR no venv isolado e devolve a linha dele como dict."""
+    if not UNIFIED_PY.exists():
+        raise RuntimeError("venv do NeMo ausente: %s" % UNIFIED_PY)
+    cmd = [str(UNIFIED_PY), str(UNIFIED_ENTRY), "--selftest", "--wav", str(wav),
+           "--config", config, "--lang", lang, "--device", "cuda"]
+    t0 = time.perf_counter()
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", creationflags=CREATE_NO_WINDOW)
+    wall = time.perf_counter() - t0
+    text, meters = "", {}
+    for line in proc.stdout.splitlines():
+        if line.startswith("UNIFIED_TEXT "):
+            text = line.split(" ", 2)[2].strip()
+            try:
+                text = json.loads(text)
+            except json.JSONDecodeError:
+                pass
+        elif line.startswith("UNIFIED_SELFTEST "):
+            for part in line.split()[1:]:
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    meters[k] = v
+    if not meters:
+        tail = (proc.stdout or "")[-400:] + (proc.stderr or "")[-400:]
+        raise RuntimeError("unified_sem_saida rc=%d %s" % (proc.returncode, tail))
+    return {"engine": "unified-%s" % config,
+            "load_s": float(meters.get("load_s", 0) or 0),
+            "infer_s": float(meters.get("compute_s", 0) or 0),
+            "audio_s": float(meters.get("audio_s", 0) or 0),
+            "xrt": round(float(meters["audio_s"]) / float(meters["compute_s"]), 2)
+                   if float(meters.get("compute_s", 0) or 0) else None,
+            "rss_mb": int(float(meters.get("peak_rss_mb", 0) or 0)),
+            "peak_mb": int(float(meters.get("peak_rss_mb", 0) or 0)),
+            "peak_vram_mb": int(float(meters.get("peak_vram_mb", 0) or 0)),
+            "p95_chunk_ms": float(meters.get("p95_ms", 0) or 0),
+            "verdict": meters.get("verdict"),
+            "wall_s": round(wall, 1),
+            "text": str(text)[:600]}
+
+
 def main(argv):
     engine = "all"
     if "--engine" in argv:
         i = argv.index("--engine")
         engine = argv[i + 1]
+        argv = argv[:i] + argv[i + 2:]
+    ucfg = "lat560"
+    if "--unified-config" in argv:
+        i = argv.index("--unified-config")
+        ucfg = argv[i + 1]
+        argv = argv[:i] + argv[i + 2:]
+    lang = "pt-BR"
+    if "--lang" in argv:
+        i = argv.index("--lang")
+        lang = argv[i + 1]
         argv = argv[:i] + argv[i + 2:]
     wavs = []
     for arg in argv:
@@ -102,9 +165,11 @@ def main(argv):
             if part.strip():
                 wavs.append(Path(part.strip()))
     for wav in wavs:
-        for name in (("nemotron", "parakeet") if engine == "all" else (engine,)):
+        for name in (("nemotron", "parakeet", "unified") if engine == "all" else (engine,)):
             try:
-                row = run_nemotron(wav) if name == "nemotron" else run_parakeet(wav)
+                row = (run_nemotron(wav) if name == "nemotron"
+                       else run_unified(wav, ucfg, lang) if name == "unified"
+                       else run_parakeet(wav))
             except Exception as exc:  # noqa: BLE001
                 row = {"engine": name, "error": "%s: %s" % (type(exc).__name__, exc)}
             row["wav"] = wav.name
