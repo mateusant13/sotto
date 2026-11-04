@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import ast
 import io
+import json
 import os
 import re
 import shutil
@@ -111,7 +112,7 @@ def arm_rule(mono):
 # ARM 8 -- replay do LOG REAL, com as duas regras
 # --------------------------------------------------------------------------
 def read_log(path):
-    """[(video_id, kind, a, b)] na ordem do ficheiro.
+    """`([(video_id, kind, a, b)], censo)` na ordem do ficheiro.
 
     `kind="clock"` -> `a` e' o INICIO da cue servida, `b` a leitura do relogio.
     `kind="paint"` -> `a` e' o inicio da cue que o player pinta, `b` None.
@@ -122,22 +123,74 @@ def read_log(path):
     eram so' mudancas de video.
     """
     rows = []
+    census = {"caption_lines": 0, "clock": 0, "paint": 0, "unusable": {}}
     try:
         fh = io.open(path, encoding="utf-8", errors="replace")
     except OSError:
-        return rows
+        return rows, census
     with fh:
         for line in fh:
             line = line.rstrip("\n")
+            if "YOUTUBE_CAPTION" not in line:
+                continue
+            census["caption_lines"] += 1
             m = OTHER.match(line)
             if m:
                 rows.append((m.group(2), "clock", float(m.group(3)),
                              float(m.group(4))))
+                census["clock"] += 1
                 continue
             m = HIT.match(line)
             if m:
                 rows.append((m.group(2), "paint", float(m.group(3)), None))
-    return rows
+                census["paint"] += 1
+                continue
+            # AS LINHAS QUE O REPLAY NAO USA, NOMEADAS -- e nao descartadas em
+            # silencio (2026-11-04). MEDIDO: das 8 711 linhas `YOUTUBE_CAPTION`
+            # do log do dono, 3 035 sao `why=painted-lines` / `why=cdp-lines` --
+            # o ramo PINTADO, que serve as linhas do player e loga `lines=` e
+            # `ratio=`, sem instante nenhum. Sao 35 % do log e nao alimentam
+            # nenhuma das duas regras de relogio; o numero fica escrito para que
+            # ninguem leia este replay como cobertura total.
+            why = "?"
+            tail = line.rsplit("why=", 1)
+            if len(tail) == 2:
+                why = tail[1].strip() or "?"
+            census["unusable"][why] = census["unusable"].get(why, 0) + 1
+    return rows, census
+
+
+#: O CORPUS COMMITADO (2026-11-04). `_main/webview-run.log` e um artefacto de
+#: RUNTIME: numa worktree limpa nao existe, e o oraculo respondia NO-VERDICT
+#: (rc=2) -- inclusive no `--neg-arm`. A lei "a legenda nao recua" ficava sem
+#: medicao nenhuma numa arvore limpa, que e' o contrario de uma lei medida. Este
+#: ficheiro e o log do dono reduzido as linhas que o replay usa, com o censo das
+#: que ficam de fora.
+FIXTURE = os.path.join(HERE, "fixtures", "yt-caption-clock-replay-20261104.json")
+
+
+def read_fixture(path=FIXTURE):
+    """`(rows, censo)` do corpus commitado -- a MESMA forma de `read_log`."""
+    try:
+        with io.open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError):
+        return [], {"caption_lines": 0, "clock": 0, "paint": 0, "unusable": {}}
+    rows = []
+    for row in doc.get("rows_data") or ():
+        vid, kind, a, b = row
+        rows.append((str(vid), str(kind), float(a),
+                     None if b is None else float(b)))
+    census = {"caption_lines": int(doc.get("caption_lines") or 0),
+              "clock": int(doc.get("shapes", {}).get("clock(painted-other-track)") or 0),
+              "paint": int(doc.get("shapes", {}).get("paint(has-cue)") or 0),
+              "unusable": {k.split(":", 1)[1]: v for k, v in
+                           (doc.get("shapes") or {}).items()
+                           if k.startswith("skipped:")}}
+    census["fixture"] = os.path.basename(path)
+    census["source"] = doc.get("source")
+    census["source_bytes"] = doc.get("source_bytes")
+    return rows, census
 
 
 def replay(rows, mono, rule, seek_back=2.0):
@@ -292,11 +345,26 @@ def main(argv=None):
             print("YOUTUBE-MONOTONIC NO-VERDICT -- falta %s" % path)
             return 2
 
-    rows = read_log(args.log)
+    # O CORPUS: o log VIVO quando ele existe (e' o do dono, o mais fresco), e o
+    # corpus commitado quando nao existe -- uma worktree limpa nao tem
+    # `webview-run.log`, e o oraculo respondia NO-VERDICT a tudo, `--neg-arm`
+    # incluido. O nome e o censo do que FICOU DE FORA saem sempre: 3 035 das
+    # 8 711 linhas sao o ramo pintado, que nao carrega instante nenhum.
+    rows, census = read_log(args.log)
+    corpus = os.path.basename(args.log)
     if not rows:
-        print("YOUTUBE-MONOTONIC NO-VERDICT -- %s sem linhas YOUTUBE_CAPTION"
-              % os.path.basename(args.log))
+        rows, census = read_fixture()
+        corpus = census.get("fixture") or "?"
+    if not rows:
+        print("YOUTUBE-MONOTONIC NO-VERDICT -- nem %s nem %s tem linhas "
+              "YOUTUBE_CAPTION" % (os.path.basename(args.log),
+                                   os.path.basename(FIXTURE)))
         return 2
+    print("YOUTUBE-MONOTONIC corpus=%s linhas=%d (relogio %d, pintura %d) | "
+          "fora do replay: %s"
+          % (corpus, len(rows), census["clock"], census["paint"],
+             ", ".join("%s=%d" % kv for kv in sorted(census["unusable"].items()))
+             or "nenhuma"))
 
     if args.neg_arm:
         tmpd = tempfile.mkdtemp(prefix="ytmono-",
@@ -308,10 +376,12 @@ def main(argv=None):
             old = _load_module(mpath, "youtube_monotonic_old")
             b_clock, _, _, n, worst = replay(rows, old, "old")
             if b_clock <= 0:
+                # CONTRATO DA CASA: rc 1 = apanhou o mutante, rc 0 = nao
+                # apanhou. Ate' 2026-11-04 este ramo saia 1 nos dois casos.
                 print("NEG-ARM FAIL -- a regra ANTIGA nao produziu recuo "
                       "nenhum em %d linha(s): o instrumento nao tem dentes"
                       % n)
-                return 1
+                return 0
             print("NEG-ARM PASS -- RED as designed: a regra ANTIGA recuou o "
                   "ecra %d vez(es) em %d linha(s), pior %.2f s"
                   % (b_clock, n, worst))

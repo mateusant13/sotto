@@ -617,8 +617,28 @@ class LiveRows:
         kept = self.words[:common]
         fresh = tokens[common:]
         step = min(self.gap, (self.lag / len(fresh)) if fresh else 0.0)
+        # O RELOGIO DA PALAVRA NOVA NAO ANDA PARA TRAS (medido 2026-11-04).
+        # `at` chega como `monotonic() - late_s`, e o `late_s` e' o atraso do
+        # ASR medido naquela entrega: quando um lote vem mais atrasado que o
+        # anterior, `at` RECUA. Sem este piso, uma palavra nova era datada antes
+        # de palavras que ja' estavam no ecra, e `frame` -- que conta
+        # `start <= t` e corta um PREFIXO -- passava a mostrar palavras do FUTURO
+        # e a esconder a que acabou de ser falada:
+        #
+        #   push("alpha bravo charlie", 100.0) ; push("... delta echo", 99.0)
+        #   -> starts [100.0, 100.12, 100.24, 99.0, 99.18] ; frame(100.1) mostra
+        #      "alpha bravo charlie" (3 palavras do futuro) e esconde delta/echo.
+        #
+        # E' a mesma classe do defeito de 2026-10-30 (*"repete a legenda de
+        # instantes atras"*): o instante servido nunca fica atras do chao.
+        base = float(at)
+        if kept:
+            # Um compasso DEPOIS da ultima palavra ja' datada, nunca no mesmo
+            # instante dela: duas palavras com o mesmo `start` entram no mesmo
+            # quadro, e o YouTube nunca mostra duas no mesmo quadro.
+            base = max(base, float(kept[-1]["start"]) + step)
         for index, word in enumerate(fresh):
-            kept.append({"text": word, "start": round(at + index * step, 3)})
+            kept.append({"text": word, "start": round(base + index * step, 3)})
         self.tokens = tokens
         self.words = kept
         self._rows = self._build()

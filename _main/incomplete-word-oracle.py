@@ -218,9 +218,10 @@ def neg_arm():
         mostrado = [ev["text"] for ev in parciais]
         esperado = ["eu"]           # a regra ON segura "vou"
         if mostrado == esperado:
+            # CONTRATO DA CASA: rc 1 = apanhou o mutante, rc 0 = nao apanhou.
             print("NEG-ARM FAIL: com a regra DESLIGADA o oratorio ainda "
                   "passou (%r) -- os arms nao medem a regra." % (mostrado,))
-            return 1
+            return 0
         print("NEG-ARM PASS: com a regra DESLIGADA o parcial mostra %r "
               "(a regra ON mostra %r) -- o portao tem dentes."
               % (mostrado, esperado))
