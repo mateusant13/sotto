@@ -201,6 +201,19 @@ call :step caption-lag-budget 0 "_main\caption-lag-budget-oracle.py;app\webview\
 call :record caption-lag-budget !STEP_RC!
 call :step red-as-expected-caption-lag-budget 1 "_main\caption-lag-budget-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\caption-lag-budget-neg.log" python _main\caption-lag-budget-oracle.py --neg-arm
 call :expectred red-as-expected-caption-lag-budget !STEP_RC! "%OUT%\caption-lag-budget-neg.log" "NEG-ARM: PASS"
+REM `lag-note-cost` (2026-11-04, do commit de perf 1c92e39): `_caption_lag_note`
+REM custava 27,1 us por legenda -- 83 % do caminho de aplicar uma legenda -- porque
+REM `len(ages) % 25 == 0` e' SEMPRE verdadeiro com a janela cheia (200 % 25 == 0) e a
+REM janela de 200 amostras era re-ordenada e re-somada em TODAS as legendas. O
+REM oraculo julga o codigo REAL do `SottoShell` em cinco arms (custo dentro de 4x,
+REM custo PLANO com a janela cheia, os dez campos da serie contra uma janela
+REM re-somada a mao, a cadencia de 25 e a janela de 200) e o `--neg-arm` muta uma
+REM COPIA de `sotto_webview.py` quatro vezes. Veio do merge SEM passo: o
+REM `battery-wiring` dizia `new-unwired ... lag-note-cost-oracle.py`.
+call :step always lag-note-cost 0 "_main\lag-note-cost-oracle.py;app\webview\sotto_webview.py" "%OUT%\lag-note-cost.log" python _main\lag-note-cost-oracle.py
+call :record lag-note-cost !STEP_RC!
+call :step always red-as-expected-lag-note-cost 1 "_main\lag-note-cost-oracle.py;app\webview\sotto_webview.py" "%OUT%\lag-note-cost-neg.log" python _main\lag-note-cost-oracle.py --neg-arm
+call :expectred red-as-expected-lag-note-cost !STEP_RC! "%OUT%\lag-note-cost-neg.log" "NEG-ARM: PASS"
 REM `youtube-hidden-clock` (2026-11-04): quando a aba do YouTube esta' escondida o Chrome para
 REM de repintar a legenda e `video.currentTime` continua a andar -- medido no Chrome do dono: 40 s
 REM com UMA unica assinatura em 790 amostras, e um seek para t=300 com as mesmas duas linhas. O
@@ -212,6 +225,21 @@ call :step always youtube-hidden-clock 0 "_main\youtube-hidden-clock-oracle.py;a
 call :record youtube-hidden-clock !STEP_RC!
 call :step always red-as-expected-youtube-hidden-clock 1 "_main\youtube-hidden-clock-oracle.py;app\webview\youtube_monotonic.py" "%OUT%\youtube-hidden-clock-neg.log" python _main\youtube-hidden-clock-oracle.py --neg-arm
 call :expectred red-as-expected-youtube-hidden-clock !STEP_RC! "%OUT%\youtube-hidden-clock-neg.log" "NEG-ARM PASS"
+REM `caption-overlay-screen` (2026-11-04, P0 do dono: `CAPTION_OVERLAY_PUSH
+REM visible=true` e ele NAO VIU nada). `_screen_proof()` ja' lia o Windows
+REM (`GetWindowRect`/`MonitorFromPoint`/`GetMonitorInfoW`/`GetLayeredWindowAttributes`)
+REM e publicava `CAPTION_OVERLAY_GEOMETRY ... on_screen=.. rect=.. alpha=..`, mas
+REM NENHUM portao lia esse campo -- `grep -c CAPTION_OVERLAY_GEOMETRY` nesta bateria
+REM dava 0. O oraculo executa a FUNCAO REAL: arms A1/A2 contra uma janela LAYERED
+REM oculta que ele proprio cria (Win32 de verdade; nada e' mostrado) e A3-A6 contra
+REM um `user32` de aritmetica, exigindo um alfa 0 a dar RED por 'invisible' -- a
+REM classe exacta do dono. O braco de baixo muta uma COPIA de `caption_overlay.py`
+REM quatro vezes (area invertida, alfa ignorado, fecho de falha descartado, rect do
+REM `self.visible`) e exige as quatro apanhadas.
+call :step always caption-overlay-screen 0 "_main\caption-overlay-screen-oracle.py;app\webview\caption_overlay.py" "%OUT%\caption-overlay-screen.log" python _main\caption-overlay-screen-oracle.py
+call :record caption-overlay-screen !STEP_RC!
+call :step always red-as-expected-caption-overlay-screen 1 "_main\caption-overlay-screen-oracle.py;app\webview\caption_overlay.py" "%OUT%\caption-overlay-screen-neg.log" python _main\caption-overlay-screen-oracle.py --neg-arm
+call :expectred red-as-expected-caption-overlay-screen !STEP_RC! "%OUT%\caption-overlay-screen-neg.log" "NEG-ARM"
 REM `youtube-cdp-boot` (2026-11-04): o arranque chamava `self._yt_cdp_ensure()`, que NAO EXISTE -- o
 REM `AttributeError` era engolido como `YOUTUBE_CDP_PREOPEN_FAILED` e a ligacao nunca era pedida
 REM (medido: 1482 de 3972 linhas `YOUTUBE_TICK_MS` com `src='?'`). O oraculo executa o pedido de
