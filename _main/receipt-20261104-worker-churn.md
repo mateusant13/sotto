@@ -173,6 +173,37 @@ Duas conclusoes medidas, e uma pendencia nomeada:
    rc=1 com **12/12** mutantes apanhados, incluindo `neg_arm_cpu_wiring` (o monitor amostra e
    descarta) que derruba exactamente as duas arms de fiacao (`fail=2`).
 
+## A LATENCIA, SEPARADA NOS SEUS DOIS PEDACOS (medido 04:4x, com ele a jogar)
+
+`CAPTION_PAINT_LAG` publica `audio_ms` (a idade do AUDIO que esta' no ecra: `tap_ms` e' quando o
+bloco que fechou a linha entrou no worker) e `queue_ms` (do enfileirar ao pintar). Sao coisas
+diferentes e a diferenca e' o transporte:
+
+```
+n=981 amostras
+audio_ms   p50=   241 ms   p90=  6892 ms      <- a idade do que ele LE
+queue_ms   p50=     1 ms   p90=    20 ms      <- a pintura (o caminho de RENDER)
+transporte p50=   237 ms   p90=  6848 ms      <- worker -> shell
+17,5 % das legendas acima do orcamento de 1500 ms
+```
+
+**A pintura nao e' o gargalo** (p50 1 ms, p90 20 ms), e isso e' o que o `panel-paint-first` e os
+censos de frame ja' diziam. A cauda vem de MONTANTE, e ha' duas explicacoes medidas, nesta ordem:
+
+1. **O descodificador ao vivo esta' a competir com o jogo.** A 04:1x: jogo 405 % de CPU, worker
+   270 %, 20 nucleos. O worker e' `BELOW_NORMAL` por desenho (`_leave_load_background_mode`), logo
+   perde a fila e o lote de audio envelhece antes de virar texto. Numa maquina folgada a cauda nao
+   existe: `audio_ms` p50 fica nos 241 ms.
+2. **O shedding nao podia ver a CPU** — e' o que a ARM 22 de 04:3x fechou. Com a CPU na decisao,
+   uma maquina saturada publica `alta` e o AO VIVO larga para o lote (parakeet), que e' a ordem do
+   dono de 2026-10-30: *"alta: desliga nemotron, so parakeet; AUDIO SEMPRE fica para processar
+   depois"*.
+
+**O que ainda falta provar aqui, e nao esta' provado:** a ligacao da CPU ao vivo. Ela corre na
+proxima largada da app (a instancia viva e' de 04:00, anterior a esta mudanca), e a lane **nao
+relanca a app com ele a jogar**: o dono mandou parar de travar o PC a 04:1x, e um relancamento custa
+1,9 GB de modelo e alguns segundos de CPU.
+
 ## O QUE ESTA LANE NAO FAZ ENQUANTO ELE JOGA
 
 Nada pesado: nem bateria, nem largada da app, nem varrimento do log inteiro (61,8 MB). O censo de
