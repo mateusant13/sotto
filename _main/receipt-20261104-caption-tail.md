@@ -229,3 +229,31 @@ de `_main/_falsify/` que nao toco, `strip-hot-reload` falha as arms C/E do
 `WorkerReloadPolicy` e `skip-verdict-guard` le' dois logs da propria bateria.
 **O baseline do ratchet e' do dono** (`--update` diz "so com o dono de acordo"),
 por isso ele fica vermelho e escrito, nao movido por mim.
+
+## A cadeia viva medida ponta a ponta, de um FICHEIRO (2026-11-04 03:11)
+
+`SOTTO_FILE_TAP=H:\sotto\_main\pt-br-sample.wav` + `sotto-relaunch.py --relaunch`:
+o worker da app alimentado por um WAV (22050 Hz, 15,0 s), **sem abrir
+endpoint nenhum** -- nada foi tocado no áudio do dono.
+
+```
+steps  # pid 48180, FRESH (sha256=EBBBFF9BB4C9 == disco)
+CAPTION_IN             27     "Radio anunciou que aponte sobre o rio..."
+CAPTION_PAINT_LAG      24
+  audio->paint (ms)    n=24  p50=115  p90=268  max=1294   (budget 1500)
+  queue      (ms)      n=24  p50=0    p90=2    max=80
+  source age (ms)      n=26  p50=81   p90=182  max=1259
+over=true               0
+POSTED_CALLABLE_FAILED  0
+EMIT_ASYNC_PREWEBVIEW   0
+UI_THREAD_STALL         0
+```
+
+Isso é a aceitação do dono em número: a legenda nasce **115 ms** (mediana) e
+**268 ms** (p90) depois do áudio, com o orçamento de 1500 ms nunca estourado.
+O `CAPTION_APPLIED` = 3 é o contador do histórico (só a linha que o worker
+FECHOU entra), coerente com 15 s de amostra.
+
+A app voltou ao modo normal em seguida (`--tag back-to-device-ladder`), para
+não ficar presa na tap de ficheiro: pid 50768, FRESH, `webview2_failed=false`,
+`CAPTION_WINDOW_BLANKED reason=no-caption-for-6.0s` (sem fonte, como deve).
