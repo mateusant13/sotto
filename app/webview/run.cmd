@@ -16,6 +16,25 @@ REM    run.cmd --no-worker      shell only: start NO transcription worker
 REM    run.cmd --with-worker    accepted alias -- the worker is the default
 REM    run.cmd --help           every flag
 REM
+REM  THE TWO KEYS.  Owner order, 2026-11-01, verbatim: *"modifica a legenda ao
+REM  vivo hotkey. bota o padrao como control espaco. e os painels deixa alt c.
+REM  faz os paineis alternarem mesmo se eu deixar alt apertado o tempo inteiro e
+REM  spammando c. alterna entre show e hide."*
+REM
+REM    Alt+C       ONE press = ONE step of the panel cycle, immediate (no tap
+REM                window, no hold threshold, no delay). From hidden: press 1
+REM                shows the bottom STRIP, 2 hides, 3 shows the RIGHT panel,
+REM                4 hides -- and it keeps alternating with Alt held down the
+REM                whole time and C spammed.
+REM    Ctrl+Space  live captions ON/OFF, one press each, and no panel moves.
+REM                OFF is the DISPLAY only: the model, the worker and the
+REM                history keep running.
+REM
+REM  Both accelerators are written in app\webview\hotkey_gesture.py and nowhere
+REM  else; the owner's own choice lives in _main\hotkey-settings.json
+REM  ({"panels": "Alt+C", "live": "Ctrl+Space"}) and a broken file falls back to
+REM  the factory pair instead of leaving the app deaf.
+REM
 REM  THE WORKER STARTS BY DEFAULT (F1, 2026-10-07). Until this change the flag
 REM  was the other way round and `run.cmd` passed nothing, so Alt+C opened a
 REM  panel reading "Waiting for audio" with no capture process in existence --
