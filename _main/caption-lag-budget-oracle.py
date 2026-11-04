@@ -479,6 +479,50 @@ def arm_stats(mod, shell, lines, worker_event):
     return ok, (stats or 'AUSENTE')[:140]
 
 
+def arm_stats_counters_bounded(mod, shell, lines, worker_event):
+    """OS CONTADORES CORRENTES SAO OS DA JANELA (2026-11-04).
+
+    `over_win`/`held_win`/`live_win` deixaram de ser re-somados a cada
+    publicacao: passaram a CONTADORES (soma a entrar, subtrai a sair), porque
+    re-somar 200 tuplos em todas as legendas era 83 % do caminho de aplicacao
+    (`_main/receipt-20261104-opt-4x.md`). Um contador que suba e nao desca
+    imprime um numero que nenhum instante da janela produziu -- e a serie
+    continua a dizer `n=200`, logo nenhuma arm de forma a apanha.
+
+    Aqui publica-se ao fim de DUAS janelas cheias (500 amostras: houve 300
+    despejos) e compara-se o que foi impresso com a recontagem da janela que o
+    shell guarda. Amostras alternadas em estouro e em banda para os tres
+    contadores serem exercitados.
+    """
+    # Um shell PROPRIO: as arms anteriores ja' encheram a janela do shell
+    # partilhado, e o contador de publicacao e' stateful -- a serie sairia a
+    # meio da janela e a comparacao ficava deslocada de uma amostra.
+    own = make_shell(mod, lines)
+    lines[:] = []
+    for i in range(500):
+        # Estouro, banda do segura e linha fechada, alternados: os tres
+        # contadores correntes tem de apanhar e despejar cada um deles.
+        own._caption_lag_note(2000 if i % 3 == 0 else 100,
+                              1500 if i % 5 == 0 else 40,
+                              'final' if i % 7 == 0 else 'partial')
+    stats = take(lines, 'CAPTION_LAG_STATS')
+    ages = list(getattr(own, '_caption_ages', []))
+    over = sum(1 for s in ages if s[2])
+    held = sum(1 for s in ages if s[1])
+    live = sum(1 for s in ages if s[3])
+    ok = (stats is not None
+          and field(stats, 'n') == len(ages)
+          and field(stats, 'over_win') == over
+          and field(stats, 'held_win') == held
+          and field(stats, 'live_win') == live
+          and len(ages) == 200)
+    return ok, ('publicado over_win=%s held_win=%s live_win=%s n=%s | janela '
+                'over=%d held=%d live=%d n=%d'
+                % (field(stats, 'over_win'), field(stats, 'held_win'),
+                   field(stats, 'live_win'), field(stats, 'n'),
+                   over, held, live, len(ages)))
+
+
 def main(argv):
     neg = '--neg-arm' in argv
     worker = load_module(WORKER, 'sotto_worker_lag')
@@ -514,12 +558,20 @@ def main(argv):
         mut10 = src.replace(
             "            if not _m.get('final'):",
             '            if True:', 1)
+        # 2026-11-04: o contador corrente que sobe e nao desce. A janela
+        # continua `n=200` e a serie continua a sair, por isso a unica forma de
+        # o apanhar e' recomparar o publicado com a janela.
+        mut11 = src.replace("            if dropped[2]:\n"
+                            "                self._caption_over_win -= 1",
+                            "            if False:\n"
+                            "                self._caption_over_win -= 1", 1)
         worker_src = io.open(WORKER, encoding='utf-8').read()
         mut5 = worker_src.replace('                    wall=_wall_tap,',
                                   '                    wall=time.time(),', 1)
         if (mut1 == src or mut2 == src or mut3 == src or mut4 == src
                 or mut5 == worker_src or mut6 == src or mut7 == src
-                or mut8 == src or mut9 == src or mut10 == src):
+                or mut8 == src or mut9 == src or mut10 == src
+                or mut11 == src):
             print('NEG-ARM IMPOSSIVEL: a ancora do mutante nao esta no shell')
             shutil.rmtree(tmpdir, ignore_errors=True)
             return 2
@@ -544,6 +596,9 @@ def main(argv):
         mut10_path = os.path.join(tmpdir, 'sotto_webview_m10.py')
         with io.open(mut10_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut10)
+        mut11_path = os.path.join(tmpdir, 'sotto_webview_m11.py')
+        with io.open(mut11_path, 'w', encoding='utf-8', newline='\n') as handle:
+            handle.write(mut11)
         mut9_path = os.path.join(tmpdir, 'sotto_webview_m9.py')
         with io.open(mut9_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut9)
@@ -600,7 +655,10 @@ def main(argv):
                     ('tap-one-paint',
                      lambda: arm_tap_one_paint(mod, lines)),
                     ('lag-stats-serie',
-                     lambda: arm_stats(mod, shell, lines, worker_event))):
+                     lambda: arm_stats(mod, shell, lines, worker_event)),
+                    ('lag-stats-counters-bounded',
+                     lambda: arm_stats_counters_bounded(
+                         mod, shell, lines, worker_event))):
                 ok, detail = fn()
                 arm(arm_name, ok, detail)
         finally:
@@ -634,7 +692,9 @@ def main(argv):
                     (mut9_path, 'linha fechada contada como atraso do ecra',
                      {'final-close-not-counted'}),
                     (mut10_path, 'chegada de linha fechada julgada como atraso',
-                     {'arrival-final-not-blamed'}),):
+                     {'arrival-final-not-blamed'}),
+                    (mut11_path, 'contador da janela sobe e nao desce',
+                     {'lag-stats-counters-bounded'}),):
                 print('=== mutante: %s' % why)
                 if path in (mut5_path, mut6_path):
                     # O mutante do WORKER julga-se pela arm de AST, nao por um

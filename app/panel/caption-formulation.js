@@ -171,7 +171,12 @@ const READY_SECONDS_MEASURED = 7.0;
 
 /** Split on whitespace, dropping empties. Punctuation stays with its word. */
 function words(text) {
-  return String(text == null ? '' : text).trim().split(/\s+/).filter(Boolean);
+  // `match(/\S+/g)` and NOT `trim().split(/\s+/)`: the same maximal runs of
+  // non-whitespace in ONE engine pass, with no separate `filter` walk over the
+  // result. Measured: 243 ns -> 189 ns for a 15-word caption
+  // (`_main/receipt-20261104-opt-4x.md` §3); the ingest calls it per fragment.
+  const hits = String(text == null ? '' : text).match(/\S+/g);
+  return hits === null ? [] : hits;
 }
 
 /** How many leading words `a` and `b` share, word for word. */
@@ -300,45 +305,57 @@ function formulateTokens(tokens) {
   // A standalone punctuation token is not a word: it belongs to the word on
   // its left (the model emits ".", ",", "?" as separate tokens often enough to
   // matter). Without this the line read "acabou . Depois".
-  const merged = [];
+  //
+  // COMPACTED IN PLACE (2026-11-04): this used to push every token into a
+  // SECOND array (`merged`), so a 14-word line allocated 14 extra slots per
+  // commit for a merge that moves at most punctuation. The first token always
+  // survives (`m` starts at 0), which is why the old `merged.length ? merged :
+  // parts` fallback could never fire.
+  let m = 0;
   for (let i = 0; i < parts.length; i += 1) {
     const p = parts[i];
-    if (/^[.,;:!?…]+$/.test(p.w) && merged.length) {
-      const prev = merged[merged.length - 1];
+    if (/^[.,;:!?…]+$/.test(p.w) && m) {
+      const prev = parts[m - 1];
       prev.w += p.w;
       if (p.b !== null) prev.b = p.b;
     } else {
-      merged.push(p);
+      parts[m] = p;
+      m += 1;
     }
   }
-  const clean = merged.length ? merged : parts;
+  parts.length = m;
+  const clean = parts;
 
   let out = capitalise(clean[0].w);
   const firstLower = clean[0].w.toLowerCase().replace(/[^\p{L}]+/gu, '');
-  const firstTwo = clean.slice(0, 2)
-    .map((p) => p.w.toLowerCase().replace(/[^\p{L}]+/gu, ''))
-    .join(' ');
+  const firstTwo = clean.length > 1
+    ? `${firstLower} ${clean[1].w.toLowerCase().replace(/[^\p{L}]+/gu, '')}`
+    : firstLower;
 
+  // THE LOWERCASE FORMS ARE COMPUTED ONLY WHERE THEY ARE READ (2026-11-04):
+  // they used to be built for every word on every iteration — three
+  // Unicode-property regexes per word — while the branches that read them need
+  // a 1.10 s / 0.38 s gap, which a line spread over one 560 ms chunk never has.
   for (let i = 1; i < clean.length; i += 1) {
     const prev = clean[i - 1];
     const next = clean[i];
     const prevHasMark = /[.,;:!?…]$/.test(prev.w);
     const terminal = TERMINAL.test(prev.w);
     const gap = (prev.b !== null && next.a !== null) ? next.a - prev.b : 0;
-    const nextLower = next.w.toLowerCase().replace(/^[^\p{L}]+/u, '');
-    const prevLower = prev.w.toLowerCase().replace(/[^\p{L}]+$/u, '');
     let mark = '';
 
     if (!prevHasMark) {
-      if (gap >= PUNCT_PERIOD_GAP_S
-          && !FUNCTION_WORDS.has(prevLower)
-          && !FUNCTION_WORDS.has(nextLower)) {
-        mark = '.';
+      if (gap >= PUNCT_PERIOD_GAP_S) {
+        if (!FUNCTION_WORDS.has(prev.w.toLowerCase().replace(/[^\p{L}]+$/u, ''))
+            && !FUNCTION_WORDS.has(next.w.toLowerCase().replace(/^[^\p{L}]+/u, ''))) {
+          mark = '.';
+        }
       } else if (gap >= PUNCT_COMMA_GAP_S) {
         mark = ',';
-      } else if (CONTRASTIVE.has(nextLower)) {
+      } else if (CONTRASTIVE.has(next.w.toLowerCase().replace(/^[^\p{L}]+/u, ''))) {
         mark = ',';
-      } else if (i === 1 && clean.length > 2 && INTRO_MARKERS.has(prevLower)) {
+      } else if (i === 1 && clean.length > 2
+          && INTRO_MARKERS.has(prev.w.toLowerCase().replace(/[^\p{L}]+$/u, ''))) {
         mark = ',';
       }
     }
@@ -661,8 +678,31 @@ function createEngine(options) {
     return committed.concat(provisional);
   }
 
+  /** The visible text as one string (the engine's `visible()` surface). */
   function visibleText() {
     return visible().map((t) => t.w).join(' ');
+  }
+
+  /** Build the fragment's token array: one literal per word, no map closure. */
+  function claimToken(word, a, b) {
+    return { w: word, a, b };
+  }
+
+  /**
+   * Length of the visible text WITHOUT building it.
+   *
+   * The SENTENCE_MAX_CHARS lookahead only wants a number, and the old
+   * `visible().map((t) => t.w).join(' ')` allocated a word array AND a string
+   * per fragment to answer it. `join(' ')` puts one separator between N words,
+   * so the length is the sum of the words plus N-1.
+   */
+  function visibleLength() {
+    const c = committed;
+    const p = provisional;
+    let n = 0;
+    for (let i = 0; i < c.length; i += 1) n += c[i].w.length + 1;
+    for (let i = 0; i < p.length; i += 1) n += p[i].w.length + 1;
+    return n ? n - 1 : 0;
   }
 
   /**
@@ -786,21 +826,32 @@ function createEngine(options) {
       // confirmed twice yet), so a filter that only looked at `committed`
       // found nothing to keep and the line lost words the model never
       // contradicted — "going along" vanished when "slush" was re-read again.
-      const kept = visible().filter((t) => t.a === null || t.a < start);
-      committed = kept;
-      provisional = [];
-      prevWords = [];
-      lastAudioEnd = audioEndOf(committed);
+      //
+      // AN EMPTY BUFFER HAS NOTHING TO FILTER (2026-11-04): `visible()` built an
+      // array only for `filter` to walk it into `[]`, every fragment of every
+      // line. The empty case is written out literally, same post-state.
+      if (committed.length || provisional.length) {
+        const kept = visible().filter((t) => t.a === null || t.a < start);
+        committed = kept;
+        provisional = [];
+        prevWords = [];
+        lastAudioEnd = audioEndOf(committed);
+      } else {
+        committed = [];
+        provisional = [];
+        prevWords = [];
+        lastAudioEnd = null;
+      }
     }
 
     // Hard cap, checked as a LOOKAHEAD. Testing the buffer after appending
     // commits a line that already exceeded the cap by a whole fragment; this
     // closes the line first and lets the fragment that would have overflowed
     // start the next one.
-    const projected = visibleText();
-    const wouldBe = projected.length ? projected.length + 1 + fragment.length : fragment.length;
-    if (projected.length && wouldBe > SENTENCE_MAX_CHARS) {
-      commit(`chars ${projected.length}`);
+    const projected = visibleLength();
+    const wouldBe = projected ? projected + 1 + fragment.length : fragment.length;
+    if (projected && wouldBe > SENTENCE_MAX_CHARS) {
+      commit(`chars ${projected}`);
       // The `reentered` guard stops a single fragment that is ITSELF over the
       // cap from recursing forever: it is committed as-is, which is the
       // honest outcome for input no line can hold.
@@ -849,7 +900,10 @@ function createEngine(options) {
         }
       }
       if (built.length === parts.length) {
-        incoming = parts.map((w, i) => ({ w, a: built[i].a, b: built[i].b }));
+        incoming = new Array(parts.length);
+        for (let i = 0; i < parts.length; i += 1) {
+          incoming[i] = claimToken(parts[i], built[i].a, built[i].b);
+        }
       }
     }
     if (!incoming) {
@@ -863,11 +917,14 @@ function createEngine(options) {
         baseA = lastAudioEnd;
       }
       const span = baseA !== null && end !== null && end > baseA ? end - baseA : 0;
-      incoming = parts.map((w, i) => ({
-        w,
-        a: baseA === null ? null : baseA + (span * i) / parts.length,
-        b: baseA === null ? null : baseA + (span * (i + 1)) / parts.length,
-      }));
+      const total = parts.length;
+      incoming = new Array(total);
+      for (let i = 0; i < total; i += 1) {
+        incoming[i] = claimToken(
+          parts[i],
+          baseA === null ? null : baseA + (span * i) / total,
+          baseA === null ? null : baseA + (span * (i + 1)) / total);
+      }
     }
 
     // CONTINUATION OF A LINE ALREADY WRITTEN TO HISTORY.
@@ -889,7 +946,9 @@ function createEngine(options) {
     // twice, again": there is nothing new, so nothing is appended.
     let fragWords;
     let opening;
-    fragWords = incoming.map((t) => t.w);
+    // The fragment's words ARE `parts` (every token above takes its `w` from
+    // `parts[i]`), so this map was a second copy of an array we already have.
+    fragWords = parts;
     opening = incoming;
     if (start !== null && start === emittedStart && emittedEnd !== null && start < emittedEnd) {
       opening = incoming.slice(agreedPrefixLength(emittedWords, fragWords));
@@ -948,14 +1007,31 @@ function createEngine(options) {
     emittedStart = start;
     emittedWords = fragWords;
 
-    const hypothesis = visible().concat(opening);
+    // `committed.concat(provisional, opening)` and NOT `visible().concat(
+    // opening)`: `visible()` allocated an array of the whole buffer just to be
+    // concatenated away, and the buffer IS those two arrays.
+    //
+    // AND WHEN THE BUFFER IS EMPTY THE HYPOTHESIS *IS* THE FRAGMENT (2026-11-04:
+    // the cumulative fragment re-covers the line, so the branch above drained
+    // the buffer), so neither the concatenation nor the word walk below runs.
+    const emptyBuffer = committed.length === 0 && provisional.length === 0;
+    const plainOpening = emptyBuffer && opening === incoming;
+    const hypothesis = plainOpening ? incoming : committed.concat(provisional, opening);
 
     // LocalAgreement-2: the prefix two consecutive hypotheses agree on is
     // stable; everything after it stays provisional until confirmed.
-    const agreed = agreedPrefixLength(prevWords, hypothesis.map((t) => t.w));
+    // ONE pass, not two `map`s: the word array is compared and then remembered.
+    let hypWords;
+    if (plainOpening) {
+      hypWords = parts;
+    } else {
+      hypWords = new Array(hypothesis.length);
+      for (let i = 0; i < hypothesis.length; i += 1) hypWords[i] = hypothesis[i].w;
+    }
+    const agreed = agreedPrefixLength(prevWords, hypWords);
     committed = hypothesis.slice(0, agreed);
     provisional = hypothesis.slice(agreed);
-    prevWords = hypothesis.map((t) => t.w);
+    prevWords = hypWords;
 
 
     // No hold check here, deliberately. `ingest` runs only when a fragment

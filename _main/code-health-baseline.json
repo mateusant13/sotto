@@ -41,12 +41,12 @@
       "max_func_name": ""
     },
     "app/panel/caption-formulation.js": {
-      "bytes": 52824,
+      "bytes": 56391,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 1091,
+      "lines": 1167,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -411,12 +411,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1037162,
+      "bytes": 1051369,
       "classes": 24,
       "defs": 115,
       "except_pass": 41,
       "globals": 4,
-      "lines": 19396,
+      "lines": 19652,
       "max_func": 391,
       "max_func_name": "main"
     },
@@ -471,24 +471,24 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 28461,
+      "bytes": 34969,
       "classes": 1,
-      "defs": 6,
+      "defs": 9,
       "except_pass": 4,
       "globals": 0,
-      "lines": 635,
+      "lines": 770,
       "max_func": 125,
       "max_func_name": "_run"
     },
     "app/webview/youtube_monotonic.py": {
-      "bytes": 3653,
-      "classes": 0,
-      "defs": 2,
+      "bytes": 12991,
+      "classes": 1,
+      "defs": 3,
       "except_pass": 0,
       "globals": 0,
-      "lines": 91,
-      "max_func": 22,
-      "max_func_name": "advance"
+      "lines": 285,
+      "max_func": 68,
+      "max_func_name": "observe"
     },
     "app/webview/youtube_reveal.py": {
       "bytes": 33249,
