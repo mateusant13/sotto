@@ -410,9 +410,12 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 13:2x):** `_main\_audit-verify-all.cmd` = **212778 B**,
-  **2644 CRLF** / 0 bare LF, sha256 `8F342BA6940E3989A351F06FFC6233B1B2224883AF1D7D22715A16195C8C4C5D`.
-  (Vinte e oito linhas a mais do que o pin de 210085 B / 2616 CRLF, de dois pares. Quinze:
+- **PIN do ficheiro (medido 2026-11-04, 12:3x):** `_main\_audit-verify-all.cmd` = **214172 B**,
+  **2656 CRLF** / 0 bare LF, sha256 `D016390D5DEA3DAF7460EBEDBBB4E85932760DD1032E13EAC4380B28AB875DE3`.
+  (Catorze linhas a mais do que o pin de 212778 B / 2644 CRLF: o par `youtube-first-at-boot` + o seu
+  `--neg-arm`, a primeira legenda do YouTube a chegar antes do modelo (a queixa de 2026-11-04 do dono:
+  *"é estupido 'carregando o modelo' e nao mostrar instantaneamente as legendas do youtube, assim que
+  eu abro o app"*). O pin anterior, de 212778 B / 2644 CRLF, era de dois pares. Quinze:
   `caption-overlay-screen` -- o oraculo que executa o `_screen_proof` REAL contra uma janela LAYERED
   oculta (arm A2 com uma RECONTA independente do predicado), exige `alpha=0` a dar RED por
   `invisible` (a classe do P0 do dono: `visible=true` e nada no ecra) e muta uma COPIA de

@@ -248,6 +248,18 @@ call :step always youtube-cdp-boot 0 "_main\youtube-cdp-boot-oracle.py;app\webvi
 call :record youtube-cdp-boot !STEP_RC!
 call :step always red-as-expected-youtube-cdp-boot 1 "_main\youtube-cdp-boot-oracle.py;app\webview\youtube_cdp_source.py" "%OUT%\youtube-cdp-boot-neg.log" python _main\youtube-cdp-boot-oracle.py --neg-arm
 call :expectred red-as-expected-youtube-cdp-boot !STEP_RC! "%OUT%\youtube-cdp-boot-neg.log" "NEG-ARM VERDICT: PASS"
+REM `youtube-first-at-boot` (2026-11-04): o dono, verbatim -- *"é estupido 'carregando o modelo'
+REM e nao mostrar instantaneamente as legendas do youtube, assim que eu abro o app"*. MEDIDO no
+REM arranque dele (12:15:15): a superficie da legenda nasce 1,5 s antes de tudo e a PRIMEIRA coisa
+REM que pinta e' `carregando modelo…` (16.816), com o Chrome em 5 abas e um video a tocar. O
+REM oraculo executa as FUNCOES REAIS: o portao do texto de estado, a cadeia do observador ate' ao
+REM `overlay.set_text`, a ordem `cdp,watcher,worker` do `start_caption_pipeline`, a queda unica da
+REM faixa e a escolha da aba que TOCA. `--neg-arm` muta uma COPIA do shell (gate desligado, ordem
+REM antiga, queda a cada tick) e exige as tres apanhadas.
+call :step always youtube-first-at-boot 0 "_main\youtube-first-at-boot-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_cdp_source.py" "%OUT%\youtube-first-at-boot.log" python _main\youtube-first-at-boot-oracle.py
+call :record youtube-first-at-boot !STEP_RC!
+call :step always red-as-expected-youtube-first-at-boot 1 "_main\youtube-first-at-boot-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_cdp_source.py" "%OUT%\youtube-first-at-boot-neg.log" python _main\youtube-first-at-boot-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-first-at-boot !STEP_RC! "%OUT%\youtube-first-at-boot-neg.log" "NEG-ARM: PASS"
 call :step red-as-expected-redux-transcript-path 1 "_main\_redux-transcript-path.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\redux-transcript-path-neg.log" python _main\_redux-transcript-path.py --neg-arm
 call :expectred red-as-expected-redux-transcript-path !STEP_RC! "%OUT%\redux-transcript-path-neg.log" "NEG-ARM: PASS"
 
