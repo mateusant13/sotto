@@ -406,8 +406,13 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 09:5x):** `_main\_audit-verify-all.cmd` = **196865 B**,
-  **2466 CRLF** / 0 bare LF, sha256 `41EA0B755488CF2BCC25A7B2B18FC9A61863CA8EA52D8DE1EAB4E3BB827778FC`.
+- **PIN do ficheiro (medido 2026-11-04, 06:5x):** `_main\_audit-verify-all.cmd` = **197671 B**,
+  **2476 CRLF** / 0 bare LF, sha256 `3A4789DF35A78D3EE9831EE59DAE2A8F3A78CCFDEAABB60D2C4D36AECE5260C1`.
+  (Este pin substitui o de 196865 B / 2466 CRLF, DEPOIS de mais dois passos: `topmost-keepalive` --
+  o laco de 2 s que devolve `WS_EX_TOPMOST` a uma janela que o perdeu, copiado do RE de 2026-11-04
+  (Perssua e Handy) -- e o seu `red-as-expected-*`. Os dois `always`: leem `app\webview\topmost_keepalive.py`,
+  que muda a cada edicao. Medido ao vivo nesta sessao: `TOPMOST_KEEPALIVE_STARTED hwnd=1713376
+  interval_s=2.0` e ZERO `TOPMOST_REASSERT` em 4 minutos -- o laco nao gasta USER32 quando o bit esta' la'.)
   (Este pin substitui o de 196003 B / 2456 CRLF, DEPOIS de mais dois passos: `youtube-rate` --
   o `playbackRate` no relogio interpolado da legenda (a 2x o video andava o dobro e a palavra
   chegava tarde) e o atraso de leitura que agora tem NOME (7 arms) -- e

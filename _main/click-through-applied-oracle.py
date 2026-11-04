@@ -168,7 +168,7 @@ def main(argv):
         print('')
         print('mutante escreve-e-nao-le APANHADO' if not missed
               else 'mutante PASSOU: %s' % ', '.join(sorted(missed)))
-        print('NEG-ARM: %s (vermelhas: %s)'
+        print('NEG-ARM %s (vermelhas: %s)'
               % ('PASS' if not missed else 'FAIL', ', '.join(sorted(red)) or 'nenhuma'))
         return 1
 

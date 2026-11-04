@@ -381,14 +381,24 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1004382,
+      "bytes": 1005653,
       "classes": 24,
       "defs": 112,
       "except_pass": 41,
       "globals": 4,
-      "lines": 18828,
+      "lines": 18856,
       "max_func": 387,
       "max_func_name": "main"
+    },
+    "app/webview/topmost_keepalive.py": {
+      "bytes": 4639,
+      "classes": 1,
+      "defs": 1,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 113,
+      "max_func": 25,
+      "max_func_name": "tick"
     },
     "app/webview/win32_types.py": {
       "bytes": 1433,

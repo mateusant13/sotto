@@ -2007,6 +2007,16 @@ call :step always red-as-expected-click-through-applied 1 "_main\click-through-a
 call :expectred red-as-expected-click-through-applied !STEP_RC! "%OUT%\click-through-applied-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-click-through-applied MISSING "%OUT%\click-through-applied-neg.log" "NEG-ARM PASS" )
 
+if exist _main\topmost-keepalive-oracle.py (
+call :step always topmost-keepalive 0 "_main\topmost-keepalive-oracle.py;app\webview\topmost_keepalive.py" "%OUT%\topmost-keepalive.log" python _main\topmost-keepalive-oracle.py
+call :record topmost-keepalive !STEP_RC!
+) else ( call :record topmost-keepalive MISSING )
+
+if exist _main\topmost-keepalive-oracle.py (
+call :step always red-as-expected-topmost-keepalive 1 "_main\topmost-keepalive-oracle.py;app\webview\topmost_keepalive.py" "%OUT%\topmost-keepalive-neg.log" python _main\topmost-keepalive-oracle.py --neg-arm
+call :expectred red-as-expected-topmost-keepalive !STEP_RC! "%OUT%\topmost-keepalive-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-topmost-keepalive MISSING "%OUT%\topmost-keepalive-neg.log" "NEG-ARM PASS" )
+
 if exist _main\youtube-sotto-drift-oracle.py (
 call :step always youtube-sotto-drift 0 "_main\youtube-sotto-drift-oracle.py;app\webview\youtube_reveal.py;app\webview\youtube_window.py;app\webview\youtube_captions.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;_main\fixtures\yt-WdaHAGRBB6s.live-compare-20261026.json" "%OUT%\youtube-sotto-drift.log" python _main\youtube-sotto-drift-oracle.py
 call :record youtube-sotto-drift !STEP_RC!

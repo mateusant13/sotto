@@ -59,6 +59,7 @@ import panel_focus as _panel_focus
 import bridge_census as _bridge_census_mod
 from code_identity import code_identity as _code_identity
 import panel_state
+import topmost_keepalive as _topmost_keepalive
 
 
 # ── O INSTRUMENTO DO SELFTEST VIVE EM `app/webview/selftest_instrument.py` ───
@@ -9341,7 +9342,34 @@ class SottoShell:
         self._ui_watchdog = threading.Thread(target=loop, name='sotto-ui-watchdog',
                                              daemon=True)
         self._ui_watchdog.start()
+        self._start_topmost_keepalive()
         self._start_slow_read_monitor()
+
+    def _start_topmost_keepalive(self):
+        """O bit TOPMOST NAO SE GUARDA SOZINHO (copiado do RE de 2026-11-04).
+
+        Medido na mesma classe de aplicacoes: um player em ecra inteiro, um
+        jogo, ou o proprio Windows a reorganizar o Z-order tiram
+        `WS_EX_TOPMOST` a uma janela que o pos no show -- e a legenda que o
+        dono pediu fica POR BAIXO, sem erro e sem log. O laco pergunta de 2
+        em 2 s se o bit ainda la' esta' e so' age quando ele desapareceu.
+        """
+        if getattr(self, '_topmost_keepalive', None) is not None:
+            return
+        hwnd = self.hwnd
+        if not hwnd:
+            log('TOPMOST_KEEPALIVE_SKIPPED reason=no-hwnd')
+            return
+
+        def _style_of(h):
+            return int(user32.GetWindowLongW(h, GWL_EXSTYLE))
+
+        self._topmost_keepalive = _topmost_keepalive.TopmostKeepalive(
+            hwnd, window_visible, _style_of, set_topmost, log,
+            interval=_topmost_keepalive.DEFAULT_INTERVAL_S)
+        self._topmost_keepalive.start()
+        log('TOPMOST_KEEPALIVE_STARTED hwnd=%s interval_s=%s'
+            % (hwnd, _topmost_keepalive.DEFAULT_INTERVAL_S))
 
     def _start_slow_read_monitor(self):
         """Despeja pilhas quando a LEITURA DA LEGENDA passa do limite.

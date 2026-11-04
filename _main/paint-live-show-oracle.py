@@ -67,9 +67,15 @@ def judge(text):
     shown = [ln for ln in session if _SHOWN in ln]
     detail = {'started': _stamp(session[0]), 'warm': len(warm),
               'warm_ack': len(warm_ok), 'shows': len(shown), 'fails': []}
-    if not warm:
+    # UM SHOW QUE NUNCA ACONTECEU NAO TEM CAMINHO. `PAINT_WARM` existe para o
+    # PRIMEIRO show nao cair no caminho frio; uma sessao que nunca mostrou o
+    # painel (uma lane, uma sessao `--no-self-relaunch`, o dono sem Alt+C) nao
+    # deve nada ao caminho quente. Medido 2026-11-04: um arranque de lane sem
+    # show nenhum publicava RED "o show cai no caminho frio" -- um vermelho sobre
+    # um passo que nao correu. So' se exige o warm quando houve show para julgar.
+    if shown and not warm:
         detail['fails'].append('a sessao viva nao tem PAINT_WARM: o show cai no caminho frio')
-    elif not warm_ok:
+    elif shown and not warm_ok:
         detail['fails'].append('PAINT_WARM existe mas sem ack=true (%s)'
                                % (_get(warm[-1], 'ack'),))
     bad = []
