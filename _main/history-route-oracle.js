@@ -74,7 +74,7 @@ function runWorker() {
   const env = { ...process.env, SOTTO_AUDIO_FILE: audioPath };
   const argv = [workerPath];
   if (Number(maxChunks) > 0) argv.push('--max-chunks', String(maxChunks));
-  const out = spawnSync(process.env.SOTTO_PYTHON || 'python', argv, {
+  const out = spawnSync(process.env.SOTTO_PYTHON || 'python', argv, { windowsHide: true,
     cwd: REPO,
     env,
     encoding: 'utf8',

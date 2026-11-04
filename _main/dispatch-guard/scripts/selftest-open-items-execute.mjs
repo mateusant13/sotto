@@ -90,7 +90,7 @@ function mk(payload) {
   return spawnSync(process.execPath, [HOOK], {
     input: JSON.stringify(payload),
     encoding: "utf8",
-    env: { ...process.env, PLUGIN_DATA: data },
+    env: { windowsHide: true, ...process.env, PLUGIN_DATA: data },
   });
 }
 

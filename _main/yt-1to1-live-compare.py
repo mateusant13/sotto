@@ -308,7 +308,7 @@ def stop_edge():
     pid = _EDGE_PROC.pid
     try:
         subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                       capture_output=True, timeout=30)
+                       capture_output=True, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -320,7 +320,7 @@ def stop_edge():
 
 def driver(args, timeout=180):
     p = subprocess.run(["bun", DRIVER] + args, cwd=WORKDIR,
-                       capture_output=True, timeout=timeout, env=_DRIVER_ENV)
+                       capture_output=True, timeout=timeout, env=_DRIVER_ENV, creationflags=subprocess.CREATE_NO_WINDOW)
     raw = ((p.stdout or b"") + (p.stderr or b"")).decode("utf-8", "replace")
     for line in reversed(raw.splitlines()):
         line = line.strip()

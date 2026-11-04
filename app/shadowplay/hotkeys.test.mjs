@@ -44,7 +44,7 @@ const FIXTURE = join(mkdtempSync(join(tmpdir(), "hk-fixture-")), "fixture.mp4");
 execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
   "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30", "-t", "2",
   "-c:v", "h264_nvenc", "-preset", "p1", "-pix_fmt", "yuv420p", "-g", "60",
-  FIXTURE], { stdio: ["ignore", "pipe", "pipe"] });
+  FIXTURE], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
 const FIXTURE_BYTES = readFileSync(FIXTURE);
 
 // A fresh, empty clips directory per arm. Fresh matters: the writer's SessionClock

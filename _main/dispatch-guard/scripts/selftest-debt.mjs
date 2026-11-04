@@ -18,7 +18,7 @@ const DEFER = '## SELF-AUDIT\nPOPULATION 3, WINDOW now.\nWhat I did NOT do: land
 function fire(script, message, dir, turn) {
   const r = spawnSync(process.execPath, [script], {
     input: JSON.stringify({ hook_event_name: 'Stop', session_id: turn, turn_id: turn, last_assistant_message: message }),
-    encoding: 'utf8', env: { ...process.env, PLUGIN_DATA: dir },
+    encoding: 'utf8', env: { windowsHide: true, ...process.env, PLUGIN_DATA: dir },
   });
   let reason = null;
   if (r.stdout && r.stdout.trim()) {
@@ -27,7 +27,7 @@ function fire(script, message, dir, turn) {
   return { rc: r.status, reason };
 }
 function inject(dir, event = 'SessionStart') {
-  const r = spawnSync(process.execPath, [INJECT], { input: JSON.stringify({ hook_event_name: event }), encoding: 'utf8', env: { ...process.env, PLUGIN_DATA: dir } });
+  const r = spawnSync(process.execPath, [INJECT], { input: JSON.stringify({ hook_event_name: event }), encoding: 'utf8', env: { windowsHide: true, ...process.env, PLUGIN_DATA: dir } });
   return { rc: r.status, out: r.stdout || '' };
 }
 

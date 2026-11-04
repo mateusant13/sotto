@@ -1,3 +1,4 @@
+# NO-BUG: A TECLA DA LEGENDA E' OBSERVADA, NUNCA TOMADA -- oraculo. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """A TECLA DA LEGENDA E' OBSERVADA, NUNCA TOMADA -- oraculo.
 
 ORDEM DO DONO (2026-11-02), verbatim: *"control mais espaço é crouch e jump no

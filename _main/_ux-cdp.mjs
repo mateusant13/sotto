@@ -35,7 +35,7 @@ const child = spawn(EDGE, [
   '--disable-extensions', '--disable-background-networking',
   '--remote-debugging-port=' + PORT, '--user-data-dir=' + profile,
   '--window-size=' + W + ',' + H, 'about:blank',
-], { stdio: 'ignore' });
+], { windowsHide: true, stdio: 'ignore' });
 
 let ws;
 let wsUrl = null;

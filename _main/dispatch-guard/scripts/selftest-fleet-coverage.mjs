@@ -148,7 +148,7 @@ function runHook(dbPath, opts = {}) {
   const env = { ...process.env, PLUGIN_DATA: data };
   if (dbPath) env.MCO_DGUARD_DB = dbPath;
   else delete env.MCO_DGUARD_DB;
-  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify(payload), encoding: "utf8", env });
+  const r = spawnSync(process.execPath, [HOOK], { windowsHide: true, input: JSON.stringify(payload), encoding: "utf8", env });
   return { decision: readBlock(r.stdout), rc: r.status, ledger: readLedger(data), stderr: String(r.stderr || "") };
 }
 

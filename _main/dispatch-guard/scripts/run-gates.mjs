@@ -213,7 +213,7 @@ function spawnGate(gate, payload, extraEnv) {
   const r = spawnSync(process.execPath, [join(HERE, gate.file)], {
     encoding: "utf8",
     input: gate.kind === "hook" ? JSON.stringify(payload) : undefined,
-    env: { ...process.env, PLUGIN_DATA: dataDir, ...(extraEnv || {}) },
+    env: { ...process.env, PLUGIN_DATA: dataDir, ...(extraEnv || { windowsHide: true,}) },
     timeout: GATE_TIMEOUT_MS,
     killSignal: "SIGKILL",
   });

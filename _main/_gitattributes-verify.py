@@ -47,7 +47,7 @@ def eol_de(data: bytes):
 
 def versionados():
     raw = subprocess.run(['git', '-C', ROOT, 'ls-files', '-z'],
-                         capture_output=True).stdout.decode('utf-8', 'replace')
+                         capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW).stdout.decode('utf-8', 'replace')
     for f in raw.split('\x00'):
         if not f:
             continue
@@ -59,7 +59,7 @@ def versionados():
 
 def status_porcelain():
     out = subprocess.run(['git', '-C', ROOT, 'status', '--porcelain'],
-                         capture_output=True, text=True).stdout
+                         capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW).stdout
     return out
 
 
@@ -95,7 +95,7 @@ def main() -> int:
         r = subprocess.run(['git', '-C', ROOT, 'checkout-index', '--stdin', '-z',
                             '--force', '--prefix=' + tmp.replace('\\', '/') + '/'],
                            input=payload.encode('utf-8'),
-                           capture_output=True)
+                           capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
         if r.returncode != 0:
             print('ABORTO : checkout-index rc=%d %s'
                   % (r.returncode, r.stderr.decode('utf-8', 'replace')[:200]))

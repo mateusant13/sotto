@@ -71,7 +71,7 @@ function runArm(arm, i) {
   const r = spawnSync(process.execPath, [HOOK], {
     input: JSON.stringify(payload),
     encoding: "utf8",
-    env: { ...process.env, PLUGIN_DATA: data },
+    env: { windowsHide: true, ...process.env, PLUGIN_DATA: data },
   });
   let decision = null;
   try {
@@ -112,7 +112,7 @@ const mk = (payload) =>
   spawnSync(process.execPath, [HOOK], {
     input: JSON.stringify(payload),
     encoding: "utf8",
-    env: { ...process.env, PLUGIN_DATA: data },
+    env: { windowsHide: true, ...process.env, PLUGIN_DATA: data },
   });
 const a = mk(p1);
 const b = mk(p1);

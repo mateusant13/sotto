@@ -269,7 +269,7 @@ def load_report(browser, page, wait_ms, motion=False):
         cmd.append('--blink-settings=prefersReducedMotion=false')
     cmd += ['--dump-dom', 'file:///' + page.replace('\\', '/') + '#mode=chrome']
     proc = subprocess.run(cmd, capture_output=True, encoding='utf-8',
-                          errors='replace', timeout=240)
+                          errors='replace', timeout=240, creationflags=subprocess.CREATE_NO_WINDOW)
     return proc.stdout or ''
 
 

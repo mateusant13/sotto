@@ -98,7 +98,7 @@ for (const d of dispatchers) {
   // the mutated file returned rc=1 SyntaxError. A gate that greps source can be
   // satisfied by text in a file the runtime can never load. A green you cannot turn red
   // is not green, and this one was green on a broken artefact.
-  const parses = spawnSync(process.execPath, ['--check', d.path], { encoding: 'utf8' });
+  const parses = spawnSync(process.execPath, ['--check', d.path], { windowsHide: true, encoding: 'utf8' });
   arm(`${name}: the dispatcher actually PARSES`, parses.status === 0,
     parses.status === 0 ? '' : `node --check rc=${parses.status}: ${(parses.stderr || '').slice(0, 120)}`);
 
@@ -115,7 +115,7 @@ for (const d of dispatchers) {
     spawnSync(process.execPath, [d.path, probe], {
       input: JSON.stringify({ session_id: 'mvs_ea552229fe164f9e8856fcca8589c41a' }),
       encoding: 'utf8',
-      env: { ...process.env, MINIMAX_HOME: tmp },
+      env: { windowsHide: true, ...process.env, MINIMAX_HOME: tmp },
       timeout: 20000,
     });
     const content = existsSync(log) ? readFileSync(log, 'utf8') : '';

@@ -12873,9 +12873,21 @@ class SottoShell:
         # chegam antes do pixel agora ENGROSSAM uma a outra; uma linha nova que
         # ja' CONTEM a pendente (a re-emissao cumulativa) substitui-a, que e' o
         # caso em que juntar duplicaria.
+        # A JANELA DO PLAYER NUNCA SE JUNTA A' ANTERIOR (medido 2026-11-04).
+        # A regra de juntar existe para a HIPOTESE do ASR, que cresce e cujo
+        # pedaco antigo pode nao estar contido no novo. A janela do player NAO
+        # e' uma hipotese: o YouTube ja' decidiu o que esta' no ecra, e duas
+        # janelas consecutivas de um cue a rolar sao DIFERENTES por desenho --
+        # `['Have you ever had to kill a man?','No.']` seguida de
+        # `['No.','Then this sword']` juntava as duas e o overlay pintava
+        # QUATRO linhas, com uma linha costurada (`Then No.`). Medido com
+        # `_main/youtube-land-replay-oracle.py` sobre as 16 amostras gravadas:
+        # 11/16 amostras certas, 16 pinturas para 16 amostras com o texto
+        # ERRADO. A janela e' autoridade -- substitui.
+        _is_player_window = rows is not None
         _pending = getattr(self, '_caption_pending', None)
         _coalesced = 0
-        if _pending:
+        if _pending and not _is_player_window:
             _old = (_pending[1] or '').strip()
             _new = text.strip()
             if _old and _new and _old != _new and _old not in _new:

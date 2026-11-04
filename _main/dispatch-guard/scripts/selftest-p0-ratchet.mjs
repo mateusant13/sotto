@@ -65,7 +65,7 @@ function fixtureDb(name, body) {
     db.prepare('INSERT INTO local_runtime_message_rows (session_id, role, turn_id, created_at_ms, data_json) VALUES (?,?,?,?,?)')
       .run(process.argv[2], 'assistant', 'turn_fixture01', 1, JSON.stringify({ msg_content: process.argv[3] }));
     db.close();
-  `, dbPath, SID, body], { encoding: 'utf8' });
+  `, dbPath, SID, body], { windowsHide: true, encoding: 'utf8' });
   return { tmp, dbPath };
 }
 
@@ -74,7 +74,7 @@ function run(dbPath, tag) {
   const out = execFileSync(process.execPath, [SCRIPT], {
     input: JSON.stringify({ session_id: SID }),
     encoding: 'utf8',
-    env: { ...process.env, PLUGIN_DATA: dd, RATCHET_DB: dbPath },
+    env: { windowsHide: true, ...process.env, PLUGIN_DATA: dd, RATCHET_DB: dbPath },
   });
   let ctx = '';
   try { ctx = JSON.parse(out).hookSpecificOutput?.additionalContext || ''; } catch {}
@@ -109,7 +109,7 @@ console.log('selftest: p0-ratchet-inject.mjs');
 {
   const out = execFileSync(process.execPath, [SCRIPT], {
     input: JSON.stringify({ cwd: 'I:\\!manager' }), encoding: 'utf8',
-    env: { ...process.env, PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'ratchet-data-')) },
+    env: { windowsHide: true, ...process.env, PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'ratchet-data-')) },
   });
   arm('no session id -> silent pass', out.trim() === '', JSON.stringify(out.slice(0, 120)));
 }
@@ -120,7 +120,7 @@ console.log('selftest: p0-ratchet-inject.mjs');
   try {
     out = execFileSync(process.execPath, [SCRIPT], {
       input: '{not json', encoding: 'utf8',
-      env: { ...process.env, PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'ratchet-data-')) },
+      env: { windowsHide: true, ...process.env, PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'ratchet-data-')) },
     });
   } catch (e) { crashed = true; out = String(e.stderr || e.message); }
   arm('malformed stdin -> exit 0, no crash', !crashed && out.trim() === '', out.slice(0, 140));
@@ -132,7 +132,7 @@ console.log('selftest: p0-ratchet-inject.mjs');
   const f = fixtureDb('deferring2', DEFERRING);
   const res = execFileSync(process.execPath, [SCRIPT], {
     input: JSON.stringify({ session_id: SID }), encoding: 'utf8',
-    env: { ...process.env, PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'ratchet-data-')), RATCHET_DB: f.dbPath },
+    env: { windowsHide: true, ...process.env, PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'ratchet-data-')), RATCHET_DB: f.dbPath },
   });
   let parsed = null;
   try { parsed = JSON.parse(res); } catch {}

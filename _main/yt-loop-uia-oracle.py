@@ -1,3 +1,4 @@
+# NO-BUG: Oracle: with the CDP door open, the caption loop asks NOTHING to UIA. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """Oracle: with the CDP door open, the caption loop asks NOTHING to UIA.
 
 THE MEASUREMENT THIS EXISTS FOR (owner's live session, 2026-11-03):

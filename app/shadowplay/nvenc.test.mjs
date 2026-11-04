@@ -14,7 +14,7 @@ function t(name, fn) {
 }
 
 const hasFfmpeg = (() => {
-  try { execFileSync("ffmpeg", ["-version"], { stdio: "ignore" }); return true; }
+  try { execFileSync("ffmpeg", ["-version"], { windowsHide: true, stdio: "ignore" }); return true; }
   catch { return false; }
 })();
 
@@ -66,11 +66,11 @@ try {
       const dst = join(dir, "copy.mp4");
       const before = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0",
         "-show_entries", "stream=codec_name,nb_frames", "-of", "csv=p=0", src],
-        { encoding: "utf8" }).trim();
+        { windowsHide: true, encoding: "utf8" }).trim();
       const r = enc.remux(src, dst);
       const after = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0",
         "-show_entries", "stream=codec_name,nb_frames", "-of", "csv=p=0", dst],
-        { encoding: "utf8" }).trim();
+        { windowsHide: true, encoding: "utf8" }).trim();
       assert.equal(after, before, "the stream changed across a remux");
       assert.equal(enc.encodeCount(), 2, "remux must not have encoded again");
       assert.deepEqual(enc.calls, ["encode", "encode", "remux"],

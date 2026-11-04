@@ -71,7 +71,7 @@ def measure_startup(python="python"):
     for _ in range(SAMPLES):
         t0 = time.perf_counter()
         subprocess.run([python, "-c", "pass"], check=False,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
         times.append(time.perf_counter() - t0)
     return _median(times), times
 
@@ -112,7 +112,7 @@ def measure_end_to_end(root, steps, python="python"):
                 "--state", os.path.join(root, STATE_REL)]
         t0 = time.perf_counter()
         subprocess.run(argv, check=False, cwd=root,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
         out[name] = time.perf_counter() - t0
     return out
 

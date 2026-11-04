@@ -371,12 +371,12 @@ def build_page(work, source='tree'):
     hp = os.path.join(work, 'caption.html')
     if source == 'head':
         raw = subprocess.run(['git', '-C', REPO, 'show', 'HEAD:app/panel/caption.html'],
-                             capture_output=True, timeout=60)
+                             capture_output=True, timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
         if raw.returncode != 0:
             raise SystemExit('git show HEAD:app/panel/caption.html failed')
         html = raw.stdout.decode('utf-8')
         raw2 = subprocess.run(['git', '-C', REPO, 'show', 'HEAD:app/panel/caption-float.css'],
-                              capture_output=True, timeout=60)
+                              capture_output=True, timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
         if raw2.returncode == 0:
             with open(os.path.join(work, 'caption-float.css'), 'wb') as fh:
                 fh.write(raw2.stdout)
@@ -410,7 +410,7 @@ def render(hp, cues):
            '--user-data-dir=' + os.path.join(os.path.dirname(hp), 'ud'),
            '--force-device-scale-factor=1', '--virtual-time-budget=9000',
            '--window-size=%d,%d' % WIN_SIZE, '--dump-dom', url]
-    proc = subprocess.run(cmd, capture_output=True, timeout=240)
+    proc = subprocess.run(cmd, capture_output=True, timeout=240, creationflags=subprocess.CREATE_NO_WINDOW)
     dom = (proc.stdout or b'').decode('utf-8', 'replace')
     m = re.search(r'<pre id="probe-out"[^>]*>(.*?)</pre>', dom, re.S)
     if not m:

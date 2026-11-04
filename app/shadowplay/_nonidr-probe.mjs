@@ -70,7 +70,7 @@ try {
   const o = execFileSync("ffprobe",
     ["-v", "error", "-select_streams", "v:0", "-count_frames",
      "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", noIdr],
-    { stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
+    { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
   frames = parseInt(o, 10) || 0;
   console.log(`DECODABLE_FRAMES_NO_IDR: ${frames}`);
 } catch (e) {
@@ -86,7 +86,7 @@ try {
   const o = execFileSync("ffprobe",
     ["-v", "error", "-select_streams", "v:0", "-count_frames",
      "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", src],
-    { stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
+    { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
   controlFrames = parseInt(o, 10) || 0;
   console.log(`DECODABLE_FRAMES_WITH_IDR_CONTROL: ${controlFrames}`);
 } catch (e) {

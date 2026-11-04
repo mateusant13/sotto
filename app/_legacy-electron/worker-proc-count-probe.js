@@ -183,7 +183,7 @@ async function main() {
 
   await sampler.done;
 
-  // Strictly BEFORE the first spawn (t0). A first version measured this up to
+  // Strictly BEFORE the first spawn (t0, { windowsHide: true }). A first version measured this up to
   // `armedAt`, which INCLUDES the first worker — it printed "baseline 1" next
   // to a claim of "before anything was spawned", which is the kind of number
   // that makes a receipt lie without anybody editing it.

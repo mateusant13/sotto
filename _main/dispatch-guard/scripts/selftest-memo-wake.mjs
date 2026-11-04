@@ -61,7 +61,7 @@ function fire(payload, storeDir) {
   const r = spawnSync(process.execPath, [TARGET], {
     input: JSON.stringify(payload),
     encoding: 'utf8',
-    env: { ...process.env, MEMORY_DIR: storeDir, PLUGIN_DATA_OVERRIDE: join(storeDir, '_data') },
+    env: { windowsHide: true, ...process.env, MEMORY_DIR: storeDir, PLUGIN_DATA_OVERRIDE: join(storeDir, '_data') },
   });
   let ctx = null;
   if (r.stdout && r.stdout.trim()) {
@@ -148,7 +148,7 @@ try {
       const r2 = spawnSync(process.execPath, [mPath], {
         input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'mvs_owner', source: 'startup' }),
         encoding: 'utf8',
-        env: { ...process.env, MEMORY_DIR: d, PLUGIN_DATA_OVERRIDE: join(d, '_data') },
+        env: { windowsHide: true, ...process.env, MEMORY_DIR: d, PLUGIN_DATA_OVERRIDE: join(d, '_data') },
       });
       let mutatedLen = -1;
       try {
@@ -181,7 +181,7 @@ try {
   // why the fixture is deliberately over WAKE_LINES.
   {
     const MEMO = join(homedir(), '.optmem', 'memo');
-    const havePython = spawnSync('python', ['--version'], { encoding: 'utf8' }).error === undefined;
+    const havePython = spawnSync('python', ['--version'], { windowsHide: true, encoding: 'utf8' }).error === undefined;
     if (!existsSync(MEMO) || !havePython) {
       process.stdout.write(
         `SKIP A5-differential-vs-memo :: python=${havePython} memo_present=${existsSync(MEMO)} (SKIPPED, not passed)\n`,
@@ -193,7 +193,7 @@ try {
         let truth = '';
         let truthErr = null;
         try {
-          truth = spawnSync('python', [MEMO, 'wake'], { encoding: 'utf8', env: { ...process.env, MEMORY_DIR: d } }).stdout || '';
+          truth = spawnSync('python', [MEMO, 'wake'], { encoding: 'utf8', env: { windowsHide: true, ...process.env, MEMORY_DIR: d } }).stdout || '';
         } catch (e) {
           truthErr = String(e);
         }

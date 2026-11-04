@@ -33,7 +33,7 @@ const seedPath = join(seedDir, "seed.mp4");
 execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
   "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=2",
   "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", seedPath],
-  { stdio: ["ignore", "pipe", "pipe"] });
+  { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
 ring.push(readFileSync(seedPath), { frames: 60, keyframe: true });
 rmSync(seedDir, { recursive: true, force: true });
 

@@ -124,7 +124,7 @@ def one_run(n: int, n_queries: int, chunk: int, quiet: bool):
         p = subprocess.run([sys.executable, str(PROBE), str(n), str(n_queries),
                             str(chunk)], env=env, cwd=str(PROBE.parent),
                            capture_output=True, text=True, encoding="utf-8",
-                           errors="replace")
+                           errors="replace", creationflags=subprocess.CREATE_NO_WINDOW)
         wall = time.perf_counter() - t_start
     out = p.stdout or ""
     if not quiet:

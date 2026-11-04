@@ -92,7 +92,7 @@ if (process.argv.includes('--selftest')) {
     const args = target ? [script, target] : [script];
     const r = spawnSync(process.execPath, args, {
       input: stdin, encoding: 'utf8', timeout: 10000, maxBuffer: 8 * 1024 * 1024,
-      env: { ...process.env, ...env },
+      env: { windowsHide: true, ...process.env, ...env },
     });
     return { rc: r.status, out: r.stdout || '', err: r.stderr || '' };
   }

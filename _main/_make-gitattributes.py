@@ -55,7 +55,7 @@ def eol_de(data: bytes):
 
 def ficheiros_versionados():
     out = subprocess.run(['git', '-C', ROOT, 'ls-files', '-z'],
-                         capture_output=True)
+                         capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
     raw = out.stdout.decode('utf-8', 'replace')
     for f in raw.split('\x00'):
         if not f:

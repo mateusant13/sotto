@@ -58,7 +58,7 @@ def kill_app():
     for p in rows:
         if "sotto_webview.py" in p[3]:
             r = subprocess.run(["taskkill", "/F", "/T", "/PID", p[0]],
-                               capture_output=True)
+                               capture_output=True, creationflags=CREATE_NO_WINDOW)
             killed.append((p[0], r.returncode,
                            r.stdout.decode("cp850", "replace").strip()))
             print("KILL pid=%s rc=%s %s" % (p[0], r.returncode,

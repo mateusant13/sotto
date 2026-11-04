@@ -151,7 +151,7 @@ def measure(theme, surface, outdir, budget):
         url = 'file:///' + html.replace(os.sep, '/')
         cmd = ['node', CDP, '--url', url, '--w', str(PANEL_W), '--h', str(PANEL_H),
                '--eval', PROBE, '--shot', png, '--json', jf, '--wait', str(budget)]
-        proc = subprocess.run(cmd, capture_output=True, timeout=300)
+        proc = subprocess.run(cmd, capture_output=True, timeout=300, creationflags=subprocess.CREATE_NO_WINDOW)
         data = {}
         if os.path.isfile(jf):
             with open(jf, encoding='utf-8') as fh:

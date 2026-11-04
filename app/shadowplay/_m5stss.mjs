@@ -22,7 +22,7 @@ const tmp = mkdtempSync(join(tmpdir(), "m5stss-"));
 const src = join(tmp, "src.mp4");
 execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
   "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=2",
-  "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", src]);
+  "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", src], { windowsHide: true });
 
 const buf = readFileSync(src);
 console.log(`SOURCE_BYTES: ${buf.length}`);
@@ -91,7 +91,7 @@ let frames = null;
 try {
   frames = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0",
     "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", out],
-    { stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
+    { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
   console.log(`FFPROBE_FRAME_COUNT: ${frames}`);
 } catch (e) {
   console.log(`FFPROBE_FRAME_COUNT: FAILED (${(e.stderr || "").toString().split("\n")[0]})`);

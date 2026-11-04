@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: A REPETICAO NO SEAM DO CHUNK -- medida, e a cura provada num so' lugar. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """A REPETICAO NO SEAM DO CHUNK -- medida, e a cura provada num so' lugar.
 
 O DEFEITO (2026-11-02, na captura real do dono). Rodando o caminho VIVO sobre
@@ -144,7 +145,7 @@ def neg_arm():
         fh.write(mutant)
     try:
         proc = subprocess.run([sys.executable, os.path.abspath(__file__), "--worker", tmp],
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     finally:
         try:
             os.unlink(tmp)
@@ -170,7 +171,7 @@ def neg_arm():
             fh.write(mutant2)
         try:
             proc2 = subprocess.run([sys.executable, os.path.abspath(__file__), "--worker", tmp2],
-                                   capture_output=True, text=True)
+                                   capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         finally:
             try:
                 os.unlink(tmp2)
@@ -197,7 +198,7 @@ def neg_arm():
             fh.write(mutant3)
         try:
             proc3 = subprocess.run([sys.executable, os.path.abspath(__file__), "--worker", tmp3],
-                                   capture_output=True, text=True)
+                                   capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         finally:
             try:
                 os.unlink(tmp3)

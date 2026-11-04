@@ -98,7 +98,7 @@ def _call_names(text):
 def arm_1_selftest(root):
     result = subprocess.run([sys.executable,
                              os.path.join(root, 'app', 'webview', 'shell_relaunch.py'),
-                             '--selftest'], capture_output=True, close_fds=True)
+                             '--selftest'], capture_output=True, close_fds=True, creationflags=subprocess.CREATE_NO_WINDOW)
     tail = (result.stdout or b'').decode('utf-8', 'replace').strip().splitlines()[-1:] or ['']
     return arm('1 o selftest do vigia passa', result.returncode == 0, tail[0][:90])
 
@@ -202,7 +202,7 @@ def arm_9_winner_only(root):
 
 def arm_10_task_registered(root):
     result = subprocess.run(['schtasks', '/query', '/tn', TASK, '/xml'], capture_output=True,
-                            close_fds=True)
+                            close_fds=True, creationflags=subprocess.CREATE_NO_WINDOW)
     text = (result.stdout or b'').decode('cp850', 'replace')
     ok = result.returncode == 0 and 'sotto-relaunch.cmd' in text
     highest = '<RunLevel>HighestAvailable</RunLevel>' in text
@@ -212,7 +212,7 @@ def arm_10_task_registered(root):
 
 def arm_11_check_readonly(root):
     result = subprocess.run([sys.executable, os.path.join(root, '_main', 'sotto-relaunch.py'),
-                             '--check'], capture_output=True, close_fds=True)
+                             '--check'], capture_output=True, close_fds=True, creationflags=subprocess.CREATE_NO_WINDOW)
     out = (result.stdout or b'').decode('utf-8', 'replace')
     ok = result.returncode in (0, 1) and 'instancia viva' in out and 'mutex livre' in out
     return arm('11 `--check` le e nao toca (rc=0 com app viva)', ok,
@@ -310,7 +310,7 @@ def run_neg_arm():
             with io.open(path, 'w', encoding='utf-8') as fh:
                 fh.write(text.replace(old, new, 1))
             result = subprocess.run([sys.executable, os.path.abspath(__file__), '--arms-only',
-                                     '--root', tmp], capture_output=True, close_fds=True)
+                                     '--root', tmp], capture_output=True, close_fds=True, creationflags=subprocess.CREATE_NO_WINDOW)
             out = (result.stdout or b'').decode('utf-8', 'replace')
             reds = [line.split()[1] for line in out.splitlines() if line.startswith('FAIL')]
             if result.returncode != 0 and reds:

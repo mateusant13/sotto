@@ -1,3 +1,4 @@
+# NO-BUG: A LEGENDA E' A DO YOUTUBE -- oraculo do ESTILO e da ausencia de animacao. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """A LEGENDA E' A DO YOUTUBE -- oraculo do ESTILO e da ausencia de animacao.
 
 AS DUAS ORDENS DO DONO, verbatim:

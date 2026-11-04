@@ -61,7 +61,7 @@ def _sha256(path: Path) -> str:
 
 def _git(*args: str) -> str:
     try:
-        out = subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, timeout=20)
+        out = subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
         return out.stdout.strip()
     except Exception:
         return ""
@@ -124,7 +124,7 @@ def run_gate() -> tuple[int, str]:
         text=True,
         timeout=600,
         env={**os.environ, "BEND_NO_TELEMETRY": "1"},
-    )
+    creationflags=subprocess.CREATE_NO_WINDOW)
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "") + f"\n[wall_s] {time.time() - start:.2f}"
 
 

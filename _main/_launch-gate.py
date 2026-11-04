@@ -45,7 +45,7 @@ while time.time() < deadline:
     time.sleep(1)
 if rc is None:
     subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
     print("TIMEOUT: the shell did not exit within 120 s")
 print("shell rc=%s after %.1fs" % (rc, 120 - (deadline - time.time())))
 

@@ -99,7 +99,7 @@ const MEASURE = `
         // ...and so is every child of one: the cluster is fixed, so its buttons
         // are laid out against the headless 492 px viewport, not against the
         // owner's 380 px window. The shell's --dump-dom is the instrument for
-        // them (it says the cluster is 102..366 inside 380, `past_by: 0`).
+        // them (it says the cluster is 102..366 inside 380, past_by 0).
         if (el.closest && el.closest('.panel__controls')) continue;
         var r = el.getBoundingClientRect();
         if (r.width === 0 && r.height === 0) continue;
@@ -163,7 +163,7 @@ function main() {
     '--dump-dom', url];
   let stdout = '';
   try {
-    stdout = execFileSync(EDGE, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 300000 });
+    stdout = execFileSync(EDGE, args, { windowsHide: true, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 300000 });
   } catch (err) {
     stdout = (err.stdout || '') + '\nERR:' + (err.stderr || '');
   }

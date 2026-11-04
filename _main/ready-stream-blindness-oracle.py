@@ -70,7 +70,7 @@ def classify(name, text):
 
 
 def consumers():
-    listing = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True)
+    listing = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     out = {"shell-copy": [], "STDOUT-READER": [], "log-reader": [], "other": []}
     for name in listing.stdout.splitlines():
         if name.endswith(".md") or name.endswith("sotto_webview.py"):
@@ -145,7 +145,7 @@ def main(argv=None):
                      "be re-measured (and AGENTS.md rule against waiting would be violated)")
 
     classes = consumers()
-    specs = subprocess.run(["git", "ls-files", "*spec.json"], cwd=ROOT, capture_output=True, text=True)
+    specs = subprocess.run(["git", "ls-files", "*spec.json"], cwd=ROOT, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     say("  3. tracked files that mention the token, BY CLASS:")
     for kind in ("shell-copy", "log-reader", "STDOUT-READER", "other"):
         say("     %-12s %2d %s" % (kind, len(classes[kind]), classes[kind][:3]))

@@ -2,6 +2,7 @@ import os, re, subprocess, sys, tempfile, threading, time, urllib.request
 sys.path.insert(0, r'H:\sotto\_main')
 from http.server import HTTPServer
 import importlib.util
+import subprocess
 
 spec = importlib.util.spec_from_file_location('costarm', r'H:\sotto\_main\_panel-anim-cost-arm.py')
 mod = importlib.util.module_from_spec(spec)
@@ -30,7 +31,7 @@ url = ('http://127.0.0.1:%d/arm/panel-cost-dbg.html#mode=cost&theme=theme-5&arm=
 cmd = [edge, '--headless=new', '--disable-gpu', '--no-first-run',
        '--user-data-dir=' + prof, '--virtual-time-budget=12000', '--dump-dom', url]
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                     encoding='utf-8', errors='replace')
+                     encoding='utf-8', errors='replace', creationflags=subprocess.CREATE_NO_WINDOW)
 out, errs = p.communicate(timeout=200)
 print('dom bytes', len(out or ''))
 m = re.search(r'<title>(.*?)</title>', out or '', re.S)

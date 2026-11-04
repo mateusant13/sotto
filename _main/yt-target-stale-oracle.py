@@ -1,3 +1,4 @@
+# NO-BUG: Oracle: a video that is no longer open cannot capture the caption loop. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """Oracle: a video that is no longer open cannot capture the caption loop.
 
 THE MEASUREMENT THIS EXISTS FOR (owner's own browser, 2026-11-03, this session):

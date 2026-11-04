@@ -110,7 +110,7 @@ function main() {
       }
       fs.writeFileSync(target, src.replace(m.from, m.to), 'utf8');
       const run = spawnSync(process.execPath, [PROBE], {
-        env: { ...process.env, SOTTO_PANEL_DIR: dir },
+        env: { windowsHide: true, ...process.env, SOTTO_PANEL_DIR: dir },
         encoding: 'utf8',
       });
       const out = `${run.stdout || ''}${run.stderr || ''}`;

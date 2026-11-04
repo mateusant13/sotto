@@ -376,7 +376,7 @@ function selftest() {
   function e2e(label, cfgPath, asarPath, wantRc, wantText) {
     const r = spawnSync(process.execPath, [SELF], {
       encoding: "utf8",
-      env: { ...process.env, MCO_GUARD_CONFIG: cfgPath, MCO_GUARD_ASAR: asarPath },
+      env: { windowsHide: true, ...process.env, MCO_GUARD_CONFIG: cfgPath, MCO_GUARD_ASAR: asarPath },
     });
     const out = String(r.stdout || "");
     const ok = r.status === wantRc && out.includes(wantText);

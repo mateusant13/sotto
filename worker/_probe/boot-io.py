@@ -39,7 +39,7 @@ def main():
     t0 = time.time()
     proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             cwd=WORKER, text=True, encoding="utf-8", errors="replace",
-                            bufsize=1)
+                            bufsize=1, creationflags=subprocess.CREATE_NO_WINDOW)
     import psutil
 
     ps = psutil.Process(proc.pid)

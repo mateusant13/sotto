@@ -32,7 +32,7 @@ const ENV = { ...process.env, PLUGIN_DATA: undefined, PLUGIN_DATA_OVERRIDE: SCRA
 /** Fire the real script with a real payload. */
 function fire(message, session) {
   const r = spawnSync(process.execPath, [TARGET], {
-    input: JSON.stringify({
+    input: JSON.stringify({ windowsHide: true,
       hook_event_name: "Stop",
       session_id: session || "sess",
       last_assistant_message: message,
@@ -53,7 +53,7 @@ function fire(message, session) {
 
 /** Same, with the raw bytes on stdin (malformed-input arms). */
 function fireRaw(raw) {
-  const r = spawnSync(process.execPath, [TARGET], {
+  const r = spawnSync(process.execPath, [TARGET], { windowsHide: true,
     input: raw,
     encoding: "utf8",
     env: ENV,
@@ -221,7 +221,7 @@ const guardPayload = JSON.stringify({
   stop_hook_active: true,
   last_assistant_message: PAIR,
 });
-const guardRes = spawnSync(process.execPath, [TARGET], { input: guardPayload, encoding: "utf8", env: ENV });
+const guardRes = spawnSync(process.execPath, [TARGET], { windowsHide: true, input: guardPayload, encoding: "utf8", env: ENV });
 const guardOk = guardRes.status === 0 && !guardRes.stdout.trim();
 if (!guardOk) failed += 1;
 process.stdout.write(

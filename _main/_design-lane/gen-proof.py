@@ -89,7 +89,7 @@ def run_generators(root):
     lane = os.path.join(root, '_main', '_design-lane')
     for script, extra, out in JOBS:
         p = subprocess.run([PY, os.path.join(lane, script)] + extra,
-                           capture_output=True, cwd=lane, timeout=900)
+                           capture_output=True, cwd=lane, timeout=900, creationflags=subprocess.CREATE_NO_WINDOW)
         if p.returncode != 0:
             sys.stderr.write('FAILED %s: %s\n' % (script, p.stderr.decode('utf-8', 'replace')[-1500:]))
             return False

@@ -276,7 +276,7 @@ function runArm(hookPath, arm, i, dataDir) {
   const r = spawnSync(process.execPath, [hookPath], {
     input: JSON.stringify(payload),
     encoding: "utf8",
-    env: { ...process.env, PLUGIN_DATA: dataDir },
+    env: { windowsHide: true, ...process.env, PLUGIN_DATA: dataDir },
   });
   return {
     got: readDecision(r.stdout),
@@ -327,7 +327,7 @@ if (mutant) {
   }
   writeFileSync(copy, out, "utf8");
   hookPath = copy;
-  const chk = spawnSync(process.execPath, ["--check", hookPath], { encoding: "utf8" });
+  const chk = spawnSync(process.execPath, ["--check", hookPath], { windowsHide: true, encoding: "utf8" });
   if (chk.status !== 0) {
     process.stderr.write(
       `selftest-declarative: MUTANT-UNLOADABLE: the mutated copy does not parse, so its red arms ` +

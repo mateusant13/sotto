@@ -28,7 +28,7 @@ function fire(spec) {
   const env = { ...process.env, ...(s.env || {}) };
   const run = () =>
     spawnSync(process.execPath, [TARGET], {
-      input: s.raw !== undefined ? s.raw : JSON.stringify({ hook_event_name: "Stop", ...s.payload }),
+      input: s.raw !== undefined ? s.raw : JSON.stringify({ windowsHide: true, hook_event_name: "Stop", ...s.payload }),
       encoding: "utf8",
       env,
       timeout: 10000,

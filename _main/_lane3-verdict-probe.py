@@ -249,7 +249,7 @@ def run_worker_arm(argv):
             [PYW, WORKER_PY, *argv],
             cwd=REPO, stdout=fh, stderr=subprocess.STDOUT,
             env={**os.environ, "SOTTO_LANG_ID": ""},
-        ).returncode
+        creationflags=CREATE_NO_WINDOW).returncode
     lines = []
     with open(out_path, encoding="utf-8", errors="replace") as fh:
         for line in fh:

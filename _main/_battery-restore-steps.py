@@ -106,7 +106,7 @@ def command_for(dep, args):
 
 def run(cmd, cwd):
     p = subprocess.run(cmd, cwd=cwd, shell=True, capture_output=True, text=True,
-                       timeout=600)
+                       timeout=600, creationflags=subprocess.CREATE_NO_WINDOW)
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 

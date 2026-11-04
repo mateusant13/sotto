@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: O CUE DO YOUTUBE CHEGA AO ECRA 1:1 -- o instrumento. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """O CUE DO YOUTUBE CHEGA AO ECRA 1:1 -- o instrumento.
 
 O QUE MEDE, e porque e' este numero. O defeito observado (2026-11-03, instancia

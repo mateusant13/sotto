@@ -823,6 +823,18 @@ call :record job-object !STEP_RC!
 call :step red-as-expected-job-object 1 "_main\job-object-oracle.py" "%OUT%\job-object-neg.log" python _main\job-object-oracle.py --neg-arm
 call :expectred red-as-expected-job-object !STEP_RC! "%OUT%\job-object-neg.log" "NEG-ARM PASS"
 
+REM UM CANO MORTO NAO E' UM CRASH (medido no log do dono a 2026-11-04 01:13:40:
+REM `BRIDGE_DEATH_CAUSE OSError: [Errno 22] Invalid argument` em `sys.stdout.write`, rc=1,
+REM death kind=error -- o pai fechou o cano no meio de uma recarga e o worker levou traceback
+REM por escrever onde ninguem lia, a pagar uma recarga de 14-26 s). O oraculo importa o worker
+REM REAL, poe um stdout que levanta OSError(22), e exige: nenhuma excecao escapa, `EMIT_PIPE_DEAD`
+REM no stderr, e saida 0. O `--neg-arm` repoe a escrita crua numa COPIA ao lado do original e
+REM exige as arms 1-3 vermelhas.
+call :step emit-pipe-dead 0 "_main\emit-pipe-dead-oracle.py;worker\sotto_worker.py" "%OUT%\emit-pipe-dead.log" python _main\emit-pipe-dead-oracle.py
+call :record emit-pipe-dead !STEP_RC!
+call :step red-as-expected-emit-pipe-dead 1 "_main\emit-pipe-dead-oracle.py;worker\sotto_worker.py" "%OUT%\emit-pipe-dead-neg.log" python _main\emit-pipe-dead-oracle.py --neg-arm
+call :expectred red-as-expected-emit-pipe-dead !STEP_RC! "%OUT%\emit-pipe-dead-neg.log" "NEG-ARM PASS"
+
 REM === FIM DOS SETE =============================================================
 REM
 REM `_main\sotto-state-page.py` e o P0.2 do roadmap de observabilidade de 2026-10-23: a pagina de
@@ -1433,20 +1445,26 @@ if exist _main\device-silence-oracle.py (
 
 echo === a secretaria do dono: sem janela, sem audio mutado, com a GPU declarada ===
 REM As tres portas que nasceram das ordens dele de 2026-11-02: (1) nada em foreground
-REM (`console-window-gate`: nenhuma chamada nova a cmd/powershell/.cmd sem
-REM CREATE_NO_WINDOW; a divida anterior esta' congelada em baseline e nao cresce),
+REM (`console-window-audit`: censo AST de 1139 ficheiros que resolve o
+REM creationflags NO ESCOPO, mais `console-window-watch --neg-arm` para o criterio
+REM que julga o ecra; o `console-window-gate` de regex foi aposentado por ser o
+REM mesmo criterio lido pior e com baseline 0),
 REM (2) o audio dele nao se toca (`owner-audio-gate`: escrever exige
 REM SOTTO_OWNER_AUDIO_OK=1, senao rc=9 com `recusa: audio do dono`), (3) o motor AO
 REM VIVO diz em que provider corre (`worker-providers`: um CUDA disponivel e nao
 REM escolhido e' o fallback silencioso medido hoje, 10,75x contra 2,27x).
-if exist _main\console-window-gate.py (
-  call :step always console-window-gate 0 "_main\console-window-gate.py;_main\console-window-baseline.json" "%OUT%\console-window-gate.log" python _main\console-window-gate.py
-  call :record console-window-gate !STEP_RC!
-) else ( call :record console-window-gate MISSING )
-if exist _main\console-window-gate.py (
-  call :step always red-as-expected-console-window-gate 1 "_main\console-window-gate.py" "%OUT%\console-window-gate-neg.log" python _main\console-window-gate.py --neg-arm
-  call :expectred red-as-expected-console-window-gate !STEP_RC! "%OUT%\console-window-gate-neg.log" "NEG-ARM: PASS"
-) else ( call :expectred red-as-expected-console-window-gate MISSING "%OUT%\console-window-gate-neg.log" "NEG-ARM: PASS" )
+if exist _main\console-window-audit.py (
+  call :step always console-window-audit 0 "_main\console-window-audit.py;_main\console-window-watch.py" "%OUT%\console-window-audit.log" python _main\console-window-audit.py
+  call :record console-window-audit !STEP_RC!
+) else ( call :record console-window-audit MISSING )
+if exist _main\console-window-audit.py (
+  call :step always red-as-expected-console-window-audit 1 "_main\console-window-audit.py" "%OUT%\console-window-audit-neg.log" python _main\console-window-audit.py --neg-arm
+  call :expectred red-as-expected-console-window-audit !STEP_RC! "%OUT%\console-window-audit-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-console-window-audit MISSING "%OUT%\console-window-audit-neg.log" "NEG-ARM PASS" )
+if exist _main\console-window-watch.py (
+  call :step always red-as-expected-console-window-watch 1 "_main\console-window-watch.py" "%OUT%\console-window-watch-neg.log" python _main\console-window-watch.py --neg-arm
+  call :expectred red-as-expected-console-window-watch !STEP_RC! "%OUT%\console-window-watch-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-console-window-watch MISSING "%OUT%\console-window-watch-neg.log" "NEG-ARM PASS" )
 if exist _main\owner-audio-gate.py (
   call :step always owner-audio-gate 0 "_main\owner-audio-gate.py;_main\mute-audio.py" "%OUT%\owner-audio-gate.log" python _main\owner-audio-gate.py
   call :record owner-audio-gate !STEP_RC!

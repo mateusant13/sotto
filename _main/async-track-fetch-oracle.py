@@ -1,3 +1,4 @@
+# NO-BUG: Oracle: the caption loop NEVER waits for the YouTube track fetch. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """Oracle: the caption loop NEVER waits for the YouTube track fetch.
 
 INSTRUMENT, IN PROCESS. It imports app/webview/sotto_webview.py (headless: no

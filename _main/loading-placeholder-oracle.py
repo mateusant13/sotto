@@ -1,3 +1,4 @@
+# NO-BUG: O PLACEHOLDER "carregando modelo" NAO APAGA A LEGENDA -- oraculo. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """O PLACEHOLDER "carregando modelo" NAO APAGA A LEGENDA -- oraculo.
 
 O DEFEITO MEDIDO (2026-11-03, instancia viva pid 8168, `_main/webview-run.log`):

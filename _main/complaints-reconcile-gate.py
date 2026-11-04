@@ -643,7 +643,7 @@ def replay(root, payload, policy):
             print("REPLAY SKIP %-4s %s (policy)" % (entry["id"], cmd))
             continue
         proc = subprocess.run(cmd, cwd=root, shell=False, stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT, timeout=900)
+                              stderr=subprocess.STDOUT, timeout=900, creationflags=subprocess.CREATE_NO_WINDOW)
         out = proc.stdout.decode("utf-8", "replace")
         ran += 1
         ok = proc.returncode == ev.get("rc") and str(ev.get("expect")) in out

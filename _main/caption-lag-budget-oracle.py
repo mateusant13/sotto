@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# NO-BUG: A IDADE DO AUDIO QUE ESTA' NO ECRa -- o numero que o dono pediu, e o grito. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """A IDADE DO AUDIO QUE ESTA' NO ECRa -- o numero que o dono pediu, e o grito.
 
 ORDEM DO DONO (2026-11-03), verbatim: *"tu nao tem a porra de um teste ou log

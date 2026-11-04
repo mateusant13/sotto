@@ -1,4 +1,5 @@
 import os, re, subprocess, sys, tempfile
+import subprocess
 
 edge = r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
 if not os.path.exists(edge):
@@ -11,7 +12,7 @@ url = ('file:///' + page + '#mode=cost&theme=theme-5&arm=on&port=9&seconds=1&rat
 cmd = [edge, '--headless=new', '--disable-gpu', '--no-first-run',
        '--user-data-dir=' + prof, '--virtual-time-budget=12000', '--dump-dom', url]
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                     encoding='utf-8', errors='replace')
+                     encoding='utf-8', errors='replace', creationflags=subprocess.CREATE_NO_WINDOW)
 out, errs = p.communicate(timeout=180)
 print('dom bytes', len(out or ''), 'rc', p.returncode)
 m = re.search(r'<title>(.*?)</title>', out or '', re.S)

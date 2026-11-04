@@ -119,7 +119,7 @@ if (_isExempt && !_always) {
   process.exit(0);      // exempt: the handler never runs, and nothing is emitted
 }
 
-const res = spawnSync(process.execPath, [target], {
+const res = spawnSync(process.execPath, [target], { windowsHide: true,
   input: stdinBuf,
   stdio: ['pipe', 'pipe', 'pipe'],
   timeout: 9000,

@@ -126,7 +126,7 @@ def run_one(command, timeout_s):
     try:
         done = subprocess.run(
             command, cwd=ROOT, shell=True, capture_output=True, text=True,
-            encoding='utf-8', errors='replace', timeout=timeout_s)
+            encoding='utf-8', errors='replace', timeout=timeout_s, creationflags=subprocess.CREATE_NO_WINDOW)
     except subprocess.TimeoutExpired:
         return None, 'TIMEOUT apos %ss' % timeout_s
     except OSError as exc:

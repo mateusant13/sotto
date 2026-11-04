@@ -302,7 +302,7 @@ def arm_h_reproducible(css, path, tmpdir):
         return True, "generator absent -- arm skipped"
     out = os.path.join(tmpdir, "zipc-regen.css")
     rc = subprocess.call([sys.executable, GENERATOR, "--profile", "designs", "--out", out],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
     if rc != 0 or not os.path.exists(out):
         return False, "the generator did not run (rc=%d)" % rc
     with open(out, "rb") as fh:
@@ -400,7 +400,7 @@ def arm_i_dom(css, tmpdir):
     with open(sels, "w", encoding="utf-8") as fh:
         fh.write(__import__("json").dumps(selectors))
     try:
-        out = subprocess.check_output(["node", js, html, jsdom, sels], stderr=subprocess.DEVNULL)
+        out = subprocess.check_output(["node", js, html, jsdom, sels], stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
         dead = __import__("json").loads(out.decode("utf-8"))
     except Exception as exc:  # noqa: BLE001
         return True, "the jsdom arm could not run (%s) -- skipped" % type(exc).__name__
@@ -434,7 +434,7 @@ def mutants(css, tmpdir):
     legacy = os.path.join(tmpdir, "zipc-legacy.css")
     if os.path.exists(GENERATOR):
         subprocess.call([sys.executable, GENERATOR, "--profile", "legacy", "--out", legacy],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
     if os.path.exists(legacy):
         with open(legacy, "rb") as fh:
             out.append(("M1 the shipped file (one skeleton recoloured ten times)",

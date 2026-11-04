@@ -56,6 +56,6 @@ export function probeGop(file, fps = DEFAULT_FPS) {
     "-v", "error", "-select_streams", "v:0",
     "-skip_frame", "nokey", "-show_entries", "frame=pts_time",
     "-of", "csv=p=0", file,
-  ], { encoding: "utf8" });
+  ], { windowsHide: true, encoding: "utf8" });
   return gopFromKeyframes(out.split("\n"), fps);
 }

@@ -1,4 +1,5 @@
 import os, subprocess, tempfile, re
+import subprocess
 
 edge = r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
 if not os.path.exists(edge):
@@ -23,7 +24,7 @@ for name, extra in ARMS:
     cmd = [edge] + headless + ['--disable-gpu', '--no-first-run', '--user-data-dir=' + prof] + extra + \
           ['--dump-dom', 'file:///' + page.replace('\\', '/')]
     try:
-        p = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=90)
+        p = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=90, creationflags=subprocess.CREATE_NO_WINDOW)
     except subprocess.TimeoutExpired:
         print('%-22s TIMEOUT' % name)
         continue

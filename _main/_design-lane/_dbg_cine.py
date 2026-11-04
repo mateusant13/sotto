@@ -1,4 +1,5 @@
 import io, re, json, html, os, subprocess, sys, tempfile
+import subprocess
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 edge = r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
@@ -9,7 +10,7 @@ prof = tempfile.mkdtemp(prefix='sotto-dbg4-')
 cmd = [edge, '--headless=new', '--disable-gpu', '--no-first-run',
        '--user-data-dir=' + prof, '--virtual-time-budget=30000',
        '--dump-dom', 'file:///' + page + '#mode=chrome']
-p = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=240)
+p = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=240, creationflags=subprocess.CREATE_NO_WINDOW)
 t = p.stdout or ''
 for mm in re.finditer(r'data-chrome-probe-(\d+)="([^"]*)"', t):
     d = json.loads(html.unescape(mm.group(2)))

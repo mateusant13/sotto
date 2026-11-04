@@ -1,3 +1,4 @@
+# NO-BUG: youtube-verbatim-oracle — a legenda do Sotto tem de ser a LINHA do player, inteira. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """youtube-verbatim-oracle — a legenda do Sotto tem de ser a LINHA do player, inteira.
 
 AS TRES IMAGENS DO DONO (2026-11-02), cada uma um defeito diferente do mesmo caminho:

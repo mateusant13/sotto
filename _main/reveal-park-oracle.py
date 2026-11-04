@@ -1,5 +1,6 @@
 #!/usr/bin/env pythonw.exe
 # -*- coding: utf-8 -*-
+# NO-BUG: REVEAL-AND-PARK ORACLE -- as duas metades do mesmo defeito do dono (2026-11-02). -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """REVEAL-AND-PARK ORACLE -- as duas metades do mesmo defeito do dono (2026-11-02).
 
 O DONO, verbatim, na sessao dele (`pid 18676`, 18:52):

@@ -198,6 +198,35 @@ só separar audio pra transcrever cada falante?"*
   `_main/console-window-gate.py`, com a dívida anterior à regra **congelada** num baseline que não pode
   crescer (a mesma forma do `lane-screen-gate.py`). O detector de campo é o censo `ALERTA-JANELA` e o
   `powershell` com janela **não** é justificação: `-WindowStyle Hidden` custa uma palavra.
+- **UM CONTROLO DE INSTRUMENTO NUNCA ABRE JANELA (ordem do dono, 2026-11-04: *"PARA DE MOSTRA
+  POP UP"*).** Provei o vigia de consolas largando um `cmd.exe` sem flags de propósito, para o
+  detector ter algo para ver — e o que ele viu foi uma janela do Windows Terminal a abrir no ecrã
+  dele. O controlo provou o instrumento **e** violou a lei, e a lei ganha. **A MECÂNICA:** o
+  controlo corre **puro** — alimenta a função de classificação com uma fotografia FALSA e exige que
+  ela seja nomeada (`--neg-arm` em `_main/console-window-watch.py`, 5/5 casos, zero processos e
+  zero pixéis). A medição no ecrã faz-se **UMA vez**, com o resultado colado no recibo/commentário,
+  e não se repete: um instrumento cujo positivo só sabe falar por uma janela real não tem controlo
+  que se possa correr — tem uma fotografia.
+### O PORTÃO DAS JANELAS: DUAS PROVAS, CÓDIGO E ECRÃ (2026-11-04)
+Um `subprocess` sem `CREATE_NO_WINDOW` herda a consola do pai e **não** abre janela — por isso um
+agente que corre de um terminal nunca vê o defeito e o dono, que corre a app em `pythonw`, vê-o
+todos os dias. Duas provas, porque uma só mente:
+
+- **CÓDIGO — `_main/console-window-audit.py`.** Censo AST de **1139 ficheiros** (`.py`, `.js`,
+  `.mjs`) que resolve o `creationflags`/`startupinfo` **no escopo** (`creationflags=flags` de um
+  parâmetro, `=0x08000000 if os.name=='nt' else 0`). Medido hoje: `WINDOW 0`, `NO-FLAG 0`,
+  `STRING 0`, `GUARD-EXTERNAL 4` (os quatro verificados à mão: passam `CREATE_NO_WINDOW` do
+  chamador), `SCRIPT 313` (`.cmd/.bat/.ps1` — quem os chama é que é o sítio), `USER-GESTURE 2` (o
+  *reveal in folder* que o dono clica), `PARSE 0`. Duas correções de instrumento no mesmo dia: a
+  detecção de `os.system`/`os.popen` estava **cega** (`ast.dump(Name(id='os'))` não termina em
+  `id='os'`) e o grupo do regex de JS lia `child_process.` opcional como nome da função. O
+  `--neg-arm` larga um `os.system` num ficheiro temporário e **tem** de dar rc=1.
+- **ECRÃ — `_main/console-window-watch.py`.** Larga o alvo com `CREATE_NO_WINDOW` (a condição do
+  dono, não a confortável) e observa `EnumWindows` a **40 ms** mais `SetWinEventHook`, porque no
+  Windows 11 a consola pode ser `ConsoleWindowClass`, `CASCADIA_HOSTING_WINDOW_CLASS` (Windows
+  Terminal como host por omissão) ou `PseudoConsoleWindow`; um censo de uma só classe mente.
+  Medido: `--run` dos três oráculos de canal/landmine → **PASS, 0 janelas**. Uma consola que o
+  pai não tem aparece em **1,6 s** com três janelas (a medição única citada acima).
 - **NENHUM SCRIPT ABRE NADA NA TELA DELE — NEM POP-UP, NEM DIÁLOGO, NEM NAVEGADOR (ordem do dono,
   2026-11-04, verbatim: *"nao faz nenhum script existente ou novo abrir coisa na minha tela tipo pop
   up"*).** A regra de 2026-11-02 proibia a janela de consola em FOREGROUND; esta proíbe a outra metade
@@ -331,8 +360,22 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 01:2x):** `_main\_audit-verify-all.cmd` = **187060 B**,
-  **2349 CRLF** / 0 bare LF, sha256 `FCF2FA9889F7073AFB4581A31F6F852B34CD07284637BD14BDEA36E728945ED8`.
+- **PIN do ficheiro (medido 2026-11-04, 02:1x):** `_main\_audit-verify-all.cmd` = **188724 B**,
+  **2367 CRLF** / 0 bare LF, sha256 `45B8AC8BDE565CB32AC25BC86763E6FCE602422AC0CB4B2ABF762AC53C4E868F`.
+  (Este pin substitui o de 188128 B / 2361 CRLF, DEPOIS de o `console-window-gate` de REGEX ser
+  aposentado e trocado por tres passos: `console-window-audit` (censo **AST** de 1139 ficheiros
+  que resolve o `creationflags` NO ESCOPO -- `WINDOW 0 / NO-FLAG 0 / STRING 0 /
+  GUARD-EXTERNAL 4 / SCRIPT 313 / PARSE 0`), o seu `red-as-expected` (rc=1 ao apanhar um
+  `os.system` temporario) e `red-as-expected-console-window-watch` (controlo **puro** do vigia
+  de ecra: 5/5 casos, nenhum processo e nenhuma janela). Duas correccoes de INSTRUMENTO vieram
+  com a troca: a deteccao de `os.system`/`os.popen` estava **cega** (`ast.dump(Name(id='os'))`
+  nao termina em `id='os'`) e o regex de JS lia o `child_process.` opcional como nome da
+  funcao -- dai o censo ser AST e nao regex.)
+  (Este pin substitui o de 187060 B / 2349 CRLF, DEPOIS do par `emit-pipe-dead` +
+  `red-as-expected-emit-pipe-dead`: o `emit` do worker deixou de levar traceback quando o pai fecha o
+  cano -- medido no log do dono, `BRIDGE_DEATH_CAUSE OSError: [Errno 22] Invalid argument` com
+  `rc=1 deaths=1 kind=error` e uma recarga de 14-26 s por um erro que nao existe. 5 arms verdes no
+  positivo, 4 vermelhas no `--neg-arm`.)
   (Este pin substitui o de 186207 B / 2339 CRLF, DEPOIS do par `job-object` +
   `red-as-expected-job-object`: o job object kill-on-close que faz a ARVORE morrer com a shell.
   Medido antes da cura: um `taskkill /T /F` deixava quatro `msedgewebview2.exe` orfaos a deter o

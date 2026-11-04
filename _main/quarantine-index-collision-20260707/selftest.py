@@ -564,7 +564,7 @@ def _run_arm_a_in(root: Path, db: Path) -> subprocess.CompletedProcess:
          "--json", str(db.with_suffix(".json"))],
         cwd=str(root), env=env, capture_output=True, text=True, encoding="utf-8",
         timeout=300, **_no_window(),
-    )
+    creationflags=subprocess.CREATE_NO_WINDOW)
 
 
 def arm_c(db: Path, work: Path) -> dict:
@@ -692,7 +692,7 @@ def arm_d(db: Path, work: Path) -> dict:
              "--json", str(race / f"d{part}.json")],
             env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             encoding="utf-8", **_no_window(),
-        )
+        creationflags=subprocess.CREATE_NO_WINDOW)
         for part in (1, 2)
     }
     reports: dict[int, dict] = {}

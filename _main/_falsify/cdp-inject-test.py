@@ -71,7 +71,7 @@ def main():
             env.pop('COREWEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', None)
         proc = subprocess.Popen([sys.executable, child_path], env=env,
                                 stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL)
+                                stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
         deadline = time.time() + 25
         opened = False
         while time.time() < deadline and proc.poll() is None:

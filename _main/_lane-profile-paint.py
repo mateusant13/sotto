@@ -101,7 +101,7 @@ def run_arm(arm_mod, browser, arm, theme, port, motion, deadline_s):
     if motion:
         cmd.insert(1, '--blink-settings=prefersReducedMotion=false')
     started = time.time()
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
     try:
         while time.time() - started < deadline_s and arm_mod.Beacon.payload is None:
             time.sleep(0.25)
@@ -110,7 +110,7 @@ def run_arm(arm_mod, browser, arm, theme, port, motion, deadline_s):
         # The kill names the EXACT pid Popen gave me, never a text filter: a
         # filter on `chrome` would take the owner's own browser with it.
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
         try:
             proc.wait(timeout=15)
         except subprocess.TimeoutExpired:

@@ -27,7 +27,7 @@ PROBE = os.path.join(HERE, "boot-io.py")
 def run(label, script):
     print("== %s (%s)" % (label, os.path.basename(script)), flush=True)
     out = subprocess.run([sys.executable, PROBE, "--script", script],
-                         cwd=REPO, capture_output=True, text=True)
+                         cwd=REPO, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     for line in out.stdout.splitlines():
         if line.startswith("RESULT"):
             print(line, flush=True)
@@ -38,7 +38,7 @@ def run(label, script):
 
 def main():
     src = subprocess.run(["git", "show", "HEAD:worker/sotto_worker.py"],
-                         cwd=REPO, capture_output=True, text=True)
+                         cwd=REPO, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     if src.returncode != 0:
         print("cannot read HEAD worker:", src.stderr[-400:])
         return 2

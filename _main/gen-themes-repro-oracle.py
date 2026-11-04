@@ -67,7 +67,7 @@ out = os.path.join(TMP, 'gen_redirected.py')
 with open(out, 'w', encoding='utf-8') as fh:
     fh.write(src2)
 
-r = subprocess.run([sys.executable, out], capture_output=True, text=True)
+r = subprocess.run([sys.executable, out], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
 print('generator rc=%d' % r.returncode)
 for line in (r.stdout or "").strip().splitlines()[-3:]:
     print('   ' + line[:100])

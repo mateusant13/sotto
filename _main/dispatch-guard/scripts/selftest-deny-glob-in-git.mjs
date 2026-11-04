@@ -8,7 +8,7 @@ const TARGET = join(here, 'deny-glob-in-git.mjs');
 
 function fire(command) {
   const r = spawnSync(process.execPath, [TARGET], {
-    input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_input: { command } }),
+    input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_input: { windowsHide: true, command } }),
     encoding: 'utf8',
   });
   let denied = false;

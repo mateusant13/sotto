@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: A ARVORE MORRE COM A SHELL -- provado por execucao, nao por argumento. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """A ARVORE MORRE COM A SHELL -- provado por execucao, nao por argumento.
 
 MEDIDO 2026-11-04 nesta maquina: `taskkill /PID <shell> /T /F` matava a app e

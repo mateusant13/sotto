@@ -276,7 +276,7 @@ def selftest():
             break
         time.sleep(0.1)
     try:
-        subprocess.run(['taskkill', '/PID', str(pid), '/F'], capture_output=True)
+        subprocess.run(['taskkill', '/PID', str(pid), '/F'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
     except OSError:
         pass
     print('integralidade do filho = %s%s' % (child, (' (%s)' % why) if why else ''))
@@ -302,7 +302,7 @@ def selftest():
             break
     if pid2:
         try:
-            subprocess.run(['taskkill', '/PID', str(pid2), '/F'], capture_output=True)
+            subprocess.run(['taskkill', '/PID', str(pid2), '/F'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
         except OSError:
             pass
     print('o filho EXECUTOU codigo = %s' % ran)

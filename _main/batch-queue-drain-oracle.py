@@ -1,3 +1,4 @@
+# NO-BUG: A FILA CRESCE POR FORA -- o executor tem de ver o que outro processo enfileirou. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """A FILA CRESCE POR FORA -- o executor tem de ver o que outro processo enfileirou.
 
 O DEFEITO MEDIDO (2026-11-03, instancia viva pid 41760):

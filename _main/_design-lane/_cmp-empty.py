@@ -1,4 +1,5 @@
 import importlib.util, json, os, subprocess, sys, tempfile
+import subprocess
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 spec = importlib.util.spec_from_file_location('audit_shots', os.path.join(HERE, 'audit-shots.py'))
@@ -24,7 +25,7 @@ for theme in themes:
 jf = os.path.join(wd, 'jobs.json')
 open(jf, 'w', encoding='utf-8').write(json.dumps(jobs, indent=2))
 print('workdir', wd)
-r = subprocess.run(['node', os.path.join(HERE, 'cdp.mjs'), '--jobs', jf], capture_output=True, text=True)
+r = subprocess.run(['node', os.path.join(HERE, 'cdp.mjs'), '--jobs', jf], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
 print(r.stdout[-1500:])
 print(r.stderr[-1000:])
 print('rc', r.returncode)

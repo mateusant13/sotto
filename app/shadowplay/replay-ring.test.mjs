@@ -34,7 +34,7 @@ function makeSeedClip() {
     execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
       "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=2",
       "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", seed],
-      { stdio: ["ignore", "pipe", "pipe"] });
+      { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     return readFileSync(seed);
   } catch (cause) {
     throw new Error(

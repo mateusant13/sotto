@@ -460,7 +460,7 @@ def run(cmd, cache):
         return cache[key]
     t0 = time.time()
     try:
-        p = subprocess.run(cmd["argv"], cwd=REPO, capture_output=True, timeout=cmd["timeout"])
+        p = subprocess.run(cmd["argv"], cwd=REPO, capture_output=True, timeout=cmd["timeout"], creationflags=subprocess.CREATE_NO_WINDOW)
         out = ((p.stdout or b"") + (p.stderr or b"")).decode("utf-8", "replace")
         rc = p.returncode
     except subprocess.TimeoutExpired:

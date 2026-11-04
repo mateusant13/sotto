@@ -44,10 +44,11 @@ url = 'file:///' + page.replace('\\', '/')
 cmd = [edge, '--headless=new', '--disable-gpu', '--no-first-run',
        '--user-data-dir=' + prof, '--virtual-time-budget=6000', '--dump-dom', url]
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                     encoding='utf-8', errors='replace')
+                     encoding='utf-8', errors='replace', creationflags=subprocess.CREATE_NO_WINDOW)
 out, errs = p.communicate(timeout=120)
 print('HITS from file:// page:', HITS)
 import re
+import subprocess
 m = re.search(r'id="r">([^<]*)<', out or '')
 print('page said:', m.group(1) if m else 'NO OUTPUT')
 HITS.clear()
@@ -78,7 +79,7 @@ cmd = [edge, '--headless=new', '--disable-gpu', '--no-first-run',
        '--user-data-dir=' + prof, '--virtual-time-budget=6000', '--dump-dom',
        'http://127.0.0.1:%d/p.html' % port2]
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                     encoding='utf-8', errors='replace')
+                     encoding='utf-8', errors='replace', creationflags=subprocess.CREATE_NO_WINDOW)
 out, errs = p.communicate(timeout=120)
 print('HITS from http page:', HITS)
 m = re.search(r'id="r">([^<]*)<', out or '')

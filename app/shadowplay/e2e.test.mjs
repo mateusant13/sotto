@@ -44,7 +44,7 @@ function makeSeedClip() {
     execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
       "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=2",
       "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", seed],
-      { stdio: ["ignore", "pipe", "pipe"] });
+      { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     return readFileSync(seed);
   } catch (cause) {
     throw new Error(
@@ -297,7 +297,7 @@ try {
       // a skip would turn that claim into a silent pass.
       execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
         "-f", "lavfi", "-i", "color=c=blue:size=320x240:rate=30:duration=2",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", still]);
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", still], { windowsHide: true });
 
       const STILL = readFileSync(still);
       assert.ok(STILL.length > 1000, "the still must be a real container, not a stub");

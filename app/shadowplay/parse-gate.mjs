@@ -65,7 +65,7 @@ function buildGoodBad() {
   if (_gb) return _gb;
   const d = mkdtempSync(join(tmpdir(), "gate-gb-"));
   const good = join(d, "good.mp4"), bad = join(d, "bad.mp4");
-  const ff = (a) => { try { spawnSync("ffmpeg", ["-v", "error", "-y", ...a], { timeout: 60000 }); } catch { /* the probe reports what it could not read */ } };
+  const ff = (a) => { try { spawnSync("ffmpeg", ["-v", "error", "-y", ...a], { windowsHide: true, timeout: 60000 }); } catch { /* the probe reports what it could not read */ } };
   ff(["-f", "lavfi", "-i", "testsrc=s=640x360:r=30:d=4", "-c:v", "h264_nvenc", "-preset", "p1", "-g", "30", good]);
   ff(["-ss", "1.5", "-i", good, "-c", "copy", "-copyts", "-avoid_negative_ts", "disabled", bad]);
   _gb = existsSync(good) && existsSync(bad) ? [good, bad] : [];
@@ -78,7 +78,7 @@ function buildBusy() {
   const out = join(d, "busy.mp4");
   try {
     spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi",
-      "-i", "testsrc=s=640x360:r=30:d=2", "-c:v", "h264_nvenc", "-preset", "p1", "-g", "60", out], { timeout: 60000 });
+      "-i", "testsrc=s=640x360:r=30:d=2", "-c:v", "h264_nvenc", "-preset", "p1", "-g", "60", out], { windowsHide: true, timeout: 60000 });
   } catch { /* same */ }
   _busy = existsSync(out) ? [out] : [];
   return _busy;
@@ -98,7 +98,7 @@ function buildAnnexB() {
     spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi",
       "-i", "testsrc=s=320x240:rate=30:duration=2", "-c:v", "libx264",
       "-pix_fmt", "yuv420p", "-g", "30", "-bsf:v", "h264_mp4toannexb", "-f", "h264", p],
-      { encoding: "utf8", timeout: 60000 });
+      { windowsHide: true, encoding: "utf8", timeout: 60000 });
     return existsSync(p) ? p : null;
   } catch { return null; } finally { /* the probe owns the dir; nothing to clean here */ }
 }
@@ -240,7 +240,7 @@ const PROBE_TIMEOUT_MS_OVERRIDE = {
 };
 
 function classify(script) {
-  const r = spawnSync(process.execPath, [join(HERE, script), ...(ARGV_FOR[script] || [])], {
+  const r = spawnSync(process.execPath, [join(HERE, script), ...(ARGV_FOR[script] || [])], { windowsHide: true,
     cwd: HERE, encoding: "utf8",
     timeout: PROBE_TIMEOUT_MS_OVERRIDE[script] || PROBE_TIMEOUT_MS,
   });
@@ -312,7 +312,7 @@ function redArm() {
       'console.log("RECEIPT=pretend");',
     ].join("\n"), "utf8");
 
-    const r = spawnSync(process.execPath, [broken], { encoding: "utf8", timeout: 60000 });
+    const r = spawnSync(process.execPath, [broken], { windowsHide: true, encoding: "utf8", timeout: 60000 });
     const out = (r.stdout || "") + (r.stderr || "");
     const detected = STALE_API.some((re) => re.test(out));
     return { refused: r.status !== 0 && detected, status: r.status, bytes: statSync(broken).size };

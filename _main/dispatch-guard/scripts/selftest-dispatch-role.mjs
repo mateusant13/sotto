@@ -164,7 +164,7 @@ function runArm(hookPath, arm, i, dataDir) {
   const r = spawnSync(process.execPath, [hookPath], {
     input: JSON.stringify(payload),
     encoding: "utf8",
-    env: { ...process.env, PLUGIN_DATA: dataDir },
+    env: { windowsHide: true, ...process.env, PLUGIN_DATA: dataDir },
   });
   return { got: readDecision(r.stdout), status: r.status, ledger: readLedgerVerdict(dataDir), stderr: String(r.stderr || "") };
 }
@@ -271,7 +271,7 @@ if (mutant) {
   // every arm "red" for a reason that has nothing to do with the rule under test
   // - the same defect as an arm that cannot fail, and silent, so it is checked
   // BEFORE any arm runs rather than inferred from the red.
-  const chk = spawnSync(process.execPath, ["--check", hookPath], { encoding: "utf8" });
+  const chk = spawnSync(process.execPath, ["--check", hookPath], { windowsHide: true, encoding: "utf8" });
   if (chk.status !== 0) {
     process.stderr.write(
       "selftest-dispatch-role: MUTANT-UNLOADABLE: the mutated copy does not parse, so its red arms " +

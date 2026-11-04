@@ -15,7 +15,7 @@ function fire(message, extra = {}) {
 
 /** Fire the real hook with a byte-for-byte stdin payload (for the malformed arm). */
 function fireRaw(raw) {
-  const r = spawnSync(process.execPath, [TARGET], { input: raw, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [TARGET], { windowsHide: true, input: raw, encoding: 'utf8' });
   let reason = null;
   if (r.stdout && r.stdout.trim()) {
     try {

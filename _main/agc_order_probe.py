@@ -177,7 +177,7 @@ def neg_arm():
         fh.write(mutant)
     try:
         proc = subprocess.run([sys.executable, os.path.abspath(__file__), "--worker", tmp],
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     finally:
         try:
             os.unlink(tmp)

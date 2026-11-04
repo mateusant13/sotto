@@ -50,7 +50,7 @@ import sys
 
 def schtasks(*args):
     cmd = ['schtasks'] + list(args)
-    p = subprocess.run(cmd, capture_output=True, text=True, errors='replace')
+    p = subprocess.run(cmd, capture_output=True, text=True, errors='replace', creationflags=subprocess.CREATE_NO_WINDOW)
     return p.returncode, (p.stdout or '') + (p.stderr or '')
 
 

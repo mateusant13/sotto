@@ -171,7 +171,7 @@ def baseline_revision() -> tuple:
                        ("HEAD:worker/sotto_worker.py", "HEAD")):
         out = subprocess.run(["git", "-C", REPO, "show", spec],
                              capture_output=True, text=True, encoding="utf-8",
-                             errors="replace")
+                             errors="replace", creationflags=subprocess.CREATE_NO_WINDOW)
         if out.returncode == 0 and out.stdout.strip():
             return out.stdout, name
     return "", ""

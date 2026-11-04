@@ -1,3 +1,4 @@
+# NO-BUG: owner-audio-gate — the owner's audio cannot be written by anything automatic. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """owner-audio-gate — the owner's audio cannot be written by anything automatic.
 
 OWNER ORDER (2026-11-02, verbatim): *"nunca mais roda nada que vai mutar meu audio

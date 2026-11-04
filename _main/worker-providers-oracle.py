@@ -1,3 +1,4 @@
+# NO-BUG: worker-providers-oracle — is the Sotto engine running on the GPU, or on the CPU? -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """worker-providers-oracle — is the Sotto engine running on the GPU, or on the CPU?
 
 BORN FROM A MEASURED QUESTION (owner, 2026-11-02): *"1,7x realtime? ta certo isso?

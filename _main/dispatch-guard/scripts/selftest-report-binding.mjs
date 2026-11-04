@@ -10,7 +10,7 @@ const TARGET = join(here, 'check-report-binding.mjs');
 
 function fire(message) {
   const r = spawnSync(process.execPath, [TARGET], {
-    input: JSON.stringify({ hook_event_name: 'Stop', last_assistant_message: message }),
+    input: JSON.stringify({ windowsHide: true, hook_event_name: 'Stop', last_assistant_message: message }),
     encoding: 'utf8',
   });
   let reason = null;

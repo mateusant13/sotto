@@ -278,7 +278,7 @@ def _run_task(task=TASK):
     """Dispara a tarefa agendada do dono. (ok, detalhe)."""
     try:
         result = subprocess.run(['schtasks', '/run', '/tn', task], capture_output=True,
-                                close_fds=True)
+                                close_fds=True, creationflags=subprocess.CREATE_NO_WINDOW)
     except OSError as exc:
         return False, repr(exc)
     return result.returncode == 0, 'schtasks rc=%d' % result.returncode

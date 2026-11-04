@@ -11,7 +11,7 @@ CMDS = ["ping", "start", "stop", "record", "cut", "capture.start",
 p = subprocess.Popen([EXE, "--run", "--seconds", "3", "--cut-at", "1",
                       "--out", r"H:\sotto-wt\e2e\_main\build\stdinprobe.mp4"],
                      stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                     stderr=subprocess.STDOUT, text=True, bufsize=1)
+                     stderr=subprocess.STDOUT, text=True, bufsize=1, creationflags=subprocess.CREATE_NO_WINDOW)
 
 replies = []
 def reader():
@@ -41,6 +41,7 @@ for i, (c, r) in enumerate(zip(CMDS, replies), 1):
     print(f"  {i:2d}. cmd={c:<15s} -> {r}")
 print(f"\ntotal replies={len(replies)} for {len(CMDS)} commands")
 import pathlib
+import subprocess
 clip = pathlib.Path(r"H:\sotto-wt\e2e\_main\build\stdinprobe.mp4")
 print(f"clip exists={clip.exists()} bytes={clip.stat().st_size if clip.exists() else 0}")
 print("\n=== remaining process output ===")

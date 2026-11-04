@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: A MORTE DO WORKER TEM DE PUBLICAR A CAUSA -- nao tres linhas de stats. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """A MORTE DO WORKER TEM DE PUBLICAR A CAUSA -- nao tres linhas de stats.
 
 O DEFEITO (medido 2026-11-02, na sessao do dono a jogar). O worker morreu DUAS
@@ -108,7 +109,7 @@ def run_arms(path, label):
     # object has no attribute 'wait'`).
     proc = subprocess.Popen([sys.executable, "-c", CHILD],
                             stderr=subprocess.PIPE, stdout=subprocess.DEVNULL,
-                            text=True)
+                            text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     err = proc.stderr.read()
     fake2 = Fake()
     fake2.child = proc
@@ -122,7 +123,7 @@ def run_arms(path, label):
                          "PASS" if c_ok else "FAIL"))
 
     proc2 = subprocess.Popen([sys.executable, "-c", "import sys; sys.exit(1)"],
-                             stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+                             stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
     fake3 = Fake()
     fake3.stderr_tail = ["WORKER_STATS tag=tick blocks=10 peak=0.5",
                          "REDUX_BATCH_KICK reason=interval engine=parakeet"]
@@ -161,7 +162,7 @@ def neg_arm():
                      .replace(guard, "if False:", 1))
     try:
         proc = subprocess.run([sys.executable, os.path.abspath(__file__), "--shell", path],
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     finally:
         try:
             os.remove(path)

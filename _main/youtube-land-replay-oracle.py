@@ -1,3 +1,4 @@
+# NO-BUG: O JOGADOR MANDA ENQUANTO PUBLICA -- replay do caminho VIVO da legenda. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """O JOGADOR MANDA ENQUANTO PUBLICA -- replay do caminho VIVO da legenda.
 
 O DEFEITO MEDIDO (2026-11-03, no proprio fonte): `ExternalCaptionWatcher._tick`

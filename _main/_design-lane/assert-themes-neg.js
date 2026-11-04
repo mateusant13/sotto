@@ -62,7 +62,7 @@ function copyAll(dir) {
 
 function run(dir) {
   try {
-    const out = execFileSync(process.execPath, [runner, '--dir', dir], {
+    const out = execFileSync(process.execPath, [runner, '--dir', dir], { windowsHide: true,
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
     });
     return { code: 0, out };

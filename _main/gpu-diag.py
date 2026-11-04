@@ -2,6 +2,7 @@
 # and ORT's OWN error text (severity=1). Must run under python.exe so stderr is real
 # (pythonw has no stderr, which is exactly how the reason gets lost).
 import json, os, subprocess, sys, traceback
+import subprocess
 
 print("=== python ===")
 print(sys.executable)
@@ -27,16 +28,16 @@ for mod in ("onnxruntime", "onnxruntime_gpu"):
 
 print("=== packages (pip) ===")
 for name in ("onnxruntime", "onnxruntime-gpu", "onnxruntime-directml", "nvidia-cublas-cu12", "nvidia-cudnn-cu12"):
-    r = subprocess.run([sys.executable, "-m", "pip", "show", name], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, "-m", "pip", "show", name], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     line = next((l for l in r.stdout.splitlines() if l.startswith("Version:")), "NOT INSTALLED")
     print(f"  {name:<24} {line}")
 
 print("=== GPU (nvidia-smi) ===")
 try:
     r = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader"],
-                       capture_output=True, text=True, timeout=20)
+                       capture_output=True, text=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
     print("query rc:", r.returncode, r.stdout.strip(), r.stderr.strip()[:200])
-    r2 = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=20)
+    r2 = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
     for l in r2.stdout.splitlines()[:12]:
         print("   ", l)
 except Exception as e:

@@ -1,3 +1,4 @@
+# NO-BUG: Portao da SEGUNDA FONTE da legenda do YouTube (`youtube_cdp_source.py`). -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """Portao da SEGUNDA FONTE da legenda do YouTube (`youtube_cdp_source.py`).
 
 POR QUE ESTE FICHEIRO EXISTE

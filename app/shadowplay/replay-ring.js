@@ -25,7 +25,7 @@ export function clipDurationSeconds(sourceFile) {
     "-show_entries", "format=duration",
     "-of", "csv=p=0",
     sourceFile,
-  ], { encoding: "utf8" }).trim();
+  ], { windowsHide: true, encoding: "utf8" }).trim();
   const seconds = Number.parseFloat(raw);
   // An unreadable duration must NOT become a passing verdict. Returning null sends the
   // gate down its refuse path rather than its accept path.
@@ -112,7 +112,7 @@ export class ReplayRing {
     const pts = parseKeyframes(
       execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0",
         "-skip_frame", "nokey", "-show_entries", "frame=pts_time",
-        "-of", "csv=p=0", sourceFile], { encoding: "utf8" }).split("\n")
+        "-of", "csv=p=0", sourceFile], { windowsHide: true, encoding: "utf8" }).split("\n")
     );
     if (pts.length === 0) throw new RangeError("no keyframes in the source");
     const headSeconds = headFrame / fps;

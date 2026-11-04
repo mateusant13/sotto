@@ -37,7 +37,7 @@ for name, code in CASES:
             capture_output=True,
             text=True,
             timeout=CEILING_S,
-        )
+        creationflags=subprocess.CREATE_NO_WINDOW)
         dt = time.time() - t0
         if r.returncode == 0:
             results[name] = {"state": "OK", "s": round(dt, 2), "out": r.stdout.strip()[:200]}

@@ -59,7 +59,7 @@ def popen(argv, **kwargs):
     if si is not None and "startupinfo" not in kwargs:
         kwargs["startupinfo"] = si
     kwargs.setdefault("stdin", subprocess.DEVNULL)
-    return subprocess.Popen(argv, **kwargs)
+    return subprocess.Popen(argv, **kwargs, creationflags=CREATE_NO_WINDOW)
 
 
 def run(argv, cwd=None, env=None, capture=False, timeout=None, text=True):
@@ -90,7 +90,7 @@ def run(argv, cwd=None, env=None, capture=False, timeout=None, text=True):
     else:
         kw.update(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        proc = subprocess.Popen(argv, **kw)
+        proc = subprocess.Popen(argv, **kw, creationflags=CREATE_NO_WINDOW)
     except FileNotFoundError as exc:
         return (127, "", str(exc))
     try:

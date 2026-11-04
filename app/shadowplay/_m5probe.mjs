@@ -23,7 +23,7 @@ const tmp = mkdtempSync(join(tmpdir(), "m5probe-"));
 const src = join(tmp, "src.h264");
 execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
   "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=2",
-  "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", "-f", "h264", src]);
+  "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", "-f", "h264", src], { windowsHide: true });
 
 const buf = readFileSync(src);
 // Locate Annex-B start codes and the ORIGINAL index of each NAL.
@@ -59,7 +59,7 @@ let flags = "";
 try {
   flags = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0",
     "-show_entries", "frame=key_frame", "-of", "csv=p=0", out],
-    { stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
+    { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
 } catch (e) {
   flags = "PROBE_FAILED";
 }

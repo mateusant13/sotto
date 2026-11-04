@@ -42,7 +42,7 @@ console.log(`  suite population  = ${SUITES.length} (every *.test.mjs on disk)`)
 console.log(`  gate present      = ${existsSync(join(HERE, GATE))}`);
 
 function runSuite(f) {
-  const r = spawnSync(process.execPath, [join(HERE, f)], { cwd: HERE, encoding: "utf8", timeout: 300000 });
+  const r = spawnSync(process.execPath, [join(HERE, f)], { windowsHide: true, cwd: HERE, encoding: "utf8", timeout: 300000 });
   const out = (r.stdout || "") + (r.stderr || "");
   const m = out.match(/RESULT\s+(\d+)\s+passed,\s*(\d+)\s+failed/);
   if (!m) return { f, ok: false, why: "no RESULT line -- it did not report at all", passed: null, failed: null };
@@ -68,7 +68,7 @@ if (existsSync(join(HERE, GATE))) {
   // 231 s isolado. Com 300 s o gate era MATADO A MEIO pelo runner, e a saida
   // era a mesma do probe: "exit null". Um orcamento que mata o gate antes de
   // o gate acabar e' um orcamento que mede a maquina, nao o codigo.
-  const r = spawnSync(process.execPath, [join(HERE, GATE)], { cwd: HERE, encoding: "utf8", timeout: 900000 });
+  const r = spawnSync(process.execPath, [join(HERE, GATE)], { windowsHide: true, cwd: HERE, encoding: "utf8", timeout: 900000 });
   gateExit = r.status;
   const m = (r.stdout || "").match(/RESULT\s+(\d+)\s+passed,\s*(\d+)\s+refused/);
   if (m) gateStatus = `${m[1]} passed / ${m[2]} refused`;

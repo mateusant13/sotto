@@ -29,7 +29,7 @@ function arm(name, ok, detail) {
 function run(payload, dataDir) {
   const dd = dataDir || mkdtempSync(join(tmpdir(), 'sa-'));
   const res = execFileSync(process.execPath, [SCRIPT], {
-    input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, PLUGIN_DATA: dd },
+    input: JSON.stringify(payload), encoding: 'utf8', env: { windowsHide: true, ...process.env, PLUGIN_DATA: dd },
   });
   return { out: res, dataDir: dd };
 }
@@ -60,13 +60,13 @@ console.log('selftest: selfaudit-dispatch-inject.mjs');
     const stmt = db.prepare('INSERT INTO local_runtime_message_rows (session_id, role, created_at_ms, data_json) VALUES (?,?,?,?)');
     stmt.run('mvs_fixturesession0000000000000000', 'assistant', 1, JSON.stringify({ msg_content: audit }));
     db.close();
-  `, dbPath], { encoding: 'utf8' });
+  `, dbPath], { windowsHide: true, encoding: 'utf8' });
 
   const dd = mkdtempSync(join(tmpdir(), 'sa-'));
   const res = execFileSync(process.execPath, [SCRIPT], {
     input: JSON.stringify({ session_id: 'mvs_fixturesession0000000000000000' }),
     encoding: 'utf8',
-    env: { ...process.env, PLUGIN_DATA: dd, SELFAUDIT_DB: dbPath },
+    env: { windowsHide: true, ...process.env, PLUGIN_DATA: dd, SELFAUDIT_DB: dbPath },
   });
   let ctx = '';
   try { ctx = JSON.parse(res).hookSpecificOutput?.additionalContext || ''; } catch {}
@@ -99,7 +99,7 @@ console.log('selftest: selfaudit-dispatch-inject.mjs');
   let crashed = false, out = '';
   try {
     const r = execFileSync(process.execPath, [SCRIPT], { input: '{not json', encoding: 'utf8',
-      env: { ...process.env, PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'sa-')) } });
+      env: { windowsHide: true, ...process.env, PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'sa-')) } });
     out = r;
   } catch (e) { crashed = true; out = String(e.stderr || e.message); }
   arm('malformed stdin -> exit 0, no crash', !crashed && out.trim() === '', out.slice(0, 160));

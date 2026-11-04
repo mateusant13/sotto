@@ -1,3 +1,4 @@
+# NO-BUG: A MAQUINA CALADA NAO E' UM DISPOSITIVO PARTIDO -- o oraculo da janela que espera. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """A MAQUINA CALADA NAO E' UM DISPOSITIVO PARTIDO -- o oraculo da janela que espera.
 
 O DEFEITO QUE ISTO JULGA (medido 2026-11-02 na sessao viva do dono, pid 4404):

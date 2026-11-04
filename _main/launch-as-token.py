@@ -299,7 +299,7 @@ def _selftest_source():
     if '--source' in sys.argv:
         candidates = [int(sys.argv[sys.argv.index('--source') + 1])]
     else:
-        result = subprocess.run(['tasklist', '/fo', 'csv', '/nh'], capture_output=True)
+        result = subprocess.run(['tasklist', '/fo', 'csv', '/nh'], capture_output=True, creationflags=CREATE_NO_WINDOW)
         for row in (result.stdout or b'').decode('cp850', 'replace').splitlines():
             columns = [column.strip('"') for column in row.split('","')]
             if len(columns) >= 2 and columns[0].lower() in ('explorer.exe', 'sotto_webview.py'):
@@ -386,7 +386,7 @@ def _selftest():
     k32.WaitForSingleObject.restype = wt.DWORD
     victim_handle = k32.OpenProcess(0x00100000, False, victim)   # SYNCHRONIZE
     time.sleep(1.0)
-    plain = subprocess.run(['taskkill', '/PID', str(victim), '/T', '/F'], capture_output=True)
+    plain = subprocess.run(['taskkill', '/PID', str(victim), '/T', '/F'], capture_output=True, creationflags=CREATE_NO_WINDOW)
     delegated, kill_source, kill_child = kill_via_high(victim, source)
     # 8 s NAO CHEGAM NESTA MAQUINA (medido 2026-10-30: a mesma vitima saiu em 8 s
     # num run e nao saiu dentro de 8 s no run da bateria, com 700+ processos a

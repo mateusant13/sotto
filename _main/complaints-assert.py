@@ -189,7 +189,7 @@ def a_theme_timecode_nowrap():
 def a_autostart_on():
     """*"faz ... o programa iniciar com o windows"* (2026-10-09 06:21)."""
     cmd = [os.path.join(REPO, "app", "webview", "run.cmd"), "--autostart-status"]
-    p = subprocess.run(cmd, cwd=REPO, capture_output=True, timeout=120, shell=True)
+    p = subprocess.run(cmd, cwd=REPO, capture_output=True, timeout=120, shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
     out = ((p.stdout or b"") + (p.stderr or b"")).decode("utf-8", "replace")
     line = [l for l in out.splitlines() if "AUTOSTART" in l]
     print("  %s" % (line[-1].strip() if line else "(sem linha AUTOSTART) rc=%d)" % p.returncode))
@@ -410,7 +410,7 @@ def a_worktrees_explained():
     A asercao falha se a regra dos pesos sair do AGENTS.md ou se nao houver worktrees --
     as duas coisas de que a explicacao depende.
     """
-    out = subprocess.run(["git", "worktree", "list"], cwd=REPO, capture_output=True, timeout=60)
+    out = subprocess.run(["git", "worktree", "list"], cwd=REPO, capture_output=True, timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
     txt = (out.stdout or b"").decode("utf-8", "replace").strip().splitlines()
     inside = [l for l in txt if re.search(r"\bsotto\\[^\s]", l)]
     print("  worktrees: %d" % len(txt))

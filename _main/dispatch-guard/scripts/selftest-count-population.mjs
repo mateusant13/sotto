@@ -138,7 +138,7 @@ function fire(payload) {
   return spawnSync(process.execPath, [HOOK], {
     input: JSON.stringify(payload),
     encoding: "utf8",
-    env: { ...process.env, PLUGIN_DATA: data },
+    env: { windowsHide: true, ...process.env, PLUGIN_DATA: data },
   });
 }
 
@@ -235,7 +235,7 @@ for (const [label, raw] of [
   const r = spawnSync(process.execPath, [HOOK], {
     input: raw,
     encoding: "utf8",
-    env: { ...process.env, PLUGIN_DATA: data },
+    env: { windowsHide: true, ...process.env, PLUGIN_DATA: data },
   });
   check(r.status === 0 && String(r.stdout || "").trim() === "", `${label} -> rc=${r.status} stdout=${JSON.stringify(String(r.stdout || "").slice(0, 40))} (want rc=0 silent)`);
 }

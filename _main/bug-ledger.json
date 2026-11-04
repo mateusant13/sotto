@@ -1,7 +1,14 @@
 {
   "population": "as reclamacoes de desempenho/stutter do dono sobre o Sotto, 2026-10-21 .. 2026-10-23 (corpus I:\\!manager\\state\\herdr\\complaints\\sotto.md, L96/L99/L122 e as mensagens de 2026-10-23)",
   "window": "2026-10-21 .. 2026-10-23",
-  "states": ["reported", "reproduced", "cause-isolated", "fixed", "verified", "recurrence-watch"],
+  "states": [
+    "reported",
+    "reproduced",
+    "cause-isolated",
+    "fixed",
+    "verified",
+    "recurrence-watch"
+  ],
   "author": "lane deepseek-v4.1-flash (opencode-go-4)",
   "sources": [
     "G:\\superharness\\runs\\workflow-quality-loop-findings.md (2026-10-23 20:20)",
@@ -38,12 +45,42 @@
       },
       "coverage_gate": "seam-coverage",
       "siblings": [
-        {"instance": "RegisterHotKey(None, _HOTKEY_ID, ...) no arranque", "probe": "grep RegisterHotKey + leitura de hotkey_thread", "verdict": "benign", "why": "e global e instalado no arranque, mas o Windows CONSOME a combinacao: nao ha callback por evento, e e o unico controlo do produto"},
-        {"instance": "SetTimer(5 s) na thread do hook", "probe": "grep SetTimer/KillTimer", "verdict": "benign", "why": "temporizador por-thread, 5 s, morto no stop; nao toca no caminho de input"},
-        {"instance": "GetCursorPos (dois sitios)", "probe": "grep GetCursorPos + leitura das duas funcoes", "verdict": "clean", "why": "chamado a pedido (escolher o monitor ao mostrar; posicionar o menu do tray), nao ha polling"},
-        {"instance": "ClipCursor / SetFocus", "probe": "grep ClipCursor/SetFocus", "verdict": "clean", "why": "so aparecem em comentarios que dizem que o shell NAO lhes toca"},
-        {"instance": "WS_EX_LAYERED no painel", "probe": "leitura de 6444-6473", "verdict": "benign", "why": "opt-in por SOTTO_LAYERED=1 e desligado por omissao"},
-        {"instance": "janela layered da legenda (caption_overlay.py)", "probe": "grep WS_EX_LAYERED/UpdateLayeredWindow", "verdict": "unproven", "why": "e o produto (nao e caminho de input, WS_EX_TRANSPARENT), mas o custo de composicao com a legenda escondida NAO foi medido"}
+        {
+          "instance": "RegisterHotKey(None, _HOTKEY_ID, ...) no arranque",
+          "probe": "grep RegisterHotKey + leitura de hotkey_thread",
+          "verdict": "benign",
+          "why": "e global e instalado no arranque, mas o Windows CONSOME a combinacao: nao ha callback por evento, e e o unico controlo do produto"
+        },
+        {
+          "instance": "SetTimer(5 s) na thread do hook",
+          "probe": "grep SetTimer/KillTimer",
+          "verdict": "benign",
+          "why": "temporizador por-thread, 5 s, morto no stop; nao toca no caminho de input"
+        },
+        {
+          "instance": "GetCursorPos (dois sitios)",
+          "probe": "grep GetCursorPos + leitura das duas funcoes",
+          "verdict": "clean",
+          "why": "chamado a pedido (escolher o monitor ao mostrar; posicionar o menu do tray), nao ha polling"
+        },
+        {
+          "instance": "ClipCursor / SetFocus",
+          "probe": "grep ClipCursor/SetFocus",
+          "verdict": "clean",
+          "why": "so aparecem em comentarios que dizem que o shell NAO lhes toca"
+        },
+        {
+          "instance": "WS_EX_LAYERED no painel",
+          "probe": "leitura de 6444-6473",
+          "verdict": "benign",
+          "why": "opt-in por SOTTO_LAYERED=1 e desligado por omissao"
+        },
+        {
+          "instance": "janela layered da legenda (caption_overlay.py)",
+          "probe": "grep WS_EX_LAYERED/UpdateLayeredWindow",
+          "verdict": "unproven",
+          "why": "e o produto (nao e caminho de input, WS_EX_TRANSPARENT), mas o custo de composicao com a legenda escondida NAO foi medido"
+        }
       ],
       "verified": null,
       "recurrence_watch": {
@@ -81,9 +118,24 @@
       },
       "coverage_gate": null,
       "siblings": [
-        {"instance": "classe pesada da bateria (abre app/audio/GPU)", "probe": "_main/battery-heavy-gate.py", "verdict": "fixed", "why": "os seis pesados so correm com SOTTO_BATTERY_HEAVY=1 lido pelo VALOR, e a bateria corre BelowNormal"},
-        {"instance": "carga do modelo (I/O + memoria)", "probe": "leitura de _enter_load_background_mode no worker", "verdict": "fixed", "why": "PROCESS_MODE_BACKGROUND_BEGIN durante a carga, _END no finally, load_priority no log"},
-        {"instance": "arranque do WebView2 (o custo que sobra)", "probe": "nenhum: exigiria lancar a app", "verdict": "unproven", "why": "63,6 s de saturacao medidos em 2026-10-21 com 38 msedgewebview2; nao ha instrumento que isole o arranque sem lancar a app"}
+        {
+          "instance": "classe pesada da bateria (abre app/audio/GPU)",
+          "probe": "_main/battery-heavy-gate.py",
+          "verdict": "fixed",
+          "why": "os seis pesados so correm com SOTTO_BATTERY_HEAVY=1 lido pelo VALOR, e a bateria corre BelowNormal"
+        },
+        {
+          "instance": "carga do modelo (I/O + memoria)",
+          "probe": "leitura de _enter_load_background_mode no worker",
+          "verdict": "fixed",
+          "why": "PROCESS_MODE_BACKGROUND_BEGIN durante a carga, _END no finally, load_priority no log"
+        },
+        {
+          "instance": "arranque do WebView2 (o custo que sobra)",
+          "probe": "nenhum: exigiria lancar a app",
+          "verdict": "unproven",
+          "why": "63,6 s de saturacao medidos em 2026-10-21 com 38 msedgewebview2; nao ha instrumento que isole o arranque sem lancar a app"
+        }
       ],
       "verified": null,
       "recurrence_watch": {
@@ -121,14 +173,85 @@
       },
       "coverage_gate": null,
       "siblings": [
-        {"instance": "bullet do autostart: `HKCU\\...\\Run\\Sotto` nao existe", "probe": "Get-ItemProperty HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "verdict": "fixed", "why": "medido: 22 entradas e `Sotto` presente; a 'correcao' anterior estava ela propria errada"},
-        {"instance": "bullet do §Factos: a app arranca com o Windows", "probe": "mesma chave Run", "verdict": "fixed", "why": "era a bullet verdadeira; fica e passa a citar a medicao de hoje"},
-        {"instance": "contradicao declarada do flash do painel (0/20 vs 18/20)", "probe": "leitura do AGENTS, §Factos", "verdict": "unproven", "why": "o proprio AGENTS declara a contradicao e ninguem correu `panel-startup-flash-census.py` nesta revisao"}
+        {
+          "instance": "bullet do autostart: `HKCU\\...\\Run\\Sotto` nao existe",
+          "probe": "Get-ItemProperty HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+          "verdict": "fixed",
+          "why": "medido: 22 entradas e `Sotto` presente; a 'correcao' anterior estava ela propria errada"
+        },
+        {
+          "instance": "bullet do §Factos: a app arranca com o Windows",
+          "probe": "mesma chave Run",
+          "verdict": "fixed",
+          "why": "era a bullet verdadeira; fica e passa a citar a medicao de hoje"
+        },
+        {
+          "instance": "contradicao declarada do flash do painel (0/20 vs 18/20)",
+          "probe": "leitura do AGENTS, §Factos",
+          "verdict": "unproven",
+          "why": "o proprio AGENTS declara a contradicao e ninguem correu `panel-startup-flash-census.py` nesta revisao"
+        }
       ],
       "verified": null,
       "recurrence_watch": {
         "instrument": "python _main\\agents-md-pins-oracle.py + re-medicao citada na propria frase",
         "window": "a proxima vez que alguem citar o §3 ou o autostart sem re-medir"
+      }
+    },
+    {
+      "id": "BUG-20261104-01",
+      "title": "scripts da arvore abrem janela de consola / pop-up no ecra do dono",
+      "class": "subprocess iniciado de um pai SEM consola sem CREATE_NO_WINDOW: o Windows aloca uma consola e ela aparece no desktop dele",
+      "state": "fixed",
+      "reported": {
+        "date": "2026-11-04",
+        "verbatim": "para de mostra pop up",
+        "context": "2026-11-02, verbatim: \"para de abrir janela de terminal em foreground. e tu? ou um .vbs?\" / \"anota no agents.md pra tu nunca mais fazer nada em foreground ou ter scripts q facam isso\""
+      },
+      "reproduced": {
+        "date": "2026-11-04",
+        "source": "_main/incidents/INC-20261104-01-console-window.md",
+        "environment": "H:\\sotto, Windows 11 26200, Windows Terminal como host de consola por omissao",
+        "revision": "arvore de trabalho de 2026-11-04 (feat/speaker-attribution-20261019)",
+        "artifact_sha": "9c7fad60abd74e6b295e64ef05987810d3fffdaa50b1f795fe303c50fc3939e1",
+        "detail": "Apareceram **três** janelas em 1,6 s: `CASCADIA_HOSTING_WINDOW_CLASS` (windowsterminal.exe, t=0,52 s), `PseudoConsoleWindow` (cmd.exe, t=0,63 s), `Xaml_WindowedPopupClass` (t=1,63 s); o censo AST antes da cura deu 2 sitios WINDOW e 833 chamadas convertidas.",
+        "evidence": "Apareceram **três** janelas em 1,6 s"
+      },
+      "hypothesis": "o script nao abre janela nenhuma quando um agente o corre, e abre uma quando a app o corre, porque o agente tem consola e a app nao: a janela e' a consola que o Windows aloca ao filho, nao uma janela que o codigo pede",
+      "falsifier": "se o mesmo script produzir uma janela de consola a partir de um pai QUE TEM consola, a hipotese cai (nao e' heranca)",
+      "minimal_repro": "python _main/console-window-watch.py --seconds 10 --run \"pythonw <alvo>\" -- e o mesmo com o alvo a largar um cmd sem flags: o primeiro diz PASS, o segundo diz FAIL com as classes e os pids",
+      "cause": "duas populacoes: (a) 833 chamadas de `subprocess`/`os.system` sem `creationflags` em .py/.js, (b) dois sitios a largar `explorer` sem guarda. E o instrumento que devia ver isto estava cego duas vezes: `ast.dump(Name(id='os'))` nao termina em `id='os'`, logo `os.system`/`os.popen` nunca eram vistos, e o regex de JS lia o `child_process.` opcional como nome da funcao",
+      "capsule": "_main/incidents/INC-20261104-01-console-window.md",
+      "regression": {
+        "gate": "console-window-audit",
+        "neg_arm": "red-as-expected-console-window-audit",
+        "style": "example"
+      },
+      "coverage_gate": "console-window-audit",
+      "siblings": [
+        {
+          "instance": "`spawn('explorer', ..., {windowsHide:true})` no reveal-in-folder",
+          "probe": "censo AST, classe USER-GESTURE",
+          "verdict": "benign",
+          "why": "a janela e' o PRODUTO do clique dele (mostrar o ficheiro na pasta); windowsHide nao a esconde por desenho, e o censo conta-a como gesto do dono, nao como defeito"
+        },
+        {
+          "instance": "313 linhas em .cmd/.bat/.ps1/.vbs que largam consolas",
+          "probe": "censo AST, classe SCRIPT",
+          "verdict": "benign",
+          "why": "um script de shell nao abre janela propria; quem o larga e' o sitio que o censo julga. Ficam listados para revisao, nao como falha"
+        },
+        {
+          "instance": "4 sitios com `creationflags=flags` vindo de um parametro (`_main/channel-class-site-oracle.py`, `child-channel-oracle.py`, `audit-rows-landmine-child-control.py`)",
+          "probe": "leitura dos chamadores",
+          "verdict": "clean",
+          "why": "os chamadores passam `CREATE_NO_WINDOW` (0x08000000) declarado no proprio ficheiro; o censo marca GUARD-EXTERNAL e nao falha, e os quatro foram lidos a mao"
+        }
+      ],
+      "verified": null,
+      "recurrence_watch": {
+        "instrument": "_main/console-window-audit.py (codigo) + _main/console-window-watch.py (ecra)",
+        "window": "a cada corrida da bateria; o vigia de ecra nao corre na bateria com --run (precisa de alvo) mas o seu controlo puro corre"
       }
     }
   ]

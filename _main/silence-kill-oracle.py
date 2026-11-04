@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: UM KILL DO PROPRIO SHELL NAO E' UMA MORTE DO WORKER -- e o lote conta como vida. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """UM KILL DO PROPRIO SHELL NAO E' UMA MORTE DO WORKER -- e o lote conta como vida.
 
 O DEFEITO MEDIDO (log do dono, `_main/webview-run.log`): das 10 `BRIDGE_SILENT`
@@ -176,7 +177,7 @@ def neg_arm():
             return 1
         try:
             proc = subprocess.run([sys.executable, os.path.abspath(__file__), "--shell", path],
-                                  capture_output=True, text=True)
+                                  capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         finally:
             try:
                 os.remove(path)

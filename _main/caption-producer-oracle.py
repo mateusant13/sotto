@@ -1,3 +1,4 @@
+# NO-BUG: UM PRODUTOR POR VEZ NO ECRA -- oraculo da LEGENDA (flicker). -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """UM PRODUTOR POR VEZ NO ECRA -- oraculo da LEGENDA (flicker).
 
 A QUEIXA DO DONO (2026-11-02), verbatim: *"as legendas tao flickando. tao

@@ -101,7 +101,7 @@ def sweep_profile(prof):
         if prof.lower() not in cmd.lower():
             continue
         subprocess.run(['taskkill', '/F', '/PID', pid.strip()],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
     for _ in range(6):
         shutil.rmtree(prof, ignore_errors=True)
         if not os.path.isdir(prof):
@@ -130,7 +130,7 @@ def run_one(arm_mod, browser, page, theme, motion, ablation, args, port):
         cmd.insert(1, '--blink-settings=prefersReducedMotion=false')
     logfh = open(args.browser_log, 'w', encoding='utf-8', errors='replace') \
         if args.browser_log else open(os.devnull, 'w')
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=logfh)
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=logfh, creationflags=subprocess.CREATE_NO_WINDOW)
     started = time.time()
     try:
         while time.time() - started < args.deadline and arm_mod.Beacon.payload is None:
@@ -140,7 +140,7 @@ def run_one(arm_mod, browser, page, theme, motion, ablation, args, port):
         # The exact pid Popen gave us, `/T` for its own children, never a filter:
         # a filter on `chrome` would take the owner's browser with it.
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
         # AND THE LEAVINGS. MEASURED 2026-11-01: `/T` on the launcher's pid left
         # FIVE finished arms alive and their profile dirs in `%TEMP%` (rmtree
         # cannot delete a locked dir), and the next arms' beacons were lost to the

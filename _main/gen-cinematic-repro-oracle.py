@@ -71,7 +71,7 @@ with open(out, 'w', encoding='utf-8') as fh:
     fh.write(src2)
 print('redirected generator written')
 
-r = subprocess.run([sys.executable, out], capture_output=True, text=True)
+r = subprocess.run([sys.executable, out], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
 print('generator rc=%d' % r.returncode)
 tail = (r.stdout or '').strip().splitlines()
 for line in tail[-3:]:

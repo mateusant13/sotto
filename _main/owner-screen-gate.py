@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: O DONO VE' O QUE ELE PEDIU -- E MAIS NADA. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """O DONO VE' O QUE ELE PEDIU -- E MAIS NADA.
 
 ORDEM DELE, 2026-11-04, verbatim: *"nao faz nenhum script existente ou novo

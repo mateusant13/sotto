@@ -69,7 +69,7 @@ say("WINDOW_UTC: " + new Date().toISOString().replace(/\.\d+Z$/, "Z"));
 let toolsOk = true;
 for (const bin of ["ffmpeg", "ffprobe"]) {
   let ok = true;
-  try { execFileSync(bin, ["-version"], { stdio: ["ignore", "pipe", "ignore"] }); }
+  try { execFileSync(bin, ["-version"], { windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }); }
   catch { ok = false; }
   if (!ok) toolsOk = false;
   expect(`toolchain ${bin} is present`, ok);
@@ -82,7 +82,7 @@ for (const bin of ["ffmpeg", "ffprobe"]) {
 let libx264Ok = false;
 try {
   const encoders = execFileSync("ffmpeg", ["-hide_banner", "-encoders"],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    { windowsHide: true, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   libx264Ok = /\blibx264\b/.test(encoders);
 } catch { libx264Ok = false; }
 say(`preflight: libx264 encoder ${libx264Ok ? "present" : "ABSENT (SEI arm will be INCONCLUSIVE)"}`);
@@ -151,7 +151,7 @@ function nalsOf(file) {
 function buildMidGopClip() {
   execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
     "-i", enc, "-c", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "h264", es],
-    { stdio: ["ignore", "pipe", "pipe"] });
+    { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   const { buf, sc, types } = nalsOf(es);
   const firstIdr = types.findIndex((t) => t === 5);
   if (firstIdr < 0) throw new Error("source elementary stream has no IDR to remove");
@@ -168,14 +168,14 @@ function buildMidGopClip() {
   // `cut` is still built, because ARM 2b needs a containerised late-start clip.
   execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
     "-f", "h264", "-r", "30", "-i", midStream, "-c", "copy", cut],
-    { stdio: ["ignore", "pipe", "pipe"] });
+    { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   return `built from stream.264: dropped IDR slice #${firstIdr} of ${sc.length} NALs, kept ${keep.length}`;
 }
 
 function firstPacketIsKeyframe(file) {
   const raw = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0",
     "-show_packets", "-show_entries", "packet=flags", "-of", "csv=p=0", file],
-    { encoding: "utf8" });
+    { windowsHide: true, encoding: "utf8" });
   const first = raw.split("\n").map((s) => s.trim()).filter(Boolean)[0];
   return { isKey: first.includes("K"), flags: first };
 }
@@ -324,7 +324,7 @@ expect("tolerance=1000 on a non-video still refuses (null is refused, not widene
 const rawFirstLine = (f) => {
   const raw = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0",
     "-skip_frame", "nokey", "-show_entries", "frame=pts_time", "-of", "csv=p=0", f],
-    { encoding: "utf8" });
+    { windowsHide: true, encoding: "utf8" });
   return raw.split("\n").map((s) => s.trim()).filter((s) => s.length > 0)[0] ?? "";
 };
 
@@ -334,7 +334,7 @@ if (toolsOk && libx264Ok) {
     execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
       "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=4",
       "-c:v", "libx264", "-g", "30", "-pix_fmt", "yuv420p", seiSrc],
-      { stdio: ["ignore", "pipe", "pipe"] });
+      { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   } catch (err) { buildErr = err.message; }
 
   if (buildErr) {
@@ -436,7 +436,7 @@ if (toolsOk) {
   try {
     execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
       "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "aac", audioSrc],
-      { stdio: ["ignore", "pipe", "pipe"] });
+      { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   } catch (err) { buildErr = err.message; }
 
   if (buildErr) {
@@ -514,7 +514,7 @@ if (toolsOk) {
         "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=1",
         "-c:v", libx264Ok ? "libx264" : "h264_nvenc", "-g", "15",
         "-pix_fmt", "yuv420p", audioOnlyGood],
-        { stdio: ["ignore", "pipe", "pipe"] });
+        { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     } catch (err) { srcErr = err.message; }
 
     if (srcErr) {
@@ -560,7 +560,7 @@ if (toolsOk) {
         try {
           const pull = (src, dest) => execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
             "-i", src, "-c", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "h264", dest],
-            { stdio: ["ignore", "pipe", "pipe"] });
+            { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
           pull(audioOnlyGood, esSrc);
           pull(audioOkOut, esOut);
           const a = readFileSync(esSrc), b = readFileSync(esOut);
@@ -625,7 +625,7 @@ try {
   execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
     "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=3",
     "-c:v", libx264Ok ? "libx264" : "h264_nvenc", "-g", "30",
-    "-pix_fmt", "yuv420p", realClip], { stdio: ["ignore", "pipe", "pipe"] });
+    "-pix_fmt", "yuv420p", realClip], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   realSrcBytes = readFileSync(realClip);
 } catch (err) { srcBuildErr = err.message; }
 

@@ -72,7 +72,7 @@ export class NvencEncoder {
       out,
     ];
     const t = process.hrtime.bigint();
-    execFileSync("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
+    execFileSync("ffmpeg", args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     const ms = Number(process.hrtime.bigint() - t) / 1e6;
     const bytes = statSync(out).size;
     this.#log.push({ op: "encode", out, ms, bytes });
@@ -90,7 +90,7 @@ export class NvencEncoder {
         "-v", "error", "-select_streams", "v:0",
         "-skip_frame", "nokey", "-show_entries", "frame=pts_time",
         "-of", "csv=p=0", file,
-      ], { encoding: "utf8" });
+      ], { windowsHide: true, encoding: "utf8" });
     } catch {
       return null;   // unreadable, not a video, or no video stream
     }
@@ -164,7 +164,7 @@ export class NvencEncoder {
     const t = process.hrtime.bigint();
     try {
       execFileSync("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error",
-        "-i", inFile, "-c", "copy", tmp], { stdio: ["ignore", "pipe", "pipe"] });
+        "-i", inFile, "-c", "copy", tmp], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
       const ms = Number(process.hrtime.bigint() - t) / 1e6;
       const inBytes = statSync(inFile).size;
       const outBytes = statSync(tmp).size;

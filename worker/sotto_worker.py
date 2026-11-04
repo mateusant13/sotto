@@ -572,10 +572,36 @@ def _add_cuda_dll_dirs() -> None:
 
 
 # ── output ────────────────────────────────────────────────────────────────────
+_PIPE_DEAD = False
+
+
 def emit(**payload) -> None:
-    """One JSON object, one line, flushed. The whole inter-process contract."""
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    """One JSON object, one line, flushed. The whole inter-process contract.
+
+    UM CANO MORTO NAO E' UM CRASH. Medido no log do dono a 2026-11-04 01:13:40:
+    `BRIDGE_DEATH_CAUSE OSError: [Errno 22] Invalid argument` em
+    `sys.stdout.write`, `rc=1`, `deaths=1 kind=error` -- o pai tinha fechado o
+    cano de leitura no meio de uma recarga e o worker levou um traceback por
+    escrever num cano que ninguem mais le. Nao ha' o que fazer com esse cano:
+    escreve a RAZAO no stderr (o pai guarda a cauda e publica
+    `BRIDGE_DEATH_CAUSE`) e sai **0**, que e' o que "o meu leitor foi-se embora"
+    significa. Um traceback aqui custa uma recarga de 14-26 s e pinta o painel
+    de vermelho por um erro que nao existe.
+    """
+    global _PIPE_DEAD
+    if _PIPE_DEAD:
+        os._exit(0)
+    try:
+        sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+    except (OSError, ValueError) as err:      # EINVAL / EPIPE / handle fechado
+        _PIPE_DEAD = True
+        try:
+            sys.stderr.write("EMIT_PIPE_DEAD %r\n" % (err,))
+            sys.stderr.flush()
+        except Exception:                     # noqa: BLE001 - stderr pode ir pelo mesmo cano
+            pass
+        os._exit(0)
 
 
 # ── model ─────────────────────────────────────────────────────────────────────

@@ -43,7 +43,7 @@ def main():
         os.remove(log)
 
     rc = subprocess.run([sys.executable, LAUNCH, log],
-                        capture_output=True, text=True, errors='replace')
+                        capture_output=True, text=True, errors='replace', creationflags=subprocess.CREATE_NO_WINDOW)
     print(f'  launch rc={rc.returncode} {(rc.stdout or "").strip()} '
           f'{(rc.stderr or "").strip()}')
 
@@ -93,7 +93,7 @@ def main():
 
     if app_pid:
         killed = subprocess.run(['taskkill', '/PID', app_pid, '/T', '/F'],
-                                capture_output=True, text=True, errors='replace')
+                                capture_output=True, text=True, errors='replace', creationflags=subprocess.CREATE_NO_WINDOW)
         note = (killed.stdout or killed.stderr or '').strip()
         print(f'  taskkill rc={killed.returncode} {note}')
     else:

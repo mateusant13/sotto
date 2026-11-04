@@ -717,7 +717,7 @@ def run_child(mutant_path, label, extra_env=None):
     if extra_env:
         env.update(extra_env)
     proc = subprocess.run(argv, cwd=REPO, env=env, capture_output=True, text=True,
-                          timeout=600)
+                          timeout=600, creationflags=subprocess.CREATE_NO_WINDOW)
     say("")
     say("-- CHILD (%s) rc=%d" % (label, proc.returncode))
     for line in (proc.stdout or "").splitlines():

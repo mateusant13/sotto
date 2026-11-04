@@ -25,7 +25,7 @@ except Exception as exc:
 # via 2: tasklist, um processo EXTERNO, para nao depender de psutil
 try:
     r = subprocess.run(["tasklist", "/FI", "PID eq %d" % os.getpid(), "/FO", "CSV", "/NH"],
-                       capture_output=True, text=True, timeout=20)
+                       capture_output=True, text=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
     res["tasklist"] = r.stdout.strip()
 except Exception as exc:
     res["tasklist_error"] = repr(exc)

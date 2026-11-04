@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: A MEMORIA TEM DE SER UMA SERIE, NAO UMA FOTO -- o detector de fuga de RSS. -- trabalho de CAPACIDADE/observabilidade pedido pelo dono; nao corresponde a nenhum id de `_main/bug-ledger.json`, e declarado aqui em vez de inventar um id.
 """A MEMORIA TEM DE SER UMA SERIE, NAO UMA FOTO -- o detector de fuga de RSS.
 
 PORQUE ISTO EXISTE. O worker publica `rss_mb` em cada `WORKER_STATS`, mas a shell
@@ -129,7 +130,7 @@ def neg_arm():
         fh.write(src[:at + 1] + 'SLOPE_FLAG_MB_PER_MIN = 1e9' + src[at + 1 + len(needle):])
         path = fh.name
     try:
-        proc = subprocess.run([sys.executable, path], capture_output=True, text=True)
+        proc = subprocess.run([sys.executable, path], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     finally:
         import os
         try:

@@ -254,7 +254,7 @@ def launch(tree, p, seconds, census, feeder):
     write_runner(tree, p, seconds, census, feeder)
     cmd = [sys.executable, os.path.join(HERE, 'launch-as-token.py'),
            str(source_pid()), 'cmd.exe', '/c', p['cmd']]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90, creationflags=subprocess.CREATE_NO_WINDOW)
     return (proc.stdout or '').strip() or (proc.stderr or '').strip()
 
 
