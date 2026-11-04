@@ -168,10 +168,8 @@ class PaintStall:
         self.stale_s = float(stale_s)
         self.key = None
         self.key_t = None
-        self.key_stamp = None
         self.asked = None
         self.stale = False
-        self.served = 'paint'
 
     # -- a leitura do tick ------------------------------------------------
     def observe(self, rows, t, stamp=None, cues=()):
@@ -201,10 +199,8 @@ class PaintStall:
             first = self.key is None
             self.key = key
             self.key_t = t
-            self.key_stamp = stamp
             self.asked = None
             self.stale = False
-            self.served = 'paint'
             return self.verdict(False, 'paint-changed' if not first
                                 else 'paint-first', rows=rows, t=t)
         if self.key_t is None or t is None:
@@ -242,7 +238,6 @@ class PaintStall:
             return self.verdict(False, 'same-cue', rows=rows, t=t, age=age,
                                 cue=cue, painted_cue=hit.get('cue'))
         self.stale = True
-        self.served = 'track'
         return self.verdict(True, 'stale', rows=rows, t=t, age=age, cue=cue,
                             painted_cue=hit.get('cue'))
 
