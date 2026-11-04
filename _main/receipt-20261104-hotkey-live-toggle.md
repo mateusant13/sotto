@@ -71,12 +71,29 @@ commit before this one).
   a pin of 1 000 322 B — the stale block that documented the superseded rule was
   replaced, not extended.
 
-## The other defect measured in the same log window (NOT fixed here)
+## The other defect measured in the same log window — and a CORRECTION to it
+
+The first reading of this window was:
 
     CAPTION_ARRIVAL_BLOWN age_ms=114723 budget_ms=1500
-    CAPTION_LAG_STATS n=200 p50=240 p90=4622 max=168564 over=99
+    CAPTION_LAG_STATS n=200 p50=240 p90=4622 max=168564 over=99 held=75 over_win=36 held_win=32 live_win=180
 
-The Sotto ASR line was ~115 s behind the audio it transcribed. Cause is visible in
-`WORKER_STATS` (`queue_evicted` 4..8): the worker's audio queue overflows and the
-ASR falls behind. It is a separate lane's subject (worker throughput/queue policy),
-not the hotkey, and it is NOT fixed by this receipt.
+and the first draft of this receipt claimed "the Sotto ASR line arrives ~2 min
+late". THAT WAS THE INSTRUMENT, NOT THE PIPELINE. The 114 723 ms sample was a
+`final=true` line, and a `final` line describes audio the worker closed AFTER the
+silence tail — a large age is by construction, not a delay. The same 200-sample
+window separates the two populations: `live_win=180`, `p50=240 ms`.
+
+So two things happened:
+
+1. FIXED HERE: `CAPTION_ARRIVAL_BLOWN` now fires only for the live path
+   (`kind=live` on the line; the age/final facts stay visible in `CAPTION_IN`),
+   the same rule `_caption_lag_note` already applied to the series. Instrument:
+   `_main/caption-lag-budget-oracle.py` — 14/14 arms, and a NEW arm
+   (`arrival-final-not-blamed`) plus a NEW mutant (`if not _m.get('final'):` ->
+   `if True:`) which drops exactly that arm: NEG-ARM PASS 10/10.
+2. NOT fixed, and still real: `over_win=36` of `live_win=180` — **20 % of the
+   live lines arrive more than 1,5 s after their audio**. `WORKER_STATS` shows
+   `queue_evicted=4..8`, i.e. the worker's audio queue overflows and the ASR
+   falls behind. That is the worker's throughput/queue policy, a separate lane's
+   subject, and this receipt does not claim it.

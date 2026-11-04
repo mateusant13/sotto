@@ -188,6 +188,29 @@ def arm_arrival(mod, shell, lines, worker_event):
                 % ((incoming or 'AUSENTE')[:110], 'sim' if blown else 'AUSENTE'))
 
 
+def arm_arrival_final_not_blamed(mod, shell, lines, worker_event):
+    """A CHEGADA DE UMA LINHA `final` NAO E JULGADA COMO ATRASO (2026-11-04).
+
+    MEDIDO no log do dono as 04:49:50.981: `CAPTION_ARRIVAL_BLOWN
+    age_ms=114723 budget_ms=1500` para `final=true text="de ssa puta aqui"`,
+    enquanto a MESMA janela dizia `p50=240` na via viva. Uma linha `final`
+    descreve audio que o worker fechou depois da cauda de silencio: a idade
+    grande e' PROJECTO, nao atraso. O facto fica no `CAPTION_IN` (`final=`,
+    `age_ms=`); o veredicto nao o conta.
+    """
+    lines[:] = []
+    now_ms = int(time.time() * 1000.0)
+    meta = dict(worker_event)
+    meta['final'] = True
+    meta['tap_ms'] = now_ms - 3200
+    shell.on_worker_caption('linha fechada, audio de 3,2 s atras', meta)
+    incoming = take(lines, 'CAPTION_IN')
+    blown = take(lines, 'CAPTION_ARRIVAL_BLOWN')
+    ok = (incoming is not None and field(incoming, 'age_ms') is not None
+          and field(incoming, 'final') == 'true' and blown is None)
+    return ok, ('CAPTION_IN=%s | BLOWN=%s'
+                % ((incoming or 'AUSENTE')[:110], 'sim' if blown else 'nao'))
+
 def arm_paint_on_time(mod, shell, lines, worker_event):
     lines[:] = []
     now_ms = int(time.time() * 1000.0)
@@ -480,12 +503,18 @@ def main(argv):
         mut9 = src.replace(
             "        _is_final = bool(getattr(shell, '_last_push_final', False))",
             '        _is_final = False', 1)
+        # 2026-11-04: a chegada da linha `final` nao pode ser julgada como
+        # atraso -- o mutante tira a guarda e a arm `arrival-final-not-blamed`
+        # tem de cair.
+        mut10 = src.replace(
+            "            if not _m.get('final'):",
+            '            if True:', 1)
         worker_src = io.open(WORKER, encoding='utf-8').read()
         mut5 = worker_src.replace('                    wall=_wall_tap,',
                                   '                    wall=time.time(),', 1)
         if (mut1 == src or mut2 == src or mut3 == src or mut4 == src
                 or mut5 == worker_src or mut6 == src or mut7 == src
-                or mut8 == src or mut9 == src):
+                or mut8 == src or mut9 == src or mut10 == src):
             print('NEG-ARM IMPOSSIVEL: a ancora do mutante nao esta no shell')
             shutil.rmtree(tmpdir, ignore_errors=True)
             return 2
@@ -507,6 +536,9 @@ def main(argv):
         mut8_path = os.path.join(tmpdir, 'sotto_webview_m8.py')
         with io.open(mut8_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut8)
+        mut10_path = os.path.join(tmpdir, 'sotto_webview_m10.py')
+        with io.open(mut10_path, 'w', encoding='utf-8', newline='\n') as handle:
+            handle.write(mut10)
         mut9_path = os.path.join(tmpdir, 'sotto_webview_m9.py')
         with io.open(mut9_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut9)
@@ -540,6 +572,8 @@ def main(argv):
                      lambda: arm_event_key(worker.LineFormer)),
                     ('arrival-age-and-alarm',
                      lambda: arm_arrival(mod, shell, lines, worker_event)),
+                    ('arrival-final-not-blamed',
+                     lambda: arm_arrival_final_not_blamed(mod, shell, lines, worker_event)),
                     ('paint-lag-on-time',
                      lambda: arm_paint_on_time(mod, shell, lines, worker_event)),
                     ('paint-lag-blows-and-screams',
@@ -593,7 +627,9 @@ def main(argv):
                     (mut8_path, 'tap reaproveitado na pintura seguinte',
                      {'tap-one-paint'}),
                     (mut9_path, 'linha fechada contada como atraso do ecra',
-                     {'final-close-not-counted'}),):
+                     {'final-close-not-counted'}),
+                    (mut10_path, 'chegada de linha fechada julgada como atraso',
+                     {'arrival-final-not-blamed'}),):
                 print('=== mutante: %s' % why)
                 if path in (mut5_path, mut6_path):
                     # O mutante do WORKER julga-se pela arm de AST, nao por um

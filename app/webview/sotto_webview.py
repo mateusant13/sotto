@@ -12711,14 +12711,10 @@ class SottoShell:
         `CAPTION_LAG_STATS n=.. p50=.. p90=.. max=.. over=..` com o orcamento
         ao lado, que e' o que faz um log passar a gritar sozinho.
         """
-        # A JANELA LEVA O SEGURA JUNTO (medido 2026-11-04). `over` e `held` eram
-        # CONTADORES DE VIDA publicados na MESMA linha de uma janela de 200
-        # amostras: a sessao do dono lia `n=200 p50=182 p90=1645 max=23844
-        # over=162 held=119`, que se le' como "81 % estouraram" quando 162 era
-        # o acumulado desde o arranque. Serie e acumulado na mesma frase e' o
-        # mesmo defeito de instrumento que ja' custou dois numeros errados aqui.
-        # `over`/`held` ficam (ha' quem os leia); a JANELA publica `over_win`
-        # e `held_win`, que sao os que respondem "como esta' agora".
+        # A JANELA LEVA O SEGURA JUNTO (medido 2026-11-04): `over`/`held` eram
+        # CONTADORES DE VIDA na MESMA frase de uma janela de 200 amostras --
+        # `over=162` lia-se como "81 % estouraram" quando era o acumulado.
+        # Ficam (ha' quem os leia); a janela publica `over_win`/`held_win`.
         low, high = self.CAPTION_HOLD_BAND_MS
         held = queue_ms is not None and low <= int(queue_ms) <= high
         if held:
@@ -13162,9 +13158,16 @@ class SottoShell:
             # A MESMA REGUA NA CHEGADA: se o audio ja' chegava velho, o defeito
             # e' do worker/e do tap, nao do desenho -- e o log tem de dizer QUAL
             # das duas metades estourou.
-            log(f'CAPTION_ARRIVAL_BLOWN age_ms={_age_ms} '
-                f'budget_ms={self.CAPTION_BUDGET_MS} '
-                f'text={json.dumps(text[:60])}')
+            #
+            # SO' A VIA VIVA JULGA A CHEGADA (2026-11-04): uma linha `final`
+            # descreve audio fechado depois da cauda de silencio, logo idade
+            # grande e' PROJECTO -- medido no log dele as 04:49:50.981,
+            # `age_ms=114723 final=true` ao lado de `p50=240` na via viva. Os
+            # factos ficam no `CAPTION_IN` acima; o veredicto nao os conta.
+            if not _m.get('final'):
+                log(f'CAPTION_ARRIVAL_BLOWN age_ms={_age_ms} '
+                    f'budget_ms={self.CAPTION_BUDGET_MS} kind=live '
+                    f'text={json.dumps(text[:60])}')
         # E A JANELA PROPRIA DA LEGENDA RECEBE O MESMO TEXTO. O dono: *"a legenda ao vivo
         # deveria aparecer no MEIO EM BAIXO da minha tela"*. Uma janela propria e a unica
         # forma de ela pousar no fundo da TELA sem a barra no topo do mesmo caixote.
