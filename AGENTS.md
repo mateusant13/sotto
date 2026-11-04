@@ -341,9 +341,12 @@ validade - re-correr antes de repetir, e colar os numeros de HOJE.**
 
 A tabela de ficheiros e o que cada um e: **`docs/layout.md`**.
 
-**PIN do `run.cmd --help` (medido 2026-11-04 08:4x):** re-measured 2026-11-04 the output is 7538 B, 116 lines, 116 CRLF / 0 bare LF, rc 0, sha256
-`D93CFCF13E95BDF3138FF88A1A30C3EFB3B910126DD6267B514FC1F29648D82A`.
-(Este número substitui o de 7281 B / 112 linhas: quatro linhas novas no `--help` desde 2026-11-01.) O portão do pin é
+**PIN do `run.cmd --help` (medido 2026-11-04 11:3x):** re-measured 2026-11-04 the output is 7985 B, 123 lines, 123 CRLF / 0 bare LF, rc 0, sha256
+`E99162F0FFC4A9A5BB6373AECCFB6ED0281FCF55FD5E0A59D5A767F9853024CA`.
+(Este número substitui o de 7538 B / 116 linhas, depois do bloco `THE TWO KEYS`: o `--help` passou a dizer as
+DUAS teclas -- `Ctrl+Space` para a legenda ao vivo (so' display) e `Alt+C` para os paineis, com o ciclo por
+indice de pressao -- que e' a ordem do dono de 2026-11-04. O pin anterior, de 7281 B / 112 linhas, era o de
+2026-11-01.) O portão do pin é
 `_main/agents-md-pins-oracle.py`: se o `--help` mudar, este número muda, e o gate obriga a re-medir **aqui**.
 (Re-medido 2026-11-01 depois das três lanes que tocaram o `run.cmd` — hotkey, load e youtube; era
 7061 B / 109 linhas, o número de 2026-10-21.)

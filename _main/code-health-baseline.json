@@ -301,12 +301,12 @@
       "max_func_name": "selftest"
     },
     "app/webview/hotkey_gesture.py": {
-      "bytes": 6670,
+      "bytes": 9481,
       "classes": 0,
-      "defs": 3,
+      "defs": 4,
       "except_pass": 0,
       "globals": 0,
-      "lines": 142,
+      "lines": 196,
       "max_func": 38,
       "max_func_name": "parse_accelerator"
     },
@@ -321,12 +321,12 @@
       "max_func_name": "write"
     },
     "app/webview/load_shedding.py": {
-      "bytes": 41850,
-      "classes": 6,
-      "defs": 9,
+      "bytes": 50292,
+      "classes": 7,
+      "defs": 10,
       "except_pass": 2,
       "globals": 1,
-      "lines": 923,
+      "lines": 1098,
       "max_func": 67,
       "max_func_name": "tick"
     },
@@ -411,12 +411,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1023926,
+      "bytes": 1037162,
       "classes": 24,
       "defs": 115,
       "except_pass": 41,
       "globals": 4,
-      "lines": 19192,
+      "lines": 19396,
       "max_func": 391,
       "max_func_name": "main"
     },
@@ -491,12 +491,12 @@
       "max_func_name": "advance"
     },
     "app/webview/youtube_reveal.py": {
-      "bytes": 31990,
+      "bytes": 33249,
       "classes": 1,
       "defs": 17,
       "except_pass": 0,
       "globals": 0,
-      "lines": 724,
+      "lines": 744,
       "max_func": 66,
       "max_func_name": "window_by_paint"
     },
@@ -641,13 +641,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 407928,
+      "bytes": 412909,
       "classes": 17,
-      "defs": 68,
+      "defs": 70,
       "except_pass": 14,
       "globals": 5,
-      "lines": 7620,
-      "max_func": 2439,
+      "lines": 7711,
+      "max_func": 2450,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
