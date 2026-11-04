@@ -410,9 +410,18 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 11:5x):** `_main\_audit-verify-all.cmd` = **210085 B**,
-  **2616 CRLF** / 0 bare LF, sha256 `FC51B7BC317BB844B0B0961C71F5DFE080DD4980771BE1913BCB78BEFC5418FE`.
-  (Vinte e tres linhas a mais do que o pin de 207838 B / 2597 CRLF: os dois pares que as lanes de hoje
+- **PIN do ficheiro (medido 2026-11-04, 11:59):** `_main\_audit-verify-all.cmd` = **212764 B**,
+  **2644 CRLF** / 0 bare LF, sha256 `BBED658D6B6909A5B19191DA0F44FF94D34C9E69E65DF16CBFB35DAFD7F4EF62`.
+  (Vinte e oito linhas a mais do que o pin de 210085 B / 2616 CRLF, de dois pares. Quinze:
+  `caption-overlay-screen` -- o oraculo que executa o `_screen_proof` REAL contra uma janela LAYERED
+  oculta (arm A2 com uma RECONTA independente do predicado), exige `alpha=0` a dar RED por
+  `invisible` (a classe do P0 do dono: `visible=true` e nada no ecra) e muta uma COPIA de
+  `caption_overlay.py` quatro vezes -- mais o seu `--neg-arm`. Antes dele, `grep -c
+  CAPTION_OVERLAY_GEOMETRY` nesta bateria dava 0: o campo que respondia a queixa do dono existia e
+  nenhum portao o lia. Treze: `lag-note-cost`, que o merge do commit de perf (1c92e39) deixou SEM
+  passo -- o `battery-wiring` dizia `new-unwired 1 oraculo(s) sem passo e sem licenca:
+  lag-note-cost-oracle.py` -- e agora corre com o seu `--neg-arm`.
+  Vinte e tres linhas a mais do que o pin de 207838 B / 2597 CRLF: os dois pares que as lanes de hoje
   escreveram e deixaram FORA da bateria -- `youtube-hidden-clock` (a pintura parada com a faixa como
   segunda testemunha) e `youtube-cdp-boot` (o arranque a pedir a porta CDP) -- mais os seus `--neg-arm`.
   O `battery-wiring` acusava-os com razao: `new-unwired 2 oraculo(s) sem passo e sem licenca`.
