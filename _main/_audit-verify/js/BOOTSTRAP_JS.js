@@ -116,6 +116,12 @@
     emit(kind, payload);
   };
   window.__sotto_emit.counts = {};
+  // `__sotto_emit` fala com os SUBSCRITORES DA PAGINA (`emit`), nao com o Python.
+  // Um medidor que chega antes de `panel.js` nao tem subscritor nenhum: o
+  // resultado dele morria aqui. Este e' o caminho que ENTREGA (`post`), exposto
+  // com nome por isso mesmo -- 2026-11-04, medido: o perfil de arranque ficou
+  // 24 h a recolher e a descartar (0 `PANEL_BOOT_PROFILE` em 469 587 linhas).
+  window.__sotto_post = function (kind, payload) { post(kind, payload); };
 
   window.__sotto_info = function (id, json) {
     var resolve = infoPending[id];

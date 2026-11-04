@@ -14056,6 +14056,19 @@ class SottoShell:
                 latest = pending.pop(kind, None)
             if latest is None:
                 return
+            # SEM PAGINA NAO HA' O QUE NOTIFICAR (2026-11-04, medido): o
+            # pipeline de legendas arranca antes do WebView2 de proposito, e o
+            # feed de `stats` fazia o `Invoke` rebentar num `AttributeError`
+            # por amostra -- 541 `POSTED_CALLABLE_FAILED` em ~60 s na instancia
+            # pid 42340. Uma linha; o payload sai do latch e a proxima amostra
+            # reabre-o (receipt-20261104-caption-tail.md).
+            if self.core is None or self.webview2 is None:
+                if not getattr(self, '_emit_async_prewebview_logged', False):
+                    self._emit_async_prewebview_logged = True
+                    log('EMIT_ASYNC_PREWEBVIEW kind=%s reason=no-core '
+                        '(uma linha; as seguintes sao descartadas ate a '
+                        'pagina existir)' % json.dumps(kind))
+                return
             script = ('window.__sotto_emit(' + json.dumps(kind) + ','
                       + json.dumps(json.dumps(latest)) + ')')
             self.webview2.Invoke(Func[Object](

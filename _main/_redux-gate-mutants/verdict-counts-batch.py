@@ -572,10 +572,36 @@ def _add_cuda_dll_dirs() -> None:
 
 
 # ── output ────────────────────────────────────────────────────────────────────
+_PIPE_DEAD = False
+
+
 def emit(**payload) -> None:
-    """One JSON object, one line, flushed. The whole inter-process contract."""
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    """One JSON object, one line, flushed. The whole inter-process contract.
+
+    UM CANO MORTO NAO E' UM CRASH. Medido no log do dono a 2026-11-04 01:13:40:
+    `BRIDGE_DEATH_CAUSE OSError: [Errno 22] Invalid argument` em
+    `sys.stdout.write`, `rc=1`, `deaths=1 kind=error` -- o pai tinha fechado o
+    cano de leitura no meio de uma recarga e o worker levou um traceback por
+    escrever num cano que ninguem mais le. Nao ha' o que fazer com esse cano:
+    escreve a RAZAO no stderr (o pai guarda a cauda e publica
+    `BRIDGE_DEATH_CAUSE`) e sai **0**, que e' o que "o meu leitor foi-se embora"
+    significa. Um traceback aqui custa uma recarga de 14-26 s e pinta o painel
+    de vermelho por um erro que nao existe.
+    """
+    global _PIPE_DEAD
+    if _PIPE_DEAD:
+        os._exit(0)
+    try:
+        sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+    except (OSError, ValueError) as err:      # EINVAL / EPIPE / handle fechado
+        _PIPE_DEAD = True
+        try:
+            sys.stderr.write("EMIT_PIPE_DEAD %r\n" % (err,))
+            sys.stderr.flush()
+        except Exception:                     # noqa: BLE001 - stderr pode ir pelo mesmo cano
+            pass
+        os._exit(0)
 
 
 # ── model ─────────────────────────────────────────────────────────────────────
@@ -673,6 +699,21 @@ def _stable_words():
     import stable_words
 
     return stable_words
+
+
+def _silence_tail():
+    """When the SILENCE proves the line's tail word (2026-11-04).
+
+    Same lazy shape and the same reason as `_stable_words` above: its own module
+    because this file is under the `code-health` ratchet, and the measurement
+    that fixes the 0,8 s lives there instead of here.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import silence_tail
+
+    return silence_tail
 
 
 class StreamAsr:
@@ -3672,6 +3713,8 @@ def choose_providers(requested, model_dir=None):
 # as `caption-formulation.js:72`; one value, two layers, no second convention.
 SENTENCE_GAP_S = 8.0
 
+
+
 # Hard cap, so a speaker who never pauses cannot grow one line without bound.
 # Same value as `caption-formulation.js:73`.
 SENTENCE_MAX_CHARS = 90
@@ -3884,6 +3927,9 @@ class LineFormer:
         self.emit_partial = bool(emit_partial)
         self.gap_s = float(gap_s)
         self.max_chars = int(max_chars)
+        #: The audio END at which a silence last PUBLISHED the tail, so one
+        #: silence publishes once (see `publish_on_silence`).
+        self._silence_proved_at = None
         # STEP 3: the identity of the tap this former's events come from.
         # NOT reset by `reset()` -- it belongs to the STREAM, not the line.
         self.source = source or None
@@ -3935,6 +3981,14 @@ class LineFormer:
         # the honest gap, and it is what `caption-formulation.js` turns into a
         # comma or a full stop. Reset with the line, like `_start`.
         self._chunk_start = None
+        #: O RELOGIO DE PAREDE DO ULTIMO BLOCO QUE ENTROU NESTA LINHA (2026-11-03).
+        #: `end` diz ONDE no audio a linha acabou; nao diz QUANDO esse audio
+        #: chegou. Sem esse par nao ha' numero possivel para "o que esta no ecra
+        #: descreve audio de ha' quanto tempo" -- e o dono pediu exactamente esse
+        #: numero (*"tu nao tem a porra de um teste ou log que mostra a
+        #: discrepancia entre audio detectado e display na tela?"*). Quem empurra
+        #: o bloco tem o relogio; o `push(wall=...)` e' o canal.
+        self._wall = None
         #: The chunks that make up the OPEN line, as `(start, end, text)`.
         #: The line is cumulative, so a renderer cannot recover an interior
         #: pause from `start`/`end` alone; this list is the raw material for
@@ -4037,6 +4091,17 @@ class LineFormer:
             # (o `panel.js` antigo, o history store) ve o mesmo evento de
             # sempre.
             "stable": bool(stable),
+            # QUANDO ESTE AUDIO CHEGOU, no relogio de parede (2026-11-03). `end`
+            # e' ONDE no audio a linha acabou; este campo e' QUANDO o bloco que a
+            # fechou entrou no worker. O par (end, tap_ms) e' o que permite ao
+            # shell publicar a unica medida que o dono pediu: a idade do audio
+            # que esta' no ecra. Presente SO' quando quem empurra passou o
+            # relogio (`push(wall=...)`), pelo mesmo motivo de `chunk_start`:
+            # `--selftest` e o braco de ficheiro nao tem relogio de captura, e o
+            # conjunto de chaves deles e' pinado por
+            # `_main/per-app-source-plumbing-oracle.py` (CHK-3).
+            **({"tap_ms": int(round(self._wall * 1000.0))}
+               if self._wall is not None else {}),
             # STEP 3 -- WHERE THIS AUDIO CAME FROM. Present ONLY when the former
             # was given a source (every live tap has one; `--selftest` and the
             # file arm have none, so their events stay byte-identical to before
@@ -4209,7 +4274,7 @@ class LineFormer:
         self._closed = []
         return out
 
-    def push(self, text, start=None, end=None, continues=False):
+    def push(self, text, start=None, end=None, continues=False, wall=None):
         """Feed ONE decoded chunk; return the caption events to emit (0..2).
 
         `continues` is `StreamAsr.chunk_continues` — True when the model's own
@@ -4248,9 +4313,18 @@ class LineFormer:
             self._start = start
         if start is not None:
             self._chunk_start = start
+        # O RELOGIO DA CAPTURA (2026-11-03): guardado ANTES do `_event`, porque
+        # e' `_event` que o publica como `tap_ms`. Fica com o ULTIMO bloco que
+        # entrou na linha aberta -- a idade honesta da linha e' a do bloco mais
+        # recente que ela contem.
+        if wall is not None:
+            self._wall = float(wall)
         if start is not None and end is not None:
             self._chunks.append((start, end, frag))
         self._words.append((frag, cont))
+        # A NEW FRAGMENT ENDS ANY SILENCE, so the next silence publishes its own
+        # tail; without this the guard would hold for the life of the line.
+        self._silence_proved_at = None
         if end is not None:
             self._end = end
         # (4) terminal punctuation closes AFTER this chunk — the model has
@@ -4290,6 +4364,23 @@ class LineFormer:
             # NUNCA viu. Uma linha de uma palavra so ("so") ficaria sem
             # aparecer no historico.
         return out
+
+    def publish_on_silence(self, now_end):
+        """A SILENCE in the audio proves the tail: publish the line whole.
+
+        The decision (0,8 s, one publication per silence, the measurement that
+        justifies the number) lives in `worker/silence_tail.py`; this method is
+        the call site. It does NOT close the line: `SENTENCE_GAP_S` decides
+        where lines break. `stable: true` is what stops the panel from holding
+        the last word a second time (`app/panel/stable-words.js`).
+        """
+        text, self._silence_proved_at = _silence_tail().decide(
+            now_end, self._end, tidy_final(self.line()), self._worthy,
+            self._shown, self._silence_proved_at)
+        if text is None:
+            return []
+        self._shown = text
+        return [self._event(text, stable=True)]
 
     def flush(self):
         """End of stream is a boundary: return the line still held, if any."""
@@ -4491,6 +4582,13 @@ def selftest(asr, audio_path, args, min_chars=1, partial=True, done_text_max_cha
             continues=asr.chunk_continues,
         )):
             emit(model=asr.name, **event)
+        # AN EMPTY CHUNK AFTER SPEECH PROVES THE TAIL: publish the line whole
+        # (`publish_on_silence`). On this arm the text ships as a partial, which
+        # is what the arm does for every other line too.
+        if not (text or '').strip():
+            for event in line_events(former.publish_on_silence(
+                    round((i + 1) * asr.chunk / TARGET_SR, 2))):
+                emit(model=asr.name, **event)
         # The close travels OUT OF BAND (M2) and must be published here too: the
         # partial channel suppresses a close whose text was already shown, and
         # MEASURED on this box that left a 14.5 s file-mode run with 3
@@ -6196,6 +6294,15 @@ def main():
                 buf = buf[asr.chunk :]
                 counters["chunks"] += 1
                 idx = counters["chunks"]
+                # O INSTANTE EM QUE ESTE AUDIO ESTA' COMPLETO, DO LADO DA
+                # CAPTURA (2026-11-03). MEDIDO: o `wall=time.time()` estava
+                # DEPOIS do `run_chunk`, logo a idade publicada no ecra excluia
+                # exactamente a maior parcela -- o decode. O dono perguntou-o
+                # verbatim (*"tem 100% ctz que quando o audio e detectado ja tem
+                # x de tempo passado?"*); com o carimbo aqui, `tap_ms` e' o
+                # instante em que o bloco FICOU COMPLETO e a diferenca ate' ao
+                # pixel inclui AGC + decode + transporte + pintura.
+                _wall_tap = time.time()
                 # ── SPEECH DECISION FIRST, on the PRE-GAIN signal ────────────
                 # (lane SottoSpeechSeparation's gate). `speech` is then handed
                 # to the AGC — which applies gain ONLY when it is True — and to
@@ -6230,11 +6337,26 @@ def main():
                 # everything is droppable — a stream that runs for hours must not
                 # hold an hour of PCM.
                 seg_pcm[idx] = (seg_in, speech)
+                # O RELOGIO DA CAPTURA, DO LADO DE QUEM A TEM (2026-11-03):
+                # `push` publica-o como `tap_ms` e o shell converte-o na idade do
+                # audio que ele pinta (`CAPTION_PAINT_LAG`). Uma chamada por
+                # bloco de 560 ms e' nada; sem ela nao existe numero nenhum.
                 for event in line_events(former.push(
-                    text, _start, _end, continues=asr.chunk_continues
+                    text, _start, _end, continues=asr.chunk_continues,
+                    wall=_wall_tap,
                 )):
                     counters["captions"] += 1
                     emit(model=asr.name, **event)
+                # A SILENCE IN THE AUDIO PROVES THE TAIL (2026-11-04): the block
+                # after the last words decodes to nothing, so `push` never runs
+                # and the tail waited for the panel's 1500 ms valve. The line is
+                # NOT closed; its full text ships once, `stable`.
+                # `worker/silence_tail.py` carries the measurement.
+                if not (text or '').strip():
+                    for event in line_events(
+                            former.publish_on_silence(_end)):
+                        counters["captions"] += 1
+                        emit(model=asr.name, **event)
                 publish_captions(drain())
                 keep_from = (
                     idx + 1

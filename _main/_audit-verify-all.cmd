@@ -311,6 +311,47 @@ if exist _main\border-radius-gate.py (
   call :expectred red-as-expected-border-radius-gate !STEP_RC! "%OUT%\border-radius-gate-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-border-radius-gate MISSING "%OUT%\border-radius-gate-neg.log" "NEG-ARM PASS" )
 REM
+REM O UNICO CAMINHO QUE LARGA UM FILHO (2026-11-04). `_main/hidden-launch.py` e'
+REM o que a bateria inteira atravessa: `cmd`, `powershell`, `.cmd` e `python`
+REM passam todos por ele. MEDIDO hoje: `run()` e `popen()` passavam
+REM `creationflags=` DUAS vezes ao `Popen` e morriam num `TypeError` ANTES de
+REM arrancar o filho -- `run(['cmd','/c',r'_main\_audit-verify-all.cmd'])`
+REM devolvia o Traceback e NENHUM passo corria. Nenhum portao viu isso: o
+REM `console-window-gate.py` que a AGENTS.md nomeia NAO EXISTE nesta arvore, e um
+REM portao de TEXTO veria a bandeira presente (duas vezes).
+REM O QUE ESTE JULGA: o EFEITO no sistema operativo -- o filho de `run` e de
+REM `popen` diz `GetConsoleWindow()==0`, o censo nao encontra NENHUMA janela de
+REM consola visivel na arvore do filho, e `run` ESPERA (3 s de filho => >=3 s).
+REM O BRACO NEGATIVO repoe o `TypeError` numa COPIA e exige as quatro arms
+REM vermelhas; rc=1 POR DESENHO.
+if exist _main\hidden-launch-oracle.py (
+  call :step hidden-launch 0 "_main\hidden-launch-oracle.py;_main\hidden-launch.py" "%OUT%\hidden-launch.log" python _main\hidden-launch-oracle.py
+  call :record hidden-launch !STEP_RC!
+) else ( call :record hidden-launch MISSING )
+if exist _main\hidden-launch-oracle.py (
+  call :step red-as-expected-hidden-launch 1 "_main\hidden-launch-oracle.py;_main\hidden-launch.py" "%OUT%\hidden-launch-neg.log" python _main\hidden-launch-oracle.py --neg-arm
+  call :expectred red-as-expected-hidden-launch !STEP_RC! "%OUT%\hidden-launch-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-hidden-launch MISSING "%OUT%\hidden-launch-neg.log" "NEG-ARM PASS" )
+REM
+REM O FEED SEM PAGINA (2026-11-04). O pipeline de legendas arranca ANTES do
+REM WebView2, de proposito; quando o motor NAO inicializa (`WEBVIEW2_INIT_FAILED
+REM 0x80010108`, medido 02:48:24 numa instancia propria) o `core` fica a `None` e
+REM cada amostra do medidor escrevia um `WARN POSTED_CALLABLE_FAILED ...
+REM 'NoneType' object has no attribute 'ExecuteScriptAsync'` -- 541 linhas em
+REM ~60 s, com a legenda do YouTube a CHEGAR e a nunca poder ser pintada. O
+REM oraculo corre o `emit_async` REAL com `core=None` (50 pushes -> UMA linha),
+REM com pagina (o payload mais novo TEM de sair: um feed engolido e' outro
+REM defeito) e depois da pagina existir. O negativo desliga a CONDICAO numa
+REM COPIA e exige a arm A vermelha com `AttributeError`; rc=1 POR DESENHO.
+if exist _main\emit-prewebview-oracle.py (
+  call :step emit-prewebview 0 "_main\emit-prewebview-oracle.py;app\webview\sotto_webview.py" "%OUT%\emit-prewebview.log" python _main\emit-prewebview-oracle.py
+  call :record emit-prewebview !STEP_RC!
+) else ( call :record emit-prewebview MISSING )
+if exist _main\emit-prewebview-oracle.py (
+  call :step red-as-expected-emit-prewebview 1 "_main\emit-prewebview-oracle.py;app\webview\sotto_webview.py" "%OUT%\emit-prewebview-neg.log" python _main\emit-prewebview-oracle.py --neg-arm
+  call :expectred red-as-expected-emit-prewebview !STEP_RC! "%OUT%\emit-prewebview-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-emit-prewebview MISSING "%OUT%\emit-prewebview-neg.log" "NEG-ARM PASS" )
+REM
 REM A TELA DO DONO (2026-10-23). A ordem, verbatim, e ele deu-a DUAS vezes:
 REM "para de abrir essa merda na minha tela. tu vai resolver no teu ambiente ai
 REM sem encher o meu saco", e depois "faz gates ou agents.md". O portao julga

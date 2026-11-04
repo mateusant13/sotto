@@ -194,9 +194,14 @@ só separar audio pra transcrever cada falante?"*
   larga `cmd /c`, `powershell`, `.bat`, `.cmd` ou `start` sem esconder a janela — `cmd /c` vai por
   `_main/hidden-launch.py` (`run(argv)`, que põe `CREATE_NO_WINDOW` + `SW_HIDE`), `powershell` leva
   `-WindowStyle Hidden -NonInteractive`, e `python` leva `pythonw.exe` ou o `creationflags`. Os
-  `Popen` do repo que largam `cmd`/`powershell`/`run.cmd` passam todos pelo mesmo helper; o portão é
-  `_main/console-window-gate.py`, com a dívida anterior à regra **congelada** num baseline que não pode
-  crescer (a mesma forma do `lane-screen-gate.py`). O detector de campo é o censo `ALERTA-JANELA` e o
+  `Popen` do repo que largam `cmd`/`powershell`/`run.cmd` passam todos pelo mesmo helper; os portões
+  são `_main/console-window-audit.py` (censo **AST** de cada sítio que larga um processo, o REGEX
+  aposentado em 2026-11-04) e `_main/console-window-watch.py` (o vigia vivo), com a dívida anterior à
+  regra **congelada** num baseline que não pode crescer (a mesma forma do `lane-screen-gate.py`), e o
+  helper ele próprio julgado por `_main/hidden-launch-oracle.py` — que julga o **efeito** (filho sem
+  consola, zero janelas de consola visíveis na árvore do filho), porque um portão de texto veria a
+  bandeira presente mesmo quando ela está lá **duas vezes** e o `Popen` morre num `TypeError`.
+  O detector de campo é o censo `ALERTA-JANELA` e o
   `powershell` com janela **não** é justificação: `-WindowStyle Hidden` custa uma palavra.
 - **UM CONTROLO DE INSTRUMENTO NUNCA ABRE JANELA (ordem do dono, 2026-11-04: *"PARA DE MOSTRA
   POP UP"*).** Provei o vigia de consolas largando um `cmd.exe` sem flags de propósito, para o
@@ -360,8 +365,26 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 02:1x):** `_main\_audit-verify-all.cmd` = **188724 B**,
-  **2367 CRLF** / 0 bare LF, sha256 `45B8AC8BDE565CB32AC25BC86763E6FCE602422AC0CB4B2ABF762AC53C4E868F`.
+- **PIN do ficheiro (medido 2026-11-04, 06:4x):** `_main\_audit-verify-all.cmd` = **191938 B**,
+  **2408 CRLF** / 0 bare LF, sha256 `6487F179CBB0EF36859B2163BE6FF90794A01208996778C18CB91B11F38AB6C2`.
+  (Este pin substitui o de 190395 B / 2389 CRLF, DEPOIS do par `emit-prewebview` +
+  `red-as-expected-emit-prewebview`: quando o WebView2 NAO inicializa (`WEBVIEW2_INIT_FAILED`
+  `0x80010108`, medido 02:48:24 numa instancia propria) o `core` fica a `None` e cada amostra
+  do medidor escrevia um `WARN POSTED_CALLABLE_FAILED ... 'NoneType' object has no attribute
+  'ExecuteScriptAsync'` -- **541 linhas em ~60 s** com a legenda do YouTube a CHEGAR e a nunca
+  poder ser pintada. O oraculo corre o `emit_async` REAL (50 pushes sem pagina => UMA linha
+  `EMIT_ASYNC_PREWEBVIEW` e zero excepcoes; com pagina o payload mais novo TEM de sair) e o
+  negativo desliga a CONDICAO numa COPIA e exige a arm vermelha com `AttributeError`.)
+  (Este pin substitui o de 188724 B / 2367 CRLF, DEPOIS do par `hidden-launch` +
+  `red-as-expected-hidden-launch`: `_main/hidden-launch.py` e' o unico caminho que larga um
+  filho nesta arvore -- `cmd`, `powershell`, `.cmd` e `python` passam todos por ele -- e
+  `run()`/`popen()` passavam `creationflags=` DUAS vezes ao `Popen`, logo `run(['cmd','/c',
+  r'_main\_audit-verify-all.cmd'])` morria num `TypeError` ANTES de arrancar o filho e NENHUM
+  passo corria: foi exactamente o que aconteceu a primeira tentativa de corrida desta sessao.
+  O oraculo julga o EFEITO no sistema operativo (o filho diz `GetConsoleWindow()==0`, o censo
+  nao ve' NENHUMA janela de consola visivel na arvore do filho, e `run` espera: 3 s de filho
+  => >=3 s) e o `--neg-arm` repoe o `TypeError` numa COPIA e exige as QUATRO arms vermelhas
+  com rc=1 -- medido `4 / 4`.)
   (Este pin substitui o de 188128 B / 2361 CRLF, DEPOIS de o `console-window-gate` de REGEX ser
   aposentado e trocado por tres passos: `console-window-audit` (censo **AST** de 1139 ficheiros
   que resolve o `creationflags` NO ESCOPO -- `WINDOW 0 / NO-FLAG 0 / STRING 0 /

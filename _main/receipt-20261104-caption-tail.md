@@ -90,3 +90,117 @@ devolvia o Traceback e nenhum passo corria; agora devolve `rc=0` com a saida do
 filho. O portao `console-window-gate.py` que o AGENTS.md nomeia **nao existe
 nesta arvore** (o `battery-wiring-oracle` nao o acusa porque o passo esta'
 `record`), logo a bandeira nunca foi conferida por execucao.
+
+## O helper ganhou o portao que faltava (medido, 2026-11-04 06:0x)
+
+O paragrafo acima dizia o essencial e parava aí: `hidden-launch.py` foi
+corrigido e a bateria correu, mas **nada julgava o helper por execucao**. A
+bandeira existia (duas vezes) e o `Popen` morria -- um portao de TEXTO veria a
+bandeira presente e passaria.
+
+`_main/hidden-launch-oracle.py`, quatro arms, cada um a julgar o EFEITO no
+sistema operativo:
+
+|arm|o que exige|medido|
+|---|---|---|
+|`run()`|`GetConsoleWindow()==0` no filho, com a saida de volta|`hwnd=0 visible=False`|
+|`popen()`|o mesmo pelo outro caminho|`hwnd=0 visible=False`|
+|CENSO|nenhuma janela de consola VISIVEL na arvore do filho, por `EnumWindows`|`amostras=16 janelas=[]`|
+|DURACAO|`run` espera: 3 s de filho => >=3 s|`wall=3.10s out='DONE'`|
+
+```
+hidden-launch-oracle: 4 PASS / 0 FAIL (4 arms)
+```
+
+O arm do CENSO nasceu com **duas** formas de mentir, as duas fechadas com a
+medicao ao lado: uma excepcao dentro da thread deixava `seen == []` e o arm
+verde (por isso o `samples > 0` e' condicao do PASS -- medido `amostras=0` e
+RED quando a thread morria); e contar TODAS as janelas de consola da maquina
+apanhava as `PseudoConsoleWindow` do proprio terminal do harness (pids 25924 e
+31660), por isso o censo filtra pela ARVORE do filho.
+
+O controle de `GetConsoleWindow()` **nao serve nesta maquina** e isso esta'
+declarado no ficheiro: sem a bandeira o filho TAMBEM devolve `hwnd=0` quando o
+pai nao tem consola (este harness nao tem) -- um arm que nao consegue ficar
+vermelho nao e' uma afirmacao, e fica o censo no lugar dele.
+
+**Braco negativo** (`--neg-arm`): repoe o `TypeError` numa COPIA do modulo (o
+`creationflags=` outra vez no `Popen`) e exige as quatro arms vermelhas com
+`rc=1` -- medido `4 / 4` -- e a frase `NEG-ARM PASS` no log, que e' a que o
+`:expectred` da bateria procura.
+
+**Fiacao:** dois passos novos na `_main/_audit-verify-all.cmd` (`hidden-launch`
+e `red-as-expected-hidden-launch`), o pin re-medido (**190395 B**, **2389
+CRLF**, sha256 `10A533CEC403E8AB3C2CAB69B7016CD71C11EC8F9A84FF3EF109D78704EC7969`)
+e o `agents-md-pins-oracle` PASS. `battery-wiring` conta **97 ligados**
+(tecto 124) e `battery-class` PASS: nenhum dos dois e' `always` a largar a app.
+
+**O que o `:expectred` apanhou na primeira corrida, e vale o registo:** o
+oraculo imprimia `NEG-ARM: PASS` (com dois pontos) e a bateria procura
+`NEG-ARM PASS` -- o passo apareceu em `failed: red-as-expected-hidden-launch=1`
+com o rc certo. A frase passou a `NEG-ARM PASS:` a partir do oraculo, nao do
+`.cmd`: a convencao da casa e' a do `.cmd`.
+
+## O feed que gritava sem pagina (medido e curado, 2026-11-04 06:3x)
+
+Instancia propria escondida (pid 42340, 02:48:14) mostrou o defeito ao vivo:
+
+```
+02:48:24 WEBVIEW2_INIT_FAILED error=(0x80010108) RPC_E_DISCONNECTED
+02:48:38 CAPTION_IN ... text="desse doinheiro vai ficar ali no cantinho"
+02:48:38..02:49:24  WARN POSTED_CALLABLE_FAILED fn=_run
+                    AttributeError: 'NoneType' object has no attribute 'ExecuteScriptAsync'
+```
+
+`grep -c POSTED_CALLABLE_FAILED` = **541** em ~60 s (uma por amostra do
+medidor), com a fonte do YouTube a **chegar** e a nunca poder ser pintada. O
+`emit` e o `exec_js_post` ja' declaravam que o pipeline de legendas arranca
+ANTES do WebView2, de proposito; o feed de `stats` era o irmao sem a guarda.
+
+A cura, em `emit_async._run` (o pop do latch FIRST, para o feed nao parar):
+
+|antes|depois|
+|---|---|
+|um `WARN` por amostra, 541/min, com excepcao a atravessar o `Invoke`|UMA linha `EMIT_ASYNC_PREWEBVIEW kind=… reason=no-core`, e o payload sai do latch (a proxima amostra reabre)|
+
+`_main/emit-prewebview-oracle.py` corre o `emit_async` REAL (stub de `System`,
+que este interprete nao tem: `ModuleNotFoundError: No module named 'System'`,
+medido) e julga tres coisas:
+
+```
+[PASS] 50 pushes sem pagina: UMA linha, zero excepcoes   linhas_EMIT_ASYNC_PREWEBVIEW=1
+[PASS] com pagina o feed NAO pode ser engolido           scripts=5 ultimo=window.__sotto_emit("stats","{\"n\": 4}")
+[PASS] depois de a pagina existir o mesmo kind volta a postar   scripts_depois=1 (antes=0)
+emit-prewebview-oracle: 3 PASS / 0 FAIL (3 arms)
+```
+
+`--neg-arm`: desliga a CONDICAO numa COPIA (trocar a linha por `pass` deixava o
+corpo do `if` sem pai -- `IndentationError`, medido) e exige a arm A vermelha:
+`excepcao="AttributeError: 'NoneType' object has no attribute 'Invoke'"`
+`linhas_EMIT_ASYNC_PREWEBVIEW=0`, `NEG-ARM PASS: 1 de 3 arm(s) vermelha(s)`,
+rc=1. Fiacao: dois passos na bateria (`emit-prewebview` +
+`red-as-expected-emit-prewebview`), pin re-medido, `battery-wiring` **98
+ligados** (tecto 124).
+
+## Verificacao viva da app (2026-11-04, 02:54)
+
+`_main/sotto-relaunch.py --relaunch --tag emit-prewebview-fix` -- a instancia
+anterior (pid 29272) estava em codigo anterior ao dia. Depois:
+
+|o que|numero|
+|---|---|
+|`live-code-freshness --strict`|**FRESH** `sha256=F53F8977E99C` == disco|
+|mutex|`pid 46264 GANHOU a mutex`; saude `hotkey:true tray:true webview2_failed:false`|
+|arranque escondido|`PANEL_VISIBILITY_AT_STARTUP visible=false`|
+|WebView2 -> pagina do painel|`WEBVIEW_NAV dom t=1609` / `dom t=1813` / `done t=1828` (**1,8 s**)|
+|worker|`BRIDGE_SPAWNED pid=35904` + `BRIDGE_LOAD_MS ms=10641`|
+|spam do feed|`POSTED_CALLABLE_FAILED` desde o arranque = **0**|
+|`UI_THREAD_STALL`|**0**|
+
+O que **nao** pode ser medido nesta instancia: a legenda PINTADA. A fonte do
+YouTube reporta `YOUTUBE_TICK_MS ... vid='' rows=? why=''` -- nao ha aba a
+tocar -- e nao ha audio a entrar, logo `CAPTION_IN` = 0. Na instancia anterior
+o mesmo caminho entregou texto real (`CAPTION_IN` as 02:48:38, verbatim acima),
+e a pintura (`CAPTION_APPLIED count=200`) tem a sua medicao na sessao do dono
+(01:25:39). Uma lane que force a pintura precisa de abrir um video ou de um
+endpoint de audio -- as duas coisas sao dele, nao minhas.
