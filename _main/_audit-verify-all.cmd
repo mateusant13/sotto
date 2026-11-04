@@ -1608,21 +1608,6 @@ if exist _main\tap-first-block-oracle.py (
   call :expectred red-as-expected-tap-first-block !STEP_RC! "%OUT%\tap-first-block-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-tap-first-block MISSING "%OUT%\tap-first-block-neg.log" "NEG-ARM PASS" )
 
-REM (`line-closed`: a linha que o worker FECHOU nao espera o prazo de 1500 ms.
-REM Medido na sessao do dono, 2026-11-04: `CAPTION_IN` 17:32:17.978 com
-REM `final=false` e o commit so' as 17:32:19.481, `queue_ms=1503` -- o
-REM `COMMIT_MAX_HOLD_MS` inteiro a espera de uma segunda hipotese que o worker
-REM ja' tinha dispensado com `final=true` no fragmento seguinte. O oraculo corre
-REM o motor REAL por `node` (sem painel, sem janela, sem dispositivo de audio);
-REM o `--neg-arm` muta uma COPIA e exige A1/A2 vermelhos.)
-if exist _main\line-closed-oracle.py (
-  call :step always line-closed 0 "_main\line-closed-oracle.py;app\panel\caption-formulation.js" "%OUT%\line-closed.log" python _main\line-closed-oracle.py
-  call :record line-closed !STEP_RC!
-) else ( call :record line-closed MISSING )
-if exist _main\line-closed-oracle.py (
-  call :step always red-as-expected-line-closed 1 "_main\line-closed-oracle.py;app\panel\caption-formulation.js" "%OUT%\line-closed-neg.log" python _main\line-closed-oracle.py --neg-arm
-  call :expectred red-as-expected-line-closed !STEP_RC! "%OUT%\line-closed-neg.log" "NEG-ARM PASS"
-) else ( call :expectred red-as-expected-line-closed MISSING "%OUT%\line-closed-neg.log" "NEG-ARM PASS" )
 if exist _main\owner-audio-gate.py (
   call :step always owner-audio-gate 0 "_main\owner-audio-gate.py;_main\mute-audio.py" "%OUT%\owner-audio-gate.log" python _main\owner-audio-gate.py
   call :record owner-audio-gate !STEP_RC!

@@ -41,12 +41,12 @@
       "max_func_name": ""
     },
     "app/panel/caption-formulation.js": {
-      "bytes": 53580,
+      "bytes": 52824,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 1103,
+      "lines": 1091,
       "max_func": 0,
       "max_func_name": ""
     },

@@ -407,11 +407,14 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 10:4x):** `_main\_audit-verify-all.cmd` = **207323 B**,
-  **2594 CRLF** / 0 bare LF, sha256 `6D35879EFFCABF78F703C469D2F0F142A7C3BD4CC0C62B2E5EE62CDEF42D4917`.
-  (Mil duzentos e quarenta e quatro bytes depois do pin de 206079 B: os dois passos de
-  `line-closed` -- a linha que o worker FECHOU nao espera o prazo de 1500 ms, e o
-  seu braco negativo -- com onze linhas de comentario e seis de passo.)
+- **PIN do ficheiro (medido 2026-11-04, 10:5x):** `_main\_audit-verify-all.cmd` = **206081 B**,
+  **2579 CRLF** / 0 bare LF, sha256 `5C4EFCCB4DD9698F7225F53F97B416A14B5B0BB994DA71696C07035806DB3BB1`.
+  (Os passos de `line-closed` foram APAGADOS: o `_panel2-dom-probe.js` acusou a cura
+  como regressao -- 94/94 verdes antes, 92/94 com ela, `real=[2,...] want=[1,...]` nas
+  duas arms da caixa -- e o caso medido no dono (`CAPTION_IN ... final=false`, espera
+  de 1503 ms) era um PARTIAL, que essa cura nunca tocava. Revertido o commit em
+  `caption-formulation.js` e re-medido: 94/94 verdes outra vez. Fica o `reveal-clock`,
+  que e' a latencia que o dono VE.)
   (O pin de 206079 B substituiu o de 204847 B com os dois passos de `tap-first-block`.)
   (Este pin substitui o de 198855 B / 2491 CRLF, DEPOIS dos dois passos do `webview2-args-scope`
   (+ `red-as-expected-webview2-args-scope`): o `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` herdado do

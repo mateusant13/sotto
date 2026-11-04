@@ -182,12 +182,21 @@ def build(mod, track):
 # --------------------------------------------------------------------------
 # AS ARMS
 # --------------------------------------------------------------------------
+#: UMA JANELA QUE EXISTE (2026-11-04). `hwnd=0` passou a significar "nao ha
+#: janela nenhuma" no shell, e esse caso tem guarda propria (`cdp-no-rows-yet`):
+#: sem janela nao se pergunta a UIA a um handle que nao existe. Este instrumento
+#: substitui as leituras do player, logo representa uma janela que existe; com
+#: `0` as duas arms de ancora mediam a guarda em vez do ramo. O handle e'
+#: ficticio de proposito -- nenhuma leitura o usa.
+HNDL = 0x5A17001
+
+
 def arm_anchor(mod, track):
     """A1: o ramo do relogio grava o ancora (a linha pode crescer entre leituras)."""
     watcher, _shell = build(mod, track)
     watcher._youtube_time = lambda *a, **k: 41.0
     watcher.yt_foreign_t = None
-    lines, urgent = watcher._youtube(0, None, None)
+    lines, urgent = watcher._youtube(HNDL, None, None)
     anchor = getattr(watcher, '_yt_anchor', None)
     ok = bool(anchor) and bool(getattr(watcher, '_yt_track', None))
     return ok, ('anchor=%r track=%s lines=%r urgent=%s'
@@ -239,7 +248,7 @@ def arm_anchor_has_cue(mod, track):
     # e a arm mediria o buraco, nao o ramo.
     watcher._youtube_time = lambda *a, **k: 3.0
     watcher.yt_hit = None
-    lines, urgent = watcher._youtube(0, None, None)
+    lines, urgent = watcher._youtube(HNDL, None, None)
     ok = bool(getattr(watcher, '_yt_anchor', None)) and bool(lines)
     return ok, 'anchor=%r lines=%r urgent=%s' % (
         getattr(watcher, '_yt_anchor', None),

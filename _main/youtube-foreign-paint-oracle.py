@@ -157,7 +157,14 @@ def run_polls(mod, painted, clocks, track=None):
     obj = build_watcher(mod, painted, clocks, track)
     out = []
     for _ in range(len(clocks)):
-        got = obj._youtube(0, None, None)
+        # UMA JANELA QUE EXISTE (2026-11-04). O `hwnd=0` era o "nao ha janela
+        # nenhuma" e o shell ganhou a guarda honesta que lhe corresponde
+        # (`cdp-no-rows-yet`: sem janela nao se pergunta a UIA a um handle que
+        # nao existe). Este instrumento SUBSTITUI as leituras do player, logo o
+        # que ele representa e' uma janela que existe -- com `0` as quatro arms
+        # mediam a guarda em vez da decisao. O handle e' ficticio de proposito:
+        # nenhuma leitura o usa (todas estao substituidas por `build_watcher`).
+        got = obj._youtube(0x5A17001, None, None)
         out.append((line_of(got), obj.yt_reason))
     return out
 

@@ -243,6 +243,13 @@ def _run_checks(module):
         def _history_last_body(self, p):
             return shell_cls._history_last_body(p)
 
+        # A CAUDA E' `staticmethod` NO SHELL DESDE 2026-11-04 e o `history_append`
+        # passou a le-la no choke point (`self._history_tail(path)`), para decidir
+        # se a linha nova e' a MESMA linha a crescer. Sem esta delegacao o dublê
+        # rebentava com `AttributeError` e o laco do B5 media a excepcao.
+        def _history_tail(self, p):
+            return shell_cls._history_tail(p)
+
         def _history_provenance(self, options):
             return ' <!-- route=final start=1 reason=ok -->'
 
@@ -251,7 +258,12 @@ def _run_checks(module):
     with _silent_log(module):
         for name, (text, options, should_enter) in CHECK.items():
             entry = shell_cls.history_append(double, text, options)
-            entered = entry is not None
+            # A ENTRADA DEVOLVIDA NAO E' UMA ESCRITA (2026-11-04). O `skip`
+            # devolve a entrada com `action='skip'` de proposito -- devolver
+            # `None` fazia o painel inventar a linha de recurso e duplicar no
+            # DOM. Logo "entrou" tem de ser lido da ACCAO, nao do facto de o
+            # shell ter respondido; `None` continua a ser RECUSA.
+            entered = entry is not None and entry.get('action') != 'skip'
             detail.append((name, entered, should_enter))
     ok = all(entered == should for _n, entered, should in detail)
     try:
@@ -283,13 +295,18 @@ def phase_neg_arm():
     print('== FASE 4: braco negativo (mutante sem guarda) ==')
     module = _import_shell()
     shell_cls = module.SottoShell
-    original = shell_cls.__dict__.get('_history_last_body')
+    # O MUTANTE NOMEIA A FONTE DA IDENTIDADE QUE O CHOKE POINT LE (2026-11-04).
+    # Era `_history_last_body`; o `history_append` passou a ler `_history_tail`
+    # (corpo + hora + `start=`), e um mutante na funcao que ja ninguem chama
+    # deixava de mutar fosse o que fosse -- medido: "sem" guarda, o replay
+    # continuava verde e o braco negativo era um no-op.
+    original = shell_cls.__dict__.get('_history_tail')
     try:
-        shell_cls._history_last_body = staticmethod(lambda path: None)
+        shell_cls._history_tail = staticmethod(lambda path: None)
         ok, written, _detail = _run_checks(module)
     finally:
         if original is not None:
-            shell_cls._history_last_body = original
+            shell_cls._history_tail = original
     caught = not ok
     print('  com o mutante: replay %s (esperado: VERMELHO)' % ('PASSOU' if ok else 'FICOU VERMELHO'))
     print('  linhas escritas com o mutante=%d' % len(written))

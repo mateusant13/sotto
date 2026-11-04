@@ -322,7 +322,14 @@ def neg_arm():
         with open(DEFAULT_LOG, encoding="utf-8", errors="replace") as fh:
             real = fh.readlines()
         parsed = parse(real)
-        if parsed[0]:
+        # A AMOSTRA TEM DE SERVIR PARA A MEDIANA (2026-11-04). O mutante de
+        # atraso no log VIVO media `parsed[0]` truthy -- UM cue ja' bastava --
+        # mas `evaluate` devolve 2 (SEM DADOS) abaixo de `MIN_CUES`, e o braco
+        # contava esse 2 como "mutante escapou". Medido: 1 CAPTION_LAND no log
+        # do dono, `want rc=1 got rc=2 ** PASSOU **`, 6 de 7, neg-arm VERMELHO
+        # por falta de dados e nao por o mutante ter vivido. Ou a amostra serve
+        # para o veredicto, ou o braco nao existe.
+        if len(parsed[0]) >= MIN_CUES:
             out = evaluate(*parse(_mutate(real, "late"))[:4])
             hit = out["rc"] == 1
             caught += 1 if hit else 0
@@ -330,8 +337,9 @@ def neg_arm():
                   % ("real-late", "log VIVO atrasado 500 ms", out["rc"],
                      "CAIU" if hit else "** PASSOU **"))
         else:
-            print("NEG-ARM real       saltado: o log vivo ainda nao tem CAPTION_LAND")
-    total = len(mutants) + (1 if _real_land_count() else 0)
+            print("NEG-ARM real       saltado: o log vivo tem %d cue(s), abaixo de %d"
+                  % (len(parsed[0]), MIN_CUES))
+    total = len(mutants) + (1 if _real_land_count() >= MIN_CUES else 0)
     print("NEG-ARM %d of %d mutant(s) caught" % (caught, total))
     # CONTRATO DA BATERIA: rc=1 = o mutante foi apanhado; rc=0 = o controlo
     # NAO derrubou nada (o `:expectred` le isso como falha).

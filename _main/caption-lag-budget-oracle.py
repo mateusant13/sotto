@@ -72,9 +72,14 @@ class FakeOverlay(object):
     def set_work_area(self, *_a, **_k):
         return True
 
-    def set_text(self, text, previous=None, instant=False, cue=None):
+    def set_text(self, text, previous=None, instant=False, cue=None, late_s=0.0):
+        # A ASSINATURA E' A DO OVERLAY REAL (2026-11-04): `caption_overlay.set_text`
+        # passou a receber `late_s` (o recuo que ancora a revelacao no AUDIO), e um
+        # dublê com a assinatura antiga fazia o `_drain` rebentar com `TypeError`
+        # -- as arms ficavam `AUSENTE` e pareciam um defeito do produto.
         self.texts.append(text)
         self.cues.append(cue)
+        self.late_s = late_s
         return True
 
     def show(self, on=True):

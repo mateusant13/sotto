@@ -101,8 +101,12 @@ NO_WINDOW_TOKENS = ('CREATE_NO_WINDOW', 'CREATE_NEW_CONSOLE_DISABLED',
 #: ...], creationflags=0x08000000)` pintou uma janela visivel no ecran dele. O
 #: par que fecha o caso e' `startupinfo` com `STARTF_USESHOWWINDOW` +
 #: `wShowWindow=SW_HIDE` (e' o que `_main/hidden-launch.py` faz).
+#: `popen_kwargs` entra na lista porque e' o PAR inteiro numa linha: o helper
+#: `app/webview/no_console.py` devolve `creationflags` + `startupinfo` juntos, e um
+#: sitio que o espalha (`**popen_kwargs()`) esta' mais certo do que um que copie
+#: as duas metades a mao -- sem isto o portao acusava quem usa o recipe da casa.
 STARTF_TOKENS = ('STARTF_USESHOWWINDOW', 'SW_HIDE', 'wShowWindow',
-                 'startupinfo=', 'STARTUPINFO(')
+                 'startupinfo=', 'STARTUPINFO(', 'popen_kwargs')
 #: mapa id(call) -> funcao, preenchido por ficheiro em `audit_python`
 SCOPE = [{}]
 
@@ -268,6 +272,9 @@ def _resolve_name(name, call, owner, module_flags, depth=0):
 def _guards(call, src_segment, flags=None):
     """A guarda esta' nesta chamada? Devolve o nome da guarda ou None."""
     for kw in call.keywords:
+        # `**popen_kwargs()` -- o helper da casa traz o par inteiro.
+        if kw.arg is None and 'popen_kwargs' in ast.dump(kw.value):
+            return 'creationflags(popen_kwargs)'
         if kw.arg in ('creationflags', 'flags'):
             if _resolves_hidden(kw.value, flags or {}):
                 return 'creationflags'
