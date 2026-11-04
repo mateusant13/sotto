@@ -38,7 +38,15 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(os.environ.get("SOTTO_ROOT") or r"H:\sotto").resolve()
+#: A ARVORE QUE ESTE ORACULO JULGA (corrigido 2026-11-04). O DEFAULT era o texto
+#: `H:\sotto`, e a consequencia e' que o oraculo corria dentro de uma worktree
+#: media os ficheiros da arvore VIVA -- medido: a lane `YtOneToOne` editava
+#: `H:/sotto-wt/YtOneToOne/app/webview/youtube_reveal.py` e este ficheiro
+#: carregava `H:/sotto/app/webview/youtube_reveal.py`. Um oraculo tem de julgar a
+#: arvore em que ele PROPRIO vive; `SOTTO_ROOT` continua a servir para julgar
+#: outra de proposito.
+ROOT = Path(os.environ.get("SOTTO_ROOT")
+            or Path(__file__).resolve().parent.parent).resolve()
 WEBVIEW = ROOT / "app" / "webview"
 SHELL = WEBVIEW / "sotto_webview.py"
 PAYLOAD = ROOT / "_main" / "fixtures" / "yt-WdaHAGRBB6s.en-orig.json3"
@@ -307,7 +315,49 @@ def run(payload_path: Path) -> int:
         shell._fade_t0 = 90.0
         add(fns["_fade_alpha"](shell) == 255 and shell._fade_t0 is None,
             "passada a duracao, o fade fecha-se e nao volta a repintar sozinho")
+
+    # -- 8: o relogio da PALAVRA nova nao recua ------------------------------
+    print("\nARM 8 -- uma palavra nova nunca e' datada ATRAS do que o ecra ja' mostrou")
+    for ok, name, detail in arm_word_start_never_rewinds(yr):
+        add(ok, name, detail)
     return verdict("WORD-CLOCK")
+
+
+def arm_word_start_never_rewinds(yr):
+    """O `LiveRows.push` datava a palavra nova por `at` tal e qual.
+
+    `at` e' `monotonic() - late_s` (o atraso do ASR daquela entrega). Quando um
+    lote chega mais atrasado que o anterior, `at` RECUA -- e a palavra nova
+    ficava com um `start` anterior ao de palavras ja' no ecra. `frame` conta
+    `start <= t` e corta um PREFIXO, logo o ecra passava a mostrar palavras do
+    FUTURO e a esconder a que acabou de ser falada (reproduzido 2026-11-04:
+    `frame(100.1)` mostrava "alpha bravo charlie" com starts 100.0/100.12/100.24
+    e escondia "delta" (99.0) e "echo" (99.18)).
+
+    O arm mede a PROPRIEDADE e nao a forma: em cada instante, quantas palavras o
+    ecra mostra tem de ser igual a quantas o relogio ja' datou.
+    """
+    live = yr.LiveRows()
+    live.push("alpha bravo charlie", 100.0)
+    live.push("alpha bravo charlie delta echo", 99.0)
+    starts = [float(w["start"])
+              for row in live.rows() for w in (row.get("words") or ())]
+    out = [("as palavras de uma linha tem relogios nao decrescentes",
+            all(b >= a for a, b in zip(starts, starts[1:])),
+            "starts=%r" % (starts,))]
+    bad = []
+    for ms in range(-120, 220, 10):
+        t = 100.0 + ms / 1000.0
+        shown = sum(len(yr.speech_words(mark["text"])) for mark in live.frame(t))
+        clock = sum(1 for start in starts if start <= t + 1e-9)
+        if shown != clock:
+            bad.append((round(t, 3), shown, clock))
+    out.append(("o ecra mostra exactamente o que o relogio ja' datou",
+                not bad, "fora=%r" % (bad[:3],)))
+    out.append(("a palavra falada nao fica escondida atras de palavras futuras",
+                "delta" in "".join(m["text"] for m in live.frame(100.5)),
+                "frame(100.5)=%r" % ([m["text"] for m in live.frame(100.5)],)))
+    return out
 
 
 class _Clock:
@@ -344,6 +394,26 @@ def neg_arm() -> int:
             return EXIT_FAIL
         target.write_text(mutant, encoding="utf-8")
         print("NEG-ARM: o corte volta a ser so' a PINTURA (a frase inteira de uma vez)")
+        # O PISO DO RELOGIO DA PALAVRA (2026-11-04): tirar a ancora monotona
+        # volta a datar a palavra nova por `at` tal e qual -- o mutante do arm 8.
+        # Cada mutacao tem de derrubar a SUA arm, por isso o arm 8 e' corrido
+        # aqui contra o mutante, e nao apenas o oraculo inteiro.
+        floor_mut = target.read_text(encoding="utf-8").replace(
+            '            base = max(base, float(kept[-1]["start"]) + step)\n',
+            '            pass\n')
+        if floor_mut == target.read_text(encoding="utf-8"):
+            print("NEG-ARM: nao consegui mutar o PISO do relogio da palavra")
+            return EXIT_FAIL
+        target.write_text(floor_mut, encoding="utf-8")
+        mutant_mod = load("yr_neg", target)
+        arm8 = arm_word_start_never_rewinds(mutant_mod)
+        caught = [name for name, ok, _detail in arm8 if not ok]
+        print("NEG-ARM: piso do relogio da palavra removido -> arm 8 RED em %d/%d "
+              "checks (%s)" % (len(caught), len(arm8), "; ".join(caught)[:120]))
+        if not caught:
+            print("NEG-ARM FAIL -- a arm 8 nao ve a palavra datada para tras")
+            return EXIT_PASS
+        target.write_text(mutant, encoding="utf-8")
         # E o fade volta a ser 255 fixo -- a segunda regressao que o dono pediu.
         ov = copy / "caption_overlay.py"
         otext = ov.read_text(encoding="utf-8")

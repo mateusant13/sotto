@@ -333,6 +333,56 @@ def medir(live, cues, capacity=3, delay_words=0):
             "samples": len(live.get("samples") or ())}
 
 
+def word_ms_table(cues, cue_index, engine=None):
+    """O INSTANTE DE CADA PALAVRA, do player e do Sotto, em ms -- a tabela da 1:1.
+
+    O QUE E' O INSTANTE DO PLAYER. O `tOffsetMs` de cada segmento do payload que o
+    PROPRIO player carrega (`payload.is_player_document = true` no artefacto
+    `1to1-capture`): e' com esse relogio que ele revela as palavras, e e' a unica
+    fonte de ms que existe -- a leitura do UIA mostra FRASES a cada ~0,65 s
+    (`_main/fixtures/yt-WdaHAGRBB6s.live-compare-20261026.json`), logo nao tem
+    resolucao para uma palavra.
+
+    O QUE E' O INSTANTE DO SOTTO. O primeiro instante em que a funcao de producao
+    (`youtube_reveal._reveal_text`, a que `frame` chama para cada linha) passa a
+    mostrar essa palavra, varrido a 1 ms. Nao e' o relogio lido outra vez: e' o
+    desenho.
+
+    E' uma medida de DUAS PONTAS: a palavra tem de estar ausente 1 ms antes do
+    instante declarado e presente nesse instante. Uma ponta so' passaria com um
+    motor que mostra tudo de uma vez.
+    """
+    yr = engine if engine is not None else __import__("youtube_reveal")
+    row = yr.rows_from_cues(cues)[cue_index]
+    declared = [float(w["start"]) for w in row.get("words") or ()]
+    text = row.get("text") or ""
+
+    def shown(t):
+        return len(yr.speech_words(yr._reveal_text(row, t)))
+
+    out = []
+    for index, instant in enumerate(declared):
+        # A VARREDURA COMECA ANTES DO INSTANTE (200 ms): um motor que revele
+        # CEDO e' um defeito, e uma varredura que so' olha para a frente nao o
+        # pode ver -- medido no braco negativo (relogio +50 ms) ela devolvia
+        # -1 ms em vez de -50.
+        t = instant - 0.2
+        first = None
+        while t <= instant + 1.0:
+            if shown(t) >= index + 1:
+                first = t
+                break
+            t = round(t + 0.001, 6)
+        out.append({
+            "word": " ".join(yr.speech_words(text)[index:index + 1]),
+            "player_ms": round(instant * 1000.0, 1),
+            "sotto_ms": None if first is None else round(first * 1000.0, 1),
+            "early_ms": shown(instant - 0.001),
+            "drift_ms": None if first is None else round((first - instant) * 1000.0, 1),
+        })
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="A revelacao palavra-a-palavra no caminho vivo.")
     ap.add_argument("--neg-arm", action="store_true",
@@ -410,6 +460,31 @@ def main(argv=None):
     add("wiring-is-live                 %-10s as linhas pintadas sao a legenda, "
         "sem janela por relogio"
         % ("GREEN" if verbatim_live(src) else "RED"))
+
+    # ── A TABELA, PALAVRA A PALAVRA, EM MS ────────────────────────────────
+    # A aceitacao da lane de 2026-11-04 pede a medida e nao um booleano: "para
+    # um cue do fixture, o instante de revelacao do player contra o do Sotto,
+    # por palavra, em ms, com o drift".
+    table = word_ms_table(cues, 0)
+    in_time = [r for r in table if r["drift_ms"] == 0]
+    early = [r for r in table if r["sotto_ms"] is None
+             or r["early_ms"] >= table.index(r) + 1]
+    add("word-ms-table                  %-10s cue 0, %d/%d palavras no instante "
+        "declarado (drift 0 ms); fora=%d"
+        % ("GREEN" if len(in_time) == len(table) and table and not early
+           else "RED", len(in_time), len(table), len(early)))
+    monotone = all(a["sotto_ms"] is not None and b["sotto_ms"] is not None
+                   and b["sotto_ms"] > a["sotto_ms"]
+                   for a, b in zip(table, table[1:]))
+    add("word-ms-table-monotone        %-10s as palavras entram por ordem de "
+        "relogio: %s"
+        % ("GREEN" if monotone else "RED", "SIM" if monotone else "NAO"))
+    add("")
+    add("tabela (cue 0, %s)" % json.dumps((cues[0].get("text") or "")[:60]))
+    add("  %-8s %10s %10s %8s" % ("palavra", "player_ms", "sotto_ms", "drift_ms"))
+    for row in table:
+        add("  %-8s %10s %10s %8s"
+            % (row["word"], row["player_ms"], row["sotto_ms"], row["drift_ms"]))
     add("")
 
     if m["diffs"]:
@@ -433,6 +508,10 @@ def main(argv=None):
         # existe para apanhar. Se ele voltar, o veredicto tem de ser VERMELHO
         # -- e nao uma nota na margem.
         bad = 1
+    if not (len(in_time) == len(table) and table and not early):
+        bad = 1
+    if not monotone:
+        bad = 1
 
     text = "\n".join(out)
     print(text)
@@ -441,14 +520,61 @@ def main(argv=None):
             fh.write(text + "\n")
 
     if args.neg_arm:
-        # O braco negativo tem de ser VERMELHO: se a arm principal continuasse
-        # verde com a pintura atrasada, o instrumento nao mede nada.
-        if bad:
-            print("NEG-ARM PASS (a janela ja nao batia com o atraso)")
+        # O CONTRATO DA CASA: `--neg-arm` sai 1 QUANDO APANHA o mutante e 0
+        # quando nao apanha. Ate' 2026-11-04 este ramo saia 1 nos DOIS casos, e
+        # um braco negativo que nunca pode dizer "nao apanhei" nao distingue um
+        # instrumento sem dentes de um instrumento com eles.
+        # A SEGUNDA MUTACAO: o relogio da palavra atrasado 50 ms. A tabela em ms
+        # tem de ver o deslocamento -- um instrumento que so' sabe dizer "0" nao
+        # mede tempo nenhum.
+        drift_seen = neg_arm_clock_shift(cues)
+        if bad and drift_seen:
+            print("NEG-ARM PASS (pintura atrasada: janela RED; relogio+%d ms: "
+                  "drift %r ms na tabela)" % (50, drift_seen))
             return 1
-        print("NEG-ARM FAIL -- a janela continuou a bater com a pintura atrasada")
-        return 1
+        print("NEG-ARM FAIL -- a janela continuou a bater com a pintura atrasada"
+              if not bad else
+              "NEG-ARM FAIL -- a tabela em ms nao ve' o relogio deslocado")
+        return 0
     return bad
+
+
+def neg_arm_clock_shift(cues, shift_ms=50):
+    """A tabela em ms apanha um relogio de palavra 50 ms atrasado?
+
+    Muta uma COPIA de `youtube_reveal.py` (nunca a arvore) e mede a tabela com
+    ela. Devolve o maior `drift_ms` observado: 0 ou `None` = o instrumento nao
+    ve' o deslocamento, e o braco negativo falha.
+    """
+    import shutil
+    import tempfile
+    tmp = tempfile.mkdtemp(prefix="reveal-neg-")
+    try:
+        target = os.path.join(tmp, "youtube_reveal_mut.py")
+        with io.open(os.path.join(REPO, "app", "webview",
+                                  "youtube_reveal.py"), encoding="utf-8") as fh:
+            src = fh.read()
+        mut = src.replace("if start <= limit + 1e-9:",
+                          "if start <= limit + %r + 1e-9:" % (shift_ms / 1000.0,))
+        if mut == src:
+            print("NEG-ARM: nao consegui mutar o relogio da palavra")
+            return None
+        with io.open(target, "w", encoding="utf-8") as fh:
+            fh.write(mut)
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("yr_clock_shift", target)
+        engine = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(engine)
+        table = word_ms_table(cues, 0, engine=engine)
+        worst = max((r["drift_ms"] or 0) for r in table) if table else None
+        print("NEG-ARM: relogio da palavra %+d ms -> maior drift na tabela: %r ms"
+              % (shift_ms, worst))
+        return worst
+    except Exception as exc:                                  # noqa: BLE001
+        print("NEG-ARM: a mutacao do relogio nao correu: %r" % (exc,))
+        return None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":
