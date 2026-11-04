@@ -677,6 +677,26 @@ if exist _main\caption-seam-dedup-oracle.py (
   call :step red-as-expected-caption-seam-dedup 1 "_main\caption-seam-dedup-oracle.py;worker\sotto_worker.py" "%OUT%\caption-seam-dedup-neg.log" python _main\caption-seam-dedup-oracle.py --neg-arm
   call :expectred red-as-expected-caption-seam-dedup !STEP_RC! "%OUT%\caption-seam-dedup-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-caption-seam-dedup MISSING "%OUT%\caption-seam-dedup-neg.log" "NEG-ARM PASS" )
+REM `tray-menu-oracle.py` -- o icone da bandeja tem de se comportar como o de
+REM qualquer outro app. Ordem do dono de 2026-11-04, verbatim: *"icone do sotto e'
+REM uma merda de mexer. botao direito e' travado pra abrir o menu dele ... tipo o
+REM vanguard"*. As tres causas medidas: a janela era `HWND_MESSAGE` (nao pode ser
+REM activada, logo o `SetForegroundWindow` que fecha o menu ao clicar fora nao
+REM pega), faltava o `PostMessage(hwnd, WM_NULL)` do receituario MSDN (o menu
+REM precisava de um SEGUNDO clique para fechar) e os DOIS botoes abriam o menu.
+REM O oraculo importa a shell headless, cria a janela REAL (invisivel: nao poe
+REM nada no ecra do dono nem na taskbar) e despacha mensagens REAIS no handler;
+REM o `TrackPopupMenu` modal e' um gravador, por isso a ORDEM da receita e' julgada.
+REM O `--neg-arm` repoe cada um dos tres sitios numa COPIA ao lado do original e
+REM exige que o braco dele caia (medido: 3/3 CAUGHT).
+if exist _main\tray-menu-oracle.py (
+ call :step tray-menu 0 "_main\tray-menu-oracle.py;app\webview\sotto_webview.py" "%OUT%\tray-menu.log" python _main\tray-menu-oracle.py
+ call :record tray-menu !STEP_RC!
+) else ( call :record tray-menu MISSING )
+if exist _main\tray-menu-oracle.py (
+call :step red-as-expected-tray-menu 1 "_main\tray-menu-oracle.py;app\webview\sotto_webview.py" "%OUT%\tray-menu-neg.log" python _main\tray-menu-oracle.py --neg-arm
+call :expectred red-as-expected-tray-menu !STEP_RC! "%OUT%\tray-menu-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-tray-menu MISSING "%OUT%\tray-menu-neg.log" "NEG-ARM: PASS" )
 REM `fusion-oracle.py` -- O CORE DA FUSAO (ordem do dono, 2026-11-04: *"nao
 REM queremos a implementacao de detectar falantes ou algo assim. so' o core"*).
 REM Duas hipoteses do MESMO audio (stream rapido, refinado) viram operacoes de

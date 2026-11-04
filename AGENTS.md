@@ -446,8 +446,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 14:03):** `_main\_audit-verify-all.cmd` = **219712 B**,
-  **2723 CRLF** / 0 bare LF, sha256 `B2D3E3781111C333A62396DA1B94209F5951BD3C9E2EC77872A367FCE091CA8D`.
+- **PIN do ficheiro (medido 2026-11-04, 14:3x):** `_main\_audit-verify-all.cmd` = **221321 B**,
+  **2743 CRLF** / 0 bare LF, sha256 `90449F0B0B8FF9B3A56BB98A2F0845C848E531D19920888B6C3A19FE6F87661E`.
+  (Vinte linhas a mais do que o pin de 219712 B / 2723 CRLF: o par `tray-menu` + o seu `--neg-arm`,
+  12 arms. Nasceu da ordem do dono de 2026-11-04 -- *"icone do sotto e' uma merda de mexer. botao
+  direito e' travado pra abrir o menu dele ... tipo o vanguard"* -- e mede as TRES causas que faziam
+  o menu parecer travado: a janela da bandeja era `HWND_MESSAGE` (nao pode ser activada, logo o
+  `SetForegroundWindow` que fecha o menu ao clicar fora nao pega; o discriminador que sobreviveu ao
+  mutante e' o bit `WS_POPUP` -- medido 0x4C00000 no mutante contra 0x84000000 na cura, porque o
+  `GetAncestor(GA_PARENT)` NAO e' 0 numa janela message-only neste build), faltava o
+  `PostMessage(hwnd, WM_NULL)` do receituario MSDN, e os DOIS botoes abriam o menu (o esquerdo
+  passou a abrir o painel, como em qualquer app da bandeja). `--neg-arm` medido 3/3 CAUGHT.)
   (Dezoito linhas a mais do que o pin de 218401 B / 2705 CRLF: o par `fusion` + o seu `--neg-arm` --
   o core da fusao stream/refinado, que a ordem do dono de 2026-11-04 poe no lugar de qualquer
   deteccao de falantes. 14 arms; o `--neg-arm` muta quatro vezes e exige as quatro vermelhas.)

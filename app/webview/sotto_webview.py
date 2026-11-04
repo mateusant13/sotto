@@ -7203,6 +7203,11 @@ NIF_INFO = 0x10                  # balloon tip: informs without blocking
 MF_STRING, MF_SEPARATOR = 0x0000, 0x0800
 TPM_RIGHTBUTTON, TPM_RETURNCMD = 0x0002, 0x0100
 HWND_MESSAGE = -3
+WM_NULL = 0x0000
+#: The tray's own window is a HIDDEN TOP-LEVEL popup, NOT a message-only window.
+#: See `_create_window` for the measurement that moved it.
+WS_POPUP = 0x80000000
+WS_EX_TOOLWINDOW = 0x00000080
 
 TRAY_ID = 0xB0F1              # any uid; this one is ours
 ID_TRAY_OPEN = 1              # "Open panel"
@@ -7474,8 +7479,21 @@ class TrayIcon:
             err = ctypes.get_last_error()
             if err != 1410:  # ERROR_CLASS_ALREADY_EXISTS is fine (a restart)
                 raise OSError(err, 'RegisterClassExW')
-        hwnd = user32.CreateWindowExW(0, TRAY_WINDOW_CLASS, '', 0, 0, 0, 0, 0,
-                                      HWND_MESSAGE, None, hinst, None)
+        # A HIDDEN TOP-LEVEL POPUP, NOT `HWND_MESSAGE`.
+        #
+        # `_show_menu` calls `SetForegroundWindow(self.hwnd)` before the popup
+        # menu, because that is what makes the menu dismiss when the owner
+        # clicks elsewhere. A message-only window has no Z-order and cannot be
+        # activated, so the menu is left standing until he clicks the icon again
+        # — the owner, 2026-11-04: *"botao direito é travado pra abrir o menu
+        # dele. é extremamente diferente de outros apps onde é fluido"*.
+        # `WS_POPUP` without `WS_VISIBLE` is not visible, `WS_EX_TOOLWINDOW`
+        # keeps it out of the taskbar and Alt+Tab, and it is NOT message-only,
+        # so it can hold the foreground and it also receives the `TaskbarCreated`
+        # broadcast the message-only window could never get.
+        hwnd = user32.CreateWindowExW(WS_EX_TOOLWINDOW, TRAY_WINDOW_CLASS, '',
+                                      WS_POPUP, 0, 0, 0, 0, 0,
+                                      None, hinst, None)
         if not hwnd:
             raise OSError(ctypes.get_last_error(), 'CreateWindowExW')
         self.hwnd = int(hwnd)
@@ -7487,7 +7505,8 @@ class TrayIcon:
         except Exception:  # noqa: BLE001
             self._taskbar_created_msg = 0
         self.log(f'TRAY_WINDOW created=true hwnd={self.hwnd} '
-                 f'class={TRAY_WINDOW_CLASS} message_only=true '
+                 f'class={TRAY_WINDOW_CLASS} message_only=false '
+                 f'popup_hidden=true '
                  f'taskbar_created_msg={self._taskbar_created_msg}')
 
     def _on_message(self, hwnd, msg, wparam, lparam):
@@ -7502,8 +7521,16 @@ class TrayIcon:
                 self.warn(f'TRAY_READD_FAILED {type(exc).__name__}: {exc}')
             return 0
         if msg == WM_TRAY_CALLBACK:
-            if lparam in (WM_RBUTTONUP, WM_LBUTTONUP):
+            if lparam == WM_RBUTTONUP:
                 self._show_menu()
+            elif lparam == WM_LBUTTONUP:
+                # LEFT opens the thing, RIGHT gives the menu — what every other
+                # tray app on this box does (owner's reference: Vanguard). The id
+                # goes back through a REAL WM_COMMAND, the same path the menu
+                # takes, so there is still one handler.
+                self.log('TRAY_LEFT_CLICK id=%d' % ID_TRAY_OPEN)
+                user32.PostMessageW(wt.HWND(self.hwnd), WM_COMMAND,
+                                    ID_TRAY_OPEN, 0)
             return 0
         if msg == WM_COMMAND:
             command = int(wparam) & 0xFFFF
@@ -7528,7 +7555,20 @@ class TrayIcon:
         user32.GetCursorPos(ctypes.byref(pt))
         # SetForegroundWindow is what makes the menu dismiss correctly when the
         # owner clicks elsewhere; without it the menu can be left orphaned.
-        user32.SetForegroundWindow(wt.HWND(self.hwnd))
+        # The MSDN shell-notification recipe has THREE parts, and the third is
+        # the one that is easy to forget: the SetForegroundWindow, then a
+        # PostMessage(hwnd, WM_NULL) so the FIRST outside click is delivered to
+        # the menu instead of being eaten by the window coming to the front, and
+        # only then TrackPopupMenu. The result of the foreground call is LOGGED
+        # rather than assumed, because it can fail and a silent failure is the
+        # difference between a fluid menu and a stuck one.
+        ok_fg = bool(user32.SetForegroundWindow(wt.HWND(self.hwnd)))
+        err_fg = ctypes.get_last_error()
+        user32.PostMessageW(wt.HWND(self.hwnd), WM_NULL, 0, 0)
+        user32.GetForegroundWindow.restype = wt.HWND
+        fg_now = int(user32.GetForegroundWindow() or 0)
+        self.log(f'TRAY_MENU_FOREGROUND ok={int(ok_fg)} err={err_fg} '
+                 f'hwnd={self.hwnd} is_foreground={int(fg_now == self.hwnd)}')
         command = user32.TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD,
                                         pt.x, pt.y, 0, wt.HWND(self.hwnd),
                                         None)
