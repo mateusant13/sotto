@@ -62,6 +62,7 @@ contado, o que vier a seguir tem de nascer sem tocar no ecra do dono.
 O braco negativo e obrigatorio: um detector que nunca foi visto a ficar
 vermelho nao e um detector, e uma funcao que devolve texto.
 """
+import ast
 import io
 import json
 import os
@@ -82,6 +83,11 @@ SELF_NAME = 'lane-screen-gate.py'
 #: Chamadas que INJECTAM input no sistema. Ver o cabecalho: medem o Windows.
 SYNTHETIC = re.compile(
     r'\b(keybd_event|SendInput|mouse_event|BlockInput|SendKeys)\b')
+
+#: Os MESMOS nomes como conjunto, para o censo por `ast` dos `.py` (uma CHAMADA
+#: injecta; um literal que os nomeia, nao).
+SYNTHETIC_NAMES = frozenset(('keybd_event', 'SendInput', 'mouse_event',
+                             'BlockInput', 'SendKeys'))
 
 #: Nomes de ficheiro que sao HARNESS de lane, nao oraculo de painel.
 LANE_HARNESS = re.compile(r'(keepalive|launch|lane|press)', re.I)
@@ -173,6 +179,33 @@ def code_lines(text, ext):
             yield _cut_inline(raw, '#')
 
 
+def _synthetic_calls_py(path):
+    """As CHAMADAS de input sintetico num `.py` -- por `ast`, nao por texto.
+
+    MEDIDO 2026-11-04: um ORACULO que NOMEIA as APIs para as proibir
+    (`KEY_EATING = ('RegisterHotKey', 'keybd_event', ...)`) era acusado de as
+    CHAMAR -- a regex lia o literal de uma string como se fosse uma chamada, e o
+    portao punha vermelho o ficheiro que existe para provar a ausencia delas. Um
+    literal nao injecta nada: so' uma CHAMADA injecta. O texto continua a ser o
+    caminho para `.cmd/.bat/.ps1` (onde nao ha' AST) e para um `.py` que nao
+    parseia.
+    """
+    try:
+        tree = ast.parse(_read(path))
+    except (SyntaxError, ValueError):
+        return None
+    found = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = (func.attr if isinstance(func, ast.Attribute)
+                else func.id if isinstance(func, ast.Name) else '')
+        if name in SYNTHETIC_NAMES:
+            found += 1
+    return found
+
+
 def counts(main_dir):
     """{nome: n} para cada classe de violacao, medido AGORA, so em codigo."""
     synth, show = {}, {}
@@ -182,7 +215,11 @@ def counts(main_dir):
             continue
         ext = os.path.splitext(name)[1].lower()
         code = '\n'.join(code_lines(_read(path), ext))
-        found = len(SYNTHETIC.findall(code))
+        found = None
+        if ext == '.py':
+            found = _synthetic_calls_py(path)
+        if found is None:
+            found = len(SYNTHETIC.findall(code))
         if found:
             synth[name] = found
         stem = os.path.splitext(name)[0]

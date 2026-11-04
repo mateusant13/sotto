@@ -6197,6 +6197,26 @@ class PassiveHotkeyThread(threading.Thread):
 
     def run(self):
         self.thread_id = int(kernel32.GetCurrentThreadId())
+        # A PRIORIDADE ANTES DE TUDO (2026-11-04). E' a unica defesa que este fio
+        # tem contra um jogo a comer o CPU: o escalonador do Windows serve
+        # `ABOVE_NORMAL` antes das threads normais do jogo, e a leitura de 25 ms
+        # deixa de chegar tarde. MEDIDO no log do dono: a volta chegou a 1703 ms
+        # (`HOTKEY_OBSERVER_ALIVE max_gap_ms=1703`), e um toque mais curto que a
+        # volta cai INTEIRO entre duas leituras. O numero vem de
+        # `hotkey_gesture.OBSERVER_PRIORITY` (o dono dos numeros da tecla), e a
+        # linha diz se pegou: uma prioridade pedida e nao aplicada e' uma
+        # promessa, nao um facto.
+        try:
+            _prio_ok = bool(kernel32.SetThreadPriority(
+                kernel32.GetCurrentThread(), hotkey_numbers().OBSERVER_PRIORITY))
+        except Exception as exc:  # noqa: BLE001 -- prioridade nao e' pre-requisito
+            _prio_ok = False
+            self.log_fn(f'HOTKEY_OBSERVER_PRIORITY_FAILED role={self.role} '
+                        f'error={exc!r}')
+        self.log_fn(f'HOTKEY_OBSERVER_PRIORITY role={self.role} '
+                    f'ok={str(_prio_ok).lower()} '
+                    f'priority={hotkey_numbers().OBSERVER_PRIORITY} '
+                    f'why=cpu-contention-in-games')
         self.log_fn(f'HOTKEY_OBSERVED role={self.role} '
                     f'accelerator={self.accelerator} register=false '
                     f'the_key_passes_through=true poll_ms={int(self.poll_s * 1000)}')
@@ -6591,6 +6611,16 @@ user32.PostThreadMessageW.argtypes = [wt.DWORD, ctypes.c_uint, ctypes.c_size_t,
 user32.GetCurrentThreadId = None  # NOT in user32; see kernel32 below
 kernel32.GetCurrentThreadId.restype = wt.DWORD
 kernel32.GetCurrentThreadId.argtypes = []
+#: A PRIORIDADE DO OBSERVADOR (2026-11-04). `GetCurrentThread` e' um
+#: pseudo-handle (-2) e `SetThreadPriority` leva o numero do Win32
+#: (`hotkey_gesture.OBSERVER_PRIORITY`). As DUAS assinaturas sao declaradas
+#: porque sem `argtypes` um HANDLE de 64 bits atravessa um `c_int` e o pedido
+#: morre calado -- a linha `HOTKEY_OBSERVER_PRIORITY ok=...` e' o que mostra se
+#: ele pegou.
+kernel32.GetCurrentThread.restype = wt.HANDLE
+kernel32.GetCurrentThread.argtypes = []
+kernel32.SetThreadPriority.restype = wt.BOOL
+kernel32.SetThreadPriority.argtypes = [wt.HANDLE, ctypes.c_int]
 user32.WindowFromPoint.restype = wt.HWND
 user32.WindowFromPoint.argtypes = [POINT]
 
@@ -7453,6 +7483,49 @@ def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
         return None
     warn_hotkey_unavailable(requested, tried, getattr(shell, 'tray', None))
     return None
+
+
+# ===========================================================================
+# GAMING MODE — DETECTAR, e nao agir (order, 2026-11-04)
+# ===========================================================================
+def arm_gaming_watcher(shell, log_fn=log):
+    """Arranca o detector de jogo (`gaming_mode.py`) e guarda-o no shell.
+
+    ORDEM DO DONO, verbatim (2026-11-04): *"detecta 'gaming' parecido com o que
+    meu projeto !watcher do disco i faz."* O detector LE' (uma enumeracao de
+    processos a cada 2 s, sem hook nenhum) e publica UMA linha `GAMING_MODE` por
+    transicao. Ele NAO suspende, NAO baixa prioridade, NAO mexe no worker, no
+    modelo nem no audio: `is_gaming()` esta' exposto para quem um dia o quiser
+    consultar, e essa decisao nao e' deste fio.
+
+    Falhar aqui NAO pode impedir a app de viver: a legenda e os paineis nao
+    dependem da deteccao. O erro fica no log, com o nome do modulo.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    try:
+        import gaming_mode
+        watcher = gaming_mode.GamingWatcher(log=log_fn)
+        watcher.start()
+        shell.gaming = watcher
+        return watcher
+    except Exception as exc:  # noqa: BLE001 -- deteccao nao e' pre-requisito
+        log_fn(f'GAMING_WATCH_FAILED error={exc!r}')
+        return None
+
+
+def stop_gaming_watcher(shell, reason='exit'):
+    """Para o detector, se ele existe. Sair nunca pode falhar."""
+    watcher = getattr(shell, 'gaming', None)
+    if watcher is None:
+        return False
+    try:
+        watcher.stop()
+        return True
+    except Exception as exc:  # noqa: BLE001
+        log(f'GAMING_WATCH_STOP_FAILED reason={reason} error={exc!r}')
+        return False
 
 
 # ===========================================================================
@@ -9303,6 +9376,11 @@ class SottoShell:
         self.external_lines = 0
         self._overlay_pushes = 0
         self.vram_guard = None
+        #: O DETECTOR DE GAMING (2026-11-04, `gaming_mode.py`). LE' e LOGA --
+        #: `is_gaming()` e' o que ele entrega. Nada neste shell age sobre ele: o
+        #: dono pediu para DETECTAR, e um auto-suspender seria uma ordem que ele
+        #: nao deu.
+        self.gaming = None
         #: The panel AS TEXT: the periodic dump writer (panel_state.py). None
         #: until the panel's first load, which is when the DOM can be read.
         self.panel_state = None
@@ -10845,6 +10923,7 @@ class SottoShell:
         if self.bridge is not None:
             self.bridge.stop('closing')
         self.stop_hotkeys()
+        stop_gaming_watcher(self, 'closing')
         if self.external_caption_watcher is not None:
             self.external_caption_watcher.stop()
         if self.vram_guard is not None:
@@ -12757,6 +12836,7 @@ class SottoShell:
         if _watch_exit is not None:
             _watch_exit.stop('shell-exit')
         self.stop_hotkeys()
+        stop_gaming_watcher(self, 'exit')
         if self.panel_state is not None:
             self.panel_state.stop('exit')
         if self.panel_visibility is not None:
@@ -20002,6 +20082,11 @@ def main(argv=None):
         args.no_hotkey = True
     shell = SottoShell(args)
     shell.create_window()
+
+    # O DETECTOR DE GAMING (2026-11-04) arranca ANTES das teclas e INDEPENDENTE
+    # delas: ele nao toma tecla nenhuma, so' le' processos. Uma medicao
+    # (`--no-hotkey`) continua a poder perguntar `is_gaming()`.
+    arm_gaming_watcher(shell)
 
     # The hotkey lives on its own thread with its own message queue, so it is
     # registered before the UI loop exists and cannot be starved by it.

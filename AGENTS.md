@@ -412,9 +412,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 12:3x):** `_main\_audit-verify-all.cmd` = **215335 B**,
-  **2671 CRLF** / 0 bare LF, sha256 `CA4760F9E257E979AE0BC1C2714247B00948B920C493839D1CE6BC35DDD4F5D1`.
-  (Dezassete linhas a mais do que o pin de 213662 B / 2654 CRLF, do par `first-capture-fast` + o seu
+- **PIN do ficheiro (medido 2026-11-04, 13:03):** `_main\_audit-verify-all.cmd` = **217007 B**,
+  **2693 CRLF** / 0 bare LF, sha256 `3C68B7217EE131F97F54FE44DFC00E4923DE4DE7DECD5A47E07BC169951EEDB2`.
+  (Vinte e duas linhas a mais do que o pin de 215335 B / 2671 CRLF: o par `gaming-hotkey` + o seu
+  `--neg-arm` (53 arms) e o par `youtube-first-at-boot` + o seu (9 arms). O primeiro nasceu de tres
+  medicoes que nao se substituem: `Ctrl+Space register_ok=True` (**a tecla esta' livre**; `Alt+C` da'
+  1409 porque a instancia do dono a tem), o caminho do toggle executado com um `user32` gravador
+  (`SetWindowPos` flags 83 + `ShowWindow` 4/0, zero APIs de primeiro plano) e o observador a pedir
+  `ABOVE_NORMAL`. O segundo mede o gate que faltava: enquanto o player fornece linha, o texto de
+  estado e' RETIDO (`CAPTION_LOADING_TEXT_WITHHELD reason=player-track`), e a escolha de aba decide
+  em vez de adiar (`ambiguous` tres vezes seguidas era o `src='?'` medido as 12:15 no log dele).
+  Dezassete linhas a mais do que o pin de 213662 B / 2654 CRLF, do par `first-capture-fast` + o seu
   `--neg-arm`: mediu-se que **33,5 s dos 48,4 s** de arranque nao eram o modelo -- a primeira escolha
   de endpoint abria um `IAudioClient` por endpoint (3,8 s) para devolver um MORTO, a morte por
   dispositivo custava 15 s e o silencio era indistinguivel de um endpoint morto. Agora a escolha

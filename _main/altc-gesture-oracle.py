@@ -194,7 +194,14 @@ def exec_observer(source: str, gesture, log_fn, clock):
     namespace = {
         'threading': threading,
         'time': types.SimpleNamespace(monotonic=clock.monotonic),
-        'kernel32': type('K', (), {'GetCurrentThreadId': staticmethod(lambda: 4242)})(),
+        'kernel32': type('K', (), {
+            'GetCurrentThreadId': staticmethod(lambda: 4242),
+            # A PRIORIDADE DO OBSERVADOR (2026-11-04): o `run` chama estas duas
+            # antes do laco, e um namespace sem elas esconderia a chamada atras
+            # de um `except`. Aqui elas respondem 1, como o Windows responde.
+            'GetCurrentThread': staticmethod(lambda: -2),
+            'SetThreadPriority': staticmethod(lambda *a: 1),
+        })(),
         'user32': type('U', (), {'GetAsyncKeyState': staticmethod(lambda vk: 0)})(),
         '_HOTKEY_TRACE': False,
         'hotkey_numbers': lambda: gesture,

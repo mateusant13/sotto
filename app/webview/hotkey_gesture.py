@@ -91,6 +91,19 @@ MODIFIER_VK_VARIANTS = {'ctrl': (0xA2, 0xA3), 'shift': (0xA0, 0xA1),
 #: microssegundos, logo isto e' abaixo de 0,1 % de um core.
 POLL_S = 0.025
 
+#: A PRIORIDADE DO FIO DO OBSERVADOR (2026-11-04). Ordem do dono, verbatim:
+#: *"e em gaming: control espaço nao da display na legenda. nao faz nada. nem on
+#: nem off."* Um jogo a comer a maquina nao segura o GIL do Sotto (e' outro
+#: processo), mas DISPUTA o CPU: a volta de 25 ms do observador chega tarde, e o
+#: `max_gap_ms` que o laco ja' publicou (203..1703 ms no log dele) e' essa espera.
+#: `THREAD_PRIORITY_ABOVE_NORMAL` (1) faz o escalonador do Windows servir este
+#: fio antes das threads normais -- inclusive antes das do jogo, que correm em
+#: `NORMAL`. Nao e' `TIME_CRITICAL` (15): esse tiraria CPU ao proprio shell e ao
+#: UI thread por uma leitura de teclado, e a tecla nao vale isso.
+#: O numero e' o do Win32 (`SetThreadPriority`), e vive aqui porque este ficheiro
+#: e' o dono dos numeros da tecla.
+OBSERVER_PRIORITY = 1
+
 #: As teclas que NAO sao uma letra. `vk` e' o codigo virtual do Windows da
 #: tecla (`VK_SPACE` == 0x20); uma letra e' `ord('C')`, que e' o mesmo numero
 #: que o Windows usa para ela. O rotulo e' o que o ficheiro e o log escrevem.
