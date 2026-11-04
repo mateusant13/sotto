@@ -164,7 +164,18 @@ def judge(rows, budget_ms=BUDGET_MS_DEFAULT):
                                     / len(deadline), 1) if deadline else None),
         'queue_p50': quant(queue, 0.50),
     }
-    ok = detail['p95'] <= TARGET_P95_MS and detail['over_pct'] <= TARGET_OVER_PCT
+    # O VEREDICTO E' DA CONTAGEM, NAO DO p95 (2026-11-04, MEDIDO). O p95 deste
+    # campo e' decidido por ~2,4 % das linhas: PerfTreeRuntime mostrou que das
+    # 3 403 linhas do painel, 82 acima de 10 s carregam 56,9 % dos segundos de
+    # atraso, e nas 5 524 o p95 anda de 2 932 a 6 726 ms conforme a POPULACAO
+    # (superficie 46,4 % do movimento, finais 43,8 %, as 82 linhas 9,8 %). Um
+    # alvo em p95 sem a populacao ao lado e' um numero que muda de 8,5x por causa
+    # de 2,4 % das linhas. Logo o veredicto e' a percentagem ACIMA do prazo --
+    # contagem de linhas, estavel sob o mesmo corte -- e o p95 sai sempre com a
+    # populacao e a convencao do percentil.
+    ok = detail['over_pct'] <= TARGET_OVER_PCT
+    detail['verdict_by'] = 'over-count'
+    detail['p95_def'] = 'nearest-rank int(0.95*n) over the printed population'
     return ('PASS' if ok else 'FAIL'), detail
 
 
@@ -177,8 +188,8 @@ def render(verdict, d):
         f'CAPTION-BUDGET population n={d["n"]} budget_ms={d["budget_ms"]:.0f} '
         f'verdict={verdict}',
         f'  ALL      p50={d["p50"]} p95={d["p95"]} p99={d["p99"]} max={d["max"]} '
-        f'over={d["over_pct"]}% (target p95<={TARGET_P95_MS:.0f} and '
-        f'over<={TARGET_OVER_PCT:.0f}%)',
+        f'over={d["over_pct"]}% (verdict: over<={TARGET_OVER_PCT:.0f}%; p95 is '
+        f'advisory, {d["p95_def"]})',
         f'  FAST     rate={d["fast_pct"]}% p50={d["fast_p50"]} '
         f'over={d["fast_over_pct"]}%   (queue_ms<{MODE_SPLIT_MS:.0f})',
         f'  DEADLINE rate={d["deadline_pct"]}% p50={d["deadline_p50"]} '
@@ -256,6 +267,22 @@ def arms():
                                    and v == 'UNKNOWN-NOT-RUN')
     print(f'ARM 6ter 40 final-close      -> rows={len(rows_f)} finals={nfinals} '
           f'{v} (want 0/40/UNKNOWN-NOT-RUN)')
+
+    # ARM 6-quater: the verdict must NOT chase the tail. A corpus whose p95 is far
+    # above the budget because 2 % of rows are enormous, while the over-budget
+    # COUNT is small, is the field this app actually produces.
+    # A p95 ACIMA do prazo implica >=5 % de linhas acima dele -- logo o veredicto
+    # por contagem e o p95 concordam no limiar e o que muda e' a ESTABILIDADE sob
+    # mudanca de populacao. A arm prova o que e' verdade: 2 % de linhas enormes
+    # deixam o `max`/`p99` a gritar e a contagem (2,0 %) a dizer que nada estourou,
+    # porque 2 % nao e' um problema de orcamento -- e' cauda.
+    tail = [(200, 4) for _ in range(98)] + [(40000, 4) for _ in range(2)]
+    v, d = judge(tail)
+    res['count_separates_tail_from_budget'] = (
+        v == 'PASS' and d['over_pct'] == 2.0 and d['max'] == 40000
+        and d['verdict_by'] == 'over-count')
+    print(f'ARM 6quater tail 98+2         -> {v} over={d["over_pct"]}% '
+          f'max={d["max"]} ({d["verdict_by"]}: the tail is not the budget)')
 
     # ARM 7-9: the predicate that decides whether a paint describes NEW audio,
     # run as it ships. Without it `audio_ms` counts one block many times.
