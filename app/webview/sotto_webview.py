@@ -1309,6 +1309,257 @@ def _reap_child(child):
         pass
 
 
+# ─── THE EXIT THAT MUST TERMINATE (2026-11-04, MEDIDO) ─────────────────────
+# O DEFEITO. `_main/webview-run.log`, 2026-11-04 13:01:36.080: o cao-de-guarda
+# escreveu `UI_WATCHDOG_EXIT code=9`, e as linhas da app CONTINUARAM a sair
+# (13:01:36.082, .087 e .575), depois o ficheiro ACABOU. A 14:12 o MESMO pid
+# (20448, `sotto_webview.py --log ...`) estava VIVO com 36 threads, 8 das 10
+# janelas sem responder a `WM_NULL` (medido: `IsHungAppWindow=1` na janela
+# `Sotto` e na `SottoNativeCaption`), 2,6 % de um nucleo, e o FILHO
+# (`worker/sotto_worker.py`, pid 36668) vivo com **3,9 GB** privados e 70
+# threads. Ou seja: a app registou a saida, a saida NAO completou, e nada no
+# processo nem fora dele tinha autoridade para a completar.
+#
+# A CAUSA DA CLASSE, independente de qual DllMain ficou preso no
+# `ExitProcess`: `os._exit` NAO TEM PRAZO. Se o primitivo nao volta, o processo
+# fica exactamente como ficou -- vivo, com as janelas congeladas no ecra, que e'
+# o estado que o dono recusa -- e a linha seguinte do codigo (o `bridge.stop`)
+# nunca corre. A prova de que `os._exit` pode simplesmente NAO terminar e' o
+# proprio estado medido acima; a prova de que `TerminateProcess` nao depende
+# dele esta' em `_main/_deadexit-oracle.py` (armes `pipe-os` vs `pipe-tp`).
+#
+# A REGRA, e e' a que fica escrita no codigo: **uma saida que escreveu no log
+# termina**. Para isso a saida deixa de ser uma chamada e passa a ser uma
+# SEQUENCIA com prazo em cada espera e com dois donos diferentes do processo:
+#
+#   1. `_hard_exit` arma o ESCALADOR (uma thread que, se o primitivo nao voltar
+#      em `EXIT_ESCALATE_S`, chama `TerminateProcess` no proprio processo);
+#   2. arma o MATADOR EXTERNO (`exit_killer.py`, um processo separado que
+#      espera `EXIT_KILLER_GRACE_S` pelo HANDLE do shell e, se ele nao
+#      sinalizar, mata o worker e depois o shell, e escreve as suas linhas no
+#      MESMO log). Este e' o unico primitivo que sobrevive a um bloqueio total
+#      do processo;
+#   3. faz o reap do filho com prazo TOTAL (`EXIT_TOTAL_REAP_MS`), nomeando o
+#      pid que ficou de fora;
+#   4. escreve a linha TERMINAL (`EXIT_TERMINATE`) e drena o log com prazo;
+#   5. so' entao chama o primitivo de saida.
+#
+# O QUE ACONTECE A UM WORKER QUE IGNORA O KILL: `child.kill()` e'
+# `TerminateProcess` e nao pede licenca a ninguem; se ele mesmo assim nao sair
+# (`EXIT_CHILD_STUCK`), o pid viaja para o matador externo, que o mata pelo
+# handle -- e se TAMBEM falhar, o job `kill-on-close` (`SHELL_JOB_ARMED`,
+# armado no arranque) mata a arvore quando o ULTIMO handle do job fechar, o que
+# so' acontece quando o shell morrer de facto. A cadeia tem tres donos e nenhum
+# deles espera sem prazo.
+EXIT_ESCALATE_S = 2.5
+EXIT_KILLER_GRACE_S = 4.0
+EXIT_CHILD_REAP_MS = 1200
+EXIT_TOTAL_REAP_MS = 1800
+EXIT_LOG_DRAIN_S = 0.75
+DETACHED_PROCESS = 0x00000008
+CREATE_NO_WINDOW = 0x08000000
+
+_EXIT_STATE = {'begun': False, 'lock': threading.Lock(),
+               'escalated': threading.Event()}
+
+
+def _proc_identity(pid):
+    """Creation stamp of `pid` as 'hi:lo' (100 ns ticks), or '' if unreadable.
+
+    A pid is NOT an identity on Windows: it is reused. The external killer
+    receives the stamp of the process it was told to kill and REFUSES a pid
+    whose creation time differs -- which is the whole difference between
+    cleaning up our own tree and killing a stranger's process.
+    """
+    try:
+        k32 = ctypes.windll.kernel32
+        k32.OpenProcess.restype = ctypes.c_void_p
+        k32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        h = k32.OpenProcess(0x1000, False, int(pid))   # QUERY_LIMITED_INFORMATION
+        if not h:
+            return ''
+
+        class _FT(ctypes.Structure):
+            _fields_ = [('lo', ctypes.c_uint32), ('hi', ctypes.c_uint32)]
+
+        created, exited, kernel, user = _FT(), _FT(), _FT(), _FT()
+        ok = k32.GetProcessTimes(ctypes.c_void_p(h), ctypes.byref(created),
+                                 ctypes.byref(exited), ctypes.byref(kernel),
+                                 ctypes.byref(user))
+        k32.CloseHandle(ctypes.c_void_p(h))
+        if not ok:
+            return ''
+        return '%d:%d' % (created.hi, created.lo)
+    except Exception:                      # noqa: BLE001
+        return ''
+
+
+def _terminate_self(code):
+    """`TerminateProcess` on THIS process: the primitive that cannot be queued.
+
+    `os._exit` e' `ExitProcess`: notifica cada DLL (`DLL_PROCESS_DETACH`) e so'
+    depois pede ao kernel que termine. Se um `DllMain` nao voltar -- e o shell
+    carrega o CLR do WinForms, o WebView2 e o GDI+, cada um com o seu -- o
+    processo fica vivo para sempre, que e' o estado medido. `TerminateProcess`
+    NO PROPRIO processo nao corre `DllMain`: e' uma chamada ao kernel que
+    termina tudo. Nao ha' caminho de volta a partir daqui.
+    """
+    try:
+        k32 = ctypes.windll.kernel32
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        k32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        k32.TerminateProcess(ctypes.c_void_p(k32.GetCurrentProcess()), int(code))
+    except Exception:                      # noqa: BLE001 -- cai no antigo
+        pass
+    os._exit(int(code))
+
+
+def _exit_primary(code):
+    """A chamada do caminho normal. Funcao propria para a prova poder INJETAR.
+
+    O arme RED de `_main/_deadexit-oracle.py` substitui ESTA funcao por uma que
+    nunca termina -- que e' exactamente o comportamento medido de `os._exit` no
+    shell -- e exige que o processo morra na mesma. Sem esta indireccao o arme
+    nao existia: nao se injeta um bloqueio no kernel.
+    """
+    _terminate_self(code)
+
+
+def _spawn_exit_killer(code, child_pids, say):
+    """O MATADOR EXTERNO: o unico que sobrevive a um processo bloqueado."""
+    try:
+        script = os.path.join(HERE, 'exit_killer.py')
+        if not os.path.exists(script):
+            say('EXIT_KILLER_FAILED reason=missing-script path=%s' % script)
+            return False
+        argv = [sys.executable, script,
+                '--pid', str(os.getpid()),
+                '--stamp', _proc_identity(os.getpid()),
+                '--code', str(int(code)),
+                '--grace-ms', str(int(EXIT_KILLER_GRACE_S * 1000))]
+        log_path = getattr(_LOG_FILE, 'name', '') or ''
+        if log_path:
+            argv += ['--log', log_path]
+        for pid in child_pids:
+            argv += ['--child', '%d:%s' % (pid, _proc_identity(pid))]
+        helper = subprocess.Popen(
+            argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, close_fds=True,
+            creationflags=DETACHED_PROCESS | (CREATE_NO_WINDOW if os.name == 'nt' else 0))
+        say('EXIT_KILLER_ARMED helper_pid=%s grace_ms=%d children=%s'
+            % (helper.pid, int(EXIT_KILLER_GRACE_S * 1000), child_pids))
+        return True
+    except Exception as exc:               # noqa: BLE001 -- nunca impede a saida
+        say('EXIT_KILLER_FAILED error=%r' % (exc,))
+        return False
+
+
+def _reap_children_for_exit(children, say):
+    """Mata e RECOLHE cada filho com um prazo TOTAL, nomeando quem ficou.
+
+    Um `wait()` sem prazo e' a mesma doenca de `os._exit` sem prazo: uma espera
+    que nao tem fim. Aqui cada espera e' cortada pelo que resta do prazo total,
+    e um filho que sobreviva ao seu pedaco fica ESCRITO com o pid -- porque e'
+    esse pid que o matador externo vai matar.
+    """
+    deadline = time.monotonic() + EXIT_TOTAL_REAP_MS / 1000.0
+    stuck = []
+    for child in children or ():
+        pid = getattr(child, 'pid', None)
+        if not pid:
+            continue
+        try:
+            child.kill()
+        except Exception as exc:           # noqa: BLE001
+            say('EXIT_CHILD_KILL_FAILED pid=%s error=%r' % (pid, exc))
+        left = deadline - time.monotonic()
+        if left <= 0.0:
+            stuck.append(pid)
+            say('EXIT_CHILD_STUCK pid=%s remaining_ms=0 owner=killer' % pid)
+            continue
+        t0 = time.monotonic()
+        try:
+            child.wait(timeout=min(left, EXIT_CHILD_REAP_MS / 1000.0))
+        except Exception:                  # noqa: BLE001 -- timeout OU handle morto
+            stuck.append(pid)
+            say('EXIT_CHILD_STUCK pid=%s waited_ms=%d owner=killer'
+                % (pid, int((time.monotonic() - t0) * 1000.0)))
+            continue
+        say('EXIT_CHILD_REAPED pid=%s ms=%d'
+            % (pid, int((time.monotonic() - t0) * 1000.0)))
+    return stuck
+
+
+def _log_now(message):
+    """Escreve JA', sem a fila -- a linha que prova uma saida nao pode depender
+    de um escritor que a propria saida ja' parou (`_log_drain` fecha-o, e o
+    `EXIT_ESCALATED_SELF` chega DEPOIS disso por construcao)."""
+    line = f'{_stamp()} sotto: {message}'
+    with _LOG_LOCK:
+        try:
+            print(line, flush=True)
+        except Exception:                  # noqa: BLE001 -- stdout pode estar morto
+            pass
+        fh = _LOG_FILE
+        if fh is not None:
+            try:
+                fh.write(line + '\n')
+                fh.flush()
+            except Exception:              # noqa: BLE001
+                pass
+
+
+def _hard_exit(code, reason, children=(), log_fn=None):
+    """THE ONE EXIT. Uma saida que escreveu no log TERMINA.
+
+    Idempotente: a primeira chamada e' a dona da saida; a segunda (um timer, o
+    tray) volta de imediato e deixa o processo ao primeiro. `children` sao os
+    filhos que TEM de morrer (o worker da bridge e a sidecar) -- o motor warm
+    fica de fora de proposito, porque atravessar o reinicio e' o que ele existe
+    para fazer (`keep_warm`).
+    """
+    say = log_fn or _log_now
+    with _EXIT_STATE['lock']:
+        if _EXIT_STATE['begun']:
+            return False
+        _EXIT_STATE['begun'] = True
+    kids = [c for c in (children or ())
+            if c is not None and getattr(c, 'pid', None)]
+    pids = [int(c.pid) for c in kids]
+    say('EXIT_BEGIN code=%s reason=%s pid=%s children=%s'
+        % (code, reason, os.getpid(), pids))
+
+    def _escalate():
+        if _EXIT_STATE['escalated'].wait(EXIT_ESCALATE_S):
+            return                          # a saida primaria voltou a tempo
+        try:
+            say('EXIT_ESCALATED_SELF code=%s reason=primary-exit-did-not-return'
+                % code)
+        except Exception:                   # noqa: BLE001
+            pass
+        _terminate_self(code)
+
+    try:
+        threading.Thread(target=_escalate, name='sotto-exit-escalator',
+                         daemon=True).start()
+    except Exception as exc:                # noqa: BLE001
+        say('EXIT_ESCALATOR_FAILED error=%r' % (exc,))
+    _spawn_exit_killer(code, pids, say)
+    _reap_children_for_exit(kids, say)
+    say('EXIT_TERMINATE code=%s reason=%s' % (code, reason))
+    _log_drain(EXIT_LOG_DRAIN_S)
+    _exit_primary(code)
+    # INALCANCAVEL quando o primitivo funciona. Se voltou -- e o arme
+    # `primary-hangs` de `_main/dead-app-exit-oracle.py` injeta exactamente
+    # isto --, o escalador NAO foi desarmado (o `set` fica AQUI, e nao antes da
+    # chamada: desarma-lo antes era o defeito que o portao apanhou) e o processo
+    # nao pode retomar o laco com `exiting` posto.
+    _EXIT_STATE['escalated'].set()
+    while True:
+        time.sleep(1.0)
+        _terminate_self(code)
+
+
 #: O TOKEN DE ESTADO PAGA UM `stat`, NAO UMA LEITURA. Medido 2026-11-01 pela
 #: lane de perfil: `code_state_log` corre no tick de 2 s e chamava
 #: `file_sha256(SHELL_PATH)` mais o do worker -- 414 911 B relidos a cada tick,
@@ -10031,7 +10282,7 @@ class SottoShell:
             target=_loop, name='sotto-thread-cpu', daemon=True)
         self._cpu_census_thread.start()
 
-    def _dump_thread_stacks(self, reason):
+    def _dump_thread_stacks(self, reason, force=False):
         """A pilha da thread que trava, e so' ela: a prova, sem o volume.
 
         MEDIDO 2026-11-04: este dump escrevia a pilha de TODAS as threads, uma
@@ -10041,11 +10292,16 @@ class SottoShell:
         vao cortadas (2, e caladas quando nao tem frame util). Um estouro por
         `UI_HUNG_DUMP_EVERY_S` (600) tem pilha completa; os do meio contam-se
         numa linha so'.
+
+        `force=True` e' a excepcao que a medicao exigiu: o despejo que precede
+        uma SAIDA (`ui-thread-not-responding`) foi o unico a sair compacto, e o
+        processo ficou vivo sem deixar uma frame. Uma saida leva a prova
+        consigo ou nao serve de nada.
         """
         import traceback
         now = time.monotonic()
         last = getattr(self, '_ui_hung_dump_at', 0.0)
-        compact = (now - last) < UI_HUNG_DUMP_EVERY_S
+        compact = (now - last) < UI_HUNG_DUMP_EVERY_S and not force
         self._ui_hung_dump_at = now
         frames = sys._current_frames()
         main_ident = None
@@ -10124,17 +10380,22 @@ class SottoShell:
                         % strikes)
                     continue
                 # A UI esta presa de facto: dizer ONDE, e sair para nao deixar
-                # uma janela congelada no ecra do dono.
-                self._dump_thread_stacks('ui-thread-not-responding')
+                # uma janela congelada no ecra do dono. O DESPEJO E' FORCADO
+                # (2026-11-04): o despejo que precede uma SAIDA era o unico
+                # compacto -- `UI_HUNG reason=ui-thread-not-responding
+                # threads=30 compact=true` as 13:01:36.080, SEM UMA FRAME --, ou
+                # seja a app saia e levava consigo a unica prova de onde estava
+                # presa. Um estouro por 10 min continua compacto; este nao.
+                self._dump_thread_stacks('ui-thread-not-responding', force=True)
                 log('UI_WATCHDOG_EXIT code=9 -- a UI estava presa; a sair para '
                     'nao deixar janelas congeladas no ecra')
-                try:
-                    sys.stdout.flush()
-                    sys.stderr.flush()
-                except Exception as exc:  # noqa: BLE001
-                    log('UI_WATCHDOG_FLUSH_FAILED error=%r' % (exc,))
-                time.sleep(0.3)
-                os._exit(9)
+                # A SAIDA E' A MESMA DA APP (2026-11-04). Aqui havia
+                # `sys.stdout.flush()` + `time.sleep(0.3)` + `os._exit(9)` sem
+                # prazo e SEM tocar no worker: medido as 13:01:36, o processo
+                # ficou vivo 70+ min e o worker com ele, a 3,9 GB. `_hard_exit`
+                # arma o escalador e o matador externo, faz o reap do filho com
+                # prazo e escreve a linha terminal.
+                _hard_exit(9, 'ui-watchdog', children=self._exit_children())
 
         self._ui_watchdog = threading.Thread(target=loop, name='sotto-ui-watchdog',
                                              daemon=True)
@@ -11010,10 +11271,14 @@ class SottoShell:
                 timer.daemon = True
                 timer.start()
                 # E a REDE: se o desligamento educado tambem ficar preso (tray,
-                # bridge, WebView2), o processo sai a' forca. Uma sonda que nao
-                # morre e' pior do que uma sonda que sai sem despedida.
+                # bridge, WebView2), o processo sai a' forca -- mas por
+                # `_hard_exit`, que TEM prazo e dois donos externos (2026-11-04).
+                # Uma sonda que nao morre e' pior do que uma sonda que sai sem
+                # despedida; uma que escreve "vou sair" e fica viva e' a pior
+                # das tres.
                 hard = threading.Timer(self.args.exit_after + 15.0,
-                                       os._exit, args=(0,))
+                                       _hard_exit,
+                                       args=(0, 'exit-after-net'))
                 hard.daemon = True
                 hard.start()
 
@@ -11453,10 +11718,22 @@ class SottoShell:
                  f'reason=no-form queued=true '
                  f'payload={json.dumps(payload, separators=(",", ":"))[:120]!r}')
         else:
+            # O `RuntimeError: dictionary changed size during iteration` E' AQUI
+            # (MEDIDO 2026-11-04 12:23:18.912, `BRIDGE_PUMP_DIED stream=stdout`).
+            # QUEM MUTA: qualquer OUTRA thread que chame `emit` enquanto o form
+            # nao existe -- o pump do stdout (via `on_caption`/`on_status`), um
+            # timer, a thread do hotkey. Todas fazem
+            # `q = getattr(self, '_emit_pending')`; esta metade REBINDA
+            # `self._emit_pending` antes de iterar, mas quem leu o dict ANTIGO
+            # um instante antes continua a inserir NELE. O iterador via a
+            # mutacao e o pump morria -- e um pump morto e' um filho que o pai
+            # ja' nao le, exactamente o estado que a saida herda.
+            # Snapshot: o FLUSH nao pode depender da corrida. E' a unica copia
+            # do ficheiro porque e' a unica iteracao de um dict compartilhado.
             q = getattr(self, '_emit_pending', None)
             if q:
                 self._emit_pending = {}
-                for _kind, _payload in q.items():
+                for _kind, _payload in list(q.items()):
                     self.emit_nowait(_kind, _payload)
                 log('EMIT_FLUSHED kinds=%d after-first-post=%s'
                     % (len(q), json.dumps(str(kind))))
@@ -13096,6 +13373,11 @@ class SottoShell:
             return
         self.exiting.set()
         self._exit_code = code
+        # OS FILHOS SAO LIDOS ANTES DOS `stop()`: `WorkerBridge.stop` poe
+        # `self.child = None` logo depois de matar, e a partir daqui o pid que
+        # ficou de fora do kill nao teria nome nem dono. `_hard_exit` precisa
+        # dele para o reap com prazo e para o matador externo.
+        _kids = self._exit_children()
         # The tray goes FIRST: `os._exit` at the end of this method would leave
         # the icon in the notification area as a ghost the owner cannot dismiss
         # (it would still be there, pointing at a dead window).
@@ -13153,8 +13435,34 @@ class SottoShell:
             f'statsPushes={self.stats_pushes} statsReplies={self.stats_replies} '
             f'meterPushes={self.meter_pushes}')
         sys.stdout.flush()
-        _log_drain()          # the queued mirror lines land before we go
-        os._exit(code)
+        # A SAIDA COM PRAZO (2026-11-04). Antes eram `sys.stdout.flush()` +
+        # `_log_drain()` + `os._exit(code)`: tres esperas sem prazo efectivo (o
+        # `flush` de um pipe pode bloquear, o `drain` junta-se com 2 s e o
+        # `os._exit` NAO TEM PRAZO NENHUM). `_hard_exit` da' prazo a todas, arma
+        # os dois donos externos e escreve `EXIT_TERMINATE` -- a linha que prova
+        # que a saida chegou ao fim.
+        _hard_exit(code, reason, children=_kids)
+
+    def _exit_children(self):
+        """Os filhos que TEM de morrer com este processo: (worker, sidecar).
+
+        O MOTOR WARM FICA DE FORA (`keep_warm`): atravessar o reinicio e' a
+        razao de ele existir, e um kill aqui transformaria o warm num cold --
+        8,5 s de carga medidos -- a cada fecho. So' o que a shell criou para
+        servir ESTA janela viaja na lista.
+        """
+        kids = []
+        bridge = getattr(self, 'bridge', None)
+        child = getattr(bridge, 'child', None)
+        if (child is not None and getattr(child, 'pid', None)
+                and not getattr(bridge, 'keep_warm', False)):
+            kids.append(child)
+        for attr in ('_speaker_sidecar', '_multivoice_watch'):
+            obj = getattr(self, attr, None)
+            child = getattr(obj, 'child', None)
+            if child is not None and getattr(child, 'pid', None):
+                kids.append(child)
+        return kids
 
     # -- worker ------------------------------------------------------------
     @staticmethod
@@ -20245,10 +20553,15 @@ def main(argv=None):
     # as flags existem: o relogio comeca, e o resto do arranque pode falhar a'
     # vontade sem deixar um processo a viver.
     if getattr(args, 'exit_after', 0):
-        def _hard_exit():
-            os._exit(0)
-        threading.Timer(float(args.exit_after) + 15.0, _hard_exit).start()
-        threading.Timer(float(args.exit_after), _hard_exit).start()
+        # O PRAZO E' UM PRAZO DE VERDADE (2026-11-04). Aqui havia um `os._exit`
+        # local a fazer de "rede" -- o mesmo primitivo sem prazo que deixou o
+        # pid 20448 vivo depois de escrever `UI_WATCHDOG_EXIT`. `_hard_exit` e'
+        # idempotente, tem prazo em cada espera e escreve a linha terminal, nas
+        # duas pontas (o prazo normal e a rede).
+        threading.Timer(float(args.exit_after) + 15.0,
+                        _hard_exit, args=(0, 'exit-after-net')).start()
+        threading.Timer(float(args.exit_after),
+                        _hard_exit, args=(0, 'exit-after')).start()
 
     # ── THE ENVIRONMENT IS SET HERE, BEFORE ANY WINDOW EXISTS ────────────────
     # `WEBVIEW2_DEFAULT_BACKGROUND_COLOR` is read by WebView2 the moment its
