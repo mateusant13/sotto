@@ -204,3 +204,28 @@ o mesmo caminho entregou texto real (`CAPTION_IN` as 02:48:38, verbatim acima),
 e a pintura (`CAPTION_APPLIED count=200`) tem a sua medicao na sessao do dono
 (01:25:39). Uma lane que force a pintura precisa de abrir um video ou de um
 endpoint de audio -- as duas coisas sao dele, nao minhas.
+
+## A bateria na corrida definitiva (2026-11-04 06:0x)
+
+```
+steps=248 gate=133 control=8 skipped=15 expect-red=92 missing=0 cached=80 failed=4
+failed:  code-health=2 gitattributes-verify=1 strip-hot-reload=3 skip-verdict-guard=1
+BATTERY-VERDICT: RED - 4 step(s) failed
+```
+
+**Duração: 644 s de parede** (`timeout=2400`, corrida oculta por
+`_main/hidden-launch.py`: `cmd /c _main\_audit-verify-all.cmd`). A corrida
+anterior de hoje, com os MESMOS quatro vermelhos e dois passos menos, foi
+**426 s** -- a diferenca e' a app viva a carregar o worker durante a corrida
+mais os quatro passos novos, nao um preguico novo. O passo `hidden-launch` e o
+seu `red-as-expected` passaram; o mesmo para `emit-prewebview`.
+
+Os quatro vermelhos sao ANTERIORES a este trabalho e estao nomeados:
+`code-health` e' o ratchet (`app/webview/sotto_webview.py` 990 345 -> 994 502 B
+e `worker/sotto_worker.py` 394 856 -> 397 645 B; parte do primeiro e' minha --
+~1,4 KB pelo guarda que tirou 541 linhas de WARN por minuto -- e o resto vem
+das mudancas ja' commitadas hoje), `gitattributes-verify` diverge em ficheiros
+de `_main/_falsify/` que nao toco, `strip-hot-reload` falha as arms C/E do
+`WorkerReloadPolicy` e `skip-verdict-guard` le' dois logs da propria bateria.
+**O baseline do ratchet e' do dono** (`--update` diz "so com o dono de acordo"),
+por isso ele fica vermelho e escrito, nao movido por mim.
