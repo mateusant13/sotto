@@ -446,8 +446,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 17:1x):** `_main\_audit-verify-all.cmd` = **226610 B**,
-  **2807 CRLF** / 0 bare LF, sha256 `F1C429963CB5F24767D27F918CE35C34CDA64653B5C17B735688E6AE4314EFF4`.
+- **PIN do ficheiro (medido 2026-11-04, 18:0x):** `_main\_audit-verify-all.cmd` = **230220 B**,
+  **2847 CRLF** / 0 bare LF, sha256 `AD4CEA9D20C8807B0A97B82576433E601EC6425DF14BA6A1369E470CD00764CA`.
+  (Quatro familias de passos a mais do que o pin de 226610 B: os quatro do `panel-commit-stable`
+  (o commit da linha deixa de ser um relogio -- o worker prova `stable:true`), os dois do
+  `worker-park` (um veredito de dispositivo estaciona em vez de morrer e recarregar 1,9 GB: 3 278,8 s
+  de recarga em 149 corridas + 2 366,8 s em 102 re-spawns `no-audio`, medidos em 593 `BRIDGE_SPAWNED`)
+  e os do `caption-budget` citados abaixo. Medidos no merge: `panel-commit-stable` VERDICT PASS e
+  `--neg-arm` rc=1 (`NEG-ARM: PASS`), `worker-park` GREEN 11/11 e `--neg-arm` rc=1, wiring PASS
+  (ligados=125), class PASS, undefined-names GREEN.)
+  (O pin anterior era 226610 B / 2807 CRLF:
   (O passo do `caption-budget` passou a nomear `app\webview\sotto_webview.py` nas dependencias: as
   arms 7-9 executam o predicado `caption_lag_aged` QUE EMBARCA, e uma dependencia que nao o nomeia
   deixaria o passo em cache a descrever um shell que ja mudou. Era 226581 B antes.)

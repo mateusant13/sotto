@@ -285,6 +285,22 @@ if exist _main\verdict-gate.py (
   call :step verdict-gate 0 "_main\verdict-gate.py;worker\sotto_worker.py" "%OUT%\gate-verdict.log" python _main\verdict-gate.py
   call :record verdict-gate !STEP_RC!
 ) else ( call :record verdict-gate MISSING )
+REM O PARQUE DO WORKER (2026-11-04): um veredito de DISPOSITIVO nao fecha uma
+REM sessao CARREGADA. Medido em 593 BRIDGE_SPAWNED: 149 corridas terminam num veredito de
+REM dispositivo e pagam 3 278,8 s de recarga (30,9% de todo o tempo de carga), e 102
+REM re-spawns atras de ladder=no-audio custam mais 2 366,8 s (22,3%). `always` e nao cache:
+REM a arm P11 MEDE a CPU de uma janela real de 30 s, e uma leitura cacheada de CPU nao e'
+REM uma leitura. Nenhuma app e' lancada e nenhum endpoint de audio e' aberto -- a conducao
+REM e' um replay das funcoes reais (`park_session`/`park_reason`/`decide_verdict`) sobre
+REM uma sequencia sintetica de blocos.
+if exist _main\worker-park-oracle.py (
+  call :step always worker-park 0 "_main\worker-park-oracle.py;worker\sotto_worker.py" "%OUT%\worker-park.log" python _main\worker-park-oracle.py
+  call :record worker-park !STEP_RC!
+) else ( call :record worker-park MISSING )
+if exist _main\worker-park-oracle.py (
+  call :step always red-as-expected-worker-park 1 "_main\worker-park-oracle.py;worker\sotto_worker.py" "%OUT%\worker-park-neg.log" python _main\worker-park-oracle.py --neg-arm
+  call :expectred red-as-expected-worker-park !STEP_RC! "%OUT%\worker-park-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-worker-park MISSING "%OUT%\worker-park-neg.log" "NEG-ARM: PASS" )
 
 echo === the per-lane probes ===
 if exist _main\_lane2-reset-probe.js (
