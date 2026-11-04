@@ -677,6 +677,24 @@ if exist _main\caption-seam-dedup-oracle.py (
   call :step red-as-expected-caption-seam-dedup 1 "_main\caption-seam-dedup-oracle.py;worker\sotto_worker.py" "%OUT%\caption-seam-dedup-neg.log" python _main\caption-seam-dedup-oracle.py --neg-arm
   call :expectred red-as-expected-caption-seam-dedup !STEP_RC! "%OUT%\caption-seam-dedup-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-caption-seam-dedup MISSING "%OUT%\caption-seam-dedup-neg.log" "NEG-ARM PASS" )
+REM `fusion-oracle.py` -- O CORE DA FUSAO (ordem do dono, 2026-11-04: *"nao
+REM queremos a implementacao de detectar falantes ou algo assim. so' o core"*).
+REM Duas hipoteses do MESMO audio (stream rapido, refinado) viram operacoes de
+REM edicao ordenadas, com a regra de ESTABILIDADE: uma palavra ja' revelada so'
+REM muda quando o refinado DISCORDA e essa palavra nao foi confirmada pelos dois.
+REM A arm A13/A14 usa a frase pt-BR do conjunto unico de comparacao. O braco
+REM negativo muta COPIA do modulo quatro vezes (tira a estabilidade, deixa o
+REM refinado sobrepor o que ja' esta' no ecra, escolhe um vencedor quando os dois
+REM erram, e diffa por indice em vez de alinhar) e tem de apanhar as quatro.
+if exist _main\fusion-oracle.py (
+  call :step fusion 0 "_main\fusion-oracle.py;worker\fusion.py" "%OUT%\fusion.log" python _main\fusion-oracle.py
+  call :record fusion !STEP_RC!
+) else ( call :record fusion MISSING )
+if exist _main\fusion-oracle.py (
+  call :step red-as-expected-fusion 1 "_main\fusion-oracle.py;worker\fusion.py" "%OUT%\fusion-neg.log" python _main\fusion-oracle.py --neg-arm
+  call :expectred red-as-expected-fusion !STEP_RC! "%OUT%\fusion-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-fusion MISSING "%OUT%\fusion-neg.log" "NEG-ARM: PASS" )
+
 REM `agc_order_probe.py` arm D -- O TETO DE PICO. O ganho era aplicado e depois
 REM `np.clip`-ado, um CORTE DURO; na captura real do dono (loopback `VoiceMeeter
 REM Input`, 30 s) o `WORKER_STATS` publicou `peak_out=1.000000` em TODOS os ticks e

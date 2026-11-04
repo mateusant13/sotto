@@ -446,8 +446,11 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 13:09):** `_main\_audit-verify-all.cmd` = **218401 B**,
-  **2705 CRLF** / 0 bare LF, sha256 `4CD44B1C58EB7944EB24C2DB0BB53AE83D7B0F0BA2A0F6A99FE73B8C93350DB1`.
+- **PIN do ficheiro (medido 2026-11-04, 14:03):** `_main\_audit-verify-all.cmd` = **219712 B**,
+  **2723 CRLF** / 0 bare LF, sha256 `B2D3E3781111C333A62396DA1B94209F5951BD3C9E2EC77872A367FCE091CA8D`.
+  (Dezoito linhas a mais do que o pin de 218401 B / 2705 CRLF: o par `fusion` + o seu `--neg-arm` --
+  o core da fusao stream/refinado, que a ordem do dono de 2026-11-04 poe no lugar de qualquer
+  deteccao de falantes. 14 arms; o `--neg-arm` muta quatro vezes e exige as quatro vermelhas.)
   (Doze linhas a mais do que o pin de 217007 B / 2693 CRLF: o par `youtube-first-at-boot` + o seu
   `--neg-arm`, 9 arms. Ele mede o gate que faltava -- enquanto o player fornece linha o texto de
   estado e' RETIDO (`CAPTION_LOADING_TEXT_WITHHELD reason=player-track`), o pipeline publica a
