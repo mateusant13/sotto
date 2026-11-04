@@ -89,3 +89,197 @@ def advance(floor, position, seek_back=SEEK_BACK_S):
     if base - pos > seek_back:
         return pos
     return base
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# A PINTURA CONGELADA -- quando o DOM do player para e o relogio nao
+#
+# O DEFEITO MEDIDO (2026-11-04, na Chrome do dono pela CDP 9222, video
+# `r-AsGBMDI6c`): com a aba do YouTube em SEGUNDO PLANO
+# (`document.visibilityState === 'hidden'`) o Chrome deixa de REPINTAR a caixa
+# de legenda. Em 40 s de reproducao, `video.currentTime` andou 523,9 -> 563,0
+# enquanto as DUAS linhas pintadas NUNCA mudaram (uma unica assinatura em 790
+# amostras a 50 ms); o mesmo se mediu depois de um seek para t=300 e depois de
+# um `location.reload()` (legenda certa por segundos, congela outra vez).
+# `#movie_player.setOption('captions','track', ...)` nao cura: a lista volta
+# `[]` e so' a recarga da pagina devolve a pintura, por segundos.
+#
+# O QUE O DONO VE: a legenda repete *"a legenda de instantes atras"* (as
+# palavras dele, 2026-10-30) -- porque a fonte que o Sotto le' (as linhas do
+# DOM, `_main/youtube-cdp-source-oracle.py`) parou no tempo e continua a ser
+# servida como se fosse o presente.
+#
+# A REGRA -- a PINTURA so' perde a autoridade para a FAIXA quando HA' PROVA, e
+# a prova tem DOIS lados (nunca um temporizador):
+#
+#   1. a pintura esta' PARADA: o mesmo texto pintado, e `video.currentTime`
+#      andou mais de `STALE_S` desde a primeira vez que essa assinatura foi
+#      vista;
+#   2. a FAIXA SERVIDA diz outra coisa: o cue que cobre `video.currentTime`
+#      neste instante NAO e' o cue que a pintura alinha.
+#
+# Os dois lados sao obrigatorios porque um so' mente:
+#   * sem (2), um cue longo (8 s) seria chamado "congelado" so' porque o tempo
+#     andou -- e' a histerese que a ordem do dono exige;
+#   * sem (1), a primeira leitura de cada cue (`align` a meio do cue) seria
+#     "diferente" e a faixa roubava a pintura que esta' certa.
+#
+# Quando a pintura volta -- uma linha DIFERENTE, o relogio a andar ou nao --
+# ela recupera a autoridade no mesmo tick, sem memoria nenhuma do passado.
+# ══════════════════════════════════════════════════════════════════════════════
+
+#: Quanto o RELOGIO do video tem de andar com a MESMA pintura no ecra para a
+#: suspeita abrir. A pintura muda a cada 100-300 ms (`youtube_cdp_source.POLL_S`
+#: e a medicao de 2026-11-03): 1,5 s sao ~5 mudancas perdidas. NAO e' o
+#: criterio -- e' so' o limiar que manda pedir a FAIXA como segunda testemunha
+#: (o criterio e' a faixa).
+STALE_S = 1.5
+
+#: Duas cues com o mesmo `start` sao a MESMA cue (o JSON da faixa tem casas
+#: decimais fixas).
+CUE_SAME_EPS = 0.001
+
+
+def paint_signature(rows):
+    """A assinatura do que o player esta' a pintar -- espaco normalizado.
+
+    Duas leituras com a mesma assinatura sao a MESMA pintura; uma linha a mais,
+    a menos, ou um caracter diferente, e' uma pintura nova. E' a mesma
+    normalizacao que `youtube_cdp_source.parse_snapshot` faz nas linhas, para
+    nao haver duas definicoes de "a mesma pintura".
+    """
+    return "\n".join(" ".join(str(row).split()) for row in (rows or ())
+                     if str(row).strip())
+
+
+class PaintStall:
+    """A decisao "a pintura esta' congelada?" -- estado, um tick de cada vez.
+
+    O ESTADO E' A ASSINATURA, e nada mais: `key` e o instante do RELOGIO DO
+    VIDEO em que ela apareceu (`key_t`). Nao ha' temporizador de parede em
+    decisao nenhuma -- `stamp` so' viaja no veredicto para quem quiser medir a
+    idade, nunca decide. A razao e' a medicao: com a aba escondida o Chrome
+    continua a pintar o DOM com o MESMO texto enquanto `currentTime` anda, e um
+    relogio de parede nao distingue "a pintura esta' parada" de "a leitura esta'
+    parada".
+    """
+
+    def __init__(self, stale_s=STALE_S):
+        self.stale_s = float(stale_s)
+        self.key = None
+        self.key_t = None
+        self.asked = None
+        self.stale = False
+
+    # -- a leitura do tick ------------------------------------------------
+    def observe(self, rows, t, stamp=None, cues=()):
+        """Um tick: `(linhas pintadas, currentTime, stamp, cues da faixa)`.
+
+        Devolve o veredicto (ver `PaintStall.verdict`). `cues` vazio = a faixa
+        ainda nao chegou: ai' a unica coisa que se pode dizer e' "suspeita", e o
+        chamador paga o pedido da faixa (ver `ask`).
+        """
+        key = paint_signature(rows)
+        if not key:
+            # SEM PINTURA NAO HA' NADA PARA CONGELAR. A fonte que decide passa a
+            # ser outra (`_yt_clock_lines`), e a proxima pintura e' uma pintura
+            # nova por definicao.
+            self.key = None
+            self.key_t = None
+            self.stale = False
+            return self.verdict(False, 'no-paint', rows=rows, t=t)
+        try:
+            t = None if t is None else float(t)
+        except (TypeError, ValueError):
+            t = None
+        if key != self.key:
+            # A PINTURA MUDOU: ela recupera a autoridade AGORA, tenha estado
+            # congelada 1 s ou 30. Uma linha distinta e' a prova de que o Chrome
+            # voltou a pintar.
+            first = self.key is None
+            self.key = key
+            self.key_t = t
+            self.asked = None
+            self.stale = False
+            return self.verdict(False, 'paint-changed' if not first
+                                else 'paint-first', rows=rows, t=t)
+        if self.key_t is None or t is None:
+            return self.verdict(False, 'no-clock', rows=rows, t=t)
+        age = t - self.key_t
+        if self.stale:
+            # CONGELADA DE VEZ: fica a faixa ate a pintura provar o contrario
+            # (o ramo de cima). Sem esta memoria, uma lacuna de cues devolvia a
+            # autoridade a' pintura parada.
+            cue = self._cue_at(cues, t)
+            return self.verdict(cue is not None, 'stale' if cue is not None
+                                else 'stale-gap', rows=rows, t=t, age=age,
+                                cue=cue)
+        if age <= self.stale_s:
+            return self.verdict(False, 'recent-paint', rows=rows, t=t, age=age)
+        # SUSPEITA: a pintura nao muda ha' mais de `STALE_S` de video. O que
+        # falta e' a segunda testemunha -- a faixa. Pede-se uma vez por
+        # assinatura (nunca uma vez por tick).
+        ask = self.asked != self.key
+        self.asked = self.key
+        cue = self._cue_at(cues, t)
+        if cue is None:
+            return self.verdict(False, 'no-cue-at-clock', rows=rows, t=t,
+                                age=age, ask=ask)
+        hit = self._aligned(cues, rows)
+        if hit is None:
+            # A pintura nao esta' na faixa servida: ela pode ser de OUTRO track
+            # (o caso `painted-other-track`, tratado pelo shell) -- por isso nao
+            # ha' testemunha e nao se declara congelamento.
+            return self.verdict(False, 'paint-not-in-track', rows=rows, t=t,
+                                age=age, ask=ask)
+        if self._same_cue(hit.get('cue'), cue):
+            # A HISTERESE: e' o cue LONGO. O relogio andou, a pintura esta' no
+            # mesmo cue que a faixa diz estar -- logo nao esta' congelada.
+            return self.verdict(False, 'same-cue', rows=rows, t=t, age=age,
+                                cue=cue, painted_cue=hit.get('cue'))
+        self.stale = True
+        return self.verdict(True, 'stale', rows=rows, t=t, age=age, cue=cue,
+                            painted_cue=hit.get('cue'))
+
+    # -- helpers ----------------------------------------------------------
+    @staticmethod
+    def _same_cue(a, b):
+        """As duas cues sao a MESMA (por inicio, e por texto como desempate)."""
+        try:
+            sa = float((a or {}).get('start'))
+            sb = float((b or {}).get('start'))
+            if abs(sa - sb) <= CUE_SAME_EPS:
+                return True
+        except (TypeError, ValueError):
+            return (' '.join(str((a or {}).get('text') or '').split())
+                    == ' '.join(str((b or {}).get('text') or '').split()))
+        return False
+
+    @staticmethod
+    def _cue_at(cues, t):
+        if not cues or t is None:
+            return None
+        try:
+            import youtube_captions
+            return youtube_captions.cue_at(cues, t)
+        except Exception:                 # noqa: BLE001
+            return None
+
+    @staticmethod
+    def _aligned(cues, rows):
+        if not cues:
+            return None
+        try:
+            import youtube_captions
+            return youtube_captions.align_painted(
+                cues, " ".join(str(r) for r in (rows or ())).split())
+        except Exception:                 # noqa: BLE001
+            return None
+
+    def verdict(self, stale, why, rows=None, t=None, age=None, cue=None,
+                painted_cue=None, ask=False):
+        return {'stale': bool(stale), 'why': str(why),
+                'served': 'track' if stale else 'paint',
+                'painted_age_s': (None if age is None else round(float(age), 3)),
+                'cue': cue, 'painted_cue': painted_cue,
+                'painted': paint_signature(rows), 't': t, 'ask': bool(ask)}

@@ -3982,6 +3982,12 @@ class ExternalCaptionWatcher(threading.Thread):
             _fast_rows = self._yt_rows(None, hwnd=hwnd, uia=uia, UIA=UIA)
             _yt_mark(self, 'fast-rows')
             if _fast_rows:
+                # A PINTURA DO DOM PODE ESTAR CONGELADA (2026-11-04): ver
+                # `_yt_paint_stall`. Com a aba escondida o Chrome para de
+                # repintar a caixa e `currentTime` continua a andar -- medido.
+                _stalled = self._yt_paint_stall(_snap_fast, _fast_rows, vid)
+                if _stalled is not None:
+                    return _stalled
                 self.yt_reason = 'cdp-lines'
                 self.yt_cue = ' '.join(_fast_rows)
                 return [('external:youtube:track', _fast_rows)], False
@@ -3995,6 +4001,96 @@ class ExternalCaptionWatcher(threading.Thread):
             self.yt_reason = 'cdp-no-rows-yet'
             return [], False
         return None
+
+    def _yt_paint_stall(self, snap, rows, vid):
+        """A PINTURA DO DOM CONGELOU? -> a resposta da FAIXA, ou `None`.
+
+        O DEFEITO MEDIDO (2026-11-04, na Chrome do dono, CDP 9222): com a aba do
+        YouTube em segundo plano (`document.visibilityState === 'hidden'`) o
+        Chrome deixa de REPINTAR a caixa de legenda -- 40 s de reproducao,
+        `currentTime` 523,9 -> 563,0, as duas linhas NUNCA mudaram (uma unica
+        assinatura em 790 amostras a 50 ms), e o mesmo depois de um seek. O
+        caminho CDP devolve essas linhas como se fossem o presente, e e' isso
+        que o dono ouve como *"repete a legenda de instantes atras"*.
+
+        A REGRA e' um veredicto COM MEDIDA, nao um temporizador
+        (`youtube_monotonic.PaintStall`): a pintura parada E a faixa servida a
+        dizer outro cue naquele instante. Enquanto a segunda testemunha nao
+        existe (faixa ainda nao pedida, porque o DOM era a fonte) pede-se UMA vez
+        por assinatura -- `request` e' fire-and-forget (`YOUTUBE_TRACK_ASK`).
+
+        Devolve `None` no caso normal, e a resposta servida pela FAIXA quando o
+        congelamento esta' provado. O instante passa por `_yt_decide`, para o
+        ecra nunca recuar abaixo do chao monotono.
+        """
+        stall = getattr(self, 'yt_paint_stall', None)
+        if stall is None:
+            try:
+                import youtube_monotonic
+            except Exception as exc:      # noqa: BLE001
+                log(f'YOUTUBE_PAINT_STALL_IMPORT_FAILED error={exc!r}')
+                return None
+            stall = self.yt_paint_stall = youtube_monotonic.PaintStall()
+        thread = getattr(self.shell, 'youtube_track_thread', None)
+        track = None
+        if thread is not None:
+            try:
+                track = thread.current(vid)
+            except Exception:             # noqa: BLE001
+                track = None
+        cues = ()
+        if isinstance(track, dict) and track.get('state') == 'has-track':
+            cues = track.get('cues') or ()
+        verdict = stall.observe(rows, snap.get('t'), snap.get('stamp'), cues)
+        if verdict.get('ask') and thread is not None:
+            # A SEGUNDA TESTEMUNHA: a faixa e' o que diz se a pintura parada
+            # esta' velha. Uma vez por assinatura -- nao uma vez por tick.
+            try:
+                thread.request(vid, painted=[w for line in rows
+                                             for w in str(line).split()])
+            except Exception as exc:      # noqa: BLE001
+                log(f'YOUTUBE_PAINT_STALL_ASK_FAILED error={exc!r}')
+            return None
+        if verdict.get('why') not in ('stale', 'stale-gap'):
+            return None
+        now_t = self._yt_decide(snap.get('t'))
+        cue = None
+        try:
+            import youtube_captions
+            cue = youtube_captions.cue_at(cues, now_t)
+        except Exception as exc:          # noqa: BLE001
+            log(f'YOUTUBE_CUE_LOOKUP_FAILED video_id={vid} error={exc!r}')
+        cue = cue or verdict.get('cue') or {}
+        text = str(cue.get('text') or '').strip()
+        age = verdict.get('painted_age_s')
+        if not text:
+            # CONGELADA E A FAIXA NAO TEM CUE AQUI (uma lacuna): o player nao
+            # mostra nada neste instante, logo a resposta honesta e' nada --
+            # nunca a pintura em atraso.
+            self.yt_reason = 'painted-stale-gap'
+            return [], self._yt_forget('painted-stale-gap', urgent=False)
+        key = (cue.get('start'), text)
+        if key != getattr(self, 'yt_stale_logged', None):
+            self.yt_stale_logged = key
+            log('YOUTUBE_PAINT_STALE t=%.2f painted_age_s=%.1f cue=%s text=%r'
+                % (float(now_t), float(age or 0.0), cue.get('start'), text[:90]))
+        # A ETIQUETA DO QUADRO E' A DA FONTE QUE O PRODUZIU (a regra do
+        # `_yt_diag`): este quadro veio da FAIXA, nao do DOM.
+        self._yt_diag = {'src': 'external:youtube:track', 'vid': vid,
+                         'age': '0', 'rows': 1,
+                         'why': 'painted-stale:clock'}
+        self.yt_reason = 'painted-stale:clock'
+        self.yt_cue = text
+        self._yt_anchor = (float(now_t), time.monotonic())
+        self._yt_track = track
+        # O CHAO E' O DO `_yt_decide` E NAO SE MEXE AQUI (2026-11-04). `advance`
+        # existe para a PINTURA e desce o chao quando uma posicao salta >2 s
+        # para tras; chamado com o INICIO do cue, o fundo de um cue longo
+        # parecia um seek e o chao RECUAVA (medido no replay do fixture:
+        # 794,37 -> 792,40 no cue 792,399..797,8). O instante servido ja' passou
+        # por `_yt_decide`, logo o ecra nunca fica atras do chao.
+        return [('external:youtube:track',
+                 self._yt_lines(track, now_t) or [text])], False
 
     def _yt_cdp_lines(self, vid):
         """A LINHA DO PLAYER PASSA A' FRENTE DE TUDO (2026-11-03).
