@@ -144,6 +144,66 @@ def _reading_text(commit_pct, cpu_pct):
     return 'commit=%s cpu=%s' % (_one(commit_pct), _one(cpu_pct))
 
 
+class SystemCpu:
+    """A CPU do sistema em %, sem `psutil` e sem abrir nada (2026-11-04).
+
+    PORQUE E' QUE ISTO EXISTE AQUI E NAO NO SHELL. `observe(commit_pct,
+    cpu_pct)` aceita CPU desde a ordem do dono de 2026-10-30, `level_for_load`
+    junta as duas medidas, e o `LoadSheddingMonitor` chamava `observe(reading)`
+    sem CPU nenhuma: a capacidade existia e era INALCANCAVEL -- a mesma classe
+    de defeito que este repo ja' nomeia (capacidade que ninguem chama).
+
+    `GetSystemTimes` e' a leitura do proprio Windows e nao precisa de
+    dependencia nem de permissao: idle+kernel+user, como os contadores de
+    sistema os dao. Devolve `None` na PRIMEIRA amostra, porque um percentual
+    precisa de duas -- e `None` nao pede nada (ver `level_for_cpu`).
+    """
+
+    def __init__(self, reader=None):
+        self._reader = reader or self._win_reader
+        self._prev = None
+        self.last = None
+
+    @staticmethod
+    def _win_reader():
+        import ctypes
+        from ctypes import wintypes
+
+        class FILETIME(ctypes.Structure):
+            _fields_ = [('low', wintypes.DWORD), ('high', wintypes.DWORD)]
+
+        idle, kernel, user = FILETIME(), FILETIME(), FILETIME()
+        ok = ctypes.windll.kernel32.GetSystemTimes(
+            ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user))
+        if not ok:
+            return None
+
+        def ticks(ft):
+            return (ft.high << 32) | ft.low
+
+        return ticks(idle), ticks(kernel), ticks(user)
+
+    def sample(self):
+        """Devolve a CPU do sistema em % (0-100) ou `None` (primeira amostra)."""
+        raw = self._reader()
+        if raw is None:
+            return None
+        idle, kernel, user = raw
+        # `kernel` JA' INCLUI `idle` nos contadores do Windows.
+        total = kernel + user
+        busy = total - idle
+        prev = self._prev
+        self._prev = (busy, total)
+        if prev is None:
+            return None
+        d_busy = busy - prev[0]
+        d_total = total - prev[1]
+        if d_total <= 0 or d_busy < 0:
+            return self.last
+        self.last = round(100.0 * d_busy / d_total, 1)
+        return self.last
+
+
 class LoadShedding:
     """O estado: o nivel EM VIGOR, e porque e' que ele mudou.
 

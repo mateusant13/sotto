@@ -17775,15 +17775,26 @@ class LoadSheddingMonitor(threading.Thread):
         self.shell = shell
         self.log_fn = log_fn
         self.state = load_shedding().LoadShedding()
+        # A SEGUNDA MEDIDA (2026-11-04). `observe(commit_pct, cpu_pct)` e
+        # `level_for_load` existiam desde a ordem de 2026-10-30 e o monitor
+        # chamava `observe(reading)` sem CPU nenhuma -- o dono sentiu isso a
+        # jogar: 20 nucleos, jogo a 405 % e o worker do Sotto a 270 %, com o
+        # nivel publicado a ler so' a pressao de COMMIT (46,7 % = `leve`).
+        self._cpu = load_shedding().SystemCpu()
         self._stop = threading.Event()
 
-    def step(self, reading):
-        """Uma amostra. Devolve o dict do estado vigente, para o oraculo."""
+    def step(self, reading, cpu_pct=None):
+        """Uma amostra. Devolve o dict do estado vigente, para o oraculo.
+
+        `cpu_pct` viaja para `observe` (a razao publicada leva os DOIS numeros):
+        um nivel disparado pela CPU tem de dizer a CPU que o disparou.
+        """
         module = load_shedding()
-        level, changed, why = self.state.observe(reading)
+        level, changed, why = self.state.observe(reading, cpu_pct=cpu_pct)
         if changed:
-            self.log_fn('LOAD_SHEDDING level=%s commit_pct=%s stopped=%s why=%s'
+            self.log_fn('LOAD_SHEDDING level=%s commit_pct=%s cpu_pct=%s stopped=%s why=%s'
                         % (level, 'n/a' if reading is None else '%.1f' % float(reading),
+                           'n/a' if cpu_pct is None else '%.1f' % float(cpu_pct),
                            ','.join(self.state.stopped()) or 'nenhum', why))
             # A ACCAO E' O FICHEIRO: `PanelVisibilityWriter` le' este estado por
             # `SottoShell.shedding_level()` e poe `shed=<level>` no payload que o
@@ -17812,7 +17823,7 @@ class LoadSheddingMonitor(threading.Thread):
     def run(self):
         while not self._stop.is_set():
             reading = commit_pct()
-            self.step(reading)
+            self.step(reading, self._cpu.sample())
             self._stop.wait(self.INTERVAL_S)
 
     def stop(self):

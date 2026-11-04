@@ -284,9 +284,13 @@ todos os dias. Duas provas, porque uma só mente:
   regra de 2026-11-02 tratava das consolas do AGENTE; esta fecha as do PRODUTO: um `Popen` sem
   `CREATE_NO_WINDOW`, um `powershell` sem `-WindowStyle Hidden`, um `.bat`/`.cmd` largado, um
   `start`, um `os.startfile`, um `webbrowser.open`, um `subprocess` que abre uma janela de
-  consola — todos sao pop-up na tela dele. Portoes: `_main/console-window-gate.py` (censo do
-  codigo, divida congelada em `_main/console-window-baseline.json`, hoje **0**) e
-  `_main/lane-screen-gate.py` (`SOTTO_NEVER_ON_OWNER_SCREEN`). Uma janela que aparece e
+  consola — todos sao pop-up na tela dele. Portoes que EXISTEM: `_main/console-window-audit.py`
+  (censo do codigo, `CONSOLE-AUDIT VERDICT PASS -- 0 sitio(s) que abrem janela`, medido
+  2026-11-04), `_main/hidden-launch-oracle.py` (4 arms: o helper nao abre janela e espera o
+  filho) e `_main/lane-screen-gate.py` (`SOTTO_NEVER_ON_OWNER_SCREEN`, PASS com a divida antiga
+  congelada). **O `console-window-gate.py` que esta regra citava nunca existiu nesta arvore** — o
+  proprio `.cmd` (:320) o diz; um portao que so' existe na prosa foi a licao de 2026-11-04. Uma
+  janela que aparece e
   desaparece em 100 ms continua a ser uma janela na tela dele: o detector de campo e' o censo
   `ALERTA-JANELA` de 60 s, e um pop-up nao se justifica com "foi rapido".
 

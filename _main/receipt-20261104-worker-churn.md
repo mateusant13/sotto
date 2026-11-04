@@ -153,12 +153,25 @@ Duas conclusoes medidas, e uma pendencia nomeada:
    Quem cede e' o worker; e' o desenho a funcionar.
 2. **O churn de recarga — o "loading toda hora" dele — e' o que produzia os engasgos mais visiveis**,
    e e' o que este recibo fecha.
-3. **PENDENCIA (capacidade inalcancavel, a mesma classe de defeito que este repo ja' nomeia):**
-   `load_shedding.LoadShedding.observe(commit_pct, cpu_pct=None)` **aceita CPU**, e
-   `combine(by_commit, by_cpu)` existe com os limiares `CPU_HIGH_PCT = 90` / `CPU_VERY_HIGH_PCT = 98`
-   — mas `LoadSheddingMonitor.run()` chama `self.state.observe(reading)` **sem** `cpu_pct`. A CPU do
-   sistema nunca entra na decisao. Ligar isso exige o oraculo do modulo (26 arms) e uma corrida da
-   bateria, e nao foi feito com ele a jogar.
+3. **FECHADO (2026-11-04, 04:3x): a CPU do sistema estava fora da decisao.**
+   `load_shedding.LoadShedding.observe(commit_pct, cpu_pct=None)` **aceitava** CPU, `level_for_load`
+   juntava as duas medidas com `CPU_HIGH_PCT = 90` / `CPU_VERY_HIGH_PCT = 98` — e
+   `LoadSheddingMonitor.run()` chamava `self.state.observe(reading)` **sem** `cpu_pct`. A capacidade
+   existia e era inalcancavel (a classe de defeito que este repo ja' nomeia). O que mudou:
+
+   * `load_shedding.SystemCpu`: a leitura do proprio Windows (`GetSystemTimes`, sem `psutil`, sem
+     permissao, sem abrir dispositivo). `None` na primeira amostra — um percentual pede duas, e
+     `None` nao pede nada.
+   * `LoadSheddingMonitor`: `self._cpu = SystemCpu()`, `run()` faz `self.step(reading, self._cpu.sample())`,
+     `step(reading, cpu_pct=None)` entrega-o ao `observe`, e o log publica `cpu_pct=` — o numero que
+     decidiu, nao o adjectivo.
+   * Medido: `SystemCpu` deu **67,2 %** num intervalo de 1 s (a maquina a 56-67 % segundo o
+     `psutil`), e `level_for_load(40, 95) -> 'alta'`, `(40, 99) -> 'muito-alta'`, `(40, None) -> 'leve'`.
+
+   Oráculo: `_main/load-shedding-oracle.py` **ARM 22** (10 checks, 3 deles de FIACAO: o monitor
+   amostra, entrega, e o log publica) — **LOAD-SHEDDING GREEN, arms=183, fail=0**; `--neg-arm`
+   rc=1 com **12/12** mutantes apanhados, incluindo `neg_arm_cpu_wiring` (o monitor amostra e
+   descarta) que derruba exactamente as duas arms de fiacao (`fail=2`).
 
 ## O QUE ESTA LANE NAO FAZ ENQUANTO ELE JOGA
 

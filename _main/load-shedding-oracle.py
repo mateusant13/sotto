@@ -936,6 +936,39 @@ def run(module_path: Path, shell_path: Path, batch_path: Path | None = None) -> 
             arms_anti_thrash(load(module_path))
     finally:
         shutil.rmtree(load_tmp, ignore_errors=True)
+    # ARM 22 -- A SEGUNDA MEDIDA (2026-11-04): a CPU do sistema CHEGA a decisao.
+    print("\nARM 22 -- a CPU do sistema entra na decisao (e nao so' o commit)")
+    ls2 = load(module_path)
+    seq = iter([(100, 200, 100), (150, 300, 150)])
+    cpu = ls2.SystemCpu(reader=lambda: next(seq))
+    first = cpu.sample()
+    second = cpu.sample()
+    add(first is None, "a PRIMEIRA amostra nao pede nada (nao ha delta)", repr(first))
+    add(second == 66.7, "a segunda amostra e 66,7 % (100 de 150 ticks ocupados)",
+        repr(second))
+    add(ls2.level_for_load(40.0, 95.0) == 'alta',
+        "commit 40 + cpu 95 -> alta (a CPU sozinha ja pede)",
+        ls2.level_for_load(40.0, 95.0))
+    add(ls2.level_for_load(40.0, 99.0) == 'muito-alta',
+        'commit 40 + cpu 99 -> muito-alta', ls2.level_for_load(40.0, 99.0))
+    add(ls2.level_for_load(40.0, None) == 'leve',
+        'cpu ausente NAO inventa carga (o comportamento de antes)',
+        ls2.level_for_load(40.0, None))
+    state2 = ls2.LoadShedding()
+    level, changed, why = state2.observe(40.0, cpu_pct=95.0)
+    add((level, changed) == ('alta', True), 'observe() com cpu sobe para alta',
+        '%s changed=%s' % (level, changed))
+    add('cpu' in why.lower() or '95' in why, "a RAZAO nomeia a medida que decidiu", why)
+    # -- a FIACAO: o monitor TEM de amostrar e passar, senao a arm acima mede
+    #    uma funcao que ninguem chama (a classe de defeito que esta arm fecha).
+    shell_src = Path(shell_path).read_text(encoding='utf-8')
+    add('self.step(reading, self._cpu.sample())' in shell_src,
+        'LoadSheddingMonitor.run() AMOSTRA a CPU e passa-a ao step')
+    add('self.state.observe(reading, cpu_pct=cpu_pct)' in shell_src,
+        'step() entrega a CPU ao observe (e nao a descarta)')
+    add("cpu_pct=%s" in shell_src,
+        'o log publica a CPU que decidiu (o numero, nao o adjectivo)')
+
     return verdict("LOAD-SHEDDING")
 
 
@@ -1178,6 +1211,37 @@ def neg_arm() -> int:
         return EXIT_PASS
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def neg_arm_cpu_wiring() -> int:
+    """O mutante da FIACAO da CPU: o monitor volta a chamar `step(reading)`.
+
+    Sem isto, a arm 22 mediria `SystemCpu` e `level_for_load` -- dois pedacos
+    que ja' existiam -- e nao a ligacao que a 2026-11-04 faltava. O mutante e'
+    o defeito exacto: amostrar a CPU e nao a entregar.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="load-shed-cpu-neg-"))
+    try:
+        copy = tmp / "app" / "webview"
+        copy.mkdir(parents=True)
+        shutil.copy2(MODULE, copy / "load_shedding.py")
+        text = Path(SHELL).read_text(encoding='utf-8')
+        mutant = text.replace('self.step(reading, self._cpu.sample())',
+                              'self.step(reading)', 1)
+        if mutant == text:
+            print("NEG-ARM CPU: nao consegui mutar o alvo (o texto mudou)")
+            return EXIT_PASS
+        (copy / "sotto_webview.py").write_text(mutant, encoding='utf-8')
+        print("NEG-ARM CPU: o monitor amostra a CPU e NAO a entrega")
+        rc = run(copy / "load_shedding.py", copy / "sotto_webview.py", BATCH)
+        if rc == EXIT_FAIL:
+            print("\nNEG-ARM CPU PASS -- RED as designed")
+            return EXIT_FAIL
+        print("\nNEG-ARM CPU FAIL -- o oraculo NAO ve a CPU descartada")
+        return EXIT_PASS
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
 
 
 def neg_arm_channel() -> int:
@@ -1828,8 +1892,9 @@ def main(argv) -> int:
         sustain = neg_arm_sustain()
         persist = neg_arm_persist()
         cede = neg_arm_yield()
+        cpu_wiring = neg_arm_cpu_wiring()
         every = (table, channel, drain, selector, floor, sustain, persist, cede,
-                 chan, dwell, rise)
+                 chan, dwell, rise, cpu_wiring)
         return (EXIT_FAIL if all(rc == EXIT_FAIL for rc in every) else EXIT_PASS)
     return run(MODULE, SHELL)
 
