@@ -6043,6 +6043,18 @@ _SINGLE_INSTANCE = {'handle': None}
 #: is deliberately not excused by the measurement flags (see `main`).
 DEFAULT_MUTEX_NAME = 'Local\\SottoShell'
 
+# ── O MOTOR QUENTE (2026-11-04) -- o contrato esta' em
+# `state/design/warm-worker-20261104.md`. A shell nao o larga: LIGA-SE a ele.
+#: O prazo de um `attach`. Medido: a abertura de um pipe saudavel e' sub-ms; os
+#: 500 ms sao o tecto para o caso "existe e esta' ocupado", e depois disso a
+#: escada fria de hoje corre INTEIRA -- nenhum numero de aceitacao depende de o
+#: motor estar vivo (INV-3).
+WARM_ATTACH_DEADLINE_MS = 500
+#: A tarefa que cria o motor. `schtasks` e' o pai, nunca esta shell.
+WARM_ENGINE_TASK = 'SottoWarmEngine'
+#: Um replay mais velho do que isto e' HISTORIA, nunca pintura (INV-5/R11).
+WARM_BACKLOG_LIVE_MS = 2000
+
 
 #: Os VK dos modificadores NAO se escrevem aqui. O GENERICO por modificador
 #: (0x10/0x11/0x12 responde aos dois lados) e os LATERAIS (0xA0..0xA5, para
@@ -13108,6 +13120,53 @@ class SottoShell:
             log('VRAM_GUARD_START_FAILED error=%r' % (exc,))
         return True
 
+    def _try_warm_attach(self, reason, target_pid=None):
+        """ATTACH_TRY (design 2.5): the warm engine answers, or today's path runs.
+
+        Runs BEFORE `WorkerBridge` is constructed, at the same point the shell
+        starts a worker today. A failure is logged as `WARM_FALLBACK_COLD` and
+        the cold ladder continues untouched -- a missing, stale or busy engine is
+        SLOW, never WRONG (INV-3). When the pipe is absent the scheduler is asked
+        to start one so the NEXT open is warm; the shell still does not own it.
+        """
+        if getattr(self.args, 'no_warm_engine', False):
+            log('WARM_ATTACH_SKIPPED reason=no-warm-engine-flag')
+            return None
+        try:
+            keep = bool(getattr(self.args, 'warm_engine_keep', False))
+            bridge, why = WarmPipeBridge.attach(
+                deadline_ms=WARM_ATTACH_DEADLINE_MS,
+                live=True,
+                device=self.args.device,
+                capture_mode=self.args.capture or DEFAULT_CAPTURE_MODE,
+                target_pid=target_pid,
+                keep_warm=keep,
+                log=log,
+                on_caption=self.on_worker_caption,
+                on_status=self.on_worker_status,
+                on_stats=self.on_worker_stats,
+                on_meter=self.on_worker_meter,
+                on_loading_text=self.push_caption_to_window,
+            )
+        except Exception as exc:  # noqa: BLE001 -- the cold path must survive this
+            log('WARM_ATTACH_FAILED why=exception error=%r' % (exc,))
+            bridge, why = None, 'exception'
+        if bridge is None:
+            log('WARM_FALLBACK_COLD reason=%s reason_%s=%s'
+                % (why, 'attach', reason))
+            if why in ('absent', 'busy', 'no-hello', 'pipe-timeout'):
+                start_warm_engine_task(log=log)
+            return None
+        self.bridge = bridge
+        if not bridge.start(reason):
+            self.bridge = None
+            log('WARM_FALLBACK_COLD reason=start-refused reason_attach=%s' % reason)
+            return None
+        log('WARM_ATTACHED reason=%s pid=%s mode=%s load_ms=%.1f'
+            % (reason, getattr(bridge.child, 'pid', None), bridge.engine_mode,
+               bridge.load_ms))
+        return bridge
+
     def start_worker(self, reason):
         if reason not in self.START_REASONS:
             # ── THE RULE'S BINDING HALF, AND IT WAS MISSING UNTIL NOW ─────────
@@ -13181,6 +13240,27 @@ class SottoShell:
             log(f'APP_TARGET_RESOLVED value={json.dumps(target_value)} '
                 f'chose={target_pid} candidates='
                 + ','.join(str(pid) for pid in candidates))
+        # ── O MOTOR QUENTE PERGUNTA PRIMEIRO (2026-11-04) ─────────────────
+        # A ordem e' a do desenho: ATTACH_TRY antes de `start_worker` decidir
+        # qualquer coisa. Sucesso -> `self.bridge` e' a ponte LIGADA, e todos os
+        # guardas existentes (que testam `self.bridge`) passam a ser o portao do
+        # duplo load. Falha -> a escada fria de hoje corre inteira, sem uma linha
+        # mudada, e o log diz por que' (`WARM_FALLBACK_COLD`).
+        if self._try_warm_attach(reason, target_pid=target_pid) is not None:
+            self.code_state_log(f'worker-started-{reason}')
+            self._source_epoch = int(getattr(self, '_source_epoch', 0)) + 1
+            self._caption_pending = None
+            log(f'SOURCE_EPOCH n={self._source_epoch} reason=worker-warm-{reason}')
+            # O SIDECAR CAVALGA A MESMA VIDA (ver o bloco frio abaixo): um
+            # diarizador a correr contra ninguem e' 277 MB por nada.
+            if getattr(self.args, 'speakers', False) \
+                    or getattr(self.args, 'speakers_cheap', False):
+                sidecar = self.speaker_sidecar()
+                if sidecar.start(reason) and getattr(self.args, 'speakers_cheap', False) \
+                        and not getattr(self.args, 'speakers', False):
+                    self.multivoice_watch().start(reason)
+            return True
+        log('WARM_COLD_LOAD reason=%s' % reason)
         self.bridge = WorkerBridge(
             command=self.args.python,
             worker_path=self.args.worker,
@@ -13945,6 +14025,18 @@ class SottoShell:
             self.external_suppressed += 1
             if self.external_suppressed in (1, 100, 1000):
                 log(f'EXTERNAL_CAPTIONS_ASR_SUPPRESSED count={self.external_suppressed}')
+            return
+        # ── REPLAY VELHO E' HISTORIA, NAO PINTURA (INV-5/R11, 2026-11-04) ────
+        # A `WarmPipeBridge` marca `history_only` uma linha cujo audio tem mais
+        # de `WARM_BACKLOG_LIVE_MS`. Ela ENTRA no historico (o painel escreve-o a
+        # partir do evento) e NAO vai para a janela da legenda: pintar audio de
+        # ha' 6 s como se fosse ao vivo e' exactamente o SilentFallback que o
+        # recibo de 2026-10-07 proibiu, com o mesmo remedio -- a proveniencia
+        # viaja no meta (`src=warm-replay`, `audio_ms`).
+        if isinstance(meta, dict) and meta.get('history_only'):
+            self.emit_async('caption', {'text': text, 'meta': meta})
+            log(f'WARM_REPLAY_TO_HISTORY audio_ms={meta.get("audio_ms")} '
+                f'text={json.dumps(str(text)[:60])}')
             return
         # `emit_async`, NAO `emit`: `emit` espera pela pagina (ate' 10 s) na thread
         # que le' o stdout do worker -- a pagina ocupada atrasava a LEITURA.
@@ -18387,6 +18479,348 @@ class WorkerBridge:
             self._spawn()
 
 
+# ── O MOTOR QUENTE: a ponte que se LIGA em vez de largar (2026-11-04) ────────
+#
+# O contrato inteiro esta' em `state/design/warm-worker-20261104.md`. A regra que
+# da' forma a este ficheiro: **a shell nao pode matar o que tem de adoptar**. O
+# processo que segura o grafo e' criado pela Task Scheduler (`\\SottoWarmEngine`),
+# nunca por um `Popen` desta shell, logo nao esta' dentro do job object com
+# `KILL_ON_JOB_CLOSE` e o `BRIDGE.stop` de hoje nao tem PID para matar. O que a
+# shell pode fazer e' LIGAR-SE ao pipe e, no fim, PEDIR (detach/quit), nao matar.
+#
+# PORQUE E' QUE ISTO E' UMA `WorkerBridge` E NAO UM CAMINHO NOVO. Todos os
+# guardas existentes testam `self.bridge`: `start_worker` recusa quando ele nao
+# e' None (`sotto_webview.py`, o guarda do duplo arranque), o painel le
+# `bridge.snapshot()`, o watchdog le `loaded`/`last_progress_at`, o
+# `revive_worker` chama `bridge.stop()`. Herdar a classe faz com que adoptar e
+# arrancar partilhem UM portao em vez de dois -- que e' exactamente a INV-1.
+
+
+class _WarmChild:
+    """The `child` shim: a PID the shell did NOT create, shaped like one.
+
+    `getattr(bridge, 'child', None)` is read at five sites (`_pause_shell`,
+    `revive_worker`, `snapshot`, the reload guard). They need `.pid` and
+    `.poll()`. They must NOT get a `.kill()` that works: a kill here would be the
+    shell terminating a process it does not own, which is R1.
+    """
+
+    def __init__(self, pid):
+        self.pid = int(pid)
+
+    def poll(self):
+        try:
+            import psutil
+
+            return None if psutil.pid_exists(self.pid) else 0
+        except Exception:  # noqa: BLE001
+            return None
+
+    def kill(self):
+        raise RuntimeError('the shell does not own the warm engine (pid=%d); '
+                           'detach or quit instead' % self.pid)
+
+    def terminate(self):
+        return self.kill()
+
+
+class _PipeLineStream:
+    """Iterate a connected pipe as lines, for `WorkerBridge._pump`'s `for line in`."""
+
+    def __init__(self, conn, timeout_s=0.25):
+        self.conn = conn
+        self.timeout_s = timeout_s
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while True:
+            line = self.conn.readline(timeout_s=self.timeout_s)
+            if line is None:
+                if self.conn.closed:
+                    raise StopIteration
+                continue
+            return line + "\n"
+
+    def close(self):
+        self.conn.close()
+
+
+def warm_module():
+    """The shared module (`warm_pipe` names/locks), imported like the others here."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import warm_engine as module
+
+    return module
+
+
+class WarmPipeBridge(WorkerBridge):
+    """A `WorkerBridge` whose worker already exists and is already loaded.
+
+    Every attribute the callers read is present because every attribute is
+    INHERITED; only the four edges -- start, stop, the line reader and the
+    envelope -- are this class's own.
+    """
+
+    @classmethod
+    def attach(cls, deadline_ms=WARM_ATTACH_DEADLINE_MS, live=True, device=None,
+               capture_mode=None, target_pid=None, keep_warm=False,
+               log=log, **kwargs):
+        """The five steps of design 2.5. -> (bridge, None) or (None, reason).
+
+        A failure is a REASON, never an exception: the caller's fallback is the
+        untouched cold path and a missing engine must read as "slow", not "wrong".
+        """
+        module = warm_module()
+        key = module.warm_pipe.model_key(module.model_dir_from(module.ROOT))
+        name = module.warm_pipe.pipe_name(key)
+        handle, reason = module.warm_pipe.open_client(name, deadline_ms)
+        if handle is None:
+            return None, reason
+        conn = module.warm_pipe.PipeConn(handle)
+        try:
+            line = conn.readline(timeout_s=max(0.05, deadline_ms / 1000.0))
+            if not line or not line.startswith('WARM_HELLO '):
+                log('WARM_ATTACH_FAILED why=no-hello name=%s line=%s'
+                    % (name, json.dumps((line or '')[:120])))
+                conn.close()
+                return None, 'no-hello'
+            hello = json.loads(line[len('WARM_HELLO '):])
+            disk_sha = module.plugin_sha256(module.ROOT)
+            if hello.get('schema') != module.SCHEMA:
+                log('WARM_HELLO_REFUSED why=schema engine=%s'
+                    % json.dumps(hello.get('schema')))
+            elif hello.get('plugin_sha256') != disk_sha:
+                # UNKNOWN is not FRESH: a warm engine is older than the code by
+                # construction, so freshness is a field and a mismatch is a quit.
+                log('WARM_HELLO_REFUSED why=stale-code disk_sha=%s engine_sha=%s'
+                    % (disk_sha, hello.get('plugin_sha256')))
+                conn.send_line(json.dumps({'op': 'quit', 'why': 'stale-code'}))
+                conn.close()
+                return None, 'stale-code'
+            else:
+                payload = {
+                    'op': 'attach',
+                    'shell_pid': os.getpid(),
+                    'expect_sha256': disk_sha,
+                    'model_key': key,
+                    'live': bool(live),
+                    'device': device,
+                    'capture_mode': capture_mode,
+                    'target_pid': target_pid,
+                }
+                conn.send_line(json.dumps(payload))
+                deadline = time.monotonic() + max(0.05, deadline_ms / 1000.0)
+                pre_lines = []
+                attached = None
+                while time.monotonic() < deadline:
+                    more = conn.readline(timeout_s=max(0.02, deadline - time.monotonic()))
+                    if more is None:
+                        if conn.closed:
+                            break
+                        continue
+                    if more.startswith('WARM_ATTACHED '):
+                        attached = json.loads(more[len('WARM_ATTACHED '):])
+                        break
+                    if more.startswith('WARM_HELLO_REFUSED') or \
+                            more.startswith('WARM_ATTACH_FAILED'):
+                        log('WARM_ATTACH_FAILED why=%s' % json.dumps(more[:160]))
+                        conn.close()
+                        return None, 'refused'
+                    pre_lines.append(more)
+                if attached is None:
+                    log('WARM_ATTACH_FAILED why=pipe-timeout name=%s' % name)
+                    try:
+                        conn.send_line(json.dumps({'op': 'quit',
+                                                   'why': 'attach-timeout'}))
+                    except Exception:  # noqa: BLE001
+                        pass
+                    conn.close()
+                    return None, 'pipe-timeout'
+                if str(attached.get('mode') or '') == 'shed':
+                    # G3: the level rose between load and attach. The warm graph
+                    # is NOT an argument to override the shed; the shell takes the
+                    # batch path (the owner's "alta: desliga nemotron").
+                    log('WARM_ATTACH_SHED level=%s'
+                        % json.dumps(attached.get('level')))
+                    conn.send_line(json.dumps({'op': 'detach', 'why': 'shed'}))
+                    conn.close()
+                    return None, 'shed'
+                bridge = cls(conn=conn, hello=hello, attached=attached,
+                             pre_lines=pre_lines, keep_warm=keep_warm,
+                             device=device, capture_mode=capture_mode,
+                             target_pid=target_pid, log=log, **kwargs)
+                return bridge, None
+        except Exception as exc:  # noqa: BLE001 -- a peer that vanished
+            log('WARM_ATTACH_FAILED why=exception error=%r' % (exc,))
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+            return None, 'exception'
+
+    def __init__(self, conn, hello, attached, pre_lines=None, keep_warm=False,
+                 **kwargs):
+        kwargs.pop('command', None)
+        kwargs.pop('worker_path', None)
+        super().__init__(command=warm_module().ROOT, worker_path=warm_module().ROOT,
+                         **kwargs)
+        self.conn = conn
+        self.hello = dict(hello or {})
+        self.attached = dict(attached or {})
+        self.pre_lines = list(pre_lines or [])
+        self.keep_warm = bool(keep_warm)
+        self.child = _WarmChild(self.hello.get('pid') or self.attached.get('pid') or 0)
+        self.state = 'attached'
+        #: THE GATE THE REST OF THE FILE READS. `loaded` True is what stops the
+        #: silence watchdog from treating attach as a load, and `loaded_sha256`
+        #: is the engine's digest -- a number the shell did not compute and can
+        #: therefore compare (F1).
+        self.loaded = bool(self.hello.get('loaded'))
+        self.loaded_sha256 = self.hello.get('plugin_sha256')
+        self.load_ms = float(self.hello.get('load_ms') or 0.0)
+        self.spawns = 0
+        self.spawned_at = time.monotonic()
+        self.last_progress_at = self.spawned_at
+        self.capturing = bool(self.attached.get('mode') == 'warm-tap')
+        self.engine_mode = self.attached.get('mode') or self.hello.get('mode')
+        self.warm = warm_module()
+        self._stream = None
+        self._warm_replay_dropped = 0
+        self._warm_replay_painted = 0
+
+    # -- lifecycle ----------------------------------------------------------
+    def start(self, reason='attach'):
+        with self._locked():
+            if self.stopped:
+                return False
+            self.log('WARM_ATTACHED_BRIDGE reason=%s pid=%s mode=%s '
+                     'load_ms=%.1f replay=%s'
+                     % (reason, self.child.pid if self.child else None,
+                        self.engine_mode, self.load_ms,
+                        json.dumps(self.attached.get('replay'))))
+            for line in self.pre_lines:
+                self._feed(line)
+            self.pre_lines = []
+            self._stream = _PipeLineStream(self.conn)
+            threading.Thread(target=self._pump, args=(self._stream, 'stdout', self.child),
+                             name='sotto-warm-pipe', daemon=True).start()
+            self.state = 'attached'
+            return True
+
+    def stop(self, reason='stop'):
+        """A warm stop is a MESSAGE. It never kills, and never returns False.
+
+        `reason` decides the message, and each of the five existing sites keeps
+        its meaning: quit when the code on disk changed (the engine is stale by
+        definition) or when the owner asked the app to close with keep-warm off;
+        release when the owner paused (weights go, the process and the WASAPI
+        client stay); detach for everything else.
+        """
+        with self._locked():
+            if self.stopped:
+                return False
+            self.stopped = True
+            self._cancel_timers()
+            self.capturing = False
+        if reason == 'hot-reload' or (reason == 'exit' and not self.keep_warm):
+            op = 'quit'
+        elif reason == 'pause':
+            op = 'release'
+        else:
+            op = 'detach'
+        pid = self.child.pid if self.child is not None else None
+        try:
+            self.conn.send_line(json.dumps({'op': op, 'why': reason}))
+            self.log('WARM_DETACHED why=%s op=%s pid=%s' % (reason, op, pid))
+        except Exception as exc:  # noqa: BLE001 -- the peer may already be gone
+            self.log('WARM_DETACH_SEND_FAILED why=%s op=%s error=%r'
+                     % (reason, op, exc))
+        try:
+            self.conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+        self.child = None
+        return True
+
+    # -- lines --------------------------------------------------------------
+    def _feed(self, line):
+        text = (line or '').strip()
+        if text:
+            self._consume(text, self.child)
+
+    def _consume(self, line, child=None):
+        text = (line or '').strip()
+        if text.startswith('WARM_'):
+            return self._on_envelope(text)
+        try:
+            message = json.loads(text)
+        except ValueError:
+            return super()._consume(line, child)
+        if isinstance(message, dict) and str(message.get('type') or '').lower() == 'caption' \
+                and message.get('src') == 'warm-replay':
+            # INV-5/R11: replay is newest-first and BOUNDED. Older audio is
+            # history only -- it keeps its provenance and does not paint.
+            try:
+                audio_ms = int(message.get('audio_ms') or 0)
+            except (TypeError, ValueError):
+                audio_ms = 0
+            if self.warm.replay_is_history(audio_ms):
+                self._warm_replay_dropped += 1
+                message['history_only'] = True
+                log('WARM_REPLAY_HISTORY_ONLY audio_ms=%d budget_ms=%d n=%d'
+                    % (audio_ms, WARM_BACKLOG_LIVE_MS, self._warm_replay_dropped))
+            else:
+                self._warm_replay_painted += 1
+            return super()._consume(json.dumps(message), child)
+        return super()._consume(line, child)
+
+    def _on_envelope(self, text):
+        tag, _sep, rest = text.partition(' ')
+        try:
+            payload = json.loads(rest) if rest else {}
+        except ValueError:
+            payload = {'raw': rest[:200]}
+        self.log('%s %s' % (tag, json.dumps(payload, ensure_ascii=False)[:400]))
+        if tag == 'WARM_DETACHED' and self.child is not None:
+            self.capturing = False
+        return payload
+
+
+def start_warm_engine_task(log=log, task=WARM_ENGINE_TASK):
+    """Ask the SCHEDULER to start the engine -- never a `Popen` of ours (R1).
+
+    `schtasks` travels through `_main/hidden-launch.py`, which is the only
+    sanctioned way in this tree to start a `cmd`/`schtasks`, because a plain
+    `subprocess` from a `pythonw` parent has flashed a console on the owner's
+    screen before (AGENTS: "NADA EM FOREGROUND", measured 2026-11-02).
+    """
+
+    def _go():
+        try:
+            import importlib.util
+
+            path = os.path.join(REPO_ROOT, '_main', 'hidden-launch.py')
+            spec = importlib.util.spec_from_file_location('sotto_hidden_launch', path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            rc, out, err = module.run(['schtasks', '/run', '/tn', task], timeout=10)
+            log('WARM_ENGINE_START_TASK task=%s rc=%s out=%s err=%s'
+                % (task, rc, json.dumps((out or '')[:120]),
+                   json.dumps((err or '')[:120])))
+        except Exception as exc:  # noqa: BLE001 -- a missing task is not a crash
+            log('WARM_ENGINE_START_TASK_FAILED task=%s error=%r' % (task, exc))
+
+    try:
+        threading.Thread(target=_go, name='sotto-warm-start', daemon=True).start()
+    except Exception as exc:  # noqa: BLE001
+        log('WARM_ENGINE_START_TASK_FAILED task=%s error=%r' % (task, exc))
+    return True
+
+
 def default_python() -> str:
     """`python` when it resolves, else the interpreter running this shell.
 
@@ -18882,6 +19316,15 @@ def parse_args(argv):
     #: 10 with a worker and every one of them `reason=with-worker`. So Alt+C on
     #: the documented path opened a panel that said "Waiting for audio" forever,
     #: with no transcription process in existence. The opt-OUT is now the flag.
+    parser.add_argument('--no-warm-engine', action='store_true',
+                        help='do NOT try to attach to the warm engine: the '
+                             'cold worker path only. The warm engine is never '
+                             'started by the shell itself -- it is a Task '
+                             'Scheduler action the shell merely asks for.')
+    parser.add_argument('--warm-engine-keep', action='store_true',
+                        help='keep the warm engine ALIVE when the shell closes '
+                             '(detach instead of quit). Off by default: closing '
+                             'Sotto is a request to stop paying 1.9 GB.')
     parser.add_argument('--no-worker', action='store_true',
                         help='do NOT start the worker: the shell only. The '
                              'worker starts by default (F1); this is the '

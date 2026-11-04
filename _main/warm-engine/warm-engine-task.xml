@@ -1,0 +1,47 @@
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Sotto warm engine - segura o grafo fora da shell para a primeira legenda nao pagar a carga (desenho: state/design/warm-worker-20261104.md)</Description>
+  </RegistrationInfo>
+  <!-- NO TRIGGERS, DELIBERATELY (R4). At logon this box reads `alta`/`muito-alta`
+       (measured: _main/panel-visibility.json, `"shed": "muito-alta"`), and a
+       graph load there is exactly the freeze the owner forbids. The engine is
+       started ON DEMAND by `schtasks /run` when the box has an idle window, and
+       G1 defers the load when it does not. -->
+  <Triggers />
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <!-- Twin lock #1: a second `schtasks /run` starts nothing. -->
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <WakeToRun>false</WakeToRun>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>true</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <!-- PT0S: the default 3-day limit would silently kill a warm engine and
+         turn every boot after day 3 back into a cold boot (F14). -->
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <!-- R3: a crash-looping engine must not become a load loop. Bounded at 2;
+         the third crash leaves it ABSENT and says WARM_ENGINE_DIED. -->
+    <RestartOnFailure>
+      <Interval>PT60S</Interval>
+      <Count>2</Count>
+    </RestartOnFailure>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>H:\sotto\_main\warm-engine\warm-engine-run.cmd</Command>
+      <WorkingDirectory>H:\sotto\_main\warm-engine</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
