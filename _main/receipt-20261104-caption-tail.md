@@ -54,3 +54,17 @@ O instrumento: `age` deixou de ser fabricada (tap consumido por uma pintura) e a
 trabalho) e `sotto_worker.py` 7356→7413 (a decisao vive em modulo novo
 justamente para nao crescer mais; so' a chamada ficou no worker).
 `shell_relaunch.py +43 B` e' anterior a este trabalho.
+
+## O painel mostra a palavra (medido, 2026-11-04)
+
+O evento que `publish_on_silence` emite passa pelo mesmo caminho do painel que
+qualquer parcial. Executado o motor REAL em Node
+(`caption-formulation.js::createEngine` + `stable-words.js::wrap`):
+
+    ingest('hello wor', {stable:true, final:false}) -> wordsStable=true
+      tailClosed=false  wordsAreWhole=true    <- a ultima palavra PINTA
+    ingest('outra linha', {final:false})        -> wordsAreWhole=false
+                                                  <- sem a promessa, segura
+
+Logo a cura nao depende do relogio do painel: depende do sinal que o worker
+passou a mandar no silencio.
