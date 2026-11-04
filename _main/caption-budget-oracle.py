@@ -30,6 +30,7 @@ import json
 import os
 import re
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG = os.path.join(ROOT, '_main', 'webview-run.log')
@@ -39,12 +40,18 @@ MIN_ROWS = 30             # below this the verdict is UNKNOWN-NOT-RUN, never PAS
 TARGET_P95_MS = 1500.0
 TARGET_OVER_PCT = 5.0
 
+# AS DUAS SUPERFICIES CONTAM (2026-11-04, MEDIDO). O overlay escreve
+# `CAPTION_PAINT_LAG` e o painel escreve `CAPTION_APPLIED`; o painel e' a
+# MAIORIA -- 22 233 linhas contra 1 567 no log inteiro (93,4 %) -- e um
+# governador que so' le a primeira mede 6,6 % das pinturas da app.
 ROW = re.compile(
-    r'CAPTION_PAINT_LAG\s+audio_ms=(\d+)\s+queue_ms=(\d+)\s+'
+    r'(?:CAPTION_PAINT_LAG|CAPTION_APPLIED)\s+(?:text=[^\n]*?\s)?'
+    r'audio_ms=(\d+)\s+queue_ms=(\d+)\s+'
     r'budget_ms=(\d+)\s+over=(true|false)')
 
 
-REUSED = re.compile(r'CAPTION_PAINT_LAG\s+tap_reused=true')
+REUSED = re.compile(
+    r'(?:CAPTION_PAINT_LAG|CAPTION_APPLIED)\s+.*?tap_reused=true')
 
 
 def parse(text):
@@ -207,6 +214,18 @@ def arms():
     res['threshold_is_read'] = (v == 'FAIL')
     print(f'ARM 6 same corpus, budget=50 -> {v} (threshold is read)')
 
+    # ARM 6-bis: the PANEL surface must be readable. It is 93.4 % of the app's
+    # paints, and a ruler that only parses the overlay measures 6.6 % of them.
+    panel = '\n'.join(
+        f'2026-11-04 10:00:{i % 60:02d}.000 sotto: CAPTION_APPLIED text="l{i}" '
+        f'count={i} kind=partial aged_kind=transport audio_ms={200 + i % 50} '
+        f'queue_ms=4 budget_ms=1500 over=false' for i in range(40))
+    rows_p, reused_p = parse_counts(panel)
+    v, d = judge(rows_p)
+    res['panel_surface_read'] = (len(rows_p) == 40 and v == 'PASS')
+    print(f'ARM 6bis 40 CAPTION_APPLIED  -> rows={len(rows_p)} {v} '
+          f'(want 40, PASS: the panel is the majority surface)')
+
     # ARM 7-9: the predicate that decides whether a paint describes NEW audio,
     # run as it ships. Without it `audio_ms` counts one block many times.
     aged = _load_aged()
@@ -228,7 +247,72 @@ def arms():
           f'{aged(0, None)} (want False)')
     res['string_tap_works'] = (aged('4000', 3000) is True)
     print(f'ARM 9 tap as string "4000"   -> {aged("4000", 3000)} (want True)')
+
+    # ARM 10: the EMIT SITE, driven for real. A static arm proves the predicate;
+    # this proves the handler in `app/webview/sotto_webview.py` obeys it. Four
+    # paints over two taps must publish two measurable rows and two `tap_reused`
+    # rows -- and no negative age, which would enter the series as a fast line.
+    panel = _panel_arms()
+    res['panel_emit_site_obeys'] = panel.get('ok', False)
+    print(f'ARM 10 panel emit site       -> {panel.get("detail", "NOT RUN")}')
     return res
+
+
+def _panel_arms():
+    """Drive `SottoHost._caption_applied` with a fake shell. No window, no device."""
+    import types
+    sys.path.insert(0, os.path.join(ROOT, 'app', 'webview'))
+    try:
+        import sotto_webview as S
+    except Exception as exc:                      # noqa: BLE001 -- reported, not hidden
+        return {'ok': False, 'detail': f'import failed: {exc!r}'}
+    host_cls = None
+    for name, obj in vars(S).items():
+        if isinstance(obj, type) and '_caption_applied' in vars(obj):
+            host_cls = obj
+            break
+    if host_cls is None:
+        return {'ok': False, 'detail': 'no class carries _caption_applied'}
+
+    class FakeShell(object):
+        CAPTION_BUDGET_MS = S.SottoShell.CAPTION_BUDGET_MS
+        CAPTION_HOLD_BAND_MS = S.SottoShell.CAPTION_HOLD_BAND_MS
+
+        def __init__(self):
+            self.caption_log = []
+            self._last_push_tap_ms = None
+            self._last_push_final = False
+            self._last_push_at = None
+            self._caption_lag_blown = 0
+            self.notes = []
+
+        def _caption_lag_note(self, *a, **k):
+            self.notes.append(k.get('kind'))
+
+    lines = []
+    real_log = S.log
+    S.log = lambda m, *a, **k: lines.append(m)
+    try:
+        fake = types.SimpleNamespace()
+        fake._shell = FakeShell()
+        handler = types.MethodType(vars(host_cls)['_caption_applied'], fake)
+        now = int(time.time() * 1000.0) - 300
+        for tap, text in ((now, 'a'), (now, 'ab'), (now + 500, 'abc'),
+                          (now + 500, 'abcd')):
+            fake._shell._last_push_tap_ms = tap
+            fake._shell._last_push_at = time.time() - 0.01
+            handler({'text': text})
+    finally:
+        S.log = real_log
+    measurable = [x for x in lines if 'audio_ms=' in x]
+    reused = [x for x in lines if 'tap_reused=true' in x]
+    negative = [x for x in measurable if 'audio_ms=-' in x]
+    ok = (len(lines) == 4 and len(measurable) == 2 and len(reused) == 2
+          and not negative)
+    return {'ok': ok,
+            'detail': f'rows={len(lines)} measurable={len(measurable)} '
+                      f'reused={len(reused)} negative={len(negative)} '
+                      f'(want 4/2/2/0)'}
 
 
 def _load_aged(path=None):

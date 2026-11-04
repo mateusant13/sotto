@@ -9548,7 +9548,22 @@ class SottoHost:
         shell._last_push_tap_ms = None
         _is_final = bool(getattr(shell, '_last_push_final', False))
         sent_at = getattr(shell, '_last_push_at', None)
-        audio_ms = (int(time.time() * 1000.0) - int(tap)) if tap else None
+        # O MESMO TAP NAO CONTA DUAS VEZES, NO PAINEL COMO NO OVERLAY (2026-11-04).
+        # A cura de `caption_lag_aged` tinha ficado so' no caminho do overlay e o
+        # painel e' a MAIORIA das pinturas: medido no log inteiro, 22 233
+        # `CAPTION_APPLIED` contra 1 567 `CAPTION_PAINT_LAG` (93,4 %) e 799 dos
+        # 1 018 `CAPTION_BUDGET_BLOWN` (78,5 %) com `path=panel`. Anular
+        # `_last_push_tap_ms` depois da leitura nao fecha nada: uma linha a
+        # crescer volta a publicar o MESMO tap no push seguinte.
+        _aged = caption_lag_aged(
+            tap, getattr(shell, '_caption_lag_tap_counted', None))
+        _reused = bool(tap) and not _aged
+        if tap and _aged:
+            shell._caption_lag_tap_counted = int(tap)
+        # Nunca negativo: um `tap_ms` a frente do relogio do shell (arredondamento
+        # ou desvio de relogio) entraria na serie como atraso negativo.
+        audio_ms = (max(0, int(time.time() * 1000.0) - int(tap))
+                    if _aged else None)
         queue_ms = int((time.time() - sent_at) * 1000) if sent_at else None
         # A LINHA FECHADA NAO ENTRA NA SERIE AO VIVO (2026-11-04): o `tap_ms` de
         # uma `final` e' o do INICIO dela, logo mede a DURACAO da frase.
@@ -9558,6 +9573,8 @@ class SottoHost:
         log(f'CAPTION_APPLIED text={json.dumps(text)} '
             f'count={len(self._shell.caption_log)}'
             f' kind={"final" if _is_final else "partial"}'
+            + (f' tap_reused=true queue_ms={queue_ms}'
+               if _reused else '')
             + (f' aged_kind=final-close' if _is_final
                else f' aged_kind={"hold-expired" if (queue_ms is not None and shell.CAPTION_HOLD_BAND_MS[0] <= int(queue_ms) <= shell.CAPTION_HOLD_BAND_MS[1]) else "transport"}'
                if audio_ms is not None else '')

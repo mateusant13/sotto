@@ -32,7 +32,13 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHELL = os.path.join(os.path.dirname(HERE), 'app', 'webview', 'sotto_webview.py')
-MUTANT = os.path.join(os.path.dirname(SHELL), '_strip-logmutant-repro_sotto_webview.py')
+# O MUTANTE NASCE FORA DA ARVORE (2026-11-04, n-9 do audit). Ele saiu DENTRO de
+# `app/webview/` durante semanas -- 382 KB de copia do shell a viver ao lado do
+# original, commitada -- e um mutante que mora na arvore e' um mutante que pode
+# ser o que SHIPA. `TMPDIR` e' `I:\cc-tmp` nesta maquina (G: enche e mata lanes).
+_TMP = (os.environ.get('TMPDIR') or os.environ.get('TEMP')
+        or os.environ.get('TMP') or '.')
+MUTANT = os.path.join(_TMP, '_strip-logmutant-repro_sotto_webview.py')
 STANDIN = os.path.join(HERE, '_strip-stats-worker.py')
 PYW = sys.executable if sys.executable.lower().endswith('pythonw.exe') \
     else os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
