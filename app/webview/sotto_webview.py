@@ -442,7 +442,19 @@ PAINT_ACK_READ_JS = 'String(window.__sotto_paint_ack === __SEQ__ ? 1 : 0)'
 #: mesmo valor nao notifica ninguem), (2) FORCA recalc de estilo e layout com
 #: `getBoundingClientRect()`, e (3) devolve a impressao digital do estilo JA'
 #: aplicado: o `display` COMPUTADO do `.panel__header` (difere entre as duas
-#: superficies: `none` na faixa), o rect do body e o fundo computado.
+#: superficies: `none` na faixa), o rect do `.panel` e o fundo computado.
+#:
+#: O RECT E' O DO `.panel`, NAO O DO `body` (medido 2026-11-04, `msedge
+#: --headless=new` sobre o `app/panel/panel.html` que este shell carrega): em
+#: QUALQUER das duas superficies e em qualquer viewport o `body` e o `<html>`
+#: medem **altura 0** (`body { height: 0 }`; o layout vive nos filhos
+#: absolutos), portanto um `sized` lido do `body` era FALSO PARA SEMPRE e nenhum
+#: show podia alguma vez fazer ack. O `.panel` mede 380x40 na faixa (o cliente
+#: forcado) e o viewport inteiro nos outros casos -- e o rect dele e' lido no
+#: caminho do show com a janela ESCONDIDA: `STRIP_WIDTH ... to=380
+#: source=content` (12:51:45.092, 53 ms antes do gate que falhou) sai do
+#: `strip_width_dom`, que mede exactamente este rect de `.panel`. A janela estar
+#: escondida nao esconde o layout.
 #:
 #: LAYOUT NAO PRECISA DE COMPOSITOR, e e' por isso que este ack e' respondivel
 #: com a janela ESCONDIDA -- ao contrario do rAF de `PAINT_ACK_ARM_JS`, que o
@@ -478,7 +490,9 @@ CONTENT_GATE_JS = (
     '      : (document.body'
     '         ? String(document.body.getAttribute("data-surface") || "") : "");'
     '    var b = document.body;'
-    '    var r = (b && b.getBoundingClientRect) ? b.getBoundingClientRect() : null;'
+    '    var panel = document.querySelector(".panel");'
+    '    var r = (panel && panel.getBoundingClientRect)'
+    '      ? panel.getBoundingClientRect() : null;'
     '    out.w = r ? Math.round(r.width) : 0;'
     '    out.h = r ? Math.round(r.height) : 0;'
     '    out.sized = !!(r && r.width > 0 && r.height > 0);'
@@ -494,6 +508,125 @@ CONTENT_GATE_JS = (
     '  } catch (e) { out.error = String((e && e.message) || e); }'
     '  return JSON.stringify(out);'
     '})(__NAME__)')
+
+#: ── O QUE UMA RESPOSTA QUE NAO E' UM DICIONARIO QUER DIZER (2026-11-04) ─────
+#: O defeito medido no log do dono (`PANEL_CONTENT ... ack=false why=bad-answer`,
+#: 12:15:43.542 e 12:51:45.143) nao era a pagina a falhar: era o shell a NAO LER
+#: a resposta. `CONTENT_GATE_JS` devolve `JSON.stringify(out)` -- uma STRING -- e
+#: `ExecuteScriptAsync` (ver `exec_js`) JA' serializa o valor de retorno em JSON,
+#: portanto `json.loads` entrega aqui a string `'{"surface":...}'` e o `else` do
+#: gate chamava-lhe `bad-answer` sem guardar nada. As duas linhas do log provam a
+#: forma: `size=0x0 head="" vis=` VAZIOS sao os DEFAULTS do `out` -- o ramo do
+#: dicionario nunca correu --, e a mesma sessao, 63 ms antes, lia uma string
+#: (`STRIP_HEIGHT ... source=css css_value=40` exige `isinstance(raw, str)`).
+#: O contrato esta provado em dois sentidos: os outros leitores da pagina
+#: (`strip_height_from_css`, `strip_width_from_dom`, `_strip_offset_from_page`)
+#: devolvem strings e recebem `str`; este e' o UNICO que devolve JSON dentro de
+#: uma string. `gate_answer_payload` fecha essa classe de erro: aceita o
+#: dicionario E o JSON em string, e tudo o que nao for nenhum dos dois sai com
+#: uma RAZAO NOMEADA e o texto cru (120 chars) em `error` -- nunca um
+#: `bad-answer` mudo.
+CONTENT_GATE_RETRY_MIN_S = 0.02     # abaixo disto nao ha' orcamento para perguntar
+CONTENT_GATE_RETRY_PAUSE_S = 0.01   # entre duas perguntas, para nao girar o UI thread
+CONTENT_GATE_ERROR_MAX_CHARS = 120
+
+
+def gate_defaults(name):
+    """O `out` do gate por omissao -- a mesma forma que a linha de log publica."""
+    return {'ack': False, 'wait_ms': 0.0, 'why': 'page-not-ready', 'surface': name,
+            'applied': None, 'style': False, 'sized': False, 'w': 0, 'h': 0,
+            'bg': '', 'head': '', 'vis': '', 'error': '', 'attempts': 0}
+
+
+def gate_answer_payload(answer):
+    """A resposta crua da pagina -> `(payload, why, error)`. Puro.
+
+    `payload` e' o dicionario que o script da pagina descreve; quando ele nao
+    existe, `why` diz PORQUE e `error` traz o texto cru (120 chars) -- e' o que
+    o log publica para que uma linha `ack=false` nunca fique sem razao.
+    """
+    if isinstance(answer, str):
+        text = answer.strip()
+        try:
+            answer = json.loads(text)
+        except ValueError:
+            return None, 'page-error', text[:CONTENT_GATE_ERROR_MAX_CHARS]
+    if isinstance(answer, dict):
+        return answer, '', ''
+    if answer is None:
+        return None, 'page-not-ready', 'answer=null'
+    return None, 'page-error', repr(answer)[:CONTENT_GATE_ERROR_MAX_CHARS]
+
+
+def gate_verdict(name, payload):
+    """O dicionario da pagina -> os campos do gate, com `why` nomeado. Puro."""
+    out = gate_defaults(name)
+    out['applied'] = payload.get('surface')
+    out['style'] = bool(payload.get('style'))
+    out['sized'] = bool(payload.get('sized'))
+    try:
+        out['w'] = int(payload.get('w') or 0)
+        out['h'] = int(payload.get('h') or 0)
+    except (TypeError, ValueError):
+        out['w'] = out['h'] = 0
+    out['bg'] = str(payload.get('bg') or '')
+    out['head'] = str(payload.get('head') or '')
+    out['vis'] = str(payload.get('vis') or '')
+    out['error'] = str(payload.get('error') or '')[:CONTENT_GATE_ERROR_MAX_CHARS]
+    out['ack'] = bool(out['applied'] == name and out['style'] and out['sized'])
+    if out['error']:
+        out['why'] = 'page-error'      # o proprio script da pagina apanhou a excepcao
+    else:
+        out['why'] = 'applied' if out['ack'] else 'not-applied'
+    return out
+
+
+def gate_should_retry(why, ack, elapsed_s, budget_s):
+    """Uma pergunta MAIS, e so' DENTRO do mesmo orcamento. Puro."""
+    if ack or why == 'applied':
+        return False
+    return (float(budget_s) - float(elapsed_s)) >= CONTENT_GATE_RETRY_MIN_S
+
+
+def gate_probe(name, ask, budget_s, clock=time.monotonic, pause=time.sleep):
+    """Pergunta a' pagina ate' ao ack ou ao FIM de `budget_s`. Puro, dado `ask`.
+
+    O orcamento e' o de HOJE (`CONTENT_GATE_TIMEOUT_MS`): uma tentativa que
+    responde em 16 ms nao paga nada, e a repeticao so' acontece quando sobra
+    tempo -- o pior caso continua 250 ms, nunca 250 ms por tentativa. Um pedido
+    sem resposta (`NoAnswer`) ou uma resposta que nao e' um dicionario ficam com
+    a razao NOMEADA, e e' isso que a linha de log diz.
+    """
+    t0 = clock()
+    out = gate_defaults(name)
+    while True:
+        left = budget_s - (clock() - t0)
+        if out['attempts'] and left < CONTENT_GATE_RETRY_MIN_S:
+            break
+        out['attempts'] += 1
+        try:
+            answer = ask(left if left > 0 else CONTENT_GATE_RETRY_MIN_S)
+        except Exception as exc:     # noqa: BLE001 -- o mapa nao morre por isto
+            answer = None
+            out['error'] = repr(exc)[:CONTENT_GATE_ERROR_MAX_CHARS]
+        if isinstance(answer, NoAnswer):
+            payload, why, err = None, 'ui-thread-busy', str(answer.get('reason') or '')
+        else:
+            payload, why, err = gate_answer_payload(answer)
+        if payload is not None:
+            attempts = out['attempts']
+            out.update(gate_verdict(name, payload))
+            out['attempts'] = attempts
+        else:
+            out['why'] = why
+            out['error'] = err or out['error']
+        if not gate_should_retry(out['why'], out['ack'], clock() - t0, budget_s):
+            break
+        pause(min(CONTENT_GATE_RETRY_PAUSE_S,
+                  max(0.0, budget_s - (clock() - t0))))
+    out['wait_ms'] = round((clock() - t0) * 1000.0, 1)
+    return out
+
 
 #: THE EXIT'S DESTROY WAIT (2026-10-21). The window destroy is COSMETIC: the
 #: shell calls `os._exit` right after, so the window dies either way. Waiting
@@ -11416,52 +11549,60 @@ class SottoShell:
         NAO ESPERA COMO UM PEDIDO: espera como um ORCAMENTO. Um UI thread preso
         devolve `NoAnswer` e o mapa acontece na mesma -- falha aberta, igual ao
         `wait_paint_ack`, e a linha diz qual dos dois foi.
+
+        ── O QUE ESTAVA MEDIDO, E O QUE MUDOU (2026-11-04) ────────────────────
+        As duas linhas do dono (`12:15:43.542`, `12:51:45.143`) diziam
+        `ack=false why=bad-answer` e mais NADA: `size=0x0 head="" vis=` sao os
+        DEFAULTS do `out`, logo o ramo do dicionario nunca correu. A causa esta
+        medida em `_main/content-gate-answer-probe.py` e no comentario de
+        `gate_answer_payload`: `CONTENT_GATE_JS` devolve `JSON.stringify(out)`,
+        uma string, e `exec_js` entrega-a como string -- um `bad-answer` que era
+        um erro de LEITURA do shell, nao um problema da pagina. A cura tem tres
+        partes, e as tres estao em funcoes puras para o oraculo as executar:
+        `gate_answer_payload` (dicionario OU JSON em string, com `why` NOMEADO),
+        `gate_verdict` (o ack) e `gate_probe` (as repeticoes DENTRO do mesmo
+        orcamento). Um ack que nao chega deixa `why` nomeado -- `page-error`,
+        `page-not-ready`, `not-applied`, `ui-thread-busy` --, o texto cru em
+        `error`, e o mapa segue: falha aberta, agora informada.
         """
         name = normalise_surface_name(surface if surface is not None else self.surface)
-        out = {'ack': False, 'wait_ms': 0.0, 'why': 'no-surface', 'surface': name,
-               'applied': None, 'style': False, 'sized': False, 'w': 0, 'h': 0,
-               'bg': '', 'head': '', 'vis': '', 'error': ''}
+        out = gate_defaults(name)
         if name is None:
+            out['why'] = 'no-surface'
             # SEM SUPERFICIE NAO HA' GATE, e o mapa segue: recusar o show por
             # causa disto repetiria o defeito de `set_panel_surface` que deixou
             # o painel sem aparecer (ver `PANEL_SURFACE_REFUSED`).
             log('PANEL_CONTENT surface=%s ack=false wait_ms=0 why=no-surface '
-                'order=before-map reason=%s'
+                'order=before-map reason=%s attempts=0'
                 % (json.dumps(str(surface)), reason))
             self._last_content_gate = out
             return out
         script = CONTENT_GATE_JS.replace('__NAME__', json.dumps(name))
-        t0 = time.monotonic()
-        try:
-            answer = self.exec_js(
-                script, timeout=max(0.05, CONTENT_GATE_TIMEOUT_MS / 1000.0))
-        except Exception as exc:  # noqa: BLE001 -- o mapa nao morre por isto
-            answer = None
-            out['error'] = repr(exc)
-        out['wait_ms'] = round((time.monotonic() - t0) * 1000.0, 1)
-        if isinstance(answer, NoAnswer):
-            out['why'] = 'ui-thread-busy'
-        elif isinstance(answer, dict):
-            out['applied'] = answer.get('surface')
-            out['style'] = bool(answer.get('style'))
-            out['sized'] = bool(answer.get('sized'))
-            out['w'] = int(answer.get('w') or 0)
-            out['h'] = int(answer.get('h') or 0)
-            out['bg'] = str(answer.get('bg') or '')
-            out['head'] = str(answer.get('head') or '')
-            out['vis'] = str(answer.get('vis') or '')
-            out['error'] = str(answer.get('error') or '')
-            out['ack'] = bool(out['applied'] == name and out['style'] and out['sized'])
-            out['why'] = 'applied' if out['ack'] else 'not-applied'
-        else:
-            out['why'] = 'bad-answer'
+        budget = max(CONTENT_GATE_RETRY_MIN_S, CONTENT_GATE_TIMEOUT_MS / 1000.0)
+
+        def ask(left):
+            # UM ORCAMENTO, NAO DOIS: cada pergunta recebe o que resta do
+            # `CONTENT_GATE_TIMEOUT_MS`, nunca um orcamento novo.
+            return self.exec_js(script, timeout=max(CONTENT_GATE_RETRY_MIN_S, left))
+
+        out = gate_probe(name, ask, budget)
         log('PANEL_CONTENT surface=%s ack=%s applied=%s style=%s sized=%s '
             'size=%dx%d head=%s vis=%s wait_ms=%s why=%s order=before-map '
-            'reason=%s timeout_ms=%s'
+            'reason=%s timeout_ms=%s attempts=%d error=%s'
             % (name, str(out['ack']).lower(), json.dumps(str(out['applied'])),
                str(out['style']).lower(), str(out['sized']).lower(),
                out['w'], out['h'], json.dumps(out['head']), out['vis'],
-               out['wait_ms'], out['why'], reason, CONTENT_GATE_TIMEOUT_MS))
+               out['wait_ms'], out['why'], reason, CONTENT_GATE_TIMEOUT_MS,
+               out['attempts'], json.dumps(out['error'][:CONTENT_GATE_ERROR_MAX_CHARS])))
+        if not out['ack']:
+            # O SHOW ACONTECE (falha aberta, inalterada) E O ARTEFACTO DIZ QUE
+            # ELE ACONTECEU SEM A PAGINA VESTIDA -- com a razao NOMEADA. Um
+            # `WARN` aqui e' o que impede o defeito de voltar em silencio: o
+            # dono ve a UI a chegar depois, e a linha diz por que.
+            warn('PANEL_UNDRESSED surface=%s why=%s wait_ms=%s attempts=%d '
+                 'error=%s reason=%s'
+                 % (name, out['why'], out['wait_ms'], out['attempts'],
+                    json.dumps(out['error'][:CONTENT_GATE_ERROR_MAX_CHARS]), reason))
         self._last_content_gate = out
         return out
 
@@ -12436,6 +12577,8 @@ class SottoShell:
             f'visible={str(self.visible).lower()} '
             f'show=SW_SHOWNOACTIVATE focus_stolen=false '
             f'content_ack={str(content["ack"]).lower()} '
+            f'content_why={content["why"]} '
+            f'content_attempts={content["attempts"]} '
             f'content_wait_ms={content["wait_ms"]} '
             f'paint_ack={str(ack["ack"]).lower()} wait_ms={ack["wait_ms"]}')
         # The worker goes back to STREAMING on this line — see the stack law at
@@ -12740,6 +12883,8 @@ class SottoShell:
             f'visible={str(self.visible).lower()} '
             f'show={fg.get("show")} focus={fg.get("reason")} '
             f'content_ack={str(content["ack"]).lower()} '
+            f'content_why={content["why"]} '
+            f'content_attempts={content["attempts"]} '
             f'content_wait_ms={content["wait_ms"]} '
             f'paint_ack={str(ack["ack"]).lower()} wait_ms={ack["wait_ms"]}')
         self.publish_panel_visibility(reason)
@@ -12804,6 +12949,8 @@ class SottoShell:
             f'visible={str(self.visible).lower()} '
             f'show={fg.get("show")} focus={fg.get("reason")} '
             f'content_ack={str(content["ack"]).lower()} '
+            f'content_why={content["why"]} '
+            f'content_attempts={content["attempts"]} '
             f'content_wait_ms={content["wait_ms"]} '
             f'paint_ack={str(ack["ack"]).lower()} wait_ms={ack["wait_ms"]}')
         self.publish_panel_visibility(reason)

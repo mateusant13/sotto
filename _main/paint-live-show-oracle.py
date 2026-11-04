@@ -1,3 +1,4 @@
+# NO-BUG: instrumento do show REAL: exige `PANEL_CONTENT ack=true` ANTES de cada `PANEL_SHOWN`, mais `content_ack=true`, `paint_ack=true` e `wait_ms<=400`; diz SKIPPED quando ainda nao houve show; linha `why=bad-answer` legada e' REPLAYADA contra a pagina real
 """O show REAL do dono: a janela foi mapeada DEPOIS de o conteudo ser aplicado?
 
 Duas perguntas, uma so' linha de log cada, porque a ordem e' o defeito:
@@ -31,13 +32,40 @@ O QUE ELE NAO PROVA: pixel. Quem mede pixel e' `_main/panel-paint-first-census.p
 numa instancia privada; este le a instancia que o dono carrega, e a lei
 `SOTTO_NEVER_ON_OWNER_SCREEN` proibe uma lane de a pôr no ecra dele.
 
-Efervescencia: `--neg-arm` muta uma copia do log em CINCO pontos e o FONTE do
-shell em um (mapa antes do gate), e exige os seis vermelhos.
+── A RESPOSTA QUE NAO ERA UM DICIONARIO (2026-11-04) ───────────────────────
+A primeira versao deste oraculo ficou VERMELHA em cima do defeito e o vermelho
+estava certo, mas nao dizia o que se passava: `ack=false why=bad-answer` e mais
+nada. A causa foi MEDIDA (`_main/content-gate-answer-probe.py`):
+`CONTENT_GATE_JS` devolve `JSON.stringify(out)` -- uma STRING -- e o
+`ExecuteScriptAsync` JA' serializa o valor de retorno em JSON, portanto o
+`json.loads` do `exec_js` entrega a string `'{"surface":...}'` e o gate antigo
+chamava-lhe `bad-answer`. Nenhum show fez ack NUNCA (`grep -c ack=true` = 0).
+
+Por isso o julgamento de uma linha LEGADA (`why=bad-answer`, uma forma que o
+shell curado ja' nao consegue escrever) passa a ser um REPLAY medido: a pagina
+REAL (`app/panel/panel.html` copiado para `$TMPDIR` com os ficheiros que ele
+referencia) e' aberta em `msedge --headless=new` com o `CONTENT_GATE_JS`
+SHIPPED, a sonda publica o `typeof` do valor e o JSON que atravessa o WebView2,
+e o `gate_answer_payload` / `gate_verdict` EXTRAIDOS do fonte SHIPPED julgam a
+resposta. O replay e' o instrumento; a linha do log e' a pergunta.
+
+A linha impressa diz `REPLAY` e traz o viewport medido -- o cliente real da
+faixa (380x40) nao existe em headless neste box (o Windows nao deixa a janela
+ser menor que ~492x56), e o que o replay prova e' o PREDICADO (superficie,
+`display` do cabecalho, caixa nao vazia), nao o tamanho.
+
+Efervescencia: `--neg-arm` muta uma copia do log em SEIS pontos, o FONTE do shell
+em TRES (mapa antes do gate, `bad-answer` de volta, repeticao removida) e a
+sequencia de respostas do `gate_probe` em dois bracos, e exige os onze
+vermelhos. Um mutante no fonte muda O REPLAY: o oraculo executa o codigo do
+shell, nunca uma copia.
 """
-# NO-BUG: instrumento do show REAL: exige `PANEL_CONTENT ack=true` ANTES de cada `PANEL_SHOWN`, mais `content_ack=true`, `paint_ack=true` e `wait_ms<=400`; diz SKIPPED quando ainda nao houve show
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib.util
+import json
 import os
 import re
 import sys
@@ -45,10 +73,16 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOG = os.path.join(HERE, 'webview-run.log')
 SOURCE = os.path.join(os.path.dirname(HERE), 'app', 'webview', 'sotto_webview.py')
+PROBE = os.path.join(HERE, 'content-gate-answer-probe.py')
 ACK_MAX_MS = 400.0
 #: O orcamento do gate e' `CONTENT_GATE_TIMEOUT_MS` = 250 ms; o fio de cabelo a
 #: mais e' o poll e o marshalling, nao uma segunda espera.
 CONTENT_MAX_MS = 350.0
+#: A UNICA razao que o shell antigo escrevia sem dizer nada -- e a unica que este
+#: oraculo aceita re-julgar por replay. Uma razao NOMEADA (`page-error`,
+#: `page-not-ready`, `not-applied`, `ui-thread-busy`) e' honesta e NAO e' verde.
+_LEGACY_WHY = ('bad-answer',)
+_REPLAY_CACHE = {}
 
 _START = ('SHELL_STARTUP_STAGE', 'SHELL_START')
 _WARM = 'PAINT_WARM'
@@ -89,7 +123,57 @@ def _session(lines):
     return lines[start_idx:]
 
 
-def judge(text):
+def _probe_module():
+    spec = importlib.util.spec_from_file_location('content_gate_answer_probe', PROBE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _viewport_before(session, index, mode):
+    """O cliente que o shell forcou antes deste show -- para o replay o usar."""
+    for ln in reversed(session[:index]):
+        m = re.search(r'panel client area forced to (\d+)x(\d+)', ln)
+        if m:
+            return (int(m.group(1)), int(m.group(2)))
+    return (380, 40) if (mode or '') == 'strip' else None
+
+
+def replay_gate(surface, viewport, source_text):
+    """A pergunta LEGADA re-julgada pela pagina REAL e pelo shell SHIPPED.
+
+    -> dict do gate (`ack`, `why`, ...) ou `{'ok': False, 'why': <razao>}`.
+    Nunca inventa: sem navegador, sem sonda ou sem as funcoes no fonte, diz
+    UNPROVEN e o chamador fica vermelho.
+    """
+    # A CHAVE TEM DE INCLUIR O FONTE: um mutante no `gate_answer_payload` tem de
+    # re-julgar, nao apanhar a resposta em cache do fonte REAL (medido: sem isto
+    # o braco `bad-answer-de-volta` publicava GREEN).
+    key = (surface, viewport, hashlib.sha1(source_text.encode('utf-8')).hexdigest()[:12])
+    if key in _REPLAY_CACHE:
+        return _REPLAY_CACHE[key]
+    try:
+        mod = _probe_module()
+        measured = mod.page_answer(surface, viewport, source_text)
+    except Exception as exc:      # noqa: BLE001 -- o oraculo diz, nunca engole
+        out = {'ok': False, 'why': 'sonda indisponivel: %r' % (exc,)}
+        _REPLAY_CACHE[key] = out
+        return out
+    if not measured.get('ok'):
+        _REPLAY_CACHE[key] = measured
+        return measured
+    try:
+        out = mod.classify(source_text, measured, surface)
+    except Exception as exc:      # noqa: BLE001
+        out = {'ok': False, 'why': 'julgamento impossivel: %r' % (exc,)}
+        _REPLAY_CACHE[key] = out
+        return out
+    out['_measured'] = measured
+    _REPLAY_CACHE[key] = out
+    return out
+
+
+def judge(text, source_text=None):
     """-> (verdict, detail). `verdict` in GREEN | RED | SKIPPED. Puro: so' o texto."""
     lines = _lines(text)
     session = _session(lines)
@@ -119,16 +203,50 @@ def judge(text):
                                % (_get(warm[-1], 'ack'),))
     # O CONTEUDO DE CADA GATE, e depois a ORDEM dele contra o mapa.
     content_ok = []
+    replayed = {}
     for j in content_idx:
         ack = (_get(session[j], 'ack') or '')
+        why = _get(session[j], 'why')
         if ack == 'true':
             content_ok.append(j)
+            continue
+        if why in _LEGACY_WHY:
+            # A FORMA QUE O SHELL CURADO NAO ESCREVE. Nao a absolvo: re-julgo-a
+            # com a pagina REAL e o codigo SHIPPED, e so' um ack medido a
+            # transforma em evidencia de que a superficie estava vestida.
+            surface = _get(session[j], 'surface') or ''
+            surface = surface.strip('"')
+            src = source_text if source_text is not None else _REAL_SOURCE
+            if not src:
+                detail['fails'].append('conteudo ilegivel (%s): why=%s e sem fonte '
+                                       'para o replay' % (_stamp(session[j]) or '?', why))
+                continue
+            rp = replay_gate(surface, _viewport_before(session, j, surface), src)
+            if not rp.get('ok', True):
+                detail['fails'].append(
+                    'replay UNPROVEN (%s): why=%s e a sonda nao mediu -- '
+                    'UNPROVEN nao e um verde' % (_stamp(session[j]) or '?', rp.get('why')))
+            elif rp.get('ack'):
+                content_ok.append(j)
+                replayed[j] = rp
+                detail.setdefault('replayed', []).append((session[j], rp))
+            else:
+                detail['fails'].append(
+                    'replay (%s): a pagina medida NAO esta vestida -- ack=false '
+                    'why=%s sized=%s head=%s size=%dx%d'
+                    % (_stamp(session[j]) or '?', rp.get('why'), rp.get('sized'),
+                       json.dumps(rp.get('head')), rp.get('w'), rp.get('h')))
+        elif why is None:
+            detail['fails'].append(
+                'conteudo sem why= (%s): a linha nao diz porque o painel nao estava '
+                'vestido' % (_stamp(session[j]) or '?',))
         else:
             detail['fails'].append(
                 'conteudo nao aplicado antes do mapa (%s): ack=%s why=%s -- o show '
                 'segue pela falha aberta, e o artefacto diz que ele seguiu'
-                % (_stamp(session[j]) or '?', ack, _get(session[j], 'why')))
+                % (_stamp(session[j]) or '?', ack, why))
     detail['content_ack'] = len(content_ok)
+    detail['replayed_count'] = len(replayed)
     bad = []
     waits, cwaits = [], []
     for i in shown_idx:
@@ -140,7 +258,15 @@ def judge(text):
             cwaits.append(cms)
         before = [j for j in content_ok if j < i]
         if ack != 'true':
-            bad.append((ln, 'content_ack=%s (o mapa nao esperou o conteudo)' % (ack,)))
+            if before and before[-1] in replayed:
+                # A LINHA VIVA DIZ `content_ack=false` PORQUE O SHELL DELA NAO
+                # SABIA LER A RESPOSTA. O replay MEDIU que a superficie estava
+                # vestida -- o artefacto do shell antigo fica no log como esta,
+                # e o que conta e' o que este oraculo mediu agora.
+                detail.setdefault('legacy_shows', []).append((ln, replayed[before[-1]]))
+            else:
+                bad.append((ln, 'content_ack=%s (o mapa nao esperou o conteudo)'
+                            % (ack,)))
         elif not before:
             # A ORDEM E' O DEFEITO. Um show sem um `PANEL_CONTENT ack=true`
             # ANTES dele e' a janela a aparecer antes da UI.
@@ -185,6 +311,14 @@ _SOURCE_PATHS = (
 _GATE_CALL = 'content_gate('
 
 
+def _body_of(src, name, indent=''):
+    """O corpo de uma funcao do shell, pelo texto -- `None` se ela nao existe."""
+    pattern = (r'\n%sdef %s\([^\n]*\n(.*?)(?=\n%s(?:def|class) )'
+               % (re.escape(indent), re.escape(name), re.escape(indent)))
+    m = re.search(pattern, src, re.S)
+    return m.group(1) if m else None
+
+
 def judge_source(src):
     """-> lista de falhas (vazia = ordem certa). Puro: so' o texto do fonte."""
     fails = []
@@ -206,6 +340,45 @@ def judge_source(src):
         elif gate_at > map_at:
             fails.append('%s: o mapa (`%s`) vem ANTES do gate -- a janela aparece '
                          'antes do conteudo' % (name, map_call))
+        # A LINHA DO SHOW TEM DE DIZER PORQUE. Um `content_ack=false` sem
+        # `content_why=` e' a mesma linha muda que deixou o defeito passar dois
+        # meses: o artefacto diz que o show aconteceu e nao diz o que faltou.
+        if gate_at >= 0 and 'content_why=' not in body:
+            fails.append('%s: o `PANEL_SHOWN` nao publica `content_why=` -- a '
+                         'razao nomeada nao chega ao artefacto' % (name,))
+    # ── O GATE EM SI: DECODIFICA E REPETE, E NUNCA ESCREVE UM `bad-answer` ──
+    gate = _body_of(src, 'content_gate', indent='    ')
+    probe = _body_of(src, 'gate_probe', indent='')
+    payload = _body_of(src, 'gate_answer_payload', indent='')
+    if gate is None or probe is None or payload is None:
+        fails.append('o fonte nao tem `content_gate`/`gate_probe`/`gate_answer_payload` '
+                     '-- o instrumento nao julga uma copia')
+    else:
+        if 'gate_probe(' not in gate:
+            fails.append('content_gate: nao usa `gate_probe` -- uma pergunta unica '
+                         'sem razao nomeada')
+        if 'CONTENT_GATE_TIMEOUT_MS' not in gate:
+            fails.append('content_gate: o orcamento (`CONTENT_GATE_TIMEOUT_MS`) saiu '
+                         'do caminho')
+        if 'gate_should_retry(' not in probe or 'while True' not in probe:
+            fails.append('gate_probe: sem a repeticao (`gate_should_retry` dentro do '
+                         '`while True`)')
+        if 'gate_answer_payload(' not in probe:
+            fails.append('gate_probe: nao decodifica a resposta com '
+                         '`gate_answer_payload` -- a string JSON volta a ser '
+                         '`bad-answer`')
+        if 'json.loads' not in payload:
+            fails.append('gate_answer_payload: nao le o JSON em string -- e\' a forma '
+                         'que a pagina devolve (`JSON.stringify`)')
+        for name, body in (('content_gate', gate), ('gate_probe', probe),
+                           ('gate_answer_payload', payload)):
+            # A DOCSTRING E OS COMENTARIOS NAO ESCREVEM `why=`: so' o codigo conta.
+            body = re.sub(r'""".*?"""', '', body, flags=re.S)
+            for line in body.splitlines():
+                code = line.split('#', 1)[0]
+                if 'bad-answer' in code:
+                    fails.append('%s: escreve `bad-answer` -- a razao voltou a nao '
+                                 'ter nome' % (name,))
     return fails
 
 
@@ -263,6 +436,91 @@ def _source_map_first(src):
     return ''.join(out)
 
 
+def _source_old_bad_answer(src):
+    """POE O DEFEITO DE VOLTA: uma resposta que nao e' dicionario vira `bad-answer`.
+
+    E' literalmente o `else` de 2026-11-04: a classe de erro e' "o shell nao le a
+    string JSON e nao diz nada", e o oraculo tem de a apanhar PELO REPLAY, nao
+    por ler um comentario.
+    """
+    m = re.search(r'\ndef gate_answer_payload\([^\n]*\n(.*?)(?=\n\n\n)', src, re.S)
+    if not m:
+        return src
+    return (src[:m.start()]
+            + '\ndef gate_answer_payload(answer):\n'
+              '    """CONTROL: o shell antigo -- a string JSON nao e\' lida."""\n'
+              '    if isinstance(answer, dict):\n'
+              "        return answer, '', ''\n"
+              "    return None, 'bad-answer', ''"
+            + src[m.end():])
+
+
+def _source_no_retry(src):
+    """REMOVE A REPETICAO: uma pergunta e o orcamento fica por gastar."""
+    needle = ('        if not gate_should_retry(out[\'why\'], out[\'ack\'], '
+              'clock() - t0, budget_s):\n            break\n')
+    if needle not in src:
+        return src
+    return src.replace(needle, '        break\n', 1)
+
+
+def retry_arm(source_text):
+    """A repeticao, medida no `gate_probe` SHIPPED com um relogio de brinquedo.
+
+    -> (fails, notes). Duas perguntas: uma resposta que nao e' JSON e' seguida da
+    resposta vestida (tem de ackar na SEGUNDA), e uma sequencia que nunca acka
+    tem de parar DENTRO do orcamento (250 ms), nunca 250 ms por tentativa.
+    """
+    fails = []
+    try:
+        mod = _probe_module()
+        ns = mod.shell_functions(source_text)
+    except Exception as exc:      # noqa: BLE001
+        return ['retry-arm: nao consegui executar o `gate_probe` shipped: %r' % (exc,)], {}
+    good = json.dumps({'surface': 'strip', 'style': True, 'sized': True, 'w': 380,
+                       'h': 40, 'bg': 'rgb(0,0,0)', 'head': 'none', 'vis': 'visible',
+                       'error': ''})
+    budget = 0.25
+
+    def probe(sequence, step=0.016):
+        state = {'t': 0.0}
+        calls = []
+
+        def clock():
+            return state['t']
+
+        def ask(left):
+            calls.append(left)
+            state['t'] += step
+            return sequence[min(len(calls) - 1, len(sequence) - 1)]
+
+        out = ns['gate_probe']('strip', ask, budget, clock=clock, pause=lambda s: None)
+        return out, calls
+
+    recovered, calls = probe(['TypeError: SottoSurfaces is not a function', good])
+    if not recovered['ack']:
+        fails.append('retry: a primeira resposta ma nao foi repetida ate ao ack '
+                     '(attempts=%s why=%s)' % (recovered['attempts'], recovered['why']))
+    if recovered['attempts'] != 2:
+        fails.append('retry: esperava 2 tentativas, medi %s' % (recovered['attempts'],))
+    never, calls2 = probe(['not json at all'], step=0.05)
+    if never['ack']:
+        fails.append('retry: uma sequencia sem ack produziu ack')
+    if never['wait_ms'] > budget * 1000.0:
+        fails.append('retry: o orcamento foi excedido (%.1f ms > %.0f ms)'
+                     % (never['wait_ms'], budget * 1000.0))
+    if any(left > budget for left in calls2):
+        fails.append('retry: uma tentativa recebeu mais orcamento do que o total')
+    if never['attempts'] < 2:
+        fails.append('retry: nao repetiu antes de gastar o orcamento '
+                     '(attempts=%s)' % (never['attempts'],))
+    notes = {'recovered_attempts': recovered['attempts'],
+             'recovered_wait_ms': recovered['wait_ms'],
+             'never_attempts': never['attempts'], 'never_wait_ms': never['wait_ms'],
+             'max_ask_s': round(max(calls2) if calls2 else 0.0, 4)}
+    return fails, notes
+
+
 NEG_CASES = (
     # (rotulo, o que muda, o que se espera)
     # A ULTIMA, NAO A PRIMEIRA (medido 2026-11-02): `replace(..., 1)` mutava o
@@ -283,34 +541,66 @@ NEG_CASES = (
 )
 
 
-def neg_arm(text, source_text=None):
+SOURCE_CASES = (
+    ('fonte-mapa-antes-do-gate', _source_map_first),
+    ('fonte-bad-answer-de-volta', _source_old_bad_answer),
+    ('fonte-sem-repeticao', _source_no_retry),
+)
+
+
+def neg_arm(text, source_text=None, real_text=None):
+    """`text` e' a amostra sintetica; `real_text` e' o log do dono, para os bracos
+    que so' o REPLAY sabe julgar."""
     cases = list(NEG_CASES)
     bad = 0
-    for label, mutate, expect in cases:
-        got, detail = judge(mutate(text))
-        ok = got == expect
+    total = 0
+
+    def check(label, ok, note):
+        nonlocal bad, total
+        total += 1
         bad += 0 if ok else 1
-        print('  %-28s -> %-8s %s  %s'
-              % (label, got, 'RED-as-required' if ok else 'NOT-CAUGHT',
-                 (detail.get('fails') or ['-'])[0][:90]))
+        print('  %-34s -> %-8s %s  %s'
+              % (label, 'RED' if ok else 'GREEN',
+                 'RED-as-required' if ok else 'NOT-CAUGHT', note[:90]))
+
+    for label, mutate, expect in cases:
+        got, detail = judge(mutate(text), source_text)
+        check(label, got == expect, (detail.get('fails') or ['-'])[0])
     # O MUTANTE DO FONTE, ao lado dos do log: a ordem no ficheiro que a app
     # carrega, nao so' na linha que ele escreveu.
     if source_text:
-        fails = judge_source(_source_map_first(source_text))
-        ok = bool(fails)
-        bad += 0 if ok else 1
-        print('  %-28s -> %-8s %s  %s'
-              % ('fonte-mapa-antes-do-gate', 'RED' if ok else 'GREEN',
-                 'RED-as-required' if ok else 'NOT-CAUGHT',
-                 (fails or ['o mutante passou -- o instrumento nao le a ordem'])[0][:90]))
+        for label, mutate in SOURCE_CASES:
+            fails = judge_source(mutate(source_text))
+            check(label, bool(fails),
+                  (fails or ['o mutante passou -- o instrumento nao le o fonte'])[0])
+        # O DEFEITO DE VOLTA TEM DE DERRUBAR O JULGAMENTO DO LOG TAMBEM: o
+        # `gate_answer_payload` mutado e' o que classifica a resposta MEDIDA.
+        verdict_m, detail_m = judge(real_text or text, _source_old_bad_answer(source_text))
+        check('bad-answer-de-volta-derruba-o-log', verdict_m == 'RED',
+              ((detail_m.get('fails') or ['o log passou com o defeito de volta'])[0]))
+        # A REPETICAO: o `gate_probe` SHIPPED e' executado com um relogio de
+        # brinquedo, e o mutante que a remove tem de o apanhar.
+        fails, notes = retry_arm(source_text)
+        check('retry-recupera-dentro-do-orcamento', not fails,
+              (fails or ['attempts=%s wait_ms=%s / nunca-ack attempts=%s wait_ms=%s'
+                         % (notes.get('recovered_attempts'), notes.get('recovered_wait_ms'),
+                            notes.get('never_attempts'), notes.get('never_wait_ms'))])[0])
+        fails_m, _ = retry_arm(_source_no_retry(source_text))
+        check('retry-removido', bool(fails_m),
+              (fails_m or ['o mutante sem repeticao passou -- o braco nao mede nada'])[0])
         real_fails = judge_source(_REAL_SOURCE) if _REAL_SOURCE else ['fonte real ausente']
-        print('POSITIVE-CONTROL: o fonte REAL tem a ordem certa? '
+        print('POSITIVE-CONTROL: o fonte REAL tem a ordem, a leitura e a repeticao? '
               '%s%s' % ('sim' if not real_fails else 'NAO -- o braco nao mede nada',
                         '' if not real_fails else '  %s' % (real_fails[0][:80],)))
+        verdict_r, detail_r = judge(real_text or text, _REAL_SOURCE or source_text)
+        print('POSITIVE-CONTROL: o log REAL e\' julgado com replay? '
+              'replayadas=%d veredicto=%s%s'
+              % (detail_r.get('replayed_count', 0), verdict_r,
+                 '' if detail_r.get('replayed_count') else
+                 '  (nenhuma linha legada -- nada a replayar)'))
     if not text.strip():
         print('NEG-ARM: a amostra esta vazia -- as mutacoes nao provam nada')
         return 1
-    total = len(cases) + (1 if source_text else 0)
     print('NEG-ARM cases=%d caught=%d' % (total, total - bad))
     if bad:
         print('NEG-ARM FAIL')
@@ -320,6 +610,53 @@ def neg_arm(text, source_text=None):
 
 
 _REAL_SOURCE = ''
+
+
+def replay_report(text, source_text):
+    """Imprime o veredicto REPLAYADO de cada linha legada do ficheiro inteiro.
+
+    A sessao viva e' o que o veredicto julga; a linha de 12:15:43 esta numa
+    sessao anterior e nao entra nele -- mas ela e' METADE da evidencia do dono,
+    e o replay responde-lhe do mesmo jeito. `content_ack=true` aqui e' sempre
+    `REPLAY = medido agora`, nunca uma afirmacao sobre o processo antigo.
+    """
+    lines = _lines(text)
+    rows = []
+    for i, ln in enumerate(lines):
+        if _CONTENT not in ln or (_get(ln, 'ack') or '') == 'true':
+            continue
+        why = _get(ln, 'why')
+        surface = (_get(ln, 'surface') or '').strip('"')
+        viewport = _viewport_before(lines, i, surface)
+        row = {'stamp': _stamp(ln), 'why': why, 'surface': surface,
+               'viewport': viewport, 'line': ln}
+        if why in _LEGACY_WHY:
+            rp = replay_gate(surface, viewport, source_text)
+            row['replay'] = rp
+        rows.append(row)
+    return rows
+
+
+def _print_replay(rows):
+    for row in rows:
+        rp = row.get('replay')
+        if rp is None:
+            print('PAINT-LIVE replay %s: why=%s (NAO e\' uma forma legada -- o shell '
+                  'curado diz esta razao, e ela nao se re-julga)'
+                  % (row['stamp'] or '?', row['why']))
+            continue
+        if not rp.get('ok', True):
+            print('PAINT-LIVE replay %s: UNPROVEN why=%s' % (row['stamp'] or '?', rp.get('why')))
+            continue
+        measured = rp.get('_measured') or {}
+        print('PAINT-LIVE replay %s: content_ack=%s why=%s applied=%s style=%s '
+              'sized=%s size=%dx%d head=%s viewport=%s gate_ms=%s attempts=%s'
+              % (row['stamp'] or '?', str(rp.get('ack')).lower(), rp.get('why'),
+                 json.dumps(str(rp.get('applied'))), str(rp.get('style')).lower(),
+                 str(rp.get('sized')).lower(), rp.get('w'), rp.get('h'),
+                 json.dumps(rp.get('head')), measured.get('viewport'),
+                 measured.get('gate_ms'), rp.get('attempts')))
+        print('  LEGADO (verbatim, o shell daquela sessao): %s' % (row['line'],))
 
 
 def main(argv=None):
@@ -346,17 +683,33 @@ def main(argv=None):
         # SEMPRE uma cauda sintetica LIMPA: as mutacoes tem de morder alguma coisa, e o
         # texto vivo pode nao ter show nenhum (foi o caso medido hoje). O braco positivo
         # deste oraculo continua a ser o log REAL (`--log`), nunca esta cauda.
-        sample = (text + '\n2099-01-01 00:00:00.000 sotto: PAINT_WARM reason=startup ack=true'
-                         ' ack_wait_ms=31.0\n'
-                         '2099-01-01 00:00:01.000 sotto: PANEL_CONTENT surface=strip ack=true'
-                         ' applied="strip" style=true sized=true size=1040x150 head="none"'
-                         ' vis=visible wait_ms=9.0 why=applied order=before-map'
-                         ' reason=hotkey-cycle-strip timeout_ms=250.0\n'
-                         '2099-01-01 00:00:01.030 sotto: PANEL_SHOWN reason=hotkey-cycle-strip'
-                         ' mode=strip visible=true paint_ack=true content_ack=true'
-                         ' content_wait_ms=9.0 wait_ms=32.0\n')
-        return neg_arm(sample, source_text or None)
-    verdict, detail = judge(text)
+        # A AMOSTRA E' UMA SESSAO SINTETICA FECHADA, nao o log real com uma
+        # cauda: o log real ja' tem um `PANEL_CONTENT` que o REPLAY acka, e um
+        # deles ANTES do show sintetico satisfazia a ordem sem que o mutante
+        # fizesse nada -- medido 2026-11-04 (`mapa-antes-do-conteudo` publicava
+        # GREEN). Uma sessao propria torna cada mutacao a UNICA fonte do
+        # veredicto, e o braco positivo e' o BLOCO SEM MUTACAO (o `judge` do log
+        # real continua a ser corrido a parte, no braco positivo abaixo).
+        sample = (
+            '2099-01-01 00:00:00.000 sotto: SHELL_STARTUP_STAGE pid=999999 '
+            'stage=pre-lock python=py.exe panel=true\n'
+            '2099-01-01 00:00:00.100 sotto: PAINT_WARM reason=startup ack=true '
+            'ack_wait_ms=31.0\n'
+            '2099-01-01 00:00:01.000 sotto: PANEL_CONTENT surface=strip ack=true '
+            'applied="strip" style=true sized=true size=380x40 head="none" '
+            'vis=visible wait_ms=9.0 why=applied order=before-map '
+            'reason=hotkey-cycle-strip timeout_ms=250.0 attempts=1 error=""\n'
+            '2099-01-01 00:00:01.030 sotto: PANEL_SHOWN reason=hotkey-cycle-strip '
+            'mode=strip visible=true paint_ack=true content_ack=true '
+            'content_why=applied content_attempts=1 content_wait_ms=9.0 '
+            'wait_ms=32.0\n')
+        clean, _clean_detail = judge(sample, source_text or None)
+        if clean != 'GREEN':
+            print('NEG-ARM: a amostra sintetica nao e\' verde sem mutacao (%s) -- '
+                  'as mutacoes nao provam nada' % (clean,))
+            return 2
+        return neg_arm(sample, source_text or None, text)
+    verdict, detail = judge(text, source_text or None)
     print('PAINT-LIVE arranque=%s warm=%d ack=%d conteudo=%d conteudo_ack=%d shows=%d '
           'max_wait_ms=%s max_content_wait_ms=%s'
           % (detail.get('started') or '-', detail.get('warm', 0),
@@ -375,6 +728,15 @@ def main(argv=None):
         old = [ln for ln in _lines(text) if _SHOWN in ln][-3:]
         for ln in old:
             print('PAINT-LIVE show (verbatim, FORA da sessao viva): %s' % (ln,))
+    # O REPLAY: cada linha `why=bad-answer` do ficheiro, re-julgada pela pagina
+    # REAL e pelo shell SHIPPED. E' a unica resposta honesta para uma linha que
+    # o shell da altura nao sabia ler.
+    legacy_rows = replay_report(text, source_text) if source_text else []
+    if legacy_rows:
+        _print_replay(legacy_rows)
+    for ln, rp in detail.get('legacy_shows') or []:
+        print('PAINT-LIVE show LEGADO %s: content_ack=false na linha, REPLAY ack=%s '
+              'why=%s' % (_stamp(ln) or '?', str(rp.get('ack')).lower(), rp.get('why')))
     for why in src_fails:
         print('  RED (fonte): %s' % (why,))
     for why in detail.get('fails') or []:
