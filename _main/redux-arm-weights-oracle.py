@@ -141,14 +141,24 @@ def load_module(path: Path, name: str):
 class FakeReader:
     """The smallest thing ReduxHiddenSwitch accepts as a visibility channel."""
 
-    def __init__(self, visible, why="oracle", age=0.0):
+    def __init__(self, visible, why="oracle", age=0.0, shed='leve'):
         self.visible = bool(visible)
         self.why = why
         self.age = age
+        self.shed_level = shed
         self.path = "<oracle-fake-visibility>"
 
     def read(self):
         return self.visible, self.why, self.age
+
+    def shed(self, default='leve'):
+        """O canal de CARGA que o `tick` le desde 2026-11-01 (`REDUX_SHEDDING`).
+
+        Sem este metodo o oraculo morria em `AttributeError` no primeiro `tick`
+        -- instrumento em atraso, nao defeito do motor. `leve` e' o valor que a
+        leitura real devolve quando o ficheiro nao diz nada: NAO DESLIGO nada.
+        """
+        return self.shed_level if self.shed_level in ('leve', 'alta', 'muito-alta') else default
 
 
 def make_runner_and_checkpoint(root, name, manifests=MANIFESTS):

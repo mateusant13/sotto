@@ -19057,10 +19057,23 @@ class WorkerBridge:
         # `CUDA_MODULE_LOADING=LAZY` / `OMP_NUM_THREADS=4` defaults are set at
         # module scope before onnxruntime is imported, so they apply to every
         # way the worker can be launched. `_main/app-target-oracle.py` pins this
-        # dict to `os.environ + SOTTO_CAPTURE_MODE` (+ the target pid), and that
-        # contract is worth keeping.
+        # dict to `os.environ + SOTTO_CAPTURE_MODE + SOTTO_REDUX_WHEN_HIDDEN`
+        # (+ the device and the target pid), and that contract is worth keeping.
         env['PYTHONUNBUFFERED'] = '1'
         env['SOTTO_CAPTURE_MODE'] = self.capture_mode
+        #: THE BACKGROUND PARAKEET PASS, OPTED IN BY THE APP ITSELF (owner,
+        #: 2026-11-01: *"quando carga liberar, carrega sozinho ... e processa
+        #: qualquer audio nao processado, com o parakeet"*). Until this line the
+        #: switch was reachable only from a shell that exported the variable by
+        #: hand -- i.e. never in the app the owner runs, which made the whole
+        #: batch path dead code in production while every oracle saw it green.
+        #: The switch's own three gates keep this safe and are why it is not a
+        #: behaviour change on a visible panel: the visibility file reads
+        #: VISIBLE (and therefore streaming) whenever it is missing, stale or
+        #: unreadable; a hidden panel only accumulates audio (RAM, then a disk
+        #: spool, never a dropped block); and an engine that is not on disk is
+        #: REFUSED LOUDLY with the missing path while the worker keeps streaming.
+        env['SOTTO_REDUX_WHEN_HIDDEN'] = '1'
         if self.device is not None:
             env['SOTTO_AUDIO_DEVICE'] = self.device
         #: OPT-IN: `SOTTO_TARGET_PID` appears ONLY when a target was resolved.

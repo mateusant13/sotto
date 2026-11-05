@@ -446,8 +446,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 17:1x):** `_main\_audit-verify-all.cmd` = **256385 B**,
-  **3151 CRLF** / 0 bare LF, sha256 `B44617E456717B7555C95EE4FE7FFAA0726F1C30E946CACA078AB0049C23E38A`.
+- **PIN do ficheiro (medido 2026-11-05, 17:3x):** `_main\_audit-verify-all.cmd` = **256714 B**,
+  **3155 CRLF** / 0 bare LF, sha256 `4F92D8542BB1A1E79E612542329EDA32F2CB74F84FEE06CEE438ADCB46953636`.
+  (Quatro linhas a mais do que o pin de 256385 B, e por isso o pin mudou: o comentario do passo
+  `history-write` afirmava "o passe de batch esta' OFF por omissao", que era verdade do LADO DO
+  WORKER e mentira do lado da APP -- a shell nunca passou `SOTTO_REDUX_WHEN_HIDDEN`, logo o
+  interruptor nao era construido na unica instancia que o dono corre. A shell passa-o agora em
+  `_child_env`, o `_main/app-target-oracle.py` pina a chave (arm e, 9/9) e o braco de producao
+  foi corrido: `REDUX_SWITCH armed=true by=SOTTO_REDUX_WHEN_HIDDEN=1`, `REDUX_BATCH_ENGINE
+  engine=parakeet name=onnx missing=none`, `REDUX_ENGINE_LOAD rss_mb=463.7 load_s=3.09`,
+  `REDUX_SWITCH_STOP kicks=24 batch_seconds=72.56 failures=0`.)
   (Quinze linhas a mais do que o pin de 255029 B: o par `paused-pace` + o seu
   `red-as-expected`, nascido da mesma sessao VIVA e da mesma queixa de carga. Medido com o video
   PAUSADO e o painel ESCONDIDO: `YOUTUBE_LOOP_HZ hz=9.7 src_reads=755` com `YOUTUBE_TICK_MS

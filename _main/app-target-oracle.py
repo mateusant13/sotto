@@ -161,6 +161,12 @@ class FakeShell:
         self.on_worker_status = lambda text, kind, info: None
         self.on_worker_stats = lambda parsed: None
         self.on_worker_meter = lambda sample: None
+        #: O `start_worker` REAL entrega `on_loading_text=self.on_worker_loading_text`
+        #: (sotto_webview.py, `_spawn`): o texto de estado que o player retem.
+        #: O stub tem de o ter, pela mesma razao que o `push_caption_to_window`
+        #: abaixo -- sem ele a arma `g` morria em `AttributeError` e acusava um
+        #: caminho que nunca correu.
+        self.on_worker_loading_text = lambda *a, **k: None
         #: O `start_worker` REAL entrega este callback ao bridge
         #: (`on_loading_text=self.push_caption_to_window`, linha 9412). O stub
         #: tem de o ter: sem ele a arma `g` morria com `AttributeError` e o
@@ -170,6 +176,18 @@ class FakeShell:
     def apply_panel_state(self, text, kind='busy', info=None):
         self._painted.append((text, kind, dict(info or {})))
         return True
+
+    def _try_warm_attach(self, reason, target_pid=None):
+        """O motor quente NUNCA atacha neste banco de ensaio.
+
+        `start_worker` pergunta-lhe primeiro (2026-11-04) e com `None` segue a
+        escada FRIA -- que e' exactamente o caminho que esta arma mede. Sem este
+        stub a arma morria em `AttributeError: 'FakeShell' object has no
+        attribute '_try_warm_attach'` e o oráculo publicava FAIL sobre um
+        caminho que nunca chegou a correr -- a mesma lição que o
+        `push_caption_to_window` acima ja' tinha pago.
+        """
+        return None
 
     def code_state_log(self, reason):
         return None
@@ -303,17 +321,19 @@ def arm_e(mod, arm, ctx):
               'SOTTO_TARGET_PID is ABSENT (not empty: absent)')
     expected = dict(os.environ)
     expected['SOTTO_CAPTURE_MODE'] = bridge.capture_mode
+    expected['SOTTO_REDUX_WHEN_HIDDEN'] = '1'
     arm.check(env == expected,
-              'the env is byte-identical to the pre-existing contract: '
-              'os.environ + SOTTO_CAPTURE_MODE, nothing else')
+              'the env is byte-identical to the contract: '
+              'os.environ + SOTTO_CAPTURE_MODE + SOTTO_REDUX_WHEN_HIDDEN, nothing else')
     deviced = mod.WorkerBridge(command=sys.executable, worker_path=WORKER,
                                device='Dev')
     env2 = deviced._child_env()
     expected2 = dict(os.environ)
     expected2['SOTTO_CAPTURE_MODE'] = deviced.capture_mode
+    expected2['SOTTO_REDUX_WHEN_HIDDEN'] = '1'
     expected2['SOTTO_AUDIO_DEVICE'] = 'Dev'
     arm.check(env2 == expected2,
-              'with a device: still only the two keys this shell ever added')
+              'with a device: still only the keys this shell ever added')
 
 
 def arm_f(mod, arm, ctx):

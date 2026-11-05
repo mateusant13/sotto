@@ -190,7 +190,11 @@ REM direita fica perdendo historico"*. MEDIDO no log dele: 3830 CAPTION_APPLIED,
 REM ZERO HISTORY_APPEND, `history/2026-11-05/` inexistente. O choke point exigia
 REM `producer:'redux'`, o passe de batch esta' OFF por omissao e NENHUM outro motor
 REM carimba a chave -- o transcript tinha zero escritores e a recusa era um `return`
-REM mudo. O oraculo executa as QUATRO metades vivas (a decisao, o call site, a
+REM mudo. (CORRECCAO 2026-11-05: "OFF por omissao" era verdade do lado do WORKER e
+REM mentira do lado da APP -- a shell nao passava `SOTTO_REDUX_WHEN_HIDDEN`, logo o
+REM interruptor nunca era construido na unica instancia que o dono corre. Agora a
+REM shell passa a chave em `_child_env` e o `_main/app-target-oracle.py` pina-a.)
+REM O oraculo executa as QUATRO metades vivas (a decisao, o call site, a
 REM proveniencia e o `history_append` a escrever num root TEMPORARIO) e o braco de
 REM baixo repoe a porta antiga em COPIA e exige o vermelho.
 call :step history-write 0 "_main\history-write-oracle.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\history-write.log" python _main\history-write-oracle.py
