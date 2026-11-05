@@ -15885,16 +15885,29 @@ class SottoShell:
         return True
 
     def resume_after_vram(self, free_mb):
-        """The GPU is free again: reload the engines if a panel is on screen."""
+        """The GPU is free again: reload the engines if a panel is on screen.
+
+        A VISIBILIDADE DECIDE O QUE RECARREGAR, NUNCA SE O PEDIDO SE LEVANTA
+        (2026-11-05). A primeira versao saia AQUI, antes do `set_engine_park(None)`
+        e antes de qualquer linha de log, e com `_vram_parked = False` ja' escrito:
+        com a GPU livre e o painel escondido o pedido `park=vram` ficava no
+        `panel-visibility.json` PARA SEMPRE e o laco do guarda nunca mais voltava
+        a tentar (a condicao `elif ... self.shell._vram_parked` era falsa). MEDIDO
+        na instancia viva do dono (pid 52504): `park='vram'` com 2826 MB livres,
+        `VRAM_GUARD_RESUMING` zero vezes no log, e a ultima `CAPTION_IN` as 18:09
+        -- o motor ficou largado ate' o reinicio. E' a regra do dono ao contrario:
+        *"se a legenda ao vivo ta desativada, nao significa q o modelo ta
+        desativado"*.
+        """
         if not self._vram_parked or self._paused:
             return False
         self._vram_parked = False
-        if not (self.visible or getattr(self, '_caption_window_shown', False)):
-            return False
-        log(f'VRAM_GUARD_RESUMING free_mb={free_mb:.0f} mode=engine-not-process')
+        showing = bool(self.visible or getattr(self, '_caption_window_shown', False))
+        log(f'VRAM_GUARD_RESUMING free_mb={free_mb:.0f} mode=engine-not-process '
+            f'showing={showing}')
         if self.engine_park_reason() in ('vram', None):
             self.set_engine_park(None)
-        return True
+        return showing
 
     def on_external_captions_released(self):
         """The player stopped showing captions: give the microphone back.

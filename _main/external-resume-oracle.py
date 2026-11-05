@@ -229,6 +229,36 @@ def arms(mod, text):
     out.append(('E10 a GPU livre nao liberta um park de legendas',
                 r is True and s.parks == [],
                 {'ret': r, 'parks': s.parks, 'park': s._engine_park}))
+
+    # O ESTADO TERMINAL QUE O DONO VIVEU (2026-11-05, medido na instancia viva):
+    # `park='vram'` no ficheiro com 2826 MB LIVRES, `VRAM_GUARD_RESUMING` zero
+    # vezes no log, `_vram_parked` ja' a False -- porque a saida por
+    # "escondido" acontecia ANTES de levantar o pedido. O guarda nunca mais
+    # tentava (a condicao do `elif` era `_vram_parked`) e o motor ficava largado
+    # ate' ao reinicio: zero legendas as 18:09 em diante.
+    seen[:] = []
+    s = _stub(mod, visible=False, engine_park='vram')
+    s._vram_parked = True
+    r = resume(s, 2826.0)
+    out.append(('E12 a GPU livre LEVANTA o pedido mesmo com o painel escondido',
+                r is False and s.parks == [None]
+                and getattr(s, '_engine_park', 'x') is None
+                and s._vram_parked is False,
+                {'ret': r, 'parks': s.parks, 'park': s._engine_park,
+                 'vram_parked': s._vram_parked}))
+    seen[:] = []
+    # E13 -- o estado terminal e' IMPOSSIVEL: depois de libertar, uma segunda
+    # passagem nao pode republicar nada (o pedido ja' esta' a None) e o parque
+    # nao pode voltar sozinho.
+    s = _stub(mod, visible=False, engine_park='vram')
+    s._vram_parked = True
+    resume(s, 2826.0)
+    again = resume(s, 2826.0)
+    out.append(('E13 um pedido levantado nao ressuscita',
+                again is False and s.parks == [None]
+                and getattr(s, '_engine_park', 'x') is None,
+                {'second_ret': again, 'parks': s.parks,
+                 'park': s._engine_park}))
     return out
 
 
@@ -278,6 +308,15 @@ MUTANTS = [
         bridge.stop('external-captions')
         self.bridge = None""",
      'E6 o park publica `captions` e NAO mata o processo'),
+    ('resume-escondido-nao-levanta',
+     'a volta por GPU livre sai antes de levantar o pedido (E12, o estado terminal)',
+     """        self._vram_parked = False
+        showing = bool(self.visible or getattr(self, '_caption_window_shown', False))""",
+     """        self._vram_parked = False
+        if not (self.visible or getattr(self, '_caption_window_shown', False)):
+            return False
+        showing = bool(self.visible or getattr(self, '_caption_window_shown', False))""",
+     'E12 a GPU livre LEVANTA o pedido mesmo com o painel escondido'),
 ]
 
 
