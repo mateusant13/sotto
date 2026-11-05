@@ -252,18 +252,52 @@ def _control_boot_off(shell_mod, port):
 
 # -- A2: retry limitado, um motivo por tentativa ----------------------------
 
+def _dial_verdict(port):
+    """O QUE ESTE SISTEMA FAZ com um porto onde ninguem ouve -- medido, nao suposto.
+
+    A arm julgava `why == "port-closed"` como literal, e esse motivo era
+    INALCANCAVEL nesta maquina: medido 2026-11-05 com um instrumento independente
+    (um `socket.create_connection` cru ao mesmo porto), SEIS de seis portos
+    devolvem `TimeoutError` a 400 ms -- nem `bind+close` nem um listener que
+    FECHOU produzem RST aqui (tres de tres cada). O Windows desta caixa NAO
+    responde a um SYN de loopback sem listener, logo o motivo honesto que o
+    modulo pode publicar e' `probe-timeout`, e a arm reprovava um oraculo por uma
+    propriedade do hospedeiro. Agora a arm pergunta ao hospedeiro qual dos dois
+    mundos e' o dele e exige do modulo EXACTAMENTE aquele motivo: continua a
+    apanhar um mutante que colapse os dois nomes, e deixa de inventar um.
+    """
+    try:
+        c = socket.create_connection(("127.0.0.1", int(port)), timeout=0.4)
+        c.close()
+        return "accepted", "a porta ACEITA ligacao"
+    except ConnectionRefusedError:
+        return "refused", "port-closed"
+    except (TimeoutError, socket.timeout):
+        return "dropped", "probe-timeout"
+    except OSError as exc:
+        return "dropped", "probe-timeout"
+
+
 def _arm_retry(mod):
     port = _closed_port()
+    verdict, expected = _dial_verdict(port)
     lines = []
+    t0 = time.monotonic()
     ok, why = mod.boot_attach(port=port, attempts=3, delay=0,
                               log=lines.append, sleep=lambda _s: None)
+    took_ms = (time.monotonic() - t0) * 1000.0
     fails = [ln for ln in lines if "ok=false" in ln]
-    good = (ok is False and why == "port-closed" and len(lines) == 3
-            and len(fails) == 3
-            and all("reason=port-closed" in ln for ln in fails)
-            and "attempt=3/3" in fails[-1])
-    return good, "ok=%r why=%s lines=%d last=%r" % (
-        ok, why, len(lines), (lines or ["-"])[-1][:96])
+    good = (ok is False and why == expected
+            and verdict != "accepted"
+            and len(lines) == 3 and len(fails) == 3
+            and all(("reason=%s" % expected) in ln for ln in fails)
+            and "attempt=3/3" in fails[-1]
+            # LIMITADO: tres tentativas de um porto que ninguem ouve nao podem
+            # custar o arranque. O tecto e' generoso (3 s) porque o prazo do
+            # dial nesta caixa e' 400 ms por tentativa.
+            and took_ms < 3000.0)
+    return good, "host=%s ok=%r why=%s lines=%d took_ms=%.0f last=%r" % (
+        verdict, ok, why, len(lines), took_ms, (lines or ["-"])[-1][:80])
 
 
 def _control_retry_attached(mod):
