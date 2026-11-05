@@ -71,8 +71,13 @@ try {
       // que faltam. A janela cresce (12 -> 20 -> 30 s), que e' a unica moeda que
       // compra frames aqui.
       let keyPts = [];
+      // `testsrc2` e' o PADRAO SINTETICO, nao o desktop: o que esta arm mede e' o
+      // LEITOR contra o ficheiro, e a captura do ecra a 60 fps prende o
+      // compositor -- com a app do dono viva ela levou 3 strikes do
+      // `UI_WATCHDOG` e saiu (`UI_WATCHDOG_EXIT code=9`, 2026-11-05 01:33:19).
+      // O caminho `gdigrab desktop` continua medido, na captura curta acima.
       for (const seconds of [12, 20, 30]) {
-        enc.captureAndEncode(out, { fps: 60, seconds, gop: 250 });
+        enc.captureAndEncode(out, { source: "testsrc2", fps: 60, seconds, gop: 250 });
         keyPts = keyTimes(out);
         if (keyPts.length >= 2) break;
         console.log(`       (${seconds} s capture: ${keyPts.length} keyframe(s) -- too short, widening)`);

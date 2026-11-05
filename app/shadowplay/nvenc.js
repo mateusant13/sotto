@@ -62,10 +62,22 @@ export class NvencEncoder {
   get calls() { return this.#log.map((e) => e.op); }
 
   // Capture from a real source and encode with the real GPU.
+  //
+  // `source` e' ou `gdigrab` (`desktop`, o caminho do produto) ou um PADRAO
+  // sintetico (`testsrc2`), que atravessa o MESMO NVENC sem tocar no desktop.
+  // A DISTINCAO NAO E' ESTETICA (medido 2026-11-05): `gdigrab desktop` a 60 fps
+  // prende o compositor do Windows, e com a app do dono viva o fio de UI dela
+  // ficou preso o bastante para o `UI_WATCHDOG` contar 3 strikes e SAIR
+  // (`UI_WATCHDOG_EXIT code=9`, 01:33:19, pid 28844). Uma medicao do GOP nao
+  // precisa do ecra de ninguem; o caminho do desktop continua medido por uma
+  // captura curta, no arm que existe para isso.
   captureAndEncode(out, { source = "desktop", fps = CAPTURE_FPS, seconds = 2, gop = null } = {}) {
+    const input = String(source).startsWith("testsrc")
+      ? ["-f", "lavfi", "-i", `${source}=size=1280x720:rate=${fps}`]
+      : ["-f", "gdigrab", "-framerate", String(fps), "-i", source];
     const args = [
       "-y", "-hide_banner", "-loglevel", "error",
-      "-f", "gdigrab", "-framerate", String(fps), "-i", source,
+      ...input,
       "-t", String(seconds),
       "-c:v", NVENC, "-preset", this.#preset, "-pix_fmt", "yuv420p",
       "-g", String(gop ?? this.#gop),
