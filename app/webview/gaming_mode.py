@@ -377,6 +377,12 @@ class GamingDetector(object):
     def tick(self):
         """UMA leitura: enumera, decide, aplica o dwell, escreve a transicao."""
         t0 = self._clock()
+        # A LISTA DE PROCESSOS E' LIDA EM TODOS OS TICKS -- E ISSO E' UM CONTRATO
+        # (2026-11-05). Tentei um cache de 30 s para poupar os 15-31 ms de
+        # `_process_names` (1,5 % de um nucleo permanente, medido) e ele partiu
+        # SEIS arms deste oraculo: os bracos que simulam um jogo a FECHAR
+        # dependem de a lista mudar entre ticks, e um jogo que fecha em 2 ticks
+        # passaria a fechar-se em 30 s. O custo fica; a regra do watcher nao muda.
         names = list(self._read_names())
         self.ticks += 1
         fg_pid = int(self._read_foreground() or 0)

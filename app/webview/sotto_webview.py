@@ -1933,6 +1933,19 @@ def _open_log(path):
         # of 11.82 clicks a minute. The pointer for the whole desktop waits for
         # that write. So the caller queues the line and never waits for a disk.
         _LOG_QUEUE = queue.SimpleQueue()
+        # TODO FIO DESTA SHELL PASSA A TER NOME AOS OLHOS DO WINDOWS (2026-11-05).
+        # `threading.Thread(name=...)` e' um atributo Python, invisivel de fora, e
+        # o `py-spy` NAO se consegue anexar a esta shell a partir de uma pane
+        # `medium` (a shell corre em integridade `high`; medido, `Acesso negado`).
+        # Sem isto, "qual fio queima este nucleo?" nao se responde por instrumento
+        # nenhum -- e era a pergunta aberta do dono ("tu nao entender 100% o
+        # caminho de cada coisa e os gargalos"). Ver `_main/shell-thread-cpu.py`.
+        try:
+            import thread_names
+            thread_names.install()
+            thread_names.name_current('sotto-main')
+        except Exception:                     # noqa: BLE001
+            pass
         _LOG_WRITER = threading.Thread(target=_log_writer, name='sotto-log',
                                        daemon=True)
         _LOG_WRITER.start()

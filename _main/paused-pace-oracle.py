@@ -47,6 +47,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 SHELL = os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py')
+CDP = os.path.join(ROOT, 'app', 'webview', 'youtube_cdp_source.py')
 
 ROWS = []
 
@@ -124,6 +125,31 @@ def arms():
         'A6 `IDLE_INTERVAL_S` e o passo mais LENTO', 'base=%r idle=%r' % (base, idle))
 
 
+def cdp_arms():
+    """O MESMO PRINCIPIO NA FONTE: o fio `yt-cdp-source` e' o termo DOMINANTE.
+
+    MEDIDO com `_main/shell-thread-cpu.py` na instancia viva (pid 47868, video
+    PAUSADO): 4,4 % de um nucleo em `yt-cdp-source` contra 8,4 % no processo
+    inteiro -- o fio do CDP sozinho era metade da carga em repouso, a `POLL_S`
+    de 0,08 s (12,5 Hz) a ler uma legenda que nao pode mudar.
+    """
+    src = _src(CDP)
+    consts = {}
+    for sub in ast.walk(ast.parse(src)):
+        if isinstance(sub, ast.Assign):
+            for t in sub.targets:
+                if isinstance(t, ast.Name) and t.id in ('POLL_S', 'PAUSED_POLL_S') \
+                        and isinstance(sub.value, ast.Constant):
+                    consts[t.id] = sub.value.value
+    base = consts.get('POLL_S')
+    paused = consts.get('PAUSED_POLL_S')
+    add(paused is not None and base is not None and paused > base,
+        'A7 a fonte CDP tem um passo de PAUSA mais LENTO que o normal',
+        'poll=%r paused=%r' % (base, paused))
+    add('PAUSED_POLL_S' in src and "snap.get('paused')" in src,
+        'A8 o passo de pausa e escolhido pela FOTO (nao por um relogio)')
+
+
 def neg_arm():
     global SHELL
     src = _src(SHELL)
@@ -139,6 +165,7 @@ def neg_arm():
         ROWS.clear()
         print('=== NEG-ARM: a pausa desarmada numa COPIA')
         arms()
+        cdp_arms()
         red = [r for r in ROWS if not r[0]]
         ok = any(r[1].startswith('A2') for r in red)
         print('NEG-ARM %s -- %d arm(s) RED, A2 entre elas=%s'
@@ -161,6 +188,7 @@ def main(argv):
     if '--neg-arm' in argv:
         return neg_arm()
     arms()
+    cdp_arms()
     bad = [r for r in ROWS if not r[0]]
     print('\n%d/%d arms green' % (len(ROWS) - len(bad), len(ROWS)))
     print('VERDICT: ' + ('PASS' if not bad else 'FAIL'))

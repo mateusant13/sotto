@@ -73,6 +73,10 @@ POLL_S = 0.08
 #: Sem ninguem a pedir, a ligacao fecha-se passado isto (nao fica a gastar CPU
 #: nem a segurar um socket quando o YouTube nao esta' a ser lido).
 IDLE_STOP_S = 120.0
+#: O passo da leitura CDP com o video PAUSADO (2026-11-05). Uma legenda nao muda
+#: com o video parado; o custo de detetar o `play` e' este numero, e a primeira
+#: cue chega depois dele de qualquer forma. Ver `_run`.
+PAUSED_POLL_S = 0.5
 
 #: Espera entre tentativas depois de uma falha, para nao bater a porta a 12 Hz
 #: quando o Chrome esta' fechado.
@@ -1126,8 +1130,21 @@ class CdpCaptionSource:
                 self._publish(None, "reconnect (%s)" % type(exc).__name__)
                 self._stop.wait(RETRY_S)
                 continue
+            # PAUSA NAO PRECISA DA CADENCIA NORMAL (2026-11-05). MEDIDO nesta
+            # maquina com o `_main/shell-thread-cpu.py` e o fio agora NOMEADO:
+            # `yt-cdp-source` era o termo DOMINANTE da shell em repouso -- 4,4 %
+            # de 8,4 % de um nucleo, so' ele. A legenda nao muda com o video
+            # parado, e a deteccao do `play` so' custa `PAUSED_POLL_S` (0,5 s),
+            # que a primeira cue ja' paga. O passo volta ao normal assim que a
+            # foto disser que o video anda.
             spent = time.monotonic() - t0
-            self._stop.wait(max(0.0, self.poll_s - spent))
+            _paused = bool(snap.get('paused')) if isinstance(snap, dict) else False
+            _wait = max(self.poll_s, PAUSED_POLL_S) if _paused else self.poll_s
+            if _paused != getattr(self, '_paced_logged', None):
+                self._paced_logged = _paused
+                self._log('YOUTUBE_CDP_PACED paused=%s poll_s=%.2f'
+                          % (_paused, _wait))
+            self._stop.wait(max(0.0, _wait - spent))
         if conn is not None:
             try:
                 conn.close()
