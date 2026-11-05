@@ -848,6 +848,39 @@ def park_probe_verdict(blocks, peak, floor, captions):
     return None
 
 
+def engine_parked_now(path):
+    """O `park` que a SHELL publicou (`vram`/`captions`), ou None.
+
+    Le' o MESMO ficheiro que `PanelVisibilityReader`/`engine_switch` ja' leem, e
+    com a MESMA direcao de falha: qualquer coisa que nao seja um `park` nao
+    vazio devolve None, e None quer dizer "nao sei de parque nenhum" -- o
+    comportamento anterior, nunca um parque inventado.
+    """
+    try:
+        with open(path, encoding='utf-8') as fh:
+            payload = json.load(fh)
+    except Exception:                                             # noqa: BLE001
+        return None
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get('park')
+    if not (isinstance(value, str) and value.strip()):
+        return None
+    # A MESMA REGRA DE FALHA DO `PanelVisibilityReader`: uma shell morta deixa a
+    # ultima frase no disco para sempre, e obedecer-lhe manteria a tap aberta a
+    # espera de um parque que ninguem levanta. Sem carimbo, acredita-se (e' a
+    # forma que uma sonda escrita a mao tem).
+    written = payload.get('writtenAtEpoch')
+    stale_after = payload.get('staleAfterSeconds')
+    try:
+        if written is not None and stale_after is not None:
+            if (time.time() - float(written)) > float(stale_after):
+                return None
+    except (TypeError, ValueError):
+        return None
+    return str(value)
+
+
 def silent_ledger_rows(tap_ledger, silent_min_blocks, tap_floor):
     """As linhas do `tap_ledger` que provam SILENCIO DIGITAL medido num candidato.
 
@@ -1937,7 +1970,8 @@ def tap_ledger_row(dev, device_peak, device_blocks, counters, caps_before, settl
     }
 
 
-def window_ended(now, dev, device_peak, tap_floor, tap_window, counters, emit=None):
+def window_ended(now, dev, device_peak, tap_floor, tap_window, counters, emit=None,
+                 engine_parked=None):
     """Uma janela plana acabou: ESPERA na mesma tap, ou diz que a escada deve andar.
 
     Devolve o `window_end` NOVO (a tap fica aberta) ou None (o chamador rotaciona).
@@ -1955,6 +1989,42 @@ def window_ended(now, dev, device_peak, tap_floor, tap_window, counters, emit=No
     janelas esta tap ja' foi estendida, e se a linha ja' foi escrita (uma por candidato).
     Quem chama isto por candidato novo limpa a chave antes -- ver o init da janela.
     """
+    # O MOTOR LARGADO PELA SHELL NAO TORNA O DISPOSITIVO CULPADO (2026-11-05).
+    # MEDIDO nesta maquina (pid 52504, 18:04-18:16): com `VRAM_GUARD_PARKING
+    # free_mb=669` o motor fica parqueado e o audio CONTINUA a chegar -- a prova
+    # e' do proprio instrumento da shell, `noAudioEvidence` com
+    # `peak=0.317144` contra `floor=0.002` -- mas nenhuma legenda pode nascer,
+    # porque nao ha' motor. A janela lia "plana", a escada rotacionava e
+    # reabria: QUARENTA E SEIS rotacoes em onze minutos, cada uma um cliente
+    # WASAPI aberto e fechado no motor de audio que o dono partilha. A
+    # pergunta certa aqui e' "a ausencia de legenda e' do AUDIO ou do MOTOR?", e
+    # quem a responde e' a shell, que acabou de publicar o parque.
+    #
+    # A TAP FICA ABERTA: fechar e sondar perderia audio, que e' exactamente o
+    # que o parque NAO pode custar (`nunca perder audio`). A janela dobra ate'
+    # TAP_SILENT_DESKTOP_MAX_S para o parque nao custar um despertar por segundo
+    # numa maquina que ja' esta' sem GPU.
+    if engine_parked is not None:
+        try:
+            parked = engine_parked()
+        except Exception:                                        # noqa: BLE001
+            parked = None
+        if parked:
+            state = counters.get('engine-parked')
+            if state is None:
+                state = counters['engine-parked'] = {'windows': 0, 'logged': False}
+            state['windows'] += 1
+            grown = min(float(tap_window) * (2.0 ** min(state['windows'], 4)),
+                        float(TAP_SILENT_DESKTOP_MAX_S))
+            if not state['logged'] and emit is not None:
+                state['logged'] = True
+                emit(type="status", state="tap-engine-parked",
+                     device=dev.get('name'), park=parked,
+                     window_s=round(grown, 1),
+                     peak=round(device_peak['value'], 6),
+                     why="the shell parked the engine: no caption is expected, "
+                         "keep this tap open instead of reopening an endpoint")
+            return now + grown
     state = counters.get('silent')
     if state is None:
         state = counters['silent'] = {'windows': 0, 'logged': False}
@@ -7966,8 +8036,13 @@ def main():
                                     outcome = "first-block-timeout"
                                     break
                         if now >= window_end:
-                            extended = window_ended(now, dev, device_peak, tap_floor,
-                                                    tap_window, counters, emit)
+                            extended = window_ended(
+                                now, dev, device_peak, tap_floor,
+                                tap_window, counters, emit,
+                                # A SHELL E' QUEM SABE SE O MOTOR ESTA' LARGADO
+                                # (2026-11-05, ver `window_ended`).
+                                engine_parked=lambda: engine_parked_now(
+                                    args.panel_visibility))
                             if extended:
                                 window_end = extended          # a tap fica ABERTA
                             else:

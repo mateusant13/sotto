@@ -449,6 +449,43 @@ def arms_for(mod, cpu_window):
                             wall >= cpu_window * 0.9 and cpu < 0.5,
                             {'window_s': round(wall, 2), 'cpu_s': round(cpu, 4),
                              'cpu_pct': round(100.0 * cpu / wall, 4) if wall else None}))
+
+    # -- P12/P13: O MOTOR LARGADO NAO TORNA O DISPOSITIVO CULPADO (2026-11-05) ---
+    # Medido na instancia viva (pid 52504, 18:04-18:16): `park=vram` com o audio
+    # a chegar (`noAudioEvidence` peak=0.317144 contra floor=0.002) e QUARENTA E
+    # SEIS `device-rotated (flat)` em onze minutos -- uma janela plana nao tem
+    # legenda possivel quando nao ha' motor, e a escada reabria o dispositivo
+    # para nada. P12 conduz o `window_ended` REAL e exige que ele ESTENDA a tap.
+    status = []
+    counters12 = {}
+    now12 = 1000.0
+    ends12 = []
+    for _ in range(4):
+        _end = mod.window_ended(now12, {'name': 'CABLE Input'}, {'value': 0.317144},
+                                0.002, 7.6, counters12,
+                                lambda **kw: status.append(kw),
+                                engine_parked=lambda: 'vram')
+        ends12.append(round((_end or 0.0) - now12, 1) if _end else None)
+        now12 = _end or (now12 + 1.0)
+    checks.append(check(
+        'P12-a-parked-engine-keeps-the-tap-open',
+        all(e is not None and e > 0 for e in ends12) and len(status) == 1
+        and status[0].get('state') == 'tap-engine-parked'
+        and status[0].get('park') == 'vram',
+        {'extensions_s': ends12, 'status': [s.get('state') for s in status]}))
+    # P13 NEGATIVO: sem parque, o MESMO `window_ended` com a mesma janela plana
+    # tem de dizer que a escada anda -- e' o comportamento antigo, e e' o que
+    # prova que P12 mede o PARQUE e nao a funcao.
+    _real_peaks = getattr(mod, '_live_render_peaks', None)
+    mod._live_render_peaks = lambda: {}
+    try:
+        plain = mod.window_ended(0.0, {'name': 'CABLE Input'}, {'value': 0.0},
+                                 0.002, 7.6, {}, None, engine_parked=lambda: None)
+    finally:
+        if _real_peaks is not None:
+            mod._live_render_peaks = _real_peaks
+    checks.append(check('P13-without-a-park-the-same-window-still-rotates',
+                        plain is None, {'returned': plain}))
     return checks
 
 
@@ -483,14 +520,66 @@ def mutate_worker(dst):
     io.open(dst, 'w', encoding='utf-8', newline='').write(out)
 
 
+def mutate_window_hold(dst):
+    """DESARMAR A GUARDA DA TAP: o `if parked:` vira `if False:` numa COPIA.
+
+    O CONTROL0 DE P12/P13. Sem isto, a arm P12 poderia passar por a funcao
+    devolver uma janela estendida por outra razao qualquer (o `silent_desktop_hold`
+    tem um caminho parecido) e o portao estaria a medir o bairro, nao a cura.
+    """
+    src = io.open(WORKER, encoding='utf-8', newline='').read()
+    anchor = '        if parked:\n'
+    assert src.count(anchor) == 1, 'a ancora do parque da tap nao e unica'
+    out = src.replace(anchor, '        if False:\n', 1)
+    io.open(dst, 'w', encoding='utf-8', newline='').write(out)
+
+
+def hold_detector_proof():
+    """O mutante que desarma a guarda da tap TEM de derrubar P12 (dentro do passo)."""
+    mutate_window_hold(NEG_COPY)
+    try:
+        neg = load_worker(NEG_COPY, 'worker_park_hold_neg')
+        extended = neg.window_ended(0.0, {'name': 'CABLE Input'}, {'value': 0.317144},
+                                    0.002, 7.6, {}, None,
+                                    engine_parked=lambda: 'vram')
+    finally:
+        try:
+            os.remove(NEG_COPY)
+        except OSError:
+            pass
+    return check('P14-the-detector-can-say-no', extended is None,
+                 {'mutant_extension': extended})
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--neg-arm', action='store_true',
                     help='reverte o parque numa copia e exige o replay a FECHAR '
                          'a corrida no veredito de dispositivo (rc=1 POR DESENHO)')
+    ap.add_argument('--neg-arm-tap', action='store_true',
+                    help='desarma a guarda da tap numa copia e exige a arm P12 '
+                         'RED (rc=1 POR DESENHO)')
     ap.add_argument('--cpu-window', type=float, default=30.0,
                     help='segundos da janela MEDIDA da CPU do parque (0 desliga)')
     args = ap.parse_args(argv)
+
+    if args.neg_arm_tap:
+        mutate_window_hold(NEG_COPY)
+        try:
+            mod = load_worker(NEG_COPY, 'worker_park_neg_tap')
+            checks = arms_for(mod, 0)
+            emit_checks(checks, 'NEG-ARM-TAP ARMS')
+            p12 = [c for c in checks if c['name'].startswith('P12')]
+            caught = bool(p12) and not p12[0]['ok']
+            print('NEG-ARM-TAP: %s -- P12 %s com a guarda desarmada'
+                  % ('PASS' if caught else 'FAIL',
+                     'RED' if caught else 'ainda VERDE (a arm nao mede a cura)'))
+            return 1 if caught else 0
+        finally:
+            try:
+                os.remove(NEG_COPY)
+            except OSError:
+                pass
 
     if args.neg_arm:
         mutate_worker(NEG_COPY)
@@ -519,6 +608,11 @@ def main(argv=None):
 
     mod = load_worker(WORKER, 'worker_park_real')
     checks = arms_for(mod, args.cpu_window)
+    # A PROVA DO DETECTOR VIVE DENTRO DO PASSO (2026-11-05), como no
+    # `dead-app-exit` e no `caption-dup-repro`: o mutante que DESARMA a guarda
+    # da tap tem de deixar P12 RED, senao a arm mede o bairro. Um `:expectred`
+    # separado custaria linhas na bateria e nao provaria mais.
+    checks.append(hold_detector_proof())
     ok = emit_checks(checks, 'VERDICT')
     print('VERDICT: %s' % ('GREEN' if ok else 'RED'))
     return 0 if ok else 1
