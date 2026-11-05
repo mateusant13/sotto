@@ -19805,9 +19805,15 @@ class WorkerBridge:
         message = message or {}
         if state == 'device-rotated':
             if str(message.get('reason') or '') == 'flat':
+                # O `from`/`to` FICAM NO LOG (2026-11-05): o worker ja' os manda e
+                # eles nao estao em `STATUS_BODY_FIELDS`, logo 46 rotacoes medidas
+                # em 11 min nao diziam de que aparelho para que aparelho a escada
+                # saltou. No FIM, depois do que os oraculos casam por prefixo.
                 return (f'device-rotated reason=flat '
                         f'peak={message.get("peak")} '
-                        f'floor={message.get("peak_floor")}')
+                        f'floor={message.get("peak_floor")} '
+                        f'from={message.get("from")} to={message.get("to")} '
+                        f'window_s={message.get("window_s")}')
             return None
         if state == 'tap-silent-desktop':
             # O WORKER DISSE QUE A MAQUINA ESTA' CALADA (2026-11-03). Sem
