@@ -30,7 +30,8 @@ de um nucleo que a mesma maquina media no inicio da sessao com o video parado.
 | processo | working set | privado |
 |---|---|---|
 | shell 20288 | 172 MB | **134 MB** |
-| worker 31348 | 1 574 MB | **3 390 MB** |
+| worker 31348 (com o audio PARADO, 19:0x) | 1 574 MB | **3 390 MB** |
+| worker 31348 (com o audio a CORRER, 19:2x) | 2 216 MB | **4 674 MB** |
 | VRAM livre | — | 9 690 MiB de 16 303 |
 
 `BRIDGE_RSS rss_mb=1091.5 private_mb=2883.9` e' a mesma grandeza lida pelo worker
@@ -88,3 +89,20 @@ TERCEIRA mutacao: medido `A/E/F` RED, `NEG-ARM PASS`.
   sessao.** Com a linha nova, a proxima largada responde isto com dois numeros em
   vez de uma deducao. VRAM livre subiu 393 -> 13 643 MiB entre o parque e a
   retomada, e isso e' compativel com os apps DELE a fecharem: nao atribuo.
+
+## O TERMO QUE ENCHE O COMMIT DESTA MAQUINA (medido 19:2x, o mesmo minuto)
+
+`performance-gate.py acquire --kind heavy` foi **RECUSADO**: `commit-pct=82.6 >= amber 80.0`
+(`heavy-requires-green`). Ranking por `private`, `psutil.memory_info().private`:
+
+| processo | privado | o que e' |
+|---|---|---|
+| `python.exe` 61116 | **11 624 MB** | `benchmarks/model_ab_20261105/run_ab.py` (5 modelos de embedding, 6 000 docs, 19:11:52) — uma lane, nao o Sotto |
+| `python.exe` 31348 | 4 675 MB | o worker do Sotto |
+| `python.exe` 67072 | 4 440 MB | daemon do codeintel |
+| `bash.exe` 26760 | 2 839 MB | `state/work/perf500/FG1/sha-prototype.sh` — uma lane |
+
+72,6 GB de commit privado somado em 619 processos. **A bateria nao corre por MEDICAO do gate**, nao
+por decisao de alguem: o lease heavy exige GREEN e o gate esta' AMBER pelo trabalho de outra lane.
+O `docs/custo-medido.md` foi re-medido com estes numeros (o pico de 1 801 MB la' e' working set, e o
+patamar real de commit do worker e' 4,7 GB, 2,6x maior).

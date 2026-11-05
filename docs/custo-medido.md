@@ -68,3 +68,30 @@ com o Windows", `pythonw.exe ... sotto_webview.py --log ...`, nunca `run.cmd`) �
 com `run.cmd --install-autostart / --autostart-status / --uninstall-autostart`. Consequência para o
 stutter: o Sotto entra no arranque da máquina do dono, logo qualquer custo de arranque paga-se em cada
 boot — e o preload idle-gated (6 s de inactividade, tecto de 120 s) existe por isso.
+
+## RE-MEDIDO 2026-11-05, 19:0x — a instância VIVA, e o termo que enche o commit não é o Sotto
+
+Instrumento: `_main/shell-thread-cpu.py <pid>` (Toolhelp32 + `GetThreadTimes`), `BRIDGE_RSS` do
+próprio worker, `psutil.memory_info().private`, `performance-gate.py status`.
+
+| quem | working set | privado | CPU de UM núcleo |
+|---|---|---|---|
+| shell (pid 20288, `pythonw`) | 172 MB | **134 MB** | **1,2 %** (8 s) / **3,7 %** (30 s) |
+| worker (pid 31348, `python`) | 2 216 MB | **4 674 MB** | **2,5 %** (8 s) |
+
+O `private` do worker mede-se pelo `BRIDGE_RSS` e a série é **degrau, não rampa**: 3 389,6 MB com o
+áudio parado (`blocks=855`) e **4 674,1 MB quando o áudio volta** (`blocks=906`) — o motor ao vivo
+aloca ali e o número fica plano depois (cinco amostras seguidas em 4 674,8). Não é fuga; é o patamar
+real, **2,6× o pico de 1 801 MB** que o bullet acima cita (aquele número é working set, e o respectivo
+`private` já aparecia a 3 070 MB duas linhas abaixo).
+
+**O COMMIT DA MÁQUINA (82,6 %, gateway AMBER às 19:2x) NÃO É DO SOTTO.** Ranking por `private` medido
+no mesmo minuto: `python.exe` pid 61116 **11 624 MB** (`benchmarks/model_ab_20261105/run_ab.py`, cinco
+modelos de embedding, 6 000 documentos, arrancado 19:11:52), `bash.exe` pid 26760 2 839 MB
+(`state/work/perf500/FG1/sha-prototype.sh`), daemon do codeintel 4 440 MB, **Sotto worker 4 675 MB**.
+O heavy lease foi **RECUSADO** nesse minuto com `commit-pct=82.6 >= amber 80.0`: a bateria não corre
+por medição do gate, não por ordem de ninguém.
+
+**Um parque e uma retomada de VRAM em ~13 min** nesta sessão (`VRAM_GUARD_PARKING free_mb=393` 18:57:22
+→ `VRAM_GUARD_RESUMING free_mb=13643` 18:59:10, `showing=False`), contra os 21 parques medidos antes da
+cura da esteira.
