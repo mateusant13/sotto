@@ -10841,6 +10841,19 @@ class SottoShell:
         # re-assert in place. See `_gate_form_show`.
         self._gate_form_show(form)
 
+        # O VIGIA DA NAVEGACAO ARMA AQUI, NAO NO PRIMEIRO CARREGAMENTO
+        # (2026-11-05). Ele nascia dentro do ramo que ve' `STAGING_LOADED`, ou
+        # seja: so' existia DEPOIS de um documento carregar. Medido hoje, duas
+        # largadas seguidas: a forma nasce, `PANEL_SHOW_GATE installed`, o
+        # `UI_WATCHDOG` arranca -- e nenhuma navegacao completa. Nenhum
+        # `PANEL_NAV_STALL`, nenhum `PANEL_STATE_WRITER`, nenhuma legenda por
+        # 60 s e nenhuma linha a nomear o browser. A forma criada e' o ultimo
+        # instante em que se sabe que o vigia tem o que vigiar.
+        try:
+            self._arm_panel_stall_watch()
+        except Exception as exc:              # noqa: BLE001
+            log('PANEL_STALL_ARM_FAILED error=%r' % (exc,))
+
         # The panel never takes focus and never sits in the taskbar; in Win32
         # both are extended styles, not window flags.
         hwnd = self.hwnd
@@ -11278,18 +11291,46 @@ class SottoShell:
                 # O FICHEIRO E' DO LARGADOR E ELE APAGA-O (2026-11-03);
                 # `startup_is_ready` pergunta primeiro a ESTE processo.
                 return startup_is_ready(path)
+            def _state():
+                """ONDE a navegacao parou, em tres campos (2026-11-05).
+
+                Nasceu de uma lesao sem nome: a forma foi criada
+                (`PANEL_SHOW_GATE installed`, `UI_WATCHDOG_STARTED hwnd=..`) e
+                a partir dali NENHUM documento carregou -- `STARTUP_NOT_READY
+                s=15/30/60` e mais nada, sem uma linha a dizer se o browser
+                existia. Medido no mesmo dia: 2 largadas seguidas, 25
+                `msedgewebview2.exe` na maquina e NENHUM desta app.
+                """
+                try:
+                    url = str(self.window.get_current_url() or '')[-60:]
+                except Exception:             # noqa: BLE001
+                    url = 'unknown'
+                return 'url=%r core=%s' % (url, 'yes' if self.core else 'no')
+
+            def _push_nav():
+                # `load_url` NAO VOLTA quando o browser nao esta' vivo. Numa
+                # thread propria, porque a conclusao do arranque AOS 25 s tem
+                # de acontecer de qualquer maneira: a legenda nao depende da
+                # pagina do painel (e' a razao de ser deste vigia).
+                def _run():
+                    try:
+                        self.window.load_url(file_url(PANEL_HTML))
+                    except Exception as exc:  # noqa: BLE001
+                        log('PANEL_NAV_RETRY_FAILED error=%r' % (exc,))
+                threading.Thread(target=_run, name='sotto-panel-nav-retry',
+                                 daemon=True).start()
+
             time.sleep(12.0)
             if _ready():
                 return
-            log('PANEL_NAV_STALL s=12 -> re-empurrar a navegacao')
-            try:
-                self.window.load_url(file_url(PANEL_HTML))
-            except Exception as exc:          # noqa: BLE001
-                log('PANEL_NAV_RETRY_FAILED error=%r' % (exc,))
+            log('PANEL_NAV_STALL s=12 -> re-empurrar a navegacao state=%s'
+                % _state())
+            _push_nav()
             time.sleep(13.0)
             if _ready():
                 return
-            log('PANEL_NAV_STALL_FINAL s=25 -> completar o arranque sem o painel')
+            log('PANEL_NAV_STALL_FINAL s=25 -> completar o arranque sem o painel state=%s'
+                % _state())
             try:
                 self._complete_startup()
             except Exception as exc:          # noqa: BLE001

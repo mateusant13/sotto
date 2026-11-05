@@ -446,8 +446,19 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 00:1x):** `_main\_audit-verify-all.cmd` = **234270 B**,
-  **2891 CRLF** / 0 bare LF, sha256 `083AEDBEE62B491222A204E9ED52E4A19064A49CD56B1CF7D9C09089FB0B75A2`.
+- **PIN do ficheiro (medido 2026-11-05, 02:2x):** `_main\_audit-verify-all.cmd` = **236106 B**,
+  **2914 CRLF** / 0 bare LF, sha256 `8742CD7F3FB6F051670242D83D6696ACB3509684078BCC9193B5507DDD9D80E5`.
+  (Vinte e tres linhas a mais do que o pin de 234270 B: o par `panel-nav-stall` + o seu
+  `red-as-expected`, a NAVEGACAO QUE NAO VOLTA NAO LEVA A APP COM ELA. Nasceu de duas largadas
+  medidas nesta noite: a forma nasce (`PANEL_SHOW_GATE installed`, `UI_WATCHDOG_STARTED hwnd=..`) e
+  NENHUM documento carrega -- `STARTUP_NOT_READY s=15/30/60` e mais nada, sem `PANEL_STATE_WRITER`
+  (todos os instrumentos leem esse ficheiro e dizem `STALE`), sem legenda e sem uma linha a nomear
+  o browser. Dois defeitos no mesmo vigia: armava-se DENTRO do handler de carregamento (o estado
+  que ele existe para cobrir era o unico onde nao estava armado) e o retry chamava o `load_url`
+  INLINE, que nao volta com o browser morto -- um vigia cuja recuperacao pode pendurar nunca
+  dispara. Agora arma na criacao da FORMA, o retry corre em thread propria, e a linha nomeia o
+  estado (`state=url='unknown' core=no`, medido). O oraculo conduz o METODO real com um `load_url`
+  que nunca volta (5 arms) e o `--neg-arm` repoe o retry inline numa COPIA e exige o vermelho.)
   (Catorze linhas a mais do que o pin de 232945 B: o par `load-bg-window` + o seu `red-as-expected`,
   o prazo da JANELA DE FUNDO da carga. Nasceu do recibo de outra lane
   (`_main/receipt-20261105-extrema.md`, SottoAudit3): a janela `PROCESS_MODE_BACKGROUND_BEGIN`

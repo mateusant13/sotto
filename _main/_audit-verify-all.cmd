@@ -1452,6 +1452,29 @@ if exist _main\panel-hidden-at-startup-oracle.py (
   call :expectred red-as-expected-panel-hidden-at-startup !STEP_RC! "%OUT%\panel-hidden-at-startup-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-panel-hidden-at-startup MISSING "%OUT%\panel-hidden-at-startup-neg.log" "NEG-ARM PASS" )
 
+REM ---------------------------------------------------------------------------
+REM panel-nav-stall -- A NAVEGACAO QUE NAO VOLTA NAO LEVA A APP COM ELA.
+REM (2026-11-05) Medido, duas largadas seguidas: a forma nasce
+REM (`PANEL_SHOW_GATE installed`, `UI_WATCHDOG_STARTED hwnd=..`) e nenhum
+REM documento carrega -- `STARTUP_NOT_READY s=15/30/60`, sem uma linha a
+REM nomear o browser, sem `PANEL_STATE_WRITER` (todos os instrumentos dizem
+REM STALE) e sem legenda. Dois defeitos: o vigia armava-se so' no handler de
+REM carregamento (o estado que ele existe para cobrir era o unico onde nao
+REM estava armado) e o retry chamava o `load_url` INLINE, que nao volta quando
+REM o browser esta' morto -- um vigia cuja recuperacao pode pendurar nunca
+REM dispara. O portao executa o METODO real com um `load_url` que nunca volta
+REM (5 arms) e o `--neg-arm` repoe o retry inline numa COPIA e exige o vermelho.
+REM MEDIDO: 0,6 s (normal) + 2,3 s (`--neg-arm`), zero processos, zero janelas.
+REM ---------------------------------------------------------------------------
+if exist _main\panel-nav-stall-oracle.py (
+  call :step panel-nav-stall 0 "_main\panel-nav-stall-oracle.py;app\webview\sotto_webview.py" "%OUT%\panel-nav-stall.log" python _main\panel-nav-stall-oracle.py
+  call :record panel-nav-stall !STEP_RC!
+) else ( call :record panel-nav-stall MISSING )
+if exist _main\panel-nav-stall-oracle.py (
+  call :step red-as-expected-panel-nav-stall 1 "_main\panel-nav-stall-oracle.py;app\webview\sotto_webview.py" "%OUT%\panel-nav-stall-neg.log" python _main\panel-nav-stall-oracle.py --neg-arm
+  call :expectred red-as-expected-panel-nav-stall !STEP_RC! "%OUT%\panel-nav-stall-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-panel-nav-stall MISSING "%OUT%\panel-nav-stall-neg.log" "NEG-ARM PASS" )
+
 echo === the wiring and the embedded JS (the two things the other gates cannot see) ===
 if exist _main\_audit-worker-start-wiring.py (
   call :step worker-start-wiring 0 "_main\_audit-worker-start-wiring.py;app\webview\sotto_webview.py" "%OUT%\wiring-worker-start.log" python _main\_audit-worker-start-wiring.py

@@ -330,3 +330,11 @@ panel-state.SottoPaintFirstCensus-*.json
 _main/_deadexit/
 *.log.1
 history-verify/
+
+# SCRATCH DE FERRAMENTA E DE SESSAO (2026-11-05): o indice de code intelligence e
+# derivado (167 MB, reconstruivel), o work-tree dos subagentes e o estado local das
+# CLIs. Nenhum deles e' fonte nem e' reproduzivel de um clone -- ficam fora do indice.
+.codeintel/
+.agent-work/
+.pi/
+.agents/.closure-gate-history.json
