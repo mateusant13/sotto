@@ -5365,6 +5365,90 @@ def _set_priority_class(value):
         return 'failed:%r' % (exc,)
 
 
+#: A JANELA DE FUNDO TEM PRAZO DE PAREDE (2026-11-05, MEDIDO).
+#:
+#: O que ela compra e o que ela custa, nas duas pernas da MESMA carga (mesmo
+#: processo, mesmo modelo, mesma caixa, `--selftest --max-chunks 2`):
+#:
+#:     sem janela   load_s=1.76  encoder=1.593  private_mb=1948.5
+#:     com janela   load_s=33.96 encoder=32.747 private_mb=1952.8
+#:
+#: **19,3x de parede e 0 MB de memoria.** O `PROCESS_MODE_BACKGROUND_BEGIN` baixa
+#: CPU a IDLE, I/O a Very Low e memoria ao degrau mais baixo; o custo da carga e'
+#: 96,5 % CPU (32,7 s dos 33,9 s sao a criacao da sessao do encoder, que e' uma
+#: operacao de 1,6-1,7 s), logo a janela nao protege nada que a memoria meca -- ela
+#: ESTRELA um trabalho de CPU curto numa maquina a 100 %, e o `BRIDGE_LOAD_MS` do
+#: log do dono tem p50 15,8 s / p95 75,6 s / max 167,9 s por causa disso.
+#:
+#: O que ela PROTEGE e' o BURST de leitura de 757 MB e o toque de ~2 GB de
+#: memoria -- e isso dura 0,4-2 s (a leitura sao 0,39 s a 1,9 GB/s, medido nesta
+#: arvore; a carga INTEIRA sem janela e' 1,18-1,76 s). Passado este prazo a janela
+#: fecha sozinha e o processo volta a BELOW_NORMAL, que e' a classe em que a
+#: inferencia ao vivo vive PARA SEMPRE -- logo nao se expoe o desktop a nada que
+#: ele ja nao viva. Numa maquina OCIOSA a carga acaba dentro do prazo e o
+#: comportamento e' exactamente o de hoje.
+#:
+#: PORQUE 0,75 s E NAO "sem janela" (A/B intercalado, n=3 por braco, mesma caixa,
+#: `--selftest --max-chunks 1`, leitura de `load_s`):
+#:
+#:     sem janela (0)   mediana 1,42  min 1,18  max 1,50
+#:     prazo 0,75 s     mediana 4,39  min 3,79  max 4,78
+#:     sem prazo (-1)   mediana 4,83  min 4,62  max 5,51
+#:
+#: 1,42 s e o piso absoluto (ler 757 MB e construir 3 sessoes) e e' 3,4x melhor,
+#: mas esse braco entrega o burst de I/O ao desktop SEM proteccao nenhuma, que e'
+#: o congelamento de 2026-10-23. 0,75 s compra essa proteccao no unico intervalo em
+#: que ela mede algo (a leitura) e mantem a carga dentro da largura do braco de
+#: hoje no resto. O que se APAGA nao e' a janela: e' o PRAZO ILIMITADO, que numa
+#: caixa a 100 % esticou esta mesma carga de 1,76 s para 33,96 s (19x) sem mudar
+#: um byte de memoria.
+#:
+#: Prazo, nao afinacao: `SOTTO_LOAD_BG_MAX_S` existe para o A/B poder medir as
+#: tres pontas (0 = sem janela; -1 = o prazo ilimitado de 2026-10-23; ausente =
+#: o prazo abaixo). Nao e' um botao de produto; nenhum leitor de decisao o le.
+LOAD_BG_MAX_S = 0.75
+
+
+def _load_bg_cap_s():
+    """O prazo da janela: `SOTTO_LOAD_BG_MAX_S`, senao `LOAD_BG_MAX_S`.
+
+    Um valor negativo e' o "sem prazo" (a forma de 2026-10-23), e e' o braco de
+    CONTROLO do A/B -- nao um modo que alguem escolha para si.
+    """
+    raw = os.environ.get('SOTTO_LOAD_BG_MAX_S')
+    if raw is None or raw.strip() == '':
+        return LOAD_BG_MAX_S
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        err('SOTTO_LOAD_BG_MAX_S=%r is not a number; using %g' % (raw, LOAD_BG_MAX_S))
+        return LOAD_BG_MAX_S
+
+
+#: Aberta/fechada UMA vez: o prazo e o fim da carga podem fechar a janela, e a
+#: segunda chamada tem de ser um no-op (um `..._END` a mais devolve erro e o log
+#: passaria a dizer que a janela nao fechou).
+_LOAD_BG_WINDOW = {'open': False, 'timer': None, 'closed_by': None}
+
+
+def _close_load_background_mode(by='load-end'):
+    """Fecha a janela de fundo UMA vez. Idempotente."""
+    if not _LOAD_BG_WINDOW['open']:
+        return None
+    _LOAD_BG_WINDOW['open'] = False
+    _LOAD_BG_WINDOW['closed_by'] = by
+    timer = _LOAD_BG_WINDOW.get('timer')
+    if timer is not None:
+        try:
+            timer.cancel()
+        except Exception:  # noqa: BLE001 -- um timer morto nao custa a carga
+            pass
+        _LOAD_BG_WINDOW['timer'] = None
+    _set_priority_class(PROCESS_MODE_BACKGROUND_END)
+    back = _set_priority_class(0x00004000)  # BELOW_NORMAL_PRIORITY_CLASS
+    return 'background' if back == 'ok' else 'background(end=%s)' % back
+
+
 def _enter_load_background_mode():
     """O CARREGAMENTO DO MODELO ENTRA EM MODO DE FUNDO DO WINDOWS (2026-10-23).
 
@@ -5381,18 +5465,35 @@ def _enter_load_background_mode():
     processo a BELOW_NORMAL, porque a inferencia ao vivo nao pode ficar a IDLE.
 
     Devolve o que aconteceu, para o log o poder provar.
+
+    PRAZO (2026-11-05): a janela fecha sozinha em `LOAD_BG_MAX_S` se a carga
+    ainda estiver a correr -- medido, ela custa 19x de parede e 0 MB de memoria,
+    porque o custo e' CPU e nao I/O. Ver a nota de `LOAD_BG_MAX_S`.
     """
+    cap = _load_bg_cap_s()
+    if cap == 0:
+        # 0 = NO WINDOW AT ALL (the A/B's lower arm): entering and leaving within
+        # the same call is not the control, it is the control wearing the window.
+        return 'no-background(disabled)'
     got = _set_priority_class(PROCESS_MODE_BACKGROUND_BEGIN)
-    return 'background' if got == 'ok' else 'no-background(%s)' % got
+    if got != 'ok':
+        return 'no-background(%s)' % got
+    _LOAD_BG_WINDOW['open'] = True
+    _LOAD_BG_WINDOW['closed_by'] = None
+    if cap > 0:
+        t = threading.Timer(cap, _close_load_background_mode, args=('deadline',))
+        t.daemon = True
+        t.name = 'sotto-load-bg-deadline'
+        _LOAD_BG_WINDOW['timer'] = t
+        t.start()
+    return 'background'
 
 
 def _leave_load_background_mode(entered):
     """Sai do modo de fundo e volta a BELOW_NORMAL (a classe de trabalho)."""
     if entered != 'background':
         return entered
-    _set_priority_class(PROCESS_MODE_BACKGROUND_END)
-    back = _set_priority_class(0x00004000)  # BELOW_NORMAL_PRIORITY_CLASS
-    return 'background' if back == 'ok' else 'background(end=%s)' % back
+    return _close_load_background_mode('load-end')
 
 
 def _redux_done_fields(switch, counters):
@@ -6023,6 +6124,11 @@ def main():
         # read at 1.9 GB/s in 0.39 s), so the time is in the SESSION CREATION
         # -- and until the phases were timed nobody could say WHICH part.
         load_phases_s=getattr(asr, 'load_phases_s', None),
+        # HOW the load's priority window ended (2026-11-05): 'load-end' = the
+        # sessions finished inside the window (the old behaviour, an idle box),
+        # 'deadline' = the window was capped and the tail ran at BELOW_NORMAL,
+        # None = no window was ever entered. Additive key, no reader depends on it.
+        load_bg_closed_by=_LOAD_BG_WINDOW.get('closed_by'),
         # The WHOLE boot on the same event, not just the three sessions: the
         # interpreter, `import torch` behind the CUDA DLL directories, the CUDA
         # liveness probe and `og.Model` are before `StreamAsr` and were the

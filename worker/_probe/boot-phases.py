@@ -27,6 +27,20 @@ def _out(name, t0):
     print("PHASE %s_s=%.3f" % (name, time.time() - t0), flush=True)
 
 
+def _private_mb():
+    """Private commit of THIS process, in MB (psutil, then a zero-reads fallback).
+
+    A `0` from a dead sensor is the defect this whole audit forbids, so the
+    fallback prints -1 (UNREADABLE) instead of a healthy-looking zero.
+    """
+    try:
+        import psutil
+
+        return psutil.Process().memory_info().private / (1024 * 1024)
+    except Exception:  # noqa: BLE001 -- a missing psutil is UNREADABLE, not zero
+        return -1.0
+
+
 def nvidia_dirs():
     dirs = []
     for base in SITE_BASES:
@@ -133,6 +147,28 @@ def main():
         s = session(os.path.join(MODEL, "encoder.onnx"), entries)
         _out("encoder_cuda", t0)
         print("providers", s.get_providers(), flush=True)
+        return 0
+    if mode in ("encoder_bytes", "encoder_plain"):
+        # THE WEIGHT-COPY ARM. `encoder_plain` is today's shipped shape (ORT reads
+        # the .data file and COPIES it into the session); `encoder_bytes` asks ORT
+        # to keep the file bytes instead (`session.use_ort_model_bytes_directly`).
+        # Both print the private commit the session costs, because the copy is a
+        # MEMORY term and a time measured without it is half the story.
+        import onnxruntime as ort
+
+        so = ort.SessionOptions()
+        so.log_severity_level = 3
+        so.intra_op_num_threads = 8
+        so.inter_op_num_threads = 1
+        so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+        if mode == "encoder_bytes":
+            so.add_session_config_entry("session.use_ort_model_bytes_directly", "1")
+        base = _private_mb()
+        t0 = time.time()
+        s = ort.InferenceSession(os.path.join(MODEL, "encoder.onnx"), so, providers=entries)
+        _out("encoder_" + mode, t0)
+        print("providers", s.get_providers(), "private_mb_before=%.0f private_mb_after=%.0f"
+              % (base, _private_mb()), flush=True)
         return 0
     if mode == "encoder_cpu":
         t0 = time.time()
