@@ -6563,6 +6563,201 @@ class HotkeyThread(threading.Thread):
                                               _HOTKEY_ID, 0))
 
 
+#: `MsgWaitForMultipleObjects` com um prazo: o pump do `Ctrl+Space` precisa de
+#: acordar para reler o modo (jogo ou nao) sem gastar CPU em repouso.
+QS_ALLINPUT = 0x04FF
+#: Prazo da volta do pump. 250 ms e' o custo de um `PeekMessage` falhado quatro
+#: vezes por segundo, e o pior atraso que a transicao jogo<->app pode ter.
+LIVE_MODE_RECHECK_S = 0.25
+
+
+class LiveHotkeyThread(threading.Thread):
+    """`Ctrl+Space`: TOMADO fora de jogo, DEVOLVIDO ao jogo (ordem do dono, 2026-11-05).
+
+    AS DUAS METADES DA ORDEM, verbatim: *"faz o control espaço nao inputar espaço
+    pra outros apps. mas desativa isso em jogos. entao control espaço em um jogo
+    pode sim apertar espaço. só que nao vai ter display de legenda, pra ter, tenho
+    que dar alt c e ativar manualmente"*.
+
+    FORA DE JOGO: `RegisterHotKey` + `MOD_NOREPEAT`. O Windows entrega
+    `WM_HOTKEY` a ESTE thread e **nao entrega a tecla a' janela em foco** -- e' a
+    mecanica que impede o espaco de aparecer no que ele estiver a escrever. Nao
+    ha' hook: o que antes era um `WH_KEYBOARD_LL` (proibido nesta casa) e' uma
+    linha de registo.
+
+    EM JOGO: `UnregisterHotKey`. O jogo recebe o `Ctrl+Space` NATIVO -- nao ha'
+    `SendInput` nenhum, logo nao ha' o problema medido dos jogos que leem input
+    por raw input e ignoram teclas sinteticas. E a shell nao alterna nada: a
+    legenda liga-se com o Alt+C, que e' registado sempre.
+
+    A TABELA E' PURA E VIVE EM `gaming_mode.live_hotkey_plan` -- este fio so'
+    executa o que ela decide. `gaming_fn` e' `shell.gaming.is_gaming`; sem
+    detector (`None`) o fio NAO TOMA a tecla: sem saber se ele esta' a jogar, o
+    lado seguro e' a tecla chegar ao jogo e o observador antigo continuar.
+
+    O REGISTO QUE FALHA NAO MENTE: `winerror=1409` (outro programa tem a
+    combinacao) fica em `register_error`, `swallow=False` no log, e quem arma a
+    tecla recebe `registered=False` para ligar o observador de recuo -- que
+    alterna a legenda mas deixa o espaco vazar, e e' dito assim.
+    """
+
+    def __init__(self, accelerator: str, on_hotkey, gaming_fn=None, log_fn=log,
+                 role='live', register=True):
+        super().__init__(name=f'sotto-hotkey-{role}-swallow', daemon=True)
+        self.accelerator = accelerator
+        self.role = role
+        self.register = bool(register)
+        self.modifiers, self.vk = parse_accelerator(accelerator)
+        self.on_hotkey = on_hotkey
+        self.gaming_fn = gaming_fn
+        self.log_fn = log_fn
+        self.registered = False
+        self.register_error = None
+        self.register_failed = False
+        self.thread_id = None
+        self.pressed = 0
+        self.mode = 'free'
+        self.mode_changes = 0
+        self.loops = 0
+        self._stop_requested = threading.Event()
+        self._ready = threading.Event()
+
+    # -- a decisao, com uma leitura de modo que nunca derruba o pump --------
+    def _gaming_now(self) -> bool:
+        if self.gaming_fn is None:
+            return True  # sem detector: a tecla pertence a quem esta' em foco
+        try:
+            return bool(self.gaming_fn())
+        except Exception as exc:  # noqa: BLE001 -- deteccao nao e' pre-requisito
+            self.log_fn(f'HOTKEY_LIVE_GAMING_FAILED role={self.role} '
+                        f'error={exc!r}')
+            return True
+
+    def _apply(self):
+        """Executa UM passo da tabela e publica a transicao (uma linha por mudanca)."""
+        if not self.register:
+            return
+        try:
+            import gaming_mode
+        except Exception as exc:  # noqa: BLE001 -- sem a tabela, nao se toma nada
+            self.log_fn(f'HOTKEY_LIVE_PLAN_UNAVAILABLE role={self.role} '
+                        f'error={exc!r}')
+            return
+        gaming = self._gaming_now()
+        plan = gaming_mode.live_hotkey_plan(gaming, self.registered,
+                                           self.register_failed)
+        if plan == 'take':
+            if user32.RegisterHotKey(None, _HOTKEY_ID,
+                                     self.modifiers | MOD_NOREPEAT, self.vk):
+                self.registered = True
+            else:
+                self.register_failed = True
+                self.register_error = ctypes.get_last_error()
+                self.log_fn(f'HOTKEY_LIVE_REGISTER_FAILED role={self.role} '
+                            f'accelerator={self.accelerator} '
+                            f'winerror={self.register_error} '
+                            'swallow=false the_key_passes_through=true')
+        elif plan == 'give-back':
+            user32.UnregisterHotKey(None, _HOTKEY_ID)
+            self.registered = False
+        self.mode = ('swallow' if self.registered else
+                     ('passthrough' if gaming else 'free'))
+        # UMA LINHA POR TRANSICAO, NUNCA POR VOLTA. O pump relê o modo quatro
+        # vezes por segundo; logar em cada volta seriam 14 400 linhas por hora
+        # num ficheiro que so' roda aos 64 MB (a licao do `HOTKEY_OBSERVER_ALIVE`).
+        if self.mode != getattr(self, '_published_mode', None):
+            self._published_mode = self.mode
+            self.mode_changes += 1
+            self.log_fn(f'HOTKEY_LIVE_MODE role={self.role} mode={self.mode} '
+                        f'gaming={str(gaming).lower()} '
+                        f'swallow={str(self.registered).lower()} '
+                        f'accelerator={self.accelerator} plan={plan}')
+
+    def run(self):
+        self.thread_id = int(kernel32.GetCurrentThreadId())
+        msg = MSG()
+        # A FILA TEM DE EXISTIR ANTES DO `RegisterHotKey` (o contrato do
+        # `HotkeyThread`): um thread que nunca acordou uma fila nao tem onde o
+        # sistema por o `WM_HOTKEY`.
+        user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)
+        self._apply()
+        self.log_fn(f'HOTKEY_LIVE_ARMED role={self.role} '
+                    f'accelerator={self.accelerator} '
+                    f'mode={self.mode} thread={self.thread_id}')
+        self._ready.set()
+        _last_mode = self.mode
+        while not self._stop_requested.is_set():
+            # ACORDAR NO INSTANTE DE UM `WM_HOTKEY`, COM PRAZO. `WaitMessage`
+            # (o do `HotkeyThread`) dorme para sempre e nao deixaria reler o
+            # modo; uma sonda de 25 ms gastaria CPU a ler uma tecla que ninguem
+            # carrega. Com prazo de 250 ms o reposo custa quatro chamadas por
+            # segundo e a transicao jogo<->app chega no pior caso 250 ms depois.
+            try:
+                user32.MsgWaitForMultipleObjects(0, None, False,
+                                                 int(LIVE_MODE_RECHECK_S * 1000),
+                                                 QS_ALLINPUT)
+            except Exception as exc:  # noqa: BLE001 -- cair para dormir e' recuo
+                self.log_fn(f'HOTKEY_LIVE_WAIT_FAILED role={self.role} '
+                            f'error={exc!r}')
+                self._stop_requested.wait(LIVE_MODE_RECHECK_S)
+            while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, PM_REMOVE):
+                if msg.message == WM_HOTKEY:
+                    self._on_press()
+            self.loops += 1
+            self._apply()
+            if self.mode != _last_mode:
+                _last_mode = self.mode
+        if self.registered:
+            user32.UnregisterHotKey(None, _HOTKEY_ID)
+            self.registered = False
+            self.log_fn(f'HOTKEY_LIVE_RELEASED role={self.role} '
+                        f'accelerator={self.accelerator} why=stop')
+
+    def _on_press(self):
+        """Um `WM_HOTKEY`: alterna SO' quando a tecla esta' tomada (2026-11-05).
+
+        A DEFESA NAO E' TEORICA. Um `WM_HOTKEY` que ja' estava na fila quando o
+        detector viu o jogo chegaria DEPOIS do `UnregisterHotKey`, e alternaria a
+        legenda dentro do jogo -- exactamente o *"nem on nem off"* que o dono
+        proibiu. Medido no oraculo (`ctrlspace-swallow-oracle.py`, arm B4): a
+        primeira versao alternava nesse caso. A mensagem velha fica registada e
+        nao age.
+        """
+        if not self.registered:
+            self.log_fn(f'HOTKEY_PRESSED role={self.role} source=registered '
+                        'via=wm_hotkey suppressed=true why=not-swallowing')
+            return
+        self.pressed += 1
+        self.log_fn(f'HOTKEY_PRESSED role={self.role} count={self.pressed} '
+                    f'source=registered via=wm_hotkey '
+                    f'accelerator={self.accelerator} thread={self.thread_id}')
+        try:
+            self.on_hotkey()
+        except Exception as exc:  # noqa: BLE001 -- a toggle nunca mata o pump
+            self.log_fn(f'HOTKEY_HANDLER_FAILED role={self.role} error={exc!r}')
+
+    def stop(self):
+        self._stop_requested.set()
+        if self.thread_id is not None:
+            try:
+                user32.PostThreadMessageW(self.thread_id, WM_APP, 0, 0)
+            except Exception as exc:  # noqa: BLE001 -- sair nao pode falhar
+                self.log_fn(f'HOTKEY_STOP_WAKE_FAILED role={self.role} '
+                            f'error={exc!r}')
+        # O RECUO E' DESTE FIO: quem o para tem de o parar tambem, senao o
+        # observador fica a alternar a legenda depois de a app sair.
+        _fallback = getattr(self, 'fallback', None)
+        if _fallback is not None:
+            try:
+                _fallback.stop()
+            except Exception as exc:  # noqa: BLE001
+                self.log_fn(f'HOTKEY_STOP_FAILED role={self.role}-fallback '
+                            f'error={exc!r}')
+
+    def wait_ready(self, timeout=5.0) -> bool:
+        return self._ready.wait(timeout)
+
+
 # ===========================================================================
 # Alt+C IS THE ONLY CONTROL — so its failure modes get first-class code
 # ===========================================================================
@@ -6651,7 +6846,7 @@ class PassiveHotkeyThread(threading.Thread):
     """
 
     def __init__(self, accelerator: str, on_hotkey, log_fn=log, role='live',
-                 poll_s=None, key_state=None):
+                 poll_s=None, key_state=None, gate=None):
         super().__init__(name=f'sotto-hotkey-{role}', daemon=True)
         self.accelerator = accelerator
         self.role = role
@@ -6674,6 +6869,13 @@ class PassiveHotkeyThread(threading.Thread):
         #: processo vivo le o estado real. A leitura e' a UNICA coisa trocavel: a
         #: borda, o nao-repetir e a chamada do callback sao o que se mede.
         self.key_state = key_state
+        #: `gate() -> bool`: a ULTIMA palavra antes de agir (2026-11-05).
+        #: Existe por causa da metade nova do `Ctrl+Space`: em JOGO a tecla
+        #: pertence ao jogo e o observador nao pode alternar a legenda, e fora
+        #: de jogo quem alterna e' o `LiveHotkeyThread` registado -- o
+        #: observador que ficou como RECUO fica calado enquanto o registo
+        #: estiver de pe', senao a tecla alternava duas vezes.
+        self.gate = gate
         #: Os VK desta combinacao: os modificadores nomeados + a tecla. As duas
         #: tabelas vem de `hotkey_numbers()` (o modulo do gesto), nunca de uma
         #: copia local: o GENERICO de cada modificador e os LATERAIS.
@@ -6816,6 +7018,21 @@ class PassiveHotkeyThread(threading.Thread):
                                 for g in self.key_groups]))
             if mods_ready and (fresh or (down and not held)):
                 held = True
+                if self.gate is not None:
+                    try:
+                        if not self.gate():
+                            # A tecla nao e' nossa agora: quem a tem (ou o
+                            # jogo, ou o registo) faz o trabalho. Nao
+                            # conta como pressao e nao loga: silencio e' a
+                            # diferenca entre 'consumida' e 'perdida'.
+                            if not down:
+                                held = False
+                                self._down_since = 0.0
+                            self._stop_requested.wait(self.poll_s)
+                            continue
+                    except Exception as exc:  # noqa: BLE001
+                        self.log_fn('HOTKEY_GATE_FAILED role=%s error=%r'
+                                    % (self.role, exc))
                 try:
                     self.pressed += 1
                     # A MESMA ETIQUETA DO REGISTADO, e o `source`: o
@@ -8080,14 +8297,27 @@ def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
         lambda: shell.hotkey_pressed())
     for accelerator in order:
         try:
-            # A LEGENDA E' OBSERVADA, O PAINEL E' REGISTADO (2026-11-02).
-            # `RegisterHotKey` TOMA a combinacao: com o Sotto vivo o `Ctrl+Space`
-            # nunca chegava ao jogo do dono -- *"control mais espaço é crouch e
-            # jump no jogo... nao ta funcionando, por causa do sotto"*. O gesto da
-            # legenda le o ESTADO das teclas e deixa a tecla passar; o Alt+C
-            # continua registado porque, ali, ser tomado e' o que se quer.
+            # A LEGENDA CONDICIONA O REGISTO A' DETECCAO DE JOGO (2026-11-05).
+            # Ordem do dono: *"faz o control espaço nao inputar espaço pra
+            # outros apps. mas desativa isso em jogos"*. Com o detector vivo, o
+            # `LiveHotkeyThread` TOMA a tecla fora de jogo (o espaco nao chega a'
+            # janela em foco) e DEVOLVE-a em jogo (o jogo recebe o `Ctrl+Space`
+            # nativo e a shell nao alterna nada). Sem detector -- ou com o registo
+            # recusado (`winerror=1409`) -- fica o observador de 2026-11-02, que
+            # alterna a legenda e deixa a tecla passar; esse recuo e' DITO no log.
+            # O Alt+C continua sempre registado: ser tomado e' o que se quer ali.
             if role == 'live':
-                thread = PassiveHotkeyThread(accelerator, callback, role=role)
+                _gaming = getattr(shell, 'gaming', None)
+                if _gaming is None:
+                    log('HOTKEY_LIVE_NO_GAMING_DETECTOR accelerator=%s '
+                        'mode=observe why=cannot-tell-when-he-plays'
+                        % (accelerator,))
+                    thread = PassiveHotkeyThread(accelerator, callback,
+                                                 role=role)
+                else:
+                    thread = LiveHotkeyThread(accelerator, callback,
+                                              gaming_fn=_gaming.is_gaming,
+                                              role=role)
             else:
                 thread = HotkeyThread(accelerator, callback, role=role)
         except ValueError as exc:
@@ -8100,6 +8330,22 @@ def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
             continue
         thread.start()
         thread.wait_ready(5)
+        if role == 'live' and isinstance(thread, LiveHotkeyThread):
+            # O `LiveHotkeyThread` VIVE NOS TRES MODOS: `swallow` (registado),
+            # `passthrough` (jogo: a tecla e' do jogo) e `free` (sem registo
+            # mas sem falha). So' `register_failed` pede o recuo observado.
+            if not thread.register_failed:
+                return thread
+            log(f'HOTKEY_LIVE_SWALLOW_REFUSED accelerator={accelerator} '
+                f'winerror={thread.register_error} fallback=observed '
+                'the_space_reaches_the_app=true')
+            fallback = PassiveHotkeyThread(
+                accelerator, callback, role=role,
+                gate=lambda: (not thread.registered) and (not _gaming.is_gaming()))
+            fallback.start()
+            fallback.wait_ready(5)
+            thread.fallback = fallback
+            return thread
         if thread.registered:
             if accelerator != requested:
                 warn(f'HOTKEY_FALLBACK role={role} requested={requested} '

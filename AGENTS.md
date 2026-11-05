@@ -446,8 +446,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 07:3x):** `_main\_audit-verify-all.cmd` = **239421 B**,
-  **2953 CRLF** / 0 bare LF, sha256 `E2179097E4A0488F5D4B3B3FFD78A87ECAF2132B73D98A2C45CB3DC8860C9701`.
+- **PIN do ficheiro (medido 2026-11-05, 12:1x):** `_main\_audit-verify-all.cmd` = **241497 B**,
+  **2981 CRLF** / 0 bare LF, sha256 `FD5BE5165988B67E8AB676EF6DB9B37D9778FD865E91113B5C000F2C33BE20AD`.
+  (Vinte e oito linhas a mais do que o pin de 239421 B: os tres passos do `Ctrl+Space`
+  TOMADO fora de jogo e DEVOLVIDO ao jogo -- `ctrlspace-swallow` + o seu
+  `red-as-expected` + `ctrlspace-swallow-os`. Nasceu da ordem do dono de 2026-11-05:
+  *"faz o control espaço nao inputar espaço pra outros apps. mas desativa isso em
+  jogos"*. O oraculo corre o fio REAL (`LiveHotkeyThread`) e a tabela REAL
+  (`gaming_mode.live_hotkey_plan`) contra um `user32`-gravador (14 arms, `--neg-arm`
+  4/4) e o probe mede no Windows desta maquina o que nenhum fake da': a segunda
+  reserva da mesma combinacao devolve **1409** e o `Unregister` devolve a tecla
+  (medido: `first=1 second=0 err=1409 third=1`).)
   (Dezenove linhas a mais do que o pin de 237754 B: o par `caption-kept-on-hide` + o seu
   `red-as-expected`, que executa a `SottoShell.hide_panel` REAL por AST e prova que esconder o
   painel nao toca na legenda ao vivo (`CAPTION_WINDOW_KEPT`), com o `--neg-arm` a desarmar a

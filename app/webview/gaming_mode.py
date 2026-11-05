@@ -488,6 +488,41 @@ class GamingWatcher(threading.Thread):
         return self.detector.is_gaming()
 
 
+def live_hotkey_plan(gaming, registered, register_failed=False):
+    """O `Ctrl+Space` TOMADO ou DEVOLVIDO? -- a tabela, pura e testavel.
+
+    ORDEM DO DONO, verbatim (2026-11-05): *"faz o control espaço nao inputar
+    espaço pra outros apps. mas desativa isso em jogos. entao control espaço em
+    um jogo pode sim apertar espaço. só que nao vai ter display de legenda, pra
+    ter, tenho que dar alt c e ativar manualmente"*.
+
+    AS DUAS METADES, E PORQUE CADA UMA E' UMA SO':
+
+      * FORA DE JOGO a combinacao e' TOMADA (`RegisterHotKey`): o Windows entrega
+        `WM_HOTKEY` a' shell e NAO entrega a tecla a' janela em foco -- e' o que
+        impede o `Ctrl+Space` de escrever um ESPACO no editor, no browser, no
+        chat. A legenda e' o que a tecla faz.
+      * EM JOGO a combinacao e' DEVOLVIDA (`UnregisterHotKey`): o jogo recebe o
+        `Ctrl+Space` NATIVO (nao ha' `SendInput` nenhum, logo nao ha' o problema
+        dos jogos que leem input por raw input), e a shell nao alterna nada --
+        *"nao da display na legenda. nao faz nada. nem on nem off"*. Ligar a
+        legenda dentro do jogo e' o Alt+C, que e' registado sempre.
+
+    A DEVOLUCAO E' A PRIMEIRA ACAO EM TODA ENTRADA EM JOGO, inclusive quando o
+    registo nunca existiu: `give-back` e' idempotente no chamador.
+
+    `register_failed` existe para o caso medido (`winerror=1409`, outro programa
+    tem a combinacao): sem tomar a tecla nao ha' como nao vazar o espaco, e o
+    unico caminho honesto e' o observador -- que alterna a legenda e deixa a
+    tecla passar. Quem chama diz isso no log, nao finge que tomou.
+    """
+    if gaming:
+        return 'give-back' if registered else 'stay-free'
+    if register_failed:
+        return 'stay-free'
+    return 'stay-free' if registered else 'take'
+
+
 if __name__ == '__main__':
     det = GamingDetector(log=lambda m: print(m, flush=True))
     print(det.tick(), det.snapshot())

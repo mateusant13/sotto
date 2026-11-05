@@ -2561,6 +2561,34 @@ call :expectred red-as-expected-gaming-hotkey !STEP_RC! "%OUT%\gaming-hotkey-neg
 ) else ( call :expectred red-as-expected-gaming-hotkey MISSING "%OUT%\gaming-hotkey-neg.log" "NEG-ARM PASS" )
 
 echo.
+REM -- CTRL+SPACE TOMADO FORA DE JOGO, DEVOLVIDO AO JOGO (2026-11-05)
+REM Ordem do dono, verbatim: *"faz o control espaço nao inputar espaço pra outros
+REM apps. mas desativa isso em jogos. entao control espaço em um jogo pode sim
+REM apertar espaço. só que nao vai ter display de legenda, pra ter, tenho que dar
+REM alt c e ativar manualmente"*.
+REM O oraculo extrai o fio REAL (`LiveHotkeyThread`) e a tabela REAL
+REM (`gaming_mode.live_hotkey_plan`) e corre-os contra um user32-GRAVADOR: fora de
+REM jogo TOMA (um RegisterHotKey, um WM_HOTKEY = um toggle), em jogo DEVOLVE (a
+REM tecla e' do jogo e um WM_HOTKEY velho NAO alterna), a saida volta a tomar, o
+REM registo recusado nao mente, e o log publica UMA linha por TRANSICAO e nunca
+REM uma por volta. O probe ao lado mede o que nenhum fake pode: nesta maquina, a
+REM segunda reserva da mesma combinacao da' 1409 e o Unregister devolve a tecla.
+if exist _main\ctrlspace-swallow-oracle.py (
+call :step always ctrlspace-swallow 0 "_main\ctrlspace-swallow-oracle.py;app\webview\sotto_webview.py;app\webview\gaming_mode.py" "%OUT%\ctrlspace-swallow.log" python _main\ctrlspace-swallow-oracle.py
+call :record ctrlspace-swallow !STEP_RC!
+) else ( call :record ctrlspace-swallow MISSING )
+
+if exist _main\ctrlspace-swallow-oracle.py (
+call :step always red-as-expected-ctrlspace-swallow 1 "_main\ctrlspace-swallow-oracle.py;app\webview\sotto_webview.py;app\webview\gaming_mode.py" "%OUT%\ctrlspace-swallow-neg.log" python _main\ctrlspace-swallow-oracle.py --neg-arm
+call :expectred red-as-expected-ctrlspace-swallow !STEP_RC! "%OUT%\ctrlspace-swallow-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-ctrlspace-swallow MISSING "%OUT%\ctrlspace-swallow-neg.log" "NEG-ARM: PASS" )
+
+if exist _main\ctrlspace-swallow-probe.py (
+call :step always ctrlspace-swallow-os 0 "_main\ctrlspace-swallow-probe.py" "%OUT%\ctrlspace-swallow-os.log" python _main\ctrlspace-swallow-probe.py
+call :record ctrlspace-swallow-os !STEP_RC!
+) else ( call :record ctrlspace-swallow-os MISSING )
+
+echo.
 echo =============== BATTERY SUMMARY ===============
 echo steps    : !N!   gate=!GATES!  control=!CTRLS!  skipped=!SKIPN!  expect-red=!REDS!  missing=!MISSINGN!  cached=!CACHEDN!
 echo cached   : !CACHEDN! step(s) were reused from the cache (their content and their logs were unchanged)

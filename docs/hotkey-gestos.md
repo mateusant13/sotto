@@ -193,3 +193,38 @@ viravam "legenda on/off e nada" — foi real. O desenho que ela originou morreu
 também; **a lição não**: o que o dono faz com a mão não é o que um contador de
 eventos diz que ele fez. Ele pediu alternância, e alternância é uma contagem de
 entrega, não uma leitura de relógio.
+
+## `Ctrl+Space`: TOMADO fora de jogo, DEVOLVIDO ao jogo (2026-11-05)
+
+Ordem do dono, verbatim: *"faz o control espaço nao inputar espaço pra outros
+apps. mas desativa isso em jogos. entao control espaço em um jogo pode sim
+apertar espaço. só que nao vai ter display de legenda, pra ter, tenho que dar
+alt c e ativar manualmente"*.
+
+Duas metades, uma tabela só — `gaming_mode.live_hotkey_plan`, pura e medida:
+
+| em jogo? | registo | o que acontece |
+|---|---|---|
+| não | `RegisterHotKey` + `MOD_NOREPEAT` | o Windows entrega `WM_HOTKEY` à shell; **o espaço não chega à janela em foco** e a legenda alterna |
+| sim | `UnregisterHotKey` | o jogo recebe o `Ctrl+Space` **nativo** (sem `SendInput`, logo sem o problema do raw input) e a shell **não alterna nada** |
+
+A legenda dentro do jogo liga-se com o **Alt+C** e o botão LIVE do painel — a
+tecla não é um caminho alternativo para isso.
+
+O fio é `LiveHotkeyThread` (`app/webview/sotto_webview.py`): pump com prazo de
+250 ms, relê o modo, `take`/`give-back` na transição, e **uma linha de log por
+transição** (`HOTKEY_LIVE_MODE mode=swallow|passthrough gaming=<bool>`), nunca uma
+por volta. Um `WM_HOTKEY` que já estava na fila quando o jogo chegou **não
+alterna** (`suppressed=true why=not-swallowing`): a fila não pode decidir por ele.
+
+Sem detector de jogo, ou com o registo recusado (`winerror=1409`, outro programa
+tem a combinação), a tecla **não é tomada**: fica o observador de 2026-11-02, que
+alterna a legenda e **deixa o espaço passar**, e o log diz
+`swallow=false the_key_passes_through=true` — um recuo declarado, não um
+silêncio.
+
+Provas: `_main/ctrlspace-swallow-oracle.py` (14 arms contra o `user32`-gravador;
+`--neg-arm` 4/4) e `_main/ctrlspace-swallow-probe.py`, que mede no Windows desta
+máquina o que nenhum fake dá — medido: primeira reserva `1`, segunda reserva da
+mesma combinação `0` com `err=1409`, terceira depois do `Unregister` `1`.
+
