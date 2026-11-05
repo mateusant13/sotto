@@ -1170,6 +1170,38 @@ def run_mutant_isolated(path):
     return payload, hung, text
 
 
+def _prune_dead_temp_dirs(max_age_s=600.0):
+    """Apaga as copias de shell que uma corrida MORTA deixou para tras.
+
+    MEDIDO 2026-11-05: sete directorios `sotto-vis-oracle-*` esquecidos, **44,7 MB**
+    — cada um e' uma copia da shell, e um processo morto a meio do `arm_mutation`
+    nao corre o cleanup do `TemporaryDirectory`. Leak medido na propria maquina,
+    nao hipotese: `du` dos sete deu 5,77 / 5,64 / 6,39 / 7,69 / 4,26 / 8,55 /
+    6,41 MB. A poda e' da PROPRIA familia de nomes (nada mais), com idade minima
+    para nunca apagar a corrida que esta' a acontecer agora.
+    """
+    import glob
+    import shutil
+    import time
+
+    tmp = tempfile.gettempdir()
+    now = time.time()
+    freed = 0
+    for path in glob.glob(os.path.join(tmp, 'sotto-vis-oracle-*')):
+        try:
+            if now - os.path.getmtime(path) < max_age_s:
+                continue
+            size = sum(os.path.getsize(os.path.join(r, f))
+                       for r, _d, fs in os.walk(path) for f in fs)
+            shutil.rmtree(path, ignore_errors=True)
+            freed += size
+        except Exception:  # noqa: BLE001 -- uma poda nunca derruba o oraculo
+            continue
+    if freed:
+        print(f'  TEMP-PRUNE freed={freed / 1e6:.1f} MB dir=sotto-vis-oracle-*',
+              flush=True)
+
+
 def arm_mutation(shell_path, shell):
     results = []
     failures = 0
@@ -1341,6 +1373,7 @@ def arm_neg_arm(shell_path, stage_url, panel_url):
 # ===========================================================================
 
 def main(argv=None):
+    _prune_dead_temp_dirs()
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--shell', default=DEFAULT_SHELL,
                     help='the shell under test (default: the shipped one)')
