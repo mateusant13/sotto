@@ -2596,6 +2596,18 @@ class VramGuard(threading.Thread):
     LOW_MB = 1200.0
     RESUME_MB = 2400.0
     STREAK = 2
+    #: A GRAÇA DEPOIS DE UM RESUME, em segundos. MEDIDO 2026-11-05 no log do dono
+    #: (`_main/webview-run.log`, pid 22916): `VRAM_GUARD_PARKING free_mb=635` as
+    #: 18:46:25, `RESUMING free_mb=2921` doze segundos depois, `PARKING
+    #: free_mb=901` as 18:47:58, `RESUMING free_mb=2911` as 18:48:31 -- tres
+    #: voltas em seis minutos, e cada volta e' uma carga de modelo de 54 s e
+    #: 1,9 GB lidos do disco. A banda [LOW, RESUME] = [1200, 2400] e' MAIS
+    #: ESTREITA do que o proprio modelo: libertar o modelo sobe a livre para
+    #: ~2900, levantar o modelo baixa-a para ~900, logo cada volta atravessa os
+    #: dois limiares. O dip da carga nao e' "outra app quer a GPU" -- e' a mesma
+    #: frase que o `loaded` ja' dizia num comentario deste ficheiro; aqui ela
+    #: ganha uma janela de tempo, medida em vez de suposta.
+    POST_RESUME_GRACE_S = 90.0
 
     def __init__(self, shell):
         super().__init__(name='sotto-vram-guard', daemon=True)
@@ -2605,6 +2617,19 @@ class VramGuard(threading.Thread):
         self.high = 0
         self.parked = 0
         self.resumed = 0
+        #: Quando o ultimo resume aconteceu (`time.time()`), 0 = nunca.
+        self._resumed_at = 0.0
+        #: Quantas amostras a graca pos-resume recusou parquear (o log diz a 1a).
+        self.grace_skips = 0
+
+    def allow_park(self, now=None):
+        """O DIP DA CARGA NAO E' OUTRA APP: dentro da graca pos-resume, nao se parqueia.
+
+        Puro (o relogio entra por parametro) para o oraculo poder conduzi-lo sem
+        esperar 90 s: `external-resume-oracle.py` exige os dois lados.
+        """
+        now = time.time() if now is None else now
+        return (now - self._resumed_at) >= self.POST_RESUME_GRACE_S
 
     def stop(self):
         self.stop_event.set()
@@ -2655,6 +2680,19 @@ class VramGuard(threading.Thread):
                     # free memory is low again and the guard parks the worker.
                     loaded = bool(getattr(bridge, 'loaded', False))
                     if running and loaded and free < self.LOW_MB:
+                        if not self.allow_park():
+                            # A GRAÇA: o worker que ACABOU de ser levantado esta'
+                            # a carregar o modelo, e e' ele que baixou a livre. O
+                            # contador da sequencia baixa a zero porque esta
+                            # amostra nao conta como sinal de "outra app".
+                            self.low = 0
+                            self.grace_skips += 1
+                            if self.grace_skips == 1:
+                                log(f'VRAM_GUARD_GRACE free_mb={free:.0f} '
+                                    f'grace_s={self.POST_RESUME_GRACE_S:.0f} — o '
+                                    f'dip da carga nao conta como outra app')
+                            self.stop_event.wait(self.INTERVAL_S)
+                            continue
                         self.low += 1
                         self.high = 0
                         if self.low >= self.STREAK:
@@ -2668,6 +2706,8 @@ class VramGuard(threading.Thread):
                             self.high = 0
                             if self.shell.resume_after_vram(free):
                                 self.resumed += 1
+                                self._resumed_at = time.time()
+                                self.grace_skips = 0
                     else:
                         self.low = 0
                         self.high = 0

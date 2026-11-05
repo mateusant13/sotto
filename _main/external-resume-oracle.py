@@ -259,10 +259,46 @@ def arms(mod, text):
                 and getattr(s, '_engine_park', 'x') is None,
                 {'second_ret': again, 'parks': s.parks,
                  'park': s._engine_park}))
+    # E14-E16 -- A ESTEIRA DO PARQUE (medida 2026-11-05 18:46-18:48 no log do
+    # dono: PARKING 635 -> RESUMING 2921 -> PARKING 901 -> RESUMING 2911, tres
+    # voltas em seis minutos, cada volta uma carga de modelo de 54 s). O dip da
+    # carga nao pode contar como "outra app quer a GPU" -- o predicado e' puro e
+    # o relogio entra por parametro, por isso o oraculo conduz os dois lados sem
+    # esperar 90 s.
+    guard_cls = getattr(mod, 'VramGuard', None)
+    out.append(('E0 a classe do guarda de VRAM existe', guard_cls is not None, {}))
+    if guard_cls is not None:
+        g = guard_cls.__new__(guard_cls)
+        g._resumed_at = 1000.0
+        r14 = g.allow_park(now=1010.0)
+        out.append(('E14 dentro da graca pos-resume NAO parqueia',
+                    r14 is False, {'allow': r14}))
+        r15 = g.allow_park(now=1000.0 + guard_cls.POST_RESUME_GRACE_S + 1.0)
+        out.append(('E15 passada a graca volta a poder parquear',
+                    r15 is True, {'allow': r15}))
+        g._resumed_at = 0.0
+        r16 = g.allow_park(now=1010.0)
+        out.append(('E16 sem resume nenhum o guarda continua a servir outra app',
+                    r16 is True, {'allow': r16}))
+        # FIACAO: o predicado tem de ser CONSULTADO pelo laco, senao as arms
+        # E14-E16 medem uma funcao que ninguem chama.
+        wired = 'if not self.allow_park():' in (text or '')
+        out.append(('E17 o laco do guarda consulta a graca antes de parquear',
+                    wired, {'wired': wired}))
     return out
 
 
 MUTANTS = [
+    ('sem-graca-pos-resume',
+     'o dip da carga volta a contar como outra app e a esteira recomeca (E14)',
+     """        return (now - self._resumed_at) >= self.POST_RESUME_GRACE_S""",
+     """        return True""",
+     'E14 dentro da graca pos-resume NAO parqueia'),
+    ('graca-nao-ligada-ao-parque',
+     'o predicado existe mas o laco do guarda nao o consulta (E17)',
+     """                        if not self.allow_park():""",
+     """                        if False:""",
+     'E17 o laco do guarda consulta a graca antes de parquear'),
     ('sem-guarda-exiting',
      'a shell a morrer limpa o pedido enquanto o processo morre (E1)',
      """        if self.exiting.is_set():
@@ -320,9 +356,12 @@ MUTANTS = [
 ]
 
 
-def _run(mod):
+def _run(mod, text=None):
+    # O TEXTO E' O DA ARVORE QUE SE ESTA' A JULGAR. No braco negativo e' o do
+    # MUTANTE: as arms de fiacao (`E17`) leem o fonte, e ler o original enquanto
+    # se corre o mutante faria delas arms que nunca podem cair.
     return {label.split()[0]: (ok, got)
-            for label, ok, got in arms(mod, _read(SHELL))}
+            for label, ok, got in arms(mod, text if text is not None else _read(SHELL))}
 
 
 def neg_arm():
@@ -332,7 +371,7 @@ def neg_arm():
         try:
             path = build_mutant(text, name, old, new)
             mmod = load_module(path, 'extresume_%s' % name.replace('-', '_'))
-            got = _run(mmod)
+            got = _run(mmod, _read(path))
             ok = got.get(arm.split()[0], (False, None))[0]
         except Exception as exc:  # noqa: BLE001
             ok, exc = False, exc
