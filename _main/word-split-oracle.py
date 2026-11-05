@@ -74,7 +74,11 @@ RESULTS = []          # (name, ok, is_fix_arm)
 # is written; it must occur EXACTLY ONCE.
 MUTANT_BODY_LINES = [
     '    out = ""',
-    "    for text, cont in frags:",
+    # 2026-11-05: `join_fragments` passou a juntar os fragmentos que a regra de
+    # colagem funde (`glue_split_seams`) e a colar o `s` solto ao token anterior
+    # (`glue_lone_s`). O ancora acompanha o corpo SHIPPED; o mutante continua a
+    # ser o PRE-FIX (`" ".join(...)`), que restaura os dois defeitos de uma vez.
+    "    for text, cont in glue_split_seams(frags):",
     "        if not text:",
     "            continue",
     "        if not out:",
@@ -86,7 +90,7 @@ MUTANT_BODY_LINES = [
     # 2026-11-02: `join_fragments` passou a devolver o texto pela cura do seam
     # (`dedup_seam_repeat`), por isso o ancora desta ultima linha acompanhou-a.
     # O corpo continua a ser o MESMO, e o mutante continua a ser o PRE-FIX.
-    "    return dedup_seam_repeat(out.strip())",
+    "    return dedup_seam_repeat(glue_lone_s(out.strip()))",
 ]
 MUTANT_REPLACEMENT = '    return " ".join(t for t, _c in frags if t).strip()'
 
@@ -161,7 +165,7 @@ def _revert_stable_rule(text):
     # NIVEL DO TOKEN (`proven_text(self._words)` devolve `(provado, cauda)`), e a
     # cauda aberta fica de fora ate' o tokenizer a provar. O PRE-FIX e' o texto
     # INTEIRO com cauda vazia -- e' exactamente o que se mostrava antes da ordem.
-    alvo = ("            estavel, _cauda = _stable_words().proven_text(self._words)",
+    alvo = ("            estavel, _cauda = _stable_words().proven_text(glue_split_seams(self._words))",
             "            estavel, _cauda = self.line(), \"\"")
     if text.count(alvo[0]) != 1:
         return text, 0

@@ -819,6 +819,61 @@ if exist _main\caption-kept-on-hide-oracle.py (
 call :step red-as-expected-caption-kept-on-hide 1 "_main\caption-kept-on-hide-oracle.py;app\webview\sotto_webview.py" "%OUT%\caption-kept-on-hide-neg.log" python _main\caption-kept-on-hide-oracle.py --neg-arm
 call :expectred red-as-expected-caption-kept-on-hide !STEP_RC! "%OUT%\caption-kept-on-hide-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-caption-kept-on-hide MISSING "%OUT%\caption-kept-on-hide-neg.log" "NEG-ARM: PASS" )
+REM `caption-switch-race-oracle.py` -- O INTERRUPTOR E LIDO NA PINTURA, NAO NO
+REM ENFILEIRAR. Medido na sessao viva do dono (pid 54040), verbatim: *"eu to
+REM vendo o botao do sotto falando que a legenda ta off, mas ta on"*. Sete
+REM `HOTKEY_PRESSED role=live count=1..7` entre 16:15:38.096 e 16:15:40.484
+REM deixaram `LIVE_ENABLED on=false` as 16:15:40.484 -- e a legenda CONTINUOU no
+REM ecra. O texto aceito ANTES do desligar chegava ao `_drain_caption_pending`
+REM DEPOIS do `ov.show(False)` e chamava `ov.show(True)`: o guarda do
+REM `push_caption_to_window` corre na thread que ENFILEIRA, nao na que PINTA, e
+REM entre as duas ha o tempo do post. A condicao do dono tem de ser lida no
+REM instante da pintura. O oraculo executa `_drain_caption_pending` e
+REM `show_caption_window` REAIS (extraidas por AST) com overlay gravador: flag
+REM OFF nao pinta, o slot morre no desligar e a flag ON continua a pintar.
+REM O `--neg-arm` apaga o guarda na linha exata e exige o arm A1 vermelho.
+if exist _main\caption-switch-race-oracle.py (
+ call :step caption-switch-race 0 "_main\caption-switch-race-oracle.py;app\webview\sotto_webview.py" "%OUT%\caption-switch-race.log" python _main\caption-switch-race-oracle.py
+ call :record caption-switch-race !STEP_RC!
+) else ( call :record caption-switch-race MISSING )
+if exist _main\caption-switch-race-oracle.py (
+call :step red-as-expected-caption-switch-race 1 "_main\caption-switch-race-oracle.py;app\webview\sotto_webview.py" "%OUT%\caption-switch-race-neg.log" python _main\caption-switch-race-oracle.py --neg-arm
+call :expectred red-as-expected-caption-switch-race !STEP_RC! "%OUT%\caption-switch-race-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-caption-switch-race MISSING "%OUT%\caption-switch-race-neg.log" "NEG-ARM: PASS" )
+REM `word-glue-oracle.py` -- A PALAVRA PARTIDA NO SEAM (`very fa st`, `fuck er`).
+REM Medido na sessao viva do dono (pid 54040): `CAPTION_IN text="fa st listen"`
+em SETE linhas cumulativas, e o censo do log deu 297 casos da mesma classe (um
+`s` sozinho entre duas palavras: `it s outside`, `inteiro s que`). O `▁` que o
+`chunk_is_continuation` le e POSICIONAL (18 de 19 chunks de
+`_main/word-split-trace.json` comecam com `▁`), nao lexical -- o chunk que
+comeca a meio de uma palavra re-ancora o marcador. A cura e de TEXTO, no unico
+sitio que decide separador (`join_fragments`): cauda de 1-2 letras minusculas
+com vogal + cabeca sem vogal colam, e um `s` sozinho cola a esquerda.
+REM O `--neg-arm` desarma as tres regras numa COPIA e exige os arms RED.
+if exist _main\word-glue-oracle.py (
+ call :step word-glue 0 "_main\word-glue-oracle.py;worker\sotto_worker.py" "%OUT%\word-glue.log" python _main\word-glue-oracle.py
+ call :record word-glue !STEP_RC!
+) else ( call :record word-glue MISSING )
+if exist _main\word-glue-oracle.py (
+call :step red-as-expected-word-glue 1 "_main\word-glue-oracle.py;worker\sotto_worker.py" "%OUT%\word-glue-neg.log" python _main\word-glue-oracle.py --neg-arm
+call :expectred red-as-expected-word-glue !STEP_RC! "%OUT%\word-glue-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-word-glue MISSING "%OUT%\word-glue-neg.log" "NEG-ARM: PASS" )
+REM `punct-prosody-oracle.py` -- PONTUACAO POR PROSODIA, e o comma sem pausa.
+REM Ordem do dono: *"por que a gente nao normaliza as frases ou usa pontuacao de
+REM forma inteligente? se tu notar a diferenca de timing de cada palavra ... da
+REM pra presumir pontuacoes"*. O modulo `worker/punctuation_prosody.py` apaga um
+REM comma de modelo atras do qual nao ha pausa medida, e so ACRESCENTA marca
+REM quando a pausa esta na banda que o recebido mediu -- sem pausas (lista vazia)
+REM a funcao e identidade e nao inventa nada. O `--neg-arm` baixa o piso a zero
+REM numa COPIA e exige o vermelho.
+if exist _main\punct-prosody-oracle.py (
+ call :step punct-prosody 0 "_main\punct-prosody-oracle.py;worker\punctuation_prosody.py" "%OUT%\punct-prosody.log" python _main\punct-prosody-oracle.py
+ call :record punct-prosody !STEP_RC!
+) else ( call :record punct-prosody MISSING )
+if exist _main\punct-prosody-oracle.py (
+call :step red-as-expected-punct-prosody 1 "_main\punct-prosody-oracle.py;worker\punctuation_prosody.py" "%OUT%\punct-prosody-neg.log" python _main\punct-prosody-oracle.py --neg-arm
+call :expectred red-as-expected-punct-prosody !STEP_RC! "%OUT%\punct-prosody-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-punct-prosody MISSING "%OUT%\punct-prosody-neg.log" "NEG-ARM: PASS" )
 REM `panel-prefix-row-oracle.py` -- O MURO DE PREFIXOS NAO VOLTA. Medido na tela
 REM do dono em 2026-11-05 06:07:33-06:07:42 (imagem dele, verbatim: *"historico
 REM completamente patetico"*): nove `<li>` para a MESMA frase, cada uma com mais

@@ -4223,6 +4223,139 @@ def chunk_is_continuation(vocab, ids) -> bool:
     return False
 
 
+# ── O `▁` DO PRIMEIRO TOKEN NAO E' UMA FRONTEIRA DE PALAVRA ──────────────────
+# A MARCA E' POSICIONAL, NAO LEXICA. Medido em `_main/word-split-trace.json`
+# (26 chunks, 19 com tokens reais): 18 chunks comecam com um token que leva
+# `▁` e UM comeca sem. O vocabulario deste modelo TEM as duas formas do mesmo
+# pedaco (`st` id 257 e `▁st` id 2950), e o modelo escolheu `▁st` na fronteira
+# do chunk -- exatamente como escolhe `▁próx` e depois `ima` sem marca. O
+# motivo esta' no treino: cada segmento-alvo do RNN-T comeca com `▁`, portanto
+# o PRIMEIRO token de um chunk e' `▁X` com a mesma naturalidade com que uma
+# palavra comeca. A consequencia medida (dono, 2026-11-05, fala rapida):
+#
+#   16:11:11.646 final=false text="fa st listen"
+#   16:11:12.200 final=false text="fa st listen to this" ...
+#
+# -- `fa` num chunk, `▁st` no seguinte: `chunk_is_continuation` devolve False
+# (o token TEM marca), `join_fragments` poe um espaco, e o dono le "fa st".
+# A AFIRMACAO FALSIFICAVEL: um chunk que comeca com `▁` NAO diz "palavra nova";
+# diz "comecei a decodificar aqui". 18/19 chunks da amostra provam a primeira
+# metade; o par `st`/`▁st` no vocabulario prova que o modelo tinha a forma sem
+# marca e escolheu a outra.
+#
+# A CURA NAO USA DICIONARIO, LM NEM REDE -- so' o que esta' no seam: o pedaco
+# curto em minusculas a esquerda e a cabeca a direita. Um PEDACO nao e' uma
+# palavra quando nao tem vogal (`st`, `s`), e a cauda de 1-2 letras e' curta
+# demais para ser o fim de uma palavra que o modelo decidiu TERMINAR. Juntas,
+# as duas condicoes dizem "uma silaba aberta atravessou a fronteira".
+GLUE_MAX_TAIL_CHARS = 2
+GLUE_MAX_HEAD_CHARS = 4
+_LETTER_VOWELS = frozenset("aeiouyáàâãäéèêëíìîïóòôõöúùûüýỳŷ")
+
+
+def _has_vowel(piece):
+    return any(c in _LETTER_VOWELS for c in piece.casefold())
+
+
+def glues_split_word(left, right) -> bool:
+    """O seam `left` | `right` e' UMA palavra partida? (deterministico, sem dicionario)
+
+    SOLTA vs PARTIDA, a unica evidencia que existe aqui:
+
+      * a CAUDA de `left` tem 1-2 letras minusculas e TEM vogal (`fa`, `do`);
+      * a CABEÇA de `right` tem <= 4 letras minusculas e NAO tem vogal (`st`,
+        `ls`, `rn`) -- nenhuma palavra das duas linguas desta caixa e' feita so'
+        de consoantes, mas uma SILABA de uma palavra partida pode ser;
+      * `left` nao acaba em pontuacao nem em marca terminal -- uma palavra nao
+        atravessa um `.`/`?`/`!`/`…`;
+      * `right` nao comeca em maiuscula (`I am`, `GPT six`).
+
+    As fronteiras GENUINAS que o dono le ficam separadas, e sao o oraculo
+    (`_main/word-glue-oracle.py`): `and the` (cauda de 3 letras), `I am`
+    (maiuscula), `do you` (cabeca com vogal), `saudade eterna` (cauda longa).
+    """
+    left = (left or "").rstrip()
+    right = (right or "").lstrip()
+    if not left or not right:
+        return False
+    # 1. NUNCA atraves de pontuacao, e nunca depois de uma linha terminal.
+    if left[-1] in LINE_TERMINAL or not left[-1].isalpha():
+        return False
+    head = right.split(None, 1)[0]
+    if not head or not head.isalpha() or not head.islower():
+        return False
+    if len(head) > GLUE_MAX_HEAD_CHARS or _has_vowel(head):
+        return False
+    tail = left.rsplit(None, 1)[-1]
+    if not (1 <= len(tail) <= GLUE_MAX_TAIL_CHARS):
+        return False
+    if not tail.isalpha() or not tail.islower():
+        return False
+    return _has_vowel(tail)
+
+
+def glue_split_seams(frags):
+    """`frags` com os seams que `glues_split_word` PROVA fundidos num fragmento.
+
+    Fundir, e nao juntar com uma string vazia, e' o que mantem `_words` honesto:
+    `stable_words.open_word_start` (o parcial e o carry do teto) reconstroi a
+    linha a partir dos fragmentos e precisa que a palavra partida seja UM
+    fragmento, senao o parcial diria "fa st" e o fecho "fast".
+
+    `cont` do fragmento fundido e' o do ESQUERDO: ele ja' carrega a continuacao
+    que vinha de tras; o seam fundido nao pede separador nenhum.
+    """
+    out = []
+    for text, cont in frags or ():
+        piece = "" if text is None else str(text)
+        if out and piece and not cont and glues_split_word(out[-1][0], piece):
+            prev_text, prev_cont = out[-1]
+            out[-1] = (prev_text.rstrip() + piece.lstrip(), prev_cont)
+        else:
+            out.append((piece, bool(cont)))
+    return out
+
+
+def glue_lone_s(text):
+    """`it s outside` -> `its outside`, `inteiro s que` -> `inteiros que`.
+
+    MEDIDO (main, censo sobre 11 465 `CAPTION_IN` do `_main/webview-run.log`):
+    293 linhas tinham um `s` sozinho entre duas palavras -- `stain s yet` (10),
+    `it s outside` (10), `make s sense` (9), `cheater s are` (9), `inteiro s
+    que` (8), `mini s que` (8) ... O `s` e' a cauda do possessivo/contracao
+    inglesa ou do plural portugues que o modelo separou com um espaco.
+    REPRODUZIDO aqui no fecho desta lane com o MESMO regex sobre as 11 589
+    linhas de entao: 297 ocorrencias; zero sobrevivem a `glue_lone_s`.
+
+    A REGRA E' MECANICA E SEM LINGUA: um token que e' EXATAMENTE `s` minusculo,
+    entre dois tokens que comecam/acabam em LETRA, cola ao ANTERIOR e nao emite
+    espaco antes de si. Nenhum caractere e' ACRESCENTADO -- a regra NAO inventa
+    o apostrofo de `it's`, porque escolher entre `its`/`it's` exige saber a
+    lingua, e este projeto nao tem dicionario no caminho do texto.
+
+    NAO TOCA: um `s` no inicio da linha (nao ha' letra antes) e um `s` depois de
+    um sinal (`espero. s que`) -- a pontuacao ja' fechou a palavra.
+    """
+    if not text or "s" not in text:
+        return text
+    words = text.split(" ")
+    out = []
+    for i, word in enumerate(words):
+        if (
+            word == "s"
+            and out
+            and out[-1]
+            and out[-1][-1].isalpha()
+            and i + 1 < len(words)
+            and words[i + 1]
+            and words[i + 1][0].isalpha()
+        ):
+            out[-1] += "s"
+        else:
+            out.append(word)
+    return " ".join(out)
+
+
 #: A COMMA FOLLOWED BY A TERMINAL IS NEVER SOMETHING THE OWNER MEANT TO READ.
 #: Owner, 2026-10-21, verbatim: *"legenda que termina em vírgula"* and, from the
 #: live box, `… enfim,.`. The model emits the comma as the LAST token of a chunk
@@ -4287,9 +4420,16 @@ def join_fragments(frags) -> str:
     `max_chars` lookahead both go through it, so the lookahead measures the line
     that will actually exist and one revert of this function restores the old
     text exactly (the oracle's negative arm).
+
+    DUAS CUNHAS A MAIS (2026-11-05), ambas deterministicas e sem dicionario:
+    `glue_split_seams` funde os seams que `glues_split_word` prova partidos
+    (`fa`|`st` -> `fast`, o defeito medido) e `glue_lone_s` cola o `s` solto ao
+    token anterior (`it s outside` -> `its outside`). O `cont` do tokenizer
+    continua a mandar: um seam que ele marca como continuacao nunca passa por
+    estas regras.
     """
     out = ""
-    for text, cont in frags:
+    for text, cont in glue_split_seams(frags):
         if not text:
             continue
         if not out:
@@ -4298,7 +4438,7 @@ def join_fragments(frags) -> str:
             out += text
         else:
             out += " " + text
-    return dedup_seam_repeat(out.strip())
+    return dedup_seam_repeat(glue_lone_s(out.strip()))
 
 
 #: O TAMANHO MINIMO do que se pode repetir. UMA palavra repetida e' fala ("nao
@@ -4728,8 +4868,8 @@ class LineFormer:
         #
         # `carry=True` SO' NO FECHO POR TETO: silencio e pontuacao provam a
         # ultima palavra; o teto corta a meio e a cauda VAI PARA A LINHA SEGUINTE.
-        prov, tail = _stable_words().close_parts(self._words, carry)
-        text = tidy_final(self.line() if prov is None else prov)
+        prov, tail = _stable_words().close_parts(glue_split_seams(self._words), carry)
+        text = tidy_final(self.line() if prov is None else glue_lone_s(prov))
         out = []
         if text and self._worthy(text):
             # THE CLOSE GOES OUT OF BAND (M2), once, and it is the only event
@@ -4844,7 +4984,7 @@ class LineFormer:
             # cauda aberta fica de fora ate' o tokenizer a provar. O dono,
             # 2026-10-30: *"nunca vai dar display em 'so' sem esperar virar
             # 'sou'"*, e *"'CAUS' quando o falante fala 'cause like'"*.
-            estavel, _cauda = _stable_words().proven_text(self._words)
+            estavel, _cauda = _stable_words().proven_text(glue_split_seams(self._words))
             # A MESMA CURA NO PARCIAL (medido 2026-11-03, sessao viva). O
             # `line()` passa por `join_fragments`, que termina em
             # `dedup_seam_repeat` -- mas o PARCIAL nao: ele vai a' tela pelo
@@ -4853,7 +4993,7 @@ class LineFormer:
             # (pid 4732, 11:43) ainda saiam com a repeticao, e as cinco passam
             # limpas por `dedup_seam_repeat`. O defeito era a CHAMADA que
             # faltava, nao a regra.
-            estavel = dedup_seam_repeat(estavel)
+            estavel = dedup_seam_repeat(glue_lone_s(estavel))
             if self._worthy(estavel) and estavel != self._shown:
                 # O texto estavel so vai para o ecra quando MUDA. Um parcial
                 # identico ao anterior e uma reescrita do mesmo texto: o dono

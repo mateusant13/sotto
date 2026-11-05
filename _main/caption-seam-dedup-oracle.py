@@ -187,7 +187,7 @@ def neg_arm():
 
     # TERCEIRO MUTANTE: a CHAMADA no caminho PARCIAL. Sem ela o `line()` continua
     # curado e o texto que o dono VE nao.
-    needle3 = "            estavel = dedup_seam_repeat(estavel)"
+    needle3 = "            estavel = dedup_seam_repeat(glue_lone_s(estavel))"
     caught3 = False
     if needle3 in text:
         mutant3 = text.replace(needle3, "            pass", 1)

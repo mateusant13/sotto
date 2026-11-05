@@ -32,7 +32,9 @@ AS ARMS (todas EXECUTAM as funcoes reais; nenhuma procura texto)
       fotografia: o video declarado (`OLD`) desapareceu da lista de abas e a foto
       traz `NEW` -> `_video_id` passa a `NEW` e o estado diz
       `adopted:OLD->NEW`. CONTROLE: `OLD` ainda aberto -> NAO adota, `_video_id`
-      fica `OLD`, estado `wrong-video (NEW)`.
+      fica `OLD`, estado `wrong-video (NEW)`. O controle tem mutacao PROPRIA no
+      `--neg-arm` (a adocao que ignora o declarado aberto tem de o derrubar):
+      um controle que passa sob TODAS as mutacoes nunca esteve ancorado.
   A4 diagnostico     -- `ExternalCaptionWatcher._yt_diag_now()` (a funcao que a
       linha `YOUTUBE_TICK_MS` usa): com o dicionario de diagnostico VAZIO ou com
       `src='?'`, os cinco campos saem completos (`unattached`/`none`), e a IDADE
@@ -41,7 +43,8 @@ AS ARMS (todas EXECUTAM as funcoes reais; nenhuma procura texto)
   A5 linha-completa  -- a linha do log usada pela shell tem `rows=%d` e nenhum
       `.get('src', '?')`/`.get('age', '?')`: o `?` deixou de ser um valor.
 
-`--neg-arm` muta COPAS (quatro mutacoes, cada uma no sitio que a sua arm julga) e
+`--neg-arm` muta COPAS (seis mutacoes, cada uma no sitio que a sua arm julga,
+incluindo a queda do id declarado e o `refuse` do controle) e
 exige que AQUELE braco caia; rc=1 quando apanha todos -- e' a convencao
 `red-as-expected` da bateria.
 
@@ -371,10 +374,6 @@ def _arm_adopt(mod, declared_open):
             sys.modules["websocket"] = old_ws
 
 
-def _raise_port_closed(port=None, timeout=3.0):
-    raise OSError("porta fechada (fotografia do controle)")
-
-
 # -- A4: o diagnostico nunca sai `?` ---------------------------------------
 
 class _AgeSource:
@@ -444,8 +443,29 @@ def arms(shell_path=SHELL, module_path=MODULE):
     return out
 
 
+def _mutate(src, old, new):
+    """O texto com UMA substituicao -- e' ERRO se a ancora nao existir.
+
+    `str.replace` de um texto ausente e' um no-op silencioso: a "mutacao" seria
+    o codigo ORIGINAL, e o braco cairia (ou nao) por outro motivo sem que o
+    `CAUGHT` deixasse de se imprimir. Cada mutacao seguinte diz o que julga;
+    esta funcao garante que o que ela julga ainda esta' la' para ser mutado.
+    """
+    if src.count(old) != 1:
+        raise AssertionError("mutacao sem ancora unica (%d ocorrencias): %r"
+                             % (src.count(old), old[:60]))
+    return src.replace(old, new, 1)
+
+
 def neg_arm():
-    """Quatro mutacoes, cada uma no sitio que a SUA arm julga."""
+    """Seis mutacoes, cada uma no sitio que a SUA arm julga.
+
+    As duas ultimas ancoram as regras que o incidente do `vid=OLDOLDOLDOL`
+    exercita: (5) a QUEDA do id declarado quando ele ja' nao esta' aberto -- a
+    linha cuja perda em `888a3ae` fez o laco fechar-se em si mesmo --, e (6) o
+    `refuse` do CONTROLE, que sem mutacao propria ficava verde por construcao
+    (passava mesmo com a adocao mutada em 3).
+    """
     tmp = tempfile.mkdtemp(prefix="yt-cdp-boot-neg-")
     try:
         results = []
@@ -455,37 +475,67 @@ def neg_arm():
         # 1) O ARRANQUE DEIXA DE PEDIR O ATTACH (o codigo de antes de hoje).
         shell_mut = os.path.join(tmp, "shell_sem_arranque.py")
         io.open(shell_mut, "w", encoding="utf-8", newline="").write(
-            shell_src.replace("            self._yt_cdp_boot_attach()\n",
-                              "            pass\n", 1))
+            _mutate(shell_src, "            self._yt_cdp_boot_attach()\n",
+                    "            pass\n"))
         got = dict((n, ok) for n, ok, _ in arms(shell_path=shell_mut))
         results.append(("arranque-sem-painel", not got.get("arranque-sem-painel", True)))
 
         # 2) O RETRY DEIXA DE SER LIMITADO (uma tentativa so').
         mod1 = os.path.join(tmp, "retry_unico.py")
         io.open(mod1, "w", encoding="utf-8", newline="").write(
-            mod_src.replace("    for attempt in range(1, max(1, int(attempts)) + 1):",
-                            "    for attempt in range(1, 2):", 1))
+            _mutate(mod_src,
+                    "    for attempt in range(1, max(1, int(attempts)) + 1):",
+                    "    for attempt in range(1, 2):"))
         got = dict((n, ok) for n, ok, _ in arms(module_path=mod1))
         results.append(("retry-limitado", not got.get("retry-limitado", True)))
 
         # 3) A ABA QUE NAVEGOU DEIXA DE SER ADOTADA (o laco preso por 13 min).
         mod2 = os.path.join(tmp, "sem_adocao.py")
         io.open(mod2, "w", encoding="utf-8", newline="").write(
-            mod_src.replace("    if not declared_open:\n"
-                            "        return 'adopt', 'declared-closed'",
-                            "    if False:\n"
-                            "        return 'adopt', 'declared-closed'", 1))
+            _mutate(mod_src, "    if not declared_open:\n"
+                             "        return 'adopt', 'declared-closed'",
+                    "    if False:\n"
+                    "        return 'adopt', 'declared-closed'"))
         got = dict((n, ok) for n, ok, _ in arms(module_path=mod2))
         results.append(("aba-que-navegou", not got.get("aba-que-navegou", True)))
 
         # 4) O DIAGNOSTICO VOLTA A PODER SAIR `?` (o `src='?'` medido).
         shell_mut2 = os.path.join(tmp, "shell_diag_interrogacao.py")
         io.open(shell_mut2, "w", encoding="utf-8", newline="").write(
-            shell_src.replace("        if not src or src == '?':\n",
-                              "        if False:\n", 1))
+            _mutate(shell_src, "        if not src or src == '?':\n",
+                    "        if False:\n"))
         got = dict((n, ok) for n, ok, _ in arms(shell_path=shell_mut2))
         results.append(("diagnostico-sem-interrogacao",
                         not got.get("diagnostico-sem-interrogacao", True)))
+
+        # 5) O ID DECLARADO QUE JA' NAO ESTA' ABERTO DEIXA DE SER ULTRAPASSADO.
+        #    E' a linha do `_choose` cuja ausencia em `888a3ae` produziu o
+        #    sintoma medido (`aba-que-navegou -- vid=OLDOLDOLDOL`, zero linhas):
+        #    sem a queda, o id filtra a escolha, sem escolha nao ha' foto, e sem
+        #    foto o id nunca se cura.
+        mod3 = os.path.join(tmp, "sem_queda_declarado.py")
+        io.open(mod3, "w", encoding="utf-8", newline="").write(
+            _mutate(mod_src,
+                    "        if target is None and self._video_id:\n"
+                    "            target, why = pick_target(tabs, '', self._window_title)",
+                    "        if False:\n"
+                    "            target, why = pick_target(tabs, '', self._window_title)"))
+        got = dict((n, ok) for n, ok, _ in arms(module_path=mod3))
+        results.append(("aba-que-navegou/queda",
+                        not got.get("aba-que-navegou", True)))
+
+        # 6) O CONTROLE: a adocao deixa de olhar para o declarado aberto, e a
+        #    aba que o dono apontou seria trocada pelo video da foto. O braco
+        #    TEM de cair -- e' o unico sitio que diz que "ainda aberto" pesa.
+        mod4 = os.path.join(tmp, "adota_sempre.py")
+        io.open(mod4, "w", encoding="utf-8", newline="").write(
+            _mutate(mod_src, "    if not declared_open:\n"
+                             "        return 'adopt', 'declared-closed'",
+                    "    if True:\n"
+                    "        return 'adopt', 'declared-closed'"))
+        got = dict((n, ok) for n, ok, _ in arms(module_path=mod4))
+        results.append(("controle-aba-ainda-aberta",
+                        not got.get("controle-aba-ainda-aberta", True)))
         return results
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

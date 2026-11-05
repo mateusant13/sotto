@@ -493,10 +493,12 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
     add(gesture.next_surface(False, "panel") == "strip",
         "escondido (ultimo show: painel) -> faixa de BAIXO",
         str(gesture.next_surface(False, "panel")))
-    add(gesture.next_surface(True, "strip") is None,
-        "faixa de baixo no ecra -> ESCONDE", str(gesture.next_surface(True, "strip")))
-    add(gesture.next_surface(False, "strip") == "panel",
-        "escondido (ultimo show: faixa) -> painel da DIREITA",
+    add(gesture.next_surface(True, "strip") == "panel",
+        "faixa de baixo no ecra -> painel da DIREITA (o 2o toque)",
+        str(gesture.next_surface(True, "strip")))
+    add(gesture.next_surface(False, "strip") == "strip",
+        "escondido (ultimo show: faixa) -> faixa de BAIXO outra vez"
+        " (a casa 1 nao depende de memoria)",
         str(gesture.next_surface(False, "strip")))
     add(gesture.next_surface(True, "panel") is None,
         "painel da direita no ecra -> ESCONDE", str(gesture.next_surface(True, "panel")))
@@ -512,9 +514,9 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
             visible = False
         else:
             visible, surface = True, nxt
-    add(seq == ["strip", "hide", "panel", "hide", "strip", "hide", "panel", "hide",
-                "strip", "hide"],
-        "10 pressoes na regra pura: 10 mudancas, shows strip,panel,strip,panel,strip",
+    add(seq == ["strip", "panel", "hide", "strip", "panel", "hide", "strip", "panel",
+                "hide", "strip"],
+        "10 pressoes na regra pura: 10 mudancas, ciclo faixa->lado->escondido",
         str(seq))
 
     # -- ARM 4 -----------------------------------------------------------------
@@ -536,10 +538,13 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
     shows = [surface for kind, surface in events if kind == 'show']
     add(visibility_changes(events) == 10,
         "(a) 10 pressoes -> EXACTAMENTE 10 mudancas de visibilidade", str(events))
-    add(shows == ["strip", "panel", "strip", "panel", "strip"],
-        "(a) os shows alternam strip,panel,strip,panel,strip", str(shows))
-    add([kind for kind, _ in events] == ["show", "hide"] * 5,
-        "(a) cada pressao muda o ecra (show,hide,show,hide,...)",
+    # O CICLO E' DE TRES CASAS (ordem do dono, 2026-11-05: *"o double alt c era
+    # pra mostrar o painel da direita"*): escondido -> faixa -> lado -> escondido.
+    add(shows == ["strip", "panel", "strip", "panel", "strip", "panel", "strip"],
+        "(a) os shows sao a faixa, o lado, a faixa, o lado, ... (ciclo de 3 casas)",
+        str(shows))
+    add([kind for kind, _ in events] == ["show", "show", "hide"] * 3 + ["show"],
+        "(a) cada pressao muda o ecra e nenhuma e' um no-op (show,show,hide,...)",
         str([kind for kind, _ in events]))
     add(host.live_calls == [], "(a) nenhuma das 10 pressoes de Alt+C mexe na legenda",
         str(host.live_calls))
@@ -728,8 +733,11 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
 
     # -- ARM 8 -----------------------------------------------------------------
     print("\nARM 8 -- 4 pressoes de C com o ALT EM BAIXO, pelo caminho REAL")
-    # (f-i) A DECISAO, executada do ficheiro: pressao 1 mostra, 2 esconde,
-    #       3 mostra, 4 esconde. As impares MOSTRAM, as pares ESCONDEM.
+    # (f-i) A DECISAO, executada do ficheiro: pressao 1 mostra a FAIXA, 2 troca
+    #       para o painel da DIREITA, 3 ESCONDE, 4 volta a faixa. E' o ciclo de
+    #       tres casas que a ordem do dono de 2026-11-05 fixou, verbatim: *"meu
+    #       double alt c ta dando hide no painel de baixo. sendo que o double
+    #       alt c era pra mostrar o painel da direita"*.
     host = FakeShell(ns, visible=False, surface='panel')
     spies['log'].lines.clear()
     replay = []
@@ -739,21 +747,28 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
         replay.append((index, host.events[before:]))
     flat = [(index, kind, surface) for index, gained in replay
             for kind, surface in gained]
-    add([kind for _, kind, _ in flat] == ['show', 'hide', 'show', 'hide'],
-        "(f) pressao 1 mostra, 2 esconde, 3 mostra, 4 esconde",
+    add([kind for _, kind, _ in flat] == ['show', 'show', 'hide', 'show'],
+        "(f) pressao 1 mostra a faixa, 2 o lado, 3 esconde, 4 volta a faixa",
         " | ".join(f"pressao {i}: {k} {s}" for i, k, s in flat))
+    # O ARM NAO PODE EXPLODIR SOB MUTACAO (medido 2026-11-05: ele fazia
+    # `flat[1]` e o mutante devolvia menos eventos -- IndexError em vez de RED).
+    second = flat[1] if len(flat) > 1 else (None, None, None)
+    add(second[1] == 'show' and second[2] == 'panel',
+        "(f) DOIS toques seguidos, de escondido, caem no painel da DIREITA",
+        f"pressao 2: {second[1]} {second[2]}")
     add(all(len(gained) == 1 for _, gained in replay),
         "(f) cada pressao fez EXACTAMENTE uma mudanca (nem engolida, nem dupla)",
         str([len(gained) for _, gained in replay]))
-    add([surface for _, kind, surface in flat if kind == 'show'] == ['strip', 'panel'],
-        "(f) os shows sao a faixa (pressao 1) e o painel da direita (pressao 3)",
+    add([surface for _, kind, surface in flat if kind == 'show']
+        == ['strip', 'panel', 'strip'],
+        "(f) os shows sao faixa (1), painel da DIREITA (2) e faixa (4)",
         str([surface for _, kind, surface in flat if kind == 'show']))
     toggles = [line for line in spies['log'].lines
                if line.startswith('HOTKEY_TOGGLE ')]
     add(toggles == ['HOTKEY_TOGGLE step=show surface=strip',
-                    'HOTKEY_TOGGLE step=hide surface=strip',
                     'HOTKEY_TOGGLE step=show surface=panel',
-                    'HOTKEY_TOGGLE step=hide surface=panel'],
+                    'HOTKEY_TOGGLE step=hide surface=panel',
+                    'HOTKEY_TOGGLE step=show surface=strip'],
         "(f) o LOG diz a mesma sequencia, pressao a pressao", str(toggles))
     add(spies['time'].reads == [] and spies['threading'].timers == [],
         "(f) o ALT preso nao muda nada: nada neste caminho le' teclado nem relogio",
@@ -806,14 +821,14 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
 
     presses, actions, lines = run_observer(release_seen=True)
     counts = [line.split('count=')[1].split()[0] for line in lines]
-    add(presses == 4 and actions == ['show', 'hide', 'show', 'hide'],
-        "(f) o ALT em baixo NAO encurta o gesto: 4 presses -> show,hide,show,hide",
+    add(presses == 4 and actions == ['show', 'show', 'hide', 'show'],
+        "(f) o ALT em baixo NAO encurta o gesto: 4 presses -> show,show,hide,show",
         f"presses={presses} accoes={actions}")
     add(counts == ['1', '2', '3', '4'],
         "(f) a linha da entrega diz o INDICE de cada pressao", str(counts))
 
     presses, actions, lines = run_observer(release_seen=False)
-    add(presses == 4 and actions == ['show', 'hide', 'show', 'hide'],
+    add(presses == 4 and actions == ['show', 'show', 'hide', 'show'],
         "(f) uma SOLTA PERDIDA atrasa a pressao seguinte, nunca a engole",
         f"presses={presses} accoes={actions}")
     add([line.split('count=')[1].split()[0] for line in lines]
@@ -924,10 +939,10 @@ def _mutate_gesture_hold(webview: Path):
 
 #: O CICLO INTEIRO, apagado: a regra mostra a faixa e nunca esconde.
 GESTURE_BLANK_PATCH = (
-    "    if visible:\n"
-    "        return None\n"
-    "    return 'panel' if str(surface or '') == 'strip' else 'strip'",
-    "    return 'strip'",
+    "    if not visible:\n"
+    "        return 'strip'\n"
+    "    return 'panel' if str(surface or '') == 'strip' else None",
+    "    return 'strip'  # MUTANT: o ciclo apagado, nenhuma pressao esconde",
 )
 
 #: O LATCH POR COMBINACAO de volta (antes de 2026-11-04): todas as teclas tem de

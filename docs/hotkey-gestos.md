@@ -14,9 +14,26 @@
 > painels deixa alt c. faz os paineis alternarem mesmo se eu deixar alt apertado
 > o tempo inteiro e spammando c. alterna entre show e hide."*
 
+> **CICLO DE TRÊS CASAS (corrigido a 2026-11-05, ordem do dono, verbatim):**
+> *"meu double alt c ta dando hide no painel de baixo. sendo que o double alt c
+> era pra mostrar o painel da direita"*. O ciclo anterior escondia no segundo
+> toque e só mostrava o painel da direita depois de um hide pelo meio — com dois
+> painéis, um ciclo de duas casas nunca mostra os dois. Ordem em vigor:
+>
+> | pressão | ecrã |
+> |---|---|
+> | 1 (de escondido) | faixa de **baixo** |
+> | 2 | painel da **direita** |
+> | 3 | **escondido** |
+> | 4 | faixa de baixo outra vez |
+>
+> Um toque é instantâneo (nenhum relógio no caminho) e DOIS toques seguidos
+> caem no painel da direita. `_main/altc-gesture-oracle.py` — 97 arms, e o
+> mutante `blank-alternation` (o ciclo apagado) tem de dar RED.
+
 | tecla | o que faz | código |
 |---|---|---|
-| **Alt+C** | **um passo** do ciclo dos painéis, por pressão: escondido → faixa de baixo, faixa → escondido, escondido → painel da direita, painel → escondido | `SottoShell.hotkey_pressed` → `_hotkey_resolve` → `hotkey_gesture.next_surface` |
+| **Alt+C** | **um passo** do ciclo de três casas, por pressão: escondido → faixa de baixo → painel da direita → escondido | `SottoShell.hotkey_pressed` → `_hotkey_resolve` → `hotkey_gesture.next_surface` |
 | **Ctrl+Space** | liga/desliga a **legenda ao vivo**, uma vez por pressão, e **não toca em painel nenhum** | `SottoShell.hotkey_live` → `_set_live_enabled` |
 
 **Um `WM_HOTKEY` = um passo, imediato.** Não há janela de espera, não há limiar de

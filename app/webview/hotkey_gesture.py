@@ -193,17 +193,40 @@ def hotkey_numbers():
 
 
 def next_surface(visible, surface):
-    """UM Alt+C -> UM passo. Devolve o que MOSTRAR, ou `None` para esconder.
+    """UM Alt+C -> UM passo do ciclo. Devolve o que MOSTRAR, ou `None` p/ esconder.
+
+    O CICLO TEM TRES CASAS, E A ORDEM E' A DO DONO (2026-11-05), verbatim:
+    *"meu double alt c ta dando hide no painel de baixo. sendo que o double alt
+    c era pra mostrar o painel da direita"*.
+
+        escondido --1o toque--> painel de BAIXO (strip)
+        strip     --2o toque--> painel da DIREITA (panel)
+        panel     --3o toque--> escondido
+
+    PORQUE ASSIM, e nao o 1-toque/2-toques por JANELA de tempo de 2026-10-21:
+    essa regra ADIA a accao ate' a janela fechar (o dono mediu 460 ms de espera
+    dos quais 8 ms eram trabalho, e pediu *"faz os paineis alternarem mesmo se
+    eu deixar alt apertado o tempo inteiro e spammando c"*). Um ciclo imediato
+    da' as duas coisas sem relogio nenhum: um toque e' instantaneo, e DOIS
+    toques rapidos caim no painel da direita -- que e' exactamente o que ele
+    pediu hoje. Aplicar `hide` no segundo toque (o comportamento que ele
+    reportou) e' o que o ciclo anterior fazia: com o painel visivel, qualquer
+    toque escondia.
 
     `visible` e' o que a JANELA mede (`IsWindowVisible`), nunca uma intencao: um
     `show` que falhou deixou o painel escondido e o ciclo tem de continuar de
     onde o dono esta' a ver.
 
     `surface` e' a ultima superficie APLICADA (`surface_applied`), e ela
-    sobrevive ao `hide` de proposito -- e' essa memoria que faz o show seguinte
-    alternar. Por isso o `hide_panel` do shell NAO limpa `surface_applied`
-    (o oraculo prende as duas coisas juntas).
+    sobrevive ao `hide` de proposito. Por isso o `hide_panel` do shell NAO
+    limpa `surface_applied` (o oraculo prende as duas coisas juntas) -- e por
+    isso o escondido volta sempre ao de BAIXO: a casa 1 nao depende de memoria.
+
+    O CICLO E' O DE 3 CASAS, e nao "alterna entre 2": com dois paineis, um
+    ciclo de 2 nunca mostra os dois -- era o defeito medido (`panel` so'
+    aparecia se o painel tivesse sido escondido desde o `strip`, o que um
+    toque unico nunca faz).
     """
-    if visible:
-        return None
-    return 'panel' if str(surface or '') == 'strip' else 'strip'
+    if not visible:
+        return 'strip'
+    return 'panel' if str(surface or '') == 'strip' else None

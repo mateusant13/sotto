@@ -14842,6 +14842,17 @@ class SottoShell:
     #: "o ecra esta' atrasado" de "o painel estava a esperar, de proposito".
     CAPTION_HOLD_BAND_MS = (1490, 1520)
 
+    #: ATE' QUE IDADE UMA LINHA AINDA E' LEGENDA (2026-11-05). Usado no unico
+    #: sitio que devolve uma linha ja' pintada ao ecra: o `on` do interruptor
+    #: (`_set_live_enabled`). O teto tem de ficar ABAIXO da varredura de
+    #: silencio (`no-caption-for-6.0s`), senao ligar a legenda depois de um
+    #: minuto calado despejava uma frase velha -- o jumpscare que o
+    #: `_blank_caption_window` existe para matar. Do outro lado, tem de cobrir
+    #: o intervalo medido entre duas linhas vivas no log dele (0,5-0,6 s por
+    #: `CAPTION_APPLIED`): 2 s cobrem quatro linhas e nao cobrem uma pausa de
+    #: fala, que e' onde as duas coisas se separam.
+    CAPTION_REPLAY_MAX_S = 2.0
+
     def _caption_lag_note(self, audio_ms, queue_ms=0, kind='partial'):
         """Guarda a idade de UMA legenda pintada e publica o resumo da janela.
 
@@ -14953,6 +14964,25 @@ class SottoShell:
             log(f'CAPTION_DROP_EPOCH enq={epoch} cur={cur} '
                 f'text={json.dumps((new_text or "")[:60])}')
             return
+        # O SEGUNDO GUARDA DO INTERRUPTOR, E ELE E' UM RACE (2026-11-05).
+        #
+        # MEDIDO no log dele: sete `HOTKEY_PRESSED role=live count=1..7` entre
+        # 16:15:38.096 e 16:15:40.484, cada um com o seu `LIVE_ENABLED` a
+        # alternar; o ultimo diz `on=false`, o botao pinta OFF -- e a legenda
+        # continuava no ecra. A causa e' esta funcao, que pintava o slot sem
+        # perguntar nada: um texto enfileirado ANTES do desligar (o
+        # `push_caption_to_window` ja' o tinha aceitado com a flag ligada)
+        # chega aqui DEPOIS do `ov.show(False)` e chama `ov.show(True)` --
+        # a janela volta a aparecer com o interruptor em OFF, e nada a
+        # esconde outra vez ate' ele carregar na tecla de novo. O guarda do
+        # `push` corre na thread que ENFILEIRA; este corre na que PINTA, e
+        # entre as duas ha' o tempo do post. A condicao do dono tem de ser
+        # lida no instante da pintura, nao no do enfileiramento.
+        if not getattr(self, '_caption_wanted', False):
+            log(f'CAPTION_DROP_SWITCH epoch={epoch} '
+                f'text={json.dumps((new_text or "")[:60])} '
+                'why=live-off -- o interruptor foi lido na PINTURA, nao no enfileirar')
+            return
         age_ms = int((time.time() - enqueued) * 1000)
         # QUANTO O AUDIO DESTA LINHA E' MAIS VELHO DO QUE O ECO (2026-11-04). O
         # `tap_ms` do worker diz quando o bloco que fechou a linha entrou; a
@@ -14986,6 +15016,12 @@ class SottoShell:
             # prefixo ja revelado) e o hwnd. Nao muda o desenho: escreve no log.
             was_blank = not (getattr(self, '_caption_painted', '') or '').strip()
             self._caption_painted = new_text or ''
+            # QUANDO ESTE TEXTO FOI POSTO NO ECRAN (2026-11-05). Sem o carimbo,
+            # a unica coisa que se sabe de `_caption_painted` e' o que ele diz,
+            # nao quando o disse -- e o `_set_live_enabled` precisa exactamente
+            # disso para decidir se a linha que ele devolve ao ecra ao ligar
+            # ainda e' a LEGENDA ou ja e' HISTORICO.
+            self._caption_painted_at = time.time()
             if was_blank and (new_text or '').strip():
                 log(f'CAPTION_PAINT instant={str(bool(instant)).lower()} '
                     f'hwnd={ov.hwnd} text={json.dumps(new_text[:60])}')
@@ -15337,6 +15373,12 @@ class SottoShell:
                 self._post(_show)
             else:
                 self._caption_window_shown = False
+                # O SLOT MORRE COM O INTERRUPTOR (2026-11-05). O guarda novo
+                # do `_drain_caption_pending` ja' recusa pintar com a flag em
+                # OFF; limpar o slot aqui e' a outra metade -- um texto que
+                # ninguem vai pintar nao fica a espera de a flag voltar para
+                # aparecer como uma legenda que ele nunca viu chegar.
+                self._caption_pending = None
                 self._post(lambda: ov.show(False))
             # E O PAINEL ESCONDE A LEGENDA DELE -- MAS SO QUANDO ESTA JANELA ESTA MESMO
             # A MOSTRAR. O dono pediu a legenda INDEPENDENTE do painel (*"nao acoplado"*),
@@ -17165,6 +17207,38 @@ class SottoShell:
             # trocou a de 2026-10-17, e o `hide_panel('caption-on')` que vivia
             # aqui era a causa do "o alt c nao ta ligando ou desligando bem".
             self.show_caption_window(on)
+            # LIGAR NAO ESPERA PELA PROXIMA LINHA (2026-11-05). MEDIDO no uso
+            # dele, verbatim: *"eu desativei por uns 20 segundos a legenda ao
+            # vivo ou mais, e ao ativar ela, ela lavou 1 segundo ou 1 segundo e
+            # meio pra dar display na tela. ao desativar e ativar rapidamente
+            # apos isso, ela apareceu na tela INSTANTANEAMENTE"*. O segundo
+            # `on` era instantaneo por uma unica razao: havia uma linha fresca
+            # para pintar. O primeiro esperava a proxima legenda chegar
+            # (~2 chunks de 560 ms = o segundo e meio que ele mediu), porque
+            # `show_caption_window(True)` so' MOSTRA a janela -- sem pixel
+            # dentro ela nao aparece (`caption_overlay.show` devolve cedo com
+            # `_blank`).
+            #
+            # A LINHA SO' VOLTA SE AINDA FOR LEGENDA. O teto tem de ser menor
+            # que a varredura de silencio (6 s, `no-caption-for-6.0s`), senao
+            # ligar a legenda depois de um minuto em silencio despejava no ecra
+            # uma frase velha -- o "jumpscare" que `_blank_caption_window`
+            # existe para matar. 2 s cobrem o intervalo entre duas linhas vivas
+            # (medido no log dele: `CAPTION_APPLIED` a cada 0,5-0,6 s) e nao
+            # cobrem uma pausa de fala.
+            if on:
+                _txt = (getattr(self, '_caption_painted', '') or '').strip()
+                _at = float(getattr(self, '_caption_painted_at', 0.0) or 0.0)
+                _age_ms = int((time.time() - _at) * 1000.0) if _at else -1
+                if _txt and 0 <= _age_ms <= int(self.CAPTION_REPLAY_MAX_S * 1000):
+                    log(f'CAPTION_WINDOW_REPLAYED age_ms={_age_ms} '
+                        f'text={json.dumps(_txt[:60])} '
+                        'why=ligar-nao-espera-a-proxima-linha')
+                    self.push_caption_to_window(_txt, previous=None, instant=True)
+                else:
+                    log(f'CAPTION_WINDOW_REPLAY_SKIPPED age_ms={_age_ms} '
+                        f'text={json.dumps(_txt[:40])} -- ou nao ha linha, ou ela ja '
+                        'e historia e nao legenda')
         except Exception as exc:  # noqa: BLE001
             log(f'LIVE_ENABLED_FAILED on={str(on).lower()} error={exc!r}')
 

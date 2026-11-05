@@ -446,9 +446,21 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 13:2x):** `_main\_audit-verify-all.cmd` = **245095 B**,
-  **3022 CRLF** / 0 bare LF, sha256 `B788F58E3ED2C3C78DF6517D73244FC6FEEA5A48D65434EE139055C95DBC9677`.
-  (Quarenta e uma linhas a mais do que o pin de 241497 B: o PRAZO POR PASSO e o TECTO DA CORRIDA.
+- **PIN do ficheiro (medido 2026-11-05, 16:3x):** `_main\_audit-verify-all.cmd` = **249653 B**,
+  **3077 CRLF** / 0 bare LF, sha256 `9DFF0FC1C8D4D8DE92EB5DFD7704F895A8BF7D5846915ADEFD663190F903CF97`.
+  (Vinte e oito linhas a mais do que o pin de 245095 B: TRES pares novos, cada um com o seu
+  `red-as-expected`, todos nascidos de defeitos que o dono viu na sessao dele hoje.
+  `caption-switch-race` -- *"o botao fala que a legenda ta off, mas ta on"*: o texto aceito
+  ANTES do desligar chegava ao `_drain_caption_pending` DEPOIS do `ov.show(False)` e chamava
+  `ov.show(True)` (a flag era lida no ENFILEIRAR, nao na PINTURA); o oraculo executa as duas
+  funcoes REAIS por AST e mede tambem o `on` que devolve a linha fresca ao ecra sem esperar a
+  proxima (o 1-1,5 s que ele mediu; 2 s e o teto, abaixo da varredura de 6 s).
+  `word-glue` -- *"muito rapido"* e a legenda sai `very fa st` / `fuck er`: o `▁` e posicional,
+  nao lexical (18 de 19 chunks de `_main/word-split-trace.json`), e a cura cola cauda de 2
+  letras com vogal a cabeca sem vogal, mais um `s` sozinho a esquerda (297 casos no log).
+  `punct-prosody` -- a ordem dele de hoje: pontuacao inferida do timing/energia da voz, com
+  identidade quando nao ha pausas medidas.)
+  (O pin anterior, de 245095 B / 3022 CRLF, era o do PRAZO POR PASSO e do TECTO DA CORRIDA.
   O par do tecto corre no FIM da lista, imediatamente antes do sumario, porque ele le'
   `_cache\battery-steps.json` -- que a corrida escreve passo a passo. Em qualquer outro sitio
   mediria "a corrida ate' aqui", um numero menor do que o verdadeiro: a mesma classe de mentira
