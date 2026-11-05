@@ -446,8 +446,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 23:5x):** `_main\_audit-verify-all.cmd` = **232945 B**,
-  **2877 CRLF** / 0 bare LF, sha256 `A0883032176BE9169D828BDE078558A104C1FFA99CA0D0E6E96714945ACA52AD`.
+- **PIN do ficheiro (medido 2026-11-05, 00:1x):** `_main\_audit-verify-all.cmd` = **234270 B**,
+  **2891 CRLF** / 0 bare LF, sha256 `083AEDBEE62B491222A204E9ED52E4A19064A49CD56B1CF7D9C09089FB0B75A2`.
+  (Catorze linhas a mais do que o pin de 232945 B: o par `load-bg-window` + o seu `red-as-expected`,
+  o prazo da JANELA DE FUNDO da carga. Nasceu do recibo de outra lane
+  (`_main/receipt-20261105-extrema.md`, SottoAudit3): a janela `PROCESS_MODE_BACKGROUND_BEGIN`
+  esticava 1,7 s de CPU para **33,96 s** de parede sem comprar **0,2 %** de memoria, e agora tem
+  prazo de 0,75 s (`LOAD_BG_MAX_S`), com `load_bg_closed_by` a dizer qual das duas saidas fechou a
+  janela. O recibo declara tres bracos que NENHUM passo executava; o oraculo
+  `_main/load-bg-window-oracle.py` conduz as funcoes REAIS e mede os seis (A1-A6), incluindo um
+  timer de 50 ms de verdade, e o `--neg-arm` derruba cada mutacao pela SUA arm (3/3).)
   (Catorze linhas a mais do que o pin de 231597 B: o par `parakeet-ultra` + o seu `red-as-expected`,
   a comparacao de motores de FUNDO. O candidato `parakeet-ultra` foi medido contra o `redux` no
   MESMO audio e RECUSADO: WER identico (0,1154 — os mesmos 2 subs + 1 ins), 3,5x mais lento

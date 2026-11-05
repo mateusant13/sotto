@@ -1282,6 +1282,20 @@ REM mais lento (3,626 s -> 12,873 s no clipe de 15 s), 2,1x de RSS (1 793 -> 3 8
 REM clipe de 90 s devolve 9 palavras onde o redux devolve 62. O recibo e'
 REM `_main/receipt-20261104-parakeet-ultra-refused.md`. O passo e' `heavy` porque carrega 2,4 GB; o
 REM braco negativo NAO carrega modelo nenhum (prova o juiz de WER: 9/9) e por isso e' `always`.
+REM O PRAZO DA JANELA DE FUNDO DA CARGA (2026-11-05). O recibo do SottoAudit3
+REM (`_main/receipt-20261105-extrema.md`) mede o efeito -- pior `load_s` 33,96 s -> 4,92 s, porque o
+REM `PROCESS_MODE_BACKGROUND_BEGIN` esticava 1,7 s de CPU para 34 s sem comprar 0,2 % de memoria -- e
+REM declara tres bracos no seu §5.3 que NENHUM passo executava: `-1` reproduz o comportamento antigo,
+REM `0` desarma a janela, e a segunda chamada a `close` e' no-op. Um braco que so' existe na prosa
+REM nao e' um braco. Este par conduz as funcoes REAIS do worker (6 arms, sem carregar peso nenhum).
+if exist _main\load-bg-window-oracle.py (
+call :step always load-bg-window 0 "_main\load-bg-window-oracle.py;worker\sotto_worker.py" "%OUT%\load-bg-window.log" python _main\load-bg-window-oracle.py
+call :record load-bg-window !STEP_RC!
+) else ( call :record load-bg-window MISSING )
+if exist _main\load-bg-window-oracle.py (
+call :step always red-as-expected-load-bg-window 1 "_main\load-bg-window-oracle.py;worker\sotto_worker.py" "%OUT%\load-bg-window-neg.log" python _main\load-bg-window-oracle.py --neg-arm
+call :expectred red-as-expected-load-bg-window !STEP_RC! "%OUT%\load-bg-window-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-load-bg-window MISSING "%OUT%\load-bg-window-neg.log" "NEG-ARM: PASS" )
 if exist _main\parakeet-ultra-oracle.py (
 call :step heavy parakeet-ultra 0 "_main\parakeet-ultra-oracle.py;worker\parakeet_ultra.py;worker\ultra_export.py;app\worker\redux_live.py" "%OUT%\parakeet-ultra.log" python _main\parakeet-ultra-oracle.py --engine all
 call :record parakeet-ultra !STEP_RC!
