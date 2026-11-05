@@ -113,6 +113,69 @@ def run_sequence(shell_mod, presses, poll_s=0.002, settle=0.05):
     return fired
 
 
+def _wiring_arm(shell_mod):
+    """(nome, ok, nota): o papel -> a CLASSE, medido na funcao que o faz."""
+    made = []
+
+    class _Recorder(object):
+        registered = True
+        register_failed = False
+        register_error = 0
+
+        def __init__(self, accelerator, callback, *a, **kw):
+            self.accelerator = accelerator
+            self.kw = kw
+            made.append((type(self).__name__, kw.get('role')))
+
+        def start(self):
+            return self
+
+        def wait_ready(self, _timeout=None):
+            return True
+
+        def stop(self):
+            return None
+
+        def join(self, _timeout=None):
+            return None
+
+    classes = {}
+    for name in ('PassiveHotkeyThread', 'LiveHotkeyThread', 'HotkeyThread'):
+        classes[name] = type(name, (_Recorder,), {})
+    saved = {n: getattr(shell_mod, n, None) for n in classes}
+    for n, cls in classes.items():
+        setattr(shell_mod, n, cls)
+
+    def _shell(gaming):
+        s = type('S', (), {})()
+        s.hotkey_live = lambda: None
+        s.hotkey_pressed = lambda: None
+        if gaming is not None:
+            s.gaming = gaming
+        return s
+
+    _gaming = type('G', (), {'is_gaming': staticmethod(lambda: False)})()
+    live_cls, panel_cls, fallback_cls = [], [], []
+    try:
+        shell_mod.arm_hotkey_role(_shell(_gaming), 'live', 'Ctrl+Space', [])
+        shell_mod.arm_hotkey_role(_shell(_gaming), 'panels', 'Alt+C', [])
+        live_cls = [c for c, r in made if r == 'live']
+        panel_cls = [c for c, r in made if r == 'panels']
+        made[:] = []
+        shell_mod.arm_hotkey_role(_shell(None), 'live', 'Ctrl+Space', [])
+        fallback_cls = [c for c, r in made if r == 'live']
+    finally:
+        for n, obj in saved.items():
+            if obj is not None:
+                setattr(shell_mod, n, obj)
+    ok = (live_cls[:1] == ['LiveHotkeyThread']
+          and panel_cls[:1] == ['HotkeyThread']
+          and fallback_cls[:1] == ['PassiveHotkeyThread'])
+    return ('wiring-by-role', ok,
+            'live=%s panels=%s live-sem-detector=%s'
+            % (live_cls[:1], panel_cls[:1], fallback_cls[:1]))
+
+
 CTRL, SPACE = 0x11, 0x20
 
 
@@ -159,12 +222,17 @@ def arms(shell_mod):
     out.append(('does-not-register', (not registers) and declared,
                 'RegisterHotKey=%s passes_through=%s' % (registers, declared)))
 
-    # 6. FIACAO POR PAPEL. `live` -> observado; `panels` -> registado.
-    wired_live = re.search(r"if role == 'live':\s*\n\s*thread = PassiveHotkeyThread\(",
-                           text) is not None
-    wired_panels = re.search(r"else:\s*\n\s*thread = HotkeyThread\(", text) is not None
-    out.append(('wiring-by-role', wired_live and wired_panels,
-                'live->passive=%s panels->registered=%s' % (wired_live, wired_panels)))
+    # 6. FIACAO POR PAPEL, MEDIDA PELA FUNCAO REAL (2026-11-05).
+    #
+    # ESTA ARM LIA TEXTO (`if role == 'live':` seguido de `PassiveHotkeyThread(`)
+    # e por isso mentia nos dois sentidos: ficou VERMELHA quando a ordem do dono
+    # (`Ctrl+Space` = legenda, `Alt+C` = paineis) mudou o desenho -- `live` passou
+    # a ser `LiveHotkeyThread` com detector de jogo e o `PassiveHotkeyThread` ficou
+    # como RECUO -- sem que nada estivesse quebrado; e teria ficado VERDE com a
+    # fiacao trocada desde que o texto casasse. O papel -> a classe e' uma decisao
+    # que se EXECUTA: `arm_hotkey_role` real, com os tres threads substituidos por
+    # registadores, zero `RegisterHotKey`, zero tecla tomada.
+    out.append(_wiring_arm(shell_mod))
 
     # 7. A TECLA DE PEDRA RE-ARMA SOZINHA (2026-11-03). A evidencia do produto:
     #    `HOTKEY_PRESSED role=live count=1 source=observed` DUAS vezes na historia

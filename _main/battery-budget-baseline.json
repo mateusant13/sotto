@@ -1,0 +1,9 @@
+{
+  "measured": "2026-11-05",
+  "over_deadline": [
+    "panel-hidden-at-startup-oracle"
+  ],
+  "steps": 320,
+  "target_s": 60.0,
+  "total_s": 5801.2
+}

@@ -288,12 +288,23 @@ class _FakeConn:
     def __init__(self, payload):
         self.payload = payload
         self.sent = 0
+        self.last_id = 1
 
-    def send(self, _data):
+    def send(self, data):
+        # O ID E' ECOADO (medido 2026-11-05). A sonda de "quem esta' a tocar"
+        # passou a pedir `Runtime.evaluate` com IDs proprios, e este fake respondia
+        # sempre `id=1`: o laco `while True` do `_ws_eval` esperava um id que nunca
+        # chegava e GIRAVA PARA SEMPRE -- o passo nao escrevia linha nenhuma, dava
+        # FAIL e a bateria o cortava no prazo (240 s). Um fake que responde a uma
+        # pergunta que ninguem fez e' a forma mais barata de testar nada.
         self.sent += 1
+        try:
+            self.last_id = json.loads(data).get("id", self.last_id)
+        except (TypeError, ValueError):
+            pass
 
     def recv(self):
-        return json.dumps({"id": 1,
+        return json.dumps({"id": self.last_id,
                            "result": {"result": {"value": self.payload}}})
 
     def settimeout(self, _t):
@@ -500,7 +511,15 @@ def main(argv=None):
         bad += 0 if ok else 1
     print("VERDICT: %s (%d/%d)"
           % ("PASS" if not bad else "FAIL", len(rows) - bad, len(rows)))
-    return 0 if not bad else 1
+    # A SONDA SAI A FORCA DEPOIS DO VEREDICTO (medido 2026-11-05). O veredicto era
+    # impresso e o processo ficava preso num fio do modulo que ela exercita: o passo
+    # gastou 21,6 min uma vez e 240 s (o prazo da bateria) na corrida de hoje, sempre
+    # DEPOIS de ja' ter dito o resultado. Um instrumento que nao sai nao entrega
+    # veredicto nenhum -- a linha acima e' a evidencia, e o teclado do processo morto
+    # nao muda a resposta.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0 if not bad else 1)
 
 
 if __name__ == "__main__":

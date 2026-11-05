@@ -36,6 +36,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 PANEL = REPO / 'app' / 'panel' / 'panel.js'
+# A LEI DAS JANELAS (AGENTS.md): um filho sem esta bandeira pode abrir
+# consola na tela do dono. O censo `console-window-audit.py` recusa o sitio.
+CREATE_NO_WINDOW = 0x08000000
 NODE = 'node'
 
 
@@ -97,7 +100,8 @@ def run_arms(fn_src):
         (tmp / 'cases.json').write_text(json.dumps(ARMS), encoding='utf-8')
         (tmp / 'drv.js').write_text(NODE_DRIVER, encoding='utf-8')
         proc = subprocess.run([NODE, str(tmp / 'drv.js'), str(tmp / 'fn.js'), str(tmp / 'cases.json')],
-                              capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=120)
+                              capture_output=True, text=True, encoding='utf-8', errors='replace',
+                              timeout=120, creationflags=CREATE_NO_WINDOW)
         return proc.returncode, (proc.stdout or '') + (proc.stderr or '')
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

@@ -21,6 +21,43 @@ incremental** é o próprio cache: só os passos cujo conteúdo mudou correm.
 **VERDE** (rc=0).
 
 
+### 4-a. O relógio: prazo por passo e tecto da corrida (2026-11-05)
+
+Ordem do dono, verbatim: *"por que é completamente BURRO voce levar mais que um minuto pra rodar
+COISAS JA GARANTIDAS EM VARIOS LUGARES DA BATERIA"*.
+
+**O QUE ESTAVA MEDIDO ANTES DE A REGRA NASCER** (`_cache\battery-steps.json`, 320 passos):
+**5 801,2 s (96,7 min)** de tempo de passo, **86,0 % em 20 passos**, o pior **3 781,6 s**
+(`panel-hidden-at-startup-oracle`), e um segundo passo preso de **21,6 min**
+(`youtube-cdp-boot-oracle`). Nenhum dos dois tinha prazo, e a corrida que os apanhou **nunca
+escreveu sumário** — o `_battery-summary.txt` que ficou no disco era o da corrida ANTERIOR, lido
+como se fosse o veredicto de agora. Os 254 passos abaixo de 5 s somam **277,8 s (4,8 %)**: o custo
+não estava nas provas baratas.
+
+**`_main\step-deadline.py`** — o prazo por passo. `:step_run` deixou de correr `!S_CMD!` sem
+relógio: corre-o sob este wrapper com `SOTTO_STEP_DEADLINE_S=240`. No corte, o **JOB** do passo é
+terminado (`TerminateJobObject`), o rc é **124** (código que nenhum oráculo devolve por acidente) e
+o log do passo leva `STEP-DEADLINE exceeded step=<nome> seconds=<N> killed=<n> job=yes`. O filho
+escreve no stdout do wrapper — o log continua a ser a evidência (a primeira versão usava `DEVNULL`
+e apagava o veredicto: medido, o filho escrevia `ran` e o log ficava vazio).
+*Preço medido:* **95 ms por passo executado** (~24 s numa corrida inteira).
+*Selftest:* 5 arms; o A5 exige que um processo **alheio** sobreviva ao corte — nasceu de um defeito
+real, a primeira versão matava por caminhada de árvore e matou **dois `cargo.exe` de outra lane**
+(um `conhost.exe` partilhado devolve processos que o instrumento nunca largou).
+
+**`_main\battery-budget-oracle.py`** — o tecto da corrida, como **ratchet** sobre
+`_main\battery-budget-baseline.json`: o total não pode crescer mais de **5 %** (medido
+2026-11-05) e nenhum passo novo pode passar dos 240 s sem estar declarado como dívida. O TARGET de
+**60 s** é impresso com a distância — `RATCHET-OK ... TARGET NOT MET (gap 5741.2s de 60s)` — porque
+um `PASS` ao lado de 5 741 s de gap seria o verde que não mede nada. O `--neg-arm` muta a **leitura**
+(infla um passo 10×) e exige o RED do mesmo `judge`. O par corre no **fim** da lista, imediatamente
+antes do sumário: em qualquer outro sítio leria `_cache\battery-steps.json` a meio, isto é "a corrida
+até aqui", um número menor do que o verdadeiro.
+
+**A lei completa (as seis propriedades, e o dever de transporte para o `AGENTS.md`) vive em
+`AGENTS.md` §"A LEI DOS TESTES"**; a fonte longa, com os detectores D45–D52, na skill
+`extreme-optimization-audit` §L12-bis/§L12-ter.
+
 ### 4-bis. A BATERIA NÃO ABRE O MUNDO DO DONO (a garantia, 2026-10-22)
 
 O dono reclamou, **verbatim** (sessão `ses_ea36ec6efffeE7E32m9COGhkxL`, 2026-10-21):

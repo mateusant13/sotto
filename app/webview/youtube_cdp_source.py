@@ -851,6 +851,20 @@ class CdpCaptionSource:
                       % (video_id_from_url(target.get('url') or '') or '-',
                          why2, why, len(tabs or ())))
             return target, why2
+        # O ID DECLARADO NAO ESTA' ABERTO: QUEM MANDA SAO AS ABAS (2026-11-04).
+        # Sem esta queda o laco fecha-se em si mesmo -- o id filtra a escolha,
+        # sem escolha nao ha' foto, e sem foto o id nunca se cura. Medido: 164
+        # linhas com `source=other-video` e 13 min de ecra vazio.
+        if target is None and self._video_id:
+            target, why = pick_target(tabs, '', self._window_title)
+            if target is not None:
+                why = 'stale-declared:' + str(why)
+        if target is not None:
+            self._note = why
+            self._log('YOUTUBE_TARGET stale pick=%s why=%s declared=%s tabs=%d'
+                      % (video_id_from_url(target.get('url') or '') or '-',
+                         why, self._video_id or '-', len(tabs or ())))
+            return target, why
         self._note = str(why or why2)
         return None, self._note
 

@@ -94,6 +94,15 @@ cd /d "%ROOT%"
 set "OUT=%ROOT%\_main\_audit-verify"
 if not exist "%OUT%" mkdir "%OUT%"
 set "CACHE_STATE=%ROOT%\_cache\battery-steps.json"
+REM THE PER-STEP CEILING (measured 2026-11-05). `panel-hidden-at-startup-oracle`
+REM spent 3 781,6 s (63 min) in a single step and `youtube-cdp-boot-oracle` 21,6 min,
+REM and nothing in this file had a clock: `!S_CMD!` ran until it finished. A step that
+REM hangs turns the run into wall time AND leaves the PREVIOUS run's summary on disk
+REM to be read as this one's verdict. Every step now runs under a deadline
+REM (`_main\step-deadline.py`, rc=124 on expiry, child TREE killed, never green).
+REM 240 s is above every legitimate step (max 168 s, device-silence) and below the
+REM two measured hangs. SOTTO_STEP_DEADLINE_S overrides it for one run.
+if not defined SOTTO_STEP_DEADLINE_S set "SOTTO_STEP_DEADLINE_S=240"
 
 REM ===========================================================================
 REM  THE BATTERY'S OWN PRIORITY -- BELOW NORMAL.
@@ -407,6 +416,20 @@ if exist _main\hidden-launch-oracle.py (
   call :step red-as-expected-hidden-launch 1 "_main\hidden-launch-oracle.py;_main\hidden-launch.py" "%OUT%\hidden-launch-neg.log" python _main\hidden-launch-oracle.py --neg-arm
   call :expectred red-as-expected-hidden-launch !STEP_RC! "%OUT%\hidden-launch-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-hidden-launch MISSING "%OUT%\hidden-launch-neg.log" "NEG-ARM PASS" )
+REM O PRAZO DE CADA PASSO (medido 2026-11-05). `:step_run` corre o comando sob
+REM `_main\step-deadline.py` e o corte mata o JOB do passo: rc=124, nunca verde.
+REM Nascido de dois passos presos -- 3 781,6 s e 21,6 min -- que deixaram a corrida
+REM sem sumario e o sumario ANTERIOR no disco a ser lido como o de agora. O preco
+REM medido do wrapper e' 95 ms por passo executado (~24 s numa corrida inteira); o
+REM filho escreve no NOSSO stdout, logo o log do passo continua a ser a evidencia.
+if exist _main\step-deadline.py (
+  call :step step-deadline 0 "_main\step-deadline.py;_main\hidden-launch.py" "%OUT%\step-deadline.log" python _main\step-deadline.py --selftest
+  call :record step-deadline !STEP_RC!
+) else ( call :record step-deadline MISSING )
+if exist _main\step-deadline.py (
+  call :step red-as-expected-step-deadline 1 "_main\step-deadline.py;_main\hidden-launch.py" "%OUT%\step-deadline-neg.log" python _main\step-deadline.py --neg-arm
+  call :expectred red-as-expected-step-deadline !STEP_RC! "%OUT%\step-deadline-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-step-deadline MISSING "%OUT%\step-deadline-neg.log" "NEG-ARM: PASS" )
 REM
 REM O FEED SEM PAGINA (2026-11-04). O pipeline de legendas arranca ANTES do
 REM WebView2, de proposito; quando o motor NAO inicializa (`WEBVIEW2_INIT_FAILED
@@ -2588,6 +2611,23 @@ call :step always ctrlspace-swallow-os 0 "_main\ctrlspace-swallow-probe.py" "%OU
 call :record ctrlspace-swallow-os !STEP_RC!
 ) else ( call :record ctrlspace-swallow-os MISSING )
 
+REM A CORRIDA TEM DE ESTAR FECHADA QUANDO ESTE PASSO LE' O RELOGIO. Ele le'
+REM `_cache\battery-steps.json`, que a corrida escreve passo a passo: em qualquer
+REM outro sitio mediria "a corrida ate' aqui", que e' um numero menor do que o
+REM verdadeiro -- a mesma classe de mentira que este portao existe para apanhar.
+REM O TECTO DA CORRIDA (2026-11-05). A bateria nao tinha portao nenhum sobre o RELOGIO:
+REM medido, 5 801,2 s no total, 86 % em 20 passos, o pior 3 781,6 s. `battery-budget-oracle`
+REM e' um RATCHET (o total nao pode crescer >5 % sobre o baseline e nenhum passo novo pode
+REM passar dos 240 s) e imprime o TARGET de 60 s com a distancia -- `RATCHET-OK` nunca se
+REM apresenta como "rapido". O `--neg-arm` muta a LEITURA (infla um passo 10x) e exige o RED.
+if exist _main\battery-budget-oracle.py (
+  call :step battery-budget 0 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json;_cache\battery-steps.json" "%OUT%\battery-budget.log" python _main\battery-budget-oracle.py
+  call :record battery-budget !STEP_RC!
+) else ( call :record battery-budget MISSING )
+if exist _main\battery-budget-oracle.py (
+  call :step red-as-expected-battery-budget 1 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json;_cache\battery-steps.json" "%OUT%\battery-budget-neg.log" python _main\battery-budget-oracle.py --neg-arm
+  call :expectred red-as-expected-battery-budget !STEP_RC! "%OUT%\battery-budget-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-battery-budget MISSING "%OUT%\battery-budget-neg.log" "NEG-ARM: PASS" )
 echo.
 echo =============== BATTERY SUMMARY ===============
 echo steps    : !N!   gate=!GATES!  control=!CTRLS!  skipped=!SKIPN!  expect-red=!REDS!  missing=!MISSINGN!  cached=!CACHEDN!
@@ -2760,7 +2800,8 @@ REM THE CLOCK. A MARKER FILE, not another process: the battery already starts a
 REM python for every step, and one more per step would be a tax on every run
 REM to serve one mode.
 echo.>"%CACHE_STATE%.t0"
-!S_CMD! > "!S_LOG!" 2>&1
+set "SOTTO_STEP_NAME=!S_NAME!"
+python _main\step-deadline.py --seconds %SOTTO_STEP_DEADLINE_S% -- !S_CMD! > "!S_LOG!" 2>&1
 set "STEP_RC=!ERRORLEVEL!"
 python _main\_stepcache.py record --step "!S_NAME!" --expect-rc !S_EXPECT! --deps "!S_DEPS!" --rc !STEP_RC! --log "!S_LOG!" --state "%CACHE_STATE%" --t0 "%CACHE_STATE%.t0" >nul 2>&1
 exit /b 0

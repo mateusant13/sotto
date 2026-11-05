@@ -446,8 +446,30 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 12:1x):** `_main\_audit-verify-all.cmd` = **241497 B**,
-  **2981 CRLF** / 0 bare LF, sha256 `FD5BE5165988B67E8AB676EF6DB9B37D9778FD865E91113B5C000F2C33BE20AD`.
+- **PIN do ficheiro (medido 2026-11-05, 13:2x):** `_main\_audit-verify-all.cmd` = **245095 B**,
+  **3022 CRLF** / 0 bare LF, sha256 `B788F58E3ED2C3C78DF6517D73244FC6FEEA5A48D65434EE139055C95DBC9677`.
+  (Quarenta e uma linhas a mais do que o pin de 241497 B: o PRAZO POR PASSO e o TECTO DA CORRIDA.
+  O par do tecto corre no FIM da lista, imediatamente antes do sumario, porque ele le'
+  `_cache\battery-steps.json` -- que a corrida escreve passo a passo. Em qualquer outro sitio
+  mediria "a corrida ate' aqui", um numero menor do que o verdadeiro: a mesma classe de mentira
+  que o portao existe para apanhar.
+  Doze delas sao o par `battery-budget` + o seu `red-as-expected` -- o portao do RELOGIO que a
+  bateria nunca teve: ratchet de +5 % sobre o baseline e nenhum passo novo acima de 240 s, com o
+  TARGET de 60 s impresso a distancia (`RATCHET-OK ... TARGET NOT MET (gap 5741.2s de 60s)`)
+  porque um `PASS` ao lado de 5 741 s de gap seria o verde que nao mede nada. O `--neg-arm` muta a
+  LEITURA, nao o codigo: infla um passo 10x e exige o RED do mesmo `judge`.)
+  (Vinte e quatro linhas antes disso, a partir do pin de 241497 B: o PRAZO POR PASSO -- o par
+  `step-deadline` + `red-as-expected-step-deadline` e o bloco de comentario que diz por que.
+  `:step_run` deixou de correr `!S_CMD!` sem relogio: corre-o sob `_main\step-deadline.py`
+  com `SOTTO_STEP_DEADLINE_S=240`, que mata o JOB do passo e devolve **rc=124**, um codigo que
+  nenhum oraculo devolve por acidente. Nasceu de dois passos presos medidos nesta arvore --
+  `panel-hidden-at-startup-oracle` **3 781,6 s** e `youtube-cdp-boot-oracle` **21,6 min** -- que
+  deixaram a corrida sem sumario e o sumario ANTERIOR no disco a ler-se como o de agora.
+  Preco medido do wrapper: **95 ms por passo executado** (~24 s numa corrida inteira), e o filho
+  escreve no stdout do wrapper, logo o log do passo continua a ser a evidencia. O `--neg-arm`
+  muta o `job_terminate` numa copia e o selftest (5 arms, A5 = um processo ALHEIO sobrevive)
+  tem de dar RED -- a primeira versao matava por caminhada de arvore e matou **dois `cargo.exe`
+  de outra lane**; agora e' job object e o A5 e' o braco que prova que nao volta a acontecer.)
   (Vinte e oito linhas a mais do que o pin de 239421 B: os tres passos do `Ctrl+Space`
   TOMADO fora de jogo e DEVOLVIDO ao jogo -- `ctrlspace-swallow` + o seu
   `red-as-expected` + `ctrlspace-swallow-os`. Nasceu da ordem do dono de 2026-11-05:
@@ -1051,6 +1073,47 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   `red-as-expected-battery-heavy-gate`). O portão do pin é
   `_main/agents-md-pins-oracle.py` - se o `.cmd` mudar, o número muda, e o gate
   obriga a re-medir **aqui** em vez de deixar um número velho.
+
+## A LEI DOS TESTES - todo teste, existente ou futuro (ordem do dono, 2026-11-05)
+
+Verbatim: *"QUALQUER TESTE EXISTENTE OU QUE SERÁ IMPLEMENTADO, DEVE SER IMPLEMENTADO DESSE JEITO PRA
+MENOR DESPERDÍCIO DE TEMPO E QUALIDADE MÁXIMA"*, e *"por que é completamente BURRO voce levar mais
+que um minuto pra rodar COISAS JA GARANTIDAS EM VARIOS LUGARES DA BATERIA"*.
+
+Medido nesta arvore antes de a regra nascer (`_cache\battery-steps.json`, 320 passos registados,
+2026-11-05): **96,7 min** de tempo de passo, **86,0 % em 20 passos**, o pior **3 781,6 s** num unico
+passo; os 254 passos abaixo de 5 s somam **277,8 s (4,8 %)**. O custo nao esta' nas provas baratas: esta'
+numa cauda pesada **sem tecto** e numa corrida monolitica que re-executa a cauda para re-imprimir
+vereditos que ja' tem.
+
+Seis propriedades, nenhuma opcional:
+
+1. **PRAZO POR PASSO.** `_main\step-deadline.py` (selftest de 5 arms + `--neg-arm`), piso da casa
+   `SOTTO_STEP_DEADLINE_S=240`, corte mata o **JOB** do passo (nunca uma caminhada de arvore) e
+   devolve **rc=124**, que nunca conta como verde. Um filho cortado escreve `STEP-DEADLINE exceeded`
+   no log do proprio passo.
+2. **TECTO DO RUN DEFAULT EM SEGUNDOS.** 60 s a quente e' o numero da casa; o que nao cabe e' classe
+   `heavy` (opt-in), e um passo saltado e' SKIPPED, **nunca** verificado. O portao instalado hoje e'
+   `_main\battery-budget-oracle.py`: ratchet de +5 % (medido 2026-11-05) sobre `battery-budget-baseline.json`, passo novo
+   acima de 240 s e' RED, e o TARGET de 60 s e' impresso com a distancia
+   (`RATCHET-OK ... TARGET NOT MET (gap 5741.2s de 60s)`) -- ele nunca se apresenta como "rapido".
+3. **UM INVARIANTE, UM PORTAO DONO.** O segundo passo que prova o mesmo invariante e' um `crosscheck`
+   declarado com custo medido, ou e' apagado: re-provar paga-se em **toda** corrida, para sempre.
+4. **FAKE ANTES DO PRODUTO.** Largar a app/dispositivo e' braco `heavy`, nao teste unitario.
+5. **NASCE COM O BRACO VERMELHO.** A mutacao tem de o derrubar HOJE (o braco negativo devolve o codigo
+   de "apanhado", nao 0); populacao zero = `CANNOT-MEASURE`, nunca PASS; veredicto em cache leva o
+   hash do proprio instrumento; duas corridas concordam.
+6. **ABORTO NAO E' VEREDICTO.** O sumario escreve-se no fim, carimbado com run id + inicio, e o leitor
+   recusa um sumario mais velho que a corrida que esta' a julgar.
+
+**DEVER DE TRANSPORTE - parte do "done".** Toda mudanca que altere COMO o trabalho se faz escreve a
+regra AQUI, no mesmo commit: este ficheiro e' lido por este assento e por **todo** subagente
+despachado, e e' o unico lugar onde uma regra sobrevive a sessao. Forma obrigatoria: a lei datada com
+o numero que protege, o mecanismo (comando + rc + o que um skip significa) e o orcamento em
+segundos/contagens -- e depois re-medir qualquer pin deste ficheiro que a mudanca tenha tocado. A
+fonte longa da regra (as seis propriedades, com os detectores D45-D52) vive na skill
+`extreme-optimization-audit` §L12-bis/§L12-ter, e no `task-resolver` ("Test economy and the
+carry-forward duty").
 
 ## POR MEDIR / NAO ATRIBUIdo
 

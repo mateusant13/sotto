@@ -174,8 +174,9 @@ def main():
             raise OSError('arm: nao liga')
     saved_ws = sys.modules.get('websocket')
     sys.modules['websocket'] = WsNoConnect
+    conn_lines = []
     try:
-        src4 = cdp.CdpCaptionSource(port=0)
+        src4 = cdp.CdpCaptionSource(port=0, log=conn_lines.append)
         src4._video_id = DEAD_VID
         src4._connect(WsNoConnect())
     finally:
@@ -184,8 +185,19 @@ def main():
             sys.modules.pop('websocket', None)
         else:
             sys.modules['websocket'] = saved_ws
-    arm('CONNECT', created['n'] == 1,
-        'tentou ligar=%d (uma escolha, e foi a aba aberta)' % created['n'])
+    # O CONTADOR DE SOCKETS DEIXOU DE SER A PERGUNTA (2026-11-05). A sonda de
+    # 'quem esta a tocar' entrou no `_choose` e usa uma ligacao POR ABA, por isso
+    # `created['n'] == 1` passou a medir quantas abas existem, nao se a escolha
+    # foi a certa -- a arm ficava vermelha com a cura a funcionar. O que ela
+    # promete e' o que se julga: TENTOU ligar, e a escolha que a fonte publicou
+    # e' a aba ABERTA (`stale-declared`), nunca o id morto.
+    # A NOTA NAO SERVE DE TESTEMUNHA: o `_connect` escreve `ws-failed` por cima
+    # dela quando a ligacao cai. Quem diz a escolha e' a LINHA do log, que a
+    # fonte publica antes de tentar.
+    said = [l for l in conn_lines if 'why=stale-declared' in l]
+    arm('CONNECT', created['n'] >= 1 and len(said) == 1,
+        'tentou ligar=%d linha=%r (uma escolha, e foi a aba aberta)'
+        % (created['n'], (said or ['-'])[-1][:90]))
 
     # -- 4/5. REBOUND, on the REAL watcher --------------------------------
     logs = []
