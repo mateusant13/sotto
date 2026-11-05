@@ -271,13 +271,13 @@
       "max_func_name": "apply"
     },
     "app/webview/code_identity.py": {
-      "bytes": 4453,
+      "bytes": 5539,
       "classes": 0,
-      "defs": 2,
+      "defs": 3,
       "except_pass": 0,
       "globals": 0,
-      "lines": 102,
-      "max_func": 30,
+      "lines": 127,
+      "max_func": 31,
       "max_func_name": "code_files"
     },
     "app/webview/exit_killer.py": {

@@ -37,6 +37,10 @@ _CODE_ID_FILES = (
 _CODE_ID_GLOBS = ('../panel/*.js', '../panel/*.css', '../panel/*.html',
                   '../panel/themes/*.css')
 
+#: O WORKER: o outro processo que decide o que o dono ve'. `runs/` fica de fora
+#: (sao copias de harness) e `models/` tambem (sao pesos, dezenas de MB).
+_CODE_ID_WORKER_GLOBS = ('../../worker/*.py',)
+
 
 def code_files(here=None, missing=None):
     """A LISTA dos ficheiros que entram na etiqueta. UMA definicao, dois leitores.
@@ -67,7 +71,28 @@ def code_files(here=None, missing=None):
         except Exception:  # noqa: BLE001
             missing.append(pattern)
     names.extend(sorted(page))
+    names.extend(_worker_files(here, missing))
     return names
+
+
+def _worker_files(here, missing):
+    """O WORKER TAMBEM E' CODIGO DA APP, e ate' 2026-11-05 nao entrava na etiqueta.
+
+    Medido: a cura do spool (`worker/live_queue.py` + `worker/engine_policy.py`)
+    entrou no disco, a shell correu `--strict` e o portao disse `FRESH` com o
+    worker VIVO a correr o codigo anterior -- o PASSO 0 do bug-hunt a mentir sobre
+    metade da app. O glob e' o do directorio de producao: `worker/runs/` e
+    `worker/runs/*/` sao copias de harness, e as dezenas de MB de `worker/models/`
+    nao sao codigo.
+    """
+    out = []
+    for pattern in _CODE_ID_WORKER_GLOBS:
+        try:
+            for pth in sorted(_glob.glob(os.path.join(here, pattern))):
+                out.append(os.path.relpath(pth, here))
+        except Exception:  # noqa: BLE001
+            missing.append(pattern)
+    return out
 
 
 def code_identity(here=None):

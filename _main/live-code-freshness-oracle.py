@@ -103,7 +103,7 @@ def _stamp_of(line):
     return None
 
 
-def _code_files(mod):
+def _code_files(mod, here=None):
     """A lista vem do SHELL e e' a MESMA que o processo etiquetou (2026-11-05).
 
     O portao recalculava uma lista PROPRIA (`_CODE_ID_FILES` + os globs da
@@ -115,10 +115,11 @@ def _code_files(mod):
     modulo do shell; sem ele (modulo antigo no disco) cai na lista curada, que
     ainda e' melhor do que nada.
     """
+    here = here or SHELL_DIR
     fn = getattr(mod, 'code_files', None)
     if callable(fn):
         try:
-            return list(fn(SHELL_DIR))
+            return list(fn(here))
         except Exception:                    # noqa: BLE001
             pass
     names = list(getattr(mod, '_CODE_ID_FILES', ()))
@@ -126,8 +127,8 @@ def _code_files(mod):
     if globs:
         import glob as _glob
         for pattern in globs:
-            for pth in sorted(_glob.glob(os.path.join(SHELL_DIR, pattern))):
-                names.append(os.path.relpath(pth, SHELL_DIR))
+            for pth in sorted(_glob.glob(os.path.join(here, pattern))):
+                names.append(os.path.relpath(pth, here))
     return names
 
 
@@ -233,6 +234,11 @@ def _identity_arms(mod, here=None):
       I1 cobertura  -- todo `*.py` da pasta do shell esta na lista.
       I2 sensivel   -- mudar UM byte de `youtube_cdp_source.py` muda a etiqueta.
       I3 estavel    -- a mesma arvore da' a MESMA etiqueta (a de I2 nao e' ruido).
+      I4 worker     -- o OUTRO processo da app entra na etiqueta: mudar um byte de
+                       `worker/live_queue.py` numa arvore com a forma real
+                       (`<root>/app/webview` + `<root>/worker`) muda o hash. Sem
+                       esta arm, uma cura no worker entrava no disco com o portao a
+                       dizer `FRESH` -- medido 2026-11-05 no passo 0 do bug-hunt.
     """
     import glob as _g
     import shutil
@@ -274,6 +280,36 @@ def _identity_arms(mod, here=None):
             fails.append('I2 sensivel (o ficheiro nao esta na etiqueta)')
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    # -- I4: O WORKER ---------------------------------------------------------
+    # A arvore tem de ter a FORMA real (`<root>/app/webview` + `<root>/worker`),
+    # senao o glob do worker (`../../worker/*.py`) nao tem para onde apontar e a
+    # arm mediria o vazio.
+    root = tempfile.mkdtemp(prefix='sotto-identity-worker-')
+    try:
+        shell_dir = os.path.join(root, 'app', 'webview')
+        worker_dir = os.path.join(root, 'worker')
+        os.makedirs(shell_dir, exist_ok=True)
+        os.makedirs(worker_dir, exist_ok=True)
+        shell_file = 'code_identity.py'
+        shutil.copy2(os.path.join(here, shell_file), os.path.join(shell_dir, shell_file))
+        worker_file = 'live_queue.py'
+        shutil.copy2(os.path.join(SHELL_DIR, '..', '..', 'worker', worker_file),
+                     os.path.join(worker_dir, worker_file))
+        names = set(os.path.basename(x) for x in _code_files(mod, shell_dir))
+        notes.append('I4 worker: %s na etiqueta: %s'
+                     % (worker_file, 'SIM' if worker_file in names else 'NAO'))
+        if worker_file not in names:
+            fails.append('I4 worker (ausente da lista)')
+        w0 = _identity_of(mod, shell_dir)
+        with open(os.path.join(worker_dir, worker_file), 'ab') as fh:
+            fh.write(b'\n# arm I4')
+        w1 = _identity_of(mod, shell_dir)
+        notes.append('I4 worker sensivel: %s -> %s'
+                     % ('muda' if w1 != w0 else 'NAO MUDA', w1.split()[0]))
+        if w1 == w0:
+            fails.append('I4 worker sensivel')
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
     return fails, notes
 
 
