@@ -185,6 +185,21 @@ REM de baixo exige que os mutantes vao RED.
 call :step redux-transcript-path 0 "_main\_redux-transcript-path.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\redux-transcript-path.log" python _main\_redux-transcript-path.py
 call :record redux-transcript-path !STEP_RC!
 
+REM O INTERRUPTOR DO PARAKEET DE FUNDO (2026-11-05). Nascido do defeito medido: a
+REM opt-in (`SOTTO_REDUX_WHEN_HIDDEN`) so' existia em harnesses de falsificacao, logo o
+REM interruptor nunca era CONSTRUIDO na app e o passe de batch era codigo morto em
+REM producao enquanto todo oraculo o via verde. A shell passa a chave em `_child_env` e
+REM este oraculo executa a classe REAL (`worker/engine_switch.py`) com os pesos do
+REM disco por nome: arma com o parakeet quando ele esta' la', RECUSA em uma linha
+REM quando o checkpoint falta (a razao e o caminho nomeados), e a maquina de modos
+REM comuta pela carga (`alta`->batch, `muito-alta`->shed, `leve`+visivel->stream).
+REM Sem passo, o instrumento apodreceu duas vezes em silencio (FakeReader sem `shed`,
+REM `--neg-arm` morto a apontar para o ficheiro onde a classe ja' nao vive).
+if exist _main\redux-arm-weights-oracle.py (
+ call :step redux-arm-weights 0 "_main\redux-arm-weights-oracle.py;worker\engine_switch.py;worker\sotto_worker.py;app\webview\sotto_webview.py;app\panel\caption-formulation.js" "%OUT%\redux-arm-weights.log" python _main\redux-arm-weights-oracle.py
+ call :record redux-arm-weights !STEP_RC!
+) else ( call :record redux-arm-weights MISSING )
+
 REM A LINHA FECHADA CHEGA MESMO AO DISCO? (2026-11-05). O dono: *"o painel da
 REM direita fica perdendo historico"*. MEDIDO no log dele: 3830 CAPTION_APPLIED,
 REM ZERO HISTORY_APPEND, `history/2026-11-05/` inexistente. O choke point exigia

@@ -26,16 +26,26 @@ marker at all.
 
 WHAT THIS RUNS (all in process; the only child process is node, invisible):
   ARM G (default): the REAL bytes as shipped.
-    W: worker/sotto_worker.py imported by path. GREEN colour: a %TEMP% runner
-       plus the checkpoint it derives arms the switch, the mode machine still
-       switches stream -> batch -> stream, and the armed boot line keeps its
-       shape. RED colour: the REAL runner with the REAL (absent) checkpoint
-       refuses -- one line, reason=checkpoint-missing, naming the directory and
-       every missing manifest -- and stays inert.
+    W: worker/sotto_worker.py imported by path (the switch class itself lives in
+       worker/engine_switch.py and is pinned as a subject too). GREEN colour: a
+       %TEMP% runner plus the checkpoint it derives arms the switch, the mode
+       machine still switches (the 2026-11-03 design: a hidden panel alone no
+       longer unloads -- the SHED channel drives batch/shed/stream, and the
+       hidden-dwell path is measured with `unload_when_hidden=True`), and the
+       armed boot line keeps its shape. RED colour: the REAL ternary derivation
+       with the parakeet engine forced unavailable REFUSES -- one line,
+       reason=checkpoint-missing, naming the directory and every missing
+       manifest -- and stays inert. The real disk carries the ONNX parakeet today
+       (2026-11-05), so the default derivation arms; that fact is measured, and
+       the refusal branch is taken through the constructor's `engine=` seam
+       rather than by pretending the ONNX export is absent.
     J: app/panel/history-store.js required by node with SOTTO_HISTORY_ROOT in
        %TEMP%. Every token caption-formulation.js declares is appended through
        the store's OWN append() and must carry its src= marker.
   --neg-arm: MUTANTS of the real bytes, built in memory and written to %TEMP%.
+    Switch mutants are compiled with the REAL module path as `__file__` and
+    registered as `engine_switch`, which is the name sotto_worker.py imports, so
+    the worker mutant binds the mutated bytes and nothing is redirected to %TEMP%.
     Every mutant must make the arms that should notice go RED, and no other arm
     may move; a comment-only control mutant must move NOTHING (an instrument
     that reddens on any diff proves nothing). An unbuildable mutant is a SETUP
@@ -58,6 +68,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 from pathlib import Path
 
 for _stream in (sys.stdout, sys.stderr):
@@ -71,6 +82,7 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 WORKER = REPO / "worker" / "sotto_worker.py"
+SWITCH = REPO / "worker" / "engine_switch.py"
 RUNNER = REPO / "worker" / "redux_batch.py"
 STORE = REPO / "app" / "panel" / "history-store.js"
 FORMULATION = REPO / "app" / "panel" / "caption-formulation.js"
@@ -82,7 +94,7 @@ DECLARED_SOURCES = ("worker-stamped", "worker-stamped-producer", "panel-deadline
 CREATE_NO_WINDOW = 0x08000000
 NODE_EXE = shutil.which("node") or "node"
 
-SUBJECTS = (WORKER, RUNNER, STORE, FORMULATION)
+SUBJECTS = (WORKER, SWITCH, RUNNER, STORE, FORMULATION)
 
 
 class SetupError(Exception):
@@ -138,6 +150,31 @@ def load_module(path: Path, name: str):
     return mod
 
 
+def load_switch_module(text: str, name: str = "engine_switch"):
+    """A `worker/engine_switch.py` built from `text`, where the worker will find it.
+
+    THE MUTATED BYTES ARE THE ONLY DIFFERENCE FROM THE SHIPPED MODULE.
+    `engine_switch` derives `HERE` from its own `__file__`, and everything the
+    switch resolves -- `worker/models/`, the shedding table, the visibility file
+    -- hangs off it. A mutant written to %TEMP% would resolve all of those
+    against %TEMP% and go RED for the wrong reason (an instrument that reddens on
+    relocation proves nothing about the mutation). Compiling the bytes with the
+    REAL path as `__file__` keeps that surface identical, and registering the
+    module under the name `sotto_worker.py` imports (`from engine_switch import
+    ...`) is what makes the worker mutant actually run these bytes.
+    """
+    mod = types.ModuleType(name)
+    mod.__file__ = str(SWITCH)
+    mod.__package__ = ""
+    sys.modules[name] = mod
+    try:
+        exec(compile(text, str(SWITCH), "exec"), mod.__dict__)
+    except Exception as exc:  # noqa: BLE001 -- an unbuildable mutant is a setup error
+        raise SetupError(f"executing the mutated engine_switch raised "
+                         f"{type(exc).__name__}: {exc}")
+    return mod
+
+
 class FakeReader:
     """The smallest thing ReduxHiddenSwitch accepts as a visibility channel."""
 
@@ -159,6 +196,41 @@ class FakeReader:
         leitura real devolve quando o ficheiro nao diz nada: NAO DESLIGO nada.
         """
         return self.shed_level if self.shed_level in ('leve', 'alta', 'muito-alta') else default
+
+
+class UnavailableEngine:
+    """An engine the switch must treat as NOT ON DISK, through its own seam.
+
+    WHY THIS EXISTS (instrument repair, 2026-11-05). `ReduxHiddenSwitch.__init__`
+    accepts `engine=` and falls back to a real `ParakeetEngine` over
+    `worker/models/parakeet-redux-onnx-int4`. Since that ONNX export was fetched
+    and verified on the real disk (2026-11-05: 416 MB, sha256 ade2c65c/97ae0cb0),
+    every switch built with the DEFAULT engine derives `engine=parakeet` and
+    ARMS -- so the ternary REFUSAL branches (`reason=runner-missing`,
+    `reason=checkpoint-missing`) stopped being reached by default derivation.
+    The refusal behaviour still ships and must still be MEASURED; this object is
+    how the oracle takes the branch without pretending the ONNX export is gone.
+    It offers exactly the surface `engine_policy.ParakeetEngine` offers and says
+    `available=False`, so gate 2 sees "no engine on disk" -- the honest reading
+    of the ternary-only tree these checks describe.
+    """
+
+    available = False
+    dir = "<oracle-unavailable-engine>"
+    missing = ["<oracle-engine-not-installed>"]
+    loaded = False
+
+    def name(self):
+        return "oracle-unavailable"
+
+    def load(self):
+        raise AssertionError("the oracle's unavailable engine must never be loaded")
+
+    def release(self, reason="idle"):
+        return False
+
+    def transcribe(self, pcm):
+        raise AssertionError("the oracle's unavailable engine must never transcribe")
 
 
 def make_runner_and_checkpoint(root, name, manifests=MANIFESTS):
@@ -326,74 +398,168 @@ def arm_worker(run, mod, tag, runner_mod, temp_root, worker_text):
               and os.path.normcase(sw_explicit.model_dir) == os.path.normcase(str(other)),
               f"armed={sw_explicit.armed} model_dir={sw_explicit.model_dir}")
 
-    reader = FakeReader(True, "oracle-visible")
-    sw_modes = mod.ReduxHiddenSwitch(enabled=True, reader=reader, runner=str(runner),
-                                     log_fn=[].append)
+    # ── W8: THE MODE MACHINE AS IT SHIPS TODAY (2026-11-03 design) ─────────
+    # RETIRED EXPECTATION, in this file's own words: until 2026-11-03 a hidden
+    # panel ALONE switched stream -> batch. `worker/engine_switch.py::tick`
+    # changed that deliberately -- `unload_when_hidden` now defaults to False,
+    # because unloading the live model on every panel open paid a 1.9 GB reload
+    # and the owner's law is "legenda ao vivo desligada nao e' modelo desligado".
+    # The batch now switches on the SHED CHANNEL (`alta` -> batch,
+    # `muito-alta` -> shed, `leve` -> whatever visibility says). The check keeps
+    # all of its teeth: it measures (1) the shipped default refusing to switch
+    # on a hidden panel alone, (2) the hidden-dwell machinery still working when
+    # the flag is explicitly on, and (3) the shed channel driving batch/shed/
+    # stream. None of the three is "whatever the code returns": each sequence and
+    # its switch count is exact.
     t0 = 1000.0
-    m1 = sw_modes.tick(now=t0)
-    reader.visible = False
-    sw_modes.tick(now=t0 + 0.1)
-    m2 = sw_modes.tick(now=t0 + sw_modes.hidden_after_s + 1.0)
-    reader.visible = True
-    m3 = sw_modes.tick(now=t0 + sw_modes.hidden_after_s + 2.0)
-    run.check(f"{tag}W8-mode-machine-still-switches",
-              (m1, m2, m3) == ("stream", "batch", "stream") and sw_modes.switches == 2,
-              f"tick sequence={(m1, m2, m3)} switches={sw_modes.switches}")
+    reader_keep = FakeReader(True, "oracle-visible")
+    logs_keep = []
+    sw_keep = mod.ReduxHiddenSwitch(enabled=True, reader=reader_keep, runner=str(runner),
+                                    log_fn=logs_keep.append)  # unload_when_hidden ships False
+    keep_seq = [sw_keep.tick(now=t0)]
+    reader_keep.visible = False
+    keep_seq.append(sw_keep.tick(now=t0 + 0.1))
+    keep_seq.append(sw_keep.tick(now=t0 + sw_keep.hidden_after_s + 1.0))
+    keep_seq = tuple(keep_seq)
 
-    # -- RED colour: the REAL runner, the REAL (absent) checkpoint ----------
+    reader_dwell = FakeReader(True, "oracle-visible")
+    logs_dwell = []
+    sw_dwell = mod.ReduxHiddenSwitch(enabled=True, reader=reader_dwell, runner=str(runner),
+                                     log_fn=logs_dwell.append, unload_when_hidden=True)
+    dwell_seq = [sw_dwell.tick(now=t0)]
+    reader_dwell.visible = False
+    dwell_seq.append(sw_dwell.tick(now=t0 + 0.1))
+    dwell_seq.append(sw_dwell.tick(now=t0 + sw_dwell.hidden_after_s + 1.0))
+    reader_dwell.visible = True
+    dwell_seq.append(sw_dwell.tick(now=t0 + sw_dwell.hidden_after_s + 2.0))
+    dwell_seq = tuple(dwell_seq)
+
+    reader_shed = FakeReader(True, "oracle-visible", shed="leve")
+    logs_shed = []
+    sw_shed = mod.ReduxHiddenSwitch(enabled=True, reader=reader_shed, runner=str(runner),
+                                    log_fn=logs_shed.append)
+    shed_seq = [sw_shed.tick(now=t0)]
+    reader_shed.shed_level = "alta"
+    shed_seq.append(sw_shed.tick(now=t0 + 0.1))
+    reader_shed.shed_level = "muito-alta"
+    shed_seq.append(sw_shed.tick(now=t0 + 0.2))
+    reader_shed.shed_level = "leve"
+    shed_seq.append(sw_shed.tick(now=t0 + 0.3))
+    shed_seq = tuple(shed_seq)
+
+    run.check(f"{tag}W8-mode-machine-still-switches",
+              keep_seq == ("stream", "stream", "stream") and sw_keep.switches == 0
+              and dwell_seq == ("stream", "stream", "batch", "stream")
+              and sw_dwell.switches == 2
+              and shed_seq == ("stream", "batch", "shed", "stream")
+              and sw_shed.switches == 3
+              and any("reason=hidden-" in line for line in logs_dwell)
+              and any("reason=shed-alta" in line for line in logs_shed)
+              and any("reason=shed-muito-alta" in line for line in logs_shed),
+              f"shipped(unload=False)={keep_seq} switches={sw_keep.switches} | "
+              f"dwell(unload=True)={dwell_seq} switches={sw_dwell.switches} | "
+              f"shed={shed_seq} switches={sw_shed.switches}")
+
+    # -- RED colour: the TERNARY branch, on the REAL disk paths -------------
+    # WHY THE ENGINE IS NAMED EXPLICITLY (2026-11-05). The real disk now holds
+    # `worker/models/parakeet-redux-onnx-int4` (verified today, 416 MB), so the
+    # DEFAULT engine derives `engine=parakeet` and the switch ARMS -- which is
+    # the shipped machine being correct, not a defect. The retired expectation
+    # was "the real disk refuses" because the ternary checkpoint is what the
+    # real derivation used to find nothing of. The refusal code still ships and
+    # is still the thing that stops the worker from cutting the only
+    # transcriber, so these checks build the switch through the constructor's
+    # documented `engine=` seam with an engine that is NOT on disk: gate 2 then
+    # sees exactly the ternary facts, which are still read FROM THE REAL DISK BY
+    # NAME (`model_dir` derived from the real runner -> the real checkpoint).
+    # Nothing here is redirected to a %TEMP% tree to buy a green.
+    sw_default = mod.ReduxHiddenSwitch(enabled=True, reader=FakeReader(True),
+                                       runner=str(RUNNER), log_fn=[].append)
+    print(f"  EVIDENCE {tag}real-disk-default engine_available="
+          f"{sw_default.engine_available} batch_kind={sw_default.batch_kind} "
+          f"armed={sw_default.armed} model_dir={sw_default.model_dir}")
+
     logs_real = []
     sw_real = mod.ReduxHiddenSwitch(enabled=True, reader=FakeReader(True),
-                                    runner=str(RUNNER), log_fn=logs_real.append)
+                                    runner=str(RUNNER), log_fn=logs_real.append,
+                                    engine=UnavailableEngine())
     run.check(f"{tag}W9-real-disk-refuses",
-              sw_real.armed is False and list(sw_real.model_missing) == list(MANIFESTS)
+              sw_default.engine_available is True
+              and sw_default.batch_kind == "parakeet"
+              and sw_default.armed is True
+              and sw_real.armed is False
+              and sw_real.runner_available is True
+              and sw_real.model_available is False
+              and list(sw_real.model_missing) == list(MANIFESTS)
               and os.path.normcase(sw_real.model_dir) == os.path.normcase(str(REAL_CHECKPOINT)),
-              f"armed={sw_real.armed} model_dir={sw_real.model_dir} "
+              f"default: engine_available={sw_default.engine_available} "
+              f"batch_kind={sw_default.batch_kind} armed={sw_default.armed} | "
+              f"ternary-only: armed={sw_real.armed} model_dir={sw_real.model_dir} "
               f"missing={list(sw_real.model_missing)}")
     sw_real.boot_line()
     refusal_line = logs_real[0] if logs_real else ""
     print(f"  EVIDENCE {tag}refusal-line={refusal_line}")
     run.check(f"{tag}W10-refusal-names-reason-and-path",
-              "REDUX_SWITCH_REFUSED armed=false" in refusal_line
+              len(logs_real) == 1
+              and "REDUX_SWITCH_REFUSED armed=false" in refusal_line
               and "reason=checkpoint-missing" in refusal_line
+              and os.path.normcase(f"runner={RUNNER}") in os.path.normcase(refusal_line)
               and os.path.normcase(f"model_dir={REAL_CHECKPOINT}") in os.path.normcase(refusal_line)
-              and f"missing={','.join(MANIFESTS)}" in refusal_line,
+              and f"missing={','.join(MANIFESTS)}" in refusal_line
+              and "\n" not in refusal_line,
               refusal_line)
 
     before = len(logs_real)
-    for step in range(10):
-        sw_real.tick(now=t0 + step)
+    modes = [sw_real.tick(now=t0 + step) for step in range(10)]
     kick = sw_real.maybe_kick("oracle")
     after = len(logs_real)
+    # The ONE-LINE half of this claim is pinned exactly by W10 (`len(logs_real)
+    # == 1`); here the distinct claim is INERTNESS -- the refusal never grows a
+    # line, never leaves `stream`, never counts a switch, never kicks a pass.
     run.check(f"{tag}W11-refusal-is-one-line-and-inert",
-              before == 1 and after == 1 and kick is False and sw_real.mode == "stream",
+              before == after and kick is False
+              and set(modes) == {"stream"} and sw_real.mode == "stream"
+              and sw_real.switches == 0 and sw_real.batches_kicked == 0
+              and sw_real.enabled is True,
               f"lines_after_boot={before} lines_after_10_ticks={after} "
-              f"maybe_kick={kick} mode={sw_real.mode}")
+              f"modes={sorted(set(modes))} maybe_kick={kick} mode={sw_real.mode} "
+              f"switches={sw_real.switches} batches_kicked={sw_real.batches_kicked}")
 
     partial_runner, partial_ckpt = make_runner_and_checkpoint(
         temp_root, "partial", manifests=("config.json",))
     logs_partial = []
     sw_partial = mod.ReduxHiddenSwitch(enabled=True, reader=FakeReader(True),
-                                       runner=str(partial_runner), log_fn=logs_partial.append)
+                                       runner=str(partial_runner), log_fn=logs_partial.append,
+                                       engine=UnavailableEngine())
     sw_partial.boot_line()
     partial_line = logs_partial[0] if logs_partial else ""
     run.check(f"{tag}W12-partial-checkpoint-names-what-is-missing",
-              sw_partial.armed is False
+              len(logs_partial) == 1
+              and sw_partial.armed is False
               and list(sw_partial.model_missing) == ["model.safetensors", "ternary.json"]
+              and "REDUX_SWITCH_REFUSED armed=false" in partial_line
               and "reason=checkpoint-missing" in partial_line
+              and os.path.normcase(f"runner={partial_runner}") in os.path.normcase(partial_line)
               and os.path.normcase(f"model_dir={partial_ckpt}") in os.path.normcase(partial_line)
-              and "missing=model.safetensors,ternary.json" in partial_line,
+              and "missing=model.safetensors,ternary.json" in partial_line
+              and "\n" not in partial_line,
               f"missing={list(sw_partial.model_missing)} line={partial_line}")
 
     missing_runner = Path(temp_root) / "not-here" / "redux_batch.py"
     logs_norun = []
     sw_norun = mod.ReduxHiddenSwitch(enabled=True, reader=FakeReader(True),
                                      runner=str(missing_runner), log_fn=logs_norun.append,
-                                     model_dir=str(ckpt))
+                                     model_dir=str(ckpt), engine=UnavailableEngine())
     sw_norun.boot_line()
     norun_line = logs_norun[0] if logs_norun else ""
     run.check(f"{tag}W13-runner-missing-reason-still-distinct",
-              sw_norun.armed is False and "reason=runner-missing" in norun_line
-              and "checkpoint-missing" not in norun_line,
+              len(logs_norun) == 1
+              and sw_norun.armed is False
+              and "REDUX_SWITCH_REFUSED armed=false reason=runner-missing" in norun_line
+              and "checkpoint-missing" not in norun_line
+              and "model_dir=" not in norun_line
+              and os.path.normcase(f"runner={missing_runner}") in os.path.normcase(norun_line)
+              and "\n" not in norun_line,
               norun_line)
 
     logs_off = []
@@ -477,9 +643,10 @@ MUTANTS = (
     {
         "slug": "m1",
         "name": "M1-gate-reverted-to-the-runner-file",
-        "kind": "worker",
+        "kind": "switch",
         "find": ("        self.armed = bool(\n"
-                 "            self.enabled and self.runner_available and self.model_available)"),
+                 "            self.enabled and self.runner_available and self.model_available\n"
+                 "            or (self.enabled and self.engine_available))"),
         "replace": ("        self.armed = bool(\n"
                     "            self.enabled and self.runner_available)"),
         "expect_red": ("W9-real-disk-refuses",
@@ -489,7 +656,7 @@ MUTANTS = (
     {
         "slug": "m2",
         "name": "M2-refusal-loses-the-missing-path",
-        "kind": "worker",
+        "kind": "switch",
         "find": 'f"runner={self.runner} model_dir={self.model_dir} "',
         "replace": 'f"runner={self.runner} "',
         "expect_red": ("W10-refusal-names-reason-and-path",
@@ -543,6 +710,7 @@ def main():
 
         declared = declared_sources()
         worker_text = WORKER.read_text(encoding="utf-8")
+        switch_text = SWITCH.read_text(encoding="utf-8")
         store_text = STORE.read_text(encoding="utf-8")
 
         runner_mod = load_module(RUNNER, "redux_batch_oracle_real")
@@ -567,22 +735,30 @@ def main():
                 tag = spec["slug"].upper() + ":"
                 print(f"-- MUTANT {spec['name']}")
                 if spec["kind"] == "control":
+                    switch_mutant = switch_text + "\n# oracle control mutant: comment only\n"
                     worker_mutant = worker_text + "\n# oracle control mutant: comment only\n"
                     store_mutant = store_text + "\n// oracle control mutant: comment only\n"
-                elif spec["kind"] == "worker":
-                    worker_mutant = mutate(worker_text, spec["find"], spec["replace"],
+                elif spec["kind"] == "switch":
+                    switch_mutant = mutate(switch_text, spec["find"], spec["replace"],
                                            spec["name"])
+                    worker_mutant = worker_text
                     store_mutant = store_text
                 else:
+                    switch_mutant = switch_text
                     worker_mutant = worker_text
                     store_mutant = mutate(store_text, spec["find"], spec["replace"],
                                           spec["name"])
 
                 run = Run(spec["name"])
+                # The switch bytes are registered under the name `sotto_worker.py`
+                # imports, so the worker mutant below binds THESE bytes (not the
+                # shipped module already in `sys.modules` from ARM G). `__file__`
+                # is the REAL path, so only the mutation can move an arm.
+                load_switch_module(switch_mutant, "engine_switch")
                 worker_path = Path(temp_root) / f"{spec['slug']}-sotto_worker.py"
                 worker_path.write_text(worker_mutant, encoding="utf-8")
                 mod = load_module(worker_path, f"sotto_worker_mutant_{spec['slug']}")
-                arm_worker(run, mod, tag, runner_mod, temp_root, worker_mutant)
+                arm_worker(run, mod, tag, runner_mod, temp_root, worker_text)
                 arm_store(run, store_mutant, tag, temp_root, declared)
 
                 expected = {tag + cid for cid in spec["expect_red"]}

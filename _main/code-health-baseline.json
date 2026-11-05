@@ -61,22 +61,22 @@
       "max_func_name": ""
     },
     "app/panel/history-source.js": {
-      "bytes": 4986,
+      "bytes": 7290,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 100,
+      "lines": 152,
       "max_func": 0,
       "max_func_name": ""
     },
     "app/panel/history-store.js": {
-      "bytes": 9766,
+      "bytes": 10371,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 256,
+      "lines": 267,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -121,12 +121,12 @@
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 209380,
+      "bytes": 213721,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4207,
+      "lines": 4302,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -291,23 +291,23 @@
       "max_func_name": "run"
     },
     "app/webview/external_subs.py": {
-      "bytes": 38121,
+      "bytes": 38451,
       "classes": 0,
       "defs": 29,
       "except_pass": 3,
       "globals": 0,
-      "lines": 918,
+      "lines": 922,
       "max_func": 77,
       "max_func_name": "_stable"
     },
     "app/webview/gaming_mode.py": {
-      "bytes": 22820,
+      "bytes": 23294,
       "classes": 4,
       "defs": 11,
       "except_pass": 0,
       "globals": 0,
-      "lines": 528,
-      "max_func": 47,
+      "lines": 534,
+      "max_func": 53,
       "max_func_name": "tick"
     },
     "app/webview/hot_reload.py": {
@@ -321,12 +321,12 @@
       "max_func_name": "selftest"
     },
     "app/webview/hotkey_gesture.py": {
-      "bytes": 10324,
+      "bytes": 11616,
       "classes": 0,
       "defs": 4,
       "except_pass": 0,
       "globals": 0,
-      "lines": 209,
+      "lines": 232,
       "max_func": 38,
       "max_func_name": "parse_accelerator"
     },
@@ -431,14 +431,24 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1151988,
+      "bytes": 1169074,
       "classes": 28,
-      "defs": 135,
-      "except_pass": 50,
+      "defs": 136,
+      "except_pass": 52,
       "globals": 4,
-      "lines": 21534,
+      "lines": 21796,
       "max_func": 412,
       "max_func_name": "main"
+    },
+    "app/webview/thread_names.py": {
+      "bytes": 3848,
+      "classes": 0,
+      "defs": 5,
+      "except_pass": 1,
+      "globals": 1,
+      "lines": 103,
+      "max_func": 39,
+      "max_func_name": "install"
     },
     "app/webview/topmost_keepalive.py": {
       "bytes": 4639,
@@ -521,13 +531,13 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 55476,
+      "bytes": 56612,
       "classes": 1,
       "defs": 20,
       "except_pass": 5,
       "globals": 0,
-      "lines": 1205,
-      "max_func": 146,
+      "lines": 1222,
+      "max_func": 159,
       "max_func_name": "_run"
     },
     "app/webview/youtube_monotonic.py": {
@@ -661,7 +671,7 @@
       "max_func_name": "get_or_load"
     },
     "worker/parakeet_ultra.py": {
-      "bytes": 17852,
+      "bytes": 17463,
       "classes": 4,
       "defs": 5,
       "except_pass": 1,
@@ -669,6 +679,26 @@
       "lines": 389,
       "max_func": 74,
       "max_func_name": "__init__"
+    },
+    "worker/punctuation_model.py": {
+      "bytes": 9720,
+      "classes": 0,
+      "defs": 11,
+      "except_pass": 0,
+      "globals": 2,
+      "lines": 257,
+      "max_func": 44,
+      "max_func_name": "load"
+    },
+    "worker/punctuation_prosody.py": {
+      "bytes": 6983,
+      "classes": 0,
+      "defs": 4,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 189,
+      "max_func": 81,
+      "max_func_name": "normalise"
     },
     "worker/qwen_summary.py": {
       "bytes": 84826,
@@ -711,13 +741,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 448288,
+      "bytes": 457164,
       "classes": 17,
-      "defs": 77,
+      "defs": 81,
       "except_pass": 15,
       "globals": 5,
-      "lines": 8329,
-      "max_func": 2624,
+      "lines": 8501,
+      "max_func": 2640,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
@@ -761,7 +791,7 @@
       "max_func_name": "open_word_start"
     },
     "worker/ultra_export.py": {
-      "bytes": 20422,
+      "bytes": 19993,
       "classes": 3,
       "defs": 9,
       "except_pass": 0,
@@ -771,7 +801,7 @@
       "max_func_name": "export"
     },
     "worker/unified_asr.py": {
-      "bytes": 18875,
+      "bytes": 18429,
       "classes": 1,
       "defs": 13,
       "except_pass": 1,

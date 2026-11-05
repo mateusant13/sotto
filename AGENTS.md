@@ -446,8 +446,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 17:3x):** `_main\_audit-verify-all.cmd` = **256714 B**,
-  **3155 CRLF** / 0 bare LF, sha256 `4F92D8542BB1A1E79E612542329EDA32F2CB74F84FEE06CEE438ADCB46953636`.
+- **PIN do ficheiro (medido 2026-11-05, 17:4x):** `_main\_audit-verify-all.cmd` = **257950 B**,
+  **3170 CRLF** / 0 bare LF, sha256 `4D87CFB1E97D1E187AD5E45EBB7E0BA4F1EA8688BEFC199D10F523D810CB79CC`.
+  (Quinze linhas a mais do que o pin de 256714 B: o passo `redux-arm-weights`, que faltava ao oraculo
+  do interruptor do paraqueet de fundo -- sem passo ele apodreceu DUAS vezes em silencio (`FakeReader`
+  sem `shed()`, `--neg-arm` morto a apontar para `worker/sotto_worker.py` quando a classe ja' vivia em
+  `worker/engine_switch.py`). O oraculo agora corre a classe REAL contra o disco por nome: arma com o
+  parakeet (`20/20` verde, `--neg-arm` `MUTANT VERDICT ... OK`) e recusa em UMA linha quando o
+  checkpoint falta. Ligados 140 -> 141, sem_passo 111 -> 110, e a entrada de licenca com
+  `REASON-MISSING preencher a mao` que o cobria foi apagada: um oraculo ligado nao precisa de licenca.)
   (Quatro linhas a mais do que o pin de 256385 B, e por isso o pin mudou: o comentario do passo
   `history-write` afirmava "o passe de batch esta' OFF por omissao", que era verdade do LADO DO
   WORKER e mentira do lado da APP -- a shell nunca passou `SOTTO_REDUX_WHEN_HIDDEN`, logo o
