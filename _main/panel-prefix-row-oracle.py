@@ -1,3 +1,4 @@
+# NO-BUG: O MURO DE PREFIXOS NAO VOLTA: uma linha que so' cresce ocupa UMA linha.
 """O MURO DE PREFIXOS NAO VOLTA: uma linha que so' cresce ocupa UMA linha.
 
 MEDIDO na tela do dono em 2026-11-05, 06:07:33-06:07:42 (`chrome_x2fLWzDdxI.png`),
@@ -36,9 +37,19 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 PANEL = REPO / 'app' / 'panel' / 'panel.js'
-# A LEI DAS JANELAS (AGENTS.md): um filho sem esta bandeira pode abrir
-# consola na tela do dono. O censo `console-window-audit.py` recusa o sitio.
+# A LEI DAS JANELAS (AGENTS.md): o par INTEIRO, nao so' o bit. Medido a
+# 2026-11-04 no ecra do dono: `creationflags` SOZINHO pintou uma janela quando
+# o pai nao tinha consola -- o censo `console-window-audit.py` chama a isso
+# WEAK-FLAG e recusa. O `startupinfo` com `STARTF_USESHOWWINDOW`/`SW_HIDE` e'
+# a outra metade (o que `_main/hidden-launch.py` faz por toda a arvore).
 CREATE_NO_WINDOW = 0x08000000
+
+
+def _hidden_startupinfo():
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 0          # SW_HIDE
+    return si
 NODE = 'node'
 
 
@@ -101,7 +112,8 @@ def run_arms(fn_src):
         (tmp / 'drv.js').write_text(NODE_DRIVER, encoding='utf-8')
         proc = subprocess.run([NODE, str(tmp / 'drv.js'), str(tmp / 'fn.js'), str(tmp / 'cases.json')],
                               capture_output=True, text=True, encoding='utf-8', errors='replace',
-                              timeout=120, creationflags=CREATE_NO_WINDOW)
+                              timeout=120, creationflags=CREATE_NO_WINDOW,
+                              startupinfo=_hidden_startupinfo())
         return proc.returncode, (proc.stdout or '') + (proc.stderr or '')
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

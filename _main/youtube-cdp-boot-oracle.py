@@ -1,3 +1,4 @@
+# NO-BUG: Portao do ARRANQUE da fonte YouTube (CDP) -- `_main/youtube-cdp-boot-oracle.py`.
 """Portao do ARRANQUE da fonte YouTube (CDP) -- `_main/youtube-cdp-boot-oracle.py`.
 
 O DEFEITO QUE ESTE FICHEIRO PASSA A RECUSAR (MEDIDO no log do dono)

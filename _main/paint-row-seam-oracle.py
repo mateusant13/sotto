@@ -1,3 +1,4 @@
+# NO-BUG: Does the shell log the panel's paint row? The seam the eye leg runs through.
 """Does the shell log the panel's paint row? The seam the eye leg runs through.
 
 The panel has produced `CAPTION_PROVISIONAL_PAINT` since the PanelCommitOnStable lane: the row is the

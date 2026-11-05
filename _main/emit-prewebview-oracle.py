@@ -1,3 +1,4 @@
+# NO-BUG: ORACLE do feed `emit_async` SEM PAGINA -- o defeito que enchia o log.
 """ORACLE do feed `emit_async` SEM PAGINA -- o defeito que enchia o log.
 
 O QUE FOI MEDIDO (2026-11-04, instancia propria pid 42340, escondida):

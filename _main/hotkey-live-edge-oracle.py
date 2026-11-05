@@ -1,3 +1,4 @@
+# NO-BUG: ORACLE do Ctrl+Space observado -- a borda que o GIL comia.
 """ORACLE do Ctrl+Space observado -- a borda que o GIL comia.
 
 O DEFEITO REPORTADO PELO DONO (2026-11-04), verbatim: *"control espaço nao ta

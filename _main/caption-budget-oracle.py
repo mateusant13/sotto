@@ -1,3 +1,4 @@
+# NO-BUG: Does a caption line arrive inside the budget? The ruler the contract named and the tree lacked.
 """Does a caption line arrive inside the budget? The ruler the contract named and the tree lacked.
 
 The audit's §0 contract (2026-11-04) has two rulers: p95 caption latency and zero UI stalls. The

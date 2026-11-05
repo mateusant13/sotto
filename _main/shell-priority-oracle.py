@@ -1,3 +1,4 @@
+# NO-BUG: The window the owner types into is never below NORMAL.
 """The window the owner types into is never below NORMAL.
 
 MEASURED 2026-11-04 (extreme-optimization-audit L10): the live shell, pid 20448, ran

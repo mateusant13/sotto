@@ -1221,6 +1221,12 @@ function createEngine(options) {
     bufferSawProducer = false;
     bufferProducerConflict = false;
     lastAudioEnd = null;
+    // O CONTRATO DO `reset()` E' LIMPAR TUDO O QUE O `state()` PUBLICA.
+    // O `staleDropped` (2026-11-05) ficou de fora e sobrevivia ao reset: a
+    // primeira linha de um fluxo novo era reportada com os descartes do
+    // anterior. O oraculo `lane2-reset-probe` dizia-o ha' dias com a forma
+    // antiga; agora o campo esta' na lista e o reset cumpre.
+    staleDropped = 0;
   }
 
   return {

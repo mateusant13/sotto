@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: Oraculo da comparacao parakeet-redux (ONNX int4) x parakeet-ultra.
 # BATTERY-HEAVY: model -- carrega 2,4 GB (`model_weights.ckpt` / `unified.nemo`) e
 # corre em CUDA; o passo `parakeet-ultra` da bateria e' `heavy`, e o portao
 # `_main/battery-heavy-gate.py` exige que o INSTRUMENTO declare a classe onde a

@@ -1,3 +1,4 @@
+# NO-BUG: O oracle do CHURN DE RECARGA: o shell mata um worker que esta' quieto, e
 """O oracle do CHURN DE RECARGA: o shell mata um worker que esta' quieto, e
 recarrega-o dois segundos depois de uma saida limpa.
 

@@ -1,3 +1,4 @@
+# NO-BUG: O PORTAO DA SAIDA: uma saida que escreveu no log TERMINA?
 """O PORTAO DA SAIDA: uma saida que escreveu no log TERMINA?
 
 O DEFEITO (medido 2026-11-04). `_main/webview-run.log`:

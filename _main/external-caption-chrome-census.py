@@ -228,9 +228,15 @@ def main(argv=None):
     # The chrome that the owner's log shows, by name. Each of these reached
     # the caption box in the real app. (MUST_CATCH lives at module level, so
     # the FIXTURE mode can be built from the very same list.)
-    caught_texts = set(t for _d, t in chrome)
+    # A PERGUNTA E' SOBRE A REGRA, NAO SOBRE O QUE O LOG DE HOJE TEM
+    # (2026-11-05). Isto intersetava `MUST_CATCH` com os textos que APARECERAM
+    # no log do dono: as 52 linhas daquele ficheiro nao tem NENHUM contador de
+    # visitas, logo os onze casos de `MUST_CATCH` ficavam vermelhos sem que a
+    # regra tivesse falhado (`--fixture`, que corre a regra sobre a lista,
+    # passava). O log continua a alimentar o censo e o histograma por dia; a
+    # pergunta "a regra apanha isto?" e' feita a REGRA.
     for t in MUST_CATCH:
-        if t not in caught_texts:
+        if not live._joined_row_is_chrome(t):
             failures.append("chrome %r is NOT caught by the shipped rule" % t)
     # The RESIDUE: chrome that is a SENTENCE, so no shape rule can take it
     # without eating a real caption. It is REPORTED, not failed -- and it is
@@ -267,11 +273,20 @@ def main(argv=None):
             fh.write(mutante(src))
         broken = load_module(path, "extsubs_nochrome")
         chrome2, kept2 = classify(rows, broken)
+        # A MUTACAO MORDE ONDE A REGRA TRABALHA: as linhas do log de hoje nao
+        # tem contadores, por isso o censo vivo dava `0 -> 0` e o braco
+        # negativo acusava "o censo nao sabe dizer nao". Os casos que a regra
+        # existe para apanhar sao a amostra certa do controle.
+        probe_rows = [(FIXTURE_DAY, t) for t in MUST_CATCH]
+        chrome_on, _kept_on = classify(probe_rows, live)
+        chrome_off, _kept_off = classify(probe_rows, broken)
         print()
         print("NEGATIVE ARM (the rule removed from a COPY):")
         print("  chrome caught: %d -> %d   lines kept as captions: %d -> %d"
               % (len(chrome), len(chrome2), len(kept), len(kept2)))
-        if len(kept2) <= len(kept):
+        print("  no caso da REGRA (%d linhas de MUST_CATCH): %d -> %d"
+              % (len(probe_rows), len(chrome_on), len(chrome_off)))
+        if len(chrome_off) >= len(chrome_on):
             failures.append("NEGATIVE ARM PRODUCED NO EXTRA CHROME -> the census "
                             "cannot say no")
 

@@ -575,9 +575,41 @@ def neg_arm(text, source_text=None, real_text=None):
                   (fails or ['o mutante passou -- o instrumento nao le o fonte'])[0])
         # O DEFEITO DE VOLTA TEM DE DERRUBAR O JULGAMENTO DO LOG TAMBEM: o
         # `gate_answer_payload` mutado e' o que classifica a resposta MEDIDA.
-        verdict_m, detail_m = judge(real_text or text, _source_old_bad_answer(source_text))
-        check('bad-answer-de-volta-derruba-o-log', verdict_m == 'RED',
-              ((detail_m.get('fails') or ['o log passou com o defeito de volta'])[0]))
+        # SO' QUANDO HA' UMA LINHA LEGADA PARA RE-JULGAR. Sem ela o replay
+        # devolve `replayadas=0` e o braco publicava RED-por-nada (ou GREEN-por-
+        # nada, que era o caso): um passo sem evidencia nao julga. A cobertura
+        # desta classe vive agora no par sem navegador logo abaixo.
+        # APOSENTADA (2026-11-05): este braco so' sabia julgar atraves do
+        # replay com NAVEGADOR e app viva, e neste host o replay devolve
+        # `replayadas=0` -- ele publicava GREEN sem julgar nada (`cases=12
+        # caught=11`, o unico mutante que passava). A classe que ele cobria
+        # (a resposta crua em STRING JSON tem de ser LIDA, nao chamada de
+        # `bad-answer`) esta' agora em `string-answer-read-by-the-gate`, que
+        # corre o `gate_probe` SHIPPED com uma resposta construida a mao: e'
+        # deterministico, nao precisa de browser, e cai com o mutante.
+        print('  %-34s -> RETIRED  coberto por string-answer-read-by-the-gate'
+              % 'bad-answer-de-volta-derruba-o-log')
+        # O MESMO DEFEITO, SEM DEPENDER DE HA' UMA LINHA LEGADA NO LOG
+        # (2026-11-05). O braco acima julga o log do dono, e o log do dono nao
+        # tem NENHUMA linha `why=bad-answer` (`replayadas=0`) -- por isso ele
+        # publicava GREEN sem julgar nada, e o mutante `bad-answer-de-volta`
+        # era o unico dos doze que passava (cases=12 caught=11). Aqui a
+        # resposta CRUA da pagina e' construida a mao, na forma exacta que ela
+        # envia (uma STRING JSON) e empurrada pelo `gate_probe` que o show
+        # corre: o fonte REAL faz ack na primeira tentativa, o mutante
+        # responde `bad-answer`.
+        probe_mod = _probe_module()
+        synthetic = {'answer': json.dumps({'surface': 'strip', 'style': True,
+                                           'sized': True, 'w': 380, 'h': 40})}
+        good = probe_mod.classify(source_text, synthetic, 'strip')
+        bad_answer = probe_mod.classify(_source_old_bad_answer(source_text),
+                                        synthetic, 'strip')
+        check('string-answer-read-by-the-gate',
+              bool(good.get('ack')) and good.get('why') == 'applied'
+              and bad_answer.get('why') == 'bad-answer',
+              'real: ack=%s why=%s / mutante: ack=%s why=%s'
+              % (good.get('ack'), good.get('why'),
+                 bad_answer.get('ack'), bad_answer.get('why')))
         # A REPETICAO: o `gate_probe` SHIPPED e' executado com um relogio de
         # brinquedo, e o mutante que a remove tem de o apanhar.
         fails, notes = retry_arm(source_text)

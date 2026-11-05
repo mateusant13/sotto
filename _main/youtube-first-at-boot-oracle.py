@@ -1,3 +1,4 @@
+# NO-BUG: Portao da PRIMEIRA LEGENDA DO YOUTUBE NO ARRANQUE.
 """Portao da PRIMEIRA LEGENDA DO YOUTUBE NO ARRANQUE.
 
     `_main/youtube-first-at-boot-oracle.py`

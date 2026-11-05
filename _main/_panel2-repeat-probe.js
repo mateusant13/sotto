@@ -224,15 +224,19 @@ function main() {
     // belongs to a row already on screen" always misses, so every commit appends.
     // This is the pre-fix behaviour, reproduced exactly rather than described.
     const src = fs.readFileSync(PANEL_JS, 'utf8');
-    // REPOINTED 2026-10-11 (STEP 4): the identity lookup is now keyed by
-    // `rowIdentity(source, start)` (panel.js:326), not by `start` alone, so the
-    // anchor is today's line at panel.js:916.
-    const anchor = '  const existing = identity === null ? null : committedByStart.get(identity) || null;';
-    if (!src.includes(anchor)) {
+    // REPOINTED 2026-10-11 (STEP 4) and again 2026-11-05: the anchor named the
+    // DECLARATION (`const existing = ...`) and panel.js moved it to `let` when the
+    // row began to be replaced in place, so this control refused to build with a
+    // SETUP ERROR and `control-panel2-repeat-revert` went red for a reason that was
+    // not behaviour. The anchor is the EXPRESSION; the binding keyword is matched,
+    // not spelled -- a control that breaks on `const` -> `let` was never anchored to
+    // the rule, only to a word.
+    const anchorRe = /^([ \t]*)(const|let|var) existing = identity === null \? null : committedByStart\.get\(identity\) \|\| null;/m;
+    if (!anchorRe.test(src)) {
       console.log('SETUP ERROR: the identity lookup anchor is not in panel.js — the control cannot be built.');
       return 2;
     }
-    panelSource = src.replace(anchor, '  const existing = null; // CONTROL: identity rule disabled');
+    panelSource = src.replace(anchorRe, '$1$2 existing = null; // CONTROL: identity rule disabled');
     fs.writeFileSync(MUTANT, panelSource, 'utf8');
     console.log(`control : ${path.relative(REPO, MUTANT)} — a COPY of panel.js with the identity rule disabled\n`);
   }

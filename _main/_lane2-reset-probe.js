@@ -89,6 +89,10 @@ arm('ARM 1 a fresh engine holds nothing', a.state(), {
   committed: [],
   provisional: [],
   lastAudioEnd: null,
+  // `staleDropped` entrou em `state()` a 2026-11-05 (a guarda do audio velho).
+  // Um motor ACABADO de criar conta zero descartes -- a forma cresceu, o
+  // contrato e' o mesmo. A ORDEM e' a do `state()`: o comparador e' JSON.
+  staleDropped: 0,
   tailClosed: false,
 });
 
@@ -169,7 +173,7 @@ arm('ARM 6 createEngine still returns ingest/flush/expireHold/visible/state/rese
 // (caption-formulation.js:1033). The arm still checks BOTH halves -- that
 // reset() returns nothing AND that the engine is empty afterwards -- so the
 // teeth are unchanged; only the expected shape grew.
-arm('ARM 6b reset() is idempotent and returns nothing', a.reset() === undefined && JSON.stringify(a.state()) === JSON.stringify({ committed: [], provisional: [], lastAudioEnd: null, tailClosed: false }), true);
+arm('ARM 6b reset() is idempotent and returns nothing', a.reset() === undefined && JSON.stringify(a.state()) === JSON.stringify({ committed: [], provisional: [], lastAudioEnd: null, staleDropped: 0, tailClosed: false }), true);
 
 // ARM 6c is a CHANGE DETECTOR over the module's top-level surface. The
 // EXPECTED list below is the REAL surface, measured 2026-10-19 against

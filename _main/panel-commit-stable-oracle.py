@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: panel-commit-stable-oracle.py -- THE TWO MODES OF THE HOLD, AND WHAT MOVED.
 # -*- coding: utf-8 -*-
 """panel-commit-stable-oracle.py -- THE TWO MODES OF THE HOLD, AND WHAT MOVED.
 

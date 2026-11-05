@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: battery-budget -- o TECTO da corrida, como portao com ratchet.
 """battery-budget -- o TECTO da corrida, como portao com ratchet.
 
 A LEI QUE ISTO ENFORCA (AGENTS.md, 2026-11-05, ordem do dono: *"por que e' completamente BURRO

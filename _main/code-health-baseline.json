@@ -41,12 +41,12 @@
       "max_func_name": ""
     },
     "app/panel/caption-formulation.js": {
-      "bytes": 63022,
+      "bytes": 63410,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 1271,
+      "lines": 1277,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -301,12 +301,12 @@
       "max_func_name": "_stable"
     },
     "app/webview/gaming_mode.py": {
-      "bytes": 21027,
+      "bytes": 22820,
       "classes": 4,
-      "defs": 10,
+      "defs": 11,
       "except_pass": 0,
       "globals": 0,
-      "lines": 493,
+      "lines": 528,
       "max_func": 47,
       "max_func_name": "tick"
     },
@@ -431,12 +431,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1139141,
-      "classes": 27,
+      "bytes": 1151988,
+      "classes": 28,
       "defs": 135,
       "except_pass": 50,
       "globals": 4,
-      "lines": 21288,
+      "lines": 21534,
       "max_func": 412,
       "max_func_name": "main"
     },
@@ -449,6 +449,16 @@
       "lines": 113,
       "max_func": 25,
       "max_func_name": "tick"
+    },
+    "app/webview/ui_watchdog_policy.py": {
+      "bytes": 9929,
+      "classes": 1,
+      "defs": 5,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 259,
+      "max_func": 90,
+      "max_func_name": "_selftest"
     },
     "app/webview/warm_engine.py": {
       "bytes": 57883,
@@ -511,13 +521,13 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 47693,
+      "bytes": 55476,
       "classes": 1,
-      "defs": 18,
-      "except_pass": 4,
+      "defs": 20,
+      "except_pass": 5,
       "globals": 0,
-      "lines": 1072,
-      "max_func": 125,
+      "lines": 1205,
+      "max_func": 146,
       "max_func_name": "_run"
     },
     "app/webview/youtube_monotonic.py": {
@@ -701,7 +711,7 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 448311,
+      "bytes": 448288,
       "classes": 17,
       "defs": 77,
       "except_pass": 15,
@@ -801,7 +811,7 @@
       "max_func_name": "_pump"
     }
   },
-  "measured": "2026-11-05",
+  "measured": "2026-10-23",
   "metrics": [
     "bytes",
     "lines",

@@ -1,3 +1,4 @@
+# NO-BUG: CAPTURE EXCLUSION ORACLE -- a janela da legenda existe para o dono e para mais
 """CAPTURE EXCLUSION ORACLE -- a janela da legenda existe para o dono e para mais
 ninguem.
 

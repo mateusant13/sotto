@@ -1,3 +1,4 @@
+# NO-BUG: Oraculo da recuperacao de energia/sessao (`app/webview/power_recovery.py`).
 """Oraculo da recuperacao de energia/sessao (`app/webview/power_recovery.py`).
 
 Julga a DECISAO e a ENTREGA, nao o Windows: nenhum oraculo deste repo pode

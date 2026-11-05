@@ -1,4 +1,5 @@
 #!/usr/bin/env pythonw.exe
+# NO-BUG: ORACLE: a navigation that never comes back must not take the app with it.
 # -*- coding: utf-8 -*-
 """ORACLE: a navigation that never comes back must not take the app with it.
 

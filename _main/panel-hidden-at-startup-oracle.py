@@ -98,6 +98,7 @@ import io
 import contextlib
 import json
 import os
+import subprocess
 import sys
 import tempfile
 
@@ -1141,6 +1142,20 @@ def _mutant_arm_child(shell_path, deadline_s):
     return 0
 
 
+def _hidden_startupinfo():
+    """O PAR DA LEI DAS JANELAS: o bit E o `STARTF` (2026-11-05).
+
+    `creationflags` sozinho e' WEAK-FLAG no censo `console-window-audit.py`,
+    porque medido em 2026-11-04 um filho com so' o bit pintou janela quando o
+    pai nao tinha consola. `_main/hidden-launch.py` ja' faz este par; aqui o
+    filho e' este proprio ficheiro, e o `Popen` quer o par explicito.
+    """
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 0          # SW_HIDE
+    return si
+
+
 def run_mutant_isolated(path):
     """Run one mutant in its own process. Returns `(payload, hung, log)`."""
     import subprocess
@@ -1152,7 +1167,8 @@ def run_mutant_isolated(path):
             [sys.executable, os.path.abspath(__file__),
              '--mutant-only', path, '--deadline', str(MUTANT_ARM_DEADLINE_S)],
             capture_output=True, text=True, timeout=MUTANT_ARM_DEADLINE_S + 60,
-            creationflags=CREATE_NO_WINDOW, cwd=HERE, env=env)
+            creationflags=CREATE_NO_WINDOW, cwd=HERE, env=env,
+            startupinfo=_hidden_startupinfo())
     except subprocess.TimeoutExpired as exc:
         text = (exc.stdout or '') + (exc.stderr or '')
         if isinstance(text, bytes):

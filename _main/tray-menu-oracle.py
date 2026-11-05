@@ -1,3 +1,4 @@
+# NO-BUG: Does the tray icon behave like every other tray app on this box?
 """Does the tray icon behave like every other tray app on this box?
 
 OWNER, 2026-11-04, verbatim: *"icone do sotto e' uma merda de mexer. botao direito e'

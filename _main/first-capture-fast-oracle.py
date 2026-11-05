@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: first-capture-fast-oracle -- a PRIMEIRA legenda depois de um arranque, medida nas DECISOES.
 """first-capture-fast-oracle -- a PRIMEIRA legenda depois de um arranque, medida nas DECISOES.
 
 O DEFEITO, medido no arranque dele (2026-11-04, `_main/webview-run.log`, pid 13904):
