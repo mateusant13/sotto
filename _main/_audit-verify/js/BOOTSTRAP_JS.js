@@ -122,6 +122,20 @@
   // com nome por isso mesmo -- 2026-11-04, medido: o perfil de arranque ficou
   // 24 h a recolher e a descartar (0 `PANEL_BOOT_PROFILE` em 469 587 linhas).
   window.__sotto_post = function (kind, payload) { post(kind, payload); };
+  // O INSTANTE DA PINTURA PROVISORIA ENTRA NO LOG (2026-11-04). A metrica do
+  // painel era `commit`, que e' o fim do que o olho ja' tinha visto: medido pela
+  // lane PanelCommitOnStable, `push` -> `CAPTION_PROVISIONAL_PAINT` esta' em 0 ms
+  // e `paint` -> `commit` pagava a espera toda (p50 839, p95 1 500 ms). O
+  // `panel.js` ja' produz a linha e o gancho (`SottoPaintLine`/`SottoPaintSink`);
+  // faltava o shell instalar o gancho, e sem isso a perna do OLHO so' existia
+  // para sondas de DOM. A linha e' a do painel, cortada em 400 B: um gancho que
+  // deixa a pagina escrever o log sem limite e' um gancho que o log paga.
+  window.SottoPaintSink = function (row) {
+    try {
+      post('paint-row', { line: window.SottoPaintLine(row) });
+    } catch (err) { /* a probe must not break the paint */ }
+  };
+
 
   window.__sotto_info = function (id, json) {
     var resolve = infoPending[id];

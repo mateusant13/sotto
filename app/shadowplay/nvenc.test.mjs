@@ -57,8 +57,30 @@ try {
       enc.captureAndEncode(out, { fps: 60, seconds: 12, gop: 250 });
       const r = enc.gopOf(out, 60);
       assert.ok(r.gop > 0, "probe returned no GOP");
-      assert.ok(r.gop >= 250, `asked 250, measured ${r.gop}: NVENC may add keyframes`);
-      console.log("       (requested GOP 250, encoder delivered " + r.gop + ")");
+      // O QUE SE JULGA E' O LEITOR, NAO A PROMESSA (2026-11-05). A arm era
+      // `r.gop >= 250`, ou seja "o NVENC honrou o -g 250" -- e isso e' uma
+      // PROPRIEDADE DO ENCODER, que cai sob contencao de GPU precisa (medido
+      // hoje: `nvenc.test.mjs FAIL 4 passed, 1 failed` duas vezes num gate de
+      // commit, e 5/5 verdes nas mesmas horas com a caixa livre; a leitura
+      // isolada deu 399, 508 e outros valores). O contrato do `gopOf` e'
+      // outro: devolver o MENOR espacamento REAL entre keyframes do ficheiro
+      // e dizer se e' variavel. Isso mede-se contra o ficheiro, nao contra o
+      // pedido, e por isso nao depende de quem mais esta' a usar a GPU.
+      const keyPts = execFileSync("ffprobe", ["-v", "error", "-select_streams",
+        "v:0", "-skip_frame", "nokey", "-show_entries", "frame=pts_time",
+        "-of", "csv=p=0", out], { windowsHide: true, encoding: "utf8" })
+        .split("\n").map((x) => parseFloat(x)).filter((x) => Number.isFinite(x));
+      assert.ok(keyPts.length >= 2,
+        `fixture too short: ${keyPts.length} keyframe(s) in 12 s -- nothing to measure`);
+      const realGaps = keyPts.slice(1)
+        .map((v, i) => Math.round((v - keyPts[i]) * 60));
+      const expected = [...new Set(realGaps)].sort((a, b) => a - b);
+      assert.equal(r.gop, expected[0],
+        `probe said ${r.gop}, the file's smallest keyframe gap is ${expected[0]}`);
+      assert.equal(Boolean(r.variable), expected.length > 1,
+        `variable=${r.variable} with gaps ${expected.join(",")}`);
+      console.log("       (requested GOP 250, keyframe gaps in the file: "
+        + expected.join(",") + " -- probe reported " + r.gop + ")");
     });
 
     t("remux copies the stream: codec and frame count survive", () => {

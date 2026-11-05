@@ -38,6 +38,8 @@ import ctypes.wintypes as wt
 import os
 import re
 import sys
+import threading
+import time
 
 SHELL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..',
                          'app', 'webview')
@@ -190,6 +192,87 @@ def judge(shell) -> list:
             user32.GetAncestor(wt.HWND(hwnd), GA_PARENT)) or False,
             f'hwnd={hwnd}'))
 
+        # ARMS 12-13 -- O ICONE COM A MAQUINA ESGOTADA (dono, 2026-11-05:
+        # *"make the interaction with the icon better, cause it does not work when
+        # my pc is close to exhausted. but other icones, do"*). A segunda metade
+        # da frase e' o diagnostico: os outros icones sao de processos `NORMAL` e
+        # respondem. Este fio dorme num `GetMessageW` e por isso pode subir a
+        # `ABOVE_NORMAL` sem roubar CPU a ninguem.
+        #
+        # ARM 12 le o VALOR que o fio do icone realmente corre, de fora, com o
+        # handle do fio -- nao a presenca de uma linha de codigo.
+        prio = {'value': None, 'log': ''}
+        started = threading.Event()
+
+        def _probe_priority():
+            got = tray._raise_thread_priority()
+            prio['value'] = got
+            prio['log'] = logs[-1] if logs else ''
+            started.set()
+
+        th = threading.Thread(target=_probe_priority, name='oracle-prio', daemon=True)
+        th.start()
+        started.wait(2.0)
+        th.join(1.0)
+        checks.append(('tray_thread_priority_raised', prio['value'] == 1,
+                       'now=%r (1 = ABOVE_NORMAL) log=%r' % (prio['value'], prio['log'][:60])))
+
+        # ARM 12b -- A FIACAO: o valor acima prova que a CURA funciona, nao que o
+        # LACO A CHAMA. Um mutante que apaga `self._raise_thread_priority()` de
+        # `_pump` passava na 12 (medido: NOT-CAUGHT). Aqui um `TrayIcon` NOVO corre
+        # `_pump()` num fio proprio, como `_run` faz, e a linha
+        # `TRAY_THREAD_PRIORITY` tem de sair DESSE laco.
+        #
+        # A janela pode NAO nascer (a classe ja' esta' registada por outra
+        # instancia -- medido), e isso nao impede a arm: o raise e' a PRIMEIRA
+        # coisa que `_pump` faz, antes de qualquer `GetMessageW`. O laco sai com um
+        # `WM_QUIT` postado AO FIO (`PostThreadMessageW`), nao a uma janela.
+        tray2 = shell.TrayIcon(icon_path=None, on_command=lambda c: None,
+                               log_fn=log, warn_fn=warn)
+        loop_seen = {'hwnd': 0, 'tid': 0, 'ready': threading.Event()}
+        _logs_before = len(logs)
+
+        def _tray_loop():
+            loop_seen['tid'] = threading.get_native_id()
+            # SEM JANELA, DE PROPOSITO. A primeira versao criava uma SEGUNDA
+            # janela desta classe no mesmo processo; o `RegisterClassExW` devolve
+            # `ERROR_CLASS_ALREADY_EXISTS` e fica registada a PRIMEIRA wndproc, um
+            # thunk `ctypes` que morre com o modulo do mutante -- e o Windows
+            # chama-lo depois disso da' `0xc000001d` (illegal instruction, medido
+            # no `--neg-arm`: rc=29 a meio do segundo mutante). O que esta arm
+            # julga e' a PRIMEIRA instrucao de `_pump`, e ela nao precisa de
+            # janela nenhuma: `GetMessageW(None)` le a fila do FIO.
+            loop_seen['ready'].set()
+            tray2._pump()
+
+        th2 = threading.Thread(target=_tray_loop, name='oracle-tray-loop',
+                               daemon=True)
+        th2.start()
+        loop_seen['ready'].wait(3.0)
+        time.sleep(0.05)
+        pump_raised = any('TRAY_THREAD_PRIORITY' in ln
+                          for ln in logs[_logs_before:])
+        try:
+            user32.PostThreadMessageW.argtypes = [ctypes.c_uint, ctypes.c_uint,
+                                                  ctypes.c_void_p,
+                                                  ctypes.c_void_p]
+            user32.PostThreadMessageW(int(loop_seen['tid']), 0x0012, 0, 0)  # WM_QUIT
+        except Exception:  # noqa: BLE001
+            pass
+        th2.join(1.5)
+        checks.append(('tray_loop_calls_the_raise', pump_raised,
+                       'TRAY_THREAD_PRIORITY no laco=%s' % pump_raised))
+
+        # ARM 13 -- RETIRADA, e o motivo fica escrito porque a tentacao volta: a
+        # primeira versao media "o menu abre com a caixa saturada" com
+        # queimadores NO PROPRIO processo (7 227 ms sem resposta — era o GIL, nao
+        # a prioridade) e a segunda com queimadores noutros processos mas a janela
+        # criada no fio ERRADO (mensagens postadas vao para a fila do fio que
+        # criou a janela, logo o `_pump` nunca via o clique). Nenhuma das duas
+        # media o icone. A arm que MEDE a cura e' a 12, e ela le o VALOR que o fio
+        # corre, de fora, com o handle do fio. Uma arm que precisa de uma inferencia
+        # sobre o escalonador do Windows nao e' um instrumento: e' uma esperanca.
+
         # ARM 1 -- nothing appears on his screen and nothing enters Alt+Tab.
         vis = bool(user32.IsWindowVisible(wt.HWND(hwnd)))
         ex = exstyle(hwnd, user32)
@@ -279,7 +362,15 @@ MENU_FIXED = """        user32.PostMessageW(wt.HWND(self.hwnd), WM_NULL, 0, 0)
 """
 MENU_MUTANT = """"""
 
+RAISE_FIXED = """    def _pump(self):
+        self._raise_thread_priority()
+"""
+RAISE_MUTANT = """    def _pump(self):
+"""
+
 MUTANTS = [
+    ('tray_priority_raise_removed', RAISE_FIXED, RAISE_MUTANT,
+     ['tray_loop_calls_the_raise']),
     ('hidden_popup_reverted_to_message_only', CREATE_FIXED, CREATE_MUTANT,
      ['not_message_only']),
     ('left_click_reverted_to_menu', BUTTONS_FIXED, BUTTONS_MUTANT,

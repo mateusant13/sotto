@@ -7515,6 +7515,9 @@ user32.CreatePopupMenu.restype = wt.HMENU
 user32.AppendMenuW.restype = wt.BOOL
 user32.AppendMenuW.argtypes = [wt.HMENU, ctypes.c_uint, ctypes.c_size_t,
                                wt.LPCWSTR]
+#: `THREAD_PRIORITY_ABOVE_NORMAL`. The tray thread sleeps in `GetMessageW`, so
+#: raising it costs nothing and is what makes the menu answer on a starved box.
+THREAD_PRIORITY_ABOVE_NORMAL = 1
 user32.TrackPopupMenu.restype = ctypes.c_int
 user32.TrackPopupMenu.argtypes = [wt.HMENU, ctypes.c_uint, ctypes.c_int,
                                   ctypes.c_int, ctypes.c_int, wt.HWND,
@@ -7869,7 +7872,44 @@ class TrayIcon:
             for i in items))
         return menu
 
+    def _raise_thread_priority(self):
+        """O ICONE TEM DE RESPONDER COM A MAQUINA ESGOTADA (dono, 2026-11-05).
+
+        Verbatim: *"also make the interaction with the icon better, cause it does
+        not work when my pc is close to exhausted. but other icones, do."* — e a
+        segunda metade e' o diagnostico: os outros icones pertencem a processos
+        `NORMAL`, e a janela/`TrackPopupMenu` deles responde; o nosso nao.
+
+        O fio do icone esta' PARADO num `GetMessageW` 99,99 % do tempo, onde nao
+        gasta CPU nenhuma. Quando a caixa satura (o jogo a 8-11 GB, Chrome, Chrome
+        WebView2), um fio `NORMAL` com o quantum de 15 ms deste Windows perde a
+        corrida no instante exacto em que o dono clica — o clique entra na fila e
+        o menu aparece segundos depois, ou nunca. Subir SO' ESTE fio a
+        `ABOVE_NORMAL` nao rouba nada a ninguem (ele nao esta' a competir por CPU
+        enquanto dorme) e ganha a corrida nos dois instantes em que alguem clicou.
+
+        O `was`/`now` vai para o log: um raise que nao aconteceu e um raise que
+        nao era preciso sao factos diferentes, e so' um deles e' aceitavel.
+        """
+        try:
+            kernel32.GetThreadPriority.argtypes = [ctypes.c_void_p]
+            kernel32.GetThreadPriority.restype = ctypes.c_int
+            kernel32.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            kernel32.SetThreadPriority.restype = ctypes.c_bool
+            kernel32.GetCurrentThread.restype = ctypes.c_void_p
+            handle = kernel32.GetCurrentThread()
+            was = int(kernel32.GetThreadPriority(handle))
+            ok = bool(kernel32.SetThreadPriority(handle, THREAD_PRIORITY_ABOVE_NORMAL))
+            now = int(kernel32.GetThreadPriority(handle))
+            self.log(f'TRAY_THREAD_PRIORITY was={was} now={now} '
+                     f'ask={THREAD_PRIORITY_ABOVE_NORMAL} ok={int(ok)}')
+            return now
+        except Exception as exc:  # noqa: BLE001 -- um icone sem raise ainda abre
+            self.warn(f'TRAY_THREAD_PRIORITY_FAILED {type(exc).__name__}: {exc}')
+            return None
+
     def _pump(self):
+        self._raise_thread_priority()
         msg = MSG()
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
             user32.TranslateMessage(ctypes.byref(msg))

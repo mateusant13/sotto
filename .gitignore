@@ -321,3 +321,12 @@ _main/_audit-verify/_slowest.txt
 # O CENSO DO PRIMEIRO FRAME ESCREVE O PROPRIO panel-state (2026-11-04): e' o
 # estado de uma INSTANCIA PRIVADA do censo, nao o do dono -- machine state.
 panel-state.SottoPaintFirstCensus-*.json
+
+# STATE QUE OS PROPRIOS ORACULOS GERAM (2026-11-05): copias mutantes que nascem ao
+# lado do original para o braco negativo provar o detector, o diretorio de mutantes
+# do `dead-app-exit`, o rotativo do censo de freeze e os registos de
+# `history-verify/` (que sao a MEDICAO do historico dele, nao fonte).
+*__mutant_*.py
+_main/_deadexit/
+*.log.1
+history-verify/

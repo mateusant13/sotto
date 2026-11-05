@@ -512,12 +512,37 @@ def arms_queue(batch_path: Path, tmp: Path) -> None:
     # A FILA VIVE ONDE O DONO DISSE: medido 2026-11-03, `TMPDIR` esta' vazio e o
     # `gettempdir()` devolve `G:\Temp` -- sem o candidato `I:\cc-tmp` a fila ia
     # para o temp do sistema em vez do scratch do dono.
+    #
+    # A ARM MENTIA QUANDO QUEM A CORRIA TINHA `TMPDIR` (medido 2026-11-05): o
+    # texto promete o caso "TMPDIR vazio" e o codigo so' apagava
+    # `SOTTO_BATCH_QUEUE_DIR`, por isso uma lane com `TMPDIR=I:\cc-tmp` herdado
+    # via `gettempdir()==I:\cc-tmp`, a comparacao `resolved != temp+dir` dava
+    # False e o passo ficava VERMELHO contra um produto correcto. As variaveis
+    # que decidem o temp sao apagadas E o cache do `tempfile` e' limpo (ele
+    # guarda a primeira resposta em `tempfile.tempdir`, logo mexer no `environ`
+    # depois dessa primeira leitura nao muda nada).
     os.environ.pop('SOTTO_BATCH_QUEUE_DIR', None)
+    saved_env = {k: os.environ.pop(k) for k in ('TMPDIR', 'TEMP', 'TMP')
+                 if k in os.environ}
+    tempfile.tempdir = None
+    system_tmp = tempfile.gettempdir()
     resolved = batch.queue_dir()
     add(batch.QUEUE_DIRNAME in resolved and resolved != os.path.join(
-            tempfile.gettempdir(), batch.QUEUE_DIRNAME),
+            system_tmp, batch.QUEUE_DIRNAME),
         "o directorio da fila cai no scratch do dono quando `TMPDIR` esta' vazio",
         resolved)
+    # `TMPDIR` a apontar para o temp do sistema NAO e' o caso desta arm: o
+    # contrato de `batch_queue.queue_dir()` e' "a env manda, senao
+    # `TMPDIR/sotto-batch-queue`" -- `TMPDIR` esta' ACIMA do scratch do dono de
+    # proposito (quem o define quer aquela pasta). Medido 2026-11-05: uma arm
+    # que exigisse o contrario dava RED contra o produto correcto, e foi
+    # retirada em vez de o produto ser mudado para servir a arm.
+    for k, v in saved_env.items():
+        os.environ[k] = v
+    for k in ('TMPDIR', 'TEMP', 'TMP'):
+        if k not in saved_env:
+            os.environ.pop(k, None)
+    tempfile.tempdir = None
     os.environ['SOTTO_BATCH_QUEUE_DIR'] = str(tmp / "env-queue")
     add(batch.queue_dir() == str(tmp / "env-queue"),
         "`SOTTO_BATCH_QUEUE_DIR` manda sobre tudo", batch.queue_dir())

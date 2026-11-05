@@ -59,6 +59,31 @@ CHROME_CANDIDATES = [
 ]
 PROBE_DIV = 'data-gate-probe'
 
+#: O TECTO DA SONDA. Medido 2026-11-05: com a caixa saturada o Edge headless
+#: `--dump-dom` NAO devolveu em 180 s, e o passo `paint-live-show` da bateria
+#: (que corre DUAS linhas legadas) gastou 203 s -- mais do que o orcamento do
+#: passo, que foi morto e contou `failed=1` com o log a dizer GREEN. Uma sonda
+#: que nao responde em 45 s esta' indisponivel, e indisponivel e' `UNPROVEN`,
+#: que o oraculo ja' sabe dizer: o veredicto fica SKIPPED e chega em segundos em
+#: vez de morrer num timeout mais caro do que o proprio passo.
+PROBE_TIMEOUT_S = 45
+
+
+def probe_root():
+    """Onde o perfil do Edge headless vive durante a sonda.
+
+    A ORDEM E' A DA CASA (AGENTS.md, `TMPDIR = I:\\cc-tmp`): `TMPDIR` manda,
+    depois o scratch do dono se existir, e so' no fim o temp do sistema. Medido
+    2026-11-05: o `mkdtemp` puro punha o perfil em `G:\\Temp`, o volume que enche
+    e mata lanes com ENOSPC. O perfil e' pequeno (~15 MB) mas e' DISCO e e' o
+    unico sitio que esta' sonda escreve.
+    """
+    given = os.environ.get('TMPDIR')
+    for base in (given, r'I:\cc-tmp'):
+        if base and os.path.isdir(base):
+            return base
+    return None
+
 
 def find_browser():
     for c in EDGE_CANDIDATES + CHROME_CANDIDATES:
@@ -171,6 +196,18 @@ def _attr(dom, key):
     return html_mod.unescape(m.group(1)) if m else None
 
 
+def _kill_tree(pid):
+    """Mata o Edge E OS FILHOS. Um `proc.kill()` deixa gpu/renderer vivos com os
+    canos abertos, e o `communicate` seguinte espera por eles (ver o comentario
+    grande em `page_answer`). `taskkill /T` e' a arvore inteira, sem janela."""
+    try:
+        subprocess.run(['taskkill', '/T', '/F', '/PID', str(pid)],
+                       capture_output=True, timeout=15,
+                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    except Exception:  # noqa: BLE001 -- matar e' melhor esforco e nunca decide o veredicto
+        pass
+
+
 def page_answer(surface='strip', viewport=(380, 40), source_text=None,
                 browser=None, root=None):
     """-> dict com o que a PAGINA devolve e o que o WebView2 entregaria.
@@ -186,7 +223,7 @@ def page_answer(surface='strip', viewport=(380, 40), source_text=None,
         SHELL, encoding='utf-8').read()
     gate_js = shell_literal(source_text, 'CONTENT_GATE_JS')
     owned = root is None
-    root = root or tempfile.mkdtemp(prefix='gate-probe-')
+    root = root or tempfile.mkdtemp(prefix='gate-probe-', dir=probe_root())
     try:
         build_page(root, surface, gate_js)
         url = 'file:///' + os.path.join(root, 'panel.html').replace('\\', '/')
@@ -202,17 +239,35 @@ def page_answer(surface='strip', viewport=(380, 40), source_text=None,
         cmd += ['--virtual-time-budget=6000',
                '--user-data-dir=' + os.path.join(root, '_profile'),
                '--dump-dom', url]
-        proc = subprocess.run(
-            cmd, capture_output=True, timeout=180,
+        # `subprocess.run(timeout=)` NAO BASTA, E O DEFEITO FOI MEDIDO (2026-11-05):
+        # ao expirar, o `run` mata o msedge PAI e depois espera pelo fim dos
+        # canos -- e os processos FILHOS do Edge (gpu/renderer) herdaram esses
+        # canos, por isso o `communicate` bloqueia ate' eles morrerem. Resultado
+        # real: um oraculo com tecto de 45 s levou **179 s**, e uma bateria com
+        # dois replays gastou 203 s e foi morta pelo passo -- `paint-live-show=1`
+        # com o log a dizer GREEN. Aqui a arvore e' morta por inteiro antes de
+        # se ler o cano, e o veredicto e' `UNPROVEN`, que e' o que "nao
+        # respondeu" significa.
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
             startupinfo=subprocess.STARTUPINFO(
                 dwFlags=getattr(subprocess, 'STARTF_USESHOWWINDOW', 0), wShowWindow=0))
-        dom = proc.stdout.decode('utf-8', 'replace')
+        try:
+            out, err = proc.communicate(timeout=PROBE_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            _kill_tree(proc.pid)
+            try:
+                out, err = proc.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                out, err = b'', b''
+            return {'ok': False, 'why': 'a sonda nao respondeu em %s s' % PROBE_TIMEOUT_S}
+        dom = out.decode('utf-8', 'replace')
         value = _attr(dom, 'value')
         wire = _attr(dom, 'wire')
         if value is None:
             return {'ok': False, 'why': 'a sonda nao publicou nada (rc=%s)' % (proc.returncode,),
-                    'stderr': proc.stderr.decode('utf-8', 'replace')[:400]}
+                    'stderr': err.decode('utf-8', 'replace')[:400]}
         try:
             answer = json.loads(wire)
         except (TypeError, ValueError):
