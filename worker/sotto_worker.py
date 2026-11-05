@@ -4318,6 +4318,27 @@ def _seam_key(word):
     return word.strip('.,;:!?\u00ab\u00bb"\'()[]-').casefold()
 
 
+def drop_leading_word_tail(text):
+    """`'d you'` -> `'you'`, `'s waking'` -> `'waking'`, `'d'` -> `''`.
+
+    O PRIMEIRO token e' a CAUDA de uma palavra que comecou na linha anterior
+    (ver `LineFormer.push`: o fragmento chega com `continues=True` quando o
+    proprio tokenizer diz que ele continua a palavra aberta). Publicar a cauda
+    como inicio de linha e' o "d you" que o dono leu na tela em 2026-11-05.
+
+    Quando o fragmento e' SO' a cauda, nao ha' palavra inteira para publicar e
+    a funcao devolve `''` -- nada vai para o ecra, que e' a mesma regra que
+    `proven_text` ja' aplica a' cauda da linha.
+
+    Uma palavra unica que NAO e' continuacao nao passa por aqui: quem chama
+    so' chama com `continues=True`.
+    """
+    parts = (text or '').strip().split(None, 1)
+    if len(parts) < 2:
+        return ''
+    return parts[1].strip()
+
+
 def dedup_seam_repeat(text):
     """Colapsa uma repeticao IMEDIATA de 2+ palavras: `X Y X Y` -> `X Y`.
 
@@ -4758,6 +4779,22 @@ class LineFormer:
         frag = (text or "").strip()
         if not frag:
             return []
+        # UM FRAGMENTO QUE CONTINUA UMA PALAVRA NAO ABRE LINHA (2026-11-05).
+        # MEDIDO na sessao viva do dono: a legenda pintou
+        #     "D  you not get bored queuing the same game every day ..."
+        # onde o audio dizia "do you not get bored ...", e antes dela
+        # "S waking up in the" para "It's waking up in the". O fragmento que o
+        # tokenizer marca como CONTINUACAO chega SEM a cabeca da palavra -- a
+        # cabeca esta' na linha anterior, que ja' fechou e ja' foi ao ecra. Pinta-lo
+        # como inicio de linha publica a CAUDA como se fosse a palavra (um "D"
+        # maiusculo), e e' o mesmo defeito que o dono nomeou, verbatim:
+        # *"apareceu 'd you' inves de 'do you', da legenda. arruma"*.
+        # A cauda e' DESCARTADA e a linha comeca na proxima palavra inteira;
+        # quando nao resta nada, nao ha' o que publicar.
+        if continues and not self._words:
+            frag = drop_leading_word_tail(frag)
+            if not frag:
+                return []
         out = []
         # (1) a silence in the AUDIO closes the line BEFORE this chunk. This is
         # the boundary the old 1200 ms WALL-clock rule could never see.

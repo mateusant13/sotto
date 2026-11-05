@@ -35,7 +35,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const REPO = path.resolve(__dirname, '..');
-const FORMULATION = require(path.join(REPO, 'app', 'panel', 'caption-formulation.js'));
+// O braco negativo M2 (2026-11-05) aponta o processo FILHO para uma COPIA mutada
+// do modulo; sem `SOTTO_FORMULATION_IMPL` o filho carregaria o original e o
+// mutante nunca seria exercitado -- foi assim que um braco negativo "passou" sem
+// provar nada noutra casa.
+const IMPL = process.env.SOTTO_FORMULATION_IMPL
+  || path.join(REPO, 'app', 'panel', 'caption-formulation.js');
+const FORMULATION = require(IMPL);
 
 // The first NON-FLAG argument, so `--neg-arm` is not mistaken for the capture file.
 const AFTER = process.argv.slice(2).find((a) => !a.startsWith('--'))
@@ -144,6 +150,30 @@ check('6. SENTENCE_GAP_S agrees across worker (py) and renderer (js)',
 check('7. SENTENCE_MAX_CHARS agrees across worker (py) and renderer (js)',
   [pyconst('SENTENCE_MAX_CHARS'), FORMULATION.SENTENCE_MAX_CHARS], [90, 90]);
 
+// ── 8/9: O AUDIO DE ANTES NAO VOLTA PARA O ECRA (2026-11-05) ────────────────
+// MEDIDO na sessao viva do dono: `CAPTION_IN start=53.20 end=57.12 ... age_ms=17467`
+// pintado sobre uma linha que ja' estava em `start=73.92` -- a caixa saltou 17 s
+// para tras e voltou; ele leu *"parece que ela do nada para dar display ou
+// funcionar aleatoriamente"*. A guarda e' `STALE_LEAD_S` (o FIM do fragmento
+// contra o audio ja' pintado), e estas duas arms sao o par que a prova: a linha
+// fresca nao a dispara, e a velha nao pinta nem encurta o que esta' no ecra.
+const staleEngine = FORMULATION.createEngine({
+  onCommit: () => {},
+  onProvisional: () => {},
+});
+staleEngine.ingest('a linha que esta no presente', { start: 73.92, end: 76.0 });
+const growing = staleEngine.ingest(' e cresce', { start: 73.92, end: 78.0 });
+// A arm julga o que a guarda PROMETE -- o fragmento fresco nao e' recusado -- e
+// nao a formulacao da linha, que tem as suas proprias arms (1-5) e cujo filtro de
+// revisao mexe no texto quando `start` e' igual e o fim cresce.
+check('8. a linha que CRESCE nao e confundida com audio velho (sem falso positivo)',
+  staleEngine.state().staleDropped, 0);
+
+staleEngine.ingest('o segundo passe de um segmento que fechou ha 17 s', { start: 53.2, end: 57.12 });
+check('9. o segundo passe ATRASADO e recusado e o seu texto nao entra',
+  [staleEngine.state().staleDropped, staleEngine.visible().includes('segundo passe')],
+  [1, false]);
+
 // ── NEGATIVE ARM: the same replay through the STALE stub, deliberately ───────
 // An instrument that cannot fail on the staleness it was repaired for is not a check.
 let negOk = true;
@@ -157,6 +187,38 @@ if (process.argv.includes('--neg-arm')) {
   console.log(`  ${staleRed ? 'PASS' : 'FAIL'} M1 one-string stub (the pre-2026-10-11 convention) -> check 1 RED`
     + `  got=${JSON.stringify(staleTexts).slice(0, 90)}`);
   console.log(`  ${liveGreen ? 'PASS' : 'FAIL'} control: the mirrored stub stays GREEN  got=${JSON.stringify(liveTexts)}`);
+
+  // M2 — A GUARDA DE AUDIO VELHO (arm 9) TAMBEM TEM DE CAIR QUANDO DESARMADA.
+  // Enquanto o braco negativo so' julgava o stub de 2026-10-11, `STALE_LEAD_S`
+  // podia desaparecer do modulo e este passo continuava verde: um portao que nao
+  // ve' a cura que ele proprio nomeia e' decorativo. Muta uma COPIA em disco e
+  // exige o vermelho do arm 9 dentro do processo filho.
+  const os = require('node:os');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stale-guard-'));
+  const src = fs.readFileSync(path.join(REPO, 'app', 'panel', 'caption-formulation.js'), 'utf8');
+  const mutated = src.replace('      fragmentEnd < lastAudioEnd - STALE_LEAD_S',
+                              '      false && fragmentEnd < lastAudioEnd - STALE_LEAD_S');
+  let m2 = false;
+  let m2detail = 'a ancora do mutante nao existe no modulo (a guarda mudou de forma)';
+  if (mutated !== src) {
+    const copy = path.join(tmpDir, 'caption-formulation.js');
+    fs.writeFileSync(copy, mutated);
+    const { execFileSync } = require('node:child_process');
+    let m2out = '';
+    try {
+      m2out = execFileSync(process.execPath, [__filename], {
+        env: { ...process.env, SOTTO_FORMULATION_IMPL: copy },
+        encoding: 'utf8',
+      });
+    } catch (err) {
+      m2out = String((err && err.stdout) || '');
+    }
+    m2 = /FAIL\] 9\./.test(m2out);
+    m2detail = m2 ? 'o arm 9 fica RED com a guarda desarmada' : 'o arm 9 CONTINUOU verde com a guarda desarmada';
+  }
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+  console.log(`  ${m2 ? 'PASS' : 'FAIL'} M2 STALE_LEAD_S desarmado -> check 9 RED  ${m2detail}`);
+  negOk = negOk && m2;
   console.log(`NEG-ARM VERDICT ${negOk ? 'PASS' : 'FAIL'} -- the staleness is detectable`);
 }
 

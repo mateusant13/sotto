@@ -446,9 +446,19 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 02:2x):** `_main\_audit-verify-all.cmd` = **236106 B**,
-  **2914 CRLF** / 0 bare LF, sha256 `8742CD7F3FB6F051670242D83D6696ACB3509684078BCC9193B5507DDD9D80E5`.
-  (Vinte e tres linhas a mais do que o pin de 234270 B: o par `panel-nav-stall` + o seu
+- **PIN do ficheiro (medido 2026-11-05, 07:3x):** `_main\_audit-verify-all.cmd` = **239421 B**,
+  **2953 CRLF** / 0 bare LF, sha256 `E2179097E4A0488F5D4B3B3FFD78A87ECAF2132B73D98A2C45CB3DC8860C9701`.
+  (Dezenove linhas a mais do que o pin de 237754 B: o par `caption-kept-on-hide` + o seu
+  `red-as-expected`, que executa a `SottoShell.hide_panel` REAL por AST e prova que esconder o
+  painel nao toca na legenda ao vivo (`CAPTION_WINDOW_KEPT`), com o `--neg-arm` a desarmar a
+  guarda no sitio exato -- 1/1 recusado. Antes disso, vinte linhas a mais do que o pin de
+  236106 B: o par `panel-prefix-row` + o seu
+  `red-as-expected-panel-prefix-row` -- o MURO DE PREFIXOS que o dono viu as 06:07:33 e chamou de
+  *"historico completamente patetico"*: nove `<li>` para a mesma frase, cada uma com mais palavras
+  que a anterior, porque `rowIdentity` devolve `null` sem `start` e `addCaption` apendava em cada
+  commit. O oraculo extrai a funcao REAL de `app\panel\panel.js` e o `--neg-arm` mutila tres sitios
+  numa copia, medido 3/3 CAUGHT.)
+    (Vinte e tres linhas a mais do que o pin de 234270 B: o par `panel-nav-stall` + o seu
   `red-as-expected`, a NAVEGACAO QUE NAO VOLTA NAO LEVA A APP COM ELA. Nasceu de duas largadas
   medidas nesta noite: a forma nasce (`PANEL_SHOW_GATE installed`, `UI_WATCHDOG_STARTED hwnd=..`) e
   NENHUM documento carrega -- `STARTUP_NOT_READY s=15/30/60` e mais nada, sem `PANEL_STATE_WRITER`

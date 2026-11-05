@@ -13131,7 +13131,25 @@ class SottoShell:
         # painel, que e' exactamente o que ele proibiu. O que se tira sao os PIXELS
         # (`_blank_caption_window`, que nao escreve `data-caption-window`), e a legenda
         # volta a aparecer na proxima linha sem ninguem tocar em nada.
-        self._blank_caption_window('panel-hidden')
+        # ESCONDER O PAINEL NAO TOCA NA LEGENDA AO VIVO (2026-11-05). MEDIDO na
+        # sessao do dono (pid 57600, 06:04:58 / 06:05:03 / 06:05:19): tres
+        # `CAPTION_WINDOW_BLANKED reason=panel-hidden epoch=3/4/5 wanted=true`
+        # em vinte e um segundos, um por Alt+C. O comentario abaixo prometia que
+        # "a legenda volta a aparecer na proxima linha" -- mas o blank tambem
+        # zera `_caption_window_shown`, faz `ov.show(False)` e INCREMENTA o
+        # epoch, logo apaga os PIXELS e a memoria da fonte de cada vez que ele
+        # cicla os paineis. O que o dono ve e' a legenda a desaparecer sozinha
+        # ("do nada para de dar display"), e o que ele pediu, verbatim, e' que o
+        # interruptor da legenda e o painel sejam coisas separadas:
+        # *"sem estar conectada a qualquer painel. ela e' livre na minha tela"*.
+        # Com a legenda QUERIDA (`_caption_wanted`), o painel nao tem nada a
+        # apagar: os pixels nao sao do painel.
+        if getattr(self, '_caption_wanted', False):
+            log('CAPTION_WINDOW_KEPT reason=panel-hidden wanted=true '
+                'epoch=%d -- esconder o painel nao apaga a legenda ao vivo'
+                % int(getattr(self, '_source_epoch', 0)))
+        else:
+            self._blank_caption_window('panel-hidden')
         return True
 
     def toggle_panel(self, reason):

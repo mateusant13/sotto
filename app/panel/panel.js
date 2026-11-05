@@ -432,6 +432,67 @@ let historyRootPath = null;
 let committedByStart = new Map();
 
 /**
+ * O TEXTO QUE ESTA' NAQUELA LINHA -- o que o olho le, para comparar duas linhas.
+ * Le do `.caption__text` (a folha que `addCaption` escreve) e cai para o
+ * `data-text`, que a mesma funcao mantem; uma linha sem folha devolve `''`.
+ */
+function rowText(row) {
+  if (!row || !row.querySelector) return '';
+  const body = row.querySelector('.caption__text');
+  const text = body ? body.textContent : '';
+  if (typeof text === 'string' && text) return text.trim();
+  const stored = row.getAttribute ? row.getAttribute('data-text') : null;
+  return typeof stored === 'string' ? stored.trim() : '';
+}
+
+/**
+ * A ULTIMA LINHA DESTE SOURCE (nao de outra app, nao de outra voz: STEP 4).
+ * `data-source` ausente so' casa com um commit sem source -- a mesma tupla que
+ * `rowIdentity` trata como chave, para as duas leituras concordarem.
+ */
+function lastRowForSource(source) {
+  if (!dom.list) return null;
+  const want = source === null || source === undefined ? null : String(source);
+  for (let i = dom.list.childElementCount - 1; i >= 0; i -= 1) {
+    const row = dom.list.children[i];
+    if (!row || !row.dataset) continue;
+    const have = row.dataset.source === undefined || row.dataset.source === ''
+      ? null : String(row.dataset.source);
+    if (have === want) return row;
+  }
+  return null;
+}
+
+/**
+ * `B` CONTINUA `A`: um e' o outro a crescer. Usado com a identidade AUSENTE, e
+ * so' com ela -- duas linhas que o worker identificou por `start` NUNCA se
+ * fundem aqui, porque `addCaption` ja' as resolve antes de chegar a isto.
+ */
+function isPrefixExtension(previous, text) {
+  const a = String(previous || '').trim();
+  const b = String(text || '').trim();
+  if (!a || !b) return false;
+  const ta = a.split(/\s+/);
+  const tb = b.split(/\s+/);
+  if (!ta.length || !tb.length) return false;
+  const shorter = ta.length <= tb.length ? ta : tb;
+  const longer = ta.length <= tb.length ? tb : ta;
+  for (let i = 0; i < shorter.length; i += 1) {
+    if (shorter[i] === longer[i]) continue;
+    // A ULTIMA palavra e' o unico lugar onde a pontuacao decide: um fecho
+    // posto pelo worker (`but.`) e o mesmo `but` a continuar (`but running`)
+    // sao a MESMA palavra -- e e' esta a linha que o dono leu (06:07:33
+    // `... three, but.` seguida de `... three, but running max.`).
+    if (i === shorter.length - 1) {
+      const clean = shorter[i].replace(/[.,!?;:'"\u2026]+$/, '');
+      if (clean && longer[i].startsWith(clean)) return true;
+    }
+    return false;
+  }
+  return true;
+}
+
+/**
  * THE KEY OF A COMMITTED ROW: `(source, start)` (STEP 4).
  *
  * With a source the key is `source + "\u0000" + start`. The NUL cannot appear in
@@ -441,8 +502,10 @@ let committedByStart = new Map();
  * With NO source the key is the NUMBER `start`, exactly as it always was, key for
  * key: a run with no source behaves as before this change.
  *
- * `null` means "no usable identity" (no `start`): the caller appends, exactly as
- * the fail-safe direction always did.
+ * `null` means "no usable identity" (no `start`): the caller may not append a
+ * line that merely CONTINUES the previous one -- see `isPrefixExtension` and the
+ * wall of growing prefixes he measured on 2026-11-05. Anything else appends,
+ * exactly as the fail-safe direction always did.
  */
 function rowIdentity(source, start) {
   if (start === null || start === undefined) return null;
@@ -1491,7 +1554,23 @@ function addCaption(text, reason, meta) {
 
   const start = meta && typeof meta.start === 'number' ? meta.start : null;
   const identity = rowIdentity(source, start);
-  const existing = identity === null ? null : committedByStart.get(identity) || null;
+  let existing = identity === null ? null : committedByStart.get(identity) || null;
+  // UMA LINHA QUE SO' CRESCE NAO ABRE UMA LINHA NOVA (2026-11-05). MEDIDO na
+  // tela do dono (06:07:33-06:07:42): nove `<li>` para a MESMA frase, cada uma
+  // com mais palavras que a anterior -- `Run to like max two max, three, but.`
+  // / `... but running max.` / `... running max two max one.` O que ele le e'
+  // *"historico completamente patetico"*, e a causa e' `meta.start` ausente:
+  // `rowIdentity` devolve `null` sem `start`, `committedByStart` nunca mapeia e
+  // CADA commit apendava. A regra abaixo e' a mesma do replace-in-place, so'
+  // sem a chave: quando o texto novo CONTINUA o texto da ultima linha deste
+  // source, e' a mesma frase a crescer -- e crescer nao e' dizer de novo.
+  // Fecha nos dois sentidos (`A` prefixo de `B` e `B` prefixo de `A`), porque a
+  // revisao tambem corta, e quando um commit chega SEM identidade nada aqui
+  // toca numa linha que ja' pertence a um `start` conhecido.
+  if (!existing && identity === null) {
+    const lastOfSource = lastRowForSource(source);
+    if (lastOfSource && isPrefixExtension(rowText(lastOfSource), text)) existing = lastOfSource;
+  }
   if (existing && !existing.isConnected) committedByStart.delete(identity);
   const line = existing && existing.isConnected ? existing : document.createElement('li');
 

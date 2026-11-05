@@ -777,6 +777,45 @@ if exist _main\tray-menu-oracle.py (
 call :step red-as-expected-tray-menu 1 "_main\tray-menu-oracle.py;app\webview\sotto_webview.py" "%OUT%\tray-menu-neg.log" python _main\tray-menu-oracle.py --neg-arm
 call :expectred red-as-expected-tray-menu !STEP_RC! "%OUT%\tray-menu-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-tray-menu MISSING "%OUT%\tray-menu-neg.log" "NEG-ARM: PASS" )
+REM `caption-kept-on-hide-oracle.py` -- ESCONDER O PAINEL NAO APAGA A LEGENDA AO
+REM VIVO. Medido na sessao do dono (pid 57600): tres
+REM `CAPTION_WINDOW_BLANKED reason=panel-hidden epoch=3/4/5 wanted=true` em 21 s,
+REM um por Alt+C -- e o blank tambem zera `_caption_window_shown`, faz
+REM `ov.show(False)` e incrementa o epoch, logo a legenda desaparecia e a memoria
+REM da fonte ia com ela. Ele leu *"parece que ela do nada para de dar display"*.
+REM O oraculo executa a `SottoShell.hide_panel` REAL (extraida por AST, com
+REM `hide_window`/`window_visible`/`log` injectados) sobre um self com overlay
+REM gravador: com a legenda querida nao ha um unico blank e sai a linha
+REM `CAPTION_WINDOW_KEPT`; com ela desligada o ecra limpa como sempre. O
+REM `--neg-arm` desarma a guarda no sitio exato e exige o arm A vermelho.
+if exist _main\caption-kept-on-hide-oracle.py (
+ call :step caption-kept-on-hide 0 "_main\caption-kept-on-hide-oracle.py;app\webview\sotto_webview.py" "%OUT%\caption-kept-on-hide.log" python _main\caption-kept-on-hide-oracle.py
+ call :record caption-kept-on-hide !STEP_RC!
+) else ( call :record caption-kept-on-hide MISSING )
+if exist _main\caption-kept-on-hide-oracle.py (
+call :step red-as-expected-caption-kept-on-hide 1 "_main\caption-kept-on-hide-oracle.py;app\webview\sotto_webview.py" "%OUT%\caption-kept-on-hide-neg.log" python _main\caption-kept-on-hide-oracle.py --neg-arm
+call :expectred red-as-expected-caption-kept-on-hide !STEP_RC! "%OUT%\caption-kept-on-hide-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-caption-kept-on-hide MISSING "%OUT%\caption-kept-on-hide-neg.log" "NEG-ARM: PASS" )
+REM `panel-prefix-row-oracle.py` -- O MURO DE PREFIXOS NAO VOLTA. Medido na tela
+REM do dono em 2026-11-05 06:07:33-06:07:42 (imagem dele, verbatim: *"historico
+REM completamente patetico"*): nove `<li>` para a MESMA frase, cada uma com mais
+REM palavras que a anterior -- `Run to like max two max, three, but.` /
+REM `... but running max.` / `... running max two max one.` A causa e' a
+REM identidade: `rowIdentity(source, start)` devolve `null` sem `start`, o mapa
+REM nunca mapeia e `addCaption` APENDAVA em cada commit. A regra nova e' a mesma
+REM do replace-in-place so' que sem a chave: o texto novo que CONTINUA o da ultima
+REM linha do MESMO source ocupa a linha dela. O oraculo EXTRAI a funcao inteira de
+REM `app\panel\panel.js` (nao e' uma copia: o painel muda, o passo muda) e o
+REM `--neg-arm` mutila tres sitios numa COPIA e exige os tres vermelhos (medido
+REM 3/3 CAUGHT).
+if exist _main\panel-prefix-row-oracle.py (
+ call :step panel-prefix-row 0 "_main\panel-prefix-row-oracle.py;app\panel\panel.js" "%OUT%\panel-prefix-row.log" python _main\panel-prefix-row-oracle.py
+ call :record panel-prefix-row !STEP_RC!
+) else ( call :record panel-prefix-row MISSING )
+if exist _main\panel-prefix-row-oracle.py (
+call :step red-as-expected-panel-prefix-row 1 "_main\panel-prefix-row-oracle.py;app\panel\panel.js" "%OUT%\panel-prefix-row-neg.log" python _main\panel-prefix-row-oracle.py --neg-arm
+call :expectred red-as-expected-panel-prefix-row !STEP_RC! "%OUT%\panel-prefix-row-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-panel-prefix-row MISSING "%OUT%\panel-prefix-row-neg.log" "NEG-ARM: PASS" )
 REM `fusion-oracle.py` -- O CORE DA FUSAO (ordem do dono, 2026-11-04: *"nao
 REM queremos a implementacao de detectar falantes ou algo assim. so' o core"*).
 REM Duas hipoteses do MESMO audio (stream rapido, refinado) viram operacoes de

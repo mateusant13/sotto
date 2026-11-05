@@ -297,6 +297,30 @@ def main():
         True,
         control_must_differ=False)
 
+    # ── arm 14: o fragmento que CONTINUA uma palavra nao abre linha ─────────
+    # MEDIDO na tela do dono em 2026-11-05, 06:09:4x: a legenda pintou
+    # `D you not get bored queuing the same game every day` -- a cauda `D` de
+    # `...and` da linha anterior abriu esta. O tokenizer marca esse fragmento com
+    # `continues=True` (o token comeca a meio da palavra); quando a linha esta'
+    # VAZIA nao ha' palavra para completar, logo a cauda e' descartada e a linha
+    # abre na palavra inteira seguinte. A arm usa as duas frases REAIS dele.
+    former = W.LineFormer(min_chars=1, emit_partial=True)
+    events = former.push("d  you not get bored", start=10.0, end=10.56, continues=True)
+    arm("a cauda de uma palavra NAO abre linha (o 'D you' do dono)",
+        [e["text"] for e in events],
+        [],
+        ["you not get"])
+    # e o controle do lado oposto: sem a marca de continuacao, o mesmo texto e'
+    # fala de verdade e nao pode ser comido. (A ultima palavra nao aparece em
+    # nenhum dos dois parciais: a regra do `stable_words` a segura ate' estar
+    # provada -- arm 6.)
+    former2 = W.LineFormer(min_chars=1, emit_partial=True)
+    events2 = former2.push("d you not get bored", start=10.0, end=10.56, continues=False)
+    arm("o mesmo texto SEM a marca de continuacao continua a ser fala",
+        [e["text"] for e in events2],
+        [],
+        ["d you not get"])
+
     # ── acceptance, stated as the owner reads it, on the REAL run ───────────
     words = [len(t.split()) for t in texts(after)]
     phrase = max(words) if words else 0

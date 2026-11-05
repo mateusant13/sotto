@@ -79,6 +79,15 @@ const QUESTION_PREFIXES = new Set([
  * that rule never fired and every fragment was emitted alone.
  */
 const SENTENCE_GAP_S = 8;
+/**
+ * QUANTO DE AUDIO ANTIGO AINDA PODE SER REVISAO (segundos, 2026-11-05).
+ *
+ * A revisao legitima re-cobre o RABO da linha aberta; o segundo passe de um
+ * segmento que ja' fechou chega com dez, dezassete, vinte segundos de atraso.
+ * Dois segundos separam os dois com folga dos dois lados: medido no log do dono,
+ * o caso bom tinha `lastAudioEnd - start` abaixo de 1 s e o caso mau 17 s.
+ */
+const STALE_LEAD_S = 2;
 
 /** Hard cap, so a model that never pauses still cannot grow without bound. */
 const SENTENCE_MAX_CHARS = 90;
@@ -462,6 +471,12 @@ function createEngine(options) {
   /** Words of the previous hypothesis, for the agreement test. */
   let prevWords = [];
   let lastAudioEnd = null;
+  /**
+   * Quantos fragmentos foram RECUSADOS por serem audio de antes do que ja'
+   * esta' no ecra (`STALE_LEAD_S`). O painel le isto no `state()` e loga; sem
+   * um numero, "a legenda salta" e' uma impressao.
+   */
+  let staleDropped = 0;
   /** Guards the cap's re-ingest against an oversized single fragment. */
   let reentered = false;
 
@@ -841,6 +856,43 @@ function createEngine(options) {
       commit(`audio-gap ${(start - lastAudioEnd).toFixed(2)}s`);
     }
 
+    // UMA LINHA DE AUDIO ANTIGO NAO VOLTA PARA O ECRA (2026-11-05). MEDIDO na
+    // sessao do dono: `CAPTION_IN start=53.20 end=57.12 ... age_ms=17467` pintado
+    // sobre uma linha que ja' estava em `start=73.92` -- a caixa SALTAVA 17 s
+    // para tras e voltava, e ele leu *"parece que ela do nada para de dar display
+    // ou funcionar aleatoriamente"* e *"parece que nao decide"*.
+    //
+    // A REVISAO e a ESTALEZ sao coisas diferentes e a mesma comparacao as
+    // separava mal. Revisao e' o modelo a reler o RABO da linha aberta: `start`
+    // fica um ou dois segundos atras do `lastAudioEnd`, nunca mais. Um fragmento
+    // que comeca MAIS DE `STALE_LEAD_S` antes do audio ja' pintado e' o SEGUNDO
+    // PASSE de um segmento que fechou ha muito -- historia, nao ecra. Ele entra,
+    // e' fechado e vai para o historico pelo caminho dele (`route=final`); o que
+    // nao pode e' ser PINTADO por cima do presente.
+    //
+    // POR QUE NAO `return` ANTES DO FILTRO DE REVISAO: o filtro manteria os
+    // tokens com `a < start` -- ou seja, apagava tudo o que esta' no ecra -- e
+    // depois apendava a frase velha. Era exatamente o defeito. A guarda e' antes
+    // do filtro e nao toca no buffer.
+    //
+    // A JANELA DO FRAGMENTO E' QUE DECIDE, e nao o `start` dele: `start` e' a
+    // IDENTIDADE da linha e NUNCA anda -- um fragmento cumulativo de uma linha
+    // longa chega com o `start` da linha (10 s) e o audio ja' pintado em 30 s.
+    // Julgar por `start` matava o crescimento de qualquer linha com mais de dois
+    // segundos (medido: os arms 1 e 4 do `_main/caption-renderer-integration.js`
+    // caíram). O que e' historia e' o fragmento cujo FIM ainda esta' no passado:
+    // `end=57.12` contra `lastAudioEnd=74.0`, o segundo passe de um segmento
+    // que fechou ha 17 s.
+    const fragmentEnd = end !== null ? end : (chunkStart !== null ? chunkStart : start);
+    if (
+      fragmentEnd !== null &&
+      lastAudioEnd !== null &&
+      fragmentEnd < lastAudioEnd - STALE_LEAD_S
+    ) {
+      staleDropped += 1;
+      return;
+    }
+
     // REVISION. `start < lastAudioEnd` means this fragment re-covers audio
     // the line already shows, so the model is re-reading that span. The
     // comparison is against the audio END of what is rendered — NOT against
@@ -1182,6 +1234,7 @@ function createEngine(options) {
       committed: committed.map((t) => t.w),
       provisional: provisional.map((t) => t.w),
       lastAudioEnd,
+      staleDropped,
       // IS THE TAIL STILL GROWING? (2026-10-20) The panel reads this to
       // decide whether the tail's LAST word may be shown: a GROWING
       // line's last word can still change, a CLOSED line's can't.
