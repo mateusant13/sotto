@@ -18978,9 +18978,22 @@ class WorkerBridge:
                 self.loaded = True
                 self.load_ms = (time.monotonic() - self.spawned_at) * 1000.0
                 if self.child is not None:
+                    # COMO A JANELA DE PRIORIDADE FECHOU (2026-11-05). A cura do
+                    # termo dominante (receipt `_main/receipt-20261105-extrema.md`)
+                    # poe um PRAZO na janela de fundo e publica `closed_by` no
+                    # payload de ready -- mas o payload nao vai para o log (o
+                    # `load_phases_s`/`boot_prof_s` tambem nao), logo a afirmacao
+                    # "o log passa a dizer qual das duas saidas fechou a janela"
+                    # nao era observavel no log do dono: `grep -c
+                    # load_bg_closed_by _main/webview-run.log` dava **0** com a
+                    # cura ja' em producao. Agora a linha que ja' publica o tempo
+                    # carrega tambem a saida: 'deadline' = o prazo cortou a cauda,
+                    # 'load-end' = as sessoes fecharam dentro da janela, None = a
+                    # janela nunca foi aberta.
                     self.log(f'BRIDGE_LOAD_MS ms={round(self.load_ms)} '
                              f'pid={self.child.pid} '
-                             f'worker_load_s={message.get("load_s")}')
+                             f'worker_load_s={message.get("load_s")} '
+                             f'load_bg_closed_by={message.get("load_bg_closed_by")}')
             if message.get('device'):
                 # Remember WHICH endpoint this child is on. `device` names the
                 # first candidate (with the full `candidates` list); a rotation
