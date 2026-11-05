@@ -18,20 +18,30 @@
  *   HISTORY — every line that reaches the real STORE (`history-store.js`), i.e.
  *             what the top feed is read back from.
  *
- * THE CLAIM UNDER TEST is NOT the old one ("the transcript takes only
- * `route=final`" — that is `_main/historico-vs-redux-probe.js`, still GREEN, and
- * NOT contradicted here). It is the owner's: the transcript must be a DIFFERENT
- * SOURCE. A `route=final` line the LIVE engine produced is still the live
- * path's own history. So the panel's choke point now ALSO requires the line to
- * declare the CANONICAL producer (`history-source.js`), which the live engine
- * never does.
+ * THE CLAIM UNDER TEST, AS OF 2026-11-05 — and it CHANGED, on purpose. The
+ * 2026-10-07 quote above asked for a different SOURCE; the tree answered by
+ * admitting ONLY a `producer:'redux'` line, and since the batch pass is off by
+ * default and no other engine stamps that key, the transcript had ZERO writers:
+ * 3830 `CAPTION_APPLIED` and 0 `HISTORY_APPEND` on the owner's own run, an
+ * empty right panel, and nothing in the log to say why. The owner's later
+ * instruction (relayed by the orchestrator) is that the transcript must not be
+ * empty. So the separation is now PROVENANCE, not admission:
+ *
+ *   * the live box paints EVERY commit (unchanged);
+ *   * the transcript takes every CLOSED commit (`route=final` from the live
+ *     path, `route=batch` from the batch pass) and NOT the `provisional-draft`
+ *     (the live caption) — the 2026-10-06 half of the rule, still enforced;
+ *   * each line carries `producer=` when the commit declared one, so a reader of
+ *     the file can still tell a Parakeet line from a streaming line — which is
+ *     the FACT the 2026-10-07 quote was reaching for.
  *
  * ARMS, all in ONE command and all RED-able:
- *   asShipped   — shipped choke point (route=final AND canonical producer) on
- *                 live commits. HISTORY = 0 while LIVE = every commit → the two
- *                 fields are NO LONGER one source. ("the NEVER half")
- *   reduxTagged — the SAME commits stamped `producer:'redux'`. HISTORY > 0 →
- *                 the canonical path is OPEN, not a fake that can never fill.
+ *   asShipped   — the shipped decision (`history-source.js transcriptRoute`) on
+ *                 live commits. HISTORY > 0 (the owner's panel fills) AND
+ *                 HISTORY < LIVE (it is NOT the live feed), with no
+ *                 `provisional-draft` line on disk.
+ *   reduxTagged — the SAME commits stamped `producer:'redux'`: the canonical
+ *                 path stays OPEN and the line says `producer=redux`.
  *   before      — the pre-cure permissive choke point (`(route||'final')==='final'`)
  *                 on live commits. HISTORY == LIVE → the TWO FIELDS ARE ONE,
  *                 the defect the owner saw. The control for the check.
@@ -62,12 +72,16 @@ const enginePath = path.join(REPO, 'app', 'panel', 'caption-formulation.js');
 const panelPath = path.join(REPO, 'app', 'panel', 'panel.js');
 const storePath = path.join(REPO, 'app', 'panel', 'history-store.js');
 
-// The panel's choke point, as `panel.js recordHistory` writes it: the route
-// guard AND the canonical-producer guard. The producer half is the REAL module
-// (executed below, never regexed); these literals only pin that the panel USES
-// it, so the mechanical predicate here cannot drift from the panel silently.
-const PANEL_ROUTE_GUARD = "if (route !== 'final') return;";
-const PANEL_SOURCE_CALL = 'SottoHistorySource.isCanonicalLine';
+// The panel's choke point, as `panel.js recordHistory` writes it: ONE call into
+// the DOM-free decision (the REAL module, executed below; these literals only
+// pin that the panel USES it, so the check cannot drift from the panel
+// silently) plus the refusal report that makes a silent drop impossible.
+const PANEL_SOURCE_CALL = 'sourceApi.transcriptRoute(meta)';
+const PANEL_REFUSAL_CALL = 'reportHistoryRefusal(sourceApi, meta)';
+/** The producer gate must be GONE from the call site: it was the closed door.
+ *  Matched as a CALL (`.isCanonicalLine(`), not as a bare word, so a comment
+ *  that explains why it went away cannot turn this arm red. */
+const PANEL_OLD_GATE = '.isCanonicalLine(';
 
 function readStream(file) {
   const out = [];
@@ -86,7 +100,9 @@ function readStream(file) {
 
 function routesOnDisk(root) {
   const found = {};
-  if (!fs.existsSync(root)) return { found, count: 0 };
+  const producers = {};
+  let marked = 0;
+  if (!fs.existsSync(root)) return { found, producers, marked, count: 0 };
   for (const day of fs.readdirSync(root)) {
     const folder = path.join(root, day);
     if (!fs.statSync(folder).isDirectory()) continue;
@@ -98,10 +114,13 @@ function routesOnDisk(root) {
         const tail = /\s*<!--\s*(route=\S+)/.exec(m[2]);
         const route = tail ? tail[1].slice('route='.length) : null;
         found[route] = (found[route] || 0) + 1;
+        if (route) marked += 1;
+        const prod = /\bproducer=(\S+)/.exec(m[2]);
+        if (prod) producers[prod[1]] = (producers[prod[1]] || 0) + 1;
       }
     }
   }
-  return { found, count: Object.values(found).reduce((a, b) => a + b, 0) };
+  return { found, producers, marked, count: Object.values(found).reduce((a, b) => a + b, 0) };
 }
 
 /** Replay `events` through `engineMod`; return one commit per `onCommit`. */
@@ -160,7 +179,10 @@ function writeHistory(commits, accepts, producer, root) {
   const accepted = tagged.filter(accepts);
   for (const c of accepted) {
     store.append(c.text, {
-      source: 'redux',
+      // The producer reaches the LINE (2026-11-05) — it is provenance now, not
+      // an admission gate, and this is what keeps the two sources tellable apart.
+      source: 'live',
+      producer: c.producer || null,
       route: c.route,
       routeSource: c.routeSource,
       start: c.start,
@@ -195,8 +217,9 @@ function main() {
   })();
 
   const panelSrc = fs.readFileSync(panelPath, 'utf8');
-  const panelHasRouteGuard = panelSrc.includes(PANEL_ROUTE_GUARD);
   const panelHasSourceCall = panelSrc.includes(PANEL_SOURCE_CALL);
+  const panelHasRefusalCall = panelSrc.includes(PANEL_REFUSAL_CALL);
+  const panelHasOldGate = panelSrc.includes(PANEL_OLD_GATE);
 
   const commits = replay(events, loadEngine(enginePath));
   const mutantTmp = engineWithLine(ROUTE_MUTANT);
@@ -206,9 +229,9 @@ function main() {
   }
   const beforeCommits = replay(events, loadEngine(mutantTmp));
 
-  // The SHIPPED panel choke point: route=final AND the line declares the
-  // canonical producer (the REAL `history-source.js` predicate, executed).
-  const shipped = (c) => c.route === 'final' && source.isCanonicalLine(c);
+  // The SHIPPED panel choke point: the REAL `history-source.js` decision,
+  // executed — one function, one answer.
+  const shipped = (c) => source.transcriptRoute(c) !== null;
   // The PRE-CURE pair: the vacuous engine (no route stamped) AND the permissive
   // choke point — the two-engine defect the owner saw, where the two fields were
   // ONE source.
@@ -222,14 +245,14 @@ function main() {
 
   console.log(`stream    : ${path.relative(REPO, streamPath)} — ${events.length} event(s), model=${firstModel}`);
   console.log(`source    : ${path.relative(REPO, sourcePath)}   (LIVE_PRODUCER=${source.LIVE_PRODUCER} CANONICAL_PRODUCER=${source.CANONICAL_PRODUCER})`);
-  console.log(`panel     : ${path.relative(REPO, panelPath)}   route-guard=${panelHasRouteGuard} uses-isCanonicalLine=${panelHasSourceCall}`);
+  console.log(`panel     : ${path.relative(REPO, panelPath)}   transcriptRoute=${panelHasSourceCall} refusal-report=${panelHasRefusalCall} old-producer-gate=${panelHasOldGate}`);
 
   const line = (label, r) => {
     console.log(`\n${label}`);
     console.log(`  LIVE    : ${r.handed} commit(s) handed to the panel (the bottom box paints all)`);
-    console.log(`  HISTORY : ${r.accepted} accepted by the choke point, on disk ${r.disk.count} — ${JSON.stringify(r.disk.found)}`);
+    console.log(`  HISTORY : ${r.accepted} accepted by the choke point, on disk ${r.disk.count} — ${JSON.stringify(r.disk.found)} producers=${JSON.stringify(r.disk.producers)}`);
   };
-  line('AS SHIPPED (route=final AND canonical producer) on the LIVE nvidia commits', asShipped);
+  line('AS SHIPPED (transcriptRoute: every CLOSED line) on the LIVE nvidia commits', asShipped);
   line('SAME commits stamped producer:\'redux\' (the canonical path — is it OPEN?)', reduxTagged);
   line('BEFORE (pre-cure permissive: (route||\'final\')===\'final\') on the LIVE commits', before);
 
@@ -242,26 +265,37 @@ function main() {
     console.log(`       want = ${JSON.stringify(want)}`);
   }
 
-  console.log('\n--- the predicate, executed (the REAL history-source.js) ---');
-  arm('the predicate REFUSES the live producer', source.isCanonicalLine({ producer: 'live' }), false);
-  arm('the predicate REFUSES an absent producer (fail-closed)', source.isCanonicalLine(undefined), false);
-  arm('the predicate REFUSES an empty meta (fail-closed)', source.isCanonicalLine({}), false);
-  arm('the predicate ACCEPTS the canonical producer', source.isCanonicalLine({ producer: 'redux' }), true);
+  console.log('\n--- the decision, executed (the REAL history-source.js) ---');
+  arm('a CLOSED live line is ACCEPTED as route=final',
+      source.transcriptRoute({ route: 'final' }), 'final');
+  arm('a provisional-draft (the live caption) is REFUSED',
+      source.transcriptRoute({ route: 'provisional-draft' }), null);
+  arm('a canonical line with no route is ACCEPTED as route=batch',
+      source.transcriptRoute({ producer: source.CANONICAL_PRODUCER }), 'batch');
+  arm('a line with nothing that says it closed is REFUSED (fail-closed)',
+      source.transcriptRoute({}), null);
   arm('producerOf reports an unknown producer verbatim (not rounded to canonical)', source.producerOf({ producer: 'nvidia' }), 'nvidia');
 
   console.log('\n--- the panel WIRES it (panel.js is DOM-bound; its source is asserted) ---');
-  arm('panel.js recordHistory still carries the route guard verbatim', panelHasRouteGuard, true);
-  arm('panel.js recordHistory calls the canonical-producer predicate', panelHasSourceCall, true);
+  arm('panel.js recordHistory calls the shipped decision', panelHasSourceCall, true);
+  arm('panel.js recordHistory REPORTS a refusal (no silent drop)', panelHasRefusalCall, true);
+  arm('panel.js recordHistory no longer carries the producer gate', panelHasOldGate, false);
 
   console.log('\n--- THE CONTROL PAIR: can the two fields still draw from ONE source? ---');
   arm('AS SHIPPED: every live commit is still handed to the LIVE box (not "drop the live path")',
       asShipped.handed > 0, true);
-  arm('AS SHIPPED: HISTORY takes ZERO lines from the LIVE nvidia path (the "NUNCA")',
-      asShipped.disk.count, 0);
+  arm('AS SHIPPED: HISTORY takes the CLOSED lines — it is NOT empty (the panel fills)',
+      asShipped.disk.count > 0, true);
+  arm('AS SHIPPED: HISTORY is NOT the live feed — some commits stay out of it',
+      asShipped.disk.count < asShipped.handed, true);
+  arm('AS SHIPPED: NO provisional-draft line reaches the file',
+      'provisional-draft' in asShipped.disk.found, false);
+  arm('AS SHIPPED: every line on disk carries its route marker',
+      asShipped.disk.marked, asShipped.disk.count);
   arm('REDUX-TAGGED: the canonical path is OPEN — HISTORY takes the closed lines (not a dead end)',
       reduxTagged.disk.count > 0, true);
-  arm('REDUX-TAGGED: and it is exactly the worker-closed lines',
-      Object.keys(reduxTagged.disk.found).sort(), ['final']);
+  arm('REDUX-TAGGED: the line NAMES its producer on the disk',
+      reduxTagged.disk.producers[source.CANONICAL_PRODUCER] > 0, true);
   arm('BEFORE: the pre-cure choke point made the two fields ONE (the defect the owner saw)',
       before.disk.count === before.handed && before.handed > 0, true);
   arm('CONTROL: the shipped and pre-cure HISTORY counts DIFFER (the check is not vacuous)',

@@ -71,7 +71,7 @@ const cases = [
   ['batch-unknown-route',{producer: 'redux', route: 'nonsense'},       null],
   ['worker-closed',      {producer: 'redux', route: 'final'},          'final'],
   ['provisional',        {producer: 'redux', route: 'provisional-draft'}, null],
-  ['live-no-producer',   {route: 'final'},                             null],
+  ['live-closed-line',   {route: 'final'},                             'final'],
   ['live-provisional',   {route: 'provisional-draft'},                 null],
   ['no-meta',            null,                                         null],
 ];
@@ -119,7 +119,7 @@ def py_provenance_callable(shell_path, routes_override=None):
         src = fh.read()
     tree = ast.parse(src)
     keep = {}
-    wanted_consts = {'HISTORY_ROUTES', 'HISTORY_ROUTE_SOURCES'}
+    wanted_consts = {'HISTORY_ROUTES', 'HISTORY_ROUTE_SOURCES', 'HISTORY_PRODUCERS'}
     for node in tree.body:
         if isinstance(node, ast.Assign):
             for tgt in node.targets:
@@ -140,7 +140,7 @@ def py_provenance_callable(shell_path, routes_override=None):
         raise SystemExit('FATAL: _history_provenance nao encontrada em ' + shell_path)
 
     ns = {}
-    header = '\n'.join(keep[k] for k in ('HISTORY_ROUTES', 'HISTORY_ROUTE_SOURCES') if k in keep)
+    header = '\n'.join(keep[k] for k in ('HISTORY_ROUTES', 'HISTORY_ROUTE_SOURCES', 'HISTORY_PRODUCERS') if k in keep)
     body = (
         'import re\n'
         + header + '\n'
@@ -209,6 +209,13 @@ const prelude = `
   const MAX_HISTORY = 100;
   const historyEntries = [];
   let searchQuery = '';
+  // 2026-11-05: recordHistory now REPORTS a refusal (reportHistoryRefusal,
+  // judged by _main/history-write-oracle.py). This oracle judges the ROUTE, so
+  // the reporter is a stub here -- but the state it reads has to exist.
+  let historyRefusals = 0;
+  const historyRefusalSeen = new Map();
+  function reportHistoryRefusal() { historyRefusals += 1; }
+  const bridge = { historyRefused: function () {} };
   function pushEntry(e) { historyEntries.push(e); }
   function setHistoryNote(m) { notes.push(m); }
   const notes = [];
@@ -265,7 +272,7 @@ def panel_arms(source_path=None):
     want = {
         'batch-no-route': (1, 'batch'),
         'worker-closed': (1, 'final'),
-        'live-line': (0, None),
+        'live-line': (1, 'final'),
         'provisional': (0, None),
     }
     out = []

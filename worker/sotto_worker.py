@@ -6250,11 +6250,10 @@ def main():
         emit(type="status", state="error", stage="model", detail=f"model dir not found: {model_dir}")
         return 2
 
-    # O ESTADO DA PONTUACAO DE MODELO, dito UMA vez no arranque e sem carregar
-    # nada: `loaded=false reason=model-absent` e' um estado normal (o modelo e'
-    # opcional), mas tem de estar no log -- um caminho que decide pontuar sem
-    # dizer se esta' ligado e' a forma de mentira que este repo paga caro.
-    err(punctuation_model.log_line())
+    # A PONTUACAO DE MODELO NAO SE DECIDE AQUI: a lingua ainda nao foi
+    # resolvida. O estado definitivo sai no status `stage=providers`, depois do
+    # `StreamAsr`, onde `lang_tag` existe -- `reason=not-tried` no log nao
+    # responde a pergunta que a linha existe para responder.
 
     emit(type="status", state="model-loading", model=os.path.basename(model_dir))
     t0 = time.time()
@@ -6298,6 +6297,11 @@ def main():
         # Caminho feliz E caminho de erro: a prioridade volta sempre.
         _end_load_window()
     asr.load_s = time.time() - t0
+    # A PONTUACAO, carregada UMA vez e so' quando a lingua a justifica (75 ms
+    # medidos). Aqui a resposta e' DEFINITIVA: `loaded=true`, ou o motivo real
+    # (`model-absent`, `package-absent`, `disabled-by-env`).
+    if punctuation_model.supported_lang(punctuation_model.current_lang()):
+        punctuation_model.load()
     emit(
         type="status",
         state="boot",
@@ -6310,6 +6314,12 @@ def main():
         # `worker-providers-oracle` exists to red.
         providers_selected=asr.providers,
         providers_requested=providers,
+        # O ESTADO DA PONTUACAO DE MODELO (2026-11-05). Ele era `err()`, e `err`
+        # e' o canal de STDERR: a shell so' o guarda na cauda da morte, logo a
+        # linha que devia dizer "a pontuacao esta' ligada?" so' existia quando
+        # ja' nao havia o que medir -- o mesmo defeito que o `BRIDGE_RSS`
+        # corrigiu para o RSS. Vai no status que a shell JA' loga.
+        punct_model=punctuation_model.log_line(),
         note=asr.provider_note or note,
         # WHICH export the CUDA decision came from: the encoder of THIS run, so a
         # run can prove it matched the model it loaded (…-int8) instead of

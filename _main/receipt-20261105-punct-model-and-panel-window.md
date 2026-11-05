@@ -32,6 +32,36 @@ directorio temporario **sem o modelo**, logo `find_model` devolvia `None` e a ar
 ficava verde por AUSENCIA em vez de por guarda (falso verde do instrumento); e o
 comentario do modulo tinha um apostrofo a fechar a string.
 
+## 1-bis. O ESTADO REAL, medido na app viva (16:47)
+
+Relancei a app dele pela via da casa (`_main/sotto-relaunch.py --relaunch`, sem
+janela, codigo FRESCO do disco) e li a linha que eu proprio escrevi:
+
+```
+2026-11-05 16:47:22.225 sotto: PUNCT_MODEL active=false loaded=false reason=lang-unsupported lang=auto
+```
+
+**`lang=auto`.** O worker resolve o slot `auto` do modelo por omissao -- nao `en`.
+Logo o restaurador ingles fica DESLIGADO no caminho normal, e a pontuacao que ele
+pediu nao acontece sozinha. Isso e' o desenho a funcionar (a guarda existe porque
+o modelo ingles sobre portugues devolve `EU Gosto Muito, disso sabe como E que E`),
+mas tem de ser dito: **para ligar, a lingua tem de ser declarada** (`--lang-id en`
+/ `SOTTO_LANG_ID=en`).
+
+Duas mentiras do proprio instrumento, achadas nesta volta e corrigidas:
+
+* a linha era `err()`, e `err` e' STDERR -- a shell so' guarda stderr na cauda da
+  morte, logo "a pontuacao esta' ligada?" so' se respondia depois de ja' nao haver
+  o que medir (a mesma classe que o `BRIDGE_RSS` pagou). Passou para o status
+  `stage=providers`, que a shell JA' loga.
+* `loaded=true` com a lingua em pt-BR lia-se "pontuando" quando nada pontuava. A
+  linha passou a separar `active` (vai pontuar?) de `loaded` (motor em memoria).
+
+**Nao implementei** um detector de lingua por palavras funcionais: medi-o nas
+linhas reais e a "populacao PT" dos dias anteriores era INGLESA (fala de
+ferramentas), logo nao havia como medir falsos positivos. Um heurístico sem
+populacao de teste fica de fora -- `UNPROVEN` nomeado em vez de um verde emprestado.
+
 ## 2. "historico completamente patetico" -- a janela do painel
 
 `_main/receipt-20261105-right-panel-history.md` (lane RightPanelHistory) mediu, ao vivo:

@@ -2148,9 +2148,9 @@ function recordHistory(text, reason, meta) {
   // and the BATCH engine emits no route at all (`worker/redux_batch.py:185`),
   // so a parakeet line died one statement before the guard that accepts it. The
   // decision now lives in the DOM-free predicate, so the oracle executes THIS
-  // rule: `provisional-draft` refused always, non-canonical refused always, a
-  // canonical line recorded as `final` when the worker closed it and as `batch`
-  // when the batch pass produced it.
+  // rule: `provisional-draft` refused always, a canonical (batch) line recorded
+  // as `batch`, a CLOSED line recorded as `final`. The producer is no longer an
+  // admission gate — it is provenance, written as `producer=` (2026-11-05).
   const sourceApi = window.SottoHistorySource;
   const route = sourceApi && sourceApi.transcriptRoute
     ? sourceApi.transcriptRoute(meta)

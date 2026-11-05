@@ -97,6 +97,10 @@ def arms() -> None:
         "B4 `supported_lang`: en/EN_us sim, pt-PT e vazio nao")
 
     # O filtro, na funcao REAL.
+    pm.set_lang("pt-BR")
+    add("lang-unsupported" in pm.log_line() and "pt-BR" in pm.log_line(),
+        "B5 a linha do log NOMEIA a lingua que desliga a pontuacao", pm.log_line())
+    pm.set_lang("en-US")
     add("?" not in pm._filter("in what year did you switch away from that I? didn't"),
         "C1 `?` a MEIO e' removido", repr(pm._filter("a I? didn't")))
     add(pm._filter("and a German government office,") == "and a German government office",
@@ -152,6 +156,19 @@ def arms() -> None:
         "E2 a linha PARCIAL nao leva (nao ha comma a saltar de sitio)",
         repr(partial["text"]))
 
+    # F. O ESTADO CHEGA AO LOG DA SHELL. Nasceu de um defeito medido hoje: a
+    #    linha `PUNCT_MODEL` era `err()`, e `err` e' STDERR -- a shell so' o
+    #    guarda na cauda da morte, logo a pergunta "a pontuacao esta' ligada?"
+    #    so' se respondia depois de ja' nao haver o que medir. O mesmo erro que
+    #    o `BRIDGE_RSS` pagou. O estado viaja no status `stage=providers` (que a
+    #    shell JA' loga) e a shell escreve-o.
+    worker_src = (WORKER / "sotto_worker.py").read_text(encoding="utf-8")
+    shell_src = (ROOT / "app" / "webview" / "sotto_webview.py").read_text(encoding="utf-8")
+    add("punct_model=punctuation_model.log_line()" in worker_src,
+        "F1 o worker publica o estado no status que a shell loga")
+    add("if punct:" in shell_src and "self.log(punct)" in shell_src,
+        "F2 a shell ESCREVE a linha (nao a deixa no stderr)")
+
 
 def _mutate(target: Path, pairs) -> list[str]:
     text = target.read_text(encoding="utf-8")
@@ -166,7 +183,7 @@ def _mutate(target: Path, pairs) -> list[str]:
 
 
 def neg_arm() -> int:
-    """Quatro mutacoes numa COPIA do worker; cada uma tem de derrubar arm."""
+    """Cinco mutacoes numa COPIA do worker; cada uma tem de derrubar arm."""
     muts = [
         ("lang-guard",
          [("    if not supported_lang(tag):\n        return text\n",
@@ -185,6 +202,10 @@ def neg_arm() -> int:
          [("        if (final or closed) and text:\n", "        if text:\n",
            "a parcial passa a ser pontuada")],
          "E2"),
+        ("state-in-log",
+         [("        punct_model=punctuation_model.log_line(),\n", "",
+           "o estado volta a nao viajar")],
+         "F1"),
     ]
     failures = 0
     for name, pairs, arm in muts:
@@ -194,8 +215,12 @@ def neg_arm() -> int:
             b = (WORKER / "sotto_worker.py").read_text(encoding="utf-8")
             (tmp / "punctuation_model.py").write_text(a, encoding="utf-8")
             (tmp / "sotto_worker.py").write_text(b, encoding="utf-8")
-            notes = _mutate(tmp / "punctuation_model.py" if name != "closed-only"
-                            else tmp / "sotto_worker.py", pairs)
+            # O ALVO depende do mutante: `closed-only` e `state-in-log` vivem no
+            # WORKER; os outros tres no modulo. Errar o alvo da' "nao consegui
+            # mutar", nunca um verde -- mas custa uma volta.
+            target = tmp / ("sotto_worker.py" if name in ("closed-only", "state-in-log")
+                            else "punctuation_model.py")
+            notes = _mutate(target, pairs)
             if not notes:
                 print(f"NEG-ARM: nao consegui mutar {name} (o texto mudou)")
                 failures += 1
@@ -212,7 +237,7 @@ def neg_arm() -> int:
     if failures:
         print("\nNEG-ARM FAIL -- o oraculo nao ve a regressao")
         return EXIT_PASS
-    print("\nNEG-ARM PASS -- as quatro regressoes derrubam o oraculo")
+    print("\nNEG-ARM PASS -- as cinco regressoes derrubam o oraculo")
     return EXIT_FAIL
 
 
@@ -239,6 +264,8 @@ elif arm == "C1":
     ok = "?" not in pm._filter("that I? didn't")
 elif arm == "C2":
     ok = pm._filter("x office,") == "x office"
+elif arm == "F1":
+    ok = "punct_model=punctuation_model.log_line()" in open(r"{dirpath}/sotto_worker.py", encoding="utf-8").read()
 elif arm == "E2":
     spec = importlib.util.spec_from_file_location("sw_m", r"{dirpath}/sotto_worker.py")
     m = importlib.util.module_from_spec(spec); sys.modules["sw_m"] = m

@@ -225,12 +225,27 @@ def punctuate(text: str, tag=None, root=None) -> str:
 
 
 def log_line() -> str:
-    """Uma linha para o log do worker, para que o estado nunca seja adivinhado."""
+    """Uma linha para o log do worker, para que o estado nunca seja adivinhado.
+
+    A lingua entra na linha por medicao: a primeira versao dizia
+    `reason=not-tried` numa sessao cuja lingua resolvida era `pt-BR`, e "ainda
+    nao tentei" lia-se como falha quando o estado era o DESENHO (o restaurador
+    e' ingles). `lang-unsupported` diz isso e mais nada.
+    """
     s = status()
+    # `active` e' a pergunta que a linha existe para responder ("a pontuacao vai
+    # acontecer?"); `loaded` diz se o motor esta' em memoria. Sao coisas
+    # diferentes e a primeira versao as confundiu: com o motor carregado e a
+    # lingua em pt-BR, `loaded=true` lia-se "pontuando" quando nada pontuava.
+    if not supported_lang(_LANG):
+        return (f"PUNCT_MODEL active=false loaded={str(s['engine']).lower()} "
+                f"reason=lang-unsupported lang={_LANG}")
     if s["engine"]:
-        return (f"PUNCT_MODEL loaded=true dir={s['dir']} load_ms={s['load_ms']} "
+        return (f"PUNCT_MODEL active=true loaded=true dir={s['dir']} "
+                f"load_ms={s['load_ms']} lang={_LANG} "
                 f"marks=comma,period max_end=question")
-    return f"PUNCT_MODEL loaded=false reason={s['reason']} dir={s['dir']}"
+    return (f"PUNCT_MODEL active=false loaded=false reason={s['reason']} "
+            f"dir={s['dir']} lang={_LANG}")
 
 
 if __name__ == "__main__":  # pragma: no cover - smoke a mao

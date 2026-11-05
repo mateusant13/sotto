@@ -803,6 +803,15 @@ HISTORY_ROUTES = ('final', 'provisional-draft', 'batch')
 #: written with NO `src=` marker at all: provenance thinner than the decision that
 #: produced it. The list must equal the declared set, in both twins.
 HISTORY_ROUTE_SOURCES = ('worker-stamped', 'worker-stamped-producer', 'panel-deadline', 'fallback')
+#: WHO produced the closed line, written as `producer=` (2026-11-05). This key
+#: used to be an ADMISSION gate (`producer === 'redux'` or the line was dropped),
+#: and since no engine but the batch pass ever stamped it -- and the batch pass is
+#: off by default -- the transcript had zero writers. It is provenance now: the
+#: line is written, and this field says which pass closed it, so a reader of the
+#: file can still tell a Parakeet line from a streaming one (the reason the
+#: 2026-10-07 separation existed) without the streaming line disappearing.
+#: Outside this list nothing is written, same rule as the routes above.
+HISTORY_PRODUCERS = ('redux', 'live')
 
 #: UMA LINHA NAO E' UMA LISTA DE EVENTOS (dono, 2026-11-04, verbatim: *"o
 #: historico da legenda e completamente IMBECIL na logica. fica duplicando
@@ -9762,6 +9771,9 @@ class SottoHost:
             # The deferred-asset loader's only channel: it asks for the real
             # bytes of one deferred URL, and the shell lets that one through.
             'lazy-asset': ('host', '_lazy_asset'),
+            # A refusal is an event (2026-11-05): the transcript choke point's
+            # "no" used to be a bare `return` with no line anywhere.
+            'history-refused': ('host', '_history_refused'),
             }
         except Exception as exc:  # noqa: BLE001 -- a map that cannot build
             log(f'BRIDGE_HANDLER_MAP_FAILED error={exc!r} -- EVERY page->shell '
@@ -10132,6 +10144,25 @@ class SottoHost:
 
     def _history_reveal(self, payload):
         self._shell.reveal_in_folder((payload or {}).get('path'))
+
+    def _history_refused(self, payload):
+        """The panel's transcript choke point said NO, and now says why.
+
+        This is the instrument for the defect the honest field
+        (`history_root()['canonicalProducer']`) used to hide: a caption that
+        never became a line left no trace anywhere, so "the history is empty"
+        had no evidence behind it. The panel counts per signature and sends the
+        first occurrence and every 50th (`panel.js reportHistoryRefusal`), so
+        this is a line per refusal SHAPE, not a flood.
+        """
+        payload = payload or {}
+        log('HISTORY_REFUSED reason=%s route=%s producer=%s src=%s n=%s total=%s'
+            % (payload.get('reason') or '',
+               payload.get('route') or '-',
+               payload.get('producer') or '-',
+               payload.get('src') or '-',
+               payload.get('n') if payload.get('n') is not None else '-',
+               payload.get('total') if payload.get('total') is not None else '-'))
 
 
 # ===========================================================================
@@ -12842,25 +12873,28 @@ class SottoShell:
     # appended as captions commit. The shell owns the path (the panel is handed
     # the entry back), so the folder convention lives in exactly one place.
     def history_root(self):
-        """The history store's root, and whether a canonical producer exists.
+        """The history store's root, and WHO fills it.
 
         FROZEN SHAPE (other lanes read it): `{'root': <path>,
-        'canonicalProducer': None}`.
+        'canonicalProducer': <name|null>}`.
 
-        `canonicalProducer` is `None` because of the audit's **F2**
-        (`docs/audit/auditoria-completa-20261007.md`): `app/panel/
-        history-source.js:51` accepts a canonical line only when its meta
-        carries `producer === 'redux'`, and NO engine in this repo ever stamps
-        `producer` — the live path builds its meta with three literal keys
-        (`caption-formulation.js:408`), and the batch engine that could stamp it
-        (Parakeet Redux) is neither on disk nor called. So the transcript cannot
-        fill: the feed is decorative and the search has nothing to search. The
-        shell says so HERE, as data, instead of the panel inferring it from an
-        empty list; `panel.js` (other lane) uses it to collapse the feed and
-        disable the search. It becomes a producer NAME only if a production
-        call site starts stamping one.
+        `canonicalProducer` is the panel's "is this feed alive?" answer: `None`
+        means the store can never fill, and `panel.js` collapses the drawer and
+        disables the search on it. It used to be hard-coded `None` (audit **F2**,
+        `docs/audit/auditoria-completa-20261007.md`): `app/panel/
+        history-source.js` accepted a line only when its meta carried
+        `producer === 'redux'`, NO engine in this repo stamped that key, and the
+        Parakeet Redux batch pass is off by default -- so the feed was decorative
+        and the search had nothing to search.
+
+        That admission rule is GONE (2026-11-05): the transcript takes every
+        CLOSED caption line, whichever pass closed it, and records WHO produced
+        it as `producer=` on the line. So a writer exists and this field names it
+        -- the honest answer, which is what this field was always for. It is NOT
+        a promise that the batch pass ran: that is `producer=` on each line.
         """
-        return {'root': HISTORY_ROOT, 'canonicalProducer': None}
+        return {'root': HISTORY_ROOT,
+                'canonicalProducer': 'the closed caption line (live or batch)'}
 
     def _history_path_for(self, when):
         return os.path.join(
@@ -12890,6 +12924,11 @@ class SottoShell:
         if route not in HISTORY_ROUTES:
             return ''
         parts = [f'route={route}']
+        # WHO closed it (2026-11-05), right after the route: the pair is what
+        # makes the two sources tellable apart now that BOTH reach this file.
+        producer = str(options.get('producer') or '').strip()
+        if producer in HISTORY_PRODUCERS:
+            parts.append(f'producer={producer}')
         start = options.get('start')
         if isinstance(start, (int, float)) and not isinstance(start, bool):
             parts.append(f'start={float(start):.2f}')
@@ -12955,6 +12994,11 @@ class SottoShell:
         # caption in the owner's transcript. The LIVE caption stays in the box.
         # See docs/audit/historico-vs-redux.md.
         if isinstance(options, dict) and str(options.get('route') or '').strip() == 'provisional-draft':
+            # A REFUSAL IS AN EVENT (2026-11-05): this `return` was silent, and a
+            # silent refusal is indistinguishable from a store that is not wired.
+            log('HISTORY_REFUSED reason=provisional-draft route=provisional-draft'
+                ' producer=%s src=- n=1 total=-'
+                % ((options.get('producer') if isinstance(options, dict) else None) or '-'))
             return None
         now = time.localtime()
         path = self._history_path_for(now)
@@ -19377,6 +19421,12 @@ class WorkerBridge:
             if state == 'boot' and str(message.get('stage') or '') == 'providers':
                 sel = message.get('providers_selected') or []
                 avail = message.get('providers_available') or []
+                # A PONTUACAO DE MODELO, no log da shell (2026-11-05): o worker
+                # ja' a publica no payload; sem esta linha ela nao passava do
+                # stderr, que so' sobrevive na cauda da morte.
+                punct = str(message.get('punct_model') or '')
+                if punct:
+                    self.log(punct)
                 self.log('WORKER_PROVIDERS selected=%s available=%s note=%s cuda_probe=%s'
                          % (','.join(str(x) for x in sel),
                             ','.join(str(x) for x in avail),
