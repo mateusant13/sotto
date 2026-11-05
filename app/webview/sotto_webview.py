@@ -3098,6 +3098,26 @@ class ExternalCaptionWatcher(threading.Thread):
         self.finalized = False
         self.last_change = 0.0
 
+    def _yt_cdp_row_count(self, max_age=8.0):
+        """LINHAS na foto mais recente da CDP -- a verdade sobre o ecra.
+
+        `yt_cdp_rows` NAO serve para isto (2026-11-05): e' um envio de UMA so'
+        vez, escrito pelo caminho barato e consumido no mesmo tick por
+        `_yt_rows_impl` (`= None`). Medido: 331 linhas `rows=0 why='painted'`
+        seguidas com o player a pintar -- o instrumento mentia e mandou a
+        investigacao para o sitio errado. A foto fica publicada ate' a proxima;
+        sem fonte (duplos de teste) o campo de passagem e' o que existe.
+        """
+        src = getattr(self, '_yt_cdp_source', None)
+        if src and src is not False:
+            try:
+                snap = src.snapshot(max_age=max_age)
+            except Exception:                 # noqa: BLE001
+                snap = None
+            if snap is not None:
+                return len(snap.get('rows') or ())
+        return len(getattr(self, 'yt_cdp_rows', None) or ())
+
     def _yt_diag_now(self):
         """(src, vid, cdp_age_ms, rows, why) -- os cinco campos, SEM `?`.
 
@@ -3128,7 +3148,7 @@ class ExternalCaptionWatcher(threading.Thread):
                 _a = None
             if _a is not None:
                 age = '%.0f' % (_a * 1000.0)
-        rows = len(getattr(self, 'yt_cdp_rows', None) or ())
+        rows = self._yt_cdp_row_count()
         why = str(d.get('why') or 'no-frame')
         return src, vid, age, rows, why
 
@@ -3457,7 +3477,7 @@ class ExternalCaptionWatcher(threading.Thread):
                 return [], False
             self._yt_diag = {'src': 'external:youtube', 'vid': _tabvid,
                              'age': 'none',
-                             'rows': len(getattr(self, 'yt_cdp_rows', None) or []),
+                             'rows': self._yt_cdp_row_count(),
                              'why': 'no-foreground-cdp'}
             log_repeat('YOUTUBE_SOURCE_WINDOWLESS',
                        'YOUTUBE_SOURCE_WINDOWLESS video_id=%s' % _tabvid,
@@ -3595,7 +3615,7 @@ class ExternalCaptionWatcher(threading.Thread):
                                              else 'unattached')),
                              'vid': getattr(self, 'yt_video_id', ''),
                              'age': ('%.0f' % (_age * 1000.0)) if _age is not None else 'none',
-                             'rows': len(getattr(self, 'yt_cdp_rows', None) or []),
+                             'rows': self._yt_cdp_row_count(),
                              'why': ('cdp-fresh-skip' if _fresh
                                      else ('cdp-no-snapshot' if _age is None
                                            else 'cdp-stale-fallback'))}

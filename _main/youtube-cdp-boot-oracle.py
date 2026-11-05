@@ -377,11 +377,17 @@ def _arm_adopt(mod, declared_open):
 # -- A4: o diagnostico nunca sai `?` ---------------------------------------
 
 class _AgeSource:
-    def __init__(self, age):
+    def __init__(self, age, rows=None):
         self.age = age
+        self.rows = rows
 
     def snapshot_age(self):
         return self.age
+
+    def snapshot(self, max_age=0.6):
+        if self.rows is None:
+            return None
+        return {"rows": list(self.rows)}
 
 
 def _arm_diag(shell_mod):
@@ -398,12 +404,26 @@ def _arm_diag(shell_mod):
     watcher._yt_cdp_source = _AgeSource(None)
     watcher.yt_video_id = "VID12345678"
     none_age = watcher._yt_diag_now()
+    # A SEXTA ARM (2026-11-05): o numero de linhas vem da FOTO, nao do campo de
+    # passagem. MEDIDO no log da instancia viva: 331 ticks seguidos com
+    # `rows=0 why='painted'` enquanto o player pintava `>> wait`, porque
+    # `yt_cdp_rows` e' consumido no proprio tick (`_yt_rows_impl` -> None). As
+    # duas armas abaixo exigem o CONTRARIO uma da outra, de proposito: com foto
+    # manda a foto (3), sem foto manda o campo (2).
+    watcher._yt_cdp_source = _AgeSource(0.1, rows=["x", "y", "z"])
+    watcher.yt_cdp_rows = None
+    with_snap = watcher._yt_diag_now()
+    watcher._yt_cdp_source = _AgeSource(0.1)
+    watcher.yt_cdp_rows = ["a", "b"]
+    no_snap = watcher._yt_diag_now()
     good = (empty == ("unattached", "", "none", 0, "no-frame")
             and qmark[0] == "external:youtube" and qmark[1] == "VID12345678"
             and qmark[2] == "1500" and qmark[3] == 2
             and none_age[2] == "none"
-            and "?" not in (empty + qmark + none_age))
-    return good, "empty=%r qmark=%r none_age=%r" % (empty, qmark, none_age)
+            and with_snap[3] == 3 and no_snap[3] == 2
+            and "?" not in (empty + qmark + none_age + with_snap + no_snap))
+    return good, ("empty=%r qmark=%r none_age=%r with_snap=%r no_snap=%r"
+                  % (empty, qmark, none_age, with_snap, no_snap))
 
 
 def _arm_line(shell_text):
