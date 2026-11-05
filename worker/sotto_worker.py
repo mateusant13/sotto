@@ -341,6 +341,13 @@ TAP_PEAK_FLOOR = 0.002
 #: WASAPI clients opened in three minutes on a quiet machine, each one a hitch on
 #: the audio engine the owner shares with every other app.
 TAP_SILENT_DESKTOP_MAX_S = 60.0
+#: A tap held open because the SHELL parked the engine is still a tap on ONE
+#: endpoint (2026-11-05). Holding it forever would hide the one fact the ladder
+#: exists to notice -- the audio MOVED to another device while we waited -- so
+#: the hold is bounded: after this many extended windows the ladder re-scans
+#: once (with a parked engine it then holds again, so the churn is at most one
+#: client per ~11 min instead of one every 15 s).
+TAP_ENGINE_PARK_HOLD_WINDOWS = 12
 
 # A tap that OPENS is not a tap that HEARS. These two numbers are what turn
 # "the stream started" into a claim that can be wrong, and they exist because
@@ -2016,6 +2023,21 @@ def window_ended(now, dev, device_peak, tap_floor, tap_window, counters, emit=No
             state['windows'] += 1
             grown = min(float(tap_window) * (2.0 ** min(state['windows'], 4)),
                         float(TAP_SILENT_DESKTOP_MAX_S))
+            # UMA TAP SEGURA E' AINDA UMA TAP NUM ENDPOINT (2026-11-05). Segurar
+            # para sempre esconderia a unica coisa que a escada existe para ver:
+            # o audio MUDOU de dispositivo enquanto esperavamos. Passado o
+            # tecto, a escada volta a varrer UMA vez e o ciclo recomeca -- com o
+            # motor parqueado isso e' no maximo um cliente por ~11 min, em vez de
+            # um a cada 15 s.
+            if state['windows'] > TAP_ENGINE_PARK_HOLD_WINDOWS:
+                state['windows'] = 0
+                if emit is not None:
+                    emit(type="status", state="tap-engine-park-rescan",
+                         device=dev.get('name'), park=parked,
+                         windows=TAP_ENGINE_PARK_HOLD_WINDOWS,
+                         why="the hold is bounded: re-scan the ladder once for a "
+                             "device that may have moved")
+                return None
             if not state['logged'] and emit is not None:
                 state['logged'] = True
                 emit(type="status", state="tap-engine-parked",

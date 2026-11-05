@@ -741,12 +741,12 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 452462,
+      "bytes": 453873,
       "classes": 17,
       "defs": 82,
       "except_pass": 15,
       "globals": 5,
-      "lines": 8576,
+      "lines": 8598,
       "max_func": 2645,
       "max_func_name": "main"
     },

@@ -486,6 +486,29 @@ def arms_for(mod, cpu_window):
             mod._live_render_peaks = _real_peaks
     checks.append(check('P13-without-a-park-the-same-window-still-rotates',
                         plain is None, {'returned': plain}))
+
+    # P15 -- O TECTO DO SEGURA: passadas `TAP_ENGINE_PARK_HOLD_WINDOWS` janelas a
+    # escada varre UMA vez (o audio pode ter MUDADO de endpoint durante a espera),
+    # e a contagem recomeca. Sem isto a tap ficaria presa num dispositivo que ja'
+    # nao existe e nenhuma cura o notaria.
+    status15 = []
+    counters15 = {}
+    now15 = 0.0
+    ends15 = []
+    for _ in range(mod.TAP_ENGINE_PARK_HOLD_WINDOWS + 1):
+        _end = mod.window_ended(now15, {'name': 'CABLE Input'}, {'value': 0.317144},
+                                0.002, 7.6, counters15,
+                                lambda **kw: status15.append(kw),
+                                engine_parked=lambda: 'vram')
+        ends15.append(_end)
+        now15 = _end if _end else (now15 + 1.0)
+    checks.append(check(
+        'P15-the-hold-is-bounded-and-then-the-ladder-rescans',
+        ends15[-1] is None and all(e is not None for e in ends15[:-1])
+        and any(s.get('state') == 'tap-engine-park-rescan' for s in status15),
+        {'windows': mod.TAP_ENGINE_PARK_HOLD_WINDOWS,
+         'last_return': ends15[-1],
+         'status': [s.get('state') for s in status15]}))
     return checks
 
 
@@ -534,8 +557,17 @@ def mutate_window_hold(dst):
     io.open(dst, 'w', encoding='utf-8', newline='').write(out)
 
 
+def mutate_hold_ceiling(dst):
+    """O TECTO VIRA INFINITO: a tap segura para sempre (o braco de P15)."""
+    src = io.open(WORKER, encoding='utf-8', newline='').read()
+    anchor = 'TAP_ENGINE_PARK_HOLD_WINDOWS = 12'
+    assert src.count(anchor) == 1, 'a ancora do tecto do segura nao e unica'
+    io.open(dst, 'w', encoding='utf-8', newline='').write(
+        src.replace(anchor, 'TAP_ENGINE_PARK_HOLD_WINDOWS = 10 ** 9', 1))
+
+
 def hold_detector_proof():
-    """O mutante que desarma a guarda da tap TEM de derrubar P12 (dentro do passo)."""
+    """Os DOIS mutantes tem de derrubar a arm que os mede (dentro do passo)."""
     mutate_window_hold(NEG_COPY)
     try:
         neg = load_worker(NEG_COPY, 'worker_park_hold_neg')
@@ -547,8 +579,30 @@ def hold_detector_proof():
             os.remove(NEG_COPY)
         except OSError:
             pass
-    return check('P14-the-detector-can-say-no', extended is None,
-                 {'mutant_extension': extended})
+    ok12 = extended is None
+    mutate_hold_ceiling(NEG_COPY)
+    refused = False
+    try:
+        far = load_worker(NEG_COPY, 'worker_park_ceiling_neg')
+        state, now = {}, 0.0
+        for _ in range(40):
+            _end = far.window_ended(now, {'name': 'CABLE Input'}, {'value': 0.317144},
+                                    0.002, 7.6, state, None,
+                                    engine_parked=lambda: 'vram')
+            if _end is None:
+                refused = True
+                break
+            now = _end
+    finally:
+        try:
+            os.remove(NEG_COPY)
+        except OSError:
+            pass
+    # O MUTANTE DO TECTO TEM DE CONTINUAR A SEGURAR (e' isso que P15 apanha).
+    caught15 = not refused
+    return check('P14-the-detector-can-say-no', ok12 and caught15,
+                 {'mutant_extension': extended,
+                  'mutant_ceiling_still_holds': caught15})
 
 
 def main(argv=None):
