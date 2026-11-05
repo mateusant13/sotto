@@ -1458,7 +1458,20 @@ class StreamAsr:
             self._build_frontend()
         th = self._fe_thread
         if th is not None and th is not threading.current_thread() and th.is_alive():
-            th.join()
+            # A ESPERA CONTA COMO PROGRESSO (medido 2026-11-05). O `og.Model`
+            # leva 2,0-3,2 s sozinho, 9,0-9,3 s dentro deste worker e **35,9 s**
+            # numa arm. Um `th.join()` inteiro e' esse tempo todo SEM uma linha
+            # de progresso, e o batimento (`start_heartbeat`) so' fala quando o
+            # `seq` anda: o vigia da shell declara `BRIDGE_SILENT ms=30000` e
+            # mata o worker no meio da carregacao -- medido no log do dono,
+            # `BRIDGE_SILENT ms=30000 pid=23240` 39 s apos o spawn e duas
+            # recargas de 1,9 GB em 17 min (`spawns=3 restarts=2`). A espera
+            # aqui esta' VIVA e a andar, por isso diz-se viva: quem embrulhar
+            # deixa de chamar `progress()` e o silencio volta a significar
+            # embrulho.
+            while th.is_alive():
+                progress('fe-wait')
+                th.join(2.0)
         if self._fe_error is not None:
             exc = self._fe_error
             self._fe_error = None

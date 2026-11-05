@@ -41,6 +41,7 @@ import os
 import re
 import sys
 import tempfile
+import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -154,6 +155,29 @@ def judge(shell_mod, worker_mod, quiet=False):
           after == before + 1 and worker_mod.PROGRESS['phase'] == 'idle-wait',
           {'before': before, 'after': after,
            'phase': worker_mod.PROGRESS['phase']})
+
+    # -- arm 6: a espera pelo front end NAO cala o batimento ------------------
+    # MEDIDO no log do dono (2026-11-05 00:34:59): `BRIDGE_SILENT ms=30000
+    # pid=23240` 39 s apos o spawn, com o worker JA' em `model-loaded` -- o
+    # `og.Model` leva 2,0-3,2 s sozinho e 35,9 s numa arm, e o `th.join()`
+    # inteiro era esse tempo todo sem uma linha de progresso. `progress()` e'
+    # chamado pela espera VIVA; o `--neg-arm` muta o laco e este braco cai.
+    class _FeFake:
+        _join_frontend = worker_mod.StreamAsr._join_frontend
+
+        def __init__(self, th):
+            self._fe_started = True
+            self._fe_thread = th
+            self._fe_error = None
+
+    slow = threading.Thread(target=lambda: time.sleep(2.4), daemon=True)
+    slow.start()
+    before = worker_mod.PROGRESS['seq']
+    _FeFake(slow)._join_frontend()
+    after = worker_mod.PROGRESS['seq']
+    check('6-frontend-wait-keeps-the-beat',
+          after - before >= 2, {'before': before, 'after': after,
+                                'phase': worker_mod.PROGRESS['phase']})
 
     # -- arm 5: a guarda do PARQUE (so' quando nada podia ter sido capturado) --
     pr = worker_mod.park_reason
@@ -306,9 +330,10 @@ def mutate_shell(dst):
 
 
 def mutate_worker(dst):
-    """Quatro mutacoes no worker: o `progress` parado (arm 4), o parque desligado
-    (arm 5), o censo a nunca diferir (arm 7) e o portao do parque ARRANCADO do
-    caminho do veredito (arm 10)."""
+    """Cinco mutacoes no worker: o `progress` parado (arm 4), o parque desligado
+    (arm 5), o censo a nunca diferir (arm 7), o portao do parque ARRANCADO do
+    caminho do veredito (arm 10) e a espera do front end de volta a um
+    `join()` inteiro (arm 6)."""
     src = io.open(WORKER, encoding='utf-8', newline='').read()
     out = src.replace("        PROGRESS['seq'] += 1\r\n", "", 1)
     assert out != src, 'a ancora do progress nao existe'
@@ -327,6 +352,16 @@ def mutate_worker(dst):
         "            _why = None  # mutante: o portao do parque foi arrancado",
         out, count=1)
     assert n == 1, 'a ancora do portao do parque nao existe'
+    out = swapped
+    # A QUINTA MUTACAO: a espera pelo front end volta a ser um `join()` inteiro,
+    # que e' exactamente o defeito medido (35,9 s sem progresso -> `BRIDGE_SILENT
+    # ms=30000` -> 1,9 GB recarregados). A arm 6 tem de cair por ELE.
+    swapped, n = re.subn(
+        r"(?m)^            while th\.is_alive\(\):\r?\n"
+        r" +progress\('fe-wait'\)\r?\n"
+        r" +th\.join\(2\.0\)",
+        "            th.join()", out, count=1)
+    assert n == 1, 'a ancora do laco do front end nao existe'
     out = swapped
     io.open(dst, 'w', encoding='utf-8', newline='').write(out)
 
@@ -353,12 +388,13 @@ def main(argv=None):
                   and '3-reader-counts-the-beat' in red
                   and '5-park-only-when-nothing-captured' in red
                   and '7-park-resumes-on-census-change' in red
-                  and '10-park-is-wired-into-the-device-verdict-path' in red)
+                  and '10-park-is-wired-into-the-device-verdict-path' in red
+                  and '6-frontend-wait-keeps-the-beat' in red)
         print(f'NEG-ARM arms={len(checks)} caidas={red}')
         for c in checks:
             print(f"  {'RED ' if not c['ok'] else 'green'} {c['arm']} {c['detail']}")
         if caught:
-            print('NEG-ARM: PASS (as quatro curas mutadas foram apanhadas)')
+            print('NEG-ARM: PASS (as cinco curas mutadas foram apanhadas)')
             return 1
         print('NEG-ARM: FAIL -- o mutante sobreviveu a um braco')
         return 2

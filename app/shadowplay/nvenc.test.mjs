@@ -54,7 +54,29 @@ try {
       // to the frame. 12 s is chosen over 10 s for margin, because a gdigrab capture of a
       // still desktop delivers fewer frames than the requested clock (measured all session).
       const out = join(dir, "long.mp4");
-      enc.captureAndEncode(out, { fps: 60, seconds: 12, gop: 250 });
+      // A CAPTURA PODE SER FAMINTA (medido 2026-11-05, 2x num gate de commit com
+      // a caixa ocupada): o `gdigrab` de um desktop parado entrega MENOS frames
+      // do que o relogio pedido, e uma captura de 12 s pode sair com um unico
+      // keyframe -- o `probeGop` recusa medir e a arm falhava por ESCASSEZ, nao
+      // por defeito. Tres tentativas, e o que se exige de cada uma e' o que a
+      // medicao precisa: >=2 keyframes no FICHEIRO.
+      const keyTimes = (file) => execFileSync("ffprobe", ["-v", "error",
+        "-select_streams", "v:0", "-skip_frame", "nokey",
+        "-show_entries", "frame=pts_time", "-of", "csv=p=0", file],
+        { windowsHide: true, encoding: "utf8" })
+        .split("\n").map((x) => parseFloat(x)).filter((x) => Number.isFinite(x));
+      // A ESCASSEZ PEDE MAIS TEMPO, NAO A MESMA TENTATIVA (medido 2026-11-05):
+      // com tres capturas de 12 s a competir pelo mesmo desktop, as tres sairam
+      // com UM keyframe -- repetir a mesma janela nao da' ao encoder os frames
+      // que faltam. A janela cresce (12 -> 20 -> 30 s), que e' a unica moeda que
+      // compra frames aqui.
+      let keyPts = [];
+      for (const seconds of [12, 20, 30]) {
+        enc.captureAndEncode(out, { fps: 60, seconds, gop: 250 });
+        keyPts = keyTimes(out);
+        if (keyPts.length >= 2) break;
+        console.log(`       (${seconds} s capture: ${keyPts.length} keyframe(s) -- too short, widening)`);
+      }
       const r = enc.gopOf(out, 60);
       assert.ok(r.gop > 0, "probe returned no GOP");
       // O QUE SE JULGA E' O LEITOR, NAO A PROMESSA (2026-11-05). A arm era
@@ -66,12 +88,8 @@ try {
       // outro: devolver o MENOR espacamento REAL entre keyframes do ficheiro
       // e dizer se e' variavel. Isso mede-se contra o ficheiro, nao contra o
       // pedido, e por isso nao depende de quem mais esta' a usar a GPU.
-      const keyPts = execFileSync("ffprobe", ["-v", "error", "-select_streams",
-        "v:0", "-skip_frame", "nokey", "-show_entries", "frame=pts_time",
-        "-of", "csv=p=0", out], { windowsHide: true, encoding: "utf8" })
-        .split("\n").map((x) => parseFloat(x)).filter((x) => Number.isFinite(x));
       assert.ok(keyPts.length >= 2,
-        `fixture too short: ${keyPts.length} keyframe(s) in 12 s -- nothing to measure`);
+        `fixture too short: ${keyPts.length} keyframe(s) after widening to 30 s -- nothing to measure`);
       const realGaps = keyPts.slice(1)
         .map((v, i) => Math.round((v - keyPts[i]) * 60));
       const expected = [...new Set(realGaps)].sort((a, b) => a - b);
@@ -86,6 +104,7 @@ try {
     t("remux copies the stream: codec and frame count survive", () => {
       const src = join(dir, "cap.mp4");
       const dst = join(dir, "copy.mp4");
+      const encodesBeforeRemux = enc.encodeCount();
       const before = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0",
         "-show_entries", "stream=codec_name,nb_frames", "-of", "csv=p=0", src],
         { windowsHide: true, encoding: "utf8" }).trim();
@@ -94,9 +113,15 @@ try {
         "-show_entries", "stream=codec_name,nb_frames", "-of", "csv=p=0", dst],
         { windowsHide: true, encoding: "utf8" }).trim();
       assert.equal(after, before, "the stream changed across a remux");
-      assert.equal(enc.encodeCount(), 2, "remux must not have encoded again");
-      assert.deepEqual(enc.calls, ["encode", "encode", "remux"],
-        "the log must show exactly the encodes plus the one remux");
+      // O CONTADOR E' RELATIVO (2026-11-05): a captura acima pode ter precisado
+      // de mais de uma janela, e um numero absoluto de encodes passaria a
+      // depender da maquina em vez da propriedade -- "o remux nao encoda".
+      assert.equal(enc.encodeCount(), encodesBeforeRemux,
+        "remux must not have encoded again");
+      assert.equal(enc.calls[enc.calls.length - 1], "remux",
+        "the last call in the log must be the remux");
+      assert.equal(enc.calls.filter((c) => c === "remux").length, 1,
+        "exactly one remux reached the encoder");
       // Byte equality is NOT the invariant: ffmpeg may rewrite the moov box.
       // What must not change is the encoded stream itself.
       console.log("       (remux " + r.inBytes + " -> " + r.outBytes + " bytes, stream identical)");

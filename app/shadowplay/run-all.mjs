@@ -45,9 +45,9 @@ function runSuite(f) {
   const r = spawnSync(process.execPath, [join(HERE, f)], { windowsHide: true, cwd: HERE, encoding: "utf8", timeout: 300000 });
   const out = (r.stdout || "") + (r.stderr || "");
   const m = out.match(/RESULT\s+(\d+)\s+passed,\s*(\d+)\s+failed/);
-  if (!m) return { f, ok: false, why: "no RESULT line -- it did not report at all", passed: null, failed: null };
+  if (!m) return { f, ok: false, why: "no RESULT line -- it did not report at all", passed: null, failed: null, out };
   const passed = Number(m[1]), failed = Number(m[2]);
-  return { f, ok: r.status === 0 && failed === 0, why: r.status !== 0 ? `exit ${r.status}` : `${failed} failed`, passed, failed };
+  return { f, ok: r.status === 0 && failed === 0, why: r.status !== 0 ? `exit ${r.status}` : `${failed} failed`, passed, failed, out };
 }
 
 const results = SUITES.map(runSuite);
@@ -55,7 +55,17 @@ let suitePassed = 0, suiteFailed = 0, noReport = 0;
 for (const r of results) {
   if (r.passed === null) { noReport++; console.log(`  ${r.f.padEnd(30)} NO_REPORT  ${r.why}`); continue; }
   if (r.ok) { suitePassed++; console.log(`  ${r.f.padEnd(30)} ok         ${r.passed} passed`); }
-  else { suiteFailed++; console.log(`  ${r.f.padEnd(30)} FAIL       ${r.passed} passed, ${r.failed} failed (${r.why})`); }
+  else {
+    suiteFailed++;
+    console.log(`  ${r.f.padEnd(30)} FAIL       ${r.passed} passed, ${r.failed} failed (${r.why})`);
+    // A LINHA QUE FALTOU (medido 2026-11-05): `nvenc.test.mjs FAIL 4 passed, 1
+    // failed` sem uma palavra sobre QUAL arm, duas vezes seguidas num gate de
+    // commit -- e as duas vezes o braco passou 5/5 ao correr sozinho. Uma suite
+    // que diz so' o NUMERO deixa o autor a repetir a corrida e a adivinhar; o
+    // `FAIL <nome> :: <razao>` que a suite ja escreve e' a evidencia que falta.
+    const lines = (r.out || "").split(/\r?\n/).filter((l) => /FAIL|NO_REPORT|Error|error:/.test(l));
+    for (const l of lines.slice(0, 6)) console.log("      | " + l.trim());
+  }
 }
 console.log(`  SUITES ${suitePassed} passed, ${suiteFailed} failed, ${noReport} unreported`);
 
