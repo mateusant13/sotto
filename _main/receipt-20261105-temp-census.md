@@ -347,3 +347,33 @@ Sem exec nao ha' leitura do meu proprio transcript .jsonl nem linhas WHEN / WHER
 **done (fecho do card do brief):** `_main/receipt-20261105-temp-census.md` — censo dos dois roots com
 totais, top-25, histograma, classificacao, `RECLAIMABLE: >= 350 MB` (piso medido) e a lista de caminhos
 SAFE. **Zero bytes apagados.**
+
+---
+
+## 9. FECHO DO NUMERO — o `du` que a lane nao tinha (Main, 2026-11-05 19:45, shell)
+
+A lane declarou (§1) que nao conseguia fechar o numero por falta de shell. Fechado aqui, com o
+mesmo criterio dela (`SAFE` = `mtime > 24 h` e nenhum indicio de detentor), por leitura de tamanho
+(`os.path.getsize` recursivo) e **sem apagar nada**:
+
+| familia (root) | entradas | total | `>1 d` (SAFE) | bytes `>1 d` |
+|---|---|---|---|---|
+| snapshots de mutante (`G:/Temp`) | 139 | 496,8 MB | 94 | **362,2 MB** |
+| `jcode-subagent-intent-test-*` / `jcode-bg-tasks*` | 178 | 9,2 MB | 80 | 5,1 MB |
+| SQLite de teste (`b2-*`, `n02-*`, `jobrt-test-*`, `jobtest-*`) | 1201 | 467,0 MB | 76 | 4,6 MB |
+| `*.tmp` UUID | 84 | 36,2 MB | 43 | 3,6 MB |
+| `.tmp*` | 68 | 89,4 MB | 36 | **87,1 MB** |
+| `pytest-of-Administrador` | 1 | 0,5 MB | 0 | 0,0 MB |
+| `gitattr-verify` | 1 | 47,9 MB | 0 | HOLD (<24 h) |
+| copias `pre_*`/`pre_crlf_*`, `*before*.log`, `.bak`, `*.wav`, arvores mortas (`I:/cc-tmp`) | 75 | 142,5 MB | 75 | **142,5 MB** |
+
+**`RECLAIMABLE >1 d` medido: 605,1 MB** (462,6 MB em `G:/Temp` + 142,5 MB em `I:/cc-tmp`) — nao o
+piso de 350 MB que o §8 estimou, e nao 18,8 GB: os dois roots tem **18,8 GB de bytes totais**, mas a
+maior parte esta' dentro de janelas de `HOLD` provadas (perfis `EBWebView` abertos, `-wal`/`-shm` de
+SQLite vivo, pesos do ASR em `I:/cc-tmp/models-src` que **nunca** se apagam por idade).
+
+Os tres maiores itens SAFE, nomeados: `I:/cc-tmp/webview-run-before-lane.log` 44,60 MB ·
+`I:/cc-tmp/log-before-run.log` 41,52 MB · `G:/Temp` `.tmp*` 87,1 MB (36 entradas).
+
+**Nada foi apagado.** O §8 e o proprio cartao pedem a palavra do dono antes do `rm`, e os dois roots
+tem ficheiros de lanes que nao sao deste repo.

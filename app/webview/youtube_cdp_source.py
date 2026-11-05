@@ -82,6 +82,18 @@ PAUSED_POLL_S = 0.5
 #: quando o Chrome esta' fechado.
 RETRY_S = 2.0
 
+#: O TECTO DA ESPERA ENTRE ATTEMPTS DE ATTACH (2026-11-05, MEDIDO na instancia
+#: viva pid 20236). Com o browser SEM porta de depuracao o ciclo e'
+#: `_connect` (ATTACH_PROBE_TIMEOUT_S = 1,5 s de um prazo destinado a falhar) +
+#: `RETRY_S`: 43 % de um fio a bater a uma porta morta, medido no log como
+#: `YOUTUBE_CDP_ATTACH_FAILED attempt=450 ... reason=probe-timeout ms=1500`
+#: enquanto o processo ao lado tinha um socket em `SYN_SENT` para 127.0.0.1:9222
+#: e NENHUM browser com `--remote-debugging-port=9222`. A espera dobra a cada
+#: falha ate' aqui e volta a `RETRY_S` no primeiro attach que passa: o tecto e'
+#: baixo de proposito, porque o custo de esperar demais e' a legenda do YouTube
+#: chegar tarde quando o browser ABRE no meio da sessao.
+ATTACH_RETRY_MAX_S = 8.0
+
 #: O PRAZO DE UMA SONDA DE ATTACH (2026-11-04, MEDIDO). Contra uma porta
 #: FECHADA nesta maquina um `/json/list` gasta 2,0 s de `URLError`; com o prazo
 #: de 3 s do `list_targets` um ciclo de retry custava 4 s e o log de motivos
@@ -804,6 +816,13 @@ class CdpCaptionSource:
         #: isto -- nao o id -- que decide qual delas ler (`pick_target`).
         self._window_title = ""
 
+        #: Ha' ligacao CDP agora? Decide a espera entre tentativas; e a IDADE da
+        #: ultima falha de attach e' o que impede `target_video_id` de gastar a
+        #: sonda de alvos contra uma porta morta. Ver `_run`/`_connect`.
+        self._attached = False
+        self._retry_s = RETRY_S
+        self._attach_failed_at = None
+
     # -- ciclo de vida ----------------------------------------------------
     def set_video_id(self, video_id):
         """Qual video o Sotto DECLARA ler. Com mais de uma aba aberta, so' esta."""
@@ -957,6 +976,22 @@ class CdpCaptionSource:
         arvore. Uma chamada HTTP por `cache_s`, nao por tick.
         """
         now = time.monotonic()
+        # SEM LIGACAO RECENTE NAO HA' ALVO A SONDAR (2026-11-05, MEDIDO na
+        # instancia viva pid 20236). Com o browser sem porta de depuracao esta
+        # chamada gastava **2000 ms** de 10 em 10 s -- o log diz
+        # `YOUTUBE_TARGET_SLOW ms=2000 vid=- ttl_s=10` em serie -- para
+        # perguntar a um porto morto que abas existem, e a resposta nao podia
+        # ser outra. A falha de attach ja' e' um facto datado (`_attach_log`):
+        # enquanto ela for recente e nao houver ligacao, a resposta e' de graca.
+        # Uma fonte sem fio (`_run` nunca correu -- duplos de teste) nao tem
+        # hora de falha e segue o caminho antigo, sem mudanca de comportamento.
+        _failed = getattr(self, '_attach_failed_at', None)
+        if (_failed is not None and not getattr(self, '_attached', False)
+                and now - _failed < 30.0):
+            # NADA DE CACHE AQUI: a hora da falha e' o unico estado, e escrever
+            # um '' no cache de 2 s faria a primeira leitura depois de a porta
+            # voltar a responder devolver o vazio antigo.
+            return ''
         ttl = float(getattr(self, '_tid_ttl', 2.0) or 2.0)
         cached = getattr(self, '_tid_cache', None)
         if cached and now - cached[0] < ttl:
@@ -1037,10 +1072,20 @@ class CdpCaptionSource:
                 self._stop.wait(1.0)
                 continue
             if conn is None:
+                self._attached = False
                 conn = self._connect(websocket)
                 if conn is None:
-                    self._stop.wait(RETRY_S)
+                    # A ESPERA DOBRA ATE' ATTACH_RETRY_MAX_S (2026-11-05). Cada
+                    # falha custou ATTACH_PROBE_TIMEOUT_S de um prazo que nao
+                    # podia dar outra coisa enquanto nenhum browser expunha a
+                    # porta; repetir a 3,5 s e' 43 % de um fio a fazer nada.
+                    _wait = float(getattr(self, '_retry_s', RETRY_S) or RETRY_S)
+                    self._stop.wait(_wait)
+                    self._retry_s = min(ATTACH_RETRY_MAX_S, _wait * 2.0)
                     continue
+                self._attached = True
+                self._retry_s = RETRY_S
+                self._attach_failed_at = None
             t0 = time.monotonic()
             try:
                 # O ID DE CADA PEDIDO E' UNICO (2026-11-05, MEDIDO). Com o id
@@ -1230,6 +1275,11 @@ class CdpCaptionSource:
     _ATTACH_LOG_EVERY = 50
 
     def _attach_log(self, attempt, ok, reason, ms=0.0, extra=''):
+        # O CHOKE POINT DE TODA A TENTATIVA (2026-11-05): as tres saidas de falha
+        # de `_connect` passam todas por aqui, logo a hora da ultima falha vive
+        # num so' sitio. `target_video_id` le-a para nao sondar alvos contra uma
+        # porta que acabou de nao responder.
+        self._attach_failed_at = None if ok else time.monotonic()
         if attempt > self._ATTACH_LOG_N and attempt % self._ATTACH_LOG_EVERY:
             return
         self._log('YOUTUBE_CDP_ATTACH_%s attempt=%d ok=%s reason=%s port=%d '

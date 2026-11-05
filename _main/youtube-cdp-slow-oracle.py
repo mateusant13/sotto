@@ -247,12 +247,68 @@ def arm_probe_reason(mod):
     return (not bad), "bad=%r" % (bad,)
 
 
+def arm_unattached_no_spin(mod):
+    """SEM LIGACAO O FIO NAO PODE BATER A PORTA SEM PARAR (2026-11-05, MEDIDO).
+
+    Dois observaveis, ambos sobre o codigo REAL e ambos deterministas:
+      (1) a espera entre tentativas DOBRA depois de uma falha (o custo medido na
+          instancia viva era 1,5 s de prazo a cada 3,5 s -- 43 % de um fio);
+      (2) com uma falha de attach RECENTE e nenhuma ligacao, `target_video_id`
+          responde '' sem chamar `list_targets` (o log media 2000 ms por volta,
+          de 10 em 10 s, a perguntar a um porto morto que abas existem).
+    """
+    old_tabs = mod.list_targets
+    calls = {"n": 0}
+
+    def _refused(port=None, timeout=3.0):
+        calls["n"] += 1
+        raise OSError("connection refused")
+
+    mod.list_targets = _refused
+    src = None
+    try:
+        src = mod.CdpCaptionSource(port=1, poll_s=0.01, log=lambda _m: None)
+        src._last_use = time.monotonic()
+        src.start()
+        deadline = time.monotonic() + 6.0
+        while (time.monotonic() < deadline
+               and int(getattr(src, "_attach_tries", 0)) < 2):
+            time.sleep(0.02)
+        grew = float(getattr(src, "_retry_s", 0) or 0) >= 4.0
+        calls["n"] = 0
+        vid = src.target_video_id()
+        gated = (vid == "" and calls["n"] == 0)
+        # O CONTRARIO TAMBEM E' JULGADO: sem falha recente a sonda ACONTECE (a
+        # guarda nao pode virar "nunca sonda") e o resultado dela e' usado.
+        src._attach_failed_at = None
+        calls["n"] = 0
+
+        def _tabs(port=None, timeout=3.0):
+            calls["n"] += 1
+            return ([dict(TAB)], 0)
+
+        mod.list_targets = _tabs
+        vid2 = src.target_video_id()
+        scanned = (calls["n"] == 1 and vid2 == "SLOWVID0001")
+    finally:
+        if src is not None:
+            src.stop()
+            if src._thread is not None:
+                src._thread.join(timeout=3.0)
+        mod.list_targets = old_tabs
+    return (grew and gated and scanned), (
+        "dobra=%s (retry_s=%r) gate=%s (vid=%r) sonda-livre=%s (%r calls=%d)"
+        % (grew, getattr(src, "_retry_s", None), gated, vid, scanned, vid2,
+           calls["n"]))
+
+
 ARMS = [
     ("A1 prazo-nao-e-morte", True, arm_timeout_keeps),
     ("A2 atrasada-nao-passa", True, arm_stale_reply),
     ("A3 tres-prazos-e-cano-partido", True, arm_three_timeouts),
     ("inv controle: dois prazos nao fecham", False, control_two_timeouts),
     ("A4 nome-honesto", True, arm_probe_reason),
+    ("A5 sem-ligacao-nao-vira-turbina", True, arm_unattached_no_spin),
 ]
 
 #: mutacoes de uma COPIA do modulo -- cada uma derruba a arm que a julga.
@@ -270,6 +326,14 @@ MUTANTS = [
      "    if isinstance(exc, ConnectionRefusedError):\n        return \"port-closed\"\n",
      "    return \"port-closed\"\n",
      (4,)),
+    ("a espera que nao dobra (volta a bater a porta a 3,5 s)",
+     "                    self._retry_s = min(ATTACH_RETRY_MAX_S, _wait * 2.0)\n",
+     "                    self._retry_s = RETRY_S\n",
+     (5,)),
+    ("a sonda de alvos contra a porta morta (gate desarmado)",
+     "        if (_failed is not None and not getattr(self, '_attached', False)\n",
+     "        if (_failed is not None and False\n",
+     (5,)),
 ]
 
 

@@ -531,13 +531,13 @@
    "max_func_name": "fetch_track"
   },
   "app/webview/youtube_cdp_source.py": {
-   "bytes": 60470,
+   "bytes": 63492,
    "classes": 1,
    "defs": 21,
    "except_pass": 6,
    "globals": 0,
-   "lines": 1292,
-   "max_func": 201,
+   "lines": 1340,
+   "max_func": 211,
    "max_func_name": "_run"
   },
   "app/webview/youtube_monotonic.py": {
@@ -681,12 +681,12 @@
    "max_func_name": "__init__"
   },
   "worker/punctuation_model.py": {
-   "bytes": 9720,
+   "bytes": 10834,
    "classes": 0,
    "defs": 11,
    "except_pass": 0,
    "globals": 2,
-   "lines": 257,
+   "lines": 273,
    "max_func": 44,
    "max_func_name": "load"
   },

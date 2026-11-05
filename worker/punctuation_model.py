@@ -25,6 +25,22 @@ subindo e 2 caindo, e 0 fixtures com pergunta). Um `?` que o modelo ingles poe a
 meio de uma hipotese parcial foi medido: `"that I? didn't"`. Regra daqui: `?` e
 `!` so' sobrevivem quando FECHAM o texto; a meio, sao removidos. `,` e `.` ficam.
 
+PORQUE NAO EXISTE METADE PORTUGUESA (medido 2026-11-05, nao suposto). A lista
+de modelos de pontuacao que o sherpa-onnx embarca tem TRES entradas e nenhuma
+serve pt-BR (`k2-fsa.github.io/sherpa/onnx/punctuation/pretrained_models.html`,
+lida nesta data): `online-punct-en-2024-08-06` (so' ingles, o que esta' aqui),
+`punct-ct-transformer-zh-en-...-int8` (72 MB, chines+ingles) e o mesmo em fp32
+(281 MB). As duas alternativas conhecidas foram pesadas e RECUSADAS: o
+`oliverguhr/fullstop-punctuation-multilang-large` cobre portugues mas e' um
+transformer de ~2,4 GB que arrasta `torch` para dentro de um worker que hoje
+carrega 1,9 GB em `onnxruntime` (a maquina tem I: a 4,8 % livre); e aplicar o
+modelo ingles a portugues nao e' "melhor do que nada", e' o ruido medido acima.
+Logo, para o audio que este worker transcreve de facto -- o directorio do motor
+chama-se `nemotron-3.5-asr-ptbr-onnx-int4` -- a pontuacao DE MODELO fica
+`active=false`, e `log_line()` diz isso com a lingua ao lado. A metade que
+funciona em qualquer lingua e' a de prosodia, e ela so' entra com pausas
+medidas (`punctuation_prosody.py`).
+
 AUSENTE E' UM ESTADO NORMAL: sem o modelo em `worker/models/punct-en/` este
 modulo devolve o texto intacto e `status()` diz por que. Nada aqui pode fazer
 uma legenda falhar -- toda a chamada ao modelo esta' dentro de um `try`, e o
