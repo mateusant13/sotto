@@ -143,7 +143,36 @@ def run_arms(path, label):
     e_ok = ("\x00" not in e_line) and ("onnxruntime" in e_line)
     print("E  %r  %s" % (e_line[:60], "PASS" if e_ok else "FAIL"))
 
-    return [a_ok, b_ok, c_ok, d_ok, e_ok]
+    # F/G -- A LARGADA DO MOTOR TEM DE SER LEGIVEL AO VIVO (2026-11-05).
+    # O painel diz ao dono "the transcription engines were unloaded to free their
+    # VRAM"; a unica linha que o provava vivia no `stderr_tail` e so' se lia
+    # depois da morte. F exige a linha no log do shell; G e' o CONTROLO: uma
+    # linha de worker que nao esta' na lista NAO e' encaminhada por este ramo
+    # (senao o log do dono enche com o ruido que o `log_repeat` existe para parar).
+    captured = []
+    real_repeat = getattr(mod, "log_repeat", None)
+    mod.log_repeat = lambda key, message, every_s=0.0: captured.append((key, message))
+    try:
+        fake5 = Fake()
+        released = ("REDUX_ENGINE_RELEASED engine=parakeet reason=vram "
+                    "rss_before_mb=2093.4 rss_after_mb=612.0 releases=3")
+        cls._pump(fake5, io.StringIO(released + "\n"), "stderr")
+        f_ok = bool(captured) and released in captured[0][1]
+        print("F  %s  %s" % (captured[0][1][:70] if captured else "(nada no log)",
+                             "PASS" if f_ok else "FAIL"))
+        captured[:] = []
+        fake6 = Fake()
+        cls._pump(fake6, io.StringIO("REDUX_MODE mode=stream switches=2\n"),
+                  "stderr")
+        g_ok = not captured
+        print("G  uma linha fora da lista -> %s  %s"
+              % ("nao encaminhada (correcto)" if g_ok else "encaminhada",
+                 "PASS" if g_ok else "FAIL"))
+    finally:
+        if real_repeat is not None:
+            mod.log_repeat = real_repeat
+
+    return [a_ok, b_ok, c_ok, d_ok, e_ok, f_ok, g_ok]
 
 
 def neg_arm():
@@ -156,10 +185,18 @@ def neg_arm():
     if guard not in text:
         print("NEG-ARM FAIL: a guarda do widestring nao esta' na shell")
         return 1
+    # TERCEIRA MUTACAO (2026-11-05): o ramo que leva a largada do motor ao log
+    # vivo. Sem ele a afirmacao do painel volta a nao ter linha nenhuma que a
+    # julgue, e a arm F tem de ficar RED.
+    park = "if line.startswith(ENGINE_VISIBLE_TAGS):"
+    if park not in text:
+        print("NEG-ARM FAIL: o ramo do motor nao esta' na shell")
+        return 1
     path = os.path.join(os.path.dirname(SHELL), "_mutant_tail3.py")
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text.replace(needle, "STDERR_TAIL_MAX = 3", 1)
-                     .replace(guard, "if False:", 1))
+                     .replace(guard, "if False:", 1)
+                     .replace(park, "if False:", 1))
     try:
         proc = subprocess.run([sys.executable, os.path.abspath(__file__), "--shell", path],
                               capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
@@ -173,12 +210,14 @@ def neg_arm():
     a_fail = "guardadas=3  FAIL" in out
     e_fail = any(ln.startswith("E  ") and ln.rstrip().endswith("FAIL")
                  for ln in out.splitlines())
+    f_fail = any(ln.startswith("F  ") and ln.rstrip().endswith("FAIL")
+                 for ln in out.splitlines())
     for ln in out.splitlines():
-        if ln.startswith(("A ", "E ")):
+        if ln.startswith(("A ", "E ", "F ")):
             print("   ", ln)
-    ok = caught and a_fail and e_fail
-    print("NEG-ARM mutant rc=%d A_guarda_3=%s E_widestring=%s  %s"
-          % (proc.returncode, a_fail, e_fail, "PASS" if ok else "FAIL"))
+    ok = caught and a_fail and e_fail and f_fail
+    print("NEG-ARM mutant rc=%d A_guarda_3=%s E_widestring=%s F_motor_no_log=%s  %s"
+          % (proc.returncode, a_fail, e_fail, f_fail, "PASS" if ok else "FAIL"))
     print("NEG-ARM PASS" if ok else "NEG-ARM FAIL")
     # RED as designed: um braco negativo que APANHA o mutante sai 1, e 0 quando nao
     # apanha -- e' assim que o `:expectred` da bateria exige rc=1 E `NEG-ARM PASS`.

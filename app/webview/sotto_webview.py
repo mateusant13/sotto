@@ -1267,6 +1267,17 @@ PROGRESS_TAGS = ('REDUX_BATCH_KICK', 'REDUX_ENGINE_DONE', 'REDUX_MODE',
                  # sem tornar o cao de guarda decorativo.
                  'WORKER_ALIVE')
 
+#: AS LINHAS DO MOTOR QUE O DONO VE' NO PAINEL (2026-11-05). `park_worker_for_vram`
+#: escreve no painel "the transcription engines were unloaded to free their VRAM", e
+#: essa frase nao tinha linha viva nenhuma atras dela: o `REDUX_ENGINE_RELEASED`
+#: (`rss_before_mb`/`rss_after_mb`) e o `REDUX_SHEDDING` do worker ficavam so' no
+#: `stderr_tail` e apareciam apenas na cauda da MORTE. Uma afirmacao do painel que
+#: so' se le' depois de o processo morrer nao se pode julgar -- e' a mesma classe do
+#: `reason=not-tried`. Vao por `log_repeat`, nao por `log`: a linha e' rara, mas um
+#: worker em churn nao pode encher o ficheiro do dono.
+ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
+                       'REDUX_ENGINE_LOAD', 'REDUX_SHEDDING')
+
 #: O BATIMENTO DO LACO DO WORKER, reconhecido por CONTER e nao por comecar (2026-11-04).
 #: Medido com o py-spy no worker vivo: `seq=516 phase=window` e nenhuma linha no log -- o
 #: ONNX escreve WIDESTRING e sem newline (o despejo `\u1b00\u5b00...` no log prova a classe),
@@ -19472,6 +19483,13 @@ class WorkerBridge:
                                              _f.get('rss_mb', '-'),
                                              _f.get('private_mb', '-'),
                                              _f.get('blocks', '-')))
+                    # A LARGADA DO MOTOR TEM DE SER LEGIVEL AO VIVO (2026-11-05).
+                    # Fica DENTRO do bloco de stderr, e antes do `continue` que o
+                    # fecha: uma copia colocada depois e' inalcancavel -- e' o mesmo
+                    # `continue` que ja' custou uma tarde ao `BRIDGE_ALIVE`.
+                    if line.startswith(ENGINE_VISIBLE_TAGS):
+                        log_repeat('engine-' + line.split(' ', 1)[0].lower(),
+                                   'WORKER ' + line.strip()[:220], every_s=30.0)
                     continue
 
                 text = line.strip()
