@@ -38,8 +38,17 @@
  * loads THIS file against an older copy of the markup.
  */
 
-/** Cap on rendered LIVE lines, matching MAX_CAPTIONS in the shell. */
-const MAX_CAPTIONS = 200;
+/**
+ * Cap on rendered LIVE lines, matching MAX_CAPTIONS in the shell.
+ *
+ * MEDIDO a 2026-11-05 (recibo `_main/receipt-20261105-right-panel-history.md`):
+ * com 200 o painel retinha **7 min 37 s** -- o dono enche a janela em ~7
+ * minutos e cada linha nova passa a apagar a mais antiga da tela. A janela sobe
+ * para 1200 porque o custo e' um `<li>` de ~100 B (1200 linhas = ~120 KB de
+ * DOM, lixo para um WebView2) e o beneficio e' a transcricao dele durar mais de
+ * meia hora em vez de evapora-la enquanto ele le'.
+ */
+const MAX_CAPTIONS = 1200;
 /** Cap on history entries held in the feed (newest kept). */
 const MAX_HISTORY = 500;
 /** How many entries a fresh `tail()` loads. */
@@ -450,6 +459,32 @@ function rowText(row) {
  * `data-source` ausente so' casa com um commit sem source -- a mesma tupla que
  * `rowIdentity` trata como chave, para as duas leituras concordarem.
  */
+/** Quantas linhas do mesmo source a busca de prefixo examina. */
+const DEDUPE_WINDOW = 8;
+
+/**
+ * As ultimas `n` linhas do mesmo `source`, da mais NOVA para a mais velha.
+ *
+ * Nasceu do defeito medido a 2026-11-05 (recibo
+ * `_main/receipt-20261105-right-panel-history.md`): `lastRowForSource` devolve
+ * UMA linha, e quando o `final` de uma frase chega depois de a frase seguinte
+ * abrir, a unica linha comparada e' a errada e a lista ganha uma duplicata
+ * exacta -- 51 de 200 linhas na tela dele.
+ */
+function recentRowsForSource(source, n) {
+  const out = [];
+  if (!dom.list || !(n > 0)) return out;
+  const want = source === null || source === undefined ? null : String(source);
+  for (let i = dom.list.childElementCount - 1; i >= 0 && out.length < n; i -= 1) {
+    const row = dom.list.children[i];
+    if (!row || !row.dataset) continue;
+    const have = row.dataset.source === undefined || row.dataset.source === ''
+      ? null : String(row.dataset.source);
+    if (have === want) out.push(row);
+  }
+  return out;
+}
+
 function lastRowForSource(source) {
   if (!dom.list) return null;
   const want = source === null || source === undefined ? null : String(source);
@@ -1567,9 +1602,21 @@ function addCaption(text, reason, meta) {
   // Fecha nos dois sentidos (`A` prefixo de `B` e `B` prefixo de `A`), porque a
   // revisao tambem corta, e quando um commit chega SEM identidade nada aqui
   // toca numa linha que ja' pertence a um `start` conhecido.
+  //
+  // E UMA SO' LINHA PARA COMPARAR NAO CHEGA (medido a 2026-11-05: 51 de 200
+  // linhas eram `A,B,A` EXACTAS). A linha S comeca com `start=None`, o primeiro
+  // commit da linha SEGUINTE fica com o slot de "ultima linha", e o `final` de S
+  // chega DEPOIS -- o prefixo e' comparado contra a linha errada e o texto que a
+  // lista ja' tinha e' apendado de novo. Como 2371 de 3321 commits de hoje
+  // chegaram sem `start` (71 %), a janela de comparacao passa a ser as ultimas
+  // `DEDUPE_WINDOW` linhas DESTE source, e nao a ultima so'.
   if (!existing && identity === null) {
-    const lastOfSource = lastRowForSource(source);
-    if (lastOfSource && isPrefixExtension(rowText(lastOfSource), text)) existing = lastOfSource;
+    for (const row of recentRowsForSource(source, DEDUPE_WINDOW)) {
+      if (isPrefixExtension(rowText(row), text) || isPrefixExtension(text, rowText(row))) {
+        existing = row;
+        break;
+      }
+    }
   }
   if (existing && !existing.isConnected) committedByStart.delete(identity);
   const line = existing && existing.isConnected ? existing : document.createElement('li');

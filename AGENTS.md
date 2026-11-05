@@ -446,8 +446,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 16:3x):** `_main\_audit-verify-all.cmd` = **249653 B**,
-  **3077 CRLF** / 0 bare LF, sha256 `9DFF0FC1C8D4D8DE92EB5DFD7704F895A8BF7D5846915ADEFD663190F903CF97`.
+- **PIN do ficheiro (medido 2026-11-05, 17:0x):** `_main\_audit-verify-all.cmd` = **251219 B**,
+  **3096 CRLF** / 0 bare LF, sha256 `2FDDDCC5259166E51025C61DFD8CD467787AAB23DD19CE70D0D74F94C0073CD7`.
+  (Dezanove linhas a mais do que o pin de 249653 B: o par `punct-model` + o seu `red-as-expected`,
+  a pontuacao DE MODELO que ele pediu -- *"usa pontuacao de forma inteligente"* -- respondida com o
+  que a casa mediu em vez de com uma opiniao: `sherpa-onnx-online-punct-en` (Apache-2.0, **int8
+  7,1 MB**, CPU 1 fio) carrega em **75-91 ms** e pontua em **6,1-8,5 ms por linha** (mediana 6,8),
+  contra um chunk de 560 ms. A metade que importa e' a guarda de lingua: o mesmo modelo sobre
+  portugues devolve `EU Gosto Muito, disso sabe como E que E` -- caixa aleatoria com aparencia de
+  pontuacao --, logo tag que nao comece por `en` e' identidade. Pontua SO a linha FECHADA; a
+  parcial nao leva marca nenhuma, porque o comma a saltar de sitio a cada chunk e' o defeito de
+  render que ele chamou inadmissivel. `--neg-arm` 4/4.)
   (Vinte e oito linhas a mais do que o pin de 245095 B: TRES pares novos, cada um com o seu
   `red-as-expected`, todos nascidos de defeitos que o dono viu na sessao dele hoje.
   `caption-switch-race` -- *"o botao fala que a legenda ta off, mas ta on"*: o texto aceito

@@ -161,7 +161,11 @@ PANEL_MARGIN = 12
 #: reported it "spawnando muito abaixo"; 44 px leaves air under the caption bar.
 STRIP_MARGIN = 44
 PANEL_MAX_WORK_FRACTION = 0.34
-MAX_CAPTIONS = 200
+#: A janela da legenda ao vivo, em linhas. Era 200 e MEDIU-SE
+#: (`_main/receipt-20261105-right-panel-history.md`) que isso da' **7 min 37 s**
+#: de retencao no painel -- o dono enche a janela e depois cada linha nova apaga
+#: a mais antiga que ele ainda esta' a ler. 1200 linhas sao ~120 KB de DOM.
+MAX_CAPTIONS = 1200
 
 # --- the deferred-asset gate -----------------------------------------------
 # Owner's order, 2026-10-12, verbatim: "o sotto nao deve carregar tudo de uma vez,

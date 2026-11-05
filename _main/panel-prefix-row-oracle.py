@@ -120,17 +120,31 @@ def run_arms(fn_src):
 
 
 def call_site_ok(src):
-    """A chamada so' no ramo sem identidade -- e' a propriedade que impede a fusao
-    de duas frases que o worker identificou."""
+    """A chamada so' no ramo sem identidade, sobre uma JANELA do mesmo source.
+
+    A janela e' a parte que o dono pagou (2026-11-05): com UMA linha comparada,
+    o `final` de uma frase que chega depois de a seguinte abrir encontra a linha
+    errada e a lista ganha a duplicata `A,B,A` -- medido, 51 de 200 linhas na
+    tela dele. Logo o ramo tem de varrer mais do que a ultima linha.
+    """
     if not CALL.search(src):
         return False, 'a chamada nao esta no ramo `identity === null`'
     tail_start = src.index('if (!existing && identity === null)')
-    tail = src[tail_start:tail_start + 600]
+    tail = src[tail_start:tail_start + 700]
     if 'isPrefixExtension(' not in tail:
         return False, 'o ramo nao chama isPrefixExtension'
-    if 'lastRowForSource(' not in tail:
-        return False, 'o ramo nao limita a linha ao mesmo source'
-    return True, 'a chamada vive no ramo sem identidade, limitada ao mesmo source'
+    if 'recentRowsForSource(' not in tail:
+        return False, 'o ramo nao compara contra uma JANELA de linhas do mesmo source'
+    if 'DEDUPE_WINDOW' not in tail:
+        return False, 'a janela nao e\' nomeada (`DEDUPE_WINDOW`)' 
+    m = re.search(r'const DEDUPE_WINDOW\s*=\s*(\d+)', src)
+    if not m or int(m.group(1)) < 2:
+        return False, 'DEDUPE_WINDOW < 2: a janela de uma linha e\' o defeito medido' 
+    if not re.search(r'function recentRowsForSource\(source, n\)', src):
+        return False, '`recentRowsForSource(source, n)` nao existe' 
+    if not re.search(r'if \(have === want\) out\.push\(row\)', src):
+        return False, '`recentRowsForSource` nao filtra pelo source da linha'
+    return True, 'janela de %s linhas, no ramo sem identidade, limitada ao source' % m.group(1)
 
 
 def main(argv):
@@ -154,12 +168,13 @@ def main(argv):
 
     m1 = src.replace('if (i === shorter.length - 1) {', 'if (false && i === shorter.length - 1) {')
     mutants.append(('sem a tolerancia de pontuacao', m1))
-    m2 = src.replace("if (lastOfSource && isPrefixExtension(rowText(lastOfSource), text)) existing = lastOfSource;",
-                     "if (false) existing = lastOfSource;")
-    mutants.append(('sem a regra no call site', m2))
-    m3 = re.sub(r'const lastOfSource = lastRowForSource\(source\);',
-                'const lastOfSource = dom.list ? dom.list.lastElementChild : null;', src, count=1)
-    mutants.append(('sem o filtro de source', m3))
+    m2 = src.replace("for (const row of recentRowsForSource(source, DEDUPE_WINDOW)) {",
+                     "for (const row of []) {")
+    mutants.append(('de volta a UMA linha (sem janela)', m2))
+    m3 = src.replace("if (have === want) out.push(row);", "out.push(row);")
+    mutants.append(('sem o filtro de source na janela', m3))
+    m4 = src.replace("const DEDUPE_WINDOW = 8;", "const DEDUPE_WINDOW = 1;")
+    mutants.append(('janela de uma linha, o numero do defeito', m4))
 
     for label, mutated in mutants:
         if mutated == src:

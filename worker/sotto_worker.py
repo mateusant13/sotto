@@ -100,6 +100,7 @@ DEFAULT_MODEL = os.path.join(HERE, "models", "nemotron-3.5-asr-ptbr-onnx-int4")
 # pasta do worker no caminho.
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
+import punctuation_model  # noqa: E402 -- pontuacao de modelo (opcional, degrada para identidade)
 from engine_switch import (  # noqa: E402,F401 -- superficie historica do worker
     ParakeetEngine, PanelVisibilityReader, REDUX_BATCH_INTERVAL_DEFAULT_S,
     REDUX_CHECKPOINT_FILES, REDUX_CHECKPOINT_RELPATH,
@@ -1173,6 +1174,11 @@ class StreamAsr:
         self.lang_prompt = _lp.resolve_lang_id(lang_id, model_dir, table=self.lang_table)
         self.lang_id = self.lang_prompt.lang_id
         self.lang_tag = self.lang_prompt.tag
+        # A pontuacao de modelo le' a lingua daqui: a guarda de lingua nao pode
+        # ser adivinhada no sitio que pinta a linha (`LineFormer`), e um
+        # restaurador ingles sobre portugues foi medido a produzir caixa
+        # aleatoria. Ver `worker/punctuation_model.py`.
+        punctuation_model.set_lang(self.lang_tag)
 
         vocab = open(os.path.join(model_dir, "vocab.txt"), encoding="utf-8").read().split("\n")
         if vocab and vocab[-1] == "":
@@ -4667,6 +4673,16 @@ class LineFormer:
         return len(text.strip()) >= self.min_chars
 
     def _event(self, text, final=False, closed=False, stable=False):
+        # PONTUACAO DE MODELO, SO' NA LINHA FECHADA (2026-11-05). Um evento
+        # parcial reescreve-se a cada chunk; pontuar cada hipotese parcial
+        # mostraria o comma a saltar de sitio -- e o `?` a meio (`that I?
+        # didn't`, medido). A linha FECHADA e' a unica que o dono le' no
+        # historico, e e' a que leva as marcas. A guarda de lingua vive no
+        # modulo: fora de ingles a chamada devolve o texto intacto, porque o
+        # restaurador ingles sobre portugues foi medido a produzir caixa
+        # aleatoria (`EU Gosto Muito, disso sabe como E que E`).
+        if (final or closed) and text:
+            text = punctuation_model.punctuate(text)
         event = {
             "type": "caption",
             "text": text,
@@ -6233,6 +6249,12 @@ def main():
     if not os.path.isdir(model_dir):
         emit(type="status", state="error", stage="model", detail=f"model dir not found: {model_dir}")
         return 2
+
+    # O ESTADO DA PONTUACAO DE MODELO, dito UMA vez no arranque e sem carregar
+    # nada: `loaded=false reason=model-absent` e' um estado normal (o modelo e'
+    # opcional), mas tem de estar no log -- um caminho que decide pontuar sem
+    # dizer se esta' ligado e' a forma de mentira que este repo paga caro.
+    err(punctuation_model.log_line())
 
     emit(type="status", state="model-loading", model=os.path.basename(model_dir))
     t0 = time.time()

@@ -874,6 +874,25 @@ if exist _main\punct-prosody-oracle.py (
 call :step red-as-expected-punct-prosody 1 "_main\punct-prosody-oracle.py;worker\punctuation_prosody.py" "%OUT%\punct-prosody-neg.log" python _main\punct-prosody-oracle.py --neg-arm
 call :expectred red-as-expected-punct-prosody !STEP_RC! "%OUT%\punct-prosody-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-punct-prosody MISSING "%OUT%\punct-prosody-neg.log" "NEG-ARM: PASS" )
+REM `punct-model-oracle.py` -- A PONTUACAO DE MODELO (opcional, ingles).
+REM Ordem do dono: *"por que a gente nao normaliza as frases ou usa pontuacao
+REM de forma inteligente?"*. `worker/punctuation_model.py` carrega o
+REM `sherpa-onnx-online-punct-en` (Apache-2.0, int8 **7,1 MB**, CPU, 1 fio) de
+REM `worker\models\punct-en\` e pontua SO a linha FECHADA. Medido: carga
+REM 75-91 ms, **6,1-8,5 ms por linha** (mediana 6,8) contra um chunk de 560 ms.
+REM A GUARDA DE LINGUA e a metade que importa: o mesmo modelo sobre portugues
+REM devolve `EU Gosto Muito, disso sabe como E que E` -- caixa aleatoria com
+REM aparencia de pontuacao, logo tag que nao comece por `en` e identidade.
+REM O `--neg-arm` muta uma COPIA sem a guarda, sem o filtro do `?` a meio, sem
+REM o comma final e com a parcial pontuada: 4/4 RED (medido).
+if exist _main\punct-model-oracle.py (
+ call :step punct-model 0 "_main\punct-model-oracle.py;worker\punctuation_model.py;worker\sotto_worker.py" "%OUT%\punct-model.log" python _main\punct-model-oracle.py
+ call :record punct-model !STEP_RC!
+) else ( call :record punct-model MISSING )
+if exist _main\punct-model-oracle.py (
+call :step red-as-expected-punct-model 1 "_main\punct-model-oracle.py;worker\punctuation_model.py;worker\sotto_worker.py" "%OUT%\punct-model-neg.log" python _main\punct-model-oracle.py --neg-arm
+call :expectred red-as-expected-punct-model !STEP_RC! "%OUT%\punct-model-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-punct-model MISSING "%OUT%\punct-model-neg.log" "NEG-ARM: PASS" )
 REM `panel-prefix-row-oracle.py` -- O MURO DE PREFIXOS NAO VOLTA. Medido na tela
 REM do dono em 2026-11-05 06:07:33-06:07:42 (imagem dele, verbatim: *"historico
 REM completamente patetico"*): nove `<li>` para a MESMA frase, cada uma com mais
