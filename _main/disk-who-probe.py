@@ -112,6 +112,74 @@ def volume_latency(count=3, gap_ms=250):
     }
 
 
+_PS_PER_DISK = r"""
+$ErrorActionPreference = 'Stop'
+$rows = Get-CimInstance Win32_PerfRawData_PerfDisk_PhysicalDisk
+foreach ($r in $rows) { "{0}|{1}|{2}|{3}" -f $r.Name, $r.AvgDisksecPerTransfer, $r.AvgDisksecPerTransfer_Base, $r.CurrentDiskQueueLength }
+"""
+
+
+def per_disk(seconds=60.0):
+    """LATENCIA E FILA POR DISCO FISICO -- e a ARMADILHA que este modo documenta.
+
+    MEDIDO 2026-11-05 (60 s, 34 485 transferencias no total): a instancia `3 I:`
+    publicou **latencia -6,0 ms**, um numero impossivel, com **queue 4,5** enquanto
+    TODOS os outros discos estavam a 0,0. O `_Total` no mesmo intervalo deu 9,9 ms.
+    Ou seja: o par `AvgDisksecPerTransfer`/`_Base` de uma instancia NAO e' um
+    contador monotonico como o do `_Total` -- o WMI pode reinicia-lo entre leituras,
+    e um delta negativo inverte o sinal da latencia.
+
+    A resposta nao e' "escolher um valor": e' RECUSAR. Este modo devolve
+    `latency_ms=None` com `why='delta-invertido'` quando o delta e' negativo, e
+    publica sempre a FILA, que nao depende de delta nenhum e foi o que identificou
+    o disco: toda a fila desta maquina estava no volume I: (HDD ST4000DM004).
+
+    `None` nunca e' 0. Um instrumento que arredonda um impossivel para zero diz
+    "disco saudavel" a quem tem o disco na fila.
+    """
+    if os.name != 'nt':
+        return {'error': 'non-windows'}
+
+    def snap():
+        out = subprocess.run(
+            ['powershell', '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden',
+             '-Command', _PS_PER_DISK],
+            capture_output=True, text=True, timeout=40,
+            creationflags=0x08000000,
+            startupinfo=subprocess.STARTUPINFO(
+                dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
+        d = {}
+        for line in (out.stdout or '').splitlines():
+            parts = [x.strip() for x in line.split('|')]
+            if len(parts) == 4:
+                try:
+                    d[parts[0]] = (int(parts[1]), int(parts[2]), float(parts[3]))
+                except ValueError:
+                    pass
+        return d
+
+    a = snap()
+    time.sleep(max(1.0, float(seconds)))
+    b = snap()
+    out = []
+    for name in sorted(set(a) & set(b)):
+        t0, b0, q0 = a[name]
+        t1, b1, q1 = b[name]
+        db = b1 - b0
+        row = {'disk': name, 'transfers': db, 'queue': round((q0 + q1) / 2.0, 2)}
+        if db <= 0:
+            row['latency_ms'] = 0.0 if db == 0 and t1 == t0 else None
+            row['why'] = 'sem transferencia' if db == 0 else 'delta-invertido'
+        elif t1 - t0 < 0:
+            row['latency_ms'] = None
+            row['why'] = 'delta-invertido'
+        else:
+            row['latency_ms'] = round(((t1 - t0) / float(db)) / 10000.0, 1)
+        out.append(row)
+    out.sort(key=lambda r: (-r['queue'], r['disk']))
+    return out
+
+
 GATE = r'I:\!manager\tools\performance-gate.py'
 
 
@@ -189,7 +257,23 @@ def main(argv=None):
     ap.add_argument('--json', dest='json_out', default=None)
     ap.add_argument('--cross-check', action='store_true',
                     help='compara a minha latencia com a do gate central na mesma janela')
+    ap.add_argument('--per-disk', type=float, default=None, metavar='SECONDS',
+                    help='latencia E FILA por disco fisico (recusa deltas invertidos)')
     args = ap.parse_args(argv)
+
+    if args.per_disk is not None:
+        rows = per_disk(args.per_disk)
+        if isinstance(rows, dict):
+            print('DISK_PER_DISK UNKNOWN reason=%s' % rows.get('error'))
+            return 3
+        print('DISK_PER_DISK window_s=%.0f' % args.per_disk)
+        for r in rows:
+            lat = r['latency_ms']
+            print('  %-12s queue=%5.2f transfers=%7d latency_ms=%s%s'
+                  % (r['disk'], r['queue'], r['transfers'],
+                     'n/a' if lat is None else '%.1f' % lat,
+                     '' if lat is not None else '  (%s)' % r.get('why', '?')))
+        return 0
 
     if psutil is None:
         print('DISK_WHO UNKNOWN reason=psutil-ausente')

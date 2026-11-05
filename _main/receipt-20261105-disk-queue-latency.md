@@ -72,8 +72,58 @@ Medido as 06:3x com 489 processos lidos, 0 ilegiveis, queue media 10,3, latencia
   10x/200 ms -- e o que ele guarda e' o erro de FORMULA, que aparece com ordens de
   grandeza.
 
+## O TERMO DOMINANTE, medido depois disso: o volume **I:**, um HDD
+
+Geometria da maquina (`Get-PhysicalDisk`, 2026-11-05):
+
+| disco | modelo | tipo | volumes |
+|---|---|---|---|
+| 5 | XPG GAMMIX S70 BLADE | **SSD NVMe** | C:, H: |
+| 4 | XPG GAMMIX S11 Pro | **SSD NVMe** | G: |
+| 3 | ST4000DM004-2U9104 | **HDD SATA** | **I:** |
+| 1 | WDC WD10EZEX | HDD SATA | D: |
+| 0 | ST3500312CS | HDD SATA | E: |
+| 2 | KINGSTON SA400S37240G | SSD SATA | F: |
+
+Latencia e fila POR DISCO (`python _main/disk-who-probe.py --per-disk 45`, 45 s):
+
+| disco | fila | transferencias | latencia |
+|---|---|---|---|
+| **3 I:** | **5,00** | 2 383 | **41,4 ms** |
+| `_Total` | 5,00 | 9 788 | 10,6 ms |
+| 5 H: C: | 0,00 | 6 624 | 0,7 ms |
+| 4 G: | 0,00 | 781 | 0,3 ms |
+| 0 E: / 1 D: / 2 F: | 0,00 | 0 | 0,0 ms |
+
+**Toda a fila desta maquina esta' no I:.** Os dois NVMe's onde vivem o repo (`H:`) e o scratch
+(`G:`) estao a sub-milissegundo com fila zero. O I: e' onde vivem `I:/!manager`, o estado e o
+lease do gate central, os worktrees (`I:/wt`) e a sessao dos agentes -- ou seja, **o HDD e' o
+disco de TODA a infra-estrutura da frota**, e e' ele que paga 41 ms por transferencia e 5 de fila.
+
+Isso explica o sintoma exacto que o dono descreveu (*"herdr, os terminais dentro dele, o chrome"*):
+o herdr e os terminais leem estado do I:, e um pico de 1 s nesse HDD congela-os **a todos ao mesmo
+tempo**, enquanto os NVMe's nao mostram nada.
+
+**Consequencia para o gate central:** ele amostra `_Total` (`Win32_PerfRawData_PerfDisk_PhysicalDisk`,
+`Name='_Total'`), que mistura um HDD lento com dois NVMe rapidos no mesmo numero. Um burst no I:
+aparece como "o disco da maquina esta' a 418 ms" -- verdadeiro para o I:, falso para o resto. Uma
+leitura por disco seria mais util ao dono **e** mais honesta: hoje o gate pode ficar RED por causa
+de um volume que o Sotto nem usa.
+
+## A armadilha do modo por disco (e porque ele RECUSA em vez de arredondar)
+
+Na primeira leitura por instancia (60 s), o `3 I:` publicou **latencia -6,0 ms** com fila 4,5. Um
+delta negativo de `AvgDisksecPerTransfer`/`_Base`: nas instancias o WMI pode reiniciar o par entre
+duas leituras. O modo `--per-disk` devolve `n/a` com `why='delta-invertido'` e publica a FILA
+sempre -- a fila nao depende de delta e foi ela que identificou o disco. `None` nunca e' 0.
+
 ## Proximo passo que isto habilita
 
 Antes de cortar qualquer termo, medir **qual volume** paga a latencia e a sua
 **geometria** (HDD x SSD, 512e x 4Kn, profundidade de fila suportada). Sem isso, "cortar
 o termo dominante" escolhe entre 13 MB/s de MB/s e 10 de fila -- e escolhe mal.
+
+Agora com nome: **tirar do I: o que nao precisa de estado la'** (worktrees, caches de build, scratch
+de lane) e/ou **declarar o I: como o disco lento que ele e'** para que o gate central leia por disco
+em vez de `_Total`. Nenhuma das duas e' mudanca do Sotto, e as duas custam menos do que qualquer
+micro-optimizacao do Sotto -- o Sotto e' o 3.o/4.o termo de 13 MB/s, nao a fila.
