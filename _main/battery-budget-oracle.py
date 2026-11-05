@@ -121,7 +121,14 @@ def neg_arm():
         print('NEG-ARM IMPOSSIVEL -- baseline ausente')
         return 1
     ok_before, _, _ = judge(measured, base)
-    worst = max(rows, key=lambda r: r['elapsed_s']) if rows else None
+    # O MUTANTE NAO PODE SER UM PASSO QUE A DIVIDA JA' DECLARA (medido
+    # 2026-11-05): inflar o passo MAIS LENTO, quando ele e' exactamente o que o
+    # baseline congela em `over_deadline`, deixa `new_over` VAZIO -- o
+    # `--neg-arm` publicava FAIL com o juiz a funcionar. A mutacao morde um
+    # passo que a divida NAO cobre.
+    _declared = set(base.get('over_deadline') or ())
+    _cand = [r for r in rows if r['name'] not in _declared] or rows
+    worst = max(_cand, key=lambda r: r['elapsed_s']) if _cand else None
     if worst is None:
         print('NEG-ARM IMPOSSIVEL -- cache sem passos')
         return 1
