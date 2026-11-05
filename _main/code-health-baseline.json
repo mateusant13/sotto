@@ -271,14 +271,14 @@
       "max_func_name": "apply"
     },
     "app/webview/code_identity.py": {
-      "bytes": 3778,
+      "bytes": 4453,
       "classes": 0,
-      "defs": 1,
+      "defs": 2,
       "except_pass": 0,
       "globals": 0,
-      "lines": 83,
-      "max_func": 42,
-      "max_func_name": "code_identity"
+      "lines": 102,
+      "max_func": 30,
+      "max_func_name": "code_files"
     },
     "app/webview/exit_killer.py": {
       "bytes": 6485,
@@ -431,12 +431,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1170012,
+      "bytes": 1170326,
       "classes": 28,
       "defs": 136,
       "except_pass": 52,
       "globals": 4,
-      "lines": 21816,
+      "lines": 21821,
       "max_func": 412,
       "max_func_name": "main"
     },
@@ -531,13 +531,13 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 56612,
+      "bytes": 60470,
       "classes": 1,
-      "defs": 20,
-      "except_pass": 5,
+      "defs": 21,
+      "except_pass": 6,
       "globals": 0,
-      "lines": 1222,
-      "max_func": 159,
+      "lines": 1292,
+      "max_func": 201,
       "max_func_name": "_run"
     },
     "app/webview/youtube_monotonic.py": {

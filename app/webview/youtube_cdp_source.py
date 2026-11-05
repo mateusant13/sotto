@@ -90,6 +90,11 @@ RETRY_S = 2.0
 #: morta; o que passar disto esta' registado com o `ms=` de cada tentativa.
 ATTACH_PROBE_TIMEOUT_S = 1.5
 
+#: QUANTOS PRAZOS SEGUIDOS na mesma ligacao antes de a declarar MORTA
+#: (2026-11-05). Um prazo e' pagina lenta; tres seguidos no mesmo socket sao um
+#: cano partido, e esperar por ele nao traz foto nenhuma.
+SLOW_STREAK_MAX = 3
+
 _WATCH = "/watch"
 
 #: O QUE O PLAYER DESENHOU, lido DENTRO da pagina (uma ida e volta).
@@ -540,6 +545,28 @@ def _float(value):
         return None
 
 
+def _probe_reason(exc):
+    """O NOME HONESTO de uma falha do `/json/list` (2026-11-05, MEDIDO).
+
+    O laco desta maquina dizia `state=port-closed` para QUALQUER excecao da
+    sonda -- inclusive um `urlopen` que estourou o prazo de 1,5 s porque a
+    maquina estava carregada. Medido na instancia viva (pid 41764, 17:52):
+    `port-closed` -> `attached` -> `slow (WebSocketTimeoutException)` ->
+    `reconnect (ValueError)` -> `port-closed` a cada ~10 s, com a legenda do
+    YouTube a ficar sem leitura nos intervalos. A porta NAO estava fechada: um
+    `/json/list` que nao responde a tempo e' `probe-timeout`, e um erro de
+    protocolo e' `probe-failed (<Name>)`. So' a recusa de ligacao e' a porta.
+    """
+    if isinstance(exc, ConnectionRefusedError):
+        return "port-closed"
+    reason = getattr(exc, "reason", None)
+    for cand in (exc, reason):
+        name = type(cand).__name__
+        if name in ("timeout", "TimeoutError", "socket.timeout"):
+            return "probe-timeout"
+    return "probe-failed (%s)" % type(exc).__name__
+
+
 def list_targets(port=DEFAULT_PORT, timeout=3.0):
     """As abas do YouTube e quantas outras existem -- sem ler as outras."""
     with urllib.request.urlopen("http://127.0.0.1:%d/json/list" % int(port),
@@ -680,7 +707,7 @@ def boot_attach(port=None, attempts=BOOT_ATTACH_ATTEMPTS,
         try:
             tabs, others = list_targets(port, timeout=timeout)
         except Exception as exc:              # noqa: BLE001
-            reason = "port-closed"
+            reason = _probe_reason(exc)
             _extra = "err=%s" % type(exc).__name__
         else:
             _extra = "tabs=%d others=%d" % (len(tabs), others)
@@ -1016,10 +1043,19 @@ class CdpCaptionSource:
                     continue
             t0 = time.monotonic()
             try:
-                conn.send(json.dumps({"id": 1, "method": "Runtime.evaluate",
+                # O ID DE CADA PEDIDO E' UNICO (2026-11-05, MEDIDO). Com o id
+                # fixo em 1, a resposta de um pedido cujo `recv` estourou o
+                # prazo era aceite no tick seguinte como se fosse a deste --
+                # uma foto de um segundo antes publicada como se fosse agora.
+                # com um id que cresce, a resposta atrasada cai no descarte
+                # abaixo e a foto publicada e' sempre a do pedido corrente.
+                self._msg_id = int(getattr(self, '_msg_id', 0)) + 1
+                _want = self._msg_id
+                conn.send(json.dumps({"id": _want, "method": "Runtime.evaluate",
                                       "params": {"expression": EXTRACT_JS,
                                                  "returnByValue": True}}))
                 payload = None
+                _slow = None
                 while True:                       # ignora eventos, espera o id
                     # UMA RESPOSTA ATRASADA NAO E' LIGACAO MORTA (2026-11-03,
                     # MEDIDO no dono: com 1 s de prazo a fonte respondia
@@ -1030,18 +1066,51 @@ class CdpCaptionSource:
                     # `Runtime.evaluate`: a ligacao fica, o tick seguinte
                     # pergunta outra vez, e o estado diz que a pagina esta'
                     # lenta -- nao que a porta fechou.
+                    #
+                    # E O `break` QUE SEGUIA O PRAZO ANULAVA ISSO (2026-11-05,
+                    # MEDIDO na instancia viva, pid 41764): `break` deixava
+                    # `payload=None`, `parse_snapshot(None)` devolvia None,
+                    # `raise ValueError("payload sem forma")` e a guarda de
+                    # timeout do `except` exterior -- que existe exatamente para
+                    # NAO fechar a ligacao -- nunca era alcancada, porque o
+                    # `ValueError` nao e' um timeout. A sequencia no log da app
+                    # era `slow (WebSocketTimeoutException)` -> `reconnect
+                    # (ValueError)` -> `port-closed` -> `attached` a cada ~10 s,
+                    # com a legenda do YouTube sem leitura nos intervalos.
                     try:
                         raw = conn.recv()
                     except Exception as exc:          # noqa: BLE001
-                        self._publish(None, 'slow (%s)' % type(exc).__name__)
+                        _slow = exc
                         break
                     if not raw:
                         raise ValueError('recv vazio')
                     msg = json.loads(raw)
-                    if msg.get("id") == 1:
+                    if msg.get("id") == _want:
                         payload = ((msg.get("result") or {})
                                    .get("result") or {}).get("value")
                         break
+                    # RESPOSTA DE UM PEDIDO ANTERIOR: descarta e espera a deste.
+                if _slow is not None:
+                    self._publish(None, 'slow (%s)' % type(_slow).__name__)
+                    self._slow_streak = int(getattr(self, '_slow_streak', 0)) + 1
+                    if self._slow_streak >= SLOW_STREAK_MAX:
+                        # TRES PRAZOS SEGUIDOS NAO SAO "LENTA", SAO "MORTA": o
+                        # mesmo socket nunca respondeu tres vezes. Fecha e
+                        # re-liga, em vez de perguntar eternamente a um cano
+                        # partido.
+                        self._slow_streak = 0
+                        try:
+                            conn.close()
+                        except Exception:             # noqa: BLE001
+                            pass
+                        conn = None
+                        self._publish(None, 'slow-dead (%d prazos)'
+                                      % SLOW_STREAK_MAX)
+                        self._stop.wait(RETRY_S)
+                        continue
+                    self._stop.wait(min(0.05, self.poll_s))
+                    continue
+                self._slow_streak = 0
                 snap = parse_snapshot(payload)
                 if snap is None:
                     raise ValueError("payload sem forma")
@@ -1177,8 +1246,9 @@ class CdpCaptionSource:
                                          timeout=ATTACH_PROBE_TIMEOUT_S)
         except Exception as exc:                  # noqa: BLE001
             self._error(exc)
-            self._publish(None, "port-closed")
-            self._attach_log(_n, False, "port-closed",
+            _why = _probe_reason(exc)
+            self._publish(None, _why)
+            self._attach_log(_n, False, _why,
                              (time.monotonic() - _t0) * 1000.0,
                              'err=%s' % type(exc).__name__)
             return None

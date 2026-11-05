@@ -104,11 +104,23 @@ def _stamp_of(line):
 
 
 def _code_files(mod):
-    """A lista vem do SHELL (uma definicao so').
+    """A lista vem do SHELL e e' a MESMA que o processo etiquetou (2026-11-05).
 
-    Os ficheiros da PAGINA entram pela mesma porta (`_CODE_ID_GLOBS`), pela razao que a
-    etiqueta passou a incluir: um `panel.css` novo muda o que o dono ve sem mudar um `.py`.
+    O portao recalculava uma lista PROPRIA (`_CODE_ID_FILES` + os globs da
+    pagina) enquanto o processo escrevia outra, e as duas ficaram em atraso ao
+    mesmo tempo: `youtube_cdp_source.py` -- o ficheiro que decide qual legenda
+    vai ao ecra -- nao estava em nenhuma. Medido hoje, `code_id=DDC13167DF83`
+    antes e depois de uma cura nele: o portao dizia `FRESH` sobre um processo
+    que carregou outro codigo. Agora os dois leem `code_files()` do proprio
+    modulo do shell; sem ele (modulo antigo no disco) cai na lista curada, que
+    ainda e' melhor do que nada.
     """
+    fn = getattr(mod, 'code_files', None)
+    if callable(fn):
+        try:
+            return list(fn(SHELL_DIR))
+        except Exception:                    # noqa: BLE001
+            pass
     names = list(getattr(mod, '_CODE_ID_FILES', ()))
     globs = getattr(mod, '_CODE_ID_GLOBS', ())
     if globs:
@@ -195,6 +207,76 @@ def report(verdict, detail, log_path):
         print('  >>> fechar a app e abrir de novo ANTES de julgar o sintoma.')
 
 
+def _identity_of(mod, here):
+    """A etiqueta de uma pasta, pela funcao REAL (o shell re-exporta com dois nomes)."""
+    for name in ('_code_identity', 'code_identity'):
+        fn = getattr(mod, name, None)
+        if not callable(fn):
+            continue
+        try:
+            return fn(here)
+        except TypeError:
+            continue
+    return None
+
+
+def _identity_arms(mod, here=None):
+    """(fails, notas) -- A ETIQUETA COBRE O CODIGO QUE DECIDE O COMPORTAMENTO.
+
+    A CLASSE (medida 2026-11-05): `_CODE_ID_FILES` era uma lista CURADA de sete
+    nomes e `youtube_cdp_source.py` -- o ficheiro que decide qual legenda vai ao
+    ecra -- nao estava nela. A cura do prazo do CDP entrou no disco, a app foi
+    relancada com ela, e o `code_id` da instancia nova era IDENTICO ao da
+    anterior: o portao diria `FRESH` sobre um processo que carregou outro
+    codigo. As arms julgam a FUNCAO REAL, nao o texto:
+
+      I1 cobertura  -- todo `*.py` da pasta do shell esta na lista.
+      I2 sensivel   -- mudar UM byte de `youtube_cdp_source.py` muda a etiqueta.
+      I3 estavel    -- a mesma arvore da' a MESMA etiqueta (a de I2 nao e' ruido).
+    """
+    import glob as _g
+    import shutil
+    import tempfile
+    here = here or SHELL_DIR
+    fails, notes = [], []
+    files = set(os.path.basename(x) for x in _code_files(mod))
+    have = set(os.path.basename(p) for p in _g.glob(os.path.join(here, '*.py')))
+    for name in ('youtube_cdp_source.py', 'code_identity.py', 'sotto_webview.py'):
+        have.add(name) if os.path.exists(os.path.join(here, name)) else None
+    missing = sorted(have - files)
+    notes.append('I1 cobertura: %d de %d .py na etiqueta%s'
+                 % (len(have) - len(missing), len(have),
+                    (', fora: %r' % missing[:6]) if missing else ''))
+    if missing:
+        fails.append('I1 cobertura')
+    tmp = tempfile.mkdtemp(prefix='sotto-identity-')
+    try:
+        for name in files & have:
+            try:
+                shutil.copy2(os.path.join(here, name), os.path.join(tmp, name))
+            except OSError:
+                pass
+        a = _identity_of(mod, tmp)
+        b = _identity_of(mod, tmp)
+        notes.append('I3 estavel: %s' % ('igual' if a == b else 'MUDOU'))
+        if a != b:
+            fails.append('I3 estavel')
+        target = os.path.join(tmp, 'youtube_cdp_source.py')
+        if os.path.exists(target):
+            with open(target, 'ab') as fh:
+                fh.write(b'\n# arm I2')
+            c = _identity_of(mod, tmp)
+            notes.append('I2 sensivel: %s -> %s'
+                         % ('muda' if c != a else 'NAO MUDA', c.split()[0]))
+            if c == a:
+                fails.append('I2 sensivel')
+        else:
+            fails.append('I2 sensivel (o ficheiro nao esta na etiqueta)')
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return fails, notes
+
+
 def control(mod):
     """As duas provas contra logs sinteticos: cada uma tem de dar o seu veredicto.
 
@@ -230,12 +312,61 @@ def control(mod):
                                              name, want, got))
         if not ok:
             fails.append(name)
+
+    id_fails, id_notes = _identity_arms(mod)
+    for note in id_notes:
+        print('       %s' % note)
+    for name in id_fails:
+        print('RED   %-24s a etiqueta nao cobre o codigo que decide o ecra'
+              % name)
+        fails.append(name)
     if fails:
         print('CONTROL FAIL (%d)' % len(fails))
         return 1
     print('CONTROL PASS -- as duas provas distinguem FRESH de STALE, e a '
           'ausencia de arranque e UNKNOWN (nunca fresh)')
     return 0
+
+
+def neg_arm():
+    """A MUTACAO QUE TEM DE CAIR: a lista curada volta a ser a unica (2026-11-05).
+
+    Uma copia de `code_identity.py` sem o glob do directorio e' carregada; a arm
+    I1 tem de a recusar. Sem isto, "a etiqueta cobre todos os `.py`" e' uma
+    afirmacao que ninguem prova -- e foi exatamente assim que
+    `youtube_cdp_source.py` ficou fora dela.
+    """
+    import shutil
+    import tempfile
+    tmp = tempfile.mkdtemp(prefix='sotto-identity-mutant-')
+    try:
+        copy = os.path.join(tmp, 'code_identity.py')
+        shutil.copy2(os.path.join(SHELL_DIR, 'code_identity.py'), copy)
+        with open(copy, encoding='utf-8', newline='') as fh:
+            text = fh.read()
+        needle = "        for _p in sorted(_glob.glob(os.path.join(here, '*.py'))):"
+        if text.count(needle) != 1:
+            print('NEG-ARM: IMPOSSIVEL -- o sitio mudou (%d)' % text.count(needle))
+            return 2
+        text = text.replace(needle, "        for _p in sorted(()):")
+        with open(copy, 'w', encoding='utf-8', newline='') as fh:
+            fh.write(text)
+        spec = importlib.util.spec_from_file_location('_ci_mutant', copy)
+        mutant = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mutant)
+        fails, notes = _identity_arms(mutant)
+        for note in notes:
+            print('       %s' % note)
+        caught = 'I1 cobertura' in fails
+        print('%s mutant "lista curada outra vez" -> fails=%r'
+              % ('RED   ' if caught else 'SURVIVED', fails))
+        if caught:
+            print('NEG-ARM: PASS -- a arm I1 derruba o mutante')
+            return 1
+        print('NEG-ARM: FAIL -- o mutante passou')
+        return 0
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def main(argv=None):
@@ -245,6 +376,8 @@ def main(argv=None):
                     help='rc=3 quando STALE (um step de bateria nao usa isto)')
     ap.add_argument('--control', action='store_true',
                     help='prova as duas provas contra logs sinteticos')
+    ap.add_argument('--neg-arm', action='store_true',
+                    help='muta uma COPIA de code_identity.py e exige o RED')
     args = ap.parse_args(argv)
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -259,6 +392,9 @@ def main(argv=None):
 
     if args.control:
         return control(mod)
+
+    if args.neg_arm:
+        return neg_arm()
 
     if not os.path.exists(args.log):
         print('LIVE_CODE UNKNOWN -- nao ha log em %s (app nunca correu aqui?)'

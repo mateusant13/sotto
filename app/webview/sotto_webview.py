@@ -2025,6 +2025,11 @@ def _stamp() -> str:
 #: Os ficheiros que a etiqueta cobre vivem em `code_identity` (uma definicao so'); o shell
 #: re-exporta-os porque o `_main/live-code-freshness-oracle.py` os le' daqui.
 from code_identity import _CODE_ID_FILES, _CODE_ID_GLOBS  # noqa: F401
+# A LISTA E A MESMA QUE O PORTAO RECALCULA (2026-11-05): o shell re-exporta
+# `code_files`, e `_main/live-code-freshness-oracle.py` le daqui em vez de
+# manter uma segunda lista -- foi uma segunda lista que deixou
+# `youtube_cdp_source.py` fora da etiqueta.
+from code_identity import code_files  # noqa: F401
 
 
 def code_identity():

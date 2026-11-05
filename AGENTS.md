@@ -446,8 +446,28 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 17:4x):** `_main\_audit-verify-all.cmd` = **257950 B**,
-  **3170 CRLF** / 0 bare LF, sha256 `4D87CFB1E97D1E187AD5E45EBB7E0BA4F1EA8688BEFC199D10F523D810CB79CC`.
+- **PIN do ficheiro (medido 2026-11-05, 18:0x):** `_main\_audit-verify-all.cmd` = **260731 B**,
+  **3196 CRLF** / 0 bare LF, sha256 `50FF6009BBF39C7F6B8C0839E73A0F5B6FF8498D1502107496E9E18A55732BF1`.
+  (Quatorze linhas a mais do que o pin de 259294 B / 3182 CRLF: `live-code-freshness-control`
+  (`--control`, as arms I1/I2/I3 da etiqueta) e o `red-as-expected-live-code-freshness`
+  (`--neg-arm`, que repoe a lista curada numa COPIA de `code_identity.py` e exige o RED -- medido:
+  `I1 cobertura: 7 de 36 .py na etiqueta`, que e' exatamente o estado de ANTES da cura. A CLASSE
+  era a pior desta casa: a etiqueta dizia `FRESH` com o processo a correr outro codigo, e
+  `youtube_cdp_source.py` -- o ficheiro que decide QUAL legenda vai ao ecra -- estava fora dela.)
+  (Doze linhas a mais do que o pin de 257950 B / 3170 CRLF: o par `youtube-cdp-slow` + o seu
+  `red-as-expected`, o prazo de uma leitura que DERRUBAVA a ligacao com o Chrome -- medido na
+  instancia viva (pid 41764, 17:52) como `slow (WebSocketTimeoutException)` -> `reconnect
+  (ValueError)` -> `port-closed` -> `attached` a cada ~10 s. O `break` do ramo de prazo deixava
+  `payload=None`, `parse_snapshot(None)` devolvia None e o `ValueError("payload sem forma")` que
+  se seguia NAO e' timeout, logo a guarda escrita em 2026-11-03 para nao fechar a ligacao nunca
+  era alcancada; o mesmo ficheiro chamava `port-closed` a um `/json/list` que estourou o prazo e
+  aceitava a resposta atrasada como se fosse a deste tick (id fixo em 1). Medido depois, no mesmo
+  minuto: `--neg-arm` muta os tres sitios e cai 3/3 -- `NEG-ARM: PASS -- 5 arms, 3 mutants`.
+  O `code-health` absorve o crescimento declarado de `app/webview/youtube_cdp_source.py`:
+  bytes 56612 -> 60470, linhas 1222 -> 1292, defs 20 -> 21, `max_func` 159 -> 201 (o `_run`)
+  e `except_pass` 5 -> 6 (o `close` do cano partido) -- e o de `app/webview/code_identity.py`
+  (bytes 3778 -> 4453, linhas 83 -> 102, defs 1 -> 2, a funcao `code_files`) mais o
+  re-export que ela custa em `app/webview/sotto_webview.py` (+314 B / +5 linhas).)
   (Quinze linhas a mais do que o pin de 256714 B: o passo `redux-arm-weights`, que faltava ao oraculo
   do interruptor do paraqueet de fundo -- sem passo ele apodreceu DUAS vezes em silencio (`FakeReader`
   sem `shed()`, `--neg-arm` morto a apontar para `worker/sotto_worker.py` quando a classe ja' vivia em

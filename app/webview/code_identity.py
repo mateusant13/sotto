@@ -38,6 +38,38 @@ _CODE_ID_GLOBS = ('../panel/*.js', '../panel/*.css', '../panel/*.html',
                   '../panel/themes/*.css')
 
 
+def code_files(here=None, missing=None):
+    """A LISTA dos ficheiros que entram na etiqueta. UMA definicao, dois leitores.
+
+    O `code_identity()` (que o PROCESSO escreve ao arrancar) e o
+    `_main/live-code-freshness-oracle.py` (que recalcula o DISCO para comparar)
+    leem daqui. Enquanto eram duas listas, o portao media outro conjunto -- e um
+    portao que mede outro conjunto diz `FRESH` sobre um processo que carregou
+    codigo diferente (o caso medido de 2026-11-05: `youtube_cdp_source.py` fora
+    das duas).
+    """
+    here = here or os.path.dirname(os.path.abspath(__file__))
+    if missing is None:
+        missing = []
+    names = list(_CODE_ID_FILES)
+    try:
+        for _p in sorted(_glob.glob(os.path.join(here, '*.py'))):
+            _rel = os.path.basename(_p)
+            if _rel not in names:
+                names.append(_rel)
+    except Exception:  # noqa: BLE001 -- um diagnostico nunca derruba o arranque
+        missing.append('*.py')
+    page = set()
+    for pattern in _CODE_ID_GLOBS:
+        try:
+            for pth in _glob.glob(os.path.join(here, pattern), recursive=True):
+                page.add(os.path.relpath(pth, here))
+        except Exception:  # noqa: BLE001
+            missing.append(pattern)
+    names.extend(sorted(page))
+    return names
+
+
 def code_identity(here=None):
     """`sha256=<12 hex> files=<n> ...` -- o codigo que ESTE processo carregou.
 
@@ -55,22 +87,10 @@ def code_identity(here=None):
     Nunca lanca: uma shell que nao arranca por causa de um numero de diagnostico
     e' pior do que uma shell sem numero.
     """
-    import hashlib
-    h = hashlib.sha256()
     here = here or os.path.dirname(os.path.abspath(__file__))
+    h = hashlib.sha256()
     missing = []
-    names = list(_CODE_ID_FILES)
-    # Os ficheiros da PAGINA entram pela mesma porta, e ORDENADOS: um glob cuja ordem
-    # dependesse do sistema de ficheiros daria uma etiqueta que muda sem ninguem mexer.
-    page = set()
-    for pattern in _CODE_ID_GLOBS:
-        try:
-            for pth in _glob.glob(os.path.join(here, pattern),
-                                               recursive=True):
-                page.add(os.path.relpath(pth, here))   # `themes/theme-1.css` inteiro
-        except Exception:  # noqa: BLE001 -- um diagnostico nunca derruba o arranque
-            missing.append(pattern)
-    names.extend(sorted(page))
+    names = code_files(here, missing)
     for name in names:
         try:
             with open(os.path.join(here, name), 'rb') as fh:
@@ -80,4 +100,3 @@ def code_identity(here=None):
     return 'sha256=%s files=%d%s' % (
         h.hexdigest()[:12].upper(), len(names) - len(missing),
         (' missing=' + ','.join(missing)) if missing else '')
-

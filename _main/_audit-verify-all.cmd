@@ -287,6 +287,18 @@ call :step always youtube-cdp-boot 0 "_main\youtube-cdp-boot-oracle.py;app\webvi
 call :record youtube-cdp-boot !STEP_RC!
 call :step always red-as-expected-youtube-cdp-boot 1 "_main\youtube-cdp-boot-oracle.py;app\webview\youtube_cdp_source.py" "%OUT%\youtube-cdp-boot-neg.log" python _main\youtube-cdp-boot-oracle.py --neg-arm
 call :expectred red-as-expected-youtube-cdp-boot !STEP_RC! "%OUT%\youtube-cdp-boot-neg.log" "NEG-ARM VERDICT: PASS"
+REM `youtube-cdp-slow` (2026-11-05, MEDIDO na instancia viva pid 41764): o prazo de uma leitura
+REM DERRUBAVA a ligacao com o Chrome. O `recv` estourava o prazo, o ramo fazia `break`, o `payload`
+REM ficava None e o laco levantava `ValueError("payload sem forma")` -- que NAO e' timeout, logo a
+REM guarda que existe para nao fechar a ligacao nunca era alcancada: `slow (WebSocketTimeoutException)`
+REM -> `reconnect (ValueError)` -> `port-closed` -> `attached` a cada ~10 s, com a legenda do YouTube
+REM sem leitura nos intervalos. O mesmo ficheiro mentia no nome (`port-closed` para um `/json/list`
+REM que estourou o prazo) e aceitava a resposta atrasada como se fosse a deste tick (id fixo em 1).
+REM O oraculo conduz o `_run` REAL com um WebSocket de fotografia e o `--neg-arm` muta os tres sitios.
+call :step always youtube-cdp-slow 0 "_main\youtube-cdp-slow-oracle.py;app\webview\youtube_cdp_source.py" "%OUT%\youtube-cdp-slow.log" python _main\youtube-cdp-slow-oracle.py
+call :record youtube-cdp-slow !STEP_RC!
+call :step always red-as-expected-youtube-cdp-slow 1 "_main\youtube-cdp-slow-oracle.py;app\webview\youtube_cdp_source.py" "%OUT%\youtube-cdp-slow-neg.log" python _main\youtube-cdp-slow-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-cdp-slow !STEP_RC! "%OUT%\youtube-cdp-slow-neg.log" "NEG-ARM: PASS"
 REM `youtube-first-at-boot` (2026-11-04): o dono, verbatim -- *"é estupido 'carregando o modelo'
 REM e nao mostrar instantaneamente as legendas do youtube, assim que eu abro o app"*. MEDIDO no
 REM arranque dele (12:15:15): a superficie da legenda nasce 1,5 s antes de tudo e a PRIMEIRA coisa
@@ -2463,6 +2475,20 @@ if exist _main\live-code-freshness-oracle.py (
 call :step always live-code-freshness 0 "_main\live-code-freshness-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\live-code-freshness.log" python _main\live-code-freshness-oracle.py
 call :record live-code-freshness !STEP_RC!
 ) else ( call :record live-code-freshness MISSING )
+REM A ETIQUETA TEM DE COBRIR O CODIGO QUE DECIDE O ECRA (2026-11-05, MEDIDO).
+REM `_CODE_ID_FILES` era uma lista CURADA de SETE nomes e `youtube_cdp_source.py` -- o
+REM ficheiro que decide QUAL legenda vai ao ecra -- nao estava nela. Medido nesta sessao:
+REM a cura do prazo do CDP entrou no disco, a app foi relancada com ela, e o `code_id` da
+REM instancia nova era IDENTICO ao da anterior (`DDC13167DF83`), ou seja o portao da frescura
+REM teria dito `FRESH` sobre um processo a correr outro codigo -- a classe que o proprio
+REM portao existe para fechar. O conjunto passa a ser o DIRECTORIO (todos os `.py`), uma
+REM definicao so` (`code_identity.code_files`) lida pelo processo E por este portao.
+if exist _main\live-code-freshness-oracle.py (
+call :step always live-code-freshness-control 0 "_main\live-code-freshness-oracle.py;app\webview\sotto_webview.py;app\webview\code_identity.py" "%OUT%\live-code-freshness-control.log" python _main\live-code-freshness-oracle.py --control
+call :record live-code-freshness-control !STEP_RC!
+call :step always red-as-expected-live-code-freshness 1 "_main\live-code-freshness-oracle.py;app\webview\code_identity.py" "%OUT%\live-code-freshness-neg.log" python _main\live-code-freshness-oracle.py --neg-arm
+call :expectred red-as-expected-live-code-freshness !STEP_RC! "%OUT%\live-code-freshness-neg.log" "NEG-ARM: PASS"
+) else ( call :record live-code-freshness-control MISSING )
 
 if exist _main\load-shedding-oracle.py (
 call :step always load-shedding 0 "_main\load-shedding-oracle.py;app\webview\load_shedding.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\load-shedding.log" python _main\load-shedding-oracle.py
