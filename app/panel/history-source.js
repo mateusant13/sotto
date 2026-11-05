@@ -65,22 +65,72 @@ function isCanonicalLine(meta) {
 }
 
 /**
- * The route the canonical transcript records for a line, or `null` when the line may never
- * enter it. The panel's choke point used to demand `route === 'final'` BEFORE asking whether the
- * producer was canonical, and the BATCH engine emits no route at all (`worker/redux_batch.py:185`)
- * -- so a parakeet line died one statement before the guard that accepts it: 0 `route=batch` in
- * 2084 store lines, measured 2026-11-01. The name is `batch` and never `final` because
- * `route=final` means the LIVE worker's second pass closed the line; see
- * `_main/receipt-20261101-batch-transcript-path.md`.
+ * The route the transcript records for a line, or `null` when the line may never
+ * enter it. The name is `batch` and never `final` for a Parakeet line because
+ * `route=final` means a CLOSED caption line; see
+ * `_main/receipt-20261101-batch-transcript-path.md`. That oracle used to demand
+ * the batch engine's shape BEFORE asking whether the producer was canonical —
+ * fixed 2026-11-01; the 2026-11-05 change below is the other half of the same
+ * door (the canonical producer itself became the gate for everything).
  */
+/**
+ * THE ONE DECISION (2026-11-05) — may this line enter the transcript, and under
+ * which route?
+ *
+ * It used to be TWO questions in TWO places: this function asked "which route?"
+ * and `recordHistory` then asked `isCanonicalLine` again. The second question was
+ * the door that stayed shut: the only producer that passed was `'redux'`, and the
+ * batch pass (`worker/redux_batch.py`) is OFF by default (`--redux-when-hidden`),
+ * so on this box the transcript had ZERO writers while the owner was watching.
+ * MEASURED 2026-11-05 on his own log: 3830 `CAPTION_APPLIED`, 0 `HISTORY_APPEND`,
+ * `history/2026-11-05/` absent — and no refusal line anywhere, because the
+ * refusal was a bare `return`.
+ *
+ * THE RULE NOW: the transcript carries WHAT WAS SAID, one line per CLOSED
+ * caption, whichever pass closed it. The producer is not the gate any more; it
+ * is the PROVENANCE (the store writes `producer=` on the line), which is what
+ * the 2026-10-07 separation actually needs — a reader must be able to tell a
+ * Parakeet line from a streaming one, not to make the streaming one disappear.
+ *
+ * Still REFUSED, because none of them is a closed line:
+ *   * `route === 'provisional-draft'` — the live caption (the panel's own hold
+ *     deadline or a status flush). Owner 2026-10-06, verbatim: *"o historico
+ *     simplesmente mostra a legenda ao vivo"*.
+ *   * a route the writer does not know AND that is not absent.
+ *   * no route at all with no canonical producer: nothing says the line ended.
+ */
+function historyDecision(meta) {
+  const route = meta && typeof meta.route === 'string' ? meta.route : '';
+  if (route === 'final') return { route: 'final', reason: '' };
+  if (route) {
+    return {
+      route: null,
+      reason: route === 'provisional-draft' ? 'provisional-draft' : 'unknown-route',
+    };
+  }
+  if (isCanonicalLine(meta)) return { route: BATCH_ROUTE, reason: '' };
+  return { route: null, reason: 'no-route-no-producer' };
+}
+
+/** The route the transcript records for this line, or `null` when it is refused. */
 function transcriptRoute(meta) {
-  const route = meta && meta.route;
-  if (!isCanonicalLine(meta)) return null;
-  // An UNKNOWN route is refused rather than relabelled: the only absent-route
-  // shape that is legitimate here is the batch engine's, and a line that says
-  // something else is not that shape. Fail-closed.
-  if (route && route !== 'final') return null;
-  return route === 'final' ? 'final' : BATCH_ROUTE;
+  return historyDecision(meta).route;
+}
+
+/**
+ * WHY the line was refused — `null` when it was not. This is the instrument: a
+ * refusal that cannot name itself is the defect this module was taught to stop
+ * committing (`recordHistory` reports it as `HISTORY_REFUSED`).
+ */
+function historyRefusal(meta) {
+  const decision = historyDecision(meta);
+  if (decision.route !== null) return null;
+  return {
+    reason: decision.reason,
+    route: meta && typeof meta.route === 'string' ? meta.route : null,
+    producer: producerOf(meta),
+    src: meta && typeof meta.source === 'string' && meta.source ? meta.source : null,
+  };
 }
 
 const SottoHistorySource = {
@@ -89,7 +139,9 @@ const SottoHistorySource = {
   BATCH_ROUTE,
   producerOf,
   isCanonicalLine,
+  historyDecision,
   transcriptRoute,
+  historyRefusal,
 };
 
 // Both surfaces, because this file is BOTH a `<script>` in the panel and a

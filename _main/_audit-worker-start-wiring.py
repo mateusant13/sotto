@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -123,6 +124,34 @@ def main() -> int:
         say('note: no `start_worker(\'hot-reload\')` — if the reload path was'
             ' renamed, re-check that it is in the allow-list')
 
+    # ── 4. A RECUSA MUDA: `bridge` ja' armado nao pode passar em silencio ────
+    #       nem ser reportada como `started` (medido 2026-11-05: o log do dono
+    #       teve `WORKER_AUTOSTART=started reason=default` DUAS vezes no mesmo
+    #       arranque, a segunda sem arrancar nada).
+    bridge_refusal = re.search(
+        r'if self\.bridge is not None:\s*\n\s*(?:#[^\n]*\n\s*)*'
+        r'log\(f?[\'"]WORKER_AUTOSTART=declined reason=\{reason\}', text)
+    say(f'the already-running refusal SPEAKS: {bool(bridge_refusal)}')
+    if not bridge_refusal:
+        say('FAIL: a `bridge` that already exists returns False with no log — the'
+            ' reader cannot tell an already-running worker from a silent failure')
+        failures.append('silent-already-running')
+    if 'cause=already-running' not in text:
+        say('FAIL: the already-running refusal does not name its cause')
+        failures.append('already-running-cause')
+    false_started = "WORKER_AUTOSTART=started reason=default by=startup-show" in src
+    say(f'the false `started ... by=startup-show` line is GONE: {not false_started}')
+    if false_started:
+        say('FAIL: a branch that starts nothing logs `started` — two workers in'
+            ' one boot as far as the log is concerned')
+        failures.append('false-started')
+    routed = re.search(r'if getattr\(self, \'bridge\', None\) is not None:\s*\n'
+                       r'\s*(?:#[^\n]*\n\s*)*self\.start_worker\(worker_reason\)', src)
+    say(f'the startup-show branch routes through start_worker: {bool(routed)}')
+    if not routed:
+        say('FAIL: the startup-show branch does not use the ONE refusal path')
+        failures.append('startup-show-route')
+
     say('')
     if failures:
         say('WIRING-VERDICT: RED — ' + ', '.join(failures))
@@ -132,5 +161,53 @@ def main() -> int:
     return 0
 
 
+MUTANTS = (
+    # (rotulo, ancora, substituicao) -- cada um tem de derrubar o portao.
+    ('sem a recusa muda',
+     "            log(f'WORKER_AUTOSTART=declined reason={reason} '\n"
+     "                'by=start_worker cause=already-running')\n",
+     "            pass\n"),
+    ('a linha falsa de volta',
+     "                    self.start_worker(worker_reason)\n",
+     "                    log('WORKER_AUTOSTART=started reason=default by=startup-show')\n"),
+    ('sem o motivo da recusa',
+     "'by=start_worker cause=already-running')",
+     "'by=start_worker')"),
+    ('a guarda do reason depois do spawn',
+     "if reason not in self.START_REASONS:",
+     "if False:"),
+)
+
+
+def neg_arm() -> int:
+    """Quatro mutacoes numa COPIA; cada uma tem de fazer o portao dar rc=1.
+
+    O portao e' uma assercao de TEXTO, e o repo ja' pagou duas vezes por isso
+    (mutacoes ancoradas em texto que a cura substituiu, a verde por nao se
+    aplicarem). Um mutante que nao se aplica e' `IMPOSSIVEL`, nunca `PASS`.
+    """
+    import tempfile
+
+    src = open(SHELL, encoding='utf-8').read()
+    caught = 0
+    for label, anchor, repl in MUTANTS:
+        if anchor not in src:
+            print(f'NEG-ARM: IMPOSSIVEL mutar {label} (a ancora mudou)')
+            continue
+        tmp = tempfile.mkdtemp(prefix='wsw-neg-')
+        path = os.path.join(tmp, 'sotto_webview.py')
+        with open(path, 'w', encoding='utf-8') as fh:
+            fh.write(src.replace(anchor, repl, 1))
+        rc = subprocess.run([sys.executable, os.path.abspath(__file__), '--shell', path],
+                            capture_output=True, text=True).returncode
+        hit = rc == 1
+        caught += 1 if hit else 0
+        print(f"[{'CAUGHT' if hit else 'NOT-CAUGHT'}] mutante: {label} (rc={rc})")
+    total = len(MUTANTS)
+    print(f"NEG-ARM: {'PASS' if caught == total else 'FAIL'} -- "
+          f"{caught}/{total} mutante(s) recusado(s)")
+    return 1 if caught == total else 0
+
+
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(neg_arm() if '--neg-arm' in sys.argv else main())

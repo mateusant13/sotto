@@ -220,6 +220,17 @@ const pipelineStartedAt = Date.now();
 //
 // Every entry held in the feed, oldest first.
 let historyEntries = [];
+/**
+ * THE TRANSCRIPT'S REFUSALS, COUNTED (2026-11-05). The choke point used to
+ * `return` in silence, and that silence cost a day: 3830 captions were painted
+ * and ZERO lines reached `history/`, with nothing in the log to say why. Every
+ * refusal now names itself through `bridge.historyRefused` (the shell writes
+ * `HISTORY_REFUSED`), counted PER SIGNATURE so a steady stream of the same
+ * refusal logs on the first one and every 50th — an instrument, not a flood.
+ * Declared here, above the init block, for the temporal-dead-zone rule.
+ */
+let historyRefusals = 0;
+let historyRefusalSeen = new Map();
 /** The entry currently selected (its file is what "Show in folder" opens). */
 let selectedEntry = null;
 /**
@@ -2144,22 +2155,20 @@ function recordHistory(text, reason, meta) {
   const route = sourceApi && sourceApi.transcriptRoute
     ? sourceApi.transcriptRoute(meta)
     : null;
-  if (!route) return;
-  // OWNER 2026-10-07 — the SECOND half, and the one the owner reported missing:
-  // the canonical transcript ("History · Redux") is a DIFFERENT SOURCE. A
-  // `route=final` line the LIVE nvidia streaming engine produced is STILL the
-  // live path's own history — verbatim the thing he forbids ("o historico nao e'
-  // pra ser NUNCA o historico do live nvidia. e' pra ser do parakeet redux").
-  // The transcript is reserved for the BATCH pass (`README.md:20`, Parakeet
-  // Redux via `transcribe.cpp`), so a line must DECLARE that producer to enter
-  // here. The live engine declares none, so `addCaption` -> `recordHistory` can
-  // no longer feed HISTORY: the two fields no longer share a source. Fail-closed
-  // — an absent or unknown producer is refused, never assumed canonical. The
-  // decision lives in the DOM-free `history-source.js` so the oracle executes
-  // THIS function; see `_main/live-vs-history-source-oracle.js`.
-  const isCanonical = window.SottoHistorySource
-    && window.SottoHistorySource.isCanonicalLine;
-  if (!isCanonical || !isCanonical(meta)) return;
+  // A REFUSAL THAT CANNOT SAY ITS NAME IS NOT AN ANSWER (2026-11-05). This used
+  // to be `if (!route) return;` and, behind it, a SECOND gate
+  // (`isCanonicalLine`) that only a `producer:'redux'` line could pass — and the
+  // batch pass is off by default, so on this box the transcript had ZERO writers.
+  // MEASURED on the owner's own run: 3830 `CAPTION_APPLIED`, 0 `HISTORY_APPEND`,
+  // `history/2026-11-05/` absent, and not one refusal line in the log.
+  // The decision (which routes may enter) lives in `history-source.js`; this
+  // choke point only reports it. Owner 2026-10-07's separation is now PROVENANCE,
+  // not admission: the store writes `producer=` on every line, so a Parakeet line
+  // and a streaming line stay tellable apart — see `_history_provenance`.
+  if (!route) {
+    reportHistoryRefusal(sourceApi, meta);
+    return;
+  }
   // WHICH branch produced that `route` — the FALLBACK must ANNOUNCE itself
   // (P1 `4fb5b25380cbc8269977e22e`). `'worker-stamped'` = a worker vote decided
   // it (the worker's `final` flag); `'fallback'` = NO worker stamp was seen and
@@ -2168,11 +2177,16 @@ function recordHistory(text, reason, meta) {
   // is the de-landing, readable without running the panel. Absent meta keeps it
   // null: the field is never invented here.
   const routeSource = meta && typeof meta.routeSource === 'string' ? meta.routeSource : null;
+  // WHO produced this line. It is NOT a gate any more (see the decision above);
+  // it is the field the store writes as `producer=`, so the 2026-10-07 separation
+  // survives as a FACT ON THE LINE instead of as a reason to drop it. Absent when
+  // the worker declared nothing — the field is never invented.
+  const producer = sourceApi && sourceApi.producerOf
+    ? sourceApi.producerOf(meta)
+    : null;
   const options = {
-    // Only a canonical (batch) line reaches here, so the source it declares is
-    // the canonical producer — never `'live'` (that was the live path stamping
-    // its own lines as the transcript). See the guard above.
-    source: 'redux',
+    source: producer || 'live',
+    producer,
     route,
     routeSource,
     start: meta && typeof meta.start === 'number' ? meta.start : null,
@@ -2206,6 +2220,35 @@ function recordHistory(text, reason, meta) {
       setHistoryNote('History write failed: ' + errorText(err));
       pushEntry({ time: clockTime(), text, path: null });
     });
+}
+
+/**
+ * EVERY REFUSAL LEAVES A LINE (2026-11-05).
+ *
+ * The choke point above used to `return` and nothing else. That is how the
+ * transcript stayed empty for a day with 3830 captions painted and not one
+ * `HISTORY_*` line to explain it: a gate that cannot say no is not a gate.
+ * The shell writes `HISTORY_REFUSED reason=… route=… producer=… src=… n=…`
+ * (`SottoHost._history_refused`), counted per signature so the same refusal logs
+ * on its first occurrence and every 50th after that.
+ */
+function reportHistoryRefusal(sourceApi, meta) {
+  historyRefusals += 1;
+  const info = (sourceApi && sourceApi.historyRefusal ? sourceApi.historyRefusal(meta) : null)
+    || { reason: 'no-source-module', route: null, producer: null, src: null };
+  const key = [info.reason, info.route, info.producer, info.src].join('\u0000');
+  const n = (historyRefusalSeen.get(key) || 0) + 1;
+  historyRefusalSeen.set(key, n);
+  if (n !== 1 && n % 50 !== 0) return;
+  if (!bridge || typeof bridge.historyRefused !== 'function') return;
+  bridge.historyRefused({
+    reason: info.reason,
+    route: info.route,
+    producer: info.producer,
+    src: info.src,
+    n,
+    total: historyRefusals,
+  });
 }
 
 function pushEntry(entry) {

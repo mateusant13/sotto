@@ -446,8 +446,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 17:0x):** `_main\_audit-verify-all.cmd` = **251219 B**,
-  **3096 CRLF** / 0 bare LF, sha256 `2FDDDCC5259166E51025C61DFD8CD467787AAB23DD19CE70D0D74F94C0073CD7`.
+- **PIN do ficheiro (medido 2026-11-05, 17:2x):** `_main\_audit-verify-all.cmd` = **252313 B**,
+  **3108 CRLF** / 0 bare LF, sha256 `2EB2D334A49D62644A30DB7D6E95A0F148F379B8B98A2B54BBD06CFB815C21C0`.
+  (Doze linhas a mais do que o pin de 251219 B: o `red-as-expected-worker-start-wiring`, o braco que
+  faltava a um portao que era um verde SEM controlo. Nasceu de uma medicao de hoje: o arranque das
+  16:19:10 escreveu `WORKER_AUTOSTART=started reason=default` **duas vezes** -- 16:19:11.098 pelo
+  spawn real e 16:19:13.960 por um ramo que viu o bridge ja' armado e escreveu `started` as mesmas.
+  Quem le' o log conclui que dois workers nasceram e que 1,9 GB foram lidos duas vezes; nenhum dos
+  dois bracos e' verdade. Agora o ramo passa pelo `start_worker`, que recusa no MESMO shape de todas
+  as outras recusas (`WORKER_AUTOSTART=declined reason=default by=start_worker
+  cause=already-running`), e o `--neg-arm` muta quatro sitios e exige rc=1 -- medido 4/4.)
   (Dezanove linhas a mais do que o pin de 249653 B: o par `punct-model` + o seu `red-as-expected`,
   a pontuacao DE MODELO que ele pediu -- *"usa pontuacao de forma inteligente"* -- respondida com o
   que a casa mediu em vez de com uma opiniao: `sherpa-onnx-online-punct-en` (Apache-2.0, **int8

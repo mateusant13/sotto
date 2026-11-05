@@ -1616,6 +1616,18 @@ if exist _main\_audit-worker-start-wiring.py (
   call :step worker-start-wiring 0 "_main\_audit-worker-start-wiring.py;app\webview\sotto_webview.py" "%OUT%\wiring-worker-start.log" python _main\_audit-worker-start-wiring.py
   call :record worker-start-wiring !STEP_RC!
 ) else ( call :record worker-start-wiring MISSING )
+REM O BRACO NEGATIVO do portao acima (2026-11-05): ele era um verde sem controlo.
+REM `--neg-arm` muta uma COPIA do shell em quatro sitios -- a recusa muda de
+REM volta, a linha falsa `WORKER_AUTOSTART=started ... by=startup-show` de volta,
+REM a recusa sem `cause=already-running`, e a guarda do `reason` desarmada -- e
+REM exige rc=1 em cada. Medido 4/4. Nasceu de um log que MENTIA: o arranque de
+REM 16:19:10 escreveu `WORKER_AUTOSTART=started reason=default` DUAS vezes, a
+REM segunda num ramo que nao arrancou nada (o bridge ja' existia), e quem le'
+REM conclui 1,9 GB lidos duas vezes.
+if exist _main\_audit-worker-start-wiring.py (
+call :step red-as-expected-worker-start-wiring 1 "_main\_audit-worker-start-wiring.py;app\webview\sotto_webview.py" "%OUT%\wiring-worker-start-neg.log" python _main\_audit-worker-start-wiring.py --neg-arm
+call :expectred red-as-expected-worker-start-wiring !STEP_RC! "%OUT%\wiring-worker-start-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-worker-start-wiring MISSING "%OUT%\wiring-worker-start-neg.log" "NEG-ARM: PASS" )
 if exist _main\_audit-embedded-js-check.py (
   call :step embedded-js-check 0 "_main\_audit-embedded-js-check.py;app\webview\sotto_webview.py;app\webview\hot_reload.py;app\webview\panel_state.py;app\webview\external_subs.py;app\webview\youtube_captions.py;app\webview\caption_overlay.py;app\webview\caption_wrap.py" "%OUT%\embedded-js.log" python _main\_audit-embedded-js-check.py
   call :record embedded-js-check !STEP_RC!

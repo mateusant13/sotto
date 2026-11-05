@@ -8876,6 +8876,13 @@ BOOTSTRAP_JS = r"""
     clearApplied: function (remaining) {
       post('caption-cleared', { remaining: Number(remaining) || 0 });
     },
+    // A REFUSAL IS AN EVENT (2026-11-05). The transcript's choke point used to
+    // drop a line with a bare `return`; the shell now writes `HISTORY_REFUSED`
+    // with the reason it was dropped for, so "the history is empty" is a line in
+    // the log instead of a mystery. `post` (not `historyCall`): nothing waits.
+    historyRefused: function (payload) {
+      post('history-refused', payload || {});
+    },
 
     // The transcript history ("redux"). The SHELL owns the disk: it names the
     // file, appends the line, reads it back and reveals it in the file manager.
@@ -11737,7 +11744,13 @@ class SottoShell:
             # flag still declines.
             if worker_reason == 'default':
                 if getattr(self, 'bridge', None) is not None:
-                    log('WORKER_AUTOSTART=started reason=default by=startup-show')
+                    # NAO ESCREVE `started` AQUI. Este ramo viu um bridge que JA'
+                    # existe e nao arranca nada; quem arrancou foi o
+                    # `start_worker` de cima, que ja' deixou a sua linha. A
+                    # mensagem certa e' a recusa do proprio `start_worker`
+                    # (`cause=already-running`), pela mesma porta que todas as
+                    # outras recusas usam.
+                    self.start_worker(worker_reason)
                 else:
                     # THE PRELOAD (owner, 2026-10-21: *"abrir ou fechar o
                     # sotto trava pra caralho meu pc"*). The worker used to
@@ -14477,6 +14490,15 @@ class SottoShell:
                 'by=start_worker cause=shell-exiting')
             return False
         if self.bridge is not None:
+            # UMA RECUSA MUDA E' UM INSTRUMENTO QUE MENTE (medido 2026-11-05).
+            # O log do dono tinha `WORKER_AUTOSTART=started reason=default` DUAS
+            # vezes no MESMO arranque -- 16:19:11.098 pelo spawn real e
+            # 16:19:13.960 por um ramo que viu o bridge ja' armado e escreveu
+            # `started` as mesmas. Quem le' o log conclui que dois workers
+            # nasceram e que 1,9 GB foram lidos duas vezes. Nenhum dos dois
+            # bracos e' verdade: o segundo nao arrancou nada.
+            log(f'WORKER_AUTOSTART=declined reason={reason} '
+                'by=start_worker cause=already-running')
             return False
         # ── THE PER-APP TAP, OPT-IN -- AND AN UNRESOLVED TARGET REFUSES ──────
         # `--app-target` / `SOTTO_APP_TARGET` asks the worker for ONE app's
