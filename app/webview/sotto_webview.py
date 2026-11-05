@@ -2594,7 +2594,20 @@ class VramGuard(threading.Thread):
 
     INTERVAL_S = 3.0
     LOW_MB = 1200.0
-    RESUME_MB = 2400.0
+    #: A VRAM que o MODELO ocupa ao carregar. MEDIDO duas vezes: 1175-1703 MiB
+    #: (2026-10-21, delta do worker) e, na queda de 2921 -> 900 MiB registada em
+    #: 2026-11-05 imediatamente apos um `VRAM_GUARD_RESUMING`, ~2000 MiB. Arredonda
+    #: para o lado seguro: quem garante o espaco e' o maior dos dois numeros.
+    MODEL_VRAM_MB = 2000.0
+    #: O RESUME TEM DE DEIXAR ESPACO PARA O PROPRIO MODELO -- `LOW_MB` +
+    #: `MODEL_VRAM_MB`. Isto era um literal de 2400, e a conta mostra porque' era um
+    #: defeito e nao um numero: levantar o worker com 2400 MB livres deixa 400 MB
+    #: depois de o modelo carregar, ou seja ABAIXO de `LOW_MB`, logo o parque que se
+    #: segue e' GARANTIDO por aritmetica. Medido no log do dono em 2026-11-05: 21
+    #: `VRAM_GUARD_PARKING` e 6 `VRAM_GUARD_RESUMING` no mesmo dia, e cada volta
+    #: custa 54 s de carga de modelo. Uma retomada que garante um parque e' um bug,
+    #: nao uma politica: o modelo so' volta quando a volta e' ESTAVEL.
+    RESUME_MB = LOW_MB + MODEL_VRAM_MB
     STREAK = 2
     #: A GRAÇA DEPOIS DE UM RESUME, em segundos. MEDIDO 2026-11-05 no log do dono
     #: (`_main/webview-run.log`, pid 22916): `VRAM_GUARD_PARKING free_mb=635` as

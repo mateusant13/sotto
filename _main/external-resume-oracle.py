@@ -285,10 +285,26 @@ def arms(mod, text):
         wired = 'if not self.allow_park():' in (text or '')
         out.append(('E17 o laco do guarda consulta a graca antes de parquear',
                     wired, {'wired': wired}))
+        # E18 -- O RESUME NAO PODE GARANTIR UM PARQUE. A invariante e' aritmetica:
+        # levantar o worker deixa-o com `free - MODEL_VRAM`, e se isso ficar abaixo
+        # de `LOW_MB` o parque seguinte e' certo. Medido 2026-11-05: 21 parques e 6
+        # retomadas no mesmo dia, cada retomada uma carga de 54 s.
+        guard_cls = getattr(mod, 'VramGuard', None)
+        room = (guard_cls.RESUME_MB - guard_cls.LOW_MB) if guard_cls is not None else None
+        need = getattr(guard_cls, 'MODEL_VRAM_MB', None) if guard_cls is not None else None
+        out.append(('E18 o resume deixa espaco para o proprio modelo '
+                    '(RESUME - LOW >= MODEL_VRAM)',
+                    room is not None and need is not None and room >= need,
+                    {'room_mb': room, 'model_mb': need}))
     return out
 
 
 MUTANTS = [
+    ('resume-sem-espaco-para-o-modelo',
+     'a retomada volta a garantir um parque (RESUME - LOW < MODEL_VRAM) (E18)',
+     """    RESUME_MB = LOW_MB + MODEL_VRAM_MB""",
+     """    RESUME_MB = 2400.0""",
+     'E18 o resume deixa espaco para o proprio modelo'),
     ('sem-graca-pos-resume',
      'o dip da carga volta a contar como outra app e a esteira recomeca (E14)',
      """        return (now - self._resumed_at) >= self.POST_RESUME_GRACE_S""",
