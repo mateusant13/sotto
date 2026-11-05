@@ -180,7 +180,9 @@ const call = `
                   route: sent.length ? sent[0].opts.route : null,
                   producer: sent.length ? sent[0].opts.producer : null,
                   refusals: refused.length,
-                  reason: refused.length ? refused[0].reason : null});
+                  reason: refused.length ? refused[0].reason : null,
+                  where: refused.length ? refused[0].where : null,
+                  final: refused.length ? refused[0].final : null});
   }
   arm('live-closed',     {route:'final', start:13.2, source:'device:WASAPI loopback'});
   arm('youtube-closed',  {route:'final', start:12.4, source:'external:youtube:track'});
@@ -196,8 +198,20 @@ const call = `
   }
   const flood = {name: 'repeat-50th', calls: refused.length,
                  route: null, producer: null, refusals: refused.length,
-                 reason: refused.length ? refused[0].reason : null};
+                 reason: refused.length ? refused[0].reason : null,
+                 where: refused.length ? refused[0].where : null,
+                 final: refused.length ? refused[0].final : null};
   results.push(flood);
+  // THE LOG LINE MUST NAME THE WHOLE CHAIN (2026-11-05, orchestrator): a reader
+  // holding only the HISTORY_REFUSED line must see WHERE, the derived route, the
+  // worker's own final vote, the producer and the reason -- no re-derivation.
+  refused.length = 0;
+  recordHistory('x', 'status-change',
+    {route:'provisional-draft', start:3, final:false, producer:'live', source:'device:X'});
+  const last = refused[0] || {};
+  results.push({name: 'refusal-names-chain', calls: 0, route: null, producer: null,
+                refusals: refused.length, reason: last.reason || null,
+                where: last.where || null, final: last.final});
   process.stdout.write(JSON.stringify({arms: results}));
 `;
 if (src.indexOf('let historyRefusalSeen = new Map();') < 0) {
@@ -209,13 +223,14 @@ new Function('require', 'sourcePath', prelude + '\n' + rec + '\n' + rep + '\n' +
 
 #: name -> (calls, route, producer, refusals, reason)
 PANEL_WANT = {
-    'live-closed': (1, 'final', None, 0, None),
-    'youtube-closed': (1, 'final', None, 0, None),
-    'batch-redux': (1, 'batch', 'redux', 0, None),
-    'producer-live': (1, 'final', 'live', 0, None),
-    'provisional': (0, None, None, 1, 'provisional-draft'),
-    'no-route': (0, None, None, 1, 'no-route-no-producer'),
-    'repeat-50th': (1, None, None, 1, 'provisional-draft'),
+    'live-closed': (1, 'final', None, 0, None, None, None),
+    'youtube-closed': (1, 'final', None, 0, None, None, None),
+    'batch-redux': (1, 'batch', 'redux', 0, None, None, None),
+    'producer-live': (1, 'final', 'live', 0, None, None, None),
+    'provisional': (0, None, None, 1, 'provisional-draft', 'panel/recordHistory', None),
+    'no-route': (0, None, None, 1, 'no-route-no-producer', 'panel/recordHistory', None),
+    'repeat-50th': (1, None, None, 1, 'provisional-draft', 'panel/recordHistory', None),
+    'refusal-names-chain': (0, None, None, 1, 'provisional-draft', 'panel/recordHistory', False),
 }
 
 
@@ -234,7 +249,8 @@ def panel_arms(source_path):
         want = PANEL_WANT.get(arm['name'])
         if want is None:
             continue
-        got = (arm['calls'], arm['route'], arm['producer'], arm['refusals'], arm['reason'])
+        got = (arm['calls'], arm['route'], arm['producer'], arm['refusals'], arm['reason'],
+               arm['where'], arm['final'])
         out.append({'name': 'panel:' + arm['name'], 'want': want, 'got': got,
                     'ok': got == want})
     return out, None

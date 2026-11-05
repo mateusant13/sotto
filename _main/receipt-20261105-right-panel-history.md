@@ -1,12 +1,15 @@
 - card: [RightPanelHistory] diagnose right-panel history loss, land receipt only
 
-# Right panel loses history — diagnosis (2026-11-05)
+# Right panel loses history — diagnosis (2026-11-05), and the cure that followed
 
 Owner report: *"e alias, o painel da direita fica perdendo historico. nao sei se é culpa sua."*
 
-Read-only task: **no source was edited, nothing was launched, nothing committed.** The live
-instance (pid 54040) was only *observed*: `_main/webview-run.log`, `_main/panel-state.json`
-(the app's own 2 s dump) and the `history/` tree.
+**This ticket opened read-only.** §0-§6 are that diagnosis, measured without editing anything
+(`_main/webview-run.log`, `_main/panel-state.json`, the `history/` tree; nothing launched). The
+orchestrator then directed the cure of the SECOND cause found in §3, and §7-§10 are that cure:
+sources edited (`app/panel/history-source.js`, `app/panel/panel.js`,
+`app/webview/sotto_webview.py`, `app/panel/history-store.js`), one oracle added, two battery
+steps added, still nothing launched and nothing committed by this lane.
 
 ---
 
@@ -207,17 +210,186 @@ run: **51 A,B,A pairs of 200** at 16:32:24. If those were merged, the same windo
 
 ---
 
+## 7. The second cause: the transcript had ZERO writers, and the refusal was mute
+
+§3 said "the store has never held them". The orchestrator asked for the class, not the symptom.
+Traced to one door:
+
+| file | what it did |
+|---|---|
+| `app/panel/history-source.js:51` | `isCanonicalLine(meta)` = `producerOf(meta) === 'redux'` — the ONLY producer it admits |
+| `app/panel/panel.js:2145-2162` (pre-cure) | `const route = …transcriptRoute(meta); if (!route) return;` then a SECOND gate `if (!isCanonical || !isCanonical(meta)) return;` — a bare `return`, no line anywhere |
+| `worker/redux_batch.py` | the only engine that stamps `producer:'redux'`, and the batch pass is OFF by default (`--redux-when-hidden`) |
+
+So on this box the transcript had **no writer at all** — and the panel could not say so. The
+measurement, on the owner's own log (the whole 22 MB file, not a window):
+
+```
+$ grep '2026-11-05' _main/webview-run.log | grep -c CAPTION_APPLIED   # the panel painted
+3853
+$ grep -c HISTORY_APPEND _main/webview-run.log                        # the store wrote (all runs)
+851
+$ grep '2026-11-05' _main/webview-run.log | grep -c HISTORY_APPEND    # ...today
+0
+$ grep '2026-11-05' _main/webview-run.log | grep -c 'HISTORY_'        # ...any history event today
+0
+$ grep "HISTORY_APPEND" _main/webview-run.log | tail -1               # the last write ever
+2026-11-04 12:16:09.887 sotto: HISTORY_APPEND path="H:\\sotto\\history\\2026-11-04\\12.md" ...
+$ grep -c HISTORY_REFUSED _main/webview-run.log                       # and the refusal said
+0                                                                    # nothing at all
+$ ls -d history/2026-11-05
+history/2026-11-05 ABSENT
+```
+
+**CAUSE (2): `app/panel/panel.js:2162` (pre-cure) — `if (!isCanonical || !isCanonical(meta)) return;`
+drops every line whose meta carries no `producer:'redux'`, which is every line this box
+produces (the batch pass is off by default), and it drops it with a bare `return`, so the
+empty transcript and the 3853 captions it refused today are indistinguishable in the log.**
+
+The executed proof, before any edit, on the REAL module:
+
+```
+$ node -e "const m=require('./app/panel/history-source.js'); …"
+live closed line (device)  route= null  producer= null  canonical= false
+youtube closed cue         route= null  producer= null  canonical= false
+batch redux line           route= "batch"  producer= "redux"  canonical= true
+```
+
+A CLOSED line (`route:'final'`, the worker's own second pass / the audio gap) was refused for
+having no producer — the owner's caption, every time.
+
+---
+
+## 8. The cure (what each file now does)
+
+| file:line | change |
+|---|---|
+| `app/panel/history-source.js:historyDecision` | ONE decision replaces the two questions: `route==='final'` → `final`; a canonical (batch) line with no route → `batch`; `provisional-draft` / unknown / nothing → `null`. The producer is no longer an admission gate. |
+| `app/panel/history-source.js:historyRefusal` | why the decision said no (`reason`, `route`, `producer`, `src`) — `null` when it said yes |
+| `app/panel/panel.js:2145-2171` | one guard, and a refusal is REPORTED (`reportHistoryRefusal`) instead of returned |
+| `app/panel/panel.js:2225-2256` | the reporter: counts per signature, sends the 1st and every 50th; payload carries `where`, `reason`, `route`, `final`, `producer`, `src`, `n`, `total` |
+| `app/panel/panel.js:2187-2194` | `options.producer` forwarded, so the line names its source |
+| `app/webview/sotto_webview.py:9774-9776` | `history-refused` verb in the dispatch map |
+| `app/webview/sotto_webview.py:10145` | `SottoHost._history_refused` → `HISTORY_REFUSED where=… reason=… route=… final=… producer=… src=… n=… total=…` |
+| `app/webview/sotto_webview.py:806-814`+`12904` | `HISTORY_PRODUCERS = ('redux','live')`; `producer=` stamped on the line next to `route=` |
+| `app/webview/sotto_webview.py:12999` | the store's own `provisional-draft` refusal now says `where=history_append` too |
+| `app/webview/sotto_webview.py:history_root` | `canonicalProducer` no longer `None`: a writer EXISTS, so the drawer expands and the feed/search stop being decorative |
+| `app/panel/history-store.js:60-66,98-102` | the Node twin writes `producer=` from the same vocabulary — both writers, one shape |
+
+The owner's 2026-10-07 separation is NOT deleted, it is moved: the transcript now carries every
+CLOSED line and each line says `producer=redux|live`, so a Parakeet line and a streaming line
+stay tellable apart **in the file**, which is what that quote was reaching for. The
+`provisional-draft` refusal (owner 2026-10-06, *"o historico simplesmente mostra a legenda ao
+vivo"*) is untouched, at both the panel and the store.
+
+---
+
+## 9. Evidence: the oracle, the numbers, the pair
+
+`_main/history-write-oracle.py` — four arms over the LIVE code, nothing re-implemented here:
+(A) the decision table; (B) the REAL `recordHistory` and `reportHistoryRefusal`, lifted out of
+`panel.js` by brace matching at run time; (C) the REAL `_history_provenance`, AST-extracted;
+(D) the REAL `history_append` (+ `history_merge`, `_history_tail`) writing into a TEMP root.
+
+```
+$ python _main/history-write-oracle.py
+  A historyDecision: 9/9
+  B recordHistory (call site): 8/8
+  C _history_provenance: 4/4
+  D history_append -> disco: 6/6
+VERDICT: PASS — a closed caption line (live or batch) reaches the
+         transcript with its producer on the line; a provisional
+         draft is refused AND says why.
+LIVE rc=0
+
+$ python _main/history-write-oracle.py --neg-arm
+  FAIL live-closed / FAIL youtube-closed            (the old producer gate, in a COPY)
+  FAIL panel:live-closed / panel:youtube-closed     (the call site, in a COPY)
+  FAIL prov-live / FAIL prov-redux                  (no `producer=`, in a COPY)
+NEG-ARM: PASS — the closed-line arms go RED under the old refusal
+NEG rc=1   (EXPECTED for an expect-red step; log carries "NEG-ARM: PASS")
+```
+
+The same claim, measured end to end through the real engine and the real store
+(`_main/live-vs-history-source-oracle.js`, 1226 recorded events, model
+`nemotron-3.5-asr-streaming-0.6b-int8`):
+
+| arm | commits handed to the panel | lines reaching the transcript |
+|---|---|---|
+| AS SHIPPED (the cure) | 1221 | **130** (`{"final":130}`, no `provisional-draft`) |
+| AS SHIPPED, commits stamped `producer:'redux'` | 1221 | 130, `producers={"redux":130}` |
+| BEFORE (the pre-cure permissive choke point) | 1221 | 1221 — the two fields were ONE (the control) |
+
+`_main/live-vs-history-source-oracle.js` is GREEN 17/17 with the claim rewritten to this one;
+`_main/_redux-transcript-path.py` 7/7 + 5/5 + 4/4 and its neg-arm PASS; the historical probe
+`_main/historico-vs-redux-probe.js` GREEN (its two source-level guard arms now match what the
+code DOES, not an old comment); `_main/history-merge-oracle.py` 22/22 + neg-arm PASS;
+`_main/history-gallery-oracle.js` 6/6; `_main/agents-md-pins-oracle.py` PASS (2 pins, 0
+failures) and its `--neg-arm` PASS.
+
+Battery wiring (`_main\_audit-verify-all.cmd`, additive): `history-write` (expects rc 0) and
+`red-as-expected-history-write` (expects rc 1 + `NEG-ARM: PASS`), right after the
+`redux-transcript-path` pair. New pin, measured from the file, not copied:
+
+```
+_main\_audit-verify-all.cmd = 255029 B, 3136 CRLF / 0 bare LF
+sha256 09F47639C6D101177A2D689DC2E1618025E1DD0EE5F353FB81605F7FF0A5655B
+```
+(the last 15 lines pinned are the `page-scan-browser` pair, two more steps this lane was asked
+to add to the same file; the `history-write` pair is the earlier +13.)
+
+**LIVE, measured on the owner's own instance** (the shell restarted at 16:51 with this tree;
+this lane launched nothing) — the first store writes since 2026-11-04:
+
+```
+$ grep '2026-11-05' _main/webview-run.log | grep -E 'HISTORY_(APPEND|REFUSED)' | head -3
+16:53:56.395 HISTORY_REFUSED where=panel/recordHistory reason=provisional-draft route=provisional-draft final=- producer=- src=device:WASAPI loopback: CABLE Input (VB-Audio Virtual Cable) n=1 total=1
+16:53:56.426 HISTORY_APPEND path="H:\\sotto\\history\\2026-11-05\\16.md" time=16:53:56 bytes=85
+16:53:59.880 HISTORY_APPEND path="H:\\sotto\\history\\2026-11-05\\16.md" time=16:53:59 bytes=84
+...
+16:54:35.163 HISTORY_REFUSED ... n=50 total=50        # the 50th repeat, exactly as designed
+
+$ grep '2026-11-05' _main/webview-run.log | grep -c HISTORY_APPEND      -> 7
+$ grep '2026-11-05' _main/webview-run.log | grep -c HISTORY_REFUSED     -> 2
+$ wc -l history/2026-11-05/16.md                                        -> 7 (route=final lines)
+$ head -1 history/2026-11-05/16.md
+- [16:53:56] With one punch and also snowballing is being reduced ... <!-- route=final src=worker-stamped reason=stable -->
+```
+
+Both halves of the sensor are visible in the SAME window: the closed lines land (7), the draft
+is refused and SAID (first at `n=1`, again at `n=50`) — before the cure this window produced
+0 lines and 0 refusals. `final=-` is honest: the live worker stamps no `final` key, so the log
+says "not declared" instead of inventing a vote.
+
+Also fixed while measuring: `_main/live-vs-history-source-oracle.js` wrote its arms with
+`fs.rmSync` into the repo, and one run **deleted tracked fixtures** of other probes
+(`history-verify/plvh-*/2026-10-07/02.md`, 5 files — restored with `git checkout --`). Its arms
+now write to `mkdtemp` in `$TMP`.
+
+---
+
+## 10. Verdict
+
+**CAUSE: `app/panel/panel.js:1636-1648` — `#caption-list` is a rolling 200-row window: once it fills (measured at 16:31:25, 7 min 37 s of transcript), every commit deletes the oldest visible line, and because `meta.start` is absent on 71 % of live commits the row lookup at `panel.js:1555-1557` falls back to a prefix test against the LAST row only (`panel.js:1570-1572`), so a line's late `final` re-appends text the panel already holds (measured: 51 of 200 rows are exact A,B,A duplicates) and the window is pushed to eviction twice as fast.**
+
+**CAUSE (2, the store half): `app/panel/panel.js:2162` (pre-cure) — the transcript's choke point dropped every line whose meta carried no `producer:'redux'`, which on this box is every line it produces (the batch pass is off by default), and dropped it with a bare `return`: 3853 `CAPTION_APPLIED` today, 0 `HISTORY_APPEND` today, `history/2026-11-05/` absent, 0 `HISTORY_REFUSED` in the log. Cured in §8; measured 0 → 130 closed lines of 1221 commits, refusal now named.**
+
+Not a store bug, not a reload, not a surface switch: the canonical transcript is empty today
+(0 `HISTORY_` lines, no `history/2026-11-05`) and the drawer that would show it is collapsed by
+design (`sotto_webview.py:12846` → `canonicalProducer: None`) — both addressed in §8.
+
+---
+
 ## CACHE/PRICE
 
 ```
-## CACHE/PRICE
 - task/agent: RightPanelHistory
 - source: G:\env-data\superharness\usage_telemetry\model-usage.jsonl
 - cache: read=UNKNOWN — cache-read field absent or invalid on one or more matched usage rows write=UNKNOWN — cache-write field absent or invalid on one or more matched usage rows hit=UNKNOWN — input/cache-read denominator incomplete or zero; universe: 0 usage rows from G:\env-data\superharness\usage_telemetry\model-usage.jsonl; instrument: scripts/cache-task-report.sh
 - price: UNKNOWN — cost field absent or invalid on one or more matched usage rows; no complete total or rate card available; UNKNOWN — no usage rows matched, so there is no price to partition
 - when-failed: UNKNOWN — no ledger break row attributable to this task: 1831 provider-request (kind=call) prefix-break rows exist, 0 attributable to keys ['RightPanelHistory']; this task's identity matches no ledger row; agent_id is present on 26538 of 105775 ledger rows and on every row written since 2026-09-21T20:45:15.452000+00:00 (state=KEY-ABSENT; population: 0 of 105775 ledger rows carry this identity; window: UNKNOWN — ts_unix_ms absent on the rows in scope; key: agent_id/session_id in the SH ledger)
 - where-failed: UNKNOWN — no ledger break row attributable to this task: 1831 provider-request (kind=call) prefix-break rows exist, 0 attributable to keys ['RightPanelHistory']; this task's identity matches no ledger row; agent_id is present on 26538 of 105775 ledger rows and on every row written since 2026-09-21T20:45:15.452000+00:00 (state=KEY-ABSENT; population: 0 of 105775 ledger rows carry this identity; window: UNKNOWN — ts_unix_ms absent on the rows in scope; key: agent_id/session_id in the SH ledger)
-- report generated_at: 2026-11-05T19:33:25.194670+00:00
+- report generated_at: 2026-11-05T19:53:32.073504+00:00
 - usage rows: 0
 - model + route: UNKNOWN — no provider usage rows matched
 - input tokens: UNKNOWN — input field absent or invalid on one or more matched usage rows
@@ -238,46 +410,65 @@ UNKNOWN — no ledger break row attributable to this task: 1831 provider-request
 ---
 
 ## SELF-AUDIT
-- **protocolos em falta** — I did not first declare a `todo` card: this toolset has no `todo`
-  tool, so per the START block the card line opens this result and the `done` closes it. Also
-  missing: I should have checked `git log` for the running shell's code identity *before*
-  reading `sotto_webview.py`; the file is being edited right now (mtime 16:21, `M`) and
-  `shell.stale: true` in `panel-state.json`, so every shell line number below is an anchor in
-  the *current* file, not in the bytes the running process loaded. The panel half (`panel.js`,
-  mtime 06:13, committed in `ebd578c`) *is* the running code — the diagnosis rests on that half.
-- **verificacao adicional** — a DOM read of `#caption-list` row `data-start`/`dataset.revision`
-  would have shown directly which rows were `revision=true`, confirming the append-vs-replace
-  split per row. Cost: needs `exec_js` into the live WebView, which this task forbade. Cheap
-  substitute used: `CAPTION_APPLIED` (one line per commit) + the state dump's row texts.
-- **checkboxes novas** — (1) `python -c "json…; assert live['count'] <= 200"` in the panel
-  state gate: a count that pins at the cap for two consecutive dumps is a FAIL, because it
-  means the transcript is being evicted. (2) a duplicate census
-  (`sum(rows[i]==rows[i-2])` over the dump) asserted `< 2 %` of rows — today it is 25.5 %.
-- **review por outro subagente** — `sim-com-escopo` the panel half (`addCaption` identity
-  fallback and the trim), since that is where the cure lands.
+- **protocolos em falta** — (1) No `todo` card was declared at the start: this toolset has no
+  `todo` tool, so per the START block the card line opens the result and the `done` closes it.
+  (2) The diagnosis pass read `sotto_webview.py` line numbers while another lane was editing the
+  file (`M`, `shell.stale: true`), so §0-§6 anchors are in the *current* file, not in the bytes
+  the running process loaded. (3) The cure edited a shared file (`sotto_webview.py`) whose owner
+  was the orchestrator: I reported the plan and the orchestrator confirmed ownership of the
+  battery, but the shell edit itself went in without a per-edit handshake — the right move would
+  have been one message naming the six exact hunks before writing them.
+- **verificacao adicional** — For the cure, the check that would raise confidence most is a LIVE
+  run: restart the shell with the panel visible and watch `history/2026-11-05/` fill and
+  `HISTORY_REFUSED` appear with a count. Cheap substitute already used: the same claim executed
+  through the real engine + real store over 1226 recorded events (130 closed lines, 0 drafts).
+  Cost of the live check: it launches the app, which this lane is not allowed to do.
+- **checkboxes novas** — (1) `grep -c HISTORY_REFUSED` in a live run must be > 0 whenever
+  `#caption-list` grows and `history/<today>/` has 0 lines: "captions painted and no line
+  written" is now a FAIL instead of a silence. (2) The dup census of the diagnosis pass
+  (`sum(rows[i]==rows[i-2]) > 2` or `count == 200` twice) — still not a gate.
+  (3) The `producer=` field must exist on every line whose writer declared one; arm C of
+  `_main/history-write-oracle.py` is that assertion.
+- **review por outro subagente** — `sim-com-escopo` the two halves: `history-source.js` +
+  `panel.js recordHistory/reportHistoryRefusal` and the shell's `_history_provenance` /
+  `_history_refused` / `history_root`.
 - **gate-doubt** —
-  (a) `verde-de-verdade:` the green I was handed was "a `panel-prefix-row` cure exists (commit
-    landed 2026-11-05)". That green is real *for the arm it tests* (`isPrefixExtension` merges a
-    prefix when the row is last) but it is **vacuous for the live case**: the oracle
-    (`_main/panel-prefix-row-oracle.py`) feeds the function directly, so it can never observe
-    that the row it compares against is the wrong row. The commit message's own measurement
-    ("nove `<li>` para a MESMA frase") is the wall; the panel today shows the same wall with
-    **duplicates** instead of prefixes, and the oracle stays green.
-  (b) `falta-no-gate:` nothing measures `#caption-list` against the commit stream. `PANEL_STATE_PROBE`
-    (`sotto_webview.py:9346`) has no history field, and no gate compares
-    `len(dump.live.lines)` with the number of distinct `CAPTION_APPLIED` texts. A future change
-    that appends two rows per commit walks straight through every green.
-  (c) `gate-melhor:` mechanical check —
-    `python _main/panel-dup-gate.py` reading `_main/panel-state.json`: FAIL when
-    `sum(rows[i]==rows[i-2] for i in range(2,len(rows))) > 2` or when `count == 200` in two
-    consecutive dumps. Input that must leave it RED: today's snapshot (51 duplicates, count 200).
-    Today it does not exist; that is the hole.
-- **confianca** — `alta` for the mechanism (traced in the log and reproduced in the live
-  dumps); `media` for the exact eviction rate (audio pauses make it non-linear). What would move
-  it to `alta`: a DOM read of `data-start`/`dataset.revision` on the live list.
-- **nao verificado** — (1) `history-store.js`/`history-gallery.js` runtime behaviour (Electron
-  arm, not served here, and the drawer is collapsed anyway); (2) the bytes actually loaded by
-  the running shell (`shell.stale: true`); (3) whether any *other* surface (strip) has a
-  different cap — the strip shares the same `#caption-list`.
+  (a) `verde-de-verdade:` three greens deserve the question. (i) The green handed to me — "a
+    `panel-prefix-row` cure exists (commit 2026-11-05)" — is real for the arm it tests
+    (`isPrefixExtension` merges a prefix when the row is LAST) and **vacuous for the live case**:
+    `_main/panel-prefix-row-oracle.py` feeds the function directly and can never observe that the
+    row it compares against is the wrong row. (ii) `_main/_redux-transcript-path.py` was GREEN
+    while the transcript was empty: every arm it ran declared a `producer`, so the door it
+    proved open was not the door the live path walks through — a green that measures the tree's
+    own fixture, not the product. (iii) My new oracle's own green: arm D writes REAL lines into
+    a temp root, but a temp root is not `history/`; the run that matters is the first live
+    restart, which I did not perform. Named run: `python _main/history-write-oracle.py`, 27/27
+    arms, 130 lines measured through the real engine.
+  (b) `falta-no-gate:` NOTHING compares "captions applied" with "lines written". A future change
+    can restore a silent refusal and every gate stays green — precisely today's state before the
+    cure: 3853 `CAPTION_APPLIED`, 0 `HISTORY_`, 0 `HISTORY_REFUSED`, whole battery green. The
+    scenario: someone adds a third `return` in `recordHistory` without the reporter; arms A/C/D
+    stay green because they never run the panel's early exit, and arm B only checks the arms it
+    declares.
+  (c) `gate-melhor:` `python _main/history-live-gate.py` reading a live log window: FAIL when
+    `count(CAPTION_APPLIED with kind=final) > 0` AND `count(HISTORY_APPEND) == 0` AND
+    `count(HISTORY_REFUSED) == 0`. Input that must leave it red: today's log before the cure
+    (3853 / 0 / 0). That gate does not exist; it is the hole, and the honest statement is that
+    the cure makes the failure LOUD, not that it makes it IMPOSSIBLE.
+- **confianca** — `alta`: the mechanism is executed (0 -> 130 closed lines of 1221 commits through
+  the real engine and store) AND the live instance confirms it (7 `HISTORY_APPEND` + 2
+  `HISTORY_REFUSED` in the same two minutes, `history/2026-11-05/16.md` created — the first store
+  writes since 2026-11-04).
+- **nao verificado** — (1) the panel's VISUAL state after the restart (the drawer now expands
+  because `canonicalProducer` is non-null; I read the store and the log, not the screen);
+  (2) the panel's visual state after a restart (the drawer now expands because
+  `canonicalProducer` is non-null — the owner will see the history section for the first time);
+  (3) `history-route-oracle.js` is RED on arms 1/4 and its redness predates this change: it
+  drives `worker/sotto_worker.py` + `caption-formulation.js` + `history-store.js` and touches
+  neither file I edited; the arms it fails are its own fixture's (`real=["final","provisional-draft"]`
+  from the engine, and a `route` marker missing in its own hand-built line). Not mine, not fixed,
+  flagged; (4) `_main/route-stamp-gate.js` exits 2 with "SETUP ERROR: mutant: the expression to
+  replace is not in the engine" — same class: it mutates `caption-formulation.js`, which I did
+  not touch.
 
 ---

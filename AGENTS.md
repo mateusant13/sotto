@@ -446,8 +446,32 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 17:2x):** `_main\_audit-verify-all.cmd` = **252313 B**,
-  **3108 CRLF** / 0 bare LF, sha256 `2EB2D334A49D62644A30DB7D6E95A0F148F379B8B98A2B54BBD06CFB815C21C0`.
+- **PIN do ficheiro (medido 2026-11-05, 17:1x):** `_main\_audit-verify-all.cmd` = **256385 B**,
+  **3151 CRLF** / 0 bare LF, sha256 `B44617E456717B7555C95EE4FE7FFAA0726F1C30E946CACA078AB0049C23E38A`.
+  (Quinze linhas a mais do que o pin de 255029 B: o par `paused-pace` + o seu
+  `red-as-expected`, nascido da mesma sessao VIVA e da mesma queixa de carga. Medido com o video
+  PAUSADO e o painel ESCONDIDO: `YOUTUBE_LOOP_HZ hz=9.7 src_reads=755` com `YOUTUBE_TICK_MS
+  avg=0` e `cdp_age_ms=16` -- o trabalho estava FORA do tick medido, numa ida e volta a CDP por
+  volta, e a shell media **23,4 %** de um nucleo em REPOUSO. A escada do silencio existia mas
+  `yt_mode` e' verdadeiro sempre que o ramo do YouTube corre, logo nunca descia. `poll_step`
+  (funcao pura, extraida por `ast`) desce o passo com o video parado; depois da cura o laco mede
+  **hz=4.0** e a shell **8,1 %**. O oraculo EXECUTA a funcao real e o `--neg-arm` devolve rc=1.)
+  (Quinze linhas a mais do que o pin de 253523 B: o par `page-scan-browser` + o seu
+  `red-as-expected`. MEDIDO na instancia VIVA (pid 62492, video PAUSADO):
+  `EXTERNAL_CAPTIONS_READ_MS ms=1593.0 / 1547.0 / 1812.0` -- a leitura inteira dentro da
+  varredura UIA da janela do Chrome, de 5 em 5 s, para concluir que uma pagina parada nao tem
+  legenda. O `--neg-arm` desarma a guarda numa copia e o passo exige rc=1 + `NEG-ARM PASS`; o
+  oraculo devolvia 0 ao apanhar o defeito, o que faria de um controlo um portao que nunca pode
+  falhar -- corrigido no oraculo (`return 1 if ok else 0`), nao no passo.)
+  (Treze linhas a mais do que o pin de 252313 B: o par `history-write` + o seu
+  `red-as-expected`, nascido do relato do dono -- *"o painel da direita fica perdendo
+  historico"*. MEDIDO no log vivo dele: 3830 `CAPTION_APPLIED`, **0** `HISTORY_APPEND`,
+  `history/2026-11-05/` inexistente -- o choke point exigia `producer:'redux'`, o passe de
+  batch esta' OFF por omissao e nenhum outro motor carimba a chave, logo o transcript tinha
+  ZERO escritores e a recusa era um `return` mudo. O oraculo executa a decisao, o call
+  site, a proveniencia e o `history_append` num root temporario; o `--neg-arm` repoe a porta
+  antiga em COPIA e exige rc=1. Medido: 1221 commits do stream -> **130** linhas fechadas no
+  disco (antes: 0), `producer=` carimbado, nenhum `provisional-draft` no ficheiro.)
   (Doze linhas a mais do que o pin de 251219 B: o `red-as-expected-worker-start-wiring`, o braco que
   faltava a um portao que era um verde SEM controlo. Nasceu de uma medicao de hoje: o arranque das
   16:19:10 escreveu `WORKER_AUTOSTART=started reason=default` **duas vezes** -- 16:19:11.098 pelo

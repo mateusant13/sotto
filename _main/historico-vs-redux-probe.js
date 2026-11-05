@@ -249,15 +249,21 @@ function main() {
     ['final', 'provisional-draft'],
   );
   // The two guards the probe CANNOT execute (panel.js is DOM-bound; the webview
-  // store is Python). Source-level, so deleting a guard goes RED here.
+  // store is Python). Source-level, so deleting a guard goes RED here — but the
+  // pattern must match the SHIPPED shape, not a comment about an old one.
+  // 2026-11-05: the panel's guard became one call into `history-source.js` plus
+  // a refusal report, and the store's silent `return None` learned to say
+  // `HISTORY_REFUSED`. Both are matched by what they DO, with a bounded window.
   arm(
-    'guard present — panel.js recordHistory declines a provisional-draft',
-    /if \(route !== 'final'\) return;/.test(fs.readFileSync(panelPath, 'utf8')),
+    'guard present — panel.js recordHistory refuses what the decision refuses (and reports it)',
+    /const route = sourceApi && sourceApi\.transcriptRoute/.test(fs.readFileSync(panelPath, 'utf8'))
+      && /if \(!route\) \{[\s\S]{0,200}reportHistoryRefusal\(/.test(fs.readFileSync(panelPath, 'utf8')),
     true,
   );
   arm(
-    'guard present — sotto_webview.py history_append declines a provisional-draft',
-    /== 'provisional-draft':\r?\n\s+return None/.test(fs.readFileSync(webviewPath, 'utf8')),
+    'guard present — sotto_webview.py history_append declines a provisional-draft (and says so)',
+    /== 'provisional-draft'[\s\S]{0,400}HISTORY_REFUSED reason=provisional-draft[\s\S]{0,300}return None/
+      .test(fs.readFileSync(webviewPath, 'utf8')),
     true,
   );
 

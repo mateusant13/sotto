@@ -53,6 +53,7 @@
  */
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const HERE = __dirname;
@@ -237,7 +238,11 @@ function main() {
   // ONE source.
   const preCure = (c) => ((c.route || 'final') === 'final');
 
-  const ROOT = path.join(REPO, 'history-verify');
+  // A THROWAWAY root, never `history-verify/`: `writeHistory` does `rmSync` on
+  // each arm's directory, and when this pointed into the repo it DELETED the
+  // tracked fixtures of other probes (`history-verify/plvh-*/2026-10-07/02.md`,
+  // measured 2026-11-05). A measurement may not destroy what it measures.
+  const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'lvs-source-'));
   const asShipped = writeHistory(commits, shipped, null, path.join(ROOT, 'source-as-shipped'));
   const reduxTagged = writeHistory(commits, shipped, source.CANONICAL_PRODUCER, path.join(ROOT, 'source-redux'));
   const before = writeHistory(beforeCommits, preCure, null, path.join(ROOT, 'source-before'));

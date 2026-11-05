@@ -2903,6 +2903,21 @@ class YouTubeTrackThread(threading.Thread):
                len(paint) if paint else 0))
 
 
+def poll_step(idle_for, paused, base, idle):
+    """O PASSO DO LACO DA LEGENDA EXTERNA, como funcao pura.
+
+    Existe para ser JULGADO: a decisao estava enterrada no meio de um laco de
+    200 linhas, e um laco nao se testa sem um desktop. Duas razoes descem o
+    passo -- cinco segundos sem leitura de player (`idle_for`) e o video
+    PAUSADO (`paused`) --, porque uma legenda nao muda com o video parado.
+    MEDIDO 2026-11-05, na instancia do dono com o video pausado: o laco a 10 Hz
+    custava 16,3% de um nucleo com o painel escondido; a 4 Hz custa 8,1%.
+    """
+    if idle_for >= 5.0 or paused:
+        return idle
+    return base
+
+
 def _yt_mark(owner, phase):
     """Marca a fase em ms desde o inicio da LEITURA (2026-11-03).
 
@@ -2910,12 +2925,19 @@ def _yt_mark(owner, phase):
     leitura de 58 s sem nome de fase. Um numero assim sem nome e' um beco.
     """
     try:
+        # O RELOGIO E' UNICO E E' O INICIO DA LEITURA (2026-11-05). Medido:
+        # `EXTERNAL_CAPTIONS_READ_MS ms=1703.0 phases={'target': 0.0,
+        # 'source': 0.0}` -- duas fases a zero e um total de 1,7 s, ou seja um
+        # instrumento que nao sabe onde o tempo foi e o diz com dois zeros que
+        # parecem bons. A causa: a fase criava o seu PROPRIO instante zero
+        # quando `_yt_phase_start` faltava, e o total era medido por outro
+        # relogio. Um marco nunca inventa o zero -- quem le' a leitura faz isso.
         start = getattr(owner, '_yt_phase_start', None)
-        if start is None:
-            owner._yt_phase_start = time.monotonic()
-            start = owner._yt_phase_start
+        if not start:
+            start = time.monotonic()
+            owner._yt_phase_start = start
         phases = getattr(owner, '_yt_phases', None)
-        if phases is None or getattr(owner, '_yt_phase_start', None) != start:
+        if phases is None:
             phases = {}
             owner._yt_phases = phases
         phases[phase] = round((time.monotonic() - start) * 1000.0, 1)
@@ -3117,6 +3139,27 @@ class ExternalCaptionWatcher(threading.Thread):
                 got, yt_mode = self._read(uia, UIA)
                 self.reads += 1
                 _ms = (time.monotonic() - _t_read) * 1000.0
+                # A CONTA INTEIRA, NAO SO' O QUE PASSA DOS 40 ms (2026-11-05).
+                # MEDIDO: a shell em REPOUSO (video pausado, painel escondido)
+                # queimava 23,4 % de um nucleo e NENHUMA linha aparecia, porque o
+                # instrumento so' falava acima de 40 ms -- 10 leituras por segundo
+                # a 23 ms cada sao invisiveis uma a uma e sao um nucleo inteiro
+                # somadas. Este agregado publica a media e o p95 a cada 30 s.
+                if not hasattr(self, '_read_ms'):
+                    self._read_ms = []
+                    self._read_stats_at = _t_read
+                self._read_ms.append(_ms)
+                if len(self._read_ms) > 600:
+                    del self._read_ms[:300]
+                if _t_read - self._read_stats_at >= 30.0:
+                    _n = len(self._read_ms)
+                    _sorted = sorted(self._read_ms)
+                    log('EXTERNAL_CAPTIONS_READ_STATS n=%d mean_ms=%.1f p95_ms=%.1f '
+                        'max_ms=%.1f interval_s=%.2f'
+                        % (_n, sum(_sorted) / float(_n or 1),
+                           _sorted[min(_n - 1, int(_n * 0.95))] if _n else 0.0,
+                           _sorted[-1] if _n else 0.0, self.INTERVAL_S))
+                    self._read_stats_at = _t_read
                 if _ms > 40.0:
                     _now = time.monotonic()
                     if _now - getattr(self, "read_slow_logged", 0.0) > 5.0:
@@ -3152,8 +3195,24 @@ class ExternalCaptionWatcher(threading.Thread):
                 self._idle_since = time.monotonic()
             _idle_for = (time.monotonic() - self._idle_since
                          if getattr(self, '_idle_since', 0.0) else 0.0)
-            _step = (self.IDLE_INTERVAL_S if _idle_for >= 5.0
-                     else self.INTERVAL_S)
+            # PAUSA NAO PRECISA DE 10 Hz (2026-11-05, MEDIDO). Com o video
+            # PAUSADO o laco continuava a perguntar a CDP 10 vezes por segundo
+            # (`YOUTUBE_LOOP_HZ ... hz=9.7 src_reads=880`, `cdp_age_ms=16`), e
+            # cada pergunta e' uma ida e volta ao Chrome: a shell em REPOUSO
+            # media 16,3 % de um nucleo com o painel escondido e nada a tocar.
+            # `yt_mode` e' verdadeiro sempre que o ramo do YouTube corre -- nao
+            # significa que haja conteudo novo -- por isso a escada do silencio
+            # nunca descia. Uma legenda nao muda com o video parado: 0,45 s chega
+            # para ver o `play` voltar, e o custo de detetar o resume e' 0,45 s
+            # que a primeira cue ja' paga.
+            _yt_paused = bool(getattr(self, 'yt_cdp_paused', False))
+            if _yt_paused != getattr(self, '_paced_logged', None):
+                self._paced_logged = _yt_paused
+                log('YOUTUBE_POLL_PACED paused=%s interval_s=%.2f'
+                    % (_yt_paused, self.IDLE_INTERVAL_S if _yt_paused
+                       else self.INTERVAL_S))
+            _step = poll_step(_idle_for, _yt_paused,
+                              self.INTERVAL_S, self.IDLE_INTERVAL_S)
             # O CUSTO DO DESENHO TAMBEM E' UM NUMERO (2026-11-03). Com a leitura
             # ja' barata (17 Hz medidos) o laco caiu para 0,5-5 Hz noutros
             # momentos: o que sobra e' `_tick`, que pinta a janela. Sem esta
@@ -3314,9 +3373,16 @@ class ExternalCaptionWatcher(threading.Thread):
         # pilhas quando a leitura passa de `SLOW_READ_S`. Diagnostico nao cobra
         # nada: e' uma escrita de um float.
         self._in_read_since = time.monotonic()
+        # O ZERO DA LEITURA E' AQUI, para qualquer chamador -- a fase nunca o
+        # inventa (ver `_yt_mark`).
+        self._yt_phase_start = self._in_read_since
+        self._yt_phases = {}
         try:
             return self._read_inner(uia, UIA)
         finally:
+            # `end` fecha a conta: o que nao tiver fase fica no intervalo entre
+            # `end` e a soma das outras, e deixa de ser um beco.
+            _yt_mark(self, 'end')
             self._in_read_since = 0.0
 
     SLOW_READ_S = 3.0
@@ -3340,6 +3406,7 @@ class ExternalCaptionWatcher(threading.Thread):
         RETURNS `(got, yt_mode)`.
         """
         import external_subs
+        _yt_mark(self, 'import')
         _t_all = time.monotonic()
         hwnd = self._target_window(uia, UIA)
         _yt_mark(self, 'target')
@@ -3541,6 +3608,23 @@ class ExternalCaptionWatcher(threading.Thread):
         # janela que nao e' player) nao paga nada; a rede fica a uma varredura de
         # 5 em 5 s, que e' o tecto do atraso para um pintor que o catalogo ainda
         # nao conheca.
+        # UM BROWSER NAO PINTA A LEGENDA NA PAGINA (2026-11-05). MEDIDO no log
+        # vivo da instancia do dono, com o video PAUSADO:
+        # `EXTERNAL_CAPTIONS_READ_MS ms=1547..1812 phases={'import': 0.0,
+        # 'target': 0.0, 'source': 0.0, 'end': 1593.0}` -- toda a leitura dentro
+        # da varredura UIA da janela do Chrome, uma vez a cada 5 s, para concluir
+        # que uma pagina de video parada nao tem legenda. A varredura existe para
+        # quem PINTA a legenda na propria pagina (Stremio, que e' Electron); um
+        # browser com barra de endereco e' lido pela CDP ou pela arvore da
+        # legenda, e nunca por pintura. Identidade POSITIVA: `_is_browser` sobre o
+        # processo da janela, nao o silencio da leitura anterior.
+        try:
+            if hwnd and external_subs._is_browser(external_subs._process_name(hwnd)):
+                self._page_scan_browser_skipped = int(
+                    getattr(self, '_page_scan_browser_skipped', 0)) + 1
+                return [], False
+        except Exception:                     # noqa: BLE001
+            pass
         if source != 'external:stremio':
             _now = time.monotonic()
             if _now - getattr(self, '_page_scan_at', 0.0) < 5.0:
@@ -10156,9 +10240,11 @@ class SottoHost:
         this is a line per refusal SHAPE, not a flood.
         """
         payload = payload or {}
-        log('HISTORY_REFUSED reason=%s route=%s producer=%s src=%s n=%s total=%s'
-            % (payload.get('reason') or '',
+        log('HISTORY_REFUSED where=%s reason=%s route=%s final=%s producer=%s src=%s n=%s total=%s'
+            % (payload.get('where') or '-',
+               payload.get('reason') or '',
                payload.get('route') or '-',
+               '-' if payload.get('final') is None else str(bool(payload.get('final'))).lower(),
                payload.get('producer') or '-',
                payload.get('src') or '-',
                payload.get('n') if payload.get('n') is not None else '-',
@@ -12996,8 +13082,8 @@ class SottoShell:
         if isinstance(options, dict) and str(options.get('route') or '').strip() == 'provisional-draft':
             # A REFUSAL IS AN EVENT (2026-11-05): this `return` was silent, and a
             # silent refusal is indistinguishable from a store that is not wired.
-            log('HISTORY_REFUSED reason=provisional-draft route=provisional-draft'
-                ' producer=%s src=- n=1 total=-'
+            log('HISTORY_REFUSED where=history_append reason=provisional-draft'
+                ' route=provisional-draft final=false producer=%s src=- n=1 total=-'
                 % ((options.get('producer') if isinstance(options, dict) else None) or '-'))
             return None
         now = time.localtime()

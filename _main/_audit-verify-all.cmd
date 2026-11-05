@@ -185,6 +185,17 @@ REM de baixo exige que os mutantes vao RED.
 call :step redux-transcript-path 0 "_main\_redux-transcript-path.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\redux-transcript-path.log" python _main\_redux-transcript-path.py
 call :record redux-transcript-path !STEP_RC!
 
+REM A LINHA FECHADA CHEGA MESMO AO DISCO? (2026-11-05). O dono: *"o painel da
+REM direita fica perdendo historico"*. MEDIDO no log dele: 3830 CAPTION_APPLIED,
+REM ZERO HISTORY_APPEND, `history/2026-11-05/` inexistente. O choke point exigia
+REM `producer:'redux'`, o passe de batch esta' OFF por omissao e NENHUM outro motor
+REM carimba a chave -- o transcript tinha zero escritores e a recusa era um `return`
+REM mudo. O oraculo executa as QUATRO metades vivas (a decisao, o call site, a
+REM proveniencia e o `history_append` a escrever num root TEMPORARIO) e o braco de
+REM baixo repoe a porta antiga em COPIA e exige o vermelho.
+call :step history-write 0 "_main\history-write-oracle.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\history-write.log" python _main\history-write-oracle.py
+call :record history-write !STEP_RC!
+
 REM A LEGENDA NAO PODE CONCATENAR A MESMA LINHA DUAS VEZES (2026-11-03). Medido
 REM no log VIVO do dono (pid 18156, 11:45): o worker publicou as tres versoes
 REM cumulativas limpas e o `CAPTION_APPLIED` publicou a soma delas --
@@ -271,6 +282,8 @@ call :step always red-as-expected-youtube-first-at-boot 1 "_main\youtube-first-a
 call :expectred red-as-expected-youtube-first-at-boot !STEP_RC! "%OUT%\youtube-first-at-boot-neg.log" "NEG-ARM: PASS"
 call :step red-as-expected-redux-transcript-path 1 "_main\_redux-transcript-path.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\redux-transcript-path-neg.log" python _main\_redux-transcript-path.py --neg-arm
 call :expectred red-as-expected-redux-transcript-path !STEP_RC! "%OUT%\redux-transcript-path-neg.log" "NEG-ARM: PASS"
+call :step red-as-expected-history-write 1 "_main\history-write-oracle.py;app\panel\history-source.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\history-write-neg.log" python _main\history-write-oracle.py --neg-arm
+call :expectred red-as-expected-history-write !STEP_RC! "%OUT%\history-write-neg.log" "NEG-ARM: PASS"
 
 echo === the gates added by this round ===
 REM The SECOND control of the same gate, added 2026-10-19: the first one
@@ -1432,6 +1445,36 @@ if exist _main\load-bg-window-oracle.py (
 call :step always red-as-expected-load-bg-window 1 "_main\load-bg-window-oracle.py;worker\sotto_worker.py" "%OUT%\load-bg-window-neg.log" python _main\load-bg-window-oracle.py --neg-arm
 call :expectred red-as-expected-load-bg-window !STEP_RC! "%OUT%\load-bg-window-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-load-bg-window MISSING "%OUT%\load-bg-window-neg.log" "NEG-ARM: PASS" )
+REM A PAGINA PARADA NAO PAGA A VARREDURA UIA (2026-11-05, instancia VIVA pid 62492, video
+REM PAUSADO): `EXTERNAL_CAPTIONS_READ_MS ms=1593/1547/1812` -- a leitura INTEIRA dentro da
+REM varredura da janela do Chrome inteira, uma vez a cada 5 s, para concluir que uma pagina
+REM parada nao tem legenda. O browser com barra de endereco nao pinta legenda na pagina, logo
+REM nao paga a varredura; quem pinta e' Electron/Stremio. O oraculo executa `_is_browser` nos
+REM dois lados e le por `ast` que a guarda precede `caption_lines` em `_read_inner`. A classe e'
+REM `always` porque le `external_subs.py` e `sotto_webview.py`, que mudam a cada edicao.
+if exist _main\page-scan-browser-oracle.py (
+call :step always page-scan-browser 0 "_main\page-scan-browser-oracle.py;app\webview\external_subs.py;app\webview\sotto_webview.py" "%OUT%\page-scan-browser.log" python _main\page-scan-browser-oracle.py
+call :record page-scan-browser !STEP_RC!
+) else ( call :record page-scan-browser MISSING )
+if exist _main\page-scan-browser-oracle.py (
+call :step always red-as-expected-page-scan-browser 1 "_main\page-scan-browser-oracle.py;app\webview\external_subs.py;app\webview\sotto_webview.py" "%OUT%\page-scan-browser-neg.log" python _main\page-scan-browser-oracle.py --neg-arm
+call :expectred red-as-expected-page-scan-browser !STEP_RC! "%OUT%\page-scan-browser-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-page-scan-browser MISSING "%OUT%\page-scan-browser-neg.log" "NEG-ARM PASS" )
+REM PAUSA NAO PRECISA DE 10 Hz (2026-11-05, instancia VIVA pid 31992, video PAUSADO e painel
+REM escondido): `YOUTUBE_LOOP_HZ hz=9.7 src_reads=755` com `YOUTUBE_TICK_MS avg=0` e
+REM `cdp_age_ms=16` -- o trabalho estava FORA do tick medido, numa ida e volta a CDP por volta, e
+REM a shell media 23,4% de um nucleo em REPOUSO. A escada do silencio existia mas `yt_mode` e'
+REM verdadeiro sempre que o ramo do YouTube corre, logo nunca descia. Uma legenda nao muda com o
+REM video parado: `poll_step` desce o passo, e depois da cura o laco mede hz=4.0 e 8,1%. O oraculo
+REM EXECUTA a funcao real (extraida por ast) e le que `_step` e' o que ela devolve.
+if exist _main\paused-pace-oracle.py (
+call :step always paused-pace 0 "_main\paused-pace-oracle.py;app\webview\sotto_webview.py" "%OUT%\paused-pace.log" python _main\paused-pace-oracle.py
+call :record paused-pace !STEP_RC!
+) else ( call :record paused-pace MISSING )
+if exist _main\paused-pace-oracle.py (
+call :step always red-as-expected-paused-pace 1 "_main\paused-pace-oracle.py;app\webview\sotto_webview.py" "%OUT%\paused-pace-neg.log" python _main\paused-pace-oracle.py --neg-arm
+call :expectred red-as-expected-paused-pace !STEP_RC! "%OUT%\paused-pace-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-paused-pace MISSING "%OUT%\paused-pace-neg.log" "NEG-ARM PASS" )
 if exist _main\parakeet-ultra-oracle.py (
 call :step heavy parakeet-ultra 0 "_main\parakeet-ultra-oracle.py;worker\parakeet_ultra.py;worker\ultra_export.py;app\worker\redux_live.py" "%OUT%\parakeet-ultra.log" python _main\parakeet-ultra-oracle.py --engine all
 call :record parakeet-ultra !STEP_RC!

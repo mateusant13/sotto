@@ -680,7 +680,11 @@ def find_player_window():
 def _is_browser(proc):
     """Is this process name a browser with an address bar?"""
     p = str(proc or "").lower()
-    return ("chrome" in p or "msedge" in p or "firefox" in p)
+    # `brave` entrou por MEDICAO (2026-11-05, `page-scan-browser-oracle.py` A2):
+    # e' Chromium, expoe a mesma CDP e tem barra de endereco, mas o nome nao
+    # contem nenhuma das tres palavras -- um usuario de Brave pagava a varredura
+    # UIA da pagina inteira (1547-1812 ms por leitura, medidos) para nada.
+    return ("chrome" in p or "msedge" in p or "firefox" in p or "brave" in p)
 
 
 def _window_is_player(title, proc, url=""):

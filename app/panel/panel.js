@@ -2242,8 +2242,13 @@ function reportHistoryRefusal(sourceApi, meta) {
   if (n !== 1 && n % 50 !== 0) return;
   if (!bridge || typeof bridge.historyRefused !== 'function') return;
   bridge.historyRefused({
+    where: 'panel/recordHistory',
     reason: info.reason,
     route: info.route,
+    // THE WORKER'S OWN VOTE, when the meta carries one: `route` is what the
+    // panel DERIVED, `final` is what the worker SAID, and a reader who has only
+    // the log must be able to tell the two apart without re-deriving the chain.
+    final: meta && typeof meta.final === 'boolean' ? meta.final : null,
     producer: info.producer,
     src: info.src,
     n,
