@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: mede se a linha FECHADA chega ao historico (choke point de 2026-11-05); a classe nao tem id no leder
 # -*- coding: utf-8 -*-
 """Sotto - does a CLOSED caption line actually REACH the transcript? (2026-11-05)
 

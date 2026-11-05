@@ -1,4 +1,5 @@
 """A VARREDURA DA PAGINA NAO CORRE NUM BROWSER -- e o log tem de mostrar isso.
+# NO-BUG: mede o custo da varredura UIA (a pagina, nao o browser) com o video parado; carga, nao bug do leder
 
 DEFEITO MEDIDO, 2026-11-05, na instancia VIVA do dono (pid 62492, log
 `_main/webview-run.log`), com o video do YouTube PAUSADO:

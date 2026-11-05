@@ -25,14 +25,17 @@ ARMS, and how each one can say NO:
 Exit 0 = every arm as expected. 3 = a product gap. 2 = the instrument could not
 measure (a needle is missing) -- never a silent pass.
 """
+import ast
+import builtins
 import ctypes
 import importlib.util
+import os
 import re
 import sys
 import threading
 import time
 
-WORKER = r"H:\sotto\worker\sotto_worker.py"
+WORKER = os.environ.get("SOTTO_TAP_ORACLE_WORKER") or r"H:\sotto\worker\sotto_worker.py"
 TAP = r"H:\sotto\worker\wasapi_loopback.py"
 FAILED = []
 MISSING = []
@@ -214,12 +217,140 @@ def policy_from_source(text):
 STALL_POLICY = policy_from_source(src)
 
 
+# -- O BLOCO PEDE NOMES NOVOS, E ISSO NAO PODE VIRAR NameError (2026-11-05) ---
+# Medido antes desta cura: EXTRAI 108 linhas do `main()` e o `PARAMS` era uma
+# tupla escrita a mao, entao cada NOME que uma lane nova metesse no bloco fazia a
+# arm morrer com `NameError: name 'stop' is not defined` -- e o irmao
+# `tap-idle-liveness-oracle.py` morreu exactamente assim (`stop`, `progress`).
+# Um oraculo nao pode apodrecer em silencio: (1) os nomes livres sao DERIVADOS do
+# texto extraido por AST, (2) os que o produto tem no seu nivel de modulo sao
+# lidos DO FICHEIRO QUE EMBARCA (constante por `literal_eval`, funcao por fonte),
+# (3) os locais do `main()` recebem um DUPLO nomeado aqui, e (4) o que sobra e'
+# RECUSA com rc=2 a nomear os nomes -- nunca um traceback a meio de uma arm.
+
+class _RecStop:
+    """O `stop` do `main()`. A forma que o bloco pode usar e' `wait`/`is_set`
+    (o ficheiro proibe `time.sleep` no caminho do laco: uma espera que nao acorda
+    e' a diferenca entre um pedido de paragem que chega e um que espera)."""
+
+    def __init__(self):
+        self.waits = []
+
+    def wait(self, timeout=None):
+        self.waits.append(timeout)
+        return False
+
+    def is_set(self):
+        return False
+
+
+_UNRESOLVED = object()
+
+
+def _module_value(name):
+    """O valor REAL do nome no ficheiro que embarca, sem importar o worker.
+
+    Importar `sotto_worker.py` carregaria onnxruntime e a cadeia de audio; o texto
+    basta e mantem o instrumento na familia que este oraculo ja usa (fonte, nao
+    objecto). Constante -> `literal_eval`; funcao -> o proprio `def` executado.
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return _UNRESOLVED
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            if any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+                try:
+                    return ast.literal_eval(node.value)
+                except ValueError:
+                    return _UNRESOLVED
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) \
+                and node.target.id == name and node.value is not None:
+            try:
+                return ast.literal_eval(node.value)
+            except ValueError:
+                return _UNRESOLVED
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            seg = ast.get_source_segment(src, node)
+            if not seg:
+                return _UNRESOLVED
+            sub = {}
+            try:
+                exec(compile(seg, "<worker:%s>" % name, "exec"), sub)
+            except Exception:
+                return _UNRESOLVED
+            return sub.get(name, _UNRESOLVED)
+    return _UNRESOLVED
+
+
+def _free_names(text):
+    """Os nomes que o bloco USA e nao DEFINE -- derivados, nunca uma lista."""
+    try:
+        tree = ast.parse("def _block():\n"
+                         + "\n".join("    " + l for l in text.splitlines()))
+    except SyntaxError as exc:
+        print("REFUSED: o bloco extraido nao compila (%s)" % exc)
+        sys.exit(2)
+    bound, used = set(), set()
+    for node in ast.walk(tree.body[0]):
+        if isinstance(node, ast.Name):
+            (bound if isinstance(node.ctx, ast.Store) else used).add(node.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            if hasattr(node, "name"):
+                bound.add(node.name)
+            for a in node.args.args:
+                bound.add(a.arg)
+        elif isinstance(node, ast.arg):
+            bound.add(node.arg)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for a in node.names:
+                bound.add((a.asname or a.name).split(".")[0])
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            bound.add(node.name)
+        elif isinstance(node, ast.comprehension):
+            for n in ast.walk(node.target):
+                if isinstance(n, ast.Name):
+                    bound.add(n.id)
+    return sorted(used - bound)
+
+
 def run_block(text, args, tag):
     body = "\n".join("        " + l for l in text.splitlines())
     prog = "def run(%s):\n%s    for _once in (0,):\n%s\n%s" % (PARAMS, INIT, body, RET)
-    ns = {}
+    ns = dict(args)
+    ns.setdefault("stop", _RecStop())
+    ns.setdefault("progress", lambda *a, **k: None)
+    missing = []
+    for name in _free_names(text):
+        if name in ns or hasattr(builtins, name):
+            continue
+        value = _module_value(name)
+        if value is _UNRESOLVED:
+            missing.append(name)
+        else:
+            ns[name] = value
+    if missing:
+        print("REFUSED: o bloco extraido pede nomes que este oraculo nao fornece: %s"
+              % ", ".join(missing))
+        print("         um nome novo no bloco NAO pode virar NameError a meio de "
+              "uma arm: acrescenta o duplo aqui, ou le-o do produto.")
+        sys.exit(2)
     exec(compile(prog, "<extracted:%s>" % tag, "exec"), ns)
     return ns["run"](**args)
+
+
+# ------------------------------------------------- ARM 0 the instrument itself
+# A derivacao de nomes e' o que impede esta classe de apodrecer em silencio, logo
+# ela propria tem de saber dizer NAO: um nome que ninguem fornece TEM de aparecer
+# na lista livre, e um nome DEFINIDO no bloco nao pode aparecer nela (senao a
+# recusa dispara por nomes que o proprio bloco cria).
+_PLANT = "x = 1\ny = nome_que_nao_existe_em_lugar_nenhum + x\nfor i in range(2):\n    x = x + i\n"
+_FREE = _free_names(_PLANT)
+arm("ARM 0 a derivacao de nomes VE um nome novo e nao acusa um nome definido",
+    "nome_que_nao_existe_em_lugar_nenhum" in _FREE and "x" not in _FREE and "i" not in _FREE,
+    "free=%s" % (_FREE,))
 
 
 class FakeStream:

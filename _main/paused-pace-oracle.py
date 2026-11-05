@@ -1,4 +1,5 @@
 """O PASSO DO LACO DA LEGENDA EXTERNA -- executado, nao lido.
+# NO-BUG: mede o PASSO do laco da legenda externa com o video parado; e carga em repouso, nao bug do leder
 
 DEFEITO MEDIDO, 2026-11-05, na instancia VIVA do dono com o video PAUSADO e o
 painel ESCONDIDO:

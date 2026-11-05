@@ -1,557 +1,552 @@
 {
- "schema": "sotto-battery-wiring-baseline/1",
- "why": "Os oraculos de enforcement que ja existiam em 2026-10-25 sem passo na bateria. Ratchet: so pode encolher. Ver _main/battery-wiring-oracle.py.",
- "ceiling": 124,
- "entries": [
-  {
-   "file": "_cura-oracle-suite.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "_focus-title-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "_launch-gate.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "_ordem-cura-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "_oss_oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "aceitacao-gate.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "app-target-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "audio-meter-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "audio-recorder-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "base-themes-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "battery-rows-gate.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "benign-status-arm-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "bridge-handler-map-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "canonical-producer-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "caption-lines-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "caption-overlay-free-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "caption-punctuation-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "caption-wrap-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "channel-class-site-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "child-channel-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "cine-themes-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "cinematic-designs-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "cited-instruments-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "cobertura-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "config-keys-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "csp-inline-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "delivery-rate-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "der-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "device-ladder-doc-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "device-ladder-rescan-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "emit-queue-bound-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "focus-and-flash-gate.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "focus-timeline-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "forbidden-audio-line-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "foreign-chars-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "gen-cinematic-repro-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "gen-themes-repro-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "hook-cost-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "log-rotation-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "meter-chain-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "multivoice-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "named-panel-state-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "no-audio-latch-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "offline-load-guard-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "offscreen-cure-comment-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "panel-chrome-gate.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "panel-chrome-marks-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "panel-flash-numbers-reconciliation-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "panel-startup-visibility-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "panel-state-atomic-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "panel-visibility-guard-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "phase-a-b-cycle-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "preflight-refusal-visible-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "queue-drops-whitelist-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "ram_gate.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "ready-stream-blindness-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "redux-live-overlay-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "render-protection-gate.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "restart-30s-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "revive-pipeline-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "rtf-cpu-attribution-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "run-cmd-exit-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "run-cmd-refusal-path-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "run-cmd-verdict-attribution-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "runcmd-arm-coverage-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "s7-silence-window-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "scale_gate_selftest.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "second-pass-default-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "selftest-focus-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "selftest-quality-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "sidecar-wiring-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "skin-strip-gate.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "speaker-density-gate-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "speaker-id-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "speaker-plumbing-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "speaker-sidecar-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "speaker-slots-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "speaker-watch-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "speech-gate-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "staging-hang-artefact-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "stale-receipt-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "start-menu-shortcut-gate.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "strip-drag-shell-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "strip-geometry-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "surface-loop-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "tap-idle-liveness-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "tap-restart-loop-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "tap-stall-policy-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "tap-stall-watchdog-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "theme-button-contrast-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "theme-button-geometry-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "timeout-tree-ceiling-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "ui-watchdog-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "unfinished-items-coverage-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "verdict-order-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "vram-reuse-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "wake-tick-gate.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "wasapi-buffer-fallback-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "watch-retention-fifo-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "webview-child-gate.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "webview-shell-field-count-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "wordmark-metrics-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "worker-busy-loop-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "worker-eof-contract-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "worker-reload-guard-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "worker-respawn-ceiling-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "worker-restart-guard-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "youtube-sync-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "youtube-window-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  },
-  {
-   "file": "zipc-designs-oracle.py",
-   "reason": "REASON-MISSING preencher a mao",
-   "date": "2026-10-25"
-  }
- ]
+  "ceiling": 124,
+  "entries": [
+    {
+      "date": "2026-10-25",
+      "file": "_cura-oracle-suite.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "_focus-title-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "_launch-gate.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "_ordem-cura-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "_oss_oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "aceitacao-gate.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "app-target-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "audio-meter-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "audio-recorder-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "base-themes-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "battery-rows-gate.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "benign-status-arm-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "bridge-handler-map-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "canonical-producer-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "caption-lines-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "caption-overlay-free-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "caption-punctuation-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "caption-wrap-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "channel-class-site-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "child-channel-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "cine-themes-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "cinematic-designs-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "cited-instruments-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "cobertura-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "config-keys-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "csp-inline-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "delivery-rate-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "der-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "device-ladder-doc-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "device-ladder-rescan-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "emit-queue-bound-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "focus-and-flash-gate.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "focus-timeline-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "forbidden-audio-line-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "foreign-chars-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "gen-cinematic-repro-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "gen-themes-repro-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "hook-cost-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "log-rotation-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "meter-chain-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "multivoice-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "named-panel-state-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "no-audio-latch-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "offline-load-guard-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "offscreen-cure-comment-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "panel-chrome-gate.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "panel-chrome-marks-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "panel-flash-numbers-reconciliation-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "panel-startup-visibility-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "panel-state-atomic-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "panel-visibility-guard-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "phase-a-b-cycle-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "preflight-refusal-visible-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "queue-drops-whitelist-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "ram_gate.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "ready-stream-blindness-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "redux-live-overlay-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "render-protection-gate.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "restart-30s-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "revive-pipeline-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "rtf-cpu-attribution-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "run-cmd-exit-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "run-cmd-refusal-path-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "run-cmd-verdict-attribution-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "runcmd-arm-coverage-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "s7-silence-window-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "scale_gate_selftest.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "second-pass-default-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "selftest-focus-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "selftest-quality-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "sidecar-wiring-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "skin-strip-gate.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "speaker-density-gate-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "speaker-id-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "speaker-plumbing-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "speaker-sidecar-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "speaker-slots-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "speaker-watch-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "speech-gate-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "staging-hang-artefact-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "stale-receipt-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "start-menu-shortcut-gate.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "strip-drag-shell-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "strip-geometry-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "surface-loop-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "tap-restart-loop-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "tap-stall-policy-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "tap-stall-watchdog-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "theme-button-contrast-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "theme-button-geometry-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "timeout-tree-ceiling-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "ui-watchdog-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "unfinished-items-coverage-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "verdict-order-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "vram-reuse-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "wake-tick-gate.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "wasapi-buffer-fallback-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "watch-retention-fifo-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "webview-child-gate.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "webview-shell-field-count-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "wordmark-metrics-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "worker-busy-loop-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "worker-eof-contract-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "worker-reload-guard-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "worker-respawn-ceiling-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "worker-restart-guard-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "youtube-sync-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "youtube-window-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    },
+    {
+      "date": "2026-10-25",
+      "file": "zipc-designs-oracle.py",
+      "reason": "REASON-MISSING preencher a mao"
+    }
+  ],
+  "schema": "sotto-battery-wiring-baseline/1",
+  "why": "Os oraculos de enforcement que ja existiam em 2026-10-25 sem passo na bateria. Ratchet: so pode encolher. Ver _main/battery-wiring-oracle.py."
 }

@@ -1,5 +1,5 @@
 {
-  "why": "Populacao que ja existia quando a lei nasceu (2026-10-23). Nao e uma amnistia: e o numero de ficheiros sem intencao declarada que o portao aceita, e ele nao pode CRESCER. Qualquer ferramenta nova tem de declarar BLOCKS: ou NO-BUG: -- ver _main/tooling-intent-oracle.py.",
+  "count_at_baseline": 160,
   "population_globs": [
     "*oracle*.py",
     "*-gate.py",
@@ -7,7 +7,6 @@
     "*_gate*.py",
     "*_guard*.py"
   ],
-  "count_at_baseline": 160,
   "undeclared": [
     "_cura-oracle-suite.py",
     "_external-subs-stability-oracle.py",
@@ -133,7 +132,6 @@
     "strip-drag-shell-oracle.py",
     "strip-geometry-oracle.py",
     "surface-loop-oracle.py",
-    "tap-idle-liveness-oracle.py",
     "tap-open-timeout-oracle.py",
     "tap-restart-loop-oracle.py",
     "tap-stall-policy-oracle.py",
@@ -169,5 +167,6 @@
     "yt-mirror-align-oracle.py",
     "yt-player-track-oracle.py",
     "zipc-designs-oracle.py"
-  ]
+  ],
+  "why": "Populacao que ja existia quando a lei nasceu (2026-10-23). Nao e uma amnistia: e o numero de ficheiros sem intencao declarada que o portao aceita, e ele nao pode CRESCER. Qualquer ferramenta nova tem de declarar BLOCKS: ou NO-BUG: -- ver _main/tooling-intent-oracle.py."
 }

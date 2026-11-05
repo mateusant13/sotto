@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: mede a pontuacao de MODELO contra os clipes reais; a classe nao tem id no leder
 """A PONTUACAO DE MODELO, julgada pela FUNCAO que embarca.
 
 Ordem do dono (2026-11-05, verbatim): *"por que a gente nao normaliza as frases

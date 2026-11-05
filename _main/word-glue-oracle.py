@@ -1,4 +1,5 @@
 """ORACLE for the WORD-GLUE class in `worker/sotto_worker.py` (lane WordSplitFast).
+# NO-BUG: mede a CLASSE do seam de palavras ("very fa st") no worker que embarca; a classe nao tem id no leder
 
 THE DEFECT (owner, 2026-11-05, verbo ad verbum)
 ------------------------------------------------

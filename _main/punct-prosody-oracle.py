@@ -1,4 +1,5 @@
 """Oracle for worker/punctuation_prosody.py.
+# NO-BUG: mede a prosodia (F0/RMS) nos clipes reais, incluindo o veredicto de NAO ligar; nao bug do leder
 
 Modes
   --measure   frame features on the fixture WAVs -> gap histogram + band clustering
