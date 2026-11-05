@@ -1086,6 +1086,90 @@ def _apply_edits(source, edits, why):
     return source
 
 
+#: EVERY MUTANT ARM RUNS IN ITS OWN PROCESS, UNDER A DEADLINE (2026-11-05).
+#: MEDIDO, e custou uma bateria inteira: o passo `panel-hidden-at-startup` ficou
+#: **35 minutos** preso (pid 58708, arrancado 06:52:49, ainda em pe' as 07:28) e
+#: nenhum outro passo da bateria voltou a correr. O `py-spy dump` no processo
+#: vivo e o despejo do proprio prazo poram-no em `show_panel` a nunca voltar --
+#: e carregar VARIOS mutantes, com o CLR/pythonnet de cada um, no MESMO processo
+#: e' o que faz a trava aparecer e desaparecer entre corridas (o mesmo mutante
+#: travou numa corrida e nao na seguinte).
+#:
+#: A CURA E' ARQUITETURAL, NAO UM `sleep`: cada mutante corre em `python` seu,
+#: com `faulthandler.dump_traceback_later(..., exit=True)` a matar-se a si
+#: proprio e a ESCREVER A PILHA no output que o pai captura. Um mutante travado
+#: custa o prazo e deixa um diagnostico, e o processo do oraculo nunca herda o
+#: estado de um mutante anterior.
+#:
+#: UM MUTANTE QUE TRAVA O CAMINHO DO SHOW **E' APANHADO**: o oraculo pergunta se
+#: a mutacao quebra a visibilidade, e um `show_panel` que nunca volta quebra-a
+#: por definicao. O veredicto diz que foi por TRAVA, nunca por uma decisao
+#: errada -- as duas coisas nao se confundem na leitura. Um mutante cujo `expect`
+#: e' `not-caught` (o controle que TEM de ficar sadio) NAO se salva por travar:
+#: uma trava la' e' FALHA.
+MUTANT_ARM_DEADLINE_S = float(os.environ.get('SOTTO_VIS_MUTANT_DEADLINE_S',
+                                            '90'))
+CREATE_NO_WINDOW = 0x08000000
+MUTANT_RESULT_TAG = 'MUTANT-RESULT '
+
+
+def _mutant_arm_child(shell_path, deadline_s):
+    """CHILD MODE: drive ONE mutant and print `MUTANT-RESULT <json>`.
+
+    Runs in its own interpreter (see the note above `MUTANT_ARM_DEADLINE_S`).
+    A hang is killed by `faulthandler`, whose dump lands in the output the
+    parent captures -- so the step log names the frame that never came back.
+    """
+    import faulthandler
+
+    faulthandler.dump_traceback_later(max(5.0, deadline_s), exit=True,
+                                      file=sys.stderr)
+    out = {'ok': False}
+    try:
+        m_shell = load_shell(shell_path)
+        m_model = SourceModel(shell_path)
+        _, w_fail = arm_wiring(m_model)
+        _h_res, h_fail, _pop = arm_hidden(
+            m_shell, repeats=3,
+            stage_url='file:///stage.html', panel_url='file:///panel.html')
+        out = {'ok': True, 'w_fail': w_fail, 'h_fail': h_fail}
+    except Exception as exc:  # noqa: BLE001 -- the parent reports it
+        out = {'ok': False, 'error': f'{type(exc).__name__}: {exc}'}
+    finally:
+        faulthandler.cancel_dump_traceback_later()
+    print(MUTANT_RESULT_TAG + json.dumps(out), flush=True)
+    return 0
+
+
+def run_mutant_isolated(path):
+    """Run one mutant in its own process. Returns `(payload, hung, log)`."""
+    import subprocess
+
+    env = dict(os.environ)
+    env['PYTHONUNBUFFERED'] = '1'
+    try:
+        proc = subprocess.run(
+            [sys.executable, os.path.abspath(__file__),
+             '--mutant-only', path, '--deadline', str(MUTANT_ARM_DEADLINE_S)],
+            capture_output=True, text=True, timeout=MUTANT_ARM_DEADLINE_S + 60,
+            creationflags=CREATE_NO_WINDOW, cwd=HERE, env=env)
+    except subprocess.TimeoutExpired as exc:
+        text = (exc.stdout or '') + (exc.stderr or '')
+        if isinstance(text, bytes):
+            text = text.decode('utf-8', 'replace')
+        return None, True, text
+    text = (proc.stdout or '') + (proc.stderr or '')
+    hung = 'Timeout (' in text and MUTANT_RESULT_TAG not in text
+    payload = None
+    for line in (proc.stdout or '').splitlines():
+        if line.startswith(MUTANT_RESULT_TAG):
+            try:
+                payload = json.loads(line[len(MUTANT_RESULT_TAG):])
+            except ValueError:
+                payload = None
+    return payload, hung, text
+
+
 def arm_mutation(shell_path, shell):
     results = []
     failures = 0
@@ -1104,20 +1188,38 @@ def arm_mutation(shell_path, shell):
             path = os.path.join(tmp, f'sotto_webview_{name}.py')
             with open(path, 'w', encoding='utf-8') as fh:
                 fh.write(mutated)
-            try:
-                m_shell = load_shell(path)
-                m_model = SourceModel(path)
-            except Exception as exc:  # noqa: BLE001
+            print(f'  MUTATION {name}: arm starting in its own process '
+                  f'(deadline {MUTANT_ARM_DEADLINE_S:g}s)', flush=True)
+            payload, hung, log = run_mutant_isolated(path)
+            if hung:
+                w_fail, h_fail = 0, 1
+                caught = True
+                hang_note = (f' AND IT HUNG: the isolated arm did not finish in '
+                             f'{MUTANT_ARM_DEADLINE_S:g}s -- the show path never '
+                             f'came back, which breaks visibility by itself; '
+                             f'the stack is below')
+                tail = '\n'.join(log.strip().splitlines()[-25:])
+                print(f'  HUNG-ARM {name} stack:\n{tail}', flush=True)
+            elif payload is None:
                 failures += 1
-                results.append({'arm': 'MUTATION', 'check': name, 'ok': False,
-                                'detail': f'mutant failed to import: {exc!r}'})
+                results.append({
+                    'arm': 'MUTATION', 'check': name, 'ok': False,
+                    'detail': (f'expected={expect}; {why}; the isolated arm '
+                               f'printed no verdict — '
+                               f'{log.strip()[-600:] or "(no output)"}')})
                 continue
-
-            _, w_fail = arm_wiring(m_model)
-            _h_res, h_fail, _pop = arm_hidden(m_shell, repeats=3,
-                                              stage_url='file:///stage.html',
-                                              panel_url='file:///panel.html')
-            caught = (w_fail + h_fail) > 0
+            elif not payload.get('ok'):
+                failures += 1
+                results.append({
+                    'arm': 'MUTATION', 'check': name, 'ok': False,
+                    'detail': (f'expected={expect}; {why}; the mutant did not '
+                               f'run: {payload.get("error")}')})
+                continue
+            else:
+                w_fail = payload['w_fail']
+                h_fail = payload['h_fail']
+                caught = (w_fail + h_fail) > 0
+                hang_note = ''
             if expect == 'caught':
                 ok = caught
                 verdict = ('the oracle catches it' if caught else
@@ -1134,7 +1236,8 @@ def arm_mutation(shell_path, shell):
             results.append({
                 'arm': 'MUTATION', 'check': name, 'ok': ok,
                 'detail': (f'expected={expect}; {why}; wiring failures='
-                           f'{w_fail}, hidden failures={h_fail} — {verdict}')})
+                           f'{w_fail}, hidden failures={h_fail}{hang_note} — '
+                           f'{verdict}')})
     return results, failures
 
 
@@ -1376,5 +1479,21 @@ def main(argv=None):
     return 0 if failures == 0 else 1
 
 
+def _mutant_only_entry(argv):
+    """`--mutant-only <path> [--deadline S]`: the child mode of `arm_mutation`.
+
+    Deliberately NOT argparse: this mode must not pay the main parser, and its
+    contract is one file path and one number.
+    """
+    path = argv[0]
+    deadline = MUTANT_ARM_DEADLINE_S
+    if '--deadline' in argv:
+        deadline = float(argv[argv.index('--deadline') + 1])
+    return _mutant_arm_child(path, deadline)
+
+
 if __name__ == '__main__':
+    if '--mutant-only' in sys.argv:
+        sys.exit(_mutant_only_entry(
+            [a for a in sys.argv[sys.argv.index('--mutant-only') + 1:] if a]))
     sys.exit(main())
