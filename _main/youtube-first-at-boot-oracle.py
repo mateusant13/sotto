@@ -608,8 +608,32 @@ def _arm_two_playing(mod):
     return ok, "first=%r second=%r sticky=%r" % (first, second, sticky)
 
 
+def _dead_probe(video_id, title=""):
+    """A forma MEDIDA de uma aba descartada pelo Chrome (2026-11-05)."""
+    return {"videoId": video_id, "t0": 0.0, "t1": 0.0, "advance": 0.0,
+            "paused": False, "ended": False, "rs": 0,
+            "tab": {"url": "https://www.youtube.com/watch?v=" + video_id,
+                    "title": title}}
+
+
+def _real_probe(video_id, t, paused=True, title=""):
+    """A forma MEDIDA de um jogador a serio (pausado pelo dono ou a tocar)."""
+    return {"videoId": video_id, "t0": t, "t1": t,
+            "advance": (0.0 if paused else 0.6), "paused": paused,
+            "ended": False, "rs": 4,
+            "tab": {"url": "https://www.youtube.com/watch?v=" + video_id,
+                    "title": title}}
+
+
 def _arm_none_playing(mod):
-    """Nenhuma a tocar: `no-playing` ou `sticky-last`, nunca `ambiguous`."""
+    """TUDO PAUSADO NAO E' "NADA A LER" (regra nova, 2026-11-05).
+
+    A regra antiga devolvia `no-playing` quando nenhuma aba avancava o
+    `currentTime`, e o ASR tomava o ecra. O dono poe o video em PAUSA o tempo
+    todo -- as tres abas reais de hoje estavam `paused=true` com a linha pintada
+    no player. Uma pausa com legenda a' vista e' a legenda do YouTube; o que nao
+    se le e' uma aba DESCARTADA, e essa sai por `is_real_player`.
+    """
     tabs = [_watch_tab("aaaaaaaaaaa", "aaaaaaaaaaa"),
             _watch_tab("bbbbbbbbbbb", "bbbbbbbbbbb")]
     table = {
@@ -618,22 +642,84 @@ def _arm_none_playing(mod):
     }
     connect = _make_connect(table)
     _tab, vid, why = mod.pick_playing(tabs, "", connect=connect, gap_s=0.0)
-    _tab2, vid2, why2 = mod.pick_playing(tabs, "bbbbbbbbbbb",
+    _tab2, vid2, why2 = mod.pick_playing(tabs, "aaaaaaaaaaa",
                                         connect=connect, gap_s=0.0)
-    logs = []
-    with _StubCdp(tabs) as stub:
-        ok_boot, reason = mod.boot_attach(port=stub.port, attempts=3, delay=0,
-                                          log=logs.append,
-                                          sleep=lambda _s: None,
-                                          connect=connect)
-    told = [ln for ln in logs if "YOUTUBE_CDP_BOOT_ATTACH" in ln]
-    ok = (vid == "" and why == "no-playing"
-          and vid2 == "bbbbbbbbbbb" and why2 == "sticky-last"
-          and ok_boot is False and reason == "no-playing"
-          and len(told) == 3
-          and not any("ambiguous" in ln for ln in told))
-    return ok, ("none=%r sticky=%r boot=(%s,%s) told=%d"
-                % ((vid, why), (vid2, why2), ok_boot, reason, len(told)))
+    # as duas formas puras, sem sonda nenhuma
+    pure = mod.choose_target([_real_probe("aaaaaaaaaaa", 10.0),
+                              _real_probe("bbbbbbbbbbb", 20.0)])
+    sticky = mod.choose_target([_real_probe("aaaaaaaaaaa", 10.0),
+                               _real_probe("bbbbbbbbbbb", 20.0)], "aaaaaaaaaaa")
+    ok = (vid == "bbbbbbbbbbb" and why == "paused-loaded"
+          and vid2 == "aaaaaaaaaaa" and why2 == "sticky-last"
+          and pure == ("bbbbbbbbbbb", "paused-loaded")
+          and sticky == ("aaaaaaaaaaa", "sticky-last"))
+    return ok, ("pick=%r sticky=%r pure=%r pure-sticky=%r"
+                % ((vid, why), (vid2, why2), pure, sticky))
+
+
+def _arm_dead_tab_rejected(mod):
+    """A ABA DESCARTADA NUNCA E' ESCOLHIDA -- o defeito medido hoje.
+
+    MEDIDO 2026-11-05 14:0x no Chrome do dono: `ICGa6m4E_cA` respondia
+    `rs=0`, `t=0.0`, `paused=false` e o Sotto ficou 221 leituras preso nela com
+    zero linhas, enquanto tres abas reais (539,98 s / 25,00 s / 978,15 s) tinham
+    legenda pintada. O `paused=false` da aba sem video era o que a regra antiga
+    lia como "a tocar".
+    """
+    dead = _dead_probe("ICGa6m4E_cA", "Bringing Back Seven - YouTube")
+    real = _real_probe("ieTgYlbWjMM", 539.98, paused=True,
+                       title="A TECNOLOGIA DO YORICK - YouTube")
+    playing = _real_probe("yq1KIXLrwko", 20.7, paused=False)
+    # (a) o id declarado aponta para a aba MORTA e ha' um video a tocar
+    got = mod.choose_target([dead, real, playing], declared="ICGa6m4E_cA")
+    # (b) o id declarado aponta para a aba morta e tudo esta' pausado
+    got2 = mod.choose_target([dead, real], declared="ICGa6m4E_cA")
+    # (c) so' abas mortas -> nenhuma escolha, nunca uma delas
+    got3 = mod.choose_target([dead, _dead_probe("LHxOG65r12w")])
+    # (d) o predicado, nas duas formas
+    real_ok = (mod.is_real_player(dead) is False
+               and mod.is_real_player(real) is True
+               and mod.is_real_player(playing) is True)
+    # (d2) o declarado e' REAL mas esta' parado, e outro video TOCA: quem manda
+    # e' o que toca -- o id declarado e' uma crenca, `currentTime` e' evidencia.
+    declarado_parado = _real_probe("ieTgYlbWjMM", 539.98, paused=True,
+                                   title="Yorick - YouTube")
+    got4 = mod.choose_target([declarado_parado, playing],
+                             declared="ieTgYlbWjMM")
+    # (d3) nada toca: o declarado decide, a frente do desempate por tempo
+    got5 = mod.choose_target([_real_probe("aaaaaaaaaaa", 10.0),
+                              _real_probe("bbbbbbbbbbb", 900.0)],
+                             declared="aaaaaaaaaaa")
+    ok = (got == ("yq1KIXLrwko", "playing")
+          # uma so' aba com jogador: `only-player` e' o motivo honesto (o
+          # `paused-loaded` e' o desempate entre VARIOS)
+          and got2 == ("ieTgYlbWjMM", "only-player")
+          and got3 == ("", "no-player")
+          and got4 == ("yq1KIXLrwko", "playing")
+          and got5 == ("aaaaaaaaaaa", "declared")
+          and real_ok)
+    return ok, "a=%r b=%r c=%r d2=%r d3=%r pred=%s" % (got, got2, got3, got4, got5, real_ok)
+
+
+def _arm_window_title_wins(mod):
+    """A ABA QUE ELE ESTA' A VER MANDA, e o desempate nao tropeca.
+
+    O titulo da janela em primeiro plano vem do Win32 (medido hoje:
+    `'YouTube - Google Chrome'`, sem o titulo do video), por isso a arm usa o
+    caso em que ele TRAGA o titulo da aba -- que e' o que acontece quando a
+    janela mostra o video. Exacto primeiro, parcial depois, e so' entre abas
+    com jogador.
+    """
+    a = _real_probe("aaaaaaaaaaa", 10.0, title="Video A - YouTube")
+    b = _real_probe("bbbbbbbbbbb", 20.0, title="Video B - YouTube")
+    exact = mod.choose_target([a, b], window_title="Video A - YouTube")
+    partial = mod.choose_target([a, b], window_title="Video B - YouTube")
+    dead_named = mod.choose_target([_dead_probe("ccccccccccc", "Video C - YouTube"),
+                                    a], window_title="Video C - YouTube")
+    ok = (exact == ("aaaaaaaaaaa", "window-title")
+          and partial == ("bbbbbbbbbbb", "window-title")
+          and dead_named == ("aaaaaaaaaaa", "only-player"))
+    return ok, "exact=%r partial=%r dead-named=%r" % (exact, partial, dead_named)
 
 
 # -- as arms ----------------------------------------------------------------
@@ -662,7 +748,11 @@ def arms(shell_path=SHELL, module_path=MODULE, port_holder=None):
     ok, note = _arm_two_playing(mod)
     out.append(("duas-a-tocar-decide-e-nao-tropeca", ok, note))
     ok, note = _arm_none_playing(mod)
-    out.append(("nenhuma-a-tocar-nunca-e-ambiguo", ok, note))
+    out.append(("pausado-carregado-nao-e-nada-a-ler", ok, note))
+    ok, note = _arm_dead_tab_rejected(mod)
+    out.append(("aba-descartada-nunca-e-escolhida", ok, note))
+    ok, note = _arm_window_title_wins(mod)
+    out.append(("aba-da-janela-em-primeiro-plano", ok, note))
     del port_holder
     return out
 
@@ -718,6 +808,20 @@ def neg_arm():
         got3 = dict((n, ok) for n, ok, _ in arms(shell_path=mut3))
         results.append(("queda-dispara-duas-vezes",
                         not got3.get("queda-da-faixa-uma-so-vez", True)))
+
+        # 4) A ABA DESCARTADA PASSA A SER "JOGADOR" (a cura do picking
+        # desarmada, 2026-11-05): `is_real_player` devolve True a tudo.
+        mut4 = os.path.join(tmp, "cdp_sem_predicado.py")
+        msrc = _read(MODULE)
+        body4 = msrc.replace("    if probe.get('rs') == 0:\n        return False\n",
+                             "", 1).replace(
+                                 "    return bool((t1 or 0.0) > 0.0 or adv > 0.0)",
+                                 "    return True", 1)
+        assert body4 != msrc, "a mutacao do predicado nao aplicou"
+        io.open(mut4, "w", encoding="utf-8", newline="").write(body4)
+        got4 = dict((n, ok) for n, ok, _ in arms(module_path=mut4))
+        results.append(("aba-sem-media-vira-jogador",
+                        not got4.get("aba-descartada-nunca-e-escolhida", True)))
         return results
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

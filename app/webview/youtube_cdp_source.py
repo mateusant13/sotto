@@ -100,6 +100,7 @@ EXTRACT_JS = r"""
   const out = {videoId: m ? m[1] : '', title: document.title || '',
                rows: [], segs: [], why: 'no-window',
                t: v ? v.currentTime : null, paused: v ? v.paused : null,
+               rs: v ? v.readyState : null,
                rate: v ? v.playbackRate : null};
   const box = document.querySelector('.ytp-caption-window-container');
   if (!box) return JSON.stringify(out);
@@ -161,6 +162,7 @@ PLAYING_JS = r"""
     paused: v ? v.paused : null,
     ended: v ? v.ended : null,
     dur: (v && isFinite(v.duration)) ? v.duration : null,
+    rs: v ? v.readyState : null,
     vis: document.visibilityState || ''
   });
 })()
@@ -270,6 +272,8 @@ def _probe_one(tab, connect, timeout, gap_s):
             'ended': second.get('ended'),
             't0': t0, 't1': t1,
             'advance': (None if (t0 is None or t1 is None) else t1 - t0),
+            'dur': _float(second.get('dur')),
+            'rs': second.get('rs'),
             'visible': str(second.get('vis') or ''),
             'tab': tab}
 
@@ -322,58 +326,138 @@ def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S,
         return out
 
 
-def choose_playing(probes, previous=''):
-    """(video_id, porque) -- QUEM ESTA' A TOCAR, decidido dos numeros.
+def is_real_player(probe):
+    """A aba tem um JOGADOR com linha temporal? -- medido, nao suposto.
 
-    Pura de proposito: `_main/youtube-first-at-boot-oracle.py` executa ESTA
-    funcao, para a regra poder ser provada sem Chrome.
+    MEDIDO 2026-11-05 14:0x no Chrome do dono, seis abas `watch` abertas:
 
-    A ordem das regras e' a do dono, nao a do acaso:
+        ieTgYlbWjMM  paused=True   t=539.98  rs=4   linhas do player: 2
+        CXvncR7v66o  paused=True   t=25.00   rs=4   (legenda DESLIGADA, cc=false)
+        ea20SBGR8ao  paused=True   t=978.15  rs=4   linhas do player: 1
+        ICGa6m4E_cA  paused=False  t=0.0     rs=0   nenhuma
+        LHxOG65r12w  paused=False  t=0.0     rs=0   nenhuma
+        oUIt-EqN3j0  paused=False  t=0.0     rs=0   nenhuma
 
-      1. `sticky-last` -- o video ja' adotado que AINDA toca fica. Duas abas a
-         tocar ao mesmo tempo (um video em picture-in-picture, dois separadores)
-         nao podem fazer o Sotto saltar entre eles a cada leitura: um ecra que
-         troca de video sozinho e' pior do que um ecra parado.
-      2. `playing` -- entre os que tocam, o que MAIS AVANCOU o `currentTime`
-         entre as duas leituras; empate decide o id lexicografico, que e'
-         estavel entre leituras (um empate nao pode alternar).
-      3. `sticky-last` sobre a lista inteira quando NADA toca mas o ultimo
-         adotado ainda esta' aberto (pausa do dono, video acabado).
-      4. `no-playing` -- sem escolha. Quem chama diz `no-track`, nunca
-         `ambiguous` para sempre.
+    As tres ultimas sao abas DESCARTADAS pelo Chrome: nao ha' media, logo nao ha'
+    legenda nenhuma para ler -- e `paused=false`, que a regra antiga lia como
+    "a tocar", e' o que uma aba sem video responde. Era exactamente assim que o
+    Sotto ficou 221 leituras preso em `ICGa6m4E_cA` com `why=no-painted-caption`
+    e o dono a ver o ASR no ecra: *"o youtube nao ta 1:1. ta usando a legenda dos
+    modelos"*. `dur` nao serve de discriminador: veio `None` nas SEIS.
+
+    O que separa e' a LINHA TEMPORAL: um jogador real tem `currentTime > 0` ou
+    avancou entre as duas leituras. `rs` (readyState) e' a segunda testemunha
+    quando o campo chega (o `EXTRACT_JS` do laco publica-o; a sonda passou a
+    publica-lo tambem).
     """
+    if not isinstance(probe, dict):
+        return False
+    if probe.get('rs') == 0:
+        return False
+    t1 = _float(probe.get('t1'))
+    adv = _float(probe.get('advance')) or 0.0
+    return bool((t1 or 0.0) > 0.0 or adv > 0.0)
+
+
+def choose_target(probes, previous='', window_title='', declared=''):
+    """(video_id, porque) -- QUE ABA, decidido pela evidencia de cada uma.
+
+    O dono, verbatim (2026-11-05): *"dumb picking then. do it properly. do it
+    the best design. should attach to current tab or last tab"*, e depois *"or
+    better then that"*. A ordem abaixo e' a melhor que a medicao sustenta, e
+    cada degrau tem a sua testemunha -- nao ha' `ambiguous` que dure:
+
+      0. **`no-player`** quando NENHUMA aba tem jogador (`is_real_player`).
+         Melhor nao responder do que prender-se a uma aba descartada.
+      1. **`window-title`** -- a ABA QUE ELE ESTA' A VER: o titulo da janela em
+         primeiro plano casa com o titulo da aba (exacto, depois parcial). E' a
+         testemunha mais directa do "current tab", e vem do Win32 sem custo.
+      2. **`declared`** -- o id que o shell declarou, AGORA VERIFICADO: so' vale
+         se a aba dele tiver jogador.
+      3. **`playing`** -- o que AVANCOU o `currentTime` entre as duas leituras
+         (o video que ele esta' a ouvir). Desempate pelo id, que e' estavel.
+      4. **`sticky-last`** -- o ultimo adotado, se ainda tiver jogador. Duas abas
+         a tocar nao podem fazer o ecra trocar sozinho.
+      5. **`only-player`** / **`paused-loaded`** -- ele poe o video EM PAUSA (as
+         tres abas reais de hoje estavam): a linha pintada de um video pausado
+         ainda e' a legenda do YouTube, e e' melhor do que a de outro video.
+         Entre varios pausados fica o de linha temporal mais avancada.
+    """
+    usable = [p for p in (probes or ()) if is_real_player(p)
+              and str(p.get('videoId') or '')]
+    if not usable:
+        return '', 'no-player'
     prev = str(previous or '')
-    listed = [str(p.get('videoId') or '') for p in (probes or ())]
-    live = []
-    for p in probes or ():
-        vid = str(p.get('videoId') or '')
-        if not vid or p.get('paused') is None or p.get('t1') is None:
-            continue
-        if p.get('paused') or p.get('ended'):
-            continue
-        live.append(p)
-    if prev:
-        if prev in [str(p.get('videoId') or '') for p in live]:
+    want = str(window_title or '').strip().lower()
+    if want:
+        exact = [p for p in usable
+                 if str(p.get('videoId') or '')
+                 and str((p.get('tab') or {}).get('title') or '').strip().lower() == want]
+        if len(exact) == 1:
+            return str(exact[0]['videoId']), 'window-title'
+        partial = [p for p in usable
+                   if (str((p.get('tab') or {}).get('title') or '').strip().lower()
+                       and str((p.get('tab') or {}).get('title') or ''
+                               ).strip().lower() in want)]
+        if len(partial) == 1:
+            return str(partial[0]['videoId']), 'window-title-partial'
+    live = [p for p in usable
+            if not p.get('paused') and not p.get('ended')
+            and (_float(p.get('advance')) or 0.0) > 0.0]
+    if live:
+        # O JA' ADOTADO QUE AINDA TOCA FICA (2026-10-30, mantido em 2026-11-05
+        # pela ordem do dono -- *"current tab or last tab"*). Duas abas a tocar
+        # ao mesmo tempo (picture-in-picture, dois separadores) nao podem fazer
+        # o ecra trocar de video sozinho: um ecra que alterna e' pior do que um
+        # ecra parado. MEDIDO pela arm `duas-a-tocar-decide-e-nao-tropeca`, que
+        # ficou vermelha quando `playing` passou a' frente de `sticky-last`.
+        if prev and any(str(p.get('videoId') or '') == prev for p in live):
             return prev, 'sticky-last'
-        if not live and prev in listed:
-            return prev, 'sticky-last'
-    if not live:
-        return '', 'no-playing'
-    live.sort(key=lambda p: (-(float(p.get('advance') or 0.0)),
-                             str(p.get('videoId') or '')))
-    return str(live[0].get('videoId') or ''), 'playing'
+        live.sort(key=lambda p: (-(_float(p.get('advance')) or 0.0),
+                                 str(p.get('videoId') or '')))
+        return str(live[0]['videoId']), 'playing'
+    if declared:
+        for p in usable:
+            if str(p.get('videoId') or '') == str(declared):
+                return str(declared), 'declared'
+    # O DECLARADO VEM DEPOIS DO QUE TOCA (2026-11-05). O id que o shell
+    # declara e' uma CRENCA, e ja' se mediu errada duas vezes (164 leituras
+    # presas num `m_bJQ4G1Ht8` que nao estava aberto; hoje 221 leituras numa
+    # aba DESCARTADA). Um `currentTime` a andar e' evidencia; a crenca do
+    # shell so' decide quando nao ha' nada a tocar -- e mesmo entao so' se
+    # a aba dele tiver jogador (`usable`).
+
+    if prev and any(str(p.get('videoId') or '') == prev for p in usable):
+        return prev, 'sticky-last'
+    if len(usable) == 1:
+        return str(usable[0]['videoId']), 'only-player'
+    usable.sort(key=lambda p: (-(_float(p.get('t1')) or 0.0),
+                               str(p.get('videoId') or '')))
+    return str(usable[0]['videoId']), 'paused-loaded'
+
+
+def choose_playing(probes, previous=''):
+    """Compatibilidade: a regra antiga era "quem toca".
+
+    Fica como um `choose_target` sem janela nem id declarado -- os chamadores e
+    os oraculos antigos continuam a executar a MESMA funcao, com a correccao de
+    que uma aba descartada nunca entra na lista (`is_real_player`). O nome antigo
+    nao decide nada a mais: `choose_target` e' o dono da regra.
+    """
+    return choose_target(probes, previous)
 
 
 def pick_playing(tabs, previous='', connect=None, timeout=1.0,
-                 gap_s=PLAYING_GAP_S):
-    """(aba, video_id, porque) -- a aba que TOCA, ou `(None, '', motivo)`.
+                 gap_s=PLAYING_GAP_S, window_title='', declared=''):
+    """(aba, video_id, porque) -- a aba com jogador, ou `(None, '', motivo)`.
 
-    A sonda e' a cara (uma ligacao curta por aba), por isso quem chama so' a
-    paga quando `pick_target` NAO consegue decidir -- que e' exactamente o
-    `ambiguous` que deixou o dono 65 s sem a legenda do player.
+    UMA sonda por aba (duas leituras em paralelo, ~1,3 s no pior caso) responde
+    a pergunta inteira, e a resposta vem de `choose_target`. Quem chama guarda o
+    resultado por `PLAYING_PROBE_TTL_S`: enquanto a escolha vale, a sonda nao se
+    repete e o custo e' zero.
     """
     probes = probe_tabs(tabs, connect=connect, timeout=timeout, gap_s=gap_s)
-    vid, why = choose_playing(probes, previous)
+    vid, why = choose_target(probes, previous, window_title, declared)
     if not vid:
         return None, '', why
     for p in probes:
@@ -431,6 +515,12 @@ def parse_snapshot(payload, now=None):
             "t": (_float(data.get("t"))),
             "paused": (None if data.get("paused") is None else bool(data.get("paused"))),
             "rate": _float(data.get("rate")),
+            # O JOGADOR EXISTE NESTA ABA? (2026-11-05) `rs` e' o `readyState` do
+            # `<video>`: 0 = nenhuma media carregada, que e' o que uma aba
+            # DESCARTADA pelo Chrome responde. O laco usa este campo para NAO
+            # ficar preso numa aba sem jogador (medido: 221 leituras em
+            # `ICGa6m4E_cA`, `rs=0`, zero linhas, e o ASR no ecra do dono).
+            "rs": data.get("rs"),
             "title": str(data.get("title") or ""),
             "rows": rows, "items": items,
             "why": str(data.get("why") or ("painted" if rows else "no-painted-caption"))}
@@ -727,36 +817,42 @@ class CdpCaptionSource:
         return True
 
     def _choose(self, tabs):
-        """(aba, motivo) -- com o id declarado AINDA ABERTO como filtro.
+        """(aba, motivo) -- A SONDA DECIDE, e a lista de URLs so' desempata.
 
-        O ID DECLARADO NAO E' UMA CORRENTE (2026-11-03, medido no browser do
-        dono: 164 leituras de `m_bJQ4G1Ht8` com a unica aba de video aberta a
-        mostrar outro). Quando aquela aba fecha, `pick_target` devolve
-        `video-not-open` e nada mais acontece: sem foto, o id tambem nunca se
-        renova, e o laco fica preso ao video que ja' nao existe. Aqui a ABA
-        manda -- escolhe-se pelo titulo da janela (ou pela unica aba) e o
-        motivo diz que se saltou o id morto.
+        O DEFEITO MEDIDO (2026-11-05 14:0x) que este metodo tinha: a escolha era
+        a URL primeiro -- `video_id in url` --, e o id declarado apontava para
+        `ICGa6m4E_cA`, uma aba DESCARTADA pelo Chrome (`rs=0`, `t=0`, sem media
+        nenhuma). A sonda so' era consultada DEPOIS de a escolha por URL falhar,
+        por isso nunca era: 221 leituras com `why=no-painted-caption` e o dono a
+        ver a legenda do MODELO no ecra -- *"o youtube nao ta 1:1. ta usando a
+        legenda dos modelos"*.
+
+        Agora a evidencia vem primeiro (`choose_target`: janela em primeiro
+        plano -> id declarado COM jogador -> a tocar -> ultimo adotado ->
+        pausado carregado) e uma aba sem linha temporal e' descartada por
+        `is_real_player`, seja qual for o URL. O custo continua rate-limited
+        (`PLAYING_PROBE_TTL_S`): uma sonda por TTL, zero enquanto a escolha vale.
+
+        A lista de URLs fica como ULTIMO recurso -- quando a sonda nao responde
+        (porta fechada, aba muda), `pick_target` ainda pode nomear uma aba, e uma
+        tentativa vale mais do que nenhuma.
         """
-        target, why = pick_target(tabs, self._video_id, self._window_title)
-        if target is None and self._video_id:
-            target, why = pick_target(tabs, '', self._window_title)
-            if target is not None:
-                why = 'stale-declared:' + str(why)
-        if target is None:
-            # A LISTA NAO DECIDE -> O VIDEO A TOCAR DECIDE (2026-11-04).
-            # MEDIDO no arranque do dono, 12:15:15: 5 abas, `ambiguous` tres
-            # vezes e o ecra com `carregando modelo…` enquanto o video tocava.
-            # A sonda custa uma ligacao curta por aba, por isso e' RATE-LIMITED
-            # (`PLAYING_PROBE_TTL_S`): enquanto a escolha vale, a lista de abas
-            # responde sem tocar em nenhuma aba.
-            _tab, _vid, _picked = self._playing_pick_for(tabs)
-            if _tab is not None:
-                self._playing_pick = _vid
-                if _vid and not self._video_id:
-                    self._video_id = _vid
-                return _tab, _picked
+        tab, vid, why = self._playing_pick_for(tabs)
+        if tab is not None:
+            self._playing_pick = vid or self._playing_pick
             self._note = str(why)
-        return target, why
+            self._log('YOUTUBE_TARGET pick=%s why=%s declared=%s tabs=%d'
+                      % (vid or '-', why, self._video_id or '-', len(tabs or ())))
+            return tab, why
+        target, why2 = pick_target(tabs, self._video_id, self._window_title)
+        if target is not None:
+            self._note = 'probe:%s fallback:%s' % (why, why2)
+            self._log('YOUTUBE_TARGET fallback pick=%s why=%s probe=%s tabs=%d'
+                      % (video_id_from_url(target.get('url') or '') or '-',
+                         why2, why, len(tabs or ())))
+            return target, why2
+        self._note = str(why or why2)
+        return None, self._note
 
     def _playing_pick_for(self, tabs):
         """(aba, id, motivo) da escolha por 'a tocar', com cache curta.
@@ -777,7 +873,9 @@ class CdpCaptionSource:
         try:
             tab, vid, why = pick_playing(
                 tabs, getattr(self, '_playing_pick', '') or '',
-                connect=getattr(self, '_probe_connect', None))
+                connect=getattr(self, '_probe_connect', None),
+                window_title=getattr(self, '_window_title', '') or '',
+                declared=getattr(self, '_video_id', '') or '')
         except Exception as exc:              # noqa: BLE001
             self._log('YOUTUBE_PLAYING_PICK_FAILED error=%r' % (exc,))
             return None, '', 'probe-failed'
@@ -929,6 +1027,27 @@ class CdpCaptionSource:
                 snap = parse_snapshot(payload)
                 if snap is None:
                     raise ValueError("payload sem forma")
+                if snap.get("rs") == 0:
+                    # A ABA NAO TEM JOGADOR (2026-11-05, MEDIDO). `rs=0` e' o
+                    # `readyState` de um `<video>` sem media: e' o que uma aba
+                    # DESCARTADA pelo Chrome responde. Preso nela, o laco leu
+                    # **221 vezes** `why=no-painted-caption` em `ICGa6m4E_cA`
+                    # (`t=0`, `paused=false` -- o `paused=false` de uma aba sem
+                    # video e' o que fazia a regra antiga chamar-lhe "a tocar")
+                    # enquanto o dono via a legenda do MODELO. A ligacao cai, a
+                    # cache da escolha e' limpa e a proxima passa pela sonda.
+                    self._publish(None, "dead-tab (%s)" % (snap.get("videoId") or '-'))
+                    self._log('YOUTUBE_CDP_DEAD_TAB video_id=%s rs=0 -- aba sem '
+                              'media; a escolha volta a sonda'
+                              % (snap.get("videoId") or '-'))
+                    self._playing_pick_cache = None
+                    try:
+                        conn.close()
+                    except Exception:             # noqa: BLE001
+                        pass
+                    conn = None
+                    self._stop.wait(max(0.4, float(RETRY_S) / 3.0))
+                    continue
                 # A ABA PODE NAVEGAR DEPOIS DE NOS LIGARMOS A ELA (2026-11-03,
                 # MEDIDO: 7 abas do YouTube abertas, a ligacao presa numa e o
                 # Sotto a ler outro video -- `refused=video-mismatch
