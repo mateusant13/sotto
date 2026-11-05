@@ -38,17 +38,23 @@ send.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t,
 
 SMTO_ABORTIFHUNG = 0x0002   # igual ao detector
 WM_NULL = 0x0000            # igual ao detector
-TIMEOUT_MS = 4000           # igual ao detector
+TIMEOUT_MS = 6000           # igual ao detector (UI_WATCHDOG_TIMEOUT_MS=6000)
 
 
 def ui_responds(hwnd, timeout_ms=TIMEOUT_MS):
-    """A MESMA pergunta do cao-de-guarda, com as MESMAS flags."""
+    """A MESMA pergunta do cao-de-guarda, com as MESMAS flags.
+
+    Devolve `(respondeu, err)`: o `err` e' o que separa "a janela nao
+    respondeu porque estourou o prazo" (`1460`) de "a chamada nao reportou
+    nada" (`0`). A app matou-se as 06:57:25 por tratar os dois como iguais.
+    """
     if not hwnd:
-        return False
+        return False, -1
     result = ctypes.c_size_t(0)
+    ctypes.set_last_error(0)
     got = send(ctypes.c_void_p(int(hwnd)), WM_NULL, 0, 0,
                SMTO_ABORTIFHUNG, int(timeout_ms), ctypes.byref(result))
-    return bool(got)
+    return bool(got), ctypes.get_last_error()
 
 
 WNDPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, wt.HWND, wt.UINT,
@@ -122,31 +128,196 @@ def arm(nome, pump, esperado):
         return False
     hwnd = holder['hwnd']
     t0 = time.time()
-    got = ui_responds(hwnd)
+    got, err = ui_responds(hwnd)
     dt = time.time() - t0
     stop_event.set()
     user32.PostMessageW(ctypes.c_void_p(hwnd), 0x0010, 0, 0)  # WM_CLOSE
-    ok = got == esperado
-    print('  %-20s hwnd=%-9s respondeu=%-5s esperado=%-5s %6.2fs  %s'
-          % (nome, hwnd, got, esperado, dt, 'ok' if ok else 'ERRADO'))
+    ok = bool(got) == esperado
+    print('  %-20s hwnd=%-9s respondeu=%-5s err=%-5s esperado=%-5s %6.2fs  %s'
+          % (nome, hwnd, got, err, esperado, dt, 'ok' if ok else 'ERRADO'))
+    ERRORS[nome] = err
     return ok
 
 
 holder = {}
 ready = threading.Event()
+ERRORS = {}
 
-print('UI-WATCHDOG-ORACLE -- a mesma chamada do detector, 3 bracos')
+print('UI-WATCHDOG-ORACLE -- a mesma chamada do detector, 3 bracos de janela')
 resultados = [
     arm('janela saudavel', True, True),
     arm('janela congelada', False, False),
 ]
-got_zero = ui_responds(0)
+got_zero, err_zero = ui_responds(0)
 ok_zero = got_zero is False
-print('  %-20s hwnd=0       respondeu=%-5s esperado=False   %s'
-      % ('sem janela (0)', got_zero, 'ok' if ok_zero else 'ERRADO'))
+print('  %-20s hwnd=0       respondeu=%-5s err=%-5s esperado=False   %s'
+      % ('sem janela (0)', got_zero, err_zero, 'ok' if ok_zero else 'ERRADO'))
 resultados.append(ok_zero)
 
 ok = all(resultados)
-print('UI-WATCHDOG-ORACLE %s -- %d/%d bracos'
-      % ('PASS' if ok else 'FAIL', sum(1 for r in resultados if r), len(resultados)))
+# ── A POLITICA: quando uma amostra conta como golpe ──────────────────────────
+# A chamada ao Windows so' diz `got`/`err`; QUEM decide que isso e' um golpe e'
+# `app/webview/ui_watchdog_policy.py`, e essa decisao era o defeito: as 06:57:25
+# a app saiu com tres amostras `err=0` enquanto pintava legenda. Estes bracos
+# alimentam a FUNCAO REAL que a shell corre.
+import importlib.util
+import os
+import shutil
+import tempfile
+
+
+def _load(path, name):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+POLICY = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      'app', 'webview', 'ui_watchdog_policy.py')
+P = _load(POLICY, 'ui_watchdog_policy_under_test')
+BUDGET = 5.0 + TIMEOUT_MS / 1000.0   # poll + prazo, como no laco
+
+
+def policy_arm(nome, samples, esperado_acts, mod=P):
+    st = mod.State(3)
+    acts = [mod.feed(st, mod.classify(g, e, t, BUDGET)) for g, e, t in samples]
+    ok = acts == esperado_acts
+    print('  %-30s %-42s %s' % (nome, acts, 'ok' if ok else 'ERRADO'))
+    return ok
+
+
+def owner_case(mod=P):
+    """Tres `err=0` como os MEDIDOS no log do dono: NAO pode sair."""
+    return policy_arm('tres err=0 -> nao sai (dono)',
+                      [(0, 0, 6.0)] * 3, ['wait'] * 3, mod)
+
+
+def frozen_case(mod=P):
+    """O congelamento medido por este orgao (`err=1460`): sai a terceira."""
+    return policy_arm('tres err=1460 -> confirm',
+                      [(0, 1460, 6.0)] * 3, ['wait', 'wait', 'confirm'], mod)
+
+
+def starved_case(mod=P):
+    """O laco que levou 20,3 s com orcamento de 11 s nao vale golpe."""
+    st = mod.State(3)
+    mod.feed(st, 'strike')
+    mod.feed(st, 'strike')
+    kind = mod.classify(0, 1460, 20.3, BUDGET)
+    act = mod.feed(st, kind)
+    ok = kind == 'starved' and act == 'wait' and st.strikes == 0
+    print('  %-30s kind=%-38s %s' % ('laco de 20,3 s', kind,
+                                     'ok' if ok else 'ERRADO'))
+    return ok
+
+
+def confirm_case(mod=P):
+    """A volta de confirmacao: so' a assinatura manda sair.
+
+    Medido (`SendMessageTimeoutW` num hwnd bogus): `got=0 err=1400`. Uma janela
+    recriada nunca responde, e sair por ela mataria a app por um hwnd morto.
+    """
+    st = mod.State(3)
+    acts = (mod.confirm(st, 'strike'), mod.confirm(st, 'noerr'),
+            mod.confirm(st, 'answered'))
+    ok = acts == ('exit', 'wait', 'wait')
+    print('  %-30s %-41s %s' % ('confirmacao exige a assinatura', str(acts),
+                                 'ok' if ok else 'ERRADO'))
+    return ok
+
+
+def cap_case(mod=P):
+    """O TECTO: sem assinatura, so' a decima segunda volta manda sair.
+
+    Impede o outro extremo: uma janela que nunca responde ficaria no ecra para
+    sempre se a app exigisse `ERROR_TIMEOUT` para sair.
+    """
+    st = mod.State(3)
+    for _ in range(11):
+        mod.feed(st, 'noerr')
+    before = mod.hard_cap(st)
+    mod.feed(st, 'noerr')
+    ok = (not before) and mod.hard_cap(st)
+    print('  %-30s %-41s %s' % ('teco: 11 nao, 12 sim', str(before),
+                                 'ok' if ok else 'ERRADO'))
+    return ok
+
+
+# o contracto entre o orgao e a app: o erro que ESTE orgao mediu numa janela
+# presa de verdade tem de ser o que a politica aceita como golpe
+ok_sig = (ERRORS.get('janela congelada') == P.ERROR_TIMEOUT)
+print('  %-30s janela=%-5s politica=%-5s %s'
+      % ('assinatura de congelamento', ERRORS.get('janela congelada'),
+         P.ERROR_TIMEOUT, 'ok' if ok_sig else 'ERRADO'))
+
+resultados += [owner_case(), frozen_case(), starved_case(), confirm_case(),
+               cap_case(), ok_sig]
+
+
+# ── O BRACO NEGATIVO: mutar a POLITICA e exigir que os bracos caiam ──────────
+def neg_arm():
+    anchor_err = "return 'strike' if err == ERROR_TIMEOUT else 'noerr'"
+    anchor_starve = ("if budget_s > 0 and took_s > budget_s * STARVE_FACTOR:")
+    anchor_confirm = "    if kind == 'strike':\n        return 'exit'"
+    muts = [
+        ('M1 qualquer got=0 conta', anchor_err, "return 'strike'"),
+        ('M2 sem guarda de esfomeamento', anchor_starve, 'if False:'),
+        ('M3 confirmacao deixa sair', anchor_confirm,
+         "    if kind != 'answered':\n        return 'exit'"),
+        ('M4 tecto desarmado', 'return state.noerr >= NOERR_HARD_CAP',
+         'return False'),
+    ]
+    with open(POLICY, encoding='utf-8', errors='replace') as fh:
+        text = fh.read()
+    caught = 0
+    tmpdir = tempfile.mkdtemp(prefix='wdpolicy-neg-')
+    try:
+        for i, (nome, old, new) in enumerate(muts):
+            if old not in text:
+                print('  %-30s ANCORA AUSENTE -- mutante nao aplicado' % nome)
+                continue
+            d = os.path.join(tmpdir, 'm%d' % i)
+            os.makedirs(d, exist_ok=True)
+            mp = os.path.join(d, 'ui_watchdog_policy.py')
+            with open(mp, 'w', encoding='utf-8', newline='') as fh:
+                fh.write(text.replace(old, new))
+            M = _load(mp, 'wd_mutant_%d' % i)
+            fell = []
+            for label, fn in (('dono', owner_case), ('congelado', frozen_case),
+                              ('esfomeado', starved_case),
+                              ('confirmacao', confirm_case),
+                              ('teco', cap_case)):
+                try:
+                    if not fn(M):
+                        fell.append(label)
+                except Exception:            # noqa: BLE001
+                    fell.append(label + '(exc)')
+            ok = bool(fell)
+            caught += 1 if ok else 0
+            print('  %-30s caiu=%-28s %s' % (nome, ','.join(fell) or '-',
+                                             'ok' if ok else 'ERRADO'))
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    return caught, len(muts)
+
+
+print('-- braco negativo (mutantes da politica)')
+caught, total = neg_arm()
+ok_neg = caught == total
+print('  %-30s %d/%d %s' % ('mutantes apanhados', caught, total,
+                            'ok' if ok_neg else 'ERRADO'))
+ok = ok and ok_neg
+print('UI-WATCHDOG-ORACLE %s -- %d/%d bracos, neg-arm %d/%d'
+      % ('PASS' if ok else 'FAIL', sum(1 for r in resultados if r),
+         len(resultados), caught, total))
+if ok_neg:
+    print('NEG-ARM: PASS (%d/%d mutantes caidos)' % (caught, total))
+else:
+    print('NEG-ARM: FAIL (a politica aceita um mutante)')
+# A CONVENCAO DA BATERIA (2026-11-03): o passo `red-as-expected-*` declara
+# `:expectred` e exige rc=1. "Apanhei todos os mutantes" E' o resultado
+# VERMELHO esperado; rc=0 quando um escapa (o passo fica vermelho de verdade).
+if '--neg-arm' in sys.argv:
+    sys.exit(1 if ok_neg else 0)
 sys.exit(0 if ok else 1)

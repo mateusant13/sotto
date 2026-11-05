@@ -36,11 +36,13 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import os
 import re
 import shutil
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP = os.path.join(HERE, '..', 'app', 'webview')
@@ -186,6 +188,56 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
     a11 = _pipe > 0 and _pre > _pipe and _watch > _pre
     out.append(("porta-cdp-abre-no-arranque", a11,
                 "pipeline=%d preopen=%d watcher=%d" % (_pipe, _pre, _watch)))
+    # A12 -- AS ABAS SAO SONADAS AO MESMO TEMPO (2026-11-05). MEDIDO no log do
+    # dono: `EXTERNAL_CAPTIONS_READ_MS ms=8609.0 phases={'source': 8609.0}` --
+    # oito segundos e meio dentro de UMA leitura, uma ligacao por aba somada.
+    # O instrumento e' uma rede FALSA que atrasa 0,3 s por ligacao: com quatro
+    # abas, a soma tem de passar de 1,2 s e o paralelo tem de ficar abaixo de
+    # 0,8 s. E as duas formas tem de devolver os MESMOS numeros, na mesma ordem.
+    class _Conn(object):
+        def __init__(self):
+            self._id = 1
+
+        def settimeout(self, _t):
+            pass
+
+        def send(self, payload):
+            # a resposta tem de ter o `id` PEDIDO: o `_ws_eval` ignora eventos
+            # num laco e um `id` errado seria um laco infinito (medido: este
+            # braco ficou preso quando devolvia sempre 1).
+            try:
+                self._id = int(json.loads(payload).get("id") or 1)
+            except (TypeError, ValueError):
+                self._id = 1
+
+        def recv(self):
+            value = json.dumps({"videoId": "v", "t": 3.0, "paused": False})
+            return json.dumps({"id": self._id,
+                               "result": {"result": {"value": value}}})
+
+        def close(self):
+            pass
+
+    def _slow_connect(_url, timeout=None):
+        time.sleep(0.3)
+        return _Conn()
+
+    tabs4 = [{"url": "https://www.youtube.com/watch?v=AAAAAAAAAAA" + str(i),
+              "webSocketDebuggerUrl": "ws%d" % i} for i in range(4)]
+    t0 = time.time()
+    seq_probes = mod.probe_tabs(tabs4, connect=_slow_connect, timeout=1.0,
+                                gap_s=0.0, parallel=False)
+    seq_s = time.time() - t0
+    t0 = time.time()
+    par_probes = mod.probe_tabs(tabs4, connect=_slow_connect, timeout=1.0,
+                                gap_s=0.0, parallel=True)
+    par_s = time.time() - t0
+    same = ([(p["t1"], p["videoId"]) for p in seq_probes]
+            == [(p["t1"], p["videoId"]) for p in par_probes]
+            and len(par_probes) == 4)
+    a12 = same and par_s < 0.8 and seq_s > 1.2
+    out.append(("abas-em-paralelo", a12,
+                "seq=%.2fs par=%.2fs mesmos=%s" % (seq_s, par_s, same)))
     return out
 
 
@@ -242,6 +294,15 @@ def neg_arm():
                         "            pass\n", 1))
         got6 = dict((n, ok) for n, ok, _ in arms(module_path=None, shell_path=mut6))
         results.append(("sem-preabertura", not got6.get("porta-cdp-abre-no-arranque", False)))
+
+        # SEM PARALELO: as abas voltam a ser somadas uma atras da outra -- o
+        # `EXTERNAL_CAPTIONS_READ_MS ms=8609` medido no log do dono.
+        mut7 = os.path.join(tmp, "sem_paralelo.py")
+        io.open(mut7, "w", encoding="utf-8").write(
+            src.replace("    if not parallel or len(items) == 1:",
+                        "    if True:", 1))
+        got7 = dict((n, ok) for n, ok, _ in arms(module_path=mut7))
+        results.append(("sem-paralelo", not got7.get("abas-em-paralelo", False)))
         return results
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

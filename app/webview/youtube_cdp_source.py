@@ -237,7 +237,45 @@ def _drop(conn):
     return conn
 
 
-def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S):
+def _probe_one(tab, connect, timeout, gap_s):
+    """UMA aba, duas leituras. O dicionario da sonda, ou None.
+
+    Separada de `probe_tabs` para as abas poderem ser sondadas EM PARALELO: o
+    corpo e' exactamente o mesmo, um `try` por aba, e o `connect` recebido e' o
+    que o chamador deu (nunca um cliente novo por aba).
+    """
+    try:
+        url = str(tab.get('webSocketDebuggerUrl') or '')
+    except AttributeError:
+        return None
+    if not url:
+        return None
+    conn = None
+    try:
+        conn = connect(url, timeout=timeout)
+        _arm_timeout(conn, timeout)
+        first = _as_obj(_ws_eval(conn, PLAYING_JS, 1))
+        time.sleep(gap_s)
+        second = _as_obj(_ws_eval(conn, PLAYING_JS, 2))
+    except Exception:                             # noqa: BLE001
+        return None
+    finally:
+        _drop(conn)
+    if not second:
+        return None
+    t1 = _float(second.get('t'))
+    t0 = _float((first or {}).get('t'))
+    return {'videoId': str(second.get('videoId') or ''),
+            'paused': second.get('paused'),
+            'ended': second.get('ended'),
+            't0': t0, 't1': t1,
+            'advance': (None if (t0 is None or t1 is None) else t1 - t0),
+            'visible': str(second.get('vis') or ''),
+            'tab': tab}
+
+
+def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S,
+               parallel=True):
     """Sonda cada aba `watch` UMA vez (duas leituras) e devolve os numeros.
 
     Cada aba custa uma ligacao curta e duas leituras; uma aba que nao responde
@@ -246,40 +284,42 @@ def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S):
     segunda leitura menos o da primeira -- e' ele que separa "a tocar" de
     "parado", e nao a bandeira `paused`, que a pagina de segundo plano pode
     mentir.
+
+    AS ABAS SAO SONDADAS AO MESMO TEMPO (2026-11-05). Medido no log do dono
+    com o video a tocar: `EXTERNAL_CAPTIONS_READ_MS ms=8609.0 phases={'target':
+    0.0, 'source': 8609.0, ...}` -- 8,6 s dentro de UMA leitura, porque cada aba
+    que nao responde custa uma ligacao ate' ao prazo (`timeout=1.0`) e as seis
+    eram somadas uma atras da outra. `choose_playing` ordena por `advance` e
+    desempata pelo id (nunca pela posicao na lista), por isso a ORDEM das sondas
+    nao decide nada: o resultado sai na ordem das abas, com as mortas fora,
+    como antes. `parallel=False` existe para o braco que MEDE a diferenca.
     """
     connect = connect or _default_connect()
-    probes = []
+    items = []
     for tab in list(tabs or ())[:MAX_PROBE_TABS]:
-        try:
-            url = str(tab.get('webSocketDebuggerUrl') or '')
-        except AttributeError:
-            continue
-        if not url:
-            continue
-        conn = None
-        try:
-            conn = connect(url, timeout=timeout)
-            _arm_timeout(conn, timeout)
-            first = _as_obj(_ws_eval(conn, PLAYING_JS, 1))
-            time.sleep(gap_s)
-            second = _as_obj(_ws_eval(conn, PLAYING_JS, 2))
-        except Exception:                         # noqa: BLE001
-            continue
-        finally:
-            _drop(conn)
-        if not second:
-            continue
-        t1 = _float(second.get('t'))
-        t0 = _float((first or {}).get('t'))
-        probes.append({'videoId': str(second.get('videoId') or ''),
-                       'paused': second.get('paused'),
-                       'ended': second.get('ended'),
-                       't0': t0, 't1': t1,
-                       'advance': (None if (t0 is None or t1 is None)
-                                   else t1 - t0),
-                       'visible': str(second.get('vis') or ''),
-                       'tab': tab})
-    return probes
+        items.append(tab)
+    if not items:
+        return []
+    if not parallel or len(items) == 1:
+        return [p for p in (_probe_one(t, connect, timeout, gap_s)
+                            for t in items) if p]
+    # Um fio por aba, no maximo `MAX_PROBE_TABS`: o `gap_s` de cada uma corre em
+    # paralelo com a ligacao das outras, e o custo total passa a ser o da aba
+    # MAIS LENTA em vez da soma.
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=len(items),
+                            thread_name_prefix='yt-probe') as pool:
+        futures = [pool.submit(_probe_one, t, connect, timeout, gap_s)
+                   for t in items]
+        out = []
+        for fut in futures:
+            try:
+                probe = fut.result()
+            except Exception:                     # noqa: BLE001
+                probe = None
+            if probe:
+                out.append(probe)
+        return out
 
 
 def choose_playing(probes, previous=''):

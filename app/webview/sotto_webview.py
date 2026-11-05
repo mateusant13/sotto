@@ -62,6 +62,11 @@ from code_identity import code_identity as _code_identity
 import panel_state
 import topmost_keepalive as _topmost_keepalive
 import power_recovery as _power_recovery
+# A POLITICA de golpe do cao-de-guarda vive fora, e e' pura, para poder ser
+# exercitada sem uma janela (`app/webview/ui_watchdog_policy.py`). Nasceu de a
+# app se ter MATADO a trabalhar as 06:57:25 (`err=0` tres vezes -- ver o
+# cabecalho do modulo).
+import ui_watchdog_policy as _wd_policy
 
 
 # ── O INSTRUMENTO DO SELFTEST VIVE EM `app/webview/selftest_instrument.py` ───
@@ -10518,35 +10523,93 @@ class SottoShell:
 
         def loop():
             answered_once = False
-            strikes = 0
+            state = _wd_policy.State(self.UI_WATCHDOG_STRIKES)
+            budget_s = (self.UI_WATCHDOG_POLL_S
+                        + self.UI_WATCHDOG_TIMEOUT_MS / 1000.0)
+
+            def sample():
+                """Uma pergunta ao Windows: (got, err, segundos que o laco levou)."""
+                t0 = time.monotonic()
+                result = ctypes.c_size_t(0)
+                ctypes.set_last_error(0)
+                got = send(ctypes.c_void_p(hwnd), WM_NULL, 0, 0,
+                           SMTO_ABORTIFHUNG, self.UI_WATCHDOG_TIMEOUT_MS,
+                           ctypes.byref(result))
+                return got, ctypes.get_last_error(), time.monotonic() - t0
+
             while True:
                 time.sleep(self.UI_WATCHDOG_POLL_S)
-                result = ctypes.c_size_t(0)
                 try:
-                    got = send(ctypes.c_void_p(hwnd), WM_NULL, 0, 0,
-                               SMTO_ABORTIFHUNG, self.UI_WATCHDOG_TIMEOUT_MS,
-                               ctypes.byref(result))
+                    got, err, took_s = sample()
                 except Exception as exc:  # noqa: BLE001
                     log('UI_WATCHDOG_ERROR error=%r' % (exc,))
                     continue
-                if got:
+                kind = _wd_policy.classify(got, err, took_s, budget_s)
+                if kind == 'answered':
                     answered_once = True
-                    if strikes:
-                        log('UI_WATCHDOG_RECOVERED strikes=%d' % strikes)
-                    strikes = 0
+                    if state.strikes or state.noerr:
+                        log('UI_WATCHDOG_RECOVERED strikes=%d noerr=%d'
+                            % (state.strikes, state.noerr))
+                elif kind == 'starved':
+                    # O PROCESSO nao correu: o relogio deste laco nao mediu a
+                    # janela. Medido no dono as 06:55: os golpes saiam a 20,3 s
+                    # e 12,8 s quando deviam sair a ~11 s, e o
+                    # `HOTKEY_OBSERVER_ALIVE max_gap_ms=68969` do mesmo minuto
+                    # diz que o processo inteiro ficou parado 69 s. Amostra
+                    # invalida nao soma golpe, e a sequencia antiga morre com ela.
+                    log('UI_WATCHDOG_STARVED took_ms=%d budget_ms=%d strikes=%d '
+                        'noerr=%d' % (took_s * 1000, budget_s * 1000,
+                                      state.strikes, state.noerr))
+                    # QUEM comeu o nucleo enquanto o laco nao andava: a medicao
+                    # existe (`_thread_cpu_census`) e uma amostra esfomeada e'
+                    # exactamente a altura em que ela vale a pena.
+                    try:
+                        self._thread_cpu_census(window_s=1.0)
+                    except Exception:            # noqa: BLE001
+                        pass
+                elif kind == 'noerr':
+                    if not answered_once:
+                        # ANTES da primeira resposta nenhum golpe conta: um
+                        # arranque em que a UI ainda nao bombeou (WebView2 a
+                        # inicializar) nao e' um congelamento.
+                        log('UI_WATCHDOG_NOANSWER_BEFORE_FIRST goto=0 err=%d'
+                            % (err,))
+                        continue
+                    log('UI_WATCHDOG_NOERR got=0 err=%d noerr=%d -- nao e a '
+                        'assinatura (ERROR_TIMEOUT=%d); nao conta como presa'
+                        % (err, state.noerr + 1, _wd_policy.ERROR_TIMEOUT))
+                action = _wd_policy.feed(state, kind)
+                if kind in ('strike', 'noerr'):
+                    log('UI_WATCHDOG_STRIKE strike=%d hwnd=%s err=%s kind=%s'
+                        % (state.strikes if kind == 'strike' else state.noerr,
+                           hwnd, err, kind))
+                if action != 'confirm':
                     continue
-                if not answered_once:
-                    log('UI_WATCHDOG_NOANSWER_BEFORE_FIRST reason=startup')
-                    continue
-                strikes += 1
-                log('UI_WATCHDOG_STRIKE strike=%d hwnd=%s err=%s'
-                    % (strikes, hwnd, ctypes.get_last_error()))
-                if strikes < self.UI_WATCHDOG_STRIKES:
-                    continue
-                if strikes < self.UI_WATCHDOG_STRIKES_FOREIGN and self._ui_stack_is_foreign():
+                reached = state.strikes or state.noerr
+                if (reached < self.UI_WATCHDOG_STRIKES_FOREIGN
+                        and self._ui_stack_is_foreign()):
                     log('UI_WATCHDOG_BUSY strike=%d reason=sem-codigo-nosso-na-pilha'
-                        % strikes)
+                        % reached)
                     continue
+                # A CONFIRMACAO: uma volta sem dormir. Uma janela que morreu
+                # (hwnd recriado) nunca responde, e sair por isso mataria a app
+                # por uma janela que ja' nao e' a dela.
+                got, err, took_s = sample()
+                kind = _wd_policy.classify(got, err, took_s, budget_s)
+                if _wd_policy.confirm(state, kind) != 'exit':
+                    if kind != 'answered' and _wd_policy.hard_cap(state):
+                        # Duas dezenas de voltas sem UMA resposta e com o relogio
+                        # sadio: e' uma janela que nao responde a nada, mesmo
+                        # sem `ERROR_TIMEOUT`. O TECTO existe para a app nao
+                        # FICAR congelada no ecra; o caso do dono (tres
+                        # amostras) nunca o alcanca.
+                        log('UI_WATCHDOG_NOERR_CAP noerr=%d err=%s -- sai sem '
+                            'assinatura apos %d voltas'
+                            % (state.noerr, err, _wd_policy.NOERR_HARD_CAP))
+                    else:
+                        log('UI_WATCHDOG_UNCONFIRMED kind=%s err=%s -- nao sai'
+                            % (kind, err))
+                        continue
                 # A UI esta presa de facto: dizer ONDE, e sair para nao deixar
                 # uma janela congelada no ecra do dono. O DESPEJO E' FORCADO
                 # (2026-11-04): o despejo que precede uma SAIDA era o unico
