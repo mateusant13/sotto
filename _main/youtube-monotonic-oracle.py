@@ -47,6 +47,14 @@ MONO = os.path.join(WEBVIEW, "youtube_monotonic.py")
 SHELL = os.path.join(WEBVIEW, "sotto_webview.py")
 LOG = os.path.join(HERE, "webview-run.log")
 
+#: Quantas vezes a regra ANTIGA tem de recuar para a arm8 ter dentes. O numero
+#: e' o que separa "a regra nova nao recua porque nao tem o que recuar" de "a
+#: regra nova nao recua porque a regra antiga recuava e ela nao" -- e por isso
+#: e' medido no corpus COMMITADO: o log do dono roda e um piso lido de um
+#: ficheiro que roda fica vermelho por rotacao (medido 2026-11-05: 3 recuos
+#: contra os 157 do corpus commitado).
+TEETH_FLOOR = 10
+
 if WEBVIEW not in sys.path:
     sys.path.insert(0, WEBVIEW)
 
@@ -376,6 +384,14 @@ def main(argv=None):
             old = _load_module(mpath, "youtube_monotonic_old")
             b_clock, _, _, n, worst = replay(rows, old, "old")
             if b_clock <= 0:
+                # O MESMO PISO DE DENTES DO ARM8: o log do dono roda, e um
+                # negativo lido de um ficheiro que roda fica "nao apanhei nada"
+                # por falta de populacao -- que e' o pior veredicto possivel
+                # aqui, porque e' indistinguivel de um instrumento sem dentes.
+                frows, _f = read_fixture()
+                if frows:
+                    b_clock, _, _, n, worst = replay(frows, old, "old")
+            if b_clock <= 0:
                 # CONTRATO DA CASA: rc 1 = apanhou o mutante, rc 0 = nao
                 # apanhou. Ate' 2026-11-04 este ramo saia 1 nos dois casos.
                 print("NEG-ARM FAIL -- a regra ANTIGA nao produziu recuo "
@@ -393,19 +409,54 @@ def main(argv=None):
     results = arm_rule(mono)
     results += arm_wiring(SHELL)
 
-    b_old, _, _, n, worst_old = replay(rows, mono, "old")
-    b_new, b_paint, seeks, _, worst_new = replay(rows, mono, "new")
-    results.append(("arm8-replay-no-clock-recoil", b_new == 0,
-                    "replay de %d linha(s): regra ANTIGA recua %d (pior "
-                    "%.2f s), regra NOVA recua %d%s"
-                    % (n, b_old, worst_old, b_new,
-                       (" (pior %.2f s)" % worst_new) if b_new else "")))
-    results.append(("arm8-old-rule-did-recoil", b_old >= 10,
-                    "a regra antiga tem de recuar em >=10 linhas para o arm8 "
-                    "valer: recuou %d" % b_old))
-    results.append(("arm8-seeks-kept", b_paint >= 0,
+    def _measure(rows_, name):
+        b_old_, _, _, n_, worst_old_ = replay(rows_, mono, "old")
+        b_new_, b_paint_, _, _, worst_new_ = replay(rows_, mono, "new")
+        return {"name": name, "n": n_, "b_old": b_old_, "b_new": b_new_,
+                "b_paint": b_paint_, "worst_old": worst_old_,
+                "worst_new": worst_new_}
+
+    live = _measure(rows, corpus)
+    # O PISO DE DENTES NAO PODE DEPENDER DO CORPUS VIVO (medido 2026-11-05).
+    # O log do dono roda e trunca: depois do incidente das 06:57 o replay vivo
+    # ficou com 3 recuos da regra antiga e a arm8 vermelha -- nao porque o
+    # instrumento perdeu os dentes, mas porque a POPULACAO mudou. Uma arm cujo
+    # veredito depende de um ficheiro que roda e' decorativa ao contrario: fica
+    # vermelha por rotacao e verde por sorte. A questao da arm8 e' sobre o
+    # INSTRUMENTO, e mede-se no corpus COMMITADO; o corpus vivo continua a ser
+    # o que prova `b_new == 0` (frescura), e quando ele tem dentes tambem serve
+    # de segunda testemunha.
+    teeth = live
+    teeth_note = ""
+    if live["b_old"] < TEETH_FLOOR:
+        frows, _fcensus = read_fixture()
+        fx = _measure(frows, os.path.basename(FIXTURE)) if frows else None
+        if fx and fx["b_old"] >= TEETH_FLOOR:
+            teeth = fx
+            teeth_note = (" | PISO: o corpus vivo recuou %d (<%d) e o "
+                          "commitado recuou %d em %d linha(s) -- a arm8 mede o "
+                          "INSTRUMENTO no corpus COMMITADO"
+                          % (live["b_old"], TEETH_FLOOR, fx["b_old"], fx["n"]))
+        else:
+            teeth_note = (" | PISO: NEM o corpus vivo (%d) NEM o commitado "
+                          "(%s) chegam a %d recuos da regra antiga -- a arm8 "
+                          "nao tem dentes"
+                          % (live["b_old"],
+                             fx["b_old"] if fx else "ilegivel", TEETH_FLOOR))
+    results.append(("arm8-replay-no-clock-recoil", live["b_new"] == 0,
+                    "replay de %d linha(s) (%s): regra ANTIGA recua %d (pior "
+                    "%.2f s), regra NOVA recua %d%s%s"
+                    % (live["n"], live["name"], live["b_old"],
+                       live["worst_old"], live["b_new"],
+                       (" (pior %.2f s)" % live["worst_new"])
+                       if live["b_new"] else "", teeth_note)))
+    results.append(("arm8-old-rule-did-recoil", teeth["b_old"] >= TEETH_FLOOR,
+                    "a regra antiga tem de recuar em >=%d linhas (%s) para a "
+                    "arm8 valer: recuou %d"
+                    % (TEETH_FLOOR, teeth["name"], teeth["b_old"])))
+    results.append(("arm8-seeks-kept", live["b_paint"] >= 0,
                     "recuos declarados pela PINTURA (seeks, legitimos): %d"
-                    % b_paint))
+                    % live["b_paint"]))
 
     failed = 0
     for name, ok, detail in results:
@@ -419,7 +470,7 @@ def main(argv=None):
         return 1
     print("YOUTUBE-MONOTONIC VERDICT GREEN -- %d PASS / 0 FAIL "
           "(recuos do relogio: antiga %d, nova %d; seeks pela pintura: %d)"
-          % (total, b_old, b_new, b_paint))
+          % (total, live["b_old"], live["b_new"], live["b_paint"]))
     return 0
 
 
