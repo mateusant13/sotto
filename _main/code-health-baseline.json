@@ -41,12 +41,12 @@
       "max_func_name": ""
     },
     "app/panel/caption-formulation.js": {
-      "bytes": 56391,
+      "bytes": 60207,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 1167,
+      "lines": 1218,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -121,12 +121,12 @@
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 199375,
+      "bytes": 205514,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4002,
+      "lines": 4128,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -280,6 +280,16 @@
       "max_func": 42,
       "max_func_name": "code_identity"
     },
+    "app/webview/exit_killer.py": {
+      "bytes": 6485,
+      "classes": 1,
+      "defs": 7,
+      "except_pass": 1,
+      "globals": 0,
+      "lines": 168,
+      "max_func": 51,
+      "max_func_name": "run"
+    },
     "app/webview/external_subs.py": {
       "bytes": 38121,
       "classes": 0,
@@ -421,13 +431,13 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1092249,
+      "bytes": 1127760,
       "classes": 27,
-      "defs": 121,
-      "except_pass": 44,
+      "defs": 135,
+      "except_pass": 49,
       "globals": 4,
-      "lines": 20445,
-      "max_func": 396,
+      "lines": 21107,
+      "max_func": 412,
       "max_func_name": "main"
     },
     "app/webview/topmost_keepalive.py": {
@@ -581,14 +591,24 @@
       "max_func_name": "run_engine_pass"
     },
     "worker/engine_switch.py": {
-      "bytes": 63689,
+      "bytes": 64405,
       "classes": 2,
-      "defs": 9,
+      "defs": 10,
       "except_pass": 1,
       "globals": 0,
-      "lines": 1186,
+      "lines": 1201,
       "max_func": 141,
       "max_func_name": "_run_runner"
+    },
+    "worker/fusion.py": {
+      "bytes": 19444,
+      "classes": 1,
+      "defs": 11,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 459,
+      "max_func": 132,
+      "max_func_name": "feed"
     },
     "worker/inspect_model.py": {
       "bytes": 4202,
@@ -629,6 +649,16 @@
       "lines": 411,
       "max_func": 61,
       "max_func_name": "get_or_load"
+    },
+    "worker/parakeet_ultra.py": {
+      "bytes": 17852,
+      "classes": 4,
+      "defs": 5,
+      "except_pass": 1,
+      "globals": 0,
+      "lines": 389,
+      "max_func": 74,
+      "max_func_name": "__init__"
     },
     "worker/qwen_summary.py": {
       "bytes": 84826,
@@ -671,13 +701,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 423327,
+      "bytes": 445509,
       "classes": 17,
-      "defs": 71,
-      "except_pass": 14,
+      "defs": 76,
+      "except_pass": 15,
       "globals": 5,
-      "lines": 7891,
-      "max_func": 2515,
+      "lines": 8279,
+      "max_func": 2624,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
@@ -719,6 +749,36 @@
       "lines": 162,
       "max_func": 49,
       "max_func_name": "open_word_start"
+    },
+    "worker/ultra_export.py": {
+      "bytes": 20422,
+      "classes": 3,
+      "defs": 9,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 429,
+      "max_func": 102,
+      "max_func_name": "export"
+    },
+    "worker/unified_asr.py": {
+      "bytes": 18875,
+      "classes": 1,
+      "defs": 13,
+      "except_pass": 1,
+      "globals": 0,
+      "lines": 446,
+      "max_func": 68,
+      "max_func_name": "_ladder"
+    },
+    "worker/unified_fixtures.py": {
+      "bytes": 6387,
+      "classes": 0,
+      "defs": 6,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 174,
+      "max_func": 32,
+      "max_func_name": "build"
     },
     "worker/vram_residency.py": {
       "bytes": 15903,
