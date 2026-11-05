@@ -40,11 +40,21 @@ metade: 65 s sem dizer ONDE nao e' uma medicao. As marcas, todas ja' no log:
 a unica rota que pode chegar aos 3 s sem esperar pelo grafo, e um relatorio que
 a esconde descreve mal a app.
 
+A PRIMEIRA LEGENDA CONTA POR QUALQUER ROTA (2026-11-05). Ate' aqui o relogio
+somava so' `CAPTION_PAINT` (a rota do ASR) e imprimia `YT_FRAME` ao lado como
+informacao: a aceitacao do dono -- *"legenda do youtube aparece na hora"* -- nao
+tinha portao nenhum, e o numero que ele ve' na app e' o da rota que o oraculo
+nao somava. Agora o veredicto e' o da PRIMEIRA das duas e a linha diz `route=`.
+A marca da rota externa e' `YOUTUBE_TRACK_PAINT` **com `painted_words` > 0**:
+a mesma linha sai com `painted_words=0 source=no-player-window` de 30 em 30 s
+(medido nesta arvore), e aceita-la por existir seria PASS a uma app que nao
+pintou nada.
+
 CODIGOS DE SAIDA
-  0  PASS      -- legenda pintada em < LIMIAR_MS
+  0  PASS      -- legenda pintada em < LIMIAR_MS, por qualquer das duas rotas
   0  SKIPPED   -- o arranque em julgamento ainda nao tem legenda pintada (a app
-                  pode estar a arrancar, ou nao havia audio). Nao e' um portao
-                  que passou: a bateria conta-o em `skipped=`.
+                  pode estar a arrancar, ou nao havia audio nem jogador). Nao e'
+                  um portao que passou: a bateria conta-o em `skipped=`.
   1  FAIL      -- legenda pintada em >= LIMIAR_MS (a aceitacao nao foi cumprida)
   2  SEM DADOS -- o ficheiro existe mas nao tem `SHELL_STARTUP_STAGE`, ou existe e
                   nao se consegue ler. Um ficheiro ABSENTE e' SKIPPED (rc=0), nao
@@ -102,6 +112,13 @@ _CAP_IN = re.compile(r"CAPTION_IN\b")
 #: `CAPTION_PAINT` seguido de espaco: `CAPTION_PAINT_LAG` nao casa (underscore
 #: e' caracter de palavra, logo `\s` falha onde ele esta').
 _PAINT = re.compile(r"CAPTION_PAINT\s+.*?text=(.*)$")
+#: A ROTA EXTERNA TAMBEM E' UMA LEGENDA NO ECRA (2026-11-05). `YOUTUBE_TRACK_PAINT`
+#: e' a linha que diz que o cro que veio do player foi PINTADO, e ela carrega a
+#: contagem em `painted_words=`. MEDIDO nesta arvore: a mesma linha sai com
+#: `painted_words=0 source=no-player-window` a cada 30 s quando nao ha jogador --
+#: aceita-la por existir daria PASS a uma app que nao pintou nada, que e' o mesmo
+#: erro de aceitar um placeholder. So' conta com `painted_words` > 0.
+_YT_PAINT = re.compile(r"YOUTUBE_TRACK_PAINT\b.*?painted_words=(\d+)")
 
 #: A ordem em que a tabela e' impressa. As chaves sao as que o `--json` publica.
 STAGES = (
@@ -113,6 +130,7 @@ STAGES = (
     ("caption_in", "CAPTION_IN"),
     ("paint", "CAPTION_PAINT"),
     ("yt_frame", "YT_FRAME (fonte externa, nao somada)"),
+    ("yt_paint", "YOUTUBE_TRACK_PAINT painted_words>0 (rota externa no ecra)"),
 )
 
 
@@ -162,6 +180,8 @@ def measure(lines, pid=None):
 
     marks = {}
     first_paint = None
+    first_yt_paint = None
+    yt_zero = None
     discarded = None
     for line in lines[begin + 1:end]:
         ts = _TS.match(line)
@@ -204,20 +224,48 @@ def measure(lines, pid=None):
                 else:
                     first_paint = (at, clean)
                     marks["paint"] = at
+        if first_yt_paint is None:
+            m = _YT_PAINT.search(line)
+            if m:
+                try:
+                    words = int(m.group(1))
+                except ValueError:
+                    words = 0
+                if words > 0:
+                    first_yt_paint = (at, words)
+                    marks["yt_paint"] = at
+                elif yt_zero is None:
+                    yt_zero = (at, line.strip())
 
     stages = {name: marks.get(name) for name, _ in STAGES}
+    # A PRIMEIRA LEGENDA E' A PRIMEIRA QUE CHEGOU AO ECRA, POR QUALQUER ROTA
+    # (2026-11-05). A ordem de dono e' *"legenda do youtube aparece na hora, com a
+    # legenda do sotto ativa"*: um oraculo que so' somasse a rota do ASR media a
+    # rota lenta e escondia a rapida -- e a app que ele julga mostra a rapida.
+    candidates = []
+    if first_paint:
+        candidates.append(("asr", first_paint[0], first_paint[1]))
+    if first_yt_paint:
+        candidates.append(("youtube", first_yt_paint[0], first_yt_paint[1]))
+    candidates.sort(key=lambda c: c[1])
+    first = candidates[0] if candidates else None
     out = {
         "shell_pid": shell_pid,
         "start": t0,
-        "first_paint": first_paint[0] if first_paint else None,
-        "first_paint_text": first_paint[1] if first_paint else None,
+        "first_paint": first[1] if first else None,
+        "first_paint_text": ("%d words from the player" % first[2]
+                             if first and first[0] == "youtube" else first[2] if first else None),
+        "first_paint_route": first[0] if first else None,
+        "first_paint_asr": first_paint[0] if first_paint else None,
+        "first_paint_youtube": first_yt_paint[0] if first_yt_paint else None,
+        "youtube_paint_without_words": yt_zero,
         "discarded_placeholder": discarded,
         "stages": stages,
         "limit_ms": LIMIAR_MS,
     }
     out["elapsed_ms"] = (
-        int(round((first_paint[0] - t0).total_seconds() * 1000))
-        if first_paint else None)
+        int(round((first[1] - t0).total_seconds() * 1000))
+        if first else None)
     out["stage_ms"] = {
         name: (int(round((at - t0).total_seconds() * 1000)) if at else None)
         for name, at in stages.items()
@@ -253,9 +301,20 @@ def report(result):
     if d["first_paint"] is None:
         lines.append("first caption  : NONE painted in this run yet")
     else:
-        lines.append('first caption  : %s  +%d ms  text="%s"'
+        lines.append('first caption  : %s  +%d ms  route=%s  text="%s"'
                      % (d["first_paint"].strftime("%H:%M:%S.%f")[:-3],
-                        d["elapsed_ms"], d["first_paint_text"]))
+                        d["elapsed_ms"], d["first_paint_route"],
+                        d["first_paint_text"]))
+        other = (d.get("first_paint_asr") if d["first_paint_route"] == "youtube"
+                 else d.get("first_paint_youtube"))
+        if other is not None:
+            lines.append("other route    : +%d ms (%s)"
+                         % (int(round((other - d["start"]).total_seconds() * 1000)),
+                            "asr" if d["first_paint_route"] == "youtube" else "youtube"))
+    if d.get("youtube_paint_without_words"):
+        at, text = d["youtube_paint_without_words"]
+        lines.append("  (not a caption: %s %s)"
+                     % (at.strftime("%H:%M:%S.%f")[:-3], text[:110]))
     lines.append("")
     lines.append("  +ms   stage")
     lines.append("  ----- ----")
@@ -370,6 +429,26 @@ def neg_arm():
 
     cases.append(("no-start-stamp", ['%s sotto: CAPTION_PAINT instant=false hwnd=9 text="x"' % _t(0)],
                   2, "SEM DADOS", ()))
+
+    # A ROTA EXTERNA E' UMA LEGENDA (2026-11-05). Com o ASR a 9 s e o player a
+    # pintar 3 palavras a 1,2 s, a PRIMEIRA legenda no ecra foi a do YouTube: um
+    # oraculo que somasse so' o ASR chamaria a isto FAIL e a aceitacao do dono
+    # (a legenda do YouTube aparece na hora) ficava sem portao nenhum.
+    yt_wins = [
+        "%s sotto: SHELL_STARTUP_STAGE pid=4242 stage=pre-lock" % _t(0),
+        "%s sotto: YOUTUBE_TRACK_PAINT video_id=abc source=player window cue=- match=1 painted_words=3" % _t(1200),
+        '%s sotto: CAPTION_PAINT instant=false hwnd=9 text="audience"' % _t(9000),
+    ]
+    cases.append(("youtube-route-beats-slow-asr", yt_wins, 0, "PASS", ("yt_paint",)))
+
+    # ... E UMA PINTURA SEM PALAVRAS NAO E' LEGENDA. Medido nesta arvore: a linha sai
+    # `painted_words=0 source=no-player-window` de 30 em 30 s com a app aberta e
+    # nenhum jogador. Aceita-la por existir seria PASS a uma app que nao pintou nada.
+    yt_zero = [
+        "%s sotto: SHELL_STARTUP_STAGE pid=4242 stage=pre-lock" % _t(0),
+        "%s sotto: YOUTUBE_TRACK_PAINT video_id=abc source=no-player-window cue=- match=0 painted_words=0" % _t(800),
+    ]
+    cases.append(("youtube-zero-words-is-not-a-caption", yt_zero, 0, "SKIPPED", ()))
 
     # UM LOG QUE NAO EXISTE NAO REPROVA A BATERIA: `:skipped` le' um rc diferente de
     # zero como FALHA, e uma worktree (ou uma maquina onde a app nunca correu) nao tem
