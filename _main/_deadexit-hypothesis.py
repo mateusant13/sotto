@@ -71,7 +71,8 @@ def _spawn_writer_that_never_writes():
     return subprocess.Popen([sys.executable, '-c', code],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                             stdin=subprocess.DEVNULL,
-                            creationflags=CREATE_NO_WINDOW)
+                            creationflags=CREATE_NO_WINDOW,
+                            startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
 
 
 def _child(arm, out):
@@ -142,7 +143,8 @@ def _run_arm(arm, root):
     proc = subprocess.Popen([sys.executable, SELF, '--arm', arm, '--out', out],
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                             stdin=subprocess.DEVNULL,
-                            creationflags=CREATE_NO_WINDOW)
+                            creationflags=CREATE_NO_WINDOW,
+                            startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     t0 = time.monotonic()
     exited_at = None
     rc = None

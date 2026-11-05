@@ -110,7 +110,9 @@ def run_unified(wav, config="lat560", lang="pt-BR"):
            "--config", config, "--lang", lang, "--device", "cuda"]
     t0 = time.perf_counter()
     proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
-                          errors="replace", creationflags=CREATE_NO_WINDOW)
+                          errors="replace", creationflags=CREATE_NO_WINDOW,
+                          startupinfo=subprocess.STARTUPINFO(
+                              dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     wall = time.perf_counter() - t0
     text, meters = "", {}
     for line in proc.stdout.splitlines():

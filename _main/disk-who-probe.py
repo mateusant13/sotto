@@ -84,6 +84,8 @@ def volume_latency(count=3, gap_ms=250):
              '-Command', _PS_DISK % {'count': max(3, int(count)), 'gap': max(50, int(gap_ms))}],
             capture_output=True, text=True, timeout=40,
             creationflags=0x08000000,
+            startupinfo=subprocess.STARTUPINFO(
+                dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
         )
     except Exception as exc:  # noqa: BLE001
         return {'error': repr(exc)}

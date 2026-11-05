@@ -1463,7 +1463,13 @@ def _spawn_exit_killer(code, child_pids, say):
         helper = subprocess.Popen(
             argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, close_fds=True,
-            creationflags=DETACHED_PROCESS | (CREATE_NO_WINDOW if os.name == 'nt' else 0))
+            # O PAR, NAO O BIT (`_main/console-window-audit.py`, WEAK-FLAG
+            # 2026-11-05): `CREATE_NO_WINDOW` sozinho nao esconde a janela quando
+            # o pai nao tem consola -- e o pai do EXIT KILLER e' a shell, que
+            # corre em `pythonw`. `startupinfo` com SW_HIDE e' a cinta.
+            creationflags=DETACHED_PROCESS | (CREATE_NO_WINDOW if os.name == 'nt' else 0),
+            startupinfo=subprocess.STARTUPINFO(
+                dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
         say('EXIT_KILLER_ARMED helper_pid=%s grace_ms=%d children=%s'
             % (helper.pid, int(EXIT_KILLER_GRACE_S * 1000), child_pids))
         return True

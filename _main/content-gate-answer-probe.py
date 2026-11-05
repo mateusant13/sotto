@@ -203,7 +203,9 @@ def _kill_tree(pid):
     try:
         subprocess.run(['taskkill', '/T', '/F', '/PID', str(pid)],
                        capture_output=True, timeout=15,
-                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                       startupinfo=subprocess.STARTUPINFO(
+                           dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except Exception:  # noqa: BLE001 -- matar e' melhor esforco e nunca decide o veredicto
         pass
 

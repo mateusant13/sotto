@@ -41,12 +41,12 @@
       "max_func_name": ""
     },
     "app/panel/caption-formulation.js": {
-      "bytes": 60207,
+      "bytes": 63022,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 1218,
+      "lines": 1271,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -121,12 +121,12 @@
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 205514,
+      "bytes": 209380,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4128,
+      "lines": 4207,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -431,12 +431,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1132405,
+      "bytes": 1135137,
       "classes": 27,
       "defs": 135,
       "except_pass": 49,
       "globals": 4,
-      "lines": 21188,
+      "lines": 21225,
       "max_func": 412,
       "max_func_name": "main"
     },
@@ -701,12 +701,12 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 446399,
+      "bytes": 448311,
       "classes": 17,
-      "defs": 76,
+      "defs": 77,
       "except_pass": 15,
       "globals": 5,
-      "lines": 8292,
+      "lines": 8329,
       "max_func": 2624,
       "max_func_name": "main"
     },

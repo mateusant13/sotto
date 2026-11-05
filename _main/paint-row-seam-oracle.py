@@ -121,7 +121,13 @@ def main(argv=None):
             print(f'MUTANT {name}: {"CAUGHT" if ok else "NOT-CAUGHT"}')
         print(f'NEG-ARM SUMMARY cases={len(mutants)} caught={caught}')
         print('NEG-ARM: PASS' if caught == len(mutants) else 'NEG-ARM: FAIL')
-        return 0 if caught == len(mutants) else 1
+        # rc=1 POR DESENHO quando o braco passa (a convencao desta arvore, escrita
+        # em `_main/_audit-verify-all.cmd:1261`: "o negativo responde rc=1 quando
+        # apanha os mutantes, e 0 quando um escapa"). O `:expectred` declara rc=1
+        # e a frase `NEG-ARM: PASS`; este ficheiro respondia 0 ao apanhar os tres,
+        # logo o passo ficou vermelho a fazer tudo certo -- medido na bateria de
+        # 2026-11-05: `red-as-expected-paint-row-seam=0` com `caught=3` no log.
+        return 1 if caught == len(mutants) else 0
     bad = [k for k, v in res.items() if not v]
     print('VERDICT:', 'PASS' if not bad else 'FAIL ' + ' '.join(bad))
     return 0 if not bad else 1

@@ -119,7 +119,7 @@ function makePanel(opts) {
      * through `provisionalRows`, never through an attribute selector. Two sources
      * form two sentences at the same time; one source never has two open rows.
      */
-    renderProvisional(committed, provisional, source) {
+    renderProvisional(committed, provisional, source, start) {
       const key = this.keyOf(source);
       let line = this.provisionals.get(key) || null;
       if (!line) {
@@ -294,7 +294,14 @@ const PANEL_ANCHORS = [
   'function engineFor(source)',
   'const provisionalRows = new Map()',
   'const engines = new Map()',
-  'function renderProvisional(committed, provisional, source)',
+  // A ANCORA E' O ARGUMENTO, NAO A LISTA INTEIRA (2026-11-05). O literal tinha
+  // `... provisional, source)` e o `start` que a guarda de monotonia acrescentou
+  // (`panel.js:1280`, commit ebd578c) fez o braco A0 cair -- com razao, porque o
+  // modelo deste ficheiro estava a descrever uma assinatura que ja' nao existe.
+  // O que este oraculo tem de provar e' que a linha aberta e' POR ORIGEM: o
+  // prefixo falha se o argumento`source` desaparecer, e nao falha quando um
+  // parametro NOVO entra DEPOIS dele.
+  'function renderProvisional(committed, provisional, source',
   'function retireProvisional(source)',
   'if (source !== null) line.dataset.source = source;',
   'const trimmedSource = first && first.dataset && first.dataset.source',

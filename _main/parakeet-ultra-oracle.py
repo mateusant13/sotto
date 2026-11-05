@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# BATTERY-HEAVY: model -- carrega 2,4 GB (`model_weights.ckpt` / `unified.nemo`) e
+# corre em CUDA; o passo `parakeet-ultra` da bateria e' `heavy`, e o portao
+# `_main/battery-heavy-gate.py` exige que o INSTRUMENTO declare a classe onde a
+# verdade esta' (medido 2026-11-05: C2 recusou o passo por falta deste marker).
 """Oraculo da comparacao parakeet-redux (ONNX int4) x parakeet-ultra.
 
 O QUE JULGA
@@ -136,7 +140,10 @@ class Resources:
         flags = 0x08000000 if os.name == "nt" else 0
         try:
             out = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
-                                 capture_output=True, text=True, creationflags=flags, timeout=10).stdout
+                                 capture_output=True, text=True, creationflags=flags,
+                                 startupinfo=subprocess.STARTUPINFO(
+                                     dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
+                                 timeout=10).stdout
             return float(out.strip().splitlines()[0])
         except Exception:  # noqa: BLE001
             return None
@@ -307,7 +314,12 @@ def neg_arm() -> int:
                                     edit_counts(reference, accent_fail)[0]))
     print("NEG-ARM %s -- %d caso(s) divergentes"
           % ("GREEN" if failures == 0 else "RED", failures))
-    return 0 if failures == 0 else 1
+    # rc=1 POR DESENHO quando o instrumento se prova (convencao da casa,
+    # `_main/_audit-verify-all.cmd:1261`). O `:expectred` deste passo declara
+    # rc=1 e a frase `NEG-ARM GREEN`; responder 0 fazia o passo vermelho a
+    # fazer tudo certo -- medido 2026-11-05: `red-as-expected-parakeet-ultra=0`
+    # com 0 casos divergentes no log.
+    return 1 if failures == 0 else 0
 
 
 def window_probe(engines, window_s: float, step_s: float) -> int:

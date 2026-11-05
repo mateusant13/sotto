@@ -141,7 +141,8 @@ def child_main(cfg_path):
     worker = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)'],
                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL,
-                              creationflags=CREATE_NO_WINDOW)
+                              creationflags=CREATE_NO_WINDOW,
+                              startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     with open(os.path.join(cfg['run'], 'worker.pid'), 'w') as fh:
         fh.write(str(worker.pid))
     child = StuckChild(worker.pid) if cfg['stuck_child'] else worker
@@ -166,7 +167,8 @@ def run_child(cfg, run_dir):
     proc = subprocess.Popen([sys.executable, SELF, '--child', cfg_path],
                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                             stderr=subprocess.PIPE,
-                            creationflags=CREATE_NO_WINDOW)
+                            creationflags=CREATE_NO_WINDOW,
+                            startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     worker_file = os.path.join(run_dir, 'worker.pid')
     worker_pid = None
     t0 = time.monotonic()
