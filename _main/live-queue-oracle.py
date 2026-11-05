@@ -127,6 +127,110 @@ def pending_checks(LQ, tmp, tag=""):
     return out
 
 
+def spool_checks(LQ, alive, tag=""):
+    """Os arms dos SPOOLS IRMAOS, contra o modulo REAL e contra um MUTANTE.
+
+    O defeito que estes arms fecham foi medido em 2026-11-05: cinco directorios
+    `sotto-pending-audio-<pid>` de pids mortos, 51,9 MB, em `G:/Temp` -- a
+    limpeza de arranque varria os FICHEIROS DE DENTRO do directorio que o proprio
+    run acabara de criar, e nunca via os irmaos. Por isso a arm central e' um PAR:
+    o irmao MORTO sai e o VIVO fica, no mesmo varrimento.
+    """
+    out = []
+
+    def chk(name, real, want):
+        out.append((real == want, tag + name, real, want))
+
+    root = tempfile.mkdtemp(prefix="live-queue-spools-")
+    try:
+        def mk(pid, payload=4096):
+            d = os.path.join(root, LQ.SPOOL_DIR_PREFIX + str(pid))
+            os.makedirs(d, exist_ok=True)
+            fh = io.open(os.path.join(d, "pending-%d-000.f32" % pid), "wb")
+            fh.write(b"\0" * payload)
+            fh.close()
+            return d
+
+        morto = mk(41001)
+        vivo = mk(41002, 8192)
+        eu = mk(41003)
+        outro = os.path.join(root, "um-directorio-qualquer")
+        os.makedirs(outro, exist_ok=True)
+        here = os.path.join(root, LQ.SPOOL_DIR_PREFIX + "41999")
+        dirs, files, freed = LQ.sweep_sibling_spools(
+            here, keep_pid=41003,
+            alive=lambda p: bool(alive(p)), log=lambda _m: None)
+        chk("o spool de um pid MORTO e' removido", os.path.isdir(morto), False)
+        chk("o spool de um pid VIVO fica", os.path.isdir(vivo), True)
+        chk("o spool do proprio processo fica (keep_pid)", os.path.isdir(eu), True)
+        chk("um irmao que nao e' spool nao e' tocado", os.path.isdir(outro), True)
+        chk("o varrimento conta so' o que removeu", (dirs, files, freed), (1, 1, 4096))
+        # um segundo varrimento nao inventa trabalho: nada de pid morto ficou
+        chk("o segundo varrimento nao remove nada",
+            LQ.sweep_sibling_spools(here, keep_pid=41003, alive=alive,
+                                    log=lambda _m: None)[0], 0)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    return out
+
+
+def wiring_checks(tag=""):
+    """`probe_and_spool` REMOVE os irmaos -- e nao varre o spool do dono."""
+    out = []
+
+    def chk(name, real, want):
+        out.append((real == want, tag + name, real, want))
+
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "engine_policy_probe", os.path.join(WORKER, "engine_policy.py"))
+    pol = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pol)
+    tmp = tempfile.mkdtemp(prefix="live-queue-wiring-")
+    custom = tempfile.mkdtemp(prefix="live-queue-custom-")
+    saved = (os.environ.get("TEMP"), os.environ.get("TMP"), os.environ.get("TMPDIR"),
+             os.environ.get("SOTTO_REDUX_SPOOL_DIR"), tempfile.tempdir)
+    try:
+        stale = os.path.join(tmp, "sotto-pending-audio-45999")
+        os.makedirs(stale, exist_ok=True)
+        fh = io.open(os.path.join(stale, "pending-45999-000.f32"), "wb")
+        fh.write(b"\0" * 1024)
+        fh.close()
+        for key in ("TEMP", "TMP", "TMPDIR"):
+            os.environ[key] = tmp
+        os.environ.pop("SOTTO_REDUX_SPOOL_DIR", None)
+        tempfile.tempdir = None
+        pol._LIVE_QUEUE_CACHE.update({"module": None, "path": None})
+        _probe, spool = pol.probe_and_spool(os.path.join(REPO, "app", "webview",
+                                                         "load_shedding.py"), None)
+        chk("o spool do run nasce no temp", os.path.dirname(spool), os.path.normpath(tmp))
+        chk("o irmao MORTO foi removido pelo ARRANQUE", os.path.isdir(stale), False)
+
+        # o directorio do DONO nao e' varrido
+        stale2 = os.path.join(custom, "sotto-pending-audio-45998")
+        os.makedirs(stale2, exist_ok=True)
+        os.environ["SOTTO_REDUX_SPOOL_DIR"] = custom
+        pol._LIVE_QUEUE_CACHE.update({"module": None, "path": None})
+        _probe2, spool2 = pol.probe_and_spool(os.path.join(REPO, "app", "webview",
+                                                           "load_shedding.py"), None)
+        chk("SOTTO_REDUX_SPOOL_DIR manda no sitio do spool",
+            os.path.normpath(spool2), os.path.normpath(custom))
+        chk("o spool do DONO nao e' varrido", os.path.isdir(stale2), True)
+    finally:
+        for key, value in zip(("TEMP", "TMP", "TMPDIR", "SOTTO_REDUX_SPOOL_DIR",
+                               "tempdir"), saved):
+            if key == "tempdir":
+                tempfile.tempdir = value
+            elif value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(custom, ignore_errors=True)
+    return out
+
+
 def run_negative_mutants(LQ_PATH):
     """DOIS mutantes plausiveis, cada um tem de derrubar os arms da ESPERA.
 
@@ -178,6 +282,37 @@ def run_negative_mutants(LQ_PATH):
             for name_mod in [m for m in list(sys.modules) if m == "live_queue"]:
                 del sys.modules[name_mod]
             shutil.rmtree(tmp, ignore_errors=True)
+    # (c) O MUTANTE DOS IRMAOS: sem a pergunta "o pid ainda existe?", o varrimento
+    # apaga o spool de um worker VIVO -- que e' audio do dono a caminho do parakeet.
+    # Uma remocao so' pode ser segura se a guarda for a que a autoriza.
+    tmp = tempfile.mkdtemp(prefix="live-queue-neg-spool-")
+    try:
+        text = io.open(LQ_PATH, encoding="utf-8").read()
+        before = "        if is_alive(pid):\n            continue\n"
+        mutant = text.replace(before, "        # MUTANTE: sem a pergunta de liveness\n")
+        if mutant == text:
+            print("[FAIL] neg-arm(spool-sem-liveness): nao consegui mutar o alvo")
+            reds.append(False)
+        else:
+            io.open(os.path.join(tmp, "live_queue.py"), "w", encoding="utf-8").write(mutant)
+            sys.path.insert(0, tmp)
+            for name_mod in [m for m in list(sys.modules) if m == "live_queue"]:
+                del sys.modules[name_mod]
+            import live_queue as MUT
+            try:
+                failed = [c for c in spool_checks(
+                    MUT, lambda p: p == 41002, tag="spool-sem-liveness: ") if not c[0]]
+            except Exception as exc:  # noqa: BLE001
+                failed = [("", f"rebentou ({type(exc).__name__}: {exc})", None, None)]
+            red = bool(failed)
+            print(f"[{'PASS' if red else 'FAIL'}] neg-arm(spool-sem-liveness): o mutante "
+                  f"derruba {len(failed)} arm(s) (1o: {failed[0][1] if failed else '--'})")
+            reds.append(red)
+    finally:
+        sys.path.remove(tmp)
+        for name_mod in [m for m in list(sys.modules) if m == "live_queue"]:
+            del sys.modules[name_mod]
+        shutil.rmtree(tmp, ignore_errors=True)
     return reds
 
 
@@ -230,6 +365,21 @@ def main() -> int:
     try:
         for ok, name, real, want in pending_checks(LQ, tmp_wait):
             arm(name, real, want)
+        # -- OS SPOOLS IRMAOS: o disco que os runs anteriores deixaram ---------
+        # Medido 2026-11-05: 5 directorios de pids mortos, 51,9 MB, em `G:/Temp`.
+        arm("a limpeza olha para os IRMAOS, nao so' para dentro do seu directorio",
+            hasattr(LQ, "sweep_sibling_spools"), True)
+        arm("o varrimento conhece o NOME do directorio de spool",
+            getattr(LQ, "SPOOL_DIR_PREFIX", None), "sotto-pending-audio-")
+        for ok, name, real, want in spool_checks(
+                LQ, lambda p: p == 41002):
+            arm(name, real, want)
+        for ok, name, real, want in wiring_checks():
+            arm(name, real, want)
+        # a pergunta de liveness, contra o SO de verdade: o proprio pid vive e um
+        # pid que nao existe (acima de qualquer limite desta caixa) nao vive.
+        arm("`_pid_alive` diz VIVO do proprio processo", LQ._pid_alive(os.getpid()), True)
+        arm("`_pid_alive` diz MORTO de um pid inexistente", LQ._pid_alive(3999999), False)
     finally:
         shutil.rmtree(tmp_wait, ignore_errors=True)
 

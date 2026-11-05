@@ -2696,11 +2696,11 @@ call :expectred red-as-expected-battery-class !STEP_RC! "%OUT%\battery-class-neg
 ) else ( call :expectred red-as-expected-battery-class MISSING "%OUT%\battery-class-neg.log" "NEG-ARM PASS" )
 
 if exist _main\live-queue-oracle.py (
-call :step always live-queue 0 "_main\live-queue-oracle.py;worker\live_queue.py;worker\sotto_worker.py" "%OUT%\live-queue.log" python _main\live-queue-oracle.py
+call :step always live-queue 0 "_main\live-queue-oracle.py;worker\live_queue.py;worker\sotto_worker.py;worker\engine_policy.py" "%OUT%\live-queue.log" python _main\live-queue-oracle.py
 call :record live-queue !STEP_RC!
 ) else ( call :record live-queue MISSING )
 if exist _main\live-queue-oracle.py (
-call :step always red-as-expected-live-queue 1 "_main\live-queue-oracle.py;worker\live_queue.py;worker\sotto_worker.py" "%OUT%\live-queue-neg.log" python _main\live-queue-oracle.py --neg-arm
+call :step always red-as-expected-live-queue 1 "_main\live-queue-oracle.py;worker\live_queue.py;worker\sotto_worker.py;worker\engine_policy.py" "%OUT%\live-queue-neg.log" python _main\live-queue-oracle.py --neg-arm
 call :expectred red-as-expected-live-queue !STEP_RC! "%OUT%\live-queue-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-live-queue MISSING "%OUT%\live-queue-neg.log" "NEG-ARM PASS" )
 

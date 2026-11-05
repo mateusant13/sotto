@@ -102,6 +102,115 @@ def enqueue_live(q, block, cap):
 #: ser limpo as cegas.
 SPOOL_GLOB = "pending-*.f32"
 
+#: O nome do DIRECTORIO de spool. Leva o pid (`engine_policy.probe_and_spool`),
+#: e e' o pid que diz se o irmao ainda pode estar a escrever.
+SPOOL_DIR_PREFIX = "sotto-pending-audio-"
+
+
+def _pid_alive(pid):
+    """`True` quando o pid EXISTE e ainda corre. Incerto conta como VIVO."""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return True
+    if pid <= 0:
+        return True
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            k32 = ctypes.windll.kernel32
+            handle = k32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+            if not handle:
+                return False
+            try:
+                code = ctypes.c_ulong(0)
+                if k32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                    return int(code.value) == 259  # STILL_ACTIVE
+                return True
+            finally:
+                k32.CloseHandle(handle)
+        except Exception:  # noqa: BLE001 -- sem resposta do SO, nao se apaga nada
+            return True
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def sweep_sibling_spools(spool_dir, keep_pid=None, log=None, alive=None):
+    """Remove os DIRECTORIOS de spool de processos que ja' nao existem.
+
+    O DEFEITO QUE ISTO FECHA (medido 2026-11-05). `probe_and_spool` da' a cada
+    worker um directorio proprio, `sotto-pending-audio-<pid>`, e a limpeza de
+    arranque (`sweep_spool_dir`) varre os FICHEIROS DE DENTRO do directorio que
+    recebe. Como cada run cria o seu, a limpeza olhava sempre para o directorio
+    que ela propria acabara de criar: nunca via o audio dos runs anteriores.
+    Medido nesta maquina: cinco irmaos orfaos em `G:/Temp`
+    (pids 22156, 40636, 55348, 62016, 64764), ~52 MB, nenhum dos pids vivo,
+    numa maquina onde `I:` esta' a 0,4 % -- e o dono conta disco desperdicado
+    como inadmissivel.
+
+    A REGRA e' a MESMA de `sweep_spool_dir` e nao uma nova: um spool de um
+    processo que ja' nao existe e' audio de uma sessao sem painel, sem relogio
+    de audio e sem consumidor. Nunca se apaga o `keep_pid` (o nosso) nem o de
+    um pid VIVO. `alive` existe para o oraculo conduzir isto com uma tabela em
+    vez de criar processos.
+    """
+    import glob
+    import shutil
+
+    dirs = 0
+    files = 0
+    freed = 0
+    here = os.path.normpath(spool_dir)
+    if not here:
+        return dirs, files, freed
+    keep = None if keep_pid is None else int(keep_pid)
+    is_alive = alive or _pid_alive
+    for path in glob.glob(os.path.join(os.path.dirname(here), SPOOL_DIR_PREFIX + "*")):
+        pid = _spool_pid(path)
+        if pid is None or pid == keep or is_alive(pid):
+            continue
+        count, size = _dir_usage(path)
+        shutil.rmtree(path, ignore_errors=True)
+        if os.path.exists(path):
+            continue
+        dirs += 1
+        files += count
+        freed += size
+    if dirs and log is not None:
+        log(f"AUDIO_PENDING_STALE_DIRS_REMOVED parent={os.path.dirname(here)} "
+            f"dirs={dirs} files={files} mb={freed / 1048576.0:.1f} — spools de "
+            f"pids que ja' nao existem; nenhum ficheiro de um pid vivo foi tocado")
+    return dirs, files, freed
+
+
+def _spool_pid(path):
+    """O pid que o NOME de um directorio de spool declara, ou None."""
+    name = os.path.basename(os.path.normpath(path))
+    if not name.startswith(SPOOL_DIR_PREFIX) or not os.path.isdir(path):
+        return None
+    try:
+        return int(name[len(SPOOL_DIR_PREFIX):])
+    except (TypeError, ValueError):
+        return None
+
+
+def _dir_usage(path):
+    """`(ficheiros, bytes)` de uma arvore -- o que um `rmtree` vai libertar."""
+    count = 0
+    size = 0
+    for root, _subdirs, names in os.walk(path):
+        for fname in names:
+            try:
+                size += os.path.getsize(os.path.join(root, fname))
+                count += 1
+            except OSError:
+                continue
+    return count, size
+
 
 def sweep_spool_dir(path, log=None, keep_pid=None):
     """Limpa o spool de runs ANTERIORES. Devolve `(ficheiros, bytes)`.

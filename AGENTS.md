@@ -446,8 +446,13 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 18:0x):** `_main\_audit-verify-all.cmd` = **260731 B**,
-  **3196 CRLF** / 0 bare LF, sha256 `50FF6009BBF39C7F6B8C0839E73A0F5B6FF8498D1502107496E9E18A55732BF1`.
+- **PIN do ficheiro (medido 2026-11-05, 18:5x):** `_main\_audit-verify-all.cmd` = **260779 B**,
+  **3196 CRLF** / 0 bare LF, sha256 `E236086D59E130C8B3294A36AA5E9C4B76A1D57EFC3FEB47B2AEE519238277A6`.
+  (Quarenta e oito bytes a mais do que o pin de 260731 B: as DUAS linhas do passo `live-queue`
+  passam a nomear `worker\engine_policy.py` nas dependencias. As arms novas do varrimento de
+  spools IRMAOS executam o `probe_and_spool` DESSE ficheiro e uma dependencia que o nao nomeia
+  deixaria o passo em cache a descrever um arranque que ja mudou -- a mesma razao pela qual a
+  linha ja nomeava `worker\live_queue.py`.
   (Quatorze linhas a mais do que o pin de 259294 B / 3182 CRLF: `live-code-freshness-control`
   (`--control`, as arms I1/I2/I3 da etiqueta) e o `red-as-expected-live-code-freshness`
   (`--neg-arm`, que repoe a lista curada numa COPIA de `code_identity.py` e exige o RED -- medido:

@@ -44,6 +44,12 @@ REDUX_ENGINE_WINDOW_S = 3.0
 #: O modulo da decisao, carregado UMA vez por processo (ver `shedding`).
 _SHEDDING_CACHE = {"module": None, "path": None}
 
+#: `worker/live_queue.py`, pela mesma via (ver `live_queue`).
+_LIVE_QUEUE_CACHE = {"module": None, "path": None}
+
+#: O directorio deste ficheiro -- e' onde `live_queue.py` vive.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
 
 def shedding(path, err=None):
     """`app/webview/load_shedding.py` por caminho, ou None.
@@ -72,6 +78,33 @@ def shedding(path, err=None):
         module = None
     _SHEDDING_CACHE["module"] = module if module is not None else False
     _SHEDDING_CACHE["path"] = path
+    return module
+
+
+def live_queue(err=None):
+    """`worker/live_queue.py` por caminho -- so' para a limpeza dos spools irmaos.
+
+    Pela mesma razao de `shedding`: o worker corre de `worker/` mas este modulo
+    tambem e' carregado por caminho pelos harnesses (`--policy DIR`), logo um
+    `import live_queue` dependeria de o `sys.path` do chamador ter `worker/`.
+    Nao ha' `import` do worker aqui: `live_queue` nao importa nada deste repo.
+    """
+    path = os.path.join(_HERE, "live_queue.py")
+    if _LIVE_QUEUE_CACHE["module"] is not None and _LIVE_QUEUE_CACHE["path"] == path:
+        return _LIVE_QUEUE_CACHE["module"] or None
+    module = None
+    try:
+        spec = _ilu.spec_from_file_location("live_queue_sweep", path)
+        module = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception as exc:  # noqa: BLE001 -- sem ele, o disco fica como estava
+        if err is not None:
+            err(f"AUDIO_PENDING_SWEEP_UNAVAILABLE path={path} "
+                f"error={type(exc).__name__}: {exc} — os spools de runs anteriores "
+                f"nao sao removidos neste arranque")
+        module = None
+    _LIVE_QUEUE_CACHE["module"] = module if module is not None else False
+    _LIVE_QUEUE_CACHE["path"] = path
     return module
 
 
@@ -391,12 +424,27 @@ def probe_and_spool(shedding_path, err):
     directorio proprio no temp. `PendingAudio` limpa-o ao construir-se (audio de
     um run anterior e' de uma sessao que ja' nao existe) e apaga o que escreveu
     quando o entrega -- o disco nao se gasta a espera.
+
+    E os IRMAOS de runs anteriores sao removidos AQUI, antes de o directorio novo
+    nascer: o spool de cada worker tem o pid no nome, logo a limpeza de dentro do
+    directorio (`PendingAudio`) so' podia ver o que este run acabara de criar.
+    Medido 2026-11-05: cinco irmaos orfaos (~52 MB) de pids mortos em `G:/Temp`.
+    Com `SOTTO_REDUX_SPOOL_DIR` o directorio e' do dono e nao se varre nada.
     """
     module = shedding(shedding_path, err)
     probe = module.LoadProbe() if module is not None else None
-    spool_dir = (os.environ.get("SOTTO_REDUX_SPOOL_DIR")
-                 or os.path.join(_tempfile.gettempdir(),
-                                 f"sotto-pending-audio-{os.getpid()}"))
+    custom = os.environ.get("SOTTO_REDUX_SPOOL_DIR")
+    if custom:
+        return probe, custom
+    spool_dir = os.path.join(_tempfile.gettempdir(),
+                             f"sotto-pending-audio-{os.getpid()}")
+    queue_mod = live_queue(err)
+    if queue_mod is not None:
+        try:
+            queue_mod.sweep_sibling_spools(spool_dir, keep_pid=os.getpid(), log=err)
+        except Exception as exc:  # noqa: BLE001 -- limpar disco nao e' o arranque
+            if err is not None:
+                err(f"AUDIO_PENDING_SWEEP_FAILED {type(exc).__name__}: {exc}")
     return probe, spool_dir
 
 def done_fields(sw, counts):

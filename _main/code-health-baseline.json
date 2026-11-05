@@ -601,12 +601,12 @@
       "max_func_name": "selftest"
     },
     "worker/engine_policy.py": {
-      "bytes": 18550,
+      "bytes": 20834,
       "classes": 2,
-      "defs": 9,
+      "defs": 10,
       "except_pass": 0,
       "globals": 0,
-      "lines": 424,
+      "lines": 472,
       "max_func": 96,
       "max_func_name": "run_engine_pass"
     },
@@ -651,12 +651,12 @@
       "max_func_name": "resolve_lang_id"
     },
     "worker/live_queue.py": {
-      "bytes": 18468,
+      "bytes": 22447,
       "classes": 1,
-      "defs": 4,
+      "defs": 8,
       "except_pass": 3,
       "globals": 0,
-      "lines": 428,
+      "lines": 537,
       "max_func": 52,
       "max_func_name": "take_all"
     },
