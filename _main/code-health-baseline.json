@@ -431,12 +431,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1135137,
+      "bytes": 1139141,
       "classes": 27,
       "defs": 135,
-      "except_pass": 49,
+      "except_pass": 50,
       "globals": 4,
-      "lines": 21225,
+      "lines": 21288,
       "max_func": 412,
       "max_func_name": "main"
     },
@@ -511,12 +511,12 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 45944,
+      "bytes": 47693,
       "classes": 1,
-      "defs": 17,
+      "defs": 18,
       "except_pass": 4,
       "globals": 0,
-      "lines": 1032,
+      "lines": 1072,
       "max_func": 125,
       "max_func_name": "_run"
     },
@@ -801,7 +801,7 @@
       "max_func_name": "_pump"
     }
   },
-  "measured": "2026-10-23",
+  "measured": "2026-11-05",
   "metrics": [
     "bytes",
     "lines",
