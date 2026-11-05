@@ -37,6 +37,8 @@ LOG = os.path.join(ROOT, '_main', 'webview-run.log')
 BUDGET_MS_DEFAULT = 1500.0
 MODE_SPLIT_MS = 100.0     # `queue_ms` at or above this is the deadline mode
 MIN_ROWS = 30             # below this the verdict is UNKNOWN-NOT-RUN, never PASS
+DEFAULT_WINDOW_MIN = 60   # a janela do veredicto: a ULTIMA CORRIDA da app, nao
+                          # as 20 h que o ficheiro acumulou (medido 2026-11-05)
 TARGET_P95_MS = 1500.0
 TARGET_OVER_PCT = 5.0
 
@@ -466,21 +468,46 @@ def neg_arm():
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--log', default=LOG)
-    ap.add_argument('--minutes', type=int, default=0)
+    ap.add_argument('--minutes', type=int, default=DEFAULT_WINDOW_MIN,
+                    help='janela ancorada na ULTIMA linha do log (0 = ficheiro '
+                         'inteiro). O veredicto mede a app que correu agora; '
+                         'horas de ontem sao contexto e nao voto.')
     ap.add_argument('--budget-ms', type=float, default=BUDGET_MS_DEFAULT)
     ap.add_argument('--json', action='store_true')
     ap.add_argument('--neg-arm', action='store_true')
     a = ap.parse_args(argv)
     if a.neg_arm:
         return neg_arm()
+    # O CONTEXTO DO FICHEIRO INTEIRO SAI SEMPRE, E NUNCA COMO VEREDICTO
+    # (medido 2026-11-05): o agregado de 20 h deu over=20,8 % e o RED veio de
+    # 2026-11-04 00:00-04:00 (33 % das linhas `over=true`) enquanto a janela
+    # fresca -- a ultima corrida da app, 2026-11-05 06:xx -- media 4,1 %. Um
+    # governador que soma horas antigas publica "a app esta' lenta" sobre uma
+    # app que ja' nao esta' assim, e o mesmo numero esconde o contrario: uma
+    # regressao de hoje some sob 4 000 linhas de ontem. A janela e' ancorada na
+    # ULTIMA linha (o `read_log` ja' faz isso), nunca no relogio de parede, para
+    # um log parado nao gerar uma janela vazia e verde por omissao.
+    whole_v = whole_d = None
+    if a.minutes:
+        whole_rows = read_log(a.log, None)
+        if whole_rows:
+            whole_v, whole_d = judge(whole_rows, a.budget_ms)
     rows = read_log(a.log, a.minutes or None)
     verdict, d = judge(rows, a.budget_ms)
     d['reused'] = _LAST_REUSED
     d['finals'] = _LAST_FINALS
+    d['window_min'] = a.minutes
+    if whole_d is not None:
+        d['whole'] = {'verdict': whole_v, 'n': whole_d['n'],
+                      'over_pct': whole_d['over_pct'], 'p95': whole_d['p95']}
     if a.json:
         print(json.dumps({'verdict': verdict, **d}, indent=1))
     for line in render(verdict, d):
         print(line)
+    if whole_d is not None:
+        print(f'  CONTEXTO ficheiro inteiro: n={whole_d["n"]} over={whole_d["over_pct"]}% '
+              f'p95={whole_d["p95"]} -> {whole_v} (nao e\' o veredicto: a latencia e\' '
+              f'da app que correu, e a janela acima e\' a ultima corrida)')
     a = arms()
     bad = [k for k, v in a.items() if not v]
     if bad:

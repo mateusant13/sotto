@@ -414,11 +414,25 @@ def main():
     arm("a continuing fragment glues, a new word takes one space (verbatim case)",
         got5b, ["próxima segunda-feira."])
 
-    # ── arm 6 (control): the FIRST fragment is never glued ─────────────────
+    # ── arm 6 (control): o veredicto no PRIMEIRO fragmento de uma linha ─────
+    # CONTRATO DE 2026-11-05, medido no log do dono (`text="D  you not get"`,
+    # 06:06:55): a CAUDA que abre a linha nao vai para o ecra -- sozinha nao
+    # publica nada, e com palavras a seguir so' a cauda cai. Sem o veredicto o
+    # fragmento e' uma palavra inteira e passa como sempre passou. As tres
+    # metades num so' arm: uma arm que so' medisse a cauda solitaria ficaria
+    # verde com a publicacao toda quebrada.
     f = W.LineFormer(emit_partial=False)
     f.push("abc", 0.0, 0.5, continues=True)
-    arm("a continuation verdict on the FIRST fragment of a line is ignored",
-        [e["text"] for e in W.line_events(f.flush())], ["abc"], fix_arm=False)
+    so_cauda = [e["text"] for e in W.line_events(f.flush())]
+    f = W.LineFormer(emit_partial=False)
+    f.push("abc", 0.0, 0.5, continues=False)
+    sem_veredicto = [e["text"] for e in W.line_events(f.flush())]
+    f = W.LineFormer(emit_partial=False)
+    f.push("D you not get", 0.0, 0.5, continues=True)
+    cauda_e_palavras = [e["text"] for e in W.line_events(f.flush())]
+    arm("a cauda que ABRE a linha nao vai para o ecra (so' cauda / sem veredicto / cauda+palavras)",
+        (so_cauda, sem_veredicto, cauda_e_palavras),
+        ([], ["abc"], ["you not get"]), fix_arm=False)
 
     # ── arm 7 (control): a close drops the continuation ────────────────────
     # Same expectation under BOTH colours on purpose: this arm is about the
@@ -429,9 +443,12 @@ def main():
     shown += [e["text"] for e in f.push(".", 0.5, 1.0, continues=False)]
     closed = [e["text"] for e in W.line_events(f.take_closed())]
     shown += [e["text"] for e in f.push("xy", 1.0, 1.5, continues=True)]
+    shown += [e["text"] for e in f.push("zw", 1.5, 2.0, continues=False)]
     shown += [e["text"] for e in f.flush()]
-    arm("a fragment arriving after a CLOSE starts a word (nothing left to continue)",
-        (closed, shown, "abc .xy" not in shown), (["abc ."], ["abc .", "xy"], True),
+    # A cauda orfa ("xy", marcada como continuacao da palavra que morreu com o
+    # CLOSE) NAO volta ao ecra; a palavra seguinte ("zw", sem veredicto) entra.
+    arm("a cauda depois de um CLOSE nao volta ao ecra, e a palavra seguinte entra",
+        (closed, shown, "abc .xy" not in shown), (["abc ."], ["abc .", "zw"], True),
         fix_arm=False)
 
     # ── arm 8 (FIX): a glued fragment pays NO separator at the cap ──────────

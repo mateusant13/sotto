@@ -4772,9 +4772,15 @@ class LineFormer:
         tokens say this chunk's text is the REST OF THE WORD the previous chunk
         left open. It is a keyword defaulting to False, so every existing caller
         that pushes an already-whole fragment keeps the old text exactly; the
-        worker's three emitters pass the real verdict. It only ever means
-        something INSIDE an open line: a fragment that arrives after a close
-        starts a word, because the word it would have continued is gone.
+        worker's three emitters pass the real verdict. INSIDE an open line it
+        glues the fragment to the open word. At a line START it does something
+        different, and the two halves are both medidos (2026-11-05): a fragment
+        that arrives after a CLOSE cannot continue the word it left behind, so
+        its leading token is a TAIL and is dropped (`drop_leading_word_tail`);
+        a lone tail leaves nothing to publish. The verdict is the MODEL's, from
+        its own tokens -- a chunk flagged as a continuation genuinely lacks the
+        word-start marker, so this rule never fires on a fragment whose first
+        token the model marked as a word start.
         """
         frag = (text or "").strip()
         if not frag:

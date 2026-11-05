@@ -504,8 +504,14 @@ def main():
     # das ultimas palavras decodifica VAZIO, logo `push` nunca corre e a cauda
     # nao provada ficava a espera do relogio do painel. `publish_on_silence`
     # publica a linha inteira, `stable`, ao fim de `TAIL_SILENCE_CLOSE_S`.
+    # O PRIMEIRO fragmento de uma linha NAO e' continuacao (o veredicto vem dos
+    # tokens do modelo e diz "sem marcador de inicio de palavra"; um fragmento
+    # que ABRE a linha nao tem palavra anterior para continuar). Ate' 2026-11-05
+    # este cenario empurrava `continues=True` e media, sem saber, a regra da
+    # cauda em vez da publicacao por silencio -- e a arm ficou vermelha quando a
+    # cauda passou a ser descartada, que e' o comportamento que o dono pediu.
     f2 = W.LineFormer(min_chars=1, emit_partial=True)
-    f2.push("hello wor", 0.0, 1.5, continues=True)
+    f2.push("hello wor", 0.0, 1.5, continues=False)
     curto = f2.publish_on_silence(2.0)
     provado = f2.publish_on_silence(2.4)
     repetido = f2.publish_on_silence(3.0)
@@ -513,7 +519,7 @@ def main():
     # que este arm mede -- e' a implementacao de ANTES (o silencio nao publica).
     # O limiar vive em `worker/silence_tail.py` e e' MUTADO aqui, nao copiado.
     f3 = W.LineFormer(min_chars=1, emit_partial=True)
-    f3.push("hello wor", 0.0, 1.5, continues=True)
+    f3.push("hello wor", 0.0, 1.5, continues=False)
     _tail = W._silence_tail()
     _limiar = _tail.SILENCE_PROVE_S
     try:
