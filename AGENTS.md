@@ -446,8 +446,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-04, 18:2x):** `_main\_audit-verify-all.cmd` = **231597 B**,
-  **2863 CRLF** / 0 bare LF, sha256 `F3F6F212FCADDF38D83573C68D607393EA81B3D9E8FA104B40C6C56C93AC3063`.
+- **PIN do ficheiro (medido 2026-11-04, 23:5x):** `_main\_audit-verify-all.cmd` = **232945 B**,
+  **2877 CRLF** / 0 bare LF, sha256 `A0883032176BE9169D828BDE078558A104C1FFA99CA0D0E6E96714945ACA52AD`.
+  (Catorze linhas a mais do que o pin de 231597 B: o par `parakeet-ultra` + o seu `red-as-expected`,
+  a comparacao de motores de FUNDO. O candidato `parakeet-ultra` foi medido contra o `redux` no
+  MESMO audio e RECUSADO: WER identico (0,1154 — os mesmos 2 subs + 1 ins), 3,5x mais lento
+  (3,626 -> 12,873 s no clipe de 15 s), 2,1x de RSS (1 793 -> 3 837 MB), carga a frio 3,2x
+  (7,50 -> 24,36 s) e TRUNCA: no clipe de 90 s devolve 9 palavras onde o redux devolve 62. O passo
+  positivo e' `heavy` (carrega 2,4 GB); o negativo e' `always` porque NAO carrega modelo nenhum —
+  prova o juiz de WER (9/9). Recibo: `_main/receipt-20261104-parakeet-ultra-refused.md`.)
   (Dezasseis linhas a mais do que o pin de 230220 B: o par `paint-row-seam` + o seu
   `red-as-expected`, a costura da perna do OLHO. O painel ja' produzia
   `CAPTION_PROVISIONAL_PAINT` e o shell nao instalava o gancho, logo a perna que mede

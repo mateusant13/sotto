@@ -1276,6 +1276,20 @@ if exist _main\paint-row-seam-oracle.py (
 call :step always red-as-expected-paint-row-seam 1 "_main\paint-row-seam-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\paint-row-seam-neg.log" python _main\paint-row-seam-oracle.py --neg-arm
 call :expectred red-as-expected-paint-row-seam !STEP_RC! "%OUT%\paint-row-seam-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-paint-row-seam MISSING "%OUT%\paint-row-seam-neg.log" "NEG-ARM: PASS" )
+REM A COMPARACAO DE MOTORES DE FUNDO (2026-11-04): o candidato `parakeet-ultra` mediu-se contra o
+REM `redux` no MESMO audio e foi RECUSADO -- WER identico (0,1154, os mesmos 2 subs + 1 ins), 3,5x
+REM mais lento (3,626 s -> 12,873 s no clipe de 15 s), 2,1x de RSS (1 793 -> 3 837 MB) e TRUNCA: no
+REM clipe de 90 s devolve 9 palavras onde o redux devolve 62. O recibo e'
+REM `_main/receipt-20261104-parakeet-ultra-refused.md`. O passo e' `heavy` porque carrega 2,4 GB; o
+REM braco negativo NAO carrega modelo nenhum (prova o juiz de WER: 9/9) e por isso e' `always`.
+if exist _main\parakeet-ultra-oracle.py (
+call :step heavy parakeet-ultra 0 "_main\parakeet-ultra-oracle.py;worker\parakeet_ultra.py;worker\ultra_export.py;app\worker\redux_live.py" "%OUT%\parakeet-ultra.log" python _main\parakeet-ultra-oracle.py --engine all
+call :record parakeet-ultra !STEP_RC!
+) else ( call :record parakeet-ultra MISSING )
+if exist _main\parakeet-ultra-oracle.py (
+call :step always red-as-expected-parakeet-ultra 1 "_main\parakeet-ultra-oracle.py" "%OUT%\parakeet-ultra-neg.log" python _main\parakeet-ultra-oracle.py --neg-arm
+call :expectred red-as-expected-parakeet-ultra !STEP_RC! "%OUT%\parakeet-ultra-neg.log" "NEG-ARM GREEN"
+) else ( call :expectred red-as-expected-parakeet-ultra MISSING "%OUT%\parakeet-ultra-neg.log" "NEG-ARM GREEN" )
 if exist _main\hotkey-observed-oracle.py (
 call :step always hotkey-observed 0 "_main\hotkey-observed-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-observed.log" python _main\hotkey-observed-oracle.py
 call :record hotkey-observed !STEP_RC!

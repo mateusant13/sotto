@@ -226,7 +226,27 @@ class TorchBackend:
             raise SystemExit("parakeet_ultra: checkpoint does not match ParakeetForTDT "
                              "(missing=%r unexpected=%r)" % (missing[:6], unexpected[:6]))
         self.unmapped = tuple(sorted(unloaded))
+        # O `assign=True` so' substitui as chaves que o CHECKPOINT tem. Um buffer
+        # que o modulo CRIA (e nao carrega) fica no device `meta`, e o `.to()`
+        # seguinte recusa o passeio inteiro com "Cannot copy out of meta tensor"
+        # -- medido nesta maquina a 2026-11-04, e a lista e' de UM nome:
+        # `encoder.encode_positions.inv_freq` (persistent=False, construido por
+        # `compute_default_relative_positional_parameters`). Um placeholder de
+        # zeros deixa o `.to()` correr; o buffer e' RECONSTRUIDO pela funcao do
+        # proprio modulo DEPOIS do cast, e em float32: e' uma frequencia de
+        # rotacao, e metade da precisao dela degrada a posicao.
+        meta_buffers = [name for name, buf in model.named_buffers() if buf.is_meta]
+        for name in meta_buffers:
+            if name != 'encoder.encode_positions.inv_freq':
+                raise SystemExit('parakeet_ultra: buffer %r ficou em meta e nao ha' % name)
+            model.encoder.encode_positions.inv_freq = torch.zeros(
+                model.encoder.encode_positions.inv_freq.shape,
+                dtype=model.encoder.encode_positions.inv_freq.dtype)
         self.model = model.eval().to(device, dtype=self.dtype)
+        if meta_buffers:
+            positions = self.model.encoder.encode_positions
+            positions.inv_freq = positions.compute_default_relative_positional_parameters(
+                positions.config, device=device).float()
         if self.dtype == torch.float16:
             # The predictor is 8 M parameters and 2 LSTM layers: cuDNN's RNN
             # kernels are the one part of this graph that does not want half
