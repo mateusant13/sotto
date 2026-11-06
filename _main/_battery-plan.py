@@ -286,6 +286,45 @@ def _selftest():
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
+    # (E) O MEMO DE BYTES NAO MENTE (medido 2026-11-05). O `sha256_file` do
+    # `_stepcache` guarda o hash por (caminho, mtime, tamanho) e isso cortou o
+    # `sotto-state-page.py --check` de 6,1 s para 3,2 s -- mas o preco declarado
+    # e' que um ficheiro REESCRITO com o MESMO tamanho tem de dar outro hash, e
+    # que a segunda leitura de um ficheiro PARADO nao volta a ler o disco.
+    try:
+        sc = _load("_stepcache_hasharm", os.path.join(HERE, "_stepcache.py"))
+    except Exception as exc:                        # noqa: BLE001
+        sc = None
+        problems.append("memo de bytes: o _stepcache nao carrega (%s)" % exc)
+    if sc is not None:
+        import tempfile as _tf
+        d = _tf.mkdtemp(prefix="sotto-hash-")
+        try:
+            f = os.path.join(d, "alvo.bin")
+            with io.open(f, "wb") as fh:
+                fh.write(b"AAAA")
+            h1 = sc.sha256_file(f)
+            memo_before = len(getattr(sc, "_HASH_CACHE", {}))
+            h1b = sc.sha256_file(f)
+            memo_after = len(getattr(sc, "_HASH_CACHE", {}))
+            if h1 != h1b:
+                problems.append("memo: a leitura repetida mudou o hash (%r/%r)"
+                                % (h1, h1b))
+            if memo_after != memo_before:
+                problems.append("memo: a segunda leitura entrou no cache outra vez "
+                                "(%d -> %d) -- o memo nao esta' a valer"
+                                % (memo_before, memo_after))
+            with io.open(f, "wb") as fh:
+                fh.write(b"BBBB")           # MESMO tamanho, outro conteudo
+            h2 = sc.sha256_file(f)
+            if h2 == h1:
+                problems.append("memo: reescrever o ficheiro devolveu o hash ANTIGO "
+                                "-- o memo serve um resultado errado")
+            print("memo de bytes   : repetido=sem-leitura reescrito=hash-novo "
+                  "(%d entradas)" % memo_after)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
     # (D) A MEDICAO REAL, no ficheiro real: o plano inteiro de uma corrida.
     real = build(os.path.join(tempfile.gettempdir(), "sotto-plan-selftest.txt"))
     print("plano real      : %d passos em %.3f s (hits=%d misses=%d defer=%d)"
@@ -320,15 +359,38 @@ _NEG_MUTANTS = (
 )
 
 
+def _run_adjacent(text, tag):
+    """Corre uma copia AO LADO do original e devolve `(rc, out)`.
+
+    AO LADO, e nao num directorio temporario (medido 2026-11-05): o selftest
+    resolve `CMD`, `DEFAULT_STATE` e as DEPS dos passos por caminhos relativos
+    `HERE`/`REPO`, logo uma copia noutra arvore media `hits=0 misses=343
+    defer=0` sobre ficheiros que nao existem la' -- o controle positivo da
+    copia LIMPA caia e os tres mutantes eram "apanhados" por um
+    `FileNotFoundError` em vez da sua arm. Ao lado, tudo o que o selftest le'
+    e' o da arvore de verdade, e o unico byte diferente e' o mutante.
+    """
+    import subprocess
+    copy = os.path.join(HERE, "_battery-plan.mutant-%s.py" % tag)
+    try:
+        io.open(copy, "w", encoding="utf-8", newline="\n").write(text)
+        r = subprocess.run([sys.executable, copy, "--selftest"],
+                           capture_output=True, text=True, cwd=REPO)
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    finally:
+        try:
+            os.remove(copy)
+        except OSError:
+            pass
+
+
 def neg_arm():
-    """Cada mutacao numa COPIA; o selftest da copia TEM de cair.
+    """Cada mutacao numa COPIA ao lado; o selftest da copia TEM de cair.
 
     Devolve 1 quando as apanha (a convencao da casa: `--neg-arm` sai 1 ao
     apanhar, porque o passo declara `expect-rc=1`), 0 quando uma sobrevive.
     """
     import shutil
-    import subprocess
-    import tempfile
 
     src = io.open(os.path.abspath(__file__), encoding="utf-8").read()
     caught = 0
@@ -343,28 +405,29 @@ def neg_arm():
             problems.append("%s: a ancora nao esta' no codigo (at=%d, tabela=%d)"
                             % (tag, at, table_at))
             continue
-        root = tempfile.mkdtemp(prefix="sotto-plan-neg-")
-        try:
-            copy = os.path.join(root, "_battery-plan.py")
-            io.open(copy, "w", encoding="utf-8", newline="\n").write(
-                src.replace(needle, replacement, 1))
-            # o modulo importa `sotto-state-page.py`/`_stepcache.py` por caminho
-            # RELATIVO ao proprio ficheiro: a copia leva-os ao lado, ou julgaria
-            # outro ficheiro.
-            for dep in ("_stepcache.py", "sotto-state-page.py"):
-                shutil.copy(os.path.join(HERE, dep), os.path.join(root, dep))
-            r = subprocess.run([sys.executable, copy, "--selftest"],
-                               capture_output=True, text=True)
-            out = (r.stdout or "") + (r.stderr or "")
-            if r.returncode != 0 and "VERDICT: PASS" not in out:
-                caught += 1
-                print("CAUGHT %-18s rc=%d %s" % (tag, r.returncode,
-                      [l for l in out.splitlines() if l.startswith("FAIL")][:1]))
-            else:
-                problems.append("%s: o selftest da copia PASSOU (mutante vivo)"
-                                % tag)
-        finally:
-            shutil.rmtree(root, ignore_errors=True)
+        rc, out = _run_adjacent(src.replace(needle, replacement, 1), tag)
+        if "Traceback (most recent call last)" in out:
+            problems.append("%s: a copia MORREU (excepcao, nao arm) -- "
+                            "mutante nao julgado" % tag)
+            continue
+        fails = [l for l in out.splitlines() if l.startswith("FAIL ")]
+        if rc != 0 and fails:
+            caught += 1
+            print("CAUGHT %-18s rc=%d %s" % (tag, rc, fails[:1]))
+        elif rc != 0:
+            problems.append("%s: rc=%d SEM linha FAIL -- nao se sabe o que caiu"
+                            % (tag, rc))
+        else:
+            problems.append("%s: o selftest da copia PASSOU (mutante vivo)" % tag)
+
+    # O CONTROLE POSITIVO: a mesma copia, SEM mutacao, tem de dar `VERDICT: PASS`.
+    rc, out = _run_adjacent(src, "ctrl")
+    if rc != 0 or "VERDICT: PASS" not in out:
+        problems.append("controle: a copia LIMPA nao passou (rc=%d, traceback=%s)"
+                        % (rc, "Traceback" in out))
+    else:
+        print("CONTROLE copia limpa: VERDICT PASS (rc=0)")
+
     if problems:
         for p in problems:
             print("NOT-CAUGHT %s" % p)

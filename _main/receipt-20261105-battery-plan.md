@@ -70,6 +70,52 @@ mecanismo é o que se mede por dentro.
 O mesmo veredicto nos dois lados é o que importa: **o plano não mudou nenhuma decisão** — mudou quem
 as toma.
 
+
+## A cauda, depois do plano (medido 2026-11-05, 23:5x)
+
+Com o plano a responder em 1,7 s, o passo mais lento passou a ser o `--neg-arm` do
+`state-page`: **102,8 s**. A causa nao era I/O de disco nem o wrapper — era o
+`sha256_file` do `_stepcache` a reler e re-hashear **991 ficheiros**, 3,57 s em `read`
+dos MESMOS bytes, oito vezes (uma por mutacao).
+
+`_stepcache.sha256_file` guarda o hash por `(caminho, mtime_ns, tamanho)` numa janela de
+2 s (o ficheiro tem de estar PARADO para entrar no memo — o NTFS da' o mesmo `mtime_ns`
+a duas escritas do mesmo tamanho no mesmo tick, e foi a propria arm que o apanhou:
+`FAIL memo: reescrever o ficheiro devolveu o hash ANTIGO`). Medido:
+
+| passo | antes | depois |
+|---|---|---|
+| `sotto-state-page.py --check` | 6,10 s | **3,16 s** |
+| `red-as-expected-state-page` (`--neg-arm`, 8 mutacoes) | 102,74 s | **50,39 s** |
+
+E a arm que prova o memo entrou no `_battery-plan.py --selftest` (leitura repetida = sem
+leitura de disco; ficheiro reescrito = hash novo).
+
+## O BRACO NEGATIVO QUE SE CERTIFICAVA A SI PROPRIO (achado no mesmo dia)
+
+Ao acrescentar a arm do memo, o `--neg-arm` do `battery-plan` imprimiu
+`CAUGHT ... []` — apanhado, mas **sem nenhuma linha `FAIL`**. A leitura do traceback
+mostrou por que: as copias mutantes viviam num directorio temporario e o selftest resolve
+`CMD`, `DEFAULT_STATE` e as DEPS dos passos por caminhos relativos `HERE`/`REPO`. Ali
+o plano media `hits=0 misses=343 defer=0` e o selftest morria num `FileNotFoundError`
+**antes da primeira arm**. Ou seja: **qualquer** mutacao — inclusive um mutante nulo —
+era "apanhada" pela excepcao. Tres correcoes, todas com o numero ao lado:
+
+1. **muta AO LADO do original** (`_main/_battery-plan.mutant-<tag>.py`, apagado no
+   `finally`), nao numa outra arvore: o unico byte diferente e' o mutante.
+2. **so' conta como apanhado com uma linha `FAIL`** e sem `Traceback`.
+3. **controle positivo**: a copia LIMPA tem de imprimir `VERDICT: PASS`.
+
+Medido depois: `CAUGHT hit-inventado / defer-apagado / skip-slow-apagado`, cada um pela
+SUA arm (`CLI=('MISS','-') plano=('HIT','0')`, `defer=0`, `CLI=('SKIP-SLOW','-')`), e
+`CONTROLE copia limpa: VERDICT PASS (rc=0)`.
+
+## A corrida que certifica
+
+`_main\_audit-verify-all.cmd` com a arvore congelada: **rc=0**,
+`BATTERY-VERDICT: GREEN WITH 19 SKIPPED`, parede **763,8 s**, 0 falhas. Os 19 saltados
+sao a classe `heavy` (abrem a tela/audio/GPU do dono) mais os seis skip-capable.
+
 ## Pin
 
 `_main\_audit-verify-all.cmd` passou de **260779 B / 3196 CRLF** para **265171 B / 3267 CRLF**

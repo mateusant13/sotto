@@ -79,12 +79,46 @@ DEFAULT_STATE = os.path.join(REPO, "_cache", "battery-steps.json")
 
 STATE_VERSION = 1
 _CHUNK = 1 << 20
+_HASH_NO_CACHE = bool(os.environ.get("SOTTO_HASH_NO_CACHE"))
 
 
 # ── the primitives ───────────────────────────────────────────────────────────
 
+# O CACHE DE BYTES POR PROCESSO (medido 2026-11-05). `sotto-state-page.py`
+# chama `fingerprint` 650 vezes num `--check` e 991 ficheiros eram re-lidos e
+# re-hasheados -- 3,57 s em `read` DOS MESMOS BYTES, e o `--neg-arm` faz nove
+# dessas leituras (102,8 s). O hash de um ficheiro e' uma funcao PURA do
+# conteudo, e a chave carrega `st_mtime_ns` + `st_size`: um ficheiro reescrito
+# dentro do mesmo nanossegundo com o MESMO tamanho devolveria o hash antigo --
+# e' o unico preco, e nenhum passo desta casa reescreve uma dependencia dessa
+# forma a meio de um processo. `SOTTO_HASH_NO_CACHE=1` desliga-o.
+_HASH_CACHE = {}
+# A JANELA RACICAMENTE LIMPA (medido 2026-11-05, e foi a propria arm que o
+# achou): dois `write` seguidos no mesmo ficheiro, com o MESMO tamanho, cabem
+# no mesmo `st_mtime_ns` do NTFS -- e o memo devolvia o hash do conteudo antigo.
+# Medido: `FAIL memo: reescrever o ficheiro devolveu o hash ANTIGO`. So' um
+# ficheiro que ja' esta' PARADO ha' mais de 2 s entra no memo; um ficheiro que
+# alguem acabou de escrever nunca e' cacheado.
+_HASH_STABLE_S = 2.0
+
+
 def sha256_file(path: str) -> str:
     """sha256 of a file's BYTES. Missing file -> None (never an exception)."""
+    try:
+        st = os.stat(path)
+        key = (os.path.abspath(path), st.st_mtime_ns, st.st_size)
+    except (OSError, ValueError):
+        key = None
+    stable = False
+    if key is not None:
+        try:
+            stable = (time.time() - st.st_mtime) > _HASH_STABLE_S
+        except (OSError, ValueError):
+            stable = False
+    if key is not None and stable and not _HASH_NO_CACHE:
+        cached = _HASH_CACHE.get(key)
+        if cached is not None:
+            return cached
     try:
         h = hashlib.sha256()
         with open(path, "rb") as fh:
@@ -93,9 +127,12 @@ def sha256_file(path: str) -> str:
                 if not block:
                     break
                 h.update(block)
-        return h.hexdigest()
+        digest = h.hexdigest()
     except (OSError, ValueError):
         return None
+    if key is not None and stable and not _HASH_NO_CACHE:
+        _HASH_CACHE[key] = digest
+    return digest
 
 
 def log_intact(log_path: str, want_sha: str) -> bool:
