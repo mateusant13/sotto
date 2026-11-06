@@ -139,6 +139,31 @@ if exist "%BATTERY_PRIO_REPORT%" ( set /p BATTERY_PRIORITY_LINE=<"%BATTERY_PRIO_
 if not defined BATTERY_PRIORITY_LINE set "BATTERY_PRIORITY_LINE=NOT-SET (PowerShell unavailable or denied) -- the battery runs at normal priority"
 del /q "%BATTERY_PRIO_PS1%" 2>nul
 
+REM ===========================================================================
+REM  O PLANO (MEDIDO 2026-11-05). A corrida perguntava ao cache UM PYTHON POR
+REM  PASSO: medido nesta maquina, num passo ja' cacheado, min 0,124 s / max
+REM  0,150 s -- em 341 passos isso e' 43 a 46 s de interpretadores que leem o
+REM  MESMO JSON e respondem `HIT`, numa corrida a quente em que nada tem de
+REM  executar. O alvo da casa e' 60 s, e a maior parte dele ia em dispensa.
+REM  Com o plano ligado um processo responde por todos (`_main\_battery-plan.py`,
+REM  medido 1,84 s para os 341 passos) e `:step` le a resposta de uma variavel.
+REM  SOTTO_BATTERY_PLAN=0 devolve o caminho por passo: um plano e' uma cache de
+REM  DECISOES, e uma decisao errada tem de ter para onde voltar.
+if "%SOTTO_BATTERY_PLAN%"=="0" ( set "BATTERY_PLAN=0" ) else ( set "BATTERY_PLAN=1" )
+set "PLAN_FILE=%OUT%\_battery-plan.txt"
+set "PLAN_LOADED=0"
+set "STEP_INPLAN=0"
+REM CAMINHOS ABSOLUTOS E PLANO VELHO APAGADO PRIMEIRO. Medido 2026-11-05: com o
+REM `--cmd` relativo e o plano de uma corrida ANTERIOR no disco, um build que
+REM falhasse (stderr ia para `nul`) deixava o `if exist` verdadeiro e a corrida
+REM carregava um plano ESTALE -- decisoes sobre outro ficheiro. Um plano velho e'
+REM pior do que nenhum: por isso sai antes de o build comecar.
+if "%BATTERY_PLAN%"=="1" (
+  if exist "%PLAN_FILE%" del /q "%PLAN_FILE%" 2>nul
+  python "%ROOT%\_main\_battery-plan.py" --cmd "%ROOT%\_main\_audit-verify-all.cmd" --out "%PLAN_FILE%" --state "%CACHE_STATE%" 2>nul
+  if errorlevel 1 ( set "BATTERY_PLAN=0" ) else ( call :plan_load )
+)
+if "%BATTERY_PLAN%"=="1" if not "%PLAN_LOADED%"=="1" set "BATTERY_PLAN=0"
 set "N=0"
 set "GATES=0"
 set "CTRLS=0"
@@ -1619,10 +1644,15 @@ REM existe. O `red-as-expected` ao lado nao se aplica -- o portao ja inclui os
 REM controlos negativos E as sondas de tamper, e um `--neg-arm` seria uma
 REM segunda copia do mesmo mecanismo.
 REM ---------------------------------------------------------------------------
+REM O WSL DESTA MAQUINA PODE ESTAR SURDO (medido 2026-11-05: `wsl -d ubuntu-bend -e bash`
+REM nao voltou em 120 s e `wsl --shutdown` tambem nao). O portao agora separa as duas coisas:
+REM uma lei REFUTADA e' um FAIL, e uma maquina que nao responde e' um SKIP NOMEADO -- contado em
+REM `skipped=`, nunca em `gate=`, porque nada foi verificado. E custa 25 s de sonda, nao os 240 s
+REM do prazo do passo que a corrida de 20:02 pagou (STEP-DEADLINE exceeded step=bend-laws).
 if exist _main\bend-laws-gate.py (
 call :step always bend-laws 0 "_main\bend-laws-gate.py;bend_core\LAWS.bend;bend_core\PROOF.bend;bend_core\NEGATIVE_revealed_flag.bend;bend_core\NEGATIVE_of_bool_agrees.bend;bend_core\NEGATIVE_live_flag.bend;bend_core\NEGATIVE_live_flag_before.bend;bend_core\NEGATIVE_window_rows_min.bend;bend_core\NEGATIVE_window_rows_capacity.bend;bend_core\NEGATIVE_window_rows_live.bend;bend_core\NEGATIVE_count_due_only.bend;bend_core\NEGATIVE_count_due_monotone.bend;bend_core\NEGATIVE_count_due_empty.bend;bend_core\NEGATIVE_count_due_one_word.bend" "%OUT%\bend-laws.log" python _main\bend-laws-gate.py
-call :record bend-laws !STEP_RC!
-) else ( call :record bend-laws MISSING )
+call :skipped bend-laws !STEP_RC! "%OUT%\bend-laws.log" "BEND-GATE VERDICT: PASS" "BEND-GATE SKIPPED"
+) else ( call :skipped bend-laws MISSING "%OUT%\bend-laws.log" "BEND-GATE VERDICT: PASS" "BEND-GATE SKIPPED" )
 
 REM O MODELO EM PYTHON (2026-10-29). `bend_core\model.py` e a MESMA amostra do
 REM modelo, em Python, para um host sem o toolchain do Bend. NAO E O PORTAO: o
@@ -2402,6 +2432,23 @@ if exist _main\_stepcache-oracle.py (
   call :step stepcache-oracle 0 "_main\_stepcache-oracle.py;_main\_stepcache.py" "%OUT%\stepcache-oracle.log" python _main\_stepcache-oracle.py
   call :record stepcache-oracle !STEP_RC!
 ) else ( call :record stepcache-oracle MISSING )
+REM `_battery-plan.py` -- O PLANO DA BATERIA (medido 2026-11-05). A corrida
+REM perguntava ao cache UM PYTHON POR PASSO: 0,124-0,150 s cada, 341 passos,
+REM 42-51 s de interpretadores a ler o MESMO JSON numa corrida a quente. Este
+REM ficheiro responde por todos num processo (1,84 s medidos) e a `.cmd` le o
+REM resultado de uma variavel. O `--selftest` compara o plano contra o CLI
+REM `check`, um a um, nas quatro formas (HIT, always, lento, MISS por dep
+REM alterado) e nos dois modos; o `--neg-arm` tem de derrubar as tres mutacoes
+REM (HIT inventado, DEFER apagado, modo rapido ignorado).
+if exist _main\_battery-plan.py (
+  call :step always battery-plan 0 "_main\_battery-plan.py;_main\_stepcache.py;_main\sotto-state-page.py;_main\_audit-verify-all.cmd;_cache\battery-steps.json" "%OUT%\battery-plan.log" python _main\_battery-plan.py --selftest
+  call :record battery-plan !STEP_RC!
+  call :step always red-as-expected-battery-plan 1 "_main\_battery-plan.py;_main\_stepcache.py;_main\sotto-state-page.py" "%OUT%\battery-plan-neg.log" python _main\_battery-plan.py --neg-arm
+  call :expectred red-as-expected-battery-plan !STEP_RC! "%OUT%\battery-plan-neg.log" "NEG-ARM: PASS"
+) else (
+  call :record battery-plan MISSING
+  call :expectred red-as-expected-battery-plan MISSING "%OUT%\battery-plan-neg.log" "NEG-ARM: PASS"
+)
 
 echo === the skip guard: NO step may print a skip verdict unless its kind declares it ===
 REM Every step above wrote its log. An instrument that silently skips an arm and still
@@ -2817,6 +2864,7 @@ echo heavy    : !HEAVYTEXT!
 echo             (the HEAVY class opens the owner's screen, his audio device or his GPU -- these did NOT run; set SOTTO_BATTERY_HEAVY=1 to run them)
 echo priority : !BATTERY_PRIORITY_LINE!
 if defined SOTTO_BATTERY_FAST echo fastmode : ON -- a step slower than the threshold was SKIPPED, not run, and is listed under skipped=
+if "%BATTERY_PLAN%"=="1" echo plan     : ON -- every cache answer came from one process (`_main\_battery-plan.py`), not one per step; SOTTO_BATTERY_PLAN=0 returns the per-step path
 if "%SOTTO_BATTERY_HEAVY%"=="1" echo heavymode: ON -- the heavy steps RAN: they opened the owner's screen, his audio device or his GPU
 echo per-step : !STEPLIST!
 echo controls : !CONTROLLIST!
@@ -2895,6 +2943,30 @@ REM
 REM   STEP_CACHED says whether the step was reused (the summary counts them),
 REM   and STEP_TAG is the "  (cached)" the beacon carries so a reader can see
 REM   which steps did not run.
+REM :plan_load -- o plano inteiro para variaveis, uma leitura de ficheiro.
+REM Uma linha DEFER NAO entra: esse passo responde no instante em que corre.
+:plan_load
+for /f "usebackq delims=" %%L in ("%PLAN_FILE%") do for /f "tokens=1,* delims=|" %%A in ("%%L") do for /f "tokens=1 delims=|" %%C in ("%%B") do if /i not "%%C"=="DEFER" set "PLAN_%%A=%%B"
+set "PLAN_LOADED=1"
+exit /b 0
+
+REM :plan_lookup -- a resposta do plano para o passo que esta' em !S_NAME!.
+REM O nome chega por %S_NAME% dentro de um `for` proprio porque `!PLAN_!S_NAME!!`
+REM em cmd resolve de forma ambigua -- e um HIT inventado e' a pior resposta que
+REM este ficheiro pode dar.
+:plan_lookup
+set "STEP_INPLAN=0"
+for /f "delims=" %%K in ("%S_NAME%") do if defined PLAN_%%K (
+  set "STEP_INPLAN=1"
+  for /f "tokens=1-5 delims=|" %%A in ("!PLAN_%%K!") do (
+    if /i "%%A"=="HIT" set "S_HIT=1"
+    if /i "%%A"=="SKIP-SLOW" set "S_FASTSKIP=1"
+    if not "%%B"=="-" set "S_CACHED_RC=%%B"
+    if not "%%C"=="-" set "S_ELAPSED=%%C"
+    if not "%%D"=="-" set "S_THRESHOLD=%%D"
+  )
+)
+exit /b 0
 :step
 set "STEP_RC="
 set "STEP_CACHED=0"
@@ -2946,6 +3018,15 @@ REM THE ALWAYS STEPS ASK TOO. The check is cheap and it is the only thing that
 REM knows how long a step took -- and the FAST MODE reads that number. An
 REM always step is never CACHED, but it is still TIMED. `--always` keeps the
 REM check from answering HIT for it (its truth is outside the files).
+REM O PLANO PRIMEIRO (2026-11-05). COM plano a resposta ja' esta' numa variavel
+REM e nao nasce um interpretador por passo. Um passo AUSENTE do plano -- ou
+REM DEFER, que o loader deixa de fora porque depende do proprio ficheiro de
+REM estado que esta corrida reescreve -- cai no caminho por passo abaixo, que
+REM continua a ser a autoridade: a falta de resposta e' sempre um MISS, nunca
+REM um HIT.
+set "STEP_INPLAN=0"
+if "%BATTERY_PLAN%"=="1" call :plan_lookup
+if "!STEP_INPLAN!"=="1" goto step_checked
 for /f "tokens=1,* delims==" %%A in ('python _main\_stepcache.py check --step "!S_NAME!" --expect-rc !S_EXPECT! --deps "!S_DEPS!" --log "!S_LOG!" --state "%CACHE_STATE%" !S_ALWAYSFARG! 2^>nul') do (
   if /i "%%A"=="HIT" set "S_HIT=1"
   if /i "%%A"=="rc" set "S_CACHED_RC=%%B"
@@ -2953,6 +3034,7 @@ for /f "tokens=1,* delims==" %%A in ('python _main\_stepcache.py check --step "!
   if /i "%%A"=="threshold" set "S_THRESHOLD=%%B"
   if /i "%%A"=="SKIP-SLOW" set "S_FASTSKIP=1"
 )
+:step_checked
 if "!S_FASTSKIP!"=="1" goto step_fastskip
 REM THE HEAVY CLASS (owner, 2026-10-21, verbatim: *"tu ta fazendo algo que faz meu
 REM pc travar/stutter?"* and *"tu vai garantir que minha reclamacao nunca mais

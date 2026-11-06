@@ -114,6 +114,9 @@ EXPECTED_CONTROLS = (
 )
 
 EXIT_OK = 0
+# A sonda de vida do WSL. Curta DE PROPOSITO: e' ela que impede um `wslservice`
+# surdo de comer o prazo do passo inteiro.
+_WSL_PROBE_S = float(os.environ.get("SOTTO_BEND_WSL_PROBE_S") or 25)
 EXIT_LAW_FAILED = 2
 EXIT_CONTROL_MISBEHAVED = 3
 EXIT_INFRA = 4
@@ -136,14 +139,22 @@ def _wsl_script() -> str:
     )
 
 
+_WSL_PATH_CACHE = {}
+
+
 def _wsl_path(win_path):
-    """Traduz um caminho Windows para o caminho WSL.
+    """Traduz um caminho Windows para o caminho WSL (uma vez por processo).
 
     MEDIDO 2026-10-29: passar o caminho Windows tal e qual ao `bash -lc`
     NAO funciona -- o `cd` recebe `H:\sotto\bend_core`, que o Linux nao
     reconhece ("No such file or directory"). A traducao e o `wslpath -a` do
     proprio WSL, e e ela que torna o portao utilizavel a partir do Windows.
     """
+    if win_path in _WSL_PATH_CACHE:
+        # CADA `wsl` E UM PROCESSO (medido 2026-11-05): a traducao era pedida uma
+        # vez por lei/controlo, ~16 arranques de WSL que devolvem sempre o mesmo
+        # caminho. Uma vez por processo chega.
+        return _WSL_PATH_CACHE[win_path]
     try:
         proc = subprocess.run(
             ["wsl", "-d", DISTRO, "-e", "wslpath", "-a", win_path],
@@ -153,7 +164,28 @@ def _wsl_path(win_path):
         return ""
     if proc.returncode != 0:
         return ""
-    return (proc.stdout or "").strip().replace("\r", "")
+    value = (proc.stdout or "").strip().replace("\r", "")
+    _WSL_PATH_CACHE[win_path] = value
+    return value
+
+
+def _wsl_alive():
+    """(True|False|None, motivo). None = a maquina nao respondeu no prazo curto."""
+    try:
+        proc = subprocess.run(
+            ["wsl", "-d", DISTRO, "-e", "true"],
+            capture_output=True, text=True, timeout=_WSL_PROBE_S,
+        creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
+    except subprocess.TimeoutExpired:
+        return (None, "wsl did not answer in %.0f s -- a %s nao responde "
+                      "(`wsl --shutdown` reinicia-a); nada foi verificado"
+                % (_WSL_PROBE_S, DISTRO))
+    except (OSError, subprocess.SubprocessError) as exc:
+        return (False, "cannot run wsl: %r" % (exc,))
+    if proc.returncode != 0:
+        return (False, "the distro '%s' is not usable (rc=%d): %s"
+                % (DISTRO, proc.returncode, ((proc.stderr or "").strip())[:300]))
+    return (True, "")
 
 
 def run_bend_version():
@@ -170,9 +202,17 @@ def run_bend_version():
              "bend version; echo '--- lean ---'; lean --version"],
             capture_output=True, text=True, timeout=180,
         creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
+    except subprocess.TimeoutExpired:
+        # MEDIDO 2026-11-05: o `wslservice` desta maquina ficou surdo e este
+        # caminho devolvia (texto, rc) enquanto o caminho feliz devolvia texto --
+        # o `main` chamava `.strip()` no par e o portao morria num AttributeError
+        # em vez de dizer que a INFRA nao respondeu.
+        return ("INFRA: wsl did not answer in 180 s (the distro is hung; "
+                "`wsl --shutdown` restarts it)", EXIT_INFRA)
     except (OSError, subprocess.SubprocessError) as exc:
         return ("INFRA: cannot run wsl: %r" % (exc,), EXIT_INFRA)
-    return ((proc.stdout or "") + (proc.stderr or "")).replace("\0", "")
+    return (((proc.stdout or "") + (proc.stderr or "")).replace("\0", ""),
+            int(proc.returncode))
 
 
 def run_bend(name):
@@ -253,6 +293,22 @@ def main(argv=None):
 
     problems = []
 
+    # (0) O WSL ESTA' VIVO? MEDIDO 2026-11-05: o `wslservice` desta maquina ficou
+    # surdo -- `wsl -d ubuntu-bend -e bash -lc true` nao voltou em 120 s e
+    # `wsl --shutdown` tambem nao (rc=124 ao fim de 60 s). O portao entao morria
+    # no prazo do PASSO (`STEP-DEADLINE exceeded step=bend-laws seconds=240.2`) e
+    # a bateria publicava um RED que falava do relogio, nao das leis.
+    # Uma sonda CURTA separa as duas coisas: uma maquina que nao responde e' um
+    # SKIP nomeado (nunca um portao que passou), e uma distro ausente continua a
+    # ser um FAIL de INFRA.
+    alive, why = _wsl_alive()
+    if alive is None:
+        print("BEND-GATE SKIPPED: %s" % why)
+        return EXIT_OK
+    if not alive:
+        print("BEND-GATE FAIL: %s" % why)
+        return EXIT_INFRA
+
     # (1) A VERSAO. Ha duas distribuicoes com o nome `bend`: a 1 (o crate
     # bend-lang) nao tem `law` nem `--verdict` e nao parseia `bend_core/*.bend`.
     # Uma falha de parse e indistinguivel de "as leis estao quebradas", por isso
@@ -262,7 +318,10 @@ def main(argv=None):
     # ficheiro (e complains "no such file: version"), mas `bend version` sem
     # o `--` imprime a versao. Por isso a versao e lida com `bend version` e o
     # `--verdict` fica para os ficheiros.
-    vout = run_bend_version()
+    vout, vrc = run_bend_version()
+    if vrc == EXIT_INFRA:
+        print("BEND-GATE FAIL: %s" % vout)
+        return EXIT_INFRA
     if "bend 2." not in vout:
         print("BEND-GATE FAIL: this gate needs Bend 2 ('bend 2.x.y'); got: %r"
               % (vout.strip() or "<no output>"))
@@ -449,6 +508,7 @@ def main(argv=None):
         print("PASS: selftest green (verdict classification).")
 
     print("== bend gate green ==")
+    print("BEND-GATE VERDICT: PASS")
     return EXIT_OK
 
 

@@ -238,7 +238,7 @@ def neg_arm() -> int:
     if failures:
         print("\nNEG-ARM FAIL -- o oraculo nao ve a regressao")
         return EXIT_PASS
-    print("\nNEG-ARM PASS -- as cinco regressoes derrubam o oraculo")
+    print("\nNEG-ARM: PASS -- as cinco regressoes derrubam o oraculo")
     return EXIT_FAIL
 
 

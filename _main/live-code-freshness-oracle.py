@@ -323,10 +323,26 @@ def control(mod):
     fails = []
     disk = getattr(mod, 'code_identity')()
     disk_hash = disk.split('sha256=', 1)[1].split()[0].strip()
+    # AS DUAS PONTAS SAEM DO CODIGO, NAO DO RELOGIO (medido 2026-11-05). A arm
+    # "arranque ha uma hora" usava `agora - 3600` e o veredicto dela dependia de
+    # ALGUEM ter tocado num ficheiro da shell na ultima hora: numa corrida em que
+    # nada mudou desde entao, `FRESH` e' a resposta CERTA e a arm ficava vermelha
+    # por um facto do mundo, nao por um defeito do instrumento. Agora o arranque
+    # e' derivado do mtime mais NOVO dos ficheiros que o instrumento julga:
+    # 60 s antes deles (logo o codigo e' mais novo -> STALE) e 1 h depois (o
+    # arranque e' posterior a todo o codigo -> FRESH).
+    newest = 0.0
+    for _name in _code_files(mod):
+        try:
+            newest = max(newest, os.path.getmtime(os.path.join(SHELL_DIR, _name)))
+        except OSError:
+            continue
+    if newest <= 0.0:
+        newest = time.time()
     now = time.strftime('%Y-%m-%d %H:%M:%S.000',
-                        time.localtime(time.time() - 3600))     # 1 h atras
+                        time.localtime(newest - 60))            # 1 min antes do codigo
     future = time.strftime('%Y-%m-%d %H:%M:%S.000',
-                           time.localtime(time.time() + 3600))
+                           time.localtime(newest + 3600))
 
     cases = [
         ('A-igual', 'FRESH',

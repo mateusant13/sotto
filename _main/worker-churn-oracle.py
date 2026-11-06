@@ -336,8 +336,12 @@ def mutate_worker(dst):
     caminho do veredito (arm 10) e a espera do front end de volta a um
     `join()` inteiro (arm 6)."""
     src = io.open(WORKER, encoding='utf-8', newline='').read()
-    out = src.replace("        PROGRESS['seq'] += 1\r\n", "", 1)
-    assert out != src, 'a ancora do progress nao existe'
+    # A ANCORA NAO TRAVA NO FIM DE LINHA (medido 2026-11-05): era
+    # `"        PROGRESS['seq'] += 1\r\n"` e o worker esta' em LF, logo o
+    # mutante nao se plantava e o `--neg-arm` morria num AssertionError em vez
+    # de dizer se o oraculo ve' a regressao.
+    out, n_progress = re.subn(r"[ \t]*PROGRESS\['seq'\] \+= 1\r?\n", "", src, count=1)
+    assert n_progress == 1, 'a ancora do progress nao existe'
     src, out = out, out.replace("    if verdict in PARK_DEVICE_VERDICTS:", '    if False:', 1)
     assert out != src, 'a ancora do parque nao existe'
     # O portao le' DUAS listas; matar so' uma deixava a arm 5 verde (medido).

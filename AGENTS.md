@@ -446,8 +446,42 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 18:5x):** `_main\_audit-verify-all.cmd` = **260779 B**,
-  **3196 CRLF** / 0 bare LF, sha256 `E236086D59E130C8B3294A36AA5E9C4B76A1D57EFC3FEB47B2AEE519238277A6`.
+- **PIN do ficheiro (medido 2026-11-05, 23:5x):** `_main\_audit-verify-all.cmd` = **266235 B**,
+  **3278 CRLF** / 0 bare LF, sha256 `64654A80628B21B58608285AD599055D00DE70BB817BAC3698DBE69045934B33`.
+  (Quatrocentos e doze bytes e seis linhas a mais do que o pin de 265823 B: o build do plano passa a
+  usar **caminhos absolutos** (`%ROOT%\_main\_battery-plan.py`, `--cmd %ROOT%\...`) e a **apagar o
+  plano velho antes de comecar** -- medido 2026-11-05: com o `--cmd` relativo e o plano de uma
+  corrida anterior no disco, um build que falhasse (o stderr ia para `nul`) deixava o `if exist`
+  verdadeiro e a corrida carregava decisoes sobre OUTRO ficheiro. Um plano velho e' pior do que
+  nenhum. E o passo `bend-laws` passa a ter UM texto de skip (`BEND-GATE SKIPPED`): com dois, o
+  `:skipped` exige os dois e o `VERDICT: SKIPPED` que o portao nunca imprime tornava o skip um
+  FAIL -- medido `failed: bend-laws=0`.)
+  (Seiscentos e cinquenta e dois bytes e cinco linhas a mais do que o pin de 265171 B: o passo
+  `bend-laws` passa a ser **skip-capable**. MEDIDO nesta maquina a 2026-11-05: o `wslservice`
+  ficou surdo -- `wsl -d ubuntu-bend -e bash -lc true` nao voltou em **120 s**, e `wsl
+  --shutdown` tambem nao voltou (rc=124 ao fim de 60 s). O portao comia entao o prazo do
+  PASSO inteiro e o log dizia `STEP-DEADLINE exceeded step=bend-laws seconds=240.2` -- um RED
+  que falava do relogio, nao das leis. Agora `bend-laws-gate.py` faz uma sonda de vida curta
+  (`SOTTO_BEND_WSL_PROBE_S`, 25 s) e separa as duas coisas: uma lei REFUTADA continua FAIL, uma
+  maquina que nao responde e' `BEND-GATE SKIPPED` (rc=0, contado em `skipped=`, nunca em
+  `gate=`), e uma distro AUSENTE continua FAIL de INFRA. Dois defeitos de instrumento cairam
+  com a medicao: `run_bend_version` devolvia `(texto, rc)` no ramo de excepcao e texto no
+  caminho feliz, o que matava o portao num `AttributeError` em vez de dizer que a infra nao
+  respondera; e o `wslpath` era pedido uma vez por lei/controlo (~16 arranques de WSL) e passa
+  a ser pedido uma vez por processo.)
+  (Quatro mil trezentos e noventa e dois bytes e setenta e uma linhas a mais do que o pin de
+  260779 B: O PLANO DA BATERIA. A corrida perguntava ao cache UM `python` POR PASSO -- medido,
+  0,124-0,150 s num passo ja' cacheado, 341 passos, **42-51 s** de interpretadores a ler o MESMO
+  `_cache\battery-steps.json` e a responder `HIT` numa corrida a quente, onde nada tem de
+  executar. `_main\_battery-plan.py` responde por todos **num processo** (medido: **1,84 s** para
+  os 341) e `:step` le a resposta de uma variavel (`:plan_load` / `:plan_lookup`); um passo ausente
+  do plano -- ou marcado DEFER porque depende do proprio ficheiro de estado que a corrida
+  reescreve -- cai no caminho por passo, que continua a ser a autoridade. `SOTTO_BATTERY_PLAN=0`
+  devolve o caminho por passo. Dois passos novos: `battery-plan` (`--selftest`, que compara o
+  plano contra o CLI um a um nas quatro formas e nos dois modos) e o seu
+  `red-as-expected-battery-plan` (`--neg-arm`, tres mutacoes plantadas numa copia: HIT inventado,
+  DEFER apagado, modo rapido ignorado -- medido 3/3). Recibo:
+  `_main/receipt-20261105-battery-plan.md`.)
   (Quarenta e oito bytes a mais do que o pin de 260731 B: as DUAS linhas do passo `live-queue`
   passam a nomear `worker\engine_policy.py` nas dependencias. As arms novas do varrimento de
   spools IRMAOS executam o `probe_and_spool` DESSE ficheiro e uma dependencia que o nao nomeia

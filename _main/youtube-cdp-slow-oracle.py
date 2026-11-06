@@ -130,7 +130,7 @@ def _load(path, name):
     return mod
 
 
-def _drive(mod, scripts, want, budget=6.0):
+def _drive(mod, scripts, want, budget=6.0, settle=0.0):
     """(notas, ids, linhas, fotos, conns) -- o laco REAL a correr com guiao."""
     old_tabs = mod.list_targets
     mod.list_targets = lambda port=None, timeout=3.0: ([dict(TAB)], 0)
@@ -163,6 +163,22 @@ def _drive(mod, scripts, want, budget=6.0):
             if want is None and len(lines) >= 2:
                 break
             time.sleep(0.02)
+        # A ASSENTADELA (medido 2026-11-05): o laco do driver faz `break` no
+        # PRIMEIRO instante em que a resposta pedida aparece, e uma resposta
+        # ATRASADA que chega logo depois nunca era recolhida -- o mutante que
+        # aceita a resposta velha SOBREVIVIA conforme o escalonamento da maquina
+        # (medido: o mesmo `--neg-arm` deu PASS e depois FAIL 1 of 7). Uma arm
+        # que julga "o texto velho nunca apareceu" tem de dar ao laco o tempo de
+        # o tentar publicar; `settle` e' esse tempo, e so' a A2 o pede.
+        if settle:
+            until = time.monotonic() + settle
+            while time.monotonic() < until:
+                snap = source.snapshot(max_age=60.0)
+                if snap is not None:
+                    for row in snap.get("rows") or ():
+                        if row not in seen:
+                            seen.append(row)
+                time.sleep(0.02)
         # A FOTOGRAFIA NO INSTANTE DO HIT (nota de instrumento): julgar o estado
         # FINAL mede o que o laco fez DEPOIS de a arm ja' ter a sua resposta --
         # o controle de A3 fechava a ligacao nos prazos que vinham a seguir e
@@ -199,7 +215,7 @@ def arm_timeout_keeps(mod):
 def arm_stale_reply(mod):
     hit, seen = _drive(
         mod, [[("timeout",), ("reply-id", 1, "STALE"), ("reply", "CURRENT")]],
-        "CURRENT")
+        "CURRENT", settle=0.5)
     ok = "CURRENT" in seen and "STALE" not in seen and hit.get("conns") == 1
     return ok, "conns=%r seen=%r %r" % (hit.get("conns"), seen,
                                         (hit.get("lines") or ["-"])[-1][:80])
@@ -362,18 +378,32 @@ def main():
                 survived.append(name)
                 continue
             W = _mutant_module(text.replace(old, new), "m%d" % idx)
+            # AS ARMS QUE JULGAM UMA CORRIDA SAO REPETIVEIS (medido 2026-11-05):
+            # a A2 olha para o que o laco publicou ANTES de a resposta pedida
+            # aparecer, e o escalonamento desta maquina decide essa ordem -- o
+            # mesmo `--neg-arm` deu PASS e depois `FAIL -- 1 of 7`. Um mutante
+            # CEGO sobrevive a todas as tentativas; um mutante apanhado numa
+            # tentativa e' um mutante apanhado, e a tentativa fica no log.
+            ATTEMPTS = 3
             # CADA MUTANTE E' JULGADO PELA SUA ARM (a convencao da casa): julgar
             # o produto cartesiano inteiro acusa um mutante por arms que nao
             # medem o sitio que ele mutou, e esse "blind" e' do instrumento.
             for ai in judges:
                 label, fix_arm, run = ARMS[ai]
                 total += 1
-                try:
-                    ok, note = run(W)
-                except Exception as exc:        # noqa: BLE001
-                    ok, note = False, "EXC %s: %s" % (type(exc).__name__, exc)
+                tries = []
+                for _attempt in range(ATTEMPTS):
+                    try:
+                        ok, note = run(W)
+                    except Exception as exc:    # noqa: BLE001
+                        ok, note = False, "EXC %s: %s" % (type(exc).__name__, exc)
+                    tries.append(bool(ok))
+                    if not ok:
+                        break
+                ok = all(tries)
                 verdict = "SURVIVED" if ok else "RED"
-                print("[%s] mutant %r vs %s: %s" % (verdict, name, label, note))
+                print("[%s] mutant %r vs %s (%d tentativa(s)): %s"
+                      % (verdict, name, label, len(tries), note))
                 if ok:
                     survived.append("%s (%s)" % (name, label))
         if survived:

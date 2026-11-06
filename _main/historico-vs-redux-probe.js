@@ -262,7 +262,13 @@ function main() {
   );
   arm(
     'guard present — sotto_webview.py history_append declines a provisional-draft (and says so)',
-    /== 'provisional-draft'[\s\S]{0,400}HISTORY_REFUSED reason=provisional-draft[\s\S]{0,300}return None/
+    // A GUARDA, A TESTEMUNHA E A RECUSA, nesta ordem -- com folga. Medido
+    // 2026-11-05: o regex exigia `HISTORY_REFUSED reason=provisional-draft` numa
+    // unica linha, e a shell publica a testemunha com `where=history_append` no
+    // meio (o texto do log esta' partido em tres linhas do fonte). Isso e'
+    // FORMATACAO do fonte, nao comportamento: a recusa existe e diz-se. O que
+    // este braco julga e' a ORDEM.
+    /provisional-draft['"][\s\S]{0,600}HISTORY_REFUSED[\s\S]{0,600}reason=provisional-draft[\s\S]{0,600}return None/
       .test(fs.readFileSync(webviewPath, 'utf8')),
     true,
   );

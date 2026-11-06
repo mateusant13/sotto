@@ -531,12 +531,12 @@
    "max_func_name": "fetch_track"
   },
   "app/webview/youtube_cdp_source.py": {
-   "bytes": 63492,
+   "bytes": 63669,
    "classes": 1,
    "defs": 21,
    "except_pass": 6,
    "globals": 0,
-   "lines": 1340,
+   "lines": 1342,
    "max_func": 211,
    "max_func_name": "_run"
   },

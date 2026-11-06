@@ -58,6 +58,12 @@ const ROUTES = ['final', 'provisional-draft'];
  * usually not a `final` route.)
  */
 const ROUTE_SOURCES = ['worker-stamped', 'worker-stamped-producer', 'panel-deadline', 'fallback'];
+/**
+ * The producers this writer may stamp as `producer=` (2026-11-05). The twin of
+ * `HISTORY_PRODUCERS` in `app/webview/sotto_webview.py`, and the same rule as
+ * `ROUTE_SOURCES`: outside this list nothing is written.
+ */
+const PRODUCERS = ['redux', 'live'];
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -95,6 +101,11 @@ function provenance(meta) {
   const route = String(meta.route || '').trim();
   if (!ROUTES.includes(route)) return '';
   const parts = [`route=${route}`];
+  // WHO closed the line (2026-11-05) — the twin of `HISTORY_PRODUCERS` in
+  // `app/webview/sotto_webview.py`. Both writers must say the same thing, or a
+  // line's provenance would depend on which one wrote it.
+  const producer = String(meta.producer || '').trim();
+  if (PRODUCERS.includes(producer)) parts.push(`producer=${producer}`);
   if (typeof meta.start === 'number' && Number.isFinite(meta.start)) {
     parts.push(`start=${meta.start.toFixed(2)}`);
   }

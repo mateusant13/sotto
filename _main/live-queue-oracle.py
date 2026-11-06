@@ -278,7 +278,8 @@ def run_negative_mutants(LQ_PATH):
                   f"{len(failed)} arm(s) da espera (1o: {failed[0][1] if failed else '--'})")
             reds.append(red)
         finally:
-            sys.path.remove(tmp)
+            if tmp in sys.path:
+                sys.path.remove(tmp)
             for name_mod in [m for m in list(sys.modules) if m == "live_queue"]:
                 del sys.modules[name_mod]
             shutil.rmtree(tmp, ignore_errors=True)
@@ -288,8 +289,15 @@ def run_negative_mutants(LQ_PATH):
     tmp = tempfile.mkdtemp(prefix="live-queue-neg-spool-")
     try:
         text = io.open(LQ_PATH, encoding="utf-8").read()
-        before = "        if is_alive(pid):\n            continue\n"
-        mutant = text.replace(before, "        # MUTANTE: sem a pergunta de liveness\n")
+        # A GUARDA CRESCEU (medido 2026-11-05): era `if is_alive(pid):` e hoje e'
+        # `if pid is None or pid == keep or is_alive(pid):`. O mutante antigo
+        # deixou de casar, o `--neg-arm` dizia "nao consegui mutar o alvo" e
+        # devolvia rc=2 -- um instrumento partido a falar de si mesmo em vez de
+        # julgar o alvo. O mutante tira a PERGUNTA DE LIVENESS e mantem o resto.
+        before = "        if pid is None or pid == keep or is_alive(pid):\n"
+        mutant = text.replace(before,
+                              "        if pid is None or pid == keep:\n"
+                              "            # MUTANTE: sem a pergunta de liveness\n")
         if mutant == text:
             print("[FAIL] neg-arm(spool-sem-liveness): nao consegui mutar o alvo")
             reds.append(False)
@@ -309,7 +317,12 @@ def run_negative_mutants(LQ_PATH):
                   f"derruba {len(failed)} arm(s) (1o: {failed[0][1] if failed else '--'})")
             reds.append(red)
     finally:
-        sys.path.remove(tmp)
+        # O `remove` no `finally` rebentava quando o mutante nao chegava a ser
+        # escrito (o ramo que faz `reds.append(False)` e continua): o caminho
+        # nunca tinha entrado em sys.path e o ValueError matava o passo inteiro,
+        # escondendo os outros mutantes. Medido 2026-11-05.
+        if tmp in sys.path:
+            sys.path.remove(tmp)
         for name_mod in [m for m in list(sys.modules) if m == "live_queue"]:
             del sys.modules[name_mod]
         shutil.rmtree(tmp, ignore_errors=True)

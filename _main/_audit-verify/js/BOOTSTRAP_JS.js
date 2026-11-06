@@ -363,6 +363,13 @@
     clearApplied: function (remaining) {
       post('caption-cleared', { remaining: Number(remaining) || 0 });
     },
+    // A REFUSAL IS AN EVENT (2026-11-05). The transcript's choke point used to
+    // drop a line with a bare `return`; the shell now writes `HISTORY_REFUSED`
+    // with the reason it was dropped for, so "the history is empty" is a line in
+    // the log instead of a mystery. `post` (not `historyCall`): nothing waits.
+    historyRefused: function (payload) {
+      post('history-refused', payload || {});
+    },
 
     // The transcript history ("redux"). The SHELL owns the disk: it names the
     // file, appends the line, reads it back and reveals it in the file manager.

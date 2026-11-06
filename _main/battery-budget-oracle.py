@@ -127,21 +127,32 @@ def neg_arm():
     # `--neg-arm` publicava FAIL com o juiz a funcionar. A mutacao morde um
     # passo que a divida NAO cobre.
     _declared = set(base.get('over_deadline') or ())
-    _cand = [r for r in rows if r['name'] not in _declared] or rows
+    # O CANDIDATO TEM DE ESTAR LIMPO HOJE (medido 2026-11-05): inflar o passo
+    # mais lento quando ele JA' passa do prazo nao mede nada -- o juiz ja' o
+    # nomeava antes do mutante. E a arm nao pode exigir um baseline verde: com um
+    # passo real acima do prazo, `ok_before` era False e o `--neg-arm` publicava
+    # FAIL com o juiz a funcionar (medido: `bend-laws 240,4 s`).
+    _cand = [r for r in rows
+             if r['name'] not in _declared and r['elapsed_s'] < deadline()] or rows
     worst = max(_cand, key=lambda r: r['elapsed_s']) if _cand else None
     if worst is None:
         print('NEG-ARM IMPOSSIVEL -- cache sem passos')
         return 1
     worst['elapsed_s'] = max(worst['elapsed_s'] * 10.0, deadline() * 1.5)
     mutant = measure(rows, deadline())
-    ok_after, why, _ = judge(mutant, base)
-    caught = ok_before and not ok_after
+    ok_after, why_after, _ = judge(mutant, base)
+    _, why_before, _ = judge(measured, base)
+    named_before = any(worst['name'] in w for w in why_before)
+    named_after = any(worst['name'] in w for w in why_after)
+    caught = named_after and not named_before
     print('NEG-ARM leitura mutada: %s %.1fs -> %.1fs' % (worst['name'], worst['elapsed_s'] / 10.0,
                                                          worst['elapsed_s']))
-    for line in why:
+    for line in why_after:
         print('  RED', line)
     print('NEG-ARM: %s (%s)' % ('PASS' if caught else 'FAIL',
                                 'o mutante foi APANHADO' if caught else 'o mutante passou'))
+    print('NEG-ARM nomeado antes=%s depois=%s (juiz virou RED: %s -> %s)'
+          % (named_before, named_after, ok_before, ok_after))
     return 1 if caught else 0
 
 
