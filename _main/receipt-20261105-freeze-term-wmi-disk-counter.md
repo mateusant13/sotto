@@ -60,5 +60,27 @@ python -c "import psutil,time;p=psutil.Process(69220);a=sum(p.cpu_times()[:2]);t
 python -c "import importlib.util;s=importlib.util.spec_from_file_location('hl','_main/hidden-launch.py');hl=importlib.util.module_from_spec(s);s.loader.exec_module(hl);import time;t=time.time();print(hl.run(['powershell','-NoProfile','-WindowStyle','Hidden','-NonInteractive','-Command','(Get-CimInstance -Namespace root/cimv2 -ClassName Win32_PerfRawData_PerfDisk_LogicalDisk).Count'],capture=True,timeout=90), time.time()-t)"
 ```
 
-`reported`, nunca `verified`: quem prova a cura é o censo da mesma janela depois de a app
-fechar. A janela de 900 ticks acima é a de ANTES.
+## O CORTE ACONTECEU E A JANELA DEPOIS FOI MEDIDA (2026-11-05, 22:2x-23:1x)
+
+`pid 69220` (TMOG Task Manager) e `pid 47760` (o host WmiPrvSE que queimava) **já não
+existem** — não fui eu quem os fechou; a medição é posterior ao fecho. Mesmo instrumento,
+mesma cadência (2000 ms), mesma janela (900 ticks), juiz igual (`--report`):
+
+| janela | ticks | freezes | late p50 | late p95 | late max |
+|---|---|---|---|---|---|
+| ANTES (09:36:50→10:14) | 900 | 0 | 0,6 ms | **23,8 ms** | **328,4 ms** |
+| DEPOIS (22:2x→23:1x) | 881 | 0 | 0,3 ms | **0,6 ms** | **2,5 ms** |
+
+p95 caiu 39,7× e o pior tick 131×; commit não voltou a subir e o `FREEZE` nunca disparou em
+nenhuma das duas janelas. O que o `late_ms` mede é o atraso do próprio laço do censo — é a
+face da máquina esfomeada, e é a única que se moveu.
+
+`reported`, nunca `verified`: o corte não foi feito por esta casa e a leitura é de uma janela,
+não de uma campanha. O que fica provado é o que a tabela mostra: com os dois processos
+fechados, o pior tick da janela longa caiu de 328,4 ms para 2,5 ms.
+
+```bash
+python _main/freeze-census.py --ticks 900 --cadence-ms 2000 --out _main/_cache/freeze-census-after-cut.json
+python _main/freeze-census.py --report --out _main/_cache/freeze-census-after-cut.json
+python _main/freeze-census.py --report --out _main/_audit-verify/freeze-census-long.log
+```
