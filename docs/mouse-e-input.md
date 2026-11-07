@@ -52,12 +52,23 @@ input a passar por Python:
 3. **o tick não arranca sozinho**: `_restart_timer` chama `KillTimer` primeiro e desiste quando
    `_wants_poll()` (`armed or edit_mode`) é falso. Escondido, não há tick.
 
-**O PORTÃO:** `_main/input-path-oracle.py` — **10 braços, 10 mutantes**, e o braço negativo
+**O PORTÃO:** `_main/input-path-oracle.py` — **11 braços, 10 mutantes** (medido 2026-11-07), e o braço negativo
 `red-as-expected-input-path` (rc=1 por desenho). O invariante passou a ser **a AUSÊNCIA**: `C1` exige
 **zero** `SetWindowsHookEx` (qualquer variante), **zero** constante `WH_*_LL` e **zero** struct
 `MSLLHOOKSTRUCT` no AST da shell inteira. Julga **FICHEIROS** + o estado de um objecto: **não** instala
 hook, **não** cria janela, **não** lança nada. Está na bateria, e `_main/seam-coverage-oracle.py` prova
 **12/12 invocadores** com controlo positivo e negativo (`_main/seam-inventory.json`).
+
+**O braço negativo deste oráculo esteve MORTO entre a cura do fim de linha e 2026-11-07**, e vale
+registá-lo porque a armadilha é da classe que este repo paga caro: o ficheiro convertia cada âncora
+para CRLF com um `crlf()` que afirmava "a shell é CRLF-pura", e o `app/webview/sotto_webview.py` tem
+**22 484 LF e 0 CRLF** (medido, e o `HEAD` do git também). Uma âncora multi-linha convertida para CRLF
+não casa **nunca**: **6 dos 9** mutantes morriam em "a âncora casou 0 vezes" e o passo publicava
+`VERDICT FAIL` por uma razão que não era a que ele julga. Agora o oráculo lê o fim de linha do
+**próprio ficheiro** (`ending_of`), conta a âncora no texto normalizado e escreve a cópia mutante com
+o fim de linha do original. Medido depois: `INPUT-PATH VERDICT PASS`, `--neg-arm` **6/6**, rc=1. Os
+dois irmãos com o mesmo `crlf()` foram curados no mesmo dia: `ui-stall-oracle.py` (`MUTANTS: 4/4 red`)
+e `youtube-foreign-paint-oracle.py` (`VERDICT: PASS`, `--neg-arm` vermelho como deve).
 
 **A REGRA GERAL QUE ISTO DEIXA:** qualquer coisa que o Sotto meta no **caminho de input ou de
 composição** do Windows (hook, overlay layered, janela transparente, capture, timer de pintura) tem de
@@ -87,7 +98,7 @@ enumerados`. Um invocador sem os dois **bloqueia a entrega** do seam.
 |---|---|---|
 | inventário do seam: **9** invocadores (arranque, mostrar, esconder, edit-on, edit-off, stop, auto-cura, sync entre threads, outro tipo de hook) | `_main/seam-inventory.json` | — |
 | cobertura: positivo no código real **e** o negativo tem de derrubar **aquele** braço | `_main/seam-coverage-oracle.py` | **9/9 PROVED**, 3 mutantes do inventário apanhados, `NEG-ARM PASS` |
-| o oráculo do seam cresceu de 6 para **10 braços / 10 mutantes** (C6 outro hook, C7 stop, C8 propriedades sincronizam, C9 mostrar/esconder) | `_main/input-path-oracle.py` | 10/10 verdes, **10/10** mutantes |
+| o oráculo do seam cresceu de 6 para **11 braços / 10 mutantes** (C6 outro hook, C7 stop, C8 propriedades sincronizam, C9 mostrar/esconder, C11 o `WH_KEYBOARD_LL` do `space_swallow.py` é o ÚNICO hook do produto) | `_main/input-path-oracle.py` | 11/11 verdes, **10/10** mutantes (medido 2026-11-07) |
 | estados do bug: `reported → reproduced → cause-isolated → fixed → verified → recurrence-watch`; `fixed` cita um passo **da bateria** e o seu braço negativo; `verified` exige verificador ≠ autor | `_main/bug-ledger-oracle.py` + `_main/bug-ledger.json` | 5/5 mutantes do ledger apanhados |
 | cápsula de incidente (esperado/observado, invocador, revisão, config, reprodução, fronteira, primeira divergência, condições contribuintes, acção com estado final + teste de escape) | `_main/incidents/INC-20261023-01-mouse-hook.md` | — |
 
