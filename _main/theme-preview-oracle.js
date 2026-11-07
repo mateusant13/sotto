@@ -883,8 +883,17 @@ var swBytes = fs.readFileSync(path.join(PANEL, 'theme-switcher.js'), 'utf8');
  * reached from the RIGHT panel only. The old form required the very button he
  * removed, so this arm pinned a CANCELLED contract and went red the moment the
  * work was done. */
+/* THE PREDICATE READS MARKUP, NOT PROSE. MEASURED 2026-11-06: this arm went RED
+ * on a file that ships no such button -- `panel.html` DOCUMENTS the removal (and
+ * the reasoning that keeps it removed) inside HTML comments, and one of those
+ * comments quotes `id="strip-theme-button"` verbatim. A byte regex cannot tell a
+ * tag from a sentence about a tag, so the comments come out first and the arm
+ * judges what the browser would actually parse. The mutant below still splices
+ * the REAL button (line ~794, outside every comment), so the arm keeps its own
+ * proof that it can say NO. */
+var htmlMarkup = htmlBytes.replace(/<!--[\s\S]*?-->/g, '');
 check('ARM14.1 panel.html ships NO #strip-theme-button (the strip is bare)',
-  !/id="strip-theme-button"/.test(htmlBytes), 'still in markup');
+  !/id="strip-theme-button"/.test(htmlMarkup), 'still in markup');
 
 /* THE CONTROL THIS ARM NEVER HAD, and why it matters. ARM14.x are BYTES arms:
  * they read panel.html/panel.css off the disk, and every mutant below splices a
@@ -895,15 +904,16 @@ check('ARM14.1 panel.html ships NO #strip-theme-button (the strip is bare)',
  * carries its own proof that it is still able to fail. */
 var arm14_1_mutant = htmlBytes.replace('id="strip-open-button"',
   'id="strip-theme-button" data-theme-button');
-var arm14_1_shipped = !/id="strip-theme-button"/.test(htmlBytes);
-var arm14_1_on_copy = !/id="strip-theme-button"/.test(arm14_1_mutant);
+var arm14_1_mutantMarkup = arm14_1_mutant.replace(/<!--[\s\S]*?-->/g, '');
+var arm14_1_shipped = !/id="strip-theme-button"/.test(htmlMarkup);
+var arm14_1_on_copy = !/id="strip-theme-button"/.test(arm14_1_mutantMarkup);
 check('ARM14.1b the arm can still say NO (button restored in a COPY)',
   arm14_1_shipped === true && arm14_1_on_copy === false
   && arm14_1_mutant !== htmlBytes,
   'shipped=' + arm14_1_shipped + ' on-copy=' + arm14_1_on_copy
   + ' copy-differs=' + (arm14_1_mutant !== htmlBytes));
 check('ARM14.2 panel.html ships NO #strip-theme-chevron',
-  !/id="strip-theme-chevron"/.test(htmlBytes), 'present in markup');
+  !/id="strip-theme-chevron"/.test(htmlMarkup), 'present in markup');
 check('ARM14.3 panel.html opens on the PANEL surface',
   /<body data-surface="panel">/.test(htmlBytes), 'default surface is not panel');
 check('ARM14.4 panel.css hides #strip-theme-chevron on the strip surface',

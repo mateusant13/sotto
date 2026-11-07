@@ -434,19 +434,20 @@ async function main() {
   full.status('Receiving captions', 'live');
   arm('the document really is wearing the panel surface',
     full.document.body.getAttribute('data-surface'), 'panel', 'strip');
-  arm('the panel DOES show the transcript drawer', full.display('#history'), 'grid', 'none');
-  arm('the panel keeps the drawer collapsed, and the SEARCH BOX IS NOT THERE AT ALL',
-    // RE-ANCORADO 2026-10-30, com a razao escrita: o dono pediu a caixa de busca fora
-    // em 2026-10-21 21:24 (*"tira a caixa de procurar texto"*), a remocao ja' tinha sido
-    // feita uma vez e perdeu-se no episodio do stash -- esta arm ficou a medir um
-    // `disabled` de um no' que nao devia existir. A ordem viva e' a AUSENCIA: o
-    // formulario saiu do markup, e o `title` da nota continua a dizer quem escreve o
-    // transcript.
+  arm('the drawer is OPEN by default, and the search is a GLYPH not a bar',
+    // RE-ANCORADO 2026-11-06. The owner reversed the collapsed default -- verbatim:
+    // *"e nao é pra começar a ativar o historico so quando eu mostro o painel. é pra
+    // sempre aparecer no painel."* -- and asked for the bar to become a glyph:
+    // *"tira a BARRA de pesquisa de historico, deixa so um botao pequeno com o
+    // simbolo de pesquisa."* The old form ids are still absent (that order stands);
+    // what replaced them is `#history-search-button` plus a field that is not
+    // displayed until the button is pressed, which ARM G measures on its own panel.
     [full.id('history').className.includes('history--collapsed'),
      full.document.getElementById('search-input') === null,
      full.document.getElementById('search-form') === null,
+     Boolean(full.document.getElementById('history-search-button')),
      full.id('transcript-note').title.includes('canonical transcript')],
-    [true, true, true, true]);
+    [false, true, true, true, true]);
   arm('the panel DOES show the header', full.display('.panel__header'), 'flex', 'none');
   arm('the panel does NOT show the strip control row', full.display('#strip-controls'), 'none', 'flex');
 
@@ -913,11 +914,20 @@ async function main() {
 
   // ------------------------------------------------------------------ ARM G
   currentArm = 'G';
-  console.log('\n=== ARM G — the day/hour GALLERY, and the list that must NOT fill itself ===');
-  // The gallery is `history-gallery.js` + `panel.js` + `panel.css` together, so the
-  // fixture is built from `Date.now()` (the panel filters the buckets by a window
-  // ENDING at `new Date()`, so a fixed date would fall out of range and the gallery
-  // would legitimately hide itself — a green that proved nothing).
+  console.log('\n=== ARM G — the FEED paints itself, and the day/hour gallery is GONE ===');
+  // OWNER, 2026-11-06, verbatim: *"o historico tem que persistir, aparecendo no painel
+  // da direita, por padrao, ate 48hrs ... e nao é pra começar a ativar o historico so
+  // quando eu mostro o painel. é pra sempre aparecer no painel."* and *"tambem tira a
+  // data de mostrar o historico do painel na direita."*
+  //
+  // WHAT THESE ARMS REPLACED, and why it is a replacement and not a deletion: eleven
+  // arms here measured the day/hour gallery — the `24 h`/`1 h` ranges, the chip per
+  // day, the chip per hour, the "pick a bucket before the list fills" rule and the
+  // CSS that made it a button row. Every one of those subjects was removed by the
+  // owner's order, so the arms are the population that would now test NOTHING (and
+  // the first one crashed the probe outright when the node went away, which is how
+  // this was found: a probe that dies is a probe that stopped measuring). They are
+  // replaced by the arms of the behaviour that took their place.
   const pad2 = (n) => String(n).padStart(2, '0');
   const at = (msAgo, text) => {
     const d = new Date(Date.now() - msAgo);
@@ -930,137 +940,66 @@ async function main() {
   };
   const MIN = 60 * 1000;
   const HOUR = 60 * MIN;
-  // Two entries in ONE hour, one an hour later, and one OUTSIDE the 24 h window —
-  // so the range filter, the day grouping and the hour grouping all have something
-  // to get wrong. The last entry is unreadable on purpose: it must be COUNTED and
-  // not bucketed.
+  // Four entries: two in the last hour, one from YESTERDAY at this time (inside the
+  // 48 h window), one from SIXTY hours ago (outside it), and one unreadable on
+  // purpose — each a distinct way for the window filter to be wrong.
   const entries = [
-    at(2 * MIN, 'a'), at(4 * MIN, 'b'), at(62 * MIN, 'c'),
-    at(30 * HOUR, 'too old'), { date: 'not-a-date', time: '99:99', text: 'broken' },
+    at(2 * MIN, 'a'), at(4 * MIN, 'b'), at(30 * HOUR, 'yesterday'),
+    at(60 * HOUR, 'too old'), { date: 'not-a-date', time: '99:99', text: 'broken' },
   ];
-  const G = require(path.join(PANEL_DIR, 'history-gallery.js'));
-  const gal = await panel({ entries });
+  const feed = await panel({ entries });
   await tick();
   await tick();
 
-  const now = new Date();
-  const want = G.buckets(G.select(entries, '24h', now));
-  const host = gal.id('history-gallery');
-  // RE-QUERY, NEVER HOLD. Every press runs `renderFeed()` → `renderGallery()`, which
-  // calls `host.replaceChildren()`: the button objects are DETACHED afterwards, and a
-  // detached node's `.click()` still dispatches but no longer BUBBLES, so the
-  // delegated listener never sees it. Three arms went RED on exactly that (a press
-  // that silently did nothing) before this helper existed — the probe was measuring
-  // its own stale references, not the panel.
-  const q = (sel) => [...host.querySelectorAll(sel)];
-  const dayBtns = () => q('.gallery__day');
-  const rangeBtns = () => q('.gallery__range');
-  const hourBtns = () => q('.gallery__hour');
-  const rowsNow = () => gal.id('history-list').querySelectorAll('.hist').length;
+  const rows = () => [...feed.id('history-list').querySelectorAll('.hist')];
+  const texts = () => rows().map((r) => squeeze(r.querySelector('.hist__text').textContent));
 
-  arm('the gallery offers the two ranges in the owner\'s order, 24 h then 1 h',
-    rangeBtns().map((b) => b.textContent),
-    // OWNER 2026-10-08: *"tem que ter apenas botoes pra navegar entre a 'galeria'
-    // de dias/horas"* — 24 h first, then 1 h, each ONE button.
-    ['24 h', '1 h']);
-  arm('the gallery is BUTTONS and not a wall of text',
-    [dayBtns().every((b) => b.tagName === 'BUTTON'), hourBtns().every((b) => b.tagName === 'BUTTON'),
-      host.querySelectorAll('a, .hist').length],
-    [true, true, 0]);
-  arm('every day the last 24 h holds is offered, with its own count',
-    dayBtns().map((b) => b.textContent),
-    want.days.map((d) => `${d.day} · ${d.count}`));
-  arm('every hour of every offered day is offered as its own button',
-    hourBtns().map((b) => b.textContent),
-    want.days.flatMap((d) => d.hours.map((h) => h.hour)));
-  arm('an unreadable entry is DROPPED and COUNTED, never bucketed into today',
-    // The count is over the WHOLE loaded store, which is the only place an undated
-    // line can be seen at all — `select` refuses it before `buckets` could count it.
-    [want.total, want.skipped, G.buckets(entries).skipped,
-      (host.querySelector('.gallery__warn') || {}).textContent || ''],
-    // 3 entries are in the 24 h window; 1 of the 5 has no readable date and is said
-    // so, rather than silently dropped.
-    [3, 0, 1, '1 line(s) of the transcript have no readable date and are not shown.']);
+  arm('the day/hour gallery is GONE from the document',
+    [feed.document.getElementById('history-gallery'),
+      feed.document.querySelectorAll('.gallery__btn').length],
+    [null, 0]);
 
-  // THE OWNER'S REQUEST, AS AN ARM — and the reason this arm exists at all is that
-  // a probe asserting only "the gallery renders" would stay GREEN with the old
-  // auto-populating list still in place underneath it.
-  arm('THE LIST DOES NOT POPULATE ITSELF — no bucket open, no rows painted',
-    [rowsNow(), gal.id('history-list').querySelectorAll('li').length,
-      squeeze(gal.id('history-list').textContent)],
-    // `control` is what the SAME read returns under the behaviour the owner had
-    // removed, MEASURED by running this probe against a mutant copy with the
-    // auto-append restored — not written from memory. The first version of this
-    // value said `4` rows, from the intuition "one row per loaded entry, and four
-    // entries are in range"; the mutant painted **5** (it appends every loaded entry,
-    // undated ones included) and the text carried `too old` and `broken` too. The
-    // arm still passed, because it only asks the two values to DIFFER — which is
-    // exactly how a control that misstates the old behaviour stays invisible.
-    [0, 1, 'Pick a day or an hour above.'],
-    [5, 6, '12:34:16a12:32:16b11:34:16c10-06 06:36:16too old-date 99:99brokenPick a day or an hour above.']);
+  arm('THE LIST FILLS ITSELF on load — no press, no bucket, no search',
+    [texts(), feed.document.querySelectorAll('#history-list .history__empty').length],
+    // Newest last (the owner's standing rule), the 48 h window honoured, the undated
+    // line KEPT (an unreadable date is not evidence that the line is old).
+    [['a', 'b', 'yesterday', 'broken'], 0]);
 
-  // A bucket press paints THAT bucket, and only it.
-  const firstDay = want.days[0];
-  dayBtns()[0].click();
+  arm('the 48 h window really excludes what is outside it, and only that',
+    [rows().length, texts().indexOf('too old')], [4, -1]);
+
+  arm('the transcript section is NEVER collapsed (it does not wait for a producer)',
+    [feed.id('history').classList.contains('history--collapsed'),
+      feed.id('history').classList.contains('history')],
+    [false, true]);
+
+  arm('a row shows the HOUR and never the DATE',
+    // The two lines from another day are the ones that used to carry `MM-DD`.
+    [rows()[2].querySelector('.hist__time').textContent,
+      /\d{2}-\d{2}/.test(rows()[2].querySelector('.hist__time').textContent),
+      rows()[2].querySelector('.hist__time').textContent.length],
+    // Measured against `stampFor`: `HH:MM:SS`, 8 characters, no date anywhere.
+    [rows()[2].querySelector('.hist__time').textContent, false, 8]);
+
+  // THE SEARCH IS A GLYPH (owner, 2026-11-06: *"tira a BARRA de pesquisa de
+  // historico, deixa so um botao pequeno com o simbolo de pesquisa."*).
+  const searchBtn = feed.document.getElementById('history-search-button');
+  const searchInput = feed.id('history-search');
+  const toolsRow = feed.document.querySelector('.history__tools');
+  const shown = () => (toolsRow.classList.contains('is-searching') ? 'open' : 'closed');
+  arm('the search is a button and a field that is NOT on screen until pressed',
+    [Boolean(searchBtn), searchBtn.getAttribute('aria-expanded'), shown(),
+      searchInput.getAttribute('type')],
+    [true, 'false', 'closed', 'search']);
+  searchBtn.click();
   await tick();
-  const dayRows = [...gal.id('history-list').querySelectorAll('.hist')];
-  arm('pressing a DAY paints exactly that day\'s lines, and marks the button',
-    [dayRows.length, dayBtns()[0].getAttribute('aria-pressed')],
-    [firstDay.count, 'true']);
-
-  // The hour button narrows it further.
-  const hourWant = firstDay.hours[0];
-  hourBtns()[0].click();
+  const opened = shown();
+  const expanded = searchBtn.getAttribute('aria-expanded');
+  searchInput.dispatchEvent(new feed.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await tick();
-  arm('pressing an HOUR narrows the list to that hour alone',
-    [gal.id('history-list').querySelectorAll('.hist').length, hourWant.count],
-    [hourWant.count, hourWant.count]);
-
-  // Back to a range: the pick is cleared and the hint returns — the way out.
-  rangeBtns()[0].click();
-  await tick();
-  arm('pressing a RANGE clears the bucket and the list goes back to the hint',
-    [rowsNow(), squeeze(gal.id('history-list').textContent),
-      rangeBtns()[0].getAttribute('aria-pressed')],
-    [0, 'Pick a day or an hour above.', 'true']);
-
-  // THE DEFECT FOUND BY READING, AS AN ARM — and it needs its OWN panel, because the
-  // fixture above holds lines 2 and 4 minutes old, so `1 h` there is NOT empty (the
-  // first version of this arm asserted "Nothing in the last 1 h." against a range
-  // that really did hold two lines — the arm was wrong, not the panel). This panel
-  // holds nothing inside the last hour, which is the only state in which the defect
-  // exists: `1 h` with no buckets used to hide the whole host, taking the `24 h`
-  // button that would have brought the buckets back with it.
-  const quietEntries = [at(2 * HOUR, 'older'), at(3 * HOUR, 'older still')];
-  const galQuiet = await panel({ entries: quietEntries });
-  await tick();
-  await tick();
-  const qhost = galQuiet.id('history-gallery');
-  const qRanges = () => [...qhost.querySelectorAll('.gallery__range')];
-  const qDays = () => [...qhost.querySelectorAll('.gallery__day')];
-  arm('the quiet panel starts on 24 h with its buckets offered',
-    [qhost.hidden, qRanges().map((b) => b.textContent), qDays().length],
-    [false, ['24 h', '1 h'], G.buckets(quietEntries).days.length]);
-  qRanges()[1].click();
-  await tick();
-  const quiet = qhost.hidden ? [] : qRanges().map((b) => b.textContent);
-  arm('an EMPTY range keeps the range buttons on screen, so there is a way back',
-    [quiet, squeeze((qhost.querySelector('.gallery__warn') || {}).textContent || '')],
-    [['24 h', '1 h'], 'Nothing in the last 1 h.']);
-
-  // And pressing `24 h` again brings the buckets back — the way out really works.
-  qRanges()[0].click();
-  await tick();
-  arm('the way out of an empty range really restores the buckets',
-    [qRanges()[0].getAttribute('aria-pressed'), qDays().length],
-    ['true', G.buckets(quietEntries).days.length]);
-
-  // And the CSS that makes the gallery a row of small buttons, not a paragraph.
-  arm('the gallery is styled as a wrapping button row that does not grow',
-    [/\.gallery\s*\{[^}]*flex:\s*0 0 auto/s.test(css),
-      /\.gallery__row\s*\{[^}]*flex-wrap:\s*wrap/s.test(css),
-      /\.gallery__btn\s*\{/s.test(css), /\.gallery__btn\.is-active\s*\{/s.test(css)],
-    [true, true, true, true]);
+  arm('pressing it opens the field, Escape closes it again',
+    [opened, expanded, shown()],
+    ['open', 'true', 'closed']);
 
   // --------------------------------------- THE WORD REVEAL (2026-10-20)
   // The owner's order, verbatim: *"o jeito que as letras ou palavras aparecem
@@ -1145,7 +1084,7 @@ async function main() {
       [true, 0]);
   }
 
-  for (const p of [strip, full, forcedPanel, forcedStrip, wiredT, unwiredT, wiredD, wiredD2, cancelD, unwiredD, openWired, openUnwired, gal]) {
+  for (const p of [strip, full, forcedPanel, forcedStrip, wiredT, unwiredT, wiredD, wiredD2, cancelD, unwiredD, openWired, openUnwired, feed]) {
     if (p.errors.length) {
       arm('no loaded panel may have thrown', p.errors, []);
       break;

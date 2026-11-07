@@ -48,13 +48,16 @@ body[data-skin][data-surface="panel"] #skin {
 body[data-surface="strip"] #skin { display: none !important; }
 
 /* The slab becomes a plain window: the design supplies the surface. */
+/* OUR SLAB COMES BACK, on the design's own surface colour: the vendor's panel is
+ * gone, so without a bed of its own the transcript would sit straight on the
+ * backdrop and the rows would lose their edges. */
 body[data-skin][data-surface="panel"] .panel {
-  display: block;
-  padding: 0;
-  gap: 0;
+  display: grid;
+  padding: 14px;
+  gap: 5px;
   border: 0;
   border-radius: 0;
-  background: none;
+  background: color-mix(in srgb, var(--surface, #0b0f14) 88%, transparent);
   box-shadow: none;
 }
 
@@ -63,9 +66,49 @@ body[data-skin][data-surface="panel"] .panel::before { display: none; }
 /* HIDDEN, because the design paints them. `!important` because the five directions
    and the cinematic set turn some of these on with a theme-scoped rule of their
    own, and a skin must win over any of them. */
-body[data-skin][data-surface="panel"] .history,
 body[data-skin][data-surface="panel"] .captions,
 body[data-skin][data-surface="panel"] .chrome { display: none !important; }
+
+/* A SKIN IS A LOOK, NOT A SECOND PANEL (owner, 2026-11-06). Verbatim:
+ * *"a segunda imagem mostra que o historico nao ta mostrando em todos os temas"*,
+ * *"tem resquicios de um circulo ou quadrado no painel da direita no historico ...
+ * isso era de uma DEMO que mostrava personagens naqueles quadrados"*, and
+ * *"aquela legenda NAO é pra existir no painel da direita"*.
+ *
+ * WHAT STOOD HERE: `.history { display: none !important }` -- our transcript was
+ * hidden and the VENDOR's frozen transcript panel painted instead, in the design's
+ * own row template, with its day headings, its avatar squares, its footer buttons
+ * (`Export .txt`, `Follow on`, `Clear`) and its own copy of the live caption
+ * plate. One panel layout per design, which is what the owner is asking to end,
+ * and the reason the transcript existed in some themes and not in others.
+ *
+ * SO THE VENDOR'S PANEL AND CHROME LAYERS ARE NOT PAINTED AT ALL. The design still
+ * supplies what it is uniquely good at -- the backdrop behind the window and the
+ * fifteen palette variables `skin-host.js` copies onto `<body>` -- and our ONE
+ * panel draws the transcript over it, in the same box in all 65 designs. */
+
+body[data-skin][data-surface="panel"] .skin__col,
+body[data-skin][data-surface="panel"] .skin__chrome {
+  display: none !important;
+}
+
+/* THE DESIGN'S PALETTE REACHES OUR TOKENS. `skin-host.js` writes `--surface`,
+ * `--line`, `--text` and `--accent` onto `<body>`; our sheets read `--bg-slab`,
+ * `--text-primary` and friends. Without this mapping a skinned panel wore
+ * theme-1's colours under another design's backdrop. */
+body[data-skin][data-surface="panel"] {
+  --bg-slab: var(--surface, #0b0f14);
+  --bg-slab-strong: var(--surface-strong, var(--surface, #0b0f14));
+  --text-primary: var(--text, #e8eef2);
+  --text-confirmed: var(--text, #e8eef2);
+  --text-provisional: var(--text-dim, var(--text, #e8eef2));
+  --text-secondary: var(--text-dim, var(--text, #e8eef2));
+  --text-muted: var(--text-faint, var(--text-dim, #8b98a5));
+  --text-faint: var(--text-faint, var(--text-dim, #8b98a5));
+  --line: var(--line, rgba(255, 255, 255, 0.12));
+  --accent: var(--accent, #7dd3fc);
+  --accent-to: var(--accent, #7dd3fc);
+}
 
 /* THE HEADER, REDUCED TO THE CONTROL CLUSTER, AT THE FALLBACK CORNER. The design's own chrome already
    carries a brand, so our wordmark would be the second one on screen. THIS
@@ -215,12 +258,12 @@ body[data-skin][data-surface="panel"] .panel__header {
    ends at x≈101, the lamp starts at 102). The name is the brand; the tag goes. */
 body[data-skin][data-surface="panel"] .wordmark { display: flex !important; }
 body[data-skin][data-surface="panel"] .wordmark__tag { display: none !important; }
+/* THE CLUSTER KEEPS THE CONTRACT'S TOP. This rule forced `top: 14px`, which put a
+ * skinned panel's controls on a DIFFERENT line from the other 45 themes' -- the
+ * owner's *"os botoes tem que ter um PADRAO de espaçamento"*. `button-contract.css`
+ * owns that coordinate now. */
 body[data-skin][data-surface="panel"] .panel__controls {
   margin-left: auto;
-  /* The cluster's stock `top:28px` was measured against a 56 px header that
-     started at y=0 in the old layout; it now starts at y=0 too, but the cluster
-     is 28 px tall and was sitting on the bar's bottom border. Centre it. */
-  top: 14px !important;
 }
 
 /* THE THEME'S NAME MUST BE READABLE. The shared budget is 90 px, and at the

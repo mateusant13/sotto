@@ -29,6 +29,18 @@ lei dizia "só enquanto faz falta" — preguiçoso, libertado, com auto-cura de 
 mecanismo, e o dono cortou o nó, verbatim: *"se esses hooks sao burros ou desnecessarios, remove. nao
 mantem nada q tu ta achando q e pior"*.
 
+**A EXCEPÇÃO NOMEADA (2026-11-06).** O dono viu o `Ctrl+Space` da legenda vazar: *"isso faz o espaço
+pausar o video"*. Medido: `RegisterHotKey` entrega `WM_HOTKEY` e o espaco continua a chegar à janela em
+foco — ser exclusivo não é engolir. A única mecânica que engole é um `WH_KEYBOARD_LL`, e ele passou a
+existir num sítio só: `app/webview/space_swallow.py`, instalado pelo `LiveHotkeyThread` apenas quando
+`gaming_mode.live_hotkey_plan` diz `take`, **desinstalado antes de o jogo receber a tecla** (em jogo a
+combinação é do jogo). O caminho do rato e o AST da shell continuam com zero hooks: `_main/input-path-oracle.py`
+C1 exige a ausência na shell e **C11** exige que o único ficheiro do produto com `SetWindowsHookEx` seja
+`space_swallow.py`, com `WH_KEYBOARD_LL` e `KBDLLHOOKSTRUCT` e nenhum tipo de rato. Um ficheiro novo com
+hook — ou o rato de volta — deixa C11 RED. A prova OS: `_main/ctrlspace-swallow-probe.py` instala o hook
+real num processo filho escondido (`_main/hidden-launch.py`), mede o `HOOKPROC` e retira-o em dois
+chamados (sem pump, para nenhum evento real ficar preso).
+
 **O QUE SUBSTITUIU O HOOK** (`app/webview/sotto_webview.py`, `OutsideClickWatcher`) — zero eventos de
 input a passar por Python:
 1. **fechar com um clique fora → o FOREGROUND.** `GetForegroundWindow()` a cada **100 ms**, só com o

@@ -85,8 +85,14 @@
          on purpose: every rule is !important and scoped to the surface, so it
          wins against the 45 generated theme sheets regardless of their order. -->
     <link rel="stylesheet" href="button-contract.css" />
-    <!-- O LIMIAR DO HOLD DO ALT+C (ordem do dono, 2026-10-30). Ficheiro proprio porque o `panel.css` esta no ratchet do `code-health` e nao pode crescer; ver o cabecalho de `hotkey-hold.css`. -->
-    <link rel="stylesheet" href="hotkey-hold.css" />
+    <!-- THE ONE LAYOUT (owner, 2026-11-06). Where a thing sits, how big the
+         wordmark is, whether the transcript exists and whether a second live
+         caption is painted -- four questions the 65 designs answered 65 ways and
+         the owner answered once. It loads AFTER the contract so it can settle the
+         boxes the contract does not name (the wordmark, the transcript row, the
+         lamp's own track) and BEFORE any runtime sheet a skin injects, which is
+         why `skin-layout.css` carries the matching skin-mode half. -->
+    <link rel="stylesheet" href="panel-unified.css" />
     <!-- THE TEMPLATE SET (owner, 2026-10-08): *"gostei de alguns designs que botei
          ai no workspace. sao .zip novos… eu nao quero só a paleta de cores. eu
          quero uma mudança mesmo, a cada tema/template. super parecida com o que ta
@@ -166,91 +172,20 @@
           </div>
         </div>
 
-        <!-- ── THE DIRECTION'S OWN HEADER (owner, 2026-10-08) ───────────────
-             THE CONTRACT CHANGED. Until this lane a theme re-skinned colour,
-             type and surface and shared ONE header and ONE footer with the other
-             four; the owner asked for the opposite, verbatim: *"quero que voce
-             monte o painel super parecido com cada tema. pode ate mudar botoes
-             de lugar, se quiser. nao quero a cara do design que tinhamos antes."*
-             So each direction now carries its OWN header line, footer line and
-             state indicator, taken from the mockups
-             (`H:\aireplay\docs\design\sotto-app-design-directions\src\components\
-             Panel.tsx`, `...\sotto-transcription-panel-designs\src\components\
-             panels.tsx`): `SOTTO / LENDO`, `REC / CH·01`, `rascunho live /
-             pág. 1`, `SOTTO / · live ·`, `ON / STBY`.
+        <!-- ── NO DIRECTION-SPECIFIC HEADER CHROME (owner, 2026-11-06) ───────
+             Verbatim: *"tira qualquer frase de efeito de qualquer painel e tema,
+             tipo 'the room, so far' ou 'transcript history'. qualquer frase
+             explicativa."* The five per-direction blocks that stood here
+             (`LENDO`, `REC / CH·01`, `pág. 1`, `· live ·`, `ON / STBY`) were
+             exactly that: words that describe the panel instead of telling the
+             owner anything he can act on. They are DELETED, not hidden — a
+             hidden block is a block some later theme turns back on, and the
+             owner's rule is that no theme owns this row.
 
-             THE WORD FOR "LIVE" IS `live`, DECIDED THEME BY THEME (owner,
-             2026-10-08): *"tambem nao escreve ao vivo. escreve live. nos temas
-             relevantes."* Three of the five said `ao vivo` and all three changed —
-             `bcast`'s footer (`AO VIVO` → `LIVE`), `mano`'s header (`rascunho ao
-             vivo` → `rascunho live`), `cine`'s header (`· ao vivo ·` → `· live ·`).
-             The other two were LEFT ALONE because they do not say it: `tele`'s
-             `LENDO` ("reading") and `inst`'s `OUVINDO` ("listening") are the
-             direction's own words for the act, not a translation of "live", and
-             `bcast`'s header `REC` is a recorder's own lamp. Forcing `LIVE` into
-             those would have flattened two directions into one.
-
-             FIVE BLOCKS, ALL INERT, ONE VISIBLE. Every block is `display:none`
-             in `panel.css` and exactly one is turned on by its own theme
-             (`themes/theme-N.css`), which is the same one-attribute mechanism the
-             five already use — nothing is built, moved or fetched when the theme
-             changes, so a switch cannot fail halfway.
-
-             THE STATE WORDS ARE CSS, NOT A SECOND FACT. `panel.js` mirrors the
-             footer's own `status--live`/`status--error` onto
-             `<body data-state>`; each block carries BOTH words and the theme's
-             stylesheet shows one. No number, no confidence, no buffer is invented
-             here: the mockups' `CONF 0.93` / `buffer 38ms` are a SIMULATED script
-             (`designs.ts` → `SCRIPT`), and this panel has no such measurement, so
-             it does not print one. -->
-        <div class="chrome chrome--tele" data-chrome="head">
-          <span class="chrome__dot" aria-hidden="true"></span>
-          <span class="chrome__state">
-            <span class="chrome__on">LENDO</span><span class="chrome__off">EM ESPERA</span>
-          </span>
-        </div>
-
-        <div class="chrome chrome--bcast" data-chrome="head">
-          <span class="chrome__brand">sotto</span>
-          <span class="chrome__rec" aria-hidden="true"></span>
-          <span class="chrome__state">
-            <span class="chrome__on">REC</span><span class="chrome__off">STBY</span>
-          </span>
-          <span class="chrome__chan">CH·01</span>
-          <span class="chrome__tc" data-chrome-tc>--:--:--:--</span>
-        </div>
-
-        <!-- `rascunho live` IS GONE (owner, 2026-10-18: *"tirar rascunho live /
-             escrito ao ouvído"*). The `mano` header is now the wordmark and the page
-             number, two cells at the ends of one flex row — `justify-content:
-             space-between` in the generated theme carries them apart on its own, so
-             nothing was needed in its place.
-
-             It is not decoration being removed: the label claimed the forming line
-             is a DRAFT, which is the one thing this panel had stopped being. The
-             provenance is still recorded, but where it is true — `route=` in the
-             history file, and `provisional-draft` in the panel state — not as a
-             word on the design's forehead. The word survives only here, which is
-             what `panel-chrome-gate.py` ARM A requires. -->
-        <div class="chrome chrome--mano" data-chrome="head">
-          <span class="chrome__brand">sotto</span>
-          <span class="chrome__page">pág. 1</span>
-        </div>
-
-        <div class="chrome chrome--cine" data-chrome="head">
-          <span class="chrome__brand">sotto</span>
-          <span class="chrome__state">
-            <span class="chrome__on">· live ·</span><span class="chrome__off">· em espera ·</span>
-          </span>
-        </div>
-
-        <div class="chrome chrome--inst" data-chrome="head">
-          <span class="chrome__brand">sotto</span>
-          <span class="chrome__led" aria-hidden="true"></span>
-          <span class="chrome__state">
-            <span class="chrome__on">ON</span><span class="chrome__off">STBY</span>
-          </span>
-        </div>
+             WHAT REPLACED THEM: nothing. The header is the wordmark and the
+             control cluster, at the same coordinates in every theme
+             (`panel-layout.js` pins them). The one piece of state that has to
+             be visible — the live-caption lamp — is in the cluster. -->
 
         <!-- TWO controls, and no more. This paragraph said "Four" until
              2026-10-08, from the era of Clear and Quit; both buttons are GONE and
@@ -484,7 +419,7 @@
            `history.root()` reports a canonical producer. Rows stay in the DOM
            while collapsed (CSS-only collapse), so a read-back probe still sees
            them. -->
-      <section class="history history--collapsed" id="history" aria-label="Transcript">
+      <section class="history" id="history" aria-label="Transcript">
         <div class="history__bar">
           <!-- ── THE TRANSCRIPT BUTTON IS GONE (owner, 2026-10-14) ────────────
                Verbatim: *"tira o botao de transcript. ha um botao/gaveta do
@@ -566,24 +501,41 @@
 
         <div class="history__body" id="history-body">
           <div class="history__tools">
-            <!-- THE SEARCH BOX IS GONE BY THE OWNER'S ORDER. 2026-10-21 21:24,
-                 verbatim: *"tira a caixa de procurar texto e textos como
-                 'transcript history'"*. It supersedes the 2026-10-18 request that the
-                 search FIND things: the last word on the subject is that the box must
-                 not be on the panel at all. `panel.js` keeps its `if (dom.searchForm)`
-                 guards, which are now dead branches by construction (the nodes cannot
-                 be looked up), and the shell's search predicate stays where it is --
-                 `_main/search-oracle.py` still judges it.
-                 REAPPLIED 2026-10-30: this removal had already been made once and was
-                 LOST with the stash episode (the version in `stash@{0}` carries this
-                 very paragraph); the form was back in the markup and the complaints
-                 register said so, measured by `complaints-assert.py search-box-absent`
-                 with 3 nodes. -->
+            <!-- ── THE SEARCH IS A GLYPH NOW (owner, 2026-11-06) ─────────────
+                 Verbatim: *"tira a BARRA de pesquisa de historico, deixa so um
+                 botao pequeno com o simbolo de pesquisa."* So the field is not on
+                 screen until it is asked for: `#history-search-button` reveals
+                 `#history-search` (one row, auto-focused), Esc or Enter puts it
+                 away. The predicate is unchanged — `panel.js runSearch` — so the
+                 shell's `history_search` and `_main/search-oracle.py` keep
+                 judging the same behaviour.
+
+                 IT IS NOT A FORM: a `<form>` submits and reloads on Enter, and
+                 this panel is a single document. -->
+            <button
+              type="button"
+              class="icon-button history__search-button"
+              id="history-search-button"
+              aria-label="Search the transcript"
+              aria-expanded="false"
+              title="Search the transcript"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" stroke-width="1.4" />
+                <path d="M10.2 10.2L13.5 13.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+              </svg>
+            </button>
+            <input
+              type="search"
+              class="history__search"
+              id="history-search"
+              placeholder="Search"
+              aria-label="Search the transcript"
+              hidden
+            />
             <!-- ONE of the two "show in folder" affordances panel.js keeps (the
                  other is the path button above): this one names the SELECTED
-                 line, so it is disabled until a line is selected. It is hidden
-                 with the drawer body, so the PANEL also carries the always-live
-                 folder control in the HUD below. -->
+                 line, so it is disabled until a line is selected. -->
             <button
               type="button"
               class="reveal-button"
@@ -606,18 +558,14 @@
 
           <p class="history__note history__note--status" id="history-status" hidden></p>
 
-          <!-- THE GALLERY — navigation over the days and hours the store holds,
-               and the ONLY way the list below is filled. OWNER 2026-10-08,
-               verbatim: *"na pesquisa dos transcript, tira o historico que ja
-               mostra sozinho. tem que ter apenas botoes pra navegar entre a
-               'galeria' de dias/horas"*. So the buttons are BUILT by panel.js from
-               the entries it already loaded (no extra read of the store) and the
-               list stays EMPTY until one is pressed: the wall of lines that used
-               to paint itself on open is gone, and a range (24 h, then 1 h) plus
-               its days and hours replace it. The search box above is untouched —
-               it answers a different question ("where did he say X"). -->
-          <nav class="gallery" id="history-gallery" aria-label="Transcript by day and hour"></nav>
-
+          <!-- ── THE DAY/HOUR GALLERY IS GONE (owner, 2026-11-06) ────────────
+               Verbatim: *"tambem tira a data de mostrar o historico do painel na
+               direita."* The gallery was a row of `24h / 1h` ranges plus a chip
+               per day (`2026-11-05`, `18`, `16`) and it was the ONLY way the list
+               below ever filled: with no bucket picked the feed printed "Pick a
+               day or an hour above." The owner's rule since is *"é pra sempre
+               aparecer no painel"*, so the list paints itself — newest last —
+               from the last 48 h, and there is no date control left to press. -->
           <ol class="history__list" id="history-list" aria-live="off"></ol>
         </div>
       </section>
@@ -1048,14 +996,13 @@
              OUVINDO/EM ESPERA — because the owner named `em curso` and
              `historico` and nothing else. -->
 
-        <span class="chrome chrome--bcast" data-chrome="foot" data-slot="start">
-          <span class="chrome__meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
-        </span>
-        <span class="chrome chrome--bcast" data-chrome="foot" data-slot="end">
-          <span class="chrome__state">
-            <span class="chrome__on">LIVE</span><span class="chrome__off">EM ESPERA</span>
-          </span>
-        </span>
+        <!-- NO DIRECTION-SPECIFIC FOOTER (owner, 2026-11-06). Same rule as the
+             header: the meter, `LIVE / EM ESPERA`, `· · ·` and
+             `OUVINDO / EM ESPERA` were words about the panel, not facts. The
+             bar keeps the REAL status sentence (`#status-dot` and `#status-text`,
+             below) — the worker's own cause — and nothing else. -->
+
+        <span class="status__dot" id="status-dot" aria-hidden="true"></span>
 
         <!-- `— escrito ao ouvído` IS GONE, same order, same pass. The `mano` direction
              now has NO footer block at all, exactly as `tele` has none: the
@@ -1069,44 +1016,17 @@
              no footer chrome anywhere; emptying one row must not silence it for
              the OTHER three, and it does not: `bcast`, `cine` and `inst` are still
              demanded slot by slot. -->
-        <span class="chrome chrome--cine" data-chrome="foot" data-slot="start">· · ·</span>
+        <!-- ── THE HOLD SELECT IS GONE (owner, 2026-11-06) ─────────────────
+             Verbatim: *"esse botao de 'Hold' é stale, entao pode tirar. ele é
+             configuracao de uma coisa que ja troquei."* The `Alt+C` HOLD
+             threshold it edited belongs to the gesture the owner replaced with
+             1-tap / 2-tap / hold-for-live, so the control configured nothing he
+             still uses, and it stood in the footer's only text row.
 
-        <span class="chrome chrome--inst" data-chrome="foot" data-slot="start">
-          <span class="chrome__meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
-        </span>
-        <span class="chrome chrome--inst" data-chrome="foot" data-slot="end">
-          <span class="chrome__state">
-            <span class="chrome__on">OUVINDO</span><span class="chrome__off">EM ESPERA</span>
-          </span>
-        </span>
-
-
-        <!-- ── O LIMIAR DO HOLD DO ALT+C (ordem do dono, 2026-10-30) ────────
-             *"config dos milissegundos do HOLD, no painel da direita"*.
-
-             E' um <select> e nao um campo numerico por uma razao que custa
-             dinheiro a aprender: um numero livre obriga a decidir, do lado da
-             pagina, o que fazer com "500ms", "-3", "0" e vazio -- e qualquer
-             resposta que eu inventasse seria uma segunda validacao a divergir da
-             do Python. As escolhas viajam do shell (`getHotkeyHold` ->
-             `hotkey_settings.HOTKEY_HOLD_MS_CHOICES`), por isso a pagina nunca
-             tem a lista: pinta a que recebe.
-
-             QUEM MANDA E' O SHELL. O valor em vigor vem de `getHotkeyHold`, a
-             escolha vai por `setHotkeyHold`, e o resultado pintado e' o que o
-             shell respondeu -- nao o que a pagina pediu. Uma escrita recusada
-             deixa o controlo onde o disco diz que ele esta'.
-
-             A SUPERFICIE E' O PAINEL DA DIREITA: `body[data-surface="strip"]`
-             esconde `.status__text` e esta linha pela mesma regra (panel.css),
-             por isso o painel de baixo continua a ser o painel de baixo. -->
-        <label class="status__hold" id="hotkey-hold-row" for="hotkey-hold-select"
-               title="Quanto tempo o Alt+C tem de ficar premido para ligar/desligar a legenda">
-          <span class="status__hold-label">HOLD</span>
-          <select id="hotkey-hold-select" class="status__hold-select"></select>
-          <span class="status__hold-unit">ms</span>
-        </label>
-        <span class="status__dot" id="status-dot" aria-hidden="true"></span>
+             WHAT WENT WITH IT: the `getHotkeyHold`/`setHotkeyHold` wiring in
+             `panel.js` and the two bridge methods behind it — a setting whose
+             only editor is deleted is dead weight, and the gesture keeps its
+             own defaults in `hotkey_settings.py`. -->
         <span class="status__text" id="status-text">Idle &middot; no audio source</span>
         <!-- THE SHORTCUT IS NOT ADVERTISED IN THE PANEL (owner, 2026-10-08:
              *"nao fala alt c no painel"*). A `<kbd>` hint stood here naming the
@@ -1190,12 +1110,6 @@
          DOM-free for the same reason, and also BEFORE panel.js: `recordHistory`
          calls it on every caption. See `history-source.js`. -->
     <script src="history-source.js"></script>
-    <!-- THE DAY/HOUR GALLERY — the time-range query and the bucketing under it.
-         DOM-free for the same reason as the two above, and BEFORE panel.js, which
-         builds the drawer's navigation buttons from it. See `history-gallery.js`
-         for why the owner asked for it: *"tem que ter apenas botoes pra navegar
-         entre a 'galeria' de dias/horas"*. -->
-    <script src="history-gallery.js"></script>
     <!-- WHICH SURFACE this document is wearing. Before panel.js, which asks it
          which layout it is painting into, and before the harness's driver, which
          picks a surface from its own URL hash. -->

@@ -181,6 +181,46 @@ def _hook_sites(tree):
     return calls, names, structs
 
 
+def _hook_exception_arm():
+    """C11: o UNICO hook global do produto e' o teclado de `space_swallow.py`.
+
+    A LEI DO RATO VIROU UMA EXCEPCAO NOMEADA (2026-11-06). O dono mandou o
+    `Ctrl+Space` parar de vazar para o YouTube; `RegisterHotKey` so' entrega
+    `WM_HOTKEY` e o espaco continua a chegar a' janela em foco, por isso o
+    unico mecanismo que engole a tecla e' um `WH_KEYBOARD_LL`. C1 continua a
+    exigir ZERO hook no AST da SHELL (o caminho do rato nao voltou); C11 impede
+    que a excepcao se alastre: um ficheiro novo com `SetWindowsHookEx` -- ou o
+    velho a ganhar um tipo de rato -- deixa este braco RED. Sem este braco o
+    veredicto "nenhum hook global existe" seria uma frase falsa a partir de hoje.
+    """
+    found = {}
+    try:
+        names = sorted(os.listdir(SHELL_DIR))
+    except OSError as exc:
+        return [("C11 o unico hook do produto e' o do teclado", False, repr(exc))]
+    for name in names:
+        if not name.endswith(".py") or name.startswith(MUTANT_PREFIX):
+            continue
+        path = os.path.join(SHELL_DIR, name)
+        try:
+            tree = ast.parse(_read(path))
+        except SyntaxError:
+            continue
+        calls, wh_names, structs = _hook_sites(tree)
+        if calls or wh_names or structs:
+            found[name] = {"calls": calls, "wh": wh_names, "structs": structs}
+    ok = sorted(found) == ["space_swallow.py"]
+    detail = found
+    if ok:
+        site = found["space_swallow.py"]
+        ok = (site["wh"] == ["WH_KEYBOARD_LL"]
+              and site["structs"] == ["KBDLLHOOKSTRUCT"]
+              and "SetWindowsHookExW" in site["calls"])
+        detail = site
+    return [("C11 o unico hook global e WH_KEYBOARD_LL em space_swallow.py",
+             ok, detail)]
+
+
 def arms(mod, source_text):
     """Todas as verificacoes. (`mod` pode ser a shell REAL ou uma copia mutante.)"""
     results = []
@@ -296,6 +336,9 @@ def arms(mod, source_text):
                     ok_c10,
                     {"hide_panel_no_tick": _calls(poll_node, "hide_panel"),
                      "_consider_no_tick": _calls(poll_node, "_consider")}))
+    # C11 julga a ARVORE, nao a copia mutante: corre em todas as invocacoes e o
+    # que ele mede e' a excepcao unica nomeada (ver a docstring do braco).
+    results.extend(_hook_exception_arm())
     return results
 
 
@@ -483,8 +526,9 @@ def main(argv=None):
     if failures:
         print("INPUT-PATH VERDICT FAIL (%d)" % len(failures))
         return 2
-    print("INPUT-PATH VERDICT PASS -- nenhum hook global existe: o rato do dono "
-          "nao passa pelo Sotto nem com o painel aberto")
+    print("INPUT-PATH VERDICT PASS -- nenhum hook global no AST da shell: o "
+          "rato do dono nao passa pelo Sotto nem com o painel aberto; o UNICO "
+          "hook do produto e' o WH_KEYBOARD_LL gated de space_swallow.py (C11)")
     return 0
 
 

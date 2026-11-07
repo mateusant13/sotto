@@ -692,12 +692,40 @@
     return chevrons;
   }
 
+  /* ONE WHEEL WALKER, THREE HANDLES (owner, 2026-11-06, verbatim): *"ao deixar o
+   * mouse encima do botao de menu dropdown pra escolher tema, usar o scroll pra
+   * cima ou pra baixo deve trocar os temas."*
+   *
+   * MEASURED before this: the wheel was wired to `[data-theme-button]` ONLY --
+   * the cycle button. The dropdown TRIGGER (`#theme-chevron`) and the open list
+   * are the two things the owner actually calls "o botao de menu dropdown", and
+   * neither answered the wheel, so the request read as unimplemented.
+   *
+   * WHY NOT THE DOCUMENT: the transcript list is a scroller a few lines below and
+   * a window-level handler would eat its scroll. This listener only exists while
+   * the pointer is over a 28 px control. WHY `preventDefault`: without it the
+   * panel scrolls a pixel behind the theme change. THE 120 ms LATCH is what stops
+   * one trackpad flick from walking six designs. */
+  function walkThemesByWheel(btn) {
+    var wheelAt = 0;
+    btn.addEventListener('wheel', function (ev) {
+      var now = Date.now();
+      if (now - wheelAt < 120) { ev.preventDefault(); return; }
+      if (!ev.deltaY) return;
+      wheelAt = now;
+      ev.preventDefault();
+      if (ev.deltaY > 0) api.next();
+      else api.previous();
+    }, { passive: false });
+  }
+
   function wireChevron(btn) {
     btn.addEventListener('click', function (ev) {
       ev.stopPropagation();
       activeChevron = btn;
       toggleDropdown();
     });
+    walkThemesByWheel(btn);
     btn.addEventListener('keydown', function (ev) {
       activeChevron = btn;
       if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Enter' || ev.key === ' ') {
@@ -849,6 +877,14 @@
       ev.preventDefault();
       api.previous();
     });
+    /* THE WHEEL WALKS THE THEMES (owner, 2026-11-06). The walker lives in ONE
+     * place -- `walkThemesByWheel` above -- because the chevron and the open list
+     * answer the same gesture; a second copy of the latch here would let the two
+     * handles drift apart. */
+    walkThemesByWheel(btn);
+    /* A HOVER DOES NOT OPEN THE MENU AND A WHEEL DOES NOT OPEN IT EITHER: the
+     * owner asked to change the theme with the wheel, not to be shown the list.
+     * The picker still opens by click on the chevron and by ArrowDown/Enter. */
     btn.addEventListener('keydown', function (ev) {
       if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Enter') {
         ev.preventDefault();

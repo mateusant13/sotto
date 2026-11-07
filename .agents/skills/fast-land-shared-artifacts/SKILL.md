@@ -6,6 +6,8 @@ version: 1.0.0
 
 # Fast landing and shared artifact budget
 
+Scripts MUST reuse one hidden execution context. No successive terminals, terminal per worker/retry, popup or focus steal. Capture direct-child output without new consoles; verify the outer tool launcher too. Fix cadence, single-flight and overlap as well as visibility under the shared process-launch policy.
+
 Owner directive effective 2026-10-31T02:59:01-03:00. The goal is shipped behavior with only the process and evidence needed to make it safe. Optional paperwork that costs more than the change is skipped. Necessary docs and proof move with the code in the same delivery.
 
 ## Before fan-out or heavy output

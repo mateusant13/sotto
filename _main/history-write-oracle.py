@@ -261,10 +261,10 @@ def panel_arms(source_path):
 
 WANTED_CONSTS = ('HISTORY_ROUTES', 'HISTORY_ROUTE_SOURCES', 'HISTORY_PRODUCERS',
                  'HISTORY_LINE_RE', 'HISTORY_DAY_RE', 'HISTORY_TAIL_RE',
-                 'HISTORY_MERGE_WINDOW_S')
+                 'HISTORY_MERGE_WINDOW_S', 'HISTORY_RETENTION_H')
 WANTED_FUNCS = ('history_merge', '_merge_key')
 WANTED_METHODS = ('history_append', '_history_tail', '_history_provenance',
-                  '_history_path_for')
+                  '_history_path_for', '_history_prune')
 
 
 def store_namespace(shell_path):

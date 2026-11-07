@@ -504,18 +504,23 @@ def live_hotkey_plan(gaming, registered, register_failed=False):
 
     AS DUAS METADES, E PORQUE CADA UMA E' UMA SO':
 
-      * FORA DE JOGO a combinacao e' TOMADA (`RegisterHotKey`): o Windows entrega
-        `WM_HOTKEY` a' shell e NAO entrega a tecla a' janela em foco -- e' o que
-        impede o `Ctrl+Space` de escrever um ESPACO no editor, no browser, no
-        chat. A legenda e' o que a tecla faz.
-      * EM JOGO a combinacao e' DEVOLVIDA (`UnregisterHotKey`): o jogo recebe o
-        `Ctrl+Space` NATIVO (nao ha' `SendInput` nenhum, logo nao ha' o problema
-        dos jogos que leem input por raw input), e a shell nao alterna nada --
-        *"nao da display na legenda. nao faz nada. nem on nem off"*. Ligar a
-        legenda dentro do jogo e' o Alt+C, que e' registado sempre.
+      * FORA DE JOGO a combinacao e' TOMADA (`RegisterHotKey` **mais** o
+        `WH_KEYBOARD_LL` de `space_swallow.py`): o registo entrega o `WM_HOTKEY`
+        que alterna a legenda, e o hook devolve 1 para o `VK_SPACE` com `Ctrl`
+        em baixo -- e' o hook que impede o `Ctrl+Space` de escrever um ESPACO no
+        editor, no browser, no chat. (A 2026-11-06 ficou medido que o
+        `RegisterHotKey` sozinho NAO fazia isso: o espaco chegava ao YouTube e
+        pausava o video.)
+      * EM JOGO a combinacao e' DEVOLVIDA (`UnhookWindowsHookEx` **antes**,
+        `UnregisterHotKey` depois): o jogo recebe o `Ctrl+Space` NATIVO (nao ha'
+        `SendInput` nenhum, logo nao ha' o problema dos jogos que leem input por
+        raw input), e a shell nao alterna nada -- *"nao da display na legenda.
+        nao faz nada. nem on nem off"*. Ligar a legenda dentro do jogo e' o
+        Alt+C, que e' registado sempre.
 
     A DEVOLUCAO E' A PRIMEIRA ACAO EM TODA ENTRADA EM JOGO, inclusive quando o
-    registo nunca existiu: `give-back` e' idempotente no chamador.
+    registo nunca existiu: `give-back` e' idempotente no chamador. E ela inclui
+    o HOOK: um hook vivo em jogo engoliria o espaco que o jogo precisa.
 
     `register_failed` existe para o caso medido (`winerror=1409`, outro programa
     tem a combinacao): sem tomar a tecla nao ha' como nao vazar o espaco, e o

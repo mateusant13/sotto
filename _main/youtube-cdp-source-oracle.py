@@ -35,6 +35,8 @@ mesmo.
 from __future__ import annotations
 
 import argparse
+import ast
+import bisect
 import io
 import json
 import os
@@ -61,6 +63,408 @@ def _load(path, name):
 
 def _read(path):
     return io.open(path, encoding='utf-8', errors='replace').read()
+
+
+def _reveal():
+    """O motor de desenho REAL (`youtube_reveal`), para julgar o payload."""
+    if APP not in sys.path:
+        sys.path.insert(0, APP)
+    import youtube_reveal
+    return youtube_reveal
+
+
+def _shell_methods(shell_path, names):
+    """Os metodos REAIS do shell, extraidos por `ast` e compilados sozinhos.
+
+    Importar `sotto_webview` carregaria WebView2; os metodos que interessam sao
+    puros o suficiente para correr sobre um dublê (`_NS`). O que corre e' o texto
+    do ficheiro que embarca -- nao uma copia escrita aqui.
+    """
+    src = _read(shell_path)
+    tree = ast.parse(src)
+    nodes = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name in names:
+            nodes[node.name] = node
+    ns = {'log': lambda *_a, **_k: None, 'time': time, 'json': json,
+          'bisect': bisect}
+    out = {}
+    for name, node in nodes.items():
+        exec(compile(ast.Module(body=[node], type_ignores=[]),
+                     shell_path, 'exec'), ns)
+        out[name] = ns[name]
+    return out
+
+
+class _NS(object):
+    """Dublê do shell: os metodos extraidos leem e escrevem ESTES atributos."""
+
+    def __init__(self, **kw):
+        for key, value in kw.items():
+            setattr(self, key, value)
+
+
+def _fake_overlay():
+    calls = {'show': [], 'set_text': [], 'hide': [], 'work_area': []}
+
+    class _Ov(object):
+        hwnd = 4242
+
+        def show(self, on):
+            calls['show'].append(bool(on))
+
+        def hide(self):
+            calls['hide'].append(True)
+
+        def set_work_area(self, *_a, **_k):
+            calls['work_area'].append(True)
+
+        def set_text(self, *a, **k):
+            calls['set_text'].append((a, k))
+
+    return _Ov(), calls
+
+
+def _probe(video_id, visible, focused, advance=0.6, paused=False, t1=100.0):
+    """A forma de uma sonda real (`_probe_one`), com foco/visibilidade."""
+    return {'videoId': video_id, 't0': t1 - advance, 't1': t1,
+            'advance': advance, 'paused': paused, 'ended': False, 'rs': 4,
+            'visible': visible, 'focused': focused,
+            'tab': {'url': 'https://www.youtube.com/watch?v=' + video_id,
+                    'title': video_id + ' - YouTube'}}
+
+
+_ROWS = [
+    {'index': 0, 'text': 'hello big world',
+     'words': [{'start': 9.6, 'text': 'hello'},
+               {'start': 9.9, 'text': 'big'},
+               {'start': 10.4, 'text': 'world'}],
+     'start': 9.5, 'end': 10.6, 'cap': None},
+    {'index': 1, 'text': 'next line',
+     'words': [{'start': 10.3, 'text': 'next'},
+               {'start': 10.5, 'text': 'line'}],
+     'start': 10.2, 'end': 11.0, 'cap': None},
+]
+
+
+def _texts(frames):
+    return [mark['text'] for mark in frames]
+
+
+def _arm_pausa_corta_a_pintura(mod, shell_path):
+    """1. PAUSAR O VIDEO CORTA A PINTURA NA MESMA LEITURA (dono, 2026-11-06).
+
+    *"se eu pauso o video, a legenda do sotto continua por mais uns 2
+    segundos."* MEDIDO no log dele: 13,8 s de `paused=True` com `paint_t` a
+    andar +0,95 s e a linha a crescer de 11 para 14 palavras -- o overlay revela
+    contra o relogio do player e nada nesse motor sabe o que e' uma pausa.
+
+    O payload congelado e' julgado pelo MOTOR REAL (`youtube_reveal.frame`):
+    com `end=None` e sem relogio de palavras, 30 s de relogio depois tem de
+    desenhar o MESMO texto. O controle ao lado: as linhas cruas CRESCEM.
+    """
+    yrev = _reveal()
+    frozen = mod.freeze_rows(_ROWS, 10.0)
+    # CONTROLE: as linhas CRUAS continuam a crescer com o relogio (10,4 s de
+    # relogio mostrariam 'world'), e a congelada nao.
+    grew = _texts(yrev.frame(_ROWS, 10.45))
+    at10 = _texts(yrev.frame(frozen, 10.0))
+    at40 = _texts(yrev.frame(frozen, 40.0))
+    mod_ok = (at10 == at40 == ['hello big']
+              and 'hello big world' in grew and grew != at10)
+
+    fns = _shell_methods(shell_path, {'_yt_cue_payload'})
+    cue = {'start': 9.5, 'end': 11.0, 'text': 'hello big world',
+           'words': [{'start': 9.6, 'text': 'hello'},
+                     {'start': 9.9, 'text': 'big'},
+                     {'start': 10.4, 'text': 'world'}]}
+    stub = _NS(_yt_anchor=(10.0, time.monotonic()), _yt_track={'cues': [cue]},
+               yt_cdp_rate=1.0, yt_cdp_paused=True, yt_cdp_ended=False)
+    payload = fns['_yt_cue_payload'](stub)
+    shell_ok = bool(payload) and payload.get('paused') is True
+    if shell_ok:
+        p10 = _texts(yrev.frame(payload['rows'], payload['t']))
+        p40 = _texts(yrev.frame(payload['rows'], payload['t'] + 30.0))
+        shell_ok = (p10 == p40 == ['hello big']
+                    and all(r.get('end') is None and not r.get('words')
+                            for r in payload['rows']))
+    stopped = (mod.player_stopped({'paused': True}) is True
+               and mod.player_stopped({'ended': True}) is True
+               and mod.player_stopped({'paused': False, 'ended': False}) is False
+               and mod.player_stopped({}) is False)
+    ok = mod_ok and shell_ok and stopped
+    return ok, ('freeze=%r grew=%r shell=%r payload=%r'
+                % (at10, grew, shell_ok,
+                   (payload or {}).get('paused')))
+
+
+def _arm_tick_da_pausa(shell_path):
+    """1b. O `_tick` REAL, sem linha nova, com a borda da pausa: pinta JÁ.
+
+    Esta e' a arm do "no mesmo tick". O `_tick` e o metodo que decide o desenho;
+    com o video parado a linha nao muda, portanto o unico caminho que repinta e'
+    a borda da pausa. O dublê regista o que a shell recebia: `instant=True` (o
+    cue inteiro, sem relogio) e a cue CONGELADA do payload.
+    """
+    fns = _shell_methods(shell_path, {'_tick'})
+    pushes = []
+    shell = _NS(push_caption_to_window=lambda *a, **k: pushes.append((a, k)),
+                external_caption=lambda *a, **k: pushes.append((a, k)),
+                external_captions_available=False)
+    frozen_cue = {'rows': [{'index': 0, 'text': 'a frase', 'words': [],
+                            'start': 0.0, 'end': None, 'cap': None}],
+                  't': 10.0, 'at': 0.0, 'rate': 1.0, 'paused': True}
+    watcher = _NS(shell=shell, _yt_pause_epoch=1, _yt_pause_epoch_seen=None,
+                  yt_cdp_paused=True, yt_cdp_ended=False,
+                  last_line='a frase', last_rows=['a frase'],
+                  last_source='external:youtube:track',
+                  last_change=time.monotonic(), last_seen=time.monotonic(),
+                  finalized=True, _released_for_silence=False,
+                  _yt_cue_payload=lambda: frozen_cue,
+                  _yt_prof=lambda *_a, **_k: None,
+                  STABLE_FINAL_S=1.0, RELEASE_S=6.0, YT_RELEASE_S=25.0,
+                  yt_frame_key=None, _release=lambda _r: None)
+    # SEM LINHA NOVA neste tick e' o caso normal com o video parado.
+    fns['_tick'](watcher, [], True)
+    ok = len(pushes) == 1
+    detail = 'pushes=%d' % len(pushes)
+    if ok:
+        args, kwargs = pushes[0]
+        ok = (kwargs.get('instant') is True
+              and kwargs.get('cue') is frozen_cue
+              and args and args[0] == 'a frase')
+        detail = 'instant=%r cue_frozen=%r' % (
+            kwargs.get('instant'), kwargs.get('cue') is frozen_cue)
+    return ok, detail
+
+
+def _arm_duas_abas_primeiro_plano(mod):
+    """2. DUAS ABAS: MANDAM O PRIMEIRO PLANO E O QUE TOCA (dono, 2026-11-06).
+
+    Verbatim: *"abrir outro video e ter os dois tocando ao mesmo tempo, ainda
+    continua o ultimo video, inves de dar prioridade ao novo. e obviamente, se
+    eu voltasse pro outro video, daria prioridade pro outro video."*
+
+    MEDIDO no log dele antes da cura: `YOUTUBE_TARGET pick=tnBpieBy2GY
+    why=declared declared=tnBpieBy2GY tabs=2` -- o id declarado nunca deixava a
+    testemunha do alt-tab (visivel+focada) correr.
+    """
+    a_bg = _probe('AAAAAAAAAAA', 'hidden', False, advance=0.6, t1=120.0)
+    b_fg = _probe('BBBBBBBBBBB', 'visible', True, advance=0.6, t1=80.0)
+    both = mod.choose_target([a_bg, b_fg])
+    # alt-tab DE VOLTA: A passa a ser a visivel+focada
+    a_fg = _probe('AAAAAAAAAAA', 'visible', True, advance=0.6, t1=121.0)
+    b_bg = _probe('BBBBBBBBBBB', 'hidden', False, advance=0.6, t1=81.0)
+    back = mod.choose_target([b_bg, a_fg])
+    # video NOVO numa aba nova, em primeiro plano
+    c_new = _probe('CCCCCCCCCCC', 'visible', True, advance=0.6, t1=3.0)
+    new = mod.choose_target([a_bg, b_bg, c_new])
+    # pausar o que ele esta' a ver NAO entrega o ecra ao video de tras
+    paused_fg = _probe('AAAAAAAAAAA', 'visible', True, advance=0.0,
+                       paused=True, t1=130.0)
+    hold = mod.choose_target([paused_fg, b_bg])
+    # Chrome SEM foco (alt-tab para outra app): visivel+sem foco nao decide;
+    # o titulo da janela e' a ultima aba activa, e o que TOCA decide sem ele.
+    nofocus_a = _probe('AAAAAAAAAAA', 'visible', False, advance=0.0,
+                       paused=True, t1=130.0)
+    nofocus_b = _probe('BBBBBBBBBBB', 'visible', False, advance=0.6, t1=90.0)
+    by_title = mod.choose_target([nofocus_a, nofocus_b],
+                                 window_title='AAAAAAAAAAA - YouTube')
+    by_play = mod.choose_target([nofocus_a, nofocus_b])
+    # O ID DECLARADO NAO PASSA A' FRENTE DO TITULO (a ordem antiga)
+    tabs = [{'url': 'https://www.youtube.com/watch?v=AAAAAAAAAAA',
+             'title': 'AAAAAAAAAAA - YouTube'},
+            {'url': 'https://www.youtube.com/watch?v=BBBBBBBBBBB',
+             'title': 'BBBBBBBBBBB - YouTube'}]
+    title_first, why_t = mod.pick_target(tabs, 'AAAAAAAAAAA',
+                                         'BBBBBBBBBBB - YouTube')
+    ok = (both == ('BBBBBBBBBBB', 'foreground')
+          and back == ('AAAAAAAAAAA', 'foreground')
+          and new == ('CCCCCCCCCCC', 'foreground')
+          and hold == ('AAAAAAAAAAA', 'foreground')
+          and by_title == ('AAAAAAAAAAA', 'window-title')
+          and by_play == ('BBBBBBBBBBB', 'playing')
+          and title_first is tabs[1] and why_t == 'window-title')
+    return ok, ('both=%r back=%r new=%r hold=%r title=%r play=%r pt=%s'
+                % (both, back, new, hold, by_title, by_play, why_t))
+
+
+def _arm_troca_limpa_o_estado(mod):
+    """2b. UMA TROCA DE ABA NAO PODE SERVIR A FOTO DA ANTERIOR (2026-11-06).
+
+    O canal de pintura nao leva `videoId` (`src=external:youtube:track`): uma
+    foto publicada antes da troca e' indistinguivel de uma nova. `_adopt_tab`
+    zera-a; `selected_video_id()` diz a verdade ao laco da shell.
+    """
+    src = mod.CdpCaptionSource(port=1, log=lambda _m: None)
+    tab_a = {'webSocketDebuggerUrl': 'ws://x/AAAAAAAAAAA',
+             'url': 'https://www.youtube.com/watch?v=AAAAAAAAAAA'}
+    tab_b = {'webSocketDebuggerUrl': 'ws://x/BBBBBBBBBBB',
+             'url': 'https://www.youtube.com/watch?v=BBBBBBBBBBB'}
+    src._adopt_tab(tab_a, 'AAAAAAAAAAA')
+    src._publish({'stamp': time.monotonic(), 'rows': ['linha do A'],
+                  'items': [{'text': 'linha do A'}], 'videoId': 'AAAAAAAAAAA',
+                  'why': 'painted'})
+    before = src.snapshot(max_age=60.0)
+    src._adopt_tab(tab_b, 'BBBBBBBBBBB')
+    after = src.snapshot(max_age=60.0)
+    ok = (before is not None and before.get('videoId') == 'AAAAAAAAAAA'
+          and after is None
+          and src.selected_video_id() == 'BBBBBBBBBBB')
+    return ok, ('before=%r after=%r selected=%r'
+                % ((before or {}).get('videoId'), after,
+                   src.selected_video_id()))
+
+
+def _arm_reavalia_sem_esperar(mod):
+    """2c. A ESCOLHA E' RE-AVALIADA EM ABA NOVA / TROCA DE FOCO (2026-11-06).
+
+    ERA 10 s de cache (`PLAYING_PROBE_TTL_S`) -- 10 s de legenda do video
+    errado depois de um alt-tab. Agora: a ASSINATURA da lista de abas invalida a
+    escolha na hora, e com duas abas o TTL e' 1 s. O relogio e' falso (`mod.time`)
+    para o teste nao dormir.
+    """
+    calls = []
+    real_pick = mod.pick_playing
+    real_time = mod.time
+
+    class _Clock(object):
+        now = 1000.0
+
+        @staticmethod
+        def monotonic():
+            return _Clock.now
+
+    def fake_pick(tabs, previous='', connect=None, timeout=1.0, gap_s=0.12,
+                  window_title='', declared=''):
+        calls.append(str((tabs or [{}])[0].get('url') or ''))
+        tab = (tabs or [{}])[0]
+        vid = str(tab.get('url') or '').rsplit('v=', 1)[-1]
+        return tab, vid, 'foreground'
+
+    tab_a = {'webSocketDebuggerUrl': 'ws://x/A',
+             'url': 'https://www.youtube.com/watch?v=AAAAAAAAAAA'}
+    tab_b = {'webSocketDebuggerUrl': 'ws://x/B',
+             'url': 'https://www.youtube.com/watch?v=BBBBBBBBBBB'}
+    try:
+        mod.pick_playing = fake_pick
+        mod.time = _Clock
+        src = mod.CdpCaptionSource(port=1, log=lambda _m: None)
+        src._probe_connect = object()
+        one = src._playing_pick_for([tab_a])
+        again = src._playing_pick_for([tab_a])          # cache (1 aba, TTL 10 s)
+        cached_ok = (len(calls) == 1 and one == again)
+        # ABA NOVA: assinatura diferente -> sonda imediata, mesmo "no mesmo s"
+        two = src._playing_pick_for([tab_b, tab_a])
+        new_ok = (len(calls) == 2 and two[1] == 'BBBBBBBBBBB')
+        # TROCA DE FOCO com as MESMAS abas: 1,1 s depois o TTL multi-aba expira
+        # e a sonda volta a correr (o first da lista passa a ser A).
+        _Clock.now += 1.1
+        swapped = src._playing_pick_for([tab_a, tab_b])
+        focus_ok = (len(calls) == 3 and swapped[1] == 'AAAAAAAAAAA')
+        # UMA aba e 5 s: continua em cache (o TTL de 10 s vale uma sonda por aba)
+        src2 = mod.CdpCaptionSource(port=1, log=lambda _m: None)
+        src2._probe_connect = object()
+        calls[:] = []
+        src2._playing_pick_for([tab_a])
+        _Clock.now += 5.0
+        src2._playing_pick_for([tab_a])
+        single_ok = (len(calls) == 1)
+    finally:
+        mod.pick_playing = real_pick
+        mod.time = real_time
+    ok = cached_ok and new_ok and focus_ok and single_ok
+    return ok, ('cache=%s newtab=%s focus=%s single=%s calls=%d'
+                % (cached_ok, new_ok, focus_ok, single_ok, len(calls)))
+
+
+def _arm_desligar_em_pausa(shell_path):
+    """3. DESLIGAR + PAUSA NAO DEIXA A LEGENDA PRESA (dono, 2026-11-06).
+
+    Verbatim: *"ela tambem buga se eu desativo ela e o video ao mesmo tempo (ja
+    que o control espaco passa pelo pause do video)"*. Duas metades, ambas as
+    funcoes REAIS:
+
+      (a) O INTERRUPTOR em pausa devolve a linha do player por velha que seja --
+          MEDIDO no log dele: `CAPTION_WINDOW_REPLAY_SKIPPED age_ms=3092` com o
+          video parado e o ecra VAZIO ate' o video voltar a andar. Fora da pausa
+          o limite de 2 s fica (o jumpscare).
+      (b) DESLIGAR e' deterministico e idempotente: o slot morre, o epoch sobe,
+          o temporizador de silencio morre, e um slot com o epoch velho -- a
+          corrida do `Ctrl+Space` com a pausa -- nao pinta.
+    """
+    fns = _shell_methods(shell_path, {'_caption_replay_allowed',
+                                      '_set_live_enabled',
+                                      'show_caption_window',
+                                      '_drain_caption_pending'})
+    allowed = fns['_caption_replay_allowed']
+    rule = (allowed('linha', 30000, 2.0, True, True) is True
+            and allowed('linha', 500, 2.0, False, True) is True
+            and allowed('linha', 30000, 2.0, False, True) is False
+            and allowed('', 0, 2.0, True, True) is False
+            and allowed('linha', 30000, 2.0, True, False) is False)
+
+    # (a) o interruptor REAL, em tres estados
+    pushes = []
+    stub = _NS(CAPTION_REPLAY_MAX_S=2.0, _caption_painted='linha do player',
+               _caption_painted_at=time.time() - 30.0, yt_source_paused=True,
+               _last_caption_was_player=True,
+               _caption_wanted_store=lambda _on: None,
+               show_caption_window=lambda _on: True,
+               push_caption_to_window=lambda *a, **k: pushes.append((a, k)))
+    fns['_set_live_enabled'](stub, {'on': True})
+    replay_paused = len(pushes) == 1
+    pushes[:] = []
+    stub.yt_source_paused = False
+    fns['_set_live_enabled'](stub, {'on': True})
+    replay_playing_old = len(pushes) == 0
+    stub.yt_source_paused = True
+    stub._caption_painted = ''
+    fns['_set_live_enabled'](stub, {'on': True})
+    replay_empty = len(pushes) == 0
+
+    # (b) OFF real, duas vezes (idempotente), com um slot armado antes
+    ov, calls = _fake_overlay()
+    timer = {'cancelled': False}
+
+    class _Timer(object):
+        def cancel(self):
+            timer['cancelled'] = True
+
+    off = _NS(caption_overlay=ov, _caption_window_shown=True,
+              _caption_pending=(time.time() - 1.0, 'VELHA', None, 7),
+              _source_epoch=7, _caption_drain_posted=True,
+              _caption_idle_timer=_Timer(), _caption_wanted=False,
+              _caption_painted='VELHA', _caption_painted_at=time.time(),
+              _last_caption_was_player=True, _caption_coalesced=0,
+              _overlay_pushes=0, _caption_pending_instant=True,
+              _caption_pending_cue=None, _caption_pending_tap_ms=None,
+              display={}, work_area=lambda: None,
+              exec_js_post=lambda _js: True,
+              _caption_lag_note=lambda *_a, **_k: None,
+              _post=lambda fn: fn())
+    fns['show_caption_window'](off, False)
+    fns['show_caption_window'](off, False)
+    off_ok = (off._caption_pending is None
+              and off._caption_drain_posted is False
+              and off._caption_window_shown is False
+              and off._source_epoch > 7
+              and timer['cancelled'] is True
+              and calls['show'] == [False, False])
+    # A CORRIDA: o slot foi lido ANTES do desligar (epoch velho, flag ja' OFF).
+    off._caption_pending = (time.time() - 1.0, 'FANTASMA', None, 7)
+    fns['_drain_caption_pending'](off)
+    no_resurrect = (calls['set_text'] == [] and True not in calls['show'])
+    # e o controle: com o epoch de AGORA o mesmo drain pinta (a arm nao e' cega)
+    off._caption_pending = (time.time() - 1.0, 'NOVA', None, off._source_epoch)
+    off._caption_wanted = True
+    fns['_drain_caption_pending'](off)
+    drain_alive = len(calls['set_text']) == 1 and calls['show'][-1] is True
+    ok = (rule and replay_paused and replay_playing_old and replay_empty
+          and off_ok and no_resurrect and drain_alive)
+    return ok, ('rule=%s replay=%s/%s/%s off=%s nores=%s alive=%s'
+                % (rule, replay_paused, replay_playing_old, replay_empty,
+                   off_ok, no_resurrect, drain_alive))
 
 
 def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
@@ -238,6 +642,25 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
     a12 = same and par_s < 0.8 and seq_s > 1.2
     out.append(("abas-em-paralelo", a12,
                 "seq=%.2fs par=%.2fs mesmos=%s" % (seq_s, par_s, same)))
+
+    # A13..A17 -- os tres defeitos que o dono reportou a 2026-11-06
+    for name, fn in (("pausa-corta-a-pintura",
+                      lambda: _arm_pausa_corta_a_pintura(mod, shell_path)),
+                     ("pausa-pinta-no-tick",
+                      lambda: _arm_tick_da_pausa(shell_path)),
+                     ("duas-abas-primeiro-plano",
+                      lambda: _arm_duas_abas_primeiro_plano(mod)),
+                     ("troca-limpa-o-estado",
+                      lambda: _arm_troca_limpa_o_estado(mod)),
+                     ("reavalia-sem-esperar",
+                      lambda: _arm_reavalia_sem_esperar(mod)),
+                     ("desligar-em-pausa",
+                      lambda: _arm_desligar_em_pausa(shell_path))):
+        try:
+            ok, detail = fn()
+        except Exception as exc:  # noqa: BLE001
+            ok, detail = False, 'EXCECAO %r' % (exc,)
+        out.append((name, ok, detail))
     return out
 
 
@@ -303,6 +726,82 @@ def neg_arm():
                         "    if True:", 1))
         got7 = dict((n, ok) for n, ok, _ in arms(module_path=mut7))
         results.append(("sem-paralelo", not got7.get("abas-em-paralelo", False)))
+
+        # -- 2026-11-06: os tres defeitos do dono -----------------------------
+        # (1) O CONGELAMENTO some: o payload volta a ser a linha crua, que
+        # cresce com o relogio do player -- o `paint_t` a andar +0,95 s medido.
+        mut8 = os.path.join(tmp, "pausa_sem_congelar.py")
+        io.open(mut8, "w", encoding="utf-8").write(
+            src.replace('        out.append({"index": row.get("index"), "text": text, "words": [],\n'
+                        '                    "start": (start if start is not None else 0.0),\n'
+                        '                    "end": None, "cap": None})',
+                        '        out.append(dict(row))', 1))
+        got8 = dict((n, ok) for n, ok, _ in arms(module_path=mut8))
+        results.append(("pausa-sem-congelar",
+                        not got8.get("pausa-corta-a-pintura", False)))
+
+        # (2) O PRIMEIRO PLANO deixa de contar: a escolha volta ao "ja' adotado
+        # que ainda toca", que com duas abas a tocar fica no video errado.
+        mut9 = os.path.join(tmp, "sem_primeiro_plano.py")
+        io.open(mut9, "w", encoding="utf-8").write(
+            src.replace("    front = [p for p in usable if tab_is_foreground(p)]",
+                        "    front = []", 1))
+        got9 = dict((n, ok) for n, ok, _ in arms(module_path=mut9))
+        results.append(("sem-primeiro-plano",
+                        not got9.get("duas-abas-primeiro-plano", False)))
+
+        # (2b) A FOTO DA ABA ANTERIOR sobrevive a' troca -- legenda de um video
+        # no ecra do outro, o erro que este canal nao leva `videoId` para
+        # distinguir.
+        mut10 = os.path.join(tmp, "troca_nao_limpa.py")
+        io.open(mut10, "w", encoding="utf-8").write(
+            src.replace("        if key != old:\n            with self._lock:\n                self._snap = None",
+                        "        if False:\n            with self._lock:\n                self._snap = None", 1))
+        got10 = dict((n, ok) for n, ok, _ in arms(module_path=mut10))
+        results.append(("troca-nao-limpa",
+                        not got10.get("troca-limpa-o-estado", False)))
+
+        # (2c) A ASSINATURA da lista de abas sai da chave da cache: uma aba nova
+        # espera o TTL de 10 s (a legenda do video anterior).
+        mut11 = os.path.join(tmp, "sem_assinatura.py")
+        io.open(mut11, "w", encoding="utf-8").write(
+            src.replace("if (cached and len(cached) >= 4 and cached[3] == sig",
+                        "if (cached and len(cached) >= 4 and True", 1))
+        got11 = dict((n, ok) for n, ok, _ in arms(module_path=mut11))
+        results.append(("sem-assinatura",
+                        not got11.get("reavalia-sem-esperar", False)))
+
+        # (2d) O TTL VOLTA A 10 s COM DUAS ABAS: um alt-tab fica ate' 10 s no
+        # video anterior -- a cache so' a tempo, sem a chave de foco.
+        mut12 = os.path.join(tmp, "ttl_dez.py")
+        io.open(mut12, "w", encoding="utf-8").write(
+            src.replace("        ttl = (PLAYING_PROBE_TTL_S if len(sig) <= 1\n"
+                        "               else PLAYING_PROBE_TTL_MULTI_S)",
+                        "        ttl = PLAYING_PROBE_TTL_S", 1))
+        got12 = dict((n, ok) for n, ok, _ in arms(module_path=mut12))
+        results.append(("ttl-dez",
+                        not got12.get("reavalia-sem-esperar", False)))
+
+        # (3) A PAUSA NAO ENVELHECE A LINHA do player: o interruptor volta a
+        # recusar a linha que o video parado continua a mostrar.
+        shell_src = _read(SHELL)
+        mut13 = os.path.join(tmp, "replay_sem_pausa.py")
+        io.open(mut13, "w", encoding="utf-8").write(
+            shell_src.replace("    if bool(paused) and bool(from_player):\n        return True",
+                              "    if False:\n        return True", 1))
+        got13 = dict((n, ok) for n, ok, _ in arms(module_path=None, shell_path=mut13))
+        results.append(("replay-sem-pausa",
+                        not got13.get("desligar-em-pausa", False)))
+
+        # (1b) A BORDA DA PAUSA no `_tick` desaparece: com a linha parada o
+        # ecra fica com o relogio da ultima pintura a andar (o defeito de 2 s).
+        mut14 = os.path.join(tmp, "sem_borda_de_pausa.py")
+        io.open(mut14, "w", encoding="utf-8").write(
+            shell_src.replace("        if pause_edge and player_stalled and getattr(self, 'last_line', ''):",
+                              "        if False:", 1))
+        got14 = dict((n, ok) for n, ok, _ in arms(module_path=None, shell_path=mut14))
+        results.append(("sem-borda-de-pausa",
+                        not got14.get("pausa-pinta-no-tick", False)))
         return results
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

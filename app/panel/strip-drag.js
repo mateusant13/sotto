@@ -50,7 +50,16 @@
       && target.closest(
         "button, a, input, select, textarea, summary, label, "
         + "[role='button'], [role='link'], [role='checkbox'], [role='switch'], "
-        + "[role='tab'], [role='menuitem'], [contenteditable='true'], [data-no-drag]"));
+        + "[role='tab'], [role='menuitem'], [contenteditable='true'], [data-no-drag], "
+        /* A LINE OF THE TRANSCRIPT IS NOT A HANDLE. It is a selectable row with
+         * its own click and its own folder button, and it lives inside a
+         * scroller -- dragging the window out of a press that was meant to
+         * select a line is the classic reading-app defect. The list and the
+         * scroller around it are excluded with it, by class, because a press in
+         * the empty space under the last line belongs to the scroller too. */
+        + ".hist, .history__list, .history__body, .history__search, .history__bar, "
+        + ".captions, .captions__body, .captions__list, .dialog, "
+        + ".theme-dropdown, .panel-menu, .menu"));
   }
 
   function endVisual() {
@@ -60,6 +69,17 @@
   if (native) {
     function start(surface, event) {
       if (event.button !== 0 || isControl(event.target)) return;
+      /* ONE PRESS, ONE DRAG. The handle is now the panel AND the header inside
+       * it, so a press on the header reaches this function twice as the event
+       * bubbles -- and each call asks the shell for another native move loop.
+       * MEASURED with `_main/panel-drag-targets-oracle.js`: header, wordmark and
+       * the control row each asked for TWO drags before this flag. Two
+       * `WM_NCLBUTTONDOWN`s for one press is the class of defect that reads as
+       * "the drag is broken": the second move loop owns the pointer the moment
+       * the first releases it. The marker rides the EVENT object, so every
+       * handler in the same dispatch sees it, and it dies with the event. */
+      if (event.__sottoDragged) return;
+      event.__sottoDragged = true;
       /* A drag must not also select text or start a native image drag. */
       event.preventDefault();
       document.body.classList.add("is-strip-dragging");
@@ -79,6 +99,26 @@
        * that land on a control stay the control's -- `isControl` is that
        * boundary, and it is the same one the strip has always used. */
       header.addEventListener("pointerdown", function (event) { start("panel", event); });
+    }
+    /* THE WHOLE PANEL IS THE HANDLE NOW, AND THAT IS THE FIX (owner, 2026-11-06,
+     * verbatim): *"usa bem as skills, pra implementar o fato de ser possivel
+     * mover qualquer painel pela tela. já que agora ta extremamente bugado. a
+     * tentativa ta muito falha."*
+     *
+     * MEASURED BEFORE THIS: the native drag was armed on `.panel__header` and
+     * `.stripbar` ONLY. On the panel surface that is a 56 px bar at the top of a
+     * 900 px window, and every design that gives that bar less height -- or a
+     * different composition -- shrinks the grab area with it, which reads as "the
+     * panel sometimes does not move at all". The window has no other handle: the
+     * body of the panel was inert.
+     *
+     * WHAT IS NOT A HANDLE is `isControl`'s list, plus the transcript rows and the
+     * caption box: a press that selects a line, opens a menu or scrolls the feed
+     * must not move the window. That boundary is the whole design, and the loop
+     * oracle counts it in both directions (a press on the background asks for ONE
+     * drag; a press on a row asks for none). */
+    if (panel) {
+      panel.addEventListener("pointerdown", function (event) { start("panel", event); });
     }
     window.addEventListener("pointerup", endVisual);
     window.addEventListener("pointercancel", endVisual);

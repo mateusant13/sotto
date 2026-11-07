@@ -392,10 +392,14 @@ function stylesheetSources(html) {
 /** A bridge stub with the surface the real shell installs, plus what it recorded. */
 function bridgeStub(window, options) {
   const audit = { live: [], pause: [], surfaces: [], hidden: [], toggled: [] };
-  const subs = { caption: [], status: [] };
+  const subs = { caption: [], status: [], stats: [] };
   const bridge = {
     onCaption: (cb) => subs.caption.push(cb),
     onStatus: (cb) => subs.status.push(cb),
+    /* THE SHELL'S STATS CHANNEL. The panel subscribes to it for the level meter
+     * and (2026-11-06) for the PAUSED state; a stub without it makes `wireLevel`
+     * return on its first line and no pause arm can exist. */
+    onStats: (cb) => subs.stats.push(cb),
     onGeometry: () => {},
     hide: (reason) => audit.hidden.push(String(reason || '')),
     toggle: () => audit.toggled.push(1),
@@ -450,7 +454,7 @@ function bridgeStub(window, options) {
  * gets -- and `allDecls` below prints every candidate, so a human can see
  * which rule won and why.
  */
-async function buildPanel(surface, rules) {
+async function buildPanel(surface, rules, overrides) {
   const html = fs.readFileSync(path.join(panelDir(), 'panel.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'file:///' + path.join(panelDir(), 'panel.html').replace(/\\/g, '/') + '#' + surface,
@@ -468,7 +472,11 @@ async function buildPanel(surface, rules) {
   const bridge = bridgeStub(window, { wired: true });
   const errors = [];
   for (const src of scriptSources(html)) {
-    const file = path.resolve(panelDir(), src);
+    /* `overrides` is how an ARM carries its own CONTROL: a copy of one script
+     * (a mutant) is mounted in a page of its own, and the arm has to go RED.
+     * A gate whose mutant cannot be mounted is a gate that only measures
+     * itself. */
+    const file = path.resolve(panelDir(), (overrides && overrides[src]) || src);
     if (!fs.existsSync(file)) { errors.push('missing ' + src); continue; }
     try {
       window.eval(fs.readFileSync(file, 'utf8'));
@@ -741,6 +749,86 @@ async function runArms() {
   arm('and it is announced as an image with a name, not as a button',
     [lampEl.getAttribute('role'), lampEl.getAttribute('aria-label') !== null],
     ['img', true]);
+
+  /* ------------------------------------------------------------------ ARM 7 */
+  currentArm = '7';
+  console.log('\n=== ARM 7 — o botao de pause APRENDE o estado do shell ===');
+  /* OWNER, 2026-11-06, verbatim: *"o botao de pause tambem nao ta completo. o
+   * botao nao muda pra unpause."* The glyph already flipped on the CLICK, but
+   * `paused` was a page-local variable: hide the panel and show it again while
+   * the engines were unloaded and the button painted PAUSE over a paused shell.
+   * The shell now stamps `paused` on the stats payload it already sends, and
+   * `wireLevel`'s consumer is the single reader.
+   *
+   * THE CONTROL IS THE THIRD ASSERTION AND IT IS THE IMPORTANT ONE: a payload
+   * that does not carry the field must NOT move the button. "Absent" is "not
+   * told", and an arm that only proved the true case would pass on a page that
+   * flips on every stats tick. */
+  const pauseBtn = panel.document.getElementById('panel-pause-button');
+  /* The glyph is a `<path>` when PAUSED and a `<g>` of two rects when running
+   * (`paintPauseControls`, panel.js:3182-3199), so its FIRST CHILD TAG is the
+   * honest readout -- and `data-paused` is the state that paints it. */
+  const glyphOf = () => {
+    const svg = pauseBtn && pauseBtn.querySelector('svg');
+    const child = svg && svg.firstElementChild;
+    return child ? child.tagName.toLowerCase() : null;
+  };
+  const RUNNING = glyphOf();
+  panel.bridge.__emit('stats', { paused: true });
+  await tick();
+  const afterTrue = [pauseBtn.getAttribute('data-paused'), glyphOf()];
+  panel.bridge.__emit('stats', { paused: false });
+  await tick();
+  const afterFalse = [pauseBtn.getAttribute('data-paused'), glyphOf()];
+  panel.bridge.__emit('stats', { peak: 0.2, blocks: 3 });
+  await tick();
+  const afterAbsent = [pauseBtn.getAttribute('data-paused'), glyphOf()];
+  note('glyph when running = ' + RUNNING);
+  arm("the shell's paused=true flips the button to RESUME, false flips it back",
+    [afterTrue[0], afterFalse[0], afterTrue[1] !== RUNNING, afterFalse[1] === RUNNING],
+    ['true', 'false', true, true]);
+  arm('a stats payload WITHOUT the field leaves the button exactly where it was',
+    afterAbsent,
+    ['false', RUNNING]);
+
+  /* THE CONTROL -- the same page from a `panel.js` whose paused wiring was
+   * removed. The arm above must go RED there, otherwise it is measuring the
+   * click handler that already existed and not the shell's state at all. */
+  /* THE SHIPPED SCRIPT IS CRLF (the repo's rule since 2026-11-01: a file
+   * rewritten with `open(..., 'w')` loses its CRLF), so the anchor is matched
+   * against a normalised copy -- a byte-exact anchor against a CRLF file would
+   * report "not present" for wiring that is there, which is a FALSE RED. */
+  const shipped = fs.readFileSync(path.join(panelDir(), 'panel.js'), 'utf8')
+    .replace(/\r\n/g, '\n');
+  const anchorBlock = "    if (typeof fields.paused === 'boolean' && fields.paused !== paused) {\n"
+    + "      setPaused(fields.paused, null);\n    }";
+  if (!shipped.includes(anchorBlock)) {
+    arm('the paused wiring is present in the shipped panel.js', false, true);
+  } else {
+    /* The override is resolved against `panelDir()`, so the mutant lives there
+     * for the length of this arm and is removed on the way out. */
+    const mutantName = '_mutant-pause-' + process.pid + '.js';
+    const mutantPath = path.join(panelDir(), mutantName);
+    fs.writeFileSync(mutantPath,
+      shipped.replace(anchorBlock, '    /* MUTANT: o shell nao fala mais o pause */'));
+    try {
+      const mutant = await buildPanel('panel', rules, { 'panel.js': mutantName });
+      const btn = mutant.document.getElementById('panel-pause-button');
+      const glyph = () => {
+        const svg = btn && btn.querySelector('svg');
+        const child = svg && svg.firstElementChild;
+        return child ? child.tagName.toLowerCase() : null;
+      };
+      const before = glyph();
+      mutant.bridge.__emit('stats', { paused: true });
+      await tick();
+      arm('CONTROL - with the wiring removed the same payload leaves the glyph alone',
+        [glyph() === before, btn.getAttribute('data-paused')],
+        [true, 'false']);
+    } finally {
+      try { fs.unlinkSync(mutantPath); } catch (err) { /* best effort */ }
+    }
+  }
 
   return 0;
 }

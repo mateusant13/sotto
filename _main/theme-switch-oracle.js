@@ -515,6 +515,70 @@ function arm8(m) {
   return bad;
 }
 
+
+/* ARM 9  THE WHEEL WALKS THE THEMES OVER THE DROPDOWN TRIGGER.
+ *
+ * OWNER, 2026-11-06, verbatim: *"ao deixar o mouse encima do botao de menu
+ * dropdown pra escolher tema, usar o scroll pra cima ou pra baixo deve trocar os
+ * temas."* MEASURED before the cure: the wheel was wired to `[data-theme-button]`
+ * only, so the trigger he called "o botao de menu dropdown" answered nothing --
+ * the request was implemented on the wrong control.
+ *
+ * The latch is 120 ms, so the arm waits it out between notches; a trackpad flick
+ * must still count as ONE step (that half is ARM 10). */
+function wheelWait() {
+  const t = Date.now();
+  while (Date.now() - t < 130) { /* the module's own 120 ms latch */ }
+}
+
+function arm9(m) {
+  const bad = [];
+  const names = m.sw.list().map((x) => x.name);
+  const chevron = m.doc.getElementById('theme-chevron');
+  if (!chevron) { bad.push('#theme-chevron nao existe no documento montado'); return bad; }
+  if (!(chevron._listeners.wheel || []).length) {
+    bad.push('#theme-chevron nao tem listener de wheel');
+    return bad;
+  }
+  m.sw.set(names[0]);
+  wheelWait();
+  chevron.dispatch('wheel', { deltaY: 100 });
+  if (m.sw.current() !== names[1]) {
+    bad.push('wheel para BAIXO sobre o chevron deu "' + m.sw.current()
+      + '", esperado "' + names[1] + '"');
+  }
+  wheelWait();
+  chevron.dispatch('wheel', { deltaY: -100 });
+  if (m.sw.current() !== names[0]) {
+    bad.push('wheel para CIMA sobre o chevron deu "' + m.sw.current()
+      + '", esperado "' + names[0] + '"');
+  }
+  return bad;
+}
+
+/* ARM 10  ONE FLICK IS ONE STEP, ON BOTH HANDLES.
+ * The 120 ms latch keeps a trackpad's momentum from walking six designs; without
+ * it the wheel the owner asked for is a wheel he cannot aim. */
+function arm10(m) {
+  const bad = [];
+  const names = m.sw.list().map((x) => x.name);
+  const chevron = m.doc.getElementById('theme-chevron');
+  const cycle = m.doc.querySelector('[data-theme-button]');
+  for (const [label, btn] of [['chevron', chevron], ['cycle', cycle]]) {
+    if (!btn) { bad.push('sem alvo: ' + label); continue; }
+    m.sw.set(names[0]);
+    wheelWait();
+    btn.dispatch('wheel', { deltaY: 100 });
+    btn.dispatch('wheel', { deltaY: 100 });
+    btn.dispatch('wheel', { deltaY: 100 });
+    if (m.sw.current() !== names[1]) {
+      bad.push(label + ': tres notches no mesmo instante andaram ate "'
+        + m.sw.current() + '", esperado "' + names[1] + '" (o latch de 120 ms nao segurou)');
+    }
+  }
+  return bad;
+}
+
 const ARMS = [
   ['ARM 1 the switch is ONE attribute write', arm1],
   ['ARM 2 the cycle is a RING that wraps', arm2],
@@ -523,7 +587,9 @@ const ARMS = [
   ['ARM 5 every manifest entry is reachable', arm5],
   ['ARM 6 the stored choice comes back', arm6],
   ['ARM 7 persistence is defensive', arm7],
-  ['ARM 8 mount is idempotent', arm8]
+  ['ARM 8 mount is idempotent', arm8],
+  ['ARM 9 the wheel walks themes over the dropdown trigger', arm9],
+  ['ARM 10 one flick is one step on both handles', arm10]
 ];
 
 /* ── the mutants ───────────────────────────────────────────────────────────── */
@@ -536,7 +602,10 @@ const MUTANTS = [
     '      var theme = known(name) || { name: name };  /* MUTANT M2 */'],
   ['M3 the store write is removed',
     '      if (!opts || opts.persist !== false) writeStore(theme.name);',
-    '      /* MUTANT M3: the choice is not persisted */']
+    '      /* MUTANT M3: the choice is not persisted */'],
+  ['M4 the wheel is not wired to the dropdown trigger',
+    '    walkThemesByWheel(btn);\r\n    btn.addEventListener(\'keydown\'',
+    '    /* MUTANT M4: o chevron nao responde ao wheel */\r\n    btn.addEventListener(\'keydown\'']
 ];
 
 function runLive() {

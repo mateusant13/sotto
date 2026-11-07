@@ -222,8 +222,8 @@ Duas metades, uma tabela só — `gaming_mode.live_hotkey_plan`, pura e medida:
 
 | em jogo? | registo | o que acontece |
 |---|---|---|
-| não | `RegisterHotKey` + `MOD_NOREPEAT` | o Windows entrega `WM_HOTKEY` à shell; **o espaço não chega à janela em foco** e a legenda alterna |
-| sim | `UnregisterHotKey` | o jogo recebe o `Ctrl+Space` **nativo** (sem `SendInput`, logo sem o problema do raw input) e a shell **não alterna nada** |
+| não | `RegisterHotKey` + `MOD_NOREPEAT` **+ `WH_KEYBOARD_LL`** | o registo entrega `WM_HOTKEY` à shell (a legenda alterna); o hook devolve 1 ao `VK_SPACE` com `Ctrl` em baixo, e é ele que impede o espaço de chegar à janela em foco |
+| sim | `UnregisterHotKey` **+ `UnhookWindowsHookEx`** | o jogo recebe o `Ctrl+Space` **nativo** (sem `SendInput`, logo sem o problema do raw input) e a shell **não alterna nada** |
 
 A legenda dentro do jogo liga-se com o **Alt+C** e o botão LIVE do painel — a
 tecla não é um caminho alternativo para isso.
@@ -240,8 +240,17 @@ alterna a legenda e **deixa o espaço passar**, e o log diz
 `swallow=false the_key_passes_through=true` — um recuo declarado, não um
 silêncio.
 
-Provas: `_main/ctrlspace-swallow-oracle.py` (14 arms contra o `user32`-gravador;
-`--neg-arm` 4/4) e `_main/ctrlspace-swallow-probe.py`, que mede no Windows desta
-máquina o que nenhum fake dá — medido: primeira reserva `1`, segunda reserva da
-mesma combinação `0` com `err=1409`, terceira depois do `Unregister` `1`.
+Provas: `_main/ctrlspace-swallow-oracle.py` (19 arms contra o `user32`-gravador;
+`--neg-arm` 6/6) e `_main/ctrlspace-swallow-probe.py`, que mede no Windows desta
+máquina o que nenhum fake dá: a reserva (medido: primeira `1`, segunda `0` com
+`err=1409`, terceira depois do `Unregister` `1`) **e** o hook de teclado real
+instalado num filho escondido — handle válido, `UnhookWindowsHookEx=1`, o
+`HOOKPROC` devolve `1` ao `WM_KEYDOWN` do espaço com `Ctrl`, `0` sem `Ctrl` e `0`
+desarmado (medido: `down=1 repeat=1 up=1 plain=0 disarmed=0 toggles=1`).
+
+O hook vive em `app/webview/space_swallow.py` (a classificação é a função pura
+`classify_event`), nunca no AST da shell: `_main/input-path-oracle.py` mantém C1
+(zero hooks na shell) e **C11** exige que o único ficheiro do produto com
+`SetWindowsHookEx` seja `space_swallow.py`, com `WH_KEYBOARD_LL` — um ficheiro
+novo com hook, ou o rato de volta, deixa C11 RED.
 

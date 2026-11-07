@@ -54,6 +54,16 @@ const MAX_HISTORY = 500;
 /** How many entries a fresh `tail()` loads. */
 const HISTORY_LOAD = 400;
 /**
+ * HOW FAR BACK THE FEED GOES (owner, 2026-11-06, verbatim): *"o historico tem que
+ * persistir, aparecendo no painel da direita, por padrao, ate 48hrs. nao faça isso
+ * ser travado ou pesado."*
+ *
+ * 48 h is the WINDOW, and the shell prunes day files past it (`_history_prune`),
+ * so the panel filter below and the store agree on one number instead of two. It
+ * is a filter over the lines the tail already returned: no second read, no index.
+ */
+const HISTORY_RETENTION_H = 48;
+/**
  * THE TRANSCRIPT FONT DIAL — its bounds and its storage key (owner, 2026-10-09).
  * The scale is a multiplier around the CSS DESIGN size (`--caption-size`, 15px),
  * never an absolute size, because the owner asked for a dial rather than a fixed
@@ -114,7 +124,6 @@ const dom = {
   historyList: document.getElementById('history-list'),
   historyRoot: document.getElementById('history-root'),
   historyStatus: document.getElementById('history-status'),
-  historyGallery: document.getElementById('history-gallery'),
   revealButton: document.getElementById('reveal-button'),
   // THE SEARCH BOX IS GONE (owner, 2026-10-21 21:24: *"tira a caixa de procurar
   // texto"*), so these four lookups went with it. Every use of them below was
@@ -253,20 +262,6 @@ let stickToNewest = true, pinnedHeight = 0;
 let searchQuery = '';
 /** The result set backing the current search view. */
 let searchHits = [];
-/**
- * THE GALLERY'S OWN STATE — which range is chosen, and which bucket is open.
- *
- * Declared HERE, above the init block, for the rule this file learned the hard
- * way (the `selectedEntry` temporal-dead-zone bug): anything the init block can
- * reach is declared above it.
- *
- * `galleryPick` is `null` on purpose and that null is the owner's request. He
- * asked for the drawer to stop filling itself (*"tira o historico que ja mostra
- * sozinho"*), so "no bucket chosen" is a REAL state that paints the buttons and
- * no lines — not a transient to be filled in by the first entry that arrives.
- */
-let galleryRange = '24h';
-let galleryPick = null;
 /**
  * D1 — THE CANONICAL PRODUCER the shell reports from `history.root()`, or null.
  *
@@ -1017,98 +1012,13 @@ if (!bridge) {
    * button on load with no click. */
   watchCaptionWindowState();
   wirePause();
+  wireHistorySearch();
   // The status is a repair control: one click revives the whole pipeline.
   wireRevive();
-  // O limiar do HOLD do Alt+C: pede a lista ao shell e pinta a resposta dele.
-  watchHotkeyHold();
   announceReady();
   wireLevel();
 }
 
-
-// ---------------------------------------------------------------------------
-// O LIMIAR DO HOLD DO ALT+C (ordem do dono, 2026-10-30)
-// ---------------------------------------------------------------------------
-// O dono escolhe, no painel da direita, quanto tempo o Alt+C tem de ficar
-// premido para ligar/desligar a legenda ao vivo.
-//
-// A LISTA VEM DO SHELL e nao e' escrita aqui: `getHotkeyHold` devolve as
-// escolhas que `hotkey_settings.HOTKEY_HOLD_MS_CHOICES` define. Uma copia da
-// lista na pagina seria uma segunda verdade, e duas verdades divergem -- e' o
-// mesmo defeito que o `stat` do ficheiro de bateria ja pagou uma vez.
-//
-// A PAGINA NAO INVENTA O VALOR PINTADO. Pede, pinta a resposta, e depois de
-// gravar volta a pintar a resposta da GRAVACAO: uma escrita recusada deixa o
-// controlo onde o disco diz que ele esta', em vez de mostrar guardado o que nao
-// ficou.
-function watchHotkeyHold() {
-  const row = document.getElementById('hotkey-hold-row');
-  const select = document.getElementById('hotkey-hold-select');
-  if (!row || !select) return;
-  const wired = typeof bridge === 'object' && bridge !== null
-    && typeof bridge.getHotkeyHold === 'function';
-  if (!wired) {
-    // Sem a pergunta nao ha resposta: a linha sai do documento em vez de ficar
-    // a mostrar um controlo que nao manda em nada.
-    row.hidden = true;
-    return;
-  }
-
-  const paint = (state) => {
-    if (!state || !Array.isArray(state.choices) || !state.choices.length) {
-      row.hidden = true;
-      return;
-    }
-    row.hidden = false;
-    const wanted = String(state.holdMs === null || state.holdMs === undefined ? '' : state.holdMs);
-    if (select.dataset.choices !== state.choices.join(',')) {
-      select.textContent = '';
-      for (const ms of state.choices) {
-        const option = document.createElement('option');
-        option.value = String(ms);
-        option.textContent = String(ms);
-        select.appendChild(option);
-      }
-      select.dataset.choices = state.choices.join(',');
-    }
-    if (select.value !== wanted) select.value = wanted;
-    select.dataset.effective = wanted;
-  };
-
-  const ask = () => {
-    try {
-      const result = bridge.getHotkeyHold();
-      if (result && typeof result.then === 'function') {
-        result.then(paint).catch(() => { row.hidden = true; });
-        return;
-      }
-      paint(result);
-    } catch (err) {
-      row.hidden = true;
-    }
-  };
-
-  select.addEventListener('change', () => {
-    const ms = Number(select.value);
-    if (!Number.isFinite(ms)) return;
-    try {
-      const result = bridge.setHotkeyHold({ holdMs: ms });
-      if (result && typeof result.then === 'function') {
-        result.then((answer) => {
-          if (answer && Array.isArray(answer.choices)) paint(answer);
-          else if (answer && answer.ok) paint(Object.assign({}, answer, { choices: [] }));
-          else ask();  // recusado: volta ao que o disco diz
-        }).catch(ask);
-        return;
-      }
-      ask();
-    } catch (err) {
-      ask();
-    }
-  });
-
-  ask();
-}
 
 // THE TRANSCRIPT'S SCROLL GUARD IS ARMED WHETHER OR NOT A BRIDGE EXISTS (lane:
 // caption): the feed and the live box are in the document either way, and the owner's
@@ -1925,24 +1835,6 @@ function wireHistory() {
   if (dom.historyRoot) dom.historyRoot.addEventListener('click', () => revealPath(null));
   markRevealState();
 
-  // THE GALLERY — ONE delegated listener, because the buttons are rebuilt on every
-  // render and per-button listeners would leak with them. A press reads the spec
-  // off the button's own `dataset`, which is the same data the render wrote, so
-  // there is no second table of what each button means.
-  if (dom.historyGallery) {
-    dom.historyGallery.addEventListener('click', (event) => {
-      const btn = event.target && event.target.closest
-        ? event.target.closest('.gallery__btn')
-        : null;
-      if (!btn) return;
-      pickGallery({
-        range: btn.dataset.range || '',
-        day: btn.dataset.day || '',
-        hour: btn.dataset.hour == null ? '' : btn.dataset.hour,
-      });
-    });
-  }
-
   if (!historyApi) {
     setHistoryNote(
       'Transcript unavailable: this shell has no store (nothing is written)',
@@ -2035,10 +1927,21 @@ function applyTranscriptMode() {
 
 }
 
-/** Auto = open only when something can write the feed. */
+/**
+ * THE TRANSCRIPT IS ALWAYS OPEN (owner, 2026-11-06). Verbatim: *"e nao é pra
+ * começar a ativar o historico so quando eu mostro o painel. é pra sempre
+ * aparecer no painel."*
+ *
+ * It used to open only when the shell reported a canonical producer, which meant
+ * the feed was a closed bar whenever the batch pass had not introduced itself
+ * yet -- the owner opens the panel, sees a caption bar and nothing else. The
+ * collapsed state is now unreachable; the decision function stays because it is
+ * the ONE place the surface asks the question.
+ */
 function isTranscriptExpanded() {
-  if (transcriptExpanded !== null) return transcriptExpanded;
-  return Boolean(canonicalProducer);
+  void transcriptExpanded;
+  void canonicalProducer;
+  return true;
 }
 
 /**
@@ -2276,209 +2179,56 @@ function pushEntry(entry) {
     }
     return;
   }
-  // A NEW LINE IS NOT PAINTED JUST BECAUSE IT EXISTS. With a bucket open, a line
-  // that falls INSIDE it is appended, so the reader keeps his place and the list
-  // still follows the newest; a line outside it, or no open bucket at all, leaves
-  // the list alone — an unconditional append here would resurrect exactly the wall
-  // of lines the owner had removed (*"tira o historico que ja mostra sozinho"*).
-  const api = galleryApi();
-  if (api && galleryPick && api.pick([entry], galleryPick.day, galleryPick.hour).length) {
-    if (merging) replaceFeedRow(entry);
-    else appendFeedRow(entry);
-    return;
-  }
-  // The list's CONTENT is unchanged in that case (still the hint), so only the
-  // gallery's buttons and counters need to move — including the new bucket itself,
-  // which must appear even though its lines stay off screen until he asks.
-  renderGallery();
-}
-
-/** The DOM-free gallery module, or null in a shell that does not ship it. */
-function galleryApi() {
-  return window.SottoHistoryGallery || null;
-}
-
-/** One gallery button. `spec` is what it selects; `on` marks the current pick. */
-function galleryButton(label, spec, on, extraClass) {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'gallery__btn' + (on ? ' is-active' : '') + (extraClass ? ' ' + extraClass : '');
-  btn.textContent = label;
-  btn.dataset.day = spec.day || '';
-  btn.dataset.hour = spec.hour == null ? '' : spec.hour;
-  btn.dataset.range = spec.range || '';
-  if (spec.title) btn.title = spec.title;
-  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  return btn;
+  // A NEW LINE IS PAINTED AS IT ARRIVES (owner, 2026-11-06): *"é pra sempre
+  // aparecer no painel"*. The gallery bucket that used to gate this is gone, so
+  // there is no "outside the open bucket" case left: a line either grows the row
+  // it belongs to (`merge`) or appends a new one.
+  if (merging) replaceFeedRow(entry);
+  else appendFeedRow(entry);
 }
 
 /**
- * THE GALLERY — the days and hours inside the chosen range, as BUTTONS.
+ * THE FEED PAINTS ITSELF (owner, 2026-11-06).
  *
- * It is built from `historyEntries`, which the panel has ALREADY loaded: the
- * gallery costs no extra read of the store, and the shell needs no new method.
- * That is deliberate — the owner asked for navigation, not for a second reader.
+ * Verbatim: *"o historico tem que persistir, aparecendo no painel da direita, por
+ * padrao, ate 48hrs ... e nao é pra começar a ativar o historico so quando eu
+ * mostro o painel. é pra sempre aparecer no painel."* and *"tambem tira a data de
+ * mostrar o historico do painel na direita."*
  *
- * The RANGE decides which buckets exist (`24 h` first, then `1 h`, his order) and
- * the buckets are then grouped by day and hour by `history-gallery.js`. A range
- * with no entries paints NOTHING and hides itself, rather than offering buttons
- * that open an empty hour: a control that cannot do anything is worse than an
- * absent one.
+ * WHAT STOOD HERE was the day/hour gallery: `24h`/`1h` ranges plus a chip per day
+ * and per hour, and the list stayed EMPTY until one was pressed. It is deleted —
+ * the markup, the counters, the pick state and the module that bucketed the
+ * entries — because the owner stopped asking to navigate the store and started
+ * asking to see it. The list now shows the last 48 h on load and follows the
+ * newest line from then on (`appendFeedRow` / `replaceFeedRow`).
+ *
+ * WHY ONLY THE LAST 48 h, AND WHY THAT IS CHEAP: the shell already tails the store
+ * (`HISTORY_LOAD` lines) and prunes day files past the same window
+ * (`HISTORY_RETENTION_H`), so this is a filter over what was already read, not a
+ * second pass over the disk.
  */
-function renderGallery() {
-  const host = dom.historyGallery;
-  if (!host) return;
-  const api = galleryApi();
-  host.replaceChildren();
-  if (!api) {
-    host.hidden = true;
-    return;
-  }
-  const now = new Date();
-  const inRange = api.select(historyEntries, galleryRange, now);
-  const grouped = api.buckets(inRange);
-  // THE STORE IS EMPTY, so there is nothing to navigate and the gallery is gone.
-  if (!historyEntries.length) {
-    host.hidden = true;
-    return;
-  }
-  host.hidden = false;
-
-  // THE RANGE ROW IS PAINTED EVEN WHEN THE RANGE IS EMPTY — found by reading, not
-  // by a failing arm: hiding the whole host when `grouped.days` was empty also hid
-  // the `24 h` button, so picking `1 h` in a quiet hour left the owner with no way
-  // back and no control on screen at all. The row is the way OUT of an empty range,
-  // so it is painted first and unconditionally once the store holds anything.
-  const ranges = document.createElement('div');
-  ranges.className = 'gallery__row gallery__row--ranges';
-  for (const r of api.RANGES) {
-    ranges.append(galleryButton(r.label, { range: r.id }, galleryRange === r.id, 'gallery__range'));
-  }
-  host.append(ranges);
-
-  if (!grouped.days.length) {
-    // Honest, and specific about WHICH window is empty: "no entries" and "none in
-    // the last hour" are different facts and only one of them is about the store.
-    const spec = api.rangeOf(galleryRange);
-    const warn = document.createElement('p');
-    warn.className = 'gallery__warn';
-    warn.textContent = spec
-      ? `Nothing in the last ${spec.hours} h.`
-      : 'That range is not one this panel offers.';
-    host.append(warn);
-    return;
-  }
-
-  for (const day of grouped.days) {
-    const row = document.createElement('div');
-    row.className = 'gallery__row';
-    const dayOn = Boolean(galleryPick) && galleryPick.day === day.day && !galleryPick.hour;
-    row.append(galleryButton(
-      `${day.day} · ${day.count}`,
-      { day: day.day, title: `All ${day.count} line(s) of ${day.day}` },
-      dayOn,
-      'gallery__day',
-    ));
-    for (const hour of day.hours) {
-      const on = Boolean(galleryPick)
-        && galleryPick.day === day.day && galleryPick.hour === hour.hour;
-      row.append(galleryButton(
-        hour.hour,
-        {
-          day: day.day,
-          hour: hour.hour,
-          title: `${hour.count} line(s) at ${hour.hour}h on ${day.day}`,
-        },
-        on,
-        'gallery__hour',
-      ));
-    }
-    host.append(row);
-  }
-  // An unreadable line is COUNTED here rather than dropped in silence: it is a
-  // fact about the store, and a gallery that hid it would flatter the store.
-  //
-  // THE COUNT COMES FROM THE WHOLE STORE, NOT FROM `grouped`, and that is a defect
-  // this arm found by going RED: `api.select` already refuses an entry it cannot
-  // date (no stamp ⇒ `inRange` is false), so an undated line can NEVER reach
-  // `buckets(inRange)` and `grouped.skipped` was therefore ALWAYS 0 — a warning
-  // wired to a value that could not occur. Counting over `historyEntries` is what
-  // makes it reachable, and the sentence no longer says "in this range", because
-  // that is not where it was counted.
-  const undated = api.buckets(historyEntries).skipped;
-  if (undated) {
-    const warn = document.createElement('p');
-    warn.className = 'gallery__warn';
-    warn.textContent = `${undated} line(s) of the transcript have no readable date and are not shown.`;
-    host.append(warn);
-  }
-}
-
-/** Apply a gallery press: a range clears the pick, a bucket opens it. */
-function pickGallery(spec) {
-  // A gallery press and a search are two views of the ONE list, so pressing a
-  // button leaves search: otherwise the pick would paint its rows and the next
-  // search result would silently overwrite them, and the owner would have no way
-  // to tell which of the two he is looking at.
-  if (searchQuery) {
-    searchQuery = '';
-    searchHits = [];
-    if (dom.searchClear) dom.searchClear.hidden = true;
-    setHistoryNote('');
-  }
-  if (spec.range) {
-    galleryRange = spec.range;
-    galleryPick = null;
-  } else if (spec.day) {
-    galleryPick = spec.hour ? { day: spec.day, hour: spec.hour } : { day: spec.day };
-  }
-  renderFeed();
-}
-
 function renderFeed() {
   if (!dom.historyList) return;
   clearList();
-  renderGallery();
-  const api = galleryApi();
-  // THE OWNER'S REQUEST, as a branch: with no bucket chosen the list stays EMPTY
-  // and says how to fill it. It does NOT fall back to painting every entry — that
-  // fallback is the behaviour he had removed ("tira o historico que ja mostra
-  // sozinho").
-  const rows = api && galleryPick
-    ? api.pick(historyEntries, galleryPick.day, galleryPick.hour)
-    : null;
   if (!historyEntries.length) {
     const empty = document.createElement('li');
     empty.className = 'history__empty';
     empty.textContent = historyApi
-      ? 'No transcript yet. Only the canonical batch pass writes here; the live '
-        + 'engine never does.'
+      ? 'No transcript yet.'
       : 'No transcript store in this shell.';
     dom.historyList.append(empty);
-  } else if (rows) {
-    if (!rows.length) {
-      const empty = document.createElement('li');
-      empty.className = 'history__empty';
-      empty.textContent = 'That hour is empty.';
-      dom.historyList.append(empty);
-    } else {
-      for (const entry of rows) dom.historyList.append(makeRow(entry));
-      // NEVER THE TOP (owner, 2026-10-12, verbatim): *"e nao e pra mudanca de
-      // design/tema/template ficar scrollando pra cima. e sempre mostrando o bottom
-      // do historico de transcript."* This line WAS `dom.historyList.scrollTop = 0`
-      // — the feed was re-rendered to its first line on every paint of a bucket.
-      // The rule is one function, used by the render path AND by the theme guard
-      // below, so the two can never disagree.
-      pinHistoryToBottom();
-    }
-  } else {
-    const hint = document.createElement('li');
-    hint.className = 'history__empty history__empty--hint';
-    hint.textContent = 'Pick a day or an hour above.';
-    dom.historyList.append(hint);
+    applyTranscriptMode();
+    return;
   }
-  // The bar's note and count are DERIVED from what the feed holds, so they are
-  // refreshed wherever the feed is.
+  const cutoff = Date.now() - HISTORY_RETENTION_H * 3600 * 1000;
+  const rows = historyEntries.filter((entry) => {
+    const at = entryAt(entry);
+    return !Number.isFinite(at) || at >= cutoff;
+  });
+  for (const entry of rows) dom.historyList.append(makeRow(entry));
+  // NEVER THE TOP (owner, 2026-10-12): *"e sempre mostrando o bottom do historico
+  // de transcript."* One function, used by the render path and the theme guard.
+  pinHistoryToBottom();
   applyTranscriptMode();
 }
 
@@ -2744,9 +2494,9 @@ function wireStripControls() {
     // button IS the confirmation: one click unloads. The side panel keeps the
     // dialog.
     if (button.id === 'strip-pause-button') {
-      button.addEventListener('click', () => confirmPause());
+      button.addEventListener('click', () => (paused ? resumePipeline() : confirmPause()));
     } else {
-      button.addEventListener('click', () => openPauseConfirm(button));
+      button.addEventListener('click', () => (paused ? resumePipeline() : openPauseConfirm(button)));
     }
   }
   // The font dial is wired from the STRIP side too, so the strip's pair and the
@@ -2878,9 +2628,41 @@ function wireFontDial() {
   const bind = (button) => {
     if (!button) return;
     button.addEventListener('click', cycleCaptionScale);
+    /* THE WHEEL MOVES THE SAME DIAL (owner, 2026-11-06, verbatim): *"e o negocio de
+     * scrollar botao pra aumentar ou diminuir ... tambem faça essa funcao no botao de
+     * aumentar o tamanho da legenda."*
+     *
+     * ONE STEP PER NOTCH, in the direction of the wheel, through the SAME
+     * `applyCaptionScale` the click uses -- so the clamp, the rounding and the
+     * persistence are not re-implemented here. The 120 ms latch is the click's own
+     * rate; a trackpad flick that fired twenty events would jump the dial from 1.0
+     * to 2.0 in one gesture and there is no undo on this control. */
+    let wheelAt = 0;
+    button.addEventListener('wheel', (event) => {
+      if (!event.deltaY) return;
+      event.preventDefault();
+      const now = Date.now();
+      if (now - wheelAt < 120) return;
+      wheelAt = now;
+      stepCaptionScale(event.deltaY > 0 ? -1 : 1);
+    }, { passive: false });
   };
   bind(dom.fontScaleButton);
   bind(dom.stripFontScaleButton);
+}
+
+/**
+ * One step UP or DOWN the dial, clamped at both ends.
+ *
+ * A CLICK AND A WHEEL ARE NOT THE SAME GESTURE, and that is why this exists beside
+ * `cycleCaptionScale`: a click WRAPS (the owner's 2026-10-18 ruling, because the pair
+ * it replaced could sit disabled at an end of travel), while a wheel that wrapped
+ * would take the dial from the smallest size straight to the largest mid-flick. The
+ * wheel stops at the stop and the click keeps wrapping.
+ */
+function stepCaptionScale(direction) {
+  const next = captionScale + FONT_SCALE_STEP * (direction > 0 ? 1 : -1);
+  applyCaptionScale(Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, next)));
 }
 
 /**
@@ -3375,8 +3157,81 @@ function applyFloat(on) {
 // the dialog BEFORE the owner presses anything and in the confirm button's own
 // label, rather than being discovered as a no-op afterwards.
 
+/**
+ * THE PAUSE BUTTON IS A TOGGLE, AND IT SAYS WHICH HALF IT IS (owner, 2026-11-06,
+ * verbatim): *"o botao de pause tambem nao ta completo. o botao nao muda pra
+ * unpause."*
+ *
+ * THREE STATES, ONE PAINT: running → pause glyph, "Pause · unload the engines";
+ * paused → play glyph, "Resume · reload the engines". `data-paused` carries the
+ * state on the button itself so CSS can tint it and a probe can read it without
+ * guessing from the glyph.
+ *
+ * The glyph is INLINE SVG, not a character: `⏸`/`▶` come from whatever emoji font
+ * Windows picks and are two wildly different weights in the same 28 px box.
+ */
+function paintPauseControls() {
+  for (const button of dom.pauseButtons) {
+    button.setAttribute('data-paused', paused ? 'true' : 'false');
+    const label = paused ? 'Resume · reload the engines' : 'Pause · unload the engines';
+    button.title = label;
+    button.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
+    const svg = button.querySelector('svg');
+    if (!svg) continue;
+    svg.replaceChildren();
+    if (paused) {
+      const play = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      play.setAttribute('d', 'M5.5 3.5 L12.5 8 L5.5 12.5 Z');
+      play.setAttribute('fill', 'currentColor');
+      play.setAttribute('stroke', 'none');
+      svg.appendChild(play);
+    } else {
+      const bars = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      bars.setAttribute('fill', 'currentColor');
+      bars.setAttribute('stroke', 'none');
+      const left = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      left.setAttribute('x', '5');
+      left.setAttribute('y', '3.5');
+      left.setAttribute('width', '2.4');
+      left.setAttribute('height', '9');
+      left.setAttribute('rx', '0.8');
+      const right = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      right.setAttribute('x', '8.6');
+      right.setAttribute('y', '3.5');
+      right.setAttribute('width', '2.4');
+      right.setAttribute('height', '9');
+      right.setAttribute('rx', '0.8');
+      bars.append(left, right);
+      svg.appendChild(bars);
+    }
+  }
+}
+
+/**
+ * RESUME = RELOAD THE ENGINES THE PAUSE UNLOADED.
+ *
+ * `bridge.pause()` stops the worker and frees its CUDA context; there is no
+ * "unpause" message and there should not be a second spawn path, so resuming is
+ * the shell's existing `revive` (kill + respawn, the same one the status line
+ * uses). The button is repainted from the SHELL's answer by `setPaused`, so a
+ * refused resume leaves the play glyph where the truth is.
+ */
+function resumePipeline() {
+  if (reviveInFlight) {
+    setStatus('Already restarting the pipeline…', 'busy');
+    return false;
+  }
+  const accepted = revivePipeline();
+  if (accepted) {
+    setPaused(false, null);
+    setStatus('Reloading the engines…', 'busy');
+  }
+  return accepted;
+}
+
 function wirePause() {
   applyPauseAvailability();
+  paintPauseControls();
   if (dom.pauseCancelButton) {
     dom.pauseCancelButton.addEventListener('click', () => closePauseConfirm());
   }
@@ -3643,6 +3498,7 @@ function confirmPause() {
  */
 function setPaused(value, text) {
   paused = Boolean(value);
+  paintPauseControls();
   if (dom.panel) dom.panel.classList.toggle('is-paused', paused);
   // The paused state is reported by the strip's one word. `setStatus` below
   // carries it into the snapshot that word reads, so one repaint is enough.
@@ -3661,6 +3517,60 @@ function revealPath(path) {
   }
   historyApi.reveal(path || null);
   setHistoryNote(path ? 'Opening ' + path : 'Opening the transcript folder');
+}
+
+/**
+ * THE SEARCH IS A GLYPH UNTIL IT IS ASKED FOR (owner, 2026-11-06, verbatim):
+ * *"tira a BARRA de pesquisa de historico, deixa so um botao pequeno com o simbolo
+ * de pesquisa."*
+ *
+ * The bar used to be a permanent row above the feed: a text field, a Search button
+ * and a Clear button, three pieces of chrome over a transcript the owner mostly
+ * reads. Now the row holds one 24 px magnifier. Pressing it opens the field beside
+ * it, focuses it, and Escape (or a second press) closes it and puts the feed back.
+ *
+ * NOTHING IN `runSearch` CHANGED: the same predicate, the same ranking, the same
+ * `searchQuery` state. This is the input surface, and only the input surface.
+ */
+function wireHistorySearch() {
+  const button = document.getElementById('history-search-button');
+  const input = document.getElementById('history-search');
+  const tools = document.querySelector('.history__tools');
+  if (!input) return;
+  const open = Boolean(tools) && tools.classList.contains('is-searching');
+  const paint = (next) => {
+    if (tools) tools.classList.toggle('is-searching', next);
+    if (button) button.setAttribute('aria-expanded', next ? 'true' : 'false');
+    if (!next) {
+      input.value = '';
+      if (searchQuery) runSearch('');
+    }
+  };
+  if (button) {
+    button.addEventListener('click', () => {
+      const next = !(tools && tools.classList.contains('is-searching'));
+      paint(next);
+      if (next) {
+        input.focus();
+        input.select();
+      }
+    });
+  }
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const value = input.value;
+      if (String(value).trim()) runSearch(value);
+      else paint(false);
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      paint(false);
+      input.blur();
+    }
+  });
+  void open;
 }
 
 async function runSearch(rawQuery) {
@@ -3747,16 +3657,31 @@ function clockTime() {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
-function todayStamp() {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+/**
+ * THE STAMP IS THE HOUR, AND NOTHING ELSE (owner, 2026-11-06): *"tambem tira a
+ * data de mostrar o historico do painel na direita."*
+ *
+ * The date used to be prepended for any line from another day, which is how a
+ * `11-05 23:41:07` chip ended up in the bar he was reading. The feed now spans at
+ * most `HISTORY_RETENTION_H`, so the day is context the owner already has and the
+ * hour is what he reads.
+ */
+function stampFor(entry) {
+  const time = String(entry.time || '');
+  return time.slice(0, 8) || time;
 }
 
-/** `HH:MM:SS` for today; `MM-DD HH:MM:SS` for an older day. */
-function stampFor(entry) {
-  const time = entry.time || '';
-  if (entry.date && entry.date !== todayStamp()) return `${entry.date.slice(5)} ${time}`;
-  return time;
+/**
+ * The entry's own instant, or NaN when it cannot be read.
+ *
+ * The store's line is `<YYYY-MM-DD>/<HH>.md` plus a `HH:MM:SS` stamp, so both
+ * halves are already on the entry -- nothing here guesses a date from "today".
+ */
+function entryAt(entry) {
+  if (!entry || !entry.date) return NaN;
+  const time = String(entry.time || '00:00:00');
+  const at = Date.parse(`${entry.date}T${time.slice(0, 8)}`);
+  return Number.isFinite(at) ? at : NaN;
 }
 
 function setHistoryNote(text) {
@@ -4046,6 +3971,20 @@ function wireLevel() {
     }
     if (!payload || typeof payload !== 'object') return;
     const fields = payload.stats && typeof payload.stats === 'object' ? payload.stats : payload;
+    /* O PAUSE E' DO SHELL, NAO DESTA PAGINA (owner, 2026-11-06, verbatim):
+     * *"o botao de pause tambem nao ta completo. o botao nao muda pra unpause."*
+     *
+     * The glyph already flipped on the click, but `paused` was a LOCAL variable:
+     * hide the panel and show it again while the engines are unloaded and the
+     * button painted PAUSE over a paused shell -- the one state where it lies.
+     * The shell now stamps `paused` on the stats payload it already sends every
+     * second, and this is the only place that reads it.
+     *
+     * ABSENT IS NOT FALSE: a payload without the field is "not told", so the
+     * local state stays exactly as it was and an older shell keeps working. */
+    if (typeof fields.paused === 'boolean' && fields.paused !== paused) {
+      setPaused(fields.paused, null);
+    }
     pushLevel(fields.peak, fields.blocks);
   }
 

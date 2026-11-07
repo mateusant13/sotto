@@ -446,7 +446,23 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-05, 23:5x):** `_main\_audit-verify-all.cmd` = **266235 B**,
+- **PIN do ficheiro (medido 2026-11-06, 01:4x):** `_main\_audit-verify-all.cmd` = **267654 B**,
+  **3283 CRLF** / 0 bare LF, sha256 `55C59B782F0052C55008C04184F9FF10B6E6F6D1685F5024BFDD3C595A57FEE1`.
+  (Quatrocentos e vinte e quatro bytes e duas linhas a mais do que o pin de 267230 B: o par
+  `panel-pause-payload` + `red-as-expected-panel-pause-payload`, que EXECUTA o `SottoShell.stats()`
+  real nas duas saidas. Nasceu de um defeito que a primeira versao da cura carregava: o `stats()`
+  tem DUAS saidas e a primeira (um tick de medidor fresco) substitui a linha de WORKER_STATS
+  inteira -- carimbar o pause so' na ultima deixava o botao sem noticia exactamente no caso NORMAL.
+  Medido: 5/5 arms no positivo e o mutante com o carimbo arrancado cai para **0/5**.)
+  (O pin de 2026-11-06, 01:2x era 267230 B,
+  **3281 CRLF** / 0 bare LF, sha256 `A52B4B35060C05B1477513D9C9A89C05301DFC599320781948AE942A8A4BE286`.
+  (Novecentos e noventa e cinco bytes e tres linhas a mais do que o pin de 266235 B: os tres passos
+  que faltavam aos instrumentos desta rodada do dono -- `panel-header-oracle` (21 arms, incluindo o
+  braco NOVO 7: o botao de pause APRENDE o estado do shell pelo canal `stats`, com um mutante de
+  `panel.js` montado numa pagina propria como controlo), `panel-drag-targets` (12 arms, o arrasto dos
+  paineis) e `panel-history-clip` (45 temas, as linhas do historico e o contraste do horario). Os
+  tres dependem de `app\panel\panel-unified.css`, o ficheiro novo da unificacao dos temas.)
+  (O pin de 2026-11-05, 23:5x: 266235 B,
   **3278 CRLF** / 0 bare LF, sha256 `64654A80628B21B58608285AD599055D00DE70BB817BAC3698DBE69045934B33`.
   (Quatrocentos e doze bytes e seis linhas a mais do que o pin de 265823 B: o build do plano passa a
   usar **caminhos absolutos** (`%ROOT%\_main\_battery-plan.py`, `--cmd %ROOT%\...`) e a **apagar o

@@ -57,6 +57,7 @@ POPULATION = (
     'app/webview/load_shedding.py',
     'app/webview/hotkey_gesture.py',
     'app/webview/hotkey_settings.py',
+    'app/webview/space_swallow.py',
     'app/webview/panel_state.py',
     'worker/sotto_worker.py',
     'worker/engine_switch.py',

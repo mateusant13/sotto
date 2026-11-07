@@ -768,6 +768,10 @@ PANEL_VISIBILITY_SCHEMA = 'sotto.panel-visibility/1'
 # find his own data in the file manager and a search can walk it cheaply.
 # The default root is the repo's own `history/` (H:/sotto/history): the owner
 # asked for the data to live under H:/sotto. SOTTO_HISTORY_ROOT overrides it.
+# HOW LONG THE TRANSCRIPT SURVIVES ON DISK (owner, 2026-11-06): *"o historico tem
+# que persistir ... por padrao, ate 48hrs"*. One number, read by `_history_prune`;
+# the panel filters its feed over the same window (`panel.js HISTORY_RETENTION_H`).
+HISTORY_RETENTION_H = 48
 HISTORY_ROOT = os.path.normpath(
     os.environ.get('SOTTO_HISTORY_ROOT')
     or os.path.join(HERE, os.pardir, os.pardir, 'history'))
@@ -872,10 +876,26 @@ def history_merge(last, new_body, now_s=None, start=None,
     # (mesma linha do worker, mesmo texto a crescer).
     grew = (_merge_key(body).startswith(_merge_key(prev))
             or _merge_key(prev).startswith(_merge_key(body)))
+    # UMA LEITURA QUE ENCOLHE NAO APAGA O RABO (owner, 2026-11-06, verbatim):
+    # *"o historico CORTA no meio da frase ... palavras NO meio de outras
+    # palavras, somem. entao 'banana pera manga' do nada vira 'banana manga'."*
+    #
+    # `grew` era SIMETRICO: crescer e encolher passavam os dois, e o `replace`
+    # reescrevia a ultima linha com o texto MAIS CURTO. Numa revisao do motor, a
+    # linha que o dono ja' tinha lido perdia o rabo e o ficheiro passava a dizer
+    # menos do que dizia. Encolher e' agora RECUSADO -- o registo fica com o texto
+    # maior -- e a recusa vai para o log, porque uma recusa silenciosa e'
+    # indistinguivel de um store que nao esta' ligado.
+    shrank = (_merge_key(prev).startswith(_merge_key(body))
+              and not _merge_key(body).startswith(_merge_key(prev)))
     same_start = (isinstance(start, (int, float)) and not isinstance(start, bool)
                   and isinstance(_last_start, (int, float))
                   and not isinstance(_last_start, bool)
                   and abs(float(_last_start) - float(start)) <= 0.05)
+    if shrank:
+        log('HISTORY_SHRINK_KEPT where=history_merge prev_chars=%d new_chars=%d'
+            % (len(prev), len(body)))
+        return 'skip'
     if same_start and grew:
         return 'replace'
     if not grew:
@@ -4342,6 +4362,17 @@ class ExternalCaptionWatcher(threading.Thread):
             # video que tem a frase escrita.
             self.yt_cdp_paused = bool(snap.get('paused')) \
                 if snap.get('paused') is not None else False
+            self.yt_cdp_ended = bool(snap.get('ended')) \
+                if snap.get('ended') is not None else False
+            # A BORDA DA PAUSA E' UM EVENTO, E O `_tick` TEM DE A VER (2026-11-06).
+            # Um tick so' dispara desenho quando a LINHA muda; ao pausar a linha
+            # nao muda -- pelo contrario, e' exactamente isso que se quer -- e o
+            # overlay ficava com o relogio da ultima pintura a andar. O contador
+            # e' lido e consumido no `_tick`, que forca uma pintura congelada.
+            _now_paused = self.yt_cdp_paused or self.yt_cdp_ended
+            if _now_paused and not getattr(self, '_yt_was_paused', False):
+                self._yt_pause_epoch = int(getattr(self, '_yt_pause_epoch', 0)) + 1
+            self._yt_was_paused = _now_paused
             # O ESPELHO NA SHELL: quem arma o apagar por inatividade e' a shell,
             # noutro objeto (`SottoShell._caption_idle_hide`). Sem este espelho o
             # guarda ficava no objeto errado e o ecra apagava na mesma.
@@ -4352,12 +4383,24 @@ class ExternalCaptionWatcher(threading.Thread):
             return None
         seen = snap.get('videoId') or ''
         if declared and seen and declared != seen:
-            stamp = getattr(self, 'yt_cdp_mismatch_logged', None)
-            if stamp != (declared, seen):
-                self.yt_cdp_mismatch_logged = (declared, seen)
-                log('YOUTUBE_CDP_SOURCE refused=video-mismatch declared=%s seen=%s'
-                    % (declared, seen))
-            return None
+            # A ABA ESCOLHIDA MANDA SOBRE A CRENCA (2026-11-06). O guarda existe
+            # para impedir ler a aba ERRADA; quando a foto e' da aba que a sonda
+            # escolheu (`selected_video_id`), nao ha' aba errada -- ha' um
+            # `yt_video_id` que ainda nao foi rebindado (o `_yt_identify` faz
+            # isso na leitura seguinte, ~80 ms). Recusar aqui era a legenda do
+            # video novo nunca chegar depois de um alt-tab.
+            _selected = ''
+            try:
+                _selected = source.selected_video_id() or ''
+            except Exception:                     # noqa: BLE001
+                _selected = ''
+            if seen != _selected:
+                stamp = getattr(self, 'yt_cdp_mismatch_logged', None)
+                if stamp != (declared, seen):
+                    self.yt_cdp_mismatch_logged = (declared, seen)
+                    log('YOUTUBE_CDP_SOURCE refused=video-mismatch declared=%s seen=%s'
+                        % (declared, seen))
+                return None
         # A ETIQUETA DA FONTE E' ESCRITA POR QUEM PRODUZ O QUADRO (2026-11-04).
         # Sem isto os caminhos que NAO passam no ramo do `_read` (o caso normal
         # quando ha' video) deixavam `_yt_diag` velho, e o log do dono passou a
@@ -4733,6 +4776,26 @@ class ExternalCaptionWatcher(threading.Thread):
         self.yt_foreign_key = ''
         self._yt_anchor = None
         self._yt_track = None
+        # DOIS VIDEOS NAO PARTILHAM ESTADO (2026-11-06). `yt_cdp_rows` NAO era
+        # limpo aqui: `_yt_rows_impl` consome-o ANTES de pedir a arvore, logo um
+        # par de linhas escrito para o video A antes da troca podia ser desenhado
+        # para o video B -- e o canal de pintura nao leva `videoId`, portanto as
+        # duas linhas ficavam indistinguiveis. `yt_cdp_paused`/`yt_cdp_clock`
+        # tambem sao do video anterior; o da foto seguinte volta a dizer a
+        # verdade em ~80 ms.
+        self.yt_cdp_rows = None
+        self.yt_paint_items = []
+        self.yt_cdp_paused = False
+        self.yt_cdp_ended = False
+        self.yt_cdp_clock = None
+        self._yt_was_paused = False
+        self._yt_pause_epoch_seen = int(getattr(self, '_yt_pause_epoch', 0) or 0)
+        _shell = getattr(self, 'shell', None)
+        if _shell is not None:
+            try:
+                _shell.yt_source_paused = False
+            except Exception:             # noqa: BLE001
+                pass
         self.last_line = ''
         self.last_rows = []
         self.finalized = False
@@ -5169,8 +5232,24 @@ class ExternalCaptionWatcher(threading.Thread):
         """SEM LINHA PINTADA: ou a legenda esta' desligada, ou o player esta'
         entre cues. Entao o relogio e' o unico relogio que existe -- mas so' se
         confia nele quando o ultimo alinhamento concorda com ele.
+
+        COM O PLAYER PARADO O RELOGIO E' O DA CDP (2026-11-06). O relogio do UIA
+        nao sabe de uma pausa: medido no log do dono, 13,8 s de `paused=True`
+        com `paint_t` a andar +0,95 s e a linha a crescer 3 palavras. O instante
+        do `video.currentTime` da foto e' a autoridade; enquanto ele nao mudar,
+        a cue e' a mesma e a linha nao cresce.
         """
-        t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
+        t = None
+        if (bool(getattr(self, 'yt_cdp_paused', False))
+                or bool(getattr(self, 'yt_cdp_ended', False))):
+            clock = getattr(self, 'yt_cdp_clock', None)
+            if clock:
+                try:
+                    t = float(clock[0])
+                except (TypeError, ValueError, IndexError):
+                    t = None
+        if t is None:
+            t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
         if t is None:
             # THE CLOCK CANNOT BE READ: the player may be gone. The ASR is
             # given back after a LONG silence, not immediately -- a page that
@@ -5321,6 +5400,24 @@ class ExternalCaptionWatcher(threading.Thread):
             rate = 1.0
         if not (0.05 <= rate <= 16.0):
             rate = 1.0
+        # PLAYER PARADO -> PAYLOAD CONGELADO (2026-11-06). Medido no log do
+        # dono: 13,8 s de `paused=True` com a linha a CRESCER (11 -> 14
+        # palavras) e `paint_t` +0,95 s, porque o `_PlayerCue` do overlay avanca
+        # `t + (agora - at) * rate` e nada nesse motor sabe o que e' uma pausa.
+        # `freeze_rows` resolve-o no payload (e' a mesma autoridade que decide a
+        # pausa em todo o resto: `video.paused`/`video.ended` da CDP).
+        if (bool(getattr(self, 'yt_cdp_paused', False))
+                or bool(getattr(self, 'yt_cdp_ended', False))):
+            try:
+                import youtube_cdp_source as _ycs
+                frozen = _ycs.freeze_rows(rows, base_t)
+            except Exception as exc:          # noqa: BLE001
+                log('YOUTUBE_FREEZE_FAILED error=%r' % (exc,))
+                frozen = []
+            if not frozen:
+                return None
+            return {'rows': frozen, 't': base_t, 'at': base_mono,
+                    'rate': rate, 'paused': True}
         return {'rows': rows, 't': base_t, 'at': base_mono, 'rate': rate}
 
     def _yt_lines(self, track, t):
@@ -5599,6 +5696,17 @@ class ExternalCaptionWatcher(threading.Thread):
 
     def _tick(self, got, yt_mode=False):
         now = time.monotonic()
+        # A BORDA DA PAUSA E' UM EVENTO (2026-11-06). O dono, verbatim: *"se eu
+        # pauso o video, a legenda do sotto continua por mais uns 2 segundos"*.
+        # A linha nao muda com o video parado, e este `_tick` so' desenha quando
+        # ela muda -- por isso a pausa TEM de forcar uma pintura congelada; sem
+        # isto o overlay continuava a revelar contra o relogio da ultima pintura
+        # (medido: +0,95 s de `paint_t` e 3 palavras a mais num pause de 13,8 s).
+        _pause_epoch = int(getattr(self, '_yt_pause_epoch', 0) or 0)
+        pause_edge = _pause_epoch != getattr(self, '_yt_pause_epoch_seen', None)
+        self._yt_pause_epoch_seen = _pause_epoch
+        player_stalled = bool(getattr(self, 'yt_cdp_paused', False)
+                              or getattr(self, 'yt_cdp_ended', False))
         # O QUADRO QUE O ECRA RECEBERIA, DESENHADO OU NAO (2026-11-02).
         # `EXTERNAL_CAPTION_DRAWN` so' existe com o overlay LIGADO, e o dono
         # desligou-o; uma auditoria que so' mede com a legenda ligada nao pode
@@ -5657,12 +5765,31 @@ class ExternalCaptionWatcher(threading.Thread):
                     self.shell.external_caption(line, source, final=False,
                                                instant=bool(yt_mode), rows=rows,
                                                cue=self._yt_cue_payload())
+                elif pause_edge and player_stalled:
+                    # A LINHA NAO MUDOU E O PLAYER PAROU: repinta-a CONGELADA
+                    # (2026-11-06). `instant=True` desenha o texto inteiro no
+                    # instante da chegada, sem relogio -- o `_PlayerCue` nao
+                    # fica com uma ancora a andar. Uma vez por borda, nao por
+                    # tick: pausa parada nao se repinta 4 vezes por segundo.
+                    self.shell.push_caption_to_window(
+                        line, instant=True,
+                        rows=rows, cue=self._yt_cue_payload())
                 elif not self.finalized and now - self.last_change >= self.STABLE_FINAL_S:
                     self.shell.external_caption(line, source, final=True,
                                                instant=bool(yt_mode), rows=rows,
                                                cue=self._yt_cue_payload())
                     self.finalized = True
                 return
+        # PAUSA SEM LINHA NOVA NESTE TICK: o que ESTA' no ecra congela (2026-11-06).
+        # O `got` vazio e' o caso normal com o video parado (a fonte nao le' o DOM
+        # a 12 Hz); sem isto o ultimo `_PlayerCue` continuava a revelar sozinho.
+        if pause_edge and player_stalled and getattr(self, 'last_line', ''):
+            try:
+                self.shell.push_caption_to_window(
+                    self.last_line, instant=True,
+                    cue=self._yt_cue_payload())
+            except Exception as exc:                  # noqa: BLE001
+                log('YOUTUBE_PAUSE_FREEZE_FAILED error=%r' % (exc,))
         # THE SILENCE ONLY RELEASES FOR THE PAGE READER. That reader knows
         # the player stopped only when the PAGE stops having text. The REAL
         # TRACK knows better: the track is still valid, the clock is still
@@ -6778,16 +6905,33 @@ class LiveHotkeyThread(threading.Thread):
     pode sim apertar espaço. só que nao vai ter display de legenda, pra ter, tenho
     que dar alt c e ativar manualmente"*.
 
-    FORA DE JOGO: `RegisterHotKey` + `MOD_NOREPEAT`. O Windows entrega
-    `WM_HOTKEY` a ESTE thread e **nao entrega a tecla a' janela em foco** -- e' a
-    mecanica que impede o espaco de aparecer no que ele estiver a escrever. Nao
-    ha' hook: o que antes era um `WH_KEYBOARD_LL` (proibido nesta casa) e' uma
-    linha de registo.
+    FORA DE JOGO: `RegisterHotKey` + `MOD_NOREPEAT` **e** o hook de baixa
+    prioridade de `space_swallow.py`.
 
-    EM JOGO: `UnregisterHotKey`. O jogo recebe o `Ctrl+Space` NATIVO -- nao ha'
-    `SendInput` nenhum, logo nao ha' o problema medido dos jogos que leem input
-    por raw input e ignoram teclas sinteticas. E a shell nao alterna nada: a
-    legenda liga-se com o Alt+C, que e' registado sempre.
+    A PREMISSA QUE ESTAVA ERRADA (corrigida a 2026-11-06). O registo so' entrega
+    `WM_HOTKEY`; NAO tira a tecla do caminho de input. O `WM_KEYDOWN` do espaco
+    continua a chegar a' janela em foco, e num browser e' o `space` do `<video>`
+    -- pausa. Foi exactamente o que o dono viu: *"to usando control espaço pra
+    ativar a legenda quando vejo um video no youtube, e isso faz o espaço
+    pausar o video"*. A clausula anterior desta docstring ("nao entrega a tecla
+    a' janela em foco") era documentacao de uma API que nao faz isso.
+
+    O que impede o vazamento e' o `WH_KEYBOARD_LL` de `space_swallow.py`, armado
+    por este fio so' quando a tabela diz `take`: ele devolve 1 para o `VK_SPACE`
+    com `Ctrl` em baixo, e o app em foco nunca ve' a tecla. O hook vive num
+    modulo proprio de proposito -- `_main/input-path-oracle.py` (C1) exige zero
+    `SetWindowsHookEx` no AST da shell, e essa lei do rato (docs/mouse-e-
+    input.md §5) continua a valer. O `RegisterHotKey` fica como a outra metade:
+    se o hook falhar a instalacao, o `WM_HOTKEY` continua a alternar a legenda e
+    o log diz `swallow=false the_space_reaches_the_app=true` (o vazamento de
+    hoje, dito em voz alta). Com o hook instalado o `WM_HOTKEY` e' ignorado para
+    nao alternar duas vezes -- quem alterna e' o hook, no `keydown` que engole.
+
+    EM JOGO: `UnregisterHotKey` **e** `UnhookWindowsHookEx` (o hook sai ANTES, no
+    mesmo passo). O jogo recebe o `Ctrl+Space` NATIVO -- nao ha' `SendInput`
+    nenhum, logo nao ha' o problema medido dos jogos que leem input por raw
+    input e ignoram teclas sinteticas. E a shell nao alterna nada: a legenda
+    liga-se com o Alt+C, que e' registado sempre.
 
     A TABELA E' PURA E VIVE EM `gaming_mode.live_hotkey_plan` -- este fio so'
     executa o que ela decide. `gaming_fn` e' `shell.gaming.is_gaming`; sem
@@ -6801,7 +6945,7 @@ class LiveHotkeyThread(threading.Thread):
     """
 
     def __init__(self, accelerator: str, on_hotkey, gaming_fn=None, log_fn=log,
-                 role='live', register=True):
+                 role='live', register=True, swallow_factory=None):
         super().__init__(name=f'sotto-hotkey-{role}-swallow', daemon=True)
         self.accelerator = accelerator
         self.role = role
@@ -6820,6 +6964,16 @@ class LiveHotkeyThread(threading.Thread):
         self.loops = 0
         self._stop_requested = threading.Event()
         self._ready = threading.Event()
+        #: `factory(on_toggle, log_fn, role) -> SpaceSwallowHook`. `None` importa
+        #: `space_swallow` no instante em que precisa; o oraculo injecta a MESMA
+        #: classe com um `user32`-gravador, logo o que ele mede e' o codigo real.
+        self.swallow_factory = swallow_factory
+        self.swallow = None
+        self.swallow_failed = False
+        self.swallow_error = None
+        #: `True` so' com o hook INSTALADO e a tecla tomada. `registered` sozinho
+        #: nao prova nada sobre o vazamento -- foi essa a premissa errada.
+        self.swallowing = False
 
     # -- a decisao, com uma leitura de modo que nunca derruba o pump --------
     def _gaming_now(self) -> bool:
@@ -6831,6 +6985,35 @@ class LiveHotkeyThread(threading.Thread):
             self.log_fn(f'HOTKEY_LIVE_GAMING_FAILED role={self.role} '
                         f'error={exc!r}')
             return True
+
+    def _ensure_swallow(self):
+        """O hook, criado UMA vez; `None` se o modulo nao existir (e o log diz)."""
+        if self.swallow is not None:
+            return self.swallow
+        try:
+            if self.swallow_factory is not None:
+                hook = self.swallow_factory(self._on_swallowed_press,
+                                            self.log_fn, self.role,
+                                            self.vk, self.modifiers)
+            else:
+                here = os.path.dirname(os.path.abspath(__file__))
+                if here not in sys.path:
+                    sys.path.insert(0, here)
+                import space_swallow
+                hook = space_swallow.SpaceSwallowHook(
+                    on_toggle=self._on_swallowed_press, log_fn=self.log_fn,
+                    role=self.role, target_vk=self.vk,
+                    required_mods=self.modifiers)
+        except Exception as exc:  # noqa: BLE001 -- sem hook, fica o registo
+            self.swallow_failed = True
+            self.swallow_error = repr(exc)
+            self.log_fn(f'HOTKEY_LIVE_SWALLOW_UNAVAILABLE role={self.role} '
+                        f'error={exc!r} swallow=false '
+                        'the_space_reaches_the_app=true')
+            return None
+        hook.set_armed(True)
+        self.swallow = hook
+        return hook
 
     def _apply(self):
         """Executa UM passo da tabela e publica a transicao (uma linha por mudanca)."""
@@ -6846,6 +7029,15 @@ class LiveHotkeyThread(threading.Thread):
         plan = gaming_mode.live_hotkey_plan(gaming, self.registered,
                                            self.register_failed)
         if plan == 'take':
+            # O HOOK E' O QUE FAZ O ESPACO NAO VAZAR (2026-11-06). Ele arma-se
+            # e instala-se no MESMO passo do registo: o registo da' a
+            # alternancia, o hook tira a tecla do caminho de input.
+            hook = self._ensure_swallow()
+            if hook is not None:
+                hook.set_armed(True)
+                if not hook.install():
+                    self.swallow_failed = True
+                    self.swallow_error = hook.last_error
             if user32.RegisterHotKey(None, _HOTKEY_ID,
                                      self.modifiers | MOD_NOREPEAT, self.vk):
                 self.registered = True
@@ -6856,10 +7048,35 @@ class LiveHotkeyThread(threading.Thread):
                             f'accelerator={self.accelerator} '
                             f'winerror={self.register_error} '
                             'swallow=false the_key_passes_through=true')
+                # SEM REGISTO A TECLA NAO E' NOSSA: um hook armado sem a tabela
+                # a dizer `take` engoliria um espaco que ninguem alterna.
+                if hook is not None:
+                    hook.set_armed(False)
+                    hook.detach('register-failed')
         elif plan == 'give-back':
+            # O HOOK SAI PRIMEIRO. O jogo tem de receber o `Ctrl+Space` inteiro
+            # a partir do instante em que a tabela diz que ele esta' a jogar;
+            # deixar o hook instalado ate' ao `Unregister` abria uma janela em
+            # que nem o jogo nem a shell ficavam com a tecla.
+            if self.swallow is not None:
+                self.swallow.set_armed(False)
+                self.swallow.detach('gaming')
             user32.UnregisterHotKey(None, _HOTKEY_ID)
             self.registered = False
-        self.mode = ('swallow' if self.registered else
+        else:  # stay-free
+            # O CORNER "JA' TOMADO" E' UM NO-OP, NAO UMA ORDEM DE LARGAR. A
+            # tabela devolve `stay-free` tanto para "em jogo, livre" como para
+            # "fora de jogo, ja' registado"; largar o hook neste segundo caso
+            # desfazia o trabalho do passo anterior (medido: o hook era
+            # desinstalado na volta seguinte e o espaco voltava a vazar). So'
+            # se larga quando o registo NAO existe -- em jogo, ou recusado.
+            if (not self.registered and self.swallow is not None
+                    and self.swallow.installed):
+                self.swallow.set_armed(False)
+                self.swallow.detach('stay-free')
+        _hook_live = bool(self.swallow is not None and self.swallow.installed)
+        self.swallowing = _hook_live and self.registered
+        self.mode = ('swallow' if self.swallowing else
                      ('passthrough' if gaming else 'free'))
         # UMA LINHA POR TRANSICAO, NUNCA POR VOLTA. O pump relê o modo quatro
         # vezes por segundo; logar em cada volta seriam 14 400 linhas por hora
@@ -6869,7 +7086,9 @@ class LiveHotkeyThread(threading.Thread):
             self.mode_changes += 1
             self.log_fn(f'HOTKEY_LIVE_MODE role={self.role} mode={self.mode} '
                         f'gaming={str(gaming).lower()} '
-                        f'swallow={str(self.registered).lower()} '
+                        f'swallow={str(self.swallowing).lower()} '
+                        f'hook={str(_hook_live).lower()} '
+                        f'registered={str(self.registered).lower()} '
                         f'accelerator={self.accelerator} plan={plan}')
 
     def run(self):
@@ -6911,6 +7130,25 @@ class LiveHotkeyThread(threading.Thread):
             self.registered = False
             self.log_fn(f'HOTKEY_LIVE_RELEASED role={self.role} '
                         f'accelerator={self.accelerator} why=stop')
+        # O HOOK TEM DE SAIR COM O FIO. Um `WH_KEYBOARD_LL` vivo depois de o
+        # pump morrer e' uma tecla engolida para sempre: o processo e' que o
+        # installou, e o `UnhookWindowsHookEx` e' a unica devolucao.
+        if self.swallow is not None:
+            self.swallow.detach('stop')
+
+    def _fire(self, via, source='registered'):
+        self.pressed += 1
+        self.log_fn(f'HOTKEY_PRESSED role={self.role} count={self.pressed} '
+                    f'source={source} via={via} '
+                    f'accelerator={self.accelerator} thread={self.thread_id}')
+        try:
+            self.on_hotkey()
+        except Exception as exc:  # noqa: BLE001 -- a toggle nunca mata o pump
+            self.log_fn(f'HOTKEY_HANDLER_FAILED role={self.role} error={exc!r}')
+
+    def _on_swallowed_press(self):
+        """Um `Ctrl+Space` ENGOLIDO pelo hook: a alternancia da' se sai daqui."""
+        self._fire('ll_keyboard', source='hook')
 
     def _on_press(self):
         """Um `WM_HOTKEY`: alterna SO' quando a tecla esta' tomada (2026-11-05).
@@ -6921,19 +7159,22 @@ class LiveHotkeyThread(threading.Thread):
         proibiu. Medido no oraculo (`ctrlspace-swallow-oracle.py`, arm B4): a
         primeira versao alternava nesse caso. A mensagem velha fica registada e
         nao age.
+
+        E COM O HOOK INSTALADO ESTA MENSAGEM NAO ALTERNA. O `RegisterHotKey`
+        continua registado (e' o caminho de recuo se o hook falhar), mas quem
+        alterna e' o `keydown` que o hook engole; se o sistema ainda entregar o
+        `WM_HOTKEY`, alternar aqui outra vez daria DOIS passos por pressao. A
+        linha diz que a mensagem foi superada, para o log nao parecer um erro.
         """
         if not self.registered:
             self.log_fn(f'HOTKEY_PRESSED role={self.role} source=registered '
                         'via=wm_hotkey suppressed=true why=not-swallowing')
             return
-        self.pressed += 1
-        self.log_fn(f'HOTKEY_PRESSED role={self.role} count={self.pressed} '
-                    f'source=registered via=wm_hotkey '
-                    f'accelerator={self.accelerator} thread={self.thread_id}')
-        try:
-            self.on_hotkey()
-        except Exception as exc:  # noqa: BLE001 -- a toggle nunca mata o pump
-            self.log_fn(f'HOTKEY_HANDLER_FAILED role={self.role} error={exc!r}')
+        if self.swallowing:
+            self.log_fn(f'HOTKEY_PRESSED role={self.role} source=registered '
+                        'via=wm_hotkey suppressed=true why=ll_hook_owns_the_key')
+            return
+        self._fire('wm_hotkey')
 
     def stop(self):
         self._stop_requested.set()
@@ -7012,11 +7253,13 @@ _HOTKEY_TRACE = os.environ.get('SOTTO_HOTKEY_TRACE', '') == '1'
 class PassiveHotkeyThread(threading.Thread):
     """A TECLA DA LEGENDA **OBSERVADA**, NUNCA TOMADA (ordem do dono, 2026-11-02).
 
-    O QUE ESTAVA MEDIDO E ERRADO. `RegisterHotKey` TOMA a combinacao para o
-    processo que a registou: com o Sotto a viver, o `Ctrl+Space` deixa de chegar
-    a qualquer outra janela. O dono joga com *"control mais espaço é crouch e
-    jump no jogo"* e o jogo nunca o recebeu -- *"nao ta funcionando no jogo, por
-    causa do sotto"*.
+    O QUE ESTAVA MEDIDO E ERRADO. A docstring antiga dizia que `RegisterHotKey`
+    TOMAVA a combinacao -- *"com o Sotto a viver, o `Ctrl+Space` deixa de chegar
+    a qualquer outra janela"*. Essa premissa caiu a 2026-11-06: o registo entrega
+    `WM_HOTKEY` e o espaco CONTINUA a chegar a' janela em foco (foi o espaco a
+    pausar o YouTube). O que TOMA a tecla e' o `WH_KEYBOARD_LL` de
+    `space_swallow.py`, instalado pelo `LiveHotkeyThread` enquanto a tecla e'
+    nossa; esta classe nunca instala hook nenhum.
 
     O QUE ESTA CLASSE FAZ. Le o ESTADO das teclas (`GetAsyncKeyState`, que nao
     consome nada) a cada `hotkey_gesture.POLL_S` e dispara na BORDA de descida
@@ -8499,12 +8742,16 @@ def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
             # A LEGENDA CONDICIONA O REGISTO A' DETECCAO DE JOGO (2026-11-05).
             # Ordem do dono: *"faz o control espaço nao inputar espaço pra
             # outros apps. mas desativa isso em jogos"*. Com o detector vivo, o
-            # `LiveHotkeyThread` TOMA a tecla fora de jogo (o espaco nao chega a'
-            # janela em foco) e DEVOLVE-a em jogo (o jogo recebe o `Ctrl+Space`
-            # nativo e a shell nao alterna nada). Sem detector -- ou com o registo
-            # recusado (`winerror=1409`) -- fica o observador de 2026-11-02, que
-            # alterna a legenda e deixa a tecla passar; esse recuo e' DITO no log.
-            # O Alt+C continua sempre registado: ser tomado e' o que se quer ali.
+            # `LiveHotkeyThread` TOMA a tecla fora de jogo, e quem a tira do
+            # caminho de input e' o `WH_KEYBOARD_LL` de `space_swallow.py` (o
+            # `RegisterHotKey` so' entrega o `WM_HOTKEY`; medido a 2026-11-06:
+            # o espaco continuava a chegar ao YouTube). Em jogo o hook e'
+            # DESINSTALADO e a combinacao devolvida -- o jogo recebe o
+            # `Ctrl+Space` nativo e a shell nao alterna nada. Sem detector -- ou
+            # com o registo recusado (`winerror=1409`) -- fica o observador de
+            # 2026-11-02, que alterna a legenda e deixa a tecla passar; esse
+            # recuo e' DITO no log. O Alt+C continua sempre registado: ser
+            # tomado e' o que se quer ali.
             if role == 'live':
                 _gaming = getattr(shell, 'gaming', None)
                 if _gaming is None:
@@ -8530,9 +8777,12 @@ def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
         thread.start()
         thread.wait_ready(5)
         if role == 'live' and isinstance(thread, LiveHotkeyThread):
-            # O `LiveHotkeyThread` VIVE NOS TRES MODOS: `swallow` (registado),
-            # `passthrough` (jogo: a tecla e' do jogo) e `free` (sem registo
-            # mas sem falha). So' `register_failed` pede o recuo observado.
+            # O `LiveHotkeyThread` VIVE NOS TRES MODOS: `swallow` (hook
+            # instalado E registado -- o espaco nao chega a outra app),
+            # `passthrough` (jogo: a tecla e' do jogo) e `free` (sem registo,
+            # ou registo sem hook: alterna no `WM_HOTKEY` e o espaco vaza, e o
+            # `HOTKEY_LIVE_MODE` diz `hook=false`). So' `register_failed` pede o
+            # recuo observado: sem registo nem hook nao ha' quem alternasse.
             if not thread.register_failed:
                 return thread
             log(f'HOTKEY_LIVE_SWALLOW_REFUSED accelerator={accelerator} '
@@ -10392,6 +10642,40 @@ def search_layer_cap(rank, limit):
     """
     fraction, floor = SEARCH_LAYER_CAPS[rank], SEARCH_LAYER_MIN[rank]
     return max(floor, int(math.floor(limit * fraction)))
+
+
+def _caption_replay_allowed(painted, age_ms, max_s, paused=False,
+                            from_player=False):
+    """A linha ja' pintada pode VOLTAR ao ecra quando o dono liga a legenda?
+
+    Tres factos, e a ordem importa:
+
+      * sem linha nao ha' nada a repetir;
+      * A PAUSA NAO ENVELHECE A LINHA (2026-11-06). O dono: *"ela tambem buga se
+        eu desativo ela e o video ao mesmo tempo"*. Com o video parado o player
+        continua a mostrar a MESMA frase -- e o limite de `CAPTION_REPLAY_MAX_S`
+        (2 s, que existe para nao despejar uma frase de um minuto atras) recusava
+        exactamente a linha que continua verdadeira. MEDIDO no log dele:
+        `CAPTION_WINDOW_REPLAY_SKIPPED age_ms=3092` com o video em pausa e o ecra
+        VAZIO ate' o video voltar a andar. Se a linha veio do PLAYER e ele esta'
+        parado, ela e' a legenda de agora, por velha que seja;
+      * fora da pausa o limite fica: 2 s cobrem o intervalo medido entre duas
+        linhas vivas (0,5-0,6 s) e nao cobrem uma pausa de fala. Uma linha do ASR
+        em pausa tambem continua a envelhecer: o ASR nao tem "a frase que o
+        player esta' a pintar".
+
+    Pura de proposito: `_main/youtube-cdp-source-oracle.py` executa ESTA funcao
+    e o interruptor limita-se a obedecer, para a regra poder ser provada sem app.
+    """
+    if not str(painted or '').strip():
+        return False
+    if bool(paused) and bool(from_player):
+        return True
+    try:
+        age_ms = int(age_ms)
+    except (TypeError, ValueError):
+        return False
+    return 0 <= age_ms <= int(float(max_s) * 1000.0)
 
 
 class SottoShell:
@@ -13188,6 +13472,7 @@ class SottoShell:
                 ' route=provisional-draft final=false producer=%s src=- n=1 total=-'
                 % ((options.get('producer') if isinstance(options, dict) else None) or '-'))
             return None
+        self._history_prune()
         now = time.localtime()
         path = self._history_path_for(now)
         # A LINHA E' UMA, NAO UM FLUXO (dono, 2026-11-04). Ver `history_merge`:
@@ -13276,6 +13561,52 @@ class SottoShell:
             for name in hours:
                 out.append((day, name[:-3], os.path.join(folder, name)))
         return out
+
+    def _history_prune(self):
+        """DELETE DAY FOLDERS OLDER THAN THE RETENTION WINDOW (owner, 2026-11-06).
+
+        Verbatim: *"o historico tem que persistir, aparecendo no painel da direita,
+        por padrao, ate 48hrs. nao faça isso ser travado ou pesado."*
+
+        The store had no retention at all: `history/` grew a folder per day and
+        nothing ever removed one, so "48 horas" would have been a promise the panel
+        kept and the disk did not. The cheapest shape that keeps it honest: on the
+        FIRST append of each hour, list the day folders (a handful of names), drop
+        those whose date is older than the window, and remove a folder only when it
+        is empty afterwards. One `os.listdir` per hour is not a measurement anyone
+        can notice; a background sweeper would be a process to own.
+        """
+        stamp = time.strftime('%Y-%m-%dT%H', time.localtime())
+        if getattr(self, '_history_pruned_stamp', None) == stamp:
+            return
+        self._history_pruned_stamp = stamp
+        cutoff = time.localtime(time.time() - HISTORY_RETENTION_H * 3600)
+        oldest = time.strftime('%Y-%m-%d', cutoff)
+        try:
+            days = sorted(name for name in os.listdir(HISTORY_ROOT)
+                          if HISTORY_DAY_RE.match(name))
+        except OSError:
+            return
+        removed = 0
+        for day in days:
+            if day >= oldest:
+                continue
+            folder = os.path.join(HISTORY_ROOT, day)
+            try:
+                for name in sorted(os.listdir(folder)):
+                    if not name.endswith('.md'):
+                        continue
+                    try:
+                        os.remove(os.path.join(folder, name))
+                        removed += 1
+                    except OSError:
+                        pass
+                os.rmdir(folder)
+            except OSError:
+                pass
+        if removed:
+            log('HISTORY_PRUNE removed=%d keep_h=%d oldest=%s'
+                % (removed, HISTORY_RETENTION_H, oldest))
 
     def _history_read(self, path):
         try:
@@ -15040,6 +15371,14 @@ class SottoShell:
         self._source_epoch = int(getattr(self, '_source_epoch', 0)) + 1
         self._caption_pending = None
         self._external_last_text = ''   # a fonte mudou: nada herda a frase velha
+        # A LINHA GUARDADA PARA O "LIGAR" MORRE COM OS PIXELS (2026-11-06). O
+        # `_set_live_enabled` devolve ao ecra a ultima linha pintada; sem isto um
+        # video novo (ou uma pausa longa) herdava a frase do anterior no replay
+        # do interruptor -- o mesmo jumpscare que o `ov.hide()` acima mata nos
+        # pixels, mas na memoria.
+        self._caption_painted = ''
+        self._caption_painted_at = 0.0
+        self._last_caption_was_player = False
         def _blank():
             # O TEXTO GUARDADO TAMBEM VAI (2026-10-30). `show(False)` so' esconde
             # a janela: o `text`/`previous` do overlay continuavam la', e o
@@ -15637,6 +15976,25 @@ class SottoShell:
                 # ninguem vai pintar nao fica a espera de a flag voltar para
                 # aparecer como uma legenda que ele nunca viu chegar.
                 self._caption_pending = None
+                # DESLIGAR E' DETERMINISTICO, COM O VIDEO NO ESTADO QUE FOR
+                # (2026-11-06). O dono: *"ela tambem buga se eu desativo ela e
+                # o video ao mesmo tempo"*. Um `push_caption_to_window` que ja'
+                # correu na thread de pintura pode ter lido o slot ANTES deste
+                # ramo; o `_drain_caption_pending` corre DEPOIS e tem de o
+                # recusar. O epoch e' exactamente essa prova: sobe aqui, e o
+                # texto com o epoch velho cai em `CAPTION_DROP_EPOCH` mesmo que
+                # a flag seja lida ja' a meio. `_caption_drain_posted` tambem
+                # volta a falso -- um flag preso bloquearia a proxima pintura
+                # depois de religar.
+                self._source_epoch = int(getattr(self, '_source_epoch', 0)) + 1
+                self._caption_drain_posted = False
+                _timer = getattr(self, '_caption_idle_timer', None)
+                if _timer is not None:
+                    try:
+                        _timer.cancel()
+                    except Exception:         # noqa: BLE001
+                        pass
+                    self._caption_idle_timer = None
                 self._post(lambda: ov.show(False))
             # E O PAINEL ESCONDE A LEGENDA DELE -- MAS SO QUANDO ESTA JANELA ESTA MESMO
             # A MOSTRAR. O dono pediu a legenda INDEPENDENTE do painel (*"nao acoplado"*),
@@ -16449,6 +16807,12 @@ class SottoShell:
                 value = meter.get(key)
                 if value is not None:
                     payload[key] = float(value)
+            # O PAUSE VAI TAMBEM POR ESTE RAMO. A funcao tem DUAS saidas, e esta
+            # e' a que corre quase sempre (um tick de medidor fresco substitui a
+            # linha de WORKER_STATS inteira). Carimbar o estado so' na ultima
+            # deixaria o botao sem noticia exactamente no caso NORMAL, e o
+            # defeito pareceria intermitente -- a pior forma de o entregar.
+            payload['paused'] = bool(getattr(self, '_paused', False))
             return payload
         raw = getattr(self.bridge, 'last_worker_stats', None) \
             if self.bridge is not None else None
@@ -16480,6 +16844,22 @@ class SottoShell:
                     payload[key] = float(value)
                 except (TypeError, ValueError):
                     continue
+        # O ESTADO DOS MOTORES VIAJA NESTE PAYLOAD (owner, 2026-11-06): *"o botao
+        # de pause tambem nao ta completo. o botao nao muda pra unpause."*
+        #
+        # The glyph already flips when the owner clicks (`panel.js
+        # paintPauseControls`), but that state lived ONLY in the page. Reopening
+        # the panel -- or reloading it -- while the engines were unloaded painted
+        # a PAUSE button over a shell that WAS paused: the one case where the
+        # button lied, and the one the owner meets every time he hides the panel
+        # after pausing.
+        #
+        # `stats()` is the channel the panel already polls every second and that
+        # the shell already pushes through `emit_async('stats', …)`, so the state
+        # costs one boolean on a message that is already in flight. The panel
+        # treats ABSENT as "not told" and never as "running", which keeps the old
+        # behaviour for any payload that does not carry the field.
+        payload['paused'] = bool(getattr(self, '_paused', False))
         return payload
     def reply_stats(self, stats_id, payload):
         """The panel's `getStats()` pull, ANSWERED -- without holding the caller.
@@ -17501,13 +17881,27 @@ class SottoShell:
                 _txt = (getattr(self, '_caption_painted', '') or '').strip()
                 _at = float(getattr(self, '_caption_painted_at', 0.0) or 0.0)
                 _age_ms = int((time.time() - _at) * 1000.0) if _at else -1
-                if _txt and 0 <= _age_ms <= int(self.CAPTION_REPLAY_MAX_S * 1000):
+                _paused = bool(getattr(self, 'yt_source_paused', False))
+                _player = bool(getattr(self, '_last_caption_was_player', False))
+                if _caption_replay_allowed(_txt, _age_ms,
+                                           self.CAPTION_REPLAY_MAX_S,
+                                           _paused, _player):
                     log(f'CAPTION_WINDOW_REPLAYED age_ms={_age_ms} '
+                        f'paused={str(_paused).lower()} '
+                        f'player={str(_player).lower()} '
                         f'text={json.dumps(_txt[:60])} '
                         'why=ligar-nao-espera-a-proxima-linha')
                     self.push_caption_to_window(_txt, previous=None, instant=True)
+                    # O REPLAY NAO PODE APAGAR A PROVA DE QUE A LINHA E' DO
+                    # PLAYER (2026-11-06): `push` com `rows=None` escreve
+                    # `_last_caption_was_player=False`, e o proximo desligar/ligar
+                    # em pausa deixava de poder repetir a linha. A regra acima ja'
+                    # decidiu com o facto antigo; devolve-se o facto.
+                    if _player:
+                        self._last_caption_was_player = True
                 else:
                     log(f'CAPTION_WINDOW_REPLAY_SKIPPED age_ms={_age_ms} '
+                        f'paused={str(_paused).lower()} '
                         f'text={json.dumps(_txt[:40])} -- ou nao ha linha, ou ela ja '
                         'e historia e nao legenda')
         except Exception as exc:  # noqa: BLE001

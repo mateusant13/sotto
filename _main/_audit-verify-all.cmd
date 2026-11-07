@@ -423,6 +423,11 @@ if exist _main\history-gallery-oracle.js (
 ) else ( call :record history-gallery-oracle MISSING )
 if exist _main\_panel2-dom-probe.js (
   call :step panel2-dom-probe 0 "_main\_panel2-dom-probe.js;app\panel\panel.html;app\panel\panel.css;app\panel\caption-formulation.js;app\panel\history-source.js;app\panel\history-gallery.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js" "%OUT%\panel2-dom-probe.log" node _main\_panel2-dom-probe.js
+  call :step panel-header-oracle 0 "_main\panel-header-oracle.js;app\panel\panel.html;app\panel\panel.css;app\panel\panel-unified.css;app\panel\button-contract.css;app\panel\themes\theme-1.css;app\panel\themes\themes.js;app\panel\theme-switcher.js;app\panel\strip-drag.js;app\panel\skin-layout.css;app\panel\panel.js" "%OUT%\panel-header.log" node _main\panel-header-oracle.js
+  call :step panel-drag-targets 0 "_main\panel-drag-targets-oracle.js;app\panel\panel.html;app\panel\panel-unified.css;app\panel\skin-layout.css;app\panel\panel.js;app\panel\strip-drag.js" "%OUT%\panel-drag-targets.log" node _main\panel-drag-targets-oracle.js
+  call :step panel-history-clip 0 "_main\panel-history-clip-probe.mjs;app\panel\panel.html;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\panel.js" "%OUT%\panel-history-clip.log" node _main\panel-history-clip-probe.mjs
+  call :step panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload.log" python _main\panel-pause-payload-oracle.py
+  call :step red-as-expected-panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
   call :record panel2-dom-probe !STEP_RC!
 ) else ( call :record panel2-dom-probe MISSING )
 

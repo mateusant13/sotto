@@ -74,12 +74,18 @@ def arms(shell):
     out.append(('a2-cresceu-replace',
                 merge(tail(LONG, start=1.68), GROWN, now_s=3602, start=1.68),
                 'replace'))
-    # A CORRECCAO QUE ENCOLHE (medido 10:01:48: a linha LONGA depois de "Is a
-    # very." e vice-versa). O texto novo e' mais CURTO e o `start=` e' o mesmo:
-    # e' a mesma linha, e um append-only nao a consegue representar.
-    out.append(('a3-encolheu-mesmo-start-replace',
+    # UMA LEITURA QUE ENCOLHE NAO APAGA O RABO (owner, 2026-11-06, verbatim):
+    # *"o historico CORTA no meio da frase ... palavras NO meio de outras
+    # palavras, somem. entao 'banana pera manga' do nada vira 'banana manga'."*
+    #
+    # ESTA ARM PINAVA O DEFEITO: exigia `replace` quando o texto novo era MAIS
+    # CURTO com o mesmo `start=`, e o `replace` reescrevia a linha gravada com a
+    # versao menor -- o rabo que o dono ja' tinha lido desaparecia do ficheiro.
+    # A regra de hoje e' `skip`: o registo fica com o texto MAIOR e a recusa
+    # escreve `HISTORY_SHRINK_KEPT` (visivel no log do proprio oraculo).
+    out.append(('a3-encolheu-mesmo-start-skip',
                 merge(tail(GROWN, start=1.68), LONG, now_s=3601, start=1.70),
-                'replace'))
+                'skip'))
     out.append(('a4-prefixo-sem-start-dentro-da-janela',
                 merge(tail(LONG, time_s=3600), GROWN, now_s=3601), 'replace'))
     out.append(('a5-prefixo-fora-da-janela-appende',
@@ -162,13 +168,13 @@ def end_to_end(shell):
             bodies.append(body.split(' <!--')[0].strip())
         out = [
             ('c1-uma-linha-por-enunciado', len(rows), 2),
-            ('c2-a-linha-e-a-ultima-versao', bodies[:1], [LONG]),
+            ('c2-o-rabo-nao-se-perde', bodies[:1], [GROWN]),
             ('c3-a-linha-nova-entrou', bodies[1:], ['Is a very high chance.']),
             ('c4-acao-da-primeira-escrita',
              (e1 or {}).get('action'), 'append'),
             ('c5-acao-do-crescimento', (e2 or {}).get('action'), 'replace'),
             ('c6-acao-da-repeticao', (e3 or {}).get('action'), 'skip'),
-            ('c7-acao-do-encolhimento', (e4 or {}).get('action'), 'replace'),
+            ('c7-acao-do-encolhimento', (e4 or {}).get('action'), 'skip'),
             ('c8-acao-da-linha-nova', (e5 or {}).get('action'), 'append'),
         ]
         return out, [m for m in logs if m.startswith('HISTORY_')], tmp

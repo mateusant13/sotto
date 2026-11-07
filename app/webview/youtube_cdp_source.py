@@ -184,7 +184,8 @@ PLAYING_JS = r"""
     ended: v ? v.ended : null,
     dur: (v && isFinite(v.duration)) ? v.duration : null,
     rs: v ? v.readyState : null,
-    vis: document.visibilityState || ''
+    vis: document.visibilityState || '',
+    focus: (typeof document.hasFocus === 'function') ? document.hasFocus() : null
   });
 })()
 """
@@ -201,7 +202,12 @@ PLAYING_GAP_S = 0.12
 #: Uma decisao de "quem toca" nao se repete a cada pergunta: a lista de abas e'
 #: pedida de 2 em 2 s pelo resolvedor de id, e uma sonda por aba a esse ritmo
 #: seria trabalho emprestado. Reutiliza-se a escolha por este tempo.
+#: COM UMA ABA SO'. Com DUAS ou mais a escolha muda com um alt-tab (o dono,
+#: 2026-11-06: *"se eu voltasse pro outro video, daria prioridade pro outro
+#: video. se eu desse alt tab, ainda ficaria naquele ali"*), e 10 s de cache
+#: eram 10 s de legenda do video errado: `PLAYING_PROBE_TTL_MULTI_S`.
 PLAYING_PROBE_TTL_S = 10.0
+PLAYING_PROBE_TTL_MULTI_S = 1.0
 
 
 def _ws_eval(conn, expr, msg_id=1):
@@ -296,6 +302,10 @@ def _probe_one(tab, connect, timeout, gap_s):
             'dur': _float(second.get('dur')),
             'rs': second.get('rs'),
             'visible': str(second.get('vis') or ''),
+            # `document.hasFocus()`: a UNICA testemunha que muda com um alt-tab
+            # entre duas abas `watch` da mesma janela (2026-11-06). `None` (aba
+            # antiga, duplo de teste) nao e' foco -- ver `tab_is_foreground`.
+            'focused': second.get('focus'),
             'tab': tab}
 
 
@@ -380,6 +390,95 @@ def is_real_player(probe):
     return bool((t1 or 0.0) > 0.0 or adv > 0.0)
 
 
+def tab_is_foreground(probe):
+    """A ABA QUE ELE ESTA' A VER: visivel E com o foco do documento.
+
+    `document.visibilityState === 'visible'` diz que a aba nao esta' escondida;
+    `document.hasFocus()` diz que e' ELA (e nao a vizinha) que tem o foco. As
+    duas, e nao uma: com duas abas `watch` abertas, a de tras tambem responde
+    `visible` quando a janela do Chrome tem foco -- so' o foco separa as duas,
+    e e' ele que muda num alt-tab (dono, 2026-11-06: *"se eu voltasse pro outro
+    video, daria prioridade pro outro video"*).
+
+    Um duplo de teste sem o campo devolve False: foco nao se inventa.
+    """
+    if not isinstance(probe, dict):
+        return False
+    return (str(probe.get('visible') or '') == 'visible'
+            and probe.get('focused') is True)
+
+
+def tab_is_playing(probe):
+    """A aba esta' a ANDAR o `currentTime` (e nao esta' pausada/acabada)?."""
+    if not isinstance(probe, dict):
+        return False
+    return (not probe.get('paused') and not probe.get('ended')
+            and (_float(probe.get('advance')) or 0.0) > 0.0)
+
+
+def player_stopped(snap):
+    """O PLAYER NAO ESTA' A ANDAR? -- `paused`/`ended` do DOM, e so' eles.
+
+    O DEFEITO (dono, 2026-11-06, verbatim): *"se eu pauso o video, a legenda do
+    sotto continua por mais uns 2 segundos"*. Nenhuma janela de frescura nem o
+    relogio do UIA sabem o que e' uma pausa; `video.paused` (e `video.ended`)
+    sabem, porque sao a mesma bandeira que o player usa para parar o desenho.
+
+    `None` (campo ausente: duplo de teste antigo) NAO e' pausa -- um payload que
+    nao fala de pausa nao pode congelar a legenda por omissao.
+    """
+    if not isinstance(snap, dict):
+        return False
+    return snap.get('paused') is True or snap.get('ended') is True
+
+
+def _revealed_text(row, t):
+    """O prefixo da linha que os relogios das palavras ja' revelaram em `t`."""
+    text = str(row.get("text") or "")
+    words = [w for w in (row.get("words") or ()) if isinstance(w, dict)]
+    if not words or t is None:
+        return text
+    count = 0
+    for word in words:
+        start = _float(word.get("start"))
+        if start is not None and float(start) > float(t) + 1e-9:
+            break
+        count += 1
+    if count >= len(words):
+        return text
+    return " ".join(str(w.get("text") or "") for w in words[:count]).strip()
+
+
+def freeze_rows(rows, t):
+    """As linhas que o overlay desenha PARADAS no instante `t` do player.
+
+    PORQUE EXISTE (2026-11-06). O overlay revela o cue contra o relogio do
+    proprio player (`caption_overlay._PlayerCue`: `t + (agora - at) * rate`) e
+    nada nesse motor sabe o que e' uma pausa -- medido no log do dono: 13,8 s de
+    `paused=True` com a linha a CRESCER (11 -> 14 palavras) e `paint_t` a andar
+    +0,95 s. Um payload congelado resolve-o sem tocar no motor: `end=None`, sem
+    relogio de palavras e sem tecto fazem `youtube_reveal.frame` desenhar o
+    MESMO texto em qualquer instante, logo o relogio pode andar a' vontade que
+    ele nao acrescenta uma palavra nem deixa a linha expirar.
+
+    Palavras com `start > t` ainda nao foram mostradas: saem do payload.
+    """
+    out = []
+    for row in rows or ():
+        if not isinstance(row, dict):
+            continue
+        start = _float(row.get("start"))
+        if start is not None and t is not None and start > float(t) + 1e-9:
+            continue
+        text = _revealed_text(row, t)
+        if not text:
+            continue
+        out.append({"index": row.get("index"), "text": text, "words": [],
+                    "start": (start if start is not None else 0.0),
+                    "end": None, "cap": None})
+    return out
+
+
 def choose_target(probes, previous='', window_title='', declared=''):
     """(video_id, porque) -- QUE ABA, decidido pela evidencia de cada uma.
 
@@ -390,16 +489,28 @@ def choose_target(probes, previous='', window_title='', declared=''):
 
       0. **`no-player`** quando NENHUMA aba tem jogador (`is_real_player`).
          Melhor nao responder do que prender-se a uma aba descartada.
-      1. **`window-title`** -- a ABA QUE ELE ESTA' A VER: o titulo da janela em
-         primeiro plano casa com o titulo da aba (exacto, depois parcial). E' a
-         testemunha mais directa do "current tab", e vem do Win32 sem custo.
-      2. **`declared`** -- o id que o shell declarou, AGORA VERIFICADO: so' vale
-         se a aba dele tiver jogador.
+      1. **`foreground`** -- A ABA EM PRIMEIRO PLANO (`tab_is_foreground`:
+         `visibilityState === 'visible'` E `document.hasFocus()`), com
+         preferencia pela que tambem TOCA (`tab_is_playing`). E' a unica
+         testemunha que muda num alt-tab, e a ordem do dono (2026-11-06),
+         verbatim: *"abrir outro video e ter os dois tocando ao mesmo tempo,
+         ainda continua o ultimo video, inves de dar prioridade ao novo. e
+         obviamente, se eu voltasse pro outro video, daria prioridade pro outro
+         video."* Com DUAS abas a tocar, o foco decide; voltar ao outro video
+         devolve-lhe a prioridade na leitura seguinte. Um video pausado em
+         primeiro plano TAMBEM manda (pausar o que ele esta' a ver nao pode
+         entregar o ecra ao video de tras).
+      2. **`window-title`** -- o titulo da janela em primeiro plano casa com o
+         titulo da aba (exacto, depois parcial). E' a testemunha do "current
+         tab" quando o Chrome NAO tem o foco (o foco do documento e' False nas
+         duas abas) -- ali o titulo da janela e' a ultima aba activa.
       3. **`playing`** -- o que AVANCOU o `currentTime` entre as duas leituras
          (o video que ele esta' a ouvir). Desempate pelo id, que e' estavel.
-      4. **`sticky-last`** -- o ultimo adotado, se ainda tiver jogador. Duas abas
+      4. **`declared`** -- o id que o shell declarou, AGORA VERIFICADO: so' vale
+         se a aba dele tiver jogador.
+      5. **`sticky-last`** -- o ultimo adotado, se ainda tiver jogador. Duas abas
          a tocar nao podem fazer o ecra trocar sozinho.
-      5. **`only-player`** / **`paused-loaded`** -- ele poe o video EM PAUSA (as
+      6. **`only-player`** / **`paused-loaded`** -- ele poe o video EM PAUSA (as
          tres abas reais de hoje estavam): a linha pintada de um video pausado
          ainda e' a legenda do YouTube, e e' melhor do que a de outro video.
          Entre varios pausados fica o de linha temporal mais avancada.
@@ -409,6 +520,16 @@ def choose_target(probes, previous='', window_title='', declared=''):
     if not usable:
         return '', 'no-player'
     prev = str(previous or '')
+    # 1. A ABA EM PRIMEIRO PLANO MANDA (2026-11-06). Preferencia pela que TOCA,
+    #    depois pelo `advance`/`t1`/id -- nunca pela ordem da lista.
+    front = [p for p in usable if tab_is_foreground(p)]
+    if front:
+        pool = [p for p in front if tab_is_playing(p)] or front
+        pool.sort(key=lambda p: (0 if tab_is_playing(p) else 1,
+                                 -(_float(p.get('advance')) or 0.0),
+                                 -(_float(p.get('t1')) or 0.0),
+                                 str(p.get('videoId') or '')))
+        return str(pool[0]['videoId']), 'foreground'
     want = str(window_title or '').strip().lower()
     if want:
         exact = [p for p in usable
@@ -422,9 +543,7 @@ def choose_target(probes, previous='', window_title='', declared=''):
                                ).strip().lower() in want)]
         if len(partial) == 1:
             return str(partial[0]['videoId']), 'window-title-partial'
-    live = [p for p in usable
-            if not p.get('paused') and not p.get('ended')
-            and (_float(p.get('advance')) or 0.0) > 0.0]
+    live = [p for p in usable if tab_is_playing(p)]
     if live:
         # O JA' ADOTADO QUE AINDA TOCA FICA (2026-10-30, mantido em 2026-11-05
         # pela ordem do dono -- *"current tab or last tab"*). Duas abas a tocar
@@ -432,6 +551,8 @@ def choose_target(probes, previous='', window_title='', declared=''):
         # o ecra trocar de video sozinho: um ecra que alterna e' pior do que um
         # ecra parado. MEDIDO pela arm `duas-a-tocar-decide-e-nao-tropeca`, que
         # ficou vermelha quando `playing` passou a' frente de `sticky-last`.
+        # O PRIMEIRO PLANO fica ACIMA disto (degrau 1), e e' essa a mudanca de
+        # 2026-11-06: sem foco declarado nada muda.
         if prev and any(str(p.get('videoId') or '') == prev for p in live):
             return prev, 'sticky-last'
         live.sort(key=lambda p: (-(_float(p.get('advance')) or 0.0),
@@ -628,14 +749,18 @@ def pick_target(tabs, video_id="", window_title=""):
     `state=ambiguous` enquanto a legenda esteve parada) a escolha NAO precisa
     de id nenhum: o titulo da JANELA em primeiro plano esta' o tempo todo na
     mao do chamador (Win32, microssegundos) e diz qual daquelas abas ele esta'
-    a ver. O id continua a ser a chave mais forte; o titulo resolve o caso
-    comum sem custo nenhum, e so' o que sobra fica `ambiguous`.
+    a ver. O id continua a ser a chave mais forte para a ABERTURA de uma aba
+    nomeada; o titulo resolve o caso comum sem custo nenhum, e so' o que sobra
+    fica `ambiguous`.
+
+    A ORDEM MUDOU A 2026-11-06: o TITULO DA JANELA VEM ANTES DO ID DECLARADO.
+    O dono: *"abrir outro video ... inves de dar prioridade ao novo"*. MEDIDO no
+    log dele: `YOUTUBE_TARGET pick=tnBpieBy2GY why=declared declared=tnBpieBy2GY
+    tabs=2` -- com duas abas abertas, o id declarado nunca deixava a testemunha
+    do alt-tab (o titulo) correr. O id declarado e' uma CRENCA; o titulo da
+    janela em primeiro plano e' o que ele esta' a ver. Se o titulo casar com uma
+    aba, e' essa; o id so' decide quando o titulo nao decide.
     """
-    if video_id:
-        named = [t for t in tabs if video_id in str(t.get("url") or "")]
-        if named:
-            return named[0], "named"
-        return None, "video-not-open"
     if not tabs:
         return None, "no-youtube-tab"
     want = str(window_title or "").strip().lower()
@@ -649,6 +774,11 @@ def pick_target(tabs, video_id="", window_title=""):
                    and str(t.get("title") or "").strip().lower() in want]
         if len(partial) == 1:
             return partial[0], "window-title-partial"
+    if video_id:
+        named = [t for t in tabs if video_id in str(t.get("url") or "")]
+        if named:
+            return named[0], "named"
+        return None, "video-not-open"
     if len(tabs) > 1:
         return None, "ambiguous"
     return tabs[0], "only-tab"
@@ -754,6 +884,14 @@ def boot_attach(port=None, attempts=BOOT_ATTACH_ATTEMPTS,
 # dentro do laco de leitura; trocar de video e' raro, perder quadros nao e'.
 _TID_SLOW_MS = 500.0
 _TID_SLOW_TTL_S = 10.0
+#: QUANTO TEMPO O ID ESCOLHIDO VALE (2026-11-06). Era 2 s, e 2 s eram 2 s de
+#: legenda do video ANTERIOR depois de abrir outro: o dono, verbatim: *"abrir
+#: outro video ... ainda continua o ultimo video, inves de dar prioridade ao
+#: novo"*. O `/json/list` e' HTTP local (~10 ms medidos) e a sonda por aba ja'
+#: tem cache propria (`PLAYING_PROBE_TTL_*`), portanto meio segundo de cache e'
+#: o que o "imediato" do dono custa. Uma chamada lenta estica para
+#: `_TID_SLOW_TTL_S` (ver abaixo), e nada muda na porta morta.
+_TID_TTL_S = 0.5
 
 def adopt_decision(declared, seen, declared_open):
     """O ID DECLARADO FILTRA A ESCOLHA DA ABA, NAO A LEITURA (2026-11-04).
@@ -812,6 +950,12 @@ class CdpCaptionSource:
         #: dessa escolha (a sonda por aba e' cara e tem TTL).
         self._playing_pick = ""
         self._playing_pick_cache = None
+        #: A ABA ESCOLHIDA NESTE INSTANTE (2026-11-06). `_tab_key` e' a
+        #: identidade da ligacao (o ws da aba) e `_selected_video_id` o video
+        #: dela: uma troca de aba zera a foto publicada (ver `_adopt_tab`), para
+        #: a legenda do video anterior nunca ser servida como a do novo.
+        self._tab_key = ""
+        self._selected_video_id = ""
         #: O titulo da janela que o dono esta' a ver. Com duas abas `watch`, e'
         #: isto -- nao o id -- que decide qual delas ler (`pick_target`).
         self._window_title = ""
@@ -891,12 +1035,14 @@ class CdpCaptionSource:
         if tab is not None:
             self._playing_pick = vid or self._playing_pick
             self._note = str(why)
+            self._adopt_tab(tab, vid)
             self._log('YOUTUBE_TARGET pick=%s why=%s declared=%s tabs=%d'
                       % (vid or '-', why, self._video_id or '-', len(tabs or ())))
             return tab, why
         target, why2 = pick_target(tabs, self._video_id, self._window_title)
         if target is not None:
             self._note = 'probe:%s fallback:%s' % (why, why2)
+            self._adopt_tab(target, video_id_from_url(target.get('url') or ''))
             self._log('YOUTUBE_TARGET fallback pick=%s why=%s probe=%s tabs=%d'
                       % (video_id_from_url(target.get('url') or '') or '-',
                          why2, why, len(tabs or ())))
@@ -911,6 +1057,7 @@ class CdpCaptionSource:
                 why = 'stale-declared:' + str(why)
         if target is not None:
             self._note = why
+            self._adopt_tab(target, video_id_from_url(target.get('url') or ''))
             self._log('YOUTUBE_TARGET stale pick=%s why=%s declared=%s tabs=%d'
                       % (video_id_from_url(target.get('url') or '') or '-',
                          why, self._video_id or '-', len(tabs or ())))
@@ -925,10 +1072,20 @@ class CdpCaptionSource:
         na lista de abas vale sem sonda nenhuma -- o resolvedor de id pergunta a
         lista de 2 em 2 s e uma sonda por aba a esse ritmo seria trabalho
         emprestado ao dono (a queixa e' sempre a mesma: o PC a travar).
+
+        A CACHE TEM UMA CHAVE ALEM DO TEMPO (2026-11-06): a ASSINATURA da lista
+        de abas. Uma aba NOVA invalida a escolha na hora, e com duas ou mais
+        abas o TTL cai para `PLAYING_PROBE_TTL_MULTI_S` (1 s) para um alt-tab
+        devolver a prioridade dentro de uma leitura -- sem isto a legenda ficava
+        ate' 10 s no video anterior (`YOUTUBE_TARGET ... why=declared tabs=2`).
         """
         now = time.monotonic()
+        sig = tuple(sorted(str((t or {}).get('url') or '') for t in (tabs or ())))
+        ttl = (PLAYING_PROBE_TTL_S if len(sig) <= 1
+               else PLAYING_PROBE_TTL_MULTI_S)
         cached = getattr(self, '_playing_pick_cache', None)
-        if cached and now - cached[0] < PLAYING_PROBE_TTL_S:
+        if (cached and len(cached) >= 4 and cached[3] == sig
+                and now - cached[0] < ttl):
             _vid = cached[1]
             if _vid:
                 for tab in tabs or ():
@@ -943,8 +1100,43 @@ class CdpCaptionSource:
         except Exception as exc:              # noqa: BLE001
             self._log('YOUTUBE_PLAYING_PICK_FAILED error=%r' % (exc,))
             return None, '', 'probe-failed'
-        self._playing_pick_cache = (now, vid, why)
+        self._playing_pick_cache = (now, vid, why, sig)
         return tab, vid, why
+
+    def selected_video_id(self):
+        """O id do video da aba que a SONDA escolheu por ultimo ('' sem escolha).
+
+        Existe para o laco da shell distinguir duas coisas que o campo `videoId`
+        da foto nao distingue: "a foto e' de outro video porque a minha crenca
+        envelheceu" (`seen == selected` -> adotar) e "a foto e' de outro video
+        porque estou ligado a aba errada" (`refuse`).
+        """
+        return str(getattr(self, '_selected_video_id', '') or '')
+
+    def _adopt_tab(self, tab, vid):
+        """A ABA MUDOU -> NADA DA ANTERIOR PODE SER SERVIDO (2026-11-06).
+
+        Um primeiro plano de outro video tem de ser imediato E limpo. A foto
+        publicada era do video anterior e `snapshot()` a devolveria ate' a
+        primeira leitura da aba nova -- ou seja a legenda de um video no ecra de
+        outro, que e' o único erro que `adopt_decision` existe para impedir.
+        `_selected_video_id` e' o que a shell usa para aceitar a foto nova.
+        """
+        if not isinstance(tab, dict):
+            return
+        key = str(tab.get('webSocketDebuggerUrl') or
+                  video_id_from_url(tab.get('url') or '') or '')
+        if not key:
+            return
+        old = str(getattr(self, '_tab_key', '') or '')
+        if key != old:
+            with self._lock:
+                self._snap = None
+            self._log('YOUTUBE_CDP_TAB_SWITCH from=%s to=%s vid=%s'
+                      % (old.rsplit('/', 1)[-1] or '-',
+                         key.rsplit('/', 1)[-1] or '-', vid or '-'))
+        self._tab_key = key
+        self._selected_video_id = str(vid or '')
 
     def stop(self):
         self._stop.set()
@@ -992,7 +1184,7 @@ class CdpCaptionSource:
             # um '' no cache de 2 s faria a primeira leitura depois de a porta
             # voltar a responder devolver o vazio antigo.
             return ''
-        ttl = float(getattr(self, '_tid_ttl', 2.0) or 2.0)
+        ttl = float(getattr(self, '_tid_ttl', _TID_TTL_S) or _TID_TTL_S)
         cached = getattr(self, '_tid_cache', None)
         if cached and now - cached[0] < ttl:
             return cached[1]
@@ -1021,7 +1213,7 @@ class CdpCaptionSource:
             self._log('YOUTUBE_TARGET_SLOW ms=%.0f vid=%s ttl_s=%.0f'
                       % (cost_ms, vid or '-', _TID_SLOW_TTL_S))
         else:
-            self._tid_ttl = 2.0
+            self._tid_ttl = _TID_TTL_S
         self._tid_cache = (now, vid)
         return vid
 
@@ -1189,9 +1381,24 @@ class CdpCaptionSource:
                 _action, _because = adopt_decision(
                     self._video_id, snap.get("videoId"),
                     (not self._declared_closed()) if self._video_id else True)
+                # A ABA A QUE ESTAMOS LIGADOS E' AUTORIDADE (2026-11-06). O
+                # `adopt_decision` protege contra ler a ABA ERRADA; quando a foto
+                # vem da aba que a SONDA escolheu (`selected_video_id`), nao ha'
+                # aba errada -- ha' uma crenca (`_video_id`) que envelheceu. Sem
+                # isto, com duas abas o dono muda o foco para a nova, a fonte
+                # escolhe-a, e `_run` recusa a foto dela porque o id declarado
+                # (o video antigo, ainda aberto) continua "aberto": a legenda do
+                # novo video nunca chega. A troca de estado e' limpa por
+                # `_adopt_tab` (foto publicada zerada).
+                if (_action == 'refuse'
+                        and str(snap.get("videoId") or '')
+                        == str(getattr(self, '_selected_video_id', '') or '')):
+                    _action, _because = 'adopt', 'attached-tab'
                 if _action == 'adopt':
                     _old = self._video_id
                     self._video_id = str(snap["videoId"])
+                    self._playing_pick = self._video_id
+                    self._playing_pick_cache = None
                     self._publish(snap, "adopted:%s->%s" % (_old, self._video_id))
                     self._switch_fails = 0
                     continue
@@ -1256,6 +1463,10 @@ class CdpCaptionSource:
             _wait = max(self.poll_s, PAUSED_POLL_S) if _paused else self.poll_s
             if _paused != getattr(self, '_paced_logged', None):
                 self._paced_logged = _paused
+                # PAUSA/PLAY RE-ESCOLHE A ABA (2026-11-06). O dono alterna entre
+                # dois videos e pausa um deles: o que TOCA passa a ser o outro,
+                # e uma escolha em cache nao pode sobreviver a essa mudanca.
+                self._playing_pick_cache = None
                 self._log('YOUTUBE_CDP_PACED paused=%s poll_s=%.2f'
                           % (_paused, _wait))
             self._stop.wait(max(0.0, _wait - spent))

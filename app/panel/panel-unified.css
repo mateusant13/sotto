@@ -1,0 +1,368 @@
+/* Sotto -- THE ONE LAYOUT. Loaded LAST, after `button-contract.css` and after any
+ * stylesheet a skin injects, so nothing below can be outvoted by a theme.
+ *
+ * OWNER, 2026-11-06, verbatim -- this file exists to honour these five sentences:
+ *
+ *   "o historico nao deve ficar centralizado. é começando pela esquerda."
+ *   "a segunda imagem mostra que o historico nao ta mostrando em todos os temas."
+ *   "sotto tem que ter o MESMO TAMANHO de logo/letra, na MESMA LINHA/PIXEL."
+ *   "os botoes tem que ter um PADRAO de espaçamento. tem hora que o botao vermelho
+ *    que indica se ta 'rec' ou não, fica muito distante ou entra dentro de outro
+ *    botao."
+ *   "o painel de BAIXO deve ser opaco. MEIO transparente. nao 100% solido. já os
+ *    botoes, pode ser solido."
+ *   "to vendo que ALGUNS temas tem a 'legenda ao vivo' inbutida no painel da
+ *    direita. aquela legenda NAO é pra existir no painel da direita. é pra
+ *    assistir na legenda que aparece na tela."
+ *
+ * The rule of this file: the DESIGN owns colour, type, radius and decoration. It
+ * owns NOTHING about where a thing sits, how big the wordmark is, whether the
+ * transcript exists, or whether a second copy of the live caption is painted.
+ *
+ * `!important` everywhere, and scoped to a surface, for the same reason
+ * `button-contract.css` gives: the twenty cinematic themes, the five panel designs
+ * and the ten zipc directions each ship a rule for these boxes, and a later sheet
+ * must not be able to re-open a question the owner already answered. */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1. THE WORDMARK SITS ON THE CONTROL ROW, AT ONE SIZE, IN EVERY THEME
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* MEASURED BEFORE THIS RULE (real Chromium, the shipped page, theme-1, 380x900;
+ * `_main/panel-header-probe.py`): the control row painted at rows 22..33
+ * (centroid 28.6) and the wordmark at rows 37..45 (centroid 40.7) -- 12.1 px
+ * apart, so the two never shared a line, which is exactly the defect the owner
+ * reported twice. The row's own top is `calc(14px + (56px - 28px) / 2)` = 28
+ * (`button-contract.css`), so pinning the wordmark's BOX to the same arithmetic
+ * and centring its text inside it makes both centroids 42.
+ *
+ * THE SIZE IS FIXED IN PX, NOT IN `em`. Eight of the 65 designs hide the
+ * wordmark outright and several others scale it with the direction's own type
+ * ramp, which is how the owner saw it at three different sizes. */
+html body[data-surface="panel"] .wordmark {
+  position: fixed !important;
+  left: 14px !important;
+  right: auto !important;
+  bottom: auto !important;
+  top: calc(14px + (56px - 28px) / 2) !important;
+  display: flex !important;
+  align-items: center !important;
+  height: 28px !important;
+  max-height: 28px !important;
+  min-height: 28px !important;
+  max-width: 78px !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 61 !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  letter-spacing: 0.16em !important;
+  white-space: nowrap !important;
+  transform: none !important;
+}
+
+/* THE GLYPH, NOT JUST THE BOX (measured 2026-11-06 by the theme audit).
+ *
+ * The rule above pins the wordmark's BOX to 28 px at a fixed origin, and its
+ * `font-size: 14px !important` was defeated by the element that actually paints
+ * the letters: `.wordmark__name` declares 17px in `panel.css:252` and 13px in
+ * `panel-designs.css` (pd-cine), and the generated themes set
+ * `.wordmark__text { font-size: 11px }`. A rule on the wrapper cannot win against
+ * a rule on the child, so the owner saw THREE sizes of the same logo depending on
+ * the design -- his words: *"sotto tem que ter o MESMO TAMANHO de logo/letra, na
+ * MESMA LINHA/PIXEL."*
+ *
+ * `--wordmark-size` is the single number: the panel header and the strip both
+ * read it, and any design that wants a different logo has exactly one place to
+ * change. */
+html body .wordmark__name,
+html body .wordmark__text,
+html body .wordmark__mark {
+  font-size: var(--wordmark-size, 14px) !important;
+  line-height: 1 !important;
+  letter-spacing: var(--wordmark-tracking, 0.16em) !important;
+  font-weight: 600 !important;
+  margin: 0 !important;
+}
+html body { --wordmark-size: 14px; --wordmark-tracking: 0.16em; --control-gap: 4px; }
+
+/* The tag under the name is the second sentence the owner removed: the panel is
+ * 380 px wide and the name alone is the brand. */
+html body[data-surface="panel"] .wordmark__tag {
+  display: none !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   2. THE CONTROL ROW: ONE ORDER, AND THE LAMP CANNOT LAND ON A BUTTON
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* The five absent ids below were the font PAIR the owner collapsed into one
+ * button on 2026-10-18; naming them was a no-op that also let `#tune-button` and
+ * `#live-lamp` fall back to document order. Document order is now stated, so a
+ * theme that reorders the header in its own DOM cannot reorder the cluster. */
+html body[data-surface="panel"] #live-lamp { order: 0 !important; }
+html body[data-surface="panel"] #tune-button { order: 1 !important; }
+html body[data-surface="panel"] #theme-button { order: 2 !important; }
+html body[data-surface="panel"] #theme-chevron { order: 3 !important; }
+html body[data-surface="panel"] #font-scale-button { order: 4 !important; }
+html body[data-surface="panel"] #panel-pause-button { order: 5 !important; }
+html body[data-surface="panel"] #hide-button { order: 6 !important; }
+
+/* THE LAMP IS A READOUT, SO IT GETS A READOUT'S BOX: 10 px, centred in the 28 px
+ * row, and it takes no `flex` share -- measured on the live panel as 102..112.
+ * `flex: 0 0 10px` is what stops a theme's generic `.icon-button` width rule from
+ * stretching it into the neighbouring control, which is the owner's *"entra
+ * dentro de outro botao"*. */
+html body[data-surface="panel"] #live-lamp {
+  flex: 0 0 10px !important;
+  width: 10px !important;
+  min-width: 10px !important;
+  max-width: 10px !important;
+  height: 10px !important;
+  min-height: 10px !important;
+  max-height: 10px !important;
+  margin: 0 0 0 4px !important;
+  align-self: center !important;
+  border-radius: 50% !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   3. THE LIVE CAPTION HAS ONE HOME: THE OVERLAY
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* OWNER, 2026-11-06: *"aquela legenda NAO é pra existir no painel da direita. é
+ * pra assistir na legenda que aparece na tela, a que vem do control espaço."*
+ *
+ * The block stays in the DOM (the shell's own probes count `#caption-list` and
+ * `panel.js` writes into it), and that is deliberate: this is a DISPLAY rule, not
+ * a de-wiring. What the owner stops seeing is a second copy of the caption under
+ * the transcript, which every one of the 45 generated themes painted. */
+html body .captions {
+  display: none !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   4. THE TRANSCRIPT IS ALWAYS THERE, ALWAYS ON THE LEFT
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* *"a segunda imagem mostra que o historico nao ta mostrando em todos os temas."*
+ * Measured cause: the skins mount their own panel and hide ours outright
+ * (`skin-layout.css`: `.history { display: none !important }`), and a handful of
+ * directions paint the transcript with `text-align: center` because their mockup
+ * was a presentation slide. Both are overruled here rather than fixed per theme. */
+html body[data-surface="panel"] .history {
+  display: grid !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  text-align: left !important;
+  min-height: 0 !important;
+}
+
+html body[data-surface="panel"] .history__body {
+  display: block !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+}
+
+html body[data-surface="panel"] .history__list {
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  text-align: left !important;
+  list-style: none !important;
+}
+
+/* ONE ROW TEMPLATE FOR EVERY THEME: time, text, folder -- in that order, on
+ * one left-aligned baseline, with the time in a fixed 46 px column so the text
+ * of every line starts at the same x. The time used to be `auto`, which made the
+ * column as wide as its widest stamp and shifted the text by a pixel or two
+ * between rows. */
+html body[data-surface="panel"] .hist {
+  display: grid !important;
+  grid-template-columns: 46px minmax(0, 1fr) 20px !important;
+  align-items: baseline !important;
+  justify-items: start !important;
+  gap: 8px !important;
+  text-align: left !important;
+  direction: ltr !important;
+}
+
+html body[data-surface="panel"] .hist__text {
+  justify-self: stretch !important;
+  text-align: left !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* THE TIME IS QUIETER THAN THE LINE (owner: *"de preferencia deixa o horario mais
+ * escuro/cinza, e o texto mais 'aceso'"*). Two named tokens, so a theme can pick
+ * the hue but not the RELATION: the stamp keeps 70 % of its own colour and the
+ * line is forced to full strength.
+ *
+ * AND THE HUE ALONE DOES NOT KEEP THEM READABLE (measured 2026-11-06 by
+ * `_main/panel-history-clip-probe.mjs`, which now COMPOSITES each colour over the
+ * row's own background and computes the WCAG ratio): on 11 of the 45 designs the
+ * stamp came out under 3:1 -- `theme-1` at **1.69:1** against body text at
+ * 19.22:1, because the theme's own `--time-past` is a 25 %-alpha white and the
+ * 0.72 opacity was applied ON TOP of it. A stamp that quiet is not "quieter", it
+ * is invisible.
+ *
+ * THE FLOOR: the stamp is painted in the TEXT's own colour at 0.72, not in a
+ * theme token of unknown alpha. Its contrast is then a fixed fraction of the
+ * line's, which is a RELATION the design cannot break, and the probe's
+ * `STAMP UNREADABLE` count is the number that has to stay at zero. A theme that
+ * wants its own stamp hue still can: `--time-past` is honoured FIRST, and it is
+ * re-checked by the same probe. */
+html body[data-surface="panel"] .hist__time {
+  /* 25 % of the theme's own stamp hue, 75 % of the line's colour: the hue
+   * survives and the ALPHA is pulled up toward the opaque text, which is the only
+   * term that guarantees the floor. The 0.78 is the smallest opacity that clears
+   * 3:1 on the WORST design measured (`theme-4`, whose own body text is only
+   * 4.52:1 -- on a low-contrast theme a 0.72 stamp cannot reach 3:1 at all). */
+  color: color-mix(in srgb,
+    var(--time-past, var(--text-primary, var(--text, #e8eef2))) 25%,
+    var(--text-primary, var(--text, #e8eef2))) !important;
+  opacity: var(--hist-time-opacity, 0.78) !important;
+  font-variant-numeric: tabular-nums !important;
+  text-align: left !important;
+}
+
+html body[data-surface="panel"] .hist__text {
+  color: var(--text-primary, var(--text, #e8eef2)) !important;
+  opacity: 1 !important;
+}
+
+/* THE SQUARES AND CIRCLES AROUND THE STAMP ARE DEMO RESIDUE (owner, 2026-11-06:
+ * *"isso era de uma DEMO que mostrava personagens naqueles quadrados"*). No
+ * generated theme draws one; the frozen skins did, in their own row template,
+ * which no longer paints. Killing the decorative box on the stamp covers the
+ * third case -- a direction that grows one later. */
+html body[data-surface="panel"] .hist__time::before,
+html body[data-surface="panel"] .hist__time::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   5. THE BOTTOM PANEL IS TRANSLUCENT; ITS BUTTONS ARE SOLID
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* *"o painel de BAIXO deve ser opaco. MEIO transparente. nao 100% solido. já os
+ * botoes, pode ser solido."*
+ *
+ * The slab is the theme's own colour at 78 %, so the desktop shows through
+ * without the text losing its bed; `color-mix` keeps whatever alpha the token
+ * already carried instead of flattening it. The buttons stay fully solid: a
+ * control that fades over a moving video is a control that cannot be read. */
+html body[data-surface="strip"] .panel {
+  background-color: var(--bg-slab) !important;
+}
+
+@supports (background-color: color-mix(in srgb, #000 50%, transparent)) {
+  html body[data-surface="strip"] .panel {
+    background-color: color-mix(in srgb, var(--bg-slab) 78%, transparent) !important;
+  }
+}
+
+html body[data-surface="strip"] .stripbar .strip-button,
+html body[data-surface="strip"] .stripbar .icon-button {
+  background-color: var(--bg-slab-strong, var(--bg-slab)) !important;
+  opacity: 1 !important;
+}
+
+/* THE BUTTON'S BED IS THE HALF THE OWNER ASKED FOR IN THE SAME SENTENCE
+ * (owner, 2026-11-06, verbatim): *"o painel de BAIXO deve ser opaco. MEIO
+ * transparente. nao 100% solido. já os botoes, pode ser solido."*
+ *
+ * The slab above is 78 % of the theme's own colour -- that half is done. The
+ * BUTTONS were still on `--bg-slab-strong`, and in twenty designs that token is
+ * itself translucent: `themes/cinematic.css:93` `rgba(148,180,220,0.06)` and
+ * `themes/zipc-panels.css:79` `rgba(26,18,13,0.52)`. So the button had a 6 % bed
+ * over live video -- the same as no bed -- and its glyph was read against
+ * whatever the frame happened to show.
+ *
+ * The arithmetic, not the taste: `color-mix` interpolates ALPHA, so
+ * `30 % token + 70 % opaque anchor` cannot be more transparent than 0.70 whatever
+ * the token carries. The token keeps the design's hue; the anchor is the dark the
+ * strip already sits on. */
+@supports (background-color: color-mix(in srgb, #000 30%, #000)) {
+  html body[data-surface="strip"] .stripbar .strip-button,
+  html body[data-surface="strip"] .stripbar .icon-button {
+    background-color: color-mix(in srgb,
+      var(--bg-slab-strong, var(--bg-slab)) 30%, #0d1014 70%) !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   6. THE TOOLS ROW: ONE GLYPH, AND THE FIELD ONLY WHEN ASKED
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* `#history-search-button` is a 24 px magnifier; `#history-search` is `display:
+ * none` until `.history__tools.is-searching` is set by `wireHistorySearch`. The
+ * row is left-aligned and its height is fixed, so opening the field does not push
+ * the first transcript line down by a different amount in different themes. */
+html body[data-surface="panel"] .history__tools {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 6px !important;
+  min-height: 24px !important;
+  padding: 0 !important;
+  text-align: left !important;
+}
+
+html body[data-surface="panel"] .history__search-button {
+  flex: 0 0 24px !important;
+  width: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+html body[data-surface="panel"] .history__search {
+  display: none !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  height: 24px !important;
+  padding: 0 8px !important;
+  margin: 0 !important;
+  font-size: 12px !important;
+  text-align: left !important;
+}
+
+html body[data-surface="panel"] .history__tools.is-searching .history__search {
+  display: block !important;
+}
+
+/* The status note is one line and never grows the drawer. */
+html body[data-surface="panel"] .history__note {
+  margin: 0 !important;
+  text-align: left !important;
+  min-height: 0 !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   7. THE DRAWER IS NOT CAPPED AT A THIRD OF THE PANEL
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* `panel.css` caps the open drawer at `34vh` because the LIVE box below it "keeps
+ * the height". The live box is hidden now (rule 3), so the cap only leaves the
+ * bottom third of the panel empty. The transcript takes what is left of the grid
+ * and the list scrolls inside it. */
+html body[data-surface="panel"] .history:not(.history--collapsed) {
+  max-height: none !important;
+}
+
+html body[data-surface="panel"] .history__list {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: thin !important;
+}
