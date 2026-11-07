@@ -96,8 +96,29 @@ def current_private_mb() -> float:
 
 
 def err(msg: str) -> None:
-    sys.stderr.write(msg + "\n")
-    sys.stderr.flush()
+    """Um escritor de DIAGNOSTICO que nunca derruba o processo.
+
+    MEDIDO 2026-11-07, nesta arvore: seis mortes do worker num dia, todas com a
+    MESMA frase no log do dono --
+
+        BRIDGE_DEATH rc=1 last="Worker error at unhandled - OSError: [Errno 22] Invalid argument"
+
+    -- e cada uma comprada com uma recarga do modelo de 11 a 37 s
+    (`BRIDGE_LOAD_MS` 11703 / 27015 / 33860 / 37157). O `contract_guard` ja'
+    tinha apanhado a excepcao; quem a levantou de novo foi o RELATOR: este
+    `write` no `sys.stderr` com o handle invalido (`EINVAL`) transformou um
+    codigo de saida com significado (4) numa saida 1 sem frase nenhuma.
+
+    Um canal de diagnostico que pode matar o processo que ele diagnostica nao e'
+    um canal: e' um segundo defeito. A frase continua a ir para o stderr quando o
+    stderr existe; quando nao existe, quem guarda a morte e' o ficheiro de
+    tracebacks (`sotto_worker._death_trace`).
+    """
+    try:
+        sys.stderr.write(msg + "\n")
+        sys.stderr.flush()
+    except (OSError, ValueError, AttributeError):
+        pass
 
 
 try:                       # a fila de audio vivo (ver worker/live_queue.py)

@@ -434,6 +434,21 @@ if exist _main\_panel2-dom-probe.js (
   call :step red-as-expected-panel-deps 0 "_main\panel-deps-oracle.py;_main\_audit-verify-all.cmd;_main\sotto-state-page.py;app\panel\panel.html" "%OUT%\panel-deps-neg.log" python _main\panel-deps-oracle.py --neg-arm
   call :record panel2-dom-probe !STEP_RC!
 ) else ( call :record panel2-dom-probe MISSING )
+REM A MORTE DIAGNOSTICAVEL DO WORKER (2026-11-07). MEDIDO em
+REM `_main\webview-run.log`: SEIS mortes do worker num dia, todas a MESMA frase,
+REM `last="Worker error at unhandled - OSError: [Errno 22] Invalid argument"`, e
+REM cada uma comprada com uma recarga do modelo (`BRIDGE_LOAD_MS` 11703 / 27015 /
+REM 33860 / 37157 ms). O log guardou DUAS linhas de stderr de cada morte -- as da
+REM carga -- e nenhuma do traceback. Duas causas, as duas curadas: (1) o RELATOR
+REM levantava (`err_fn` escrevia num `sys.stderr` com o handle invalido, `EINVAL`,
+REM e a saida 4 com significado virava uma saida 1 sem frase); (2) a frase ia SO'
+REM para o canal que falha -- agora vai tambem para
+REM `_main\webview-worker-tracebacks.log` (tecto 256 KB, recicla metade). O braco
+REM de baixo tira cada cura a uma numa COPIA e exige os tres vermelhos.
+call :step worker-death-trace 0 "_main\worker-death-trace-oracle.py;worker\sotto_worker.py;worker\engine_switch.py" "%OUT%\worker-death-trace.log" python _main\worker-death-trace-oracle.py
+call :record worker-death-trace !STEP_RC!
+call :step red-as-expected-worker-death-trace 1 "_main\worker-death-trace-oracle.py;worker\sotto_worker.py;worker\engine_switch.py" "%OUT%\worker-death-trace-neg.log" python _main\worker-death-trace-oracle.py --neg-arm
+call :expectred red-as-expected-worker-death-trace !STEP_RC! "%OUT%\worker-death-trace-neg.log" "NEG-ARM: PASS"
 
 REM The live caption BOX (owner, 2026-10-20, verbatim: "a app parece viva mas
 REM nao entrega nada"): the caption arrived as a PROVISIONAL line, the list was

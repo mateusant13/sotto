@@ -8554,6 +8554,53 @@ def main():
     return 3 if (ran_but_silent or counters["blocks"] == 0) else 0
 
 
+TRACEBACK_LOG_MAX = 256 * 1024
+
+
+def death_trace_path() -> str:
+    """Onde a frase de uma morte FICA. Um ficheiro, nunca um pop-up.
+
+    `SOTTO_WORKER_TRACEBACK_LOG` desvia-o: um oraculo escreve num temporario em
+    vez de sujar o ficheiro de producao, e uma maquina com pressao de disco pode
+    mandar o ficheiro para outro volume sem tocar no codigo.
+    """
+    forced = os.environ.get('SOTTO_WORKER_TRACEBACK_LOG')
+    if forced:
+        return forced
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(root, '_main', 'webview-worker-tracebacks.log')
+
+
+def _death_trace(text: str) -> None:
+    """Guarda `text` no ficheiro de tracebacks do worker, com tecto de 256 KB.
+
+    PORQUE UM FICHEIRO. MEDIDO 2026-11-07: seis mortes do worker num dia, todas
+    `OSError: [Errno 22] Invalid argument`, e o log do dono so' guardou **duas
+    linhas** de stderr de cada uma -- as da carga (`REDUX_ENGINE_YIELD`,
+    `REDUX_ENGINE_RELEASED`) e nenhuma linha do traceback. O `stderr` do worker
+    e' o MESMO canal que falha quando o handle invalida, por isso ele nao pode
+    ser o unico sitio onde a causa de uma morte sobrevive.
+
+    O tecto e' obrigatorio: esta maquina tem pressao de disco medida e um log
+    que cresce sem limite e' o defeito seguinte. A 256 KB, o ficheiro guarda as
+    ultimas ~600 mortes e depois recicla metade.
+    """
+    try:
+        path = death_trace_path()
+        stamp = time.strftime('%Y-%m-%d %H:%M:%S')
+        block = f"=== {stamp} pid={os.getpid()} ===\n{text}\n"
+        with open(path, 'a', encoding='utf-8', errors='replace') as fh:
+            fh.write(block)
+        if os.path.getsize(path) > TRACEBACK_LOG_MAX:
+            with open(path, encoding='utf-8', errors='replace') as fh:
+                kept = fh.read()[-TRACEBACK_LOG_MAX // 2:]
+            with open(path, 'w', encoding='utf-8', errors='replace') as fh:
+                fh.write(kept)
+    except (OSError, ValueError):
+        # O instrumento nao pode ser a setima morte do dia.
+        pass
+
+
 def contract_guard(main_fn, emit_fn=emit, err_fn=err) -> int:
     """Run the worker so that no CATCHABLE exit escapes the JSONL contract. PURE wiring: the
     emitters are injected, so this is drivable without a device, a model or a process.
@@ -8586,9 +8633,20 @@ def contract_guard(main_fn, emit_fn=emit, err_fn=err) -> int:
     except BaseException as exc:
         import traceback as _tb
         detail = "%s: %s" % (type(exc).__name__, exc)
-        emit_fn(type="status", state="error", stage="unhandled", detail=detail)
-        err_fn("sotto: UNHANDLED " + detail)
-        err_fn(_tb.format_exc())
+        _death_trace("UNHANDLED %s\n%s" % (detail, _tb.format_exc()))
+        # UM RELATOR QUE LEVANTA E' UM SEGUNDO DEFEITO (medido 2026-11-07: seis
+        # mortes `rc=1` sem uma frase, porque o `err_fn` escrevia num stderr com
+        # o handle invalido). O codigo abaixo nunca muda por causa disto: o que
+        # muda e' ele SAIR.
+        try:
+            emit_fn(type="status", state="error", stage="unhandled", detail=detail)
+        except BaseException:      # noqa: BLE001 - o cano pode estar morto
+            pass
+        try:
+            err_fn("sotto: UNHANDLED " + detail)
+            err_fn(_tb.format_exc())
+        except BaseException:      # noqa: BLE001 - idem
+            pass
         return 4
 
 

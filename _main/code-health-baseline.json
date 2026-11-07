@@ -631,12 +631,12 @@
       "max_func_name": "run_engine_pass"
     },
     "worker/engine_switch.py": {
-      "bytes": 64405,
+      "bytes": 65423,
       "classes": 2,
       "defs": 10,
-      "except_pass": 1,
+      "except_pass": 2,
       "globals": 0,
-      "lines": 1201,
+      "lines": 1222,
       "max_func": 141,
       "max_func_name": "_run_runner"
     },
@@ -761,12 +761,12 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 453873,
+      "bytes": 456461,
       "classes": 17,
-      "defs": 82,
-      "except_pass": 15,
+      "defs": 84,
+      "except_pass": 18,
       "globals": 5,
-      "lines": 8598,
+      "lines": 8656,
       "max_func": 2645,
       "max_func_name": "main"
     },

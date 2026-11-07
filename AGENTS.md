@@ -446,7 +446,18 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-07, 14:5x):** `_main\_audit-verify-all.cmd` = **273404 B**,
+- **PIN do ficheiro (medido 2026-11-07, 16:0x):** `_main\_audit-verify-all.cmd` = **274820 B**,
+  **3341 CRLF** / 0 bare LF, sha256 `67A43AB9E9340B132585AA6D4368A7FDFA8777B646ABC94E8ACD2443F118A65F`.
+  (Mil quatrocentos e dezasseis bytes e quinze linhas a mais do que o pin de 273404 B: o par
+  `worker-death-trace` + `red-as-expected-worker-death-trace`, a **morte diagnosticavel do
+  worker**. Nasceu da DM do watcher de 2026-11-07 (*"acabou de acontecer stutter"*) e da medicao
+  que ela obrigou: SEIS mortes do worker num dia, todas `last="Worker error at unhandled -
+  OSError: [Errno 22] Invalid argument"`, cada uma comprada com uma recarga do modelo
+  (`BRIDGE_LOAD_MS` 11703 / 27015 / 33860 / 37157 ms) -- e o log guardou **duas** linhas de
+  stderr de cada morte, nenhuma do traceback. Duas curas medidas: o relator nunca levanta
+  (`err()` do `engine_switch` e os dois `emit_fn`/`err_fn` do `contract_guard`), e a frase fica
+  em `_main\webview-worker-tracebacks.log` com tecto de 256 KB. 12 arms no positivo, 3/3
+  mutantes apanhados no negativo. O pin anterior era 273404 B:
   **3326 CRLF** / 0 bare LF, sha256 `FA5FFFFC51AB42327B8050A64C3357BB7EA53CBAD934D22BB84FF5AEC100B0F7`.
   (Trezentos e oitenta e seis bytes e duas linhas a mais do que o pin de 273018 B: o par
   `outside-click-timer` + `red-as-expected-outside-click-timer`, o **spin do timer do vigia de
