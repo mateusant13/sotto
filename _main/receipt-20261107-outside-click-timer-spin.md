@@ -99,9 +99,11 @@ absorvido no baseline, com o numero declarado aqui).
 * **O "depois" na instancia dele e' UNMEASURED.** O pid 23244 corre o codigo **anterior** a cura: o
   numero depois da cura nesta caixa e' o da classe real (0,20 %), nao o daquela instancia. O
   "depois" na tela dele exige um restart da app, que e' dele — este assento nao larga a app.
-* **O resto da pressao continua.** Medido hoje, sem tocar: **9 `BRIDGE_SPAWNED`** e **8
-  `BRIDGE_LOAD_MS`** somando **241 984 ms** de carregamento de modelo, com o commit privado do worker
-  em **4 962,6 MB** (`BRIDGE_RSS private_mb=4962.6`) e **79 threads**. Isso e' o segundo maior
+* **O resto da pressao continua.** Medido hoje, sem tocar: **10 `BRIDGE_SPAWNED`** e **9
+  `BRIDGE_LOAD_MS`** somando **279,1 s** de carregamento de modelo (min 11,4 s, max 94,1 s), com o
+  commit privado do worker entre **2 873 e 5 301 MB** em 272 amostras `BRIDGE_RSS` e **79 threads**
+  (`WORKER_STATS`). Esse numero cresceu de 9 spawns / 241 984 ms enquanto esta cura era escrita -- e'
+  a recarga que a lane `SottoLoadChurn` mede. Isso e' o segundo maior
   produtor e tem lane propria (`SottoLoadChurn`, `docs/worker-lifecycle.md`); nada aqui o alterou.
 * `python -m watcher profile <pid>` continua **negado a este assento** (`OpenThread` com
   `THREAD_QUERY_INFORMATION` acima da minha integridade), e `python -m watcher perf` foi corrido
