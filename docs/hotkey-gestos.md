@@ -46,6 +46,42 @@ O ciclo alterna o **próximo show** com a **memória da última superfície apli
 do painel volta no painel. `hide_panel` **não** apaga essa memória — é ela que faz
 `show/hide/show/hide` alternar em vez de repetir o mesmo painel.
 
+## O interruptor da tecla dos painéis (menu do ícone, 2026-11-07)
+
+Ordem do dono, verbatim: *"faz um botao 'desativar atalho alt c' no click direito do
+icon do sotto"* e, um minuto depois, *"e claro, é ativar e desativar"*.
+
+**UM item** no menu do ícone, id `4`, cujo **texto é a acção** que ele faz:
+`Desativar atalho Alt+C` quando a tecla está armada, `Ativar atalho Alt+C` quando está
+solta. O estado é lido de `SottoShell.panels_hotkey_state()` (o registo vivo, não a
+intenção) e a escolha é escrita em `_main/hotkey-settings.json` (`panels_enabled`) —
+um interruptor que valesse só até ao reinício seria um botão que mente na manhã seguinte.
+
+| onde | o que faz |
+|---|---|
+| `app/webview/hotkey_settings.py` | `panels_enabled()` (só o literal `false` desarma; ausente, `0`, `"false"`, `null` ou ficheiro estragado **abrem armados**) e `set_panels_enabled()`; o `write()` **preserva** a chave, logo trocar de acelerador não rearma o que ele desligou |
+| `SottoShell.arm_hotkey(..., panels=False)` | o **arranque** honra o ficheiro e diz por quê: `HOTKEY_PANELS_DISABLED source=settings requested=Alt+C why=owner-toggled-off-in-tray` |
+| `SottoShell.toggle_panels_hotkey()` | arma/solta **só** a tecla dos painéis (a da legenda não é tocada) e persiste; o menu seguinte diz o contrário |
+| `TrayIcon` | `WM_COMMAND` id 4 → `tray_command` → o toggle; `refresh_menu` reconstrói o menu no instante em que o estado muda |
+
+**O menu deixou de ser reconstruído a cada clique.** O `_build_menu()` e o `log` com
+`flush` corriam **antes** do `TrackPopupMenu` — entre o clique do dono e o menu a
+aparecer —, e numa máquina com o disco saturado é literalmente *"aperto o botão
+direito e não responde"*. O menu vive no `shell.menu` e só é substituído quando o
+texto muda.
+
+| instrumento | veredicto (medido 2026-11-07) |
+|---|---|
+| `python _main/tray-menu-oracle.py` | `VERDICT: PASS`, **19 arms** (as quatro desta rodada: texto quando armado, texto quando solto, reconstrução só quando o texto muda, `WM_COMMAND` id 4 roteado) |
+| `python _main/tray-menu-oracle.py --neg-arm` | `NEG-ARM PASS` — **7/7 CAUGHT**: popup de volta a message-only, clique esquerdo a abrir o menu, `WM_NULL` a faltar, menu reconstruído a cada clique, texto congelado, comando não roteado |
+| `python _main/hotkey-panels-switch-oracle.py` | `VERDICT: PASS`, **17 arms** — ausente = armado, desarmar grava `false`, trocar de tecla não apaga o interruptor, só `false` desarma, ficheiro estragado abre armado, o arranque não regista a tecla e diz por quê, e o handler arma→desarma com persistência nos dois sentidos |
+| `python _main/hotkey-panels-switch-oracle.py --neg-arm` | `NEG-ARM PASS` — **4/4 CAUGHT**, e o quarto mutante é o **portão do arranque** |
+
+Nenhum dos dois escreve o `_main/hotkey-settings.json` do dono: o primeiro não toca no
+ficheiro, o segundo usa um **temporário** (o braço que arma/desarma o shell real aponta
+o `hotkey_config` para lá). Provado por medição: `git status` do ficheiro dele fica
+limpo depois de ambas as corridas.
+
 ## As teclas vivem num só sítio
 
 `app/webview/hotkey_gesture.py` (`PANELS_ACCELERATOR = 'Alt+C'`,
