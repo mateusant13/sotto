@@ -7742,6 +7742,19 @@ WM_EDIT_DRAG = WM_APP + 10
 #: O tick do vigilante, pedido a ESTA thread (`SetTimer`), nunca a um hook.
 WM_TIMER = 0x0113
 _POLL_TIMER_ID = 1
+# O TIPO DESTAS DUAS CHAMADAS E' PARTE DA CORRECCAO (medido 2026-11-07). Sem
+# `argtypes`, `SetTimer(None, 1, 100, None)` devolveu **14973** -- um id que o
+# Windows gerou -- e o `KillTimer(None, 1)` que o `_restart_timer` fazia de
+# seguida devolveu **0**: o timer ficava VIVO para sempre. Consequencia medida
+# na instancia viva: `sotto-outside-click` a 14-27 % de um core com o painel
+# ESCONDIDO (`THREAD_CPU`, 14:16-14:19), e a classe real a girar a 1 591 Hz
+# porque o re-arme a cada tick encontrava sempre um timer novo. O id que se
+# guarda e' SEMPRE o que o `SetTimer` devolveu, nunca a constante pedida.
+user32.SetTimer.restype = ctypes.c_size_t
+user32.SetTimer.argtypes = [wt.HWND, ctypes.c_size_t, ctypes.c_uint,
+                            ctypes.c_void_p]
+user32.KillTimer.restype = wt.BOOL
+user32.KillTimer.argtypes = [wt.HWND, ctypes.c_size_t]
 #: Com o painel visivel: e' o intervalo em que o foreground e' re-lido. 100 ms e'
 #: o mesmo orcamento que um popover do Windows leva a reagir a um clique fora, e
 #: e' uma chamada de sistema por tick -- nao ha tensao nenhuma em 10 Hz.
@@ -7825,6 +7838,12 @@ class OutsideClickWatcher(threading.Thread):
         self._last_drag_post = 0.0
         self.drag_samples = 0
         self._last_fg = None
+        #: Intervalo com que o tick esta' DE FACTO armado (0 = morto). E' o
+        #: memo que impede o re-arme a cada tick -- ver `_restart_timer`.
+        self._timer_ms = 0
+        #: O id que o `SetTimer` DEVOLVEU (o Windows gera um quando pedimos com
+        #: hWnd nulo; matar a constante pedida nao mata o timer -- medido).
+        self._timer_id = 0
         self.polls = 0
         #: Quando o show armou este vigia: foreground que mude nos primeiros
         #: 250 ms e do show (`PANEL_SHOWN` .724 -> `PANEL_HIDDEN` .736, 2026-11-02).
@@ -7863,10 +7882,20 @@ class OutsideClickWatcher(threading.Thread):
         if not self.thread_id:
             return False
         try:
-            user32.PostThreadMessageW(self.thread_id, WM_TIMER, 0, 0)
-            return True
+            ok = bool(user32.PostThreadMessageW(self.thread_id, WM_TIMER, 0, 0))
         except Exception:  # noqa: BLE001
-            return False
+            ok = False
+        if not ok:
+            # O PEDIDO PODE CAIR NO VAZIO (medido 2026-11-07): `armed = True`
+            # imediatamente depois do `start` deu **0 ticks em 10 s**, porque a
+            # fila de mensagens da thread nasce no primeiro `GetMessageW`, que
+            # corre depois do `_ready.set()`. Com o painel a aparecer muito
+            # depois isto nao acontece -- mas um pedido caido tem de dizer o
+            # seu nome, senao o vigia fica armado na contabilidade e morto no
+            # sistema.
+            log('OUTSIDE_CLICK_TIMER_POST_FAILED thread=%s err=%d'
+                % (self.thread_id, ctypes.get_last_error() or 0))
+        return ok
 
     def start(self, timeout=5.0) -> bool:
         super().start()
@@ -7882,9 +7911,11 @@ class OutsideClickWatcher(threading.Thread):
         # se sincronize -- a thread vai sair. Desarma e mata o tick aqui.
         self._armed = False
         self._edit_mode = False
+        self._timer_ms = 0
+        self._timer_id = 0
         if self.thread_id:
             try:
-                user32.KillTimer(None, _POLL_TIMER_ID)
+                user32.KillTimer(None, self._timer_id or _POLL_TIMER_ID)
             except Exception:  # noqa: BLE001
                 pass
         if self.thread_id:
@@ -7945,15 +7976,40 @@ class OutsideClickWatcher(threading.Thread):
             log('OUTSIDE_CLICK_LOOP_EXIT')
 
     def _restart_timer(self):
-        """Re-arma o tick com o intervalo que o estado pede, ou mata-o."""
+        """Re-arma o tick com o intervalo que o estado pede, ou mata-o.
+
+        O RE-ARME E' MEMORIZADO, E ISSO NAO E' MICRO-OPTIMIZACAO (medido a
+        2026-11-07, ordem do dono sobre o stutter: *"é pra sempre verificar o
+        maior culpado do stutter"*). Re-armar dentro do proprio handler de
+        `WM_TIMER` DEGENERA o timer: `KillTimer`+`SetTimer` com o MESMO id a
+        cada tick mediu **2 412-3 715 Hz** contra os **9,3 Hz** de um `SetTimer`
+        pedido uma vez (`_main/outside-click-timer-oracle.py`, sonda do
+        primitivo), e a classe REAL a correr deu **1 591 Hz / 13,1 % de um
+        core** -- contra `sotto-outside-click` **19-31 %** na instancia viva
+        (`THREAD_CPU`, 14:16-14:59, com a shell em 29-41 %). Com o intervalo
+        memorizado o tick so' se re-arma quando o ESTADO muda: **9,2 Hz /
+        0,20 % de um core**.
+        """
+        want = int(self._interval_ms()) if self._wants_poll() else 0
+        if want == self._timer_ms:
+            return bool(want)          # ja' esta' armado como o estado pede
+        tid = self._timer_id or _POLL_TIMER_ID
         try:
-            user32.KillTimer(None, _POLL_TIMER_ID)
+            user32.KillTimer(None, tid)
         except Exception:  # noqa: BLE001
             pass
-        if not self._wants_poll():
+        self._timer_id = 0
+        self._timer_ms = 0
+        if not want:
             self._last_fg = None
             return False
-        user32.SetTimer(None, _POLL_TIMER_ID, int(self._interval_ms()), None)
+        got = int(user32.SetTimer(None, _POLL_TIMER_ID, want, None) or 0)
+        if not got:
+            log('OUTSIDE_CLICK_TIMER_FAILED interval_ms=%d err=%d'
+                % (want, ctypes.get_last_error() or 0))
+            return False
+        self._timer_id = got            # o ID DO WINDOWS, nunca a constante
+        self._timer_ms = want
         return True
 
     def _poll(self):

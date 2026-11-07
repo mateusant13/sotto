@@ -446,8 +446,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-07, 16:0x):** `_main\_audit-verify-all.cmd` = **273018 B**,
-  **3324 CRLF** / 0 bare LF, sha256 `243EAD164BEC31190488832398B6B6EDAF9B59CFF722C07D08C0273E1A87F39D`.
+- **PIN do ficheiro (medido 2026-11-07, 14:5x):** `_main\_audit-verify-all.cmd` = **273404 B**,
+  **3326 CRLF** / 0 bare LF, sha256 `FA5FFFFC51AB42327B8050A64C3357BB7EA53CBAD934D22BB84FF5AEC100B0F7`.
+  (Trezentos e oitenta e seis bytes e duas linhas a mais do que o pin de 273018 B: o par
+  `outside-click-timer` + `red-as-expected-outside-click-timer`, o **spin do timer do vigia de
+  clique-fora** -- `SetTimer`/`KillTimer` sem `argtypes` devolvia um id que o `KillTimer` nao
+  encontrava, e o re-arme a cada `WM_TIMER` degenerava o timer para **2 569-3 715 Hz** com a
+  classe real a **13,1 % de um core** (contra `sotto-outside-click` **14-27 %** na instancia
+  viva). Curado: id do Windows guardado, memo do intervalo, e o tick mede **9,2 Hz / 0,2 %**;
+  `--neg-arm` apanhado por 3 arms (rc=1).)
   (Mil setecentos e nove bytes e dezoito linhas a mais do que o pin de 271309 B: o par
   `hotkey-panels-switch` + `red-as-expected-hotkey-panels-switch`, o interruptor do Alt+C que o
   dono pediu no MENU DO ICONE -- verbatim: *"faz um botao 'desativar atalho alt c' no click direito
