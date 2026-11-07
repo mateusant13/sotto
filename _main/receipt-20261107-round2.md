@@ -100,12 +100,42 @@ nao). No ficheiro de hoje o nome e' `FunctionDef` de topo em `sotto_webview.py:1
 *"se a porra da legenda do youtube ta se movendo, mesmo com o stutter acontecendo, a NOSSA legenda que
 pegamos do youtube, TAMBEM."*
 
-O que o codigo faz hoje, medido: `_youtube_time()` extrapola do ultimo `video.currentTime` da CDP mas
-**corta a extrapolacao em 0,5 s** (`sotto_webview.py` `_youtube_time`), com a justificacao escrita de que
-um renderer adiado nao pode empurrar a legenda. Esse tecto e' exactamente o que transforma um stutter de
-1 s em atraso permanente. A metade do TEXTO (a linha revelar as palavras que ja conhece contra o relogio,
-sem esperar a proxima foto) esta' a ser medida pela lane `LegendaImuneStutter`; o resultado e o numero
-antes/depois entram aqui quando ela fechar.
+O que o codigo fazia, medido: `_youtube_time()` extrapolava do ultimo `video.currentTime` da CDP mas
+**cortava a extrapolacao em 0,5 s**, com a justificacao escrita de que um renderer adiado nao pode
+empurrar a legenda; e a ancora da revelacao tinha o seu proprio teto redondo, `YT_ANCHOR_MAX_S` = 3 s.
+Os dois numeros inventavam uma parada que o player nunca disse.
+
+**FECHADO (`app/webview/youtube_clock.py` + `_main/stutter-caption-oracle.py`).** A tolerancia deixa de
+ser um numero redondo e passa a ser o ESTADO PUBLICADO pelo snapshot:
+
+|estado que o player publicou|o que a legenda faz|
+|---|---|
+|`paused=false`, `ended=false`|conta com o relogio de parede ate' `HOLD_S` = 8 s|
+|`paused`/`ended` verdadeiros|nao anda um milissegundo|
+|campo ausente / sem amostra|serve a ultima amostra e nao adivinha|
+
+O numero de 8 s nao e' o limite da precisao: medido nas 745 amostras REAIS do Chrome dele
+(`_main/fixtures/yt-paint-freeze-20261104.json`, janelas 3-8 s, n=60258), o relogio do player anda
+1 s por 1 s de parede com deriva de **4,25 ms/s** (|erro| p95 4 ms, maximo 34 ms) -- ou seja, o relogio
+sozinho permitiria extrapolar 35 s dentro do orcamento de 150 ms que o contrato pede. O teto e' o risco
+de o player ter mudado de estado enquanto ninguem o lia, e esse numero quem marca e' o CONTRATO (1-5 s
+de stutter), nao a fisica do relogio. E o que NOS adiantamos e' nosso para desfazer: a primeira amostra
+autoritativa que chegue depois de uma extrapolacao descarta-a (`rebase`), com o `eps` separando "isto e'
+meu" de "isto e' um seek".
+
+Medido antes/depois pelo proprio oraculo:
+
+|stutter|erro max ANTES|texto mudo ANTES|erro max DEPOIS|texto mudo DEPOIS|
+|---|---|---|---|---|
+|3 s|2,312 s (4,6x o orcamento)|2,66 s|**0,021 s**|0,70 s|
+|5 s|4,411 s (8,8x)|4,66 s|**0,021 s**|1,34 s|
+
+O "texto mudo" que resta ja' nao e' o stutter: e' o passo da palavra dentro do proprio cue (a arm A3
+exige `gap <= passo_da_palavra + 1 tick`). `python _main/stutter-caption-oracle.py` -> `GREEN arms=14
+pass=14 fail=0 rc=0`; `--neg-arm` repoe os dois tetos numa COPIA e exige A1/A2/A3/A4/A5 vermelhas ->
+`rc=1`, `NEG-ARM PASS`. Vizinhanca re-medida verde: `youtube-word-clock` 23/23, `paused-pace` 8/8,
+`youtube-monotonic` 14/0, `youtube-hidden-clock` 12/0, `reveal-park` 5/5, `youtube-rate` 7/7,
+`caption-lag-budget` 15/15, `code-health` PASS.
 
 ## 6. A queixa do TERMINAL na tela dele — e a terceira DM, que NAO e' desta arvore
 
