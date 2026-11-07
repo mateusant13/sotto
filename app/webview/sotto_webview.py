@@ -4364,6 +4364,9 @@ class ExternalCaptionWatcher(threading.Thread):
                 if snap.get('paused') is not None else False
             self.yt_cdp_ended = bool(snap.get('ended')) \
                 if snap.get('ended') is not None else False
+            # `paused` AUSENTE NAO E' "A ANDAR" (2026-11-07, `youtube_clock`).
+            self.yt_cdp_playing = None if snap.get('paused') is None \
+                else (not self.yt_cdp_paused and not self.yt_cdp_ended)
             # A BORDA DA PAUSA E' UM EVENTO, E O `_tick` TEM DE A VER (2026-11-06).
             # Um tick so' dispara desenho quando a LINHA muda; ao pausar a linha
             # nao muda -- pelo contrario, e' exactamente isso que se quer -- e o
@@ -4787,7 +4790,9 @@ class ExternalCaptionWatcher(threading.Thread):
         self.yt_paint_items = []
         self.yt_cdp_paused = False
         self.yt_cdp_ended = False
+        self.yt_cdp_playing = None
         self.yt_cdp_clock = None
+        self._yt_guess_s = 0.0
         self._yt_was_paused = False
         self._yt_pause_epoch_seen = int(getattr(self, '_yt_pause_epoch', 0) or 0)
         _shell = getattr(self, 'shell', None)
@@ -5233,23 +5238,8 @@ class ExternalCaptionWatcher(threading.Thread):
         entre cues. Entao o relogio e' o unico relogio que existe -- mas so' se
         confia nele quando o ultimo alinhamento concorda com ele.
 
-        COM O PLAYER PARADO O RELOGIO E' O DA CDP (2026-11-06). O relogio do UIA
-        nao sabe de uma pausa: medido no log do dono, 13,8 s de `paused=True`
-        com `paint_t` a andar +0,95 s e a linha a crescer 3 palavras. O instante
-        do `video.currentTime` da foto e' a autoridade; enquanto ele nao mudar,
-        a cue e' a mesma e a linha nao cresce.
         """
-        t = None
-        if (bool(getattr(self, 'yt_cdp_paused', False))
-                or bool(getattr(self, 'yt_cdp_ended', False))):
-            clock = getattr(self, 'yt_cdp_clock', None)
-            if clock:
-                try:
-                    t = float(clock[0])
-                except (TypeError, ValueError, IndexError):
-                    t = None
-        if t is None:
-            t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
+        t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
         if t is None:
             # THE CLOCK CANNOT BE READ: the player may be gone. The ASR is
             # given back after a LONG silence, not immediately -- a page that
@@ -5323,20 +5313,20 @@ class ExternalCaptionWatcher(threading.Thread):
             return None
         # VELOCIDADE E PAUSA NO MESMO SITIO (2026-11-04). O relogio interpolado era
         # 1x por construcao: a 2x o video andava o dobro e a palavra chegava
-        # atrasada. E o teto de 3 s, que existia para um video PAUSADO nao revelar
-        # por inercia, congelava tambem a LEITURA falhada (*"sotto was BEFORE with
-        # the youtube, but then it stopped"*): pausa avanca zero e mantem a linha,
-        # atraso avanca ate' `YT_ANCHOR_STALL_S` e diz no log que parou de ler.
+        # atrasada. O teto agora e' o estado publicado e nao um numero redondo
+        # (`youtube_clock`, 2026-11-07): 3 s congelavam a revelacao num stutter de 5.
         try:
             rate = float(getattr(self, 'yt_cdp_rate', 1.0))
         except (TypeError, ValueError):
             rate = 1.0
         if not (0.05 <= rate <= 16.0):
             rate = 1.0
-        paused = bool(getattr(self, 'yt_cdp_paused', False))
-        if paused:
-            elapsed = 0.0
-        elif elapsed > self.YT_ANCHOR_MAX_S:
+        import youtube_clock
+        state = youtube_clock.state_of(self)
+        hold = self.YT_ANCHOR_MAX_S if state == youtube_clock.UNKNOWN \
+            else youtube_clock.HOLD_S
+        t, _moved, spent = youtube_clock.instant(base_t, elapsed, rate, state, hold)
+        if spent:
             # O TETO NAO ESCONDE UMA LEITURA FALHADA (2026-11-04): a linha
             # fica onde esta' -- o overlay nao apaga o que ja' pintou -- mas o
             # log diz que a FONTE parou de responder, que era o que faltava para
@@ -5344,9 +5334,11 @@ class ExternalCaptionWatcher(threading.Thread):
             stamp = getattr(self, '_yt_stall_logged', None)
             if stamp is None or elapsed - stamp > 5.0:
                 self._yt_stall_logged = elapsed
-                log('YOUTUBE_LIVE_STALLED elapsed_s=%.1f' % (elapsed,))
-            elapsed = self.YT_ANCHOR_MAX_S
-        lines = self._yt_lines(track, base_t + elapsed * rate)
+                log('YOUTUBE_LIVE_STALLED elapsed_s=%.1f state=%s'
+                    % (elapsed, state))
+            if state == youtube_clock.UNKNOWN:
+                return None
+        lines = self._yt_lines(track, t)
         if not lines:
             return None
         # UMA ETIQUETA PROPRIA (2026-11-02): com `src=external:youtube:track`
@@ -5407,7 +5399,8 @@ class ExternalCaptionWatcher(threading.Thread):
         # `freeze_rows` resolve-o no payload (e' a mesma autoridade que decide a
         # pausa em todo o resto: `video.paused`/`video.ended` da CDP).
         if (bool(getattr(self, 'yt_cdp_paused', False))
-                or bool(getattr(self, 'yt_cdp_ended', False))):
+                or bool(getattr(self, 'yt_cdp_ended', False))
+                or getattr(self, 'yt_cdp_playing', None) is not True):
             try:
                 import youtube_cdp_source as _ycs
                 frozen = _ycs.freeze_rows(rows, base_t)
@@ -5653,20 +5646,27 @@ class ExternalCaptionWatcher(threading.Thread):
         caller keeps the ASR running.
         """
         self._yt_clock_dur = duration
-        # O RELOGIO DA CDP PRIMEIRO (2026-11-03, MEDIDO): `video.currentTime` pela
-        # CDP e' o MESMO relogio do player, custa 2-5 ms e continua a andar com a
-        # aba escondida -- 56,9 s em 57 s de relogio de parede enquanto o DOM da
-        # legenda estava congelado. O caminho por UIA le' o texto do relogio na
-        # arvore de acessibilidade, que nessa mesma janela nao atualizava.
+        # O RELOGIO DA CDP PRIMEIRO (2026-11-03, MEDIDO): `video.currentTime` e'
+        # o mesmo relogio do player, 2-5 ms, e anda com a aba escondida (56,9 s
+        # em 57 s de parede) onde o texto do UIA nao atualizava.
         cdp_clock = getattr(self, 'yt_cdp_clock', None)
         if cdp_clock is not None:
-            base_t, base_mono = cdp_clock
-            age = time.monotonic() - base_mono
-            # EXTRAPOLA NO MAXIMO 0,5 s: um renderer adiado por 3 s nao pode
-            # empurrar a legenda 3 s para a frente do que se ve'.
-            if 0.0 <= age <= 2.0:
-                self._yt_clock_last = (float(base_t), time.monotonic())
-                return float(base_t) + min(age, 0.5)
+            try:
+                # A TOLERANCIA E' O QUE O PLAYER DISSE, NAO UM TETO (2026-11-07).
+                # Aqui estava `base_t + min(age, 0.5)`: um stutter maior que 0,5 s
+                # deixava a legenda para tras do video por (stutter - 0,5). A
+                # regra e a deriva de 34 ms que a justifica vivem em
+                # `youtube_clock`; a prova e' `_main/stutter-caption-oracle.py`.
+                import youtube_clock
+                t, spent = youtube_clock.sample_instant(
+                    self, float(cdp_clock[0]),
+                    time.monotonic() - float(cdp_clock[1]))
+                if not spent:
+                    return float(t)
+                # AMOSTRA VELHA DEMAIS: a adivinha acaba, a UIA e' o que resta.
+            except Exception as exc:          # noqa: BLE001
+                log(f'YOUTUBE_CLOCK_FAILED error={exc!r}')
+
         last = getattr(self, "_yt_clock_last", None)
         if last is not None:
             age = time.monotonic() - last[1]

@@ -253,6 +253,18 @@ def _run_checks(module):
         def _history_provenance(self, options):
             return ' <!-- route=final start=1 reason=ok -->'
 
+        # A RETENCAO NAO E' O QUE ESTE REPRO MEDE (medido 2026-11-07). O
+        # `history_append` passou a chamar `self._history_prune()` no choke point e
+        # o dublê rebentava com `AttributeError: 'Double' object has no attribute
+        # '_history_prune'`, o que matava o laco inteiro. A limpeza real varre
+        # `HISTORY_ROOT` e APAGA dias antigos do dono: um repro de duplicacao nao
+        # pode ter esse efeito, por isso o dublê conta a chamada e nao toca no disco.
+        # A retencao em si tem o seu proprio portao; aqui o que se prova e' que o
+        # choke point continua a decidir a linha nova.
+        def _history_prune(self):
+            self.pruned_calls = getattr(self, 'pruned_calls', 0) + 1
+            return 0
+
     double = Double()
     detail = []
     with _silent_log(module):

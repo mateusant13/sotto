@@ -103,6 +103,11 @@ class FakeShell(object):
         self._yt_track = {"cues": []}
         self.yt_cdp_rate = rate
         self.yt_cdp_paused = paused
+        # O ESTADO PUBLICADO (2026-11-07). `yt_live_frame` deixou de avancar por
+        # inercia: um duplo sem `paused` E' um player que nao falou, e a regra
+        # congela nesse caso (`youtube_clock`). Este duplo diz o que o payload
+        # real diz a cada 80 ms.
+        self.yt_cdp_playing = not paused
         self.seen = []
 
     def _yt_lines(self, track, t):
@@ -127,19 +132,31 @@ def arm_paused_holds(mod):
 
 
 def arm_stall_is_named(mod, logs):
+    # O TETO E' O JUSTIFICADO, NAO 3 s (2026-11-07): passado o `HOLD_S` do
+    # `youtube_clock` a linha fica onde esta' e o log diz que parou de ler.
     logs[:] = []
-    sh = FakeShell(mod, 10.0, 5.0, rate=1.0)
+    sh = FakeShell(mod, 10.0, _clock(mod).HOLD_S + 0.5, rate=1.0)
     mod.ExternalCaptionWatcher.yt_live_frame(sh)
     said = any("YOUTUBE_LIVE_STALLED" in x for x in logs)
     return said, "YOUTUBE_LIVE_STALLED=%s" % said
 
 
+def _clock(mod):
+    """O `youtube_clock` que acompanha o shell julgado (a regra, nao um numero)."""
+    path = os.path.join(os.path.dirname(os.path.abspath(mod.__file__)),
+                        'youtube_clock.py')
+    if not os.path.exists(path):        # o shell mutante vive num tmp sozinho
+        path = os.path.join(WEBVIEW, 'youtube_clock.py')
+    return load_module(path, 'youtube_clock_rate')
+
+
 def arm_stall_clamps_the_clock(mod):
-    """O ancora velho NAO extrapola: o t entregue para no teto de 3 s."""
-    sh = FakeShell(mod, 10.0, 40.0, rate=2.0)
+    """O ancora velho NAO extrapola: o t entregue para no teto justificado."""
+    hold = _clock(mod).HOLD_S
+    sh = FakeShell(mod, 10.0, hold + 40.0, rate=2.0)
     mod.ExternalCaptionWatcher.yt_live_frame(sh)
     got = sh.seen[-1] if sh.seen else None
-    want = 10.0 + mod.ExternalCaptionWatcher.YT_ANCHOR_MAX_S * 2.0
+    want = 10.0 + hold * 2.0
     ok = got is not None and abs(got - want) < 0.02
     return ok, "t=%.3f esperado=%.3f" % (got if got is not None else -1, want)
 
@@ -179,8 +196,13 @@ def main(argv):
         try:
             shell_raw = io.open(SHELL, encoding="utf-8").read()
             ovl_raw = io.open(OVERLAY, encoding="utf-8").read()
-            mut_shell = shell_raw.replace("base_t + elapsed * rate",
-                                          "base_t + elapsed", 1)
+            # A ANCORA MUDOU (2026-11-07): o relogio da linha deixou de ser
+            # `base_t + elapsed * rate` (o teto plano saiu) e passa a ser
+            # `youtube_clock.instant(...)`. O mutante e' o MESMO defeito: o
+            # relogio a 1x num video a 2x.
+            mut_shell = shell_raw.replace(
+                "youtube_clock.instant(base_t, elapsed, rate, state, hold)",
+                "youtube_clock.instant(base_t, elapsed, 1.0, state, hold)", 1)
             mut_ovl = ovl_raw.replace("t = self.t + elapsed * self.rate",
                                       "t = self.t + elapsed", 1)
             if mut_shell == shell_raw or mut_ovl == ovl_raw:

@@ -314,6 +314,7 @@ panel-state.SottoPovSelftest-*.json
 _main/_redux-gate-mutants/
 _main/_strip-reload-probe.json
 _main/_strip-surface-oracle.json
+_main/_audit-verify/_battery-plan.txt
 _main/_audit-verify/_battery-priority.txt
 _main/_audit-verify/_battery-summary.txt
 _main/_audit-verify/_slowest.txt

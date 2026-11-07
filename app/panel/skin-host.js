@@ -568,6 +568,19 @@
     }
     var headerBlock = aside.firstElementChild;
     if (!headerBlock) return;
+    /* THE MARKETING SENTENCES GO (owner, 2026-11-07: *"tira qualquer frase de
+     * efeito ... 'the room, so far'"*). Every vendor panel opens with an eyebrow
+     * (`● transcript history`) and a headline (`The room, so far`, `Tonight's
+     * transcript`, …) that describe a mockup's evening, not our transcript. They
+     * are pure decoration -- no handler, no state -- so they are marked here and
+     * hidden by `skin-shim.css`, structurally (h2 + the row before it) rather than
+     * by matching five different sentences. */
+    var headline = headerBlock.querySelector('h2');
+    if (headline) {
+      headline.setAttribute('data-skin-dead-text', '1');
+      var eyebrow = headline.previousElementSibling;
+      if (eyebrow) eyebrow.setAttribute('data-skin-dead-text', '1');
+    }
     // Every button in the panel's header is dead in a frozen tree: the HIDE
     // control and the speaker filter chips (the mock's invented people). Removing
     // the whole chips row — not just its buttons — also removes its margin, which
@@ -596,6 +609,12 @@
                 refs.panelRoot.querySelector('input');
     if (!input) return;
     refs.searchInput = input;
+    // THE FIELD IS THE DESIGN'S, THE SENTENCE IS NOT. The vendor writes
+    // `Search this transcript…`; the owner's rule for that control is one word
+    // (*"tira a BARRA de pesquisa ... so um botao pequeno com o simbolo"* was about
+    // our own panel, and this field is the frozen design's own bar), so the label
+    // stops being a sentence.
+    input.placeholder = 'Search';
     input.addEventListener('input', function () {
       state.query = String(input.value || '');
       renderLines();

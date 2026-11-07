@@ -176,6 +176,11 @@ def build(mod, track):
     # `yt-dlp`). O fake fixa a resposta: a faixa ja' esta' pronta, e e' o
     # ramo do RELOGIO que estas armas medem.
     watcher._yt_track_poll = lambda *a, **k: track
+    # O PLAYER DISSE QUE ESTA' A ANDAR (2026-11-07). `yt_live_frame` deixou de
+    # avancar por inercia: quem manda e' o estado publicado (`youtube_clock`), e
+    # um duplo que nao publica nada e' "nao sei" -- a linha congela. A arm mede a
+    # REVELACAO, portanto o duplo diz o que o payload real diz a cada 80 ms.
+    watcher.yt_cdp_playing = True
     return watcher, shell
 
 

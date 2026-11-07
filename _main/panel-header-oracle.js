@@ -830,6 +830,27 @@ async function runArms() {
     }
   }
 
+  /* ------------------------------------------------------------------ ARM 8 */
+  currentArm = '8';
+  console.log('\n=== ARM 8 — as duas ferramentas do historico ficam a DIREITA, e o rotulo sai ===');
+  /* OWNER, 2026-11-07, verbatim: *"remove o 'Show in folder'. tem que ser SOMENTE
+   * um icone. e os dois tem que ficar a direita."* The row used to be packed to the
+   * LEFT and the folder button carried the words "Show in folder" -- a sentence on
+   * a 380 px panel, sitting where the transcript should start. */
+  const tools = panel.document.querySelector('.history__tools');
+  const revealBtn = panel.document.getElementById('reveal-button');
+  const searchBtn = panel.document.getElementById('history-search-button');
+  const justify = winningDecl(tools, rules, 'justify-content');
+  const revealKids = [...revealBtn.children].map((k) => k.tagName.toLowerCase());
+  arm('the tools row packs its children to the RIGHT',
+    justify ? String(justify.value).replace(/\s+/g, ' ').trim() : null, 'flex-end');
+  arm('the folder button is ONE glyph and no sentence',
+    [(revealBtn.textContent || '').trim(), revealKids],
+    ['', ['svg']]);
+  arm('the two glyphs are the row, and the field is hidden until it is asked for',
+    [searchBtn ? searchBtn.id : null, panel.document.getElementById('history-search').hidden],
+    ['history-search-button', true]);
+
   return 0;
 }
 
@@ -859,6 +880,23 @@ function loadRules() {
 
 const MUTANTS = [
   {
+    name: 'the tools row goes back to the LEFT',
+    file: 'panel-unified.css',
+    /* THE FILES ARE CRLF ON DISK (measured: `panel-unified.css` 397 CRLF, 0 bare
+     * LF), so the anchors carry `\r\n`. An LF-only anchor matched nothing and the
+     * neg-arm reported "the text moved" for a mutation that had never been tried. */
+    from: 'html body[data-surface="panel"] .history__tools {\r\n  display: flex !important;\r\n  flex-direction: row !important;\r\n  align-items: center !important;\r\n  justify-content: flex-end !important;',
+    to: 'html body[data-surface="panel"] .history__tools {\r\n  display: flex !important;\r\n  flex-direction: row !important;\r\n  align-items: center !important;\r\n  justify-content: flex-start !important;',
+    arm: 'the tools row packs its children to the RIGHT',
+  },
+  {
+    name: 'the words "Show in folder" come back onto the button',
+    file: 'panel.html',
+    from: '                  stroke-linejoin="round"\r\n                />\r\n              </svg>\r\n            </button>\r\n          </div>',
+    to: '                  stroke-linejoin="round"\r\n                />\r\n              </svg>\r\n              <span>Show in folder</span>\r\n            </button>\r\n          </div>',
+    arm: 'the folder button is ONE glyph and no sentence',
+  },
+  {
     name: 'the readout is painted by ONE of its two callers only',
     file: 'panel.js',
     from: '    paintLiveLamps(up);',
@@ -886,13 +924,19 @@ const MUTANTS = [
     to: 'html body[data-surface="strip"] .stripbar #strip-hide-button { order: 7 !important; }',
     arm: 'on the STRIP the X is the LAST control the row PAINTS',
   },
-  {
-    name: 'the lamp sits on top of the pause button',
-    file: 'panel.css',
-    from: 'html body[data-surface="panel"] .panel__controls .live-lamp { order: 0; }',
-    to: 'html body[data-surface="panel"] .panel__controls .live-lamp { order: 5; }',
-    arm: 'the lamp is FAR from the pause: the pixel distance',
-  },
+  /* ARM 2 HAS NO WORKING NEGATIVE CONTROL, AND SAYING SO IS PART OF THE ARM.
+   *
+   * Measured 2026-11-07, in this order: `order: 5` on the lamp moves it RIGHT of
+   * the pause, so the gap GROWS and the arm stays GREEN -- that mutant was wrong,
+   * not the arm; a `width` in `panel.css` loses the cascade to the later
+   * `!important` box in `panel-unified.css`; and mutating that winning box to
+   * `400px` turns ONE OTHER arm red while the distance still reads its 194 px,
+   * i.e. the model does not consume the lamp's width the way the mutation assumed.
+   *
+   * The honest state: ARM 2 passes as a POSITIVE measurement (the model agrees with
+   * the measured window to the pixel) and no mutant covers it. Recorded here rather
+   * than papered over with a mutant that cannot go red.
+   */
   {
     name: 'the LIVE switch closes the panel again',
     file: 'panel.js',

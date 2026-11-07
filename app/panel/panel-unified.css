@@ -302,17 +302,46 @@ html body[data-surface="strip"] .stripbar .icon-button {
 
 /* `#history-search-button` is a 24 px magnifier; `#history-search` is `display:
  * none` until `.history__tools.is-searching` is set by `wireHistorySearch`. The
- * row is left-aligned and its height is fixed, so opening the field does not push
- * the first transcript line down by a different amount in different themes. */
+ * row is fixed-height so opening the field does not push the first transcript
+ * line down by a different amount in different themes.
+ *
+ * BOTH GLYPHS SIT ON THE RIGHT (owner, 2026-11-07): *"remove o 'Show in folder'.
+ * tem que ser SOMENTE um icone. e os dois tem que ficar a direita."* So the row
+ * is right-aligned, the field grows LEFTWARD from them when it is opened, and the
+ * folder button is a 24 px square with no label -- its word was a sentence the
+ * owner did not want on screen, and the glyph is the same one the rows carry. */
 html body[data-surface="panel"] .history__tools {
   display: flex !important;
   flex-direction: row !important;
   align-items: center !important;
-  justify-content: flex-start !important;
+  justify-content: flex-end !important;
   gap: 6px !important;
   min-height: 24px !important;
   padding: 0 !important;
-  text-align: left !important;
+  text-align: right !important;
+}
+
+html body[data-surface="panel"] .reveal-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 24px !important;
+  width: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  border-radius: 6px !important;
+}
+
+/* NO LABEL LEAVES A TEXT NODE BEHIND, in case a build ever puts one back. */
+html body[data-surface="panel"] .reveal-button > span {
+  display: none !important;
 }
 
 html body[data-surface="panel"] .history__search-button {

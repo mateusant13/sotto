@@ -296,8 +296,20 @@ def check(module):
     # is not a leak. The pin used to call it a leak and expected the payload
     # without it, and the whole step went RED on a payload that grew on
     # purpose.
+    #
+    # REBASELINED 2026-11-07: `paused` rode into BOTH branches of `stats()` on
+    # the owner's order of 2026-11-06 -- `sotto_webview.py:16862` (the
+    # WORKER_STATS branch) and `:16815` (the fresh-meter branch, the one that
+    # runs almost always), each with its own comment recording the defect: the
+    # panel's pause glyph lived only in the page, so reopening the panel over
+    # unloaded engines painted PAUSE over a shell that WAS paused. It is one
+    # boolean on a message already in flight, and the panel reads ABSENT as
+    # "not told", never as "running". The pins below predated the field and
+    # pinned the old shape, so every one of them went RED on a payload that
+    # grew on purpose -- the same defect class as the `tag` rebaseline below.
     want('stats.payload', stats, {'tag': 'stats', 'peak': 0.443448,
-                                  'blocks': 812.0, 'queue_drops': 0.0})
+                                  'blocks': 812.0, 'queue_drops': 0.0,
+                                  'paused': False})
     if 'nonzero_blocks' in stats:
         failures.append('stats() leaks fields the panel does not read')
 
@@ -311,13 +323,14 @@ def check(module):
     # TAG AWAY. This oracle predated that addition, so its real arm compared against the old shape and
     # the whole step went RED (rc=3) in the product battery. The tag is 'meter' on the window-peak path
     # and 'stats' elsewhere, which is exactly what the two meter arms below assert.
-    want('stats.empty', shell.stats(), {'tag': 'stats'})
+    want('stats.empty', shell.stats(), {'tag': 'stats', 'paused': False})
 
     class PartialBridge:
         last_worker_stats = {'tag': 'tick', 'fields': {'blocks': '3'}, 'line': ''}
 
     shell.bridge = PartialBridge()
-    want('stats.partial', shell.stats(), {'tag': 'stats', 'blocks': 3.0})
+    want('stats.partial', shell.stats(),
+         {'tag': 'stats', 'blocks': 3.0, 'paused': False})
 
     # -- 10. THE RESTORE path reads ONE file and CLAMPS ----------------------
     shell2 = module.SottoShell.__new__(module.SottoShell)
@@ -509,7 +522,7 @@ def check(module):
     want('stats.log.500-samples-1-line', len(push_lines), 1)
     want('stats.log.feed-not-throttled', len(emitted), 500)
     want('stats.log.payload-shape', emitted[0][1] if emitted else None,
-         {'tag': 'stats', 'peak': 0.5, 'blocks': 3.0})
+         {'tag': 'stats', 'peak': 0.5, 'blocks': 3.0, 'paused': False})
 
     # -- 19. THE RELOAD CONTRACT (the owner's order: never old code again) ----
     # Driven, not grepped: a stand-in bridge that stays CAPTURING, so the guard,
@@ -679,12 +692,16 @@ def check(module):
     wave_shell.bridge = bridge
     facts['meter.stats_payload'] = wave_shell.stats()
     want('meter.stats-prefers-the-window-peak', wave_shell.stats(),
-         {'tag': 'meter', 'peak': 0.1 + (499 % 7) / 100.0, 'blocks': 12.0})
+         {'tag': 'meter', 'peak': 0.1 + (499 % 7) / 100.0, 'blocks': 12.0,
+          # the fresh-meter branch stamps the same boolean (`:16815`); a pin
+          # without it is the 2026-11-07 staleness, not a product defect.
+          'paused': False})
     bridge.last_meter = {'at': time.monotonic() - (module.METER_FRESH_S + 1.0),
                          'peak': 0.99, 'blocks': 99.0}
     facts['meter.stats_fallback'] = wave_shell.stats()
     want('meter.stats-falls-back-to-the-running-maximum-when-stale',
-         wave_shell.stats(), {'tag': 'stats', 'peak': 0.443448, 'blocks': 812.0})
+         wave_shell.stats(),
+         {'tag': 'stats', 'peak': 0.443448, 'blocks': 812.0, 'paused': False})
 
     return failures, facts
 

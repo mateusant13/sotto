@@ -23,11 +23,12 @@ Um texto aceito ANTES do desligar chega ao `_drain` DEPOIS do `ov.show(False)`
 e chamava `ov.show(True)` sem perguntar nada: a janela volta com o interruptor
 em OFF e nada a esconde outra vez.
 
-O QUE ESTE ORACULO EXECUTA. `SottoShell._drain_caption_pending` e
-`SottoShell.show_caption_window` REAIS, extraidas do arquivo por AST e
-executadas com os globais injectados (`log`, `json`, `time`, `bisect`) sobre um
-`self` falso com um overlay GRAVADOR. Nao e' uma copia: se a shell mudar a
-funcao, este passo muda com ela.
+O QUE ESTE ORACULO EXECUTA. `SottoShell._drain_caption_pending`,
+`SottoShell.show_caption_window` e `SottoShell._set_live_enabled` REAIS,
+extraidas do arquivo por AST e executadas com os globais injectados (`log`,
+`json`, `time`, `bisect`, e a regra de topo `_caption_replay_allowed` que o
+interruptor chama) sobre um `self` falso com um overlay GRAVADOR. Nao e' uma
+copia: se a shell mudar a funcao, este passo muda com ela.
 
 BRACO NEGATIVO (`--neg-arm`): apaga o guarda numa COPIA do fonte e exige o
 vermelho do arm A1.
@@ -83,6 +84,23 @@ def extract_method(src: str, name: str) -> str:
                         for line in body
                     )
     raise SystemExit('SottoShell.%s nao existe no fonte' % name)
+
+
+def extract_function(src: str, name: str) -> str:
+    """O texto-fonte EXATO de uma funcao de TOPO (regra pura do modulo).
+
+    O `exec` do metodo extraido usa o proprio namespace como `__globals__`: um
+    nome de topo que o metodo chama (`_caption_replay_allowed`, o guarda do
+    replay) TEM de estar la', senao o `except` do interruptor engole o
+    `NameError` e o arm mede o silencio em vez da regra. Extrai-se do MESMO
+    fonte para a prova seguir o ficheiro, e nao uma copia escrita aqui.
+    """
+    tree = ast.parse(src)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            lines = src.splitlines(keepends=True)
+            return ''.join(lines[node.lineno - 1:node.end_lineno])
+    raise SystemExit('%s nao existe no topo do fonte' % name)
 
 
 class Overlay:
@@ -233,7 +251,12 @@ def arms(src):
     # MEDIDO no uso dele: desligar 20 s e religar custava 1-1,5 s de ecra vazio;
     # desligar e religar em seguida era INSTANTANEO -- porque havia uma linha
     # fresca para pintar. O `on` tem de devolver a linha que ja' estava la'.
-    enable_src = extract_method(src, '_set_live_enabled')
+    # `_set_live_enabled` chama `_caption_replay_allowed`, uma funcao de TOPO do
+    # mesmo modulo. O namespace do `exec` E' o `__globals__` da funcao extraida,
+    # portanto a regra tem de viajar com ela -- extraida do mesmo texto. Sem ela
+    # o `except` do interruptor escondia `NameError` e o A5 media "nao pintou".
+    enable_src = (extract_function(src, '_caption_replay_allowed') + '\n'
+                  + extract_method(src, '_set_live_enabled'))
     ns3, _ = build(enable_src)
     for kind, age_s, want_replay in (('fresca', 0.4, True), ('historia', 9.0, False)):
         ov5 = Overlay()

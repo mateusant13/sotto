@@ -160,7 +160,7 @@ REM carregava um plano ESTALE -- decisoes sobre outro ficheiro. Um plano velho e
 REM pior do que nenhum: por isso sai antes de o build comecar.
 if "%BATTERY_PLAN%"=="1" (
   if exist "%PLAN_FILE%" del /q "%PLAN_FILE%" 2>nul
-  python "%ROOT%\_main\_battery-plan.py" --cmd "%ROOT%\_main\_audit-verify-all.cmd" --out "%PLAN_FILE%" --state "%CACHE_STATE%" 2>nul
+  pythonw "%ROOT%\_main\_battery-plan.py" --cmd "%ROOT%\_main\_audit-verify-all.cmd" --out "%PLAN_FILE%" --state "%CACHE_STATE%" 2>nul
   if errorlevel 1 ( set "BATTERY_PLAN=0" ) else ( call :plan_load )
 )
 if "%BATTERY_PLAN%"=="1" if not "%PLAN_LOADED%"=="1" set "BATTERY_PLAN=0"
@@ -422,12 +422,14 @@ if exist _main\history-gallery-oracle.js (
   call :record history-gallery-oracle !STEP_RC!
 ) else ( call :record history-gallery-oracle MISSING )
 if exist _main\_panel2-dom-probe.js (
-  call :step panel2-dom-probe 0 "_main\_panel2-dom-probe.js;app\panel\panel.html;app\panel\panel.css;app\panel\caption-formulation.js;app\panel\history-source.js;app\panel\history-gallery.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js" "%OUT%\panel2-dom-probe.log" node _main\_panel2-dom-probe.js
-  call :step panel-header-oracle 0 "_main\panel-header-oracle.js;app\panel\panel.html;app\panel\panel.css;app\panel\panel-unified.css;app\panel\button-contract.css;app\panel\themes\theme-1.css;app\panel\themes\themes.js;app\panel\theme-switcher.js;app\panel\strip-drag.js;app\panel\skin-layout.css;app\panel\panel.js" "%OUT%\panel-header.log" node _main\panel-header-oracle.js
+  call :step panel2-dom-probe 0 "_main\_panel2-dom-probe.js;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel2-dom-probe.log" node _main\_panel2-dom-probe.js
+  call :step panel-header-oracle 0 "_main\panel-header-oracle.js;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-header.log" node _main\panel-header-oracle.js
   call :step panel-drag-targets 0 "_main\panel-drag-targets-oracle.js;app\panel\panel.html;app\panel\panel-unified.css;app\panel\skin-layout.css;app\panel\panel.js;app\panel\strip-drag.js" "%OUT%\panel-drag-targets.log" node _main\panel-drag-targets-oracle.js
-  call :step panel-history-clip 0 "_main\panel-history-clip-probe.mjs;app\panel\panel.html;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\panel.js" "%OUT%\panel-history-clip.log" node _main\panel-history-clip-probe.mjs
+  call :step panel-history-clip 0 "_main\panel-history-clip-probe.mjs;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-history-clip.log" node _main\panel-history-clip-probe.mjs
   call :step panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload.log" python _main\panel-pause-payload-oracle.py
   call :step red-as-expected-panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
+  call :step panel-deps 0 "_main\panel-deps-oracle.py;_main\_audit-verify-all.cmd;_main\sotto-state-page.py;app\panel\panel.html" "%OUT%\panel-deps.log" python _main\panel-deps-oracle.py
+  call :step red-as-expected-panel-deps 0 "_main\panel-deps-oracle.py;_main\_audit-verify-all.cmd;_main\sotto-state-page.py;app\panel\panel.html" "%OUT%\panel-deps-neg.log" python _main\panel-deps-oracle.py --neg-arm
   call :record panel2-dom-probe !STEP_RC!
 ) else ( call :record panel2-dom-probe MISSING )
 
@@ -1536,6 +1538,27 @@ if exist _main\paused-pace-oracle.py (
 call :step always red-as-expected-paused-pace 1 "_main\paused-pace-oracle.py;app\webview\sotto_webview.py" "%OUT%\paused-pace-neg.log" python _main\paused-pace-oracle.py --neg-arm
 call :expectred red-as-expected-paused-pace !STEP_RC! "%OUT%\paused-pace-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-paused-pace MISSING "%OUT%\paused-pace-neg.log" "NEG-ARM PASS" )
+REM STUTTER NAO E' DESSINCRONIA (dono, 2026-11-07, verbatim): *"e ridiculo o fato que um
+REM stutter qualquer do meu pc, faca a legenda dessincronizar ... se a porra da legenda do
+REM youtube ta se movendo, mesmo com o stutter acontecendo, a NOSSA legenda que pegamos do
+REM youtube, TAMBEM."* O relogio tinha dois tetos redondos: `base_t + min(age, 0.5)` na sample
+REM da CDP e `YT_ANCHOR_MAX_S` (3 s) na extrapolacao -- os dois inventavam uma parada que o
+REM player nunca disse. Medido com as 745 amostras REAIS do Chrome dele
+REM (`_main\fixtures\yt-paint-freeze-20261104.json`): a deriva do relogio do player e' 4,25
+REM ms/s (34 ms em 8 s), ou seja o teto nao era a fisica, era um numero; e custava 2,312 s de
+REM erro num stutter de 3 s e 4,411 s num de 5 s (8,8x o orcamento de 150 ms). Agora quem
+REM decide a tolerancia e' o ESTADO PUBLICADO (`app\webview\youtube_clock.py`): PLAYING conta
+REM ate' 8 s, PAUSED/ENDED nao anda um milissegundo, e sem bandeira nenhuma serve-se a ultima
+REM amostra. O `--neg-arm` repoe o teto de 0,5 s e a espera pelo snapshot em COPIA e exige
+REM as arms A1/A2/A3/A4/A5 vermelhas.
+if exist _main\stutter-caption-oracle.py (
+call :step always stutter-caption 0 "_main\stutter-caption-oracle.py;app\webview\youtube_clock.py;app\webview\sotto_webview.py;_main\fixtures\yt-paint-freeze-20261104.json" "%OUT%\stutter-caption.log" python _main\stutter-caption-oracle.py
+call :record stutter-caption !STEP_RC!
+) else ( call :record stutter-caption MISSING )
+if exist _main\stutter-caption-oracle.py (
+call :step always red-as-expected-stutter-caption 1 "_main\stutter-caption-oracle.py;app\webview\youtube_clock.py;app\webview\sotto_webview.py;_main\fixtures\yt-paint-freeze-20261104.json" "%OUT%\stutter-caption-neg.log" python _main\stutter-caption-oracle.py --neg-arm
+call :expectred red-as-expected-stutter-caption !STEP_RC! "%OUT%\stutter-caption-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-stutter-caption MISSING "%OUT%\stutter-caption-neg.log" "NEG-ARM PASS" )
 if exist _main\parakeet-ultra-oracle.py (
 call :step heavy parakeet-ultra 0 "_main\parakeet-ultra-oracle.py;worker\parakeet_ultra.py;worker\ultra_export.py;app\worker\redux_live.py" "%OUT%\parakeet-ultra.log" python _main\parakeet-ultra-oracle.py --engine all
 call :record parakeet-ultra !STEP_RC!
@@ -2861,7 +2884,7 @@ echo cached   : !CACHEDN! step(s) were reused from the cache (their content and 
 REM THE SLOWEST STEPS (owner, 2026-10-21: *"a bateria deve ser rapida"*). Until
 REM this table existed nobody could say WHICH step was heavy -- and the fast
 REM mode reads the same numbers to decide what to skip.
-python _main\_stepcache.py slowest --state "%CACHE_STATE%" --top 8 > "%OUT%\_slowest.txt" 2>&1
+pythonw _main\_stepcache.py slowest --state "%CACHE_STATE%" --top 8 > "%OUT%\_slowest.txt" 2>&1
 echo slowest  : the steps that took the longest last run
 type "%OUT%\_slowest.txt"
 if "!HEAVYLIST!"=="" ( set "HEAVYTEXT=-none-" ) else ( set "HEAVYTEXT=!HEAVYLIST!" )
@@ -3062,9 +3085,9 @@ REM python for every step, and one more per step would be a tax on every run
 REM to serve one mode.
 echo.>"%CACHE_STATE%.t0"
 set "SOTTO_STEP_NAME=!S_NAME!"
-python _main\step-deadline.py --seconds %SOTTO_STEP_DEADLINE_S% -- !S_CMD! > "!S_LOG!" 2>&1
+pythonw _main\step-deadline.py --seconds %SOTTO_STEP_DEADLINE_S% -- !S_CMD! > "!S_LOG!" 2>&1
 set "STEP_RC=!ERRORLEVEL!"
-python _main\_stepcache.py record --step "!S_NAME!" --expect-rc !S_EXPECT! --deps "!S_DEPS!" --rc !STEP_RC! --log "!S_LOG!" --state "%CACHE_STATE%" --t0 "%CACHE_STATE%.t0" >nul 2>&1
+pythonw _main\_stepcache.py record --step "!S_NAME!" --expect-rc !S_EXPECT! --deps "!S_DEPS!" --rc !STEP_RC! --log "!S_LOG!" --state "%CACHE_STATE%" --t0 "%CACHE_STATE%.t0" >nul 2>&1
 exit /b 0
 :step_fastskip
 REM THE FAST MODE (owner, 2026-10-21: *"a bateria deve ser rapida"*). This step
@@ -3278,6 +3301,6 @@ REM UTF-8 so a console-codepage mojibake in the log cannot hide a verdict, and s
 REM the required text may contain quotes or an em dash.
 :hastext
 set "HAS=no"
-python -c "import io,sys;t=io.open(sys.argv[1],'rb').read().decode('utf-8','replace');sys.exit(0 if sys.argv[2] in t else 3)" "%~1" "%~2" >nul 2>&1
+pythonw -c "import io,sys;t=io.open(sys.argv[1],'rb').read().decode('utf-8','replace');sys.exit(0 if sys.argv[2] in t else 3)" "%~1" "%~2" >nul 2>&1
 if "!ERRORLEVEL!"=="0" set "HAS=yes"
 exit /b 0

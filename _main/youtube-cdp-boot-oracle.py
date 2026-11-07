@@ -29,12 +29,18 @@ AS ARMS (todas EXECUTAM as funcoes reais; nenhuma procura texto)
       diz o motivo. CONTROLE: o mesmo `boot_attach` contra um `/json/list` de
       fotografia -> `(True,'only-tab')`, uma linha `ok=true`.
   A3 aba-navegou    -- o laco REAL (`CdpCaptionSource._run`) com um WebSocket de
-      fotografia: o video declarado (`OLD`) desapareceu da lista de abas e a foto
-      traz `NEW` -> `_video_id` passa a `NEW` e o estado diz
-      `adopted:OLD->NEW`. CONTROLE: `OLD` ainda aberto -> NAO adota, `_video_id`
-      fica `OLD`, estado `wrong-video (NEW)`. O controle tem mutacao PROPRIA no
-      `--neg-arm` (a adocao que ignora o declarado aberto tem de o derrubar):
-      um controle que passa sob TODAS as mutacoes nunca esteve ancorado.
+      fotografia. A ADOCAO TEM DUAS REGRAS (2026-11-07) e um mundo so' as
+      cobria uma a' outra; por isso a arm tem dois bracos, cada um a isolar a
+      regra que decide: `aba-que-navegou` (o declarado ja' nao esta' em aba
+      nenhuma -- exercita a QUEDA do id no `_choose`) e
+      `aba-que-navegou/depois` (a aba a que nos ligamos NAVEGOU -> so'
+      `adopt_decision(declared_closed)` decide, `sel=OLD`; e, com o declarado
+      AINDA aberto e a janela em primeiro plano na aba nova, so' o desvio
+      `attached-tab` decide, `sel=NEW`). CONTROLE: `OLD` ainda aberto e ligados
+      a ele -> NAO adota, `_video_id` fica `OLD`, estado `wrong-video (NEW)`. O
+      controle tem mutacao PROPRIA no `--neg-arm` (a adocao que ignora o
+      declarado aberto tem de o derrubar): um controle que passa sob TODAS as
+      mutacoes nunca esteve ancorado.
   A4 diagnostico     -- `ExternalCaptionWatcher._yt_diag_now()` (a funcao que a
       linha `YOUTUBE_TICK_MS` usa): com o dicionario de diagnostico VAZIO ou com
       `src='?'`, os cinco campos saem completos (`unattached`/`none`), e a IDADE
@@ -83,6 +89,13 @@ TAB_NEW = {"type": "page", "title": "Video novo",
            "webSocketDebuggerUrl": "ws://127.0.0.1:1/devtools/page/NEW"}
 TAB_OLD = {"type": "page", "title": "Video velho",
            "url": "https://www.youtube.com/watch?v=OLDOLDOLDOL",
+           "webSocketDebuggerUrl": "ws://127.0.0.1:1/devtools/page/OLD"}
+#: A MESMA PAGINA DE `TAB_OLD`, JA' NAVEGADA. Um alvo de DevTools nao muda de
+#: `webSocketDebuggerUrl` quando o SPA navega; o URL e' que passa a dizer NEW.
+#: E' o mundo `navigated` de `_adopt_world`: ligados ao OLD, a foto ja' e' NEW e
+#: o `/json/list` ja' nao tem o OLD em sitio nenhum.
+TAB_NAV = {"type": "page", "title": "Video novo",
+           "url": "https://www.youtube.com/watch?v=NEWNEWNEWNE",
            "webSocketDebuggerUrl": "ws://127.0.0.1:1/devtools/page/OLD"}
 
 
@@ -360,21 +373,66 @@ class _FakeWebsocket:
         return self.conn
 
 
-def _arm_adopt(mod, declared_open):
-    """(ok, nota): o laco REAL, com o id declarado aberto ou ja' fechado."""
+def _adopt_world(mod, kind):
+    """UM mundo de adopcao. (ok, nota): o laco REAL, com UMA regra no comando.
+
+    PORQUE TRES MUNDOS (MEDIDO 2026-11-07). A arm tinha UM mundo -- o declarado
+    OLD fora da lista e so' a aba NEW a' vista --, e nesse mundo DUAS regras de
+    producao adoptam a mesma foto:
+
+      * `adopt_decision(..., declared_open=False)` -> `declared-closed`
+        (`youtube_cdp_source.py:920`);
+      * o desvio `attached-tab` do `_run`, que aceita a foto quando ela vem da
+        aba que a SONDA escolheu (`_selected_video_id == snap.videoId`).
+
+    Ligados a' unica aba NEW, `_selected_video_id` ja' e' NEW, logo o desvio
+    adoptava por cima. A mutacao que apaga `declared-closed` ficava VERDE -- o
+    `--neg-arm` media a regra errada. Cada mundo abaixo elimina uma das duas:
+
+      `stale-list`   -- so' a aba NEW em `/json/list` (o declarado nao esta' em
+                        aba nenhuma). Exercita a QUEDA do id declarado no
+                        `_choose` (`stale-declared:`), sem a qual o laco nao
+                        chega a ligar-se a nada e nao ha' foto nenhuma.
+      `navigated`    -- a aba a que NOS LIGAMOS navegou: o `/json/list` passa a
+                        dizer NEW (mesmo alvo/ws do OLD) e a foto ja' e' NEW,
+                        mas `_selected_video_id` FICA `OLD` (foi escolhido no
+                        attach). O desvio `attached-tab` exige
+                        `_selected_video_id == foto` e por isso esta' FORA:
+                        so' `adopt_decision(..., declared_closed=...)` adopta.
+      `attached-tab` -- o declarado OLD AINDA esta' aberto (logo
+                        `declared-closed` esta' FORA) e a janela em primeiro
+                        plano resolve a aba NEW, a que estamos ligados: so' o
+                        desvio `attached-tab` adopta.
+      `control`      -- declarado AINDA aberto e ligados a ele: a foto NEW tem
+                        de ser RECUSADA (`wrong-video (NEW)`).
+    """
     old_tabs = mod.list_targets
-    # A LISTA DE ABAS E' FOTOGRAFIA (o transporte), a decisao e' do produto: no
-    # caso da adocao a aba que navegou e' a UNICA aberta (o video declarado ja'
-    # nao esta' em sitio nenhum); no controle as duas estao abertas e o dono
-    # apontou para a declarada.
-    tabs = [TAB_OLD, TAB_NEW] if declared_open else [TAB_NEW]
-    mod.list_targets = lambda port=None, timeout=3.0: (list(tabs), 0)
+    state = {"n": 0}
+    if kind == "stale-list":
+        # A LISTA E' FOTOGRAFIA (transporte); a decisao e' do produto. O video
+        # declarado ja' nao esta' em sitio nenhum: so' a aba NEW.
+        def tabs_now(port=None, timeout=3.0):
+            return ([TAB_NEW], 0)
+    elif kind == "navigated":
+        # A PRIMEIRA leitura e' o attach (ainda OLD); a partir da segunda --
+        # `_declared_closed` -- a mesma pagina ja' diz NEW.
+        def tabs_now(port=None, timeout=3.0):
+            state["n"] += 1
+            return ([TAB_OLD] if state["n"] == 1 else [TAB_NAV]), 0
+    else:                                     # `attached-tab` e `control`
+        def tabs_now(port=None, timeout=3.0):
+            return ([TAB_OLD, TAB_NEW], 0)
+    mod.list_targets = tabs_now
     fake = _FakeWebsocket(PAYLOAD_NEW)
     old_ws = sys.modules.get("websocket")
     sys.modules["websocket"] = fake
     lines = []
     source = mod.CdpCaptionSource(port=_closed_port(), log=lines.append)
     source.set_video_id("OLDOLDOLDOL")
+    if kind == "attached-tab":
+        # O TITULO DA JANELA EM PRIMEIRO PLANO e' o que resolve a aba NEW com o
+        # OLD ainda aberto (a ordem do `pick_target`, `window-title`).
+        source.set_window_title("Video novo")
     source._last_use = time.monotonic()
     source.start()
     try:
@@ -386,17 +444,35 @@ def _arm_adopt(mod, declared_open):
             if any("wrong-video" in ln for ln in lines):
                 break
             time.sleep(0.02)
-        if declared_open:
-            adopted = [ln for ln in lines if "adopted:" in ln]
+        adopted = [ln for ln in lines if "adopted:" in ln]
+        selected = source.selected_video_id()
+        if kind == "control":
             good = (source._video_id == "OLDOLDOLDOL" and not adopted
                     and any("wrong-video (NEWNEWNEWNE)" in ln for ln in lines))
-            note = "vid=%s adopted=%d %r" % (source._video_id, len(adopted),
-                                             (lines or ["-"])[-1][:80])
-            return good, note
-        good = (source._video_id == "NEWNEWNEWNE"
-                and any("adopted:OLDOLDOLDOL->NEWNEWNEWNE" in ln
-                        for ln in lines))
-        return good, "vid=%s %r" % (source._video_id, (lines or ["-"])[-1][:96])
+        elif kind == "navigated":
+            # `selected == OLD` EXCLUI o desvio `attached-tab` (que exige
+            # `selected == foto`): se a arm fica verde, foi o `declared-closed`.
+            good = (source._video_id == "NEWNEWNEWNE"
+                    and any("adopted:OLDOLDOLDOL->NEWNEWNEWNE" in ln
+                            for ln in lines)
+                    and selected == "OLDOLDOLDOL")
+        elif kind == "attached-tab":
+            # `declared-closed` NAO pode ter decidido: o OLD esta' na lista, o
+            # predicado da producao diz "aberto". `selected == foto` e' o que o
+            # desvio exige.
+            good = (source._video_id == "NEWNEWNEWNE"
+                    and any("adopted:OLDOLDOLDOL->NEWNEWNEWNE" in ln
+                            for ln in lines)
+                    and selected == "NEWNEWNEWNE"
+                    and any("OLDOLDOLDOL" in str(t.get("url") or "")
+                            for t in tabs_now()[0]))
+        else:                                 # `stale-list`
+            good = (source._video_id == "NEWNEWNEWNE"
+                    and any("adopted:OLDOLDOLDOL->NEWNEWNEWNE" in ln
+                            for ln in lines))
+        return good, "vid=%s sel=%s adopted=%d %r" % (
+            source._video_id, selected, len(adopted),
+            (lines or ["-"])[-1][:96])
     finally:
         source.stop()
         if source._thread is not None:
@@ -486,9 +562,18 @@ def arms(shell_path=SHELL, module_path=MODULE):
     out.append(("retry-limitado", ok, note))
     ok, note = _control_retry_attached(mod)
     out.append(("controle-retry-ligado", ok, note))
-    ok, note = _arm_adopt(mod, declared_open=False)
+    ok, note = _adopt_world(mod, "stale-list")
     out.append(("aba-que-navegou", ok, note))
-    ok, note = _arm_adopt(mod, declared_open=True)
+    # A ADOCAO TEM DUAS REGRAS (2026-11-07). Num mundo so' elas cobriam-se uma
+    # a' outra e a mutacao de `declared-closed` ficava verde; aqui cada metade
+    # diz qual decidiu (`sel=`), e a arm so' passa se AS DUAS decidirem:
+    # `navigated` (so' a regra mutada pode) e `attached-tab` (so' o desvio
+    # pode). Uma remocao de qualquer das duas poem esta arm vermelha.
+    ok_nav, note_nav = _adopt_world(mod, "navigated")
+    ok_att, note_att = _adopt_world(mod, "attached-tab")
+    out.append(("aba-que-navegou/depois", ok_nav and ok_att,
+                "navigated[%s] attached[%s]" % (note_nav, note_att)))
+    ok, note = _adopt_world(mod, "control")
     out.append(("controle-aba-ainda-aberta", ok, note))
     ok, note = _arm_diag(shell_mod)
     out.append(("diagnostico-sem-interrogacao", ok, note))
@@ -544,6 +629,11 @@ def neg_arm():
         results.append(("retry-limitado", not got.get("retry-limitado", True)))
 
         # 3) A ABA QUE NAVEGOU DEIXA DE SER ADOTADA (o laco preso por 13 min).
+        #    MUTADO 2026-11-07: esta mutacao apaga `declared-closed` e a ANTIGA
+        #    arm ficava verde, porque o desvio `attached-tab` do `_run` aceitava
+        #    a mesma foto (`sel=NEWNEWNEWNE`). O mundo `navigated` escolhe a aba
+        #    no attach (`sel=OLD`) e a mesma pagina passa a dizer NEW: o desvio
+        #    esta' fora e so' a regra mutada pode adoptar.
         mod2 = os.path.join(tmp, "sem_adocao.py")
         io.open(mod2, "w", encoding="utf-8", newline="").write(
             _mutate(mod_src, "    if not declared_open:\n"
@@ -551,7 +641,8 @@ def neg_arm():
                     "    if False:\n"
                     "        return 'adopt', 'declared-closed'"))
         got = dict((n, ok) for n, ok, _ in arms(module_path=mod2))
-        results.append(("aba-que-navegou", not got.get("aba-que-navegou", True)))
+        results.append(("aba-que-navegou/depois",
+                        not got.get("aba-que-navegou/depois", True)))
 
         # 4) O DIAGNOSTICO VOLTA A PODER SAIR `?` (o `src='?'` medido).
         shell_mut2 = os.path.join(tmp, "shell_diag_interrogacao.py")

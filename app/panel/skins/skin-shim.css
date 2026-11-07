@@ -169,6 +169,37 @@
 .skin__panel [data-skin-hide],
 .skin__panel [data-skin-dead-row] { display: none !important; }
 
+/* NEITHER DO THE MARKETING SENTENCES (owner, 2026-11-07, verbatim: *"tira
+ * qualquer frase de efeito ... 'the room, so far'"* and *"falta varios temas q
+ * nao foram modificados"*). The eyebrow (`● transcript history`) and the headline
+ * (`The room, so far`) are the mockup's own capture of an invented evening; they
+ * are marked by `markDeadControls()` structurally and removed here, in every
+ * skin at once, instead of by editing five frozen HTML files. */
+.skin__panel [data-skin-dead-text] { display: none !important; }
+
+/* THE ROW CONTRACT, THE SAME ONE `panel-unified.css` ENFORCES IN OUR OWN PANEL --
+ * and the reason it has to be repeated here: a shadow root is a style boundary, so
+ * the unified sheet cannot reach these rows. Left-aligned, never clipped, the
+ * clock quiet and tabular, no decorative box around it. */
+.skin__panel .quiet-scroll [data-skin-time] {
+  font-variant-numeric: tabular-nums !important;
+  white-space: nowrap !important;
+  text-align: left !important;
+}
+
+.skin__panel .quiet-scroll p,
+.skin__panel .quiet-scroll [data-skin-text] {
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  text-align: left !important;
+  -webkit-line-clamp: none !important;
+  text-overflow: clip !important;
+}
+
+/* The vendor's list is a grid whose rows are its own; it must scroll inside the
+   flex column instead of growing it. */
+.skin__panel .quiet-scroll > * { min-height: 0; }
+
 /* The empty circle left where the vendor printed a speaker's initials. One
    stream has no speakers to colour, so the avatar is a neutral dot, not a
    stranger's badge. */

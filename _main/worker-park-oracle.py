@@ -56,6 +56,19 @@ AS ARMS:
       (o `progress()` e' do laco, nunca de um fio que so' imprime).
   P11 a CPU do parque, MEDIDA numa janela real de `--cpu-window` segundos (30 s
       por omissao, como o brief pede), nunca afirmada.
+  P12 a tap de um motor PARQUEADO nao fecha: `window_ended` do worker ESTENDE a
+      janela e diz `tap-engine-parked` com o `park` que a shell publicou.
+  P13 NEGATIVO de P12: sem parque, o MESMO `window_ended` com a mesma janela
+      plana devolve None (a escada anda) -- e' isso que prova que P12 mede o
+      parque, e nao a funcao.
+  P14 O DETECTOR SABE DIZER NAO: desarmada a guarda da tap e posto o tecto a
+      infinito, em COPIA, o predicado EXACTO de P12/P15 tem de ficar RED. O
+      mutante da guarda e' julgado com o medidor vivo em AMBAS as leituras
+      (`{}` e endpoints calados): a guarda desarmada cai no
+      `silent_desktop_hold`, que tambem estende -- julgar so' a extensao media a
+      maquina estar calada (ver `hold_detector_proof`).
+  P15 o segura e' LIMITADO: passadas `TAP_ENGINE_PARK_HOLD_WINDOWS` janelas a
+      escada varre UMA vez (`tap-engine-park-rescan`) e o ciclo recomeca.
 
 `--neg-arm` escreve uma COPIA do worker ao lado do original com o parque
 REVERTIDO (`park_reason` devolve None, o comportamento anterior: o veredito de
@@ -63,8 +76,12 @@ dispositivo fecha a corrida) e exige que o MESMO replay mostre a corrida a
 FECHAR no veredito de dispositivo e um `loads>1` -- rc=1 POR DESENHO, e a copia
 e' apagada antes de sair.
 
+`--neg-arm-tap` desarma a guarda da tap na mesma COPIA e exige P12 RED --
+rc=1 POR DESENHO.
+
     python _main\\worker-park-oracle.py                 # rc=0 verde, rc=1 vermelho
     python _main\\worker-park-oracle.py --neg-arm       # rc=1 POR DESENHO
+    python _main\\worker-park-oracle.py --neg-arm-tap   # rc=1 POR DESENHO
 """
 from __future__ import annotations
 
@@ -284,6 +301,60 @@ def check(name, ok, detail):
     return {'name': name, 'ok': bool(ok), 'detail': detail}
 
 
+def window_hold_arm(mod):
+    """P12 CONDUZIDA COMO FUNCAO: o `window_ended` REAL de um motor parqueado.
+
+    Devolve `(ok, detail)` para que a arm e o CONTROL0 de P14 sejam o MESMO
+    predicado. Um proxy mais fraco no controlo nao prova o que a arm mede: o
+    controlo da guarda da tap julgava `extended is None` e desarmada a guarda a
+    janela cai no `silent_desktop_hold`, que TAMBEM estende quando o medidor
+    vivo devolve endpoints calados (medido 2026-11-07: 15.2 s, estado
+    `tap-silent-desktop`) -- ver `hold_detector_proof`.
+    """
+    status = []
+    counters = {}
+    now = 1000.0
+    ends = []
+    for _ in range(4):
+        end = mod.window_ended(now, {'name': 'CABLE Input'}, {'value': 0.317144},
+                               0.002, 7.6, counters,
+                               lambda **kw: status.append(kw),
+                               engine_parked=lambda: 'vram')
+        ends.append(round((end or 0.0) - now, 1) if end else None)
+        now = end or (now + 1.0)
+    ok = (all(e is not None and e > 0 for e in ends) and len(status) == 1
+          and status[0].get('state') == 'tap-engine-parked'
+          and status[0].get('park') == 'vram')
+    return ok, {'extensions_s': ends, 'status': [s.get('state') for s in status]}
+
+
+def park_hold_ceiling_arm(mod, cap=64):
+    """P15 CONDUZIDA COMO FUNCAO: passado o tecto a escada varre UMA vez.
+
+    `cap` existe para o mutante do tecto (`TAP_ENGINE_PARK_HOLD_WINDOWS = 10 ** 9`):
+    a arm observa no maximo `cap + 1` janelas e o mutante morre por NAO varrer,
+    em vez de o oraculo tentar correr mil milhoes de janelas.
+    """
+    declared = int(getattr(mod, 'TAP_ENGINE_PARK_HOLD_WINDOWS', 0))
+    observed = min(declared, int(cap))
+    status = []
+    counters = {}
+    now = 0.0
+    ends = []
+    for _ in range(observed + 1):
+        end = mod.window_ended(now, {'name': 'CABLE Input'}, {'value': 0.317144},
+                               0.002, 7.6, counters,
+                               lambda **kw: status.append(kw),
+                               engine_parked=lambda: 'vram')
+        ends.append(end)
+        now = end if end else (now + 1.0)
+    ok = (ends[-1] is None and all(e is not None for e in ends[:-1])
+          and any(s.get('state') == 'tap-engine-park-rescan' for s in status))
+    return ok, {'windows': declared, 'observed': observed,
+                'last_return': ends[-1],
+                'status': [s.get('state') for s in status]}
+
+
 def arms_for(mod, cpu_window):
     checks = []
     scen = scenario_two_passes()
@@ -456,23 +527,10 @@ def arms_for(mod, cpu_window):
     # SEIS `device-rotated (flat)` em onze minutos -- uma janela plana nao tem
     # legenda possivel quando nao ha' motor, e a escada reabria o dispositivo
     # para nada. P12 conduz o `window_ended` REAL e exige que ele ESTENDA a tap.
-    status = []
-    counters12 = {}
-    now12 = 1000.0
-    ends12 = []
-    for _ in range(4):
-        _end = mod.window_ended(now12, {'name': 'CABLE Input'}, {'value': 0.317144},
-                                0.002, 7.6, counters12,
-                                lambda **kw: status.append(kw),
-                                engine_parked=lambda: 'vram')
-        ends12.append(round((_end or 0.0) - now12, 1) if _end else None)
-        now12 = _end or (now12 + 1.0)
-    checks.append(check(
-        'P12-a-parked-engine-keeps-the-tap-open',
-        all(e is not None and e > 0 for e in ends12) and len(status) == 1
-        and status[0].get('state') == 'tap-engine-parked'
-        and status[0].get('park') == 'vram',
-        {'extensions_s': ends12, 'status': [s.get('state') for s in status]}))
+    hold_ok, hold_detail = window_hold_arm(mod)
+    checks.append(check('P12-a-parked-engine-keeps-the-tap-open',
+                        hold_ok, hold_detail))
+
     # P13 NEGATIVO: sem parque, o MESMO `window_ended` com a mesma janela plana
     # tem de dizer que a escada anda -- e' o comportamento antigo, e e' o que
     # prova que P12 mede o PARQUE e nao a funcao.
@@ -491,24 +549,9 @@ def arms_for(mod, cpu_window):
     # escada varre UMA vez (o audio pode ter MUDADO de endpoint durante a espera),
     # e a contagem recomeca. Sem isto a tap ficaria presa num dispositivo que ja'
     # nao existe e nenhuma cura o notaria.
-    status15 = []
-    counters15 = {}
-    now15 = 0.0
-    ends15 = []
-    for _ in range(mod.TAP_ENGINE_PARK_HOLD_WINDOWS + 1):
-        _end = mod.window_ended(now15, {'name': 'CABLE Input'}, {'value': 0.317144},
-                                0.002, 7.6, counters15,
-                                lambda **kw: status15.append(kw),
-                                engine_parked=lambda: 'vram')
-        ends15.append(_end)
-        now15 = _end if _end else (now15 + 1.0)
-    checks.append(check(
-        'P15-the-hold-is-bounded-and-then-the-ladder-rescans',
-        ends15[-1] is None and all(e is not None for e in ends15[:-1])
-        and any(s.get('state') == 'tap-engine-park-rescan' for s in status15),
-        {'windows': mod.TAP_ENGINE_PARK_HOLD_WINDOWS,
-         'last_return': ends15[-1],
-         'status': [s.get('state') for s in status15]}))
+    ceil_ok, ceil_detail = park_hold_ceiling_arm(mod)
+    checks.append(check('P15-the-hold-is-bounded-and-then-the-ladder-rescans',
+                        ceil_ok, ceil_detail))
     return checks
 
 
@@ -566,43 +609,78 @@ def mutate_hold_ceiling(dst):
         src.replace(anchor, 'TAP_ENGINE_PARK_HOLD_WINDOWS = 10 ** 9', 1))
 
 
+def window_hold_mutant_verdicts(neg):
+    """A guarda da tap DESARMADA, julgada com o medidor vivo em CADA leitura.
+
+    `{}` = nao consegui ler; `{'speakers': 0.0}` = li e todos os endpoints estao
+    calados. Sao os dois estados distinguiveis de `_live_render_peaks`, e o
+    segundo e' o que fazia o controlo ANTIGO dar RED: desarmada a guarda a
+    janela cai no `silent_desktop_hold`, que estende 15.2 s com estado
+    `tap-silent-desktop`. Julgar so' a leitura do instante deixava a prova
+    mudar de resposta sem o codigo mudar (GREEN e depois RED na mesma maquina).
+    """
+    real = getattr(neg, '_live_render_peaks', None)
+    verdicts = []
+    try:
+        for reading in ({}, {'speakers': 0.0}):
+            neg._live_render_peaks = lambda r=reading: r
+            verdicts.append(window_hold_arm(neg))
+    finally:
+        if real is not None:
+            neg._live_render_peaks = real
+    return verdicts
+
+
 def hold_detector_proof():
-    """Os DOIS mutantes tem de derrubar a arm que os mede (dentro do passo)."""
+    """Os DOIS mutantes tem de derrubar a ARM que os medem (dentro do passo).
+
+    A ARM, e nunca um proxy dela. O controlo da guarda da tap julgava
+    `extended is None`, e esse proxy estava CONTAMINADO pelo estado vivo da
+    maquina: desarmada a guarda (`if parked:` -> `if False:`) a janela cai no
+    `silent_desktop_hold`, que tambem ESTENDE enquanto o medidor vivo devolver
+    endpoints calados. Medido em 2026-11-07 nesta maquina, cinco vezes
+    seguidas: `mutant_extension: 15.2` com estado `tap-silent-desktop` -- e o
+    MESMO codigo tinha dado GREEN minutos antes, com `live_render_peaks` a
+    devolver `{}` (nao consegui ler). Ou seja, o controlo media a maquina estar
+    calada, nao a guarda estar armada, e podia ficar verde com o parque
+    desarmado: um controlo que nao consegue falhar.
+
+    Aqui o mutante e' julgado pelo predicado EXACTO das arms P12/P15, em ambas
+    as leituras do medidor. Desarmada a guarda, `tap-engine-parked` nunca e'
+    emitido (o estado que P12 exige), por isso P12 fica RED nas duas. O tecto
+    infinito nunca varre a escada dentro do orcamento observado (a varredura que
+    P15 exige) e P15 fica RED -- ao contrario do controlo antigo, que media a
+    PREMISSA da arm e nao a arm: `refused` so' perguntava "o mutante segura para
+    sempre?", por isso P14 continuava verde mesmo que o predicado de P15
+    deixasse de exigir a varredura. Agora a propria arm P15 e' corrida no
+    mutante.
+    """
     mutate_window_hold(NEG_COPY)
     try:
         neg = load_worker(NEG_COPY, 'worker_park_hold_neg')
-        extended = neg.window_ended(0.0, {'name': 'CABLE Input'}, {'value': 0.317144},
-                                    0.002, 7.6, {}, None,
-                                    engine_parked=lambda: 'vram')
+        hold_verdicts = window_hold_mutant_verdicts(neg)
     finally:
         try:
             os.remove(NEG_COPY)
         except OSError:
             pass
-    ok12 = extended is None
+    caught12 = not any(ok for ok, _ in hold_verdicts)
     mutate_hold_ceiling(NEG_COPY)
-    refused = False
     try:
         far = load_worker(NEG_COPY, 'worker_park_ceiling_neg')
-        state, now = {}, 0.0
-        for _ in range(40):
-            _end = far.window_ended(now, {'name': 'CABLE Input'}, {'value': 0.317144},
-                                    0.002, 7.6, state, None,
-                                    engine_parked=lambda: 'vram')
-            if _end is None:
-                refused = True
-                break
-            now = _end
+        ceil_ok, ceil_detail = park_hold_ceiling_arm(far)
     finally:
         try:
             os.remove(NEG_COPY)
         except OSError:
             pass
-    # O MUTANTE DO TECTO TEM DE CONTINUAR A SEGURAR (e' isso que P15 apanha).
-    caught15 = not refused
-    return check('P14-the-detector-can-say-no', ok12 and caught15,
-                 {'mutant_extension': extended,
-                  'mutant_ceiling_still_holds': caught15})
+    caught15 = not ceil_ok
+    return check('P14-the-detector-can-say-no', caught12 and caught15,
+                 {'mutant_P12_arm_ok': [ok for ok, _ in hold_verdicts],
+                  'mutant_P12_status': [d['status'] for _, d in hold_verdicts],
+                  'mutant_P15_arm_ok': ceil_ok,
+                  'mutant_P15_rescans': ceil_detail['status'].count(
+                      'tap-engine-park-rescan')})
 
 
 def main(argv=None):

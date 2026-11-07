@@ -446,8 +446,40 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-06, 01:4x):** `_main\_audit-verify-all.cmd` = **267654 B**,
-  **3283 CRLF** / 0 bare LF, sha256 `55C59B782F0052C55008C04184F9FF10B6E6F6D1685F5024BFDD3C595A57FEE1`.
+- **PIN do ficheiro (medido 2026-11-07, 15:0x):** `_main\_audit-verify-all.cmd` = **271309 B**,
+  **3306 CRLF** / 0 bare LF, sha256 `38A4AAE4FD94DB4A795229876B27108D5DC5A94D7E66A4B4980CA40BD01CB5C8`.
+  (Dois mil e quarenta e seis bytes e vinte e uma linhas a mais do que o pin de 269263 B: o par
+  `stutter-caption` + `red-as-expected-stutter-caption`, o portao da ordem do dono de hoje --
+  *"e ridiculo o fato que um stutter qualquer do meu pc, faca a legenda dessincronizar ... se a
+  porra da legenda do youtube ta se movendo, mesmo com o stutter acontecendo, a NOSSA legenda que
+  pegamos do youtube, TAMBEM."* Os dois tetos redondos do relogio (`min(age, 0.5)` na amostra da
+  CDP e `YT_ANCHOR_MAX_S` = 3 s na extrapolacao) inventavam uma parada que o player nunca disse;
+  medido com as 745 amostras REAIS do Chrome dele (`_main\fixtures\yt-paint-freeze-20261104.json`,
+  deriva 4,25 ms/s = 34 ms em 8 s), custavam **2,312 s** de erro num stutter de 3 s e **4,411 s**
+  num de 5 s -- 4,6x e 8,8x o orcamento de 150 ms. A tolerancia passa a ser o ESTADO PUBLICADO
+  (`app\webview\youtube_clock.py`: PLAYING conta ate' 8 s, PAUSED/ENDED nao anda, sem bandeira
+  serve-se a amostra) e o que NOS adiantamos e' desfeito na primeira amostra autoritativa
+  (`rebase`). O oraculo fecha 14 arms e o `--neg-arm` repoe os dois tetos em COPIA, exigindo A1-A5
+  vermelhas. Medido: `STUTTER-CAPTION GREEN -- arms=14 pass=14`.)
+  (Cinco bytes a mais do que o pin de 269258 B: as CINCO linhas em que a bateria larga o proprio `python`
+  passam a largar `pythonw`. Nasceu da queixa do dono de hoje -- *"to vendo terminal dar pop up, DE NOVO,
+  na minha tela"* -- e do que o vigia de janelas mediu: o `cmd.exe` da corrida, largado por uma lane
+  num processo SEM consola, da' a cada filho `python` uma consola NOVA (o Windows Terminal a aparece),
+  porque `cmd` nao tem como passar `CREATE_NO_WINDOW`. `pythonw` nao tem consola nenhuma e larga os
+  seus filhos por `hidden-launch.popen` (CREATE_NO_WINDOW), logo a arvore inteira fica muda. Medido
+  antes de escolher: `pythonw -c "print(...)"` perde o stdout, mas o `sys.stdout` REAL escreve no
+  redireccionamento (`FROM-PYW` no ficheiro) -- o log do passo continua a ser a evidencia.)
+  (Mil seiscentos e quatro bytes e duas linhas a mais do que o pin de 267654 B -- o par
+  `panel-deps` + `red-as-expected-panel-deps`, o portao que fecha uma mentira de CACHE medida hoje:
+  os tres passos que montam o `app\panel\panel.html` real (`panel2-dom-probe`,
+  `panel-header-oracle`, `panel-history-clip`) declaravam 11, 8 e 8 dependencias para uma pagina que
+  carrega **25** assets, e os tres manifestos de tema (`themes\themes.js`,
+  `themes\panel-designs.js`, `themes\zipc-panels.js`) nao estavam em nenhuma delas -- editar um tema
+  deixava os tres passos em cache a reimprimir um PASS sobre o ficheiro antigo. As deps dos tres
+  passos passam a nomear os 25 assets; o `panel-deps-oracle.py` compara a lista com o `panel.html`
+  real (18 arms) e o `--neg-arm` muta UMA linha -- medido: `VERDICT: PASS -- 18/18` e
+  `NEG-ARM: PASS -- o mutante foi apanhado`. O proprio neg-arm trouxe uma correcao de instrumento:
+  o `replace(..., 1)` sem escopo apagava o asset de OUTRO passo e o mutante "passava".)
   (Quatrocentos e vinte e quatro bytes e duas linhas a mais do que o pin de 267230 B: o par
   `panel-pause-payload` + `red-as-expected-panel-pause-payload`, que EXECUTA o `SottoShell.stats()`
   real nas duas saidas. Nasceu de um defeito que a primeira versao da cura carregava: o `stats()`
