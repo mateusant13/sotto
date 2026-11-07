@@ -178,3 +178,80 @@ instancia estiver viva** -- e o `LIVE_ENABLED_FAILED NameError` do §4 e' exacta
 Fechar e reabrir e' a primeira accao de qualquer julgamento do sintoma; uma lane nao larga uma
 instancia que detenha `Local\SottoShell`, por isso o reinicio e' dele (ou do `sotto-relaunch.py`,
 que reusa o token `high` da instancia viva).
+
+## 8. Rodada 3 (mesma sessao): o interruptor do Alt+C e tres oraculos que mentiam
+
+### 8.1 O pedido
+
+Verbatim: *"faz um botao 'desativar atalho alt c' no click direito do icon do sotto"*, e um minuto
+depois *"e claro, é ativar e desativar"*. UM item (id 4), cujo TEXTO e' a accao
+(`Desativar atalho Alt+C` / `Ativar atalho Alt+C`).
+
+| onde | o que mudou |
+|---|---|
+| `app/webview/hotkey_settings.py` | `panels_enabled()` / `set_panels_enabled()`; o `write()` preserva a chave (uma troca de tecla nao pode rearmar o que o dono desligou) |
+| `app/webview/sotto_webview.py` | `ID_TRAY_HOTKEY = 4` + `arm_hotkey(..., panels=False)` no ARRANQUE, com `HOTKEY_PANELS_DISABLED source=settings`; `panels_hotkey_state()`; `toggle_panels_hotkey()`; `tray_command` roteia o id; `TrayIcon` recebe `panels_state_fn` |
+| o menu | `_build_menu()` deixou de correr a cada clique (corria ANTES do `TrackPopupMenu`, com `log`+`flush` pelo meio -- numa maquina com o disco saturado e' literalmente "aperto o direito e nao responde"); `refresh_menu` reconstroi no instante em que o estado muda; `WM_COMMAND` tratado no handler |
+
+Prova de ponta a ponta, corrida nesta arvore (icone real sem `Shell_NotifyIcon`, handler real,
+ficheiro TEMPORARIO): clique -> `TRAY_HOTKEY requested=true` -> `HOTKEY_PANELS toggled=true
+action=arm` -> `TRAY_MENU_REFRESHED why=hotkey-toggle` -> `"panels_enabled": true`; segundo clique ->
+`HOTKEY_PANELS_STOPPED why=toggle` -> `toggled=false action=disarm` -> `"panels_enabled": false`.
+
+| instrumento | veredicto |
+|---|---|
+| `_main/tray-menu-oracle.py` (19 arms, +4 desta rodada) | `VERDICT: PASS`; `--neg-arm` **7/7 CAUGHT** |
+| `_main/hotkey-panels-switch-oracle.py` (novo, 17 arms) | `VERDICT: PASS`; `--neg-arm` **4/4 CAUGHT** (o 4o mutante e' o portao do ARRANQUE) |
+
+Arm que nasceu de um defeito do proprio oraculo, medido: a arm do "menu nao e' reconstruido" lia
+`c[1]` da chamada de `TrackPopupMenu`, que e' o campo de FLAGS, e comparava 258 com 258 -- verde por
+acidente em qualquer mutante. O `seam` passou a gravar o HANDLE do menu e o mutante cai
+(`menu_handles=[165942957, 130695237]`).
+
+### 8.2 `hotkey-live-toggle`: o §4 estava ERRADO sobre a causa -- nao era STALE
+
+O §4 poe este passo na linha do "le' o log vivo / STALE". **Nao e' verdade**, e a medicao e' de hoje:
+o `NameError: name '_caption_replay_allowed' is not defined` era do ARNES, nao da shell. O
+`build_methods` exec'a os corpos dos metodos de `SottoShell` num namespace com seis nomes; quando o
+metodo passou a chamar uma `def` de MODULO, o nome ficou por definir. E' a mesma classe do
+`caption-switch-race` descrito no §4 -- a mesma rodada, dois sitios, e so' um foi curado entao.
+
+Cura: o arnes extrai a `def` REAL por AST (`module_defs`) e a constante REAL da classe
+(`class_consts`, `CAPTION_REPLAY_MAX_S = 2.0`) do proprio ficheiro, em vez de as reencenar. Depois
+disso o oraculo ficou **verde sem tocar na app** -- `hotkey-live-toggle GREEN -- arms=38 pass=38`.
+
+E o verde abriu o que o vermelho tapava: seis arms NOVAS sobre a regra do replay (`_caption_replay_allowed`),
+que e' a que o dono pediu em 2026-11-06 (*"ao desativar e ativar rapidamente ... ela apareceu
+INSTANTANEAMENTE"* sem despejar frase velha):
+
+| caso | exigido | medido |
+|---|---|---|
+| linha fresca | volta `instant=True` + `CAPTION_WINDOW_REPLAYED` | ok |
+| linha de um minuto | NAO volta + `CAPTION_WINDOW_REPLAY_SKIPPED` | ok |
+| PAUSADO + linha do PLAYER | volta, por velha que seja | ok |
+| PAUSADO + linha do ASR | continua a envelhecer (so' o player tem "a frase que esta a pintar") | ok |
+
+`--neg-arm`: 5 mutantes, e os dois novos (pausa desligada, teto removido) derrubam as arms certas
+-- `NEG-ARM PASS -- RED as designed: 5 mutantes derrubam o oraculo`, rc=1.
+
+### 8.3 Tres oraculos com o braco negativo MORTO, pela mesma causa: fim de linha inventado
+
+`input-path` (6 de 9 mutantes "a ancora casou 0 vezes"), `ui-stall` (1 de 4) e
+`youtube-foreign-paint` (1 de 1) normalizavam as ancoras para **CRLF** com um `crlf()` que dizia
+"A shell e CRLF-pura". Medido hoje: `app/webview/sotto_webview.py` tem **22484 LF / 0 CRLF**, e o
+`HEAD` do git tambem. Uma ancora multi-linha convertida para CRLF nao casa **nunca** -- e o pior
+estado possivel num oraculo: o positivo fica verde, o mutante nao chega a nascer, e o braco negativo
+publica `FAIL` por uma razao que nao e' a que ele julga.
+
+Cura nos tres, a mesma forma: `ending_of(text)` le o fim de linha do PROPRIO ficheiro, a ancora conta
+no texto normalizado para `\n`, e a copia mutante sai com o fim de linha do original.
+
+| oraculo | antes | depois |
+|---|---|---|
+| `input-path-oracle.py` | `VERDICT FAIL (6)` de 9 mutantes nao construidos | `VERDICT PASS`, `--neg-arm` 6/6, rc=1 |
+| `ui-stall-oracle.py` | `SETUP-ERROR` + `VERDICT: FAIL` | `MUTANTS: 4/4 red`, `VERDICT: PASS` |
+| `youtube-foreign-paint-oracle.py` | `VERDICT FAIL (1)` | `VERDICT PASS`, `--neg-arm` vermelho como deve |
+
+*(`ui-stall-oracle.py` nao tem passo de `--neg-arm` na bateria: os quatro mutantes correm DENTRO do
+passo positivo, e o `--neg-arm` dele devolve 0 quando os apanha -- convencao propria, sem consumidor.
+Nao foi mexido: mexer seria servir um portao que ninguem pede.)*

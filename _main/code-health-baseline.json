@@ -331,13 +331,13 @@
       "max_func_name": "parse_accelerator"
     },
     "app/webview/hotkey_settings.py": {
-      "bytes": 4771,
+      "bytes": 6814,
       "classes": 0,
-      "defs": 3,
+      "defs": 5,
       "except_pass": 0,
       "globals": 0,
-      "lines": 119,
-      "max_func": 29,
+      "lines": 161,
+      "max_func": 35,
       "max_func_name": "write"
     },
     "app/webview/load_shedding.py": {
@@ -431,13 +431,13 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1199395,
+      "bytes": 1186235,
       "classes": 28,
       "defs": 137,
-      "except_pass": 56,
+      "except_pass": 58,
       "globals": 4,
-      "lines": 22305,
-      "max_func": 412,
+      "lines": 22484,
+      "max_func": 414,
       "max_func_name": "main"
     },
     "app/webview/space_swallow.py": {
@@ -549,6 +549,16 @@
       "lines": 1553,
       "max_func": 230,
       "max_func_name": "_run"
+    },
+    "app/webview/youtube_clock.py": {
+      "bytes": 7692,
+      "classes": 0,
+      "defs": 5,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 184,
+      "max_func": 37,
+      "max_func_name": "instant"
     },
     "app/webview/youtube_monotonic.py": {
       "bytes": 12991,

@@ -479,22 +479,38 @@ MUTANTS = [
 ]
 
 
-def crlf(text):
-    """The shell is CRLF-PURE, so the text that breaks it is CRLF too."""
-    return text.replace('\r\n', '\n').replace('\n', '\r\n')
+def ending_of(text):
+    """The ending THIS file uses (`\r\n` or `\n`).
+
+    The shell was CRLF-pure once and is LF today (measured 2026-11-07:
+    `sotto_webview.py`, 22484 LF / 0 CRLF). An oracle that converts the anchor
+    to CRLF matches 0 times and the negative arm dies in "matched 0 times" --
+    which is what happened here. The anchor counts on the NORMALISED text and
+    the copy keeps the ORIGINAL ending, never an invented one.
+    """
+    return '\r\n' if '\r\n' in text else '\n'
+
+
+def flat(text):
+    """The text with one line-ending, so the anchor can be counted."""
+    return text.replace('\r\n', '\n')
 
 
 def build_mutant(text, name, old, new):
     """Write the broken copy next to the shell and import it."""
-    old = crlf(old)
-    new = crlf(new)
-    count = text.count(old)
+    eol = ending_of(text)
+    source = flat(text)
+    old, new = flat(old), flat(new)
+    count = source.count(old)
     if count != 1:
         raise RuntimeError('%s: the text to break matched %d times (expected 1)'
                            % (name, count))
+    out = source.replace(old, new, 1)
+    if eol != '\n':
+        out = out.replace('\n', eol)
     path = os.path.join(SHELL_DIR, '_stall-neg-%s.py' % name)
     with io.open(path, 'w', encoding='utf-8', newline='') as handle:
-        handle.write(text.replace(old, new, 1))
+        handle.write(out)
     return path
 
 

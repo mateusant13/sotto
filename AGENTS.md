@@ -446,8 +446,23 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-07, 15:0x):** `_main\_audit-verify-all.cmd` = **271309 B**,
-  **3306 CRLF** / 0 bare LF, sha256 `38A4AAE4FD94DB4A795229876B27108D5DC5A94D7E66A4B4980CA40BD01CB5C8`.
+- **PIN do ficheiro (medido 2026-11-07, 16:0x):** `_main\_audit-verify-all.cmd` = **273018 B**,
+  **3324 CRLF** / 0 bare LF, sha256 `243EAD164BEC31190488832398B6B6EDAF9B59CFF722C07D08C0273E1A87F39D`.
+  (Mil setecentos e nove bytes e dezoito linhas a mais do que o pin de 271309 B: o par
+  `hotkey-panels-switch` + `red-as-expected-hotkey-panels-switch`, o interruptor do Alt+C que o
+  dono pediu no MENU DO ICONE -- verbatim: *"faz um botao 'desativar atalho alt c' no click direito
+  do icon do sotto"* e, um minuto depois, *"e claro, é ativar e desativar"*. UM item cujo TEXTO e'
+  a accao (`Desativar atalho Alt+C` / `Ativar atalho Alt+C`), id 4, com o menu reconstruido por
+  `refresh_menu` no instante em que o estado muda; a escolha vai para `_main\hotkey-settings.json`
+  (`panels_enabled`) porque um interruptor que so' valesse ate' ao reinicio seria um botao que
+  mente na manha seguinte. O oraculo julga as cinco propriedades da persistencia e os dois sitios
+  de fiacao -- o portao do ARRANQUE (`arm_hotkey(panels=False)` nao regista a tecla e diz por que)
+  e o HANDLER -- sobre um ficheiro TEMPORARIO; o `--neg-arm` muta quatro sitios, o quarto e' o
+  proprio portao, medido 4/4 CAUGHT. O TEXTO do item e a fiacao do comando ficam no
+  `tray-menu-oracle` (arms 15-18, 19/19, `--neg-arm` 7/7), e o clique deixou de reconstruir o
+  menu: o `_build_menu()` + o `log` com `flush` corriam ANTES do `TrackPopupMenu`, entre o clique
+  do dono e o menu a aparecer -- numa maquina com o disco saturado e' exactamente "aperto o botao
+  direito e nao responde".)
   (Dois mil e quarenta e seis bytes e vinte e uma linhas a mais do que o pin de 269263 B: o par
   `stutter-caption` + `red-as-expected-stutter-caption`, o portao da ordem do dono de hoje --
   *"e ridiculo o fato que um stutter qualquer do meu pc, faca a legenda dessincronizar ... se a

@@ -876,6 +876,24 @@ if exist _main\tray-menu-oracle.py (
 call :step red-as-expected-tray-menu 1 "_main\tray-menu-oracle.py;app\webview\sotto_webview.py" "%OUT%\tray-menu-neg.log" python _main\tray-menu-oracle.py --neg-arm
 call :expectred red-as-expected-tray-menu !STEP_RC! "%OUT%\tray-menu-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-tray-menu MISSING "%OUT%\tray-menu-neg.log" "NEG-ARM: PASS" )
+REM O INTERRUPTOR DO ALT+C (dono, 2026-11-07, verbatim: *"faz um botao 'desativar
+REM atalho alt c' no click direito do icon do sotto"* e *"e claro, é ativar e
+REM desativar"*). Dois lados, dois instrumentos: o TEXTO do item e a fiacao do
+REM comando sao julgados pelo `tray-menu-oracle` (arms 15-18); a PERSISTENCIA e o
+REM portao do arranque por este, em `hotkey_settings.py` sobre um ficheiro
+REM temporario (o `_main\hotkey-settings.json` do dono nunca e' escrito). Cinco
+REM propriedades: ausente = armado; desarmar grava `false`; uma troca de tecla NAO
+REM apaga o interruptor; so' o literal `false` desarma; ficheiro estragado abre
+REM armado. `--neg-arm` muta quatro sitios e o quarto e' o PORTao do arranque --
+REM medido: 4/4 CAUGHT.
+if exist _main\hotkey-panels-switch-oracle.py (
+ call :step hotkey-panels-switch 0 "_main\hotkey-panels-switch-oracle.py;app\webview\hotkey_settings.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-panels-switch.log" python _main\hotkey-panels-switch-oracle.py
+ call :record hotkey-panels-switch !STEP_RC!
+) else ( call :record hotkey-panels-switch MISSING )
+if exist _main\hotkey-panels-switch-oracle.py (
+call :step red-as-expected-hotkey-panels-switch 1 "_main\hotkey-panels-switch-oracle.py;app\webview\hotkey_settings.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-panels-switch-neg.log" python _main\hotkey-panels-switch-oracle.py --neg-arm
+call :expectred red-as-expected-hotkey-panels-switch !STEP_RC! "%OUT%\hotkey-panels-switch-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-hotkey-panels-switch MISSING "%OUT%\hotkey-panels-switch-neg.log" "NEG-ARM: PASS" )
 REM `caption-kept-on-hide-oracle.py` -- ESCONDER O PAINEL NAO APAGA A LEGENDA AO
 REM VIVO. Medido na sessao do dono (pid 57600): tres
 REM `CAPTION_WINDOW_BLANKED reason=panel-hidden epoch=3/4/5 wanted=true` em 21 s,

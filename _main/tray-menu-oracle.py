@@ -141,7 +141,7 @@ class Seam:
 
         def track(menu, flags, x, y, reserved, owner, rect):
             self.calls.append(('TrackPopupMenu', int(flags), int(x), int(y),
-                               num(owner)))
+                               num(owner), num(menu)))
             return 0
 
         def foreground(hwnd):
@@ -336,6 +336,73 @@ def judge(shell) -> list:
         checks.append(('foreground_measured_and_logged',
                        any('TRAY_MENU_FOREGROUND' in line for line in logs),
                        f'log={logs[-3:]}'))
+
+        # ARMS 15-18 -- O INTERRUPTOR DO ALT+C (dono, 2026-11-07: *"faz um botao
+        # 'desativar atalho alt c' no click direito do icon do sotto"*, *"e claro,
+        # é ativar e desativar"*).
+        #
+        # 15: o TEXTO e' a ACCAO, e muda com o estado. Um item que dissesse
+        # sempre "Desativar" seria um botao que nao sabe o que faz na segunda vez.
+        state = {'enabled': True}
+        tray3 = shell.TrayIcon(icon_path=None, on_command=lambda c: None,
+                               log_fn=log, warn_fn=warn,
+                               panels_state_fn=lambda: {
+                                   'enabled': state['enabled'], 'accel': 'Alt+C'})
+        # SEM JANELA, DE PROPOSITO. Uma SEGUNDA janela desta classe no mesmo
+        # processo devolve `ERROR_CLASS_ALREADY_EXISTS` e deixa registada a
+        # wndproc da PRIMEIRA -- um thunk `ctypes` que morre com o modulo do
+        # mutante; o Windows chama-lo depois disso e o processo cai com
+        # `0xc000001d` (medido no `--neg-arm` desta mesma arvore). O que estas
+        # arms julgam e' o TEXTO do menu, e o menu nao precisa de janela.
+        try:
+            tray3._build_menu()
+            armed_items = shell.menu_items(tray3.menu)
+            text_armed = [i['text'] for i in armed_items
+                          if i['id'] == shell.ID_TRAY_HOTKEY]
+            state['enabled'] = False
+            tray3.refresh_menu('oracle')
+            off_items = shell.menu_items(tray3.menu)
+            text_off = [i['text'] for i in off_items
+                        if i['id'] == shell.ID_TRAY_HOTKEY]
+            ids = [i['id'] for i in off_items if i['id']]
+            checks.append(('menu_hotkey_item_says_disable_when_armed',
+                           text_armed == ['Desativar atalho Alt+C'],
+                           f'text={text_armed}'))
+            checks.append(('menu_hotkey_item_says_enable_when_disarmed',
+                           text_off == ['Ativar atalho Alt+C'],
+                           f'text={text_off}'))
+            checks.append(('menu_keeps_the_three_shipped_ids',
+                           ids == [shell.ID_TRAY_OPEN, shell.ID_TRAY_HOTKEY,
+                                   shell.ID_TRAY_EDIT, shell.ID_TRAY_QUIT],
+                           f'ids={ids}'))
+        finally:
+            for handle in (tray3.menu,):
+                try:
+                    if handle:
+                        user32.DestroyMenu(handle)
+                except Exception:         # noqa: BLE001
+                    pass
+            tray3.menu = None
+
+        # 16: O CLIQUE NAO CONSTROI O MENU. O defeito medido: `_build_menu()`
+        # (CreatePopupMenu + 4 AppendMenu + uma varredura por item + um `log` com
+        # `flush` no disco) corria DENTRO do clique, antes de o menu aparecer. A
+        # arm compara o handle que o `TrackPopupMenu` recebe em DOIS cliques.
+        seam.calls.clear()
+        tray._show_menu()
+        tray._show_menu()
+        menus = [c[5] for c in seam.calls if c[0] == 'TrackPopupMenu']
+        checks.append(('menu_is_built_once_and_reused',
+                       len(menus) == 2 and menus[0] == menus[1],
+                       f'menu_handles={menus}'))
+
+        # 17: A FIACAO DO COMANDO. `tray_command(4)` tem de chamar o interruptor
+        # -- um item que aparece e nao faz nada e' pior do que nao existir.
+        fake = type('FakeShell', (), {'calls': []})()
+        fake.toggle_panels_hotkey = lambda: fake.calls.append('toggle')
+        shell.SottoShell.tray_command(fake, shell.ID_TRAY_HOTKEY)
+        checks.append(('tray_command_routes_the_hotkey_id',
+                       fake.calls == ['toggle'], f'calls={fake.calls}'))
     finally:
         seam.__exit__(None, None, None)
         try:
@@ -369,6 +436,20 @@ RAISE_FIXED = """    def _pump(self):
 RAISE_MUTANT = """    def _pump(self):
 """
 
+REUSE_FIXED = """        menu = self.menu
+        if not menu:
+            menu = self._build_menu()
+        t_menu"""
+REUSE_MUTANT = """        menu = self._build_menu()
+        t_menu"""
+
+LABEL_FIXED = """        label = (f'Desativar atalho {accel}' if armed
+                 else f'Ativar atalho {accel}')"""
+LABEL_MUTANT = """        label = f'Desativar atalho {accel}'"""
+
+ROUTE_FIXED = """        elif command == ID_TRAY_HOTKEY:"""
+ROUTE_MUTANT = """        elif command == 999:"""
+
 MUTANTS = [
     ('tray_priority_raise_removed', RAISE_FIXED, RAISE_MUTANT,
      ['tray_loop_calls_the_raise']),
@@ -378,6 +459,16 @@ MUTANTS = [
      ['left_click_opens_panel']),
     ('wm_null_post_removed', MENU_FIXED, MENU_MUTANT,
      ['menu_posts_wm_null_before']),
+    # O defeito de hoje: o menu reconstruido a cada clique (o `flush` no disco
+    # fica entre o clique e o menu -- "aperto e nao responde").
+    ('menu_rebuilt_on_every_click', REUSE_FIXED, REUSE_MUTANT,
+     ['menu_is_built_once_and_reused']),
+    # Um item que so' sabe desligar.
+    ('hotkey_label_frozen_on_disable', LABEL_FIXED, LABEL_MUTANT,
+     ['menu_hotkey_item_says_enable_when_disarmed']),
+    # Um item que aparece e nao faz nada.
+    ('hotkey_command_not_routed', ROUTE_FIXED, ROUTE_MUTANT,
+     ['tray_command_routes_the_hotkey_id']),
 ]
 
 

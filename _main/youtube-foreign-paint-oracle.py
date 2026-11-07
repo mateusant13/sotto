@@ -289,19 +289,35 @@ MUTANTS = [
 ]
 
 
-def crlf(text):
-    """A shell e CRLF-pura: o texto que a parte tem de ser CRLF tambem."""
-    return text.replace("\r\n", "\n").replace("\n", "\r\n")
+def ending_of(text):
+    """O fim de linha que ESTE ficheiro usa (`\r\n` ou `\n`).
+
+    A shell foi CRLF-pura e hoje e' LF (medido 2026-11-07: `sotto_webview.py`,
+    22484 LF / 0 CRLF). Uma ancora convertida para CRLF casa 0 vezes e o braco
+    negativo morre em "a ancora casou 0 vezes". A ancora conta no texto
+    NORMALIZADO e a copia sai com o fim de linha do ORIGINAL.
+    """
+    return "\r\n" if "\r\n" in text else "\n"
+
+
+def flat(text):
+    """O texto com um so' fim de linha, para a ancora contar."""
+    return text.replace("\r\n", "\n")
 
 
 def build_mutant(text, name, old, new):
-    old, new = crlf(old), crlf(new)
-    count = text.count(old)
+    eol = ending_of(text)
+    source = flat(text)
+    old, new = flat(old), flat(new)
+    count = source.count(old)
     if count != 1:
         raise RuntimeError("%s: a âncora casou %d vezes (esperado 1)" % (name, count))
+    out = source.replace(old, new, 1)
+    if eol != "\n":
+        out = out.replace("\n", eol)
     path = os.path.join(SHELL_DIR, "_ytpaint-neg-%s.py" % name)
     with open(path, "w", encoding="utf-8", newline="") as fh:
-        fh.write(text.replace(old, new, 1))
+        fh.write(out)
     return path
 
 

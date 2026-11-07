@@ -43,6 +43,14 @@ PATH = os.path.join(
 PANELS_KEY = 'panels'
 LIVE_KEY = 'live'
 
+#: O INTERRUPTOR DO ALT+C (dono, 2026-11-07, verbatim: *"faz um botao 'desativar
+#: atalho alt c' no click direito do icon do sotto"*, e a seguir *"e claro, é
+#: ativar e desativar"*). Mora no MESMO ficheiro das teclas, e nao num segundo
+#: sitio: um interruptor que so' valesse ate' ao reinicio seria um botao que
+#: mente na manha seguinte, e este repo ja' tem uma segunda-verdade a menos por
+#: causa disso (`PANEL_STATE` e' o unico estado mutavel lido pelos instrumentos).
+PANELS_ENABLED_KEY = 'panels_enabled'
+
 #: A fabrica, uma vez: vive em `hotkey_gesture` e nao se repete aqui.
 DEFAULTS = {PANELS_KEY: hotkey_gesture.PANELS_ACCELERATOR,
             LIVE_KEY: hotkey_gesture.LIVE_ACCELERATOR}
@@ -109,7 +117,13 @@ def write(payload, path=None):
                     'live': current[LIVE_KEY]}
     try:
         import panel_state
-        panel_state.write_atomic(path, dict(result))
+        # O INTERRUPTOR SOBREVIVE A UMA TROCA DE TECLA: `write` grava SO' as
+        # teclas que o pedido traz, e um `payload_out` construido de zero apagava
+        # o `panels_enabled` que o menu do icone tinha acabado de gravar -- o dono
+        # desligava o Alt+C, mudava a tecla da legenda, e o Alt+C voltava sozinho.
+        out = dict(result)
+        out[PANELS_ENABLED_KEY] = panels_enabled(path)
+        panel_state.write_atomic(path, out)
     except Exception as exc:  # noqa: BLE001 -- uma escrita falhada e' um recado
         return {'ok': False, 'error': repr(exc), 'panels': current[PANELS_KEY],
                 'live': current[LIVE_KEY]}
@@ -117,3 +131,31 @@ def write(payload, path=None):
     _CACHE['value'] = None
     return {'ok': True, 'panels': result[PANELS_KEY], 'live': result[LIVE_KEY],
             'error': None}
+
+
+def panels_enabled(path=None):
+    """O Alt+C esta' armado? `False` SO' quando o ficheiro diz `false`.
+
+    AUSENTE, estragado ou de outro tipo e' `True`: o atalho e' o unico controlo
+    que abre a app, e um ficheiro que nao se le' nao pode ser a razao pela qual
+    ele fica sem ele. A recusa e' assimetrica de proposito -- para desligar e'
+    preciso alguem ter escrito `false`; para ligar basta nao haver nada.
+    """
+    payload = _read_payload(path) or {}
+    return payload.get(PANELS_ENABLED_KEY) is not False
+
+
+def set_panels_enabled(enabled, path=None):
+    """Grava o interruptor. Devolve `{'ok', 'enabled', 'error'}`; nunca levanta."""
+    flag = bool(enabled)
+    payload = _read_payload(path) or {}
+    out = dict(payload)
+    out[PANELS_ENABLED_KEY] = flag
+    try:
+        import panel_state
+        panel_state.write_atomic(path or PATH, out)
+    except Exception as exc:  # noqa: BLE001 -- um recado, nao um crash
+        return {'ok': False, 'enabled': panels_enabled(path), 'error': repr(exc)}
+    _CACHE['stamp'] = None
+    _CACHE['value'] = None
+    return {'ok': True, 'enabled': flag, 'error': None}

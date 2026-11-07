@@ -8156,6 +8156,15 @@ ID_TRAY_QUIT = 2              # "Quit Sotto" — the one the owner named
 #: trigger by accident while reading a caption). A 4th id, so the two shipped
 #: items keep their numbers and the tray probe's `[2]='Quit Sotto'` lookup works.
 ID_TRAY_EDIT = 3
+
+#: *"faz um botao 'desativar atalho alt c' no click direito do icon do sotto"*
+#: (dono, 2026-11-07) -- e, na mesma frase, *"e claro, é ativar e desativar"*.
+#: UM item cujo TEXTO diz a accao que ele faz ("Desativar atalho Alt+C" quando
+#: esta' armado, "Ativar atalho Alt+C" quando nao esta'), e nao dois items: um
+#: segundo item para a accao contraria seria um menu onde metade das linhas esta'
+#: sempre inerte. Id 4, para os tres de cima nao mudarem de numero.
+ID_TRAY_HOTKEY = 4
+
 TRAY_WINDOW_CLASS = 'SottoTrayWindow'
 TRAY_TIP = 'Sotto — Alt+C shows the captions'
 
@@ -8246,11 +8255,17 @@ class TrayIcon:
     hook that bypasses it.
     """
 
-    def __init__(self, icon_path, on_command, log_fn, warn_fn):
+    def __init__(self, icon_path, on_command, log_fn, warn_fn,
+                 panels_state_fn=None):
         self.icon_path = icon_path
         self.on_command = on_command
         self.log = log_fn
         self.warn = warn_fn
+        #: O que o item do Alt+C diz AGORA. E' uma FUNCAO, e nao um valor, porque
+        #: o dono desliga a tecla no menu e o menu seguinte tem de dizer o
+        #: contrario sem ninguem se lembrar de o actualizar.
+        self.panels_state = panels_state_fn or (
+            lambda: {'enabled': True, 'accel': 'Alt+C'})
         self.hwnd = None
         self.hicon = None
         self.menu = None
@@ -8288,6 +8303,15 @@ class TrayIcon:
         if (self._thread is not None and self._thread.is_alive()
                 and self._thread is not threading.current_thread()):
             self._thread.join(2)
+        # O MENU E' UM RECURSO COM DONO: ele agora sobrevive ao clique, por isso
+        # tem de ser destruido aqui -- uma app que sai e deixa um `HMENU` e' uma
+        # fuga por cada arranque.
+        if self.menu:
+            try:
+                user32.DestroyMenu(self.menu)
+            except Exception:             # noqa: BLE001
+                pass
+            self.menu = None
         self.log(f'TRAY_STOP reason={reason} hwnd={self.hwnd}')
 
     # -- the icon ----------------------------------------------------------
@@ -8450,6 +8474,12 @@ class TrayIcon:
                  f'class={TRAY_WINDOW_CLASS} message_only=false '
                  f'popup_hidden=true '
                  f'taskbar_created_msg={self._taskbar_created_msg}')
+        # O MENU NASCE AQUI, NAO NO CLIQUE (2026-11-07). O primeiro clique do
+        # dono depois de abrir a app nao pode pagar a construcao do menu.
+        try:
+            self.menu = self._build_menu()
+        except Exception as exc:          # noqa: BLE001 -- sem menu o icone ainda abre
+            self.warn(f'TRAY_MENU_PRIME_FAILED {type(exc).__name__}: {exc}')
 
     def _on_message(self, hwnd, msg, wparam, lparam):
         if (getattr(self, '_taskbar_created_msg', 0)
@@ -8492,7 +8522,17 @@ class TrayIcon:
         return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def _show_menu(self):
-        menu = self._build_menu()
+        # O MENU E' CONSTRUIDO UMA VEZ, NAO A CADA CLIQUE (2026-11-07). Antes,
+        # `_build_menu()` corria dentro do clique: `CreatePopupMenu` + 4
+        # `AppendMenu` + uma varredura `GetMenuState` por item + UMA linha de log
+        # com escrita e `flush` no ficheiro do log -- tudo ANTES de o menu
+        # aparecer. Com o disco saturado (o estado normal desta maquina) esse
+        # `flush` custa o mesmo que a interface toda, e o dono ve' o clique "nao
+        # responder". Reconstroi-se so' quando o TEXTO muda (`refresh_menu`).
+        menu = self.menu
+        if not menu:
+            menu = self._build_menu()
+        t_menu = time.monotonic()
         pt = POINT()
         user32.GetCursorPos(ctypes.byref(pt))
         # SetForegroundWindow is what makes the menu dismiss correctly when the
@@ -8509,13 +8549,23 @@ class TrayIcon:
         user32.PostMessageW(wt.HWND(self.hwnd), WM_NULL, 0, 0)
         user32.GetForegroundWindow.restype = wt.HWND
         fg_now = int(user32.GetForegroundWindow() or 0)
-        self.log(f'TRAY_MENU_FOREGROUND ok={int(ok_fg)} err={err_fg} '
-                 f'hwnd={self.hwnd} is_foreground={int(fg_now == self.hwnd)}')
         command = user32.TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD,
                                         pt.x, pt.y, 0, wt.HWND(self.hwnd),
                                         None)
-        user32.DestroyMenu(menu)
-        self.menu = None
+        # O MENU NAO E' DESTRUIDO AQUI: ele e' o MESMO objecto do proximo clique
+        # (`refresh_menu` e' quem o substitui, quando o texto muda).
+        #
+        # A LINHA DO LOG VEM DEPOIS DO MENU, E NAO ANTES (2026-11-07). `log()`
+        # faz `print(..., flush=True)`: e' um `write` no ficheiro do log, que
+        # nesta maquina vive num disco saturado. Escrito ANTES do
+        # `TrackPopupMenu`, esse `flush` fica entre o clique do dono e o menu a
+        # aparecer -- e o sintoma dele e' exactamente "aperto o botao direito e
+        # nao responde". O `ok_fg` e' medido ANTES (e' o que decide a receita) e
+        # contado depois, com o custo do menu ao lado:
+        menu_ms = (time.monotonic() - t_menu) * 1000.0
+        self.log(f'TRAY_MENU_FOREGROUND ok={int(ok_fg)} err={err_fg} '
+                 f'hwnd={self.hwnd} is_foreground={int(fg_now == self.hwnd)} '
+                 f'menu_ms={menu_ms:.0f}')
         if command:
             # A REAL WM_COMMAND, so the menu and the probe take one path.
             user32.PostMessageW(wt.HWND(self.hwnd), WM_COMMAND, command, 0)
@@ -8524,13 +8574,30 @@ class TrayIcon:
         """Built, LOGGED, and then drawn — so the log proves every item exists
         (its id and its text) without anyone having to click.
 
-        THREE items now, and the two shipped ids keep their numbers: `[1]` Open
-        panel (the FULL panel — Alt+C is what opens the strip), `[3]` Edit
-        caption position, `[2]` Quit Sotto. `_main/tray-quit-probe.py` finds the
-        Quit by its TEXT (`[2]='Quit Sotto'`), so a new item cannot break it.
+        FOUR items now, and the three shipped ids keep their numbers: `[1]` Open
+        panel (the FULL panel — Alt+C is what opens the strip), `[4]` the Alt+C
+        switch, `[3]` Edit caption position, `[2]` Quit Sotto.
+        `_main/tray-quit-probe.py` finds the Quit by its TEXT
+        (`[2]='Quit Sotto'`), so a new item cannot break it.
+
+        THE Alt+C ITEM IS WRITTEN AS THE ACTION, NOT AS A STATE (dono,
+        2026-11-07): *"faz um botao 'desativar atalho alt c' ... e claro, é
+        ativar e desativar"*. Armed -> "Desativar atalho Alt+C"; disarmed ->
+        "Ativar atalho Alt+C". One item, one click, and the label is the answer to
+        "what does this click do".
         """
         menu = user32.CreatePopupMenu()
         user32.AppendMenuW(menu, MF_STRING, ID_TRAY_OPEN, 'Open panel')
+        try:
+            state = self.panels_state() or {}
+        except Exception as exc:          # noqa: BLE001 -- um menu sem estado e' um menu
+            self.warn(f'TRAY_MENU_STATE_FAILED {type(exc).__name__}: {exc}')
+            state = {}
+        accel = str(state.get('accel') or 'Alt+C')
+        armed = bool(state.get('enabled', True))
+        label = (f'Desativar atalho {accel}' if armed
+                 else f'Ativar atalho {accel}')
+        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_HOTKEY, label)
         user32.AppendMenuW(menu, MF_STRING, ID_TRAY_EDIT,
                            'Edit caption position')
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
@@ -8541,6 +8608,31 @@ class TrayIcon:
             f"[{i['id']}]={i['text']!r}" if i['id'] else '[sep]'
             for i in items))
         return menu
+
+    def refresh_menu(self, why='state'):
+        """Rebuild the popup so its TEXT tells the truth NOW.
+
+        Called from the command handler, which runs AFTER `TrackPopupMenu`
+        returned -- so the menu being replaced is not the one on the screen and
+        `DestroyMenu` cannot pull it out from under the owner's mouse. A menu that
+        outlives its state is the defect this method exists to prevent: the Alt+C
+        item would keep saying "Desativar" after the key was already disarmed.
+        """
+        old = self.menu
+        self.menu = None
+        try:
+            new = self._build_menu()
+        except Exception as exc:          # noqa: BLE001 -- um menu velho e' melhor que zero
+            self.warn(f'TRAY_MENU_REBUILD_FAILED {type(exc).__name__}: {exc}')
+            self.menu = old
+            return False
+        if old:
+            try:
+                user32.DestroyMenu(old)
+            except Exception:             # noqa: BLE001
+                pass
+        self.log(f'TRAY_MENU_REFRESHED why={why}')
+        return True
 
     def _raise_thread_priority(self):
         """O ICONE TEM DE RESPONDER COM A MAQUINA ESGOTADA (dono, 2026-11-05).
@@ -8691,7 +8783,7 @@ def warn_hotkey_unavailable(requested: str, tried, tray=None) -> None:
         % (str(shown).lower(), 'balloon' if shown else 'log-only'))
 
 
-def arm_hotkey(shell, requested: str):
+def arm_hotkey(shell, requested: str, panels: bool = True):
     """Arma AS DUAS hotkeys e devolve o thread dos PAINEIS (ou None).
 
     Ordem do dono, 2026-11-01: *"bota o padrao como control espaco. e os painels
@@ -8709,7 +8801,17 @@ def arm_hotkey(shell, requested: str):
     a tecla dela falhar e' um recuo, nao um brick -- e inventar uma cadeia para
     ela seria uma segunda tecla que ninguem pediu.
     """
-    panels = arm_hotkey_role(shell, 'panels', requested, HOTKEY_FALLBACKS)
+    if panels:
+        panels_thread = arm_hotkey_role(shell, 'panels', requested, HOTKEY_FALLBACKS)
+    else:
+        # O INTERRUPTOR DO MENU DO ICONE SOBREVIVE AO REINICIO (dono, 2026-11-07:
+        # *"e claro, é ativar e desativar"*). Sem esta perna, o botao valia ate'
+        # a proxima largada e o Alt+C voltava sozinho -- um botao que mente na
+        # manha seguinte e' pior do que nao existir. A escolha NAO e' silenciosa:
+        # sem tecla, o log diz PORQUE.
+        panels_thread = None
+        log(f'HOTKEY_PANELS_DISABLED source=settings requested={requested} '
+            'why=owner-toggled-off-in-tray')
     #: UMA MEDIÇÃO NÃO PODE SENTAR-SE NA TECLA DELE. Medido 2026-11-01 10:14:30:
     #: uma instância largada para medir pediu `Ctrl+Space`, a app do dono já a
     #: tinha, e o log dela ficou com `HOTKEY_REGISTER_FAILED role=live
@@ -8728,7 +8830,7 @@ def arm_hotkey(shell, requested: str):
                 f'default={hotkey_numbers().LIVE_ACCELERATOR}')
             live = hotkey_numbers().LIVE_ACCELERATOR
     shell.live_hotkey = arm_hotkey_role(shell, 'live', live, ())
-    return panels
+    return panels_thread
 
 
 def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
@@ -14455,14 +14557,84 @@ class SottoShell:
         and a tray that fails to appear would leave him with the task manager.
         It therefore says so LOUDLY (`TRAY_FAILED`) instead of being a silent
         missing feature.
+
+        O item do Alt+C le' o estado VIVO por `panels_hotkey_state`: o menu e' a
+        unica superficie onde o dono ve' se a tecla esta' armada, e um menu que
+        respondesse de memoria mentiria a partir do segundo clique.
         """
-        self.tray = TrayIcon(SOTTO_ICON, self.tray_command, log, warn)
+        self.tray = TrayIcon(SOTTO_ICON, self.tray_command, log, warn,
+                             panels_state_fn=self.panels_hotkey_state)
         ok = self.tray.start()
         if not ok:
             warn('TRAY_UNAVAILABLE the notification-area icon did not come up; '
                  'the app keeps running and Alt+C still works, but the Quit '
                  f'has no home (error={self.tray._failed})')
         return ok
+
+    def panels_hotkey_state(self):
+        """`{'enabled': bool, 'accel': str}` para o item do menu.
+
+        `enabled` e' o que a TECLA FAZ, e nao o que o ficheiro diz: um Alt+C
+        tomado por outro programa (`winerror=1409`) tem o fio vivo e nao entrega
+        tecla nenhuma, e um menu que dissesse "Desativar" nesse estado prometia
+        uma coisa que ja' nao existe. O fio diz a verdade; o ficheiro diz a
+        INTENCAO, e a intencao entra no arranque.
+        """
+        thread = getattr(self, 'hotkey', None)
+        accel = (getattr(thread, 'accelerator', None)
+                 or getattr(self, '_hotkey_requested', None)
+                 or hotkey_numbers().PANELS_ACCELERATOR)
+        armed = bool(thread is not None
+                     and getattr(thread, 'registered', False)
+                     and thread.is_alive())
+        return {'enabled': armed, 'accel': str(accel)}
+
+    def toggle_panels_hotkey(self):
+        """Desliga/arma o Alt+C, e GRAVA a escolha para sobreviver ao reinicio.
+
+        Dono, 2026-11-07, verbatim: *"faz um botao 'desativar atalho alt c' no
+        click direito do icon do sotto"* e *"e claro, é ativar e desativar"*.
+
+        Corre na thread do icone (o comando chega por `WM_COMMAND`), que e' onde
+        `arm_hotkey_role` tambem corre no arranque -- a tecla e' registada e
+        desregistada sempre pelo mesmo caminho, e por isso nao ha duas verdades
+        sobre quem e' dono da combinacao.
+        """
+        state = self.panels_hotkey_state()
+        if state['enabled']:
+            self.stop_panels_hotkey()
+            saved = hotkey_config().set_panels_enabled(False)
+            log(f'HOTKEY_PANELS toggled=false action=disarm '
+                f'persisted={int(bool(saved.get("ok")))} '
+                f'error={saved.get("error")!r}')
+        else:
+            requested = (getattr(self, '_hotkey_requested', None)
+                         or state.get('accel')
+                         or hotkey_numbers().PANELS_ACCELERATOR)
+            self.hotkey = arm_hotkey(self, requested)
+            saved = hotkey_config().set_panels_enabled(True)
+            now = self.panels_hotkey_state()
+            log(f'HOTKEY_PANELS toggled=true action=arm '
+                f'requested={requested} armed={int(now["enabled"])} '
+                f'persisted={int(bool(saved.get("ok")))} '
+                f'error={saved.get("error")!r}')
+        if self.tray is not None:
+            self.tray.refresh_menu('hotkey-toggle')
+        return self.panels_hotkey_state()
+
+    def stop_panels_hotkey(self):
+        """Solta a tecla dos paineis; a da legenda NAO e' tocada."""
+        thread = getattr(self, 'hotkey', None)
+        self.hotkey = None
+        if thread is None:
+            return True
+        try:
+            thread.stop()
+        except Exception as exc:          # noqa: BLE001 -- desligar nao pode falhar
+            log(f'HOTKEY_PANELS_STOP_FAILED error={exc!r}')
+            return False
+        log('HOTKEY_PANELS_STOPPED why=toggle')
+        return True
 
     def tray_command(self, command):
         if command == ID_TRAY_QUIT:
@@ -14483,6 +14655,11 @@ class SottoShell:
         elif command == ID_TRAY_EDIT:
             log('TRAY_EDIT requested=true')
             self.set_edit_mode(not self.edit_mode, 'tray')
+        elif command == ID_TRAY_HOTKEY:
+            # *"desativar atalho alt c"* / *"ativar"* -- o item diz a accao que
+            # faz, e o menu seguinte passa a dizer a contraria (`refresh_menu`).
+            log('TRAY_HOTKEY requested=true')
+            self.toggle_panels_hotkey()
 
     def request_exit(self, code=0, reason='requested'):
         if self.exiting.is_set():
@@ -22147,7 +22324,9 @@ def main(argv=None):
         # `HOTKEY_FALLBACKS`, then — if every one is owned by another program —
         # a dialog on a daemon thread, because a hidden app with a dead hotkey
         # and no message is indistinguishable from a broken app.
-        shell.hotkey = arm_hotkey(shell, args.hotkey)
+        shell.hotkey = arm_hotkey(
+            shell, args.hotkey, panels=hotkey_config().panels_enabled())
+        shell._hotkey_requested = args.hotkey
         # A LEGENDA ARRANCA AQUI, NAO DEPOIS DO WEBVIEW2 (2026-11-03):
         # o overlay e' nativo e o worker e' outro processo -- nenhum dos dois
         # precisa da pagina do painel para existir.

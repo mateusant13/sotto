@@ -241,6 +241,36 @@ class FakeOverlay:
         return True
 
 
+def module_defs(source: str, names) -> list:
+    """Os `def` de MODULO com estes nomes, por AST -- copiados, nao reescritos."""
+    tree = ast.parse(source)
+    wanted = set(names)
+    out = [node for node in tree.body
+           if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+           and node.name in wanted]
+    missing = wanted - {node.name for node in out}
+    if missing:
+        raise RuntimeError("def(s) de modulo em falta: %s" % sorted(missing))
+    return out
+
+
+def class_consts(source: str, cls: str, names) -> dict:
+    """O VALOR literal das constantes da classe, lido do ficheiro vivo."""
+    wanted = set(names)
+    out = {}
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ClassDef) and node.name == cls:
+            for item in node.body:
+                if isinstance(item, ast.Assign):
+                    for target in item.targets:
+                        if isinstance(target, ast.Name) and target.id in wanted:
+                            out[target.id] = ast.literal_eval(item.value)
+    missing = wanted - set(out)
+    if missing:
+        raise RuntimeError("constante(s) em falta: %s" % sorted(missing))
+    return out
+
+
 def build_methods(source: str, shell_path: Path) -> dict:
     """Os corpos REAIS de `SottoShell`, exec'd contra um `self` falso."""
     wanted = ("_hotkey_resolve", "_set_live_enabled", "show_caption_window",
@@ -258,9 +288,20 @@ def build_methods(source: str, shell_path: Path) -> dict:
         "window_visible": lambda hwnd: bool(SCREEN['visible']),
         "hotkey_numbers": lambda: gesture,
     }
-    module = ast.Module(body=[ast.parse(bodies[name]).body[0] for name in wanted],
+    # O METODO NOVO ARRASTA UM NOME DE MODULO (2026-11-07). `_set_live_enabled`
+    # passou a perguntar a `_caption_replay_allowed` se a linha ja' pintada
+    # pode voltar ao ecra; um arnes que exec's so' os metodos da classe deixa o
+    # nome por definir e a arm le `LIVE_ENABLED_FAILED NameError` -- o defeito
+    # era do INSTRUMENTO, nao da shell (medido: 32 arms, 1 fail, a linha).
+    # O nome vem do PROPRIO ficheiro, por AST, para o arnes nunca reencenar a
+    # regra que julga.
+    helpers = module_defs(source, ("_caption_replay_allowed",))
+    module = ast.Module(body=helpers
+                        + [ast.parse(bodies[name]).body[0] for name in wanted],
                         type_ignores=[])
     exec(compile(module, "<sotto-shell-toggle>", "exec"), namespace)
+    namespace["__consts__"] = class_consts(source, "SottoShell",
+                                           ("CAPTION_REPLAY_MAX_S",))
     return namespace
 
 
@@ -283,13 +324,23 @@ class Shell:
         # Alt+C (role=panels) precisa destes tres; o braco (i) so' os usa.
         self.hwnd = 4242
         self.visible = False
+        self.replayed = []
         self.surface_applied = 'strip'
+        # A CONSTANTE VEM DO FICHEIRO VIVO, nao de um numero copiado aqui: o
+        # limite do replay e' uma politica (`CAPTION_REPLAY_MAX_S`), e reencena-la
+        # no arnes era medir a copia em vez do produto.
+        for _name, _value in (methods.get('__consts__') or {}).items():
+            setattr(self, _name, _value)
         for name in ("_hotkey_resolve", "_set_live_enabled", "show_caption_window",
                      "_caption_wanted_store", "exec_js_post"):
             setattr(self, name, types.MethodType(methods[name], self))
 
     def _post(self, fn):
         return self.ui.post(fn)
+
+    def push_caption_to_window(self, text, previous=None, instant=False):
+        """O REPLAY tem de ser observavel: sem esta boca o braco (m) nao ve' nada."""
+        self.replayed.append((text, instant))
 
     def work_area(self):
         return {'x': 0, 'y': 0, 'width': 100, 'height': 100}
@@ -662,6 +713,48 @@ def run(shell_path: Path) -> int:
     add(any('POSTED_CALLABLE_FAILED' in line for line in LOG),
         "a falha foi DITA (POSTED_CALLABLE_FAILED), nao silenciada", str(LOG[-2:]))
 
+    # -- (m) a linha ja' pintada VOLTA no ligar, e so' se ainda for legenda ---
+    print("\nARM (m) -- ligar nao espera a proxima linha, mas nao despeja frase velha")
+    LOG.clear()
+    shell = Shell(methods, FakeUI(run_now=True), wanted=False, shown=False)
+    shell._caption_painted = 'a frase que ja estava no ecra'
+    shell._caption_painted_at = time.time()
+    press(shell)
+    add(len(shell.replayed) == 1 and shell.replayed[0][1] is True,
+        "linha FRESCA volta na hora (instant=True)", str(shell.replayed))
+    add(any('CAPTION_WINDOW_REPLAYED' in line for line in LOG),
+        "e o replay e' DITO no log", str([l for l in LOG if 'REPLAY' in l]))
+    LOG.clear()
+    shell = Shell(methods, FakeUI(run_now=True), wanted=False, shown=False)
+    shell._caption_painted = 'uma frase de um minuto atras'
+    shell._caption_painted_at = time.time() - 60.0
+    press(shell)
+    add(shell.replayed == [],
+        "linha VELHA nao volta (o jumpscare que o teto existe para matar)",
+        str(shell.replayed))
+    add(any('CAPTION_WINDOW_REPLAY_SKIPPED' in line for line in LOG),
+        "e o pulo tambem e' DITO", str([l for l in LOG if 'REPLAY' in l]))
+    LOG.clear()
+    shell = Shell(methods, FakeUI(run_now=True), wanted=False, shown=False)
+    shell._caption_painted_at = time.time() - 60.0
+    shell.yt_source_paused = True
+    shell._last_caption_was_player = True
+    shell._caption_painted = 'o video esta PAUSADO nesta frase'
+    press(shell)
+    add(len(shell.replayed) == 1,
+        "PAUSADO + linha do PLAYER: a idade nao envelhece a linha "
+        "(o dono desliga os dois ao mesmo tempo)", str(shell.replayed))
+    LOG.clear()
+    shell = Shell(methods, FakeUI(run_now=True), wanted=False, shown=False)
+    shell._caption_painted_at = time.time() - 60.0
+    shell.yt_source_paused = True
+    shell._last_caption_was_player = False
+    shell._caption_painted = 'uma linha do ASR em pausa'
+    press(shell)
+    add(shell.replayed == [],
+        "PAUSADO + linha do ASR continua a envelhecer: so' o player tem "
+        "'a frase que esta a pintar'", str(shell.replayed))
+
     # -- (l) estrutural: a ordem no AST, nao no texto ------------------------
     print("\nARM (l) -- estrutural: a primitiva que bloqueia e a ordem do log")
     show_src = class_methods(source, "SottoShell", ("show_caption_window",))[
@@ -727,6 +820,14 @@ MUTANTS = (
      "                f'panel_closed=false')\n",
      "            pass\n",
      "LIVE_ENABLED deixa de sair na decisao"),
+    ("replay-sem-pausa",
+     "    if bool(paused) and bool(from_player):\n        return True\n",
+     "    if False:\n        return True\n",
+     "a pausa deixa de segurar a linha do player (arm m)"),
+    ("replay-sem-teto",
+     "    return 0 <= age_ms <= int(float(max_s) * 1000.0)",
+     "    return True",
+     "o teto do replay desaparece: a frase de um minuto atras volta (arm m)"),
 )
 
 
