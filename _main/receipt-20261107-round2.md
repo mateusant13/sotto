@@ -144,3 +144,37 @@ A terceira — `pythonw.exe(14488)`, `H:\!gravador\tools\nsfw\vigia.py --orcamen
 --lote 5 --tempo-max 300`, `io 86.1MB/s`, `creation=50.7/s` — **nao e' o Sotto**: e' outro projecto
 (`H:\!gravador`), com cwd de arranque dentro desta arvore. Nenhum processo deste repo tem esse
 command line; o pid nao e' meu e nao o matei.
+
+## 7. A PROVA do painel, e o estado em que ele vai encontrar a app
+
+Nove oraculos do painel, corridos nesta arvore depois do ultimo `git add`:
+
+|oraculo|veredicto|
+|---|---|
+|`_panel2-dom-probe.js`|87 `[PASS]`, **0 `[FAIL]`**|
+|`panel-header-oracle.js`|`GREEN -- 24/24 arm(s)`|
+|`panel-drag-targets-oracle.js`|`PASS -- 12 arms, 0 divergentes`|
+|`panel-history-clip-probe.mjs`|`STAMP LOUDER THAN TEXT in 0 theme(s)` / `NOT LEFT-ALIGNED rows in 0 theme(s)`|
+|`panel-pause-payload-oracle.py`|`VERDICT: PASS -- 5/5`|
+|`panel-deps-oracle.py`|`VERDICT: PASS -- 18/18`|
+|`theme-switch-oracle.js`|`VERDICT: PASS (0 failure(s))`|
+|`theme-preview-oracle.js`|`VERDICT: PASS`|
+|`panel-unified.css`|carrega por ULTIMO (`panel.html:95`), depois de `button-contract.css` -- e' ele que nenhum tema pode derrotar|
+
+**O QUE A APP DELE ESTA' A CORRER AGORA NAO E' ESTE CODIGO**, medido com o instrumento do PASSO 0:
+
+```
+python _main/live-code-freshness-oracle.py --strict
+  pid=23244 started=2026-11-07 10:24:53.155
+  processo: sha256=B7582B656F92
+  disco   : sha256=787FE71E0244 files=99
+  porque  : a etiqueta do processo nao e' a do disco (hash diferente)
+  >>> O QUE O DONO CARREGA NAO E ESTE CODIGO.
+```
+
+O `STALE` e' esperado: a instancia dele nasceu as 10:24 e a rodada inteira aterrou depois. Nada do
+que esta' neste recibo vale como afirmacao sobre o comportamento que ele ve' **enquanto essa
+instancia estiver viva** -- e o `LIVE_ENABLED_FAILED NameError` do §4 e' exactamente essa assinatura.
+Fechar e reabrir e' a primeira accao de qualquer julgamento do sintoma; uma lane nao larga uma
+instancia que detenha `Local\SottoShell`, por isso o reinicio e' dele (ou do `sotto-relaunch.py`,
+que reusa o token `high` da instancia viva).
