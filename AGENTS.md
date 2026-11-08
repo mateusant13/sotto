@@ -446,8 +446,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-07, 16:0x):** `_main\_audit-verify-all.cmd` = **274820 B**,
-  **3341 CRLF** / 0 bare LF, sha256 `67A43AB9E9340B132585AA6D4368A7FDFA8777B646ABC94E8ACD2443F118A65F`.
+- **PIN do ficheiro (medido 2026-11-08, 00:3x):** `_main\_audit-verify-all.cmd` = **277300 B**,
+  **3371 CRLF** / 0 bare LF, sha256 `592FCE4BFE391753C07F3D03F52D31C8428CF2FD993DB6A9F5E66DD247FA1EB1`.
+  (Dois pares novos, 1264 B e 15 linhas a mais do que o pin de 276036 B:
+  `census-instrument` + `red-as-expected-census-instrument` -- o censo da shell calava abaixo de
+  20 % do TOTAL e deixou de nomear a thread exactamente na faixa em que a cura a põe (10-16 %);
+  agora publica com total >= 20 % **ou** uma thread >= 5 %, e `SHELL_CODE_ID ... heartbeat=true`
+  volta a cada ~10 min (memo de 14 ms -> 0,0 ms), porque escrito só no arranque ele desaparece com
+  a rotação do log e o portão da frescura responde `UNKNOWN` quando a instância envelhece.
+  O pin anterior era 276036 B / 3356 CRLF:
+  sha256 `41390E124B721FD42DF51A094DA1CCA7F321DB484DDFC64BB6BE1E12DF145669`.)
   (Mil quatrocentos e dezasseis bytes e quinze linhas a mais do que o pin de 273404 B: o par
   `worker-death-trace` + `red-as-expected-worker-death-trace`, a **morte diagnosticavel do
   worker**. Nasceu da DM do watcher de 2026-11-07 (*"acabou de acontecer stutter"*) e da medicao

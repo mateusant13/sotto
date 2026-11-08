@@ -2691,6 +2691,36 @@ call :step heavy shell-relaunch 0 "_main\shell-relaunch-oracle.py;app\webview\sh
 call :record shell-relaunch !STEP_RC!
 ) else ( call :record shell-relaunch MISSING )
 
+REM O RELANCADOR NAO PODE MENTIR "FALHA" DEPOIS DE TER MATADO A APP (2026-11-08).
+REM Medido: a relancada das 00:09 largou o filho, a instancia NOVA ganhou a mutex 1 s
+REM depois -- e o instrumento publicou "FALHA (via token): nenhuma instancia nova em
+REM 90s", porque chaveava o vencedor pelo PID e o pid 19896 ja' existia num log de
+REM 2026-11-03 (o Windows RECICLA pids). Um relancador que mente nesse sitio convida
+REM quem o le' a matar outra vez. Curado: a chave e' (pid, carimbo) e o carimbo tem de
+REM ser POSTERIOR a largada; `since` nao tem ombisssao. O braco de baixo solta o
+REM filtro numa COPIA e exige A1/A2/A5 vermelhos.
+REM O CENSO TEM DE NOMEAR A THREAD NA FAIXA EM QUE ELA IMPORTA (2026-11-08).
+REM Medido: a instancia curada (pid 19896) ficou em 10-16 % de um nucleo e o censo
+REM calou (piso de 20 % no TOTAL), logo "o spin voltou?" nao tinha resposta por
+REM nome. Duas portas: total >= 20 % ou UMA thread >= 5 %. E a identidade do
+REM codigo volta a ser dita a cada ~10 min (`SHELL_CODE_ID ... heartbeat=true`,
+REM sha256 memoizado, 14 ms uma vez e 0,0 ms depois), porque escrita so' no
+REM arranque ela desaparece com a rotacao do log e o portao da frescura responde
+REM UNKNOWN exactamente quando a instancia envelhece.
+if exist _main\shell-census-instrument-oracle.py (
+call :step census-instrument 0 "_main\shell-census-instrument-oracle.py;app\webview\sotto_webview.py" "%OUT%\census-instrument.log" python _main\shell-census-instrument-oracle.py
+call :record census-instrument !STEP_RC!
+call :step red-as-expected-census-instrument 1 "_main\shell-census-instrument-oracle.py;app\webview\sotto_webview.py" "%OUT%\census-instrument-neg.log" python _main\shell-census-instrument-oracle.py --neg-arm
+call :expectred red-as-expected-census-instrument !STEP_RC! "%OUT%\census-instrument-neg.log" "NEG-ARM: PASS"
+) else ( call :record census-instrument MISSING )
+
+if exist _main\relaunch-ready-oracle.py (
+call :step relaunch-ready 0 "_main\relaunch-ready-oracle.py;_main\sotto-relaunch.py" "%OUT%\relaunch-ready.log" python _main\relaunch-ready-oracle.py
+call :record relaunch-ready !STEP_RC!
+call :step red-as-expected-relaunch-ready 1 "_main\relaunch-ready-oracle.py;_main\sotto-relaunch.py" "%OUT%\relaunch-ready-neg.log" python _main\relaunch-ready-oracle.py --neg-arm
+call :expectred red-as-expected-relaunch-ready !STEP_RC! "%OUT%\relaunch-ready-neg.log" "NEG-ARM: PASS"
+) else ( call :record relaunch-ready MISSING )
+
 
 if exist _main\youtube-word-clock-oracle.py (
 call :step always word-clock 0 "_main\youtube-word-clock-oracle.py;app\webview\youtube_reveal.py;app\webview\youtube_window.py;app\webview\youtube_captions.py;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\word-clock.log" python _main\youtube-word-clock-oracle.py

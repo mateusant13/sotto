@@ -2068,6 +2068,42 @@ def code_identity():
     return _code_identity(os.path.dirname(os.path.abspath(__file__)))
 
 
+#: O MESMO NUMERO, DITO DE NOVO DE DEZ EM DEZ MINUTOS (2026-11-08). Medido: com a
+#: etiqueta escrita so' no arranque, uma instancia de 12 h respondia `UNKNOWN` ao
+#: `_main/live-code-freshness-oracle.py` depois de o log rodar. O codigo deste
+#: processo NAO muda, por isso o sha256 e' calculado uma vez (99 ficheiros) e o
+#: resto e' uma linha por batimento.
+_CODE_ID_MEMO = {}
+
+
+#: PISO DO CENSO (2026-11-08). O censo calava abaixo de 20 % de um nucleo, e foi
+#: exactamente nessa faixa (10-16 %) que ele deixou de nomear a thread com o
+#: timer curado. Duas portas: o TOTAL a 20 %, ou UMA thread a 5 %.
+CENSUS_TOTAL_FLOOR = 20.0
+CENSUS_THREAD_FLOOR = 5.0
+CENSUS_BEAT_EVERY = 10          # censos entre dois `SHELL_CODE_ID ... heartbeat=true`
+
+
+def census_should_publish(total, top_pct,
+                          floor_total=CENSUS_TOTAL_FLOOR,
+                          floor_top=CENSUS_THREAD_FLOOR):
+    """Publica quando o total passa o piso OU quando UMA thread passa o seu."""
+    return total >= floor_total or top_pct >= floor_top
+
+
+def census_beat_due(beats, every=CENSUS_BEAT_EVERY):
+    """E' este o censo em que a identidade do codigo volta a ser dita?"""
+    return every > 0 and beats % every == 0
+
+
+def _code_identity_memo():
+    """`code_identity()` com memo: o processo carrega o MESMO codigo a vida toda."""
+    got = _CODE_ID_MEMO.get('id')
+    if got is None:
+        got = _CODE_ID_MEMO['id'] = code_identity()
+    return got
+
+
 def log(message: str) -> None:
     """One `sotto: ` prefixed line on stdout, mirrored to --log when asked.
 
@@ -11347,7 +11383,14 @@ class SottoShell:
             rows.sort(reverse=True)
             if log_it and rows:
                 total = sum(r[0] for r in rows)
-                if total >= 20.0:
+                top_pct = rows[0][0]
+                # O PISO DE 20 % ESCONDIA A THREAD EXACTAMENTE QUANDO ELA IMPORTA
+                # (medido 2026-11-08): a instancia nova (pid 19896) com o timer
+                # curado ficou em 10-16 % de um nucleo e o censo calou -- quem
+                # quisesse provar que `sotto-outside-click` deixou de girar so'
+                # tinha como resposta "nao ha' linha", que nao diz qual thread
+                # gasta. Agora publica tambem quando UMA thread passa de 5 %.
+                if census_should_publish(total, top_pct):
                     log('THREAD_CPU total=%.0f%% top=%s'
                         % (total, ' '.join('%s:%.0f%%' % (n, p)
                                            for p, n in rows[:4])))
@@ -11365,9 +11408,20 @@ class SottoShell:
 
         def _loop():
             self._thread_cpu_census(log_it=False)   # a base
+            beats = 0
             while True:
                 time.sleep(every_s)
                 self._thread_cpu_census()
+                # A IDENTIDADE DO CODIGO VOLTA A SER DITA (medido 2026-11-08):
+                # `SHELL_CODE_ID` era escrito UMA vez, no arranque. O log roda, e
+                # `_main/live-code-freshness-oracle.py` respondeu UNKNOWN a uma
+                # instancia de 12 h -- o portao que existe para dizer STALE ficou
+                # cego precisamente quando a instancia envelhece. Re-dizer a cada
+                # ~10 min custa uma linha e um sha256 memoizado, e o portao
+                # recupera a capacidade de decidir.
+                beats += 1
+                if census_beat_due(beats):
+                    log('SHELL_CODE_ID %s heartbeat=true' % _code_identity_memo())
 
         self._cpu_census_thread = threading.Thread(
             target=_loop, name='sotto-thread-cpu', daemon=True)

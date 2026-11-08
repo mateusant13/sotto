@@ -421,25 +421,60 @@ def is_high():
     return _token_launcher().integrity_name(_token_launcher().integrity_of()) == 'HIGH'
 
 
-def wait_ready(pid_before, timeout=READY_TIMEOUT_S):
-    """Waits for a NEW winner in the log: `SHELL_STARTUP_STAGE` after our launch."""
+STARTUP_RX = re.compile(
+    r'^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+) sotto: SHELL_STARTUP_STAGE pid=(\d+) stage=pre-lock',
+    re.M)
+
+
+def _stamp_epoch(stamp_text):
+    try:
+        return time.mktime(time.strptime(stamp_text[:19], '%Y-%m-%d %H:%M:%S'))
+    except ValueError:
+        return None
+
+
+def wait_ready(pid_before, since, timeout=READY_TIMEOUT_S):
+    """Espera um vencedor NASCIDO DEPOIS DE `since` (epoch, segundos).
+
+    A CHAVE E' `(pid, carimbo)`, NAO O PID -- medido 2026-11-08 00:09. Uma
+    instancia nova ganhou a mutex **1 s** depois da largada e este laco publicou
+    `FALHA (via token): nenhuma instancia nova em 90s`: o pid 19896 ja' existia
+    no log de **2026-11-03**, e o laco chaveava por pid. O Windows RECICLA pids;
+    dois processos com o mesmo numero, tres dias de distancia. Um relancador que
+    diz FALHA depois de ter MATADO a app convida quem o le' a matar outra vez --
+    o pior sitio desta arvore para uma frase falsa.
+
+    `since` NAO TEM OMBISSAO: sem ele nao ha como separar a vida nova da antiga
+    do mesmo numero, e a unica resposta honesta seria "nao sei".
+    """
     deadline = time.time() + timeout
-    seen = set(pid_before)
+    seen = set()
+    for pid in pid_before:
+        seen.add((int(pid), None))
+    newest = None            # (stamp_epoch, stamp_text, pid) -- para a frase de falha
     while time.time() < deadline:
         text = log_text()
-        for pid in re.findall(r'SHELL_STARTUP_STAGE pid=(\d+) stage=pre-lock', text):
-            pid = int(pid)
-            if pid in seen:
+        for stamp_text, pid_text in STARTUP_RX.findall(text):
+            pid = int(pid_text)
+            stamp = _stamp_epoch(stamp_text)
+            if newest is None or (stamp or 0) >= newest[0]:
+                newest = (stamp or 0, stamp_text, pid)
+            if stamp is not None and stamp < since:
+                continue          # linha de uma vida ANTERIOR do mesmo numero
+            if (pid, stamp_text) in seen:
                 continue
-            seen.add(pid)
+            seen.add((pid, stamp_text))
             tail = text[text.rfind('SHELL_STARTUP_STAGE pid=%d' % pid):]
             if 'already_running=true' in tail[:2000]:
                 w('pid %d RECUSADO pela mutex (a antiga ainda a tinha)' % pid)
                 continue
             if 'SINGLE_INSTANCE' in tail[:2000] and 'already_running=false' in tail[:2000]:
-                w('pid %d GANHOU a mutex' % pid)
+                w('pid %d GANHOU a mutex (carimbo %s)' % (pid, stamp_text))
                 return pid
         time.sleep(POLL_S)
+    if newest:
+        w('o ultimo SHELL_STARTUP_STAGE visto foi carimbo=%s pid=%s (pedido: >= %s)'
+          % (newest[1], newest[2], time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(since))))
     return None
 
 
@@ -479,6 +514,7 @@ def main(argv=None):
         return 0 if pid else 1
 
     w('relaunch pedido tag=%s' % args.tag)
+    t0 = time.time()
     before = set(int(p) for p in re.findall(r'SHELL_STARTUP_STAGE pid=(\d+)', log_text()))
     # QUEM MATA E' QUEM PODE: matar um processo `high` a partir de `medium` da' err=5, por
     # isso uma chamada de uma pane `medium` delega a um filho `high` com o token do shell
@@ -504,7 +540,7 @@ def main(argv=None):
         if not launch_via_token(source, extra=['--no-self-relaunch']):
             w('ABORTA: nao consegui largar o filho high com o token de %d' % source)
             return 6
-        new = wait_ready(before)
+        new = wait_ready(before, since=t0 - 2)
         if not new:
             w('FALHA (via token): nenhuma instancia nova em %.0fs' % READY_TIMEOUT_S)
             return 5
@@ -541,7 +577,7 @@ def main(argv=None):
     if not launched:
         w('ABORTA: nenhum lancador funcionou (token e tarefa)')
         return 4
-    new = wait_ready(before)
+    new = wait_ready(before, since=t0 - 2)
     if not new:
         w('FALHA: nenhuma instancia nova ganhou a mutex em %.0fs' % READY_TIMEOUT_S)
         return 5
