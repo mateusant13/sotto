@@ -125,3 +125,19 @@ O dono já reclamou de stutter 149 vezes em 14 dias (contadas nos transcripts em
 medição é a queixa dele**. A regra que fica (e a primeira frase do recibo): um culpado de stutter
 só conta como arrumado com **pid + fio + linha** e o número antes/depois — três dos quatro são
 exigíveis sem a tela dele; o quarto é o primeiro arranque.
+
+## 9. Os três defeitos do próprio instrumento (corrigidos no mesmo dia)
+
+O portão nasceu de manhã e só valeu quando tentou medir o processo real. Os três são **da mesma
+classe** — um instrumento que devolve "nada" por defeito próprio e o leitor não distingue isso de
+"não houve nada":
+
+| # | defeito | o que o leitor via | medido depois da cura |
+|---|---|---|---|
+| 1 | `log_worst()` chamava `io.open` **sem `import io`** | `NameError` engolido por `except Exception: return None`, julgamento **sem a série** | `(105.0, 87.0, 'sotto-caption-tick', '2026-11-08 04:54:22')` |
+| 2 | desempacotamento invertido (`float(nome)` em vez de `float(pct)`) | a leitura morria antes de acumular | a pior janela passa a entrar no `judge` |
+| 3 | `instance_fresh()` lia `out[1]` (stdout) e fazia `import hidden_launch` num módulo com **hífen** | `None` **sempre** → o `SKIPPED reason=stale-instance` nunca podia disparar | `False` (STALE) com o shell fechado |
+| 4 | sem shell viva, o passo dizia só `SKIPPED` | o dado que justifica o portão desaparecia | imprime a pior janela da série **antes** do SKIPPED |
+
+O número que a amostra de 5 s perdia é o que o dono sentiu: **`total=105 %`, `sotto-caption-tick=87 %`**
+às 04:54:22 — e a amostra de 5 s do mesmo minuto, em repouso, dava `19,7 %` (verde).
