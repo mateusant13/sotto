@@ -115,7 +115,13 @@ def judge(measured, baseline, target=DEFAULT_TARGET_S, pct=RATCHET_PCT):
             before = per_base.get(name)
             if before is None or before <= 0:
                 continue
-            if before < PER_STEP_FLOOR_S:
+            # O PISO E' SOBRE O QUE ESTA' SENDO JULGADO, NUNCA UMA ISENCAO: um
+            # passo que NASCEU pequeno e engordou para 200 s passa a ser julgado
+            # (medido nesta sessao: com `before < PISO: continue`, 4,9 s -> 200 s
+            # ficava invisivel para o ratchet por passo, abaixo do prazo e abaixo
+            # do tecto do total). Quem nunca chega ao piso nem ao prazo nem ao
+            # total nao interessa a ninguem.
+            if max(before, secs) < PER_STEP_FLOOR_S:
                 continue
             if secs > before * PER_STEP_PCT:
                 grew.append('%s %.1fs -> %.1fs (baseline %.1fs x %.2f = %.1fs)'
@@ -158,7 +164,7 @@ def judge_arms():
     medido: microssegundos) e o veredicto do passo inclui o deles.
     """
     base = {'total_s': 100.0, 'over_deadline': [], 'target_s': 60.0,
-            'per_step': {'a': 10.0, 'b': 40.0, 'c': 50.0}}
+            'per_step': {'a': 10.0, 'b': 40.0, 'c': 50.0, 'tiny': 0.3}}
 
     def m(per, total=None, over=()):
         return {'total_s': round(sum(per.values()), 1) if total is None else total,
@@ -196,6 +202,14 @@ def judge_arms():
     # infinito (apagar o ratchet) continuaria verde em todos os outros.
     arm('A6 passo abaixo do piso (0,3s -> 0,9s) nao reprova',
         m({'a': 10, 'b': 40, 'c': 50, 'tiny': 0.9}), True)
+    # O PISO NAO E' ISENCAO: 4,9 s (abaixo do piso) que engorda para 200 s tem de
+    # ser julgado -- a versao anterior a este braco deixava-o invisivel para o
+    # ratchet por passo, abaixo do prazo e abaixo do tecto do total.
+    # (o fixture tambem derruba o tecto do total -- por construcao, 200 s num
+    # total de 100 s; o que a arm isola e' o NOME do passo no ratchet por passo)
+    arm('A7 passo que NASCEU abaixo do piso e engordou para 200s reprova',
+        m({'a': 10, 'b': 40, 'c': 50, 'tiny': 200.0}), False, 'tiny 0.3s -> 200.0s',
+        want_red_total=True)
     return arms
 
 
