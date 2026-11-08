@@ -33,6 +33,8 @@ USO
 from __future__ import annotations
 
 import json
+import importlib.util
+import io
 import os
 import re
 import subprocess
@@ -129,7 +131,12 @@ def log_worst(minutes=60.0, path=LOG):
     out = None
     try:
         lines = io.open(path, encoding='utf-8', errors='replace').read().splitlines()[-4000:]
-    except Exception:                       # noqa: BLE001
+    except Exception as exc:                # noqa: BLE001
+        # NUNCA em silencio: a primeira versao desta funcao usava `io.open` sem
+        # `import io`, o NameError morria aqui e o julgamento seguia sem serie --
+        # um instrumento que devolve None por defeito proprio e' indistinguivel de
+        # "nao houve janela ocupada".
+        print('  serie do log: ILEGIVEL (%s: %s)' % (type(exc).__name__, exc))
         return None
     cutoff = time.time() - minutes * 60.0
     for ln in lines:
@@ -145,16 +152,21 @@ def log_worst(minutes=60.0, path=LOG):
         if when < cutoff:
             continue
         tot = re.search(r'total=(\d+)%', ln)
-        tops = re.findall(r'([\w-]+):(\d+)%', ln)
         if not tot:
             continue
+        # `tops` vem [(nome, pct), ...] -- a primeira versao desempacotava ao
+        # contrario (`float(p)` recebia o NOME) e a leitura morria antes de
+        # devolver o que quer que fosse: a "serie do log" nunca entrava no
+        # julgamento e a cura parecia decorativa.
+        tops = re.findall(r'([\w-]+):(\d+)%', ln)
         t = float(tot.group(1))
-        top_pct, top_name = (max(((float(p), n) for n, p in tops), default=(0.0, '')))
-        if out is None or t > out[0] or top_pct > out[1]:
-            out = (max(t, out[0]) if out else t,
-                   max(top_pct, out[1]) if out else top_pct,
-                   top_name if (out is None or top_pct >= out[1]) else out[2],
-                   m.group(1))
+        top_pct, top_name = 0.0, ''
+        for name, pct in tops:
+            if float(pct) > top_pct:
+                top_pct, top_name = float(pct), name
+        cand = (t, top_pct, top_name, m.group(1))
+        if out is None or (cand[0], cand[1]) > (out[0], out[1]):
+            out = cand
     return out
 
 
@@ -264,12 +276,20 @@ def instance_fresh():
     com o numero medido ao lado para a serie nao se perder.
     """
     try:
-        sys.path.insert(0, HERE)
-        import hidden_launch
-        out = hidden_launch.run([sys.executable,
+        # O modulo tem HIFEN no nome: `import hidden_launch` levanta ImportError e a
+        # funcao respondia None sempre (a cura ficava decorativa). Carrega-se por spec.
+        spec = importlib.util.spec_from_file_location(
+            'hidden_launch', os.path.join(HERE, 'hidden-launch.py'))
+        hl = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(hl)
+        out = hl.run([sys.executable,
                                  os.path.join(HERE, 'live-code-freshness-oracle.py'),
                                  '--strict'])
-        rc = out[1] if isinstance(out, tuple) and len(out) > 1 else None
+        # `hidden_launch.run` devolve (rc, out, err) -- o rc e' o PRIMEIRO campo.
+        # A primeira versao lia `out[1]` (o stdout) e `instance_fresh()` respondia
+        # None sempre: um instrumento que nunca acusa nada e' a classe que este
+        # proprio passo existe para nao ser.
+        rc = out[0] if isinstance(out, tuple) and out else None
     except Exception:                       # noqa: BLE001
         return None
     if rc is None:
@@ -282,6 +302,14 @@ def main(argv):
         return _neg_arm()
     pid = find_shell_pid()
     if not pid:
+        # SEM SHELL VIVA, A SERIE AINDA TEM O VEREDICTO DA ULTIMA: o dono fecha a app
+        # e o unico registo do que ela custou e' o `THREAD_CPU` que ela propria
+        # publicou. Imprimi-lo e' o que impede o passo de ser um SKIP mudo.
+        serie = log_worst(24 * 60.0)
+        if serie:
+            print('SHELL-THREAD-BUDGET sem shell viva -- pior janela da serie: '
+                  'total=%.0f%% %s=%.0f%% @ %s'
+                  % (serie[0], serie[2] or '?', serie[1], serie[3]))
         print('SHELL-THREAD-BUDGET SKIPPED reason=no-live-shell')
         print('VERDICT: SKIPPED')
         return 0
