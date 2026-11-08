@@ -29,6 +29,19 @@ que e' exactamente a condicao do dono (o player anda, a nossa leitura nao).
       serve-se a ultima amostra. (No app vivo o `paused` vem sempre no payload;
       a arm fixa a REGRA, nao um caminho que ele use todos os dias.)
 
+  B1  O ESTADO PUBLICADO E' DO VIDEO QUE ELE DESCREVE -- a nossa aba esta'
+      PARADA em 42,0 s e a fonte tem a OUTRA aba a tocar em 7,0 s: a legenda
+      nao pode andar (e nao pode saltar para o 7,0 da outra).
+  B2  O mesmo do outro lado: a nossa aba TOCA e a outra esta' parada -- o
+      `paused` dela nao pode parar a nossa (nem disparar a BORDA que congela a
+      pintura). O dono, verbatim (2026-11-08): *"quando eu deixo o video
+      pausado, a legenda fica ao vivo, quando eu pauso, ela volta e fica
+      travada em outro momento"*.
+      Estas duas arms correm o `_yt_cdp_snapshot` REAL -- o sitio que publica
+      `yt_cdp_clock`/`yt_cdp_paused`/`_yt_pause_epoch` -- contra uma fonte
+      falsa que devolve a foto de OUTRO video (o caso medido em
+      `_main/fixtures/yt-pause-foreign-state-20261108.txt`).
+
 O ANTES e' medido, nao citado: o mesmo probe corre sobre uma COPIA do shell com
 a regra antiga (`--neg-arm`, mutante M1) e sobre uma copia com o teto de 3 s na
 revelacao (M2). `--neg-arm` sai 1 quando os dois mutantes caem (a convencao
@@ -245,12 +258,96 @@ def build(source):
     if str(WEBVIEW) not in sys.path:
         sys.path.insert(0, str(WEBVIEW))
     bodies = extract(source, ("_youtube_time", "_yt_decide", "yt_live_frame",
-                              "_yt_lines"))
-    ns = {"time": Clock, "log": _log}
+                              "_yt_lines", "_yt_cdp_snapshot"))
+    ns = {"time": Clock, "log": _log, "os": os,
+          # `_yt_mark` e' um helper de MODULO (perfil de fase); aqui so' precisa
+          # de nao rebentar, nao de medir nada.
+          "_yt_mark": lambda *_a, **_k: None}
     for name, body in bodies.items():
         module = ast.Module(body=[ast.parse(body).body[0]], type_ignores=[])
         exec(compile(module, "<%s>" % name, "exec"), ns)
     return ns, bodies
+
+
+class FakeSource:
+    """A fonte CDP falsa: UMA foto, sempre a mesma, de UM video.
+
+    `selected_video_id` devolve o MESMO id da foto: e' assim que o app vivo se
+    comporta (medido -- 2 recusas `refused=video-mismatch` em toda a historia
+    do log, ambas em 2026-11-03), portanto o snapshot NAO e' recusado e o que
+    se mede e' o estado que ele publica.
+    """
+
+    def __init__(self, video_id, t, paused, rate=1.0):
+        self.video_id = video_id
+        self.snap = {"videoId": video_id, "t": t, "paused": paused,
+                     "ended": False, "rate": rate, "rows": ["uma linha"],
+                     "items": [{"text": "uma linha"}], "stamp": 0.0,
+                     "why": "painted"}
+
+    def snapshot(self, max_age=None):
+        return dict(self.snap)
+
+    def selected_video_id(self):
+        return self.video_id
+
+
+class ForeignPlayer(Player):
+    """O observador com o que o `_yt_cdp_snapshot` real precisa de ter ao lado."""
+
+    def __init__(self, track, declared, source):
+        Player.__init__(self, track)
+        self.yt_video_id = declared
+        self._yt_cdp_source = source
+        self._yt_diag = None
+        self._yt_rate = None
+        self.yt_cdp_mismatch_logged = None
+        self._yt_pause_epoch = 0
+        self._yt_was_paused = False
+        self.shell = None
+
+    def _yt_cdp_ensure(self, *_a):
+        return self._yt_cdp_source
+
+    def _yt_mark(self, *_a):
+        return None
+
+
+def foreign_state_arm(ns, track):
+    """B1/B2 -- `_yt_cdp_snapshot` REAL contra a foto de OUTRO video.
+
+    Devolve as duas medidas; a arm julga-as em `arms()`.
+    """
+    fn_snap = ns["_yt_cdp_snapshot"].__get__
+    fn_time = ns["_youtube_time"].__get__
+
+    # B1 -- a NOSSA aba publicou PARADO em 42,0 e a fonte tem a OUTRA a tocar.
+    Clock.now = 300.0
+    p = ForeignPlayer(track, "OURS", FakeSource("OTHER", t=7.0, paused=False))
+    p.yt_cdp_clock = (42.0, Clock.now)
+    p.yt_cdp_paused = True
+    p.yt_cdp_ended = False
+    p.yt_cdp_playing = False
+    fn_snap(p, ForeignPlayer)(None, None, None, declared="OURS")
+    Clock.now = 301.0
+    b1_t = fn_time(p, ForeignPlayer)(None, None, None, None)
+    b1 = {"t": b1_t, "paused": bool(p.yt_cdp_paused),
+          "clock_t": (p.yt_cdp_clock or (None,))[0]}
+
+    # B2 -- a NOSSA aba TOCA em 42,0 e a fonte tem a OUTRA parada em 7,0.
+    Clock.now = 400.0
+    q = ForeignPlayer(track, "OURS", FakeSource("OTHER", t=7.0, paused=True))
+    q.yt_cdp_clock = (42.0, Clock.now)
+    q.yt_cdp_paused = False
+    q.yt_cdp_ended = False
+    q.yt_cdp_playing = True
+    fn_snap(q, ForeignPlayer)(None, None, None, declared="OURS")
+    Clock.now = 401.0
+    b2_t = fn_time(q, ForeignPlayer)(None, None, None, None)
+    b2 = {"t": b2_t, "paused": bool(q.yt_cdp_paused),
+          "epoch": int(getattr(q, "_yt_pause_epoch", 0)),
+          "clock_t": (q.yt_cdp_clock or (None,))[0]}
+    return b1, b2
 
 
 # --------------------------------------------------------------------------
@@ -473,6 +570,25 @@ def arms(ns, track, old_ns):
         "A6 'sem resposta': o ancora expira e a linha nao e' recomposta",
         repr(a["unknown_frame"])[:80])
 
+    # B1/B2 -- o estado publicado tem de ser do video que ele descreve
+    b1, b2 = foreign_state_arm(ns, track)
+    add(b1["t"] is not None and abs(b1["t"] - 42.0) <= 0.001,
+        "B1 a NOSSA aba esta' parada: a foto da OUTRA (a tocar) nao move "
+        "a nossa legenda",
+        "t=%.2f (esperado 42.00) paused_publicado=%s clock=%.2f"
+        % (b1["t"] if b1["t"] is not None else -1.0, b1["paused"],
+           b1["clock_t"] if b1["clock_t"] is not None else -1.0))
+    add(b2["t"] is not None and abs(b2["t"] - 43.0) <= 0.001,
+        "B2 a NOSSA aba toca: a foto da OUTRA (parada) nao congela nem "
+        "salta a nossa",
+        "t=%.2f (esperado 43.00) paused_publicado=%s epoch=%d clock=%.2f"
+        % (b2["t"] if b2["t"] is not None else -1.0, b2["paused"],
+           b2["epoch"], b2["clock_t"] if b2["clock_t"] is not None else -1.0))
+    add(b2["epoch"] == 0 and not b2["paused"],
+        "B2 e a pausa da OUTRA aba nao dispara a BORDA que congela a "
+        "pintura",
+        "epoch=%d paused=%s" % (b2["epoch"], b2["paused"]))
+
     # O ANTES, medido com a regra antiga -- e o que prova que as arms tem dentes
     before = [probe(old_ns, track, s) for s in (3.0, 5.0)]
     for r in before:
@@ -514,11 +630,14 @@ def _old_instant(player, base_t, age, rate=None, hold=None):
 
 
 def neg_arm(source, track):
-    """Os dois mutantes, cada um numa COPIA do ficheiro. rc 1 = os dois caem.
+    """Os tres mutantes, cada um numa COPIA do ficheiro. rc 1 = os tres caem.
 
     M1 -- o teto plano de 0,5 s no lugar da regra (a metade do RELOGIO).
     M2 -- a linha lida na ultima AMOSTRA em vez do relogio extrapolado: e' o
           "espera o snapshot seguinte" da metade do TEXTO.
+    M3 -- o `_yt_cdp_snapshot` de ANTES de 2026-11-08: publica
+          `yt_cdp_clock`/`yt_cdp_paused`/`_yt_pause_epoch` de qualquer foto,
+          inclusive a de OUTRO video (B1/B2).
     """
     bound = payload_max_word_gap(track, T_START + WARMUP_S,
                                  T_START + WARMUP_S + 5.0) + BUDGET_S
@@ -548,6 +667,16 @@ def neg_arm(source, track):
         ru = probe(ns, track, 5.0, unknown=True)
         if ru["advance_stall"] > 0.001:
             red.append("A5(andou=%.2fs)" % (ru["advance_stall"],))
+        b1, b2 = foreign_state_arm(ns, track)
+        if b1["t"] is None or abs(b1["t"] - 42.0) > 0.001:
+            red.append("B1(andou para t=%s com a NOSSA aba parada)"
+                       % (("%.2f" % b1["t"]) if b1["t"] is not None else "None"))
+        if b2["t"] is None or abs(b2["t"] - 43.0) > 0.001:
+            red.append("B2(t=%s em vez de 43.00)"
+                       % (("%.2f" % b2["t"]) if b2["t"] is not None else "None"))
+        if b2["epoch"] != 0 or b2["paused"]:
+            red.append("B2(borda falsa epoch=%d paused=%s)"
+                       % (b2["epoch"], b2["paused"]))
         print("NEG-ARM %s: %s" % (tag, ", ".join(red) or "NADA VERMELHO"))
         return red
 
@@ -557,9 +686,13 @@ def neg_arm(source, track):
         "lines = self._yt_lines(track, t)",
         "lines = self._yt_lines(track, (getattr(self, 'yt_cdp_clock', None)"
         " or (t,))[0])"), "M2 a linha espera o snapshot")
-    if red1 and red2:
-        print("NEG-ARM PASS -- RED as designed:\n  M1: %s\n  M2: %s"
-              % (", ".join(red1), ", ".join(red2)))
+    red3 = run(source.replace(
+        "if not (declared and seen and seen != declared):",
+        "if True:  # M3: publica o estado de qualquer foto"),
+        "M3 estado publicado de OUTRO video")
+    if red1 and red2 and red3:
+        print("NEG-ARM PASS -- RED as designed:\n  M1: %s\n  M2: %s\n  M3: %s"
+              % (", ".join(red1), ", ".join(red2), ", ".join(red3)))
         return 1
     print("NEG-ARM FAIL -- um dos mutantes sobreviveu: o instrumento nao tem "
           "dentes para todas as arms")
@@ -597,7 +730,7 @@ def main(argv=None):
 
     ns, bodies = build(source)
     missing = [n for n in ("_youtube_time", "_yt_decide", "yt_live_frame",
-                           "_yt_lines") if n not in bodies]
+                           "_yt_lines", "_yt_cdp_snapshot") if n not in bodies]
     if missing:
         print("STUTTER-CAPTION NO-VERDICT -- nao extraidas de %s: %s"
               % (SHELL.name, ", ".join(missing)))

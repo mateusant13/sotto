@@ -4453,51 +4453,67 @@ class ExternalCaptionWatcher(threading.Thread):
         except Exception:                     # noqa: BLE001
             pass
         if snap is not None:
-            # O RELOGIO DO PLAYER VEM NO MESMO SNAPSHOT (2026-11-03): `t` e'
-            # `video.currentTime`, medido a avancar 56,9 s em 57 s de relogio de
-            # parede enquanto o DOM da legenda estava CONGELADO -- e' a unica
-            # leitura que continua verdadeira com a aba escondida.
-            self.yt_cdp_clock = (float(snap.get('t')), time.monotonic()) \
-                if snap.get('t') is not None else None
-            # A VELOCIDADE DO PLAYER NO MESMO SNAPSHOT (2026-11-04). O relogio
-            # que avanca entre leituras era 1x por construcao: a 2x o video
-            # andava o dobro e a palavra chegava tarde, tanto mais tarde quanto
-            # maior o intervalo sem leitura. `playbackRate` e' a metade que faltava.
-            try:
-                self.yt_cdp_rate = float(snap.get('rate'))
-            except (TypeError, ValueError):
-                self.yt_cdp_rate = 1.0
+            # O ESTADO PUBLICADO E' DO VIDEO QUE ELE DESCREVE (2026-11-08).
+            # MEDIDO na sessao do dono (`_main/fixtures/yt-pause-foreign-state-
+            # 20261108.txt`): a app servia `KoXXVCFjbk8` com a foto de
+            # `pW2ktrJlsyE` (`YOUTUBE_TICK_MS vid='pW2ktrJlsyE'`), e o `paused`
+            # dessa OUTRA aba era publicado como se fosse deste video --
+            # alternou 6 vezes em 12 s (`YOUTUBE_CDP_PACED paused=True/False`)
+            # sem uma unica troca de video, e o relogio publicado era o dela
+            # (`YOUTUBE_CLOCK_HELD t=0.00 served=6.56`). O dono, verbatim:
+            # *"quando eu deixo o video pausado, a legenda fica ao vivo, quando
+            # eu pauso, ela volta e fica travada em outro momento"*.
+            # A fuga `seen == _selected` abaixo existe para as LINHAS do video
+            # novo chegarem antes do rebind (~80 ms). O RELOGIO e a PAUSA nao
+            # tem essa desculpa: ou sao DESTE video, ou nao se publicam -- e
+            # entao a ultima amostra nossa envelhece pelo caminho normal
+            # (`youtube_clock`, `FRESH_S`/`HOLD_S`).
+            seen = str(snap.get('videoId') or '')
+            if not (declared and seen and seen != declared):
+                # O RELOGIO DO PLAYER VEM NO MESMO SNAPSHOT (2026-11-03): `t` e'
+                # `video.currentTime`, medido a avancar 56,9 s em 57 s de relogio de
+                # parede enquanto o DOM da legenda estava CONGELADO -- e' a unica
+                # leitura que continua verdadeira com a aba escondida.
+                self.yt_cdp_clock = (float(snap.get('t')), time.monotonic()) \
+                    if snap.get('t') is not None else None
+                # A VELOCIDADE DO PLAYER NO MESMO SNAPSHOT (2026-11-04). O relogio
+                # que avanca entre leituras era 1x por construcao: a 2x o video
+                # andava o dobro e a palavra chegava tarde, tanto mais tarde quanto
+                # maior o intervalo sem leitura. `playbackRate` e' a metade que faltava.
+                try:
+                    self.yt_cdp_rate = float(snap.get('rate'))
+                except (TypeError, ValueError):
+                    self.yt_cdp_rate = 1.0
 
-            # VIDEO EM PAUSA NAO E' SILENCIO (2026-11-03, MEDIDO): com o player
-            # parado em `t=34.571` o YouTube continua a mostrar a legenda, e o
-            # Sotto apagava a dele aos 6 s (`CAPTION_WINDOW_BLANKED
-            # reason=no-caption-for-6.0s`) -- o ecra ficava vazio ao lado de um
-            # video que tem a frase escrita.
-            self.yt_cdp_paused = bool(snap.get('paused')) \
-                if snap.get('paused') is not None else False
-            self.yt_cdp_ended = bool(snap.get('ended')) \
-                if snap.get('ended') is not None else False
-            # `paused` AUSENTE NAO E' "A ANDAR" (2026-11-07, `youtube_clock`).
-            self.yt_cdp_playing = None if snap.get('paused') is None \
-                else (not self.yt_cdp_paused and not self.yt_cdp_ended)
-            # A BORDA DA PAUSA E' UM EVENTO, E O `_tick` TEM DE A VER (2026-11-06).
-            # Um tick so' dispara desenho quando a LINHA muda; ao pausar a linha
-            # nao muda -- pelo contrario, e' exactamente isso que se quer -- e o
-            # overlay ficava com o relogio da ultima pintura a andar. O contador
-            # e' lido e consumido no `_tick`, que forca uma pintura congelada.
-            _now_paused = self.yt_cdp_paused or self.yt_cdp_ended
-            if _now_paused and not getattr(self, '_yt_was_paused', False):
-                self._yt_pause_epoch = int(getattr(self, '_yt_pause_epoch', 0)) + 1
-            self._yt_was_paused = _now_paused
-            # O ESPELHO NA SHELL: quem arma o apagar por inatividade e' a shell,
-            # noutro objeto (`SottoShell._caption_idle_hide`). Sem este espelho o
-            # guarda ficava no objeto errado e o ecra apagava na mesma.
-            shell = getattr(self, 'shell', None)
-            if shell is not None:
-                shell.yt_source_paused = self.yt_cdp_paused
+                # VIDEO EM PAUSA NAO E' SILENCIO (2026-11-03, MEDIDO): com o player
+                # parado em `t=34.571` o YouTube continua a mostrar a legenda, e o
+                # Sotto apagava a dele aos 6 s (`CAPTION_WINDOW_BLANKED
+                # reason=no-caption-for-6.0s`) -- o ecra ficava vazio ao lado de um
+                # video que tem a frase escrita.
+                self.yt_cdp_paused = bool(snap.get('paused')) \
+                    if snap.get('paused') is not None else False
+                self.yt_cdp_ended = bool(snap.get('ended')) \
+                    if snap.get('ended') is not None else False
+                # `paused` AUSENTE NAO E' "A ANDAR" (2026-11-07, `youtube_clock`).
+                self.yt_cdp_playing = None if snap.get('paused') is None \
+                    else (not self.yt_cdp_paused and not self.yt_cdp_ended)
+                # A BORDA DA PAUSA E' UM EVENTO, E O `_tick` TEM DE A VER (2026-11-06).
+                # Um tick so' dispara desenho quando a LINHA muda; ao pausar a linha
+                # nao muda -- pelo contrario, e' exactamente isso que se quer -- e o
+                # overlay ficava com o relogio da ultima pintura a andar. O contador
+                # e' lido e consumido no `_tick`, que forca uma pintura congelada.
+                _now_paused = self.yt_cdp_paused or self.yt_cdp_ended
+                if _now_paused and not getattr(self, '_yt_was_paused', False):
+                    self._yt_pause_epoch = int(getattr(self, '_yt_pause_epoch', 0)) + 1
+                self._yt_was_paused = _now_paused
+                # O ESPELHO NA SHELL: quem arma o apagar por inatividade e' a shell,
+                # noutro objeto (`SottoShell._caption_idle_hide`). Sem este espelho o
+                # guarda ficava no objeto errado e o ecra apagava na mesma.
+                shell = getattr(self, 'shell', None)
+                if shell is not None:
+                    shell.yt_source_paused = self.yt_cdp_paused
         if snap is None or not snap.get('items'):
             return None
-        seen = snap.get('videoId') or ''
         if declared and seen and declared != seen:
             # A ABA ESCOLHIDA MANDA SOBRE A CRENCA (2026-11-06). O guarda existe
             # para impedir ler a aba ERRADA; quando a foto e' da aba que a sonda

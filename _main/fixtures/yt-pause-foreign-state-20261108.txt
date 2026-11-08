@@ -1,0 +1,157 @@
+# EVIDENCIA — o estado de pausa publicado por um snapshot de OUTRO video
+# Fonte: _main/webview-run.log (instancia do dono, pid da sessao de 2026-11-08,
+# SHA256 1C4A7E1DAE1C). Linhas VERBATIM, recortadas por numero de linha.
+#
+# COMO LER (o que cada bloco prova):
+#   [1] 17:34:02-17:34:15 — a app serve `KoXXVCFjbk8` (YOUTUBE_VIDEO_CHANGED /
+#       YOUTUBE_TARGET pick=KoXXVCFjbk8) ao mesmo tempo que a FOTO e' de
+#       `pW2ktrJlsyE` (YOUTUBE_TICK_MS vid='pW2ktrJlsyE'). O `paused` dessa
+#       outra aba e' publicado como se fosse deste video: alterna 6 vezes em
+#       12 s (17:34:05.118 / .583 / 06.174 / 07.621 / 08.476 / 11.477) sem
+#       NENHUM YOUTUBE_VIDEO_CHANGED e sem toque no video do dono.
+#       No mesmo instante o RELOGIO publicado tambem e' o do outro video:
+#       YOUTUBE_CLOCK_HELD t=0.00 served=6.56 (o outro video esta' no 0 s, o
+#       nosso no 6,56 s), e t sobe 2.60 -> 3.50 com served preso em 6.56.
+#   [2] 17:35:04-17:35:42 — a app serve `ALAgHtf00oo` (TRACK_READY) e a foto e'
+#       de `d7p7l07iMc8` (YOUTUBE_TICK_MS vid='d7p7l07iMc8'): essa outra aba
+#       esta' PARADA e o `paused=True` dela e' publicado como nosso durante os
+#       15 minutos seguintes (ate' 17:50:38.782 paused=False), durante os quais
+#       a legenda do video que ele VIA saiu uma vez por video e ficou parada
+#       (YT_FRAME 'I got the ramp' as 17:38:40 e 17:38:58).
+#
+# O DEFEITO NAO E' O VALOR: e' a IDENTIDADE. `_yt_cdp_snapshot` publicava
+# `yt_cdp_clock`/`yt_cdp_paused`/`yt_cdp_ended`/`yt_cdp_playing`/`_yt_pause_epoch`
+# ANTES de comparar `snap['videoId']` com o video declarado (sotto_webview.py:4455-4519
+# antes da cura). Recusar a foto depois nao desfaz o que ja' foi publicado.
+
+## [1] a pausa da OUTRA aba alterna enquanto o video servido e' outro
+2026-11-08 17:33:27.220 sotto: YOUTUBE_CDP_SOURCE state=slow (WebSocketTimeoutException)
+2026-11-08 17:33:30.758 sotto: BRIDGE_ALIVE WORKER_ALIVE seq=105724 phase=window age_ms=78
+2026-11-08 17:33:31.376 sotto: YOUTUBE_TICK_MS avg=0 max=0 n=46 src='external:youtube:cdp' vid='pW2ktrJlsyE' cdp_age_ms=44000 rows=0 why='painted'
+2026-11-08 17:33:32.031 sotto: YOUTUBE_SOURCE_BY_CDP video_id=pW2ktrJlsyE
+2026-11-08 17:33:32.304 sotto: EXTERNAL_CAPTIONS_READ_MS ms=156.0 phases={'import': 0.0, 'target': 156.0, 'source': 156.0, 'yt-in': 156.0, 'cdp': 156.0, 'vid': 156.0, 'youtube': 156.0, 'end': 156.0}
+2026-11-08 17:33:33.322 sotto: YOUTUBE_CDP_SOURCE state=slow-dead (3 prazos)
+2026-11-08 17:33:34.490 sotto: YOUTUBE_TRACK_READY video_id=pW2ktrJlsyE state=has-track cues=294 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:33:34.490 sotto: YOUTUBE_TRACK_PAINT video_id=pW2ktrJlsyE source=other-video cue=- match=0 painted_words=0
+2026-11-08 17:33:35.185 sotto: YOUTUBE_CDP_TAB_SWITCH from=F743C75823129C54923CA22398E160D2 to=C427623C91D6F86E59FEB62DBEC7D79D vid=KoXXVCFjbk8
+2026-11-08 17:33:35.185 sotto: YOUTUBE_TARGET pick=KoXXVCFjbk8 why=foreground declared=pW2ktrJlsyE tabs=3
+2026-11-08 17:33:35.185 sotto: YOUTUBE_TARGET_SLOW ms=1031 vid=KoXXVCFjbk8 ttl_s=10 src=refresher
+2026-11-08 17:33:35.249 sotto: YOUTUBE_SOURCE_BY_CDP video_id=KoXXVCFjbk8
+2026-11-08 17:33:35.249 sotto: YOUTUBE_TARGET_REBOUND was=pW2ktrJlsyE now=KoXXVCFjbk8 why=aba
+2026-11-08 17:33:35.249 sotto: CAPTION_WINDOW_BLANKED reason=video-changed epoch=79 wanted=false
+2026-11-08 17:33:35.251 sotto: CAPTION_WINDOW_BLANKED reason=video-changed epoch=80 wanted=false
+2026-11-08 17:33:35.251 sotto: YOUTUBE_VIDEO_CHANGED video_id=KoXXVCFjbk8
+2026-11-08 17:33:35.251 sotto: YOUTUBE_POLL_PACED paused=False interval_s=0.10
+2026-11-08 17:33:36.372 sotto: YOUTUBE_TARGET pick=KoXXVCFjbk8 why=foreground declared=KoXXVCFjbk8 tabs=3
+2026-11-08 17:33:36.390 sotto: YOUTUBE_CDP_SOURCE state=attached
+2026-11-08 17:33:36.390 sotto: YOUTUBE_CDP_PACED paused=False poll_s=0.08
+2026-11-08 17:33:36.455 sotto: YOUTUBE_LOOP_HZ ticks=16 ok=14 none=2 age_ms=397 hz=0.3 src_reads=30168 src_errs=1
+2026-11-08 17:33:36.455 sotto: YOUTUBE_CDP_HEALTH age=0.06 stats={'reads': 30168, 'errors': 1, 'last_error': 'WebSocketConnectionClosedException: socket is already closed.', 'note': 'attached'}
+2026-11-08 17:33:36.455 sotto: YOUTUBE_TRACK_STATE reason=track-pending urgent=false
+2026-11-08 17:33:36.455 sotto: YOUTUBE_TICK_MS avg=0 max=0 n=45 src='external:youtube:cdp' vid='pW2ktrJlsyE' cdp_age_ms=62 rows=0 why='painted'
+2026-11-08 17:33:37.235 sotto: BRIDGE_STATS_PUSH count=1024 in_window_s=30.2 rate_hz=0.1 payload={"tag":"meter","peak":0.0858,"blocks":2.0,"paused":false}
+2026-11-08 17:33:38.495 sotto: YOUTUBE_CDP_HEALTH age=0.31 stats={'reads': 30190, 'errors': 1, 'last_error': 'WebSocketConnectionClosedException: socket is already closed.', 'note': 'attached'}
+2026-11-08 17:33:38.526 sotto: YOUTUBE_CDP_PACED paused=True poll_s=0.50
+2026-11-08 17:33:38.595 sotto: YOUTUBE_POLL_PACED paused=True interval_s=0.25
+2026-11-08 17:33:38.773 sotto: BRIDGE_ALIVE WORKER_ALIVE seq=105791 phase=window age_ms=78
+2026-11-08 17:33:38.777 sotto: BRIDGE_METER count=102024 in_window_s=30.0 sample={"peak":0.0,"blocks":2.0,"childPid":7144}
+2026-11-08 17:33:40.576 sotto: YOUTUBE_CDP_HEALTH age=0.3 stats={'reads': 30195, 'errors': 1, 'last_error': 'WebSocketConnectionClosedException: socket is already closed.', 'note': 'attached'}
+2026-11-08 17:33:41.341 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=False
+2026-11-08 17:33:41.341 sotto: YOUTUBE_TRACK_PAINT video_id=KoXXVCFjbk8 source=no-caption-window-lang cue=- match=0 painted_words=0
+2026-11-08 17:33:41.361 sotto: YOUTUBE_TRACK_STATE reason=no-cue urgent=false
+2026-11-08 17:33:41.468 sotto: YOUTUBE_LOOP_HZ ticks=88 ok=88 none=0 age_ms=176 hz=17.5 src_reads=30197 src_errs=1
+2026-11-08 17:33:41.469 sotto: YOUTUBE_TICK_MS avg=0 max=0 n=44 src='external:youtube:cdp' vid='pW2ktrJlsyE' cdp_age_ms=141 rows=0 why='painted'
+2026-11-08 17:33:42.673 sotto: YOUTUBE_CDP_HEALTH age=0.36 stats={'reads': 30199, 'errors': 1, 'last_error': 'WebSocketConnectionClosedException: socket is already closed.', 'note': 'attached'}
+2026-11-08 17:33:44.755 sotto: YOUTUBE_CDP_HEALTH age=0.41 stats={'reads': 30203, 'errors': 1, 'last_error': 'WebSocketConnectionClosedException: socket is already closed.', 'note': 'attached'}
+2026-11-08 17:33:46.194 sotto: YOUTUBE_TARGET pick=KoXXVCFjbk8 why=foreground declared=KoXXVCFjbk8 tabs=3
+2026-11-08 17:33:46.194 sotto: YOUTUBE_TARGET_SLOW ms=1000 vid=KoXXVCFjbk8 ttl_s=10 src=refresher
+2026-11-08 17:33:46.343 sotto: YOUTUBE_CDP_SOURCE state=attached
+2026-11-08 17:33:46.504 sotto: YOUTUBE_LOOP_HZ ticks=92 ok=92 none=0 age_ms=254 hz=18.3 src_reads=30207 src_errs=1
+2026-11-08 17:33:46.504 sotto: YOUTUBE_TICK_MS avg=0 max=0 n=46 src='external:youtube:cdp' vid='pW2ktrJlsyE' cdp_age_ms=172 rows=0 why='painted'
+2026-11-08 17:33:46.778 sotto: BRIDGE_ALIVE WORKER_ALIVE seq=105862 phase=window age_ms=46
+2026-11-08 17:33:46.831 sotto: YOUTUBE_CDP_HEALTH age=0.5 stats={'reads': 30207, 'errors': 1, 'last_error': 'WebSocketConnectionClosedException: socket is already closed.', 'note': 'attached'}
+2026-11-08 17:33:47.044 sotto: EXTERNAL_CAPTIONS_READ_STATS n=372 mean_ms=0.4 p95_ms=0.0 max_ms=156.0 interval_s=0.10
+2026-11-08 17:33:50.830 sotto: YOUTUBE_CDP_SOURCE state=slow (WebSocketTimeoutException)
+2026-11-08 17:33:51.533 sotto: YOUTUBE_TICK_MS avg=0 max=0 n=46 src='external:youtube:cdp' vid='pW2ktrJlsyE' cdp_age_ms=4187 rows=0 why='painted'
+2026-11-08 17:33:54.786 sotto: BRIDGE_ALIVE WORKER_ALIVE seq=105933 phase=window age_ms=0
+
+## [2] a foto e' de `d7p7l07iMc8` e o video servido e' `ALAgHtf00oo`
+2026-11-08 17:34:42.319 sotto: YOUTUBE_TICK_MS avg=0 max=0 n=20 src='external:youtube:cdp' vid='KoXXVCFjbk8' cdp_age_ms=281 rows=0 why='painted'
+2026-11-08 17:34:42.571 sotto: YOUTUBE_CDP_HEALTH age=0.03 stats={'reads': 30377, 'errors': 1, 'last_error': 'WebSocketConnectionClosedException: socket is already closed.', 'note': 'attached'}
+2026-11-08 17:34:44.584 sotto: YOUTUBE_CDP_HEALTH age=0.03 stats={'reads': 30381, 'errors': 1, 'last_error': 'WebSocketConnectionClosedException: socket is already closed.', 'note': 'attached'}
+2026-11-08 17:34:45.843 sotto: YOUTUBE_LOOP_HZ ticks=40 ok=40 none=0 age_ms=155 hz=7.9 src_reads=30383 src_errs=1
+2026-11-08 17:34:46.599 sotto: YOUTUBE_CDP_HEALTH age=0.05 stats={'reads': 30385, 'errors': 1, 'last_error': 'WebSocketConnectionClosedException: socket is already closed.', 'note': 'attached'}
+2026-11-08 17:34:47.355 sotto: EXTERNAL_CAPTIONS_READ_STATS n=430 mean_ms=0.5 p95_ms=0.0 max_ms=16.0 interval_s=0.10
+2026-11-08 17:34:47.355 sotto: YOUTUBE_TICK_MS avg=0 max=0 n=20 src='external:youtube:cdp' vid='KoXXVCFjbk8' cdp_age_ms=297 rows=0 why='painted'
+2026-11-08 17:34:48.613 sotto: YOUTUBE_CDP_HEALTH age=0.05 stats={'reads': 30389, 'errors': 1, 'last_error': 'WebSocketConnectionClosedException: socket is already closed.', 'note': 'attached'}
+2026-11-08 17:34:50.631 sotto: YOUTUBE_CDP_HEALTH age=0.08 stats={'reads': 30393, 'errors': 1, 'last_error': 'WebSocketConnectionClosedException: socket is already closed.', 'note': 'attached'}
+2026-11-08 17:34:50.883 sotto: YOUTUBE_LOOP_HZ ticks=40 ok=40 none=0 age_ms=180 hz=8.0 src_reads=30393 src_errs=1
+2026-11-08 17:34:52.119 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:34:52.119 sotto: YOUTUBE_TRACK_PAINT video_id=KoXXVCFjbk8 source=no-caption-window-lang cue=- match=0 painted_words=0
+2026-11-08 17:34:52.384 sotto: YOUTUBE_CDP_TAB_SWITCH from=C427623C91D6F86E59FEB62DBEC7D79D to=9A44DBB65888CBAAD90B7B382A439C93 vid=d7p7l07iMc8
+2026-11-08 17:34:52.384 sotto: YOUTUBE_TARGET pick=d7p7l07iMc8 why=playing declared=KoXXVCFjbk8 tabs=5
+2026-11-08 17:34:52.384 sotto: YOUTUBE_TARGET_SLOW ms=1078 vid=d7p7l07iMc8 ttl_s=10 src=refresher
+2026-11-08 17:34:52.525 sotto: YOUTUBE_TARGET_REBOUND was=KoXXVCFjbk8 now=d7p7l07iMc8 why=aba
+2026-11-08 17:34:52.526 sotto: CAPTION_WINDOW_BLANKED reason=video-changed epoch=81 wanted=false
+2026-11-08 17:34:52.526 sotto: CAPTION_WINDOW_BLANKED reason=video-changed epoch=82 wanted=false
+2026-11-08 17:34:52.526 sotto: YOUTUBE_VIDEO_CHANGED video_id=d7p7l07iMc8
+2026-11-08 17:34:52.526 sotto: EXTERNAL_CAPTIONS_READ_MS ms=125.0 phases={'import': 0.0, 'target': 125.0, 'source': 125.0, 'yt-in': 125.0, 'cdp': 125.0, 'vid': 125.0, 'youtube': 125.0, 'end': 125.0}
+2026-11-08 17:34:52.526 sotto: YOUTUBE_POLL_PACED paused=False interval_s=0.10
+2026-11-08 17:34:52.526 sotto: YOUTUBE_TICK_MS avg=0 max=0 n=20 src='external:youtube:cdp' vid='KoXXVCFjbk8' cdp_age_ms=none rows=0 why='painted'
+2026-11-08 17:34:52.563 sotto: YOUTUBE_CDP_SOURCE state=wrong-video (KoXXVCFjbk8)
+2026-11-08 17:34:53.581 sotto: YOUTUBE_TARGET pick=d7p7l07iMc8 why=foreground declared=d7p7l07iMc8 tabs=5
+
+## [3] a legenda do video servido fica presa enquanto `paused=True` (do outro) dura
+2026-11-08 17:34:57.251 sotto: YT_FRAME src=external:youtube:track rows=1 lines=['No,']
+2026-11-08 17:34:57.356 sotto: YT_FRAME src=external:youtube:track rows=1 lines=['No, boss']
+2026-11-08 17:34:57.572 sotto: YT_FRAME src=external:youtube:track rows=1 lines=['No, boss,']
+2026-11-08 17:34:57.673 sotto: YT_FRAME src=external:youtube:track rows=1 lines=["No, boss, it's"]
+2026-11-08 17:34:57.974 sotto: YT_FRAME src=external:youtube:track rows=1 lines=["No, boss, it's not"]
+2026-11-08 17:34:58.065 sotto: YOUTUBE_TRACK_READY video_id=d7p7l07iMc8 state=has-track cues=483 lang=pt-orig source=auto reason=ok error=None cached=False
+2026-11-08 17:34:58.275 sotto: YT_FRAME src=external:youtube:track rows=1 lines=["No, boss, it's not a"]
+2026-11-08 17:34:58.376 sotto: YT_FRAME src=external:youtube:track rows=1 lines=["No, boss, it's not a gas"]
+2026-11-08 17:34:58.577 sotto: YT_FRAME src=external:youtube:track rows=1 lines=["No, boss, it's not a gas leak"]
+2026-11-08 17:34:58.980 sotto: YT_FRAME src=external:youtube:track rows=1 lines=["No, boss, it's not a gas leak this"]
+2026-11-08 17:34:59.282 sotto: YT_FRAME src=external:youtube:track rows=1 lines=["No, boss, it's not a gas leak this time"]
+2026-11-08 17:34:59.483 sotto: YT_FRAME src=external:youtube:track rows=2 lines=["No, boss, it's not a gas leak this time", '.']
+2026-11-08 17:35:02.013 sotto: YT_FRAME src=external:youtube:track rows=2 lines=['gás.', '>> Serviço de pombo?']
+2026-11-08 17:35:02.160 sotto: YT_FRAME src=external:youtube:track rows=2 lines=['>> Serviço de pombo?', '>> Os']
+2026-11-08 17:35:09.656 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=False
+2026-11-08 17:35:40.869 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:36:11.323 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:36:41.837 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:37:12.212 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:37:42.785 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:38:13.232 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:38:40.190 sotto: YT_FRAME src=external:youtube:track rows=1 lines=['I got the ramp']
+2026-11-08 17:38:47.383 sotto: YOUTUBE_TRACK_READY video_id=tSQFxoGOYwk state=has-track cues=299 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:38:58.745 sotto: YT_FRAME src=external:youtube:track rows=1 lines=['>> I got the ramp']
+2026-11-08 17:38:59.250 sotto: YT_FRAME src=external:youtube:track rows=1 lines=['I got the ramp']
+2026-11-08 17:39:17.527 sotto: YOUTUBE_TRACK_READY video_id=tSQFxoGOYwk state=has-track cues=299 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:39:32.583 sotto: YT_FRAME src=external:youtube:track rows=1 lines=['>> I got the ramp']
+2026-11-08 17:39:32.836 sotto: YT_FRAME src=external:youtube:track rows=1 lines=['I got the ramp']
+2026-11-08 17:39:47.203 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:40:17.571 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:40:41.231 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:41:11.414 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:41:41.596 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:42:11.882 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:42:42.236 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:43:12.419 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:43:42.614 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:44:12.946 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:44:24.540 sotto: YT_FRAME src=external:youtube:track rows=2 lines=['This is the exact idea behind a new', 'project from']
+2026-11-08 17:44:28.112 sotto: YOUTUBE_TRACK_READY video_id=pW2ktrJlsyE state=has-track cues=294 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:44:58.280 sotto: YOUTUBE_TRACK_READY video_id=pW2ktrJlsyE state=has-track cues=294 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:45:28.396 sotto: YOUTUBE_TRACK_READY video_id=pW2ktrJlsyE state=has-track cues=294 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:45:37.735 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:46:11.305 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:46:41.811 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:47:12.675 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:47:43.129 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:48:01.113 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:48:31.289 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:49:01.474 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:49:31.625 sotto: YOUTUBE_TRACK_READY video_id=KoXXVCFjbk8 state=has-track cues=498 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:49:46.424 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
+2026-11-08 17:50:16.868 sotto: YOUTUBE_TRACK_READY video_id=ALAgHtf00oo state=has-track cues=1025 lang=en-orig source=auto reason=ok error=None cached=True
