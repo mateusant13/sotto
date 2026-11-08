@@ -360,8 +360,15 @@ def check(module):
     # abaixo", sotto_webview.py:127-129) -- so y = 1032 - 148 - 44 = 840 and
     # the margin the geometry carries is 44. This pin used to expect the
     # panel's margin and the old y (872).
+    # REBASELINED 2026-11-08: A LARGURA E' 380 OUTRA VEZ. O pin de 1040 vinha do
+    # commit `e36a09b` (a laje) e o `02f6df9` desfez-no com a medicao ao lado --
+    # *"faixa de baixo: 380 outra vez, e a medicao que a alargava e' recusada"*.
+    # Com `strip_width_dom is None` o `dock_strip` cai em `STRIP_WIDTH` (380) e
+    # centra: x = 960 - 190 = 770. O pin antigo ficou a descrever um default que
+    # o produto ja' nao tem, e o passo passou a medir a diferenca (o unico
+    # numero que ele via era o do proprio pin).
     want('geometry_for.default', (got2['x'], got2['y'], got2['width'],
-                                 got2['height']), (440, 840, 1040, 148))
+                                 got2['height']), (770, 840, 380, 148))
     want('geometry_for.default.docked', got2.get('docked'), 'bottom-strip')
     want('geometry_for.default.margin', got2.get('margin'), module.STRIP_MARGIN)
     want('geometry_for.default.surface', got2.get('surface'), 'strip')

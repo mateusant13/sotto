@@ -54,6 +54,7 @@ import argparse
 import hashlib
 import importlib.util
 import io
+import os
 import statistics
 import subprocess
 import sys
@@ -137,6 +138,24 @@ def _load_source(text, name):
     return module
 
 
+
+def _hidden_run(argv):
+    """`git` (e qualquer filho) SEM console -- o helper da casa, carregado por spec
+    porque o nome do ficheiro tem HIFEN (`hidden-launch.py`)."""
+    spec = importlib.util.spec_from_file_location(
+        'hidden_launch', os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      'hidden-launch.py'))
+    hl = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hl)
+    rc, out, err = hl.run(argv, cwd=str(REPO), capture=True, text=True)
+
+    class _R(object):
+        returncode = rc
+        stdout = (out or '').encode('utf-8')
+        stderr = (err or '').encode('utf-8')
+    return _R()
+
+
 def _load_head():
     """A implementacao ANTERIOR, do commit que a congelou -- nao de uma copia a mao.
 
@@ -147,9 +166,12 @@ def _load_head():
     commit ANTERIOR ao cache, e a referencia e' RECUSADA se ja' trouxer o cache --
     um pin que apodrece tem de gritar, nao de passar em silencio.
     """
-    out = subprocess.run(
-        ['git', '-C', str(REPO), 'show', HEAD_PIN + ':app/webview/overlay_paint.py'],
-        capture_output=True)
+    # O `git` SAI PELO `hidden-launch`: um `subprocess.run` cru herda a consola do pai
+    # e, quando o pai NAO tem console (a bateria larga os passos com `pythonw`), o
+    # Windows da' uma NOVA -- a janela na tela do dono que o `console-window-audit`
+    # contou neste ficheiro (`:150 NO-FLAG larga git sem guarda`, 2026-11-08).
+    out = _hidden_run(['git', '-C', str(REPO),
+                       'show', HEAD_PIN + ':app/webview/overlay_paint.py'])
     if out.returncode != 0:
         raise SystemExit('paint-cost: referencia %s ilegivel: %s'
                          % (HEAD_PIN,

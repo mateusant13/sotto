@@ -282,8 +282,14 @@ def neg_arm(tmp):
         print('MUTANT %s %s' % (label, 'CAUGHT' if not good else 'NOT-CAUGHT'))
         caught += 0 if good else 1
     print('NEG-ARM check=%d/%d' % (caught, len(MUTANTS)))
-    print('NEG-ARM %s' % ('PASS' if caught == len(MUTANTS) else 'FAIL'))
-    return 0 if caught == len(MUTANTS) else 1
+    # A FRASE E' CONTRATO: o passo `red-as-expected-log-sink-dead` da' `:expectred`
+    # com o texto `NEG-ARM: PASS` (com os dois pontos). Um `NEG-ARM PASS` sem eles e'
+    # rc=1 com a frase ausente, que e' o passo vermelho por causa de um caractere.
+    print('NEG-ARM: %s' % ('PASS' if caught == len(MUTANTS) else 'FAIL'))
+    # CONVENCAO DA CASA: o braco negativo devolve 1 QUANDO APANHA -- e' o que o
+    # `:expectred` da bateria exige. A primeira versao devolvia 0 e o passo
+    # `red-as-expected-log-sink-dead` falhou na corrida completa com `=0`.
+    return 1 if caught == len(MUTANTS) else 0
 
 
 def main(argv):

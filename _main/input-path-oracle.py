@@ -367,17 +367,19 @@ def _noraise(fn):
 # ---------------------------------------------------------------------------
 # os mutantes: cada um tem de deixar o portao VERMELHO
 # ---------------------------------------------------------------------------
-_GUARD = """        if not self._wants_poll():
-            self._last_fg = None
-            return False
-"""
+# A `_GUARD` (a primeira linha do `_tick` antigo) foi APAGADA em 2026-11-08: os
+# dois mutantes que a usavam plantavam num metodo que ja' nao existe e o
+# `build_mutant` recusava-os com "a ancora casou 0 vezes" -- dois mutantes que
+# nao podem ser construidos sao dois invariantes sem controlo. A ancora e' agora
+# a linha do `_restart_timer`, que e' o sitio UNICO onde o tick se pede.
+_GUARD = """        got = int(user32.SetTimer(None, _POLL_TIMER_ID, want, None) or 0)"""
 MUTANTS = [
     (
         "hook-volta",
         "o hook global volta ao caminho vivo (C1)",
-        _GUARD + """        user32.SetTimer(None, _POLL_TIMER_ID, int(self._interval_ms()), None)""",
-        """        user32.SetWindowsHookExW(14, None, None, 0)
-        user32.SetTimer(None, _POLL_TIMER_ID, int(self._interval_ms()), None)""",
+        _GUARD,
+        _GUARD + """
+        user32.SetWindowsHookExW(14, None, None, 0)""",
     ),
     (
         "regra-sempre",
@@ -394,23 +396,23 @@ MUTANTS = [
             pass""",
     ),
     (
+        # RE-ANCRADO 2026-11-08: a ancora antiga era a guarda de um `_tick` que ja'
+        # nao existe. A guarda de hoje e' a do `_restart_timer` -- e o mutante
+        # plantado tem de ser o MESMO defeito: pedir o tick mesmo sem nada para
+        # vigiar (era ali que o vigilante com o painel escondido queimava CPU).
         "timer-sempre",
         "o tick arranca mesmo sem nada para vigiar (C4)",
-        _GUARD,
-        """        if False:
-            self._last_fg = None
-            return False
-""",
+        """        want = int(self._interval_ms()) if self._wants_poll() else 0""",
+        """        want = int(self._interval_ms())""",
     ),
     (
+        # RE-ANCRADO 2026-11-08: o `stop` passou a matar o id do WINDOWS
+        # (`self._timer_id or ...`) em vez da constante -- a ancora antiga casava
+        # 0 vezes e o mutante de C7 deixou de poder ser construido.
         "stop-nao-mata",
         "o encerramento deixa o timer vivo numa thread morta (C7)",
-        """        if self.thread_id:
-            try:
-                user32.KillTimer(None, _POLL_TIMER_ID)""",
-        """        if self.thread_id:
-            try:
-                pass""",
+        """                user32.KillTimer(None, self._timer_id or _POLL_TIMER_ID)""",
+        """                pass""",
     ),
     (
         "edit-mode-sem-ritmo",

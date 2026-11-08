@@ -764,6 +764,15 @@ def neg_arm():
     """Tres mutacoes numa COPIA do shell; cada uma derruba a SUA arm."""
     tmp = tempfile.mkdtemp(prefix="yt-first-boot-neg-")
     try:
+        # O IRMAO TEM DE VIR JUNTO (medido 2026-11-08): `youtube_cdp_source`
+        # carrega `youtube_window` PELO CAMINHO do proprio ficheiro
+        # (`_load_sibling`, youtube_cdp_source.py:50) -- e o mutante 4 e' uma
+        # copia DESTE modulo num diretorio temporario. Sem o irmao ao lado o
+        # carregamento morria em `FileNotFoundError: <tmp>\youtube_window.py`,
+        # o `--neg-arm` saia rc=1 por EXCECAO e o passo ficava vermelho com a
+        # frase `NEG-ARM: PASS` ausente -- um braco negativo que nao mede nada.
+        shutil.copyfile(os.path.join(WEBVIEW, "youtube_window.py"),
+                        os.path.join(tmp, "youtube_window.py"))
         src = _read(SHELL)
         results = []
 

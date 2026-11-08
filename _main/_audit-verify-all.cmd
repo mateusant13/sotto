@@ -298,7 +298,13 @@ REM <= 15%, o fio mais quente COM NOME e um ratchet de +20% sobre o baseline. Se
 REM viva ele imprime SKIPPED, e um passo saltado nunca e' um portao que passou.
 if exist _main\shell-thread-budget-oracle.py (
   call :step shell-thread-budget 0 "_main\shell-thread-budget-oracle.py;_main\shell-thread-cpu.py;app\webview\sotto_webview.py" "%OUT%\shell-thread-budget.log" python _main\shell-thread-budget-oracle.py
-  call :record shell-thread-budget !STEP_RC!
+  REM DECLARADO SKIP-CAPABLE (medido 2026-11-08): este oraculo LE thread/CPU da shell
+  REM VIVA e, com a app fechada, o desfecho normal e' `SHELL-THREAD-BUDGET SKIPPED
+  REM reason=no-live-shell` + `VERDICT: SKIPPED`. Com `:record` esse skip era lido
+  REM pelo `skip-verdict-guard` como declaracao em falta e a CORRIDA inteira ficava
+  REM vermelha por um passo que honestamente disse que nao tinha o que medir
+  REM (medido: `1 undeclared skip verdict(s) in 404 step log(s)`).
+  call :skipped shell-thread-budget !STEP_RC! "%OUT%\shell-thread-budget.log" "VERDICT: PASS" "VERDICT: SKIPPED"
   call :step red-as-expected-shell-thread-budget 1 "_main\shell-thread-budget-oracle.py;_main\shell-thread-cpu.py" "%OUT%\shell-thread-budget-neg.log" python _main\shell-thread-budget-oracle.py --neg-arm
   call :expectred red-as-expected-shell-thread-budget !STEP_RC! "%OUT%\shell-thread-budget-neg.log" "NEG-ARM PASS"
 ) else ( call :record shell-thread-budget MISSING )

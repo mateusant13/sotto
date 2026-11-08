@@ -496,8 +496,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 08:3x):** `_main\_audit-verify-all.cmd` = **287350 B**,
-  **3474 CRLF** / 0 bare LF, sha256 `B9B6F53EADBA177D0785091E2BDA893D95699153BD9D0AF3456E283F4892C5AC`.
+- **PIN do ficheiro (medido 2026-11-08, 06:0x):** `_main\_audit-verify-all.cmd` = **287904 B**,
+  **3480 CRLF** / 0 bare LF, sha256 `87A169AE411D49619A653D4B491B01EADC9EA3E488ED439B61F4F3478CF94D9F`.
+  (Quinhentos e cinquenta e quatro bytes e SEIS linhas a mais do que o pin de 287350 B: o passo
+  `shell-thread-budget` passa a `:skipped` -- declarado skip-capable. Medido na corrida de
+  2026-11-08: `SKIP-VERDICT IN THE LOG OF A STEP THAT IS NOT DECLARED SKIP-CAPABLE:
+  shell-thread-budget.log`, `1 undeclared skip verdict(s) in 404 step log(s)`. O oraculo LE a
+  shell VIVA e, com a app fechada, `SHELL-THREAD-BUDGET SKIPPED reason=no-live-shell` e' o
+  desfecho NORMAL -- declarado com `:record` esse skip honesto virava um RED da CORRIDA. Com
+  `:skipped` ele conta em `skipped=`, e um skip nao e' um portao que passou.)
   (Mil e cinquenta e quatro bytes e DEZ linhas a mais do que o pin de 286296 B: o par `paint-cost` +
   o seu `--neg-arm`. O dono pinta uma legenda e o quadro reconstruia o TEXTO todo em cada pintura;
   a cura guarda o raster e o hit mede **0,063 ms p95** contra **6,55 ms** -- 90x, e o oraculo
@@ -1422,7 +1429,7 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
 
 ## A LEI DO CUSTO - um laco dorme o ORCAMENTO, nunca o proprio trabalho (2026-11-08)
 
-Nascida de uma DM de stutter do watcher (`pythonw.exe(42572)`, 24 episodios em 60 min) e do que ela
+Nascida de uma DM de stutter do watcher (2026-11-08: `pythonw.exe(42572)`, 24 episodios em 60 min) e do que ela
 obrigou a medir. O culpado ficou nomeado por instrumento externo, com o **tid** e a **linha**:
 
 ```
@@ -1430,9 +1437,9 @@ SHELL-THREAD-BUDGET pid=42572 total=103.4% top=93.6% tid=48064 sotto-caption-tic
 ```
 (duas amostras, mesmo tid; `total` = % de UM nucleo). Duas metades, as duas medidas:
 o processo vivo (arrancado 04:01:44) pede **60 Hz sem limite nenhum** (`git show 7ec728d^` prova:
-`FRAME_S = 1/60`, zero `_limit_by_paint`) e com a pintura a **11,6 ms p95** o piso e' 69 % de um
+`FRAME_S = 1/60`, zero `_limit_by_paint`) e com a pintura a **11,6 ms p95** (2026-11-08) o piso e' 69 % de um
 nucleo; e a cura de 240 Hz escrita as 07:2x punha o **periodo IGUAL ao custo** (`cost * 1.02`) --
-um laco que dorme exactamente o tempo que trabalha gasta **100 % de um nucleo por construcao**.
+um laco que dorme exactamente o tempo que trabalha gasta **100 % de um nucleo por construcao** (aritmetica, 2026-11-08).
 
 **AS DUAS REGRAS, e nenhuma delas e' opcional:**
 
@@ -1441,7 +1448,7 @@ um laco que dorme exactamente o tempo que trabalha gasta **100 % de um nucleo po
    rate_hz=..`). A taxa sobe quando o trabalho fica barato, e o nucleo nunca passa do orcamento.
    Vale para QUALQUER laco que derive o passo do proprio custo: tick de pintura, timer, poll,
    census. A classe ja' custou tres vezes nesta casa -- o `outside-click-timer` a 2 569 Hz, o censo a
-   1 591 Hz e agora este a 93 %.
+   1 591 Hz e agora este a 93 % (medido 2026-11-08).
 2. **UM INSTRUMENTO DE CPU SEM PASSO NA BATERIA NAO E' UM INSTRUMENTO.** `_main/shell-thread-cpu.py`
    media CPU por fio com o NOME, tinha `--neg-arm`, e tinha **zero chamadores** -- por isso a
    primeira medicao do stutter foi a queixa do dono, 149 vezes em 14 dias. O passo e' o par
