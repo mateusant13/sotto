@@ -226,3 +226,17 @@
   o tick custou menos do que a leitura que ele tem de fazer. O orcamento absoluto e' uma afirmacao
   sobre a MAQUINA; o braco passa a julgar `tick_min < budget` **ou** `tick_min <= 1,5 x enum_min`, e
   ganhou o controlo que nao tinha (uma chamada de 200 ms no tick: cost arm RED a 259,40 ms).
+- **O CUSTO DE UM PASSO DA BATERIA NAO SE MEDE UMA VEZ SO' (medido 2026-11-08).** Tres numeros de
+  prosa medidos hoje estavam errados por 40x, por 2,7x e por 2,9x, e cada um escondia uma decisao:
+  (a) o `panel-hidden-at-startup-oracle` dizia `MEDIDO: 1,97 s` e custava **79,94 s** sozinho e
+  **219,1 s** dentro da corrida -- o fator de CONTENDA medido para o mesmo comando e' **2,7x**, logo
+  um numero medido numa maquina calma nao descreve a corrida; depois da cura (populacao de 234
+  execucoes do harness para 36 + braco de ACORDO entre repeticoes) custa **50,7 s**.
+  (b) o ratchet do relogio comparava UM total: baseline **5 801,2 s** contra uma corrida de
+  **2 102,0 s**, ou seja **2,9x** de regressao passavam em silencio -- uma soma esconde o passo que
+  engordou. Agora ha' tecto por passo (20 %, piso de 5 s) e o RED nomeia o passo.
+  (c) o `--neg-arm` da pagina de estado custava **84,5 s** porque copiava a arvore e renderizava a
+  referencia OITO vezes, uma por mutacao: a copia e a referencia nao dependem da mutacao. Depois da
+  cura: **49,45 s**. E o que NAO e' desperdicio, medido: `paint-cost` custa 81-100 s para **4 152
+  comparacoes byte a byte** mais 48 bases x 8 formas ao custo real de pintura (6,8 ms de miss).
+

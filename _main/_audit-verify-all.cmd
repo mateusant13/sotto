@@ -1496,6 +1496,15 @@ if exist _main\sotto-state-page.py (
   call :step always state-page 0 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page.log" python _main\sotto-state-page.py --check
   call :record state-page !STEP_RC!
 ) else ( call :record state-page MISSING )
+REM O `--neg-arm` DA PAGINA, E O CUSTO QUE ELE TINHA (medido 2026-11-08). Ele custava
+REM **73,26 s** sozinho e **84,5 s** dentro da corrida, porque `run_mutation` copiava a
+REM arvore, renderizava a copia, escrevia a pagina e corria o check de base -- tudo
+REM identico -- UMA VEZ POR MUTACAO, oito vezes, e a copia inclui o directorio de logs da
+REM bateria. A copia e a referencia NAO dependem da mutacao: e' a mesma pergunta feita oito
+REM vezes. Agora `run_mutations_shared` faz a copia, a renderizacao e o check de base UMA vez
+REM e corre cada mutacao sobre a copia RESTAURADA (snapshot de bytes + restauro, e a unica
+REM diferenca entre a copia e a copia mutada continua a ser a mutacao). MEDIDO depois:
+REM **49,45 s**, com as 8 mutacoes a nomear o check que deviam (`NEG-ARM PASS mutations=8`).
 if exist _main\sotto-state-page.py (
   call :step always red-as-expected-state-page 1 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page-neg.log" python _main\sotto-state-page.py --neg-arm
   call :expectred red-as-expected-state-page !STEP_RC! "%OUT%\state-page-neg.log" "NEG-ARM PASS"

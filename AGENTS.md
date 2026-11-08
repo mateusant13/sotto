@@ -496,8 +496,14 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 12:2x):** `_main\_audit-verify-all.cmd` = **295504 B**,
-  **3567 CRLF** / 0 bare LF, sha256 `5220516ED8AA824206248EC441F823F74CCC6B4CB74B95169EBC6F87A06BE6C0`.
+- **PIN do ficheiro (medido 2026-11-08, 12:4x):** `_main\_audit-verify-all.cmd` = **296318 B**,
+  **3576 CRLF** / 0 bare LF, sha256 `5027CEA937F19C3480801D306A02B26A59A6AC2B793A3FE5B6731B3C46C73A81`.
+  (Oitocentos e catorze bytes e NOVE linhas a mais do que o pin de 295504 B: a cura de custo do
+  `--neg-arm` da pagina de estado -- **84,5 s** na corrida, **73,26 s** sozinho, porque
+  `run_mutation` copiava a arvore, renderizava e corria o check de base uma vez POR MUTACAO, oito
+  vezes, com a copia a incluir o directorio de logs. `run_mutations_shared` faz a copia, a
+  renderizacao e a referencia UMA vez e corre cada mutacao sobre a copia restaurada por snapshot de
+  bytes: **49,45 s**, 8/8 mutacoes a nomear o check que deviam.)
   (Mil quatrocentos e sessenta e tres bytes e DEZASSETE linhas a mais do que o pin de 294041 B: o
   ratchet do RELOGIO ganhou o segundo tecto, o que era o defeito mais caro que este ficheiro tinha.
   MEDIDO: o baseline era **5 801,2 s** (de 2026-11-05) e a corrida verde media **2 102,0 s** -- o

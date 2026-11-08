@@ -694,6 +694,84 @@ def run_mutation(root, entry):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _snapshot(tmp):
+    """{caminho relativo: bytes} de TUDO o que esta' na copia."""
+    out = {}
+    for base, _dirs, files in os.walk(tmp):
+        for name in files:
+            full = os.path.join(base, name)
+            rel = os.path.relpath(full, tmp)
+            with open(full, "rb") as fh:
+                out[rel] = fh.read()
+    return out
+
+
+def _restore(tmp, snapshot):
+    """Devolve a copia ao estado intacto: reescreve tudo e apaga o que sobrou."""
+    for rel, data in snapshot.items():
+        full = os.path.join(tmp, rel)
+        os.makedirs(os.path.dirname(full) or tmp, exist_ok=True)
+        with open(full, "wb") as fh:
+            fh.write(data)
+    for base, _dirs, files in os.walk(tmp):
+        for name in files:
+            rel = os.path.relpath(os.path.join(base, name), tmp)
+            if rel not in snapshot:
+                os.unlink(os.path.join(base, name))
+
+
+def run_mutations_shared(root, entries):
+    """AS OITO MUTACOES COM UMA COPIA E UMA RENDERIZACAO DE REFERENCIA.
+
+    MEDIDO 2026-11-08: `--neg-arm` custava **73,26 s** sozinho (84,5 s dentro da
+    corrida) porque `run_mutation` copiava a arvore, renderizava a copia, escrevia
+    a pagina e corria o check de base -- TUDO identico -- uma vez por mutacao, oito
+    vezes, e a copia inclui o directorio de logs da bateria. A copia e a
+    referencia nao dependem da mutacao: sao a mesma pergunta feita oito vezes. Aqui
+    a copia, a renderizacao e o check de base correm UMA vez, e cada mutacao corre
+    sobre a copia restaurada -- a unica diferenca entre a copia e a copia mutada
+    continua a ser a mutacao, que e' o que o braco mede.
+    """
+    tmp = tempfile.mkdtemp(prefix="state-page-", dir=_tmp_base())
+    try:
+        if os.path.realpath(tmp).startswith(os.path.realpath(root) + os.sep):
+            raise RuntimeError("directorio temporario dentro da raiz do repo")
+        _copy_tree(root, tmp)
+        fresh, _counts = render(tmp, build_rows(tmp, dep_root=root))
+        _write_bytes(os.path.join(tmp, PAGE_REL), fresh)
+        baseline, error = run_checks(tmp, dep_root=root)
+        if error is not None:
+            return [("COPY-BROKEN", [], error, e[2]) for e in entries]
+        broken = [n for n, ok, _ in baseline if not ok]
+        if broken:
+            return [("COPY-BROKEN", baseline,
+                     "a copia intacta ja falha: %s" % ", ".join(broken), e[2])
+                    for e in entries]
+        pristine = _snapshot(tmp)
+        out = []
+        for name, mutate, expected in entries:
+            mutate(tmp)
+            mutated, error = run_checks(tmp, dep_root=root)
+            if error is not None:
+                out.append(("NEG-ARM PASS",
+                            [("unreadable-after-mutation", False, error)],
+                            "o artefacto ficou ilegivel: %s" % error, expected))
+            else:
+                refused = [n for n, ok, _ in mutated if not ok]
+                if expected not in refused:
+                    out.append(("NEG-ARM FAIL", mutated,
+                                "o check NOMEADO (%s) nao recusou; recusaram: %s"
+                                % (expected, ", ".join(refused) or "nenhum"),
+                                expected))
+                else:
+                    out.append(("NEG-ARM PASS", mutated,
+                                "recusou por: %s" % ", ".join(refused), expected))
+            _restore(tmp, pristine)
+        return out
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # ------------------------------------------------------------------ CLI
 
 
@@ -732,12 +810,17 @@ def main(argv=None):
 
     if selected:
         outcomes = []
-        for entry in selected:
-            try:
-                status, results, detail, expected = run_mutation(root, entry)
-            except (OSError, RuntimeError, ValueError) as exc:
-                print("MUTATION %-20s ERROR  %s" % (entry[0], exc))
-                return 2
+        try:
+            if len(selected) > 1:
+                # UMA copia e UMA referencia para todas -- ver
+                # `run_mutations_shared`.
+                results_all = run_mutations_shared(root, selected)
+            else:
+                results_all = [run_mutation(root, selected[0])]
+        except (OSError, RuntimeError, ValueError) as exc:
+            print("MUTATION batch ERROR  %s" % exc)
+            return 2
+        for entry, (status, results, detail, expected) in zip(selected, results_all):
             print("MUTATION %-20s %s  [esperado: %s] %s" % (entry[0], status, expected, detail))
             for name, ok, check_detail in results:
                 print("  mut-check %-20s %s  %s" % (name, "PASS" if ok else "FAIL", check_detail))
