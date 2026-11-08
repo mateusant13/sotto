@@ -303,6 +303,29 @@ if exist _main\caption-tick-thread-oracle.py (
   call :record caption-tick-thread !STEP_RC!
   call :step red-as-expected-caption-tick-thread 1 "_main\caption-tick-thread-oracle.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\caption-tick-thread-neg.log" python _main\caption-tick-thread-oracle.py --neg-arm
   call :expectred red-as-expected-caption-tick-thread !STEP_RC! "%OUT%\caption-tick-thread-neg.log" "NEG-ARM: PASS"
+REM `log-sink-dead` (2026-11-08, MEDIDO na instancia do dono): pid 42572 arrancado 04:01:44, o
+REM ULTIMO byte do log e' das 04:57:13.351 e o processo ficou VIVO a queimar 100 % de um
+REM nucleo por tres horas -- o pai morreu (`Process.parent() is None`), o `print` do `log()`
+REM escrevia num cano sem leitor e cada chamada levantava OSError 22. A cura: o relatador nao
+REM levanta, o cano morto e' detectado UMA vez e o facto vai para o ficheiro. O oraculo executa
+REM o `log()`/`warn()` REAIS contra um stdout que levanta (6 arms); o `--neg-arm` repoe o
+REM `print` directo em COPIA e exige A2-A6 vermelhas.
+if exist _main\log-sink-dead-oracle.py (
+  call :step log-sink-dead 0 "_main\log-sink-dead-oracle.py;app\webview\sotto_webview.py" "%OUT%\log-sink-dead.log" python _main\log-sink-dead-oracle.py
+  call :record log-sink-dead !STEP_RC!
+  call :step red-as-expected-log-sink-dead 1 "_main\log-sink-dead-oracle.py;app\webview\sotto_webview.py" "%OUT%\log-sink-dead-neg.log" python _main\log-sink-dead-oracle.py --neg-arm
+  call :expectred red-as-expected-log-sink-dead !STEP_RC! "%OUT%\log-sink-dead-neg.log" "NEG-ARM: PASS"
+) else ( call :record log-sink-dead MISSING )
+REM O ALVO FORA DO LACO (2026-11-08, MEDIDO na instancia viva pid 42572): `EXTERNAL_CAPTIONS_READ_MS
+REM ms=1281.0 phases={'cdp': 15.0, 'vid': 1281.0}` -- o `/json/list` de 1,0-1,4 s corria dentro do laco
+REM de leitura e de ~10 em ~10 s nao saia um quadro. O fio `yt-cdp-target` paga a pergunta e
+REM `target_video_id()` passa a ler memoria; o `--neg-arm` derruba a chamada inline e o log SLOW.
+if exist _main\cdp-target-async-oracle.py (
+  call :step cdp-target-async 0 "_main\cdp-target-async-oracle.py;app\webview\youtube_cdp_source.py" "%OUT%\cdp-target-async.log" python _main\cdp-target-async-oracle.py
+  call :record cdp-target-async !STEP_RC!
+  call :step red-as-expected-cdp-target-async 1 "_main\cdp-target-async-oracle.py;app\webview\youtube_cdp_source.py" "%OUT%\cdp-target-async-neg.log" python _main\cdp-target-async-oracle.py --neg-arm
+  call :expectred red-as-expected-cdp-target-async !STEP_RC! "%OUT%\cdp-target-async-neg.log" "NEG-ARM: PASS"
+) else ( call :record cdp-target-async MISSING )
 ) else ( call :record caption-tick-thread MISSING )
 REM `caption-drag` (2026-11-08, ordem do dono, verbatim: *"segurar control,
 REM permite eu arrastar a legenda pra onde eu quero. e o control segurado tambem vai

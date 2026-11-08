@@ -496,8 +496,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 09:1x):** `_main\_audit-verify-all.cmd` = **284085 B**,
-  **3441 CRLF** / 0 bare LF, sha256 `557B59AC377C6AFE0E1141D5549223273533FC32362EE7D801EDB3ED6355C95D`.
+- **PIN do ficheiro (medido 2026-11-08, 08:2x):** `_main\_audit-verify-all.cmd` = **286296 B**,
+  **3464 CRLF** / 0 bare LF, sha256 `7DC3BCD2710E17BC8B1272C0DA477D7BBA4EE52E5FD86BBBA91FF7A9CED23F62`.
+  (Dois mil duzentos e onze bytes e VINTE E TRES linhas a mais do que o pin de 284085 B: DOIS pares
+  novos, os dois nascidos do mesmo processo vivo do dono. `log-sink-dead` + o seu `--neg-arm`: o
+  pid 42572 escreveu o ultimo byte do log as **04:57:13** e ficou VIVO a queimar 100 % de um nucleo
+  por tres horas, porque o pai morreu, o `print` do `log()` escrevia num cano sem leitor e cada
+  chamada levantava OSError 22 -- o relatador nao levanta mais, o cano morto e' detectado uma vez e
+  o facto vai para o ficheiro. `cdp-target-async` + o seu `--neg-arm`: o `/json/list` de 1,0-1,4 s
+  (medido `phases={'cdp': 15.0, 'vid': 1281.0}`) saiu do laco de leitura para o fio `yt-cdp-target`.
+  Recibos: `_main/receipt-20261108-log-sink-dead.md`, `_main/receipt-20261108-cdp-target-async.md`.)
   (Mil duzentos e noventa e tres bytes e treze linhas a mais do que o pin de 282792 B: o par
   `shell-thread-budget` + o seu `--neg-arm`, nascido da DM de stutter do watcher e do que ela
   obrigou a medir -- o pid da shell do dono (`42572`) acusado como maior culpado, e a atribuicao

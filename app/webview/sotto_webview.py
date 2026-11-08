@@ -2127,6 +2127,44 @@ def _code_identity_memo():
     return got
 
 
+#: O CANO DO LARGADOR MORREU? -- UM `log()` QUE NAO DERRUBA NINGUEM (2026-11-08).
+#:
+#: MEDIDO na instancia do dono (pid 42572, arrancada 04:01:44): o ULTIMO byte do
+#: `_main/webview-run.log` e' das **04:57:13.351** e o processo continuou VIVO e a
+#: queimar **100 % de um nucleo** por mais de tres horas -- 52 fios, o do tick a
+#: 78,5 %, e nenhum dos 12 instrumentos que leem o log com um numero novo para dar.
+#: O pai do processo estava MORTO (`Process.parent()` devolve None): o `print(...,
+#: flush=True)` do `log()` escrevia num cano cujo leitor ja' nao existia, logo cada
+#: chamada levantava `OSError: [Errno 22] Invalid argument` -- a MESMA classe que a
+#: casa ja' curou do lado do WORKER (`emit` com cano partido -> `BRIDGE_DEATH_CAUSE
+#: OSError 22`). Do lado da shell ninguem a tinha curado, e o resultado e' pior do
+#: que uma excepcao: e' o silencio. A app deixa de escrever o log E deixa de saber
+#: o que esta' a acontecer, sem morrer, e um instrumento que le' o log para julgar
+#: custo/legenda/hotkey responde sobre um processo que ha' horas nao fala.
+#:
+#: A CURA, e a regra que ela carrega: **o relatador nao levanta e nao depende de um
+#: consumidor vivo**. O cano morto e' DETECTADO uma vez, o facto vai para o
+#: ficheiro (que e' o artefacto de aceitacao) e o `print` deixa de ser tentado.
+_STDOUT_SINK = {'dead': False, 'err': ''}
+
+
+def _write_stdout(line: str) -> None:
+    """Um `print` que NAO pode matar quem o chama (cano partido e' um facto, nao uma excepcao)."""
+    if _STDOUT_SINK['dead']:
+        return
+    try:
+        print(line, flush=True)
+    except Exception as exc:                # noqa: BLE001
+        _STDOUT_SINK['dead'] = True
+        _STDOUT_SINK['err'] = f'{type(exc).__name__}: {exc}'
+        try:
+            if _LOG_FILE is not None and _LOG_QUEUE is not None:
+                _LOG_QUEUE.put(f'{_stamp()} sotto: LOG_STDOUT_DEAD err={_STDOUT_SINK["err"]} '
+                               f'-- o cano do largador morreu; o ficheiro e\' o artefacto')
+        except Exception:                   # noqa: BLE001
+            pass
+
+
 def log(message: str) -> None:
     """One `sotto: ` prefixed line on stdout, mirrored to --log when asked.
 
@@ -2134,12 +2172,18 @@ def log(message: str) -> None:
     alike and a claim in the receipt can be checked without watching the screen.
     The stamp is prepended by `_stamp` rather than here, so `warn()` and every
     other caller inherits it without a second code path.
+
+    NEVER RAISES (2026-11-08, see `_STDOUT_SINK`): a dead stdout must not take the
+    caller -- or the app -- with it, and the file mirror must keep working.
     """
     line = f'{_stamp()} sotto: {message}'
     with _LOG_LOCK:
-        print(line, flush=True)
+        _write_stdout(line)
         if _LOG_FILE is not None:
-            _LOG_QUEUE.put(line)
+            try:
+                _LOG_QUEUE.put(line)
+            except Exception:               # noqa: BLE001
+                pass
 
 
 def log_repeat(key: str, message: str, every_s: float = 300.0) -> None:
