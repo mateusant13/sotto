@@ -163,9 +163,9 @@ escolhido por gosto.
 
 | campo | valor | quem manda | onde vive |
 |---|---|---|---|
-| duração | **0,433 s** | CSS da build viva do YouTube (a classe que sobe a janela de legenda) | `youtube_reveal.ROLL_S` |
-| curva | **`cubic-bezier(0, 0, .2, 1)`** | mesma folha; resolvida em x por bissecção (40 iter.) | `youtube_reveal._bezier_y` |
-| propriedade animada | **`transform: translateY` só** | a mesma folha + `0 de 16` quadros do player com `opacity < 1` (linha 22) | `overlay_paint` (`offset_y`) |
+| duração | **0,433 s** | `getComputedStyle` na build de 2026-11-08: `transitionDuration: 0.433s` e `transitionend` a **430,9 ms** (`_main/receipt-20261108-rollup-live.md`) | `youtube_reveal.ROLL_S` |
+| curva | **`cubic-bezier(0, 0, .2, 1)`** | `transitionTimingFunction` computado; o progresso medido encaixa com **1,7 % máx / 0,5 % médio** de erro (linear: 36,1 % / 24,2 %), logo a curva é a bezier. Resolvida em x por bissecção (40 iter.) | `youtube_reveal._bezier_y` |
+| propriedade animada | **`transform: translateY` só** | `transitionProperty: transform, -webkit-transform` -- sem `opacity` nem `filter`; e `.caption-visual-line` tem `0s`, quem anima é o STACK (`.ytp-caption-window-rollup.ytp-rollup-mode .captions-text`) | `overlay_paint` (`offset_y`) |
 | distância | **uma altura de linha** | `rcRows: 2` + a que sai; a janela mede 2 e mostra 3 durante a transição (linha 17) | `youtube_reveal.ROLL_ROWS` |
 | caixa | **fixa em `PLAYER_ROWS` linhas** | a janela do player não muda de altura ao subir | `caption_overlay._display` → `_layout(rows=…)` |
 | ordem | **a mais antiga sai pelo TOPO**, a nova entra por baixo | player (`line 1` sai, `line 2`/`line 3` ficam) | `youtube_reveal.frame` (marca `displaced_at` só na que sai) |
@@ -180,7 +180,11 @@ quadros de três linhas, que o `_display` antes **descartava**.
 ## O que este documento não mede
 
 * A curva CSS exacta do `fade` de ENTRADA do player (`[INFERENCE]`, linha 23): a do ROLL-UP está
-  lida da folha viva, o fade não (a captura resolve ~0,65 s por quadro).
+  lida do computado e encaixada nas amostras; o fade não (a captura resolve ~0,65 s por quadro).
+* As CUE reais do player: o `timedtext` responde 200 com 0 bytes a uma sessão headless nova (sem
+  login) e a faixa ASR vem `is_servable: false` -- por isso o conteúdo e o seek/pausa/velocidade
+  ficam `UNMEASURED`; o que está medido é a GEOMETRIA/curva da transição, não o instante em que o
+  player a dispara numa cue real.
 * O estilo tipográfico do player (a fonte, o peso, o contorno). O Sotto desenha com a cara do
   tema: a legenda é do Sotto e imita o **comportamento**, não o tipo de letra do YouTube.
 * A legenda automática (ASR do próprio YouTube): o payload medido é uma faixa curada. O que se
