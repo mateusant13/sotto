@@ -149,6 +149,16 @@ def _keys_of(sessions):
     return got
 
 
+def _hidden():
+    """O largador da casa, importado PELO CAMINHO (o modulo tem hifen no nome)."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hidden-launch.py')
+    spec = importlib.util.spec_from_file_location('hidden_launch', path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def _omp_effect(mod_path, preset=None):
     """O `OMP_WAIT_POLICY` que o cabecalho do worker deixa no ambiente.
 
@@ -175,18 +185,19 @@ def _omp_effect(mod_path, preset=None):
     env = dict(os.environ)
     env.pop('OMP_WAIT_POLICY', None)
     env['PYTHONIOENCODING'] = 'utf-8'
-    flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
-    r = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True,
-                       env=env, creationflags=flags, timeout=120)
-    if r.returncode != 0:
-        raise RuntimeError('o filho do OMP morreu: rc=%s stderr=%r'
-                           % (r.returncode, (r.stderr or '')[-300:]))
+    # O LARGADOR DA CASA (`_main/hidden-launch.py`), nunca um Popen solto: um
+    # `creationflags` sozinho e' o WEAK-FLAG que o censo AST recusa com razao --
+    # CREATE_NO_WINDOW nao cobre a consola que o pai passa ao filho.
+    rc, out, err = _hidden().run([sys.executable, '-c', code], capture=True,
+                                 env=env, timeout=120)
+    if rc != 0:
+        raise RuntimeError('o filho do OMP morreu: rc=%s stderr=%r' % (rc, (err or '')[-300:]))
     # A ULTIMA linha e' o valor -- e VAZIA e' um valor legitimo: significa que
     # o cabecalho do worker nao escreveu a variavel, que e' exactamente o
     # mutante do braco negativo. Filtrar linhas vazias aqui escondia o mutante.
-    raw = (r.stdout or '').replace('\r', '').splitlines()
+    raw = (out or '').replace('\r', '').splitlines()
     if not raw:
-        raise RuntimeError('o filho do OMP nao imprimiu linha nenhuma: rc=%s' % r.returncode)
+        raise RuntimeError('o filho do OMP nao imprimiu linha nenhuma: rc=%s' % rc)
     return raw[-1].strip()
 
 
