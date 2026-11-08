@@ -431,12 +431,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1192200,
+      "bytes": 1193306,
       "classes": 28,
-      "defs": 140,
+      "defs": 141,
       "except_pass": 58,
       "globals": 4,
-      "lines": 22594,
+      "lines": 22618,
       "max_func": 414,
       "max_func_name": "main"
     },

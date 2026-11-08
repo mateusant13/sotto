@@ -75,6 +75,20 @@ def run(module):
         primeiro == segundo and 'sha256=' in primeiro, primeiro[:30])
     arm('A6 a segunda chamada e` memoizada (< 5 ms)', dt_ms < 5.0, '%.1f ms' % dt_ms)
 
+    # A9-A11: a LINHA do censo (2026-11-08). O instrumento publicava so' as
+    # janelas OCUPADAS, logo a serie dele e' uma amostra viesada: no mesmo
+    # processo uma janela externa de 32 s mediu 5,5 % e o censo calou.
+    arm('A9 abaixo do piso e sem batimento -> nenhuma linha',
+        module.census_line(5.0, 4.0, [(4.0, 'a')]) is None)
+    linha = module.census_line(5.0, 4.0, [(4.0, 'a')], beat=True)
+    arm('A10 no batimento a linha sai e diz heartbeat=true',
+        bool(linha) and 'heartbeat=true' in linha and 'total=5%' in linha,
+        linha or 'sem linha')
+    linha = module.census_line(25.0, 10.0, [(10.0, 'x'), (9.0, 'y')])
+    arm('A11 acima do piso sai sem a etiqueta e nomeia as duas primeiras',
+        bool(linha) and 'heartbeat' not in linha and 'x:10%' in linha and 'y:9%' in linha,
+        linha or 'sem linha')
+
     for name, ok, detail in results:
         print('  %s %-42s %s' % ('OK  ' if ok else 'FAIL', name, detail))
     bad = [r for r in results if not r[1]]
@@ -83,20 +97,30 @@ def run(module):
 
 def neg_arm(tmpdir):
     src = io.open(SHELL, encoding='utf-8').read()
-    mutated = src.replace('CENSUS_THREAD_FLOOR = 5.0', 'CENSUS_THREAD_FLOOR = 20.0', 1)
-    mutated = mutated.replace('CENSUS_BEAT_EVERY = 10', 'CENSUS_BEAT_EVERY = 0', 1)
-    if mutated == src:
-        print('  ?    a mutacao NAO pegou (ancora mudou)')
-        print('NEG-ARM: FAIL -- 0/1 mutantes apanhados')
-        return 0
-    case = os.path.join(tmpdir, 'sotto_webview_mutant.py')
-    io.open(case, 'w', encoding='utf-8').write(mutated)
-    module = load_shell(case, 'sotto_webview_census_mutant')
-    good, total = run(module)
-    caught = good < total
+    # M1 pisos de volta (o piso unico de 20 %): A2 e A4 tem de cair.
+    m1 = src.replace('CENSUS_THREAD_FLOOR = 5.0', 'CENSUS_THREAD_FLOOR = 20.0', 1)
+    m1 = m1.replace('CENSUS_BEAT_EVERY = 10', 'CENSUS_BEAT_EVERY = 0', 1)
+    # M2 o batimento nao publica (o vies de volta): A10 tem de cair.
+    m2 = src.replace("    if not (census_should_publish(total, top_pct) or beat):",
+                     "    if not census_should_publish(total, top_pct):", 1)
+    caught = 0
+    total = 0
+    for label, mutated in (('pisos de volta', m1), ('batimento nao publica', m2)):
+        total += 1
+        if mutated == src:
+            print('  ?    a mutacao NAO pegou: %s (ancora mudou)' % label)
+            continue
+        case = os.path.join(tmpdir, 'sotto_webview_mutant_%d.py' % total)
+        io.open(case, 'w', encoding='utf-8').write(mutated)
+        module = load_shell(case, 'sotto_webview_census_mutant_%d' % total)
+        good, arms = run(module)
+        if good < arms:
+            caught += 1
+        else:
+            print('  ?    MUTANTE NAO APANHADO: %s (%d/%d)' % (label, good, arms))
     print('NEG-ARM: %s -- %d/%d mutantes apanhados'
-          % ('PASS' if caught else 'FAIL', 1 if caught else 0, 1))
-    return 1 if caught else 0
+          % ('PASS' if caught == total else 'FAIL', caught, total))
+    return 1 if caught == total else 0
 
 
 def main(argv=None):

@@ -2095,6 +2095,29 @@ def census_beat_due(beats, every=CENSUS_BEAT_EVERY):
     """E' este o censo em que a identidade do codigo volta a ser dita?"""
     return every > 0 and beats % every == 0
 
+def census_line(total, top_pct, rows, beat=False):
+    """A LINHA do censo, ou None. Separada do laco para a decisao ser testavel.
+
+    Duas razoes para publicar, e a segunda nasceu de um erro de LEITURA meu
+    (medido 2026-11-08): o instrumento so' escrevia quando o total passava de
+    20 % OU uma thread de 5 %, logo a serie que ele deixa no log e' uma amostra
+    das janelas OCUPADAS -- ler `total=13 %` como "a media da shell" e' ler um
+    vies. No mesmo processo, uma janela externa de 32 s mediu 5,5 % de um core e
+    o censo nao escreveu nada.
+
+    Agora ele tambem fala no BATIMENTO (1 em cada 10 janelas de 60 s), marcado
+    `heartbeat=true`, mesmo abaixo do piso: quem quiser a distribuicao tem as
+    duas populacoes separadas por uma etiqueta, nao por uma ausencia.
+    """
+    if not rows:
+        return None
+    if not (census_should_publish(total, top_pct) or beat):
+        return None
+    return ('THREAD_CPU total=%.0f%%%s top=%s'
+            % (total, ' heartbeat=true' if beat else '',
+               ' '.join('%s:%.0f%%' % (n, p) for p, n in rows[:4])))
+
+
 
 def _code_identity_memo():
     """`code_identity()` com memo: o processo carrega o MESMO codigo a vida toda."""
@@ -11390,10 +11413,10 @@ class SottoShell:
                 # quisesse provar que `sotto-outside-click` deixou de girar so'
                 # tinha como resposta "nao ha' linha", que nao diz qual thread
                 # gasta. Agora publica tambem quando UMA thread passa de 5 %.
-                if census_should_publish(total, top_pct):
-                    log('THREAD_CPU total=%.0f%% top=%s'
-                        % (total, ' '.join('%s:%.0f%%' % (n, p)
-                                           for p, n in rows[:4])))
+                _line = census_line(total, top_pct, rows,
+                                    beat=bool(getattr(self, '_cpu_census_beat', False)))
+                if _line:
+                    log(_line)
             return rows
         except Exception:                 # noqa: BLE001
             return []
@@ -11411,6 +11434,8 @@ class SottoShell:
             beats = 0
             while True:
                 time.sleep(every_s)
+                beats += 1
+                self._cpu_census_beat = census_beat_due(beats)
                 self._thread_cpu_census()
                 # A IDENTIDADE DO CODIGO VOLTA A SER DITA (medido 2026-11-08):
                 # `SHELL_CODE_ID` era escrito UMA vez, no arranque. O log roda, e
@@ -11419,7 +11444,6 @@ class SottoShell:
                 # cego precisamente quando a instancia envelhece. Re-dizer a cada
                 # ~10 min custa uma linha e um sha256 memoizado, e o portao
                 # recupera a capacidade de decidir.
-                beats += 1
                 if census_beat_due(beats):
                     log('SHELL_CODE_ID %s heartbeat=true' % _code_identity_memo())
 
