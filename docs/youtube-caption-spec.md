@@ -155,9 +155,32 @@ funções** (gerada por `_main/sim/make-youtube-caption-sim.py`, que importa
 `youtube_reveal` e `word_fade` e não reimplementa nada): cada palavra, cada linha, cada alfa e
 cada duração vêm do motor. Se a animação estiver errada na página, está errada na app.
 
+## O roll-up: a especificação em forma mecânica (2026-11-08)
+
+O que o dono pediu, verbatim: *"quero a animacao de quando comeca uma linha nova e a outra linha
+vai pra cima"*. A tabela abaixo é a REGRA, com a fonte de cada número -- nenhum valor aqui foi
+escolhido por gosto.
+
+| campo | valor | quem manda | onde vive |
+|---|---|---|---|
+| duração | **0,433 s** | CSS da build viva do YouTube (a classe que sobe a janela de legenda) | `youtube_reveal.ROLL_S` |
+| curva | **`cubic-bezier(0, 0, .2, 1)`** | mesma folha; resolvida em x por bissecção (40 iter.) | `youtube_reveal._bezier_y` |
+| propriedade animada | **`transform: translateY` só** | a mesma folha + `0 de 16` quadros do player com `opacity < 1` (linha 22) | `overlay_paint` (`offset_y`) |
+| distância | **uma altura de linha** | `rcRows: 2` + a que sai; a janela mede 2 e mostra 3 durante a transição (linha 17) | `youtube_reveal.ROLL_ROWS` |
+| caixa | **fixa em `PLAYER_ROWS` linhas** | a janela do player não muda de altura ao subir | `caption_overlay._display` → `_layout(rows=…)` |
+| ordem | **a mais antiga sai pelo TOPO**, a nova entra por baixo | player (`line 1` sai, `line 2`/`line 3` ficam) | `youtube_reveal.frame` (marca `displaced_at` só na que sai) |
+| alfa da linha que sai | **255 até sair da caixa** | `uia.shape.opacity_below_1` = 0/16 | `caption_overlay._display` |
+| quando dispara | `displaced_at` = `start` da linha que a empurrou | payload do player / `LiveRows` no ASR | `youtube_reveal.frame` |
+| o que NÃO é animado | o texto não muda de conteúdo durante a subida; a revelação palavra-a-palavra é outra regra | linhas 19-21 | -- |
+
+O caminho do ASR usa a MESMA regra: `LiveRows` fecha por JANELA (não por relógio), então a linha
+anterior fica viva enquanto é empurrada -- foi assim que o `_close` de 2026-10-31 passou a produzir
+quadros de três linhas, que o `_display` antes **descartava**.
+
 ## O que este documento não mede
 
-* A curva CSS exacta do player (`[INFERENCE]`, linha 23/24).
+* A curva CSS exacta do `fade` de ENTRADA do player (`[INFERENCE]`, linha 23): a do ROLL-UP está
+  lida da folha viva, o fade não (a captura resolve ~0,65 s por quadro).
 * O estilo tipográfico do player (a fonte, o peso, o contorno). O Sotto desenha com a cara do
   tema: a legenda é do Sotto e imita o **comportamento**, não o tipo de letra do YouTube.
 * A legenda automática (ASR do próprio YouTube): o payload medido é uma faixa curada. O que se
