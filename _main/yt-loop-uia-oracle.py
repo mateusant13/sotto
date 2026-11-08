@@ -61,9 +61,20 @@ MUTANT = os.path.join(os.path.dirname(SHELL), '_uia-neg-shell.py')
 _A = ("            if _src and _src is not False and "
       "getattr(self, 'yt_video_id', ''):\n")
 _I = ("            if False:  # MUTANT: cai na UIA\n")
-#: The shell is CRLF; the anchor is built in the file's own line endings.
-ANCHOR = _A.replace("\n", "\r\n")
-INJECT = _I.replace("\n", "\r\n")
+#: The anchor is built in the SHELL's own line endings, read at run time.
+
+# MEDIDO 2026-11-07: esta ancora era construida em CRLF porque "a shell e CRLF".
+# O `app/webview/sotto_webview.py` tem 22484 LF e 0 CRLF (e o HEAD do git
+# tambem), logo o `ANCHOR not in src` disparava SEMPRE e o braco negativo
+# publicava `NEG-ARM IMPOSSIVEL` com rc=2 -- um controlo que nunca podia ficar
+# vermelho. O fim de linha passa a ser LIDO do ficheiro.
+def _ending(text):
+    return "\r\n" if "\r\n" in text else "\n"
+
+
+def anchor_for(text):
+    eol = _ending(text)
+    return _A.replace("\n", eol), _I.replace("\n", eol)
 
 BUDGET_MS = 50.0
 ROWS = ['three errors that are error one, error', 'two, and error three.']
@@ -141,12 +152,13 @@ def main():
     shell = SHELL
     if args.neg_arm:
         src = open(SHELL, encoding='utf-8', newline='').read()
-        if ANCHOR not in src:
+        anchor, inject = anchor_for(src)
+        if anchor not in src:
             print('NEG-ARM IMPOSSIVEL: ancora ausente (primeiro trecho:%r)'
                   % src[src.find('if _src and _src is not False'):][:90])
             return 2
         open(MUTANT, 'w', encoding='utf-8', newline='').write(
-            src.replace(ANCHOR, INJECT, 1))
+            src.replace(anchor, inject, 1))
         shell = MUTANT
     mod = load_shell(shell, '_uia_oracle_shell')
 

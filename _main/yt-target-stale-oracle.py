@@ -110,8 +110,9 @@ def main():
         # de cair, senao ele nao esta' ligado ao codigo que cura.
         shell_copy = os.path.join(tmpdir, 'sotto_webview.py')
         shell_src = open(SHELL, encoding='utf-8', newline='').read()
-        normal = ("        if source and 'youtube.com/watch' in str(source):\r\n"
-                  "            source = 'external:youtube'\r\n")
+        _seol = "\r\n" if "\r\n" in shell_src else "\n"
+        normal = ("        if source and 'youtube.com/watch' in str(source):" + _seol
+                  + "            source = 'external:youtube'" + _seol)
         if normal in shell_src:
             open(shell_copy, 'w', encoding='utf-8', newline='').write(
                 shell_src.replace(normal, '', 1))
@@ -269,12 +270,15 @@ def main():
     # watch?v=Rgx8dpiPwpA' why='cdp-fresh-skip'` a 4 Hz, tres linhas pintadas no
     # player e NADA no Sotto. Aqui executa-se o trecho REAL de `_read`.
     src_txt = open(SHELL_USED, encoding='utf-8', newline='').read()
-    anchor = "        if source and 'youtube.com/watch' in str(source):\n"
-    normalised = ("        if source and 'youtube.com/watch' in str(source):\n"
-                  "            source = 'external:youtube'\n")
-    arm('SOURCE-NAME', normalised.replace('\n', '\r\n') in src_txt,
-        "a URL do resolvedor passa a ter o nome do ramo que a serve"
-        if anchor else 'ancora ausente')
+    # O FIM DE LINHA VEM DO FICHEIRO (medido 2026-11-07). Esta arm comparava a
+    # forma normalizada em CRLF porque "a shell e CRLF"; o `sotto_webview.py`
+    # tem 22484 LF e 0 CRLF, logo ela respondia FAIL sobre um trecho que ESTA'
+    # no ficheiro -- um vermelho que fala do instrumento, nao do produto.
+    _eol = "\r\n" if "\r\n" in src_txt else "\n"
+    normalised = ("        if source and 'youtube.com/watch' in str(source):" + _eol
+                  + "            source = 'external:youtube'" + _eol)
+    arm('SOURCE-NAME', normalised in src_txt,
+        "a URL do resolvedor passa a ter o nome do ramo que a serve")
 
     fails = [r for r in out if not r[1]]
     if tmpdir:

@@ -134,9 +134,19 @@ def main(argv) -> int:
             return 2
         # o mutante MANTEM a estrutura e desliga a CONDICAO: trocar a linha por
         # `pass` deixava o corpo do `if` sem pai (IndentationError, medido).
+        # O FIM DE LINHA VEM DO FICHEIRO (medido 2026-11-07). A mutacao abaixo
+        # procurava `...:\r\n` porque "the shell is CRLF"; o
+        # `app/webview/sotto_webview.py` tem 22484 LF e 0 CRLF, logo o `replace`
+        # nao mudava NADA: a "copia partida" era o shell inteiro, as tres arms
+        # ficavam verdes e o controlo publicava rc=0 -- um controlo que nunca
+        # podia ficar vermelho, que e' o pior estado possivel de um portao.
+        _eol = "\r\n" if "\r\n" in src else "\n"
         stripped = src.replace(
-            "if self.core is None or self.webview2 is None:\r\n",
-            "if False and (self.core is None or self.webview2 is None):\r\n", 1)
+            "if self.core is None or self.webview2 is None:" + _eol,
+            "if False and (self.core is None or self.webview2 is None):" + _eol, 1)
+        if stripped == src:
+            print("NEG-ARM IMPOSSIVEL: a mutacao nao mudou o ficheiro")
+            return 2
         tmpdir = tempfile.mkdtemp(prefix="emit-prewebview-neg-")
         path = os.path.join(tmpdir, "sotto_webview_mutant.py")
         io.open(path, "w", encoding="utf-8", newline="").write(stripped)
