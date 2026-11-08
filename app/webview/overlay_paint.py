@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import json
 import os
+from collections import OrderedDict
+from contextlib import suppress
 
 
 def _measure(text, px, cache, family='Segoe UI', weight=700, italic=False):
@@ -651,6 +653,126 @@ def _layout(text, previous, scale, work_width, theme=None, rows=None):
     return cur_lines, prev_line, max(1, width), max(1, height), scrolled
 
 
+#: O RASTER, E NAO O QUADRO. `_premultiplied_bitmap` re-criava o caminho do
+#: texto (`GraphicsPath.AddString` + `DrawPath` + `FillPath`, por linha) em TODOS
+#: os quadros, mesmo quando nada mudou de glifo: medido 2026-11-08 neste caixa,
+#: **7,1 ms de p50 / 17,8 de p95** numa caixa de 576 x 156 a escala 1.0 (11,6 de
+#: p95 na caixa real de 1040 x 240 a escala 2.0), e o `THREAD_CPU` do overlay
+#: nomeia `sotto-caption-paint` a thread mais caro (9-10% sustentados) com o tecto
+#: de quadro em 240 Hz. O que muda entre quadros de uma legenda PARADA e' o alfa
+#: do `UpdateLayeredWindow` (255, sempre -- o fade foi tirado); o que muda entre
+#: legendas e' o glifo. Logo o cache guarda o RASTER COMPOSTO e a chave e' tudo o
+#: que muda um pixel dele.
+#:
+#: O ALFA POR LINHA NAO ENTRA NA CHAVE -- E NAO PODE ENTRAR NO POS-PROCESSAMENTO.
+#: A tentacao era multiplicar o raster cacheado pelo alfa do quadro; medido, isso
+#: NAO e' o mesmo pixel: o GDI+ compoe o contorno e o preenchimento DOIS sobre o
+#: fundo (`out = F*k + (S*k + B(1-k*A_s))(1-k*A_f)`), e a multiplicacao de um
+#: raster ja' composto da' `C*k + B*k(1-A)`. Onde o contorno e o preenchimento se
+#: sobrepoem os dois diferem por `k(1-k)`. Por isso um alfa nao-opaco simplesmente
+#: NAO usa o cache: cai no caminho de pintura de sempre, byte por byte o de antes.
+#: Custou nada: todos os chamadores passam 255 (medido -- `_row_alphas` e'
+#: `[255] * n` nos tres sitios de `caption_overlay.py`, e `None` no resto).
+_PAINT_CACHE = OrderedDict()
+_PAINT_CACHE_MAX = 8
+_PAINT_CACHE_STATS = {'hits': 0, 'misses': 0, 'evictions': 0, 'bypass': 0}
+
+
+def _freeze(value):
+    """Tema -> valor comparavel e hashable, sem enumerar os campos.
+
+    A chave tem de apanhar QUALQUER propriedade que mova um glifo ou uma
+    geometria (familia, peso, italico, tamanhos, cores, prato, regua, LED,
+    `leading`, `pad`, alinhamento, `upper`) -- enumerar a lista e' como o proximo
+    token do painel entra em cache com o raster do tema anterior. Congelar o
+    dict inteiro custa microssegundos e nao tem essa divida.
+    """
+    if isinstance(value, dict):
+        return tuple(sorted((str(k), _freeze(v)) for k, v in value.items()))
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze(v) for v in value)
+    return value
+
+
+def _paint_key(geo, cur_lines, prev_line, width, height, alphas, roll):
+    """A identidade do raster, ou `None` quando este quadro nao pode usar cache.
+
+    Os alfas entram apenas como "todos opacos?" (ver a nota acima); um alfa
+    parcial devolve `None` e o chamador pinta como sempre pintou.
+    """
+    if alphas:
+        for a in alphas:
+            if a is not None and int(a) < 255:
+                return None
+    if os.environ.get('SOTTO_CAPTION_OVERLAY_PNG'):
+        # O PNG de debug e' gravado DENTRO da pintura: um cache-hit devolveria o
+        # raster sem passar por la' e o ficheiro desaparecia.
+        return None
+    return (tuple(str(s) for s in cur_lines), str(prev_line or ''),
+            int(width), int(height), _freeze(geo), float(roll))
+
+
+def _paint_cache_get(key):
+    hit = _PAINT_CACHE.get(key)
+    if hit is None:
+        return None
+    try:
+        out = hit.Clone()
+    except Exception:  # noqa: BLE001 -- entrada morta nao e' um erro de pintura
+        _PAINT_CACHE.pop(key, None)
+        return None
+    _PAINT_CACHE.move_to_end(key)
+    _PAINT_CACHE_STATS['hits'] += 1
+    return out
+
+
+def _paint_cache_put(key, bmp):
+    """Guarda uma COPIA: quem chamou e' dono do bitmap que recebeu e fecha-o.
+
+    UMA ENTRADA SUBSTITUIDA TEM DE SER FECHADA. `dict[chave] = valor` deita fora
+    o valor anterior SEM chamar `Dispose` -- o bitmap fica para o GC do .NET com
+    a memoria nativa dele. MEDIDO 2026-11-08 no braco negativo (cache consultado
+    por ninguem, logo cada quadro REPOE a mesma chave): 41,5 ms de p50 por pintura
+    contra 7,7 no miss normal, com uma caixa de 758x227. Pop antes de guardar.
+    """
+    if key is None:
+        _PAINT_CACHE_STATS['bypass'] += 1
+        return
+    _PAINT_CACHE_STATS['misses'] += 1
+    replaced = _PAINT_CACHE.pop(key, None)
+    if replaced is not None:
+        with suppress(Exception):
+            replaced.Dispose()
+    try:
+        _PAINT_CACHE[key] = bmp.Clone()
+    except Exception:  # noqa: BLE001 -- cache e' aceleracao, nao correccao
+        return
+    _PAINT_CACHE.move_to_end(key)
+    while len(_PAINT_CACHE) > _PAINT_CACHE_MAX:
+        _old_key, old = _PAINT_CACHE.popitem(last=False)
+        _PAINT_CACHE_STATS['evictions'] += 1
+        with suppress(Exception):
+            old.Dispose()
+
+
+def _paint_cache_clear():
+    """Esvazia o cache (e os contadores) -- e' o que a sonda mede entre fases."""
+    while _PAINT_CACHE:
+        _k, old = _PAINT_CACHE.popitem(last=False)
+        with suppress(Exception):
+            old.Dispose()
+    for name in _PAINT_CACHE_STATS:
+        _PAINT_CACHE_STATS[name] = 0
+
+
+def _paint_cache_stats():
+    """O que a sonda imprime: hits, misses, evictions, bypass e entradas vivas."""
+    out = dict(_PAINT_CACHE_STATS)
+    out['entries'] = len(_PAINT_CACHE)
+    out['max'] = _PAINT_CACHE_MAX
+    return out
+
+
 def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None,
                           alphas=None, roll=0.0):
     """Draw the caption onto a 32bpp premultiplied-ARGB bitmap (GDI+).
@@ -660,6 +782,31 @@ def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None
     `border-left`, and the text is the row's computed face/ink. Values arrive
     from `brand-bridge.js` and are normalised by `_normalise_theme`; with no
     theme this function reproduces the 2026-10-18 overlay pixel for pixel.
+
+    O CAMINHO CARO SO' CORRE QUANDO A CHAVE E' NOVA (ver `_PAINT_CACHE`). A
+    igualdade de pixel e' a do caminho de sempre: um cache-hit devolve uma COPIA
+    do raster que o caminho de sempre produziu para a mesma chave, logo a unica
+    coisa que o cache pode mudar e' o TEMPO. Medido 2026-11-08: 7,10 ms de p50 no
+    miss contra 0,02 ms de p50 no hit (a copia do raster), na mesma caixa.
+    """
+    geo = _geom(scale, theme)
+    key = _paint_key(geo, cur_lines, prev_line, width, height, alphas, roll)
+    if key is not None:
+        hit = _paint_cache_get(key)
+        if hit is not None:
+            return hit
+    bmp = _paint_bitmap(cur_lines, prev_line, width, height, scale, theme,
+                        alphas, roll, geo)
+    _paint_cache_put(key, bmp)
+    return bmp
+
+
+def _paint_bitmap(cur_lines, prev_line, width, height, scale, theme, alphas,
+                  roll, geo):
+    """A pintura de sempre, intacta -- o caminho de cache-miss.
+
+    `geo` vem de fora para o miss nao pagar um segundo `_geom` (e' o mesmo
+    objecto, nao uma segunda medicao).
     """
     import clr
     clr.AddReference("System.Drawing")
@@ -671,7 +818,6 @@ def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None
     from System.Drawing.Drawing2D import (GraphicsPath, LineJoin,
                                           SmoothingMode)
 
-    geo = _geom(scale, theme)
     t = geo['t']
     bmp = Bitmap(width, height, PixelFormat.Format32bppPArgb)
     g = Graphics.FromImage(bmp)
