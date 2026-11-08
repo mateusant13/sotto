@@ -279,6 +279,19 @@ call :step caption-rollup 0 "_main\caption-rollup-oracle.py;app\webview\caption_
 call :record caption-rollup !STEP_RC!
 call :step red-as-expected-caption-rollup 1 "_main\caption-rollup-oracle.py;app\webview\caption_overlay.py;app\webview\overlay_paint.py;app\webview\youtube_reveal.py" "%OUT%\caption-rollup-neg.log" python _main\caption-rollup-oracle.py --neg-arm
 call :expectred red-as-expected-caption-rollup !STEP_RC! "%OUT%\caption-rollup-neg.log" "NEG-ARM: PASS"
+REM `shell-thread-budget` (2026-11-08, DM de stutter do watcher): o pid da shell do dono
+REM foi acusado e NENHUM passo da bateria lia CPU por fio -- o `_main/shell-thread-cpu.py`
+REM tinha `--neg-arm` e ZERO chamadores. Medido com ele: pid 42572, `total=103.4%` de UM
+REM nucleo, `tid 48064 sotto-caption-tick = 93.6%` (duas amostras, mesmo tid), porque o
+REM periodo do quadro era IGUAL ao custo da pintura. O portao exige total <= 25%, um fio
+REM <= 15%, o fio mais quente COM NOME e um ratchet de +20% sobre o baseline. Sem shell
+REM viva ele imprime SKIPPED, e um passo saltado nunca e' um portao que passou.
+if exist _main\shell-thread-budget-oracle.py (
+  call :step shell-thread-budget 0 "_main\shell-thread-budget-oracle.py;_main\shell-thread-cpu.py;app\webview\sotto_webview.py" "%OUT%\shell-thread-budget.log" python _main\shell-thread-budget-oracle.py
+  call :record shell-thread-budget !STEP_RC!
+  call :step red-as-expected-shell-thread-budget 1 "_main\shell-thread-budget-oracle.py;_main\shell-thread-cpu.py" "%OUT%\shell-thread-budget-neg.log" python _main\shell-thread-budget-oracle.py --neg-arm
+  call :expectred red-as-expected-shell-thread-budget !STEP_RC! "%OUT%\shell-thread-budget-neg.log" "NEG-ARM PASS"
+) else ( call :record shell-thread-budget MISSING )
 REM `caption-tick-thread` (2026-11-08, DM do watcher): ele mediu 90,879 criacoes/s na
 REM arvore da shell durante um stutter de 192 s. A unica criacao por frame da app era o
 REM `threading.Timer` do `caption_overlay._arm_tick` -- um FIO por quadro, ~62/s com a

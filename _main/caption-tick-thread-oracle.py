@@ -95,8 +95,17 @@ def _arm_a7(module):
     lines = []
     probe.log = lines.append
     got = probe._limit_by_paint(1.0 / 240.0)
-    return (abs(got - 0.0116 * 1.02) < 1e-9
-            and any("CAPTION_FRAME_LIMIT" in ln for ln in lines))
+    budget = float(getattr(module, "CAPTION_FRAME_BUDGET", 0.0) or 0.0)
+    # O PERIODO E' `custo / orcamento`, NAO o custo (2026-11-08). A versao
+    # anterior punha o periodo IGUAL ao custo e o fio `sotto-caption-tick`
+    # queimou 93,6 % de um nucleo na instancia viva (pid 42572): dormir o tempo
+    # que se trabalha e' 100 % por construcao. A arm exige as duas metades --
+    # a divisao pelo orcamento E que o periodo seja maior que o custo.
+    return (budget > 0.0
+            and abs(got - 0.0116 / budget) < 1e-9
+            and got > 0.0116 * 1.05
+            and any("CAPTION_FRAME_LIMIT" in ln for ln in lines)
+            and any("budget=" in ln for ln in lines))
 
 
 def _last_nap_is_sleep(module):
@@ -248,7 +257,9 @@ def main(argv=None) -> int:
     lines = []
     probe.log = lines.append
     limited = probe._limit_by_paint(1.0 / 240.0)
-    a7a = abs(limited - 0.0116 * 1.02) < 1e-9
+    _budget = float(getattr(caption_overlay, 'CAPTION_FRAME_BUDGET', 0.0) or 0.0)
+    a7a = (_budget > 0.0 and abs(limited - 0.0116 / _budget) < 1e-9
+           and limited > 0.0116 * 1.05)
     a7b = any("CAPTION_FRAME_LIMIT" in ln for ln in lines)
     free = object.__new__(caption_overlay.NativeCaptionOverlay)
     free._paint_cost_s = 0.0
@@ -303,14 +314,24 @@ def main(argv=None) -> int:
             io.open(mut, encoding="utf-8", newline="").read())
         extra.append(("tecto-de-volta-a-60",
                       not _arm_a6(mut_mod)))
-        # (b) o limite por custo desaparece
+        # (b) o limite por custo volta a ser o defeito de 100 % DE UM NUCLEO.
+        # O ancoradouro mudou com a cura de 2026-11-08: o periodo deixou de ser
+        # `cost * 1.02` e passou a ser `cost / CAPTION_FRAME_BUDGET`. Duas
+        # mutacoes, porque sao duas as formas de reintroduzir o defeito: a linha
+        # e a constante.
         mut2 = os.path.join(tmp, "app", "webview", "caption_overlay.py")
         io.open(mut2, "w", encoding="utf-8", newline="").write(
-            io.open(MODULE, encoding="utf-8", newline="").read().replace("        if cost <= 0.0 or delay >= cost * 1.02:\n"
-                        "            return delay",
-                        "        return delay", 1))
-        extra.append(("limite-arrancado",
+            io.open(MODULE, encoding="utf-8", newline="").read().replace(
+                "        floor = cost / CAPTION_FRAME_BUDGET",
+                "        floor = cost", 1))
+        extra.append(("limite-volta-ao-custo",
                       not _arm_a7(_load(mut2, "tick_sem_limite"))))
+        mut2b = os.path.join(tmp, "app", "webview", "caption_overlay_orc1.py")
+        io.open(mut2b, "w", encoding="utf-8", newline="").write(
+            io.open(MODULE, encoding="utf-8", newline="").read().replace(
+                "CAPTION_FRAME_BUDGET = 0.40", "CAPTION_FRAME_BUDGET = 1.0", 1))
+        extra.append(("orcamento-volta-a-1.0",
+                      not _arm_a7(_load(mut2b, "tick_orc_1"))))
         # (c) o relogio do frame volta ao de grao grosso
         mut3 = os.path.join(tmp, "app", "webview", "caption_overlay_grosso.py")
         io.open(mut3, "w", encoding="utf-8", newline="").write(

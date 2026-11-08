@@ -70,6 +70,15 @@ VK_LCONTROL = 0xA2
 VK_RCONTROL = 0xA3
 #: A area de TRABALHO do monitor da janela -- exclui a barra de tarefas.
 MONITOR_DEFAULTTONEAREST = 2
+#: QUANTO DE UM NUCLEO A PINTURA DA LEGENDA PODE OCUPAR (2026-11-08).
+#: Nao e' um numero de gosto: e' o divisor que transforma o custo medido de um
+#: quadro na taxa maxima de quadros (`_limit_by_paint`). A versao anterior punha
+#: o periodo IGUAL ao custo, e um laco que dorme o tempo que trabalha gasta
+#: 100 % de um nucleo por construcao -- foi o que o instrumento externo mediu na
+#: instancia viva (pid 42572, `sotto-caption-tick` a 93,6 %, reprodutivel).
+#: Com 40 %, uma pintura de 11,6 ms da' 34 Hz; curada a 2 ms, da' 200 Hz -- a
+#: taxa sobe quando o quadro fica barato, que e' a ordem do dono.
+CAPTION_FRAME_BUDGET = 0.40
 
 
 class BLENDFUNCTION(ctypes.Structure):
@@ -821,29 +830,50 @@ class NativeCaptionOverlay:
         self._tick_event.set()
 
     def _limit_by_paint(self, delay):
-        """O PEDIDO DE FRAME NAO PODE SER MAIS CURTO DO QUE A PINTURA QUE ELE PEDE.
+        """O PEDIDO DE FRAME NAO PODE CUSTAR MAIS DO QUE O ORCAMENTO DE CPU DELE.
 
-        Dono, 2026-11-08: *"acho que a animacao da legenda pode ir ate 240hz"*.
-        O tecto foi levantado (`word_fade.FRAME_S` = 1/240), mas um tecto nao e'
-        uma taxa: `_premultiplied_bitmap` re-cria o caminho do texto com contorno
-        a cada quadro e mede **11,6 ms de p50** no tamanho real da caixa. Pedir
-        4,17 ms a um quadro que custa 11,6 pinta a fila para dentro do passado --
-        e' assim que uma animacao "de 240 Hz" engasga em vez de correr suave.
+        Duas ordens do dono, e a segunda nasceu de uma medicao que a primeira
+        deixou passar.
 
-        A regra e' o proprio custo, com 2 % de folga para o relogio do proximo
-        ciclo; e quando ela morde, o log diz o numero (uma linha a cada 5 s, nao
-        por quadro) para o limite ser medivel e nao uma opiniao.
+        1) Dono, 2026-11-08: *"acho que a animacao da legenda pode ir ate 240hz"*.
+           O tecto foi levantado (`word_fade.FRAME_S` = 1/240), mas um tecto nao
+           e' uma taxa: `_premultiplied_bitmap` re-cria o caminho do texto com
+           contorno a cada quadro e mede **11,6 ms de p50** no tamanho real da
+           caixa.
+
+        2) A PRIMEIRA VERSAO DESTA FUNCAO TINHA UM DEFEITO DE ARITMETICA QUE
+           CUSTOU UM NUCLEO INTEIRO (medido 2026-11-08, instancia viva pid
+           42572): ela punha o periodo do quadro IGUAL ao custo da pintura
+           (`cost * 1.02`). Um laco que dorme exactamente o tempo que trabalha
+           gasta **100 % de um nucleo por construcao** -- e foi isso que o
+           instrumento externo nomeou: `SHELL-THREAD-BUDGET pid=42572
+           total=103.4% top=tid 48064 sotto-caption-tick=93.6%`, reprodutivel
+           em duas amostras. O stutter que o dono sentiu era este laco.
+
+        A regra passa a ser ORCAMENTO, nao custo: o periodo e'
+        `cost / CAPTION_FRAME_BUDGET`, ou seja a pintura pode ocupar no maximo
+        40 % de um nucleo. Com o custo medido de 11,6 ms isso da' 29 ms por
+        quadro (34 Hz) e 40 % de nucleo; com a pintura curada a 2 ms da' 5 ms
+        (200 Hz) -- a taxa sobe quando o quadro fica barato, que e' a ordem do
+        dono, e nunca passa de 40 % do nucleo.
+
+        Quando ela morde, o log diz os numeros (uma linha a cada 5 s, nao por
+        quadro) para o limite ser medivel e nao uma opiniao.
         """
         cost = float(getattr(self, '_paint_cost_s', 0.0) or 0.0)
-        if cost <= 0.0 or delay >= cost * 1.02:
+        if cost <= 0.0:
+            return delay
+        floor = cost / CAPTION_FRAME_BUDGET
+        if delay >= floor:
             return delay
         now = _frame_now()
         if now - float(getattr(self, '_paint_limit_logged', 0.0)) >= 5.0:
             self._paint_limit_logged = now
-            self.log('CAPTION_FRAME_LIMIT want_hz=%.0f paint_ms=%.2f rate_hz=%.0f'
-                 % (1.0 / max(1e-6, float(delay)), cost * 1000.0,
-                    1.0 / max(1e-6, cost * 1.02)))
-        return cost * 1.02
+            self.log('CAPTION_FRAME_LIMIT want_hz=%.0f paint_ms=%.2f budget=%.2f '
+                 'rate_hz=%.0f' % (1.0 / max(1e-6, float(delay)), cost * 1000.0,
+                                   CAPTION_FRAME_BUDGET,
+                                   1.0 / max(1e-6, floor)))
+        return floor
 
     def _tick_loop(self):
         """O UNICO fio do relogio: dorme ate' ao prazo, acorda, pinta, repete."""

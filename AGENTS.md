@@ -496,8 +496,18 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 07:4x):** `_main\_audit-verify-all.cmd` = **282792 B**,
-  **3428 CRLF** / 0 bare LF, sha256 `6087B1E402DAC4049A1D98421B81D7078F004F6ADDB824D85E5E0B4425F8D806`.
+- **PIN do ficheiro (medido 2026-11-08, 09:1x):** `_main\_audit-verify-all.cmd` = **284085 B**,
+  **3441 CRLF** / 0 bare LF, sha256 `557B59AC377C6AFE0E1141D5549223273533FC32362EE7D801EDB3ED6355C95D`.
+  (Mil duzentos e noventa e tres bytes e treze linhas a mais do que o pin de 282792 B: o par
+  `shell-thread-budget` + o seu `--neg-arm`, nascido da DM de stutter do watcher e do que ela
+  obrigou a medir -- o pid da shell do dono (`42572`) acusado como maior culpado, e a atribuicao
+  por FIO que nenhum passo da bateria lia: `total=103.4% de UM nucleo, tid 48064
+  sotto-caption-tick = 93.6%`, reprodutivel em duas amostras. O instrumento `_main/shell-thread-cpu.py`
+  existia com `--neg-arm` e ZERO chamadores -- a mesma doenca do `panel-deps` e do
+  `caption-tick-thread`: um instrumento sem passo apodrece. O portao exige total <= 25 % de um
+  nucleo, um fio <= 15 %, o fio mais quente COM NOME e um ratchet de +20 % sobre
+  `_main/shell-thread-budget-baseline.json`; sem shell viva diz SKIPPED. `--neg-arm` mede o JUIZ
+  (6/6, sem abrir janela). Recibo: `_main/receipt-20261108-stutter-caption-tick.md`.)
   (Cento e dez bytes a mais do que o pin de 282682 B: DUAS dependencias que faltavam, a mesma classe
   do `panel-deps` -- um passo em cache a descrever outro codigo. `caption-tick-thread` passou a
   nomear `app\webview\word_fade.py` (as arms A6/A9 leem `FRAME_S`/`FRAME_HZ` e o relogio de la') e
