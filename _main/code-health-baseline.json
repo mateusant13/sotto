@@ -251,12 +251,12 @@
    "max_func_name": "drag_plan"
   },
   "app/webview/caption_overlay.py": {
-   "bytes": 77800,
+   "bytes": 78422,
    "classes": 8,
    "defs": 9,
    "except_pass": 3,
    "globals": 0,
-   "lines": 1603,
+   "lines": 1614,
    "max_func": 120,
    "max_func_name": "_update"
   },

@@ -841,14 +841,25 @@ class NativeCaptionOverlay:
            contorno a cada quadro e mede **11,6 ms de p50** no tamanho real da
            caixa.
 
-        2) A PRIMEIRA VERSAO DESTA FUNCAO TINHA UM DEFEITO DE ARITMETICA QUE
-           CUSTOU UM NUCLEO INTEIRO (medido 2026-11-08, instancia viva pid
-           42572): ela punha o periodo do quadro IGUAL ao custo da pintura
-           (`cost * 1.02`). Um laco que dorme exactamente o tempo que trabalha
-           gasta **100 % de um nucleo por construcao** -- e foi isso que o
-           instrumento externo nomeou: `SHELL-THREAD-BUDGET pid=42572
-           total=103.4% top=tid 48064 sotto-caption-tick=93.6%`, reprodutivel
-           em duas amostras. O stutter que o dono sentiu era este laco.
+        2) DOIS DEFEITOS, e o recibo desta casa separa-os porque um deles nunca
+           chegou a correr no processo vivo.
+
+           a) O QUE A INSTANCIA VIVA CORRIA (pid 42572, medido 2026-11-08):
+              `git show 7ec728d^:app/webview/word_fade.py` da' `FRAME_S = 1/60`
+              e ZERO `_limit_by_paint` -- o laco pedia um quadro a cada 16,7 ms
+              sem olhar ao custo, e com a pintura a 11,6 ms o piso e' 69 % de um
+              nucleo. O instrumento externo mediu
+              `SHELL-THREAD-BUDGET pid=42572 total=103.4% top=tid 48064
+              sotto-caption-tick=93.6%`, reprodutivel em duas amostras: o stutter
+              que o dono sentiu era este laco.
+
+           b) O QUE A PRIMEIRA VERSAO DESTA FUNCAO FARIA: periodo IGUAL ao custo
+              (`cost * 1.02`). Um laco que dorme exactamente o tempo que
+              trabalha gasta **100 % de um nucleo por construcao** -- ela foi
+              escrita e commitada horas antes deste docstring, e o processo vivo
+              era anterior a ela (a etiqueta `SHELL_CODE_ID` do log prova-o), logo
+              **nao foi ela que o dono sentiu**. Fica escrito porque e' a classe
+              que o orcamento existe para impedir.
 
         A regra passa a ser ORCAMENTO, nao custo: o periodo e'
         `cost / CAPTION_FRAME_BUDGET`, ou seja a pintura pode ocupar no maximo
