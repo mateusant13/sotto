@@ -167,6 +167,20 @@ acompanha o áudio*.
 Escolha do motor de fundo pelo **preço em RAM**, não pelo nome: o ONNX int4 do Redux mede **615 MB** de
 pico contra **3,90 GB** do ternário, com transcrição byte-idêntica.
 
+**O `parakeet-ultra` FOI RE-MEDIDO NO RUNTIME DO FABRICANTE E CONTINUA FORA — por DISCO, não pelos
+motivos de 2026-11-04 (medido 2026-11-08).** A recusa antiga comparava dois runtimes (o NOSSO export
+ONNX do ultra contra o redux ONNX int4) e dizia "3,5× mais lento, 2,1× de RSS e TRUNCA". No MESMO
+runtime Photon/kestrel, com CUDA, a quente: 90 s → **1,245 s** no ultra contra **0,969/1,589 s** no
+redux (sobrepõem-se), 15 s → 0,264/0,323 s contra 0,352/0,399 s, e o ultra gasta **menos** VRAM
+(3 160 MB contra 5 756 MB). O truncamento era do **nosso export** (orçamento por frame em vez de por
+sequência, `worker/parakeet_ultra.py:100-133`); o modelo devolve 90 s completos (54 palavras). O que
+fica de pé é o preço: **1 256 514 499 B contra 179 015 759 B = 7,02×** de disco, e o **primeiro passe
+de 90 s** (19,9 s / 5,2 s em duas corridas, contra 0,97 s). Numa máquina com o `I:` a 0,4 % livre e o
+motor de fundo escolhido pelo preço em RAM, 7× o disco não se paga por um ganho de qualidade que
+**não está medido** (nos clipes curtos o texto é carácter-a-carácter igual). Recibo com as duas
+tabelas: `_main/receipt-20261108-parakeet-ultra-photon.md`; re-medir com
+`_main/_cache/ultra-photon-measure.py`.
+
 **UM CANDIDATO JÁ' FOI MEDIDO E RECUSADO (2026-10-30): `ARK-ASR-0.6B`.** Não tem `pt` na lista de
 línguas e **traduz** em vez de transcrever (no clipe pt-BR de 15 s saiu inglês, com erros); no en-US
 gastou 31,25 s para 8,5 s de áudio (0,27×) com pico de 2358 MB, contra 1,25 s (6,83×) e 598 MB do
