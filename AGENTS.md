@@ -1401,6 +1401,41 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   `_main/agents-md-pins-oracle.py` - se o `.cmd` mudar, o número muda, e o gate
   obriga a re-medir **aqui** em vez de deixar um número velho.
 
+## A LEI DO CUSTO - um laco dorme o ORCAMENTO, nunca o proprio trabalho (2026-11-08)
+
+Nascida de uma DM de stutter do watcher (`pythonw.exe(42572)`, 24 episodios em 60 min) e do que ela
+obrigou a medir. O culpado ficou nomeado por instrumento externo, com o **tid** e a **linha**:
+
+```
+SHELL-THREAD-BUDGET pid=42572 total=103.4% top=93.6% tid=48064 sotto-caption-tick
+```
+(duas amostras, mesmo tid; `total` = % de UM nucleo). Duas metades, as duas medidas:
+o processo vivo (arrancado 04:01:44) pede **60 Hz sem limite nenhum** (`git show 7ec728d^` prova:
+`FRAME_S = 1/60`, zero `_limit_by_paint`) e com a pintura a **11,6 ms p95** o piso e' 69 % de um
+nucleo; e a cura de 240 Hz escrita as 07:2x punha o **periodo IGUAL ao custo** (`cost * 1.02`) --
+um laco que dorme exactamente o tempo que trabalha gasta **100 % de um nucleo por construcao**.
+
+**AS DUAS REGRAS, e nenhuma delas e' opcional:**
+
+1. **PERIODO = CUSTO / ORCAMENTO, nunca o custo.** O divisor e' um numero declarado (aqui
+   `CAPTION_FRAME_BUDGET = 0.40`) e o log diz os tres (`CAPTION_FRAME_LIMIT paint_ms=.. budget=..
+   rate_hz=..`). A taxa sobe quando o trabalho fica barato, e o nucleo nunca passa do orcamento.
+   Vale para QUALQUER laco que derive o passo do proprio custo: tick de pintura, timer, poll,
+   census. A classe ja' custou tres vezes nesta casa -- o `outside-click-timer` a 2 569 Hz, o censo a
+   1 591 Hz e agora este a 93 %.
+2. **UM INSTRUMENTO DE CPU SEM PASSO NA BATERIA NAO E' UM INSTRUMENTO.** `_main/shell-thread-cpu.py`
+   media CPU por fio com o NOME, tinha `--neg-arm`, e tinha **zero chamadores** -- por isso a
+   primeira medicao do stutter foi a queixa do dono, 149 vezes em 14 dias. O passo e' o par
+   `shell-thread-budget` + `red-as-expected-shell-thread-budget` (`_main/shell-thread-budget-oracle.py`:
+   total <= 25 % de um nucleo, um fio <= 15 %, o fio mais quente COM NOME, ratchet de +20 % sobre
+   `_main/shell-thread-budget-baseline.json`; sem shell viva ele diz `VERDICT: SKIPPED`, e um passo
+   saltado nunca e' um portao que passou).
+
+**O DEVER DE TRANSPORTE desta lei:** quem mexer num laco que se auto-cronometra corre
+`python _main/shell-thread-budget-oracle.py` antes e depois e cola os dois numeros com o pid. Um
+stutter "resolvido" sem pid, fio e linha nao e' um stutter resolvido. Recibo de referencia:
+`_main/receipt-20261108-stutter-caption-tick.md`.
+
 ## A LEI DOS TESTES - todo teste, existente ou futuro (ordem do dono, 2026-11-05)
 
 Verbatim: *"QUALQUER TESTE EXISTENTE OU QUE SERÁ IMPLEMENTADO, DEVE SER IMPLEMENTADO DESSE JEITO PRA

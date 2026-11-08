@@ -44,28 +44,32 @@ O I/O da árvore é **trivial** (76-84 chamadas/s de escrita, kilobytes). O stut
 não disco. A linha da DM que se confirma é o pid e a classe de sinal (`interrupt`), não o número de
 MB/s.
 
-## 3. A linha: `app/webview/caption_overlay.py:823 _limit_by_paint`
+## 3. A linha: `app/webview/caption_overlay.py` — o periodo do quadro
 
-Causa raiz, uma frase: **o período do quadro era igual ao custo da pintura** (`cost * 1.02`), e um
-laço que dorme o tempo que trabalha gasta 100 % de um núcleo *por construção*.
+**O QUE O PROCESSO VIVO CORRE (verificado, não suposto).** `git show 7ec728d^:app/webview/word_fade.py`
+dá `FRAME_S = 1.0 / 60.0` e `git show 7ec728d^:app/webview/caption_overlay.py` dá **zero** ocorrências
+de `_limit_by_paint`: a instância arrancada às 04:01:44 pede **60 Hz** e não tem limite nenhum por
+custo. Com a pintura medida em **11,6 ms p95 / 6,7 ms p50**, o piso é 11,6/16,7 = **69 %** de um
+núcleo — e o fio mede 93 % porque ainda lê o arrasto e o relógio no mesmo ciclo.
 
-Com a pintura medida em **11,6 ms p95 / 6,7 ms p50** (medição directa do caminho que embarca,
-`overlay_paint._premultiplied_bitmap`), o pedido de 240 Hz era cortado para ~86 Hz — e 86 × 11,6 ms
-é 100 %. Medido na instância viva: 93,6 % e 90,5 %.
+**A SEGUNDA METADE, que ainda não está viva.** A cura de 240 Hz escrita às 07:2x (`7ec728d`) pôs o
+período **igual** ao custo medido (`cost * 1.02`). Isso é o mesmo defeito na forma pior: um laço que
+dorme exactamente o tempo que trabalha gasta **100 % de um núcleo por construção**, e a 60 Hz ele
+teria passado de 69 % para 100 %.
 
-**A cura (nesta árvore, `caption_overlay.py:73` + `:857`):** o período passa a ser
-`cost / CAPTION_FRAME_BUDGET` com `CAPTION_FRAME_BUDGET = 0.40` — a pintura pode ocupar no máximo
-**40 % de um núcleo**. A taxa sobe quando o quadro fica barato (ordem do dono: 240 Hz), e nunca
-custa mais que o orçamento:
+**A CURA, nesta árvore:** `caption_overlay.py:81` declara `CAPTION_FRAME_BUDGET = 0.40` e `:857`
+calcula `floor = cost / CAPTION_FRAME_BUDGET` — a pintura ocupa no máximo **40 % de um núcleo**, e a
+taxa sobe quando o quadro fica barato (a ordem do dono):
 
 | custo da pintura | período | taxa | CPU da pintura |
 |---|---|---|---|
-| 11,6 ms (hoje) | 29,0 ms | 34 Hz | **40 %** (antes: 100 %) |
+| 11,6 ms (hoje) | 29,0 ms | 34 Hz | **40 %** (vivo: 93 %) |
 | 4,0 ms | 10,0 ms | 100 Hz | 40 % |
 | 2,0 ms (com a cache da lane de pintura) | 5,0 ms | 200 Hz | 40 % |
 
 Exercitado sobre a função REAL extraída por `ast` (cinco casos, incluindo `cost=0` e um pedido de
-0,5 s que não pode ser encurtado): todos PASS. A linha do log passou a dizer
+0,5 s que não pode ser encurtado), e sobre o **laço real** com o custo real (`caption-tick-thread`
+A10: fração de núcleo 0,27 com o orçamento a 0,40). A linha do log passou a dizer
 `CAPTION_FRAME_LIMIT want_hz=240 paint_ms=11.60 budget=0.40 rate_hz=34`.
 
 ## 4. As outras duas pernas, medidas no mesmo minuto (lanes despachadas)
@@ -94,11 +98,12 @@ o que prova que o portão fala. O baseline é escrito depois do primeiro arranqu
 ## 6. O QUE NÃO ESTÁ MEDIDO
 
 - **A prova no processo dele.** A instância viva (pid 42572, arrancada 04:01:44) corre código
-  ANTERIOR a esta cura (`live-code-freshness-oracle --strict` = `STALE`) e detém o mutex
-  `Local\SottoShell`. Largar outra aborta em `SINGLE_INSTANCE` e matar a dele está proibido. A
-  prova é o **primeiro arranque dele**: esperado `sotto-caption-tick` ≤ 40 % sustentado e
-  `CAPTION_FRAME_LIMIT rate_hz≈34` enquanto a pintura custar 11,6 ms, subindo para ≈200 Hz quando
-  a cache da lane de pintura entrar.
+  ANTERIOR a esta cura — medido, não suposto: `live-code-freshness-oracle --strict` diz `STALE` e
+  `git show 7ec728d^` prova que ela não tem `_limit_by_paint` nem `FRAME_S = 1/240` —, e detém o
+  mutex `Local\SottoShell`. Largar outra aborta em `SINGLE_INSTANCE` e matar a dele está proibido.
+  A prova é o **primeiro arranque dele**: esperado `sotto-caption-tick` ≤ 40 % sustentado,
+  `CAPTION_FRAME_LIMIT paint_ms=11.6 budget=0.40 rate_hz≈34`, subindo para ≈200 Hz quando a cache
+  da lane de pintura entrar.
 - **A atribuição por fio do `watcher`** (`profile`) — indisponível neste processo; os números por
   fio deste recibo vêm do instrumento da casa.
 - **Os 24 episódios da DM** não foram correlacionados um a um com janelas do log; a correlação

@@ -200,6 +200,52 @@ def _old_arm_tick(obj, delay):
     timer.start()
 
 
+def _arm_a10(module, seconds=0.9, cost=0.0116):
+    """A10 -- O LACO REAL, COM O CUSTO REAL: a fracao de nucleo e' o ORCAMENTO.
+
+    Esta e' a arm que teria apanhado o defeito MEDIDO na instancia viva (pid
+    42572): com o periodo IGUAL ao custo, o laco dorme o tempo que trabalha e
+    gasta 100 % de um nucleo. Aqui o `_update` dorme o custo de verdade e o laco
+    e' o REAL (`_tick_loop`/`_tick`/`_arm_tick`), logo a fracao medida e'
+    `quadros * custo / tempo` -- e ela tem de ficar no orcamento, nao em 1,0.
+
+    Devolve (fracao, hz, quadros, tecto_hz).
+    """
+    budget = float(getattr(module, "CAPTION_FRAME_BUDGET", 0.0) or 0.0)
+    obj = object.__new__(module.NativeCaptionOverlay)
+    obj.lock = threading.RLock()
+    obj._tick_gen = 0
+    obj._tick_wake_gen = 0
+    obj._tick_event = threading.Event()
+    obj._tick_thread = None
+    obj._tick_deadline = 0.0
+    obj._tick_stop = False
+    obj.hwnd = None
+    obj.log = lambda *a: None
+    obj._paint_cost_s = cost
+    obj._paint_limit_logged = 0.0
+    obj._next_delay = lambda: 1.0 / 240.0
+    stamps = []
+
+    def _update():
+        stamps.append(module._frame_now())
+        time.sleep(cost)                 # o custo da pintura, gasto a serio
+        obj._arm_tick()
+
+    obj._update = _update
+    obj._arm_tick()
+    time.sleep(seconds)
+    obj._tick_stop = True
+    obj._tick_event.set()
+    if obj._tick_thread is not None:
+        obj._tick_thread.join(timeout=1.0)
+    n = len(stamps)
+    frac = (n * cost / seconds) if seconds > 0 else 0.0
+    hz = (n / seconds) if seconds > 0 else 0.0
+    floor_hz = (1.0 / (cost / budget)) if (cost and budget) else 0.0
+    return frac, hz, n, floor_hz
+
+
 def main(argv=None) -> int:
     neg = "--neg-arm" in (argv if argv is not None else sys.argv[1:])
 
@@ -276,6 +322,16 @@ def main(argv=None) -> int:
     # prazo de quadro era aritmetica sobre ele -- 240 Hz lia-se como "0 ou 1
     # tique". A arm mede a granularidade do relogio que o overlay USA.
     a9 = _arm_a9(MODULE)
+    # A10: o LACO REAL com o custo real -- a fracao de nucleo tem de ser o
+    # orcamento, nao 1,0. E' a arm do defeito medido (93,6 % na instancia viva).
+    # O CUSTO E' O MEDIDO NA INSTANCIA VIVA (11,6 ms): com o periodo antigo
+    # (1/60) ele da' 0,69 de nucleo; sem limite nenhum, mais. O orcamento tem
+    # de baixar isso para <= 0,40 sem tocar na taxa quando o quadro e' barato.
+    frac, hz10, n10, floor_hz = _arm_a10(caption_overlay)
+    _budget10 = float(getattr(caption_overlay, 'CAPTION_FRAME_BUDGET', 0.0) or 0.0)
+    a10 = (n10 >= 8 and _budget10 > 0.0
+           and frac <= _budget10 * 1.35          # folga do agendador, nao 100 %
+           and floor_hz > 0.0 and hz10 <= floor_hz * 1.30)
 
     a1 = paints >= 20
     a2 = timers["n"] == 0
@@ -290,7 +346,9 @@ def main(argv=None) -> int:
               ("A6 tecto de frame = 1/240", a6),
               ("A7 custo medido limita o pedido e loga", a7),
               ("A8 o ultimo trecho dorme em sleep", a8),
-              ("A9 relogio do frame < 1 ms de grao", a9))
+              ("A9 relogio do frame < 1 ms de grao", a9),
+              ("A10 laco real: fracao de nucleo %.2f <= orcamento (%.0f Hz, %d quadros)"
+               % (frac, hz10, n10), a10))
     for name, ok in checks:
         print("%-46s -> %s" % (name, "PASS" if ok else "FAIL"))
     if neg:
