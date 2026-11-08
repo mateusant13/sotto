@@ -691,12 +691,12 @@
    "max_func_name": "get_or_load"
   },
   "worker/parakeet_ultra.py": {
-   "bytes": 21546,
+   "bytes": 22548,
    "classes": 4,
    "defs": 6,
    "except_pass": 1,
    "globals": 0,
-   "lines": 472,
+   "lines": 487,
    "max_func": 74,
    "max_func_name": "__init__"
   },
