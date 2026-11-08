@@ -279,6 +279,16 @@ call :step caption-rollup 0 "_main\caption-rollup-oracle.py;app\webview\caption_
 call :record caption-rollup !STEP_RC!
 call :step red-as-expected-caption-rollup 1 "_main\caption-rollup-oracle.py;app\webview\caption_overlay.py;app\webview\overlay_paint.py;app\webview\youtube_reveal.py" "%OUT%\caption-rollup-neg.log" python _main\caption-rollup-oracle.py --neg-arm
 call :expectred red-as-expected-caption-rollup !STEP_RC! "%OUT%\caption-rollup-neg.log" "NEG-ARM: PASS"
+REM `paint-cost` (2026-11-08): o dono pinta uma legenda e o quadro reconstruia o TEXTO todo em
+REM cada pintura. A cura guarda o raster e o hit custa 0,04 ms (p50) contra 6,62 ms da
+REM reconstrucao -- 90x, medido pelo passo. O oraculo compara o pixel contra a implementacao
+REM ANTERIOR pinada em `HEAD_PIN` e RECUSA uma referencia que ja' traga `_PAINT_CACHE` (a
+REM primeira versao comparava a cura com ela propria e o A2 dava RED por desenho). Runtime
+REM medido 92 s: acima do limiar do modo rapido, logo ele e' SKIPPED ali e nunca verde.
+call :step paint-cost 0 "_main\paint-cost-oracle.py;app\webview\overlay_paint.py;app\webview\caption_overlay.py" "%OUT%\paint-cost.log" python _main\paint-cost-oracle.py
+call :record paint-cost !STEP_RC!
+call :step red-as-expected-paint-cost 1 "_main\paint-cost-oracle.py;app\webview\overlay_paint.py;app\webview\caption_overlay.py" "%OUT%\paint-cost-neg.log" python _main\paint-cost-oracle.py --neg-arm
+call :expectred red-as-expected-paint-cost !STEP_RC! "%OUT%\paint-cost-neg.log" "NEG-ARM: PASS"
 REM `shell-thread-budget` (2026-11-08, DM de stutter do watcher): o pid da shell do dono
 REM foi acusado e NENHUM passo da bateria lia CPU por fio -- o `_main/shell-thread-cpu.py`
 REM tinha `--neg-arm` e ZERO chamadores. Medido com ele: pid 42572, `total=103.4%` de UM

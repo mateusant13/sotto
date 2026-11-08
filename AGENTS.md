@@ -496,8 +496,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 08:2x):** `_main\_audit-verify-all.cmd` = **286296 B**,
-  **3464 CRLF** / 0 bare LF, sha256 `7DC3BCD2710E17BC8B1272C0DA477D7BBA4EE52E5FD86BBBA91FF7A9CED23F62`.
+- **PIN do ficheiro (medido 2026-11-08, 08:3x):** `_main\_audit-verify-all.cmd` = **287350 B**,
+  **3474 CRLF** / 0 bare LF, sha256 `B9B6F53EADBA177D0785091E2BDA893D95699153BD9D0AF3456E283F4892C5AC`.
+  (Mil e cinquenta e quatro bytes e DEZ linhas a mais do que o pin de 286296 B: o par `paint-cost` +
+  o seu `--neg-arm`. O dono pinta uma legenda e o quadro reconstruia o TEXTO todo em cada pintura;
+  a cura guarda o raster e o hit mede **0,063 ms p95** contra **6,55 ms** -- 90x, e o oraculo
+  compara o pixel contra a implementacao ANTERIOR pinada em `HEAD_PIN` e **recusa** uma referencia
+  que ja' traga `_PAINT_CACHE` (a primeira versao comparava a cura com ela propria e o A2 dava RED
+  por desenho -- a classe "portao que nao pode falhar"). Runtime 92 s: acima do limiar do modo
+  rapido, logo ele e' SKIPPED ali e nunca verde. `battery-wiring` medido: `ligados=159
+  sem_passo=109 populacao=268`, PASS 7/7.)
   (Dois mil duzentos e onze bytes e VINTE E TRES linhas a mais do que o pin de 284085 B: DOIS pares
   novos, os dois nascidos do mesmo processo vivo do dono. `log-sink-dead` + o seu `--neg-arm`: o
   `log()` fazia `print(..., flush=True)` sem guarda, e um cano morto levanta -- a mesma classe que a
