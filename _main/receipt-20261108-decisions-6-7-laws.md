@@ -57,6 +57,14 @@ cura: o braco passa a ser "nao regride" (<= 1,5x) e o numero fica publicado ao l
 | `_main/battery-wiring-oracle.py` | `PASS` (`ligados=160 sem_passo=109 populacao=269`) |
 | `_main/agents-md-pins-oracle.py` | `PASS` (pin novo: 292642 B / 3533 CRLF / `8FBB1211...`) |
 | docs do bundle | os cinco sha256 portados continuam a bater com a tabela do `docs/bend/README.md` |
+| **a BATERIA INTEIRA** (2026-11-08, 11:20:56-11:37:52, lease concedida na tentativa 7) | `steps=385 gate=204 control=8 skipped=19 expect-red=154 missing=0 cached=224 failed=0`, `failed: -none-`, exit-code 0 -- **`BATTERY-VERDICT: GREEN WITH 19 SKIPPED`**, `took_s=1016,2` |
+
+## 3-bis. O gate central recusou o lease SETE vezes antes de o dar
+
+`state=amber` com `commit_pct` 83,7 / 84,5 / 81,3 % (>= 80 %) entre 11:08 e 11:20, e os consumidores
+de commit NAO sao desta arvore: medido, `python 45556` = daemon do codeintel (7,8 GB de commit),
+`47504`/`3736` = `H:/!gravador` nsfw (3,5 + 2,6 GB). Nada foi morto: um processo alheio so' se mata
+com prova, e nao havia nenhuma. A corrida esperou pelo lease em vez de o contornar.
 
 ## 4. O QUE NAO ESTA' VERIFICADO
 
