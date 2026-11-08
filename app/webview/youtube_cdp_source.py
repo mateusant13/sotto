@@ -919,6 +919,11 @@ _TID_SLOW_TTL_S = 10.0
 #: o que o "imediato" do dono custa. Uma chamada lenta estica para
 #: `_TID_SLOW_TTL_S` (ver abaixo), e nada muda na porta morta.
 _TID_TTL_S = 0.5
+#: O NOME DO FIO QUE PAGA A PERGUNTA (2026-11-08). Nomeado porque
+#: `_main/shell-thread-cpu.py` atribui CPU por nome de fio, e porque o recibo
+#: desta mudanca tem de poder dizer ONDE o `/json/list` lento corre: se ele
+#: voltar a aparecer num `EXTERNAL_CAPTIONS_READ_MS`, o culpado nao e' este fio.
+_TID_THREAD_NAME = "yt-cdp-target"
 
 def adopt_decision(declared, seen, declared_open):
     """O ID DECLARADO FILTRA A ESCOLHA DA ABA, NAO A LEITURA (2026-11-04).
@@ -986,6 +991,14 @@ class CdpCaptionSource:
         #: O titulo da janela que o dono esta' a ver. Com duas abas `watch`, e'
         #: isto -- nao o id -- que decide qual delas ler (`pick_target`).
         self._window_title = ""
+        #: O ALVO PUBLICADO PELO FIO (2026-11-08): `(hora, video_id)` e a
+        #: cadencia corrente (`_TID_TTL_S`, ou `_TID_SLOW_TTL_S` depois de uma
+        #: chamada lenta). `target_video_id()` so' LE' isto -- quem paga o
+        #: `/json/list` e' `_tid_run`, fora do laco de leitura.
+        self._tid_cache = None
+        self._tid_ttl = _TID_TTL_S
+        self._tid_thread = None
+        self._tid_refreshes = 0
 
         #: Ha' ligacao CDP agora? Decide a espera entre tentativas; e a IDADE da
         #: ultima falha de attach e' o que impede `target_video_id` de gastar a
@@ -1004,9 +1017,14 @@ class CdpCaptionSource:
         self._window_title = str(title or "")
 
     def start(self):
+        # O FIO DO ALVO ARRANCA COM A FONTE (2026-11-08) e para no `stop()`
+        # dela: um fio por fonte, sem fugas. Ele fica INERTE (zero pedidos) ate'
+        # `_run` marcar a ligacao -- uma fonte que nunca ligou nao arranca
+        # trabalho nenhum, so' existe a espera.
+        self._stop.clear()
+        self._tid_start()
         if self._thread is not None and self._thread.is_alive():
             return self
-        self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="yt-cdp-source",
                                         daemon=True)
         self._thread.start()
@@ -1186,13 +1204,39 @@ class CdpCaptionSource:
         return snap
 
     def target_video_id(self):
-        """O id da aba que `pick_target` escolhe AGORA ("" se nao decidir).
+        """O id da aba que `pick_target` escolheu -- LIDO DA MEMORIA (2026-11-08).
 
         E' a resposta que o caso de TRES abas `watch` pedia (medido 2026-11-03:
         `stats={'reads': 0, 'note': 'ambiguous'}` por minutos, e a legenda parada,
         enquanto a fonte esperava um id que ninguem lhe dava). O id sai do URL da
         aba escolhida pelo TITULO DA JANELA -- nada de UIA, nada de varrer a
-        arvore. Uma chamada HTTP por `cache_s`, nao por tick.
+        arvore.
+
+        O QUE MUDOU A 2026-11-08 (MEDIDO na instancia viva pid 42572, este log):
+        `EXTERNAL_CAPTIONS_READ_MS ms=1281.0 phases={'cdp': 15.0, 'vid':
+        1281.0}` -- a volta inteira cabia entre o `cdp` e o `vid`, e o unico
+        trabalho ali era `list_targets` (`/json/list`, 1000-1400 ms no Chrome
+        carregado do dono). De ~10 em ~10 s o laco nao produzia um unico quadro
+        durante mais de um segundo. Agora a pergunta e' paga pelo FIO
+        `yt-cdp-target` (`_tid_run`), que publica `(hora, id)` em `_tid_cache`;
+        aqui resta uma leitura de memoria, sem I/O e sem bloqueio.
+
+        A IDADE E' LIMITADA, E ONDE: o fio publica a cada `_tid_ttl` (`_TID_TTL_S`
+        = 0,5 s; esticado para `_TID_SLOW_TTL_S` = 10 s depois de uma chamada
+        lenta) e um `urlopen` nao passa do seu proprio prazo (`list_targets`,
+        3,0 s). Logo o id devolvido tem no maximo `cadencia + ms da chamada`:
+        <= 1,9 s no caminho normal (0,5 s + 1,4 s medidos) e <= 11,4 s no
+        regime lento. A troca de video chega ao shell dentro dessa janela, pela
+        linha `YOUTUBE_TARGET_REBOUND` que ja' existia.
+
+        UMA FONTE SEM VALOR PUBLICADO AINDA (o primeiro pedido, ou um duplo de
+        teste que nunca chamou `start()` -- braco STALE-ID de
+        `_main/yt-target-stale-oracle.py`) responde-se aqui, uma vez: um ''
+        faria o shell pagar a varredura UIA de 94-109 ms, que e' a doenca que
+        este caminho existe para evitar. `_tid_refresh` grava o cache mesmo
+        quando a resposta e' '' (porta morta), logo um segundo pedido nunca
+        volta a fazer I/O: a partir da primeira publicacao toda a chamada e'
+        leitura de memoria.
         """
         now = time.monotonic()
         # SEM LIGACAO RECENTE NAO HA' ALVO A SONDAR (2026-11-05, MEDIDO na
@@ -1202,19 +1246,64 @@ class CdpCaptionSource:
         # perguntar a um porto morto que abas existem, e a resposta nao podia
         # ser outra. A falha de attach ja' e' um facto datado (`_attach_log`):
         # enquanto ela for recente e nao houver ligacao, a resposta e' de graca.
-        # Uma fonte sem fio (`_run` nunca correu -- duplos de teste) nao tem
-        # hora de falha e segue o caminho antigo, sem mudanca de comportamento.
+        # NADA DE CACHE AQUI: a hora da falha e' o unico estado, e escrever um
+        # '' no cache faria a primeira leitura depois de a porta voltar a
+        # responder devolver o vazio antigo.
         _failed = getattr(self, '_attach_failed_at', None)
         if (_failed is not None and not getattr(self, '_attached', False)
                 and now - _failed < 30.0):
-            # NADA DE CACHE AQUI: a hora da falha e' o unico estado, e escrever
-            # um '' no cache de 2 s faria a primeira leitura depois de a porta
-            # voltar a responder devolver o vazio antigo.
             return ''
-        ttl = float(getattr(self, '_tid_ttl', _TID_TTL_S) or _TID_TTL_S)
         cached = getattr(self, '_tid_cache', None)
-        if cached and now - cached[0] < ttl:
+        if cached is not None:
             return cached[1]
+        return self._tid_refresh()
+
+    # -- o fio do alvo ----------------------------------------------------
+    def _tid_start(self):
+        """Um fio do alvo por fonte, e nunca dois."""
+        if self._tid_thread is not None and self._tid_thread.is_alive():
+            return
+        self._tid_thread = threading.Thread(target=self._tid_run,
+                                            name=_TID_THREAD_NAME, daemon=True)
+        self._tid_thread.start()
+
+    def _tid_run(self):
+        """O REFRESCADOR: paga o `/json/list` FORA do laco de leitura.
+
+        A CADENCIA E' A QUE O CACHE JA' TINHA (`_TID_TTL_S`, esticada para
+        `_TID_SLOW_TTL_S` por `_tid_refresh`): o numero de pedidos ao Chrome
+        nao mudou -- mudou o fio que os paga. Ele morre com `_stop` (`stop()`
+        da fonte), logo nao ha' fio a sobreviver ao objeto.
+
+        SEM LIGACAO NAO HA' O QUE PERGUNTAR: enquanto `_run` nao marcar a fonte
+        como ligada este fio nao faz um unico pedido -- uma fonte que nunca
+        ligou nao arranca trabalho nenhum -- e uma falha de attach recente
+        (`_attach_failed_at`) suspende-o pela mesma janela de 30 s que
+        `target_video_id` usa para nao sondar uma porta morta.
+        """
+        while not self._stop.is_set():
+            _failed = getattr(self, '_attach_failed_at', None)
+            if not getattr(self, '_attached', False) or (
+                    _failed is not None
+                    and time.monotonic() - _failed < 30.0):
+                self._stop.wait(0.25)
+                continue
+            try:
+                self._tid_refresh()
+            except Exception as exc:      # noqa: BLE001
+                self._error(exc)
+            self._stop.wait(max(0.1, float(
+                getattr(self, '_tid_ttl', _TID_TTL_S) or _TID_TTL_S)))
+
+    def _tid_refresh(self):
+        """UMA pergunta a' `/json/list`, publicada. Devolve o id publicado.
+
+        E' o corpo que a 2026-11-08 vivia DENTRO de `target_video_id`, com o
+        mesmo `_choose`, o mesmo cache e o mesmo sinal de lentidao -- so' que
+        agora corre no fio do alvo. `YOUTUBE_TARGET_SLOW` continua a sair com
+        os mesmos campos (`ms`, `vid`, `ttl_s`), acrescido de `src=refresher`:
+        e' a testemunha de que a chamada lenta foi paga AQUI e nao no laco.
+        """
         vid = ''
         t0 = time.monotonic()
         try:
@@ -1223,25 +1312,26 @@ class CdpCaptionSource:
             if target is None:
                 self._note = str(why)
             if target is not None:
-                url = str(target.get('url') or '')
-                if 'v=' in url:
-                    vid = url.split('v=', 1)[1].split('&', 1)[0]
+                vid = video_id_from_url(target.get('url') or '')
         except Exception:                 # noqa: BLE001
             vid = ''
-        # A CHAMADA QUE COME O TICK (2026-11-03, MEDIDO): `EXTERNAL_CAPTIONS_READ_MS`
+        # A CHAMADA QUE COMIA O TICK (2026-11-03, MEDIDO): `EXTERNAL_CAPTIONS_READ_MS`
         # publicou `phases={'vid': 1125.0}` com todas as outras a 0,0 -- um
         # `/json/list` de 1,1 s dentro do laco de leitura, e o laco perde os
         # quadros que caem nessa janela. A aba do dono troca de video de vez em
         # quando, nunca 12 vezes por minuto: quando a chamada passa de
-        # `_TID_SLOW_MS`, o cache estica para `_TID_SLOW_TTL_S` e o custo vai ao log.
+        # `_TID_SLOW_MS`, a cadencia estica para `_TID_SLOW_TTL_S` e o custo vai
+        # ao log.
         cost_ms = (time.monotonic() - t0) * 1000.0
         if cost_ms > _TID_SLOW_MS:
             self._tid_ttl = _TID_SLOW_TTL_S
-            self._log('YOUTUBE_TARGET_SLOW ms=%.0f vid=%s ttl_s=%.0f'
+            self._log('YOUTUBE_TARGET_SLOW ms=%.0f vid=%s ttl_s=%.0f '
+                      'src=refresher'
                       % (cost_ms, vid or '-', _TID_SLOW_TTL_S))
         else:
             self._tid_ttl = _TID_TTL_S
-        self._tid_cache = (now, vid)
+        self._tid_cache = (time.monotonic(), vid)
+        self._tid_refreshes = int(getattr(self, '_tid_refreshes', 0)) + 1
         return vid
 
     def snapshot_age(self):
