@@ -1,3 +1,19 @@
+# -*- coding: utf-8 -*-
+# ===========================================================================
+# APOSENTADO EM 2026-11-08 -- A CLAIM QUE ELE JULGA FOI REVOGADA PELO DONO.
+#
+# Este ficheiro mede "N presses = N alternancias" numa INSTANCIA REAL da app.
+# Essa e' a claim ANTIGA. A ordem de 2026-11-08 (verbatim: *"apertar alt c super
+# rapido deixa o app travando pra caralho. deixa completamente fluido ... com o
+# alt c sendo spammado. sem travar"*) substituiu-a por: N presses numa rajada
+# contam-se, e o custo por rajada e' NO MAXIMO UMA transicao cara.
+#
+# Rodar isto hoje devolve RED por DESENHO: ele abre a app na tela do dono (o que
+# a lei `SOTTO_NEVER_ON_OWNER_SCREEN` proibe a uma lane) para julgar um contrato
+# que ja' nao existe. NAO esta' na bateria e nao deve ser "consertado" para
+# voltar a verde -- o portao do contrato novo e' `_main/hotkey-spam-oracle.py`
+# (arm: `HOTKEY_COALESCED presses=N ... transitions=<=1`, `--neg-arm` rc=1).
+# ===========================================================================
 #!/usr/bin/env python3
 """O FALSIFICADOR DO Alt+C -- a claim do autor medida por UM CAMINHO DIFFERENTE.
 
