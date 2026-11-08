@@ -496,8 +496,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 08:0x):** `_main\_audit-verify-all.cmd` = **292642 B**,
-  **3533 CRLF** / 0 bare LF, sha256 `8FBB1211ECDBD2FFF7044D61B515214E8E2541959AEFF041AE4FEA1335A0DF82`.
+- **PIN do ficheiro (medido 2026-11-08, 11:4x):** `_main\_audit-verify-all.cmd` = **293408 B**,
+  **3542 CRLF** / 0 bare LF, sha256 `E685404B9B1C864567AA75807E10B2148BF00D633F3E15FD379877CA0D95744E`.
+  (Setecentos e sessenta e seis bytes e NOVE linhas a mais do que o pin de 292642 B: dois numeros de
+  custo RE-MEDIDOS, os dois errados por 40x e por 2,7x. O passo `panel-hidden-at-startup-oracle`
+  dizia `MEDIDO: 1,97 s`; medido hoje **79,94 s** sozinho e **219,1 s** dentro da corrida -- e o
+  custo cresce com as COPAS da shell que cada braco de mutacao faz (`sotto_webview.py` tem 22 780
+  linhas), nao com o AST. O prazo por passo dizia "acima de todo passo legitimo (max 168 s,
+  `device-silence`)"; hoje o passo mais caro que passa e o `panel-hidden` com 219,1 s, ou seja a
+  margem do primeiro e **21 s** e o proximo degrau desta escada e ele. A clase e a do `pin que
+  ninguem re-mede`: um numero de 2026-11-05 a justificar um tecto de hoje.)
   (Dois mil quinhentos e dezassete bytes e VINTE E SEIS linhas a mais do que o pin de 290125 B: mais
   um passo, `bend-ledger-selftest`, que corre o `--self-test` do livro de provas
   (`tools\bend_proof_ledger.py`): ele julga o CLASSIFICADOR do livro com cinco fixtures, incluindo

@@ -100,8 +100,12 @@ REM and nothing in this file had a clock: `!S_CMD!` ran until it finished. A ste
 REM hangs turns the run into wall time AND leaves the PREVIOUS run's summary on disk
 REM to be read as this one's verdict. Every step now runs under a deadline
 REM (`_main\step-deadline.py`, rc=124 on expiry, child TREE killed, never green).
-REM 240 s is above every legitimate step (max 168 s, device-silence) and below the
-REM two measured hangs. SOTTO_STEP_DEADLINE_S overrides it for one run.
+REM 240 s is above every legitimate step and below the two measured hangs.
+REM RE-MEDIDO 2026-11-08: o passo mais caro que PASSA e o `panel-hidden-at-startup-oracle`
+REM (**219,1 s** dentro da corrida, **79,94 s** sozinho -- o pin antigo dizia 1,97 s), e o
+REM mais caro que legitimamente ja passou dos 168 s citados era `device-silence`. Os 240 s
+REM continuam a separar um passo LENTO de um passo PRESO, mas a margem do primeiro e 21 s.
+REM SOTTO_STEP_DEADLINE_S overrides it for one run.
 if not defined SOTTO_STEP_DEADLINE_S set "SOTTO_STEP_DEADLINE_S=240"
 
 REM ===========================================================================
@@ -1892,7 +1896,12 @@ REM painel. A correcao leu os tres com `getattr(..., False)`: semantica
 REM IDENTICA, porque o `__init__` semeia os tres a False (:5710-5711, :5718).
 REM O PORTAO e PURO (o AST do shell + um FAKE; sem browser, sem app, sem
 REM audio, sem processo) e tem 7 arms + 3 mutantes no `--neg-arm`.
-REM MEDIDO: 1,97 s (normal) + 0,38 s (`--neg-arm`).
+REM MEDIDO: 1,97 s (normal) + 0,38 s (`--neg-arm`) -- o pin de 2026-11-05, que NAO
+REM vale mais. RE-MEDIDO 2026-11-08: **79,94 s** sozinho (rc=0, PASS), e **219,1 s**
+REM DENTRO da corrida (contenda: o fator medido foi 2,7x). O custo cresce com as copias
+REM da shell que cada braco de mutacao faz -- `sotto_webview.py` tem 22 780 linhas --
+REM e nao com o AST. Ele e o passo mais caro que NAO estoura o prazo, com 21 s de
+REM margem: o proximo degrau desta escada e ele.
 REM ---------------------------------------------------------------------------
 if exist _main\panel-hidden-at-startup-oracle.py (
   call :step panel-hidden-at-startup-oracle 0 "_main\panel-hidden-at-startup-oracle.py;app\webview\sotto_webview.py;app\webview\stage.html;app\panel\panel.html" "%OUT%\panel-hidden-at-startup.log" python _main\panel-hidden-at-startup-oracle.py
