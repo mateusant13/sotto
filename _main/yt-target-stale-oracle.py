@@ -103,6 +103,15 @@ def main():
             print('NEG-ARM IMPOSSIVEL: ancora ausente')
             return 2
         tmpdir = tempfile.mkdtemp(prefix='yt-stale-neg-')
+        # O IRMAO VEM JUNTO (medido 2026-11-08): `youtube_cdp_source` carrega
+        # `youtube_window` PELO CAMINHO DO PROPRIO FICHEIRO (`_load_sibling`,
+        # youtube_cdp_source.py:50). O mutante e' uma copia num diretorio
+        # temporario e sem o irmao ao lado o `--neg-arm` morria em
+        # `FileNotFoundError: <tmp>\youtube_window.py` -- um braco negativo
+        # que nao mede nada e um passo vermelho com a frase `NEG-ARM PASS`
+        # ausente.
+        shutil.copyfile(os.path.join(APP or HERE, 'youtube_window.py'),
+                        os.path.join(tmpdir, 'youtube_window.py'))
         source_path = os.path.join(tmpdir, 'youtube_cdp_source.py')
         open(source_path, 'w', encoding='utf-8', newline='').write(
             src.replace(ANCHOR, '', 1))

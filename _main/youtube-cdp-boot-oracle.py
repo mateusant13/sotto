@@ -607,6 +607,14 @@ def neg_arm():
     """
     tmp = tempfile.mkdtemp(prefix="yt-cdp-boot-neg-")
     try:
+        # O IRMAO VEM JUNTO (medido 2026-11-08): `youtube_cdp_source` carrega
+        # `youtube_window` PELO CAMINHO do proprio ficheiro (`_load_sibling`,
+        # :50); os mutantes 2 e 3 sao copias DESTE modulo num diretorio
+        # temporario e sem o irmao ao lado o carregamento morria em
+        # `FileNotFoundError` -- `--neg-arm` sem medicao e sem a frase
+        # `NEG-ARM`, que e' exactamente o que a corrida de 05:0x mostrou.
+        shutil.copyfile(os.path.join(APP or os.path.dirname(MODULE), "youtube_window.py"),
+                        os.path.join(tmp, "youtube_window.py"))
         results = []
         mod_src = _read(MODULE)
         shell_src = _read(SHELL)

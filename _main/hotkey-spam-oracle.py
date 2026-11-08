@@ -487,7 +487,13 @@ def neg_arm() -> int:
         if rc == EXIT_FAIL and a1_red and a5_red:
             print(f"NEG-ARM PASS -- RED as designed em A1 e A5 "
                   f"({len(failed)} arms RED no total)")
-            return EXIT_PASS
+            # A CONVENCAO DA CASA, e ela e' o contrario do que este ramo fazia:
+            # o braco negativo devolve 1 QUANDO APANHA. Medido 2026-11-08, na
+            # corrida de 05:0x: `red-as-expected-hotkey-spam=0 - rc=0 but
+            # expected -red-` -- o passo estava declarado `:expectred` e o
+            # oraculo respondia 0 ao apanhar, logo o passo ficava vermelho por
+            # um contrato trocado e o braco negativo nao valia nada.
+            return EXIT_FAIL
         print("NEG-ARM FAIL -- o oraculo NAO ve a regressao FIFO")
         return EXIT_FAIL
     finally:

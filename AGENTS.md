@@ -496,8 +496,19 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 06:0x):** `_main\_audit-verify-all.cmd` = **287904 B**,
-  **3480 CRLF** / 0 bare LF, sha256 `87A169AE411D49619A653D4B491B01EADC9EA3E488ED439B61F4F3478CF94D9F`.
+- **PIN do ficheiro (medido 2026-11-08, 06:5x):** `_main\_audit-verify-all.cmd` = **290125 B**,
+  **3507 CRLF** / 0 bare LF, sha256 `1427E999159AE6ACFA6809EFC919970F09612AA622D253621B850DBA8C9A6E72`.
+  (Dois mil duzentos e vinte e um bytes e vinte e sete linhas a mais do que o pin de 287904 B: o
+  par `battery-record-pairing` + o seu `--neg-arm` -- e a REPARACAO que ele obrigou a fazer no
+  MESMO bloco. MEDIDO na corrida de 06:0x: o bloco do painel corria DEZ passos e tinha UM
+  `call :record`, no FIM, que carimbava o `!STEP_RC!` do ULTIMO passo no nome do PRIMEIRO. O
+  `:step` nao conta nada; quem conta e' `:record`/`:expectred`/`:skipped`. Logo NOVE vereditos
+  daquele bloco nunca chegaram ao sumario -- e o `red-as-expected-caption-drag` estava declarado
+  com `:record` (espera 0) quando o oraculo devolve 1 ao apanhar. O oraculo novo julga as tres
+  metades (`R1` todo `:step` tem registo do mesmo nome, `R2` o registo vem ANTES do proximo
+  `:step`, `R3` registo orfao) -- medido depois da reparacao: `380 passos, 380 nomes com
+  registo, 0 achados` e `--neg-arm` 3/3 mutantes apanhados. O `battery-wiring` mediu
+  `ligados=160 sem_passo=109 populacao=269`.)
   (Quinhentos e cinquenta e quatro bytes e SEIS linhas a mais do que o pin de 287350 B: o passo
   `shell-thread-budget` passa a `:skipped` -- declarado skip-capable. Medido na corrida de
   2026-11-08: `SKIP-VERDICT IN THE LOG OF A STEP THAT IS NOT DECLARED SKIP-CAPABLE:

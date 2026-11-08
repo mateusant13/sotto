@@ -770,13 +770,35 @@ def make_shell(shell_mod, engine_mod, pipe, args=None, spawn=None):
     return shell
 
 
-def run_engine_thread(case):
+def run_engine_thread(case, ready=("unloaded", "loading", "parked-closed"), limit=4.0):
     import threading
 
     thread = threading.Thread(target=case.engine.run, name="oracle-shell-engine", daemon=True)
     thread.start()
-    wait_until(lambda: case.engine.state in ("unloaded", "loading", "parked-closed"), 4.0)
+    wait_until(lambda: case.engine.state in ready, limit)
     return thread
+
+
+# O MOTOR TEM DE ESTAR QUENTE ANTES DO ATTACH (medido 2026-11-08, dentro da
+# bateria). As arms que provam a LIGACAO quente (15 `single-loader`, 17
+# `stop-detaches-not-kills`) chamavam `run_engine_thread`, que espera por
+# `("unloaded", "loading", "parked-closed")` -- e `unloaded` e' o PRIMEIRO
+# estado depois de `starting`, logo o attach corria contra um motor que ainda
+# nao carregou. Sozinho o oraculo passava (22/22); dentro da bateria, com a
+# maquina carregada, o motor ainda estava `unloaded` e o
+# `WARM_ATTACH_DEADLINE_MS = 500` (sotto_webview.py:7368) expirava -> o shell
+# caia no `WARM_FALLBACK_COLD` e o `start_worker` devolvia outra coisa que nao
+# a ponte quente. Medido na corrida de 06:0x: `single-loader RED -- start_worker
+# returned True` (`self.bridge is the warm bridge ('WorkerBridge')`) e
+# `stop-detaches-not-kills RED -- warm bridge attached`. A cura e' do ORACULO e
+# nao do prazo: 500 ms e' a politica do produto (`morno e' LENTO, nunca ERRADO`)
+# e o que estas arms provam e' a invariante de um carregador, nao a latencia.
+WARM_READY_STATES = ("parked-closed", "parked-tap")
+
+
+def run_warm_engine_thread(case, limit=40.0):
+    """O mesmo laco, mas so' devolve com o motor CARREGADO e a aceitar."""
+    return run_engine_thread(case, ready=WARM_READY_STATES, limit=limit)
 
 
 def arm_single_loader(mod, work, shell_mod):
@@ -784,7 +806,7 @@ def arm_single_loader(mod, work, shell_mod):
     case = EngineCase(mod, work, "single", probe=Probe(40.0, 5.0))
     thread = None
     try:
-        thread = run_engine_thread(case)
+        thread = run_warm_engine_thread(case)
         pipe = case.engine.pipe_name
         counts = load_shell_counts(shell_mod)
         shell = make_shell(shell_mod, mod, pipe)
@@ -835,7 +857,7 @@ def arm_stop_detaches(mod, work, shell_mod):
     case = EngineCase(mod, work, "stop", probe=Probe(40.0, 5.0))
     thread = None
     try:
-        thread = run_engine_thread(case)
+        thread = run_warm_engine_thread(case)
         pipe = case.engine.pipe_name
         counts = load_shell_counts(shell_mod)
         shell = make_shell(shell_mod, mod, pipe)

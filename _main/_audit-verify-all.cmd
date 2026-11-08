@@ -354,8 +354,8 @@ REM DARK: nenhuma lane abre a app na tela dele.
 if exist _main\caption-drag-oracle.py (
   call :step caption-drag 0 "_main\caption-drag-oracle.py;app\webview\caption_drag.py;app\webview\caption_overlay.py" "%OUT%\caption-drag.log" python _main\caption-drag-oracle.py
   call :record caption-drag !STEP_RC!
-  call :step red-as-expected-caption-drag 0 "_main\caption-drag-oracle.py;app\webview\caption_drag.py;app\webview\caption_overlay.py" "%OUT%\caption-drag-neg.log" python _main\caption-drag-oracle.py --neg-arm
-  call :record red-as-expected-caption-drag !STEP_RC!
+  call :step red-as-expected-caption-drag 1 "_main\caption-drag-oracle.py;app\webview\caption_drag.py;app\webview\caption_overlay.py" "%OUT%\caption-drag-neg.log" python _main\caption-drag-oracle.py --neg-arm
+  call :expectred red-as-expected-caption-drag !STEP_RC! "%OUT%\caption-drag-neg.log" "NEG-ARM: PASS"
 ) else ( call :record caption-drag MISSING )
 REM `lag-note-cost` (2026-11-04, do commit de perf 1c92e39): `_caption_lag_note`
 REM custava 27,1 us por legenda -- 83 % do caminho de aplicar uma legenda -- porque
@@ -515,16 +515,25 @@ if exist _main\history-gallery-oracle.js (
 ) else ( call :record history-gallery-oracle MISSING )
 if exist _main\_panel2-dom-probe.js (
   call :step panel2-dom-probe 0 "_main\_panel2-dom-probe.js;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel2-dom-probe.log" node _main\_panel2-dom-probe.js
-  call :step panel-header-oracle 0 "_main\panel-header-oracle.js;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-header.log" node _main\panel-header-oracle.js
-  call :step panel-drag-targets 0 "_main\panel-drag-targets-oracle.js;app\panel\panel.html;app\panel\panel-unified.css;app\panel\skin-layout.css;app\panel\panel.js;app\panel\strip-drag.js" "%OUT%\panel-drag-targets.log" node _main\panel-drag-targets-oracle.js
-  call :step panel-history-clip 0 "_main\panel-history-clip-probe.mjs;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-history-clip.log" node _main\panel-history-clip-probe.mjs
-  call :step panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload.log" python _main\panel-pause-payload-oracle.py
-  call :step red-as-expected-panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
-  call :step outside-click-timer 0 "_main\outside-click-timer-oracle.py;app\webview\sotto_webview.py" "%OUT%\outside-click-timer.log" python _main\outside-click-timer-oracle.py
-  call :step red-as-expected-outside-click-timer 0 "_main\outside-click-timer-oracle.py;app\webview\sotto_webview.py" "%OUT%\outside-click-timer-neg.log" python _main\outside-click-timer-oracle.py --neg-arm
-  call :step panel-deps 0 "_main\panel-deps-oracle.py;_main\_audit-verify-all.cmd;_main\sotto-state-page.py;app\panel\panel.html" "%OUT%\panel-deps.log" python _main\panel-deps-oracle.py
-  call :step red-as-expected-panel-deps 0 "_main\panel-deps-oracle.py;_main\_audit-verify-all.cmd;_main\sotto-state-page.py;app\panel\panel.html" "%OUT%\panel-deps-neg.log" python _main\panel-deps-oracle.py --neg-arm
   call :record panel2-dom-probe !STEP_RC!
+  call :step panel-header-oracle 0 "_main\panel-header-oracle.js;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-header.log" node _main\panel-header-oracle.js
+  call :record panel-header-oracle !STEP_RC!
+  call :step panel-drag-targets 0 "_main\panel-drag-targets-oracle.js;app\panel\panel.html;app\panel\panel-unified.css;app\panel\skin-layout.css;app\panel\panel.js;app\panel\strip-drag.js" "%OUT%\panel-drag-targets.log" node _main\panel-drag-targets-oracle.js
+  call :record panel-drag-targets !STEP_RC!
+  call :step panel-history-clip 0 "_main\panel-history-clip-probe.mjs;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-history-clip.log" node _main\panel-history-clip-probe.mjs
+  call :record panel-history-clip !STEP_RC!
+  call :step panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload.log" python _main\panel-pause-payload-oracle.py
+  call :record panel-pause-payload !STEP_RC!
+  call :step red-as-expected-panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
+  call :record red-as-expected-panel-pause-payload !STEP_RC!
+  call :step outside-click-timer 0 "_main\outside-click-timer-oracle.py;app\webview\sotto_webview.py" "%OUT%\outside-click-timer.log" python _main\outside-click-timer-oracle.py
+  call :record outside-click-timer !STEP_RC!
+  call :step red-as-expected-outside-click-timer 1 "_main\outside-click-timer-oracle.py;app\webview\sotto_webview.py" "%OUT%\outside-click-timer-neg.log" python _main\outside-click-timer-oracle.py --neg-arm
+  call :expectred red-as-expected-outside-click-timer !STEP_RC! "%OUT%\outside-click-timer-neg.log" "NEG-ARM: PASS"
+  call :step panel-deps 0 "_main\panel-deps-oracle.py;_main\_audit-verify-all.cmd;_main\sotto-state-page.py;app\panel\panel.html" "%OUT%\panel-deps.log" python _main\panel-deps-oracle.py
+  call :record panel-deps !STEP_RC!
+  call :step red-as-expected-panel-deps 0 "_main\panel-deps-oracle.py;_main\_audit-verify-all.cmd;_main\sotto-state-page.py;app\panel\panel.html" "%OUT%\panel-deps-neg.log" python _main\panel-deps-oracle.py --neg-arm
+  call :record red-as-expected-panel-deps !STEP_RC!
 ) else ( call :record panel2-dom-probe MISSING )
 REM A MORTE DIAGNOSTICAVEL DO WORKER (2026-11-07). MEDIDO em
 REM `_main\webview-run.log`: SEIS mortes do worker num dia, todas a MESMA frase,
@@ -1501,6 +1510,24 @@ if exist _main\battery-wiring-oracle.py (
   call :step red-as-expected-battery-wiring 1 "_main\battery-wiring-oracle.py;_main\battery-wiring-baseline.json;_main\_audit-verify-all.cmd;_main\tooling-intent-oracle.py" "%OUT%\battery-wiring-neg.log" python _main\battery-wiring-oracle.py --neg-arm
   call :expectred red-as-expected-battery-wiring !STEP_RC! "%OUT%\battery-wiring-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-battery-wiring MISSING "%OUT%\battery-wiring-neg.log" "NEG-ARM PASS" )
+
+REM `_main\battery-record-pairing-oracle.py` (2026-11-08): o par do RELATORIO. Nascido de uma
+REM medicao nesta arvore: o bloco do painel corria DEZ passos com UM `call :record`, e o unico
+REM registo carimbava o `!STEP_RC!` do ULTIMO passo no nome do PRIMEIRO. O `:step` nao conta nada
+REM -- quem conta e o `:record`/`:expectred`/`:skipped` --, logo nove vereditos daquele bloco
+REM desapareciam do sumario e um FAIL em `panel-deps` lia-se como `panel2-dom-probe` verde.
+REM Julga TRES metades: R1 todo `:step` tem registo do MESMO nome; R2 o registo vem ANTES do
+REM proximo `:step` (senao le o rc de outro passo); R3 nenhum registo orfao. Medido: 380 passos,
+REM 380 registos, 0 achados. O `--neg-arm` planta as tres doencas numa COPIA e exige as tres
+REM vermelhas. Nao lanca nada: le bytes.
+if exist _main\battery-record-pairing-oracle.py (
+  call :step battery-record-pairing 0 "_main\battery-record-pairing-oracle.py;_main\_audit-verify-all.cmd" "%OUT%\battery-record-pairing.log" python _main\battery-record-pairing-oracle.py
+  call :record battery-record-pairing !STEP_RC!
+) else ( call :record battery-record-pairing MISSING )
+if exist _main\battery-record-pairing-oracle.py (
+  call :step red-as-expected-battery-record-pairing 1 "_main\battery-record-pairing-oracle.py;_main\_audit-verify-all.cmd" "%OUT%\battery-record-pairing-neg.log" python _main\battery-record-pairing-oracle.py --neg-arm
+  call :expectred red-as-expected-battery-record-pairing !STEP_RC! "%OUT%\battery-record-pairing-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-battery-record-pairing MISSING "%OUT%\battery-record-pairing-neg.log" "NEG-ARM: PASS" )
 
 REM `_main\complaints-reconcile-gate.py` e o P3.2 do roadmap de observabilidade de 2026-10-23: as
 REM DUAS listas do dono (o backlog de 2026-10-22 com 10 ABERTO e o documento de fecho com 31/31)

@@ -252,9 +252,18 @@ def _mutate(lines, kind):
                 t0 = float(m.group(1))
                 paint = float(m.group(2)) + 0.5
                 lag = int(round((paint - t0) * 1000.0))
-                line = ("2026-11-03 05:43:00.000 sotto: CAPTION_LAND "
-                        "cue_t0=%.3f paint_t=%.3f lag_ms=%d rows=2 words=3 "
-                        "text=\"atrasado\"\n" % (t0, paint, lag))
+                # O PREFIXO DA LINHA ORIGINAL FICA (medido 2026-11-08): a
+                # versao anterior escrevia um carimbo FIXO
+                # (`2026-11-03 05:43:00.000`) em TODAS as linhas, o que
+                # destruia a ordem e a janela do log REAL -- o mutante
+                # `real-late` respondia rc=2 (SEM DADOS) e o braco contava-o
+                # como escapado, com o `--neg-arm` vermelho por um instrumento
+                # que estragava a amostra que ia julgar.
+                head = line[:m.start()]
+                tail = line[m.end():]
+                rows = m.group(4) or "2"
+                line = ("%sCAPTION_LAND cue_t0=%.3f paint_t=%.3f lag_ms=%d "
+                        "rows=%s%s" % (head, t0, paint, lag, rows, tail))
             out.append(line)
             continue
         if kind == "no-land":
@@ -329,17 +338,29 @@ def neg_arm():
         # do dono, `want rc=1 got rc=2 ** PASSOU **`, 6 de 7, neg-arm VERMELHO
         # por falta de dados e nao por o mutante ter vivido. Ou a amostra serve
         # para o veredicto, ou o braco nao existe.
-        if len(parsed[0]) >= MIN_CUES:
+        # O BRACO VIVO SO' EXISTE SE A AMOSTRA SERVIR (corrigido 2026-11-08).
+        # A guarda era a CONTAGEM de cues; medido hoje no log de 418 814
+        # linhas: 5672 cues e o CONTROL ja' devolve rc=2 (`numeros que nao
+        # concordam (cue_t0=202.397 pintado duas vezes)`) -- e o mutante
+        # herdava esse 2, que o braco lia como "escapou". O braco passa a
+        # perguntar ao CONTROL, e uma amostra imensuravel e' dita em voz alta
+        # e NAO entra no total (um braco que corre sempre vermelho por falta de
+        # dados e' ruido, nao prova).
+        base = evaluate(*parsed[:4])
+        if len(parsed[0]) >= MIN_CUES and base["rc"] == 0:
             out = evaluate(*parse(_mutate(real, "late"))[:4])
             hit = out["rc"] == 1
             caught += 1 if hit else 0
             print("NEG-ARM %-10s %-38s want rc=1 got rc=%d %s"
                   % ("real-late", "log VIVO atrasado 500 ms", out["rc"],
                      "CAIU" if hit else "** PASSOU **"))
+            live_counts = 1
         else:
-            print("NEG-ARM real       saltado: o log vivo tem %d cue(s), abaixo de %d"
-                  % (len(parsed[0]), MIN_CUES))
-    total = len(mutants) + (1 if _real_land_count() >= MIN_CUES else 0)
+            live_counts = 0
+            print("NEG-ARM real       saltado: %d cue(s), controlo rc=%d %s"
+                  % (len(parsed[0]), base["rc"],
+                     base.get("why", "") if base["rc"] else ""))
+    total = len(mutants) + live_counts
     print("NEG-ARM %d of %d mutant(s) caught" % (caught, total))
     # CONTRATO DA BATERIA: rc=1 = o mutante foi apanhado; rc=0 = o controlo
     # NAO derrubou nada (o `:expectred` le isso como falha).

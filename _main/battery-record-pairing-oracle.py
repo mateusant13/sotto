@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+"""Um `call :step` que ninguem regista e' um veredicto que ninguem le.
+
+NASCEU DE UMA MEDICAO (2026-11-08). O bloco do painel da
+`_main\\_audit-verify-all.cmd` corria DEZ passos e tinha UM `call :record`:
+
+    call :step panel2-dom-probe ...
+    call :step panel-header-oracle ...
+    call :step panel-drag-targets ...
+    call :step panel-history-clip ...
+    call :step panel-pause-payload ...
+    call :step red-as-expected-panel-pause-payload ...
+    call :step outside-click-timer ...
+    call :step red-as-expected-outside-click-timer ...
+    call :step panel-deps ...
+    call :step red-as-expected-panel-deps ...
+    call :record panel2-dom-probe !STEP_RC!
+
+O `:step` NAO conta nada: ele corre o comando, grava o registo do cache e deixa o
+`rc` em `!STEP_RC!`. Quem conta e' `:record` / `:expectred` / `:skipped`. Logo
+aqueles dez vereditos viravam UM -- e o unico que ficava era o `!STEP_RC!` do
+ULTIMO passo da lista (`red-as-expected-panel-deps`), carimbado no nome do
+primeiro. Medido na corrida de 2026-11-08: `panel-deps` podia dizer FAIL, e o
+sumario mostrava `panel2-dom-probe` verde.
+
+A REGRA QUE ESTE FICHEIRO JULGA, e sao tres metades:
+  R1 todo `call :step` tem de ter o SEU registo (`:record`, `:expectred` ou
+     `:skipped`) com o MESMO nome;
+  R2 esse registo tem de vir ANTES do proximo `call :step` -- senao o
+     `!STEP_RC!` que ele le e' de outro passo, que e' o defeito medido acima;
+  R3 nenhum registo pode apontar para um passo que nao existe -- um `:record`
+     orfao e' um nome que o sumario conta e nada correu.
+
+O QUE NAO E' UM DEFEITO, e o instrumento sabe distinguir:
+  * um `:record ... MISSING` dentro do `else` de um `if exist` e' o registo do
+    mesmo nome (o caminho "o instrumento nao esta' la'");
+  * um `call :skipped <nome> ...` e `call :control <nome> ...` contam como registo, e sao
+    os registos certos para
+    um passo que sabe dizer que nao mediu;
+  * linhas `REM` nao contam para nada.
+
+Uso:
+  python _main\\battery-record-pairing-oracle.py                    # rc 0 verde, 1 vermelho
+  python _main\\battery-record-pairing-oracle.py --neg-arm          # rc 1 POR DESENHO
+  python _main\\battery-record-pairing-oracle.py --cmd <outro.cmd>
+
+Sem `subprocess`, sem rede, sem escrever dentro da raiz do repo.
+"""
+from __future__ import annotations
+
+import argparse
+import io
+import os
+import re
+import shutil
+import sys
+import tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+CMD_REL = os.path.join("_main", "_audit-verify-all.cmd")
+
+#: `call :step [always|heavy] <nome> ...`  /  `call :record <nome> ...`
+#: `call :expectred <nome> ...`             /  `call :skipped <nome> ...`
+STEP_RE = re.compile(r"^call\s+:step\s+(?:always\s+|heavy\s+)*(?P<name>\S+)", re.I)
+RECORD_RE = re.compile(r"^call\s+:(?P<kind>record|expectred|skipped|control)\s+(?P<name>\S+)",
+                       re.I)
+
+
+def read_cmd(path):
+    with io.open(path, "r", encoding="utf-8", errors="replace") as handle:
+        return handle.read().splitlines()
+
+
+def lines_of(text, path):
+    if isinstance(text, str):
+        return text.splitlines()
+    return text
+
+
+def scan(lines):
+    """Devolve `(steps, records, findings)`.
+
+    `steps`   -- [(indice, nome)] na ordem do ficheiro
+    `records` -- {nome: [(indice, kind)]}
+    `findings`-- [(regra, nome, detalhe)]
+    """
+    steps, records, findings = [], {}, []
+    for index, line in enumerate(lines):
+        bare = line.strip()
+        if not bare or bare.upper().startswith("REM"):
+            continue
+        step = STEP_RE.match(bare)
+        if step:
+            steps.append((index, step.group("name")))
+            continue
+        rec = RECORD_RE.match(bare)
+        if rec:
+            records.setdefault(rec.group("name"), []).append((index, rec.group("kind")))
+
+    # R1 -- todo passo tem registo do SEU nome.
+    for index, name in steps:
+        if name not in records:
+            findings.append(("R1-sem-registo", name,
+                             "linha %d: `call :step %s` nao tem `:record`/`:expectred`/"
+                             "`:skipped` com esse nome" % (index + 1, name)))
+
+    # R2 -- o registo vem antes do proximo passo.
+    for position, (index, name) in enumerate(steps):
+        mine = records.get(name)
+        if not mine:
+            continue
+        # O PRIMEIRO registo DEPOIS do passo, nunca o ultimo do nome: um passo
+        # pode estar declarado em dois ramos (`if exist` / `else`) e o ramo do
+        # `else` vive DEPOIS do passo seguinte -- medido 2026-11-08, o
+        # `battery-plan` foi acusado por causa do `:record ... MISSING` do
+        # `else`, que esta' na linha certa do ramo errado.
+        later = [at for at, _kind in mine if at > index]
+        if not later:
+            findings.append(("R2-registo-antes", name,
+                             "linha %d: o registo deste nome esta' ANTES do `call :step`"
+                             % (index + 1)))
+            continue
+        after_me = later[0]
+        boundary = None
+        for nxt_index, _nxt_name in steps[position + 1:]:
+            if nxt_index > index:
+                boundary = nxt_index
+                break
+        if boundary is not None and after_me > boundary:
+            skipped_by = min((i, n) for i, n in steps[position + 1:])
+            findings.append(("R2-registo-atrasado", name,
+                             "linha %d: o registo deste passo esta' na linha %d, DEPOIS "
+                             "do `call :step %s` da linha %d -- o `!STEP_RC!` que ele le "
+                             "e' de outro passo"
+                             % (index + 1, after_me + 1, skipped_by[1], skipped_by[0] + 1)))
+    # R3 -- nenhum registo orfao.
+    step_names = {name for _i, name in steps}
+    for name in sorted(records):
+        if name not in step_names:
+            findings.append(("R3-registo-orfao", name,
+                             "linha %d: `:%s %s` registra um passo que nao tem `call :step`"
+                             % (records[name][0][0] + 1, records[name][0][1], name)))
+    return steps, records, findings
+
+
+MUTANTS = (
+    # (rotulo, transformacao sobre as LINHAS, o que tem de ficar vermelho)
+    ("passo-sem-registo",
+     lambda lines: _insert_after_first_step(lines),
+     "R1-sem-registo"),
+    ("registo-atrasado",
+     lambda lines: _delay_first_record(lines),
+     "R2-registo-atrasado"),
+    ("registo-orfao",
+     lambda lines: _append_orphan_record(lines),
+     "R3-registo-orfao"),
+)
+
+
+def _append_orphan_record(lines):
+    out = list(lines) + ['call :record mutante-orfao !STEP_RC!']
+    return out, True
+
+
+def _insert_after_first_step(lines):
+    out = list(lines)
+    for index, line in enumerate(out):
+        if STEP_RE.match(line.strip()):
+            out.insert(index + 1,
+                       'call :step mutante-sem-registo 0 "_main\\x.py" "%OUT%\\x.log" python x.py')
+            return out, True
+    return out, False
+
+
+def _delay_first_record(lines):
+    """Troca a ordem do primeiro par: o registo vai para depois do passo seguinte."""
+    out = list(lines)
+    step_index = record_index = None
+    name = None
+    for index, line in enumerate(out):
+        step = STEP_RE.match(line.strip())
+        if step and step_index is None:
+            step_index, name = index, step.group("name")
+            continue
+        rec = RECORD_RE.match(line.strip())
+        if rec and step_index is not None and rec.group("name") == name:
+            record_index = index
+            break
+    if step_index is None or record_index is None:
+        return out, False
+    record = out.pop(record_index)
+    out.insert(step_index + 1, record)
+    # ... e um passo novo entre eles, que e' o que faz o `!STEP_RC!` ser de outro
+    out.insert(step_index + 1,
+               'call :step mutante-no-meio 0 "_main\\y.py" "%OUT%\\y.log" python y.py')
+    return out, True
+
+
+def run(lines, label):
+    steps, records, findings = scan(lines)
+    print("--- %s ---" % label)
+    print("passos: %d | nomes com registo: %d | achados: %d"
+          % (len(steps), len(records), len(findings)))
+    for rule, name, detail in findings:
+        print("  %-18s %-28s %s" % (rule, name, detail))
+    ok = not findings
+    print("VERDICT: %s" % ("PASS" if ok else "FAIL"))
+    return ok
+
+
+def neg_arm(lines, tmp):
+    """Cada mutante tem de produzir o achado que ele promete -- nao 'algum' achado."""
+    caught = 0
+    for label, transform, expected_rule in MUTANTS:
+        mutated, applied = transform(lines)
+        if not applied:
+            print("MUTANTE %-22s IMPOSSIVEL -- a mutacao nao aplicou (o ficheiro mudou de forma)"
+                  % label)
+            continue
+        path = os.path.join(tmp, "mutante-%s.cmd" % label)
+        with io.open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write("\n".join(mutated) + "\n")
+        _steps, _records, findings = scan(read_cmd(path))
+        rules = {rule for rule, _n, _d in findings}
+        good = expected_rule in rules
+        print("MUTANTE %-22s %s (%s)" % (label, "CAUGHT" if good else "NOT-CAUGHT",
+                                         ", ".join(sorted(rules)) or "nenhum achado"))
+        caught += 1 if good else 0
+    total = len(MUTANTS)
+    print("NEG-ARM: %s (%d/%d mutantes apanhados)" % ("PASS" if caught == total else "FAIL",
+                                                     caught, total))
+    return 1 if caught == total else 0
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--cmd", default=os.path.join(REPO, CMD_REL))
+    parser.add_argument("--neg-arm", action="store_true")
+    args = parser.parse_args(argv[1:])
+    if not os.path.exists(args.cmd):
+        print("BATTERY-RECORD-PAIRING: o ficheiro nao esta' la': %s" % args.cmd)
+        return 2
+    if args.neg_arm:
+        tmp = tempfile.mkdtemp(prefix="record-pairing-")
+        try:
+            return neg_arm(read_cmd(args.cmd), tmp)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    ok = run(read_cmd(args.cmd), os.path.relpath(args.cmd, REPO))
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

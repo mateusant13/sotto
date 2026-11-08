@@ -355,6 +355,13 @@ MUTANTS = [
 
 def _mutant_module(text, tag):
     tmpdir = tempfile.mkdtemp(prefix="sotto-cdp-slow-")
+    # O IRMAO VEM JUNTO (medido 2026-11-08): `youtube_cdp_source` carrega
+    # `youtube_window` PELO CAMINHO do proprio ficheiro (`_load_sibling`, :50),
+    # e o mutante e' uma copia num diretorio temporario -- sem o irmao ao lado o
+    # `--neg-arm` morria em `FileNotFoundError` e o passo vermelho nao tinha a
+    # frase `NEG-ARM`.
+    shutil.copyfile(os.path.join(APP, "youtube_window.py"),
+                    os.path.join(tmpdir, "youtube_window.py"))
     copy = os.path.join(tmpdir, "youtube_cdp_source.py")
     with io.open(copy, "w", encoding="utf-8", newline="") as fh:
         fh.write(text)
