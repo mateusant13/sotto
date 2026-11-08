@@ -120,7 +120,7 @@ Smoke da shell editada por um caminho que nao abre janela (`--autostart-status`,
 | 00:09:18 | relancada: pid **19896** com o codigo curado | `LIVE_CODE FRESH` |
 | 00:39:20 | censo da instancia curada: `total=23 % top=sotto-batch-executor:10 % yt-clock:4 % sotto-yt-track:3 %` -- **`sotto-outside-click` ausente do topo** | censo da app |
 | 00:48:51 | relancada: pid **45084**, codigo `F9369427E956`, e o censo NOVO publica com piso de 5 % | `SHELL_CODE_ID`, `THREAD_CPU` |
-| 00:56 | **arvore inteira: 3,2 % de um core** (shell 1,1 %, worker 1,6 %, webview 0,5 %) = 0,16 % da maquina | `psutil`, janela de 15 s, 9 processos |
+| 00:56-01:05 | **arvore inteira: 5,8 % de um core** (shell 2,5 %, worker 2,8 %, webview 0,5 %) = 0,29 % da maquina | `psutil.cpu_times()` delta / janela, 9 processos, duas janelas de 15 s |
 
 **A causa nomeada, com ficheiro e linha:** `app/webview/sotto_webview.py:7782-7793` -- o
 `SetTimer`/`KillTimer` sem `argtypes` devolvia um id gerado pelo Windows, o `KillTimer` recebia a
@@ -153,6 +153,25 @@ core (0,2 % da maquina) nao paga o risco de mexer no relogio que sincroniza a le
    segunda prova de vida. `_main/relaunch-ready-oracle.py`: **8 arms** (A7 e' a corrida, A8 o job
    object) e o `--neg-arm` derruba **2/2** mutantes -- o M2 repoe o voto adiantado e devolve
    exatamente o defeito vivo (`pid=None leituras=12`).
+
+### O CENSO SO' PUBLICA AS JANELAS QUE PASSAM O PISO -- E ISSO E' UMA ESCOLHA, NAO UMA MEDIA
+
+Calibracao feita logo depois de escrever a tabela acima, com o MESMO processo: janela externa de 32 s
+por `cpu_times()` deu **5,47 % de um core**, e no mesmo periodo o censo nao escreveu linha nenhuma
+(o piso e' total >= 20 % ou thread >= 5 %). As linhas que existem -- `total=13 %`, `total=17 %` --
+sao de janelas de **60 s** que continham o passe de batch, e o censo **so' publica as que passam o
+piso**: ler a serie dele como "a media da shell" e' ler uma amostra enviesada. O numero de repouso e'
+o de fora (2,5 % de um core); o de dentro responde outra pergunta ("quem gastou nos minutos que
+passaram de 5 %"). Duas medidas, duas perguntas -- e a aritmetica do censo confere
+(`(ticks/1e7)/span*100`, `span` real).
+
+### Uma correcao no que eu ja' tinha enviado a DM
+
+A primeira resposta a `dm-bbdb8a35e8740b391583` dizia **3,2 % de um core**, tirado de
+`psutil.Process.cpu_percent()` numa medicao em que o meu proprio `sorted(key=...)` chamava
+`cpu_percent(None)` de novo e reiniciava o intervalo antes da leitura -- o mesmo genero de instrumento
+que hoje ja' me apanhou duas vezes. Re-medido por delta de `cpu_times()` (que nao tem esse estado):
+**5,8 %**. A conclusao nao muda (a arvore nao e' a causa do stutter), o numero sim.
 
 ## 7. O QUE NAO ESTA' MEDIDO
 
