@@ -2478,11 +2478,21 @@ def player_track_owns(state, now=None, fresh_s=PLAYER_TRACK_FRESH_S):
 #: from the strip-surface measurements (height read from `--strip-height` in
 #: the CSS, never hard-coded); STRIP_HEIGHT_FALLBACK exists only so a missing
 #: CSS value still leaves a usable strip, and every use is logged.
-STRIP_WIDTH = 1040
+#: Bottom-strip geometry: short and centred. This number was 1040 until
+#: 2026-11-08 and the owner named the result, verbatim: *"por que a porra do
+#: painel de baixo do sotto ta gigante? restaura como era antes"* (W6,
+#: 2026-11-08T06:30:55Z). MEDIDO no log da instancia dele: a faixa abriu a
+#: **1040x40 @ (440,948)** as 03:30:29 (`STRIP_WIDTH from=None to=1040
+#: source=content`, `webview-run.log:388721`, rect em `:388799`), e a
+#: anterior era **380x40 @ (770,948)** (`:284356`, 2026-11-07 10:22:40) --
+#: 660 px mais larga, 2,74x a area. O 380 e' o rect que ele chama de "como era
+#: antes"; o `STRIP_WIDTH_MIN` desce com ele para a propria leitura nao ser
+#: recusada por um piso que ja' nasceu acima do valor.
+STRIP_WIDTH = 380
 STRIP_HEIGHT = 150
 STRIP_HEIGHT_FALLBACK = 148
 STRIP_WIDTH_MAX = 1040
-STRIP_WIDTH_MIN = 480
+STRIP_WIDTH_MIN = 320
 STRIP_WIDTH_FRACTION = 0.62
 #: The CSS custom property that IS the strip's height (`panel.css:52`).
 #: Told to the page the moment the SHELL moves the strip window. panel.html:1093
@@ -6463,6 +6473,28 @@ def normalise_surface_name(name):
     value = str(name if name is not None else '').strip().lower()
     value = re.sub(r'^surface-+', '', value)
     return value if value in SURFACE_NAMES else None
+def content_width_is_self_measure(value, window_width):
+    """True when a "content" width read is really the WINDOW measuring itself.
+
+    `body[data-surface="strip"] .panel` is `position:absolute; inset:0`, so its
+    rendered box IS the client box: a read of it returns the width the window
+    was already given, and adopting that number back is a fixed point with no
+    content in it. MEDIDO 2026-11-08: that is how the strip stayed at 1040
+    while the owner asked *"por que a porra do painel de baixo do sotto ta
+    gigante? restaura como era antes"*.
+
+    Pure, module-level and DUMB on purpose: the tolerance is one pixel (a
+    fractional DIP rounds down), and an unknown window width is never a
+    refusal, because "I could not ask" is not "it is the same number".
+    """
+    try:
+        v = int(round(float(value)))
+        w = int(window_width)
+    except (TypeError, ValueError):
+        return False
+    return bool(w > 0 and v >= w - 1)
+
+
 def dock_strip(work, width=STRIP_WIDTH, height=STRIP_HEIGHT,
                margin=STRIP_MARGIN):
     """Dock a wide short strip to the bottom centre of `work`.
@@ -17701,7 +17733,39 @@ class SottoShell:
         if not (value > 0) or value != value or value > 20000:
             log(f'STRIP_WIDTH_DOM_UNUSABLE raw={json.dumps(raw)}')
             return None
+        # A MEASUREMENT OF THE WINDOW IS NOT A MEASUREMENT OF THE CONTENT.
+        #
+        # `body[data-surface="strip"] .panel` is `position:absolute; inset:0`
+        # (`panel.css`, THE WINDOW IS THE BAR), so its rendered box IS the
+        # window's client box: the read returns whatever width the window was
+        # already given, and `geometry_for` then writes that number back into
+        # the saved rect. That is a fixed point with no content in it, and it is
+        # how the strip got stuck at 1040 while the previous rect said 380
+        # (`STRIP_WIDTH from=None to=1040 source=content`, log :388721, and the
+        # saved 380 clobbered one line later).
+        #
+        # The read stays alive for the layout it was written for -- a
+        # `max-content` pill, whose box is NOT the window's -- and refuses the
+        # tautology by NAME, so the next reader sees why the content path was
+        # skipped instead of a silent 1040.
+        win_w = self.window_width_dip()
+        if content_width_is_self_measure(value, win_w):
+            log(f'STRIP_WIDTH source=content refused value={int(round(value))} '
+                f'window={win_w} reason=self-measure why=panel-fills-window')
+            return None
         return value
+
+    def window_width_dip(self):
+        """The window's width in DIP, or `None`. Split out so an oracle injects it."""
+        if not self.hwnd:
+            return None
+        try:
+            rect = RECT()
+            if user32.GetWindowRect(self.hwnd, ctypes.byref(rect)):
+                return int(rect.right) - int(rect.left)
+        except Exception as exc:  # noqa: BLE001
+            log(f'STRIP_WIDTH_DOM_WINDOW_FAILED error={exc!r}')
+        return None
 
     def strip_width_live(self):
         """The cached live content width, or `None`. See `strip_width_from_dom`."""

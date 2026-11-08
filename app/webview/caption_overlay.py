@@ -60,6 +60,16 @@ AC_SRC_OVER = 0x00
 AC_SRC_ALPHA = 0x01
 DIB_RGB_COLORS = 0
 BI_RGB = 0
+SWP_NOZORDER = 0x0004
+#: AS TECLAS DO ARRASTO (2026-11-08). Lidas com `GetAsyncKeyState` no tick que
+#: ja' existe -- o padrao sancionado do repo (o arrasto do modo de edicao da
+#: strip faz exactamente isto). NENHUM hook global.
+VK_LBUTTON = 0x01
+VK_CONTROL = 0x11
+VK_LCONTROL = 0xA2
+VK_RCONTROL = 0xA3
+#: A area de TRABALHO do monitor da janela -- exclui a barra de tarefas.
+MONITOR_DEFAULTTONEAREST = 2
 
 
 class BLENDFUNCTION(ctypes.Structure):
@@ -120,6 +130,18 @@ _user32.DispatchMessageW.restype = ctypes.c_ssize_t
 _user32.PostQuitMessage.argtypes = [ctypes.c_int]
 _user32.PostThreadMessageW.argtypes = [wt.DWORD, wt.UINT, wt.WPARAM, wt.LPARAM]
 _user32.PostMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+# ── O ARRASTO: as TRES leituras do tick, e o rect real da janela ─────────────
+_user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
+_user32.GetAsyncKeyState.restype = ctypes.c_short
+_user32.GetCursorPos.argtypes = [ctypes.POINTER(wt.POINT)]
+_user32.GetCursorPos.restype = wt.BOOL
+_user32.GetWindowRect.argtypes = [wt.HWND, ctypes.POINTER(wt.RECT)]
+_user32.GetWindowRect.restype = wt.BOOL
+_user32.MonitorFromWindow.argtypes = [wt.HWND, wt.DWORD]
+_user32.MonitorFromWindow.restype = ctypes.c_void_p
+_user32.GetMonitorInfoW.argtypes = [ctypes.c_void_p,
+                                    ctypes.POINTER(MONITORINFO)]
+_user32.GetMonitorInfoW.restype = wt.BOOL
 _kernel32.GetCurrentThreadId.restype = wt.DWORD
 _kernel32.GetModuleHandleW.argtypes = [wt.LPCWSTR]
 _kernel32.GetModuleHandleW.restype = wt.HINSTANCE
@@ -161,6 +183,12 @@ from overlay_paint import (  # noqa: F401 -- superficie publica deste modulo
     _layout, _luminance, _make_font, _measure, _measure_budget,
     _normalise_theme, _premultiplied_bitmap, _rgba, _same_line,
 )
+
+# ── O ARRASTO COM CTRL (2026-11-08) ─────────────────────────────────────────
+# A DECISAO vive no modulo ao lado, sem Win32 nenhum (`caption_drag`); aqui fica
+# so' o poll que a alimenta e o `SetWindowPos` que aplica o resultado. O oraculo
+# `_main/caption-drag-oracle.py` corre a MESMA funcao que embarca.
+import caption_drag  # noqa: E402 -- superficie usada no tick da janela
 
 
 # ── A JANELA DO PLAYER NO RELOGIO DO PROPRIO PLAYER (2026-11-03) ─────────────
@@ -324,6 +352,92 @@ class _PlayerCue:
         return now + (min(ahead) - cur)
 
 
+# ── O LADO WIN32 DO ARRASTO: TRES LEITURAS, UM RECTO, UM ADAPTADOR ───────────
+# Tudo o que toca em `user32` para o arrasto vive aqui e e' fino de proposito:
+# a decisao esta' em `caption_drag`, que nao importa ctypes.
+
+def _ctrl_held():
+    """`True` se QUALQUER Ctrl esta' carregado agora. Sem hook, sem fio."""
+    for vk in (VK_CONTROL, VK_LCONTROL, VK_RCONTROL):
+        if _user32.GetAsyncKeyState(vk) & 0x8000:
+            return True
+    return False
+
+
+def _lbutton_held():
+    return bool(_user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000)
+
+
+def _cursor_px():
+    """O cursor em coordenadas de ECRÃ, ou None se o Windows recusar."""
+    pt = wt.POINT()
+    if not _user32.GetCursorPos(ctypes.byref(pt)):
+        return None
+    return (int(pt.x), int(pt.y))
+
+
+def _window_rect(hwnd):
+    """`(x, y, w, h)` da janela como o Windows a compos no ecra."""
+    rect = wt.RECT()
+    if not hwnd or not _user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+        return None
+    return (int(rect.left), int(rect.top),
+            int(rect.right - rect.left), int(rect.bottom - rect.top))
+
+
+def _monitor_work(hwnd):
+    """A area de trabalho do monitor da janela (sem barra de tarefas), ou None."""
+    try:
+        mon = _user32.MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)
+        if not mon:
+            return None
+        info = MONITORINFO()
+        info.cbSize = ctypes.sizeof(MONITORINFO)
+        if not _user32.GetMonitorInfoW(mon, ctypes.byref(info)):
+            return None
+        work = info.rcWork
+        return {'x': int(work.left), 'y': int(work.top),
+                'width': int(work.right - work.left),
+                'height': int(work.bottom - work.top)}
+    except Exception:  # noqa: BLE001 -- sem monitor, fica o `self.work`
+        return None
+
+
+def _gdi_colour(rgba):
+    from System.Drawing import Color
+    return Color.FromArgb(int(rgba[3]), int(rgba[0]), int(rgba[1]),
+                          int(rgba[2]))
+
+
+class _DragCanvas:
+    """O adaptador GDI+ da marca do arrasto: UM `Pen`, reutilizado por frame.
+
+    A pulsacao muda a COR do Pen em vez de construir um Pen novo -- o custo por
+    frame fica no `Color` (struct) e nao num objecto GDI+. O `Graphics` nao se
+    pode guardar porque o bitmap e' novo em cada frame; e' o unico objecto que a
+    marca paga, e so' enquanto o Ctrl esta' carregado.
+    """
+
+    def __init__(self):
+        self._gfx = None
+        self._pen = None
+
+    def bind(self, gfx):
+        self._gfx = gfx
+        if self._pen is None:
+            from System.Drawing import Pen
+            self._pen = Pen(_gdi_colour(caption_drag.ACCENT_RGB + (255,)), 3.0)
+
+    def outline(self, x, y, w, h, colour, thickness):
+        """O protocolo que o oraculo imita: um rect a' volta do bitmap."""
+        if self._gfx is None or self._pen is None:
+            return
+        self._pen.Width = float(thickness)
+        self._pen.Color = _gdi_colour(colour)
+        self._gfx.DrawRectangle(self._pen, float(x), float(y),
+                                float(w), float(h))
+
+
 class NativeCaptionOverlay:
     #: O fade de entrada esta' DESLIGADO (ordem do dono 2026-11-03). O botao
     #: fica para o oraculo poder provar as duas metades: com `False`, nenhum
@@ -401,6 +515,22 @@ class NativeCaptionOverlay:
         # instante em que a linha mudou, ou None quando nao ha' fade a correr.
         self._fade_t0 = None
         self._fade_gen = 0
+        # ── O ARRASTO COM CTRL (2026-11-08) ─────────────────────────────────
+        # `_drag` e' a memoria do gesto ENTRE ticks; `_drag_offset` e' o par
+        # persistido, restaurado ja' (a primeira pintura nasce no sitio onde o
+        # dono a deixou). `_drag_pos` e' o canto que a janela ocupa durante o
+        # arrasto -- enquanto ele existe, a pintura usa-O em vez de recalcular
+        # a base, para o texto a mudar de largura nao fazer a janela saltar.
+        self._drag_offset = caption_drag.load_offset()
+        self._drag = caption_drag.DragState(offset=self._drag_offset)
+        self._drag_armed = False
+        self._drag_dragging = False
+        self._drag_pos = None
+        self._drag_canvas = None
+        #: `True` quando o ultimo `_arm_tick` foi armado por CONTEUDO (palavra,
+        #: roll, fade) e nao pelo poll do arrasto. E' o que decide se `_tick`
+        #: repinta ou so' le' o teclado (ver `_tick`).
+        self._tick_content = True
         # THE WINDOW OWNS ITS OWN THREAD AND MESSAGE PUMP. Creating it on the
         # pywebview/WinForms UI thread meant every Win32 call from the caption
         # watcher blocked the UI thread (measured 2026-10-17: the UI thread
@@ -586,6 +716,25 @@ class NativeCaptionOverlay:
             if ahead is not None:
                 step = max(word_fade.FRAME_S, float(ahead) - now)
                 delay = step if delay is None else min(delay, step)
+        # ── O ARRASTO TAMBEM ARMA O TICK (2026-11-08) ───────────────────────
+        # Tres razoes novas, nenhuma delas um timer proprio:
+        #   * com o Ctrl carregado ha' uma pulsacao para desenhar (30 Hz);
+        #   * a arrastar, a janela tem de seguir o cursor (60 Hz);
+        #   * com a legenda no ecra, um poll lento (10 Hz) e' o que permite VER
+        #     o Ctrl descer com a legenda parada -- sem ele nao ha' tick nenhum
+        #     nesse estado. Este ultimo NAO repinta: `_tick` distingue-os por
+        #     `_tick_content`.
+        self._tick_content = delay is not None
+        if getattr(self, '_drag_dragging', False):
+            pace = caption_drag.DRAG_FRAME_S
+        elif getattr(self, '_drag_armed', False):
+            pace = caption_drag.PULSE_FRAME_S
+        elif getattr(self, 'hwnd', None) and getattr(self, 'visible', False):
+            pace = caption_drag.POLL_S
+        else:
+            pace = None
+        if pace is not None:
+            delay = pace if delay is None else min(delay, pace)
         return delay
 
     def _arm_tick(self):
@@ -638,9 +787,159 @@ class NativeCaptionOverlay:
             with self.lock:
                 if gen != self._tick_gen:
                     return
-                self._update()
+                # O ARRASTO LE' O TECLADO ANTES DA PINTURA (2026-11-08): e' este
+                # tick que vira "Ctrl carregado?" e "o rato mexeu-se?" -- o
+                # mesmo fio de sempre, sem hook e sem timer por frame.
+                moved = self._poll_drag()
+                armed = getattr(self, '_drag_armed', False)
+                dragging = getattr(self, '_drag_dragging', False)
+                # QUEM REPINTA: conteudo novo, o gesto a mudar, ou a pulsacao.
+                # A arrastar com o rato parado nao ha' nada a mudar no bitmap
+                # (o contorno ja' esta' solido e o `SetWindowPos` ja' moveu a
+                # janela) -- o tick continua a ler o rato, mas nao paga render.
+                if (getattr(self, '_tick_content', True) or moved
+                        or (armed and not dragging)):
+                    self._update()
+                else:
+                    # Um tick que so' existiu para poll nao paga um render:
+                    # rearma (o poll seguinte) sem tocar no bitmap.
+                    self._arm_tick()
         except Exception as exc:  # noqa: BLE001 -- see the fail-open rule
             self._fail_open(exc)
+
+    # ── O ARRASTO: UM POLL NO TICK QUE JA' EXISTE ───────────────────────────
+    def _work_area(self):
+        """A area de trabalho em que a legenda vive, num dict `x/y/width/height`.
+
+        E' a mesma que o shell entrega em `set_work_area` -- o arrasto fica
+        preso a' MESMA area em que a legenda e' centrada, para nao haver duas
+        verdades sobre onde acaba o ecra. So' quando ela nao veio (0x0) se
+        pergunta ao monitor da janela.
+        """
+        try:
+            out = {'x': int(self.work.get('x', 0) or 0),
+                   'y': int(self.work.get('y', 0) or 0),
+                   'width': int(self.work.get('width', 0) or 0),
+                   'height': int(self.work.get('height', 0) or 0)}
+        except (AttributeError, TypeError, ValueError):
+            out = {'x': 0, 'y': 0, 'width': 0, 'height': 0}
+        if out['width'] <= 0 or out['height'] <= 0:
+            return _monitor_work(getattr(self, 'hwnd', None)) or {
+                'x': 0, 'y': 0, 'width': 1920, 'height': 1080}
+        return out
+
+    def _drag_reset(self):
+        """Esquece o gesto em curso SEM gravar -- a legenda escondida nao se arrasta."""
+        self._drag = caption_drag.DragState(
+            offset=getattr(self, '_drag_offset', (0, 0)))
+        self._drag_armed = False
+        self._drag_dragging = False
+        self._drag_pos = None
+
+    def _poll_drag(self):
+        """Le' Ctrl/botao/cursor NESTE tick e aplica a decisao. Devolve `moved`.
+
+        Sem janela ou com a legenda escondida nao ha' o que agarrar: o gesto e'
+        esquecido (sem gravar) e o tick nao paga nada. Sem hook, sem fio novo,
+        sem `SetWindowsHookEx`: tres `Get*` baratos no fio do relogio que a
+        legenda ja' tem -- o padrao do arrasto de edicao da strip.
+        """
+        if not getattr(self, 'hwnd', None) or not getattr(self, 'visible', False):
+            if getattr(self, '_drag_armed', False) or getattr(
+                    self, '_drag_dragging', False):
+                self._drag_reset()
+                return True
+            return False
+        ctrl = _ctrl_held()
+        lbtn = _lbutton_held()
+        cursor = _cursor_px()
+        rect = _window_rect(self.hwnd)
+        if cursor is None or rect is None:
+            return False
+        decision = caption_drag.drag_plan(ctrl, lbtn, cursor, rect,
+                                          self._work_area(),
+                                          offset=self._drag_offset,
+                                          state=self._drag)
+        self._drag = decision.state
+        self._drag_armed = decision.armed
+        self._drag_dragging = decision.dragging
+        self._drag_offset = decision.offset
+        self._drag_pos = decision.pos if decision.dragging else None
+        if decision.dragging and decision.pos != (rect[0], rect[1]):
+            # A JANELA SEGUE O CURSOR JA' NESTE TICK, sem esperar pela pintura:
+            # e' o `SetWindowPos` que tira o atraso visivel do arrasto.
+            _user32.SetWindowPos(self.hwnd, None, int(decision.pos[0]),
+                                 int(decision.pos[1]), 0, 0,
+                                 SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER)
+        if decision.persist:
+            saved = caption_drag.save_offset(decision.offset)
+            self.log('CAPTION_DRAG_OFFSET x=%d y=%d saved=%s'
+                     % (int(decision.offset[0]), int(decision.offset[1]),
+                        str(bool(saved)).lower()))
+        return bool(decision.changed)
+
+    def _paint_drag_outline(self, bmp, width, height):
+        """Liga o adaptador GDI+ ao bitmap DESTE frame e desenha a marca.
+
+        Uma falha aqui nao pode matar a legenda: o `except` registra e o bitmap
+        segue sem a marca. O `Graphics` e' o unico objecto por frame -- o bitmap
+        e' novo em cada um, logo nao ha' como guarda-lo como o `Pen`.
+        """
+        try:
+            from System.Drawing import Graphics
+            from System.Drawing.Drawing2D import SmoothingMode
+            if self._drag_canvas is None:
+                self._drag_canvas = _DragCanvas()
+            gfx = Graphics.FromImage(bmp)
+            try:
+                gfx.SmoothingMode = SmoothingMode.AntiAlias
+                self._drag_canvas.bind(gfx)
+                return self._paint_drag_affordance(
+                    self._drag_canvas, width, height, self.scale)
+            finally:
+                gfx.Dispose()
+        except Exception as exc:  # noqa: BLE001 -- a marca e' um extra
+            self.log('CAPTION_DRAG_MARK_FAILED error=%r' % (exc,))
+            return None
+
+    def _paint_drag_affordance(self, canvas, width, height, scale=1.0,
+                               now=None, pulse=None):
+        """A MARCA MINIMA "DA' PRA ARRASTAR" -- desenhada, nao prometida.
+
+        Um contorno ACCENT (`caption_drag.ACCENT_RGB`, o `--accent-from` do
+        painel) por dentro da borda do bitmap da legenda. Pulsa devagar com o
+        Ctrl carregado (alfa `PULSE_MIN_ALPHA`..255) e fica SOLIDO enquanto se
+        arrasta -- e' a diferenca entre "podes agarrar" e "estas a agarrar".
+
+        COM O CTRL LEVANTADO NAO TOCA NO CANVAS. E' essa a metade que o oraculo
+        `_main/caption-drag-oracle.py` conta em pixeis: zero alteracoes na banda
+        da borda.
+
+        O canvas e' um protocolo de UMA chamada (`outline(x, y, w, h, colour,
+        thickness)`), para o mesmo metodo correr contra o GDI+ real e contra um
+        canvas falso de pixeis sem saber a diferenca. `pulse` e' a mesma costura
+        de um parametro so' (o `FADE_ON` e' o precedente neste ficheiro): o
+        oraculo entrega uma pulsacao mutada e exige o braco vermelho, sem tocar
+        no modulo que embarca.
+        """
+        if not getattr(self, '_drag_armed', False):
+            return None
+        dragging = bool(getattr(self, '_drag_dragging', False))
+        alpha = (pulse or caption_drag.pulse_alpha)(
+            time.monotonic() if now is None else now, dragging)
+        try:
+            scale = float(scale or 1.0)
+        except (TypeError, ValueError):
+            scale = 1.0
+        thickness = max(1.0, round(3.0 * scale))
+        inset = max(1.0, round(2.0 * scale)) + thickness / 2.0
+        w = float(width) - 2.0 * inset
+        h = float(height) - 2.0 * inset
+        if w <= 1.0 or h <= 1.0:
+            return None
+        colour = caption_drag.ACCENT_RGB + (int(alpha),)
+        canvas.outline(inset, inset, w, h, colour, thickness)
+        return (inset, inset, w, h)
 
     def _update(self):
         if not self.hwnd:
@@ -680,6 +979,12 @@ class NativeCaptionOverlay:
         bmp = _premultiplied_bitmap(cur_lines, prev_line, width, height,
                                     self.scale, self.theme, alphas,
                                     roll=self._roll)
+        # A MARCA "DA' PRA ARRASTAR" DENTRO DO MESMO BITMAP (2026-11-08). Com o
+        # Ctrl carregado o contorno pulsa; a arrastar fica solido; com ele
+        # levantado nenhum pixel e' tocado. Nao ha' janela nem bitmap extra: e'
+        # este bitmap que ja' ia ser composto.
+        if getattr(self, '_drag_armed', False):
+            self._paint_drag_outline(bmp, width, height)
         try:
             from System.Drawing.Imaging import ImageLockMode, PixelFormat
             from System.Drawing import Rectangle
@@ -704,10 +1009,25 @@ class NativeCaptionOverlay:
             old = _gdi32.SelectObject(hdc_mem, hbmp)
             ctypes.memmove(bits, ctypes.c_void_p(int(data.Scan0.ToInt64())), size)
             bmp.UnlockBits(data)
-            x = int(self.work.get('x', 0)
-                    + (self.work.get('width', 1920) - width) / 2)
-            y = int(self.work.get('y', 0) + self.work.get('height', 1080)
-                    - height - 48 * self.scale)
+            # A POSICAO: base centrada em baixo + o deslocamento do dono, sempre
+            # presa a' area de trabalho. Durante o arrasto quem manda e' o
+            # `_drag_pos` do poll (o cursor), e o deslocamento e' recalculado
+            # contra a base DESTE frame -- assim um texto que muda de largura a
+            # meio do arrasto nao faz a janela saltar ao largar.
+            base_x = int(self.work.get('x', 0)
+                         + (self.work.get('width', 1920) - width) / 2)
+            base_y = int(self.work.get('y', 0) + self.work.get('height', 1080)
+                         - height - 48 * self.scale)
+            dragging = bool(getattr(self, '_drag_dragging', False))
+            drag_offset = getattr(self, '_drag_offset', (0, 0))
+            if dragging and getattr(self, '_drag_pos', None) is not None:
+                x, y = int(self._drag_pos[0]), int(self._drag_pos[1])
+            else:
+                x, y = caption_drag.clamp_pos(
+                    (base_x + int(drag_offset[0]),
+                     base_y + int(drag_offset[1])),
+                    (width, height), self._work_area())
+            self._drag_offset = (int(x - base_x), int(y - base_y))
             pt_dst = wt.POINT(x, y)
             size_dst = wt.SIZE(width, height)
             pt_src = wt.POINT(0, 0)
@@ -1089,6 +1409,10 @@ class NativeCaptionOverlay:
         self._cue = None
         self._row_alphas = None
         self._blank = True
+        # O GESTO NAO SOBREVIVE AO ESCONDER-SE: uma legenda que sai do ecra a
+        # meio de um arrasto nao pode voltar "agarrada" a um cursor que ja' nao
+        # interfere. Nada e' gravado aqui -- nao houve largar.
+        self._drag_reset()
         self._tick_gen += 1
         self.visible = False
         if self.hwnd:

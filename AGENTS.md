@@ -472,8 +472,20 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 06:5x):** `_main\_audit-verify-all.cmd` = **280373 B**,
-  **3402 CRLF** / 0 bare LF, sha256 `FFF7DE2A4C4DE1C4A273195B433791C6F79D88A32CD92A05302E576EDC2890AB`.
+- **PIN do ficheiro (medido 2026-11-08, 07:0x):** `_main\_audit-verify-all.cmd` = **282682 B**,
+  **3428 CRLF** / 0 bare LF, sha256 `CB3FD3408AB1129F0AEC50348E6E13B8CE63D01BD1DB0625B1EAA38E43EBEFBC`.
+  (Mil trezentos e nove bytes e vinte e seis linhas a mais do que o pin de 280373 B: tres pares
+  novos, os tres nascidos de ordens do dono de 2026-11-08. `strip-width` + o seu `--neg-arm`
+  responde a *"por que a porra do painel de baixo do sotto ta gigante? restaura como era antes"*:
+  a faixa abriu **1040x40 @(440,948)** as 03:30:29 (`STRIP_WIDTH from=None to=1040
+  source=content`) contra o **380x40 @(770,948)** de 2026-11-07 10:22 -- 2,74x a area --, porque
+  `.panel` e' `inset:0` e a "medicao de conteudo" media a propria janela e escrevia o numero de
+  volta no rect salvo. `caption-drag` + o seu `--neg-arm` responde a *"segurar control, permite eu
+  arrastar a legenda pra onde eu quero"*: 11 arms sobre o core puro `app\webview\caption_drag.py`
+  e o `--neg-arm` a exigir P4/P7/P9 vermelhas. `paused-pace`-style wiring: `ligados=155
+  sem_passo=109 populacao=264`, e o `code-health` absorve o crescimento declarado de
+  `panel.js`/`hotkey_gesture.py`/`sotto_webview.py`/`caption_overlay.py`/`panel-unified.css`.)
+  (O pin anterior era o de 280373 B:
   (Quinhentos e catorze bytes e cinco linhas a mais do que o pin de 279859 B: o par `hotkey-spam` +
   `red-as-expected-hotkey-spam`, o portao do Alt+C em rajada. Nasceu da ordem do dono de 2026-11-08,
   verbatim: *"apertar alt c super rapido deixa o app travando pra caralho. deixa completamente fluido.

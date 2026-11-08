@@ -101,12 +101,12 @@
    "max_func_name": ""
   },
   "app/panel/panel-unified.css": {
-   "bytes": 20133,
+   "bytes": 23115,
    "classes": 0,
    "defs": 0,
    "except_pass": 0,
    "globals": 0,
-   "lines": 397,
+   "lines": 454,
    "max_func": 0,
    "max_func_name": ""
   },
@@ -121,12 +121,12 @@
    "max_func_name": ""
   },
   "app/panel/panel.js": {
-   "bytes": 211730,
+   "bytes": 212233,
    "classes": 0,
    "defs": 0,
    "except_pass": 0,
    "globals": 0,
-   "lines": 4241,
+   "lines": 4248,
    "max_func": 0,
    "max_func_name": ""
   },
@@ -241,13 +241,13 @@
    "max_func_name": "census"
   },
   "app/webview/caption_overlay.py": {
-   "bytes": 53800,
-   "classes": 7,
-   "defs": 2,
+   "bytes": 69747,
+   "classes": 8,
+   "defs": 8,
    "except_pass": 2,
    "globals": 0,
-   "lines": 1131,
-   "max_func": 99,
+   "lines": 1455,
+   "max_func": 120,
    "max_func_name": "_update"
   },
   "app/webview/caption_wrap.py": {
@@ -321,12 +321,12 @@
    "max_func_name": "selftest"
   },
   "app/webview/hotkey_gesture.py": {
-   "bytes": 11616,
+   "bytes": 12707,
    "classes": 0,
-   "defs": 4,
+   "defs": 5,
    "except_pass": 0,
    "globals": 0,
-   "lines": 232,
+   "lines": 260,
    "max_func": 38,
    "max_func_name": "parse_accelerator"
   },
@@ -431,12 +431,12 @@
    "max_func_name": "_selftest"
   },
   "app/webview/sotto_webview.py": {
-   "bytes": 1193306,
+   "bytes": 1199952,
    "classes": 28,
-   "defs": 141,
+   "defs": 142,
    "except_pass": 58,
    "globals": 4,
-   "lines": 22618,
+   "lines": 22736,
    "max_func": 414,
    "max_func_name": "main"
   },

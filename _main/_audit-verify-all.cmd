@@ -291,6 +291,20 @@ if exist _main\caption-tick-thread-oracle.py (
   call :step red-as-expected-caption-tick-thread 1 "_main\caption-tick-thread-oracle.py;app\webview\caption_overlay.py" "%OUT%\caption-tick-thread-neg.log" python _main\caption-tick-thread-oracle.py --neg-arm
   call :expectred red-as-expected-caption-tick-thread !STEP_RC! "%OUT%\caption-tick-thread-neg.log" "NEG-ARM: PASS"
 ) else ( call :record caption-tick-thread MISSING )
+REM `caption-drag` (2026-11-08, ordem do dono, verbatim: *"segurar control,
+REM permite eu arrastar a legenda pra onde eu quero. e o control segurado tambem vai
+REM ter um indicativo bem minimo de que da pra arrastar a legenda"*). A decisao e' do
+REM core puro `app\webview\caption_drag.py`; o oraculo conduz as funcoes REAIS (11
+REM arms: arrasto, clique sem Ctrl, Ctrl fora do rect, os dois cantos do clamp,
+REM persistencia, e a marca medida em PIXEL na banda da borda) e o `--neg-arm` muta
+REM a decisao numa COPIA, exigindo P4/P7/P9 vermelhas. O gesto no ecra real continua
+REM DARK: nenhuma lane abre a app na tela dele.
+if exist _main\caption-drag-oracle.py (
+  call :step caption-drag 0 "_main\caption-drag-oracle.py;app\webview\caption_drag.py;app\webview\caption_overlay.py" "%OUT%\caption-drag.log" python _main\caption-drag-oracle.py
+  call :record caption-drag !STEP_RC!
+  call :step red-as-expected-caption-drag 0 "_main\caption-drag-oracle.py;app\webview\caption_drag.py;app\webview\caption_overlay.py" "%OUT%\caption-drag-neg.log" python _main\caption-drag-oracle.py --neg-arm
+  call :record red-as-expected-caption-drag !STEP_RC!
+) else ( call :record caption-drag MISSING )
 REM `lag-note-cost` (2026-11-04, do commit de perf 1c92e39): `_caption_lag_note`
 REM custava 27,1 us por legenda -- 83 % do caminho de aplicar uma legenda -- porque
 REM `len(ages) % 25 == 0` e' SEMPRE verdadeiro com a janela cheia (200 % 25 == 0) e a
@@ -2297,6 +2311,18 @@ if exist _main\_strip-surface-oracle.py (
   call :step strip-surface-oracle 0 "_main\_strip-surface-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js;worker\sotto_worker.py" "%OUT%\strip-surface-oracle.log" python _main\_strip-surface-oracle.py
   call :control strip-surface-oracle !STEP_RC! "%OUT%\strip-surface-oracle.log" "STRIP-ORACLE CONTROL PASS"
 ) else ( call :control strip-surface-oracle MISSING "%OUT%\strip-surface-oracle.log" "STRIP-ORACLE CONTROL PASS" )
+REM A FAIXA DE BAIXO E' 380, E A MEDICAO NAO A PODE ALARGAR (dono, 2026-11-08,
+REM verbatim: *"por que a porra do painel de baixo do sotto ta gigante? restaura
+REM como era antes"*). MEDIDO no log da instancia dele: a faixa abriu 1040x40
+REM @(440,948) as 03:30:29 (`STRIP_WIDTH from=None to=1040 source=content`) e a
+REM anterior era 380x40 @(770,948) -- 2,74x a area. A causa e' uma medicao que
+REM media a propria janela (`.panel` e' inset:0) e escrevia o numero de volta no
+REM rect salvo. O oraculo conduz `dock_strip`, o predicado e os DOIS sitios reais
+REM do shell; o `--neg-arm` arranca a guarda numa COPIA e exige 3 arms vermelhas.
+call :step strip-width 0 "_main\strip-width-oracle.py;app\webview\sotto_webview.py" "%OUT%\strip-width.log" python _main\strip-width-oracle.py
+call :record strip-width !STEP_RC!
+call :step red-as-expected-strip-width 1 "_main\strip-width-oracle.py;app\webview\sotto_webview.py" "%OUT%\strip-width-neg.log" python _main\strip-width-oracle.py --neg-arm
+call :expectred red-as-expected-strip-width !STEP_RC! "%OUT%\strip-width-neg.log" "NEG-ARM: PASS"
 if exist _main\_strip-stats-log-probe.py (
   call :step always heavy strip-stats-log-budget 0 "_main\_strip-stats-log-probe.py;_main\_strip_stats_load.py;app\webview\sotto_webview.py;_main\_strip-stats-worker.py" "%OUT%\strip-stats-log.log" python _main\_strip-stats-log-probe.py
   call :skipped strip-stats-log-budget !STEP_RC! "%OUT%\strip-stats-log.log" "STRIP-LOG CONTROL PASS" "STRIP-LOG CONTROL SKIPPED" "VERDICT: SKIPPED"
