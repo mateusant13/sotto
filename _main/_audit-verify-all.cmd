@@ -1837,7 +1837,7 @@ REM uma lei REFUTADA e' um FAIL, e uma maquina que nao responde e' um SKIP NOMEA
 REM `skipped=`, nunca em `gate=`, porque nada foi verificado. E custa 25 s de sonda, nao os 240 s
 REM do prazo do passo que a corrida de 20:02 pagou (STEP-DEADLINE exceeded step=bend-laws).
 if exist _main\bend-laws-gate.py (
-call :step always bend-laws 0 "_main\bend-laws-gate.py;bend_core\LAWS.bend;bend_core\PROOF.bend;bend_core\NEGATIVE_revealed_flag.bend;bend_core\NEGATIVE_of_bool_agrees.bend;bend_core\NEGATIVE_live_flag.bend;bend_core\NEGATIVE_live_flag_before.bend;bend_core\NEGATIVE_window_rows_min.bend;bend_core\NEGATIVE_window_rows_capacity.bend;bend_core\NEGATIVE_window_rows_live.bend;bend_core\NEGATIVE_count_due_only.bend;bend_core\NEGATIVE_count_due_monotone.bend;bend_core\NEGATIVE_count_due_empty.bend;bend_core\NEGATIVE_count_due_one_word.bend" "%OUT%\bend-laws.log" python _main\bend-laws-gate.py
+call :step always bend-laws 0 "_main\bend-laws-gate.py;bend_core\LAWS.bend;bend_core\PROOF.bend;bend_core\NEGATIVE_revealed_flag.bend;bend_core\NEGATIVE_of_bool_agrees.bend;bend_core\NEGATIVE_live_flag.bend;bend_core\NEGATIVE_live_flag_before.bend;bend_core\NEGATIVE_window_rows_min.bend;bend_core\NEGATIVE_window_rows_capacity.bend;bend_core\NEGATIVE_window_rows_live.bend;bend_core\NEGATIVE_count_due_only.bend;bend_core\NEGATIVE_count_due_monotone.bend;bend_core\NEGATIVE_count_due_empty.bend;bend_core\NEGATIVE_count_due_one_word.bend;bend_core\NEGATIVE_hist_final_route.bend;bend_core\NEGATIVE_hist_provisional_route.bend;bend_core\NEGATIVE_hist_unknown_route.bend;bend_core\NEGATIVE_hist_live_producer.bend;bend_core\NEGATIVE_hist_canonical_producer.bend;bend_core\NEGATIVE_hist_absent_claim.bend;bend_core\NEGATIVE_hist_refusal.bend;bend_core\NEGATIVE_hist_two_forms.bend;bend_core\NEGATIVE_fmt_worker_final.bend;bend_core\NEGATIVE_fmt_worker_partial.bend;bend_core\NEGATIVE_fmt_panel_close.bend;bend_core\NEGATIVE_fmt_audio_close.bend;bend_core\NEGATIVE_fmt_two_forms.bend;bend_core\NEGATIVE_fmt_fallback.bend;tools\bend_verify.sh" "%OUT%\bend-laws.log" python _main\bend-laws-gate.py
 call :skipped bend-laws !STEP_RC! "%OUT%\bend-laws.log" "BEND-GATE VERDICT: PASS" "BEND-GATE SKIPPED"
 ) else ( call :skipped bend-laws MISSING "%OUT%\bend-laws.log" "BEND-GATE VERDICT: PASS" "BEND-GATE SKIPPED" )
 
@@ -1855,6 +1855,32 @@ if exist bend_core\model.py (
 call :step always red-as-expected-bend-laws-model 1 "bend_core\model.py" "%OUT%\bend-laws-model-neg.log" python bend_core\model.py --neg-arm
 call :expectred red-as-expected-bend-laws-model !STEP_RC! "%OUT%\bend-laws-model-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-bend-laws-model MISSING "%OUT%\bend-laws-model-neg.log" "NEG-ARM PASS" )
+
+REM O ESPELHO NAS FUNCOES REAIS (2026-11-08). O kernel prova as leis; o modelo
+REM em Python le a AMOSTRA; nenhum dos dois liga uma lei a `app\panel\`. Este
+REM passo EXECUTA as duas decisoes de producao pelo `node` -- `historyDecision`
+REM sobre o dominio inteiro de rota x produtor, e um motor REAL para o `route`
+REM que o commit carimba -- e compara com o modelo que as leis afirmam. O braco
+REM negativo PLANTA o defeito que cada lei existe para impedir; se um mutante
+REM passar, ele devolve 0 e o `:expectred` reprova.
+if exist _main\bend_mirror.py (
+call :step always bend-mirror 0 "_main\bend_mirror.py;app\panel\history-source.js;app\panel\caption-formulation.js" "%OUT%\bend-mirror.log" python _main\bend_mirror.py
+call :record bend-mirror !STEP_RC!
+) else ( call :record bend-mirror MISSING )
+if exist _main\bend_mirror.py (
+call :step always red-as-expected-bend-mirror 1 "_main\bend_mirror.py;app\panel\history-source.js;app\panel\caption-formulation.js" "%OUT%\bend-mirror-neg.log" python _main\bend_mirror.py --red
+call :expectred red-as-expected-bend-mirror !STEP_RC! "%OUT%\bend-mirror-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-bend-mirror MISSING "%OUT%\bend-mirror-neg.log" "NEG-ARM PASS" )
+
+REM O LIVRO DE PROVAS (`tools\bend_proof_ledger.py`). O `--self-test` julga o
+REM CLASSIFICADOR do livro com fixtures -- red, infraestrutura, sem veredicto,
+REM rc4 e um check SALTADO (que nunca e' verde) -- e e' o unico juiz que
+REM o proprio livro tem. Sem um passo, ele apodrece como o `shell-thread-cpu`
+REM apodreceu (instrumento com `--neg-arm` e ZERO chamadores).
+if exist tools\bend_proof_ledger.py (
+call :step always bend-ledger-selftest 0 "tools\bend_proof_ledger.py" "%OUT%\bend-ledger-selftest.log" python tools\bend_proof_ledger.py --self-test
+call :record bend-ledger-selftest !STEP_RC!
+) else ( call :record bend-ledger-selftest MISSING )
 
 REM O CAMINHO DO Alt+C (o UNICO controlo do dono) tem de sobreviver a um
 REM atributo em falta. MEDIDO 2026-10-20: `show_panel`, `show_strip` e

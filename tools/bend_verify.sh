@@ -340,6 +340,20 @@ echo "PASS: every law in LAWS.bend checks (proofs in PROOF.bend)."
 # falsifier and nothing about a green run would say so.
 EXPECTED_CONTROLS="$(cat <<'EOF'
 NEGATIVE_count_due_empty.bend=Toks.count_due_of_an_empty_line_is_zero
+NEGATIVE_fmt_audio_close.bend=Fmt.audio_close_without_a_vote_is_final
+NEGATIVE_fmt_fallback.bend=Fmt.fallback_is_exactly_the_silent_default
+NEGATIVE_fmt_panel_close.bend=Fmt.panel_close_never_manufactures_final
+NEGATIVE_fmt_two_forms.bend=Fmt.route_agrees_with_its_two_forms
+NEGATIVE_fmt_worker_final.bend=Fmt.worker_final_vote_is_final
+NEGATIVE_fmt_worker_partial.bend=Fmt.worker_partial_vote_is_never_final
+NEGATIVE_hist_absent_claim.bend=Hist.absent_claim_is_accepted_only_from_the_canonical_producer
+NEGATIVE_hist_canonical_producer.bend=Hist.canonical_producer_is_exactly_the_redux_code
+NEGATIVE_hist_final_route.bend=Hist.final_route_is_accepted
+NEGATIVE_hist_live_producer.bend=Hist.live_producer_is_never_canonical
+NEGATIVE_hist_provisional_route.bend=Hist.provisional_route_is_refused
+NEGATIVE_hist_refusal.bend=Hist.refusal_names_itself
+NEGATIVE_hist_two_forms.bend=Hist.accepted_agrees_with_its_two_forms
+NEGATIVE_hist_unknown_route.bend=Hist.unknown_route_is_refused
 NEGATIVE_count_due_monotone.bend=Toks.count_due_is_monotone_in_time
 NEGATIVE_count_due_one_word.bend=Toks.count_due_of_one_word_is_its_flag
 NEGATIVE_count_due_only.bend=Toks.count_due_counts_only_due_words
@@ -415,6 +429,20 @@ EOF
 # checkpoint; deleting or renaming one changes the set and fails the gate.
 EXPECTED_LAWS="$(cat <<'EOF'
 Cap.display_clean_before_new_source
+Fmt.audio_close_without_a_vote_is_final
+Fmt.fallback_is_exactly_the_silent_default
+Fmt.panel_close_never_manufactures_final
+Fmt.route_agrees_with_its_two_forms
+Fmt.worker_final_vote_is_final
+Fmt.worker_partial_vote_is_never_final
+Hist.absent_claim_is_accepted_only_from_the_canonical_producer
+Hist.accepted_agrees_with_its_two_forms
+Hist.canonical_producer_is_exactly_the_redux_code
+Hist.final_route_is_accepted
+Hist.live_producer_is_never_canonical
+Hist.provisional_route_is_refused
+Hist.refusal_names_itself
+Hist.unknown_route_is_refused
 Cap.epoch_monotonic
 Nat.live_flag_is_false_before_the_line_starts
 Nat.live_flag_is_started_and_not_ended

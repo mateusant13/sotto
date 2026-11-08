@@ -91,11 +91,12 @@ order was about the **YouTube** path, and that is the bundle that was written fi
 
 | file | what it is |
 |---|---|
-| `bend_core/LAWS.bend` | **14** laws over the pure model of the 1:1 decisions (reveal count, line liveness, window size, and — re-measured 2026-10-30 — the epoch/slot trio: `Cap.epoch_monotonic`, `Nat.no_cross_source_paint`, `Cap.display_clean_before_new_source`) + the model they need |
+| `bend_core/LAWS.bend` | **28** laws: the 14 of the 1:1 decisions (reveal count, line liveness, window size, and — re-measured 2026-10-30 — the epoch/slot trio: `Cap.epoch_monotonic`, `Nat.no_cross_source_paint`, `Cap.display_clean_before_new_source`) **plus** the 14 of DECISOES 6 and 7 added 2026-11-08 — `Hist.*` (who may write the canonical transcript, production = `app/panel/history-source.js`) and `Fmt.*` (which route a commit stamps, production = `app/panel/caption-formulation.js`) — + the model they need |
 | `bend_core/PROOF.bend` | one `def Laws.<law>` per law, plus the refutation helpers |
-| `bend_core/NEGATIVE_*.bend` | **14** controls, one FALSE claim each, each naming the law it falsifies |
+| `bend_core/NEGATIVE_*.bend` | **28** controls, one FALSE claim each, each naming the law it falsifies; every one of the 28 laws has its own file, because the kernel stops at the FIRST failing law |
 | `bend_core/model.py` | the same model in Python for a host without Bend — a SAMPLE, not a proof, and it says so |
-| `_main/bend-laws-gate.py` | the gate: `bend PROOF.bend --verdict` in WSL, with six typed exit codes, the pinned law inventory, the control set, and two tamper probes |
+| `_main/bend-laws-gate.py` | the gate: `bend PROOF.bend --verdict` in WSL, with six typed exit codes, the pinned law inventory, the control set, two tamper probes, and — since 2026-11-08 — a crosscheck that `tools/bend_verify.sh` pins the SAME inventory (two copies of one pin diverge in silence; measured the same day) |
+| `_main/bend_mirror.py` | binds the `Hist.*`/`Fmt.*` laws to the REAL production functions by executing them through `node`; `--red` plants the defect class each law prevents and is a NEG-ARM (rc=1 when it catches) |
 
 ```
 wsl -d ubuntu-bend -e bash -lc 'export PATH=/root/.bend/bin:$HOME/.elan/bin:$PATH; cd /mnt/h/sotto/bend_core && bend PROOF.bend --verdict'

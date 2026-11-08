@@ -46,8 +46,42 @@ REPO = Path(__file__).resolve().parents[1]
 LEDGER_DIR = REPO / ".bend-ledger"
 LEDGER = LEDGER_DIR / "runs.jsonl"
 GATE = REPO / "tools" / "bend_verify.sh"
-WATCHED = ("bend_core/LAWS.bend", "bend_core/PROOF.bend", "bend_core/model.py", "bend_core/NEGATIVE_count_due_empty.bend", "bend_core/NEGATIVE_count_due_monotone.bend", "bend_core/NEGATIVE_count_due_one_word.bend", "bend_core/NEGATIVE_count_due_only.bend", "bend_core/NEGATIVE_display_clean_before_new_source.bend", "bend_core/NEGATIVE_epoch_monotonic.bend", "bend_core/NEGATIVE_live_flag.bend", "bend_core/NEGATIVE_live_flag_before.bend", "bend_core/NEGATIVE_no_cross_source_paint.bend", "bend_core/NEGATIVE_of_bool_agrees.bend", "bend_core/NEGATIVE_revealed_flag.bend", "bend_core/NEGATIVE_window_rows_capacity.bend", "bend_core/NEGATIVE_window_rows_live.bend", "bend_core/NEGATIVE_window_rows_min.bend", "tools/bend_verify.sh")
-GATE_VERSION = "1"  # bump when a structural check is added/removed
+WATCHED = (
+    "bend_core/LAWS.bend",
+    "bend_core/PROOF.bend",
+    "bend_core/model.py",
+    "bend_core/NEGATIVE_count_due_empty.bend",
+    "bend_core/NEGATIVE_count_due_monotone.bend",
+    "bend_core/NEGATIVE_count_due_one_word.bend",
+    "bend_core/NEGATIVE_count_due_only.bend",
+    "bend_core/NEGATIVE_display_clean_before_new_source.bend",
+    "bend_core/NEGATIVE_epoch_monotonic.bend",
+    "bend_core/NEGATIVE_fmt_audio_close.bend",
+    "bend_core/NEGATIVE_fmt_fallback.bend",
+    "bend_core/NEGATIVE_fmt_panel_close.bend",
+    "bend_core/NEGATIVE_fmt_two_forms.bend",
+    "bend_core/NEGATIVE_fmt_worker_final.bend",
+    "bend_core/NEGATIVE_fmt_worker_partial.bend",
+    "bend_core/NEGATIVE_hist_absent_claim.bend",
+    "bend_core/NEGATIVE_hist_canonical_producer.bend",
+    "bend_core/NEGATIVE_hist_final_route.bend",
+    "bend_core/NEGATIVE_hist_live_producer.bend",
+    "bend_core/NEGATIVE_hist_provisional_route.bend",
+    "bend_core/NEGATIVE_hist_refusal.bend",
+    "bend_core/NEGATIVE_hist_two_forms.bend",
+    "bend_core/NEGATIVE_hist_unknown_route.bend",
+    "bend_core/NEGATIVE_live_flag.bend",
+    "bend_core/NEGATIVE_live_flag_before.bend",
+    "bend_core/NEGATIVE_no_cross_source_paint.bend",
+    "bend_core/NEGATIVE_of_bool_agrees.bend",
+    "bend_core/NEGATIVE_revealed_flag.bend",
+    "bend_core/NEGATIVE_window_rows_capacity.bend",
+    "bend_core/NEGATIVE_window_rows_live.bend",
+    "bend_core/NEGATIVE_window_rows_min.bend",
+    "_main/bend_mirror.py",
+    "tools/bend_verify.sh",
+)
+GATE_VERSION = "2"  # bump when a structural check is added/removed
 TAIL = 4000  # bytes kept from each stream
 
 

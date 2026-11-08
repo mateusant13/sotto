@@ -198,3 +198,31 @@
   custo e' `GraphicsPath.AddString` com contorno (3,2 ms por linha); `_make_font` era chamado DUAS
   vezes por quadro (0,27 ms cada) e agora sai de `_FONT_CACHE`. Um tecto de frame acima disto exige
   guardar o raster do texto, que ainda nao foi feito.
+
+- **AS LEIS `Hist.*`/`Fmt.*` LIGAM-SE AS FUNCOES VIVAS, e o kernel fecha as 28 (medido 2026-11-08).**
+  `bend PROOF.bend --verdict` em WSL `ubuntu-bend`: **28 leis, 28 controlos com o seu ficheiro, 0
+  falhas**, mais as duas sondas de adulteracao (`PASS`). O espelho `_main/bend_mirror.py` EXECUTA
+  `app/panel/history-source.js` (produto inteiro: 4 rotas x 5 grafias de produtor + um `meta` que
+  nao e' objecto = **21 linhas**) e `app/panel/caption-formulation.js` (**10 casos** de motor real,
+  `ingest`/`flush`/`expireHold`) e compara com o modelo das leis: **14 checks verdes**; o `--red`
+  planta 4 defeitos e **4/4 caem** na lei que os existe para impedir. As duas funcoes sao codigo
+  VIVO (`panel.html:1111` carrega `history-source.js`, `:1104` carrega `caption-formulation.js`) --
+  uma lei ligada a codigo morto nao e' evidencia. `tools/bend_verify.sh` mantinha a SUA copia do
+  inventario e divergiu da do portao **no mesmo dia** (a lane escreveu as 14 leis so' no `.sh`), o
+  que fechou a bateria RED por um passo cujo unico defeito era a divergencia: o portao passou a
+  comparar as duas listas.
+
+- **O REPLAY DO `panel-commit-stable` NAO CABE NO PRAZO COM O LOG INTEIRO; a cauda de 6 000 cabe
+  (medido 2026-11-08).** O `webview-run.log` tem **418 754** linhas e **18 744** `CAPTION_IN`; as duas
+  armas replayavam o corpus inteiro: **109,6 s** sozinho e **>240 s** com outra lane na maquina (o
+  passo morreu em `rc=124`, `STEP-DEADLINE exceeded step=panel-commit-stable seconds=240.7`). Com o
+  replay na cauda de **6 000** fragmentos (o censo continua sobre o log todo): **17,6 s**, veredicto
+  `PASS`. O `audio p95` desse recorte **sobe** 3 236 -> 3 897 ms enquanto as fatias caem (**29,4 % ->
+  5,3 %** acima do orcamento, saudavel **8,1 % -> 84,5 %**): percentil sobre campo bimodal nao e'
+  veredicto -- a mesma lei que o `caption-budget` ja' tinha.
+- **UMA ENUMERACAO NUA DE PROCESSOS CUSTA 91-119 ms nesta caixa carregada (medido 2026-11-08).** O
+  braco do orcamento do `gaming-hotkey` media `tick_min=91,14 ms` contra um orcamento de **50 ms** e
+  reprovava -- com `enum_min=119,13 ms` para a enumeracao sozinha (669 processos) e racio **0,77**:
+  o tick custou menos do que a leitura que ele tem de fazer. O orcamento absoluto e' uma afirmacao
+  sobre a MAQUINA; o braco passa a julgar `tick_min < budget` **ou** `tick_min <= 1,5 x enum_min`, e
+  ganhou o controlo que nao tinha (uma chamada de 200 ms no tick: cost arm RED a 259,40 ms).

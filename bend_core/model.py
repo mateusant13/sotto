@@ -252,6 +252,157 @@ def law_display_clean_before_new_source(c):
 
 
 # ---------------------------------------------------------------------------
+# DECISAO 6 -- QUEM PODE ESCREVER O HISTORICO (`app/panel/history-source.js`)
+#
+# As entradas sao as que `historyDecision(meta)` le: a rota declarada e o
+# produtor declarado. `None` em `route` e' "sem rota"; `None` em `producer` e'
+# "sem produtor declarado" (ausente, vazio, ou nao-string).
+# ---------------------------------------------------------------------------
+
+PRODUCERS = (None, "live", "redux", "other")
+ROUTES = (None, "final", "provisional-draft", "weird")
+
+#: Os motivos, exactamente os do ficheiro de producao.
+REASON_PROVISIONAL = "provisional-draft"
+REASON_UNKNOWN_ROUTE = "unknown-route"
+REASON_NO_ROUTE_NO_PRODUCER = "no-route-no-producer"
+
+
+def producer_is_canonical(producer):
+    """`isCanonicalLine` -- o produtor e' o canonico (`'redux'`)."""
+    return producer == "redux"
+
+
+def hist_route_of(route, producer):
+    """`historyDecision(meta).route` -- a rota que entra, ou None."""
+    if route == "final":
+        return "final"
+    if route is not None:
+        return None
+    return "batch" if producer_is_canonical(producer) else None
+
+
+def hist_accepted(route, producer):
+    """A PORTA: aceita sse ha' uma rota."""
+    return hist_route_of(route, producer) is not None
+
+
+def hist_accepted_reference(route, producer):
+    """A SEGUNDA FORMA da porta, escrita como a regra."""
+    if route == "final":
+        return True
+    if route is not None:
+        return False
+    return producer == "redux"
+
+
+def hist_reason_of(route, producer):
+    """`historyDecision(meta).reason` -- o motivo, ou None."""
+    if route == "final":
+        return None
+    if route is not None:
+        return REASON_PROVISIONAL if route == "provisional-draft" else REASON_UNKNOWN_ROUTE
+    if producer == "redux":
+        return None
+    return REASON_NO_ROUTE_NO_PRODUCER
+
+
+def law_hist_final_route_is_accepted(producer):
+    return hist_accepted("final", producer)
+
+
+def law_hist_provisional_route_is_refused(producer):
+    return not hist_accepted("provisional-draft", producer)
+
+
+def law_hist_live_producer_is_never_canonical():
+    return not hist_accepted(None, "live")
+
+
+def law_hist_absent_claim_is_accepted_only_from_the_canonical_producer(producer):
+    return hist_accepted(None, producer) == producer_is_canonical(producer)
+
+
+def law_hist_unknown_route_is_refused(name, producer):
+    return not hist_accepted("weird", producer)
+
+
+def law_hist_canonical_producer_is_exactly_the_redux_code(producer):
+    return producer_is_canonical(producer) == (producer == "redux")
+
+
+def law_hist_accepted_agrees_with_its_two_forms(route, producer):
+    return hist_accepted(route, producer) == hist_accepted_reference(route, producer)
+
+
+def law_hist_refusal_names_itself(route, producer):
+    return hist_accepted(route, producer) == (hist_reason_of(route, producer) is None)
+
+
+# ---------------------------------------------------------------------------
+# DECISAO 7 -- A VOTACAO DE ROTA (`app/panel/caption-formulation.js`)
+# ---------------------------------------------------------------------------
+
+#: O regex `PANEL_CLOSED_REASON` do ficheiro de producao: os motivos que sao o
+#: fecho do PROPRIO painel (e que portanto nunca fabricam um `final`).
+PANEL_CLOSED_PREFIXES = ("hold-timeout", "status-change", "flush", "stable")
+
+
+def panel_closed_reason(reason):
+    """`PANEL_CLOSED_REASON.test(reason)`."""
+    return str(reason or "").startswith(PANEL_CLOSED_PREFIXES)
+
+
+def fmt_is_final(buffer_final, saw_final, panel_closed):
+    """`routeFor(reason) == 'final'`."""
+    if buffer_final:
+        return True
+    if saw_final:
+        return False
+    return not panel_closed
+
+
+def fmt_is_final_reference(buffer_final, saw_final, panel_closed):
+    """A SEGUNDA FORMA -- o `Bool.pick` da producao, aqui escrito como cadeia."""
+    return True if buffer_final else (False if saw_final else (not panel_closed))
+
+
+def fmt_source(buffer_final, saw_final, has_producer, panel_closed):
+    """`routeSourceFor(route)` -- o rotulo gravado no `meta.routeSource`."""
+    if buffer_final or saw_final:
+        return "worker-stamped"
+    if has_producer:
+        return "worker-stamped-producer"
+    return "panel-deadline" if panel_closed else "fallback"
+
+
+def law_fmt_worker_final_vote_is_final(saw_final, panel_closed):
+    return fmt_is_final(True, saw_final, panel_closed)
+
+
+def law_fmt_worker_partial_vote_is_never_final(panel_closed):
+    return not fmt_is_final(False, True, panel_closed)
+
+
+def law_fmt_panel_close_never_manufactures_final():
+    return not fmt_is_final(False, False, True)
+
+
+def law_fmt_audio_close_without_a_vote_is_final():
+    return fmt_is_final(False, False, False)
+
+
+def law_fmt_route_agrees_with_its_two_forms(buffer_final, saw_final, panel_closed):
+    return (fmt_is_final(buffer_final, saw_final, panel_closed)
+            == fmt_is_final_reference(buffer_final, saw_final, panel_closed))
+
+
+def law_fmt_fallback_is_exactly_the_silent_default(buffer_final, saw_final, has_producer, panel_closed):
+    return (fmt_source(buffer_final, saw_final, has_producer, panel_closed) == "fallback") == (
+        not buffer_final and not saw_final and not has_producer and not panel_closed)
+
+
+# ---------------------------------------------------------------------------
 # A AMOSTRA
 #
 # Uma AMOSTRA explicita, nao um periodo vasto: o modelo e pequeno e as
@@ -361,6 +512,44 @@ def check_all():
         record("Nat.no_cross_source_paint", (stamp, cur),
                law_no_cross_source_paint(stamp, cur))
 
+    # AS DUAS DECISOES (2026-11-08): o historico (DECISAO 6) e a votacao de
+    # rota (DECISAO 7). O dominio e' EXAUSTIVO e pequeno -- quatro produtores,
+    # quatro rotas, e os Bools -- por isso aqui a amostra e' o dominio inteiro.
+    for producer in PRODUCERS:
+        record("Hist.final_route_is_accepted", (producer,),
+               law_hist_final_route_is_accepted(producer))
+        record("Hist.provisional_route_is_refused", (producer,),
+               law_hist_provisional_route_is_refused(producer))
+        record("Hist.absent_claim_is_accepted_only_from_the_canonical_producer", (producer,),
+               law_hist_absent_claim_is_accepted_only_from_the_canonical_producer(producer))
+        record("Hist.canonical_producer_is_exactly_the_redux_code", (producer,),
+               law_hist_canonical_producer_is_exactly_the_redux_code(producer))
+    record("Hist.live_producer_is_never_canonical", (),
+           law_hist_live_producer_is_never_canonical())
+
+    for route, producer in itertools.product(ROUTES, PRODUCERS):
+        record("Hist.unknown_route_is_refused", (route, producer),
+               law_hist_unknown_route_is_refused("weird", producer))
+        record("Hist.accepted_agrees_with_its_two_forms", (route, producer),
+               law_hist_accepted_agrees_with_its_two_forms(route, producer))
+        record("Hist.refusal_names_itself", (route, producer),
+               law_hist_refusal_names_itself(route, producer))
+
+    for bf, sf, pc in itertools.product((True, False), repeat=3):
+        record("Fmt.worker_final_vote_is_final", (bf, sf, pc),
+               law_fmt_worker_final_vote_is_final(sf, pc))
+        record("Fmt.worker_partial_vote_is_never_final", (bf, sf, pc),
+               law_fmt_worker_partial_vote_is_never_final(pc))
+        record("Fmt.route_agrees_with_its_two_forms", (bf, sf, pc),
+               law_fmt_route_agrees_with_its_two_forms(bf, sf, pc))
+    record("Fmt.panel_close_never_manufactures_final", (),
+           law_fmt_panel_close_never_manufactures_final())
+    record("Fmt.audio_close_without_a_vote_is_final", (),
+           law_fmt_audio_close_without_a_vote_is_final())
+    for bf, sf, hp, pc in itertools.product((True, False), repeat=4):
+        record("Fmt.fallback_is_exactly_the_silent_default", (bf, sf, hp, pc),
+               law_fmt_fallback_is_exactly_the_silent_default(bf, sf, hp, pc))
+
     return violations, total
 
 
@@ -381,16 +570,24 @@ def self_test():
         # O DRAIN NAO COMPARA O CARIMBO -- a guarda `epoch != cur` apagada
         # (o negativo `NEGATIVE_no_cross_source_paint.bend`).
         paint_flag=lambda stamp, cur: 1,
+        # A PORTA DO HISTORICO OLHA O PRODUTOR, NAO A ROTA -- a regra ANTERIOR
+        # a 2026-11-05 (o negativo `NEGATIVE_hist_two_forms.bend`).
+        hist_accepted=lambda route, producer: producer == "redux",
+        # O FECHO DO PAINEL FABRICA UM `final` -- a confusao do
+        # `status-change` de 2026-10-06 (o negativo
+        # `NEGATIVE_fmt_panel_close.bend`).
+        fmt_is_final=lambda bf, sf, pc: True if bf else (False if sf else pc),
     )
 
     saved = (revealed_flag, of_bool, live_flag, on_new_source, on_blank,
-             paint_flag)
+             paint_flag, hist_accepted, fmt_is_final)
     try:
         globals().update(broken)
         violations, total = check_all()
     finally:
         globals().update(zip(("revealed_flag", "of_bool", "live_flag",
-                              "on_new_source", "on_blank", "paint_flag"),
+                              "on_new_source", "on_blank", "paint_flag",
+                              "hist_accepted", "fmt_is_final"),
                              saved))
 
     print("MODELO (model.py) -- amostra explicita")
@@ -427,7 +624,7 @@ def main(argv=None):
     print("todas as leis da amostra respeitadas")
     print("NOTA: isto e uma AMOSTRA, nao uma prova. A prova e "
           "`bend PROOF.bend --verdict` (o kernel), e o portao e "
-          "`_main/bend-laws-gate.py`.")
+          "`bash tools/bend_verify.sh`.")
     print("YOUTUBE-LAWS-MODEL VERDICT GREEN (amostra)")
     return 0
 

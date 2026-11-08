@@ -68,22 +68,19 @@
 #      comprimento E na contagem; sem o `+`, o mesmo `tail` da "consumed more
 #      than once").
 #
-# Verify:  python _main/bend-laws-gate.py      (leis + provas + controlos + guardas)
+# Verify:  bash tools/bend_verify.sh          (leis + provas + controlos + guardas)
+#          python _main/bend_mirror.py         (as leis contra a producao real)
 #          cd bend_core && bend PROOF.bend --verdict   (o portao das provas)
 #          cd bend_core && bend LAWS.bend              (so as afirmacoes: reports
 #                                                       cada lei como claim aberto)
 # Toolchain: docs/bend/BEND_PROOFS_REFERENCE.md, docs/bend/BEND_LAW_GUIDE.md
 #
-# MEDIDO 2026-10-29: a linha apontava para `bash tools/bend_verify.sh`, que nao
-# existe NESTE repositorio (e um caminho herdado do `consultgpt`, de onde este
-# pacote foi portado). O portao real aqui e `_main/bend-laws-gate.py`, que
-# envolve o `bend --verdict` e acrescenta os catorze controlos negativos e as
-# duas sondas de tamper.
-#
-# MEDIDO 2026-10-30: o gate MUDOU de forma. `_main/bend-laws-gate.py` fixa a
-# INVENTARIO de leis e o CONJUNTO de controlos, e por isso acrescentar uma lei
-# aqui exige acrescentar a linha nos dois pins de la (senao o gate sai 5). O
-# portao das PROVAS e, e sempre foi, `bend PROOF.bend --verdict`.
+# MEDIDO 2026-11-08: o portao deste repositorio e `tools/bend_verify.sh` (ele
+# existe AQUI desde 2026-10-30; a nota anterior dizia o contrario e estava
+# errada). Ele fixa o INVENTARIO de leis e o CONJUNTO de controlos, e por isso
+# acrescentar uma lei aqui exige acrescentar a linha nos DOIS pins de la
+# (senao o gate sai 5 / 3). O portao das PROVAS e, e sempre foi,
+# `bend PROOF.bend --verdict`.
 
 import Base
 
@@ -360,17 +357,17 @@ def Nat.window_rows(+live_rows: Nat, +capacity: Nat) -> Nat:
 # O FATO MEDIDO, em `app/webview/sotto_webview.py` (numeros de linha lidos no
 # ficheiro a 2026-10-30):
 #
-#   * `_blank_caption_window` (:9719) faz
+#   * `_blank_caption_window` (:15775) faz
 #         self._source_epoch = int(getattr(self, '_source_epoch', 0)) + 1
 #         self._caption_pending = None
 #     e depois esconde o overlay (`ov.show(False)`) -- limpa pixeis E fila.
-#   * `start_worker` (:9514) faz AS MESMAS duas linhas quando um worker arranca
+#   * `start_worker` (:15459) faz AS MESMAS duas linhas quando um worker arranca
 #     (`self._source_epoch = int(...) + 1`, `self._caption_pending = None`):
 #     "UM WORKER NOVO E' UMA FONTE NOVA". Nao mexe nos pixeis.
-#   * `push_caption_to_window` (:9798) grava no slot UNICO
+#   * `push_caption_to_window` (:16230) grava no slot UNICO
 #         (now, text, previous, int(getattr(self, '_source_epoch', 0)))
 #     -- o texto viaja com o epoch COM QUE FOI ENFILEIRADO.
-#   * `_drain` (:9812-9819) compara ANTES de pintar:
+#   * `_drain_caption_pending` (:15979-...) compara ANTES de pintar:
 #         cur = int(getattr(self, '_source_epoch', 0))
 #         if epoch != cur: log CAPTION_DROP_EPOCH ...
 #         ov.set_text(...)
@@ -581,3 +578,387 @@ law Cap.display_clean_before_new_source:
               Slot.is_idle(Cap.slot(Cap.on_blank(c)))),
      Nat.same_epoch(Cap.epoch(Cap.on_blank(c)),
                     Nat.add(1n, Cap.epoch(c)))) == True{} : Bool}
+
+# ===========================================================================
+# DECISAO 6 -- QUEM PODE ESCREVER O HISTORICO CANONICO (2026-11-05)
+#
+# A PRODUCAO e `app/panel/history-source.js`, a funcao `historyDecision(meta)`
+# -- a UNICA decisao de "esta linha entra no historico, e sob que rota?".
+# MEDIDO no proprio ficheiro (lido a 2026-11-08, 152 linhas):
+#
+#   * `route === 'final'`            -> ACEITA com a rota `final` (a linha foi
+#                                       FECHADA; o produtor e' so procedencia);
+#   * `route === 'provisional-draft'`-> RECUSA com o motivo `provisional-draft`
+#                                       (a legenda AO VIVO -- o "NUNCA" do dono,
+#                                        2026-10-07, verbatim: *"o historico nao
+#                                       e' pra ser NUNCA o historico do live"*);
+#   * qualquer outra rota NAO VAZIA  -> RECUSA com `unknown-route` (o escritor
+#                                       nao conhece esta rota);
+#   * sem rota + `producer === 'redux'` -> ACEITA com a rota `batch`;
+#   * sem rota + qualquer outro produtor (incluindo ABSENTE) -> RECUSA com
+#     `no-route-no-producer` -- FAIL-CLOSED: nada diz que a linha acabou.
+#
+# O QUE ESTE MODELO PROVE: essas cinco regras, e a CONSISTENCIA DO INSTRUMENTO
+# (`transcriptRoute(meta) === null` sse `historyRefusal(meta) !== null`): uma
+# recusa que nao sabe dizer-se e' o defeito que este modulo foi ensinado a nao
+# cometer (`recordHistory` a reporta como `HISTORY_REFUSED`).
+#
+# O QUE NAO PROVE: o conteudo do texto, o store em disco, nem qual rota o motor
+# de formulacao VOTOU (essa e' a DECISAO 7). A ponte com a producao esta em
+# `_main/bend_mirror.py`, que executa a funcao REAL (via `node`) sobre o dominio
+# inteiro -- uma lei aqui e uma amostra ali, e nenhuma substitui a outra.
+#
+# A ENTRADA DE PRODUCAO QUE CHEGA A CADA LEI (F-6): os `meta` que
+# `caption-formulation.js::commit` entrega ao `recordHistory` do painel, e os
+# que `panel.js` monta a partir da linha gravada -- `route` vem de
+# `routeFor()` (`'final'` | `'provisional-draft'`) e `producer` vem do worker
+# (`'redux'` | `'live'` | ausente). Rotas desconhecidas chegam de escritores que
+# nao sao este motor; e' por isso que a recusa `unknown-route` existe.
+# ===========================================================================
+
+# O produtor que a linha DECLARA -- o `producerOf(meta)`, normalizado.
+type Prod is Data:
+  ProdNone{}
+  ProdLive{}
+  ProdRedux{}
+  ProdOther{tag: Nat}
+
+# A rota que a linha DECLARA -- o `meta.route`, e so os tres valores que a
+# producao distingue (ausente, `final`, `provisional-draft`, qualquer outra).
+type InRoute is Data:
+  InRouteAbsent{}
+  InRouteFinal{}
+  InRouteProvisional{}
+  InRouteOther{name: Nat}
+
+# A rota que o historico GRAVA -- nenhuma, `final`, ou `batch`.
+type OutRoute is Data:
+  OutNone{}
+  OutFinal{}
+  OutBatch{}
+
+# O motivo de uma recusa -- `null` (aqui `ReasonNone`) quando a linha entrou.
+type OutReason is Data:
+  ReasonNone{}
+  ReasonProvisional{}
+  ReasonUnknownRoute{}
+  ReasonNoRouteNoProducer{}
+
+def OutRoute.is_none(r: OutRoute) -> Bool:
+  match r:
+    case OutNone{}:
+      True{}
+    case OutFinal{}:
+      False{}
+    case OutBatch{}:
+      False{}
+
+def OutReason.is_none(r: OutReason) -> Bool:
+  match r:
+    case ReasonNone{}:
+      True{}
+    case ReasonProvisional{}:
+      False{}
+    case ReasonUnknownRoute{}:
+      False{}
+    case ReasonNoRouteNoProducer{}:
+      False{}
+
+# O codigo do produtor, para a lei extensional o poder comparar com o literal
+# `redux` do ficheiro de producao.
+def Prod.code(producer: Prod) -> Nat:
+  match producer:
+    case ProdNone{}:
+      0n
+    case ProdLive{}:
+      1n
+    case ProdRedux{}:
+      2n
+    case ProdOther{tag}:
+      3n
+
+# `isCanonicalLine(meta)` -- o produtor e' o canonico (`'redux'`)?
+def Hist.producer_is_canonical(producer: Prod) -> Bool:
+  match producer:
+    case ProdRedux{}:
+      True{}
+    case ProdLive{}:
+      False{}
+    case ProdNone{}:
+      False{}
+    case ProdOther{tag}:
+      False{}
+
+# `historyDecision(meta).route` -- a rota QUE ENTRA, ou nenhuma.
+def Hist.route_of(route: InRoute, producer: Prod) -> OutRoute:
+  match route:
+    case InRouteFinal{}:
+      OutFinal{}
+    case InRouteProvisional{}:
+      OutNone{}
+    case InRouteOther{name}:
+      OutNone{}
+    case InRouteAbsent{}:
+      match producer:
+        case ProdRedux{}:
+          OutBatch{}
+        case ProdLive{}:
+          OutNone{}
+        case ProdNone{}:
+          OutNone{}
+        case ProdOther{tag}:
+          OutNone{}
+
+# A PORTA: aceita sse ha' uma rota.
+def Hist.accepted(route: InRoute, producer: Prod) -> Bool:
+  Bool.not(OutRoute.is_none(Hist.route_of(route, producer)))
+
+# A SEGUNDA FORMA da porta, escrita como a REGRA e nao como a projeccao. A lei
+# `Hist.accepted_agrees_with_its_two_forms` e' o que impede as duas de
+# divergirem -- e' o que a F-6b pede de um def com codominio `Bool`.
+def Hist.accepted_reference(route: InRoute, producer: Prod) -> Bool:
+  match route:
+    case InRouteFinal{}:
+      True{}
+    case InRouteProvisional{}:
+      False{}
+    case InRouteOther{name}:
+      False{}
+    case InRouteAbsent{}:
+      match producer:
+        case ProdRedux{}:
+          True{}
+        case ProdLive{}:
+          False{}
+        case ProdNone{}:
+          False{}
+        case ProdOther{tag}:
+          False{}
+
+# `historyDecision(meta).reason` -- o motivo, ou nenhum.
+def Hist.reason_of(route: InRoute, producer: Prod) -> OutReason:
+  match route:
+    case InRouteFinal{}:
+      ReasonNone{}
+    case InRouteProvisional{}:
+      ReasonProvisional{}
+    case InRouteOther{name}:
+      ReasonUnknownRoute{}
+    case InRouteAbsent{}:
+      match producer:
+        case ProdRedux{}:
+          ReasonNone{}
+        case ProdLive{}:
+          ReasonNoRouteNoProducer{}
+        case ProdNone{}:
+          ReasonNoRouteNoProducer{}
+        case ProdOther{tag}:
+          ReasonNoRouteNoProducer{}
+
+# REJECTS: uma porta que recusasse a linha FECHADA porque o produtor nao e' o
+# canonico -- a regra ANTERIOR a 2026-11-05, que deixou o historico do dono com
+# ZERO escritores (`3830 CAPTION_APPLIED, 0 HISTORY_APPEND`, medido no log dele).
+law Hist.final_route_is_accepted:
+  for producer: Prod
+  {Hist.accepted(InRouteFinal{}, producer) == True{} : Bool}
+
+# REJECTS: a porta PERMISSIVA -- uma linha `provisional-draft` (a legenda ao
+# vivo) a entrar no historico. E' o defeito que o dono reportou verbatim
+# (*"o historico simplesmente mostra a legenda ao vivo"*, 2026-10-06).
+law Hist.provisional_route_is_refused:
+  for producer: Prod
+  {Hist.accepted(InRouteProvisional{}, producer) == False{} : Bool}
+
+# REJECTS: a separacao de 2026-10-07, apagada -- `producer:'live'` sem rota a
+# entrar como `batch`. O "NUNCA" do dono.
+law Hist.live_producer_is_never_canonical:
+  {Hist.accepted(InRouteAbsent{}, ProdLive{}) == False{} : Bool}
+
+# REJECTS: um default permissivo que aceitasse a linha sem rota sem o produtor
+# canonico -- o `|| 'final'` que o painel tinha antes de 2026-10-06.
+law Hist.absent_claim_is_accepted_only_from_the_canonical_producer:
+  for producer: Prod
+  {Hist.accepted(InRouteAbsent{}, producer)
+     == Hist.producer_is_canonical(producer) : Bool}
+
+# REJECTS: `unknown-route` a entrar como se fosse uma rota conhecida. Um
+# escritor que inventa uma rota nao diz que a linha acabou.
+law Hist.unknown_route_is_refused:
+  for name: Nat
+  for producer: Prod
+  {Hist.accepted(InRouteOther{name}, producer) == False{} : Bool}
+
+# A LEI EXTENSIONAL do produtor canonico (F-6b): o predicado tem de ser
+# EXACTAMENTE o codigo do `redux`, e nao um `True{}` constante.
+law Hist.canonical_producer_is_exactly_the_redux_code:
+  for producer: Prod
+  {Hist.producer_is_canonical(producer)
+     == Nat.same_epoch(Prod.code(producer), 2n) : Bool}
+
+# F-6b: o `Bool` da porta nao pode ficar constante. As duas formas do mesmo
+# enunciado -- a projeccao e a regra -- tem de concordar em TODAS as entradas.
+law Hist.accepted_agrees_with_its_two_forms:
+  for route: InRoute
+  for producer: Prod
+  {Hist.accepted(route, producer)
+     == Hist.accepted_reference(route, producer) : Bool}
+
+# O INSTRUMENTO: recusar e' dizer por que. `transcriptRoute(meta) === null` sse
+# `historyRefusal(meta) !== null` -- uma recusa muda e' o defeito que este
+# modulo existe para nao repetir.
+law Hist.refusal_names_itself:
+  for route: InRoute
+  for producer: Prod
+  {Hist.accepted(route, producer)
+     == OutReason.is_none(Hist.reason_of(route, producer)) : Bool}
+
+# ===========================================================================
+# DECISAO 7 -- A VOTACAO DE ROTA DA FORMULACAO (2026-11-04)
+#
+# A PRODUCAO e `app/panel/caption-formulation.js::routeFor(reason)` e o seu
+# companheiro `routeSourceFor(route)` -- as duas metades da decisao que o
+# `commit` carimba no `meta` que chega a DECISAO 6. MEDIDO no ficheiro (lido a
+# 2026-11-08, 1277 linhas):
+#
+#   routeFor(reason):
+#     if (bufferFinal)     return 'final';              -- o worker FECHOU
+#     if (bufferSawFinal)  return 'provisional-draft';  -- o worker votou ABERTO
+#     return PANEL_CLOSED_REASON.test(reason)
+#              ? 'provisional-draft'                    -- e' o painel que fecha
+#              : 'final';                               -- o AUDIO fechou
+#
+#   routeSourceFor(route):
+#     worker vote            -> 'worker-stamped'
+#     producer declarado     -> 'worker-stamped-producer'
+#     sem voto, rota 'final' -> 'fallback'      <-- o default silencioso, NOMEADO
+#     sem voto, restante     -> 'panel-deadline'
+#
+# O QUE ESTE MODELO PROVE: o voto do worker manda; o fecho do PAINEL nunca
+# fabrica um `final` (logo nunca mete a legenda ao vivo no historico); o
+# fecho do AUDIO, sem voto, cai no default `final` (o fallback existe e e'
+# deliberado -- apaga-lo esvazia o historico do dono); e o rotulo `fallback`
+# aparece EXACTAMENTE naquele caso e em nenhum outro, para que um de-landing do
+# contrato do worker (P1 `4fb5b25380cbc8269977e22e`) seja legivel no texto
+# gravado e nao invisivel.
+#
+# O QUE NAO PROVE: o TEMPO. `COMMIT_MAX_HOLD_MS` (1500 ms) e o limiar do
+# `describeReadiness` (7 s) sao orcamentos medidos pelo falsificador
+# (`_main/youtube-drift-oracle.py`, `_main/panel-commit-stable-oracle.py`), e
+# uma lei nunca prova um milissegundo.
+#
+# A ENTRADA DE PRODUCAO (F-6): `commit(reason)` e chamado por `flush`
+# (`'flush'`/`'status-change'`), por `expireHold` (`'hold-timeout'`), pelo
+# `ingest` (`'audio-gap …'`, `'chars …'`, `'stable'`). As flags vem dos
+# fragmentos do worker (`meta.final`), o produtor do `meta.producer`, e o
+# `reason` e' literal no ponto de chamada.
+# ===========================================================================
+
+# A rota de origem, como `routeSourceFor` a devolve.
+type Src is Data:
+  SrcWorker{}
+  SrcWorkerProducer{}
+  SrcPanelDeadline{}
+  SrcFallback{}
+
+# `routeFor(reason) == 'final'`? A primeira forma, por `match` nos parametros.
+def Fmt.is_final(buffer_final: Bool, saw_final: Bool, panel_closed: Bool) -> Bool:
+  match buffer_final:
+    case True{}:
+      True{}
+    case False{}:
+      match saw_final:
+        case True{}:
+          False{}
+        case False{}:
+          Bool.not(panel_closed)
+
+# A SEGUNDA FORMA da mesma decisao, por `Bool.pick` (a forma que aceita uma
+# condicao computada -- que e' a forma que a producao usa).
+def Fmt.is_final_reference(buffer_final: Bool, saw_final: Bool, panel_closed: Bool) -> Bool:
+  Bool.pick(Bool, buffer_final, True{},
+    Bool.pick(Bool, saw_final, False{},
+      Bool.pick(Bool, panel_closed, False{}, True{})))
+
+# `routeSourceFor` -- o rotulo que o `commit` carimba no `meta.routeSource`.
+def Fmt.source(buffer_final: Bool, saw_final: Bool, has_producer: Bool, panel_closed: Bool) -> Src:
+  match buffer_final:
+    case True{}:
+      SrcWorker{}
+    case False{}:
+      match saw_final:
+        case True{}:
+          SrcWorker{}
+        case False{}:
+          match has_producer:
+            case True{}:
+              SrcWorkerProducer{}
+            case False{}:
+              match panel_closed:
+                case True{}:
+                  SrcPanelDeadline{}
+                case False{}:
+                  SrcFallback{}
+
+def Src.is_fallback(src: Src) -> Bool:
+  match src:
+    case SrcFallback{}:
+      True{}
+    case SrcWorker{}:
+      False{}
+    case SrcWorkerProducer{}:
+      False{}
+    case SrcPanelDeadline{}:
+      False{}
+
+# A SEGUNDA FORMA do rotulo `fallback`, escrita como o predicado literal.
+def Fmt.is_fallback_reference(buffer_final: Bool, saw_final: Bool, has_producer: Bool, panel_closed: Bool) -> Bool:
+  Bool.and(Bool.not(buffer_final),
+    Bool.and(Bool.not(saw_final),
+      Bool.and(Bool.not(has_producer), Bool.not(panel_closed))))
+
+# REJECTS: o voto `final:true` do worker a ser rebaixado pelo `reason` do
+# painel -- um `final` genuino a chegar ao historico como `provisional-draft`.
+law Fmt.worker_final_vote_is_final:
+  for saw_final: Bool
+  for panel_closed: Bool
+  {Fmt.is_final(True{}, saw_final, panel_closed) == True{} : Bool}
+
+# REJECTS: o voto ABERTO do worker (`final:false`) a ser promovido a `final`
+# porque o painel fechou a linha por tempo -- a legenda ao vivo no historico.
+law Fmt.worker_partial_vote_is_never_final:
+  for panel_closed: Bool
+  {Fmt.is_final(False{}, True{}, panel_closed) == False{} : Bool}
+
+# REJECTS: o fecho do PROPRIO painel (`hold-timeout`/`status-change`/`flush`/
+# `stable`) a fabricar um `final`. E' o defeito medido em 2026-10-06: 10 de 10
+# linhas que o dono leu como "a legenda ao vivo" vinham de `status-change`.
+law Fmt.panel_close_never_manufactures_final:
+  {Fmt.is_final(False{}, False{}, True{}) == False{} : Bool}
+
+# REJECTS: apagar o default `final` -- sem voto e sem fecho do painel (um
+# `audio-gap` ou um `chars`), o historico do dono ficava vazio. O default e'
+# DELIBERADO e nao pode ser apagado (ver o docstring de `routeFor`).
+law Fmt.audio_close_without_a_vote_is_final:
+  {Fmt.is_final(False{}, False{}, False{}) == True{} : Bool}
+
+# F-6b: a decisao `Bool` nao pode ficar constante. As duas formas -- `match`
+# sobre os parametros e `Bool.pick` sobre as mesmas condicoes -- concordam em
+# todas as entradas.
+law Fmt.route_agrees_with_its_two_forms:
+  for buffer_final: Bool
+  for saw_final: Bool
+  for panel_closed: Bool
+  {Fmt.is_final(buffer_final, saw_final, panel_closed)
+     == Fmt.is_final_reference(buffer_final, saw_final, panel_closed) : Bool}
+
+# A LEI DO DE-LANDING: o rotulo `fallback` aparece EXACTAMENTE quando nao ha'
+# voto do worker, nao ha' produtor declarado, e a rota e' `final` -- e em
+# nenhum outro caso. Se esta lei partir, um de-landing do contrato do worker
+# (ou um default que engoliu o rotulo) fica invisivel no texto gravado.
+law Fmt.fallback_is_exactly_the_silent_default:
+  for buffer_final: Bool
+  for saw_final: Bool
+  for has_producer: Bool
+  for panel_closed: Bool
+  {Src.is_fallback(Fmt.source(buffer_final, saw_final, has_producer, panel_closed))
+     == Fmt.is_fallback_reference(buffer_final, saw_final, has_producer, panel_closed) : Bool}

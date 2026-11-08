@@ -506,3 +506,196 @@ def Laws.Cap.display_clean_before_new_source(c):
   match c:
     case Laws.Cap{epoch, slot, shown}:
       same_epoch_refl(Nat.add(1n, epoch))
+
+# ---------------------------------------------------------------------------
+# PROOFS OF DECISAO 6 -- `app/panel/history-source.js`.
+#
+# Every law here is an EQUATION between two `Bool` terms built from the model's
+# own projections, so once the input constructor is known the two sides iota-
+# reduce to the same term and `{==}` closes the arm. The only laws that need a
+# case split are the ones whose model def reads BOTH inputs (`route_of` and
+# `reason_of` only look at `producer` on the `InRouteAbsent{}` arm).
+# ---------------------------------------------------------------------------
+
+# PROOF: a worker-closed line is accepted whoever produced it. `route_of`
+# answers `OutFinal{}` from the route alone, so `producer` is never read here.
+def Laws.Hist.final_route_is_accepted(producer):
+  match producer:
+    case Laws.ProdNone{}:
+      {==}
+    case Laws.ProdLive{}:
+      {==}
+    case Laws.ProdRedux{}:
+      {==}
+    case Laws.ProdOther{tag}:
+      {==}
+
+# PROOF: the live caption's route is refused whoever produced it.
+def Laws.Hist.provisional_route_is_refused(producer):
+  match producer:
+    case Laws.ProdNone{}:
+      {==}
+    case Laws.ProdLive{}:
+      {==}
+    case Laws.ProdRedux{}:
+      {==}
+    case Laws.ProdOther{tag}:
+      {==}
+
+# PROOF: the live producer, with no route to speak for it, is refused.
+def Laws.Hist.live_producer_is_never_canonical():
+  {==}
+
+# PROOF: with no route, the decision IS the canonical-producer predicate.
+# The `InRouteAbsent{}` arm is the only one that reads `producer`, so it is
+# the only one that splits.
+def Laws.Hist.absent_claim_is_accepted_only_from_the_canonical_producer(producer):
+  match producer:
+    case Laws.ProdNone{}:
+      {==}
+    case Laws.ProdLive{}:
+      {==}
+    case Laws.ProdRedux{}:
+      {==}
+    case Laws.ProdOther{tag}:
+      {==}
+
+# PROOF: an unknown route is refused. `route_of` answers `OutNone{}` from the
+# route alone, so the name and the producer are not read.
+def Laws.Hist.unknown_route_is_refused(name, producer):
+  {==}
+
+# PROOF: the canonical predicate is exactly the `redux` code. Split the
+# producer: each code is a ground `Nat`, and `same_epoch` computes on ground
+# arguments.
+def Laws.Hist.canonical_producer_is_exactly_the_redux_code(producer):
+  match producer:
+    case Laws.ProdNone{}:
+      {==}
+    case Laws.ProdLive{}:
+      {==}
+    case Laws.ProdRedux{}:
+      {==}
+    case Laws.ProdOther{tag}:
+      {==}
+
+# PROOF (F-6b): the projection and the rule agree. Split the route; the
+# `InRouteAbsent{}` arm is the only one whose answer depends on the producer.
+def Laws.Hist.accepted_agrees_with_its_two_forms(route, producer):
+  match route:
+    case Laws.InRouteFinal{}:
+      {==}
+    case Laws.InRouteProvisional{}:
+      {==}
+    case Laws.InRouteOther{name}:
+      {==}
+    case Laws.InRouteAbsent{}:
+      match producer:
+        case Laws.ProdNone{}:
+          {==}
+        case Laws.ProdLive{}:
+          {==}
+        case Laws.ProdRedux{}:
+          {==}
+        case Laws.ProdOther{tag}:
+          {==}
+
+# PROOF: accepted exactly when there is no refusal reason. Same split shape as
+# the law above, for the same reason.
+def Laws.Hist.refusal_names_itself(route, producer):
+  match route:
+    case Laws.InRouteFinal{}:
+      {==}
+    case Laws.InRouteProvisional{}:
+      {==}
+    case Laws.InRouteOther{name}:
+      {==}
+    case Laws.InRouteAbsent{}:
+      match producer:
+        case Laws.ProdNone{}:
+          {==}
+        case Laws.ProdLive{}:
+          {==}
+        case Laws.ProdRedux{}:
+          {==}
+        case Laws.ProdOther{tag}:
+          {==}
+
+# ---------------------------------------------------------------------------
+# PROOFS OF DECISAO 7 -- `app/panel/caption-formulation.js`.
+# ---------------------------------------------------------------------------
+
+# PROOF: `bufferFinal` wins before `saw_final`/`reason` are read.
+def Laws.Fmt.worker_final_vote_is_final(saw_final, panel_closed):
+  {==}
+
+# PROOF: a worker vote of `final:false` is never a `final` route.
+def Laws.Fmt.worker_partial_vote_is_never_final(panel_closed):
+  {==}
+
+# PROOF: the panel's own close is never a `final` route.
+def Laws.Fmt.panel_close_never_manufactures_final():
+  {==}
+
+# PROOF: the deliberate fallback -- no vote, no panel close, `final`.
+def Laws.Fmt.audio_close_without_a_vote_is_final():
+  {==}
+
+# PROOF (F-6b): `match` and `Bool.pick` are the same decision. Eight arms,
+# because the three flags are Bools; each arm computes.
+def Laws.Fmt.route_agrees_with_its_two_forms(buffer_final, saw_final, panel_closed):
+  match buffer_final saw_final panel_closed:
+    case True{} True{} True{}:
+      {==}
+    case True{} True{} False{}:
+      {==}
+    case True{} False{} True{}:
+      {==}
+    case True{} False{} False{}:
+      {==}
+    case False{} True{} True{}:
+      {==}
+    case False{} True{} False{}:
+      {==}
+    case False{} False{} True{}:
+      {==}
+    case False{} False{} False{}:
+      {==}
+
+# PROOF (F-6b): `fallback` is exactly the silent default. Sixteen arms: four
+# flags, two values each. `Src.is_fallback` and the literal predicate agree on
+# every one.
+def Laws.Fmt.fallback_is_exactly_the_silent_default(buffer_final, saw_final, has_producer, panel_closed):
+  match buffer_final saw_final has_producer panel_closed:
+    case True{} True{} True{} True{}:
+      {==}
+    case True{} True{} True{} False{}:
+      {==}
+    case True{} True{} False{} True{}:
+      {==}
+    case True{} True{} False{} False{}:
+      {==}
+    case True{} False{} True{} True{}:
+      {==}
+    case True{} False{} True{} False{}:
+      {==}
+    case True{} False{} False{} True{}:
+      {==}
+    case True{} False{} False{} False{}:
+      {==}
+    case False{} True{} True{} True{}:
+      {==}
+    case False{} True{} True{} False{}:
+      {==}
+    case False{} True{} False{} True{}:
+      {==}
+    case False{} True{} False{} False{}:
+      {==}
+    case False{} False{} True{} True{}:
+      {==}
+    case False{} False{} True{} False{}:
+      {==}
+    case False{} False{} False{} True{}:
+      {==}
+    case False{} False{} False{} False{}:
+      {==}

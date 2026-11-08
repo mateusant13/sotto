@@ -496,8 +496,22 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 06:5x):** `_main\_audit-verify-all.cmd` = **290125 B**,
-  **3507 CRLF** / 0 bare LF, sha256 `1427E999159AE6ACFA6809EFC919970F09612AA622D253621B850DBA8C9A6E72`.
+- **PIN do ficheiro (medido 2026-11-08, 08:0x):** `_main\_audit-verify-all.cmd` = **292642 B**,
+  **3533 CRLF** / 0 bare LF, sha256 `8FBB1211ECDBD2FFF7044D61B515214E8E2541959AEFF041AE4FEA1335A0DF82`.
+  (Dois mil quinhentos e dezassete bytes e VINTE E SEIS linhas a mais do que o pin de 290125 B: mais
+  um passo, `bend-ledger-selftest`, que corre o `--self-test` do livro de provas
+  (`tools\bend_proof_ledger.py`): ele julga o CLASSIFICADOR do livro com cinco fixtures, incluindo
+  "um check saltado nunca e' verde", e era um instrumento com juiz e ZERO chamadores.
+  (Mil oitocentos e cinquenta e um bytes e DEZASSEIS linhas a mais do que o pin de 290125 B: o par
+  `bend-mirror` + `red-as-expected-bend-mirror`, que leva as leis `Hist.*`/`Fmt.*` das DECISOES 6 e 7
+  ate' as funcoes REAIS (`app\panel\history-source.js` e `app\panel\caption-formulation.js`, as duas
+  executadas por `node`, nao relidas), mais as QUINZE dependencias que faltavam ao `bend-laws`
+  (as 14 `bend_core\NEGATIVE_hist_*`/`NEGATIVE_fmt_*` e o `tools\bend_verify.sh`, que o portao passou
+  a ler). A classe e' a do `panel-deps`: um passo em cache a descrever um ficheiro que ja' mudou. O
+  portao do inventario tinha o mesmo buraco do lado do `bend_verify.sh` -- MEDIDO nesta rodada, a
+  lane escreveu as 14 leis na copia do `.sh` e nao no portao, e a bateria fechou RED num passo cujo
+  unico defeito era a divergencia entre duas copias do mesmo pin; agora o portao compara as duas
+  listas (`deep_tool_drift()`) e recusa com `EXIT_INVENTORY`.)
   (Dois mil duzentos e vinte e um bytes e vinte e sete linhas a mais do que o pin de 287904 B: o
   par `battery-record-pairing` + o seu `--neg-arm` -- e a REPARACAO que ele obrigou a fazer no
   MESMO bloco. MEDIDO na corrida de 06:0x: o bloco do painel corria DEZ passos e tinha UM

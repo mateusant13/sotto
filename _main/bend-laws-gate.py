@@ -84,6 +84,26 @@ EXPECTED_LAWS = (
     "Toks.count_due_is_monotone_in_time",
     "Toks.count_due_of_an_empty_line_is_zero",
     "Toks.count_due_of_one_word_is_its_flag",
+    # AS DECISOES 6 e 7 (2026-11-08): quem pode escrever o historico canonico
+    # (`Hist.*`, a producao e' `app/panel/history-source.js`) e qual rota um
+    # commit carimba (`Fmt.*`, `app/panel/caption-formulation.js`). As duas
+    # familias vem de um reflexo do dono sobre a legenda de outra fonte entrar
+    # no historico e de o painel FABRICAR um `final` so' porque o prazo venceu.
+    # Cada uma e' espelhada nas funcoes reais por `_main/bend_mirror.py`.
+    "Hist.final_route_is_accepted",
+    "Hist.provisional_route_is_refused",
+    "Hist.unknown_route_is_refused",
+    "Hist.live_producer_is_never_canonical",
+    "Hist.canonical_producer_is_exactly_the_redux_code",
+    "Hist.absent_claim_is_accepted_only_from_the_canonical_producer",
+    "Hist.refusal_names_itself",
+    "Hist.accepted_agrees_with_its_two_forms",
+    "Fmt.worker_final_vote_is_final",
+    "Fmt.worker_partial_vote_is_never_final",
+    "Fmt.panel_close_never_manufactures_final",
+    "Fmt.audio_close_without_a_vote_is_final",
+    "Fmt.route_agrees_with_its_two_forms",
+    "Fmt.fallback_is_exactly_the_silent_default",
 )
 
 #: Os CONTROLOS NEGATIVOS, cada um com a lei que tenta refutar. Um controlo por
@@ -111,6 +131,23 @@ EXPECTED_CONTROLS = (
      "Toks.count_due_of_an_empty_line_is_zero"),
     ("NEGATIVE_count_due_one_word.bend",
      "Toks.count_due_of_one_word_is_its_flag"),
+    # Decisoes 6/7 -- um ficheiro por lei, 14 no total.
+    ("NEGATIVE_hist_final_route.bend", "Hist.final_route_is_accepted"),
+    ("NEGATIVE_hist_provisional_route.bend", "Hist.provisional_route_is_refused"),
+    ("NEGATIVE_hist_unknown_route.bend", "Hist.unknown_route_is_refused"),
+    ("NEGATIVE_hist_live_producer.bend", "Hist.live_producer_is_never_canonical"),
+    ("NEGATIVE_hist_canonical_producer.bend",
+     "Hist.canonical_producer_is_exactly_the_redux_code"),
+    ("NEGATIVE_hist_absent_claim.bend",
+     "Hist.absent_claim_is_accepted_only_from_the_canonical_producer"),
+    ("NEGATIVE_hist_refusal.bend", "Hist.refusal_names_itself"),
+    ("NEGATIVE_hist_two_forms.bend", "Hist.accepted_agrees_with_its_two_forms"),
+    ("NEGATIVE_fmt_worker_final.bend", "Fmt.worker_final_vote_is_final"),
+    ("NEGATIVE_fmt_worker_partial.bend", "Fmt.worker_partial_vote_is_never_final"),
+    ("NEGATIVE_fmt_panel_close.bend", "Fmt.panel_close_never_manufactures_final"),
+    ("NEGATIVE_fmt_audio_close.bend", "Fmt.audio_close_without_a_vote_is_final"),
+    ("NEGATIVE_fmt_two_forms.bend", "Fmt.route_agrees_with_its_two_forms"),
+    ("NEGATIVE_fmt_fallback.bend", "Fmt.fallback_is_exactly_the_silent_default"),
 )
 
 EXIT_OK = 0
@@ -282,6 +319,59 @@ def law_inventory():
                   re.finditer(r"^law\s+([^:\s]+)\s*:", src, re.M))
 
 
+VERIFY_SH = os.path.join(REPO, "tools", "bend_verify.sh")
+
+
+def _heredoc_set(path, marker):
+    """O bloco `NAME="$(cat <<'EOF' ... EOF)"` de `tools/bend_verify.sh`.
+
+    Devolve as linhas nao vazias, ou `None` quando o bloco nao existe -- um pin
+    que ninguem consegue ler nao e' um pin, e o chamador trata `None` como FAIL.
+    """
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            src = fh.read()
+    except OSError:
+        return None
+    start = src.find(marker + '="$(cat <<\'EOF\'')
+    if start < 0:
+        return None
+    body = src[src.index("\n", start) + 1:]
+    end = body.find("\nEOF")
+    if end < 0:
+        return None
+    return [line.strip() for line in body[:end].splitlines() if line.strip()]
+
+
+def deep_tool_drift():
+    """`tools/bend_verify.sh` mantem a SUA copia dos dois pins.
+
+    Medido em 2026-11-08: uma lane acrescentou as 14 leis de 6/7 ao `.sh` e nao
+    a este portao, e a bateria fechou RED num `step` que descreve um ficheiro que
+    ja' mudou. Duas copias de um inventario so' sao um pin enquanto alguem as
+    comparar; o dono e' este portao, e o `.sh` e' o consumidor conferido.
+    """
+    laws = _heredoc_set(VERIFY_SH, "EXPECTED_LAWS")
+    controls = _heredoc_set(VERIFY_SH, "EXPECTED_CONTROLS")
+    if laws is None or controls is None:
+        return ["tools/bend_verify.sh: pin block nao encontrado "
+                "(EXPECTED_LAWS/EXPECTED_CONTROLS)"]
+    out = []
+    want_laws = sorted(EXPECTED_LAWS)
+    if sorted(laws) != want_laws:
+        out.append("leis: .sh tem %d, o portao %d; so' no .sh: %s; so' no portao: %s"
+                   % (len(laws), len(want_laws),
+                      sorted(set(laws) - set(want_laws)) or "-",
+                      sorted(set(want_laws) - set(laws)) or "-"))
+    want_controls = sorted("%s=%s" % pair for pair in EXPECTED_CONTROLS)
+    if sorted(controls) != want_controls:
+        out.append("controlos: .sh tem %d, o portao %d; so' no .sh: %s; so' no portao: %s"
+                   % (len(controls), len(want_controls),
+                      sorted(set(controls) - set(want_controls)) or "-",
+                      sorted(set(want_controls) - set(controls)) or "-"))
+    return out
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     selftest = "--selftest" in argv
@@ -368,6 +458,19 @@ def main(argv=None):
         return EXIT_INVENTORY
     print("PASS: law inventory matches the pinned %d laws."
           % len(got_laws))
+
+    # (3-bis) O PIN DO `tools/bend_verify.sh`. Duas copias do mesmo inventario
+    # divergem em silencio -- medido 2026-11-08 -- e a corrida que as descobre
+    # e' a que ja' estava a fechar vermelha por outro motivo. A comparacao custa
+    # um `open`.
+    drift = deep_tool_drift()
+    if drift:
+        print("BEND-GATE FAIL: tools/bend_verify.sh drifted from this gate's pin.")
+        for line in drift:
+            print("  " + line)
+        return EXIT_INVENTORY
+    print("PASS: tools/bend_verify.sh pins the same %d laws and %d controls."
+          % (len(EXPECTED_LAWS), len(EXPECTED_CONTROLS)))
 
     # (4) A DIVISAO. `LAWS.bend` sozinho tem de reportar as suas leis como
     # AFIRMACOES ABERTAS ("N TODOs found"). Se verificasse sozinho, as provas
