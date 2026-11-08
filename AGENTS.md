@@ -496,8 +496,27 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 11:4x):** `_main\_audit-verify-all.cmd` = **293408 B**,
-  **3542 CRLF** / 0 bare LF, sha256 `E685404B9B1C864567AA75807E10B2148BF00D633F3E15FD379877CA0D95744E`.
+- **PIN do ficheiro (medido 2026-11-08, 12:2x):** `_main\_audit-verify-all.cmd` = **295504 B**,
+  **3567 CRLF** / 0 bare LF, sha256 `5220516ED8AA824206248EC441F823F74CCC6B4CB74B95169EBC6F87A06BE6C0`.
+  (Mil quatrocentos e sessenta e tres bytes e DEZASSETE linhas a mais do que o pin de 294041 B: o
+  ratchet do RELOGIO ganhou o segundo tecto, o que era o defeito mais caro que este ficheiro tinha.
+  MEDIDO: o baseline era **5 801,2 s** (de 2026-11-05) e a corrida verde media **2 102,0 s** -- o
+  tecto de 6 091 s deixava passar **2,9x** de regressao em silencio, porque uma soma esconde o passo
+  que engordou. Agora ha' o tecto do total (5 %) e o POR PASSO (**20 %** sobre o baseline de cada
+  passo, piso de 5 s) mais seis bracos do juiz em toda invocacao; os 20 % e o piso sao a regua
+  MEDIDA (o mesmo oraculo: 79,94 s sozinho contra 219,1 s na corrida = contenda 2,7x), nao um gosto.
+  O baseline so' aperta por omissao e o `--neg-arm` tem DOIS mutantes -- M2 isola o ratchet por
+  passo aritmeticamente (o resultado tem de continuar abaixo do prazo e o acrescimo caber no tecto do
+  total), porque sem ele apagar o ratchet por passo continuava a dar `NEG-ARM: PASS` por causa da M1.)
+  (Seiscentos e trinta e tres bytes e OITO linhas a mais do que o pin de 293408 B: a cura de custo
+  do passo `panel-hidden-at-startup-oracle`, que era **219,1 s** dentro da corrida com 21 s de
+  margem. Re-medido sozinho antes de cortar: **79,94 s** onde o comentario dizia 1,97 s. A
+  populacao era um numero de CHANCES (8 repeticoes no pai, 3 em cada um dos QUATRO filhos = 234
+  execucoes do harness a 0,168 s, cada uma a arrancar fios reais) e as repeticoes nunca eram
+  comparadas ENTRE SI; `REPEATS_DEFAULT = 2` mais um braco de ACORDO (`REPEAT-UNSTABLE`) provam o
+  mesmo com 4x menos no pai e 1,5x em cada filho. Depois: **50,7 s** sozinho, `--neg-arm` 3,59 s,
+  3/3 mutantes. O determinismo foi medido ANTES de cortar: 20/20 execucoes da celula
+  `startup-hidden / at-init` assentaram o mesmo valor.)
   (Setecentos e sessenta e seis bytes e NOVE linhas a mais do que o pin de 292642 B: dois numeros de
   custo RE-MEDIDOS, os dois errados por 40x e por 2,7x. O passo `panel-hidden-at-startup-oracle`
   dizia `MEDIDO: 1,97 s`; medido hoje **79,94 s** sozinho e **219,1 s** dentro da corrida -- e o

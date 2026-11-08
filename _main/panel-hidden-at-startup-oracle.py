@@ -976,6 +976,7 @@ def arm_hidden(shell, repeats, stage_url, panel_url):
         for timing in ('at-init', 'late', 'never'):
             reps = repeats
             bad = []
+            seen = set()
             flashes = 0
             for _ in range(reps):
                 h = Harness(shell, stage_url=stage_url, panel_url=panel_url,
@@ -983,11 +984,23 @@ def arm_hidden(shell, repeats, stage_url, panel_url):
                 h.run(timing, stage_url, panel_url)
                 population += 1
                 got = h.form.Visible
+                seen.add(bool(got))
                 if bool(got) != bool(expect):
                     bad.append(f'visible={str(bool(got)).lower()}')
                 if h.ever_visible:
                     flashes += 1
-            ok = not bad
+            # THE AGREEMENT ARM. Two runs of the SAME cell ask the same
+            # question twice: the settled decision is a VALUE, not a sample, so
+            # it may not differ between them. `repeats` used to be a count of
+            # chances to see a deviation (8 here, 3 in each child) and the
+            # values were never compared against each other -- a cell that
+            # settled differently run to run was invisible unless the OTHER
+            # value happened to be the wrong one. Comparing them costs nothing
+            # and says more. MEDIDO 2026-11-08 (20 runs of the
+            # `startup-hidden / at-init` cell): the settled value was False in
+            # 20/20, so 2 runs hold the claim.
+            disagree = len(seen) > 1
+            ok = (not bad) and (not disagree)
             if not ok:
                 failures += 1
             results.append({
@@ -996,6 +1009,10 @@ def arm_hidden(shell, repeats, stage_url, panel_url):
                                      f'{str(bool(expect)).lower()} over {reps} '
                                      f'run(s); {why}; failures={len(bad)}'
                                      + (f' e.g. {bad[0]}' if bad else '')
+                                     + (f'; REPEAT-UNSTABLE: the same cell '
+                                        f'settled as {sorted(seen)} -- the '
+                                        f'settled state is a value, not a '
+                                        f'sample' if disagree else '')
                                      + f'; diagnostic only (NOT asserted): '
                                      f'transient flash in {flashes}/{reps} runs '
                                      f'— the settled state is what this ticket '
@@ -1108,6 +1125,7 @@ def _apply_edits(source, edits, why):
 #: errada -- as duas coisas nao se confundem na leitura. Um mutante cujo `expect`
 #: e' `not-caught` (o controle que TEM de ficar sadio) NAO se salva por travar:
 #: uma trava la' e' FALHA.
+REPEATS_DEFAULT = 2
 MUTANT_ARM_DEADLINE_S = float(os.environ.get('SOTTO_VIS_MUTANT_DEADLINE_S',
                                             '90'))
 CREATE_NO_WINDOW = 0x08000000
@@ -1131,7 +1149,7 @@ def _mutant_arm_child(shell_path, deadline_s):
         m_model = SourceModel(shell_path)
         _, w_fail = arm_wiring(m_model)
         _h_res, h_fail, _pop = arm_hidden(
-            m_shell, repeats=3,
+            m_shell, repeats=REPEATS_DEFAULT,
             stage_url='file:///stage.html', panel_url='file:///panel.html')
         out = {'ok': True, 'w_fail': w_fail, 'h_fail': h_fail}
     except Exception as exc:  # noqa: BLE001 -- the parent reports it
@@ -1393,8 +1411,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--shell', default=DEFAULT_SHELL,
                     help='the shell under test (default: the shipped one)')
-    ap.add_argument('--repeats', type=int, default=8,
-                    help='repeats per scenario/timing cell (default: 8)')
+    ap.add_argument('--repeats', type=int, default=REPEATS_DEFAULT,
+                    help=('repeats per scenario/timing cell (default: '
+                          f'{REPEATS_DEFAULT})'))
     ap.add_argument('--neg-arm', action='store_true',
                     help='run ONLY the negative arm -- the three mutants of '
                          'the defensive reads -- and nothing else; rc=1 BY '

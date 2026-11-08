@@ -1897,11 +1897,19 @@ REM IDENTICA, porque o `__init__` semeia os tres a False (:5710-5711, :5718).
 REM O PORTAO e PURO (o AST do shell + um FAKE; sem browser, sem app, sem
 REM audio, sem processo) e tem 7 arms + 3 mutantes no `--neg-arm`.
 REM MEDIDO: 1,97 s (normal) + 0,38 s (`--neg-arm`) -- o pin de 2026-11-05, que NAO
-REM vale mais. RE-MEDIDO 2026-11-08: **79,94 s** sozinho (rc=0, PASS), e **219,1 s**
-REM DENTRO da corrida (contenda: o fator medido foi 2,7x). O custo cresce com as copias
-REM da shell que cada braco de mutacao faz -- `sotto_webview.py` tem 22 780 linhas --
-REM e nao com o AST. Ele e o passo mais caro que NAO estoura o prazo, com 21 s de
-REM margem: o proximo degrau desta escada e ele.
+REM vale mais. RE-MEDIDO 2026-11-08 antes da cura: **79,94 s** sozinho (rc=0 PASS) e
+REM **219,1 s** DENTRO da corrida (fator de contenda 2,7x) -- o passo mais caro que
+REM passava, com 21 s de margem.
+REM A CURA, medida hoje: a populacao era um numero de CHANCES (8 repeticoes no pai e 3
+REM em cada um dos QUATRO filhos = 234 execucoes do harness, cada uma a arrancar fios
+REM reais: 0,168 s por execucao) e os valores nunca eram comparados ENTRE SI. Duas
+REM execucoes da MESMA celula sao a mesma pergunta feita duas vezes -- o estado assentado
+REM e' um VALOR, nao uma amostra --, por isso `REPEATS_DEFAULT = 2` mais um braco de
+REM ACORDO (`REPEAT-UNSTABLE`, que reprova a celula que assenta em dois valores) dizem
+REM mais que 8 repeticoes cegas e custam 4x menos no pai e 1,5x em cada filho.
+REM MEDIDO depois: **50,7 s** sozinho (rc=0, PASS) e `--neg-arm` **3,59 s** (mutantes
+REM 3/3). Determinismo medido ANTES de cortar: 20/20 execucoes da celula
+REM `startup-hidden / at-init` assentaram o MESMO valor.
 REM ---------------------------------------------------------------------------
 if exist _main\panel-hidden-at-startup-oracle.py (
   call :step panel-hidden-at-startup-oracle 0 "_main\panel-hidden-at-startup-oracle.py;app\webview\sotto_webview.py;app\webview\stage.html;app\panel\panel.html" "%OUT%\panel-hidden-at-startup.log" python _main\panel-hidden-at-startup-oracle.py
@@ -3100,11 +3108,28 @@ REM A CORRIDA TEM DE ESTAR FECHADA QUANDO ESTE PASSO LE' O RELOGIO. Ele le'
 REM `_cache\battery-steps.json`, que a corrida escreve passo a passo: em qualquer
 REM outro sitio mediria "a corrida ate' aqui", que e' um numero menor do que o
 REM verdadeiro -- a mesma classe de mentira que este portao existe para apanhar.
-REM O TECTO DA CORRIDA (2026-11-05). A bateria nao tinha portao nenhum sobre o RELOGIO:
-REM medido, 5 801,2 s no total, 86 % em 20 passos, o pior 3 781,6 s. `battery-budget-oracle`
-REM e' um RATCHET (o total nao pode crescer >5 % sobre o baseline e nenhum passo novo pode
-REM passar dos 240 s) e imprime o TARGET de 60 s com a distancia -- `RATCHET-OK` nunca se
-REM apresenta como "rapido". O `--neg-arm` muta a LEITURA (infla um passo 10x) e exige o RED.
+REM O TECTO DA CORRIDA (2026-11-05, ENDURECIDO em 2026-11-08). A bateria nao tinha
+REM portao nenhum sobre o RELOGIO: medido, 5 801,2 s no total, 86 % em 20 passos, o pior
+REM 3 781,6 s. `battery-budget-oracle` e' um RATCHET e imprime o TARGET de 60 s com a
+REM distancia -- `RATCHET-OK` nunca se apresenta como "rapido".
+REM O FURO MEDIDO HOJE: o ratchet era UM numero somado (baseline 5 801,2 s, tecto
+REM 6 091,3 s) contra uma corrida que media 2 102,0 s -- **2,9x** de regressao passavam em
+REM silencio, porque a soma esconde o passo que engordou e um passo pesado que sai da
+REM populacao BAIXA o total. Agora ha' DOIS tectos: o do total (5 %) e o POR PASSO
+REM (20 % sobre o baseline de cada passo, com piso de 5 s) -- os 20 % e o piso sao a regua
+REM MEDIDA, nao um gosto: o MESMO oraculo custou 79,94 s sozinho e 219,1 s dentro da
+REM corrida (contenda 2,7x), logo um limite de 5 % por passo gritaria em ruido, e um
+REM portao que grita em ruido e' desligado pela primeira pessoa que o veja vermelho.
+REM O baseline grava `per_step` e so' APERTA por omissao: um rebaseline que aceitasse em
+REM silencio um passo que engordou e' recusado, e aceitar exige `--accept-growth <nome,...>`.
+REM SEIS BRACOS DO JUIZ correm em toda invocacao normal (A1 +10 % passa, A2 +26 % reprova e
+REM nomeia, A3 total IGUAL com um passo 10->60 reprova, A4 passo novo acima do prazo, A5
+REM passo que saiu da populacao nao reprova, A6 abaixo do piso nao reprova): um juiz que nao
+REM consegue reprovar o caso que o motivou e' um portao decorativo.
+REM O `--neg-arm` muta a LEITURA com DOIS mutantes, porque ha' dois tectos: M1 = 10x no passo
+REM mais lento (prazo + total) e M2 = +30 % num passo cujo resultado CONTINUA abaixo do prazo
+REM e cujo acrescimo cabe no tecto do total -- logo so' o ratchet por passo o pode ver. Sem a
+REM M2, apagar o ratchet por passo continuava a dar `NEG-ARM: PASS` por causa da M1.
 if exist _main\battery-budget-oracle.py (
   call :step battery-budget 0 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json;_cache\battery-steps.json" "%OUT%\battery-budget.log" python _main\battery-budget-oracle.py
   call :record battery-budget !STEP_RC!

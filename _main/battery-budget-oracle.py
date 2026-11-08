@@ -38,6 +38,16 @@ CACHE = os.path.join(ROOT, '_cache', 'battery-steps.json')
 BASELINE = os.path.join(HERE, 'battery-budget-baseline.json')
 DEFAULT_TARGET_S = 60.0
 RATCHET_PCT = 1.05
+#: O RATCHET POR PASSO USA OUTRO FATOR, e a razao esta' MEDIDA. O `1.05` do
+#: total compara um numero SOMADO -- estavel, porque a contenda de um passo se
+#: dilui nos 370. Um passo sozinho nao tem essa diluicao: medido 2026-11-08, o
+#: MESMO oraculo custou 79,94 s sozinho e 219,1 s dentro da corrida -- fator de
+#: contenda **2,7x**. Uma regua de 5 % por passo dispararia em ruido, e um portao
+#: que grita em ruido e' desligado pela primeira pessoa que o vir vermelho. Daqui
+#: 20 % (a mesma regua do `shell-thread-budget`) mais um PISO de 5 s: abaixo disso
+#: nem o ruido nem o alvo de 60 s se importam com o passo.
+PER_STEP_PCT = 1.20
+PER_STEP_FLOOR_S = 5.0
 
 
 def read_steps(path):
@@ -62,6 +72,7 @@ def measure(rows, deadline_s):
     slow = sorted(rows, key=lambda r: -r['elapsed_s'])[:10]
     return {'total_s': round(total, 1), 'steps': len(rows),
             'over_deadline': sorted(r['name'] for r in over),
+            'per_step': {r['name']: round(r['elapsed_s'], 1) for r in rows},
             'slowest': [(r['name'], round(r['elapsed_s'], 1)) for r in slow]}
 
 
@@ -89,6 +100,31 @@ def judge(measured, baseline, target=DEFAULT_TARGET_S, pct=RATCHET_PCT):
         reasons.append('passo(s) acima do prazo sem divida declarada: %s'
                        % ','.join(new_over))
     gone = sorted(declared - set(measured['over_deadline']))
+    # O RATCHET POR PASSO, que e' o que este portao devia ter desde o inicio.
+    # MEDIDO 2026-11-08: o baseline era `total_s=5801,2` (de 2026-11-05) e a
+    # corrida verde media `2102,0` em 370 passos -- o tecto de 6 091 s deixava
+    # passar uma regressao de **2,9x** em silencio, porque UM numero somado
+    # esconde o passo que engordou e um passo pesado que sai da populacao baixa
+    # o total. A comparacao passo a passo nao tem esse buraco e NOMEIA o culpado.
+    # Passo novo nao entra por aqui: o `new_over` acima ja' o julga pelo prazo.
+    per_base = baseline.get('per_step') or {}
+    per_now = measured.get('per_step') or {}
+    if per_base:
+        grew = []
+        for name, secs in sorted(per_now.items()):
+            before = per_base.get(name)
+            if before is None or before <= 0:
+                continue
+            if before < PER_STEP_FLOOR_S:
+                continue
+            if secs > before * PER_STEP_PCT:
+                grew.append('%s %.1fs -> %.1fs (baseline %.1fs x %.2f = %.1fs)'
+                            % (name, before, secs, before, PER_STEP_PCT,
+                               before * PER_STEP_PCT))
+        if grew:
+            ok = False
+            reasons.append('passo(s) que engordaram alem do ratchet: %s'
+                           % ' | '.join(grew))
     gap = round(measured['total_s'] - target, 1)
     return ok, reasons, gap
 
@@ -112,48 +148,121 @@ def deadline():
         return 240.0
 
 
+def judge_arms():
+    """OS BRACOS DO JUIZ, puros: nenhum le' o disco, nenhum arranca processo.
+
+    Nasceram do defeito medido 2026-11-08: com o baseline em 5801,2 s e a corrida
+    a medir 2102,0 s, o tecto do total deixava passar uma regressao de 2,9x sem
+    dizer nada. Um `judge` que nao consegue reprovar o caso que o motivou e' um
+    portao decorativo, por isso os bracos correm em TODA invocacao normal (custo
+    medido: microssegundos) e o veredicto do passo inclui o deles.
+    """
+    base = {'total_s': 100.0, 'over_deadline': [], 'target_s': 60.0,
+            'per_step': {'a': 10.0, 'b': 40.0, 'c': 50.0}}
+
+    def m(per, total=None, over=()):
+        return {'total_s': round(sum(per.values()), 1) if total is None else total,
+                'steps': len(per), 'over_deadline': list(over),
+                'per_step': dict(per), 'slowest': []}
+
+    arms = []
+
+    def arm(name, measured, want_ok, want_name=None, want_red_total=False):
+        ok, why, _gap = judge(measured, base)
+        named = (any(want_name in w for w in why) if want_name else True)
+        total_red = any('acima do tecto' in w for w in why)
+        good = (ok == want_ok) and named and (total_red == want_red_total)
+        arms.append({'arm': name, 'ok': good,
+                     'detail': 'ok=%s (want %s); named=%s; total-red=%s (want %s); %s'
+                               % (ok, want_ok, named, total_red, want_red_total,
+                                  ' | '.join(why) or '(sem razoes)')})
+
+    arm('A1 um passo +10% passa (abaixo da regua de 20%)',
+        m({'a': 11.0, 'b': 40, 'c': 50}), True)
+    arm('A2 um passo +26% reprova e o NOMEIA',
+        m({'a': 12.6, 'b': 40, 'c': 50}), False, 'a 10.0s -> 12.6s')
+    arm('A3 total IGUAL e um passo 10->60 reprova (o caso que passava)',
+        m({'a': 60.0, 'b': 5.0, 'c': 35.0}, total=100.0), False, 'a 10.0s -> 60.0s')
+    # A arm A4 tambem derruba o TECTO DO TOTAL (400 s contra 105 s), e isso e'
+    # esperado: o passo novo e' um passo que ninguem tinha medido, logo o total
+    # sobe por construcao. O que ela prova e' que o `new_over` o NOMEIA.
+    arm('A4 passo novo acima do prazo, sem divida declarada',
+        m({'a': 10, 'b': 40, 'c': 50, 'd': 300}, over=['d']), False, 'd',
+        want_red_total=True)
+    arm('A5 um passo que saiu da populacao nao reprova',
+        m({'a': 10, 'b': 40}), True)
+    # O PISO: um passo de 0,3 s que dobra para 0,9 s e' ruido, nao regressao --
+    # a regua comeca em `PER_STEP_FLOOR_S`. Sem este braco, subir o piso para o
+    # infinito (apagar o ratchet) continuaria verde em todos os outros.
+    arm('A6 passo abaixo do piso (0,3s -> 0,9s) nao reprova',
+        m({'a': 10, 'b': 40, 'c': 50, 'tiny': 0.9}), True)
+    return arms
+
+
 def neg_arm():
-    """MUTA a LEITURA (nao o codigo): infla um passo 10x e exige o RED do mesmo `judge`."""
+    """MUTA a LEITURA (nao o codigo) e exige que o MESMO `judge` nomeie o mutante.
+
+    DOIS mutantes, porque o portao tem dois tectos e o segundo ficava sem controlo
+    proprio (medido 2026-11-08):
+
+      M1  10x no passo mais lento limpo -- cruza o prazo E o tecto do total.
+      M2  +30% num passo cujo resultado CONTINUA abaixo do prazo e cujo acrescimo
+          cabe no tecto do total -- logo o `new_over` nao pode disparar e o tecto
+          do total nao pode disparar: **so** o ratchet por passo pode ve-lo. Sem
+          esta segunda mutacao, apagar o ratchet por passo continuaria a dar
+          `NEG-ARM: PASS` por causa da M1 (o mutante apanhado era sempre o mesmo
+          tecto), que e' a classe "um controlo que prova outro portao".
+
+    O candidato da M2 e' escolhido por ARITMETICA, nao por nome: o primeiro passo
+    (por custo) cujo `x1.30` ainda caiba no prazo e no tecto do total.
+    """
     rows = read_steps(CACHE)
     measured = measure(rows, deadline())
     base = load_baseline()
     if base is None:
         print('NEG-ARM IMPOSSIVEL -- baseline ausente')
         return 1
-    ok_before, _, _ = judge(measured, base)
-    # O MUTANTE NAO PODE SER UM PASSO QUE A DIVIDA JA' DECLARA (medido
-    # 2026-11-05): inflar o passo MAIS LENTO, quando ele e' exactamente o que o
-    # baseline congela em `over_deadline`, deixa `new_over` VAZIO -- o
-    # `--neg-arm` publicava FAIL com o juiz a funcionar. A mutacao morde um
-    # passo que a divida NAO cobre.
-    _declared = set(base.get('over_deadline') or ())
-    # O CANDIDATO TEM DE ESTAR LIMPO HOJE (medido 2026-11-05): inflar o passo
-    # mais lento quando ele JA' passa do prazo nao mede nada -- o juiz ja' o
-    # nomeava antes do mutante. E a arm nao pode exigir um baseline verde: com um
-    # passo real acima do prazo, `ok_before` era False e o `--neg-arm` publicava
-    # FAIL com o juiz a funcionar (medido: `bend-laws 240,4 s`).
-    _cand = [r for r in rows
-             if r['name'] not in _declared and r['elapsed_s'] < deadline()] or rows
-    worst = max(_cand, key=lambda r: r['elapsed_s']) if _cand else None
-    if worst is None:
+    declared = set(base.get('over_deadline') or ())
+    ceiling = float(base['total_s']) * RATCHET_PCT
+    clean = [r for r in rows
+             if r['name'] not in declared and r['elapsed_s'] < deadline()
+             and r['elapsed_s'] >= PER_STEP_FLOOR_S] or rows
+    if not clean:
         print('NEG-ARM IMPOSSIVEL -- cache sem passos')
         return 1
-    worst['elapsed_s'] = max(worst['elapsed_s'] * 10.0, deadline() * 1.5)
-    mutant = measure(rows, deadline())
-    ok_after, why_after, _ = judge(mutant, base)
-    _, why_before, _ = judge(measured, base)
-    named_before = any(worst['name'] in w for w in why_before)
-    named_after = any(worst['name'] in w for w in why_after)
-    caught = named_after and not named_before
-    print('NEG-ARM leitura mutada: %s %.1fs -> %.1fs' % (worst['name'], worst['elapsed_s'] / 10.0,
-                                                         worst['elapsed_s']))
-    for line in why_after:
-        print('  RED', line)
-    print('NEG-ARM: %s (%s)' % ('PASS' if caught else 'FAIL',
-                                'o mutante foi APANHADO' if caught else 'o mutante passou'))
-    print('NEG-ARM nomeado antes=%s depois=%s (juiz virou RED: %s -> %s)'
-          % (named_before, named_after, ok_before, ok_after))
-    return 1 if caught else 0
+    worst = max(clean, key=lambda r: r['elapsed_s'])
+    sub_deadline = [r for r in clean
+                    if r is not worst
+                    and r['elapsed_s'] * 1.30 < deadline()
+                    and measured['total_s'] + r['elapsed_s'] * 0.30 < ceiling]
+    second = max(sub_deadline, key=lambda r: r['elapsed_s']) if sub_deadline else None
+    if second is None:
+        print('NEG-ARM CANNOT-MEASURE -- nenhum passo cabe no prazo E no tecto do '
+              'total depois de +30%; a M2 nao teria como isolar o ratchet por passo')
+        return 2
+    plan = [(worst, 'M1 x10 (prazo + total)', lambda o: max(o * 10.0, deadline() * 1.5)),
+            (second, 'M2 +30% (so o ratchet por passo)', lambda o: o * 1.30 + 0.1)]
+    base_ok, base_why, _ = judge(measured, base)
+    caught = 0
+    for row, label, mut in plan:
+        original = row['elapsed_s']
+        named_before = any(row['name'] in w for w in base_why)
+        row['elapsed_s'] = mut(original)
+        mutated = measure(rows, deadline())
+        ok_after, why_after, _ = judge(mutated, base)
+        named_after = any(row['name'] in w for w in why_after)
+        ok = named_after and not named_before and not ok_after
+        caught += 1 if ok else 0
+        print('NEG-ARM %-14s %-32s %s %.2fs -> %.2fs'
+              % (row['name'], label, 'APANHADO' if ok else 'PASSOU', original,
+                 row['elapsed_s']))
+        for line in why_after:
+            print('    RED', line)
+        row['elapsed_s'] = original
+    total_ok = caught == len(plan)
+    print('NEG-ARM: %s (%d/%d mutantes apanhados; juiz antes: %s)'
+          % ('PASS' if total_ok else 'FAIL', caught, len(plan), base_ok))
+    return 1 if total_ok else 0
 
 
 def main(argv):
@@ -162,14 +271,38 @@ def main(argv):
     if '--baseline' in argv:
         rows = read_steps(CACHE)
         measured = measure(rows, deadline())
+        old = load_baseline() or {}
+        accept = ''
+        for i, a in enumerate(argv):
+            if a == '--accept-growth' and i + 1 < len(argv):
+                accept = argv[i + 1]
+        allowed = {n for n in accept.split(',') if n}
+        # O BASELINE SO' APERTA POR OMISSAO. Um rebaseline que gravasse em
+        # silencio um passo que engordou seria o ratchet a assinar o proprio
+        # aumento -- o passo tem de nomear o que aceita em `--accept-growth`.
+        grew = []
+        for name, secs in sorted(measured['per_step'].items()):
+            before = (old.get('per_step') or {}).get(name)
+            if before and secs > before * RATCHET_PCT and name not in allowed:
+                grew.append('%s %.1fs -> %.1fs' % (name, before, secs))
+        if grew:
+            print('baseline RECUSADO -- passo(s) engordaram e nao foram aceites: %s'
+                  % ' | '.join(grew))
+            print('  (nomeie cada um em `--accept-growth a,b,c` se o aumento for o'
+                  ' resultado esperado de uma mudanca deliberada)')
+            return 1
         out = {'total_s': measured['total_s'], 'steps': measured['steps'],
                'over_deadline': measured['over_deadline'],
+               'per_step': measured['per_step'],
                'target_s': DEFAULT_TARGET_S,
-               'measured': '2026-11-05'}
+               'measured': __import__('datetime').date.today().isoformat()}
         io.open(BASELINE, 'w', encoding='utf-8', newline='\n').write(
             json.dumps(out, indent=2, sort_keys=True) + '\n')
-        print('baseline escrito: %s total_s=%.1f over=%d'
-              % (BASELINE, out['total_s'], len(out['over_deadline'])))
+        print('baseline escrito: %s total_s=%.1f over=%d per_step=%d'
+              % (BASELINE, out['total_s'], len(out['over_deadline']),
+                 len(out['per_step'])))
+        for name in sorted(allowed):
+            print('  ACEITE (declarado): %s' % name)
         return 0
     if not os.path.exists(CACHE):
         print('BATTERY-BUDGET CANNOT-MEASURE -- sem %s' % CACHE)
@@ -184,6 +317,14 @@ def main(argv):
     report(measured, base, gap)
     for line in why:
         print('  RED', line)
+    arms = judge_arms()
+    bad_arms = [a for a in arms if not a['ok']]
+    for a in arms:
+        print('  ARM %s %s -- %s' % ('ok  ' if a['ok'] else 'RED ', a['arm'], a['detail']))
+    if bad_arms:
+        ok = False
+        why.append('braco(s) do JUIZ reprovados: %s'
+                   % ','.join(a['arm'] for a in bad_arms))
     # O veredicto NOMEIA o ratchet. Um `PASS` ao lado de um gap de 5 741 s seria
     # exactamente o verde que nao mede nada: rc 0 aqui significa "nao piorou", e a
     # linha diz em voz alta que o TARGET nao foi atingido.
