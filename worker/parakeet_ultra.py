@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""Parakeet Ultra (moondream/parakeet-ultra) as a Sotto FINISHER engine.
+"""Parakeet Ultra (moondream/parakeet-ultra), the engine that was MEASURED and REFUSED.
+
+NAO EMBARCA (medido 2026-11-08). Nada no produto importa este modulo: o motor de
+fundo e' o `redux` ONNX int4 e o ao vivo e' o `nemotron`. Isto fica como
+INSTRUMENTO -- e' o que `_main/parakeet-ultra-oracle.py` carrega para comparar
+motores no mesmo audio -- e a razao de nao embarcar esta' medida em
+`_main/receipt-20261108-parakeet-ultra-photon.md`: no runtime do fabricante ele
+nao e' mais lento nem gasta mais VRAM que o redux, mas custa **7,02x** de disco
+(1 256 514 499 B contra 179 015 759 B) e o primeiro passe de 90 s custa 5-20 s
+contra 0,97 s, sem ganho de qualidade medido.
+
+O `onnx` daqui e' o NOSSO export: no pedaco `[22,52-50,04]` de um clipe de 90 s
+ele devolve 3 440 tokens id 0 com duracao 0 (a cabeca de duracao do export nao
+sai do checkpoint para esses pedacos); `_greedy_onnx` limita o estrago, mas o
+defeito e' do export e nao do modelo -- o caminho do fabricante (kestrel) devolve
+o texto completo. Um leitor que queira o ultra a serio usa o runtime, nao isto.
 
 WHAT THIS IS
 ------------
@@ -37,6 +52,7 @@ import json
 import os
 import sys
 import time
+import types
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -77,6 +93,59 @@ def _decode_tokenizer(path: Path):
     # that slipped through would print as "<|...|>" in a caption.
     specials = {index for piece, index in vocab.items() if piece.startswith("<") and piece.endswith(">")}
     return tokenizer, specials
+
+
+# ---------------------------------------------------------------------------
+# The TDT walk shared by both backends
+# ---------------------------------------------------------------------------
+def _greedy_onnx(engine, encoded):
+    """The export's greedy walk with the budget PER FRAME instead of per sequence.
+
+    Bound onto the reference engine in ``OnnxBackend.__init__``. The defect it
+    repairs is measured, not supposed: on the 90 s clip the export's own loop
+    returned 3440 tokens for piece ``[22.52-50.04]`` -- ``10 * 344`` frames,
+    every one of them id 0 with duration 0 -- because ``frame += 0`` never
+    advances and only a BLANK was rescued with a one-frame step. The text was
+    empty, and a reader concluded the model truncates. It does not: with this
+    loop the same piece transcribes the speech it contains.
+    """
+    import numpy as np
+
+    frames = encoded.shape[0]
+    state = (np.zeros(engine.state_shape, np.float32), np.zeros(engine.state_shape, np.float32))
+    last_token = engine.blank_id
+    frame = 0
+    tokens: list[int] = []
+    durations: list[int] = []
+    target_length = np.ones(1, dtype=np.int32)
+    while frame < frames:
+        emitted = 0
+        advanced = False
+        while emitted < engine.max_symbols_per_step:
+            logits, _, hidden, cell = engine.decoder_joint.run(None, {
+                "encoder_outputs": encoded[frame][None, :, None],
+                "targets": np.array([[last_token]], dtype=np.int32),
+                "target_length": target_length,
+                "input_states_1": state[0], "input_states_2": state[1]})
+            logits = logits[0, 0, 0]
+            token = int(logits[: engine.vocab_size].argmax())
+            duration = engine.durations[int(logits[engine.vocab_size:].argmax())]
+            tokens.append(token)
+            durations.append(duration)
+            if token == engine.blank_id:
+                frame += max(1, duration)
+                advanced = True
+                break
+            last_token = token
+            state = (hidden, cell)
+            emitted += 1
+            if duration > 0:
+                frame += duration
+                advanced = True
+                break
+        if not advanced:
+            frame += 1
+    return tokens, durations
 
 
 def _segments(tokens, durations, frame_seconds: float, decode) -> list[dict]:
@@ -174,6 +243,15 @@ class OnnxBackend:
         self.model_dir = str(model_path)
         self.threads = threads
         self._engine = reference.OnnxParakeet(model_path, threads=(None if threads == 0 else int(threads)))
+        # O laco do export trava (medido 2026-11-08): `greedy` orcava
+        # `max_symbols_per_step * frames` UMA vez para a sequencia e so'
+        # resgatava duracao zero quando o token era o BLANK, logo um frame que
+        # emite um token nao-blank com duration 0 nunca avanca. No pedaco
+        # [22.52-50.04] do clipe de 90 s: 3440 tokens, todos id 0, duration 0, e
+        # texto VAZIO. A recusa de 2026-11-04 leu esse travamento como "o modelo
+        # trunca 85 %". Este metodo substitui o do export -- o resto do contrato
+        # (features, VAD, segmentacao, vocab) continua a ser o dele.
+        self._engine.greedy = types.MethodType(_greedy_onnx, self._engine)
 
     def transcribe(self, pcm):
         result = self._engine.transcribe(pcm, "segment")
@@ -276,6 +354,17 @@ class TorchBackend:
         this tree already ships (`transcribe.py`), and reusing its arithmetic
         here is what makes the torch arm comparable to the two ONNX arms
         instead of comparable to a second implementation of the same idea.
+
+        THE ONE CHANGE, and it is a MEASURED DEFECT of that reference loop
+        (2026-11-08): it capped the walk at ``max_symbols_per_step * frames`` for
+        the whole SEQUENCE and only rescued a zero duration when the token was
+        the blank, so a frame that emits a non-blank with ``duration == 0``
+        never advanced. Measured on the 90 s clip, piece [22.52-50.04]: 3440
+        tokens, all id 0, all duration 0 -- exactly ``10 * 344`` -- and the text
+        came out EMPTY. That stall is what the 2026-11-04 receipt read as the
+        model "truncating 85 % of a 90 s clip". The budget is per FRAME here,
+        and a frame that spends it advances one frame, which is what NeMo's own
+        greedy does.
         """
         torch = self._torch
         model = self.model
@@ -288,24 +377,33 @@ class TorchBackend:
             tokens: list[int] = []
             durations: list[int] = []
             frame = 0
-            steps = self.max_symbols_per_step * frames
-            while frame < frames and steps > 0:
-                encoder_frame = hidden[:, frame:frame + 1, :].transpose(1, 2)   # [1,1024,1]
-                enc = model.encoder_projector(encoder_frame.transpose(1, 2))    # [1,1,640]
-                dec, (hidden_state, cell_state) = model.decoder.lstm(
-                    model.decoder.embedding(torch.tensor([[token]], device=hidden.device)), (state, cell))
-                dec = model.decoder.decoder_projector(dec).to(enc.dtype)
-                logits = model.joint.head(model.joint.activation(enc + dec))[0, 0]
-                token = int(logits[: self.vocab_size].argmax())
-                duration = self.durations[int(logits[self.vocab_size:].argmax())]
-                if token == self.blank_id and duration == 0:
-                    duration = 1
-                tokens.append(token)
-                durations.append(duration)
-                frame += duration
-                if token != self.blank_id:
+            while frame < frames:
+                emitted = 0
+                advanced = False
+                while emitted < self.max_symbols_per_step:
+                    encoder_frame = hidden[:, frame:frame + 1, :].transpose(1, 2)   # [1,1024,1]
+                    enc = model.encoder_projector(encoder_frame.transpose(1, 2))    # [1,1,640]
+                    dec, (hidden_state, cell_state) = model.decoder.lstm(
+                        model.decoder.embedding(torch.tensor([[token]], device=hidden.device)), (state, cell))
+                    dec = model.decoder.decoder_projector(dec).to(enc.dtype)
+                    logits = model.joint.head(model.joint.activation(enc + dec))[0, 0]
+                    token = int(logits[: self.vocab_size].argmax())
+                    duration = self.durations[int(logits[self.vocab_size:].argmax())]
+                    tokens.append(token)
+                    durations.append(duration)
+                    if token == self.blank_id:
+                        # silence: the model says how many frames it covers
+                        frame += max(1, duration)
+                        advanced = True
+                        break
                     state, cell = hidden_state, cell_state
-                steps -= 1
+                    emitted += 1
+                    if duration > 0:
+                        frame += duration
+                        advanced = True
+                        break
+                if not advanced:
+                    frame += 1
         return tokens, durations
 
     def tokens(self, pcm):
