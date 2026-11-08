@@ -10984,6 +10984,14 @@ class SottoShell:
         #: and the first Alt+C is what moves it to the strip — while it is still
         #: hidden, which is the only moment a `SetWindowPos` cannot flicker.
         self.surface_applied = 'panel'
+        #: A RAJADA DO Alt+C (2026-11-08). O dono spammou a tecla: cada pressao
+        #: custava uma transicao inteira (416-700 ms entre um `HOTKEY_TOGGLE` e
+        #: o seguinte), a fila FIFO empilhava uma por pressao e o UI thread
+        #: morria. Agora cada pressao so' SOMA aqui; o worker leva o contador
+        #: inteiro de uma vez e aplica UMA transicao. O lock existe porque o
+        #: contador e' escrito pelo fio do hotkey e lido pelo worker.
+        self._panel_presses = 0
+        self._panel_press_lock = threading.Lock()
         #: The rect an EDIT session saved, read back from the `geometry` key of
         #: `_main/panel-visibility.json` at startup and re-written on every edit.
         #: `None` means "never edited" — the computed default stands.
@@ -14352,8 +14360,22 @@ class SottoShell:
         return self._hotkey_dispatch('live')
 
     def _hotkey_dispatch(self, kind):
-        """Manda o passo ao worker AGORA (nunca corre na thread do hotkey)."""
+        """Manda o passo ao worker AGORA (nunca corre na thread do hotkey).
+
+        Alt+C NAO ENTRA NA FILA COMO TRABALHO (2026-11-08). O dono spammou a
+        tecla -- 17 presses com gap < 300 ms no log dele, minimo 0 ms -- e cada
+        item da fila era uma transicao inteira (`HOTKEY_TOGGLE` a `HOTKEY_TOGGLE`
+        medido em 416-700 ms): cinco presses davam ~3 s de resize de janela e
+        troca de documento WebView2, e o UI thread ficava sem vez. A pressao
+        agora so' SOMA; o worker drena o contador inteiro no primeiro token e
+        faz uma transicao. O token continua a entrar na fila por pressao, na
+        ordem de chegada, para um `live` entre dois Alt+C nao perder o lugar.
+        """
         try:
+            kind = str(kind)
+            if kind == 'panels':
+                with self._panel_press_lock:
+                    self._panel_presses = int(self._panel_presses) + 1
             q = getattr(self, '_hotkey_queue', None)
             if q is None:
                 import queue as _queue
@@ -14386,8 +14408,13 @@ class SottoShell:
         A decisao le' o que a JANELA mede (`window_visible`) e o que ela VESTE
         (`surface_applied`), nunca uma intencao: um `show` que falhou deixou o
         painel escondido, e o ciclo tem de continuar de onde o dono esta' a ver.
-        A regra inteira esta' em `hotkey_gesture.next_surface`, e o oraculo
-        executa este corpo a partir do ficheiro que corre.
+        A regra inteira esta' em `hotkey_gesture.advance`/`next_surface`, e o
+        oraculo executa este corpo a partir do ficheiro que corre.
+
+        UM TOKEN NAO E' UMA TRANSICAO. O TOKEN `panels` carrega a rajada que o
+        dono escreveu: o contador e' drenado aqui e o ciclo caminha N passos de
+        uma vez (`advance`). Um token que encontra o contador a zero e' da mesma
+        rajada e nao custa nada.
         """
         if str(kind) == 'live':
             # A TECLA COMUTA O INTERRUPTOR DO DONO, NAO OS PIXELS (2026-11-04).
@@ -14414,6 +14441,19 @@ class SottoShell:
         # a janela sem passar por aqui (a `form.Show()` da navegacao, gateada, e
         # o `_reassert_hidden`), e uma cache com `True` fazia o primeiro Alt+C
         # ser um HIDE de um painel que ele nao ve. Ver `toggle_panel`.
+        #
+        # A RAJADA E' DRENADA AQUI (2026-11-08). Cada token `panels` representa
+        # UMA pressao que ja' somou no contador, mas so' o primeiro a encontrar
+        # o contador cheio o esvazia: ele leva TODAS as presses que chegaram
+        # enquanto o worker nao tinha vez e aplica o estado final de uma vez.
+        # Os tokens seguintes da mesma rajada encontram 0 e NAO fazem trabalho
+        # -- existem para guardar a ordem em relacao a um `live`.
+        with self._panel_press_lock:
+            presses = int(self._panel_presses)
+            self._panel_presses = 0
+        if presses <= 0:
+            log('HOTKEY_COALESCED skipped=1 presses=0 reason=already-drained')
+            return False
         try:
             alive = window_visible(self.hwnd) if self.hwnd else False
         except Exception as exc:  # noqa: BLE001 -- sem leitura, fica o que se sabe
@@ -14425,15 +14465,29 @@ class SottoShell:
         self.visible = alive
         shown = str(getattr(self, 'surface_applied', '') or '')
         try:
-            nxt = hotkey_numbers().next_surface(alive, shown)
+            target_visible, target_surface = hotkey_numbers().advance(
+                alive, shown, presses)
         except Exception as exc:  # noqa: BLE001 -- sem a regra, a faixa
             log(f'HOTKEY_GESTURE_FAILED error={exc!r}')
-            nxt = 'strip'
-        if nxt is None:
+            target_visible, target_surface = True, 'strip'
+        from_state = (('visible' if alive else 'hidden')
+                      + '/' + ((shown or '-') if alive else '-'))
+        to_state = (('visible' if target_visible else 'hidden')
+                    + '/' + ((target_surface or '-') if target_visible else '-'))
+        # Uma rodada de N cujo fim e' o estado em que a janela ja' esta' nao
+        # toca no ecra: 3 presses com o painel escondido voltam ao escondido.
+        transitions = 0 if (target_visible == alive
+                            and (not target_visible
+                                 or target_surface == shown)) else 1
+        log(f'HOTKEY_COALESCED presses={presses} from={from_state} '
+            f'to={to_state} steps={presses} transitions={transitions}')
+        if not transitions:
+            return False
+        if not target_visible:
             log(f'HOTKEY_TOGGLE step=hide surface={shown or "-"}')
             return self.hide_panel('hotkey-toggle')
-        log(f'HOTKEY_TOGGLE step=show surface={nxt}')
-        if nxt == 'panel':
+        log(f'HOTKEY_TOGGLE step=show surface={target_surface}')
+        if target_surface == 'panel':
             return self.show_side('hotkey-cycle-side')
         return self.show_strip('hotkey-cycle-strip')
 

@@ -324,11 +324,25 @@ class FakeShell:
         self.events: list[tuple] = []
         self.live_calls: list[bool] = []
         SCREEN['visible'] = bool(visible)
+        # O CONTADOR DA RAJADA (2026-11-08). O `_hotkey_resolve` real drena
+        # `_panel_presses` no primeiro token `panels`; um fake que chame o
+        # corpo sem somar julgaria um shell que nao existe (a pressao seria
+        # um no-op). O despacho falso faz o que `_hotkey_dispatch` faz: soma e
+        # entrega -- directo, porque aqui nao ha worker nem fila.
+        self._panel_presses = 0
+        self._panel_press_lock = threading.Lock()
+
+        def _dispatch(kind):
+            if str(kind) == 'panels':
+                with self._panel_press_lock:
+                    self._panel_presses += 1
+            return ns['_hotkey_resolve'](self, kind)
+
         # O DESPACHO. Em producao `hotkey_pressed` poem o passo numa FILA e um
         # worker executa; a fila e' stdlib e nao tem regra nenhuma dentro (o braco
         # estrutural prova que ele so' poem), por isso aqui liga-se DIRECTO -- o
         # que se mede e' a decisao e o INSTANTE dela.
-        self._hotkey_dispatch = lambda kind: ns['_hotkey_resolve'](self, kind)
+        self._hotkey_dispatch = _dispatch
 
     def _shown(self, surface):
         self.visible = True

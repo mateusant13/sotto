@@ -326,6 +326,12 @@ class Shell:
         self.visible = False
         self.replayed = []
         self.surface_applied = 'strip'
+        # A RAJADA (2026-11-08): `_hotkey_resolve` drena `_panel_presses` no
+        # primeiro token `panels`; `press()` abaixo imita o `_hotkey_dispatch`
+        # real (soma e entrega). Sem isto a arm (i) chamaria o corpo com o
+        # contador a zero e o painel nunca aparecia -- o defeito seria do arnes.
+        self._panel_presses = 0
+        self._panel_press_lock = threading.Lock()
         # A CONSTANTE VEM DO FICHEIRO VIVO, nao de um numero copiado aqui: o
         # limite do replay e' uma politica (`CAPTION_REPLAY_MAX_S`), e reencena-la
         # no arnes era medir a copia em vez do produto.
@@ -374,7 +380,13 @@ def _tmp_state() -> str:
 
 
 def press(shell, kind='live'):
-    """O EVENTO, injectado: o mesmo `kind` que `hotkey_live()` poe na fila."""
+    """O EVENTO, injectado: o mesmo `kind` que `hotkey_live()` poe na fila.
+
+    `panels` passa primeiro pelo contador, como o `_hotkey_dispatch` real.
+    """
+    if str(kind) == 'panels':
+        with shell._panel_press_lock:
+            shell._panel_presses += 1
     return shell._hotkey_resolve(kind)
 
 

@@ -230,3 +230,31 @@ def next_surface(visible, surface):
     if not visible:
         return 'strip'
     return 'panel' if str(surface or '') == 'strip' else None
+
+
+def advance(visible, surface, presses=1):
+    """N Alt+C -> o estado final do ciclo, sem tocar num pixel.
+
+    `next_surface` decide UM passo; esta funcao CAMINHA esse passo N vezes sobre
+    o estado que ele le' (`visible` medido na JANELA, `surface` aplicada) e
+    devolve `(visible, surface)` no fim. O `surface` NAO e' limpo quando o
+    painel esconde -- e' o contrato do `hide_panel` --, por isso um escondido
+    volta sempre ao `strip` independentemente do que estava vestido antes.
+
+    PURA: sem I/O, sem log, sem relogio. Quem aplica e' o worker do shell, que
+    faz UMA transicao para o estado devolvido; e' isso que permite a uma rajada
+    de presses custar um show/hide em vez de um por pressao.
+    """
+    visible = bool(visible)
+    surface = str(surface or '')
+    try:
+        steps = int(presses)
+    except (TypeError, ValueError):
+        steps = 0
+    for _ in range(max(0, steps)):
+        nxt = next_surface(visible, surface)
+        if nxt is None:
+            visible = False
+        else:
+            visible, surface = True, nxt
+    return visible, surface

@@ -1295,6 +1295,11 @@ call :record hotkey-live-toggle !STEP_RC!
 call :step red-as-expected-hotkey-live-toggle 1 "_main\hotkey-live-toggle-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-live-toggle-neg.log" python _main\hotkey-live-toggle-oracle.py --neg-arm
 call :expectred red-as-expected-hotkey-live-toggle !STEP_RC! "%OUT%\hotkey-live-toggle-neg.log" "NEG-ARM PASS"
 
+call :step hotkey-spam 0 "_main\hotkey-spam-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-spam.log" python _main\hotkey-spam-oracle.py
+call :record hotkey-spam !STEP_RC!
+call :step red-as-expected-hotkey-spam 1 "_main\hotkey-spam-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-spam-neg.log" python _main\hotkey-spam-oracle.py --neg-arm
+call :expectred red-as-expected-hotkey-spam !STEP_RC! "%OUT%\hotkey-spam-neg.log" "NEG-ARM PASS"
+
 call :step loading-placeholder 0 "_main\loading-placeholder-oracle.py;app\webview\sotto_webview.py" "%OUT%\loading-placeholder.log" python _main\loading-placeholder-oracle.py
 call :record loading-placeholder !STEP_RC!
 call :step red-as-expected-loading-placeholder 1 "_main\loading-placeholder-oracle.py;app\webview\sotto_webview.py" "%OUT%\loading-placeholder-neg.log" python _main\loading-placeholder-oracle.py --neg-arm

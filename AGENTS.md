@@ -472,7 +472,21 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 03:0x):** `_main\_audit-verify-all.cmd` = **279859 B**,
+- **PIN do ficheiro (medido 2026-11-08, 06:5x):** `_main\_audit-verify-all.cmd` = **280373 B**,
+  **3402 CRLF** / 0 bare LF, sha256 `FFF7DE2A4C4DE1C4A273195B433791C6F79D88A32CD92A05302E576EDC2890AB`.
+  (Quinhentos e catorze bytes e cinco linhas a mais do que o pin de 279859 B: o par `hotkey-spam` +
+  `red-as-expected-hotkey-spam`, o portao do Alt+C em rajada. Nasceu da ordem do dono de 2026-11-08,
+  verbatim: *"apertar alt c super rapido deixa o app travando pra caralho. deixa completamente fluido.
+  é pra abrir os paineis e qualquer outra coisa super rapido com o alt c sendo spammed. sem travar."*
+  O `_hotkey_dispatch` deixou de enfileirar um passo por toque: ele CONTA os toques e o worker drena o
+  contador no primeiro token, aplicando UMA transicao para `hotkey_gesture.advance(visible, surface, n)`
+  -- N toques = 1 transicao para o estado final, com a ordem preservada quando um `live` cai no meio.
+  Medido no oraculo (transicao falsa de 400 ms): rajada de 6 toques em <50 ms = **18,5 ms de despacho e
+  82,1 ms de parede, 1 drain**, contra **2 461,5 ms e 6 drains** na fila FIFO antiga; 5 toques em 320 ms
+  = 852 ms / 2 transicoes contra 2 051,6 ms / 5. Um toque sozinho nao ganha atraso nenhum (6,08 ms de
+  despacho). `python _main/hotkey-spam-oracle.py` -> `GREEN arms=19 pass=19`; o `--neg-arm` repoe a fila
+  numa COPIA e mede `pass=7 fail=12` com A1 e A5 RED. Recibo: `_main/receipt-20261108-hotkey-spam.md`.)
+- O pin anterior, de 2026-11-08 03:0x: 279859 B,
   **3397 CRLF** / 0 bare LF, sha256 `210AE8D714E9DB9184A9E4B4556C062894E4CCBE6AFB0FD63D3F566B78460D23`.
   (Mil cento e sessenta e tres bytes e doze linhas a mais do que o pin de 278696 B: o par
   `caption-tick-thread` + `red-as-expected-caption-tick-thread`, nascido do DM do watcher --
