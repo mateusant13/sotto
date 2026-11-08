@@ -1450,6 +1450,15 @@ um laco que dorme exactamente o tempo que trabalha gasta **100 % de um nucleo po
    `_main/shell-thread-budget-baseline.json`; sem shell viva ele diz `VERDICT: SKIPPED`, e um passo
    saltado nunca e' um portao que passou).
 
+   E o proprio portao custou QUATRO defeitos no dia em que nasceu, todos da mesma classe -- um
+   instrumento que devolve `None` por defeito proprio e' indistinguivel de "nao houve nada":
+   `io.open` sem `import io` (o `NameError` caia num `except Exception: return None` e o julgamento
+   seguia SEM a serie), o desempacotamento de `[(nome, pct)]` ao contrario, `instance_fresh()` a ler
+   `out[1]` (o stdout) em vez do rc e a importar um helper cujo nome tem HIFEN (respondia `None`
+   sempre), e o `SKIPPED` mudo sem shell viva. Corrigido o quarto: sem shell ele IMPRIME a pior
+   janela da serie antes de saltar -- `total=105% sotto-caption-tick=87% @ 2026-11-08 04:54:22` --,
+   que e' exactamente o numero que a amostra de 5 s em repouso perdia (`19,7 %`, verde).
+
 **O DEVER DE TRANSPORTE desta lei:** quem mexer num laco que se auto-cronometra corre
 `python _main/shell-thread-budget-oracle.py` antes e depois e cola os dois numeros com o pid. Um
 stutter "resolvido" sem pid, fio e linha nao e' um stutter resolvido. Recibo de referencia:
