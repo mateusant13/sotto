@@ -241,12 +241,12 @@
    "max_func_name": "census"
   },
   "app/webview/caption_overlay.py": {
-   "bytes": 51663,
+   "bytes": 53800,
    "classes": 7,
    "defs": 2,
    "except_pass": 2,
    "globals": 0,
-   "lines": 1088,
+   "lines": 1131,
    "max_func": 99,
    "max_func_name": "_update"
   },

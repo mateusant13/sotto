@@ -472,8 +472,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 02:1x):** `_main\_audit-verify-all.cmd` = **278696 B**,
-  **3385 CRLF** / 0 bare LF, sha256 `4A7952266F7785C863E4CAD4755EF0435A256ED3FF34D7F7736F98083C76EF0B`.
+- **PIN do ficheiro (medido 2026-11-08, 03:0x):** `_main\_audit-verify-all.cmd` = **279859 B**,
+  **3397 CRLF** / 0 bare LF, sha256 `210AE8D714E9DB9184A9E4B4556C062894E4CCBE6AFB0FD63D3F566B78460D23`.
+  (Mil cento e sessenta e tres bytes e doze linhas a mais do que o pin de 278696 B: o par
+  `caption-tick-thread` + `red-as-expected-caption-tick-thread`, nascido do DM do watcher --
+  `creation=90.879 creations/s` na arvore da shell durante um stutter de 192 s. A unica criacao
+  por frame da app era o `threading.Timer` do `caption_overlay._arm_tick`: **um fio POR QUADRO**,
+  ~62/s com a legenda ao vivo a 16 ms, cada um `CreateThread` + `WaitForSingleObject`. Agora ha'
+  um fio `daemon` unico que espera num `Event` com prazo. O oraculo conduz o
+  `_arm_tick`/`_tick_loop`/`_tick` REAIS e conta `threading.Timer`: o braco antigo mede **105**
+  construcoes em 1 s de frames de 5 ms contra **zero**, e o `--neg-arm` repoe a implementacao
+  antiga em memoria e derruba A2 e A3. Medido hoje: `VERDICT: PASS (5/5)` e `NEG-ARM: PASS`.)
   (Mil trezentos e noventa e seis bytes e catorze linhas a mais do que o pin de 277300 B: o par
   `caption-rollup` + `red-as-expected-caption-rollup`, o ROLL-UP da legenda que o dono pediu hoje --
   *"quero a animacao de quando comeca uma linha nova e a outra linha vai pra cima"*. O motor

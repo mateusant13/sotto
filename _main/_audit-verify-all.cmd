@@ -279,6 +279,18 @@ call :step caption-rollup 0 "_main\caption-rollup-oracle.py;app\webview\caption_
 call :record caption-rollup !STEP_RC!
 call :step red-as-expected-caption-rollup 1 "_main\caption-rollup-oracle.py;app\webview\caption_overlay.py;app\webview\overlay_paint.py;app\webview\youtube_reveal.py" "%OUT%\caption-rollup-neg.log" python _main\caption-rollup-oracle.py --neg-arm
 call :expectred red-as-expected-caption-rollup !STEP_RC! "%OUT%\caption-rollup-neg.log" "NEG-ARM: PASS"
+REM `caption-tick-thread` (2026-11-08, DM do watcher): ele mediu 90,879 criacoes/s na
+REM arvore da shell durante um stutter de 192 s. A unica criacao por frame da app era o
+REM `threading.Timer` do `caption_overlay._arm_tick` -- um FIO por quadro, ~62/s com a
+REM legenda ao vivo a 16 ms. Agora ha' um fio `daemon` que espera num `Event` com prazo.
+REM O oraculo conduz o `_arm_tick`/`_tick_loop`/`_tick` REAIS e conta `threading.Timer`:
+REM o braco antigo mede 105 fios por segundo de frames de 5 ms.
+if exist _main\caption-tick-thread-oracle.py (
+  call :step caption-tick-thread 0 "_main\caption-tick-thread-oracle.py;app\webview\caption_overlay.py" "%OUT%\caption-tick-thread.log" python _main\caption-tick-thread-oracle.py
+  call :record caption-tick-thread !STEP_RC!
+  call :step red-as-expected-caption-tick-thread 1 "_main\caption-tick-thread-oracle.py;app\webview\caption_overlay.py" "%OUT%\caption-tick-thread-neg.log" python _main\caption-tick-thread-oracle.py --neg-arm
+  call :expectred red-as-expected-caption-tick-thread !STEP_RC! "%OUT%\caption-tick-thread-neg.log" "NEG-ARM: PASS"
+) else ( call :record caption-tick-thread MISSING )
 REM `lag-note-cost` (2026-11-04, do commit de perf 1c92e39): `_caption_lag_note`
 REM custava 27,1 us por legenda -- 83 % do caminho de aplicar uma legenda -- porque
 REM `len(ages) % 25 == 0` e' SEMPRE verdadeiro com a janela cheia (200 % 25 == 0) e a

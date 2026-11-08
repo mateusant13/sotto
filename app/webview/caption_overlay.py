@@ -386,7 +386,16 @@ class NativeCaptionOverlay:
         # existe -- a mesma tecnica do sprout, e pela mesma razao: um `Timer` pode
         # ja' estar dentro de `_update` quando o texto muda.
         self._tick_gen = 0
-        self._tick_timer = None
+        # UM FIO SO' PARA O RELOGIO DO DESENHO (2026-11-08). Antes cada frame armava
+        # um `threading.Timer` -- um FIO NOVO por frame, ~62/s com a legenda ao vivo
+        # a 16 ms -- e cada `CreateThread` custa kernel. Agora um fio `daemon` espera
+        # no `Event` com prazo: ver `_tick_loop`.
+        self._tick_timer = None          # compatibilidade: o ultimo PRAZO, nao um fio
+        self._tick_event = threading.Event()
+        self._tick_thread = None
+        self._tick_deadline = 0.0        # monotonic; 0 = nada armado
+        self._tick_stop = False
+        self._tick_wake_gen = 0
         # O FADE DA LINHA NOVA (ordem do dono, 2026-10-30: *"por que a nossa
         # legenda nao tem a mesma animacao da do youtube?"*). `_fade_t0` e' o
         # instante em que a linha mudou, ou None quando nao ha' fade a correr.
@@ -580,18 +589,49 @@ class NativeCaptionOverlay:
         return delay
 
     def _arm_tick(self):
-        """Agenda o proximo frame. Sem nada a mudar, nao arma nada -- e o timer
-        nao fica a girar num ecra parado."""
+        """Agenda o proximo frame. Sem nada a mudar, nao arma nada -- e o fio do
+        relogio nao fica a girar num ecra parado (espera no `Event`)."""
         delay = self._next_delay()
         if delay is None:
-            self._tick_timer = None
+            with self.lock:
+                self._tick_deadline = 0.0
+            self._tick_event.set()
             return
         self._tick_gen += 1
-        gen = self._tick_gen
-        timer = threading.Timer(delay, lambda: self._tick(gen))
-        timer.daemon = True
-        self._tick_timer = timer
-        timer.start()
+        with self.lock:
+            self._tick_deadline = time.monotonic() + max(0.001, float(delay))
+            self._tick_wake_gen = self._tick_gen
+        if self._tick_thread is None or not self._tick_thread.is_alive():
+            self._tick_thread = threading.Thread(target=self._tick_loop,
+                                                 name='sotto-caption-tick',
+                                                 daemon=True)
+            self._tick_thread.start()
+        self._tick_event.set()
+
+    def _tick_loop(self):
+        """O UNICO fio do relogio: dorme ate' ao prazo, acorda, pinta, repete."""
+        while not self._tick_stop:
+            with self.lock:
+                deadline = self._tick_deadline
+                gen = getattr(self, '_tick_wake_gen', self._tick_gen)
+            if not deadline:
+                self._tick_event.wait(1.0)
+                self._tick_event.clear()
+                continue
+            left = deadline - time.monotonic()
+            if left > 0.0:
+                signalled = self._tick_event.wait(min(left, 1.0))
+                self._tick_event.clear()
+                if signalled:
+                    continue          # prazo mudou: recalcula em vez de pintar
+                left = deadline - time.monotonic()
+                if left > 0.0:
+                    continue
+            with self.lock:
+                if gen != self._tick_gen or self._tick_deadline != deadline:
+                    continue
+                self._tick_deadline = 0.0
+            self._tick(gen)
 
     def _tick(self, gen):
         try:
@@ -1061,6 +1101,9 @@ class NativeCaptionOverlay:
         with self.lock:
             self._tick_gen += 1
             self._tick_timer = None
+            self._tick_deadline = 0.0
+            self._tick_stop = True
+        self._tick_event.set()
         if self.hwnd:
             try:
                 _user32.PostMessageW(self.hwnd, 0x0010, 0, 0)  # WM_CLOSE
