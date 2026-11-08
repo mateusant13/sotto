@@ -111,12 +111,69 @@ def parse(text):
     return total, rows
 
 
-def judge(reading, baseline):
+def log_worst(minutes=60.0, path=LOG):
+    """O PIOR `THREAD_CPU` da serie do log -- a janela ANIMADA que a amostra perde.
+
+    MEDIDO 2026-11-08, e e' o defeito do proprio portao: a primeira versao media
+    UMA janela de 5 s e deu `total=19.7% top=sotto-caption-paint:5.3%` com o
+    dono em REPOUSO -- verde, enquanto o mesmo pid, minutos antes, media 93,6 %
+    no fio do tick. O stutter e' INTERMITENTE (24 episodios em 60 min): um portao
+    que so' olha o instante de agora aprova o defeito. A serie que a propria
+    shell publica (`THREAD_CPU`, janelas de 30 s) ja' contem as janelas ocupadas,
+    entao o pior valor delas entra no julgamento ao lado da amostra externa.
+
+    Linhas `heartbeat=true` sao as janelas QUIETAS: entram, e o pior valor e' o
+    que decide -- uma serie que so' tem batimentos diz que nao houve stutter.
+    """
+    import datetime
+    out = None
+    try:
+        lines = io.open(path, encoding='utf-8', errors='replace').read().splitlines()[-4000:]
+    except Exception:                       # noqa: BLE001
+        return None
+    cutoff = time.time() - minutes * 60.0
+    for ln in lines:
+        if 'THREAD_CPU' not in ln:
+            continue
+        m = re.search(r'^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)', ln)
+        if not m:
+            continue
+        try:
+            when = datetime.datetime.strptime(m.group(1), '%Y-%m-%d %H:%M:%S').timestamp()
+        except Exception:                   # noqa: BLE001
+            continue
+        if when < cutoff:
+            continue
+        tot = re.search(r'total=(\d+)%', ln)
+        tops = re.findall(r'([\w-]+):(\d+)%', ln)
+        if not tot:
+            continue
+        t = float(tot.group(1))
+        top_pct, top_name = (max(((float(p), n) for n, p in tops), default=(0.0, '')))
+        if out is None or t > out[0] or top_pct > out[1]:
+            out = (max(t, out[0]) if out else t,
+                   max(top_pct, out[1]) if out else top_pct,
+                   top_name if (out is None or top_pct >= out[1]) else out[2],
+                   m.group(1))
+    return out
+
+
+def judge(reading, baseline, log_read=None):
     """A DECISAO, pura: (ok, violacoes). Sem I/O -- e' isto que o neg-arm muta."""
     if not reading:
         return False, ['sem leitura do instrumento']
     total, rows = reading
     bad = []
+    # O PIOR DAS DUAS LEITURAS (2026-11-08): a amostra de 5 s perde a janela
+    # animada, que a serie do log ja' publicou. Gatear so' a amostra e' aprovar
+    # um stutter intermitente por nao ter caido no instante da medicao.
+    if log_read:
+        total = max(total, float(log_read[0] or 0.0))
+        if rows:
+            if float(log_read[1] or 0.0) > rows[0][0]:
+                rows = [(float(log_read[1]), rows[0][1], log_read[2] or rows[0][2])] + rows[1:]
+        else:
+            rows = [(float(log_read[1]), 0, log_read[2] or '')]
     if total > TOTAL_CEILING:
         bad.append('total=%.1f%% acima do tecto %.0f%%' % (total, TOTAL_CEILING))
     if not rows:
@@ -128,6 +185,9 @@ def judge(reading, baseline):
                        % (top_name, top_pct, THREAD_CEILING))
         if not top_name or top_name in ('(sem nome)', '?'):
             bad.append('o fio mais quente nao tem NOME -- o numero vira suspeita')
+    if log_read:
+        print('  serie do log (pior da janela): total=%.0f%% %s=%.0f%% @ %s'
+              % (log_read[0], log_read[2] or '?', log_read[1], log_read[3]))
     if baseline:
         b_total = float(baseline.get('total') or 0.0)
         b_thread = float(baseline.get('top_pct') or 0.0)
@@ -140,7 +200,7 @@ def judge(reading, baseline):
     return (not bad), bad
 
 
-def report(reading, baseline, pid=None):
+def report(reading, baseline, pid=None, log_read=None):
     total, rows = reading
     print('SHELL-THREAD-BUDGET pid=%s total=%.1f%% ceiling=%.0f%% thread_ceiling=%.0f%%'
           % (pid or '?', total, TOTAL_CEILING, THREAD_CEILING))
@@ -191,6 +251,32 @@ def _neg_arm():
     return 1 if caught else 0
 
 
+def instance_fresh():
+    """O processo vivo carrega o codigo do disco? (True/False/None = nao sei).
+
+    PORQUE ISTO EXISTE (medido 2026-11-08, no mesmo dia em que o portao nasceu):
+    na primeira corrida real o portao acusou 93,6 % num processo que carregava
+    codigo de QUATRO HORAS ANTES da cura -- um vermelho honesto sobre o passado.
+    Um portao que fica vermelho por codigo que ja' nao existe nao mede o code
+    atual, e a casa ja' sabe onde isso acaba: alguem o desliga. A regra do repo
+    (`_main/live-code-freshness-oracle.py`, passo 0 do bug-hunt) e' que STALE nao
+    e' veredicto sobre o FONTE -- e o mesmo aqui: `SKIPPED reason=stale-instance`,
+    com o numero medido ao lado para a serie nao se perder.
+    """
+    try:
+        sys.path.insert(0, HERE)
+        import hidden_launch
+        out = hidden_launch.run([sys.executable,
+                                 os.path.join(HERE, 'live-code-freshness-oracle.py'),
+                                 '--strict'])
+        rc = out[1] if isinstance(out, tuple) and len(out) > 1 else None
+    except Exception:                       # noqa: BLE001
+        return None
+    if rc is None:
+        return None
+    return rc == 0
+
+
 def main(argv):
     if '--neg-arm' in argv:
         return _neg_arm()
@@ -222,8 +308,17 @@ def main(argv):
         print('SHELL-THREAD-BUDGET baseline escrito: '
               'total=%.1f%% top=%s:%.1f%%' % (total, data['top_name'], data['top_pct']))
         return 0
-    report(reading, baseline, pid)
-    ok, bad = judge(reading, baseline)
+    log_read = log_worst()
+    report(reading, baseline, pid, log_read)
+    ok, bad = judge(reading, baseline, log_read)
+    if not ok:
+        fresh = instance_fresh()
+        if fresh is False:
+            print('SHELL-THREAD-BUDGET SKIPPED reason=stale-instance '
+                  '-- o processo vivo e anterior ao codigo do disco (medido acima; '
+                  'a cura nao esta nele e o veredicto e do primeiro arranque dele)')
+            print('VERDICT: SKIPPED')
+            return 0
     for b in bad:
         print('VIOLACAO ' + b)
     print('VERDICT: %s' % ('PASS' if ok else 'FAIL'))
