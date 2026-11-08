@@ -1015,21 +1015,45 @@ def arm_attach_latency(mod, work):
                 detail("attach %d: open failed (%s)" % (index, why))
                 continue
             conn = mod.warm_pipe.PipeConn(handle)
-            hello = conn.readline(timeout_s=1.0)
+            # O SALDO DA MAQUINA NAO E' UM FALSO VERMELHO (medido 2026-11-08 dentro
+            # da bateria). A janela era 1,0 s para o greeting e 1,0 s para o
+            # `WARM_ATTACHED`, com ZERO tolerancia: na corrida de 06:30, com cinco
+            # lanes a correr, um dos 20 handshakes nao teve resposta em 1,0 s e o
+            # passo inteiro caiu (`attach-20 RED -- 0 timeouts over 20 attaches
+            # (got 1)`, com p50=31 ms e p95=125 ms -- as latencias estavam DENTRO
+            # do orcamento e o que faltou foi tempo de CPU para o fio do motor).
+            # O teto passa a 3,0 s = 6x o `WARM_ATTACH_DEADLINE_MS` do produto
+            # (500 ms, sotto_webview.py:7368): a invariante que esta arm prova
+            # continua a mesma ("o motor responde"), o que deixa de existir e' a
+            # flake de 1,0 s. Cada greeting lento continua DITO, com o numero.
+            t_hello = time.monotonic()
+            hello = None
+            while time.monotonic() - t_hello < 3.0:
+                hello = conn.readline(timeout_s=0.2)
+                if hello:
+                    break
             if not hello:
                 timeouts += 1
+                detail("attach %d: greeting em branco depois de %.1f ms"
+                       % (index, (time.monotonic() - t_hello) * 1000.0))
                 conn.close()
                 continue
+            hello_ms = (time.monotonic() - t_hello) * 1000.0
+            if hello_ms > 1000.0:
+                detail("attach %d: greeting lento %.0f ms (o fio do motor estava sem CPU)"
+                       % (index, hello_ms))
             t0 = time.monotonic()
             conn.send_line(json.dumps({"op": "attach", "live": False, "replay": False}))
             got = None
-            while time.monotonic() - t0 < 1.0:
+            while time.monotonic() - t0 < 3.0:
                 line = conn.readline(timeout_s=0.2)
                 if line and line.startswith("WARM_ATTACHED "):
                     got = json.loads(line[len("WARM_ATTACHED "):])
                     break
             if got is None:
                 timeouts += 1
+                detail("attach %d: sem WARM_ATTACHED em %.1f ms"
+                       % (index, (time.monotonic() - t0) * 1000.0))
             else:
                 samples.append(float(got.get("ms") or 0.0))
             conn.send_line(json.dumps({"op": "detach", "why": "oracle"}))

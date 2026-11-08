@@ -23,13 +23,19 @@ ULTIMO passo da lista (`red-as-expected-panel-deps`), carimbado no nome do
 primeiro. Medido na corrida de 2026-11-08: `panel-deps` podia dizer FAIL, e o
 sumario mostrava `panel2-dom-probe` verde.
 
-A REGRA QUE ESTE FICHEIRO JULGA, e sao tres metades:
+A REGRA QUE ESTE FICHEIRO JULGA, e sao QUATRO metades:
   R1 todo `call :step` tem de ter o SEU registo (`:record`, `:expectred` ou
      `:skipped`) com o MESMO nome;
   R2 esse registo tem de vir ANTES do proximo `call :step` -- senao o
      `!STEP_RC!` que ele le e' de outro passo, que e' o defeito medido acima;
   R3 nenhum registo pode apontar para um passo que nao existe -- um `:record`
-     orfao e' um nome que o sumario conta e nada correu.
+     orfao e' um nome que o sumario conta e nada correu;
+  R4 a DECLARACAO e o REGISTO tem de concordar sobre o codigo de saida: um
+     `:step ... 1` so' pode ser consumido por `:expectred`, um `:step ... 0` por
+     `:record`. Medido 2026-11-08: `red-as-expected-caption-drag` e
+     `red-as-expected-outside-click-timer` estavam declarados `0` com oraculos
+     que devolvem 1 QUANDO APANHAM -- vermelhos em toda a corrida por um numero
+     trocado, e nada no ficheiro dizia qual das duas metades estava errada.
 
 O QUE NAO E' UM DEFEITO, e o instrumento sabe distinguir:
   * um `:record ... MISSING` dentro do `else` de um `if exist` e' o registo do
@@ -62,7 +68,8 @@ CMD_REL = os.path.join("_main", "_audit-verify-all.cmd")
 
 #: `call :step [always|heavy] <nome> ...`  /  `call :record <nome> ...`
 #: `call :expectred <nome> ...`             /  `call :skipped <nome> ...`
-STEP_RE = re.compile(r"^call\s+:step\s+(?:always\s+|heavy\s+)*(?P<name>\S+)", re.I)
+STEP_RE = re.compile(r"^call\s+:step\s+(?:always\s+|heavy\s+)*(?P<name>\S+)\s+"
+                    r"(?P<rc>-?\d+)", re.I)
 RECORD_RE = re.compile(r"^call\s+:(?P<kind>record|expectred|skipped|control)\s+(?P<name>\S+)",
                        re.I)
 
@@ -92,21 +99,21 @@ def scan(lines):
             continue
         step = STEP_RE.match(bare)
         if step:
-            steps.append((index, step.group("name")))
+            steps.append((index, step.group("name"), int(step.group("rc"))))
             continue
         rec = RECORD_RE.match(bare)
         if rec:
             records.setdefault(rec.group("name"), []).append((index, rec.group("kind")))
 
     # R1 -- todo passo tem registo do SEU nome.
-    for index, name in steps:
+    for index, name, _rc in steps:
         if name not in records:
             findings.append(("R1-sem-registo", name,
                              "linha %d: `call :step %s` nao tem `:record`/`:expectred`/"
                              "`:skipped` com esse nome" % (index + 1, name)))
 
     # R2 -- o registo vem antes do proximo passo.
-    for position, (index, name) in enumerate(steps):
+    for position, (index, name, _rc) in enumerate(steps):
         mine = records.get(name)
         if not mine:
             continue
@@ -123,19 +130,42 @@ def scan(lines):
             continue
         after_me = later[0]
         boundary = None
-        for nxt_index, _nxt_name in steps[position + 1:]:
+        for nxt_index, _nxt_name, _nxt_rc in steps[position + 1:]:
             if nxt_index > index:
                 boundary = nxt_index
                 break
         if boundary is not None and after_me > boundary:
-            skipped_by = min((i, n) for i, n in steps[position + 1:])
+            skipped_by = min((i, n) for i, n, _r in steps[position + 1:])
             findings.append(("R2-registo-atrasado", name,
                              "linha %d: o registo deste passo esta' na linha %d, DEPOIS "
                              "do `call :step %s` da linha %d -- o `!STEP_RC!` que ele le "
                              "e' de outro passo"
                              % (index + 1, after_me + 1, skipped_by[1], skipped_by[0] + 1)))
+    # R4 -- a DECLARACAO e o REGISTO tem de concordar sobre o codigo de saida.
+    # Medido 2026-11-08: `red-as-expected-caption-drag` estava declarado
+    # `:step ... 0` (o passo tem de sair 0) com um oraculo que devolve 1 QUANDO
+    # APANHA, e o `--neg-arm` do `outside-click-timer` estava no mesmo contrato.
+    # Os dois ficavam vermelhos em TODA a corrida por um numero trocado, e nada
+    # no ficheiro dizia qual das duas metades estava errada. O `!STEP_RC!` de um
+    # `:step ... 1` so' pode ser consumido por `:expectred`.
+    for index, name, declared in steps:
+        mine = records.get(name) or []
+        later = [(at, kind) for at, kind in mine if at > index]
+        if not later:
+            continue
+        kind = later[0][1]
+        if declared == 1 and kind == "record":
+            findings.append(("R4-contrato-trocado", name,
+                             "linha %d: `:step` declara 1 (o passo tem de sair 1) e o "
+                             "registo da linha %d e' `:record`, que exige 0 -- use "
+                             "`:expectred`" % (index + 1, later[0][0] + 1)))
+        elif declared == 0 and kind == "expectred":
+            findings.append(("R4-contrato-trocado", name,
+                             "linha %d: `:step` declara 0 e o registo da linha %d e' "
+                             "`:expectred`, que exige 1 -- um dos dois numeros esta' errado"
+                             % (index + 1, later[0][0] + 1)))
     # R3 -- nenhum registo orfao.
-    step_names = {name for _i, name in steps}
+    step_names = {name for _i, name, _r in steps}
     for name in sorted(records):
         if name not in step_names:
             findings.append(("R3-registo-orfao", name,
@@ -155,7 +185,25 @@ MUTANTS = (
     ("registo-orfao",
      lambda lines: _append_orphan_record(lines),
      "R3-registo-orfao"),
+    ("contrato-trocado",
+     lambda lines: _flip_first_declaration(lines),
+     "R4-contrato-trocado"),
 )
+
+
+def _flip_first_declaration(lines):
+    """Um `:step ... 0` que passa a declarar 1 com o `:record` ao lado intacto."""
+    out = list(lines)
+    for index, line in enumerate(out):
+        bare = line.strip()
+        step = STEP_RE.match(bare)
+        if step and step.group("rc") == "0" and RECORD_RE.match(
+                out[index + 1].strip() if index + 1 < len(out) else ""):
+            out[index] = line.replace(" %s " % step.group("name"),
+                                      " %s " % step.group("name"), 1).replace(
+                ":step %s 0 " % step.group("name"), ":step %s 1 " % step.group("name"), 1)
+            return out, ":step %s 1 " % step.group("name") in out[index]
+    return out, False
 
 
 def _append_orphan_record(lines):

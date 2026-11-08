@@ -28,9 +28,17 @@ Quem conta e' `:record` / `:expectred` / `:skipped`. Com um registo para dez pas
 A mesma classe apareceu uma segunda vez: o `battery-plan` tem DOIS `:record battery-plan` (o do
 caminho feliz e o do `else`), e ler o ULTIMO registo marcava-o como atrasado. As duas metades do
 portao sao independentes de proposito: `R1` acha o registo em falta, `R2` acha o registo que le o `rc`
-errado, `R3` acha o registo de um passo que nao existe. Medido com as tres doencas plantadas numa
-COPIA: `NEG-ARM: PASS (3/3 mutantes apanhados)`, e o mutante orfao derruba A SUA arm (`R3-registo-orfao`
-e a unica regra a mais no achado dele).
+errado, `R3` acha o registo de um passo que nao existe. Medido com as quatro doencas plantadas numa COPIA:
+`NEG-ARM: PASS (4/4 mutantes apanhados)`, e cada mutante derruba A SUA regra.
+
+`R4` e' a metade que o defeito #2 e o #3 pediram: a DECLARACAO (`:step ... 0|1`) e o REGISTO
+(`:record` exige 0, `:expectred` exige 1) tem de concordar. Ele nao e' decorativo -- medido contra os
+dois sitios historicos, um de cada vez:
+
+    ('R4-contrato-trocado', 'red-as-expected-caption-drag',
+     "linha 357: `:step` declara 0 e o registo da linha 358 e' `:expectred`, que exige 1 ...")
+    ('R4-contrato-trocado', 'red-as-expected-outside-click-timer',
+     "linha 531: `:step` declara 0 e o registo da linha 532 e' `:expectred`, que exige 1 ...")
 
 ## 2. O que ficou medido depois das curas
 
