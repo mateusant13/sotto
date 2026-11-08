@@ -239,4 +239,21 @@
   referencia OITO vezes, uma por mutacao: a copia e a referencia nao dependem da mutacao. Depois da
   cura: **49,45 s**. E o que NAO e' desperdicio, medido: `paint-cost` custa 81-100 s para **4 152
   comparacoes byte a byte** mais 48 bases x 8 formas ao custo real de pintura (6,8 ms de miss).
+- **A LEGENDA DE UMA LINGUA FORA DE en/pt/es VAI PARA A LINGUA ESCOLHIDA -- MEDIDO 2026-11-08.** Ordem
+  do dono, verbatim: *"eu ja falei pra NAO traduzir entre pt br ingles e espanhol entre si. mas pra
+  traduzir o resto pra linguagem que eu escolhi pro sotto. que no caso é pt br. entao eu to vendo um
+  anime agora, e a legenda ta aparecendo japones."* e *"e faz o botao de config pra eu escolher pra
+  qual lingua traduzir."* Pares medidos no modulo real: `_target_langs('ja') == ('pt', 'ja')`,
+  `('en') == ('en',)`, `('pt') == ('pt',)`; com a escolha `fr`: `('ja') -> ('fr', 'ja')` e
+  `('en') -> ('en',)`; com a escolha `ja`: `('ja') -> ('ja',)` (uma entrada, sem pedir a mesma faixa
+  duas vezes). O default e' `caption_settings.DEFAULT_TARGET = 'pt'` (era `TARGET_LANG = 'en'`, e o
+  anime saia em japones porque `_target_langs` devolvia `('en', 'ja')` -- o ingles nao existe para
+  esse video e o segundo pedido era a PROPRIA lingua original). A escolha persiste em ficheiro
+  (`SOTTO_CAPTION_SETTINGS` desvia o caminho): `set_target_language('fr')` e lida `'fr'` por um
+  **import novo**, e um ficheiro corrompido ou ausente responde `'pt'`. Portao:
+  `python _main/youtube-captions-oracle.py` -> **66/66 arms, 18/18 mutantes**, rc=0; `--neg-arm` ->
+  **18/18 apanhados, rc=1 por desenho**. Bracos: `a49` (video chines -> pt, reescrito), `a59` (3
+  origens x 5 escolhas, estendido), `a60` (4 linguas x 7 escolhas, reescrito), `a61` (default pt),
+  `a62` (persistencia + corrupcao), `a63` (dedupe), `a64` (o par do anime). A regra das tres linguas
+  (`UNTRANSLATED_LANGS`) nao mudou: en/pt/es servem-se sempre na propria lingua.
 

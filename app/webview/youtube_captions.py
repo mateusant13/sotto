@@ -575,14 +575,38 @@ def _base_lang(lang):
     return str(lang or '').strip().lower().split('-')[0]
 
 
-#: THE TARGET LANGUAGE. The owner's rule, verbatim (2026-10-21, later the same
-#: day): *"para de traduzir pra pt br do ingles e do espanhol. o resto, traduza
-#: para ingles. qualquer outra lingua pra ingles."*
+def _caption_settings_module():
+    """O irmao `caption_settings`, importado PELO CAMINHO.
+
+    Os portoes carregam ESTE ficheiro por caminho (`importlib`), logo o
+    directorio dele nao esta' em `sys.path` e um `import caption_settings`
+    simples falha la' -- a mesma razao do `_external_subs`.
+    """
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+    import caption_settings
+    return caption_settings
+
+
+_caption_settings = _caption_settings_module()
+
+
+#: THE TARGET LANGUAGE -- A ESCOLHA DELE, PERSISTIDA (dono, 2026-11-08,
+#: verbatim): *"eu ja falei pra NAO traduzir entre pt br ingles e espanhol entre
+#: si. mas pra traduzir o resto pra linguagem que eu escolhi pro sotto. que no
+#: caso é pt br ... eu to vendo um anime agora, e a legenda ta aparecendo
+#: japones"* e *"faz o botao de config pra eu escolher pra qual lingua traduzir"*.
 #:
-#: So a video in a language OUTSIDE the untranslated set (below) is served in
-#: **ENGLISH**: the original when the video is English, the auto-translation
-#: into English when it is not.
-TARGET_LANG = 'en'
+#: MEDIDO no dia da ordem: o modulo servia `TARGET_LANG = 'en'` e o anime saia em
+#: japones porque `_target_langs` devolvia `('en', 'ja')` -- o ingles nao existe
+#: para um video japones sem faixa inglesa, e a segunda entrada era a PROPRIA
+#: lingua original, entao a "traducao" era o original. O alvo passa a ser o valor
+#: que ele escolheu (default `pt`, em `caption_settings.DEFAULT_TARGET`) e a
+#: segunda entrada so' entra quando a traducao NAO existe.
+#:
+#: So' uma lingua FORA do conjunto intocado (abaixo) e' traduzida: en/pt/es sao
+#: servidos na propria lingua, sempre.
+TARGET_LANG = _caption_settings.target_lang()
 
 #: THE ONE RULE THAT CAN NEVER BE BROKEN (owner, 2026-10-30, verbatim):
 #: *"legendas nao traduzem entre ingles pt br e espanhol. so outras linguas,
@@ -611,15 +635,26 @@ TARGET_OVERRIDE = ''
 
 
 def set_target_language(code):
-    """Set the explicit target, returning the base code that was applied.
+    """Grava a escolha do dono e devolve o base que passou a valer.
 
-    `''`/None clears it (back to the policy). The value is normalised to a BASE
-    code (`pt-BR` -> `pt`) for the same reason `_base_lang` exists: the rule is
-    about the language, not the region.
+    `''`/None volta ao DEFAULT (`caption_settings.DEFAULT_TARGET`), nao a "sem
+    alvo": um alvo vazio faria a traducao desaparecer em silencio, que e' o
+    defeito que a ordem de 2026-11-08 veio corrigir. O valor e' normalizado para
+    BASE (`pt-BR` -> `pt`) pela mesma razao que `_base_lang` existe: a regra e'
+    sobre a lingua, nao sobre a regiao.
+
+    A ESCOLHA FICA EM DISCO (`caption_settings`): o shell e este modulo nascem
+    antes do painel, e uma escolha que so' vivesse em memoria faria o primeiro
+    video de cada arranque sair na lingua do dia anterior.
     """
-    global TARGET_OVERRIDE
-    TARGET_OVERRIDE = _base_lang(code) if code else ''
-    return TARGET_OVERRIDE
+    global TARGET_OVERRIDE, TARGET_LANG
+    try:
+        applied = _caption_settings.set_target_lang(code)
+    except Exception:  # noqa: BLE001 -- gravar settings nunca derruba a escolha
+        applied = _base_lang(code) or _caption_settings.DEFAULT_TARGET
+    TARGET_LANG = applied
+    TARGET_OVERRIDE = _base_lang(code)
+    return applied
 
 
 def _target_langs(orig):
@@ -661,7 +696,13 @@ def _target_langs(orig):
     base = _base_lang(orig)
     if base in UNTRANSLATED_LANGS:
         return (base,)
-    return (TARGET_LANG, orig)
+    target = _base_lang(TARGET_LANG) or _caption_settings.DEFAULT_TARGET
+    if target == base:
+        # O ALVO E' A PROPRIA LINGUA DO VIDEO: pedir a "traducao" seria pedir a
+        # mesma faixa outra vez, e a lista com duas entradas iguais faz o
+        # chamador tentar duas vezes o mesmo pedido.
+        return (base,)
+    return (target, orig)
 
 
 def _original_language(info):

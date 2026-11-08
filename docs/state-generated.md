@@ -9,7 +9,7 @@
 > escrito por uma pessoa, e nada aqui é um número escolhido: cada célula vem de um desses
 > três ficheiros, e `--check` é o portão que o prova.
 
-Resumo: passos=385 · PASS=210 · EXPECTED-RED=148 · FAIL=3 · STALE=6 · NO-VERDICT=3 · NOT RUN=15
+Resumo: passos=385 · PASS=200 · EXPECTED-RED=142 · FAIL=1 · STALE=24 · NO-VERDICT=3 · NOT RUN=15
 
 | passo | estado | rc | esperado | quando | log | nota |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -41,26 +41,26 @@ Resumo: passos=385 · PASS=210 · EXPECTED-RED=148 · FAIL=3 · STALE=6 · NO-VE
 | red-as-expected-cdp-target-async | EXPECTED-RED | 1 | 1 | 2026-11-08T05:16:33-0300 | cdp-target-async-neg.log | - |
 | caption-drag | PASS | 0 | 0 | 2026-11-08T05:16:37-0300 | caption-drag.log | - |
 | red-as-expected-caption-drag | NO-VERDICT | 1 | 1 | 2026-11-08T06:09:36-0300 | caption-drag-neg.log | registo com expect_rc=0 mas a bateria declara 1 |
-| lag-note-cost | PASS | 0 | 0 | 2026-11-08T11:21:04-0300 | lag-note-cost.log | always |
-| red-as-expected-lag-note-cost | EXPECTED-RED | 1 | 1 | 2026-11-08T11:21:09-0300 | lag-note-cost-neg.log | always |
-| youtube-hidden-clock | PASS | 0 | 0 | 2026-11-08T11:21:11-0300 | youtube-hidden-clock.log | always |
-| red-as-expected-youtube-hidden-clock | EXPECTED-RED | 1 | 1 | 2026-11-08T11:21:12-0300 | youtube-hidden-clock-neg.log | always |
-| caption-overlay-screen | PASS | 0 | 0 | 2026-11-08T11:21:13-0300 | caption-overlay-screen.log | always |
-| red-as-expected-caption-overlay-screen | EXPECTED-RED | 1 | 1 | 2026-11-08T11:21:13-0300 | caption-overlay-screen-neg.log | always |
-| youtube-cdp-boot | PASS | 0 | 0 | 2026-11-08T11:21:17-0300 | youtube-cdp-boot.log | always |
-| red-as-expected-youtube-cdp-boot | EXPECTED-RED | 1 | 1 | 2026-11-08T11:21:42-0300 | youtube-cdp-boot-neg.log | always |
-| youtube-cdp-slow | PASS | 0 | 0 | 2026-11-08T11:21:48-0300 | youtube-cdp-slow.log | always |
-| red-as-expected-youtube-cdp-slow | EXPECTED-RED | 1 | 1 | 2026-11-08T11:22:11-0300 | youtube-cdp-slow-neg.log | always |
-| youtube-first-at-boot | PASS | 0 | 0 | 2026-11-08T11:22:22-0300 | youtube-first-at-boot.log | always |
-| red-as-expected-youtube-first-at-boot | EXPECTED-RED | 1 | 1 | 2026-11-08T11:23:03-0300 | youtube-first-at-boot-neg.log | always |
+| lag-note-cost | PASS | 0 | 0 | 2026-11-08T13:27:19-0300 | lag-note-cost.log | always |
+| red-as-expected-lag-note-cost | EXPECTED-RED | 1 | 1 | 2026-11-08T13:27:24-0300 | lag-note-cost-neg.log | always |
+| youtube-hidden-clock | PASS | 0 | 0 | 2026-11-08T13:27:27-0300 | youtube-hidden-clock.log | always |
+| red-as-expected-youtube-hidden-clock | EXPECTED-RED | 1 | 1 | 2026-11-08T13:27:29-0300 | youtube-hidden-clock-neg.log | always |
+| caption-overlay-screen | PASS | 0 | 0 | 2026-11-08T13:27:30-0300 | caption-overlay-screen.log | always |
+| red-as-expected-caption-overlay-screen | EXPECTED-RED | 1 | 1 | 2026-11-08T13:27:31-0300 | caption-overlay-screen-neg.log | always |
+| youtube-cdp-boot | PASS | 0 | 0 | 2026-11-08T13:27:35-0300 | youtube-cdp-boot.log | always |
+| red-as-expected-youtube-cdp-boot | EXPECTED-RED | 1 | 1 | 2026-11-08T13:27:59-0300 | youtube-cdp-boot-neg.log | always |
+| youtube-cdp-slow | PASS | 0 | 0 | 2026-11-08T13:28:06-0300 | youtube-cdp-slow.log | always |
+| red-as-expected-youtube-cdp-slow | EXPECTED-RED | 1 | 1 | 2026-11-08T13:28:28-0300 | youtube-cdp-slow-neg.log | always |
+| youtube-first-at-boot | PASS | 0 | 0 | 2026-11-08T13:28:39-0300 | youtube-first-at-boot.log | always |
+| red-as-expected-youtube-first-at-boot | EXPECTED-RED | 1 | 1 | 2026-11-08T13:29:20-0300 | youtube-first-at-boot-neg.log | always |
 | red-as-expected-redux-transcript-path | EXPECTED-RED | 1 | 1 | 2026-11-08T05:17:54-0300 | redux-transcript-path-neg.log | - |
 | red-as-expected-history-write | EXPECTED-RED | 1 | 1 | 2026-11-08T05:18:00-0300 | history-write-neg.log | - |
 | control-verdict-gate-drop-redux-live | PASS | 0 | 0 | 2026-11-08T05:18:01-0300 | control-verdict-gate-drop-redux-live.log | - |
 | history-producer-gate | PASS | 0 | 0 | 2026-11-08T05:18:01-0300 | gate-history-producer.log | - |
 | panel-state-guard-gate | PASS | 0 | 0 | 2026-11-08T05:18:02-0300 | gate-panel-state-guard.log | - |
 | verdict-gate | PASS | 0 | 0 | 2026-11-08T05:18:03-0300 | gate-verdict.log | - |
-| worker-park | PASS | 0 | 0 | 2026-11-08T11:23:36-0300 | worker-park.log | always |
-| red-as-expected-worker-park | EXPECTED-RED | 1 | 1 | 2026-11-08T11:23:37-0300 | worker-park-neg.log | always |
+| worker-park | PASS | 0 | 0 | 2026-11-08T13:29:56-0300 | worker-park.log | always |
+| red-as-expected-worker-park | EXPECTED-RED | 1 | 1 | 2026-11-08T13:29:57-0300 | worker-park-neg.log | always |
 | lane2-reset-probe | PASS | 0 | 0 | 2026-11-08T05:18:36-0300 | lane2-reset.log | - |
 | lane3-verdict-probe | PASS | 0 | 0 | 2026-11-08T05:18:39-0300 | lane3-verdict.log | - |
 | lane4-tap-stop-probe | PASS | 0 | 0 | 2026-11-05T14:46:56-0300 | lane4-tap-stop.log | - |
@@ -75,8 +75,8 @@ Resumo: passos=385 · PASS=210 · EXPECTED-RED=148 · FAIL=3 · STALE=6 · NO-VE
 | red-as-expected-panel-pause-payload | PASS | 0 | 0 | 2026-11-08T05:19:00-0300 | panel-pause-payload-neg.log | - |
 | outside-click-timer | PASS | 0 | 0 | 2026-11-08T05:19:20-0300 | outside-click-timer.log | - |
 | red-as-expected-outside-click-timer | NO-VERDICT | 1 | 1 | 2026-11-08T06:11:49-0300 | outside-click-timer-neg.log | registo com expect_rc=0 mas a bateria declara 1 |
-| panel-deps | PASS | 0 | 0 | 2026-11-08T10:39:02-0300 | panel-deps.log | - |
-| red-as-expected-panel-deps | PASS | 0 | 0 | 2026-11-08T10:39:03-0300 | panel-deps-neg.log | - |
+| panel-deps | PASS | 0 | 0 | 2026-11-08T13:30:01-0300 | panel-deps.log | - |
+| red-as-expected-panel-deps | PASS | 0 | 0 | 2026-11-08T13:30:02-0300 | panel-deps-neg.log | - |
 | worker-death-trace | PASS | 0 | 0 | 2026-11-08T05:19:41-0300 | worker-death-trace.log | - |
 | red-as-expected-worker-death-trace | EXPECTED-RED | 1 | 1 | 2026-11-08T05:19:43-0300 | worker-death-trace-neg.log | - |
 | panel-live-box-oracle | PASS | 0 | 0 | 2026-11-08T05:19:52-0300 | panel-live-box-oracle.log | - |
@@ -90,7 +90,7 @@ Resumo: passos=385 · PASS=210 · EXPECTED-RED=148 · FAIL=3 · STALE=6 · NO-VE
 | red-as-expected-emit-prewebview | EXPECTED-RED | 1 | 1 | 2026-11-08T05:19:54-0300 | emit-prewebview-neg.log | - |
 | hotkey-live-edge | PASS | 0 | 0 | 2026-11-08T05:20:00-0300 | hotkey-live-edge.log | - |
 | red-as-expected-hotkey-live-edge | EXPECTED-RED | 1 | 1 | 2026-11-08T05:20:06-0300 | hotkey-live-edge-neg.log | - |
-| lane-screen-gate | PASS | 0 | 0 | 2026-11-08T10:39:20-0300 | lane-screen-gate.log | - |
+| lane-screen-gate | PASS | 0 | 0 | 2026-11-08T13:30:11-0300 | lane-screen-gate.log | - |
 | red-as-expected-lane-screen-gate | EXPECTED-RED | 1 | 1 | 2026-11-05T14:48:29-0300 | lane-screen-gate-neg.log | - |
 | caption-dup-repro | PASS | 0 | 0 | 2026-11-08T05:20:24-0300 | caption-dup-repro.log | - |
 | complaints-closure | PASS | 0 | 0 | 2026-11-05T14:48:31-0300 | complaints-closure.log | - |
@@ -150,25 +150,25 @@ Resumo: passos=385 · PASS=210 · EXPECTED-RED=148 · FAIL=3 · STALE=6 · NO-VE
 | red-as-expected-reveal-park | EXPECTED-RED | 1 | 1 | 2026-11-08T05:23:41-0300 | reveal-park-neg.log | - |
 | youtube-verbatim | PASS | 0 | 0 | 2026-11-08T05:23:52-0300 | youtube-verbatim.log | - |
 | red-as-expected-youtube-verbatim | EXPECTED-RED | 1 | 1 | 2026-11-08T05:23:52-0300 | youtube-verbatim-neg.log | - |
-| code-health | PASS | 0 | 0 | 2026-11-08T11:23:56-0300 | code-health.log | always |
-| red-as-expected-code-health | EXPECTED-RED | 1 | 1 | 2026-11-08T11:23:57-0300 | code-health-neg.log | always |
-| undefined-names | PASS | 0 | 0 | 2026-11-08T11:23:58-0300 | undefined-names.log | always |
-| red-as-expected-undefined-names | EXPECTED-RED | 1 | 1 | 2026-11-08T11:23:59-0300 | undefined-names-neg.log | always |
-| battery-heavy-gate | PASS | 0 | 0 | 2026-11-08T10:39:42-0300 | battery-heavy-gate.log | - |
-| red-as-expected-battery-heavy-gate | EXPECTED-RED | 1 | 1 | 2026-11-08T10:39:50-0300 | battery-heavy-gate-neg.log | - |
-| task-resolver-gate | PASS | 0 | 0 | 2026-11-08T10:39:50-0300 | task-resolver-gate.log | - |
-| red-as-expected-task-resolver-gate | EXPECTED-RED | 1 | 1 | 2026-11-08T10:39:51-0300 | task-resolver-gate-neg.log | - |
-| claims-date | PASS | 0 | 0 | 2026-11-08T10:39:51-0300 | claims-date.log | - |
-| red-as-expected-claims-date | EXPECTED-RED | 1 | 1 | 2026-11-08T10:39:52-0300 | claims-date-neg.log | - |
-| stall-under-load | PASS | 0 | 0 | 2026-11-08T11:24:01-0300 | stall-under-load.log | always |
-| red-as-expected-stall-under-load | EXPECTED-RED | 1 | 1 | 2026-11-08T11:24:01-0300 | stall-under-load-neg.log | always |
-| paint-live-show | PASS | 0 | 0 | 2026-11-08T11:24:45-0300 | paint-live-show.log | always |
-| red-as-expected-paint-live-show | EXPECTED-RED | 1 | 1 | 2026-11-08T11:25:22-0300 | paint-live-show-neg.log | always |
+| code-health | PASS | 0 | 0 | 2026-11-08T13:30:25-0300 | code-health.log | always |
+| red-as-expected-code-health | EXPECTED-RED | 1 | 1 | 2026-11-08T13:30:26-0300 | code-health-neg.log | always |
+| undefined-names | PASS | 0 | 0 | 2026-11-08T13:30:27-0300 | undefined-names.log | always |
+| red-as-expected-undefined-names | EXPECTED-RED | 1 | 1 | 2026-11-08T13:30:28-0300 | undefined-names-neg.log | always |
+| battery-heavy-gate | PASS | 0 | 0 | 2026-11-08T13:30:30-0300 | battery-heavy-gate.log | - |
+| red-as-expected-battery-heavy-gate | EXPECTED-RED | 1 | 1 | 2026-11-08T13:30:42-0300 | battery-heavy-gate-neg.log | - |
+| task-resolver-gate | PASS | 0 | 0 | 2026-11-08T13:30:43-0300 | task-resolver-gate.log | - |
+| red-as-expected-task-resolver-gate | EXPECTED-RED | 1 | 1 | 2026-11-08T13:30:43-0300 | task-resolver-gate-neg.log | - |
+| claims-date | PASS | 0 | 0 | 2026-11-08T13:30:44-0300 | claims-date.log | - |
+| red-as-expected-claims-date | EXPECTED-RED | 1 | 1 | 2026-11-08T13:30:46-0300 | claims-date-neg.log | - |
+| stall-under-load | PASS | 0 | 0 | 2026-11-08T13:30:47-0300 | stall-under-load.log | always |
+| red-as-expected-stall-under-load | EXPECTED-RED | 1 | 1 | 2026-11-08T13:30:48-0300 | stall-under-load-neg.log | always |
+| paint-live-show | PASS | 0 | 0 | 2026-11-08T13:31:17-0300 | paint-live-show.log | always |
+| red-as-expected-paint-live-show | EXPECTED-RED | 1 | 1 | 2026-11-08T13:31:34-0300 | paint-live-show-neg.log | always |
 | panel-paint-first-measure | NOT RUN | - | 0 | - | panel-paint-first-measure.log | sem registo no stepcache (o passo nao completou) |
-| panel-paint-first | PASS | 0 | 0 | 2026-11-08T11:25:22-0300 | panel-paint-first.log | always |
-| red-as-expected-panel-paint-first | EXPECTED-RED | 1 | 1 | 2026-11-08T11:25:23-0300 | panel-paint-first-neg.log | always |
-| receipt-provenance | PASS | 0 | 0 | 2026-11-08T11:25:24-0300 | receipt-provenance.log | always |
-| red-as-expected-receipt-provenance | EXPECTED-RED | 1 | 1 | 2026-11-08T11:25:24-0300 | receipt-provenance-neg.log | always |
+| panel-paint-first | PASS | 0 | 0 | 2026-11-08T13:31:35-0300 | panel-paint-first.log | always |
+| red-as-expected-panel-paint-first | EXPECTED-RED | 1 | 1 | 2026-11-08T13:31:36-0300 | panel-paint-first-neg.log | always |
+| receipt-provenance | PASS | 0 | 0 | 2026-11-08T13:31:36-0300 | receipt-provenance.log | always |
+| red-as-expected-receipt-provenance | EXPECTED-RED | 1 | 1 | 2026-11-08T13:31:37-0300 | receipt-provenance-neg.log | always |
 | async-track-fetch | PASS | 0 | 0 | 2026-11-08T05:26:24-0300 | async-track-fetch.log | - |
 | red-as-expected-async-track-fetch | EXPECTED-RED | 1 | 1 | 2026-11-08T05:26:33-0300 | async-track-fetch-neg.log | - |
 | batch-queue-drain | PASS | 0 | 0 | 2026-11-05T14:52:43-0300 | batch-queue-drain.log | - |
@@ -179,11 +179,11 @@ Resumo: passos=385 · PASS=210 · EXPECTED-RED=148 · FAIL=3 · STALE=6 · NO-VE
 | red-as-expected-hotkey-spam | EXPECTED-RED | 1 | 1 | 2026-11-08T06:34:32-0300 | hotkey-spam-neg.log | - |
 | loading-placeholder | PASS | 0 | 0 | 2026-11-08T05:27:20-0300 | loading-placeholder.log | - |
 | red-as-expected-loading-placeholder | EXPECTED-RED | 1 | 1 | 2026-11-08T05:27:21-0300 | loading-placeholder-neg.log | - |
-| youtube-land | PASS | 0 | 0 | 2026-11-08T11:25:26-0300 | youtube-land.log | always |
+| youtube-land | STALE | 0 | 0 | 2026-11-08T13:31:39-0300 | youtube-land.log | deps mudaram depois da medicao (medido 2026-11-08T13:31:39-0300) |
 | red-as-expected-youtube-land | EXPECTED-RED | 1 | 1 | 2026-11-08T06:34:35-0300 | youtube-land-neg.log | - |
-| time-to-first-caption | PASS | 0 | 0 | 2026-11-08T11:25:29-0300 | time-to-first-caption.log | always |
+| time-to-first-caption | FAIL | 1 | 0 | 2026-11-08T13:31:40-0300 | time-to-first-caption.log | rc=1 != esperado 0 |
 | red-as-expected-time-to-first-caption | EXPECTED-RED | 1 | 1 | 2026-11-05T19:46:54-0300 | time-to-first-caption-neg.log | - |
-| first-capture-fast | PASS | 0 | 0 | 2026-11-08T11:25:31-0300 | first-capture-fast.log | always |
+| first-capture-fast | PASS | 0 | 0 | 2026-11-08T13:31:42-0300 | first-capture-fast.log | always |
 | red-as-expected-first-capture-fast | EXPECTED-RED | 1 | 1 | 2026-11-08T05:27:33-0300 | first-capture-fast-neg.log | - |
 | youtube-land-replay | PASS | 0 | 0 | 2026-11-08T05:27:35-0300 | youtube-land-replay.log | - |
 | red-as-expected-youtube-land-replay | EXPECTED-RED | 1 | 1 | 2026-11-08T05:27:38-0300 | youtube-land-replay-neg.log | - |
@@ -197,53 +197,53 @@ Resumo: passos=385 · PASS=210 · EXPECTED-RED=148 · FAIL=3 · STALE=6 · NO-VE
 | red-as-expected-job-object | EXPECTED-RED | 1 | 1 | 2026-11-05T14:53:45-0300 | job-object-neg.log | - |
 | emit-pipe-dead | PASS | 0 | 0 | 2026-11-08T05:27:47-0300 | emit-pipe-dead.log | - |
 | red-as-expected-emit-pipe-dead | EXPECTED-RED | 1 | 1 | 2026-11-08T05:27:47-0300 | emit-pipe-dead-neg.log | - |
-| state-page-write | NO-VERDICT | 0 | 0 | 2026-11-08T10:40:38-0300 | state-page-write.log | log alterado depois do registo |
-| state-page | STALE | 0 | 0 | 2026-11-08T10:40:42-0300 | state-page.log | deps mudaram depois da medicao (medido 2026-11-08T10:40:42-0300) |
-| red-as-expected-state-page | STALE | 1 | 1 | 2026-11-08T10:42:07-0300 | state-page-neg.log | deps mudaram depois da medicao (medido 2026-11-08T10:42:07-0300) |
-| battery-wiring | PASS | 0 | 0 | 2026-11-08T10:42:08-0300 | battery-wiring.log | - |
-| red-as-expected-battery-wiring | EXPECTED-RED | 1 | 1 | 2026-11-08T10:42:16-0300 | battery-wiring-neg.log | - |
-| battery-record-pairing | PASS | 0 | 0 | 2026-11-08T10:42:16-0300 | battery-record-pairing.log | - |
-| red-as-expected-battery-record-pairing | EXPECTED-RED | 1 | 1 | 2026-11-08T10:42:17-0300 | battery-record-pairing-neg.log | - |
-| complaints-reconcile | PASS | 0 | 0 | 2026-11-08T10:42:18-0300 | complaints-reconcile.log | always |
-| red-as-expected-complaints-reconcile | EXPECTED-RED | 1 | 1 | 2026-11-08T10:42:23-0300 | complaints-reconcile-neg.log | always |
-| youtube-1to1 | PASS | 0 | 0 | 2026-11-08T10:42:27-0300 | youtube-1to1.log | always |
-| red-as-expected-youtube-1to1 | EXPECTED-RED | 1 | 1 | 2026-11-08T10:42:33-0300 | youtube-1to1-neg.log | always |
-| youtube-cdp-source | PASS | 0 | 0 | 2026-11-08T10:42:42-0300 | youtube-cdp-source.log | always |
-| red-as-expected-youtube-cdp-source | EXPECTED-RED | 1 | 1 | 2026-11-08T10:43:45-0300 | youtube-cdp-source-neg.log | always |
-| caption-producer | PASS | 0 | 0 | 2026-11-08T10:43:46-0300 | caption-producer.log | always |
-| red-as-expected-caption-producer | EXPECTED-RED | 1 | 1 | 2026-11-08T10:43:46-0300 | caption-producer-neg.log | always |
-| caption-style | PASS | 0 | 0 | 2026-11-08T10:43:50-0300 | caption-style.log | always |
-| red-as-expected-caption-style | EXPECTED-RED | 1 | 1 | 2026-11-08T10:43:54-0300 | caption-style-neg.log | always |
-| panel-commit-stable | FAIL | 124 | 0 | 2026-11-08T10:47:57-0300 | panel-commit-stable.log | rc=124 != esperado 0 |
-| red-as-expected-panel-commit-stable | STALE | 1 | 1 | 2026-11-08T10:50:37-0300 | panel-commit-stable-neg.log | deps mudaram depois da medicao (medido 2026-11-08T10:50:37-0300) |
-| paint-row-seam | PASS | 0 | 0 | 2026-11-08T10:50:38-0300 | paint-row-seam.log | always |
-| red-as-expected-paint-row-seam | EXPECTED-RED | 1 | 1 | 2026-11-08T10:50:38-0300 | paint-row-seam-neg.log | always |
-| load-bg-window | PASS | 0 | 0 | 2026-11-08T10:50:39-0300 | load-bg-window.log | always |
-| red-as-expected-load-bg-window | EXPECTED-RED | 1 | 1 | 2026-11-08T10:50:41-0300 | load-bg-window-neg.log | always |
-| page-scan-browser | PASS | 0 | 0 | 2026-11-08T10:50:42-0300 | page-scan-browser.log | always |
-| red-as-expected-page-scan-browser | EXPECTED-RED | 1 | 1 | 2026-11-08T10:50:42-0300 | page-scan-browser-neg.log | always |
-| paused-pace | PASS | 0 | 0 | 2026-11-08T10:50:44-0300 | paused-pace.log | always |
-| red-as-expected-paused-pace | EXPECTED-RED | 1 | 1 | 2026-11-08T10:50:45-0300 | paused-pace-neg.log | always |
-| stutter-caption | PASS | 0 | 0 | 2026-11-08T10:50:50-0300 | stutter-caption.log | always |
-| red-as-expected-stutter-caption | EXPECTED-RED | 1 | 1 | 2026-11-08T10:50:53-0300 | stutter-caption-neg.log | always |
+| state-page-write | NO-VERDICT | 0 | 0 | 2026-11-08T11:25:37-0300 | state-page-write.log | log alterado depois do registo |
+| state-page | STALE | 0 | 0 | 2026-11-08T11:25:43-0300 | state-page.log | deps mudaram depois da medicao (medido 2026-11-08T11:25:43-0300) |
+| red-as-expected-state-page | STALE | 1 | 1 | 2026-11-08T11:27:08-0300 | state-page-neg.log | deps mudaram depois da medicao (medido 2026-11-08T11:27:08-0300) |
+| battery-wiring | STALE | 0 | 0 | 2026-11-08T10:42:08-0300 | battery-wiring.log | deps mudaram depois da medicao (medido 2026-11-08T10:42:08-0300) |
+| red-as-expected-battery-wiring | STALE | 1 | 1 | 2026-11-08T10:42:16-0300 | battery-wiring-neg.log | deps mudaram depois da medicao (medido 2026-11-08T10:42:16-0300) |
+| battery-record-pairing | STALE | 0 | 0 | 2026-11-08T10:42:16-0300 | battery-record-pairing.log | deps mudaram depois da medicao (medido 2026-11-08T10:42:16-0300) |
+| red-as-expected-battery-record-pairing | STALE | 1 | 1 | 2026-11-08T10:42:17-0300 | battery-record-pairing-neg.log | deps mudaram depois da medicao (medido 2026-11-08T10:42:17-0300) |
+| complaints-reconcile | PASS | 0 | 0 | 2026-11-08T11:27:11-0300 | complaints-reconcile.log | always |
+| red-as-expected-complaints-reconcile | EXPECTED-RED | 1 | 1 | 2026-11-08T11:27:28-0300 | complaints-reconcile-neg.log | always |
+| youtube-1to1 | PASS | 0 | 0 | 2026-11-08T11:27:30-0300 | youtube-1to1.log | always |
+| red-as-expected-youtube-1to1 | EXPECTED-RED | 1 | 1 | 2026-11-08T11:27:32-0300 | youtube-1to1-neg.log | always |
+| youtube-cdp-source | PASS | 0 | 0 | 2026-11-08T11:27:44-0300 | youtube-cdp-source.log | always |
+| red-as-expected-youtube-cdp-source | EXPECTED-RED | 1 | 1 | 2026-11-08T11:28:49-0300 | youtube-cdp-source-neg.log | always |
+| caption-producer | PASS | 0 | 0 | 2026-11-08T11:28:49-0300 | caption-producer.log | always |
+| red-as-expected-caption-producer | EXPECTED-RED | 1 | 1 | 2026-11-08T11:28:50-0300 | caption-producer-neg.log | always |
+| caption-style | PASS | 0 | 0 | 2026-11-08T11:28:53-0300 | caption-style.log | always |
+| red-as-expected-caption-style | EXPECTED-RED | 1 | 1 | 2026-11-08T11:29:01-0300 | caption-style-neg.log | always |
+| panel-commit-stable | STALE | 0 | 0 | 2026-11-08T11:29:10-0300 | panel-commit-stable.log | deps mudaram depois da medicao (medido 2026-11-08T11:29:10-0300) |
+| red-as-expected-panel-commit-stable | STALE | 1 | 1 | 2026-11-08T11:29:24-0300 | panel-commit-stable-neg.log | deps mudaram depois da medicao (medido 2026-11-08T11:29:24-0300) |
+| paint-row-seam | PASS | 0 | 0 | 2026-11-08T11:29:25-0300 | paint-row-seam.log | always |
+| red-as-expected-paint-row-seam | EXPECTED-RED | 1 | 1 | 2026-11-08T11:29:25-0300 | paint-row-seam-neg.log | always |
+| load-bg-window | PASS | 0 | 0 | 2026-11-08T11:29:26-0300 | load-bg-window.log | always |
+| red-as-expected-load-bg-window | EXPECTED-RED | 1 | 1 | 2026-11-08T11:29:27-0300 | load-bg-window-neg.log | always |
+| page-scan-browser | PASS | 0 | 0 | 2026-11-08T11:29:28-0300 | page-scan-browser.log | always |
+| red-as-expected-page-scan-browser | EXPECTED-RED | 1 | 1 | 2026-11-08T11:29:29-0300 | page-scan-browser-neg.log | always |
+| paused-pace | PASS | 0 | 0 | 2026-11-08T11:29:30-0300 | paused-pace.log | always |
+| red-as-expected-paused-pace | EXPECTED-RED | 1 | 1 | 2026-11-08T11:29:31-0300 | paused-pace-neg.log | always |
+| stutter-caption | PASS | 0 | 0 | 2026-11-08T11:29:36-0300 | stutter-caption.log | always |
+| red-as-expected-stutter-caption | EXPECTED-RED | 1 | 1 | 2026-11-08T11:29:40-0300 | stutter-caption-neg.log | always |
 | parakeet-ultra | NOT RUN | - | 0 | - | parakeet-ultra.log | sem registo no stepcache (o passo nao completou) |
-| red-as-expected-parakeet-ultra | EXPECTED-RED | 1 | 1 | 2026-11-08T10:50:54-0300 | parakeet-ultra-neg.log | always |
-| hotkey-observed | PASS | 0 | 0 | 2026-11-08T10:51:00-0300 | hotkey-observed.log | always |
-| red-as-expected-hotkey-observed | EXPECTED-RED | 1 | 1 | 2026-11-08T10:51:04-0300 | hotkey-observed-neg.log | always |
-| youtube-reveal | PASS | 0 | 0 | 2026-11-08T10:51:08-0300 | youtube-reveal.log | always |
-| red-as-expected-youtube-reveal | EXPECTED-RED | 1 | 1 | 2026-11-08T10:51:11-0300 | youtube-reveal-neg.log | always |
-| youtube-rows | PASS | 0 | 0 | 2026-11-08T10:51:15-0300 | youtube-rows.log | always |
-| red-as-expected-youtube-rows | EXPECTED-RED | 1 | 1 | 2026-11-08T10:51:20-0300 | youtube-rows-neg.log | always |
-| youtube-drift | PASS | 0 | 0 | 2026-11-08T10:51:20-0300 | youtube-drift.log | always |
-| red-as-expected-youtube-drift | EXPECTED-RED | 1 | 1 | 2026-11-08T10:51:21-0300 | youtube-drift-neg.log | always |
-| bend-laws | PASS | 0 | 0 | 2026-11-08T10:51:48-0300 | bend-laws.log | always |
-| bend-laws-model | PASS | 0 | 0 | 2026-11-08T10:51:49-0300 | bend-laws-model.log | always |
-| red-as-expected-bend-laws-model | EXPECTED-RED | 1 | 1 | 2026-11-08T10:51:50-0300 | bend-laws-model-neg.log | always |
-| bend-mirror | PASS | 0 | 0 | 2026-11-08T10:51:51-0300 | bend-mirror.log | always |
-| red-as-expected-bend-mirror | EXPECTED-RED | 1 | 1 | 2026-11-08T10:51:56-0300 | bend-mirror-neg.log | always |
-| bend-ledger-selftest | PASS | 0 | 0 | 2026-11-08T10:51:57-0300 | bend-ledger-selftest.log | always |
-| panel-hidden-at-startup-oracle | PASS | 0 | 0 | 2026-11-08T05:40:09-0300 | panel-hidden-at-startup.log | - |
-| red-as-expected-panel-hidden-at-startup | EXPECTED-RED | 1 | 1 | 2026-11-08T05:40:18-0300 | panel-hidden-at-startup-neg.log | - |
+| red-as-expected-parakeet-ultra | EXPECTED-RED | 1 | 1 | 2026-11-08T11:29:40-0300 | parakeet-ultra-neg.log | always |
+| hotkey-observed | PASS | 0 | 0 | 2026-11-08T11:29:46-0300 | hotkey-observed.log | always |
+| red-as-expected-hotkey-observed | EXPECTED-RED | 1 | 1 | 2026-11-08T11:29:51-0300 | hotkey-observed-neg.log | always |
+| youtube-reveal | PASS | 0 | 0 | 2026-11-08T11:29:57-0300 | youtube-reveal.log | always |
+| red-as-expected-youtube-reveal | EXPECTED-RED | 1 | 1 | 2026-11-08T11:30:03-0300 | youtube-reveal-neg.log | always |
+| youtube-rows | PASS | 0 | 0 | 2026-11-08T11:30:11-0300 | youtube-rows.log | always |
+| red-as-expected-youtube-rows | EXPECTED-RED | 1 | 1 | 2026-11-08T11:30:12-0300 | youtube-rows-neg.log | always |
+| youtube-drift | PASS | 0 | 0 | 2026-11-08T11:30:13-0300 | youtube-drift.log | always |
+| red-as-expected-youtube-drift | EXPECTED-RED | 1 | 1 | 2026-11-08T11:30:13-0300 | youtube-drift-neg.log | always |
+| bend-laws | PASS | 0 | 0 | 2026-11-08T11:30:32-0300 | bend-laws.log | always |
+| bend-laws-model | PASS | 0 | 0 | 2026-11-08T11:30:33-0300 | bend-laws-model.log | always |
+| red-as-expected-bend-laws-model | EXPECTED-RED | 1 | 1 | 2026-11-08T11:30:33-0300 | bend-laws-model-neg.log | always |
+| bend-mirror | PASS | 0 | 0 | 2026-11-08T11:30:34-0300 | bend-mirror.log | always |
+| red-as-expected-bend-mirror | EXPECTED-RED | 1 | 1 | 2026-11-08T11:30:35-0300 | bend-mirror-neg.log | always |
+| bend-ledger-selftest | PASS | 0 | 0 | 2026-11-08T11:30:35-0300 | bend-ledger-selftest.log | always |
+| panel-hidden-at-startup-oracle | STALE | 0 | 0 | 2026-11-08T05:40:09-0300 | panel-hidden-at-startup.log | deps mudaram depois da medicao (medido 2026-11-08T05:40:09-0300) |
+| red-as-expected-panel-hidden-at-startup | STALE | 1 | 1 | 2026-11-08T05:40:18-0300 | panel-hidden-at-startup-neg.log | deps mudaram depois da medicao (medido 2026-11-08T05:40:18-0300) |
 | panel-nav-stall | PASS | 0 | 0 | 2026-11-08T05:40:18-0300 | panel-nav-stall.log | - |
 | red-as-expected-panel-nav-stall | EXPECTED-RED | 1 | 1 | 2026-11-08T05:40:21-0300 | panel-nav-stall-neg.log | - |
 | worker-start-wiring | PASS | 0 | 0 | 2026-11-08T05:40:27-0300 | wiring-worker-start.log | - |
@@ -251,7 +251,7 @@ Resumo: passos=385 · PASS=210 · EXPECTED-RED=148 · FAIL=3 · STALE=6 · NO-VE
 | embedded-js-check | PASS | 0 | 0 | 2026-11-08T05:40:31-0300 | embedded-js.log | - |
 | lane1-worker-default-arms | PASS | 0 | 0 | 2026-11-08T05:40:32-0300 | lane1-arms.log | - |
 | external-subs-stability | PASS | 0 | 0 | 2026-11-05T19:53:37-0300 | external-subs-stability.log | - |
-| external-caption-chrome-census | PASS | 0 | 0 | 2026-11-08T05:40:32-0300 | external-caption-chrome-census.log | - |
+| external-caption-chrome-census | STALE | 0 | 0 | 2026-11-08T05:40:32-0300 | external-caption-chrome-census.log | deps mudaram depois da medicao (medido 2026-11-08T05:40:32-0300) |
 | external-caption-chrome-census-fixture | PASS | 0 | 0 | 2026-11-05T19:53:38-0300 | external-caption-chrome-census-fixture.log | - |
 | external-subs-geometry-window | PASS | 0 | 0 | 2026-11-05T19:53:39-0300 | external-subs-geometry-window.log | - |
 | youtube-captions | PASS | 0 | 0 | 2026-11-05T14:58:01-0300 | youtube-captions.log | - |
@@ -262,15 +262,15 @@ Resumo: passos=385 · PASS=210 · EXPECTED-RED=148 · FAIL=3 · STALE=6 · NO-VE
 | shots-delta-oracle | PASS | 0 | 0 | 2026-11-05T14:58:09-0300 | shots-delta-oracle.log | - |
 | red-as-expected-shots-delta-oracle | EXPECTED-RED | 1 | 1 | 2026-11-05T14:58:12-0300 | shots-delta-oracle-neg.log | - |
 | gitattributes-verify | PASS | 0 | 0 | 2026-11-05T15:39:14-0300 | gitattributes-verify.log | - |
-| agents-md-pins | PASS | 0 | 0 | 2026-11-08T10:52:00-0300 | agents-md-pins.log | - |
+| agents-md-pins | STALE | 0 | 0 | 2026-11-08T10:52:00-0300 | agents-md-pins.log | deps mudaram depois da medicao (medido 2026-11-08T10:52:00-0300) |
 | lang-id-oracle | PASS | 0 | 0 | 2026-11-08T05:40:52-0300 | lang-id-oracle.log | - |
 | red-as-expected-lang-id-oracle | EXPECTED-RED | 1 | 1 | 2026-11-08T05:41:39-0300 | lang-id-oracle-neg.log | - |
 | model-spec-oracle | PASS | 0 | 0 | 2026-11-05T14:59:14-0300 | model-spec-oracle.log | - |
 | red-as-expected-model-spec-oracle | EXPECTED-RED | 1 | 1 | 2026-11-05T14:59:15-0300 | model-spec-oracle-neg.log | - |
 | scope-leak | PASS | 0 | 0 | 2026-11-05T14:59:16-0300 | scope-leak.log | - |
 | red-as-expected-scope-leak | EXPECTED-RED | 1 | 1 | 2026-11-05T14:59:18-0300 | scope-leak-neg.log | - |
-| panel-flash-contradiction | PASS | 0 | 0 | 2026-11-08T10:52:02-0300 | panel-flash-contradiction.log | - |
-| red-as-expected-panel-flash-contradiction | EXPECTED-RED | 1 | 1 | 2026-11-08T10:52:03-0300 | panel-flash-contradiction-neg.log | - |
+| panel-flash-contradiction | STALE | 0 | 0 | 2026-11-08T10:52:02-0300 | panel-flash-contradiction.log | deps mudaram depois da medicao (medido 2026-11-08T10:52:02-0300) |
+| red-as-expected-panel-flash-contradiction | STALE | 1 | 1 | 2026-11-08T10:52:03-0300 | panel-flash-contradiction-neg.log | deps mudaram depois da medicao (medido 2026-11-08T10:52:03-0300) |
 | per-app-source-plumbing | PASS | 0 | 0 | 2026-11-08T05:41:40-0300 | per-app-source-plumbing.log | - |
 | red-as-expected-per-app-source-plumbing | EXPECTED-RED | 1 | 1 | 2026-11-08T05:41:41-0300 | per-app-source-plumbing-neg.log | - |
 | redux-live-contract | PASS | 0 | 0 | 2026-11-08T05:41:41-0300 | redux-live-contract.log | - |
@@ -285,21 +285,21 @@ Resumo: passos=385 · PASS=210 · EXPECTED-RED=148 · FAIL=3 · STALE=6 · NO-VE
 | mute-audio | NOT RUN | - | 0 | - | mute-audio.log | sem registo no stepcache (o passo nao completou) |
 | device-silence | NOT RUN | - | 0 | - | device-silence.log | sem registo no stepcache (o passo nao completou) |
 | red-as-expected-device-silence | NOT RUN | - | 1 | - | device-silence-neg.log | sem registo no stepcache (o passo nao completou) |
-| console-window-audit | PASS | 0 | 0 | 2026-11-08T10:52:24-0300 | console-window-audit.log | always |
-| red-as-expected-console-window-audit | EXPECTED-RED | 1 | 1 | 2026-11-08T10:52:25-0300 | console-window-audit-neg.log | always |
-| red-as-expected-console-window-watch | EXPECTED-RED | 1 | 1 | 2026-11-08T10:52:25-0300 | console-window-watch-neg.log | always |
-| capture-exclude | PASS | 0 | 0 | 2026-11-08T10:52:26-0300 | capture-exclude.log | always |
-| red-as-expected-capture-exclude | EXPECTED-RED | 1 | 1 | 2026-11-08T10:52:26-0300 | capture-exclude-neg.log | always |
-| history-merge | PASS | 0 | 0 | 2026-11-08T10:52:27-0300 | history-merge.log | always |
-| red-as-expected-history-merge | EXPECTED-RED | 1 | 1 | 2026-11-08T10:52:28-0300 | history-merge-neg.log | always |
-| reveal-clock | PASS | 0 | 0 | 2026-11-08T10:52:29-0300 | reveal-clock.log | always |
-| red-as-expected-reveal-clock | EXPECTED-RED | 1 | 1 | 2026-11-08T10:52:30-0300 | reveal-clock-neg.log | always |
-| tap-first-block | PASS | 0 | 0 | 2026-11-08T10:52:32-0300 | tap-first-block.log | always |
-| red-as-expected-tap-first-block | EXPECTED-RED | 1 | 1 | 2026-11-08T10:52:33-0300 | tap-first-block-neg.log | always |
-| owner-audio-gate | PASS | 0 | 0 | 2026-11-08T10:52:34-0300 | owner-audio-gate.log | always |
-| red-as-expected-owner-audio-gate | EXPECTED-RED | 1 | 1 | 2026-11-08T10:52:35-0300 | owner-audio-gate-neg.log | always |
-| worker-providers | PASS | 0 | 0 | 2026-11-08T10:52:36-0300 | worker-providers.log | always |
-| red-as-expected-worker-providers | EXPECTED-RED | 1 | 1 | 2026-11-08T10:52:37-0300 | worker-providers-neg.log | always |
+| console-window-audit | PASS | 0 | 0 | 2026-11-08T11:30:55-0300 | console-window-audit.log | always |
+| red-as-expected-console-window-audit | EXPECTED-RED | 1 | 1 | 2026-11-08T11:30:55-0300 | console-window-audit-neg.log | always |
+| red-as-expected-console-window-watch | EXPECTED-RED | 1 | 1 | 2026-11-08T11:30:56-0300 | console-window-watch-neg.log | always |
+| capture-exclude | PASS | 0 | 0 | 2026-11-08T11:30:56-0300 | capture-exclude.log | always |
+| red-as-expected-capture-exclude | EXPECTED-RED | 1 | 1 | 2026-11-08T11:30:57-0300 | capture-exclude-neg.log | always |
+| history-merge | PASS | 0 | 0 | 2026-11-08T11:30:57-0300 | history-merge.log | always |
+| red-as-expected-history-merge | EXPECTED-RED | 1 | 1 | 2026-11-08T11:30:58-0300 | history-merge-neg.log | always |
+| reveal-clock | PASS | 0 | 0 | 2026-11-08T11:30:58-0300 | reveal-clock.log | always |
+| red-as-expected-reveal-clock | EXPECTED-RED | 1 | 1 | 2026-11-08T11:30:59-0300 | reveal-clock-neg.log | always |
+| tap-first-block | PASS | 0 | 0 | 2026-11-08T11:31:00-0300 | tap-first-block.log | always |
+| red-as-expected-tap-first-block | EXPECTED-RED | 1 | 1 | 2026-11-08T11:31:00-0300 | tap-first-block-neg.log | always |
+| owner-audio-gate | PASS | 0 | 0 | 2026-11-08T11:31:01-0300 | owner-audio-gate.log | always |
+| red-as-expected-owner-audio-gate | EXPECTED-RED | 1 | 1 | 2026-11-08T11:31:02-0300 | owner-audio-gate-neg.log | always |
+| worker-providers | PASS | 0 | 0 | 2026-11-08T11:31:03-0300 | worker-providers.log | always |
+| red-as-expected-worker-providers | EXPECTED-RED | 1 | 1 | 2026-11-08T11:31:04-0300 | worker-providers-neg.log | always |
 | review-f1f3 | PASS | 0 | 0 | 2026-11-08T05:43:22-0300 | review-f1f3.log | - |
 | review-tapstop | PASS | 0 | 0 | 2026-11-05T15:00:43-0300 | review-tapstop.log | - |
 | strip-surface-oracle | PASS | 0 | 0 | 2026-11-08T06:21:33-0300 | strip-surface-oracle.log | - |
@@ -312,11 +312,11 @@ Resumo: passos=385 · PASS=210 · EXPECTED-RED=148 · FAIL=3 · STALE=6 · NO-VE
 | strip-geometry-restore | NOT RUN | - | 0 | - | strip-restore.log | sem registo no stepcache (o passo nao completou) |
 | strip-stats-wave | NOT RUN | - | 0 | - | strip-stats.log | sem registo no stepcache (o passo nao completou) |
 | strip-stats-load-oracle | PASS | 0 | 0 | 2026-11-05T15:01:18-0300 | strip-stats-load-oracle.log | - |
-| hotkey-registration | PASS | 0 | 0 | 2026-11-08T10:52:38-0300 | hotkey-registration.log | always |
-| hotkey-delivery | PASS | 0 | 0 | 2026-11-08T10:52:39-0300 | hotkey-delivery.log | always |
+| hotkey-registration | PASS | 0 | 0 | 2026-11-08T11:31:05-0300 | hotkey-registration.log | always |
+| hotkey-delivery | PASS | 0 | 0 | 2026-11-08T11:31:06-0300 | hotkey-delivery.log | always |
 | open-close-stall | PASS | 0 | 0 | 2026-11-08T05:44:08-0300 | open-close-stall.log | - |
 | red-as-expected-open-close-stall | EXPECTED-RED | 1 | 1 | 2026-11-08T05:44:30-0300 | open-close-stall-neg.log | - |
-| autostart-status | PASS | 0 | 0 | 2026-11-08T10:52:41-0300 | autostart-status.log | always |
+| autostart-status | PASS | 0 | 0 | 2026-11-08T11:31:07-0300 | autostart-status.log | always |
 | control-verdict-gate-unguard | PASS | 0 | 0 | 2026-11-08T05:44:31-0300 | control-verdict-gate-unguard.log | - |
 | control-history-producer-stamp-nvidia | PASS | 0 | 0 | 2026-11-08T05:44:32-0300 | control-history-producer-stamp-nvidia.log | - |
 | control-redux-flag-neg-arm | PASS | 0 | 0 | 2026-11-08T05:44:33-0300 | control-redux-flag-neg-arm.log | - |
@@ -331,73 +331,73 @@ Resumo: passos=385 · PASS=210 · EXPECTED-RED=148 · FAIL=3 · STALE=6 · NO-VE
 | red-as-expected-panel-search-keyboard | EXPECTED-RED | 1 | 1 | 2026-11-08T05:44:42-0300 | panel-search-keyboard-neg.log | - |
 | fresh-processor-probe | PASS | 0 | 0 | 2026-11-08T05:44:48-0300 | fresh-processor.log | - |
 | stepcache-oracle | PASS | 0 | 0 | 2026-11-05T22:22:40-0300 | stepcache-oracle.log | - |
-| battery-plan | STALE | 0 | 0 | 2026-11-08T10:52:50-0300 | battery-plan.log | deps mudaram depois da medicao (medido 2026-11-08T10:52:50-0300) |
-| red-as-expected-battery-plan | EXPECTED-RED | 1 | 1 | 2026-11-08T10:53:08-0300 | battery-plan-neg.log | always |
-| skip-verdict-guard | PASS | 0 | 0 | 2026-11-08T10:53:09-0300 | _skip-guard.log | always |
+| battery-plan | STALE | 0 | 0 | 2026-11-08T11:31:14-0300 | battery-plan.log | deps mudaram depois da medicao (medido 2026-11-08T11:31:14-0300) |
+| red-as-expected-battery-plan | STALE | 1 | 1 | 2026-11-08T11:31:32-0300 | battery-plan-neg.log | deps mudaram depois da medicao (medido 2026-11-08T11:31:32-0300) |
+| skip-verdict-guard | PASS | 0 | 0 | 2026-11-08T11:31:32-0300 | _skip-guard.log | always |
 | altc-first-caption | NOT RUN | - | 0 | - | altc-first-caption.log | sem registo no stepcache (o passo nao completou) |
-| altc-gesture | PASS | 0 | 0 | 2026-11-08T10:53:20-0300 | altc-gesture.log | always |
-| headphone-cut | PASS | 0 | 0 | 2026-11-08T10:54:21-0300 | headphone-cut.log | always |
-| incomplete-word | PASS | 0 | 0 | 2026-11-08T10:54:21-0300 | incomplete-word.log | always |
-| ladder-signal | PASS | 0 | 0 | 2026-11-08T10:54:22-0300 | ladder-signal.log | always |
-| launch-as-token | PASS | 0 | 0 | 2026-11-08T10:54:31-0300 | launch-as-token.log | always |
-| live-code-freshness | PASS | 0 | 0 | 2026-11-08T10:54:31-0300 | live-code-freshness.log | always |
-| live-code-freshness-control | PASS | 0 | 0 | 2026-11-08T10:54:32-0300 | live-code-freshness-control.log | always |
-| red-as-expected-live-code-freshness | EXPECTED-RED | 1 | 1 | 2026-11-08T10:54:32-0300 | live-code-freshness-neg.log | always |
-| load-shedding | PASS | 0 | 0 | 2026-11-08T10:54:38-0300 | load-shedding.log | always |
-| red-as-expected-altc-first-caption | EXPECTED-RED | 1 | 1 | 2026-11-08T10:54:39-0300 | altc-first-caption-neg.log | always |
-| red-as-expected-altc-gesture | EXPECTED-RED | 1 | 1 | 2026-11-08T10:55:29-0300 | altc-gesture-neg.log | always |
-| red-as-expected-headphone-cut | EXPECTED-RED | 1 | 1 | 2026-11-08T10:55:31-0300 | headphone-cut-neg.log | always |
-| red-as-expected-incomplete-word | EXPECTED-RED | 1 | 1 | 2026-11-08T10:55:31-0300 | incomplete-word-neg.log | always |
-| red-as-expected-ladder-signal | EXPECTED-RED | 1 | 1 | 2026-11-08T10:55:32-0300 | ladder-signal-neg.log | always |
-| red-as-expected-launch-as-token | EXPECTED-RED | 1 | 1 | 2026-11-08T10:55:34-0300 | launch-as-token-neg.log | always |
-| nemotron-weights | PASS | 0 | 0 | 2026-11-08T10:55:34-0300 | nemotron-weights.log | always |
-| red-as-expected-nemotron-weights | EXPECTED-RED | 1 | 1 | 2026-11-08T10:55:51-0300 | nemotron-weights-neg.log | always |
-| red-as-expected-load-shedding | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:06-0300 | load-shedding-neg.log | always |
+| altc-gesture | PASS | 0 | 0 | 2026-11-08T11:31:43-0300 | altc-gesture.log | always |
+| headphone-cut | STALE | 0 | 0 | 2026-11-08T11:32:44-0300 | headphone-cut.log | deps mudaram depois da medicao (medido 2026-11-08T11:32:44-0300) |
+| incomplete-word | PASS | 0 | 0 | 2026-11-08T11:32:44-0300 | incomplete-word.log | always |
+| ladder-signal | PASS | 0 | 0 | 2026-11-08T11:32:45-0300 | ladder-signal.log | always |
+| launch-as-token | PASS | 0 | 0 | 2026-11-08T11:32:50-0300 | launch-as-token.log | always |
+| live-code-freshness | PASS | 0 | 0 | 2026-11-08T11:32:51-0300 | live-code-freshness.log | always |
+| live-code-freshness-control | PASS | 0 | 0 | 2026-11-08T11:32:51-0300 | live-code-freshness-control.log | always |
+| red-as-expected-live-code-freshness | EXPECTED-RED | 1 | 1 | 2026-11-08T11:32:52-0300 | live-code-freshness-neg.log | always |
+| load-shedding | PASS | 0 | 0 | 2026-11-08T11:32:55-0300 | load-shedding.log | always |
+| red-as-expected-altc-first-caption | EXPECTED-RED | 1 | 1 | 2026-11-08T11:32:56-0300 | altc-first-caption-neg.log | always |
+| red-as-expected-altc-gesture | EXPECTED-RED | 1 | 1 | 2026-11-08T11:33:26-0300 | altc-gesture-neg.log | always |
+| red-as-expected-headphone-cut | EXPECTED-RED | 1 | 1 | 2026-11-08T11:33:26-0300 | headphone-cut-neg.log | always |
+| red-as-expected-incomplete-word | EXPECTED-RED | 1 | 1 | 2026-11-08T11:33:27-0300 | incomplete-word-neg.log | always |
+| red-as-expected-ladder-signal | EXPECTED-RED | 1 | 1 | 2026-11-08T11:33:28-0300 | ladder-signal-neg.log | always |
+| red-as-expected-launch-as-token | EXPECTED-RED | 1 | 1 | 2026-11-08T11:33:29-0300 | launch-as-token-neg.log | always |
+| nemotron-weights | PASS | 0 | 0 | 2026-11-08T11:33:30-0300 | nemotron-weights.log | always |
+| red-as-expected-nemotron-weights | EXPECTED-RED | 1 | 1 | 2026-11-08T11:33:36-0300 | nemotron-weights-neg.log | always |
+| red-as-expected-load-shedding | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:21-0300 | load-shedding-neg.log | always |
 | red-as-expected-shell-relaunch | NOT RUN | - | 1 | - | shell-relaunch-neg.log | sem registo no stepcache (o passo nao completou) |
-| red-as-expected-word-clock | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:10-0300 | word-clock-neg.log | always |
-| red-as-expected-youtube-monotonic | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:10-0300 | youtube-monotonic-neg.log | always |
-| red-as-expected-youtube-sotto-drift | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:11-0300 | youtube-sotto-drift-neg.log | always |
-| red-as-expected-youtube-switch | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:20-0300 | youtube-switch-neg.log | always |
-| red-as-expected-yt-no-dub | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:20-0300 | yt-no-dub-neg.log | always |
+| red-as-expected-word-clock | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:26-0300 | word-clock-neg.log | always |
+| red-as-expected-youtube-monotonic | STALE | 1 | 1 | 2026-11-08T11:34:27-0300 | youtube-monotonic-neg.log | deps mudaram depois da medicao (medido 2026-11-08T11:34:27-0300) |
+| red-as-expected-youtube-sotto-drift | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:28-0300 | youtube-sotto-drift-neg.log | always |
+| red-as-expected-youtube-switch | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:31-0300 | youtube-switch-neg.log | always |
+| red-as-expected-yt-no-dub | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:32-0300 | yt-no-dub-neg.log | always |
 | shell-relaunch | NOT RUN | - | 0 | - | shell-relaunch.log | sem registo no stepcache (o passo nao completou) |
 | census-instrument | PASS | 0 | 0 | 2026-11-08T05:47:29-0300 | census-instrument.log | - |
 | red-as-expected-census-instrument | EXPECTED-RED | 1 | 1 | 2026-11-08T05:47:30-0300 | census-instrument-neg.log | - |
 | relaunch-ready | PASS | 0 | 0 | 2026-11-08T05:47:38-0300 | relaunch-ready.log | - |
 | red-as-expected-relaunch-ready | EXPECTED-RED | 1 | 1 | 2026-11-08T05:47:52-0300 | relaunch-ready-neg.log | - |
-| word-clock | PASS | 0 | 0 | 2026-11-08T10:57:24-0300 | word-clock.log | always |
-| youtube-monotonic | PASS | 0 | 0 | 2026-11-08T10:57:27-0300 | youtube-monotonic.log | always |
-| youtube-rate | PASS | 0 | 0 | 2026-11-08T10:57:27-0300 | youtube-rate.log | always |
-| red-as-expected-youtube-rate | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:28-0300 | youtube-rate-neg.log | always |
-| click-through-applied | PASS | 0 | 0 | 2026-11-08T10:57:28-0300 | click-through-applied.log | always |
-| red-as-expected-click-through-applied | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:30-0300 | click-through-applied-neg.log | always |
-| topmost-keepalive | PASS | 0 | 0 | 2026-11-08T10:57:32-0300 | topmost-keepalive.log | always |
-| red-as-expected-topmost-keepalive | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:33-0300 | topmost-keepalive-neg.log | always |
-| webview2-args-scope | PASS | 0 | 0 | 2026-11-08T10:57:34-0300 | webview2-args-scope.log | always |
-| red-as-expected-webview2-args-scope | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:36-0300 | webview2-args-scope-neg.log | always |
-| power-recovery | PASS | 0 | 0 | 2026-11-08T10:57:37-0300 | power-recovery.log | always |
-| red-as-expected-power-recovery | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:42-0300 | power-recovery-neg.log | always |
+| word-clock | PASS | 0 | 0 | 2026-11-08T11:34:36-0300 | word-clock.log | always |
+| youtube-monotonic | STALE | 0 | 0 | 2026-11-08T11:34:39-0300 | youtube-monotonic.log | deps mudaram depois da medicao (medido 2026-11-08T11:34:39-0300) |
+| youtube-rate | PASS | 0 | 0 | 2026-11-08T11:34:40-0300 | youtube-rate.log | always |
+| red-as-expected-youtube-rate | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:41-0300 | youtube-rate-neg.log | always |
+| click-through-applied | PASS | 0 | 0 | 2026-11-08T11:34:42-0300 | click-through-applied.log | always |
+| red-as-expected-click-through-applied | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:42-0300 | click-through-applied-neg.log | always |
+| topmost-keepalive | PASS | 0 | 0 | 2026-11-08T11:34:43-0300 | topmost-keepalive.log | always |
+| red-as-expected-topmost-keepalive | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:43-0300 | topmost-keepalive-neg.log | always |
+| webview2-args-scope | PASS | 0 | 0 | 2026-11-08T11:34:44-0300 | webview2-args-scope.log | always |
+| red-as-expected-webview2-args-scope | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:45-0300 | webview2-args-scope-neg.log | always |
+| power-recovery | PASS | 0 | 0 | 2026-11-08T11:34:45-0300 | power-recovery.log | always |
+| red-as-expected-power-recovery | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:50-0300 | power-recovery-neg.log | always |
 | power-recovery-live | NOT RUN | - | 0 | - | power-recovery-live.log | sem registo no stepcache (o passo nao completou) |
-| youtube-sotto-drift | PASS | 0 | 0 | 2026-11-08T10:57:44-0300 | youtube-sotto-drift.log | always |
-| youtube-switch | PASS | 0 | 0 | 2026-11-08T10:57:49-0300 | youtube-switch.log | always |
-| yt-no-dub | PASS | 0 | 0 | 2026-11-08T10:57:50-0300 | yt-no-dub.log | always |
-| stale-display | PASS | 0 | 0 | 2026-11-08T10:57:51-0300 | stale-display.log | always |
-| red-as-expected-stale-display | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:55-0300 | stale-display-neg.log | always |
-| battery-class | PASS | 0 | 0 | 2026-11-08T10:57:55-0300 | battery-class.log | always |
-| red-as-expected-battery-class | EXPECTED-RED | 1 | 1 | 2026-11-08T10:57:56-0300 | battery-class-neg.log | always |
-| live-queue | PASS | 0 | 0 | 2026-11-08T10:57:59-0300 | live-queue.log | always |
-| red-as-expected-live-queue | EXPECTED-RED | 1 | 1 | 2026-11-08T10:58:01-0300 | live-queue-neg.log | always |
-| flat-endpoint | PASS | 0 | 0 | 2026-11-08T10:58:02-0300 | flat-endpoint.log | always |
-| tap-silent-desktop | PASS | 0 | 0 | 2026-11-08T10:58:02-0300 | tap-silent-desktop.log | always |
-| red-as-expected-tap-silent-desktop | EXPECTED-RED | 1 | 1 | 2026-11-08T10:58:03-0300 | tap-silent-desktop-neg.log | always |
-| warm-engine | PASS | 0 | 0 | 2026-11-08T10:58:21-0300 | warm-engine.log | always |
-| red-as-expected-warm-engine | EXPECTED-RED | 1 | 1 | 2026-11-08T10:59:36-0300 | warm-engine-neg.log | always |
-| gaming-hotkey | FAIL | 1 | 0 | 2026-11-08T11:00:12-0300 | gaming-hotkey.log | rc=1 != esperado 0 |
-| red-as-expected-gaming-hotkey | STALE | 1 | 1 | 2026-11-08T11:01:26-0300 | gaming-hotkey-neg.log | deps mudaram depois da medicao (medido 2026-11-08T11:01:26-0300) |
-| ctrlspace-swallow | PASS | 0 | 0 | 2026-11-08T11:01:34-0300 | ctrlspace-swallow.log | always |
-| red-as-expected-ctrlspace-swallow | EXPECTED-RED | 1 | 1 | 2026-11-08T11:02:04-0300 | ctrlspace-swallow-neg.log | always |
-| ctrlspace-swallow-os | PASS | 0 | 0 | 2026-11-08T11:02:05-0300 | ctrlspace-swallow-os.log | always |
-| battery-budget | FAIL | 1 | 0 | 2026-11-08T11:02:06-0300 | battery-budget.log | rc=1 != esperado 0 |
-| red-as-expected-battery-budget | STALE | 1 | 1 | 2026-11-08T11:02:06-0300 | battery-budget-neg.log | deps mudaram depois da medicao (medido 2026-11-08T11:02:06-0300) |
+| youtube-sotto-drift | PASS | 0 | 0 | 2026-11-08T11:34:50-0300 | youtube-sotto-drift.log | always |
+| youtube-switch | PASS | 0 | 0 | 2026-11-08T11:34:51-0300 | youtube-switch.log | always |
+| yt-no-dub | PASS | 0 | 0 | 2026-11-08T11:34:52-0300 | yt-no-dub.log | always |
+| stale-display | PASS | 0 | 0 | 2026-11-08T11:34:52-0300 | stale-display.log | always |
+| red-as-expected-stale-display | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:53-0300 | stale-display-neg.log | always |
+| battery-class | STALE | 0 | 0 | 2026-11-08T11:34:54-0300 | battery-class.log | deps mudaram depois da medicao (medido 2026-11-08T11:34:54-0300) |
+| red-as-expected-battery-class | STALE | 1 | 1 | 2026-11-08T11:34:54-0300 | battery-class-neg.log | deps mudaram depois da medicao (medido 2026-11-08T11:34:54-0300) |
+| live-queue | PASS | 0 | 0 | 2026-11-08T11:34:55-0300 | live-queue.log | always |
+| red-as-expected-live-queue | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:55-0300 | live-queue-neg.log | always |
+| flat-endpoint | PASS | 0 | 0 | 2026-11-08T11:34:56-0300 | flat-endpoint.log | always |
+| tap-silent-desktop | PASS | 0 | 0 | 2026-11-08T11:34:56-0300 | tap-silent-desktop.log | always |
+| red-as-expected-tap-silent-desktop | EXPECTED-RED | 1 | 1 | 2026-11-08T11:34:57-0300 | tap-silent-desktop-neg.log | always |
+| warm-engine | PASS | 0 | 0 | 2026-11-08T11:35:07-0300 | warm-engine.log | always |
+| red-as-expected-warm-engine | EXPECTED-RED | 1 | 1 | 2026-11-08T11:36:04-0300 | warm-engine-neg.log | always |
+| gaming-hotkey | PASS | 0 | 0 | 2026-11-08T11:36:13-0300 | gaming-hotkey.log | always |
+| red-as-expected-gaming-hotkey | EXPECTED-RED | 1 | 1 | 2026-11-08T11:37:14-0300 | gaming-hotkey-neg.log | always |
+| ctrlspace-swallow | PASS | 0 | 0 | 2026-11-08T11:37:19-0300 | ctrlspace-swallow.log | always |
+| red-as-expected-ctrlspace-swallow | EXPECTED-RED | 1 | 1 | 2026-11-08T11:37:50-0300 | ctrlspace-swallow-neg.log | always |
+| ctrlspace-swallow-os | PASS | 0 | 0 | 2026-11-08T11:37:51-0300 | ctrlspace-swallow-os.log | always |
+| battery-budget | STALE | 0 | 0 | 2026-11-08T11:37:51-0300 | battery-budget.log | deps mudaram depois da medicao (medido 2026-11-08T11:37:51-0300) |
+| red-as-expected-battery-budget | STALE | 1 | 1 | 2026-11-08T11:37:52-0300 | battery-budget-neg.log | deps mudaram depois da medicao (medido 2026-11-08T11:37:52-0300) |
 
 ## Como ler
 

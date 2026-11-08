@@ -92,7 +92,7 @@ O detalhe medido de cada ordem vive nos docs. **Uma linha por ordem, e é isto q
 
 | # | a ordem | o que é lei | detalhe |
 |---|---|---|---|
-| 1 | track do YouTube na língua original | **en, pt-BR e espanhol: a LÍNGUA ORIGINAL, sem tradução em direcção nenhuma** (ordem de 2026-11-04: *"nao e pra traduzir entre ingles pt br e espanhol. nesses 3, é lingua original que da display"*); qualquer outra → inglês | `docs/politica-youtube.md` |
+| 1 | track do YouTube na língua original | **en, pt-BR e espanhol: a LÍNGUA ORIGINAL, sem tradução em direcção nenhuma** (ordem de 2026-11-04: *"nao e pra traduzir entre ingles pt br e espanhol. nesses 3, é lingua original que da display"*); **qualquer outra → a língua ESCOLHIDA, default pt-BR** (ordem de 2026-11-08: *"mas pra traduzir o resto pra linguagem que eu escolhi pro sotto. que no caso é pt br"*), persistida em `_main/caption-settings.json` | `docs/politica-youtube.md` |
 | 2 | Alt+C: o gesto é **medido**, não contado | 1 toque = painel de BAIXO · 2 toques = painel da DIREITA · **HOLD** = legenda ao vivo on/off (desligar é só DISPLAY: modelo e histórico continuam) | `docs/hotkey-gestos.md` |
 | 3 | Parakeet é o segundo pass | ao vivo = nemotron só com painel aberto; fundo = Parakeet; retoma atrás de 4 guardas + piso de 45 s | `docs/worker-lifecycle.md` |
 | 4 | testes lentos e pesados | cache por **conteúdo**, classe `heavy` nunca corre sem opt-in, **um passo saltado não é um portão que passou** | `docs/bateria-e-portoes.md` |
@@ -140,11 +140,23 @@ BUG-HUNT acima. Os passos, o tracker, o fecho mecanico e as recusas estao na ski
 1. **NAO SE TRADUZ ENTRE INGLES, PT-BR E ESPANHOL.** Verbatim: *"nao e pra traduzir
    entre ingles pt br e espanhol. nesses 3, é lingua original que da display."* Um
    vídeo em qualquer um dos três sai **naquela língua**; não há tradução em direcção
-   nenhuma entre eles. Só uma língua fora dos três (chinês, japonês, …) vai para
-   **inglês**. O código já implementa isto em `app/webview/youtube_captions.py`
+   nenhuma entre eles. O código já implementa isto em `app/webview/youtube_captions.py`
    (`UNTRANSLATED_LANGS = ('en', 'pt', 'es')`, com o verbatim de 2026-10-30) -- e a
    regra é dela, não uma preferência: um `pick` no menu dos 3 pontos que fosse traduzir
    um destes três é **clampado**, não honrado.
+
+   **CORRECÇÃO DE 2026-11-08, e ela substitui a metade "vai para inglês".** Verbatim:
+   *"eu ja falei pra NAO traduzir entre pt br ingles e espanhol entre si. mas pra
+   traduzir o resto pra linguagem que eu escolhi pro sotto. que no caso é pt br. entao
+   eu to vendo um anime agora, e a legenda ta aparecendo japones."* e *"faz o botao de
+   config pra eu escolher pra qual lingua traduzir."* Uma língua fora dos três vai para
+   a **língua escolhida** (default `pt`), e a escolha é um valor **persistido**
+   (`app/webview/caption_settings.py` -> `_main/caption-settings.json`, escrito pelo
+   menu dos 3 pontos), não um literal. O original é o SEGUNDO pedido, não o primeiro:
+   medido, `_target_langs('ja')` devolvia `('en', 'ja')` -- o inglês não existe para um
+   vídeo japonês sem faixa inglesa, logo o anime saía em japonês. Agora devolve
+   `('pt', 'ja')`. Portão: `_main/youtube-captions-oracle.py` (66 arms, `--neg-arm`
+   18/18 mutantes, rc=1).
 2. **O NVIDIA NEMOTRON NÃO É TEMPO REAL.** Ele é o motor de transcrição local e o
    atraso dele é medido, não hipotético: não se promete "ao vivo" a partir dele e
    não se desenha caminho que dependa de ele acompanhar o áudio. A legenda que chega
@@ -496,8 +508,30 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 12:4x):** `_main\_audit-verify-all.cmd` = **296318 B**,
-  **3576 CRLF** / 0 bare LF, sha256 `5027CEA937F19C3480801D306A02B26A59A6AC2B793A3FE5B6731B3C46C73A81`.
+- **PIN do ficheiro (medido 2026-11-08, 13:4x):** `_main\_audit-verify-all.cmd` = **298679 B**,
+  **3589 CRLF** / 0 bare LF, sha256 `FEF4B82A641C734D02ACFCC4D8556F915B13B55DD1D2AB8CCF355C6D18F4B83A`.
+  (Dois mil trezentos e sessenta e um bytes e TREZE linhas a mais do que o pin de 296318 B: o par
+  `theme-caption-identity` + `red-as-expected-theme-caption-identity`, o portao da ordem do dono de
+  2026-11-08, verbatim: *"VOCE TIROU O DESIGN DE TODAS AS LEGENDAS PRA DEIXAR ELAS IGUAIS EM TODOS OS
+  TEMAS."* A cura de legibilidade do historico tinha posto `font-family: "Instrument Sans"`,
+  `font-size: calc(13.5px * var(--caption-scale))` e `line-height: 1.5` como LITERAIS com `!important`
+  em `app\panel\panel-unified.css` -- o ultimo ficheiro que o `panel.html` carrega --, sobre os 35
+  desenhos que embarcam. Agora a linha le' os tokens do TEMA com PISO; medido no oraculo:
+  theme-1 **18,5 px**, theme-2 **13,5** (piso, era 10,5), theme-3 **14,5**, theme-4 **15**, theme-5
+  **14,5**, `arms 5/5`, e o `--neg-arm` 4/4 mutantes apanhados com rc=1 (com o passo declarado
+  `call :step ... 1` + `call :expectred ... "NEG-ARM: PASS"`, que e' a unica forma que conta como
+  controlo: o `:expectred` com o rc que o oraculo devolve ao apanhar). A MESMA linha consertou
+  `red-as-expected-panel-pause-payload`, que estava declarado com rc esperado **0** e cujo oraculo
+  devolvia 0 ao apanhar o mutante: um controlo que nao pode falhar. Agora o oraculo devolve 1 ao
+  apanhar (medido: `NEG-ARM: PASS -- 0/5 arms ainda passam`, rc=1) e o passo declara-o.
+  E o MESMO par ficou completo no RENDER: `panel-history-clip` passou a ler
+  `themes/cinematic.css` e `themes/panel-designs.css` (o `lazy-assets.js` entrega-as por
+  pedido, e sem elas o probe media 30 dos 45 desenhos com a face de RECURSO e chamava
+  isso de identidade) e ganhou `red-as-expected-panel-history-clip`: medido, o positivo
+  da' **28 faces distintas** (familia+tamanho) em 45 desenhos, e o `--neg-arm` repoe a
+  regra literal de antes da cura e cai para **1 face**, rc=1.
+  O pin anterior era o de 296318 B: **3576 CRLF** / 0 bare LF, sha256
+  `5027CEA937F19C3480801D306A02B26A59A6AC2B793A3FE5B6731B3C46C73A81`.)
   (Oitocentos e catorze bytes e NOVE linhas a mais do que o pin de 295504 B: a cura de custo do
   `--neg-arm` da pagina de estado -- **84,5 s** na corrida, **73,26 s** sozinho, porque
   `run_mutation` copiava a arvore, renderizava e corria o check de base uma vez POR MUTACAO, oito

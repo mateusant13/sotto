@@ -327,11 +327,27 @@ body {
 .panel__controls [data-theme-chevron] {
   order: 2;
 }
-.panel__controls #clear-button {
-  order: 3;
+/* THE CONFIG MENU'S BUTTON OWNS THE GAP, NOT A SLOT IN THE ROW (owner, 2026-11-08:
+   *"faz o botao de config pra eu escolher pra qual lingua traduzir"*). The row is
+   fixed at `right: 14px` with 264 px of pinned controls (`panel-unified.css`,
+   `_main/panel-header-oracle.js`), and one more control would push the lamp over
+   the wordmark. The header leaves 31 px between the wordmark's right edge (~71)
+   and the cluster's left edge (102); the button is 28 px and sits at 74. */
+body[data-surface="panel"] .panel__header #menu-button {
+  position: fixed;
+  left: 74px;
+  top: calc(14px + (56px - 28px) / 2);
+  z-index: 61;
 }
-.panel__controls #quit-button {
-  order: 4;
+
+/* THE POPOVER HANGS UNDER ITS OWN TRIGGER, not off the window's right edge (the
+   `theme-dropdown` default, which is the theme chevron's). Both coordinates are
+   the button's own, so a wider menu grows to the right and never covers it. */
+body[data-surface="panel"] #panel-menu {
+  position: fixed;
+  left: 74px;
+  right: auto;
+  top: calc(14px + (56px - 28px) / 2 + 34px);
 }
 /* The font dial is ONE button since 2026-10-18 ("1 botao de tamanho em vez de 2"),
    and it takes the SLOT the pair used to share: order 5, after the theme button's
@@ -901,83 +917,10 @@ body[data-level="none"] .chrome__meter i {
   display: none;
 }
 
-/* THE GALLERY — navigation over the days and hours the store holds, and the only
-   thing that fills the list below it. OWNER 2026-10-08, verbatim: *"tem que ter
-   apenas botoes pra navegar entre a 'galeria' de dias/horas"*.
-   It is a `nav` of small buttons, so it must NOT grow: `flex: 0 0 auto` keeps it at
-   its own height inside the drawer's column, and the list below keeps the rest.
-   The buttons wrap, because a day with 24 hours is 25 controls on one row at
-   380 px otherwise — and a horizontal scroller inside a vertical one is a trap. */
-.gallery {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  gap: 3px;
-  padding: 3px 2px 4px 0;
-  border-bottom: 1px solid rgba(125, 211, 252, 0.14);
-}
-
-.gallery[hidden] {
-  display: none;
-}
-
-.gallery__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 3px;
-}
-
-.gallery__btn {
-  font: inherit;
-  font-size: 10.5px;
-  line-height: 1;
-  padding: 4px 6px;
-  border-radius: 5px;
-  border: 1px solid rgba(125, 211, 252, 0.22);
-  background: rgba(125, 211, 252, 0.06);
-  color: var(--text-dim);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.gallery__btn:hover {
-  border-color: rgba(125, 211, 252, 0.4);
-  color: var(--text);
-}
-
-.gallery__btn:focus-visible {
-  outline: 2px solid rgba(125, 211, 252, 0.55);
-  outline-offset: 1px;
-}
-
-/* The current pick. One look for both a range and a bucket: they are the same
-   kind of thing to the owner — "where am I" — and two looks would imply two. */
-.gallery__btn.is-active {
-  border-color: rgba(125, 211, 252, 0.6);
-  background: rgba(125, 211, 252, 0.18);
-  color: var(--text);
-}
-
-.gallery__day {
-  font-variant-numeric: tabular-nums;
-}
-
-/* The hour buttons carry the hour alone (`09`, `11`, …) — the day is the row they
-   sit in — and they are tabular so the row does not jitter as it changes. */
-.gallery__hour {
-  font-variant-numeric: tabular-nums;
-  min-width: 26px;
-  text-align: center;
-  padding: 4px 4px;
-}
-
-.gallery__warn {
-  margin: 0;
-  font-size: 10px;
-  line-height: 1.35;
-  color: var(--text-faint);
-}
+/* THE GALLERY IS GONE (owner, 2026-11-06: *"tambem tira a data de mostrar o
+   historico do painel na direita."*). Its markup, its module and its navigation
+   were deleted from `panel.html`, so every `.gallery*` rule that stood here
+   styled nodes that exist in no document. The list paints itself now. */
 
 /* The drawer's scrolling feed. Oldest at the top, newest at the bottom, so the freshest
    history sits directly above the live box: one continuous timeline. */

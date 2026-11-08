@@ -131,8 +131,14 @@ def neg_arm():
     # The mutant imports its own siblings from the real dir: only the copy of
     # THIS file differs.
     ok, total = run(module, 'MUTANT')
-    print('NEG-ARM: %s -- %d/%d arms ainda passam' % ('PASS' if ok <= total - 2 else 'FAIL', ok, total))
-    return 0 if ok <= total - 2 else 1
+    caught = ok <= total - 2
+    print('NEG-ARM: %s -- %d/%d arms ainda passam' % ('PASS' if caught else 'FAIL', ok, total))
+    # A CONVENCAO DA CASA: o braco negativo devolve **1 quando APANHA**. Devolver
+    # 0 ao apanhar faz do controlo um passo que nunca pode falhar -- medido
+    # 2026-11-08: este ficheiro devolvia 0 com `NEG-ARM: PASS` e a linha do
+    # `_audit-verify-all.cmd` declarava-o com rc esperado 0, logo nem o passo nem
+    # o `:expectred` tinham como ficar vermelhos.
+    return 1 if caught else 0
 
 
 def main(argv=None):

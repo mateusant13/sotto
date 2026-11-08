@@ -518,7 +518,7 @@ if exist _main\history-gallery-oracle.js (
   call :record history-gallery-oracle !STEP_RC!
 ) else ( call :record history-gallery-oracle MISSING )
 if exist _main\_panel2-dom-probe.js (
-  call :step panel2-dom-probe 0 "_main\_panel2-dom-probe.js;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel2-dom-probe.log" node _main\_panel2-dom-probe.js
+  call :step panel2-dom-probe 0 "_main\_panel2-dom-probe.js;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel2-dom-probe.log" node _main\_panel2-dom-probe.js
   call :record panel2-dom-probe !STEP_RC!
   call :step panel-header-oracle 0 "_main\panel-header-oracle.js;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-header.log" node _main\panel-header-oracle.js
   call :record panel-header-oracle !STEP_RC!
@@ -526,9 +526,22 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-drag-targets !STEP_RC!
   call :step panel-history-clip 0 "_main\panel-history-clip-probe.mjs;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-history-clip.log" node _main\panel-history-clip-probe.mjs
   call :record panel-history-clip !STEP_RC!
+  REM O DONO, 2026-11-08: *"VOCE TIROU O DESIGN DE TODAS AS LEGENDAS PRA DEIXAR
+  REM ELAS IGUAIS EM TODOS OS TEMAS."* A cura de legibilidade do historico tinha
+  REM literais (`Instrument Sans`, 13.5px, 1.5) com `!important` sobre os 45
+  REM desenhos. O portao exige que a linha leia os tokens do TEMA com PISO, e
+  REM mede os cinco base: theme-1 18.5, theme-2 13.5 (piso), theme-3 14.5,
+  REM theme-4 15, theme-5 14.5 -- e zero literal de desenho no bloco.
+  call :step theme-caption-identity 0 "_main\theme-caption-identity-oracle.py;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css" "%OUT%\theme-caption-identity.log" python _main\theme-caption-identity-oracle.py
+  call :record theme-caption-identity !STEP_RC!
+  call :step red-as-expected-theme-caption-identity 1 "_main\theme-caption-identity-oracle.py;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css" "%OUT%\theme-caption-identity-neg.log" python _main\theme-caption-identity-oracle.py --neg-arm
+  call :expectred red-as-expected-theme-caption-identity !STEP_RC! "%OUT%\theme-caption-identity-neg.log" "NEG-ARM: PASS"
+  call :step red-as-expected-panel-history-clip 1 "_main\panel-history-clip-probe.mjs;app\panel\panel.html;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\panel.css;app\panel\themes\fonts.css;app\panel\button-contract.css;app\panel\panel.js" "%OUT%\panel-history-clip-neg.log" node _main\panel-history-clip-probe.mjs --neg-arm
+  call :expectred red-as-expected-panel-history-clip !STEP_RC! "%OUT%\panel-history-clip-neg.log" "NEG-ARM: PASS"
   call :step panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload.log" python _main\panel-pause-payload-oracle.py
   call :record panel-pause-payload !STEP_RC!
-  call :step red-as-expected-panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
+  call :step red-as-expected-panel-pause-payload 1 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
+  call :expectred red-as-expected-panel-pause-payload !STEP_RC! "%OUT%\panel-pause-payload-neg.log" "NEG-ARM: PASS"
   call :record red-as-expected-panel-pause-payload !STEP_RC!
   call :step outside-click-timer 0 "_main\outside-click-timer-oracle.py;app\webview\sotto_webview.py" "%OUT%\outside-click-timer.log" python _main\outside-click-timer-oracle.py
   call :record outside-click-timer !STEP_RC!
@@ -2071,7 +2084,7 @@ REM kept passing and it stopped being asked. Its arms restore the original
 REM volume in a `finally`, so a failed arm cannot leave the owner's speakers
 REM muted.
 if exist _main\youtube-captions-oracle.py (
-  call :step youtube-captions 0 "_main\youtube-captions-oracle.py;app\webview\youtube_captions.py" "%OUT%\youtube-captions.log" python _main\youtube-captions-oracle.py
+  call :step youtube-captions 0 "_main\youtube-captions-oracle.py;app\webview\youtube_captions.py;app\webview\caption_settings.py" "%OUT%\youtube-captions.log" python _main\youtube-captions-oracle.py
   call :record youtube-captions !STEP_RC!
 ) else ( call :record youtube-captions MISSING )
 REM THE NATIVE CAPTION'S LINE BREAKING (owner, 2026-10-21): the caption the

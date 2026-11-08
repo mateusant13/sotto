@@ -233,6 +233,52 @@
              (`:734` and `:743`). A comment that describes a removed control is
              worse than no comment: it is the shape of thing another lane rebuilds
              because it reads like an inventory. -->
+        <!-- THE CONFIG MENU (owner, 2026-11-08, verbatim: *"e faz o botao de
+             config pra eu escolher pra qual lingua traduzir"*).
+
+             WHY IT IS NOT A CHILD OF `.panel__controls`: that row is
+             `position: fixed; right: 14px` with seven controls and 264 px of
+             width, and it is pinned to the owner's own measured coordinates
+             (`_main/panel-header-oracle.js` — every button in the same pixel in
+             every theme). One more 28 px control would take 32 px out of its left
+             edge and push the lamp over the wordmark. The header leaves a 31 px
+             gap between the wordmark (right edge 71) and the cluster (left 102),
+             and this control takes its own pixel there instead of moving anyone.
+
+             `panel.js::wireMenu` owns the popover, the outside-click and Escape;
+             the shell persists the choice (`_main/caption-settings.json`) through
+             `bridge.setTranslationTarget`. THE ROW REUSES `.tune-row` — the
+             label+select row the theme tune dialog already uses — so the menu
+             does not invent a second row style, and the popover itself is
+             `.theme-dropdown`, the panel's own popover surface. -->
+        <button
+          type="button"
+          class="icon-button"
+          id="menu-button"
+          aria-haspopup="true"
+          aria-expanded="false"
+          aria-controls="panel-menu"
+          title="Configurações"
+          aria-label="Configurações"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="3.2" r="1.35" fill="currentColor" />
+            <circle cx="8" cy="8" r="1.35" fill="currentColor" />
+            <circle cx="8" cy="12.8" r="1.35" fill="currentColor" />
+          </svg>
+        </button>
+        <div class="theme-dropdown panel-menu" id="panel-menu" hidden>
+          <div class="tune-row">
+            <div class="tune-row__head">
+              <label class="tune-row__label" for="translation-select">Traduzir para:</label>
+            </div>
+            <select
+              class="tune-row__select"
+              id="translation-select"
+              aria-label="Traduzir para:"
+            ></select>
+          </div>
+        </div>
         <div class="panel__controls">
           <!-- THE LIVE-CAPTION LAMP (owner, 2026-10-19, verbatim: *"com um alt c so,
                com audio ou nao, tem que ter indicativo se a legenda ao vivo ativou ou

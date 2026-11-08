@@ -1,29 +1,61 @@
 # Politica de lingua do track do YouTube (ORDEM 1)
 
-## A REGRA ABSOLUTA (ordem do dono, 2026-10-30, verbatim)
+## A LEI EM VIGOR (ordem do dono, 2026-11-08, verbatim)
+
+> *"eu ja falei pra NAO traduzir entre pt br ingles e espanhol entre si. mas pra traduzir o resto
+> pra linguagem que eu escolhi pro sotto. que no caso é pt br. entao eu to vendo um anime agora, e a
+> legenda ta aparecendo japones."*
+> *"e faz o botao de config pra eu escolher pra qual lingua traduzir."*
+
+| língua ORIGINAL do vídeo | o que é servido |
+|---|---|
+| inglês, português ou espanhol | **a própria língua, e nada mais** — nenhuma tradução em nenhuma direcção entre as três (a metade de 2026-10-30 que continua inteira) |
+| qualquer outra (chinês, japonês, alemão…) | **a língua ESCOLHIDA pelo dono** — persistida, `DEFAULT_TARGET = 'pt'` — e a língua do vídeo só como **segundo** pedido, para quando a tradução escolhida não exista |
+
+Implementação: `app/webview/caption_settings.py` guarda a escolha (`DEFAULT_TARGET = 'pt'`,
+`path()` com `SOTTO_CAPTION_SETTINGS`, `load()`, `save()`, `target_lang()`, `set_target_lang(code)`).
+`app/webview/youtube_captions.py` lê-a no import (`TARGET_LANG = _caption_settings.target_lang()`),
+grava-a em `set_target_language(code)` (`''` volta ao default persistido) e `_target_langs(orig)`
+devolve `(base,)` para en/pt/es, `(base,)` quando o alvo é a própria língua do vídeo, e
+`(target, orig)` no resto — **o alvo primeiro**, o original como último recurso.
+
+**MEDIDO 2026-11-08 (executado, não lido):** `_target_langs('ja') == ('pt', 'ja')`;
+`_target_langs('en') == ('en',)`; `_target_langs('pt') == ('pt',)`; com a escolha `fr`:
+`_target_langs('ja') == ('fr', 'ja')` e `_target_langs('en') == ('en',)`; com a escolha `ja`:
+`_target_langs('ja') == ('ja',)` (uma só entrada — pedir a "tradução" para a própria língua seria
+pedir a mesma faixa duas vezes). A escolha sobrevive a um **import novo** e um ficheiro
+corrompido/ausente responde `'pt'`.
+
+**A ESCOLHA EXPLÍCITA NÃO É UM BURACO NA REGRA.** Um `pick` nunca traduz um vídeo en/pt/es: a
+resposta é sempre a própria língua desses três (`a59`, 3 origens × 5 escolhas). Fora dos três, o
+`pick` **é honrado** (`a60`, 4 línguas × 7 escolhas), ao contrário do desenho de 2026-10-30, que o
+fechava em inglês. Portão: `python _main/youtube-captions-oracle.py` → **66 arms / 18 mutantes**;
+`--neg-arm` sai **1 por desenho** com `18/18` apanhados.
+
+## A REGRA ABSOLUTA DE 2026-10-30 — a metade "outras línguas → inglês" está SUBSTITUÍDA (histórico)
+
+> **SUBSTITUÍDA em 2026-11-08 pela ordem acima.** O que fica de pé é a primeira metade (en/pt/es, a
+> própria língua). O texto abaixo mantém-se para ninguém a "arrumar" de volta: **"qualquer outra
+> língua vai para inglês" deixou de ser a lei** — vai para a língua escolhida pelo dono, e o inglês
+> só aparece se for a escolha dele.
 
 > *"regra nunca que pode ser quebrada: legendas nao traduzem entre ingles pt br e espanhol.
 > só outras linguas, todas pro ingles."*
 
-| língua ORIGINAL do vídeo | o que é servido |
+| língua ORIGINAL do vídeo | o que era servido (até 2026-11-08) |
 |---|---|
-| inglês, português ou espanhol | **a própria língua, e nada mais** — nenhuma tradução em nenhuma direcção entre as três |
-| qualquer outra (chinês, japonês, alemão…) | **inglês** (a auto-tradução do YouTube), e a língua do vídeo só como último recurso quando não há faixa inglesa |
+| inglês, português ou espanhol | **a própria língua, e nada mais** — nenhuma tradução em nenhuma direcção entre as três (**ainda em vigor**) |
+| qualquer outra (chinês, japonês, alemão…) | ~~**inglês** (a auto-tradução do YouTube), e a língua do vídeo só como último recurso~~ — **SUBSTITUÍDO: a língua escolhida, `pt` por omissão** |
 
-Implementação: `app/webview/youtube_captions.py` — `UNTRANSLATED_LANGS = ('en', 'pt', 'es')`
-e `_target_langs(orig)`, que devolve **um** elemento para as três (sem fallback: um
-`(orig, 'en')` seria exactamente a tradução proibida).
+A implementação da metade substituída vivia em `TARGET_LANG = 'en'` e em `a60` ("qualquer outra
+língua vai SEMPRE para INGLES, escolha ou nao"). **Foi exactamente esse desenho que produziu o
+defeito que ele viu**: para um anime japonês sem faixa inglesa, `_target_langs` devolvia
+`('en', 'ja')` — o inglês não existe, e o "segundo pedido" era a própria faixa japonesa, logo a
+legenda saía em japonês. `a49` e `a60` foram reescritos para a lei nova em 2026-11-08.
 
-**A ESCOLHA EXPLÍCITA DO MENU NÃO É UM BURACO NA REGRA.** O `TARGET_OVERRIDE` (pedido do
-dono em 2026-10-21, quando a política permitia traduzir entre as três) passou a ser
-**fechado pela regra**: a escolha continua a ser registada no log (`TRANSLATION_TARGET`),
-mas não muda o que chega ao ecrã. Medido por dois braços e um mutante:
-`a59` (3 origens × 4 escolhas → a própria língua sempre), `a60` (outra língua → inglês
-sempre) e o mutante `the-explicit-pick-wins-over-the-rule`, que é apanhado pelos dois.
-
-Portão: `python _main/youtube-captions-oracle.py` → **62 arms / 16 mutantes**;
-`--neg-arm` sai **1 por desenho**.
-
+`UNTRANSLATED_LANGS = ('en', 'pt', 'es')` continua a ser o dono único das três línguas intocadas, e
+`_target_langs` devolve **um** elemento para elas (sem fallback: um `(orig, 'en')` seria exactamente
+a tradução proibida).
 
 > Movido de `AGENTS.md` em 2026-10-23 (trim). Conteudo verbatim;
 > a medicao e as ressalvas sao as que la estavam.
@@ -34,7 +66,7 @@ Portão: `python _main/youtube-captions-oracle.py` → **62 arms / 16 mutantes**
 > espanhol."*
 
 **REGRA SUBSTITUÍDA (2026-10-21) — fica escrita para ninguém a "arrumar" de volta; a regra em
-vigor é a ABSOLUTA, no topo deste ficheiro.** O texto abaixo descreve o que o código fazia até
+vigor é a de 2026-11-08, no topo deste ficheiro.** O texto abaixo descreve o que o código fazia até
 2026-10-30 (espanhol → `es,en`, com fallback inglês; `NEVER_TRANSLATED_LANGS`); os nomes de
 símbolo que ele cita (`NEVER_TRANSLATED_LANGS`) **já não existem** — o conjunto passou a
 `UNTRANSLATED_LANGS = ('en','pt','es')` e a lista das três passou a ter UM elemento, sem fallback.
@@ -50,6 +82,12 @@ faixa de inglês) e `_original_language(info)` (`:500`, o campo `language`, base
 O portão tem **três** mutantes para a política (a língua original não lida, o destino em
 português outra vez, o esquecimento da excepção espanhola) ⇒ **uma política que não se pode
 quebrar é um comentário.**
+
+> **A metade "qualquer outra língua pra inglês" também está SUBSTITUÍDA (2026-11-08):** o dono
+> mandou traduzir o resto para **a língua que ele escolheu** (`pt` por omissão), e um anime
+> japonês saía em japonês por causa do `TARGET_LANG = 'en'` acima — ver a LEI EM VIGOR no topo.
+> O que continua em vigor desta regra é só o **nunca traduzir en↔pt↔es** e o **espanhol nunca
+> traduzido**.
 
 **A REGRA ANTERIOR (substituída — fica escrita para ninguém a "arrumar" de volta):** original para
 **en, pt-BR, es**; tradução **permitida** para zh/ja/qualquer outra; **espanhol NUNCA traduzido.**

@@ -78,6 +78,7 @@ _main/*.png
 _main/*.flac
 _main/*.orig-*
 _main/*-state.json
+_main/caption-settings.json
 _main/_pwtest3.json
 _main/asr-warmup.json
 _main/probe-verify.json

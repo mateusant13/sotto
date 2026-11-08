@@ -37,7 +37,7 @@ ARMS (pure: no network, no browser, no app)
     not by whether a YouTube window happens to be open.
 
 NEGATIVE ARM (executed, not decorative)
-    Ten mutants of the module, each a TEXTUAL patch of a unique anchor. A
+    Eighteen mutants of the module, each a TEXTUAL patch of a unique anchor. A
     mutant whose anchor is missing or ambiguous is DECORATIVE -- it proves
     nothing -- so the oracle refuses to count it. Each mutant is loaded and
     the SAME battery runs; the checks that go RED name it.
@@ -57,6 +57,7 @@ Usage:
 
 from __future__ import annotations
 
+import atexit
 import importlib.util
 import json
 import os
@@ -68,6 +69,9 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 MODULE_PATH = os.path.join(REPO, "app", "webview", "youtube_captions.py")
+#: The persisted translation choice (owner's order of 2026-11-08). The arms
+#: load it FRESH by path: the round-trip is only proved by a NEW import.
+SETTINGS_PATH = os.path.join(REPO, "app", "webview", "caption_settings.py")
 
 EXIT_PASS = 0
 EXIT_FAIL = 1
@@ -206,7 +210,7 @@ FIXTURE_INFO_ENGLISH = {
 #: allowance ("ah, menos espanhol"), so the Spanish track is the one served --
 #: and the table ALSO carries English, so the arm can tell "Spanish first"
 #: from "English first" (that difference is what the mutant
-#: `the-spanish-exception-is-forgotten` makes, and an arm that cannot see the
+#: `the-untouched-set-loses-spanish` makes, and an arm that cannot see the
 #: difference cannot catch it).
 FIXTURE_INFO_SPANISH = {
     "id": "SPANISHVIDEO",
@@ -404,6 +408,32 @@ def battery(mod, path, workdir, source):
         except Exception as exc:                            # noqa: BLE001
             ok, detail = False, "EXCEPTION %s: %s" % (type(exc).__name__, exc)
         rows.append((ok, name, detail))
+
+    # CADA ARM VE' A SUA PROPRIA JANELA (2026-11-03, medido).
+    #
+    # `player_time_detail` guarda o ELEMENTO do relogio por hwnd
+    # (`_TIME_TEXT_CACHE`, `_TIME_SLIDER_CACHE`), e isso esta' certo em
+    # producao -- um hwnd e' uma janela. Os arms, porem, passavam todos
+    # `hwnd=1`: o elemento de TEXTO do a31 (`06:13 of 24:43` -> 373 s)
+    # sobrevivia para o a32..a44 e voltava a ser lido em cima de uma
+    # janela fabricada que NAO tinha texto nenhum -- 11 arms diziam RED
+    # com o MESMO detalhe (`text=373.0 slider=50.0`), que e' a assinatura
+    # de um fixture a medir o cache do arm anterior e nao o codigo.
+    # Limpar os dois caches antes de cada chamada devolve ao arm a janela
+    # que ele construiu.
+    #
+    # E ISTO VIVE AQUI, NAO NO `main` (2026-11-08): a copia mutada era
+    # carregada sem a limpeza, logo a bateria dos mutantes nascia com arms
+    # vermelhos (a32/a33) e QUALQUER mutante era dado por "apanhado" por
+    # eles -- um portao que passa por construcao.
+    _orig_player_time_detail = mod.player_time_detail
+
+    def _fresh_player_time_detail(uia, ui_mod, hwnd, *a, **kw):
+        mod._TIME_TEXT_CACHE.clear()
+        mod._TIME_SLIDER_CACHE.clear()
+        return _orig_player_time_detail(uia, ui_mod, hwnd, *a, **kw)
+
+    mod.player_time_detail = _fresh_player_time_detail
 
     # -- the URL shapes ----------------------------------------------------
     def a01():
@@ -637,10 +667,18 @@ def battery(mod, path, workdir, source):
             "nunca em ingles (a regra de 2026-10-30)", a48)
 
     def a49():
+        # RE-ANCHORED 2026-11-08: A LEI DESTE ARM FOI SUBSTITUIDA. O dono,
+        # verbatim: *"eu ja falei pra NAO traduzir entre pt br ingles e espanhol
+        # entre si. mas pra traduzir o resto pra linguagem que eu escolhi pro
+        # sotto. que no caso é pt br. entao eu to vendo um anime agora, e a
+        # legenda ta aparecendo japones."* O fixture carrega a traducao em pt E
+        # a `en-orig`: o que tem de sair e' a ESCOLHA (pt), nao o ingles de
+        # 2026-10-21.
         track = mod.track_from_info(FIXTURE_INFO_CHINESE)
-        ok = track is not None and track["lang"] == "en-orig"
+        ok = track is not None and mod._base_lang(track["lang"]) == "pt"
         return ok, "track=%r" % (track,)
-    attempt("a49 um video em CHINES serve a legenda em INGLES (a traducao)", a49)
+    attempt("a49 um video em CHINES serve a legenda na lingua ESCOLHIDA (pt), "
+            "nao mais em ingles (a ordem de 2026-11-08)", a49)
 
     def a50():
         track = mod.track_from_info(FIXTURE_INFO_ENGLISH, player_lang="en")
@@ -668,7 +706,8 @@ def battery(mod, path, workdir, source):
         track = mod.track_from_info(FIXTURE_INFO_CHINESE_NO_EN)
         ok = track is not None and track["lang"] == "zh-orig"
         return ok, "track=%r" % (track,)
-    attempt("a53 sem faixa em INGLES, a lingua do video e a ultima opcao", a53)
+    attempt("a53 sem faixa na lingua ESCOLHIDA, a lingua do video e a ultima "
+            "opcao", a53)
 
     def a54():
         # RE-ANCHORED 2026-10-30. Um video ESPANHOL sem faixa em espanhol NAO
@@ -722,39 +761,154 @@ def battery(mod, path, workdir, source):
         # *"regra nunca que pode ser quebrada"*). Varre as tres origens contra
         # TODAS as escolhas plausiveis: para uma origem en/pt/es a resposta tem de
         # ser sempre a propria lingua, escolha ou nao.
+        #
+        # EXTENDIDO 2026-11-08: a escolha passou a viver em `TARGET_LANG` (o valor
+        # persistido que `_target_langs` le) e ja' nao em `TARGET_OVERRIDE`, que
+        # so' responde quando a lingua original e' DESCONHECIDA. Mexer so' no
+        # override media um caminho que a lei actual nunca percorre; o arm mexe
+        # nas duas constantes para o pick chegar mesmo a' regra.
         bad = []
-        old = mod.TARGET_OVERRIDE
+        old_override = mod.TARGET_OVERRIDE
+        old_target = mod.TARGET_LANG
+        default = mod._caption_settings.DEFAULT_TARGET
         try:
-            for orig in ("en", "pt", "es"):
+            for orig in ("en-US", "pt-BR", "es-419"):
                 base = mod._base_lang(orig)
-                for pick in ("", "en", "pt", "es"):
+                for pick in ("", "en", "pt", "es", "fr"):
                     mod.TARGET_OVERRIDE = pick
+                    mod.TARGET_LANG = pick or default
                     got = tuple(mod._target_langs(orig))
                     if got != (base,):
                         bad.append("orig=%s pick=%r -> %r" % (orig, pick, got))
         finally:
-            mod.TARGET_OVERRIDE = old
+            mod.TARGET_OVERRIDE = old_override
+            mod.TARGET_LANG = old_target
         return not bad, "quebras=%r" % (bad,)
     attempt("a59 uma escolha no menu NAO quebra a regra das tres linguas "
-            "(3 origens x 4 escolhas)", a_pick_never_breaks_the_rule)
+            "(3 origens x 5 escolhas)", a_pick_never_breaks_the_rule)
 
-    def a_pick_keeps_other_languages_english():
-        # A OUTRA METADE: uma lingua que nao e' en/pt/es vai SEMPRE para ingles,
-        # mesmo com uma escolha que apontasse para outra lingua.
+    def a_pick_reaches_other_languages():
+        # A LEI DE 2026-11-08 (dono, verbatim): *"eu ja falei pra NAO traduzir
+        # entre pt br ingles e espanhol entre si. mas pra traduzir o resto pra
+        # linguagem que eu escolhi pro sotto. que no caso é pt br. entao eu to
+        # vendo um anime agora, e a legenda ta aparecendo japones."* e *"faz o
+        # botao de config pra eu escolher pra qual lingua traduzir."*
+        #
+        # Fora de en/pt/es o alvo ESCOLHIDO vem PRIMEIRO e o original e' o
+        # SEGUNDO pedido -- e a escolha E' honrada (era ela que o desenho antigo
+        # fechava em ingles). `TARGET_LANG = ''` deixa o modulo cair no
+        # `DEFAULT_TARGET`: e' esse fallback que o mutante do default derruba.
         bad = []
-        old = mod.TARGET_OVERRIDE
+        old = mod.TARGET_LANG
+        default = mod._caption_settings.DEFAULT_TARGET
         try:
             for orig in ("zh", "ja", "de", "ko"):
-                for pick in ("", "pt", "es", "de"):
-                    mod.TARGET_OVERRIDE = pick
+                base = mod._base_lang(orig)
+                for pick in ("", "en", "pt", "es", "de", "fr", "ja"):
+                    mod.TARGET_LANG = pick
+                    applied = mod._base_lang(pick) or default
                     got = tuple(mod._target_langs(orig))
-                    if not got or mod._base_lang(got[0]) != mod.TARGET_LANG:
-                        bad.append("orig=%s pick=%r -> %r" % (orig, pick, got))
+                    want = (base,) if applied == base else (applied, orig)
+                    if got != want:
+                        bad.append("orig=%s pick=%r -> %r want %r"
+                                   % (orig, pick, got, want))
         finally:
-            mod.TARGET_OVERRIDE = old
+            mod.TARGET_LANG = old
         return not bad, "quebras=%r" % (bad,)
-    attempt("a60 qualquer outra lingua vai SEMPRE para INGLES, escolha ou nao",
-            a_pick_keeps_other_languages_english)
+    attempt("a60 fora de en/pt/es a legenda vai para a lingua ESCOLHIDA "
+            "(default pt), o original e' o segundo pedido, e a escolha E' "
+            "honrada", a_pick_reaches_other_languages)
+
+    # -- A ESCOLHA PERSISTIDA (ordem do dono, 2026-11-08) -------------------
+    def a61():
+        # O DEFAULT E' A LINGUA DELE, NAO O INGLES. O `main` desvia
+        # `SOTTO_CAPTION_SETTINGS` para um caminho INEXISTENTE, logo o valor que
+        # responde e' o DEFAULT -- e o modulo resolveu-o no import.
+        settings = mod._caption_settings
+        default = settings.DEFAULT_TARGET
+        bare = settings.target_lang()
+        pair = tuple(mod._target_langs("ja"))
+        ok = (default == "pt" and bare == "pt" and mod.TARGET_LANG == "pt"
+              and pair == ("pt", "ja"))
+        return ok, ("DEFAULT_TARGET=%r target_lang()=%r TARGET_LANG=%r "
+                    "_target_langs('ja')=%r"
+                    % (default, bare, mod.TARGET_LANG, pair))
+    attempt("a61 o default da traducao e' pt (a lingua dele), NAO en", a61)
+
+    def a62():
+        # A ESCOLHA SOBREVIVE AO ARRANQUE: grava `fr`, le de um IMPORT NOVO -- o
+        # shell e o modulo nascem antes do painel, logo memoria nao basta -- e
+        # um ficheiro corrompido ou ausente volta ao DEFAULT `pt`.
+        folder = tempfile.mkdtemp(prefix="persist-", dir=workdir)
+        dest = os.path.join(folder, "caption-settings.json")
+        old_env = os.environ.get("SOTTO_CAPTION_SETTINGS")
+        old_target = mod.TARGET_LANG
+        old_override = mod.TARGET_OVERRIDE
+        os.environ["SOTTO_CAPTION_SETTINGS"] = dest
+        try:
+            applied = mod.set_target_language("fr")
+            fresh = load_module(SETTINGS_PATH, "caption_settings_fresh")
+            persisted = fresh.target_lang()
+            reloaded = load_module(path, "youtube_captions_fresh_a62")
+            module_target = reloaded.TARGET_LANG
+            with open(dest, "w", encoding="utf-8") as fh:
+                fh.write("{this is not json")
+            corrupt = load_module(SETTINGS_PATH,
+                                  "caption_settings_corrupt").target_lang()
+            os.remove(dest)
+            missing = load_module(SETTINGS_PATH,
+                                  "caption_settings_missing").target_lang()
+            # A escolha normaliza-se para a BASE: 'pt-BR' -> 'pt'.
+            regional = fresh.set_target_lang("pt-BR")
+        finally:
+            if old_env is None:
+                os.environ.pop("SOTTO_CAPTION_SETTINGS", None)
+            else:
+                os.environ["SOTTO_CAPTION_SETTINGS"] = old_env
+            mod.TARGET_LANG = old_target
+            mod.TARGET_OVERRIDE = old_override
+            shutil.rmtree(folder, ignore_errors=True)
+        ok = (applied == "fr" and persisted == "fr" and module_target == "fr"
+              and corrupt == "pt" and missing == "pt" and regional == "pt")
+        return ok, ("aplicado=%r persistido=%r modulo=%r corrompido=%r "
+                    "ausente=%r base=%r"
+                    % (applied, persisted, module_target, corrupt, missing,
+                       regional))
+    attempt("a62 a escolha PERSISTE (fr sobrevive a um import novo) e um "
+            "ficheiro corrompido/ausente volta a pt", a62)
+
+    def a63():
+        # DEDUPE: pedir a traducao para a PROPRIA lingua do video seria pedir a
+        # mesma faixa duas vezes (o chamador tentaria o mesmo pedido e falharia).
+        bad = []
+        old = mod.TARGET_LANG
+        try:
+            for orig in ("ja", "ja-JP", "ko"):
+                base = mod._base_lang(orig)
+                mod.TARGET_LANG = base
+                got = tuple(mod._target_langs(orig))
+                if got != (base,):
+                    bad.append("orig=%s alvo=%r -> %r" % (orig, base, got))
+        finally:
+            mod.TARGET_LANG = old
+        return not bad, "quebras=%r" % (bad,)
+    attempt("a63 alvo igual a' lingua original pede UMA vez, nao duas", a63)
+
+    def a64():
+        # O ANIME QUE ELE ESTAVA A VER, na forma exacta que o dono descreveu:
+        # um video japones com alvo `pt` tem de pedir a traducao pt PRIMEIRO.
+        old = mod.TARGET_LANG
+        try:
+            mod.TARGET_LANG = "pt"
+            pair = tuple(mod._target_langs("ja"))
+            mod.TARGET_LANG = "fr"
+            picked = tuple(mod._target_langs("ja"))
+        finally:
+            mod.TARGET_LANG = old
+        ok = pair == ("pt", "ja") and picked == ("fr", "ja")
+        return ok, "default=%r escolhido=%r" % (pair, picked)
+    attempt("a64 o caso MEDIDO do dono: anime japones -> ('pt','ja') e, com "
+            "escolha fr -> ('fr','ja')", a64)
 
     def a55():
         # A SPANISH video with no Spanish track and no English track either:
@@ -1173,9 +1327,24 @@ MUTANTS = [
     ("the-original-language-is-not-read",
      '    lang = str((info or {}).get(\'language\') or \'\').strip().lower()',
      '    lang = ""'),
-    ("the-target-language-is-portuguese-again",
-     "TARGET_LANG = 'en'",
-     "TARGET_LANG = 'pt'"),
+    # 2026-11-08: o antigo anco era `TARGET_LANG = 'en'` -- que passou a existir
+    # SO' num COMENTARIO do modulo, logo o mutante mudava uma frase e o mutante
+    # era DECORATIVO (passava porque outro arm ja' estava vermelho na baseline).
+    # O anco passou a ser a LINHA VIVA: a copia serve o INGLES por default outra
+    # vez, que e' exactamente o defeito que a ordem de 2026-11-08 veio corrigir.
+    ("the-target-language-goes-back-to-english",
+     "TARGET_LANG = _caption_settings.target_lang()",
+     "TARGET_LANG = 'en'"),
+    # E O MESMO DEFEITO UM NIVEL ABAIXO: o modulo ignora a escolha persistida e
+    # pede ingles quando `TARGET_LANG` esta' vazio (o `DEFAULT_TARGET` do irmao).
+    ("the-persisted-default-goes-back-to-english",
+     "    target = _base_lang(TARGET_LANG) or _caption_settings.DEFAULT_TARGET",
+     "    target = _base_lang(TARGET_LANG) or 'en'"),
+    # E O DEDUPE: pedir a "traducao" para a propria lingua do video faz o
+    # chamador tentar a MESMA faixa duas vezes.
+    ("the-target-equal-to-the-original-is-asked-twice",
+     "    if target == base:",
+     "    if False:"),
     # 2026-10-30: o conjunto passou a ter tres linguas. Os dois mutantes novos
     # quebram UMA metade cada -- sem eles, "nunca traduzir entre en/pt/es" e'
     # uma frase que ninguem pode provar que esta' no codigo.
@@ -1213,6 +1382,27 @@ def main() -> int:
     if not os.path.isfile(MODULE_PATH):
         print("RED   module missing: %s" % MODULE_PATH)
         return EXIT_FAIL
+    if not os.path.isfile(SETTINGS_PATH):
+        print("RED   settings module missing: %s (the default/round-trip arms "
+              "cannot be measured)" % SETTINGS_PATH)
+        return EXIT_FAIL
+    # A ESCOLHA REAL DO DONO NAO E' INSTRUMENTO DESTE ORACULO (2026-11-08): o
+    # modulo resolve `TARGET_LANG` do FICHEIRO DELE no import, logo um pick real
+    # (`fr`) faria os arms do default medirem a escolha dele em vez do codigo. O
+    # env var desvia a leitura para um caminho INEXISTENTE (= `DEFAULT_TARGET`);
+    # o directorio e' limpo no fim e a escolha dele no disco nao e' tocada.
+    settings_home = tempfile.mkdtemp(prefix="yt-caps-oracle-settings-")
+    atexit.register(shutil.rmtree, settings_home, ignore_errors=True)
+    os.environ["SOTTO_CAPTION_SETTINGS"] = os.path.join(
+        settings_home, "caption-settings.json")
+    if neg_only:
+        # O `--neg-arm` NAO corre a bateria positiva, e a copia mutada importa o
+        # irmao `caption_settings` PELO NOME (a lei de 2026-11-08 acrescentou-o):
+        # sem o import real feito primeiro, o nome nao esta' em `sys.modules` nem
+        # o directorio da app em `sys.path`, e TODOS os mutantes morriam em
+        # `ModuleNotFoundError` -- o braco negativo media o importador, nao a lei
+        # (medido 2026-11-08: `mutants 0/18`, todos DECORATIVO).
+        load_module(MODULE_PATH, "youtube_captions_priming")
     with open(MODULE_PATH, "r", encoding="utf-8", newline="") as fh:
         source = fh.read()
     # O FICHEIRO E' CRLF E OS ANCOS SAO ESCRITOS COM `\n` (medido 2026-10-30): sem esta
@@ -1227,26 +1417,6 @@ def main() -> int:
         workdir = tempfile.mkdtemp(prefix="yt-caps-oracle-")
         try:
             mod = load_module(MODULE_PATH, "youtube_captions_live")
-            # CADA ARM VE' A SUA PROPRIA JANELA (2026-11-03, medido).
-            #
-            # `player_time_detail` guarda o ELEMENTO do relogio por hwnd
-            # (`_TIME_TEXT_CACHE`, `_TIME_SLIDER_CACHE`), e isso esta' certo em
-            # producao -- um hwnd e' uma janela. Os arms, porem, passavam todos
-            # `hwnd=1`: o elemento de TEXTO do a31 (`06:13 of 24:43` -> 373 s)
-            # sobrevivia para o a32..a44 e voltava a ser lido em cima de uma
-            # janela fabricada que NAO tinha texto nenhum -- 11 arms diziam RED
-            # com o MESMO detalhe (`text=373.0 slider=50.0`), que e' a assinatura
-            # de um fixture a medir o cache do arm anterior e nao o codigo.
-            # Limpar os dois caches antes de cada chamada devolve ao arm a janela
-            # que ele construiu.
-            _orig_player_time_detail = mod.player_time_detail
-
-            def _fresh_player_time_detail(uia, ui_mod, hwnd, *a, **kw):
-                mod._TIME_TEXT_CACHE.clear()
-                mod._TIME_SLIDER_CACHE.clear()
-                return _orig_player_time_detail(uia, ui_mod, hwnd, *a, **kw)
-
-            mod.player_time_detail = _fresh_player_time_detail
             rows = battery(mod, MODULE_PATH, workdir, source)
         finally:
             shutil.rmtree(workdir, ignore_errors=True)

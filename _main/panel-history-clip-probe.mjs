@@ -118,6 +118,50 @@ await page.waitForFunction(
   { timeout: 15000 },
 );
 
+/* AS DUAS FOLHAS QUE CHEGAM POR PEDIDO (medido 2026-11-08).
+ *
+ * `panel.html` NAO liga `themes/cinematic.css` nem `themes/panel-designs.css`:
+ * desde o `lazy-assets.js` elas chegam quando o shell pede um tema `cine-*` /
+ * `pd-*`. Sem elas o probe media 30 dos 45 desenhos com a face de RECURSO
+ * (Instrument Sans 13.5px) e chamava isso de "identidade" -- o artefacto era da
+ * PAGINA do probe, nao do painel. Ligadas aqui, o medidor ve o mesmo documento
+ * que o dono ve depois de escolher o tema. */
+/* O BRAÇO NEGATIVO DESTE PROBE, SEM TOCAR NO FICHEIRO VIVO.
+ * `SOTTO_PROBE_UNIFIED=<ficheiro.css>` entra como ULTIMA folha: e' assim que um
+ * controlo passa a regra LITERAL de antes da cura (a mesma linha em todos os
+ * temas) por cima do painel REAL e mede se o probe acusa. Escrever numa copia do
+ * `panel-unified.css` e trocar o ficheiro vivo por um instante seria a outra via
+ * -- e um painel aberto do dono pintaria a copia durante esse instante. */
+/* `--neg-arm` REPOE A REGRA LITERAL DE ANTES DA CURA (a mesma linha, o mesmo
+ * tamanho, a mesma entrelinha em TODOS os desenhos) e exige que o braco da
+ * identidade caia. A convencao da casa: devolve rc=1 quando APANHA. */
+const NEG_ARM = process.argv.includes('--neg-arm');
+const LITERAL_BEFORE_THE_CURE = `html body[data-surface="panel"] .history__list .hist__text {
+  font-family: "Instrument Sans", "Segoe UI Variable Text", "Segoe UI",
+    system-ui, sans-serif !important;
+  font-size: calc(13.5px * var(--caption-scale)) !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+}`;
+if (NEG_ARM) {
+  await page.addStyleTag({ content: LITERAL_BEFORE_THE_CURE });
+} else if (process.env.SOTTO_PROBE_UNIFIED) {
+  const override = readFileSync(process.env.SOTTO_PROBE_UNIFIED, 'utf8');
+  await page.addStyleTag({ content: override });
+}
+for (const href of ['themes/cinematic.css', 'themes/panel-designs.css']) {
+  await page.evaluate((h) => new Promise((resolve) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = h;
+    link.onload = resolve;
+    link.onerror = resolve;
+    document.head.appendChild(link);
+  }), href);
+}
+
 const report = await page.evaluate((ids) => {
   /* WCAG CONTRASTE, COMPOSTO SOBRE O FUNDO DA PROPRIA LINHA.
    *
@@ -213,6 +257,12 @@ const report = await page.evaluate((ids) => {
       textAlign: cs.textAlign,
       timeColor: getComputedStyle(time).color,
       textColor: cs.color,
+      // A IDENTIDADE DO DESENHO, medida no RENDER (ordem do dono, 2026-11-08:
+      // *"VOCE TIROU O DESIGN DE TODAS AS LEGENDAS PRA DEIXAR ELAS IGUAIS EM
+      // TODOS OS TEMAS"*). Um tema que repita a familia+nome do outro e' a
+      // mesma legenda outra vez.
+      family: cs.fontFamily,
+      fontSize: cs.fontSize,
       timeOpacity: getComputedStyle(time).opacity,
       timeWidth: Math.round(time.getBoundingClientRect().width),
       // The two ratios, each colour composited over the row's own background.
@@ -384,12 +434,31 @@ for (const t of report) {
     break;
   }
 }
+const dimLine = [];
+for (const t of report) {
+  const r = t.rows.find((x) => x.body != null && x.body < 4.5);
+  if (r) dimLine.push({ theme: t.theme, body: r.body, textColor: r.textColor });
+}
+const families = new Map();
+for (const t of report) {
+  const r = t.rows[0];
+  if (!r) continue;
+  const face = String(r.family || '').split(',')[0].replace(/["']/g, '').trim()
+    + ' ' + r.fontSize;
+  families.set(face, (families.get(face) || 0) + 1);
+}
 const stamped = report.reduce((n, t) => n + (t.rows.some((r) => r.stamp != null) ? 1 : 0), 0);
 console.log(`STAMP UNREADABLE (<3:1 over its own background) in ${unreadable.length} of ${stamped} theme(s)`);
 for (const r of unreadable) console.log(`  ${r.theme}: stamp=${r.stamp}:1 body=${r.body}:1 (${r.timeColor} / opacity ${r.timeOpacity})`);
 console.log(`STAMP LOUDER THAN TEXT in ${louder.length} theme(s)`);
 for (const r of louder) console.log(`  ${r.theme}: stamp=${r.stamp}:1 body=${r.body}:1`);
 for (const t of clamped) console.log(`  ${t.theme}: clamp=${t.rows.find((r) => r.lineClamp !== 'none').lineClamp}`);
+console.log(`LINE UNREADABLE (<4.5:1 over its own background) in ${dimLine.length} of ${report.length} theme(s)`);
+for (const r of dimLine) console.log(`  ${r.theme}: body=${r.body}:1 (${r.textColor})`);
+console.log(`ROW FACE: ${families.size} distinct (family + size) across ${report.length} theme(s)`);
+for (const [face, n] of [...families.entries()].sort((a, b) => b[1] - a[1])) {
+  console.log(`  ${String(n).padStart(2)} theme(s): ${face}`);
+}
 console.log(`NOT LEFT-ALIGNED rows in ${centered.length} theme(s)`);
 for (const t of centered) console.log(`  ${t.theme}: textAlign=${t.rows.find((r) => r.textAlign !== 'start' && r.textAlign !== 'left').textAlign}`);
 if (errors.length) {
@@ -397,4 +466,10 @@ if (errors.length) {
   for (const e of errors.slice(0, 5)) console.log('  ' + e);
 }
 if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ themes: report, errors }, null, 2));
-process.exit(bad.length || errors.length ? 1 : 0);
+if (NEG_ARM) {
+  const caught = families.size < 2;
+  console.log(`NEG-ARM: ${caught ? 'PASS' : 'FAIL'} -- o mutante litera ${families.size} face(s)`
+    + ` (o positivo mede 28); o braco da identidade ${caught ? 'caiu' : 'NAO caiu'}`);
+  process.exit(caught ? 1 : 0);
+}
+process.exit(bad.length || dimLine.length || families.size < 20 || errors.length ? 1 : 0);

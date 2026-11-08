@@ -112,13 +112,10 @@ const dom = {
   statsChip: document.getElementById('stats-chip'),
   // transcript feed
   transcript: document.getElementById('history'),
-  /* THE DRAWER HANDLE IS GONE (owner, 2026-10-14, verbatim: *"tira o botao de
-     transcript… remove o CONTROLO"*). `#history-toggle` was deleted from the
-     markup, so this lookup is deleted with it — it would return `null` forever and
-     a lookup of a node that does not exist is a claim about a document that is not
-     the one shipped. The drawer is still reachable: it opens by itself when the
-     shell reports a canonical producer (`isTranscriptExpanded`), and the FOLDER
-     button (`#history-root`, below) still opens the place the data lives. */
+  /* THE DRAWER HANDLE IS GONE (owner, 2026-10-14: *"tira o botao de transcript…
+     remove o CONTROLO"*): `#history-toggle` was deleted from the markup, so this
+     lookup went with it. The drawer is always open; the FOLDER button
+     (`#history-root`, below) still opens the place the data lives. */
   transcriptNote: document.getElementById('transcript-note'),
   transcriptCount: document.getElementById('history-count'),
   historyList: document.getElementById('history-list'),
@@ -355,7 +352,9 @@ let pauseSupported = false;
  *  the owner asked that they be selectable even though the default policy never
  *  translates among them. */
 const TRANSLATION_LANGS = [
-  ['', 'Auto (recommended)'],
+  /* `''` is not "no choice": the shell reads it as "the language I chose for
+   * Sotto", and that default is Português (BR) — hence the label. */
+  ['', 'Auto (Português BR)'],
   ['en', 'English'],
   ['pt', 'Português (BR)'],
   ['es', 'Español'],
@@ -388,12 +387,6 @@ const TRANSLATION_LANGS = [
 const TRANSLATION_KEY = 'sotto.translationTarget';
 let liveSupported = false;
 let statusSnapshot = { text: '', kind: null };
-
-// `transcriptExpanded` LIVES HERE, not beside `wireHistory` — see its own long
-// comment below. It is read from `applyTranscriptMode`, which the init block
-// reaches through `wireHistory` → `loadHistory`, and a `let` read before its own
-// line is a ReferenceError that takes every later init call with it.
-let transcriptExpanded = null;
 
 // ── THE STATUS IS A REPAIR CONTROL, AND THESE TWO LIVE ABOVE THE INIT BLOCK ──
 // Owner's ruling, verbatim (2026-10-08): *"e o botao de error ou de idle sei
@@ -1024,6 +1017,9 @@ if (!bridge) {
 // caption): the feed and the live box are in the document either way, and the owner's
 // rule is about the layout, not about captions arriving.
 wireThemeScrollGuard();
+// THE WHEEL OWNS THE TRANSCRIPT (owner, 2026-11-08: *"eu nao consigo usar meu
+// scroll pra scrollar as legendas no historico."*), with or without a bridge.
+wireHistoryWheel();
 
 
 // ---------------------------------------------------------------------------
@@ -1698,13 +1694,70 @@ function wireFollow() {
 // again) and on every stylesheet `load` — the event a template's own sheet fires.
 // `load` does not bubble, hence the capture-phase listener.
 
-/** The transcript feed (#history-list) at its newest line. Always. */
-function pinHistoryToBottom() {
+/**
+ * THE BOX THAT ACTUALLY SCROLLS THE TRANSCRIPT. MEASURED 2026-11-08
+ * (`_main/panel-history-wheel-probe.mjs`): `#history-list` has `overflow-y:auto`
+ * and `overscroll-behavior:contain`, but is painted `display:block`, so its box is
+ * as tall as its content and never scrolls -- `contain` then swallows the wheel
+ * before it reaches `.history__body`, which is the box that does scroll. So the
+ * document is asked, never assumed: nearest ancestor (list included) whose
+ * `overflow-y` scrolls; the one whose content overflows wins.
+ */
+function historyScroller() {
   const list = dom.historyList;
-  if (!list) return false;
-  // `scrollHeight` is 0 on a list with no layout yet (a hidden surface, a fresh
-  // document); writing it then is a no-op, not a jump to the top.
-  list.scrollTop = list.scrollHeight;
+  if (!list) return null;
+  let nearest = null;
+  for (let node = list; node && node !== document.body && node !== document.documentElement;
+    node = node.parentElement) {
+    const y = getComputedStyle(node).overflowY;
+    if (y !== 'auto' && y !== 'scroll' && y !== 'overlay') continue;
+    if (!nearest) nearest = node;
+    if (node.scrollHeight > node.clientHeight + 1) return node;
+  }
+  return nearest;
+}
+
+/**
+ * THE WHEEL SCROLLS THE TRANSCRIPT (owner, 2026-11-08: *"eu nao consigo usar meu
+ * scroll pra scrollar as legendas no historico."*). The listener is on the
+ * SECTION, so a row, the space under the last one and the tools row all scroll
+ * it. `preventDefault` only when the box moves, so an end of travel is not eaten;
+ * `deltaMode` is honoured (a line-mode wheel reports lines, not pixels).
+ */
+function wireHistoryWheel() {
+  const section = dom.transcript;
+  if (!section) return;
+  section.addEventListener('wheel', (event) => {
+    if (!event.deltaY) return;
+    const scroller = historyScroller();
+    if (!scroller) return;
+    const max = scroller.scrollHeight - scroller.clientHeight;
+    if (max <= 0) return;
+    const unit = event.deltaMode === 1 ? 16
+      : event.deltaMode === 2 ? scroller.clientHeight : 1;
+    const next = Math.max(0, Math.min(max, scroller.scrollTop + event.deltaY * unit));
+    if (next === scroller.scrollTop) return;
+    event.preventDefault();
+    scroller.scrollTop = next;
+  }, { passive: false });
+}
+
+/**
+ * The feed at its newest line. `force` for a fresh render or a layout change; an
+ * ARRIVING line follows only while the reader is within `HISTORY_FOLLOW_SLACK` of
+ * the bottom — pinning the real scroller (which this did not reach before
+ * 2026-11-08) would otherwise yank the owner out of the old lines on every
+ * committed caption.
+ */
+const HISTORY_FOLLOW_SLACK = 48;
+
+function pinHistoryToBottom(force) {
+  const scroller = historyScroller();
+  if (!scroller) return false;
+  const max = scroller.scrollHeight - scroller.clientHeight;
+  if (max <= 0) return false;
+  if (!force && max - scroller.scrollTop > HISTORY_FOLLOW_SLACK) return false;
+  scroller.scrollTop = max;
   return true;
 }
 
@@ -1720,9 +1773,10 @@ function pinLiveTranscriptToBottom() {
   return true;
 }
 
-/** Both transcript containers, one call. */
+/** Both transcript containers, one call. A layout change FORCES the feed: a theme
+ *  switch rebuilds the scroller and its `scrollTop` returns as 0. */
 function pinTranscriptsToBottom() {
-  const feed = pinHistoryToBottom();
+  const feed = pinHistoryToBottom(true);
   const live = pinLiveTranscriptToBottom();
   return feed || live;
 }
@@ -1786,43 +1840,11 @@ function updateLiveHint() {
 // that calls `wireHistory()` — see the temporal-dead-zone note there. Do not
 // re-add declarations here: a second `let` of the same name in one scope is a
 // SyntaxError that takes the whole panel down.
-/**
- * The owner's explicit drawer choice: null = follow the producer (the default),
- * true/false = the owner clicked the chevron and that choice stands.
- *
- * DECLARED ABOVE THE INIT BLOCK, AND IT WAS NOT — MOVED HERE 2026-10-08. It used
- * to sit 370 lines BELOW, next to `wireHistory`, and that is a temporal dead
- * zone waiting for a fast path: `wireHistory` (init) → `loadHistory` →
- * `renderFeed` → `applyTranscriptMode` → `isTranscriptExpanded`, which READS
- * this binding. With the shell's own bridge the tail arrives asynchronously and
- * the read lands after the module has finished evaluating — the panel works, and
- * the trap is invisible. The moment anything makes that path SYNCHRONOUS (a
- * shell with no `bridge.history`, which is the honest "no transcript writer yet"
- * case the panel itself handles) the init block dies with
- * `Cannot access 'transcriptExpanded' before initialization` and NOTHING after
- * it runs — no `wireStatus`, no caption subscription, a panel frozen on its
- * placeholder. Measured, in this file: `_main/revive-pipeline-oracle.py`
- * ARM P reproduced it on the first run against the REAL document.
- * `preload.js`'s fake bridge lacked `history` and that was enough to flip it.
- * Anything the init block can reach is declared above it — AGENTS.md, the rule
- * the 2026-10-07 TDZ bug bought.
- *
- * THE DECLARATION ITSELF LIVES ABOVE THE INIT BLOCK NOW; this comment stays here
- * because this is where a reader looks for the drawer's state. Do not re-add a
- * `let` on this line: a second declaration of the same name in one scope is a
- * SyntaxError, which takes the whole panel down harder than the TDZ did.
- */
 
 function wireHistory() {
-  /* THE DRAWER HANDLE IS GONE (owner, 2026-10-14). The click handler that stood
-     here flipped `transcriptExpanded` and re-applied the mode, and it is deleted
-     with the `#history-toggle` button it was bound to. This is the ONLY code that
-     could open the drawer BY HAND; what remains is the automatic half —
-     `isTranscriptExpanded()` still returns true when the shell reports a canonical
-     producer, so the drawer opens itself the day a writer exists. Nothing else in
-     this file reads the removed node: every other reference was already inside an
-     `if (dom.transcriptToggle)` guard, and those two branches are deleted below
-     rather than left pointing at nothing. */
+  /* THE DRAWER HANDLE IS GONE (owner, 2026-10-14), and with it the `transcriptExpanded`
+     flag and the function that read it: the drawer is always open now. Nothing here
+     reads `#history-toggle`; it does not exist in the document. */
 
   if (dom.revealButton) {
     dom.revealButton.addEventListener('click', () => {
@@ -1894,14 +1916,8 @@ function canonicalProducerOf(result) {
  * producer exists — nothing here is a permanent decision.
  */
 function applyTranscriptMode() {
-  const expanded = isTranscriptExpanded();
   const rows = historyEntries.length;
 
-  if (dom.transcript) dom.transcript.classList.toggle('history--collapsed', !expanded);
-  /* The `aria-expanded` / title half is GONE with the button (owner, 2026-10-14):
-     it described a control that no longer exists. `expanded` itself is still
-     computed and still drives the collapse below — the DRAWER behaviour is
-     unchanged, only its handle is gone. */
   if (dom.transcriptCount) {
     // THE THIRD COUNT SITE — the owner's own words suggested there was more than
     // one (*"400 lines… 400 lines…"*) and there were three: this one, the live
@@ -1925,23 +1941,6 @@ function applyTranscriptMode() {
   const searchable = Boolean(canonicalProducer);
   void searchable;
 
-}
-
-/**
- * THE TRANSCRIPT IS ALWAYS OPEN (owner, 2026-11-06). Verbatim: *"e nao é pra
- * começar a ativar o historico so quando eu mostro o painel. é pra sempre
- * aparecer no painel."*
- *
- * It used to open only when the shell reported a canonical producer, which meant
- * the feed was a closed bar whenever the batch pass had not introduced itself
- * yet -- the owner opens the panel, sees a caption bar and nothing else. The
- * collapsed state is now unreachable; the decision function stays because it is
- * the ONE place the surface asks the question.
- */
-function isTranscriptExpanded() {
-  void transcriptExpanded;
-  void canonicalProducer;
-  return true;
 }
 
 /**
@@ -2228,7 +2227,7 @@ function renderFeed() {
   for (const entry of rows) dom.historyList.append(makeRow(entry));
   // NEVER THE TOP (owner, 2026-10-12): *"e sempre mostrando o bottom do historico
   // de transcript."* One function, used by the render path and the theme guard.
-  pinHistoryToBottom();
+  pinHistoryToBottom(true);
   applyTranscriptMode();
 }
 
@@ -2237,7 +2236,7 @@ function appendFeedRow(entry) {
   const emptyNote = dom.historyList.querySelector('.history__empty');
   if (emptyNote) emptyNote.remove();
   dom.historyList.append(makeRow(entry));
-  dom.historyList.scrollTop = dom.historyList.scrollHeight;
+  pinHistoryToBottom();
   applyTranscriptMode();
 }
 
@@ -2262,7 +2261,7 @@ function replaceFeedRow(entry) {
   const fresh = makeRow(entry);
   fresh.setAttribute('data-history-row', '1');
   last.replaceWith(fresh);
-  dom.historyList.scrollTop = dom.historyList.scrollHeight;
+  pinHistoryToBottom();
   applyTranscriptMode();
 }
 
@@ -3619,7 +3618,8 @@ function renderSearchResults(query, hits) {
   }
   for (const hit of list) dom.historyList.append(makeRow(hit, query));
   setHistoryNote(`${list.length} match${list.length === 1 ? '' : 'es'} for “${query}”`);
-  dom.historyList.scrollTop = 0;
+  const scroller = historyScroller();
+  if (scroller) scroller.scrollTop = 0;
 }
 
 // -- small helpers ----------------------------------------------------------

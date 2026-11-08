@@ -279,11 +279,34 @@ html body[data-surface="panel"] .hist + .hist {
   margin-top: 5px !important;
 }
 
+/* A LINHA CARREGA O DESENHO DO TEMA -- PISO DE LEGIBILIDADE, NAO UM DESENHO UNICO
+ * (ordem do dono, 2026-11-08, verbatim): *"VOCE TIROU O DESIGN DE TODAS AS
+ * LEGENDAS PRA DEIXAR ELAS IGUAIS EM TODOS OS TEMAS"*.
+ *
+ * O que estava aqui era um literal: `Instrument Sans` + `13.5px` + `1.5` com
+ * `!important`, a mesma linha em todos os 45 desenhos. A cura da legibilidade
+ * nao precisava disso -- precisava de um PISO, porque o defeito medido era a
+ * linha herdar `--size-small` (theme-2 **9 px**) e a face de DISPLAY do tema.
+ *
+ * AGORA cada declaracao le' o token do TEMA, e so' onde o valor do tema cairia
+ * abaixo do piso o piso ganha:
+ *   - FACE: `--font-sans` (o tema escolhe), com a face de texto empacotada como
+ *     ultimo recurso -- nunca a de display.
+ *   - TAMANHO: `max(13.5px, --size-caption)`, que da' theme-1 **18.5**, theme-2
+ *     **13.5** (piso, era 10.5), theme-3/5 **14.5**, theme-4 **15** -- cinco
+ *     desenhos distintos e nenhum ilegivel.
+ *   - ENTRELINHA: `max(1.45, --leading-caption)`.
+ *   - CAIXA/ESPACO/PESO: os tokens do tema, que ja' existiam e eram ignorados.
+ * O `!important` FICA: ele existe para vencer o `skin-layout.css` legado
+ * (`.history { display: none !important }`), nao para vencer o tema. */
 html body[data-surface="panel"] .history__list .hist__text {
-  font-family: "Instrument Sans", "Segoe UI Variable Text", "Segoe UI",
-    system-ui, sans-serif !important;
-  font-size: calc(13.5px * var(--caption-scale)) !important;
-  line-height: 1.5 !important;
+  font-family: var(--font-sans, "Instrument Sans", "Segoe UI Variable Text",
+    "Segoe UI", system-ui, sans-serif) !important;
+  font-size: calc(max(13.5px, var(--size-caption, 13.5px)) * var(--caption-scale)) !important;
+  line-height: max(1.45, var(--leading-caption, 1.5)) !important;
+  font-weight: var(--weight-caption, 400) !important;
+  letter-spacing: var(--tracking-caption, normal) !important;
+  text-transform: var(--caption-upper, none) !important;
 }
 
 html body[data-surface="panel"] .hist__time {
