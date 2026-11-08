@@ -125,6 +125,37 @@ def run(module, label, tmpdir):
     arm('A6 a falha nomeia o ultimo carimbo', '2026-11-03 11:42:17' in saida,
         saida.strip().splitlines()[-1][:70] if saida.strip() else 'sem frase')
 
+    # A7: A CORRIDA MEDIDA A 00:50 (o defeito desta cura). O arranque e a linha
+    # da mutex estao a ~40 ms de distancia; a leitura pode cair no MEIO -- e o
+    # candidato NAO pode ser queimado por ter sido lido cedo. Fonte que devolve
+    # o texto sem mutex na PRIMEIRA leitura e com ela na segunda.
+    STAGE = ('2026-11-08 00:48:51.619 sotto: SHELL_STARTUP_STAGE pid=45084 '
+             'stage=pre-lock python=C:\\Program Files\\Python311\\python.EXE panel=true\n')
+    MUTEX = ('2026-11-08 00:48:51.659 sotto: SINGLE_INSTANCE name=Local\\SottoShell '
+             'already_running=false\n')
+    reads = {'n': 0}
+
+    def flaky():
+        reads['n'] += 1
+        return STAGE if reads['n'] == 1 else (STAGE + MUTEX)
+
+    since7 = time.mktime(time.strptime('2026-11-08 00:48:39', '%Y-%m-%d %H:%M:%S'))
+    real_log = module.log_text
+    module.log_text = flaky
+    try:
+        pid7 = module.wait_ready(set(), since7, timeout=3.0)
+    finally:
+        module.log_text = real_log
+    arm('A7 lido cedo demais nao queima o candidato',
+        pid7 == 45084 and reads['n'] > 1, 'pid=%r leituras=%d' % (pid7, reads['n']))
+
+    # A8: `SHELL_JOB_ARMED pid=N` e' a segunda prova de vida (o job object so'
+    # se arma DEPOIS da mutex), para uma vida cuja linha da mutex nao chegou ao
+    # ficheiro por rotacao.
+    ARMED = STAGE + '2026-11-08 00:48:51.660 sotto: SHELL_JOB_ARMED pid=45084 kill_on_close=true\n'
+    pid8 = with_log(module, ARMED, lambda: module.wait_ready(set(), since7, timeout=1.5))
+    arm('A8 SHELL_JOB_ARMED tambem e` prova de vida', pid8 == 45084, 'pid=%r' % (pid8,))
+
     for name, ok, detail in results:
         print('  %s %-46s %s' % ('OK  ' if ok else 'FAIL', name, detail))
     bad = [r for r in results if not r[1]]
@@ -132,23 +163,43 @@ def run(module, label, tmpdir):
 
 
 def neg_arm(tmpdir):
-    """Chave por PID de volta, numa COPIA: A1 TEM de cair."""
+    """Dois mutantes, ambos ja' MEDIDOS nesta arvore.
+
+    M1 chave por PID (o defeito de 00:09) -> A1 tem de cair.
+    M2 o voto gasto antes do veredito (o defeito de 00:50) -> A7 tem de cair.
+    """
     src = io.open(TOOL, encoding='utf-8').read()
-    mutated = src.replace(
+    caughttotal = 0
+    total = 0
+
+    mutants = []
+    m1 = src.replace(
         "            if stamp is not None and stamp < since:\n"
         "                continue          # linha de uma vida ANTERIOR do mesmo numero\n",
         "", 1)
-    if mutated == src:
-        print('  ?    a mutacao NAO pegou (ancora mudou)')
-        print('NEG-ARM: FAIL -- 0/1 mutantes apanhados')
-        return 0
-    case = os.path.join(tmpdir, 'relauncher_mutant.py')
-    io.open(case, 'w', encoding='utf-8').write(mutated)
-    module = load(case, 'relauncher_mutant')
-    good, total = run(module, 'MUTANT', tmpdir)
-    caught = good < total
-    print('NEG-ARM: %s -- %d/%d mutantes apanhados' % ('PASS' if caught else 'FAIL', 1 if caught else 0, 1))
-    return 1 if caught else 0
+    mutants.append(('chave por PID (00:09)', m1))
+    m2 = src.replace(
+        "            tail = text[text.rfind('SHELL_STARTUP_STAGE pid=%d' % pid):]\n"
+        "            head = tail[:2000]\n",
+        "            seen.add((pid, stamp_text))\n"
+        "            tail = text[text.rfind('SHELL_STARTUP_STAGE pid=%d' % pid):]\n"
+        "            head = tail[:2000]\n", 1)
+    mutants.append(('voto gasto antes do veredito (00:50)', m2))
+
+    for label, mutated in mutants:
+        total += 1
+        if mutated == src:
+            print('  ?    a mutacao NAO pegou: %s (ancora mudou)' % label)
+            continue
+        case = os.path.join(tmpdir, 'relauncher_mutant_%d.py' % total)
+        io.open(case, 'w', encoding='utf-8').write(mutated)
+        module = load(case, 'relauncher_mutant_%d' % total)
+        good, arms = run(module, 'MUTANT', tmpdir)
+        if good < arms:
+            caughttotal += 1
+    print('NEG-ARM: %s -- %d/%d mutantes apanhados'
+          % ('PASS' if caughttotal == total else 'FAIL', caughttotal, total))
+    return 1 if caughttotal == total else 0
 
 
 def main(argv=None):

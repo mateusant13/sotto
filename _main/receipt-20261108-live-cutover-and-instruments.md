@@ -50,7 +50,7 @@ em 10 s) nao se reproduz com o instrumento que conta processos de verdade.
 |---|---|---|
 | pid | 23244 | **19896** |
 | codigo | `SHELL_CODE_ID sha256=B7582B656F92` (2026-11-07 10:24) | `sha256=CE4098871454` == disco -> **`LIVE_CODE FRESH`** |
-| `THREAD_CPU total` (censo da app) | **31-39 %** | **0 linhas** = abaixo do piso de publicacao |
+| `THREAD_CPU total` (censo da app) | **31-41 %**, `sotto-outside-click` **22-34 %** | **23 %**, `sotto-outside-click` **ausente do topo** (o piso era 20 %, por isso a linha nao saia sempre) |
 | `sotto-outside-click` | **22-28 %** de um core | nao aparece (abaixo de 5 %) |
 | `python -m watcher profile` | 33.7 % / 35.3 % de um core, duas leituras | 7.7 % (janela com carga de modelo); `psutil` 16.4 % e 11.6 % em duas janelas de 30 s |
 | painel na tela dele | nenhum | **nenhum** -- `PANEL_VISIBILITY_AT_STARTUP visible=false hwnd=29712724 form.Visible=false` |
@@ -107,16 +107,67 @@ absorvidos **cirurgicamente**, sem `--update`), `undefined-names` GREEN. Pin da 
 Smoke da shell editada por um caminho que nao abre janela (`--autostart-status`, rc=0, escreve
 `SHELL_CODE_ID sha256=F9369427E956 files=99`).
 
-## 6. O QUE NAO ESTA' MEDIDO
+## 6. A SEGUNDA DM (00:42) E O QUE A CADEIA MOSTRA
 
-* **A instancia viva (19896) ficou STALE de novo** pelos dois instrumentos da seccao 4(b): eles nao
-  mudam comportamento, mas o `sha256` do disco ja' nao e' o que ela carregou. Entram no proximo
-  arranque; o `live-code-freshness-oracle` diz `STALE` e nomeia o `pid` -- e' a verdade, e e' o
-  proprio portao a funcionar.
+`dm-bbdb8a35e8740b391583` acusou `pythonw(19896)` com `cpu 38.9 % over 8 process(es)`,
+`interrupt=22 %`, `creation=7.453/s`. O rasto completo, todo medido:
+
+| hora | facto | instrumento |
+|---|---|---|
+| 2026-11-07 10:24:53 | arranca a instancia **23244** | `SHELL_STARTUP_STAGE` |
+| 2026-11-07 15:16:11 | cura commitada (`6ce772a`) | `git log` |
+| 23:39 -> 00:08 (11-08) | **a mesma instancia** publica `THREAD_CPU total=31-41 % top=sotto-outside-click:22-34 %` a cada 30 s | censo da app |
+| 00:09:18 | relancada: pid **19896** com o codigo curado | `LIVE_CODE FRESH` |
+| 00:39:20 | censo da instancia curada: `total=23 % top=sotto-batch-executor:10 % yt-clock:4 % sotto-yt-track:3 %` -- **`sotto-outside-click` ausente do topo** | censo da app |
+| 00:48:51 | relancada: pid **45084**, codigo `F9369427E956`, e o censo NOVO publica com piso de 5 % | `SHELL_CODE_ID`, `THREAD_CPU` |
+| 00:56 | **arvore inteira: 3,2 % de um core** (shell 1,1 %, worker 1,6 %, webview 0,5 %) = 0,16 % da maquina | `psutil`, janela de 15 s, 9 processos |
+
+**A causa nomeada, com ficheiro e linha:** `app/webview/sotto_webview.py:7782-7793` -- o
+`SetTimer`/`KillTimer` sem `argtypes` devolvia um id gerado pelo Windows, o `KillTimer` recebia a
+constante e devolvia 0, e o re-arme rearmava **1 591 Hz**. Por isso `interrupt` alto: uma chamada de
+sistema por volta.
+
+**E o custo nao era do codigo que estava no disco -- era do processo que nao o tinha.** 8 h 53 min de
+spin depois de a cura estar commitada. A relancada (`sotto-relaunch.py --relaunch`) foi a correcao, e
+`PASSO 0` do bug-hunt (`live-code-freshness-oracle`) tinha razao: `STALE` = reiniciar, nao corrigir.
+
+**Residuo nomeado, nao escondido:** `sotto-batch-executor` (7-10 %) e' o passe de batch a transcrever
+spool -- trabalho, nao laco (o `batch_queue.py:573` dorme `poll_s=10`); `yt-clock` 4 % e' a amostra de
+relogio a 2,5 Hz (`sotto_webview.py:5656`). Nenhum dos dois justifica mudanca sem medida: 4 % de um
+core (0,2 % da maquina) nao paga o risco de mexer no relogio que sincroniza a legenda.
+
+### Dois defeitos MEUS, medidos na mesma hora
+
+1. **O censo por thread que eu corri do terminal devolvia ZERO e nao era zero.** `OpenThread` num
+   processo `high` a partir de um processo `medium` da' **err=5** em todas as 53 threads, e o meu
+   script somava `None` como 0. O `psutil` no mesmo instante media **12,3 / 9,8 / 23,6 %** de um core.
+   A regra da casa e' exatamente esta: um zero silencioso nao e' uma medida. O `py-spy dump` da' a
+   mesma recusa (`Acesso negado (os error 5)`), logo a atribuicao por thread deste processo so' existe
+   DENTRO dele -- e' o censo da app.
+2. **O relancador mentiu `FALHA` uma SEGUNDA vez, 40 min depois da cura.** Saida:
+   `00:48:51.619 SHELL_STARTUP_STAGE pid=45084` / `00:48:51.659 SINGLE_INSTANCE already_running=false`
+   / `00:50:21 FALHA (via token): nenhuma instancia nova em 90s`. A chave `(pid, carimbo)` estava
+   certa; o que faltava era o **voto**: `seen.add` acontecia ANTES das duas perguntas, e quando a
+   leitura caiu entre as duas linhas (40 ms de distancia) o candidato ficou marcado e saltado para
+   sempre. Curado: o voto so' se gasta com um veredito, e `SHELL_JOB_ARMED pid=N` passou a ser a
+   segunda prova de vida. `_main/relaunch-ready-oracle.py`: **8 arms** (A7 e' a corrida, A8 o job
+   object) e o `--neg-arm` derruba **2/2** mutantes -- o M2 repoe o voto adiantado e devolve
+   exatamente o defeito vivo (`pid=None leituras=12`).
+
+## 7. O QUE NAO ESTA' MEDIDO
+
+* **A atribuicao por thread continua a nao existir fora do processo.** `OpenThread`/`py-spy` num
+  processo `high` da' `err=5` a partir desta sessao `medium`; o unico instrumento e' o censo da app,
+  e ele agora publica com piso de 5 % (medido: `THREAD_CPU total=12 % top=sotto-batch-executor:7 %`
+  na instancia nova). Quem quiser a tabela por thread tem de a ler no log da app.
 * **A causa do `tick.stall` de 11 675 ms** do `watcher perf` nao esta' atribuida. As amostras do
   proprio watcher apontam `dpc=0.71-5.00 %` e `-> python.exe (pid 44176)` (o amostrador), nao a
   arvore da app; sem `profile` por thread (que o watcher declara impossivel neste processo) fica
   UNMEASURED, e nao se afirma que e' da app.
+* **`creation=7.453/s` da DM nao se reproduz:** censo `Toolhelp32` de 10 s na arvore da app, agora e
+  antes, deu **0 criacoes dentro da arvore**; as 20 da janela eram `cargo.exe`/`bash.exe` de OUTRAS
+  lanes. Na instancia corrente ha' **3 `BRIDGE_SPAWNED` e 2 `BRIDGE_EXIT`, todos entre 00:09 e 00:11**
+  (o arranque), e nenhum depois.
 * **A primeira metade da relancada custou 45 s** (4 pids ainda vivos, duas tentativas de kill): o
   `kill` por token devolveu `ok=False` em cinco alvos de oito antes de conseguir. E' o mesmo caminho
   que o `launch-as-token` ja' documenta; nao foi investigado nesta rodada.

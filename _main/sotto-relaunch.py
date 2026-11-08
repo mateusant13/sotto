@@ -463,14 +463,31 @@ def wait_ready(pid_before, since, timeout=READY_TIMEOUT_S):
                 continue          # linha de uma vida ANTERIOR do mesmo numero
             if (pid, stamp_text) in seen:
                 continue
-            seen.add((pid, stamp_text))
             tail = text[text.rfind('SHELL_STARTUP_STAGE pid=%d' % pid):]
-            if 'already_running=true' in tail[:2000]:
+            head = tail[:2000]
+            # O VOTO SO' SE GASTA COM UM VEREDITO (2026-11-08 00:50, MEDIDO).
+            # A linha de arranque e a da mutex escrevem-se com ~40 ms de
+            # distancia, e a leitura pode cair no meio: o candidato era marcado
+            # em `seen` ANTES das duas perguntas, a volta seguinte encontrava-o
+            # marcado e saltava-o para sempre -- e o laco publicou
+            # `FALHA (via token): nenhuma instancia nova em 90s` com o pid
+            # 45084 VIVO, com a mutex ganha (`SINGLE_INSTANCE ... false` as
+            # 00:48:51.659) e o Alt+C registado. Um instrumento que queima a
+            # prova por a ter lido cedo demais mente na direccao pior: diz
+            # FALHA depois de ter MATADO a app.
+            if 'already_running=true' in head:
+                seen.add((pid, stamp_text))
                 w('pid %d RECUSADO pela mutex (a antiga ainda a tinha)' % pid)
                 continue
-            if 'SINGLE_INSTANCE' in tail[:2000] and 'already_running=false' in tail[:2000]:
+            if 'SINGLE_INSTANCE' in head and 'already_running=false' in head:
+                seen.add((pid, stamp_text))
                 w('pid %d GANHOU a mutex (carimbo %s)' % (pid, stamp_text))
                 return pid
+            if 'SHELL_JOB_ARMED pid=%d' % pid in head:
+                seen.add((pid, stamp_text))
+                w('pid %d ARMOU o job object (carimbo %s)' % (pid, stamp_text))
+                return pid
+            # NADA AINDA: nao se gasta o voto -- a proxima volta volta a ler.
         time.sleep(POLL_S)
     if newest:
         w('o ultimo SHELL_STARTUP_STAGE visto foi carimbo=%s pid=%s (pedido: >= %s)'
