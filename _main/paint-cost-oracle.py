@@ -20,8 +20,9 @@ AS ARMS, todas medidas nesta corrida:
 
   A1 IGUALDADE DE PIXEL. >= 12 bases x alfa 0..255 (mais vetores de alfa
      misturados) comparadas BYTE A BYTE contra a implementacao ANTERIOR, que este
-     oraculo carrega de `git show HEAD:app/webview/overlay_paint.py` para um
-     modulo temporario. As bases cobrem os dois temas, as duas escalas, uma linha,
+     oraculo carrega de `git show 058de89^:app/webview/overlay_paint.py` (o ultimo
+     commit sem o cache -- ver `HEAD_PIN`) para um modulo temporario. As bases
+     cobrem os dois temas, as duas escalas, uma linha,
      duas linhas, o deslocamento de roll-up, a linha anterior, a placa ligada e
      desligada, a caixa estreita (borda direita) e a linha longa que quebra.
   A2 CUSTO. Cache-hit <= 2,0 ms de p95 em >= 200 iteracoes quentes (p50/p95/max
@@ -53,7 +54,6 @@ import argparse
 import hashlib
 import importlib.util
 import io
-import os
 import statistics
 import subprocess
 import sys
@@ -73,6 +73,11 @@ import overlay_paint as op  # noqa: E402
 HIT_P95_MAX_MS = 2.0
 FULL_SWEEP_BASES = 12
 STRIDE = 15          # 18 valores de alfa nas bases fora da varredura cheia
+
+#: O COMMIT QUE CONGELA A IMPLEMENTACAO DE REFERENCIA -- o ultimo sem o cache.
+#: `058de89` e' o commit DESTA cura; `058de89^` e' a pintura de antes. Ver
+#: `_load_head`: apontar para `HEAD` faz o oraculo comparar a cura com ela propria.
+HEAD_PIN = '058de89^'
 MIXED_ALPHAS = ((0, 255, 128), (128, 255, 0), (255, 0, 255))
 
 
@@ -133,14 +138,28 @@ def _load_source(text, name):
 
 
 def _load_head():
-    """A implementacao ANTERIOR, do MESMO commit -- nao de uma copia a mao."""
+    """A implementacao ANTERIOR, do commit que a congelou -- nao de uma copia a mao.
+
+    O PIN NAO PODE SER `HEAD`. Medido 2026-11-08, na primeira corrida depois de o
+    commit desta cura aterrar: `git show HEAD:app/webview/overlay_paint.py` passou
+    a devolver a implementacao NOVA e o oraculo ficou a comparar a cura com ela
+    propria (`A2 RED -- a implementacao ANTERIOR ja tinha cache`). O pin e' o
+    commit ANTERIOR ao cache, e a referencia e' RECUSADA se ja' trouxer o cache --
+    um pin que apodrece tem de gritar, nao de passar em silencio.
+    """
     out = subprocess.run(
-        ['git', '-C', str(REPO), 'show', 'HEAD:app/webview/overlay_paint.py'],
+        ['git', '-C', str(REPO), 'show', HEAD_PIN + ':app/webview/overlay_paint.py'],
         capture_output=True)
     if out.returncode != 0:
-        raise SystemExit('paint-cost: HEAD ilegivel: %s'
-                         % (out.stderr or b'').decode('utf-8', 'replace')[-400:])
-    return _load_source(out.stdout.decode('utf-8'), 'overlay_paint_head')
+        raise SystemExit('paint-cost: referencia %s ilegivel: %s'
+                         % (HEAD_PIN,
+                            (out.stderr or b'').decode('utf-8', 'replace')[-400:]))
+    src = out.stdout.decode('utf-8')
+    if '_PAINT_CACHE' in src:
+        raise SystemExit(
+            'paint-cost: a referencia %s JA tem o cache -- o pin apodreceu; '
+            'aponte-o para o ultimo commit sem `_PAINT_CACHE`' % HEAD_PIN)
+    return _load_source(src, 'overlay_paint_head')
 
 
 # ── o bitmap como bytes ──────────────────────────────────────────────────────
@@ -494,10 +513,10 @@ def main(argv=None) -> int:
 
     arms = []
     ok, compared, red = _arm_a1(op, head_mod, bases, FULL_SWEEP_BASES)
-    print('A1 %s -- %d comparacoes byte a byte contra HEAD%s'
-          % ('PASS' if ok else 'RED', compared,
+    print('A1 %s -- %d comparacoes byte a byte contra a referencia %s%s'
+          % ('PASS' if ok else 'RED', compared, HEAD_PIN,
              '' if ok else ': ' + ' | '.join(red)), flush=True)
-    arms.append(('A1 igualdade de pixel vs HEAD', ok))
+    arms.append(('A1 igualdade de pixel vs %s' % HEAD_PIN, ok))
 
     ok, facts, cost = _arm_a2(op, head_mod)
     print('A2 %s -- %s' % ('PASS' if ok else 'RED', facts), flush=True)

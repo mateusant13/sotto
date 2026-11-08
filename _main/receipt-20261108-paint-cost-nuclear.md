@@ -14,7 +14,7 @@ quadros, e entre dois quadros de uma legenda parada o unico numero que muda e' o
 alfa do `UpdateLayeredWindow` (255 -- o fade foi tirado). A cura guarda o RASTER
 COMPOSTO e chaveia-o por tudo o que move um pixel dele.
 
-## ANTES (paste verbatim, caminho ANTERIOR = `git show HEAD:app/webview/overlay_paint.py`)
+## ANTES (paste verbatim, caminho ANTERIOR = `git show 058de89^:app/webview/overlay_paint.py`)
 
 ```
 caixa 758x227, 2 linhas + anterior
@@ -28,17 +28,29 @@ A implementacao ANTERIOR e a nova correm no MESMO processo, intercaladas
 maquina -- ha' outras lanes a correr nesta arvore. A caixa e' a do tema de painel
 (placa + regua + LED) a escala 2.0, 2 linhas vivas + a linha anterior.
 
+**O PIN DA REFERENCIA NAO PODE SER `HEAD`, E ESSE DEFEITO FOI APANHADO AQUI.**
+A primeira corrida depois de o commit desta cura aterrar deu
+`A2 RED -- a implementacao ANTERIOR ja tinha cache`: `git show
+HEAD:app/webview/overlay_paint.py` passou a devolver a implementacao NOVA, logo o
+oraculo ficava a comparar a cura com ela propria -- a classe "gate que nao pode
+falhar". O pin passou a `HEAD_PIN = '058de89^'` (o ultimo commit sem o cache) e a
+referencia e' **RECUSADA** se trouxer `_PAINT_CACHE`: um pin que apodrece grita.
+
 ## DEPOIS
 
 | braco | p50 (ms) | p95 (ms) | max (ms) | n |
 |---|---|---|---|---|
-| HEAD (antes) | 7,362 | 10,662 | 17,102 | 100 |
+| HEAD/referencia (antes) | 7,362 | 10,662 | 17,102 | 100 |
 | miss (codigo de sempre + guardar a copia) | 6,846 | 9,005 | 9,684 | 30 |
 | **hit (cache)** | **0,077** | **0,181** | 0,696 | 100 |
-| hit, medido pelo oraculo (A2) | 0,069 | 0,094 | 1,099 | 200 |
+| hit, medido pelo oraculo (A2, corrida final) | **0,041** | **0,063** | 0,150 | 200 |
+| miss / referencia, na mesma corrida (A2) | 4,730 / 5,010 | 7,500 / -- | -- | 12 / 30 |
 
-Portao de A2: hit p95 <= **2,0 ms** -> medido **0,094 ms** (21x abaixo do tecto).
+Portao de A2: hit p95 <= **2,0 ms** -> medido **0,063 ms** (32x abaixo do tecto).
 O miss nao e' portao (e' o codigo de sempre) e nao regrediu.
+Os numeros variam com a carga da maquina (ha' outras lanes na mesma arvore): a
+referencia foi lida entre 5,0 e 15,3 ms nas varias corridas, o hit entre 0,041 e
+0,128 -- o portao esta' 16x acima do pior hit observado.
 
 ## A IGUALDADE DE PIXEL (A1) -- 4152 comparacoes, 0 diferencas
 
@@ -52,7 +64,7 @@ sem placa) x 2 escalas (1.0, 2.0) x 8 formas (1 linha; 2 linhas; 2 linhas com
 estreita com o texto na borda direita; 3 linhas com `roll=0.30`).
 
 ```
-A1 PASS -- 4152 comparacoes byte a byte contra HEAD
+A1 PASS -- 4152 comparacoes byte a byte contra a referencia 058de89^
 ```
 
 ## A CHAVE DO CACHE
@@ -137,16 +149,16 @@ mutex de instancia unica -- matar essa instancia para medir a nova seria fechar 
 legenda dele. A aritmetica, do oraculo:
 
 ```
-A3 [INFERENCE] orcamento 40%: antes 7.19 ms -> 56 Hz; depois 0.07 ms -> 5789 Hz
-(tecto do relogio 240 Hz); guardado por pintura: 7.12 ms; 104.11x menos; mesmas
-13.9 pinturas/s (o que 10% de um nucleo pagava): 10.0% -> 0.10% de um nucleo
+A3 [INFERENCE] orcamento 40%: antes 4.73 ms -> 85 Hz; depois 0.04 ms -> 9721 Hz
+(tecto do relogio 240 Hz); guardado por pintura: 4.69 ms; 114.87x menos; mesmas
+21.2 pinturas/s (o que 10% de um nucleo pagava): 10.0% -> 0.09% de um nucleo
 ```
 
 O ORCAMENTO e' o que limita o nucleo; o CACHE e' o que compra TAXA.
-`CAPTION_FRAME_BUDGET = 0.40` (`caption_overlay.py:81`, outra lane) poe o periodo
-a `custo / 0.40`: com a pintura de 0,07 ms o tecto de CPU continua 40% **por
+`CAPTION_FRAME_BUDGET = 0.40` (`caption_overlay.py`, outra lane) poe o periodo
+a `custo / 0.40`: com a pintura de 0,04 ms o tecto de CPU continua 40% **por
 construcao** e o que cresce e' a taxa. A 240 Hz sao precisos <= 1,67 ms de
-pintura por quadro; 0,07 ms deixa 24x de folga (antes: 11,6 ms x 240 = 2,8
+pintura por quadro; 0,04 ms deixa 40x de folga (antes: 11,6 ms x 240 = 2,8
 nucleos, impossivel, e por isso o laco pintava a ~34 Hz).
 
 ## WIRING -- entregue ao dono da integracao (NAO editado por mim)
@@ -167,7 +179,7 @@ red-as-expected-caption-rollup ...`), antes do bloco `if exist
 _main\caption-tick-thread-oracle.py`.
 
 Custo do passo: **90 s** medidos (o `SOTTO_STEP_DEADLINE_S` da bateria e' 240 s).
-Tamanho do oraculo: **23352 B**, 522 linhas, LF (o `overlay_paint.py` tambem e' LF).
+Tamanho do oraculo: **23342 B**, 521 linhas, LF (o `overlay_paint.py` tambem e' LF).
 
 ## code-health
 
@@ -245,13 +257,13 @@ UNKNOWN — no ledger break row attributable to this task: 1831 provider-request
     perde um campo (2 bases a 255), i.e. a comparacao tem poder de detectar.
     A corrida A2 mede 200 hits DEPOIS de um miss e exige `hits >= 200` nos
     contadores -- se o cache nao servisse, a arm de custo mediria o miss (7 ms).
-  - `falta-no-gate:` o A1 prova igualdade contra o HEAD de HOJE. Se o HEAD de
-    amanha mudar a pintura e esta lane nao for re-corrida, o oraculo passa a
-    comparar contra um passado que ja' ninguem quer -- e um cache que devolva
-    rasters de duas versoes diferentes do desenho continuaria verde. O gate tambem
-    NAO cobre o caminho do arrasto (`_paint_drag_outline` escreve no bitmap
-    devolvido): se um dia o hit devolvesse o bitmap do cache em vez de uma copia,
-    a marca ficaria gravada para sempre e nenhum braco disto cai.
+  - `falta-no-gate:` o proprio A1 ja' mostrou a sua maior falha nesta corrida --
+    uma referencia que se compara com ela propria depois de o commit aterrar -- e
+    a cura (`HEAD_PIN` fixo + recusa de uma referencia com `_PAINT_CACHE`) e' uma
+    guarda da referencia, nao da pintura. O gate tambem NAO cobre o caminho do
+    arrasto (`_paint_drag_outline` escreve no bitmap devolvido): se um dia o hit
+    devolvesse o bitmap do cache em vez de uma copia, a marca ficaria gravada para
+    sempre e nenhum braco disto cai.
   - `gate-melhor:` um braco que, depois de um hit, chame `_paint_drag_outline` no
     bitmap devolvido e exija que o hit SEGUINTE da mesma chave continue igual ao
     miss limpo (o "envenenamento do cache"). Mecanico: `_render` -> desenhar no

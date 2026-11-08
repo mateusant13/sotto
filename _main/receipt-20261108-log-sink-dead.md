@@ -1,34 +1,42 @@
 # RECIBO — o relatador que morreu com o cano (dono, 2026-11-08)
 
-## 1. O DEFEITO, medido na instância dele
+## 1. RETRACÇÃO — a história que eu escrevi primeiro está ERRADA
 
-`pid 42572`, arrancado **04:01:44** (o mesmo processo que respondeu a todas as medições de
-stutter desta sessão).
+A primeira versão deste recibo dizia: o log morreu às 04:57:13, a app ficou **três horas** viva e
+muda a queimar um núcleo. **Isso não aconteceu.** Eu li a hora **local** do log (04:57) como se
+fosse UTC. A hora local desta máquina é UTC−3: o processo estava vivo e a escrever **naquele
+instante**, e o ficheiro cresceu até **54 082 341 B** às 05:02:30, quando o dono o fechou
+(`SHELL_EXIT rc=0 reason=tray-quit statsPushes=354 statsReplies=3644`, `EXIT_TERMINATE code=0
+reason=tray-quit`).
 
-| facto | valor medido | instrumento |
+A lição tem nome nesta casa — *"o grep deu ZERO tem prazo de validade; re-correr antes de repetir"* —
+e a variante de hoje é pior porque **um número parecia fresco**: o Python daqui dá 05:07 local
+quando o UTC é 08:07, e eu comparei um carimbo local com um relógio que julgava ser UTC.
+
+## 1-bis. O DEFEITO QUE FICA DE PÉ (e não depende do incidente)
+
+O que **está** medido na instância (pid 42572, arrancada 04:01:44 local, fechada às 05:02:30):
+
+| facto | valor | instrumento |
 |---|---|---|
-| último byte escrito no log | **04:57:13.351** (`YOUTUBE_CDP_HEALTH age=0.02 …`) | `_main/webview-run.log`, 417 875 linhas, mtime `Nov 8 04:57` |
-| o processo continua vivo? | **sim** — 52 fios, `status=running` | `psutil` |
-| quanto custa? | **100,0 %** de um núcleo; `sotto-caption-tick` **78,5 %** | `_main/shell-thread-cpu.py 42572` |
-| o pai do processo? | **nenhum** (`Process.parent()` → `None`) | `psutil` |
-| `panel-state.json` e `panel-visibility.json` | mtime **04:57** também | `ls -lt _main/` |
+| custo total da shell | **100,0 %** de um núcleo; depois 101,4 % | `_main/shell-thread-cpu.py 42572` |
+| fio mais quente | `sotto-caption-tick` **93,6 %**, depois **78,5 %** | idem, duas amostras |
+| fios | 52 | `psutil` |
+| pai do processo | **nenhum** (`Process.parent()` → `None`) | `psutil` |
 
-Três horas e meia de app viva, a queimar um núcleo, e **nenhum dos doze instrumentos que leem
-esse log tinha um número novo** — porque o log parou. O `log()` faz:
+E a classe do `log()`, medida **por leitura do código e por execução do braço negativo**, não por
+observação do incidente:
 
 ```python
 with _LOG_LOCK:
-    print(line, flush=True)          # ← sem guarda
+    print(line, flush=True)          # ← sem guarda: um cano morto levanta
     if _LOG_FILE is not None:
         _LOG_QUEUE.put(line)
 ```
-
-O pai morto deixou o `print` a escrever num cano sem leitor: cada chamada levanta
-`OSError: [Errno 22] Invalid argument`. É **a mesma classe** que esta casa já curou do lado do
-worker (`_main/emit-pipe-dead` → `BRIDGE_DEATH_CAUSE OSError 22`, 2026-11-04). Do lado da shell
-ninguém a tinha curado — e aqui a consequência não é uma excepção, é o **silêncio**: a app continua
-a correr, deixa de escrever, e todo instrumento que julga custo/legenda/hotkey responde sobre um
-processo que já não fala.
+A casa já pagou esta classe **do lado do worker** (`emit` com cano partido → `BRIDGE_DEATH_CAUSE
+OSError 22`, passo `emit-pipe-dead`, 2026-11-04). Do lado da shell não havia cura nenhuma, e o custo
+de a ter é de duas linhas. **O `OSError 22` nesta instância é UNMEASURED** — e é assim que este
+recibo o escreve.
 
 ## 2. A CURA (`app/webview/sotto_webview.py`)
 
@@ -63,13 +71,13 @@ e o tmp vai por **append** — `insert(0)` punha a cópia à frente dos irmãos 
 
 ## 4. O QUE ISTO NÃO PROVA
 
-* **A app dele continua a correr o código de 04:01:44** (sem esta cura). O `log()` morto só se
-  cura no próximo arranque; até lá os instrumentos que leem `_main/webview-run.log` estão a
-  julgar um processo que não fala — e um deles (`shell-thread-budget`) passou a dizer
-  `SKIPPED reason=stale-instance` em vez de um vermelho sobre o passado.
-* Não se sabe **porque o pai morreu** às 04:57: fora do alcance desta pane (o processo é `high`,
-  `py-spy dump` dá `Acesso negado`). O que se sabe: depois de ele morrer, a app ficou muda — e
-  isso é que é o defeito, não a morte do pai.
+* **Nenhum `OSError 22` foi observado na instância viva** — ver §1. O que a cura garante é o
+  comportamento sob cano morto, provado por execução do `log()` real contra um `stdout` que
+  levanta (A2-A6), não por um incidente.
+* **Porque o pai do processo é `None`**: o largador sai por desenho (o shell é o processo que fica);
+  não há aqui evidência de cano partido. `py-spy dump` no pid dá `Acesso negado` (o shell corre a
+  `high`, esta pane a `medium`), logo a pilha do fio a 93,6 % é **UNMEASURED** — quem a mede é a
+  arm A10 do `caption-tick-thread`, que conduz o laço real com o custo real.
 * O ciclo de vida do fio `sotto-caption-tick` (78,5 %) tem dono noutra faixa: a lei do custo e a
   arm A10 de `_main/caption-tick-thread-oracle.py` (fracção de núcleo 0,27 contra orçamento 0,40).
 

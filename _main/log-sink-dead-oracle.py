@@ -1,19 +1,26 @@
 #!/usr/bin/env python
 """O RELATADOR NAO MORRE COM O CANO -- `log()` executa-se contra um stdout morto.
 
-MEDIDO na instancia do dono, 2026-11-08: pid 42572, arrancado 04:01:44, o ULTIMO
-byte do `_main/webview-run.log` e' das **04:57:13.351**, e o processo continuou
-VIVO, com **100 % de um nucleo** (fio `sotto-caption-tick` a 78,5 %, 52 fios) por
-mais de tres horas. O pai do processo estava MORTO (`Process.parent() is None`):
-o `print(..., flush=True)` do `log()` escrevia num cano cujo leitor ja' nao
-existia. Cada chamada levantava `OSError: [Errno 22] Invalid argument` -- a mesma
-classe que a casa ja' curou do lado do WORKER (`emit` com cano partido ->
-`BRIDGE_DEATH_CAUSE OSError 22`, bateria `emit-pipe-dead`) e que do lado da SHELL
-nao tinha cura nenhuma.
+A CLASSE, e a RETRATACAO da historia que eu primeiro escrevi.
 
-O custo de nao ter cura nao e' a excepcao: e' o SILENCIO. Doze instrumentos leem
-esse log para julgar custo, legenda e hotkey, e todos passaram a responder sobre
-um processo que ha' horas nao fala, sem um unico erro visivel.
+O que esta' MEDIDO: a instancia do dono (pid 42572, arrancada 04:01:44 local, fechada por ele
+as 05:02:30 com `SHELL_EXIT rc=0 reason=tray-quit`) custava **100 % de um nucleo**, com o fio
+`sotto-caption-tick` a **93,6 %** e depois a 78,5 % (`_main/shell-thread-cpu.py`, duas amostras) --
+isso e' o stutter, e tem dono na lei do custo. Tambem medido: `Process.parent()` do shell e'
+**None** (o largador sai por desenho).
+
+O que eu PRIMEIRO escrevi aqui e esta' ERRADO: que o `log()` tinha morrido as 04:57:13 e que a app
+ficou tres horas muda. O log tinha 04:57 como ultimo carimbo porque eu li a hora LOCAL como se
+fosse UTC -- o processo vivo naquele instante, e o ficheiro continuou a crescer ate' 54 082 341 B
+as 05:02. **Nao houve silencio nenhum**, logo nenhum `OSError 22` foi observado nesta instancia.
+("o grep deu ZERO tem prazo de validade", e uma leitura de hora tambem.)
+
+A CLASSE e' real e nao depende do incidente: `log()` fazia `print(line, flush=True)` sem guarda, e
+um `print` num cano morto levanta. Esta casa JA' pagou isso do lado do WORKER (`emit` com cano
+partido -> `BRIDGE_DEATH_CAUSE OSError 22`, passo `emit-pipe-dead`, 2026-11-04); do lado da shell
+nao havia cura. O custo de a ter e' de duas linhas; o custo de nao a ter, quando o largador morre,
+e' a app deixar de falar sem deixar de correr -- e doze instrumentos leem esse log para julgar
+custo, legenda e hotkey.
 
 O QUE ESTE ORACULO EXECUTA. O `log()` REAL de `app/webview/sotto_webview.py`,
 importado, contra um `sys.stdout` que LEVANTA (o cano partido) e uma fila que
