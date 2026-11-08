@@ -89,6 +89,12 @@ CONSOLE_EXES = {
     'ffmpeg', 'ffmpeg.exe', 'ffprobe', 'ffprobe.exe', 'wsl', 'wsl.exe',
     'bash', 'bash.exe', 'conhost.exe', 'curl', 'curl.exe', 'yt-dlp',
     'yt-dlp.exe', 'mshta', 'mshta.exe', 'timeout', 'ping',
+    # Uma CLI de consola largada por um pai SEM consola nao herda nada: o
+    # Windows aloca uma consola NOVA e o Windows Terminal (hospedeiro por
+    # omissao) pinta uma janela. Medido 2026-11-08: `gh.exe(41080)` pintou
+    # `CASCADIA_HOSTING_WINDOW_CLASS` por 0,36 s em foreground, com a cadeia
+    # `gh.exe <- bun.exe <- omp.exe`, e o censo chamava-lhe INHERITS.
+    'gh', 'gh.exe', 'bun', 'bun.exe', 'deno', 'deno.exe',
 }
 CONSOLE_SCRIPT_EXT = ('.cmd', '.bat', '.ps1', '.vbs')
 NO_WINDOW_TOKENS = ('CREATE_NO_WINDOW', 'CREATE_NEW_CONSOLE_DISABLED',
@@ -369,7 +375,14 @@ def audit_python(path):
                 or (is_os and name in OS_FUNCS)):
             continue
         line = node.lineno
-        seg = '\n'.join(segment[max(0, line - 3):line + 12])
+        # A JANELA DE 15 LINHAS MENTIA (medido 2026-11-08): a chamada de
+        # `measure-readiness.py` comeca em `:42` e leva o `startupinfo` na
+        # mesma chamada, na linha 64 -- fora da janela, o censo publicava
+        # `WEAK-FLAG` sobre um sitio que ja' estava certo, e um portao que
+        # acusa quem esta' certo perde a autoridade. O segmento EXACTO do no'
+        # e' o que o AST ja' sabe; a janela fica so' como recurso.
+        seg = (ast.get_source_segment(src, node)
+               or '\n'.join(segment[max(0, line - 3):line + 12]))
         shell_true = False
         for kw in node.keywords:
             if kw.arg == 'shell' and not (isinstance(kw.value, ast.Constant)
@@ -447,7 +460,16 @@ def audit_js(path):
         pm = JS_PROG.search(window[m.end() - m.start():])
         if pm:
             prog = pm.group(1)
-        guarded = ('windowsHide' in window) or ('detached: true' in window)
+        # `detached: true` NAO e' guarda (ordem do dono via watcher,
+        # 2026-11-08, verbatim: *"`detached: true` is NOT a fix: it leaves the
+        # child console-less and the next spawn paints again"*). Medido nesta
+        # arvore: `gh.exe(41080) <- bun.exe(38824) <- omp.exe(24236)` pintou
+        # `CASCADIA_HOSTING_WINDOW_CLASS` por 0,36 s em foreground. So' o
+        # `windowsHide` esconde, porque o Windows Terminal e' o hospedeiro por
+        # omissao de uma consola NOVA alocada a um filho console-app de um pai
+        # sem consola. O `detached` continua a servir a arm `USER-GESTURE`
+        # abaixo, onde o que se quer e' justamente a janela do dono.
+        guarded = 'windowsHide' in window
         if fn.startswith('exec') and 'execFile' not in fn:
             if not guarded:
                 rows.append((_rel(path), line, 'WINDOW',
@@ -576,10 +598,34 @@ def main(argv):
             judge(wrows, baseline=set())[0][2] == 'WEAK-FLAG'
         c2_frozen = judge(wrows, baseline={_key(r) for r in wrows}) == []
         c3 = judge(srows, baseline=set()) == []
-        ok = c1 and c2_red and c2_frozen and c3
+
+        # ---- C4: o `detached` do JS nao esconde nada (DM do watcher,
+        # 2026-11-08: `gh.exe` pintado com `bun.exe` de pai). O mesmo filho
+        # console-app, duas guardas: so' a que TEM `windowsHide` passa.
+        jweak = os.path.join(ROOT, '_main', '_zz_negarm_detached.mjs')
+        jstrong = os.path.join(ROOT, '_main', '_zz_negarm_hidden.mjs')
+        io.open(jweak, 'w', encoding='utf-8').write(
+            "import { spawn } from 'node:child_process'\n"
+            "spawn('gh', ['pr', 'list'], { detached: true, stdio: 'ignore' })\n")
+        io.open(jstrong, 'w', encoding='utf-8').write(
+            "import { spawn } from 'node:child_process'\n"
+            "spawn('gh', ['pr', 'list'], { windowsHide: true, stdio: 'ignore' })\n")
+        try:
+            jw = audit_js(jweak)
+            js = audit_js(jstrong)
+        finally:
+            for f in (jweak, jstrong):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+        c4 = [r[2] for r in judge(jw, baseline=set())] == ['NO-FLAG'] and \
+            judge(js, baseline=set()) == []
+        ok = c1 and c2_red and c2_frozen and c3 and c4
         print('NEG-ARM %s -- C1(os.system)=%s C2(bit sozinho RED)=%s '
-              'C2(baseline perdoa)=%s C3(o par passa)=%s'
-              % ('PASS' if ok else 'FAIL', c1, c2_red, c2_frozen, c3))
+              'C2(baseline perdoa)=%s C3(o par passa)=%s '
+              'C4(detached do JS nao esconde)=%s'
+              % ('PASS' if ok else 'FAIL', c1, c2_red, c2_frozen, c3, c4))
         return 1 if ok else 0
 
     rows = []

@@ -19,6 +19,16 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+
+# O PAR QUE ESCONDE (medido 2026-11-04 na tela do dono): o `creationflags`
+# pede, o `startupinfo` e o que o Windows respeita quando o pai nao tem
+# consola. Sem ele o Windows Terminal pinta a consola NOVA do filho.
+if os.name == "nt":
+    _SI = subprocess.STARTUPINFO()
+    _SI.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    _SI.wShowWindow = 0
+else:
+    _SI = None
 import sys
 import time
 
@@ -39,7 +49,7 @@ def main():
     t0 = time.time()
     proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             cwd=WORKER, text=True, encoding="utf-8", errors="replace",
-                            bufsize=1, creationflags=subprocess.CREATE_NO_WINDOW)
+                            bufsize=1, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=_SI)
     import psutil
 
     ps = psutil.Process(proc.pid)

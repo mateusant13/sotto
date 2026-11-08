@@ -371,6 +371,26 @@ todos os dias. Duas provas, porque uma só mente:
   comentários, **0** achados, `--neg-arm` rc=1 a apanhar o mutante que abre um browser), na bateria
   com o seu `red-as-expected-owner-screen`. A dívida anterior à regra vive congelada em
   `_main/owner-screen-baseline.json` e **não pode crescer**.
+- **A GUARDA É O QUE O WINDOWS RESPEITA, E O CENSO LÊ O NÓ EXACTO (medido 2026-11-08, a sétima vez
+  que o dono reporta a mesma classe: *"to vendo terminal dar pop up, DE NOVO, na minha tela"*).**
+  O censo desta casa existe desde 2026-11-04 e certificava `PASS` — e a janela que ele deixou passar
+  foi `gh.exe(41080)`, cadeia `gh.exe <- bun.exe <- omp.exe`, `CASCADIA_HOSTING_WINDOW_CLASS`, 0,36 s
+  em foreground. Três invariantes do instrumento, cada uma paga por um erro medido:
+  1. **Guarda = `windowsHide: true` (JS) ou `CREATE_NO_WINDOW` + `startupinfo`
+     (`STARTF_USESHOWWINDOW`/`wShowWindow=0`, Python).** `detached: true` **não** é guarda — deixa o
+     filho sem consola e a próxima largada pinta outra vez (verbatim da DM). O `detached` só vale na
+     arm `USER-GESTURE` (*reveal in folder*, clique do dono).
+  2. **O censo julga o nó EXACTO da chamada** (`ast.get_source_segment`), nunca uma janela fixa de
+     linhas: a janela de 15 linhas publicava `WEAK-FLAG` sobre uma chamada cujo `startupinfo` correcto
+     estava na linha 64 de uma chamada aberta na 42 — **um portão que acusa quem está certo perde a
+     autoridade**.
+  3. **CLI de consola desconhecida não é `INHERITS`.** `gh`, `bun` e `deno` não estavam em
+     `CONSOLE_EXES` e o censo chamava "herda a consola do pai" ao sítio que pintou a tela — falso
+     quando o pai não tem consola nenhuma. A arm **C4** do `--neg-arm` carrega o par
+     (`spawn('gh', {detached:true})` tem de ser `NO-FLAG`; com `windowsHide:true` tem de passar).
+  **Dívida ZERADA:** `_main/console-weakflag-baseline.json` passou a `sites: []` em 2026-11-08 (os 9
+  sítios congelados receberam o par). Qualquer `WEAK-FLAG` novo falha o passo. Recibo:
+  `_main/receipt-20261108-terminal-paint-class.md`.
   Nota que já custou: um dos incidentes antigos deste repo foi um `messagebox` MODAL na tela dele
   (`HOTKEY_UNAVAILABLE alert=messagebox`, a app hangada até ser morta) — o portão existe para essa
   classe, não para uma hipótese.

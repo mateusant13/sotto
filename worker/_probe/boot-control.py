@@ -15,6 +15,16 @@ from __future__ import annotations
 
 import os
 import subprocess
+
+# O PAR QUE ESCONDE (medido 2026-11-04 na tela do dono): o `creationflags`
+# pede, o `startupinfo` e o que o Windows respeita quando o pai nao tem
+# consola. Sem ele o Windows Terminal pinta a consola NOVA do filho.
+if os.name == "nt":
+    _SI = subprocess.STARTUPINFO()
+    _SI.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    _SI.wShowWindow = 0
+else:
+    _SI = None
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -27,7 +37,7 @@ PROBE = os.path.join(HERE, "boot-io.py")
 def run(label, script):
     print("== %s (%s)" % (label, os.path.basename(script)), flush=True)
     out = subprocess.run([sys.executable, PROBE, "--script", script],
-                         cwd=REPO, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                         cwd=REPO, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=_SI)
     for line in out.stdout.splitlines():
         if line.startswith("RESULT"):
             print(line, flush=True)
@@ -38,7 +48,7 @@ def run(label, script):
 
 def main():
     src = subprocess.run(["git", "show", "HEAD:worker/sotto_worker.py"],
-                         cwd=REPO, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                         cwd=REPO, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=_SI)
     if src.returncode != 0:
         print("cannot read HEAD worker:", src.stderr[-400:])
         return 2

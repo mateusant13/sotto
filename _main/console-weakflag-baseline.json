@@ -1,15 +1,6 @@
 {
- "measured": "2026-11-04",
- "rule": "creationflags sem startupinfo",
- "sites": [
-  "_main/measure-readiness.py:42",
-  "_main/quarantine-index-collision-20260707/selftest.py:562",
-  "_main/quarantine-index-collision-20260707/selftest.py:689",
-  "app/webview/_strip-logmutant-repro_sotto_webview.py:4340",
-  "app/webview/_strip-logmutant-repro_sotto_webview.py:6393",
-  "app/webview/_vis-live-sotto_webview.py:1948",
-  "worker/_probe/boot-control.py:29",
-  "worker/_probe/boot-control.py:40",
-  "worker/_probe/boot-io.py:40"
- ]
+ "measured": "2026-11-08",
+ "rule": "creationflags sem startupinfo (o par que esconde)",
+ "note": "Divida ZERADA em 2026-11-08: os 9 sitios congelados desde 2026-11-04 receberam o `startupinfo` com `STARTF_USESHOWWINDOW` + `wShowWindow=0` (3 em `worker/_probe/`, 2 numa copia em quarantena, 4 ja resolvidos antes). Uma lista vazia faz qualquer `WEAK-FLAG` NOVO falhar o passo, que e o ponto do baseline.",
+ "sites": []
 }

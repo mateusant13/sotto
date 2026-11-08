@@ -37,6 +37,16 @@ import os
 import shutil
 import sqlite3
 import subprocess
+
+# O PAR QUE ESCONDE (medido 2026-11-04 na tela do dono): o `creationflags`
+# pede, o `startupinfo` e o que o Windows respeita quando o pai nao tem
+# consola. Sem ele o Windows Terminal pinta a consola NOVA do filho.
+if os.name == "nt":
+    _SI = subprocess.STARTUPINFO()
+    _SI.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    _SI.wShowWindow = 0
+else:
+    _SI = None
 import sys
 import time
 from pathlib import Path
@@ -564,7 +574,7 @@ def _run_arm_a_in(root: Path, db: Path) -> subprocess.CompletedProcess:
          "--json", str(db.with_suffix(".json"))],
         cwd=str(root), env=env, capture_output=True, text=True, encoding="utf-8",
         timeout=300, **_no_window(),
-    creationflags=subprocess.CREATE_NO_WINDOW)
+    creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=_SI)
 
 
 def arm_c(db: Path, work: Path) -> dict:
@@ -692,7 +702,7 @@ def arm_d(db: Path, work: Path) -> dict:
              "--json", str(race / f"d{part}.json")],
             env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             encoding="utf-8", **_no_window(),
-        creationflags=subprocess.CREATE_NO_WINDOW)
+        creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=_SI)
         for part in (1, 2)
     }
     reports: dict[int, dict] = {}
