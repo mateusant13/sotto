@@ -151,6 +151,27 @@ minutos para achar o `ffmpeg` do `!gravador`. `watcher/herdr_notify.py` passa a 
 novas em `tests/test_herdr_notify.py` (34 passam), uma delas a exigir que a lista vazia nao imprime
 uma afirmacao de zero.
 
+## 7-bis. DEPOIS DO REINICIO DELE (medido, 21:0x local)
+
+* `boot 2026-11-08 18:56:53` (psutil): o binario velho de 13:38 morreu com ele.
+* arranque seguinte: `SHELL_STARTUP_STAGE pid=9628 stage=pre-lock` as 18:57:20, com
+  `SHELL_CODE_ID sha256=1412725AB1B6 files=101`; `BRIDGE_SPAWNED pid=19624`,
+  `BRIDGE_LOAD_MS ms=35156`; saida as 18:58:07 por `EXIT_BEGIN code=0 reason=tray-quit`.
+* `_main/live-code-freshness-oracle.py --strict` -> processo e disco com o MESMO hash
+  (`1412725AB1B6`): nao ha etiqueta STALE viva.
+* neste momento NAO existe processo da arvore Sotto (nenhum `sotto_webview.py`, nenhum
+  `sotto_worker.py`): a app esta' fechada e o primeiro arranque dele aplica o que estava pendente.
+
+E o censo de consolas nomeou divida MINHA na corrida anterior ao reinicio:
+`_main/ort-spin-idle.py:179` com `WEAK-FLAG so creationflags (sem startupinfo/STARTF)`. O filho do
+oraculo passou a sair por `_main/hidden-launch.py` (importado pelo caminho) e as tres medicoes:
+
+```
+python _main/console-window-audit.py    -> CONSOLE-AUDIT VERDICT PASS -- 0 sitio(s) que abrem janela
+python _main/ort-spin-idle.py           -> VERDICT: PASS   (A2 ocioso=0,0% contra tecto 3,0%)
+python _main/ort-spin-idle.py --neg-arm -> NEG-ARM: PASS -- mutacoes=2
+```
+
 ## 7. O QUE FALTA, e porque nao e' uma afirmacao
 
 - **O worker** ja' corre o codigo curado (recarregado §5): 146 % -> 42 % de um nucleo, com o resto
