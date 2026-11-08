@@ -847,9 +847,33 @@ async function runArms() {
   arm('the folder button is ONE glyph and no sentence',
     [(revealBtn.textContent || '').trim(), revealKids],
     ['', ['svg']]);
-  arm('the two glyphs are the row, and the field is hidden until it is asked for',
+  arm('the two glyphs sit in the row, and the field is hidden until it is asked for',
     [searchBtn ? searchBtn.id : null, panel.document.getElementById('history-search').hidden],
     ['history-search-button', true]);
+
+  currentArm = '9';
+  console.log('\n=== ARM 9 — a palavra `ready` NAO vai ao ecra (o icone sim) ===');
+  /* OWNER, 2026-11-08, verbatim: *"tira qualquer coisa que diz READY embaixo dos
+   * temas"*. The pill painted a green dot AND the word; the word is what he named.
+   * The order of 2026-10-21 is kept in the DOT (`statusDot.dataset.state`), the
+   * text stays in the DOM for a screen reader and for this oracle, and it lives
+   * off screen through the clip class `panel.css` already defines. */
+  panel.bridge.__emit('status', { text: 'Receiving captions', kind: 'live' });
+  await tick();
+  const statusText = panel.document.getElementById('status-text');
+  const statusDot = panel.document.getElementById('status-dot');
+  const clip = winningDecl(statusText, rules, 'position');
+  const clipW = winningDecl(statusText, rules, 'width');
+  arm('the word is still written, and it is OFF screen',
+    [(statusText.textContent || '').trim(),
+      statusText.classList.contains('status__text--offscreen')],
+    ['ready', true]);
+  arm('the clip that takes it off screen is a real rule, not a hope',
+    [clip ? clip.value.trim() : null, clipW ? clipW.value.trim() : null],
+    ['absolute', '1px']);
+  arm('the icon still carries the state (the 2026-10-21 order survives)',
+    [statusDot ? statusDot.dataset.state : null, panel.document.getElementById('status').classList.contains('status--live')],
+    ['live', true]);
 
   return 0;
 }

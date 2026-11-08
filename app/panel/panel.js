@@ -4109,10 +4109,17 @@ function setStatus(text, state) {
   // 3-dot menu (`#panel-menu-cause`), which the owner chose, so the panel stays
   // calm and the device/death is still one click away and still on the record
   // (`_main/panel-exit3-oracle.py` was re-baselined to read it there).
+  // A PALAVRA SAI DO ECRA (dono, 2026-11-08, verbatim: *"tira qualquer coisa que
+  // diz READY embaixo dos temas"*). A ordem de 2026-10-21 que criou `ready` /
+  // `not ready` continua cumprida -- no ICONE: o ponto muda por
+  // `statusDot.dataset.state`, e o texto segue escrito no DOM para leitor de
+  // tela e para os oraculos, permanentemente fora do ecra pela classe que o
+  // `panel.css:1541` ja' define. Um `ready` verde fixo embaixo dos temas nao
+  // informa nada e ele pediu que saia.
   const word = state === 'live' ? 'ready' : 'not ready';
   if (dom.statusText) {
     dom.statusText.textContent = word;
-    dom.statusText.classList.remove('status__text--offscreen');
+    dom.statusText.classList.add('status__text--offscreen');
   }
   const cause = (state === 'error' || state === 'no-audio') ? String(text || '') : '';
   document.documentElement.dataset.workerCause = cause;

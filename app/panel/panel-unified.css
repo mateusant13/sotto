@@ -230,10 +230,67 @@ html body[data-surface="panel"] .hist__time {
   text-align: left !important;
 }
 
-html body[data-surface="panel"] .hist__text {
+html body[data-surface="panel"] .history__list .hist__text {
   color: var(--text-primary, var(--text, #e8eef2)) !important;
   opacity: 1 !important;
 }
+
+/* HISTORY-LEGIBILITY-BEGIN — `_main/_panel-history-measure.js --state=before`
+ * removes this block from the cascade so the same probe can print both sides. */
+/* THE LINE READS AS A LINE (owner, 2026-11-08: *"ESSA LEGENDA TA PATETICA"*).
+ *
+ * MEASURED, not guessed (`_main/_panel-history-measure.js`, every sheet in
+ * `panel.html`'s own order + the theme file the switch appends):
+ *
+ *   - SIZE. The generated themes carry their own `.hist__text` rule at
+ *     `:root[data-theme=…] .hist__text` (3 simple selectors), which beats the
+ *     base sheet, so the ROW inherited `--size-small` rather than the 12.5 px
+ *     `panel.css` declares: theme-1 **10 px**, theme-2 **9 px**, theme-3 11 px,
+ *     theme-4 12 px, theme-5 **9 px**; the cinematic themes 12.5 px; the five
+ *     panel designs 9.5-13 px (`pd-bcast` **9.5 px**). The stamp was 10 px
+ *     everywhere.
+ *   - AIR. `panel.css` gives the row `padding: 4px 7px` and the list a `gap:
+ *     3px`, but the rule above makes the list `display: block`, so the gap has
+ *     no effect: the rows' 4 px padding is the ONLY separation they have.
+ *   - FAMILY. The row inherits `--font`, the theme's DISPLAY face (Barlow
+ *     Condensed, Fraunces, Newsreader, IBM Plex Mono…), which is designed for
+ *     headlines and a 371 px column is not a headline.
+ *
+ * THE FLOOR, then: a bundled text face (Instrument Sans, `themes/fonts.css`,
+ * woff2 on disk), 13.5 px at the dial's default, line-height 1.5, 7 px of
+ * vertical padding and 5 px between rows. The `--caption-scale` factor stays so
+ * the owner's font dial still reaches the transcript (floor 0.8 -> 10.8 px only
+ * if HE shrinks it; the default is what this rule fixes).
+ *
+ * THE STAMP keeps its mono face and its contrast relation from the rule above --
+ * only its size (10 px -> 11.5 px) moves, because 10 px was the other half of
+ * "patetico". Its COLUMN moves with it: a fixed 46 px cannot hold `HH:MM:SS` at
+ * 11.5 px in IBM Plex Mono (8 chars x 0.6 em = 55.2 px), and a `nowrap` grid
+ * item wider than its track overlaps the text. The stamp's size and track are
+ * therefore NOT dial-scaled (60 px): the dial is the caption's, and a stamp that
+ * grows with it would overflow the column the alignment depends on. */
+html body[data-surface="panel"] .hist {
+  grid-template-columns: 60px minmax(0, 1fr) 20px !important;
+  padding: 7px 9px !important;
+  line-height: 1.5 !important;
+}
+
+html body[data-surface="panel"] .hist + .hist {
+  margin-top: 5px !important;
+}
+
+html body[data-surface="panel"] .history__list .hist__text {
+  font-family: "Instrument Sans", "Segoe UI Variable Text", "Segoe UI",
+    system-ui, sans-serif !important;
+  font-size: calc(13.5px * var(--caption-scale)) !important;
+  line-height: 1.5 !important;
+}
+
+html body[data-surface="panel"] .hist__time {
+  font-size: 11.5px !important;
+  line-height: 1.5 !important;
+}
+/* HISTORY-LEGIBILITY-END */
 
 /* THE SQUARES AND CIRCLES AROUND THE STAMP ARE DEMO RESIDUE (owner, 2026-11-06:
  * *"isso era de uma DEMO que mostrava personagens naqueles quadrados"*). No
