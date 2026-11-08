@@ -508,8 +508,8 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 14:4x):** `_main\_audit-verify-all.cmd` = **300536 B**,
-  **3593 CRLF** / 0 bare LF, sha256 `9EFF5FF840D377FA5754FFCCB34FCC7D708120B4FF7BE046ABB063D361A89539`.
+- **PIN do ficheiro (medido 2026-11-08, 15:0x):** `_main\_audit-verify-all.cmd` = **300473 B**,
+  **3592 CRLF** / 0 bare LF, sha256 `4B3CB63361935142DD493667149C7A1818AE06E4E27B07C1A6AB8C01A8A79509`.
   (Mil oitocentos e cinquenta e sete bytes e quatro linhas a mais do que o pin de 298679 B: o par
   `panel-history-wheel` + o seu `--neg-arm`, a RODA do historico. Nasceu da ordem do dono de
   2026-11-08 -- *"eu nao consigo usar meu scroll pra scrollar as legendas no historico"* -- e da

@@ -539,14 +539,13 @@ if exist _main\_panel2-dom-probe.js (
   call :step theme-caption-identity 0 "_main\theme-caption-identity-oracle.py;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css" "%OUT%\theme-caption-identity.log" python _main\theme-caption-identity-oracle.py
   call :record theme-caption-identity !STEP_RC!
   call :step red-as-expected-theme-caption-identity 1 "_main\theme-caption-identity-oracle.py;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css" "%OUT%\theme-caption-identity-neg.log" python _main\theme-caption-identity-oracle.py --neg-arm
-  call :expectred red-as-expected-theme-caption-identity !STEP_RC! "%OUT%\theme-caption-identity-neg.log" "NEG-ARM: PASS"
+  call :expectred red-as-expected-theme-caption-identity !STEP_RC! "%OUT%\theme-caption-identity-neg.log" "NEG-ARM PASS"
   call :step red-as-expected-panel-history-clip 1 "_main\panel-history-clip-probe.mjs;app\panel\panel.html;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\panel.css;app\panel\themes\fonts.css;app\panel\button-contract.css;app\panel\panel.js" "%OUT%\panel-history-clip-neg.log" node _main\panel-history-clip-probe.mjs --neg-arm
   call :expectred red-as-expected-panel-history-clip !STEP_RC! "%OUT%\panel-history-clip-neg.log" "NEG-ARM: PASS"
   call :step panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload.log" python _main\panel-pause-payload-oracle.py
   call :record panel-pause-payload !STEP_RC!
   call :step red-as-expected-panel-pause-payload 1 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
   call :expectred red-as-expected-panel-pause-payload !STEP_RC! "%OUT%\panel-pause-payload-neg.log" "NEG-ARM: PASS"
-  call :record red-as-expected-panel-pause-payload !STEP_RC!
   call :step outside-click-timer 0 "_main\outside-click-timer-oracle.py;app\webview\sotto_webview.py" "%OUT%\outside-click-timer.log" python _main\outside-click-timer-oracle.py
   call :record outside-click-timer !STEP_RC!
   call :step red-as-expected-outside-click-timer 1 "_main\outside-click-timer-oracle.py;app\webview\sotto_webview.py" "%OUT%\outside-click-timer-neg.log" python _main\outside-click-timer-oracle.py --neg-arm

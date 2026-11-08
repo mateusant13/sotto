@@ -164,6 +164,33 @@ def scan(lines):
                              "linha %d: `:step` declara 0 e o registo da linha %d e' "
                              "`:expectred`, que exige 1 -- um dos dois numeros esta' errado"
                              % (index + 1, later[0][0] + 1)))
+    # R5 -- UM passo tem UM registo. Medido 2026-11-08: o bloco do
+    # `panel-pause-payload` tinha `:expectred` E, logo depois, um `:record` do
+    # MESMO nome -- a segunda linha re-registava o rc=1 do CONTROLO como se
+    # fosse o passo normal a espera de 0, e o sumario publicava `...=1` num
+    # passo que o `:expectred` ao lado tinha acabado de aprovar. Um registo a
+    # mais e' uma linha mentirosa, e nenhuma das quatro regras anteriores a via
+    # (R1 pergunta por PRESENCA, R2 pela ORDEM, R3 pela EXISTENCIA do passo,
+    # R4 pela CONCORDANCIA do primeiro). O bloco de cada passo vai do seu
+    # `call :step` ate' ao `call :step` seguinte, e nesse intervalo o nome pode
+    # aparecer UMA vez.
+    for index, name, _rc in steps:
+        following = [nxt for nxt, _n, _r in steps if nxt > index]
+        boundary = following[0] if following else len(lines)
+        # O RAMO DO `else` NAO CONTA: um passo declarado em `if exist ... (` /
+        # `) else (` tem um registo por ramo, e o do `else` e' o `MISSING` --
+        # que nao le `!STEP_RC!` nenhum (medido 2026-11-08 no `battery-plan`).
+        inside = [(at, kind) for at, kind in (records.get(name) or [])
+                  if index < at < boundary
+                  and ' MISSING' not in lines[at].upper()]
+        if len(inside) > 1:
+            findings.append(("R5-registo-repetido", name,
+                             "linha %d: o passo tem %d registos no seu bloco (%s) -- o "
+                             "segundo le o `!STEP_RC!` do primeiro e o sumario passa a "
+                             "ter dois vereditos sobre o mesmo passo"
+                             % (index + 1, len(inside),
+                                ', '.join(':%s linha %d' % (k, a + 1) for a, k in inside))))
+
     # R3 -- nenhum registo orfao.
     step_names = {name for _i, name, _r in steps}
     for name in sorted(records):
@@ -172,6 +199,22 @@ def scan(lines):
                              "linha %d: `:%s %s` registra um passo que nao tem `call :step`"
                              % (records[name][0][0] + 1, records[name][0][1], name)))
     return steps, records, findings
+
+
+def _duplicate_first_record(lines):
+    """Copia o registo de um passo logo depois do original -- o defeito medido."""
+    out = list(lines)
+    for index, line in enumerate(out):
+        step = STEP_RE.match(line.strip())
+        if not step:
+            continue
+        name = step.group("name")
+        for at in range(index + 1, min(index + 4, len(out))):
+            rec = RECORD_RE.match(out[at].strip())
+            if rec and rec.group("name") == name:
+                out.insert(at + 1, out[at])
+                return out, True
+    return out, False
 
 
 MUTANTS = (
@@ -185,6 +228,9 @@ MUTANTS = (
     ("registo-orfao",
      lambda lines: _append_orphan_record(lines),
      "R3-registo-orfao"),
+    ("registo-repetido",
+     _duplicate_first_record,
+     "R5-registo-repetido"),
     ("contrato-trocado",
      lambda lines: _flip_first_declaration(lines),
      "R4-contrato-trocado"),

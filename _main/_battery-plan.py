@@ -43,8 +43,27 @@ import importlib.util
 import io
 import os
 import re
+import subprocess
 import sys
 import time
+
+# Janela de console: NENHUMA. Medido 2026-11-08 (DM do watcher, queixa do dono
+# verbatim "to vendo terminal dar pop up, DE NOVO, na minha tela"): este script
+# rodava `python <filho>` com PIPE e SEM `creationflags`. Com um pai
+# `pythonw.exe` -- que nao tem console -- o Windows aloca um console NOVO para o
+# filho, e ele aparece na tela do dono por 0,7-3,4 s (2x/hora medidos em
+# `python -m watcher pops --minutes 60`). PIPE nao esconde console; so
+# CREATE_NO_WINDOW esconde. Vale para o pai console tambem: o filho herda a
+# console dele e pisca junto.
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+# O SEGUNDO TERMO DA MESMA FLAG. `CREATE_NO_WINDOW` pede o que se quer; o
+# `startupinfo` com `STARTF_USESHOWWINDOW` + `SW_HIDE` e' o que o Windows
+# RESPEITA quando o pai nao tem consola. Medido 2026-11-08 pelo
+# `console-window-audit`: com a flag sozinha, os dois sitios deste ficheiro
+# saiam WEAK-FLAG e o portao publicava `2 sitio(s) que abrem janela`.
+HIDDEN = (subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW,
+                                 wShowWindow=0)
+          if os.name == "nt" else None)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -224,7 +243,8 @@ def _selftest():
                    "--log", logs[step], "--state", state]
             if always:
                 cmd.append("--always")
-            r = subprocess.run(cmd, capture_output=True, text=True)
+            r = subprocess.run(cmd, capture_output=True, text=True,
+                               creationflags=NO_WINDOW, startupinfo=HIDDEN)
             out = (r.stdout or "") + (r.stderr or "")
             verdict = ("HIT" if "HIT" in out
                        else "SKIP-SLOW" if "SKIP-SLOW" in out else "MISS")
@@ -370,12 +390,12 @@ def _run_adjacent(text, tag):
     `FileNotFoundError` em vez da sua arm. Ao lado, tudo o que o selftest le'
     e' o da arvore de verdade, e o unico byte diferente e' o mutante.
     """
-    import subprocess
     copy = os.path.join(HERE, "_battery-plan.mutant-%s.py" % tag)
     try:
         io.open(copy, "w", encoding="utf-8", newline="\n").write(text)
         r = subprocess.run([sys.executable, copy, "--selftest"],
-                           capture_output=True, text=True, cwd=REPO)
+                           capture_output=True, text=True, cwd=REPO,
+                           creationflags=NO_WINDOW, startupinfo=HIDDEN)
         return r.returncode, (r.stdout or "") + (r.stderr or "")
     finally:
         try:
