@@ -240,6 +240,11 @@ _main/shots/
 *.tmp
 /_main/panel-state.json.*
 /_main/panel-visibility.json.*
+# Estado mutavel do GESTO de arrasto, escrito pela app viva (`caption_drag.STATE_PATH`,
+# app/webview/caption_drag.py:36). Nao e' fonte: um commit dele congela o arrasto do dono.
+/_main/caption-drag-offset.json
+# Relatorio de uma corrida da bateria, reescrito a cada corrida.
+/_main/_audit-verify/_launch-battery.txt
 # Stray shell-redirect artefacts that landed at the repo root.
 /-
 /=ro
