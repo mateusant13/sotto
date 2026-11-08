@@ -101,12 +101,12 @@
    "max_func_name": ""
   },
   "app/panel/panel-unified.css": {
-   "bytes": 23115,
+   "bytes": 24653,
    "classes": 0,
    "defs": 0,
    "except_pass": 0,
    "globals": 0,
-   "lines": 454,
+   "lines": 477,
    "max_func": 0,
    "max_func_name": ""
   },
@@ -541,12 +541,12 @@
    "max_func_name": "alpha_out"
   },
   "app/webview/youtube_captions.py": {
-   "bytes": 106197,
+   "bytes": 108198,
    "classes": 1,
-   "defs": 68,
+   "defs": 69,
    "except_pass": 9,
-   "globals": 1,
-   "lines": 2474,
+   "globals": 2,
+   "lines": 2515,
    "max_func": 281,
    "max_func_name": "fetch_track"
   },
@@ -871,7 +871,7 @@
    "max_func_name": "_pump"
   }
  },
- "measured": "2026-10-23",
+ "measured": "2026-11-08",
  "metrics": [
   "bytes",
   "lines",

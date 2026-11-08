@@ -569,6 +569,14 @@ def main() -> int:
     caught = 0
     weak = 0
     workdir = tempfile.mkdtemp(prefix="yt-mirror-align-oracle-mut-")
+    # O IRMAO VAI JUNTO. `youtube_captions` carrega `caption_settings` POR NOME,
+    # e o directorio do mutante e' o deste workdir -- sem o ficheiro ao lado o
+    # mutante morre num `ModuleNotFoundError` e o braco negativo mede o
+    # instrumento, nao o defeito (medido 2026-11-08: 5/5 mutantes "DECORATIVO").
+    for sib in ("caption_settings.py", "external_subs.py"):
+        src_sib = os.path.join(REPO, "app", "webview", sib)
+        if os.path.exists(src_sib):
+            shutil.copy2(src_sib, os.path.join(workdir, sib))
     try:
         for idx, (label, old, new) in enumerate(MUTANTS):
             hits = source.count(old)

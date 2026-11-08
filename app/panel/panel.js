@@ -1906,14 +1906,10 @@ function canonicalProducerOf(result) {
 /**
  * D1 — the transcript section's ONE state function.
  *
- * Collapsed unless the shell reports a canonical producer. While collapsed it is
- * a bar: the label, the folder button and the row count, with the honest
- * one-line note. THE CHEVRON THAT USED TO OPEN IT BY HAND IS GONE (owner,
- * 2026-10-14: *"tira o botao de transcript… remove o CONTROLO. se a gaveta tiver
- * de ficar por detras, esconde-a mas tira o botao"*), so the drawer now opens by
- * itself or not at all. The LIVE search is disabled rather than
- * left as a box that can never match, and it re-enables itself the moment a
- * producer exists — nothing here is a permanent decision.
+ * THE DRAWER IS ALWAYS OPEN (owner, 2026-11-06: *"é pra sempre aparecer no
+ * painel"*), so there is no collapsed state and no flag to read: this function
+ * paints the row count slot (hidden) and the note. THE CHEVRON THAT OPENED IT
+ * BY HAND IS GONE (owner, 2026-10-14), and the search is a glyph now.
  */
 function applyTranscriptMode() {
   const rows = historyEntries.length;
@@ -1937,10 +1933,6 @@ function applyTranscriptMode() {
     // bar open for a sentence that is no longer painted.
     dom.transcriptNote.hidden = note === '';
   }
-
-  const searchable = Boolean(canonicalProducer);
-  void searchable;
-
 }
 
 /**

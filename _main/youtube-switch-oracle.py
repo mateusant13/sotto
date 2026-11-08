@@ -252,8 +252,13 @@ def neg_arm() -> int:
         copy.mkdir(parents=True)
         # O braco 5 executa `_youtube` do ficheiro que corre: o shell tem de ir
         # na copia, senao o mutante e' medido num ficheiro que nao existe.
+        # `caption_settings.py` entra na lista porque `youtube_captions` o carrega
+        # POR NOME (o directorio dele no `sys.path`): sem ele na copia o mutante
+        # nem carrega e o braco negativo mede um `ModuleNotFoundError` em vez do
+        # defeito. Medido 2026-11-08.
         for name in ("youtube_captions.py", "sotto_webview.py",
-                     "youtube_window.py", "youtube_reveal.py"):
+                     "youtube_window.py", "youtube_reveal.py",
+                     "caption_settings.py", "external_subs.py"):
             shutil.copy2(WEBVIEW / name, copy / name)
         target = copy / "youtube_captions.py"
         text = target.read_text(encoding="utf-8")

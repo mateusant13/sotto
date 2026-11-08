@@ -78,6 +78,9 @@ _main/*.png
 _main/*.flac
 _main/*.orig-*
 _main/*-state.json
+# THE CHOSEN TRANSLATION TARGET (`app/webview/caption_settings.py`). It is the OWNER's
+# pick, not the tree's: a lane that commits it would hand its own language to him.
+_main/caption-settings.json
 _main/caption-settings.json
 _main/_pwtest3.json
 _main/asr-warmup.json

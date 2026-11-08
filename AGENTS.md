@@ -508,8 +508,25 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 13:4x):** `_main\_audit-verify-all.cmd` = **298679 B**,
-  **3589 CRLF** / 0 bare LF, sha256 `FEF4B82A641C734D02ACFCC4D8556F915B13B55DD1D2AB8CCF355C6D18F4B83A`.
+- **PIN do ficheiro (medido 2026-11-08, 14:4x):** `_main\_audit-verify-all.cmd` = **300536 B**,
+  **3593 CRLF** / 0 bare LF, sha256 `9EFF5FF840D377FA5754FFCCB34FCC7D708120B4FF7BE046ABB063D361A89539`.
+  (Mil oitocentos e cinquenta e sete bytes e quatro linhas a mais do que o pin de 298679 B: o par
+  `panel-history-wheel` + o seu `--neg-arm`, a RODA do historico. Nasceu da ordem do dono de
+  2026-11-08 -- *"eu nao consigo usar meu scroll pra scrollar as legendas no historico"* -- e da
+  causa que ele mediu: `#history-list` carrega `overflow-y:auto` **e** `overscroll-behavior:contain`
+  mas e pintado `display:block`, logo a caixa tem a altura do conteudo (`clientHeight == scrollHeight`)
+  e nunca rola; quem rola e `.history__body` (630/5985) e o `contain` do fantasma PARA a roda antes
+  de ela chegar la. E1 (so `overscroll-behavior:auto` naquela caixa) devolve `body 0->400`; E3
+  (`overflow:hidden` no corpo) devolve `body 0->0`, o controlo que prova que o probe le a caixa
+  certa. O `--neg-arm` remove `wireHistoryWheel();` NUMA COPIA -- uma mutacao cirurgica do proprio
+  mecanismo, nunca "o `panel.js` de HEAD", que apodrece no dia em que a cura e cometida.)
+  **E UMA LICAO QUE CUSTOU UM RED FALSO (medido 2026-11-08):** o `cmd.exe` le um ficheiro de lote
+  pelo OFFSET de bytes, por isso **reescrever este `.cmd` enquanto uma corrida o esta a ler executa
+  lixo** -- o que apareceu foi `'S' nao e reconhecido como um comando interno`, `rc=9009` num passo
+  que passa sozinho, e um sumario com 7 falhas que o mesmo comando nao reproduz. A regra e curta:
+  **nenhuma edicao neste ficheiro com uma corrida em voo**; commit ou edicao primeiro, corrida
+  depois, e nada mais a correr (nem probe, nem oraculo: o ratchet POR PASSO e absoluto e 5,4 s ->
+  10,1 s de um `panel-header-oracle` e contenda, nao regressao).
   (Dois mil trezentos e sessenta e um bytes e TREZE linhas a mais do que o pin de 296318 B: o par
   `theme-caption-identity` + `red-as-expected-theme-caption-identity`, o portao da ordem do dono de
   2026-11-08, verbatim: *"VOCE TIROU O DESIGN DE TODAS AS LEGENDAS PRA DEIXAR ELAS IGUAIS EM TODOS OS

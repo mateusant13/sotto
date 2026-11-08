@@ -33,21 +33,50 @@
  * Exit 0 = both arms pass; 1 = an arm failed; 2 = setup error.
  */
 import { chromium } from 'file:///H:/env/npm-global/node_modules/playwright/index.mjs';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, cpSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..');
 /* `SOTTO_PANEL_DIR` points the whole probe at a COPY of `app/panel`, which is how
  * the red-before run is made: copy the directory, put the previous `panel.js`
  * back in the copy, and run the same arms against it. */
-const PANEL_DIR = process.env.SOTTO_PANEL_DIR
-  ? path.resolve(process.env.SOTTO_PANEL_DIR)
-  : path.join(REPO, 'app/panel');
-const PANEL = 'file:///' + path.join(PANEL_DIR, 'panel.html').replace(/\\/g, '/');
 const argOf = (flag, fallback) => {
   const i = process.argv.indexOf(flag);
   return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 };
+/* THE NEGATIVE ARM (--neg-arm). The arms below are only worth their output if a
+ * wheel that moves NOTHING is reported as RED, and the answer has to survive the
+ * day this fix is committed -- a control that reintroduces "the previous
+ * `panel.js`" rots the moment HEAD carries the cure (the trap `paint-cost`
+ * measured). So the control is a SURGICAL MUTATION of the cure itself, in a COPY
+ * of the panel: `wireHistoryWheel();` is deleted and nothing else is, which is
+ * exactly the state the owner reported. The arm must then go RED.
+ * Exit 1 = the mutant was caught (this battery's red-by-design convention). */
+const NEG_ARM = process.argv.includes('--neg-arm');
+let MUTATION = '';
+function negArmDir() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'sotto-wheel-neg-'));
+  const src = path.join(REPO, 'app/panel');
+  cpSync(src, dir, { recursive: true });
+  const js = path.join(dir, 'panel.js');
+  const before = readFileSync(js, 'utf8');
+  if (!before.includes('wireHistoryWheel();')) {
+    console.log('NEG-ARM: IMPOSSIBLE -- `wireHistoryWheel();` is not in the copy, so there is '
+      + 'nothing to remove and this control proves nothing.');
+    process.exit(2);
+  }
+  writeFileSync(js, before.replace('wireHistoryWheel();',
+    '/* neg-arm: the wheel wiring removed */ void 0;'), 'utf8');
+  MUTATION = 'panel.js: `wireHistoryWheel();` removed in a copy';
+  return dir;
+}
+const PANEL_DIR = NEG_ARM
+  ? negArmDir()
+  : (process.env.SOTTO_PANEL_DIR
+    ? path.resolve(process.env.SOTTO_PANEL_DIR)
+    : path.join(REPO, 'app/panel'));
+const PANEL = 'file:///' + path.join(PANEL_DIR, 'panel.html').replace(/\\/g, '/');
 const THEME = argOf('--theme', 'theme-1');
 const JSON_OUT = argOf('--json', '');
 
@@ -404,6 +433,15 @@ console.log(`  button=${menu.hasButton} opened=${menu.opened} label=${JSON.strin
 console.log(`  setTranslationTarget calls on change: ${JSON.stringify(menu.calls)}`);
 console.log(`  M ${armM ? 'GREEN' : 'RED'} — selector with the new label, and fr posted exactly once`);
 
+if (NEG_ARM) {
+  const caught = !armW2 || !armW2b;
+  console.log(`PROBE ${caught ? 'RED (the mutant)' : 'GREEN (THE MUTANT WAS NOT CAUGHT)'}   `
+    + `(${MUTATION})`);
+  console.log(`NEG-ARM: ${caught ? 'PASS' : 'FAIL -- the arm is GREEN with the wheel wiring removed, '
+    + 'so it cannot see the defect the owner reported'}`);
+  await browser.close();
+  process.exit(caught ? 1 : 0);
+}
 console.log(`PROBE ${armW2 && armW2b && armM ? 'GREEN' : 'RED'}   (arms: W2/W2b wheel, M config menu; D1 is diagnostic)`);
 if (errors.length) {
   console.log(`PAGE ERRORS: ${errors.length}`);
