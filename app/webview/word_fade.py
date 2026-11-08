@@ -30,8 +30,21 @@ from __future__ import annotations
 #: A duracao do fade de uma linha nova. Ver a nota da curva, acima.
 DURATION_S = 0.12
 
-#: O intervalo entre frames do fade. 60 Hz e' o que a janela ja' desenha.
-FRAME_S = 1.0 / 60.0
+#: O TECTO de frames da animacao -- 240 Hz (dono, 2026-11-08: *"acho que a
+#: animacao da legenda pode ir ate 240hz"*). Era 60.
+#:
+#: O TECTO NAO E' A TAXA. Quem decide a taxa real e' o CUSTO MEDIDO da pintura:
+#: `CaptionOverlay._next_delay` levanta cada pedido a este valor quando o ultimo
+#: quadro custou mais do que ele, e diz no log (`CAPTION_FRAME_LIMIT`) por que
+#: baixou. Medido nesta arvore, no tamanho real da caixa (1040 x 240 px a escala
+#: 2.0): `_premultiplied_bitmap` gasta **11,6 ms de p50** e 29 ms de p90 -- o
+#: `GraphicsPath.AddString` com contorno re-cria o caminho do texto a cada
+#: quadro. Logo este tecto pede, e o custo entrega ~86 Hz. Um numero aqui sem o
+#: outro seria a promessa que o instrumento nao cumpre.
+FRAME_S = 1.0 / 240.0
+
+#: O mesmo tecto em Hz, para o log e para os oraculos nao o recalcularem a mao.
+FRAME_HZ = 240
 
 #: `SourceConstantAlpha` e' um byte: 255 e' "fica como esta'".
 FULL = 255

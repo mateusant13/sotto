@@ -286,9 +286,9 @@ REM legenda ao vivo a 16 ms. Agora ha' um fio `daemon` que espera num `Event` co
 REM O oraculo conduz o `_arm_tick`/`_tick_loop`/`_tick` REAIS e conta `threading.Timer`:
 REM o braco antigo mede 105 fios por segundo de frames de 5 ms.
 if exist _main\caption-tick-thread-oracle.py (
-  call :step caption-tick-thread 0 "_main\caption-tick-thread-oracle.py;app\webview\caption_overlay.py" "%OUT%\caption-tick-thread.log" python _main\caption-tick-thread-oracle.py
+  call :step caption-tick-thread 0 "_main\caption-tick-thread-oracle.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\caption-tick-thread.log" python _main\caption-tick-thread-oracle.py
   call :record caption-tick-thread !STEP_RC!
-  call :step red-as-expected-caption-tick-thread 1 "_main\caption-tick-thread-oracle.py;app\webview\caption_overlay.py" "%OUT%\caption-tick-thread-neg.log" python _main\caption-tick-thread-oracle.py --neg-arm
+  call :step red-as-expected-caption-tick-thread 1 "_main\caption-tick-thread-oracle.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\caption-tick-thread-neg.log" python _main\caption-tick-thread-oracle.py --neg-arm
   call :expectred red-as-expected-caption-tick-thread !STEP_RC! "%OUT%\caption-tick-thread-neg.log" "NEG-ARM: PASS"
 ) else ( call :record caption-tick-thread MISSING )
 REM `caption-drag` (2026-11-08, ordem do dono, verbatim: *"segurar control,
@@ -1497,11 +1497,11 @@ REM `Emulation.setFocusEmulationEnabled` -- medido lado a lado, ele leva a
 REM leitura de 2-5 ms para 108 ms de mediana e 5 s de p90, o que e' o instrumento
 REM a criar a lentidao que depois mede. Custo: texto, sem rede e sem janela.
 if exist _main\youtube-cdp-source-oracle.py (
-call :step always youtube-cdp-source 0 "_main\youtube-cdp-source-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py;_main\_yt-live-latency.py" "%OUT%\youtube-cdp-source.log" python _main\youtube-cdp-source-oracle.py
+call :step always youtube-cdp-source 0 "_main\youtube-cdp-source-oracle.py;app\webview\youtube_cdp_source.py;app\webview\youtube_window.py;app\webview\sotto_webview.py;_main\_yt-live-latency.py" "%OUT%\youtube-cdp-source.log" python _main\youtube-cdp-source-oracle.py
 call :record youtube-cdp-source !STEP_RC!
 ) else ( call :record youtube-cdp-source MISSING )
 if exist _main\youtube-cdp-source-oracle.py (
-call :step always red-as-expected-youtube-cdp-source 1 "_main\youtube-cdp-source-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py;_main\_yt-live-latency.py" "%OUT%\youtube-cdp-source-neg.log" python _main\youtube-cdp-source-oracle.py --neg-arm
+call :step always red-as-expected-youtube-cdp-source 1 "_main\youtube-cdp-source-oracle.py;app\webview\youtube_cdp_source.py;app\webview\youtube_window.py;app\webview\sotto_webview.py;_main\_yt-live-latency.py" "%OUT%\youtube-cdp-source-neg.log" python _main\youtube-cdp-source-oracle.py --neg-arm
 call :expectred red-as-expected-youtube-cdp-source !STEP_RC! "%OUT%\youtube-cdp-source-neg.log" "NEG-ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-youtube-cdp-source MISSING "%OUT%\youtube-cdp-source-neg.log" "NEG-ARM VERDICT: PASS" )
 

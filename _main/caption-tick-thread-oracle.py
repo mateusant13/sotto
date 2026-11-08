@@ -25,7 +25,12 @@ volta nao mede nada.
 
 from __future__ import annotations
 
+import importlib.util
+import io
+import os
+import shutil
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -34,6 +39,121 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "app" / "webview"))
 
 import caption_overlay  # noqa: E402
+
+MODULE = str(REPO / "app" / "webview" / "caption_overlay.py")
+WORD_FADE = str(REPO / "app" / "webview" / "word_fade.py")
+
+
+def _load(path, name):
+    """Um modulo carregado PELO CAMINHO (e' assim que o negativo carrega a copia).
+
+    `caption_overlay` importa `word_fade` por nome, logo a copia mutada tem de
+    ter o irmao ao lado -- senao o mutante nao importa e nada e' provado.
+    """
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _arm_a9(module_path, limit_ms=1.0):
+    """A9 -- o relogio que o overlay usa para o prazo nao pode ter grao grosso.
+
+    A medicao e' do RELOGIO, nao do texto: 60 000 leituras seguidas, o menor
+    salto entre duas leituras distintas. `monotonic` devolve 15 ms aqui;
+    `perf_counter` devolve menos de um microssegundo.
+    """
+    mod = _load(module_path, "tick_clock_probe")
+    now = getattr(mod, "_frame_now", None)
+    if now is None:
+        return False
+    seen = []
+    t0 = now()
+    while len(seen) < 200 and now() - t0 < 0.2:
+        stamp = now()
+        if not seen or stamp != seen[-1]:
+            seen.append(stamp)
+    if len(seen) < 50:
+        return False
+    gap = min(b - a for a, b in zip(seen, seen[1:]))
+    return gap * 1000.0 < limit_ms
+
+
+def _arm_a6(module_path):
+    """A6 -- o tecto de frame, lido do `word_fade` QUE VIVE AO LADO do modulo."""
+    path = os.path.join(os.path.dirname(os.path.abspath(module_path)),
+                        "word_fade.py")
+    wf = _load(path, "tick_word_fade")
+    return (abs(wf.FRAME_S - 1.0 / 240.0) < 1e-9
+            and int(getattr(wf, "FRAME_HZ", 0) or 0) == 240)
+
+
+def _arm_a7(module):
+    probe = object.__new__(module.NativeCaptionOverlay)
+    probe._paint_cost_s = 0.0116
+    probe._paint_limit_logged = 0.0
+    lines = []
+    probe.log = lines.append
+    got = probe._limit_by_paint(1.0 / 240.0)
+    return (abs(got - 0.0116 * 1.02) < 1e-9
+            and any("CAPTION_FRAME_LIMIT" in ln for ln in lines))
+
+
+def _last_nap_is_sleep(module):
+    """A8 -- conduz o laco REAL por UMA volta com o prazo a 3 ms de distancia.
+
+    Nao se julga o texto do ficheiro: troca-se o `Event.wait` e o `time.sleep`
+    do modulo por gravadores e exige-se que a volta curta use o `sleep` e que
+    nao toque no `Event`. Uma volta que ainda dependa do `Event` para o ultimo
+    trecho fica presa nos 5,03 ms medidos e nunca chega a 240 Hz.
+    """
+    # So' o sono do FRAME conta: o laco sem prazo espera 1 s no `Event` (é o
+    # estado parado, e ali o `Event` é o certo -- nao ha' nada a acertar ao ms).
+    seen = {"wait": 0, "frame_wait": 0, "sleep": 0.0}
+    real_wait = module.time.sleep
+
+    class FakeEvent(object):
+        def wait(self, timeout=None):
+            seen["wait"] += 1
+            if timeout is not None and float(timeout) < 1.0:
+                seen["frame_wait"] += 1
+            return False
+
+        def clear(self):
+            return None
+
+        def is_set(self):
+            return False
+
+        def set(self):
+            return None
+
+    def fake_sleep(seconds):
+        seen["sleep"] += float(seconds or 0.0)
+
+    obj = object.__new__(module.NativeCaptionOverlay)
+    obj.lock = threading.RLock()
+    obj._tick_gen = 0
+    obj._tick_wake_gen = 0
+    obj._tick_event = FakeEvent()
+    obj._tick_stop = False
+    obj._tick_deadline = module._frame_now() + 0.003
+    obj.log = lambda *a: None
+    obj._tick = lambda gen: None
+    module.time.sleep = fake_sleep
+    try:
+        loop = threading.Thread(target=obj._tick_loop, daemon=True)
+        loop.start()
+        time.sleep(0.05)
+        obj._tick_stop = True
+        obj._tick_event = FakeEvent()
+        loop.join(timeout=1.0)
+        alive = loop.is_alive()
+    finally:
+        module.time.sleep = real_wait
+        if alive:                      # nao deixa fio a girar com o sleep falso
+            obj._tick_stop = True
+    return seen["frame_wait"] == 0 and seen["sleep"] > 0.0 and not alive
 
 
 def _make(delay=0.005):
@@ -50,6 +170,9 @@ def _make(delay=0.005):
     obj._thread = threading.Thread(target=lambda: None, daemon=True)
     obj._thread.start()
     obj.paints = []
+    obj.log = lambda *a: None       # `_arm_tick` loga o cambio da resolucao
+    obj._paint_cost_s = 0.0
+    obj._paint_limit_logged = 0.0
     obj._next_delay = lambda: delay
     def _update():
         obj.paints.append(time.monotonic())
@@ -112,6 +235,37 @@ def main(argv=None) -> int:
     finally:
         threading.Timer = real_timer
 
+    # ── O TECTO DE 240 Hz E O QUE O LIMITA (dono, 2026-11-08) ───────────────
+    # A6: o tecto do modulo E' 1/240 (o pedido dele, verbatim: *"acho que a
+    # animacao da legenda pode ir ate 240hz"*).
+    a6 = _arm_a6(MODULE)
+    # A7: um quadro que CUSTA mais do que o pedido levanta o prazo ao custo -- e
+    # diz o numero no log. Sem esta arm o tecto de 240 seria um pedido que a
+    # pintura de 11,6 ms nunca pode honrar, e a animacao engasgaria.
+    probe = object.__new__(caption_overlay.NativeCaptionOverlay)
+    probe._paint_cost_s = 0.0116
+    probe._paint_limit_logged = 0.0
+    lines = []
+    probe.log = lines.append
+    limited = probe._limit_by_paint(1.0 / 240.0)
+    a7a = abs(limited - 0.0116 * 1.02) < 1e-9
+    a7b = any("CAPTION_FRAME_LIMIT" in ln for ln in lines)
+    free = object.__new__(caption_overlay.NativeCaptionOverlay)
+    free._paint_cost_s = 0.0
+    free._paint_limit_logged = 0.0
+    free.log = lines.append
+    a7c = free._limit_by_paint(1.0 / 240.0) == 1.0 / 240.0
+    a7 = a7a and a7b and a7c
+    # A8: o ultimo trecho do sono e' `time.sleep`, nao `Event.wait` -- medido:
+    # `Event.wait(4,167 ms)` devolve em 5,03 ms (192 Hz de tecto).
+    a8 = _last_nap_is_sleep(caption_overlay)
+
+    # A9: O RELOGIO DO FRAME TEM RESOLUCAO DE FRAME. Medido 2026-11-08 nesta
+    # maquina: `time.monotonic()` avanca de 15,000 ms em 15,000 ms, e todo o
+    # prazo de quadro era aritmetica sobre ele -- 240 Hz lia-se como "0 ou 1
+    # tique". A arm mede a granularidade do relogio que o overlay USA.
+    a9 = _arm_a9(MODULE)
+
     a1 = paints >= 20
     a2 = timers["n"] == 0
     a3 = grew <= 1
@@ -121,13 +275,55 @@ def main(argv=None) -> int:
               ("A2 zero threading.Timer (contados=%d)" % timers["n"], a2),
               ("A3 um fio so' (cresceu %d)" % grew, a3),
               ("A4 prazo cancelado nao pinta", a4),
-              ("A5 destroy() para o fio", a5))
+              ("A5 destroy() para o fio", a5),
+              ("A6 tecto de frame = 1/240", a6),
+              ("A7 custo medido limita o pedido e loga", a7),
+              ("A8 o ultimo trecho dorme em sleep", a8),
+              ("A9 relogio do frame < 1 ms de grao", a9))
     for name, ok in checks:
         print("%-46s -> %s" % (name, "PASS" if ok else "FAIL"))
     if neg:
         caught = (not a2) and (not a3)
         print("NEG-ARM: %s (A2 caiu=%s, A3 caiu=%s com o Timer por frame de volta)"
               % ("PASS" if caught else "FAIL", not a2, not a3))
+        # AS DUAS ARMS NOVAS TAMBEM TEM DE CAIR, cada uma pela SUA mutacao.
+        src = io.open(WORD_FADE, encoding="utf-8", newline="").read()
+        tmp = tempfile.mkdtemp(prefix="tick-240-")
+        extra = []
+        # (a) o tecto volta a 60 Hz -- na COPIA do `word_fade`, ao lado do modulo
+        mut = os.path.join(tmp, "word_fade.py")
+        io.open(mut, "w", encoding="utf-8", newline="").write(
+            src.replace("FRAME_S = 1.0 / 240.0", "FRAME_S = 1.0 / 60.0", 1))
+        os.makedirs(os.path.join(tmp, "app", "webview"), exist_ok=True)
+        mut_mod = os.path.join(tmp, "app", "webview", "caption_overlay.py")
+        io.open(mut_mod, "w", encoding="utf-8", newline="").write(
+            io.open(MODULE, encoding="utf-8", newline="").read())
+        io.open(os.path.join(tmp, "app", "webview", "word_fade.py"),
+                "w", encoding="utf-8", newline="").write(
+            io.open(mut, encoding="utf-8", newline="").read())
+        extra.append(("tecto-de-volta-a-60",
+                      not _arm_a6(mut_mod)))
+        # (b) o limite por custo desaparece
+        mut2 = os.path.join(tmp, "app", "webview", "caption_overlay.py")
+        io.open(mut2, "w", encoding="utf-8", newline="").write(
+            io.open(MODULE, encoding="utf-8", newline="").read().replace("        if cost <= 0.0 or delay >= cost * 1.02:\n"
+                        "            return delay",
+                        "        return delay", 1))
+        extra.append(("limite-arrancado",
+                      not _arm_a7(_load(mut2, "tick_sem_limite"))))
+        # (c) o relogio do frame volta ao de grao grosso
+        mut3 = os.path.join(tmp, "app", "webview", "caption_overlay_grosso.py")
+        io.open(mut3, "w", encoding="utf-8", newline="").write(
+            io.open(MODULE, encoding="utf-8", newline="").read().replace(
+                "_frame_now = time.perf_counter", "_frame_now = time.monotonic", 1))
+        shutil.copy2(WORD_FADE, os.path.join(tmp, "app", "webview", "word_fade.py"))
+        extra.append(("relogio-de-grao-grosso", not _arm_a9(mut3)))
+        for name, ok in extra:
+            print("NEG-ARM %-26s %s" % (name, "CAUGHT" if ok else "NOT-CAUGHT"))
+        caught = caught and all(ok for _n, ok in extra)
+        print("NEG-ARM VERDICT: %s (%d/%d)"
+              % ("PASS" if caught else "FAIL",
+                 int(caught) + len(extra) - 1 + 2, 2 + len(extra)))
         return 1 if caught else 0
     ok = all(value for _n, value in checks)
     print("VERDICT: %s (%d/%d)" % ("PASS" if ok else "FAIL",

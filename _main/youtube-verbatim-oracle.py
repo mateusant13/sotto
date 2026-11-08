@@ -123,13 +123,13 @@ def judge(mod) -> list[dict]:
             sample_rows = [r for r in (smp.get("youtube") or ()) if str(r).strip()]
             flat = " ".join(sample_rows).split()
             got = mod.painted_rows(flat) if flat else []
-            want_joined = " ".join(mod._strip_markers(r) for r in sample_rows).split()
+            want_joined = " ".join(mod.strip_speaker_markers(r) for r in sample_rows).split()
             got_joined = " ".join(got).split()
             if want_joined != got_joined:
                 text_bad += 1
                 if not first_text_bad:
                     first_text_bad = "t=%s want=%r got=%r" % (smp.get("t"), want_joined, got_joined)
-            want_lines = [mod._strip_markers(r) for r in sample_rows]
+            want_lines = [mod.strip_speaker_markers(r) for r in sample_rows]
             want_lines = [w for w in want_lines if w]
             # A amostra so' entra nesta arm quando CADA quebra de linha tem um
             # marcador: a primeira linha e' sempre uma fronteira, as seguintes

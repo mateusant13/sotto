@@ -157,6 +157,30 @@ BUG-HUNT acima. Os passos, o tracker, o fecho mecanico e as recusas estao na ski
    (é a mesma lei que o HOLD do Alt+C já carrega). Nenhum caminho pode desligar
    worker, modelo ou histórico a pretexto de "legenda ao vivo desligada".
 
+## DUAS ORDENS DE 2026-11-08: O TECTO DE FRAME E O `>>` DO PLAYER
+
+1. **A ANIMACAO DA LEGENDA PODE IR ATE' 240 Hz** (verbatim: *"acho que a animacao da
+   legenda pode ir ate 240hz"*). O tecto vive em `app/webview/word_fade.py`
+   (`FRAME_S = 1/240`, `FRAME_HZ = 240`); **o tecto nao e' a taxa**: `caption_overlay`
+   limita cada pedido ao custo MEDIDO da pintura e escreve `CAPTION_FRAME_LIMIT
+   want_hz=.. paint_ms=.. rate_hz=..` quando limita. Medido no tamanho real da caixa
+   (1040 x 240 px, escala 2.0): a pintura gasta **11,6 ms**, logo o tecto efectivo e'
+   ~86 Hz; o laco entrega **218 quadros/s** com pintura nula e **71** com a de hoje.
+   **O relogio do frame e' `time.perf_counter`, NAO `time.monotonic`**: nesta maquina o
+   `monotonic` avanca de **15,000 ms** em 15,000 ms (medido, 200 000 leituras), e todo o
+   prazo de quadro era aritmetica sobre ele -- 240 Hz lia-se como "0 ou 1 tique" e o
+   proprio 60 Hz saia em degraus de 15/31 ms. Recibo com as duas tabelas:
+   `_main/receipt-20261108-caption-clock-and-marker.md`.
+2. **O MARCADOR DE FALA DO YOUTUBE NAO SE TRANSMITE** (verbatim: *"o youtube escreve >>
+   em algumas legendas. nao transmita isso pro sotto"*). O `>>` (`&gt;&gt;` antes de
+   descodificar, `>>` depois, `\u203a\u203a` na faixa automatica) e' do PLAYER e morre na
+   ENTRADA de cada caminho -- `youtube_window.strip_speaker_markers` e' o dono unico da
+   lista, e `youtube_cdp_source.parse_snapshot` o aplica a `rows`, `items` **e** `segs`
+   (carregando o irmao PELO CAMINHO: um `import` por nome resolve so' com o diretorio da
+   app no `sys.path`, e sem ele um fallback divergente deixa o `>>` do MEIO da linha
+   passar -- medido). Portao: `youtube-cdp-source-oracle.py`, arm
+   `sem-marcador-de-fala` (19/19, `--neg-arm` 15/15).
+
 ## A LEI DA STACK (decidida pelo dono)
 **nemotron streaming = motor LOCAL, só com o painel aberto. Parakeet Redux = motor GERAL/de fundo**
 (batch sobre o áudio acumulado, leve em RAM). *"o nvidia é pro ao vivo, o parakeet redux é pro geral."*
@@ -472,8 +496,14 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 07:0x):** `_main\_audit-verify-all.cmd` = **282682 B**,
-  **3428 CRLF** / 0 bare LF, sha256 `CB3FD3408AB1129F0AEC50348E6E13B8CE63D01BD1DB0625B1EAA38E43EBEFBC`.
+- **PIN do ficheiro (medido 2026-11-08, 07:4x):** `_main\_audit-verify-all.cmd` = **282792 B**,
+  **3428 CRLF** / 0 bare LF, sha256 `6087B1E402DAC4049A1D98421B81D7078F004F6ADDB824D85E5E0B4425F8D806`.
+  (Cento e dez bytes a mais do que o pin de 282682 B: DUAS dependencias que faltavam, a mesma classe
+  do `panel-deps` -- um passo em cache a descrever outro codigo. `caption-tick-thread` passou a
+  nomear `app\webview\word_fade.py` (as arms A6/A9 leem `FRAME_S`/`FRAME_HZ` e o relogio de la') e
+  `youtube-cdp-source` passou a nomear `app\webview\youtube_window.py` (o normalizador do marcador
+  `>>` vive la' e o modulo carrega-o PELO CAMINHO; sem a dependencia o passo reimprimiria o verde
+  sobre um ficheiro que ja' mudou).)
   (Mil trezentos e nove bytes e vinte e seis linhas a mais do que o pin de 280373 B: tres pares
   novos, os tres nascidos de ordens do dono de 2026-11-08. `strip-width` + o seu `--neg-arm`
   responde a *"por que a porra do painel de baixo do sotto ta gigante? restaura como era antes"*:

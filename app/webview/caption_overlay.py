@@ -438,6 +438,61 @@ class _DragCanvas:
                                 float(w), float(h))
 
 
+#: A RESOLUCAO DO RELOGIO DO SISTEMA, LEVANTADA SO' ENQUANTO HA' ANIMACAO.
+#:
+#: O QUE ISTO **NAO** E': a cura do laco. Medido 2026-11-08 com o laco REAL, o
+#: `sleep` de 4,17 ms devolvia 16,00 ms e a culpa nao era da resolucao -- era do
+#: RELOGIO do prazo (`time.monotonic()`, 15 ms de grao; ver `_frame_now` abaixo).
+#: Com o relogio curado, `timeBeginPeriod(1)` deu 4,21 ms e `timeEndPeriod(1)`
+#: 4,18 ms: dentro do ruido, porque a resolucao DESTA maquina ja' estava em
+#: 1,00 ms (`NtQueryTimerResolution`) por causa de outro processo.
+#:
+#: O QUE ISTO E': a garantia de que um sono de 4 ms nao dependa de um TERCEIRO.
+#: A resolucao de 1 ms nesta maquina nao e' nossa -- vem de quem mais corre nela,
+#: e uma medida que depende disso nao e' uma medida. O `timeEndPeriod(1)` devolve
+#: a maquina ao que era no primeiro instante sem frame armado, para o custo em
+#: bateria existir so' enquanto ha' animacao.
+_TIMER_PERIOD = {'on': False}
+
+
+def _timer_period(on, log_fn=None):
+    """Liga/desliga a resolucao de 1 ms do relogio -- idempotente e fail-open."""
+    if on == _TIMER_PERIOD['on']:
+        return
+    try:
+        winmm = ctypes.WinDLL('winmm')
+        if on:
+            winmm.timeBeginPeriod(1)
+        else:
+            winmm.timeEndPeriod(1)
+    except Exception:
+        return                      # sem winmm nao ha' nada a fazer, e nao e' erro
+    _TIMER_PERIOD['on'] = on
+    if log_fn is not None:
+        try:
+            log_fn('CAPTION_FRAME_TIMER period_ms=%d' % (1 if on else 0))
+        except Exception:
+            pass
+
+
+#: O RELOGIO DO FRAME E' `perf_counter`, NAO `monotonic` -- MEDIDO 2026-11-08.
+#:
+#: Nesta maquina `time.monotonic()` tem **15,000 ms de granularidade** (200 000
+#: leituras seguidas devolvem 50 valores distintos, todos a 15 ms; o mesmo teste
+#: em `time.perf_counter()` da' 0,0003 ms). Todo o prazo de frame era aritmetica
+#: sobre esse relogio: pedir 4,167 ms (240 Hz) lia-se como "0 ou 1 tique", pedir
+#: 16,7 ms (60 Hz) como "1 ou 2 tiques" -- a animacao andava em degraus de 15 ms
+#: e nenhum tecto acima de ~62 Hz podia ser alcancado, por mais que o `sleep`
+#: dormisse ao microssegundo. Medido antes da cura, com o laco REAL: 66 quadros/s
+#: para um pedido de 240 Hz e p50 de 16,00 ms; pedido de 60 Hz dava 31,00 ms.
+#:
+#: `perf_counter` e' monotonico e de alta resolucao no Windows (QPC); e' o mesmo
+#: relogio que `time.sleep` obedece. Os CARIMBOS que viajam para fora do overlay
+#: continuam em `time.monotonic()`: eles comparam com o relogio do shell, e
+#: misturar as duas escalas num so' numero seria pior do que o defeito.
+_frame_now = time.perf_counter
+
+
 class NativeCaptionOverlay:
     #: O fade de entrada esta' DESLIGADO (ordem do dono 2026-11-03). O botao
     #: fica para o oraculo poder provar as duas metades: com `False`, nenhum
@@ -507,7 +562,12 @@ class NativeCaptionOverlay:
         self._tick_timer = None          # compatibilidade: o ultimo PRAZO, nao um fio
         self._tick_event = threading.Event()
         self._tick_thread = None
-        self._tick_deadline = 0.0        # monotonic; 0 = nada armado
+        self._tick_deadline = 0.0        # `_frame_now`; 0 = nada armado
+        #: O custo MEDIDO do ultimo quadro de pintura (segundos). E' ele que
+        #: decide se o tecto de 240 Hz (`word_fade.FRAME_S`) pode ser honrado.
+        self._paint_cost_s = 0.0
+        #: Quando o log do limite foi escrito pela ultima vez (segundos).
+        self._paint_limit_logged = 0.0
         self._tick_stop = False
         self._tick_wake_gen = 0
         # O FADE DA LINHA NOVA (ordem do dono, 2026-10-30: *"por que a nossa
@@ -740,7 +800,10 @@ class NativeCaptionOverlay:
     def _arm_tick(self):
         """Agenda o proximo frame. Sem nada a mudar, nao arma nada -- e o fio do
         relogio nao fica a girar num ecra parado (espera no `Event`)."""
+        _timer_period(True, self.log)
         delay = self._next_delay()
+        if delay is not None:
+            delay = self._limit_by_paint(delay)
         if delay is None:
             with self.lock:
                 self._tick_deadline = 0.0
@@ -748,7 +811,7 @@ class NativeCaptionOverlay:
             return
         self._tick_gen += 1
         with self.lock:
-            self._tick_deadline = time.monotonic() + max(0.001, float(delay))
+            self._tick_deadline = _frame_now() + max(0.001, float(delay))
             self._tick_wake_gen = self._tick_gen
         if self._tick_thread is None or not self._tick_thread.is_alive():
             self._tick_thread = threading.Thread(target=self._tick_loop,
@@ -757,6 +820,31 @@ class NativeCaptionOverlay:
             self._tick_thread.start()
         self._tick_event.set()
 
+    def _limit_by_paint(self, delay):
+        """O PEDIDO DE FRAME NAO PODE SER MAIS CURTO DO QUE A PINTURA QUE ELE PEDE.
+
+        Dono, 2026-11-08: *"acho que a animacao da legenda pode ir ate 240hz"*.
+        O tecto foi levantado (`word_fade.FRAME_S` = 1/240), mas um tecto nao e'
+        uma taxa: `_premultiplied_bitmap` re-cria o caminho do texto com contorno
+        a cada quadro e mede **11,6 ms de p50** no tamanho real da caixa. Pedir
+        4,17 ms a um quadro que custa 11,6 pinta a fila para dentro do passado --
+        e' assim que uma animacao "de 240 Hz" engasga em vez de correr suave.
+
+        A regra e' o proprio custo, com 2 % de folga para o relogio do proximo
+        ciclo; e quando ela morde, o log diz o numero (uma linha a cada 5 s, nao
+        por quadro) para o limite ser medivel e nao uma opiniao.
+        """
+        cost = float(getattr(self, '_paint_cost_s', 0.0) or 0.0)
+        if cost <= 0.0 or delay >= cost * 1.02:
+            return delay
+        now = _frame_now()
+        if now - float(getattr(self, '_paint_limit_logged', 0.0)) >= 5.0:
+            self._paint_limit_logged = now
+            self.log('CAPTION_FRAME_LIMIT want_hz=%.0f paint_ms=%.2f rate_hz=%.0f'
+                 % (1.0 / max(1e-6, float(delay)), cost * 1000.0,
+                    1.0 / max(1e-6, cost * 1.02)))
+        return cost * 1.02
+
     def _tick_loop(self):
         """O UNICO fio do relogio: dorme ate' ao prazo, acorda, pinta, repete."""
         while not self._tick_stop:
@@ -764,18 +852,44 @@ class NativeCaptionOverlay:
                 deadline = self._tick_deadline
                 gen = getattr(self, '_tick_wake_gen', self._tick_gen)
             if not deadline:
+                # Nada armado: a resolucao do relogio volta ao que era. Sem
+                # isto o `timeBeginPeriod(1)` ficaria a gastar bateria da
+                # maquina do dono por uma animacao que ja' acabou.
+                _timer_period(False, self.log)
                 self._tick_event.wait(1.0)
                 self._tick_event.clear()
                 continue
-            left = deadline - time.monotonic()
+            left = deadline - _frame_now()
             if left > 0.0:
-                signalled = self._tick_event.wait(min(left, 1.0))
-                self._tick_event.clear()
-                if signalled:
-                    continue          # prazo mudou: recalcula em vez de pintar
-                left = deadline - time.monotonic()
-                if left > 0.0:
-                    continue
+                # O ULTIMO TRECHO E' `sleep`, NAO `Event.wait` -- MEDIDO
+                # 2026-11-08 nesta maquina: `Event.wait(4,167 ms)` devolve com
+                # 5,03 ms de minimo (192 Hz de tecto) enquanto `time.sleep(4 ms)`
+                # devolve em 4,17 ms de p50 (239 Hz). O `Event` serve para
+                # acordar cedo quando o prazo muda; abaixo de 5 ms quem dorme e'
+                # o `sleep`, senao o tecto de 240 Hz nunca e' alcancado.
+                if left > 0.005:
+                    signalled = self._tick_event.wait(min(left, 1.0))
+                    self._tick_event.clear()
+                    if signalled:
+                        continue      # prazo mudou: recalcula em vez de pintar
+                    left = deadline - _frame_now()
+                    if left > 0.0:
+                        continue
+                else:
+                    time.sleep(max(0.0, left))
+                    # O `set()` que o `_arm_tick` deixou no evento e' o aviso que
+                    # ACABAMOS de acordar para ele: consumido aqui, sem uma
+                    # segunda volta. Medido: sem esta linha cada frame pagava
+                    # dois sonos e a taxa do relogio caia a ~127 Hz.
+                    self._tick_event.clear()
+                    # SO' SE AINDA FALTA UM MILISSEGUNDO INTEIRO. Medido: um
+                    # `time.sleep` abaixo de 1 ms e' arredondado para o grao do
+                    # timer (15,6 ms com a resolucao por omissao), portanto
+                    # voltar ao topo para dormir a ultima migalha custava um
+                    # quadro inteiro por frame -- a taxa caia a 62 Hz. Chegar
+                    # 0,2 ms cedo a um quadro nao existe no ecra.
+                    if deadline - _frame_now() > 0.001:
+                        continue
             with self.lock:
                 if gen != self._tick_gen or self._tick_deadline != deadline:
                     continue
@@ -799,7 +913,11 @@ class NativeCaptionOverlay:
                 # janela) -- o tick continua a ler o rato, mas nao paga render.
                 if (getattr(self, '_tick_content', True) or moved
                         or (armed and not dragging)):
+                    # O CUSTO DA PINTURA E' O QUE DECIDE A TAXA (ver
+                    # `_limit_by_paint`): medido aqui, no caminho real.
+                    _t0 = _frame_now()
                     self._update()
+                    self._paint_cost_s = _frame_now() - _t0
                 else:
                     # Um tick que so' existiu para poll nao paga um render:
                     # rearma (o poll seguinte) sem tocar no bitmap.

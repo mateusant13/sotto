@@ -295,7 +295,28 @@ def _private_family(face):
     return hit
 
 
+#: A FAMILIA DE UMA FONTE E' CARA; A FONTE NAO MUDA A CADA QUADRO.
+#: Medido 2026-11-08 no tamanho real da caixa (1040 x 240 px, escala 2.0): o
+#: `_premultiplied_bitmap` gastava **11,5 ms de p50** por quadro e chamava este
+#: fabricante DUAS vezes em cada um (30 construcoes em 15 quadros) -- 0,27 ms
+#: por construcao, pagos a cada frame de uma animacao que agora pode pedir 240.
+#: A chave e' o que decide a face; o valor fica aqui para o GDI+ nunca entregar
+#: uma `FontFamily` cujo dono (`PrivateFontCollection`) ja' morreu.
+_FONT_CACHE = {}
+
+
 def _make_font(family, px, weight, italic):
+    """A MESMA fonte pedida duas vezes sai do cache (ver a nota acima)."""
+    key = (str(family), float(px), int(weight), bool(italic))
+    hit = _FONT_CACHE.get(key)
+    if hit is not None:
+        return hit
+    font = _build_font(family, px, weight, italic)
+    _FONT_CACHE[key] = font
+    return font
+
+
+def _build_font(family, px, weight, italic):
     """The ONE face factory: private TTF first, installed family second."""
     import clr
     clr.AddReference('System.Drawing')

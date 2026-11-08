@@ -184,3 +184,17 @@
   ocupam 78+80+44+44+44 MB (`ArbV8`, `audioclip`, `AuthFix`, `StdinV9`, `CutVerbI2`) e cada um tem
   commits fora do ramo actual (1-9), por isso NAO se apagam sem decisao: apagar o directorio nao
   apaga o ramo, mas apaga o que esta' por commitar la'.
+- **`time.monotonic()` TEM 15,000 ms DE GRAO NESTA MAQUINA (medido 2026-11-08).** 200 000
+  leituras seguidas devolvem 50 valores distintos, todos a 15,000 ms; o mesmo teste em
+  `time.perf_counter()` da' **0,0003 ms**. Consequencia medida antes da cura, com o laco REAL do
+  overlay: um pedido de **240 Hz entregava 65 quadros/s** (delta p50 16,00 ms) e um de **60 Hz
+  entregava 40** (31,00 ms) -- a taxa nao era a pedida, era o grao do relogio. Depois de o prazo do
+  frame passar a `perf_counter`: **218 quadros/s** e **57 quadros/s**. Qualquer laco novo desta casa
+  que pace por tempo usa `perf_counter`; `monotonic` serve para CARIMBOS comparados com o shell,
+  nunca para aritmetica de prazo.
+- **A PINTURA DA LEGENDA CUSTA 11,6 ms POR QUADRO no tamanho real da caixa (medido 2026-11-08).**
+  `overlay_paint._premultiplied_bitmap` com 1040 x 240 px a escala 2.0, tres linhas e `roll=0.5`:
+  p50 **11,6 ms**, p90 **29,4 ms** -> tecto de **86 Hz**, contra os 4,17 ms que 240 Hz pedem. O
+  custo e' `GraphicsPath.AddString` com contorno (3,2 ms por linha); `_make_font` era chamado DUAS
+  vezes por quadro (0,27 ms cada) e agora sai de `_FONT_CACHE`. Um tecto de frame acima disto exige
+  guardar o raster do texto, que ainda nao foi feito.

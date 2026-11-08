@@ -486,6 +486,34 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
           and snap["items"][0]["left"] == 10)
     out.append(("linhas-do-player", a1, "rows=%r" % (snap or {}).get("rows")))
 
+    # A1-bis -- O MARCADOR DE FALA DO PLAYER NAO PASSA (dono, 2026-11-08,
+    # verbatim: *"youtube escreve >> em algumas legendas. nao transmita iss pro
+    # sotto"*). O `>>` chega em tres formas (a entidade `&gt;&gt;` antes de o DOM
+    # descodificar, o `>>` ja' descodificado, e o `\u203a\u203a` da faixa
+    # automatica) e em DUAS posicoes: a abrir a linha e no MEIO dela, quando o
+    # painel junta dois segmentos. As tres linhas e os tres segmentos saem limpos.
+    marker_payload = ('{"videoId":"abc","why":"painted","rows":['
+                      '{"text":"&gt;&gt; Nossa.","items":['
+                      '{"text":"&gt;&gt;","left":0,"top":0,"right":9,"bottom":9},'
+                      '{"text":"Nossa.","left":10,"top":0,"right":60,"bottom":9}]},'
+                      '{"text":"da wave. >> Nossa.","items":['
+                      '{"text":"da wave.","left":0,"top":20,"right":70,"bottom":29},'
+                      '{"text":">>","left":71,"top":20,"right":80,"bottom":29},'
+                      '{"text":"Nossa.","left":81,"top":20,"right":130,"bottom":29}]},'
+                      '{"text":"\u203a\u203a ok","items":['
+                      '{"text":"ok","left":0,"top":40,"right":20,"bottom":49}]}],'
+                      '"segs":["&gt;&gt; Nossa.","da wave.","Nossa."]}')
+    msnap = mod.parse_snapshot(marker_payload)
+    a1b = (msnap is not None
+           and msnap["rows"] == ["Nossa.", "da wave. Nossa.", "ok"]
+           and [i["text"] for i in msnap["items"]]
+           == ["Nossa.", "da wave.", "Nossa.", "ok"]
+           and msnap["segs"] == ["Nossa.", "da wave.", "Nossa."])
+    out.append(("sem-marcador-de-fala", a1b,
+                "rows=%r segs=%r items=%r" % (
+                    (msnap or {}).get("rows"), (msnap or {}).get("segs"),
+                    [i["text"] for i in (msnap or {}).get("items") or []])))
+
     # A2 -- lixo
     a2 = (mod.parse_snapshot("nao e json") is None
           and mod.parse_snapshot("[]") is None
@@ -669,6 +697,12 @@ def neg_arm():
     tmp = tempfile.mkdtemp(prefix="yt-cdp-neg-")
     try:
         src = _read(MODULE)
+        # A COPIA CARREGA OS IRMAOS DO DIRETORIO REAL. `youtube_cdp_source`
+        # carrega `youtube_window` pelo caminho (o marcador de fala `>>` vive la'),
+        # portanto ao lado do mutante tem de estar o irmao -- senao o mutante nao
+        # importa e a mutacao nao prova nada (medido: FileNotFoundError aqui).
+        shutil.copy2(os.path.join(APP, "youtube_window.py"),
+                     os.path.join(tmp, "youtube_window.py"))
         results = []
 
         mut = os.path.join(tmp, "sem_id.py")
@@ -686,10 +720,23 @@ def neg_arm():
 
         mut3 = os.path.join(tmp, "linha_sem_texto.py")
         io.open(mut3, "w", encoding="utf-8").write(
-            src.replace('        text = " ".join(str(line.get("text") or "").split())\n        if not text:\n            continue',
-                        '        text = str(line.get("text") or "")\n        if False:\n            continue', 1))
+            # A LINHA CRUA (sem colapso de espacos e sem o marcador de fala): a
+            # ancora e' a linha de HOJE, que passou a chamar o normalizador.
+            src.replace('        text = strip_speaker_markers(line.get("text"))',
+                        '        text = str(line.get("text") or "")', 1))
         got3 = dict((n, ok) for n, ok, _ in arms(module_path=mut3))
         results.append(("linhas-sem-filtro", not got3.get("linhas-do-player", False)))
+
+        # O `>>` VOLTA (dono, 2026-11-08): a copia entrega o texto do player cru,
+        # sem passar pelo `strip_speaker_markers` -- e a arm do marcador tem de
+        # cair, senao ela nao guarda nada.
+        mut_marker = os.path.join(tmp, "com_marcador.py")
+        io.open(mut_marker, "w", encoding="utf-8").write(
+            src.replace('        text = strip_speaker_markers(line.get("text"))',
+                        '        text = " ".join(str(line.get("text") or "").split())', 1))
+        got_marker = dict((n, ok) for n, ok, _ in arms(module_path=mut_marker))
+        results.append(("marcador-volta",
+                        not got_marker.get("sem-marcador-de-fala", False)))
 
         # A ABA NAO PROVA NADA: e' o comportamento de antes de 2026-11-04 -- sem
         # jogador em primeiro plano o laco desistia e a fonte do player nunca

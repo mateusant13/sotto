@@ -348,12 +348,29 @@ def match_ratio(lines, pool, ratio_min=0.5):
     return {"ok": ratio >= ratio_min, "ratio": ratio, "words": len(words)}
 
 
-def _strip_markers(text):
-    """Uma linha sem o marcador de fala do player (`>>`, `&gt;&gt;`, `››`)."""
+def strip_speaker_markers(text):
+    """Uma linha sem o marcador de fala do player (`>>`, `&gt;&gt;`, `››`).
+
+    PUBLICO DE PROPOSITO (2026-11-08). O dono, verbatim: *"youtube escreve >> em
+    algumas legendas. nao transmita iss pro sotto"*. Este ficheiro e' o dono da
+    lista de marcadores, e o caminho que HOJE alimenta o ecra nao passa por aqui:
+    e' o CDP (`youtube_cdp_source.parse_snapshot`), que lia o `>>` do DOM e o
+    entregava inteiro. Duas listas de marcadores divergiriam no primeiro marcador
+    novo que o YouTube inventasse, por isso o caminho do CDP importa ESTA.
+    """
     out = " ".join(str(text or "").split())
     for marker in _SPEAKER_MARKERS:
         while out.startswith(marker):
             out = out[len(marker):].strip()
+    # E NO MEIO DA LINHA (`... da wave. >> Nossa.`). O `>>` abre o turno de quem
+    # fala a seguir, e quando o painel junta dois segmentos numa linha ele cai no
+    # meio dela -- medido no payload do player: `['>> Nossa.', '>> ta segurando
+    # essa wave,']` sao duas linhas, mas o `paint_line` da UIA juntava-as. Nada
+    # nestas legendas e' um `>>` de conteudo (nao ha' texto solto com `>>`), e a
+    # ordem do dono e' absoluta: nao transmitir.
+    for marker in _SPEAKER_MARKERS:
+        if marker in out:
+            out = " ".join(out.replace(marker, " ").split())
     return out
 
 
@@ -385,7 +402,7 @@ def painted_rows(words, items=None):
     if by_rect:
         out = []
         for line in by_rect:
-            text = _strip_markers(line)
+            text = strip_speaker_markers(line)
             if text and (not out or out[-1] != text):
                 out.append(text)
         if out:
@@ -413,7 +430,7 @@ def painted_rows(words, items=None):
         if not text:
             continue
         started = any(text.startswith(m) for m in _SPEAKER_MARKERS)
-        text = _strip_markers(text)
+        text = strip_speaker_markers(text)
         if not text:
             # UM MARCADOR SOZINHO TAMBEM ABRE LINHA (medido 2026-11-02: o leitor
             # de UIA entrega `'>>'` como filho proprio em algumas faixas). Sem

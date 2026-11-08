@@ -46,6 +46,33 @@ import threading
 import time
 import urllib.request
 
+
+def _load_sibling(name):
+    """Um modulo IRMAO carregado pelo CAMINHO, nunca por `import nome`."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), name + '.py')
+    spec = importlib.util.spec_from_file_location('sotto_' + name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+#: O MARCADOR DE FALA DO PLAYER NAO PASSA POR AQUI. Dono, verbatim (2026-11-08):
+#: *"youtube escreve >> em algumas legendas. nao transmita iss pro sotto"*.
+#:
+#: O `>>` e' do PLAYER -- `&gt;&gt;` no DOM antes de descodificar, `>>` depois, e o
+#: `\u203a\u203a` da faixa automatica -- e o caminho que alimenta o ecra hoje e'
+#: ESTE (CDP); o da UIA ja' o tirava, e por isso ele via o simbolo so' em algumas
+#: legendas. A lista de marcadores vive em `youtube_window.strip_speaker_markers`,
+#: que e' o dono dela: duas listas divergiriam no primeiro marcador novo.
+#:
+#: CARREGADO PELO CAMINHO, NAO POR NOME. `from youtube_window import ...` so'
+#: resolve com o diretorio da app no `sys.path`, e quem carrega este modulo nem
+#: sempre o poe la' (medido: o oraculo carrega o ficheiro por `spec`, o import
+#: levantava e um fallback local -- que so' tirava o marcador do INICIO -- deixava
+#: o `>>` do MEIO da linha chegar ao ecra). Sem fallback duplicado.
+strip_speaker_markers = _load_sibling('youtube_window').strip_speaker_markers
+
 #: Porta de depuracao que o Chrome do dono ja' tem aberta (medido 2026-11-03).
 DEFAULT_PORT = 9222
 
@@ -626,14 +653,14 @@ def parse_snapshot(payload, now=None):
     for line in data.get("rows") or ():
         if not isinstance(line, dict):
             continue
-        text = " ".join(str(line.get("text") or "").split())
+        text = strip_speaker_markers(line.get("text"))
         if not text:
             continue
         kids = []
         for kid in line.get("items") or ():
             if not isinstance(kid, dict):
                 continue
-            body = " ".join(str(kid.get("text") or "").split())
+            body = strip_speaker_markers(kid.get("text"))
             if not body:
                 continue
             try:
@@ -649,8 +676,8 @@ def parse_snapshot(payload, now=None):
             continue
         rows.append(text)
         items.extend(kids)
-    segs = [" ".join(str(x).split()) for x in (data.get("segs") or ())
-            if str(x or "").strip()]
+    segs = [m for m in (strip_speaker_markers(x) for x in (data.get("segs") or ()))
+            if m]
     return {"stamp": float(now if now is not None else time.monotonic()),
             "segs": segs,
             "videoId": str(data.get("videoId") or ""),
