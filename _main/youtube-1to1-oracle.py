@@ -196,8 +196,13 @@ WIRING = (
 ENGINE = (
     ("a linha ao vivo nasce no motor",
      "youtube_reveal.LiveRows(wrap=self._wrap_fn())"),
+    # 2026-11-08: a chamada passou a ler `now` uma vez (`now =
+    # time.monotonic()`) porque o MESMO instante serve o frame e o
+    # deslocamento do roll-up -- duas leituras de relogio no mesmo quadro
+    # davam 0,03 ms de desvio entre o texto e a posicao dele. A ancora segue
+    # o que importa: o desenho E' o frame do motor.
     ("o que se desenha e' o frame do motor",
-     "self._live.frame(time.monotonic())"),
+     "self._live.frame(now)"),
     ("a janela do player nao passa pelo motor",
      "self._live = None"),
 )

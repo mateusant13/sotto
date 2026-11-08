@@ -55,10 +55,16 @@ As fontes que ele lê, e o que cada uma pode dizer:
 | 20 | Linha pintada **antes** do seu `start` (cue adiantada) | **0 de 16** quadros | UIA → `early.rows_drawn_before_start` | medido |
 | 21 | Linhas fora da caixa (a rolar para fora) | **1 de 16** quadros | UIA → `uia.shape.outside_box` | medido |
 | 22 | Opacidade < 1 nos quadros do player | **0 de 16** (o fade dura menos que o intervalo entre quadros, ~0,65 s) | UIA → `uia.shape.opacity_below_1` | medido |
-| 23 | Duração e curva do fade de ENTRADA | 0,12 s, `1-(1-t)²` (ease-out quadrático) | Sotto: `word_fade.DURATION_S`; o painel usa **140 ms** `ease-out` sobre `opacity` (`app/panel/panel.css`, `sotto-word-in`) | **`[INFERENCE]`** |
+| 23 | Duração e curva do fade de ENTRADA | 0,12 s, `1-(1-t)²` (ease-out quadrático) | Sotto: `word_fade.DURATION_S` no OVERLAY NATIVO -- e' ele que o dono ve' na legenda ao vivo. O painel **nao** anima palavra nenhuma: `app/panel/panel.css:2782` fixa `animation: none !important` (ordem do dono, 2026-11-02), e o `sotto-word-in`/140 ms que esta linha citava **nao existe no repo** (`grep -rn sotto-word-in app/` = 0; corrigido 2026-11-08) | **`[INFERENCE]`** no player (a captura nao resolve; ver abaixo); a politica do Sotto e' medida pelo `_main/caption-rollup-oracle.py` e pelo `reveal-clock` |
 | 24 | Duração e curva do fade de SAÍDA | 0,45 s, mesma curva | `word_fade.alpha_out` (`EXIT_S`) | **`[INFERENCE]`** (a *janela* do exit é medida: linha 13) |
 | 25 | Mesma quebra de linha que o overlay antigo | 4 de 16 (texto junto igual em 15/16) | break-position → `same_break`, `same_joined_text` | medido |
-| 26 | O painel escalona a revelação | **não** — `animation-delay: calc(var(--type-step) * 0ms)`; só o fade de 140 ms da palavra nova | `app/panel/panel.css` (`.caption__word[data-typing]`) | medido (CSS) |
+| 26 | O painel escalona a revelação | **não** — `animation: none !important` no seletor da palavra nova (`.caption--provisional .caption__word[data-typing]`), e `--type-step` continua no `:root` so' como o atraso que um tema pode zerar | `app/panel/panel.css:2776-2782` | medido (CSS, 2026-11-08) |
+
+A linha 23 do lado do PAINEL foi corrigida em 2026-11-08: ela afirmava uma animacao de
+140 ms (`sotto-word-in`) que nenhum ficheiro do repo declara. O que existe e' a proibicao
+(`animation: none !important`) e, no overlay nativo, o fade de 0,12 s por palavra mais o
+ROLL-UP da linha que sai (`app/webview/youtube_reveal.py:534-563`, medido em pixel por
+`_main/caption-rollup-oracle.py`).
 
 Porque a linha 23/24 são inferência: a captura lê a opacidade a ~0,65 s por quadro
 (`fade.smallest_resolvable_s`) e o fade dura menos que isso; a animação CSS do player só se lê

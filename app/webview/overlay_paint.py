@@ -560,7 +560,7 @@ def _measure_budget(scale, work_width, theme=None):
     return cur_w, budget
 
 
-def _layout(text, previous, scale, work_width, theme=None):
+def _layout(text, previous, scale, work_width, theme=None, rows=None):
     """ONE layout for the caption, used by the measure AND by the draw.
 
     Having two copies of "how many lines" is how a caption gets measured at one
@@ -620,12 +620,18 @@ def _layout(text, previous, scale, work_width, theme=None):
     # is paid for in plate width, never in a lost word.
     safety = max(18.0, cur_px * 0.9)
     width = int(max(240 * scale, min(widest + g['x_text'] + g['pad_r'] + safety, max_text)))
-    height = int(g['pad_t'] + g['pad_b'] + g['line_h'] * len(cur_lines) + (g['prev_h'] if prev_line else 0))
+    # `rows` FIXA A CAIXA, e existe por causa do ROLL-UP: durante a transicao sao
+    # desenhadas `capacity + 1` linhas, mas a caixa tem de continuar com
+    # `capacity` linhas de altura -- e' o conteudo que sobe dentro dela, e uma
+    # caixa que crescesse a cada linha nova faria o bloco inteiro pular para
+    # cima em vez de rolar.
+    box_rows = len(cur_lines) if rows is None else max(1, int(rows))
+    height = int(g['pad_t'] + g['pad_b'] + g['line_h'] * box_rows + (g['prev_h'] if prev_line else 0))
     return cur_lines, prev_line, max(1, width), max(1, height), scrolled
 
 
 def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None,
-                          alphas=None):
+                          alphas=None, roll=0.0):
     """Draw the caption onto a 32bpp premultiplied-ARGB bitmap (GDI+).
 
     THE THEME IS PAINTED, NOT APPLIED BY CSS. A plate is the row's own
@@ -720,7 +726,13 @@ def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None
         pen.Dispose()
         brush.Dispose()
 
-    y = float(geo['pad_t'])
+    # O ROLL-UP: o conteudo sobe `roll` vezes UMA altura de linha dentro da
+    # caixa e a linha mais velha e' cortada pelo TOPO -- nao ha' fade nenhum
+    # nela (medido no player: a linha que sai mantem `opacity` 1 e sai da caixa).
+    # A altura de linha vem daqui, do MESMO `_geom` que desenha: um numero
+    # escolhido no chamador seria uma segunda medida do mesmo espaco.
+    offset_y = -float(roll) * float(geo['line_h'])
+    y = float(geo['pad_t']) + offset_y
     if prev_line:
         draw_line(prev_line, prev_font, t['prevColor'], y, geo['prev_h'])
         y += geo['prev_h']
@@ -753,7 +765,7 @@ def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None
             if not alphas or index >= len(alphas) or int(alphas[index]) >= 255:
                 led_row = index
                 break
-        cy = (geo['pad_t'] + (geo['prev_h'] if prev_line else 0.0)
+        cy = (geo['pad_t'] + offset_y + (geo['prev_h'] if prev_line else 0.0)
               + geo['line_h'] * led_row + geo['line_h'] / 2.0)
         brush = SolidBrush(_colour(t['led']))
         g.FillEllipse(brush, float(led_x), float(cy - geo['led_h'] / 2.0),

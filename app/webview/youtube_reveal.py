@@ -522,8 +522,75 @@ def frame(rows, t, capacity=CAPACITY, rollup=ROLLUP_ROWS, exit_s=EXIT_S):
         if marks and marks[-1]["text"] == text:
             continue
         marks.append({"text": text, "alpha": alpha,
-                      "exiting": displaced_at is not None})
+                      "exiting": displaced_at is not None,
+                      # O DESLOCAMENTO: quando a linha que a empurrou comecou.
+                      # O renderizador usa `t - displaced_at` para saber quanto
+                      # do roll-up ja' aconteceu; sem este numero ele so' sabe
+                      # QUE a linha sai, nao QUANTO subiu.
+                      "displaced_at": displaced_at})
     return marks
+
+
+#: A ALTURA DE UMA LINHA, em fracao da altura de linha do tema -- o deslocamento
+#: do roll-up e' sempre UM espaco de linha (`rcRows` linhas + a que sai).
+ROLL_ROWS = 1.0
+
+
+#: A DURACAO DO ROLL-UP no player (0,433 s, medido no CSS da build viva). A
+#: janela do *exit* (`EXIT_S` = 0,45 s) e' outra coisa: ela decide quando a
+#: linha que saiu deixa de ser desenhada, e tem de ser >= `ROLL_S`.
+ROLL_S = 0.433
+
+
+def roll_progress(elapsed, duration=ROLL_S):
+    """Quanto do deslocamento vertical ja' aconteceu: 0.0 -> 1.0.
+
+    `elapsed` e' `t - displaced_at` (ver `frame`).
+
+    A DURACAO E A CURVA SAO AS DO PLAYER -- `0,433 s` e
+    `cubic-bezier(0, 0, .2, 1)`, estao no CSS da build viva do YouTube para a
+    classe que sobe a janela de legenda, e a transicao e' so' de `transform`:
+    a linha velha NAO desvanece, sai pela geometria (`_main/research/
+    youtube-caption-entrance-priors.md`, medido 2026-11-08). O numero antigo
+    aqui era o *exit* de 0,45 s com ease-out quadratico -- a melhor leitura
+    que uma captura de opacidade a 0,65 s por quadro permitia.
+    """
+    if elapsed is None:
+        return 1.0
+    try:
+        t = float(elapsed)
+    except (TypeError, ValueError):
+        return 1.0
+    if t <= 0.0:
+        return 0.0
+    if t >= float(duration):
+        return 1.0
+    return max(0.0, min(1.0, _bezier_y(t / float(duration))))
+
+
+#: A CURVA DO PLAYER, em quatro numeros, e a resolucao em x: o CSS pede `y(x)`
+#: e o que se tem e' `x(u)`, `y(u)`. Bisseccao, 40 iteracoes -- a curva e'
+#: monotonica em x e nao tem forma fechada barata.
+_ROLL_BEZIER = (0.0, 0.0, 0.2, 1.0)
+
+
+def _bezier_y(x):
+    x1, y1, x2, y2 = _ROLL_BEZIER
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    lo, hi = 0.0, 1.0
+    for _ in range(40):
+        u = (lo + hi) / 2.0
+        bx = 3.0 * (1 - u) * (1 - u) * u * x1 + 3.0 * (1 - u) * u * u * x2 + u * u * u
+        if bx < x:
+            lo = u
+        else:
+            hi = u
+    u = (lo + hi) / 2.0
+    return (3.0 * (1 - u) * (1 - u) * u * y1 + 3.0 * (1 - u) * u * u * y2
+            + u * u * u)
 
 
 def _window(rows, t, capacity=CAPACITY, rollup=ROLLUP_ROWS, exit_s=EXIT_S):

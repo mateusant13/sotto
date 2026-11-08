@@ -263,12 +263,38 @@ class _PlayerCue:
 
     def frame(self, now=None):
         """As linhas desenhadas agora -- prefixo revelado pelo relogio de cada
-        palavra, a MESMA regra do caminho do YouTube (`youtube_reveal.frame`)."""
+        palavra, a MESMA regra do caminho do YouTube (`youtube_reveal.frame`).
+
+        COM O ROLL-UP (2026-11-08, ordem do dono: *"quero a animacao de quando
+        comeca uma linha nova e a outra linha vai pra cima"*). Antes daqui o
+        `rollup` era 0 e a terceira linha nunca era desenhada: a linha velha
+        DESAPARECIA de um quadro para o outro e a nova entrava por baixo sem
+        ninguem se mexer. Agora saem as `capacity` linhas da janela MAIS a que
+        esta' a rolar para fora, e quem as empurra e' `roll()`.
+        """
         import youtube_reveal
-        # `rollup=0` e `exit_s=0`: a linha que sai nao entra -- o ecra tem no
-        # maximo `PLAYER_ROWS` linhas (ordem do dono).
         return youtube_reveal.frame(self.rows, self.clock(now),
-                                    self.capacity, 0, 0.0)
+                                    self.capacity, youtube_reveal.ROLLUP_ROWS,
+                                    youtube_reveal.EXIT_S)
+
+    def roll(self, now=None):
+        """Quanto do deslocamento vertical ja' aconteceu: 0.0 (parado) -> 1.0.
+
+        O deslocamento e' o que o dono ve': a linha nova comeca e TODAS as linhas
+        sobem um espaco de linha, com a mais velha a sair por cima. A duracao e'
+        a do *exit* medido no player (`youtube_reveal.EXIT_S`) e o instante de
+        partida e' o `displaced_at` que o `frame` devolve -- o `start` da linha
+        que empurrou, no relogio do video, nao o instante em que o UIA respondeu.
+        """
+        import youtube_reveal
+        marks = self.frame(now)
+        if len(marks) <= self.capacity:
+            return 0.0
+        displaced_at = marks[0].get("displaced_at")
+        if displaced_at is None:
+            return 0.0
+        return youtube_reveal.roll_progress(self.clock(now) - float(displaced_at),
+                                           youtube_reveal.EXIT_S)
 
     def next_clock(self, now=None):
         """O proximo instante (monotonic) em que algo muda -- ou `None`.
@@ -350,6 +376,12 @@ class NativeCaptionOverlay:
         # linha que sai desvanece por dentro do bitmap, porque o
         # `SourceConstantAlpha` do `UpdateLayeredWindow` e' um numero por JANELA.
         self._row_alphas = None
+        # `_roll` e' quanto do deslocamento vertical do ULTIMO frame ja'
+        # aconteceu (0.0 -> 1.0, ver `_PlayerCue.roll`). E' o numero que faz a
+        # linha velha SAIR PARA CIMA em vez de desaparecer: as linhas sao
+        # desenhadas com `-roll * line_h` de deslocamento, e a mais velha e'
+        # cortada pelo topo da caixa.
+        self._roll = 0.0
         # `_tick_gen` retira um tick ja' armado quando a linha que o armou ja' nao
         # existe -- a mesma tecnica do sprout, e pela mesma razao: um `Timer` pode
         # ja' estar dentro de `_update` quando o texto muda.
@@ -531,6 +563,13 @@ class NativeCaptionOverlay:
             if any(mark["exiting"] for mark in self._live.frame(now)):
                 delay = (word_fade.FRAME_S if delay is None
                          else min(delay, word_fade.FRAME_S))
+        # O ROLL-UP PRECISA DE FRAMES (2026-11-08). Enquanto o deslocamento
+        # vertical nao chegou a 1.0 ha' pixel novo em cada quadro -- e' a unica
+        # razao pela qual a linha velha sobe em vez de desaparecer. Sem esta
+        # linha o video ficava parado no primeiro quadro da transicao.
+        if 0.0 < self._roll < 1.0:
+            delay = (word_fade.FRAME_S if delay is None
+                     else min(delay, word_fade.FRAME_S))
         # O CUE DO PLAYER: a proxima PALAVRA dele, no relogio dele. Sem isto o
         # cue esperava pela leitura seguinte do UIA e a frase entrava de uma vez.
         if self._cue is not None:
@@ -584,9 +623,13 @@ class NativeCaptionOverlay:
             return True
         # ONE layout, computed once, handed to the bitmap. Two copies of "how many
         # lines" is how a caption gets measured at one height and drawn at another.
+        # `rows=PLAYER_ROWS`: durante o ROLL-UP sao desenhadas `PLAYER_ROWS + 1`
+        # linhas, mas a CAIXA tem de ficar no tamanho da janela -- e' o conteudo
+        # que sobe dentro dela.
         cur_lines, prev_line, width, height, _scrolled = _layout(
             text, previous, self.scale, self.work.get('width', 1920),
-            self.theme)
+            self.theme,
+            rows=PLAYER_ROWS if str(text or '').count('\n') >= PLAYER_ROWS else None)
         # OS ALFAS SAO DAS LINHAS QUE `_layout` VAI DESENHAR. Se a contagem nao
         # bater (a `_layout` pode juntar uma linha vazia), o alfa que sobra e'
         # ignorado e nenhuma linha recebe o alfa de outra -- a comparacao e' por
@@ -595,7 +638,8 @@ class NativeCaptionOverlay:
             alphas = list(alphas[:len(cur_lines)]) + [255] * max(
                 0, len(cur_lines) - len(alphas))
         bmp = _premultiplied_bitmap(cur_lines, prev_line, width, height,
-                                    self.scale, self.theme, alphas)
+                                    self.scale, self.theme, alphas,
+                                    roll=self._roll)
         try:
             from System.Drawing.Imaging import ImageLockMode, PixelFormat
             from System.Drawing import Rectangle
@@ -830,35 +874,51 @@ class NativeCaptionOverlay:
             if not texts:
                 return "", None
             return youtube_reveal.rows_text(texts), self._row_alphas
-        if self._live is None:
+        if self._cue is None and self._live is None:
             self._row_alphas = None
+            self._roll = 0.0
             return self._display_text(), None
         import youtube_reveal
-        marks = self._live.frame(time.monotonic())
-        if not self.FADE_ON:
-            # SEM FADE: a linha que sai NAO desvanece -- ela desaparece quando o
-            # motor a tira da janela (o roll-up de duas linhas do YouTube nao tem
-            # dissolve, e o dono ja' mandou tirar a animacao duas vezes).
-            marks = [m for m in marks if not m.get("exiting")]
-            self._row_alphas = [255] * len(marks)
-        else:
-            self._row_alphas = [mark["alpha"] for mark in marks]
+        now = time.monotonic()
+        marks = self._live.frame(now)
+        # O ROLL-UP NO CAMINHO DO ASR TAMBEM (2026-11-08). A ordem do dono nao
+        # distingue a fonte: quando comeca uma linha nova, a velha SOBE. Antes
+        # daqui a linha a sair era DESCARTADA (`m["exiting"]` filtrado) e o
+        # `_roll` ficava em 0: a linha nova aparecia por baixo e a velha
+        # desaparecia de um quadro para o outro.
+        self._roll = 0.0
+        # `frame` ja' marca a linha que saiu com `displaced_at`, e so' ela: a
+        # mais antiga das desenhadas. Se ela nao estiver a sair, o numero e'
+        # None e nao ha deslocamento nenhum.
+        displaced_at = marks[0].get("displaced_at") if marks else None
+        if displaced_at is not None:
+            self._roll = youtube_reveal.roll_progress(
+                now - float(displaced_at), youtube_reveal.EXIT_S)
+        # SEM FADE: a linha que sai NAO desvanece -- ela sobe e e' cortada pelo
+        # topo da caixa (medido no player: `opacity` fica em 1 e ela sai da
+        # caixa). O alfa por linha continua 255; quem a tira do ecra e' o
+        # deslocamento, nao um dissolve.
+        self._row_alphas = [255] * len(marks)
         if not marks:
             return "", None
         return (youtube_reveal.rows_text([mark["text"] for mark in marks]),
                 self._row_alphas)
 
     def _cue_texts(self):
-        """As linhas do cue AGORA, ja' presas a `PLAYER_ROWS` linhas fisicas.
+        """As linhas do cue AGORA, ja' presas a `PLAYER_ROWS` linhas do ecra.
 
-        `frame` ja' corta em `capacity` LINHAS do payload; uma linha que traga a
-        sua propria quebra vale por duas no ecra, e e' `_clamp_rows` que fecha
-        isso.
+        `frame` ja' corta em `capacity` LINHAS do payload; uma linha que traga
+        a sua propria quebra vale por duas no ecra, e e' `_clamp_rows` que fecha
+        isso. O TECTO AQUI E' `PLAYER_ROWS + 1` e nao `PLAYER_ROWS`: a linha a
+        mais e' a que esta' a ROLAR PARA FORA, e corta-la aqui apagaria a metade
+        visivel do roll-up -- o dono veria a linha nova empurrar o vazio.
         """
         cue = self._cue
         now = time.monotonic()
         marks = cue.frame(now)
-        texts = _clamp_rows([mark.get("text") for mark in marks])
+        self._roll = cue.roll(now)
+        texts = _clamp_rows([mark.get("text") for mark in marks],
+                            PLAYER_ROWS + 1)
         if texts and cue.first_paint_t is None:
             # A PRIMEIRA PINTURA deste cue, no relogio do player.
             cue.first_paint_t = cue.clock(now)

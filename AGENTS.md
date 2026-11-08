@@ -242,6 +242,17 @@ só separar audio pra transcrever cada falante?"*
   inspeccao de codigo, edicao de docs e diff estatico, que e onde este repo se resolve. Os
   governadores locais (Watcher, bateria) sao sinal **extra** e **nunca** autorizam trabalho pesado
   concorrente por fora do gate central. `unknown` tambem nao e `green`, e um skip nao e aprovacao.
+- **O CUSTO EM DISCO TAMBEM SE MEDE, EM QUALQUER VOLUME (ordem do dono via herdr, 2026-11-08).**
+  Worktree, clone e store de build vivem FORA do repo, por isso "quanto este projeto ocupa" nao se
+  responde com um `du` do diretorio: **`python I:\!watcher\tools\artifact-census.py --project H:/sotto
+  [--budget-gib N] [--gate]`**. Atribuicao por EVIDENCIA (`git worktree list --porcelain` + todo `.git`
+  ARQUIVO de qualquer volume cujo `gitdir:` aponte para o projeto + crates num store sem `.git`); nome
+  parecido sai como **UNPROVEN** e nao entra no total; walk cortado diz `truncated` e `--gate` recusa
+  veredito (exit 3). Rodar ANTES e DEPOIS de trabalho pesado e citar os dois numeros com o volume.
+  Medido 2026-11-08, 04:1x: **7,60 GiB em 4 checkouts** (`H:/sotto` 7,41 GiB com 32 MiB de
+  `node_modules`, `H:/sotto-wt/ArbV8` 78 MiB, `H:/sotto-wt/UltraRefine` 74 MiB, `H:/sotto-wt-WakeBoth`
+  43 MiB orfao), e **138,68 GiB UNPROVEN** (nome igual, nao somado) -- esses NAO sao deste projeto e
+  nenhum agente os apaga sem prova de dirty state.
 - **Nunca deixar janela de consola visível.** Lançar python com `pythonw.exe` ou
   `creationflags 0x08000000|0x00000008`. Um censo de janelas corre a cada 60 s e loga `ALERTA-JANELA` com
   o pid. O painel também tem de ficar fora do ecrã sem Alt+C/`--show`.
@@ -446,8 +457,18 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 00:3x):** `_main\_audit-verify-all.cmd` = **277300 B**,
-  **3371 CRLF** / 0 bare LF, sha256 `592FCE4BFE391753C07F3D03F52D31C8428CF2FD993DB6A9F5E66DD247FA1EB1`.
+- **PIN do ficheiro (medido 2026-11-08, 02:1x):** `_main\_audit-verify-all.cmd` = **278696 B**,
+  **3385 CRLF** / 0 bare LF, sha256 `4A7952266F7785C863E4CAD4755EF0435A256ED3FF34D7F7736F98083C76EF0B`.
+  (Mil trezentos e noventa e seis bytes e catorze linhas a mais do que o pin de 277300 B: o par
+  `caption-rollup` + `red-as-expected-caption-rollup`, o ROLL-UP da legenda que o dono pediu hoje --
+  *"quero a animacao de quando comeca uma linha nova e a outra linha vai pra cima"*. O motor
+  (`app\webview\youtube_reveal.py`) ja' tinha a janela do player, mas o overlay NATIVO chamava
+  `frame(..., capacity, 0, 0.0)`: a linha velha desaparecia num quadro. Agora `_PlayerCue.frame`
+  desenha a linha a rolar, `_PlayerCue.roll()` devolve 0..1 e o bitmap desenha as linhas com
+  `-roll * line_h` (a placa de fundo nao se move), com a caixa fixa em `PLAYER_ROWS` linhas. O
+  passo mede PIXEL, nao texto: quatro bracos comparam o bitmap real contra as duas referencias
+  paradas, e o `--neg-arm` desliga `roll_progress` e exige a arm do meio vermelha -- medido
+  `VERDICT: PASS (4/4)` e `NEG-ARM: PASS` com rc=1.)
   (Dois pares novos, 1264 B e 15 linhas a mais do que o pin de 276036 B:
   `census-instrument` + `red-as-expected-census-instrument` -- o censo da shell calava abaixo de
   20 % do TOTAL e deixou de nomear a thread exactamente na faixa em que a cura a põe (10-16 %);

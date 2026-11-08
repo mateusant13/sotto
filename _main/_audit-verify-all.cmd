@@ -265,6 +265,20 @@ call :step caption-lag-budget 0 "_main\caption-lag-budget-oracle.py;app\webview\
 call :record caption-lag-budget !STEP_RC!
 call :step red-as-expected-caption-lag-budget 1 "_main\caption-lag-budget-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\caption-lag-budget-neg.log" python _main\caption-lag-budget-oracle.py --neg-arm
 call :expectred red-as-expected-caption-lag-budget !STEP_RC! "%OUT%\caption-lag-budget-neg.log" "NEG-ARM: PASS"
+REM `caption-rollup` (2026-11-08, ordem do dono: *"quero a animacao de quando
+REM comeca uma linha nova e a outra linha vai pra cima"*). O motor de desenho
+REM ja' tinha a janela do player (`youtube_reveal._drawn`, `capacity + rollup`),
+REM mas o overlay NATIVO chamava `frame(..., capacity, 0, 0.0)`: a linha velha
+REM DESAPARECIA num quadro e a nova entrava por baixo sem ninguem se mexer. Agora
+REM `_PlayerCue.frame` desenha a linha a rolar, `roll()` devolve 0..1 do
+REM deslocamento e o bitmap desenha as linhas com `-roll * line_h` (a placa de
+REM fundo fica), com a caixa em `PLAYER_ROWS` linhas. Este passo mede PIXEL: os
+REM quatro bracos comparam o bitmap real contra as referencias paradas, e o
+REM `--neg-arm` desliga `roll_progress` e exige a arm do meio vermelha.
+call :step caption-rollup 0 "_main\caption-rollup-oracle.py;app\webview\caption_overlay.py;app\webview\overlay_paint.py;app\webview\youtube_reveal.py" "%OUT%\caption-rollup.log" python _main\caption-rollup-oracle.py
+call :record caption-rollup !STEP_RC!
+call :step red-as-expected-caption-rollup 1 "_main\caption-rollup-oracle.py;app\webview\caption_overlay.py;app\webview\overlay_paint.py;app\webview\youtube_reveal.py" "%OUT%\caption-rollup-neg.log" python _main\caption-rollup-oracle.py --neg-arm
+call :expectred red-as-expected-caption-rollup !STEP_RC! "%OUT%\caption-rollup-neg.log" "NEG-ARM: PASS"
 REM `lag-note-cost` (2026-11-04, do commit de perf 1c92e39): `_caption_lag_note`
 REM custava 27,1 us por legenda -- 83 % do caminho de aplicar uma legenda -- porque
 REM `len(ages) % 25 == 0` e' SEMPRE verdadeiro com a janela cheia (200 % 25 == 0) e a
