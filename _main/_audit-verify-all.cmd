@@ -88,10 +88,42 @@ REM  resumes at the wrong line. Converted to CRLF the same file ran the step lis
 REM  ONCE (`steps : 29`). If you rewrite this file with a tool that writes `\n`,
 REM  convert it back (`-replace "\n", "\r\n"`) or the aggregation will lie.
 REM ===========================================================================
+REM ===========================================================================
+REM  THE CPU CAGE, AT LAUNCH -- never after the DM (medido 2026-11-08).
+REM  O watcher acusou `pythonw.exe(55104)` (shell largada por um passo, orfa, PAI
+REM  MORTO, 108 % de UM nucleo, `SottoNativeCaption` pintado as 17:47 e as 18:11)
+REM  como o maior culpado de um stutter do dono, com a bateria a correr. Prioridade
+REM  abaixo-do-normal NAO e' tecto: ela desempata, nao limita. O tecto e' o JOB
+REM  OBJECT do watcher, posto na LARGADA:
+REM
+REM      python -m watcher run --cpu 40 -- cmd /c ""%~f0" --caged"
+REM
+REM  MEDIDO: o padrao devolve o rc do filho (`exit /b 7` -> 7) e os filhos herdam
+REM  o tecto. `SOTTO_BATTERY_NOCAGE=1` devolve o modo sem tecto, e o sumario diz
+REM  qual dos dois correu.
+REM
+REM  ESTE BLOCO VIVE ANTES DO `setlocal EnableDelayedExpansion` DE PROPOSITO: com
+REM  expansao atrasada ligada, o `!` de `I:\!watcher` e' lido como referencia de
+REM  variavel, o caminho vira `I:\watcher`, o `if exist` falha e a corrida segue
+REM  SEM tecto em silencio -- medido 2026-11-08 19:2x: o primeiro run imprimiu PLAN
+REM  e nenhuma linha de cage. Um tecto que se desliga sem dizer nada e' o mesmo
+REM  defeito que este repo chama 'um passo saltado nao e' um portao que passou'.
+if not defined SOTTO_BATTERY_CAGED if not defined SOTTO_BATTERY_NOCAGE if not exist "I:\!watcher\watcher\__init__.py" echo CAGE declined -- I:\!watcher\watcher nao existe, esta corrida corre SEM tecto de CPU
+if not defined SOTTO_BATTERY_CAGED if not defined SOTTO_BATTERY_NOCAGE if exist "I:\!watcher\watcher\__init__.py" (
+  set "SOTTO_BATTERY_CAGED=1"
+  set "PYTHONPATH=I:\!watcher;%PYTHONPATH%"
+  python -m watcher run --cpu 40 -- cmd /c ""%~f0" --caged"
+  exit /b %ERRORLEVEL%
+)
 setlocal EnableDelayedExpansion
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
 set "OUT=%ROOT%\_main\_audit-verify"
+REM A POLITICA DE LARGADA, numa variavel so (medido 2026-11-08): o tempo de um passo
+REM so e comparavel com outro medido sob a MESMA politica, e o `battery-budget` recusa
+REM julgar o que veio de outra -- sem isso o ratchet comparava uma corrida caged com um
+REM baseline sem tecto e chamava de regressao o preco do tecto.
+if defined SOTTO_BATTERY_CAGED (set "CAGE_POLICY=cap40") else (set "CAGE_POLICY=none")
 if not exist "%OUT%" mkdir "%OUT%"
 set "CACHE_STATE=%ROOT%\_cache\battery-steps.json"
 REM THE PER-STEP CEILING (measured 2026-11-05). `panel-hidden-at-startup-oracle`
@@ -312,6 +344,16 @@ if exist _main\shell-thread-budget-oracle.py (
   call :step red-as-expected-shell-thread-budget 1 "_main\shell-thread-budget-oracle.py;_main\shell-thread-cpu.py" "%OUT%\shell-thread-budget-neg.log" python _main\shell-thread-budget-oracle.py --neg-arm
   call :expectred red-as-expected-shell-thread-budget !STEP_RC! "%OUT%\shell-thread-budget-neg.log" "NEG-ARM PASS"
 ) else ( call :record shell-thread-budget MISSING )
+REM `ort-spin-idle` (2026-11-08, quatro DMs de stutter do watcher): a atribuicao por FIO
+REM pago 57,4% de um nucleo no WORKER, e tres deles eram `session-NN-intra-op-0` -- o
+REM spin-wait do onnxruntime. Medido isolado, com as tres sessoes vivas e ninguem a
+REM chamar: 16,1% de um nucleo com spin, 0,0% sem; o passivo custa 33,5 us por chamada
+REM (40,0 -> 73,4 us), ~10 ms num chunk de 560 ms. O oraculo executa o `session_options`
+REM do proprio worker e as sessoes REAIS (2,7 MB de grafos, nenhum dispositivo aberto).
+call :step ort-spin-idle 0 "_main\ort-spin-idle.py;worker\sotto_worker.py" "%OUT%\ort-spin-idle.log" python _main\ort-spin-idle.py
+call :record ort-spin-idle !STEP_RC!
+call :step red-as-expected-ort-spin-idle 1 "_main\ort-spin-idle.py;worker\sotto_worker.py" "%OUT%\ort-spin-idle-neg.log" python _main\ort-spin-idle.py --neg-arm
+call :expectred red-as-expected-ort-spin-idle !STEP_RC! "%OUT%\ort-spin-idle-neg.log" "NEG-ARM: PASS"
 REM `caption-tick-thread` (2026-11-08, DM do watcher): ele mediu 90,879 criacoes/s na
 REM arvore da shell durante um stutter de 192 s. A unica criacao por frame da app era o
 REM `threading.Timer` do `caption_overlay._arm_tick` -- um FIO por quadro, ~62/s com a
@@ -1384,6 +1426,16 @@ call :step batch-queue-drain 0 "_main\batch-queue-drain-oracle.py;app\webview\ba
 call :record batch-queue-drain !STEP_RC!
 call :step red-as-expected-batch-queue-drain 1 "_main\batch-queue-drain-oracle.py;app\webview\batch_queue.py" "%OUT%\batch-queue-drain-neg.log" python _main\batch-queue-drain-oracle.py --neg-arm
 call :expectred red-as-expected-batch-queue-drain !STEP_RC! "%OUT%\batch-queue-drain-neg.log" "NEG-ARM: PASS"
+REM `batch-executor-ceiling` (2026-11-08, DM de stutter do watcher): o passe de LOTE
+REM gastava um valor fixo de um nucleo (medido: 36,0% no fio `sotto-batch-executor`,
+REM tid 10848, pid 55104) e tinha so' um portao de CARGA, cuja accao esta' desarmada por
+REM omissao. Agora o laco deriva a espera do custo MEDIDO (periodo = custo/ORCAMENTO) e
+REM o filho nasce com tecto de fios. Medido no oraculo: 0,115 de servico contra 0,120 de
+REM orcamento, e 0,76-0,95 no mutante -- o verde nao e' vazio.
+call :step batch-executor-ceiling 0 "_main\batch-executor-ceiling-oracle.py;app\webview\batch_queue.py" "%OUT%\batch-executor-ceiling.log" python _main\batch-executor-ceiling-oracle.py
+call :record batch-executor-ceiling !STEP_RC!
+call :step red-as-expected-batch-executor-ceiling 1 "_main\batch-executor-ceiling-oracle.py;app\webview\batch_queue.py" "%OUT%\batch-executor-ceiling-neg.log" python _main\batch-executor-ceiling-oracle.py --neg-arm
+call :expectred red-as-expected-batch-executor-ceiling !STEP_RC! "%OUT%\batch-executor-ceiling-neg.log" "NEG-ARM: PASS"
 
 call :step hotkey-live-toggle 0 "_main\hotkey-live-toggle-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\hotkey-live-toggle.log" python _main\hotkey-live-toggle-oracle.py
 call :record hotkey-live-toggle !STEP_RC!
@@ -2353,6 +2405,22 @@ if exist _main\console-window-watch.py (
   call :expectred red-as-expected-console-window-watch !STEP_RC! "%OUT%\console-window-watch-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-console-window-watch MISSING "%OUT%\console-window-watch-neg.log" "NEG-ARM PASS" )
 
+REM (`shell-orphans`: a shell largada por um passo e NAO recolhida -- 2026-11-08.
+REM O watcher acusou `pythonw.exe(55104)`, cmdline desta arvore, PAI MORTO, 108 % de
+REM um nucleo e `SottoNativeCaption` pintado as 17:47 e as 18:11, como o maior
+REM culpado de um stutter do dono -- e era o resto de um passo. O passo NOMEIA,
+REM nao mata: a app do dono tambem nasce sem pai (`run.cmd` faz `start` detached),
+REM por isso o portao julga so' o orfao NASCIDO NESTA JANELA (240 min) e imprime a
+REM idade de cada um. Um matador automatico que erra o alvo mata a transcricao dele.)
+if exist _main\shell-orphans.py (
+  call :step always shell-orphans 0 "_main\shell-orphans.py" "%OUT%\shell-orphans.log" python _main\shell-orphans.py --gate
+  call :record shell-orphans !STEP_RC!
+) else ( call :record shell-orphans MISSING )
+if exist _main\shell-orphans.py (
+  call :step always red-as-expected-shell-orphans 1 "_main\shell-orphans.py" "%OUT%\shell-orphans-neg.log" python _main\shell-orphans.py --neg-arm
+  call :expectred red-as-expected-shell-orphans !STEP_RC! "%OUT%\shell-orphans-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-shell-orphans MISSING "%OUT%\shell-orphans-neg.log" "NEG-ARM PASS" )
+
 REM (`capture-exclude`: a janela da legenda desaparece de QUEM GRAVA o ecra,
 REM ordem do dono de 2026-11-04 -- as features do `perssua-re` que faltavam.
 REM O oraculo cria um HWND REAL e LE DE VOLTA a afinidade: pedir 0x11 e ficar
@@ -3156,7 +3224,7 @@ REM mais lento (prazo + total) e M2 = +30 % num passo cujo resultado CONTINUA ab
 REM e cujo acrescimo cabe no tecto do total -- logo so' o ratchet por passo o pode ver. Sem a
 REM M2, apagar o ratchet por passo continuava a dar `NEG-ARM: PASS` por causa da M1.
 if exist _main\battery-budget-oracle.py (
-  call :step battery-budget 0 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json;_cache\battery-steps.json" "%OUT%\battery-budget.log" python _main\battery-budget-oracle.py
+  call :step battery-budget 0 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json;_cache\battery-steps.json" "%OUT%\battery-budget.log" python _main\battery-budget-oracle.py --policy "!CAGE_POLICY!"
   call :record battery-budget !STEP_RC!
 ) else ( call :record battery-budget MISSING )
 if exist _main\battery-budget-oracle.py (
@@ -3177,6 +3245,8 @@ if "!HEAVYLIST!"=="" ( set "HEAVYTEXT=-none-" ) else ( set "HEAVYTEXT=!HEAVYLIST
 echo heavy    : !HEAVYTEXT!
 echo             (the HEAVY class opens the owner's screen, his audio device or his GPU -- these did NOT run; set SOTTO_BATTERY_HEAVY=1 to run them)
 echo priority : !BATTERY_PRIORITY_LINE!
+if defined SOTTO_BATTERY_CAGED echo caged    : ON -- the run holds a 40% CPU hard cap (Job Object, `python -m watcher run --cpu 40`); SOTTO_BATTERY_NOCAGE=1 removes it
+if not defined SOTTO_BATTERY_CAGED echo caged    : OFF -- NO CPU cap on this run: the watcher may name it as the stutter culprit
 if defined SOTTO_BATTERY_FAST echo fastmode : ON -- a step slower than the threshold was SKIPPED, not run, and is listed under skipped=
 if "%BATTERY_PLAN%"=="1" echo plan     : ON -- every cache answer came from one process (`_main\_battery-plan.py`), not one per step; SOTTO_BATTERY_PLAN=0 returns the per-step path
 if "%SOTTO_BATTERY_HEAVY%"=="1" echo heavymode: ON -- the heavy steps RAN: they opened the owner's screen, his audio device or his GPU
@@ -3373,7 +3443,7 @@ echo.>"%CACHE_STATE%.t0"
 set "SOTTO_STEP_NAME=!S_NAME!"
 pythonw _main\step-deadline.py --seconds %SOTTO_STEP_DEADLINE_S% -- !S_CMD! > "!S_LOG!" 2>&1
 set "STEP_RC=!ERRORLEVEL!"
-pythonw _main\_stepcache.py record --step "!S_NAME!" --expect-rc !S_EXPECT! --deps "!S_DEPS!" --rc !STEP_RC! --log "!S_LOG!" --state "%CACHE_STATE%" --t0 "%CACHE_STATE%.t0" >nul 2>&1
+pythonw _main\_stepcache.py record --step "!S_NAME!" --expect-rc !S_EXPECT! --deps "!S_DEPS!" --rc !STEP_RC! --log "!S_LOG!" --state "%CACHE_STATE%" --t0 "%CACHE_STATE%.t0" --policy "!CAGE_POLICY!" >nul 2>&1
 exit /b 0
 :step_fastskip
 REM THE FAST MODE (owner, 2026-10-21: *"a bateria deve ser rapida"*). This step

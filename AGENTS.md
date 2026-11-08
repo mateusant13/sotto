@@ -293,6 +293,22 @@ só separar audio pra transcrever cada falante?"*
   inspeccao de codigo, edicao de docs e diff estatico, que e onde este repo se resolve. Os
   governadores locais (Watcher, bateria) sao sinal **extra** e **nunca** autorizam trabalho pesado
   concorrente por fora do gate central. `unknown` tambem nao e `green`, e um skip nao e aprovacao.
+- **A BATERIA CORRE DENTRO DE UM TECTO DE CPU, POSTO NA LARGADA (medido 2026-11-08).** O watcher
+  acusou `pythonw.exe(55104)` -- cmdline desta arvore, **pai morto**, **108 % de UM nucleo**,
+  `SottoNativeCaption` pintado as 17:47 e as 18:11 -- como o maior culpado de um stutter do dono, e
+  era o **resto de um passo**. Prioridade `BelowNormal` (o que a bateria ja' fazia desde 2026-10-21)
+  **desempata, nao limita**; o tecto e' o **Job Object** do watcher. `_main\_audit-verify-all.cmd`
+  re-executa a si propria dentro de `python -m watcher run --cpu 40` antes do primeiro passo,
+  `SOTTO_BATTERY_NOCAGE=1` devolve o modo sem tecto, e o sumario imprime `caged: ON|OFF` -- nenhuma
+  corrida afirma "verde" sem dizer sob que tecto correu. Medido: o rc do filho atravessa o wrapper
+  (`exit /b 7` -> 7) e os filhos herdam o tecto. O par `shell-orphans` +
+  `red-as-expected-shell-orphans` (`_main\shell-orphans.py`) NOMEIA a shell orfa nascida na janela
+  (240 min) e **nunca a mata**: a app do dono tambem nasce sem pai. Recibo:
+  `_main/receipt-20261108-battery-cage-and-orphans.md`.
+  **Armadilha medida no proprio bloco:** com `EnableDelayedExpansion` ligado, o `!` de `I:\!watcher`
+  vira referencia de variavel, o caminho lido e' `I:\watcher`, o `if exist` falha e a corrida segue
+  SEM tecto em silencio -- por isso o bloco vive **antes** do `setlocal`, e uma recusa imprime
+  `CAGE declined`.
 - **O CUSTO EM DISCO TAMBEM SE MEDE, EM QUALQUER VOLUME (ordem do dono via herdr, 2026-11-08).**
   Worktree, clone e store de build vivem FORA do repo, por isso "quanto este projeto ocupa" nao se
   responde com um `du` do diretorio: **`python I:\!watcher\tools\artifact-census.py --project H:/sotto
@@ -528,8 +544,23 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 15:0x):** `_main\_audit-verify-all.cmd` = **300473 B**,
-  **3592 CRLF** / 0 bare LF, sha256 `4B3CB63361935142DD493667149C7A1818AE06E4E27B07C1A6AB8C01A8A79509`.
+- **PIN do ficheiro (medido 2026-11-08, 23:5x):** `_main\_audit-verify-all.cmd` = **306299 B**,
+  **3662 CRLF** / 0 bare LF, sha256 `CD289CDB5EEB90539CDF5AF6B4C28F77F520229BC482C69641DB52FA59DE6758`.
+  (Dois mil e trinta e nove bytes e vinte linhas a mais do que o pin de 304260 B: DOIS pares novos,
+  os dois nascidos das cinco DMs de stutter de 2026-11-08 -- `ort-spin-idle` (o spin-wait do
+  onnxruntime: tres sessoes vivas e ociosas gastavam **16,1 % de um nucleo** com o `allow_spinning`
+  por omissao contra **0,0 %** sem ele, e o passivo custa 33,5 us por chamada, ~10 ms num chunk de
+  560 ms; o oraculo executa o `session_options` do PROPRIO worker e as sessoes reais, 2,7 MB de
+  grafos, sem abrir dispositivo) e `batch-executor-ceiling` (o passe de LOTE: `36,0 %` de um nucleo
+  no fio `sotto-batch-executor`, tid 10848, pid 55104; agora o laco deriva a espera do custo medido
+  -- periodo = custo/ORCAMENTO -- e o filho nasce com tecto de fios; medido 0,115 de servico contra
+  0,120 de orcamento, 0,76-0,95 no mutante). Os dois `--neg-arm` medidos aqui: `NEG-ARM: PASS`.
+  O `battery-wiring` conta `ligados=162 sem_passo=109 populacao=271`, PASS 7/7.)
+  (O pin anterior era 304260 B / 3642 CRLF: o par `shell-orphans` + o seu `--neg-arm`, e o
+  **TECTO DE CPU NA LARGADA** -- o cabecalho re-executa a corrida dentro de
+  `python -m watcher run --cpu 40`, com `SOTTO_BATTERY_NOCAGE=1` como saida e a linha `caged:`
+  no sumario. Nasceu da DM de stutter de 2026-11-08: `pythonw.exe(55104)`, shell largada por um
+  passo e nao recolhida, orfa, 108 % de um nucleo, acusada como o maior culpado.)
   (Mil oitocentos e cinquenta e sete bytes e quatro linhas a mais do que o pin de 298679 B: o par
   `panel-history-wheel` + o seu `--neg-arm`, a RODA do historico. Nasceu da ordem do dono de
   2026-11-08 -- *"eu nao consigo usar meu scroll pra scrollar as legendas no historico"* -- e da

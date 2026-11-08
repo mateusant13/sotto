@@ -62,15 +62,33 @@ def read_steps(path):
             'elapsed_s': float(rec.get('elapsed_s') or 0.0),
             'rc': rec.get('rc'),
             'timestamp': rec.get('timestamp') or '',
+            # A POLITICA DE LARGADA sob a qual o numero foi medido (medido
+            # 2026-11-08). Ausente = anterior ao campo, logo de uma corrida que
+            # NAO declarava tecto -- tratado como `None`, nunca como a de agora.
+            'policy': rec.get('policy'),
         })
     return rows
 
 
-def measure(rows, deadline_s):
+def measure(rows, deadline_s, policy=None):
+    """So' julga o que foi medido sob a MESMA politica de largada.
+
+    MEDIDO 2026-11-08: a primeira corrida sob o tecto de CPU comparou os seus tempos
+    com um baseline medido SEM tecto e chamou de regressao o preco do proprio tecto
+    (11 passos, 1,2x a 38x). Um tempo por passo de outra politica nao e' uma
+    regressao -- e' uma comparacao que nao existe. Os passos de outra politica saem
+    da populacao e o numero dos que sairam e' PUBLICADO: uma populacao que encolhe
+    em silencio e' o mesmo defeito de um passo saltado contado como verde.
+    """
+    skipped = [r for r in rows if (r.get('policy') or None) != (policy or None)]
+    rows = [r for r in rows if (r.get('policy') or None) == (policy or None)]
     total = sum(r['elapsed_s'] for r in rows)
     over = [r for r in rows if r['elapsed_s'] >= deadline_s]
     slow = sorted(rows, key=lambda r: -r['elapsed_s'])[:10]
     return {'total_s': round(total, 1), 'steps': len(rows),
+            'policy': policy or None,
+            'policy_skipped': len(skipped),
+            'policy_skipped_names': sorted(r['name'] for r in skipped)[:20],
             'over_deadline': sorted(r['name'] for r in over),
             'per_step': {r['name']: round(r['elapsed_s'], 1) for r in rows},
             'slowest': [(r['name'], round(r['elapsed_s'], 1)) for r in slow]}
@@ -88,6 +106,13 @@ def judge(measured, baseline, target=DEFAULT_TARGET_S, pct=RATCHET_PCT):
     ok = True
     if baseline is None:
         return False, ['baseline ausente: sem baseline nao ha ratchet'], 0.0
+    if (baseline.get('policy') or None) != (measured.get('policy') or None):
+        # Duas politicas: os numeros nao sao comparaveis. Dizer "PASS" seria pior
+        # que dizer "nao sei"; dizer "RED" seria culpar o tecto.
+        return False, ['politica de largada diferente do baseline (baseline=%r, corrida=%r) '
+                       '-- re-medir o baseline com `--baseline --policy %r --rebase-policy <razao>`'
+                       % (baseline.get('policy'), measured.get('policy'),
+                          measured.get('policy'))], 0.0
     ceiling = float(baseline['total_s']) * pct
     if measured['total_s'] > ceiling:
         ok = False
@@ -231,11 +256,17 @@ def neg_arm():
     (por custo) cujo `x1.30` ainda caiba no prazo e no tecto do total.
     """
     rows = read_steps(CACHE)
-    measured = measure(rows, deadline())
     base = load_baseline()
     if base is None:
         print('NEG-ARM IMPOSSIVEL -- baseline ausente')
         return 1
+    # A POPULACAO DO CONTROLO E' A DO BASELINE, nao a de omissao (medido
+    # 2026-11-08): depois de o baseline passar a ser medido sob a politica
+    # `cap40`, um controlo que medisse as linhas de OUTRA politica comparava
+    # politicas diferentes, o `judge` respondia "politica diferente" em vez de
+    # julgar o mutante e as duas mutacoes passavam a `FAIL (0/2)`. O controlo
+    # tem de julgar o MESMO que o portao julga.
+    measured = measure(rows, deadline(), (base.get('policy') or None))
     declared = set(base.get('over_deadline') or ())
     ceiling = float(base['total_s']) * RATCHET_PCT
     clean = [r for r in rows
@@ -262,7 +293,7 @@ def neg_arm():
         original = row['elapsed_s']
         named_before = any(row['name'] in w for w in base_why)
         row['elapsed_s'] = mut(original)
-        mutated = measure(rows, deadline())
+        mutated = measure(rows, deadline(), (base.get('policy') or None))
         ok_after, why_after, _ = judge(mutated, base)
         named_after = any(row['name'] in w for w in why_after)
         ok = named_after and not named_before and not ok_after
@@ -279,18 +310,40 @@ def neg_arm():
     return 1 if total_ok else 0
 
 
+def _policy_arg(argv):
+    for i, a in enumerate(argv):
+        if a == '--policy' and i + 1 < len(argv):
+            return None if argv[i + 1] in ('none', '') else argv[i + 1]
+    return None
+
+
 def main(argv):
     if '--neg-arm' in argv:
         return neg_arm()
     if '--baseline' in argv:
         rows = read_steps(CACHE)
-        measured = measure(rows, deadline())
+        measured = measure(rows, deadline(), _policy_arg(argv))
         old = load_baseline() or {}
         accept = ''
+        rebase = ''
         for i, a in enumerate(argv):
             if a == '--accept-growth' and i + 1 < len(argv):
                 accept = argv[i + 1]
+            if a == '--rebase-policy' and i + 1 < len(argv):
+                rebase = argv[i + 1]
         allowed = {n for n in accept.split(',') if n}
+        # UMA POLITICA NOVA NAO COMPARA COM A ANTIGA (medido 2026-11-08): comparar
+        # uma corrida sob tecto de CPU com um baseline medido sem tecto chamava de
+        # regressao o preco do tecto. Nesse caso o baseline e' RE-MEDIDO a partir
+        # desta corrida e a razao tem de ser DITA (`--rebase-policy "<razao>"`):
+        # um rebaseline mudo seria o ratchet a apagar a propria regua.
+        old_policy = old.get('policy') or None
+        policy = measured.get('policy') or None
+        if old_policy != policy and not rebase:
+            print('baseline RECUSADO -- a politica de largada mudou (%r -> %r) e um '
+                  'rebaseline precisa de razao: --rebase-policy "<por que>"'
+                  % (old_policy, policy))
+            return 1
         # O BASELINE SO' APERTA POR OMISSAO. Um rebaseline que gravasse em
         # silencio um passo que engordou seria o ratchet a assinar o proprio
         # aumento -- o passo tem de nomear o que aceita em `--accept-growth`.
@@ -299,15 +352,24 @@ def main(argv):
             before = (old.get('per_step') or {}).get(name)
             if before and secs > before * RATCHET_PCT and name not in allowed:
                 grew.append('%s %.1fs -> %.1fs' % (name, before, secs))
+        if old_policy != policy:
+            grew = []      # a regua antiga nao julga a politica nova; a razao foi dita
         if grew:
             print('baseline RECUSADO -- passo(s) engordaram e nao foram aceites: %s'
                   % ' | '.join(grew))
             print('  (nomeie cada um em `--accept-growth a,b,c` se o aumento for o'
                   ' resultado esperado de uma mudanca deliberada)')
             return 1
+        notes = dict(old.get('notes') or {})
+        if old_policy != policy and rebase:
+            notes['rebase'] = ('politica %r -> %r em %s: %s'
+                              % (old_policy, policy,
+                                 __import__('datetime').date.today().isoformat(), rebase))
         out = {'total_s': measured['total_s'], 'steps': measured['steps'],
                'over_deadline': measured['over_deadline'],
                'per_step': measured['per_step'],
+               'policy': policy,
+               'notes': notes,
                'target_s': DEFAULT_TARGET_S,
                'measured': __import__('datetime').date.today().isoformat()}
         io.open(BASELINE, 'w', encoding='utf-8', newline='\n').write(
@@ -322,7 +384,18 @@ def main(argv):
         print('BATTERY-BUDGET CANNOT-MEASURE -- sem %s' % CACHE)
         return 2
     rows = read_steps(CACHE)
-    measured = measure(rows, deadline())
+    policy = _policy_arg(argv)
+    measured = measure(rows, deadline(), policy)
+    if not measured['steps']:
+        # Populacao VAZIA sob esta politica: a comparacao nao existe, e um PASS
+        # aqui seria o verde que nao mediu nada (a lei da casa para populacao zero).
+        print('BATTERY-BUDGET CANNOT-MEASURE -- nenhum passo medido sob a politica %r '
+              '(%d passo(s) registados sob outras)' % (policy, measured['policy_skipped']))
+        return 2
+    if measured['policy_skipped']:
+        print('BATTERY-BUDGET policy=%r: %d passo(s) de OUTRA politica ficam de fora: %s'
+              % (policy, measured['policy_skipped'],
+                 ','.join(measured['policy_skipped_names'])))
     base = load_baseline()
     ok, why, gap = judge(measured, base)
     if '--report' in argv:

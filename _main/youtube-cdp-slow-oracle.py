@@ -286,11 +286,20 @@ def arm_unattached_no_spin(mod):
         src = mod.CdpCaptionSource(port=1, poll_s=0.01, log=lambda _m: None)
         src._last_use = time.monotonic()
         src.start()
-        deadline = time.monotonic() + 6.0
+        # A AMOSTRA ESPERA O SEGUNDO ATTACH, e por que 6 s nao chegavam
+        # (medido 2026-11-08): com a bateria sob tecto de CPU o laco de attach
+        # fazia a primeira tentativa e dormia; a arm lia `_retry_s=2,0` no
+        # instante errado, chamava de "nao dobrou", e o MESMO valor impresso na
+        # linha ja' era 4,0 -- o `grew` e o texto liam momentos diferentes. O
+        # contrato julgado e' o DOBRAMENTO, nao o instante: a leitura espera ate'
+        # 12 s, exige as duas tentativas e compara com tolerancia de float.
+        deadline = time.monotonic() + 12.0
         while (time.monotonic() < deadline
                and int(getattr(src, "_attach_tries", 0)) < 2):
             time.sleep(0.02)
-        grew = float(getattr(src, "_retry_s", 0) or 0) >= 4.0
+        tries_now = int(getattr(src, "_attach_tries", 0))
+        retry_now = float(getattr(src, "_retry_s", 0) or 0)
+        grew = tries_now >= 2 and retry_now >= 4.0 - 1e-9
         calls["n"] = 0
         vid = src.target_video_id()
         gated = (vid == "" and calls["n"] == 0)

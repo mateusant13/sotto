@@ -227,7 +227,16 @@ def modes(rows):
     over = [a for a in audio if a > BUDGET_MS]
 
     total = len(queue) or 1
+    # A POPULACAO NAO PROVADA EM LINHAS -- a mesma unidade do `deadlineShare`
+    # (medido 2026-11-08: comparar a fatia de LINHAS do tecto com a fatia de
+    # FRAGMENTOS nao provados media dois denominadores diferentes, e um fragmento
+    # nao provado renderiza duas linhas).
+    judged = [r for r in rows if len(r) > 2 and isinstance(r[2], bool)]
+    unprovable = [r for r in judged if r[2] is False]
     return {
+        'unprovedLines': len(unprovable),
+        'unprovedLineShare': (round(100.0 * len(unprovable) / len(judged), 1)
+                              if judged else None),
         'lines': len(queue),
         'healthy': len(healthy),
         'healthyShare': round(100.0 * len(healthy) / total, 1),
@@ -388,11 +397,21 @@ def main():
                    mb['deadline'] >= 100 and DEADLINE_LO_MS <= (mb['deadlineP50'] or 0) <= DEADLINE_HI_MS,
                    'before deadline mode=%d lines (%s %%), their queue p50=%s ms'
                    % (mb['deadline'], mb['deadlineShare'], cell(mb['deadlineP50']))))
+    # A CONTA, NUMA UNIDADE SO' (medido 2026-11-08). A versao anterior comparava a
+    # fatia de **linhas** do tecto com a fatia de **fragmentos** nao provados: um
+    # fragmento nao provado rende DUAS linhas (provisional + final), logo a fatia de
+    # linhas excede a de fragmentos POR CONSTRUCAO. Medido no corpus do dono: 21,1 %
+    # de linhas contra 15,7 % de fragmentos -- o "excesso" era aritmetica da unidade,
+    # nao o defeito. O replay passou a carimbar cada linha com o veredicto do
+    # fragmento que a produziu (`stable`), e a arm compara linha com linha. Sem esse
+    # carimbo (replay velho), cai na unidade antiga e DIZ que caiu.
+    line_share = ma.get('unprovedLineShare')
+    basis = ('unproved LINES' if line_share is not None else 'unproved FRAGMENTS (no stamp)')
+    ceiling = unproved_share if line_share is None else line_share
     checks.append(('AFTER: the deadline mode stays within the unproved population',
-                   ma['deadlineShare']
-                   <= max(UNSHARED_MAX_SHARE, unproved_share + UNSHARED_BAND_PCT),
-                   'before=%s %% after=%s %% (unproved fragments=%s %%, band=+%s)'
-                   % (mb['deadlineShare'], ma['deadlineShare'], cell(unproved_share),
+                   ma['deadlineShare'] <= max(UNSHARED_MAX_SHARE, ceiling + UNSHARED_BAND_PCT),
+                   'before=%s %% after=%s %% (%s=%s %%, band=+%s)'
+                   % (mb['deadlineShare'], ma['deadlineShare'], basis, cell(ceiling),
                       cell(UNSHARED_BAND_PCT))))
     checks.append(('AFTER: the healthy mode grows', ma['healthy'] > mb['healthy'],
                    'before=%d after=%d lines' % (mb['healthy'], ma['healthy'])))

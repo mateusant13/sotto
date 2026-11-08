@@ -87,6 +87,43 @@ DONE_KEEP = 200
 CREATE_NO_WINDOW = 0x08000000
 BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
 
+#: QUANTO DE UM NUCLEO O LOTE PODE OCUPAR -- o ORCAMENTO, nao um gosto.
+#:
+#: MEDIDO no dono (2026-11-08 23:2x, `_main/shell-thread-cpu.py 55104 --seconds 6`):
+#: `pid 55104: 48 threads, 48.4% de UM nucleo`, com `36.0% tid 10848
+#: sotto-batch-executor` -- e o vigia da frota nomeou este processo como a maior
+#: pressao de stutter (15 episodios/60 min). O laco nunca foi um spin: ele arranca
+#: UM filho por bloco e espera-o; o que nao existia era um TECTO declarado, logo a
+#: unica coisa que o travava era o nivel de carga subir, e o bloco seguinte comecava
+#: no instante em que o anterior acabava.
+#:
+#: A LEI E' A MESMA DA PINTURA DA LEGENDA (`CAPTION_FRAME_BUDGET`,
+#: `caption_overlay.py:81`): o periodo deriva do custo medido, `idle =
+#: custo * (1 - orcamento) / orcamento`, e a taxa de servico converge para o
+#: orcamento em vez de ser escolhida. Um laco que dorme o tempo que trabalha gasta
+#: 100 % de um nucleo por construcao -- foi o defeito que aquele orcamento curou.
+#:
+#: 12 % e' o numero que o dono pediu: com o filho a 2 fios (o tecto abaixo) um
+#: bloco de 15 s de audio que decodifica em 3 s da' `3 * 0.88 / 0.12 = 22 s` de
+#: espera, ou seja o lote continua a andar (~4x tempo real de audio) e a maquina
+#: nunca perde mais de 12 % de um nucleo para ele ao longo da corrida.
+BATCH_CPU_BUDGET = 0.12
+
+#: O TECTO DE FIOS DO FILHO -- o cap que impede um bloco sozinho de estourar o
+#: orcamento. O orcamento e' uma MEDIA; um bloco com 8 fios sao 8 nucleos durante
+#: segundos, e o dono sente isso mesmo que a media anual seja de 12 %. Dois fios
+#: sao o que o driver ja' usava (`--threads 2`); agora o valor e' DECLARADO aqui e
+#: viaja na env do filho (`OMP_NUM_THREADS` e as irmas BLAS), e o driver le'-o em
+#: vez de repetir o numero. A escolha e' conservadora de proposito: o lote corre
+#: em segundo plano e o que interessa e' nao se ouvir.
+BATCH_CHILD_THREADS = 2
+
+#: As variaveis que os motores consultam para se limitarem: o runtime ONNX le'
+#: `OMP_NUM_THREADS`, o numpy/BLAS le' as outras. O filho recebe TODAS com o mesmo
+#: valor, senao o tecto vale para um motor e o outro abre os fios todos.
+THREAD_ENV_KEYS = ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS',
+                   'MKL_NUM_THREADS', 'NUMEXPR_NUM_THREADS')
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 WORKER_DIR = os.path.join(REPO, 'worker')
@@ -543,19 +580,56 @@ def _default_level():
         return 'muito-alta'
 
 
-def _spawn_below_normal(cmd):
+def child_env(base=None, threads=None):
+    """A env do filho: a do pai, com o TECTO DE FIOS escrito por cima.
+
+    O filho e' um `python` que carrega o Parakeet: sem este tecto, o motor ONNX,
+    o numpy e o torch abrem um fio por nucleo fisico, e um bloco sozinho usa a
+    maquina toda durante segundos. O tecto e' declarado UMA vez
+    (`BATCH_CHILD_THREADS`) e chega por dois caminhos coerentes: aqui na env (o
+    que o motor ONNX le' sozinho) e no `--threads` que o driver passa ao
+    `load_backend` (o que o torch `set_num_threads` le').
+    """
+    env = dict(os.environ if base is None else base)
+    value = str(int(threads if threads is not None else BATCH_CHILD_THREADS))
+    for key in THREAD_ENV_KEYS:
+        env[key] = value
+    return env
+
+
+def _env_threads(default=None):
+    """O tecto de fios que a ENV manda sobre a constante (`None` = a constante).
+
+    Fail-open para a constante e nunca para 0: um valor invalido na env nao pode
+    transformar o tecto em "sem limite" nem num filho sem fios.
+    """
+    fallback = int(BATCH_CHILD_THREADS if default is None else default)
+    try:
+        value = int(os.environ.get('OMP_NUM_THREADS') or fallback)
+    except (TypeError, ValueError):
+        return fallback
+    return value if value > 0 else fallback
+
+
+def _spawn_below_normal(cmd, env=None):
     """Arranca o filho com prioridade BAIXA e sem janela. Windows-safe.
 
     O PAR, NAO O BIT (medido 2026-11-04 no ecran do dono): `CREATE_NO_WINDOW`
     sozinho nao esconde a janela quando o pai nao tem consola, e este modulo
     corre dentro de `pythonw`. `no_console.popen_kwargs` traz o `startupinfo`
     com `SW_HIDE` que fecha o caso.
+
+    `env=None` continua a ser o caminho de producao: a env sai de `child_env()`
+    com o tecto de fios. Um chamador que ja' traga a sua env passa-a e e'
+    respeitado (o `load-shedding-oracle` arranca um filho de teste assim).
     """
     from no_console import popen_kwargs
     extra = BELOW_NORMAL_PRIORITY_CLASS if os.name == 'nt' else 0
+    if env is None:
+        env = child_env()
     return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             text=True, encoding='utf-8', errors='replace',
-                            **popen_kwargs(extra))
+                            env=env, **popen_kwargs(extra))
 
 
 class BatchExecutor(threading.Thread):
@@ -569,12 +643,22 @@ class BatchExecutor(threading.Thread):
     def __init__(self, queue=None, log_fn=None, level_fn=None, spawn=None,
                  python=None, window_s=15.0, poll_s=10.0, child_poll_s=3.0,
                  yield_backoff_s=30.0, adopt_every_s=60.0, session_root=None,
-                 adopt_roots=None):
+                 adopt_roots=None, budget=None):
         super().__init__(name='sotto-batch-executor', daemon=True)
         self.queue = queue or BatchQueue(log_fn=log_fn)
         self.log = log_fn or _noop
         self.level_fn = level_fn or _default_level
-        self._spawn = spawn or _spawn_below_normal
+        # O ORCAMENTO DE CPU DO LACO (2026-11-08): a mesma lei da pintura da
+        # legenda -- o periodo deriva do custo medido, `idle = custo *
+        # (1 - orcamento) / orcamento`, e a taxa de servico converge para
+        # `BATCH_CPU_BUDGET`. O filho leva o tecto de fios na env, para um bloco
+        # sozinho nao poder estourar o orcamento por si.
+        self.budget = float(BATCH_CPU_BUDGET if budget is None else budget)
+        self.child_env = child_env()
+        if spawn is not None:
+            self._spawn = spawn
+        else:
+            self._spawn = lambda cmd: _spawn_below_normal(cmd, env=self.child_env)
         self.python = python or sys.executable
         self.window_s = float(window_s)
         self.poll_s = float(poll_s)
@@ -600,13 +684,24 @@ class BatchExecutor(threading.Thread):
         # `batch-queue-drain-oracle` via `spawns=1` com a fila VAZIA, porque o
         # `_last_adopt` arranca em 0.0 e a primeira volta do laco adoptava o
         # spool real de `I:\cc-tmp`.
-        self._stop = threading.Event()
+        # `_stop_event` e NAO `_stop`: `threading.Thread` tem um metodo `_stop()`
+        # que o `join()` chama, e esta classe sombreava-o com um `Event` -- qualquer
+        # `join()` num executor levantava `TypeError: 'Event' object is not
+        # callable` (medido 2026-11-08 no oracle deste orcamento, no primeiro
+        # `ex.join(5.0)`). O nome do evento nao e' contrato publico: `stop()` e'.
+        self._stop_event = threading.Event()
         self._child = None
         self.runs = 0
         self.done = 0
         self.failed = 0
         self.yields = 0
         self._last_adopt = 0.0
+        # O QUE O ORCAMENTO MEDIU: o custo dos blocos e a espera que ele impoe.
+        # Ficam expostos no `as_dict()` para o limite ser medivel de fora (o log
+        # diz os tres numeros; estes contadores sao a soma da corrida).
+        self.last_cost_s = 0.0
+        self.cost_s = 0.0
+        self.idle_s = 0.0
 
     # -- a decisao --------------------------------------------------------
     def level(self):
@@ -655,12 +750,13 @@ class BatchExecutor(threading.Thread):
         except Exception as exc:                                 # noqa: BLE001
             self.log(f'BATCH_EXEC_SPAWN_FAILED id={entry_id} error={exc!r}')
             self._after_failure(entry, 'spawn: %r' % (exc,))
+            self._charge(started)
             return ('failed', 'spawn')
         self._child = child
         out = err = ''
         try:
             while True:
-                if self._stop.is_set():
+                if self._stop_event.is_set():
                     self._kill(child)
                     self.queue.requeue(entry_id, 'executor-stop',
                                        bump_attempts=False)
@@ -679,16 +775,17 @@ class BatchExecutor(threading.Thread):
                                  f' volta a fila')
                         self.queue.requeue(entry_id, 'load-%s' % self.level(),
                                            bump_attempts=False)
-                        self._stop.wait(self.yield_backoff_s)
+                        self._stop_event.wait(self.yield_backoff_s)
                         return ('yield', 'load')
                     continue
                 except Exception as exc:                         # noqa: BLE001
                     self._kill(child)
                     self._after_failure(entry, 'communicate: %r' % (exc,))
+                    self._charge(started)
                     return ('failed', 'communicate')
         finally:
             self._child = None
-        elapsed = time.monotonic() - started
+        elapsed = self._charge(started)
         code = getattr(child, 'returncode', None)
         text, captions = _parse_output(out)
         if code == 0:
@@ -724,9 +821,46 @@ class BatchExecutor(threading.Thread):
         except Exception:                                        # noqa: BLE001
             pass
 
+    def _charge(self, started):
+        """Fecha a conta do bloco: o custo medido e' o que o orcamento usa.
+
+        Chamado em TODOS os caminhos que devolvem `done`/`failed` (inclusive o
+        `spawn` que rebenta e o `communicate` que erra): sem isso o `run()`
+        esperava pelo custo do bloco ANTERIOR depois de uma falha, e uma fila de
+        falhas punha o laco a dormir por trabalho que nao existiu.
+        """
+        cost = max(0.0, time.monotonic() - started)
+        self.last_cost_s = cost
+        self.cost_s += cost
+        return cost
+
+    def _pace(self, cost_s=None):
+        """Dorme o que o ORCAMENTO manda antes do proximo bloco.
+
+        A LEI (a mesma de `CAPTION_FRAME_BUDGET`, `caption_overlay.py`): com o
+        laco a servir a taxa `b`, um bloco que custou `c` segundos tem de ser
+        seguido de `c * (1 - b) / b` de espera. Sem isto o periodo e' o custo --
+        um laco que dorme o tempo que trabalha gasta 100 % de um nucleo por
+        construcao, e foi exactamente esse o defeito que aquele orcamento curou.
+
+        `self._stop_event.wait` e nao `time.sleep`: um stop corta a espera e o fio
+        termina sem deixar nada atras (e sem filho em voo -- aqui nao ha' filho).
+        """
+        cost = float(self.last_cost_s if cost_s is None else cost_s)
+        budget = float(self.budget)
+        if cost <= 0.0 or budget <= 0.0 or budget >= 1.0:
+            return 0.0
+        idle = cost * (1.0 - budget) / budget
+        self.idle_s += idle
+        self.log('BATCH_CPU_BUDGET used_ms=%.0f budget=%.2f rate=%.2f '
+                 'idle_ms=%.0f' % (cost * 1000.0, budget,
+                                   cost / (cost + idle), idle * 1000.0))
+        self._stop_event.wait(idle)
+        return idle
+
     # -- o laco -----------------------------------------------------------
     def run(self):
-        while not self._stop.is_set():
+        while not self._stop_event.is_set():
             try:
                 now = time.monotonic()
                 if now - self._last_adopt >= self.adopt_every_s:
@@ -736,6 +870,10 @@ class BatchExecutor(threading.Thread):
             except Exception as exc:                             # noqa: BLE001
                 self.log(f'BATCH_EXEC_ERROR error={exc!r}')
                 state, detail = 'idle', 'error'
+            # O ORCAMENTO MANDA ENTRE BLOCOS: o custo medido do bloco que
+            # acabou de sair e' o periodo que o proximo vai ter de esperar.
+            if state in ('done', 'failed'):
+                self._pace()
             if state == 'yield':
                 continue
             if state == 'idle':
@@ -756,7 +894,7 @@ class BatchExecutor(threading.Thread):
                 # e faze-lo entre o `claim()` e o fim do filho punha o mesmo bloco
                 # a correr duas vezes.
                 self._refresh_queue()
-                self._stop.wait(self.poll_s)
+                self._stop_event.wait(self.poll_s)
 
     def _refresh_queue(self):
         """Rele' o directorio quando nao ha' nada em voo, e so' diz quando mudou."""
@@ -772,14 +910,17 @@ class BatchExecutor(threading.Thread):
                      f'dir={self.queue.path}')
 
     def stop(self):
-        self._stop.set()
+        self._stop_event.set()
         child = self._child
         if child is not None:
             self._kill(child)
 
     def as_dict(self):
+        spent = float(self.cost_s) + float(self.idle_s)
+        duty = (float(self.cost_s) / spent) if spent > 0 else 0.0
         return {'runs': self.runs, 'done': self.done, 'failed': self.failed,
                 'yields': self.yields, 'level': self.level(),
+                'budget': self.budget, 'duty': round(duty, 3),
                 'queue': self.queue.stats()}
 
 
@@ -819,7 +960,7 @@ def _worker_path(*parts):
 
 
 def transcribe_payload(path, rate=RATE, window_s=15.0, gap_s=0.6,
-                       threads=2, onnx_dir=None, ternary_dir=None):
+                       threads=None, onnx_dir=None, ternary_dir=None):
     """Transcreve um `float32` cru e devolve `[(start, end, texto), ...]`.
 
     REUSA o que ja' existe, e nao um motor paralelo: `worker/redux_live.py` tem
@@ -832,6 +973,15 @@ def transcribe_payload(path, rate=RATE, window_s=15.0, gap_s=0.6,
     maquina ficasse ocupada o mesmo tempo que o audio durou.
     """
     import numpy as np
+
+    # O TECTO DE FIOS DO FILHO, lido da env que o executor escreveu
+    # (`child_env`): o motor ONNX le' `OMP_NUM_THREADS` sozinho, mas o
+    # `torch.set_num_threads` do backend so' obedece ao argumento -- por isso o
+    # MESMO numero viaja nos dois caminhos e nao ha' um deles a abrir os fios
+    # todos. `--threads` continua a poder-mandar sobre a env.
+    if threads is None:
+        threads = _env_threads()
+    threads = int(threads or BATCH_CHILD_THREADS)
 
     if WORKER_DIR not in sys.path:
         sys.path.insert(0, WORKER_DIR)
@@ -905,7 +1055,9 @@ def main(argv=None):
     parser.add_argument('--rate', type=int, default=RATE)
     parser.add_argument('--window-s', type=float, default=15.0)
     parser.add_argument('--gap-s', type=float, default=0.6)
-    parser.add_argument('--threads', type=int, default=2)
+    parser.add_argument('--threads', type=int, default=None,
+                        help='tecto de fios do motor (env OMP_NUM_THREADS, '
+                             'senao BATCH_CHILD_THREADS)')
     parser.add_argument('--json', action='store_true')
     args = parser.parse_args(argv)
     if args.transcribe:

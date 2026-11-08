@@ -293,7 +293,7 @@ def check(step: str, deps, expect_rc: int = 0, log=None, always: bool = False,
     return True, recorded_rc, "ok"
 
 def record(step: str, deps, rc: int, log=None, expect_rc: int = 0,
-           state_path: str = DEFAULT_STATE, t0=None) -> tuple:
+           state_path: str = DEFAULT_STATE, t0=None, policy=None) -> tuple:
     """(ok, reason). Records the step AS IT RAN. A step whose deps are missing
     is NOT recorded: there would be nothing to invalidate it later.
 
@@ -328,6 +328,12 @@ def record(step: str, deps, rc: int, log=None, expect_rc: int = 0,
     elapsed = elapsed_since(t0)
     if elapsed is not None:
         entry["elapsed_s"] = round(elapsed, 3)
+    # A POLITICA DE LARGADA sob a qual este numero foi medido (medido 2026-11-08).
+    # Um tempo por passo comparado com um baseline de OUTRA politica nao e' uma
+    # regressao: e' uma comparacao que nao existe. O `battery-budget` recusa julgar
+    # os passos cujo `policy` difere e DIZ quantos ficaram de fora.
+    if policy:
+        entry["policy"] = policy
     state.setdefault("steps", {})[step] = entry
     state["version"] = STATE_VERSION
     if not save_state(state, state_path):
@@ -466,6 +472,10 @@ def main(argv=None) -> int:
     # answers HIT/MISS as announced" was asking a CLI that could not record.
     p_rec.add_argument("--t0", default=None,
                        help="the marker file whose mtime is the step's start")
+    p_rec.add_argument("--policy", default=None,
+                       help="the LAUNCH POLICY this time was measured under "
+                            "(e.g. `cap40`); a step recorded under another "
+                            "policy is not comparable and the budget skips it")
 
     p_status = sub.add_parser("status", help="what the cache knows")
     add_state(p_status)
@@ -510,7 +520,8 @@ def main(argv=None) -> int:
     if args.verb == "record":
         ok, reason = record(args.step, _deps_arg(args.deps), args.rc,
                             log=args.log, expect_rc=args.expect_rc,
-                            state_path=args.state, t0=args.t0)
+                            state_path=args.state, t0=args.t0,
+                            policy=getattr(args, "policy", None))
         if ok:
             sys.stdout.write("RECORDED %s rc=%s\n" % (args.step, args.rc))
             return 0

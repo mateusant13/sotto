@@ -544,6 +544,19 @@ function main() {
   //              `queue_ms`, `_last_push_at` -> `_caption_applied`)
   //   audio_ms — the capture instant of that audio to the acknowledgement (the
   //              shell's `audio_ms`, `tap_ms` -> `_caption_applied`)
+  // O DENOMINADOR DA POPULACAO, NO MESMO LADO DA CONTA (medido 2026-11-08).
+  // O oraculo compara a FATIA DO TECTO (linhas de commit) com a populacao NAO
+  // PROVADA -- e a media daquela era `fragmentos`, unidade diferente: um fragmento
+  // nao provado pode render DUAS linhas (provisional + final), logo a fatia de
+  // linhas excede a de fragmentos por construcao. Aqui cada linha leva o veredicto
+  // do fragmento que a produziu, pelo texto normalizado, para que o oraculo possa
+  // comparar linha com linha.
+  const stableByText = new Map();
+  for (const frag of corpus) {
+    const key = norm(frag.text);
+    const st = frag.meta && frag.meta.stable === true;
+    if (!stableByText.has(key) || st) stableByText.set(key, st);
+  }
   const commitRows = [];
   for (const commit of commits) {
     const want = norm(commit.text);
@@ -562,7 +575,9 @@ function main() {
     const audioMs = (baseEpoch !== null && paint.tap_ms !== null && paint.tap_ms !== undefined)
       ? (baseEpoch + commit.at) - paint.tap_ms
       : null;
-    commitRows.push([commit.at - paint.arrival, audioMs]);
+    const keyC = norm(commit.text);
+    const provable = stableByText.has(keyC) ? stableByText.get(keyC) : null;
+    commitRows.push([commit.at - paint.arrival, audioMs, provable]);
   }
 
   const band = legPushToCommit.filter((x) => x >= 1490 && x <= 1520).length;

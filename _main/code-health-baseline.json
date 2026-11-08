@@ -221,14 +221,14 @@
    "max_func_name": "_meter_interface"
   },
   "app/webview/batch_queue.py": {
-   "bytes": 40402,
+   "bytes": 47489,
+   "lines": 1080,
+   "defs": 14,
    "classes": 2,
-   "defs": 12,
+   "max_func": 71,
+   "max_func_name": "transcribe_payload",
    "except_pass": 9,
-   "globals": 0,
-   "lines": 928,
-   "max_func": 67,
-   "max_func_name": "step"
+   "globals": 0
   },
   "app/webview/bridge_census.py": {
    "bytes": 3630,
@@ -771,14 +771,14 @@
    "max_func_name": "decide"
   },
   "worker/sotto_worker.py": {
-   "bytes": 456461,
-   "classes": 17,
+   "bytes": 457710,
+   "lines": 8675,
    "defs": 84,
-   "except_pass": 18,
-   "globals": 5,
-   "lines": 8656,
+   "classes": 17,
    "max_func": 2645,
-   "max_func_name": "main"
+   "max_func_name": "main",
+   "except_pass": 19,
+   "globals": 5
   },
   "worker/speaker_bridge.py": {
    "bytes": 11242,

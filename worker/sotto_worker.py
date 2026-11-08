@@ -75,6 +75,14 @@ import time
 # `setdefault`, so an explicit environment still wins.
 os.environ.setdefault("CUDA_MODULE_LOADING", "LAZY")
 os.environ.setdefault("OMP_NUM_THREADS", "4")
+# O POOL DO ONNXRUNTIME NAO FICA A GIRAR ENTRE BLOCOS (medido 2026-11-08).
+# Tres sessoes (enc/dec/joint) com 4 fios intra-op cada gastavam **16,1% de um
+# nucleo OCIOSAS** -- so' o spin-wait do ORT -- contra **0,0%** com o spin
+# desligado; e custa **+33,5 us por chamada** (40,0 -> 73,4 us num grafo 40x64),
+# o que num chunk de 560 ms e' ~10 ms em 300 chamadas. O `OMP_WAIT_POLICY`
+# acompanha porque o ORT usa o OpenMP para a mesma espera. Ver
+# `_main/receipt-20261108-ort-spin-idle.md` e o oraculo `ort-spin-idle.py`.
+os.environ.setdefault("OMP_WAIT_POLICY", "PASSIVE")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The model loaded when NEITHER `--model` NOR config.json's `model.dir` names one.
@@ -4159,6 +4167,17 @@ def session_options(ort, ab: str = "", threads=None, encoder: bool = False):
     """
     so = ort.SessionOptions()
     so.log_severity_level = 3
+    # O SPIN-WAIT DO ORT E' UM IMPOSTO FIXO EM REPOUSO (medido 2026-11-08):
+    # enc+dec+joint ociosas gastavam 16,1% de um nucleo contra 0,0% sem spin,
+    # e o preco em latencia e' 33,5 us por chamada (40,0 -> 73,4 us); num chunk
+    # de 560 ms com ~300 chamadas isso e' ~10 ms. Entre chunks de ASR o pool
+    # fica parado a maior parte do tempo, logo o spin e' o lado errado da troca.
+    for _spin_key in ("session.intra_op.allow_spinning",
+                      "session.inter_op.allow_spinning"):
+        try:
+            so.add_session_config_entry(_spin_key, "0")
+        except Exception:                                        # noqa: BLE001
+            pass
     if "bytes" in ab:
         try:
             so.add_session_config_entry("session.use_ort_model_bytes_directly", "1")

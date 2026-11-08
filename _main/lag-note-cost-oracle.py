@@ -164,12 +164,26 @@ def arm_flat(mod, log):
         small._note(age, queue_ms=queue, kind=kind)
     for age, queue, kind in feed:
         full._note(age, queue_ms=queue, kind=kind)
-    probe = stream(4000, seed=9)
-    us_small = cost_us(small, probe)
-    us_full = cost_us(full, probe)
-    ratio = us_full / us_small if us_small else 99.0
-    return ratio <= 2.0, ('janela 20=%.3f us  janela 200=%.3f us  razao=%.2fx'
-                          % (us_small, us_full, ratio))
+    # A AMOSTRA TEM DE PAGAR O RELOGIO (medido 2026-11-08). Com 4 000 amostras o
+    # `cost_us` media **4 ms** por passagem, e a razao saia de UMA comparacao --
+    # um tique de scheduler ou uma pausa de GC numa das metades bastava para
+    # `razao=2,02x` num custo de 0,85 us. O instrumento acusou o proprio ruido
+    # (a corrida caged expos o defeito: o passo estava em cache desde 2026-11-05 e
+    # a primeira re-medicao honesta caiu). Agora: 40 000 amostras por passagem
+    # (~40 ms), as duas metades ALTERNADAS para que a deriva da maquina atinja as
+    # duas por igual, e a razao e' a MEDIANA de tres pares. O contrato nao mudou.
+    probe = stream(40000, seed=9)
+    ratios = []
+    us_small = us_full = 0.0
+    for _ in range(3):
+        us_small = cost_us(small, probe)
+        us_full = cost_us(full, probe)
+        if us_small:
+            ratios.append(us_full / us_small)
+    ratios.sort()
+    ratio = ratios[len(ratios) // 2] if ratios else 99.0
+    return ratio <= 2.0, ('janela 20=%.3f us  janela 200=%.3f us  razao=%.2fx (mediana de %d)'
+                          % (us_small, us_full, ratio, len(ratios)))
 
 
 def expected_stats(samples):
