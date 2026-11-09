@@ -681,13 +681,13 @@
       "max_func_name": "run_engine_pass"
     },
     "worker/engine_switch.py": {
-      "bytes": 71767,
-      "classes": 2,
-      "defs": 10,
+      "bytes": 89038,
+      "classes": 3,
+      "defs": 14,
       "except_pass": 2,
       "globals": 0,
-      "lines": 1326,
-      "max_func": 158,
+      "lines": 1670,
+      "max_func": 174,
       "max_func_name": "__init__"
     },
     "worker/fusion.py": {
@@ -821,13 +821,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 490022,
+      "bytes": 493511,
       "classes": 17,
       "defs": 93,
       "except_pass": 23,
       "globals": 6,
-      "lines": 9125,
-      "max_func": 2717,
+      "lines": 9176,
+      "max_func": 2752,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
