@@ -4429,7 +4429,14 @@ class ExternalCaptionWatcher(threading.Thread):
             log('YOUTUBE_CDP_SOURCE import_failed=%r' % (exc,))
             self._yt_cdp_source = False
             return None
-        source = youtube_cdp_source.CdpCaptionSource(log=log)
+        # UMA FONTE POR PROCESSO (2026-11-09). Medido no log do dono: 675
+        # `YOUTUBE_CDP_SOURCE state=attached` em 600 s, todas identicas -- o memo
+        # que deduplica vive DENTRO do objeto, logo 675 copias da mesma linha sao
+        # 675 objetos, cada um com dois fios e uma `/json/list` de arranque. Este
+        # `self._yt_cdp_source` nao bastava porque o watcher e a shell guardam o
+        # seu; o registo do modulo e' um so' para os dois.
+        source = youtube_cdp_source.live_source(
+            lambda: youtube_cdp_source.CdpCaptionSource(log=log), log=log)
         self._yt_cdp_source = source
         if declared:
             try:
@@ -4441,6 +4448,9 @@ class ExternalCaptionWatcher(threading.Thread):
         except Exception as exc:  # noqa: BLE001
             log('YOUTUBE_CDP_SOURCE start_failed=%r' % (exc,))
             self._yt_cdp_source = False
+            # O registo esquece-a: uma fonte que nao arrancou nao pode ser
+            # devolvida a quem pedir a seguir.
+            youtube_cdp_source.live_source_clear(source)
             return None
         return source
 
@@ -15771,12 +15781,17 @@ class SottoShell:
         ok, why = youtube_cdp_source.boot_attach(log=log)
         source = getattr(self, '_yt_cdp_source', None)
         if source is None or source is False:
-            source = youtube_cdp_source.CdpCaptionSource(log=log)
+            source = youtube_cdp_source.live_source(
+                lambda: youtube_cdp_source.CdpCaptionSource(log=log), log=log)
             self._yt_cdp_source = source
             try:
+                # `start()` e' idempotente, e por isso pode ser chamado tambem
+                # sobre uma fonte ADOTADA do registo: uma fonte que existe e nao
+                # corre e' o pior dos dois mundos.
                 source.start()
             except Exception as exc:          # noqa: BLE001
                 self._yt_cdp_source = None
+                youtube_cdp_source.live_source_clear(source)
                 log('YOUTUBE_CDP_BOOT_SOURCE_FAILED error=%r' % (exc,))
                 return None
         if not ok:

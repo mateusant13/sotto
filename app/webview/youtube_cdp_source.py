@@ -925,6 +925,17 @@ _TID_TTL_S = 0.5
 #: voltar a aparecer num `EXTERNAL_CAPTIONS_READ_MS`, o culpado nao e' este fio.
 _TID_THREAD_NAME = "yt-cdp-target"
 
+#: QUANTAS VEZES POR MINUTO AS LINHAS DE ESTADO SE REPETEM SEM MUDAR NADA.
+#: MEDIDO 2026-11-09 (DM do watcher, stutter 50452): 64,7 MB de log com
+#: `YOUTUBE_TARGET ... why=declared` e `YOUTUBE_CDP_SOURCE state=attached` a
+#: repetirem-se ~1,4x por segundo cada -- 6 513 e 6 511 linhas nos ultimos 2 MB,
+#: 16 linhas/s em rajada. A informacao nao muda: `_choose` escrevia o motivo da
+#: ESCOLHA no mesmo campo `_note` que `_publish` usa para o estado da FONTE, e o
+#: vaivem `attached` -> `declared` -> `attached` publicava duas linhas por volta
+#: que nao diziam nada de novo. O estado passa a sair na MUDANCA, com um
+#: batimento lento para o oraculo poder provar que a fonte ainda respira.
+_STATE_HEARTBEAT_S = 60.0
+
 def adopt_decision(declared, seen, declared_open):
     """O ID DECLARADO FILTRA A ESCOLHA DA ABA, NAO A LEITURA (2026-11-04).
 
@@ -954,6 +965,57 @@ def adopt_decision(declared, seen, declared_open):
     return 'refuse', 'wrong-video'
 
 
+#: UMA FONTE VIVA POR PROCESSO -- e a razao e' medida (2026-11-09).
+#:
+#: No log do dono, numa janela de 600 s: `YOUTUBE_CDP_SOURCE state=attached`
+#: **675 vezes** e `YOUTUBE_TARGET pick=...` **712 vezes**, todas identicas, a
+#: ~1,1/s. As duas linhas sao deduplicadas DENTRO do objeto (`_publish` compara
+#: `self._note`, `_log_target` compara `self._target_text`), logo 675 copias da
+#: mesma linha significam 675 OBJETOS: algo constroi uma `CdpCaptionSource` por
+#: volta, cada uma a arrancar dois fios (`_run` + `_tid_run`) e a pagar a
+#: `/json/list` do arranque. O custo apareceu no stutter de 11:5x (o watcher
+#: mediu 81,3 %c na shell python; o worker era outro caminho).
+#:
+#: O registo resolve na ORIGEM, nao no sintoma: uma fonte viva e' devolvida a
+#: quem a pede, em vez de nascer uma segunda. E' o mesmo contrato que o
+#: `_yt_cdp_ensure` ja' tentava cumprir com `self._yt_cdp_source`, mas aquele
+#: memo morre com o objeto que o guarda (o watcher e a shell sao dois).
+_LIVE_LOCK = threading.Lock()
+_LIVE_SOURCE = None
+
+
+def live_source(factory, log=None):
+    """A fonte viva do processo; cria uma so' com `factory` quando nao ha'.
+
+    `factory` e' chamado DENTRO do lock e so' quando e' preciso -- o chamador
+    passa `lambda: CdpCaptionSource(log=log)`, portanto uma segunda construcao
+    nunca acontece por descuido.
+    """
+    global _LIVE_SOURCE
+    with _LIVE_LOCK:
+        src = _LIVE_SOURCE
+        if src is not None:
+            return src
+        src = factory()
+        _LIVE_SOURCE = src
+        return src
+
+
+def live_source_set(src):
+    """Registar uma fonte construida fora da `live_source` (adocao no arranque)."""
+    global _LIVE_SOURCE
+    with _LIVE_LOCK:
+        _LIVE_SOURCE = src
+
+
+def live_source_clear(src=None):
+    """Esquecer a fonte -- so' quando ela morreu mesmo (stop/falha de arranque)."""
+    global _LIVE_SOURCE
+    with _LIVE_LOCK:
+        if src is None or _LIVE_SOURCE is src:
+            _LIVE_SOURCE = None
+
+
 class CdpCaptionSource:
     """Le as linhas que o player desenha, em segundo plano, pela CDP.
 
@@ -973,6 +1035,13 @@ class CdpCaptionSource:
         self._stop = threading.Event()
         self._thread = None
         self._note = ""
+        #: O MOTIVO DA ESCOLHA DE ABA, separado do estado da FONTE (2026-11-09):
+        #: os dois viviam no mesmo campo e o vaivem publicava duas linhas por
+        #: volta que nao diziam nada de novo.
+        self._choice_note = ""
+        self._note_log_t = 0.0
+        self._target_text = None
+        self._target_log_t = 0.0
         self._reads = 0
         self._errors = 0
         self._last_error = ""
@@ -1055,6 +1124,24 @@ class CdpCaptionSource:
                 return False
         return True
 
+    def _log_target(self, text):
+        """`YOUTUBE_TARGET` so' quando a ESCOLHA muda (ou no batimento lento).
+
+        MEDIDO 2026-11-09: 6 513 linhas `pick=... why=declared declared=...` nos
+        ultimos 2 MB do log do dono, identicas. A escolha de aba e' um estado --
+        o mesmo id, o mesmo motivo, as mesmas abas -- e repeti-la 8 vezes por
+        segundo custa I/O e esconde a linha que importa. A primeira escolha sai
+        sempre; depois so' a mudanca, mais uma por minuto para o oraculo poder
+        provar que a fonte ainda respira.
+        """
+        now = time.monotonic()
+        if (text == self._target_text
+                and now - self._target_log_t < _STATE_HEARTBEAT_S):
+            return
+        self._target_text = text
+        self._target_log_t = now
+        self._log(text)
+
     def _choose(self, tabs):
         """(aba, motivo) -- A SONDA DECIDE, e a lista de URLs so' desempata.
 
@@ -1079,18 +1166,19 @@ class CdpCaptionSource:
         tab, vid, why = self._playing_pick_for(tabs)
         if tab is not None:
             self._playing_pick = vid or self._playing_pick
-            self._note = str(why)
+            self._choice_note = str(why)
             self._adopt_tab(tab, vid)
-            self._log('YOUTUBE_TARGET pick=%s why=%s declared=%s tabs=%d'
-                      % (vid or '-', why, self._video_id or '-', len(tabs or ())))
+            self._log_target('YOUTUBE_TARGET pick=%s why=%s declared=%s tabs=%d'
+                             % (vid or '-', why, self._video_id or '-',
+                                len(tabs or ())))
             return tab, why
         target, why2 = pick_target(tabs, self._video_id, self._window_title)
         if target is not None:
-            self._note = 'probe:%s fallback:%s' % (why, why2)
+            self._choice_note = 'probe:%s fallback:%s' % (why, why2)
             self._adopt_tab(target, video_id_from_url(target.get('url') or ''))
-            self._log('YOUTUBE_TARGET fallback pick=%s why=%s probe=%s tabs=%d'
-                      % (video_id_from_url(target.get('url') or '') or '-',
-                         why2, why, len(tabs or ())))
+            self._log_target('YOUTUBE_TARGET fallback pick=%s why=%s probe=%s tabs=%d'
+                             % (video_id_from_url(target.get('url') or '') or '-',
+                                why2, why, len(tabs or ())))
             return target, why2
         # O ID DECLARADO NAO ESTA' ABERTO: QUEM MANDA SAO AS ABAS (2026-11-04).
         # Sem esta queda o laco fecha-se em si mesmo -- o id filtra a escolha,
@@ -1101,14 +1189,14 @@ class CdpCaptionSource:
             if target is not None:
                 why = 'stale-declared:' + str(why)
         if target is not None:
-            self._note = why
+            self._choice_note = why
             self._adopt_tab(target, video_id_from_url(target.get('url') or ''))
-            self._log('YOUTUBE_TARGET stale pick=%s why=%s declared=%s tabs=%d'
-                      % (video_id_from_url(target.get('url') or '') or '-',
-                         why, self._video_id or '-', len(tabs or ())))
+            self._log_target('YOUTUBE_TARGET stale pick=%s why=%s declared=%s tabs=%d'
+                             % (video_id_from_url(target.get('url') or '') or '-',
+                                why, self._video_id or '-', len(tabs or ())))
             return target, why
-        self._note = str(why or why2)
-        return None, self._note
+        self._choice_note = str(why or why2)
+        return None, self._choice_note
 
     def _playing_pick_for(self, tabs):
         """(aba, id, motivo) da escolha por 'a tocar', com cache curta.
@@ -1189,7 +1277,8 @@ class CdpCaptionSource:
     def stats(self):
         with self._lock:
             return {"reads": self._reads, "errors": self._errors,
-                    "last_error": self._last_error, "note": self._note}
+                    "last_error": self._last_error, "note": self._note,
+                    "choice": self._choice_note}
 
     # -- leitura ----------------------------------------------------------
     def snapshot(self, max_age=0.6):
@@ -1310,7 +1399,7 @@ class CdpCaptionSource:
             tabs, _others = list_targets(self.port)
             target, why = self._choose(tabs)
             if target is None:
-                self._note = str(why)
+                self._choice_note = str(why)
             if target is not None:
                 vid = video_id_from_url(target.get('url') or '')
         except Exception:                 # noqa: BLE001
@@ -1352,9 +1441,18 @@ class CdpCaptionSource:
             if snap is not None:
                 self._snap = snap
                 self._reads += 1
-            if note is not None and note != self._note:
-                self._note = note
-                self._log("YOUTUBE_CDP_SOURCE state=%s" % note)
+            if note is None:
+                return
+            now = time.monotonic()
+            unchanged = note == self._note
+            due = now - self._note_log_t >= _STATE_HEARTBEAT_S
+            self._note = note
+            if unchanged and not due:
+                # A MESMA linha, 8 vezes por segundo, nao e' um estado: e' o laco
+                # a escrever que nao mudou nada (medido 2026-11-09, 16 linhas/s).
+                return
+            self._note_log_t = now
+            self._log("YOUTUBE_CDP_SOURCE state=%s" % note)
 
     def _error(self, exc):
         with self._lock:

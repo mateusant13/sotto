@@ -565,8 +565,61 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-09, 09:3x):** `_main\_audit-verify-all.cmd` = **313261 B**,
-  **3708 CRLF** / 0 bare LF, sha256 `8087C93155F8DC498BECC8FC2751DC17489A3B0DF5CFB2AB6E1E5C44B3E04E44`.
+- **PIN do ficheiro (medido 2026-11-09, 12:0x):** `_main\_audit-verify-all.cmd` = **317214 B**,
+  **3740 CRLF** / 0 bare LF, sha256 `0D58F2EA1078BB12AA0F37E67D069306932E96FBF86554B43A1420EAFA84F32E`.
+  (Mil cento e tres bytes e NOVE linhas a mais do que o pin de 316111 B: o par
+  `yt-source-singleton` + `red-as-expected-yt-source-singleton`, nascido do stutter de 2026-11-09
+  (o watcher mediu **81,3 %c** na shell python do dono e o log dela deu **675**
+  `YOUTUBE_CDP_SOURCE state=attached` em 600 s, todas identicas). As duas linhas sao deduplicadas
+  DENTRO do objeto, logo 675 copias da mesma linha sao 675 OBJETOS -- cada um a arrancar dois fios
+  (`_run` + `_tid_run`) e a pagar a `/json/list`. O par executa o `_yt_cdp_ensure` REAL (extraido por
+  `ast`) sobre 200 irmaos e exige UMA construcao; o `--neg-arm` roda a MESMA populacao contra o
+  metodo de `HEAD` e devolve 1 ao reproduzir a multiplicacao (medido: 200 construcoes). Antes do pin
+  de 316111 B, o de 315900 B nomeava as dependencias do `panel-history-clip`.)
+  (Duzentos e onze bytes a mais do que o pin de 315900 B, e ZERO linhas a mais: as DUAS linhas do par
+  `panel-history-clip` + `red-as-expected-panel-history-clip` passam a nomear `app\panel\panel.html`,
+  `app\webview\sotto_webview.py`, `app\webview\history_context.py` e
+  `_main\history-retention-fixture.py`. A arm nova da linha de 60 dias le a PAGINA e carrega o
+  `history_tail`/`history_search` REAIS desses dois modulos, logo uma dependencia que os nao nomeie
+  deixaria o passo em cache a descrever um painel e uma busca que ja' mudaram -- a classe do
+  `panel-deps`, que ja' custou tres vezes nesta casa. O passo `panel-history-clip` nao nomeava
+  `panel.html` de todo, embora carregue a pagina: era um furo anterior a esta lane.)
+- **PIN do ficheiro (medido 2026-11-09, 10:1x):** `_main\_audit-verify-all.cmd` = **315505 B**,
+  **3727 CRLF** / 0 bare LF, sha256 `DE84AF6E1D346CD8CED8C4FA58B7B267C069EDFE0652DA0C804E0A9A56B2AEF4`.
+  (Novecentos e vinte e quatro bytes e vinte e tres linhas a mais do que o pin de 314976 B -- e este
+  acrescimo NAO e' desta lane: o ficheiro cresceu depois do pin, e o portao estava RED quando esta
+  sessao o correu (`AGENTS-PINS FAIL -- 2 pin(s)`, os dois de `315900 B`/`3731 CRLF`). O pin fica
+  re-medido AQUI porque a regra do proprio pin exige o numero VIVO, nao o numero de quem chegou
+  primeiro: medido 2026-11-09, `315900 B`, `3731 CRLF` / 0 bare LF, sha256
+  `05550CB8AD717BEB89385DBF6AA113A0301E657FD7EC26D508F5564309699A1A`.)
+  (Quinhentos e vinte e nove bytes e uma linha a mais do que o pin de 314976 B: as dependencias que
+  faltavam a TRES passos, cada uma consumida pelo proprio oraculo e invisivel ao cache -- o par
+  `worker-thread-limit` passa a nomear `_main\hidden-launch.py`, `worker\engine_policy.py` e
+  `app\webview\load_shedding.py` (o A7 lanca pelo helper e o A9 importa o interruptor, que importa os
+  outros dois); o par `caption-overlay-theme` passa a nomear `_main\panel-themes-oracle.mjs`,
+  `app\panel\panel.html`, `app\panel\brand-bridge.js` e `app\panel\panel-unified.css` (e' de onde os 59
+  payloads saem); e o par `history-context` passa a nomear `_main\hidden-launch.py` (o `_node` do
+  oraculo passa por ele). A MESMA rodada fechou o furo do motor de aquecimento: o `main()` dele
+  chamava `limit_threads`, que escreve o ambiente mas deixa `current_threads()` em 4 -- medido, as
+  sessoes que o `attach` entrega abriam a 4 enquanto a shell pedia 2. Agora chama
+  `apply_thread_budget` -> `resolve_threads`, o braco A14 EXECUTA o helper e o `--neg-arm` ganhou M8/M9
+  (9 mutantes, rc=1).)
+  (Mil quinhentos e sessenta e cinco bytes e dezoito linhas a mais do que o pin de 313357 B: DOIS passos,
+  `history-route` e `history-route-long`, que ligam um oraculo que existia com o seu proprio controlo e
+  **nenhum passo** -- a doenca do instrumento sem chamador que esta casa ja' pagou tres vezes. O oraculo
+  conduz o worker REAL -> o motor REAL (`caption-formulation.js`) -> a loja REAL -> `<root>/<data>/<hora>.md`,
+  e cada braco carrega o controlo da semantica PRE-CURA sobre a MESMA stream. DOIS streams porque a
+  populacao muda com o fixture: medido 2026-11-09, o MESMO motor devolve `route=['final']` no curto e
+  `['final','provisional-draft']` no longo, e o `want` antigo exigia as duas rotas -- reprovava um motor
+  correcto. O braco passou a medir o invariante que a frase nomeia (nenhum commit viaja SEM rota, e existe
+  pelo menos um), com o controlo do `before`. Os dois `always`: leem os fixtures e o motor, custam 3,3 s, e
+  o `--root` fica em `_main\_cache\`, nunca no historico do dono. `battery-record-pairing` mediu 407 passos
+  e 407 nomes com registo, 0 achados.)
+  (Noventa e seis bytes a mais do que o pin de 313261 B, e ZERO linhas a mais: as DUAS linhas do par
+  `load-shedding` + `red-as-expected-load-shedding` passam a nomear `worker\engine_switch.py` e
+  `worker\engine_policy.py` nas dependencias. A ARM 26 nova EXECUTA o `ReduxHiddenSwitch` e le'
+  `engine_policy.RELOAD_FLOOR_S`, logo uma dependencia que os nao nomeia deixaria o passo em cache a
+  descrever um interruptor que ja' mudou -- a classe do `panel-deps`.)
   (Seiscentos e oitenta e tres bytes e quatro linhas a mais do que o pin de 312578 B: o par
   `caption-overlay-theme` + `red-as-expected-caption-overlay-theme`, o desenho da legenda NATIVA por
   tema. O oraculo existia desde as 08:44 e estava FORA da bateria -- o `battery-wiring` acusou-o com
@@ -587,10 +640,37 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   modulo ja' tinha escrito como "4", logo as tres sessoes ORT abriam com 4 fios cada e o flag
   nao mudava um fio. Agora `--threads` ASSUME (auto mantem o ambiente, byte a byte), a shell
   passa-o por `--worker-threads` (default 2; 0 = sem flag) e o motor de FUNDO aceita o mesmo
-  knob sem nunca subir acima dos 2 medidos. O oraculo mede 9/9 e o `--neg-arm` 2/2 mutantes
-  (A1 volta a "4" com o `setdefault` reposto numa COPIA). **N threads por sessao NAO e' N
-  nucleos**: medido, o motor de fundo a 2 fios por sessao ainda queima 0,6-1,6 de um nucleo
-  porque sao QUATRO sessoes com pool proprio.)
+  knob sem nunca subir acima dos 2 medidos. O oraculo mede **14/14** e o `--neg-arm` **9/9
+  mutantes** (cada um derrubado pelo SEU braco: `setdefault` reposto -> A1, `--threads`
+  arrancado do argv -> A6, tecto do motor `min`->`max` -> A9, a atribuicao de
+  `resolve_threads` apagada -> A11, o default do motor de aquecimento a 4 -> A12,
+  `StreamAsr` a ler um literal em vez de `current_threads()` -> A13, o `threads=`
+  arrancado da construcao do `WarmEngine` -> A14, e as duas metades do A14 -- o
+  `resolve_threads` sem o helper -> M8 e o `main()` do motor a chamar `limit_threads`
+  em vez do helper -> M9). **N threads por sessao
+  NAO e' N nucleos**: medido, o motor de fundo a 2 fios por sessao ainda queima 0,6-1,6 de um
+  nucleo porque sao QUATRO sessoes com pool proprio.
+  **MEDIDO 2026-11-09 (a mesma fixture, quatro bracos, um processo por braco, lease `heavy`
+  `d95dd12a` + `d53daa7a`):** o orcamento de 2 fios corta o PICO e nao custa a legenda --
+  `WORKER_THREADS threads=2 source=flag`, transcript sha IDENTICO ao de 4 fios nos dois motores
+  (parakeet `1d5dfad4`, nemotron `e0c08d03`), nemotron **201,5 % -> 146,0 % de UM nucleo**
+  (-27,5 %), parakeet **286,2 % -> 174,1 %** (-39,2 %), fios 63 -> 55 e 38 -> 28, RSS e privado
+  inalterados. **2 fios NAO e' 1 nucleo** (146 % e' o numero, nao um "<1 core"): o knob tira
+  cerca de um quarto a um terco da rajada. Custo medido: no braco de ARQUIVO o nemotron gasta
+  MAIS CPU total (28,06 -> 32,34 s, +15 %) e leva mais parede (13,93 -> 22,15 s, com a carga do
+  modelo dentro); no laco VIVO o custo por chunk mede, em TRES corridas do mesmo braco, **xrt 4,96 / 2,19 no
+  de 2 fios e 3,26 no de 4** (p95 0,168 / 0,4885 / 0,2653 s para 560 ms de audio; o pior chunk
+  quente medido foi **1,82 s** com outras lanes a correr) -- a VARIANCIA desta maquina domina a
+  diferenca entre orcamentos, e o que sobrevive as tres e' que 2 fios ainda descodifica MAIS
+  RAPIDO que 1x audio, logo o orcamento estreito nao cria atraso de legenda; a margem e' 2-5x,
+  nao 5x, e um chunk de 1,8 s existe sob carga. Recibos: `.agent-work/receipt-omp-worker-cost.json` §measurement_ab/§measurement_pace;
+  re-medir com `_main/_cache/worker-threads-ab.py` e `_main/_cache/worker-chunk-pace.py` (os dois
+  exigem o lease e NAO abrem janela). E a revisao independente (2026-11-09)
+  achou duas metades que o primeiro desenho NAO tinha: a resolucao vivia inline no `main()`
+  (nenhum braco a alcancava -- agora e' `resolve_threads`, chamada pelo braco) e o MOTOR DE
+  AQUECIMENTO construia as sessoes antes de a shell existir, com o default dele proprio (agora
+  `warm_engine.py --threads`, default 2, com o A12 a exigir que os dois defaults sejam o mesmo
+  numero).)
   (O par `history-context` + o seu `red-as-expected`, o portao do contexto de
   origem/visualizacao do historico -- `history_context.py` normalizado e limitado, o token
   `ctx1=` por linha, o `history_append`/leitura/busca/export do shell e o twin Node. Nasceu
@@ -1190,6 +1270,7 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   pergunta ao medidor VIVO (735 ms, 6 endpoints, **sem abrir cliente**), o morto declara-se em 2 s com
   rotacao IN-PROCESS (sem recarregar 1,9 GB) e a morte por dispositivo e' 250 ms. O braco negativo
   muta quatro vezes e o `--neg-arm` apanha 4/4. A medicao no arranque DO DONO continua UNMEASURED.
+
   Dez linhas a mais do que o pin de 212778 B / 2644 CRLF: o par do motor quente
   (`warm-engine` + `red-as-expected-warm-engine`), que roda 22 arms e exige 6/6 mutantes apanhados --
   cada mutante derrubado pela SUA arm, e o `--neg-arm` deixa zero processos e zero `warm-engine.pid`.

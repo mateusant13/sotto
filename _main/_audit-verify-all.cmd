@@ -361,10 +361,11 @@ REM era INERTE -- `limit_threads` usava `setdefault` sobre um `OMP_NUM_THREADS` 
 REM proprio modulo ja' tinha escrito como "4", logo as tres sessoes abriam com 4 fios
 REM cada e o flag nao mudava um fio do ORT. O oraculo julga a precedencia
 REM (`--threads > ambiente > 4`), o `session_options` REAL, o argv que a shell monta e o
-REM tecto do motor de fundo; o `--neg-arm` repoe o `setdefault` numa COPIA e exige A1 RED.
-call :step worker-thread-limit 0 "_main\worker-thread-limit-oracle.py;worker\sotto_worker.py;worker\engine_switch.py;app\webview\sotto_webview.py" "%OUT%\worker-thread-limit.log" python _main\worker-thread-limit-oracle.py
+REM tecto do motor de fundo; o `--neg-arm` muta nove sitios numa COPIA e exige A1/A6/A9/A11/A12/A13/A14 RED
+REM (M8 repoe `limit_threads` no helper do motor: e' o defeito medido, `current_threads()` fica em 4).
+call :step worker-thread-limit 0 "_main\worker-thread-limit-oracle.py;_main\hidden-launch.py;worker\sotto_worker.py;worker\engine_switch.py;worker\engine_policy.py;app\webview\sotto_webview.py;app\webview\warm_engine.py;app\webview\load_shedding.py" "%OUT%\worker-thread-limit.log" python _main\worker-thread-limit-oracle.py
 call :record worker-thread-limit !STEP_RC!
-call :step red-as-expected-worker-thread-limit 1 "_main\worker-thread-limit-oracle.py;worker\sotto_worker.py;worker\engine_switch.py;app\webview\sotto_webview.py" "%OUT%\worker-thread-limit-neg.log" python _main\worker-thread-limit-oracle.py --neg-arm
+call :step red-as-expected-worker-thread-limit 1 "_main\worker-thread-limit-oracle.py;_main\hidden-launch.py;worker\sotto_worker.py;worker\engine_switch.py;worker\engine_policy.py;app\webview\sotto_webview.py;app\webview\warm_engine.py;app\webview\load_shedding.py" "%OUT%\worker-thread-limit-neg.log" python _main\worker-thread-limit-oracle.py --neg-arm
 call :expectred red-as-expected-worker-thread-limit !STEP_RC! "%OUT%\worker-thread-limit-neg.log" "NEG-ARM: PASS"
 REM `caption-tick-thread` (2026-11-08, DM do watcher): ele mediu 90,879 criacoes/s na
 REM arvore da shell durante um stutter de 192 s. A unica criacao por frame da app era o
@@ -580,7 +581,7 @@ if exist _main\_panel2-dom-probe.js (
   call :expectred red-as-expected-panel-header-oracle !STEP_RC! "%OUT%\panel-header-neg.log" "NEG-ARM VERDICT PASS"
   call :step panel-drag-targets 0 "_main\panel-drag-targets-oracle.js;app\panel\panel.html;app\panel\panel-unified.css;app\panel\skin-layout.css;app\panel\panel.js;app\panel\strip-drag.js" "%OUT%\panel-drag-targets.log" node _main\panel-drag-targets-oracle.js
   call :record panel-drag-targets !STEP_RC!
-  call :step panel-history-clip 0 "_main\panel-history-clip-probe.mjs;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-history-clip.log" node _main\panel-history-clip-probe.mjs
+  call :step panel-history-clip 0 "_main\panel-history-clip-probe.mjs;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js;app\panel\panel.html;app\webview\sotto_webview.py;app\webview\history_context.py;_main\history-retention-fixture.py" "%OUT%\panel-history-clip.log" node _main\panel-history-clip-probe.mjs
   call :record panel-history-clip !STEP_RC!
   call :step panel-history-wheel 0 "_main\panel-history-wheel-probe.mjs;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-history-wheel.log" node _main\panel-history-wheel-probe.mjs
   call :record panel-history-wheel !STEP_RC!
@@ -596,9 +597,9 @@ if exist _main\_panel2-dom-probe.js (
   call :record theme-caption-identity !STEP_RC!
   call :step red-as-expected-theme-caption-identity 1 "_main\theme-caption-identity-oracle.py;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css" "%OUT%\theme-caption-identity-neg.log" python _main\theme-caption-identity-oracle.py --neg-arm
   call :expectred red-as-expected-theme-caption-identity !STEP_RC! "%OUT%\theme-caption-identity-neg.log" "NEG-ARM PASS"
-  call :step caption-overlay-theme 0 "_main\caption-overlay-theme-oracle.py;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\caption-overlay-theme.log" python _main\caption-overlay-theme-oracle.py
+  call :step caption-overlay-theme 0 "_main\caption-overlay-theme-oracle.py;_main\panel-themes-oracle.mjs;app\panel\panel.html;app\panel\brand-bridge.js;app\panel\panel-unified.css;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\caption-overlay-theme.log" python _main\caption-overlay-theme-oracle.py
   call :record caption-overlay-theme !STEP_RC!
-  call :step red-as-expected-caption-overlay-theme 1 "_main\caption-overlay-theme-oracle.py;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\caption-overlay-theme-neg.log" python _main\caption-overlay-theme-oracle.py --neg-arm
+  call :step red-as-expected-caption-overlay-theme 1 "_main\caption-overlay-theme-oracle.py;_main\panel-themes-oracle.mjs;app\panel\panel.html;app\panel\brand-bridge.js;app\panel\panel-unified.css;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\caption-overlay-theme-neg.log" python _main\caption-overlay-theme-oracle.py --neg-arm
   call :expectred red-as-expected-caption-overlay-theme !STEP_RC! "%OUT%\caption-overlay-theme-neg.log" "NEG-ARM: PASS"
   REM O CONTRATO DE COMPOSICAO COMPARTILHADA (dono, 2026-11-09: "consistencia em TODOS os
   REM temas"). O painel usa o espaco que tem (sem vazio embaixo), rola sem MOSTRAR barra,
@@ -612,7 +613,7 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-themes !STEP_RC!
   call :step red-as-expected-panel-themes 1 "_main\panel-themes-oracle.mjs;app\panel\panel.html;app\panel\panel.css;app\panel\panel-unified.css;app\panel\panel.js;app\panel\brand-bridge.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\lazy-assets.js;app\panel\skin-host.js;app\panel\skin-layout.css;app\panel\caption-float.css;app\panel\button-contract.css;app\panel\themes\fonts.css;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\skins\skins.js;app\panel\skins\skin-shim.css" "%OUT%\panel-themes-neg.log" node _main\panel-themes-oracle.mjs --neg-arm
   call :expectred red-as-expected-panel-themes !STEP_RC! "%OUT%\panel-themes-neg.log" "NEG-ARM: PASS"
-  call :step red-as-expected-panel-history-clip 1 "_main\panel-history-clip-probe.mjs;app\panel\panel.html;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\panel.css;app\panel\themes\fonts.css;app\panel\button-contract.css;app\panel\panel.js" "%OUT%\panel-history-clip-neg.log" node _main\panel-history-clip-probe.mjs --neg-arm
+  call :step red-as-expected-panel-history-clip 1 "_main\panel-history-clip-probe.mjs;app\panel\panel.html;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\panel.css;app\panel\themes\fonts.css;app\panel\button-contract.css;app\panel\panel.js;app\webview\sotto_webview.py;app\webview\history_context.py;_main\history-retention-fixture.py" "%OUT%\panel-history-clip-neg.log" node _main\panel-history-clip-probe.mjs --neg-arm
   call :expectred red-as-expected-panel-history-clip !STEP_RC! "%OUT%\panel-history-clip-neg.log" "NEG-ARM: PASS"
   call :step panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload.log" python _main\panel-pause-payload-oracle.py
   call :record panel-pause-payload !STEP_RC!
@@ -1545,6 +1546,15 @@ call :step yt-target-stale 0 "_main\yt-target-stale-oracle.py;app\webview\youtub
 call :record yt-target-stale !STEP_RC!
 call :step red-as-expected-yt-target-stale 1 "_main\yt-target-stale-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py" "%OUT%\yt-target-stale-neg.log" python _main\yt-target-stale-oracle.py --neg-arm
 call :expectred red-as-expected-yt-target-stale !STEP_RC! "%OUT%\yt-target-stale-neg.log" "NEG-ARM PASS"
+REM UMA FONTE CDP POR PROCESSO (2026-11-09, medido no log do dono): 675 `YOUTUBE_CDP_SOURCE
+REM state=attached` em 600 s, TODAS identicas -- e as duas linhas sao deduplicadas DENTRO do objeto,
+REM logo 675 copias da mesma linha sao 675 OBJETOS, cada um com dois fios e uma `/json/list`. O par
+REM executa o `_yt_cdp_ensure` REAL (extraido por `ast`) sobre 200 irmaos: com o registo do modulo,
+REM UMA construcao; o `--neg-arm` roda a MESMA populacao contra o metodo de `HEAD` e exige rc=1.
+call :step yt-source-singleton 0 "_main\yt-source-singleton-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py" "%OUT%\yt-source-singleton.log" python _main\yt-source-singleton-oracle.py
+call :record yt-source-singleton !STEP_RC!
+call :step red-as-expected-yt-source-singleton 1 "_main\yt-source-singleton-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py" "%OUT%\yt-source-singleton-neg.log" python _main\yt-source-singleton-oracle.py --neg-arm
+call :expectred red-as-expected-yt-source-singleton !STEP_RC! "%OUT%\yt-source-singleton-neg.log" "ANTES (HEAD)"
 
 REM O ECO DO DONO NAO ABRE NADA (ordem de 2026-11-04: "nao faz nenhum script existente ou novo
 REM abrir coisa na minha tela tipo pop up"). O `owner-screen-gate` le` 987 ficheiros de produto por
@@ -2490,16 +2500,38 @@ REM contexto de visualizacao, compacto e pesquisavel. Dono, 2026-11-09: meses
 REM depois, saber de onde veio o audio e o que estava na tela quando foi dito.
 REM O oraculo executa o `history_context` real, o `history_append`/leitura/
 REM busca/export do shell e o twin Node sobre um HISTORY_ROOT temporario; o
-REM `--neg-arm` muta quatro sitios em COPIA e exige os quatro RED. Nenhum dos
-REM dois abre a app.)
+REM `--neg-arm` muta SEIS sitios em COPIA (decoder, carimbo, leitura, twin
+REM Node, a ponte da mensagem e o escritor do ficheiro) e exige os seis RED.
+REM As arms u1-u6 julgam que o BOTAO do menu alcanca a API e que a PONTE
+REM expoe a mensagem -- uma API de backend sem controlo e' uma funcao que o
+REM dono nao tem; as s15* julgam o ficheiro no DISCO, com o contexto dentro.
+REM Nenhum dos dois abre a app.)
 if exist _main\history-context-oracle.py (
-  call :step always history-context 0 "_main\history-context-oracle.py;app\webview\history_context.py;app\webview\sotto_webview.py;app\panel\history-store.js" "%OUT%\history-context.log" python _main\history-context-oracle.py
+  call :step always history-context 0 "_main\history-context-oracle.py;_main\hidden-launch.py;app\webview\history_context.py;app\webview\sotto_webview.py;app\panel\history-store.js;app\panel\panel.html;app\panel\panel.js" "%OUT%\history-context.log" python _main\history-context-oracle.py
   call :record history-context !STEP_RC!
 ) else ( call :record history-context MISSING )
 if exist _main\history-context-oracle.py (
-  call :step always red-as-expected-history-context 1 "_main\history-context-oracle.py;app\webview\history_context.py;app\webview\sotto_webview.py;app\panel\history-store.js" "%OUT%\history-context-neg.log" python _main\history-context-oracle.py --neg-arm
+  call :step always red-as-expected-history-context 1 "_main\history-context-oracle.py;_main\hidden-launch.py;app\webview\history_context.py;app\webview\sotto_webview.py;app\panel\history-store.js;app\panel\panel.html;app\panel\panel.js" "%OUT%\history-context-neg.log" python _main\history-context-oracle.py --neg-arm
   call :expectred red-as-expected-history-context !STEP_RC! "%OUT%\history-context-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-history-context MISSING "%OUT%\history-context-neg.log" "NEG-ARM PASS" )
+
+REM (`history-route`: qual TEXTO pode chegar ao ficheiro. O oraculo conduz o
+REM worker REAL -> o motor REAL (`caption-formulation.js`) -> a loja REAL
+REM (`history-store.js`) -> `<root>/<data>/<hora>.md`, e cada braco carrega o seu
+REM proprio controlo (a semantica PRE-CURA na MESMA stream tem de medir pior).
+REM DOIS streams, porque um so' nao distingue a propriedade da populacao: medido
+REM 2026-11-09, o mesmo motor devolve `route=['final']` no curto e
+REM `['final','provisional-draft']` no longo, e o `want` antigo exigia as duas
+REM rotas -- ou seja, reprovava um motor correcto. Nenhum dos dois abre janela;
+REM o `--root` mantem as linhas fora do historico do dono.)
+if exist _main\history-route-oracle.js (
+  call :step always history-route 0 "_main\history-route-oracle.js;_main\_route-stream-short.jsonl;app\panel\caption-formulation.js;app\panel\history-store.js" "%OUT%\history-route.log" node _main\history-route-oracle.js --stream _main\_route-stream-short.jsonl --root _main\_cache\history-route
+  call :record history-route !STEP_RC!
+) else ( call :record history-route MISSING )
+if exist _main\history-route-oracle.js (
+  call :step always history-route-long 0 "_main\history-route-oracle.js;_main\_route-stream-long.jsonl;app\panel\caption-formulation.js;app\panel\history-store.js" "%OUT%\history-route-long.log" node _main\history-route-oracle.js --stream _main\_route-stream-long.jsonl --root _main\_cache\history-route-long
+  call :record history-route-long !STEP_RC!
+) else ( call :record history-route-long MISSING )
 
 REM (`reveal-clock`: a revelacao da legenda e' ancorada no AUDIO, nao na chegada
 REM do ASR. Dono, verbatim: *"a legenda do youtube ta fora de sync. atrasada.
@@ -2919,7 +2951,7 @@ call :expectred red-as-expected-live-code-freshness !STEP_RC! "%OUT%\live-code-f
 ) else ( call :record live-code-freshness-control MISSING )
 
 if exist _main\load-shedding-oracle.py (
-call :step always load-shedding 0 "_main\load-shedding-oracle.py;app\webview\load_shedding.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\load-shedding.log" python _main\load-shedding-oracle.py
+call :step always load-shedding 0 "_main\load-shedding-oracle.py;app\webview\load_shedding.py;app\webview\sotto_webview.py;worker\sotto_worker.py;worker\engine_switch.py;worker\engine_policy.py" "%OUT%\load-shedding.log" python _main\load-shedding-oracle.py
 call :record load-shedding !STEP_RC!
 ) else ( call :record load-shedding MISSING )
 
@@ -2970,7 +3002,7 @@ call :expectred red-as-expected-nemotron-weights !STEP_RC! "%OUT%\nemotron-weigh
 ) else ( call :expectred red-as-expected-nemotron-weights MISSING "%OUT%\nemotron-weights-neg.log" "NEG-ARM: PASS" )
 
 if exist _main\load-shedding-oracle.py (
-call :step always red-as-expected-load-shedding 1 "_main\load-shedding-oracle.py;app\webview\load_shedding.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\load-shedding-neg.log" python _main\load-shedding-oracle.py --neg-arm
+call :step always red-as-expected-load-shedding 1 "_main\load-shedding-oracle.py;app\webview\load_shedding.py;app\webview\sotto_webview.py;worker\sotto_worker.py;worker\engine_switch.py;worker\engine_policy.py" "%OUT%\load-shedding-neg.log" python _main\load-shedding-oracle.py --neg-arm
 call :expectred red-as-expected-load-shedding !STEP_RC! "%OUT%\load-shedding-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-load-shedding MISSING "%OUT%\load-shedding-neg.log" "NEG-ARM PASS" )
 
