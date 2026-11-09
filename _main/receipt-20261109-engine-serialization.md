@@ -191,6 +191,31 @@ sessao `session-20-intra-op-2` (>=3 fios) tem de ser um deles ou um sitio que
 ainda nao tem linha de log, e isso e' um bilhete proprio: "um numero por
 processo" so' sera verdade quando nenhum construtor de sessao tiver o seu.
 
+### CORRECCAO MEDIDA (Main, 2026-11-09 23:5x): NENHUM dos dois sitios acima pode ser o `session-20-intra-op-2`
+
+A frase acima chama os dois de candidatos. Medido agora, um nao existe em producao e o
+outro ja' esta' no numero certo:
+
+    $ grep -rn "model_vram_pool" --include=*.py .
+    .\_main\vram-reuse-oracle.py:10   import model_vram_pool as pool     <- o UNICO importador
+    .\worker\model_vram_pool.py:211/258                                  <- ele mesmo
+    .\app\webview\hot_reload.py:59                                       <- um comentario
+
+O `model_vram_pool.py` tem **ZERO chamadores de producao**: quem o importa e' o portao
+`_main/vram-reuse-oracle.py`. O `default 8` dele esta' DORMENTE e nao constroi sessao
+nenhuma no worker -- editar esse 8 nao mudaria um fio.
+
+    worker/speaker_sidecar.py:684   def _load_powerset(seg_model: str, threads: int = 2)
+                                    opts.intra_op_num_threads = max(1, int(threads))
+
+O sidecar ja' pede 2 por omissao (`threads: int = 2`) e nunca sobe acima do que o
+chamador pede. Um 3.o fio (`-intra-op-2`) NAO sai daqui.
+
+Logo: o `session-20-intra-op-2` continua NAO ATRIBUIDO, e o instrumento que o decide e'
+uma amostra por fio DURANTE uma janela de CARGA (o unico momento em que sessoes nascem),
+nao um palpite sobre dois ficheiros. Fica como bilhete aberto com essa sonda declarada,
+e este recibo nao afirma a origem que nao mediu.
+
 ## O QUE AINDA FUNCIONA (provado, nao prometido)
 
   * O TEXTO NAO MUDA. `G:/Temp/sotto-engine-budget/same-text.py` (o motor de
