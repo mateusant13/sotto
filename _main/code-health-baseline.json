@@ -41,12 +41,12 @@
       "max_func_name": ""
     },
     "app/panel/caption-formulation.js": {
-      "bytes": 64359,
+      "bytes": 64858,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 1294,
+      "lines": 1302,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -131,12 +131,12 @@
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 219959,
+      "bytes": 223205,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4441,
+      "lines": 4510,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -591,12 +591,12 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 85439,
+      "bytes": 85255,
       "classes": 1,
-      "defs": 30,
+      "defs": 29,
       "except_pass": 6,
-      "globals": 3,
-      "lines": 1768,
+      "globals": 2,
+      "lines": 1761,
       "max_func": 230,
       "max_func_name": "_run"
     },
@@ -811,13 +811,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 473754,
+      "bytes": 490022,
       "classes": 17,
-      "defs": 92,
-      "except_pass": 21,
+      "defs": 93,
+      "except_pass": 23,
       "globals": 6,
-      "lines": 8990,
-      "max_func": 2702,
+      "lines": 9125,
+      "max_func": 2717,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
