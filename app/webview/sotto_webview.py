@@ -1376,6 +1376,11 @@ ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
              # e um campo que so' existe no consumidor deixa de existir sempre que
              # o consumidor for reescrito. A linha inteira atravessa esta tag.
              'WORKER_COST',
+             # O CENSO DOS FIOS DO GENAI (medido 2026-11-09): `og.Model` cria as suas
+             # proprias sessoes a largura da maquina e nenhum botao as governa -- a
+             # linha que diz QUANTOS sao tem de chegar ao log, ou o numero que decide
+             # a CPU do dono existe so' dentro do processo.
+             'WORKER_GENAI_THREADS',
                        'REDUX_SWITCH', 'REDUX_BATCH_KICK')
 
 #: O BATIMENTO DO LACO DO WORKER, reconhecido por CONTER e nao por comecar (2026-11-04).

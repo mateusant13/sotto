@@ -726,6 +726,110 @@ def _prof_publish() -> None:
         err("WORKER_BOOT_PROF " + " ".join(f"{k}={v}" for k, v in _BOOT_PROF.items()))
 
 
+# ── OS FIOS DO GENAI NAO TEM BOTAO (medido 2026-11-09) ───────────────────────
+# O `og.Model` do nemotron cria as SUAS proprias sessoes, e nenhum dos tres
+# caminhos de configuracao as governa -- cada um medido nesta maquina:
+#   `og.Model(dir)` num processo limpo                -> +36 fios `session-N-intra-op-*`
+#   `Config.set_provider_option('cpu','intraOpNumThreads','4')` -> 36 fios (IGNORADO)
+#   `genai_config.json` com `session_options`/`intra_op_num_threads` -> o ficheiro e' RECUSADO
+# Ou seja: a cura 12->6 fios (`session_options`, encoder 4 / dec 1 / joint 1) governa
+# as TRES sessoes de ORT e nao toca no motor que faz o stream. Medido no worker vivo
+# (pid 14712): tres grupos de 9 fios `session-N-intra-op-0..8`, que e' `intra_op=10`
+# por sessao -- a largura da maquina, nao um orcamento.
+#
+# O lever que sobra e' o fio ja' criado, e so' o dono do processo o pode puxar:
+# `OpenThread(SET_INFORMATION)` num processo alheio devolve `err=5` (medido neste
+# assento). Prioridade e afinidade, entao, aplicam-se de DENTRO. `SOTTO_GENAI_CPUS`
+# (`4-9`, `0,1,2`) e' o unico aperto; sem ele nada muda e a linha continua a dizer
+# quantos fios existem -- um censo que so' aparece quando ha' aperto esconderia o
+# caso normal, que e' exactamente o que se quer medir.
+def genai_thread_ids() -> list:
+    """Tids DESTE processo com nome de fio de sessao ONNX (`session-N-intra-op-i`)."""
+    try:
+        import ctypes
+        import ctypes.wintypes as wt
+        k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+
+        class _TE32(ctypes.Structure):
+            _fields_ = [('dwSize', wt.DWORD), ('cntUsage', wt.DWORD),
+                        ('th32ThreadID', wt.DWORD), ('th32OwnerProcessID', wt.DWORD),
+                        ('tpBasePri', ctypes.c_long), ('tpDeltaPri', ctypes.c_long),
+                        ('dwFlags', wt.DWORD)]
+
+        k32.CreateToolhelp32Snapshot.restype = wt.HANDLE
+        k32.OpenThread.restype = wt.HANDLE
+        k32.OpenThread.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
+        k32.GetThreadDescription.restype = ctypes.c_long
+        k32.GetThreadDescription.argtypes = [wt.HANDLE,
+                                             ctypes.POINTER(ctypes.c_wchar_p)]
+        snap = k32.CreateToolhelp32Snapshot(0x4, 0)          # TH32CS_SNAPTHREAD
+        entry = _TE32()
+        entry.dwSize = ctypes.sizeof(_TE32)
+        me = os.getpid()
+        found = []
+        ok = k32.Thread32First(snap, ctypes.byref(entry))
+        while ok:
+            if entry.th32OwnerProcessID == me:
+                handle = k32.OpenThread(0x0800, False, entry.th32ThreadID)
+                if handle:
+                    buf = ctypes.c_wchar_p()
+                    k32.GetThreadDescription(handle, ctypes.byref(buf))
+                    k32.CloseHandle(handle)
+                    if 'intra-op' in (buf.value or ''):
+                        found.append(entry.th32ThreadID)
+            ok = k32.Thread32Next(snap, ctypes.byref(entry))
+        k32.CloseHandle(snap)
+        return found
+    except Exception:                                        # noqa: BLE001
+        return []
+
+
+def cpu_mask(spec: str) -> int:
+    """`4-9` / `0,1,2` -> mascara de afinidade. Vazio/ilegivel -> 0 (sem aperto)."""
+    mask = 0
+    for part in str(spec or '').replace(';', ',').split(','):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            if '-' in part:
+                lo, hi = part.split('-', 1)
+                for n in range(int(lo), int(hi) + 1):
+                    mask |= 1 << n
+            else:
+                mask |= 1 << int(part)
+        except ValueError:
+            return 0
+    return mask
+
+
+def cap_genai_threads(tag: str = '') -> int:
+    """Publica o censo dos fios do genai e aplica `SOTTO_GENAI_CPUS`, se houver."""
+    tids = genai_thread_ids()
+    spec = os.environ.get('SOTTO_GENAI_CPUS', '').strip()
+    mask = cpu_mask(spec) if spec else 0
+    pinned = 0
+    try:
+        import ctypes
+        import ctypes.wintypes as wt
+        k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        k32.OpenThread.restype = wt.HANDLE
+        k32.OpenThread.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
+        for tid in tids:
+            handle = k32.OpenThread(0x0020 | 0x0800, False, tid)
+            if not handle:
+                continue
+            k32.SetThreadPriority(handle, -1)                # THREAD_PRIORITY_BELOW_NORMAL
+            if mask and k32.SetThreadAffinityMask(handle, ctypes.c_size_t(mask)):
+                pinned += 1
+            k32.CloseHandle(handle)
+    except Exception:                                        # noqa: BLE001
+        pass
+    err('WORKER_GENAI_THREADS threads=%d pinned=%d cpus=%s%s'
+        % (len(tids), pinned, spec or 'none', (' tag=' + tag) if tag else ''))
+    return pinned
+
+
 # ── CUDA plumbing ─────────────────────────────────────────────────────────────
 def _add_cuda_dll_dirs() -> None:
     """Make CUDA/cuDNN importable from the torch + nvidia pip wheels.
@@ -1619,6 +1723,10 @@ class StreamAsr:
             _prof("og_model", time.time())
             self._sp = self._make_processor()
             _prof("og_processor", time.time())
+            # O CENSO SAI SEMPRE. Os fios do genai nascem dentro de `og.Model` e sao
+            # eles que carregam o stream; sem esta linha o numero que governa a CPU
+            # do dono continua a nao existir em log nenhum (medido 2026-11-09).
+            cap_genai_threads()
         except BaseException as exc:            # re-raised by `_join_frontend`
             self._fe_error = exc
             # LOUD, not silent: this used to fail during the load, where `main()`

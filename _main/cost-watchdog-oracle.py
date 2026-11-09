@@ -215,6 +215,55 @@ def run_arms(cache, mod, cw):
                               f3.get('rtf')))
     line4 = fmt('tick', 1.0, 0.4, 10.0, 3, 3, 0.13, 60.0, 1,
                 extras={'ms_per_chunk': None})
+    # O CENSO DOS FIOS DO GENAI (2026-11-09). `og.Model` cria 3-4 sessoes a largura
+    # da maquina (`intra_op=10` => 9 fios de trabalho cada) e NENHUM dos tres
+    # caminhos de configuracao as governa -- por isso o lever e' a afinidade dos fios
+    # ja' criados, e o numero tem de existir no log. As tres arms julgam a metade
+    # pura (`cpu_mask`), a publicacao da linha e a fiacao do relay na shell.
+    worker_src = io.open(os.path.join(ROOT, 'worker', 'sotto_worker.py'),
+                         encoding='utf-8').read()
+    i = worker_src.index('def cpu_mask(')
+    j = worker_src.index('\n# ── CUDA plumbing', i)
+    ns = {'os': os}
+    exec(compile(worker_src[i:j], 'worker_cpu_mask', 'exec'), ns)
+    mod.arm('A11 cpu_mask le faixas e listas, e recusa lixo',
+            ns['cpu_mask']('4-9') == 0b1111110000
+            and ns['cpu_mask']('0,1,2') == 7
+            and ns['cpu_mask']('lixo') == 0,
+            '%d / %d / %d' % (ns['cpu_mask']('4-9'), ns['cpu_mask']('0,1,2'),
+                              ns['cpu_mask']('lixo')))
+    i2 = worker_src.index('def cap_genai_threads(')
+    j2 = worker_src.index('\n# ── CUDA plumbing', i2)
+    out = []
+    ns2 = {'os': os, 'err': lambda msg: out.append(msg),
+           'genai_thread_ids': lambda: [11, 22], 'cpu_mask': ns['cpu_mask'],
+           'os_env': os.environ}
+    exec(compile(worker_src[i2:j2], 'worker_cap', 'exec'), ns2)
+    old_env = os.environ.pop('SOTTO_GENAI_CPUS', None)
+    try:
+        ns2['cap_genai_threads']('arm')
+    finally:
+        if old_env is not None:
+            os.environ['SOTTO_GENAI_CPUS'] = old_env
+    mod.arm('A12 a linha publica o censo mesmo SEM aperto (cpus=none)',
+            len(out) == 1 and out[0].startswith('WORKER_GENAI_THREADS threads=2')
+            and 'cpus=none' in out[0] and 'tag=arm' in out[0],
+            out[0] if out else 'nenhuma linha')
+    # O TUPLE LIDO POR AST, nao por `index(')')`: a primeira versao cortava no
+    # primeiro parentese do proprio comentario e publicava AUSENTE sobre um tag
+    # que estava la' -- um portao que mente sobre o texto perde a autoridade.
+    import ast as _ast
+    shell_src = io.open(os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py'),
+                        encoding='utf-8').read()
+    tags = set()
+    for node in _ast.parse(shell_src).body:
+        if isinstance(node, _ast.Assign) and any(
+                getattr(t, 'id', '') == 'ENGINE_VISIBLE_TAGS' for t in node.targets):
+            tags = set(_ast.literal_eval(node.value))
+    mod.arm('A13 a shell relata WORKER_GENAI_THREADS (a linha chega ao log)',
+            'WORKER_GENAI_THREADS' in tags,
+            '%d tags: %s' % (len(tags), 'presente' if 'WORKER_GENAI_THREADS' in tags
+                             else 'AUSENTE'))
     mod.arm('A10 tick sem chunk diz ms_per_chunk=none (nao zero)',
             parse(line4)['fields'].get('ms_per_chunk') == 'none',
             parse(line4)['fields'].get('ms_per_chunk'))
