@@ -591,7 +591,25 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-09, 22:0x):** `_main\_audit-verify-all.cmd` = **328644 B**,
+- **PIN do ficheiro (medido 2026-11-09, 23:1x):** `_main\_audit-verify-all.cmd` = **330374 B**,
+  **3878 CRLF** / 0 bare LF, sha256 `BF01F6FAFFFFD3605DB7FD98070E60CF4250C5B069FB75E53EEC631C03922F77`.
+  (Mil setecentos e trinta bytes e VINTE linhas a mais do que o pin de 328644 B: o par `tree-cost` +
+  `red-as-expected-tree-cost`, o CUSTO DA ARVORE (shell + worker somados). Nasceu de TRES DMs de
+  stutter do watcher na mesma noite, todas a acusar a mesma arvore e nenhuma delas com um passo
+  capaz de a julgar. O portao vizinho (`shell-thread-budget`) julga a SHELL, e ela esta' em **0,2 %
+  de um nucleo** numa janela de 60 s (`_main/shell-thread-cpu.py 27568 --seconds 60`) -- nao e' ela.
+  A medicao por fio do FILHO nomeia o actor: `pid 37112: 62,4 % de um nucleo -- session-9 27,2 %,
+  session-10 14,1 %, session-8 7,4 %`, tres sessoes ONNX vivas com 2 fios cada, que quando
+  descodificam juntas dao ~5,1 nucleos = os 26,6 % da MAQUINA que a DM mediu. O `cost-watchdog` julga
+  o `WORKER_COST` que o worker PUBLICA (a parte a falar de si); este mede os dois de FORA e julga a
+  SOMA contra **150 % de um nucleo** (medido: 99-137 %), com ratchet de +20 % sobre
+  `_main\tree-cost-baseline.json`. Identidade pelo PID CARIMBADO no log (`SHELL_STARTUP_STAGE` +
+  `BRIDGE_SPAWNED`), porque o `CommandLine` dos processos do dono vem **VAZIO** (app `high`, pane
+  `medium`, medido: `pythonw.exe(27568) -> ''`) -- medir por argv dava `SKIPPED` e o portao seria
+  decorativo. Medido: `TREE-COST tree=136,6 % ... top=session-9-intra-op-0:44,8 %` PASS e o
+  `--neg-arm` rc=1 com 4 leituras (calmo PASS, episodio 530 % FAIL, crescimento contra baseline
+  premido FAIL, nenhum processo CANNOT-MEASURE).)
+  (O pin anterior era o de 22:0x, **328644 B**,
   **3858 CRLF** / 0 bare LF, sha256 `A044EA925C346431DE3FF15A38ECF99BC12DAEF918CE5670DAD94B5A9CC8C2AA`.
   (Dois mil novecentos e setenta e seis bytes e TRINTA E SETE linhas a mais do que o pin de 325668 B:
   DOIS pares, os dois da ordem do dono de 2026-11-09 -- *"legenda AO VIVO otima E historico otimo"*.

@@ -344,6 +344,26 @@ if exist _main\shell-thread-budget-oracle.py (
   call :step red-as-expected-shell-thread-budget 1 "_main\shell-thread-budget-oracle.py;_main\shell-thread-cpu.py" "%OUT%\shell-thread-budget-neg.log" python _main\shell-thread-budget-oracle.py --neg-arm
   call :expectred red-as-expected-shell-thread-budget !STEP_RC! "%OUT%\shell-thread-budget-neg.log" "NEG-ARM PASS"
 ) else ( call :record shell-thread-budget MISSING )
+REM `tree-cost` (2026-11-09, TRES DMs de stutter do watcher na mesma noite): o portao
+REM acima julga a SHELL e ela esta' em 0,2% de um nucleo numa janela de 60 s -- NAO e'
+REM ela o problema. As DMs acusavam `pythonw.exe(27568)` a 26,6% da MAQUINA (8,2% na
+REM primeira), e a medicao por fio do filho nomeia o actor:
+REM   pid 37112: 62,4% de um nucleo -- session-9 27,2%, session-10 14,1%, session-8 7,4%
+REM tres sessoes ONNX vivas, 2 fios cada: quando as tres descodificam ao mesmo tempo
+REM sao ~5,1 nucleos, que e' exactamente o numero da DM. O `cost-watchdog` julga o
+REM `WORKER_COST` que o worker PUBLICA (a parte a falar de si); este mede os dois
+REM processos DE FORA e julga a SOMA contra 150% de um nucleo, com ratchet de +20%.
+REM Identidade pelo PID CARIMBADO no log (`SHELL_STARTUP_STAGE` + `BRIDGE_SPAWNED`):
+REM o argv dos processos do dono vem VAZIO (app `high`, pane `medium`, medido).
+if exist _main\tree-cost-oracle.py (
+  call :step tree-cost 0 "_main\tree-cost-oracle.py;_main\shell-thread-cpu.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\tree-cost.log" python _main\tree-cost-oracle.py
+  REM DECLARADO SKIP-CAPABLE pela mesma razao do vizinho: com a app fechada o
+  REM desfecho honesto e' `TREE-COST SKIPPED reason=no-live-shell` + `VERDICT: SKIPPED`,
+  REM e um skip nao e' um portao que passou.
+  call :skipped tree-cost !STEP_RC! "%OUT%\tree-cost.log" "VERDICT: PASS" "VERDICT: SKIPPED"
+  call :step red-as-expected-tree-cost 1 "_main\tree-cost-oracle.py" "%OUT%\tree-cost-neg.log" python _main\tree-cost-oracle.py --neg-arm
+  call :expectred red-as-expected-tree-cost !STEP_RC! "%OUT%\tree-cost-neg.log" "NEG-ARM: PASS"
+) else ( call :record tree-cost MISSING )
 REM `ort-spin-idle` (2026-11-08, quatro DMs de stutter do watcher): a atribuicao por FIO
 REM pago 57,4% de um nucleo no WORKER, e tres deles eram `session-NN-intra-op-0` -- o
 REM spin-wait do onnxruntime. Medido isolado, com as tres sessoes vivas e ninguem a
