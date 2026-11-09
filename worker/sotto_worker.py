@@ -143,7 +143,8 @@ from engine_switch import (  # noqa: E402,F401 -- superficie historica do worker
     REDUX_MIN_AUDIO_S, REDUX_MIN_FREE_MB_DEFAULT, REDUX_PRODUCER,
     REDUX_RUNNER_DEFAULT, REDUX_RUNNER_TIMEOUT_DEFAULT_S,
     REDUX_VISIBILITY_DEFAULT, ReduxHiddenSwitch, RunnerEngine, TARGET_SR,
-    _SHEDDING_PATH, _free_memory_mb, current_private_mb, current_rss_mb, err,
+    _SHEDDING_PATH, _free_memory_mb, asr_admit, asr_budget, current_private_mb,
+    current_rss_mb, err, live_decode_age, note_live_decode,
     peak_rss_mb,
     redux_checkpoint_dir, redux_checkpoint_missing, redux_live_dirs,
     redux_live_missing,
@@ -1475,8 +1476,13 @@ class StreamAsr:
         # outro valor. `current_threads()` cai no ambiente num probe que
         # construa `StreamAsr` sem passar por `main()`.
         _threads = current_threads()
-        so = session_options(ort, _ab, _threads, encoder=False)
-        so_enc = session_options(ort, _ab, _threads, encoder=True)
+        # O ORCAMENTO UNICO (`engine_switch.asr_budget`): o numero que este run
+        # usa e' o do PROCESSO, e o stream leva a parte dele -- nao um segundo
+        # parser do ambiente nem um numero por motor. As tres sessoes deste
+        # motor (encoder, decoder, joint) saem DESTA divisao.
+        _share = asr_budget(_threads)
+        so = session_options(ort, _ab, _share['small'], encoder=False)
+        so_enc = session_options(ort, _ab, _share['live'], encoder=True)
         # THE OPTIONS GO WITH THE NAMES (see `provider_entries`): without them
         # the GPU arena rounds every allocation up to the next power of two.
         # MEASURED 2026-10-21 on the owner's box: the worker's VRAM delta is
@@ -1505,9 +1511,11 @@ class StreamAsr:
         # a CPU da maquina do dono tem de ser legivel NA LINHA.
         try:
             sys.stderr.write(
-                "WORKER_THREAD_PLAN encoder=%d small=%d sessions=3 total_intra=%d\n"
+                "WORKER_THREAD_PLAN encoder=%d small=%d sessions=3 total_intra=%d "
+                "budget_total=%d budget_batch=%d\n"
                 % (so_enc.intra_op_num_threads, so.intra_op_num_threads,
-                   so_enc.intra_op_num_threads + 2 * so.intra_op_num_threads))
+                   so_enc.intra_op_num_threads + 2 * so.intra_op_num_threads,
+                   _share['total'], _share['batch']))
             sys.stderr.flush()
         except Exception:            # noqa: BLE001
             pass
@@ -1967,6 +1975,14 @@ class StreamAsr:
             return "", 0
         af = feats["audio_features"]
         af = af.as_numpy() if hasattr(af, "as_numpy") else np.asarray(af)
+
+        # O BATIMENTO DO PORTAO (`engine_switch.asr_admit`): este e' o instante
+        # em que o passe AO VIVO esta' a decodificar, e e' daqui -- do sitio que
+        # decodifica -- que o motor de LOTE sabe que tem de ceder a vez. Um
+        # `mode == "stream"` sozinho e' politica: muda no tick seguinte, e entre
+        # o tick e esta chamada o ao vivo pode estar a decodificar com o modo ja'
+        # a dizer outra coisa. Uma linha, sem espera e sem bloqueio.
+        note_live_decode()
 
         _t_enc = time.time()
         enc_out, enc_len, self.cc, self.ct, self.ccl = self.enc.run(
@@ -7929,6 +7945,12 @@ def main():
             probe=probe,
             spool_dir=spool_dir,
             engine_threads=_THREADS_EFFECTIVE[0],
+            # O ORCAMENTO DO PROCESSO: o MESMO numero que `main()` resolveu e que
+            # `StreamAsr` le'. O motor de LOTE nao tem numero proprio -- recebe a
+            # parte que este orcamento lhe da' (`asr_budget()[batch]`), e o portao
+            # (`flush_pending` -> `asr_admit`) garante que os dois passes nao o
+            # gastam ao mesmo tempo.
+            asr_threads=current_threads(),
         )
         switch.boot_line()
         # ── A FUSAO DOS DOIS MOTORES (dono, 2026-11-09) ──────────────────────

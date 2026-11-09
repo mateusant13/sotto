@@ -1,4 +1,8 @@
 {
-  "total": 99.0,
+  "total": 124.2,
+  "windows": 3,
+  "note": "o valor julgado e' a MEDIANA de 3 janelas de 5 s por processo; o tecto declarado e' 250 % de UM nucleo. O RATCHET NAO JULGA esta metrica (medido no primeiro dia: a mesma arvore deu 15,5 / 59,6 / 100,5 / 124,2 / 136,6 / 164,6 % conforme a fase do trabalho, e num episodio 530 %). Este ficheiro e' o REGISTO da dispersao, nao um limite.",
+  "observed_spread_2026_11_09": [15.5, 59.6, 99.0, 100.5, 124.2, 136.6, 164.6],
+  "episode_2026_11_09": 530.0,
   "when": "2026-11-09"
 }

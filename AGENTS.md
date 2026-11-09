@@ -591,7 +591,21 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-09, 23:1x):** `_main\_audit-verify-all.cmd` = **330374 B**,
+- **PIN do ficheiro (medido 2026-11-09, 23:5x):** `_main\_audit-verify-all.cmd` = **331566 B**,
+  **3889 CRLF** / 0 bare LF, sha256 `54548EC8187E80D09FAFA401F2AC4EF2AE15CC0BF55613816B3755A9972BF97B`.
+  (Mil cento e noventa e dois bytes e ONZE linhas a mais do que o pin de 330374 B: o par
+  `engine-serialization` + `red-as-expected-engine-serialization`, o ORCAMENTO UNICO dos dois motores
+  ASR. Nasceu do mesmo mecanismo que as dez DMs de stutter da noite: o worker vivo tem DUAS politicas
+  de fios num processo -- o `--threads` do stream e o `REDUX_LIVE_THREADS` do lote -- e por isso TRES
+  sessoes ONNX descodificam ao mesmo tempo (`pid 37112` medido por fio: `session-9 34,2 %`,
+  `session-10 24,2 %`, `session-8 19,7 %`). O oraculo le os dois ficheiros por `ast` e julga o
+  orcamento (`{total:2, live:2, small:1, batch:2}`, `max(...)==total`), a admissao do lote e o ultimo
+  instante antes de cada janela; medido **142,7 %** de um nucleo com o portao contra **188,0 %** com ele
+  forçado, e as janelas do ao vivo de **3 em 12 s** para **8 em 10 s**. 19 arms, `--neg-arm` 13/13
+  (rc=1). `battery-class` PASS, `battery-wiring` `ligados=176 sem_passo=109 populacao=285`.
+  Furo declarado pela propria lane: `session-20-intra-op-2` nasce em `worker/model_vram_pool.py:378`
+  (8 fios por omissao), FORA dos dois motores -- "um orcamento para o processo todo" ainda nao e' verdade.
+- **PIN anterior (medido 2026-11-09, 23:1x):** `_main\_audit-verify-all.cmd` = **330374 B**,
   **3878 CRLF** / 0 bare LF, sha256 `BF01F6FAFFFFD3605DB7FD98070E60CF4250C5B069FB75E53EEC631C03922F77`.
   (Mil setecentos e trinta bytes e VINTE linhas a mais do que o pin de 328644 B: o par `tree-cost` +
   `red-as-expected-tree-cost`, o CUSTO DA ARVORE (shell + worker somados). Nasceu de TRES DMs de
@@ -602,8 +616,14 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   session-10 14,1 %, session-8 7,4 %`, tres sessoes ONNX vivas com 2 fios cada, que quando
   descodificam juntas dao ~5,1 nucleos = os 26,6 % da MAQUINA que a DM mediu. O `cost-watchdog` julga
   o `WORKER_COST` que o worker PUBLICA (a parte a falar de si); este mede os dois de FORA e julga a
-  SOMA contra **150 % de um nucleo** (medido: 99-137 %), com ratchet de +20 % sobre
-  `_main\tree-cost-baseline.json`. Identidade pelo PID CARIMBADO no log (`SHELL_STARTUP_STAGE` +
+  SOMA contra **250 % de um nucleo** -- mediana de 3 janelas, com o fio mais quente COM NOME. O
+  tecto de 150 nasceu VERMELHO no primeiro uso legitimo (`tree=164,6 %` com o fallback UIA do
+  `yt-clock` a somar 28,2 %) e o RATCHET de +20 % foi **retirado por medicao**: a mesma arvore deu
+  15,5 / 59,6 / 100,5 / 124,2 / 136,6 / 164,6 % em janelas de 5 s conforme a FASE (fallback UIA,
+  lote a drenar, stream a descodificar) e num episodio 530 % -- um ratchet sobre variancia de 2,7x
+  condena o trabalho normal, que e' o mesmo defeito de um portao que nunca falha ao contrario.
+  `_main\tree-cost-baseline.json` diz por palavras que e' REGISTO da dispersao, nao limite.
+  Identidade pelo PID CARIMBADO no log (`SHELL_STARTUP_STAGE` +
   `BRIDGE_SPAWNED`), porque o `CommandLine` dos processos do dono vem **VAZIO** (app `high`, pane
   `medium`, medido: `pythonw.exe(27568) -> ''`) -- medir por argv dava `SKIPPED` e o portao seria
   decorativo. Medido: `TREE-COST tree=136,6 % ... top=session-9-intra-op-0:44,8 %` PASS e o

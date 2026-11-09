@@ -264,6 +264,163 @@ REDUX_LIVE_MIN_AUDIO_S = 1.0
 REDUX_LIVE_THREADS = 2
 
 
+# ── UM ORCAMENTO DE ASR PARA O PROCESSO INTEIRO ─────────────────────────────
+# O DEFEITO (MEDIDO 2026-11-09 nesta caixa, `_main/shell-thread-cpu.py`): o
+# worker vivo tinha TRES sessoes a decodificar com o orcamento do AO VIVO
+# (`--threads 2` -> encoder 2 + decoder 1 + joint 1) e o motor de LOTE tinha o
+# SEU proprio numero (`REDUX_LIVE_THREADS = 2`). Dois orcamentos, um processo:
+# no maximo 2+1+1 fios de intra-op no stream E outros 2 no lote, ao mesmo tempo.
+# MEDIDO no motor de lote real (parakeet ONNX int4, uma janela de 3 s,
+# `_main/shell-thread-cpu.py 37796 --seconds 10 --top 12`):
+#
+#     threads=2: 127,9 % de um nucleo   session-2-intra-op-0 48,3 %
+#                                       session-3-intra-op-0 18,7 %
+#                                       session-1-intra-op-0 12,3 %
+#                                       (um fio sem nome        48,6 %)
+#                a janela de 3 s leva **2,40 s** de parede (6 janelas em 14,4 s)
+#     threads=1: 14,0 s por janela      -> o lote deixa de drenar (RTF 4,7)
+#
+# Duas conclusoes que governam o resto deste bloco:
+#   1. o lote NAO pode ficar com menos fios: a 1 fio ele nao acompanha o audio;
+#   2. uma janela do lote (2,4 s) nao cabe na folga entre chunks do ao vivo
+#      (o chunk do stream e' 0,56 s de audio). Nao existe escala de tempo em que
+#      os dois decodifiquem "em pedacos que se intercalam": ou um cede a vez
+#      inteira, ou os dois queimam nucleo ao mesmo tempo.
+#
+# Por isso o orcamento e' UM numero -- o do worker (`--threads`) -- e o que ele
+# limita e' o numero de fios de intra-op de UM passe a decodificar, nao a soma
+# de dois passes concorrentes. Quem garante isso e' o portao abaixo.
+ASR_BUDGET_THREADS_DEFAULT = REDUX_LIVE_THREADS
+
+
+def asr_budget(total=None):
+    """`{'total','live','small','batch'}` -- O orcamento, dividido UMA vez.
+
+    `live` e' o encoder do stream e recebe o numero INTEIRO: corta-lo mudaria a
+    latencia da legenda, que e' a coisa que esta lane nao pode tocar. `small` e'
+    decoder/joint (um fio cada -- o mesmo piso que `session_options` ja' aplica).
+    `batch` e' o numero medido do motor de lote, limitado pelo MESMO total.
+
+    O INVARIANTE: nenhum motor tem numero proprio. O pico de fios de intra-op de
+    UM passe e' `max(live, small, batch) == total`, e o portao impede que dois
+    passes o usem no mesmo instante.
+    """
+    total = max(1, int(total if total else ASR_BUDGET_THREADS_DEFAULT))
+    return {
+        'total': total,
+        'live': total,
+        'small': 1,
+        'batch': min(REDUX_LIVE_THREADS, total),
+    }
+
+
+# ── O PORTAO: UM PASSE DE CADA VEZ ──────────────────────────────────────────
+# AS ASSIMETRIA E' A ORDEM DO DONO. A legenda ao vivo tem prazo; o lote nao. Por
+# isso o passe AO VIVO e' sempre `grant` -- ele NUNCA espera e NUNCA cede a vez:
+# uma espera no caminho da legenda e' exactamente o defeito que o dono sente. O
+# LOTE e' quem cede, e o preco de ceder e' zero: o audio dele ja' esta' na
+# `PendingAudio` (RAM -> spool, sem perdas) e sai quando o ao vivo parar.
+#
+# O SINAL E' MEDIDO, NAO DEDUZIDO: `note_live_decode()` e' chamado pelo sitio
+# que decodifica (`StreamAsr.run_chunk`), logo "o passe ao vivo esta' a
+# decodificar" e' um instante que existe, e nao a interpretacao de um `mode`.
+#: Quantos segundos depois do ultimo decode do ao vivo o lote pode comecar. Tem
+#: de cobrir a DURACAO de um decode do stream e a volta seguinte do laco.
+ASR_LIVE_FRESH_S = 3.0
+
+ASR_LIVE = "live"
+ASR_BATCH = "batch"
+
+#: Quanto tempo uma janela do LOTE espera pela vez antes de correr mesmo assim.
+#: 2 s cobrem ~3 decodes do ao vivo (o passo medido e' 0,56 s de audio), e o
+#: limite existe para uma CAUDA (que nao tem tick seguinte) nao ficar presa
+#: atras de uma legenda que nunca cala. O lote dorme a 0,0 % de CPU enquanto
+#: espera: `time.sleep` liberta o GIL e o audio nao se move (ja' foi tomado).
+ASR_LIVE_WAIT_S = 2.0
+ASR_LIVE_WAIT_STEP_S = 0.05
+
+#: O batimento do passe ao vivo, um por processo (`StreamAsr.run_chunk`).
+_LIVE_CLOCK = {"at": None, "decodes": 0, "last_gap_s": 0.0}
+
+
+def note_live_decode(now=None):
+    """Marca que o passe AO VIVO entrou num decode AGORA. Devolve o instante."""
+    now = time.monotonic() if now is None else float(now)
+    last = _LIVE_CLOCK["at"]
+    if last is not None:
+        _LIVE_CLOCK["last_gap_s"] = max(0.0, now - last)
+    _LIVE_CLOCK["at"] = now
+    _LIVE_CLOCK["decodes"] += 1
+    return now
+
+
+def live_decode_age(now=None):
+    """Segundos desde o ultimo decode do ao vivo; `None` = nunca decodificou."""
+    last = _LIVE_CLOCK["at"]
+    if last is None:
+        return None
+    now = time.monotonic() if now is None else float(now)
+    return max(0.0, now - last)
+
+
+class AsrSerializedEngine:
+    """O motor de LOTE atras do portao: a JANELA espera a vez, sem gastar CPU.
+
+    PORQUE E' PRECISO (medido 2026-11-09, sonda com o motor real nesta caixa):
+    o portao decide o INICIO de um passe (`flush_pending`), e um passe ja'
+    comecado continua a correr quando o ao vivo decodifica. A sonda mostrou os
+    dois no mesmo instante -- `PHASE2` com o portao a recusar 465 pedidos e
+    336,4 % de um nucleo, as sessoes do lote (1/2/3) quentes ao lado das do ao
+    vivo. `engine_policy.run_engine_pass` so' cede entre janelas quando o `mode`
+    e' `shed`, e o `mode` e' do interruptor (mandar `shed` pararia a LEGENDA).
+    Aqui o lote espera no ULTIMO instante antes de decodificar: a thread dorme,
+    o audio fica onde esta', e a janela sai no primeiro intervalo livre.
+
+    O QUE ISTO NAO FAZ: nao atrasa a legenda (quem espera e' o lote), nao
+    perde audio (a `PendingAudio` nao e' tocada) e nao muda a transcricao
+    (mesmo motor, mesmos pesos, mesmos argumentos).
+    """
+
+    def __init__(self, inner, wait):
+        self._inner = inner
+        self._wait = wait
+        self.waits = 0
+        self.waited_s = 0.0
+
+    def load(self):
+        self._wait(self)
+        return self._inner.load()
+
+    def transcribe(self, pcm):
+        self._wait(self)
+        return self._inner.transcribe(pcm)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def asr_admit(who, live_age_s, live_mode, final=False):
+    """`'grant'` | `'defer'`: UMA porta para os DOIS passes. Puro.
+
+    `live`      -> `grant` SEMPRE (nunca espera, nunca cede; ver acima).
+    `batch`     -> `defer` enquanto o passe ao vivo estiver vivo -- pelo `mode`
+                   (`stream`) OU pelo batimento (`live_age_s < ASR_LIVE_FRESH_S`,
+                   as duas fontes, a pior delas) -- e `grant` quando ele parou.
+    `final`     -> `grant`: uma CAUDA (`stream-end`) nao tem tick seguinte, e o
+                   passe ao vivo ja' acabou nesse caminho. O chamador DIZ que
+                   tentou (`REDUX_BATCH_TAIL ... attempting=anyway`).
+    """
+    if who == ASR_LIVE:
+        return "grant"
+    if final:
+        return "grant"
+    if live_mode:
+        return "defer"
+    if live_age_s is not None and live_age_s < ASR_LIVE_FRESH_S:
+        return "defer"
+    return "grant"
+
+
 def redux_live_dirs():
     """(onnx_dir, ternary_dir) the overlay would open, resolved against this file."""
     here = os.path.dirname(os.path.realpath(__file__))
@@ -500,7 +657,8 @@ class ReduxHiddenSwitch:
                  min_free_mb=REDUX_MIN_FREE_MB_DEFAULT, model_dir=None,
                  engine=None, probe=None, pending=None, spool_dir=None,
                  engine_min_free_mb=None, engine_window_s=None,
-                 unload_when_hidden=False, clock=None, engine_threads=None):
+                 unload_when_hidden=False, clock=None, engine_threads=None,
+                 asr_threads=None):
         #: O RELOGIO DA LARGADA/RECARGA (`load_shedding.ReleaseGate`). Um so',
         #: e injectado pelo mesmo motivo que o `probe`: a guarda tem de ser
         #: medida com uma serie de tempo escrita, nao com a parede de quem corre
@@ -581,11 +739,16 @@ class ReduxHiddenSwitch:
         _engine_threads = (REDUX_LIVE_THREADS if engine_threads is None
                            else max(1, min(int(engine_threads),
                                            REDUX_LIVE_THREADS)))
-        self.engine = (engine if engine is not None
-                       else ParakeetEngine(
-                           REDUX_LIVE_ENGINE_DEFAULT, redux_live_dirs,
-                           redux_live_missing, current_rss_mb,
-                           threads=_engine_threads, log_fn=log_fn))
+        _engine_threads = self._resolve_budget(asr_threads, _engine_threads)
+        _engine = (engine if engine is not None
+                   else ParakeetEngine(
+                       REDUX_LIVE_ENGINE_DEFAULT, redux_live_dirs,
+                       redux_live_missing, current_rss_mb,
+                       threads=_engine_threads, log_fn=log_fn))
+        # O PORTAO NO ULTIMO INSTANTE (ver `AsrSerializedEngine`): o passe do
+        # lote espera a vez antes de carregar e antes de CADA janela.
+        self.engine = (AsrSerializedEngine(_engine, self._wait_for_live)
+                       if _engine is not None else None)
         self.runner_engine = RunnerEngine(runner, redux_checkpoint_dir,
                                           redux_checkpoint_missing, log_fn=log_fn)
         self.engine_available = bool(getattr(self.engine, "available", False))
@@ -644,6 +807,11 @@ class ReduxHiddenSwitch:
         self.runner_failures = 0
         self.refusals = 0
         self.deferred = 0
+        #: O portao no ultimo instante (`AsrSerializedEngine`): quantas janelas
+        #: esperaram a vez, por quanto tempo, e quantas tocaram o limite.
+        self.engine_waits = 0
+        self.engine_wait_s = 0.0
+        self.waits_expired = 0
         self.stream_chunks_before = 0
         self.batch_seconds = 0.0
         #: O relogio do PROPRIO audio (segundos capturados desde o arranque), para
@@ -680,7 +848,13 @@ class ReduxHiddenSwitch:
                 f"runner_available={str(self.runner_available).lower()} "
                 f"checkpoint_available={str(self.model_available).lower()} "
                 f"engine_min_free_mb={self.engine_min_free_mb} "
-                f"probe={'local' if self.probe is not None else 'shell-only'} "
+                f"asr_threads={self.asr_threads or 'n/a'} "
+                f"asr_budget=" + (
+                    "live=%d,small=%d,batch=%d,total=%d" % (
+                        self.asr_budget['live'], self.asr_budget['small'],
+                        self.asr_budget['batch'], self.asr_budget['total'])
+                    if self.asr_budget else "n/a") +
+                f" probe={'local' if self.probe is not None else 'shell-only'} "
                 f"spool={self.spool_dir}")
         elif not self.runner_available:
             # LOUD, and it is the HARD RULE speaking: without a runner on disk
@@ -762,8 +936,14 @@ class ReduxHiddenSwitch:
             shed = _policy.worse_level(
                 PanelVisibilityReader.SHED_LEVELS, shed,
                 'alta' if park == 'captions' else 'muito-alta')
-        if shed != getattr(self, '_shed', 'leve') or park != getattr(self, '_park', None):
-            self._park = park
+        if shed != getattr(self, '_shed', 'leve') or park != getattr(self, '_park_reason', None):
+            #: A RAZAO do estacionamento publicado pela shell. Chamava-se `_park`
+            #: e colidia com o metodo `_park` que o motor de FUNDO chama no
+            #: caminho de falha (`engine_policy.run_engine_pass`): com a shell a
+            #: publicar `park=captions`, `self._park` virava uma STRING e o
+            #: caminho que devolve o audio de um passe falhado levantava
+            #: `TypeError: 'str' object is not callable`. A colisao era o bug.
+            self._park_reason = park
             self._shed = shed
             self._shed_why = measured_why
             engines = self._engines_for(shed)
@@ -830,7 +1010,69 @@ class ReduxHiddenSwitch:
             self._kept_logged = False
         return self.mode
 
+    def _wait_for_live(self, engine, cap_s=None):
+        """Dorme (0,0 % de CPU) ate' o passe AO VIVO calar -- no maximo `cap_s`.
+
+        Chamado pelo proxy do motor de lote, no ultimo instante antes de uma
+        janela. Devolve `True` quando a vez chegou e `False` quando o limite
+        estourou (a janela corre mesmo assim: uma CAUDA nao tem tick seguinte).
+        O contador `waits_expired` existe para o recibo poder dizer quantas
+        vezes o limite foi tocado -- se ele crescer sem parar, o lote esta' a
+        viver de sobras e isso tem de aparecer num numero.
+        """
+        cap = ASR_LIVE_WAIT_S if cap_s is None else float(cap_s)
+        t0 = time.monotonic()
+        while asr_admit(
+                ASR_BATCH, live_decode_age(),
+                getattr(self, 'mode', 'batch') == 'stream') != 'grant':
+            if time.monotonic() - t0 >= cap:
+                self.waits_expired += 1
+                return False
+            time.sleep(ASR_LIVE_WAIT_STEP_S)
+        waited = time.monotonic() - t0
+        if waited >= ASR_LIVE_WAIT_STEP_S:
+            self.engine_waits += 1
+            self.engine_wait_s += waited
+        return True
+
+    def _resolve_budget(self, asr_threads, engine_threads):
+        """O ORCAMENTO UNICO (`asr_budget`) MANDA NO NUMERO DO LOTE. Devolve os fios.
+
+        `asr_threads` e' o numero do PROCESSO (o que `main()` resolveu: `--threads 2`
+        em producao), passado pelo worker; sem ele -- um oraculo que constroi o
+        interruptor sozinho -- fica o numero por motor de antes, que o
+        `_main/worker-thread-limit-oracle.py` A9 pina. Com ele, o lote NAO tem
+        numero proprio: recebe a parte que o orcamento lhe da', que e' o mesmo
+        numero de um decode do ao vivo -- nunca mais.
+        """
+        self.asr_threads = int(asr_threads) if asr_threads else None
+        self.asr_budget = asr_budget(self.asr_threads) if self.asr_threads else None
+        if self.asr_budget is not None:
+            return min(engine_threads, self.asr_budget['batch'])
+        return engine_threads
+
     # -- a largada: a MEMORIA decide, o CPU so' pede a pausa ------------------
+    def _park(self, held, why, extra=""):
+        """Um passe do motor de FUNDO falhou: DEVOLVE o audio e arrefece.
+
+        O METODO NUNCA EXISTIU, e o chamador sempre existiu: `engine_policy.
+        run_engine_pass` faz `sw._park(_slice_blocks(held, offset), ...)` dentro
+        do `except BaseException` que existe para NAO perder o audio de uma
+        janela falhada. Sem o metodo, esse handler levantava `AttributeError`
+        (ou `TypeError`, porque a partir do primeiro `park` publicado pela shell
+        `self._park` era a STRING da razao), o thread `redux-batch` morria, e os
+        segundos daquele passe ficavam no vazio -- o unico caminho desta arvore
+        que perdia audio em silencio, na ordem que proibe exactamente isso.
+
+        O trabalho e' o de `park_pass` (devolver o audio a' frente da espera e
+        poir um backoff), que ja' vive em `engine_policy`: aqui so' se liga o
+        nome ao corpo.
+        """
+        if _policy is None:
+            return False
+        _policy.park_pass(self, held, why, extra=extra)
+        return True
+
     def _release_under_pressure(self, commit_pct, cpu_pct):
         """Larga o modelo so' quando a largada compra alguma coisa.
 
@@ -1022,6 +1264,47 @@ class ReduxHiddenSwitch:
             return False
         return self.flush_pending(reason, respect_memory_floor=True)
 
+    def _batch_admission(self, reason, deferrable):
+        """O PORTAO, do lado do LOTE: `(ok, why, live_age_s)`.
+
+        O lote cede a vez ao passe AO VIVO -- e cede por DUAS fontes, a pior
+        delas: o `mode` do interruptor (`stream` = o motor ao vivo e' quem
+        transcreve) e o BATIMENTO medido (`StreamAsr.run_chunk` marca cada
+        decode). O batimento existe porque o `mode` e' uma decisao de politica: ele
+        muda no tick seguinte, e entre o tick e o decode real o ao vivo pode
+        estar a decodificar com o modo ja' a dizer outra coisa.
+
+        QUE AUDIO SE PERDE AQUI: NENHUM. O audio do lote ja' entrou na
+        `PendingAudio` (`take_pending` nao e' chamado neste caminho), ela guarda
+        tudo em RAM ate' `max_audio_s` e depois em DISCO, e o passe seguinte
+        leva-o todo. O que se perde e' a MELHORIA de historico daqueles segundos
+        enquanto a legenda estiver a correr -- e essa chega quando ela parar.
+        """
+        live_age = live_decode_age()
+        verdict = asr_admit(
+            ASR_BATCH, live_age,
+            getattr(self, 'mode', 'batch') == 'stream',
+            final=not deferrable)
+        return (verdict == 'grant'), verdict, live_age
+
+    def _defer_for_live(self, why, live_age):
+        """O recibo de uma vez cedida ao passe ao vivo -- RATE-LIMITED.
+
+        O lote pergunta de `batch_interval_s` em `batch_interval_s`, e no modo
+        `stream` a resposta e' `defer` toda a vez: sem o limite, um painel aberto
+        com a legenda a correr escrevia uma linha por pergunta para sempre. O
+        CONTADOR (`deferred`) fica exacto; so' a prosa e' que e' fina.
+        """
+        self.deferred += 1
+        if self.deferred <= 3 or self.deferred % 30 == 0:
+            self.log(
+                f"REDUX_BATCH_DEFERRED reason={why} mode={getattr(self, 'mode', 'n/a')} "
+                f"live_age_s={'n/a' if live_age is None else round(live_age, 2)} "
+                f"engine={self.batch_kind} held_s={self.pending_seconds()} "
+                f"deferred={self.deferred} \u2014 o passe AO VIVO esta' a decodificar "
+                f"(ou acabou de decodificar) e o lote cede a vez: o audio fica na "
+                f"fila, RAM -> disco, e sai quando a legenda parar")
+
     def flush_pending(self, reason="flush", respect_memory_floor=False):
         """One batch pass over the audio held NOW, whatever the mode is.
 
@@ -1056,6 +1339,18 @@ class ReduxHiddenSwitch:
             # O lote anterior falhou: o audio esta' de volta na fila e o motor
             # arrefece (ver `_park`). Isto e' o que impede um motor partido de
             # carregar 615 MB a cada segundo -- um busy loop com factura de RAM.
+            return False
+        # ── O PORTAO: UM PASSE DE CADA VEZ ───────────────────────────────────
+        # AQUI e' onde o defeito existia. `flush_pending` corre nos DOIS modos
+        # ("the tail is the point"), por isso a retoma (`load-resume`) e a cauda
+        # (`stream-end`) comecavam um passe do parakeet com o motor AO VIVO a
+        # decodificar -- e uma janela do lote leva 2,40 s medidos, ou seja, o
+        # ao vivo e o lote queimavam nucleo ao mesmo tempo durante TODO o
+        # dreno do backlog. O orcamento e' um numero; quem o respeita e' este
+        # `if`.
+        admitted, why, live_age = self._batch_admission(reason, respect_memory_floor)
+        if not admitted:
+            self._defer_for_live(why, live_age)
             return False
         # O PISO DA RECARGA (2026-11-09, MEDIDO). O lote seguinte e' o unico
         # caminho que faz o motor voltar: se ele pedir a carga nos primeiros
@@ -1158,6 +1453,8 @@ class ReduxHiddenSwitch:
             f"REDUX_BATCH_KICK reason={reason} engine={self.batch_kind} "
             f"audio_s={round(samples / float(TARGET_SR), 2)} "
             f"kicks={self.batches_kicked} held_in={self._pending_counts().get('blocks_in')} "
+            f"asr_waits={self.engine_waits} asr_wait_s={self.engine_wait_s:.1f} "
+            f"asr_expired={self.waits_expired} "
             f"pid={os.getpid()}")
         return True
 

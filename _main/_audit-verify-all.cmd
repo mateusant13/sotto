@@ -364,6 +364,17 @@ if exist _main\tree-cost-oracle.py (
   call :step red-as-expected-tree-cost 1 "_main\tree-cost-oracle.py" "%OUT%\tree-cost-neg.log" python _main\tree-cost-oracle.py --neg-arm
   call :expectred red-as-expected-tree-cost !STEP_RC! "%OUT%\tree-cost-neg.log" "NEG-ARM: PASS"
 ) else ( call :record tree-cost MISSING )
+REM `engine-serialization` (2026-11-09, o mecanismo das 10 DMs de stutter): o worker vivo
+REM tem DUAS politicas de fios num processo -- o `--threads` do stream e o
+REM `REDUX_LIVE_THREADS` do lote -- e por isso TRES sessoes ONNX decodificam ao mesmo
+REM tempo. Medido no worker do dono (`_main/shell-thread-cpu.py 37112`): 253,4% de um
+REM nucleo com `session-9 77,2% / session-10 52,0% / session-8 42,7%`. O oraculo le os
+REM dois ficheiros por `ast` e julga o ORCAMENTO UNICO, sem carregar modelo nenhum
+REM (`numpy` so' num braco) -- medido 1,2 s, 19/19 arms, `--neg-arm` 13/13 com rc=1.
+call :step engine-serialization 0 "_main\engine-serialization-oracle.py;worker\engine_switch.py;worker\sotto_worker.py" "%OUT%\engine-serialization.log" python _main\engine-serialization-oracle.py
+call :record engine-serialization !STEP_RC!
+call :step red-as-expected-engine-serialization 1 "_main\engine-serialization-oracle.py;worker\engine_switch.py;worker\sotto_worker.py" "%OUT%\engine-serialization-neg.log" python _main\engine-serialization-oracle.py --neg-arm
+call :expectred red-as-expected-engine-serialization !STEP_RC! "%OUT%\engine-serialization-neg.log" "mutantes apanhados"
 REM `ort-spin-idle` (2026-11-08, quatro DMs de stutter do watcher): a atribuicao por FIO
 REM pago 57,4% de um nucleo no WORKER, e tres deles eram `session-NN-intra-op-0` -- o
 REM spin-wait do onnxruntime. Medido isolado, com as tres sessoes vivas e ninguem a

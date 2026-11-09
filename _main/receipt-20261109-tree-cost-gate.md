@@ -80,22 +80,28 @@ CREATION MEASURED  window=10.0s  count=2  rate=20.00/s  window_rate=0.20/s
 | propriedade | valor | por que esse |
 |---|---|---|
 | soma julgada | shell + worker, **% de UM nucleo** | a unidade da casa; 100 % = um nucleo, nao a maquina |
-| tecto | **150,0 %** | medido 99-137 % nesta maquina; 150 deixa a folga normal e ainda apanha o degrau das tres sessoes |
-| ratchet | **+20 %** sobre `_main/tree-cost-baseline.json` | recusa o crescimento lento que um tecto unico deixaria passar |
-| actor | o fio mais quente **COM NOME** | um numero sem actor e' beco |
+| leitura | **mediana de 3 janelas de 5 s** por processo | a mesma arvore deu 15,5 / 59,6 / 100,5 / 124,2 / 136,6 / 164,6 % conforme a FASE (fallback UIA, lote a drenar, stream a descodificar): uma leitura unica tanto esconde o episodio como condena o trabalho normal |
+| tecto | **250,0 %** | o episodio da DM e' ~530 % (26,6 % de 20 nucleos) e o legitimo medido chega a 164,6 %; um tecto de 150 nascia VERMELHO em trabalho legitimo |
+| ratchet | **nenhum, e a razao esta' no codigo** | variancia de 2,7x nao e' deriva; um ratchet de +20 % sobre ela falha por fase. `_main/tree-cost-baseline.json` passou a REGISTAR a dispersao e o episodio, e diz por palavras que nao e' limite |
+| actor | o fio mais quente **COM NOME** (`top_named=` quando o topo e' anonimo) | medido: `top=(sem nome):94,3%` -- um numero sem actor e' beco |
 | identidade | PID carimbado no log (`SHELL_STARTUP_STAGE` + `BRIDGE_SPAWNED`) | o `CommandLine` dos processos do dono vem **VAZIO** (`pythonw.exe(27568) -> ''`): app `high`, pane `medium`; medir por argv dava SKIPPED e o portao seria decorativo |
+| spawns | `_main/hidden-launch.py` (`run`/`powershell`) | `subprocess.run(creationflags=...)` solto e' `WEAK-FLAG` no censo (abre janela quando o pai nao tem consola). Medido depois da troca: o censo deixa de nomear este ficheiro e cai de 6 para 4 sitios |
 | sem arvore viva | `VERDICT: SKIPPED` | um passo saltado nao e' um portao que passou |
 
 Medido:
 
 ```
-$ python _main/tree-cost-oracle.py
+$ python -m watcher run --cpu 40 -- python _main/tree-cost-oracle.py
 measuring pid=27568 pythonw.exe
 measuring pid=37112 python.exe
-TREE-COST tree=136.6% de um nucleo (tecto 150.0%, baseline -1.0%)
-          shell=0.9% worker=135.7% top=session-9-intra-op-0:44.8%
+TREE-COST tree=124.2% de um nucleo (mediana de 3 janela(s); tecto 250.0%)
+          shell=8.8% worker=115.4% top=session-9-intra-op-0:30.4%
 VERDICT: PASS
-rc=0
+
+$ python _main/tree-cost-oracle.py        (janela com o fallback UIA a amostrar)
+TREE-COST tree=32.3% ... shell=3.3% worker=29.0% top=(sem nome):0.6%
+          top_named=sotto-gaming-mode:1.2%
+VERDICT: PASS
 
 $ python _main/tree-cost-oracle.py --neg-arm
 NEG-ARM arm: calm PASS              OK
