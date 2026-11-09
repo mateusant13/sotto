@@ -188,18 +188,56 @@ def main(argv):
     if not before:
         print('sem fios para o pid %d (processo fechado ou sem permissao)' % pid)
         return 3
+    # A TESTEMUNHA, lida no MESMO instante que a primeira amostra de fios: o total do
+    # PROCESSO, por `GetProcessTimes` (`PROCESS_QUERY_LIMITED_INFORMATION` e' concedido
+    # onde `THREAD_QUERY_INFORMATION` nao e'). Ela existe porque um erro de UNIDADE
+    # publica um numero que parece medido: medido 2026-11-09, as unidades do
+    # `Win32_Thread` (CIM) nesta maquina sao MILISSEGUNDOS, 983 por segundo, e nao os
+    # 100 ns da documentacao -- dividir por 1e7 sub-reporta 10 000x. O `GetThreadTimes`
+    # daqui devolve FILETIME, que E' 100 ns, mas isso nao se afirma sem a razao fechar.
+    proc0 = _process_cpu_s(pid)
     t0 = time.monotonic()
     time.sleep(seconds)
     after = sample(pid)
+    proc1 = _process_cpu_s(pid)
     elapsed = time.monotonic() - t0
     rows = rank(before, after, elapsed)
     total = sum(r[0] for r in rows)
     print('pid %d: %d fios, %.1f s de janela, %.1f%% de um nucleo no total'
           % (pid, len(after), elapsed, total))
+    if proc0 is not None and proc1 is not None and elapsed > 0:
+        calib = (proc1 - proc0) / elapsed * 100.0
+        ratio = (total / calib) if calib > 0 else None
+        print('calibracao: processo mediu %.1f%% no mesmo intervalo -> razao %.2f'
+              % (calib, ratio if ratio is not None else -1.0))
+        if ratio is None or not (0.4 <= ratio <= 2.5):
+            print('CANNOT-MEASURE -- a soma dos fios nao fecha com o processo '
+                  '(razao fora de [0.4, 2.5]): unidade ou atribuicao erradas')
+            return 4
+    else:
+        print('calibracao: UNMEASURED -- sem testemunha do processo, a tabela abaixo '
+              'e uma soma de fios, nao um total provado')
     print('%8s %8s %7s  %s' % ('pct', 'cpu_s', 'tid', 'nome'))
     for pct, used, tid, name in rows[:top]:
         print('%7.1f%% %8.2f %7d  %s' % (pct, used, tid, name))
     return 0
+
+
+def _process_cpu_s(pid):
+    """CPU acumulada do PROCESSO, em segundos, ou None.
+
+    `psutil.Process.cpu_times()` usa `GetProcessTimes`, que precisa de
+    `PROCESS_QUERY_LIMITED_INFORMATION` -- concedido sobre um processo de integridade
+    mais alta (medido: `OpenProcess(0x1000)` ok onde `0x0400` devolve err=5). O mesmo
+    ficheiro NAO usa `psutil.Process.threads()`, que devolve 0 tids neste build e foi
+    o que fez o `profile` do watcher publicar CANNOT-MEASURE.
+    """
+    try:
+        import psutil
+        t = psutil.Process(pid).cpu_times()
+        return float(t.user) + float(t.system)
+    except Exception:                    # noqa: BLE001
+        return None
 
 
 def _neg_arm():

@@ -14069,6 +14069,52 @@ class SottoShell:
         return None
 
 
+    @staticmethod
+    def _history_ctx_session_of(meta):
+        """The AUDIO SESSION that produced this line, when the caller knows it.
+
+        `start` is the WORKER's audio clock and it RESTARTS AT ZERO with every
+        respawn (`caption-formulation.js:1037`: "A WORKER RESTART resets the
+        audio clock, so the new session's first chunk carries a start far BELOW
+        the emitted line's"), so two sessions hand out overlapping `start`
+        values and the 8-second near-match window cannot tell them apart by
+        number alone.
+
+        The identity the producers prove is stamped on the event:
+        `WorkerBridge._consume` puts the CHILD PROCESS it read the line from
+        (`history_session(child)`), and `external_caption` stamps `external`.
+        A caller with no stamp (a probe, the worker selftest) returns None and
+        keeps the pre-2026-11-09 behaviour.
+        """
+        if isinstance(meta, dict):
+            value = meta.get('historySession')
+            if isinstance(value, str) and value:
+                return value
+        return None
+
+    def _history_ctx_observe_session(self, session):
+        """DROP THE SNAPSHOT WHEN THE AUDIO SESSION CHANGES (2026-11-09).
+
+        `_history_ctx_last`/`_history_ctx_ring` describe ONE session's audio
+        clock. A new worker process starts that clock again at zero, so a line
+        from the new session can carry a `start` inside `_HISTORY_CTX_NEAR_S`
+        of the PREVIOUS session's last line and inherit the app the owner was
+        looking at then -- the window belongs to the old speech, not the new.
+        Clearing here, on the first event that names the new session (a PARTIAL
+        long before the first committed line), makes that inheritance
+        impossible instead of merely unlikely.
+        """
+        if not isinstance(session, str) or not session:
+            return
+        previous = getattr(self, '_history_ctx_session', None)
+        if previous is not None and previous != session:
+            ring = getattr(self, '_history_ctx_ring', None)
+            if isinstance(ring, list):
+                del ring[:]
+            self._history_ctx_last = None
+            self._history_ctx_last_start = None
+        self._history_ctx_session = session
+
     def note_history_context(self, meta):
         """REMEMBER THE CONTEXT OF THE MOMENT A LINE CLOSED (2026-11-09).
 
@@ -14083,6 +14129,10 @@ class SottoShell:
         """
         if not isinstance(meta, dict):
             return
+        # THE SESSION IS OBSERVED EVEN WHEN THIS CALL CANNOT RECORD (2026-11-09):
+        # a line with no `start` still proves which audio session is live, and
+        # the snapshot of the PREVIOUS one must not survive it.
+        self._history_ctx_observe_session(self._history_ctx_session_of(meta))
         start = meta.get('start')
         if not (isinstance(start, (int, float)) and not isinstance(start, bool)):
             return
@@ -17025,6 +17075,16 @@ class SottoShell:
         return ''
 
     def on_worker_caption(self, text, meta):
+        # THE SESSION IS OBSERVED ON EVERY CAPTION, not only on a final
+        # (2026-11-09): the first PARTIAL of a respawned worker is what proves
+        # the new audio clock, and it arrives long before any line can commit.
+        # The stamp comes from the CHILD the bridge read the line from, so a
+        # dead worker's draining pipe cannot borrow the new session's identity.
+        # getattr: a partial shell (the probe harnesses extract this method)
+        # has no session bookkeeping and must not die on its absence.
+        _observe_ctx = getattr(self, '_history_ctx_observe_session', None)
+        if _observe_ctx is not None:
+            _observe_ctx(self._history_ctx_session_of(meta))
         # A LINHA DE UM WORKER MORTO NAO PINTA NO NOVO (troca de PROCESSO).
         bridge = getattr(self, 'bridge', None)
         # THE PLAYER'S OWN CAPTIONS WIN WHILE THEY EXIST (owner, 2026-10-17).
@@ -17203,7 +17263,15 @@ class SottoShell:
             'chunks': [[round(now, 2), round(now + 0.01, 2), text]],
             'final': bool(final),
             'source': _source_text,
+            # THE PLAYER IS ITS OWN AUDIO SESSION (2026-11-09): its `start` is
+            # `time.monotonic()`, never the worker's audio clock, so a snapshot
+            # captured under the worker's clock must not be donated to a player
+            # line (or the reverse) when the two numbers happen to be close.
+            'historySession': 'external',
         }
+        _observe_ctx = getattr(self, '_history_ctx_observe_session', None)
+        if _observe_ctx is not None:
+            _observe_ctx(meta['historySession'])
         # THE PLAYER'S OWN URL IS THE VIEWING CONTEXT (review D4, 2026-11-09):
         # `source` is the URL the external watcher resolved (or an
         # `external:*` marker, which carries no URL).
@@ -21188,6 +21256,23 @@ class WorkerBridge:
             # A panel-side failure must not take the pump thread down with it:
             # that thread also carries the CAPTIONS.
             self.log(f'BRIDGE_METER_CALLBACK_FAILED error={exc!r}')
+
+    def history_session(self, child=None):
+        """The AUDIO SESSION that produced a line read off `child` (2026-11-09).
+
+        `start` is the worker's audio clock and it restarts at zero with every
+        respawn, so the clock alone cannot tell two sessions apart -- the exact
+        fact `caption-formulation.js:1037` relies on to avoid swallowing the new
+        session's opening words. The identity here is the child PROCESS (passed
+        explicitly, because a dead worker's pipe can still be draining while
+        `self.child` already points at its replacement) plus this bridge's spawn
+        counter, which never repeats within one bridge.
+        """
+        pid = getattr(child, 'pid', None)
+        if pid is None:
+            pid = getattr(getattr(self, 'child', None), 'pid', None)
+        return 'worker:%x:%s:%s' % (id(self), getattr(self, 'spawns', 0), pid or 0)
+
     def _consume(self, line, child=None):
         try:
             message = json.loads(line)
@@ -21217,6 +21302,12 @@ class WorkerBridge:
                 return
             meta = {k: v for k, v in message.items()
                     if k not in ('type', 'text')}
+            # WHICH SESSION THIS LINE CAME FROM (2026-11-09): `start` is the
+            # worker's audio clock and it restarts at zero with every respawn,
+            # so the history snapshot needs the process identity too. `child` is
+            # passed EXPLICITLY: a dead worker's pipe can still be draining
+            # while `self.child` already points at its replacement.
+            meta['historySession'] = self.history_session(child)
             self.captions += 1
             self.last_caption_at = time.monotonic()
             # A caption is the ONLY proof that the current worker is really

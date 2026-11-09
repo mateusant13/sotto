@@ -106,6 +106,71 @@ def census(repo=REPO):
     return {rel: measure(path, rel) for rel, path in population(repo).items()}
 
 
+def dirty_paths(porcelain):
+    """Conjunto de caminhos RELATIVOS citados por `git status --porcelain`.
+
+    Funcao PURA (o `--neg-arm` julga-a sem largar processo nenhum). Le as tres
+    formas que importam: `XY path`, `XY old -> new` (rename) e uma linha de
+    DIRECTORIO nao rastreado (`?? app/panel/`), que cobre tudo dentro dela.
+    """
+    out = set()
+    for line in (porcelain or '').splitlines():
+        if len(line) < 4:
+            continue
+        body = line[3:].strip().strip('"')
+        if ' -> ' in body:
+            old, new = body.split(' -> ', 1)
+            out.add(old.strip().replace('\\', '/'))
+            body = new.strip()
+        out.add(body.replace('\\', '/'))
+    return out
+
+
+def blocked_entries(today, baseline, dirty):
+    """Entradas que o `--update` MUDARIA e cujo ficheiro nao esta' commitado.
+
+    O defeito que isto fecha, medido em `5986e78`: um `--update` no fim de um
+    minuto de trabalho de varias lanes fixa no baseline o tamanho de ficheiros
+    SUJOS -- `worker/wasapi_loopback.py` entrou assim, sem commit e sem recibo.
+    Um pin so' pode descrever o que esta' no commit, senao o ratchet passa a
+    medir um estado que ninguem consegue reproduzir.
+    """
+    blocked = []
+    for rel, row in sorted(today.items()):
+        base = baseline.get(rel)
+        changed = (base is None) or any(row.get(m, 0) != base.get(m, 0)
+                                        for m in METRICS)
+        if not changed:
+            continue
+        if rel in dirty or any(d.endswith('/') and rel.startswith(d)
+                               for d in dirty):
+            blocked.append(rel)
+    return blocked
+
+
+def git_dirty(repo=REPO):
+    """`git status --porcelain` do repo, SEM janela (o par de flags da casa).
+
+    Devolve None quando o git nao responde -- e um `None` deixa o `--update`
+    seguir, porque um instrumento que se recusa a medir quando o git falha
+    transforma uma avaria do git num portao permanente.
+    """
+    try:
+        import subprocess
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 0                  # SW_HIDE: o flag sozinho pinta sob pai sem consola
+        p = subprocess.run(['git', 'status', '--porcelain', '--', 'app', 'worker'],
+                           cwd=repo, capture_output=True, text=True, timeout=60,
+                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                           startupinfo=si)
+        if p.returncode != 0:
+            return None
+        return dirty_paths(p.stdout)
+    except Exception:                       # noqa: BLE001
+        return None
+
+
 def compare(today, baseline):
     """[(ficheiro, metrica, antes, agora)] de PIORAS, e o resto."""
     worse = []
@@ -159,8 +224,6 @@ def verdict(today, baseline, worse, new_files):
 
 def neg_arm(today, baseline):
     mutants = []
-    mutants.append(('M1 um ficheiro cresce 1 byte',
-                    lambda: {k: dict(v) for k, v in today.items()}))
     # o mutante aplica-se DENTRO do ciclo para ficar visivel na comparacao
     caught = 0
 
@@ -241,8 +304,35 @@ def neg_arm(today, baseline):
     red_today = compare(today, baseline)
     print('INFO    %-38s %d metrica(s) acima do baseline (divida ja publicada '
           'pelo passo `code-health`)' % ('estado medido', len(red_today)))
-    print('NEG-ARM %d of 3 mutant(s) caught' % caught)
-    if caught == 3 and clean and speaks_red:
+    # OS DOIS MUTANTES DO GUARDA DE WORKING TREE, puros (nenhum processo, nenhum pixel).
+    # O defeito que o guarda fecha foi medido: `5986e78` fixou
+    # `worker/wasapi_loopback.py` a partir do working tree, sem commit.
+    porc = (' M app/panel/panel.js\n'
+            '?? app/panel/history-context-store.js\n'
+            'R  worker/old.py -> worker/new.py\n'
+            '?? app/webview/\n')
+    got = dirty_paths(porc)
+    want = {'app/panel/panel.js', 'app/panel/history-context-store.js',
+            'worker/old.py', 'worker/new.py', 'app/webview/'}
+    m4 = (got == want)
+    print('NEG-ARM %-38s %s' % ('M4 o leitor de porcelain perde uma forma',
+                                'caught' if m4 else '** INERT **'))
+    if m4:
+        mutants.append('M4')
+    grown = {'worker/x.py': {'bytes': 100, 'lines': 10, 'defs': 1, 'classes': 0,
+                             'max_func': 9, 'except_pass': 0, 'globals': 0},
+             'worker/y.py': {'bytes': 200, 'lines': 20, 'defs': 2, 'classes': 0,
+                             'max_func': 19, 'except_pass': 1, 'globals': 0}}
+    base_grown = {'worker/x.py': dict(grown['worker/x.py'])}
+    m5 = (blocked_entries(grown, base_grown, {'worker/y.py'}) == ['worker/y.py']
+          and blocked_entries(grown, base_grown, {'worker/'}) == ['worker/y.py']
+          and blocked_entries(grown, base_grown, set()) == []
+          and blocked_entries(grown, base_grown, {'worker/x.py'}) == [])
+    print('NEG-ARM %-38s %s' % ('M5 o guarda deixa passar ficheiro sujo',
+                                'caught' if m5 else '** INERT **'))
+    total = caught + int(m4) + int(m5)
+    print('NEG-ARM %d of 5 mutant(s) caught' % total)
+    if total == 5 and clean and speaks_red:
         print('NEG-ARM PASS')
         return 1
     return 2
@@ -252,6 +342,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--update', action='store_true',
                     help='regenera o baseline a partir do estado medido')
+    ap.add_argument('--allow-dirty', action='store_true',
+                    help='aceita fixar entradas de ficheiros NAO commitados (nomeia-as)')
+    ap.add_argument('--skip-dirty', action='store_true',
+                    help='deixa as entradas nao commitadas no valor que o baseline ja tem')
     ap.add_argument('--neg-arm', action='store_true')
     args = ap.parse_args(argv)
     try:
@@ -260,6 +354,33 @@ def main(argv=None):
         pass
     today = census()
     if args.update:
+        try:
+            with open(BASELINE, encoding='utf-8') as fh:
+                old = json.load(fh).get('files') or {}
+        except (OSError, ValueError):
+            old = {}
+        dirty = git_dirty()
+        blocked = blocked_entries(today, old, dirty or set())
+        if blocked and not args.allow_dirty and not args.skip_dirty:
+            print('RED  dirty worktree: %d entrada(s) mudariam a partir de ficheiro '
+                  'NAO commitado:' % len(blocked))
+            for rel in blocked:
+                print('     %s' % rel)
+            print('     commit primeiro, `--update` depois -- ou `--allow-dirty` e '
+                  'nomeia cada entrada no recibo, ou `--skip-dirty` e essas entradas '
+                  'ficam no valor antigo')
+            print('CODE-HEALTH VERDICT FAIL')
+            return 2
+        for rel in blocked:
+            if args.skip_dirty and not args.allow_dirty:
+                if rel in old:
+                    today[rel] = dict(old[rel])
+                else:
+                    today.pop(rel, None)
+                print('AVISO  --skip-dirty: %s fica no valor do baseline (nao commitado)'
+                      % rel)
+            else:
+                print('AVISO  --allow-dirty: fixado a partir do working tree: %s' % rel)
         with open(BASELINE, 'w', encoding='utf-8', newline='\n') as fh:
             json.dump({'measured': '2026-10-23', 'metrics': list(METRICS),
                        'files': today}, fh, indent=2, ensure_ascii=False, sort_keys=True)

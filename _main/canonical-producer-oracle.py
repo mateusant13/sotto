@@ -183,11 +183,19 @@ def extract_consume(source_text: str, filename: str):
     tree = ast.parse(source_text, filename=filename)
     cls = next(n for n in tree.body
                if isinstance(n, ast.ClassDef) and n.name == "WorkerBridge")
-    fn = next(n for n in cls.body
-              if isinstance(n, ast.FunctionDef) and n.name == "_consume")
+    # `_consume` stamps the audio session on the meta (`historySession`), and the
+    # stamp comes from `history_session(child)`; extract BOTH so the hop is
+    # judged with the method the shipped bridge actually calls.
+    wanted = {"_consume": None, "history_session": None}
+    for n in cls.body:
+        if isinstance(n, ast.FunctionDef) and n.name in wanted:
+            wanted[n.name] = n
+    fn = wanted["_consume"]
+    session_fn = wanted["history_session"]
+    assert session_fn is not None, "WorkerBridge.history_session missing"
     module = ast.Module(
         body=[ast.ClassDef(name="_ExtractedConsume", bases=[], keywords=[],
-                           body=[fn], decorator_list=[])],
+                           body=[fn, session_fn], decorator_list=[])],
         type_ignores=[])
     ast.fix_missing_locations(module)
     namespace = {"json": json, "time": time}
@@ -203,6 +211,11 @@ def shell_projection(consume_cls, event: dict):
     inst.pending_error = None
     inst.state = ""
     inst.log = lambda msg: None
+    # The caption branch also clears a no-audio verdict; a projection without
+    # these fields died with AttributeError before it could judge the hop.
+    inst.no_audio = False
+    inst.no_audio_evidence = None
+    inst.no_audio_evidence_at = None
     seen = []
     inst.on_caption = lambda text, meta: seen.append((text, meta))
     inst._consume(json.dumps(event))
@@ -537,9 +550,14 @@ def main() -> int:
     print("     SHELL META: " + json.dumps(meta, ensure_ascii=False, sort_keys=True), flush=True)
     check("C", "hop (ii): the shell's meta still carries producer == 'redux'",
           meta.get("producer") == "redux", "producer=" + repr(meta.get("producer")))
-    check("C", "the shell's meta drops ONLY type/text (the worker's event keys survive)",
-          set(meta.keys()) == set(event.keys()) - {"type", "text"},
+    check("C", "the shell's meta drops ONLY type/text and ADDS the audio session",
+          set(meta.keys()) == set(event.keys()) - {"type", "text"} | {"historySession"},
           "meta keys=" + ",".join(sorted(meta.keys())))
+    # The added key is the child-process identity the history snapshot is keyed
+    # by (2026-11-09) -- not a copy of an event field and not an invented name.
+    check("C", "the added key is the audio-session token",
+          str(meta.get("historySession") or "").startswith("worker:"),
+          "historySession=" + repr(meta.get("historySession")))
 
     chain_job = {"gate": [], "chain": [
         {"name": "canonical batch line (REAL worker event)",
