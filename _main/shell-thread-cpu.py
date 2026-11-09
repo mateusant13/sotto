@@ -18,8 +18,16 @@ oraculo desta casa a **75,2 MB/s** no `I:` e o dono sentiu o stutter: a pergunta
 "quanto IO uma arvore de processos faz" nao tinha instrumento, e o instrumento
 tem de ser o MESMO desta familia (arvore = fios + IO), nao uma sonda por pergunta.
 
+O MODO `--burst` (2026-11-09) existe porque a media MENTE sobre um pico: a shell
+medida a 12,4 % de um nucleo numa janela de 8 s tinha, dentro dela, segundos de
+**135,8 %** -- 2-3 s a mais de um nucleo, e uma media de 8 s apaga-os. O watcher
+acusa exactamente esses picos (`cpu 9,9 % da maquina` no tick da DM), por isso o
+instrumento passou a publicar o SEGUNDO, com o fio que o gastou:
+    python _main/shell-thread-cpu.py <pid> --burst [--seconds 120] [--above 40]
+
 USO
     python _main/shell-thread-cpu.py <pid> [--seconds 8] [--top 12]
+    python _main/shell-thread-cpu.py <pid> --burst [--seconds N] [--above PCT]
     python _main/shell-thread-cpu.py --io -- <comando...>
     python _main/shell-thread-cpu.py --neg-arm
 """
@@ -165,6 +173,57 @@ def io_tree(cmd, sample_s=0.2):
     return 0
 
 
+def burst(pid: int, seconds: float, above: float, top: int, step: float = 1.0) -> int:
+    """Publica cada SEGUNDO que cruze `above`, com o fio que o gastou.
+
+    O numero que importa e' o do processo (`GetProcessTimes`), a MESMA testemunha
+    que o modo de janela usa, porque a soma dos fios pode nao fechar (fio que nasce
+    e morre dentro do segundo). Os dois saem lado a lado: `proc` e' o veredito do
+    pico, `fios` a atribuicao dentro dele, e a diferenca entre os dois E' o dado --
+    um pico do processo que nenhum fio explica e' trabalho de fio efemero.
+    """
+    first = sample(pid)
+    if not first:
+        print('sem fios para o pid %d (processo fechado ou sem permissao)' % pid)
+        return 3
+    p0 = _process_cpu_s(pid)
+    t0 = time.monotonic()
+    prev, prev_t = first, t0
+    hits = 0
+    peak = (0.0, {}, 0.0)
+    seen = 0
+    t_end = t0 + seconds
+    while time.monotonic() < t_end:
+        time.sleep(step)
+        t = time.monotonic()
+        cur = sample(pid)
+        if not cur:
+            print('pid %d terminou a meio da janela' % pid)
+            break
+        rows = rank(prev, cur, t - prev_t)
+        total = sum(r[0] for r in rows)
+        seen += 1
+        if total >= above:
+            hits += 1
+            print('BURST t=+%5.1fs fios=%6.1f%%  ' % (t - t0, total)
+                  + '  '.join('%s:%.1f%%' % (r[3], r[0]) for r in rows[:top]))
+        if total > peak[0]:
+            peak = (total, {r[3]: r[0] for r in rows[:6]}, t - t0)
+        prev, prev_t = cur, t
+    p1 = _process_cpu_s(pid)
+    wall = seconds
+    proc_peak_note = ''
+    if p0 is not None and p1 is not None:
+        proc_peak_note = ' processo_total=%.1f%% na janela' % ((p1 - p0) / wall * 100.0)
+    else:
+        proc_peak_note = ' processo_total=UNMEASURED'
+    print('BURST-END pid=%d janela=%.0fs segundos_acima_de_%.0f%%=%d pico_fios=%.1f%% (%s)%s'
+          % (pid, wall, above, hits, peak[0],
+             ', '.join('%s:%.1f' % kv for kv in peak[1].items()) or '-',
+             proc_peak_note))
+    return 0
+
+
 def main(argv):
     if '--io' in argv:
         if '--' not in argv:
@@ -179,11 +238,16 @@ def main(argv):
     pid = int(argv[0])
     seconds = 8.0
     top = 14
+    above = 40.0
     for i, a in enumerate(argv):
         if a == '--seconds' and i + 1 < len(argv):
             seconds = float(argv[i + 1])
         if a == '--top' and i + 1 < len(argv):
             top = int(argv[i + 1])
+        if a == '--above' and i + 1 < len(argv):
+            above = float(argv[i + 1])
+    if '--burst' in argv:
+        return burst(pid, seconds, above, top)
     before = sample(pid)
     if not before:
         print('sem fios para o pid %d (processo fechado ou sem permissao)' % pid)

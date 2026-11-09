@@ -111,3 +111,50 @@ shell de HEAD -- era defeito do instrumento E da shell).
 
 **NAO VERIFICADO**: nenhuma das tres corre na instancia do dono -- a app esta' fechada e o
 `_main/sotto-relaunch.py --relaunch` abortou ("a instancia antiga nao morreu"); `fixed, NOT verified`.
+
+## 7. Rodada 3 (2026-11-09, 19:0xZ) -- a DM que acusava o pid que EU tinha largado
+
+DM `dm-61ee34c4` (watcher): `pythonw.exe(53208)` no pico, `cpu 9,8 % da maquina` (20 nucleos)
+sobre 2 processos, sinais `interrupt` + `creation`, `ceiling = NONE PROVED`.
+
+**Quem e' este pid: a minha propria largada.** `_main/sotto-relaunch.py --relaunch` as
+16:08:05 (`CreateProcessAsUser(fonte=13676) ok=True child=40172`; o pid que ganhou a mutex,
+53208, arrancou as 16:08:06.845). Nao e' um laco da app: e' o ARRANQUE A FRIO que a lane
+pediu, e ele correu em paralelo com o `pre-commit` do commit `b22f829` -- dois trabalhos
+pesados ao mesmo tempo, exactamente o que a regra da casa proibe.
+
+**A medicao que separa "laco" de "arranque" (mesmo pid, 90 s depois):**
+
+| instrumento | numero | leitura |
+|---|---|---|
+| `python _main/shell-thread-cpu.py 53208 --seconds 8 --top 6` | **12,4 % de UM nucleo** (0,62 % da maquina), 55 fios | o pico nao continua |
+| fio mais quente | `yt-clock` 3,0 %, `sotto-gaming-mode` 2,2 %, `sotto-worker-stdout` 1,3 % | nenhum fio comerrado |
+| `python -m watcher profile 53208 --seconds 15` | nenhum tid acima de 0,03 s na janela | nada a rodar |
+| `_main/live-code-freshness-oracle.py --strict` | **FRESH** (hash==disco, 0 ficheiro com mtime depois do arranque) | o codigo curado esta' a correr: o worker arrancou as 16:08:07 e carregou em **11 610 ms** (`BRIDGE_LOAD_MS`) contra os **61 781 ms** de 15:45:39 |
+| `python -m watcher perf` no mesmo minuto | estolos atribuidos a `ffmpeg.exe(63048)`, `rustc.exe(42272)`, pythons alheios | os estolos do kernel nao sao deste processo |
+
+**A metade que era minha, e a cura.** O `CREATORS` da DM nomeia como maior criador o
+`msedge.exe(26576)` x35 com `--user-data-dir=H:\!gravador\state\profiles\capt*` -- outro
+projecto, nao esta arvore. `msedgewebview2.exe(6356)` x5 e' o WebView2 desta app. A minha
+metade era o trabalho pesado sem tecto: o **`pre-commit` era o unico trabalho pesado desta
+casa que se largava SEM Job Object** (a bateria ja' corria em `python -m watcher run --cpu 40`).
+Agora ele tambem:
+
+* `scripts/pre-commit` larga `node run-all.mjs` dentro de
+  `python -m watcher run --cpu "$HOOK_CPU_CAP" -- ...` (default **40 %** de um nucleo, Job
+  Object, os filhos herdam). Medido no commit do proprio patch:
+  `job CPU hard cap 40% (children inherit)` + `SUITES 15 passed, 0 failed, 0 unreported`.
+* `SOTTO_HOOK_NOCAGE=1` devolve o modo sem tecto e IMPRIME que o fez; um largador ausente
+  (rc 2/126/127) imprime `watcher cap unavailable` e corre sem tecto -- um commit nunca e'
+  recusado por o tecto nao existir nesta maquina.
+* Tecto declarado: **40 % de um nucleo**, fan-out dos suites inalterado (15 ficheiros, um
+  `node`). CUSTO DO TECTO, medido no proprio commit que o instalou (`2f95886`), com o box
+  carregado por outras lanes: **353,7 s** de parede contra **172,2 s** da mesma corrida sem
+  tecto no commit anterior -- **2,05x**, e esse e' o preco de ele ser um tecto. O wrapper
+  imprime os dois numeros que provam que o custo nao e' do `node`:
+  `wrapper cpu 0,59 s`, `child cpu 0,25 s`, `not-scheduled 0,0 s` e
+  `3,4 s outside the observed phases`. `SOTTO_HOOK_CPU_CAP` existe para o subir.
+
+**O que NAO se corta:** o arranque a frio do modelo (11,6 s, `--threads 2`, o mesmo tecto de
+fios declarado no argv do worker). Encolher isso e' encolher o produto; o que se faz e' nao
+o sobrepor a outro trabalho pesado -- a regra de largura 1 ja' escrita no AGENTS.md.
