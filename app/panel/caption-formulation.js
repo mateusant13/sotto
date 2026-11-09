@@ -818,13 +818,38 @@ function createEngine(options) {
       // keys, same ORDER, as before the change — that is what keeps a no-source
       // run byte-identical. It is never read from the fragment: one engine per
       // source is what separates two apps.
-      onCommit(line, reason, engineSource === null
+      const meta = engineSource === null
         ? (tag === null
           ? { route, start, routeSource }
           : { route, start, routeSource, producer: tag })
         : (tag === null
           ? { route, start, routeSource, source: engineSource }
-          : { route, start, routeSource, producer: tag, source: engineSource }));
+          : { route, start, routeSource, producer: tag, source: engineSource });
+      // M8 -- O QUE O FICHEIRO LEVA, e a metade que faltava (2026-11-09).
+      // `panel.js` ja' lia `meta.fileText` ("the engine hands a `fileText`
+      // without the terminal mark it would otherwise have INVENTED") e NENHUM
+      // produtor o escrevia: o consumidor existia, o contrato nao. `line` sai
+      // de `formulateTokens`, que ACRESCENTA a marca final quando a fala nao a
+      // tem -- num rascunho isso veste um fragmento de frase fechada. O
+      // `fileText` so' aparece quando a marca foi INVENTADA (a ultima palavra do
+      // worker nao termina em pontuacao), para que a linha fechada cuja fala JA'
+      // trazia a marca continue byte-identica.
+      //
+      // SEM GUARDA DE ROTA (corrigido na revisao de 2026-11-09): a primeira
+      // versao so' carimbava o `fileText` quando `route !== 'final'` -- e as
+      // DUAS lojas RECUSAM `provisional-draft` (`history_append` diz
+      // `HISTORY_REFUSED reason=provisional-draft`; `history-store.js` a mesma
+      // coisa), logo o campo nunca chegava a rota que e' escrita e a cura era
+      // INERTE. Quem decide o que o ficheiro leva e' a MARCA ter sido inventada,
+      // nao a rota.
+      {
+        const tail = String((all[all.length - 1] || {}).w || '');
+        if (!/[.!?…]$/.test(tail)) {
+          const bare = line.replace(/[.!?…]+$/, '');
+          if (bare) meta.fileText = bare;
+        }
+      }
+      onCommit(line, reason, meta);
       // Remember what this line covers. `emittedWords` is NOT set here: it is
       // set by `ingest` from the fragment, because a continuation is stripped
       // and only the fragment knows the full line the worker is holding.
