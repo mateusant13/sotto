@@ -111,3 +111,45 @@ A DM apontava `worker/engine_policy.py:201-222` (`load()`) como o sitio do ciclo
 (`transcribe()` chama `load()`), ou seja calaria o motor ao vivo para poupar disco -- a inversao que
 o dono proibe. O piso vive no unico chamador que existe para decidir cargas: o LOTE
 (`flush_pending`), que e' quem pode esperar sem perder audio.
+
+## 8. O REPLAY DO LOG DO DONO (2026-11-09, 12:0x) -- quantas das 82 cargas a cura corta
+
+Instrumento: as duas funcoes que EMBARCAM (`load_shedding.ReleaseGate.may_release` e a aritmetica
+`max(60 s, 10 x load_s)`), alimentadas com as linhas do proprio `_main/webview-run.log`
+(65 340 820 B) e com o relogio real daquelas linhas. Nao e' simulacao de modelo: e' o predicado
+publicado a julgar o passado medido.
+
+```
+LOAD_ACTION_PUBLISHED: 443   (leve 151, alta 208, muito-alta 84)
+REDUX_ENGINE_RELEASED: 70    REDUX_ENGINE_LOAD: 80-82
+```
+
+**O ReleaseGate sobre as 84 publicacoes `muito-alta` do log:**
+
+| razao | publicacoes | larga? |
+|---|---|---|
+| `cpu-apenas` (commit < 88 %) | **69** | NAO |
+| `memoria-sustentada-espera` (commit >= 88 % ha' < 120 s) | 5 | NAO |
+| `commit-ilegivel` (direccao segura, OOM) | 4 | sim |
+| `memoria-sustentada` (>= 88 % por >= 120 s) | 3 | sim |
+| `memoria-emergencia` (>= 94 %) | 3 | sim |
+| **total** | **84** | **10 largam, 74 nao** |
+
+Ou seja: das **70 largadas** que o log registou, **no maximo 10** teriam acontecido com a guarda no
+caminho. As 69 em `cpu-apenas` sao exactamente o regime que a DM nomeia (`commit=59.0% cpu=99.1%`):
+a pressao e' de CPU, o modelo nao e' o recurso escasso, e o modo `shed` ja' tinha pausado o lote.
+
+**O piso da recarga sobre os pares release -> load do mesmo log:**
+
+| piso | pares adiados |
+|---|---|
+| 60 s | **15 de 59** |
+| (contraste) 120 s | 26 de 59 |
+
+`load_s` no log: min 0,94 s, mediana 2,28 s, max 19,35 s — logo o piso efectivo e' 60 s na maioria
+das cargas, e `max(60, 10 x 19,35) = 193,5 s` para a carga mais cara. O par mais apertado medido
+(4,4 s) esta' entre os adiados.
+
+**O que este replay NAO prova:** que a instancia viva pare de ciclar -- o worker em execucao corre o
+codigo de antes de hoje. O que ele prova e' que, com estas duas guardas no caminho, o passado medido
+nao se reproduz: 74 das 84 janelas severas nao largam nada, e 15 das recargas ficam a espera.
