@@ -619,6 +619,16 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-pause-payload !STEP_RC!
   call :step red-as-expected-panel-pause-payload 1 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
   call :expectred red-as-expected-panel-pause-payload !STEP_RC! "%OUT%\panel-pause-payload-neg.log" "NEG-ARM: PASS"
+  REM O DISCO NUNCA CORRE NA THREAD DA JANELA (2026-11-09). Medido: o autostart do dono.
+  REM fechou com HANG rc=4 as 2026-11-08 18:57 e o dump de `_startup-stacks.log` mostrou a
+  REM thread da UI presa em `os.makedirs <- batch_queue.py <- load_shedding.py <-
+  REM _start_slow_read_monitor <- _on_before_show`: a app nao subiu. O par abaixo extrai as
+  REM funcoes REAIS por `ast` e mede a chamada (A1), o trabalho (A2), a repeticao (A3) e o
+  REM interruptor (A4); o `--neg-arm` repoe a chamada directa e mata a thread.
+  call :step startup-ui-thread-block 0 "_main\startup-ui-thread-block-oracle.py;app\webview\sotto_webview.py;app\webview\batch_queue.py;app\webview\load_shedding.py" "%OUT%\startup-ui-thread-block.log" python _main\startup-ui-thread-block-oracle.py
+  call :record startup-ui-thread-block !STEP_RC!
+  call :step red-as-expected-startup-ui-thread-block 1 "_main\startup-ui-thread-block-oracle.py;app\webview\sotto_webview.py;app\webview\batch_queue.py;app\webview\load_shedding.py" "%OUT%\startup-ui-thread-block-neg.log" python _main\startup-ui-thread-block-oracle.py --neg-arm
+  call :expectred red-as-expected-startup-ui-thread-block !STEP_RC! "%OUT%\startup-ui-thread-block-neg.log" "NEG-ARM: PASS"
   rem -- O CUSTO SEM TRABALHO (2026-11-09). O watcher mediu o worker do dono a 270,6 %%c
   rem com rows=0 depois de 232 min, e o MESMO codigo arrancado de novo a 1,2 %%c. O par
   rem julga a forma da linha que o worker publica, o parser da shell, a decisao (pura) e a

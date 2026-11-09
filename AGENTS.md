@@ -573,7 +573,23 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-09, 18:1x):** `_main\_audit-verify-all.cmd` = **321217 B**,
+- **PIN do ficheiro (medido 2026-11-09, 19:0x):** `_main\_audit-verify-all.cmd` = **322452 B**,
+  **3789 CRLF** / 0 bare LF, sha256 `ACA30B73588CA262A80FE88229EB66170AC2638CCE5CA87E42836AEA645BC997`.
+  (Mil duzentos e trinta e cinco bytes e DEZ linhas a mais do que o pin de 321217 B: o par
+  `startup-ui-thread-block` + o seu `--neg-arm`, nascido do UNICO HANG do autostart do dono que
+  tinha causa nomeada. `\Sotto` fechou 2026-11-08 18:57 com `LastTaskResult = 4` e o dump que a
+  propria app tira (`_main\_startup-stacks.log`, 15 s, pid 9628) mostrou a THREAD DA UI presa em
+  `os.makedirs <- batch_queue.py:218 <- load_shedding.py:1093 <- _start_slow_read_monitor <-
+  _start_ui_watchdog <- _on_before_show <- winforms.py:775 create`: a fila do batch era construida
+  DENTRO do `create` do pywebview, ou seja o `os.makedirs` do disco era chamado na unica thread que
+  pode mapear a janela -- NENHUM `STAGING_SEEN`/`PRELOAD_ACTIVE`, nenhum `mark_launch_ready`,
+  `UI_WATCHDOG_NOANSWER_BEFORE_FIRST` a cada 5 s. A app nao estava lenta: nao subiu. A cura move a
+  abertura para o metodo `_open_load_action`, numa thread propria; o oraculo extrai as DUAS funcoes
+  REAIS por `ast` e mede a chamada (**A1 0,032 s** contra o orcamento de 0,150 s, com o
+  `open_action` a custar 0,400 s), o trabalho (A2), a repeticao (A3) e o interruptor (A4); o
+  `--neg-arm` repoe a chamada directa (A1 cai a **0,406 s**, rc=1) e mata a thread (A2 vermelha),
+  medido `NEG-ARM: PASS -- 2/2`. O autostart nao mentia: ele reportou HANG porque havia um.)
+  (O pin anterior era **321217 B**,
   **3779 CRLF** / 0 bare LF, sha256 `CDE5D79400B832FE4B8BDE6D844D3E5DA7AC06DEE16E97CC8E5755919250D1C7`.
   (Mil seiscentos e cinquenta e nove bytes e DEZASSETE linhas a mais do que o pin de 319558 B: o par
   `engine-commit-cycles` + `red-as-expected-engine-commit-cycles`. Nasceu de um DM do watcher que lia

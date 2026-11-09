@@ -12138,33 +12138,58 @@ class SottoShell:
         #
         # `SOTTO_LOAD_SHED=0` desliga a medicao (e o `shed` deixa de ser escrito);
         # `SOTTO_LOAD_SHED_ACT=0` desarma so' a accao.
+        # A FILA E O SHEDDING ABREM FORA DA THREAD DA UI (2026-11-09, MEDIDO).
+        # Esta funcao e' alcancada de `_on_before_show`, que corre DENTRO do
+        # `winforms.py::create` -- a thread que mapeia a janela. E o
+        # `open_action` constroi o `BatchQueue`, que faz `os.makedirs` e varre o
+        # directorio: trabalho de DISCO. MEDIDO no arranque de 2026-11-08 18:57
+        # (pid 9628; `_main/_startup-stacks.log`, dump de 15 s):
+        #     os.makedirs <- batch_queue.py:218 <- load_shedding.py:1093
+        #     <- _start_slow_read_monitor <- _start_ui_watchdog <- _on_before_show
+        #     <- webview/platforms/winforms.py:775 create
+        # com a maquina a 92 % de commit: NENHUM `STAGING_SEEN`/`PRELOAD_ACTIVE`,
+        # nenhum `mark_launch_ready`, `UI_WATCHDOG_NOANSWER_BEFORE_FIRST` a cada
+        # 5 s e o `run.cmd` a publicar `HANG rc=4`. A app nao ficou lenta: ela nao
+        # subiu -- e a thread presa era a unica que podia fazer a pagina carregar.
+        # Uma chamada bloqueante aqui nao adia um widget, adia o ARRANQUE inteiro;
+        # por isso o trabalho vive numa thread propria e a UI volta a bombear.
         if os.environ.get('SOTTO_LOAD_SHED') != '0':
-            # O LOG FICA FORA DO GUARD DO ARRANQUE: medido 2026-10-30 10:56:55,
-            # a linha `STARTED` lia o `armed` retirado e, no MESMO `try`, desarmou
-            # a funcionalidade toda: diagnostico nao derruba a coisa.
+            threading.Thread(target=self._open_load_action,
+                             name='sotto-load-shed-start', daemon=True).start()
+
+    def _open_load_action(self):
+        """Abre a fila do batch e a accao do shedding FORA da thread da UI.
+
+        Nasceu de um HANG medido (ver o comentario do chamador e o dump de
+        `_main/_startup-stacks.log` para o pid 9628): um `os.makedirs` na thread
+        que mapeia a janela impediu a app de subir.
+        """
+        # O LOG FICA FORA DO GUARD DO ARRANQUE: medido 2026-10-30 10:56:55,
+        # a linha `STARTED` lia o `armed` retirado e, no MESMO `try`, desarmou
+        # a funcionalidade toda: diagnostico nao derruba a coisa.
+        try:
+            # O MONITOR NAO ARRANCA O LACO DELE. Ele mede so' o commit;
+            # `open_action` mede commit E CPU e fica com o estado e o
+            # publicador dele, para haver UM escritor e UM numero no ficheiro.
+            monitor = LoadSheddingMonitor(self)
+            self._load_shedding = monitor
+            self._load_action = load_shedding().open_action(
+                self, monitor=monitor, log_fn=log)
+        except Exception as exc:  # noqa: BLE001 -- nunca impede a app de subir
+            log('LOAD_SHEDDING_START_FAILED error=%r' % (exc,))
+        else:
             try:
-                # O MONITOR NAO ARRANCA O LACO DELE. Ele mede so' o commit;
-                # `open_action` mede commit E CPU e fica com o estado e o
-                # publicador dele, para haver UM escritor e UM numero no ficheiro.
-                monitor = LoadSheddingMonitor(self)
-                self._load_shedding = monitor
-                self._load_action = load_shedding().open_action(
-                    self, monitor=monitor, log_fn=log)
-            except Exception as exc:  # noqa: BLE001 -- nunca impede a app de subir
-                log('LOAD_SHEDDING_START_FAILED error=%r' % (exc,))
-            else:
-                try:
-                    log('LOAD_SHEDDING_STARTED interval_s=%.0f canal=shed'
-                        % LoadSheddingMonitor.INTERVAL_S)
-                    state = self._load_action.as_dict()
-                    log('LOAD_ACTION_STARTED armed=%s floor_s=%.0f samples=%d'
-                        ' queue=%s'
-                        % (str(state.get('armed')).lower(),
-                           float(state.get('floor_s') or 0.0),
-                           int(state.get('samples_required') or 0),
-                           (state.get('batch') or {}).get('queue', {}).get('dir', '-')))
-                except Exception as exc:  # noqa: BLE001 -- uma linha nao desarma nada
-                    log('LOAD_ACTION_LOG_FAILED error=%r' % (exc,))
+                log('LOAD_SHEDDING_STARTED interval_s=%.0f canal=shed'
+                    % LoadSheddingMonitor.INTERVAL_S)
+                state = self._load_action.as_dict()
+                log('LOAD_ACTION_STARTED armed=%s floor_s=%.0f samples=%d'
+                    ' queue=%s'
+                    % (str(state.get('armed')).lower(),
+                       float(state.get('floor_s') or 0.0),
+                       int(state.get('samples_required') or 0),
+                       (state.get('batch') or {}).get('queue', {}).get('dir', '-')))
+            except Exception as exc:  # noqa: BLE001 -- uma linha nao desarma nada
+                log('LOAD_ACTION_LOG_FAILED error=%r' % (exc,))
 
     def _form(self):
         return getattr(self.window, 'native', None)

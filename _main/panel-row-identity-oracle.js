@@ -163,6 +163,19 @@ class FElement extends FNode {
   get textContent() { return this.childNodes.map(n => n.textContent).join(''); }
   set textContent(v) { this.childNodes.forEach(n => { n.parentNode = null; }); this.childNodes = []; this.append(new FText(v)); }
   append(...nodes) { for (const n of nodes) { const node = (n instanceof FNode) ? n : new FText(n); node.parentNode = this; this.childNodes.push(node); } }
+  // `appendChild`/`insertBefore` FALTAVAM e o painel usa-os (medido 2026-11-09:
+  // o oraculo nem CARREGA -- `select.appendChild is not a function`, 0 bracos
+  // julgados, `VERDICT: FAIL` sem um unico juizo). Um seam de DOM incompleto
+  // acusa o produto de uma coisa que e' dele proprio; as duas primitivas do
+  // nivel 1 do DOM entram aqui, com o valor de retorno que o padrao manda.
+  appendChild(node) { this.append(node); return node; }
+  insertBefore(node, ref) {
+    const idx = ref ? this.childNodes.indexOf(ref) : -1;
+    const n = (node instanceof FNode) ? node : new FText(node);
+    n.parentNode = this;
+    if (idx < 0) this.childNodes.push(n); else this.childNodes.splice(idx, 0, n);
+    return n;
+  }
   prepend(...nodes) { for (const n of nodes.slice().reverse()) { const node = (n instanceof FNode) ? n : new FText(n); node.parentNode = this; this.childNodes.unshift(node); } }
   replaceChildren(...nodes) { this.childNodes.forEach(n => { n.parentNode = null; }); this.childNodes = []; this.append(...nodes); }
   removeChild(node) { const i = this.childNodes.indexOf(node); if (i === -1) throw new Error('removeChild: not a child'); this.childNodes.splice(i, 1); node.parentNode = null; return node; }
@@ -270,6 +283,13 @@ function buildPanel(panelSource, engineSource) {
 
   vm.runInContext(engineSource, ctx, { filename: 'caption-formulation.js' });
   vm.runInContext(revision(HISTORY_SOURCE).text, ctx, { filename: 'history-source.js' });
+  // `stable-words.js` FALTAVA, e sem ele NENHUM braco corre (medido 2026-11-09:
+  // os sete bracos morriam em `ReferenceError: StableWords is not defined`, e o
+  // oraculo imprimia `VERDICT: FAIL` sem julgar nada). O `panel.js` passou a
+  // depender do modulo, o seam nao; o painel real carrega-o no `panel.html`
+  // (`<script src="stable-words.js">`), logo o harness tem de carregar o mesmo.
+  vm.runInContext(revision(path.join(REPO, 'app', 'panel', 'stable-words.js')).text,
+    ctx, { filename: 'stable-words.js' });
   vm.runInContext(panelSource, ctx, { filename: 'panel.js' });
 
   const list = doc._byId.get('caption-list');
@@ -427,11 +447,16 @@ function checkE(h, makePanel, panelSource, engineSource) {
   const FIN = (start, extra) => Object.assign({ start, end: start + 1, final: true }, extra || {});
   const keyOf = (r) => (r[0] ? r[0].keys.join(',') : 'NO-COMMIT');
 
-  const plain = run({}, 'linha sem fonte', FIN(5));
-  const sourced = run({ source: 'proc:111' }, 'linha com fonte', FIN(5));
-  const producer = run({}, 'linha redux', FIN(7, { producer: 'redux' }));
-  const both = run({ source: 'file:clip.wav' }, 'linha redux', FIN(7, { producer: 'redux' }));
-  const empties = ['', null, 42, {}, []].map((s) => run({ source: s }, 'linha sem fonte util', FIN(9)));
+  // DUAS FORMAS PARA CADA CASO, e a distincao e' o contrato de 2026-11-09: uma
+  // linha cuja FALA ja' traz a marca final sai byte-identica (sem `fileText`); uma
+  // linha em que o motor INVENTOU a marca leva `fileText` com o texto CRU, e ele
+  // entra por ULTIMO -- o ficheiro e' o que a engine DISSE, o ecra e' o formatado.
+  const plain = run({}, 'linha sem fonte.', FIN(5));
+  const invented = run({}, 'linha sem fonte', FIN(5));
+  const sourced = run({ source: 'proc:111' }, 'linha com fonte.', FIN(5));
+  const producer = run({}, 'linha redux.', FIN(7, { producer: 'redux' }));
+  const both = run({ source: 'file:clip.wav' }, 'linha redux.', FIN(7, { producer: 'redux' }));
+  const empties = ['', null, 42, {}, []].map((s) => run({ source: s }, 'linha sem fonte util.', FIN(9)));
   const two = [];
   const e1 = F.createEngine({ source: 'proc:111', onCommit: (l, r, m) => two.push(m.source), onProvisional: () => {} });
   const e2 = F.createEngine({ source: 'proc:222', onCommit: (l, r, m) => two.push(m.source), onProvisional: () => {} });
@@ -441,12 +466,15 @@ function checkE(h, makePanel, panelSource, engineSource) {
   const ok = plain.length === 1
     && keyOf(plain) === 'route,start,routeSource'
     && JSON.stringify(plain[0].meta) === '{"route":"final","start":5,"routeSource":"worker-stamped"}'
+    && keyOf(invented) === 'route,start,routeSource,fileText'
+    && invented[0].meta.fileText === 'Linha sem fonte'
     && keyOf(sourced) === 'route,start,routeSource,source' && sourced[0].meta.source === 'proc:111'
     && keyOf(producer) === 'route,start,routeSource,producer'
     && keyOf(both) === 'route,start,routeSource,producer,source' && both[0].meta.source === 'file:clip.wav'
     && empties.every((r) => keyOf(r) === 'route,start,routeSource')
     && JSON.stringify(two) === '["proc:111","proc:222"]';
-  return { ok, detail: 'no-source keys=' + keyOf(plain) + ' obj=' + JSON.stringify(plain[0] ? plain[0].meta : null)
+  return { ok, detail: 'inventado keys=' + keyOf(invented) + ' fileText=' + JSON.stringify(invented[0] ? invented[0].meta.fileText : null)
+    + ' | no-source keys=' + keyOf(plain) + ' obj=' + JSON.stringify(plain[0] ? plain[0].meta : null)
     + ' | +source keys=' + keyOf(sourced) + ' | +producer keys=' + keyOf(producer)
     + ' | +both keys=' + keyOf(both)
     + ' | empty/null/number/object/array source keys=' + empties.map(keyOf).join(' / ')
@@ -462,10 +490,25 @@ function checkF(h, makePanel, panelSource) {
   const fresh = makePanel();
   const A = 'proc:111';
   const B = 'proc:222';
-  for (let i = 0; i < 100; i++) { fresh.feed('linhaA ' + i, { start: i, end: i + 0.5, final: true, source: A }); fresh.flush(); }
-  for (let i = 0; i < 100; i++) { fresh.feed('linhaB ' + i, { start: i, end: i + 0.5, final: true, source: B }); fresh.flush(); }
+  // O TAMANHO VEM DO PRODUTO, nao de um 100 fixo (medido 2026-11-09: o braco
+  // enchia 200 linhas contra `MAX_CAPTIONS = 1200` e por isso nunca exercitava o
+  // corte -- `trimmed.length === max` falhava por 1000 e o nome do braco dizia
+  // "the trim path keeps the index", que era exactamente o que ele nao media).
+  // Alternar A/B faz a linha MAIS ANTIGA ser `(A,0)`, que e' o que o braco exige
+  // que desapareca, e `(B,0)` a ficar -- com identidade de ELEMENTO.
+  // METADE POR FONTE, para o layout de identidades ser o do braco: (A,0) nasce
+  // PRIMEIRO (e' ela que o corte tem de levar) e (B,0) existe no meio (e' ela que
+  // tem de ser reescrita no MESMO elemento). Alternar fonte por linha, como fiz
+  // na primeira tentativa, apagava (B,0) do fluxo e o braco passava a julgar
+  // identidades que nunca existiram.
+  const half = Math.max(2, Math.floor(max / 2));
+  for (let i = 0; i < half; i++) { fresh.feed('linhaA ' + i, { start: i, end: i + 0.5, final: true, source: A }); fresh.flush(); }
+  for (let i = 0; i < half; i++) { fresh.feed('linhaB ' + i, { start: i, end: i + 0.5, final: true, source: B }); fresh.flush(); }
   const before = fresh.rows().filter((r) => !r.provisional);
-  fresh.feed('linhaB cem', { start: 100, end: 100.5, final: true, source: B });
+  // `start` TEM de ser um que ainda nao exista: as linhas de B vao de 0 a
+  // `half-1`, e a primeira versao desta resize usou 100 -- que ja' existia, logo
+  // o commit REESCREVEU uma linha e o corte nunca correu (`rows` 1200 -> 1200).
+  fresh.feed('linhaB cem', { start: half, end: half + 0.5, final: true, source: B });
   fresh.flush();
   const trimmed = fresh.rows().filter((r) => !r.provisional);
   const b0 = trimmed.filter((r) => r.source === B && r.start === '0');
@@ -474,10 +517,12 @@ function checkF(h, makePanel, panelSource) {
   fresh.flush();
   const rewritten = fresh.rows().filter((r) => !r.provisional);
   const survivor = rewritten.filter((r) => r.source === B && r.start === '0')[0];
-  fresh.feed('nunca vista', { start: 500, end: 500.5, final: true, source: B });
+  fresh.feed('nunca vista', { start: half * 4, end: half * 4 + 0.5, final: true, source: B });
   fresh.flush();
   const appended = fresh.rows().filter((r) => !r.provisional);
   const a0Left = trimmed.filter((r) => r.source === A && r.start === '0').length;
+  const head = trimmed[0] || {};
+  const headTxt = txt(head || { text: '' });
   const ok = max !== null && before.length === max && trimmed.length === max && a0Left === 0
     && b0.length === 1
     && rewritten.length === max && !!survivor && survivor.el === b0el && has(survivor.text, 'reescrita')
@@ -485,7 +530,8 @@ function checkF(h, makePanel, panelSource) {
     && has(appended[appended.length - 1].text, 'nunca')
     && appended.filter((r) => has(r.text, 'reescrita')).length === 1;
   return { ok, detail: 'MAX=' + max + ' rows after 200=' + before.length + ' after the 201st=' + trimmed.length
-    + ' (A,0) still there=' + a0Left + ' | (B,0) rewritten IN PLACE=' + (!!survivor && survivor.el === b0el)
+    + ' (A,0) still there=' + a0Left + ' head=' + JSON.stringify({ source: head.source, start: head.start, text: headTxt })
+ + ' | (B,0) rewritten IN PLACE=' + (!!survivor && survivor.el === b0el)
     + ' rows=' + rewritten.length + ' text=' + txt(survivor || { text: '' })
     + ' | append rows=' + appended.length + ' last=' + txt(appended[appended.length - 1] || { text: '' }) };
 }
