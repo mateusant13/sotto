@@ -1001,13 +1001,6 @@ def live_source(factory, log=None):
         return src
 
 
-def live_source_set(src):
-    """Registar uma fonte construida fora da `live_source` (adocao no arranque)."""
-    global _LIVE_SOURCE
-    with _LIVE_LOCK:
-        _LIVE_SOURCE = src
-
-
 def live_source_clear(src=None):
     """Esquecer a fonte -- so' quando ela morreu mesmo (stop/falha de arranque)."""
     global _LIVE_SOURCE

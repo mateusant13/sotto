@@ -83,6 +83,30 @@ def _read_tail(path, limit=TAIL_BYTES):
         return fh.read().decode('utf-8', 'replace')
 
 
+def _read_from_last(path, needle, start_bytes=TAIL_BYTES, say=None):
+    """A janela que contem a ULTIMA ocorrencia de `needle`, ou o ficheiro todo.
+
+    A JANELA FIXA FICOU CEGA, e foi medido em 2026-11-09 pela lane de fecho: o
+    `TAIL_BYTES` de 4 MiB e' menor do que a distancia do arranque da shell ao fim do
+    log (7,99 MiB medidos neste ficheiro), portanto a prova B imprimia
+    `pid=? started=?` / `prova B: indisponivel` e NENHUM recibo conseguia citar o
+    pid/arranque dela -- um instrumento que diz "indisponivel" quando o dado ESTA'
+    no ficheiro ensina a nao confiar nele. Aqui a janela DOBRA ate' encontrar a
+    linha (4, 8, 16 ... MiB, tecto no tamanho do ficheiro), e o tamanho usado e'
+    publicado para o recibo o poder citar.
+    """
+    size = os.path.getsize(path) if os.path.exists(path) else 0
+    limit = max(int(start_bytes), 1)
+    while True:
+        text = _read_tail(path, limit)
+        if needle in text or limit >= size:
+            if say is not None:
+                say('janela: %.1f MiB (ficheiro %.1f MiB)'
+                    % (min(limit, size) / 1048576.0, size / 1048576.0))
+            return text
+        limit *= 2
+
+
 def _last(lines, needle):
     for line in reversed(lines):
         if needle in line:
@@ -548,7 +572,8 @@ def main(argv=None):
     if args.files:
         started = 0.0
         if os.path.exists(args.log):
-            line = _last(_read_tail(args.log).splitlines(), 'SHELL_STARTUP_STAGE')
+            line = _last(_read_from_last(args.log, 'SHELL_STARTUP_STAGE').splitlines(),
+                         'SHELL_STARTUP_STAGE')
             started = _stamp_of(line) or 0.0
         names = _code_files(mod)
         print('CONJUNTO %d ficheiro(s) -- os que a etiqueta do processo cobre '
@@ -578,7 +603,8 @@ def main(argv=None):
               % args.log)
         return 0
 
-    verdict, detail = judge(mod, _read_tail(args.log))
+    verdict, detail = judge(mod, _read_from_last(
+        args.log, 'SHELL_STARTUP_STAGE', say=lambda m: print('  ' + m)))
     report(verdict, detail, args.log)
     _record(verdict, detail, args.log)
     if args.strict and verdict != 'FRESH':
