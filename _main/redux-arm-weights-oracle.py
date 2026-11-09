@@ -604,7 +604,27 @@ def arm_store(run, store_text, tag, temp_root, declared):
     box = Path(temp_root) / f"store-{tag.strip(':') or 'green'}"
     box.mkdir(parents=True, exist_ok=True)
     store_file = box / "history-store.js"
+    # A GRAFIA DO `require` E' PARTE DO CONTRATO (2026-11-09). O oraculo escrevia SO'
+    # `history-store.js` na caixa; quando o store passou a `require('./history-context-store')`
+    # (extracao do leitor de contexto) o node da arm morria em `Cannot find module` e o
+    # veredicto saia `SETUP ERROR` -- as oito arms do piso da recarga ficaram sem portao e
+    # ninguem soube, porque o `rc=2` nao dizia qual ficheiro faltava. Agora a caixa recebe
+    # TODOS os `.js` de `app/panel` (o grafo inteiro, 10 ficheiros pequenos) e um preflight
+    # `require()` do proprio store nomeia o que faltar ANTES de qualquer arm correr.
+    for sib in sorted((REPO / "app" / "panel").glob("*.js")):
+        if sib == STORE:
+            continue
+        shutil.copyfile(sib, box / sib.name)
     store_file.write_text(store_text, encoding="utf-8")
+    pre = subprocess.run([NODE_EXE, "-e", "require(process.argv[1])", str(store_file)],
+                         capture_output=True, text=True, timeout=120,
+                         creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
+                         startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
+    if pre.returncode != 0:
+        err = (pre.stderr or "")
+        err = " ".join(err.strip().splitlines()[:3]) or (pre.stdout or "")
+        raise SetupError("the store does not load in its own box (require graph): %s"
+                         % (err.strip() or "rc=%d with no output" % pre.returncode))
     root = box / "history-root"
     root.mkdir(parents=True, exist_ok=True)
     out = run_node_store(store_file, root, declared)

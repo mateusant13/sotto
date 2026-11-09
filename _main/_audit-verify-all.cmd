@@ -257,7 +257,7 @@ REM comuta pela carga (`alta`->batch, `muito-alta`->shed, `leve`+visivel->stream
 REM Sem passo, o instrumento apodreceu duas vezes em silencio (FakeReader sem `shed`,
 REM `--neg-arm` morto a apontar para o ficheiro onde a classe ja' nao vive).
 if exist _main\redux-arm-weights-oracle.py (
- call :step redux-arm-weights 0 "_main\redux-arm-weights-oracle.py;worker\engine_switch.py;worker\engine_policy.py;worker\sotto_worker.py;worker\redux_batch.py;app\webview\sotto_webview.py;app\panel\caption-formulation.js;app\panel\history-store.js" "%OUT%\redux-arm-weights.log" python _main\redux-arm-weights-oracle.py
+ call :step redux-arm-weights 0 "_main\redux-arm-weights-oracle.py;worker\engine_switch.py;worker\engine_policy.py;worker\sotto_worker.py;worker\redux_batch.py;app\webview\sotto_webview.py;app\panel\caption-formulation.js;app\panel\history-store.js;app\panel\history-context-store.js" "%OUT%\redux-arm-weights.log" python _main\redux-arm-weights-oracle.py
  call :record redux-arm-weights !STEP_RC!
 ) else ( call :record redux-arm-weights MISSING )
 

@@ -573,9 +573,13 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-09, 13:4x):** `_main\_audit-verify-all.cmd` = **319523 B**,
-  **3762 CRLF** / 0 bare LF, sha256 `830FCB88180C4D35683374085C8894F10C38ED8A9182E3E9350449739209CE5D`.
-  (Mil oitenta e oito bytes e DEZ linhas a mais do que o pin de 318435 B: o par `cost-watchdog` +
+- **PIN do ficheiro (medido 2026-11-09, 14:5x):** `_main\_audit-verify-all.cmd` = **319558 B**,
+  **3762 CRLF** / 0 bare LF, sha256 `A00E9B00BDE22E67F4623CB286E808ADFA8EABFA739688CA1988722A813AC5CA`.
+  (Trinta e cinco bytes a mais do que o pin de 319523 B: o passo `redux-arm-weights` passa a nomear
+  `app\panel\history-context-store.js` nas dependencias. O store passou a `require('./history-context-store')`
+  quando o leitor de contexto foi extraido, e o passo em cache estaria a reimprimir um PASS sobre um grafo
+  de `require` que ja' mudou -- a mesma classe do `panel-deps`, agora do lado do node.)
+  (O pin anterior era o de 13:4x, 319523 B, o par `cost-watchdog` +
   `red-as-expected-cost-watchdog`, o CUSTO SEM TRABALHO. O watcher leu o worker do dono
   (`worker/sotto_worker.py`, pid 20676) a **270,6 %c numa janela** e a **1,2 %c** noutra, e o produto
   nao tinha serie nenhuma para julgar as duas. A CORRECAO veio depois, medida aqui: o mesmo codigo em
