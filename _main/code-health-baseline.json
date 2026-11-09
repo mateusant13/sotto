@@ -481,12 +481,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1250627,
-      "classes": 28,
-      "defs": 145,
-      "except_pass": 60,
-      "globals": 4,
-      "lines": 23649,
+      "bytes": 1294347,
+      "classes": 29,
+      "defs": 155,
+      "except_pass": 61,
+      "globals": 8,
+      "lines": 24490,
       "max_func": 414,
       "max_func_name": "main"
     },
@@ -591,12 +591,12 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 85255,
+      "bytes": 87503,
       "classes": 1,
       "defs": 29,
       "except_pass": 6,
       "globals": 2,
-      "lines": 1761,
+      "lines": 1797,
       "max_func": 230,
       "max_func_name": "_run"
     },
@@ -749,6 +749,16 @@
       "lines": 487,
       "max_func": 74,
       "max_func_name": "__init__"
+    },
+    "worker/process_target.py": {
+      "bytes": 6661,
+      "classes": 1,
+      "defs": 7,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 162,
+      "max_func": 28,
+      "max_func_name": "snapshot"
     },
     "worker/punctuation_model.py": {
       "bytes": 10834,
