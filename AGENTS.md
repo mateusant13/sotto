@@ -1802,6 +1802,29 @@ um laco que dorme exactamente o tempo que trabalha gasta **100 % de um nucleo po
 stutter "resolvido" sem pid, fio e linha nao e' um stutter resolvido. Recibo de referencia:
 `_main/receipt-20261108-stutter-caption-tick.md`.
 
+## UM LIMITE DE MEDICAO LARGA UM INSTRUMENTO, NAO UM PARAGRAFO (2026-11-09)
+
+Tres fatos do mesmo dia, nesta ordem:
+
+- o dono, 2026-11-02: *"nao mandei tu diagonisticar e parar. é pra diagnosticar e arrumar"*;
+- o watcher acusou `python.exe(20676) sotto_worker.py 303,1 %c` e `pythonw.exe(50452) 81,3 %c`, e
+  **nenhum** dos dois podia ser atribuido: `py-spy` devolve `err=5` nesta arvore (o processo do dono
+  corre `high`, a pane `medium`);
+- o instrumento que respondia "qual fio" existia com `--neg-arm` e **zero chamadores**
+  (`_main/shell-thread-cpu.py`), e o banco de fios que devia responder "quanto custa cortar"
+  estava **morto** -- `rc=1`, `no checkpoint in worker\models\parakeet-redux-ternary`, `0 palavras`
+  nas tres caps, com tres "x realtime" impressos por um filho que morreu em 0,25 s.
+
+**A LEI, em tres linhas:** (1) um limite de medicao nao fecha o assunto -- ele abre o instrumento
+que nomeia o ator DA PROXIMA VEZ, no mesmo turno (`_main/cpu-tripwire.py`: limiar 250 %c, janela
+5 s, captura por FIO e o registro dizendo `stack=unavailable` e por que); (2) um instrumento morto
+imprime **nome e rc da morte** e o recibo diz "morto" -- os numeros de um filho que morreu nao se
+citam, nem "para comparar"; (3) um probe que carrega modelo ou varre disco corre **caged desde a
+primeira invocacao** (`python -m watcher run --cpu 40 --`, ver a lei do custo acima): medido
+2026-11-09, o meu `nemotron-thread-bench` sem tecto foi o **maior produtor de pressao** do stutter
+do dono (pid 56092, `io 88,5 MB/s`, tres `tick.stall` na mesma janela) -- o culpado era o
+instrumento, e o recibo esta' em `_main/receipt-20261109-thread-bench-stutter.md`.
+
 ## A LEI DOS TESTES - todo teste, existente ou futuro (ordem do dono, 2026-11-05)
 
 Verbatim: *"QUALQUER TESTE EXISTENTE OU QUE SERÁ IMPLEMENTADO, DEVE SER IMPLEMENTADO DESSE JEITO PRA
