@@ -798,6 +798,21 @@ def _add_cuda_dll_dirs() -> None:
 _PIPE_DEAD = False
 
 
+#: A FORMA da linha de custo, fora do laco do audio para poder ser JULGADA.
+#: Um oraculo que precise de um dispositivo para ver o texto nao e' um oraculo.
+def format_worker_cost(tag, cpu_total, cpu_delta, wall_delta, rows, rows_delta,
+                       per_row, uptime_s, pid):
+    wall_delta = max(1e-6, float(wall_delta))
+    return (
+        "WORKER_COST tag=%s cpu_s=%.3f cpu_pct_avg=%.1f wall_s=%.1f "
+        "rows=%d rows_since_tick=%d rows_per_min=%.1f cpu_s_per_row=%s "
+        "uptime_s=%.0f pid=%d"
+        % (tag, cpu_total, cpu_delta / wall_delta * 100.0, wall_delta,
+           rows, rows_delta, rows_delta * 60.0 / wall_delta,
+           "none" if per_row is None else "%.3f" % per_row,
+           uptime_s, pid))
+
+
 def emit(**payload) -> None:
     """One JSON object, one line, flushed. The whole inter-process contract.
 
@@ -6911,6 +6926,30 @@ def main():
     # the class in the file, which is what `_main/meter-chain-oracle.py` pins.
     meter = AudioMeter(meter_hz, now=time.time(), block_s=block_ms / 1000.0)
 
+    # ── O CUSTO POR MINUTO, DATADO (2026-11-09) ────────────────────────────────
+    # O watcher mediu este worker a **270,6 %c com rows=0** depois de 232 min de
+    # vida, e o dono sentiu a travada; um arranque novo do MESMO codigo mediu
+    # **1,2 %c**. "Degradou com o uptime" e' a frase que se escreve quando nao ha'
+    # serie -- por isso o worker passa a publicar, a cada tick de stats, o proprio
+    # custo medido de dentro: `time.process_time()` e' CPU (user+sys) DESTE
+    # processo, exato e de graca, sem psutil e sem tocar no disco.
+    _cost = {"cpu_t": time.process_time(), "wall_t": time.time(),
+             "rows": 0, "cpu_total": 0.0, "t0": time.time()}
+
+    def cost_line(tag: str) -> str:
+        now_t, now_wall = time.process_time(), time.time()
+        cpu_t0 = _cost["cpu_t"]
+        cpu_delta = max(0.0, now_t - cpu_t0)
+        wall_delta = max(1e-6, now_wall - _cost["wall_t"])
+        rows = int(counters.get("captions", 0)) + int(counters.get("redux_captions", 0))
+        rows_delta = max(0, rows - _cost["rows"])
+        _cost["cpu_t"], _cost["wall_t"], _cost["rows"] = now_t, now_wall, rows
+        _cost["cpu_total"] += cpu_delta
+        per_row = (cpu_delta / rows_delta) if rows_delta else None
+        return format_worker_cost(tag, _cost["cpu_total"], cpu_delta, wall_delta,
+                                  rows, rows_delta, per_row,
+                                  now_wall - _cost["t0"], os.getpid())
+
     def stats_line(tag: str) -> str:
         n = max(1, counters["block_samples"])
         rms = (counters["sumsq"] / n) ** 0.5
@@ -8009,6 +8048,11 @@ def main():
                             break
                         if now >= next_stats:
                             err(stats_line("tick"))
+                            try:
+                                err(cost_line("tick"))
+                            except Exception as _exc:  # noqa: BLE001
+                                # um relator que levanta nao pode derrubar o laco de audio
+                                err("WORKER_COST_FAILED %r" % (_exc,))
                             next_stats = now + args.stats_interval
                         # THE ACCEPTANCE TEST. A CAPTION is the only evidence that
                         # settles the ladder, and that is deliberate: `peak >=

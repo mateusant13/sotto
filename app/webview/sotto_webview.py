@@ -60,6 +60,9 @@ import history_context
 import panel_focus as _panel_focus
 import bridge_census as _bridge_census_mod
 from code_identity import code_identity as _code_identity
+#: A DECISAO de reiniciar um worker caro e mudo (2026-11-09). Modulo puro e
+#: importavel para o oraculo julgar a regra sem abrir dispositivo nem shell.
+import cost_watchdog
 import panel_state
 import topmost_keepalive as _topmost_keepalive
 import power_recovery as _power_recovery
@@ -1403,6 +1406,27 @@ def parse_worker_stats(line):
             fields[key] = value
     return {'tag': match.group(1), 'fields': fields,
             'line': str(line).strip()}
+
+WORKER_COST_RE = re.compile(r'^WORKER_COST\s+tag=(\S+)\s*(.*)$')
+
+
+def parse_worker_cost(line):
+    """`{'tag': ..., 'fields': {...}, 'line': ...}` da linha `WORKER_COST`, ou None.
+
+    Os valores ficam STRINGS, como o worker os imprime -- a mesma regra do
+    `parse_worker_stats`: um campo que o worker nao publicou fica AUSENTE em vez de
+    virar um zero que este ficheiro inventou.
+    """
+    match = WORKER_COST_RE.match(str(line).strip())
+    if not match:
+        return None
+    fields = {}
+    for token in match.group(2).split():
+        if '=' in token:
+            key, value = token.split('=', 1)
+            fields[key] = value
+    return {'tag': match.group(1), 'fields': fields, 'line': str(line).strip()}
+
 
 # ── hot reload of the WORKER: debounce + guard + floor ──────────────────────
 #: Trailing debounce on worker reload requests. `hot_reload.DEBOUNCE_MS` is 250
@@ -15906,6 +15930,7 @@ class SottoShell:
                 on_caption=self.on_worker_caption,
                 on_status=self.on_worker_status,
                 on_stats=self.on_worker_stats,
+                on_cost=self.on_worker_cost,
                 on_meter=self.on_worker_meter,
                 on_loading_text=self.push_caption_to_window,
             )
@@ -16040,6 +16065,7 @@ class SottoShell:
             on_caption=self.on_worker_caption,
             on_status=self.on_worker_status,
             on_stats=self.on_worker_stats,
+            on_cost=self.on_worker_cost,
             on_meter=self.on_worker_meter,
             # A espera do modelo (30-38 s medidos) vai para a janela da legenda.
             # O TEXTO DE ESTADO PASSA POR UMA PORTA COM REGRA (2026-11-04):
@@ -18034,6 +18060,70 @@ class SottoShell:
                         Action[Task[String]](_complete))))
             except Exception as exc:  # noqa: BLE001
                 warn(f'STATS_REPLY_FAILED id={stats_id} error={exc!r}')
+    #: Quantos segundos entre duas linhas `BRIDGE_WORKER_COST` no log. O worker
+    #: publica a cada tick de stats (10 s); journalizar a cada 60 s da' uma serie de
+    #: 1/min sem flood -- e o numero que a DM do watcher pediu ("um contador de
+    #: CPU-por-minuto e de rows-por-minuto no proprio worker, journalizado").
+    COST_LOG_INTERVAL_S = 60.0
+
+    def on_worker_cost(self, parsed):
+        """O CUSTO do worker, e a decisao de reiniciar um worker caro e mudo.
+
+        PORQUE EXISTE (ordem do watcher, 2026-11-09, depois de o dono sentir tres
+        travadas): o worker do dono correu **270,6 %c com `rows=0`** por 232 min e
+        nada no produto viu isso -- o painel pintava `rows=0`, o log nao tinha serie,
+        e o unico agente que reparou foi o observador externo, que MATOU o processo.
+        Morto e respawnado, o MESMO codigo mediu **1,2 %c**: fator 240.
+
+        A regra que falta no produto e' curta: **CPU alta sem linha produzida, por N
+        minutos, e' um worker a degradar** -- e o que o cura e' um arranque novo, nao
+        um restart ao acaso. A decisao e' PURA (`app/webview/cost_watchdog.py`) e o
+        reinicio usa o caminho que ja' existe e ja' tem oraculo (`revive_worker`).
+        """
+        fields = (parsed or {}).get('fields') or {}
+        now = time.monotonic()
+        verdict = cost_watchdog.plan(
+            fields,
+            getattr(self, '_cost_streak', 0),
+            now,
+            getattr(self, '_cost_last_restart', 0.0),
+            getattr(self, '_cost_restarts_hour', 0))
+        self._cost_streak = verdict['streak']
+        if now - getattr(self, '_cost_logged_at', 0.0) >= self.COST_LOG_INTERVAL_S:
+            self._cost_logged_at = now
+            seen = cost_watchdog.busy_rows(fields)
+            self.log('BRIDGE_WORKER_COST cpu_pct_avg=%s rows=%s rows_per_min=%s '
+                     'cpu_s_per_row=%s uptime_s=%s streak=%d decision=%s '
+                     'pid=%s' % (
+                         fields.get('cpu_pct_avg', '-'), fields.get('rows', '-'),
+                         fields.get('rows_per_min', '-'),
+                         fields.get('cpu_s_per_row', '-'),
+                         fields.get('uptime_s', '-'), verdict['streak'],
+                         verdict['why'], (parsed or {}).get('childPid', '-')))
+        if not verdict['restart']:
+            return
+        accepted = False
+        try:
+            accepted = self.revive_worker('cost-watchdog') is not False
+        except Exception as exc:  # noqa: BLE001
+            self.log('WORKER_COST_RESTART_FAILED error=%r' % (exc,))
+        # O VEREDITO ANTES DA CONTAGEM (2026-11-09). O `revive_worker` RECUSA por
+        # desenho quando o player esta' a fornecer a legenda (`_external_parked`, 47 s
+        # medidos em 2026-10-20) e quando um revive ja' esta' em voo -- e a recusa e'
+        # dele, nao minha. Carimbar o reinicio de qualquer maneira seria uma linha que
+        # MENTE no log, e gastar o piso/tecto numa recusa deixaria o worker caro sem
+        # orcamento para o reinicio que ia funcionar.
+        if accepted:
+            self._cost_last_restart = now
+            self._cost_restarts_hour = getattr(self, '_cost_restarts_hour', 0) + 1
+            self._cost_streak = 0
+        self.log('WORKER_COST_RESTART reason=cpu-sem-linha cpu_pct_avg=%s rows=%s '
+                 'streak_ticks=%d floor_s=%d restarts_hour=%d accepted=%s '
+                 'why=um-arranque-novo-e-o-que-cura-a-degradacao' % (
+                     fields.get('cpu_pct_avg', '-'), fields.get('rows', '-'),
+                     verdict['streak'], int(cost_watchdog.FLOOR_S),
+                     self._cost_restarts_hour, str(accepted).lower()))
+
     def on_worker_stats(self, parsed):
         """PUSH half of the stats channel: the worker just published counters.
 
@@ -20324,7 +20414,7 @@ class WorkerBridge:
 
     def __init__(self, command, worker_path, device=None,
                  capture_mode=DEFAULT_CAPTURE_MODE, log=log,
-                 on_caption=None, on_status=None, on_stats=None,
+                 on_caption=None, on_status=None, on_stats=None, on_cost=None,
                  on_meter=None,
                  silence_ms=WORKER_SILENCE_MS,
                  load_silence_ms=WORKER_LOAD_SILENCE_MS,
@@ -20373,6 +20463,10 @@ class WorkerBridge:
         #: The stats PUSH. Defaulted to a no-op like the other two, so a bridge
         #: built without it (a probe, the electron-era arm) is byte-identical.
         self.on_stats = on_stats or (lambda parsed: None)
+        #: O CUSTO SEM TRABALHO. Uma linha `WORKER_COST` por tick de stats: CPU do
+        #: PROPRIO processo e linhas produzidas, para a degradacao ficar DATADA em
+        #: vez de inferida (medido 2026-11-09: 270,6 %c com rows=0 depois de 232 min).
+        self.on_cost = on_cost or (lambda parsed: None)
         #: THE WAVE. Defaulted to a no-op like the other three, so a bridge built
         #: without it (a probe, the electron-era arm) behaves as before.
         self.on_meter = on_meter or (lambda sample: None)
@@ -20944,6 +21038,24 @@ class WorkerBridge:
                     # The worker's own counters line, kept whole (see
                     # `last_worker_stats`): the text dump reads `peak` and
                     # `nonzero_blocks` from here, not from a new measurement.
+                    if line.startswith('WORKER_COST'):
+                        parsed_cost = parse_worker_cost(line)
+                        if parsed_cost is not None:
+                            if child is not None:
+                                parsed_cost['childPid'] = child.pid
+                            # GUARDADO pela mesma razao que o `on_stats` logo abaixo:
+                            # um raise aqui derrubaria o canal de stderr inteiro (e com
+                            # ele o heartbeat do cao de guarda).
+                            try:
+                                self.on_cost(parsed_cost)
+                            except Exception as exc:  # noqa: BLE001
+                                self.log('BRIDGE_COST_CALLBACK_FAILED error=%r' % (exc,))
+                            # SEM `_note_progress` AQUI, de proposito: aquela funcao
+                            # trata `blocks` a AVANCAR como prova de vida, e uma linha
+                            # de CUSTO nao prova vida nenhuma -- um worker a queimar
+                            # 270 %c sem produzir linha e' exactamente o que este
+                            # vigia existe para reiniciar. Quem re-arma o cao de
+                            # guarda continua a ser o `WORKER_STATS`, logo abaixo.
                     if line.startswith('WORKER_STATS'):
                         parsed = parse_worker_stats(line)
                         if parsed is not None:

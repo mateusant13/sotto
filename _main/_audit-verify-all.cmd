@@ -619,6 +619,16 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-pause-payload !STEP_RC!
   call :step red-as-expected-panel-pause-payload 1 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
   call :expectred red-as-expected-panel-pause-payload !STEP_RC! "%OUT%\panel-pause-payload-neg.log" "NEG-ARM: PASS"
+  rem -- O CUSTO SEM TRABALHO (2026-11-09). O watcher mediu o worker do dono a 270,6 %%c
+  rem com rows=0 depois de 232 min, e o MESMO codigo arrancado de novo a 1,2 %%c. O par
+  rem julga a forma da linha que o worker publica, o parser da shell, a decisao (pura) e a
+  rem FIACAO -- o handler REAL da shell, extraido do fonte que embarca e conduzido com o
+  rem relogio controlado. Nenhum braco abre dispositivo de audio: uma arm que precisasse de
+  rem microfone nao poderia correr numa lane.
+  call :step cost-watchdog 0 "_main\cost-watchdog-oracle.py;app\webview\cost_watchdog.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\cost-watchdog.log" python _main\cost-watchdog-oracle.py
+  call :record cost-watchdog !STEP_RC!
+  call :step red-as-expected-cost-watchdog 1 "_main\cost-watchdog-oracle.py;app\webview\cost_watchdog.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\cost-watchdog-neg.log" python _main\cost-watchdog-oracle.py --neg-arm
+  call :expectred red-as-expected-cost-watchdog !STEP_RC! "%OUT%\cost-watchdog-neg.log" "NEG-ARM: PASS"
   call :step outside-click-timer 0 "_main\outside-click-timer-oracle.py;app\webview\sotto_webview.py" "%OUT%\outside-click-timer.log" python _main\outside-click-timer-oracle.py
   call :record outside-click-timer !STEP_RC!
   call :step red-as-expected-outside-click-timer 1 "_main\outside-click-timer-oracle.py;app\webview\sotto_webview.py" "%OUT%\outside-click-timer-neg.log" python _main\outside-click-timer-oracle.py --neg-arm
