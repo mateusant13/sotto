@@ -445,6 +445,14 @@ todos os dias. Duas provas, porque uma só mente:
 
 - **Um filtro de kill nomeia o ARTEFACTO**, nunca uma palavra genérica: `sotto_worker\.py`,
   `sotto_webview\.py`, o caminho do exe webview/electron. Filtrar `sotto` já matou dois processos alheios.
+- **UM PIN DO `code-health` SO' DESCREVE O QUE ESTA' NO COMMIT (medido 2026-11-09).** O commit
+  `5986e78` (corpo vazio, sem recibo) fixou `worker/wasapi_loopback.py` a partir do WORKING TREE --
+  o ratchet passou a medir um estado que ninguem reproduz, e cinco refreshes no mesmo dia passaram
+  por cima disso sem um portao dizer nada. Agora `_main/code-health-oracle.py --update` RECUSA (rc=2)
+  quando alguma entrada mudaria a partir de ficheiro nao commitado e nomeia as entradas; `--skip-dirty`
+  deixa-as no valor antigo (o que quase sempre se quer), `--allow-dirty` fixa e imprime cada uma para
+  o recibo. O braco negativo julga as duas metades: `NEG-ARM 5 of 5` (M4 o leitor de porcelain perde
+  uma forma, M5 o guarda deixa passar ficheiro sujo).
 - **Áudio de teste é MUDO.** Qualquer teste que renderize áudio usa `_main/mute-audio.py --mute/--unmute`
   (portão: `_main/mute-audio-oracle.py`, 21/21 arms, 8/8 mutantes). A recusa antiga (comparar com o
   endpoint default e sair rc=4) **continua**; o mute acrescenta-se.
