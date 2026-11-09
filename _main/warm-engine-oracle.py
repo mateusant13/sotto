@@ -875,9 +875,21 @@ def arm_stop_detaches(mod, work, shell_mod):
         arm.check(case.engine.quit is False, "the engine is STILL ALIVE")
         arm.check(case.engine.asr is not None, "and still holds the graph")
         # A quit reason DOES ask it to stop (hot reload = stale code).
-        bridge2, why = shell_mod.WarmPipeBridge.attach(
-            deadline_ms=500, live=False, device=None, capture_mode="mix",
-            target_pid=None, keep_warm=False, log=lambda _m: None)
+        # O PRAZO DE 500 ms E' A POLITICA DO PRODUTO (`morno e' LENTO, nunca ERRADO`);
+        # esta arm prova a INVARIANTE (o motor volta a aceitar depois do `stop`), nao a
+        # latencia. Sob o tecto de 40% de CPU da bateria o motor carregado nao responde
+        # em 500 ms e a arm caiu com `why=busy`: MEDIDO 2026-11-08 -- sozinho 22/22,
+        # dentro da corrida caged `stop-detaches-not-kills RED`. A cura e' repetir o
+        # mesmo pedido com o MESMO prazo de produto ate' um tecto de parede.
+        bridge2, why = None, 'never-tried'
+        retry_until = time.time() + 15.0
+        while time.time() < retry_until:
+            bridge2, why = shell_mod.WarmPipeBridge.attach(
+                deadline_ms=500, live=False, device=None, capture_mode="mix",
+                target_pid=None, keep_warm=False, log=lambda _m: None)
+            if bridge2 is not None:
+                break
+            time.sleep(0.2)
         arm.check(bridge2 is not None, "the engine accepts again after stop (%s)" % why)
         if bridge2 is not None:
             bridge2.stop("hot-reload")

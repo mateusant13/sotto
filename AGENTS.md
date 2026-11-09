@@ -128,7 +128,7 @@ coisas, e a segunda nao e' dele:
   pelo ARTEFACTO (`cmdline` contem `sotto_worker.py`, verificado ANTES do kill -- um filtro de kill
   nomeia o artefacto, nunca a palavra) e a shell respawna sozinha em **1,0 s** (`BRIDGE_EXIT rc=15` ->
   `BRIDGE_RESTART reason=exit ladder=retry in_ms=1000` -> `BRIDGE_SPAWNED` + `BRIDGE_LOAD_MS ms=8906`).
-  Medido na mesma instancia: **146,2 % -> 42,0 % de um nucleo** e o io da shell **5 963 -> 25 ops/s**.
+  Medido na mesma instancia em 2026-11-08 18:31: **146,2 % -> 42,0 % de um nucleo** e o io da shell **5 963 -> 25 ops/s** (e, depois de assentar, 3,6 %).
   A prova e' `_main/shell-thread-cpu.py <pid> --seconds 8 --top 8` antes e depois, com pid e tid.
 * **A SHELL so' entra num arranque novo** -- `--no-self-relaunch` esta' posto, e uma lane NAO poe a app
   na tela dele. O recibo diz `fixed, NOT verified` e nomeia o que falta: `UNMEASURED` ate' ele reiniciar.

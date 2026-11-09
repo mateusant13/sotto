@@ -276,14 +276,24 @@ def neg_arm():
         print('NEG-ARM IMPOSSIVEL -- cache sem passos')
         return 1
     worst = max(clean, key=lambda r: r['elapsed_s'])
+    # O CANDIDATO DA M2 TEM DE ATRAVESSAR O RATCHET POR PASSO, nao so' caber no
+    # prazo: medido 2026-11-08, a M2 escolhia o passo mais caro que cabia e o
+    # mutante ficava ABAIXO do `baseline * 1.20` daquele passo (93 s -> 121 s contra
+    # um baseline de 219 s), logo o judge nao o nomeava e o controlo dizia
+    # `FAIL (1/2)` sem que o juiz tivesse defeito nenhum. A seleccao passa a exigir
+    # a travessia; quando nenhum passo a atravessa, e' `CANNOT-MEASURE`, nunca PASS.
+    per_base = base.get('per_step') or {}
     sub_deadline = [r for r in clean
                     if r is not worst
+                    and r['name'] in per_base
+                    and r['elapsed_s'] * 1.30 + 0.1 > per_base[r['name']] * PER_STEP_PCT
                     and r['elapsed_s'] * 1.30 < deadline()
                     and measured['total_s'] + r['elapsed_s'] * 0.30 < ceiling]
     second = max(sub_deadline, key=lambda r: r['elapsed_s']) if sub_deadline else None
     if second is None:
-        print('NEG-ARM CANNOT-MEASURE -- nenhum passo cabe no prazo E no tecto do '
-              'total depois de +30%; a M2 nao teria como isolar o ratchet por passo')
+        print('NEG-ARM CANNOT-MEASURE -- nenhum passo ATRAVESSA o ratchet por passo '
+              '(+30%) cabendo tambem no prazo E no tecto do total; a M2 nao teria '
+              'como isolar o ratchet por passo')
         return 2
     plan = [(worst, 'M1 x10 (prazo + total)', lambda o: max(o * 10.0, deadline() * 1.5)),
             (second, 'M2 +30% (so o ratchet por passo)', lambda o: o * 1.30 + 0.1)]
