@@ -4378,7 +4378,13 @@ class ExternalCaptionWatcher(threading.Thread):
                 got = {'words': [w for line in (getattr(self, 'yt_cdp_rows', None) or [])
                                  for w in line.split()],
                        'items': [], 'why': 'cdp-stale'}
-                self._yt_health_tick(source, time.monotonic())
+                # O ARGUMENTO E' O PROPRIO OBJETO, nao um nome solto (medido
+                # 2026-11-09 na instancia do dono: `YOUTUBE_PAINT_READ_FAILED
+                # error=NameError("name 'source' is not defined")` a 10 Hz -- o
+                # ramo da foto VELHA levantava ANTES de entregar `got`, e a
+                # excecao era engolida pelo `except` exterior, logo nenhuma linha
+                # chegava ao ecra enquanto o snapshot aquecia).
+                self._yt_health_tick(self._yt_cdp_source, time.monotonic())
             else:
                 self.yt_cdp_rows = None
                 got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd,
@@ -5013,7 +5019,14 @@ class ExternalCaptionWatcher(threading.Thread):
             # MEDIDO: `YOUTUBE_CDP_SOURCE state=ambiguous` enquanto a legenda
             # nao andava. O titulo vem do Win32 em microssegundos.
             try:
-                _src.set_window_title(external_subs._window_title(hwnd))
+                # O IMPORT E' LOCAL COMO EM TODOS OS OUTROS SITIOS DESTE FICHEIRO
+                # (3494, 3778, 4039) -- e a sua AUSENCIA aqui era um `NameError`
+                # engolido pelo `except` (medido 2026-11-09 pelo `symtable`, o
+                # mesmo instrumento que apanhou o `source`): o titulo da janela
+                # NUNCA era entregue a fonte, logo o desempate de duas abas
+                # `watch` que esta linha existe para fazer nunca aconteceu.
+                import external_subs as _ext
+                _src.set_window_title(_ext._window_title(hwnd))
             except Exception:                 # noqa: BLE001
                 pass
         if _src and _src is not False:
@@ -8548,6 +8561,215 @@ def _point_in_window(hwnd, x, y) -> bool:
     return (rect.left - CLICK_OUTSIDE_SLACK <= x <= rect.right + CLICK_OUTSIDE_SLACK
             and rect.top - CLICK_OUTSIDE_SLACK <= y <= rect.bottom + CLICK_OUTSIDE_SLACK)
 
+# ===========================================================================
+# O ARRASTO DO PAINEL E' NOSSO, A 240 Hz (medido 2026-11-09)
+# ===========================================================================
+# DONO, verbatim: *"os paineis nao sao draggable em 240hz"* e depois *"DRAGGING
+# DOES NOT WORK"*. A causa NAO era o JS: o log da instancia viva mostra o
+# pedido a chegar e a voltar sem mover um pixel --
+#
+#   WINDOW_DRAG_BEGIN surface=panel hwnd=17437966  (15:05:37.072)
+#   WINDOW_DRAG_DONE  surface=panel to=(1528,12) from=(1528,12)  (.078)
+#
+# seis milissegundos, `from == to`. O loop de legenda do Windows
+# (`WM_NCLBUTTONDOWN`/`HTCAPTION` -> `DefWindowProc` -> `SC_MOVE`) e' RECUSADO
+# para a janela que este shell cria, e o estilo dela diz por que (medido no hwnd
+# vivo): `style=0x06010000` -- SEM `WS_CAPTION` e SEM `WS_THICKFRAME` -- com
+# `exstyle=0x080100A8` (`WS_EX_NOACTIVATE|TRANSPARENT|TOOLWINDOW|TOPMOST`). Um
+# `SC_MOVE` sem moldura/caption devolve ao chamador em vez de entrar no laco
+# modal: o arrasto "funciona" no log e nao existe no ecra.
+#
+# O QUE FAZ UM ARRASTO DE VERDADE AQUI: `GetCursorPos` + `GetAsyncKeyState` a
+# 240 Hz, num fio PROPRIO e so' enquanto o botao esta' em baixo, aplicando o
+# delta da pega com `SetWindowPos(SWP_NOSIZE)`. Nenhum hook (o `WH_MOUSE_LL`
+# foi removido a 2026-10-30 por ordem do dono), nenhuma mensagem por movimento
+# entre a pagina e a shell, nenhuma linha de log por amostra -- o fio da pagina
+# continua a correr, porque o movimento acontece fora dele.
+#
+# O `SetTimer` do Windows NAO serve para isto: o piso dele e' ~15,6 ms (64 Hz) e
+# a taxa pedida e' 240 Hz. Por isso e' um fio com `time.perf_counter`, o mesmo
+# relogio que a legenda usa (o `monotonic` anda de 15 em 15 ms nesta maquina).
+WINDOW_DRAG_FRAME_HZ = 240
+WINDOW_DRAG_FRAME_S = 1.0 / WINDOW_DRAG_FRAME_HZ
+#: O ultimo pedaco de cada quadro e' girado: e' o que separa a GRADE de 240 Hz
+#: do grao de ~1 ms com que o `sleep` volta. Medido: 215 Hz sem ele.
+WINDOW_DRAG_SPIN_S = 0.00035
+
+#: A RESOLUCAO DE 1 ms, LEVANTADA SO' DURANTE O GESTO. Medido no oraculo
+#: (`_main/window-drag-oracle.py`, A6) antes desta linha existir: o laco entregou
+#: **103,2 Hz com max_gap 16,1 ms** porque `time.sleep(4,17 ms)` cai no grao de
+#: 15,6 ms do Windows. O `caption_overlay` ja' carrega o mesmo mecanismo e mediu
+#: 4,21 ms com ele -- e' o mesmo fio de raciocinio, nao uma segunda invencao: o
+#: sono de 4 ms nao pode depender de um TERCEIRO processo ter levantado a
+#: resolucao da maquina. `timeEndPeriod(1)` devolve tudo no fim do gesto, para o
+#: custo de bateria existir so' enquanto o dedo esta' em cima.
+_DRAG_TIMER_PERIOD = {'on': False}
+
+
+def _drag_timer_period(on):
+    """Liga/desliga a resolucao de 1 ms do relogio -- idempotente e fail-open."""
+    if bool(on) == _DRAG_TIMER_PERIOD['on']:
+        return
+    try:
+        winmm = ctypes.WinDLL('winmm')
+        if on:
+            winmm.timeBeginPeriod(1)
+        else:
+            winmm.timeEndPeriod(1)
+    except Exception:  # noqa: BLE001 -- sem winmm nao ha' nada a fazer
+        return
+    _DRAG_TIMER_PERIOD['on'] = bool(on)
+
+
+def drag_origin(anchor, cursor, scale, size, work):
+    """ONDE A JANELA VAI em UMA amostra do arrasto -- funcao pura.
+
+    `anchor` = (cursor_x0, cursor_y0, janela_x0, janela_y0): o cursor e a origem
+    da janela no instante da PEGA. O deslocamento aplicado e' a DIFERENCA entre o
+    cursor de agora e a pega, nunca a posicao absoluta -- e' isso que impede o
+    salto de a janela ir para debaixo do ponteiro no primeiro movimento.
+
+    `cursor` vem em pixels fisicos (o que `GetCursorPos` devolve); `scale` e' o
+    DPI do monitor em uso; `size`/`work` em DIP. O resultado e' preso na area de
+    trabalho, para a janela nunca poder ser deixada fora do ecra.
+
+    Puro de proposito: o oraculo mede o delta e o clamp sem abrir janela nenhuma.
+    """
+    cx, cy, gx, gy = anchor
+    scale = float(scale or 1.0) or 1.0
+    dx = (float(cursor[0]) - float(cx)) / scale
+    dy = (float(cursor[1]) - float(cy)) / scale
+    nx = int(round(gx + dx))
+    ny = int(round(gy + dy))
+    width, height = int(size[0]), int(size[1])
+    nx = max(int(work['x']), min(nx, int(work['x']) + int(work['width']) - width))
+    ny = max(int(work['y']), min(ny, int(work['y']) + int(work['height']) - height))
+    return nx, ny
+
+
+class WindowDragFollower(threading.Thread):
+    """Segue o ponteiro a 240 Hz enquanto o dono arrasta o painel.
+
+    UM fio por GESTO, nao por instancia: nasce quando a pagina pede o arrasto
+    (`beginWindowDrag`) e sai no primeiro tick que ve o botao em cima. Duas
+    pegas nao podem andar a lutar pela mesma janela, por isso `begin()` recusa
+    enquanto `active`.
+
+    O TRABALHO POR AMOSTRA e' duas chamadas de sistema (`GetAsyncKeyState`,
+    `GetCursorPos`) mais um `SetWindowPos` -- e SO' quando o pixel mudou. Nao ha
+    `exec_js`, nao ha `log`, nao ha `publish_panel_visibility` no caminho: a
+    escrita de estado acontece uma vez, no fim (`PANEL_DRAG_PERSIST`).
+    """
+
+    def __init__(self, shell):
+        super().__init__(name='sotto-window-drag', daemon=True)
+        self.shell = shell
+        self.active = False
+        self.surface = ''
+        self.anchor = None
+        self.hwnd = 0
+        self.updates = 0
+        self.samples = 0
+        self.max_gap_ms = 0.0
+        self.elapsed_s = 0.0
+
+    def begin(self, surface, anchor, hwnd):
+        """Arma o gesto. Devolve False quando ja' ha um arrasto em curso."""
+        if self.active:
+            # A PEGA ANTERIOR PODE ESTAR A MORRER: o fio dela sai no primeiro
+            # tick que ve o botao em cima (ate' 1/240 s, mais o sleep). Esperar
+            # 50 ms aqui e' o que faz duas pegas seguidas serem dois arrastos em
+            # vez de o segundo cair em `WINDOW_DRAG_BUSY`.
+            for _ in range(20):
+                if not self.active:
+                    break
+                time.sleep(0.005)
+        if self.active:
+            return False
+        self.surface = surface
+        self.anchor = anchor
+        self.hwnd = int(hwnd or 0)
+        self.updates = 0
+        self.samples = 0
+        self.max_gap_ms = 0.0
+        self.elapsed_s = 0.0
+        self.active = True
+        _drag_timer_period(True)
+        try:
+            super().start()
+        except RuntimeError:
+            # UM `Thread` TERMINADO NAO SE RE-ARRANCA. O gesto seguinte ganha um
+            # follower novo, e a shell tem de passar a apontar para ele -- senao
+            # a proxima pega encontrava o mesmo fio morto para sempre.
+            fresh = WindowDragFollower(self.shell)
+            self.shell.window_drag_follower = fresh
+            return fresh.begin(surface, anchor, hwnd)
+        return True
+
+    def run(self):
+        period = WINDOW_DRAG_FRAME_S
+        start = time.perf_counter()
+        last = start
+        #: O PRAZO E' UMA GRADE, NAO UM SONO DE `period` (medido 2026-11-09 com o
+        #: primitivo isolado, `timeBeginPeriod(1)` ligado): dormir 4,167 ms
+        #: devolveu **4,653 ms de media** (215 Hz) e o
+        #: `CreateWaitableTimerExW(CREATE_WAITABLE_TIMER_HIGH_RESOLUTION)` deu
+        #: **4,798 ms** (208 Hz) -- o custo de acordar e' maior que o grao, logo
+        #: pedir o periodo a cada volta NUNCA chega a 240 Hz. Com grade, o erro
+        #: de uma volta desconta-se na seguinte: o prazo avanca por `period`
+        #: somado, e o sono e' o que sobra ate' ele.
+        next_tick = start
+        #: O QUE FICA PARA O FIM: o ultimo 0,35 ms de cada quadro e' girado, nao
+        #: dormido. Sem isto o sono arredonda para o grao acima e a taxa entrega
+        #: ~215 Hz; com isto entrega a grade, e o giro e' limitado (9 % de um
+        #: nucleo no pior caso, e SO' com o dedo em cima).
+        slack = WINDOW_DRAG_SPIN_S
+        try:
+            while self.active:
+                tick = time.perf_counter()
+                gap = (tick - last) * 1000.0
+                if gap > self.max_gap_ms:
+                    self.max_gap_ms = gap
+                last = tick
+                down = bool(user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000)
+                if down:
+                    point = POINT()
+                    if user32.GetCursorPos(ctypes.byref(point)):
+                        self.samples += 1
+                        if self.shell.window_drag_to(
+                                int(point.x), int(point.y), persist=False):
+                            self.updates += 1
+                if not down:
+                    break
+                next_tick += period
+                wait = next_tick - time.perf_counter()
+                if wait > slack:
+                    time.sleep(wait - slack)
+                elif wait <= 0:
+                    # Caiu atras (o `SetWindowPos` custou mais que um quadro):
+                    # re-ancora a grade em vez de somar divida para sempre.
+                    next_tick = time.perf_counter()
+        except Exception as exc:  # noqa: BLE001 -- um arrasto nunca mata a app
+            log(f'WINDOW_DRAG_FOLLOW_FAILED surface={self.surface} error={exc!r}')
+        finally:
+            self.elapsed_s = time.perf_counter() - start
+            self.active = False
+            _drag_timer_period(False)
+            try:
+                self.shell.window_drag_to(0, 0, persist=True)
+            except Exception as exc:  # noqa: BLE001
+                log(f'WINDOW_DRAG_PERSIST_FAILED error={exc!r}')
+            hz = (self.updates / self.elapsed_s) if self.elapsed_s > 0 else 0.0
+            log('WINDOW_DRAG_FOLLOW_END surface=%s updates=%d samples=%d '
+                'hz=%.1f max_gap_ms=%.2f elapsed_ms=%.0f ceiling_hz=%d'
+                % (self.surface, self.updates, self.samples, hz,
+                   self.max_gap_ms, self.elapsed_s * 1000.0,
+                   WINDOW_DRAG_FRAME_HZ))
+
+    def stop(self):
+        self.active = False
+
+
 NIM_ADD, NIM_MODIFY, NIM_DELETE = 0, 1, 2
 NIF_MESSAGE, NIF_ICON, NIF_TIP = 0x01, 0x02, 0x04
 NIF_INFO = 0x10                  # balloon tip: informs without blocking
@@ -10950,67 +11172,30 @@ class SottoHost:
         log(f'CAPTIONS_CLEARED remaining={remaining}')
 
     def _brand_tokens(self, payload):
-        """Wear the panel's measured design on the NATIVE overlay.
+        """A PAGINA MEDIU O DESENHO: manda-o para a JANELA NATIVA da legenda.
 
-        The panel measures its own forming row and posts the resolved values
-        (`brand-bridge.js`). This receiver keeps the LAST payload so an overlay
-        created later than the first push -- the normal boot order -- still
-        starts branded instead of defaulting to Segoe UI until the next theme
-        change. A payload that is not a dict is treated as "no design", which
-        restores the pre-brand overlay rather than raising.
+        O DONO, 2026-11-09: *"IM NOT SEEING THE SUBTITLES FROM CTRL SPACE HAVING
+        DESIGN FROM EACH DIFFERENT THEME. WHY?"* -- e a medicao do log dele
+        respondeu: 610 `CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay` e
+        **zero** `CAPTION_OVERLAY_THEME_APPLIED`; as 215 unicas linhas de tema
+        que chegaram a janela eram todas `name=youtube`.
+
+        PORQUE: este receptor mora no HOST, e o `caption_overlay` mora na SHELL.
+        `getattr(self, 'caption_overlay', None)` era `None` para sempre -- o
+        desenho era guardado e NUNCA aplicado. O payload continua a ser guardado
+        (a janela nasce depois da primeira medida), mas a aplicacao vive na shell,
+        num so' sitio (`SottoShell._apply_overlay_theme`), que e' tambem o que a
+        criacao da janela chama. Um desenho, um dono.
         """
         theme = payload if isinstance(payload, dict) else {}
-        self._brand_tokens_last = dict(theme)
-        overlay = getattr(self, 'caption_overlay', None)
-        if overlay is None:
-            log('CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay '
-                'theme=%r' % (theme.get('theme') or '-'))
+        shell = getattr(self, '_shell', None)
+        if shell is None:
+            self._brand_tokens_last = dict(theme)
+            log('CAPTION_OVERLAY_THEME_DEFERRED reason=no-shell theme=%r'
+                % (theme.get('theme') or '-'))
             return
-        # A FACE E' DO PLAYER; A PLACA E' DO DESENHO (ordem do dono, 2026-11-09,
-        # verbatim: *"VOCE TIROU O DESIGN DE TODAS AS LEGENDAS PRA DEIXAR ELAS
-        # IGUAIS EM TODOS OS TEMAS."*). A tipografia continua a do YouTube
-        # (`_THEME_DEFAULT`: Arial 38, contorno 5 -- ordem de 2026-11-03), e o
-        # FUNDO vem do payload do painel: `rowBg`/`rowBgAlpha`/`rowRadius`/
-        # `panelPad` passam pelo normalizador que ja' existe (`_normalise_theme`,
-        # que composita o slab do tema e poe piso de alfa em 140/255). Sem placa
-        # no payload, a janela fica como antes -- nenhum desenho e' inventado.
-        #
-        # A PLACA E' A UNICA COISA QUE VEM DO PAYLOAD: passar o payload inteiro
-        # ao `set_theme` trocaria tambem `fontFamily`/`livePx`/`leading`, que a
-        # ordem de 2026-11-03 reserva ao player.
-        try:
-            import overlay_paint
-            base = dict(overlay_paint._THEME_DEFAULT)
-            plate = None
-            radius = 0.0
-            pad = base.get('pad')
-            try:
-                norm = overlay_paint._normalise_theme(theme)
-                plate = norm.get('plate')
-                radius = float(norm.get('plateRadius') or 0.0)
-                pad = norm.get('pad') or pad
-            except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
-                log(f'CAPTION_OVERLAY_THEME_PLATE_FAILED error={exc!r}')
-                norm = {}
-            if plate:
-                base['plate'] = plate
-                # `set_theme` normaliza OUTRA vez; com `rowRadius` a placa
-                # mantem o raio do desenho em vez de cair nos 10 px por omissao.
-                base['rowRadius'] = radius
-                base['pad'] = pad
-            base['theme'] = str(theme.get('theme') or '')
-            applied = overlay.set_theme(base)
-        except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
-            log(f'CAPTION_OVERLAY_THEME_FAILED error={exc!r}')
-            return
-        log('CAPTION_OVERLAY_THEME_APPLIED theme=%s font=%s live=%.1f '
-            'brand=%s plate=%s alpha=%s radius=%.1f fade=%s'
-            % (applied.get('theme') or '-', applied.get('fontFamily'),
-               applied.get('livePx') or 0.0, theme.get('theme') or '-',
-               'yes' if applied.get('plate') else 'no',
-               (applied.get('plate') or (0, 0, 0, 0))[3],
-               float(applied.get('plateRadius') or 0.0),
-               'yes' if getattr(overlay, 'FADE_ON', False) else 'no'))
+        shell._brand_tokens_last = dict(theme)
+        shell._apply_overlay_theme(theme, why='page')
 
     def _boot_profile(self, payload):
         """ONDE OS 25 S DA PAGINA SAO GASTOS, medido DENTRO do renderer.
@@ -11352,6 +11537,13 @@ class SottoShell:
         #: The cursor's offset from the window origin, captured when the drag
         #: started, so the band follows the pointer instead of jumping to it.
         self.edit_grab = None
+        #: O ARRASTO DO PAINEL (2026-11-09): a pega `(cursor_x, cursor_y,
+        #: janela_x, janela_y)` e o fio que aplica o delta a 240 Hz. `None` fora
+        #: de um gesto -- e' o que faz `window_drag_to` recusar movimento velho.
+        self._window_drag_anchor = None
+        self._window_drag_surface = None
+        self.window_drag_moves = 0
+        self.window_drag_follower = WindowDragFollower(self)
         self.last_status = ''
         self.bridge_installed = None  # None until measured, True/False after
         self.renderer_ready = threading.Event()
@@ -11571,6 +11763,11 @@ class SottoShell:
         # The last design the page measured, kept so the overlay can be created
         # after the first push and still be branded on its first paint.
         self._brand_tokens_last = getattr(self, '_brand_tokens_last', None)
+        #: O DESENHO QUE A PAGINA MEDIU (payload inteiro), escrito pelo receptor
+        #: `SottoHost._brand_tokens` e lido pela criacao da janela. Um so' dono:
+        #: o host guardava uma copia que ninguem aplicava (`no-overlay`, 610
+        #: vezes) e o desenho morria la'.
+        self._brand_tokens_last = self._brand_tokens_last or {}
         # THE OWNER'S SWITCH, AND IT IS NOT THE SAME FACT AS "A WINDOW IS UP".
         # Owner 2026-10-17, verbatim: *"ao clicar no botao de legenda, nao deve
         # abrir qualquer coisa. e pra ativar a legenda, na minha tela, sem
@@ -11602,11 +11799,27 @@ class SottoShell:
             self.caption_overlay.set_work_area(
                 wa, self.display.get('scaleFactor') or 1.0)
             if True:
+                # A JANELA NASCE COM O DESENHO QUE ESTAVA NO AR (2026-11-09).
+                # MEDIDO antes desta linha: 215 criacoes, TODAS
+                # `CAPTION_OVERLAY_THEME_REPLAYED theme=youtube brand='-'`, e
+                # `CAPTION_OVERLAY_THEME_APPLIED` **zero** no log inteiro -- a
+                # legenda do Ctrl+Space nascia com a cara da fabrica e so' mudava
+                # se o dono trocasse de tema DEPOIS, que e' o oposto do pedido.
+                # O payload guardado e' aplicado pelo MESMO caminho da pagina; e
+                # quando ele nao existe a janela pede a medida AGORA, em vez de
+                # esperar por uma troca de tema que pode nunca vir.
                 try:
-                    import overlay_paint as _op
-                    self.caption_overlay.set_theme(_op._THEME_DEFAULT)
-                    log('CAPTION_OVERLAY_THEME_REPLAYED theme=youtube brand=%r'
-                        % (((self._brand_tokens_last or {}) or {}).get('theme') or '-'))
+                    stored = dict(getattr(self, '_brand_tokens_last', None) or {})
+                    applied = self._apply_overlay_theme(stored, why='overlay-created')
+                    if applied is None:
+                        log('CAPTION_OVERLAY_THEME_REPLAYED theme=youtube '
+                            'source=default why=no-stored-design')
+                        self.exec_js(
+                            "try{window.SottoBrand&&window.SottoBrand.push();}"
+                            "catch(e){}")
+                    else:
+                        log('CAPTION_OVERLAY_THEME_REPLAYED theme=%r source=stored'
+                            % (applied.get('theme') or '-'))
                 except Exception as exc:  # noqa: BLE001
                     log(f'CAPTION_OVERLAY_THEME_REPLAY_FAILED error={exc!r}')
             log(f'CAPTION_OVERLAY_MODE native=true hwnd='
@@ -18965,30 +19178,143 @@ class SottoShell:
             self._strip_moved_sent = False
             self.saved_geometry = self.geometry_snapshot()
             self.publish_panel_visibility('strip-drag')
-        log(f'STRIP_DRAG phase={phase} offset=({dx},{dy}) to=({nx},{ny}) '
-            f'base={base} work={work["width"]}x{work["height"]}')
+        # UMA LINHA POR ARRASTO, NAO UMA POR MOVIMENTO (medido 2026-11-09).
+        # O `log()` escreve no stdout E enfileira no ficheiro: a 149 movimentos/s
+        # (medido 2026-10-13: 277 movimentos em 1,86 s) isso sao 149 escritas de
+        # ficheiro por segundo no caminho do arrasto -- o mesmo custo que a DM de
+        # stutter cobrou ao `sotto-caption-tick`. O numero que importa (quantos
+        # movimentos, quanto tempo) fica na PRIMEIRA linha e na do FIM.
+        moves = int(getattr(self, '_strip_drag_moves', 0)) + 1
+        self._strip_drag_moves = moves
+        if phase == 'end':
+            self._strip_drag_moves = 0
+        if moves == 1 or phase == 'end':
+            log(f'STRIP_DRAG phase={phase} moves={moves} offset=({dx},{dy}) '
+                f'to=({nx},{ny}) base={base} work={work["width"]}x{work["height"]}')
 
-    #: Windows' "start a caption drag" message pair. `WM_NCLBUTTONDOWN` with
-    #: `HTCAPTION` puts the window manager in its OWN modal move loop: the mouse
-    #: is tracked by Windows, not by the page, so there is no per-move bridge
-    #: message and no per-move `SetWindowPos`.
-    WM_NCLBUTTONDOWN = 0x00A1
-    HTCAPTION = 2
+    #: O PAR `WM_NCLBUTTONDOWN`/`HTCAPTION` SAIU EM 2026-11-09: era a tentativa de
+    #: emprestar o laco modal do Windows, e a janela deste shell o RECUSA
+    #: (medido: `BEGIN` -> `DONE` em 6 ms com `from == to`; `style=0x06010000`
+    #: sem `WS_CAPTION`/`WS_THICKFRAME`). O arrasto e' o `WindowDragFollower`,
+    #: a 240 Hz, no fio `sotto-window-drag`.
+
+    def _apply_overlay_theme(self, theme, why='page'):
+        """A JANELA NATIVA DA LEGENDA VESTE O DESENHO MEDIDO -- um caminho so'.
+
+        A FACE E' DO PLAYER; A PLACA E' DO DESENHO (ordem do dono, 2026-11-09,
+        verbatim: *"VOCE TIROU O DESIGN DE TODAS AS LEGENDAS PRA DEIXAR ELAS
+        IGUAIS EM TODOS OS TEMAS."*). A tipografia continua a do YouTube
+        (`_THEME_DEFAULT`: Arial 38, contorno 5 -- ordem de 2026-11-03), e o
+        FUNDO vem do payload do painel: `rowBg`/`rowBgAlpha`/`rowRadius`/
+        `panelPad` passam pelo normalizador que ja' existe (`_normalise_theme`,
+        que composita o slab do tema e poe piso de alfa em 140/255). Sem placa
+        no payload, a janela fica como antes -- nenhum desenho e' inventado.
+
+        A PLACA E' A UNICA COISA QUE VEM DO PAYLOAD: passar o payload inteiro ao
+        `set_theme` trocaria tambem `fontFamily`/`livePx`/`leading`, que a ordem
+        de 2026-11-03 reserva ao player.
+
+        CHAMADORES, e sao os DOIS que faltavam estar juntos: o receptor
+        `SottoHost._brand_tokens` (`why='page'`) e a CRIACAO da janela
+        (`why='overlay-created'`) -- antes desta funcao existir, a criacao
+        aplicava `_THEME_DEFAULT` e o receptor olhava para um `self` que nunca
+        tem a janela, logo o desenho nunca chegava ao ecra.
+        """
+        theme = theme if isinstance(theme, dict) else {}
+        overlay = getattr(self, 'caption_overlay', None)
+        if overlay is None:
+            log('CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay why=%s '
+                'theme=%r' % (why, theme.get('theme') or '-'))
+            return None
+        try:
+            import overlay_paint
+            base = dict(overlay_paint._THEME_DEFAULT)
+            plate = None
+            radius = 0.0
+            pad = base.get('pad')
+            try:
+                norm = overlay_paint._normalise_theme(theme)
+                plate = norm.get('plate')
+                radius = float(norm.get('plateRadius') or 0.0)
+                pad = norm.get('pad') or pad
+            except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
+                log(f'CAPTION_OVERLAY_THEME_PLATE_FAILED error={exc!r}')
+            if plate:
+                base['plate'] = plate
+                # `set_theme` normaliza OUTRA vez; com `rowRadius` a placa
+                # mantem o raio do desenho em vez de cair nos 10 px por omissao.
+                base['rowRadius'] = radius
+                base['pad'] = pad
+            base['theme'] = str(theme.get('theme') or '')
+            applied = overlay.set_theme(base)
+        except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
+            log(f'CAPTION_OVERLAY_THEME_FAILED why={why} error={exc!r}')
+            return None
+        log('CAPTION_OVERLAY_THEME_APPLIED theme=%s font=%s live=%.1f '
+            'brand=%s plate=%s alpha=%s radius=%.1f fade=%s why=%s'
+            % (applied.get('theme') or '-', applied.get('fontFamily'),
+               applied.get('livePx') or 0.0, theme.get('theme') or '-',
+               'yes' if applied.get('plate') else 'no',
+               (applied.get('plate') or (0, 0, 0, 0))[3],
+               float(applied.get('plateRadius') or 0.0),
+               'yes' if getattr(overlay, 'FADE_ON', False) else 'no', why))
+        return applied
+
+    def window_drag_to(self, x, y, persist=False):
+        """UMA amostra do arrasto do painel (240 Hz, ver `WindowDragFollower`).
+
+        `persist=True` NAO move nada: le' o rect que o gesto deixou, prende-o na
+        area de trabalho e grava o estado UMA vez -- o fim do gesto, nunca o
+        meio. Sai `False` quando nao ha gesto armado, para o fio nao inventar
+        movimento a partir de um `anchor` que ja' morreu.
+        """
+        hwnd = self.hwnd
+        anchor = getattr(self, '_window_drag_anchor', None)
+        if persist:
+            if not hwnd or anchor is None:
+                return False
+            surface = getattr(self, '_window_drag_surface', None) or (
+                self.surface_applied or 'panel')
+            self._persist_dragged_geometry(hwnd, surface)
+            self._window_drag_anchor = None
+            return True
+        if not anchor or not hwnd:
+            return False
+        geometry = dict(self.geometry or {})
+        width = int(geometry.get('width') or 0)
+        height = int(geometry.get('height') or 0)
+        if width <= 0 or height <= 0:
+            return False
+        scale = (self.display or {}).get('scaleFactor') or 1.0
+        nx, ny = drag_origin(anchor, (x, y), scale, (width, height), self.work_area())
+        if nx == int(geometry.get('x') or 0) and ny == int(geometry.get('y') or 0):
+            return False
+        geometry.update({'x': nx, 'y': ny, 'docked': 'window-drag'})
+        self.geometry = geometry
+        user32.SetWindowPos(hwnd, HWND_TOPMOST, int(nx * scale), int(ny * scale),
+                            0, 0, SWP_NOSIZE | SWP_NOACTIVATE)
+        self.window_drag_moves = int(getattr(self, 'window_drag_moves', 0)) + 1
+        return True
 
     def _begin_window_drag(self, payload):
-        """ONE native drag for the panel header or the bottom strip.
+        """ONE gesture: the page asks, this shell follows the pointer at 240 Hz.
 
         Owner, 2026-10-17: *"mover os paineis e extremamente ruim e nao
-        otimizado, parece q foi implementado completamente errado."* The old
-        path moved the window from a JS `pointermove` at up to ~150 samples a
-        second, every one of them a bridge hop plus a `SetWindowPos` plus a log
-        line. This enters `DefWindowProc`'s move loop instead: `SendMessageW`
-        blocks until the owner releases the mouse, and the window follows the
-        cursor at compositor speed with zero page involvement.
+        otimizado, parece q foi implementado completamente errado."* -- e depois
+        de o loop do Windows ser tentado e recusado, 2026-11-09: *"DRAGGING DOES
+        NOT WORK"*.
 
-        The final rect is read after the loop returns, clamped into the work
-        area, and persisted exactly once -- the same `geometry`/_main/
-        panel-visibility.json contract the edit-mode drag uses.
+        O QUE FOI MEDIDO (instancia viva, 2026-11-09 15:05):
+          `WINDOW_DRAG_BEGIN surface=panel hwnd=17437966` (.072)
+          `WINDOW_DRAG_DONE  to=(1528,12) from=(1528,12)` (.078) -- 6 ms, sem
+        movimento. O `SC_MOVE` do `DefWindowProc` nao entra num laco modal para
+        esta janela (`style=0x06010000`, sem `WS_CAPTION`/`WS_THICKFRAME`;
+        `exstyle=0x080100A8`, `WS_EX_NOACTIVATE|TRANSPARENT|TOOLWINDOW`).
+
+        HOJE: a pega e' registada aqui (cursor + origem da janela) e o
+        `WindowDragFollower` aplica o DELTA a 240 Hz, num fio proprio, sem uma
+        mensagem por movimento. O rect final continua a ser preso e gravado UMA
+        vez, pelo mesmo `_persist_dragged_geometry` do caminho antigo.
         """
         payload = payload or {}
         surface = str(payload.get('surface') or self.surface_applied or 'panel')
@@ -18998,16 +19324,31 @@ class SottoShell:
         if not hwnd:
             log(f'WINDOW_DRAG_REFUSED why=no-hwnd surface={surface}')
             return
-        log(f'WINDOW_DRAG_BEGIN surface={surface} hwnd={hwnd}')
-        try:
-            user32.ReleaseCapture()
-            # The return value is 0 for this message (DefWindowProc), so it is
-            # deliberately not tested: the observable result is the rect below.
-            user32.SendMessageW(hwnd, self.WM_NCLBUTTONDOWN, self.HTCAPTION, 0)
-        except Exception as exc:  # noqa: BLE001
-            log(f'WINDOW_DRAG_FAILED surface={surface} error={exc!r}')
+        geometry = dict(self.geometry or {})
+        width = int(geometry.get('width') or 0)
+        height = int(geometry.get('height') or 0)
+        if width <= 0 or height <= 0:
+            log(f'WINDOW_DRAG_REFUSED why=no-geometry surface={surface} '
+                f'w={width} h={height}')
             return
-        self._persist_dragged_geometry(hwnd, surface)
+        follower = getattr(self, 'window_drag_follower', None)
+        if follower is None:
+            log(f'WINDOW_DRAG_REFUSED why=no-follower surface={surface}')
+            return
+        point = POINT()
+        if not user32.GetCursorPos(ctypes.byref(point)):
+            log(f'WINDOW_DRAG_REFUSED why=no-cursor surface={surface} '
+                f'last_error={ctypes.get_last_error() or 0}')
+            return
+        anchor = (int(point.x), int(point.y),
+                  int(geometry.get('x') or 0), int(geometry.get('y') or 0))
+        self._window_drag_anchor = anchor
+        self._window_drag_surface = surface
+        log(f'WINDOW_DRAG_BEGIN surface={surface} hwnd={hwnd} '
+            f'anchor=({anchor[0]},{anchor[1]}) at=({anchor[2]},{anchor[3]}) '
+            f'ceiling_hz={WINDOW_DRAG_FRAME_HZ}')
+        if not follower.begin(surface, anchor, hwnd):
+            log(f'WINDOW_DRAG_BUSY surface={surface} follower=active')
 
     def _persist_dragged_geometry(self, hwnd, surface):
         """Read the rect the native loop left, clamp it, and persist it ONCE."""

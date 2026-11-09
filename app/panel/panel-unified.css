@@ -109,7 +109,8 @@ html body[data-surface="panel"] #theme-button { order: 2 !important; }
 html body[data-surface="panel"] #theme-chevron { order: 3 !important; }
 html body[data-surface="panel"] #font-scale-button { order: 4 !important; }
 html body[data-surface="panel"] #panel-pause-button { order: 5 !important; }
-html body[data-surface="panel"] #hide-button { order: 6 !important; }
+html body[data-surface="panel"] #menu-button { order: 6 !important; }
+html body[data-surface="panel"] #hide-button { order: 7 !important; }
 
 /* THE LAMP IS A READOUT, SO IT GETS A READOUT'S BOX: 10 px, centred in the 28 px
  * row, and it takes no `flex` share -- measured on the live panel as 102..112.
@@ -154,26 +155,24 @@ html body .captions {
  * directions paint the transcript with `text-align: center` because their mockup
  * was a presentation slide. Both are overruled here rather than fixed per theme. */
 html body[data-surface="panel"] .history {
-  display: grid !important;
+  display: flex !important; flex-flow: column !important;
   visibility: visible !important;
   opacity: 1 !important;
   text-align: left !important;
   min-height: 0 !important;
 }
 
-html body[data-surface="panel"] .history__body {
-  display: block !important;
-  min-height: 0 !important;
-  overflow: auto !important;
-}
-
+/* list = the scroller; see TODO-omp-panel-all-themes-20261109.md */
+html body[data-surface="panel"] .history__body,
 html body[data-surface="panel"] .history__list {
-  display: block !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  text-align: left !important;
-  list-style: none !important;
+  display: flex !important; flex-flow: column !important;
+  flex: 1 !important; min-height: 0 !important;
+  overflow: hidden !important;
+  scrollbar-width: none !important;
 }
+html body[data-surface="panel"] .history__list { overflow-y: auto !important; margin: 0 !important; padding: 0 !important; text-align: left !important; list-style: none !important; }
+html body[data-surface="panel"] .history__list > :first-child { margin-top: auto !important; }
+html body[data-surface="panel"] :is(.history__body,.history__list)::-webkit-scrollbar { width: 0 !important; }
 
 /* ONE ROW TEMPLATE FOR EVERY THEME: time, text, folder -- in that order, on
  * one left-aligned baseline, with the time in a fixed 46 px column so the text
@@ -314,6 +313,21 @@ html body[data-surface="panel"] .hist__time {
   line-height: 1.5 !important;
 }
 /* HISTORY-LEGIBILITY-END */
+
+/* THE VIEWING CONTEXT, WHEN THE SEARCH MATCHED IT (owner, 2026-11-09). One
+ * muted line under the words, in the theme's own muted token, so a hit that
+ * matched "YouTube" or a video title does not look like a line that does not
+ * contain the query. It is a BLOCK inside the text cell, never a fourth grid
+ * column, so the row template stays the one column layout above. */
+html body[data-surface="panel"] .hist__ctx {
+  display: block !important;
+  margin-top: 2px !important;
+  color: var(--text-muted, var(--text-faint, #8b98a5)) !important;
+  font-size: calc(11px * var(--caption-scale)) !important;
+  line-height: 1.35 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+}
 
 /* THE SQUARES AND CIRCLES AROUND THE STAMP ARE DEMO RESIDUE (owner, 2026-11-06:
  * *"isso era de uma DEMO que mostrava personagens naqueles quadrados"*). No
@@ -470,8 +484,9 @@ html body[data-surface="panel"] .history:not(.history--collapsed) {
   max-height: none !important;
 }
 
-html body[data-surface="panel"] .history__list {
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  scrollbar-width: thin !important;
+/* The live-caption grid row is hidden on the panel surface, so it cannot own
+   the remaining height. Let the transcript take that space instead of leaving
+   an empty 140 px row below it. */
+html body[data-surface="panel"] .panel {
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
 }

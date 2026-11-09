@@ -32,11 +32,18 @@ As arms:
   P10 O TICK: o poll ocioso NAO repinta; um tick de conteudo repinta; um tick
       com Ctrl carregado repinta (a pulsacao). E' o que impede o poll de
       esconder a revelacao.
+  P11 GDI+ REAL: a banda da borda e' pintada num bitmap de verdade, fora do ecra.
+  P12 A ARRASTAR: o poll NAO repinta (o gesto nao paga pintura) e um conteudo
+      vencido repinta MESMO a arrastar.
+  P13 TAXA ENTREGUE: o laco real a arrastar, medido com `perf_counter`, tem de
+      entregar >= 120 Hz (metade do tecto de 240 Hz) e ZERO pinturas no gesto.
 
 NEG (`--neg-arm`): a decisao REAL e' copiada e mutada -- (1) sem `clamp_pos`,
 (2) largar grava sempre, (3) pulsacao a zero -- e as arms que dependem disso
 (P4, P7, P9) TEM de ficar vermelhas. Um oraculo que nao cai com o defeito de
-volta nao mede nada.
+volta nao mede nada. E DOIS mutantes do poll, cada um numa copia do modulo:
+(4) o poll repinta quando o rato anda, (5) o piso da pintura e' aplicado ao
+poll; cada um tem de derrubar a P13.
 
 `--cost` mede o preco da marca num bitmap GDI+ real, fora do ecra (com Ctrl
 levantado vs carregado). E' o numero que o relatorio cita; nao corre por
@@ -50,6 +57,8 @@ import sys
 import tempfile
 import threading
 import time
+import io
+import importlib.util
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -57,6 +66,14 @@ sys.path.insert(0, str(REPO / "app" / "webview"))
 
 import caption_drag  # noqa: E402
 import caption_overlay  # noqa: E402
+
+
+def _load(path, name):
+    """Carrega o modulo POR CAMINHO (e' assim que o negativo le a copia)."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 WORK = {"x": 0, "y": 0, "width": 1920, "height": 1080}
 RECT = (660, 900, 600, 120)          # x, y, w, h -- onde a legenda vive
@@ -341,6 +358,164 @@ def arm_gdi(pulse, *_):
         bmp.Dispose()
 
 
+def arm_drag_poll_split(plan, *_args, module=None):
+    """P12 -- o poll do arrasto NAO repinta; o conteudo vencido repinta."""
+    module = module or caption_overlay
+    future = _tick_probe(False, dragging=True)
+    future._content_due_at = module._frame_now() + 10.0
+    future._tick(0)
+    due = _tick_probe(False, dragging=True)
+    due._content_due_at = module._frame_now() - 1.0
+    due._tick(0)
+    return ("P12 a arrastar: poll nao pinta, conteudo vencido pinta", (
+        future.paints == ["arm"] and due.paints == ["paint"]))
+
+
+def _drag_rate_probe(seconds=1.0, module=None, moved=False):
+    """O laco REAL a arrastar: conta os ticks do poll e as pinturas."""
+    module = module or caption_overlay
+    ov = object.__new__(module.NativeCaptionOverlay)
+    ov.lock = threading.RLock()
+    ov._tick_gen = 0
+    ov._tick_wake_gen = 0
+    ov._tick_event = threading.Event()
+    ov._tick_thread = None
+    ov._tick_deadline = 0.0
+    ov._tick_stop = False
+    ov.hwnd = 12345
+    ov.visible = True
+    ov._live = None
+    ov._cue = None
+    ov._roll = 0.0
+    ov._fade_t0 = None
+    ov._drag_armed = True
+    ov._drag_dragging = True
+    ov._drag = caption_drag.DragState(offset=(0, 0))
+    # O GESTO JA' A DECORRER: sem isto o primeiro tick so' ARMA e o `moved`
+    # dessa transicao pinta (o probe nao tem `_update` real para se re-armar).
+    ov._drag.dragging = True
+    ov._drag.armed = True
+    ov._drag.lbutton = True
+    ov._drag.grab = (100, 100)
+    ov._drag.origin = (0, 0)
+    ov._drag_offset = (0, 0)
+    ov._drag_pos = (100, 100)
+    ov._drag_canvas = None
+    ov.work = dict(WORK)
+    ov.scale = 1.0
+    # O CUSTO MEDIDO NA INSTANCIA VIVA (11,6 ms). Com ele, o mutante que aplica
+    # o piso da pintura ao poll cai para 34 Hz; o codigo real (que separa poll de
+    # conteudo) continua a 240 Hz porque o poll nao paga o piso.
+    ov._paint_cost_s = 0.0116
+    ov._paint_limit_logged = 0.0
+    ov._content_due_at = None
+    ov._drag_ticks = 0
+    ov._drag_moves = 0
+    ov._drag_paints = 0
+    ov._drag_paint_s = 0.0
+    ov._drag_t0 = 0.0
+    ov.log = lambda *_a: None
+    ticks = []
+    ov.paints = []
+    # O POLL E' O QUE EMBARCA (revisao D5): as tres leituras do Win32 e o
+    # `drag_plan` contam no numero. So' as ENTRADAS sao falsas -- o relogio, a
+    # decisao e o `SetWindowPos` sao os reais.
+    real_fns = (module._ctrl_held, module._lbutton_held, module._cursor_px,
+                module._window_rect)
+    frame = [0]
+
+    def _cursor():
+        frame[0] += 1
+        return (100 + (frame[0] if moved else 0), 100)
+
+    module._ctrl_held = lambda: True
+    module._lbutton_held = lambda: True
+    module._cursor_px = _cursor
+    module._window_rect = lambda _hwnd: (0, 0, 200, 100)
+    ov._work_area = lambda: dict(WORK)
+    real_poll = ov._poll_drag
+    ov._poll_drag = lambda: (ticks.append(module._frame_now()) or real_poll())
+    def _update():
+        ov.paints.append(1)
+        ov._arm_tick()
+    ov._update = _update
+    t0 = module._frame_now()
+    try:
+        ov._arm_tick()
+        time.sleep(seconds)
+        ov._tick_stop = True
+        ov._tick_event.set()
+        if ov._tick_thread is not None:
+            ov._tick_thread.join(timeout=1.0)
+    finally:
+        (module._ctrl_held, module._lbutton_held, module._cursor_px,
+         module._window_rect) = real_fns
+    elapsed = module._frame_now() - t0
+    return (len(ticks) / elapsed if elapsed > 0 else 0.0,
+            len(ticks), len(ov.paints))
+
+
+def _budget_probe(module):
+    """O `_arm_tick` REAL com Ctrl carregado, sem arrasto e conteudo longe.
+
+    Devolve o atraso agendado, em segundos. Com o custo de pintura a 20 ms, o
+    orcamento de 40 % exige >= 50 ms; um pulso de 30 Hz (33 ms) custaria 60 %
+    de um nucleo.
+    """
+    class _Alive:
+        def is_alive(self):
+            return True
+
+    ov = object.__new__(module.NativeCaptionOverlay)
+    ov.lock = threading.RLock()
+    ov._tick_gen = 0
+    ov._tick_wake_gen = 0
+    ov._tick_event = threading.Event()
+    ov._tick_thread = _Alive()
+    ov._tick_deadline = 0.0
+    ov._tick_stop = False
+    ov.hwnd = 12345
+    ov.visible = True
+    ov._live = None
+    ov._cue = None
+    ov._roll = 0.0
+    ov._fade_t0 = None
+    ov._drag_armed = True
+    ov._drag_dragging = False
+    ov._drag = caption_drag.DragState()
+    ov._drag_offset = (0, 0)
+    ov._drag_pos = (100, 100)
+    ov._paint_cost_s = 0.020
+    ov._paint_limit_logged = 0.0
+    ov._content_due_at = module._frame_now() + 10.0
+    ov._next_delay = lambda: caption_drag.PULSE_FRAME_S
+    ov.log = lambda *_a: None
+    ov._arm_tick()
+    return ov._tick_deadline - module._frame_now()
+
+
+def arm_pulse_budget(plan, *_args, module=None):
+    """P14 -- o pulso do Ctrl passa pelo orcamento de pintura (revisao D1)."""
+    module = module or caption_overlay
+    delay = _budget_probe(module)
+    return ("P14 pulso do Ctrl dentro do orcamento de pintura (delay=%.1f ms)"
+            % (delay * 1000.0), delay >= 0.045)
+
+
+def arm_drag_rate(plan, *_args, module=None, moved=False):
+    """P13 -- a taxa ENTREGUE do poll a arrastar, medida no laco real.
+
+    O tecto e' 240 Hz (`caption_drag.DRAG_FRAME_S`); o que esta maquina entrega
+    e' este numero. A arm exige >= 120 Hz (metade do tecto, folga para o
+    agendador) e ZERO pinturas no gesto -- um poll que repinta nao entrega o
+    tecto, paga a pintura.
+    """
+    hz, ticks, paints = _drag_rate_probe(module=module, moved=moved)
+    return ("P13 arrasto: %.0f Hz entregues, %d ticks, %d pinturas"
+            % (hz, ticks, paints), (
+                hz >= 120.0 and ticks >= 60 and paints == 0))
+
+
 # ── os mutantes (so' no --neg-arm) ─────────────────────────────────────────
 def _mutant_plan(real):
     """A decisao real COPIADA e mutada: sem limite e a gravar sempre."""
@@ -443,16 +618,77 @@ def main(argv=None) -> int:
         arm_mark(pulse, pulse),
         arm_tick(plan, pulse),
         arm_gdi(pulse, pulse),
+        arm_drag_poll_split(plan, pulse),
+        arm_drag_rate(plan, pulse),
+        arm_pulse_budget(plan, pulse),
     ]
     for name, ok in checks:
         print("%-62s -> %s" % (name, "PASS" if ok else "FAIL"))
     if neg:
         red = {name.split()[0] for name, ok in checks if not ok}
-        caught = must_go_red <= red
+        caught_plan = must_go_red <= red
         print("NEG-ARM: %s (vermelhas=%d/%d: %s; exigidas=%s)"
-              % ("PASS" if caught else "FAIL", len(red), len(checks),
+              % ("PASS" if caught_plan else "FAIL", len(red), len(checks),
                  ", ".join(sorted(red)) or "-",
                  ", ".join(sorted(must_go_red))))
+        # OS DOIS MUTANTES DO POLL, numa COPIA do modulo (nunca no ficheiro):
+        # (a) o `_tick` volta a repintar quando o rato se mexe a arrastar;
+        # (b) o `_arm_tick` volta a aplicar o piso da pintura ao poll.
+        src = io.open(os.path.join(REPO, "app", "webview", "caption_overlay.py"),
+                      encoding="utf-8", newline="").read()
+        tmp = tempfile.mkdtemp(prefix="drag-poll-")
+        extra = []
+        tick_anchor = ("                if (content_now or (moved and not dragging)\n"
+                       "                        or (armed and not dragging)):")
+        if src.count(tick_anchor) != 1:
+            print("NEG-ARM IMPOSSIVEL: a condicao do _tick aparece %d vez(es)"
+                  % src.count(tick_anchor))
+            return 2
+        mut1 = os.path.join(tmp, "overlay_repinta_ao_mover.py")
+        io.open(mut1, "w", encoding="utf-8", newline="").write(src.replace(
+            tick_anchor,
+            "                if (content_now or moved\n"
+            "                        or (armed and not dragging)):", 1))
+        extra.append(("poll-repinta-ao-mover", not arm_drag_rate(
+            caption_drag.drag_plan, caption_drag.pulse_alpha,
+            module=_load(mut1, "drag_repinta"), moved=True)[1]))
+        arm_anchor = ("            due = getattr(self, '_content_due_at', 'missing')\n"
+                      "            if isinstance(due, str):\n"
+                      "                paint_frame = True")
+        if src.count(arm_anchor) != 1:
+            print("NEG-ARM IMPOSSIVEL: a guarda do _arm_tick aparece %d vez(es)"
+                  % src.count(arm_anchor))
+            return 2
+        mut2 = os.path.join(tmp, "overlay_limite_no_poll.py")
+        io.open(mut2, "w", encoding="utf-8", newline="").write(src.replace(
+            arm_anchor,
+            "            due = 'missing'\n"
+            "            if isinstance(due, str):\n"
+            "                paint_frame = True", 1))
+        extra.append(("limite-da-pintura-no-poll", not arm_drag_rate(
+            caption_drag.drag_plan, caption_drag.pulse_alpha,
+            module=_load(mut2, "drag_limite"))[1]))
+        # (c) o pulso do Ctrl volta a ficar FORA do orcamento (revisao D1).
+        pulse_anchor = ("                               or bool(getattr(self, '_drag_armed', False)\n"
+                        "                                       and not getattr(self, '_drag_dragging',\n"
+                        "                                                       False)))")
+        if src.count(pulse_anchor) != 1:
+            print("NEG-ARM IMPOSSIVEL: o pulso do _arm_tick aparece %d vez(es)"
+                  % src.count(pulse_anchor))
+            return 2
+        mut3 = os.path.join(tmp, "overlay_pulso_fora_do_orcamento.py")
+        io.open(mut3, "w", encoding="utf-8", newline="").write(src.replace(
+            pulse_anchor, ")", 1))
+        extra.append(("pulso-fora-do-orcamento", not arm_pulse_budget(
+            caption_drag.drag_plan, caption_drag.pulse_alpha,
+            module=_load(mut3, "drag_pulso"))[1]))
+        for name, ok in extra:
+            print("NEG-ARM %-28s %s" % (name, "CAUGHT" if ok else "NOT-CAUGHT"))
+        caught = caught_plan and all(ok for _n, ok in extra)
+        print("NEG-ARM VERDICT: %s (plan=%s, poll=%d/%d)"
+              % ("PASS" if caught else "FAIL",
+                 "CAUGHT" if caught_plan else "NOT-CAUGHT",
+                 sum(1 for _n, ok in extra if ok), len(extra)))
         return 1 if caught else 0
     ok = all(value for _name, value in checks)
     print("VERDICT: %s (%d/%d)" % ("PASS" if ok else "FAIL",

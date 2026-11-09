@@ -327,27 +327,14 @@ body {
 .panel__controls [data-theme-chevron] {
   order: 2;
 }
-/* THE CONFIG MENU'S BUTTON OWNS THE GAP, NOT A SLOT IN THE ROW (owner, 2026-11-08:
-   *"faz o botao de config pra eu escolher pra qual lingua traduzir"*). The row is
-   fixed at `right: 14px` with 264 px of pinned controls (`panel-unified.css`,
-   `_main/panel-header-oracle.js`), and one more control would push the lamp over
-   the wordmark. The header leaves 31 px between the wordmark's right edge (~71)
-   and the cluster's left edge (102); the button is 28 px and sits at 74. */
-body[data-surface="panel"] .panel__header #menu-button {
-  position: fixed;
-  left: 74px;
-  top: calc(14px + (56px - 28px) / 2);
-  z-index: 61;
-}
-
-/* THE POPOVER HANGS UNDER ITS OWN TRIGGER, not off the window's right edge (the
-   `theme-dropdown` default, which is the theme chevron's). Both coordinates are
-   the button's own, so a wider menu grows to the right and never covers it. */
+/* THE SETTINGS POPOVER OPENS BELOW ITS BUTTON, which now sits directly left of
+   close in the shared control row. */
 body[data-surface="panel"] #panel-menu {
   position: fixed;
-  left: 74px;
-  right: auto;
+  right: 14px;
+  left: auto;
   top: calc(14px + (56px - 28px) / 2 + 34px);
+  z-index: 61;
 }
 /* The font dial is ONE button since 2026-10-18 ("1 botao de tamanho em vez de 2"),
    and it takes the SLOT the pair used to share: order 5, after the theme button's
@@ -3726,4 +3713,15 @@ html[data-brand] body[data-surface="strip"] .stripbar__grip {
     var(--brand-rule, var(--accent, #7dd3fc)) 1.15px,
     transparent 1.4px
   );
+}
+
+/* The export button reuses `.tune-row__select` for every theme token and adds
+   only what a button needs on top of a select's look. */
+.tune-row__action {
+  text-align: left;
+  cursor: pointer;
+}
+
+.tune-row__action:hover {
+  border-color: var(--accent-to);
 }

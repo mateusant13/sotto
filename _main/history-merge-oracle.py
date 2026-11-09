@@ -108,6 +108,26 @@ def arms(shell):
                 merge(tail(LONG, time_s=3600, start=1.68),
                       LONG[:-1] + ' there is.', now_s=3640, start=40.10),
                 'append'))
+    # TEXTO IGUAL NAO E' SEMPRE A MESMA LINHA (defeito medido 2026-11-09): o
+    # `skip` por igualdade de texto corria ANTES da identidade e engolia fala
+    # repetida de verdade. Estas quatro arms pinam a correcao.
+    out.append(('a11-texto-igual-start-diferente-appende',
+                merge(tail(LONG, start=1.0), LONG, now_s=3601, start=9.0),
+                'append'))
+    out.append(('a12-texto-igual-fora-da-janela-appende',
+                merge(tail(LONG, time_s=3600), LONG, now_s=3700),
+                'append'))
+    out.append(('a13-texto-igual-mesmo-start-skip',
+                merge(tail(LONG, start=1.0), LONG, now_s=3601, start=1.0),
+                'skip'))
+    out.append(('a14-texto-igual-audio-diferente-appende',
+                merge(dict(tail(LONG, time_s=3600), audio='device:mic'), LONG,
+                      now_s=3601, audio='external:youtube'),
+                'append'))
+    out.append(('a15-start-diferente-crescimento-appende',
+                merge(tail(LONG, time_s=3600, start=1.0), GROWN,
+                      now_s=3601, start=9.0),
+                'append'))
     return out
 
 
@@ -119,7 +139,9 @@ def tail_arms(shell):
         fh.write('- [10:01:44] Is a very.\n'
                  '- [10:01:47] Because he\'s going for these uh these people '
                  'you know those who\'s going for there. '
-                 '<!-- route=final start=1.68 src=worker-stamped -->\n')
+                 '<!-- ctx1=a:chrome.exe|s:device%3Amic|v:Code|t:main.py|'
+                 'u:https%3A%2F%2Fexample.com%2Fwatch '
+                 'route=final start=1.68 src=worker-stamped -->\n')
     got = shell.SottoShell._history_tail(path)
     out = [
         ('b1-cauda-le-o-texto',
@@ -130,6 +152,12 @@ def tail_arms(shell):
         ('b3-cauda-le-o-start', got and got.get('start'), 1.68),
         ('b4-ficheiro-vazio-e-none',
          shell.SottoShell._history_tail(os.path.join(tmp, 'nope.md')), None),
+        ('b5-cauda-le-o-contexto',
+         got and got.get('context'),
+         {'sourceApp': 'chrome.exe', 'audioSource': 'device:mic',
+          'viewingApp': 'Code', 'viewingTitle': 'main.py',
+          'viewingUrl': 'https://example.com/watch'}),
+        ('b6-cauda-le-o-audio', got and got.get('audio'), 'device:mic'),
     ]
     return out, tmp
 
@@ -150,7 +178,12 @@ def end_to_end(shell):
     path = None
     try:
         shim = shell.SottoShell.__new__(shell.SottoShell)
-        opts = {'route': 'final', 'routeSource': 'worker-stamped', 'start': 1.68}
+        opts = {'route': 'final', 'routeSource': 'worker-stamped', 'start': 1.68,
+                'context': {'sourceApp': 'chrome.exe',
+                            'audioSource': 'device:mic',
+                            'viewingApp': 'Code',
+                            'viewingTitle': 'main.py',
+                            'viewingUrl': 'https://example.com/watch?q=secret'}}
         e1 = shim.history_append(LONG, opts)
         e2 = shim.history_append(GROWN, opts)
         e3 = shim.history_append(GROWN, opts)                 # copia identica
@@ -176,6 +209,12 @@ def end_to_end(shell):
             ('c6-acao-da-repeticao', (e3 or {}).get('action'), 'skip'),
             ('c7-acao-do-encolhimento', (e4 or {}).get('action'), 'skip'),
             ('c8-acao-da-linha-nova', (e5 or {}).get('action'), 'append'),
+            ('c9-contexto-na-entrada',
+             (e1 or {}).get('context', {}).get('viewingTitle'), 'main.py'),
+            ('c10-ctx1-gravado-no-ficheiro',
+             any('ctx1=' in r for r in rows), True),
+            ('c11-query-nao-vaza',
+             'q=secret' in ' '.join(rows), False),
         ]
         return out, [m for m in logs if m.startswith('HISTORY_')], tmp
     finally:

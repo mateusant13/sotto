@@ -50,6 +50,25 @@
 
   function parseColour(text) {
     var s = String(text || '').trim();
+    /* HEX. `--bg-slab` and the skins' `--surface` are authored as `#060708` and
+     * `#rgba` in several designs, and the rgba-only parser returned null for
+     * them: `alphaOf` then fell through to 1 (so a hex row background looked
+     * OPAQUE to the visibility test) and `paint`'s plate stayed `transparent`
+     * because `parseColour(tokens.rowBg)` was null. That is one measured half of
+     * "the caption has no themed background in some themes". */
+    var hex = /^#([0-9a-f]{3,8})$/i.exec(s);
+    if (hex) {
+      var h = hex[1];
+      if (h.length === 3 || h.length === 4) {
+        h = h.split('').map(function (ch) { return ch + ch; }).join('');
+      }
+      if (h.length === 6 || h.length === 8) {
+        var n = parseInt(h.slice(0, 6), 16);
+        var ha = h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
+        return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255, a: ha };
+      }
+      return null;
+    }
     var m = /^rgba?\(([^)]*)\)/.exec(s);
     if (m) {
       var p = m[1].split(/[\s,\/]+/).filter(Boolean).map(parseFloat);
@@ -195,6 +214,11 @@
     var panelBg = panelStyle ? panelStyle.background : '';
     var panelBgColor = panelStyle ? panelStyle.backgroundColor : '';
     var panelBgImage = panelStyle ? panelStyle.backgroundImage : 'none';
+    /* THE DESIGN'S OWN SLAB, read in the same surface: it is the colour every
+     * theme already declares for the panel (`--bg-slab`, recon §8a), and it is
+     * the honest source of a caption bed when the design paints no row wash. */
+    var slabColor = window.getComputedStyle(document.body)
+      .getPropertyValue('--bg-slab').trim();
     var base = panelBase();
     if (flipped) body.setAttribute('data-surface', original);
     if (!live || !live.text) return null;
@@ -232,7 +256,8 @@
        * strip rule paints its own slab. */
       panelBgColor: panelBgColor,
       panelBgImage: panelBgImage,
-      panelBg: panelBg
+      panelBg: panelBg,
+      slabColor: slabColor
     };
     return tokens;
   }
@@ -296,9 +321,51 @@
       tokens.ledColor : 'transparent');
   }
 
+  /* EVERY DESIGN HAS A CAPTION BED, AND IT IS ITS OWN (owner, 2026-11-09: the
+   * screen caption must carry the theme's designed background). Measured defect:
+   * `rowBgAlpha` was 0 whenever the design painted no wash on its forming row --
+   * which is most of the 45 generated themes (theme-1: `background: transparent`)
+   * -- so `paint` left `--brand-plate: transparent` and the overlay/float drew
+   * bare words over video. The 20 skins were fine because their caption
+   * fragment's own `--cap-bg` is painted.
+   *
+   * THE FALLBACK IS THE THEME'S OWN SLAB (`--bg-slab`, the token every design
+   * declares), composited over the panel base and carried at the same opacity
+   * band the skins' `--cap-bg` uses (0.72-0.86). So the bed is the design's
+   * colour, not one generic plate: five base themes, ten zipc directions and
+   * twenty-five cinematic scenes keep their own hue. */
+  function withPlate(tokens) {
+    if (!tokens) return tokens;
+    /* A ROW WASH IS NOT A BED UNLESS IT IS ONE, AND IT MUST BE A COLOUR THIS FILE
+     * CAN READ. Two measured halves of the same defect (2026-11-09):
+     *
+     *   * `color-mix(in oklab, …)` computes to `oklab(0.812 0.068 -0.017 / 0.089)`
+     *     -- a 9 % tint that `parseColour` cannot turn into a plate, and that
+     *     `alphaOf` reported as OPAQUE because it falls back to 1 for anything it
+     *     does not recognise. Measured on `cine-rooftop`, `cine-analog`,
+     *     `cine-shelves`, `cine-ember`, `Quotes`, `Ledger`, `Chips`, `Gutter` and
+     *     the `cine-rainline` skin: `rowBgAlpha=1`, plate `rgba(0,0,0,0)`.
+     *   * A wash under half opacity is a TINT OVER a bed, never the bed itself.
+     *
+     * So the plate is taken from the row ONLY when it is both readable and
+     * bed-strong (>= 0.5 -- the skins' `--cap-bg` band); otherwise the design's
+     * own slab becomes the bed, and the tint stays a detail of the row. */
+    var strong = tokens.rowBgAlpha >= 0.5 && parseColour(tokens.rowBg);
+    if (strong) return tokens;
+    var slab = parseColour(tokens.slabColor) || parseColour(tokens.panelBgColor);
+    if (!slab || !(slab.a > 0.02)) return tokens;
+    var alpha = Math.min(0.86, Math.max(0.72, slab.a));
+    var base = panelBase();
+    var mix = function (ch, b) { return Math.round(ch * alpha + b * (1 - alpha)); };
+    tokens.rowBg = 'rgb(' + mix(slab.r, base[0]) + ', ' + mix(slab.g, base[1])
+      + ', ' + mix(slab.b, base[2]) + ')';
+    tokens.rowBgAlpha = alpha;
+    return tokens;
+  }
+
   function snapshot() {
     try {
-      return skinTokens() || measure();
+      return withPlate(skinTokens() || measure());
     } catch (err) {
       return null;
     }
@@ -384,7 +451,9 @@
       ledColor: 'transparent',
       panelBg: surface || '',
       panelBgColor: surface || '',
-      panelBgImage: 'none'
+      panelBgImage: 'none',
+      slabColor: window.getComputedStyle(document.body)
+        .getPropertyValue('--bg-slab').trim()
     };
   }
 

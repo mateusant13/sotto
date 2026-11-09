@@ -199,12 +199,18 @@ def _arm_pausa_corta_a_pintura(mod, shell_path):
 
 
 def _arm_tick_da_pausa(shell_path):
-    """1b. O `_tick` REAL, sem linha nova, com a borda da pausa: pinta JÁ.
+    """1b. A PAUSA NAO CONGELA O ECRA -- e o desenho NORMAL continua a sair.
 
-    Esta e' a arm do "no mesmo tick". O `_tick` e o metodo que decide o desenho;
-    com o video parado a linha nao muda, portanto o unico caminho que repinta e'
-    a borda da pausa. O dublê regista o que a shell recebia: `instant=True` (o
-    cue inteiro, sem relogio) e a cue CONGELADA do payload.
+    O CONTRATO MUDOU EM 2026-11-09, por ordem do dono, verbatim: *"quando eu
+    deixo o video pausado, a legenda fica ao vivo, quando eu pauso, ela volta e
+    fica travada em outro momento"*. A arm antiga exigia o desenho CONGELADO que
+    a borda da pausa fazia no `_tick` (cura de 2026-11-06) -- e esse desenho era
+    justamente a legenda a ficar travada num momento que nao e' o da pausa. Quem
+    apaga agora e' o observador (`youtube-paused`/`youtube-ended`) e o piso de
+    `_caption_idle_hide`; um tick de pausa NAO pinta.
+
+    Duas metades, porque a cura podia ser "nao pintar nada nunca": um tick de
+    pausa sem linha nova nao empurra NADA, e um tick com linha nova empurra.
     """
     fns = _shell_methods(shell_path, {'_tick'})
     pushes = []
@@ -224,17 +230,16 @@ def _arm_tick_da_pausa(shell_path):
                   _yt_prof=lambda *_a, **_k: None,
                   STABLE_FINAL_S=1.0, RELEASE_S=6.0, YT_RELEASE_S=25.0,
                   yt_frame_key=None, _release=lambda _r: None)
-    # SEM LINHA NOVA neste tick e' o caso normal com o video parado.
+    # METADE 1 -- SEM LINHA NOVA neste tick: o caso normal com o video parado.
     fns['_tick'](watcher, [], True)
-    ok = len(pushes) == 1
-    detail = 'pushes=%d' % len(pushes)
-    if ok:
-        args, kwargs = pushes[0]
-        ok = (kwargs.get('instant') is True
-              and kwargs.get('cue') is frozen_cue
-              and args and args[0] == 'a frase')
-        detail = 'instant=%r cue_frozen=%r' % (
-            kwargs.get('instant'), kwargs.get('cue') is frozen_cue)
+    quiet = len(pushes)
+    # METADE 2 -- COM LINHA NOVA: o desenho de sempre tem de sair.
+    watcher._yt_pause_epoch_seen = None
+    # `got` e' uma LISTA de `(fonte, linhas)` -- o formato do leitor real.
+    fns['_tick'](watcher, [('external:youtube:track', ['outra frase'])], True)
+    drawn = len(pushes) - quiet
+    ok = quiet == 0 and drawn == 1
+    detail = 'pausa_sem_linha=%d com_linha=%d' % (quiet, drawn)
     return ok, detail
 
 
@@ -674,7 +679,7 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
     # A13..A17 -- os tres defeitos que o dono reportou a 2026-11-06
     for name, fn in (("pausa-corta-a-pintura",
                       lambda: _arm_pausa_corta_a_pintura(mod, shell_path)),
-                     ("pausa-pinta-no-tick",
+                     ("pausa-nao-congela",
                       lambda: _arm_tick_da_pausa(shell_path)),
                      ("duas-abas-primeiro-plano",
                       lambda: _arm_duas_abas_primeiro_plano(mod)),
@@ -688,6 +693,103 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
             ok, detail = fn()
         except Exception as exc:  # noqa: BLE001
             ok, detail = False, 'EXCECAO %r' % (exc,)
+        out.append((name, ok, detail))
+
+    # A18..A21 -- O CUSTO QUE NAO DORME (DM do watcher, stutter 50452, 2026-11-09):
+    # `YOUTUBE_TARGET ... why=declared` e `YOUTUBE_CDP_SOURCE state=attached` saiam
+    # a cada volta do laco (6 513 + 6 511 linhas nos ultimos 2 MB do log do dono, o
+    # par a ~1,4x/s cada). O estado passa a sair na MUDANCA e no batimento; estas
+    # arms medem as QUATRO metades -- nao repete, muda sai, batimento sai, e o
+    # oraculo continua a ver a primeira escolha.
+    def _state_arms():
+        # A SONDA E' UM DUPLO INSTANTANEO, e a razao e' CUSTO MEDIDO (2026-11-09):
+        # estas arms medem o LIMIAR DA ESCRITA (`YOUTUBE_TARGET`/`YOUTUBE_CDP_SOURCE`
+        # na mudanca e no batimento), nao a sonda. Com o transporte REAL,
+        # `ws://x/AAA` (host que nao existe) custa **2,70 s por `_choose`** -- o laco
+        # abaixo faz 22 delas e cada `arms()` pagava ~59 s, o que levava o
+        # `red-as-expected` (as copias de entao, 15) a **>900 s** e o prazo da
+        # bateria a mata-lo (o baseline do passo e' 122,4 s; medido aqui: 400 s
+        # sem terminar, e o `--neg-arm` nunca chegava a imprimir um veredicto).
+        # O duplo responde `rs=0`/`t=0`, que e' a MESMA recusa de hoje
+        # (`probe=no-player`) e o MESMO caminho de queda -- so' sem a espera --
+        # logo as contagens que estas arms julgam nao mudam.
+        class _NoPlayer(object):
+            def __init__(self):
+                self._id = 1
+
+            def settimeout(self, _t):
+                pass
+
+            def send(self, payload):
+                # O id PEDIDO, sempre: o `_ws_eval` ignora o que nao casa e um id
+                # fixo prenderia a SEGUNDA leitura num laco infinito.
+                try:
+                    self._id = int(json.loads(payload).get("id") or 1)
+                except (TypeError, ValueError):
+                    self._id = 1
+
+            def recv(self):
+                value = json.dumps({"videoId": "AAAAAAAAAAA", "t": 0.0,
+                                    "rs": 0, "paused": False})
+                return json.dumps({"id": self._id,
+                                   "result": {"result": {"value": value}}})
+
+            def close(self):
+                pass
+
+        def _fake_connect(_url, timeout=None):
+            return _NoPlayer()
+
+        logs = []
+        obj = mod.CdpCaptionSource(port=0, log=logs.append)
+        obj._probe_connect = _fake_connect
+        tabs = [{"webSocketDebuggerUrl": "ws://x/AAA",
+                 "url": "https://www.youtube.com/watch?v=AAAAAAAAAAA",
+                 "title": "video - YouTube"}]
+        obj._video_id = "AAAAAAAAAAA"
+        frame = {"stamp": time.monotonic(), "rows": ["a"],
+                 "items": [{"text": "a"}], "videoId": "AAAAAAAAAAA"}
+        for _ in range(20):
+            obj._choose(tabs)
+            obj._publish(frame, "attached")
+        targets = [l for l in logs if l.startswith("YOUTUBE_TARGET")]
+        states = [l for l in logs if l.startswith("YOUTUBE_CDP_SOURCE")]
+        yield ("estado-nao-repete", len(states) == 1 and len(targets) == 1,
+               "20 voltas -> target=%d estado=%d (era 40; o resto sao mudancas)"
+               % (len(targets), len(states)))
+        # A MUDANCA SAI NA HORA: a fonte que cai para `slow` e volta tem de deixar
+        # as duas linhas, senao a cura apagava a evidencia que os oraculos leem.
+        obj._publish(frame, "slow (WebSocketTimeoutException)")
+        obj._publish(frame, "attached")
+        seen = [l.split("state=", 1)[1] for l in logs
+                if l.startswith("YOUTUBE_CDP_SOURCE")]
+        yield ("estado-na-mudanca", seen[-2:] == ["slow (WebSocketTimeoutException)",
+                                                 "attached"],
+               "sequencia=%r" % (seen[-2:],))
+        # O BATIMENTO: 61 s depois, o MESMO estado sai outra vez (uma vez por minuto,
+        # nao 8 vezes por segundo) -- e' o que deixa o oraculo provar que respira.
+        before = len([l for l in logs if l.startswith("YOUTUBE_CDP_SOURCE")])
+        obj._note_log_t -= mod._STATE_HEARTBEAT_S + 1.0
+        obj._publish(frame, "attached")
+        after = len([l for l in logs if l.startswith("YOUTUBE_CDP_SOURCE")])
+        yield ("estado-batimento", after == before + 1,
+               "linhas antes=%d depois=%d (batimento de %.0fs)"
+               % (before, after, mod._STATE_HEARTBEAT_S))
+        # O CONTROLE: uma escolha DIFERENTE tem de escrever outra linha `YOUTUBE_TARGET`,
+        # senao a cura trocava a repeticao por um silencio que esconde a troca de aba.
+        other = [dict(tabs[0], url="https://www.youtube.com/watch?v=BBBBBBBBBBB",
+                      title="outro - YouTube")]
+        obj2 = mod.CdpCaptionSource(port=0, log=logs.append)
+        obj2._probe_connect = _fake_connect
+        obj2._video_id = "AAAAAAAAAAA"
+        obj2._choose(tabs)
+        n1 = len([l for l in logs if l.startswith("YOUTUBE_TARGET")])
+        obj2._choose(other)
+        n2 = len([l for l in logs if l.startswith("YOUTUBE_TARGET")])
+        yield ("escolha-diferente-escreve", n2 == n1 + 1,
+               "linhas %d -> %d ao trocar de aba" % (n1, n2))
+
+    for name, ok, detail in _state_arms():
         out.append((name, ok, detail))
     return out
 
@@ -840,15 +942,50 @@ def neg_arm():
         results.append(("replay-sem-pausa",
                         not got13.get("desligar-em-pausa", False)))
 
-        # (1b) A BORDA DA PAUSA no `_tick` desaparece: com a linha parada o
-        # ecra fica com o relogio da ultima pintura a andar (o defeito de 2 s).
-        mut14 = os.path.join(tmp, "sem_borda_de_pausa.py")
+        # (1b) A PAUSA VOLTA A CONGELAR O ECRA: o desenho que a cura de
+        # 2026-11-06 fazia (e que o dono reprovou em 2026-11-09) e' reintroduzido
+        # no `_tick` -- um tick de pausa sem linha nova volta a empurrar a linha
+        # velha, e a arm 1b tem de cair.
+        #
+        # A ANCORA E' ESCOLHIDA DENTRO DO `_tick` (2026-11-09). O mesmo carimbo
+        # aparece DUAS vezes na shell -- o reset por troca de video e o `_tick` --
+        # e o `replace(..., 1)` mutava a PRIMEIRA: o "mutante" saia com o `_tick`
+        # intacto e `sem-borda-de-pausa` respondia NOT-CAUGHT sem que a cura
+        # alguma vez fosse derrubada. Medido nesta arvore: 5067 (reset) e 5978
+        # (`_tick`). Uma ancora que nao existe mais tem de GRITAR, nao de passar.
+        _tick_at = shell_src.find("    def _tick(self, got, yt_mode=False):")
+        _stamp = ("        self._yt_pause_epoch_seen = int("
+                  "getattr(self, '_yt_pause_epoch', 0) or 0)")
+        _stamp_at = shell_src.find(_stamp, _tick_at + 1 if _tick_at >= 0 else 0)
+        if _tick_at < 0 or _stamp_at < 0:
+            raise RuntimeError(
+                "ancora do `_tick` desapareceu da shell (tick=%d stamp=%d): "
+                "o mutante `sem-borda-de-pausa` nao tem onde aterrar e um "
+                "mutante que nao muta nada e' um controlo que nao pode falhar"
+                % (_tick_at, _stamp_at))
+        mut14 = os.path.join(tmp, "pausa_congela.py")
         io.open(mut14, "w", encoding="utf-8").write(
-            shell_src.replace("        if pause_edge and player_stalled and getattr(self, 'last_line', ''):",
-                              "        if False:", 1))
+            shell_src[:_stamp_at] + _stamp + "\n"
+            "        if (getattr(self, 'yt_cdp_paused', False)\n"
+            "                and getattr(self, 'last_line', '')):\n"
+            "            self.shell.push_caption_to_window(\n"
+            "                self.last_line, instant=True)"
+            + shell_src[_stamp_at + len(_stamp):])
         got14 = dict((n, ok) for n, ok, _ in arms(module_path=None, shell_path=mut14))
         results.append(("sem-borda-de-pausa",
-                        not got14.get("pausa-pinta-no-tick", False)))
+                        not got14.get("pausa-nao-congela", False)))
+
+        # (4) O LIMIAR DO ESTADO VOLTA A NAO EXISTIR: a guarda de `_publish` sai e
+        # a fonte escreve `YOUTUBE_CDP_SOURCE` a cada volta -- as 6 511 linhas
+        # medidas no log do dono. A arm `estado-nao-repete` tem de cair, senao as
+        # quatro arms de 2026-11-09 sao um verde que nao pode falhar.
+        mut_dedup = os.path.join(tmp, "sem_dedup_estado.py")
+        io.open(mut_dedup, "w", encoding="utf-8").write(
+            src.replace("            if unchanged and not due:\n",
+                        "            if False:\n", 1))
+        got_dedup = dict((n, ok) for n, ok, _ in arms(module_path=mut_dedup))
+        results.append(("sem-dedup-estado",
+                        not got_dedup.get("estado-nao-repete", False)))
         return results
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -873,11 +1010,16 @@ def main(argv=None):
         # de verdade, e com a frase FAIL no log).
         return 1 if not bad else 0
     bad = 0
-    for name, ok, note in arms():
+    # UMA EXECUCAO, nao tres: `len(arms())` no format era chamado DUAS vezes
+    # depois do laco, ou seja as 23 arms corriam tres vezes por corrida para
+    # imprimir um numero de duas letras (medido 2026-11-09: 191,8 s de parede
+    # para ~40 s de trabalho). O custo e' o de UM `arms()`.
+    ran = arms()
+    for name, ok, note in ran:
         print("%-22s %s  %s" % (name, "PASS" if ok else "FAIL", note))
         bad += 0 if ok else 1
-    print("VERDICT: %s (%d/%d)"
-          % ("PASS" if not bad else "FAIL", len(arms()) - bad, len(arms())))
+    print("VERDICT: %s (%d/%d)" % ("PASS" if not bad else "FAIL",
+                                   len(ran) - bad, len(ran)))
     return 0 if not bad else 1
 
 

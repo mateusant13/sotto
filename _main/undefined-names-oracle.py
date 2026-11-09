@@ -110,6 +110,37 @@ def undefined(path):
     return missing
 
 
+def undefined_scoped(path):
+    """{nome: linha} dos nomes lidos em contexto GLOBAL que o modulo nao define.
+
+    `symtable` e' o proprio compilador a dizer o escopo: um simbolo e' `is_global()`
+    na funcao que o le, e o modulo nao o tem. E' a semantica do `NameError`, nao uma
+    aproximacao -- por isso uma entrada aqui e' um defeito, nao um palpite.
+    """
+    import symtable
+    with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+        src = handle.read()
+    top = symtable.symtable(src, path, 'exec')
+    module = {s.get_name() for s in top.get_symbols()
+              if s.is_assigned() or s.is_imported() or s.is_namespace()}
+    missing = {}
+
+    def walk(table, path_names):
+        for symbol in table.get_symbols():
+            name = symbol.get_name()
+            if (symbol.is_global() and not symbol.is_assigned()
+                    and not symbol.is_imported()
+                    and name not in module and name not in BUILTINS):
+                missing.setdefault(name, []).append(int(table.get_lineno()))
+        for child in table.get_children():
+            walk(child, path_names + (child.get_name(),))
+
+    walk(top, ())
+    for lines in missing.values():
+        lines.sort()
+    return missing
+
+
 def scan(population):
     """{path: {nome: [linhas]}} so' dos ficheiros que TÊM nomes indefinidos."""
     out = {}
@@ -119,8 +150,15 @@ def scan(population):
             out[rel] = {'__MISSING_FILE__': [0]}
             continue
         found = undefined(path)
-        if found:
-            out[rel] = found
+        scoped = undefined_scoped(path)
+        # A ESCOPADA MANDA: se ela acusa, o ficheiro entrou, mesmo que a varredura
+        # grosseira se tenha calado -- foi exactamente assim que os dois defeitos de
+        # 2026-11-09 passaram.
+        merged = dict(scoped)
+        for name, lines in found.items():
+            merged.setdefault(name, lines)
+        if merged:
+            out[rel] = merged
     return out
 
 
@@ -160,6 +198,33 @@ def neg_arm():
                   % (caught,))
         else:
             print('  FALHA o detector nao viu o defeito de hoje')
+            ok = False
+        # O SEGUNDO PAR: a forma que passou HOJE. Uma funcao cujo corpo le um
+        # PARAMETRO de OUTRA funcao do mesmo ficheiro, e outra que usa um modulo
+        # sem o importar. A varredura por ficheiro cala-se nos dois; a escopada nao.
+        leak = os.path.join(tmp, 'leak.py')
+        with open(leak, 'w', encoding='utf-8') as handle:
+            handle.write(
+                'def helper(source):\n'
+                '    return source\n'
+                '\n'
+                'def user():\n'
+                '    return source\n')
+        leak_hits = undefined_scoped(leak)
+        if 'source' in leak_hits:
+            print('  RED  o parametro de outra funcao lido como global -> acusado %r'
+                  % (leak_hits,))
+        else:
+            print('  FALHA a leitura escopada nao viu o parametro de outra funcao')
+            ok = False
+        nomod = os.path.join(tmp, 'nomod.py')
+        with open(nomod, 'w', encoding='utf-8') as handle:
+            handle.write('def user():\n    return external_subs._window_title(1)\n')
+        nomod_hits = undefined_scoped(nomod)
+        if 'external_subs' in nomod_hits:
+            print('  RED  o modulo usado sem import -> acusado %r' % (nomod_hits,))
+        else:
+            print('  FALHA a leitura escopada nao viu o modulo sem import')
             ok = False
         pos = os.path.join(tmp, 'ok.py')
         with open(pos, 'w', encoding='utf-8') as handle:

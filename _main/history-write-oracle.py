@@ -143,8 +143,14 @@ function lift(head) {
 }
 const rec = lift('function recordHistory(text, reason, meta) {');
 const rep = lift('function reportHistoryRefusal(sourceApi, meta) {');
-if (!rec || !rep) {
-  process.stdout.write(JSON.stringify({error: 'recordHistory/reportHistoryRefusal nao encontrados'}));
+// `recordHistory` calls the panel's bounded `normaliseContext` (added with the
+// context contract, 2026-11-09). It is a separate declaration, so lift it AND
+// its field table into the same scope; without them the oracle reports a
+// `ReferenceError` that belongs to the harness, not to the call site.
+const ctxFields = (src.match(/const CONTEXT_FIELDS = \[[\s\S]*?\];/) || [''])[0];
+const ctxFn = lift('function normaliseContext(meta) {');
+if (!rec || !rep || !ctxFn || !ctxFields) {
+  process.stdout.write(JSON.stringify({error: 'recordHistory/reportHistoryRefusal/normaliseContext nao encontrados'}));
   process.exit(0);
 }
 
@@ -219,7 +225,7 @@ if (src.indexOf('let historyRefusalSeen = new Map();') < 0) {
   process.stdout.write(JSON.stringify({error: 'historyRefusalSeen desapareceu'}));
   process.exit(0);
 }
-new Function('require', 'sourcePath', prelude + '\n' + rec + '\n' + rep + '\n' + call)(require, sourcePath);
+new Function('require', 'sourcePath', prelude + '\n' + ctxFields + '\n' + ctxFn + '\n' + rec + '\n' + rep + '\n' + call)(require, sourcePath);
 """
 
 #: name -> (calls, route, producer, refusals, reason)
@@ -261,10 +267,16 @@ def panel_arms(source_path):
 
 WANTED_CONSTS = ('HISTORY_ROUTES', 'HISTORY_ROUTE_SOURCES', 'HISTORY_PRODUCERS',
                  'HISTORY_LINE_RE', 'HISTORY_DAY_RE', 'HISTORY_TAIL_RE',
-                 'HISTORY_MERGE_WINDOW_S', 'HISTORY_RETENTION_H')
+                 'HISTORY_MERGE_WINDOW_S', 'HISTORY_RETENTION_H',
+                 # `_history_context_for` le' esta janela desde 2026-11-09. O curto-
+                 # circuito de `isinstance(last, dict)` a esconde no caminho comum,
+                 # por isso a ausencia nao levantaria NameError -- e' pior: mediria a
+                 # janela de OUTRO valor em silencio. Aqui ela vem do shell.
+                 '_HISTORY_CTX_NEAR_S')
 WANTED_FUNCS = ('history_merge', '_merge_key')
 WANTED_METHODS = ('history_append', '_history_tail', '_history_provenance',
-                  '_history_path_for', '_history_prune')
+                  '_history_path_for', '_history_prune',
+                  '_history_context_for', '_history_app_target')
 
 
 def store_namespace(shell_path):
@@ -303,11 +315,15 @@ def store_namespace(shell_path):
     if missing:
         raise SystemExit('FATAL: nao encontrado em %s: %s' % (shell_path, ', '.join(missing)))
     body = (
-        'import json, os, re, time\n'
+        'import json, os, re, sys, time\n'
+        'sys.path.insert(0, %r)\n'
+        'import history_context\n'
         'LOG = []\nWARN = []\n'
         'def log(*a, **k):\n    LOG.append(" ".join(str(x) for x in a))\n'
         'def warn(*a, **k):\n    WARN.append(" ".join(str(x) for x in a))\n'
         'HISTORY_ROOT = ""\n'
+        'def app_target_request(args):\n    return None, None\n'
+        % os.path.join(REPO, 'app', 'webview')
         + '\n'.join(consts[n] for n in WANTED_CONSTS) + '\n'
         + '\n'.join(funcs[n] for n in WANTED_FUNCS) + '\n'
         + 'class Shell:\n'

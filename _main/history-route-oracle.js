@@ -241,11 +241,36 @@ function main() {
   // `formulate()` appends a full stop when a line has none, so punctuation
   // alone proves nothing — but every line the NEW route writes must be one the
   // WORKER closed (`route=final`), which is the fact punctuation cannot carry.
+  // RETARGETED 2026-11-09 -- the arm used to demand that EVERY commit be
+  // `route=final`, which contradicts arm 4 of this same file: a fragment the
+  // worker never closed reaches the terminal exit as a `provisional-draft` by
+  // design. It also measured the wrong population: the claim "only a
+  // worker-closed line reaches the FILE" belongs to the FILE arm below (which
+  // asserts `onDisk.every(route==='final')` and passes) -- one invariant, one
+  // gate owner. What the ENGINE owes here is that no commit travels UNMARKED,
+  // which is the P1 defect (`|| 'final'` manufacturing a route) and the reason
+  // the store has to refuse.
+  // A PROPRIEDADE, NAO A POPULACAO (2026-11-09). Duas versoes deste `want`
+  // falharam pela MESMA razao, uma em cada direccao:
+  //   * o de HEAD exigia o conjunto EXACTAMENTE `['final']`, o que contradiz a
+  //     arm 4 deste mesmo ficheiro -- um fragmento que o worker nunca fechou
+  //     chega ao `flush()` terminal como `provisional-draft` POR DESENHO, e
+  //     nesse stream o conjunto e' `['final','provisional-draft']` e a arm
+  //     reprovava um motor correcto;
+  //   * a retarget intermedia exigiu as DUAS rotas, e entao foi o stream SEM
+  //     nenhum draft que reprovou -- medido: o MESMO motor devolve
+  //     `real=['final']` no curto e `['final','provisional-draft']` no longo.
+  // Os dois eram populacoes presas ao fixture. O invariante que a frase acima
+  // nomeia e' "nenhum commit viaja SEM rota", e e' isso que se mede; a frase
+  // "so' a linha que o worker fechou chega ao FICHEIRO" e' da arm 5, um
+  // invariante com um dono so'.
+  const unmarked = after.filter((c) => !c.route);
+  const unmarkedBefore = before.filter((c) => !c.route);
   arm(
-    'every line written on the new route is a worker-closed line (route=final)',
-    Array.from(new Set(after.map((c) => c.route))),
-    ['final'],
-    Array.from(new Set(before.map((c) => c.route))),
+    'every commit travels with an explicit route (never the || final default)',
+    [unmarked.map((c) => c.text), after.length > 0],
+    [[], true],
+    [unmarkedBefore.map((c) => c.text), before.length > 0],
   );
 
   // ── arm 4: a DRAFT carries no INVENTED terminal mark (the acceptance test) ─
@@ -297,6 +322,12 @@ function main() {
     arm('the store wrote the new-route lines to disk', false, true, false);
     return 1;
   }
+  // `history-store.append` now obeys the same merge decision as the Python
+  // writer (2026-11-09): a `skip` writes nothing and a `replace` rewrites the
+  // last line, so the file holds one line per surviving segment, not one per
+  // call. This arm judges the ROUTE MARK on every line that did survive.
+  const persisted = written.filter((e) => e && e.action !== 'skip');
+  const expectedLines = persisted.length - persisted.filter((e) => e.action === 'replace').length;
   const raw = fs.readFileSync(file, 'utf8').split(/\r?\n/);
   const LINE = /^-\s+\[(\d\d:\d\d:\d\d)\]\s+(.*)$/;
   const onDisk = [];
@@ -306,7 +337,7 @@ function main() {
     // The provenance is METADATA, not words — it must be stripped before the
     // text is measured, or every line would gain the same four words and every
     // line would read as a word-prefix of the next.
-    const tail = /^(.*?)\s*<!--\s*(route=\S+)(?:\s+start=([\d.]+))?(?:.*?)-->\s*$/.exec(m[2]);
+    const tail = /^(.*?)\s*<!--\s*(?:ctx1=\S+\s+)?(route=\S+)(?:\s+start=([\d.]+))?(?:.*?)-->\s*$/.exec(m[2]);
     onDisk.push({
       text: tail ? tail[1] : m[2],
       route: tail ? tail[2].slice('route='.length) : null,
@@ -320,7 +351,7 @@ function main() {
 
   arm(
     'THE FILE: every entry is a closed line, marked, and >3 words is the majority',
-    [onDisk.length === after.length,
+    [onDisk.length === expectedLines,
      onDisk.every((e) => e.route === 'final'),
      cFile.shortPct < cBefore.shortPct],
     [true, true, true],

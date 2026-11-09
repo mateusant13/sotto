@@ -499,9 +499,8 @@ class ReduxHiddenSwitch:
                  wav_dir=None, armed_by="--redux-when-hidden",
                  min_free_mb=REDUX_MIN_FREE_MB_DEFAULT, model_dir=None,
                  engine=None, probe=None, pending=None, spool_dir=None,
-                 engine_threads=None,
                  engine_min_free_mb=None, engine_window_s=None,
-                 unload_when_hidden=False, clock=None):
+                 unload_when_hidden=False, clock=None, engine_threads=None):
         #: O RELOGIO DA LARGADA/RECARGA (`load_shedding.ReleaseGate`). Um so',
         #: e injectado pelo mesmo motivo que o `probe`: a guarda tem de ser
         #: medida com uma serie de tempo escrita, nao com a parede de quem corre
@@ -646,7 +645,7 @@ class ReduxHiddenSwitch:
         #: as linhas do lote levarem `start`/`end` honestos e nao um zero repetido.
         self._audio_clock_s = 0.0
         self._inflight = None
-        self._release_when_idle = False
+
         self._backoff_until = 0.0
         self._captions = queue.Queue()
         self._lock = threading.Lock()
@@ -813,14 +812,17 @@ class ReduxHiddenSwitch:
         # referencia ao backend cai e o RSS que voltou fica no log. O lote
         # seguinte — que so' e' pedido quando o nivel desce (ver `maybe_kick`) —
         # carrega-o outra vez, na thread do lote. Um lote ja' a correr nao e'
-        # interrompido: o `release` espera que ele acabe (`_release_when_idle`),
-        # porque matar uma inferencia a meio e' como nao a ter feito.
+        # interrompido, e a largada NAO e' enfileirada: matar uma inferencia a
+        # meio e' como nao a ter feito, e o tique seguinte -- com o lote acabado
+        # -- volta a perguntar a` guarda. (`_release_when_idle` era um sinalizador
+        # que ninguem lia: dizia "a largada espera" e nao esperava nada.)
         if self.mode == "shed":
-            if self.in_flight():
-                self._release_when_idle = True
-            else:
-                self._release_when_idle = False
+            if not self.in_flight():
                 self._release_under_pressure(commit_pct, cpu_pct)
+        else:
+            # O EPISODIO ACABOU: a proxima recusa tem de ser DITA outra vez, senao
+            # um segundo aperto na mesma sessao fica sem a linha que o explica.
+            self._kept_logged = False
         return self.mode
 
     # -- a largada: a MEMORIA decide, o CPU so' pede a pausa ------------------
@@ -843,8 +845,13 @@ class ReduxHiddenSwitch:
             return
         ok, why, fields = gate.may_release(self._shed, commit_pct, cpu_pct)
         if ok:
-            self._kept_logged = False
-            self._release_engine("shed-muito-alta", why=why)
+            # A FLAG SO' CAI NUMA LARGADA QUE ACONTECEU: `_release_engine` devolve
+            # False quando o backend ja' nao esta' la', e limpar a flag nesse caso
+            # fazia cada amostra de emergencia re-logar o KEPT da amostra
+            # seguinte (medido pelo revisor independente: 59 linhas em 600 s de
+            # oscilacao 94/89 com o motor ja' largado).
+            if self._release_engine("shed-muito-alta", why=why):
+                self._kept_logged = False
             return
         self.kept_engine += 1
         if self._kept_logged:

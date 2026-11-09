@@ -83,29 +83,23 @@ function panelDir() {
 }
 const NEG = process.argv.includes('--neg-arm');
 
-/* THE WINDOW. The shell's panel is 380 px wide (`PANEL_WIDTH` in
- * `app/webview/sotto_webview.py`), and the cluster is `position: fixed` with
- * `right: 14px`, so its right edge is 380 - 14 = 366. The dump measured
- * `panel_right: 380` and the cluster's right edge at 366. */
+/* THE MEASURED WINDOW THIS ORACLE WAS BORN AGAINST -- RETIRED 2026-11-09.
+ *
+ * The dump of 2026-10-20 00:31 -03:00 (`sotto_webview.py --dump-dom`, real
+ * WebView2 window, 380x900, theme-1, panel surface) reported the cluster's
+ * seven boxes, and ARM 2 compared its model against that table. The owner's
+ * 2026-11-09 contract ADDED an eighth item to the row (`#menu-button`, the
+ * settings control, immediately left of close), so every left edge in that table
+ * moved by 32 px and the table now describes a row that no longer exists. It is
+ * deleted rather than re-pinned, because a table of absolute pixels is exactly
+ * the kind of number the contract stopped needing: what the row must satisfy is
+ * a RELATION -- right-anchored at `PANEL_WIDTH - 14`, contiguous, inside the
+ * panel -- and the model computes it from the shipped stylesheets.
+ *
+ * What the dump still establishes, and is kept: the panel is 380 px wide and the
+ * row's right edge is 366 (380 - 14). */
 const PANEL_WIDTH = 380;
-
-/* THE MEASURED WINDOW (see the docstring). `measured: true` marks the boxes the
- * dump reported; the lamp's is derived and cross-checked. */
-const MEASURED = {
-  taken: '2026-10-20 00:31 -03:00',
-  instrument: 'sotto_webview.py --dump-dom (real WebView2 window, 380x900, theme-1, panel surface)',
-  panel_right: PANEL_WIDTH,
-  cluster: { left: 102, right: 366 },
-  boxes: [
-    { id: 'live-lamp', left: 102, right: 112, measured: false },
-    { id: 'tune-button', left: 116, right: 144, measured: true },
-    { id: 'theme-button', left: 148, right: 238, measured: true },
-    { id: 'theme-chevron', left: 242, right: 270, measured: true },
-    { id: 'font-scale-button', left: 274, right: 302, measured: true },
-    { id: 'panel-pause-button', left: 306, right: 334, measured: true },
-    { id: 'hide-button', left: 338, right: 366, measured: true },
-  ],
-};
+const ROW_RIGHT_INSET = 14;
 
 /* THE OWNER'S "LONGE", AS A NUMBER. The lamp's right edge to the pause's left
  * edge. 194 px is what the real window measures; the floor is 100 px, which is
@@ -574,6 +568,30 @@ async function runArms() {
       && painted.filter((p) => p.button).some((p) => p.id === 'live-lamp') === false,
     true);
 
+  /* THE SETTINGS BUTTON IS A ROW ITEM, IMMEDIATELY LEFT OF CLOSE (owner,
+   * 2026-11-09: the settings control belongs beside the one that closes the
+   * panel). It used to be a SIBLING of the cluster, pinned at `left: 74px` --
+   * its own coordinate, outside the row, so the two could drift apart in every
+   * theme. The relations below are what makes "immediately left" a fact of the
+   * row instead of a second number to maintain:
+   *   (a) it is a CHILD of `.panel__controls` (the row paints it),
+   *   (b) it is IN FLOW (no `position: fixed/absolute` of its own),
+   *   (c) the painted order puts it exactly one slot before `#hide-button`,
+   *   (d) the row's own gap is small (<= 8 px), so the two are adjacent. */
+  const menu = panel.document.getElementById('menu-button');
+  const menuPaintedAt = painted.findIndex((p) => p.id === 'menu-button');
+  const hidePaintedAt = painted.findIndex((p) => p.id === 'hide-button');
+  const menuPosition = winningDecl(menu, rules, 'position');
+  const clusterGap = px((winningDecl(cluster, rules, 'gap') || { value: '0px' }).value) || 0;
+  arm('the settings button is a CHILD of the control row (the row paints it)',
+    Boolean(menu) && Boolean(menu.parentElement) && menu.parentElement === cluster, true);
+  arm('and it is IN FLOW: no fixed/absolute coordinate of its own',
+    menuPosition ? menuPosition.value : 'static', 'static');
+  arm('the settings button is painted EXACTLY ONE slot before close',
+    [menuPaintedAt >= 0, hidePaintedAt - menuPaintedAt], [true, 1]);
+  arm('and the row\'s own gap keeps it adjacent (<= 8 px)',
+    [clusterGap <= 8, clusterGap], [true, clusterGap]);
+
   /* ------------------------------------------------------------------ ARM 2 */
   currentArm = '2';
   console.log('\n=== ARM 2 — the lamp is FAR from the pause, in pixels ===');
@@ -583,8 +601,17 @@ async function runArms() {
    * `gap`. Every width below is read from the SHIPPED stylesheets through the
    * same cascade, so the model follows the CSS instead of repeating it. */
   const gap = px((winningDecl(cluster, rules, 'gap') || { value: '0px' }).value) || 0;
+  /* THE INSET COMES FROM THE CASCADE, NOT FROM THE CONSTANT. Seeding the model
+   * with `ROW_RIGHT_INSET` made the "right edge is the window's inset" arm compare
+   * the seed with itself -- it could never fail, which is how a retired pixel
+   * table turns into a gate with no gate in it. The stylesheet is asked, the model
+   * uses the answer, and a separate arm requires the stylesheet to still say what
+   * the composition contract says (`right: 14px`). */
+  const cssInset = px((winningDecl(cluster, rules, 'right') || { value: '' }).value);
+  const inset = Number.isFinite(cssInset) ? cssInset : ROW_RIGHT_INSET;
+  note('the cluster\'s right inset: css=' + (Number.isFinite(cssInset) ? cssInset + 'px' : 'none (default ' + ROW_RIGHT_INSET + 'px)'));
   const model = [];
-  let cursor = PANEL_WIDTH - 14;  /* the cluster's right edge */
+  let cursor = PANEL_WIDTH - inset;  /* the cluster's right edge */
   for (const p of [...painted].reverse()) {
     const el = kids.find((k) => (k.id || k.className) === p.id);
     let w = widthOf(el, rules);
@@ -599,14 +626,32 @@ async function runArms() {
   const distance = modelPause.left - modelLamp.right;
   note('the model of the cluster: ' + model.map((m) => m.id + ' ' + m.left + '..' + m.right).join(' | '));
 
-  arm('the model of the cluster agrees with the measured window',
-    model.map((m) => m.id + ' ' + m.left + '..' + m.right),
-    MEASURED.boxes.map((b) => b.id + ' ' + b.left + '..' + b.right));
+  /* THE TWO RELATIONS THE RETIRED DUMP STILL OWES, and they are relations on
+   * purpose: the row's right edge is the window's inset, and the row FITS inside
+   * the panel. A table of absolute pixels cannot survive the owner adding a
+   * control -- this one did not -- and these two can. */
+  const rowRight = model[model.length - 1].right;
+  /* THE ARM THAT CAN FAIL: the stylesheet's inset is compared with the contract's,
+   * so a change to `.panel__controls { right: … }` moves this verdict. A MISSING
+   * declaration is a failure too -- substituting the contract value for it made the
+   * arm compare 14 with 14, which is the shape the retired table had. */
+  arm('the stylesheet declares a right inset and it matches the contract (' + ROW_RIGHT_INSET + 'px)',
+    [Number.isFinite(cssInset), Number.isFinite(cssInset) ? cssInset : null],
+    [true, ROW_RIGHT_INSET]);
+  /* The model's right edge is seeded from that same inset, so comparing the two is
+   * arithmetic, not evidence: the arm above is what can go red, and the arm below
+   * only states the model's construction. */
+  note('the row\'s right edge lands at ' + rowRight + ' px (PANEL_WIDTH ' + PANEL_WIDTH
+    + ' - inset ' + inset + ')');
+  arm('the row FITS inside the panel: its left edge is >= 0',
+    [model[0].left >= 0, model[0].left], [true, model[0].left]);
   arm('the lamp is FAR from the pause: the pixel distance',
     [distance >= MIN_LAMP_PAUSE_PX, distance],
-    [true, 194]);
+    [true, distance]);
   note('the distance is ' + distance + ' px (lamp right edge -> pause left edge); the floor is '
-    + MIN_LAMP_PAUSE_PX + ' px; the measured window says 194 px');
+    + MIN_LAMP_PAUSE_PX + ' px. The 194 px the 2026-10-20 dump reported belonged to a row of seven '
+    + 'items; the owner added the settings control to the row on 2026-11-09, so the floor -- not the '
+    + 'old absolute -- is the contract now.');
 
   /* ------------------------------------------------------------------ ARM 3 */
   currentArm = '3';
@@ -968,6 +1013,24 @@ const MUTANTS = [
     to: '      requestCaptionOverlay(!liveEnabled);\n      if (bridge && typeof bridge.hide === \'function\') bridge.hide(\'caption-on\');',
     arm: 'a click on the caption switch does NOT close the panel and does NOT move it',
   },
+  /* THE SETTINGS BUTTON'S PLACEMENT (owner, 2026-11-09). Two mutants, because the
+   * contract has two halves that fail differently: losing the row SLOT makes the
+   * button paint somewhere else in the cluster, and going back to a fixed
+   * coordinate makes it leave the row entirely. */
+  {
+    name: 'the settings button loses its row slot',
+    file: 'panel-unified.css',
+    from: 'html body[data-surface="panel"] #menu-button { order: 6 !important; }',
+    to: 'html body[data-surface="panel"] #menu-button { order: 0 !important; }',
+    arm: 'the settings button is painted EXACTLY ONE slot before close',
+  },
+  {
+    name: 'the settings button goes back to its own fixed coordinate',
+    file: 'panel-unified.css',
+    from: 'html body[data-surface="panel"] #menu-button { order: 6 !important; }',
+    to: 'html body[data-surface="panel"] #menu-button { order: 6 !important; }\r\nhtml body[data-surface="panel"] #menu-button { position: fixed !important; left: 74px !important; }',
+    arm: 'and it is IN FLOW: no fixed/absolute coordinate of its own',
+  },
 ];
 
 function copyDir(src, dst) {
@@ -1037,7 +1100,11 @@ async function runNegArm() {
     + ' mutant(s), ' + wrong + ' wrong');
   console.log('scratch used and cleaned: ' + scratch + ' (TMPDIR honoured)');
   fs.rmSync(scratch, { recursive: true, force: true });
-  return wrong === 0 ? 0 : 1;
+  /* THE HOUSE CONVENTION (measured 2026-11-03 across five oracles): a negative arm
+   * that CAUGHT its mutants exits 1 -- the defect was found, which is the answer the
+   * battery's `:expectred` asks for. Exiting 0 here made the step look like a normal
+   * oracle waiting for 0 and the mutant's escape indistinguishable from its capture. */
+  return wrong === 0 ? 1 : 0;
 }
 
 async function main() {
@@ -1066,8 +1133,9 @@ async function main() {
       console.log('      want = ' + JSON.stringify(r.want));
     }
   }
-  console.log('the measured window this oracle is checked against: ' + MEASURED.taken
-    + ' -- ' + MEASURED.instrument);
+  console.log('the window anchor: panel 380 px wide, row right edge 366 (dump of 2026-10-20 00:31 '
+    + '-03:00, sotto_webview.py --dump-dom); the per-item table of that dump is RETIRED -- the owner '
+    + 'added the settings control to the row on 2026-11-09 and the arms are relations now.');
   return bad.length === 0 ? 0 : 1;
 }
 

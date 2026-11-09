@@ -233,52 +233,19 @@
              (`:734` and `:743`). A comment that describes a removed control is
              worse than no comment: it is the shape of thing another lane rebuilds
              because it reads like an inventory. -->
-        <!-- THE CONFIG MENU (owner, 2026-11-08, verbatim: *"e faz o botao de
-             config pra eu escolher pra qual lingua traduzir"*).
+        <!-- THE CONFIG BUTTON IS THE CONTROL IMMEDIATELY BEFORE CLOSE (owner,
+             2026-11-09: the settings control belongs next to the one that closes
+             the panel, not in a pixel of its own on the far left of the header).
 
-             WHY IT IS NOT A CHILD OF `.panel__controls`: that row is
-             `position: fixed; right: 14px` with seven controls and 264 px of
-             width, and it is pinned to the owner's own measured coordinates
-             (`_main/panel-header-oracle.js` — every button in the same pixel in
-             every theme). One more 28 px control would take 32 px out of its left
-             edge and push the lamp over the wordmark. The header leaves a 31 px
-             gap between the wordmark (right edge 71) and the cluster (left 102),
-             and this control takes its own pixel there instead of moving anyone.
+             IT USED TO BE A SIBLING OF `.panel__controls` POSITIONED AT
+             `left: 74px` -- its own fixed pixel, outside the row, so the row and
+             the button could drift apart in every theme. It is a row item now:
+             `order: 6` in `panel-unified.css`, close is `order: 7`, and the row
+             is right-anchored, so "immediately left of close" is the ROW's own
+             arithmetic (`gap: 4px`) instead of a second coordinate to maintain.
 
-             `panel.js::wireMenu` owns the popover, the outside-click and Escape;
-             the shell persists the choice (`_main/caption-settings.json`) through
-             `bridge.setTranslationTarget`. THE ROW REUSES `.tune-row` — the
-             label+select row the theme tune dialog already uses — so the menu
-             does not invent a second row style, and the popover itself is
-             `.theme-dropdown`, the panel's own popover surface. -->
-        <button
-          type="button"
-          class="icon-button"
-          id="menu-button"
-          aria-haspopup="true"
-          aria-expanded="false"
-          aria-controls="panel-menu"
-          title="Configurações"
-          aria-label="Configurações"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <circle cx="8" cy="3.2" r="1.35" fill="currentColor" />
-            <circle cx="8" cy="8" r="1.35" fill="currentColor" />
-            <circle cx="8" cy="12.8" r="1.35" fill="currentColor" />
-          </svg>
-        </button>
-        <div class="theme-dropdown panel-menu" id="panel-menu" hidden>
-          <div class="tune-row">
-            <div class="tune-row__head">
-              <label class="tune-row__label" for="translation-select">Traduzir para:</label>
-            </div>
-            <select
-              class="tune-row__select"
-              id="translation-select"
-              aria-label="Traduzir para:"
-            ></select>
-          </div>
-        </div>
+             THE POPOVER IS STILL NOT A ROW ITEM (see the sibling below): it is
+             `position: fixed`, opens under this button and takes no flex slot. -->
         <div class="panel__controls">
           <!-- THE LIVE-CAPTION LAMP (owner, 2026-10-19, verbatim: *"com um alt c so,
                com audio ou nao, tem que ter indicativo se a legenda ao vivo ativou ou
@@ -401,6 +368,22 @@
               />
             </svg>
           </button>
+          <button
+            type="button"
+            class="icon-button"
+            id="menu-button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-controls="panel-menu"
+            title="Configurações"
+            aria-label="Configurações"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="8" cy="3.2" r="1.35" fill="currentColor" />
+              <circle cx="8" cy="8" r="1.35" fill="currentColor" />
+              <circle cx="8" cy="12.8" r="1.35" fill="currentColor" />
+            </svg>
+          </button>
           <!-- HIDE IS LAST, AND THAT IS THE OWNER'S RULING — 2026-10-08, verbatim:
                *"bota o botao de hide o sotto na direita, nao no meio dos botoes,
                em q ele esta."*
@@ -443,6 +426,36 @@
             </svg>
           </button>
         </div>
+        <!-- THE SETTINGS POPOVER IS A SIBLING OF THE CONTROL ROW, NOT A ROW ITEM.
+             It is `position: fixed` (panel.css) and hangs below its trigger, so it
+             never takes a flex slot from the eight controls; keeping it inside the
+             row would make it a ninth flex child the moment it is opened. -->
+        <div class="theme-dropdown panel-menu" id="panel-menu" hidden>
+          <div class="tune-row">
+            <div class="tune-row__head">
+              <label class="tune-row__label" for="translation-select">Traduzir para:</label>
+            </div>
+            <select
+              class="tune-row__select"
+              id="translation-select"
+              aria-label="Traduzir para:"
+            ></select>
+          </div>
+          <!-- In the popover, not the control row: no new flex slot beside
+               settings and close, on any of the 59 designs. The shell writes the
+               file and returns its path; this reveals it (as `#history-root`). -->
+          <div class="tune-row">
+            <div class="tune-row__head">
+              <span class="tune-row__label">Transcrição:</span>
+            </div>
+            <button
+              type="button"
+              class="tune-row__select tune-row__action"
+              id="history-export-txt"
+              title="Salvar o histórico como .txt (com origem e contexto) e abrir a pasta"
+            >Exportar .txt</button>
+          </div>
+        </div>
       </header>
 
       <!-- ── THE SKIN MOUNT POINT ───────────────────────────────────────────────
@@ -481,8 +494,10 @@
                keeps `history--collapsed`, the CSS-only hide on `.history__body`
                keeps its rows in the DOM for a read-back probe, and the drawer
                still opens BY ITSELF the day the shell reports a canonical
-               producer — `panel.js isTranscriptExpanded()` is unchanged and
-               nobody can open it by hand any more, which is the point.
+               producer. The toggle that used to add/remove that class was removed
+               with the button; nothing in `panel.js` writes it today, so the feed
+               is always expanded and `panel-unified.css` is what gives it the
+               remaining height.
 
                WHAT SURVIVES BESIDE IT: the label and the FOLDER button
                (`#history-root`, below), because the folder is where the data

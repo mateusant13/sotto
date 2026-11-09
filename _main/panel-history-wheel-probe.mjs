@@ -200,6 +200,38 @@ const target = await page.evaluate(() => {
   };
 });
 
+/* THE BOX THAT SCROLLS IS ASKED, NEVER ASSUMED (measured 2026-11-09: the design
+ * pass moved the scroller -- `.history__body` is `overflow-y:hidden` and does not
+ * scroll any more, `#history-list` is the box with content taller than itself).
+ * Every arm below reads THIS node, so a CSS change cannot turn an arm into a
+ * measurement of a dead element -- which is exactly how W2b went RED once. */
+const scrollBox = () => page.evaluate(() => {
+  const list = document.querySelector('#history-list');
+  let best = null;
+  for (let node = list; node && node !== document.body; node = node.parentElement) {
+    const y = getComputedStyle(node).overflowY;
+    if (y !== 'auto' && y !== 'scroll' && y !== 'overlay') continue;
+    if (!best) best = node.id ? `#${node.id}` : `.${String(node.className).split(' ')[0]}`;
+    if (node.scrollHeight > node.clientHeight + 1) {
+      return { sel: node.id ? `#${node.id}` : `.${String(node.className).split(' ')[0]}`,
+        clientHeight: node.clientHeight, max: node.scrollHeight - node.clientHeight };
+    }
+  }
+  return { sel: best, clientHeight: 0, max: 0 };
+});
+const BOX = await scrollBox();
+const boxTop = () => page.evaluate((sel) => {
+  const el = document.querySelector(sel);
+  return el ? el.scrollTop : null;
+}, BOX.sel);
+const resetBox = () => page.evaluate((sel) => {
+  const el = document.querySelector(sel);
+  if (el) el.scrollTop = 0;
+  const b = document.querySelector('.history__body');
+  if (b) b.scrollTop = 0;
+  return el ? el.scrollTop : null;
+}, BOX.sel);
+
 const scrollTops = () => page.evaluate(() => {
   const el = (sel) => document.querySelector(sel);
   const pick = (n) => (n ? { clientHeight: n.clientHeight, scrollHeight: n.scrollHeight, scrollTop: n.scrollTop } : null);
@@ -248,17 +280,100 @@ const targetRight = await page.evaluate(() => {
   };
 });
 const rightEdge = await (async () => {
-  await page.evaluate(() => {
-    const b = document.querySelector('.history__body');
-    if (b) b.scrollTop = 0;
-  });
-  const b0 = await scrollTops();
+  await resetBox();
+  const t0 = await boxTop();
   await page.mouse.move(targetRight.x, targetRight.y);
   await page.mouse.wheel(0, 400);
   await page.waitForTimeout(250);
-  const b1 = await scrollTops();
-  return { before: b0, after: b1, moved: b1.body.scrollTop - b0.body.scrollTop };
+  const t1 = await boxTop();
+  return { before: t0, after: t1, moved: t1 - t0 };
 })();
+
+/* THE ARM THAT CAN FAIL. MEASURED 2026-11-09: the real wheel is NOT an isolated
+ * probe any more. Once the design pass made `#history-list` the scroller with
+ * `overflow-y:auto` and no `overscroll-behavior:contain`, the BROWSER scrolls it
+ * by itself -- so the real-wheel arms stayed GREEN with `wireHistoryWheel()`
+ * removed, i.e. they certified the mechanism without looking at it. An untrusted
+ * `dispatchEvent` is the isolated instrument: the browser does not scroll for a
+ * synthetic wheel (by spec), so every pixel that moves is OUR listener's, and
+ * `defaultPrevented` says whether it took the event. That is why W2/W3 are
+ * synthetic and only W2b (real wheel, far-right column) is kept as a smoke arm.
+ */
+const syntheticWheel = async (count, deltaY, gapMs) => page.evaluate(async (opts) => {
+  const el = document.querySelector(opts.sel);
+  const row = document.querySelector('#history-list .hist');
+  if (el) el.scrollTop = 0;
+  const b = document.querySelector('.history__body');
+  if (b) b.scrollTop = 0;
+  const prevented = [];
+  for (let i = 0; i < opts.count; i += 1) {
+    const ev = new WheelEvent('wheel', { deltaY: opts.deltaY, bubbles: true, cancelable: true });
+    row.dispatchEvent(ev);
+    prevented.push(ev.defaultPrevented);
+    if (opts.gapMs) await new Promise((r) => setTimeout(r, opts.gapMs));
+  }
+  return { top: el ? el.scrollTop : null, prevented, steps: window.__wheelSteps || [] };
+}, { count, deltaY, gapMs, sel: BOX.sel });
+
+/* Count the steps the REAL arithmetic returned, without touching the product:
+ * `historyWheelStep` is a plain function declaration, so a wrapper around it sees
+ * every call the listener makes. */
+await page.evaluate(() => {
+  window.__wheelSteps = [];
+  const orig = window.historyWheelStep;
+  window.historyWheelStep = function stepped(...args) {
+    const r = orig.apply(this, args);
+    window.__wheelSteps.push({ step: r.step, burst: r.burst, gain: r.gain });
+    return r;
+  };
+});
+
+const lone = await syntheticWheel(1, 400, 0);
+const burstRun = await syntheticWheel(5, 400, 0);
+const capPx = BOX.clientHeight * 0.75;
+
+/* W2/W3 — ONE NOTCH IS 1:1, A BURST MULTIPLIES (owner, 2026-11-09, verbatim:
+ * *"eu quero APERTAR meu scroll e descer rapidamente pra cima ou pra baixo no
+ * historico"*). Both halves on the same instrument: the lone notch must move the
+ * box by the wheel's own delta (no surprise for a reader), and five notches inside
+ * the window must cross a screen's worth -- measured as a MULTIPLE of the lone
+ * one, never as an absolute number that a viewport change could fake. */
+const loneStep = lone.steps.length ? Math.abs(lone.steps[0].step) : 0;
+/* The LAST five steps are this arm's: the burst counter CONTINUES across a gap
+ * shorter than the window, which is the honest reading of a real burst (`lone`
+ * ran immediately before it, so the first burst notch is already #2). The
+ * per-event step is compared EXCLUDING the cap -- a 400 px tick is clamped at
+ * 0.75 viewport by design, so what proves the gain is that the clamped step still
+ * exceeds the lone step, and that five of them cross the screen. */
+const burstSteps = burstRun.steps.slice(-5);
+const burstStep = burstSteps.length ? Math.abs(burstSteps[burstSteps.length - 1].step) : 0;
+const armW2 = lone.top > 0 && Math.abs(lone.top - 400) <= 2 && lone.prevented.every(Boolean);
+const armW3 = lone.top > 0 && burstRun.top >= lone.top * 2.5 && burstStep > loneStep * 1.2;
+const stats = { loneTop: lone.top, burstTop: burstRun.top, loneStep, burstStep,
+  burst: burstSteps.map((x) => x.burst), gain: burstSteps.map((x) => x.gain) };
+
+console.log('--- W2/W3 the wheel, isolated (synthetic: only our listener can move it) ---');
+console.log(`  box ${BOX.sel} client=${BOX.clientHeight}px max=${BOX.max}px cap=${Math.round(capPx)}px`);
+console.log(`  lone notch deltaY=400 -> top=${lone.top} step=${loneStep} prevented=${JSON.stringify(lone.prevented)}`);
+console.log(`  burst of 5 deltaY=400 -> top=${burstRun.top} steps=${JSON.stringify(stats.burst)} `
+  + `gains=${JSON.stringify(stats.gain)}`);
+console.log(`  W2 ${armW2 ? 'GREEN' : 'RED'} — one notch is 1:1 and the listener takes the event`);
+console.log(`  W3 ${armW3 ? 'GREEN' : 'RED'} — a burst of 5 moves x${lone.top ? (burstRun.top / lone.top).toFixed(2) : 'n/a'} `
+  + `(per-event step x${loneStep ? (burstStep / loneStep).toFixed(2) : 'n/a'})`);
+
+/* W4 — MIDDLE-BUTTON PRESS-AND-PULL. 200 px of pointer is half a screen at the
+ * declared gain; the press must be consumed (no autoscroll widget, no paste). */
+await resetBox();
+await page.mouse.move(target.x, target.y);
+await page.mouse.down({ button: 'middle' });
+for (const dy of [40, 80, 120, 160, 200]) await page.mouse.move(target.x, target.y - dy);
+await page.mouse.up({ button: 'middle' });
+await page.waitForTimeout(120);
+const dragged = await boxTop();
+const armW4 = dragged >= 200 && dragged >= BOX.clientHeight * 0.5 && dragged <= BOX.max;
+console.log(`  middle press + 200 px pull: top 0->${dragged}`);
+console.log(`  W4 ${armW4 ? 'GREEN' : 'RED'} — a 200 px pull moves ${dragged} tex px `
+  + `(piso ${Math.round(BOX.clientHeight * 0.5)} = meia caixa)`);
 
 /* THE CAUSES ARE FALSIFIED ONE AT A TIME, each on the SAME document, by changing
  * exactly one property and repeating the SAME wheel. A probe that only prints
@@ -369,7 +484,7 @@ const overflowOk = (n) => n && (n.overflowY === 'auto' || n.overflowY === 'scrol
 const scrollable = chain.nodes.find((n) => n && overflowOk(n) && n.scrollHeight > n.clientHeight + 1);
 
 const armW1 = Boolean(scrollable);
-const armW2 = Boolean(scrolledIdx) && moved(before, afterReal, 'doc') === 0;
+const armRealWheel = Boolean(scrolledIdx) || rightEdge.moved > 0;
 
 console.log(`THEME ${THEME} · ${ROWS} rows · viewport ${chain.viewportH}px`);
 console.log('--- D1 scroll chain (diagnostic) ---');
@@ -383,8 +498,8 @@ console.log(`  D1 chain (diagnostic, GREEN both sides) — a transcript scroller
 console.log('--- W2 wheel (the arm) ---');
 console.log(`  pointer (${target.x},${target.y}) over=${target.hit} onRow=${target.hitRow} visible=${target.visible}px list=${target.listTop}..${target.listBottom}`);
 console.log(`  scrollTop deltas: ${scrollers.map(([k, d]) => `${k}=${d}`).join(' ')}`);
-console.log(`  W2 ${armW2 ? 'GREEN' : 'RED'} — a real wheel over the rows moved ${scrolledIdx || 'NOTHING'}${scrolledIdx ? '' : ' (scrollTop stayed put)'}`);
-const armW2b = rightEdge.moved > 0;
+console.log(`  W2r ${armRealWheel ? 'GREEN' : 'RED'} — a real wheel over the rows moved ${scrolledIdx || `nothing in the doc chain (right edge ${rightEdge.moved})`} (smoke, not the arm)`);
+const armW2b = rightEdge.moved > 0;   /* smoke: this one the browser alone can satisfy */
 console.log(`  W2b pointer (${targetRight.x},${targetRight.y}) over=${targetRight.hit} onRow=${targetRight.hitRow} moved body=${rightEdge.moved}`);
 console.log(`  W2b ${armW2b ? 'GREEN' : 'RED'} — the far-right column of the rows scrolls too`);
 console.log(`  control: synthetic dispatchEvent moved body=${moved(beforeSynthetic, afterSynthetic, "body")} list=${moved(beforeSynthetic, afterSynthetic, "list")} (untrusted events are not consumed by browser scroll by spec)`);
@@ -434,7 +549,9 @@ console.log(`  setTranslationTarget calls on change: ${JSON.stringify(menu.calls
 console.log(`  M ${armM ? 'GREEN' : 'RED'} — selector with the new label, and fr posted exactly once`);
 
 if (NEG_ARM) {
-  const caught = !armW2 || !armW2b;
+  /* W2b/W2r are SMOKE: the browser's own scroll satisfies them, so they cannot
+   * catch a missing listener -- only the isolated arms can. */
+  const caught = !armW2 || !armW3 || !armW4;
   console.log(`PROBE ${caught ? 'RED (the mutant)' : 'GREEN (THE MUTANT WAS NOT CAUGHT)'}   `
     + `(${MUTATION})`);
   console.log(`NEG-ARM: ${caught ? 'PASS' : 'FAIL -- the arm is GREEN with the wheel wiring removed, '
@@ -442,7 +559,7 @@ if (NEG_ARM) {
   await browser.close();
   process.exit(caught ? 1 : 0);
 }
-console.log(`PROBE ${armW2 && armW2b && armM ? 'GREEN' : 'RED'}   (arms: W2/W2b wheel, M config menu; D1 is diagnostic)`);
+console.log(`PROBE ${armW2 && armW2b && armW3 && armW4 && armM ? 'GREEN' : 'RED'}   (arms: W2 1:1, W3 burst, W4 middle press, M config menu; W2r/W2b real-wheel smoke, D1/D causes diagnostic)`);
 if (errors.length) {
   console.log(`PAGE ERRORS: ${errors.length}`);
   for (const e of errors.slice(0, 5)) console.log('  ' + e);
@@ -451,4 +568,4 @@ if (JSON_OUT) {
   writeFileSync(JSON_OUT, JSON.stringify({ theme: THEME, chain, target, before, afterReal, afterSynthetic, rowStyle, errors }, null, 2));
 }
 await browser.close();
-process.exit(armW2 && armW2b && armM && !errors.length ? 0 : 1);
+process.exit(armW2 && armW2b && armW3 && armW4 && armM && !errors.length ? 0 : 1);

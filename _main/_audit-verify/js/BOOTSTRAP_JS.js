@@ -388,6 +388,16 @@
           { query: String(query == null ? '' : query), limit: Number(limit) || 200 });
       },
       root: function () { return historyCall('history-root', {}); },
+      export: function (format, limit) {
+        return historyCall('history-export',
+          { format: String(format == null ? 'txt' : format),
+            limit: Number(limit) || 400 });
+      },
+      exportFile: function (format, limit) {
+        return historyCall('history-export-file',
+          { format: String(format == null ? 'txt' : format),
+            limit: Number(limit) || 400 });
+      },
       reveal: function (path) {
         post('history-reveal', { path: String(path == null ? '' : path) });
       }

@@ -42,9 +42,15 @@ PULSE_PERIOD_S = 1.2
 #: O alfa MINIMO da pulsacao (0..255). Nunca chega a zero: a marca existe
 #: enquanto o Ctrl estiver carregado, ela so' respira.
 PULSE_MIN_ALPHA = 96
-#: Enquanto se ARRASTA: o contorno fica solido (alfa 255) e o tick corre a 60 Hz
-#: para a janela seguir o cursor sem arrastar atras.
-DRAG_FRAME_S = 1.0 / 60.0
+#: Enquanto se ARRASTA: o contorno fica solido (alfa 255) e o tick corre no
+#: TECTO de 240 Hz (ordem do dono: *"acho que a animacao da legenda pode ir ate
+#: 240hz"*). O tecto nao e' a taxa entregue: o poll do arrasto e' barato (tres
+#: `Get*` + `GetWindowRect`) e NAO repinta, enquanto a pintura de conteudo
+#: continua limitada por `caption_overlay._limit_by_paint` (orcamento de 40 % de
+#: um nucleo). A taxa que a maquina entrega e' medida e publicada em
+#: `CAPTION_DRAG_RATE` no fim de cada arrasto -- nunca afirmada.
+DRAG_FRAME_HZ = 240
+DRAG_FRAME_S = 1.0 / DRAG_FRAME_HZ
 #: Enquanto se mostra a marca: 30 Hz chegam para a pulsacao e custam metade.
 PULSE_FRAME_S = 1.0 / 30.0
 #: O ritmo do POLL quando nao ha' nada a animar. Sem isto a legenda parada nao

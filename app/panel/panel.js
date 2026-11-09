@@ -54,15 +54,15 @@ const MAX_HISTORY = 500;
 /** How many entries a fresh `tail()` loads. */
 const HISTORY_LOAD = 400;
 /**
- * HOW FAR BACK THE FEED GOES (owner, 2026-11-06, verbatim): *"o historico tem que
- * persistir, aparecendo no painel da direita, por padrao, ate 48hrs. nao faça isso
- * ser travado ou pesado."*
+ * HOW FAR BACK THE FEED GOES.
  *
- * 48 h is the WINDOW, and the shell prunes day files past it (`_history_prune`),
- * so the panel filter below and the store agree on one number instead of two. It
- * is a filter over the lines the tail already returned: no second read, no index.
+ * A JANELA E' A DO BACKEND (2026-11-09). Era 48 h pela ordem de 2026-11-06
+ * (*"ate 48hrs. nao faça isso ser travado ou pesado."*); o recall de MESES veio
+ * depois, `sotto_webview.HISTORY_RETENTION_H` passou a 4320 h (180 dias) e o
+ * filtro daqui ficou em 48 -- escondendo 178 dias que o disco tem. Um numero so'.
+ * Continua a ser FILTRO sobre a cauda ja' devolvida, sem segunda leitura.
  */
-const HISTORY_RETENTION_H = 48;
+const HISTORY_RETENTION_H = 4320;
 /**
  * THE TRANSCRIPT FONT DIAL — its bounds and its storage key (owner, 2026-10-09).
  * The scale is a multiplier around the CSS DESIGN size (`--caption-size`, 15px),
@@ -188,6 +188,7 @@ const dom = {
   menuButton: document.getElementById('menu-button'),
   panelMenu: document.getElementById('panel-menu'),
   translationSelect: document.getElementById('translation-select'),
+  historyExport: document.getElementById('history-export-txt'),
   menuCause: document.getElementById('panel-menu-cause'),
 };
 
@@ -1020,6 +1021,11 @@ wireThemeScrollGuard();
 // THE WHEEL OWNS THE TRANSCRIPT (owner, 2026-11-08: *"eu nao consigo usar meu
 // scroll pra scrollar as legendas no historico."*), with or without a bridge.
 wireHistoryWheel();
+// THE KEYBOARD TOO (owner contract 2026-11-09: "no visible scrollbars (keep wheel
+// AND keyboard scrolling)"). Hiding the bar removed the only affordance that showed
+// the box can move, so the keys that used to scroll the focused box must work
+// without the box being focusable at all.
+wireHistoryKeys();
 
 
 // ---------------------------------------------------------------------------
@@ -1723,7 +1729,39 @@ function historyScroller() {
  * SECTION, so a row, the space under the last one and the tools row all scroll
  * it. `preventDefault` only when the box moves, so an end of travel is not eaten;
  * `deltaMode` is honoured (a line-mode wheel reports lines, not pixels).
- */
+ *
+ * ACCELERATION (owner, 2026-11-09, verbatim: *"eu quero APERTAR meu scroll e descer
+ * rapidamente pra cima ou pra baixo no historico"*). One isolated notch is left
+ * EXACTLY as before -- 1:1, the box moves what the wheel says -- because a wheel
+ * that always jumps is unusable for reading. What changes is the BURST: notches
+ * that arrive inside `WHEEL_BURST_MS` of each other grow the step (1x, 1.75x,
+ * 2.5x ... capped at `WHEEL_GAIN_MAX`), so five quick notches cross a screen
+ * instead of five lines. The step is capped at a fraction of the visible box so a
+ * single event can never skip past what the eye can follow.
+ *
+ * `historyWheelStep` is PURE and takes `state` by value, so the oracle drives the
+ * real arithmetic instead of re-deriving it from the constant names. */
+const WHEEL_BURST_MS = 220;
+const WHEEL_BURST_GAIN = 0.75;
+const WHEEL_GAIN_MAX = 6;
+const WHEEL_MAX_FRACTION = 0.75;
+
+function historyWheelStep(deltaY, deltaMode, viewportH, state) {
+  const direction = deltaY > 0 ? 1 : -1;
+  const unit = deltaMode === 1 ? 16 : deltaMode === 2 ? viewportH : 1;
+  const now = state.now || 0;
+  const last = state.last || 0;
+  const gap = last ? now - last : Infinity;
+  const burst = gap <= WHEEL_BURST_MS ? (state.burst || 0) + 1 : 1;
+  const gain = Math.min(WHEEL_GAIN_MAX, 1 + (burst - 1) * WHEEL_BURST_GAIN);
+  const cap = Math.max(1, viewportH * WHEEL_MAX_FRACTION);
+  let step = deltaY * unit * gain;
+  if (Math.abs(step) > cap) step = direction * cap;
+  return { step, burst, now, gain };
+}
+
+let _wheelState = { now: 0, burst: 0 };
+
 function wireHistoryWheel() {
   const section = dom.transcript;
   if (!section) return;
@@ -1733,13 +1771,94 @@ function wireHistoryWheel() {
     if (!scroller) return;
     const max = scroller.scrollHeight - scroller.clientHeight;
     if (max <= 0) return;
-    const unit = event.deltaMode === 1 ? 16
-      : event.deltaMode === 2 ? scroller.clientHeight : 1;
-    const next = Math.max(0, Math.min(max, scroller.scrollTop + event.deltaY * unit));
+    const next0 = historyWheelStep(event.deltaY, event.deltaMode, scroller.clientHeight, {
+      now: event.timeStamp || performance.now(),
+      last: _wheelState.now,
+      burst: _wheelState.burst,
+    });
+    _wheelState = { now: next0.now, burst: next0.burst };
+    const next = Math.max(0, Math.min(max, scroller.scrollTop + next0.step));
     if (next === scroller.scrollTop) return;
     event.preventDefault();
     scroller.scrollTop = next;
   }, { passive: false });
+  wireHistoryMiddleDrag(section);
+}
+
+/* "APERTAR O SCROLL" IS THE OTHER HALF OF THE ORDER: a middle-button press over the
+ * transcript turns the panel into a grab surface -- 1 px of pointer is
+ * `MIDDLE_DRAG_GAIN` px of transcript -- and the press is consumed so WebView2
+ * never opens its autoscroll widget or pastes the clipboard into the field. Only a
+ * press that STARTS on the transcript counts, and the drag stops on `mouseup`
+ * anywhere (`window`), so a release outside the box cannot leave it stuck. */
+const MIDDLE_DRAG_GAIN = 2.5;
+
+function wireHistoryMiddleDrag(section) {
+  let drag = null;
+  section.addEventListener('mousedown', (event) => {
+    if (event.button !== 1) return;
+    const scroller = historyScroller();
+    if (!scroller || scroller.scrollHeight - scroller.clientHeight <= 0) return;
+    event.preventDefault();
+    drag = { scroller, y: event.clientY, top: scroller.scrollTop };
+  });
+  section.addEventListener('auxclick', (event) => {
+    if (event.button === 1) event.preventDefault();
+  });
+  window.addEventListener('mousemove', (event) => {
+    if (!drag) return;
+    const max = drag.scroller.scrollHeight - drag.scroller.clientHeight;
+    drag.scroller.scrollTop = Math.max(0,
+      Math.min(max, drag.top - (event.clientY - drag.y) * MIDDLE_DRAG_GAIN));
+  });
+  window.addEventListener('mouseup', (event) => {
+    if (event.button === 1) drag = null;
+  });
+  window.addEventListener('blur', () => { drag = null; });
+}
+
+/**
+ * THE KEYS SCROLL THE TRANSCRIPT. `PageUp`/`PageDown` move a page, `Home`/`End` the
+ * ends, the arrows a line -- the same box the wheel owns, resolved by the same
+ * document-driven `historyScroller()`. A key is left alone when it is typing
+ * (`input`/`textarea`/`select`/contenteditable), when a modifier is held (the app's
+ * own hotkeys), or when the box cannot move, so nothing is swallowed at an end of
+ * travel. `preventDefault` only after the box actually moved.
+ */
+const HISTORY_KEY_STEP = 48;
+
+function historyKeyDelta(event, scroller) {
+  const page = Math.max(1, scroller.clientHeight - HISTORY_KEY_STEP);
+  switch (event.key) {
+    case 'PageDown': return page;
+    case 'PageUp': return -page;
+    case 'ArrowDown': return HISTORY_KEY_STEP;
+    case 'ArrowUp': return -HISTORY_KEY_STEP;
+    case 'End': return scroller.scrollHeight;
+    case 'Home': return -scroller.scrollHeight;
+    default: return 0;
+  }
+}
+
+function wireHistoryKeys() {
+  const section = dom.transcript;
+  if (!section) return;
+  section.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target;
+    if (target && (target.isContentEditable
+      || /^(input|textarea|select)$/i.test(target.tagName || ''))) return;
+    const scroller = historyScroller();
+    if (!scroller) return;
+    const max = scroller.scrollHeight - scroller.clientHeight;
+    if (max <= 0) return;
+    const delta = historyKeyDelta(event, scroller);
+    if (!delta) return;
+    const next = Math.max(0, Math.min(max, scroller.scrollTop + delta));
+    if (next === scroller.scrollTop) return;
+    event.preventDefault();
+    scroller.scrollTop = next;
+  });
 }
 
 /**
@@ -1999,6 +2118,55 @@ function loadHistoryFromMemory() {
 }
 
 /**
+ * THE VIEWING CONTEXT OF A LINE (owner, 2026-11-09). Each transcription keeps a
+ * COMPACT record of what the audio was and what was in front of him: the app
+ * that produced the sound, the audio source, and the foreground app/title/URL.
+ *
+ * The names are the contract with the history owner
+ * (`.agent-work/history-ui-contract.md`): `sourceApp`, `audioSource`,
+ * `viewingApp`, `viewingTitle`, `viewingUrl`. This function is the ONE place
+ * that bounds them, because the values come from a bridge payload and a title
+ * can be a whole sentence. Empty means ABSENT -- a field is never invented, and
+ * a context with no field at all is `null`, not `{}`.
+ */
+const CONTEXT_FIELDS = [
+  ['sourceApp', 60],
+  ['audioSource', 120],
+  ['viewingApp', 60],
+  ['viewingTitle', 200],
+  ['viewingUrl', 512],
+];
+
+function normaliseContext(meta) {
+  const raw = meta && meta.context;
+  if (!raw || typeof raw !== 'object') return null;
+  const out = {};
+  for (const [key, limit] of CONTEXT_FIELDS) {
+    const value = raw[key];
+    if (typeof value !== 'string') continue;
+    const text = value.replace(/\s+/g, ' ').trim().slice(0, limit);
+    if (text) out[key] = text;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/** One short sentence for the row's tooltip and for search context. */
+function contextSummary(entry) {
+  const ctx = entry && entry.context;
+  if (!ctx || typeof ctx !== 'object') return '';
+  const parts = [];
+  if (ctx.audioSource) parts.push(ctx.audioSource);
+  else if (ctx.sourceApp) parts.push(ctx.sourceApp);
+  if (ctx.viewingTitle) {
+    parts.push(ctx.viewingApp ? `${ctx.viewingApp}: ${ctx.viewingTitle}` : ctx.viewingTitle);
+  } else if (ctx.viewingApp) {
+    parts.push(ctx.viewingApp);
+  }
+  if (ctx.viewingUrl) parts.push(ctx.viewingUrl);
+  return parts.join(' · ');
+}
+
+/**
  * Record a committed caption. The shell is the source of truth for the file
  * path (it names the folder), so the entry it returns is what the feed stores;
  * if the store is absent or fails, the caption still appears in the feed with
@@ -2085,6 +2253,7 @@ function recordHistory(text, reason, meta) {
     routeSource,
     start: meta && typeof meta.start === 'number' ? meta.start : null,
     reason: reason || '',
+    context: normaliseContext(meta),
   };
   // M8 — what the FILE gets. Usually the same string the box shows; for a line
   // the worker never closed the engine hands a `fileText` without the terminal
@@ -2094,7 +2263,10 @@ function recordHistory(text, reason, meta) {
     ? meta.fileText
     : text;
   if (!historyApi || !historyApi.append) {
-    pushEntry({ time: clockTime(), text: body, path: null });
+    /* THE FALLBACK KEEPS THE CONTEXT (2026-11-09). A row that lost it in the
+     * no-store path would be the only row on screen with no `data-context` and no
+     * tooltip, and the owner would read that as the context never being captured. */
+    pushEntry({ time: clockTime(), text: body, path: null, context: options.context });
     return;
   }
   historyApi
@@ -2112,7 +2284,7 @@ function recordHistory(text, reason, meta) {
     })
     .catch((err) => {
       setHistoryNote('History write failed: ' + errorText(err));
-      pushEntry({ time: clockTime(), text, path: null });
+      pushEntry({ time: clockTime(), text, path: null, context: options.context });
     });
 }
 
@@ -2164,7 +2336,10 @@ function pushEntry(entry) {
   while (historyEntries.length > MAX_HISTORY) historyEntries.shift();
 
   if (searchQuery) {
-    if (matches(entry.text, searchQuery)) {
+    /* THE CONTEXT MATCHES TOO, or an open search view silently drops a line that
+     * the store's own search would return: the same query, two answers, depending
+     * on whether the line arrived before or after the search was opened. */
+    if (matches(entry.text, searchQuery) || matches(contextSummary(entry), searchQuery)) {
       searchHits = [entry].concat(searchHits);
       renderSearchResults(searchQuery, searchHits);
     }
@@ -2179,6 +2354,20 @@ function pushEntry(entry) {
 }
 
 /**
+ * THE WINDOW IS ONE PREDICATE, FOR THE FEED AND FOR THE SEARCH ALIKE.
+ *
+ * Measured 2026-11-09: the feed filtered by `HISTORY_RETENTION_H` and the search
+ * results did NOT, so a query the shell still answered with a line older than
+ * the window painted a row the feed would never show. The store prunes lazily
+ * (`_history_prune` runs on append), so "the disk has no such line" is not a
+ * fact the panel may assume. One predicate, used by both readers.
+ */
+function withinHistoryWindow(entry) {
+  const at = entryAt(entry);
+  return !Number.isFinite(at) || at >= Date.now() - HISTORY_RETENTION_H * 3600 * 1000;
+}
+
+/**
  * THE FEED PAINTS ITSELF (owner, 2026-11-06).
  *
  * Verbatim: *"o historico tem que persistir, aparecendo no painel da direita, por
@@ -2190,10 +2379,11 @@ function pushEntry(entry) {
  * and per hour, and the list stayed EMPTY until one was pressed. It is deleted —
  * the markup, the counters, the pick state and the module that bucketed the
  * entries — because the owner stopped asking to navigate the store and started
- * asking to see it. The list now shows the last 48 h on load and follows the
- * newest line from then on (`appendFeedRow` / `replaceFeedRow`).
+ * asking to see it. The list shows the SAME window the shell keeps on disk
+ * (`HISTORY_RETENTION_H`, 180 days since 2026-11-09) and follows the newest line
+ * from then on (`appendFeedRow` / `replaceFeedRow`).
  *
- * WHY ONLY THE LAST 48 h, AND WHY THAT IS CHEAP: the shell already tails the store
+ * WHY A WINDOW AND WHY IT IS CHEAP: the shell already tails the store
  * (`HISTORY_LOAD` lines) and prunes day files past the same window
  * (`HISTORY_RETENTION_H`), so this is a filter over what was already read, not a
  * second pass over the disk.
@@ -2211,11 +2401,7 @@ function renderFeed() {
     applyTranscriptMode();
     return;
   }
-  const cutoff = Date.now() - HISTORY_RETENTION_H * 3600 * 1000;
-  const rows = historyEntries.filter((entry) => {
-    const at = entryAt(entry);
-    return !Number.isFinite(at) || at >= cutoff;
-  });
+  const rows = historyEntries.filter(withinHistoryWindow);
   for (const entry of rows) dom.historyList.append(makeRow(entry));
   // NEVER THE TOP (owner, 2026-10-12): *"e sempre mostrando o bottom do historico
   // de transcript."* One function, used by the render path and the theme guard.
@@ -2277,6 +2463,14 @@ function makeRow(entry, hitQuery) {
   const time = document.createElement('span');
   time.className = 'hist__time';
   time.textContent = stampFor(entry);
+  //: O DIA NAO ENTRA NA FAIXA -- E AGORA ELE E' RECUPERAVEL (2026-11-09). A ordem
+  //: de 2026-11-06 tirou a data do chip porque a janela era 48 h e o dia era
+  //: contexto que ele ja' tinha. Com 180 dias essa premissa caiu: uma linha de
+  //: 150 dias atras mostra so' `HH:MM:SS` e fica indistinguivel da de hoje. O
+  //: chip continua exactamente o que ele mandou (nada de novo no ecra) e o dia
+  //: viaja no `title`, que so' aparece quando ele para o rato na linha.
+  const fullStamp = fullStampFor(entry);
+  if (fullStamp) time.title = fullStamp;
 
   const text = document.createElement('span');
   text.className = 'hist__text';
@@ -2308,6 +2502,32 @@ function makeRow(entry, hitQuery) {
     select(entry);
     revealPath(entry.path);
   });
+
+  // THE VIEWING CONTEXT RIDES ON THE ROW (owner, 2026-11-09). It is one compact
+  // sentence, never a new column: the tooltip carries it, `data-context` lets a
+  // gate read it, and when the SEARCH matched the context rather than the words
+  // the context is painted under the line with the match marked -- otherwise a
+  // hit would look like a line that does not contain the query.
+  const ctxSummary = contextSummary(entry);
+  if (ctxSummary) {
+    li.dataset.context = ctxSummary;
+    li.title = ctxSummary;
+    text.title = ctxSummary;
+    if (hitQuery && !matches(entry.text, hitQuery) && matches(ctxSummary, hitQuery)) {
+      const note = document.createElement('span');
+      note.className = 'hist__ctx';
+      for (const part of highlight(ctxSummary, hitQuery)) {
+        if (typeof part === 'string') {
+          note.append(document.createTextNode(part));
+        } else {
+          const mark = document.createElement('mark');
+          mark.textContent = part.mark;
+          note.append(mark);
+        }
+      }
+      text.append(note);
+    }
+  }
 
   li.append(time, text, folder);
   li.addEventListener('click', () => select(entry));
@@ -2577,6 +2797,12 @@ function wireMenu() {
     if (bridge && typeof bridge.setTranslationTarget === 'function') {
       bridge.setTranslationTarget(select.value || '');
     }
+  }
+
+  // The export button lives in the popover, so the header contract (settings
+  // immediately left of close) is untouched on all 59 designs.
+  if (dom.historyExport) {
+    dom.historyExport.addEventListener('click', () => { exportTranscript(); });
   }
 }
 
@@ -3510,6 +3736,33 @@ function revealPath(path) {
   setHistoryNote(path ? 'Opening ' + path : 'Opening the transcript folder');
 }
 
+/** Save the transcript as a compact .txt and open its folder.
+ *
+ *  A download dialog is a window on the owner's screen, so the SHELL writes the
+ *  file (`history-export-file`) and this reveals it -- the folder button's
+ *  gesture. The body is the API's own compact line, context included.
+ */
+function exportTranscript() {
+  if (!historyApi || typeof historyApi.exportFile !== 'function') {
+    setHistoryNote('Export unavailable: this shell has no transcript store');
+    return;
+  }
+  setHistoryNote('Exporting the transcript…');
+  historyApi.exportFile('txt', 5000).then((res) => {
+    const path = res && res.path ? String(res.path) : '';
+    const count = res && res.entries ? Number(res.entries) : 0;
+    if (!path) {
+      setHistoryNote(count ? 'Export failed: ' + ((res && res.error) || 'no path')
+        : 'Nothing to export: the transcript is empty');
+      return;
+    }
+    const capped = count >= 5000;
+    setHistoryNote(`Exported ${count} line${count === 1 ? '' : 's'}`
+      + (capped ? ' (newest 5000)' : '') + ` · ${path}`);
+    if (typeof historyApi.reveal === 'function') historyApi.reveal(path);
+  }).catch((err) => setHistoryNote('Export failed: ' + errorText(err)));
+}
+
 /**
  * THE SEARCH IS A GLYPH UNTIL IT IS ASKED FOR (owner, 2026-11-06, verbatim):
  * *"tira a BARRA de pesquisa de historico, deixa so um botao pequeno com o simbolo
@@ -3599,7 +3852,7 @@ async function runSearch(rawQuery) {
 function renderSearchResults(query, hits) {
   if (!dom.historyList) return;
   clearList();
-  const list = Array.isArray(hits) ? hits : [];
+  const list = (Array.isArray(hits) ? hits : []).filter(withinHistoryWindow);
   if (!list.length) {
     const empty = document.createElement('li');
     empty.className = 'history__empty';
@@ -3661,6 +3914,23 @@ function clockTime() {
 function stampFor(entry) {
   const time = String(entry.time || '');
   return time.slice(0, 8) || time;
+}
+
+/**
+ * THE DAY, FOR WHEN THE FEED SPANS MONTHS (2026-11-09).
+ *
+ * `stampFor` shows the hour only, by the owner's 2026-11-06 order. That order
+ * assumed the 48 h window it was written in; the window is 180 days now, so the
+ * same hour from two different days is one chip on screen. The date therefore
+ * rides in the row's `title` -- no new text in the bar, and the day is one hover
+ * away instead of gone. Returns '' when the entry carries no date, so a row
+ * without one keeps no misleading tooltip.
+ */
+function fullStampFor(entry) {
+  const date = String((entry && entry.date) || '');
+  const time = String((entry && entry.time) || '').slice(0, 8);
+  if (!date) return '';
+  return `${date} ${time}`.trim();
 }
 
 /**

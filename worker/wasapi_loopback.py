@@ -776,6 +776,8 @@ class WasapiLoopbackTap:
         self.channels = self.ep.channels
         self.block = int(self.rate * block_ms / 1000)
         self._stop = threading.Event()
+        # The capture ring `_open` was granted, in frames (0 until then).
+        self._ring_frames = 0
         self._thread = None
         self._com = None          # what `_start` owes COM, released by `close`
         self._client = None
@@ -946,13 +948,22 @@ class WasapiLoopbackTap:
             ctypes.POINTER(WAVEFORMATEX),
             ctypes.c_void_p,
         )
-        hr = init(client, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, 0, 0, mix, None)
+        # ASK FOR THE BIG RING FIRST (2026-11-09). MEASURED on this box: the
+        # zero-duration call is granted `GetBufferSize` = 1056 frames = 22 ms,
+        # and that 22 ms is what forced the 5 ms poll below -- 200 wakeups per
+        # second, measured at 6,0 % de um nucleo on the owner's live worker
+        # (pid 20676, kernel-bound: 4,95 kernel / 1,04 user). The SAME call
+        # with `hnsBufferDuration = HNS_100MS` is granted **4800 frames =
+        # 100 ms**, so the pump can drain every 25 ms instead of every 5 ms
+        # with the same margin. The zero-duration call stays as the fallback
+        # for a driver that refuses a requested duration.
+        hr = init(client, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, HNS_100MS, 0, mix, None)
         if hr != 0:
             hr = init(
                 client,
                 AUDCLNT_SHAREMODE_SHARED,
                 AUDCLNT_STREAMFLAGS_LOOPBACK,
-                HNS_100MS,
+                0,
                 0,
                 mix,
                 None,
@@ -967,6 +978,13 @@ class WasapiLoopbackTap:
         if hr != 0:
             raise WasapiError("GetService(IAudioCaptureClient) failed: %s" % _fmt(hr))
         self._capture = cap
+
+        # The ring THIS stream was granted -- not the one the code hopes for.
+        # `_pump` derives its poll period from it, so a driver that answers a
+        # 100 ms request with 22 ms keeps the 5 ms poll instead of overflowing.
+        ring = wintypes.DWORD(0)
+        if _vtbl(client, 4, HRESULT, ctypes.POINTER(wintypes.DWORD))(client, ctypes.byref(ring)) == 0:
+            self._ring_frames = int(ring.value)
 
         hr = _vtbl(client, 10, HRESULT)(client)
         if hr != 0:
@@ -1020,7 +1038,17 @@ class WasapiLoopbackTap:
         # was slower than the measured 22 ms grant. `block_ms/20` = 5 ms at the
         # shipped 100 ms setting, i.e. we poll ~4x faster than the ring fills,
         # which is what keeps duty at 0.999 instead of 0.815.
-        period = min(0.005, max(0.001, self.block_ms / 1000.0 / 20.0))
+        # THE PERIOD IS RING/4, bounded. The comment above still holds -- we
+        # must poll FASTER than the ring fills -- but the ring is now whatever
+        # `_open` was granted: 100 ms when the endpoint took HNS_100MS (the
+        # 2026-11-09 measurement above), 22 ms when it refused and the
+        # zero-duration fallback ran. `ring_s / 4` keeps the same 4x margin the
+        # 22 ms/5 ms pair had, so duty stays at 0.999 in both cases.
+        # `getattr`: the oracles drive `_pump` on a STUB tap (no `_open`), and a
+        # stub has no granted ring -- it gets the historical 22 ms answer.
+        ring_frames = getattr(self, "_ring_frames", 0) or 0
+        ring_s = (ring_frames / float(self.rate)) if ring_frames else 0.022
+        period = min(self.block_ms / 2000.0, max(0.005, ring_s / 4.0))
         buf = []
         acc = 0
         prev_pos = None

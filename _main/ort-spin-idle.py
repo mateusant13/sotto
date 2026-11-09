@@ -16,7 +16,8 @@ casa faz -- deu:
        8,0%  tid 54216  session-30-intra-op-0
        4,3%  tid 62608  session-28-intra-op-0
 
-Tres sessoes (`encoder`, `decoder`, `joint`) com 4 fios intra-op cada, e OS FIOS
+Tres sessoes (`encoder`, `decoder`, `joint`) com o orcamento de fios do worker
+(`current_threads()`: `--threads > OMP_NUM_THREADS > 4`) cada, e OS FIOS
 DO POOL A GIRAR entre chamadas: e' o `allow_spinning` por omissao do ORT. Medido
 isolado, sem dispositivo e sem audio (so' construir as tres sessoes e ficar
 parado):
@@ -118,7 +119,10 @@ def _load_cpu(path=None):
 def _build(mod, model_dir, spinning_off=True):
     """As tres sessoes REAIS, com o `session_options` do proprio worker."""
     import onnxruntime as ort
-    threads = int(os.environ.get('OMP_NUM_THREADS', '4'))
+    # O MESMO numero que o worker usa, lido do PROPRIO worker (`--threads >
+    # ambiente > 4`), nunca um segundo parser do ambiente: era assim que este
+    # instrumento media 4 fios enquanto o worker podia correr com outro valor.
+    threads = mod.current_threads()
     sessions = []
     for g in GRAPHS:
         so = mod.session_options(ort, '', threads, encoder=(g == 'encoder.onnx'))

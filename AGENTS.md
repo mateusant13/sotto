@@ -573,8 +573,13 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-09, 19:0x):** `_main\_audit-verify-all.cmd` = **322452 B**,
-  **3789 CRLF** / 0 bare LF, sha256 `ACA30B73588CA262A80FE88229EB66170AC2638CCE5CA87E42836AEA645BC997`.
+- **PIN do ficheiro (medido 2026-11-09, 20:2x):** `_main\_audit-verify-all.cmd` = **323027 B**,
+  **3793 CRLF** / 0 bare LF, sha256 `1C74B176C3266C71CF767516F3AD81297F2F14FC4126C5ECE4EB7312C4910CC4`.
+  (Cinco centenas e dezassete bytes a mais do que o pin de 322510 B: o par `window-drag` +
+  `red-as-expected-window-drag` -- o oraculo `_main\window-drag-oracle.py` existia com ZERO chamadores
+  desde a cura do arrasto, e o `battery-wiring` acusava-o (`new-unwired 1 oraculo(s): window-drag-oracle.py`).
+  E os cinquenta e oito bytes de antes: o par `caption-overlay-theme` passa a nomear
+  `app\webview\overlay_paint.py`, que o oraculo IMPORTA (`_normalise_theme`, `_THEME_DEFAULT`).)
   (Mil duzentos e trinta e cinco bytes e DEZ linhas a mais do que o pin de 321217 B: o par
   `startup-ui-thread-block` + o seu `--neg-arm`, nascido do UNICO HANG do autostart do dono que
   tinha causa nomeada. `\Sotto` fechou 2026-11-08 18:57 com `LastTaskResult = 4` e o dump que a

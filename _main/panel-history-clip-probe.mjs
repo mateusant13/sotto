@@ -32,7 +32,8 @@
  *   node _main/panel-history-clip-probe.mjs [--json <path>]
  */
 import { chromium } from 'file:///H:/env/npm-global/node_modules/playwright/index.mjs';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..');
@@ -53,15 +54,18 @@ const LINES = [
 ];
 
 const MIN = 60 * 1000;
-function at(msAgo, text) {
+const DAY = 86400000;
+function at(msAgo, text, context) {
   const d = new Date(Date.now() - msAgo);
   const p = (n) => String(n).padStart(2, '0');
-  return {
+  const entry = {
     date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
     time: `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`,
     text,
     path: null,
   };
+  if (context) entry.context = context;
+  return entry;
 }
 
 const entries = LINES.map((text, i) => at((LINES.length - i) * MIN, text));
@@ -82,7 +86,18 @@ const themeIds = (() => {
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const ctx = await browser.newContext({ viewport: { width: 380, height: 900 } });
-await ctx.addInitScript((rows) => {
+/* O MESMO BRIDGE PARA AS DUAS CARGAS (2026-11-09): a janela de retencao e' uma
+ * arm propria e precisa da pagina REAL outra vez, com o MESMO fake. Copiar o
+ * bloco seria a duplicacao que o `code-health` conta. */
+const FAKE_BRIDGE = ({ rows, hits }) => {
+  /* THE SEARCH HITS ARE THE SHIPPED SEARCH'S OUTPUT, not a literal written
+   * here: `_main/history-retention-fixture.py` builds a real history root, moves
+   * a real written line 60 days back and answers `history_search` from the
+   * shell's own method. This stub only CARRIES those hits across the bridge
+   * boundary, and records every query the panel sends, so an arm can prove the
+   * panel asked for the right thing. */
+  const calls = [];
+  window.__searchCalls = calls;
   const target = {
     setLiveEnabled(v) { return { liveEnabled: v }; },
     getStats() { return { stats: { peak: 0.4, blocks: 128 } }; },
@@ -95,7 +110,11 @@ await ctx.addInitScript((rows) => {
     history: {
       append() {},
       reveal() {},
-      search() { return Promise.resolve({ hits: [] }); },
+      search(query) {
+        calls.push(String(query == null ? '' : query));
+        const found = (hits && hits[query]) || [];
+        return Promise.resolve({ hits: found });
+      },
       tail() { return Promise.resolve({ entries: rows, root: 'H:/sotto/history' }); },
       root() { return Promise.resolve({ root: 'H:/sotto/history', canonicalProducer: 'test' }); },
     },
@@ -106,7 +125,8 @@ await ctx.addInitScript((rows) => {
   /* THE THEME MODULE READS localStorage; a design switch in this probe must not
    * depend on the owner's stored choice. */
   try { window.localStorage.setItem('sotto.theme', 'theme-1'); } catch (err) { void err; }
-}, entries);
+};
+await ctx.addInitScript(FAKE_BRIDGE, { rows: entries, hits: {} });
 
 const page = await ctx.newPage();
 const errors = [];
@@ -365,6 +385,240 @@ const topSet = new Set(logos.map((l) => l.top));
 console.log(`WORDMARK font-size values across ${logos.length} theme(s): ${[...sizeSet].join(', ')}`);
 console.log(`WORDMARK x values: ${[...xSet].join(', ')}`);
 console.log(`WORDMARK top values: ${[...topSet].join(', ')}`);
+/* THE 60-DAY ROW, IN THE REAL DOM -- RETAINED, VISIBLE, CONTEXTUAL, FINDABLE.
+ *
+ * Owner, 2026-11-09: months-later recall. `HISTORY_RETENTION_H` said 48 h while
+ * `sotto_webview.HISTORY_RETENTION_H` kept 180 days, so the panel hid 178 days
+ * the disk had. A predicate receipt is NOT a DOM pass: the earlier audit marked
+ * "a 60-day row rendered in the real panel" UNMEASURED, and this is that arm.
+ *
+ * THE LINE IS REAL, AND SO IS THE SEARCH. `_main/history-retention-fixture.py`
+ * appends through `SottoShell.history_append` (the shipped writer), moves the
+ * hour file into a day folder 60 days back (and a second one 200 days back) and
+ * answers `history_tail`/`history_search` from the shipped methods over that
+ * root. This probe only carries those answers across the bridge and measures
+ * the SHIPPED page: nothing about the SEARCH PREDICATE is re-implemented in
+ * JavaScript, so a regression in it turns `searchCtx`/`searchNoLeak` RED.
+ *
+ * WHAT THIS GATE DOES NOT OWN: the STORE's own prune/retention. The fixture
+ * pins `_history_pruned_stamp` so the prune is an explicit no-op -- the 200-day
+ * folder has to stay on disk for the panel's filter to be provable -- and the
+ * store's retention is measured by `_main/history-context-oracle.py` (s19-s21).
+ * The near-edge row is what ties the panel's window to the SHELL's constant:
+ * its age is `retention_h - 1 day`, read from the fixture, not written here.
+ *
+ * ARMS (all measured on the shipped `panel.html` + `panel.js`):
+ *   feedCount     the feed paints exactly the entries the window admits
+ *   feedSixty     the 60-day row is PRESENT and VISIBLE (box, computed style)
+ *   feedNoLeak    the 200-day row is not in the feed
+ *   ctxPaint      `data-context`, `li.title` and `.hist__text[title]` carry the
+ *                 compact context, in the contract's order
+ *   searchCtx     a context-ONLY query reaches the bridge once, and the hit is
+ *                 painted with `.hist__ctx` and the matched word marked
+ *   searchNoLeak  a query the store answers with the 200-day line paints NOTHING
+ *
+ * The expected summary is written here as a LITERAL on purpose: it is the
+ * contract (`.agent-work/history-ui-contract.md` §3), not a copy of the code
+ * being measured.
+ */
+const EXPECTED_CTX = 'device:mic · Code: main.py · https://example.com/watch';
+const FIXTURE = (() => {
+  const run = spawnSync('python', [path.join(REPO, '_main', 'history-retention-fixture.py')], {
+    encoding: 'utf8',
+    // THE CONSOLE GUARD: a console child of an agent paints a window on the
+    // owner's screen without it (AGENTS.md, measured 2026-11-08).
+    windowsHide: true,
+  });
+  if (run.error || run.status !== 0) {
+    console.log(`FIXTURE FAIL rc=${run.status} error=${run.error ? run.error.message : 'none'}`);
+    console.log(String(run.stdout || '').slice(0, 400));
+    console.log(String(run.stderr || '').slice(-600));
+    process.exit(2);
+  }
+  const parsed = JSON.parse(run.stdout);
+  /* The JSON already carries every fact the arms need, so the temporary history
+   * root (three tiny files under the temp dir) is removed HERE instead of being
+   * left behind on every run -- a probe that litters is a probe that grows. */
+  rmSync(parsed.root, { recursive: true, force: true });
+  return parsed;
+})();
+/* The module source, for the negative arm: a mutant is SERVED to the page
+ * through `page.route` instead of copying the 35 MB panel directory per mutant
+ * -- measured working for a `file://` module load on this engine. */
+const PANEL_JS = readFileSync(path.join(REPO, 'app', 'panel', 'panel.js'), 'utf8');
+
+const rowVisible = (r) => Boolean(r) && r.display !== 'none' && r.visibility !== 'hidden'
+  && Number(r.opacity) > 0 && r.width > 0 && r.height > 0
+  && r.offsetParent && r.inViewport;
+
+async function searchArm(rpage, query) {
+  await rpage.evaluate(() => { window.__searchCalls.length = 0; });
+  const shown = await rpage.evaluate(() => {
+    const input = document.getElementById('history-search');
+    if (!input) return false;
+    const cs = getComputedStyle(input);
+    return cs.display !== 'none' && cs.visibility !== 'hidden'
+      && input.getBoundingClientRect().width > 0;
+  });
+  if (!shown) await rpage.click('#history-search-button');
+  await rpage.fill('#history-search', query);
+  await rpage.press('#history-search', 'Enter');
+  await rpage.waitForFunction(() => {
+    const note = document.getElementById('history-status');
+    return Boolean(note && /match/.test(note.textContent || ''));
+  }, null, { timeout: 10000 });
+  return rpage.evaluate((q) => {
+    const rows = [...document.querySelectorAll('#history-list .hist')];
+    const row = rows.find((el) => (el.textContent || '').includes('RETENCAO-60D')) || null;
+    const note = row ? row.querySelector('.hist__ctx') : null;
+    return {
+      query: q,
+      calls: [...window.__searchCalls],
+      count: rows.length,
+      hasSixty: Boolean(row),
+      hasTwoHundred: rows.some((el) => (el.textContent || '').includes('RETENCAO-200D')),
+      ctxNote: note ? note.textContent : '',
+      ctxMarks: note ? [...note.querySelectorAll('mark')].map((m) => m.textContent) : [],
+      status: (document.getElementById('history-status') || {}).textContent || '',
+    };
+  }, query);
+}
+
+async function retentionArms(mutantJs) {
+  const rctx = await browser.newContext({ viewport: { width: 380, height: 900 } });
+  await rctx.addInitScript(FAKE_BRIDGE, { rows: FIXTURE.tail, hits: FIXTURE.searches });
+  const rpage = await rctx.newPage();
+  const errs = [];
+  rpage.on('pageerror', (e) => errs.push(String(e)));
+  if (mutantJs) {
+    await rpage.route('**/panel.js', (route) => route.fulfill({
+      contentType: 'text/javascript', body: mutantJs,
+    }));
+  }
+  await rpage.goto(PANEL, { waitUntil: 'load' });
+  await rpage.waitForFunction(
+    () => document.querySelectorAll('#history-list .hist').length >= 1, null, { timeout: 15000 });
+  const feed = await rpage.evaluate(() => {
+    const rows = [...document.querySelectorAll('#history-list .hist')];
+    const find = (needle) => rows.find((el) => (el.textContent || '').includes(needle)) || null;
+    const info = (el) => {
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      const text = el.querySelector('.hist__text');
+      const chip = el.querySelector('.hist__time');
+      return {
+        text: (el.textContent || '').trim(),
+        context: el.dataset.context || '',
+        title: el.title || '',
+        textTitle: text ? (text.title || '') : '',
+        chip: chip ? chip.textContent : null,
+        chipTitle: chip ? (chip.title || '') : '',
+        display: cs.display, visibility: cs.visibility, opacity: cs.opacity,
+        width: Math.round(rect.width), height: Math.round(rect.height),
+        inViewport: rect.width > 0 && rect.height > 0 && rect.top >= -1
+          && rect.bottom <= window.innerHeight + 1,
+        offsetParent: el.offsetParent !== null,
+      };
+    };
+    return {
+      count: rows.length,
+      texts: rows.map((el) => (el.textContent || '').trim()),
+      sixty: info(find('RETENCAO-60D')),
+      near: info(find('RETENCAO-PERTO')),
+      twoHundred: info(find('RETENCAO-200D')),
+    };
+  });
+  const one = await searchArm(rpage, FIXTURE.queries.one);
+  const leak = await searchArm(rpage, FIXTURE.queries.both);
+  await rctx.close();
+  const arms = {
+    feedCount: feed.count === FIXTURE.expected.feedRows,
+    feedSixty: rowVisible(feed.sixty),
+    //: The row one day inside the SHELL's window (its age comes from the
+    //: fixture's `retention_h`, not from a second literal here). This is what
+    //: forbids a panel window narrower than the store's -- the 48 h defect.
+    feedNear: rowVisible(feed.near),
+    feedNoLeak: !feed.twoHundred,
+    ctxPaint: Boolean(feed.sixty) && feed.sixty.context === EXPECTED_CTX
+      && feed.sixty.title === EXPECTED_CTX && feed.sixty.textTitle === EXPECTED_CTX,
+    searchCtx: one.calls.length === 1 && one.calls[0] === FIXTURE.queries.one
+      && one.count === 1 && one.hasSixty && one.ctxNote.includes('main.py')
+      && one.ctxMarks.includes('main.py'),
+    searchNoLeak: leak.count === 0 && !leak.hasTwoHundred,
+    // O CHIP CONTINUA SO' A HORA (ordem de 2026-11-06) e o DIA viaja no `title`.
+    chipIsHourOnly: Boolean(feed.sixty) && /^\d{2}:\d{2}:\d{2}$/.test(feed.sixty.chip || ''),
+    dayInTitle: Boolean(feed.sixty)
+      && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(feed.sixty.chipTitle || ''),
+  };
+  return { arms, feed, one, leak, errs };
+}
+
+const retention = await retentionArms(null);
+const ra = retention.arms;
+console.log(`RETENTION DOM: feed rows=${retention.feed.count} (want ${FIXTURE.expected.feedRows})`
+  + ` 60-day=${ra.feedSixty ? 'visible' : 'MISSING/HIDDEN'}`
+  + ` near(${FIXTURE.expected.nearDays}d)=${ra.feedNear ? 'visible' : 'MISSING/HIDDEN'}`
+  + ` 200-day=${retention.feed.twoHundred ? 'LEAKED' : 'excluded'}`
+  + ` context=${JSON.stringify(retention.feed.sixty ? retention.feed.sixty.context : null)}`);
+console.log(`  search "${FIXTURE.queries.one}": calls=${JSON.stringify(retention.one.calls)}`
+  + ` rows=${retention.one.count} ctxNote=${JSON.stringify(retention.one.ctxNote)}`
+  + ` marks=${JSON.stringify(retention.one.ctxMarks)}`);
+console.log(`  search "${FIXTURE.queries.both}": rows=${retention.leak.count}`
+  + ` 200-day=${retention.leak.hasTwoHundred ? 'LEAKED' : 'excluded'}`
+  + ` note=${JSON.stringify(retention.leak.status)}`);
+console.log(`RETENTION ARMS ${Object.entries(ra).map(([k, v]) => `${k}=${v ? 'GREEN' : 'RED'}`).join(' ')}`);
+if (Object.values(ra).some((v) => !v)) {
+  console.log('RETENTION FAIL -- the panel window, the context paint and the search disagree');
+}
+
+/* THE NEGATIVE ARM OF THE RETENTION ARMS: one SURGICAL mutation of the shipped
+ * `panel.js` per arm, served to the page through `page.route`, and each mutant
+ * must turn its OWN arm RED. A control that copies "the previous panel.js" rots
+ * the day the cure is committed; a control that mutates nothing proves nothing,
+ * so an anchor that is not in the source is IMPOSSIBLE (rc=2), never a pass.
+ * Convention: this mode exits 1 when it CATCHES. */
+const MUTANTS = [
+  { label: 'HISTORY_RETENTION_H 4320 -> 48',
+    from: 'const HISTORY_RETENTION_H = 4320;',
+    to: 'const HISTORY_RETENTION_H = 48;',
+    red: ['feedCount', 'feedSixty', 'feedNear', 'ctxPaint'] },
+  { label: 'HISTORY_RETENTION_H 4320 -> 2160 (90 days)',
+    from: 'const HISTORY_RETENTION_H = 4320;',
+    to: 'const HISTORY_RETENTION_H = 2160;',
+    red: ['feedNear'] },
+  { label: 'context paint removed',
+    from: '    li.dataset.context = ctxSummary;',
+    to: '',
+    red: ['ctxPaint'] },
+  { label: 'context note removed',
+    from: '    if (hitQuery && !matches(entry.text, hitQuery) && matches(ctxSummary, hitQuery)) {',
+    to: '    if (false) {',
+    red: ['searchCtx'] },
+  { label: 'window predicate admits everything',
+    from: '  return !Number.isFinite(at) || at >= Date.now() - HISTORY_RETENTION_H * 3600 * 1000;',
+    to: '  return true;',
+    red: ['feedNoLeak'] },
+  { label: 'search window removed',
+    from: '  const list = (Array.isArray(hits) ? hits : []).filter(withinHistoryWindow);',
+    to: '  const list = Array.isArray(hits) ? hits : [];',
+    red: ['searchNoLeak'] },
+];
+let MUTANT_RESULTS = null;
+if (NEG_ARM) {
+  MUTANT_RESULTS = [];
+  for (const m of MUTANTS) {
+    if (!PANEL_JS.includes(m.from)) {
+      console.log(`NEG-ARM: IMPOSSIBLE -- ${m.label}: the anchor is not in panel.js`);
+      process.exit(2);
+    }
+    const run = await retentionArms(PANEL_JS.replace(m.from, m.to));
+    const missed = m.red.filter((name) => run.arms[name]);
+    MUTANT_RESULTS.push({ label: m.label, red: m.red, missed });
+    console.log(`  mutant ${m.label}: ${m.red.map((n) => `${n}=${run.arms[n] ? 'STILL-GREEN' : 'RED'}`).join(' ')}`);
+  }
+}
+
 await browser.close();
 
 
@@ -465,11 +719,26 @@ if (errors.length) {
   console.log(`PAGE ERRORS: ${errors.length}`);
   for (const e of errors.slice(0, 5)) console.log('  ' + e);
 }
-if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ themes: report, errors }, null, 2));
-if (NEG_ARM) {
-  const caught = families.size < 2;
-  console.log(`NEG-ARM: ${caught ? 'PASS' : 'FAIL'} -- o mutante litera ${families.size} face(s)`
-    + ` (o positivo mede 28); o braco da identidade ${caught ? 'caiu' : 'NAO caiu'}`);
-  process.exit(caught ? 1 : 0);
+if (JSON_OUT) {
+  writeFileSync(JSON_OUT, JSON.stringify({
+    themes: report,
+    retention: { arms: ra, feed: retention.feed, one: retention.one, leak: retention.leak },
+    fixture: { queries: FIXTURE.queries, expected: FIXTURE.expected, retention_h: FIXTURE.retention_h },
+    mutants: MUTANT_RESULTS,
+    errors,
+  }, null, 2));
 }
-process.exit(bad.length || dimLine.length || families.size < 20 || errors.length ? 1 : 0);
+if (NEG_ARM) {
+  const identityCaught = families.size < 2;
+  const caught = (MUTANT_RESULTS || []).filter((r) => r.missed.length === 0).length;
+  const total = (MUTANT_RESULTS || []).length;
+  const all = identityCaught && caught === total && total > 0;
+  console.log(`NEG-ARM: ${all ? 'PASS' : 'FAIL'} -- identity ${identityCaught ? 'caught' : 'NOT caught'}`
+    + ` (${families.size} face(s), the positive measures 28); ${caught}/${total} retention mutant(s) caught`);
+  for (const r of MUTANT_RESULTS || []) {
+    if (r.missed.length) console.log(`  NOT CAUGHT: ${r.label} (still green: ${r.missed.join(', ')})`);
+  }
+  process.exit(all ? 1 : 0);
+}
+process.exit(bad.length || dimLine.length || families.size < 20 || errors.length
+  || Object.values(ra).some((v) => !v) ? 1 : 0);

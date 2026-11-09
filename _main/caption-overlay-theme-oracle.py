@@ -42,10 +42,10 @@ from __future__ import annotations
 
 import argparse
 import ast
+import importlib.util
 import io
 import json
 import os
-import subprocess
 import sys
 import tempfile
 import textwrap
@@ -70,16 +70,26 @@ def _fail(msg):
 
 
 def _extract(path):
-    """`SottoShell._brand_tokens` literal, por AST (nunca por numero de linha)."""
+    """`SottoShell._apply_overlay_theme` literal, por AST (nunca por linha).
+
+    2026-11-09: O METODO MUDOU DE CLASS E DE NOME, e este portao julga o que
+    EMBARCA. O receptor `SottoHost._brand_tokens` olhava para
+    `getattr(self, 'caption_overlay', None)` -- e o overlay mora na SHELL, logo
+    aquele `getattr` era `None` para sempre: medido no log do dono, 610
+    `CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay` e ZERO
+    `CAPTION_OVERLAY_THEME_APPLIED`. O desenho nunca chegava a janela nativa.
+    A aplicacao passou a ter UM dono (a shell), chamado pela pagina
+    (`why='page'`) e pela criacao da janela (`why='overlay-created'`).
+    """
     src = io.open(path, encoding='utf-8', errors='replace').read()
     tree = ast.parse(src)
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == '_brand_tokens':
+        if isinstance(node, ast.FunctionDef) and node.name == '_apply_overlay_theme':
             seg = ast.get_source_segment(src, node)
             if not seg:
                 raise RuntimeError('source segment unavailable')
             return seg, src
-    raise RuntimeError('_brand_tokens not found')
+    raise RuntimeError('_apply_overlay_theme not found')
 
 
 def _load_method(path):
@@ -89,7 +99,7 @@ def _load_method(path):
     ns = {'log': lines.append}
     sys.path.insert(0, WEBVIEW)
     exec(compile(textwrap.dedent(code), path, 'exec'), ns)  # noqa: S102
-    return ns['_brand_tokens'], lines
+    return ns['_apply_overlay_theme'], lines
 
 
 class _Overlay:
@@ -147,11 +157,17 @@ def _refresh(report_path):
     except OSError:
         pass
     cmd = ['node', NODE_ORACLE, '--json', report_path]
-    proc = subprocess.run(cmd, cwd=ROOT, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT, timeout=600,
-                          creationflags=0x08000000 if os.name == 'nt' else 0)
-    tail = proc.stdout.decode('utf-8', 'replace').strip().splitlines()[-3:]
-    print(f'REFRESH rc={proc.returncode} {" | ".join(tail)}')
+    # PELO HELPER DA CASA: `creationflags` sozinho deixa o filho sem consola e o
+    # Windows pinta uma NOVA na tela do dono (medido 2026-11-08). O censo
+    # `console-window-audit` acusou `WEAK-FLAG` aqui na primeira versao.
+    spec = importlib.util.spec_from_file_location(
+        '_cot_hl', os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                'hidden-launch.py'))
+    hl = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hl)
+    rc, out, err = hl.run(cmd, cwd=ROOT, capture=True, timeout=600)
+    tail = (out + err).strip().splitlines()[-3:]
+    print(f'REFRESH rc={rc} {" | ".join(tail)}')
     return os.path.exists(report_path)
 
 
@@ -273,6 +289,34 @@ def run(path, report_path, refresh):
     # A1: a populacao
     arm('payloads', True, f'{len(payloads)} payloads de {len(payloads)}')
 
+    # A9 -- A JANELA NASCE VESTIDA (2026-11-09). O defeito medido no log do dono
+    # era este caminho: 215 criacoes, todas `REPLAYED theme=youtube brand='-'`, e
+    # `CAPTION_OVERLAY_THEME_APPLIED` ZERO no log inteiro. A criacao tem de
+    # aplicar o PAYLOAD GUARDADO pelo mesmo caminho da pagina -- e nao voltar ao
+    # `_THEME_DEFAULT` --, e o receptor do host tem de delegar na shell.
+    src_all = io.open(path, encoding='utf-8', errors='replace').read()
+    creation = ''
+    for node in ast.walk(ast.parse(src_all)):
+        if isinstance(node, ast.FunctionDef) and node.name in (
+                '_caption_overlay_ensure', '_ensure_caption_overlay', 'show_caption_window'):
+            creation += ast.get_source_segment(src_all, node) or ''
+    if not creation or 'overlay-created' not in creation:
+        # O BLOCO DA CRIACAO VIVE INLINE NUM METODO MAIOR, e procurar pelo
+        # `CAPTION_OVERLAY_MODE` acha a primeira ocorrencia do FICHEIRO (que
+        # esta' na documentacao, milhares de linhas acima) -- medido: a janela
+        # saia vazia do bloco real e o braco reprovava a cura. A ancora certa e'
+        # a PROPRIA chamada de replay.
+        idx = src_all.find("why='overlay-created'")
+        creation = src_all[max(0, idx - 6000):idx + 6000] if idx > 0 else creation
+    replays_design = "_apply_overlay_theme(stored, why='overlay-created')" in creation
+    falls_back = "source=default why=no-stored-design" in creation
+    asks_page = 'SottoBrand.push()' in creation
+    host_delegates = 'shell._apply_overlay_theme(theme' in src_all
+    arm('criacao-veste-o-desenho',
+        replays_design and falls_back and asks_page and host_delegates,
+        'replay=%s fallback=%s pede_a_pagina=%s host_delega=%s'
+        % (replays_design, falls_back, asks_page, host_delegates))
+
     passed = sum(1 for a in arms if a['ok'])
     for a in arms:
         print(f'{"PASS" if a["ok"] else "RED "} {a["name"]} -- {a["detail"]}')
@@ -285,6 +329,10 @@ def run(path, report_path, refresh):
 
 
 MUTANTS = [
+    ('M4 criacao-sem-desenho',
+     "self._apply_overlay_theme(stored, why='overlay-created')",
+     "self.caption_overlay.set_theme(__import__('overlay_paint')._THEME_DEFAULT)",
+     'criacao-veste-o-desenho'),
     ('M1 sem-placa', "applied = overlay.set_theme(base)",
      "applied = overlay.set_theme(dict(overlay_paint._THEME_DEFAULT))", 'placa-por-desenho'),
     ('M2 placa-generica', "base['plate'] = plate",
@@ -302,12 +350,20 @@ def negative_arm(report_path):
     caught = 0
     for name, old, new, expect in MUTANTS:
         code, src = _extract(SHELL)
-        if old not in code:
+        # O MUTANTE VIVE ONDE O TEXTO VIVE: M1-M3 dentro do corpo extraido, M4 no
+        # SITIO DA CRIACAO (outro ponto do ficheiro). Procurar no corpo extraido
+        # um texto que so' existe 700 linhas abaixo dizia "IMPOSSIBLE" e o braco
+        # contava como nao apanhado -- foi assim que M4 nasceu mudo.
+        if old in code:
+            mutated = src.replace(code, code.replace(old, new, 1), 1)
+        elif old in src:
+            mutated = src.replace(old, new, 1)
+        else:
             print(f'IMPOSSIBLE {name} -- anchor absent: {old!r}')
             continue
         tmp = tempfile.mkdtemp(prefix='caption-theme-neg-')
         path = os.path.join(tmp, 'sotto_webview.py')
-        io.open(path, 'w', encoding='utf-8', newline='').write(src.replace(code, code.replace(old, new, 1), 1))
+        io.open(path, 'w', encoding='utf-8', newline='').write(mutated)
         try:
             ok = _run_quiet(path, report_path)
         finally:

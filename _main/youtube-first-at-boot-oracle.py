@@ -723,6 +723,49 @@ def _arm_window_title_wins(mod):
     return ok, "exact=%r partial=%r dead-named=%r" % (exact, partial, dead_named)
 
 
+def _arm_startup_order(shell_path=SHELL):
+    """A ORDEM ESTATICA DO ARRANQUE: a legenda antes do WebView2, sem espera.
+
+    O dono, 2026-11-04: *"é estupido 'carregando o modelo' e nao mostrar
+    instantaneamente as legendas do youtube, assim que eu abro o app."* A
+    dinamica ja' e' provada pela `ordem-do-arranque` (A5); esta arm prova a
+    metade que a dinamica nao ve -- que `main()` chama
+    `start_caption_pipeline('pre-webview')` ANTES de entregar a maquina ao
+    `webview.start()`, e que a espera opcional pelo modelo continua DESLIGADA
+    por omissao (um default > 0 seria o "carregando modelo" de volta).
+    """
+    import ast
+    src = _read(shell_path)
+    tree = ast.parse(src)
+    main_fn = None
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "main":
+            main_fn = node
+            break
+    if main_fn is None:
+        return False, "main() nao existe no fonte"
+    pipeline_line = webview_line = None
+    for node in ast.walk(main_fn):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr == "start_caption_pipeline":
+            if pipeline_line is None:
+                pipeline_line = node.lineno
+        if isinstance(func, ast.Attribute) and func.attr == "start":
+            owner = func.value
+            if isinstance(owner, ast.Name) and owner.id == "webview":
+                if webview_line is None:
+                    webview_line = node.lineno
+    import re
+    default_zero = bool(re.search(
+        r"SOTTO_WEBVIEW_AFTER_LOAD_S',\s*'0'\)", src))
+    ok = (pipeline_line is not None and webview_line is not None
+          and pipeline_line < webview_line and default_zero)
+    return ok, ("pipeline_line=%s webview.start_line=%s default_wait_zero=%s"
+                % (pipeline_line, webview_line, default_zero))
+
+
 # -- as arms ----------------------------------------------------------------
 
 def arms(shell_path=SHELL, module_path=MODULE, port_holder=None):
@@ -742,6 +785,8 @@ def arms(shell_path=SHELL, module_path=MODULE, port_holder=None):
     with _StubCdp([_watch_tab("MOZIBMBHK-8", "boot")]) as stub:
         ok, note = _arm_boot_order(shell_mod, stub.port)
     out.append(("ordem-do-arranque", ok, note))
+    ok, note = _arm_startup_order(shell_path)
+    out.append(("legenda-antes-do-webview2-sem-espera", ok, note))
     ok, note = _arm_track_goes_away(shell_mod)
     out.append(("queda-da-faixa-uma-so-vez", ok, note))
     ok, note = _arm_pick_playing(mod)
@@ -832,6 +877,21 @@ def neg_arm():
         got4 = dict((n, ok) for n, ok, _ in arms(module_path=mut4))
         results.append(("aba-sem-media-vira-jogador",
                         not got4.get("aba-descartada-nunca-e-escolhida", True)))
+
+        # 5) O WEBVIEW2 PASSA A ARRANCAR ANTES DA LEGENDA (a ordem do main
+        # desfeita): um `webview.start()` plantado antes do `create_window`
+        # faz a primeira chamada ficar a' frente da pipeline -- a arm estatica
+        # tem de apanhar a inversao. Nada corre: a copia e' so' lida por AST.
+        mut5 = os.path.join(tmp, "shell_webview_antes.py")
+        anchor5 = cut("    shell = SottoShell(args)\n    shell.create_window()")
+        body5 = src.replace(
+            anchor5,
+            cut("    webview.start(icon=SOTTO_ICON)\n"
+                "    shell = SottoShell(args)\n    shell.create_window()"), 1)
+        assert body5 != src, "a mutacao da ordem estatica nao aplicou"
+        io.open(mut5, "w", encoding="utf-8", newline="").write(body5)
+        ok5, _note5 = _arm_startup_order(mut5)
+        results.append(("webview-antes-da-legenda", not ok5))
         return results
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

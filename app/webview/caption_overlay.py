@@ -600,6 +600,20 @@ class NativeCaptionOverlay:
         #: roll, fade) e nao pelo poll do arrasto. E' o que decide se `_tick`
         #: repinta ou so' le' o teclado (ver `_tick`).
         self._tick_content = True
+        #: O PRAZO DO CONTEUDO no relogio do frame (`_frame_now`), separado do
+        #: prazo do POLL. `None` = nenhum conteudo pendente. E' o que permite o
+        #: poll do arrasto correr no tecto de 240 Hz sem repintar a cada tick:
+        #: `_tick` so' desenha quando ESTE prazo venceu (ou quando a pulsacao do
+        #: Ctrl pede). Ver `_next_delay`.
+        self._content_due_at = None
+        #: A MEDICAO DO ARRASTO: ticks, movimentos e pinturas entre o inicio e o
+        #: fim de um gesto. Publicada em `CAPTION_DRAG_RATE` ao largar; um numero
+        #: medido, nunca o tecto declarado.
+        self._drag_ticks = 0
+        self._drag_moves = 0
+        self._drag_paints = 0
+        self._drag_paint_s = 0.0
+        self._drag_t0 = 0.0
         # THE WINDOW OWNS ITS OWN THREAD AND MESSAGE PUMP. Creating it on the
         # pywebview/WinForms UI thread meant every Win32 call from the caption
         # watcher blocked the UI thread (measured 2026-10-17: the UI thread
@@ -788,12 +802,20 @@ class NativeCaptionOverlay:
         # ── O ARRASTO TAMBEM ARMA O TICK (2026-11-08) ───────────────────────
         # Tres razoes novas, nenhuma delas um timer proprio:
         #   * com o Ctrl carregado ha' uma pulsacao para desenhar (30 Hz);
-        #   * a arrastar, a janela tem de seguir o cursor (60 Hz);
+        #   * a arrastar, a janela tem de seguir o cursor (tecto de 240 Hz);
         #   * com a legenda no ecra, um poll lento (10 Hz) e' o que permite VER
         #     o Ctrl descer com a legenda parada -- sem ele nao ha' tick nenhum
         #     nesse estado. Este ultimo NAO repinta: `_tick` distingue-os por
         #     `_tick_content`.
         self._tick_content = delay is not None
+        # O PRAZO DO CONTEUDO E' UM SO', no relogio do frame, e ele e' o que
+        # `_tick` consulta antes de pagar uma pintura. O `pace` abaixo pode ser
+        # MAIS CURTO (o poll do arrasto a 240 Hz): nesse caso o tick so' le' o
+        # rato, e a pintura espera por este prazo. Sem esta separacao o poll de
+        # 4 ms herdava a decisao "ha' conteudo" e pintava 240 vezes por segundo
+        # (o orcamento de CPU limitava a 34 Hz e o arrasto perdia o tecto).
+        self._content_due_at = (None if delay is None
+                                else _frame_now() + max(0.0, float(delay)))
         if getattr(self, '_drag_dragging', False):
             pace = caption_drag.DRAG_FRAME_S
         elif getattr(self, '_drag_armed', False):
@@ -812,7 +834,34 @@ class NativeCaptionOverlay:
         _timer_period(True, self.log)
         delay = self._next_delay()
         if delay is not None:
-            delay = self._limit_by_paint(delay)
+            # O ORCAMENTO DE PINTURA VALE PARA O QUADRO QUE PINTA, nao para o
+            # poll. Um tick de poll a 240 Hz custa tres leituras de teclado e
+            # `GetWindowRect` (~microssegundos); aplicar-lhe o piso de 29 ms da
+            # pintura limitava o ARRASTO a 34 Hz -- a taxa que o dono pediu
+            # (240 Hz) ficava no tecto e nunca chegava ao cursor.
+            #
+            # `due` ausente = objeto de oraculo/legado (o `_make` do
+            # `caption-tick-thread-oracle` substitui `_next_delay`): mantem o
+            # comportamento antigo, em que todo tick era um quadro.
+            due = getattr(self, '_content_due_at', 'missing')
+            if isinstance(due, str):
+                paint_frame = True
+            elif due is None:
+                paint_frame = bool(getattr(self, '_drag_armed', False)
+                                   and not getattr(self, '_drag_dragging', False))
+            else:
+                now = _frame_now()
+                paint_frame = (due <= now + 0.001
+                               or (due - now) <= float(delay) + 0.001
+                               # O PULSO DO CTRL TAMBEM E' UM QUADRO QUE PINTA
+                               # (2026-11-09, revisao D1): sem esta condicao um
+                               # conteudo com o proximo prazo longe deixava o
+                               # pulso de 30 Hz fora do orcamento de pintura.
+                               or bool(getattr(self, '_drag_armed', False)
+                                       and not getattr(self, '_drag_dragging',
+                                                       False)))
+            if paint_frame:
+                delay = self._limit_by_paint(delay)
         if delay is None:
             with self.lock:
                 self._tick_deadline = 0.0
@@ -948,17 +997,32 @@ class NativeCaptionOverlay:
                 moved = self._poll_drag()
                 armed = getattr(self, '_drag_armed', False)
                 dragging = getattr(self, '_drag_dragging', False)
-                # QUEM REPINTA: conteudo novo, o gesto a mudar, ou a pulsacao.
+                # QUEM REPINTA: conteudo VENCIDO, o gesto a mudar, ou a pulsacao.
                 # A arrastar com o rato parado nao ha' nada a mudar no bitmap
                 # (o contorno ja' esta' solido e o `SetWindowPos` ja' moveu a
                 # janela) -- o tick continua a ler o rato, mas nao paga render.
-                if (getattr(self, '_tick_content', True) or moved
+                # O `moved` NAO repinta durante o arrasto: a janela ja' seguiu o
+                # cursor no `_poll_drag`, e repintar aqui prendia o arrasto ao
+                # custo da pintura (11,6 ms = 34 Hz) em vez do poll barato.
+                due = getattr(self, '_content_due_at', 'missing')
+                if isinstance(due, str):
+                    content_now = bool(getattr(self, '_tick_content', True))
+                elif due is None:
+                    content_now = False
+                else:
+                    content_now = _frame_now() + 0.001 >= float(due)
+                if (content_now or (moved and not dragging)
                         or (armed and not dragging)):
                     # O CUSTO DA PINTURA E' O QUE DECIDE A TAXA (ver
                     # `_limit_by_paint`): medido aqui, no caminho real.
                     _t0 = _frame_now()
                     self._update()
-                    self._paint_cost_s = _frame_now() - _t0
+                    _cost = _frame_now() - _t0
+                    self._paint_cost_s = _cost
+                    if dragging:
+                        self._drag_paints = int(getattr(self, '_drag_paints', 0)) + 1
+                        self._drag_paint_s = (float(getattr(self, '_drag_paint_s', 0.0))
+                                              + _cost)
                 else:
                     # Um tick que so' existiu para poll nao paga um render:
                     # rearma (o poll seguinte) sem tocar no bitmap.
@@ -1019,6 +1083,16 @@ class NativeCaptionOverlay:
                                           self._work_area(),
                                           offset=self._drag_offset,
                                           state=self._drag)
+        was_dragging = bool(getattr(self, '_drag_dragging', False))
+        if decision.dragging and not was_dragging:
+            # O GESTO COMECOU: a medicao e' DESTE arrasto, nao da instancia.
+            self._drag_ticks = 0
+            self._drag_moves = 0
+            self._drag_paints = 0
+            self._drag_paint_s = 0.0
+            self._drag_t0 = _frame_now()
+        if decision.dragging:
+            self._drag_ticks = int(getattr(self, '_drag_ticks', 0)) + 1
         self._drag = decision.state
         self._drag_armed = decision.armed
         self._drag_dragging = decision.dragging
@@ -1030,11 +1104,27 @@ class NativeCaptionOverlay:
             _user32.SetWindowPos(self.hwnd, None, int(decision.pos[0]),
                                  int(decision.pos[1]), 0, 0,
                                  SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER)
+            self._drag_moves = int(getattr(self, '_drag_moves', 0)) + 1
         if decision.persist:
             saved = caption_drag.save_offset(decision.offset)
             self.log('CAPTION_DRAG_OFFSET x=%d y=%d saved=%s'
                      % (int(decision.offset[0]), int(decision.offset[1]),
                         str(bool(saved)).lower()))
+            # A TAXA ENTREGUE, medida no relogio do frame -- nao o tecto. O
+            # `target_hz` e' o pedido (240); o `hz` e' o que esta maquina deu,
+            # com o numero de pinturas que o poll NAO pagou.
+            _elapsed = _frame_now() - float(getattr(self, '_drag_t0', 0.0) or 0.0)
+            if _elapsed > 0.0:
+                _paints = int(getattr(self, '_drag_paints', 0))
+                self.log('CAPTION_DRAG_RATE ticks=%d moves=%d paints=%d '
+                         'seconds=%.3f hz=%.1f target_hz=%d paint_ms=%.2f'
+                         % (int(getattr(self, '_drag_ticks', 0)),
+                            int(getattr(self, '_drag_moves', 0)), _paints,
+                            _elapsed,
+                            int(getattr(self, '_drag_ticks', 0)) / _elapsed,
+                            int(caption_drag.DRAG_FRAME_HZ),
+                            (1000.0 * float(getattr(self, '_drag_paint_s', 0.0))
+                             / _paints) if _paints else 0.0))
         return bool(decision.changed)
 
     def _paint_drag_outline(self, bmp, width, height):

@@ -683,6 +683,19 @@ class ResumeGate:
 #: Segundos de pressao de MEMORIA SUSTENTADA antes de largar o modelo.
 RELEASE_PERSIST_S = 120.0
 
+#: Pontos percentuais ABAIXO de `HIGH_PCT` que ainda contam como a MESMA
+#: pressao. Um commit a oscilar 89/87 nao zera o relogio de
+#: `RELEASE_PERSIST_S` em cada mergulho; abaixo do piso (84 %) ele zera.
+RELEASE_HYSTERESIS_PCT = 4.0
+
+#: Segundos SEM UMA LEITURA que ainda contam como a mesma pressao. A guarda so'
+#: e' consultada enquanto o modo e' `shed`; um intervalo em `alta`/`leve` (ou com
+#: um lote a correr) NAO e' observado, e o relogio de parede contava esse buraco
+#: como pressao sustentada -- a primeira amostra a 89 % depois de 300 s fora do
+#: `shed` largava o modelo com o prazo de 120 s "cumprido" por tempo em que
+#: ninguem mediu. Tres amostras de `SAMPLE_INTERVAL_S` (5 s) e' o buraco maximo.
+RELEASE_GAP_S = 15.0
+
 
 def _num(value):
     """`float` ou `None` -- uma leitura ausente/ilegivel nao e' um numero."""
@@ -704,21 +717,28 @@ class ReleaseGate:
     """
 
     def __init__(self, clock=None, persist_s=RELEASE_PERSIST_S,
-                 high_pct=HIGH_PCT, very_high_pct=VERY_HIGH_PCT):
+                 high_pct=HIGH_PCT, very_high_pct=VERY_HIGH_PCT,
+                 gap_s=RELEASE_GAP_S):
         self._clock = clock or time.monotonic
         self.persist_s = max(0.0, float(persist_s))
+        self.gap_s = max(0.0, float(gap_s))
+        #: A ultima vez que a guarda foi consultada -- ver `RELEASE_GAP_S`.
+        self._last_at = None
         self.high_pct = float(high_pct)
         self.very_high_pct = float(very_high_pct)
         #: Quando a pressao de MEMORIA comecou a ser continua (`commit >= high`).
         self.memory_since = None
         self.releases = 0
-        self.kept = 0
 
     def may_release(self, level, commit_pct=None, cpu_pct=None, now=None):
         """`(largar, why, campos)`. So' `muito-alta` pede largar alguma coisa."""
         now = self._clock() if now is None else float(now)
         fields = {'level': level, 'commit_pct': commit_pct, 'cpu_pct': cpu_pct,
                   'held_s': 0.0, 'wait_s': 0.0}
+        # UM BURACO NAO E' PRESSAO (2026-11-09): ver `RELEASE_GAP_S`.
+        if self._last_at is not None and now - self._last_at > self.gap_s:
+            self.memory_since = None
+        self._last_at = now
         if level not in RELEASE_LEVELS:
             self.memory_since = None
             return False, 'nivel-nao-severo', fields
@@ -732,9 +752,16 @@ class ReleaseGate:
             self.memory_since = None
             fields['commit_pct'] = commit
             return True, 'memoria-emergencia', fields
-        if commit < self.high_pct:
-            # A PRESSAO E' DE CPU. O modelo FICA: o RSS nao e' o recurso escasso
-            # e o modo `shed` ja' pausou o lote (o audio acumula).
+        if commit < self.high_pct - RELEASE_HYSTERESIS_PCT:
+            # A PRESSAO ACABOU: o relogio zera e o modelo FICA. O RSS nao e' o
+            # recurso escasso e o modo `shed` ja' pausou o lote (o audio
+            # acumula).
+            #
+            # O PISO E' `high_pct - RELEASE_HYSTERESIS_PCT`, NAO `high_pct`. Um
+            # commit a oscilar 89/87 reiniciava o relogio em cada mergulho e o
+            # modelo nunca caia com a maquina parada a 88 % -- o cadeado que a
+            # persistencia de 120 s introduziria. Entre o piso e `high_pct` o
+            # relogio CONTINUA: a pressao esta' presente, so' nao no pico.
             self.memory_since = None
             fields['commit_pct'] = commit
             return False, 'cpu-apenas', fields
@@ -754,7 +781,7 @@ class ReleaseGate:
     def as_dict(self):
         return {'memory_since': self.memory_since,
                 'persist_s': self.persist_s,
-                'releases': self.releases, 'kept': self.kept}
+                'releases': self.releases}
 
 
 # ── A ACCAO: o nivel decide o MODO do worker, e nao a vida do processo ───────

@@ -43,8 +43,9 @@ CONFIG = os.path.join(ROOT, "worker", "config.json")
 
 RETRY_GUARD = "if hr != 0:"
 OLD_PERIOD = "block_ms / 1000.0 / 4.0"
-NEW_PERIOD = "block_ms / 1000.0 / 20.0"
+FIXED_PERIOD = "period = min(0.005, max(0.001, self.block_ms / 1000.0 / 20.0))"
 RING_MS_RECORDED = 22.0
+RING_MS_GRANTED_100 = 100.0
 
 
 class _Self:
@@ -55,13 +56,24 @@ class _Self:
         self.block_ms = block_ms
 
 
-def _namespace(block_ms):
-    return {"block_ms": block_ms, "self": _Self(block_ms), "min": min, "max": max}
+def _namespace(block_ms, ring_s):
+    return {"block_ms": block_ms, "self": _Self(block_ms), "min": min, "max": max,
+            "ring_s": ring_s}
 
 
 def initialize_pair(source):
-    """The two init(...) calls and the code between them, or None."""
-    start = source.find("init(client, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, 0, 0, mix, None)")
+    """The two init(...) calls and the code between them, or None.
+
+    2026-11-09: the pair is now (HNS_100MS primary, zero-duration fallback) -- the reverse of the
+    order this oracle was written against -- because asking for 100 ms is granted a 100 ms ring on
+    this host, which lets the pump drain every 25 ms instead of every 5 ms. The invariant this
+    oracle guards is unchanged: the fallback exists and is CONDITIONAL.
+    """
+    start = source.find(
+        "init(client, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, HNS_100MS, 0, mix, None)")
+    if start < 0:
+        start = source.find(
+            "init(client, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, 0, 0, mix, None)")
     if start < 0:
         return None
     end = source.find('Initialize(SHARED|LOOPBACK) failed', start)
@@ -86,12 +98,14 @@ def retry_guarded(region):
 
 
 def period_of(source, mutate=False):
+    """The period STATEMENT. `min(<a>, max(<b>, ring_s / 4.0))` since 2026-11-09: the ring the
+    stream was GRANTED decides the poll, with the same 4x margin the 22 ms/5 ms pair had."""
     match = re.search(r"period = min\(([^\n]+)\)", source)
     if not match:
         return None, None
     expression = match.group(1)
     if mutate:
-        expression = expression.replace("1000.0 / 20.0", "1000.0 / 4.0")
+        expression = "self.block_ms / 1000.0 / 4.0"
     return expression, match.group(0)
 
 
@@ -113,36 +127,51 @@ def main(argv=None):
         return 1
     first_call = region.count("init(")
     guarded = retry_guarded(region)
-    carries_100ms = "HNS_100MS" in region
+    # 2026-11-09: HNS_100MS is now the PRIMARY call and the guarded retry is the zero-duration
+    # fallback. Exactly one of the two asks for the big ring, and it is the first one.
+    carries_100ms = region.count("HNS_100MS") == 1 and \
+        "HNS_100MS" in region[:region.find("init(", 5)]
     line = source[:source.find(region)].count("\n") + 1
     say("  the Initialize pair lives at :%d, %d init() calls, retry guarded by '%s': %s"
         % (line, first_call, RETRY_GUARD, str(guarded).lower()))
-    say("  the retry carries HNS_100MS (=%s): %s"
-        % (re.search(r"HNS_100MS = ([^\n]+)", source).group(1), str(carries_100ms).lower()))
+    say("  the PRIMARY call carries HNS_100MS (=%s), the guarded retry is the zero-duration"
+        " fallback: %s" % (re.search(r"HNS_100MS = ([^\n]+)", source).group(1),
+                           str(carries_100ms).lower()))
     if first_call != 2:
         wrong.append("expected TWO init() calls (default then retry), found " + str(first_call))
     if not guarded:
         wrong.append("the retry is NOT guarded -- it would run unconditionally, i.e. it WOULD be dead"
                      " only in the other direction (asking 100 ms first)")
     if not carries_100ms:
-        wrong.append("the retry no longer passes HNS_100MS")
+        wrong.append("the big-ring request (HNS_100MS) is no longer the primary Initialize call,"
+                     " or the retry asks for it too")
 
     old_gone = OLD_PERIOD not in source
+    fixed_gone = FIXED_PERIOD not in source
     expression, _raw = period_of(source)
     if expression is None:
         say("VERDICT: FAIL -- the period formula was not found")
         return 1
-    value = eval("min(" + expression + ")", {"__builtins__": {}}, _namespace(block_ms))
+    value = eval("min(" + expression + ")", {"__builtins__": {}},
+                 _namespace(block_ms, RING_MS_GRANTED_100 / 1000.0))
+    value_small = eval("min(" + expression + ")", {"__builtins__": {}},
+                       _namespace(block_ms, RING_MS_RECORDED / 1000.0))
     say("  block_ms from config.json: %s" % block_ms)
-    say("  period formula: min(%s)  ->  %.4f s (%.1f ms)" % (expression, value, value * 1000.0))
-    say("  recorded ring on this host: %.1f ms (the module own measurement: 1056 frames at 48 kHz)"
-        % RING_MS_RECORDED)
-    say("  the OLD formula (block_ms/1000/4) is gone: " + str(old_gone).lower())
+    say("  period formula: min(%s)" % expression)
+    say("    granted 100 ms ring -> %.1f ms (ring/4 = %.1f ms)"
+        % (value * 1000.0, RING_MS_GRANTED_100 / 4.0))
+    say("    22 ms fallback ring -> %.1f ms" % (value_small * 1000.0))
+    say("  the OLD fixed 5 ms statement is gone: " + str(fixed_gone).lower())
     if not old_gone:
         wrong.append("the OLD 25 ms formula is back in the file")
-    if value * 1000.0 >= RING_MS_RECORDED:
-        wrong.append("the poll (%.1f ms) is NOT faster than the recorded ring (%.1f ms) -- the overflow"
-                     " the module documents would return" % (value * 1000.0, RING_MS_RECORDED))
+    if not fixed_gone:
+        wrong.append("the period is a fixed constant again -- it no longer follows the granted ring")
+    if value * 1000.0 >= RING_MS_GRANTED_100:
+        wrong.append("the poll (%.1f ms) is NOT faster than the 100 ms ring it asks for"
+                     % (value * 1000.0))
+    if value_small * 1000.0 >= RING_MS_RECORDED:
+        wrong.append("on a 22 ms fallback ring the poll (%.1f ms) is NOT faster than the ring"
+                     % (value_small * 1000.0))
     measured = "duty 0.815" in source and "duty 0.999" in source
     say("  the module still carries its own duty measurement (0.815 -> 0.999): "
         + str(measured).lower())
@@ -159,10 +188,13 @@ def main(argv=None):
         # min(0.005, ...), so mutating only the divisor inside it cannot move the answer (the cap wins);
         # a faithful mutant replaces the STATEMENT.
         m_source = re.sub(r"period = min\([^\n]+\)", "period = self.block_ms / 1000.0 / 4.0", source)
-        m_expr, _ = period_of(m_source)
+        m_expr, _ = period_of(m_source, mutate=True)
         m_value = None
         if m_expr is None:
-            m_value = block_ms / 1000.0 / 4.0
+            m_value = 100.0 / 1000.0 / 4.0   # the shipped 100 ms block, as above
+        else:
+            m_value = eval("min(" + m_expr + ")", {"__builtins__": {}},
+                           _namespace(100.0, RING_MS_GRANTED_100 / 1000.0))
         say("")
         say("  mutant A (guard -> if True, in the region): retry still guarded=%s" % str(m_guarded).lower())
         say("  mutant B (old statement restored): formula found=%s, period=%.1f ms (ring=%.0f ms)"
@@ -171,7 +203,7 @@ def main(argv=None):
             wrong.append("NEG-ARM A: removing the guard inside the region did not change it")
         if m_expr is not None:
             wrong.append("NEG-ARM B: the old period statement was not recognised as a change")
-        elif (m_value or 0.0) * 1000.0 < RING_MS_RECORDED:
+        elif (m_value or 0.0) * 1000.0 < RING_MS_RECORDED:  # 25 ms at the shipped 100 ms block
             wrong.append("NEG-ARM B: the restored old period is still faster than the ring")
         say("")
         say("NEG-ARM " + ("PASS" if not wrong else "FAIL")

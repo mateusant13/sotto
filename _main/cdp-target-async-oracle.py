@@ -267,6 +267,71 @@ def run_arms(cdp, shell_mod):
         if src2._tid_thread is not None:
             src2._tid_thread.join(timeout=3.0)
 
+    # A4/A5 -- O ORCAMENTO DO LOG DE ESTADO (2026-11-09, DM do watcher 50452).
+    #
+    # O laco de 8 Hz escrevia 16 linhas/s: `YOUTUBE_CDP_SOURCE` e
+    # `YOUTUBE_TARGET` repetiam o MESMO estado 1,18x/s cada e as duas linhas de
+    # medida somavam 0,57/s num log de 64,7 MB. As de estado passaram a sair na
+    # MUDANCA (batimento de 60 s, `_STATE_HEARTBEAT_S`); as de medida ficaram
+    # limitadas por `_YT_RATE_LOG_S`/`_YT_HEALTH_LOG_S` no shell. Estes dois
+    # bracos conduzem os METODOS REAIS com um relogio falso: 480 ticks = 60 s de
+    # laco a 8 Hz, e contam as linhas que saem.
+    class _Clock(object):
+        t = 1000.0
+
+        def monotonic(self):
+            return self.t
+
+    class _Src(object):
+        _reads = 11
+        _errors = 0
+
+        def snapshot_age(self):
+            return 0.2
+
+        def stats(self):
+            return {'reads': 11, 'errors': 0, 'last_error': '', 'note': 'attached'}
+
+    saved_time = shell_mod.time
+    saved_log = shell_mod.log
+    fake = _Clock()
+    lines = []
+    try:
+        watcher = shell_mod.ExternalCaptionWatcher.__new__(
+            shell_mod.ExternalCaptionWatcher)
+        shell_mod.time = fake
+        shell_mod.log = lines.append
+        snap = {'stamp': 1000.0}
+        for _ in range(481):   # 60 s de instantes a 8 Hz (0,125 s cada)
+            # O RELOGIO ANDA DEPOIS DO TICK, senao o primeiro `t0` nasce
+            # adiantado e a sexta janela de 10 s nunca fecha.
+            watcher._yt_rate_tick(snap, _Src())
+            watcher._yt_health_tick(_Src(), fake.t)
+            fake.t += 0.125
+    finally:
+        shell_mod.time = saved_time
+        shell_mod.log = saved_log
+    rate = [m for m in lines if m.startswith('YOUTUBE_LOOP_HZ')]
+    health = [m for m in lines if m.startswith('YOUTUBE_CDP_HEALTH')]
+    # O NUMERO ESPERADO E' UM PIN, NAO UMA DIVISAO PELO PROPRIO CONSTANTE
+    # (2026-11-09, MEDIDO). Com `int(60.0 / shell_mod._YT_RATE_LOG_S)` o mutante
+    # que devolvia o periodo a 0,125 s mudava TAMBEM a expectativa (esperado=480)
+    # e a arm A4 passava com o log a 8 linhas/s: um portao a ler o veredicto da
+    # coisa que mede. Resultado medido do braco negativo: `FAIL -- um mutante
+    # sobreviveu`, com a A5 a ser a unica a ficar vermelha. Hoje 10 s -> 6 linhas
+    # de `YOUTUBE_LOOP_HZ` e 30 s -> 2 de `YOUTUBE_CDP_HEALTH` em 60 s de laco; se
+    # a casa mudar o orcamento, estes dois numeros mudam AQUI, a mao.
+    want_rate = int(60.0 / 10.0)      # `_YT_RATE_LOG_S`
+    want_health = int(60.0 / 30.0)    # `_YT_HEALTH_LOG_S`
+    hz_ok = bool(rate) and 'hz=8.0' in rate[-1]
+    arm('A4-STATE-RATE', len(rate) == want_rate and hz_ok,
+        'YOUTUBE_LOOP_HZ=%d (esperado %d) hz=%r' %
+        (len(rate), want_rate, rate[-1].split('hz=')[-1][:5] if rate else '-'))
+    per_s = (len(rate) + len(health)) / 60.0
+    arm('A5-STATE-BUDGET', len(health) == want_health and per_s <= 0.2,
+        'linhas/s=%.3f (alvo <=0.2) rate=%d health=%d (esperado %d)' %
+        (per_s, len(rate), len(health), want_health))
+
     return out
 
 
@@ -318,8 +383,23 @@ def main():
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
+    # O TERCEIRO MUTANTE E' DO SHELL: o periodo de medida volta a ser um tick
+    # (`0.125` = 8 linhas/s), que e' o estado medido no log do dono antes da
+    # cura. A arm A4 tem de cair; a constante e' restaurada no fim.
+    saved_period = shell_mod._YT_RATE_LOG_S
+    try:
+        shell_mod._YT_RATE_LOG_S = 0.125
+        rows = {r[0]: r for r in run_arms(cdp, shell_mod)}
+        hit = rows.get('A4-STATE-RATE')
+        red = hit is not None and not hit[1]
+        verdict = verdict and red
+        print('   A4-STATE-RATE -> %s' % ('RED (como desenhado)' if red
+                                          else 'sobreviveu'))
+    finally:
+        shell_mod._YT_RATE_LOG_S = saved_period
+
     if verdict:
-        print('NEG-ARM: PASS (dois mutantes, os dois apanhados)')
+        print('NEG-ARM: PASS (tres mutantes, os tres apanhados)')
         return 1
     print('NEG-ARM: FAIL -- um mutante sobreviveu')
     return 0

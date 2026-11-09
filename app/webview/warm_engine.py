@@ -80,6 +80,18 @@ TARGET_SR = 16000
 #: dropped silently (they switch the stream to history-only and say so).
 WARM_SEND_QUEUE = 512
 
+#: O ORCAMENTO DE FIOS DO MOTOR DE AQUECIMENTO -- o MESMO numero que a shell
+#: entrega ao worker (`sotto_webview.py --worker-threads`, default 2). Duas
+#: declaracoes, um numero so': o arm A12 de `_main/worker-thread-limit-oracle.py`
+#: compara os dois defaults e fica RED se um deles mudar sozinho.
+#:
+#: PORQUE AQUI E NAO SO' NA SHELL (medido 2026-11-09, achado da revisao
+#: independente): este processo constroi as sessoes ORT ANTES de a shell existir,
+#: e o `attach` entrega-lhe as sessoes JA' construidas -- um `--worker-threads 2`
+#: na shell nao alcanca um pool que nasceu com 4. O default aqui e' o numero da
+#: POLITICA; `--threads 0` devolve o `auto` de sempre.
+WORKER_THREADS_DEFAULT = 2
+
 PID_FILE = os.path.join(MAIN, "warm-engine.pid")
 LOG_FILE = os.path.join(MAIN, "warm-engine.log")
 VISIBILITY_FILE = os.path.join(MAIN, "panel-visibility.json")
@@ -350,6 +362,24 @@ def import_worker(root=ROOT):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def apply_thread_budget(worker, threads):
+    """Apply the ORT thread budget BEFORE any session exists; return the number.
+
+    ``limit_threads`` alone is NOT enough here: it writes the env, but
+    ``StreamAsr`` opens its sessions from ``current_threads()``, which prefers
+    the value ``resolve_threads`` records. Measured 2026-11-09 on this module's
+    own import path: after ``limit_threads(2)`` the env says 2 and
+    ``current_threads()`` still says 4, so the sessions this engine builds
+    would open at the default while the shell asked for 2.
+    ``resolve_threads`` is the single owner of the resolution
+    (``--threads > env > 4``); ``threads=0`` keeps the old ``auto`` behaviour
+    and applies nothing.
+    """
+    if not threads:
+        return None
+    return int(worker.resolve_threads(int(threads))[0])
 
 
 class WorkerGraphLoader:
@@ -792,7 +822,7 @@ class WarmEngine:
                  log_path=None, pid_path=None, pipe=None, mutex=None,
                  park_ttl_s=WARM_PARK_TTL_S, release_s=WARM_RELEASE_S,
                  sample_interval_s=None, tap_opt_in=False, visibility_path=VISIBILITY_FILE,
-                 gate_fn=None, clock=None, model_key_value=None):
+                 gate_fn=None, clock=None, model_key_value=None, threads=None):
         self.root = root
         self.model_dir = model_dir or model_dir_from(root, model_dir)
         self.key = model_key_value or warm_pipe.model_key(self.model_dir)
@@ -809,6 +839,9 @@ class WarmEngine:
         self._gate_fn = gate_fn
         self.loader = loader or WorkerGraphLoader(root, self.model_dir)
         self.allow_model = not isinstance(loader, FakeLoader)
+        #: O orcamento de fios APLICADO neste processo (None = nada imposto). Vai
+        #: para a linha de arranque para o numero ser lido do log, nunca deduzido.
+        self.threads = threads
 
         self.asr = None
         self.load_ms = 0.0
@@ -961,10 +994,11 @@ class WarmEngine:
         try:
             self.write_pid()
             self.log("WARM_ENGINE_START pid=%d started_at=%s model=%s "
-                     "plugin_sha=%s session=%s pipe=%s"
+                     "plugin_sha=%s session=%s pipe=%s threads=%s"
                      % (os.getpid(), time.strftime("%Y-%m-%dT%H:%M:%S"),
                         self.key, plugin_sha256(self.root), self.session,
-                        self.pipe_name))
+                        self.pipe_name,
+                        "auto" if not self.threads else self.threads))
             self.log("WARM_PIPE_READY name=%s instances=1" % self.pipe_name)
             self._sender = Sender(self._raw_send, self.log)
             self.state = "unloaded"
@@ -1353,6 +1387,11 @@ def main(argv=None):
     parser.add_argument("--log-file", default=LOG_FILE)
     parser.add_argument("--park-ttl", type=float, default=WARM_PARK_TTL_S)
     parser.add_argument("--release-s", type=float, default=WARM_RELEASE_S)
+    parser.add_argument("--threads", type=int, default=WORKER_THREADS_DEFAULT,
+                        help="CPU thread budget for the ORT sessions this engine "
+                             "builds and hands to the worker on attach "
+                             "(default: %d, the same number the shell passes as "
+                             "`--worker-threads`; 0 = auto)" % WORKER_THREADS_DEFAULT)
     parser.add_argument("--visibility", default=VISIBILITY_FILE)
     parser.add_argument("--tap", action="store_true",
                         help="mode C: hold one WASAPI client while parked "
@@ -1382,13 +1421,23 @@ def main(argv=None):
                  identity["model_key"]))
         return 0 if alive else 3
 
+    # O ORCAMENTO APLICADO ANTES DE QUALQUER SESSAO EXISTIR. `apply_thread_budget`
+    # e' o dono unico desta fiacao: ele chama `resolve_threads` (a MESMA funcao do
+    # `main()` do worker), e o `StreamAsr` deste processo le' o resultado pelo
+    # mesmo `current_threads()`. `limit_threads` sozinho escreve o ambiente e
+    # deixa o `current_threads()` em 4 -- medido, e o motivo do braco A14.
+    applied = None
+    if args.threads:
+        applied = apply_thread_budget(import_worker(args.root), args.threads)
+
     loader = FakeLoader() if args.no_model else None
     engine = WarmEngine(session=args.session, model_dir=args.model_dir,
                         root=args.root, loader=loader,
                         log_path=args.log_file, pid_path=args.pid_file,
                         pipe=args.pipe, mutex=args.mutex,
                         park_ttl_s=args.park_ttl, release_s=args.release_s,
-                        tap_opt_in=args.tap, visibility_path=args.visibility)
+                        tap_opt_in=args.tap, visibility_path=args.visibility,
+                        threads=applied)
     return engine.run()
 
 

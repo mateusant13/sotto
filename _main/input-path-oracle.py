@@ -308,11 +308,19 @@ def arms(mod, source_text):
     w2.edit_mode = False
     ok_c6 = (ritmo_arrasto == mod.POLL_MS_DRAG
              and ritmo_visivel == mod.POLL_MS_VISIBLE
-             and ritmo_arrasto < ritmo_visivel)
-    results.append(("C6 a arrastar 25 ms, a vigiar 100 ms", ok_c6,
+             and ritmo_arrasto < ritmo_visivel
+             and int(getattr(mod, "EDIT_DRAG_FRAME_HZ", 0) or 0) == 240
+             and abs(float(getattr(mod, "EDIT_DRAG_MIN_INTERVAL_MS", 0.0))
+                     - 1000.0 / 240.0) < 0.01
+             and int(getattr(mod, "POLL_MS_DRAG", 0) or 0) == 4)
+    results.append(("C6 a arrastar no tecto de 240 Hz (4 ms pedidos), a vigiar 100 ms",
+                    ok_c6,
                     {"visivel": ritmo_visivel, "arrasto": ritmo_arrasto,
                      "POLL_MS_VISIBLE": mod.POLL_MS_VISIBLE,
-                     "POLL_MS_DRAG": mod.POLL_MS_DRAG}))
+                     "POLL_MS_DRAG": mod.POLL_MS_DRAG,
+                     "EDIT_DRAG_FRAME_HZ": getattr(mod, "EDIT_DRAG_FRAME_HZ", None),
+                     "EDIT_DRAG_MIN_INTERVAL_MS": getattr(
+                         mod, "EDIT_DRAG_MIN_INTERVAL_MS", None)}))
 
     # ── C7: `stop` mata o timer ────────────────────────────────────────────
     stop_node = _func_node(watcher, "stop")

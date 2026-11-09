@@ -348,3 +348,9 @@ history-verify/
 .agent-work/
 .pi/
 .agents/.closure-gate-history.json
+
+# A COPIA DE CONTROLE DO PROBE DO HISTORICO (2026-11-09): `_historico-vs-redux-probe.js`
+# escreve esta copia mutante ao lado do original para o braco negativo. E DERIVADA do
+# `app/panel/history-store.js` (o probe a regenera em cada corrida) e ficou 492 linhas de
+# codigo duplicado no indice -- o `git add -A` de um commit anterior a varreu para dentro.
+_main/_historico-vs-redux-control-store.js
