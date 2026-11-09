@@ -3,19 +3,31 @@
 Tudo abaixo foi medido nesta arvore hoje, com o comando ao lado. Onde nao houve
 medicao, a linha diz `UNMEASURED`.
 
-## 1. O que aconteceu, e quem mediu o que
+## 1. O que aconteceu — e a CORRECCAO da premissa, medida 40 min depois
 
 | # | a medicao | o instrumento | o numero |
 |---|---|---|---|
-| 1 | o worker do dono queimando CPU com zero linha | watcher (`I:/!watcher`), ao vivo | `worker/sotto_worker.py` **pid 20676**, 232 min de vida, **270,6 %c**, `rows=0`, **6 176 s** de CPU acumulada |
-| 2 | o mesmo codigo, arranque novo | watcher, apos o painel respawnar | **1,2 %c** — fator **240** |
-| 3 | o custo que o processo publica de dentro | `WORKER_STATS private_mb` no log da morte | `private_mb=3401.2`, `rss_mb=873.0` — a mesma ser que este recibo usa |
+| 1 | o worker do dono, amostra unica | watcher (`I:/!watcher`), ao vivo | `worker/sotto_worker.py` **pid 20676**, 232 min de vida, **270,6 %c** numa janela, `rows=0` no `YOUTUBE_TICK_MS`, **6 176 s** de CPU acumulada |
+| 2 | o mesmo codigo, arranque novo, amostra unica | watcher, apos o painel respawnar | **1,2 %c** — fator **240** |
+| 3 | o custo que o processo publica de dentro | `WORKER_STATS private_mb` no log da morte | `private_mb=3401.2`, `rss_mb=873.0` |
 | 4 | o que o produto via antes desta cura | `grep -c WORKER_COST` sobre a arvore | **0** — nenhuma serie, nenhuma data |
-| 5 | recargas pagas pelo respawn | `BRIDGE_LOAD_MS` (quatro, hoje) | 5 500 / 23 547 / 28 125 / 57 875 ms |
+| 5 | recargas pagas pelo respawn | `BRIDGE_LOAD_MS` (quatro, em oito horas) | 5 500 / 23 547 / 28 125 / 57 875 ms |
+| 6 | **A FORMA da serie do MESMO codigo, 12 amostras de 5 s** | `psutil.cpu_times` sobre o pid 14712, 2026-11-09 ~16:3x | **73 113 87 1 1 0 65 99 209 1 1 0** %c — mediana **33**, media **54**, pico **209**, e a media desde o arranque (464 s de CPU em 1 476 s) = **31,5 %c** |
 
-O que faltava nao era a cura — era o **numero datado** e a **decisao**. O produto
-pintava `rows=0` sem dizer desde quando, e o unico agente que percebeu o defeito
-foi um observador externo que **matou** o processo.
+**A PREMISSA DAS LINHAS 1–2 ESTAVA ERRADA, e a linha 6 e' a correcao.** Uma janela
+unica de 6 s pode cair inteira dentro de um passe de lote (os mesmos 6 s medidos aqui
+deram **307,4 %c**) e chamar de "degradacao" o que e' o motor de lote a fazer o
+trabalho: o worker alterna rajadas de 1–2 nucleos com ociosidade, e o pid morto tinha
+**1 768 legendas** e `REDUX_BATCH_KICK kicks=142` no `stderr_tail` da propria morte —
+ou seja, **produzia**. E o `rows=0` que o watcher leu e' o do **`YOUTUBE_TICK_MS`**
+(linhas do PLAYER), nao o do worker: duas unidades diferentes com o mesmo nome.
+
+O que sobra e' o que este trabalho de facto entrega: **o produto nao tinha serie
+nenhuma** (`grep -c WORKER_COST` = 0), por isso a unica leitura possivel era uma
+janela solta — e ela mentiu duas vezes, uma a favor do "esta' degradado", outra a favor
+do "o kill curou". Com `WORKER_COST` + `BRIDGE_WORKER_COST` a mesma pergunta tem uma
+serie por minuto com `rows`, `rows_per_min` e `cpu_s_per_row`.
+
 
 ## 2. O que foi implementado (quatro pecas, uma por metade do problema)
 
@@ -31,9 +43,10 @@ saudavel **0,4–1,2 %c**; worker transcrevendo **100–150 %c** (com `rows>0`, 
 nao conta); worker degradado **270,6 %c com zero linha**. 60 %c e' 50x o repouso
 e 4,5x abaixo do defeito.
 
-**`rows_since_tick`, e nao `rows`**, porque o defeito do dono nao foi um worker que
-nunca comecou: o pid 20676 tinha **1 768 legendas** feitas e depois parou. Um
-predicado sobre o cumulativo nunca o teria reiniciado.
+**`rows_since_tick`, e nao `rows`**, porque o que interessa e' se ESTE tick produziu
+linha — um worker com 1 768 linhas feitas e nenhuma nova esta' tao mudo como o que nunca
+comecou. (Foi o caso do pid 20676, e mesmo assim o vigia NAO o teria reiniciado: ele
+produzia, em rajadas — ver a correcao da §1.)
 
 ## 3. O instrumento que julga
 
@@ -95,9 +108,11 @@ os `bun.exe` somam ~7,9 GB.
 
 ## 5. O QUE NAO ESTA' VERIFICADO
 
-* **Nenhum worker real foi reiniciado por este vigia ainda.** As arms D conduzem o
-  handler REAL com uma serie construida; a prova em campo pede o worker a degradar
-  com o painel aberto, o que esta' nas maos do dono e do tempo. `UNMEASURED`.
+* **Nenhum worker real foi reiniciado por este vigia ainda**, e depois da correcao da
+  §1 o caso que ele cobre — CPU >= 60 %c e ZERO linha por 3 min — **nao foi observado
+  nenhuma vez** nesta maquina. O vigia e' rede de seguranca, nao cura de um defeito
+  medido; a serie que o julgaria so' existe a partir do proximo arranque.
+  `UNMEASURED`.
 * **A ponte QUENTE nao transporta o custo**: em `WarmPipeBridge` o worker e' outro
   processo e o stderr dele nao passa por este pump. O vigia e' do caminho FRIO, que
   e' o que a instancia do dono usa (`BRIDGE_SPAWNED` no log). Declarado, nao fingido.

@@ -311,12 +311,12 @@
       "max_func_name": "code_files"
     },
     "app/webview/cost_watchdog.py": {
-      "bytes": 5494,
+      "bytes": 6057,
       "classes": 0,
       "defs": 2,
       "except_pass": 2,
       "globals": 0,
-      "lines": 113,
+      "lines": 122,
       "max_func": 49,
       "max_func_name": "plan"
     },

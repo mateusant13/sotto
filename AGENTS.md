@@ -568,13 +568,17 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
 - **PIN do ficheiro (medido 2026-11-09, 13:4x):** `_main\_audit-verify-all.cmd` = **319523 B**,
   **3762 CRLF** / 0 bare LF, sha256 `830FCB88180C4D35683374085C8894F10C38ED8A9182E3E9350449739209CE5D`.
   (Mil oitenta e oito bytes e DEZ linhas a mais do que o pin de 318435 B: o par `cost-watchdog` +
-  `red-as-expected-cost-watchdog`, o CUSTO SEM TRABALHO. O watcher mediu o worker do dono
-  (`worker/sotto_worker.py`, pid 20676, 232 min de vida) a **270,6 %c com `rows=0`** e 6 176 s de CPU
-  acumulada, e o MESMO codigo arrancado de novo a **1,2 %c** -- fator 240; o produto nao tinha nem o
-  numero nem a decisao. Agora o worker publica `WORKER_COST` (cpu_s, cpu_pct_avg, rows,
+  `red-as-expected-cost-watchdog`, o CUSTO SEM TRABALHO. O watcher leu o worker do dono
+  (`worker/sotto_worker.py`, pid 20676) a **270,6 %c numa janela** e a **1,2 %c** noutra, e o produto
+  nao tinha serie nenhuma para julgar as duas. A CORRECAO veio depois, medida aqui: o mesmo codigo em
+  12 amostras de 5 s da' **73 113 87 1 1 0 65 99 209 1 1 0 %c** -- rajadas do motor de lote com
+  ociosidade entre elas, media desde o arranque **31,5 %c** -- e o `rows=0` do log era o do
+  `YOUTUBE_TICK_MS`, linhas do PLAYER e nao do worker; a janela unica chamava de degradacao o que era
+  trabalho. Agora o worker publica `WORKER_COST` (cpu_s, cpu_pct_avg, rows,
   rows_since_tick, rows_per_min, cpu_s_per_row, uptime_s, pid) a cada tick de stats, a shell journaliza
   uma linha por minuto (`BRIDGE_WORKER_COST`) e o vigia reinicia quando `cpu_pct_avg >= 60` **e**
-  `rows_since_tick == 0` por 18 ticks (3 min), com piso de 600 s e tecto de 3/hora, pelo
+  `rows_since_tick == 0` por 18 ticks (3 min) -- caso que ainda NAO FOI OBSERVADO nesta maquina, logo e'
+  rede de seguranca, nao cura de um defeito medido -- com piso de 600 s e tecto de 3/hora, pelo
   `revive_worker('cost-watchdog')` que ja' existe. O passo julga as QUATRO metades (forma do worker,
   parser da shell e fiacao estatica, decisao pura, FIACAO pelo handler REAL extraido do fonte) -- 32 arms; o
   `--neg-arm` derruba 10/10 mutantes, cada um pela SUA arm. Nenhum braco abre dispositivo de audio. Recibo:

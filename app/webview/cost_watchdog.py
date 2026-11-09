@@ -1,12 +1,21 @@
 """O CUSTO SEM TRABALHO: quando o worker queima CPU e nao produz linha nenhuma.
 
-NASCIDO DE UMA MEDICAO, 2026-11-09. O watcher mediu, ao vivo, o worker do dono
-(`worker/sotto_worker.py`, pid 20676, 232 min de vida): **270,6 %c** -- 2,7 nucleos --
-com `rows=0` no log dele, 6 176 s de CPU acumulada, e o dono sentiu a travada.
-O watcher matou o worker, o painel respawnou sozinho, e com a arvore assentada o
-mesmo instrumento mediu **1,2 %c**: fator 240. A conclusao que sobra e' a regra:
+NASCIDO DE UMA MEDICAO, 2026-11-09. O watcher leu o worker do dono (`worker/sotto_worker.py`,
+pid 20676, 232 min de vida) a **270,6 %c numa janela** e **1,2 %c** noutra, depois de
+o matar -- e o produto nao tinha serie nenhuma para julgar as duas.
 
-    CUSTO SEM TRABALHO NAO E' TRABALHO -- E' O STUTTER.
+A CORRECAO, medida 40 min depois desta lane, importa tanto quanto a regra: o mesmo
+codigo, em 12 amostras de 5 s, deu **73 113 87 1 1 0 65 99 209 1 1 0 %c** (mediana 33,
+media desde o arranque 31,5 %c). O worker alterna rajadas do motor de lote com
+ociosidade; uma janela unica pode cair inteira dentro de uma rajada (**307,4 %c** nos
+mesmos 6 s) e chamar de degradacao o que e' trabalho. E o `rows=0` lido no log era o do
+`YOUTUBE_TICK_MS` -- linhas do PLAYER, nao do worker.
+
+Logo: o que faltava era a SERIE (`WORKER_COST` por tick, `BRIDGE_WORKER_COST` por
+minuto). A regra abaixo e' a rede de seguranca para o caso que NINGUEM observou ainda:
+CPU alta e ZERO linha produzida, por minutos.
+
+    CUSTO SEM TRABALHO NAO E' TRABALHO -- E' A HIPOTESE QUE A SERIE TEM DE DECIDIR.
 
 Duas coisas faltavam e este modulo entrega as duas:
 
