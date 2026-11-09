@@ -174,7 +174,43 @@ def _pid_alive(pid):
         return None
 
 
-def _not_the_instance(pid, seg, alive):
+def _pid_started(pid):
+    """Quando o processo com este pid COMECOU, em segundos epoch; None se nao se sabe.
+
+    Existe por um defeito MEDIDO em 2026-11-08: depois de o dono reiniciar o PC, o
+    `_pid_alive` respondeu `True` para o pid `9628` -- que era o shell de 18:57:20 e
+    morreu as 18:58:07 -- porque o Windows RECICLOU o numero para outro processo. O
+    oraculo passou entao a julgar uma instancia morta como "a INSTANCIA VIVA" e
+    reprovou um passo `always`. Uma largada prova-se pelo CARIMBO, nao pelo numero.
+    """
+    try:
+        import psutil
+        return psutil.Process(int(pid)).create_time()
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
+#: Tolerancia entre o carimbo do log e o `create_time` do processo. O log escreve o
+#: instante em que a shell chegou ao `SHELL_STARTUP_STAGE`, poucos segundos depois de
+#: o processo nascer.
+PID_STAMP_TOLERANCE_S = 180.0
+
+
+def _stamp_mismatch(pid, seg, started=_pid_started):
+    """True quando o pid EXISTE mas NAO e' a largada que este segmento descreve."""
+    started_at = started(pid)
+    if started_at is None:
+        return False
+    head = seg.lstrip()[:23]
+    try:
+        import datetime
+        logged = datetime.datetime.strptime(head, "%Y-%m-%d %H:%M:%S.%f").timestamp()
+    except ValueError:
+        return False
+    return abs(started_at - logged) > PID_STAMP_TOLERANCE_S
+
+
+def _not_the_instance(pid, seg, alive, started=_pid_started):
     """Porque e' que esta largada NAO e' a instancia viva; None quando E'.
 
     Tres perguntas, na ordem em que cada uma pode excluir uma largada:
@@ -192,6 +228,10 @@ def _not_the_instance(pid, seg, alive):
     live = alive(pid)
     if live is False:
         return "processo ja' nao existe (largada morta)"
+    if live is True and _stamp_mismatch(pid, seg, started):
+        # O numero foi RECICLADO: existe um processo com este pid, mas nasceu noutro
+        # instante. Julgar esta largada seria julgar outra coisa (medido 2026-11-08).
+        return "pid reciclado (o processo vivo nasceu noutro instante)"
     m = re.search(r"SINGLE_INSTANCE name=\S+ already_running=(true|false)", seg)
     if m and m.group(1) == "true":
         return "perdeu a mutex (already_running=true)"
@@ -214,14 +254,17 @@ def shell_launches(log_path=None):
     except OSError:
         return []
     hits = list(re.finditer(r"SHELL_STARTUP_STAGE pid=(\d+)", text))
-    starts = [h.start() for h in hits] + [len(text)]
+    # O segmento comeca na LINHA do marcador, e nao no marcador: o carimbo de
+    # horario e' o que prova que um pid vivo E' esta largada (pid reciclado), e um
+    # segmento cortado no marcador perde-o (medido 2026-11-08).
+    starts = [text.rfind("\n", 0, h.start()) + 1 for h in hits] + [len(text)]
     launches = [(h.group(1), text[starts[i]:starts[i + 1]])
                 for i, h in enumerate(hits)]
     launches.reverse()
     return launches
 
 
-def newest_shell_segment(log_path=None, alive=_pid_alive):
+def newest_shell_segment(log_path=None, alive=_pid_alive, started=_pid_started):
     """(pid, texto) da largada que E' a instancia viva; (None, '') se nao ha'.
 
     "A instancia" = a largada mais recente que (a) nao e' medicao, (b) ganhou a
@@ -239,7 +282,7 @@ def newest_shell_segment(log_path=None, alive=_pid_alive):
         tail = ""
     skipped = 0
     for pid, seg in launches:
-        why = _not_the_instance(pid, seg, alive)
+        why = _not_the_instance(pid, seg, alive, started)
         if why is None:
             print(f"  instancia escolhida: pid={pid} (viva, ganhou a mutex,"
                   f" sem marcador de medicao)")
@@ -283,7 +326,7 @@ class _NoEngine:
         raise AssertionError("um motor que nao existe nao carrega")
 
 
-def _naive_selector(log_path=None, alive=None):
+def _naive_selector(log_path=None, alive=None, started=None):
     """O ESCOLHEDOR ANTIGO -- a ultima linha do log, sem perguntar mais nada.
 
     Existe para ser mutante: se as arms do escolhedor nao ficarem VERMELHAS com
@@ -329,6 +372,22 @@ def selector_arms(select):
         add(select(fake, alive=lambda _p: False) == (None, ""),
             "sem nenhuma viva, o escolhedor devolve NADA (arm sem sujeito, nao"
             " um veredicto sobre uma instancia fantasma)")
+        # ARM 5b-bis -- O PID RECICLADO (medido 2026-11-08): depois do reinicio do
+        # dono, o `_pid_alive` respondeu `True` para um pid que o Windows tinha
+        # RECICLADO, e o oraculo julgou uma instancia morta. Um pid vivo com carimbo
+        # de outro instante nao e' a largada, e a arm gemea -- carimbo coerente --
+        # tem de continuar a escolher a 111, senao a cura apagava o escolhedor.
+        import datetime
+        logado = datetime.datetime.strptime("2026-11-01 10:00:00.000",
+                                            "%Y-%m-%d %H:%M:%S.%f").timestamp()
+        add(select(fake, alive=lambda _p: True,
+                   started=lambda _p: logado + 86400.0) == (None, ""),
+            "um pid vivo com carimbo de OUTRO instante nao e' a largada (pid"
+            " reciclado, nunca a instancia)")
+        add(select(fake, alive=lambda _p: True,
+                   started=lambda _p: logado + 1.0)[0] == "111",
+            "e o carimbo COERENTE continua a escolher a viva (o controle da arm"
+            " acima, para a cura nao apagar o escolhedor)")
     finally:
         shutil.rmtree(fake.parent, ignore_errors=True)
 

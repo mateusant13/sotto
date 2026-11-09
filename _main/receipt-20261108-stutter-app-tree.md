@@ -223,6 +223,16 @@ Os dois sao picos do agendador. A regra passa a exigir **as duas** condicoes: `>
 Medido: `--policy cap40` -> `RATCHET-OK` (0 bracos vermelhos); `--neg-arm` -> `NEG-ARM: PASS
 (2/2)` rc=1 com a M2 apanhada em `red-as-expected-warm-engine` 78,83 -> 118,93 s.
 
+### 8-quater. O PID RECICLADO (medido na corrida de 23:3x)
+
+A corrida reprovou `load-shedding` numa arm chamada "a INSTANCIA VIVA" que estava a julgar
+uma instancia **morta**: `_pid_alive(9628)` respondeu `True` para o shell de 18:57:20, morto
+as 18:58:07, porque o Windows RECICLOU o numero. A largada passa a provar-se pelo **carimbo**
+(`create_time` contra a linha `SHELL_STARTUP_STAGE`, tolerancia 180 s), nunca pelo numero;
+`shell_launches` comeca cada segmento na LINHA do marcador para o carimbo existir. Duas arms
+novas (carimbo alheio -> nenhuma instancia; carimbo coerente -> a viva), `arms=217 pass=217`,
+`--neg-arm` rc=1 com os 13 mutantes apanhados.
+
 ## 7. O QUE FALTA, e porque nao e' uma afirmacao
 
 - **O worker** ja' corre o codigo curado (recarregado §5): 146 % -> 42 % de um nucleo, com o resto
