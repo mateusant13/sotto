@@ -77,3 +77,37 @@ primeira amostra e uma no `end`, com `moves=` (o número que interessa). O orác
   NÃO-elevada — está medida como impossível nesta caixa: um filho `medium` falha
   `WEBVIEW2_INIT_FAILED 0x80010108` e `TRAY_ICON_ADD winerror=5`. Fica registado, não corrigido.
 - **A tela do dono.** O painel não foi aberto por esta lane; `verified` continua a exigir a mão dele.
+
+## 6. Rodada 2 (2026-11-09, 19:0xZ) -- a DM de stutter que nomeava o pid 33676
+
+DM `dm-79d1e980` (watcher): `pythonw.exe(33676)` como maior pressao, `cpu 8,1 % da maquina`
+(20 nucleos) e "1 processo da arvore despromovido". Medido, nesta arvore:
+
+| instrumento | comando | resultado |
+|---|---|---|
+| per-thread, projeto | `python _main/shell-thread-cpu.py 50452 --seconds 8` | **102,2 % de um nucleo**, `sotto-caption-tick tid 20408 = 86,3 %` |
+| per-thread, projeto | `python _main/shell-thread-cpu.py 33676 --seconds 8` | **13,0 % de um nucleo**, mais quente `sotto-yt-track 5,3 %` |
+| per-thread, watcher | `python -m watcher profile 33676 --seconds 20` | `22,7 % de um nucleo = 1,1 % da maquina`; atribuicao por fio **CANNOT-MEASURE** (psutil devolve 0 tids; sem py-spy) |
+
+O `8,1 %` da maquina sao **~162 % de um nucleo**, ou seja PICO -- e o pico tem nome no log da
+propria shell (`_main/webview-run.log`):
+
+```
+15:44:36.228 BRIDGE_SILENT ms=30000 pid=54592
+15:44:36.245 BRIDGE_ALIVE WORKER_ALIVE seq=3944 phase=window age_ms=39657
+15:44:36.950 BRIDGE_KILLED pid=54592 rc=1 why=the-shell-terminated-it
+15:45:39.038 BRIDGE_LOAD_MS ms=61781 pid=47096 worker_load_s=59.51
+```
+
+A janela de 30 s expirou **com um batimento em voo** (chegou 17 ms depois) e o respawn custou
+**61,8 s a reler 1,9 GB**. Tres curas no commit `783c912`, e os numeros de antes/depois sao os de
+cima: (a) `_on_silence` pergunta antes de matar (`silence_grace_s`, 10 % da janela) -- oraculo
+`worker-silence-grace-oracle.py` 5/5 + `--neg-arm` a apanhar A1/A2; (b) `log()` deixou de escrever no
+stdout no fio do CHAMADOR (o `_pump` era a testemunha do cao de guarda) -- `log-sink-dead-oracle.py`
+6/6 + `--neg-arm` 2/2; (c) `_kill_and_restart` carimba `pending_error` -- `restart-30s-oracle.py`
+passou de **RED a GREEN**, com `panel-state RED ... named_states_seen=['capture-started','exit',
+'spawning']` e `pending_error_samples=24` (antes: 0, a arm estava morta, e o mesmo vermelho aparece no
+shell de HEAD -- era defeito do instrumento E da shell).
+
+**NAO VERIFICADO**: nenhuma das tres corre na instancia do dono -- a app esta' fechada e o
+`_main/sotto-relaunch.py --relaunch` abortou ("a instancia antiga nao morreu"); `fixed, NOT verified`.
