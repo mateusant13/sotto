@@ -252,3 +252,33 @@ publica **2 RED** em arms do `mode` ("e o nivel desce para `batch`", "e um SEGUN
 sessao volta a ser dito") que pertencem a essa edicao, nao ao piso de recarga. Nao os persigo e nao
 os reverto: o ficheiro e' dessa lane. Fica o numero ao lado deles: **249 de 251 arms verdes, 2 RED,
 ambos no `mode` do interruptor**.
+
+## 10. O ORCAMENTO DE FIOS DO WORKER PASSA A SER LEGIVEL AO VIVO (2026-11-09, 13:0x)
+
+Pergunta do watcher: "o teu worker tem 76 fios e um pico de 3,9 nucleos -- que orcamento esta' a
+correr?". As tres leituras, todas desta sessao:
+
+| o que | numero | instrumento |
+|---|---|---|
+| worker em repouso | **76 fios, 3,7 % de um nucleo**; topo 2,3 % / 1,1 % | `_main/shell-thread-cpu.py 20676 --seconds 8 --top 8` |
+| orcamento NO CODIGO | intra-op **2**, inter-op 1, `allow_spinning=0`, `OMP_WAIT_POLICY=PASSIVE` | `_main/worker-thread-limit-oracle.py` -> `PASS (15/15)` |
+| o que o worker VIVO recebeu | **nenhuma flag**: `argv=["...python.EXE","-u","H:\sotto\worker\sotto_worker.py"]` | `BRIDGE_SPAWNED pid=20676` |
+
+Logo o worker vivo resolve `ambiente > default 4` -- ate' **3 sessoes x 4 fios = 12 fios de ORT**, e
+um pico de 3,9 nucleos cabe nessa aritmetica. 76 fios nao e' o mecanismo (sao pools parados; o spin
+continua desligado, senao o repouso mediria os 16,1 % de 2026-11-08).
+
+A razao da flag ausente esta' medida: `python _main/live-code-freshness-oracle.py --strict` ->
+`LIVE_CODE STALE pid=50452 started=08:14:03.288 | processo sha256=77D4D1680260 | disco 3FED08353D1B`.
+A cura do `--threads` esta' no disco e nao no processo; ela chega ao dono num arranque novo, que e'
+dele (nenhuma lane poe a app na tela dele, e o `--self-relaunch` esta' desligado).
+
+**A cura desta secao e' de OBSERVABILIDADE, nao de consumo:** o worker ja' escrevia
+`WORKER_THREADS threads=N source=flag|env|default` no stderr, e o stderr so' e' publicado na cauda da
+morte -- o numero que decide quantos nucleos o ONNX pode ocupar era ilegivel exactamente enquanto o
+worker corria (a mesma classe do `ratchet` sem chamador). `WORKER_THREADS` entrou em
+`ENGINE_VISIBLE_TAGS` (`app/webview/sotto_webview.py`), logo o `_pump` copia a linha para o log ao
+vivo. Portao: arm **A15** do `worker-thread-limit-oracle.py` (AST sobre a tupla; exige tambem que o
+worker ESCREVA a linha e que o `_pump` publique por `startswith(ENGINE_VISIBLE_TAGS)`) + mutante
+**M10** que arranca a tag da tupla. Medido: `VERDICT: PASS (15/15)` e `--neg-arm` **rc=1**, 10
+mutantes apanhados. `verified` nao: a linha so' aparece no proximo arranque da shell.
