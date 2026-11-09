@@ -223,6 +223,14 @@ morde em producao e' `REDUX_BATCH_DEFERRED`, que so' pode aparecer quando houver
 TENTADA -- entre 08:43 (a cura no disco) e 09:07 nao houve nenhuma, e por isso `DEFERRED=0` la' nao
 prova que a guarda falhou: prova que ela nao teve o que guardar.
 
+**MEDIDO, e a marca acima corrige-se:** o primeiro `REDUX_ENGINE_LOAD` da janela nova chegou as
+**09:18:26.308 (+11,36 min)** -- `loads=1 load_s=2.97 rss_mb=1524.9`. A previsao de "nada antes de
+09:22:47" era uma derivacao de UMA instancia (+15,70 min) e a decisao de hoje veio por outro caminho
+(`LOAD_ACTION_PUBLISHED level=alta` as 09:17:15, "o worker muda de modo", imediato; o load 71 s
+depois). Com duas instancias medidas a banda honesta e' **+11 a +16 min**, nao um instante. Na
+mesma janela, ate' 09:24: `LOAD_ACTION_PUBLISHED` 3, `REDUX_ENGINE_RELEASED` 0, `REDUX_BATCH_*` 0
+-- sem largada nao ha' pedido de recarga, logo o piso continua sem oportunidade de morder.
+
 ### 9-ter. Uma correccao de INSTRUMENTO que a medicao desta janela obrigou (2026-11-09, 09:2x)
 
 `_main/load-shedding-oracle.py` (arm 26, "pressao de memoria (89 %) larga so' depois de 120 s
