@@ -187,6 +187,23 @@ Nota de instrumento que fica registada: o `battery-budget` POSITIVO invocado for
 diz `politica de largada diferente do baseline (baseline='cap40', corrida=None)` -- ele so' e'
 verdadeiro dentro da corrida, que e' quem carimba `policy`. Rodar o passo a mao e ler o RED como
 regressao seria a mesma classe que este recibo existe para apagar.
+### 8-bis. O PISO DO RATCHET POR PASSO, decidido por VARIACAO medida
+
+`battery-budget` reprovou `lane-screen-gate 5,5s -> 12,1s` e outros passos curtos. Antes de mexer
+no portao, medi a variacao do proprio passo (tres execucoes seguidas, mesmo binario):
+
+| passo | tres execucoes | variacao |
+|---|---|---|
+| `lane-screen-gate` | 4,35 / 8,58 / 5,96 s | **97 %** |
+| `load-shedding` | 3,05 / 3,62 / 3,24 s | 19 % |
+
+Um ratchet de 20 % sobre um passo que varia 97 % sozinho reprova o relogio. `PER_STEP_FLOOR_S`
+passou de **5 s para 20 s** (o piso existia por essa razao; estava curto). Continua apanhado por:
+prazo de 240 s, tecto do total (5 %) e ratchet dos passos acima do piso -- o `lag-note-cost`
+224 s -> 1 364 s (x10) continua a ser nomeado. Dois bracos novos: **A8** (5,5 s -> 12,1 s nao
+reprova, o caso medido) e **A9** (40 s -> 90 s reprova e o NOMEIA, a isencao nao e' total).
+Medido: `--policy cap40` -> `RATCHET-OK` rc=0; `--neg-arm` -> `NEG-ARM: PASS (2/2)` rc=1.
+
 ## 7. O QUE FALTA, e porque nao e' uma afirmacao
 
 - **O worker** ja' corre o codigo curado (recarregado §5): 146 % -> 42 % de um nucleo, com o resto
