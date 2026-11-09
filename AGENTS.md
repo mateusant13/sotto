@@ -47,8 +47,8 @@ Tres avisos que custaram medicao:
   aberto (nao abre janela; confirmar `title`+URL do tab exacto antes de agir), nunca uma copia.
 - **Nao navegar num tab dele.** `--auto-connect` sem `--pin-tab` no tab certo mexe na sessao que ele
   esta' a usar. Se o tab necessario nao estiver la', o caminho e' a sessao headless propria.
-## Herdr panes (mandatory)
-Cap: one visible pane per canonical project across workspaces/worktrees. Create via `python I:/!manager/tools/herdr-visible-pane-budget.py workspace --cwd <root> --label <id>` only; unknown/already-present projects refuse. Reuse main pane; extra workers headless; no raw create/focus/move/close.
+## Herdr: cross-project coordination only, never the default
+Default is to stay in the current harness (this session, this worktree). Use Herdr only when coordination genuinely spans canonical projects -- a decision or artifact another project's lane must receive. Ordinary project work must not create/focus/move/close a pane, and must not rewrite this file's routing/instructions; a routing edit needs an explicit owner request or a real cross-project need. When Herdr is genuinely needed: cap one visible pane per canonical project across workspaces/worktrees; create via `python I:/!manager/tools/herdr-visible-pane-budget.py workspace --cwd <root> --label <id>` only; unknown/already-present projects refuse; reuse the main pane; extra workers headless; no raw create/focus/move/close.
 
 ## Mandatory task-resolver and model routing
 Use `.agents/skills/task-resolver/SKILL.md` for every non-trivial software task. At invocation, classify acceptance rows as mechanical or judgment-based and immediately implement/wire any missing task-relevant deterministic gate before dependent product edits. Follow `.agents/skills/task-resolver/references/model-routing.md`; model quota never idles or blocks a lane.
