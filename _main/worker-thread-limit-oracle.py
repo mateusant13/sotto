@@ -293,7 +293,8 @@ def arm_a15(shell_path, worker_path):
     writer_src += open(ENGINE, encoding='utf-8', errors='replace').read()
     required = (('WORKER_THREADS', 'WORKER_THREADS'),
                 ('REDUX_SWITCH', 'REDUX_SWITCH armed'),
-                ('REDUX_BATCH_KICK', 'REDUX_BATCH_KICK'))
+                ('REDUX_BATCH_KICK', 'REDUX_BATCH_KICK'),
+                ('REDUX_BATCH_DEFERRED', 'REDUX_BATCH_DEFERRED'))
     missing = [tag for tag, needle in required
                if tag not in (tags or []) or needle not in writer_src]
     ok = bool(tags) and not missing and publish

@@ -1381,7 +1381,16 @@ ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
              # linha que diz QUANTOS sao tem de chegar ao log, ou o numero que decide
              # a CPU do dono existe so' dentro do processo.
              'WORKER_GENAI_THREADS',
-                       'REDUX_SWITCH', 'REDUX_BATCH_KICK')
+                       'REDUX_SWITCH', 'REDUX_BATCH_KICK',
+                       # O PASSE DE FUNDO QUE NAO CORREU TAMBEM E' UM FACTO (2026-11-09).
+                       # O `engine_switch.py` emite `REDUX_BATCH_DEFERRED
+                       # reason=reload-floor` / `reason=low-memory free_mb=..` nas duas
+                       # saidas em que o passe fica para depois, e sem esta tag as duas
+                       # linhas morrem no stderr: o log vivo nao tinha ZERO ocorrencias
+                       # (medido pela lane de verificacao) e "o batch nao rodou" ficava
+                       # indistinguivel de "o batch foi adiado", que sao coisas
+                       # diferentes. O escritor e' o `engine_switch.py`, nao o worker.
+                       'REDUX_BATCH_DEFERRED')
 
 #: O BATIMENTO DO LACO DO WORKER, reconhecido por CONTER e nao por comecar (2026-11-04).
 #: Medido com o py-spy no worker vivo: `seq=516 phase=window` e nenhuma linha no log -- o
