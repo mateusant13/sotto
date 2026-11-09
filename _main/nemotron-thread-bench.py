@@ -72,11 +72,24 @@ def one(small: int, seconds: float, threads: int = 4) -> dict:
                 peak_rss = max(peak_rss, child.memory_info().rss / 1e6)
             except psutil.Error:
                 break
+        # O FILHO TEM DE MORRER EM QUALQUER SAIDA. Sem isto um braco que
+        # estoure a meio deixa um `sotto_worker.py` a segurar 1,9 GB ate' o
+        # dono notar -- a mesma classe de fuga que o `shell-orphans` nomeia.
         try:
             proc.terminate()
             proc.wait(timeout=20)
         except Exception:                                   # noqa: BLE001
-            proc.kill()
+            try:
+                proc.kill()
+                proc.wait(timeout=10)
+            except Exception:                               # noqa: BLE001
+                pass
+        finally:
+            if proc.poll() is None:
+                try:
+                    proc.kill()
+                except Exception:                           # noqa: BLE001
+                    pass
     try:
         if proc.stderr is not None:
             proc.stderr.close()
