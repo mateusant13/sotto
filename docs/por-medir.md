@@ -47,3 +47,14 @@
   de um tap que nao ouve. Prova-la exige uma call activa, e a separacao contra o mix exigiria TOCAR
   audio numa lane, que a lei do audio do dono proibe. Recibo:
   `_main/receipt-20261109-discord-per-app-tap.md` §5.
+
+- **A FUSAO PELO SEAM VIVO DA APP** (2026-11-09, ordem do dono *"legenda AO VIVO otima E
+  historico otimo"*). O que esta' medido: `_main/fusion-wire-oracle.py` executa `on_worker_caption`
+  REAL (extraido por `ast`) e prova que o texto fundido chega as duas superficies (o overlay e o
+  payload que o painel commita, e que o `history_append` grava) -- 10 arms, `--neg-arm` rc=1; e
+  `_main/fusion-audio-oracle.py` prova que o audio do ao vivo entra no lote com tecto, corte contado
+  e cauda preservada por IDENTIDADE -- 11 arms, `--neg-arm` 5/5. O que **nao** esta' medido: o texto
+  FUSIONADO pintado na janela nativa com uma call a correr, e a linha do historico REESCRITA pelo
+  lote (o `history_merge` e' julgado no store, nao num transcript real de ponta a ponta). As duas
+  coisas pedem a app aberta e audio a tocar, que a lei desta casa proibe a uma lane. Recebem
+  `UNMEASURED` ate' o dono correr a app; o recibo declara o estado como DARK por isso mesmo.
