@@ -127,3 +127,74 @@ os `bun.exe` somam ~7,9 GB.
 (novo), `_main/code-health-baseline.json` (as duas entradas re-medidas com o
 instrumento do proprio oraculo), `_main/_audit-verify-all.cmd` + `AGENTS.md` (o par
 de passos e o pin, no mesmo commit).
+
+## 7. O WATCHER PEDIU O DENOMINADOR (2026-11-09, dm-d0720f6fd08e4209c957)
+
+A DM mediu `317,1 %c` no worker 14712 com um fluxo vivo e perguntou quatro coisas
+"medidas, nao argumentadas". As quatro respostas, com o comando de cada uma.
+
+### 7.1 `intra_op`/`inter_op` na criacao da sessao — a hipotese da DM esta' REFUTADA
+
+Comando: importar o worker e chamar o MESMO construtor que a criacao usa
+(`worker/sotto_worker.py:4269 session_options`), sem abrir dispositivo nenhum.
+
+```
+OMP_NUM_THREADS no processo depois do import = 4
+OMP_WAIT_POLICY = PASSIVE | CUDA_MODULE_LOADING = LAZY
+effective_threads(None) = (4, 'default')
+   -> encoder intra=4  decoder intra=1  joint intra=1  inter_op=1 por sessao
+   -> total de fios intra = 6
+```
+
+O `argv` do worker vivo (`BRIDGE_SPAWNED pid=14712 argv=[python, -u,
+sotto_worker.py]`) **nao leva `--threads`**, logo a fonte e' `default` = 4. O pool
+do ORT **nao** esta' na largura da maquina (a DM deduziu isso dos 66 fios): sao
+**6** fios intra + 3 inter. O lote (parakeet ONNX) acrescenta `intra_op=2`.
+
+Onde estao os 67 fios entao: `py-spy dump --pid 14712` devolve **err 5 (acesso
+negado, exige elevacao a partir deste assento)** — nomes de fio sao `CANNOT-MEASURE`
+aqui. O que se mede sem elevacao: 67 fios vivos, **0,3 %c em repouso** (6 s), io zero.
+
+### 7.2 o %c por chunk: a linha agora traz o denominador
+
+`WORKER_COST` ganhou `chunks_since_tick`, `ms_per_chunk`, `audio_s_since_tick` e
+`rtf`, calculados como DELTAS do tick (a mesma forma de `rows_since_tick`), com
+`ms_per_chunk=none` quando o tick nao fechou chunk nenhum — zero seria uma mentira
+aritmetica. A shell passou a relatar a linha INTEIRA
+(`ENGINE_VISIBLE_TAGS += 'WORKER_COST'`) e o `BRIDGE_WORKER_COST` carrega os quatro.
+
+Medido: `_main/cost-watchdog-oracle.py` **34/34** (`--neg-arm` 10/10 apanhados).
+
+**A LINHA NAO PODE APARECER NO LOG DE HOJE, e isso e' medicao, nao desculpa:** a
+shell viva (pid 50452) arrancou as **08:14:02**, e tanto o relay do plano de fios
+(commit 12:23) como todo o encanamento de custo (13:17) sao posteriores. Um processo
+Python nao le codigo novo; o worker 14712 (12:58:50) tambem precede o commit de
+custo. `UNMEASURED` ate' o dono reiniciar a shell — `--no-self-relaunch` esta' posto
+e nenhuma lane poe a app na tela dele.
+
+### 7.3 o tecto, com o que existe hoje
+
+| grandeza | valor medido | instrumento |
+|---|---|---|
+| um fluxo vivo, repouso entre lotes | **0,3 %c**, io **0,00 MB/s**, 67 fios | `psutil` 6 s no pid 14712 |
+| RSS / commit privado agora | **424 MB / 4608 MB** | `psutil` |
+| media de vida do worker anterior (13920 s) | **270,6 %c**, 6176 s de CPU | `WORKER_COST` no log |
+| passe de lote, medido pelo proprio worker | 15,0 s de audio em **3,64 s** de parede (5 janelas) | `REDUX_ENGINE_DONE` |
+| custo do fio do stream depois da cura 12->6 | **49,8 ms/chunk** | recibo anterior |
+
+Leitura: o pico de 317 %c **nao e'** um pool largo a rodar um fluxo; e' o **motor de
+lote** (parakeet, 3,64 s por 15 s de audio) a correr EM CIMA do stream. Duas
+engrenagens, um processo.
+
+### 7.4 dois workers ao mesmo tempo?
+
+Dentro da app: **nao**, e esta' medido nas duas pontas — `start_worker` recusa com
+`cause=already-running` e `revive_worker` para antes de arrancar. No log:
+`BRIDGE_EXIT pid=20676 rc=15` as 12:58:48.670 e `BRIDGE_SPAWNED pid=14712` as
+12:58:50.683 — **1,8 s** entre a morte e o nascimento, zero sobreposicao.
+
+Fora da app: **nada impede**. O `worker/sotto_worker.py` nao tem mutex nem ficheiro
+de trava (`grep -n "CreateMutex|mutex|SINGLETON" worker/sotto_worker.py` = 0), por
+isso uma lane ou um script que o largue directamente cria um segundo worker — foi o
+que a minha propria sonda fez hoje. O que existe e' um portao do LARGADOR, nao do
+processo.

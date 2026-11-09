@@ -801,16 +801,30 @@ _PIPE_DEAD = False
 #: A FORMA da linha de custo, fora do laco do audio para poder ser JULGADA.
 #: Um oraculo que precise de um dispositivo para ver o texto nao e' um oraculo.
 def format_worker_cost(tag, cpu_total, cpu_delta, wall_delta, rows, rows_delta,
-                       per_row, uptime_s, pid):
+                       per_row, uptime_s, pid, extras=None):
+    """A linha de custo. `extras` acrescenta pares `k=v` ANTES do pid, na ordem dada.
+
+    `ms_per_chunk` e' o numero que o watcher pediu em 2026-11-09 ("o worker's own %c
+    per chunk e ms/chunk no log"): sem ele, "3 nucleos para um fluxo" nao tem
+    denominador e a proxima vez volta a ser uma janela solta.
+    """
     wall_delta = max(1e-6, float(wall_delta))
-    return (
+    head = (
         "WORKER_COST tag=%s cpu_s=%.3f cpu_pct_avg=%.1f wall_s=%.1f "
         "rows=%d rows_since_tick=%d rows_per_min=%.1f cpu_s_per_row=%s "
-        "uptime_s=%.0f pid=%d"
         % (tag, cpu_total, cpu_delta / wall_delta * 100.0, wall_delta,
            rows, rows_delta, rows_delta * 60.0 / wall_delta,
-           "none" if per_row is None else "%.3f" % per_row,
-           uptime_s, pid))
+           "none" if per_row is None else "%.3f" % per_row))
+    tail = []
+    for key, value in (extras or {}).items():
+        if value is None:
+            tail.append('%s=none' % key)
+        elif isinstance(value, float):
+            tail.append('%s=%.3f' % (key, value))
+        else:
+            tail.append('%s=%d' % (key, int(value)))
+    return ('%s%s uptime_s=%.0f pid=%d'
+            % (head, (' ' + ' '.join(tail)) if tail else '', uptime_s, pid))
 
 
 def emit(**payload) -> None:
@@ -6934,7 +6948,10 @@ def main():
     # custo medido de dentro: `time.process_time()` e' CPU (user+sys) DESTE
     # processo, exato e de graca, sem psutil e sem tocar no disco.
     _cost = {"cpu_t": time.process_time(), "wall_t": time.time(),
-             "rows": 0, "cpu_total": 0.0, "t0": time.time()}
+             "rows": 0, "cpu_total": 0.0, "t0": time.time(),
+             "chunks": int(counters.get("chunks", 0)),
+             "infer": float(getattr(asr, "wall", 0.0) or 0.0),
+             "audio": float(getattr(asr, "audio_s", 0.0) or 0.0)}
 
     def cost_line(tag: str) -> str:
         now_t, now_wall = time.process_time(), time.time()
@@ -6946,9 +6963,26 @@ def main():
         _cost["cpu_t"], _cost["wall_t"], _cost["rows"] = now_t, now_wall, rows
         _cost["cpu_total"] += cpu_delta
         per_row = (cpu_delta / rows_delta) if rows_delta else None
-        return format_worker_cost(tag, _cost["cpu_total"], cpu_delta, wall_delta,
-                                  rows, rows_delta, per_row,
-                                  now_wall - _cost["t0"], os.getpid())
+        # O DENOMINADOR (2026-11-09, pedido do watcher): "3 nucleos para um fluxo"
+        # so' e' um numero quando vem com ms por chunk. `asr.wall` acumula a parede
+        # de INFERENCIA e `counters["chunks"]` conta os chunks; os dois sao deltas
+        # deste tick, pelo mesmo motivo de `rows_since_tick`.
+        chunks = int(counters.get("chunks", 0))
+        wall_infer = float(getattr(asr, "wall", 0.0) or 0.0)
+        audio_in = float(getattr(asr, "audio_s", 0.0) or 0.0)
+        d_chunks = max(0, chunks - _cost["chunks"])
+        d_infer = max(0.0, wall_infer - _cost["infer"])
+        d_audio = max(0.0, audio_in - _cost["audio"])
+        _cost["chunks"], _cost["infer"], _cost["audio"] = chunks, wall_infer, audio_in
+        return format_worker_cost(
+            tag, _cost["cpu_total"], cpu_delta, wall_delta,
+            rows, rows_delta, per_row, now_wall - _cost["t0"], os.getpid(),
+            extras={
+                "chunks_since_tick": d_chunks,
+                "ms_per_chunk": (d_infer * 1000.0 / d_chunks) if d_chunks else None,
+                "audio_s_since_tick": round(d_audio, 2),
+                "rtf": (d_infer / d_audio) if d_audio > 0 else None,
+            })
 
     def stats_line(tag: str) -> str:
         n = max(1, counters["block_samples"])

@@ -1370,6 +1370,12 @@ ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
                        # ~1200 %c). Sem esta linha o numero que governa a CPU da
                        # maquina do dono so' existe dentro do codigo.
                        'WORKER_THREAD_PLAN',
+             # O DENOMINADOR vai ao log COMO O WORKER O ESCREVEU (2026-11-09). O
+             # `BRIDGE_WORKER_COST` daqui de baixo escolhe os campos que a DECISAO
+             # usa; o `ms_per_chunk` que o watcher pediu e' evidencia, nao decisao,
+             # e um campo que so' existe no consumidor deixa de existir sempre que
+             # o consumidor for reescrito. A linha inteira atravessa esta tag.
+             'WORKER_COST',
                        'REDUX_SWITCH', 'REDUX_BATCH_KICK')
 
 #: O BATIMENTO DO LACO DO WORKER, reconhecido por CONTER e nao por comecar (2026-11-04).
@@ -18093,11 +18099,15 @@ class SottoShell:
             self._cost_logged_at = now
             seen = cost_watchdog.busy_rows(fields)
             self.log('BRIDGE_WORKER_COST cpu_pct_avg=%s rows=%s rows_per_min=%s '
-                     'cpu_s_per_row=%s uptime_s=%s streak=%d decision=%s '
+                     'cpu_s_per_row=%s chunks_since_tick=%s ms_per_chunk=%s '
+                     'rtf=%s uptime_s=%s streak=%d decision=%s '
                      'pid=%s' % (
                          fields.get('cpu_pct_avg', '-'), fields.get('rows', '-'),
                          fields.get('rows_per_min', '-'),
                          fields.get('cpu_s_per_row', '-'),
+                         fields.get('chunks_since_tick', '-'),
+                         fields.get('ms_per_chunk', '-'),
+                         fields.get('rtf', '-'),
                          fields.get('uptime_s', '-'), verdict['streak'],
                          verdict['why'], (parsed or {}).get('childPid', '-')))
         if not verdict['restart']:

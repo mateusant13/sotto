@@ -172,13 +172,16 @@ def run_arms(cache, mod, cw):
     BUSY, STALL, FLOOR, MAXH = cw.BUSY_PCT, cw.STALL_TICKS, cw.FLOOR_S, cw.MAX_PER_HOUR
 
     # ── A. a FORMA que o worker imprime ────────────────────────────────────────
-    line = fmt('tick', 6176.04, 27.06, 10.0, 0, 0, None, 13920.0, 20676)
+    line = fmt('tick', 6176.04, 27.06, 10.0, 0, 0, None, 13920.0, 20676,
+               extras={'chunks_since_tick': 17, 'ms_per_chunk': 49.8,
+                       'audio_s_since_tick': 9.52, 'rtf': 0.089})
     cache['line'] = line
     mod.arm('A1 linha comeca por WORKER_COST e traz o tag',
             line.startswith('WORKER_COST tag=tick'), line[:60])
     fields = cache['parse'](line)['fields'] if cache.get('parse') else {}
     want = ('cpu_s', 'cpu_pct_avg', 'rows', 'rows_since_tick', 'rows_per_min',
-            'cpu_s_per_row', 'uptime_s', 'pid')
+            'cpu_s_per_row', 'chunks_since_tick', 'ms_per_chunk',
+            'audio_s_since_tick', 'rtf', 'uptime_s', 'pid')
     have = [k for k in want if k in fields]
     mod.arm('A2 a shell le TODOS os campos que a decisao usa',
             len(have) == len(want), 'faltam=%r' % ([k for k in want if k not in fields],))
@@ -189,13 +192,32 @@ def run_arms(cache, mod, cw):
                               fields.get('rows_since_tick')))
     mod.arm('A4 sem linha produzida o custo por linha e a PALAVRA none',
             fields.get('cpu_s_per_row') == 'none', fields.get('cpu_s_per_row'))
-    line2 = fmt('tick', 10.5, 2.0, 10.0, 1768, 3, 0.6667, 120.0, 14712)
+    line2 = fmt('tick', 10.5, 2.0, 10.0, 1768, 3, 0.6667, 120.0, 14712,
+                extras={'chunks_since_tick': 17, 'ms_per_chunk': 61.2,
+                        'audio_s_since_tick': 9.52, 'rtf': 0.109})
     f2 = parse(line2)['fields']
     mod.arm('A5 com linha produzida o custo por linha e um numero',
             re.match(r'^\d+\.\d+$', f2.get('cpu_s_per_row') or '') is not None,
             f2.get('cpu_s_per_row'))
     mod.arm('A6 o pid viaja (duas instancias no mesmo ficheiro de log)',
             f2.get('pid') == '14712', f2.get('pid'))
+    # O DENOMINADOR que o watcher pediu em 2026-11-09: 3 nucleos para UM fluxo so' e'
+    # um numero quando vem com ms por chunk e com o audio que pagou por ele.
+    line3 = fmt('tick', 6176.0, 27.06, 10.0, 0, 0, None, 13920.0, 20676,
+                extras={'chunks_since_tick': 17, 'ms_per_chunk': 49.8,
+                        'audio_s_since_tick': 9.52, 'rtf': 0.089})
+    f3 = parse(line3)['fields']
+    mod.arm('A9 ms_per_chunk, chunks e rtf viajam na linha',
+            f3.get('chunks_since_tick') == '17'
+            and abs(float(f3.get('ms_per_chunk')) - 49.8) < 0.01
+            and abs(float(f3.get('rtf')) - 0.089) < 0.001,
+            '%s / %s / %s' % (f3.get('chunks_since_tick'), f3.get('ms_per_chunk'),
+                              f3.get('rtf')))
+    line4 = fmt('tick', 1.0, 0.4, 10.0, 3, 3, 0.13, 60.0, 1,
+                extras={'ms_per_chunk': None})
+    mod.arm('A10 tick sem chunk diz ms_per_chunk=none (nao zero)',
+            parse(line4)['fields'].get('ms_per_chunk') == 'none',
+            parse(line4)['fields'].get('ms_per_chunk'))
 
     # ── A-bis. A CHAMADA (o que um modulo executavel nao prova) ────────────────
     # A forma e' pura, mas nada obriga o laco a chama-la: uma funcao que produz a
