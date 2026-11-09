@@ -2664,6 +2664,23 @@ if exist _main\_strip-surface-probe.py (
   call :step heavy red-as-expected-strip-surface 1 "_main\_strip-surface-probe.py" "%OUT%\strip-surface-neg.log" python _main\_strip-surface-probe.py --neg-arm
   call :expectred red-as-expected-strip-surface !STEP_RC! "%OUT%\strip-surface-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-strip-surface MISSING "%OUT%\strip-surface-neg.log" "NEG-ARM PASS" )
+REM O COMMIT PRIVADO POR CICLO DE CARGA (2026-11-09). Nasceu de um DM do watcher: o
+REM worker elevado tinha `rss=1664 MiB` com `private=4615 MiB` (2,8x) e a leitura foi
+REM "cada carga deixa commit para tras". Um numero de commit SEM o ciclo ao lado nao
+REM distingue o custo de UM modelo carregado (normal, devolvido ao sair), o residuo POR
+REM CICLO (fuga) e um plato que o processo segura (arenas do ORT, caches por stream).
+REM `heavy` porque carrega os motores reais (448 MiB parakeet, ~470 MiB as tres sessoes
+REM ORT do nemotron, 483 MiB as pesos do genai). O `--neg-arm` aloca 200 MiB e exige que
+REM o commit suba -- sem ele um `GetProcessMemoryInfo` mal declarado imprime 0,0 MiB de
+REM fuga, que foi o que a primeira versao desta sonda fez, com todos os numeros a zero.
+if exist _main\engine-commit-cycles-oracle.py (
+  call :step heavy engine-commit-cycles 0 "_main\engine-commit-cycles-oracle.py;worker\sotto_worker.py;worker\models\parakeet-redux-onnx-int4\transcribe.py" "%OUT%\engine-commit-cycles.log" python _main\engine-commit-cycles-oracle.py
+  call :record engine-commit-cycles !STEP_RC!
+) else ( call :record engine-commit-cycles MISSING )
+if exist _main\engine-commit-cycles-oracle.py (
+  call :step heavy red-as-expected-engine-commit-cycles 1 "_main\engine-commit-cycles-oracle.py" "%OUT%\engine-commit-cycles-neg.log" python _main\engine-commit-cycles-oracle.py --neg-arm
+  call :expectred red-as-expected-engine-commit-cycles !STEP_RC! "%OUT%\engine-commit-cycles-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-engine-commit-cycles MISSING "%OUT%\engine-commit-cycles-neg.log" "NEG-ARM: PASS" )
 if exist _main\_strip-restore-probe.py (
   call :step heavy strip-geometry-restore 0 "_main\_strip-restore-probe.py;app\webview\sotto_webview.py" "%OUT%\strip-restore.log" python _main\_strip-restore-probe.py
   call :record strip-geometry-restore !STEP_RC!

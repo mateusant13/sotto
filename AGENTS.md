@@ -573,6 +573,21 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-09, 18:1x):** `_main\_audit-verify-all.cmd` = **321217 B**,
+  **3779 CRLF** / 0 bare LF, sha256 `CDE5D79400B832FE4B8BDE6D844D3E5DA7AC06DEE16E97CC8E5755919250D1C7`.
+  (Mil seiscentos e cinquenta e nove bytes e DEZASSETE linhas a mais do que o pin de 319558 B: o par
+  `engine-commit-cycles` + `red-as-expected-engine-commit-cycles`. Nasceu de um DM do watcher que lia
+  `rss=1664 MiB` com `private=4615 MiB` no worker (2,8x) e concluia "cada carga deixa commit para
+  tras". Um numero de commit sem o CICLO ao lado nao distingue tres coisas: o custo de UM modelo
+  carregado, um residuo POR ciclo, e um plato que o processo segura. Medido: parakeet **+448,5 MiB**
+  de commit por carga com residuo de **-1,3 MiB** por ciclo (devolve tudo); as tres sessoes ORT do
+  nemotron **+467,5 MiB** (residuo 40,8 depois de soltar); as pesos do genai **+483,2 MiB** com razao
+  commit/rss 0,86x. Os tres modelos juntos explicam **~1,4 GiB** dos 4,6 GiB: o resto NAO e' fuga por
+  carga (a rampa e' negativa) -- e' commit segurado dentro do processo vivo, e o instrumento que o
+  separa por mapeamento exige ler um pid elevado, que esta arvore nao consegue (`py-spy`: `err=5`,
+  ja' medido). O `--neg-arm` aloca 200 MiB e exige o commit a subir (**200,4 MiB**, rc=1): sem ele um
+  `GetProcessMemoryInfo` mal declarado imprime "0,0 MiB de fuga" -- que foi exactamente o que a
+  primeira execucao desta sonda fez, com todos os numeros a zero e nenhum aviso.)
 - **PIN do ficheiro (medido 2026-11-09, 14:5x):** `_main\_audit-verify-all.cmd` = **319558 B**,
   **3762 CRLF** / 0 bare LF, sha256 `A00E9B00BDE22E67F4623CB286E808ADFA8EABFA739688CA1988722A813AC5CA`.
   (Trinta e cinco bytes a mais do que o pin de 319523 B: o passo `redux-arm-weights` passa a nomear
