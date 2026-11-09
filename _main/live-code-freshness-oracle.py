@@ -142,6 +142,32 @@ def load_shell():
     return mod
 
 
+def _changed_since(names, dirpath, started):
+    """A PROVA B, PURA: (mudaram, ausentes). Facto HISTORICO, nao re-derivavel.
+
+    `started` vem da linha de arranque do log e os `mtime` sao passados -- as duas
+    pontas sao facto gravado, nenhuma e' "agora". E' esta a prova que um leitor
+    pode repetir mais tarde e obter o MESMO veredicto (a prova A compara com o
+    disco de hoje, e essa referencia MOVE-SE a cada commit).
+    """
+    changed, missing = [], []
+    for name in names:
+        path = os.path.join(dirpath, name)
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            missing.append(name)
+            continue
+        # TOLERANCIA DE 1 s: o instante do arranque vem do log truncado ao
+        # segundo e o `mtime` tem sub-segundo -- sem isto um ficheiro gravado no
+        # MESMO segundo do arranque aparecia como "mudou depois" (medido no
+        # proprio `--control`, caso `A-igual`: FRESH virava STALE). Um ficheiro
+        # tocado dentro do 1 s do arranque fica coberto pela prova A.
+        if mtime > started + 1.0:
+            changed.append(name)
+    return changed, missing
+
+
 def judge(mod, text):
     """-> (verdict, detail_dict). Puro: nao le o disco do log outra vez."""
     lines = text.splitlines()
@@ -158,44 +184,66 @@ def judge(mod, text):
     detail = {'pid': pid, 'started': started_stamp, 'disk': disk,
               'process': '', 'changed_after': [], 'missing': []}
 
-    # ── A: a prova exacta (o processo carregou a etiqueta?) ────────────────
+    # AS DUAS PROVAS CORREM SEMPRE (2026-11-09). A prova A decide sozinha hoje, e
+    # o defeito disso foi medido: ela compara a etiqueta GRAVADA no arranque com o
+    # hash do disco AGORA -- a segunda ponta move-se a cada commit, logo o veredicto
+    # nao e' reproduzivel depois ("disco=3FED08353D1B" citado as 13:0x e
+    # "72CB6AC71423" minutos mais tarde, os dois verdadeiros e nenhum auditavel).
+    # A prova B compara dois factos GRAVADOS (instante do arranque x mtime), e essa
+    # o leitor de amanha repete e obtem o mesmo. Agora as duas aparecem no relatorio
+    # e a A nao esconde a B.
     stamp = ''
     if 'sha256=' in code_line:
         stamp = code_line.split('sha256=', 1)[1].split()[0].strip()
     detail['process'] = ('sha256=' + stamp) if stamp else '(sem SHELL_CODE_ID)'
+    a_differs = None
     if stamp and 'sha256=' in disk:
         disk_hash = disk.split('sha256=', 1)[1].split()[0].strip()
-        if stamp != disk_hash:
-            return 'STALE', dict(detail, why='a etiqueta do processo nao e a do '
-                                            'disco (hash diferente)')
-        return 'FRESH', dict(detail, why='hash do processo == hash do disco')
-
-    # ── B: a prova retroactiva (mtime contra o instante do arranque) ───────
+        a_differs = stamp != disk_hash
+        detail['disk_hash'] = 'sha256=' + disk_hash
+    detail['disk_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
+    detail['proof_a'] = a_differs
     if started is None:
+        if a_differs:
+            return 'STALE', dict(detail, why='a etiqueta do processo nao e a do '
+                                            'disco (hash diferente); sem linha de '
+                                            'arranque nao ha prova B')
         return 'UNKNOWN', dict(detail, why='sem linha de arranque no log')
-    changed = []
-    for name in _code_files(mod):
-        path = os.path.join(SHELL_DIR, name)
-        try:
-            mtime = os.path.getmtime(path)
-        except OSError:
-            detail['missing'].append(name)
-            continue
-        if mtime > started:
-            changed.append(name)
+    changed, missing = _changed_since(_code_files(mod), SHELL_DIR, started)
     detail['changed_after'] = changed
+    detail['missing'] = detail['missing'] + missing
+    detail['proof_b'] = len(changed)
+    if a_differs:
+        why = ('a etiqueta do processo nao e a do disco AGORA (prova A, referencia '
+               'movel); a prova B confirma: %d ficheiro(s) mudaram depois do '
+               'arranque' % len(changed))
+        if not changed:
+            why = ('a etiqueta do processo nao e a do disco AGORA (prova A), mas '
+                   'nenhum ficheiro tem mtime depois do arranque -- leitura a '
+                   'repetir: pode ser a arvore a mudar durante a medida')
+        return 'STALE', dict(detail, why=why)
     if changed:
         return 'STALE', dict(detail, why='%d ficheiro(s) mudaram depois de o '
-                                         'processo arrancar' % len(changed))
-    return 'FRESH', dict(detail, why='nenhum ficheiro mudou depois do arranque')
+                                         'processo arrancar (prova B: mtime x '
+                                         'arranque, ambos gravados)' % len(changed))
+    return 'FRESH', dict(detail, why='hash do processo == hash do disco e nenhum '
+                                     'ficheiro mudou depois do arranque')
 
 
 def report(verdict, detail, log_path):
     print('LIVE_CODE %s log=%s' % (verdict, log_path))
     print('  pid=%s started=%s' % (detail.get('pid') or '?',
                                    detail.get('started') or '?'))
-    print('  processo: %s' % (detail.get('process') or '?'))
-    print('  disco   : %s' % (detail.get('disk') or '?'))
+    print('  processo: %s   <- GRAVADO no arranque, nao muda' %
+          (detail.get('process') or '?'))
+    print('  disco   : %s   <- lido AGORA (%s), move-se a cada commit' %
+          (detail.get('disk') or '?', detail.get('disk_at') or '?'))
+    pa = detail.get('proof_a')
+    print('  prova A : %s' % ('hash diferente' if pa else
+                              ('hash igual' if pa is False else 'indisponivel')))
+    pb = detail.get('proof_b')
+    print('  prova B : %s' % ('%d ficheiro(s) com mtime depois do arranque'
+                              % pb if pb is not None else 'indisponivel'))
     print('  porque  : %s' % (detail.get('why') or '?'))
     if detail.get('changed_after'):
         for name in detail['changed_after']:
@@ -344,13 +392,23 @@ def control(mod):
     future = time.strftime('%Y-%m-%d %H:%M:%S.000',
                            time.localtime(newest + 3600))
 
+    # `now` = 1 min ANTES do ficheiro mais novo (o codigo mudou depois do
+    # arranque -> a prova B dispara); `future` = 1 h DEPOIS (nenhum ficheiro
+    # mudou depois do arranque -> a prova B cala). Cada caso escolhe a ponta que
+    # isola a prova que quer medir: com as duas provas sempre a correr (2026-11-09)
+    # um caso com arranque ANTERIOR ao codigo e hash igual e' internamente
+    # contraditorio -- o processo nao podia ter o hash da arvore que ainda nao
+    # existia --, e por isso ele passa a medir o que de facto mede: a prova B.
     cases = [
         ('A-igual', 'FRESH',
          '%s sotto: SHELL_STARTUP_STAGE pid=1 stage=pre-lock\n'
-         '%s sotto: SHELL_CODE_ID sha256=%s files=7\n' % (now, now, disk_hash)),
+         '%s sotto: SHELL_CODE_ID sha256=%s files=7\n' % (future, future, disk_hash)),
         ('A-diferente', 'STALE',
          '%s sotto: SHELL_STARTUP_STAGE pid=1 stage=pre-lock\n'
-         '%s sotto: SHELL_CODE_ID sha256=000000000000 files=7\n' % (now, now)),
+         '%s sotto: SHELL_CODE_ID sha256=000000000000 files=7\n' % (future, future)),
+        ('B-manda-com-A-igual', 'STALE',
+         '%s sotto: SHELL_STARTUP_STAGE pid=4 stage=pre-lock\n'
+         '%s sotto: SHELL_CODE_ID sha256=%s files=7\n' % (now, now, disk_hash)),
         ('B-arranque-no-futuro', 'FRESH',
          '%s sotto: SHELL_STARTUP_STAGE pid=2 stage=pre-lock\n' % (future,)),
         ('B-arranque-ha-uma-hora', 'STALE',
@@ -421,6 +479,42 @@ def neg_arm():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+FRESH_LOG = os.path.join(HERE, '_cache', 'live-code-freshness.jsonl')
+FRESH_LOG_MAX = 256 * 1024     # o log do dono enche um disco; este registo nao
+
+
+def _record(verdict, detail, log_path):
+    """UM REGISTO POR AVALIACAO -- para "o que ele dizia as 13:20" ter resposta.
+
+    Sem isto, cada invocacao compara um facto gravado com o PRESENTE e o numero
+    citado numa DM deixa de ser reproduzivel minutos depois (medido 2026-11-09:
+    o mesmo ficheiro lido duas vezes em 20 min deu dois hashes diferentes e os
+    dois estavam certos). O ficheiro e' append-only, roda por tamanho, e nunca
+    impede o veredicto: falhar a escrever aqui nao muda o rc.
+    """
+    import json
+    try:
+        os.makedirs(os.path.dirname(FRESH_LOG), exist_ok=True)
+        try:
+            if os.path.getsize(FRESH_LOG) > FRESH_LOG_MAX:
+                os.replace(FRESH_LOG, FRESH_LOG + '.1')
+        except OSError:
+            pass
+        rec = {'at': time.strftime('%Y-%m-%d %H:%M:%S'), 'verdict': verdict,
+               'log': log_path, 'pid': detail.get('pid') or '',
+               'started': detail.get('started') or '',
+               'boot_hash': detail.get('process') or '',
+               'disk_hash_at': detail.get('disk_hash') or '',
+               'proof_a': detail.get('proof_a'),
+               'proof_b_changed': detail.get('proof_b'),
+               'changed_after': (detail.get('changed_after') or [])[:40],
+               'why': detail.get('why') or ''}
+        with open(FRESH_LOG, 'a', encoding='utf-8', newline='') as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + '\n')
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--log', default=DEFAULT_LOG)
@@ -455,6 +549,7 @@ def main(argv=None):
 
     verdict, detail = judge(mod, _read_tail(args.log))
     report(verdict, detail, args.log)
+    _record(verdict, detail, args.log)
     if args.strict and verdict != 'FRESH':
         return 3 if verdict == 'STALE' else 2
     return 0
