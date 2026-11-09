@@ -3767,6 +3767,14 @@ class ProcessLoopbackTap:
         self.pid_state = None
         self._stop = threading.Event()
         self._thread = None
+        # O DONO DO APARTAMENTO E' UM FIO SO' (medido 2026-11-09): abrir a
+        # captura num fio e ler do outro entregava blocos enquanto o fio de
+        # abertura vivia, e ZERO (ou uma access violation) depois de ele sair --
+        # os ponteiros COM pertencem ao apartamento onde foram criados e o pump
+        # os usava de fora. Agora um fio so' faz COM + open + pump e liberta tudo
+        # ao sair; `_opened` publica o desfecho do open para quem chamou.
+        self._opened = threading.Event()
+        self._open_error = None
         self._cb_lock = threading.Lock()
         self._com = None
         self._client = None
@@ -3820,16 +3828,64 @@ class ProcessLoopbackTap:
         return self
 
     def _start(self):
-        # COM for the tap's LIFETIME, on the thread that opens it -- the same
-        # arrangement (and the same owed-reference bookkeeping) the endpoint tap
-        # uses, because both are opened by the run loop on this thread.
-        self._com = self._wl._com_init()
-        try:
-            self._open()
-        except BaseException:
-            self._release_com()
-            raise
+        # UM FIO DONO DO APARTAMENTO: COM + open + pump na MESMA thread, e a
+        # libertação também. MEDIDO 2026-11-09 no alvo real (Discord.exe pid
+        # 22992): aberto num fio que depois saía, o pump entregava 71 blocos em
+        # 3 s e PARAVA no instante em que o fio de abertura morria -- e o caminho
+        # de produção (`_open_tap_bounded`, que abre num fio e o deixa sair)
+        # media ZERO blocos com o tap aberto (`PLP_OPEN_OK hr=0`). Os ponteiros
+        # COM são do apartamento que os criou; usá-los de outro fio é o defeito.
+        self._opened = threading.Event()
+        self._open_error = None
+        self._thread = threading.Thread(target=self._owner_loop, name="plp-owner",
+                                        daemon=True)
+        self._thread.start()
+        # O desfecho do open tem de ser SINCRONO: a escada decide por ele, e um
+        # open que falha em silêncio viraria "dispositivo mudo".
+        if not self._opened.wait(PLP_ACTIVATE_TIMEOUT_S + 5.0):
+            raise ProcessLoopbackError(
+                "the tap owner thread did not finish opening within %.1fs"
+                % (PLP_ACTIVATE_TIMEOUT_S + 5.0))
+        if self._open_error is not None:
+            raise self._open_error
         return self
+
+    def _owner_loop(self):
+        """COM + open + pump + teardown, todos no MESMO fio. Nunca levanta."""
+        try:
+            self._com = self._wl._com_init()
+            self._open()
+        except BaseException as exc:          # noqa: BLE001 - o desfecho viaja no evento
+            self._open_error = exc
+            self._opened.set()
+            self._teardown_on_owner()
+            return
+        self._opened.set()
+        try:
+            self._pump()
+        finally:
+            self._teardown_on_owner()
+
+    def _teardown_on_owner(self):
+        """Stop + release, no fio dono -- é o único que pode tocar nos ponteiros."""
+        client = self._client
+        if client is not None:
+            try:
+                self._wl._vtbl(client, 11, self._wl.HRESULT)(client)   # IAudioClient::Stop
+            except Exception:                 # noqa: BLE001
+                pass
+        for attr in ("_capture", "_client"):
+            ptr = getattr(self, attr, None)
+            if ptr:
+                try:
+                    self._wl._release(ptr)
+                except Exception:             # noqa: BLE001
+                    pass
+                setattr(self, attr, None)
+        try:
+            self._release_com()
+        except Exception:                     # noqa: BLE001
+            pass
 
     def _open(self):
         wl = self._wl
@@ -3866,21 +3922,20 @@ class ProcessLoopbackTap:
         self.hr_start = res["hr_start"]
         err("PLP_OPEN_OK pid=%d rate=%d channels=%d block=%d winner=%r"
             % (self.pid, self.rate, self.channels, self.block, self.init_winner))
-
-        self._thread = threading.Thread(target=self._pump, name="plp-capture", daemon=True)
-        self._thread.start()
+        # O PUMP E' O PROPRIO FIO DONO (`_owner_loop`): um `plp-capture` separado
+        # lia os ponteiros COM de fora do apartamento -- medido, entregava blocos
+        # só enquanto o fio de abertura vivia.
 
     def stop(self):
         self._stop.set()
         if self._thread is not None:
+            # O Stop e o release acontecem no FIO DONO (`_teardown_on_owner`), que
+            # e' o unico que pode tocar nos ponteiros COM. Aqui so' se pede e se
+            # espera: a barreira do `_cb_lock` garante que o callback em voo ja'
+            # voltou quando isto retorna.
             self._thread.join(timeout=2.0)
             if not self._thread.is_alive():
                 self._thread = None
-        if self._client is not None:
-            try:
-                self._wl._vtbl(self._client, 11, self._wl.HRESULT)(self._client)  # Stop
-            except Exception:
-                pass
         # Barrier: whoever holds _cb_lock is inside on_block; taking it here means
         # the callback that was in flight has returned. The pump, already past its
         # _stop test, cannot start another one.
@@ -3896,13 +3951,10 @@ class ProcessLoopbackTap:
             self._com = None
 
     def close(self):
+        # `_teardown_on_owner` ja' fez Stop + release + COM quando o fio dono
+        # saiu; se ele ainda estiver a correr (join de 2 s vencido), o proximo
+        # `stop()`/`close()` e' quem o apanha. Idempotente por desenho.
         self.stop()
-        for attr in ("_capture", "_client"):
-            ptr = getattr(self, attr, None)
-            if ptr:
-                self._wl._release(ptr)
-                setattr(self, attr, None)
-        self._release_com()
         return self
 
     def _pump(self):
@@ -6184,6 +6236,74 @@ def resume_catch_up(switch, gate=None):
     return out
 
 
+def resolve_audio_target(args, cfg, emit, err):
+    """WHICH APP -- resolvido ANTES de carregar 1,8 GB de pesos.
+
+    STEP 2 da lane SottoPerAppTap: o alvo e' decisao do dono, a flag ganha ao
+    ambiente, e um valor MALFORMADO e' RECUSADO (exit 2) -- nunca clampado, nunca
+    largado em silencio, porque um run que caisse para o mix do endpoint sem o
+    dizer transcrevia a maquina inteira enquanto o dono acreditava ter separado
+    um programa.
+
+    POR QUE E' UMA FUNCAO e nao um bloco no `main`: MEDIDO 2026-11-09,
+    `--target-name NaoExiste.exe` era recusado DEPOIS do `model-loading` -- 8 s e
+    1815 MB de RSS para dizer que o programa nao esta' a correr. A recusa tem de
+    custar zero; a carga vem depois.
+
+    DUAS FONTES DE ALVO, nesta ordem: um PID explicito (`--target-pid` /
+    `SOTTO_TARGET_PID`) e' o dono a apontar o dedo e ganha de tudo; sem ele, o
+    NOME (`--target-name` / `SOTTO_TARGET_NAME` / `audio.target_name`) e'
+    resolvido para a RAIZ da arvore do programa.
+
+    Devolve `(target_pid, target_name, error)`; `error` e' `(stage, detail)` e
+    quem chama recusa com exit 2.
+    """
+    target_pid = None
+    _target_raw = (args.target_pid if args.target_pid is not None
+                   else os.environ.get("SOTTO_TARGET_PID"))
+    if _target_raw is not None and str(_target_raw).strip() != "":
+        try:
+            target_pid = int(str(_target_raw).strip())
+        except (TypeError, ValueError):
+            return None, None, ("target-pid",
+                                f"--target-pid/SOTTO_TARGET_PID={_target_raw!r} is not a pid")
+        if target_pid <= 0:
+            return None, None, ("target-pid",
+                                f"--target-pid/SOTTO_TARGET_PID={_target_raw!r} is not a positive pid")
+        _target_state = _plp_pid_state(target_pid)
+        if _target_state == "absent":
+            return None, None, ("target-pid",
+                                f"pid {target_pid} does not exist (OpenProcess: ERROR_INVALID_PARAMETER)")
+        # 'denied' -- a protected, ELEVATED app -- is ALLOWED through: that process
+        # IS there, and refusing it would abandon the owner's target for a reason
+        # that has nothing to do with the target.
+        err(f"per-app tap requested: pid {target_pid} "
+            f"({_plp_proc_desc(target_pid) or 'image name unreadable'}) state={_target_state}")
+        return target_pid, None, None
+
+    # ── O ALVO POR NOME (ordem do dono, 2026-11-09: *"identifica corretamente o
+    # audio saindo do discord"*). Um pid e' um numero que morre quando ele
+    # reinicia o programa; o que ele nomeia e' o PROGRAMA. Tres fontes, na ordem
+    # em que ganham: `--target-name`, `SOTTO_TARGET_NAME`, `audio.target_name`.
+    _name_raw = args.target_name
+    if _name_raw is None or not str(_name_raw).strip():
+        _name_raw = os.environ.get("SOTTO_TARGET_NAME")
+    if _name_raw is None or not str(_name_raw).strip():
+        _name_raw = (cfg.get("audio") or {}).get("target_name")
+    target_name = str(_name_raw).strip() if _name_raw is not None else ""
+    if not target_name:
+        return None, None, None
+    import process_target as _pt
+    _pid = _pt.resolve(target_name)
+    if _pid is None:
+        return None, None, ("target-name",
+                            f"no running process matches --target-name/"
+                            f"SOTTO_TARGET_NAME/audio.target_name={target_name!r}")
+    err(f"per-app tap requested by NAME: {target_name} -> pid {_pid} "
+        f"({_plp_proc_desc(_pid) or 'image name unreadable'}) state={_plp_pid_state(_pid)}")
+    return int(_pid), target_name, None
+
+
 def main():
     _lower_process_priority()
     ap = argparse.ArgumentParser(description="Sotto caption worker (JSONL on stdout)")
@@ -6200,6 +6320,11 @@ def main():
     ap.add_argument("--target-pid", default=None, type=str,
                     help="capture ONE process tree's audio (WASAPI process loopback) "
                          "instead of the endpoint mix; SOTTO_TARGET_PID also sets it")
+    ap.add_argument("--target-name", default=None, metavar="IMAGE",
+                    help="capture ONE program's audio by IMAGE NAME (e.g. Discord.exe, "
+                         "resolved to the tree ROOT and re-resolved when it restarts) "
+                         "instead of the endpoint mix; SOTTO_TARGET_NAME also sets it, "
+                         "and audio.target_name in the config is the third source.")
     ap.add_argument("--model", default=None)
     ap.add_argument(
         "--lang-id",
@@ -6607,6 +6732,42 @@ def main():
     # 10/12 times with it on.
     use_vad = bool(cfg.get("model", {}).get("use_vad", True))
 
+    # O ALVO DO TAP E' RESOLVIDO AQUI, ANTES DA CARGA. Medido 2026-11-09: a
+    # recusa de um programa ausente custava um carregamento inteiro (8 s,
+    # 1815 MB) para dizer que nao estava a correr. A recusa custa zero.
+    target_pid, target_name, _target_err = resolve_audio_target(args, cfg, emit, err)
+    if _target_err is not None:
+        emit(type="status", state="error", stage=_target_err[0], detail=_target_err[1])
+        return 2
+
+    def live_target(where):
+        """O pid do alvo AGORA, por NOME; sem nome, o pid e' o que e'.
+
+        UM lugar so' para o rebind: as rotacoes do laco perguntam aqui em vez de
+        cada uma reimplementar a regra. Devolve o pid anterior quando nao ha'
+        nenhum processo do nome -- e DIZ isso -- porque trocar para o mix do
+        endpoint em silencio transcreveria a maquina enquanto o dono acredita
+        que separou um programa.
+        """
+        nonlocal target_pid
+        if not target_name:
+            return target_pid
+        try:
+            import process_target as _pt
+            fresh = _pt.resolve_again(target_name, target_pid)
+        except Exception as exc:          # noqa: BLE001 - um rebind que falha nao custa o audio
+            err('TARGET_NAME_REBIND_FAILED name=%s where=%s error=%s'
+                % (target_name, where, exc))
+            return target_pid
+        if fresh and (target_pid is None or int(fresh) != int(target_pid)):
+            err('TARGET_NAME_REBOUND name=%s old_pid=%s new_pid=%s where=%s'
+                % (target_name, target_pid, fresh, where))
+            target_pid = int(fresh)
+        elif not fresh:
+            err('TARGET_NAME_MISSING name=%s pid=%s where=%s -- keeping the last pid'
+                % (target_name, target_pid, where))
+        return target_pid
+
     _add_cuda_dll_dirs()
     t_cuda = time.time()
     _prof("cuda_dirs", t_cuda)
@@ -6817,36 +6978,6 @@ def main():
     # PREFERRED_DEVICES. Every one of them is TRIED, not trusted — the rotation
     # loop below is what decides, and it decides on measured signal.
     wanted = args.device or os.environ.get("SOTTO_AUDIO_DEVICE") or None
-    # ── lane SottoPerAppTap: WHICH APP (STEP 2) — OFF unless explicitly asked ─
-    # The pid is the owner's decision, so the FLAG wins over the environment, and
-    # a MALFORMED value is REFUSED (exit 2) -- never clamped, never silently
-    # dropped: a run that quietly fell back to the endpoint mix would transcribe
-    # every app on the box while the owner believed he had separated one.
-    # A well-formed pid that does not EXIST is refused here for the same reason
-    # (the open would refuse it anyway, but only after the ladder had already
-    # fallen through to the mix). 'denied' -- a protected, ELEVATED app -- is
-    # ALLOWED through: that process IS there, and refusing it would abandon the
-    # owner's target for a reason that has nothing to do with the target.
-    target_pid = None
-    _target_raw = args.target_pid if args.target_pid is not None else os.environ.get("SOTTO_TARGET_PID")
-    if _target_raw is not None and str(_target_raw).strip() != "":
-        try:
-            target_pid = int(str(_target_raw).strip())
-        except (TypeError, ValueError):
-            emit(type="status", state="error", stage="target-pid",
-                 detail=f"--target-pid/SOTTO_TARGET_PID={_target_raw!r} is not a pid")
-            return 2
-        if target_pid <= 0:
-            emit(type="status", state="error", stage="target-pid",
-                 detail=f"--target-pid/SOTTO_TARGET_PID={_target_raw!r} is not a positive pid")
-            return 2
-        _target_state = _plp_pid_state(target_pid)
-        if _target_state == "absent":
-            emit(type="status", state="error", stage="target-pid",
-                 detail=f"pid {target_pid} does not exist (OpenProcess: ERROR_INVALID_PARAMETER)")
-            return 2
-        err(f"per-app tap requested: pid {target_pid} "
-            f"({_plp_proc_desc(target_pid) or 'image name unreadable'}) state={_target_state}")
     audio_cfg = cfg.get("audio") or {}
     # ── `audio.block_ms` — a LIVE knob as of 2026-10-06 ──────────────────────
     # It used to be inert: `LoopbackTap`/`WasapiLoopbackTap` take block_ms as a
@@ -7926,8 +8057,12 @@ def main():
         """
         out = {'blocks': 0, 'peak': 0.0, 'captions': counters['captions'],
                'census': (), 'device': None, 'error': None}
+        # O ALVO POR NOME RE-RESOLVE AQUI TAMBEM: o dono reiniciou o Discord e o
+        # pid morreu enquanto a escada esperava; `live_target` rebinda o nome e
+        # devolve o pid VIVO, que e' o que este censo tem de oferecer.
+        _target_now = live_target('park')
         try:
-            fresh = device_candidates(audio_cfg, wanted, target_pid=target_pid)
+            fresh = device_candidates(audio_cfg, wanted, target_pid=_target_now)
         except Exception as exc:  # noqa: BLE001 -- um censo que falha nao custa o parque
             out['error'] = '%s: %s' % (type(exc).__name__, exc)
             err("PARK_CENSUS_FAILED attempt=%d error=%s" % (attempt, out['error']))
@@ -8296,7 +8431,7 @@ def main():
                                 target = dev
                                 if stall_reopens >= TAP_STALL_SAME_DEVICE_TRIES and not (
                                         wanted and dev.get("rung") == "c"):
-                                    for cand in device_candidates(audio_cfg, wanted, target_pid=target_pid):
+                                    for cand in device_candidates(audio_cfg, wanted, target_pid=live_target('ladder')):
                                         if cand.get("endpoint_id") != dev.get("endpoint_id"):
                                             target = cand
                                             break
@@ -8580,7 +8715,7 @@ def main():
                 % (_parked["why"], _parked["parked_s"], _parked["attempts"],
                    _parked["blocks"]))
             try:
-                _again = device_candidates(audio_cfg, wanted, target_pid=target_pid)
+                _again = device_candidates(audio_cfg, wanted, target_pid=live_target('signal-reselect'))
             except Exception as exc:  # noqa: BLE001 -- fica a escada que ja' existe
                 err("PARK_RESUME_CENSUS_FAILED error=%r -- keeping the ladder"
                     % (exc,))

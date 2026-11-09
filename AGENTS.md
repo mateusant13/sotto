@@ -477,6 +477,24 @@ todos os dias. Duas provas, porque uma só mente:
   flag falta; o portão é `_main/owner-audio-gate.py` e o braço negativo larga o instrumento **sem** a
   flag e exige a recusa. E no painel/harness: **ler** é sempre livre (`--status-all`), **escrever** é
   dele. Uma lane que precise de áudio mudo: pede ao dono, não muda o dele.
+- **PONTEIRO COM PERTENCE AO APARTAMENTO QUE O CRIOU -- UM FIO SO' ABRE, LE' E LIBERTA (medido
+  2026-11-09 no alvo real).** O tap por processo (`ProcessLoopbackTap`) abria a captura num fio e o
+  `plp-capture` lia do OUTRO. Medido com o Discord vivo (pid 22992): aberto num fio que continuava
+  vivo, entregava **71 blocos em 3 s** e PARAVA no instante em que esse fio saía; pelo caminho de
+  PRODUCAO (`_open_tap_bounded`, que abre num fio e o deixa sair) media **ZERO blocos com o tap
+  ABERTO** (`PLP_OPEN_OK hr=0`, `pump_exited=False`), e a escada chamava a isso "dispositivo mudo".
+  Um segundo sintoma da mesma causa: a access violation dentro do `GetBuffer`. Agora `_start` cria UM
+  fio dono (`plp-owner`) que faz `_com_init` -> `_open` -> pump -> Stop/release/COM, e o desfecho do
+  open volta por evento (`_opened`/`_open_error`) porque a escada decide por ele. Medido depois:
+  **74 blocos em 3 s** pelo caminho de producao e **168 blocos em 6 s** no worker real, com o
+  veredicto a mudar de `no-callback-blocks` para `silent-device` (Discord sem som na janela, nao
+  captura morta). Portao: `_main/process-target-oracle.py` (22 arms, A10-A14: `_open` nao cria fio,
+  o fio dono nao cria outro fio, COM e' inicializado LÁ, `_start` ESPERA o `_opened.wait`, o teardown
+  vive no `finally`) e o `--neg-arm` **7/7**, com uma lição de instrumento que custou duas rodadas: a
+  primeira A13 so' exigia o nome `_teardown_on_owner` em qualquer sitio de `_owner_loop` e o mutante
+  que apagava o `finally` passava -- o ramo de EXCECAO tambem o chama, logo a arm media o nome em
+  vez do caminho. A mesma lei para qualquer tap futuro: um fio que ABRE e outro que LE' e' a classe
+  deste defeito, mesmo quando os blocos chegam por sorte enquanto o primeiro vive.
 - **`TMPDIR` = `I:\cc-tmp`.** `G:` enche e mata lanes com ENOSPC.
 - **Caminhos nativos `H:\`.** `./node_modules/.bin/electron` não executa (rc=127). E não lançar esse
   binário como app: o Electron está MORTO.
@@ -573,8 +591,26 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-09, 21:0x):** `_main\_audit-verify-all.cmd` = **324513 B**,
-  **3808 CRLF** / 0 bare LF, sha256 `FCC719B79756B563C5DB25ACE3CDFEF0B61AC5D60F0312C9F640250C750718D9`.
+- **PIN do ficheiro (medido 2026-11-09, 14:0x):** `_main\_audit-verify-all.cmd` = **325668 B**,
+  **3821 CRLF** / 0 bare LF, sha256 `A4B0DF804B160F9C81EC6626CAC619916E2D4EACF8FDCFBF33B568AA871290BE`.
+  (Vinte e tres bytes a mais do que o pin de 325645 B, e ZERO linhas a mais: o passo
+  `red-as-expected-process-target` passa a nomear `worker\sotto_worker.py` nas dependencias. O
+  `--neg-arm` daquele oraculo passou a mutar ESSE ficheiro (as quatro mutacoes do fio dono, abaixo),
+  logo uma dependencia que o nao nomeia deixaria o negativo em cache a julgar um worker que ja' mudou
+  -- a classe do `panel-deps`, que ja' custou quatro vezes nesta casa.
+  **(Mil cento e trinta e dois bytes e TREZE linhas a mais do que o pin de 324513 B: o par
+  `process-target` + `red-as-expected-process-target`, o ALVO DO TAP POR NOME. Nasceu da ordem do
+  dono de 2026-11-09, verbatim: *"to em call no discord agora. identifica corretamente o audio saindo
+  do discord"*. O `--target-pid` ja' existia e foi medido a funcionar nesta maquina (`PLP_START
+  hr=0`, 39 blocos em 4 s, 0 pacotes silenciosos), mas um pid e' um numero que morre quando ele
+  reinicia o programa; agora `--target-name`/`SOTTO_TARGET_NAME`/`audio.target_name` resolve o NOME
+  para a RAIZ da arvore (o `AUDIOCLIENT_ACTIVATION_PARAMS` em modo INCLUDE_TARGET_PROCESS_TREE
+  captura a arvore do pid dado, logo um pid do MEIO deixa de fora os irmaos que renderizam audio --
+  medido: `Discord.exe` tem 6 processos e a raiz e' 22992, nao o maior pid 24484) e RE-RESOLVE na
+  rotacao, o que faz o tap sobreviver ao reinicio. Medido: `PROCESS-TARGET VERDICT: PASS (14/14)`,
+  `--neg-arm` 3/3 (comparacao por substring, raiz = maior pid, rebind do pid morto) e a captura da
+  RAIZ aberta e a entregar 39 blocos com `pump_exited=False hr=0`. UNMEASURED: o audio de uma CALL
+  real -- ele nao estava a renderizar som na janela da medicao (`peak=0.0`, 0 pacotes silenciosos).
   (Mil quatrocentos e oitenta e seis bytes e QUINZE linhas a mais do que o pin de 323027 B: o par
   `worker-silence-grace` + `red-as-expected-worker-silence-grace`, o cao de guarda que deixou de
   matar com a prova de vida em voo. MEDIDO no log do dono, `_main/webview-run.log`: `BRIDGE_SILENT

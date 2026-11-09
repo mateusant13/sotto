@@ -3343,6 +3343,19 @@ call :step always ctrlspace-swallow-os 0 "_main\ctrlspace-swallow-probe.py" "%OU
 call :record ctrlspace-swallow-os !STEP_RC!
 ) else ( call :record ctrlspace-swallow-os MISSING )
 
+REM O ALVO DO TAP POR PROCESSO, ESCOLHIDO POR NOME (ordem do dono, 2026-11-09:
+REM *"identifica corretamente o audio saindo do discord"*). O `--target-pid`
+REM existia e funcionava, mas um pid morre quando ele reinicia o programa; o
+REM `--target-name` resolve o NOME para a RAIZ da arvore e re-resolve quando a
+REM raiz morre. O oraculo julga as decisoes sobre tabelas de processos
+REM INJECTADAS -- nao abre processo, nao toca em dispositivo e nao pinta janela
+REM -- e o negativo muta a comparacao, a escolha da raiz e o rebind do pid
+REM morto, exigindo que cada um caia pela SUA arm.
+call :step always process-target 0 "_main\process-target-oracle.py;worker\process_target.py;worker\sotto_worker.py" "%OUT%\process-target.log" python _main\process-target-oracle.py
+call :record process-target !STEP_RC!
+call :step always red-as-expected-process-target 1 "_main\process-target-oracle.py;worker\process_target.py;worker\sotto_worker.py" "%OUT%\process-target-neg.log" python _main\process-target-oracle.py --neg-arm
+call :expectred red-as-expected-process-target !STEP_RC! "%OUT%\process-target-neg.log" "NEG-ARM: 3/3 mutantes apanhados"
+
 REM A CORRIDA TEM DE ESTAR FECHADA QUANDO ESTE PASSO LE' O RELOGIO. Ele le'
 REM `_cache\battery-steps.json`, que a corrida escreve passo a passo: em qualquer
 REM outro sitio mediria "a corrida ate' aqui", que e' um numero menor do que o
