@@ -40,7 +40,9 @@ do nemotron (1,9 GB) **duas vezes** -- um braco por valor de `SOTTO_SMALL_GRAPH_
 O tripwire (`_main/cpu-tripwire.py`, commit 9cbaa89) nomeou as threads do worker vivo:
 
 ```
-pid 20676 total 398,8 %c
+pid 20676 total 398,8 %c  <-- ATENCAO: 398,8 e' a PRIMEIRA das TRES amostras da captura
+                                (as outras: 567,8 e **1082,0** %c). O PICO medido da arvore
+                                foi 1082 %c = 10,8 nucleos; a linha do stdout subestima-o 2,7x.
   124,0 %  tid 48032  (sem nome)
   121,8 %  tid 52584  session-9-intra-op-0
    80,1 %  tid 36460  session-10-intra-op-0
