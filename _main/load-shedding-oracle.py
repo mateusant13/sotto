@@ -1963,24 +1963,90 @@ def arms_release(worker_path: Path, tmp: Path) -> None:
     ok, why, _f = gate.may_release('muito-alta', 96.0, 98.1)
     add(ok is True and why == 'memoria-emergencia',
         "96 % de commit LARGA ja' (a emergencia de memoria continua a mandar)", why)
+    # A SERIE E' AMOSTRADA DE 5 EM 5 SEGUNDOS, e isso nao e' enfeite: uma sonda
+    # que salta de t=0 para t=119 e' um BURACO de 119 s, e a guarda de 2026-11-09
+    # (`RELEASE_GAP_S`) trata um buraco como "a pressao pode ter acabado" e
+    # zera o relogio -- medido nesta arvore: com as tres amostras esparsas o arm
+    # ficava VERMELHO (`t=120: memoria-sustentada-espera`) sobre um `may_release`
+    # que esta' certo. A pressao real chega a cada tick, entao o arm passou a
+    # chegar tambem.
     t['t'] = 0.0
     gate2 = ls.ReleaseGate(clock=lambda: t['t'])
     first = gate2.may_release('muito-alta', 89.0, 60.0)
-    t['t'] = ls.RELEASE_PERSIST_S - 1.0
-    near = gate2.may_release('muito-alta', 89.0, 60.0)
-    t['t'] = ls.RELEASE_PERSIST_S
-    far = gate2.may_release('muito-alta', 89.0, 60.0)
-    add(first[0] is False and near[0] is False and far[0] is True,
+    far = first
+    for _i in range(1, int(ls.RELEASE_PERSIST_S / 5.0) + 2):
+        t['t'] = _i * 5.0
+        far = gate2.may_release('muito-alta', 89.0, 60.0)
+        if far[0]:
+            break
+    add(first[0] is False and far[0] is True and t['t'] == ls.RELEASE_PERSIST_S,
         "pressao de memoria (89 %%) larga so' depois de %.0f s SUSTENTADOS"
         % ls.RELEASE_PERSIST_S,
-        f"t=0:{first[1]} t={ls.RELEASE_PERSIST_S - 1:.0f}:{near[1]} "
-        f"t={ls.RELEASE_PERSIST_S:.0f}:{far[1]}")
+        f"t=0:{first[1]} t={t['t']:.0f}:{far[1]}")
     add(ls.RELEASE_PERSIST_S >= 120.0,
         "e o piso da persistencia e' >= 120 s", "persist_s=%.0f" % ls.RELEASE_PERSIST_S)
+    # ANTI-ADERENCIA (o furo que a persistencia de 120 s ABRE): um commit a
+    # oscilar 89/87 reiniciava o relogio em cada mergulho e o modelo nunca caia
+    # com a maquina parada a 88 %. A histerese mantem o relogio entre
+    # `HIGH_PCT - RELEASE_HYSTERESIS_PCT` e `HIGH_PCT`, e so' o zera abaixo do
+    # piso. Os dois lados: o relogio SOBREVIVE ao mergulho, e ele ZERA abaixo.
+    t2 = {'t': 0.0}
+    osc = ls.ReleaseGate(clock=lambda: t2['t'])
+    osc.may_release('muito-alta', 89.0, 60.0)
+    for _i in range(1, 25):
+        t2['t'] = _i * 5.0
+        osc.may_release('muito-alta', 87.0 if _i % 2 else 89.0, 60.0)
+    held_ok = osc.may_release('muito-alta', 89.0, 60.0)[0]
+    add(held_ok is True,
+        "um commit a oscilar 89/87 LARGA ao fim do prazo (o relogio nao zera no mergulho)",
+        "persist_s=%.0f hyst=%.0f" % (ls.RELEASE_PERSIST_S, ls.RELEASE_HYSTERESIS_PCT))
+    t3 = {'t': 0.0}
+    drop = ls.ReleaseGate(clock=lambda: t3['t'])
+    drop.may_release('muito-alta', 89.0, 60.0)
+    t3['t'] = 100.0
+    add(drop.may_release('muito-alta', 70.0, 60.0)[1] == 'cpu-apenas'
+        and drop.memory_since is None,
+        "e um commit a 70 % ZERA o relogio (a pressao acabou de facto)",
+        "memory_since=%r" % (drop.memory_since,))
+    t3['t'] = 110.0
+    add(drop.may_release('muito-alta', 89.0, 60.0)[0] is False,
+        "e depois desse zero a largada espera o prazo OUTRA VEZ",
+        "held_s=%s" % drop.may_release('muito-alta', 89.0, 60.0)[2].get('held_s'))
+    add(0.0 < ls.RELEASE_HYSTERESIS_PCT < ls.HIGH_PCT,
+        "a histerese e' um piso ABAIXO de HIGH_PCT e nao um segundo limiar solto",
+        "hyst=%.1f high=%.0f" % (ls.RELEASE_HYSTERESIS_PCT, ls.HIGH_PCT))
     add(gate.may_release('muito-alta', None, 99.1)[0] is True,
         "commit ILEGIVEL larga (\"nao sei\" nao segura memoria contra OOM)")
     add(gate.may_release('alta', 96.0, 99.1)[0] is False,
         "e `alta` nao larga nada: so' `muito-alta` pede a largada")
+    # UM BURACO NAO E' PRESSAO (furo medido pelo revisor independente): a guarda
+    # so' e' consultada no modo `shed`, e o relogio de parede contava o tempo
+    # passado FORA dele (em `alta`, ou com um lote a correr) como pressao
+    # sustentada -- 300 s sem uma leitura "cumpriam" os 120 s e o modelo caia na
+    # primeira amostra a 89 %.
+    t4 = {'t': 0.0}
+    hole = ls.ReleaseGate(clock=lambda: t4['t'])
+    hole.may_release('muito-alta', 89.0, 60.0)
+    t4['t'] = ls.RELEASE_PERSIST_S + 300.0
+    r_hole = hole.may_release('muito-alta', 89.0, 60.0)
+    add(r_hole[0] is False,
+        "um buraco de 300 s sem leitura NAO conta como pressao sustentada",
+        f"ok={r_hole[0]} why={r_hole[1]} held_s={r_hole[2].get('held_s')}")
+    t4['t'] += 5.0
+    add(hole.may_release('muito-alta', 89.0, 60.0)[0] is False,
+        "e depois do buraco o prazo RECOMECA (nao larga na amostra seguinte)")
+    t5 = {'t': 0.0}
+    steady = ls.ReleaseGate(clock=lambda: t5['t'])
+    steady.may_release('muito-alta', 89.0, 60.0)
+    released_at = None
+    for _i in range(1, 26):
+        t5['t'] = _i * 5.0
+        if steady.may_release('muito-alta', 89.0, 60.0)[0]:
+            released_at = _i * 5.0
+            break
+    add(released_at == ls.RELEASE_PERSIST_S,
+        "CONTROLE: sem buraco, a MESMA serie larga no prazo (a guarda nao desligou a persistencia)",
+        f"released_at={released_at}")
 
     # (B) O CICLO REAL, com o interruptor REAL, e o CONTROLE de populacao.
     eng_old = _FakeEngine()
@@ -2032,6 +2098,46 @@ def arms_release(worker_path: Path, tmp: Path) -> None:
     rel = next((l for l in logs2 if l.startswith("REDUX_ENGINE_RELEASE")), "")
     add("why=memoria-emergencia" in rel,
         "e a linha da largada nomeia a emergencia que a autorizou", rel[:140])
+
+    # (C-bis) A RECUSA E' DITA UMA VEZ POR EPISODIO (furo medido pelo revisor
+    # independente). Com o motor JA' largado, um commit a oscilar 94/89
+    # re-logava o KEPT a cada amostra de emergencia (59 linhas em 600 s); e a
+    # flag nunca caia ao SAIR do nivel severo, por isso um segundo episodio na
+    # mesma sessao ficava sem linha nenhuma. Os dois lados no mesmo interruptor.
+    logs3: list[str] = []
+    t6 = {'t': 0.0}
+    eng3 = _FakeEngine()
+    eng3.load()
+    s3 = sw.ReduxHiddenSwitch(
+        True, _FakeReader(visible=True), str(tmp / "no-runner.py"), logs3.append,
+        hidden_after_s=0.0, batch_interval_s=1.0, max_audio_s=1.0,
+        engine=eng3, probe=_FakeProbe([(96.0, 90.0)]), spool_dir=str(tmp / "spool-eco"),
+        min_free_mb=0.0, engine_min_free_mb=0.0,
+        clock=lambda: t6['t'])
+    add(s3.tick() == "shed" and (eng3.loaded, eng3.releases) == (False, 1),
+        "o primeiro aperto larga o modelo (o episodio comeca)",
+        f"loaded={eng3.loaded} releases={eng3.releases}")
+    for _i, (commit, _cpu) in enumerate([(89.0, 60.0), (94.0, 60.0),
+                                        (89.0, 60.0), (94.0, 60.0)]):
+        t6['t'] += 1.0
+        s3.probe.seq = [(commit, _cpu)]
+        s3.tick()
+    kept3 = [l for l in logs3 if l.startswith("REDUX_ENGINE_KEPT")]
+    add(len(kept3) == 1,
+        "a recusa e' dita UMA vez por episodio, mesmo com o commit a oscilar 94/89",
+        f"kept_lines={len(kept3)} releases={eng3.releases}")
+    s3.probe.seq = [(64.0, 57.0)]
+    t6['t'] += 1.0
+    s3.tick()
+    add(s3.mode == "batch",
+        "e o nivel desce para `batch` (o episodio acabou)", "mode=%s" % s3.mode)
+    s3.probe.seq = [(89.0, 60.0)]
+    t6['t'] += 1.0
+    s3.tick()
+    kept3b = [l for l in logs3 if l.startswith("REDUX_ENGINE_KEPT")]
+    add(len(kept3b) == 2,
+        "e um SEGUNDO aperto na mesma sessao volta a ser dito (a flag cai ao sair do nivel)",
+        f"kept_lines={len(kept3b)}")
 
     # (D) O PISO DA RECARGA (do MOTOR, `engine_policy`): logo apos largar, o lote
     # seguinte ESPERA -- e o audio fica na espera. Este braco prova a fiacao: sem
@@ -2101,6 +2207,48 @@ def _mutant_layout(tmp: Path):
     for sibling in ("live_queue.py", "engine_switch.py", "engine_policy.py"):
         shutil.copy2(ROOT / "worker" / sibling, worker_dir / sibling)
     return worker_dir / "sotto_worker.py", webview
+
+
+def _neg_arm_gate(label, target, old, new, why, must_fail) -> int:
+    """Muta a GUARDA no mini repo e exige que a arm NOMEADA caia.
+
+    PORQUE NAO `_neg_arm_text` AQUI (medido 2026-11-09). Aquele braco so' sabe
+    dizer "o oraculo ficou vermelho", e neste oraculo isso nao e' evidencia: a
+    copia de tres ficheiros nao tem os irmaos da shell, `arms_channel` cai em
+    `ModuleNotFoundError('hot_reload')` e QUALQUER mutacao -- inclusive uma que
+    nao toca em nada -- publica RED. Medido: o mutante do CPU, com a guarda
+    intacta porque a copia nunca era carregada (o worker era o REAL), deu
+    `PASS -- RED as designed` com quatro RED de `hot_reload` e nenhum da ARM 26.
+
+    O mutante so' conta quando a linha RED e' a da propria guarda: a guarda e'
+    carregada porque o WORKER e' o da copia (`_mutant_layout`, como em
+    `neg_arm_channel`) e `rows` diz QUAL arm caiu.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="load-shed-gate-neg-"))
+    saved = globals().get("WORKER", WORKER)
+    try:
+        worker_copy, webview = _mutant_layout(tmp)
+        path = (worker_copy.parent / target if target != "load_shedding.py"
+                else webview / target)
+        text = path.read_text(encoding="utf-8")
+        mutant = text.replace(old, new)
+        if mutant == text:
+            print(f"NEG-ARM({label}): nao consegui mutar o alvo (o texto mudou)")
+            return EXIT_PASS
+        path.write_text(mutant, encoding="utf-8")
+        print(f"NEG-ARM({label}): {why}")
+        globals()["WORKER"] = worker_copy
+        run(webview / "load_shedding.py", webview / "sotto_webview.py", BATCH)
+        caught = [name for ok, name, _d in rows if not ok and must_fail in name]
+        if caught:
+            print(f"\nNEG-ARM({label}) PASS -- RED as designed: {caught[0][:110]}")
+            return EXIT_FAIL
+        print(f"\nNEG-ARM({label}) FAIL -- a arm '{must_fail}' NAO caiu "
+              f"({sum(1 for ok, _n, _d in rows if not ok)} RED no total)")
+        return EXIT_PASS
+    finally:
+        globals()["WORKER"] = saved
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def neg_arm_drain() -> int:
@@ -2431,39 +2579,72 @@ def neg_arm_release_cpu() -> int:
     63-64 %). Se o oraculo nao cair aqui, a guarda da ARM 26 nao esta' a medir
     nada.
     """
-    old = """        if commit < self.high_pct:
-            # A PRESSAO E' DE CPU. O modelo FICA: o RSS nao e' o recurso escasso
-            # e o modo `shed` ja' pausou o lote (o audio acumula).
-            self.memory_since = None
-            fields['commit_pct'] = commit
-            return False, 'cpu-apenas', fields"""
+    # A mutacao e' a LINHA DE CODIGO, nunca um bloco de comentario: um mutante
+    # ancorado no comentario deixa de casar no dia em que o comentario muda e
+    # passa a "passar" sem tocar em nada -- medido nesta mesma arm, 2026-11-09,
+    # quando a histerese mudou o comentario e este braco ficou INERTE (rc=0).
+    old = "            return False, 'cpu-apenas', fields"
+    new = "            return True, 'cpu-apenas', fields"
     new = """        if commit < self.high_pct:
             self.memory_since = None
             fields['commit_pct'] = commit
             return True, 'cpu-apenas', fields"""
-    return _neg_arm_text(
+    return _neg_arm_gate(
         "largada-cpu", "load_shedding.py", old, new,
         "o CPU volta a largar o modelo (o ciclo de 31 s do log do dono)",
-        "load-shed-relcpu-neg-")
+        "63,6 % de commit NAO larga")
 
 
 def neg_arm_release_persist() -> int:
     """Sem PERSISTENCIA: um pico de memoria de um segundo paga uma recarga."""
-    return _neg_arm_text(
+    return _neg_arm_gate(
         "largada-persist", "load_shedding.py",
         "RELEASE_PERSIST_S = 120.0", "RELEASE_PERSIST_S = 0.0",
         "a pressao de memoria larga o modelo na PRIMEIRA leitura",
-        "load-shed-relpersist-neg-")
+        "larga so' depois de")
+
+
+def neg_arm_release_wedge() -> int:
+    """Sem HISTERESE: um commit a oscilar 89/87 zera o relogio em cada mergulho
+    e o modelo fica residente para sempre com a maquina a 88 % -- o cadeado."""
+    return _neg_arm_gate(
+        "largada-cadeado", "load_shedding.py",
+        "        if commit < self.high_pct - RELEASE_HYSTERESIS_PCT:",
+        "        if commit < self.high_pct:",
+        "a histerese sai: o relogio da persistencia zera em cada mergulho",
+        "a oscilar 89/87")
 
 
 def neg_arm_release_illegible() -> int:
     """Commit ilegivel deixa de largar: "nao sei" passa a segurar a memoria."""
-    return _neg_arm_text(
+    return _neg_arm_gate(
         "largada-cega", "load_shedding.py",
         "            return True, 'commit-ilegivel', fields",
         "            return False, 'commit-ilegivel', fields",
         "um commit ilegivel deixa de largar (o OOM passa a ser o primeiro aviso)",
-        "load-shed-relblind-neg-")
+        "ILEGIVEL larga")
+
+
+def neg_arm_release_gap() -> int:
+    """Sem a GUARDA DO BURACO: 300 s fora do `shed` contam como pressao."""
+    return _neg_arm_gate(
+        "largada-buraco", "load_shedding.py",
+        "        if self._last_at is not None and now - self._last_at > self.gap_s:",
+        "        if False:",
+        "o buraco deixa de zerar o relogio (o tempo que ninguem mediu conta)",
+        "um buraco de 300 s")
+
+
+def neg_arm_release_echo() -> int:
+    """Sem o CICLO DA FLAG: cada amostra de emergencia re-loga o KEPT."""
+    return _neg_arm_gate(
+        "largada-eco", "engine_switch.py",
+        '            if self._release_engine("shed-muito-alta", why=why):\n'
+        '                self._kept_logged = False',
+        '            self._release_engine("shed-muito-alta", why=why)\n'
+        '            self._kept_logged = False',
+        "a flag cai em cada amostra, largue ou nao (o KEPT vira eco)",
+        "UMA vez por episodio")
 
 
 def main(argv) -> int:
@@ -2502,9 +2683,12 @@ def main(argv) -> int:
         rel_cpu = neg_arm_release_cpu()
         rel_persist = neg_arm_release_persist()
         rel_blind = neg_arm_release_illegible()
+        rel_wedge = neg_arm_release_wedge()
+        rel_gap = neg_arm_release_gap()
+        rel_echo = neg_arm_release_echo()
         every = (table, channel, drain, selector, floor, sustain, persist, cede,
                  chan, dwell, rise, cpu_wiring, resume, rel_cpu, rel_persist,
-                 rel_blind)
+                 rel_blind, rel_wedge, rel_gap, rel_echo)
         return (EXIT_FAIL if all(rc == EXIT_FAIL for rc in every) else EXIT_PASS)
     return run(MODULE, SHELL)
 

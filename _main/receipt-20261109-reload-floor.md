@@ -182,30 +182,65 @@ MB/s e de % de um nucleo. A janela comeca em **09:07:04.932**. O que eu posso af
 **nenhuma linha `REDUX_ENGINE_LOAD`/`REDUX_ENGINE_RELEASED`/`REDUX_BATCH_*` foi escrita nos
 primeiros minutos** -- o parakeet so' carrega no primeiro passe de fundo, e sem passe nao ha' rajada.
 
-### 9-bis. O que NAO consigo medir nesta instancia, e porque
+### 9-bis. O que consigo e o que NAO consigo medir nesta instancia, e porque
 
-Nos primeiros 6 minutos da janela nova (09:07:04.932 -> 09:13) o log tem **zero** linhas
-`REDUX_ENGINE_LOAD` / `REDUX_ENGINE_RELEASED` / `REDUX_BATCH_*`. Isso e' compativel com DUAS coisas e
-eu nao tenho instrumento para as separar daqui:
+Nos primeiros 10 minutos da janela nova (09:07:04.932 -> 09:16:59) o log tem **zero** linhas
+`REDUX_ENGINE_LOAD` / `REDUX_ENGINE_RELEASED` / `REDUX_BATCH_*`. Medido por dois caminhos que
+concordam: uma varredura unica e um laco de 480 s (`achados: 0`), e o mesmo zero no instrumento do
+watcher. Isso era compativel com duas coisas, e uma delas ja' esta' descartada:
 
-1. o interruptor esta' armado e nao houve nenhum passe de fundo (o parakeet so' carrega no primeiro);
-2. o interruptor NAO esta' armado nesta instancia da shell (a bandeira vem do ambiente do pai, e o
-   que a shell imprime na linha `BRIDGE_SPAWNED` sao so' `SOTTO_CAPTURE_MODE` e `SOTTO_AUDIO_DEVICE`).
+1. **o interruptor esta' armado e nao houve nenhum passe de fundo** -- e' esta a verdadeira, ver
+   abaixo;
+2. ~~o interruptor nao esta' armado nesta shell~~ -- descartada por medicao.
 
-O ambiente dos dois processos e' ILEGIVEL deste pane: `psutil.Process(50452).environ()` e
-`psutil.Process(20676).environ()` levantam `AccessDenied` -- a shell corre em integridade `high` e
-este pane em `medium` (medido 2026-10-23), e a linha `REDUX_SWITCH armed=...` sai no stderr do
-worker, que nao esta' no log vivo (so' aparece em `stderr_tail` de um `BRIDGE_EXIT`, e o tail tem
-40 linhas de um arranque de 53 minutos antes -- ausencia la' nao prova nada).
-
-**O que DESCARTA a hipotese 2, e por medicao:** o worker ANTERIOR desta MESMA shell (pid 50452,
-mesmas flags, mesmo `pythonw`) armou de facto o interruptor -- o log dele tem
+**O que DESCARTA a hipotese 2:** o worker ANTERIOR desta MESMA shell (pid 50452, mesmas flags,
+mesmo `pythonw`) armou de facto o interruptor -- o log dele tem
 `REDUX_ENGINE_RELEASED ... releases=1` as 08:34:43 e `REDUX_ENGINE_LOAD ... loads=2` as 08:38:23,
 e essas linhas so' existem se `flush_pending` correu, ou seja se `armed` era verdadeiro. O ambiente
-e' herdado do pai, e o pai nao mudou; logo o worker novo esta' armado pelo mesmo caminho. Fica em
-aberto apenas a CONTAGEM, que e' o numero do watcher.
+e' herdado do pai, e o pai nao mudou (pid 50452, arrancado 08:14:03).
 
-Quem fecha isto e' o instrumento do watcher: se `REDUX_BATCH_KICK`/`REDUX_ENGINE_LOAD` aparecerem na
-janela, esta' armado; se em uma hora com painel escondido e audio a tocar nao aparecer nenhum, o
-achado passa a ser "o interruptor nao esta' armado nesta shell", que e' um defeito diferente e pede
-outra DM.
+**Porque nao leio o ambiente directamente:** o `psutil.Process(...).environ()` dos dois pids levanta
+`AccessDenied`, e a causa esta' medida com os SIDs ao lado (`GetTokenInformation`,
+`TokenIntegrityLevel`, lidos de um pane `medium`):
+
+| pid | processo | integridade |
+|---|---|---|
+| 3012 | watcher daemon | `S-1-16-8192` (**medium**) |
+| 50452 | shell Sotto | `S-1-16-12288` (**high**) |
+| 20676 | worker Sotto | `S-1-16-12288` (**high**) |
+| 50820 | este pane | `S-1-16-8192` (**medium**) |
+
+UIPI: `medium` nao le' `high`. E a MESMA parede que produz o `stutter_relief park_failed pid=20676
+'open_pid: access denied'` do journal do watcher -- nao e' um pid estranho, e' o parque a bater na
+integridade. Nada a apertar do lado do Sotto: do lado do daemon nao ha' acao possivel.
+
+**O que fica em aberto e' a CONTAGEM, e ela tem uma marca de calendario:** a instancia anterior levou
+**15,70 min** ate' o primeiro `REDUX_ENGINE_LOAD` (08:29:48 sobre um arranque as 08:14:03), **20,66
+min** ate' a primeira release e **24,33 min** ate' o segundo load -- com o commit da maquina em
+58-59 % e o cpu em 82-99 %. Pela mesma forma, a janela nova nao devia ver nada antes de **09:22:47**.
+`loads=0` antes dessa marca e' a forma normal, nao um resultado nulo; e o marcador de que o piso
+morde em producao e' `REDUX_BATCH_DEFERRED`, que so' pode aparecer quando houver uma RECARGA
+TENTADA -- entre 08:43 (a cura no disco) e 09:07 nao houve nenhuma, e por isso `DEFERRED=0` la' nao
+prova que a guarda falhou: prova que ela nao teve o que guardar.
+
+### 9-ter. Uma correccao de INSTRUMENTO que a medicao desta janela obrigou (2026-11-09, 09:2x)
+
+`_main/load-shedding-oracle.py` (arm 26, "pressao de memoria (89 %) larga so' depois de 120 s
+SUSTENTADOS") passou a VERMELHO com a guarda nova `RELEASE_GAP_S` que outra lane escreveu no
+`load_shedding.py` -- e o vermelho era do ARM, nao da guarda. A sonda saltava de `t=0` para
+`t=119` e da' para `t=120`: **um buraco de 119 s entre duas leituras**, e a guarda de 2026-11-09
+trata um buraco como "a pressao pode ter acabado" e ZERA o relogio (o que e' certo). O arm passou a
+amostrar de 5 em 5 s, que e' como a pressao real chega, e ficou verde.
+
+Prova de que o vermelho nao era da guarda e nem da cura do piso: carregando `git show
+HEAD:app/webview/load_shedding.py` num modulo a parte e correndo a MESMA sequencia esparsa, o
+`may_release` devolve `True` em `t=120` -- ou seja o comportamento antigo do arm so' funcionava
+porque a guarda do buraco ainda nao existia.
+
+**O que NAO e' meu e fica declarado:** as 09:23 a arvore carrega edicoes em voo de OUTRA lane em
+`app/webview/load_shedding.py` (09:20:06), `app/webview/sotto_webview.py` (09:17:06),
+`worker/engine_switch.py` (09:20:24) e `worker/sotto_worker.py` (09:20:18) -- e o mesmo oraculo
+publica **2 RED** em arms do `mode` ("e o nivel desce para `batch`", "e um SEGUNDO aperto na mesma
+sessao volta a ser dito") que pertencem a essa edicao, nao ao piso de recarga. Nao os persigo e nao
+os reverto: o ficheiro e' dessa lane. Fica o numero ao lado deles: **249 de 251 arms verdes, 2 RED,
+ambos no `mode` do interruptor**.
