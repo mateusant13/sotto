@@ -21,7 +21,7 @@ le' -- em 4. As tres sessoes abriam com 4 fios intra-op cada.
 O QUE ESTE ORACULO JULGA (sem carregar modelo, sem abrir dispositivo, sem janela):
 
   A1 flag-overrides-default   `limit_threads(2)` poe OMP/MKL/OPENBLAS/NUMEXPR/VECLIB
-                              a "2" mesmo com o default "4" ja' escrito. RED hoje.
+                              a "2" mesmo com o default "4" ja' escrito.
   A2 auto-keeps-env           `limit_threads(0)` NAO pisa um `OMP_NUM_THREADS=6`
                               explicito -- o comportamento de antes fica igual.
   A3 precedence               `--threads` > ambiente > 4; ambiente invalido e'
@@ -39,10 +39,31 @@ O QUE ESTE ORACULO JULGA (sem carregar modelo, sem abrir dispositivo, sem janela
                               sitio de construcao da bridge usa `worker_argv_tail`.
   A9 engine-pool-cap          o motor de FUNDO (parakeet) aceita o mesmo knob e
                               NUNCA sobe acima do default medido (2).
+  A10 spawn-argv-end-to-end   o filho REAL da bridge recebe `--threads 2` no argv.
+  A11 resolve-threads-real    `resolve_threads(2)` (a funcao que o `main()` chama)
+                              deixa `current_threads()==2` e as cinco variaveis.
+  A12 warm-default-agrees     o default de `warm_engine.py --threads` e o da shell
+                              sao o MESMO numero.
+  A13 streamasr-reader        `StreamAsr` abre as sessoes com `current_threads()`.
+  A14 warm-main-applies       `apply_thread_budget` EXECUTADO com o worker real
+                              deixa `current_threads()==2`, e o `main()` do motor
+                              chama esse helper e entrega `threads=applied`.
+  A15 threads-line-is-live-visible  `ENGINE_VISIBLE_TAGS` (AST) contem
+                              `WORKER_THREADS`, o worker ESCREVE a linha e o
+                              `_pump` publica por `startswith(ENGINE_VISIBLE_TAGS)`
+                              -- o numero efectivo deixa de ser ilegivel ao vivo.
 
-`--neg-arm`: duas mutacoes em COPIA (nunca em HEAD), cada uma derruba o SEU braco:
+`--neg-arm`: nove mutacoes em COPIA (nunca em HEAD), cada uma derruba o SEU braco:
   M1 `os.environ[var] = str(n)` -> `os.environ.setdefault(var, str(n))`  -> A1 RED
   M2 a linha `tail += ['--threads', str(threads)]` removida               -> A6 RED
+  M3 `min(int(engine_threads),` -> `max(...)`                             -> A9 RED
+  M4 `_THREADS_EFFECTIVE = effective_threads(n)` -> `= None`              -> A11 RED
+  M5 `WORKER_THREADS_DEFAULT = 2` -> `= 4`                                -> A12 RED
+  M6 `_threads = current_threads()` -> `_threads = 4`                     -> A13 RED
+  M7 `threads=applied` -> `threads=None`                                  -> A14 RED
+  M8 `resolve_threads` -> `limit_threads` no helper                       -> A14 RED
+  M9 o `main()` do motor chama `limit_threads` em vez do helper           -> A14 RED
+  M10 a tag `WORKER_THREADS` sai de `ENGINE_VISIBLE_TAGS`                  -> A15 RED
 Sai com rc=1 quando apanha (a convencao do `:expectred` da bateria), rc=0 quando
 o mutante sobrevive, rc=2 em erro de setup.
 
@@ -66,6 +87,8 @@ WORKER = os.path.join(ROOT, 'worker', 'sotto_worker.py')
 WORKER_DIR = os.path.join(ROOT, 'worker')
 SHELL = os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py')
 SHELL_DIR = os.path.join(ROOT, 'app', 'webview')
+ENGINE = os.path.join(ROOT, 'worker', 'engine_switch.py')
+WARM = os.path.join(ROOT, 'app', 'webview', 'warm_engine.py')
 MAIN = os.path.join(ROOT, '_main')
 LAUNCHER = os.path.join(MAIN, 'hidden-launch.py')
 sys.path.insert(0, MAIN)
@@ -215,6 +238,35 @@ def arm_a6(shell_path):
     return (not bad), ('4 cases' if not bad else '; '.join(bad))
 
 
+def arm_a15(shell_path, worker_path):
+    """A TAG QUE TORNA O NUMERO LEGIVEL AO VIVO (2026-11-09).
+
+    O orcamento efectivo nasce no stderr do worker (`WORKER_THREADS threads=...
+    source=...`), e o stderr so' e' publicado na CAUDA DA MORTE. Uma tag em
+    `ENGINE_VISIBLE_TAGS` faz o `_pump` copiar a linha para o log enquanto o
+    worker corre -- e' a diferenca entre "o numero existe" e "o numero pode ser
+    lido sem matar o worker". Julgado por AST, nao por `grep`: um comentario que
+    cite a tag nao pode fazer este braco passar.
+    """
+    src = open(shell_path, encoding='utf-8', errors='replace').read()
+    tags = None
+    for node in ast.walk(ast.parse(src)):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == 'ENGINE_VISIBLE_TAGS'
+                   for t in node.targets):
+            continue
+        try:
+            tags = list(ast.literal_eval(node.value))
+        except Exception:                                          # noqa: BLE001
+            tags = None
+    writer = 'WORKER_THREADS' in open(worker_path, encoding='utf-8',
+                                      errors='replace').read()
+    publish = 'line.startswith(ENGINE_VISIBLE_TAGS)' in src
+    ok = bool(tags) and 'WORKER_THREADS' in tags and writer and publish
+    return ok, 'tags=%r writer=%s publish=%s' % (tags, writer, publish)
+
+
 def arm_a7(worker_path):
     launcher = load(LAUNCHER, 'hidden_launch_under_test')
     rc, out, err = launcher.run(
@@ -247,11 +299,12 @@ def arm_a8(shell_path):
         found.get('default'), found.get('type'), found.get('extra_args'))
 
 
-def arm_a9():
-    import engine_switch
+def arm_a9(module=None):
+    if module is None:
+        import engine_switch as module
     bad = []
     for given, want in ((None, 2), (1, 1), (2, 2), (9, 2)):
-        sw = engine_switch.ReduxHiddenSwitch(
+        sw = module.ReduxHiddenSwitch(
             enabled=False, reader=lambda: False, runner='nope',
             log_fn=lambda _m: None, engine_threads=given)
         got = getattr(sw.engine, 'threads', None)
@@ -306,6 +359,134 @@ def arm_a10(shell_path):
             os.environ.pop('SOTTO_TEST_ARGV_FILE', None)
 
 
+def arm_a11(path):
+    """`resolve_threads` -- o que o `main()` faz, chamado de verdade.
+
+    O furo que este braco fecha (revisao independente, 2026-11-09): a resolucao
+    vivia inline no `main()` e NENHUM arm a alcancava; apagar a atribuicao
+    deixava 10/10 verdes. Aqui o valor e' lido de `current_threads()`, que e' o
+    que o `StreamAsr` le' para abrir as sessoes.
+    """
+    def probe(mod):
+        got = mod.resolve_threads(2)
+        seen = mod.current_threads()
+        env = {k: os.environ.get(k) for k in VARS}
+        bad = {k: v for k, v in env.items() if v != '2'}
+        ok = (got == (2, 'flag') and seen == 2 and not bad)
+        return ok, 'resolve=%r current=%r env_bad=%r' % (got, seen, bad)
+    ok_flag, d_flag = with_worker(path, None, probe)
+    ok_auto, d_auto = with_worker(path, None, lambda mod: (
+        mod.resolve_threads(0) == (4, 'default') and mod.current_threads() == 4,
+        'auto=%r' % (mod.resolve_threads(0),)))
+    return (ok_flag and ok_auto), '%s | %s' % (d_flag, d_auto)
+
+
+def arm_a12(shell_path, warm_path=None):
+    """O default do MOTOR DE AQUECIMENTO e o da shell sao o MESMO numero.
+
+    Duas declaracoes (o processo do motor nasce antes da shell e constroi as
+    sessoes que o `attach` entrega), um numero so': este arm e' o que impede a
+    divergencia silenciosa -- o defeito que a revisao independente achou no
+    `warm_engine.py` (sessoes a 4 enquanto a shell pedia 2).
+    """
+    def default_of(path, flag):
+        """O default literal de `--flag`, resolvendo uma constante do MESMO ficheiro."""
+        tree = ast.parse(open(path, encoding='utf-8').read())
+        consts = {}
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                    and isinstance(node.value, ast.Constant):
+                name = getattr(node.targets[0], 'id', None)
+                if name:
+                    consts[name] = node.value.value
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == 'add_argument'):
+                continue
+            if not (node.args and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value == flag):
+                continue
+            kw = {k.arg: k.value for k in node.keywords}
+            val = kw.get('default')
+            if isinstance(val, ast.Constant):
+                return val.value
+            if isinstance(val, ast.Name):
+                return consts.get(val.id, '<%s>' % val.id)
+            return None
+        return None
+
+    shell_def = default_of(shell_path, '--worker-threads')
+    warm_def = default_of(warm_path or WARM, '--threads')
+    ok = (shell_def == 2 and warm_def == shell_def)
+    return ok, 'shell=%r warm_engine=%r' % (shell_def, warm_def)
+
+
+def arm_a13(path):
+    """`StreamAsr` abre as sessoes com `current_threads()`, nao com um segundo parser.
+
+    Leitura de AST porque construir `StreamAsr` de verdade custa 1,9 GB de pesos;
+    o que este arm protege e' a FIACAO (o valor lido), e o A4 ja' prova que
+    `session_options` honra o numero que recebe.
+    """
+    tree = ast.parse(open(path, encoding='utf-8').read())
+    hit = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == 'StreamAsr':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Assign) and len(sub.targets) == 1:
+                    tgt = sub.targets[0]
+                    if getattr(tgt, 'id', None) == '_threads' and \
+                            isinstance(sub.value, ast.Call) and \
+                            getattr(sub.value.func, 'id', None) == 'current_threads':
+                        hit.append(sub.lineno)
+    return bool(hit), 'StreamAsr _threads = current_threads() at %r' % (hit,)
+
+
+
+def arm_a14(warm_path=None):
+    """O motor APLICA o orcamento pelo dono unico, e o `StreamAsr` le' esse numero.
+
+    Duas metades, porque uma so' mente:
+    (a) `apply_thread_budget` e' EXECUTADA com o worker real: o numero que o
+        `StreamAsr` le' (`current_threads`) tem de ser o pedido. `limit_threads`
+        sozinho escreve o ambiente e deixa `current_threads()` em 4 -- medido
+        2026-11-09, e era o estado do ficheiro quando este braco nasceu;
+    (b) o `main()` tem de chamar o helper e entregar `threads=applied` ao
+        `WarmEngine` (AST: subir o motor de verdade abre pipe, mutex e pid file).
+    """
+    tree = ast.parse(open(warm_path or WARM, encoding='utf-8').read())
+    calls_helper = None
+    handed = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == 'main':
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name) \
+                        and sub.func.id == 'apply_thread_budget':
+                    calls_helper = sub.lineno
+                if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name) \
+                        and sub.func.id == 'WarmEngine':
+                    for k in sub.keywords:
+                        if k.arg == 'threads':
+                            handed = ast.unparse(k.value)
+
+    def probe(mod):
+        warm_mod = load(warm_path or WARM, 'warm_engine_under_test')
+        helper = getattr(warm_mod, 'apply_thread_budget', None)
+        if helper is None:
+            return False, 'apply_thread_budget ausente'
+        got = helper(mod, 2)
+        seen = mod.current_threads()
+        auto = helper(mod, 0)
+        ok = (got == 2 and seen == 2 and auto is None)
+        return ok, 'applied=%r current=%r auto=%r' % (got, seen, auto)
+
+    ok_exec, detail = with_worker(WORKER, None, probe)
+    ok_wire = calls_helper is not None and handed == 'applied'
+    return (ok_exec and ok_wire), 'exec=%s (%s) helper@%r threads=%r' % (
+        ok_exec, detail, calls_helper, handed)
+
+
+
 ARMS = [
     ('A1 flag-overrides-default', lambda: arm_a1(WORKER)),
     ('A2 auto-keeps-env', lambda: arm_a2(WORKER)),
@@ -317,6 +498,11 @@ ARMS = [
     ('A8 shell-cli-contract', lambda: arm_a8(SHELL)),
     ('A9 engine-pool-cap', arm_a9),
     ('A10 spawn-argv-end-to-end', lambda: arm_a10(SHELL)),
+    ('A11 resolve-threads-real', lambda: arm_a11(WORKER)),
+    ('A12 warm-default-agrees', lambda: arm_a12(SHELL)),
+    ('A13 streamasr-reader', lambda: arm_a13(WORKER)),
+    ('A14 warm-main-applies', lambda: arm_a14(WARM)),
+    ('A15 threads-line-is-live-visible', lambda: arm_a15(SHELL, WORKER)),
 ]
 
 
@@ -354,19 +540,71 @@ def run_negative():
             SHELL, os.path.join(tmp, 'sotto_webview.py'),
             [("tail += ['--threads', str(threads)]", "pass")])
 
-        ok1, d1 = arm_a1(worker_m)
-        ok6, d6 = arm_a6(shell_m)
+        engine_m = mutate(
+            ENGINE, os.path.join(tmp, 'engine_switch.py'),
+            [('min(int(engine_threads),', 'max(int(engine_threads),')])
+        worker_m4 = mutate(
+            WORKER, os.path.join(tmp, 'sotto_worker_m4.py'),
+            [('_THREADS_EFFECTIVE = effective_threads(n)',
+              '_THREADS_EFFECTIVE = None')])
+        warm_m5 = mutate(
+            WARM, os.path.join(tmp, 'warm_engine.py'),
+            [('WORKER_THREADS_DEFAULT = 2', 'WORKER_THREADS_DEFAULT = 4')])
+        worker_m6 = mutate(
+            WORKER, os.path.join(tmp, 'sotto_worker_m6.py'),
+            [('_threads = current_threads()', '_threads = 4')])
+        warm_m7 = mutate(
+            WARM, os.path.join(tmp, 'warm_engine_m7.py'),
+            [('                        threads=applied)', '                        threads=None)')])
+        warm_m8 = mutate(
+            WARM, os.path.join(tmp, 'warm_engine_m8.py'),
+            [('return int(worker.resolve_threads(int(threads))[0])',
+              'worker.limit_threads(int(threads)); return int(threads)')])
+        shell_m10 = mutate(
+            SHELL, os.path.join(tmp, 'sotto_webview_m10.py'),
+            [("'REDUX_SHEDDING', 'WORKER_THREADS')", "'REDUX_SHEDDING')")])
+        warm_m9 = mutate(
+            WARM, os.path.join(tmp, 'warm_engine_m9.py'),
+            [('applied = apply_thread_budget(import_worker(args.root), args.threads)',
+              'applied = import_worker(args.root).limit_threads(args.threads)')])
+
+        def caught(fn, *a):
+            """Um mutante que FAZ O BRACO EXPLODIR tambem foi apanhado."""
+            try:
+                ok, detail = fn(*a)
+            except Exception as exc:  # noqa: BLE001 -- mutante que estoura = RED
+                return True, 'raised %s: %s' % (type(exc).__name__, exc)
+            return (not ok), detail
+
+        c1, d1 = caught(arm_a1, worker_m)
+        c6, d6 = caught(arm_a6, shell_m)
+        c9, d9 = caught(arm_a9, load(engine_m, 'engine_switch_mutated'))
+        c11, d11 = caught(arm_a11, worker_m4)
+        c12, d12 = caught(arm_a12, shell_m, warm_m5)
+        c13, d13 = caught(arm_a13, worker_m6)
+        c14, d14 = caught(arm_a14, warm_m7)
+        c14b, d14b = caught(arm_a14, warm_m8)
+        c14c, d14c = caught(arm_a14, warm_m9)
+        c15, d15 = caught(arm_a15, shell_m10, WORKER)
         # O braco mutado tem de ficar RED; os irmaos tem de continuar GREEN.
         ok2, d2 = arm_a2(worker_m)
-        caught = (not ok1) and (not ok6) and ok2
-        add(caught, 'NEG-ARM M1+M2',
-            'A1=%s A6=%s (A2 control=%s)' % (
-                'RED' if not ok1 else 'GREEN', 'RED' if not ok6 else 'GREEN',
+        ok_all = c1 and c6 and c9 and c11 and c12 and c13 and c14 \
+            and c14b and c14c and c15 and ok2
+        add(ok_all, 'NEG-ARM M1..M10',
+            'A1=%s A6=%s A9=%s A11=%s A12=%s A13=%s A14=%s/%s/%s A15=%s (A2 control=%s)' % (
+                'RED' if c1 else 'GREEN', 'RED' if c6 else 'GREEN',
+                'RED' if c9 else 'GREEN', 'RED' if c11 else 'GREEN',
+                'RED' if c12 else 'GREEN', 'RED' if c13 else 'GREEN',
+                'RED' if c14 else 'GREEN', 'RED' if c14b else 'GREEN',
+                'RED' if c14c else 'GREEN', 'RED' if c15 else 'GREEN',
                 'GREEN' if ok2 else 'RED'))
-        print('  M1: %s' % d1)
-        print('  M2: %s' % d6)
-        if caught:
-            print('NEG-ARM: PASS -- 2 mutants caught')
+        for tag, detail in (('M1', d1), ('M2', d6), ('M3', d9),
+                            ('M4', d11), ('M5', d12), ('M6', d13),
+                            ('M7', d14), ('M8', d14b), ('M9', d14c),
+                            ('M10', d15)):
+            print('  %s: %s' % (tag, detail))
+        if ok_all:
+            print('NEG-ARM: PASS -- 10 mutants caught')
             return True
         print('NEG-ARM: FAIL -- a mutation survived')
         return False

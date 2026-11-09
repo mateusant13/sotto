@@ -56,6 +56,7 @@ import unicodedata  # search: folding the diacritics off
 from datetime import datetime
 
 import hot_reload
+import history_context
 import panel_focus as _panel_focus
 import bridge_census as _bridge_census_mod
 from code_identity import code_identity as _code_identity
@@ -768,10 +769,13 @@ PANEL_VISIBILITY_SCHEMA = 'sotto.panel-visibility/1'
 # find his own data in the file manager and a search can walk it cheaply.
 # The default root is the repo's own `history/` (H:/sotto/history): the owner
 # asked for the data to live under H:/sotto. SOTTO_HISTORY_ROOT overrides it.
-# HOW LONG THE TRANSCRIPT SURVIVES ON DISK (owner, 2026-11-06): *"o historico tem
-# que persistir ... por padrao, ate 48hrs"*. One number, read by `_history_prune`;
-# the panel filters its feed over the same window (`panel.js HISTORY_RETENTION_H`).
-HISTORY_RETENTION_H = 48
+# HOW LONG THE TRANSCRIPT SURVIVES ON DISK. The owner's 2026-11-06 window was
+# 48 h; on 2026-11-09 he asked for MONTHS-LATER recall, so that preference is
+# superseded FOR THIS FEATURE and the window is six months (180 days). One
+# number, read by `_history_prune`; the panel filters its feed over the same
+# window (`panel.js HISTORY_RETENTION_H`, raised by the theme lane).
+# SOTTO_HISTORY_RETENTION_H overrides it for a probe or a shorter store.
+HISTORY_RETENTION_H = int(os.environ.get('SOTTO_HISTORY_RETENTION_H') or 4320)
 HISTORY_ROOT = os.path.normpath(
     os.environ.get('SOTTO_HISTORY_ROOT')
     or os.path.join(HERE, os.pardir, os.pardir, 'history'))
@@ -837,31 +841,71 @@ HISTORY_MERGE_WINDOW_S = 3.0
 
 
 def history_merge(last, new_body, now_s=None, start=None,
-                  window_s=HISTORY_MERGE_WINDOW_S):
+                  window_s=HISTORY_MERGE_WINDOW_S, audio=None):
     """O que fazer com UMA linha nova, contra a ULTIMA gravada.
 
     Devolve `'skip'` (a mesma linha outra vez), `'replace'` (a mesma linha, ainda
     a crescer: o ficheiro reescreve a ultima em vez de acrescentar) ou `'append'`
     (linha nova). `last` e' o que `_history_tail` devolve, ou None.
 
-    AS DUAS IDENTIDADES, por ordem de forca:
+    AS TRES IDENTIDADES, por ordem de forca:
       1. O `start=` do worker e' a identidade da LINHA (`sotto_worker.py:_event`).
          Dois registos com o mesmo `start` sao a mesma linha, mesmo que o texto
          tenha encolhido -- medido 10:01:48, uma linha MAIS CURTA depois de uma
          mais longa, o que um append-only nao consegue representar.
-      2. Sem `start`, o prefixo nos dois sentidos dentro da janela: um texto que
+      2. `start` DIFERENTE e' uma linha DIFERENTE, mesmo com o texto identico.
+         O `skip` por igualdade de texto vinha ANTES desta comparacao e engolia
+         fala repetida de verdade ("nao nao", ou a mesma frase dita dois minutos
+         depois) -- medido 2026-11-09 no proprio `history_merge` (mesmo corpo,
+         `start=1.0` vs `start=9.0` -> `skip`). Uma repeticao real agora ENTRA.
+      3. Sem `start`, o prefixo nos dois sentidos dentro da janela: um texto que
          CONTEM o outro e' a mesma linha a crescer (ou uma re-leitura que a
          cortou), e a janela impede que uma repeticao legitima seja engolida.
+         Texto IDENTICO sem identidade so' e' duplicado dentro da janela; fora
+         dela e' fala repetida e entra. `audio` (a origem do som) separa duas
+         linhas identicas que a mesma janela de tempo nao distingue.
     """
     if not last:
         return 'append'
     body = str(new_body or '')
     if not body.strip():
         return 'skip'
-    if str(last.get('body') or '') == body:
-        return 'skip'
-    _last_start = last.get('start')
     prev = str(last.get('body') or '')
+    _last_start = last.get('start')
+    _has_start = (isinstance(_last_start, (int, float))
+                  and not isinstance(_last_start, bool))
+    _new_has_start = (isinstance(start, (int, float))
+                      and not isinstance(start, bool))
+    same_start = (_has_start and _new_has_start
+                  and abs(float(_last_start) - float(start)) <= 0.05)
+    distinct_start = (_has_start and _new_has_start
+                      and abs(float(_last_start) - float(start)) > 0.05)
+    _last_audio = str(last.get('audio') or '').strip()
+    _new_audio = str(audio or '').strip()
+    audio_differs = bool(_last_audio and _new_audio and _last_audio != _new_audio)
+
+    def _gap():
+        _last_s = last.get('time_s')
+        if now_s is None or _last_s is None:
+            return None
+        try:
+            return abs(float(now_s) - float(_last_s))
+        except (TypeError, ValueError):
+            return None
+
+    # TEXTO IDENTICO NAO E' SEMPRE A MESMA LINHA (2026-11-09). The equality
+    # check used to run first and unconditionally, so a legitimate later
+    # utterance with its own segment identity was swallowed as a duplicate.
+    if prev == body:
+        if distinct_start:
+            return 'append'
+        if audio_differs and not same_start:
+            return 'append'
+        if not same_start:
+            gap = _gap()
+            if gap is not None and gap > float(window_s):
+                return 'append'
+        return 'skip'
     if not prev:
         return 'append'
     # A PONTUACAO FINAL NAO E' CONTEUDO (medido na captura dele). A linha cresce
@@ -888,11 +932,14 @@ def history_merge(last, new_body, now_s=None, start=None,
     # indistinguivel de um store que nao esta' ligado.
     shrank = (_merge_key(prev).startswith(_merge_key(body))
               and not _merge_key(body).startswith(_merge_key(prev)))
-    same_start = (isinstance(start, (int, float)) and not isinstance(start, bool)
-                  and isinstance(_last_start, (int, float))
-                  and not isinstance(_last_start, bool)
-                  and abs(float(_last_start) - float(start)) <= 0.05)
-    if shrank:
+    gap = _gap()
+    # ENCOLHER SO' E' A MESMA LINHA QUANDO A IDENTIDADE DIZ QUE E' (2026-11-09):
+    # a shorter repeated phrase at a DIFFERENT segment is new speech, not a
+    # correction of the previous line. Without this, `start` was ignored by the
+    # shrink rule exactly as it was by the equality rule.
+    same_line = same_start or (not _has_start and not _new_has_start
+                               and gap is not None and gap <= float(window_s))
+    if shrank and same_line:
         log('HISTORY_SHRINK_KEPT where=history_merge prev_chars=%d new_chars=%d'
             % (len(prev), len(body)))
         return 'skip'
@@ -900,14 +947,16 @@ def history_merge(last, new_body, now_s=None, start=None,
         return 'replace'
     if not grew:
         return 'append'
-    _last_s = last.get('time_s')
-    if now_s is None or _last_s is None:
+    # A DIFFERENT SEGMENT IDENTITY IS A DIFFERENT LINE, even when its text
+    # happens to start with the previous line: the worker said a new segment,
+    # not a correction of the old one (2026-11-09, same class as the equality
+    # defect). Without this, a repeated phrase that grew within 3 s was
+    # rewritten over the previous line.
+    if distinct_start:
         return 'append'
-    try:
-        close = abs(float(now_s) - float(_last_s)) <= float(window_s)
-    except (TypeError, ValueError):
+    if gap is None:
         return 'append'
-    return 'replace' if close else 'append'
+    return 'replace' if gap <= float(window_s) else 'append'
 
 
 
@@ -1295,8 +1344,15 @@ PROGRESS_TAGS = ('REDUX_BATCH_KICK', 'REDUX_ENGINE_DONE', 'REDUX_MODE',
 #: so' se le' depois de o processo morrer nao se pode julgar -- e' a mesma classe do
 #: `reason=not-tried`. Vao por `log_repeat`, nao por `log`: a linha e' rara, mas um
 #: worker em churn nao pode encher o ficheiro do dono.
+#: `WORKER_THREADS` entrou em 2026-11-09 por uma razao MEDIDA: o orcamento de fios
+#: efectivo (`--threads N > OMP_NUM_THREADS > 4`) so' existia no stderr do worker,
+#: e o stderr so' e' publicado na CAUDA DA MORTE -- ou seja o numero que decide
+#: quantos nucleos o ONNX pode ocupar era ilegivel exactamente enquanto o worker
+#: corria. Pergunta do watcher nesse dia: "76 fios em repouso e um pico de 3,9
+#: nucleos -- que orcamento esta' a correr?". Sem esta tag a resposta exige matar
+#: o worker; com ela, a linha do arranque responde.
 ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
-                       'REDUX_ENGINE_LOAD', 'REDUX_SHEDDING')
+                       'REDUX_ENGINE_LOAD', 'REDUX_SHEDDING', 'WORKER_THREADS')
 
 #: O BATIMENTO DO LACO DO WORKER, reconhecido por CONTER e nao por comecar (2026-11-04).
 #: Medido com o py-spy no worker vivo: `seq=516 phase=window` e nenhuma linha no log -- o
@@ -3164,6 +3220,26 @@ def _yt_mark(owner, phase):
 _WEBVIEW_T0 = time.monotonic()
 
 
+#: O ORCAMENTO DO LOG DE ESTADO (DM do watcher, stutter 50452, 2026-11-09).
+#:
+#: MEDIDO no log do dono (2 h 32 min, 9120 s): `YOUTUBE_CDP_SOURCE` 10 763
+#: linhas (1,18/s), `YOUTUBE_TARGET` 10 738 (1,18/s), `YOUTUBE_CDP_HEALTH`
+#: 3 453 (0,38/s) e `YOUTUBE_LOOP_HZ` 1 715 (0,19/s) -- ~3,1 linhas/s de estado
+#: repetido num log de 64,7 MB, e 16 linhas/s nas rajadas. O estado que nao
+#: mudou nao e' noticia: as duas linhas de ESTADO saem na MUDANCA (batimento de
+#: 60 s em `youtube_cdp_source._STATE_HEARTBEAT_S`) e as duas de MEDIDA ficam
+#: limitadas aqui. A soma parada e' 1/60+1/60+1/30+1/10 = 0,17 linhas/s, contra
+#: o alvo de <= 0,2/s.
+_YT_RATE_LOG_S = 10.0
+_YT_HEALTH_LOG_S = 30.0
+
+
+#: Ate' onde um snapshot de contexto pode ser doado (2026-11-09): o contexto e'
+#: lido quando o EVENTO chega, o ASR atrasa, e uma fala de 20 s atras nao pode
+#: herdar a janela que o dono abriu depois. Ver `_history_context_for`.
+_HISTORY_CTX_NEAR_S = 8.0
+
+
 class ExternalCaptionWatcher(threading.Thread):
     #: A FOTO DO DOM do tick em curso (`None` = nao ha'). Declarada aqui para
     #: NENHUM caminho a ler antes de alguem a escrever: medido 2026-11-03,
@@ -4243,26 +4319,7 @@ class ExternalCaptionWatcher(threading.Thread):
                 got = {'words': [w for line in (getattr(self, 'yt_cdp_rows', None) or [])
                                  for w in line.split()],
                        'items': [], 'why': 'cdp-stale'}
-                # UM APAGAO DE 40 s TEM DE DIZER PORQUE (2026-11-03). MEDIDO no
-                # log do dono: as linhas do YT_FRAME saltam de 03:11:32 para
-                # 03:12:12 com o video a andar -- 40 s de ecra parado e nada no
-                # log que nomeie a causa. Esta linha publica, de 2 em 2 s, a
-                # IDADE da foto e o que a fonte diz de si mesma.
-                _h = time.monotonic()
-                if _h - getattr(self, '_yt_stale_logged', 0.0) > 2.0:
-                    self._yt_stale_logged = _h
-                    _src = getattr(self, '_yt_cdp_source', None)
-                    _age = None
-                    try:
-                        _age = round(_src.snapshot_age(), 2)
-                    except Exception:         # noqa: BLE001
-                        pass
-                    _st = {}
-                    try:
-                        _st = _src.stats()
-                    except Exception:         # noqa: BLE001
-                        pass
-                    log('YOUTUBE_CDP_HEALTH age=%s stats=%r' % (_age, _st))
+                self._yt_health_tick(source, time.monotonic())
             else:
                 self.yt_cdp_rows = None
                 got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd,
@@ -4377,6 +4434,111 @@ class ExternalCaptionWatcher(threading.Thread):
             return None
         return source
 
+    def _yt_pause_edge(self, now_paused):
+        """A BORDA DE PAUSA/FIM: apaga os pixels; a de VOLTA repinta a linha.
+
+        Chamado a cada snapshot, com o estado publicado. E' um metodo, e nao
+        codigo inline, para o oraculo poder conduzir a borda com uma shell falsa
+        (`_main/caption-kept-on-hide-oracle.py`).
+
+        A PAUSA/ O FIM TIRA OS PIXELS NA BORDA, nao seis segundos depois. O
+        dono, 2026-11-08: a legenda ficava "viva" num video parado e continuava
+        a aparecer no historico como se estivesse a correr. O modelo, o worker e
+        o historico NAO sao tocados: `_blank_caption_window` so' apaga o ecra e
+        incrementa a epoch da fonte (o interruptor `_caption_wanted` fica como
+        ele o deixou).
+
+        A VOLTA (2026-11-09, revisao D3): o blank limpa `ov.text`/`previous`, e
+        uma linha que ja' tinha sido FECHADA (`finalized`) nao volta a ser
+        empurrada pelo `_tick` -- o ecra ficava vazio ate' ao cue seguinte. Na
+        borda de retoma, a ultima linha volta ao ecra como o player a mostrava.
+        """
+        now_paused = bool(now_paused)
+        was = bool(getattr(self, '_yt_was_paused', False))
+        shell = getattr(self, 'shell', None)
+        if now_paused and not was:
+            self._yt_pause_epoch = int(getattr(self, '_yt_pause_epoch', 0) or 0) + 1
+            if (shell is not None
+                    and getattr(shell, '_caption_window_shown', False)):
+                try:
+                    shell._blank_caption_window(
+                        'youtube-paused' if getattr(self, 'yt_cdp_paused', False)
+                        else 'youtube-ended')
+                except Exception as exc:  # noqa: BLE001 -- fail-open
+                    log('CAPTION_PAUSE_BLANK_FAILED error=%r' % (exc,))
+        elif was and not now_paused:
+            line = str(getattr(self, 'last_line', '') or '')
+            if (shell is not None and line
+                    and getattr(shell, '_caption_wanted', False)):
+                rows = list(getattr(self, 'last_rows', None) or ())
+                try:
+                    shell.push_caption_to_window(
+                        line, instant=bool(rows), rows=rows or None,
+                        cue=self._yt_cue_payload())
+                except Exception as exc:  # noqa: BLE001 -- fail-open
+                    log('CAPTION_RESUME_PAINT_FAILED error=%r' % (exc,))
+        self._yt_was_paused = now_paused
+
+    def _yt_rate_tick(self, snap, source):
+        """O TUBO INTEIRO, publicado a cada `_YT_RATE_LOG_S` -- nunca por tick.
+
+        O dono ve' a legenda a saltar linhas, e a resposta nao pode ser um
+        palpite: a linha diz quantos ticks o laco fez, em quantos havia foto
+        fresca, a idade MEDIA dessa foto e o que a fonte acumulou. `none` alto
+        com `src_reads` a subir = a foto recusada por velha; `ticks` baixo = o
+        laco empurrado por outra coisa.
+        """
+        try:
+            _st = getattr(self, '_yt_rate', None)
+            if _st is None:
+                _st = self._yt_rate = {'t0': time.monotonic(), 'ticks': 0,
+                                       'ok': 0, 'none': 0, 'age': 0.0}
+            _st['ticks'] += 1
+            if snap is not None:
+                _st['ok'] += 1
+                _st['age'] += time.monotonic() - snap['stamp']
+            else:
+                _st['none'] += 1
+            _dt = time.monotonic() - _st['t0']
+            if _dt < _YT_RATE_LOG_S:
+                return
+            log('YOUTUBE_LOOP_HZ ticks=%d ok=%d none=%d age_ms=%.0f hz=%.1f '
+                'src_reads=%s src_errs=%s'
+                % (_st['ticks'], _st['ok'], _st['none'],
+                   1000.0 * (_st['age'] / _st['ok'] if _st['ok'] else 0.0),
+                   _st['ticks'] / _dt,
+                   getattr(source, '_reads', None),
+                   getattr(source, '_errors', None)))
+            _st['t0'] = time.monotonic()
+            _st['ticks'] = _st['ok'] = _st['none'] = 0
+            _st['age'] = 0.0
+        except Exception:                     # noqa: BLE001
+            pass
+
+    def _yt_health_tick(self, source, now):
+        """A SAUDE da foto, so' enquanto ela esta' VELHA, a cada `_YT_HEALTH_LOG_S`.
+
+        Um apagao nao se diagnostica por ausencia de linhas: medido 2026-11-03
+        no log do dono, 40 s sem `YT_FRAME` com o video a andar e nada que
+        dissesse se a culpa era da foto velha ou de outra coisa. Mas esta linha
+        publica `stats()` com contadores que mudam sempre, por isso ela e' um
+        BATIMENTO de taxa limitada -- nao um estado que muda (2026-11-09).
+        """
+        if now - getattr(self, '_yt_stale_logged', 0.0) <= _YT_HEALTH_LOG_S:
+            return
+        self._yt_stale_logged = now
+        _age = None
+        try:
+            _age = round(source.snapshot_age(), 2)
+        except Exception:                     # noqa: BLE001
+            pass
+        _st = {}
+        try:
+            _st = source.stats()
+        except Exception:                     # noqa: BLE001
+            pass
+        log('YOUTUBE_CDP_HEALTH age=%s stats=%r' % (_age, _st))
+
     def _yt_cdp_snapshot(self, hwnd, uia, UIA, declared=None):
         """A legenda do player pela CDP do Chrome, quando a arvore nao a tem.
 
@@ -4421,37 +4583,7 @@ class ExternalCaptionWatcher(threading.Thread):
         # `why=painted` alternados a cada segundo).
         snap = source.snapshot(max_age=1.2)
         _yt_mark(self, 'snap')
-        # A CADENCIA DO TUBO INTEIRO E' UM NUMERO (2026-11-03). O dono ve' a
-        # legenda a saltar linhas, e a resposta nao pode ser um palpite: esta
-        # linha diz, de 5 em 5 s, quantos ticks o laco fez, em quantos havia
-        # foto fresca, a idade MEDIA dessa foto e o que a fonte acumulou.
-        # `none` alto com `src_reads` a subir = a foto a ser recusada por velha;
-        # `ticks` baixo = o laco empurrado por outra coisa.
-        try:
-            _st = getattr(self, '_yt_rate', None)
-            if _st is None:
-                _st = self._yt_rate = {'t0': time.monotonic(), 'ticks': 0,
-                                       'ok': 0, 'none': 0, 'age': 0.0}
-            _st['ticks'] += 1
-            if snap is not None:
-                _st['ok'] += 1
-                _st['age'] += time.monotonic() - snap['stamp']
-            else:
-                _st['none'] += 1
-            _dt = time.monotonic() - _st['t0']
-            if _dt >= 5.0:
-                log('YOUTUBE_LOOP_HZ ticks=%d ok=%d none=%d age_ms=%.0f hz=%.1f '
-                    'src_reads=%s src_errs=%s'
-                    % (_st['ticks'], _st['ok'], _st['none'],
-                       1000.0 * (_st['age'] / _st['ok'] if _st['ok'] else 0.0),
-                       _st['ticks'] / _dt,
-                       getattr(source, '_reads', None),
-                       getattr(source, '_errors', None)))
-                _st['t0'] = time.monotonic()
-                _st['ticks'] = _st['ok'] = _st['none'] = 0
-                _st['age'] = 0.0
-        except Exception:                     # noqa: BLE001
-            pass
+        self._yt_rate_tick(snap, source)
         if snap is not None:
             # O ESTADO PUBLICADO E' DO VIDEO QUE ELE DESCREVE (2026-11-08).
             # MEDIDO na sessao do dono (`_main/fixtures/yt-pause-foreign-state-
@@ -4503,15 +4635,14 @@ class ExternalCaptionWatcher(threading.Thread):
                 # overlay ficava com o relogio da ultima pintura a andar. O contador
                 # e' lido e consumido no `_tick`, que forca uma pintura congelada.
                 _now_paused = self.yt_cdp_paused or self.yt_cdp_ended
-                if _now_paused and not getattr(self, '_yt_was_paused', False):
-                    self._yt_pause_epoch = int(getattr(self, '_yt_pause_epoch', 0)) + 1
-                self._yt_was_paused = _now_paused
+                self._yt_pause_edge(_now_paused)
                 # O ESPELHO NA SHELL: quem arma o apagar por inatividade e' a shell,
                 # noutro objeto (`SottoShell._caption_idle_hide`). Sem este espelho o
                 # guarda ficava no objeto errado e o ecra apagava na mesma.
                 shell = getattr(self, 'shell', None)
                 if shell is not None:
                     shell.yt_source_paused = self.yt_cdp_paused
+                    shell.yt_source_ended = self.yt_cdp_ended
         if snap is None or not snap.get('items'):
             return None
         if declared and seen and declared != seen:
@@ -4927,7 +5058,7 @@ class ExternalCaptionWatcher(threading.Thread):
         _shell = getattr(self, 'shell', None)
         if _shell is not None:
             try:
-                _shell.yt_source_paused = False
+                _shell._clear_yt_source_mirrors()
             except Exception:             # noqa: BLE001
                 pass
         self.last_line = ''
@@ -5825,17 +5956,16 @@ class ExternalCaptionWatcher(threading.Thread):
 
     def _tick(self, got, yt_mode=False):
         now = time.monotonic()
-        # A BORDA DA PAUSA E' UM EVENTO (2026-11-06). O dono, verbatim: *"se eu
-        # pauso o video, a legenda do sotto continua por mais uns 2 segundos"*.
-        # A linha nao muda com o video parado, e este `_tick` so' desenha quando
-        # ela muda -- por isso a pausa TEM de forcar uma pintura congelada; sem
-        # isto o overlay continuava a revelar contra o relogio da ultima pintura
-        # (medido: +0,95 s de `paint_t` e 3 palavras a mais num pause de 13,8 s).
-        _pause_epoch = int(getattr(self, '_yt_pause_epoch', 0) or 0)
-        pause_edge = _pause_epoch != getattr(self, '_yt_pause_epoch_seen', None)
-        self._yt_pause_epoch_seen = _pause_epoch
-        player_stalled = bool(getattr(self, 'yt_cdp_paused', False)
-                              or getattr(self, 'yt_cdp_ended', False))
+        # A PAUSA/ O FIM NAO REPINTA NADA (2026-11-09, ordem do dono). O carimbo
+        # `_yt_pause_epoch` continua a ser consumido para o observador nao
+        # repetir a borda, mas o desenho CONGELADO que existia aqui (2026-11-06)
+        # foi o que manteve os pixels no ecra com o video parado -- o dono,
+        # verbatim: *"quando eu deixo o video pausado, a legenda fica ao vivo,
+        # quando eu pauso, ela volta e fica travada em outro momento"*. Quem
+        # apaga agora e' o observador (`youtube-paused`/`youtube-ended` em
+        # `_observe_snapshot`) e o piso de `_caption_idle_hide`; um tick de pausa
+        # nao pinta. O MODELO, o WORKER e o HISTORICO nao sao tocados.
+        self._yt_pause_epoch_seen = int(getattr(self, '_yt_pause_epoch', 0) or 0)
         # O QUADRO QUE O ECRA RECEBERIA, DESENHADO OU NAO (2026-11-02).
         # `EXTERNAL_CAPTION_DRAWN` so' existe com o overlay LIGADO, e o dono
         # desligou-o; uma auditoria que so' mede com a legenda ligada nao pode
@@ -5894,31 +6024,15 @@ class ExternalCaptionWatcher(threading.Thread):
                     self.shell.external_caption(line, source, final=False,
                                                instant=bool(yt_mode), rows=rows,
                                                cue=self._yt_cue_payload())
-                elif pause_edge and player_stalled:
-                    # A LINHA NAO MUDOU E O PLAYER PAROU: repinta-a CONGELADA
-                    # (2026-11-06). `instant=True` desenha o texto inteiro no
-                    # instante da chegada, sem relogio -- o `_PlayerCue` nao
-                    # fica com uma ancora a andar. Uma vez por borda, nao por
-                    # tick: pausa parada nao se repinta 4 vezes por segundo.
-                    self.shell.push_caption_to_window(
-                        line, instant=True,
-                        rows=rows, cue=self._yt_cue_payload())
                 elif not self.finalized and now - self.last_change >= self.STABLE_FINAL_S:
                     self.shell.external_caption(line, source, final=True,
                                                instant=bool(yt_mode), rows=rows,
                                                cue=self._yt_cue_payload())
                     self.finalized = True
                 return
-        # PAUSA SEM LINHA NOVA NESTE TICK: o que ESTA' no ecra congela (2026-11-06).
-        # O `got` vazio e' o caso normal com o video parado (a fonte nao le' o DOM
-        # a 12 Hz); sem isto o ultimo `_PlayerCue` continuava a revelar sozinho.
-        if pause_edge and player_stalled and getattr(self, 'last_line', ''):
-            try:
-                self.shell.push_caption_to_window(
-                    self.last_line, instant=True,
-                    cue=self._yt_cue_payload())
-            except Exception as exc:                  # noqa: BLE001
-                log('YOUTUBE_PAUSE_FREEZE_FAILED error=%r' % (exc,))
+        # PAUSA SEM LINHA NOVA: nada a pintar. O ecra ja' foi apagado na borda
+        # (`youtube-paused`/`youtube-ended`) e o piso de 6 s repete o apagamento
+        # se a borda se perder; um desenho congelado aqui era o defeito.
         # THE SILENCE ONLY RELEASES FOR THE PAGE READER. That reader knows
         # the player stopped only when the PAGE stops having text. The REAL
         # TRACK knows better: the track is still valid, the clock is still
@@ -7910,20 +8024,24 @@ user32.KillTimer.argtypes = [wt.HWND, ctypes.c_size_t]
 #: o mesmo orcamento que um popover do Windows leva a reagir a um clique fora, e
 #: e' uma chamada de sistema por tick -- nao ha tensao nenhuma em 10 Hz.
 POLL_MS_VISIBLE = 100
-#: Com um arrasto em curso: `GetCursorPos` a 40 Hz, que e' a taxa a que o
-#: `SetWindowPos` do `edit_drag_to` corre (o tecto continua a ser
-#: `EDIT_DRAG_MIN_INTERVAL_MS`).
-POLL_MS_DRAG = 25
+#: O TECTO do arrasto de EDICAO: o mesmo 240 Hz da legenda (ordem do dono:
+#: *"acho que a animacao da legenda pode ir ate 240hz"*). O arrasto NATIVO do
+#: painel (`_begin_window_drag`) nao passa por aqui: ele entrega o movimento ao
+#: loop do Windows (`WM_NCLBUTTONDOWN`/`HTCAPTION`) e ja' segue o cursor na taxa
+#: do sistema. Este tecto existe para o caminho de EDICAO, que e' Python.
+EDIT_DRAG_FRAME_HZ = 240
+EDIT_DRAG_FRAME_MS = 1000.0 / EDIT_DRAG_FRAME_HZ
+EDIT_DRAG_MIN_INTERVAL_MS = EDIT_DRAG_FRAME_MS
+
+#: Com um arrasto em curso: `GetCursorPos` no tecto de 240 Hz, que e' a taxa a
+#: que o `SetWindowPos` do `edit_drag_to` corre. O `SetTimer` do Windows tem
+#: piso de ~15,6 ms (64 Hz): o pedido e' 240 Hz e a taxa ENTREGUE e' medida e
+#: publicada em `PANEL_EDIT_DRAG_RATE` no fim de cada gesto -- nunca afirmada.
+POLL_MS_DRAG = max(1, int(round(EDIT_DRAG_FRAME_MS)))
 
 #: A few pixels of slack on the rect test: a click on the panel's own edge is
 #: still a click on the panel, and the owner cannot aim to the pixel.
 CLICK_OUTSIDE_SLACK = 2
-
-#: The drag's ceiling: at most one `SetWindowPos` per this many ms (20 Hz). The
-#: receipt's design says it plainly — moving the NATIVE window per frame is the
-#: short path to flicker (`docs/release-and-overlay-plan.md:75-78`), so the drag
-#: is a low-frequency move, not a smooth one.
-EDIT_DRAG_MIN_INTERVAL_MS = 50
 
 
 user32.GetWindowRect.argtypes = [wt.HWND, ctypes.c_void_p]
@@ -8219,11 +8337,18 @@ class OutsideClickWatcher(threading.Thread):
                 self.shell.edit_grab = (x - rect.left, y - rect.top)
                 self._dragging = True
                 self._last_drag_post = 0.0
+                # A MEDICAO COMECA NO GESTO, nao na instancia: `drag_samples` e'
+                # cumulativo e a taxa de um arrasto nao pode herdar os outros.
+                self._drag_t0 = time.perf_counter()
+                self._drag_start_samples = self.drag_samples
                 log(f'PANEL_EDIT_DRAG start point=({x},{y}) '
                     f'grab={self.shell.edit_grab}')
             return
         if down and self._dragging:
-            now = time.monotonic() * 1000.0
+            # O RELOGIO DO THROTTLE E' `perf_counter` (2026-11-09): `monotonic`
+            # nesta maquina avanca de 15 ms em 15 ms, e um tecto de 4,17 ms
+            # lido nele e' aritmetica sobre um relogio que nao ve o intervalo.
+            now = time.perf_counter() * 1000.0
             if now - self._last_drag_post < EDIT_DRAG_MIN_INTERVAL_MS:
                 return
             self._last_drag_post = now
@@ -8235,6 +8360,17 @@ class OutsideClickWatcher(threading.Thread):
             self._dragging = False
             user32.PostThreadMessageW(self.thread_id, WM_EDIT_DRAG,
                                       _pack_point(x, y), 1)
+            _elapsed = time.perf_counter() - float(
+                getattr(self, '_drag_t0', 0.0) or 0.0)
+            _posts = self.drag_samples - int(
+                getattr(self, '_drag_start_samples', self.drag_samples))
+            if _elapsed > 0.0:
+                # A TAXA ENTREGUE (posts/s), nao o tecto. `poll_ms` e' o que o
+                # `SetTimer` recebeu; o piso do Windows pode fazer a taxa real
+                # ficar abaixo dos 240 Hz pedidos, e e' este numero que o diz.
+                log(f'PANEL_EDIT_DRAG_RATE posts={_posts} '
+                    f'seconds={_elapsed:.3f} hz={_posts / _elapsed:.1f} '
+                    f'target_hz={EDIT_DRAG_FRAME_HZ} poll_ms={POLL_MS_DRAG}')
 
     # -- the decision ------------------------------------------------------
     def _consider(self, x, y, message, source='hook'):
@@ -9655,6 +9791,16 @@ BOOTSTRAP_JS = r"""
           { query: String(query == null ? '' : query), limit: Number(limit) || 200 });
       },
       root: function () { return historyCall('history-root', {}); },
+      export: function (format, limit) {
+        return historyCall('history-export',
+          { format: String(format == null ? 'txt' : format),
+            limit: Number(limit) || 400 });
+      },
+      exportFile: function (format, limit) {
+        return historyCall('history-export-file',
+          { format: String(format == null ? 'txt' : format),
+            limit: Number(limit) || 400 });
+      },
       reveal: function (path) {
         post('history-reveal', { path: String(path == null ? '' : path) });
       }
@@ -10494,6 +10640,8 @@ class SottoHost:
             'history-tail': ('host', '_history_tail'),
             'history-search': ('host', '_history_search'),
             'history-root': ('host', '_history_root'),
+            'history-export': ('host', '_history_export'),
+            'history-export-file': ('host', '_history_export_file'),
             'history-reveal': ('host', '_history_reveal'),
             # These three were lambdas (`lambda p: self._shell.x('page')`). They
             # cannot be a name on this class, so they carry the method AND the
@@ -10749,22 +10897,50 @@ class SottoHost:
             log('CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay '
                 'theme=%r' % (theme.get('theme') or '-'))
             return
-        # O DESIGN DO PAINEL NAO MANDA NA LEGENDA (ordem do dono, 2026-11-03,
-        # verbatim: *"ESSE ESTILO DE LEGENDA E' DO YOUTUBE. NAO SOTTO."*). O
-        # payload continua a ser GUARDADO (`_brand_tokens_last`) porque o painel
-        # o usa; a janela da legenda veste SEMPRE o estilo do player, e o log diz
-        # de onde veio a recusa para o desvio nao passar silencioso.
+        # A FACE E' DO PLAYER; A PLACA E' DO DESENHO (ordem do dono, 2026-11-09,
+        # verbatim: *"VOCE TIROU O DESIGN DE TODAS AS LEGENDAS PRA DEIXAR ELAS
+        # IGUAIS EM TODOS OS TEMAS."*). A tipografia continua a do YouTube
+        # (`_THEME_DEFAULT`: Arial 38, contorno 5 -- ordem de 2026-11-03), e o
+        # FUNDO vem do payload do painel: `rowBg`/`rowBgAlpha`/`rowRadius`/
+        # `panelPad` passam pelo normalizador que ja' existe (`_normalise_theme`,
+        # que composita o slab do tema e poe piso de alfa em 140/255). Sem placa
+        # no payload, a janela fica como antes -- nenhum desenho e' inventado.
+        #
+        # A PLACA E' A UNICA COISA QUE VEM DO PAYLOAD: passar o payload inteiro
+        # ao `set_theme` trocaria tambem `fontFamily`/`livePx`/`leading`, que a
+        # ordem de 2026-11-03 reserva ao player.
         try:
             import overlay_paint
-            applied = overlay.set_theme(overlay_paint._THEME_DEFAULT)
+            base = dict(overlay_paint._THEME_DEFAULT)
+            plate = None
+            radius = 0.0
+            pad = base.get('pad')
+            try:
+                norm = overlay_paint._normalise_theme(theme)
+                plate = norm.get('plate')
+                radius = float(norm.get('plateRadius') or 0.0)
+                pad = norm.get('pad') or pad
+            except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
+                log(f'CAPTION_OVERLAY_THEME_PLATE_FAILED error={exc!r}')
+                norm = {}
+            if plate:
+                base['plate'] = plate
+                # `set_theme` normaliza OUTRA vez; com `rowRadius` a placa
+                # mantem o raio do desenho em vez de cair nos 10 px por omissao.
+                base['rowRadius'] = radius
+                base['pad'] = pad
+            base['theme'] = str(theme.get('theme') or '')
+            applied = overlay.set_theme(base)
         except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
             log(f'CAPTION_OVERLAY_THEME_FAILED error={exc!r}')
             return
         log('CAPTION_OVERLAY_THEME_APPLIED theme=%s font=%s live=%.1f '
-            'brand=%s plate=%s fade=%s'
+            'brand=%s plate=%s alpha=%s radius=%.1f fade=%s'
             % (applied.get('theme') or '-', applied.get('fontFamily'),
                applied.get('livePx') or 0.0, theme.get('theme') or '-',
                'yes' if applied.get('plate') else 'no',
+               (applied.get('plate') or (0, 0, 0, 0))[3],
+               float(applied.get('plateRadius') or 0.0),
                'yes' if getattr(overlay, 'FADE_ON', False) else 'no'))
 
     def _boot_profile(self, payload):
@@ -10886,6 +11062,18 @@ class SottoHost:
 
     def _history_root(self, payload):
         self._history_reply(payload or {}, self._shell.history_root())
+
+    def _history_export(self, payload):
+        payload = payload or {}
+        self._history_reply(payload, self._shell.history_export(
+            payload.get('format', 'txt'),
+            payload.get('limit', 400)))
+
+    def _history_export_file(self, payload):
+        payload = payload or {}
+        self._history_reply(payload, self._shell.history_export_file(
+            payload.get('format', 'txt'),
+            payload.get('limit', 400)))
 
     def _history_reveal(self, payload):
         self._shell.reveal_in_folder((payload or {}).get('path'))
@@ -13712,7 +13900,7 @@ class SottoShell:
         )
 
     @staticmethod
-    def _history_provenance(options):
+    def _history_provenance(options, context_token=''):
         """The `<!-- route=… start=… reason=… -->` suffix for one line (M8).
 
         WHY IT EXISTS: `formulate()` appends terminal punctuation to every line
@@ -13731,7 +13919,14 @@ class SottoShell:
         route = str(options.get('route') or '').strip()
         if route not in HISTORY_ROUTES:
             return ''
-        parts = [f'route={route}']
+        # THE TOKEN GOES FIRST (review D2, 2026-11-09): a free-text `reason`
+        # can contain `ctx1=` anywhere, so an end-anchored token is spoofable
+        # by a hand-written line. Placing it immediately after `<!--` makes
+        # the first token the only candidate; `reason` follows it.
+        parts = []
+        if context_token:
+            parts.append(f'ctx1={context_token}')
+        parts.append(f'route={route}')
         # WHO closed it (2026-11-05), right after the route: the pair is what
         # makes the two sources tellable apart now that BOTH reach this file.
         producer = str(options.get('producer') or '').strip()
@@ -13746,7 +13941,12 @@ class SottoShell:
         src = str(options.get('routeSource') or '').strip()
         if src in HISTORY_ROUTE_SOURCES:
             parts.append(f'src={src}')
-        reason = re.sub(r'\s+', ' ', str(options.get('reason') or '')).strip()
+        # A REASON IS FREE TEXT, AND `ctx1=` IS THE TOKEN'S WORD (review D2,
+        # 2026-11-09): the token is written FIRST, so the front-anchored reader
+        # cannot select a lookalike later in the reason; the writer also
+        # removes the token form from the reason as a second guard.
+        reason = re.sub(r'(?i)\bctx1=\S*', '', str(options.get('reason') or ''))
+        reason = re.sub(r'\s+', ' ', reason).strip()
         if reason:
             parts.append(f'reason={reason}')
         return ' <!-- ' + ' '.join(parts) + ' -->'
@@ -13772,13 +13972,21 @@ class SottoShell:
             return None
         if not last:
             return None
-        out = {'body': '', 'time_s': None, 'start': None}
+        out = {'body': '', 'time_s': None, 'start': None,
+               'audio': '', 'context': {}}
         start = re.search(r'\bstart=(-?\d+(?:\.\d+)?)', last)
         if start:
             try:
                 out['start'] = float(start.group(1))
             except ValueError:
                 out['start'] = None
+        # THE SAME-LINE TEST ALSO NEEDS THE AUDIO ORIGIN (2026-11-09): two
+        # identical sentences from different sources are different lines even
+        # inside the merge window. `token_in` only matches the front-anchored
+        # `<!-- ctx1=…`, so it cannot pick up a lookalike inside `reason`.
+        _ctx = history_context.token_in(last)
+        out['context'] = _ctx
+        out['audio'] = str(_ctx.get('audioSource') or '')
         body = re.sub(r'\s*<!--.*?-->\s*$', '', last)
         match = re.match(r'^- \[(\d{2}):(\d{2}):(\d{2})\] (.*)$', body)
         if match:
@@ -13788,6 +13996,88 @@ class SottoShell:
         else:
             out['body'] = body.strip()
         return out
+
+
+    def _history_app_target(self):
+        """The per-app tap this shell asked for, or None for the endpoint mix."""
+        try:
+            value, _source = app_target_request(getattr(self, 'args', None))
+            if value:
+                return value
+        except Exception:  # noqa: BLE001 -- context is optional, never fatal
+            pass
+        return None
+
+
+    def note_history_context(self, meta):
+        """REMEMBER THE CONTEXT OF THE MOMENT A LINE CLOSED (2026-11-09).
+
+        Called from the two emit paths while the event is still fresh, keyed by
+        the worker's own `start=` (the same identity `history_append` receives).
+        The foreground read is bounded and cached (`history_context.snapshot`),
+        so a burst of finals does not open USER32 per line.
+
+        This is DELIBERATELY independent of `LIVE_ENABLED`, panel visibility,
+        model state and drag state: the owner's rule is that display off is not
+        history off, so nothing here may be gated on those.
+        """
+        if not isinstance(meta, dict):
+            return
+        start = meta.get('start')
+        if not (isinstance(start, (int, float)) and not isinstance(start, bool)):
+            return
+        ctx = history_context.snapshot(meta, app_target=self._history_app_target())
+        if not ctx:
+            return
+        ring = getattr(self, '_history_ctx_ring', None)
+        if not isinstance(ring, list):
+            ring = []
+            self._history_ctx_ring = ring
+        ring.append((round(float(start), 2), ctx))
+        if len(ring) > 24:
+            del ring[:len(ring) - 24]
+        self._history_ctx_last = ctx
+        self._history_ctx_last_start = round(float(start), 2)
+
+
+    def _history_context_for(self, start, fresh=True):
+        """The context captured at RECEIPT time for this line, never the commit's.
+
+        Explicit caller metadata is resolved by the caller; this answers from the
+        ring keyed by `start`, then the last captured snapshot. Only when nothing
+        was ever captured does it take a fresh reading, so an old line never
+        inherits the app the owner happened to be looking at when it was written.
+        `fresh=False` is for the explicit-context case: fill the fields the caller
+        omitted from the ring, but never sample the commit-time foreground.
+        """
+        ring = getattr(self, '_history_ctx_ring', None)
+        if isinstance(ring, list) and isinstance(start, (int, float)) \
+                and not isinstance(start, bool):
+            for _s, _ctx in reversed(ring):
+                try:
+                    if abs(float(_s) - float(start)) <= 0.05:
+                        return dict(_ctx)
+                except (TypeError, ValueError):
+                    continue
+        if not fresh:
+            # Explicit caller metadata already carries the fields it knows; a
+            # LAST snapshot from another line must not donate its audio/source.
+            return {}
+        # A JANELA E' DESTA FALA OU NAO E' (2026-11-09): sem entrada no anel, o
+        # ULTIMO snapshot so' se doa a uma linha a `_HISTORY_CTX_NEAR_S` dele;
+        # fora disso a resposta e' "nao sei", nunca uma janela alheia.
+        last = getattr(self, '_history_ctx_last', None)
+        last_start = getattr(self, '_history_ctx_last_start', None)
+        if isinstance(last, dict) and last \
+                and isinstance(last_start, (int, float)) \
+                and not isinstance(last_start, bool) \
+                and isinstance(start, (int, float)) \
+                and not isinstance(start, bool) \
+                and abs(float(start) - float(last_start)) <= _HISTORY_CTX_NEAR_S:
+            return dict(last)
+        if isinstance(ring, list) and ring:
+            return {}
+        return history_context.snapshot(app_target=self._history_app_target())
 
 
     def history_append(self, text, options=None):
@@ -13817,16 +14107,49 @@ class SottoShell:
         # seis linhas para um enunciado que se le como um.
         _now_s = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec
         _start = None
-        if isinstance(options, dict) and isinstance(options.get('start'), (int, float)):
+        if (isinstance(options, dict)
+                and isinstance(options.get('start'), (int, float))
+                and not isinstance(options.get('start'), bool)):
             _start = float(options['start'])
-        action = history_merge(self._history_tail(path), body,
-                               now_s=_now_s, start=_start)
+        # THE CONTEXT OF THE MOMENT THE SPEECH HAPPENED (owner, 2026-11-09).
+        # Explicit metadata from the caller wins; otherwise the receipt-time
+        # ring (keyed by `start`) answers; otherwise the last captured snapshot.
+        # NEVER sampled here unless nothing was captured at all: the commit can
+        # arrive seconds after the line closed, and the foreground app at commit
+        # time is not necessarily the one the owner was looking at.
+        _explicit = {}
+        if isinstance(options, dict):
+            _explicit = history_context.normalize(options.get('context'))
+        if _explicit:
+            # Explicit wins PER FIELD; the ring still supplies the audio/source
+            # fields the caller omitted. No commit-time foreground read here.
+            _ctx = self._history_context_for(_start, fresh=False)
+            _ctx.update(_explicit)
+            _ctx = history_context.normalize(_ctx)
+        else:
+            _ctx = self._history_context_for(_start)
+        _audio = str(_ctx.get('audioSource') or '')
+        _prev = self._history_tail(path)
+        action = history_merge(_prev, body,
+                               now_s=_now_s, start=_start, audio=_audio)
+        if action == 'replace' and isinstance(_prev, dict):
+            # A growing line keeps the context the earlier commit captured when
+            # this call could not resolve it; never blank the line's origin.
+            _prev_ctx = _prev.get('context') or {}
+            if _prev_ctx:
+                _merged = dict(_prev_ctx)
+                _merged.update(_ctx)
+                _ctx = history_context.normalize(_merged)
         entry = {
             'date': time.strftime('%Y-%m-%d', now),
             'hour': time.strftime('%H', now),
             'time': time.strftime('%H:%M:%S', now),
             'text': body,
             'path': path,
+            #: The compact origin/viewing context, already normalised and
+            #: bounded (`app/webview/history_context.py`). `{}` when unknown --
+            #: the panel must not invent one.
+            'context': _ctx,
             #: O que o painel faz na lista dele: `append` (linha nova),
             #: `replace` (reescreve a ultima) ou `skip`. A DECISAO e' daqui --
             #: o painel obedece, para nao existirem duas regras para a mesma
@@ -13842,7 +14165,8 @@ class SottoShell:
             log('HISTORY_DUPLICATE_SKIPPED time=%s bytes=%d'
                 % (time.strftime('%H:%M:%S'), len(body.encode('utf-8'))))
             return entry
-        provenance = self._history_provenance(options)
+        provenance = self._history_provenance(
+            options, history_context.encode(_ctx))
         line = f'- [{entry["time"]}] {body}{provenance}\n'
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -13899,10 +14223,11 @@ class SottoShell:
         return out
 
     def _history_prune(self):
-        """DELETE DAY FOLDERS OLDER THAN THE RETENTION WINDOW (owner, 2026-11-06).
+        """DELETE DAY FOLDERS OLDER THAN THE RETENTION WINDOW.
 
-        Verbatim: *"o historico tem que persistir, aparecendo no painel da direita,
-        por padrao, ate 48hrs. nao faça isso ser travado ou pesado."*
+        The owner's 2026-11-06 window was 48 h; on 2026-11-09 he asked for
+        MONTHS-LATER recall, so the window is six months and that older
+        preference is superseded for this feature (`HISTORY_RETENTION_H`).
 
         The store had no retention at all: `history/` grew a folder per day and
         nothing ever removed one, so "48 horas" would have been a promise the panel
@@ -13965,7 +14290,11 @@ class SottoShell:
                     # (M8 — see `_history_provenance`).
                     yield {'date': day, 'hour': hour, 'time': match.group(1),
                            'text': HISTORY_TAIL_RE.sub('', match.group(2)).strip(),
-                           'path': path}
+                           'path': path,
+                           #: The compact context carried on THIS line. A line
+                           #: written before 2026-11-09 has no token and yields
+                           #: `{}` -- unknown, never borrowed from a neighbour.
+                           'context': history_context.token_in(line)}
 
     def history_tail(self, limit=400):
         limit = max(1, int(limit))
@@ -14015,6 +14344,18 @@ class SottoShell:
             for entry in self._history_entries():
                 rank = search_match_rank(entry['text'], folded_query, query_words)
                 if rank < 0:
+                    # THE ORIGIN AND THE VIEWING CONTEXT ARE SEARCHABLE TOO
+                    # (owner, 2026-11-09: months-later recall). A query for the
+                    # app, the window title or the audio source must find the
+                    # lines said while it was in front -- the same three layers,
+                    # so a typo in a window title still resolves.
+                    _ctx_text = ' '.join(
+                        str(_v) for _v in (entry.get('context') or {}).values()
+                        if str(_v or '').strip())
+                    if _ctx_text:
+                        rank = search_match_rank(_ctx_text, folded_query,
+                                                 query_words)
+                if rank < 0:
                     continue
                 bucket = buckets[rank]
                 if len(bucket) < caps[rank]:
@@ -14025,6 +14366,91 @@ class SottoShell:
                     break
         hits = buckets[0] + buckets[1] + buckets[2]
         return {'query': query, 'hits': hits, 'root': HISTORY_ROOT}
+
+    def history_export(self, fmt='txt', limit=400):
+        """The transcript as a COMPACT TEXT BODY, oldest-first (2026-11-09).
+
+        The owner asked for months-later recall and an export that carries the
+        same origin/viewing context the feed shows. One line per entry, the
+        context rendered after the sentence, no screenshots and no repeated
+        blobs: the on-disk token is one bounded annotation per line (not a
+        deduplicated shared blob), and the export is derived from it, never
+        stored a second time.
+
+        `fmt` is `'txt'` (default) or `'md'` (a bullet per line). `limit` is the
+        number of newest entries to include, capped at 5000 so a bad caller
+        cannot ask the shell to build the whole store in memory.
+        """
+        fmt = str(fmt or 'txt').strip().lower()
+        if fmt not in ('txt', 'md'):
+            fmt = 'txt'
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = 400
+        limit = min(max(1, limit), 5000)
+        # `_history_entries` is NEWEST first; the caller asked for the newest
+        # `limit`, so take the first `limit` and reverse them for the export.
+        # (`deque(maxlen=limit)` here kept the OLDEST limit and never reversed
+        # them -- the review's D1: `history_export('txt', 2)` returned the two
+        # oldest entries, newest-first, instead of the two newest, oldest-first.)
+        entries = []
+        for entry in self._history_entries():
+            entries.append(entry)
+            if len(entries) >= limit:
+                break
+        entries.reverse()
+        lines = []
+        for entry in entries:
+            ctx = entry.get('context') or {}
+            bits = []
+            viewing_app = str(ctx.get('viewingApp') or '').strip()
+            viewing_title = str(ctx.get('viewingTitle') or '').strip()
+            if viewing_app or viewing_title:
+                view = viewing_app
+                if viewing_title:
+                    view = (view + ' ' if view else '') + '"' + viewing_title + '"'
+                bits.append('view=' + view)
+            if ctx.get('audioSource'):
+                bits.append('audio=' + str(ctx['audioSource']))
+            if ctx.get('sourceApp'):
+                bits.append('source=' + str(ctx['sourceApp']))
+            if ctx.get('viewingUrl'):
+                bits.append('url=' + str(ctx['viewingUrl']))
+            label = ' · '.join(bits)
+            line = f'[{entry["date"]} {entry["time"]}] {entry["text"]}'
+            if label:
+                line += ' · ' + label
+            lines.append(('- ' if fmt == 'md' else '') + line)
+        return {'format': fmt, 'text': '\n'.join(lines),
+                'entries': len(lines), 'root': HISTORY_ROOT}
+
+    def history_export_file(self, fmt='txt', limit=400):
+        """Write the compact export under the history root; return its path.
+
+        A download dialog is a window on the owner's screen, so the SHELL writes
+        the file and the panel reveals it (`history.reveal`). The body is derived
+        from `history_export` -- never a second store.
+        """
+        body = self.history_export(fmt, limit)
+        if not body.get('entries'):
+            return {'path': '', 'entries': 0, 'format': body.get('format', 'txt'),
+                    'root': HISTORY_ROOT}
+        ext = 'md' if body.get('format') == 'md' else 'txt'
+        stamp = time.strftime('%Y%m%d-%H%M%S')
+        path = os.path.join(HISTORY_ROOT, 'sotto-transcript-%s.%s' % (stamp, ext))
+        try:
+            os.makedirs(HISTORY_ROOT, exist_ok=True)
+            with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+                fh.write(body['text'] + '\n')
+        except OSError as exc:  # noqa: BLE001 -- a refused write is a NAMED refusal
+            warn('HISTORY_EXPORT_FAILED path=%s err=%s' % (path, exc))
+            return {'path': '', 'entries': 0, 'format': body.get('format', 'txt'),
+                    'root': HISTORY_ROOT, 'error': str(exc)}
+        log('HISTORY_EXPORT path=%s entries=%d format=%s'
+            % (path, body['entries'], body.get('format')))
+        return {'path': path, 'entries': body['entries'],
+                'format': body.get('format', 'txt'), 'root': HISTORY_ROOT}
 
     def reply_history(self, history_id, payload):
         self.exec_js(f'window.__sotto_history({json.dumps(history_id)}, '
@@ -15595,8 +16021,13 @@ class SottoShell:
             # _main/sidecar-wiring-oracle.py arm 2 foi a RED exactamente por
             # isso. Um diarizador a correr e a bridge sem o flag que consome o
             # seu ficheiro e' o peor dos dois mundos: 207 MB e zero atribuicao.
-            extra_args=(['--speakers'] if getattr(self.args, 'speakers', False)
-                         else None),
+            #
+            # E O TECTO DE FIOS DO WORKER (2026-11-09): medido no dono, o worker
+            # de ASR queimava 159,5 % de um nucleo em rajadas de 9-10/hora com as
+            # sessoes ORT a 4 fios intra-op cada (`--threads` era INERTE, ver
+            # `worker/sotto_worker.limit_threads`). O valor vem de
+            # `--worker-threads`; `worker_argv_tail` e' o dono unico do argv.
+            extra_args=worker_argv_tail(self.args),
         )
         log(f'WORKER_PATH {self.args.worker}')
         log(f'WORKER_COMMAND {self.args.python}')
@@ -15819,9 +16250,12 @@ class SottoShell:
             # nao existia, a chamada devolvia False e o pedido morria ali.
             # Agora fica guardado e e' aplicado no instante em que a janela
             # passa a existir.
-            self._caption_show_pending = bool(on)
-            log('CAPTION_WINDOW_DEFERRED on=%s reason=no-overlay-yet'
-                % str(bool(on)).lower())
+            # Um BLANK antes do overlay existir nao e' um pedido de show: o
+            # pendente tem de ser False. A versao anterior lia `on`, que nao
+            # existe neste metodo (ele so' recebe `reason`), e o `NameError`
+            # caia no `except` do chamador -- o pedido ficava sem efeito.
+            self._caption_show_pending = False
+            log('CAPTION_WINDOW_DEFERRED on=false reason=no-overlay-yet')
             return False
         self._caption_window_shown = False
         # A FONTE MUDOU: o slot e' do instante ANTERIOR (dono, 2026-10-30).
@@ -15859,23 +16293,23 @@ class SottoShell:
                 return
             if not getattr(self, '_caption_window_shown', False):
                 return
-            # VIDEO EM PAUSA SEGURA A LINHA DO PLAYER (2026-11-03). MEDIDO na
-            # sessao do dono: `paused=true` em t=697, as duas linhas do player
-            # ainda na janela, e o cao de guarda publicou
-            # `CAPTION_WINDOW_BLANKED reason=no-caption-for-6.0s` -- a legenda
-            # desaparecia da tela com o video parado a mostra-la. Em pausa nao
-            # chega nada de novo de NINGUEM, logo ausencia de legenda nao e'
-            # ausencia de conteudo: re-arma e nao apaga.
+            # VIDEO EM PAUSA/FIM NAO SEGURA PIXELS (2026-11-09, ordem do dono).
+            # A guarda de 2026-11-03 re-armava o cao de guarda em pausa para a
+            # linha do player nao desaparecer; o dono depois mediu o contrario:
+            # *"pausa/ended tem que esconder os pixels"* (o historico continuava
+            # a receber linhas como se o video estivesse a correr). O MODELO, o
+            # WORKER e o HISTORICO continuam intactos -- `_blank_caption_window`
+            # so' apaga o ecra, nao toca em `_caption_wanted` nem no worker.
+            # A borda da pausa ja' apaga no watcher; esta metade e' o piso de
+            # 6 s que garante o mesmo se a borda se perder.
             if (getattr(self, 'yt_source_paused', False)
-                    and getattr(self, '_last_caption_was_player', False)):
-                self._arm_caption_idle_hide()
+                    or getattr(self, 'yt_source_ended', False)):
+                self._blank_caption_window(
+                    'youtube-paused-or-ended')
                 return
             self._blank_caption_window('no-caption-for-%ss' % (self.CAPTION_IDLE_HIDE_S,))
         except Exception as exc:  # noqa: BLE001
-            try:
-                log(f'CAPTION_WINDOW_IDLE_HIDE_FAILED error={exc!r}')
-            except Exception:
-                pass
+            log(f'CAPTION_WINDOW_IDLE_HIDE_FAILED error={exc!r}')
 
 
     #: O ORCAMENTO DO ECRa, EM MILISSEGUNDOS (2026-11-03). Do instante em que o
@@ -16486,6 +16920,43 @@ class SottoShell:
             log(f'CAPTION_WINDOW_SHOW_FAILED on={on} error={exc!r}')
             return False
 
+    @staticmethod
+    def _external_context(source):
+        """The context for a player line: its URL, when `source` is a URL.
+
+        Kept as a tiny pure function so the shipped decision is testable
+        without standing up the shell (review D4).
+        """
+        value = str(source or '')
+        if value.startswith(('http://', 'https://')):
+            return {'viewingUrl': value}
+        return {}
+
+    def _viewing_url(self):
+        """The foreground player URL from the source-decision cache, or ''.
+
+        `_yt_fg_cache` is `(hwnd, title, source, monotonic)` filled by
+        `_yt_source_by_title`; only a fresh URL is a viewing context, because a
+        stale one would label a line with the video the owner already left.
+        """
+        # THE CACHE LIVES ON THE WATCHER, NOT ON THE SHELL (review R1,
+        # 2026-11-09): `ExternalCaptionWatcher._yt_fg_cache` is written by the
+        # watcher thread (`_yt_source_by_title`), and the shell only holds the
+        # watcher. A shell-level cache never exists in the real app.
+        watcher = getattr(self, 'external_caption_watcher', None)
+        cache = getattr(watcher, '_yt_fg_cache', None) if watcher else None
+        if cache is None:
+            cache = getattr(self, '_yt_fg_cache', None)
+        try:
+            if cache and len(cache) >= 4:
+                if time.monotonic() - float(cache[3]) <= 6.0:
+                    source = str(cache[2] or '')
+                    if source.startswith(('http://', 'https://')):
+                        return source
+        except (TypeError, ValueError):
+            return ''
+        return ''
+
     def on_worker_caption(self, text, meta):
         # A LINHA DE UM WORKER MORTO NAO PINTA NO NOVO (troca de PROCESSO).
         bridge = getattr(self, 'bridge', None)
@@ -16500,6 +16971,25 @@ class SottoShell:
             if self.external_suppressed in (1, 100, 1000):
                 log(f'EXTERNAL_CAPTIONS_ASR_SUPPRESSED count={self.external_suppressed}')
             return
+        # THE CONTEXT OF A CLOSED LINE IS TAKEN ON ARRIVAL (2026-11-09). The
+        # panel commits it later, on its own hold timer, so sampling the
+        # foreground at commit time would record the app the owner switched to,
+        # not the one he was watching while this was said. Only `final` lines
+        # reach the transcript (`history_append` refuses the rest anyway).
+        if isinstance(meta, dict) and meta.get('final') is True:
+            # THE FOREGROUND PLAYER URL (review D4, 2026-11-09): the ASR path
+            # has no URL in its worker event, but when the foreground cache
+            # names a YouTube player the line's viewing context is that video.
+            # The cache is the same one `_yt_source_by_title` fills; a stale
+            # entry is not used (6 s, the same window the source decision uses).
+            _url = self._viewing_url()
+            if _url:
+                _ctx = meta.get('context')
+                if not isinstance(_ctx, dict):
+                    _ctx = {}
+                _ctx.setdefault('viewingUrl', _url)
+                meta['context'] = _ctx
+            self.note_history_context(meta)
         # ── REPLAY VELHO E' HISTORIA, NAO PINTURA (INV-5/R11, 2026-11-04) ────
         # A `WarmPipeBridge` marca `history_only` uma linha cujo audio tem mais
         # de `WARM_BACKLOG_LIVE_MS`. Ela ENTRA no historico (o painel escreve-o a
@@ -16626,11 +17116,6 @@ class SottoShell:
         if extends_previous(prev, text):
             final = False
         self._external_last_text = text
-        # Only when the owner is actually looking at Sotto. While the panel is
-        # hidden there is nothing to replace, and painting a second subtitle
-        # over YouTube would be worse than doing nothing.
-        if not (self.visible or getattr(self, '_caption_window_shown', False)):
-            return False
         self.external_lines += 1
         if self.external_lines in (1, 50, 500) or final:
             log(f'EXTERNAL_CAPTION_SENT count={self.external_lines} '
@@ -16643,14 +17128,26 @@ class SottoShell:
         # o worker. Ver `EXTERNAL_PARK_DELAY_S`.
         self._park_worker_when_settled(source)
         now = time.monotonic()
+        _source_text = str(source or 'external:player')
         meta = {
             'start': round(now, 2),
             'end': round(now + 0.01, 2),
             'chunk_start': round(now, 2),
             'chunks': [[round(now, 2), round(now + 0.01, 2), text]],
             'final': bool(final),
-            'source': str(source or 'external:player'),
+            'source': _source_text,
         }
+        # THE PLAYER'S OWN URL IS THE VIEWING CONTEXT (review D4, 2026-11-09):
+        # `source` is the URL the external watcher resolved (or an
+        # `external:*` marker, which carries no URL).
+        _external_ctx = self._external_context(_source_text)
+        if _external_ctx:
+            meta['context'] = _external_ctx
+        # THE CONTEXT IS CAPTURED HERE, WHILE THE LINE IS FRESH (2026-11-09),
+        # before the display gate below: hiding the display is not stopping the
+        # history (owner rule, 2026-11-02).
+        if meta.get('final') is True:
+            self.note_history_context(meta)
         # A DEDICATED CHANNEL: the player's line must REPLACE the live box, not
         # be joined to the previous hypothesis. The panel handles this kind by
         # resetting the engine for that source, ingesting exactly one line and,
@@ -16658,7 +17155,51 @@ class SottoShell:
         # the ASR `caption` kind produced "previous. previous. current." in the
         # history, because the engine appends a new partial before its hold
         # timer commits the previous one.
-        self.emit('external-caption', {'text': text, 'meta': meta})
+        #
+        # THE EVENT GOES TO THE PAGE EVEN WHEN THE DISPLAY IS HIDDEN (2026-11-09):
+        # the page's `external-caption` handler is what writes the transcript, so
+        # the old early `return` below silently stopped history for YouTube
+        # captions whenever the panel/overlay were hidden -- exactly the
+        # "display off is not history off" defect. The native overlay push is
+        # still skipped when there is nothing on screen.
+        #
+        # O QUE DECIDE "HA' ECRAN" E' O INTERRUPTOR DO DONO (`_caption_wanted`),
+        # NAO `_caption_window_shown`: este ultimo e' TRANSITORIO (o piso de
+        # silencio e a pausa do YouTube poem-no a False) e usa-lo aqui matava a
+        # legenda para sempre depois do primeiro blank -- o proximo `push` nunca
+        # corria e a janela so' voltava com Ctrl+Space. Medido no caminho:
+        # `_caption_idle_hide` -> `_blank_caption_window` -> `_caption_window_shown
+        # = False` -> `_display_visible=False` -> `return` em TODAS as linhas
+        # seguintes. O interruptor e' dele; o blank e' um pixel.
+        #
+        # A ESCOLHA `emit` x `emit_async` continua a ser sobre a PAGINA (painel
+        # visivel), nao sobre a legenda: uma pagina escondida/ocupada nao pode
+        # segurar o leitor do YouTube por 10 s.
+        _caption_on = bool(getattr(self, '_caption_wanted', False))
+        if bool(getattr(self, 'visible', False)):
+            self.emit('external-caption', {'text': text, 'meta': meta})
+        else:
+            # The page still writes the transcript; it just has nothing to paint.
+            self.emit_async('external-caption', {'text': text, 'meta': meta})
+        # PAUSA/FIM DO PLAYER: o HISTORICO recebe (acima), o ECRAN nao. O dono,
+        # verbatim (2026-11-08): *"quando eu deixo o video pausado, a legenda
+        # fica ao vivo ... fica travada em outro momento"*. A borda apaga os
+        # pixels; este portao impede o tick seguinte de os levantar outra vez com
+        # a linha congelada. Modelo, worker e historico intactos.
+        # O PORTAO E' DO YOUTUBE, NAO DE TODA A FONTE EXTERNA (2026-11-09,
+        # revisao D2): `yt_source_paused` so' e' limpo no release, e com outro
+        # player (Stremio) a fornecer linhas o release nunca corre -- a pausa
+        # de um video do YouTube mantinha a fonte seguinte sem pixels.
+        if (str(source or '').startswith('external:youtube')
+                and (getattr(self, 'yt_source_paused', False)
+                     or getattr(self, 'yt_source_ended', False))):
+            if final:
+                self._reload_policy.boundary(closed=True, why='external-line')
+            return False
+        if not _caption_on:
+            if final:
+                self._reload_policy.boundary(closed=True, why='external-line')
+            return False
         # O QUE CHEGOU AO ECRA, e nao so' o que se decidiu (2026-11-02). As tres
         # imagens do dono nao distinguiam "decidimos mal" de "pintamos mal": este
         # registo fecha essa separacao -- `rows` e' o numero de LINHAS enviadas ao
@@ -16788,6 +17329,18 @@ class SottoShell:
             self.set_engine_park(None)
         return showing
 
+    def _clear_yt_source_mirrors(self):
+        """O ESPELHO DA PAUSA/FIM DO YOUTUBE E' UM SO', LIMPO NOS DOIS SITIOS.
+
+        O portao de ecran do `external_caption` recusa pixels do YouTube
+        enquanto `yt_source_paused`/`yt_source_ended` forem verdadeiros. Dois
+        caminhos largam a superficie -- o release do player e a troca de video --
+        e cada um tinha a sua copia da limpeza; a de `_yt_switch_video` esquecia
+        o `ended` (2026-11-09, revisao D4). Uma funcao, duas chamadas.
+        """
+        self.yt_source_paused = False
+        self.yt_source_ended = False
+
     def on_external_captions_released(self):
         """The player stopped showing captions: give the microphone back.
 
@@ -16823,6 +17376,12 @@ class SottoShell:
         # early-return que deixasse o epoch de pe' calava o `model-loading` de
         # um worker que ia ser carregado.
         self._player_frame_seen = False
+        # O ESPELHO DA PAUSA MORRE COM A SUPERFICIE (2026-11-09). O portao de
+        # ecran do `external_caption` recusa pixels enquanto `yt_source_paused`
+        # for verdadeiro; se o player larga a superficie (outra fonte, outra
+        # janela), a bandeira ficava de pe' e bloqueava a PROXIMA fonte. A pausa
+        # e' um estado do YouTube, nao do shell.
+        self._clear_yt_source_mirrors()
         if self.exiting.is_set():
             log('EXTERNAL_CAPTIONS_WORKER_RESUME_SKIPPED reason=shell-exiting')
             return False
@@ -19694,6 +20253,32 @@ class MultiVoiceWatch:
         return True
 
 
+def worker_argv_tail(args):
+    """The flags this shell hands the WORKER, in ARGV, decided in ONE place.
+
+    PORQUE ARGV E NAO ENV. `_main/app-target-oracle.py` ARM e pina o contrato do
+    ambiente do filho a `os.environ + SOTTO_CAPTURE_MODE + SOTTO_REDUX_WHEN_HIDDEN`
+    (+ device e target pid). Um knob novo por ambiente vira uma segunda tabela de
+    chaves e essa arm fica vermelha com razao. O `--threads` do worker ja' e' um
+    flag real que ele declara; o trabalho da shell e' passa-lo -- a mesma
+    decisao que o `--speakers` tomou.
+
+    `--worker-threads 0` NAO emite flag nenhuma: o argv fica exactamente o de
+    antes e o worker resolve `ambiente > 4` sozinho. Um valor negativo e'
+    tratado como 0 (nada a impor) em vez de virar um argv invalido.
+    """
+    tail = []
+    if getattr(args, 'speakers', False):
+        tail.append('--speakers')
+    try:
+        threads = int(getattr(args, 'worker_threads', 0) or 0)
+    except (TypeError, ValueError):
+        threads = 0
+    if threads > 0:
+        tail += ['--threads', str(threads)]
+    return tail
+
+
 class WorkerBridge:
     """Spawns worker/sotto_worker.py and turns its JSONL into panel events.
 
@@ -20039,11 +20624,14 @@ class WorkerBridge:
         """
         env = dict(os.environ)
         # THE FREEZE CURES LIVE IN THE WORKER, NOT HERE (2026-10-17). Its own
-        # `CUDA_MODULE_LOADING=LAZY` / `OMP_NUM_THREADS=4` defaults are set at
+        # `CUDA_MODULE_LOADING=LAZY` / `OMP_NUM_THREADS` defaults are set at
         # module scope before onnxruntime is imported, so they apply to every
         # way the worker can be launched. `_main/app-target-oracle.py` pins this
         # dict to `os.environ + SOTTO_CAPTURE_MODE + SOTTO_REDUX_WHEN_HIDDEN`
         # (+ the device and the target pid), and that contract is worth keeping.
+        # THE THREAD BUDGET IS NOT A KEY HERE (2026-11-09): it travels in ARGV
+        # (`worker_argv_tail` -> `--threads N`, default 2), exactly like
+        # `--speakers`, because a new key would break the pinned contract above.
         env['PYTHONUNBUFFERED'] = '1'
         env['SOTTO_CAPTURE_MODE'] = self.capture_mode
         #: THE BACKGROUND PARAKEET PASS, OPTED IN BY THE APP ITSELF (owner,
@@ -21958,6 +22546,14 @@ def parse_args(argv):
                              'still points at THIS checkout, then exit')
     parser.add_argument('--worker', default=DEFAULT_WORKER_PATH,
                         help='worker entrypoint to spawn')
+    parser.add_argument('--worker-threads', type=int, default=2,
+                        help='CPU thread budget for the ASR worker, handed over '
+                             'as `--threads N` (default: 2; 0 = pass no flag and '
+                             'let the worker resolve OMP_NUM_THREADS, else 4). '
+                             'MEASURED 2026-11-09: the worker burned 159.5%% of '
+                             'one core in bursts with three ORT sessions at 4 '
+                             'intra-op threads each. This is a BUDGET, not a '
+                             'promise: N threads per session is not N cores')
     parser.add_argument('--python', default=None,
                         help='interpreter for the worker (default: `python`, '
                              'else this interpreter)')
