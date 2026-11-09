@@ -35,6 +35,15 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 CACHE = os.path.join(ROOT, '_cache', 'battery-steps.json')
+#: O HISTORICO DO PROPRIO PASSO, para o ratchet julgar uma AMOSTRA e nao um
+#: pico. MEDIDO 2026-11-08: `stutter-caption-oracle --neg-arm` custa **4,4 / 4,4 /
+#: 4,7 s** em tres execucoes seguidas e apareceu com **26,8 s** dentro da corrida
+#: caged; `console-window-audit` mediu 36,8 / 23,8 / 20,9 s. Uma regua de 20 % sobre
+#: UMA leitura reprova o agendador, nao o passo. O juiz passa a usar a MEDIANA das
+#: ultimas `HISTORY_N` leituras do mesmo passo (a de agora incluida); com uma so'
+#: leitura o numero e' o mesmo de antes, logo o portao nao nasce mais frouxo.
+HISTORY = os.path.join(ROOT, '_cache', 'battery-budget-history.json')
+HISTORY_N = 3
 BASELINE = os.path.join(HERE, 'battery-budget-baseline.json')
 DEFAULT_TARGET_S = 60.0
 RATCHET_PCT = 1.05
@@ -56,6 +65,14 @@ RATCHET_PCT = 1.05
 #: acima do piso.
 PER_STEP_PCT = 1.20
 PER_STEP_FLOOR_S = 20.0
+#: E A FOLGA ABSOLUTA, porque uma RAZAO sozinha transforma jitter em regressao
+#: (medido 2026-11-08, corrida caged): `red-as-expected-stutter-caption` custou
+#: **4,4 / 4,4 / 4,7 s** em tres execucoes seguidas e apareceu com **26,8 s** na
+#: corrida; `console-window-audit` **36,8 / 23,8 / 20,9 s** contra um baseline de
+#: 21,6 s. Nenhum dos dois e' regressao -- sao picos de agendamento. A regressao que
+#: este portao existe para apanhar e' outra escala (224 s -> 1 364 s, +1 140 s), e
+#: +30 s de folga continua muito abaixo do prazo de 240 s e do tecto do total.
+PER_STEP_SLACK_S = 30.0
 
 
 def read_steps(path):
@@ -100,6 +117,49 @@ def measure(rows, deadline_s, policy=None):
             'over_deadline': sorted(r['name'] for r in over),
             'per_step': {r['name']: round(r['elapsed_s'], 1) for r in rows},
             'slowest': [(r['name'], round(r['elapsed_s'], 1)) for r in slow]}
+
+
+def load_history(path=HISTORY):
+    if not os.path.exists(path):
+        return {}
+    try:
+        data = json.load(io.open(path, encoding='utf-8'))
+    except (ValueError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_history(history, path=HISTORY):
+    try:
+        with io.open(path, 'w', encoding='utf-8', newline='') as handle:
+            json.dump(history, handle, ensure_ascii=False, sort_keys=True)
+    except OSError:
+        pass  # o historico e' uma ajuda, nunca um portao: falhar a escreve-lo nao muda o veredicto
+
+
+def smooth(rows, history, policy=None, record=True):
+    """Troca o `elapsed_s` de cada passo pela MEDIANA das ultimas leituras.
+
+    `record=False` (o braco negativo) julga o numero CRU: um mutante somado a uma
+    mediana historica podia ser diluido e o controlo deixaria de apanhar.
+    """
+    out = []
+    for row in rows:
+        name = row['name']
+        series = [float(x) for x in (history.get(name) or []) if isinstance(x, (int, float))]
+        series.append(row['elapsed_s'])
+        series = series[-HISTORY_N:]
+        if record and (row.get('policy') or None) == (policy or None):
+            # So' grava leituras da MESMA politica: uma serie que mistura cap40 com
+            # corridas sem tecto compararia precos diferentes (a mesma armadilha que
+            # o `measure` ja' evita).
+            history[name] = [round(x, 3) for x in series]
+        med = sorted(series)[len(series) // 2]
+        merged = dict(row)
+        merged['elapsed_s'] = round(med, 3)
+        merged['raw_s'] = row['elapsed_s']
+        out.append(merged)
+    return out
 
 
 def load_baseline(path=BASELINE):
@@ -156,7 +216,7 @@ def judge(measured, baseline, target=DEFAULT_TARGET_S, pct=RATCHET_PCT):
             # total nao interessa a ninguem.
             if max(before, secs) < PER_STEP_FLOOR_S:
                 continue
-            if secs > before * PER_STEP_PCT:
+            if secs > before * PER_STEP_PCT and (secs - before) > PER_STEP_SLACK_S:
                 grew.append('%s %.1fs -> %.1fs (baseline %.1fs x %.2f = %.1fs)'
                             % (name, before, secs, before, PER_STEP_PCT,
                                before * PER_STEP_PCT))
@@ -222,11 +282,11 @@ def judge_arms():
 
     arm('A1 um passo +10% passa (abaixo da regua de 20%)',
         m({'a': 33.0, 'b': 40, 'c': 30, 'tiny': 0.3}), True)
-    arm('A2 um passo +26% reprova e o NOMEIA',
-        m({'a': 38.0, 'b': 40, 'c': 26, 'tiny': 0.3}), False, 'a 30.0s -> 38.0s')
-    arm('A3 total IGUAL e um passo 30->60 reprova (o caso que passava)',
-        m({'a': 60.0, 'b': 40.0, 'c': 0.0, 'tiny': 0.3}, total=100.0), False,
-        'a 30.0s -> 60.0s')
+    arm('A2 um passo +117% (30 -> 65 s) reprova e o NOMEIA',
+        m({'a': 65.0, 'b': 35, 'c': 3, 'tiny': 0.3}), False, 'a 30.0s -> 65.0s')
+    arm('A3 total IGUAL e um passo 30->65 reprova (o caso que passava)',
+        m({'a': 65.0, 'b': 20.0, 'c': 15.0, 'tiny': 0.3}, total=100.3), False,
+        'a 30.0s -> 65.0s')
     # A arm A4 tambem derruba o TECTO DO TOTAL (400 s contra 105 s), e isso e'
     # esperado: o passo novo e' um passo que ninguem tinha medido, logo o total
     # sobe por construcao. O que ela prova e' que o `new_over` o NOMEIA.
@@ -256,6 +316,14 @@ def judge_arms():
     # A9 impede a isencao total: um passo ACIMA do piso que dobra continua a reprovar.
     arm('A9 passo acima do piso (40s -> 90s) reprova e o NOMEIA',
         m({'a': 5, 'b': 90, 'c': 5, 'tiny': 0.3}), False, 'b 40.0s -> 90.0s')
+    # A10 e' o caso MEDIDO que obrigou a folga absoluta: 3,7 s -> 26,8 s (+23,1 s)
+    # NAO pode reprovar -- o passo tem 4,5 s de custo real e o pico e' do agendador.
+    arm('A10 pico de 3,7s -> 26,8s nao reprova (folga absoluta de 30s)',
+        m({'a': 20, 'b': 40, 'c': 0, 'tiny': 0.3, 'peak': 26.8}), True)
+    # A11 impede que a folga vire isencao: +31 s acima do piso continua a reprovar.
+    arm('A11 +31s acima do piso (40 -> 71 s) reprova e o NOMEIA',
+        m({'a': 5, 'b': 71, 'c': 20, 'tiny': 0.3}, total=96.3), False,
+        'b 40.0s -> 71.0s')
     return arms
 
 
@@ -307,9 +375,12 @@ def neg_arm():
     sub_deadline = [r for r in clean
                     if r is not worst
                     and r['name'] in per_base
-                    and r['elapsed_s'] * 1.30 + 0.1 > per_base[r['name']] * PER_STEP_PCT
-                    and r['elapsed_s'] * 1.30 < deadline()
-                    and measured['total_s'] + r['elapsed_s'] * 0.30 < ceiling]
+                    and r['elapsed_s'] + PER_STEP_SLACK_S + 10.0 < deadline()
+                    and measured['total_s'] + PER_STEP_SLACK_S + 10.0 < ceiling]
+    # A M2 CRESCE EM SEGUNDOS, nao em percentagem: com a folga absoluta de 30 s a
+    # regra so' dispara acima dela, logo um mutante de +30% num passo de 60 s
+    # (18 s) ficaria INVISIVEL e o controlo diria `PASSOU` sem o juiz ter defeito.
+    # O mutante passa a `+FOLGA+10 s`, que e' exactamente o limiar que a regra usa.
     second = max(sub_deadline, key=lambda r: r['elapsed_s']) if sub_deadline else None
     if second is None:
         print('NEG-ARM CANNOT-MEASURE -- nenhum passo ATRAVESSA o ratchet por passo '
@@ -317,7 +388,8 @@ def neg_arm():
               'como isolar o ratchet por passo')
         return 2
     plan = [(worst, 'M1 x10 (prazo + total)', lambda o: max(o * 10.0, deadline() * 1.5)),
-            (second, 'M2 +30% (so o ratchet por passo)', lambda o: o * 1.30 + 0.1)]
+            (second, 'M2 +folga+10s (so o ratchet por passo)',
+             lambda o: o + PER_STEP_SLACK_S + 10.1)]
     base_ok, base_why, _ = judge(measured, base)
     caught = 0
     for row, label, mut in plan:
@@ -416,6 +488,9 @@ def main(argv):
         return 2
     rows = read_steps(CACHE)
     policy = _policy_arg(argv)
+    history = load_history()
+    rows = smooth(rows, history, policy)
+    save_history(history)
     measured = measure(rows, deadline(), policy)
     if not measured['steps']:
         # Populacao VAZIA sob esta politica: a comparacao nao existe, e um PASS
