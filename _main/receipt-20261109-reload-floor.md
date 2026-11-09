@@ -282,3 +282,47 @@ vivo. Portao: arm **A15** do `worker-thread-limit-oracle.py` (AST sobre a tupla;
 worker ESCREVA a linha e que o `_pump` publique por `startswith(ENGINE_VISIBLE_TAGS)`) + mutante
 **M10** que arranca a tag da tupla. Medido: `VERDICT: PASS (15/15)` e `--neg-arm` **rc=1**, 10
 mutantes apanhados. `verified` nao: a linha so' aparece no proximo arranque da shell.
+
+## 11. O INSTRUMENTO DA FRESCURA TINHA UMA REFERENCIA QUE ANDA (2026-11-09, 13:1x)
+
+Correcao do watcher, aceite e landada. O `live-code-freshness-oracle.py` decidia pela prova A
+(etiqueta gravada no arranque x hash do disco **agora**) e, quando ela existia, **nunca corria** a
+prova B (instante do arranque x `mtime` de cada ficheiro). O veredicto era verdadeiro e nao
+falsificavel: a segunda ponta da prova A move-se a cada commit, logo o numero citado numa DM morre em
+minutos -- medido nesta sessao, o mesmo ficheiro lido duas vezes deu `3FED08353D1B` e depois
+`72CB6AC71423` (objectos diferentes: 102 ficheiros contra 1, os dois certos).
+
+O que mudou:
+
+* **as duas provas correm sempre**, e o relatorio nomeia qual das pontas se move:
+  `processo: sha256=… <- GRAVADO no arranque, nao muda` / `disco: sha256=… <- lido AGORA (hora),
+  move-se a cada commit` / `prova A: hash diferente` / `prova B: 13 ficheiro(s) com mtime depois do
+  arranque`. A frase reproduzivel passa a ser a da prova B: **13 ficheiros mudaram depois das
+  08:14:03.288**, com a lista.
+* **cada avaliacao fica gravada** em `_main/_cache/live-code-freshness.jsonl` (append-only, roda a
+  256 KB): `at`, veredicto, `pid`, `started`, `boot_hash`, `disk_hash_at`, as duas provas e os
+  ficheiros. "O que ele dizia as 13:20" deixa de depender de alguem o ter citado bem.
+* **controlo**: novo caso `B-manda-com-A-igual` (hash igual, arranque anterior ao codigo) -> STALE.
+  `--control` PASS com 6 casos; `--strict` continua **rc=3**.
+* **um defeito que o controlo apanhou a escrever isto**: o instante do arranque vem truncado ao
+  segundo e o `mtime` tem sub-segundo, logo um ficheiro do MESMO segundo do arranque aparecia como
+  "mudou depois". Tolerancia de 1 s, com o porque' no codigo.
+
+O veredicto do processo do dono nao mudou (STALE, 13 ficheiros, o mais recente `sotto_webview.py` as
+10:04:47): o que mudou e' a qualidade da prova.
+
+### 11-bis. O CONJUNTO TAMBEM E' UM INSTRUMENTO (mesma DM, segunda metade)
+
+O watcher confirmou os 13 com um instrumento dele (`os.walk` em `app/` + `worker/`) e explicou porque
+tinha escrito 46 antes: a leitura anterior incluia `_main/*.py` (11 ferramentas que a app nao carrega) e
+os `.json` de estado, que mudam a cada minuto de uso. Os dois numeros estavam certos para o SEU
+conjunto -- logo o numero nao era reproduzivel sem ele. Duas mudancas:
+
+* a linha do relatorio passou a nomear o conjunto: `conjunto: 102 ficheiro(s) de code_identity()`;
+* `--files` imprime o conjunto inteiro com `mtime` e a marca `DEPOIS`/`antes` contra o arranque. Medido
+  agora: `--files | grep -c DEPOIS` = **13**, exactamente o numero do relatorio e o do instrumento
+  independente dele.
+
+Frase reproduzivel fixada: **13 ficheiros de app/ + worker/ mudaram depois das 08:14:03.288, o mais
+recente `app/webview/sotto_webview.py` as 10:04:47** -- e o comando que a verifica e'
+`python _main/live-code-freshness-oracle.py --files` (ou o `os.walk` dele).

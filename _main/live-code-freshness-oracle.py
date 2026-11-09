@@ -213,6 +213,7 @@ def judge(mod, text):
     detail['changed_after'] = changed
     detail['missing'] = detail['missing'] + missing
     detail['proof_b'] = len(changed)
+    detail['set_size'] = len(_code_files(mod))
     if a_differs:
         why = ('a etiqueta do processo nao e a do disco AGORA (prova A, referencia '
                'movel); a prova B confirma: %d ficheiro(s) mudaram depois do '
@@ -244,6 +245,12 @@ def report(verdict, detail, log_path):
     pb = detail.get('proof_b')
     print('  prova B : %s' % ('%d ficheiro(s) com mtime depois do arranque'
                               % pb if pb is not None else 'indisponivel'))
+    # O CONJUNTO ESCRITO, nao implicito (correcao do watcher, 2026-11-09): sem
+    # ele o contador nao e' reproduzivel -- a MESMA maquina deu 13 com o conjunto
+    # desta etiqueta e 46 com `app/ + worker/` mais os `.json` de estado, e os
+    # dois numeros estavam certos para o SEU conjunto. `--files` imprime o meu.
+    print('  conjunto: %d ficheiro(s) de code_identity() -- `--files` lista-os'
+          % detail.get('set_size', 0))
     print('  porque  : %s' % (detail.get('why') or '?'))
     if detail.get('changed_after'):
         for name in detail['changed_after']:
@@ -520,6 +527,8 @@ def main(argv=None):
     ap.add_argument('--log', default=DEFAULT_LOG)
     ap.add_argument('--strict', action='store_true',
                     help='rc=3 quando STALE (um step de bateria nao usa isto)')
+    ap.add_argument('--files', action='store_true',
+                    help='imprime o CONJUNTO que a prova B julga, com mtime')
     ap.add_argument('--control', action='store_true',
                     help='prova as duas provas contra logs sinteticos')
     ap.add_argument('--neg-arm', action='store_true',
@@ -536,6 +545,28 @@ def main(argv=None):
         print('LIVE_CODE UNKNOWN -- a shell nao importa: %r' % (exc,))
         return 2
 
+    if args.files:
+        started = 0.0
+        if os.path.exists(args.log):
+            line = _last(_read_tail(args.log).splitlines(), 'SHELL_STARTUP_STAGE')
+            started = _stamp_of(line) or 0.0
+        names = _code_files(mod)
+        print('CONJUNTO %d ficheiro(s) -- os que a etiqueta do processo cobre '
+              '(arranque=%s)' % (len(names),
+                                 time.strftime('%Y-%m-%d %H:%M:%S',
+                                               time.localtime(started))
+                                 if started else '?'))
+        for name in names:
+            path = os.path.join(SHELL_DIR, name)
+            try:
+                mtime = time.strftime('%Y-%m-%d %H:%M:%S',
+                                      time.localtime(os.path.getmtime(path)))
+                mark = 'DEPOIS' if started and os.path.getmtime(path) > started + 1.0 \
+                    else 'antes '
+            except OSError:
+                mtime, mark = '(ausente)', '       '
+            print('  %s %s %s' % (mark, mtime, name))
+        return 0
     if args.control:
         return control(mod)
 
