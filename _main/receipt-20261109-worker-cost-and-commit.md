@@ -201,3 +201,67 @@ de trava (`grep -n "CreateMutex|mutex|SINGLETON" worker/sotto_worker.py` = 0), p
 isso uma lane ou um script que o largue directamente cria um segundo worker — foi o
 que a minha propria sonda fez hoje. O que existe e' um portao do LARGADOR, nao do
 processo.
+
+## 7.5 OS 36 FIOS DO STREAM NAO TEM BOTAO (medido 2026-11-09, resposta a dm-dcf7fdb3659187751249)
+
+O watcher corrigiu a minha medida (`p50 6 %c`, `p99 634 %c`, 15 de 90 amostras acima de
+300 %c) e perguntou de onde vem os ~60 fios que nao sao o ORT. A resposta tem nome, e
+muda o alvo da cura.
+
+### O CENSO, lido do proprio Windows
+
+`GetThreadDescription` sobre os tids do pid 14712 (toolhelp, sem elevacao) devolve os nomes
+que o ONNX Runtime da' aos fios de cada sessao. Agrupado:
+
+| grupo | fios | o que e' |
+|---|---|---|
+| `session-2/3/68` | 9 cada (**27**) | `og.Model` do nemotron -- `intra_op=10` por sessao |
+| `session-1` | 12 | encoder do stream (`intra=4` -> 3) + sessoes que partilham `SessionOptions` |
+| `session-4..7, 12..15` | 1 cada (8) | decoder/joint e as quatro sessoes do parakeet (`intra=2` -> 1) |
+| `(sem nome)` | 19 | python main, WASAPI, `redux-batch`, `sotto-frontend`, canos |
+
+Mapeamento do ORT medido na mesma maquina (sessao sobre `preprocessor.onnx`, contando fios
+nomeados): **`intra=4` -> 3**, **`intra=1` -> 0**, **default -> 13**. Um grupo de 9 fios e'
+portanto `intra_op=10` -- a largura da maquina (20 logicos / 2), nao um orcamento.
+
+### O `og.Model` e' o dono, e nao aceita o numero
+
+Num processo limpo, com `OMP_NUM_THREADS=4`:
+
+```
+og.Model(dir)                                             -> +36 fios (3 sessoes x 9), load 3,8 s
+Config.set_provider_option('cpu','intraOpNumThreads','4')  -> 36 fios        IGNORADO
+genai_config.json + model.session_options/intra_op_num_threads -> ficheiro RECUSADO
+```
+
+Consequencia para a cura 12->6: `session_options()` governa as TRES sessoes de ORT do
+nemotron e **nao toca** no motor que faz o stream. O pico de 6 nucleos e' o genai a correr
+com 10 fios por sessao; o lote (`REDUX_ENGINE_DONE audio_s=15.0 windows=5 wall_s=3.64`)
+soma por cima, mas nao e' o dono do pico.
+
+### O que foi construido
+
+`worker/sotto_worker.py`: `genai_thread_ids()`, `cpu_mask()`, `cap_genai_threads()` -- chamado
+logo depois de `og.Model` + `create_streaming_processor()`. Publica
+`WORKER_GENAI_THREADS threads=N pinned=M cpus=...` em TODO arranque (com aperto ou sem ele) e
+aplica `SOTTO_GENAI_CPUS` (`4-9`, `0,1,2`) como afinidade, mais `BELOW_NORMAL` nos fios. Sem a
+variavel nada muda: um aperto nao medido no stream do dono seria a adivinha que esta casa
+proibe. `ENGINE_VISIBLE_TAGS` da shell carrega a tag.
+
+O lever e' de DENTRO do processo por medicao: `OpenThread(SET_INFORMATION)` num processo
+alheio devolve **err=5** neste assento; o dono do processo abre os seus proprios fios.
+
+### Medido e nao-medido, sem enfeite
+
+* `_main/cost-watchdog-oracle.py` **37/37** (A11 `cpu_mask` le faixas e recusa lixo; A12 a
+  linha sai mesmo sem aperto; A13 o relay na shell lido por **AST** -- a primeira versao
+  cortava no parentese de um comentario e publicava AUSENTE sobre um tag que estava la') e
+  `--neg-arm` **10/10**.
+* Worker reiniciado pelo ARTEFACTO (`cmdline` contem `sotto_worker.py`, 14712 -> 56316 em
+  **1,8 s**). Repouso, 60 s: **p50 0,0 %c, p99 3,1, max 3,1**, 63 fios, RSS 1728 MB.
+* **As linhas novas NAO aparecem no log, e a razao e' medida**: a shell viva (pid 50452)
+  arrancou as **08:14:02**; o relay de `WORKER_THREAD_PLAN` e' de 12:23 e o encanamento de
+  custo de 13:17-16:44. Um processo Python nao le codigo novo. Restart do worker nao basta
+  (o relay e' da shell) e a shell so' entra num arranque novo pela mao do dono
+  (`--no-self-relaunch`). `UNMEASURED` ate' la -- e e' a razao pela qual nao existe um p99
+  "depois" honesto neste recibo.
