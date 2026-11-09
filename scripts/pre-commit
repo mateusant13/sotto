@@ -46,8 +46,33 @@ printf 'pre-commit: running suites and parse gate (skip with SOTTO_SKIP_RUN_ALL=
 # refused with NO explanation -- which is worse than no hook, because the author cannot
 # tell a red suite from a broken hook. Capturing the code and deciding afterwards is the
 # only way the message can be delivered.
-node "$RUNNER"
-rc=$?
+# O TECTO DE CPU, POSTO NA LARGADA (2026-11-09). O gatilho: duas DMs de stutter
+# do watcher no mesmo dia em que um commit meu corria em paralelo com a largada
+# da app -- `pythonw.exe(53208)` no pico de 9,8 % da maquina (20 nucleos) com
+# `creation=6,79/s`, e o `python -m watcher perf` do mesmo minuto a atribuir os
+# estolos a `ffmpeg.exe(63048)`, `rustc.exe(42272)` e outros pythons. A bateria
+# desta casa ja' corre dentro de `python -m watcher run --cpu 40` (medido no
+# AGENTS.md); este hook era o UNICO trabalho pesado que se largava sem tecto, e
+# ele corre em todo commit de toda lane. O Job Object capa a arvore inteira
+# (`node` + os 15 suites) e devolve o rc do proprio comando.
+#   SOTTO_HOOK_NOCAGE=1 devolve o modo sem tecto e DIZ que o fez.
+HOOK_CPU_CAP="${SOTTO_HOOK_CPU_CAP:-40}"
+if [ -n "$SOTTO_HOOK_NOCAGE" ]; then
+  printf 'pre-commit: SOTTO_HOOK_NOCAGE=%s set -- running WITHOUT the CPU cap\n' "$SOTTO_HOOK_NOCAGE" >&2
+  node "$RUNNER"
+  rc=$?
+else
+  WATCHER_HOME="${SOTTO_WATCHER_HOME:-I:/!watcher}"
+  PYTHONPATH="$WATCHER_HOME${PYTHONPATH:+:$PYTHONPATH}" python -m watcher run --cpu "$HOOK_CPU_CAP" -- node "$RUNNER"
+  rc=$?
+  if [ "$rc" -eq 2 ] || [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
+    # O LARGADOR NAO EXISTE NESTA MAQUINA: nao transformar isso num commit
+    # recusado (a suite nao corriu), e nao esconder: diz e corre sem tecto.
+    printf 'pre-commit: watcher cap unavailable (rc=%s) -- running WITHOUT the cap and saying so\n' "$rc" >&2
+    node "$RUNNER"
+    rc=$?
+  fi
+fi
 if [ "$rc" -eq 0 ]; then
   exit 0
 fi
