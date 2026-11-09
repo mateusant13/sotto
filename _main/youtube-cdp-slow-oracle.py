@@ -263,6 +263,57 @@ def arm_probe_reason(mod):
     return (not bad), "bad=%r" % (bad,)
 
 
+def arm_attached_ask_has_deadline(mod):
+    """A PERGUNTA DO LACO NAO ENTREGA O LACO AO CHROME (2026-11-09, MEDIDO).
+
+    O log do dono publicou `EXTERNAL_CAPTIONS_READ_MS ms=33281.0
+    phases={'target': 33281.0, ...}` as 19:31 e repetiu as 19:42 e as 19:56: com
+    a fonte LIGADA e o cache do alvo ainda vazio, `target_video_id()` pagava um
+    `/json/list` SINCRONO no fio do laco -- 33 s de leitura, e a thread da UI a
+    nao responder (`UI_HUNG reason=caption-read-slow`).
+
+    O que se exige aqui: LIGADA e sem publicacao, a pergunta devolve '' dentro do
+    prazo (folga de 1 s sobre `_TID_WAIT_S`) e NAO chama `list_targets` no fio do
+    chamador -- quem paga a pergunta e' o fio `yt-cdp-target`.
+    """
+    old_tabs = mod.list_targets
+    calls = {"n": 0}
+    threads = []
+
+    def _slow(port=None, timeout=3.0):
+        calls["n"] += 1
+        threads.append(threading.current_thread().name)
+        time.sleep(3.0)
+        return [dict(TAB)], 0
+
+    mod.list_targets = _slow
+    src = None
+    try:
+        src = mod.CdpCaptionSource(port=1, poll_s=0.01, log=lambda _m: None)
+        src._attached = True
+        t0 = time.monotonic()
+        vid = src.target_video_id()
+        elapsed = time.monotonic() - t0
+        # O CONTADOR NAO DIZ QUEM PAGOU: o fio `yt-cdp-target` chama a mesma
+        # funcao falsa (e deve). O que se exige e' que o fio do CHAMADOR nao
+        # apareca na lista.
+        mine = threading.current_thread().name
+        caller_paid = mine in threads
+        ok = (vid == '' and elapsed < (mod._TID_WAIT_S + 1.0)
+              and not caller_paid)
+        return ok, ("vid=%r elapsed=%.2fs wait_s=%.2f chamador=%s pagou=%s "
+                    "quem_pagou=%r"
+                    % (vid, elapsed, mod._TID_WAIT_S, mine, caller_paid,
+                       threads))
+    finally:
+        if src is not None:
+            try:
+                src.stop()
+            except Exception:             # noqa: BLE001
+                pass
+        mod.list_targets = old_tabs
+
+
 def arm_unattached_no_spin(mod):
     """SEM LIGACAO O FIO NAO PODE BATER A PORTA SEM PARAR (2026-11-05, MEDIDO).
 
@@ -334,6 +385,7 @@ ARMS = [
     ("inv controle: dois prazos nao fecham", False, control_two_timeouts),
     ("A4 nome-honesto", True, arm_probe_reason),
     ("A5 sem-ligacao-nao-vira-turbina", True, arm_unattached_no_spin),
+    ("A6 pergunta-ligada-tem-prazo", True, arm_attached_ask_has_deadline),
 ]
 
 #: mutacoes de uma COPIA do modulo -- cada uma derruba a arm que a julga.

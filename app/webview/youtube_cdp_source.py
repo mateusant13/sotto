@@ -919,6 +919,12 @@ _TID_SLOW_TTL_S = 10.0
 #: o que o "imediato" do dono custa. Uma chamada lenta estica para
 #: `_TID_SLOW_TTL_S` (ver abaixo), e nada muda na porta morta.
 _TID_TTL_S = 0.5
+#: O PRAZO DA PRIMEIRA PERGUNTA (2026-11-09). A leitura do laco espera o fio
+#: `yt-cdp-target` publicar, mas nao para sempre: medido no log do dono,
+#: `EXTERNAL_CAPTIONS_READ_MS ms=33281.0 phases={'target': 33281.0}` com o
+#: Chrome a 100 % -- o cache vazio respondia com um `/json/list` SINCRONO no fio
+#: do laco. Este numero e' o que o laco aceita perder em vez disso.
+_TID_WAIT_S = 0.30
 #: O NOME DO FIO QUE PAGA A PERGUNTA (2026-11-08). Nomeado porque
 #: `_main/shell-thread-cpu.py` atribui CPU por nome de fio, e porque o recibo
 #: desta mudanca tem de poder dizer ONDE o `/json/list` lento corre: se ele
@@ -1338,7 +1344,37 @@ class CdpCaptionSource:
         cached = getattr(self, '_tid_cache', None)
         if cached is not None:
             return cached[1]
-        return self._tid_refresh()
+        # A PRIMEIRA PERGUNTA ESPERA -- COM PRAZO (2026-11-09, MEDIDO).
+        # `EXTERNAL_CAPTIONS_READ_MS ms=33281.0 phases={'target': 33281.0, ...}`
+        # no log do dono, as 19:31, repetido as 19:42 e as 19:56: a leitura
+        # INTEIRA presa em `target`, porque o cache nasce vazio em cada objeto
+        # novo e a resposta era `self._tid_refresh()` -- um `/json/list` pago no
+        # fio do LACO, com o Chrome dele a 100 % de um nucleo. Trinta e tres
+        # segundos de laco entregues a' contencao do browser, e a thread da UI a
+        # nao responder (`UI_HUNG reason=caption-read-slow`, 5 vezes na noite).
+        #
+        # A EXCECAO E' A FONTE QUE NAO PODE PUBLICAR: sem ligacao o fio
+        # `yt-cdp-target` fica INERTE por desenho (ele nao faz um pedido antes de
+        # `_run` marcar `_attached`), logo esperar por ele aqui seria esperar por
+        # quem nao vai falar -- e um porto morto responde depressa. Nesse caso a
+        # pergunta e' paga por quem pergunta, uma vez, como sempre foi (arms
+        # STALE-ID do `yt-target-stale-oracle` e A5 do `youtube-cdp-slow-oracle`
+        # julgam exactamente isto).
+        self._tid_start()
+        if not getattr(self, '_attached', False):
+            return self._tid_refresh()
+        _until = time.monotonic() + _TID_WAIT_S
+        while time.monotonic() < _until:
+            cached = getattr(self, '_tid_cache', None)
+            if cached is not None:
+                return cached[1]
+            self._stop.wait(0.02)
+        self._tid_waits = int(getattr(self, '_tid_waits', 0)) + 1
+        if self._tid_waits in (1, 10, 100) or self._tid_waits % 500 == 0:
+            self._log('YOUTUBE_TARGET_UNPUBLISHED waits=%d wait_s=%.2f '
+                      'attached=%s' % (self._tid_waits, _TID_WAIT_S,
+                                       bool(getattr(self, '_attached', False))))
+        return ''
 
     # -- o fio do alvo ----------------------------------------------------
     def _tid_start(self):

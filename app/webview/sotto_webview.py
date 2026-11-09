@@ -3416,18 +3416,36 @@ class YouTubeTrackThread(threading.Thread):
                len(paint) if paint else 0))
 
 
-def poll_step(idle_for, paused, base, idle):
+#: A LEITURA QUE CUSTOU CARO DESCE O PASSO (2026-11-09, MEDIDO).
+#: O laco pedia 10 Hz sem olhar ao que a leitura ANTERIOR custou. Medido no log do
+#: dono (19:50-19:56): `EXTERNAL_CAPTIONS_READ_STATS n=548 mean_ms=0.3 max_ms=125.0`
+#: e `max_ms=406.0` -- a media e' barata e o pico de meio segundo existe, e o
+#: pico e' o que trava a thread da UI (`UI_HUNG reason=caption-read-slow`).
+#: Quando uma leitura passa disto, o passo vai para `READ_SLOW_STEP_S` durante
+#: `READ_SLOW_HOLD_S`: pedir MAIS VEZES a mesma fonte que acabou de custar meio
+#: segundo e' pagar a contencao em vez de esperar por ela. Nunca acima do passo
+#: IDLE (uma escada nao pode ser mais lenta que o fundo).
+READ_SLOW_MS = 200.0
+READ_SLOW_STEP_S = 0.25
+READ_SLOW_HOLD_S = 1.0
+
+
+def poll_step(idle_for, paused, base, idle, slow=False):
     """O PASSO DO LACO DA LEGENDA EXTERNA, como funcao pura.
 
     Existe para ser JULGADO: a decisao estava enterrada no meio de um laco de
-    200 linhas, e um laco nao se testa sem um desktop. Duas razoes descem o
-    passo -- cinco segundos sem leitura de player (`idle_for`) e o video
-    PAUSADO (`paused`) --, porque uma legenda nao muda com o video parado.
+    200 linhas, e um laco nao se testa sem um desktop. Tres razoes descem o
+    passo -- cinco segundos sem leitura de player (`idle_for`), o video
+    PAUSADO (`paused`) e a leitura ANTERIOR medida acima de `READ_SLOW_MS`
+    (`slow`) --, porque uma legenda nao muda com o video parado e porque uma
+    fonte que acabou de custar meio segundo pede espaco, nao cadencia.
     MEDIDO 2026-11-05, na instancia do dono com o video pausado: o laco a 10 Hz
     custava 16,3% de um nucleo com o painel escondido; a 4 Hz custa 8,1%.
     """
     if idle_for >= 5.0 or paused:
         return idle
+    if slow:
+        return min(idle, max(base, READ_SLOW_STEP_S))
     return base
 
 
@@ -3708,10 +3726,11 @@ class ExternalCaptionWatcher(threading.Thread):
                     _n = len(self._read_ms)
                     _sorted = sorted(self._read_ms)
                     log('EXTERNAL_CAPTIONS_READ_STATS n=%d mean_ms=%.1f p95_ms=%.1f '
-                        'max_ms=%.1f interval_s=%.2f'
+                        'max_ms=%.1f interval_s=%.2f step_s=%.2f'
                         % (_n, sum(_sorted) / float(_n or 1),
                            _sorted[min(_n - 1, int(_n * 0.95))] if _n else 0.0,
-                           _sorted[-1] if _n else 0.0, self.INTERVAL_S))
+                           _sorted[-1] if _n else 0.0, self.INTERVAL_S,
+                           getattr(self, '_last_step', self.INTERVAL_S)))
                     self._read_stats_at = _t_read
                 if _ms > 40.0:
                     _now = time.monotonic()
@@ -3719,6 +3738,17 @@ class ExternalCaptionWatcher(threading.Thread):
                         self.read_slow_logged = _now
                         log('EXTERNAL_CAPTIONS_READ_MS ms=%.1f phases=%s'
                             % (_ms, getattr(self, '_yt_phases', {})))
+                # A LEITURA QUE CUSTOU CARO PEDE ESPACO (2026-11-09). O passo
+                # desce durante `READ_SLOW_HOLD_S` e volta sozinho: uma leitura
+                # barata a seguir nao precisa de segunda condicao.
+                _slow = _ms > READ_SLOW_MS
+                if _slow:
+                    self._read_slow_until = time.monotonic() + READ_SLOW_HOLD_S
+                if _slow != getattr(self, '_read_slow_logged', None):
+                    self._read_slow_logged = _slow
+                    log('EXTERNAL_CAPTIONS_READ_PACED slow=%s last_ms=%.1f '
+                        'step_s=%.2f hold_s=%.1f'
+                        % (_slow, _ms, READ_SLOW_STEP_S, READ_SLOW_HOLD_S))
             except Exception as exc:  # noqa: BLE001
                 self.failures += 1
                 if self.failures <= 3:
@@ -3765,7 +3795,9 @@ class ExternalCaptionWatcher(threading.Thread):
                     % (_yt_paused, self.IDLE_INTERVAL_S if _yt_paused
                        else self.INTERVAL_S))
             _step = poll_step(_idle_for, _yt_paused,
-                              self.INTERVAL_S, self.IDLE_INTERVAL_S)
+                              self.INTERVAL_S, self.IDLE_INTERVAL_S,
+                              time.monotonic() < getattr(self, '_read_slow_until', 0.0))
+            self._last_step = _step
             # O CUSTO DO DESENHO TAMBEM E' UM NUMERO (2026-11-03). Com a leitura
             # ja' barata (17 Hz medidos) o laco caiu para 0,5-5 Hz noutros
             # momentos: o que sobra e' `_tick`, que pinta a janela. Sem esta

@@ -63,7 +63,18 @@ if [ -n "$SOTTO_HOOK_NOCAGE" ]; then
   rc=$?
 else
   WATCHER_HOME="${SOTTO_WATCHER_HOME:-I:/!watcher}"
-  PYTHONPATH="$WATCHER_HOME${PYTHONPATH:+:$PYTHONPATH}" python -m watcher run --cpu "$HOOK_CPU_CAP" -- node "$RUNNER"
+  # O SEPARADOR E' O DO WINDOWS (2026-11-09, MEDIDO). Aqui estava
+  # `"$WATCHER_HOME${PYTHONPATH:+:$PYTHONPATH}"`: quando o ambiente JA' tinha
+  # um `PYTHONPATH` (o caso desta casa, `I:/!watcher`), o valor saia
+  # `I:/!watcher:I:/!watcher` e o Python do Windows -- que separa por `;` --
+  # lia isso como UM caminho inexistente e o hook recusava TODO commit com
+  # `No module named watcher`. Medido: com o valor duplicado o import falha,
+  # com o valor unico passa. `case` em `:`/`%` no `OS` do shell cobre os dois.
+  _SEP=':'
+  case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*) _SEP=';' ;;
+  esac
+  PYTHONPATH="$WATCHER_HOME${PYTHONPATH:+$_SEP$PYTHONPATH}" python -m watcher run --cpu "$HOOK_CPU_CAP" -- node "$RUNNER"
   rc=$?
   if [ "$rc" -eq 2 ] || [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
     # O LARGADOR NAO EXISTE NESTA MAQUINA: nao transformar isso num commit

@@ -73,10 +73,19 @@ def poll_step_from(path):
     """
     src = _src(path)
     tree = ast.parse(src)
+    # AS CONSTANTES DA ESCADA VIAJAM COM A FUNCAO (2026-11-09). A funcao
+    # extraida sozinha dependia de `READ_SLOW_STEP_S` e o oraculo morria num
+    # `NameError` -- um instrumento que nao corre nao mede.
+    keep = []
+    for sub in tree.body:
+        if isinstance(sub, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id.startswith('READ_SLOW_')
+                for t in sub.targets):
+            keep.append(sub)
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name == 'poll_step':
             ns = {}
-            exec(compile(ast.Module(body=[node], type_ignores=[]),
+            exec(compile(ast.Module(body=keep + [node], type_ignores=[]),
                          path, 'exec'), ns)
             return ns['poll_step'], node
     return None, None
@@ -96,6 +105,32 @@ def arms():
     add(fn(0.1, False, 0.10, 0.25) == 0.10,
         'A4 o resume devolve o passo BASE na volta seguinte',
         fn(0.1, False, 0.10, 0.25))
+    # A4-bis: A LEITURA QUE CUSTOU CARO DESCE O PASSO (2026-11-09). Medido no
+    # log do dono: `EXTERNAL_CAPTIONS_READ_STATS n=548 mean_ms=0.3 max_ms=406.0`
+    # e `UI_HUNG reason=caption-read-slow` -- o pico de meio segundo existe e e'
+    # ele que trava a thread da UI; pedir 10 Hz logo a seguir paga contencao.
+    add(fn(0.0, False, 0.10, 0.25, True) == 0.25,
+        'A4-bis a leitura LENTA desce o passo', fn(0.0, False, 0.10, 0.25, True))
+    add(fn(0.0, False, 0.10, 0.25, True) <= min(0.25, 0.25),
+        'A4-ter o passo LENTO nunca passa o passo IDLE')
+    add(fn(0.0, False, 0.10, 0.10, True) == 0.10,
+        'A4-quater com IDLE igual ao BASE a escada nao inventa um passo mais lento')
+    step_consts = {}
+    for node in ast.walk(ast.parse(_src(SHELL))):
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id in ('READ_SLOW_MS',
+                                                        'READ_SLOW_STEP_S',
+                                                        'READ_SLOW_HOLD_S') \
+                        and isinstance(node.value, ast.Constant):
+                    step_consts[t.id] = node.value.value
+    add(step_consts.get('READ_SLOW_MS') is not None
+        and step_consts.get('READ_SLOW_STEP_S') is not None
+        and 0.0 < step_consts['READ_SLOW_STEP_S'] < 1.0
+        and (step_consts.get('READ_SLOW_HOLD_S') or 0) > 0.0,
+        'A4-quinquies os tres numeros da escada existem e tem valores uteis',
+        step_consts)
+
 
     # A5: no laco, `_step` e' o que a funcao devolve
     tree = ast.parse(_src(SHELL))
@@ -107,6 +142,18 @@ def arms():
                     and getattr(sub.value.func, 'id', '') == 'poll_step':
                 ok = True
     add(ok, 'A5 no laco `_step` vem de `poll_step` (a decisao nao voltou para dentro)')
+
+    # A5-bis: a chamada do laco LEVA o quinto argumento (o estado medido). Sem
+    # ele a escada existe na funcao e nao e' usada por ninguem -- a classe do
+    # instrumento sem chamador.
+    wired = False
+    for sub in ast.walk(tree):
+        if isinstance(sub, ast.Assign) and isinstance(sub.value, ast.Call) \
+                and getattr(sub.value.func, 'id', '') == 'poll_step':
+            call = sub.value
+            if len(call.args) >= 5 or any(k.arg == 'slow' for k in call.keywords):
+                wired = True
+    add(wired, 'A5-bis o laco PASSA o estado de leitura lenta a `poll_step`')
 
     # A6: idle < base -- lido DENTRO da classe do laco (o ficheiro tem mais de
     # um `INTERVAL_S`, e a primeira versao desta arm leu o de outra classe:
@@ -158,6 +205,11 @@ def neg_arm():
     if mutated == src:
         print('NEG-ARM IMPOSSIVEL -- a condicao nao foi encontrada para mutar')
         return 2
+    # OS DOIS MUTANTES, cada um no SEU braco: (1) a pausa desarmada -> A2/A4
+    # vermelhas; (2) a escada da leitura lenta apagada da funcao -> A4-bis
+    # vermelha. Um controlo que so' muta uma metade certifica metade.
+    mutated2 = re.sub(r'if slow:\n\s+return min\(idle, max\(base, READ_SLOW_STEP_S\)\)',
+                      'if False:\n        return base', mutated, count=1)
     tmp = os.path.join(tempfile.mkdtemp(prefix='neg-pace-'), 'sotto_webview.py')
     io.open(tmp, 'w', encoding='utf-8', newline='').write(mutated)
     real = SHELL
@@ -171,11 +223,25 @@ def neg_arm():
         ok = any(r[1].startswith('A2') for r in red)
         print('NEG-ARM %s -- %d arm(s) RED, A2 entre elas=%s'
               % ('PASS' if ok else 'FAIL', len(red), ok))
+        second = True
+        if mutated2 == mutated:
+            print('NEG-ARM M2 IMPOSSIVEL -- a escada lenta nao foi encontrada')
+            second = False
+        else:
+            io.open(tmp, 'w', encoding='utf-8', newline='').write(mutated2)
+            ROWS.clear()
+            print('=== NEG-ARM M2: a escada da leitura lenta apagada numa COPIA')
+            arms()
+            red2 = [r for r in ROWS if not r[0]]
+            m2 = any(r[1].startswith('A4-bis') for r in red2)
+            print('NEG-ARM M2 %s -- %d arm(s) RED, A4-bis entre elas=%s'
+                  % ('PASS' if m2 else 'FAIL', len(red2), m2))
+            second = m2
         # A CONVENCAO DA CASA: o braco negativo devolve **1** quando APANHA o
         # mutante (o passo vizinho e' `:expectred ... 1`). Devolver 0 ao apanhar
         # faz do controlo um passo que nunca pode falhar -- a primeira versao
         # deste ficheiro tinha-o ao contrario e o `:expectred` ficava decorativo.
-        return 1 if ok else 0
+        return 1 if (ok and second) else 0
     finally:
         SHELL = real
         try:
