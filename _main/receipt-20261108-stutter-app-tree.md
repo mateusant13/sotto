@@ -172,6 +172,21 @@ python _main/ort-spin-idle.py           -> VERDICT: PASS   (A2 ocioso=0,0% contr
 python _main/ort-spin-idle.py --neg-arm -> NEG-ARM: PASS -- mutacoes=2
 ```
 
+## 8. A CORRIDA QUE O REINICIO INTERROMPEU, REFEITA (caged, 396 passos, 1007 s)
+
+Fecha em `BATTERY-VERDICT: RED -- 4 step(s) failed`, e as quatro eram **instrumento**:
+
+| passo | numero | causa medida | cura |
+|---|---|---|---|
+| `claims-date` | rc=1 `new-undated-claim` | a frase dos 146,2 %% -> 42,0 %% que eu escrevi no `AGENTS.md` nao levava data | data `2026-11-08 18:31` na frase; `claims-date` PASS e `--neg-arm` 6/6 (rc=1) |
+| `red-as-expected-claims-date` | rc=2 | o mesmo defeito a montante (o positivo caia antes do controlo) | desimpedido pelo anterior |
+| `warm-engine` | arm 17 `stop-detaches-not-kills RED (busy)` | o segundo `attach` de 500 ms e' POLITICA, nao invariante; sob o tecto de 40 %% o motor respondia `busy` | repetir o mesmo pedido com o mesmo prazo ate' 15 s de parede; sozinho 22/22, sob `--cpu 40` 22/22, `--neg-arm` 6/6 |
+| `red-as-expected-battery-budget` | rc=0 | o candidato da M2 era "o passo mais caro que cabe", sem exigir ATRAVESSAR o ratchet por passo: mutou 93 s -> 121 s contra um baseline de 219 s | seleccao exige `elapsed*1.30 > baseline*1.20`; sem candidato e' CANNOT-MEASURE. `NEG-ARM: PASS (2/2)`, M2 apanhada no `headphone-cut` (60,7 -> 79,0 contra 73,3) |
+
+Nota de instrumento que fica registada: o `battery-budget` POSITIVO invocado fora da corrida
+diz `politica de largada diferente do baseline (baseline='cap40', corrida=None)` -- ele so' e'
+verdadeiro dentro da corrida, que e' quem carimba `policy`. Rodar o passo a mao e ler o RED como
+regressao seria a mesma classe que este recibo existe para apagar.
 ## 7. O QUE FALTA, e porque nao e' uma afirmacao
 
 - **O worker** ja' corre o codigo curado (recarregado §5): 146 % -> 42 % de um nucleo, com o resto
