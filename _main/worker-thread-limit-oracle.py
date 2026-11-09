@@ -98,6 +98,10 @@ sys.path.insert(0, WORKER_DIR)
 VARS = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
         "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS")
 
+class SetupError(Exception):
+    """Um braco ou um mutante nao pode ser construido. rc=2, NUNCA rc=1."""
+
+
 RESULTS = []
 _LOADS = [0]
 
@@ -196,11 +200,26 @@ class _FakeOrt:
 
 
 def arm_a4(path):
+    """O CONTRATO MUDOU E O BRACO TEM DE DIZER O NOVO (medido 2026-11-09).
+
+    O `session_options` passou a ser POR GRAFO: o encoder leva `threads`, o decoder e o
+    joiner levam o piso pequeno (`min(threads, _small_graph_threads())`). O motivo esta'
+    no proprio worker e foi medido: as tres sessoes nascendo com o mesmo pool davam 12
+    fios a um fluxo. O arm antigo pedia `intra==2` para uma sessao COMUM, o que agora e'
+    pedir que o piso nao exista -- ele ficou RED por desenho quando a cura entrou.
+    O arm passa a exigir as DUAS metades, e a segunda e' a que protege o teto.
+    """
     def probe(mod):
-        so = mod.session_options(_FakeOrt(), '', 2)
-        ok = (so.intra_op_num_threads == 2 and so.inter_op_num_threads == 1)
-        return ok, 'intra=%r inter=%r' % (so.intra_op_num_threads,
-                                          so.inter_op_num_threads)
+        enc = mod.session_options(_FakeOrt(), '', 2, encoder=True)
+        small = mod.session_options(_FakeOrt(), '', 2)
+        small4 = mod.session_options(_FakeOrt(), '', 4)
+        ok = (enc.intra_op_num_threads == 2 and enc.inter_op_num_threads == 1
+              and small.intra_op_num_threads == 1
+              and small.inter_op_num_threads == 1
+              and small4.intra_op_num_threads == 1)
+        return ok, ('encoder intra=%r/%r | small(2) intra=%r | small(4) intra=%r'
+                    % (enc.intra_op_num_threads, enc.inter_op_num_threads,
+                       small.intra_op_num_threads, small4.intra_op_num_threads))
     return with_worker(path, None, probe)
 
 
@@ -536,7 +555,10 @@ def mutate(src_path, dst_path, pairs):
     text = open(src_path, encoding='utf-8').read()
     for old, new in pairs:
         if old not in text:
-            raise SystemExit('MUTATION IMPOSSIVEL: %r nao existe em %s'
+            # SETUP ERROR, NAO rc=1. Um mutante que nao pode nascer tem de sair com um
+            # codigo que o passo do `--neg-arm` NAO aceita -- senao "nao consegui mutar"
+            # passa por "apei o mutante".
+            raise SetupError('MUTATION IMPOSSIVEL: %r nao existe em %s'
                              % (old, src_path))
         text = text.replace(old, new, 1)
     open(dst_path, 'w', encoding='utf-8', newline='').write(text)
@@ -577,10 +599,14 @@ def run_negative():
         shell_m10 = mutate(
             SHELL, os.path.join(tmp, 'sotto_webview_m10.py'),
             [("'REDUX_SHEDDING', 'WORKER_THREADS',", "'REDUX_SHEDDING',")])
+        # A ANCORA DEIXA DE SER UMA FORMA DE FORMATAR (medido 2026-11-09): o M11 citava
+        # o par `'WORKER_THREADS',` + `'REDUX_SWITCH',` na INDENTACAO de entao; um
+        # comentario entre as duas linhas matou a ancora e o `--neg-arm` saia `MUTATION
+        # IMPOSSIVEL` com rc=1 -- indistinguivel, por rc, de "os mutantes foram apanhados".
+        # Agora a mutacao e' cirurgica e nao depende de espaco: apaga o TOKEN da lista.
         shell_m11 = mutate(
             SHELL, os.path.join(tmp, 'sotto_webview_m11.py'),
-            [("'WORKER_THREADS',\n                       'REDUX_SWITCH',",
-              "'WORKER_THREADS',")])
+            [("if line.startswith(ENGINE_VISIBLE_TAGS):", "if False:")])
         warm_m9 = mutate(
             WARM, os.path.join(tmp, 'warm_engine_m9.py'),
             [('applied = apply_thread_budget(import_worker(args.root), args.threads)',
@@ -633,7 +659,13 @@ def run_negative():
 
 def main(argv):
     if '--neg-arm' in argv:
-        return 1 if run_negative() else 0
+        try:
+            caught = run_negative()
+        except SetupError as exc:
+            print('NEG-ARM SETUP ERROR: %s' % exc)
+            print('NEG-ARM: rc=2 -- nao houve mutacao para julgar (nao e um PASS)')
+            return 2
+        return 1 if caught else 0
     ok = run_positive()
     print('VERDICT: %s (%d/%d)' % ('PASS' if ok else 'FAIL',
                                    sum(1 for _n, o, _d in RESULTS if o),
