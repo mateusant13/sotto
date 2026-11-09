@@ -326,3 +326,39 @@ conjunto -- logo o numero nao era reproduzivel sem ele. Duas mudancas:
 Frase reproduzivel fixada: **13 ficheiros de app/ + worker/ mudaram depois das 08:14:03.288, o mais
 recente `app/webview/sotto_webview.py` as 10:04:47** -- e o comando que a verifica e'
 `python _main/live-code-freshness-oracle.py --files` (ou o `os.walk` dele).
+
+## 12. O ARMAMENTO DO PASSE DE FUNDO NAO TINHA LINHA VIVA -- E A PROVA DISSO E' UMA LISTA (2026-11-09, 13:2x)
+
+Ao contar as cargas de hoje pelo log do dono apareceu outra coisa. Depois do worker novo das
+09:07:04, `grep -c "REDUX_SWITCH armed"` = **0**, o que eu ia ler como "o interruptor nao esta'
+armado". Nao era isso: `grep -c REDUX_SWITCH` no log inteiro da' **21**, e **todas** as 21 estao
+dentro de um `stderr_tail=[...]` de um `BRIDGE_EXIT` -- ou seja, a linha do armamento existe e so'
+aparece na CAUDA DA MORTE.
+
+A causa esta' numa tupla: `ENGINE_VISIBLE_TAGS` (`app/webview/sotto_webview.py`), o filtro do
+`_pump` para o que sobe ao log enquanto o worker corre. Tinha `REDUX_ENGINE_LOAD`,
+`REDUX_SHEDDING` e `WORKER_THREADS`; **nao tinha** `REDUX_SWITCH` nem `REDUX_BATCH_KICK`. A linha que
+responde "o passe de fundo esta' armado na app do dono?" era, na pratica, invisivel -- a mesma classe
+de 2026-11-01 ("o interruptor existia e nunca era construido na app"): o facto existia e ninguem o
+podia ler.
+
+Curado no ficheiro e no portao:
+
+* `ENGINE_VISIBLE_TAGS` ganhou `REDUX_SWITCH` e `REDUX_BATCH_KICK`, com o porque' medido no commentario;
+* a arm **A15** do `_main/worker-thread-limit-oracle.py` deixou de exigir UMA tag e passa a exigir o
+  CONJUNTO (`WORKER_THREADS`, `REDUX_SWITCH armed`, `REDUX_BATCH_KICK`), com o emissor lido como a UNIAO
+  `worker/sotto_worker.py` + `worker/engine_switch.py` -- as duas tags novas nascem no `engine_switch`,
+  e um portao que lesse so' o worker acusaria quem esta' certo (foi esse o primeiro RED que ele deu);
+* o mutante **M11** tira `REDUX_SWITCH` da tupla numa copia e a A15 tem de cair. Medido:
+  `VERDICT: PASS (15/15)` e `NEG-ARM: PASS -- 11 mutants caught`, cada mutante derrubado pela SUA arm.
+
+### 12-bis. O `code-health` estava RED com a divida de HOJE, nao com a minha
+
+O passo estava a falhar desde as cures de hoje (`sotto_webview.py` +32 400 B, `history_context.py`
+novo, `engine_switch.py` +6 344 B, `warm_engine.py`, `load_shedding.py`, `engine_policy.py`,
+`panel.js`, `history-store.js`). O baseline foi regenerado (`--update`) e o diff **inteiro** sao as 16
+linhas que este dia landou: `brand-bridge.js`, `caption-formulation.js`, `history-store.js`,
+`panel-unified.css`, `panel.css` (-492 B), `panel.js`, `caption_drag.py`, `caption_overlay.py`,
+`history_context.py` (novo), `load_shedding.py`, `sotto_webview.py`, `warm_engine.py`,
+`youtube_cdp_source.py`, `engine_policy.py`, `engine_switch.py`, `sotto_worker.py` -- nenhum ficheiro
+fora das cures desta sessao. Depois: `CODE-HEALTH VERDICT PASS`, `--neg-arm` 3/3.

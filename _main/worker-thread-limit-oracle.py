@@ -260,11 +260,25 @@ def arm_a15(shell_path, worker_path):
             tags = list(ast.literal_eval(node.value))
         except Exception:                                          # noqa: BLE001
             tags = None
-    writer = 'WORKER_THREADS' in open(worker_path, encoding='utf-8',
-                                      errors='replace').read()
+    writer_src = open(worker_path, encoding='utf-8', errors='replace').read()
     publish = 'line.startswith(ENGINE_VISIBLE_TAGS)' in src
-    ok = bool(tags) and 'WORKER_THREADS' in tags and writer and publish
-    return ok, 'tags=%r writer=%s publish=%s' % (tags, writer, publish)
+    # O CONJUNTO QUE TEM DE ESTAR LEGIVEL, cada um com o seu porque': o orcamento de
+    # fios (`WORKER_THREADS`), o ARMAMENTO do passe de fundo (`REDUX_SWITCH armed=`) e o
+    # proprio passe (`REDUX_BATCH_KICK`). Os dois ultimos entraram em 2026-11-09 depois
+    # de a medicao mostrar que a linha do armamento existia e morria na cauda da morte
+    # (21 ocorrencias no log vivo, todas dentro de `stderr_tail=[...]`).
+    # As duas tags do passe de fundo NAO nascem no `sotto_worker.py`: o armamento e o
+    # proprio passe vivem no `engine_switch.py` (que o worker importa), por isso o
+    # escritor e' a UNIAO dos dois -- ler so' o worker faz este braco acusar quem esta'
+    # certo, que e' a classe de erro que um portao paga caro para cometer.
+    writer_src += open(ENGINE, encoding='utf-8', errors='replace').read()
+    required = (('WORKER_THREADS', 'WORKER_THREADS'),
+                ('REDUX_SWITCH', 'REDUX_SWITCH armed'),
+                ('REDUX_BATCH_KICK', 'REDUX_BATCH_KICK'))
+    missing = [tag for tag, needle in required
+               if tag not in (tags or []) or needle not in writer_src]
+    ok = bool(tags) and not missing and publish
+    return ok, 'tags=%r missing=%r publish=%s' % (tags, missing, publish)
 
 
 def arm_a7(worker_path):
@@ -562,7 +576,11 @@ def run_negative():
               'worker.limit_threads(int(threads)); return int(threads)')])
         shell_m10 = mutate(
             SHELL, os.path.join(tmp, 'sotto_webview_m10.py'),
-            [("'REDUX_SHEDDING', 'WORKER_THREADS')", "'REDUX_SHEDDING')")])
+            [("'REDUX_SHEDDING', 'WORKER_THREADS',", "'REDUX_SHEDDING',")])
+        shell_m11 = mutate(
+            SHELL, os.path.join(tmp, 'sotto_webview_m11.py'),
+            [("'WORKER_THREADS',\n                       'REDUX_SWITCH',",
+              "'WORKER_THREADS',")])
         warm_m9 = mutate(
             WARM, os.path.join(tmp, 'warm_engine_m9.py'),
             [('applied = apply_thread_budget(import_worker(args.root), args.threads)',
@@ -586,11 +604,12 @@ def run_negative():
         c14b, d14b = caught(arm_a14, warm_m8)
         c14c, d14c = caught(arm_a14, warm_m9)
         c15, d15 = caught(arm_a15, shell_m10, WORKER)
+        c15b, d15b = caught(arm_a15, shell_m11, WORKER)
         # O braco mutado tem de ficar RED; os irmaos tem de continuar GREEN.
         ok2, d2 = arm_a2(worker_m)
         ok_all = c1 and c6 and c9 and c11 and c12 and c13 and c14 \
-            and c14b and c14c and c15 and ok2
-        add(ok_all, 'NEG-ARM M1..M10',
+            and c14b and c14c and c15 and c15b and ok2
+        add(ok_all, 'NEG-ARM M1..M11',
             'A1=%s A6=%s A9=%s A11=%s A12=%s A13=%s A14=%s/%s/%s A15=%s (A2 control=%s)' % (
                 'RED' if c1 else 'GREEN', 'RED' if c6 else 'GREEN',
                 'RED' if c9 else 'GREEN', 'RED' if c11 else 'GREEN',
@@ -601,10 +620,10 @@ def run_negative():
         for tag, detail in (('M1', d1), ('M2', d6), ('M3', d9),
                             ('M4', d11), ('M5', d12), ('M6', d13),
                             ('M7', d14), ('M8', d14b), ('M9', d14c),
-                            ('M10', d15)):
+                            ('M10', d15), ('M11', d15b)):
             print('  %s: %s' % (tag, detail))
         if ok_all:
-            print('NEG-ARM: PASS -- 10 mutants caught')
+            print('NEG-ARM: PASS -- 11 mutants caught')
             return True
         print('NEG-ARM: FAIL -- a mutation survived')
         return False

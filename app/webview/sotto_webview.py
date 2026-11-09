@@ -1351,8 +1351,18 @@ PROGRESS_TAGS = ('REDUX_BATCH_KICK', 'REDUX_ENGINE_DONE', 'REDUX_MODE',
 #: corria. Pergunta do watcher nesse dia: "76 fios em repouso e um pico de 3,9
 #: nucleos -- que orcamento esta' a correr?". Sem esta tag a resposta exige matar
 #: o worker; com ela, a linha do arranque responde.
+#: `REDUX_SWITCH` / `REDUX_BATCH_KICK` entraram em 2026-11-09, e a razao e' medida: o
+#: worker escreve `REDUX_SWITCH armed=true by=SOTTO_REDUX_WHEN_HIDDEN=1` UMA vez por
+#: arranque, e essa linha -- a unica que responde "o passe de fundo esta' armado na app do
+#: dono?" -- nunca chegava ao log enquanto ele corria. `grep -c REDUX_SWITCH` no log vivo
+#: deu **21** ocorrencias, TODAS dentro de `stderr_tail=[...]` de um `BRIDGE_EXIT`: o facto
+#: existia e so' aparecia na morte. Sem ela o `--redux-when-hidden` e' indistinguivel de
+#: desligado, exactamente a classe de 2026-11-01 ("o interruptor existia e nunca era
+#: construido na app"). O `REDUX_BATCH_KICK` viaja pelo mesmo canal e pela mesma razao: um
+#: passe que corre sem deixar rasto nao pode ser contado nem negado.
 ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
-                       'REDUX_ENGINE_LOAD', 'REDUX_SHEDDING', 'WORKER_THREADS')
+                       'REDUX_ENGINE_LOAD', 'REDUX_SHEDDING', 'WORKER_THREADS',
+                       'REDUX_SWITCH', 'REDUX_BATCH_KICK')
 
 #: O BATIMENTO DO LACO DO WORKER, reconhecido por CONTER e nao por comecar (2026-11-04).
 #: Medido com o py-spy no worker vivo: `seq=516 phase=window` e nenhuma linha no log -- o
