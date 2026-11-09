@@ -177,6 +177,7 @@ e nenhuma lane poe a app na tela dele.
 | grandeza | valor medido | instrumento |
 |---|---|---|
 | um fluxo vivo, repouso entre lotes | **0,3 %c**, io **0,00 MB/s**, 67 fios | `psutil` 6 s no pid 14712 |
+| o MESMO pid, janela de **154 s** a 1 Hz | p50 **0,0 %c** · p90 **4,6** · p99 **394,1** · max **415,6**; fios **65..67**; RSS **201 MB** | `psutil` 154 s, `I:/cc-tmp/worker-window.json` |
 | RSS / commit privado agora | **424 MB / 4608 MB** | `psutil` |
 | media de vida do worker anterior (13920 s) | **270,6 %c**, 6176 s de CPU | `WORKER_COST` no log |
 | passe de lote, medido pelo proprio worker | 15,0 s de audio em **3,64 s** de parede (5 janelas) | `REDUX_ENGINE_DONE` |
@@ -184,7 +185,9 @@ e nenhuma lane poe a app na tela dele.
 
 Leitura: o pico de 317 %c **nao e'** um pool largo a rodar um fluxo; e' o **motor de
 lote** (parakeet, 3,64 s por 15 s de audio) a correr EM CIMA do stream. Duas
-engrenagens, um processo.
+engrenagens, um processo. A janela de 154 s diz a FORMA da curva, e ela e' bimodal:
+**~90 % dos segundos a zero** e rajadas de 4 nucleos — uma media ao longo da vida
+(270,6 %c) descreve uma maquina que nunca existiu; o que existe e' o lote a bater.
 
 ### 7.4 dois workers ao mesmo tempo?
 
