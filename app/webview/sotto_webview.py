@@ -1362,6 +1362,11 @@ PROGRESS_TAGS = ('REDUX_BATCH_KICK', 'REDUX_ENGINE_DONE', 'REDUX_MODE',
 #: passe que corre sem deixar rasto nao pode ser contado nem negado.
 ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
                        'REDUX_ENGINE_LOAD', 'REDUX_SHEDDING', 'WORKER_THREADS',
+                       # O PLANO DE FIOS do nemotron (2026-11-09): tres sessoes ORT
+                       # num processo e o teto de 4 fios era POR SESSAO (12 no total,
+                       # ~1200 %c). Sem esta linha o numero que governa a CPU da
+                       # maquina do dono so' existe dentro do codigo.
+                       'WORKER_THREAD_PLAN',
                        'REDUX_SWITCH', 'REDUX_BATCH_KICK')
 
 #: O BATIMENTO DO LACO DO WORKER, reconhecido por CONTER e nao por comecar (2026-11-04).

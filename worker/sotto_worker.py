@@ -70,11 +70,33 @@ import time
 # travamento muito forte no meu pc"*). Set BEFORE onnxruntime is imported:
 #   * LAZY defers CUDA kernel compilation to first use instead of compiling the
 #     whole set during model load -- the burst that stalls the desktop.
-#   * 4 intra-op threads (see `SessionOptions.intra_op_num_threads` below)
-#     leave the scheduler room on the owner's box; the worker is GPU-backed.
-# `setdefault`, so an explicit environment still wins.
+#   * the intra-op budget (see `SessionOptions.intra_op_num_threads` below)
+#     leaves the scheduler room on the owner's box; the worker is GPU-backed.
+#     The DEFAULT here is 4; the live budget is `--threads N > OMP_NUM_THREADS >
+#     4` (`effective_threads`), and the shell hands the worker `--threads 2`
+#     (`sotto_webview.py --worker-threads`). MEASURED 2026-11-09: the flag used
+#     to be inert -- `setdefault` saw the "4" this module had already written.
+# `setdefault` on AUTO only, so an explicit environment still wins.
+#: O valor que veio DE FORA, lido ANTES do `setdefault` abaixo. Depois dele um
+#: FIOS DAS PECAS PEQUENAS (2026-11-09). O nemotron sao TRES sessoes ORT num
+#: processo (encoder + decoder + joint) e cada uma abre o seu pool `intra-op`;
+#: com o mesmo `threads` nas tres, o worker tem ate 4x3 = 12 fios (~1200 %c de
+#: teto) para descodificar UM fluxo. MEDIDO no tripwire (`_main/cpu-tripwire.py`,
+#: 2026-11-09): `session-9-intra-op-0 121,8%` + `session-10 80,1%` + `session-8
+#: 64,2%` = 398,8 %c na arvore. O decoder e o joiner correm por FRAME e cada
+#: passo e' um matmul pequeno (`max_symbols_per_step = 10`): mais fios do que 1
+#: num op pequeno custa mais em sincronizacao do que paga. O encoder -- o unico
+#: grafo caro -- continua a levar `threads`. `SOTTO_SMALL_GRAPH_THREADS` existe
+#: para o banco de latencia poder medir os dois bracos com o MESMO binario.
+SMALL_GRAPH_THREADS = 1
+#: `OMP_NUM_THREADS=4` do ambiente e' indistinguivel do valor por omissao, e a
+#: precedencia `--threads > ambiente > 4` precisa exactamente dessa distincao.
+_ENV_OMP_AT_IMPORT = os.environ.get("OMP_NUM_THREADS")
+#: O orcamento quando nem o flag nem o ambiente dizem nada (ver
+#: `effective_threads`).
+DEFAULT_THREADS = 4
 os.environ.setdefault("CUDA_MODULE_LOADING", "LAZY")
-os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("OMP_NUM_THREADS", str(DEFAULT_THREADS))
 # O POOL DO ONNXRUNTIME NAO FICA A GIRAR ENTRE BLOCOS (medido 2026-11-08).
 # Tres sessoes (enc/dec/joint) com 4 fios intra-op cada gastavam **16,1% de um
 # nucleo OCIOSAS** -- so' o spin-wait do ORT -- contra **0,0%** com o spin
@@ -579,9 +601,24 @@ MAX_RETAINED_LABELS = 200_000
 # the OpenMP barrier. A worker that must run alongside other lanes cannot leave
 # thread count to chance, so it is pinned before numpy/onnxruntime import.
 def limit_threads(n: int = 0) -> int:
+    """Apply the thread budget to the BLAS/ORT environment. `n<=0` = auto.
+
+    O DEFEITO QUE ISTO CORRIGE (medido 2026-11-09). O `--threads N` do worker
+    era INERTE: este laco usava `setdefault`, e o `setdefault("OMP_NUM_THREADS",
+    "4")` do topo do modulo ja' tinha escrito "4" -- logo `--threads 2` mudava
+    `MKL_NUM_THREADS` e deixava `OMP_NUM_THREADS` (a unica variavel que
+    `StreamAsr` le' para `intra_op_num_threads`) em 4. As tres sessoes abriam
+    com 4 fios cada e o `--threads` nao mudava um unico fio do ORT. Prova:
+    `_main/worker-thread-limit-oracle.py` (arm A1 e o `--neg-arm`).
+
+    AUTO (`n<=0`) MANTEM O COMPORTAMENTO ANTERIOR, byte a byte: um valor de
+    ambiente explicito continua a ganhar via `setdefault`. So' um `n>0` explicito
+    ASSUME o valor -- e' o flag a mandar, que e' o que um flag significa.
+    """
     import multiprocessing
 
-    if n <= 0:
+    explicit = n > 0
+    if not explicit:
         n = max(1, min(8, (multiprocessing.cpu_count() or 4) // 2))
     for var in (
         "OMP_NUM_THREADS",
@@ -590,8 +627,66 @@ def limit_threads(n: int = 0) -> int:
         "NUMEXPR_NUM_THREADS",
         "VECLIB_MAXIMUM_THREADS",
     ):
-        os.environ.setdefault(var, str(n))
+        if explicit:
+            os.environ[var] = str(n)
+        else:
+            os.environ.setdefault(var, str(n))
     return n
+
+
+def effective_threads(n: int = 0) -> tuple:
+    """`(threads, source)`: o orcamento de fios que ESTE run usa, e quem decidiu.
+
+    Precedencia: `--threads N` (N>0) > `OMP_NUM_THREADS` do ambiente > 4 (o
+    valor que este modulo fixa antes de o ORT ser importado). Puro: nao toca no
+    ambiente -- `limit_threads` e' quem aplica.
+
+    `source` e' `flag` | `env` | `default` | `env-invalid`. O ultimo existe para
+    o chamador poder DIZER que o ambiente trazia lixo em vez de o engolir: a
+    regra de `exception-hygiene` desta arvore.
+    """
+    if n and int(n) > 0:
+        return int(n), "flag"
+    raw = _ENV_OMP_AT_IMPORT
+    if raw:
+        try:
+            got = int(raw)
+        except (TypeError, ValueError):
+            return DEFAULT_THREADS, "env-invalid"
+        if got > 0:
+            return got, "env"
+        return DEFAULT_THREADS, "env-invalid"
+    return DEFAULT_THREADS, "default"
+
+
+#: O que `main()` resolveu, para `StreamAsr` ler o MESMO numero sem um segundo
+#: parser. `None` num probe/teste que constroi `StreamAsr` directamente: ai'
+#: `current_threads` cai no ambiente.
+_THREADS_EFFECTIVE = None
+
+
+def resolve_threads(n=0) -> tuple:
+    """`main()`'s one-shot resolution, FACTORED so the gate can call it.
+
+    Antes de existir esta funcao, a resolucao vivia inline em `main()` e nenhum
+    braco a alcancava: apagar a atribuicao deixava os 10 arms VERDES (achado da
+    revisao independente de 2026-11-09). O braco A11 chama ESTA funcao e o M4
+    muta esta atribuicao, por isso o numero que o ORT ve' tem um portao.
+    """
+    global _THREADS_EFFECTIVE
+    _THREADS_EFFECTIVE = effective_threads(n)
+    if _THREADS_EFFECTIVE[1] == "env-invalid":
+        err("OMP_NUM_THREADS=%r invalido; a usar %d fios"
+            % (_ENV_OMP_AT_IMPORT, _THREADS_EFFECTIVE[0]))
+    limit_threads(_THREADS_EFFECTIVE[0])
+    return _THREADS_EFFECTIVE
+
+
+def current_threads() -> int:
+    """O orcamento resolvido por `main()`, ou o do ambiente num probe."""
+    if _THREADS_EFFECTIVE:
+        return int(_THREADS_EFFECTIVE[0])
+    return effective_threads()[0]
 
 
 # os.add_dll_directory() returns a handle that KEEPS the directory registered.
@@ -1241,16 +1336,12 @@ class StreamAsr:
         # em ALL porque sao chamados por frame e a fusao LSTM do ALL paga-se uma
         # vez no load e usa-se milhares de vezes.
         _ab = os.environ.get('SOTTO_LOAD_AB', '').strip().lower()
-        _threads = None
-        try:
-            _threads = int(os.environ.get("OMP_NUM_THREADS", "8"))
-        except (TypeError, ValueError) as exc:
-            # UM `OMP_NUM_THREADS` INVALIDO NAO PODE SER SILENCIO: o valor ruim era
-            # engolido e o modelo ficava com o numero de threads por omissao, sem
-            # ninguem saber por que a contagem nao mudou (`.opencode`/ratchet
-            # `exception-hygiene`, medido 2026-10-30: esta era uma das 8 linhas
-            # silenciosas do ficheiro contra uma linha de base de 7).
-            err("OMP_NUM_THREADS invalido (%r); a usar o valor por omissao" % (exc,))
+        # O MESMO NUMERO QUE `main()` RESOLVEU (`--threads > ambiente > 4`), e
+        # nao um segundo parser do ambiente: era daqui que a precedencia se
+        # partia -- `--threads 2` mudava a env e esta leitura ainda podia ver
+        # outro valor. `current_threads()` cai no ambiente num probe que
+        # construa `StreamAsr` sem passar por `main()`.
+        _threads = current_threads()
         so = session_options(ort, _ab, _threads, encoder=False)
         so_enc = session_options(ort, _ab, _threads, encoder=True)
         # THE OPTIONS GO WITH THE NAMES (see `provider_entries`): without them
@@ -1273,6 +1364,20 @@ class StreamAsr:
         _t_load = time.time()
         self.enc = ort.InferenceSession(os.path.join(model_dir, "encoder.onnx"), so_enc, providers=entries)
         _t_enc = time.time()
+        # O PLANO no log: um teto que muda a CPU da maquina do dono tem de ser
+        # legivel na linha, nao deduzivel do codigo (2026-11-09).
+        # Vai pelo STDERR porque `emit` e' o contrato JSON do pai e nao tem tipo
+        # para isto; a shell ja' publica `WORKER <tag>` para as tags de motor
+        # (`ENGINE_VISIBLE_TAGS`, onde este nome entra), e um numero que governa
+        # a CPU da maquina do dono tem de ser legivel NA LINHA.
+        try:
+            sys.stderr.write(
+                "WORKER_THREAD_PLAN encoder=%d small=%d sessions=3 total_intra=%d\n"
+                % (so_enc.intra_op_num_threads, so.intra_op_num_threads,
+                   so_enc.intra_op_num_threads + 2 * so.intra_op_num_threads))
+            sys.stderr.flush()
+        except Exception:            # noqa: BLE001
+            pass
         self.dec = ort.InferenceSession(os.path.join(model_dir, "decoder.onnx"), so, providers=entries)
         _t_dec = time.time()
         self.joint = ort.InferenceSession(os.path.join(model_dir, "joint.onnx"), so, providers=entries)
@@ -4193,9 +4298,25 @@ def session_options(ort, ab: str = "", threads=None, encoder: bool = False):
     if level is not None:
         so.graph_optimization_level = level
     if threads is not None:
-        so.intra_op_num_threads = threads
+        # O ENCODER leva `threads`; decoder/joiner levam o piso pequeno. As duas
+        # pecas pequenas partilham UM objeto `SessionOptions`, logo o numero tem
+        # de vir daqui e nao do chamador (era o defeito: as tres sessoes nasciam
+        # com o mesmo pool e o processo tinha 12 fios para um fluxo).
+        so.intra_op_num_threads = (
+            int(threads) if encoder else
+            min(int(threads), _small_graph_threads()))
     so.inter_op_num_threads = 1
     return so
+
+
+def _small_graph_threads():
+    """O piso das pecas pequenas, com o ambiente por cima (medido, nao suposto)."""
+    raw = os.environ.get('SOTTO_SMALL_GRAPH_THREADS')
+    try:
+        val = int(str(raw).strip()) if raw not in (None, '') else SMALL_GRAPH_THREADS
+    except (TypeError, ValueError):
+        val = SMALL_GRAPH_THREADS
+    return max(1, min(4, val))
 
 
 def choose_providers(requested, model_dir=None):
@@ -6152,7 +6273,14 @@ def main():
         meter_hz = 0.0
     args.meter_hz = meter_hz
 
-    limit_threads(args.threads)
+    # O ORCAMENTO DE FIOS, RESOLVIDO UMA VEZ E DITO NO LOG. `--threads` e' o
+    # unico knob; sem ele o ambiente manda; sem os dois, 4. A linha existe para
+    # o numero EFECTIVO ser lido do log em vez de deduzido do argv (medido
+    # 2026-11-09: o worker vivo corria `python -u sotto_worker.py`, sem flag, e
+    # ninguem sabia se o ORT tinha 4 ou 10 fios por sessao).
+    resolve_threads(args.threads)
+    err("WORKER_THREADS threads=%d source=%s"
+        % (_THREADS_EFFECTIVE[0], _THREADS_EFFECTIVE[1]))
 
     # stdout is a pipe: force UTF-8 or a non-ASCII caption raises UnicodeEncodeError.
     try:
@@ -7482,6 +7610,7 @@ def main():
                 args.redux_min_free_mb, REDUX_MIN_FREE_MB_DEFAULT),
             probe=probe,
             spool_dir=spool_dir,
+            engine_threads=_THREADS_EFFECTIVE[0],
         )
         switch.boot_line()
         # ── THE LIVE OVERLAY (lane S3), constructed only when it is opted in ────

@@ -50,6 +50,16 @@
       "max_func": 0,
       "max_func_name": ""
     },
+    "app/panel/history-context-store.js": {
+      "bytes": 8605,
+      "classes": 0,
+      "defs": 0,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 217,
+      "max_func": 0,
+      "max_func_name": ""
+    },
     "app/panel/history-gallery.js": {
       "bytes": 7638,
       "classes": 0,
@@ -71,12 +81,12 @@
       "max_func_name": ""
     },
     "app/panel/history-store.js": {
-      "bytes": 20041,
+      "bytes": 19322,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 503,
+      "lines": 491,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -101,12 +111,12 @@
       "max_func_name": ""
     },
     "app/panel/panel-unified.css": {
-      "bytes": 26040,
+      "bytes": 26028,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 511,
+      "lines": 492,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -331,7 +341,7 @@
       "max_func_name": "tick"
     },
     "app/webview/history_context.py": {
-      "bytes": 12386,
+      "bytes": 11827,
       "classes": 0,
       "defs": 11,
       "except_pass": 1,
@@ -461,12 +471,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1236044,
+      "bytes": 1237449,
       "classes": 28,
       "defs": 144,
       "except_pass": 60,
       "globals": 4,
-      "lines": 23402,
+      "lines": 23422,
       "max_func": 414,
       "max_func_name": "main"
     },
@@ -571,12 +581,12 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 83470,
+      "bytes": 85439,
       "classes": 1,
-      "defs": 27,
+      "defs": 30,
       "except_pass": 6,
-      "globals": 0,
-      "lines": 1717,
+      "globals": 3,
+      "lines": 1768,
       "max_func": 230,
       "max_func_name": "_run"
     },
@@ -791,12 +801,12 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 461787,
+      "bytes": 464197,
       "classes": 17,
-      "defs": 87,
-      "except_pass": 19,
+      "defs": 88,
+      "except_pass": 20,
       "globals": 6,
-      "lines": 8763,
+      "lines": 8804,
       "max_func": 2653,
       "max_func_name": "main"
     },
@@ -881,13 +891,13 @@
       "max_func_name": "find_foreign_holders"
     },
     "worker/wasapi_loopback.py": {
-      "bytes": 55288,
+      "bytes": 58473,
       "classes": 6,
       "defs": 23,
       "except_pass": 3,
       "globals": 0,
-      "lines": 1216,
-      "max_func": 142,
+      "lines": 1244,
+      "max_func": 152,
       "max_func_name": "_pump"
     }
   },
