@@ -46,8 +46,16 @@ RATCHET_PCT = 1.05
 #: que grita em ruido e' desligado pela primeira pessoa que o vir vermelho. Daqui
 #: 20 % (a mesma regua do `shell-thread-budget`) mais um PISO de 5 s: abaixo disso
 #: nem o ruido nem o alvo de 60 s se importam com o passo.
+#: O PISO PASSOU DE 5 s PARA 20 s POR MEDICAO, nao por gosto (2026-11-08, corrida
+#: caged pos-reinicio): `lane-screen-gate` mediu **4,35 / 8,58 / 5,96 s** em tres
+#: execucoes seguidas do MESMO binario -- **97 % de variacao** -- e `load-shedding`
+#: **3,05 / 3,62 / 3,24 s** (19 %). Um ratchet de 20 % sobre um passo que varia 97 %
+#: por conta propria reprova o relogio, nao o passo. A regressao que este portao
+#: existe para apanhar e' outra escala (`lag-note-cost` 224 s -> 1 364 s x10), e ela
+#: continua a ser apanhada pelo prazo, pelo tecto do total e pelo ratchet dos passos
+#: acima do piso.
 PER_STEP_PCT = 1.20
-PER_STEP_FLOOR_S = 5.0
+PER_STEP_FLOOR_S = 20.0
 
 
 def read_steps(path):
@@ -188,8 +196,12 @@ def judge_arms():
     portao decorativo, por isso os bracos correm em TODA invocacao normal (custo
     medido: microssegundos) e o veredicto do passo inclui o deles.
     """
+    # COM O PISO EM 20 s, um fixture de 10 s deixou de poder testar o ratchet: o
+    # A2 (12,6 s) passou a ser ISENTO pelo piso e o braco ficou vermelho contra a
+    # propria cura. `a` vai para 30 s (acima do piso) e `b`/`c` fecham o total em
+    # 100 s, que e' o que o tecto do total tem de continuar a ver.
     base = {'total_s': 100.0, 'over_deadline': [], 'target_s': 60.0,
-            'per_step': {'a': 10.0, 'b': 40.0, 'c': 50.0, 'tiny': 0.3}}
+            'per_step': {'a': 30.0, 'b': 40.0, 'c': 30.0, 'tiny': 0.3}}
 
     def m(per, total=None, over=()):
         return {'total_s': round(sum(per.values()), 1) if total is None else total,
@@ -209,32 +221,41 @@ def judge_arms():
                                   ' | '.join(why) or '(sem razoes)')})
 
     arm('A1 um passo +10% passa (abaixo da regua de 20%)',
-        m({'a': 11.0, 'b': 40, 'c': 50}), True)
+        m({'a': 33.0, 'b': 40, 'c': 30, 'tiny': 0.3}), True)
     arm('A2 um passo +26% reprova e o NOMEIA',
-        m({'a': 12.6, 'b': 40, 'c': 50}), False, 'a 10.0s -> 12.6s')
-    arm('A3 total IGUAL e um passo 10->60 reprova (o caso que passava)',
-        m({'a': 60.0, 'b': 5.0, 'c': 35.0}, total=100.0), False, 'a 10.0s -> 60.0s')
+        m({'a': 38.0, 'b': 40, 'c': 26, 'tiny': 0.3}), False, 'a 30.0s -> 38.0s')
+    arm('A3 total IGUAL e um passo 30->60 reprova (o caso que passava)',
+        m({'a': 60.0, 'b': 40.0, 'c': 0.0, 'tiny': 0.3}, total=100.0), False,
+        'a 30.0s -> 60.0s')
     # A arm A4 tambem derruba o TECTO DO TOTAL (400 s contra 105 s), e isso e'
     # esperado: o passo novo e' um passo que ninguem tinha medido, logo o total
     # sobe por construcao. O que ela prova e' que o `new_over` o NOMEIA.
     arm('A4 passo novo acima do prazo, sem divida declarada',
-        m({'a': 10, 'b': 40, 'c': 50, 'd': 300}, over=['d']), False, 'd',
+        m({'a': 30, 'b': 40, 'c': 30, 'tiny': 0.3, 'd': 300}, over=['d']), False, 'd',
         want_red_total=True)
     arm('A5 um passo que saiu da populacao nao reprova',
-        m({'a': 10, 'b': 40}), True)
+        m({'a': 30, 'b': 40, 'c': 30, 'tiny': 0.3}), True)
     # O PISO: um passo de 0,3 s que dobra para 0,9 s e' ruido, nao regressao --
     # a regua comeca em `PER_STEP_FLOOR_S`. Sem este braco, subir o piso para o
     # infinito (apagar o ratchet) continuaria verde em todos os outros.
     arm('A6 passo abaixo do piso (0,3s -> 0,9s) nao reprova',
-        m({'a': 10, 'b': 40, 'c': 50, 'tiny': 0.9}), True)
+        m({'a': 30, 'b': 40, 'c': 30, 'tiny': 0.9}), True)
     # O PISO NAO E' ISENCAO: 4,9 s (abaixo do piso) que engorda para 200 s tem de
     # ser julgado -- a versao anterior a este braco deixava-o invisivel para o
     # ratchet por passo, abaixo do prazo e abaixo do tecto do total.
     # (o fixture tambem derruba o tecto do total -- por construcao, 200 s num
     # total de 100 s; o que a arm isola e' o NOME do passo no ratchet por passo)
     arm('A7 passo que NASCEU abaixo do piso e engordou para 200s reprova',
-        m({'a': 10, 'b': 40, 'c': 50, 'tiny': 200.0}), False, 'tiny 0.3s -> 200.0s',
+        m({'a': 30, 'b': 40, 'c': 30, 'tiny': 200.0}), False, 'tiny 0.3s -> 200.0s',
         want_red_total=True)
+    # A8 e' o caso MEDIDO que obrigou o piso a mudar: 5,5 s -> 12,1 s (2,2x) num passo
+    # abaixo do piso NAO pode reprovar. Com o piso antigo (5 s) ele reprovava; com o
+    # novo (20 s) fica isento pela regua, e o total (daqui 105 s) tambem nao se move.
+    arm('A8 passo de 5,5s que vira 12,1s nao reprova (o caso que obrigou o piso)',
+        m({'a': 30, 'b': 30, 'c': 28, 'tiny': 0.3, 'lane': 12.1}), True)
+    # A9 impede a isencao total: um passo ACIMA do piso que dobra continua a reprovar.
+    arm('A9 passo acima do piso (40s -> 90s) reprova e o NOMEIA',
+        m({'a': 5, 'b': 90, 'c': 5, 'tiny': 0.3}), False, 'b 40.0s -> 90.0s')
     return arms
 
 
