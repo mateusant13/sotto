@@ -35,6 +35,20 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
+
+
+def _hidden_si():
+    """`STARTUPINFO` with SW_HIDE -- the half `CREATE_NO_WINDOW` leaves out.
+
+    MEASURED (owner's screen, 2026-11-04 and again 2026-11-09): a console child spawned from a parent
+    that owns no console gets a NEW console, and `CREATE_NO_WINDOW` alone does not keep the show state
+    hidden, so Windows paints the window. `_main/console-window-audit.py` classes that pair WEAK-FLAG
+    and this file was one of its six hits.
+    """
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 0
+    return si
 SHELL = os.path.join(REPO, 'app', 'webview', 'sotto_webview.py')
 WEBVIEW = os.path.join(REPO, 'app', 'webview')
 sys.path.insert(0, WEBVIEW)
@@ -58,7 +72,8 @@ def head_source():
                         'HEAD:app/webview/sotto_webview.py'],
                        capture_output=True, text=True, encoding='utf-8',
                        errors='replace',
-                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                       startupinfo=_hidden_si())
     if r.returncode != 0:
         raise SystemExit('git show HEAD falhou: %r' % (r.stderr,))
     return r.stdout

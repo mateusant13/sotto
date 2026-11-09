@@ -127,7 +127,10 @@ def io_tree(cmd, sample_s=0.2):
     import psutil
 
     t0 = time.perf_counter()
-    proc = subprocess.Popen(cmd, creationflags=0x08000000)
+    _si = subprocess.STARTUPINFO()
+    _si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    _si.wShowWindow = 0                # SW_HIDE: the flag alone paints under a console-less parent
+    proc = subprocess.Popen(cmd, creationflags=0x08000000, startupinfo=_si)
     root = psutil.Process(proc.pid)
     peak = 0.0
     first = {}

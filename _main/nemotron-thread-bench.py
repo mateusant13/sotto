@@ -44,6 +44,20 @@ WORKER = REPO / "worker" / "sotto_worker.py"
 CREATE_NO_WINDOW = 0x08000000
 
 
+def _hidden():
+    """`STARTUPINFO` with SW_HIDE -- the half `CREATE_NO_WINDOW` leaves out.
+
+    MEASURED (owner's screen, 2026-11-04 and again 2026-11-09): a console child spawned from a parent
+    that owns no console gets a NEW console, and `CREATE_NO_WINDOW` alone does not keep the show state
+    hidden, so Windows paints the window. `_main/console-window-audit.py` classes that pair WEAK-FLAG
+    and this file was one of its six hits.
+    """
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 0
+    return si
+
+
 def one(small: int, seconds: float, threads: int = 4) -> dict:
     env = dict(os.environ)
     env["SOTTO_FILE_TAP"] = str(WAV)
@@ -60,7 +74,8 @@ def one(small: int, seconds: float, threads: int = 4) -> dict:
             cwd=str(REPO / "worker"), env=env,
             stdout=fh, stderr=open(str(out) + ".err", "w", encoding="utf-8",
                                    errors="replace"),
-            creationflags=CREATE_NO_WINDOW)
+            creationflags=CREATE_NO_WINDOW,
+            startupinfo=_hidden())
         import psutil
 
         child = psutil.Process(proc.pid)
@@ -162,7 +177,8 @@ def main(argv=None):
                                                if env.get("PYTHONPATH") else "")
         env["TMPDIR"] = r"I:\cc-tmp"
         print("caged: ON (python -m watcher run --cpu 40)", flush=True)
-        return subprocess.call(cmd, env=env, creationflags=CREATE_NO_WINDOW)
+        return subprocess.call(cmd, env=env, creationflags=CREATE_NO_WINDOW,
+                               startupinfo=_hidden())
     print("caged: %s" % ("ON" if args.caged else "OFF"), flush=True)
 
     rows = []
