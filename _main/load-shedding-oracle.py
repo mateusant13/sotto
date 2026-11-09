@@ -240,6 +240,64 @@ def _not_the_instance(pid, seg, alive, started=_pid_started):
     return None
 
 
+#: O LOG DO DONO E' DE 70 MB E UM ORACULO O LE' VARIAS VEZES (2026-11-09).
+#: O watcher mediu `load-shedding-oracle.py --neg-arm` a **75,2 MB/s** no I: --
+#: um pico que o dono SENTE -- e a causa nao era modelo nenhum: cada
+#: `read_text()` deste ficheiro relia os 70 MB inteiros, e `shell_launches`,
+#: `newest_shell_segment` e o escolhedor o releem em sequencia. Uma leitura por
+#: PROCESSO, memoizada por (caminho, mtime, tamanho): um log que muda invalida o
+#: memo, e uma arm que muta o ficheiro tmp continua a ver o que escreveu.
+_LOG_MEMO: dict = {}
+
+
+def read_log(path, window_mb=4.0):
+    """O texto do log, com uma JANELA no fim -- e uma leitura por processo.
+
+    DOIS numeros mandaram nisto (2026-11-09, medidos com
+    `_main/shell-thread-cpu.py --io`): o log do dono tem **69,9 MB**, e uma
+    bateria de negacao lia **4 119 MB** dele em 435 s, com pico de **145,9 MB/s**
+    -- o stutter que o watcher acusou e escalou. A primeira cura so' memoizou, e
+    ela quase nao pegou: o log VIVO cresce entre duas chamadas, o `mtime` muda e o
+    memo vence -- medido **4 012 MB** depois de memoizar.
+
+    O que interessa a este oraculo e' a INSTANCIA VIVA, que e' a ultima: 4 MB de
+    cauda cobrem dezenas de `SHELL_STARTUP_STAGE`. Por isso a leitura e' um
+    `seek` para `size - window` (alinhado ao comeco de uma linha) e nao um
+    `read_text()` do ficheiro todo. Um ficheiro menor que a janela e' lido
+    INTEIRO, logo as fixtures das arms (dezenas de KB) continuam exatas.
+    """
+    path = Path(path)
+    try:
+        st = path.stat()
+    except OSError:
+        return ""
+    window = int(window_mb * 1e6)
+    start = max(0, st.st_size - window)
+    key = (str(path), st.st_mtime_ns, st.st_size, start)
+    hit = _LOG_MEMO.get('key')
+    if hit == key:
+        _LOG_MEMO['hits'] = int(_LOG_MEMO.get('hits') or 0) + 1
+        return _LOG_MEMO.get('text') or ""
+    try:
+        with open(path, 'rb') as handle:
+            if start:
+                handle.seek(start)
+                # a janela comeca a MEIO de uma linha: o primeiro pedaco e' lixo
+                handle.readline()
+            raw = handle.read()
+    except OSError:
+        return ""
+    text = raw.decode('utf-8', 'replace')
+    _LOG_MEMO['key'] = key
+    _LOG_MEMO['text'] = text
+    # AS LEITURAS CONTAM-SE (2026-11-09): "quantas vezes este processo leu o log,
+    # e quantos MB" e' o numero que o recibo precisa; um contador e' a unica
+    # forma de o dizer sem adivinhar pelo IO do sistema.
+    _LOG_MEMO['reads'] = int(_LOG_MEMO.get('reads') or 0) + 1
+    _LOG_MEMO['mb'] = float(_LOG_MEMO.get('mb') or 0.0) + len(raw) / 1e6
+    return text
+
+
 def shell_launches(log_path=None):
     """[(pid, segmento)] de todas as largadas, da mais NOVA para a mais velha.
 
@@ -249,9 +307,8 @@ def shell_launches(log_path=None):
     largada escreveu no arranque.
     """
     path = Path(log_path) if log_path else (ROOT / "_main" / "webview-run.log")
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    text = read_log(path)
+    if not text:
         return []
     hits = list(re.finditer(r"SHELL_STARTUP_STAGE pid=(\d+)", text))
     # O segmento comeca na LINHA do marcador, e nao no marcador: o carimbo de
@@ -276,10 +333,7 @@ def newest_shell_segment(log_path=None, alive=_pid_alive, started=_pid_started):
     if not launches:
         return None, ""
     path = Path(log_path) if log_path else (ROOT / "_main" / "webview-run.log")
-    try:
-        tail = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        tail = ""
+    tail = read_log(path)
     skipped = 0
     for pid, seg in launches:
         why = _not_the_instance(pid, seg, alive, started)
@@ -338,12 +392,7 @@ def _naive_selector(log_path=None, alive=None, started=None):
         return None, ""
     pid, _seg = launches[0]
     path = Path(log_path) if log_path else (ROOT / "_main" / "webview-run.log")
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return pid, ""
-    return pid, text
-
+    return pid, read_log(path)
 
 def selector_arms(select):
     """As arms do ESCOLHEDOR, parametrizadas: `select` e' o que esta' a ser julgado."""
@@ -1384,8 +1433,28 @@ def _load_worker(path: Path):
     # so' encontra a ESPERA se `worker/` estiver no caminho. Um oraculo que
     # carregasse o worker sem isto mediria `pending=None` e os arms do audio
     # passariam sem medir nada.
-    if str(path.parent) not in sys.path:
-        sys.path.insert(0, str(path.parent))
+    # A PASTA DO WORKER CARREGADO VAI PARA A FRENTE, SEMPRE -- e nao so' quando
+    # falta (medido 2026-11-09). A versao anterior era
+    # `if str(path.parent) not in sys.path: insert(0, ...)`, e o primeiro
+    # carregamento deixa a pasta no caminho; a partir daí ela nunca subia ao
+    # topo. O `run()` importa a shell REAL (ARM 8 insere `app\webview` e o
+    # proprio shell empurra `worker\` para a frente), logo o SEGUNDO
+    # carregamento -- o do mutante -- fazia `import engine_switch` no repo REAL,
+    # e a guarda mutada na copia nunca era lida. MEDIDO: `cache_path` do
+    # `engine_policy` real a apontar para `H:\sotto\app\webview\load_shedding.py`
+    # enquanto o mutante vivia em `...\load-shed-gate-neg-*\app\webview\`.
+    # O braco do CPU dizia "PASS" com a guarda intacta e o arm continuava verde.
+    parent = str(path.parent)
+    # O MINI REPO TEM SO' OS FICHEIROS DESTA LANE. Os outros irmaos do worker
+    # (`punctuation_model`, `no_console`, ...) continuam a vir do repo REAL,
+    # atras da pasta do worker carregado. Sem esta segunda entrada o worker da
+    # copia morria em `ModuleNotFoundError('punctuation_model')` -- medido
+    # 2026-11-09 na corrida de BASE deste braco: o arm da guarda nem chegava a
+    # existir, e o "PASS" do mutante era lido sobre uma populacao vazia.
+    real_worker = str(ROOT / "worker")
+    chain = [parent] if real_worker == parent else [parent, real_worker]
+    sys.path[:] = [p for p in sys.path if p not in chain]
+    sys.path[0:0] = chain
     # OS IRMAOS SAO RE-IMPORTADOS DO DIRECTORIO DESTE FICHEIRO. Sem isto, o
     # `engine_switch` do repo REAL (ja' em `sys.modules` desde o primeiro load)
     # sobrevivia a' carga de um mini repo, e os mutantes dos bracos negativos
@@ -2126,18 +2195,26 @@ def arms_release(worker_path: Path, tmp: Path) -> None:
     add(len(kept3) == 1,
         "a recusa e' dita UMA vez por episodio, mesmo com o commit a oscilar 94/89",
         f"kept_lines={len(kept3)} releases={eng3.releases}")
+    # A ESCADA DESCE EM DEGRAUS (um por amostra): `muito-alta` -> `alta` -> ...
     s3.probe.seq = [(64.0, 57.0)]
-    t6['t'] += 1.0
-    s3.tick()
+    for _i in range(3):
+        t6['t'] += 1.0
+        s3.tick()
     add(s3.mode == "batch",
         "e o nivel desce para `batch` (o episodio acabou)", "mode=%s" % s3.mode)
+    add(s3._kept_logged is False,
+        "e a flag da recusa CAI ao sair do nivel severo")
+    # A SUBIDA TEM DWELL, a emergencia nao: o caminho de volta e' 96 %.
+    s3.probe.seq = [(96.0, 90.0)]
+    t6['t'] += 1.0
+    s3.tick()
     s3.probe.seq = [(89.0, 60.0)]
     t6['t'] += 1.0
     s3.tick()
     kept3b = [l for l in logs3 if l.startswith("REDUX_ENGINE_KEPT")]
     add(len(kept3b) == 2,
         "e um SEGUNDO aperto na mesma sessao volta a ser dito (a flag cai ao sair do nivel)",
-        f"kept_lines={len(kept3b)}")
+        f"kept_lines={len(kept3b)} mode={s3.mode}")
 
     # (D) O PISO DA RECARGA (do MOTOR, `engine_policy`): logo apos largar, o lote
     # seguinte ESPERA -- e o audio fica na espera. Este braco prova a fiacao: sem
@@ -2209,6 +2286,37 @@ def _mutant_layout(tmp: Path):
     return worker_dir / "sotto_worker.py", webview
 
 
+def _drop_bytecode(root: Path) -> None:
+    """Apaga os `.pyc` da copia antes de o mutante ser lido.
+
+    O CPYTHON VALIDA UM `.pyc` POR (mtime em segundos, tamanho). Um mutante
+    escrito no MESMO segundo em que a copia limpa foi importada e com o MESMO
+    tamanho e' servido do bytecode ANTIGO -- o mutante existe no disco e nao
+    corre. MEDIDO 2026-11-09: um braco que passou a correr a base antes da
+    mutacao ficou INERTE ate' esta purga existir (a copia e' nova, o `.pyc`
+    dela nao). A purga e' barata e nao depende de o mutante mudar o tamanho.
+    """
+    import importlib
+
+    for cache in Path(root).rglob("__pycache__"):
+        shutil.rmtree(cache, ignore_errors=True)
+    importlib.invalidate_caches()
+
+
+def _arm_key(name: str) -> str:
+    """A identidade da arm sem os NUMEROS que ela cita.
+
+    Uma mutacao de CONSTANTE muda o nome da propria arm, porque o nome carrega o
+    valor medido ("... larga so' depois de 120 s SUSTENTADOS" -> "... 0 s"). O
+    braco comparava nomes EXACTOS entre a base e o mutante e recusava a RED que
+    ele proprio tinha provocado -- medido 2026-11-09 no `largada-persist`: a arm
+    caiu (`RED pressao de memoria (89 %) larga so' depois de 0 s`) e o veredicto
+    foi `FAIL -- a arm ... NAO caiu`. Normalizar so' os digitos mantem a
+    identidade, e o `must_fail` continua a ser exigido no nome.
+    """
+    return re.sub(r"\d+(?:[.,]\d+)?", "#", name)
+
+
 def _neg_arm_gate(label, target, old, new, why, must_fail) -> int:
     """Muta a GUARDA no mini repo e exige que a arm NOMEADA caia.
 
@@ -2228,6 +2336,33 @@ def _neg_arm_gate(label, target, old, new, why, must_fail) -> int:
     saved = globals().get("WORKER", WORKER)
     try:
         worker_copy, webview = _mutant_layout(tmp)
+        # `arms_action` LE o fonte da shell ao lado do modulo; a copia do mini
+        # repo nao a tem (`_mutant_layout` copia o modulo e o worker). O texto e'
+        # o da shell REAL -- este braco muta a guarda, nunca a shell.
+        shutil.copy2(SHELL, webview / "sotto_webview.py")
+        globals()["WORKER"] = worker_copy
+        # A ARM TEM DE ESTAR VERDE ANTES DO MUTANTE. Sem esta leitura, um braco
+        # que ja' caisse por ambiente (uma copia sem `worker/models`, um filho
+        # sem `no_console`) dava "PASS" com o mutante dentro -- a classe do
+        # `rc == EXIT_FAIL` que o `_neg_arm_text` tinha. MEDIDO 2026-11-09 na
+        # copia limpa deste layout, antes do fallback para o `worker/` real:
+        # 5 RED de ambiente, incluindo `ModuleNotFoundError('punctuation_model')`
+        # nas quatro arms do worker -- a arm da guarda nem existia, e o mutante
+        # "passava" sobre uma populacao vazia. Com o fallback a base deste
+        # layout fecha em rc=0 (nenhum RED de ambiente); a leitura abaixo
+        # continua a ser o que recusa um "PASS" quando a base ja' esta'
+        # vermelha ou quando a arm nomeada desapareceu.
+        run(webview / "load_shedding.py", SHELL, BATCH)
+        base_hits = [(ok, name) for ok, name, _d in rows if must_fail in name]
+        if not base_hits:
+            print(f"NEG-ARM({label}) FAIL -- a arm '{must_fail}' nao existe na "
+                  f"corrida de BASE (o texto da arm mudou, ou o worker nem "
+                  f"importou: o mutante nao teria o que derrubar)")
+            return EXIT_PASS
+        if any(not ok for ok, _n in base_hits):
+            print(f"NEG-ARM({label}) FAIL -- a arm '{must_fail}' JA' estava "
+                  f"vermelha SEM o mutante; a RED nao e' do defeito")
+            return EXIT_PASS
         path = (worker_copy.parent / target if target != "load_shedding.py"
                 else webview / target)
         text = path.read_text(encoding="utf-8")
@@ -2236,10 +2371,19 @@ def _neg_arm_gate(label, target, old, new, why, must_fail) -> int:
             print(f"NEG-ARM({label}): nao consegui mutar o alvo (o texto mudou)")
             return EXIT_PASS
         path.write_text(mutant, encoding="utf-8")
+        _drop_bytecode(tmp)
         print(f"NEG-ARM({label}): {why}")
-        globals()["WORKER"] = worker_copy
-        run(webview / "load_shedding.py", webview / "sotto_webview.py", BATCH)
-        caught = [name for ok, name, _d in rows if not ok and must_fail in name]
+        # A SHELL E' A REAL: o mutante desta arm e' a GUARDA, e a copia de tres
+        # ficheiros nao tem os irmaos da shell (`hot_reload`, ...). Uma shell
+        # copiada sem irmaos derrubava o oraculo com `ModuleNotFoundError` em
+        # QUALQUER mutacao -- o braco passava por o alvo nao existir, nunca pelo
+        # mutante. O modulo e o worker sao os da copia: e' la' que a guarda vive.
+        run(webview / "load_shedding.py", SHELL, BATCH)
+        base_ok_names = {name for ok, name in base_hits if ok}
+        base_ok_keys = {_arm_key(n) for n in base_ok_names}
+        caught = [name for ok, name, _d in rows
+                  if not ok and must_fail in name
+                  and (name in base_ok_names or _arm_key(name) in base_ok_keys)]
         if caught:
             print(f"\nNEG-ARM({label}) PASS -- RED as designed: {caught[0][:110]}")
             return EXIT_FAIL
@@ -2468,15 +2612,41 @@ def _mutant_copy(tmp: Path):
     return copy
 
 
-def _neg_arm_text(label, path_in_copy, old, new, why, prefix):
-    """Muta `old -> new` numa copia e exige RED. Devolve o rc do braco.
+def _neg_arm_text(label, path_in_copy, old, new, why, prefix, must_fail):
+    """Muta uma copia e exige que a ARM DO MUTANTE caia -- e que ela ESTIVESSE verde.
 
-    `EXIT_FAIL` = o mutante derrubou o oraculo (o braco PASSA); `EXIT_PASS` = o
-    oraculo continuou verde com o defeito dentro (o braco FALHA).
+    O CRITERIO ANTIGO NAO MEDIA O MUTANTE (medido 2026-11-09). Ele era
+    `rc == EXIT_FAIL`, e a copia limpa deste layout JA' esta' vermelha: medido
+    `arms=252 red=1` sem uma unica mutacao (a arm do directorio do driver, que
+    compara com `worker/models`, ausente numa copia de tres ficheiros). Qualquer
+    mutacao -- inclusive uma que nao tocasse em nada -- publicava
+    "PASS -- RED as designed", e o braco passava por o ambiente, nunca pelo
+    defeito. A segunda fuga era o import: a copia do `sotto_webview.py` nao tem
+    os irmaos da shell (`hot_reload`, ...) e o `ModuleNotFoundError` era lido
+    como RED.
+
+    As tres leituras que passam a ser o braco:
+    1. a arm NOMEADA existe na copia limpa e esta' VERDE (a base);
+    2. a shell importada e' a REAL (o mutante e' do modulo/fila, nunca da shell);
+    3. depois da mutacao, a MESMA arm esta' VERMELHA (o mutante derruba a sua).
+
+    `EXIT_FAIL` = a arm do mutante virou RED (o braco passa); `EXIT_PASS` = ela
+    ja' estava RED, continuou verde, ou nao existe (o braco FALHA).
     """
     tmp = Path(tempfile.mkdtemp(prefix=prefix))
     try:
         copy = _mutant_copy(tmp)
+        batch = copy / "batch_queue.py"
+        run(copy / "load_shedding.py", SHELL, batch)
+        base_hits = [(ok, name) for ok, name, _d in rows if must_fail in name]
+        if not base_hits:
+            print("\nNEG-ARM(%s) FAIL -- a arm '%s' nao existe na copia limpa "
+                  "(o texto da arm mudou)" % (label, must_fail))
+            return EXIT_PASS
+        if any(not ok for ok, _n in base_hits):
+            print("\nNEG-ARM(%s) FAIL -- a arm '%s' JA' estava vermelha SEM o "
+                  "mutante; a RED nao e' do defeito" % (label, must_fail))
+            return EXIT_PASS
         target = copy / path_in_copy
         text = target.read_text(encoding="utf-8")
         mutant = text.replace(old, new)
@@ -2484,14 +2654,21 @@ def _neg_arm_text(label, path_in_copy, old, new, why, prefix):
             print("NEG-ARM(%s): nao consegui mutar o alvo (o texto mudou)" % label)
             return EXIT_PASS
         target.write_text(mutant, encoding="utf-8")
+        _drop_bytecode(tmp)
         print("NEG-ARM(%s): %s" % (label, why))
-        rc = run(copy / "load_shedding.py", copy / "sotto_webview.py",
-                 copy / "batch_queue.py")
-        if rc == EXIT_FAIL:
-            print("\nNEG-ARM(%s) PASS -- RED as designed: o mutante derruba o oraculo"
-                  % label)
+        rc = run(copy / "load_shedding.py", SHELL, batch)
+        base_ok_names = {name for ok, name in base_hits if ok}
+        base_ok_keys = {_arm_key(n) for n in base_ok_names}
+        caught = [name for ok, name, _d in rows
+                  if not ok and must_fail in name
+                  and (name in base_ok_names or _arm_key(name) in base_ok_keys)]
+        if caught and rc == EXIT_FAIL:
+            print("\nNEG-ARM(%s) PASS -- RED as designed: a SUA arm caiu "
+                  "(%s)" % (label, caught[0][:90]))
             return EXIT_FAIL
-        print("\nNEG-ARM(%s) FAIL -- o oraculo NAO ve %s" % (label, why))
+        print("\nNEG-ARM(%s) FAIL -- a arm '%s' NAO caiu com o mutante "
+              "(rc=%s, %d RED no total)"
+              % (label, must_fail, rc, sum(1 for ok, _n, _d in rows if not ok)))
         return EXIT_PASS
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -2503,7 +2680,8 @@ def neg_arm_floor() -> int:
         "piso", "load_shedding.py",
         "ACTION_FLOOR_S = 180.0", "ACTION_FLOOR_S = 0.0",
         "o PISO entre descidas passa a 0 s (o triturador do VramGuard)",
-        "load-shed-floor-neg-")
+        "load-shed-floor-neg-",
+        "PISO entre duas DESCIDAS de pelo menos 180 s")
 
 
 def neg_arm_sustain() -> int:
@@ -2512,7 +2690,8 @@ def neg_arm_sustain() -> int:
         "histerese", "load_shedding.py",
         "elif self._stable >= self.samples:", "elif self._stable >= 1:",
         "UMA leitura calma passa a bastar para devolver os modelos",
-        "load-shed-sustain-neg-")
+        "load-shed-sustain-neg-",
+        "UMA leitura calma NAO devolve os modelos (nem publica nada)")
 
 
 def neg_arm_persist() -> int:
@@ -2522,7 +2701,8 @@ def neg_arm_persist() -> int:
         "if entry.get('state') == 'inflight':",
         "if False and entry.get('state') == 'inflight':",
         "o `inflight` de um processo morto deixa de voltar a fila (o restart perde audio)",
-        "load-shed-persist-neg-")
+        "load-shed-persist-neg-",
+        "o `inflight` de um processo morto volta a `queued` e mantem a ORDEM")
 
 
 def neg_arm_dwell() -> int:
@@ -2531,7 +2711,8 @@ def neg_arm_dwell() -> int:
         "dwell", "load_shedding.py",
         "MIN_DWELL_S = 60.0", "MIN_DWELL_S = 0.0",
         "sem dwell entre publicacoes (o triturador medido na app do dono)",
-        "load-shed-dwell-neg-")
+        "load-shed-dwell-neg-",
+        "o dwell minimo entre duas publicacoes e' >= 60 s")
 
 
 def neg_arm_rise_immediate() -> int:
@@ -2548,7 +2729,8 @@ def neg_arm_rise_immediate() -> int:
     return _neg_arm_text(
         "subida", "load_shedding.py", old, new,
         "SUBIR volta a ser imediato para `alta` (ignora sustentacao e dwell)",
-        "load-shed-rise-neg-")
+        "load-shed-rise-neg-",
+        "a PRIMEIRA leitura a 92 % nao publica `alta` (subir nao e' imediato)")
 
 
 def neg_arm_channel_arm() -> int:
@@ -2559,7 +2741,8 @@ def neg_arm_channel_arm() -> int:
         "        self._arm_worker_channel()\n",
         "        pass  # canal nao armado\n",
         "o `shed` publicado deixa de chegar ao worker (ninguem le' o nivel)",
-        "load-shed-chan-neg-")
+        "load-shed-chan-neg-",
+        "a accao ARMADA poe SOTTO_REDUX_WHEN_HIDDEN=1 no ambiente")
 
 
 def neg_arm_yield() -> int:
@@ -2569,7 +2752,8 @@ def neg_arm_yield() -> int:
         "                    if not self.allowed():\n                        self._kill(child)",
         "                    if False:\n                        self._kill(child)",
         "o executor deixa de ceder quando a carga sobe (corre com a maquina cheia)",
-        "load-shed-yield-neg-")
+        "load-shed-yield-neg-",
+        "a carga a subir a meio do bloco faz o executor CEDER")
 
 
 def neg_arm_release_cpu() -> int:
@@ -2579,16 +2763,20 @@ def neg_arm_release_cpu() -> int:
     63-64 %). Se o oraculo nao cair aqui, a guarda da ARM 26 nao esta' a medir
     nada.
     """
-    # A mutacao e' a LINHA DE CODIGO, nunca um bloco de comentario: um mutante
+    # A mutacao e a LINHA DE CODIGO, nunca um bloco de comentario: um mutante
     # ancorado no comentario deixa de casar no dia em que o comentario muda e
     # passa a "passar" sem tocar em nada -- medido nesta mesma arm, 2026-11-09,
     # quando a histerese mudou o comentario e este braco ficou INERTE (rc=0).
+    #
+    # O DEFEITO QUE A MUTACAO TEM DE REPRODUZIR (medido 2026-11-09, segunda vez
+    # que esta arm ficou inerte): o bloco injetado depois do `return False` da
+    # histerese NUNCA era alcancado, porque `commit < high_pct - hyst` ja' tinha
+    # regressado -- o mutante rodava e o `may_release('muito-alta', 63.6, ...)`
+    # continuava a devolver False. A mutacao certa e' a DIRECCAO da recusa:
+    # `cpu-apenas` passa a LARGAR, que e' o comportamento de 82 cargas / 70
+    # largadas com o commit a 63-64 %.
     old = "            return False, 'cpu-apenas', fields"
     new = "            return True, 'cpu-apenas', fields"
-    new = """        if commit < self.high_pct:
-            self.memory_since = None
-            fields['commit_pct'] = commit
-            return True, 'cpu-apenas', fields"""
     return _neg_arm_gate(
         "largada-cpu", "load_shedding.py", old, new,
         "o CPU volta a largar o modelo (o ciclo de 31 s do log do dono)",
@@ -2694,4 +2882,9 @@ def main(argv) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    rc = main(sys.argv[1:])
+    if os.environ.get("SOTTO_LOG_READS") == "1":
+        print("LOG_READS reads=%d memo_hits=%d mb=%.1f"
+              % (int(_LOG_MEMO.get('reads') or 0), int(_LOG_MEMO.get('hits') or 0),
+                 float(_LOG_MEMO.get('mb') or 0.0)))
+    sys.exit(rc)

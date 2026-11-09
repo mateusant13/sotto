@@ -13,8 +13,14 @@ MEDIDO 2026-11-05. O que o Windows oferece sem privilegio nenhum:
 O QUE ISTO RESPONDEU (primeira corrida real, pid da shell do dono em 2026-11-05):
 o fio que queimava o nucleo tinha nome, e o numero deixou de ser uma suspeita.
 
+O IO DA MESMA ARVORE (`--io`) nasceu a 2026-11-09, quando o watcher acusou um
+oraculo desta casa a **75,2 MB/s** no `I:` e o dono sentiu o stutter: a pergunta
+"quanto IO uma arvore de processos faz" nao tinha instrumento, e o instrumento
+tem de ser o MESMO desta familia (arvore = fios + IO), nao uma sonda por pergunta.
+
 USO
     python _main/shell-thread-cpu.py <pid> [--seconds 8] [--top 12]
+    python _main/shell-thread-cpu.py --io -- <comando...>
     python _main/shell-thread-cpu.py --neg-arm
 """
 from __future__ import annotations
@@ -103,7 +109,65 @@ def rank(before: dict, after: dict, elapsed: float) -> list:
     return rows
 
 
+def io_tree(cmd, sample_s=0.2):
+    """Pico MB/s e totais lidos/escritos de uma ARVORE de processos.
+
+    `psutil.io_counters()` conta bytes REAIS pedidos pelo processo
+    (`GetProcessIoCounters`), por isso a leitura atravessa cache de pagina: o numero
+    e' o que o processo PEDIU ao sistema, que e' o que o dono sente no disco.
+
+    DUAS CORRECOES DE INSTRUMENTO, as duas medidas no dia em que isto nasceu:
+    (a) o total NAO pode ser a soma dos deltas -- 0,2 s de amostragem perde o ultimo
+    pedaco e um instrumento que devolve 0 MB para um processo que leu 70 MB mente;
+    o total e' `ultimo - primeiro` por pid, e o pico sai dos deltas (que existem so'
+    para achar a janela mais cara); (b) amostra de 0,5 s nunca via um processo de
+    1 s de vida: 0,2 s e' o passo.
+    """
+    import subprocess
+    import psutil
+
+    t0 = time.perf_counter()
+    proc = subprocess.Popen(cmd, creationflags=0x08000000)
+    root = psutil.Process(proc.pid)
+    peak = 0.0
+    first = {}
+    last = {}
+    prev = {}
+    while proc.poll() is None:
+        time.sleep(sample_s)
+        try:
+            tree = [root] + root.children(recursive=True)
+        except psutil.Error:
+            tree = []
+        for q in tree:
+            try:
+                io = q.io_counters()
+            except psutil.Error:
+                continue
+            pair = (io.read_bytes, io.write_bytes)
+            if q.pid not in first:
+                first[q.pid] = pair
+            last[q.pid] = pair
+            old = prev.get(q.pid)
+            if old:
+                dr = (pair[0] - old[0]) / 1e6
+                dw = (pair[1] - old[1]) / 1e6
+                peak = max(peak, (dr + dw) / sample_s)
+            prev[q.pid] = pair
+    total_r = sum((last[k][0] - first[k][0]) for k in last) / 1e6
+    total_w = sum((last[k][1] - first[k][1]) for k in last) / 1e6
+    wall = time.perf_counter() - t0
+    print('IO-TREE rc=%s wall=%.1fs peak=%.1f MB/s read=%.0f MB write=%.0f MB'
+          % (proc.returncode, wall, peak, total_r, total_w))
+    return 0
+
+
 def main(argv):
+    if '--io' in argv:
+        if '--' not in argv:
+            print('uso: shell-thread-cpu.py --io -- <comando...>')
+            return 2
+        return io_tree(argv[argv.index('--') + 1:])
     if '--neg-arm' in argv:
         return _neg_arm()
     if not argv or not argv[0].isdigit():
