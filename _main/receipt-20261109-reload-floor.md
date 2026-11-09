@@ -86,3 +86,28 @@ M5 (o deferimento arrancado com `if False:`) derruba **R6 e R7 e mais nada**; o 
   ~1 s), nunca pela mao dele na app.
 * **O efeito no stutter** so' se afirma com o instrumento do watcher e a mesma janela depois.
 * O `ReleaseGate` da largada (commit/CPU) nao foi tocado por esta cura.
+
+## 6. As outras duas regras da MESMA DM, e quem as cumpre
+
+A DM propunha tres regras. A #2 e' a deste recibo. As outras duas **ja' estao no ficheiro**, no
+`ReleaseGate` de `app/webview/load_shedding.py:696-753`, e a medicao de hoje diz por que o caso do
+log do dono passa a ser recusado:
+
+| regra da DM | mecanismo | numero |
+|---|---|---|
+| 1. nao largar o que o proximo passe precisa sem o `shed` PERSISTIR | `may_release` devolve `'memoria-sustentada-espera'` com `wait_s` no log | `RELEASE_PERSIST_S = 120.0` s |
+| 3. preferir PAUSA a unload quando ha' commit | `commit < HIGH_PCT` -> `'cpu-apenas'`, o modelo FICA (o modo `shed` ja' pausou o lote) | `HIGH_PCT = 88.0`, `VERY_HIGH_PCT = 94.0` |
+
+O par medido na DM -- `LOAD_ACTION_PUBLISHED ... commit=59.0% cpu=99.1%` seguido de
+`REDUX_ENGINE_RELEASED` -- e' exactamente o caso `cpu-apenas`: **59,0 % < 88,0 %**, logo a largada
+e' recusada e o log diz `REDUX_ENGINE_KEPT ... why=cpu-apenas`. Aquela largada aconteceu antes de a
+guarda estar no caminho; com ela, o ciclo nao comeca (nao ha' largada) e, se houver largada por
+memoria real, o piso da #2 impede a recarga imediata.
+
+## 7. O que a DM pediu em `load()`
+
+A DM apontava `worker/engine_policy.py:201-222` (`load()`) como o sitio do ciclo. Este recibo
+**nao poe o piso dentro do `load()`**: um piso no `load()` recusaria a carga do caminho de STREAM
+(`transcribe()` chama `load()`), ou seja calaria o motor ao vivo para poupar disco -- a inversao que
+o dono proibe. O piso vive no unico chamador que existe para decidir cargas: o LOTE
+(`flush_pending`), que e' quem pode esperar sem perder audio.
