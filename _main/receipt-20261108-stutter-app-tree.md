@@ -204,6 +204,25 @@ prazo de 240 s, tecto do total (5 %) e ratchet dos passos acima do piso -- o `la
 reprova, o caso medido) e **A9** (40 s -> 90 s reprova e o NOMEIA, a isencao nao e' total).
 Medido: `--policy cap40` -> `RATCHET-OK` rc=0; `--neg-arm` -> `NEG-ARM: PASS (2/2)` rc=1.
 
+### 8-ter. O RATCHET POR PASSO EXIGE FOLGA ABSOLUTA DE 30 s (medido)
+
+Duas corridas caged seguidas reprovaram o mesmo par. Medi os dois antes de mexer na regua:
+
+| passo | tres execucoes seguidas | na corrida | diferenca |
+|---|---|---|---|
+| `red-as-expected-stutter-caption` | 4,4 / 4,4 / 4,7 s | **26,8 s** | +23,1 s |
+| `console-window-audit` | 36,8 / 23,8 / 20,9 s | 35,0 s (baseline 21,6 s) | +13,4 s |
+
+Os dois sao picos do agendador. A regra passa a exigir **as duas** condicoes: `> baseline*1.20`
+**e** `> +30 s`. A regressao que o portao existe para apanhar continua a ser apanhada
+(`lag-note-cost` 224 s -> 1 364 s = +1 140 s). Bracos: **A10** (3,7 -> 26,8 nao reprova),
+**A11** (40 -> 71 reprova e o NOMEIA), e a **M2** do controle passou de `+30 %` para
+`+folga+10 s` (um mutante de +30 % num passo de 60 s ficava invisivel). Historico em
+`_cache/battery-budget-history.json`: mediana das ultimas 3 leituras da MESMA politica.
+
+Medido: `--policy cap40` -> `RATCHET-OK` (0 bracos vermelhos); `--neg-arm` -> `NEG-ARM: PASS
+(2/2)` rc=1 com a M2 apanhada em `red-as-expected-warm-engine` 78,83 -> 118,93 s.
+
 ## 7. O QUE FALTA, e porque nao e' uma afirmacao
 
 - **O worker** ja' corre o codigo curado (recarregado §5): 146 % -> 42 % de um nucleo, com o resto
