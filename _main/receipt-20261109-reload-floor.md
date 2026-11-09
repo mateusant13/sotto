@@ -181,3 +181,24 @@ por hora, quantos com `REDUX_BATCH_DEFERRED reason=reload-floor` / `attempting=a
 MB/s e de % de um nucleo. A janela comeca em **09:07:04.932**. O que eu posso afirmar daqui:
 **nenhuma linha `REDUX_ENGINE_LOAD`/`REDUX_ENGINE_RELEASED`/`REDUX_BATCH_*` foi escrita nos
 primeiros minutos** -- o parakeet so' carrega no primeiro passe de fundo, e sem passe nao ha' rajada.
+
+### 9-bis. O que NAO consigo medir nesta instancia, e porque
+
+Nos primeiros 6 minutos da janela nova (09:07:04.932 -> 09:13) o log tem **zero** linhas
+`REDUX_ENGINE_LOAD` / `REDUX_ENGINE_RELEASED` / `REDUX_BATCH_*`. Isso e' compativel com DUAS coisas e
+eu nao tenho instrumento para as separar daqui:
+
+1. o interruptor esta' armado e nao houve nenhum passe de fundo (o parakeet so' carrega no primeiro);
+2. o interruptor NAO esta' armado nesta instancia da shell (a bandeira vem do ambiente do pai, e o
+   que a shell imprime na linha `BRIDGE_SPAWNED` sao so' `SOTTO_CAPTURE_MODE` e `SOTTO_AUDIO_DEVICE`).
+
+O ambiente dos dois processos e' ILEGIVEL deste pane: `psutil.Process(50452).environ()` e
+`psutil.Process(20676).environ()` levantam `AccessDenied` -- a shell corre em integridade `high` e
+este pane em `medium` (medido 2026-10-23), e a linha `REDUX_SWITCH armed=...` sai no stderr do
+worker, que nao esta' no log vivo (so' aparece em `stderr_tail` de um `BRIDGE_EXIT`, e o tail tem
+40 linhas de um arranque de 53 minutos antes -- ausencia la' nao prova nada).
+
+Quem fecha isto e' o instrumento do watcher: se `REDUX_BATCH_KICK`/`REDUX_ENGINE_LOAD` aparecerem na
+janela, esta' armado; se em uma hora com painel escondido e audio a tocar nao aparecer nenhum, o
+achado passa a ser "o interruptor nao esta' armado nesta shell", que e' um defeito diferente e pede
+outra DM.
