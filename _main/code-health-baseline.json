@@ -51,12 +51,12 @@
       "max_func_name": ""
     },
     "app/panel/history-context-store.js": {
-      "bytes": 8605,
+      "bytes": 12980,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 217,
+      "lines": 300,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -481,12 +481,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1244408,
+      "bytes": 1249897,
       "classes": 28,
       "defs": 145,
       "except_pass": 60,
       "globals": 4,
-      "lines": 23544,
+      "lines": 23640,
       "max_func": 414,
       "max_func_name": "main"
     },
@@ -811,12 +811,12 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 468615,
+      "bytes": 473754,
       "classes": 17,
-      "defs": 89,
-      "except_pass": 20,
+      "defs": 92,
+      "except_pass": 21,
       "globals": 6,
-      "lines": 8882,
+      "lines": 8990,
       "max_func": 2702,
       "max_func_name": "main"
     },
