@@ -198,6 +198,13 @@ este pane em `medium` (medido 2026-10-23), e a linha `REDUX_SWITCH armed=...` sa
 worker, que nao esta' no log vivo (so' aparece em `stderr_tail` de um `BRIDGE_EXIT`, e o tail tem
 40 linhas de um arranque de 53 minutos antes -- ausencia la' nao prova nada).
 
+**O que DESCARTA a hipotese 2, e por medicao:** o worker ANTERIOR desta MESMA shell (pid 50452,
+mesmas flags, mesmo `pythonw`) armou de facto o interruptor -- o log dele tem
+`REDUX_ENGINE_RELEASED ... releases=1` as 08:34:43 e `REDUX_ENGINE_LOAD ... loads=2` as 08:38:23,
+e essas linhas so' existem se `flush_pending` correu, ou seja se `armed` era verdadeiro. O ambiente
+e' herdado do pai, e o pai nao mudou; logo o worker novo esta' armado pelo mesmo caminho. Fica em
+aberto apenas a CONTAGEM, que e' o numero do watcher.
+
 Quem fecha isto e' o instrumento do watcher: se `REDUX_BATCH_KICK`/`REDUX_ENGINE_LOAD` aparecerem na
 janela, esta' armado; se em uma hora com painel escondido e audio a tocar nao aparecer nenhum, o
 achado passa a ser "o interruptor nao esta' armado nesta shell", que e' um defeito diferente e pede
