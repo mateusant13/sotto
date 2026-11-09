@@ -7736,6 +7736,12 @@ def main():
                     # que este nivel existe para cortar.
                     switch.add_audio(block)
                     continue
+                if fuse_history:
+                    # O BLOCO DO AO VIVO TAMBEM E' DO LOTE (ver
+                    # `REDUX_FUSE_HISTORY` acima). `add_audio` so' acumula --
+                    # ele nao acorda motor nenhum; quem decide correr o lote
+                    # continua a ser a visibilidade e a carga.
+                    switch.add_live_audio(block)
             # ── PRE-GAIN buffer ──────────────────────────────────────────────
             # The chunk the model sees is assembled here, BEFORE any gain: the
             # speech/music decision below runs on THESE samples, so the decision
@@ -7925,6 +7931,29 @@ def main():
             engine_threads=_THREADS_EFFECTIVE[0],
         )
         switch.boot_line()
+        # ── A FUSAO DOS DOIS MOTORES (dono, 2026-11-09) ──────────────────────
+        # *"legenda AO VIVO otima E historico otimo"*. Ate' aqui o audio que o
+        # motor AO VIVO transcrevia NUNCA chegava ao motor de LOTE: as duas
+        # janelas eram disjuntas e o historico ficava com a versao pior so'
+        # porque a fala aconteceu com o painel aberto. MEDIDO no historico do
+        # dia: 145 de 162 linhas escritas ao vivo nao tinham nenhuma linha do
+        # lote a +-20 s.
+        # O QUE ESTA' LIGADO AQUI, E O QUE NAO ESTA': o audio passa a ACUMULAR
+        # tambem em modo `stream` (RAM ate' `--redux-max-audio`, depois o spool
+        # de disco -- o mesmo `PendingAudio` sem perdas). O momento de o LOTE
+        # correr nao muda: continua a ser o que a visibilidade e o nivel de
+        # carga ja' decidem, portanto nada e' decodificado duas vezes ao mesmo
+        # tempo e nenhum motor e' carregado a mais. O que muda e' que, quando o
+        # lote corre, ele tem o audio TODO -- e as linhas dele, com o MESMO
+        # `start=`, REESCREVEM no historico a linha que o ao vivo escreveu
+        # (`history_append` -> `_history_find_start` / `replace_at`).
+        # `SOTTO_FUSE_HISTORY=0` desliga a acumulacao e devolve o
+        # comportamento anterior, dizendo-o no arranque.
+        fuse_history = str(os.environ.get("SOTTO_FUSE_HISTORY", "1")).strip() != "0"
+        err("REDUX_FUSE_HISTORY on=%s why=%s"
+            % (str(fuse_history).lower(),
+               "the batch engine re-transcribes the live windows"
+               if fuse_history else "SOTTO_FUSE_HISTORY=0"))
         # ── THE LIVE OVERLAY (lane S3), constructed only when it is opted in ────
         # The opt-in is the flag, the env var, or `redux_live.enabled` in the
         # config, in that order. With none of them `overlay` stays the `None`

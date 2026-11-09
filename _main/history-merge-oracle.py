@@ -216,6 +216,38 @@ def end_to_end(shell):
             ('c11-query-nao-vaza',
              'q=secret' in ' '.join(rows), False),
         ]
+        # ── A FUSAO DOS DOIS MOTORES (2026-11-09) ────────────────────────────
+        # O motor de LOTE re-transcreve, mais tarde, audio que o AO VIVO ja'
+        # escreveu. A linha do lote chega com o MESMO `start=` e a cauda do
+        # ficheiro ja' e' outra, logo `history_merge` sozinho respondia `append`
+        # e o historico ficava com as duas versoes. Aqui o caminho INTEIRO tem de
+        # reescrever a linha onde ela esta', e o lote NUNCA e' sobrescrito pelo
+        # ao vivo (a versao boa fica).
+        live = dict(opts, start=42.10, producer='nemotron')
+        batch = dict(opts, start=42.10, producer='redux')
+        f1 = shim.history_append('A fala como o ao vivo a fechou.', live)
+        shim.history_append('Outra fala, mais tarde.', dict(opts, start=51.00))
+        f2 = shim.history_append('A fala como o lote a corrigiu.', batch)
+        f3 = shim.history_append('A fala como o ao vivo a fechou.', live)
+        frows = []
+        fpath = (f1 or {}).get('path')
+        if fpath and os.path.exists(fpath):
+            with io.open(fpath, 'r', encoding='utf-8', errors='replace') as fh:
+                frows = [r.rstrip('\r\n') for r in fh if r.strip()]
+        fbody = [r.split('] ', 1)[-1].split(' <!--')[0].strip() for r in frows]
+        out += [
+            ('d1-a-fusao-nao-acrescenta',
+             sum(1 for b in fbody if b.startswith('A fala como o')), 1),
+            ('d2-o-lote-reescreve-a-linha-do-ao-vivo',
+             any(b.startswith('A fala como o lote a corrigiu') for b in fbody), True),
+            ('d3-a-versao-do-ao-vivo-saiu',
+             any(b.startswith('A fala como o ao vivo') for b in fbody), False),
+            ('d4-acao-da-fusao', (f2 or {}).get('action'), 'replace_at'),
+            ('d5-o-ao-vivo-nao-derruba-o-lote',
+             (f3 or {}).get('action'), 'skip'),
+            ('d6-o-lote-continua-no-ficheiro',
+             sum(1 for r in frows if 'producer=redux' in r), 1),
+        ]
         return out, [m for m in logs if m.startswith('HISTORY_')], tmp
     finally:
         shell.log = shell_log
@@ -239,6 +271,12 @@ MUTANTS = {
     'm2-sempre-skip': (
         "    if not last:\n        return 'append'",
         "    if True:\n        return 'skip'"),
+    'm3-sem-fusao-no-lugar': (
+        "                action = 'replace_at'\n                _at = _hit.get('index')",
+        "                action = 'append'\n                _at = _hit.get('index')"),
+    'm4-o-ao-vivo-derruba-o-lote': (
+        "                if _hit.get('producer') == 'redux' and str(",
+        "                if False and str("),
 }
 
 
@@ -262,7 +300,21 @@ def run_neg_arm():
         except Exception as exc:                      # noqa: BLE001
             print(f'NEG-ARM LOAD-FAILED {name}: {exc!r}')
             continue
-        bad = judge(arms(mod))
+        # O NEGATIVO JULGA O CAMINHO INTEIRO (2026-11-09). Julgar so' os arms do
+        # `history_merge` deixava dois mutantes da FUSAO passarem: eles vivem no
+        # `history_append`, e um negativo que nao corre o caminho que a cura
+        # mudou nao mede a cura.
+        rows_m = list(arms(mod))
+        try:
+            rows_m.extend(tail_arms(mod)[0])
+        except Exception as exc:                      # noqa: BLE001
+            print(f'NEG-ARM TAIL-FAILED {name}: {exc!r}')
+        try:
+            e2e_m, _logs_m, _t = end_to_end(mod)
+            rows_m.extend(e2e_m)
+        except Exception as exc:                      # noqa: BLE001
+            print(f'NEG-ARM E2E-FAILED {name}: {exc!r}')
+        bad = judge(rows_m)
         if bad:
             caught += 1
             print(f'ok  {name} -> RED: ' + ','.join(b[0] for b in bad))

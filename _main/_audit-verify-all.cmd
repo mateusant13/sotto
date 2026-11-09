@@ -2546,6 +2546,43 @@ if exist _main\history-merge-oracle.py (
   call :expectred red-as-expected-history-merge !STEP_RC! "%OUT%\history-merge-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-history-merge MISSING "%OUT%\history-merge-neg.log" "NEG-ARM PASS" )
 
+REM (`fusion-wire`: a fusao dos DOIS MODELOS ligada ao caminho da legenda. O
+REM core `worker/fusion.py` decidia palavra a palavra que texto o ecra leva e
+REM nao tinha UM consumidor -- uma tabela de decisao sem chamador e' uma
+REM promessa. O oraculo EXECUTA `on_worker_caption` do shell (extraido por
+REM `ast`) e exige que o texto fundido chegue as DUAS superficies (overlay e o
+REM payload que o painel commita, e que `history_append` grava), com a palavra
+REM ja' confirmada e ja' no ecra LOCKADA; o `--neg-arm` arranca o call site
+REM numa COPIA e exige o RED. Nao abre a app.)
+if exist _main\fusion-wire-oracle.py (
+  call :step always fusion-wire 0 "_main\fusion-wire-oracle.py;worker\fusion.py;app\webview\sotto_webview.py" "%OUT%\fusion-wire.log" python _main\fusion-wire-oracle.py
+  call :record fusion-wire !STEP_RC!
+) else ( call :record fusion-wire MISSING )
+if exist _main\fusion-wire-oracle.py (
+  call :step always red-as-expected-fusion-wire 1 "_main\fusion-wire-oracle.py;worker\fusion.py;app\webview\sotto_webview.py" "%OUT%\fusion-wire-neg.log" python _main\fusion-wire-oracle.py --neg-arm
+  call :expectred red-as-expected-fusion-wire !STEP_RC! "%OUT%\fusion-wire-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-fusion-wire MISSING "%OUT%\fusion-wire-neg.log" "NEG-ARM: PASS" )
+
+REM (`fusion-audio`: o audio do AO VIVO chega ao motor de LOTE. Dono, 2026-11-09:
+REM *"legenda AO VIVO otima E historico otimo"*. Ate' aqui o `ReduxHiddenSwitch`
+REM acumulava audio SO' em modo `batch`/`shed`, logo a fala acontecida com o
+REM painel aberto nunca entrava no passe de lote e o historico ficava com a
+REM versao pior -- medido: 145 de 162 linhas ao vivo sem nenhuma linha de lote a
+REM +-20 s. O oraculo EXECUTA o `add_live_audio` real (extraido por `ast`) sobre
+REM um `PendingAudio` sem disco e julga o tecto (`fuse_cap_s`), o corte CONTADO,
+REM a CAUDA preservada por identidade, o interruptor `SOTTO_FUSE_HISTORY` e o
+REM call site do worker (o `add_audio` sem tecto so' nos modos de fundo). O
+REM `--neg-arm` muta CINCO sitios em COPIA e exige os cinco RED. Nenhum dos dois
+REM carrega modelo, abre dispositivo ou abre janela.)
+if exist _main\fusion-audio-oracle.py (
+  call :step always fusion-audio 0 "_main\fusion-audio-oracle.py;worker\engine_switch.py;worker\sotto_worker.py;worker\live_queue.py" "%OUT%\fusion-audio.log" python _main\fusion-audio-oracle.py
+  call :record fusion-audio !STEP_RC!
+) else ( call :record fusion-audio MISSING )
+if exist _main\fusion-audio-oracle.py (
+  call :step always red-as-expected-fusion-audio 1 "_main\fusion-audio-oracle.py;worker\engine_switch.py;worker\sotto_worker.py" "%OUT%\fusion-audio-neg.log" python _main\fusion-audio-oracle.py --neg-arm
+  call :expectred red-as-expected-fusion-audio !STEP_RC! "%OUT%\fusion-audio-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-fusion-audio MISSING "%OUT%\fusion-audio-neg.log" "NEG-ARM PASS" )
+
 REM (`history-context`: a linha do historico carrega a origem do audio e o
 REM contexto de visualizacao, compacto e pesquisavel. Dono, 2026-11-09: meses
 REM depois, saber de onde veio o audio e o que estava na tela quando foi dito.

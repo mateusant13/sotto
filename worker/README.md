@@ -122,12 +122,16 @@ table, kept for provenance:
 ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
 ```
 
-**Registered is not working.** `choose_providers()` therefore **probes CUDA
-with a real session** and drops it if the probe session does not actually carry
-it, reporting the reason in the `boot` line (`note:`). Never treat
-`get_available_providers()` as evidence that the GPU was used — read the
-`providers` field of the `model-loaded` status line, which is the session's own
-answer.
+**Registered is not working, and the test is the REAL session.** `choose_providers()`
+returns the REQUEST; the liveness answer is `StreamAsr.providers`, read off the
+encoder session the run will actually drive (`self.enc.get_providers()`), and
+`StreamAsr.provider_note` says `cuda-registered-but-not-loadable` when a requested
+CUDA EP did not answer. A separate probe session used to do this job and was
+removed (measured 2026-11-03): it paid the CUDA EP's DLL load (~1.5 GB of
+cublasLt + cuDNN) in a session that was then thrown away, costing 3.5 s warm and
+20.9 s on a busy box. Never treat `get_available_providers()` as evidence that the
+GPU was used — read the `providers` field of the `model-loaded` status line, which
+is the session's own answer.
 
 MEASURED 2026-10-06: on this host today the probe **succeeds** — the `boot`
 line reports `note: ""`, `providers_selected: ["CUDAExecutionProvider",
@@ -135,8 +139,30 @@ line reports `note: ""`, `providers_selected: ["CUDAExecutionProvider",
 `providers: ["CUDAExecutionProvider", "CPUExecutionProvider"]`. The older
 README text here claimed CUDA always failed to `dlopen` (`cublasLt64_13.dll`
 missing, CUDA 12.8 vs the required 13); that was true on the day it was written
-and is **no longer**, which is why the RTF below are GPU numbers. The probe
+and is **no longer**, which is why the RTF below are GPU numbers. The read-back
 stays: it is what makes the difference visible instead of assumed.
+
+**THE LIVE ENGINE, BOTH PROVIDERS, SAME AUDIO — MEASURED 2026-11-09**
+(`_main/receipt-20261109-live-engine-gpu.md`, instrument
+`_main/live-engine-provider-ab.py`; `_main/fixtures/stack-compare/ptbr-radio-14s.wav`,
+26 x 8960-sample chunks, 3 passes, both arms on the shipped 4-thread plan under the
+same 40 % cage):
+
+| | CPU | CUDA |
+|---|---|---|
+| chunk p50 / p95 ms | 228.2 / 293.9 | 41.6 / 52.5 |
+| RTF (wall/audio) | 0.416 (2.4x real time) | 0.077 (13.0x real time) |
+| RSS peak MiB | 1536 | 1600 |
+| GPU MiB, machine-wide delta from the run | 0 (pid never listed) | **+1489** (pid listed) |
+| model load s | 1.09 | 1.71 |
+| transcript sha256 | `c78010ab…6523bfc` | `c78010ab…6523bfc` |
+
+The TEXT is identical, so the comparison is about cost, not quality. The CPU
+figure is not a constant: three paired runs on the owner's desktop gave 487 / 865
+/ 228 ms per chunk (RTF 0.93 / 1.59 / 0.42 — under real time in two of them),
+against 37 / 35 / 42 ms on CUDA. A CUDA EP that is available and not selected is
+therefore a defect, not a preference, and `_main/worker-providers-oracle.py` reds
+it.
 
 Two related traps on this host:
 

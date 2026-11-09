@@ -536,6 +536,11 @@ class ReduxHiddenSwitch:
         self.runner_timeout_s = float(runner_timeout_s)
         self.wav_dir = wav_dir
         self.spool_dir = spool_dir
+        #: Tecto do audio acumulado em modo `stream` para o lote (segundos).
+        #: 600 s = 38 MB de float32; acima disto corta-se o MAIS ANTIGO, que ja'
+        #: esta' transcrito pelo ao vivo -- ver `add_live_audio`.
+        self.fuse_cap_s = 600.0
+        self.fuse_dropped_s = 0.0
         # ── gate 2, decided ONCE, at construction, and stated in the log ─────
         # TWO facts, not one: the runner FILE and the checkpoint it will LOAD.
         # `_run_runner` invokes the runner with no `--model-dir`, so the runner
@@ -939,6 +944,48 @@ class ReduxHiddenSwitch:
         if self.pending is None:
             return False
         return self.pending.add(block)
+
+    def add_live_audio(self, block):
+        """Acumula um bloco que o motor AO VIVO esta' a transcrever, para o lote.
+
+        A ORDEM DO DONO (2026-11-09): *"legenda AO VIVO otima E historico
+        otimo"*. O audio que o ao vivo transcreve nunca chegava ao lote -- as
+        janelas eram disjuntas (medido: 145 de 162 linhas do dia sem nenhuma
+        linha de lote a +-20 s) e a fala acontecida com o painel aberto ficava
+        para sempre com a versao pior.
+
+        ESTE CAMINHO TEM TECTO PROPRIO, e e' o unico deste ficheiro que deita
+        audio fora. A razao e' exacta: o TEXTO destes segundos ja' esta' escrito
+        pelo motor ao vivo -- o que se perde ao cortar o mais antigo e' a
+        MELHORIA futura, nunca a transcricao. `PendingAudio` continua a nao
+        perder um bloco (contrato intacto: quem la' entra sai todo); o tecto vive
+        aqui, e' declarado (`fuse_cap_s`) e cada corte e' contado e dito.
+        """
+        if self.pending is None:
+            return False
+        self.add_audio(block)
+        cap = float(getattr(self, "fuse_cap_s", 0.0) or 0.0)
+        if cap <= 0 or self.pending_seconds() <= cap:
+            return True
+        blocks, held_s = self.take_pending()
+        keep = []
+        tail_s = 0.0
+        for one in reversed(blocks):
+            tail_s += int(getattr(one, "size", 0)) / float(TARGET_SR)
+            keep.append(one)
+            if tail_s >= cap:
+                break
+        keep.reverse()
+        self.pending.requeue(keep)
+        dropped_s = max(0.0, held_s - tail_s)
+        self.fuse_dropped_s = getattr(self, "fuse_dropped_s", 0.0) + dropped_s
+        now = time.time()
+        if now - getattr(self, "_fuse_last_log", 0.0) >= 60.0:
+            self._fuse_last_log = now
+            self.log("REDUX_FUSE_TRIMMED cap_s=%.0f dropped_s=%.1f total_dropped_s=%.1f"
+                     " why=the-live-engine-already-wrote-these-seconds"
+                     % (cap, dropped_s, self.fuse_dropped_s))
+        return True
 
     def pending_seconds(self):
         return self.pending.seconds() if self.pending is not None else 0.0

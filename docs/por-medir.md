@@ -38,3 +38,12 @@
   (21 -> 41) e a linha de base foi atualizada HOJE com esta linha escrita, nao em silencio.
   Auditar e' trabalho por fazer: cada handler ou ganha `log(...)` com um codigo nomeado, ou uma razao
   escrita ao lado. Nao se "corrige" apagando o `pass`.
+- **A VOZ DE UMA CALL REAL NO TAP POR PROCESSO** (2026-11-09, ordem do dono *"identifica corretamente o
+  audio saindo do discord"*). O caminho esta' medido ate' onde uma lane pode ir: `PLP_START hr=0`, a
+  RAIZ da arvore do `Discord.exe` (pid 22992, e **nao** o maior pid 24484) abre e entrega **39 blocos
+  em 4 s** com `pump_exited=False hr=0`, e o alvo por NOME resolve/re-resolve (`PROCESS-TARGET PASS
+  14/14`, `--neg-arm` 3/3). O que **nao** esta' medido e' a voz: na janela da medicao o Discord
+  renderizava SILENCIO (`peak=0.0 rms=0.0 silent_packets=0`) -- um tap aberto e mudo e' indistinguivel
+  de um tap que nao ouve. Prova-la exige uma call activa, e a separacao contra o mix exigiria TOCAR
+  audio numa lane, que a lei do audio do dono proibe. Recibo:
+  `_main/receipt-20261109-discord-per-app-tap.md` §5.

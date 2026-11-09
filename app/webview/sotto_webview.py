@@ -962,6 +962,102 @@ def history_merge(last, new_body, now_s=None, start=None,
     return 'replace' if gap <= float(window_s) else 'append'
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# FUSION — the two-model text decision, wired into the ONE caption entry point
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# `worker/fusion.py` decides, word by word, which text the SCREEN takes when
+# the STREAM hypothesis and the FINISHER's hypothesis for the SAME audio span
+# disagree. The core existed with an oracle and NO consumer (`grep -rn
+# "import fusion\|from .fusion"` found nothing), so the decision never reached
+# the owner. This is the JOIN, and it lives at `on_worker_caption` because that
+# is the ONE place a worker caption passes through on its way to BOTH surfaces:
+# `emit_async` feeds the panel row the transcript writer commits, and
+# `push_caption_to_window` paints the overlay slot `_drain_caption_pending`
+# drains. ONE text in, both surfaces out — neither can show a version the other
+# did not fuse.
+#
+# OFF BY DEFAULT (`SOTTO_FUSION=1` arms it), like every other second-pass arm in
+# this tree: a switch that lands before the join is measured costs the owner a
+# changed caption for no proven gain. It only fires on a `final:true` event —
+# the finisher's hypothesis (the M3 second pass, or the Redux overlay's line)
+# for the span a PARTIAL of the same identity already painted. See
+# `_main/receipt-20261109-fusion-wire.md` for the oracle that proves the wire.
+FUSION_SWITCH_ENV = 'SOTTO_FUSION'
+#: How many `(session, start)` stream hypotheses are remembered. A line's
+#: partials arrive until it closes, so the working set is one line per open
+#: segment plus the tail of closed ones; 32 is far above the measured live rate
+#: and still a bound (the dict never grows with the session).
+FUSION_STREAM_MAX = 32
+_FUSION_MODULE = None
+
+
+def fusion_enabled():
+    """The switch, read at call time (`SOTTO_FUSION=1`); OFF for anything else."""
+    return str(os.environ.get(FUSION_SWITCH_ENV) or '').strip().lower() in (
+        '1', 'true', 'yes', 'on')
+
+
+def _fusion_module():
+    """`worker/fusion.py`, imported the FIRST time a final line needs it.
+
+    LAZY for the same reason `_speaker_bridge` is: the shell must not put
+    `worker/` on `sys.path` (or pay an import) for a run that never arms the
+    switch. `worker/` has no package `__init__`, so the DIRECTORY is the import
+    root — the same way the worker imports its own siblings.
+    """
+    global _FUSION_MODULE
+    if _FUSION_MODULE is not None:
+        return _FUSION_MODULE
+    here = os.path.dirname(os.path.abspath(__file__))
+    worker = os.path.normpath(
+        os.path.join(here, os.pardir, os.pardir, 'worker'))
+    if worker not in sys.path:
+        sys.path.insert(0, worker)
+    import fusion                                                  # noqa: PLC0415
+    _FUSION_MODULE = fusion
+    return _FUSION_MODULE
+
+
+def fuse_caption(stream_text, refined_text):
+    """One span fused: `(text, ops, stability)` — the REAL decision, no I/O.
+
+    The STREAM line is seeded as ALREADY ON SCREEN — `feed(stream, '')` builds
+    the committed list from it and `reveal()` marks every word revealed — and
+    only THEN is the FINISHER's hypothesis fed. That order is what puts the
+    decision under `REVEALED_REPLACE_RULE`: the core cannot know a word was
+    painted unless the caller says so, and this is the caller.
+
+    The seed is `feed(stream, '')` and NOT `feed(stream, stream)`: the second
+    form would stamp every word `both_models=True` before either pass produced
+    it, which is exactly the CONFIRMATION the rule requires to BLOCK a
+    correction. Empty refined leaves the words `provisional`; the finisher's
+    feed then yields `confirmed` (agreement) or `corrected` (disagreement).
+    """
+    fusion = _fusion_module().Fusion()
+    fusion.feed(stream_text, '')
+    fusion.reveal()
+    result = fusion.feed(stream_text, refined_text)
+    return result['text'], result['ops'], result['stability']
+
+
+def _fusion_key(meta):
+    """The line identity fusion may join on — `(session, start)`, or None.
+
+    `start` ALONE IS NOT ENOUGH: it is the worker's audio clock and it restarts
+    at zero with every respawn (`_history_ctx_session_of`), so a new session's
+    opening words would otherwise fuse with the previous session's line that
+    happened to carry the same second.
+    """
+    if not isinstance(meta, dict):
+        return None
+    start = meta.get('start')
+    if isinstance(start, bool) or not isinstance(start, (int, float)):
+        return None
+    session = meta.get('historySession')
+    return (str(session) if isinstance(session, str) else '',
+            round(float(start), 2))
+
 
 def _merge_key(text):
     """O texto sem a pontuacao FINAL, que e' o que separa duas leituras da
@@ -14524,6 +14620,47 @@ class SottoShell:
         return history_context.snapshot(app_target=self._history_app_target())
 
 
+    def _history_find_start(self, path, start):
+        """A linha JA' gravada com este `start=`, ou None. {index, producer, entry}.
+
+        Le UMA vez, de tras para a frente, e devolve o ULTIMO registo cujo
+        `start=` casa em 0,05 s -- a mesma tolerancia de `history_merge`. Uma
+        linha sem `start=` nunca casa: sem identidade nao se reescreve nada.
+        """
+        target = None
+        try:
+            target = float(start)
+        except (TypeError, ValueError):
+            return None
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+                rows = handle.readlines()
+        except OSError:
+            return None
+        rx = re.compile(r'\bstart=([-0-9.]+)')
+        for idx in range(len(rows) - 1, -1, -1):
+            row = rows[idx]
+            m = rx.search(row)
+            if not m:
+                continue
+            try:
+                if abs(float(m.group(1)) - target) > 0.05:
+                    continue
+            except ValueError:
+                continue
+            body = re.match(r'- \[([0-9:]+)\] (.*)', row)
+            return {
+                'index': idx,
+                'producer': 'redux' if 'producer=redux' in row else '',
+                'entry': {
+                    'time': body.group(1) if body else '',
+                    'text': re.split(r'<!--', body.group(2))[0].strip() if body else '',
+                    'path': path,
+                    'action': 'replace_at',
+                },
+            }
+        return None
+
     def history_append(self, text, options=None):
         """Append ONE committed caption. Returns the entry as written, or None."""
         body = re.sub(r'\s+', ' ', str(text or '')).strip()
@@ -14576,6 +14713,28 @@ class SottoShell:
         _prev = self._history_tail(path)
         action = history_merge(_prev, body,
                                now_s=_now_s, start=_start, audio=_audio)
+        # ── A FUSAO DOS DOIS MOTORES, LIDA NO `start=` (2026-11-09) ──────────
+        # O motor de LOTE re-transcreve, mais tarde, audio que o motor AO VIVO
+        # ja' transcreveu. Sem esta metade a linha do lote chega quando a cauda
+        # do ficheiro ja' e' outra, `history_merge` responde `append` e o
+        # historico fica com DUAS versoes da mesma fala (a pior primeiro).
+        # A identidade da linha e' o `start=` do worker (regra 1 de
+        # `history_merge`), logo uma linha anterior com o MESMO `start` e' a
+        # MESMA fala a ser dita melhor: reescreve-se onde ela esta', nao a cauda.
+        # O LOTE NAO E' SOBRESCRITO PELO AO VIVO: se a linha gravada ja' veio do
+        # motor de lote (`producer=redux`) e esta nao, a versao boa fica.
+        if action == 'append' and _start is not None:
+            _hit = self._history_find_start(path, _start)
+            if _hit is not None:
+                if _hit.get('producer') == 'redux' and str(
+                        (options or {}).get('producer') or '') != 'redux':
+                    log('HISTORY_FUSED_KEPT producer=redux start=%.2f why=batch-wins'
+                        % _start)
+                    _kept = dict(_hit.get('entry') or {})
+                    _kept['action'] = 'skip'
+                    return _kept
+                action = 'replace_at'
+                _at = _hit.get('index')
         if action == 'replace' and isinstance(_prev, dict):
             # A growing line keeps the context the earlier commit captured when
             # this call could not resolve it; never blank the line's origin.
@@ -14614,7 +14773,19 @@ class SottoShell:
         line = f'- [{entry["time"]}] {body}{provenance}\n'
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            if action == 'replace':
+            if action == 'replace_at':
+                with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+                    rows = handle.readlines()
+                _idx = locals().get('_at')
+                if isinstance(_idx, int) and 0 <= _idx < len(rows):
+                    rows[_idx] = line
+                    with open(path, 'w', encoding='utf-8', newline='') as handle:
+                        handle.writelines(rows)
+                else:
+                    with open(path, 'a', encoding='utf-8') as handle:
+                        handle.write(line)
+                    action = 'append'
+            elif action == 'replace':
                 # REESCREVER A CAUDA EXIGE LER O FICHEIRO: um ficheiro de hora
                 # cheia tem milhares de linhas pequenas (o maior medido tem
                 # 48 KB/h), e a alternativa -- deixar a linha antiga e escrever
@@ -14638,7 +14809,12 @@ class SottoShell:
         except OSError as exc:  # noqa: BLE001 -- a write miss must not kill the app
             warn(f'HISTORY_APPEND_FAILED path={json.dumps(path)} error={exc!r}')
             return None
-        if action == 'replace':
+        if action == 'replace_at':
+            log('HISTORY_FUSED path=%s time=%s start=%.2f producer=%s bytes=%d'
+                % (json.dumps(path), entry['time'], _start,
+                   (options or {}).get('producer') or 'live',
+                   len(body.encode('utf-8'))))
+        elif action == 'replace':
             log('HISTORY_LINE_MERGED path=%s time=%s bytes=%d'
                 % (json.dumps(path), entry['time'], len(body.encode('utf-8'))))
         else:
@@ -17408,6 +17584,98 @@ class SottoShell:
             return ''
         return ''
 
+    def _fusion_caption(self, text, meta):
+        """The finisher's hypothesis joins the STREAM one; returns what ships.
+
+        Called for EVERY worker caption, and it keeps the two roles apart:
+
+          * `final` not true — this IS the stream hypothesis for its line
+            identity; remember it (bounded) and hand it back untouched;
+          * `final:true` — this is the FINISHER's hypothesis (the M3 second
+            pass, or the Redux overlay's line) for the SAME identity; feed it
+            to `worker/fusion.py` with the remembered stream text and hand back
+            the FUSED text.
+
+        WHY THIS IS THE JOIN. The returned text is what `on_worker_caption`
+        gives to `emit_async` (the panel row — and the panel's commit is what
+        `history_append` writes) AND to `push_caption_to_window` (the overlay
+        slot `_drain_caption_pending` drains). One decision, both surfaces; the
+        alternative — patching each surface — is two rules for one line.
+
+        OFF unless `SOTTO_FUSION=1`. A final with no stream hypothesis of its
+        own (a batch pass over audio the live engine never painted, a probe)
+        has nothing to align against and ships byte for byte.
+        """
+        if not fusion_enabled():
+            return text
+        key = _fusion_key(meta)
+        if key is None:
+            return text
+        stream = getattr(self, '_fusion_stream', None)
+        if not isinstance(stream, dict):
+            stream = self._fusion_stream = {}
+        if meta.get('final') is not True:
+            stream[key] = str(text or '')
+            if len(stream) > FUSION_STREAM_MAX:
+                for stale in list(stream)[:len(stream) - FUSION_STREAM_MAX]:
+                    stream.pop(stale, None)
+            return text
+        prev = stream.get(key)
+        if not prev:
+            return text
+        states = getattr(self, '_fusion_state', None)
+        if not isinstance(states, dict):
+            states = self._fusion_state = {}
+        fusion = states.get(key)
+        try:
+            if fusion is None:
+                fusion = _fusion_module().Fusion()
+                # Seed with the stream line AS PAINTED, then say so: `reveal()`
+                # is what arms REVEALED_REPLACE_RULE for the finisher's feed.
+                fusion.feed(prev, '')
+                fusion.reveal()
+                states[key] = fusion
+                if len(states) > FUSION_STREAM_MAX:
+                    for stale in list(states)[:len(states) - FUSION_STREAM_MAX]:
+                        states.pop(stale, None)
+            # The indices the ops use belong to the COMMITTED list of this
+            # state, which is the previous target — not necessarily `prev`
+            # once a first final has already merged words into the line.
+            before = fusion.words()
+            result = fusion.feed(prev, str(text or ''))
+            # The line it just returned is what the owner will read: it is on
+            # screen from this instant, so the next decision starts stable.
+            fusion.reveal()
+        except Exception as exc:  # noqa: BLE001 — text must still flow
+            log(f'FUSION_FAILED error={exc!r} '
+                f'text={json.dumps(str(text or "")[:60])}')
+            return text
+        ops = result.get('ops') or []
+        if ops:
+            for op in ops:
+                kind = str(op.get('op') or 'replace')
+                if kind == 'append':
+                    span = '%d:%d' % (len(before), len(before))
+                    was = ''
+                else:
+                    a, b = op.get('span') or (len(before), len(before))
+                    span = '%d:%d' % (int(a), int(b))
+                    was = ' '.join(r['word'] for r in before[int(a):int(b)])
+                # ONE line per change, and it exists so the effect is
+                # MEASURABLE: `grep FUSION_EDIT` over the owner's log answers
+                # "did the join ever disagree with the screen, and on which
+                # words?" without replaying the audio.
+                log(f'FUSION_EDIT op={kind} span={span} '
+                    f'was={json.dumps(was)} '
+                    f'now={json.dumps(str(op.get("text") or ""))} '
+                    f'stability={result.get("stability")}')
+        # THE TARGET IS WHAT SHIPS, ops or not. `ops == []` means the target
+        # already equals what is on screen -- which is ALSO what happens when
+        # the rule REFUSES the finisher's word (a word both models confirmed
+        # and the owner already read is not replaced). Returning the incoming
+        # refined text there would publish the very word the rule just blocked.
+        return result.get('text') or text
+
     def on_worker_caption(self, text, meta):
         # THE SESSION IS OBSERVED ON EVERY CAPTION, not only on a final
         # (2026-11-09): the first PARTIAL of a respawned worker is what proves
@@ -17419,6 +17687,17 @@ class SottoShell:
         _observe_ctx = getattr(self, '_history_ctx_observe_session', None)
         if _observe_ctx is not None:
             _observe_ctx(self._history_ctx_session_of(meta))
+        # ── THE TWO-MODEL JOIN (2026-11-09) ────────────────────────────────
+        # ONE call, BEFORE the text reaches either consumer: `emit_async`
+        # below feeds the panel row (and the panel's commit is what
+        # `history_append` writes) and `push_caption_to_window` paints the
+        # overlay. A PARTIAL is remembered as the STREAM hypothesis; a FINAL
+        # for the same `(session, start)` is the FINISHER's and comes back
+        # fused. Off unless SOTTO_FUSION=1; `getattr` because a probe harness
+        # extracts this method without the rest of the class.
+        _fuse = getattr(self, '_fusion_caption', None)
+        if _fuse is not None:
+            text = _fuse(text, meta)
         # A LINHA DE UM WORKER MORTO NAO PINTA NO NOVO (troca de PROCESSO).
         bridge = getattr(self, 'bridge', None)
         # THE PLAYER'S OWN CAPTIONS WIN WHILE THEY EXIST (owner, 2026-10-17).
@@ -17443,14 +17722,22 @@ class SottoShell:
             # names a YouTube player the line's viewing context is that video.
             # The cache is the same one `_yt_source_by_title` fills; a stale
             # entry is not used (6 s, the same window the source decision uses).
-            _url = self._viewing_url()
+            # `getattr` on both helpers, like `_observe_ctx` above: the probe
+            # harnesses that drive THIS method build a partial shell
+            # (`types.SimpleNamespace`) and a probe dying in the product is a
+            # gate that raises instead of judging. In the shipped shell both
+            # methods always exist, so the guarded branch is the same branch.
+            _viewing_url = getattr(self, '_viewing_url', None)
+            _url = _viewing_url() if callable(_viewing_url) else ''
             if _url:
                 _ctx = meta.get('context')
                 if not isinstance(_ctx, dict):
                     _ctx = {}
                 _ctx.setdefault('viewingUrl', _url)
                 meta['context'] = _ctx
-            self.note_history_context(meta)
+            _note_ctx = getattr(self, 'note_history_context', None)
+            if _note_ctx is not None:
+                _note_ctx(meta)
         # ── REPLAY VELHO E' HISTORIA, NAO PINTURA (INV-5/R11, 2026-11-04) ────
         # A `WarmPipeBridge` marca `history_only` uma linha cujo audio tem mais
         # de `WARM_BACKLOG_LIVE_MS`. Ela ENTRA no historico (o painel escreve-o a

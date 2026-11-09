@@ -14,6 +14,19 @@ took a separate probe to answer, because the shell's log kept only the STATE
 was invisible. The shell now logs `WORKER_PROVIDERS selected=.. available=..`
 (`sotto_webview.py`, the `stage=providers` branch), and this file judges that line.
 
+THE CPU FIGURE ABOVE IS NOT A CONSTANT, AND THAT IS THE POINT (MEASURED 2026-11-09,
+`_main/receipt-20261109-live-engine-gpu.md`, `_main/live-engine-provider-ab.py`). Same
+clip (`_main/fixtures/stack-compare/ptbr-radio-14s.wav`), same code, same 4-thread plan,
+three paired runs on this desktop while the owner used it:
+    arm    chunk p50 (ms)   p95 (ms)   RTF (wall/audio)   x realtime
+    cpu    487 / 865 / 228  773 / 1248 / 294   0.93 / 1.59 / 0.42   1.1 / 0.6 / 2.4
+    cuda    37 /  35 /  42   54 /   48 /  52   0.076 / 0.066 / 0.077   13.2 / 15.1 / 12.9
+The CPU engine is 228-865 ms per 560 ms chunk -- 5.5x to 24x slower than CUDA, and
+UNDER real time in two of three runs. So "2,27x on CPU" is the good end of a range whose
+bad end is "the desktop is busy and captions fall behind", and no reading of this gate
+may treat the CPU arm as a safe equivalent: the only green it accepts is the one where a
+GPU provider is AVAILABLE and SELECTED.
+
 WHAT IT REFUSES, and the case is real (onnxruntime 1.30 wants cublasLt64_13.dll +
 cuDNN 9; they ship inside the nvidia wheels, NOT on PATH):
   * `CUDAExecutionProvider` in `available` but NOT in `selected` -> RED. A CUDA EP
