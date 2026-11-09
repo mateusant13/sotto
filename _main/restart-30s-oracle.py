@@ -81,7 +81,13 @@ REVERT = 'pass  # NEG-ARM: the pre-fix shell never counted the heartbeat'
 
 SILENCE_MS = 600          # 30 s in the field; 0.6 s is the same decision
 TICK_MS = 150             # 10 s in the field; the RATIO (4x) is what is tested
-SECONDS = 3.0             # observation window per arm
+# A JANELA DAS ARMS LEVA A GRACA DENTRO (2026-11-09). A cura da morte por
+# silencio passou a perguntar, antes de matar, se um batimento esta' em voo
+# (`silence_grace_s`, 10% da janela = 60 ms aqui). Cada ciclo do copy pre-fix
+# custa esses 60 ms a mais, e tres ciclos cruzavam o fim da janela: medido,
+# `panel-state RED ... got 'spawning'` -- um RED de relogio, nao de codigo.
+# 3,0 s + 4 x 60 ms, com folga medida.
+SECONDS = 3.4             # observation window per arm (3.0 s + the grace)
 BACKOFF_BASE = 100
 BACKOFF_MAX = 200
 
@@ -197,6 +203,15 @@ def run_arm(mod, mode: str, seconds: float, arm: str) -> dict:
             'exit_lines': len(lines_of(joined, 'BRIDGE_EXIT')),
             'bridge_state': worst or final,
             'bridge_state_final': final,
+            # O QUE O PAINEL MOSTROU EM ALGUM MOMENTO (2026-11-09). A arm do
+            # `panel-state` perguntava o estado FINAL do copy pre-fix, e o fim
+            # de uma corrida que mata em ciclo cai em qualquer fase: com a
+            # graça da morte por silencio (+60 ms por ciclo) ela media
+            # `'spawning'` e depois `'capture-started'` -- um RED de FASE, nao
+            # do defeito. O defeito e' o painel PASSAR por uma morte; e' isso
+            # que este conjunto guarda.
+            'named_states_seen': sorted({
+                str(mod.SottoShell._named_panel_state(s, None)) for s in samples}),
             'pending_error_samples': sum(
                 1 for s in samples if (s.get('pendingError') or {}).get('state')),
             'samples': len(samples),
@@ -382,6 +397,7 @@ def panel_state_pair(mod, green: dict, red: dict) -> tuple[dict, list[str]]:
             'pendingError': worker.get('pendingError'),
             'last_painted': snapshot.get('last_painted'),
             'restarts': snapshot.get('restarts'),
+            'named_states_seen': snapshot.get('named_states_seen'),
         }
     g = out['GREEN heartbeat']
     r = out['RED heartbeat (pre-fix copy)']
@@ -394,11 +410,11 @@ def panel_state_pair(mod, green: dict, red: dict) -> tuple[dict, list[str]]:
     if (g['last_painted'] or {}).get('kind') == 'error':
         fails.append(f"panel-state: GREEN painted an ERROR status: "
                      f"{g['last_painted']!r}")
-    if r['namedState_with_no_footer'] != 'exit':
-        fails.append(f"panel-state: the pre-fix copy does NOT end at "
-                     f"namedState='exit' (got "
-                     f"{r['namedState_with_no_footer']!r}) -- the red arm is "
-                     'not the recorded defect')
+    if 'exit' not in (r.get('named_states_seen') or []):
+        fails.append(f"panel-state: the pre-fix copy never showed "
+                     f"namedState='exit' (states seen: "
+                     f"{r.get('named_states_seen')!r}) -- the red arm is not "
+                     'the recorded defect')
     return out, fails
 
 

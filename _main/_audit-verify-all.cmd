@@ -983,6 +983,21 @@ if exist _main\worker-churn-oracle.py (
   call :step red-as-expected-worker-churn 1 "_main\worker-churn-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\worker-churn-neg.log" python _main\worker-churn-oracle.py --neg-arm
   call :expectred red-as-expected-worker-churn !STEP_RC! "%OUT%\worker-churn-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-worker-churn MISSING "%OUT%\worker-churn-neg.log" "NEG-ARM: PASS" )
+REM O CAO DE GUARDA NAO MATA COM A PROVA DE VIDA EM VOO (2026-11-09). Medido no log do
+REM dono: `BRIDGE_SILENT ms=30000` as 15:44:36.228 e `BRIDGE_ALIVE WORKER_ALIVE seq=3944
+REM age_ms=39657` as .245 -- dezassete milissegundos depois da decisao -- e o respawn custou
+REM `BRIDGE_LOAD_MS ms=61781` (61,8 s a reler 1,9 GB), que e' o pico que o watcher de stutter
+REM atribuiu a esta arvore no mesmo minuto. As 5 arms correm o `_on_silence` REAL: o primeiro
+REM disparo PERGUNTA (arma a graca de 10% da janela), progresso avancado devolve a janela
+REM inteira, progresso parado mata, o ramo benigno nao mudou, e a relacao dos 30000 ms de pe.
+if exist _main\worker-silence-grace-oracle.py (
+  call :step worker-silence-grace 0 "_main\worker-silence-grace-oracle.py;app\webview\sotto_webview.py" "%OUT%\worker-silence-grace.log" python _main\worker-silence-grace-oracle.py
+  call :record worker-silence-grace !STEP_RC!
+) else ( call :record worker-silence-grace MISSING )
+if exist _main\worker-silence-grace-oracle.py (
+  call :step red-as-expected-worker-silence-grace 1 "_main\worker-silence-grace-oracle.py;app\webview\sotto_webview.py" "%OUT%\worker-silence-grace-neg.log" python _main\worker-silence-grace-oracle.py --neg-arm
+  call :expectred red-as-expected-worker-silence-grace !STEP_RC! "%OUT%\worker-silence-grace-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-worker-silence-grace MISSING "%OUT%\worker-silence-grace-neg.log" "NEG-ARM: PASS" )
 REM `rss-trend-oracle.py` -- A MEMORIA TEM DE SER UMA SERIE. O worker publica `rss_mb` em cada
 REM `WORKER_STATS`, mas a shell so' o guardava na CAUDA DA MORTE: o numero existia exactamente
 REM quando ja' nao havia o que medir, e 'leak' ficava uma afirmacao sem medida. Desde 2026-11-02

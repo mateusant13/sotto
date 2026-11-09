@@ -48,6 +48,7 @@ import argparse
 import io
 import os
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHELL = os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py')
@@ -119,6 +120,24 @@ class Arm(object):
         sys.stdout = self.saved
 
 
+def _drain(module, timeout=2.0):
+    """Espera o fio do stdout escoar a fila (2026-11-09).
+
+    O `log()` deixou de escrever no stdout no fio do chamador: a linha vai para
+    `_STDOUT_QUEUE` e um fio unico a escreve (`sotto-stdout`), porque um cano
+    lento parava o `_pump` do worker e o cao de guarda matava um worker vivo
+    (medido: `BRIDGE_SILENT` + `age_ms=39657` + `BRIDGE_LOAD_MS ms=61781`). As
+    arms deste oraculo perguntam pelo EFEITO (`print` tentado, marcador no
+    ficheiro), logo tem de esperar o fio -- sem isto mediam a fila, nao o
+    desfecho. Sem fio (mutante antigo) devolve imediatamente.
+    """
+    q = getattr(module, '_STDOUT_QUEUE', None)
+    t0 = time.time()
+    while q is not None and q.qsize() and (time.time() - t0) < timeout:
+        time.sleep(0.005)
+    time.sleep(0.02)
+
+
 def _call(arm, text):
     """Uma chamada REAL, com a excepcao capturada como facto."""
     try:
@@ -133,6 +152,7 @@ def arm_a1(module):
     live = arm.reset(LivePipe())
     try:
         err = _call(arm, 'A1 normal')
+        _drain(module)
         out = ''.join(live.buf)
     finally:
         arm.restore()
@@ -145,6 +165,7 @@ def arm_a2(module):
     arm.reset(DeadPipe())
     try:
         err = _call(arm, 'A2 cano morto')
+        _drain(module)
         lines = list(arm.queue.lines)
     finally:
         arm.restore()
@@ -158,6 +179,7 @@ def arm_a3(module):
     try:
         e1 = _call(arm, 'A3 um')
         e2 = _call(arm, 'A3 dois')
+        _drain(module)
         tries = dead.writes
     finally:
         arm.restore()
@@ -172,6 +194,7 @@ def arm_a4(module):
     try:
         _call(arm, 'A4 primeiro')
         _call(arm, 'A4 segundo')
+        _drain(module)
         markers = [ln for ln in arm.queue.lines if 'LOG_STDOUT_DEAD' in ln]
         other = [ln for ln in arm.queue.lines if 'A4 ' in ln]
     finally:

@@ -573,7 +573,32 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-09, 20:2x):** `_main\_audit-verify-all.cmd` = **323027 B**,
+- **PIN do ficheiro (medido 2026-11-09, 21:0x):** `_main\_audit-verify-all.cmd` = **324513 B**,
+  **3808 CRLF** / 0 bare LF, sha256 `FCC719B79756B563C5DB25ACE3CDFEF0B61AC5D60F0312C9F640250C750718D9`.
+  (Mil quatrocentos e oitenta e seis bytes e QUINZE linhas a mais do que o pin de 323027 B: o par
+  `worker-silence-grace` + `red-as-expected-worker-silence-grace`, o cao de guarda que deixou de
+  matar com a prova de vida em voo. MEDIDO no log do dono, `_main/webview-run.log`: `BRIDGE_SILENT
+  ms=30000 pid=54592` as 15:44:36.228 e `BRIDGE_ALIVE WORKER_ALIVE seq=3944 phase=window
+  age_ms=39657` as .245 -- DEZASSETE milissegundos depois da decisao -- e o respawn custou
+  `BRIDGE_LOAD_MS ms=61781` (61,8 s a reler 1,9 GB). O watcher de stutter atribuiu o pico dessa
+  janela a esta arvore (`pythonw.exe(33676)`, 8,1 % da maquina em 20 nucleos). Tres curas no mesmo
+  commit, cada uma com o seu instrumento: **(a)** o primeiro disparo da janela PERGUNTA -- arma uma
+  graca de 10% da janela (`silence_grace_s`) e so mata se o progresso nao avancou nesse intervalo,
+  o que devolve a janela inteira a um batimento atrasado; **(b)** o `log()` deixou de fazer
+  `print(..., flush=True)` no fio do CHAMADOR -- o stdout ganhou o fio unico que o ficheiro ja' tinha
+  desde 2026-10-13, porque era o `_pump` do worker (a testemunha do cao de guarda) que esperava pelo
+  consumidor do cano do largador, e uma fila cheia conta o que largou (`LOG_STDOUT_SUPPLIED
+  dropped=N`) em vez de crescer sem tecto; **(c)** `_kill_and_restart` passou a carimbar
+  `pending_error` (`BRIDGE_KILL_NAMED pid=.. why=..`), porque o `_wait` devolve cedo com
+  `self.child` a None e uma morte ORDENADA PELO SHELL nao deixava estado nenhum -- era por isso que
+  a arm `panel-state` do `restart-30s-oracle` nunca via `namedState='exit'` e estava morta (medido:
+  o mesmo RED no shell de HEAD, ou seja o defeito era do instrumento E da shell). Medidos nesta
+  arvore: `worker-silence-grace-oracle.py` 5/5 arms e o `--neg-arm` a apanhar 2 (A1, A2);
+  `restart-30s-oracle.py` **GREEN** (era RED) com `panel-state RED ... named_states_seen=['capture-started',
+  'exit', 'spawning']` e `pending_error_samples=24`; `log-sink-dead-oracle.py` 6/6 com o `--neg-arm`
+  a apanhar os dois mutantes -- e as suas arms A3/A4 passaram a ESCOAR o fio novo (`_drain`), sem o
+  que mediam a fila em vez do desfecho.)
+- **PIN anterior (medido 2026-11-09, 20:2x):** `_main\_audit-verify-all.cmd` = **323027 B**,
   **3793 CRLF** / 0 bare LF, sha256 `1C74B176C3266C71CF767516F3AD81297F2F14FC4126C5ECE4EB7312C4910CC4`.
   (Cinco centenas e dezassete bytes a mais do que o pin de 322510 B: o par `window-drag` +
   `red-as-expected-window-drag` -- o oraculo `_main\window-drag-oracle.py` existia com ZERO chamadores

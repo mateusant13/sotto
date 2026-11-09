@@ -1270,6 +1270,34 @@ WORKER_SILENCE_MS = 30000
 #: docs/audit/load-churn.md): ~40x um load quente e ~6x o pior load frio medido.
 WORKER_LOAD_SILENCE_MS = 180000
 
+#: A GRAÇA DA MORTE POR SILENCIO (2026-11-09). Medido no log do dono
+#: (`_main/webview-run.log`, 15:44:36): o temporizador de 30 s disparou as
+#: `.228` e o `BRIDGE_ALIVE WORKER_ALIVE seq=3944 age_ms=39657` chegou as
+#: `.245` -- dezassete milissegundos depois. O batimento existia e estava
+#: PRESO no cano, nao ausente: o worker foi morto com prova de vida em voo e
+#: o respawn custou `BRIDGE_LOAD_MS ms=61781` (61,8 s a reler 1,9 GB), que e'
+#: exactamente o pico que o watcher atribuiu a esta arvore nesse minuto.
+#: A janela de silencio continua a ser 30 s (`restart-30s-oracle` prende essa
+#: relacao); esta e' a unica pergunta que o cao de guarda faz DEPOIS de
+#: expirar: *o progresso avancou enquanto eu decidia?* Se avancou, re-arma a
+#: janela normal. Se nao avancou, mata como sempre -- um filho morto custa
+#: 3 s de espera a mais, um filho vivo custava a carga inteira.
+#: A graca e' uma FRACAO da janela, nao um numero de segundos: a relacao
+#: `silence_ms` -> decisao e' o que `restart-30s-oracle` prende com uma janela de
+#: 600 ms, e uma graca fixa de 3 s nao cabia nela (medido: as arms do wedge
+#: ficaram vermelhas por relogio, nao por codigo). Em producao 10% de 30 s = 3 s.
+WORKER_SILENCE_GRACE_FRAC = 0.10
+WORKER_SILENCE_GRACE_MIN_S = 0.05
+
+
+def silence_grace_s(silence_ms):
+    """A graça DAQUELA janela: 10% dela, com piso de 50 ms."""
+    try:
+        window_s = float(silence_ms) / 1000.0
+    except (TypeError, ValueError):
+        return WORKER_SILENCE_GRACE_MIN_S
+    return max(WORKER_SILENCE_GRACE_MIN_S, window_s * WORKER_SILENCE_GRACE_FRAC)
+
 #: O PISO DE UMA SAIDA LIMPA (2026-11-04). Medido no log do dono: `BRIDGE_EXIT pid=17044
 #: rc=0` as 03:22:41.214 e `BRIDGE_SPAWNED pid=37212` as 03:22:43.250 -- DOIS SEGUNDOS
 #: depois, ou seja uma recarga de ~1,9 GB de modelo para um worker que terminou por
@@ -2019,6 +2047,57 @@ _LOG_REPEAT = {}
 _LOG_FILE = None
 _LOG_QUEUE = None      # the mirror lines, one per log() call
 _LOG_WRITER = None     # the ONE thread that owns the file
+#: O CANO NAO PARA O FIO QUE O ESCREVE (2026-11-09). Medido no log do dono,
+#: 15:44:36: `BRIDGE_SILENT` matou um worker cujo `WORKER_ALIVE ... age_ms=39657`
+#: chegou 17 ms depois -- o batimento estava PRESO no cano, nao ausente, e o
+#: respawn custou `BRIDGE_LOAD_MS ms=61781`. O `log()` fazia
+#: `print(line, flush=True)` DENTRO do `_LOG_LOCK`, ou seja o fio do `_pump`
+#: (que le o stderr do worker e e' a testemunha do cao de guarda) esperava pelo
+#: consumidor do cano do largador. O ficheiro ja' tinha ganho o seu proprio fio
+#: pela mesma razao (2026-10-13, o hook do rato); o stdout faltava.
+_STDOUT_QUEUE = None   # linhas para o stdout, uma por chamada a log()
+_STDOUT_WRITER = None  # o UNICO fio que escreve para o stdout
+_STDOUT_DROPPED = 0    # linhas largadas por o cano nao escoar (contadas, nao escondidas)
+_STDOUT_CAP = 4096
+
+
+def _stdout_writer_loop():
+    q = _STDOUT_QUEUE
+    while True:
+        try:
+            line = q.get()
+            if line is None:
+                return
+            _write_stdout(line)
+        except Exception:                       # noqa: BLE001
+            return
+
+
+def _start_stdout_writer():
+    global _STDOUT_QUEUE, _STDOUT_WRITER
+    if _STDOUT_WRITER is not None:
+        return
+    _STDOUT_QUEUE = queue.Queue(maxsize=_STDOUT_CAP)
+    _STDOUT_WRITER = threading.Thread(target=_stdout_writer_loop,
+                                      name='sotto-stdout', daemon=True)
+    _STDOUT_WRITER.start()
+
+
+def _enqueue_stdout(line):
+    """Nunca espera pelo cano; conta o que largou e DIZ quando volta a escoar."""
+    global _STDOUT_DROPPED
+    q = _STDOUT_QUEUE
+    if q is None:
+        _write_stdout(line)
+        return
+    try:
+        if _STDOUT_DROPPED:
+            dropped, _STDOUT_DROPPED = _STDOUT_DROPPED, 0
+            q.put_nowait('%s sotto: LOG_STDOUT_SUPPLIED dropped=%d (o cano voltou a escoar)'
+                         % (_stamp(), dropped))
+        q.put_nowait(line)
+    except queue.Full:
+        _STDOUT_DROPPED += 1
 
 
 
@@ -2132,6 +2211,13 @@ def _log_drain(timeout_s=2.0):
     Called on the exit path: `os._exit` does not wait for a daemon thread, and
     a SHELL_EXIT line that never lands would take its own evidence with it.
     """
+    if _STDOUT_QUEUE is not None:
+        try:
+            _STDOUT_QUEUE.put(None, block=False)
+        except Exception:                       # noqa: BLE001
+            pass
+    if _STDOUT_WRITER is not None:
+        _STDOUT_WRITER.join(timeout_s)
     if _LOG_QUEUE is None:
         return
     _LOG_QUEUE.put(None)
@@ -2292,8 +2378,9 @@ def log(message: str) -> None:
     caller -- or the app -- with it, and the file mirror must keep working.
     """
     line = f'{_stamp()} sotto: {message}'
+    _start_stdout_writer()
     with _LOG_LOCK:
-        _write_stdout(line)
+        _enqueue_stdout(line)
         if _LOG_FILE is not None:
             try:
                 _LOG_QUEUE.put(line)
@@ -21057,6 +21144,10 @@ class WorkerBridge:
         #: child: the counter starts again at 0, so a value left over from the
         #: dead process would suppress every re-arm of the new one.
         self._progress_blocks = None
+        #: O progresso observado no ULTIMO disparo da janela de silencio
+        #: (2026-11-09). `None` = nenhum disparo pendente; um valor = a graça
+        #: esta' a correr e a pergunta e' se o progresso passou dele.
+        self._silence_mark_at = None
         self._silence_timer = None
         self._restart_timer = None
         self._lock = threading.Lock()
@@ -21302,6 +21393,7 @@ class WorkerBridge:
         # `_progress_blocks`): carrying the dead process's last value over would
         # make every heartbeat look like a repeat and blind the watchdog.
         self._progress_blocks = None
+        self._silence_mark_at = None
         self.spawned_at = time.monotonic()
         #: Quando este filho FALOU pela ultima vez (2026-11-03). A janela de
         #: carga passou a medir SILENCIO, nao idade: um worker que ainda esta'
@@ -21507,7 +21599,16 @@ class WorkerBridge:
                             try:
                                 self.on_cost(parsed_cost)
                             except Exception as exc:  # noqa: BLE001
-                                self.log('BRIDGE_COST_CALLBACK_FAILED error=%r' % (exc,))
+                                # O NOME E' O DA FUNCAO DE MODULO, NAO O DO
+                                # `WorkerBridge`: medido no log do dono
+                                # 2026-11-09 15:44:36.249,
+                                # `BRIDGE_COST_CALLBACK_FAILED
+                                # error=AttributeError("'SottoShell' object has
+                                # no attribute 'log'")` -- o handler que existe
+                                # para nao derrubar o canal de stderr levantava
+                                # ele proprio, e o custo do worker ficava sem
+                                # a linha da shell.
+                                log('BRIDGE_COST_CALLBACK_FAILED error=%r' % (exc,))
                             # SEM `_note_progress` AQUI, de proposito: aquela funcao
                             # trata `blocks` a AVANCAR como prova de vida, e uma linha
                             # de CUSTO nao prova vida nenhuma -- um worker a queimar
@@ -22116,6 +22217,43 @@ class WorkerBridge:
         # ANOMALOUS. The tap was open (or had declared itself) and then went
         # mute WITHOUT the worker ever saying what the audio was: that is the
         # jam this watchdog exists for, and it still restarts.
+        #
+        # UMA GRAÇA ANTES DE MATAR (2026-11-09). O temporizador de 30 s e' o
+        # unico que decide, e ele nao sabe se um batimento esta' a atravessar o
+        # cano: medido no log do dono, `BRIDGE_SILENT` as 15:44:36.228 e o
+        # `BRIDGE_ALIVE ... age_ms=39657` as .245 -- a prova de vida chegou 17
+        # ms depois da decisao, e o respawn custou 61,8 s de recarga. A pergunta
+        # que faltava e' factual e barata: o progresso avancou desde o ultimo
+        # disparo? Se avancou, o worker esta' vivo e a janela recomeca; se nao,
+        # mata como sempre.
+        _mark = getattr(self, '_silence_mark_at', None)
+        _progress = getattr(self, 'last_progress_at', None)
+        if _mark is not None and _progress is not None and _progress > _mark:
+            # O progresso ANDOU depois de a janela ter expirado: o worker esta'
+            # vivo e o batimento estava so' a caminho. Janela inteira outra vez.
+            self._silence_mark_at = None
+            self.log(f'BRIDGE_SILENT_GRACE ms={self.silence_ms} '
+                     f'pid={self.child.pid} '
+                     f'grace_s={round(silence_grace_s(self.silence_ms), 3)} '
+                     'because=progress-advanced')
+            self._arm_silence()
+            return
+        if _mark is None:
+            # PRIMEIRO disparo: ainda nao ha resposta a pergunta. Marca o
+            # progresso de AGORA e volta dentro da graça; se um batimento
+            # chegar nesse intervalo, o ramo acima devolve a janela inteira.
+            self._silence_mark_at = _progress
+            self.log(f'BRIDGE_SILENT_WAIT ms={self.silence_ms} '
+                     f'pid={self.child.pid} '
+                     f'grace_s={round(silence_grace_s(self.silence_ms), 3)} '
+                     'because=asking-whether-progress-is-in-flight')
+            _grace = threading.Timer(silence_grace_s(self.silence_ms),
+                                     self._on_silence)
+            _grace.daemon = True
+            self._silence_timer = _grace
+            _grace.start()
+            return
+        self._silence_mark_at = None
         self.log(f'BRIDGE_SILENT ms={self.silence_ms} pid={self.child.pid}')
         self._status('Worker is running but has said nothing', 'error',
                      {'title': 'Worker silent',
@@ -22207,6 +22345,24 @@ class WorkerBridge:
     def _kill_and_restart(self, reason):
         child, self.child = self.child, None
         self.killed = child is not None
+        # UM KILL DO SHELL TAMBEM E' UMA MORTE, E O PAINEL TEM DE A PODER NOMEAR
+        # (2026-11-09). `pending_error` era escrito SO' pelo `_wait`, e o
+        # `_wait` devolve cedo quando `self.child` ja' e' None -- logo uma morte
+        # ordenada pelo PROPRIO shell (silencio, timeout de carga, revive) nunca
+        # deixava estado nenhum: medido no oraculo `restart-30s-oracle`, a arm
+        # do `panel-state` pedia `namedState='exit'` no copy pre-fix e nao
+        # aparecia em amostra nenhuma (`named_states_seen=[... 'spawning']`),
+        # com o `BRIDGE_SILENT` a disparar tres vezes na mesma corrida. O
+        # `pending_error` passa a carregar a razao e o pid, que e' o que o dump
+        # e o painel leem.
+        if child is not None and self.pending_error is None:
+            self.pending_error = {
+                'state': 'exit',
+                'text': f'worker killed by the shell ({reason})',
+                'body': (f'The shell stopped worker pid={child.pid}: {reason}. '
+                         'A restart is scheduled.'),
+            }
+            self.log(f'BRIDGE_KILL_NAMED pid={child.pid} why={reason}')
         if child is not None:
             try:
                 child.terminate()
