@@ -565,8 +565,18 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-09, 12:0x):** `_main\_audit-verify-all.cmd` = **317214 B**,
-  **3740 CRLF** / 0 bare LF, sha256 `0D58F2EA1078BB12AA0F37E67D069306932E96FBF86554B43A1420EAFA84F32E`.
+- **PIN do ficheiro (medido 2026-11-09, 12:2x):** `_main\_audit-verify-all.cmd` = **318435 B**,
+  **3752 CRLF** / 0 bare LF, sha256 `41A0577D4F3B7970B2B78432805BC43F1C051F5BD9F9A227F0CA0F6A01754C8A`.
+  (Mil duzentos e vinte e um bytes e DOZE linhas a mais do que o pin de 317214 B: o par
+  `cpu-tripwire` + `red-as-expected-cpu-tripwire`, o amostrador de CPU **por fio** que o watcher
+  aprovou (`py-spy` nao anexa a esta arvore -- `err=5`, integridade `high` vs `medium`, medido
+  2026-11-09 --, logo duas acusacoes de stutter chegaram com pid e percentagem e nenhuma linha). O
+  passo julga o JUIZ: limiar **250 %c** declarado, janela **5 s**, a borda exacta dispara, e
+  `None` (sem amostra) e' `UNKNOWN`, nunca "calmo" -- seis arms, `--neg-arm` 4/4. A amostragem
+  viva fica on-demand porque largar sessoes ONNX num passo e' `heavy`. Primeira corrida real:
+  pid 20676 = **398,8 %c** com `session-9-intra-op-0 121,8%`, `session-10-intra-op-0 80,1%`,
+  `session-8-intra-op-0 64,2%` -- **tres sessoes ONNX vivas**, e o teto de 4 fios e' POR SESSAO,
+  nao por processo.)
   (Mil cento e tres bytes e NOVE linhas a mais do que o pin de 316111 B: o par
   `yt-source-singleton` + `red-as-expected-yt-source-singleton`, nascido do stutter de 2026-11-09
   (o watcher mediu **81,3 %c** na shell python do dono e o log dela deu **675**

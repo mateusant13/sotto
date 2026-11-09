@@ -1555,6 +1555,18 @@ call :step yt-source-singleton 0 "_main\yt-source-singleton-oracle.py;app\webvie
 call :record yt-source-singleton !STEP_RC!
 call :step red-as-expected-yt-source-singleton 1 "_main\yt-source-singleton-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py" "%OUT%\yt-source-singleton-neg.log" python _main\yt-source-singleton-oracle.py --neg-arm
 call :expectred red-as-expected-yt-source-singleton !STEP_RC! "%OUT%\yt-source-singleton-neg.log" "ANTES (HEAD)"
+REM O STUTTER NOMEIA-SE (2026-11-09, aprovado pelo watcher). `py-spy` nao anexa a esta arvore
+REM (integridade `high` vs `medium`, err=5 medido) e duas acusacoes chegaram com pid e percentagem
+REM e ZERO linha de codigo. O tripwire le CPU por FIO (`GetThreadTimes`) e o NOME de cada fio de
+REM fora do processo: medido na primeira corrida real, pid 20676 = 398,8 %c com
+REM `session-9-intra-op-0 121,8%` / `session-10-intra-op-0 80,1%` / `session-8-intra-op-0 64,2%` --
+REM ou seja TRES sessoes ONNX vivas, cada uma com os seus `intra_op` (o teto de 4 e POR SESSAO, nao
+REM por processo). O passo julga o JUIZ (`--self-test`, limiar 250 %c, janela 5 s, borda, UNKNOWN);
+REM a amostragem VIVA e on-demand (`--once` / `--watch`), porque largar 3 sessoes num passo e heavy.
+call :step cpu-tripwire 0 "_main\cpu-tripwire.py;_main\shell-thread-cpu.py" "%OUT%\cpu-tripwire.log" python _main\cpu-tripwire.py --self-test
+call :record cpu-tripwire !STEP_RC!
+call :step red-as-expected-cpu-tripwire 1 "_main\cpu-tripwire.py;_main\shell-thread-cpu.py" "%OUT%\cpu-tripwire-neg.log" python _main\cpu-tripwire.py --neg-arm
+call :expectred red-as-expected-cpu-tripwire !STEP_RC! "%OUT%\cpu-tripwire-neg.log" "NEG-ARM: PASS"
 
 REM O ECO DO DONO NAO ABRE NADA (ordem de 2026-11-04: "nao faz nenhum script existente ou novo
 REM abrir coisa na minha tela tipo pop up"). O `owner-screen-gate` le` 987 ficheiros de produto por
