@@ -153,3 +153,31 @@ das cargas, e `max(60, 10 x 19,35) = 193,5 s` para a carga mais cara. O par mais
 **O que este replay NAO prova:** que a instancia viva pare de ciclar -- o worker em execucao corre o
 codigo de antes de hoje. O que ele prova e' que, com estas duas guardas no caminho, o passado medido
 nao se reproduz: 74 das 84 janelas severas nao largam nada, e 15 das recargas ficam a espera.
+
+## 9. O WORKER NOVO (2026-11-09, 09:07) -- quem corre a cura a partir de agora
+
+O worker vivo carregava o codigo de 08:14:03 (pid 43076). Morto pelo ARTEFACTO, como a casa exige:
+
+```
+43076 python.EXE -u H:\sotto\worker\sotto_worker.py     started 08:14:03  rss 815,8 MB  cpu 5,5 % de um nucleo
+kill em 09:07:03  ->  BRIDGE_EXIT pid=43076 rc=15 killed=False spawns=1
+   BRIDGE_SPAWNED pid=20676                                      09:07:04.932   (1,1 s depois)
+   BRIDGE_LOAD_MS ms=23547 pid=20676 worker_load_s=22.85         09:07:28.342
+```
+
+A identidade foi provada pelo `cmdline` ANTES do kill (`sotto_worker.py`, filho do pid 50452 =
+`pythonw.exe ... sotto_webview.py`), nunca pelo nome do processo. A SHELL nao foi tocada: ela tem
+`--no-self-relaunch`, e um arranque novo dela so' com a mao do dono.
+
+**Porque este worker TEM a cura:** `worker/engine_policy.py` tem mtime **08:43:44** e o processo
+nasceu **09:07:04** -- o `reload_floor_left()` e os dois pisos foram lidos do disco por este
+processo. O `worker/engine_switch.py` foi reescrito as **09:07:29** por OUTRA lane (removeu o
+`_release_when_idle`, que ninguem lia, e reordenou um kwarg) -- isto e' posterior ao arranque e nao
+afecta o piso, cuja linha (`reason=reload-floor`) continua no ficheiro; o proximo arranque e' que
+leva essa limpeza.
+
+**O numero pos-reinicio e' do watcher**, por acordo: ele mede, na mesma janela, `REDUX_ENGINE_LOAD`
+por hora, quantos com `REDUX_BATCH_DEFERRED reason=reload-floor` / `attempting=anyway`, e o pico de
+MB/s e de % de um nucleo. A janela comeca em **09:07:04.932**. O que eu posso afirmar daqui:
+**nenhuma linha `REDUX_ENGINE_LOAD`/`REDUX_ENGINE_RELEASED`/`REDUX_BATCH_*` foi escrita nos
+primeiros minutos** -- o parakeet so' carrega no primeiro passe de fundo, e sem passe nao ha' rajada.
