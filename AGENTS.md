@@ -490,8 +490,12 @@ validade - re-correr antes de repetir, e colar os numeros de HOJE.**
 
 A tabela de ficheiros e o que cada um e: **`docs/layout.md`**.
 
-**PIN do `run.cmd --help` (medido 2026-11-04 12:0x):** re-measured 2026-11-04 the output is 8544 B, 131 lines, 131 CRLF / 0 bare LF, rc 0, sha256
-`6015D4A76D9C43DD9FA02559CCBC6CC76F0573E8ECBA177CF656FA58D6717DDE`.
+**PIN do `run.cmd --help` (medido 2026-11-09 09:2x, `app\webview\run.cmd --help`):** re-measured 2026-11-09 the output is 9150 B, 140 lines, 140 CRLF / 0 bare LF, rc 0, sha256
+`6EEA9E1931FDD9CB1EA4DEB76148CE4E857AA954EEA01700197130E4D3BD7094`.
+(606 B / 9 linhas a mais do que o pin de 8544 B / 131 CRLF: a help ganhou `--worker-threads`,
+o tecto de fios do worker de ASR do par `worker-thread-limit` de 2026-11-09. O pin de 2026-11-04
+estava vencido e o portao `agents-md-pins-oracle.py` acusou-o -- um pin que ninguem re-mede e'
+um numero, nao um portao.)
 (759 B / 8 linhas a mais do que o pin de 7985 B / 123 CRLF: a help ganhou as duas flags da shell quente,
 `--no-warm-engine` e `--warm-engine-keep`, que o `run.cmd --help` imprime a partir do parser da shell.)
 (Este número substitui o de 7538 B / 116 linhas, depois do bloco `THE TWO KEYS`: o `--help` passou a dizer as
@@ -561,8 +565,67 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-08, 23:5x):** `_main\_audit-verify-all.cmd` = **306299 B**,
-  **3662 CRLF** / 0 bare LF, sha256 `CD289CDB5EEB90539CDF5AF6B4C28F77F520229BC482C69641DB52FA59DE6758`.
+- **PIN do ficheiro (medido 2026-11-09, 09:3x):** `_main\_audit-verify-all.cmd` = **313261 B**,
+  **3708 CRLF** / 0 bare LF, sha256 `8087C93155F8DC498BECC8FC2751DC17489A3B0DF5CFB2AB6E1E5C44B3E04E44`.
+  (Seiscentos e oitenta e tres bytes e quatro linhas a mais do que o pin de 312578 B: o par
+  `caption-overlay-theme` + `red-as-expected-caption-overlay-theme`, o desenho da legenda NATIVA por
+  tema. O oraculo existia desde as 08:44 e estava FORA da bateria -- o `battery-wiring` acusou-o com
+  razao (`new-unwired caption-overlay-theme-oracle.py`). A wiring obrigou a uma correcao de
+  INSTRUMENTO: o `run()` devolvia **1 quando passava** e o `--neg-arm` devolvia 0 ao apanhar, ou seja
+  um controlo que nao podia falhar; agora o positivo devolve 0 e o negativo devolve **1 ao apanhar**
+  (medido: `VERDICT: PASS (8/8)` rc=0 e `NEG-ARM: PASS -- 3/3 mutants caught` rc=1).
+  (Setenta e tres bytes e zero linhas a mais do que o pin de 312505 B: o passo `redux-arm-weights`
+  passa a nomear `worker\engine_policy.py`, `worker\redux_batch.py` e `app\panel\history-store.js`
+  nas dependencias -- as arms novas do PISO DA RECARGA executam `engine_policy.ParakeetEngine` e o
+  lote do `engine_switch`, e uma dependencia que os nao nomeia deixaria o passo em cache a descrever
+  motores que ja mudaram.)
+  (Mil trezentos e trinta e quatro bytes e doze linhas a mais do que o pin de 311171 B: o par
+  `worker-thread-limit` + o seu `red-as-expected`, o orcamento de fios do WORKER de ASR. Nasceu
+  do DM do watcher de 2026-11-09 (worker a 159,5 % de um nucleo, 9-10 rajadas/hora) e da
+  medicao por FIO que nomeou o actor: `session-13/12/14-intra-op-0`. O `--threads N` do worker
+  era INERTE -- `limit_threads` usava `setdefault` sobre o `OMP_NUM_THREADS` que o proprio
+  modulo ja' tinha escrito como "4", logo as tres sessoes ORT abriam com 4 fios cada e o flag
+  nao mudava um fio. Agora `--threads` ASSUME (auto mantem o ambiente, byte a byte), a shell
+  passa-o por `--worker-threads` (default 2; 0 = sem flag) e o motor de FUNDO aceita o mesmo
+  knob sem nunca subir acima dos 2 medidos. O oraculo mede 9/9 e o `--neg-arm` 2/2 mutantes
+  (A1 volta a "4" com o `setdefault` reposto numa COPIA). **N threads por sessao NAO e' N
+  nucleos**: medido, o motor de fundo a 2 fios por sessao ainda queima 0,6-1,6 de um nucleo
+  porque sao QUATRO sessoes com pool proprio.)
+  (O par `history-context` + o seu `red-as-expected`, o portao do contexto de
+  origem/visualizacao do historico -- `history_context.py` normalizado e limitado, o token
+  `ctx1=` por linha, o `history_append`/leitura/busca/export do shell e o twin Node. Nasceu
+  da ordem do dono de 2026-11-09: meses depois, saber de onde veio o audio e o que estava na
+  tela quando foi dito. O `--neg-arm` mede 4/4 mutantes; `history-context-oracle.py` mede
+  52/52 arms. O ficheiro tambem recebeu passos de outra lane depois do pin de 308834 B; o
+  numero acima e' a medicao VIVA, nao uma soma da minha mudanca.)
+  (Dois mil quinhentos e trinta e cinco bytes e doze linhas a mais do que o pin de 306299 B: UM
+  par novo, `panel-themes` + `red-as-expected-panel-themes`, o contrato de composicao
+  COMPARTILHADA do dono de 2026-11-09 ("consistencia em TODOS os temas"). O oraculo
+  `_main\panel-themes-oracle.mjs` abre o `app/panel/panel.html` REAL num browser privado e
+  headless e mede os **59** itens do seletor -- 45 temas CSS + 20 skins, 6 duais -- em
+  geometria e pintura COMPUTADAS, uma relacao por braco: ajustes imediatamente a esquerda do
+  fechar (`gap` da propria fileira), fileira ancorada em `380 - 14`, barra invisivel mas
+  `overflow-y:auto` (um `scrollTop` programatico move uma caixa `hidden` -- medido, por isso o
+  braco le o `overflow-y`), sem vazio embaixo, busca que revela o campo, sem circulos de demo,
+  e a legenda com o FUNDO do desenho (o `--bg-slab` de cada tema quando a fileira nao tem cama
+  propria; `rowBgAlpha` era 0 em 9 desenhos e `oklab(...)` ilegivel em outros tantos). Medido:
+  `THEMES picker=59 css=45 skin=20 dual=6`, **11 bracos x 59 temas** (os nove de composicao
+  mais `keyboard-scroll` -- PageDown/PageUp/End/Home movem a MESMA caixa que a roda resolve,
+  porque esconder a barra tira a unica coisa que dizia que a caixa anda -- e `skin-mounted`,
+  porque uma skin que nao montou media o tema CSS anterior e passava), 33 faces de legenda
+  distintas e **58 camas de legenda distintas**; `--neg-arm` **8/8** mutantes apanhados (rc=1).
+  O MESMO bloco fechou tres furos que o revisor independente provou: (1) uma folha adiada que
+  falhava era anotada e nao reprovava -- o `load()` devolvia `false` e o booleano era
+  descartado, logo 25 temas eram medidos contra o tema base e passavam; agora o carregamento e'
+  verificado e qualquer erro de pagina que nao seja o `.jpg` de papel de parede que as 20
+  maquetes nao embarcam (`SKIN-IMAGES missing`, informativo) reprova o veredito; (2) o
+  `--neg-arm` do `panel-header-oracle` era o unico negativo desta casa que nao corria em lugar
+  nenhum -- entrou o par `red-as-expected-panel-header-oracle`, e ele passou a devolver rc=1 ao
+  apanhar (a convencao medida em 2026-11-03); (3) a arm "a borda direita da fileira e' o inset
+  da janela" comparava o modelo com o proprio seed (`cursor = PANEL_WIDTH - 14`) e nao podia
+  falhar -- agora o inset vem do CASCADE (`winningDecl(cluster,'right')`) e um braco separado
+  exige que a folha ainda diga 14. `battery-wiring` mediu `ligados=163 sem_passo=109
+  populacao=272`, PASS 7/7.)
   (Dois mil e trinta e nove bytes e vinte linhas a mais do que o pin de 304260 B: DOIS pares novos,
   os dois nascidos das cinco DMs de stutter de 2026-11-08 -- `ort-spin-idle` (o spin-wait do
   onnxruntime: tres sessoes vivas e ociosas gastavam **16,1 % de um nucleo** com o `allow_spinning`

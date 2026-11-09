@@ -1007,6 +1007,11 @@ def run(module_path: Path, shell_path: Path, batch_path: Path | None = None) -> 
         # arms medem a BORDA -- carrega sozinho, uma vez, com a carga RELIDA.
         arms_resume(globals().get("WORKER", ROOT / "worker" / "sotto_worker.py"),
                     load_tmp)
+        # A LARGADA (2026-11-09): a memoria decide se o modelo cai, e o CPU so'
+        # pede a pausa. Nasceu do ciclo medido no log do dono -- 82 cargas / 70
+        # largadas numa execucao, par mais apertado a 31 s, commit 63-64 %.
+        arms_release(globals().get("WORKER", ROOT / "worker" / "sotto_worker.py"),
+                     load_tmp)
         # A ACCAO, a FILA e o EXECUTOR (ordem do dono, 2026-11-03). O
         # `batch_queue.py` vive AO LADO do `load_shedding.py` que se esta' a
         # medir: numa corrida de mutante, e' a copia dele que corre.
@@ -1437,9 +1442,16 @@ class _FakeEngine:
 
     def __init__(self):
         self.loads = 0
+        self.load_calls = 0
         self.releases = 0
         self.calls = 0
         self._loaded = False
+        #: O PISO DA RECARGA (2026-11-09). Zero = o motor nao tem piso (o
+        #: comportamento de antes); as arms da ARM 15 poem-no em segundos.
+        self.floor_left = 0.0
+
+    def reload_floor_left(self):
+        return float(self.floor_left)
 
     def name(self):
         return "onnx"
@@ -1449,6 +1461,12 @@ class _FakeEngine:
         return self._loaded
 
     def load(self):
+        # IDEMPOTENTE, como o `ParakeetEngine.load` REAL (`if self._backend is
+        # not None: return self._backend`): `loads` conta CARGAS de modelo, nao
+        # chamadas -- um lote que corre com o motor residente nao carrega nada.
+        self.load_calls += 1
+        if self._loaded:
+            return self
         self._loaded = True
         self.loads += 1
         return self
@@ -1829,6 +1847,232 @@ def arms_resume(worker_path: Path, tmp: Path) -> None:
         f"loads={eng3.loads} seconds={s3._pending_counts()['seconds']}")
 
 
+# ── ARM 26: A LARGADA -- a MEMORIA decide, o CPU so' pede a pausa ────────────
+#
+# O DEFEITO MEDIDO (2026-11-09; DM `dm-00dbf174d47f818230ca-2`, recibo
+# `I:\!watcher\runs\TC-20261109-stutter-dm-a8cfc0ef-sotto.md` seccoes 10-11):
+# **82 `REDUX_ENGINE_LOAD` / 70 `REDUX_ENGINE_RELEASED` numa execucao**, par mais
+# apertado a 31 s. A janela de 06:55, verbatim do log do dono:
+#
+#   06:55:13.891 REDUX_SHEDDING level=alta      cpu_pct=61.7% commit 63.1%
+#   06:55:15.304 REDUX_ENGINE_LOAD               load_s=1.39 loads=8
+#   06:55:25.313 REDUX_SHEDDING level=muito-alta cpu_pct=98.1% commit 63.6%
+#   06:55:25.572 REDUX_ENGINE_RELEASED           rss 759.8 -> 290.0
+#   06:55:45.325 REDUX_SHEDDING level=alta      cpu_pct=57.3% commit 64.3%
+#   06:55:46.571 REDUX_ENGINE_LOAD               load_s=1.23 loads=9
+#
+# O COMMIT NUNCA PASSOU DOS 65 % -- e `HIGH_PCT` e' 88. A largada era uma
+# decisao de CPU, e ela devolvia 470 MB num box de 47,7 GB: ~1 % da memoria
+# comprometida ao preco de uma rajada de 26 MB/s e de 1,2-19,4 s de recarga.
+#
+# O QUE ESTA ARM MEDE: (A) a tabela pura da guarda; (B) o ciclo REAL medido,
+# com o interruptor REAL, e o controle de que a serie chega a `muito-alta` (sem
+# esse controle a arm passaria por nao exercitar nada); (C) a emergencia de
+# memoria continua a largar; (D) a pausa sem desalocacao.
+
+#: As leituras da janela de 06:55, na ordem em que o probe do worker as viu:
+#: (commit %, CPU %). Um ciclo = CPU sobe a 98 % com a recarga a correr, larga,
+#: e desce a 57 % vinte segundos depois.
+CYCLE_SERIES = ([(63.0, 98.0)] * 3 + [(64.0, 60.0)] * 4 + [(64.0, 57.0)] * 2) * 10
+
+
+class _PreFixGate:
+    """A LARGADA DE ANTES DESTA GUARDA: qualquer nivel severo larga o modelo.
+
+    E' o controle de POPULACAO da arm (B): se esta guarda produzir o ciclo que o
+    log do dono mostra, entao a serie chega mesmo a `muito-alta` e a arm mede
+    alguma coisa. Sem ele, uma serie que nunca saisse de `alta` faria a guarda
+    passar por ausencia -- o verde que nao mede nada.
+    """
+
+    def __init__(self):
+        self.releases = 0
+
+    def may_release(self, level, commit_pct=None, cpu_pct=None, now=None):
+        return (level in ("alta", "muito-alta"), 'pre-fix',
+                {'level': level, 'commit_pct': commit_pct, 'cpu_pct': cpu_pct,
+                 'held_s': 0.0, 'wait_s': 0.0})
+
+    def note_released(self):
+        self.releases += 1
+
+
+def _cycle_switch(sw, tmp: Path, name: str, gate=None, engine=None):
+    """O interruptor REAL a correr a serie do log, com um relogio escrito.
+
+    Devolve `(switch, engine, logs, clock)` -- `clock` e' o avanco que o laco
+    usa: 5 s por amostra, que e' o `SAMPLE_INTERVAL_S` do probe real.
+    """
+    import numpy as np
+
+    logs: list[str] = []
+    eng = engine if engine is not None else _FakeEngine()
+    state = {'t': 1000.0}
+
+    def clock():
+        return state['t']
+
+    s = sw.ReduxHiddenSwitch(
+        True, _FakeReader(visible=True), str(tmp / "no-runner.py"), logs.append,
+        hidden_after_s=0.0, batch_interval_s=1.0, max_audio_s=1.0,
+        engine=eng, probe=_FakeProbe(CYCLE_SERIES), spool_dir=str(tmp / ("spool-" + name)),
+        min_free_mb=0.0, engine_min_free_mb=0.0, clock=clock)
+    if gate is not None:
+        s._release_gate = gate
+    return s, eng, logs, state
+
+
+def _cycle(s, eng, state, seconds=300.0, blocks_per_tick=3):
+    """Roda o laco como o worker o corre: `tick`, alimenta audio, `maybe_kick`."""
+    import numpy as np
+
+    levels = []
+    for _i in range(int(seconds / 5.0)):
+        state['t'] += 5.0
+        s.tick(now=_time.time())
+        levels.append(s._shed)
+        for _b in range(blocks_per_tick):
+            s.add_audio(np.full(1600, 0.2, dtype=np.float32))
+        s.maybe_kick()
+        if s.in_flight():
+            s._inflight.join(30.0)
+    return levels
+
+
+def arms_release(worker_path: Path, tmp: Path) -> None:
+    """ARM 26 -- a largada le' o COMMIT, e a pausa nao desaloca nada."""
+    try:
+        sw = _load_worker(worker_path)
+    except Exception as exc:                                        # noqa: BLE001
+        add(False, "o worker importa para os arms da largada", repr(exc))
+        return
+    ls = sw._policy.shedding(sw._SHEDDING_PATH, None) if sw._policy else None
+    add(ls is not None and hasattr(ls, "ReleaseGate"),
+        "o modulo da decisao tem a GUARDA DA LARGADA (`ReleaseGate`)")
+    if ls is None or not hasattr(ls, "ReleaseGate"):
+        return
+
+    print("\nARM 26 -- a LARGADA: a memoria decide, e o CPU so' pede a pausa")
+    # (A) A TABELA PURA. As tres leituras que decidem, com os numeros do log.
+    t = {'t': 0.0}
+    gate = ls.ReleaseGate(clock=lambda: t['t'])
+    ok, why, fields = gate.may_release('muito-alta', 63.6, 98.1)
+    add(ok is False and why == 'cpu-apenas',
+        "98,1 % de CPU com 63,6 % de commit NAO larga o modelo (o numero do log)",
+        f"ok={ok} why={why} commit={fields.get('commit_pct')}")
+    ok, why, _f = gate.may_release('muito-alta', 96.0, 98.1)
+    add(ok is True and why == 'memoria-emergencia',
+        "96 % de commit LARGA ja' (a emergencia de memoria continua a mandar)", why)
+    t['t'] = 0.0
+    gate2 = ls.ReleaseGate(clock=lambda: t['t'])
+    first = gate2.may_release('muito-alta', 89.0, 60.0)
+    t['t'] = ls.RELEASE_PERSIST_S - 1.0
+    near = gate2.may_release('muito-alta', 89.0, 60.0)
+    t['t'] = ls.RELEASE_PERSIST_S
+    far = gate2.may_release('muito-alta', 89.0, 60.0)
+    add(first[0] is False and near[0] is False and far[0] is True,
+        "pressao de memoria (89 %%) larga so' depois de %.0f s SUSTENTADOS"
+        % ls.RELEASE_PERSIST_S,
+        f"t=0:{first[1]} t={ls.RELEASE_PERSIST_S - 1:.0f}:{near[1]} "
+        f"t={ls.RELEASE_PERSIST_S:.0f}:{far[1]}")
+    add(ls.RELEASE_PERSIST_S >= 120.0,
+        "e o piso da persistencia e' >= 120 s", "persist_s=%.0f" % ls.RELEASE_PERSIST_S)
+    add(gate.may_release('muito-alta', None, 99.1)[0] is True,
+        "commit ILEGIVEL larga (\"nao sei\" nao segura memoria contra OOM)")
+    add(gate.may_release('alta', 96.0, 99.1)[0] is False,
+        "e `alta` nao larga nada: so' `muito-alta` pede a largada")
+
+    # (B) O CICLO REAL, com o interruptor REAL, e o CONTROLE de populacao.
+    eng_old = _FakeEngine()
+    eng_old.load()
+    old, _e, logs_old, st_old = _cycle_switch(sw, tmp, "prefix", gate=_PreFixGate(),
+                                              engine=eng_old)
+    levels_old = _cycle(old, eng_old, st_old)
+    add('muito-alta' in levels_old,
+        "CONTROLE: a serie do log chega a `muito-alta` (a arm mede, nao passa por ausencia)",
+        "levels=%s" % sorted(set(levels_old)))
+    add(eng_old.releases >= 2 and eng_old.loads >= 3,
+        "CONTROLE: com a largada de ANTES o ciclo do log se reproduz (larga e recarrega)",
+        f"releases={eng_old.releases} loads={eng_old.loads}")
+
+    eng = _FakeEngine()
+    eng.load()
+    s, eng, logs, st = _cycle_switch(sw, tmp, "fixed", engine=eng)
+    levels = _cycle(s, eng, st)
+    add(eng.releases == 0,
+        "com a guarda, a MESMA serie nao larga o modelo nenhuma vez",
+        f"releases={eng.releases} kept={s.kept_engine}")
+    add(eng.loads == 1,
+        "e nenhuma recarga acontece (a rajada de 26 MB/s nao existe)",
+        f"loads={eng.loads}")
+    add(any(l.startswith("REDUX_ENGINE_KEPT") for l in logs),
+        "a recusa e' DITA no log, com o commit e a CPU que a decidiram",
+        next((l for l in logs if l.startswith("REDUX_ENGINE_KEPT")), "(sem linha)"))
+    kept = next((l for l in logs if l.startswith("REDUX_ENGINE_KEPT")), "")
+    add("why=cpu-apenas" in kept and "commit_pct=6" in kept,
+        "e a linha nomeia a razao e o numero", kept[:140])
+    counts = s._pending_counts()
+    add(counts["blocks_in"] > 0 and counts["dropped"] == 0,
+        "o audio continua a ENTRAR durante a pausa e nada se perde",
+        f"in={counts['blocks_in']} dropped={counts['dropped']}")
+
+    # (C) A EMERGENCIA DE MEMORIA, pelo interruptor real: larga.
+    logs2: list[str] = []
+    eng2 = _FakeEngine()
+    eng2.load()
+    s2 = sw.ReduxHiddenSwitch(
+        True, _FakeReader(visible=True), str(tmp / "no-runner.py"), logs2.append,
+        hidden_after_s=0.0, batch_interval_s=1.0, max_audio_s=1.0,
+        engine=eng2, probe=_FakeProbe([(96.0, 90.0)]), spool_dir=str(tmp / "spool-emerg"),
+        min_free_mb=0.0, engine_min_free_mb=0.0)
+    add(s2.tick() == "shed", "96 % de commit -> shed")
+    add((eng2.loaded, eng2.releases) == (False, 1),
+        "e o modelo FOI largado: a proteccao de memoria NAO foi enfraquecida",
+        f"loaded={eng2.loaded} releases={eng2.releases}")
+    rel = next((l for l in logs2 if l.startswith("REDUX_ENGINE_RELEASE")), "")
+    add("why=memoria-emergencia" in rel,
+        "e a linha da largada nomeia a emergencia que a autorizou", rel[:140])
+
+    # (D) O PISO DA RECARGA (do MOTOR, `engine_policy`): logo apos largar, o lote
+    # seguinte ESPERA -- e o audio fica na espera. Este braco prova a fiacao: sem
+    # ele o piso podia existir no motor e nenhum chamador le-lo.
+    # O nivel tem de VOLTAR a `batch`: o piso so' e' consultado no lote.
+    s2.probe.seq = [(64.0, 57.0)]
+    for _i in range(3):
+        s2.tick()
+    add(s2.mode == "batch", "e o nivel volta a `batch` quando a carga desce",
+        "mode=%s level=%s" % (s2.mode, s2._shed))
+    eng2.floor_left = 30.0
+    loads_before = eng2.loads
+    import numpy as np
+    for _i in range(15):
+        s2.add_audio(np.full(1600, 0.1, dtype=np.float32))
+    before = s2._pending_counts()
+    kicked = s2.maybe_kick()
+    after = s2._pending_counts()
+    add(kicked is False and eng2.loads == loads_before,
+        "com o piso da recarga em vigor o lote NAO carrega o modelo",
+        f"kicked={kicked} loads={eng2.loads} (de {loads_before})")
+    add(any("reason=reload-floor" in l for l in logs2),
+        "e o log diz que foi o piso (`REDUX_BATCH_DEFERRED reason=reload-floor`)",
+        next((l for l in logs2 if "reload-floor" in l), "(sem linha)"))
+    add(after["held_blocks"] == before["held_blocks"] and after["dropped"] == 0,
+        "o audio fica TODO na espera (o piso nao deita nada fora)",
+        f"held={after['held_blocks']} dropped={after['dropped']}")
+    eng2.floor_left = 0.0
+    kicked2 = s2.maybe_kick()
+    # O lote corre num FIO: `loads` so' esta' escrito quando ele acaba. Medir
+    # antes do join mede a corrida, nao a carga.
+    if s2.in_flight():
+        s2._inflight.join(30.0)
+    add(kicked2 is True and eng2.loads == loads_before + 1,
+        "e cumprido o piso, o mesmo audio carrega o motor e segue",
+        f"kicked={kicked2} loads={eng2.loads} (de {loads_before})")
+    add(s2._pending_counts()["seconds"] == 0.0,
+        "a espera drenou para ZERO quando o piso deixou",
+        f"{s2._pending_counts()['seconds']} s")
+
+
 def _mutant_layout(tmp: Path):
     """Um repo em miniatura: `tmp/worker/sotto_worker.py` + `tmp/app/webview/`.
 
@@ -2180,6 +2424,48 @@ def neg_arm_yield() -> int:
         "load-shed-yield-neg-")
 
 
+def neg_arm_release_cpu() -> int:
+    """A LARGADA volta a ser uma decisao de CPU: qualquer `muito-alta` larga.
+
+    E' o comportamento MEDIDO no log do dono (82 cargas / 70 largadas, commit
+    63-64 %). Se o oraculo nao cair aqui, a guarda da ARM 26 nao esta' a medir
+    nada.
+    """
+    old = """        if commit < self.high_pct:
+            # A PRESSAO E' DE CPU. O modelo FICA: o RSS nao e' o recurso escasso
+            # e o modo `shed` ja' pausou o lote (o audio acumula).
+            self.memory_since = None
+            fields['commit_pct'] = commit
+            return False, 'cpu-apenas', fields"""
+    new = """        if commit < self.high_pct:
+            self.memory_since = None
+            fields['commit_pct'] = commit
+            return True, 'cpu-apenas', fields"""
+    return _neg_arm_text(
+        "largada-cpu", "load_shedding.py", old, new,
+        "o CPU volta a largar o modelo (o ciclo de 31 s do log do dono)",
+        "load-shed-relcpu-neg-")
+
+
+def neg_arm_release_persist() -> int:
+    """Sem PERSISTENCIA: um pico de memoria de um segundo paga uma recarga."""
+    return _neg_arm_text(
+        "largada-persist", "load_shedding.py",
+        "RELEASE_PERSIST_S = 120.0", "RELEASE_PERSIST_S = 0.0",
+        "a pressao de memoria larga o modelo na PRIMEIRA leitura",
+        "load-shed-relpersist-neg-")
+
+
+def neg_arm_release_illegible() -> int:
+    """Commit ilegivel deixa de largar: "nao sei" passa a segurar a memoria."""
+    return _neg_arm_text(
+        "largada-cega", "load_shedding.py",
+        "            return True, 'commit-ilegivel', fields",
+        "            return False, 'commit-ilegivel', fields",
+        "um commit ilegivel deixa de largar (o OOM passa a ser o primeiro aviso)",
+        "load-shed-relblind-neg-")
+
+
 def main(argv) -> int:
     if "--neg-arm-drain" in argv:
         return neg_arm_drain()
@@ -2210,8 +2496,15 @@ def main(argv) -> int:
         # carregar com a carga AINDA em alta. Treze mutantes, e o pior dos treze
         # e' o veredicto: um verde num deles nao compra os outros.
         resume = neg_arm_resume()
+        # OS MUTANTES DA LARGADA (2026-11-09): o CPU a decidir a desalocacao, a
+        # persistencia a zero, e um commit ilegivel a segurar memoria. Dezasseis
+        # mutantes, e o pior dos dezasseis e' o veredicto.
+        rel_cpu = neg_arm_release_cpu()
+        rel_persist = neg_arm_release_persist()
+        rel_blind = neg_arm_release_illegible()
         every = (table, channel, drain, selector, floor, sustain, persist, cede,
-                 chan, dwell, rise, cpu_wiring, resume)
+                 chan, dwell, rise, cpu_wiring, resume, rel_cpu, rel_persist,
+                 rel_blind)
         return (EXIT_FAIL if all(rc == EXIT_FAIL for rc in every) else EXIT_PASS)
     return run(MODULE, SHELL)
 

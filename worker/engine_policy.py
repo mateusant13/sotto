@@ -41,6 +41,21 @@ REDUX_ENGINE_MIN_FREE_MB = 800.0
 #: faster than it accumulated.
 REDUX_ENGINE_WINDOW_S = 3.0
 
+#: O CICLO QUE SE EXCITA A SI PROPRIO (MEDIDO 2026-11-09, DM do watcher, stutter
+#: 50452). O log do dono tem `REDUX_ENGINE_LOAD 82` / `REDUX_ENGINE_RELEASED 70`
+#: numa execucao, com o par mais apertado a 31 s: a maquina enche -> o Sotto larga
+#: 460 MB -> a maquina acalma -> o Sotto recarrega -> a RECARGA (1,9 s de leitura
+#: + a alocacao) e' a rajada -> a maquina enche outra vez. Nada aqui melhora a
+#: transcricao: e' o proprio custo a alimentar o gatilho que o largou.
+#: Dois pisos, e os dois sao do MOTOR, nao do nivel: o nivel pode mandar largar a
+#: cada segundo sem que o modelo chegue a sair, e o lote seguinte nao paga a
+#: leitura dos pesos por um nivel que acabou de descer.
+RELOAD_FLOOR_S = 60.0
+#: O piso tambem cresce com o custo medido do carregamento: um motor que leva
+#: 20 s para carregar nao pode voltar a carregar 60 s depois de o ter largado --
+#: o debito seria 1/3 do tempo em disco.
+RELOAD_FLOOR_LOAD_FACTOR = 10.0
+
 #: O modulo da decisao, carregado UMA vez por processo (ver `shedding`).
 _SHEDDING_CACHE = {"module": None, "path": None}
 
@@ -190,6 +205,11 @@ class ParakeetEngine:
         self.releases = 0
         self.load_failures = 0
         self.load_s = 0.0
+        #: O RELOGIO DO CICLO CARGA/LARGADA (2026-11-09). `loaded_t` e'
+        #: `released_t` sao a parede em que cada um aconteceu; `reload_floor_left`
+        #: e `release_age_s` sao o que os pisos leem.
+        self.loaded_t = 0.0
+        self.released_t = 0.0
 
     def name(self):
         return self.requested
@@ -213,6 +233,7 @@ class ParakeetEngine:
             raise
         self._backend = backend
         self.loads += 1
+        self.loaded_t = time.time()
         self.load_s = round(time.perf_counter() - started, 2)
         self.log(
             f"REDUX_ENGINE_LOAD engine={self.requested} "
@@ -220,13 +241,42 @@ class ParakeetEngine:
             f"rss_mb={self.rss_fn():.1f} loads={self.loads}")
         return backend
 
+    def release_age_s(self):
+        """Ha' quantos segundos o motor esta' CARREGADO (0 se nao esta')."""
+        if self._backend is None or not self.loaded_t:
+            return 0.0
+        return max(0.0, time.time() - self.loaded_t)
+
+    def reload_floor_left(self):
+        """Segundos que faltam para o motor poder voltar a carregar (0 = livre).
+
+        O PISO DEPOIS DA LARGADA (2026-11-09): recarregar imediatamente a seguir
+        a largar e' o laco que se excita a si proprio -- medido, 82 cargas e 70
+        largadas numa execucao, com um par a 31 s. O piso e' `RELOAD_FLOOR_S`,
+        esticado por `load_s * RELOAD_FLOOR_LOAD_FACTOR` para um motor cuja
+        leitura custa dezenas de segundos.
+        """
+        if not self.released_t:
+            return 0.0
+        floor = max(RELOAD_FLOOR_S, RELOAD_FLOOR_LOAD_FACTOR * float(self.load_s or 0))
+        return max(0.0, floor - (time.time() - self.released_t))
+
     def release(self, reason="idle"):
-        """Larga o modelo. `True` quando havia algo para largar."""
+        """Larga o modelo. `True` quando havia algo para largar.
+
+        A LARGADA NUNCA E' RECUSADA (2026-11-09): a pressao manda sempre, e um
+        modelo que a pressao pediu para sair sai na hora. O CICLO que se excita a
+        si proprio (o log do dono tem 82 cargas / 70 largadas numa execucao) corta-se
+        no lado da CARGA, com o piso `reload_floor_left` -- largar e' barato e
+        devolve 460 MB; o que custa 1,9 s de disco e a rajada de CPU e' VOLTAR.
+        """
         if self._backend is None:
             return False
         before = self.rss_fn()
         self._backend = None
         self.releases += 1
+        self.released_t = time.time()
+        self.loaded_t = 0.0
         self.log(
             f"REDUX_ENGINE_RELEASED engine={self.requested} reason={reason} "
             f"rss_before_mb={before:.1f} rss_after_mb={self.rss_fn():.1f} "

@@ -257,7 +257,7 @@ REM comuta pela carga (`alta`->batch, `muito-alta`->shed, `leve`+visivel->stream
 REM Sem passo, o instrumento apodreceu duas vezes em silencio (FakeReader sem `shed`,
 REM `--neg-arm` morto a apontar para o ficheiro onde a classe ja' nao vive).
 if exist _main\redux-arm-weights-oracle.py (
- call :step redux-arm-weights 0 "_main\redux-arm-weights-oracle.py;worker\engine_switch.py;worker\sotto_worker.py;app\webview\sotto_webview.py;app\panel\caption-formulation.js" "%OUT%\redux-arm-weights.log" python _main\redux-arm-weights-oracle.py
+ call :step redux-arm-weights 0 "_main\redux-arm-weights-oracle.py;worker\engine_switch.py;worker\engine_policy.py;worker\sotto_worker.py;worker\redux_batch.py;app\webview\sotto_webview.py;app\panel\caption-formulation.js;app\panel\history-store.js" "%OUT%\redux-arm-weights.log" python _main\redux-arm-weights-oracle.py
  call :record redux-arm-weights !STEP_RC!
 ) else ( call :record redux-arm-weights MISSING )
 
@@ -354,6 +354,18 @@ call :step ort-spin-idle 0 "_main\ort-spin-idle.py;worker\sotto_worker.py" "%OUT
 call :record ort-spin-idle !STEP_RC!
 call :step red-as-expected-ort-spin-idle 1 "_main\ort-spin-idle.py;worker\sotto_worker.py" "%OUT%\ort-spin-idle-neg.log" python _main\ort-spin-idle.py --neg-arm
 call :expectred red-as-expected-ort-spin-idle !STEP_RC! "%OUT%\ort-spin-idle-neg.log" "NEG-ARM: PASS"
+REM `worker-thread-limit` (2026-11-09, DM do watcher + medicao propria): o worker de ASR
+REM queimou 159,5% de um nucleo em rajadas de 9-10/hora e as janelas de 10 s que apanhei
+REM nomearam o actor por FIO: `session-13/12/14-intra-op-0`. O `--threads N` do worker
+REM era INERTE -- `limit_threads` usava `setdefault` sobre um `OMP_NUM_THREADS` que o
+REM proprio modulo ja' tinha escrito como "4", logo as tres sessoes abriam com 4 fios
+REM cada e o flag nao mudava um fio do ORT. O oraculo julga a precedencia
+REM (`--threads > ambiente > 4`), o `session_options` REAL, o argv que a shell monta e o
+REM tecto do motor de fundo; o `--neg-arm` repoe o `setdefault` numa COPIA e exige A1 RED.
+call :step worker-thread-limit 0 "_main\worker-thread-limit-oracle.py;worker\sotto_worker.py;worker\engine_switch.py;app\webview\sotto_webview.py" "%OUT%\worker-thread-limit.log" python _main\worker-thread-limit-oracle.py
+call :record worker-thread-limit !STEP_RC!
+call :step red-as-expected-worker-thread-limit 1 "_main\worker-thread-limit-oracle.py;worker\sotto_worker.py;worker\engine_switch.py;app\webview\sotto_webview.py" "%OUT%\worker-thread-limit-neg.log" python _main\worker-thread-limit-oracle.py --neg-arm
+call :expectred red-as-expected-worker-thread-limit !STEP_RC! "%OUT%\worker-thread-limit-neg.log" "NEG-ARM: PASS"
 REM `caption-tick-thread` (2026-11-08, DM do watcher): ele mediu 90,879 criacoes/s na
 REM arvore da shell durante um stutter de 192 s. A unica criacao por frame da app era o
 REM `threading.Timer` do `caption_overlay._arm_tick` -- um FIO por quadro, ~62/s com a
@@ -564,6 +576,8 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel2-dom-probe !STEP_RC!
   call :step panel-header-oracle 0 "_main\panel-header-oracle.js;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-header.log" node _main\panel-header-oracle.js
   call :record panel-header-oracle !STEP_RC!
+  call :step red-as-expected-panel-header-oracle 1 "_main\panel-header-oracle.js;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-header-neg.log" node _main\panel-header-oracle.js --neg-arm
+  call :expectred red-as-expected-panel-header-oracle !STEP_RC! "%OUT%\panel-header-neg.log" "NEG-ARM VERDICT PASS"
   call :step panel-drag-targets 0 "_main\panel-drag-targets-oracle.js;app\panel\panel.html;app\panel\panel-unified.css;app\panel\skin-layout.css;app\panel\panel.js;app\panel\strip-drag.js" "%OUT%\panel-drag-targets.log" node _main\panel-drag-targets-oracle.js
   call :record panel-drag-targets !STEP_RC!
   call :step panel-history-clip 0 "_main\panel-history-clip-probe.mjs;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-history-clip.log" node _main\panel-history-clip-probe.mjs
@@ -582,6 +596,22 @@ if exist _main\_panel2-dom-probe.js (
   call :record theme-caption-identity !STEP_RC!
   call :step red-as-expected-theme-caption-identity 1 "_main\theme-caption-identity-oracle.py;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css" "%OUT%\theme-caption-identity-neg.log" python _main\theme-caption-identity-oracle.py --neg-arm
   call :expectred red-as-expected-theme-caption-identity !STEP_RC! "%OUT%\theme-caption-identity-neg.log" "NEG-ARM PASS"
+  call :step caption-overlay-theme 0 "_main\caption-overlay-theme-oracle.py;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\caption-overlay-theme.log" python _main\caption-overlay-theme-oracle.py
+  call :record caption-overlay-theme !STEP_RC!
+  call :step red-as-expected-caption-overlay-theme 1 "_main\caption-overlay-theme-oracle.py;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\caption-overlay-theme-neg.log" python _main\caption-overlay-theme-oracle.py --neg-arm
+  call :expectred red-as-expected-caption-overlay-theme !STEP_RC! "%OUT%\caption-overlay-theme-neg.log" "NEG-ARM: PASS"
+  REM O CONTRATO DE COMPOSICAO COMPARTILHADA (dono, 2026-11-09: "consistencia em TODOS os
+  REM temas"). O painel usa o espaco que tem (sem vazio embaixo), rola sem MOSTRAR barra,
+  REM ajustes imediatamente a esquerda do fechar, busca que revela o campo ao ser pedida, sem
+  REM circulos de demo, e TODA legenda de tela -- Ctrl+Space incluido -- com o FUNDO do
+  REM desenho. Mede os 59 itens REAIS do seletor (45 CSS + 20 skins - 6 duais) num browser
+  REM privado e headless: geometria e pintura COMPUTADAS, uma relacao por braco. O negativo
+  REM planta sete mutantes independentes (ordem, barra, rolagem, vazio, fundo, circulos,
+  REM inventario) e exige os sete apanhados.
+  call :step panel-themes 0 "_main\panel-themes-oracle.mjs;app\panel\panel.html;app\panel\panel.css;app\panel\panel-unified.css;app\panel\panel.js;app\panel\brand-bridge.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\lazy-assets.js;app\panel\skin-host.js;app\panel\skin-layout.css;app\panel\caption-float.css;app\panel\button-contract.css;app\panel\themes\fonts.css;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\skins\skins.js;app\panel\skins\skin-shim.css" "%OUT%\panel-themes.log" node _main\panel-themes-oracle.mjs
+  call :record panel-themes !STEP_RC!
+  call :step red-as-expected-panel-themes 1 "_main\panel-themes-oracle.mjs;app\panel\panel.html;app\panel\panel.css;app\panel\panel-unified.css;app\panel\panel.js;app\panel\brand-bridge.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\lazy-assets.js;app\panel\skin-host.js;app\panel\skin-layout.css;app\panel\caption-float.css;app\panel\button-contract.css;app\panel\themes\fonts.css;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\skins\skins.js;app\panel\skins\skin-shim.css" "%OUT%\panel-themes-neg.log" node _main\panel-themes-oracle.mjs --neg-arm
+  call :expectred red-as-expected-panel-themes !STEP_RC! "%OUT%\panel-themes-neg.log" "NEG-ARM: PASS"
   call :step red-as-expected-panel-history-clip 1 "_main\panel-history-clip-probe.mjs;app\panel\panel.html;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\panel.css;app\panel\themes\fonts.css;app\panel\button-contract.css;app\panel\panel.js" "%OUT%\panel-history-clip-neg.log" node _main\panel-history-clip-probe.mjs --neg-arm
   call :expectred red-as-expected-panel-history-clip !STEP_RC! "%OUT%\panel-history-clip-neg.log" "NEG-ARM: PASS"
   call :step panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload.log" python _main\panel-pause-payload-oracle.py
@@ -2454,6 +2484,22 @@ if exist _main\history-merge-oracle.py (
   call :step always red-as-expected-history-merge 1 "_main\history-merge-oracle.py;app\webview\sotto_webview.py" "%OUT%\history-merge-neg.log" python _main\history-merge-oracle.py --neg-arm
   call :expectred red-as-expected-history-merge !STEP_RC! "%OUT%\history-merge-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-history-merge MISSING "%OUT%\history-merge-neg.log" "NEG-ARM PASS" )
+
+REM (`history-context`: a linha do historico carrega a origem do audio e o
+REM contexto de visualizacao, compacto e pesquisavel. Dono, 2026-11-09: meses
+REM depois, saber de onde veio o audio e o que estava na tela quando foi dito.
+REM O oraculo executa o `history_context` real, o `history_append`/leitura/
+REM busca/export do shell e o twin Node sobre um HISTORY_ROOT temporario; o
+REM `--neg-arm` muta quatro sitios em COPIA e exige os quatro RED. Nenhum dos
+REM dois abre a app.)
+if exist _main\history-context-oracle.py (
+  call :step always history-context 0 "_main\history-context-oracle.py;app\webview\history_context.py;app\webview\sotto_webview.py;app\panel\history-store.js" "%OUT%\history-context.log" python _main\history-context-oracle.py
+  call :record history-context !STEP_RC!
+) else ( call :record history-context MISSING )
+if exist _main\history-context-oracle.py (
+  call :step always red-as-expected-history-context 1 "_main\history-context-oracle.py;app\webview\history_context.py;app\webview\sotto_webview.py;app\panel\history-store.js" "%OUT%\history-context-neg.log" python _main\history-context-oracle.py --neg-arm
+  call :expectred red-as-expected-history-context !STEP_RC! "%OUT%\history-context-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-history-context MISSING "%OUT%\history-context-neg.log" "NEG-ARM PASS" )
 
 REM (`reveal-clock`: a revelacao da legenda e' ancorada no AUDIO, nao na chegada
 REM do ASR. Dono, verbatim: *"a legenda do youtube ta fora de sync. atrasada.

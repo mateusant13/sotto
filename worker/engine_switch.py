@@ -499,8 +499,14 @@ class ReduxHiddenSwitch:
                  wav_dir=None, armed_by="--redux-when-hidden",
                  min_free_mb=REDUX_MIN_FREE_MB_DEFAULT, model_dir=None,
                  engine=None, probe=None, pending=None, spool_dir=None,
+                 engine_threads=None,
                  engine_min_free_mb=None, engine_window_s=None,
-                 unload_when_hidden=False):
+                 unload_when_hidden=False, clock=None):
+        #: O RELOGIO DA LARGADA/RECARGA (`load_shedding.ReleaseGate`). Um so',
+        #: e injectado pelo mesmo motivo que o `probe`: a guarda tem de ser
+        #: medida com uma serie de tempo escrita, nao com a parede de quem corre
+        #: o oraculo. `None` = `time.monotonic`.
+        self._clock = clock
         #: O MODELO AO VIVO SO' E' LARGADO POR PRESSAO, NUNCA PELA VISAO
         #: (ordem do dono, 2026-11-03, verbatim: *"era pra ta com o modelo
         #: sempre. e so descarregar quando o pc precisa da vram ou gpu em
@@ -561,11 +567,21 @@ class ReduxHiddenSwitch:
         self.rate = TARGET_SR
         self.producer = REDUX_PRODUCER
         self.rss = current_rss_mb
+        #: O TECTO DO MOTOR DE FUNDO VEM DO MESMO KNOB DO WORKER, NUNCA ACIMA DO
+        #: DEFAULT MEDIDO. `--threads 1` baixa-o; `--threads 2`/auto deixam-no
+        #: nos 2 que `REDUX_LIVE_THREADS` ja' documentava (~128 % de um nucleo
+        #: medido a threads=2); um `--threads 4` NAO o sobe -- o motor de fundo
+        #: nao e' o caminho de latencia e nao ha' medicao a justificar mais.
+        #: `engine_threads=None` mantem o comportamento anterior para quem
+        #: constroi o interruptor sem o parametro (os oraculos).
+        _engine_threads = (REDUX_LIVE_THREADS if engine_threads is None
+                           else max(1, min(int(engine_threads),
+                                           REDUX_LIVE_THREADS)))
         self.engine = (engine if engine is not None
                        else ParakeetEngine(
                            REDUX_LIVE_ENGINE_DEFAULT, redux_live_dirs,
                            redux_live_missing, current_rss_mb,
-                           threads=REDUX_LIVE_THREADS, log_fn=log_fn))
+                           threads=_engine_threads, log_fn=log_fn))
         self.runner_engine = RunnerEngine(runner, redux_checkpoint_dir,
                                           redux_checkpoint_missing, log_fn=log_fn)
         self.engine_available = bool(getattr(self.engine, "available", False))
@@ -591,6 +607,13 @@ class ReduxHiddenSwitch:
         self.probe = probe
         shed_module = _policy.shedding(_SHEDDING_PATH, err)
         self._shedder = shed_module.LoadShedding() if shed_module is not None else None
+        #: A GUARDA DA LARGADA/RECARGA (2026-11-09): a memoria decide se o
+        #: modelo pode cair, e o custo medido da ultima carga decide quando ele
+        #: pode voltar. Sem o modulo, a largada volta a ser a de antes.
+        gate_cls = getattr(shed_module, 'ReleaseGate', None) if shed_module is not None else None
+        self._release_gate = (gate_cls(clock=clock) if gate_cls is not None else None)
+        self.kept_engine = 0
+        self._kept_logged = False
         self._fed_at = None
         #: O nivel EM VIGOR (o pior entre o publicado e o medido). Vive aqui para
         #: a linha de log so' sair quando o nivel MUDA -- um log por bloco de
@@ -797,8 +820,44 @@ class ReduxHiddenSwitch:
                 self._release_when_idle = True
             else:
                 self._release_when_idle = False
-                self._release_engine("shed-muito-alta")
+                self._release_under_pressure(commit_pct, cpu_pct)
         return self.mode
+
+    # -- a largada: a MEMORIA decide, o CPU so' pede a pausa ------------------
+    def _release_under_pressure(self, commit_pct, cpu_pct):
+        """Larga o modelo so' quando a largada compra alguma coisa.
+
+        O modo `shed` ja' PAUSOU o lote (nada corre, o audio acumula). Largar o
+        modelo e' uma segunda accao, e ela custa uma recarga de `load_s`
+        segundos (1,23-19,35 medidos) mais uma rajada de leitura. Por isso ela
+        le' o COMMIT: em `muito-alta` por CPU com a memoria folgada -- o regime
+        medido no log do dono, 98,1 % de CPU com 63,6 % de commit -- o modelo
+        FICA, porque os 470 MB que ele devolve nao sao o recurso escasso.
+
+        A guarda vem do modulo da decisao (`ReleaseGate`); sem ele o
+        comportamento e' o de antes.
+        """
+        gate = self._release_gate
+        if gate is None:
+            self._release_engine("shed-muito-alta")
+            return
+        ok, why, fields = gate.may_release(self._shed, commit_pct, cpu_pct)
+        if ok:
+            self._kept_logged = False
+            self._release_engine("shed-muito-alta", why=why)
+            return
+        self.kept_engine += 1
+        if self._kept_logged:
+            return
+        self._kept_logged = True
+        self.log(
+            f"REDUX_ENGINE_KEPT level={self._shed} commit_pct="
+            f"{_policy.fmt_num(fields.get('commit_pct'))} cpu_pct="
+            f"{_policy.fmt_num(fields.get('cpu_pct'))} why={why} "
+            f"held_s={fields.get('held_s')} wait_s={fields.get('wait_s')} "
+            f"kept={self.kept_engine} — a pressao nao justifica largar o modelo: "
+            f"o lote JA' esta' pausado pelo nivel e o audio acumula; a recarga "
+            f"custaria load_s={getattr(self.engine, 'load_s', 0.0)}s de disco e CPU")
 
     # -- a medicao da carga -------------------------------------------------
     def _measure(self, published):
@@ -837,7 +896,7 @@ class ReduxHiddenSwitch:
             return dict(table[level])
         return {}
 
-    def _release_engine(self, reason):
+    def _release_engine(self, reason, why=""):
         release = getattr(self.engine, "release", None)
         if not callable(release):
             return False
@@ -851,8 +910,13 @@ class ReduxHiddenSwitch:
             # A LARGADA E' UMA ACCAO DO INTERRUPTOR, por isso e' o interruptor que
             # a diz: o log fica completo quer o motor seja o parakeet real (que
             # acrescenta o RSS que voltou) quer seja um objecto injectado.
+            # E' AQUI que o piso da recarga passa a contar: `load()` custa
+            # `load_s` segundos de disco e CPU, e recarregar logo depois de
+            # largar e' o ciclo medido (31 s) que esta guarda existe para cortar.
+            if self._release_gate is not None:
+                self._release_gate.note_released()
             self.log(f"REDUX_ENGINE_RELEASE reason={reason} engine={self.batch_kind} "
-                     f"held_s={self.pending_seconds()} "
+                     f"held_s={self.pending_seconds()} why={why or 'nivel'} "
                      f"— a carga mandou parar; recarrega sozinho quando a carga libertar")
         return released
 
@@ -939,6 +1003,39 @@ class ReduxHiddenSwitch:
             # arrefece (ver `_park`). Isto e' o que impede um motor partido de
             # carregar 615 MB a cada segundo -- um busy loop com factura de RAM.
             return False
+        # O PISO DA RECARGA (2026-11-09, MEDIDO). O lote seguinte e' o unico
+        # caminho que faz o motor voltar: se ele pedir a carga nos primeiros
+        # segundos depois de uma largada, o custo da leitura dos pesos volta
+        # inteiro e a maquina mede a rajada outra vez -- o ciclo carga/largada
+        # que se excita a si proprio (82 cargas / 70 largadas numa execucao, par
+        # mais apertado a 31 s). Como o piso de memoria, isto e' DEFERIVEL quando
+        # esperar e' de graca: o audio fica na fila e o tick seguinte tenta outra
+        # vez; uma CAUDA nao pode esperar, por isso tenta e diz que tentou.
+        _floor_left = 0.0
+        try:
+            _floor_left = float(getattr(self.engine, "reload_floor_left",
+                                        lambda: 0.0)())
+        except Exception:                              # noqa: BLE001
+            _floor_left = 0.0
+        if _floor_left > 0.0:
+            if respect_memory_floor:
+                self.deferred += 1
+                if self.deferred <= 3 or self.deferred % 30 == 0:
+                    self.log(
+                        f"REDUX_BATCH_DEFERRED reason=reload-floor "
+                        f"wait_s={_floor_left:.0f} engine={self.batch_kind} "
+                        f"held_s={self.pending_seconds()} deferred={self.deferred} "
+                        f"\u2014 o motor acabou de ser largado e recarrega-lo agora "
+                        f"devolve a rajada que fez o nivel descer; o audio espera "
+                        f"na fila e o tick seguinte tenta outra vez")
+                return False
+            self.deferred += 1
+            self.log(
+                f"REDUX_BATCH_RELOAD_FLOOR wait_s={_floor_left:.0f} "
+                f"engine={self.batch_kind} reason={reason} attempting=anyway "
+                f"deferred={self.deferred} \u2014 uma cauda nao tem tick seguinte, "
+                f"por isso a tentativa e' feita e esta linha e' o recibo de que foi "
+                f"feita dentro do piso")
         # O PISO DE MEMORIA E' O DO MOTOR QUE VAI CORRER. O executor ternario tem
         # um pico documentado de ~3,9 GB; o parakeet ONNX tem 615 MB medidos. Um
         # piso unico de 4600 MB adiava um lote de 615 MB numa maquina saudavel --

@@ -622,6 +622,141 @@ class ResumeGate:
         self.last = out
         return out
 
+# ── A LARGADA E A RECARGA: a MEMORIA decide uma, o CUSTO da outra ───────────
+#
+# O DEFEITO MEDIDO (2026-11-09; DM `dm-00dbf174d47f818230ca-2`, recibo
+# `I:\!watcher\runs\TC-20261109-stutter-dm-a8cfc0ef-sotto.md` seccoes 10-11).
+# Numa unica instancia do log do dono: **82 `REDUX_ENGINE_LOAD` e 70
+# `REDUX_ENGINE_RELEASED`**. O par mais apertado, verbatim:
+#
+#   06:55:13.891 REDUX_SHEDDING level=alta ... cpu_pct=61.7%
+#   06:55:15.304 REDUX_ENGINE_LOAD  load_s=1.39 rss_mb=726.6 loads=8
+#   06:55:25.313 REDUX_SHEDDING level=muito-alta ... cpu_pct=98.1%
+#   06:55:25.572 REDUX_ENGINE_RELEASED rss_before_mb=759.8 rss_after_mb=290.0
+#   06:55:45.325 REDUX_SHEDDING level=alta ... cpu_pct=57.3%
+#   06:55:46.571 REDUX_ENGINE_LOAD  load_s=1.23 rss_mb=723.7 loads=9
+#
+# Tres factos, todos da MESMA janela e nenhum hipotetico:
+#
+#   1. O COMMIT NUNCA FOI O MOTIVO. Naquela janela ele leu 63,1 % / 63,6 % /
+#      64,3 % -- e `HIGH_PCT` e' 88. A largada devolveu **470 MB** num box de
+#      47,7 GB a 63 % de commit, ou seja ~1 % da memoria comprometida, ao preco
+#      de uma rajada de leitura de 26 MB/s e de uma recarga de 1,2-19,4 s
+#      (`load_s` medido no proprio log: 1,23 .. 19,35).
+#   2. O NIVEL SUBIU POR CPU: 61,7 % -> 98,1 % em dez segundos, exactamente em
+#      volta da recarga. A recarga e' ela propria a rajada (sessao ONNX nova +
+#      leitura dos pesos), por isso o sinal que manda largar e' parcialmente o
+#      sinal que a largada criou.
+#   3. E ELE DESCE SOZINHO: 20 s depois da largada a CPU leu 57,3 % e o motor
+#      voltou. O ciclo fecha em ~31 s.
+#
+# MAS A HIPOTESE TEM UMA METADE FALSA, e ela importa: no episodio das 08:34 a
+# CPU leu 99,1 % com commit 59,0 % e NENHUMA recarga nos cinco minutos anteriores
+# (a ultima tinha sido 08:29:48). Ou seja: ha' dois produtores do mesmo par --
+# a ressonancia medida acima E uma CPU que oscila em torno de 98 % numa maquina
+# degradada (722 processos, 26 % -> 75 % em 90 s medidos hoje). Os dois pedem a
+# MESMA cura, e e' por isso que ela nao depende de qual dos dois foi.
+#
+# AS DUAS REGRAS QUE ESTE OBJECTO DECIDE:
+#
+#   1. LARGAR E' UMA DECISAO DE MEMORIA. Emergencia (`commit >= VERY_HIGH_PCT`)
+#      larga ja': e' o unico caso em que 460 MB compram alguma coisa. Pressao
+#      (`commit >= HIGH_PCT`) larga depois de `RELEASE_PERSIST_S` SUSTENTADOS --
+#      um pico de CPU que atravessa o limiar nao paga uma recarga. Abaixo de
+#      `HIGH_PCT` o modelo FICA: a pressao e' de CPU, o RSS nao e' o problema, e
+#      o modo `shed` ja' PAUSA o lote sem desalocar nada.
+#   2. COMMIT ILEGIVEL LARGA. "Nao sei" nunca segura memoria: quem nao mede nao
+#      ganha o beneficio da duvida contra o risco de OOM (a direccao de
+#      `resume_calm` e' a oposta porque la' "nao sei" CARREGA 615 MB).
+#
+# O PISO DA RECARGA NAO VIVE AQUI. Ele ja' e' do MOTOR
+# (`worker/engine_policy.py`: `RELOAD_FLOOR_S`, `RELOAD_FLOOR_LOAD_FACTOR`,
+# `ParakeetEngine.reload_floor_left`) e o `engine_switch.flush_pending` ja' o
+# le'. Duas implementacoes do mesmo piso seriam duas verdades -- a que o motor
+# obedece seria sempre a que ninguem leu.
+#
+# O QUE NAO SE PERDE EM NENHUM DOS TRES CASOS: o audio. `shed` continua a
+# capturar e a acumular (`live_queue.PendingAudio`, RAM -> disco) e a retoma
+# (`ResumeGate`) continua a entregar o backlog quando a carga liberta. A pausa
+# e' do LOTE, nunca da captura -- e' a ordem do dono de 2026-11-03.
+
+#: Segundos de pressao de MEMORIA SUSTENTADA antes de largar o modelo.
+RELEASE_PERSIST_S = 120.0
+
+
+def _num(value):
+    """`float` ou `None` -- uma leitura ausente/ilegivel nao e' um numero."""
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if out != out else out
+
+
+class ReleaseGate:
+    """A LARGADA do modelo: a MEMORIA decide, o CPU so' pede a pausa.
+
+    Puro o suficiente para ser medido: `clock` e' injectado e cada chamada
+    devolve a razao, porque o numero que decidiu tem de ir para o log (ordem do
+    dono: *"o numero que o disparou"*).
+
+    `may_release(nivel, commit, cpu)` -> `(bool, why, campos)`
+    """
+
+    def __init__(self, clock=None, persist_s=RELEASE_PERSIST_S,
+                 high_pct=HIGH_PCT, very_high_pct=VERY_HIGH_PCT):
+        self._clock = clock or time.monotonic
+        self.persist_s = max(0.0, float(persist_s))
+        self.high_pct = float(high_pct)
+        self.very_high_pct = float(very_high_pct)
+        #: Quando a pressao de MEMORIA comecou a ser continua (`commit >= high`).
+        self.memory_since = None
+        self.releases = 0
+        self.kept = 0
+
+    def may_release(self, level, commit_pct=None, cpu_pct=None, now=None):
+        """`(largar, why, campos)`. So' `muito-alta` pede largar alguma coisa."""
+        now = self._clock() if now is None else float(now)
+        fields = {'level': level, 'commit_pct': commit_pct, 'cpu_pct': cpu_pct,
+                  'held_s': 0.0, 'wait_s': 0.0}
+        if level not in RELEASE_LEVELS:
+            self.memory_since = None
+            return False, 'nivel-nao-severo', fields
+        commit = _num(commit_pct)
+        if commit is None:
+            # "NAO SEI" LARGA: a direccao segura contra OOM. O nivel severo ja'
+            # veio de algum sitio (a shell, ou a CPU); o que falta e' o numero da
+            # memoria, e sem ele nao ha' como distinguir pressao de CPU.
+            return True, 'commit-ilegivel', fields
+        if commit >= self.very_high_pct:
+            self.memory_since = None
+            fields['commit_pct'] = commit
+            return True, 'memoria-emergencia', fields
+        if commit < self.high_pct:
+            # A PRESSAO E' DE CPU. O modelo FICA: o RSS nao e' o recurso escasso
+            # e o modo `shed` ja' pausou o lote (o audio acumula).
+            self.memory_since = None
+            fields['commit_pct'] = commit
+            return False, 'cpu-apenas', fields
+        if self.memory_since is None:
+            self.memory_since = now
+        held = max(0.0, now - self.memory_since)
+        fields['commit_pct'] = commit
+        fields['held_s'] = round(held, 1)
+        if held >= self.persist_s:
+            return True, 'memoria-sustentada', fields
+        fields['wait_s'] = round(self.persist_s - held, 1)
+        return False, 'memoria-sustentada-espera', fields
+
+    def note_released(self):
+        self.releases += 1
+
+    def as_dict(self):
+        return {'memory_since': self.memory_since,
+                'persist_s': self.persist_s,
+                'releases': self.releases, 'kept': self.kept}
+
+
 # ── A ACCAO: o nivel decide o MODO do worker, e nao a vida do processo ───────
 #
 # ORDEM DO DONO (2026-11-03), verbatim: *"os modelos entram e saem conforme a
@@ -681,6 +816,11 @@ ACTION_SAMPLES = 3
 
 #: Os niveis em que a maquina esta' carregada (o worker larga modelos).
 PARK_LEVELS = ('alta', 'muito-alta')
+
+#: O UNICO nivel que manda LARGAR o modelo (`mode == "shed"` no worker). `alta`
+#: e' `batch`: o nemotron cai e o parakeet FICA -- largar ali seria largar o
+#: motor que o nivel seguinte pede de volta no lote seguinte.
+RELEASE_LEVELS = ('muito-alta',)
 
 #: Uma recusa/accao que nao aconteceu escreve no log no maximo uma vez por isto.
 SKIP_LOG_INTERVAL_S = 60.0

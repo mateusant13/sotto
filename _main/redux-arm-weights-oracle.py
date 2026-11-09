@@ -630,6 +630,112 @@ def arm_store(run, store_text, tag, temp_root, declared):
               f"append(provisional-draft) -> {out['provisional']}")
 
 
+def arm_reload_floor(run, tag):
+    """ARM R -- O PISO DA RECARGA (2026-11-09, medido na DM do watcher).
+
+    O CICLO QUE SE EXCITA A SI PROPRIO: `REDUX_ENGINE_LOAD 82` / `RELEASE 70`
+    numa execucao, par mais apertado a 31 s (carga 06:55:15, largada 06:55:46),
+    cada carga a ler 1,9 GB do disco. O nivel desce quando a carga pesa e volta a
+    subir quando ela acaba, logo largar e voltar a carregar no segundo seguinte e'
+    o que produz a proxima subida.
+
+    A CURA E' UM PISO NO LADO DA CARGA, nao da largada: largar devolve 460 MB e
+    tem de ser sempre possivel (a pressao manda); o que custa disco e CPU e'
+    VOLTAR. `reload_floor_left()` conta os segundos que faltam, e o lote do
+    intervalo ESPERA (o audio fica na fila); uma CAUDA tenta e diz que tentou.
+    """
+    sw = sys.modules.get("engine_switch")
+    if sw is None:
+        raise SetupError("engine_switch not loaded")
+    policy = load_module(REPO / "worker" / "engine_policy.py", "engine_policy_oracle")
+
+    # -- the engine's own clock -------------------------------------------
+    made = []
+    def engine(**kw):
+        e = policy.ParakeetEngine(
+            "onnx", lambda: ("a", "b"), lambda *a: ([], []), lambda: 1000.0,
+            log_fn=made.append)
+        e._backend = object()                     # "carregado", sem ler 615 MB
+        e.loaded_t = time.time()
+        e.load_s = kw.get("load_s", 1.91)
+        return e
+
+    e1 = engine()
+    run.check(f"{tag}R1-piso-zero-antes-de-largar", e1.reload_floor_left() == 0.0,
+              f"floor_left={e1.reload_floor_left()}")
+    released = e1.release("shed-muito-alta")
+    run.check(f"{tag}R2-a-largada-nunca-e-recusada",
+              released is True and e1.releases == 1 and not e1.loaded,
+              f"release={released} releases={e1.releases} loaded={e1.loaded}")
+    left = e1.reload_floor_left()
+    run.check(f"{tag}R3-o-piso-comeca-em-60-s", 59.0 <= left <= 60.0,
+              f"floor_left={left:.1f} (RELOAD_FLOOR_S={getattr(policy, 'RELOAD_FLOOR_S', None)})")
+    e1.released_t -= 61.0
+    run.check(f"{tag}R4-o-piso-passa", e1.reload_floor_left() == 0.0,
+              f"floor_left={e1.reload_floor_left()}")
+    e2 = engine(load_s=20.0)
+    e2.released_t = time.time()
+    run.check(f"{tag}R5-o-piso-cresce-com-o-custo-da-carga",
+              199.0 <= e2.reload_floor_left() <= 200.0,
+              f"floor_left={e2.reload_floor_left():.1f} para load_s=20 "
+              f"(factor={getattr(policy, 'RELOAD_FLOOR_LOAD_FACTOR', None)})")
+
+    # -- the switch obeys it ----------------------------------------------
+    class _Eng:
+        available = True
+        missing = []
+        dir = "<oracle>/parakeet-redux"
+        loaded = True
+        def __init__(self, floor):
+            self.floor = float(floor)
+        def name(self):
+            return "onnx"
+        def reload_floor_left(self):
+            return self.floor
+
+    class _Pend:
+        def __init__(self, blocks=None):
+            self.blocks = list(blocks or [])
+        def requeue(self, held):
+            self.blocks = list(held) + self.blocks
+
+    def switch(floor):
+        obj = sw.ReduxHiddenSwitch.__new__(sw.ReduxHiddenSwitch)
+        obj.armed = True
+        obj._inflight = None
+        obj._backoff_until = 0.0
+        obj.engine = _Eng(floor)
+        obj.batch_kind = "parakeet"
+        obj.deferred = 0
+        obj.engine_min_free_mb = 0.0
+        obj.min_free_mb = 0.0
+        obj.pending = _Pend()
+        obj.lines = []
+        obj.log = obj.lines.append
+        obj.pending_seconds = lambda: 5.0
+        obj.take_pending = lambda: ([], 0)   # nada a transcrever: nenhum modelo carrega
+        return obj
+
+    s1 = switch(45.0)
+    kicked = s1.flush_pending("interval", respect_memory_floor=True)
+    run.check(f"{tag}R6-o-lote-espera-o-piso",
+              kicked is False and s1.deferred == 1
+              and any("reason=reload-floor" in l for l in s1.lines),
+              f"kicked={kicked} deferred={s1.deferred} "
+              f"line={next((l for l in s1.lines if 'reload-floor' in l), '(sem linha)')[:120]}")
+    s2 = switch(45.0)
+    s2.flush_pending("tail", respect_memory_floor=False)
+    run.check(f"{tag}R7-uma-cauda-tenta-e-diz-que-tentou",
+              any("attempting=anyway" in l and "REDUX_BATCH_RELOAD_FLOOR" in l
+                  for l in s2.lines),
+              f"lines={[l[:60] for l in s2.lines]}")
+    s3 = switch(0.0)
+    s3.flush_pending("interval", respect_memory_floor=True)
+    run.check(f"{tag}R8-sem-piso-o-lote-nao-espera",
+              not any("reload-floor" in l for l in s3.lines) and s3.deferred == 0,
+              f"deferred={s3.deferred} lines={[l[:60] for l in s3.lines]}")
+
+
 def mutate(text, find, replace, name):
     if find not in text:
         raise SetupError(f"{name}: anchor NOT FOUND in the real bytes: {find!r}")
@@ -672,6 +778,17 @@ MUTANTS = (
         "expect_red": ("J1-allow-list-covers-every-declared-token",
                        "J2-allow-list-has-no-extras",
                        "J3-every-token-writes-its-src-marker"),
+    },
+    {
+        "slug": "m5",
+        "name": "M5-reload-floor-removed",
+        "kind": "switch",
+        "find": ("        if _floor_left > 0.0:\n"
+                 "            if respect_memory_floor:"),
+        "replace": ("        if False:\n"
+                    "            if respect_memory_floor:"),
+        "expect_red": ("R6-o-lote-espera-o-piso",
+                       "R7-uma-cauda-tenta-e-diz-que-tentou"),
     },
     {
         "slug": "m4",
@@ -726,6 +843,7 @@ def main():
         real_mod = load_module(WORKER, "sotto_worker_oracle_real")
         arm_worker(green, real_mod, "G:", runner_mod, temp_root, worker_text)
         arm_store(green, store_text, "G:", temp_root, declared)
+        arm_reload_floor(green, "G:")
         print(f"GREEN ARM SUMMARY: {green.summary()}")
 
         failures = []
@@ -760,6 +878,7 @@ def main():
                 mod = load_module(worker_path, f"sotto_worker_mutant_{spec['slug']}")
                 arm_worker(run, mod, tag, runner_mod, temp_root, worker_text)
                 arm_store(run, store_mutant, tag, temp_root, declared)
+                arm_reload_floor(run, tag)
 
                 expected = {tag + cid for cid in spec["expect_red"]}
                 observed = set(run.red())
