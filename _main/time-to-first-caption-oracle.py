@@ -122,6 +122,15 @@ _YT_PAINT = re.compile(r"YOUTUBE_TRACK_PAINT\b.*?painted_words=(\d+)")
 
 #: A ordem em que a tabela e' impressa. As chaves sao as que o `--json` publica.
 STAGES = (
+    # A CAPACIDADE DE RESPONDER, antes de qualquer modelo (card do dono
+    # 2026-11-09: *"arranque: demora DEMAIS a responder a keybindings/qualquer
+    # coisa"*). Estas tres marcas nao sao a legenda -- sao a prova de que a tecla
+    # dele ja' tem o que mostrar, e elas chegam em ORDEM e MUITO antes do ASR:
+    # medido na sessao de 2026-11-09 (pid 52792), `hotkey` +155 ms, `overlay`
+    # +145 ms, `panel_dom` +8 500 ms, e o modelo so' a +46 311 ms.
+    ("hotkey", "HOTKEY_REGISTERED (a tecla existe)"),
+    ("overlay", "CAPTION_OVERLAY_CREATED (ha' uma superficie nativa)"),
+    ("panel_dom", "WEBVIEW_NAV dom (o painel tem DOM)"),
     ("spawn", "BRIDGE_SPAWNED"),
     ("providers", "WORKER_PROVIDERS"),
     ("load", "BRIDGE_LOAD_MS"),
@@ -193,6 +202,12 @@ def measure(lines, pid=None):
         # linhas caiam no ramo dele e `CAPTION_IN`/`YT_FRAME` nunca eram testados
         # -- medido neste proprio arranque (o primeiro `YT_FRAME` do pid 32540 e'
         # +6,2 s e a cadeia reportava +82,6 s, o primeiro que passou por ela).
+        if "hotkey" not in marks and "HOTKEY_REGISTERED" in line:
+            marks["hotkey"] = at
+        if "overlay" not in marks and "CAPTION_OVERLAY_CREATED" in line:
+            marks["overlay"] = at
+        if "panel_dom" not in marks and "WEBVIEW_NAV dom" in line:
+            marks["panel_dom"] = at
         if "spawn" not in marks and _SPAWN.search(line):
             marks["spawn"] = at
         if "providers" not in marks and _PROVIDERS.search(line):
@@ -427,6 +442,22 @@ def neg_arm():
     cases.append(("no-meter-marks-not-starved", starved, 0, "PASS",
                   ("spawn", "caption_in", "yt_frame")))
 
+    # AS TRES MARCAS DA CAPACIDADE DE RESPONDER, e a ORDEM delas (2026-11-10).
+    # Elas existem para o card *"arranque: demora DEMAIS a responder a
+    # keybindings/qualquer coisa"*: a tecla e a superficie nativa nao esperam o
+    # modelo. Uma marca que ninguem le apodrece -- esta arm le as tres e exige que
+    # cheguem ANTES do `spawn` do worker, que e' a ordem real medida no log dele.
+    responsive = [
+        "%s sotto: SHELL_STARTUP_STAGE pid=4242 stage=pre-lock" % _t(0),
+        "%s sotto: HOTKEY_REGISTERED role=panels accelerator=Alt+C register=true" % _t(155),
+        "%s sotto: CAPTION_OVERLAY_CREATED hwnd=9 layered=true" % _t(145),
+        "%s sotto: WEBVIEW_NAV dom t=8437" % _t(8376),
+        "%s sotto: BRIDGE_SPAWNED pid=7" % _t(1978),
+        "%s sotto: CAPTION_PAINT instant=false hwnd=9 text=\"audience\"" % _t(1200),
+    ]
+    cases.append(("responsiveness-marks", responsive, 0, "PASS",
+                  ("hotkey", "overlay", "panel_dom")))
+
     cases.append(("no-start-stamp", ['%s sotto: CAPTION_PAINT instant=false hwnd=9 text="x"' % _t(0)],
                   2, "SEM DADOS", ()))
 
@@ -483,6 +514,15 @@ def neg_arm():
             if missing:
                 ok = False
                 name = "%s missing=%s" % (name, ",".join(missing))
+            # A ORDEM: `hotkey`/`overlay` sao a app JA' a responder; o `spawn` e' o
+            # worker -- se a resposta chegasse depois do modelo, o card do dono nao
+            # estaria respondido mesmo com as tres marcas presentes.
+            if ok and "hotkey" in need:
+                ms = result["stage_ms"]
+                if not (ms["hotkey"] < ms["spawn"] and ms["overlay"] < ms["spawn"]):
+                    ok = False
+                    name = "%s ordem hotkey=%s overlay=%s spawn=%s" % (
+                        name, ms["hotkey"], ms["overlay"], ms["spawn"])
         bad.append((name, ok, rc, verdict, want_rc, want_verdict))
     bad.append(("missing-log-skips", missing_ok, rc_missing, "SKIPPED", 0, "SKIPPED"))
     failed = [b for b in bad if not b[1]]
