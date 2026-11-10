@@ -940,12 +940,21 @@ async function main() {
   };
   const MIN = 60 * 1000;
   const HOUR = 60 * MIN;
-  // Four entries: two in the last hour, one from YESTERDAY at this time (inside the
-  // 48 h window), one from SIXTY hours ago (outside it), and one unreadable on
-  // purpose — each a distinct way for the window filter to be wrong.
+  const DAY = 24 * HOUR;
+  // Four entries inside the retention, one unreadable on purpose — each a distinct
+  // way for the window filter to be wrong — plus ONE entry past the retention.
+  //
+  // THE WINDOW IS 180 DAYS SINCE 2026-11-09, and this arm said 48 h until it was
+  // re-measured: `HISTORY_RETENTION_H` (panel.js) is 4320 h because the shell's
+  // `HISTORY_RETENTION_H` went to 4320 and a 48 h filter here was hiding 178 days
+  // the disk really holds. The old arm (`at(60 * HOUR)` must be EXCLUDED) was
+  // therefore asserting the defect. What survives is the falsifiable half: a line
+  // SIXTY HOURS old is KEPT (it used to be dropped) and a line TWO HUNDRED DAYS old
+  // is still excluded (the filter did not become "keep everything").
   const entries = [
     at(2 * MIN, 'a'), at(4 * MIN, 'b'), at(30 * HOUR, 'yesterday'),
-    at(60 * HOUR, 'too old'), { date: 'not-a-date', time: '99:99', text: 'broken' },
+    at(60 * HOUR, 'sixty hours'), { date: 'not-a-date', time: '99:99', text: 'broken' },
+    at(200 * DAY, 'ancient'),
   ];
   const feed = await panel({ entries });
   await tick();
@@ -961,12 +970,13 @@ async function main() {
 
   arm('THE LIST FILLS ITSELF on load — no press, no bucket, no search',
     [texts(), feed.document.querySelectorAll('#history-list .history__empty').length],
-    // Newest last (the owner's standing rule), the 48 h window honoured, the undated
-    // line KEPT (an unreadable date is not evidence that the line is old).
-    [['a', 'b', 'yesterday', 'broken'], 0]);
+    // Newest last (the owner's standing rule), the retention window honoured, the
+    // undated line KEPT (an unreadable date is not evidence that the line is old).
+    [['a', 'b', 'yesterday', 'sixty hours', 'broken'], 0]);
 
-  arm('the 48 h window really excludes what is outside it, and only that',
-    [rows().length, texts().indexOf('too old')], [4, -1]);
+  arm('the retention window keeps 60 h and still drops 200 days, and only that',
+    [texts().includes('sixty hours'), texts().includes('ancient'), rows().length],
+    [true, false, 5]);
 
   arm('the transcript section is NEVER collapsed (it does not wait for a producer)',
     [feed.id('history').classList.contains('history--collapsed'),

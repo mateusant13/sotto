@@ -738,11 +738,16 @@
             <div class="listening" aria-hidden="true">
               <span></span><span></span><span></span><span></span><span></span>
             </div>
+            <!-- THE BODY IS EMPTY ON PURPOSE (owner, 2026-11-09: *"ZERO frases
+                 explicativas em qualquer parte"*). It used to carry two lines of
+                 prose — "Nothing is being transcribed yet. Captions appear here
+                 line by line the moment audio reaches Sotto." — that nobody reads
+                 and that the strip could not fit. The TITLE is the state word
+                 ("Waiting for audio" before the first readiness push, then
+                 `ready` / `not ready`); the node stays because the layout and
+                 `applySurface` read it. -->
             <p class="captions__placeholder-title">Waiting for audio</p>
-            <p class="captions__placeholder-body">
-              Nothing is being transcribed yet. Captions appear here line by line the
-              moment audio reaches Sotto.
-            </p>
+            <p class="captions__placeholder-body"></p>
           </div>
           <!-- `hidden` because the empty state shows the placeholder instead.
                panel.js clears this attribute on the first caption; without it the

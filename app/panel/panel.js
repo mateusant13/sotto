@@ -1031,8 +1031,10 @@ if (!bridge) {
     const noBridgeTitle = dom.placeholder.querySelector('.captions__placeholder-title');
     const noBridgeBody = dom.placeholder.querySelector('.captions__placeholder-body');
     if (noBridgeTitle) noBridgeTitle.textContent = 'Panel not wired';
-    if (noBridgeBody) noBridgeBody.textContent =
-      'window.sotto is undefined. The preload script did not run, so no caption can reach this panel.';
+    // The cause, not a sentence (owner, 2026-11-09: *"ZERO frases explicativas"*):
+    // the body used to read "window.sotto is undefined. The preload script did not
+    // run, so no caption can reach this panel."
+    if (noBridgeBody) noBridgeBody.textContent = 'window.sotto undefined · preload did not run';
   }
   setHistoryNote('Transcript unavailable: no bridge');
 } else {
@@ -2783,11 +2785,13 @@ function wireSurfaces() {
  */
 function applySurface() {
   const surface = currentSurface();
-  // The placeholder's sentence is four lines of prose: correct on the panel,
-  // longer than the strip's whole live box. The TITLE carries it in the strip so
-  // the information is still on screen (a tooltip) instead of deleted.
+  // The placeholder's prose is GONE (owner, 2026-11-09: *"ZERO frases explicativas
+  // em qualquer parte"*), so there is no longer a sentence to carry into a
+  // tooltip for the strip — this used to copy the body's four lines into
+  // `title` so the strip kept the information. The state word in the TITLE is all
+  // that is left, and it fits both surfaces.
   const body = dom.placeholder && dom.placeholder.querySelector('.captions__placeholder-body');
-  if (body) body.title = surface === 'strip' ? body.textContent.trim() : '';
+  if (body) body.title = '';
   applyPauseAvailability();
   // THE LIVE STATE *IS* THE CAPTION-ON-SCREEN STATE now (owner, 2026-10-13):
   // `applyLiveEnabled` drives `body[data-float]` through `applyFloat`, so this one
@@ -4011,9 +4015,12 @@ async function runSearch(rawQuery) {
   }
   if (!canonicalProducer) {
     // D1 — the box is disabled for this reason, and a programmatic submit
-    // (a probe, or a click on the Search button) gets the same sentence instead
-    // of an empty result set that looks like "no matches".
-    setHistoryNote('Search is off · nothing writes the transcript yet.');
+    // (a probe, or a click on the Search button) gets the same note instead of an
+    // empty result set that looks like "no matches". Named as a CAUSE, not a
+    // sentence, per the owner's 2026-11-09 order: *"ZERO frases explicativas em
+    // qualquer parte"* — it used to read "Search is off · nothing writes the
+    // transcript yet."
+    setHistoryNote('Search is off · no transcript store');
     return;
   }
   searchQuery = query;
