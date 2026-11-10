@@ -22,7 +22,7 @@ verificacao deixa de medir o que diz medir e o portao tem de dizer isso.
 O QUE ESTE ORACULO EXIGE
   * le as linhas `call :step ...` da `.cmd` (o mesmo `STEP_RE` que a pagina de
     estado usa, para nao haver duas definicoes de 'declaracao de passo');
-  * para cada passo da tabela `PAGE_STEPS`, resolve os assets do `panel.html`
+  * para cada passo da tabela `READS`, resolve os assets do `panel.html`
     por `href=`/`src=` e exige que a lista de deps seja SUPERCONJUNTO;
   * exige que cada dep declarada exista no disco (uma dep inexistente e' ruido:
     nunca muda o fingerprint).
@@ -52,10 +52,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, ".."))
 CMD = os.path.join(HERE, "_audit-verify-all.cmd")
 PANEL_HTML = os.path.join(REPO, "app", "panel", "panel.html")
-
-#: Os passos CACHEAVEIS que montam a pagina real. Uma entrada nova entra aqui no
-#: mesmo commit que a linha `call :step`, com o seu braco no NEG-ARM.
-PAGE_STEPS = ("panel2-dom-probe", "panel-header-oracle", "panel-history-clip")
 
 ASSET_RE = re.compile(r'(?:href|src)="([^"]+)"')
 
@@ -120,6 +116,8 @@ READS = {
     "panel-pause-payload": ("_main\\panel-pause-payload-oracle.py", "app\\webview\\sotto_webview.py"),
     "red-as-expected-panel-pause-payload": ("_main\\panel-pause-payload-oracle.py",
                                             "app\\webview\\sotto_webview.py"),
+    "caption-visual-dom": ("_main\\caption-visual-dom-oracle.js", "__PAGE__"),
+    "red-as-expected-caption-visual-dom": ("_main\\caption-visual-dom-oracle.js", "__PAGE__"),
 }
 
 

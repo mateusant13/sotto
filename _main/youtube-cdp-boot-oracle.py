@@ -205,6 +205,19 @@ def _arm_boot(shell_mod, mod, port):
     source = None
     try:
         shell_mod.SottoShell.start_caption_pipeline(sh, "pre-webview")
+        # A PORTA ABRE NUM FIO PROPRIO (2026-11-09): o arranque devolve o
+        # controlo ANTES de a resposta existir, e isso e o que se quer
+        # (o dono: "takes WAY TOO MUCH to answer my keybindings"). A arm
+        # espera pela resposta; a ORDEM (cdp antes do watcher) continua a
+        # ser a asserção.
+        _deadline = time.monotonic() + 5.0
+        while time.monotonic() < _deadline:
+            source = getattr(sh, "_yt_cdp_source", None)
+            asked = [ln for ln in lines
+                     if "YOUTUBE_CDP_BOOT_ATTACH" in ln and "ok=true" in ln]
+            if source is not None and asked:
+                break
+            time.sleep(0.02)
         source = getattr(sh, "_yt_cdp_source", None)
         asked = [ln for ln in lines
                  if "YOUTUBE_CDP_BOOT_ATTACH" in ln and "ok=true" in ln]
@@ -622,8 +635,8 @@ def neg_arm():
         # 1) O ARRANQUE DEIXA DE PEDIR O ATTACH (o codigo de antes de hoje).
         shell_mut = os.path.join(tmp, "shell_sem_arranque.py")
         io.open(shell_mut, "w", encoding="utf-8", newline="").write(
-            _mutate(shell_src, "            self._yt_cdp_boot_attach()\n",
-                    "            pass\n"))
+            _mutate(shell_src, "target=self._yt_cdp_boot_attach,",
+                    "target=lambda: None,"))
         got = dict((n, ok) for n, ok, _ in arms(shell_path=shell_mut))
         results.append(("arranque-sem-painel", not got.get("arranque-sem-painel", True)))
 

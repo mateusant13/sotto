@@ -591,6 +591,34 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-10, 01:4x):** `_main\_audit-verify-all.cmd` = **337620 B**,
+  **3934 CRLF** / 0 bare LF, sha256 `ACEA7120E926B9B1236BDE4E07F4514E5EFD5D442640B9E5C0FA5D140A4C5A75`.
+  (Dois mil novecentos e quarenta bytes e TREZE linhas a mais do que o pin de 334680 B: DOIS pares.
+  O segundo e' o `youtube-cdp-latency` + `red-as-expected-youtube-cdp-latency` -- o oraculo da
+  latencia do caminho CDP existia, medido contra o Chrome vivo do dono, com um `--neg-arm` de tres
+  mutantes e **nenhum passo**: o `battery-wiring` acusava-o com razao (`new-unwired 1 oraculo(s)
+  sem passo: youtube-cdp-latency-oracle.py`), que e' a doenca que esta casa ja' pagou varias vezes.
+  Medido ao ligar: `VERDICT: PASS (arms=4 fail=0)` -- `L1-TICK-FREE p95=0.0013ms` com um transporte
+  falso de 1 s -- e `--neg-arm` rc=1 com os tres mutantes apanhados. Bateria depois: `439 passos,
+  439 nomes com registo, 0 achados` e `battery-wiring PASS checks=7 fail=0`. O primeiro par e':
+  `caption-visual-dom` + `red-as-expected-caption-visual-dom`, o buraco que os dois passos do
+  `caption-plate` deixavam. Aquele par julga a MATEMATICA da placa (8 arms) e a arm A8 dele le o
+  FONTE do `panel.js`; **nenhum dos dois responde "mudar a caixa chega ao shell"** -- e a caixa
+  e' o proprio defeito que esta casa ja' pagou tres vezes (um controlo que pinta e nao manda nada).
+  O oraculo novo monta o `app\panel\panel.html` VERDADEIRO (os `<script src>` dele, executados por
+  ordem, e o `panel.js` que embarca) num jsdom com **origem que tem storage** -- o `file://` da'
+  origem OPACA e o `localStorage` levanta, medido: com ele a escolha guardada nunca era lida e as
+  duas arms do arranque mediam o default -- e exige `bridge.setCaptionVisual` (a) uma vez no
+  arranque COM escolha guardada, (b) ZERO vezes no arranque SEM escolha (um push vazio poria o
+  painel por cima do `caption-settings.json` que o dono escreveu), (c) na mudanca da caixa, (d) na
+  transparencia, com 70 % a virar alfa 0,30 e o rotulo a seguir o dedo. Medido: **8/8 arms** e
+  `--neg-arm` **3/3** mutantes com rc=1 (M1 a caixa mudar sem enviar, M2 o arranque empurrar por
+  cima do ficheiro, M3 a transparencia invertida), e o M2 obrigou a uma arm propria -- medida na
+  pagina SEM storage, porque com storage o `stored` ja' e' verdadeiro e o mutante ficava INERTE.
+  A arm `panel-deps` foi corrigida no mesmo commit: o par novo entra na tabela `READS` com
+  `__PAGE__` (os 25 assets do `panel.html` na lista de deps, senao o `_stepcache` reimprimiria um
+  PASS sobre outro ficheiro), e a constante `PAGE_STEPS` -- que so' a docstring citava, a tabela
+  viva e' `READS` -- foi APAGADA. Medido depois: `24/24 arm(s)` e `--neg-arm PASS`.)
 - **PIN do ficheiro (medido 2026-11-10, 01:0x):** `_main\_audit-verify-all.cmd` = **334680 B**,
   **3921 CRLF** / 0 bare LF, sha256 `9283F80B70E86E25885130D74ADAC4F726A903800DC99BD89DF615F610BE38BC`.
   (Mil duzentos e quinze bytes e DEZ linhas a mais do que o pin de 333465 B: o par `caption-plate` +

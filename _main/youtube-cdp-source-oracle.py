@@ -341,7 +341,7 @@ def _arm_reavalia_sem_esperar(mod):
             return _Clock.now
 
     def fake_pick(tabs, previous='', connect=None, timeout=1.0, gap_s=0.12,
-                  window_title='', declared=''):
+                  window_title='', declared='', budget_s=None, log=None):
         calls.append(str((tabs or [{}])[0].get('url') or ''))
         tab = (tabs or [{}])[0]
         vid = str(tab.get('url') or '').rsplit('v=', 1)[-1]
@@ -619,7 +619,7 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
     # uma legenda que a pagina ja' tinha. A chamada tem de estar DENTRO de
     # `start_caption_pipeline` e ANTES do `start_external_caption_watcher`.
     _pipe = shell.find("CAPTION_PIPELINE_START")
-    _pre = shell.find("self._yt_cdp_boot_attach()", _pipe if _pipe > 0 else 0)
+    _pre = shell.find("self._yt_cdp_boot_attach", _pipe if _pipe > 0 else 0)
     _watch = shell.find("'watcher', lambda: self.start_external_caption_watcher()",
                         _pipe if _pipe > 0 else 0)
     a11 = _pipe > 0 and _pre > _pipe and _watch > _pre
@@ -799,6 +799,7 @@ def neg_arm():
     tmp = tempfile.mkdtemp(prefix="yt-cdp-neg-")
     try:
         src = _read(MODULE)
+        shell_src = _read(SHELL)
         # A COPIA CARREGA OS IRMAOS DO DIRETORIO REAL. `youtube_cdp_source`
         # carrega `youtube_window` pelo caminho (o marcador de fala `>>` vive la'),
         # portanto ao lado do mutante tem de estar o irmao -- senao o mutante nao
@@ -862,8 +863,8 @@ def neg_arm():
         # SEM PRE-ABERTURA: a chamada sai do arranque e volta a esperar o tick.
         mut6 = os.path.join(tmp, "sem_preabertura.py")
         io.open(mut6, "w", encoding="utf-8").write(
-            src.replace("            self._yt_cdp_boot_attach()\n",
-                        "            pass\n", 1))
+            shell_src.replace("target=self._yt_cdp_boot_attach,",
+                              "target=lambda: None,", 1))
         got6 = dict((n, ok) for n, ok, _ in arms(module_path=None, shell_path=mut6))
         results.append(("sem-preabertura", not got6.get("porta-cdp-abre-no-arranque", False)))
 
@@ -914,8 +915,8 @@ def neg_arm():
         # espera o TTL de 10 s (a legenda do video anterior).
         mut11 = os.path.join(tmp, "sem_assinatura.py")
         io.open(mut11, "w", encoding="utf-8").write(
-            src.replace("if (cached and len(cached) >= 4 and cached[3] == sig",
-                        "if (cached and len(cached) >= 4 and True", 1))
+            src.replace("if cached and len(cached) >= 4 and cached[3] == sig:",
+                        "if cached and len(cached) >= 4 and True:", 1))
         got11 = dict((n, ok) for n, ok, _ in arms(module_path=mut11))
         results.append(("sem-assinatura",
                         not got11.get("reavalia-sem-esperar", False)))
@@ -933,7 +934,6 @@ def neg_arm():
 
         # (3) A PAUSA NAO ENVELHECE A LINHA do player: o interruptor volta a
         # recusar a linha que o video parado continua a mostrar.
-        shell_src = _read(SHELL)
         mut13 = os.path.join(tmp, "replay_sem_pausa.py")
         io.open(mut13, "w", encoding="utf-8").write(
             shell_src.replace("    if bool(paused) and bool(from_player):\n        return True",

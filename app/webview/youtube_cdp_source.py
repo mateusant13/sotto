@@ -236,6 +236,32 @@ PLAYING_GAP_S = 0.12
 PLAYING_PROBE_TTL_S = 10.0
 PLAYING_PROBE_TTL_MULTI_S = 1.0
 
+#: QUANTO CUSTA, NO MAXIMO, UMA SONDA DE "QUEM TOCA" (2026-11-09, MEDIDO).
+#:
+#: O DEFEITO: `YOUTUBE_TARGET_SLOW ms=1015 vid=guARjKjyFLY ttl_s=10
+#: src=refresher` de 11 em 11 s no log do dono. O numero NAO era o `/json/list`
+#: (medido nesta maquina, do processo de fora, com o Chrome do dono a correr:
+#: `urllib /json/list median=3.2ms max=12.4ms bytes=25798`; `raw-tcp-connect
+#: median=0.4ms`). Era `probe_tabs`: a aba E606035C da sessao do dono NAO
+#: responde a `Runtime.evaluate` -- nem em 6,0 s (`WebSocketTimeoutException` a
+#: 1003 ms com prazo 1,0 s; a 6000 ms com prazo 6,0 s; enquanto a aba viva
+#: responde em 5-7 ms) -- e `_probe_one` esperava o prazo INTEIRO por ela. A
+#: sonda corre em paralelo, logo o custo total era o da aba MORTA: ~1,0 s por
+#: chamada. Nao e' a lista de abas; e' um renderer congelado.
+#:
+#: O orcamento e' de relogio, nao de socket: `websocket.create_connection` com
+#: `timeout=1.0` mediu **5107 ms** uma vez sob carga (o prazo do argumento nao
+#: cobre o handshake), portanto o que limita a sonda e' o `join` do chamador.
+PROBE_TIMEOUT_S = 0.35
+PROBE_BUDGET_S = 0.5
+#: CUSTO A PARTIR DO QUAL A SONDA E' "CARO" -- e o cache estica (2026-11-09).
+#: Com a sonda barata (`< 5 ms` medidos na aba viva) o cache de 1 s por duas
+#: abas e' o que o alt-tab do dono pede. Com uma aba congelada a sonda custa o
+#: orcamento inteiro, e repeti-la de 1 em 1 s queima 35 % de um nucleo para
+#: devolver "nao respondeu". Nesse regime o cache vale `PLAYING_PROBE_SLOW_TTL_S`.
+PROBE_SLOW_MS = 150.0
+PLAYING_PROBE_SLOW_TTL_S = 5.0
+
 
 def _ws_eval(conn, expr, msg_id=1):
     """Um `Runtime.evaluate` numa ligacao ja' aberta; o valor, ou None."""
@@ -337,7 +363,7 @@ def _probe_one(tab, connect, timeout, gap_s):
 
 
 def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S,
-               parallel=True):
+               parallel=True, budget_s=None, log=None):
     """Sonda cada aba `watch` UMA vez (duas leituras) e devolve os numeros.
 
     Cada aba custa uma ligacao curta e duas leituras; uma aba que nao responde
@@ -355,6 +381,15 @@ def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S,
     desempata pelo id (nunca pela posicao na lista), por isso a ORDEM das sondas
     nao decide nada: o resultado sai na ordem das abas, com as mortas fora,
     como antes. `parallel=False` existe para o braco que MEDE a diferenca.
+
+    O ORCAMENTO (`budget_s`) E' DE RELOGIO, NAO DE SOCKET (2026-11-09, MEDIDO).
+    Cada fio de aba e' `daemon` e ninguem o junta depois do prazo: o resultado
+    que nao chegou a tempo e' DESCARTADO e o chamador segue com o que tem. O
+    `ThreadPoolExecutor` antigo nao servia -- o `with` faz `shutdown(wait=True)`
+    no fim, ou seja o prazo era decorativo: uma aba congelada (a `E606035C` da
+    sessao do dono nao responde a `Runtime.evaluate` nem em 6 s) segurava a
+    funcao pelo `timeout` inteiro mesmo depois de o orcamento estourar. Fios
+    soltos custam ~0,1 ms e morrem no prazo do proprio `recv`.
     """
     connect = connect or _default_connect()
     items = []
@@ -368,20 +403,46 @@ def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S,
     # Um fio por aba, no maximo `MAX_PROBE_TABS`: o `gap_s` de cada uma corre em
     # paralelo com a ligacao das outras, e o custo total passa a ser o da aba
     # MAIS LENTA em vez da soma.
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=len(items),
-                            thread_name_prefix='yt-probe') as pool:
-        futures = [pool.submit(_probe_one, t, connect, timeout, gap_s)
-                   for t in items]
-        out = []
-        for fut in futures:
+    results = [None] * len(items)
+
+    def _run(idx, tab):
+        try:
+            results[idx] = _probe_one(tab, connect, timeout, gap_s)
+        except Exception:                         # noqa: BLE001
+            results[idx] = None
+
+    # O PRAZO NASCE ANTES DOS FIOS (2026-11-09, MEDIDO): `Thread.start()`
+    # espera o fio ARRANCAR e numa maquina carregada mediu 240-340 ms por fio.
+    # Com o relogio a contar so' no `join`, o orcamento era decorativo -- o
+    # `start()` ja' o tinha gasto. Agora o que resta depois de arrancar e' o que
+    # os `join` podem esperar.
+    deadline = (None if budget_s is None
+                else time.monotonic() + max(0.0, float(budget_s)))
+    threads = []
+    for idx, tab in enumerate(items):
+        if deadline is not None and time.monotonic() >= deadline:
+            break                                 # sem tempo para mais um fio
+        th = threading.Thread(target=_run, args=(idx, tab), name='yt-probe',
+                              daemon=True)
+        th.start()
+        threads.append(th)
+    if deadline is None:
+        for th in threads:
+            th.join()
+    else:
+        for th in threads:
+            th.join(max(0.0, deadline - time.monotonic()))
+        late = ((len(items) - len(threads))
+                + sum(1 for th in threads if th.is_alive()))
+        if late and log is not None:
             try:
-                probe = fut.result()
+                log('YOUTUBE_PROBE_BUDGET tabs=%d done=%d abandoned=%d '
+                    'budget_ms=%.0f timeout_ms=%.0f'
+                    % (len(items), len(items) - late, late,
+                       float(budget_s) * 1000.0, float(timeout) * 1000.0))
             except Exception:                     # noqa: BLE001
-                probe = None
-            if probe:
-                out.append(probe)
-        return out
+                pass
+    return [p for p in results if p]
 
 
 def is_real_player(probe):
@@ -617,15 +678,20 @@ def choose_playing(probes, previous=''):
 
 
 def pick_playing(tabs, previous='', connect=None, timeout=1.0,
-                 gap_s=PLAYING_GAP_S, window_title='', declared=''):
+                 gap_s=PLAYING_GAP_S, window_title='', declared='',
+                 budget_s=None, log=None):
     """(aba, video_id, porque) -- a aba com jogador, ou `(None, '', motivo)`.
 
     UMA sonda por aba (duas leituras em paralelo, ~1,3 s no pior caso) responde
     a pergunta inteira, e a resposta vem de `choose_target`. Quem chama guarda o
     resultado por `PLAYING_PROBE_TTL_S`: enquanto a escolha vale, a sonda nao se
     repete e o custo e' zero.
+
+    `budget_s` (2026-11-09) e' o tecto de RELOGIO repassado a `probe_tabs`;
+    `log` leva o veredicto `YOUTUBE_PROBE_BUDGET` quando uma aba e' abandonada.
     """
-    probes = probe_tabs(tabs, connect=connect, timeout=timeout, gap_s=gap_s)
+    probes = probe_tabs(tabs, connect=connect, timeout=timeout, gap_s=gap_s,
+                        budget_s=budget_s, log=log)
     vid, why = choose_target(probes, previous, window_title, declared)
     if not vid:
         return None, '', why
@@ -925,6 +991,16 @@ _TID_TTL_S = 0.5
 #: Chrome a 100 % -- o cache vazio respondia com um `/json/list` SINCRONO no fio
 #: do laco. Este numero e' o que o laco aceita perder em vez disso.
 _TID_WAIT_S = 0.30
+#: O TECTO DA PERGUNTA FEITA SEM LIGACAO (2026-11-09, MEDIDO). `target_video_id`
+#: e' chamada pelo laco da legenda; sem ligacao a resposta e' so' "ha' uma aba
+#: `watch`?" (`list_targets`, 1,5-13 ms medidos) e NAO a sonda de WebSocket. O
+#: prazo de 100 ms e' folga para a criacao do fio e para um `/json/list` sob
+#: carga; o que passar disso devolve '' e a linha `YOUTUBE_TARGET_STALE` diz por
+#: que. Um laco de legenda nao espera 1 s por uma resposta que pode ser ''.
+_TID_INLINE_WAIT_S = 0.10
+#: A LINHA DE IDADE DO ID: uma por cada `_TARGET_STALE_LOG_S` enquanto o valor
+#: estiver atrasado (o dobro da cadencia prometida).
+_TARGET_STALE_LOG_S = 5.0
 #: O NOME DO FIO QUE PAGA A PERGUNTA (2026-11-08). Nomeado porque
 #: `_main/shell-thread-cpu.py` atribui CPU por nome de fio, e porque o recibo
 #: desta mudanca tem de poder dizer ONDE o `/json/list` lento corre: se ele
@@ -1067,6 +1143,13 @@ class CdpCaptionSource:
         self._tid_ttl = _TID_TTL_S
         self._tid_thread = None
         self._tid_refreshes = 0
+        #: O PEDIDO DE UMA VEZ QUE O LACO PODE ENTREGAR AO REFRESCADOR (2026-11-09):
+        #: `(Event, holder)` ou None, e o `Event` que o acorda do `wait`.
+        self._tid_inline_job = None
+        self._tid_wake = threading.Event()
+        self._tid_inline_at = 0.0
+        self._tid_stale_at = 0.0
+        self._snap_stale_at = 0.0
 
         #: Ha' ligacao CDP agora? Decide a espera entre tentativas; e a IDADE da
         #: ultima falha de attach e' o que impede `target_video_id` de gastar a
@@ -1090,6 +1173,7 @@ class CdpCaptionSource:
         # `_run` marcar a ligacao -- uma fonte que nunca ligou nao arranca
         # trabalho nenhum, so' existe a espera.
         self._stop.clear()
+        self._tid_wake.clear()
         self._tid_start()
         if self._thread is not None and self._thread.is_alive():
             return self
@@ -1216,23 +1300,37 @@ class CdpCaptionSource:
         ttl = (PLAYING_PROBE_TTL_S if len(sig) <= 1
                else PLAYING_PROBE_TTL_MULTI_S)
         cached = getattr(self, '_playing_pick_cache', None)
-        if (cached and len(cached) >= 4 and cached[3] == sig
-                and now - cached[0] < ttl):
-            _vid = cached[1]
-            if _vid:
-                for tab in tabs or ():
-                    if _vid in str(tab.get('url') or ''):
-                        return tab, _vid, cached[2]
+        if cached and len(cached) >= 4 and cached[3] == sig:
+            # O TTL VIAJA COM A ESCOLHA (2026-11-09): uma sonda que custou o
+            # orcamento inteiro (aba congelada) nao se repete de 1 em 1 s.
+            _ttl = cached[4] if len(cached) >= 5 else ttl
+            if now - cached[0] < _ttl:
+                _vid = cached[1]
+                if _vid:
+                    for tab in tabs or ():
+                        if _vid in str(tab.get('url') or ''):
+                            return tab, _vid, cached[2]
+        t0 = time.monotonic()
         try:
             tab, vid, why = pick_playing(
                 tabs, getattr(self, '_playing_pick', '') or '',
                 connect=getattr(self, '_probe_connect', None),
+                timeout=PROBE_TIMEOUT_S, budget_s=PROBE_BUDGET_S,
+                log=self._log,
                 window_title=getattr(self, '_window_title', '') or '',
                 declared=getattr(self, '_video_id', '') or '')
         except Exception as exc:              # noqa: BLE001
             self._log('YOUTUBE_PLAYING_PICK_FAILED error=%r' % (exc,))
             return None, '', 'probe-failed'
-        self._playing_pick_cache = (now, vid, why, sig)
+        # A SONDA CARA NAO SE REPETE DE 1 EM 1 s (2026-11-09, MEDIDO): com uma
+        # aba congelada cada sonda custa o orcamento inteiro e a evidencia nao
+        # muda (o renderer continua sem responder). Nesse regime o cache vale
+        # `PLAYING_PROBE_SLOW_TTL_S`; uma sonda barata continua a valer 1 s por
+        # duas abas, que e' o contrato do alt-tab.
+        _cost_ms = (time.monotonic() - t0) * 1000.0
+        _ttl = (PLAYING_PROBE_SLOW_TTL_S if _cost_ms > PROBE_SLOW_MS else ttl)
+        self._playing_pick_cache = (now, vid, why, sig, _ttl)
+        self._probe_cost_ms = _cost_ms
         return tab, vid, why
 
     def selected_video_id(self):
@@ -1272,6 +1370,9 @@ class CdpCaptionSource:
 
     def stop(self):
         self._stop.set()
+        # O REFRESCADOR ACORDA PARA MORRER (2026-11-09): sem isto ele dorme o
+        # `wait(0.25)` do ramo sem ligacao antes de ver o `_stop`.
+        self._tid_wake.set()
 
     def stats(self):
         with self._lock:
@@ -1287,7 +1388,20 @@ class CdpCaptionSource:
             snap = self._snap
         if snap is None:
             return None
-        if time.monotonic() - snap["stamp"] > max_age:
+        _age = time.monotonic() - snap["stamp"]
+        if _age > max_age:
+            # A FOTO QUE EXISTE E NAO SERVE TEM NOME (2026-11-09, MEDIDO).
+            # 8,3 s de leitura no log do dono (`phases={'target': 8281.0}`) sao
+            # o caminho UIA que o shell paga quando esta funcao devolve None --
+            # `_yt_source_by_title(max_age=3.0)` desiste, o veredicto da janela
+            # expira e `external_subs.player_source` (UIA) e' chamado com o
+            # Chrome a 100 %. A idade da foto e' a causa que faltava no log.
+            now = time.monotonic()
+            if now - getattr(self, '_snap_stale_at', 0.0) >= _TARGET_STALE_LOG_S:
+                self._snap_stale_at = now
+                self._log('YOUTUBE_SNAPSHOT_STALE age_ms=%.0f max_age_ms=%.0f '
+                          'note=%s' % (_age * 1000.0, float(max_age) * 1000.0,
+                                       self._note or '-'))
             return None
         return snap
 
@@ -1343,6 +1457,14 @@ class CdpCaptionSource:
             return ''
         cached = getattr(self, '_tid_cache', None)
         if cached is not None:
+            # A IDADE E' UM FACTO, NAO UM SILENCIO (2026-11-09). O valor sai da
+            # memoria em microssegundos -- mas um valor que o refrescador devia
+            # ter substituido e nao substituiu e' uma testemunha que faltava: foi
+            # por nao haver linha nenhuma que 94 s de foto velha passaram por
+            # `cdp_age_ms=94484` sem nome. O limite e' o DOBRO da cadencia
+            # prometida (uma volta perdida), e a linha e' limitada a uma por
+            # `_TARGET_STALE_LOG_S` para nao virar o log que ela denuncia.
+            self._tid_stale_note(now - cached[0])
             return cached[1]
         # A PRIMEIRA PERGUNTA ESPERA -- COM PRAZO (2026-11-09, MEDIDO).
         # `EXTERNAL_CAPTIONS_READ_MS ms=33281.0 phases={'target': 33281.0, ...}`
@@ -1360,9 +1482,35 @@ class CdpCaptionSource:
         # pergunta e' paga por quem pergunta, uma vez, como sempre foi (arms
         # STALE-ID do `yt-target-stale-oracle` e A5 do `youtube-cdp-slow-oracle`
         # julgam exactamente isto).
+        # A FONTE QUE NAO PODE PUBLICAR NAO PODE PRENDER O LACO (2026-11-09,
+        # MEDIDO). O texto acima deixava `self._tid_refresh()` -- a pergunta
+        # INTEIRA, com a sonda de "quem toca" (`probe_tabs`, um prazo por aba)
+        # -- correr no fio do CHAMADOR. No log do dono isso e'
+        # `EXTERNAL_CAPTIONS_READ_MS ms=1000.0 phases={'target': 16.0,
+        # 'source': 1000.0}` as 21:17:53: 984 ms dentro de `target_video_id`,
+        # numa leitura, com a fonte momentaneamente desligada (ciclo
+        # `slow-dead`). A pergunta agora corre num fio `yt-cdp-inline` proprio,
+        # com `_TID_INLINE_WAIT_S` de tecto, e NUNCA sonda WebSocket: sem
+        # ligacao nao ha' `_run` para ler a aba, e a resposta que interessa ao
+        # chamador e' so' "ha' uma aba `watch`?" -- `list_targets` + `pick_target`.
+        _was_alive = (self._tid_thread is not None
+                      and self._tid_thread.is_alive())
         self._tid_start()
         if not getattr(self, '_attached', False):
-            return self._tid_refresh()
+            if not _was_alive:
+                # A FONTE QUE NUNCA ARRANCOU (2026-11-09, MEDIDO pelo
+                # `yt-target-stale-oracle`): um objecto recem-construido, um
+                # duplo de teste -- o chamador quer a resposta AGORA e nao ha'
+                # fio nenhum para a entregar. A pergunta e' BARATA por desenho
+                # (`probe=False`: lista + URL/titulo, sem WebSocket), e o unico
+                # I/O e' o `/json/list` local medido em 1,5-13 ms. O caminho do
+                # APP nunca cai aqui: `live_source` devolve uma fonte ja'
+                # arrancada.
+                try:
+                    return self._tid_refresh(probe=False)
+                except Exception:             # noqa: BLE001
+                    return ''
+            return self._tid_inline()
         _until = time.monotonic() + _TID_WAIT_S
         while time.monotonic() < _until:
             cached = getattr(self, '_tid_cache', None)
@@ -1375,6 +1523,76 @@ class CdpCaptionSource:
                       'attached=%s' % (self._tid_waits, _TID_WAIT_S,
                                        bool(getattr(self, '_attached', False))))
         return ''
+
+    # -- a idade do id e a pergunta sem ligacao ---------------------------
+    def _tid_stale_note(self, age_s):
+        """A IDADE DO ID, quando ela passa do que o refrescador prometeu.
+
+        `age_s` e' o tempo desde a ultima publicacao. O refrescador publica a
+        cada `_tid_ttl`; duas cadencias sem uma linha nova significa que ele
+        esta' preso (aba congelada, `list_targets` a estourar, o fio morto), e
+        o valor que o laco esta' a servir e' mais velho do que o contrato. Sai
+        no maximo uma linha por `_TARGET_STALE_LOG_S` -- medir nao pode custar
+        o log que se esta' a tentar salvar.
+        """
+        try:
+            ttl = float(getattr(self, '_tid_ttl', _TID_TTL_S) or _TID_TTL_S)
+            if age_s <= ttl * 2.0:
+                return
+            now = time.monotonic()
+            if now - getattr(self, '_tid_stale_at', 0.0) < _TARGET_STALE_LOG_S:
+                return
+            self._tid_stale_at = now
+            self._log('YOUTUBE_TARGET_STALE age_ms=%.0f ttl_s=%.1f attached=%s '
+                      'refreshes=%d' % (age_s * 1000.0, ttl,
+                                        bool(getattr(self, '_attached', False)),
+                                        int(getattr(self, '_tid_refreshes', 0))))
+        except Exception:                     # noqa: BLE001
+            pass
+
+    def _tid_inline(self):
+        """UMA pergunta SEM LIGACAO, com tecto de relogio, fora do fio do laco.
+
+        Sem `_run` a ler uma aba, a unica pergunta que tem resposta e' a LISTA
+        (`list_targets`): ha' um `youtube.com/watch`? O `pick_target` decide com
+        o URL/titulo, sem sondar WebSocket nenhum -- a sonda custa um prazo por
+        aba e sem ligacao nao ha' foto para ela desbloquear.
+
+        A PERGUNTA E' ENTREGUE AO FIO `yt-cdp-target` (2026-11-09, MEDIDO).
+        Um fio novo por chamada parecia inofensivo, mas `Thread.start()` espera
+        o fio ARRANCAR: medido neste oraculo, 240-340 ms numa maquina carregada
+        -- ou seja o "tecto de 100 ms" era decorativo. O refrescador ja' existe
+        e esta' vivo; ele atende o pedido, e o chamador espera num `Event` com
+        prazo (`Event.wait(0.1)` acorda no instante). O pedido e' UM de cada
+        vez (`_tid_inline_job`): o laco pode chamar isto 10 vezes por segundo e
+        o Chrome leva, no maximo, uma `/json/list` de cada vez. O resultado
+        passa pelo MESMO cache (`_tid_refresh(probe=False)` o escreve), logo a
+        chamada seguinte e' leitura de memoria.
+        """
+        now = time.monotonic()
+        if getattr(self, '_tid_inline_job', None) is not None:
+            return ''
+        if now - getattr(self, '_tid_inline_at', 0.0) < 0.05:
+            return ''
+        self._tid_inline_at = now
+        done = threading.Event()
+        holder = {}
+        self._tid_inline_job = (done, holder)
+        try:
+            self._tid_wake.set()          # acorda o refrescador do `wait`
+            if done.wait(_TID_INLINE_WAIT_S):
+                return str(holder.get('vid') or '')
+            # O VEREDICTO DA ESPERA: o chamador nao soube, e a linha diz isso.
+            self._log('YOUTUBE_TARGET_INLINE_TIMEOUT wait_s=%.2f '
+                      'attach_failed=%s'
+                      % (_TID_INLINE_WAIT_S,
+                         getattr(self, '_attach_failed_at', None) is not None))
+            return ''
+        finally:
+            # O PEDIDO E' UM SO': se o refrescador ainda nao o pegou, ele morre
+            # aqui em vez de pagar uma pergunta que ja' ninguem espera.
+            self._tid_inline_job = None
+
 
     # -- o fio do alvo ----------------------------------------------------
     def _tid_start(self):
@@ -1400,11 +1618,31 @@ class CdpCaptionSource:
         `target_video_id` usa para nao sondar uma porta morta.
         """
         while not self._stop.is_set():
+            # O PEDIDO DE UMA VEZ (2026-11-09): `target_video_id` sem ligacao
+            # entrega aqui a pergunta -- sem `_attached` o laco abaixo ficaria
+            # inerte e o chamador esperaria por quem nao ia falar. O pedido e'
+            # atendido ANTES de qualquer guarda, porque e' ele que acorda o fio.
+            job = getattr(self, '_tid_inline_job', None)
+            if job is not None:
+                self._tid_inline_job = None
+                done, holder = job
+                try:
+                    holder['vid'] = self._tid_refresh(probe=False)
+                except Exception as exc:  # noqa: BLE001
+                    self._error(exc)
+                    holder['vid'] = ''
+                finally:
+                    done.set()
+                continue
             _failed = getattr(self, '_attach_failed_at', None)
             if not getattr(self, '_attached', False) or (
                     _failed is not None
                     and time.monotonic() - _failed < 30.0):
-                self._stop.wait(0.25)
+                # ACORDADO PELO PEDIDO, NAO PELO RELOGIO: sem este `Event` o
+                # pedido esperava ate' 250 ms do `wait` -- metade do tecto que
+                # `_TID_INLINE_WAIT_S` promete ao laco.
+                self._tid_wake.wait(0.25)
+                self._tid_wake.clear()
                 continue
             try:
                 self._tid_refresh()
@@ -1413,7 +1651,7 @@ class CdpCaptionSource:
             self._stop.wait(max(0.1, float(
                 getattr(self, '_tid_ttl', _TID_TTL_S) or _TID_TTL_S)))
 
-    def _tid_refresh(self):
+    def _tid_refresh(self, probe=True):
         """UMA pergunta a' `/json/list`, publicada. Devolve o id publicado.
 
         E' o corpo que a 2026-11-08 vivia DENTRO de `target_video_id`, com o
@@ -1421,12 +1659,38 @@ class CdpCaptionSource:
         agora corre no fio do alvo. `YOUTUBE_TARGET_SLOW` continua a sair com
         os mesmos campos (`ms`, `vid`, `ttl_s`), acrescido de `src=refresher`:
         e' a testemunha de que a chamada lenta foi paga AQUI e nao no laco.
+
+        `probe=False` e' a pergunta SEM LIGACAO (2026-11-09): so' a lista e o
+        URL/titulo, nenhuma sonda de WebSocket, porque sem `_run` nao ha' foto
+        a desbloquear. E' o que `_tid_inline` paga no fio dele.
         """
         vid = ''
         t0 = time.monotonic()
         try:
-            tabs, _others = list_targets(self.port)
-            target, why = self._choose(tabs)
+            tabs, _others = list_targets(
+                self.port, timeout=(3.0 if probe else ATTACH_PROBE_TIMEOUT_S))
+            if probe:
+                target, why = self._choose(tabs)
+            else:
+                target, why = pick_target(tabs, self._video_id,
+                                          self._window_title)
+                if target is None and self._video_id:
+                    # O ID DECLARADO NAO ESTA' ABERTO: QUEM MANDA SAO AS ABAS
+                    # (a mesma queda do `_choose`, 2026-11-04 -- sem ela o
+                    # objecto recem-construido responde '' e o shell paga a
+                    # varredura UIA). Sem sonda nao ha' "aba errada" a temer:
+                    # a escolha e' URL/titulo.
+                    target, why = pick_target(tabs, '', self._window_title)
+                    if target is not None:
+                        why = 'stale-declared:' + str(why)
+                if target is not None:
+                    self._choice_note = 'inline:%s' % why
+                    self._adopt_tab(target,
+                                    video_id_from_url(target.get('url') or ''))
+                    self._log_target(
+                        'YOUTUBE_TARGET inline pick=%s why=%s tabs=%d'
+                        % (video_id_from_url(target.get('url') or '') or '-',
+                           why, len(tabs or ())))
             if target is None:
                 self._choice_note = str(why)
             if target is not None:
@@ -1444,8 +1708,9 @@ class CdpCaptionSource:
         if cost_ms > _TID_SLOW_MS:
             self._tid_ttl = _TID_SLOW_TTL_S
             self._log('YOUTUBE_TARGET_SLOW ms=%.0f vid=%s ttl_s=%.0f '
-                      'src=refresher'
-                      % (cost_ms, vid or '-', _TID_SLOW_TTL_S))
+                      'src=%s'
+                      % (cost_ms, vid or '-', _TID_SLOW_TTL_S,
+                         'refresher' if probe else 'inline'))
         else:
             self._tid_ttl = _TID_TTL_S
         self._tid_cache = (time.monotonic(), vid)
