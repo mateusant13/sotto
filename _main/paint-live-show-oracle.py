@@ -68,6 +68,7 @@ import importlib.util
 import json
 import os
 import re
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -288,6 +289,29 @@ def judge(text, source_text=None):
             bad.append((ln, 'wait_ms=%.1f > %.0f' % (ms, ACK_MAX_MS)))
     detail['max_wait_ms'] = max(waits) if waits else None
     detail['max_content_wait_ms'] = max(cwaits) if cwaits else None
+    # ── O NUMERO QUE O OLHO PAGA E' A SOMA (2026-11-10) ──────────────────────
+    # Os dois tetos acima julgam cada metade, e um show podia ter
+    # `content_wait_ms=300` (sob o teto de 350) mais `wait_ms=200` (sob o de 400)
+    # e levar **500 ms** ate' o pixel -- cada metade verde, o par vermelho para
+    # quem olha. Medido na sessao viva do dono (22 shows): total p50 78 ms,
+    # p95 157, max 297, zero `paint_ack=false` -- ou seja o teto de 400 ms na
+    # SOMA e' a regua que ja' existe, aplicada ao numero certo, e passa com folga.
+    totals = []
+    for i in shown_idx:
+        cms = _ms(session[i], 'content_wait_ms')
+        wms = _ms(session[i], 'wait_ms')
+        if cms is None or wms is None:
+            continue
+        totals.append(cms + wms)
+        if cms + wms > ACK_MAX_MS:
+            bad.append((session[i], 'total=%.1f ms (content_wait %.1f + wait %.1f) > %.0f'
+                        % (cms + wms, cms, wms, ACK_MAX_MS)))
+    if totals:
+        ordered = sorted(totals)
+        at = min(len(ordered) - 1, int(len(ordered) * 0.95))
+        detail['p50_total_ms'] = round(ordered[len(ordered) // 2], 1)
+        detail['p95_total_ms'] = round(ordered[at], 1)
+        detail['max_total_ms'] = round(max(totals), 1)
     for ln, why in bad:
         detail['fails'].append('show %s: %s' % (_stamp(ln) or '?', why))
     if detail['fails']:
@@ -403,6 +427,22 @@ def _content_ack_off(text):
     return '\n'.join(lines) + ('\n' if text.endswith('\n') else '')
 
 
+def _slow_total(text):
+    """A ULTIMA linha `PANEL_SHOWN`: content_wait 300 + wait 200 = 500 ms.
+
+    Cada metade continua SOB o seu proprio teto (350 / 400), e por isso este e'
+    o mutante que so' o julgamento da SOMA apanha.
+    """
+    lines = text.splitlines()
+    si = [i for i, ln in enumerate(lines) if _SHOWN in ln]
+    if not si:
+        return text
+    at = si[-1]
+    lines[at] = re.sub(r'content_wait_ms=[\d.]+', 'content_wait_ms=300.0', lines[at], count=1)
+    lines[at] = re.sub(r' wait_ms=[\d.]+', ' wait_ms=200.0', lines[at], count=1)
+    return '\n'.join(lines) + ('\n' if text.endswith('\n') else '')
+
+
 def _map_before_content(text):
     """Empurra o ULTIMO `PANEL_CONTENT` para DEPOIS do ultimo `PANEL_SHOWN`."""
     lines = text.splitlines()
@@ -514,7 +554,30 @@ def retry_arm(source_text):
     if never['attempts'] < 2:
         fails.append('retry: nao repetiu antes de gastar o orcamento '
                      '(attempts=%s)' % (never['attempts'],))
-    notes = {'recovered_attempts': recovered['attempts'],
+    # A QUARTA PERGUNTA: a pagina que nao responde GASTA O ORCAMENTO INTEIRO?
+    # Medido no log do dono: 250 ms numa unica tentativa. O orcamento e' um
+    # tecto para a ESPERA, nao para uma pergunta -- uma pagina ocupada tem de
+    # receber uma segunda oportunidade dentro dos mesmos 250 ms.
+    starve_state = {'t': 0.0}
+
+    def starve_clock():
+        return starve_state['t']
+
+    def starve_ask(left):
+        starve_state['t'] += max(0.0, left)
+        return 'not json at all'
+
+    busy = ns['gate_probe']('strip', starve_ask, budget, clock=starve_clock,
+                            pause=lambda s: None)
+    if busy['attempts'] < 2:
+        fails.append('retry: uma pagina que gasta o orcamento na PRIMEIRA pergunta '
+                     'nao recebeu segunda chance (attempts=%s wait_ms=%.1f)'
+                     % (busy['attempts'], busy.get('wait_ms') or 0.0))
+    if (busy.get('wait_ms') or 0.0) > budget * 1000.0:
+        fails.append('retry: a pagina ocupada estourou o orcamento (%.1f ms)'
+                     % (busy['wait_ms'],))
+    notes = {'busy_attempts': busy['attempts'], 'busy_wait_ms': busy.get('wait_ms'),
+             'recovered_attempts': recovered['attempts'],
              'recovered_wait_ms': recovered['wait_ms'],
              'never_attempts': never['attempts'], 'never_wait_ms': never['wait_ms'],
              'max_ask_s': round(max(calls2) if calls2 else 0.0, 4)}
@@ -538,6 +601,11 @@ NEG_CASES = (
     ('show-lento', lambda t: re.sub(r'wait_ms=[\d.]+(?=[^\d.]*$)', 'wait_ms=951.0', t), 'RED'),
     ('sessao-sem-aquecimento', lambda t: '\n'.join(
         ln for ln in t.splitlines() if _WARM not in ln), 'RED'),
+    # O MUTANTE DA SOMA: cada metade SOB o seu teto e o par acima do orcamento
+    # (300 + 200 = 500 ms). Sem o julgamento da soma este braco fica verde e o
+    # tecto de 400 ms passa a ser ficcao -- um numero por metade nao limita o
+    # tempo que o dono espera.
+    ('show-soma-acima-do-orcamento', _slow_total, 'RED'),
 )
 
 
@@ -633,6 +701,48 @@ def neg_arm(text, source_text=None, real_text=None):
     if not text.strip():
         print('NEG-ARM: a amostra esta vazia -- as mutacoes nao provam nada')
         return 1
+    # A MATRIZ DA DEMISSAO (2026-11-10): o RED cai para SKIPPED so' com o
+    # processo STALE; com FRESH ele fica RED; e nada vira GREEN pelo caminho.
+    for got, want, label in (
+            (demote_stale('RED', 'STALE'), 'SKIPPED', 'red-stale-demovido'),
+            (demote_stale('RED', 'FRESH'), 'RED', 'red-fresh-fica-red'),
+            (demote_stale('RED', 'UNKNOWN'), 'SKIPPED', 'red-unknown-demovido'),
+            (demote_stale('GREEN', 'STALE'), 'GREEN', 'green-nunca-mexe'),
+            (demote_stale('SKIPPED', 'FRESH'), 'SKIPPED', 'skipped-nunca-mexe')):
+        total += 1
+        if got == want:
+            print('  %-34s -> %-9s ok' % (label, got))
+        else:
+            bad += 1
+            print('  %-34s -> %-9s FAIL (esperava %s)' % (label, got, want))
+    # O NAMESPACE INCOMPLETO RECUSA (2026-11-10): o extractor nao injectava
+    # `CONTENT_GATE_ATTEMPT_FRACTION`, o `NameError` caia no `except` que serve a
+    # pagina muda e o `while True` girava para sempre -- este braco pendurou 40 s
+    # antes de a guarda existir. Aqui ele prova as duas metades: a fonte REAL nao
+    # tem constante em falta, e uma allowlist sem a constante e' RECUSADA.
+    total += 1
+    try:
+        _pm = _probe_module()
+        missing_real = _pm.missing_gate_constants(source_text or '')
+        _saved = _pm.GATE_CONSTANTS
+        _pm.GATE_CONSTANTS = tuple(x for x in _saved
+                                   if x != 'CONTENT_GATE_ATTEMPT_FRACTION')
+        try:
+            _pm.shell_functions(source_text or '')
+            refused = False
+        except SystemExit:
+            refused = True
+        finally:
+            _pm.GATE_CONSTANTS = _saved
+        if missing_real or not refused:
+            bad += 1
+            print('  %-34s -> %-9s FAIL (real=%s recusou=%s)'
+                  % ('constante-do-gate-em-falta', 'NOT-REFUSED', missing_real, refused))
+        else:
+            print('  %-34s -> %-9s ok' % ('constante-do-gate-em-falta', 'REFUSED'))
+    except Exception as exc:      # noqa: BLE001
+        bad += 1
+        print('  %-34s -> %-9s FAIL %r' % ('constante-do-gate-em-falta', 'ERROR', exc))
     print('NEG-ARM cases=%d caught=%d' % (total, total - bad))
     if bad:
         print('NEG-ARM FAIL')
@@ -691,6 +801,46 @@ def _print_replay(rows):
         print('  LEGADO (verbatim, o shell daquela sessao): %s' % (row['line'],))
 
 
+FRESHNESS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         'live-code-freshness-oracle.py')
+
+
+def demote_stale(verdict, fresh):
+    """Um RED julgado contra um processo STALE nao e' veredicto sobre a arvore.
+
+    Puro de proposito: o braco negativo julga a MATRIZ inteira, e um `FRESH`
+    continua a deixar o RED de pe' -- a demissao e' ESTREITA (so' quando o
+    processo carregou outro codigo) e nunca transforma um detalhe em verde.
+    """
+    if verdict == 'RED' and fresh != 'FRESH':
+        return 'SKIPPED'
+    return verdict
+
+
+def live_process_verdict(log_path):
+    """O processo que escreveu o log carregou o codigo que esta' no disco?
+
+    Devolve `FRESH` | `STALE` | `UNKNOWN` e a linha que o disse. Medido
+    2026-11-10: a sessao viva (pid 52792, arranque 21:21:46) produziu UM show as
+    21:21:55 com `content_ack=false content_why=ui-thread-busy
+    content_attempts=1 content_wait_ms=250.0`, e essa unica linha reprovava este
+    oraculo com a cura da repeticao JA' no ficheiro. Um numero medido num
+    processo STALE mede o codigo VELHO: o veredicto vira SKIPPED e a linha fica
+    no log como `STALE-EVIDENCE`, nunca apagada.
+    """
+    if not os.path.exists(FRESHNESS):
+        return 'UNKNOWN', 'live-code-freshness-oracle.py ausente'
+    try:
+        out = subprocess.run([sys.executable, FRESHNESS, '--log', log_path],
+                             capture_output=True, text=True, timeout=120)
+    except Exception as exc:      # noqa: BLE001 -- a falta do instrumento nao inventa veredicto
+        return 'UNKNOWN', 'freshness nao correu: %r' % (exc,)
+    for ln in (out.stdout or '').splitlines():
+        if ln.startswith('LIVE_CODE '):
+            return ln.split()[1], ln.strip()
+    return 'UNKNOWN', 'sem linha LIVE_CODE (rc=%s)' % (out.returncode,)
+
+
 def main(argv=None):
     global _REAL_SOURCE
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -741,13 +891,18 @@ def main(argv=None):
                   'as mutacoes nao provam nada' % (clean,))
             return 2
         return neg_arm(sample, source_text or None, text)
+    fresh, fresh_line = live_process_verdict(args.log)
     verdict, detail = judge(text, source_text or None)
+    print('PAINT-LIVE processo=%s (%s)' % (fresh, fresh_line))
     print('PAINT-LIVE arranque=%s warm=%d ack=%d conteudo=%d conteudo_ack=%d shows=%d '
-          'max_wait_ms=%s max_content_wait_ms=%s'
+          'max_wait_ms=%s max_content_wait_ms=%s total_p50_ms=%s total_p95_ms=%s '
+          'total_max_ms=%s'
           % (detail.get('started') or '-', detail.get('warm', 0),
              detail.get('warm_ack', 0), detail.get('content', 0),
              detail.get('content_ack', 0), detail.get('shows', 0),
-             detail.get('max_wait_ms'), detail.get('max_content_wait_ms')))
+             detail.get('max_wait_ms'), detail.get('max_content_wait_ms'),
+             detail.get('p50_total_ms'), detail.get('p95_total_ms'),
+             detail.get('max_total_ms')))
     shows = detail.get('shows_verbatim') or []
     if shows:
         print('PAINT-LIVE shows (verbatim, sessao viva):')
@@ -779,6 +934,16 @@ def main(argv=None):
     if verdict == 'SKIPPED':
         print('PAINT-LIVE VERDICT: SKIPPED (%s)'
               % (detail.get('why') or 'nada a julgar',))
+        return 0
+    if demote_stale(verdict, fresh) == 'SKIPPED':
+        # A EVIDENCIA NAO SE APAGA: cada linha continua impressa abaixo, com o
+        # carimbo do processo que a produziu. O que muda e' o VEREDITO -- um
+        # show julgado contra codigo que o processo nao carregou nao e' um
+        # veredicto sobre a arvore.
+        for why in detail.get('fails') or []:
+            print('STALE-EVIDENCE %s' % (why,))
+        print('PAINT-LIVE VERDICT: SKIPPED (processo %s -- a evidencia e\' do codigo '
+              'anterior; o proximo arranque a julga)' % (fresh,))
         return 0
     print('PAINT-LIVE VERDICT: %s' % (verdict,))
     return 0 if verdict == 'GREEN' else 1

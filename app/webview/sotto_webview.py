@@ -542,6 +542,17 @@ CONTENT_GATE_JS = (
 #: dicionario E o JSON em string, e tudo o que nao for nenhum dos dois sai com
 #: uma RAZAO NOMEADA e o texto cru (120 chars) em `error` -- nunca um
 #: `bad-answer` mudo.
+#:
+#: A PRIMEIRA PERGUNTA NAO PODE GASTAR O ORCAMENTO INTEIRO (medido 2026-11-10).
+#: O log do dono tinha `PANEL_SHOWN ... content_ack=false content_why=ui-thread-busy
+#: content_attempts=1 content_wait_ms=250.0` as 21:21:55: a pagina nao respondeu
+#: porque a UI dela estava ocupada, a UNICA pergunta consumiu os 250 ms e a
+#: repeticao que existe exactamente para este caso nunca teve orcamento para
+#: acontecer. Metade do orcamento por pergunta mantem o pior caso em 250 ms
+#: (nunca 250 ms POR tentativa) e da' duas perguntas a uma pagina ocupada. O
+#: numero vem do campo: no mesmo log o `content_wait_ms` de um show BOM tem
+#: p50 31 ms e p95 125 ms -- a metade (125) e' o p95 medido, nao um gosto.
+CONTENT_GATE_ATTEMPT_FRACTION = 0.5
 CONTENT_GATE_RETRY_MIN_S = 0.02     # abaixo disto nao ha' orcamento para perguntar
 CONTENT_GATE_RETRY_PAUSE_S = 0.01   # entre duas perguntas, para nao girar o UI thread
 CONTENT_GATE_ERROR_MAX_CHARS = 120
@@ -639,7 +650,10 @@ def gate_probe(name, ask, budget_s, clock=time.monotonic, pause=time.sleep):
             break
         out['attempts'] += 1
         try:
-            answer = ask(left if left > 0 else CONTENT_GATE_RETRY_MIN_S)
+            # UMA PERGUNTA GASTA NO MAXIMO METADE DO ORCAMENTO
+            ask_s = max(CONTENT_GATE_RETRY_MIN_S,
+                        min(left, budget_s * CONTENT_GATE_ATTEMPT_FRACTION))
+            answer = ask(ask_s)
         except Exception as exc:     # noqa: BLE001 -- o mapa nao morre por isto
             answer = None
             out['error'] = repr(exc)[:CONTENT_GATE_ERROR_MAX_CHARS]

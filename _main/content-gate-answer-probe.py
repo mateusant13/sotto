@@ -108,7 +108,28 @@ GATE_NAMES = ('NoAnswer', 'gate_defaults', 'gate_answer_payload', 'gate_verdict'
 #: Os numeros do gate tambem sao lidos do shell: um mutante que mude o orcamento
 #: ou o piso de repeticao tem de mudar o julgamento do oraculo.
 GATE_CONSTANTS = ('CONTENT_GATE_TIMEOUT_MS', 'CONTENT_GATE_RETRY_MIN_S',
-                  'CONTENT_GATE_RETRY_PAUSE_S', 'CONTENT_GATE_ERROR_MAX_CHARS')
+                  'CONTENT_GATE_RETRY_PAUSE_S', 'CONTENT_GATE_ERROR_MAX_CHARS',
+                  'CONTENT_GATE_ATTEMPT_FRACTION')
+
+
+def missing_gate_constants(source_text, names=GATE_NAMES):
+    """As constantes `CONTENT_GATE_*` que o fonte USA e este extractor nao injecta.
+
+    Medido 2026-11-10: o shell ganhou `CONTENT_GATE_ATTEMPT_FRACTION`, o
+    `GATE_CONSTANTS` nao o listava, e o `gate_probe` extraido levantava
+    `NameError` DENTRO do `try/except Exception` que existe para uma pagina que
+    nao responde -- `answer=None`, o relogio parado em 0 s (a pergunta nunca
+    acontecia) e o `while True` girava para sempre. O braco negativo deste
+    oraculo ficou pendurado 40 s em vez de dizer o nome que faltava. Um extractor
+    que constroi um namespace INCOMPLETO tem de RECUSAR, nao de adivinhar.
+    """
+    tree = ast.parse(source_text)
+    used = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in names:
+            seg = ast.get_source_segment(source_text, node) or ''
+            used.update(re.findall(r'CONTENT_GATE_[A-Z_]+', seg))
+    return sorted(used - set(GATE_CONSTANTS))
 
 
 def shell_functions(source_text, names=GATE_NAMES):
@@ -126,6 +147,11 @@ def shell_functions(source_text, names=GATE_NAMES):
     if missing:
         raise SystemExit('fonte do shell sem %s -- o instrumento nao julga '
                          'uma copia' % (', '.join(missing),))
+    missing_consts = missing_gate_constants(source_text, names)
+    if missing_consts:
+        raise SystemExit('o gate usa constante(s) que o extractor nao injecta: %s '
+                         '-- namespace incompleto nao se executa'
+                         % (', '.join(missing_consts),))
     ns = {'json': json, 'time': __import__('time')}
     for name in GATE_CONSTANTS:
         ns[name] = shell_literal(source_text, name)

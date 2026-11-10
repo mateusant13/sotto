@@ -621,8 +621,16 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   -> alt c off/on para a legenda funcionar"*). A testemunha e' o RELOGIO, nao o bit fisico: um
   `keydown` chega sempre com a tecla em baixo, e a primeira versao da cura lia `False` zero vezes
   (o braco B2e apanhou-o). `CTRLSPACE-SWALLOW VERDICT: PASS (21/21)`, `NEG-ARM: PASS (7/7)`.)
-- **PIN do ficheiro (medido 2026-11-10, 12:2x):** `_main\_audit-verify-all.cmd` = **348039 B**,
-  **4049 CRLF** / 0 bare LF, sha256 `A2C0013D08827AC0C2FF57CA794AE4FA6C37B42300C5D9EA32C83937B653E218`.
+- **PIN do ficheiro (medido 2026-11-10, 13:0x):** `_main\_audit-verify-all.cmd` = **348139 B**,
+  **4049 CRLF** / 0 bare LF, sha256 `513A1A3E96D34C8CD870A6BF4690ED4457AF994BF3F6E794D89B73C0384324C1`.
+  (Cento e cinco bytes e ZERO linhas a mais do que o pin de 348039 B: as dependencias do passo
+  `paint-live-show` passam a nomear `_main\live-code-freshness-oracle.py`,
+  `app\webview\code_identity.py` e `_main\content-gate-answer-probe.py` -- este ultimo porque o
+  oraculo EXECUTA as funcoes do gate extraidas por ele, e uma dependencia que o nao nomeie deixaria
+  o passo em cache a julgar um extractor que ja' mudou. O oraculo passou a perguntar ao `LIVE_CODE` se o PROCESSO que
+  escreveu o log carregou o codigo do disco, e o `code_identity()` e' o conjunto que responde por
+  isso: sem as duas na lista, o passo ficaria em cache a julgar uma frescura que ja' mudou -- a
+  classe do `panel-deps`. Ver o §do show abaixo.)
   (Setecentos e sessenta e cinco bytes e DEZ linhas a mais do que o pin de 345693 B: o par
   `audio-back-detector` + `red-as-expected-audio-back-detector`, o residual MEDIDO do card do dono
   *"audio volta e nada acontece"*. O worker publicava `TAP_IDLE`/`TAP_STALLED` quando o audio SUMIA e
@@ -2247,6 +2255,41 @@ primeira invocacao** (`python -m watcher run --cpu 40 --`, ver a lei do custo ac
 2026-11-09, o meu `nemotron-thread-bench` sem tecto foi o **maior produtor de pressao** do stutter
 do dono (pid 56092, `io 88,5 MB/s`, tres `tick.stall` na mesma janela) -- o culpado era o
 instrumento, e o recibo esta' em `_main/receipt-20261109-thread-bench-stutter.md`.
+
+## O ORCAMENTO E' DA ESPERA, NAO DE UMA PERGUNTA -- E UM VEREDITO DE PROCESSO STALE NAO E' VEREDITO (2026-11-10)
+
+Duas metades medidas na sessao viva do dono (pid 52792, arranque 2026-11-09 21:21:46), as duas com o
+mesmo instrumento, `_main/paint-live-show-oracle.py`:
+
+1. **O SHOW QUE CONFIA NO QUE NAO FOI CONFIRMADO.** O log tinha
+   `PANEL_SHOWN ... content_ack=false content_why=ui-thread-busy content_attempts=1
+   content_wait_ms=250.0 paint_ack=true wait_ms=47.0`. A repeticao (`gate_should_retry` dentro do
+   `while True` do `gate_probe`) existe exactamente para `ui-thread-busy`, e nunca podia disparar:
+   a PRIMEIRA pergunta recebia o orcamento INTEIRO (250 ms), a pagina ocupada nao respondia, e nao
+   sobrava um milissegundo para a segunda. Agora cada pergunta gasta no maximo
+   `CONTENT_GATE_ATTEMPT_FRACTION` (0,5) do orcamento: o pior caso CONTINUA 250 ms de espera (nunca
+   250 ms por tentativa), e uma pagina ocupada recebe duas perguntas. O numero 0,5 vem do campo --
+   no mesmo log o `content_wait_ms` de um show BOM tem p50 31 ms e **p95 125 ms**, que e' metade do
+   orcamento. O braco que prova a cura e' a pergunta que **gasta tudo o que lhe dao**
+   (`busy_attempts >= 2`), porque a sequencia de brinquedo antiga consumia 50 ms por pergunta e dava
+   cinco tentativas sem que a producao desse duas.
+
+2. **A SOMA E' O QUE O OLHO PAGA.** Os dois tetos julgavam cada metade (`content_wait_ms<=350`,
+   `wait_ms<=400`) e um show de 300+200=**500 ms** passava com as duas verdes. O oraculo passou a
+   julgar `content_wait_ms + wait_ms` contra o mesmo orcamento de 400 ms e a publicar a cauda
+   (`total_p50_ms`/`total_p95_ms`/`total_max_ms`). Medido no ficheiro inteiro (22 shows): p50 78 ms,
+   p95 157, max 297, zero `paint_ack=false` -- o teto na SOMA passa com folga, e a rede existe para
+   a cauda que hoje nao existe. O mutante `show-soma-acima-do-orcamento` (300+200) e' apanhado so'
+   por esta arm.
+
+3. **STALE NAO E' VEREDITO.** O RED de 21:21:55 foi produzido por um processo anterior a cura, e o
+   portao respondia RED sobre a arvore -- a classe que o passo 0 do bug-hunt ja' nomeia. O oraculo
+   pergunta ao `_main/live-code-freshness-oracle.py` e, com o processo `STALE`/`UNKNOWN`, o RED vira
+   **`PAINT-LIVE VERDICT: SKIPPED`** com cada falha reimpressa como `STALE-EVIDENCE` (a evidencia
+   nunca se apaga) e a linha `PAINT-LIVE processo=<veredicto>`. A demissao e' uma funcao PURA
+   (`demote_stale`) e o `--neg-arm` julga a MATRIZ inteira: `RED+STALE -> SKIPPED`,
+   `RED+FRESH -> RED`, `RED+UNKNOWN -> SKIPPED`, `GREEN`/`SKIPPED` nunca mudam. Um `FRESH` continua
+   a deixar o RED de pe': o proximo arranque do dono e' que fecha este numero.
 
 ## A LEI DOS TESTES - todo teste, existente ou futuro (ordem do dono, 2026-11-05)
 
