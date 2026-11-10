@@ -621,8 +621,14 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   -> alt c off/on para a legenda funcionar"*). A testemunha e' o RELOGIO, nao o bit fisico: um
   `keydown` chega sempre com a tecla em baixo, e a primeira versao da cura lia `False` zero vezes
   (o braco B2e apanhou-o). `CTRLSPACE-SWALLOW VERDICT: PASS (21/21)`, `NEG-ARM: PASS (7/7)`.)
-- **PIN do ficheiro (medido 2026-11-10, 13:0x):** `_main\_audit-verify-all.cmd` = **348139 B**,
-  **4049 CRLF** / 0 bare LF, sha256 `513A1A3E96D34C8CD870A6BF4690ED4457AF994BF3F6E794D89B73C0384324C1`.
+- **PIN do ficheiro (medido 2026-11-10, 13:2x):** `_main\_audit-verify-all.cmd` = **348449 B**,
+  **4051 CRLF** / 0 bare LF, sha256 `8A6C28098A3E0E8E34765489A8EE7663C619483A5AF3DA7FF328D1DD7DBA5BCF`.
+  (Trezentos e dez bytes e DUAS linhas a mais do que o pin de 348139 B: o par `content-gate-probe`
+  + o seu `:expectred` -- o `--neg-arm` da sonda da pagina, que estava com ZERO chamadores. Custa
+  **3,6 s** e julga a escada de raizes com um `_run_edge` FALSO (zero navegador, zero janela):
+  L1 a primeira raiz estoura o prazo e a segunda responde, L2 nenhuma responde e a razao do prazo
+  sai, L3 a primeira responde e nenhuma segunda e' paga. `battery-record-pairing` mediu 457 passos
+  e 457 nomes com registo, 0 achados.)
   (Cento e cinco bytes e ZERO linhas a mais do que o pin de 348039 B: as dependencias do passo
   `paint-live-show` passam a nomear `_main\live-code-freshness-oracle.py`,
   `app\webview\code_identity.py` e `_main\content-gate-answer-probe.py` -- este ultimo porque o
@@ -2290,6 +2296,19 @@ mesmo instrumento, `_main/paint-live-show-oracle.py`:
    (`demote_stale`) e o `--neg-arm` julga a MATRIZ inteira: `RED+STALE -> SKIPPED`,
    `RED+FRESH -> RED`, `RED+UNKNOWN -> SKIPPED`, `GREEN`/`SKIPPED` nunca mudam. Um `FRESH` continua
    a deixar o RED de pe': o proximo arranque do dono e' que fecha este numero.
+
+4. **A RAIZ TEMPORARIA ESCOLHE-SE PELO CUSTO MEDIDO, E O PERFIL DO NAVEGADOR NAO VIVE NELA.**
+   `_main/content-gate-answer-probe.py` punha o perfil do Edge em `I:\cc-tmp` porque a regra do
+   `TMPDIR` era lida como uma regra de EXISTENCIA. Medido hoje: o write de 64 KiB nesse volume oscila
+   entre **0,0 ms e 1595,8 ms**, e com o perfil la' dentro o Edge **nao devolveu o DOM em 90 s**
+   enquanto a MESMA pagina, com o perfil no temp do sistema, fechou em **3,4 s** (rc=0, 92 902 B de
+   DOM). Duas metades, as duas com o numero impresso: (a) a raiz da sonda passa a ser escolhida por um
+   write de 64 KiB medido em cada candidata -- a ordem da casa primeiro, o sistema so' quando a da casa
+   passa de `PROBE_ROOT_SLOW_MS`, e uma raiz lenta e' recusada POR NOME em vez de virar um timeout
+   mudo; (b) o perfil efemero do browser vai para o temp do sistema e e' apagado no fim -- a pagina
+   continua na raiz da casa, e o que muda de sitio sao ~15 MB que nao voltam. Efeito medido no
+   instrumento inteiro: `PROBE UNMEASURED: a sonda nao respondeu em 45 s` (66-105 s por corrida)
+   -> medicao completa em **13,9 s**.
 
 ## A LEI DOS TESTES - todo teste, existente ou futuro (ordem do dono, 2026-11-05)
 

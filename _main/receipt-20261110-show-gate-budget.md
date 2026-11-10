@@ -105,6 +105,40 @@ refused: o gate usa constante(s) que o extractor nao injecta: CONTENT_GATE_ATTEM
 e o braco `constante-do-gate-em-falta` julga as duas metades (a fonte real nao tem constante em
 falta; a allowlist sem ela e' recusada) em toda corrida.
 
+## 4-ter. A sonda da pagina: a raiz por custo medido, o perfil fora dela, e uma escada
+
+`_main/content-gate-answer-probe.py` publicava `PROBE UNMEASURED: a sonda nao respondeu em 45 s`
+(66 s e 105 s por corrida). Nao era o navegador:
+
+| medicao | numero |
+|---|---|
+| write de 64 KiB em `I:\cc-tmp` (a raiz da casa), ao longo do dia | **0,0 ms / 709,4 ms / 1595,8 ms / 4,41 s** |
+| a MESMA pagina com o perfil do Edge em `I:\cc-tmp` | **TIMEOUT 90 s** |
+| a MESMA pagina com o perfil no temp do sistema | **3,4 s**, rc=0, 92 902 B de DOM |
+| depois da cura (raiz saudavel, perfil fora, escada) | **14,6 s** com medicao completa |
+
+Tres mudancas, cada uma com o numero impresso na corrida:
+
+* `probe_root()` passa a medir **o pior de uma rajada de 8 x 64 KiB** em cada candidata, com a ordem
+  da casa primeiro e o sistema so' quando a da casa passa de `PROBE_ROOT_SLOW_MS` = **400 ms**; uma
+  raiz lenta e' RECUSADA por nome (`PROBE_ROOT ... RECUSADA write_ms=..`) em vez de virar um timeout
+  mudo que parece culpa do navegador. Uma medida unica nao bastava: dizia `saudavel` e o Edge nao
+  devolvia o DOM no minuto seguinte.
+* o **perfil efemero do Edge** vai para o temp do sistema e e' apagado no fim (a pagina e o resto
+  continuam na raiz da casa): ~15 MB que nao voltam, contra a regra do `TMPDIR` que existe para o
+  scratch de projeto.
+* **a escada**: prazo curto na primeira raiz (`PROBE_ROOT_FIRST_S` = 20 s) e, se ela nao responde,
+  a MESMA pagina no temp do sistema com o prazo cheio. A linha `PROBE arm root=.. deadline_s=..
+  answered=..` diz qual das duas respondeu -- medido hoje nas duas direcoes (arm 1 numa corrida,
+  arm 2 na outra).
+
+O controle (`--neg-arm`, agora um passo da bateria) julga a escada com um `_run_edge` FALSO, zero
+navegador: L1 primeira estoura e a segunda responde (`ok=True`, 2 raizes), L2 nenhuma responde
+(`ok=False` com a razao), L3 a primeira responde e nenhuma segunda e' paga. `NEG-ARM cases=3
+caught=3`, rc=1. Primeira versao do controle media `ok=False` por causa do proprio fixture (aspas
+simples onde o `_attr` exige `data-gate-probe-<chave>="..."`) -- corrigido, porque um controle que
+falha pelo dado nao prova nada.
+
 ## 5. O que NAO esta' verificado
 
 * `fixed, NOT verified`: o numero que fecha este card e' o **proximo arranque do dono** -- com o

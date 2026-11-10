@@ -1532,6 +1532,8 @@ if exist _main\paint-live-show-oracle.py (
 call :step always red-as-expected-paint-live-show 1 "_main\paint-live-show-oracle.py" "%OUT%\paint-live-show-neg.log" python _main\paint-live-show-oracle.py --neg-arm
 call :expectred red-as-expected-paint-live-show !STEP_RC! "%OUT%\paint-live-show-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-paint-live-show MISSING "%OUT%\paint-live-show-neg.log" "NEG-ARM PASS" )
+call :step always content-gate-probe 1 "_main\content-gate-answer-probe.py;app\webview\sotto_webview.py;app\panel\panel.html" "%OUT%\content-gate-probe-neg.log" python _main\content-gate-answer-probe.py --neg-arm
+call :expectred content-gate-probe !STEP_RC! "%OUT%\content-gate-probe-neg.log" "NEG-ARM PASS"
 if exist _main\panel-paint-first-census.py (
 call :step heavy panel-paint-first-measure 0 "_main\panel-paint-first-census.py;app\webview\sotto_webview.py;app\webview\code_identity.py;app\panel\panel.js;app\panel\panel.css" "%OUT%\panel-paint-first-measure.log" python _main\panel-paint-first-census.py --run --save-json _main\_cache\panel-paint-first.json
 call :record panel-paint-first-measure !STEP_RC!

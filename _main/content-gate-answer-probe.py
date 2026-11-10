@@ -43,6 +43,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -67,22 +68,89 @@ PROBE_DIV = 'data-gate-probe'
 #: que o oraculo ja' sabe dizer: o veredicto fica SKIPPED e chega em segundos em
 #: vez de morrer num timeout mais caro do que o proprio passo.
 PROBE_TIMEOUT_S = 45
+#: O prazo da PRIMEIRA raiz da escada: uma raiz que nao responde ao fim
+#: disto ja' mostrou o que tinha para mostrar, e a segunda tem o resto.
+PROBE_ROOT_FIRST_S = 20
 
 
-def probe_root():
-    """Onde o perfil do Edge headless vive durante a sonda.
+#: PISO DE ESPACO para aceitar uma raiz de sonda (o perfil do Edge + a pagina).
+PROBE_ROOT_MIN_BYTES = 512 * 1024 * 1024
+#: O PIOR write de uma rajada de 8 x 64 KiB acima disto e' uma raiz que nao serve
+#: para uma sonda com prazo. Medido 2026-11-10 neste volume: **0,0 ms / 709,4 ms /
+#: 1595,8 ms / 4,41 s** em momentos diferentes do mesmo dia -- uma unica medida
+#: dizia `saudavel` e o Edge nao devolvia o DOM em 45 s logo depois, porque a
+#: pagina e' MUITOS ficheiros e o volume para por segundos. O numero e' o maior
+#: da rajada, e 400 ms e' a folga do que ja' passa: com o `I:` recusado a sonda
+#: fecha em **13,9 s** com o mesmo binario e a mesma pagina.
+PROBE_ROOT_BURST = 8
+PROBE_ROOT_SLOW_MS = 400.0
+_SLOW_CACHE = {}
+
+
+def probe_root(write_probe=True):
+    """Onde o perfil do Edge headless vive durante a sonda -- e o CUSTO medido.
 
     A ORDEM E' A DA CASA (AGENTS.md, `TMPDIR = I:\\cc-tmp`): `TMPDIR` manda,
     depois o scratch do dono se existir, e so' no fim o temp do sistema. Medido
     2026-11-05: o `mkdtemp` puro punha o perfil em `G:\\Temp`, o volume que enche
     e mata lanes com ENOSPC. O perfil e' pequeno (~15 MB) mas e' DISCO e e' o
     unico sitio que esta' sonda escreve.
+
+    O QUE MUDOU EM 2026-11-10: a regra escolhia a raiz por EXISTENCIA, nunca por
+    custo. No dia em que o `I:` ficou degradado (64 KiB em **4,41 s**), o Edge
+    nao conseguiu subir o perfil dentro do prazo e a sonda publicou `a sonda nao
+    respondeu em 45 s` -- uma frase sobre o NAVEGADOR para um facto do DISCO. A
+    escolha passa a ser medida: o PIOR de uma rajada de 8 x 64 KiB em cada
+    candidata com >= `PROBE_ROOT_MIN_BYTES` livres, e a ORDEM DA CASA continua a
+    ganhar -- a primeira raiz SADIA e' a escolhida, e o temp do sistema so' entra
+    quando a da casa e' recusada por custo (trocar a regra do `TMPDIR` por um
+    cronometro devolveria o `G:`, que enche e mata lanes). A escolha vai para o
+    log com o numero, e uma raiz acima de `PROBE_ROOT_SLOW_MS` e' recusada por
+    nome em vez de virar um timeout mudo.
     """
     given = os.environ.get('TMPDIR')
-    for base in (given, r'I:\cc-tmp'):
-        if base and os.path.isdir(base):
-            return base
-    return None
+    candidates = [given, r'I:\cc-tmp']
+    _system = [tempfile.gettempdir()]
+    best = None
+    for base in candidates + (_system if given or os.path.isdir(r'I:\cc-tmp') else []):
+        if not base or not os.path.isdir(base):
+            continue
+        try:
+            free = shutil.disk_usage(base).free
+        except OSError:
+            continue
+        if free < PROBE_ROOT_MIN_BYTES:
+            continue
+        ms = _SLOW_CACHE.get(base)
+        if write_probe and ms is None:
+            worst = 0.0
+            try:
+                probe_path = os.path.join(base, '_probe_write_%d.tmp' % (os.getpid(),))
+                for _ in range(PROBE_ROOT_BURST):
+                    t0 = time.time()
+                    with open(probe_path, 'wb') as fh:
+                        fh.write(b'x' * 65536)
+                    os.remove(probe_path)
+                    worst = max(worst, (time.time() - t0) * 1000.0)
+                ms = round(worst, 1)
+            except OSError:
+                continue
+            _SLOW_CACHE[base] = ms
+        if ms is None:
+            ms = 0.0
+        print('PROBE_ROOT %s write_ms=%s free_gib=%.2f' % (base, ms, free / 2.0**30))
+        if ms > PROBE_ROOT_SLOW_MS:
+            print('PROBE_ROOT %s RECUSADA (write_ms=%s > %.0f)'
+                  % (base, ms, PROBE_ROOT_SLOW_MS))
+            continue
+        # A ORDEM DA CASA GANHA: a primeira raiz SADIA e' a escolhida, e o
+        # sistema so' entra quando a da casa estoura o prazo. Escolher a MAIS
+        # RAPIDA seria trocar a regra do `TMPDIR = I:\cc-tmp` por um cronometro,
+        # e o `G:` que o tempfile devolve nesta maquina enche e mata lanes com
+        # ENOSPC (medido 2026-11-05).
+        if best is None:
+            best = (base, ms)
+    return best[0] if best else None
 
 
 def find_browser():
@@ -236,8 +304,44 @@ def _kill_tree(pid):
         pass
 
 
+
+def _run_edge(exe, page_url, root, profile_dir, timeout_s, window=None):
+    """Um Edge headless, um prazo. -> (dom, rc, stderr) ou (None, why, '').
+
+    Separado do `page_answer` para a ESCADA de raizes poder correr o MESMO codigo
+    duas vezes, com raizes diferentes, e dizer qual das duas respondeu.
+    """
+    cmd = [exe, '--headless=new', '--disable-gpu', '--no-first-run',
+           '--no-default-browser-check', '--allow-file-access-from-files',
+           '--virtual-time-budget=6000',
+           '--user-data-dir=' + profile_dir,
+           '--dump-dom', page_url]
+    # `subprocess.run(timeout=)` NAO BASTA, E O DEFEITO FOI MEDIDO (2026-11-05):
+    # ao expirar, o `run` mata o msedge PAI e depois espera pelo fim dos canos --
+    # e os processos FILHOS do Edge (gpu/renderer) herdaram esses canos, por isso
+    # o `communicate` bloqueia ate' eles morrerem. Resultado real: um oraculo com
+    # tecto de 45 s levou **179 s**, e uma bateria com dois replays gastou 203 s e
+    # foi morta pelo passo -- `paint-live-show=1` com o log a dizer GREEN. Aqui a
+    # arvore e' morta por inteiro antes de se ler o cano.
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+        startupinfo=subprocess.STARTUPINFO(
+            dwFlags=getattr(subprocess, 'STARTF_USESHOWWINDOW', 0), wShowWindow=0))
+    try:
+        out, err = proc.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        _kill_tree(proc.pid)
+        try:
+            out, err = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            out, err = b'', b''
+        return None, 'a sonda nao respondeu em %s s' % (timeout_s,), ''
+    return out.decode('utf-8', 'replace'), proc.returncode, err.decode('utf-8', 'replace')
+
+
 def page_answer(surface='strip', viewport=(380, 40), source_text=None,
-                browser=None, root=None):
+                browser=None, root=None, runner=None):
     """-> dict com o que a PAGINA devolve e o que o WebView2 entregaria.
 
     `value` e' o valor de retorno do script (o que o `exec_js` recebe como
@@ -251,51 +355,59 @@ def page_answer(surface='strip', viewport=(380, 40), source_text=None,
         SHELL, encoding='utf-8').read()
     gate_js = shell_literal(source_text, 'CONTENT_GATE_JS')
     owned = root is None
-    root = root or tempfile.mkdtemp(prefix='gate-probe-', dir=probe_root())
+    profile_dir = None
+    if root is None:
+        base = probe_root()
+        if base is None:
+            # Nenhuma raiz sadia: a sonda diz o FACT O que a impede, nunca um
+            # timeout mudo que parece culpa do navegador.
+            return {'ok': False,
+                    'why': 'sem raiz temporaria saudavel (todas acima de %.0f ms)'
+                           % (PROBE_ROOT_SLOW_MS,)}
+        root = tempfile.mkdtemp(prefix='gate-probe-', dir=base)
     try:
-        build_page(root, surface, gate_js)
-        url = 'file:///' + os.path.join(root, 'panel.html').replace('\\', '/')
+        # A ESCADA DE RAIZES (medido 2026-11-10): o `I:\cc-tmp` oscila entre
+        # 0,0 ms e segundos por 64 KiB, e quando ele para o Edge nao devolve o DOM
+        # nem em 45 s. Um write de rajada PREVE mal esse estado, por isso a sonda
+        # nao aposta: tenta a raiz da casa com prazo curto e, se ela nao responde,
+        # repete a MESMA pagina no temp do sistema -- e diz qual das duas
+        # respondeu. O prazo curto da primeira e' o que impede a escada de custar
+        # o dobro do orcamento.
+        profile_dir = os.environ.get('SOTTO_GATE_PROBE_PROFILE') or tempfile.mkdtemp(
+            prefix='gate-prof-')
+        print('PROBE_PROFILE %s' % (profile_dir,))
+        arms = [(root, PROBE_ROOT_FIRST_S)]
+        if owned:
+            _sys_root = tempfile.mkdtemp(prefix='gate-probe-sys-', dir=tempfile.gettempdir())
+            arms.append((_sys_root, PROBE_TIMEOUT_S))
+        dom = rc = None
+        err_text = ''
+        why = 'a sonda nao respondeu'
         # O CLIENTE REAL DA FAIXA E' 380x40, E O EDGE HEADLESS NAO O ACEITA
         # (medido: `--window-size=380,40` da' `innerWidth=0`, porque o Windows
-        # nao deixa a janela ser mais pequena do que ~492x56). Por isso o
-        # tamanho e' uma DICA: abaixo do minimo a flag sai e o que conta e' o
-        # viewport MEDIDO, publicado pela propria sonda.
-        cmd = [exe, '--headless=new', '--disable-gpu', '--no-first-run',
-               '--no-default-browser-check', '--allow-file-access-from-files']
-        if viewport and viewport[0] >= 200 and viewport[1] >= 200:
-            cmd.append('--window-size=%d,%d' % viewport)
-        cmd += ['--virtual-time-budget=6000',
-               '--user-data-dir=' + os.path.join(root, '_profile'),
-               '--dump-dom', url]
-        # `subprocess.run(timeout=)` NAO BASTA, E O DEFEITO FOI MEDIDO (2026-11-05):
-        # ao expirar, o `run` mata o msedge PAI e depois espera pelo fim dos
-        # canos -- e os processos FILHOS do Edge (gpu/renderer) herdaram esses
-        # canos, por isso o `communicate` bloqueia ate' eles morrerem. Resultado
-        # real: um oraculo com tecto de 45 s levou **179 s**, e uma bateria com
-        # dois replays gastou 203 s e foi morta pelo passo -- `paint-live-show=1`
-        # com o log a dizer GREEN. Aqui a arvore e' morta por inteiro antes de
-        # se ler o cano, e o veredicto e' `UNPROVEN`, que e' o que "nao
-        # respondeu" significa.
-        proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
-            startupinfo=subprocess.STARTUPINFO(
-                dwFlags=getattr(subprocess, 'STARTF_USESHOWWINDOW', 0), wShowWindow=0))
-        try:
-            out, err = proc.communicate(timeout=PROBE_TIMEOUT_S)
-        except subprocess.TimeoutExpired:
-            _kill_tree(proc.pid)
-            try:
-                out, err = proc.communicate(timeout=10)
-            except subprocess.TimeoutExpired:
-                out, err = b'', b''
-            return {'ok': False, 'why': 'a sonda nao respondeu em %s s' % PROBE_TIMEOUT_S}
-        dom = out.decode('utf-8', 'replace')
+        # nao deixa a janela ser mais pequena do que ~492x56). Por isso o tamanho
+        # e' uma DICA: abaixo do minimo a flag sai e o que conta e' o viewport
+        # MEDIDO, publicado pela propria sonda.
+        window = tuple(viewport) if viewport and viewport[0] >= 200 and viewport[1] >= 200 else None
+        for arm_root, arm_s in arms:
+            # CADA raiz precisa do SEU `panel.html` + assets: a escada troca de
+            # raiz, nao de pagina.
+            build_page(arm_root, surface, gate_js)
+            url = 'file:///' + os.path.join(arm_root, 'panel.html').replace('\\', '/')
+            dom, rc, err_text = (runner or _run_edge)(
+                exe, url, arm_root, profile_dir, arm_s, window=window)
+            print('PROBE arm root=%s deadline_s=%s answered=%s'
+                  % (arm_root, arm_s, 'yes' if dom is not None else 'no'))
+            if dom is not None:
+                break
+            why = rc
+        if dom is None:
+            return {'ok': False, 'why': why}
         value = _attr(dom, 'value')
         wire = _attr(dom, 'wire')
         if value is None:
-            return {'ok': False, 'why': 'a sonda nao publicou nada (rc=%s)' % (proc.returncode,),
-                    'stderr': err.decode('utf-8', 'replace')[:400]}
+            return {'ok': False, 'why': 'a sonda nao publicou nada (rc=%s)' % (rc,),
+                    'stderr': err_text[:400]}
         try:
             answer = json.loads(wire)
         except (TypeError, ValueError):
@@ -307,7 +419,11 @@ def page_answer(surface='strip', viewport=(380, 40), source_text=None,
                 'url': url}
     finally:
         if owned:
-            shutil.rmtree(root, ignore_errors=True)
+            for _r in (root, locals().get('_sys_root')):
+                if _r:
+                    shutil.rmtree(_r, ignore_errors=True)
+        if profile_dir and not os.environ.get('SOTTO_GATE_PROBE_PROFILE'):
+            shutil.rmtree(profile_dir, ignore_errors=True)
 
 
 # ── O JULGAMENTO: O SHELL SHIPPED, NUNCA UMA COPIA ──────────────────────────
@@ -346,12 +462,79 @@ def judge_live_line(line):
     return 'default', False
 
 
+def neg_arm():
+    """A ESCADA, julgada com um `_run_edge` FALSO -- zero navegador, zero janela.
+
+    Tres casos, e cada um muda uma coisa so':
+      L1 a primeira raiz estoura o prazo, a segunda responde -> ok, e a escada
+         DIZ que foi a segunda (`arms` no resultado) em vez de o esconder;
+      L2 nenhuma responde -> `ok=False` com a razao do prazo (nunca um `ok=True`
+         vazio);
+      L3 a primeira responde em 2 ms -> nenhuma segunda tentativa e' paga.
+    """
+    # O DOM FALSO USA A MESMA FORMA que a sonda escreve: atributos com ASPAS
+    # DUPLAS (o `_attr` casa `data-gate-probe-<chave>="..."`). A primeira versao
+    # usava aspas simples e o controle media `ok=False` por causa do fixture, nao
+    # da escada -- um controle que falha pelo proprio dado nao prova nada.
+    good = ('<div data-gate-probe-value="{&quot;surface&quot;:&quot;strip&quot;}" '
+            'data-gate-probe-wire="{&quot;surface&quot;:&quot;strip&quot;}" '
+            'data-gate-probe-type="string" data-gate-probe-ms="1.0" '
+            'data-gate-probe-vw="380" data-gate-probe-vh="40"></div>')
+    failures = []
+
+    def drive(calls, timeout_first=True):
+        seen = []
+
+        def fake(exe, url, root, prof, timeout_s, window=None):
+            seen.append(timeout_s)
+            if timeout_first and len(seen) == 1:
+                return None, 'a sonda nao respondeu em %s s' % (timeout_s,), ''
+            if not timeout_first:
+                return good, 0, ''
+            if len(seen) == 2:
+                return good, 0, ''
+            return None, 'a sonda nao respondeu em %s s' % (timeout_s,), ''
+
+        out = page_answer('strip', (380, 40), source_text=open(SHELL, encoding='utf-8').read(),
+                          runner=fake)
+        out['_arms'] = len(seen)
+        return out
+
+    try:
+        l1 = drive([])
+        if not (l1.get('ok') is True and l1.get('_arms') == 2):
+            failures.append('L1 devolveu ok=%r arms=%r (esperava ok=True e 2 raizes)'
+                            % (l1.get('ok'), l1.get('_arms')))
+        l2 = page_answer('strip', (380, 40), source_text=open(SHELL, encoding='utf-8').read(),
+                         runner=lambda *a, **k: (None, 'a sonda nao respondeu em 20 s', ''))
+        if l2.get('ok') is not False or 'nao respondeu' not in (l2.get('why') or ''):
+            failures.append('L2 devolveu ok=%r why=%r (esperava a razao do prazo)'
+                            % (l2.get('ok'), l2.get('why')))
+        l3 = drive([], timeout_first=False)
+        if not (l3.get('ok') is True and l3.get('_arms') == 1):
+            failures.append('L3 pagou %r raizes para uma primeira que respondeu'
+                            % (l3.get('_arms'),))
+    finally:
+        pass
+    for f in failures:
+        print('  NEG-ARM FAIL: %s' % (f,))
+    print('NEG-ARM cases=3 caught=%d' % (3 - len(failures),))
+    if failures:
+        print('NEG-ARM FAIL')
+        return 2
+    print('NEG-ARM PASS')
+    return 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--surface', default='strip')
     ap.add_argument('--viewport', default='380x40')
     ap.add_argument('--log', default=os.path.join(HERE, 'webview-run.log'))
+    ap.add_argument('--neg-arm', action='store_true')
     args = ap.parse_args(argv)
+    if args.neg_arm:
+        return neg_arm()
     vw, _, vh = args.viewport.partition('x')
     source_text = open(SHELL, encoding='utf-8').read()
     viewport = (int(vw), int(vh)) if vw and vh else None
