@@ -91,11 +91,50 @@ truth-valued key(s) compared`; `parse-gate` `RESULT 9 passed, 0 refused`.
 
 ## 6. Pins
 
-* `_main\_audit-verify-all.cmd` = **346458 B**, **4031 CRLF** / 0 bare LF,
-  sha256 `D2B9E1DFE0BC252D3740A80DC0ECD641BA5D0DDB526A73A06B18FA124B13FCE1`
-  (`agents-md-pins-oracle` PASS, 2 pins lidos ao vivo).
+* `_main\_audit-verify-all.cmd` = **348039 B**, **4049 CRLF** / 0 bare LF,
+  sha256 `A2C0013D08827AC0C2FF57CA794AE4FA6C37B42300C5D9EA32C83937B653E218`
+  (`agents-md-pins-oracle` PASS, 2 pins lidos ao vivo). O valor de 346458 B deste
+  § foi o de MEIO da rodada: o par `boot-profile` e as duas dependencias da shell
+  chegaram depois, e um pin de meio de trabalho mede um ficheiro que ninguem corre.
 * `code-health` absorve a metrica declarada de `worker/sotto_worker.py`
   (`--update --allow-dirty`, 94 ficheiros).
+
+## 6-bis. A LINHA QUE NAO CHEGAVA AO LOG (mesma rodada, medido depois)
+
+O instrumento do §4 existia e o numero nao: `ENGINE_VISIBLE_TAGS` e' uma allowlist
+casada por `line.startswith`, e as quatro tags desta rodada escritas no stderr
+morriam no `stderr_tail`, publicado so' na cauda da MORTE. Medido no log dele:
+`BRIDGE_LOAD_MS ms=28938 / 8953 / 44344` e **ZERO** `WORKER_BOOT_PROF`.
+
+* `CAPTURE_SIGNAL_BACK` / `NO_CAPTION_AFTER_AUDIO_BACK`: o sitio escrevia
+  `err("device=%r %s" % (dev, linha))` -- a tag no MEIO -- e passou a escrever a
+  TAG PRIMEIRO. Sem essa metade, juntar a tag a' allowlist nao mudava nada.
+* `LADDER_TRY` e `WORKER_BOOT_PROF` entraram na allowlist.
+* Portao: `audio-back-detector` C1 (tags na allowlist, lida por `ast` do fonte da
+  shell) + C2 (o primeiro token de cada sitio e' a tag, nas tres formas reais:
+  literal, `%`-format com a tag no primeiro campo, `err(<funcao pura>(...))`).
+  Medido `PASS -- 11 arm(s)`; `--neg-arm` **6/6** (M5 tag fora da allowlist ->
+  C1, M6 prefixo reposto -> C2), 157,3 s.
+* Leitor: `_main/boot-profile-oracle.py` le' o ultimo `WORKER_BOOT_PROF` e julga
+  a FORMA (sessoes ORT monotonas, `og_model` depois delas, >= 6 marcas, split
+  impresso) -- nenhum limiar de latencia. Medido contra o perfil real de
+  `_main/_cache/acc-target-name.log`: `total=8.572s sess_encoder=+5.745
+  sess_decoder=+0.105 sess_joint=+0.051 og_model=+2.247`; `--neg-arm` 3/3, rc=1 ao
+  apanhar.
+
+O split diz o que faltava ao card: **o arranque paga DUAS cargas** -- as tres
+sessoes ORT (5,9 s) e o `og.Model` do genai (2,2 s). Com o disco degradado que
+produz os 44,3 s esse split continua **UNMEASURED**, e a cura nao se escreve antes
+dele: o `performance-gate` da frota responde `UNKNOWN` e uma carga de modelo cagada
+nao se larga. `docs/por-medir.md` carrega a linha.
+
+## 6-ter. O SEGUNDO INGRESSO DO MOTOR DE LOTE (§4.6, fechado)
+
+`engine_policy.run_engine_pass` recusava `Mmm`-so' e outro alfabeto;
+`ReduxHiddenSwitch._run_runner` publicava as linhas do runner **sem** o filtro.
+Agora chama `admit_batch_caption` no mesmo choke point, e o `--selftest` do
+`caption_noise` le' o `_run_runner` por `ast` com o CONTROL da guarda arrancada
+(`15 cases`, `ok: true`); o passo `caption-noise` nomeia `worker\engine_switch.py`.
 
 ## 7. O que NÃO está verificado
 
