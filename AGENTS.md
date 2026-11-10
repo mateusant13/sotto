@@ -621,8 +621,8 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   -> alt c off/on para a legenda funcionar"*). A testemunha e' o RELOGIO, nao o bit fisico: um
   `keydown` chega sempre com a tecla em baixo, e a primeira versao da cura lia `False` zero vezes
   (o braco B2e apanhou-o). `CTRLSPACE-SWALLOW VERDICT: PASS (21/21)`, `NEG-ARM: PASS (7/7)`.)
-- **PIN do ficheiro (medido 2026-11-10, 11:5x):** `_main\_audit-verify-all.cmd` = **346482 B**,
-  **4031 CRLF** / 0 bare LF, sha256 `16AB9EE4146E3538FDBFB3455B0612DEC78463049756A2D4E9D97494C37C7E96`.
+- **PIN do ficheiro (medido 2026-11-10, 12:2x):** `_main\_audit-verify-all.cmd` = **348039 B**,
+  **4049 CRLF** / 0 bare LF, sha256 `A2C0013D08827AC0C2FF57CA794AE4FA6C37B42300C5D9EA32C83937B653E218`.
   (Setecentos e sessenta e cinco bytes e DEZ linhas a mais do que o pin de 345693 B: o par
   `audio-back-detector` + `red-as-expected-audio-back-detector`, o residual MEDIDO do card do dono
   *"audio volta e nada acontece"*. O worker publicava `TAP_IDLE`/`TAP_STALLED` quando o audio SUMIA e
@@ -640,7 +640,27 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   o passo `caption-noise` passa a nomear `worker\engine_switch.py`, porque o SEGUNDO ingresso do
   motor de lote (`ReduxHiddenSwitch._run_runner`) publicava as linhas do runner SEM o filtro --
   a regra vivia num so' dos dois caminhos. O braco novo do `--selftest` le o `_run_runner` por
-  `ast` e o CONTROL e' a mesma leitura sobre a guarda arrancada (`15 cases`, `ok: true`).)
+  `ast` e o CONTROL e' a mesma leitura sobre a guarda arrancada (`15 cases`, `ok: true`).
+  E a MESMA rodada fechou a classe que ja' tinha custado o `WORKER_THREADS` em 2026-11-09: as
+  quatro tags desta lane (`LADDER_TRY`, `WORKER_BOOT_PROF`, `CAPTURE_SIGNAL_BACK`,
+  `NO_CAPTION_AFTER_AUDIO_BACK`) escreviam-se no stderr e morriam no `stderr_tail`, publicado so'
+  na cauda da morte -- medido no log dele, `BRIDGE_LOAD_MS ms=28938 / 8953 / 44344` e **ZERO**
+  linhas de `WORKER_BOOT_PROF`. Agora estao em `ENGINE_VISIBLE_TAGS` (casada por
+  `line.startswith`) e o sitio do audio-back passou a escrever a TAG PRIMEIRO (era
+  `"device=%r %s"`, que a punha no meio). As arms C1/C2 do `audio-back-detector` leem a allowlist
+  e o primeiro token de cada sitio; o `--neg-arm` ganhou M5 (tag fora da allowlist) e M6 (prefixo
+  reposto) -- um instrumento cujo output nao chega ao log nao e' um instrumento, e a arm que o
+  prova deixou de ser o proximo card do dono.)
+  E o par `boot-profile` + `red-as-expected-boot-profile` fecha o outro lado: a linha que agora
+  chega ao log tinha ZERO leitores. `_main\boot-profile-oracle.py` le' o ULTIMO
+  `WORKER_BOOT_PROF` e julga a FORMA -- tres sessoes ORT monotonas, `og_model` depois delas,
+  >= 6 marcas, e o SPLIT impresso -- e nunca um limiar de latencia (um numero de gosto nesta
+  maquina degradada nao julga nada). Sem linha: `VERDICT: SKIPPED`, declarado `:skipped`.
+  Medido: `PASS -- 4 arm(s)` contra o perfil REAL de `_main/_cache/acc-target-name.log`
+  (`total=8.572s  sess_encoder=+5.745 sess_decoder=+0.105 sess_joint=+0.051 og_model=+2.247`);
+  `--neg-arm` 3/3 (ordem das sessoes, `og_model` antes delas, perfil curto), rc=1 ao apanhar.
+  `battery-wiring` PASS `ligados=186 sem_passo=108 populacao=294`; `battery-record-pairing`
+  456 passos / 456 nomes / 0 achados; `battery-class` PASS arms=3.)
 - **PIN do ficheiro (medido 2026-11-10, 11:2x):** `_main\_audit-verify-all.cmd` = **345693 B**,
   **4021 CRLF** / 0 bare LF, sha256 `2532FB86611CC537ABBA5B58CF6375BD2DF17A1A896CBC981ABDC75448583C7A`.
   (Mil trezentos e sessenta e oito bytes e QUATORZE linhas a mais do que o pin de 344325 B: o par

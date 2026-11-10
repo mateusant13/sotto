@@ -1561,7 +1561,25 @@ ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
                        # (medido pela lane de verificacao) e "o batch nao rodou" ficava
                        # indistinguivel de "o batch foi adiado", que sao coisas
                        # diferentes. O escritor e' o `engine_switch.py`, nao o worker.
-                       'REDUX_BATCH_DEFERRED')
+                       'REDUX_BATCH_DEFERRED',
+                       # O CUSTO QUE O DONO PAGA E O QUE NINGUEM CONSEGUE LER (2026-11-10).
+                       # As tres linhas abaixo existiam e ficavam todas no `stderr_tail`,
+                       # publicado SO' na cauda da morte -- a mesma classe do
+                       # `WORKER_THREADS` de 2026-11-09, paga outra vez:
+                       #   `LADDER_TRY`            -- uma por candidato da escada, com ms.
+                       #     Sem ela o card "o arranque demora DEMAIS" nao tinha dono:
+                       #     medido no log do dono (pid 52792), 23 s entre
+                       #     `model-loaded` e `capture-started` SEM UMA linha.
+                       #   `WORKER_BOOT_PROF`      -- onde os 8,5-44,3 s de carga foram
+                       #     gastos (`sess_encoder`/`sess_decoder`/`og_model`/`first_decode`).
+                       #     Medido: `BRIDGE_LOAD_MS ms=28938 / 8953 / 44344` no log dele e
+                       #     ZERO linhas de perfil, porque a unica copia ia para o stderr.
+                       #   `CAPTURE_SIGNAL_BACK` / `NO_CAPTION_AFTER_AUDIO_BACK`
+                       #     -- a RETOMADA do audio depois de um silencio e o defeito de o
+                       #     audio voltar sem legenda; sem elas esse par e' UNMEASURED para
+                       #     sempre (o card que o pediu fechou declarando isso).
+                       'LADDER_TRY', 'WORKER_BOOT_PROF',
+                       'CAPTURE_SIGNAL_BACK', 'NO_CAPTION_AFTER_AUDIO_BACK')
 
 #: O BATIMENTO DO LACO DO WORKER, reconhecido por CONTER e nao por comecar (2026-11-04).
 #: Medido com o py-spy no worker vivo: `seq=516 phase=window` e nenhuma linha no log -- o

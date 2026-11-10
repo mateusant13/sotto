@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1321597,
+      "bytes": 1323107,
       "classes": 29,
       "defs": 158,
       "except_pass": 61,
       "globals": 8,
-      "lines": 24966,
+      "lines": 24984,
       "max_func": 414,
       "max_func_name": "main"
     },
@@ -841,13 +841,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 499848,
+      "bytes": 500227,
       "classes": 17,
       "defs": 95,
       "except_pass": 23,
       "globals": 6,
-      "lines": 9282,
-      "max_func": 2785,
+      "lines": 9286,
+      "max_func": 2789,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {

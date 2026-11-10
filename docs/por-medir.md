@@ -58,3 +58,18 @@
   lote (o `history_merge` e' julgado no store, nao num transcript real de ponta a ponta). As duas
   coisas pedem a app aberta e audio a tocar, que a lei desta casa proibe a uma lane. Recebem
   `UNMEASURED` ate' o dono correr a app; o recibo declara o estado como DARK por isso mesmo.
+
+- **O SPLIT DO ARRANQUE NA MAQUINA DELE, POR FASE** (2026-11-10, card do dono *"arranque: demora
+  DEMAIS a responder ... tornar extremo"*). O que ficou medido: o custo total, em tres arranques
+  reais do log dele -- `BRIDGE_LOAD_MS ms=28938 / 8953 / 44344` -- e o *onde*, num perfil de uma
+  maquina desta arvore (`_main/_cache/acc-target-name.log`): `total=8.572s
+  sess_encoder=+5.745 sess_decoder=+0.105 sess_joint=+0.051 og_model=+2.247`. As tres sessoes ORT
+  custam 6,1 s e o `og.Model` do genai mais 2,2 s, ou seja o arranque paga DUAS cargas. O que **nao**
+  esta' medido: esse split com o disco degradado que produz os 44,3 s -- e por isso a cura (por
+  exemplo adiar a construcao do `og.Model` para o primeiro chunk) ainda NAO se escreve. Duas portas,
+  as duas fechadas hoje: o `performance-gate` da frota responde `UNKNOWN` (`heavy_allowed=False`,
+  `sample-unknown:disk counter read failed`), logo uma carga de modelo cagada nao se larga; e a
+  janela viva do dono exige a app aberta. O caminho ficou montado: a tag `WORKER_BOOT_PROF` ja'
+  atravessa a allowlist (commit `1583cb2`) e o passo `boot-profile` le' o ultimo perfil do log dele
+  com o split impresso -- no primeiro arranque depois desta cura o numero aparece sem ninguem o
+  pedir.

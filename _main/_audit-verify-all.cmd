@@ -3176,14 +3176,32 @@ call :expectred red-as-expected-ladder-try-instrument !STEP_RC! "%OUT%\ladder-tr
 ) else ( call :record red-as-expected-ladder-try-instrument MISSING )
 
 if exist _main\audio-back-detector-oracle.py (
-call :step always audio-back-detector 0 "_main\audio-back-detector-oracle.py;worker\sotto_worker.py" "%OUT%\audio-back-detector.log" python _main\audio-back-detector-oracle.py
+call :step always audio-back-detector 0 "_main\audio-back-detector-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\audio-back-detector.log" python _main\audio-back-detector-oracle.py
 call :record audio-back-detector !STEP_RC!
 ) else ( call :record audio-back-detector MISSING )
 
 if exist _main\audio-back-detector-oracle.py (
-call :step always red-as-expected-audio-back-detector 1 "_main\audio-back-detector-oracle.py;worker\sotto_worker.py" "%OUT%\audio-back-detector-neg.log" python _main\audio-back-detector-oracle.py --neg-arm
+call :step always red-as-expected-audio-back-detector 1 "_main\audio-back-detector-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\audio-back-detector-neg.log" python _main\audio-back-detector-oracle.py --neg-arm
 call :expectred red-as-expected-audio-back-detector !STEP_RC! "%OUT%\audio-back-detector-neg.log" "NEG-ARM: PASS"
 ) else ( call :record red-as-expected-audio-back-detector MISSING )
+rem O CUSTO DO ARRANQUE COM DONO (2026-11-10): o `WORKER_BOOT_PROF` diz onde os
+rem 8,5-44,3 s de carga foram gastos. Ele existia e nao chegava ao log (so' no
+rem `stderr_tail`, publicado na morte); a cura poe a tag em `ENGINE_VISIBLE_TAGS`
+rem e este par le' a linha. Julga a FORMA (sessoes monotonas, og_model depois
+rem delas, >= 6 marcas, o split impresso) e NUNCA um limiar de latencia -- um
+rem numero de gosto nesta maquina degradada nao julga nada. Sem linha = SKIPPED,
+rem e um passo saltado nao e' um portao que passou.
+if exist _main\boot-profile-oracle.py (
+call :step boot-profile 0 "_main\boot-profile-oracle.py;app\webview\sotto_webview.py" "%OUT%\boot-profile.log" python _main\boot-profile-oracle.py
+rem DECLARADO SKIP-CAPABLE: o perfil so' existe depois de o worker arrancar com a
+rem cura de visibilidade; sem linha o oraculo imprime `VERDICT: SKIPPED`, que e' o
+rem desfecho NORMAL logo apos uma mudanca e nunca um portao que passou.
+call :skipped boot-profile !STEP_RC! "%OUT%\boot-profile.log" "VERDICT: PASS" "VERDICT: SKIPPED"
+) else ( call :record boot-profile MISSING )
+if exist _main\boot-profile-oracle.py (
+call :step always red-as-expected-boot-profile 1 "_main\boot-profile-oracle.py;app\webview\sotto_webview.py" "%OUT%\boot-profile-neg.log" python _main\boot-profile-oracle.py --neg-arm
+call :expectred red-as-expected-boot-profile !STEP_RC! "%OUT%\boot-profile-neg.log" "NEG-ARM: PASS"
+) else ( call :record red-as-expected-boot-profile MISSING )
 
 if exist _main\launch-as-token.py (
 call :step always launch-as-token 0 "_main\launch-as-token.py" "%OUT%\launch-as-token.log" python _main\launch-as-token.py --selftest

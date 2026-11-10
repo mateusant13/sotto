@@ -67,7 +67,8 @@ def load_namespace(src, path):
 
 
 def run_arms(fn, src, tree, consts, say):
-    """Roda A1-A9/B sobre a funcao e a fonte dadas. Devolve a lista de falhas."""
+    """Roda A1-A9/B/C sobre a funcao e a fonte dadas. Devolve a lista de falhas."""
+    _SRC_CACHE["src"] = src
     fails = []
     stall_s = float(consts["TAP_STALL_S"])
     grace = float(consts["AUDIO_BACK_GRACE_S"])
@@ -117,10 +118,134 @@ def run_arms(fn, src, tree, consts, say):
         ok = "stall_since" in seg and "counters" in seg and "device_blocks" in seg
         check("B", ok, seg.replace("\n", " ")[:120])
         check("B2", "_back_line" in src and "err(" in src, "a linha sai por err(...)")
+
+    # ── C: A LINHA CHEGA AO LOG (2026-11-10) ────────────────────────────────
+    # Um instrumento cujo output morre no `stderr_tail` e' indistinguivel de um
+    # instrumento que nao existe: `WORKER_THREADS` (2026-11-09) foi a primeira
+    # vez, e estas quatro tags sao a segunda. Tres coisas tem de ser verdade ao
+    # mesmo tempo, e nenhuma delas se ve' no texto do worker sozinho.
+    fails.extend(_visibility_arms(check, src))
     return fails
 
 
+#: As tags que o `err(...)` do worker escreve e que o log do dono tem de ver.
+#: `ENGINE_VISIBLE_TAGS` e' casada por `line.startswith`, por isso a posicao da
+#: tag na linha faz parte do contrato -- e' o que C2 mede.
+VISIBLE = ("LADDER_TRY", "WORKER_BOOT_PROF",
+           "CAPTURE_SIGNAL_BACK", "NO_CAPTION_AFTER_AUDIO_BACK")
+SHELL = os.path.join(ROOT, "app", "webview", "sotto_webview.py")
+
+
+def _tag_tuple(shell_src):
+    """`ENGINE_VISIBLE_TAGS` da shell, lida do FONTE (sem importar a shell)."""
+    stree = ast.parse(shell_src)
+    for node in stree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                and isinstance(node.targets[0], ast.Name) \
+                and node.targets[0].id == "ENGINE_VISIBLE_TAGS":
+            try:
+                return tuple(ast.literal_eval(node.value))
+            except Exception:                                 # noqa: BLE001
+                return None
+    return None
+
+
+def _visibility_arms(check, src):
+    """C1 as tags estao na allowlist; C2 a tag e' o PRIMEIRO token da linha."""
+    fails = []
+    if not os.path.exists(SHELL):
+        check("C1", False, "shell ausente: %s" % SHELL)
+        return ["C1"]
+    shell_src = open(SHELL, "r", encoding="utf-8").read()
+    tags = _tag_tuple(shell_src)
+    if tags is None:
+        check("C1", False, "ENGINE_VISIBLE_TAGS ilegivel na shell")
+        fails.append("C1")
+    else:
+        missing = [t for t in VISIBLE if t not in tags]
+        check("C1", not missing, {"missing": missing, "tags": len(tags)})
+        if missing:
+            fails.append("C1")
+
+    # C2: no SITE, o primeiro pedaco da linha e' a tag. Duas formas contam:
+    # `err(<funcao_pura>(...))` (a funcao devolve a linha com a tag) e
+    # `err("<TAG> ...")` (literal). Uma `%`-formatacao com o prefixo ANTES da
+    # tag -- `err("device=%r %s" % (dev, line))` -- e' exatamente o defeito que
+    # manteve estas linhas invisiveis, e por isso C2 le o primeiro argumento.
+    tree = ast.parse(src)
+    tag_first = {}
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "err" and node.args):
+            continue
+        seg = (ast.get_source_segment(src, node.args[0]) or "").strip()
+        for tag in VISIBLE:
+            # literal que comeca pela tag
+            if seg.startswith('"%s' % tag) or seg.startswith("'%s" % tag):
+                tag_first.setdefault(tag, "literal")
+            # `err(<funcao_pura>(...))` -- a funcao devolve a linha COM a tag no
+            # comeco, e o encadeamento de strings vive dentro dela (ver
+            # `ladder_try_line`). O que NAO conta e' prefixar a saida no sitio.
+            if isinstance(node.args[0], ast.Call) \
+                    and isinstance(node.args[0].func, ast.Name) \
+                    and _returns_tag(tree, node.args[0].func.id, tag):
+                tag_first.setdefault(tag, node.args[0].func.id)
+            # `"%s device=%r" % (_back_line, ...)` -- a tag entra como PRIMEIRO
+            # campo da formatacao, e o valor que a carrega e' a linha pura.
+            if isinstance(node.args[0], ast.BinOp) and isinstance(node.args[0].op, ast.Mod):
+                left = ast.get_source_segment(src, node.args[0].left) or ""
+                if left.strip().startswith('"%s ') or left.strip().startswith("'%s "):
+                    values = node.args[0].right
+                    names = [n.id for n in ast.walk(values) if isinstance(n, ast.Name)]
+                    for name in names:
+                        fn = _producer_of(tree, name)
+                        if fn and _returns_tag(tree, fn, tag):
+                            tag_first.setdefault(tag, name)
+    got = sorted(tag_first)
+    want = [t for t in VISIBLE if t != "WORKER_BOOT_PROF"] + ["WORKER_BOOT_PROF"]
+    missing2 = [t for t in want if t not in tag_first]
+    # `WORKER_BOOT_PROF` sai por `"WORKER_BOOT_PROF " + " ".join(...)`, nao por
+    # `%`: a forma e' outra e o literal comeca pela tag, por isso ja' esta' em
+    # `tag_first`. O que falta aqui e' qualquer outra.
+    check("C2", not missing2, {"tag_first": got, "missing": missing2})
+    if missing2:
+        fails.append("C2")
+    return fails
+
+
+def _producer_of(tree, name):
+    """A funcao que ATRIBUI `name` (uma so', a do ficheiro)."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            tgt = node.targets[0]
+            if isinstance(tgt, ast.Tuple) and any(
+                    isinstance(e, ast.Name) and e.id == name for e in tgt.elts):
+                val = node.value
+                if isinstance(val, ast.Call) and isinstance(val.func, ast.Name):
+                    return val.func.id
+    return None
+
+
+def _returns_tag(tree, fname, tag):
+    """A funcao `fname` devolve um texto que COMECA pela tag?"""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == fname:
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Return) and sub.value is not None:
+                    seg = ast.get_source_segment(_SRC_CACHE.get("src", ""), sub.value) or ""
+                    if ('"%s ' % tag) in seg or ("'%s " % tag) in seg \
+                            or seg.strip().startswith(('"%s"' % tag, "'%s'" % tag)):
+                        return True
+    return False
+
+
+#: `_returns_tag` precisa do texto; `run_arms` nao o tem, por isso o modulo
+#: guarda o ultimo fonte lido. Prefixado por `_` para nao parecer estado.
+_SRC_CACHE: dict = {}
+
+
 def main(argv):
+    global SHELL
     say = lambda n, ok, d: print("  %-4s %s%s" % (n, "ok" if ok else "FAIL",
                                                  ("  " + str(d)) if d else ""))
     src = open(WORKER, "r", encoding="utf-8").read()
@@ -140,9 +265,40 @@ def main(argv):
                 "if gap_s >= TAP_STALL_S:", "if gap_s >= 2.5:"),
             "M4_site_apagado": src.replace(
                 "back_watch, _back_line = audio_back_step(", "back_watch, _back_line = (None, None); _unused("),
+            # M5/M6: a linha volta a morrer no `stderr_tail` -- M5 tira a tag da
+            # allowlist da SHELL, M6 repoe o prefixo que a empurrava para o meio.
+            # Sao mutacoes de FICHEIROS DIFERENTES: a copia carrega o par
+            # (worker, shell) e cada arm le o seu.
+            "M5_tag_fora_da_allowlist": None,
+            "M6_prefixo_antes_da_tag": src.replace(
+                'err("%s device=%r" % (_back_line, dev.get("name")))',
+                'err("device=%r %s" % (dev.get("name"), _back_line))'),
         }
         caught = 0
+        shell_src = open(SHELL, "r", encoding="utf-8").read() if os.path.exists(SHELL) else ""
+        shell_tmp = os.path.join(tmp, "shell_mutant.py")
         for name, mutated in mutants.items():
+            if name == "M5_tag_fora_da_allowlist":
+                # a SHELL mutante e' que tem de ser lida: troca-se o ficheiro
+                # apontado por SHELL, nao o worker.
+                mutated = shell_src.replace("'CAPTURE_SIGNAL_BACK',", "")
+                if mutated == shell_src:
+                    print("  %-26s NOT-APPLIED (a ancora nao existe)" % name)
+                    continue
+                open(shell_tmp, "w", encoding="utf-8", newline="").write(mutated)
+                real, SHELL = SHELL, shell_tmp
+                try:
+                    mfails = run_arms(audio_back_step, src, tree, consts,
+                                      lambda *a, **k: None)
+                finally:
+                    SHELL = real
+                os.remove(shell_tmp)
+                if mfails:
+                    caught += 1
+                    print("  %-26s CAUGHT (%s)" % (name, ",".join(mfails)))
+                else:
+                    print("  %-26s NOT-CAUGHT" % name)
+                continue
             if mutated == src:
                 print("  %-24s NOT-APPLIED (a ancora nao existe)" % name)
                 continue

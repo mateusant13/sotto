@@ -8521,7 +8521,11 @@ def main():
                                     now, device_blocks["value"], counters["captions"],
                                     now - stall_since, back_watch)
                                 if _back_line:
-                                    err("device=%r %s" % (dev.get("name"), _back_line))
+                                    # A TAG VEM PRIMEIRO (2026-11-10). `ENGINE_VISIBLE_TAGS`
+                                    # e' casada por `line.startswith`: com `device=...` a frente
+                                    # a linha ficava no `stderr_tail` e a retomada do audio
+                                    # continuava UNMEASURED -- a classe do `WORKER_THREADS`.
+                                    err("%s device=%r" % (_back_line, dev.get("name")))
                                 stall_blocks = device_blocks["value"]
                                 stall_since = now
                                 stall_backoff = TAP_STALL_S
