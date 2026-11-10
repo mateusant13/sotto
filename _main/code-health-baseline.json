@@ -661,13 +661,13 @@
       "max_func_name": "_flush"
     },
     "worker/caption_noise.py": {
-      "bytes": 7387,
+      "bytes": 14972,
       "classes": 0,
-      "defs": 3,
+      "defs": 5,
       "except_pass": 0,
       "globals": 0,
-      "lines": 193,
-      "max_func": 134,
+      "lines": 342,
+      "max_func": 198,
       "max_func_name": "_selftest"
     },
     "worker/denoise.py": {
@@ -681,13 +681,13 @@
       "max_func_name": "selftest"
     },
     "worker/engine_policy.py": {
-      "bytes": 23294,
+      "bytes": 23374,
       "classes": 2,
       "defs": 10,
       "except_pass": 0,
       "globals": 0,
-      "lines": 522,
-      "max_func": 92,
+      "lines": 523,
+      "max_func": 93,
       "max_func_name": "run_engine_pass"
     },
     "worker/engine_switch.py": {
