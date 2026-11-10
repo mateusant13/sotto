@@ -15598,6 +15598,9 @@ class SottoShell:
     def show_panel(self, reason, surface=None):
         if self.hwnd is None:
             return False
+        # O RELOGIO DO SHOW: `surf_ms` mede o que a superficie custa, e e' o unico
+        # segmento que o log antigo nao separava de "a pagina nao respondeu".
+        _t_surf0 = time.monotonic()
         # O ALT+C VOLTA A TENTAR -- ver `no_audio_restart_cap`. O shell para de reiniciar
         # um worker que morre por SILENCIO, porque recarregar 1 GB de modelo nao arranja
         # uma rotagem. Sem este reset o dono ficava sem caminho de volta; com ele, mostrar
@@ -15622,6 +15625,7 @@ class SottoShell:
         # page): the cycle reads this field on the next Alt+C whatever brought
         # the panel up.
         self.panel_mode = 'strip' if want == 'strip' else 'side'
+        _t_surf1 = time.monotonic()
         set_topmost(self.hwnd)
         # ── THE P0 ORDER: children FIRST, then the map ──────────────────────
         # The owner, verbatim: he pressed Alt+C, saw a solid-colour strip for
@@ -15656,7 +15660,9 @@ class SottoShell:
         # `CONTENT_GATE_JS`): superficie vestida, estilo recalculado, layout
         # forçado. Fica ANTES do mapa e falha ABERTA em `CONTENT_GATE_TIMEOUT_MS`,
         # para um show nunca deixar de acontecer por a pagina nao responder.
+        _t_gate0 = time.monotonic()
         content = self.content_gate(reason, self.surface_applied)
+        _t_map0 = time.monotonic()
         # SW_SHOWNOACTIVATE, not Show(): the panel must never take focus away
         # from whatever the owner is typing into (main.js: `focusable=false`).
         show_without_activating(self.hwnd)
@@ -15665,8 +15671,25 @@ class SottoShell:
         # deliberately AFTER the map because it re-runs pywebview's own
         # navigation-time `form.Show()`.
         transparency_hack(self)
+        _t_ack0 = time.monotonic()
         ack = self.wait_paint_ack(ack_seq, reason)
         self.visible = window_visible(self.hwnd)
+        # ── O CUSTO DO SHOW, POR SEGMENTO (2026-11-10) ───────────────────────
+        # Card do dono: *"Alt+C tambem trava (lag no toggle dos paineis)"*. MEDIDO
+        # no log dele (31 pressoes): mostrar p50 **82 ms**, p90 **473 ms**, max
+        # **581 ms**; esconder p50 **3 ms**. Ou seja a cauda do SHOW e' o que ele
+        # sente, e o log nao dizia ONDE ela estava -- a linha `PANEL_SHOWN` carrega
+        # o que a PAGINA esperou, nunca o que o SHELL gastou a armar, a mandar e a
+        # mapear. Quatro numeros, um por segmento, e o total: a proxima pressao na
+        # maquina dele nomeia o culpado em vez de deixar uma teoria.
+        log('PANEL_SHOW_COST reason=%s surf_ms=%.1f arm_ms=%.1f gate_ms=%.1f '
+            'map_ms=%.1f ack_ms=%.1f total_ms=%.1f'
+            % (reason, (_t_surf1 - _t_surf0) * 1000.0,
+               (_t_gate0 - _t_surf1) * 1000.0,
+               (_t_map0 - _t_gate0) * 1000.0,
+               (_t_ack0 - _t_map0) * 1000.0,
+               (time.monotonic() - _t_ack0) * 1000.0,
+               (time.monotonic() - _t_surf0) * 1000.0))
         # THE DEFERRED DEFAULT WORKER STARTS HERE (2026-10-17). The launch is
         # light on purpose; the first time the panel is actually on screen is
         # the first moment a caption can be seen, so it is the honest moment to
