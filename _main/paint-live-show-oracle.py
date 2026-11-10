@@ -457,19 +457,31 @@ def _map_before_content(text):
 
 
 def _source_map_first(src):
-    """Troca, em cada funcao do mapa, o gate e a linha do mapa de lugar."""
+    """Troca, em cada funcao do mapa, o gate e a linha do mapa de lugar.
+
+    A LINHA DO GATE NAO E' LITERAL. Ela ja' mudou de assinatura duas vezes
+    (`content_gate(reason, surface)` -> `(reason, surface, deadline=...)`,
+    2026-11-10, quando o gate passou a receber o orcamento do show), e este
+    mutante procurava o texto exacto: no dia em que a chamada ganhou o
+    `deadline=`, o `replace` deixou de encontrar a linha, o mutante ficou igual
+    ao original e o braco publicava `GREEN NOT-CAUGHT` (`--neg-arm`: 19 casos,
+    18 apanhados). O mutante segue a chamada por PADRAO, para a proxima
+    assinatura nao o desligar em silencio.
+    """
     out = []
     for chunk in re.split(r'(?=\n    def )', src):
         name = chunk.lstrip('\n').split('\n', 1)[0].strip()
         swapped = chunk
         for fname, map_call in _SOURCE_PATHS:
             if name.startswith('def %s(' % (fname,)):
-                gate_line = '        content = self.content_gate(reason, self.surface_applied)\n'
+                m = re.search(r'^[ ]+content = self\.content_gate\([^\n]*\)\n',
+                              swapped, re.M)
                 map_line = '        %s\n' % (map_call,)
-                if gate_line in swapped and map_line in swapped:
+                if m and map_line in swapped:
                     # MOVE, nao troca: o gate sai do lugar e entra DEPOIS do
                     # mapa -- o mutante e' "a janela primeiro", com o
                     # comentario e a distancia que o ficheiro real tem.
+                    gate_line = m.group(0)
                     swapped = swapped.replace(gate_line, '', 1)
                     swapped = swapped.replace(map_line, map_line + gate_line, 1)
         out.append(swapped)

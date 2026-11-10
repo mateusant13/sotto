@@ -407,6 +407,39 @@ TRANSPARENCY_HACK_WAIT_S = 0.25
 #: parte que a pagina pode confirmar -- o custo da PRIMEIRA pintura e' pago em
 #: `_warm_paint`, porque ele nao aparece em frame nenhuma antes de o dono ver.
 PAINT_ACK_TIMEOUT_MS = 400
+#: O ORCAMENTO DO SHOW INTEIRO, UM SO', MEDIDO DA TECLA (2026-11-10).
+#:
+#: O que estava medido: o primeiro Alt+C do dono custou **3 142 ms** da tecla ao
+#: `PANEL_SHOWN` (sessao de 2026-11-10 09:33:51). Desses, `wait_ms=500` era a
+#: espera declarada do ack e **2 642 ms** aconteciam FORA de qualquer espera
+#: declarada: a publicacao da visibilidade no fio da hotkey (1 185 ms, ver
+#: `PanelVisibilityWriter.write`), o gate de conteudo a estourar o proprio
+#: orcamento de 250 ms (594 ms, porque o `BeginInvoke` dele entra na fila do UI
+#: thread ATRAS das nossas proprias postagens) e duas leituras da pagina antes do
+#: mapa. Cada pedaco tinha um teto e a SOMA nao tinha nenhum: dois orcamentos de
+#: 250 e 400 ms somavam 1 094 ms, dois shows seguidos pagaram 781 ms e 1 094 ms.
+#:
+#: ESTE NUMERO NAO E' UM ORCAMENTO NOVO: e' o MESMO 400 ms que a casa ja' exige
+#: da pintura (`paint-live-show`: `wait_ms<=400`; `_main/boot-interaction-oracle.py`:
+#: `SHOW_BUDGET_MS` = 400). O que muda e' que ele passa a ser **um so' relogio,
+#: partilhado** por todas as esperas do show: um pedaco so' recebe o que RESTA do
+#: que o anterior gastou, portanto a soma nunca volta a ser 1 094 ms. Nao se
+#: espera mais em lado nenhum -- espera-se menos em cada sitio, e o que nao cabe
+#: no orcamento fica NOMEADO no log (`why=show-budget-spent`) em vez de custar ao
+#: dono. O `PANEL_SHOW_COST` publica os pedacos para o proximo Alt+C nomear quem
+#: gastou.
+SHOW_BUDGET_MS = 400.0
+#: O show mede a partir da LINHA COALESCIDA (a tecla), nao da entrada de
+#: `show_strip`: o que o dono sente inclui o despacho, e o oraculo le a mesma
+#: janela. `hotkey_gesture`/`_hotkey_resolve` passam o instante do coalesced.
+SHOW_BUDGET_S = SHOW_BUDGET_MS / 1000.0
+#: A RE-MEDICAO DA FAIXA NAO CONCORRE COM O SHOW (2026-11-10). `set_panel_surface`
+#: posta `_post_metrics_refresh` no caminho do show por desenho, e o fio dele faz
+#: DUAS idas ao UI thread (`STRIP_HEIGHT`/`STRIP_WIDTH`) mais um `SetWindowPos` de
+#: re-aplicacao -- medido a cair EM CIMA do show (13.275 -> 14.643 no log do dono,
+#: com o segundo resize a competir com o mapa). Depois do orcamento do show ela
+#: nao estorva ninguem e o numero que ela adopta ja' nao chega tarde.
+PAINT_METRICS_DELAY_S = 0.35
 #: O AQUECIMENTO DA PRIMEIRA PINTURA (2026-11-01): 2x os **325 ms** medidos,
 #: pagos no ARRANQUE com a janela fora do ecra -- o dono nao espera por ele. O
 #: porque completo, com a medicao, esta' em `_warm_paint`.
@@ -9261,6 +9294,13 @@ user32.GetMenuStringW.argtypes = [wt.HMENU, ctypes.c_uint, wt.LPWSTR,
                                   ctypes.c_int, ctypes.c_uint]
 user32.GetCursorPos.argtypes = [ctypes.c_void_p]
 user32.SetForegroundWindow.argtypes = [wt.HWND]
+#: Quem esta' em primeiro plano e' um HANDLE, e o fio dele e' um DWORD: sem
+#: `argtypes` o `GetWindowThreadProcessId` recebia o HWND como int de 32 bits e
+#: devolvia lixo em silencio (a mesma classe de defeito que o `HWND_TOPMOST` de
+#: `SetWindowPos` acima). A bandeja le estes dois para decidir o `AttachThreadInput`.
+user32.GetWindowThreadProcessId.restype = wt.DWORD
+user32.GetWindowThreadProcessId.argtypes = [wt.HWND,
+                                            ctypes.POINTER(wt.DWORD)]
 user32.LoadImageW.restype = wt.HANDLE
 user32.LoadImageW.argtypes = [wt.HINSTANCE, wt.LPCWSTR, ctypes.c_uint,
                               ctypes.c_int, ctypes.c_int, ctypes.c_uint]
@@ -9588,20 +9628,27 @@ class TrayIcon:
         t_menu = time.monotonic()
         pt = POINT()
         user32.GetCursorPos(ctypes.byref(pt))
-        # SetForegroundWindow is what makes the menu dismiss correctly when the
-        # owner clicks elsewhere; without it the menu can be left orphaned.
+        # O PRIMEIRO PLANO -- E O QUE O SISTEMA DIZ SOBRE ELE (medido 2026-11-10).
+        #
+        # Um `SetForegroundWindow` cru NAO CHEGA nesta maquina: o clique real do
+        # dono deu 13 de 13 `TRAY_MENU_FOREGROUND ok=0 is_foreground=0`, porque o
+        # processo da bandeja nao era o processo em primeiro plano e o
+        # `SPI_GETFOREGROUNDLOCKTIMEOUT` deste hospedeiro esta' no MAXIMO
+        # (`0x7FFFFFFF` ms) -- a fechadura de primeiro plano nunca expira, logo a
+        # chamada crua e' recusada para sempre. A receita documentada para a
+        # janela de uma bandeja e' a do `AttachThreadInput` (ver
+        # `_take_menu_foreground`): filas de input ligadas durante a chamada e
+        # desligadas no `finally`.
+        #
         # The MSDN shell-notification recipe has THREE parts, and the third is
-        # the one that is easy to forget: the SetForegroundWindow, then a
+        # the one that is easy to forget: the foreground call, then a
         # PostMessage(hwnd, WM_NULL) so the FIRST outside click is delivered to
         # the menu instead of being eaten by the window coming to the front, and
-        # only then TrackPopupMenu. The result of the foreground call is LOGGED
-        # rather than assumed, because it can fail and a silent failure is the
-        # difference between a fluid menu and a stuck one.
-        ok_fg = bool(user32.SetForegroundWindow(wt.HWND(self.hwnd)))
-        err_fg = ctypes.get_last_error()
+        # only then TrackPopupMenu. What the foreground step ACHIEVED is logged
+        # rather than assumed: a silent failure is the difference between a fluid
+        # menu and a stuck one.
+        fg = self._take_menu_foreground()
         user32.PostMessageW(wt.HWND(self.hwnd), WM_NULL, 0, 0)
-        user32.GetForegroundWindow.restype = wt.HWND
-        fg_now = int(user32.GetForegroundWindow() or 0)
         command = user32.TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD,
                                         pt.x, pt.y, 0, wt.HWND(self.hwnd),
                                         None)
@@ -9613,15 +9660,135 @@ class TrayIcon:
         # nesta maquina vive num disco saturado. Escrito ANTES do
         # `TrackPopupMenu`, esse `flush` fica entre o clique do dono e o menu a
         # aparecer -- e o sintoma dele e' exactamente "aperto o botao direito e
-        # nao responde". O `ok_fg` e' medido ANTES (e' o que decide a receita) e
-        # contado depois, com o custo do menu ao lado:
+        # nao responde". O estado do primeiro plano (`fg`) e' medido ANTES (e' o
+        # que decide a receita) e contado depois, com o custo do menu ao lado:
         menu_ms = (time.monotonic() - t_menu) * 1000.0
-        self.log(f'TRAY_MENU_FOREGROUND ok={int(ok_fg)} err={err_fg} '
-                 f'hwnd={self.hwnd} is_foreground={int(fg_now == self.hwnd)} '
-                 f'menu_ms={menu_ms:.0f}')
+        # A JANELA INVISIVEL EM PRIMEIRO PLANO COME AS TECLAS DO DONO: depois do
+        # menu, o primeiro plano volta a quem o tinha -- mas SO' quando ainda e'
+        # nossa janela (se ele fechou o menu clicando noutra app, essa app ja' o
+        # tem e nao se lhe toca). Ver `_restore_menu_foreground`.
+        fg_restored = self._restore_menu_foreground(fg)
+        self.log(f'TRAY_MENU_FOREGROUND ok={int(fg["ok"])} '
+                 f'is_foreground={int(fg["is_foreground"])} '
+                 f'reason={fg["reason"]} attached={int(fg["attached"])} '
+                 f'attach_err={fg["attach_err"]} fg_before={fg["fg_before"]} '
+                 f'fg_thread={fg["fg_thread"]} me_thread={fg["me_thread"]} '
+                 f'fg_restored={int(fg_restored)} '
+                 f'hwnd={self.hwnd} menu_ms={menu_ms:.0f}')
         if command:
             # A REAL WM_COMMAND, so the menu and the probe take one path.
             user32.PostMessageW(wt.HWND(self.hwnd), WM_COMMAND, command, 0)
+
+    def _take_menu_foreground(self) -> dict:
+        """Take the foreground the popup menu needs, with the input queue LIGADA.
+
+        What the OS says, never what we asked for: every field of the returned
+        dict is a measurement.
+
+        ── PORQUE O `SetForegroundWindow` CRU NAO BASTA (medido 2026-11-10) ───
+        `SetForegroundWindow` so' poe uma janela em primeiro plano se o processo
+        que chama fizer parte da lista curta do Windows (e' o processo em
+        primeiro plano, foi lancado por ele, recebeu o ultimo evento de input,
+        ... ou a fechadura de primeiro plano expirou). Nesta maquina a fechadura
+        esta' no MAXIMO -- `SPI_GETFOREGROUNDLOCKTIMEOUT` = `0x7FFFFFFF` ms --
+        portanto a ultima condicao NUNCA se verifica, e o clique do dono (que e'
+        recebido pelo EXPLORER, nao por nos) deixava a janela da bandeja fora do
+        primeiro plano em 13 de 13 cliques: `ok=0 is_foreground=0`.
+
+        A saida documentada e' `AttachThreadInput`: enquanto as duas filas de
+        input estao ligadas, o Windows trata os dois fios como um so' para
+        efeitos de primeiro plano, e a chamada passa. Desligar e' OBRIGATORIO
+        (no `finally`): filas ligadas prendem o input dos dois processos um ao
+        outro.
+
+        O attach pode ser RECUSADO por UIPI quando a janela em primeiro plano
+        pertence a um processo de integridade mais alta -- medido nesta maquina
+        a partir de um processo MEDIUM (`AttachThreadInput` -> 0, `err=5`
+        ERROR_ACCESS_DENIED, com o `explorer` a correr em HIGH). Nesse caso a
+        recusa e' o que se REGISTA (`attach_err=`), e o `reason=` diz qual das
+        condicoes falhou: um log que dissesse `ok=1` sem o sistema o ter dito
+        seria pior do que a falha.
+        """
+        state = {'fg_before': 0, 'fg_thread': 0, 'me_thread': 0,
+                 'attached': False, 'attach_err': 0, 'ok': False,
+                 'is_foreground': False, 'reason': 'unknown'}
+        fg_before = 0
+        fg_thread = 0
+        attached = False
+        try:
+            user32.GetForegroundWindow.restype = wt.HWND
+            fg_before = int(user32.GetForegroundWindow() or 0)
+            state['fg_before'] = fg_before
+            state['me_thread'] = int(kernel32.GetCurrentThreadId())
+            if fg_before:
+                owner = wt.DWORD(0)
+                fg_thread = int(user32.GetWindowThreadProcessId(
+                    wt.HWND(fg_before), ctypes.byref(owner)) or 0)
+            state['fg_thread'] = fg_thread
+            # UM ATTACH A NOS PROPRIOS FIOS NAO FAZ NADA (ja' estao ligados), e o
+            # `SetForegroundWindow` passa so' porque o processo ja' tem o
+            # primeiro plano -- que e' o caso `already-foreground` abaixo.
+            if (fg_before and fg_before != int(self.hwnd) and fg_thread
+                    and fg_thread != state['me_thread']):
+                ctypes.set_last_error(0)
+                attached = bool(user32.AttachThreadInput(
+                    wt.DWORD(state['me_thread']), wt.DWORD(fg_thread), True))
+                state['attached'] = attached
+                if not attached:
+                    state['attach_err'] = ctypes.get_last_error()
+            state['ok'] = bool(user32.SetForegroundWindow(wt.HWND(self.hwnd)))
+        except Exception as exc:  # noqa: BLE001 -- o menu abre mesmo assim
+            state['reason'] = 'failed:%s' % type(exc).__name__
+        finally:
+            if attached:
+                try:
+                    user32.AttachThreadInput(wt.DWORD(state['me_thread']),
+                                             wt.DWORD(fg_thread), False)
+                except Exception:     # noqa: BLE001 -- nunca matar o clique
+                    pass
+        try:
+            user32.GetForegroundWindow.restype = wt.HWND
+            state['is_foreground'] = (int(user32.GetForegroundWindow() or 0)
+                                      == int(self.hwnd))
+        except Exception:             # noqa: BLE001
+            state['is_foreground'] = False
+        if state['reason'] == 'unknown':
+            if fg_before == int(self.hwnd):
+                state['reason'] = 'already-foreground'
+            elif state['is_foreground']:
+                state['reason'] = 'took-foreground'
+            elif not fg_before:
+                state['reason'] = 'no-foreground-window'
+            elif state['attached']:
+                # As filas estavam ligadas e o Windows recusou na mesma.
+                state['reason'] = 'foreground-denied-attached'
+            elif state['attach_err']:
+                state['reason'] = 'attach-denied'
+            elif fg_thread == state['me_thread']:
+                state['reason'] = 'foreground-denied-same-thread'
+            else:
+                state['reason'] = 'foreground-denied'
+        return state
+
+    def _restore_menu_foreground(self, fg) -> bool:
+        """Give the foreground back to whoever had it, IF we still hold it.
+
+        Uma janela INVISIVEL em primeiro plano recebe o teclado: se o dono usar
+        o menu e depois escrever sem clicar em lado nenhum, o input vai para uma
+        janela que ele nao ve'. Por isso o primeiro plano volta ao `fg_before`
+        -- mas so' quando o primeiro plano AINDA e' a nossa janela: se ele fechou
+        o menu clicando noutra app, essa app ja' o tem e mexer-lhe seria roubar
+        o foco que ele acabou de dar por um clique.
+        """
+        try:
+            if not fg.get('fg_before') or int(fg['fg_before']) == int(self.hwnd):
+                return False
+            user32.GetForegroundWindow.restype = wt.HWND
+            if int(user32.GetForegroundWindow() or 0) != int(self.hwnd):
+                return False
+            return bool(user32.SetForegroundWindow(wt.HWND(fg['fg_before'])))
+        except Exception:             # noqa: BLE001 -- devolver o foco nunca falha alto
+            return False
 
     def _build_menu(self):
         """Built, LOGGED, and then drawn — so the log proves every item exists
@@ -11080,10 +11247,17 @@ class PanelVisibilityWriter:
     every reader downstream would have to guess which — the ambiguity that made a
     previous generation of this repo's probes disagree with each other.
 
-    WHY A THREAD. The transition writes come from the UI thread (`show_panel`/
-    `hide_panel`) and MUST NOT wait on a file. The cadence write runs here, every
-    `interval_s`, re-reading the live window: that is what turns a map/unmap that
-    happened WITHOUT going through `show_panel`/`hide_panel` — pywebview's own
+    WHY A THREAD. The transition writes come from the show threads
+    (`set_panel_surface`/`show_panel`/`hide_panel`) and MUST NOT wait on a file.
+    Until 2026-11-10 they DID: `write` called `panel_state.write_atomic` on the
+    caller, and its `os.replace` retry loop sleeps up to ~1,9 s when another
+    process holds the file — measured at 1 185 ms and 1 404 ms of the owner's own
+    Alt+C, between the `PANEL_SURFACE` and `WEBVIEW_CHILD` lines, where this
+    publication was the only code. `write` now BUILDS the payload (the instant's
+    state) and hands it to this thread; that claim is the implementation, not a
+    wish (see `write`). The cadence write also runs here, every `interval_s`,
+    re-reading the live window: that is what turns a map/unmap that happened
+    WITHOUT going through `show_panel`/`hide_panel` — pywebview's own
     navigation-time `Show`, `_reassert_hidden`, a hot reload — into a recorded
     transition instead of a silent divergence between the file and the screen.
     """
@@ -11122,6 +11296,13 @@ class PanelVisibilityWriter:
         self.errors = 0
         self._stop = threading.Event()
         self._thread = None
+        #: A PUBLICACAO E' UMA ENCOMENDA, NAO UMA ESCRITA (2026-11-10, MEDIDO).
+        #: Ver `write`: o payload do instante da transicao fica aqui e o fio
+        #: `sotto-panel-visibility` e' quem o poe no disco. `_wake` acorda esse
+        #: fio no instante do pedido (a cadencia de 3 s e' o piso, nao a espera).
+        self._lock = threading.Lock()
+        self._slot = None
+        self._wake = threading.Event()
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> bool:
@@ -11144,20 +11325,82 @@ class PanelVisibilityWriter:
 
     def stop(self, reason='stop') -> None:
         self._stop.set()
+        # O FIO DORME EM `_wake` (cadencia ou encomenda): sem este set o `stop`
+        # esperava ate' `interval_s` para o fio ver a paragem.
+        self._wake.set()
         self.log(f'PANEL_VISIBILITY_WRITER_STOP reason={reason} '
                  f'writes={self.writes} transitions={self.transitions} '
                  f'errors={self.errors}')
 
     def _loop(self) -> None:
-        while not self._stop.wait(self.interval_s):
-            # Reason `poll`: this state was reached without a show/hide call, or
-            # the call's write already happened and this is the same state — the
-            # writer only logs a transition when the VALUE moved, so a steady
-            # panel produces no transition lines at all.
-            self.write('poll')
+        while True:
+            woke = self._wake.wait(self.interval_s)
+            self._wake.clear()
+            if self._stop.is_set():
+                return
+            if not woke:
+                # Reason `poll`: this state was reached without a show/hide call, or
+                # the call's write already happened and this is the same state — the
+                # writer only logs a transition when the VALUE moved, so a steady
+                # panel produces no transition lines at all.
+                self.write('poll')
+            payload = self._take()
+            if payload is not None:
+                self._publish(payload)
+
+    def _take(self):
+        """O payload encomendado, UMA vez. `None` quando nao ha nada por publicar."""
+        with self._lock:
+            payload, self._slot = self._slot, None
+        return payload
 
     # -- one publication ---------------------------------------------------
     def write(self, reason='poll', visible=None) -> bool:
+        """ENCOMENDA a publicacao do estado actual. NUNCA ESCREVE NO FIO DO CHAMADOR.
+
+        ── O DEFEITO MEDIDO (2026-11-10) ─────────────────────────────────────
+        Isto chamava `panel_state.write_atomic` NO FIO QUE PEDIU a transicao. No
+        caminho do show esse fio e' o `sotto-hotkey-steps` -- o unico fio que o
+        dono controla --, e o `write_atomic` re-tenta o `os.replace` ate' 20 vezes
+        com `time.sleep(min(0.1, 0.02 * (attempt + 1)))` enquanto OUTRO processo
+        tem o ficheiro aberto para leitura (o worker sonda-o; o Windows recusa o
+        rename com `PermissionError(13)`, o defeito que esta casa ja' mediu 1 145
+        063 vezes). O pior caso e' ~1,9 s DENTRO do show, e ele NAO deixa rasto
+        nenhum quando acaba por conseguir: `PANEL_VISIBILITY_WRITE_FAILED` so'
+        existe para a falha TOTAL.
+
+        Medido nesta maquina (`_main/show-path-stall-probe.py`), dois escritores no
+        MESMO ficheiro nas cadenciais reais: p50 9,7 ms, **p95 417 ms, max 658 ms,
+        zero falhas registadas**. E no log do dono o unico codigo entre a linha
+        `PANEL_SURFACE` e a linha `WEBVIEW_CHILD` e' esta publicacao mais o censo
+        dos filhos: **1 185 ms** (09:34:13.431 -> 14.616) no primeiro Alt+C e
+        **1 404 ms** (09:34:19.010 -> 20.428) no segundo. Aqueles milissegundos
+        eram, por construcao, o candidato unico daquele intervalo.
+
+        PORQUE UMA ENCOMENDA NAO MUDA O CONTRATO. O ficheiro e' um ESTADO, nao um
+        historico: o payload (com `since_ms`, `transitions` e `writtenAtEpoch` do
+        INSTANTE do pedido) e' construido aqui, na hora, e o fio do writer poe-no
+        no disco ao acordar -- milissegundos depois, nunca 3 s. Uma encomenda
+        mais recente substitui a anterior (`_slot`), que e' a mesma regra que o
+        `emit` desta shell ja' usa: o painel e' funcao do ultimo estado que viu.
+
+        `writes` conta encomendas publicadas e `errors` falhas do disco, os dois
+        no fio do writer -- a contagem que `panel_visibility_snapshot` publica nao
+        muda de significado (uma publicacao que falha deixa de ser contada como
+        escrita, como antes).
+        """
+        payload = self._payload(reason, visible)
+        if self._thread is None or self._stop.is_set():
+            # NADA ONDE ENCOMENDAR (o `boot` antes do fio, uma paragem): escreve
+            # aqui, que e' o que o arranque sempre fez e nao ha' quem espere.
+            return self._publish(payload)
+        with self._lock:
+            self._slot = payload
+        self._wake.set()
+        return True
+
+    def _payload(self, reason, visible) -> dict:
+        """O payload do INSTANTE do pedido -- estado, sem tocar no disco."""
         observed = bool(self.observe()) if visible is None else bool(visible)
         now_ms = int(time.time() * 1000)
         if self.visible is None:
@@ -11231,6 +11474,10 @@ class PanelVisibilityWriter:
                 self.log(f'PANEL_VISIBILITY_EXTRA_FAILED error={exc!r}')
             if isinstance(extra, dict):
                 payload['geometry'] = extra
+        return payload
+
+    def _publish(self, payload) -> bool:
+        """O disco, e SO' AQUI -- no fio do writer. Ver `write` para o porque."""
         try:
             panel_state.write_atomic(self.path, payload)
         except Exception as exc:
@@ -14202,7 +14449,7 @@ class SottoShell:
         log(f'PAINT_ACK_ARM seq={seq} posted={str(posted).lower()} reason={reason}')
         return seq if posted else 0
 
-    def wait_paint_ack(self, seq, reason) -> dict:
+    def wait_paint_ack(self, seq, reason, deadline=None) -> dict:
         """Espera, LIMITADA, pela frame que a pagina armou. Falha sempre aberta.
 
         `paint_ack=false` e' um FACTO medido, nunca uma razao para deixar o painel
@@ -14210,18 +14457,37 @@ class SottoShell:
         segue. Uma leitura que nao responde (`NoAnswer`) TERMINA a espera em vez de
         repetir -- sem resposta do `exec_js` significa UI thread ocupado, que e'
         exactamente o momento em que este codigo tem de sair da frente do dono.
+
+        `deadline` E' O RELOGIO DO SHOW INTEIRO (ver `SHOW_BUDGET_MS`): o ack so'
+        recebe o que RESTA dele, e quando nao resta nada ele nao pergunta -- a
+        linha diz `why=show-budget-spent` em vez de gastar mais 400 ms que o
+        orcamento nao tem. Sem `deadline` o comportamento e' o de sempre (400 ms
+        do ack), para os chamadores que nao sao o show.
         """
         out = {'ack': False, 'wait_ms': 0.0, 'why': 'arm-not-posted'}
         if not seq:
             log(f'PAINT_ACK ack=false wait_ms=0 seq=0 reason={reason} '
                 f'why={out["why"]} timeout_ms={PAINT_ACK_TIMEOUT_MS}')
             return out
+        window_s = PAINT_ACK_TIMEOUT_MS / 1000.0
+        if deadline is not None:
+            window_s = min(window_s, max(0.0, deadline - time.monotonic()))
+        if deadline is not None and window_s < PAINT_ACK_POLL_S:
+            # NAO HA' ORCAMENTO PARA A PERGUNTA: nao se pergunta. Uma espera que
+            # o relogio do show nao paga deixou de ser uma espera e passou a ser
+            # o show a gastar o tempo do dono -- e a linha diz isso, nomeado.
+            out['why'] = 'show-budget-spent'
+            log('PAINT_ACK ack=false wait_ms=0.0 seq=%s reason=%s why=%s '
+                'timeout_ms=%s budget_left_ms=%.1f'
+                % (seq, reason, out['why'], PAINT_ACK_TIMEOUT_MS,
+                   window_s * 1000.0))
+            return out
         script = PAINT_ACK_READ_JS.replace('__SEQ__', str(seq))
         t0 = time.monotonic()
-        deadline = t0 + (PAINT_ACK_TIMEOUT_MS / 1000.0)
+        limit = t0 + window_s
         out['why'] = 'timeout'
         while True:
-            left = deadline - time.monotonic()
+            left = limit - time.monotonic()
             answer = self.exec_js(
                 script, timeout=max(0.05, min(left, PAINT_ACK_JS_TIMEOUT_S)))
             if isinstance(answer, NoAnswer):
@@ -14231,7 +14497,7 @@ class SottoShell:
                 out['ack'] = True
                 out['why'] = 'painted'
                 break
-            left = deadline - time.monotonic()
+            left = limit - time.monotonic()
             if left <= 0:
                 break
             time.sleep(min(PAINT_ACK_POLL_S, left))
@@ -14241,7 +14507,7 @@ class SottoShell:
                out['why'], PAINT_ACK_TIMEOUT_MS))
         return out
 
-    def content_gate(self, reason, surface=None) -> dict:
+    def content_gate(self, reason, surface=None, deadline=None) -> dict:
         """Confirma, ANTES do mapa, que a pagina ja' tem a superficie vestida.
 
         ── A ORDEM DO DONO, e a parte que faltava da cura ─────────────────────
@@ -14289,6 +14555,14 @@ class SottoShell:
             return out
         script = CONTENT_GATE_JS.replace('__NAME__', json.dumps(name))
         budget = max(CONTENT_GATE_RETRY_MIN_S, CONTENT_GATE_TIMEOUT_MS / 1000.0)
+        if deadline is not None:
+            # O GATE NAO TEM ORCAMENTO PROPRIO NO SHOW: recebe o que resta do
+            # `SHOW_BUDGET_MS`. Medido (2026-11-10): o gate declarava 250 ms e
+            # gastou 594 porque o `BeginInvoke` dele entra na fila do UI thread
+            # atras das nossas proprias postagens -- um teto por pedaco nao
+            # limita a soma, e o dono paga a soma.
+            budget = max(CONTENT_GATE_RETRY_MIN_S,
+                         min(budget, deadline - time.monotonic()))
 
         def ask(left):
             # UM ORCAMENTO, NAO DOIS: cada pergunta recebe o que resta do
@@ -14298,11 +14572,11 @@ class SottoShell:
         out = gate_probe(name, ask, budget)
         log('PANEL_CONTENT surface=%s ack=%s applied=%s style=%s sized=%s '
             'size=%dx%d head=%s vis=%s wait_ms=%s why=%s order=before-map '
-            'reason=%s timeout_ms=%s attempts=%d error=%s'
+            'reason=%s timeout_ms=%.1f attempts=%d error=%s'
             % (name, str(out['ack']).lower(), json.dumps(str(out['applied'])),
                str(out['style']).lower(), str(out['sized']).lower(),
                out['w'], out['h'], json.dumps(out['head']), out['vis'],
-               out['wait_ms'], out['why'], reason, CONTENT_GATE_TIMEOUT_MS,
+               out['wait_ms'], out['why'], reason, budget * 1000.0,
                out['attempts'], json.dumps(out['error'][:CONTENT_GATE_ERROR_MAX_CHARS])))
         if not out['ack']:
             # O SHOW ACONTECE (falha aberta, inalterada) E O ARTEFACTO DIZ QUE
@@ -15687,9 +15961,11 @@ class SottoShell:
             log(f'WORKER_PANEL_START_FAILED source={source} error={exc!r}')
             return False
 
-    def show_panel(self, reason, surface=None):
+    def show_panel(self, reason, surface=None, deadline=None):
         if self.hwnd is None:
             return False
+        if deadline is None:
+            deadline = time.monotonic() + SHOW_BUDGET_S
         # O RELOGIO DO SHOW: `surf_ms` mede o que a superficie custa, e e' o unico
         # segmento que o log antigo nao separava de "a pagina nao respondeu".
         _t_surf0 = time.monotonic()
@@ -15753,7 +16029,7 @@ class SottoShell:
         # forçado. Fica ANTES do mapa e falha ABERTA em `CONTENT_GATE_TIMEOUT_MS`,
         # para um show nunca deixar de acontecer por a pagina nao responder.
         _t_gate0 = time.monotonic()
-        content = self.content_gate(reason, self.surface_applied)
+        content = self.content_gate(reason, self.surface_applied, deadline=deadline)
         _t_map0 = time.monotonic()
         # SW_SHOWNOACTIVATE, not Show(): the panel must never take focus away
         # from whatever the owner is typing into (main.js: `focusable=false`).
@@ -15764,7 +16040,7 @@ class SottoShell:
         # navigation-time `form.Show()`.
         transparency_hack(self)
         _t_ack0 = time.monotonic()
-        ack = self.wait_paint_ack(ack_seq, reason)
+        ack = self.wait_paint_ack(ack_seq, reason, deadline=deadline)
         self.visible = window_visible(self.hwnd)
         # ── O CUSTO DO SHOW, POR SEGMENTO (2026-11-10) ───────────────────────
         # Card do dono: *"Alt+C tambem trava (lag no toggle dos paineis)"*. MEDIDO
@@ -16047,6 +16323,11 @@ class SottoShell:
                                  or target_surface == shown)) else 1
         log(f'HOTKEY_COALESCED presses={presses} from={from_state} '
             f'to={to_state} steps={presses} transitions={transitions}')
+        # O RELOGIO DO SHOW COMECA AQUI, na linha que o oraculo usa como origem
+        # (`HOTKEY_COALESCED`), e nao dentro de `show_strip`: o orcamento e' o do
+        # que o dono sente desde a tecla, e um relogio que comecasse mais tarde
+        # deixaria o proprio despacho de fora da conta.
+        deadline = time.monotonic() + SHOW_BUDGET_S
         if not transitions:
             return False
         if not target_visible:
@@ -16054,8 +16335,8 @@ class SottoShell:
             return self.hide_panel('hotkey-toggle')
         log(f'HOTKEY_TOGGLE step=show surface={target_surface}')
         if target_surface == 'panel':
-            return self.show_side('hotkey-cycle-side')
-        return self.show_strip('hotkey-cycle-strip')
+            return self.show_side('hotkey-cycle-side', deadline=deadline)
+        return self.show_strip('hotkey-cycle-strip', deadline=deadline)
 
     def _warm_paint(self, reason='startup'):
         """Pay the page's FIRST presented frame OFF the owner's screen.
@@ -16111,9 +16392,39 @@ class SottoShell:
             f'ack={str(ack["ack"]).lower()} ack_wait_ms={ack["wait_ms"]} '
             f'settle_s={PAINT_WARM_SETTLE_S} '
             f'visible={str(window_visible(hwnd)).lower()}')
+        # ── E O QUE O PRIMEIRO Alt+C IA BUSCAR A PAGINA (2026-11-10) ───────────
+        # MEDIDO no log do dono: o primeiro Alt+C de um processo pagava TRES idas
+        # ao UI thread que so' existiam porque ninguem as tinha feito antes --
+        # `STRIP_HEIGHT from=148 to=40 css_value=40` (13.275), `STRIP_WIDTH
+        # from=None to=380` (13.846) e `STRIP_OFFSET_CACHE_FAILED`/a leitura do
+        # offset do drag. A pagina ja' esta' pintada AQUI (o ack acima e' a
+        # prova), portanto estas leituras custam o mesmo no arranque e deixam o
+        # `_post_metrics_refresh` e o `_strip_offset` do show servidos pela
+        # cache. Continua fora do ecra, com a janela escondida depois.
+        primed = {'height': False, 'width': False, 'offset': None}
+        try:
+            primed['height'] = bool(self.refresh_strip_height(f'warm-{reason}'))
+        except Exception as exc:  # noqa: BLE001
+            warn(f'PAINT_WARM_METRICS_FAILED what=height error={exc!r}')
+        try:
+            primed['width'] = bool(self.refresh_strip_width(f'warm-{reason}'))
+        except Exception as exc:  # noqa: BLE001
+            warn(f'PAINT_WARM_METRICS_FAILED what=width error={exc!r}')
+        try:
+            # Le' a pagina UMA vez e escreve `_strip_offset_cache`; um
+            # `NoAnswer` deixa a cache vazia e o show volta a perguntar (o
+            # mesmo contrato de `_strip_offset`).
+            primed['offset'] = self._strip_offset()
+        except Exception as exc:  # noqa: BLE001
+            warn(f'PAINT_WARM_METRICS_FAILED what=offset error={exc!r}')
+        log(f'PAINT_WARM_METRICS reason={reason} '
+            f'height_cached={str(getattr(self, "strip_height_css", None) is not None).lower()} '
+            f'width_cached={str(getattr(self, "strip_width_dom", None) is not None).lower()} '
+            f'offset={primed["offset"]} '
+            f'offset_cached={str(getattr(self, "_strip_offset_cache", None) is not None).lower()}')
         return bool(ack['ack'])
 
-    def show_strip(self, reason):
+    def show_strip(self, reason, deadline=None):
         """Show the bottom strip, and take the foreground ONLY to free a lock.
 
         The activation contract this used to promise ("Alt+C always activates
@@ -16125,11 +16436,20 @@ class SottoShell:
         """
         if self.hwnd is None:
             return False
+        if deadline is None:
+            deadline = time.monotonic() + SHOW_BUDGET_S
+        # O RELOGIO DO SHOW, e o MESMO instrumento que `show_panel` ja' carrega
+        # (`PANEL_SHOW_COST`): quatro pedacos + o total, para a proxima pressao
+        # NOMEAR o culpado em vez de deixar uma teoria. Ate' 2026-11-10 esta
+        # linha so' existia no `show_panel`, que a tecla NAO usa -- por isso o
+        # log do dono tinha 3 142 ms de Alt+C e nenhum numero por pedaco.
+        _t_surf0 = time.monotonic()
         # Geometry only — nothing here maps the window; the map is below, off
         # the screen. And `present=True`, because everything below is on the
         # path to a MAP: the page is not read and is not waited for (see
         # `exec_js_post`).
         self.set_panel_surface('strip', reason, present=True)
+        _t_surf1 = time.monotonic()
         # AND SAY WHICH PANEL IS UP: `hotkey_pressed` is a three-state cycle
         # (HIDDEN -> STRIP -> SIDE -> HIDDEN) decided on `self.panel_mode`, whose
         # OTHER writer was the dead `place_panel`. Without this line the SECOND
@@ -16154,7 +16474,9 @@ class SottoShell:
         # `set_panel_surface(present=True)`; sem esta pergunta o primeiro frame
         # pode sair com o `body[data-surface]` anterior, que para o dono e' a UI
         # a "carregar depois" da faixa.
-        content = self.content_gate(reason, self.surface_applied)
+        _t_gate0 = time.monotonic()
+        content = self.content_gate(reason, self.surface_applied, deadline=deadline)
+        _t_map0 = time.monotonic()
         # THEN the map: `SW_SHOWNOACTIVATE`, and `SW_SHOW+SetForegroundWindow`
         # only when the foreground app holds a POINTER LOCK. See
         # `foreground_unlock`; the old unconditional activation is the defect
@@ -16162,12 +16484,26 @@ class SottoShell:
         fg = foreground_unlock(self.hwnd)
         # And the compositing hack AFTER the map — see `transparency_hack`.
         transparency_hack(self)
-        ack = self.wait_paint_ack(ack_seq, reason)
+        _t_ack0 = time.monotonic()
+        ack = self.wait_paint_ack(ack_seq, reason, deadline=deadline)
         self.visible = window_visible(self.hwnd)
         self._start_deferred_worker('show-strip')
         if (getattr(self, 'external_captions_available', False)
                 and self.external_caption_watcher is not None):
             self.external_caption_watcher.replay()
+        # MEDIDO NA LINHA ANTERIOR AO `PANEL_SHOWN`, e nao varios passos antes:
+        # `total_ms` tem de cobrir o MESMO intervalo que o oraculo mede
+        # (`HOTKEY_COALESCED` -> `PANEL_SHOWN`), senao um pedaco do show fica de
+        # fora da conta e o instrumento passa a mentir por omissao.
+        _t_done = time.monotonic()
+        log('PANEL_SHOW_COST reason=%s mode=strip surf_ms=%.1f arm_ms=%.1f '
+            'gate_ms=%.1f map_ms=%.1f ack_ms=%.1f total_ms=%.1f budget_ms=%.0f'
+            % (reason, (_t_surf1 - _t_surf0) * 1000.0,
+               (_t_gate0 - _t_surf1) * 1000.0,
+               (_t_map0 - _t_gate0) * 1000.0,
+               (_t_ack0 - _t_map0) * 1000.0,
+               (_t_done - _t_ack0) * 1000.0,
+               (_t_done - _t_surf0) * 1000.0, SHOW_BUDGET_MS))
         log(f'PANEL_SHOWN reason={reason} mode=strip hwnd={self.hwnd} '
             f'visible={str(self.visible).lower()} '
             f'show={fg.get("show")} focus={fg.get("reason")} '
@@ -16179,7 +16515,7 @@ class SottoShell:
         self.publish_panel_visibility(reason)
         return True
 
-    def show_side(self, reason):
+    def show_side(self, reason, deadline=None):
         """Show the RIGHT side panel — the cycle's second step.
 
         Same map contract as `show_strip`, including the focus gate: the
@@ -16195,6 +16531,10 @@ class SottoShell:
         """
         if self.hwnd is None:
             return False
+        if deadline is None:
+            deadline = time.monotonic() + SHOW_BUDGET_S
+        # O RELOGIO DO SHOW — igual ao `show_strip` (ver `PANEL_SHOW_COST`).
+        _t_surf0 = time.monotonic()
         # Geometry only — the map is below, off the screen.
         #
         # CORRECTED 2026-10-12, AND THIS IS THE OWNER'S Alt+C BUG. This line
@@ -16208,6 +16548,7 @@ class SottoShell:
         # panel -- and the `if not live` guard fixed earlier was necessary but not
         # sufficient. The surface the right panel wears is `'panel'`.
         self.set_panel_surface('panel', reason, present=True)
+        _t_surf1 = time.monotonic()
         # WHICH PANEL IS UP — see `show_strip` for the measured defect. The
         # cycle's third arm is `panel_mode == 'side'`, and that word is what
         # makes the next Alt+C HIDE. Without it the side panel is where the
@@ -16224,16 +16565,29 @@ class SottoShell:
         # A ORDEM (2026-11-04): conteudo ja' aplicado, DEPOIS o mapa — o par
         # `show_strip`/`show_side` tem de gastar a MESMA ordem, senao a cura
         # depende de qual superficie o ciclo sorteou.
-        content = self.content_gate(reason, self.surface_applied)
+        _t_gate0 = time.monotonic()
+        content = self.content_gate(reason, self.surface_applied, deadline=deadline)
+        _t_map0 = time.monotonic()
         # THEN the map: no activation unless a POINTER LOCK needs freeing.
         fg = foreground_unlock(self.hwnd)
         transparency_hack(self)
-        ack = self.wait_paint_ack(ack_seq, reason)
+        _t_ack0 = time.monotonic()
+        ack = self.wait_paint_ack(ack_seq, reason, deadline=deadline)
         self.visible = window_visible(self.hwnd)
         self._start_deferred_worker('show-side')
         if (getattr(self, 'external_captions_available', False)
                 and self.external_caption_watcher is not None):
             self.external_caption_watcher.replay()
+        # Ver `show_strip`: medido na linha ANTERIOR ao `PANEL_SHOWN`.
+        _t_done = time.monotonic()
+        log('PANEL_SHOW_COST reason=%s mode=side surf_ms=%.1f arm_ms=%.1f '
+            'gate_ms=%.1f map_ms=%.1f ack_ms=%.1f total_ms=%.1f budget_ms=%.0f'
+            % (reason, (_t_surf1 - _t_surf0) * 1000.0,
+               (_t_gate0 - _t_surf1) * 1000.0,
+               (_t_map0 - _t_gate0) * 1000.0,
+               (_t_ack0 - _t_map0) * 1000.0,
+               (_t_done - _t_ack0) * 1000.0,
+               (_t_done - _t_surf0) * 1000.0, SHOW_BUDGET_MS))
         log(f'PANEL_SHOWN reason={reason} mode=side hwnd={self.hwnd} '
             f'visible={str(self.visible).lower()} '
             f'show={fg.get("show")} focus={fg.get("reason")} '
@@ -19875,9 +20229,22 @@ class SottoShell:
         reaplicada -- e' o unico custo: um ajuste pequeno (um nudge) na PRIMEIRA
         faixa de um processo, quando a cache ainda nao existia. A alternativa era
         1,75 s de espera em cada pressao.
+
+        ── E ELA ESPERA O SHOW ACABAR (2026-11-10, MEDIDO) ────────────────────
+        A thread comecava no INSTANTE do pedido, ou seja a meio do show, e as duas
+        idas ao UI thread dela entravam na fila A FRENTE das perguntas do proprio
+        show (o gate de conteudo e o ack). No log do dono isso esta' escrito:
+        `STRIP_HEIGHT reason=posted-hotkey-cycle-strip` 13.275, `STRIP_WIDTH` 13.846
+        e um `WINDOW_GEOMETRY reason=metrics-hotkey-cycle-strip` **14.436** -- um
+        SEGUNDO resize da janela (380x148 -> 380x40) a competir com o mapa do show
+        que ainda estava a decorrer. Medido no mesmo log: o gate declarou 250 ms e
+        gastou 594, o ack declarou 400 e gastou 500. Depois de
+        `PAINT_METRICS_DELAY_S` ela ja' nao estorva o orcamento do show, e o numero
+        que ela adopta continua a chegar antes de o dono olhar para a barra.
         """
         def _worker():
             try:
+                time.sleep(PAINT_METRICS_DELAY_S)
                 moved = self.refresh_strip_height(f'posted-{reason}')
                 moved = self.refresh_strip_width(f'posted-{reason}') or moved
                 if moved and name == 'strip' and self.hwnd \

@@ -1536,6 +1536,19 @@ call :step always red-as-expected-boot-interaction 1 "_main\boot-interaction-ora
 call :expectred red-as-expected-boot-interaction !STEP_RC! "%OUT%\boot-interaction-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-boot-interaction MISSING "%OUT%\boot-interaction-neg.log" "NEG-ARM: PASS" )
 ) else ( call :skipped paint-live-show MISSING "%OUT%\paint-live-show.log" "PAINT-LIVE VERDICT: GREEN" "PAINT-LIVE VERDICT: SKIPPED" "VERDICT: SKIPPED" )
+REM `--paint-arm` -- o braco da PINTURA do show, com DOIS ficheiros de forma: o log do dono
+REM (Alt+C: despacho 5 ms, pintura 3 142 ms) tem de dar RED, a forma CURADA (`PANEL_SHOW_COST`
+REM com as parcelas e `total_ms` dentro dos 400 ms) tem de dar GREEN, e a mutacao da cura tem de
+REM voltar a RED. Ele devolve 0 so' quando as tres se comportam. Nasceu em 2026-11-10 com a cura
+REM do Alt+C e esteve FORA da bateria ate agora -- e um braco que nenhum passo executa apodrece
+REM (a doenca do `panel-deps`, medida tres vezes nesta casa).
+REM Ele devolve 1 QUANDO PEGA, que e' a convencao dos controles desta casa (o `--neg-arm`
+REM tambem devolve 1 ao apanhar), por isso o passo declara `:expectred` com rc 1 e a frase
+REM `PAINT-ARM: PASS` -- declarado com `:record` (espera 0) ele contava como FAIL.
+if exist _main\boot-interaction-oracle.py (
+call :step always boot-interaction-paint-arm 1 "_main\boot-interaction-oracle.py;_main\fixtures\boot-interaction-altc-paint-slow.log;_main\fixtures\boot-interaction-altc-paint-fast.log;app\webview\sotto_webview.py" "%OUT%\boot-interaction-paint-arm.log" python _main\boot-interaction-oracle.py --paint-arm
+call :expectred boot-interaction-paint-arm !STEP_RC! "%OUT%\boot-interaction-paint-arm.log" "PAINT-ARM: PASS"
+) else ( call :expectred boot-interaction-paint-arm MISSING "%OUT%\boot-interaction-paint-arm.log" "PAINT-ARM: PASS" )
 if exist _main\paint-live-show-oracle.py (
 call :step always red-as-expected-paint-live-show 1 "_main\paint-live-show-oracle.py" "%OUT%\paint-live-show-neg.log" python _main\paint-live-show-oracle.py --neg-arm
 call :expectred red-as-expected-paint-live-show !STEP_RC! "%OUT%\paint-live-show-neg.log" "NEG-ARM PASS"

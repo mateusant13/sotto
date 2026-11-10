@@ -591,6 +591,22 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-10, 15:0x):** `_main\_audit-verify-all.cmd` = **350788 B**,
+  **4072 CRLF** / 0 bare LF, sha256 `0E048935B20A0976DEC88A6685E4B10E8EB7AD176C145D1DA41E32CD4417946E`.
+  (Mil trezentos e noventa e cinco bytes e QUATRO linhas a mais do que o pin de 349393 B: o passo
+  `boot-interaction-paint-arm`, que liga a' bateria o braco da PINTURA do show.
+  `_main\boot-interaction-oracle.py --paint-arm` julga DOIS ficheiros de forma -- o log do dono
+  (Alt+C: despacho 5 ms, pintura **3 142 ms**) tem de dar RED, a forma curada (`PANEL_SHOW_COST`
+  com as parcelas e `total_ms` dentro dos 400 ms) tem de dar GREEN, e a cura mutada tem de voltar
+  a RED. Ele devolve **1 QUANDO PEGA**, que e' a convencao dos controles desta casa, por isso a
+  linha e' `:expectred` com rc 1 e a frase `PAINT-ARM: PASS` -- declarada com `:record` (espera 0)
+  o passo contaria como FAIL, o erro que a casa ja' pagou no `caption-drag`. MEDIDO nesta arvore:
+  `PAINT-ARM: PASS -- red=FAIL green=PASS mutacao=FAIL`, rc=1; o positivo `--log <fast>` da'
+  `VERDICT: PASS -- medidas=6 falhas=0`, rc=0; e o `--neg-arm` do mesmo oraculo `7/7`, rc=1.
+  Ele existia SEM passo desde que o braco nasceu: um braco que nenhum passo executa apodrece.
+  Nota de ordem: o pin de 349393 B (13:5x) ja' estava **1 008 B atras** do ficheiro vivo
+  (350401 B) quando esta lane o mediu, porque outra lane acrescentou passos depois de o pinar --
+  o numero que vale e' o do ficheiro VIVO.)
 - **PIN do ficheiro (medido 2026-11-10, 11:4x):** `_main\_audit-verify-all.cmd` = **344898 B**,
   **4011 CRLF** / 0 bare LF, sha256 `47F9A9C77CFFFC31F74836A37440B09F788089169CF7A7079480989AE593F854`.
   (Quinhentos e setenta e tres bytes e QUATRO linhas a mais do que o pin de 344325 B: o par

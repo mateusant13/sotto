@@ -36,11 +36,15 @@ o que esta casa pagou caro (`shell-thread-budget` sem shell viva devolvia verde)
   python _main/boot-interaction-oracle.py            # le o log vivo
   python _main/boot-interaction-oracle.py --log X    # outro log
   python _main/boot-interaction-oracle.py --neg-arm  # dois logs FALSOS, um verde e um vermelho
+  python _main/boot-interaction-oracle.py --paint-arm # os dois FICHEIROS de forma: o log do dono
+                                                      # (pintura 3 142 ms) tem de ser RED, o log
+                                                      # curado (`PANEL_SHOW_COST`) tem de ser GREEN,
+                                                      # e a mutacao da cura tem de voltar a RED
   python _main/boot-interaction-oracle.py --json
 
 Veredicto: rc=0 PASS / rc=1 FAIL / rc=3 SKIPPED (sem sessao no log). O `--neg-arm`
 devolve **1 quando apanha** (a convencao desta casa: um controlo que nao pode falhar
-nao e' um controlo).
+nao e' um controlo). O `--paint-arm` segue a mesma convencao: devolve 1 quando PEGA.
 """
 
 from __future__ import annotations
@@ -278,6 +282,143 @@ def _synthetic(show_ms, live_ms, menu_ms, caption_ms):
     return L
 
 
+# ── o braco da PINTURA: dois LOGS EM FICHEIRO, um por forma conhecida ───────
+# O `_synthetic` acima prova a ARITMETICA do oraculo. Estes dois provam a FORMA
+# que a shell escreve: `_main/fixtures/boot-interaction-altc-paint-slow.log` e'
+# a sessao do dono de 2026-11-10 09:33:51 (Alt+C: despacho 5 ms, pintura
+# 3 142 ms, `content_ack=false wait_ms=500`), e
+# `_main/fixtures/boot-interaction-altc-paint-fast.log` e' a forma CURADA: um
+# orcamento so' (`PANEL_SHOW_COST` com as cinco parcelas + `total_ms`) e a
+# pintura dentro dos 400 ms. O braco falha se o oraculo deixar passar um log de
+# forma lenta, e falha tambem se o log curado nao publicar a linha de custo --
+# um log sem `PANEL_SHOW_COST` e' o log ANTIGO, e um oraculo que o aceita nao
+# mede o que foi curado.
+FIXTURES = os.path.join(HERE, 'fixtures')
+PAINT_RED = os.path.join(FIXTURES, 'boot-interaction-altc-paint-slow.log')
+PAINT_GREEN = os.path.join(FIXTURES, 'boot-interaction-altc-paint-fast.log')
+PAINT_FAMILY = 'alt-c 1o: pintura'
+
+
+def _load_fixture(path):
+    with open(path, encoding='utf-8', errors='replace') as fh:
+        return fh.read().splitlines()
+
+
+def _row(res, family):
+    for r in res.get('rows') or []:
+        if r['family'] == family:
+            return r
+    return None
+
+
+def _stamp(secs):
+    """`secs` segundos desde 00:00 -> 'YYYY-MM-DD HH:MM:SS.mmm' (o formato do log)."""
+    secs = max(0.0, secs)
+    hh = int(secs // 3600)
+    mm = int((secs - hh * 3600) // 60)
+    ss = secs - hh * 3600 - mm * 60
+    return '2026-11-10 %02d:%02d:%06.3f' % (hh, mm, ss)
+
+
+def _uncure(lines):
+    """A MUTACAO DO CONSERTO: o log curado com a cura DESFEITA.
+
+    Duas coisas que o conserto escreve e o defeito nao: a linha de custo
+    (`PANEL_SHOW_COST`, um orcamento so' com as parcelas medidas) e a pintura
+    dentro do orcamento. A mutacao apaga a primeira e empurra o `PANEL_SHOWN`
+    3 142 ms para a frente do `HOTKEY_COALESCED` -- exactamente o numero do log
+    do dono. Se o braco RED nao pegar ISTO, ele nao pega o defeito.
+    """
+    seq = [l for l in lines if 'HOTKEY_COALESCED' in l and 'transitions=1' in l]
+    t_step = _t(seq[0]) if seq else 0.0
+    out = []
+    for line in lines:
+        if 'PANEL_SHOW_COST' in line:
+            continue
+        if 'PANEL_SHOWN' in line:
+            out.append(_stamp(t_step + 3.142) + line[23:])
+            continue
+        out.append(line)
+    return out
+
+
+def paint_arm(verbose=True):
+    """O braco da pintura: LENTO tem de dar FAIL, CURADO tem de dar PASS.
+
+    Devolve 1 (o braco PEGOU -- que e' o "PASS" do `--neg-arm` desta casa) ou 0.
+    """
+    cases = []
+    reason = {}
+    if not os.path.exists(PAINT_RED) or not os.path.exists(PAINT_GREEN):
+        if verbose:
+            print('paint-arm: FAIL -- fixture ausente (%s / %s)'
+                  % (PAINT_RED, PAINT_GREEN))
+        return 0
+    for name, path in (('RED', PAINT_RED), ('GREEN', PAINT_GREEN)):
+        lines = _load_fixture(path)
+        res = measure(lines, log_name=path)
+        row = _row(res, PAINT_FAMILY)
+        rc = (3 if res.get('why') in ('no-session', 'no-timestamp')
+              else (0 if res['ok'] else 1))
+        cases.append({'name': name, 'path': path, 'res': res, 'row': row,
+                      'rc': rc, 'lines': lines})
+        if verbose:
+            print('paint-arm %s fixture=%s rc=%d verdict=%s %s=%.1f budget=%.0f'
+                  % (name, os.path.basename(path), rc,
+                     'PASS' if res['ok'] else 'FAIL', PAINT_FAMILY,
+                     (row or {}).get('value_ms') or -1.0, SHOW_BUDGET_MS))
+    red, green = cases
+    ok = True
+
+    # 1) O LOG DO DONO, na forma em que ele o escreveu, tem de ser RED.
+    if not (red['rc'] == 1 and red['row'] and red['row']['verdict'] == 'FAIL'
+            and (red['row']['value_ms'] or 0.0) > SHOW_BUDGET_MS):
+        ok = False
+        reason['red'] = 'o log lento nao saiu FAIL na pintura (rc=%d, %s)'
+    # 2) A forma curada tem de ser GREEN, e o log curado tem de PUBLICAR o custo.
+    if not (green['rc'] == 0 and green['row']
+            and green['row']['verdict'] == 'PASS'):
+        ok = False
+        reason['green'] = 'o log curado nao saiu PASS na pintura (rc=%d)' % green['rc']
+    cost = [l for l in green['lines'] if 'PANEL_SHOW_COST' in l]
+    if not cost:
+        ok = False
+        reason['cost'] = 'o log curado nao publica PANEL_SHOW_COST (forma antiga)'
+    else:
+        total = _num(cost[-1], 'total_ms')
+        parts = [_num(cost[-1], k) for k in
+                 ('surf_ms', 'arm_ms', 'gate_ms', 'map_ms', 'ack_ms')]
+        if total is None or any(p is None for p in parts):
+            ok = False
+            reason['cost'] = 'PANEL_SHOW_COST sem total_ms ou sem as cinco parcelas'
+        elif total > SHOW_BUDGET_MS:
+            ok = False
+            reason['cost'] = ('PANEL_SHOW_COST total_ms=%.1f > %.0f'
+                              % (total, SHOW_BUDGET_MS))
+        elif abs(sum(parts) - total) > 1.0:
+            ok = False
+            reason['cost'] = ('PANEL_SHOW_COST soma das parcelas=%.1f != total_ms=%.1f'
+                              % (sum(parts), total))
+    # 3) A MUTACAO: o log curado com a cura desfeita tem de voltar a RED.
+    mut = measure(_uncure(green['lines']), log_name='mutacao-do-consero')
+    mrow = _row(mut, PAINT_FAMILY)
+    mrc = (3 if mut.get('why') in ('no-session', 'no-timestamp')
+           else (0 if mut['ok'] else 1))
+    if verbose:
+        print('paint-arm MUTACAO fixture=mutacao-do-consero rc=%d verdict=%s %s=%.1f'
+              % (mrc, 'PASS' if mut['ok'] else 'FAIL', PAINT_FAMILY,
+                 (mrow or {}).get('value_ms') or -1.0))
+    if not (mrc == 1 and mrow and mrow['verdict'] == 'FAIL'):
+        ok = False
+        reason['mutation'] = 'a mutacao da cura NAO foi apanhada (rc=%d)' % mrc
+    if verbose:
+        for k, v in reason.items():
+            print('paint-arm REASON %s: %s' % (k, v))
+        print('PAINT-ARM: %s -- red=FAIL green=PASS mutacao=FAIL'
+              % ('PASS' if ok else 'FAIL'))
+    return 1 if ok else 0
+
+
 def neg_arm():
     """Verde com numeros dentro do orcamento, vermelho com 2000 ms -- cada um pelo SEU braco."""
     cases = [
@@ -297,10 +438,18 @@ def neg_arm():
         good = rc == want
         caught += good
         print('%s %s (rc=%d, esperado %d)' % ('PASS' if good else 'FAIL', name, rc, want))
-    if caught == len(cases):
-        print('NEG-ARM: PASS -- %d/%d casos' % (caught, len(cases)))
+    # R6: os dois ficheiros de FORMA (o log do dono e o log curado) mais a
+    # mutacao da cura -- ver `paint_arm`. O `--neg-arm` desta casa devolve 1
+    # quando PEGA, portanto o caso `... 1` e' o desejado.
+    pgood = paint_arm(verbose=True) == 1
+    print('%s R6 pintura dos ficheiros de forma tem de pegar red+mutacao (rc=%d,'
+          ' esperado 1)' % ('PASS' if pgood else 'FAIL', 1 if pgood else 0))
+    caught += pgood
+    cases_n = len(cases) + 1
+    if caught == cases_n:
+        print('NEG-ARM: PASS -- %d/%d casos' % (caught, cases_n))
         return 1
-    print('NEG-ARM: FAIL -- %d/%d casos' % (caught, len(cases)))
+    print('NEG-ARM: FAIL -- %d/%d casos' % (caught, cases_n))
     return 0
 
 
@@ -309,9 +458,15 @@ def main(argv=None):
     ap.add_argument('--log', default=LOG)
     ap.add_argument('--json', action='store_true')
     ap.add_argument('--neg-arm', action='store_true')
+    ap.add_argument('--paint-arm', action='store_true',
+                    help='o braco da PINTURA contra os dois ficheiros de forma '
+                         '(_main/fixtures/boot-interaction-altc-paint-{slow,fast}.log);'
+                         ' devolve 1 quando PEGA o log lento e a mutacao da cura')
     a = ap.parse_args(argv)
     if a.neg_arm:
         return neg_arm()
+    if a.paint_arm:
+        return paint_arm(verbose=True)
     if not os.path.exists(a.log):
         print('BOOT-INTERACTION SKIPPED reason=no-log path=%s' % (a.log,))
         return 3

@@ -30,6 +30,11 @@ docs/design-audit-20261021/
 *.wav
 probe/*.log
 probe/*.wav
+# FIXTURE logs are INPUT, not run output: an oracle that reads a recorded session
+# must ship with that session, or the gate goes RED on a clean clone and nobody can
+# reproduce the number it judges (`_main/boot-interaction-oracle.py --paint-arm`
+# reads the owner's slow session and the cured shape from here).
+!_main/fixtures/*.log
 __pycache__/
 *.pyc
 

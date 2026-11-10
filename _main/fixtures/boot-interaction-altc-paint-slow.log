@@ -1,0 +1,13 @@
+2026-11-10 09:33:51.565 sotto: SHELL_STARTUP_STAGE pid=13072 stage=pre-lock python=C:\Program Files\Python311\python.EXE panel=true
+2026-11-10 09:34:11.641 sotto: HOTKEY_PRESSED role=live count=1 source=hook via=ll_keyboard accelerator=Ctrl+Space thread=61176
+2026-11-10 09:34:11.853 sotto: LIVE_ENABLED on=false wanted=false panel_closed=false
+2026-11-10 09:34:12.225 sotto: TRAY_MENU_FOREGROUND ok=1 err=0 menu_ms=41
+2026-11-10 09:34:13.049 sotto: HOTKEY_PRESSED role=panels count=1 accelerator=Alt+C thread=43620
+2026-11-10 09:34:13.054 sotto: HOTKEY_COALESCED presses=1 from=hidden/- to=visible/strip steps=1 transitions=1
+2026-11-10 09:34:13.054 sotto: HOTKEY_TOGGLE step=show surface=strip
+2026-11-10 09:34:13.275 sotto: STRIP_HEIGHT from=148 to=40 source=css css_value=40 extra=0 reason=posted-hotkey-cycle-strip
+2026-11-10 09:34:14.246 sotto: WEBVIEW_CHILD shown=0 already=5 failed=0
+2026-11-10 09:34:14.623 sotto: PANEL_CONTENT surface=strip ack=true applied=true style=true sized=true size=380x40 head="strip" vis=visible wait_ms=594.0 why=applied order=before-map reason=hotkey-cycle-strip timeout_ms=250.0 attempts=1 error=""
+2026-11-10 09:34:15.211 sotto: PAINT_ACK ack=false wait_ms=500.0 seq=2 reason=hotkey-cycle-strip why=timeout timeout_ms=400
+2026-11-10 09:34:16.196 sotto: PANEL_SHOWN reason=hotkey-cycle-strip mode=strip hwnd=328326 visible=true show=SW_SHOWNOACTIVATE focus=no-pointer-lock content_ack=false content_why=applied content_attempts=1 content_wait_ms=594.0 paint_ack=false wait_ms=500.0
+2026-11-10 09:33:53.421 sotto: CAPTION_PAINT instant=true text="oi" age_ms=1856

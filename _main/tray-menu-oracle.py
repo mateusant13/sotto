@@ -123,6 +123,12 @@ class Seam:
     something), so it is replaced by a recorder. The other three are wrapped, not
     replaced, so the real `SetForegroundWindow`/`PostMessageW` still happen and the
     ORDER they are called in is what the arm judges.
+
+    `AttachThreadInput` is WRAPPED TOO (2026-11-10): the cure for "the menu never
+    takes the foreground" is that pair around `SetForegroundWindow`, and a pair
+    that nobody records is a pair nobody can tell from absent. `fAttach` travels
+    as the record's second field, so `on` and `off` are distinguishable in the
+    ORDER list.
     """
 
     def __init__(self, shell):
@@ -135,9 +141,11 @@ class Seam:
         self._saved['TrackPopupMenu'] = u.TrackPopupMenu
         self._saved['SetForegroundWindow'] = u.SetForegroundWindow
         self._saved['PostMessageW'] = u.PostMessageW
+        self._saved['AttachThreadInput'] = u.AttachThreadInput
 
         real_fg = self._saved['SetForegroundWindow']
         real_post = self._saved['PostMessageW']
+        real_attach = self._saved['AttachThreadInput']
 
         def track(menu, flags, x, y, reserved, owner, rect):
             self.calls.append(('TrackPopupMenu', int(flags), int(x), int(y),
@@ -154,9 +162,18 @@ class Seam:
                                num(wparam)))
             return real_post(hwnd, msg, wparam, lparam)
 
+        def attach(t_me, t_fg, on):
+            ctypes.set_last_error(0)
+            ok = real_attach(t_me, t_fg, bool(on))
+            self.calls.append(('AttachThreadInput', bool(on), int(num(t_me)),
+                               int(num(t_fg)), int(bool(ok)),
+                               int(ctypes.get_last_error())))
+            return ok
+
         u.TrackPopupMenu = track
         u.SetForegroundWindow = foreground
         u.PostMessageW = post
+        u.AttachThreadInput = attach
         return self
 
     def __exit__(self, *exc):
@@ -321,7 +338,10 @@ def judge(shell) -> list:
         # ARM 5 -- the three-part recipe, IN ORDER: foreground, WM_NULL, menu.
         seam.calls.clear()
         tray._show_menu()
-        seq = [c[0] for c in seam.calls]
+        # The attach pair travels in the SAME ordered record (2026-11-10) so the
+        # order between it and the foreground call is judgeable; the recipe this
+        # arm freezes is still exactly these three, so the pair is filtered out.
+        seq = [c[0] for c in seam.calls if c[0] != 'AttachThreadInput']
         want = ['SetForegroundWindow', 'PostMessageW', 'TrackPopupMenu']
         null_ok = any(c[0] == 'PostMessageW' and c[1] == shell.WM_NULL
                       and c[2] == hwnd for c in seam.calls)
@@ -336,6 +356,98 @@ def judge(shell) -> list:
         checks.append(('foreground_measured_and_logged',
                        any('TRAY_MENU_FOREGROUND' in line for line in logs),
                        f'log={logs[-3:]}'))
+
+        # ARMS 19-21 -- O PRIMEIRO PLANO QUE O SISTEMA RECUSA, E A CURA.
+        #
+        # O DEFEITO MEDIDO (2026-11-10, clique real do dono): 13 de 13
+        # `TRAY_MENU_FOREGROUND ok=0 is_foreground=0`. Nao era o hotkey nem o
+        # gesto -- era o `SetForegroundWindow` cru a ser recusado, porque a
+        # fechadura de primeiro plano deste hospedeiro esta' no MAXIMO
+        # (`SPI_GETFOREGROUNDLOCKTIMEOUT=0x7FFFFFFF` ms): a condicao "a fechadura
+        # expirou" NUNCA se verifica, e o processo da bandeja nao e' o processo
+        # em primeiro plano nem recebeu o ultimo evento (o clique e' recebido
+        # pelo EXPLORER).
+        #
+        # A CURA e' a receita documentada: `AttachThreadInput(fg, me, TRUE)` ->
+        # `SetForegroundWindow` -> `AttachThreadInput(fg, me, FALSE)`.
+        #
+        # ARMS 19-20 INJECTAM O PRIMEIRO PLANO. Sem isso a arm dependeria do
+        # estado vivo do Windows -- que nesta sessao e' "recusado" e noutra pode
+        # ser "permitido" -- e o mesmo mutante passava numa e caia na outra, que
+        # e' o pior tipo de arm. Com o `GetForegroundWindow` a devolver uma janela
+        # ESTRANGEIRA (fio diferente do nosso), as duas metades ficam decididas
+        # por codigo nosso:
+        #   * 19: o par de attach tem de existir EM VOLTA da chamada (ordem lida);
+        #   * 20: a linha do log tem de dizer o que o SISTEMA diz -- e o sistema,
+        #     aqui, nunca devolve o hwnd (o injectado devolve `foreign`), logo
+        #     `is_foreground=0` e um `reason=took-foreground` seria mentira.
+        real_get_fg = shell.user32.GetForegroundWindow
+        foreign = int(user32.GetShellWindow() or 0)
+        if not foreign:
+            foreign = int(user32.FindWindowW('Shell_TrayWnd', None) or 0)
+        if not foreign:
+            foreign = int(user32.FindWindowW('Progman', None) or 0)
+
+        def _injected_foreground():
+            return foreign
+
+        seam.calls.clear()
+        logs_before = len(logs)
+        shell.user32.GetForegroundWindow = _injected_foreground
+        try:
+            tray._show_menu()
+        finally:
+            shell.user32.GetForegroundWindow = real_get_fg
+        steps = [c[0] for c in seam.calls]
+        on_rec = [c for c in seam.calls
+                  if c[0] == 'AttachThreadInput' and c[1] is True]
+        i_fg_call = steps.index('SetForegroundWindow') if 'SetForegroundWindow' in steps else -1
+        i_attach = steps.index('AttachThreadInput') if 'AttachThreadInput' in steps else -1
+        attach_took = bool(on_rec) and bool(on_rec[0][4])
+        attaches_before = 0 <= i_attach < i_fg_call
+        # A FILA TEM DE SER DESLIGADA: deixar as duas filas ligadas prende o input
+        # dos dois processos um ao outro -- e' a parte que se esquece.
+        detaches_after = (not attach_took) or (
+            'AttachThreadInput' in steps[i_fg_call + 1:])
+        targets_other_thread = bool(on_rec) and on_rec[0][3] != on_rec[0][2]
+        checks.append(('menu_attaches_the_foreground_thread',
+                       bool(foreign) and attaches_before and detaches_after
+                       and targets_other_thread,
+                       f'foreign={foreign} steps={steps} attach={on_rec}'))
+        line = ''
+        for candidate in logs[logs_before:]:
+            if 'TRAY_MENU_FOREGROUND' in candidate:
+                line = candidate
+        fields = dict(re.findall(r'([a-z_]+)=(\S+)', line))
+        checks.append(('menu_foreground_log_is_what_the_os_says',
+                       bool(fields)
+                       and fields.get('is_foreground') == '0'
+                       and fields.get('fg_before') == str(foreign)
+                       and fields.get('reason') not in ('took-foreground',
+                                                        'already-foreground'),
+                       f'line={line!r}'))
+
+        # ARM 21 -- O ESTADO QUE A ROTINA DEVOLVE E' O DO SISTEMA, sem injecao.
+        # Esta arm nao julga se o Windows CONCEDE (isso depende da sessao); ela
+        # julga se o que devolvemos e' o que `GetForegroundWindow` diz AGORA --
+        # que e' exactamente a diferenca entre um log honesto e um que so' parece.
+        fg_before_arm = int(user32.GetForegroundWindow() or 0)
+        fg_state = tray._take_menu_foreground()
+        os_says = int(user32.GetForegroundWindow() or 0) == int(hwnd)
+        checks.append(('menu_foreground_state_is_the_os',
+                       bool(fg_state['is_foreground']) == bool(os_says),
+                       f"is_foreground={fg_state['is_foreground']} "
+                       f'os_says={os_says} reason={fg_state["reason"]} '
+                       f'attach_err={fg_state["attach_err"]}'))
+        if os_says:
+            # A arm ACABOU DE TOMAR O PRIMEIRO PLANO NESTE PROCESSO. Devolve-se a
+            # quem o tinha: o oracle nao pode deixar o foco do dono fora do lugar
+            # so' porque correu uma medicao.
+            try:
+                if fg_before_arm and fg_before_arm != int(hwnd):
+                    user32.SetForegroundWindow(wt.HWND(fg_before_arm))
+            except Exception:         # noqa: BLE001
+                pass
 
         # ARMS 15-18 -- O INTERRUPTOR DO ALT+C (dono, 2026-11-07: *"faz um botao
         # 'desativar atalho alt c' no click direito do icon do sotto"*, *"e claro,
@@ -478,6 +590,22 @@ LABEL_MUTANT = """        label = f'Desativar atalho {accel}'"""
 ROUTE_FIXED = """        elif command == ID_TRAY_HOTKEY:"""
 ROUTE_MUTANT = """        elif command == 999:"""
 
+#: O defeito de hoje (2026-11-10): o primeiro plano tomado sem ligar as filas de
+#: input. `SetForegroundWindow` cru e' recusado enquanto a fechadura de primeiro
+#: plano desta maquina (MAXIMA) nao expira -- que e' nunca.
+ATTACH_FIXED = """                attached = bool(user32.AttachThreadInput(
+                    wt.DWORD(state['me_thread']), wt.DWORD(fg_thread), True))
+                state['attached'] = attached
+                if not attached:
+                    state['attach_err'] = ctypes.get_last_error()"""
+ATTACH_MUTANT = """                attached = False"""
+
+#: A outra metade -- um log que diz `is_foreground=1` sem o sistema o ter dito.
+LOG_FIXED = """                 f'is_foreground={int(fg["is_foreground"])} '
+"""
+LOG_MUTANT = """                 f'is_foreground=1 '
+"""
+
 MUTANTS = [
     ('tray_priority_raise_removed', RAISE_FIXED, RAISE_MUTANT,
      ['tray_loop_calls_the_raise']),
@@ -497,6 +625,13 @@ MUTANTS = [
     # Um item que aparece e nao faz nada.
     ('hotkey_command_not_routed', ROUTE_FIXED, ROUTE_MUTANT,
      ['tray_command_routes_the_hotkey_id']),
+    # O defeito de 2026-11-10: `SetForegroundWindow` sem o par de
+    # `AttachThreadInput` -- recusado 13 de 13 vezes no clique real do dono.
+    ('foreground_attach_removed', ATTACH_FIXED, ATTACH_MUTANT,
+     ['menu_attaches_the_foreground_thread']),
+    # E o log que mente sobre o que o sistema disse.
+    ('foreground_log_hardcoded_to_1', LOG_FIXED, LOG_MUTANT,
+     ['menu_foreground_log_is_what_the_os_says']),
 ]
 
 
