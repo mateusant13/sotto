@@ -7860,6 +7860,15 @@ DEFAULT_MUTEX_NAME = 'Local\\SottoShell'
 WARM_ATTACH_DEADLINE_MS = 500
 #: A tarefa que cria o motor. `schtasks` e' o pai, nunca esta shell.
 WARM_ENGINE_TASK = 'SottoWarmEngine'
+#: O XML que DEFINE essa tarefa. Existe desde 2026-11-04 e nunca foi registado
+#: nesta maquina: medido 2026-11-10, `schtasks /query /tn SottoWarmEngine` devolve
+#: rc=1 ("O sistema nao pode encontrar o arquivo especificado") e o log do dono tem
+#: **11** `WARM_ENGINE_START_TASK task=SottoWarmEngine rc=1 out="" err=""` -- um por
+#: arranque. O `/run` de uma tarefa que nao existe devolve 1 e nao faz nada, logo o
+#: motor quente NUNCA subiu e cada arranque pagou a carga a frio:
+#: `BRIDGE_LOAD_MS ms=44344 pid=30804 worker_load_s=42.59` as 21:22:30 de 2026-11-09.
+#: `ensure_warm_engine_task` fecha isso registando a tarefa quando ela falta.
+WARM_ENGINE_TASK_XML = os.path.join('_main', 'warm-engine', 'warm-engine-task.xml')
 #: Um replay mais velho do que isto e' HISTORIA, nunca pintura (INV-5/R11).
 WARM_BACKLOG_LIVE_MS = 2000
 
@@ -23425,6 +23434,58 @@ class WarmPipeBridge(WorkerBridge):
         return payload
 
 
+def _hidden_launch():
+    """`_main/hidden-launch.py` as a module -- the only sanctioned spawner here.
+
+    A plain `subprocess` from a `pythonw` parent has flashed a console on the
+    owner's screen before (AGENTS: "NADA EM FOREGROUND", measured 2026-11-02),
+    and `schtasks` is a console app.
+    """
+    import importlib.util
+
+    path = os.path.join(REPO_ROOT, '_main', 'hidden-launch.py')
+    spec = importlib.util.spec_from_file_location('sotto_hidden_launch', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def ensure_warm_engine_task(log=log, task=WARM_ENGINE_TASK, xml=WARM_ENGINE_TASK_XML):
+    """Registe a tarefa do motor quente se ela FALTAR. Idempotente, sem admin.
+
+    O `/run` so' pode funcionar se a tarefa existir, e ela nunca foi registada
+    nesta maquina (medido 2026-11-10: 11 `WARM_ENGINE_START_TASK ... rc=1` no log do
+    dono e zero `WARM_ENGINE_*` de sucesso; `schtasks /query /tn SottoWarmEngine`
+    -> rc=1). Um `/run` numa tarefa ausente devolve 1 e nao faz nada, em silencio,
+    e o preco e' a carga a frio em cada arranque: `BRIDGE_LOAD_MS ms=44344`
+    (`worker_load_s=42.59`) contra os 0,97 s do `attach` medidos.
+
+    Devolve `'present'` / `'created'` / `failing`. NUNCA levanta: o motor quente e'
+    aceleracao, e a escada fria tem de continuar a correr quando ele nao sobe (INV-3).
+    """
+    try:
+        hidden = _hidden_launch()
+        rc, out, err = hidden.run(['schtasks', '/query', '/tn', task], timeout=10)
+        if rc == 0:
+            return 'present'
+        rel = xml if os.path.isabs(xml) else os.path.join(REPO_ROOT, xml)
+        log('WARM_ENGINE_TASK_ABSENT task=%s query_rc=%s xml_exists=%s'
+            % (task, rc, str(os.path.exists(rel)).lower()))
+        if not os.path.exists(rel):
+            log('WARM_ENGINE_TASK_CREATE_FAILED task=%s reason=no-xml path=%s'
+                % (task, rel))
+            return 'failing'
+        rc2, out2, err2 = hidden.run(
+            ['schtasks', '/create', '/tn', task, '/xml', rel, '/f'], timeout=20)
+        log('WARM_ENGINE_TASK_CREATED task=%s rc=%s out=%s err=%s'
+            % (task, rc2, json.dumps((out2 or '')[:120]),
+               json.dumps((err2 or '')[:120])))
+        return 'created' if rc2 == 0 else 'failing'
+    except Exception as exc:  # noqa: BLE001 -- a missing task is not a crash
+        log('WARM_ENGINE_TASK_CREATE_FAILED task=%s error=%r' % (task, exc))
+        return 'failing'
+
+
 def start_warm_engine_task(log=log, task=WARM_ENGINE_TASK):
     """Ask the SCHEDULER to start the engine -- never a `Popen` of ours (R1).
 
@@ -23432,19 +23493,18 @@ def start_warm_engine_task(log=log, task=WARM_ENGINE_TASK):
     sanctioned way in this tree to start a `cmd`/`schtasks`, because a plain
     `subprocess` from a `pythonw` parent has flashed a console on the owner's
     screen before (AGENTS: "NADA EM FOREGROUND", measured 2026-11-02).
+
+    A tarefa e' REGISTADA primeiro quando falta: um `/run` de uma tarefa ausente
+    devolve 1 em silencio e o motor quente nunca sobe (ver `ensure_warm_engine_task`).
     """
 
     def _go():
         try:
-            import importlib.util
-
-            path = os.path.join(REPO_ROOT, '_main', 'hidden-launch.py')
-            spec = importlib.util.spec_from_file_location('sotto_hidden_launch', path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            state = ensure_warm_engine_task(log=log, task=task)
+            module = _hidden_launch()
             rc, out, err = module.run(['schtasks', '/run', '/tn', task], timeout=10)
-            log('WARM_ENGINE_START_TASK task=%s rc=%s out=%s err=%s'
-                % (task, rc, json.dumps((out or '')[:120]),
+            log('WARM_ENGINE_START_TASK task=%s rc=%s registered=%s out=%s err=%s'
+                % (task, rc, state, json.dumps((out or '')[:120]),
                    json.dumps((err or '')[:120])))
         except Exception as exc:  # noqa: BLE001 -- a missing task is not a crash
             log('WARM_ENGINE_START_TASK_FAILED task=%s error=%r' % (task, exc))

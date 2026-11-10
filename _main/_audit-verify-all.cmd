@@ -3425,6 +3425,25 @@ call :step always red-as-expected-warm-engine 1 "_main\warm-engine-oracle.py;app
 call :expectred red-as-expected-warm-engine !STEP_RC! "%OUT%\warm-engine-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-warm-engine MISSING "%OUT%\warm-engine-neg.log" "NEG-ARM PASS" )
 
+REM -- O /run PARA UMA TAREFA QUE NAO EXISTE (2026-11-10)
+REM MEDIDO: `schtasks /query /tn SottoWarmEngine` -> rc=1 nesta maquina, e o log do
+REM dono guardou 11 `WARM_ENGINE_START_TASK ... rc=1 out="" err=""` -- uma por
+REM arranque. Um `/run` de uma tarefa ausente devolve 1 e nao faz nada, em silencio,
+REM logo o motor quente NUNCA subiu e cada arranque pagou a carga a frio
+REM (`BRIDGE_LOAD_MS ms=44344`). O oraculo registra a tarefa pelo
+REM `ensure_warm_engine_task` REAL, consulta o Windows, repete (idempotente) e apaga
+REM no fim: cria e destroi uma tarefa de TESTE, nunca arranca o motor (isso e' 1,9 GB
+REM e o `warm-engine` acima ja' mede o attach sem modelo).
+if exist _main\warm-engine-task-oracle.py (
+call :step always warm-engine-task 0 "_main\warm-engine-task-oracle.py;app\webview\sotto_webview.py;_main\warm-engine\warm-engine-task.xml;_main\hidden-launch.py" "%OUT%\warm-engine-task.log" python _main\warm-engine-task-oracle.py
+call :record warm-engine-task !STEP_RC!
+) else ( call :record warm-engine-task MISSING )
+
+if exist _main\warm-engine-task-oracle.py (
+call :step always red-as-expected-warm-engine-task 1 "_main\warm-engine-task-oracle.py;app\webview\sotto_webview.py;_main\warm-engine\warm-engine-task.xml;_main\hidden-launch.py" "%OUT%\warm-engine-task-neg.log" python _main\warm-engine-task-oracle.py --neg-arm
+call :expectred red-as-expected-warm-engine-task !STEP_RC! "%OUT%\warm-engine-task-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-warm-engine-task MISSING "%OUT%\warm-engine-task-neg.log" "NEG-ARM: PASS" )
+
 echo.
 
 REM -- CTRL+SPACE EM GAMING, O NAO-ROUBO DE FOCO E A DETECCAO DE JOGO (2026-11-04)

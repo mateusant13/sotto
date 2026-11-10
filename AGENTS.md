@@ -591,6 +591,25 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-10, 06:4x):** `_main\_audit-verify-all.cmd` = **341051 B**,
+  **3972 CRLF** / 0 bare LF, sha256 `AE965FD0402DC28BC2C84DF1B3D8ABC2451BA5ABD64446DF09D866E56B1D1AF6`.
+  (Mil quinhentos e noventa e dois bytes e DEZANOVE linhas a mais do que o pin de 339459 B: o par
+  `warm-engine-task` + `red-as-expected-warm-engine-task`, o `/run` para uma tarefa que NAO EXISTE.
+  Nasceu do card do dono *"arranque: demora DEMAIS a responder a keybindings/qualquer coisa -- tornar
+  extremo"*, e a medicao diz que o arranque da SHELL nao e' o problema -- Alt+C foi pressionado a
+  **5,851 s** e o painel apareceu a **6,418 s** --, o problema e' o MODELO: `BRIDGE_LOAD_MS ms=44344`
+  (`worker_load_s=42.59`) as 21:22:30 de 2026-11-09. O motor quente existe exactamente para isso e
+  nunca subiu: `schtasks /query /tn SottoWarmEngine` devolvia rc=1 e o log do dono guardou **11**
+  `WARM_ENGINE_START_TASK task=SottoWarmEngine rc=1 out="" err=""`, uma por arranque. `ensure_warm_engine_task`
+  registra o XML que ja' existia (`_main\warm-engine\warm-engine-task.xml`, sem triggers, sem admin)
+  antes do `/run`, e a linha passa a dizer `registered=present|created|failing`. MEDIDO depois de
+  registrar: `/run` rc=0 (era 1), `warm-engine.pid` em **1,0 s**, `WARM_LOAD_MS ms=41015.3
+  resident_mb=239.7` e o motor PARQUEADO a espera do attach, que a medicao anterior poe em 0,97 s em
+  vez dos 42,59 s da carga a frio. O oraculo registra e APAGA uma tarefa de teste
+  (`SottoWarmEngineOracle`) e nunca arranca o motor: `VERDICT: PASS` rc=0 e `--neg-arm` a apanhar 2
+  mutacoes (o `/create` sem `/xml`, e o veredicto a mentir `created` sem olhar ao rc) com rc=1.
+  `battery-wiring` PASS `ligados=180 sem_passo=108 populacao=288`; `battery-record-pairing` 444
+  passos / 444 nomes / 0 achados.)
 - **PIN do ficheiro (medido 2026-11-10, 02:2x):** `_main\_audit-verify-all.cmd` = **339459 B**,
   **3953 CRLF** / 0 bare LF, sha256 `FE129D689BCFC333180A2B9C93BCE5BE390CF7DC991F09187D9D1B408E491CF6`.
   (Mil quatrocentos e dezassete bytes e CATORZE linhas a mais do que o pin de 338042 B: o par
