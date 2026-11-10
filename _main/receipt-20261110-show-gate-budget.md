@@ -181,6 +181,55 @@ o par `WARM_ATTACH` (0,97 s medido com motor falso) contra `BRIDGE_LOAD_MS` (~43
 de uma janela `heavy` OU do arranque do dono, que ja' leva a cura e escreve
 `WARM_ENGINE_START_TASK ... registered=present`.
 
+## 4-bis. O gate foi consertado no MESMO dia, e o veredicto mudou de UNKNOWN para AMBER (medido 2026-11-10)
+
+O §4 acima descreve o defeito: o gate nao conseguia ler o disco por `powershell` e publicava `UNKNOWN`.
+Consertado no repo dono (`I:/!manager`, commit `3f4c531`): o leitor passou a **PDH por `ctypes`**
+(`pdh.dll`: `PdhOpenQueryW` / `PdhAddEnglishCounterW` / `PdhCollectQueryData` /
+`PdhGetFormattedCounterValue`), sem `powershell` e sem WMI.
+
+| amostra | state | commit | avail_phys | disk (min/avg/max ms) | reason |
+|---|---|---|---|---|---|
+| 1 | amber | 82,7 % | 38,3 % | 0,0 / 6,8 / 24,3 | `commit-pct >= amber 80.0` |
+| 2 | amber | 82,8 % | 38,2 % | 0,0 / 4,6 / 3,0 | idem |
+| 3 | amber | 82,7 % | 38,4 % | 10,9 / 4,3 / 9,5 | idem |
+
+O lease `heavy` foi **pedido**, e a recusa esta' ao lado do pedido:
+
+```
+$ python I:/!manager/tools/performance-gate.py acquire --kind heavy --owner sotto-warm-pair --ttl 900
+refused heavy lease owner=sotto-warm-pair state=amber
+  - heavy-requires-green
+  - amber-light-allowed:commit-only avail=37.7%>15.0% disk-max=0.8ms<20.0ms ttl<=300s leases<=1
+  - commit-pct=83.1 >= amber 80.0
+```
+
+**O PAR CONTINUA NAO MEDIDO, e o motivo mudou de nome**: antes era o instrumento preso (`UNKNOWN`),
+agora e' a maquina a **82,7-83,1 % de commit**, acima do amber de 80 % que o gate da frota exige para
+`heavy`. Nao e' um pico — as tres amostras e as amostras do dia anterior (81-84 %) concordam. Uma carga
+de 1,9 GB a este commit poe a caixa acima de 90 %, que e' o estado em que o dono sente o PC travar.
+
+**E AS DUAS PORTAS NAO CONCORDAM, o que vale registar**: o veto do proprio motor
+(`app/webview/load_shedding.py`, `HIGH_PCT = 88.0`) **permitiria** a carga a 82,7 % (`leve` ate' 88 %);
+quem recusa e' o gate da FROTA, com amber a 80 %. Consequencia pratica, e ela e' a razao de esta nota
+existir: uma lane que perguntasse so' ao motor carregaria 1,9 GB num momento em que a frota proibe. Quem
+pede uma carga de modelo consulta o **gate da frota** primeiro; o G1 do motor e' a guarda de
+producao, nao a autorizacao de trabalho pesado.
+
+**O que fecha o card, quando a caixa permitir** (um comando, sem instrumento novo):
+
+```
+python I:/!manager/tools/performance-gate.py acquire --kind heavy --owner sotto-warm-pair --ttl 900
+schtasks /run /tn "\\SottoWarmEngine"        # arranca sem consola e sem janela (R4: sem triggers)
+# evidencia: _main/warm-engine.log  ->  WARM_LOAD_MS ms=<carga> resident_mb=<rss>
+#                                     ->  WARM_ATTACHED ms=<attach> load_ms=<carga> mode=warm-idle
+# limite de aceitacao: attach << BRIDGE_LOAD_MS (8 amostras reais nesta maquina: 40,9-47,45 s)
+python app/webview/warm_engine.py --stop; python I:/!manager/tools/performance-gate.py release --id <id>
+```
+
+O `attach` com `live=false` (`mode=warm-idle`) NAO abre dispositivo de audio, logo esta medicao nao
+toca no audio do dono; ela custa CPU e commit, e so' isso que o lease regula.
+
 ## 5. O que NAO esta' verificado
 
 * `fixed, NOT verified`: o numero que fecha este card e' o **proximo arranque do dono** -- com o
