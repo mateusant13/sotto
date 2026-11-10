@@ -21,6 +21,30 @@ mutantes** (`sem-guarda-exiting`, `sem-guarda-park`, `sem-guarda-pausa`, `sem-gu
 negativo `red-as-expected-external-resume`. **A lição:** um `AGENTS.md` que descreve um buraco já fechado
 manda trabalho para o sítio errado; re-medir antes de repetir (regra 1).
 
+**CORRECÇÃO DE 2026-11-10 — DUAS das quatro guardas saíram, e a razão é que elas GUSTAVAM o release.**
+Medido no estado em disco da sessão do dono (2026-11-09 21:36:12): `"park": "captions"` com
+`"visible": false`, reimpresso a cada 3 s, `staleAfterSeconds=9.0` a nunca expirar; **1**
+`EXTERNAL_CAPTIONS_ENGINE_RESUMED` contra **16** `ENGINE_PARK reason=` em 187 339 linhas de log. O latch
+`_external_parked` era consumido **antes** das guardas de `_paused` e de visibilidade, e como o release é
+de **borda** (o watcher avisa uma vez) um `return False` queimava a única oportunidade — o
+`set_engine_park(None)` nunca corria e a chamada seguinte morria no latch já consumido. As palavras dele
+foram *"a legenda congela e nunca volta"* e *"o audio volta e nada acontece"*.
+- **O piso de 45 s já não existe** (`EXTERNAL_RESUME_MIN_S` e `EXTERNAL_CAPTIONS_WORKER_RESUME_DEFERRED`
+  foram removidos com o processo em 2026-11-03): limpar um **pedido** num ficheiro não custa nada, e o
+  piso mantinha o motor largado até 45 s depois de o player parar.
+- **A pausa e a visibilidade deixaram de guardar o PEDIDO.** Elas desligam o **DISPLAY** (regra 3:
+  legenda ao vivo desligada não é modelo desligado), nunca o parque, que é do MOTOR. Só o motivo
+  `captions` sai daqui; o parque por **VRAM** tem outro dono e continua de pé.
+- Portão: `_main/external-resume-latch-oracle.py` (7 braços sobre a função REAL extraída por `ast`, e o
+  `--neg-arm` repõe as duas guardas **na função extraída** e cai em 3 braços, rc=1), na bateria como
+  `external-resume-latch` + `red-as-expected-external-resume-latch`.
+- **A CURA RECUSADA, e por que:** o forense propôs que o ramo do parque do worker perguntasse ao medidor
+  vivo (`_live_render_peaks`) se algum endpoint voltou a tocar e terminasse o *hold* — o contrato do
+  `silent_desktop_hold` diz mesmo "qualquer endpoint acima do piso → `None`". **Mas aquele contrato é da
+  máquina CALADA, não do parque:** com o player a fornecer legenda o áudio **está** a tocar, portanto o
+  hold terminaria em todas as janelas e a escada voltaria a abrir um cliente WASAPI por janela — o defeito
+  de 46 rotações em 11 minutos que o hold existe para curar. Não foi aplicado.
+
 ### 3b. Carga: os motores carregam e largam sozinhos, e o áudio espera (2026-11-01)
 
 Ordem do dono, verbatim:

@@ -23,8 +23,15 @@ blink -- e nenhuma recarga quando o player volta.
 
 Este portao prova as duas metades, e cada uma tem um mutante:
 
-  E1-E5  o RELEASE so' limpa o pedido atras das mesmas quatro guardas, e NUNCA
-         arranca um processo (o worker nunca saiu);
+  E1-E2  o RELEASE recusa cedo (shell a sair, sem pedido) e NUNCA arranca um
+         processo (o worker nunca saiu);
+         -- O CONTRATO DO RELEASE MUDOU A 2026-11-10: as guardas de pausa e de
+         visibilidade deixaram de guardar o PEDIDO (limpavam o latch e gastavam
+         a unica oportunidade; medido, `park=captions` para sempre). Os bracos
+         dessas quatro metades vivem agora em
+         `_main/external-resume-latch-oracle.py`, que e' o dono do invariante --
+         um invariante, um portao dono, e este ficheiro ficou com o PARQUE e a
+         RETOMADA POR VRAM;
   E6-E8  o PARK publica `captions` e NAO chama `bridge.stop`; repetir o pedido
          nao republica; e a volta devolve o pedido a `None`.
 
@@ -129,6 +136,14 @@ def _stub(mod, **kw):
                                         True)[2]
     s.publish_panel_visibility = lambda reason: (s.publishes.append(reason),
                                                  True)[1]
+    # O QUE O METODO LE DESDE 2026-11-04 E NAO EXISTIA NESTE STUB: o espelho da
+    # pausa do player e o epoch da superficie. Medido 2026-11-10: sem eles o
+    # oraculo morria em `AttributeError: 'Stub' object has no attribute
+    # '_clear_yt_source_mirrors'` -- um portao que apodrece em excepcao nao e'
+    # um portao, e este estava vermelho desde a cura do espelho.
+    s._player_frame_seen = True
+    s.mirrors = []
+    s._clear_yt_source_mirrors = lambda: s.mirrors.append('cleared')
     return s
 
 
@@ -152,25 +167,6 @@ def arms(mod, text):
                 {'ret': r, 'parks': s.parks}))
     seen[:] = []
 
-    s = _stub(mod, paused=True)
-    r = release(s)
-    out.append(('E3 em pausa nao limpa o pedido', r is False and not s.parks,
-                {'ret': r, 'parks': s.parks}))
-    seen[:] = []
-
-    s = _stub(mod, visible=False, caption=False)
-    r = release(s)
-    out.append(('E4 escondido nao limpa o pedido', r is False and not s.parks,
-                {'ret': r, 'parks': s.parks}))
-    seen[:] = []
-
-    s = _stub(mod, visible=False, caption=True)
-    r = release(s)
-    out.append(('E5 a legenda visivel limpa o pedido e NAO arranca processo',
-                r is True and s.parks == [None] and s.starts == [],
-                {'ret': r, 'parks': s.parks, 'starts': s.starts}))
-    seen[:] = []
-
     s = _stub(mod, parked=False, bridge=_Bridge())
     r = park(s, 'external:youtube:track')
     out.append(('E6 o park publica `captions` e NAO mata o processo',
@@ -183,23 +179,6 @@ def arms(mod, text):
     r = park(s, 'external:youtube:track')
     out.append(('E7 repetir o park nao republica', r is False and not s.parks,
                 {'ret': r, 'parks': s.parks}))
-    seen[:] = []
-
-    s = _stub(mod, visible=True, engine_park='captions')
-    r = release(s)
-    out.append(('E8 a volta devolve o pedido a None (o motor recarrega)',
-                r is True and s.parks == [None]
-                and getattr(s, '_engine_park', 'x') is None,
-                {'ret': r, 'parks': s.parks, 'park': s._engine_park}))
-    seen[:] = []
-
-    # PRECEDENCIA: os dois motivos dividem o mesmo campo, e quem liberta tem de
-    # ser o SEU. Uma release de legendas nao devolve a GPU que outro app pediu.
-    s = _stub(mod, visible=True, engine_park='vram')
-    r = release(s)
-    out.append(('E9 release de legendas nao liberta um park de VRAM',
-                r is True and s.parks == [],
-                {'ret': r, 'parks': s.parks, 'park': s._engine_park}))
     seen[:] = []
 
     # O CANAL INTEIRO, PONTA A PONTA: a shell ESCREVE o pedido no ficheiro real
@@ -331,27 +310,6 @@ MUTANTS = [
      """        if False:
             return False""",
      'E2 release sem park nao limpa nada'),
-    ('sem-guarda-pausa',
-     'em pausa limpa o pedido (E3)',
-     """        if self._paused:
-            return False""",
-     """        if False:
-            return False""",
-     'E3 em pausa nao limpa o pedido'),
-    ('sem-guarda-visivel',
-     'escondido limpa o pedido (E4)',
-     """        if not (self.visible or getattr(self, '_caption_window_shown', False)):
-            return False""",
-     """        if False:
-            return False""",
-     'E4 escondido nao limpa o pedido'),
-    ('legenda-nao-conta',
-     'a legenda visivel deixa de contar (E5)',
-     """        if not (self.visible or getattr(self, '_caption_window_shown', False)):
-            return False""",
-     """        if not self.visible:
-            return False""",
-     'E5 a legenda visivel limpa o pedido e NAO arranca processo'),
     ('park-mata-o-processo',
      'o park volta a MATAR o worker -- o blink e a recarga de antes (E6)',
      """        self._external_parked = True

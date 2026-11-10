@@ -591,6 +591,24 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-10, 10:5x):** `_main\_audit-verify-all.cmd` = **344238 B**,
+  **4007 CRLF** / 0 bare LF, sha256 `FD3163A19DBD389B1118CE7192FE266C61D9CD1D2029FAA3331DD0EB1DF2A8BD`.
+  (Mil seiscentos e trinta e tres bytes e DEZASSETE linhas a mais do que o pin de 342605 B: o par
+  `external-resume-latch` + `red-as-expected-external-resume-latch`, o LATCH QUE UM `return` GASTAVA.
+  Card do dono: *"PC em silencio: Ctrl+Space NAO desaparece, legenda congelada para sempre; audio
+  volta e nada acontece"*. MEDIDO no estado em disco da sessao dele (2026-11-09 21:36:12): o ficheiro
+  do parque ainda dizia `"park": "captions"` com `"visible": false`, reimpresso a cada 3 s,
+  `staleAfterSeconds=9.0` nunca a expirar -- e em 187 339 linhas de log havia **1**
+  `EXTERNAL_CAPTIONS_ENGINE_RESUMED` contra **16** `ENGINE_PARK reason=`. A causa:
+  `on_external_captions_released` consumia `_external_parked` e, nas duas linhas seguintes, `_paused`
+  ou `not (visible or _caption_window_shown)` devolviam `False` -- e o release e' de BORDA, logo o
+  `set_engine_park(None)` nunca corria e a chamada seguinte morria no latch ja' consumido. Uma
+  oportunidade unica gasta por um `return` nao e' um portao, e' uma armadilha. O parque e' do MOTOR,
+  nao da janela: limpar o pedido e' uma escrita num ficheiro, custo zero, e a visibilidade/pausa
+  desligam so' o DISPLAY (regra 3). Sete arms sobre a funcao REAL extraida por `ast` (A1 escondido,
+  A2 pausado, A3 sem pedido, A4 motivo VRAM preservado, A5 shell a sair com latch intacto, A6
+  espelho limpo em todos os caminhos, A7 a linha nomeia `paused=`/`visible=`); o `--neg-arm` repoe as
+  DUAS guardas na funcao EXTRAIDA e cai em 3 arms, rc=1.)
 - **PIN do ficheiro (medido 2026-11-10, 10:1x):** `_main\_audit-verify-all.cmd` = **342605 B**,
   **3990 CRLF** / 0 bare LF, sha256 `84375166E142874EA74437002B63406E33D2BCD32C2A96D12B263FEDBA7DDF8E`.
   (Mil quinhentos e cinquenta e quatro bytes e DEZOITO linhas a mais do que o pin de 341051 B: o par

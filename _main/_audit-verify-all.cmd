@@ -1023,6 +1023,23 @@ if exist _main\external-resume-oracle.py (
   call :step red-as-expected-external-resume 1 "_main\external-resume-oracle.py;app\webview\sotto_webview.py" "%OUT%\external-resume-neg.log" python _main\external-resume-oracle.py --neg-arm
   call :expectred red-as-expected-external-resume !STEP_RC! "%OUT%\external-resume-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-external-resume MISSING "%OUT%\external-resume-neg.log" "NEG-ARM PASS" )
+REM `external-resume-latch-oracle.py` -- O RELEASE DO PLAYER NAO PODE SER GASTO POR UM
+REM `return` (2026-11-10). O latch `_external_parked` era consumido ANTES das guardas de
+REM `_paused`/visibilidade, e com um release de BORDA um `return False` queimava a unica
+REM oportunidade: o `set_engine_park(None)` nunca corria. MEDIDO no estado em disco da
+REM sessao do dono: `"park": "captions"` com `"visible": false` reimpresso a cada 3 s,
+REM `staleAfterSeconds=9.0` a nunca expirar, e **1** `EXTERNAL_CAPTIONS_ENGINE_RESUMED`
+REM contra **16** `ENGINE_PARK` em 187 339 linhas -- as palavras dele, *"a legenda congela
+REM e nunca volta"*. Sete arms sobre a funcao REAL extraida por `ast`; o negativo repoe as
+REM duas guardas NA FUNCAO EXTRAIDA e exige A1/A2 vermelhas.
+if exist _main\external-resume-latch-oracle.py (
+  call :step external-resume-latch 0 "_main\external-resume-latch-oracle.py;app\webview\sotto_webview.py" "%OUT%\external-resume-latch.log" python _main\external-resume-latch-oracle.py
+  call :record external-resume-latch !STEP_RC!
+) else ( call :record external-resume-latch MISSING )
+if exist _main\external-resume-latch-oracle.py (
+  call :step red-as-expected-external-resume-latch 1 "_main\external-resume-latch-oracle.py;app\webview\sotto_webview.py" "%OUT%\external-resume-latch-neg.log" python _main\external-resume-latch-oracle.py --neg-arm
+  call :expectred red-as-expected-external-resume-latch !STEP_RC! "%OUT%\external-resume-latch-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-external-resume-latch MISSING "%OUT%\external-resume-latch-neg.log" "NEG-ARM: PASS" )
 REM `silence-kill-oracle.py` -- UM KILL DO PROPRIO SHELL NAO E' UMA MORTE DO WORKER.
 REM Medido no log do dono: das 10 `BRIDGE_SILENT` anomalas, 9 sao seguidas no mesmo pid do
 REM `BRIDGE_EXIT rc=1` que o `TerminateProcess` devolve -- e o `_wait` publicava-o como

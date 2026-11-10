@@ -18515,27 +18515,27 @@ class SottoShell:
         if not self._external_parked:
             return False
         self._external_parked = False
-        if self._paused:
-            return False
-        if not (self.visible or getattr(self, '_caption_window_shown', False)):
-            return False
-        # O PISO DE 45 s SAIU COM O PROCESSO (2026-11-03). Ele existia porque o
-        # gatilho e' um elemento de UI (poll de 0,30 s) e cada `start_worker`
-        # custava uma carga de modelo. Limpar um PEDIDO num ficheiro nao custa
-        # nada: o throttle passou a ser o unico defeito que sobrava -- com ele o
-        # motor ficava largado ate' 45 s DEPOIS de o player parar.
+        # O PARQUE E' DO MOTOR, NAO DA JANELA (2026-11-10, MEDIDO). Era assim: o
+        # latch era consumido aqui e, nas DUAS linhas seguintes, um `_paused` ou
+        # um painel escondido faziam `return False` -- e como o release e' de
+        # BORDA (o watcher avisa uma vez), o `set_engine_park(None)` abaixo nunca
+        # corria. Resultado medido no estado em disco: `"park": "captions"` com
+        # `"visible": false` reimpresso a cada 3 s, `staleAfterSeconds=9.0` nunca
+        # a expirar, e **1** `EXTERNAL_CAPTIONS_ENGINE_RESUMED` contra **16**
+        # `ENGINE_PARK` em 187 339 linhas -- o motor ficava largado para sempre e
+        # ele ouvia *"a legenda congela e nunca volta"*. Uma oportunidade unica
+        # gasta por um `return` nao e' um portao, e' uma armadilha.
+        # A visibilidade e o pause desligam o DISPLAY (regra 3), nunca o pedido
+        # de parque: limpar o pedido e' uma escrita num ficheiro, custo zero.
         now = time.monotonic()
         self._last_external_resume = now
-        # O MOTOR VOLTA, O PROCESSO NUNCA SAIU (2026-11-03): o pedido de
-        # estacionamento e' limpo e o worker recarrega o ao vivo sozinho.
-        # SO' O PEDIDO DELE: os dois motivos dividem um campo, e a GPU (que
-        # pode ter pedido o motor enquanto o player falava) nao e' libertada
-        # por um release de legendas.
         if self.engine_park_reason() == 'captions':
             self.set_engine_park(None)
-        log('EXTERNAL_CAPTIONS_ENGINE_RESUMED reason=player-stopped '
-            'mode=engine-not-process')
-        return True
+            log('EXTERNAL_CAPTIONS_ENGINE_RESUMED reason=player-stopped '
+                f'mode=engine-not-process paused={str(self._paused).lower()} '
+                f'visible={str(self.visible).lower()}')
+            return True
+        return False
 
     #: THE FLAGS THAT MAKE A RUN A MEASUREMENT. A measurement measures the
     #: PANEL or the SHELL -- its geometry, its edit mode, its outside click.
