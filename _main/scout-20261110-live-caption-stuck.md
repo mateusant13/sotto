@@ -144,7 +144,7 @@ Pode o esconder ser bloqueado por (a), (b) ou (c)?
 **(a) "não chega legenda nova" — IMPOSSÍVEL.** O caminho de esconder não lê texto nenhum: `_set_live_enabled({'on': False})` → `show_caption_window(False)` → `self._caption_window_shown = False` (`sotto_webview.py:17861`) → `_post(lambda: ov.show(False))`. `ov.show(False)` é `caption_overlay.py:1676-1706`: `ShowWindow(hwnd, SW_HIDE)`, `_tick_gen += 1`, `visible=False`. Não consulta `text`, `previous` nem fonte nenhuma. **A ausência de legendas não pode bloquear este caminho.**
 
 **(c) `_drain_caption_pending` a repor texto — IMPOSSÍVEL.** Está guardado três vezes:
-- `sotto_webview.py:17394-17399`: `pending = getattr(self, '_caption_pending', None)`; `if pending is None: return` (o `_blank`/toggle põe o slot a `None`);
+- `sotto_webview.py:17441-17444` (`_drain_caption_pending`): `pending = getattr(self, '_caption_pending', None)`; `if pending is None: return` (o `_blank`/toggle põe o slot a `None`);
 - `_set_live_enabled` escreve `_caption_wanted=False` **antes** de `show_caption_window(False)`, e o drain do caminho de legenda ao vivo tem `if not getattr(self, '_caption_wanted', True): log('CAPTION_DROP_SWITCH'); return`;
 - `show_caption_window(False)` incrementa `_source_epoch`, e o drain compara `(pending[3] != getattr(self,'_source_epoch',0))` → `CAPTION_DROP_EPOCH` e `return`.
   Mesmo que um push entrasse na janela, o slot é `None`/epoch antigo e o drain desiste. **É o único dos três que é IMPOSSÍVEL por três guardas independentes.**
@@ -200,22 +200,9 @@ Cura mínima, no mesmo mecanismo: (1) `push_caption_to_window` repõe `_caption_
 4. **P1 — track do vídeo errado, para sempre:** 21:24:36→21:35:42 (e além) `YOUTUBE_TRACK_PAINT video_id=UytYrhYLOKI source=other-video cue=1 match=0 painted_words=0` a cada 30 s, enquanto o `vid` corrente é `guARjKjyFLY`. Nenhum `YOUTUBE_TRACK_ASK` na janela.
 5. **P2 — `why='painted'` mente:** 71 `YOUTUBE_TICK_MS ... why='painted'` na janela sem uma única pintura; `why` é o estado do DOM (`youtube_cdp_source.py:742`), não um veredicto de pintura.
 6. **P2 — fonte de texto congelada servida como fresco:** o CDP serve o mesmo frame a 4 Hz (`none=0`, `src_errs=0`) e o predicado de mudança (`youtube_cdp_source.py:5284-5296`) nunca dispara. Um ecrã parado é observacionalmente igual a um vídeo parado — e o vídeo *estava* parado (`YOUTUBE_CDP_PACED paused=True`, última mudança 21:22:29.586, nunca `False` depois).
-7. **P2 — worker e player com o mesmo sintoma:** `ENGINE_PARK reason=captions` (21:23:11) com `rows=0` até ao fim, e `_external_parked` faz `REVIVE_REFUSED reason=player-supplies-caption` (`sotto_webview.py:~17162`): o áudio voltou (5 `STATUS_APPLIED` 21:33:39–42) e o worker não arrancou porque o player "está a fornecer" um frame que não muda.
+7. **P2 — worker e player com o mesmo sintoma:** `ENGINE_PARK reason=captions` (21:23:11) com `rows=0` até ao fim, e `_external_parked` faz `REVIVE_REFUSED reason=player-supplies-caption` (`sotto_webview.py:17146`): o áudio voltou (5 `STATUS_APPLIED` 21:33:39–42) e o worker não arrancou porque o player "está a fornecer" um frame que não muda.
 
 ---
-
-## SELF-AUDIT
-
-- **protocolos em falta:** não há `todo` nesta toolset (declarado no cabeçalho), e o protocolo de 40 linhas de resumo final é cumprido no yield, não no ficheiro. Faltou-me tempo para correr o `self-audit-lint.sh` sobre este ficheiro antes de o escrever — devia tê-lo feito depois. Faria diferente: correr o lint imediatamente após escrever e anexar a saída.
-- **verificação adicional:** o check que mais aumentaria a confiança é uma linha de log no `_post(_blank)` a confirmar que o `ov.hide()` correu (hoje é fire-and-forget). Custo: uma linha em `_blank_caption_window`; não corre agora porque o contrato é read-only. Também valeria um `grep` de `HOTKEY_OBSERVER_KEYS` (0 no log) — feito.
-- **checkboxes novas:** (a) `grep -c "no-caption-for-6.0s"` por sessão no arranque do diagnóstico — zero numa sessão com pushes é RED imediato; (b) assertar no código de produção que `push_caption_to_window` deixa `_caption_window_shown=True` sempre que `ov.show(True)` foi chamado (teste que falha com o código de hoje).
-- **review por outro subagente:** sim-com-escopo — rever apenas a escolha do "one defect" (Q4 e o pixel) contra o log; o resto é tabela e excerpto.
-- **gate-doubt:**
-  - `verde-de-verdade:` o único gate que corri foi o `cache-task-report.sh` (fail-closed, devolveu `UNKNOWN` em vez de zeros — verde real, instrumento sem linhas para esta identidade). Não corri nenhum teste nem lint de produto; nenhum verde desses foi assumido.
-  - `falta-no-gate:` o repositório não tem gate que asserte o invariante "pixels visíveis ⇒ `_caption_window_shown=True`". Uma mudança futura (novo caminho de push, novo blank) atravessa-o sem RED, e o sintoma é exactamente este ticket.
-  - `gate-melhor:` `python -m pytest app/webview/test_caption_window_truth.py` (ou equivalente) com um caso: blank → push → assertar `_caption_window_shown is True` e `_caption_idle_hide(seq)` apaga — com o código de hoje tem de dar RED na segunda asserção.
-- **confiança:** **alta** para Q1/Q2/Q3 (contagens e código citados, sem margem) e para o "one defect" (a guarda de `:17292` + o flag morto explicam o zero de `no-caption-for-6.0s`). **média** para o pixel exacto no ecrã (Q4): o log não mede pixels, só eventos; a inferência está marcada.
-- **não verificado:** o valor exacto de `_caption_window_shown` no processo às 21:29:56 (só derivado do código e dos blanks); se o `_post(_blank)` chegou a correr (nenhum log); se o dono carregou Ctrl+Space depois das 21:16:08 (o log não pode provar nem negar); a linha exacta de `_do_revive`/`REVIVE_REFUSED` (:~17162) lida de excerto, não reconfirmada por `grep -n`.
 
 ## CACHE/PRICE
 
@@ -246,3 +233,18 @@ UNKNOWN — no ledger break row attributable to this task: 1831 provider-request
 ---
 
 **Fecho:** diagnóstico entregue; nenhum ficheiro de produto foi tocado. O que falta é a decisão de cura (P0 #1: repor `_caption_window_shown` no push e instrumentar as duas guardas silenciosas; P0 #2: o caminho da tecla live).
+
+---
+
+## SELF-AUDIT
+
+- **protocolos em falta:** não há `todo` nesta toolset (declarado no cabeçalho), e o protocolo de 40 linhas de resumo final é cumprido no yield, não no ficheiro. Faltou-me tempo para correr o `self-audit-lint.sh` sobre este ficheiro antes de o escrever — devia tê-lo feito depois. Faria diferente: correr o lint imediatamente após escrever e anexar a saída.
+- **verificação adicional:** o check que mais aumentaria a confiança é uma linha de log no `_post(_blank)` a confirmar que o `ov.hide()` correu (hoje é fire-and-forget). Custo: uma linha em `_blank_caption_window`; não corre agora porque o contrato é read-only. Também valeria um `grep` de `HOTKEY_OBSERVER_KEYS` (0 no log) — feito.
+- **checkboxes novas:** (a) `grep -c "no-caption-for-6.0s"` por sessão no arranque do diagnóstico — zero numa sessão com pushes é RED imediato; (b) assertar no código de produção que `push_caption_to_window` deixa `_caption_window_shown=True` sempre que `ov.show(True)` foi chamado (teste que falha com o código de hoje).
+- **review por outro subagente:** sim-com-escopo — rever apenas a escolha do "one defect" (Q4 e o pixel) contra o log; o resto é tabela e excerpto.
+- **gate-doubt:**
+  - `verde-de-verdade:` o único gate que corri foi o `cache-task-report.sh` (fail-closed, devolveu `UNKNOWN` em vez de zeros — verde real, instrumento sem linhas para esta identidade). Não corri nenhum teste nem lint de produto; nenhum verde desses foi assumido.
+  - `falta-no-gate:` o repositório não tem gate que asserte o invariante "pixels visíveis ⇒ `_caption_window_shown=True`". Uma mudança futura (novo caminho de push, novo blank) atravessa-o sem RED, e o sintoma é exactamente este ticket.
+  - `gate-melhor:` `python -m pytest app/webview/test_caption_window_truth.py` (ou equivalente) com um caso: blank → push → assertar `_caption_window_shown is True` e `_caption_idle_hide(seq)` apaga — com o código de hoje tem de dar RED na segunda asserção.
+- **confiança:** **alta** para Q1/Q2/Q3 (contagens e código citados, sem margem) e para o "one defect" (a guarda de `:17292` + o flag morto explicam o zero de `no-caption-for-6.0s`). **média** para o pixel exacto no ecrã (Q4): o log não mede pixels, só eventos; a inferência está marcada.
+- **não verificado:** o valor exacto de `_caption_window_shown` no processo às 21:29:56 (só derivado do código e dos blanks); se o `_post(_blank)` chegou a correr (nenhum log); se o dono carregou Ctrl+Space depois das 21:16:08 (o log não pode provar nem negar); a ordem exacta de `_set_live_enabled` (lida por excerto, não reconfirmada linha a linha).

@@ -231,6 +231,11 @@ class RecordingUser32(object):
         self.next_calls = 0
         #: A mascara fisica que o `GetAsyncKeyState` deste gravador reporta.
         self.mods_down = 0
+        #: AS TECLAS FISICAMENTE EM BAIXO. O auto-repeat so' e' auto-repeat se a
+        #: tecla estiver em baixo -- um `GetAsyncKeyState` que devolvesse sempre 0
+        #: dizia ao shell que NENHUMA tecla esta' carregada, e era exactamente o
+        #: estado que confundia a cura do estado preso (medido 2026-11-10).
+        self.keys_down = set()
 
     def SetWindowsHookExW(self, hook_type, proc, hmod, thread_id):
         self.hook_installs += 1
@@ -250,6 +255,8 @@ class RecordingUser32(object):
         return 0
 
     def GetAsyncKeyState(self, vk):
+        if int(vk) in self.keys_down:
+            return 0x8000
         groups = ((2, (0x11, 0xA2, 0xA3)),   # Ctrl
                   (1, (0x12, 0xA4, 0xA5)),   # Alt
                   (4, (0x10, 0xA0, 0xA1)),   # Shift
@@ -312,6 +319,13 @@ class RecordingUser32(object):
         info = swallow_module.KBDLLHOOKSTRUCT()
         info.vkCode = int(vk if vk is not None else swallow_module.VK_SPACE)
         self.mods_down = int(mods)
+        # O Windows entrega o `keydown` com a tecla JA' em baixo e o `keyup`
+        # DEPOIS de a soltar -- a leitura fisica do callback ve' exactamente
+        # isso, e e' dela que a cura do estado preso depende.
+        if int(message) in (swallow_module.WM_KEYDOWN, swallow_module.WM_SYSKEYDOWN):
+            self.keys_down.add(int(info.vkCode))
+        else:
+            self.keys_down.discard(int(info.vkCode))
         return int(self.hook_proc(swallow_module.HC_ACTION, message,
                                   _ctypes.addressof(info)))
 
@@ -447,6 +461,39 @@ def arm_thread(shell_source, gaming_module, swallow_module, tag=''):
                     rc_up == 1,
                     'rc=%s state=%s' % (rc_up,
                                         thread.swallow.key_down_swallowed))
+        # B2e -- O ESTADO PRESO (cura de 2026-11-10). O `keyup` perdeu-se (hook
+        # instalado a meio de uma pressao, ou o evento nao chegou) e a tecla
+        # passou a ser engolida SEM NUNCA ALTERNAR -- indistinguivel de um hook
+        # morto, e foi o que o dono descreveu como *"preciso de activate -> alt c
+        # -> alt c off/on para a legenda funcionar"*. A testemunha fisica decide:
+        # a tecla esta' em cima, logo a pressao que chega agora e' NOVA.
+        before_resets = thread.swallow.state_resets
+        thread.swallow.key_down_swallowed = True
+        # O `keyup` perdeu-se HA' MUITO: o estado esta' de pe' ha' 10 s (um
+        # auto-repeat real leva 30 ms, e o carimbo e' do relogio do proprio fio).
+        thread.swallow._swallowed_at = time.monotonic() - 10.0
+        toggles_before = state['toggles']
+        rc_stuck = user.press_combo(swallow_module,
+                                    mods=swallow_module.MOD_CONTROL)
+        settle(thread, 3)
+        ok &= check('B2e estado preso (keyup perdido) NAO engole a tecla para '
+                    'sempre: a pressao nova ALTERNA%s' % tag,
+                    rc_stuck == 1 and state['toggles'] == toggles_before + 1
+                    and thread.swallow.state_resets > before_resets,
+                    'rc=%s toggles=%d->%d resets=%d->%d' %
+                    (rc_stuck, toggles_before, state['toggles'], before_resets,
+                     thread.swallow.state_resets))
+        # ...e o estado fecha: a repeticao seguinte, com a tecla EM BAIXO, volta
+        # a ser auto-repeat e nao alterna outra vez.
+        toggles_after = state['toggles']
+        rc_rep2 = user.press_combo(swallow_module,
+                                   mods=swallow_module.MOD_CONTROL)
+        settle(thread, 2)
+        ok &= check('B2f a repeticao seguinte (tecla em baixo) e auto-repeat de '
+                    'novo%s' % tag,
+                    rc_rep2 == 1 and state['toggles'] == toggles_after,
+                    'rc=%s toggles=%d->%d' % (rc_rep2, toggles_after,
+                                              state['toggles']))
         # o WM_HOTKEY atrasado NAO pode alternar outra vez
         before = state['toggles']
         user.press()
@@ -726,6 +773,16 @@ def _m4(webview_dir):
            "        if True:", 'log-por-volta')
 
 
+def _m7(webview_dir):
+    # a cura do estado preso sai: um `keyup` perdido volta a engolir a tecla
+    mutate(os.path.join(webview_dir, 'space_swallow.py'),
+           "            if key_down_swallowed and held_s is not None and "
+           "held_s > STUCK_HELD_S:\n"
+           "                return 'swallow', True, True\n",
+           "",
+           'sem-cura-do-estado-preso')
+
+
 def _m5(webview_dir):
     # O DEFEITO DO DONO: o hook deixa de engolir o espaco (a premissa velha do
     # `RegisterHotKey` volta a ser a unica coisa a "tomar" a tecla)
@@ -753,6 +810,7 @@ _MUTATORS = [
     ('log-por-volta', _m4),
     ('hook-nao-engole-o-espaco', _m5),
     ('hook-fica-instalado-em-jogo', _m6),
+    ('sem-cura-do-estado-preso', _m7),
 ]
 
 

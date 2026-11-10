@@ -3515,17 +3515,17 @@ REM registo recusado nao mente, e o log publica UMA linha por TRANSICAO e nunca
 REM uma por volta. O probe ao lado mede o que nenhum fake pode: nesta maquina, a
 REM segunda reserva da mesma combinacao da' 1409 e o Unregister devolve a tecla.
 if exist _main\ctrlspace-swallow-oracle.py (
-call :step always ctrlspace-swallow 0 "_main\ctrlspace-swallow-oracle.py;app\webview\sotto_webview.py;app\webview\gaming_mode.py" "%OUT%\ctrlspace-swallow.log" python _main\ctrlspace-swallow-oracle.py
+call :step always ctrlspace-swallow 0 "_main\ctrlspace-swallow-oracle.py;app\webview\sotto_webview.py;app\webview\gaming_mode.py;app\webview\space_swallow.py" "%OUT%\ctrlspace-swallow.log" python _main\ctrlspace-swallow-oracle.py
 call :record ctrlspace-swallow !STEP_RC!
 ) else ( call :record ctrlspace-swallow MISSING )
 
 if exist _main\ctrlspace-swallow-oracle.py (
-call :step always red-as-expected-ctrlspace-swallow 1 "_main\ctrlspace-swallow-oracle.py;app\webview\sotto_webview.py;app\webview\gaming_mode.py" "%OUT%\ctrlspace-swallow-neg.log" python _main\ctrlspace-swallow-oracle.py --neg-arm
+call :step always red-as-expected-ctrlspace-swallow 1 "_main\ctrlspace-swallow-oracle.py;app\webview\sotto_webview.py;app\webview\gaming_mode.py;app\webview\space_swallow.py" "%OUT%\ctrlspace-swallow-neg.log" python _main\ctrlspace-swallow-oracle.py --neg-arm
 call :expectred red-as-expected-ctrlspace-swallow !STEP_RC! "%OUT%\ctrlspace-swallow-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-ctrlspace-swallow MISSING "%OUT%\ctrlspace-swallow-neg.log" "NEG-ARM: PASS" )
 
 if exist _main\ctrlspace-swallow-probe.py (
-call :step always ctrlspace-swallow-os 0 "_main\ctrlspace-swallow-probe.py" "%OUT%\ctrlspace-swallow-os.log" python _main\ctrlspace-swallow-probe.py
+call :step always ctrlspace-swallow-os 0 "_main\ctrlspace-swallow-probe.py;app\webview\space_swallow.py" "%OUT%\ctrlspace-swallow-os.log" python _main\ctrlspace-swallow-probe.py
 call :record ctrlspace-swallow-os !STEP_RC!
 ) else ( call :record ctrlspace-swallow-os MISSING )
 

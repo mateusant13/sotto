@@ -131,12 +131,12 @@
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 232220,
+      "bytes": 232665,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4694,
+      "lines": 4701,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -450,6 +450,16 @@
       "max_func": 92,
       "max_func_name": "_run_window"
     },
+    "app/webview/prose_punct.py": {
+      "bytes": 6051,
+      "classes": 0,
+      "defs": 2,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 127,
+      "max_func": 34,
+      "max_func_name": "close_line"
+    },
     "app/webview/run-cmd-log-append.py": {
       "bytes": 3261,
       "classes": 0,
@@ -481,24 +491,24 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1310088,
+      "bytes": 1317361,
       "classes": 29,
-      "defs": 155,
+      "defs": 158,
       "except_pass": 61,
       "globals": 8,
-      "lines": 24761,
+      "lines": 24890,
       "max_func": 414,
       "max_func_name": "main"
     },
     "app/webview/space_swallow.py": {
-      "bytes": 14267,
+      "bytes": 18973,
       "classes": 2,
       "defs": 2,
       "except_pass": 0,
       "globals": 0,
-      "lines": 321,
-      "max_func": 34,
-      "max_func_name": "install"
+      "lines": 395,
+      "max_func": 58,
+      "max_func_name": "_on_event"
     },
     "app/webview/thread_names.py": {
       "bytes": 3848,

@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes as wt
+import time
 
 __all__ = [
     'KBDLLHOOKSTRUCT', 'SpaceSwallowHook', 'classify_event',
@@ -62,6 +63,13 @@ WM_KEYUP = 0x0101
 WM_SYSKEYDOWN = 0x0104
 WM_SYSKEYUP = 0x0105
 VK_SPACE = 0x20
+
+#: QUANTO TEMPO um "keydown engolido" pode durar sem `keyup` antes de o estado
+#: ser declarado MENTIROSO (2026-11-10). Um auto-repeat real chega a cada ~30 ms;
+#: uma tecla fisicamente segurada por mais de 3 s nao e' o caso de uso desta
+#: tecla (e se for, a pressao longa ALTERNA uma vez, que e' o desfecho seguro:
+#: a alternativa e' engolir a tecla para sempre e nao alternar nunca).
+STUCK_HELD_S = 3.0
 VK_CONTROL = 0x11
 VK_LCONTROL = 0xA2
 VK_RCONTROL = 0xA3
@@ -120,7 +128,8 @@ _USER32.GetAsyncKeyState.argtypes = [ctypes.c_int]
 
 
 def classify_event(message, vk, mods_down, armed, key_down_swallowed,
-                   target_vk=VK_SPACE, required_mods=MOD_CONTROL):
+                   target_vk=VK_SPACE, required_mods=MOD_CONTROL,
+                   held_s=None):
     """A REGRA, pura: `(accao, next_key_down_swallowed, alternar)`.
 
     `mods_down`/`required_mods` usam os bits do `RegisterHotKey` (`MOD_*`): a
@@ -131,6 +140,11 @@ def classify_event(message, vk, mods_down, armed, key_down_swallowed,
     nao pode alternar a legenda uma vez por repeticao. A funcao nao le' relogio
     nem global: e' a unica coisa que o oraculo tem de exercitar para provar a
     classificacao.
+
+    `held_s` e' a TESTEMUNHA do estado preso: o tempo, em segundos, que o
+    `key_down_swallowed` de pe' ja' dura. `None` = nao sei (comportamento
+    anterior). Passado `STUCK_HELD_S` sem `keyup`, o estado mente -- a pressao
+    que chega agora e' nova, logo alterna.
     """
     if not armed:
         # DESARMADO = A TECLA E' DE QUEM ESTA' EM FOCO. Em jogo o plano manda
@@ -140,6 +154,24 @@ def classify_event(message, vk, mods_down, armed, key_down_swallowed,
     if message in (WM_KEYDOWN, WM_SYSKEYDOWN):
         if (vk == target_vk
                 and (mods_down & required_mods) == required_mods):
+            # O ESTADO PRESO QUE ENGOLIA A TECLA PARA SEMPRE (2026-11-10).
+            # `key_down_swallowed` so' devia estar True entre o `keydown` e o
+            # `keyup` da MESMA tecla. Se o hook foi instalado a meio de uma
+            # pressao, ou o `keyup` se perdeu, o estado fica preso em True e
+            # `not key_down_swallowed` passa a ser SEMPRE False: cada pressao
+            # seguinte e' engolida e NUNCA alterna -- sem uma linha no log, e
+            # indistinguivel de um hook morto. O dono descreveu a borda,
+            # verbatim: *"preciso de activate -> alt c -> alt c off/on para a
+            # legenda funcionar"*.
+            # A TESTEMUNHA E' O TEMPO, e nao o bit fisico: um `keydown` chega
+            # sempre com a tecla em baixo, portanto `GetAsyncKeyState` nunca
+            # desmente o estado preso no instante que importa (medido, e a
+            # primeira versao desta cura lia `False` zero vezes). Um auto-repeat
+            # real chega a cada ~30 ms; uma tecla segurada que passasse de
+            # `STUCK_HELD_S` sem `keyup` nao e' uma tecla segurada, e' um estado
+            # que mente -- e a pressao que chega agora e' NOVA.
+            if key_down_swallowed and held_s is not None and held_s > STUCK_HELD_S:
+                return 'swallow', True, True
             return 'swallow', True, not key_down_swallowed
         return 'pass', key_down_swallowed, False
     if message in (WM_KEYUP, WM_SYSKEYUP):
@@ -181,7 +213,7 @@ class SpaceSwallowHook(object):
 
     def __init__(self, on_toggle=None, log_fn=None, role='live',
                  user32=None, kernel32=None, mods_down=None,
-                 target_vk=VK_SPACE, required_mods=MOD_CONTROL):
+                 target_vk=VK_SPACE, required_mods=MOD_CONTROL, clock=None):
         self.on_toggle = on_toggle
         self.log_fn = log_fn or (lambda *a, **k: None)
         self.role = role
@@ -202,6 +234,16 @@ class SpaceSwallowHook(object):
         self.swallowed = 0
         self.passed = 0
         self.toggles = 0
+        #: Quantas vezes o estado "keydown engolido" estava a mentir (o `keyup`
+        #: perdeu-se). Nunca deve subir num teclado saudavel; se subir, a tecla
+        #: esta' a ser engolida e nao a alternar.
+        self.state_resets = 0
+        #: QUANDO o estado de "keydown engolido" comecou, em segundos do
+        #: `self.clock`. E' a testemunha do estado preso: ver `classify_event`.
+        self._swallowed_at = None
+        #: O relogio, injectavel: o oraculo nao pode esperar 3 s de parede por
+        #: braco. `time.monotonic` e o mesmo relogio de todos os prazos da app.
+        self.clock = clock or time.monotonic
         self.key_down_swallowed = False
         self.last_error = None
         #: Referencia viva ao `HOOKPROC`: um callback em `ctypes` que o Python
@@ -299,14 +341,46 @@ class SpaceSwallowHook(object):
             mods_down = int(self.mods_down())
         except Exception:  # noqa: BLE001
             mods_down = 0
+        # A TESTEMUNHA DO ESTADO PRESO (2026-11-10): o TEMPO. Um `keydown`
+        # chega sempre com a tecla em baixo, por isso o bit fisico nunca desmente
+        # o estado no instante que importa -- medido, a primeira versao lia
+        # `False` zero vezes. O relogio e' barato (uma leitura por evento) e so'
+        # e' lido quando o estado AFIRMA uma tecla engolida.
+        held_s = None
+        if self.key_down_swallowed and self._swallowed_at is not None:
+            try:
+                held_s = max(0.0, float(self.clock()) - float(self._swallowed_at))
+            except Exception:  # noqa: BLE001 -- sem relogio, decide-se como antes
+                held_s = None
+        stuck = bool(self.key_down_swallowed and held_s is not None
+                     and held_s > STUCK_HELD_S)
         action, self.key_down_swallowed, toggle = classify_event(
             int(wparam), vk, mods_down, bool(self.armed),
-            self.key_down_swallowed, self.target_vk, self.required_mods)
+            self.key_down_swallowed, self.target_vk, self.required_mods,
+            held_s=held_s)
         if action == 'swallow':
             self.swallowed += 1
+            # O CARIMBO QUE A PROXIMA LEITURA COMPARA: quando o estado de
+            # "keydown engolido" comecou. `keyup` fecha-o e limpa o carimbo.
+            self._swallowed_at = (float(self.clock())
+                                  if self.key_down_swallowed else None)
+            if stuck:
+                self.state_resets += 1
+                self.log_fn('SPACE_SWALLOW_STATE_RESET role=%s vk=0x%02X '
+                            'resets=%d why=key-up-was-lost-while-swallowing '
+                            'the_press_alternates=true'
+                            % (self.role, int(vk), self.state_resets))
             if toggle:
                 self.toggles += 1
                 self._fire_toggle()
+            elif self.swallowed in (1, 10, 100) or self.swallowed % 1000 == 0:
+                # O AUTO-REPEAT NAO PODE SER MUDO. MEDIDO: `HOTKEY_OBSERVER_ALIVE`
+                # saiu 0 vezes em 187 339 linhas de log e a tecla live nao deixou
+                # rasto nenhum -- uma tecla que engole e nao alterna era
+                # indistinguivel de um hook morto.
+                self.log_fn('SPACE_SWALLOW_REPEAT role=%s vk=0x%02X '
+                            'swallowed=%d toggles=%d why=auto-repeat'
+                            % (self.role, int(vk), self.swallowed, self.toggles))
             return 1
         self.passed += 1
         return self._next(code, wparam, lparam)

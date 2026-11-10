@@ -591,6 +591,19 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-10, 11:1x):** `_main\_audit-verify-all.cmd` = **344325 B**,
+  **4007 CRLF** / 0 bare LF, sha256 `2E1D88DFED26D4B0D0F981671D6EA1C8DB055B8B5FB011D7701285A35D7F175A`.
+  (Oitenta e sete bytes e ZERO linhas a mais do que o pin de 344238 B, e o acrescimo NAO e' um passo:
+  sao as TRES dependencias que faltavam ao `space_swallow.py`, a mesma classe do `panel-deps`. O
+  `ctrlspace-swallow` (positivo e negativo) e o `ctrlspace-swallow-os` carregam `space_swallow.py`
+  pelo caminho para executar a classificacao REAL, e nenhum dos tres o nomeava nas dependencias --
+  editar o ficheiro deixaria os tres passos em cache a reimprimir um PASS sobre o ficheiro antigo.
+  O mesmo bloco fechou o ESTADO PRESO do `Ctrl+Space`: `key_down_swallowed` de pe' ha' mais de
+  `STUCK_HELD_S=3.0 s` sem `keyup` fazia `not key_down_swallowed` ser sempre False -- a tecla era
+  engolida e NUNCA alternava, sem uma linha no log (o dono, verbatim: *"preciso de activate -> alt c
+  -> alt c off/on para a legenda funcionar"*). A testemunha e' o RELOGIO, nao o bit fisico: um
+  `keydown` chega sempre com a tecla em baixo, e a primeira versao da cura lia `False` zero vezes
+  (o braco B2e apanhou-o). `CTRLSPACE-SWALLOW VERDICT: PASS (21/21)`, `NEG-ARM: PASS (7/7)`.)
 - **PIN do ficheiro (medido 2026-11-10, 10:5x):** `_main\_audit-verify-all.cmd` = **344238 B**,
   **4007 CRLF** / 0 bare LF, sha256 `FD3163A19DBD389B1118CE7192FE266C61D9CD1D2029FAA3331DD0EB1DF2A8BD`.
   (Mil seiscentos e trinta e tres bytes e DEZASSETE linhas a mais do que o pin de 342605 B: o par
