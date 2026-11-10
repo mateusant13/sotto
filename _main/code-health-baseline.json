@@ -71,12 +71,12 @@
       "max_func_name": ""
     },
     "app/panel/history-source.js": {
-      "bytes": 7290,
+      "bytes": 8692,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 152,
+      "lines": 182,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -111,12 +111,12 @@
       "max_func_name": ""
     },
     "app/panel/panel-unified.css": {
-      "bytes": 26028,
+      "bytes": 34489,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 492,
+      "lines": 701,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -131,22 +131,22 @@
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 223205,
+      "bytes": 232220,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4510,
+      "lines": 4694,
       "max_func": 0,
       "max_func_name": ""
     },
     "app/panel/skin-host.js": {
-      "bytes": 43125,
+      "bytes": 43977,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 975,
+      "lines": 982,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -261,23 +261,23 @@
       "max_func_name": "drag_plan"
     },
     "app/webview/caption_overlay.py": {
-      "bytes": 83880,
+      "bytes": 86640,
       "classes": 8,
       "defs": 9,
-      "except_pass": 3,
+      "except_pass": 5,
       "globals": 0,
-      "lines": 1704,
-      "max_func": 120,
+      "lines": 1762,
+      "max_func": 116,
       "max_func_name": "_update"
     },
     "app/webview/caption_settings.py": {
-      "bytes": 3713,
+      "bytes": 3607,
       "classes": 0,
       "defs": 7,
       "except_pass": 1,
       "globals": 0,
-      "lines": 98,
-      "max_func": 20,
+      "lines": 97,
+      "max_func": 15,
       "max_func_name": "save"
     },
     "app/webview/caption_wrap.py": {
@@ -411,14 +411,14 @@
       "max_func_name": "popen_kwargs"
     },
     "app/webview/overlay_paint.py": {
-      "bytes": 44098,
+      "bytes": 44031,
       "classes": 0,
       "defs": 26,
       "except_pass": 2,
       "globals": 1,
-      "lines": 970,
+      "lines": 974,
       "max_func": 148,
-      "max_func_name": "_normalise_theme"
+      "max_func_name": "_paint_bitmap"
     },
     "app/webview/panel_focus.py": {
       "bytes": 10172,
@@ -481,12 +481,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1294347,
+      "bytes": 1310088,
       "classes": 29,
       "defs": 155,
       "except_pass": 61,
       "globals": 8,
-      "lines": 24490,
+      "lines": 24761,
       "max_func": 414,
       "max_func_name": "main"
     },
@@ -591,12 +591,12 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 87503,
+      "bytes": 102628,
       "classes": 1,
       "defs": 29,
-      "except_pass": 6,
+      "except_pass": 8,
       "globals": 2,
-      "lines": 1797,
+      "lines": 2062,
       "max_func": 230,
       "max_func_name": "_run"
     },
@@ -660,6 +660,16 @@
       "max_func": 53,
       "max_func_name": "_flush"
     },
+    "worker/caption_noise.py": {
+      "bytes": 7387,
+      "classes": 0,
+      "defs": 3,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 193,
+      "max_func": 134,
+      "max_func_name": "_selftest"
+    },
     "worker/denoise.py": {
       "bytes": 27001,
       "classes": 1,
@@ -671,13 +681,13 @@
       "max_func_name": "selftest"
     },
     "worker/engine_policy.py": {
-      "bytes": 23499,
+      "bytes": 23294,
       "classes": 2,
       "defs": 10,
       "except_pass": 0,
       "globals": 0,
       "lines": 522,
-      "max_func": 96,
+      "max_func": 92,
       "max_func_name": "run_engine_pass"
     },
     "worker/engine_switch.py": {

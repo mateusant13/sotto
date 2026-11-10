@@ -216,6 +216,36 @@ feed; wait for the worker's `final:true`/closed line. The worker already emits t
 one-line predicate in the shell, zero decode cost, and it addresses 76 of the 113 no-terminal
 lines. It is outside this lane's write scope.
 
+#### 2.5-C CORRECTION (medida 2026-11-10, por quem foi ler os flags) — o mecanismo acima está ERRADO
+
+A atribuição desta secção não se sustenta no que a própria linha escreve. Medido agora:
+
+* `route=final src=worker-stamped` é **exatamente o contrário** de "fechamento do PAINEL": em
+  `app/panel/caption-formulation.js`, `routeSourceFor()` devolve `'panel-deadline'` para um
+  fechamento do painel e `'fallback'` para o default silencioso; `'worker-stamped'` só sai quando
+  `bufferFinal || bufferSawFinal`, ou seja **quando o WORKER votou**. E `routeFor()` só devolve
+  `final` quando `bufferFinal` (o `meta.final === true` do worker) — com `reason=stable` e sem
+  voto do worker a rota seria `provisional-draft`, que as duas lojas RECUSAM.
+* Logo: aquelas 162 linhas não são parciais admitidas pela shell; são linhas que o **worker**
+  fechou (`worker/sotto_worker.py:5341`, `self._event(text, final=True, closed=True,
+  stable=True)`) e que o painel commitou no instante do `stable` (`ingest`, `if (meta.stable ===
+  true) commit('stable')`). O `reason=stable` é o NOME do gatilho, não a rota.
+* A "frase truncada" também não é um corte de meio de linha do painel: medido em `17.md`, as
+  **37** linhas `reason=stable` — **0** terminam com marca de pontuação — e **0** têm a linha
+  seguinte começando em minúscula (nenhuma é continuação de uma linha partida). O corte é a pausa
+  de fala, que é onde o worker fecha a linha.
+* A ausência da marca tem causa nomeada e é um DECISÃO medida, não um defeito de admissão:
+  `worker/punctuation_model.py` só pontua `supported_lang(tag)` (`en*`), e o docstring do módulo
+  registra por que o multilang foi recusado (`oliverguhr/...-multilang-large`, ~2,4 GB, arrasta
+  `torch` num worker de 1,9 GB com `I:` a 4,8 % livre). O áudio deste worker é pt-BR: a pontuação
+  de MODELO fica `active=false` e o `log_line()` diz isso com a língua ao lado.
+
+**Consequência para quem for agir:** "não deixar `reason=stable` chegar ao histórico" não é uma
+cura, é uma regressão — tiraria do histórico as linhas que o worker FECHOU e que hoje são a única
+coisa boa dele. Continuam abertas duas classes medidas e pequenas: (a) `Mmm` — curada nesta lane;
+(b) a marca de pontuação em pt-BR, que exige prosódia/pausa (`punctuation_prosody.py`) ou um
+modelo com português, e **não** um filtro de rota.
+
 ## 3. THE LANDED FIX — whole-caption noise filter
 
 ### 3.1 What changed
