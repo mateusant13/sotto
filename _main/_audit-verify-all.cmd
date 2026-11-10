@@ -1527,6 +1527,14 @@ call :expectred red-as-expected-stall-under-load !STEP_RC! "%OUT%\stall-under-lo
 if exist _main\paint-live-show-oracle.py (
 call :step always paint-live-show 0 "_main\paint-live-show-oracle.py;app\webview\sotto_webview.py;_main\live-code-freshness-oracle.py;app\webview\code_identity.py;_main\content-gate-answer-probe.py" "%OUT%\paint-live-show.log" python _main\paint-live-show-oracle.py
 call :skipped paint-live-show !STEP_RC! "%OUT%\paint-live-show.log" "PAINT-LIVE VERDICT: GREEN" "PAINT-LIVE VERDICT: SKIPPED" "VERDICT: SKIPPED"
+if exist _main\boot-interaction-oracle.py (
+call :step always boot-interaction 0 "_main\boot-interaction-oracle.py;_main\webview-run.log" "%OUT%\boot-interaction.log" python _main\boot-interaction-oracle.py
+call :skipped boot-interaction !STEP_RC! "%OUT%\boot-interaction.log" "BOOT-INTERACTION VERDICT: PASS" "BOOT-INTERACTION SKIPPED" "SKIPPED"
+) else ( call :skipped boot-interaction MISSING "%OUT%\boot-interaction.log" "BOOT-INTERACTION VERDICT: PASS" "BOOT-INTERACTION SKIPPED" "SKIPPED" )
+if exist _main\boot-interaction-oracle.py (
+call :step always red-as-expected-boot-interaction 1 "_main\boot-interaction-oracle.py" "%OUT%\boot-interaction-neg.log" python _main\boot-interaction-oracle.py --neg-arm
+call :expectred red-as-expected-boot-interaction !STEP_RC! "%OUT%\boot-interaction-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-boot-interaction MISSING "%OUT%\boot-interaction-neg.log" "NEG-ARM: PASS" )
 ) else ( call :skipped paint-live-show MISSING "%OUT%\paint-live-show.log" "PAINT-LIVE VERDICT: GREEN" "PAINT-LIVE VERDICT: SKIPPED" "VERDICT: SKIPPED" )
 if exist _main\paint-live-show-oracle.py (
 call :step always red-as-expected-paint-live-show 1 "_main\paint-live-show-oracle.py" "%OUT%\paint-live-show-neg.log" python _main\paint-live-show-oracle.py --neg-arm

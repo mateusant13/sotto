@@ -621,8 +621,19 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   -> alt c off/on para a legenda funcionar"*). A testemunha e' o RELOGIO, nao o bit fisico: um
   `keydown` chega sempre com a tecla em baixo, e a primeira versao da cura lia `False` zero vezes
   (o braco B2e apanhou-o). `CTRLSPACE-SWALLOW VERDICT: PASS (21/21)`, `NEG-ARM: PASS (7/7)`.)
-- **PIN do ficheiro (medido 2026-11-10, 13:2x):** `_main\_audit-verify-all.cmd` = **348449 B**,
-  **4051 CRLF** / 0 bare LF, sha256 `8A6C28098A3E0E8E34765489A8EE7663C619483A5AF3DA7FF328D1DD7DBA5BCF`.
+- **PIN do ficheiro (medido 2026-11-10, 13:5x):** `_main\_audit-verify-all.cmd` = **349393 B**,
+  **4059 CRLF** / 0 bare LF, sha256 `391CB45A027E02C468D9B9B6962689812185DBA0D39F9D4545E56F417EB7CE87`.
+  (Novecentros e quarenta e quatro bytes e OITO linhas a mais do que o pin de 348449 B: o par
+  `boot-interaction` + o seu `red-as-expected`, o instrumento que mede a fluidez **DO ARRANQUE** --
+  ordem do dono de 2026-11-10, verbatim: *"a performance e o measure de TUDO tem que comecar a
+  partir do momento que o app abre. como um usuario. se eu abro o app, e ja tento abrir o painel
+  alt c, e ele demora 2 segundos, E HORRIVEL"*. Ele le a ULTIMA sessao do log vivo, ancora no
+  `SHELL_STARTUP_STAGE stage=pre-lock` e separa a tecla em DOIS elos, porque o log nao tem id na
+  linha `PANEL_SHOWN`: tecla->`HOTKEY_COALESCED transitions=1` e' o DESPACHO e
+  coalesced->`PANEL_SHOWN` e' a PINTURA. Na sessao DELE de hoje (09:33:51) o primeiro Alt+C mediu
+  **despacho 5 ms + pintura 3 142 ms** e o pior **5 241 ms**, a bandeja **5 063 ms com `ok=0` em
+  13 de 13** -- o orcamento e' 400 ms (o mesmo que `paint-live-show` ja' exige) e 200 ms. Sem
+  sessao no log ele diz SKIPPED; `--neg-arm` 6/6 casos.
   (Trezentos e dez bytes e DUAS linhas a mais do que o pin de 348139 B: o par `content-gate-probe`
   + o seu `:expectred` -- o `--neg-arm` da sonda da pagina, que estava com ZERO chamadores. Custa
   **3,6 s** e julga a escada de raizes com um `_run_edge` FALSO (zero navegador, zero janela):
