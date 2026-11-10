@@ -653,6 +653,11 @@ if exist _main\_panel2-dom-probe.js (
   call :record youtube-cdp-latency !STEP_RC!
   call :step red-as-expected-youtube-cdp-latency 1 "_main\youtube-cdp-latency-oracle.py;app\webview\youtube_cdp_source.py" "%OUT%\youtube-cdp-latency-neg.log" python _main\youtube-cdp-latency-oracle.py --neg-arm
   call :expectred red-as-expected-youtube-cdp-latency !STEP_RC! "%OUT%\youtube-cdp-latency-neg.log" "NEG-ARM: PASS"
+  rem uma LEGENDA inteira de "Mmm" nao e transcricao: 93 de 680 linhas do historico do dono
+  rem (13,7%), todas do motor de lote. Selftest com braco negativo -- a regra, nao o harness, e
+  rem quem apaga as duas janelas de ruido.
+  call :step caption-noise 0 "worker\caption_noise.py;worker\engine_policy.py" "%OUT%\caption-noise.log" python worker\caption_noise.py --selftest
+  call :record caption-noise !STEP_RC!
   call :step red-as-expected-theme-caption-identity 1 "_main\theme-caption-identity-oracle.py;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css" "%OUT%\theme-caption-identity-neg.log" python _main\theme-caption-identity-oracle.py --neg-arm
   call :expectred red-as-expected-theme-caption-identity !STEP_RC! "%OUT%\theme-caption-identity-neg.log" "NEG-ARM PASS"
   call :step caption-overlay-theme 0 "_main\caption-overlay-theme-oracle.py;_main\panel-themes-oracle.mjs;app\panel\panel.html;app\panel\brand-bridge.js;app\panel\panel-unified.css;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\overlay_paint.py;app\webview\word_fade.py" "%OUT%\caption-overlay-theme.log" python _main\caption-overlay-theme-oracle.py

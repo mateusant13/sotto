@@ -591,6 +591,24 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-10, 02:0x):** `_main\_audit-verify-all.cmd` = **338042 B**,
+  **3939 CRLF** / 0 bare LF, sha256 `52DA06DCAE7CE299E179C5390609C76EB949D18236BA04C5F184647A059515BF`.
+  (Quatrocentos e vinte e dois bytes e CINCO linhas a mais do que o pin de 337620 B: UM passo,
+  `caption-noise`, que da autoridade de bateria ao predicado que a lane de QUALIDADE DA TRANSCRICAO
+  mediu e o dono pediu -- *"historicos desde as 15h de hoje: melhorar a qualidade da transcricao a
+  custo barato"*. O numero que o justifica foi medido no historico DELE, nao estimado: **93 de 680
+  linhas (13,7 %) sao `Mmm`/`Mmm.`/`Mmm Mmm.` e TODAS sao `producer=redux`** -- em `14.md` sao 25 de
+  49 (51 %). O predicado (`worker\caption_noise.py`) so' apaga a legenda cujo TODO o texto e'
+  preenchimento nao lexical; uma linha com uma palavra real (`Mmm, mas eu vou.`) fica, e as outras
+  de uma palavra (`Oh.`, `Sim`, `Cabeça!`) ficam porque podem ser fala. Custo medido: ~2,4 us por
+  legenda, <=1,6 us de CPU por SEGUNDO de audio contra os ~0,745 s de computacao do motor de lote.
+  O passo corre o `--selftest` (7 arms + o braco negativo que esvazia o padrao e exige as DUAS
+  janelas de ruido publicadas de volta): medido `{"ok": true, "cases": 7, "caught": 7, "neg_arm":
+  "PASS"}` rc=0. Ele NAO fecha a classe dominante, e o recibo diz por que: **112 de 293 linhas de
+  `15.md`/`17.md`/`18.md` (38,2 %) terminam sem pontuacao terminal e 76 delas sao parciais `live
+  reason=stable` que o PAINEL admitiu ao historico** -- isso e' admissao do lado da shell, nao do
+  worker, e trocar comportamento de legenda ao vivo por cosmetica de transcricao seria o negocio
+  errado. Recibo: `_main/receipt-20261109-transcript-quality.md` §2.5.)
 - **PIN do ficheiro (medido 2026-11-10, 01:4x):** `_main\_audit-verify-all.cmd` = **337620 B**,
   **3934 CRLF** / 0 bare LF, sha256 `ACEA7120E926B9B1236BDE4E07F4514E5EFD5D442640B9E5C0FA5D140A4C5A75`.
   (Dois mil novecentos e quarenta bytes e TREZE linhas a mais do que o pin de 334680 B: DOIS pares.

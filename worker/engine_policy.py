@@ -27,6 +27,7 @@ import importlib.util as _ilu
 import os
 import tempfile as _tempfile
 import time
+from caption_noise import admit_batch_caption
 
 #: FREE physical memory a PARKEET (ONNX int4) pass may start under, in MB. The
 #: measured peak of that export is ~615 MB (`worker/redux_live.py`), so this is
@@ -339,16 +340,9 @@ def run_engine_pass(sw, held, samples, reason, start_s=0.0):
     existe exactamente para isso, e o audio continua a entrar na
     `PendingAudio` enquanto ela trabalha.
 
-    O TRABALHO E' FRAccionado EM JANELAS (`engine_window_s`, 3 s): um atraso
-    de dez minutos nao vira uma linha unica de dez minutos, e cada linha
-    leva o `start`/`end` REAL da janela de audio de onde saiu (o relogio do
-    audio, nao o relogio da parede). Entre janelas o `mode` e' reconferido:
-    se o nivel subiu para `muito-alta`, o resto fica para depois em vez de
-    continuar a moer a maquina.
-
-    UMA JANELA QUE FALHA NAO LEVA AS OUTRAS: exactamente o audio ainda NAO
-    transcrito volta para a frente da `PendingAudio` e o `_park` poe um
-    backoff, para um motor partido nao ser tentado 1x por segundo.
+    O TRABALHO E' FRAccionado EM JANELAS (`engine_window_s`, 3 s): cada linha
+    leva o `start`/`end` REAL da janela; entre janelas o `mode` e' reconferido
+    e uma janela falhada devolve o audio a `PendingAudio` com backoff.
     """
     import numpy as np
 
@@ -362,6 +356,7 @@ def run_engine_pass(sw, held, samples, reason, start_s=0.0):
     offset = 0
     lines = 0
     windows = 0
+    sw.noise_lines = 0
     t0 = time.time()
     try:
         sw.engine.load()
@@ -373,6 +368,8 @@ def run_engine_pass(sw, held, samples, reason, start_s=0.0):
             windows += 1
             text = str(sw.engine.transcribe(chunk) or "").strip()
             if not text:
+                continue
+            if not admit_batch_caption(sw, text):
                 continue
             sw._captions.put({
                 "type": "caption",
@@ -391,7 +388,7 @@ def run_engine_pass(sw, held, samples, reason, start_s=0.0):
             f"REDUX_ENGINE_DONE reason={reason} engine={sw.engine.name()} "
             f"model={os.path.basename(sw.engine.dir)} "
             f"audio_s={round(samples / float(sw.rate), 2)} windows={windows} "
-            f"lines={lines} loads={sw.engine.loads} "
+            f"lines={lines} noise_lines={getattr(sw, 'noise_lines', 0)} loads={sw.engine.loads} "
             f"rss_mb={sw.rss():.1f} "
             f"wall_s={round(time.time() - t0, 2)}")
         if offset < total:
@@ -520,3 +517,6 @@ def done_fields(sw, counts):
         "reduxShedCommitPct": sw._commit_pct,
         "reduxShedCpuPct": sw._cpu_pct,
     }
+
+
+
