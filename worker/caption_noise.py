@@ -96,6 +96,56 @@ def admit_batch_caption(sw, text):
     return True
 
 
+def _runner_wiring_arm(check):
+    """A GUARDA existe dentro de `_run_runner`, e o braco prova que ela pode faltar.
+
+    Le `worker/engine_switch.py` por `ast` (nunca por texto: um comentario que
+    cita a chamada faria a arm passar), exige um `if not admit_batch_caption(...)`
+    DENTRO do metodo, e corre a MESMA leitura sobre uma copia com a guarda
+    removida -- a copia tem de dar vermelho, senao o braco nao mede nada.
+    """
+    import ast
+    import os
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine_switch.py")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            src = fh.read()
+    except OSError as exc:
+        check("runner ingress: engine_switch.py legivel", False, {"error": str(exc)})
+        return
+
+    def guarded(text):
+        """True quando `_run_runner` tem `if not admit_batch_caption(...)`."""
+        try:
+            tree = ast.parse(text)
+        except SyntaxError as exc:
+            return False, {"syntax": str(exc)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "_run_runner":
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.If) and isinstance(sub.test, ast.UnaryOp) \
+                            and isinstance(sub.test.operand, ast.Call):
+                        fn = sub.test.operand.func
+                        if isinstance(fn, ast.Name) and fn.id == "admit_batch_caption":
+                            return True, {"line": sub.lineno}
+                return False, {"reason": "sem guarda dentro de _run_runner"}
+        return False, {"reason": "_run_runner nao existe"}
+
+    ok, evidence = guarded(src)
+    check("runner ingress: _run_runner filtra por admit_batch_caption", ok, evidence)
+
+    # O CONTROLO: a mesma leitura sobre a guarda arrancada.
+    mutated = src.replace("if not admit_batch_caption(self, text):", "if False:")
+    if mutated == src:
+        check("runner ingress: o controlo conseguiu mutar o ficheiro", False,
+              {"reason": "ancora da guarda nao encontrada"})
+    else:
+        mok, mevidence = guarded(mutated)
+        check("runner ingress: o controlo (guarda arrancada) fica vermelho", not mok,
+              mevidence)
+
+
 def _corpus_arm(check):
     """O braco da CORPUS: a cobertura do padrao, medida sobre o historico DELE.
 
@@ -282,6 +332,15 @@ def _selftest():
     # 6. A CORPUS DO DONO, contada (funcao propria: o `_selftest` ja' e' o maior
     # corpo deste ficheiro e o ratchet estrutural pune o crescimento dele).
     _corpus_arm(check)
+
+    # 6-bis. O SEGUNDO INGRESSO (medido 2026-11-10). O caminho de RUNNER
+    # (`ReduxHiddenSwitch._run_runner`, em `worker/engine_switch.py`) recebia as
+    # linhas do executor por JSON e publicava-as SEM este filtro -- o recibo de
+    # 2026-11-09 declarou-o em §4.6 e a regra vivia num so' dos dois ingressos.
+    # O braco e' `ast` porque o caminho real exige um subprocesso de modelo: o
+    # que se mede aqui e' que a GUARDA existe no sitio certo, e a prova de que
+    # ela pode faltar e' o proprio mutante DENTRO do braco.
+    _runner_wiring_arm(check)
 
     # 7. NEGATIVE ARM: empty the pattern; the same two windows must both publish.
     # `run_engine_pass` holds the function imported from THIS module; when this

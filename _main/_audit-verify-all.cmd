@@ -656,7 +656,7 @@ if exist _main\_panel2-dom-probe.js (
   rem uma LEGENDA inteira de "Mmm" nao e transcricao: 93 de 680 linhas do historico do dono
   rem (13,7%), todas do motor de lote. Selftest com braco negativo -- a regra, nao o harness, e
   rem quem apaga as duas janelas de ruido.
-  call :step caption-noise 0 "worker\caption_noise.py;worker\engine_policy.py" "%OUT%\caption-noise.log" python worker\caption_noise.py --selftest
+  call :step caption-noise 0 "worker\caption_noise.py;worker\engine_policy.py;worker\engine_switch.py" "%OUT%\caption-noise.log" python worker\caption_noise.py --selftest
   call :record caption-noise !STEP_RC!
   call :step red-as-expected-theme-caption-identity 1 "_main\theme-caption-identity-oracle.py;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css" "%OUT%\theme-caption-identity-neg.log" python _main\theme-caption-identity-oracle.py --neg-arm
   call :expectred red-as-expected-theme-caption-identity !STEP_RC! "%OUT%\theme-caption-identity-neg.log" "NEG-ARM PASS"
@@ -3164,6 +3164,26 @@ if exist _main\ladder-signal-oracle.py (
 call :step always ladder-signal 0 "_main\ladder-signal-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py;app\webview\shell_relaunch.py;app\webview\audio_playing.py" "%OUT%\ladder-signal.log" python _main\ladder-signal-oracle.py
 call :record ladder-signal !STEP_RC!
 ) else ( call :record ladder-signal MISSING )
+
+if exist _main\ladder-try-instrument-oracle.py (
+call :step always ladder-try-instrument 0 "_main\ladder-try-instrument-oracle.py;worker\sotto_worker.py" "%OUT%\ladder-try-instrument.log" python _main\ladder-try-instrument-oracle.py
+call :record ladder-try-instrument !STEP_RC!
+) else ( call :record ladder-try-instrument MISSING )
+
+if exist _main\ladder-try-instrument-oracle.py (
+call :step always red-as-expected-ladder-try-instrument 1 "_main\ladder-try-instrument-oracle.py;worker\sotto_worker.py" "%OUT%\ladder-try-instrument-neg.log" python _main\ladder-try-instrument-oracle.py --neg-arm
+call :expectred red-as-expected-ladder-try-instrument !STEP_RC! "%OUT%\ladder-try-instrument-neg.log" "NEG-ARM: PASS"
+) else ( call :record red-as-expected-ladder-try-instrument MISSING )
+
+if exist _main\audio-back-detector-oracle.py (
+call :step always audio-back-detector 0 "_main\audio-back-detector-oracle.py;worker\sotto_worker.py" "%OUT%\audio-back-detector.log" python _main\audio-back-detector-oracle.py
+call :record audio-back-detector !STEP_RC!
+) else ( call :record audio-back-detector MISSING )
+
+if exist _main\audio-back-detector-oracle.py (
+call :step always red-as-expected-audio-back-detector 1 "_main\audio-back-detector-oracle.py;worker\sotto_worker.py" "%OUT%\audio-back-detector-neg.log" python _main\audio-back-detector-oracle.py --neg-arm
+call :expectred red-as-expected-audio-back-detector !STEP_RC! "%OUT%\audio-back-detector-neg.log" "NEG-ARM: PASS"
+) else ( call :record red-as-expected-audio-back-detector MISSING )
 
 if exist _main\launch-as-token.py (
 call :step always launch-as-token 0 "_main\launch-as-token.py" "%OUT%\launch-as-token.log" python _main\launch-as-token.py --selftest

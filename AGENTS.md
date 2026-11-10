@@ -621,6 +621,43 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   -> alt c off/on para a legenda funcionar"*). A testemunha e' o RELOGIO, nao o bit fisico: um
   `keydown` chega sempre com a tecla em baixo, e a primeira versao da cura lia `False` zero vezes
   (o braco B2e apanhou-o). `CTRLSPACE-SWALLOW VERDICT: PASS (21/21)`, `NEG-ARM: PASS (7/7)`.)
+- **PIN do ficheiro (medido 2026-11-10, 11:5x):** `_main\_audit-verify-all.cmd` = **346482 B**,
+  **4031 CRLF** / 0 bare LF, sha256 `16AB9EE4146E3538FDBFB3455B0612DEC78463049756A2D4E9D97494C37C7E96`.
+  (Setecentos e sessenta e cinco bytes e DEZ linhas a mais do que o pin de 345693 B: o par
+  `audio-back-detector` + `red-as-expected-audio-back-detector`, o residual MEDIDO do card do dono
+  *"audio volta e nada acontece"*. O worker publicava `TAP_IDLE`/`TAP_STALLED` quando o audio SUMIA e
+  `WORKER_RESUMED` quando o parque acabava; NENHUMA das duas responde a pergunta dele -- **os blocos
+  voltaram e a legenda nao?** O par (blocos a subir, `captions` parado) nao era lido por linha nenhuma,
+  logo o sintoma era indistinguivel de um worker saudavel a transcrever silencio. Agora
+  `audio_back_step` (maquina PURA) fecha a lacuna com `CAPTURE_SIGNAL_BACK gap_s=.. blocks=..
+  captions=..` e, se a graca de 25 s passar sem a legenda avancar, nomeia o defeito com
+  `NO_CAPTION_AFTER_AUDIO_BACK grace_s=.. blocks_delta=.. captions=..` -- uma vez, e cala-se no caso
+  normal (legenda que avancou). O limiar de lacuna e' o `TAP_STALL_S` do ficheiro, lido por `ast`
+  (a arm A9 e' estrutural porque um `in src` casava com o proprio comentario e o mutante passava).
+  11 arms `VERDICT: PASS`; `--neg-arm` 4/4 mutantes, cada um apanhado pelo SEU braco.
+  `battery-wiring` PASS `ligados=185 sem_passo=108 populacao=293`; `battery-record-pairing`
+  454 passos / 454 nomes / 0 achados. E o MESMO bloco fechou o §4.6 do recibo de 2026-11-09:
+  o passo `caption-noise` passa a nomear `worker\engine_switch.py`, porque o SEGUNDO ingresso do
+  motor de lote (`ReduxHiddenSwitch._run_runner`) publicava as linhas do runner SEM o filtro --
+  a regra vivia num so' dos dois caminhos. O braco novo do `--selftest` le o `_run_runner` por
+  `ast` e o CONTROL e' a mesma leitura sobre a guarda arrancada (`15 cases`, `ok: true`).)
+- **PIN do ficheiro (medido 2026-11-10, 11:2x):** `_main\_audit-verify-all.cmd` = **345693 B**,
+  **4021 CRLF** / 0 bare LF, sha256 `2532FB86611CC537ABBA5B58CF6375BD2DF17A1A896CBC981ABDC75448583C7A`.
+  (Mil trezentos e sessenta e oito bytes e QUATORZE linhas a mais do que o pin de 344325 B: o par
+  `ladder-try-instrument` + `red-as-expected-ladder-try-instrument`, o CUSTO DE ABRIR CADA RUNG.
+  Nasceu do card do dono *"arranque: demora DEMAIS a responder a keybindings/qualquer coisa"* e de um
+  buraco medido no log dele (pid 52792): **23 s entre `model-loaded` (21:22:33.014) e `capture-started`
+  (21:22:56.047) SEM UMA LINHA**, com `STATUS_APPLIED text=device` as 21:22:50. O censo ja' publicava
+  `probe_ms` (`CAPTURE_FIRST_PICK`); o que faltava era o custo de ABRIR cada candidato, e quantas
+  tentativas a espera de `DEVICE_IN_USE` gastou. Agora cada rung escreve UMA linha
+  `LADDER_TRY attempt=i/n device=.. api=.. ms=.. retries=.. result=opened|refused|stopped`, montada
+  pela funcao PURA `worker\sotto_worker.py:ladder_try_line` -- pura de proposito, porque um portao que
+  precisa de ABRIR um dispositivo para provar que escreve uma linha nao tem controlo (audio do dono:
+  `MUST NOT` tocar). O oraculo executa a funcao e le o SITE por `ast` (12 arms incl. o carimbo de
+  `_t_try` ANTES do laco de retry, senao o `ms` somaria tres esperas de 1,5 s) -- `VERDICT: PASS`
+  rc=0; o `--neg-arm` muta quatro sitios numa copia e da' `NEG-ARM: PASS -- 4/4` rc=1.
+  `battery-wiring` PASS `ligados=184 sem_passo=108 populacao=292`; `battery-record-pairing`
+  452 passos / 452 nomes / 0 achados.)
 - **PIN do ficheiro (medido 2026-11-10, 10:5x):** `_main\_audit-verify-all.cmd` = **344238 B**,
   **4007 CRLF** / 0 bare LF, sha256 `FD3163A19DBD389B1118CE7192FE266C61D9CD1D2029FAA3331DD0EB1DF2A8BD`.
   (Mil seiscentos e trinta e tres bytes e DEZASSETE linhas a mais do que o pin de 342605 B: o par

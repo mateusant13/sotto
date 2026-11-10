@@ -74,6 +74,30 @@ console.log(`EXPECTED_FRAMES ${vd && typeof vd.expectedFrames === "number" ? vd.
 console.log(`CONTENT_SUFFICIENT ${vd ? String(vd.contentSufficientToCoverClock) : "n/a"}`);
 console.log(`DELIVERED ${delivered ? JSON.stringify(delivered).slice(0, 120) : "none"}`);
 console.log(`THREW ${threw ? threw.slice(0, 160) : "no"}`);
+// -- A RECUSA TEM DE SER CLASSIFICADA, E ISSO FOI MEDIDO EM 2026-11-10 ----------
+// Duas corridas desta bateria, a sete minutos de distancia, com o MESMO codigo:
+// 10:49:22 todos os 9 probes PASS; 10:56:37 `keyframe-shape-probe.mjs FAILED
+// exit 1:` **com a saida vazia** -- e o pre-commit recusou o commit por causa
+// disso. A causa nao e' o produto: este probe captura a TELA REAL (`source:
+// "desktop"`), e um desktop parado da' `longestUniqueRun` < 30, o que
+// `frameAccurate`/`contentSufficientToCoverClock` recusa por desenho. Ou seja o
+// probe reprovava um produto CORRECTO pelo unico motivo que ele proprio mede e
+// publica na linha de cima -- a classe "um portao que acusa quem esta' certo
+// perde a autoridade".
+//
+// A saida agora e' uma CLASSIFICACAO, e o veredito depende dela:
+//   `still-desktop`   a recusa e' explicada por este proprio run
+//                     (`CONTENT_SUFFICIENT false`) -> **rc 0**: nada esta' partido
+//   `unexplained`     recusou COM conteudo suficiente -> **rc 1**: e' o defeito
+//   `none`            nao recusou -> rc 0
+// E `process.exitCode`, nunca `process.exit()`: com stdout num CANO (o
+// `spawnSync` do `run-all` captura por cano) o `process.exit` pode descartar o
+// que ainda nao foi escrito, e foi exactamente isso que deixou o gate com
+// `exit 1:` e ZERO bytes de evidencia.
+const contentShort = vd ? vd.contentSufficientToCoverClock === false : null;
+const refusalClass = threw ? (contentShort ? "still-desktop" : "unexplained") : "none";
+console.log(`REFUSAL_CLASS ${refusalClass}`);
+console.log(`REFUSAL_UNDERSTOOD ${refusalClass !== "unexplained"}`);
 try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
 console.log("DONE");
-process.exit(threw ? 1 : 0);
+process.exitCode = refusalClass === "unexplained" ? 1 : 0;

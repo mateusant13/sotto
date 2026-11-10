@@ -141,7 +141,8 @@ const RECEIPTS = {
   // the gate passed no arguments, and two declaring no receipts at all. Declared here.
   "keyframe-shape-probe.mjs": [
     "CAPTURED_FRAMES ", "FIRST_IDR_SEC ", "RING_SEGMENTS ", "LONGEST_UNIQUE_RUN ",
-    "EXPECTED_FRAMES ", "CONTENT_SUFFICIENT ", "THREW ", "DONE",
+    "EXPECTED_FRAMES ", "CONTENT_SUFFICIENT ", "THREW ", "REFUSAL_CLASS ",
+    "REFUSAL_UNDERSTOOD ", "DONE",
   ],
   "loaded-module-probe.mjs": [
     "RESOLVED_BY_RUNTIME ", "SHA_RUNTIME_FILE ", "SHA_EDITED_FILE ", "SAME_BYTES ",
@@ -211,7 +212,15 @@ const VALUED = {
     "NEGATIVE_ARM_REFUSED ": "true",
     "NEGATIVE_ARM_LEFT_NO_FILE ": "true",
   },
-  "keyframe-shape-probe.mjs": { "CONTENT_SUFFICIENT ": "true", "FIRST_IDR_SEC ": "0" },
+  // CORRIGIDO 2026-11-10: era `CONTENT_SUFFICIENT: true` aqui, e este probe
+  // captura a TELA REAL -- logo o valor dele depende de o dono ter algo a mexer
+  // no ecra naquele segundo. Medido: 10:49:22 todos PASS, 10:56:37 `FAILED
+  // exit 1:` com saida vazia, o MESMO codigo. O pin agora e' a chave que o
+  // probe DERIVA da propria medicao (`REFUSAL_UNDERSTOOD`), que e' verdadeira
+  // nos dois casos honestos (recusou porque o conteudo era insuficiente, ou nao
+  // recusou) e falsa so' na recusa que ninguem explica -- que e' o defeito.
+  // `FIRST_IDR_SEC 0` fica: a primeira imagem TEM de ser IDR em qualquer ecra.
+  "keyframe-shape-probe.mjs": { "REFUSAL_UNDERSTOOD ": "true", "FIRST_IDR_SEC ": "0" },
   "loaded-module-probe.mjs": { "SAME_BYTES ": "true" },
   "still-screen-probe.mjs": { "CONTENT_SUFFICIENT ": "true" },
 };

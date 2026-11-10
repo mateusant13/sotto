@@ -1541,6 +1541,23 @@ class ReduxHiddenSwitch:
                 text = str(payload.get("text") or "").strip()
                 if not text:
                     continue
+                # ── O MESMO CRIADOR DE PORTAO DO CAMINHO IN-PROCESS (2026-11-10) ──
+                # `engine_policy.run_engine_pass` recusa `Mmm`-so' e outro alfabeto
+                # por `admit_batch_caption`; ESTE caminho de RUNNER nao recusava, e
+                # o recibo de 2026-11-09 declarou-o em §4.6 ("only the in-process
+                # parakeet ingress is filtered"). Dois ingressos com regras
+                # diferentes no mesmo transcript e' a classe que a casa ja' pagou:
+                # o corpus que o dono le nao diz por qual deles saiu. Import local:
+                # o modulo vive no mesmo directorio e o `sys.path` do worker ja' o
+                # tem (e' como `engine_policy` o importa).
+                try:
+                    from caption_noise import admit_batch_caption
+                    if not admit_batch_caption(self, text):
+                        continue
+                except Exception as exc:  # noqa: BLE001 -- um filtro que levanta
+                    # nao pode custar a legenda; a recusa e' o unico desfecho
+                    # silencioso aceitavel, e nem esse: fica dito no log.
+                    self.log("REDUX_BATCH_NOISE_FILTER_FAILED reason=%r" % (exc,))
                 # ── THE PAYOFF ───────────────────────────────────────────────
                 # `producer` is stamped HERE and not taken from the runner's own
                 # line unless the runner already said it: the field is what

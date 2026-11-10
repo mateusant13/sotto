@@ -671,13 +671,13 @@
       "max_func_name": "_flush"
     },
     "worker/caption_noise.py": {
-      "bytes": 14972,
+      "bytes": 17782,
       "classes": 0,
-      "defs": 5,
+      "defs": 6,
       "except_pass": 0,
       "globals": 0,
-      "lines": 342,
-      "max_func": 198,
+      "lines": 401,
+      "max_func": 207,
       "max_func_name": "_selftest"
     },
     "worker/denoise.py": {
@@ -701,12 +701,12 @@
       "max_func_name": "run_engine_pass"
     },
     "worker/engine_switch.py": {
-      "bytes": 89038,
+      "bytes": 90264,
       "classes": 3,
       "defs": 14,
       "except_pass": 2,
       "globals": 0,
-      "lines": 1670,
+      "lines": 1687,
       "max_func": 174,
       "max_func_name": "__init__"
     },
@@ -841,13 +841,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 493511,
+      "bytes": 499848,
       "classes": 17,
-      "defs": 93,
+      "defs": 95,
       "except_pass": 23,
       "globals": 6,
-      "lines": 9176,
-      "max_func": 2752,
+      "lines": 9282,
+      "max_func": 2785,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {

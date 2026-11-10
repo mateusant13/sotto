@@ -508,6 +508,53 @@ def dead_first_block_plan(candidates, k, dev, live, floor, switches=0):
 TAP_STALL_S = 8.0
 TAP_STALL_MAX_S = 60.0
 TAP_STALL_SAME_DEVICE_TRIES = 2
+
+# ── "O AUDIO VOLTOU E NADA ACONTECE" (card do dono, medido 2026-11-10) ────────
+# O sintoma, verbatim: *"audio volta e nada acontece"*. O worker publicava
+# `TAP_IDLE`/`TAP_STALLED` quando o audio SUMIA e `WORKER_RESUMED` quando o
+# PARQUE acabava -- nenhuma das duas linhas responde a pergunta que ele fez:
+# **o audio voltou, os blocos voltaram, e a legenda nao?** E essa diferenca e'
+# invisivel por construcao: `device_blocks` a subir com `captions` parado e' o
+# unico sinal, e nenhuma linha o lia.
+#
+# DUAS LINHAS, e a segunda e' a que da' nome ao defeito:
+#   `CAPTURE_SIGNAL_BACK gap_s=.. blocks=.. captions=..`    -- a lacuna fechou
+#   `NO_CAPTION_AFTER_AUDIO_BACK grace_s=.. blocks_delta=.. captions=..`
+#       -- o audio esta' a chegar e a legenda continua onde estava
+# Sem a primeira nao se sabe se houve lacuna; sem a segunda, um worker que
+# transcreve 30 s de silencio e um worker partido sao a mesma linha.
+AUDIO_BACK_GRACE_S = 25.0
+
+
+def audio_back_step(now, blocks, captions, gap_s, back_watch, grace_s=AUDIO_BACK_GRACE_S):
+    """Maquina PURA do "o audio voltou": `(novo_estado, linha_ou_None)`.
+
+    `gap_s` e' o tempo desde o ULTIMO bloco novo (o chamador mede com o proprio
+    `stall_since`), e `gap_s >= TAP_STALL_S` e' a definicao de lacuna que este
+    ficheiro ja' usa (`tap_stall_reason`, `TAP_STALLED`) -- nao ha' um segundo
+    limiar para a mesma pergunta.
+
+    `back_watch` e' `None` (nenhuma lacuna) ou
+    `{'t','blocks','captions','logged'}`. Depois da graca, se os BLOCOS
+    avancaram e as LEGENDAS nao, sai uma vez a linha que nomeia o defeito;
+    se a legenda avancou, o estado morre em silencio (o caso normal, e um
+    instrumento que fala no caso normal e' ruido).
+    """
+    if gap_s >= TAP_STALL_S:
+        return ({'t': now, 'blocks': blocks, 'captions': captions, 'logged': False},
+                "CAPTURE_SIGNAL_BACK gap_s=%d blocks=%d captions=%d"
+                % (int(gap_s), blocks, captions))
+    if not back_watch or back_watch.get('logged'):
+        return back_watch, None
+    if now - back_watch['t'] < grace_s:
+        return back_watch, None
+    if captions != back_watch['captions']:
+        return None, None
+    st = dict(back_watch)
+    st['logged'] = True
+    return (st, "NO_CAPTION_AFTER_AUDIO_BACK grace_s=%d blocks_delta=%d captions=%d"
+            % (int(grace_s), blocks - back_watch['blocks'], captions))
+
 # -- THE ROTATION CEILING (2026-10-18, owner: "o pc ficou lento") ---------------
 # The backoff below caps the RATE at one rotation every 8 s. A rate cap is not a
 # stop, and on this box the ladder never stopped: MEASURED in the owner's own
@@ -2384,6 +2431,32 @@ def signal_ranked_next(candidates, k, floor=0.002, peaks=None):
         if best_i is not None and best_i != k:
             candidates[k], candidates[best_i] = candidates[best_i], candidates[k]
     return candidates[k]
+
+
+#: UMA LINHA POR RUNG, COM OS MILISSEGUNDOS (2026-11-10). Ver `ladder_try_line`.
+def ladder_try_line(attempt_no, of, dev, ms, retries, opened, stopped):
+    """A linha `LADDER_TRY ...` de UM candidato da escada, como texto puro.
+
+    PORQUE EXISTE (medido no log do dono, pid 52792): **23 s entre
+    `model-loaded` e `capture-started` sem UMA linha**, e `STATUS_APPLIED
+    text=device` no meio. A escada custava tempo e nao o publicava, entao o
+    card "o arranque demora DEMAIS" nao tinha dono. O censo ja' publica
+    `probe_ms` (`CAPTURE_FIRST_PICK`); o que faltava era o custo de ABRIR cada
+    rung e quantas tentativas a espera de `DEVICE_IN_USE` gastou.
+
+    PURO de proposito: o portao (`_main/ladder-try-instrument-oracle.py`)
+    chama esta funcao em vez de abrir um dispositivo -- um instrumento que
+    precisa de audio para provar que escreve uma linha nao tem controlo.
+
+    `opened` / `stopped` sao booleanos do chamador (`open_error is None` e
+    `tap is None`), e nao o erro em si: um `repr(exc)` numa linha de log
+    muda de forma entre versoes de Python, e o que se mede aqui e' o numero
+    e a identidade, nao o texto da excecao (essa ja' vai em `device-open-refused`).
+    """
+    result = "stopped" if stopped else ("opened" if opened else "refused")
+    return ("LADDER_TRY attempt=%d/%d device=%r api=%r ms=%d retries=%d result=%s"
+            % (int(attempt_no), int(of), (dev or {}).get("name"),
+               (dev or {}).get("api"), int(ms), int(retries), result))
 
 
 def device_candidates(cfg_audio=None, wanted=None, target_pid=None):
@@ -8202,6 +8275,7 @@ def main():
                 #    candidate that fails for any other reason rotates immediately.
                 tap = None
                 open_error = None
+                _t_try = time.monotonic()
                 for retry in range(3):
                     if stop.is_set():
                         break
@@ -8269,6 +8343,22 @@ def main():
                             f"reason=device-in-use retry={retry + 1} in_ms=1500 "
                             f"(the previous worker may still be releasing it)")
                         stop.wait(1.5)
+
+                # UMA LINHA POR CANDIDATO, COM OS MILISSEGUNDOS (2026-11-10).
+                # MEDIDO no log do dono (pid 52792): **23 s entre `model-loaded` e
+                # `capture-started` sem UMA linha**, com `STATUS_APPLIED text=device`
+                # no meio -- a escada custava tempo e nao o publicava. E' a mesma
+                # classe do `WORKER_BOOT_PROF`: um custo que ninguem mede vira
+                # "arranque demora DEMAIS" sem dono. O censo ja' publica `probe_ms`
+                # (`CAPTURE_FIRST_PICK`); o que faltava era o custo de ABRIR cada
+                # rung. Medicao, nao knob: nada le' esta linha. A montagem do texto
+                # vive em `ladder_try_line` (puro) para o portao a poder chamar sem
+                # abrir um dispositivo.
+                err(ladder_try_line(
+                    attempt_no + 1, len(candidates), dev,
+                    (time.monotonic() - _t_try) * 1000.0, retry,
+                    opened=(open_error is None and tap is not None),
+                    stopped=(open_error is None and tap is None)))
 
                 if open_error is not None:
                     denials.append(f"{dev['name']} [{dev.get('api')}]: "
@@ -8362,6 +8452,10 @@ def main():
                 # volta a ser feita para ESTE candidato, e para ESTA janela.
                 counters.pop('quiet', None)
                 idle_logged = False
+                # Estado do detector "o audio voltou e nada acontece" (ver
+                # `audio_back_step`). Por CANDIDATO, e zerado em cada reabertura:
+                # uma lacuna de um tap que ja' foi fechado nao e' um facto deste.
+                back_watch = None
                 caps_before = counters["captions"]
                 first_block_logged = False
                 window_start = time.time()
@@ -8417,6 +8511,17 @@ def main():
                             # no longer applies to it.
                             if device_blocks["value"] != stall_blocks:
                                 # Still delivering: this tap IS the run.
+                                # E O BLOCOS-A-SUBIR/LEGENDA-PARADA PASSA A TER NOME
+                                # (card "audio volta e nada acontece", 2026-11-10):
+                                # `audio_back_step` fecha a lacuna (`CAPTURE_SIGNAL_BACK`)
+                                # e, se a graca passar sem a legenda avancar, diz o
+                                # defeito (`NO_CAPTION_AFTER_AUDIO_BACK`). `err` nunca
+                                # levanta o laco: uma medicao nao derruba o audio.
+                                back_watch, _back_line = audio_back_step(
+                                    now, device_blocks["value"], counters["captions"],
+                                    now - stall_since, back_watch)
+                                if _back_line:
+                                    err("device=%r %s" % (dev.get("name"), _back_line))
                                 stall_blocks = device_blocks["value"]
                                 stall_since = now
                                 stall_backoff = TAP_STALL_S
@@ -8503,6 +8608,7 @@ def main():
                                     device_peak["value"] = 0.0
                                     device_blocks["value"] = 0
                                     stall_blocks = 0
+                                    back_watch = None
                                     stall_reopens += 1
                                     emit(type="status", state="capture-started", device=dev["name"],
                                          rate=tap.rate, block=tap.block, attempt=attempt_no + 1,
