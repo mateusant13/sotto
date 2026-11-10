@@ -41,7 +41,10 @@ const REFINED = 'o sotto ta rodando';
 function fusedPair() {
   const r = spawnSync(process.env.PYTHON || 'python',
     [path.join(__dirname, 'fusion-wire-oracle.py'), '--pair', STREAM, REFINED],
-    { encoding: 'utf8' });
+    // windowsHide e' a UNICA guarda do lado do JS: sem ela um filho de consola
+    // nascido de um pai sem consola recebe uma NOVA janela, e o censo
+    // console-window-audit nomeia este sitio NO-FLAG.
+    { encoding: 'utf8', windowsHide: true });
   if (r.status !== 0) {
     throw new Error('fusion-wire-oracle.py --pair rc=' + r.status
       + ' stderr=' + ((r.stderr || '').trim().slice(0, 400)));

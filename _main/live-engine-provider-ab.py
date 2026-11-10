@@ -67,6 +67,40 @@ ARMS = {
 
 CREATE_NO_WINDOW = 0x08000000
 
+#: O LARGADOR da casa. `CREATE_NO_WINDOW` sozinho e' a metade barata da guarda:
+#: sem `startupinfo`/`STARTF_USESHOWWINDOW` um filho de consola nascido de um pai
+#: SEM consola recebe uma NOVA (o Windows Terminal a pinta), e o censo
+#: `console-window-audit` nomeia esse sitio `WEAK-FLAG`. Importado pelo caminho
+#: e pelo nome: e' a forma que esta arvore usa para um modulo com HIFEN.
+def _load_hidden_launch():
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "hidden-launch.py")
+    if not os.path.isfile(path):
+        return None
+    spec = importlib.util.spec_from_file_location("hidden_launch", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_HL = _load_hidden_launch()
+
+
+def _hidden(argv, timeout=None):
+    """(rc, out, err) com a guarda INTEIRA -- pelo helper da casa quando existe."""
+    if _HL is not None:
+        return _HL.run(argv, capture=True, timeout=timeout)
+    si = None
+    if os.name == "nt":
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 0
+    proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout,
+                          creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
+                          startupinfo=si)
+    return proc.returncode, proc.stdout, proc.stderr
+
 
 # ── GPU meters ────────────────────────────────────────────────────────────────
 def gpu_mib(pid: int):
@@ -83,14 +117,11 @@ def gpu_mib(pid: int):
     """
     out = {"total_mib": None, "pid_mib": None, "util_pct": None, "pid_listed": None}
     try:
-        r = subprocess.run(
-            ["nvidia-smi",
-             "--query-gpu=memory.used,utilization.gpu",
-             "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=20, creationflags=CREATE_NO_WINDOW,
-        )
-        if r.returncode == 0 and r.stdout.strip():
-            parts = [p.strip() for p in r.stdout.strip().splitlines()[0].split(",")]
+        rc, out1, _err1 = _hidden(
+            ["nvidia-smi", "--query-gpu=memory.used,utilization.gpu",
+             "--format=csv,noheader,nounits"], timeout=20)
+        if rc == 0 and out1.strip():
+            parts = [p.strip() for p in out1.strip().splitlines()[0].split(",")]
             if parts and parts[0].isdigit():
                 out["total_mib"] = int(parts[0])
             if len(parts) > 1 and parts[1].isdigit():
@@ -98,13 +129,11 @@ def gpu_mib(pid: int):
     except Exception:                                            # noqa: BLE001
         pass
     try:
-        r = subprocess.run(
+        rc2, out2, _err2 = _hidden(
             ["nvidia-smi", "--query-compute-apps=pid,used_memory",
-             "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=20, creationflags=CREATE_NO_WINDOW,
-        )
-        if r.returncode == 0:
-            for line in r.stdout.splitlines():
+             "--format=csv,noheader,nounits"], timeout=20)
+        if rc2 == 0:
+            for line in out2.splitlines():
                 parts = [p.strip() for p in line.split(",")]
                 if len(parts) >= 2 and parts[0].isdigit() and int(parts[0]) == pid:
                     out["pid_listed"] = True

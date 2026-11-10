@@ -322,12 +322,20 @@ def main():
             '        if not follower.begin(surface, anchor, hwnd):', 1)
         io.open(copy, 'w', encoding='utf-8', newline='').write(bad_text)
         ns_args = ['--target', copy]
-        import subprocess
-        flags = 0x08000000 if os.name == 'nt' else 0   # CREATE_NO_WINDOW
-        proc = subprocess.run([sys.executable, os.path.abspath(__file__)] + ns_args,
-                              capture_output=True, text=True, creationflags=flags)
-        caught = proc.returncode == 1 and 'A5 sem-loop-do-windows' in proc.stdout
-        print('NEG-ARM: %s -- rc=%d' % ('PASS' if caught else 'FAIL', proc.returncode))
+        # A guarda INTEIRA, pelo largador da casa: `creationflags` sozinho e' a
+        # metade barata (o censo chama-lhe WEAK-FLAG) e um filho de consola
+        # nascido de um pai SEM consola ganha uma NOVA janela.
+        import importlib.util
+        _hl_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "hidden-launch.py")
+        _spec = importlib.util.spec_from_file_location("hidden_launch", _hl_path)
+        _hl = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_hl)
+        rc_child, out_child, _err_child = _hl.run(
+            [sys.executable, os.path.abspath(__file__)] + ns_args,
+            capture=True, timeout=600)
+        caught = rc_child == 1 and 'A5 sem-loop-do-windows' in out_child
+        print('NEG-ARM: %s -- rc=%d' % ('PASS' if caught else 'FAIL', rc_child))
         return 1 if caught else 0
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
