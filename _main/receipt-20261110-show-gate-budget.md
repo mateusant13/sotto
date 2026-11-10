@@ -223,7 +223,9 @@ python I:/!manager/tools/performance-gate.py acquire --kind heavy --owner sotto-
 schtasks /run /tn "\\SottoWarmEngine"        # arranca sem consola e sem janela (R4: sem triggers)
 # evidencia: _main/warm-engine.log  ->  WARM_LOAD_MS ms=<carga> resident_mb=<rss>
 #                                     ->  WARM_ATTACHED ms=<attach> load_ms=<carga> mode=warm-idle
-# limite de aceitacao: attach << BRIDGE_LOAD_MS (8 amostras reais nesta maquina: 40,9-47,45 s)
+# limite de aceitacao: attach << BRIDGE_LOAD_MS (a serie VIVA, medida agora: 15 amostras em
+#   _main/webview-run.log, 4,9 s a 61,8 s, mediana 27,0 s -- o custo depende de os 1,9 GB
+#   estarem em page cache, e e' por isso que o limite e' "attach << carga", nao um numero fixo)
 python app/webview/warm_engine.py --stop; python I:/!manager/tools/performance-gate.py release --id <id>
 ```
 
