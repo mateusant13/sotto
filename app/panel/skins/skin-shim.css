@@ -58,8 +58,16 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--page, #0a0d10);
 }
+
+/* THE BED IS THE SLAB'S, NOT THE PAGE'S (owner, 2026-11-09, measured on
+ * `cine-adobe`). `#skin` is `inset:0` at z-index 1, ABOVE `.panel`'s own
+ * background, so a `background: var(--page)` here painted an opaque grey rect
+ * over the slab: the header band lost the design's surface colour and only the
+ * area where `.history` (z-index 2) covers it showed maroon. With the vendor
+ * columns no longer painted, this wrapper supplies no content -- the design's
+ * `--surface` bed is the panel's, and the window's rounded silhouette must be
+ * the slab's alone. */
 
 /* THE 380 px PANEL IS THE PRODUCT, NOT THE STAGE.
  *
@@ -80,6 +88,20 @@
 .skin__stage,
 .skin__chrome,
 .skin__scrim { display: none !important; }
+
+/* ONE VISIBLE LIST, ONE OWNER (owner, 2026-11-09; measured on `cine-adobe`).
+ *
+ * The rule that hides this column lives in `skin-layout.css` and reads
+ * `body[data-skin][data-surface="panel"] .skin__col` -- but this sheet is
+ * injected INSIDE the shadow root, where `body` is not an ancestor of anything:
+ * the selector can never match, so the vendor's transcript panel and its search
+ * bar kept painting UNDER our own `.history` (z-index 1 vs 2) and ghosted
+ * through it wherever our rows do not cover the box. That is the owner's
+ * *"eles parecem glitchar com o actual content"*: the mockup's bar and rows are
+ * a second writer of the same slot. The design still supplies the backdrop and
+ * the palette; the visible transcript is `panel.js` alone, so this column is
+ * not painted at all. */
+.skin__col { display: none !important; }
 
 /* A DARK VARIANT'S STAGE SCRIM (see `DARK_VARIANTS` in skin-host.js). It keeps
    the vendor wallpaper texture but removes the light page that would otherwise

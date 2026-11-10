@@ -188,6 +188,9 @@ const dom = {
   menuButton: document.getElementById('menu-button'),
   panelMenu: document.getElementById('panel-menu'),
   translationSelect: document.getElementById('translation-select'),
+  captionPlateSelect: document.getElementById('caption-plate-select'),
+  captionOpacityRange: document.getElementById('caption-opacity-range'),
+  captionOpacityValue: document.getElementById('caption-opacity-value'),
   historyExport: document.getElementById('history-export-txt'),
   menuCause: document.getElementById('panel-menu-cause'),
 };
@@ -260,6 +263,17 @@ let stickToNewest = true, pinnedHeight = 0;
 let searchQuery = '';
 /** The result set backing the current search view. */
 let searchHits = [];
+/**
+ * THE SOURCE FILTER (owner, 2026-11-09). Every history line carries `via=pc`
+ * (transcribed from the PC's own audio) or `via=youtube` (read off the YouTube
+ * player's caption track); a line written before the contract existed has no
+ * `via` and is read as `pc`. The two buttons in `.history__filters` toggle these
+ * booleans. BOTH may be on; both may NOT be off, because an empty feed has no
+ * explanation on screen any more -- turning the last source off turns the other
+ * on (`toggleViaFilter`), which is the one rule the UI enforces by itself.
+ */
+const viaFilter = { pc: true, youtube: true };
+const VIA_KEYS = ['pc', 'youtube'];
 /**
  * D1 — THE CANONICAL PRODUCER the shell reports from `history.root()`, or null.
  *
@@ -386,6 +400,40 @@ const TRANSLATION_LANGS = [
   ['hu', 'Magyar'],
 ];
 const TRANSLATION_KEY = 'sotto.translationTarget';
+
+// ── O ASPECTO DA LEGENDA NATIVA (dono, 2026-11-09) ───────────────────────────
+// Dois valores, um dono por valor: o shell prende e GRAVA em
+// `_main/caption-settings.json` (o ficheiro e' a verdade entre arranques), e o
+// localStorage aqui serve so' para a caixa abrir mostrando o que esta' no ar
+// antes de o shell responder. `0` = o default que embarca (`tight`).
+const CAPTION_PLATE_KEY = 'sotto.captionPlate';
+const CAPTION_OPACITY_KEY = 'sotto.captionOpacity';
+const CAPTION_PLATES = ['tight', 'normal'];
+/** A transparencia e' o INVERSO do alfa: 0% = placa opaca (alfa 1.0), 70% =
+ *  a placa a 30% de alfa -- o piso que `caption_settings.visual()` prende. */
+const CAPTION_TRANSPARENCY_MAX = 70;
+
+function storedCaptionLook() {
+  let plate = 'tight';
+  let transparency = 0;
+  try {
+    const p = String(window.localStorage.getItem(CAPTION_PLATE_KEY) || '');
+    if (CAPTION_PLATES.indexOf(p) >= 0) plate = p;
+    const t = parseInt(window.localStorage.getItem(CAPTION_OPACITY_KEY) || '0', 10);
+    if (!isNaN(t)) transparency = Math.min(CAPTION_TRANSPARENCY_MAX, Math.max(0, t));
+  } catch (_) {
+    // A storage-less harness must not take the look controls down with it.
+  }
+  return { plate: plate, transparency: transparency };
+}
+
+function sendCaptionLook(plate, transparency) {
+  const opacity = 1 - (transparency / 100);
+  if (bridge && typeof bridge.setCaptionVisual === 'function') {
+    bridge.setCaptionVisual({ plate: plate, opacity: opacity });
+  }
+}
+
 let liveSupported = false;
 let statusSnapshot = { text: '', kind: null };
 
@@ -1640,7 +1688,7 @@ function addCaption(text, reason, meta) {
   setStatus('Receiving captions', 'live');
   // The frozen skin's own history list gets the same closed line (see `skin-host.js`).
   if (window.SottoSkin && SottoSkin.active) {
-    SottoSkin.line({ text, time: clockTime() });
+    SottoSkin.line({ text, time: clockTime(), via: viaOf({ via: meta && meta.via }) });
   }
   return true;
 }
@@ -1975,6 +2023,7 @@ function wireHistory() {
   }
   if (dom.historyRoot) dom.historyRoot.addEventListener('click', () => revealPath(null));
   markRevealState();
+  wireViaFilters();
 
   if (!historyApi) {
     setHistoryNote(
@@ -2249,6 +2298,10 @@ function recordHistory(text, reason, meta) {
   const options = {
     source: producer || 'live',
     producer,
+    // DE ONDE VEIO O SOM (2026-11-09): `via=` na linha, e a unica coisa que os
+    // dois filtros do historico leem. Derivado do MESMO meta que decide a rota,
+    // logo um item de audio nunca chega ao store sem origem.
+    via: sourceApi && sourceApi.viaOf ? sourceApi.viaOf(meta) : null,
     route,
     routeSource,
     start: meta && typeof meta.start === 'number' ? meta.start : null,
@@ -2339,10 +2392,19 @@ function pushEntry(entry) {
     /* THE CONTEXT MATCHES TOO, or an open search view silently drops a line that
      * the store's own search would return: the same query, two answers, depending
      * on whether the line arrived before or after the search was opened. */
-    if (matches(entry.text, searchQuery) || matches(contextSummary(entry), searchQuery)) {
+    if (viaVisible(entry)
+      && (matches(entry.text, searchQuery) || matches(contextSummary(entry), searchQuery))) {
       searchHits = [entry].concat(searchHits);
       renderSearchResults(searchQuery, searchHits);
     }
+    return;
+  }
+  /* A FILTERED FEED IS REBUILT, NOT PATCHED. The incremental path below can
+   * only grow the tail; with a source hidden, the row that belongs at the tail
+   * may be a different entry, so the one writer that knows the whole predicate
+   * (`renderFeed`) paints it. With both sources on, the cheap path stands. */
+  if (!viaVisible(entry) || viaFilter.pc === false || viaFilter.youtube === false) {
+    renderFeed();
     return;
   }
   // A NEW LINE IS PAINTED AS IT ARRIVES (owner, 2026-11-06): *"é pra sempre
@@ -2367,8 +2429,73 @@ function withinHistoryWindow(entry) {
   return !Number.isFinite(at) || at >= Date.now() - HISTORY_RETENTION_H * 3600 * 1000;
 }
 
+/** `pc` | `youtube` for one entry; a line from before the contract is `pc`.
+ *
+ * THE FILE MAY SAY THREE THINGS (2026-11-09): `pc`, `youtube`, `external`. The
+ * third is a player that is NOT the YouTube tab (Stremio, VLC) -- the same
+ * external channel, a different origin -- and the two BUTTONS are
+ * "what came from the machine" and "what came from a video", so `external`
+ * belongs to the video button. It stays a separate word ON THE LINE so a later
+ * reader can tell the two apart without re-running the tick that produced it.
+ */
+function viaOf(entry) {
+  const value = String((entry && entry.via) || '').trim().toLowerCase();
+  if (value === 'youtube' || value === 'external') return 'youtube';
+  return 'pc';
+}
+
+/** Is this entry admitted by the two source buttons? Missing = `pc`. */
+function viaVisible(entry) {
+  return viaFilter[viaOf(entry)] !== false;
+}
+
+/** Repaint the two source buttons from `viaFilter`, never from the DOM. */
+function paintViaFilters() {
+  for (const via of VIA_KEYS) {
+    const button = document.getElementById(`history-filter-${via}`);
+    if (!button) continue;
+    const on = viaFilter[via] !== false;
+    button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    button.classList.toggle('is-off', !on);
+  }
+  // ONE POLICY, TWO LISTS: the design's own frozen list obeys the same buttons.
+  if (window.SottoSkin && typeof SottoSkin.filterVia === 'function') {
+    SottoSkin.filterVia({ pc: viaFilter.pc !== false, youtube: viaFilter.youtube !== false });
+  }
+}
+
+/** Repaint the one list writer. Search view and feed view are the same slot. */
+function repaintFeedForFilter() {
+  if (searchQuery) renderSearchResults(searchQuery, searchHits);
+  else renderFeed();
+}
+
+/** One button: flip its own source; NEVER let both sources end up off. */
+function toggleViaFilter(via) {
+  if (!VIA_KEYS.includes(via)) return;
+  const next = viaFilter[via] === false;
+  viaFilter[via] = next;
+  if (!next) {
+    const other = via === 'pc' ? 'youtube' : 'pc';
+    if (viaFilter[other] === false) viaFilter[other] = true;
+  }
+  paintViaFilters();
+  repaintFeedForFilter();
+}
+
+/** Bind the two buttons once, at wire time (`wireHistory`). */
+function wireViaFilters() {
+  for (const via of VIA_KEYS) {
+    const button = document.getElementById(`history-filter-${via}`);
+    if (!button) continue;
+    button.addEventListener('click', () => toggleViaFilter(via));
+  }
+  paintViaFilters();
+}
+
 /**
- * THE FEED PAINTS ITSELF (owner, 2026-11-06).
+ * THE FEED PAINTS ITSELF (owner, 2026-11-06), and it is the ONLY writer of
+ * `#history-list`.
  *
  * Verbatim: *"o historico tem que persistir, aparecendo no painel da direita, por
  * padrao, ate 48hrs ... e nao é pra começar a ativar o historico so quando eu
@@ -2387,21 +2514,18 @@ function withinHistoryWindow(entry) {
  * (`HISTORY_LOAD` lines) and prunes day files past the same window
  * (`HISTORY_RETENTION_H`), so this is a filter over what was already read, not a
  * second pass over the disk.
+ *
+ * NO EMPTY STATE IS WRITTEN ANY MORE (owner, 2026-11-09: *"NO EXPLANATORY PROSE
+ * IN ANY PANEL"*). This function used to append a `<li class="history__empty">`
+ * saying "No transcript yet." / "No transcript store in this shell."; the owner
+ * reads an empty feed as an empty feed and does not want a sentence about it.
+ * The element is gone, so there is no second writer a render path can leave
+ * behind while rows exist.
  */
 function renderFeed() {
   if (!dom.historyList) return;
   clearList();
-  if (!historyEntries.length) {
-    const empty = document.createElement('li');
-    empty.className = 'history__empty';
-    empty.textContent = historyApi
-      ? 'No transcript yet.'
-      : 'No transcript store in this shell.';
-    dom.historyList.append(empty);
-    applyTranscriptMode();
-    return;
-  }
-  const rows = historyEntries.filter(withinHistoryWindow);
+  const rows = historyEntries.filter(withinHistoryWindow).filter(viaVisible);
   for (const entry of rows) dom.historyList.append(makeRow(entry));
   // NEVER THE TOP (owner, 2026-10-12): *"e sempre mostrando o bottom do historico
   // de transcript."* One function, used by the render path and the theme guard.
@@ -2410,7 +2534,7 @@ function renderFeed() {
 }
 
 function appendFeedRow(entry) {
-  if (!dom.historyList) return;
+  if (!dom.historyList || !viaVisible(entry)) return;
   const emptyNote = dom.historyList.querySelector('.history__empty');
   if (emptyNote) emptyNote.remove();
   dom.historyList.append(makeRow(entry));
@@ -2457,6 +2581,10 @@ function makeRow(entry, hitQuery) {
   //: A MARCA DA LINHA, para `replaceFeedRow` saber QUAL reescrever quando o
   //: store diz que a mesma linha cresceu (ver `replaceFeedRow`).
   li.dataset.historyRow = '1';
+  //: WHERE THE LINE CAME FROM (owner, 2026-11-09): `pc` or `youtube`, from the
+  //: same contract the two filter buttons read. On the row so a gate can count
+  //: what was filtered without re-parsing the store.
+  li.dataset.via = viaOf(entry);
   if (entry.path) li.dataset.path = entry.path;
   if (selectedEntry && sameEntry(selectedEntry, entry)) li.classList.add('hist--selected');
 
@@ -2797,6 +2925,53 @@ function wireMenu() {
     if (bridge && typeof bridge.setTranslationTarget === 'function') {
       bridge.setTranslationTarget(select.value || '');
     }
+  }
+
+  // O FUNDO DA LEGENDA E A TRANSPARENCIA (dono, 2026-11-09). Os dois falam com
+  // a JANELA NATIVA, nao com este documento: `setCaptionVisual` no shell prende,
+  // grava em `_main/caption-settings.json` e repinta o overlay vivo. A caixa so'
+  // mostra o estado; o numero que vale e' o que o ficheiro guarda.
+  const plateSelect = dom.captionPlateSelect;
+  const opacityRange = dom.captionOpacityRange;
+  const opacityValue = dom.captionOpacityValue;
+  if (plateSelect || opacityRange) {
+    const look = storedCaptionLook();
+    if (plateSelect) plateSelect.value = look.plate;
+    if (opacityRange) opacityRange.value = String(look.transparency);
+    if (opacityValue) opacityValue.textContent = look.transparency + '%';
+    const submit = () => {
+      const plate = plateSelect ? plateSelect.value : look.plate;
+      const transparency = opacityRange
+        ? (parseInt(opacityRange.value, 10) || 0) : look.transparency;
+      if (opacityValue) opacityValue.textContent = transparency + '%';
+      try {
+        window.localStorage.setItem(CAPTION_PLATE_KEY, plate);
+        window.localStorage.setItem(CAPTION_OPACITY_KEY, String(transparency));
+      } catch (_) {
+        // Sem storage a escolha vale para esta sessao -- nunca derruba a caixa.
+      }
+      sendCaptionLook(plate, transparency);
+    };
+    if (plateSelect) plateSelect.addEventListener('change', submit);
+    if (opacityRange) {
+      // O rotulo segue o dedo enquanto arrasta; o envio e' no `change`, para o
+      // shell nao gravar o ficheiro cinquenta vezes num gesto so'.
+      opacityRange.addEventListener('input', () => {
+        if (opacityValue) {
+          opacityValue.textContent = (parseInt(opacityRange.value, 10) || 0) + '%';
+        }
+      });
+      opacityRange.addEventListener('change', submit);
+    }
+    // O ARRANQUE NAO MANDA UM PUSH SEM ESCOLHA: so' envia quando ha um valor
+    // guardado, para uma sessao nova nao escrever por cima do ficheiro que o
+    // shell ja' leu quando criou o overlay.
+    let stored = false;
+    try {
+      stored = window.localStorage.getItem(CAPTION_PLATE_KEY) !== null
+        || window.localStorage.getItem(CAPTION_OPACITY_KEY) !== null;
+    } catch (_) { stored = false; }
+    if (stored) sendCaptionLook(look.plate, look.transparency);
   }
 
   // The export button lives in the popover, so the header contract (settings
@@ -3781,6 +3956,9 @@ function wireHistorySearch() {
   const input = document.getElementById('history-search');
   const tools = document.querySelector('.history__tools');
   if (!input) return;
+  // NO PLACEHOLDER SENTENCE (owner, 2026-11-09). The field is revealed by the
+  // glyph, so its label lives in `aria-label`; the visible slot stays empty.
+  input.placeholder = '';
   const open = Boolean(tools) && tools.classList.contains('is-searching');
   const paint = (next) => {
     if (tools) tools.classList.toggle('is-searching', next);
@@ -3852,17 +4030,13 @@ async function runSearch(rawQuery) {
 function renderSearchResults(query, hits) {
   if (!dom.historyList) return;
   clearList();
-  const list = (Array.isArray(hits) ? hits : []).filter(withinHistoryWindow);
+  const list = (Array.isArray(hits) ? hits : []).filter(withinHistoryWindow).filter(viaVisible);
   if (!list.length) {
-    const empty = document.createElement('li');
-    empty.className = 'history__empty';
-    empty.textContent = `No transcript matches “${query}”.`;
-    dom.historyList.append(empty);
-    setHistoryNote(`0 matches for “${query}”`);
+    setHistoryNote('');
     return;
   }
   for (const hit of list) dom.historyList.append(makeRow(hit, query));
-  setHistoryNote(`${list.length} match${list.length === 1 ? '' : 'es'} for “${query}”`);
+  setHistoryNote('');
   const scroller = historyScroller();
   if (scroller) scroller.scrollTop = 0;
 }
@@ -3946,11 +4120,21 @@ function entryAt(entry) {
   return Number.isFinite(at) ? at : NaN;
 }
 
+/**
+ * THE HISTORY NOTE NEVER PAINTS A SENTENCE (owner, 2026-11-09: *"NO EXPLANATORY
+ * PROSE IN ANY PANEL"*). This slot used to carry "No transcript yet.", "Search
+ * is off · nothing writes the transcript yet.", "Exported N lines …" and the
+ * match count. The state they described is still kept in the internal values
+ * (`canonicalProducer`, `historyEntries.length`, `searchHits`), and the element
+ * stays in the DOM for the probes that read it, but it holds no text: every
+ * caller below keeps calling it, and the function is the ONE place that decides
+ * the slot is empty.
+ */
 function setHistoryNote(text) {
+  void text;
   if (!dom.historyStatus) return;
-  const value = String(text == null ? '' : text).trim();
-  dom.historyStatus.textContent = value;
-  dom.historyStatus.hidden = value === '';
+  dom.historyStatus.textContent = '';
+  dom.historyStatus.hidden = true;
 }
 
 function errorText(err) {

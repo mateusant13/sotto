@@ -46,16 +46,14 @@ def _measure(text, px, cache, family='Segoe UI', weight=700, italic=False):
     gets clipped. Over-estimating is safe; clipping is not.
 
     THE CACHE IS NOT AN OPTIMISATION, IT IS CORRECTNESS. MEASURED 2026-10-17:
-    with the `Graphics`/`Bitmap`/`Font` held only in the local scope of the factory,
-    they are collected the moment it returns and the NEXT call raises
-    `ArgumentException: Parametro invalido`. Default arguments pin them in the
-    closure for the life of the function object.
+    with the `Graphics`/`Bitmap`/`Font` held only in the local scope of the
+    factory they are collected on return and the NEXT call raises
+    `ArgumentException`; default arguments pin them in the closure.
 
-    THE KEY CARRIES THE FACE, NOT ONLY THE SIZE. Before the theme reached this
-    renderer the key was `round(px, 2)` and one global Segoe UI font; a caption
-    that changed family would have been MEASURED with the previous theme's face
-    and DRAWN with the new one -- line breaks that move the moment the colour
-    changes. `family`/`bold`/`italic` are part of the identity of the closure.
+    THE KEY CARRIES THE FACE, NOT ONLY THE SIZE. It used to be `round(px, 2)`
+    with one global Segoe UI: a caption that changed family was MEASURED with
+    the old face and DRAWN with the new one -- line breaks that move when the
+    colour changes. `family`/`bold`/`italic` are the identity of the closure.
     """
     import clr
     clr.AddReference('System.Drawing')
@@ -475,10 +473,9 @@ def _normalise_theme(tokens):
         out['led'] = None
         out['ledW'] = 0.0
         out['ledH'] = 0.0
-    # THE SECOND PASS CANNOT RECOVER THIS FROM `led is None` ALONE: a theme
-    # that HAD a dot and one that never did both normalise to None. The marker
-    # makes "off" explicit, so `_layout` and the bitmap keep agreeing after a
-    # theme has been normalised twice (the panel -> shell -> layout path does).
+    # A THEME THAT HAD A DOT AND ONE THAT NEVER DID BOTH NORMALISE TO None; the
+    # marker makes "off" explicit, so `_layout` and the bitmap keep agreeing
+    # after a second pass (the panel -> shell -> layout path does two).
     out['ledVisible'] = bool(out['led'])
 
     # O QUE O TEMA DECLARA, O TEMA MANTEM (2026-11-03). Antes esta funcao
@@ -505,17 +502,32 @@ def _normalise_theme(tokens):
     return out
 
 
-def _geom(scale, theme):
+def _geom(scale, theme, plate_mode='normal', opacity=1.0):
     """Every pixel both the layout and the bitmap must agree on, ONCE.
 
-    `_layout` measures the box; `_premultiplied_bitmap` paints it. Two copies of
-    "how much padding" is how a plate ends up drawn 4 px away from the text it
-    is supposed to hold.
+    `_layout` measures the box; `_premultiplied_bitmap` paints it; two copies of
+    "how much padding" is a plate drawn 4 px away from its text. `plate_mode`
+    `tight` (dono, 2026-11-09: *"the background in the subtitles is too wide.
+    should be more concise and less bloaty"*) pads from the STROKE that must
+    fit, not the design's 10 px floor; `opacity` scales PLATE/regua/LED, never ink.
     """
     t = _normalise_theme(theme)
     cur_px = max(12.0, t['livePx'] * scale)
     prev_px = max(10.0, t['prevPx'] * scale)
     pad_t, pad_r, pad_b, pad_l = [v * scale for v in t['pad']]
+    tight = str(plate_mode or 'normal').lower() == 'tight'
+    if tight:
+        # O CONTORNO TEM DE CABER, e nada mais: metade da pena + 2 px.
+        hug = max(4.0, t['strokePx'] * scale / 2.0 + 2.0)
+        pad_t = pad_b = pad_r = pad_l = hug
+    alpha = max(0.0, min(1.0, _num(opacity, 1.0)))
+    if alpha < 1.0:
+        t = dict(t)
+        for _key in ('plate', 'ruleColor', 'led'):
+            _ink = t[_key]
+            if _ink:
+                t[_key] = (_ink[0], _ink[1], _ink[2],
+                           max(0, min(255, int(round(_ink[3] * alpha)))))
     rule_w = t['ruleW'] * scale
     gap = t['gap'] * scale
     led_w = t['ledW'] * scale if t['led'] else 0.0
@@ -535,6 +547,7 @@ def _geom(scale, theme):
         'line_h': cur_px * t['leading'],
         'prev_h': prev_px * t['prevLeading'],
         'align': t['align'],
+        'plate_mode': 'tight' if tight else 'normal',
     }
 
 
@@ -546,11 +559,9 @@ def _case(text, upper):
 #:
 #: A pesquisa deu o consenso de Netflix/TED/BBC/Section508/VEED: no maximo 2
 #: linhas, ~42 caracteres por linha, quebrar apos pontuacao e antes de
-#: conjuncao/preposicao, e a largura limitada a 68% de um quadro 16:9. Duas coisas
-#: da pesquisa mudao a implementacao, e as duas estao escritas no modulo:
-#: `caption_wrap.py`. O overflow -- o que nao cabe em duas linhas -- VOLTA ao
-#: desenho em vez de ser cortado em silencio: uma frase truncada sem sinal e pior
-#: do que uma frase partida.
+#: conjuncao/preposicao, largura limitada a 68% de um quadro 16:9. As duas
+#: consequencias estao em `caption_wrap.py`; o overflow -- o que nao cabe em duas
+#: linhas -- VOLTA ao desenho em vez de ser cortado em silencio.
 try:
     import caption_wrap as _cw
 except Exception:  # noqa: BLE001  -- a legenda nao pode partir por um import
@@ -583,27 +594,25 @@ def _measure_budget(scale, work_width, theme=None):
     return cur_w, budget
 
 
-def _layout(text, previous, scale, work_width, theme=None, rows=None):
+def _layout(text, previous, scale, work_width, theme=None, rows=None,
+            plate_mode='normal', opacity=1.0):
     """ONE layout for the caption, used by the measure AND by the draw.
 
-    Having two copies of "how many lines" is how a caption gets measured at one
-    height and drawn at another. This returns everything both sides need:
-    `(cur_lines, prev_line, width, height, scrolled)`.
+    Two copies of "how many lines" is how a caption is measured at one height
+    and drawn at another. Returns `(cur_lines, prev_line, width, height,
+    scrolled)`; `scrolled` is the text that left the two-line window, so "no
+    word is ever dropped" is CHECKABLE from the caller (see `wrap_tail`).
 
-    `scrolled` is the text that left the two-line window. It exists so the claim
-    "no word is ever dropped" is CHECKABLE from the caller's side instead of
-    being a promise in a comment -- see `wrap_tail` for the promise this finally
-    keeps.
-
-    MEASURED 2026-10-17 at Segoe UI Bold 34 px on this box: budget 727 px, the
-    68% fraction of a 1920 px work area being 1305 px and the 42-character ceiling
-    being the one that binds.
-
-    `theme` is optional and defaults to the pre-brand overlay exactly. It carries
-    the FACE as well as the size, because a theme may be a condensed or a serif
-    caption and a line broken with Segoe UI's metrics is the wrong line for it.
+    MEASURED 2026-10-17, Segoe UI Bold 34 px: the 42-character ceiling binds,
+    not the 68 % of 1920 px. `theme` carries the FACE as well as the size: a
+    line broken with Segoe UI's metrics is the wrong line for a serif design.
     """
-    g = _geom(scale, theme)
+    # `opacity` NAO move uma geometria (o alfa e' da placa), mas ele entra em
+    # `_geom` porque o chamador passa o ESTILO INTEIRO: `caption_overlay._measure`
+    # e `_update` fazem `**_caption_style()`. Recusar a chave aqui era um
+    # `TypeError` em toda pintura -- medido 2026-11-10 ao chamar `_measure` do
+    # overlay REAL: a arm A9 (`caption-plate-oracle.py`) existe para esta classe.
+    g = _geom(scale, theme, plate_mode, opacity)
     t = g['t']
     cur_px, prev_px = g['cur_px'], g['prev_px']
     text = _case(text, t['liveUpper'])
@@ -636,13 +645,18 @@ def _layout(text, previous, scale, work_width, theme=None, rows=None):
 
     widest = max([cur_w(l) for l in cur_lines] + ([prev_w(prev_line)] if prev_line else [0]))
     max_text = max(1.0, work_width - g['x_text'] - g['pad_r'])
-    # THE LAST GLYPH'S RIGHT SIDE. `MeasureString` and the `AddString`/`FillPath`
-    # pair disagree by a few pixels on the final advance, and the bitmap is sized
-    # from the measurement: the fresh 2026-10-21 GlassCards still read
-    # `...em formaca` with the `o.` outside the bitmap. A trailing safety margin
-    # is paid for in plate width, never in a lost word.
-    safety = max(18.0, cur_px * 0.9)
-    width = int(max(240 * scale, min(widest + g['x_text'] + g['pad_r'] + safety, max_text)))
+    # A CAIXA E' A PLACA. `tight` = LINHA medida + os dois `pad` do `_geom`;
+    # `normal` (o de hoje) mantem o tecto de 240 px e a folga de 0,9 em que paga
+    # a discordancia `MeasureString`/`AddString` no avanco final (GlassCards
+    # 2026-10-21, `...em formaca` com o `o.` fora do bitmap).
+    if g['plate_mode'] == 'tight':
+        # O `+1` NAO E' GOSTO: um `rect` (width - x_text - pad_r) 0,4 px mais
+        # estreito que a medida faz o GDI+ LARGAR o ultimo glifo (medido: 155 px
+        # de tinta contra 179). A caixa cresce 1 px; a palavra nunca encolhe.
+        width = min(int(widest + g['x_text'] + g['pad_r']) + 1, int(max_text))
+    else:
+        safety = max(18.0, cur_px * 0.9)
+        width = int(max(240 * scale, min(widest + g['x_text'] + g['pad_r'] + safety, max_text)))
     # `rows` FIXA A CAIXA, e existe por causa do ROLL-UP: durante a transicao sao
     # desenhadas `capacity + 1` linhas, mas a caixa tem de continuar com
     # `capacity` linhas de altura -- e' o conteudo que sobe dentro dela, e uma
@@ -650,29 +664,24 @@ def _layout(text, previous, scale, work_width, theme=None, rows=None):
     # cima em vez de rolar.
     box_rows = len(cur_lines) if rows is None else max(1, int(rows))
     height = int(g['pad_t'] + g['pad_b'] + g['line_h'] * box_rows + (g['prev_h'] if prev_line else 0))
+    if g['plate_mode'] == 'tight' and widest <= 0.0:
+        # SEM TEXTO NAO HA' PLACA. A caixa de hoje media 240 x 71 px de nada.
+        width = height = 1
     return cur_lines, prev_line, max(1, width), max(1, height), scrolled
 
 
 #: O RASTER, E NAO O QUADRO. `_premultiplied_bitmap` re-criava o caminho do
-#: texto (`GraphicsPath.AddString` + `DrawPath` + `FillPath`, por linha) em TODOS
-#: os quadros, mesmo quando nada mudou de glifo: medido 2026-11-08 neste caixa,
-#: **7,1 ms de p50 / 17,8 de p95** numa caixa de 576 x 156 a escala 1.0 (11,6 de
-#: p95 na caixa real de 1040 x 240 a escala 2.0), e o `THREAD_CPU` do overlay
-#: nomeia `sotto-caption-paint` a thread mais caro (9-10% sustentados) com o tecto
-#: de quadro em 240 Hz. O que muda entre quadros de uma legenda PARADA e' o alfa
-#: do `UpdateLayeredWindow` (255, sempre -- o fade foi tirado); o que muda entre
-#: legendas e' o glifo. Logo o cache guarda o RASTER COMPOSTO e a chave e' tudo o
-#: que muda um pixel dele.
+#: texto (`AddString`+`DrawPath`+`FillPath`, por linha) em TODOS os quadros:
+#: medido 2026-11-08, 7,1 ms de p50 / 17,8 de p95 numa caixa de 576 x 156
+#: (11,6 de p95 na real, 1040 x 240), com `sotto-caption-paint` a 9-10 % de
+#: nucleo. Entre quadros de uma legenda PARADA muda so' o alfa do
+#: `UpdateLayeredWindow` (255, sempre); entre legendas muda o glifo. O cache
+#: guarda o RASTER COMPOSTO, com a chave a apanhar tudo o que move um pixel.
 #:
-#: O ALFA POR LINHA NAO ENTRA NA CHAVE -- E NAO PODE ENTRAR NO POS-PROCESSAMENTO.
-#: A tentacao era multiplicar o raster cacheado pelo alfa do quadro; medido, isso
-#: NAO e' o mesmo pixel: o GDI+ compoe o contorno e o preenchimento DOIS sobre o
-#: fundo (`out = F*k + (S*k + B(1-k*A_s))(1-k*A_f)`), e a multiplicacao de um
-#: raster ja' composto da' `C*k + B*k(1-A)`. Onde o contorno e o preenchimento se
-#: sobrepoem os dois diferem por `k(1-k)`. Por isso um alfa nao-opaco simplesmente
-#: NAO usa o cache: cai no caminho de pintura de sempre, byte por byte o de antes.
-#: Custou nada: todos os chamadores passam 255 (medido -- `_row_alphas` e'
-#: `[255] * n` nos tres sitios de `caption_overlay.py`, e `None` no resto).
+#: O ALFA POR LINHA NAO ENTRA NA CHAVE nem pode ser aplicado depois: o GDI+
+#: compoe contorno e preenchimento DOIS sobre o fundo, e multiplicar um raster
+#: ja' composto difere por `k(1-k)` onde os dois se sobrepoem. Alfa parcial cai
+#: no caminho de sempre (hoje todos os chamadores passam 255).
 _PAINT_CACHE = OrderedDict()
 _PAINT_CACHE_MAX = 8
 _PAINT_CACHE_STATS = {'hits': 0, 'misses': 0, 'evictions': 0, 'bypass': 0}
@@ -682,10 +691,9 @@ def _freeze(value):
     """Tema -> valor comparavel e hashable, sem enumerar os campos.
 
     A chave tem de apanhar QUALQUER propriedade que mova um glifo ou uma
-    geometria (familia, peso, italico, tamanhos, cores, prato, regua, LED,
-    `leading`, `pad`, alinhamento, `upper`) -- enumerar a lista e' como o proximo
-    token do painel entra em cache com o raster do tema anterior. Congelar o
-    dict inteiro custa microssegundos e nao tem essa divida.
+    geometria -- enumerar a lista e' como o proximo token do painel entra em
+    cache com o raster do tema anterior. Congelar o dict inteiro custa
+    microssegundos e nao tem essa divida.
     """
     if isinstance(value, dict):
         return tuple(sorted((str(k), _freeze(v)) for k, v in value.items()))
@@ -695,10 +703,9 @@ def _freeze(value):
 
 
 def _paint_key(geo, cur_lines, prev_line, width, height, alphas, roll):
-    """A identidade do raster, ou `None` quando este quadro nao pode usar cache.
+    """A identidade do raster, ou `None` quando o quadro nao pode usar o cache.
 
-    Os alfas entram apenas como "todos opacos?" (ver a nota acima); um alfa
-    parcial devolve `None` e o chamador pinta como sempre pintou.
+    Os alfas entram so' como "todos opacos?"; um alfa parcial devolve `None`.
     """
     if alphas:
         for a in alphas:
@@ -729,11 +736,10 @@ def _paint_cache_get(key):
 def _paint_cache_put(key, bmp):
     """Guarda uma COPIA: quem chamou e' dono do bitmap que recebeu e fecha-o.
 
-    UMA ENTRADA SUBSTITUIDA TEM DE SER FECHADA. `dict[chave] = valor` deita fora
-    o valor anterior SEM chamar `Dispose` -- o bitmap fica para o GC do .NET com
-    a memoria nativa dele. MEDIDO 2026-11-08 no braco negativo (cache consultado
-    por ninguem, logo cada quadro REPOE a mesma chave): 41,5 ms de p50 por pintura
-    contra 7,7 no miss normal, com uma caixa de 758x227. Pop antes de guardar.
+    ENTRADA SUBSTITUIDA TEM DE SER FECHADA -- `dict[k]=v` deita fora a anterior
+    SEM `Dispose` e a memoria nativa fica para o GC. MEDIDO 2026-11-08 no braco
+    negativo (cada quadro repoe a mesma chave): 41,5 ms de p50 contra 7,7 no
+    miss normal, caixa 758x227. Pop antes de guardar.
     """
     if key is None:
         _PAINT_CACHE_STATS['bypass'] += 1
@@ -774,7 +780,8 @@ def _paint_cache_stats():
 
 
 def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None,
-                          alphas=None, roll=0.0):
+                          alphas=None, roll=0.0, plate_mode='normal',
+                          opacity=1.0):
     """Draw the caption onto a 32bpp premultiplied-ARGB bitmap (GDI+).
 
     THE THEME IS PAINTED, NOT APPLIED BY CSS. A plate is the row's own
@@ -783,13 +790,12 @@ def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None
     from `brand-bridge.js` and are normalised by `_normalise_theme`; with no
     theme this function reproduces the 2026-10-18 overlay pixel for pixel.
 
-    O CAMINHO CARO SO' CORRE QUANDO A CHAVE E' NOVA (ver `_PAINT_CACHE`). A
-    igualdade de pixel e' a do caminho de sempre: um cache-hit devolve uma COPIA
-    do raster que o caminho de sempre produziu para a mesma chave, logo a unica
-    coisa que o cache pode mudar e' o TEMPO. Medido 2026-11-08: 7,10 ms de p50 no
-    miss contra 0,02 ms de p50 no hit (a copia do raster), na mesma caixa.
+    O CAMINHO CARO SO' CORRE QUANDO A CHAVE E' NOVA (ver `_PAINT_CACHE`); um
+    cache-hit devolve uma COPIA do raster do caminho de sempre, logo a unica
+    coisa que o cache muda e' o TEMPO. Medido 2026-11-08: 7,10 ms de p50 no miss
+    contra 0,02 ms no hit, na mesma caixa.
     """
-    geo = _geom(scale, theme)
+    geo = _geom(scale, theme, plate_mode, opacity)
     key = _paint_key(geo, cur_lines, prev_line, width, height, alphas, roll)
     if key is not None:
         hit = _paint_cache_get(key)
@@ -959,10 +965,8 @@ def _same_line(old, new):
     would restart on every partial -- the "blinked and retyped on every fragment"
     failure `panel.js` documents for the letter reveal.
 
-    The cost of this looseness is honest and small: if the next caption happens
-    to begin with the same word ("obrigado" then "obrigado por tudo"), the
-    sprout still runs in order -- the shared word is already out and the rest
-    appear one at a time behind it. Nothing is hidden and nothing is reordered.
+    The cost is small: "obrigado" then "obrigado por tudo" still runs in order --
+    the shared word is already out and the rest appear one at a time behind it.
     """
     ow, nw = (old or "").split(), (new or "").split()
     if not ow or not nw:

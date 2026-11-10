@@ -47,7 +47,7 @@
  *   node _main/panel-themes-oracle.mjs --neg-arm
  *
  * EXIT CODE: 0 = every arm passed; 1 = at least one failed.
- * `--neg-arm` copies `app/panel` to a temp dir, plants eight independent
+ * `--neg-arm` copies `app/panel` to a temp dir, plants thirteen independent
  * mutations, and REQUIRES each to be caught (exit 1 with `NEG-ARM: PASS`);
  * an uncaught mutant exits 0 with `NEG-ARM: FAIL`.
  */
@@ -230,7 +230,7 @@ function inventory(dir) {
    2. THE PAGE - private context, headless, no owner profile
    ══════════════════════════════════════════════════════════════════════════ */
 
-function at(msAgo, text) {
+function at(msAgo, text, via) {
   const d = new Date(Date.now() - msAgo);
   const p = (n) => String(n).padStart(2, '0');
   return {
@@ -238,10 +238,16 @@ function at(msAgo, text) {
     time: `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`,
     text,
     path: null,
+    /* THE SOURCE CONTRACT (main seat, 2026-11-09): every line carries `via=pc`
+     * or `via=youtube`; a line from before the contract has none and the panel
+     * reads it as `pc`. The fixture is HALF AND HALF so a filter arm can prove a
+     * click hides a real half of the feed instead of counting the same rows. */
+    via: via || 'pc',
   };
 }
 const WORDS = 'banana pera manga uva abacaxi morango goiaba pitanga carambola jabuticaba caju';
-const ENTRIES = Array.from({ length: ROWS }, (_, i) => at((ROWS - i) * 60000, `${WORDS} ${i + 1}`));
+const ENTRIES = Array.from({ length: ROWS }, (_, i) => at((ROWS - i) * 60000,
+  `${WORDS} ${i + 1}`, i % 2 ? 'youtube' : 'pc'));
 
 async function openPanel(browser, dir) {
   const ctx = await browser.newContext({ viewport: { width: 380, height: 900 } });
@@ -326,6 +332,52 @@ async function openPanel(browser, dir) {
 /* ══════════════════════════════════════════════════════════════════════════
    3. ONE THEME, MEASURED
    ══════════════════════════════════════════════════════════════════════════ */
+
+/* THE CORNERS ARE MEASURED, NOT ARGUED. A screenshot is taken with
+ * `omitBackground`, decoded IN THE PAGE (CSP allows `img-src data:`; `fetch` of a
+ * data URL would hit `connect-src 'none'`), and the outermost 2x2 block at each corner of
+ * `.panel` is read. A rounded silhouette on a transparent window has ALPHA 0 out
+ * there; any opaque pixel is exactly the "flat corner" the owner photographed
+ * (a square ancestor -- `body`'s background is propagated to the canvas where
+ * its radius does not clip it -- showing behind a rounded slab). */
+async function cornerSample(page, panelBox) {
+  if (!panelBox) return null;
+  const shot = await page.screenshot({ omitBackground: true });
+  const b64 = shot.toString('base64');
+  return page.evaluate(async ({ data, box }) => {
+    const img = new Image();
+    img.src = 'data:image/png;base64,' + data;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0);
+    const read = (x, y) => {
+      const px = ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+      return { r: px[0], g: px[1], b: px[2], a: px[3] };
+    };
+    const corners = [
+      { name: 'tl', x: box.left, y: box.top, dx: 1, dy: 1 },
+      { name: 'tr', x: box.right - 1, y: box.top, dx: -1, dy: 1 },
+      { name: 'bl', x: box.left, y: box.bottom - 1, dx: 1, dy: -1 },
+      { name: 'br', x: box.right - 1, y: box.bottom - 1, dx: -1, dy: -1 },
+    ];
+    return corners.map((c) => {
+      let opaque = 0;
+      let maxAlpha = 0;
+      let colour = null;
+      for (let i = 0; i < 2; i += 1) {
+        for (let j = 0; j < 2; j += 1) {
+          const p = read(c.x + c.dx * i, c.y + c.dy * j);
+          if (p.a > 8) { opaque += 1; colour = colour || p; }
+          if (p.a > maxAlpha) maxAlpha = p.a;
+        }
+      }
+      return { corner: c.name, opaque, maxAlpha, colour };
+    });
+  }, { data: b64, box: panelBox });
+}
 
 async function measure(page, id, hasSkin) {
   await page.evaluate((theme) => {
@@ -438,7 +490,124 @@ async function measure(page, id, hasSkin) {
       statusBottomGap: (status && panel)
         ? panel.getBoundingClientRect().bottom - status.getBoundingClientRect().bottom : null,
       searchDisplay: input ? cs(input).display : 'absent',
+      searchVisible: input
+        ? (input.getBoundingClientRect().width > 0 && input.getBoundingClientRect().height > 0
+          && cs(input).display !== 'none')
+        : false,
+      searchPlaceholder: input ? String(input.getAttribute('placeholder') || '') : 'absent',
       searchClass: Boolean(tools && tools.classList.contains('is-searching')),
+      /* THE GEOMETRY OF THE FOUR BANDS (owner, 2026-11-09: the same place in
+       * every design). Absolute rects; `run()` converts them to offsets from
+       * `panel` and reports the spread across the inventory. */
+      layout: {
+        panel: box(panel),
+        header: box(q('.panel__header')),
+        tools: box(tools),
+        bar: box(q('.history__bar')),
+        filters: box(q('.history__filters')),
+        list: box(histList),
+        history: box(hist),
+        status: box(status),
+      },
+      layoutStyle: (() => {
+        const pick = (el) => {
+          if (!el) return null;
+          const s = cs(el);
+          const r = el.getBoundingClientRect();
+          return {
+            position: s.position,
+            display: s.display,
+            top: s.top,
+            left: s.left,
+            right: s.right,
+            bottom: s.bottom,
+            padding: s.padding,
+            height: s.height,
+            overflow: s.overflow,
+            zIndex: s.zIndex,
+            transform: s.transform,
+            rect: { top: r.top, left: r.left, width: r.width, height: r.height },
+          };
+        };
+        return {
+          panel: pick(panel),
+          header: pick(q('.panel__header')),
+          skin: pick(document.getElementById('skin')),
+          history: pick(hist),
+          tools: pick(tools),
+          filters: pick(q('.history__filters')),
+          list: pick(histList),
+          status: pick(status),
+        };
+      })(),
+      panelRadius: panel ? cs(panel).borderTopLeftRadius : 'absent',
+      filterButtons: [...document.querySelectorAll('.history__filter-button')].map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          via: el.getAttribute('data-via-filter') || '',
+          pressed: el.getAttribute('aria-pressed'),
+          visible: r.width > 0 && r.height > 0 && cs(el).display !== 'none',
+          svg: el.querySelectorAll('svg').length,
+          text: (el.textContent || '').trim(),
+        };
+      }),
+      /* THE EMPTY STATE AND THE PROSE THE OWNER TOLD US TO TAKE OFF SCREEN. */
+      prose: (() => {
+        const host = document.getElementById('skin');
+        const root = host && host.shadowRoot ? host.shadowRoot : null;
+        const shadowEmpty = root ? root.querySelectorAll('[data-skin-empty]').length : 0;
+        const visibleText = [];
+        for (const el of document.querySelectorAll('#history-status, #transcript-note, .history__empty, .captions__placeholder')) {
+          if (!el.getClientRects().length || cs(el).display === 'none') continue;
+          const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+          if (text) visibleText.push({ id: el.id || String(el.className), text });
+        }
+        return {
+          emptyElements: document.querySelectorAll('.history__empty').length,
+          shadowEmpty,
+          visibleText,
+          noteText: (document.getElementById('history-status') || {}).textContent || '',
+        };
+      })(),
+      /* DECORATIVE DOTS AND GLOWS INSIDE THE PANEL: a round element <= 16 px
+       * that still paints a fill or a shadow. The two nodes the owner named
+       * also report their own paint, so a "display:none" and a "transparent"
+       * are distinguishable in the failure detail. */
+      dots: (() => {
+        const out = [];
+        if (!panel) return out;
+        for (const el of panel.querySelectorAll('*')) {
+          const s = cs(el);
+          const r = el.getBoundingClientRect();
+          if (!r.width || !r.height) continue;
+          if (s.display === 'none' || s.visibility === 'hidden' || Number(s.opacity) === 0) continue;
+          const radius = parseFloat(s.borderTopLeftRadius) || 0;
+          if (radius < Math.min(r.width, r.height) / 2 - 0.5) continue;
+          if (r.width > 16 || r.height > 16) continue;
+          const clear = /rgba\(0, 0, 0, 0\)|transparent/.test(s.backgroundColor)
+            && /^none$/.test(s.boxShadow);
+          if (clear) continue;
+          out.push({
+            id: el.id || String(el.className || el.tagName),
+            bg: s.backgroundColor,
+            shadow: s.boxShadow,
+            size: `${Math.round(r.width)}x${Math.round(r.height)}`,
+          });
+        }
+        return out;
+      })(),
+      lamp: (() => {
+        const el = document.getElementById('live-lamp');
+        if (!el) return null;
+        const s = cs(el);
+        return { bg: s.backgroundColor, shadow: s.boxShadow };
+      })(),
+      statusDot: (() => {
+        const el = document.getElementById('status-dot');
+        if (!el) return null;
+        const s = cs(el);
+        return { display: s.display, bg: s.backgroundColor, shadow: s.boxShadow };
+      })(),
       circles: {
         present: Boolean(timeEl),
         before: timeEl ? cs(timeEl, '::before').content : '',
@@ -517,6 +686,40 @@ async function measure(page, id, hasSkin) {
       histFont: histText ? parseFloat(cs(histText).fontSize) : null,
     };
   });
+
+  /* THE TWO SOURCE BUTTONS, MEASURED BY CLICKING THEM. Both start on; clicking
+   * one hides its own half of the fixture; clicking the second one while the
+   * first is off must TURN THE FIRST BACK ON instead of leaving two off. The
+   * fixture is 30 pc / 30 youtube, so "rows" is a real measurement of the
+   * filter, not a count of the same rows. The pair is restored before the
+   * search measurement below (the page is shared by the CSS themes). */
+  data.filters = await page.evaluate(() => {
+    const read = () => ({
+      buttons: [...document.querySelectorAll('.history__filter-button')].map((b) => ({
+        via: b.getAttribute('data-via-filter') || '',
+        on: b.getAttribute('aria-pressed') === 'true',
+        svg: b.querySelectorAll('svg').length,
+        text: (b.textContent || '').trim(),
+      })),
+      rows: [...document.querySelectorAll('#history-list .hist')].map((li) => li.getAttribute('data-via') || ''),
+    });
+    const pc = document.getElementById('history-filter-pc');
+    const yt = document.getElementById('history-filter-youtube');
+    const out = { before: read() };
+    if (!pc || !yt) return out;
+    pc.click();
+    out.afterPcOff = read();
+    yt.click();
+    out.afterYtClick = read();
+    pc.click();
+    out.afterPcAgain = read();
+    if (pc.getAttribute('aria-pressed') === 'false') pc.click();
+    if (yt.getAttribute('aria-pressed') === 'false') yt.click();
+    out.restored = read();
+    out.filterRow = Boolean(document.querySelector('.history__filters'));
+    return out;
+  });
+  data.corners = await cornerSample(page, data.panel);
 
   /* SEARCH IS A GLYPH UNTIL ASKED (owner, 2026-11-07/09). Measured as a
    * transition: hidden -> a real click reveals and focuses it -> Escape hides it
@@ -830,12 +1033,103 @@ function judge(data, hasSkin) {
   add('skin-mounted', !hasSkin || Boolean(data.skinMounted),
     hasSkin ? `mounted=${data.skinMounted}` : 'n/a (css theme)');
 
+  /* A12 - NO FLAT CORNER (owner, 2026-11-09). A 3x3 block at each corner of
+   * `.panel` must be TRANSPARENT: a rounded slab on a transparent window has no
+   * pixels there (the 2x2 block lies outside a radius >= 8 curve; a square
+   * ancestor fills all four), and any opaque pixel is the square ancestor behind it. */
+  const corners = data.corners || [];
+  const badCorners = corners.filter((c) => !c || c.opaque > 0);
+  add('no-flat-corner',
+    corners.length === 4 && badCorners.length === 0,
+    corners.length
+      ? `${corners.map((c) => `${c.corner}:${c.opaque}px>8/${c.maxAlpha}a`).join(' ')} radius=${data.panelRadius}`
+      : 'not measured');
+
+  /* A13 - TWO SOURCE FILTERS, ONE NEVER-BOTH-OFF RULE, AND A FILTER THAT
+   * ACTUALLY HIDES ROWS. The fixture is 30 pc / 30 youtube. */
+  const f = data.filters || {};
+  const buttons = (f.before && f.before.buttons) || data.filterButtons || [];
+  const ids = buttons.map((b) => b.via).sort().join(',');
+  const rowsOf = (snap) => (snap && snap.rows) || [];
+  const allVia = (snap, via) => {
+    const rows = rowsOf(snap);
+    return rows.length > 0 && rows.every((v) => v === via);
+  };
+  const anyOn = (snap) => Boolean(snap) && (snap.buttons || []).some((b) => b.on);
+  add('source-filters',
+    Boolean(f.filterRow) && buttons.length === 2 && ids === 'pc,youtube'
+    && buttons.every((b) => b.svg === 1 && b.text === '')
+    && (f.before && f.before.buttons || []).every((b) => b.on)
+    && rowsOf(f.before).length === ROWS
+    && !allVia(f.before, 'pc') && !allVia(f.before, 'youtube')
+    && allVia(f.afterPcOff, 'youtube') && rowsOf(f.afterPcOff).length === ROWS / 2
+    && allVia(f.afterYtClick, 'pc') && rowsOf(f.afterYtClick).length === ROWS / 2
+    && allVia(f.afterPcAgain, 'youtube') && rowsOf(f.afterPcAgain).length === ROWS / 2
+    && anyOn(f.afterPcOff) && anyOn(f.afterYtClick) && anyOn(f.afterPcAgain)
+    && rowsOf(f.restored).length === ROWS
+    && (f.restored && f.restored.buttons || []).every((b) => b.on),
+    `row=${Boolean(f.filterRow)} buttons=${buttons.map((b) => b.via).join('/')}`
+    + ` rows before=${rowsOf(f.before).length} pcOff=${rowsOf(f.afterPcOff).length}`
+    + ` ytClick=${rowsOf(f.afterYtClick).length} pcAgain=${rowsOf(f.afterPcAgain).length}`
+    + ` restored=${rowsOf(f.restored).length}`
+    + ` states=${JSON.stringify([f.afterPcOff, f.afterYtClick, f.afterPcAgain].map((s) => s && s.buttons))}`);
+
+  /* A14 - NO EMPTY STATE AND NO EXPLANATORY PROSE, and the field stays hidden
+   * until its glyph is clicked. A design that renders rows must have zero empty
+   * state and no sentence telling the owner what the feed is. */
+  const prose = data.prose || {};
+  const visibleText = (prose.visibleText || []).filter((t) => t.text);
+  add('no-explanatory-prose',
+    prose.emptyElements === 0 && prose.shadowEmpty === 0
+    && String(prose.noteText || '').trim() === ''
+    && visibleText.length === 0
+    && data.searchPlaceholder === '',
+    `empty=${prose.emptyElements} shadowEmpty=${prose.shadowEmpty}`
+    + ` note=${JSON.stringify(String(prose.noteText || '').slice(0, 40))}`
+    + ` visible=${JSON.stringify(visibleText.slice(0, 3))}`
+    + ` placeholder=${JSON.stringify(data.searchPlaceholder)}`);
+
+  add('search-hidden-before-click',
+    data.searchVisible === false && data.search.before === 'none',
+    `visible=${data.searchVisible} display=${data.search.before}`);
+
+  /* A15 - NO GLOWING DOT. A round element <= 16 px that still paints a fill or
+   * a shadow fails; the two nodes the owner named also report their own paint,
+   * so "the node exists but paints nothing" is distinguishable from "it paints". */
+  const dots = data.dots || [];
+  const lampClear = !data.lamp
+    || (/rgba\(0, 0, 0, 0\)|transparent/.test(data.lamp.bg) && /^none$/.test(data.lamp.shadow));
+  const dotClear = !data.statusDot || data.statusDot.display === 'none';
+  add('no-glow-dots',
+    dots.length === 0 && lampClear && dotClear,
+    `dots=${JSON.stringify(dots)} lamp=${JSON.stringify(data.lamp)} statusDot=${JSON.stringify(data.statusDot)}`);
+
   return arms;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
    5. THE RUN
    ══════════════════════════════════════════════════════════════════════════ */
+
+/* TEARDOWN IS BOUNDED. Measured on 2026-11-09 in this tree: a bundled Chromium
+ * launches in 276 ms and opens a page in 604 ms, then `browser.close()` sits
+ * waiting for a pipe that never answers -- the whole gate ran its measurements
+ * and never printed a verdict because the `finally` block was parked in close().
+ * A gate that cannot exit is a gate that reports nothing, so the close is raced
+ * with a timer; the process exits explicitly at the end of `main` anyway. */
+function bounded(promise, ms) {
+  return Promise.race([
+    Promise.resolve(promise).catch(() => {}),
+    new Promise((resolve) => { setTimeout(resolve, ms).unref(); }),
+  ]);
+}
+
+async function closeSession(session) {
+  if (session) await bounded(session.ctx.close(), 5000);
+}
+async function closeBrowser(browser) {
+  await bounded(browser.close(), 8000);
+}
 
 async function run(dir, opts = {}) {
   const inv = inventory(dir);
@@ -865,7 +1159,7 @@ async function run(dir, opts = {}) {
        * before it. A fresh page per skin removes the question instead of widening
        * the arm's tolerance. */
       if (entry.skin) {
-        await session.ctx.close();
+        await closeSession(session);
         session = await openPanel(browser, dir);
         page = session.page;
         errorSets.push(session.errors);
@@ -882,7 +1176,9 @@ async function run(dir, opts = {}) {
        * overlay never reads the DOM: `_brand_tokens` receives exactly this. */
       const brand = await page.evaluate(() => (window.SottoBrand && window.SottoBrand.last)
         ? window.SottoBrand.last() : null);
-      report.themes.push({ id: entry.name, skin: entry.skin, css: entry.css, arms, brand });
+      report.themes.push({
+        id: entry.name, skin: entry.skin, css: entry.css, arms, brand, layout: data.layout, layoutStyle: data.layoutStyle,
+      });
       for (const arm of arms) {
         if (!report.arms[arm.name]) report.arms[arm.name] = { pass: 0, fail: 0, failures: [] };
         if (arm.ok) report.arms[arm.name].pass += 1;
@@ -895,9 +1191,49 @@ async function run(dir, opts = {}) {
     report.faces = faces.size;
     report.plates = plates.size;
     report.pageErrors = errorSets.flat();
+    /* ONE PLACE IN EVERY DESIGN, MEASURED (owner, 2026-11-09: *"everything is in
+     * the same place or SLIGHTLY different by design"*). The four bands are
+     * compared as OFFSETS FROM THE PANEL's own top-left, so a window that is
+     * inset differently does not enter the number. The sheet now states the
+     * arithmetic (14 px padding, 56 px header, 10 px gap, 24 px bar/filter/tools,
+     * 18 px status), so the measured spread is subpixel; 1.0 px is the resolution
+     * of a `border-box` layout and the arm names the measured maximum. */
+    const LAYOUT_TOL = 1.0;
+    const bands = ['header', 'bar', 'filters', 'list', 'status'];
+    const layoutSpread = {};
+    for (const band of bands) {
+      const vals = report.themes
+        .map((t) => (t.layout && t.layout.panel && t.layout[band] ? {
+          top: t.layout[band].top - t.layout.panel.top,
+          left: t.layout[band].left - t.layout.panel.left,
+          width: t.layout[band].width,
+        } : null))
+        .filter(Boolean);
+      const stat = (pick) => {
+        if (!vals.length) return { min: null, max: null, spread: null };
+        const arr = vals.map(pick);
+        const min = Math.min(...arr);
+        const max = Math.max(...arr);
+        return { min, max, spread: max - min };
+      };
+      layoutSpread[band] = { top: stat((v) => v.top), left: stat((v) => v.left), width: stat((v) => v.width) };
+    }
+    const spreads = bands.flatMap((b) => ['top', 'left', 'width']
+      .map((k) => layoutSpread[b][k].spread)
+      .filter((v) => v !== null && Number.isFinite(v)));
+    const worst = spreads.length ? Math.max(...spreads) : Infinity;
+    report.layoutSpread = layoutSpread;
+    report.arms['layout-shared'] = worst <= LAYOUT_TOL
+      ? { pass: 1, fail: 0, failures: [] }
+      : {
+        pass: 0,
+        fail: 1,
+        failures: [`measured spread=${Number.isFinite(worst) ? worst.toFixed(2) : 'n/a'}px tol=${LAYOUT_TOL}px`
+          + ` bands=${JSON.stringify(layoutSpread)}`],
+      };
   } finally {
-    if (session) await session.ctx.close();
-    await browser.close();
+    await closeSession(session);
+    await closeBrowser(browser);
   }
   report.inventoryOk = inv.ok;
   /* THE FLOOR IS A FLOOR, NOT A TAUTOLOGY: with 59 entries the caption face floor
@@ -934,6 +1270,16 @@ function printReport(report) {
   }
   console.log(`CAPTION-FACES distinct=${report.distinctCaptionFaces} (${report.faces || 0} computed tuples)`);
   console.log(`CAPTION-PLATES distinct=${report.distinctPlates} (${report.plates || 0} computed beds)`);
+  if (report.layoutSpread) {
+    const bands = ['header', 'bar', 'filters', 'list', 'status'];
+    const parts = bands.map((b) => {
+      const s = report.layoutSpread[b];
+      return `${b} top=${s.top.spread === null ? 'n/a' : s.top.spread.toFixed(1)}`
+        + ` left=${s.left.spread === null ? 'n/a' : s.left.spread.toFixed(1)}`
+        + ` width=${s.width.spread === null ? 'n/a' : s.width.spread.toFixed(1)}`;
+    });
+    console.log(`LAYOUT-SPREAD px tol=1.0 ${parts.join(' · ')}`);
+  }
   if (report.pageErrors && report.pageErrors.length) {
     console.log(`PAGE-ERRORS ${report.pageErrors.length}`);
     for (const e of report.pageErrors.slice(0, 5)) console.log(`  ${e}`);
@@ -958,7 +1304,7 @@ function printReport(report) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   6. NEGATIVE ARM - ten independent mutants, each must be caught
+   6. NEGATIVE ARM - thirteen independent mutants, each must be caught
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* THE NEGATIVE ARM MEASURES A SAMPLE, AND THAT IS STATED.
@@ -1048,6 +1394,30 @@ const MUTANTS = [
     replace: 'html body[data-surface="panel"] .history__list > :first-child { margin-top: 0 !important; }',
     expect: 'short-feed-on-floor',
   },
+  {
+    /* THE FLAT CORNER OF 2026-11-09, re-planted: `body` paints an opaque base
+     * again, the canvas propagates it and the rounded slab sits on a black square. */
+    name: 'M11 corner: the opaque canvas comes back',
+    file: 'panel-unified.css',
+    find: 'html body[data-surface="panel"] {\n  background: transparent !important;\n  border-radius: 0 !important;\n}',
+    replace: 'html body[data-surface="panel"] {\n  background: rgba(0, 0, 0, 0.98) !important;\n  border-radius: 0 !important;\n}',
+    expect: 'no-flat-corner',
+  },
+  {
+    name: 'M12 glow: the header lamp paints green again',
+    file: 'panel-unified.css',
+    find: 'html body[data-surface="panel"] #live-lamp {\n  background: transparent !important;',
+    replace: 'html body[data-surface="panel"] #live-lamp {\n  background: rgb(34, 197, 94) !important;',
+    expect: 'no-glow-dots',
+  },
+  {
+    /* THE ONE RULE THE OWNER NAMED: both sources may not be off at once. */
+    name: 'M13 filter: the last source can be turned off',
+    file: 'panel.js',
+    find: '    if (viaFilter[other] === false) viaFilter[other] = true;\n',
+    replace: '    void other;\n',
+    expect: 'source-filters',
+  },
 ];
 
 function plantMutant(dir, mutant) {
@@ -1111,6 +1481,42 @@ async function negativeArm() {
 
 if (NEG) {
   process.exit(await negativeArm());
+} else if (argv.includes('--shot')) {
+  /* DIAGNOSTIC, NOT AN ARM: render one design headless and save the exact frame
+   * the owner would see, for a complaint no selector can describe (e.g. a list
+   * painted twice). Never launches on screen; no window is shown. */
+  const at = argv.indexOf('--shot');
+  const shotId = argv[at + 1];
+  const shotOut = argv[at + 2] || 'panel-shot.png';
+  const browser = await chromium.launch({ channel: 'msedge', headless: true });
+  const session = await openPanel(browser, PANEL_DIR);
+  const entry = inventory(PANEL_DIR).entries.find((e) => e.name === shotId);
+  await measure(session.page, shotId, Boolean(entry && entry.skin));
+  /* the reveal test runs last and its drawer has a transition; a frame caught
+   * mid-fade is not the steady state the owner sees. */
+  await session.page.waitForTimeout(400);
+  const stack = await session.page.evaluate(() => {
+    const out = [];
+    for (let y = 70; y <= 190; y += 10) {
+      out.push({
+        y,
+        top: document.elementsFromPoint(190, y).slice(0, 4).map((el) => ({
+          tag: el.tagName,
+          id: el.id || '',
+          cls: String(el.className || '').slice(0, 50),
+          z: window.getComputedStyle(el).zIndex,
+        })),
+      });
+    }
+    const list = document.getElementById('history-list');
+    return { points: out, list: list ? { top: list.getBoundingClientRect().top, h: list.scrollHeight, st: list.scrollTop } : null };
+  });
+  console.log(JSON.stringify(stack));
+  await session.page.screenshot({ path: path.resolve(shotOut) });
+  console.log(`SHOT ${shotId} -> ${path.resolve(shotOut)}`);
+  await closeSession(session);
+  await closeBrowser(browser);
+  process.exit(0);
 } else if (argv.includes('--tokens')) {
   /* DIAGNOSTIC, NOT AN ARM: the tokens the bridge actually posted for the ids in
    * `--only`, so a failing plate can be read at its source instead of guessed. */
@@ -1126,8 +1532,8 @@ if (NEG) {
     });
     console.log(`${id} plate=${data.plate} tokens=${JSON.stringify(tokens)}`);
   }
-  await session.ctx.close();
-  await browser.close();
+  await closeSession(session);
+  await closeBrowser(browser);
   process.exit(0);
 } else {
   const report = await run(PANEL_DIR);

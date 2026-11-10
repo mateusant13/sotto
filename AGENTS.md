@@ -591,7 +591,36 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-09, 23:5x):** `_main\_audit-verify-all.cmd` = **331566 B**,
+- **PIN do ficheiro (medido 2026-11-10, 01:0x):** `_main\_audit-verify-all.cmd` = **334680 B**,
+  **3921 CRLF** / 0 bare LF, sha256 `9283F80B70E86E25885130D74ADAC4F726A903800DC99BD89DF615F610BE38BC`.
+  (Mil duzentos e quinze bytes e DEZ linhas a mais do que o pin de 333465 B: o par `caption-plate` +
+  `red-as-expected-caption-plate` -- o FUNDO DA LEGENDA NATIVA e a transparencia dele. Nasceu de uma
+  ordem do dono de 2026-11-09 (*"the background in the subtitles is too wide. should be more concise
+  and less bloaty"*) cuja maquinaria inteira ja' existia (`overlay_paint` com o modo `tight`, a
+  opacidade da placa, `caption_settings` com clamp e escrita atomica, e o oraculo de 8 arms) e **sem
+  um unico chamador**: `caption_settings` nao era importado pelo shell, `set_visual` nao tinha
+  chamadores e a caixa de configuracoes nao tinha controlos -- a doenca do instrumento sem passo, que
+  esta casa ja' pagou tres vezes. A FIACAO e' o que este par mede: a arm A8 le o `panel.html`, o
+  `panel.js` e o mapa de mensagens do shell, executa o `_caption_visual` REAL (extraido por `ast`) e
+  exige o ficheiro gravado e o overlay vivo com o numero PRESO. Medido: `8/8 GREEN`,
+  `--neg-arm` **7/7** mutantes com rc=1. O pin anterior era
+- **PIN do ficheiro (medido 2026-11-09, 23:5x):** `_main\_audit-verify-all.cmd` = **333465 B**,
+
+  **3911 CRLF** / 0 bare LF, sha256 `128A310D993A4C2A11CAB70CFD2FB4F78973D98BAFDB8D55B94D263859308FFD`.
+  (Mil oitocentos e noventa e nove bytes e VINTE E DUAS linhas a mais do que o pin de 331566 B: o par
+  `history-via-filter` + `red-as-expected-history-via-filter`, OS DOIS BOTOES DE ORIGEM do historico
+  (dono, 2026-11-09: *"dois filtros no historico: icone PC e icone YouTube, ambos on/off, nunca os
+  dois off"*). O oraculo tira do `panel.js` que embarca as SEIS funcoes reais por casamento de
+  chavetas e corre-as num `vm` com uma pagina falsa de dois botoes -- nenhuma e' reimplementada,
+  porque uma copia da regra passa enquanto a que o dono usa parte. Medido: 15 arms verdes e
+  `--neg-arm` 5/5 mutantes apanhados CADA UM PELA SUA arm (o m2 so' foi apanhado depois de a arm do
+  nunca-os-dois-off passar a olhar CADA passo: olhando so' o estado final, um mutante que apaga os
+  dois no primeiro toque e devolve um no segundo passava). O `SottoSkin.filterVia` e' o segundo
+  consumidor e tem arm propria (a9). DEPENDENCIAS que faltavam a dois passos existentes, corrigidas
+  na mesma rodada do lado do oraculo: `history-write` morria em `NameError: HISTORY_VIAS` e em
+  `AttributeError: _history_find_start` porque o namespace extraido do shell nao conhecia nem a
+  constante nova nem o metodo da fusao -- dois defeitos do INSTRUMENTO, nao do codigo.)
+- **PIN anterior (medido 2026-11-09, 23:5x):** `_main\_audit-verify-all.cmd` = **331566 B**,
   **3889 CRLF** / 0 bare LF, sha256 `54548EC8187E80D09FAFA401F2AC4EF2AE15CC0BF55613816B3755A9972BF97B`.
   (Mil cento e noventa e dois bytes e ONZE linhas a mais do que o pin de 330374 B: o par
   `engine-serialization` + `red-as-expected-engine-serialization`, o ORCAMENTO UNICO dos dois motores

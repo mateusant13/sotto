@@ -630,6 +630,16 @@ if exist _main\_panel2-dom-probe.js (
   REM theme-4 15, theme-5 14.5 -- e zero literal de desenho no bloco.
   call :step theme-caption-identity 0 "_main\theme-caption-identity-oracle.py;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css" "%OUT%\theme-caption-identity.log" python _main\theme-caption-identity-oracle.py
   call :record theme-caption-identity !STEP_RC!
+  REM O FUNDO DA LEGENDA NATIVA (dono, 2026-11-09: *"the background in the
+  REM subtitles is too wide"* + a transparencia escolhivel). O oraculo media a
+  REM placa e a FIACAO tinha zero chamadores -- a doenca do instrumento sem
+  REM passo. Julga as duas metades: o bitmap que embarca (A1-A7) e a cadeia
+  REM caixa -> shell -> ficheiro -> janela viva (A8, que le o panel.html, o
+  REM panel.js e o mapa de mensagens do shell). Nao abre janela nem dispositivo.
+  call :step caption-plate 0 "_main\caption-plate-oracle.py;app\webview\overlay_paint.py;app\webview\caption_overlay.py;app\webview\caption_settings.py;app\webview\sotto_webview.py;app\panel\panel.html;app\panel\panel.js" "%OUT%\caption-plate.log" python _main\caption-plate-oracle.py
+  call :record caption-plate !STEP_RC!
+  call :step red-as-expected-caption-plate 1 "_main\caption-plate-oracle.py;app\webview\overlay_paint.py;app\webview\caption_overlay.py;app\webview\caption_settings.py;app\webview\sotto_webview.py;app\panel\panel.html;app\panel\panel.js" "%OUT%\caption-plate-neg.log" python _main\caption-plate-oracle.py --neg-arm
+  call :expectred red-as-expected-caption-plate !STEP_RC! "%OUT%\caption-plate-neg.log" "NEG-ARM PASS"
   call :step red-as-expected-theme-caption-identity 1 "_main\theme-caption-identity-oracle.py;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css" "%OUT%\theme-caption-identity-neg.log" python _main\theme-caption-identity-oracle.py --neg-arm
   call :expectred red-as-expected-theme-caption-identity !STEP_RC! "%OUT%\theme-caption-identity-neg.log" "NEG-ARM PASS"
   call :step caption-overlay-theme 0 "_main\caption-overlay-theme-oracle.py;_main\panel-themes-oracle.mjs;app\panel\panel.html;app\panel\brand-bridge.js;app\panel\panel-unified.css;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\overlay_paint.py;app\webview\word_fade.py" "%OUT%\caption-overlay-theme.log" python _main\caption-overlay-theme-oracle.py
@@ -2633,6 +2643,28 @@ if exist _main\history-context-oracle.py (
   call :step always red-as-expected-history-context 1 "_main\history-context-oracle.py;_main\hidden-launch.py;app\webview\history_context.py;app\webview\sotto_webview.py;app\panel\history-store.js;app\panel\panel.html;app\panel\panel.js" "%OUT%\history-context-neg.log" python _main\history-context-oracle.py --neg-arm
   call :expectred red-as-expected-history-context !STEP_RC! "%OUT%\history-context-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-history-context MISSING "%OUT%\history-context-neg.log" "NEG-ARM PASS" )
+
+REM (`history-via-filter`: OS DOIS BOTOES DE ORIGEM do historico. Dono,
+REM 2026-11-09, verbatim: *"dois filtros no historico: icone PC e icone YouTube,
+REM ambos on/off, nunca os dois off"*. O oraculo TIRA do `panel.js` que embarca
+REM as SEIS funcoes reais (`viaOf`, `viaVisible`, `paintViaFilters`,
+REM `repaintFeedForFilter`, `toggleViaFilter`, `wireViaFilters`) por casamento de
+REM chavetas e corre-as num `vm` com uma pagina falsa de dois botoes -- nenhuma e'
+REM reimplementada aqui, porque uma copia da regra passa enquanto a que o dono
+REM usa parte. Julga as tres origens (`pc`/`youtube`/`external`), a linha antiga
+REM sem `via` (le-se `pc`), o NUNCA-OS-DOIS-OFF em CADA passo, a pintura
+REM `aria-pressed`, o clique, o repaint da lista E da busca, e a lista de desenho
+REM (`SottoSkin.filterVia`), que e' o segundo consumidor. O `--neg-arm` muta CINCO
+REM sitios em COPIA e exige os cinco apanhados PELA SUA arm. Nenhum dos dois abre
+REM a app, carrega modelo ou abre janela.)
+if exist _main\history-via-filter-oracle.js (
+  call :step always history-via-filter 0 "_main\history-via-filter-oracle.js;app\panel\panel.js;app\panel\panel.html;app\panel\history-source.js" "%OUT%\history-via-filter.log" node _main\history-via-filter-oracle.js
+  call :record history-via-filter !STEP_RC!
+) else ( call :record history-via-filter MISSING )
+if exist _main\history-via-filter-oracle.js (
+  call :step always red-as-expected-history-via-filter 1 "_main\history-via-filter-oracle.js;app\panel\panel.js;app\panel\panel.html;app\panel\history-source.js" "%OUT%\history-via-filter-neg.log" node _main\history-via-filter-oracle.js --neg-arm
+  call :expectred red-as-expected-history-via-filter !STEP_RC! "%OUT%\history-via-filter-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-history-via-filter MISSING "%OUT%\history-via-filter-neg.log" "NEG-ARM: PASS" )
 
 REM (`history-route`: qual TEXTO pode chegar ao ficheiro. O oraculo conduz o
 REM worker REAL -> o motor REAL (`caption-formulation.js`) -> a loja REAL

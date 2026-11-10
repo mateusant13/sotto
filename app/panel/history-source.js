@@ -52,6 +52,34 @@ const CANONICAL_PRODUCER = 'redux';
 /** The route NAME a canonical line with no `final` stamp is recorded under. */
 const BATCH_ROUTE = 'batch';
 
+/**
+ * DE ONDE VEIO O SOM — `'pc' | 'youtube' | 'external'` (dono, 2026-11-09:
+ * *"dois filtros no historico: icone PC e icone YouTube, ambos on/off, nunca os
+ * dois off"*).
+ *
+ * `producer` nao responde a esta pergunta: o motor de fundo transcreve o
+ * loopback do PC e um video do YouTube pelo mesmo caminho, logo as duas linhas
+ * saem com o mesmo `producer`. O que as separa e' o CANAL que entregou a linha:
+ * `meta.historySession === 'external'` e' a marca do `external_caption`
+ * (`sotto_webview.py`), e o `meta.source` diz se aquele player externo e' o
+ * YouTube (URL do youtube.com / youtu.be, ou o marcador `external:youtube:*`)
+ * ou outra coisa (Stremio, VLC) -- e o terceiro valor existe exactamente para
+ * nao chamar "PC" a um video que veio de outro lugar.
+ *
+ * Sem marca nenhuma a resposta e' `'pc'`: as linhas que este produto escreve
+ * para o audio da maquina sao a esmagadora maioria, e o filtro precisa de uma
+ * resposta em vez de uma linha invisivel nos dois lados.
+ */
+const VIAS = ['pc', 'youtube', 'external'];
+
+function viaOf(meta) {
+  if (!meta || typeof meta !== 'object') return 'pc';
+  if (String(meta.historySession || '') !== 'external') return 'pc';
+  const source = typeof meta.source === 'string' ? meta.source : '';
+  if (/youtube/i.test(source)) return 'youtube';
+  return source ? 'external' : 'youtube';
+}
+
 /** The producer a line declares, normalised; `null` when it declares none. */
 function producerOf(meta) {
   if (!meta || typeof meta !== 'object') return null;
@@ -137,6 +165,8 @@ const SottoHistorySource = {
   LIVE_PRODUCER,
   CANONICAL_PRODUCER,
   BATCH_ROUTE,
+  VIAS,
+  viaOf,
   producerOf,
   isCanonicalLine,
   historyDecision,

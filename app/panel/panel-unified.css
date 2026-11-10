@@ -490,3 +490,212 @@ html body[data-surface="panel"] .history:not(.history--collapsed) {
 html body[data-surface="panel"] .panel {
   grid-template-rows: auto minmax(0, 1fr) auto !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   8. THE WINDOW SHAPE, THE SAME GRID, AND THE TWO SOURCE FILTERS (2026-11-09)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* NO FLAT CORNER, AND NO OPAQUE BOX BEHIND ONE (owner, 2026-11-09, verbatim:
+ * *"i dont want ANY PANEL to have a FUCKING flat edge like in this image ...
+ * IT SHOULD NOT contain this COLORED DIV, BLACK."*).
+ *
+ * The offender is a CLASS, not a theme: `body` paints an opaque base
+ * (`panel.css:126`), and a background declared on `<body>` is PROPAGATED TO THE
+ * CANVAS when `<html>` has none -- and the canvas is NOT clipped by the body's
+ * `border-radius`. So a 22 px rounded slab sat on a full-window square of that
+ * base, and the square showed as a wedge at each corner.
+ *
+ * The fix is in four parts, all of them surface-scoped:
+ *   1. the canvas stops painting on the panel surface, so nothing square is
+ *      behind a rounded corner;
+ *   2. `body` stops clipping, because its 14 px radius used to clip a 22 px
+ *      slab (a second, quieter corner defect);
+ *   3. `.panel` carries the radius AND the clip, and every design gets the same
+ *      rounded silhouette even when its own sheet says `border-radius: 0`
+ *      (`skin-layout.css` does exactly that for the frozen skins);
+ *   4. `#skin` (a skin's full-bleed backdrop) is clipped with the same radius,
+ *      so a skin cannot paint its square stage behind the slab's corner either. */
+html:has(> body[data-surface="panel"]) { background: transparent !important; }
+html body[data-surface="panel"] {
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+html body[data-surface="panel"] .panel {
+  border-radius: max(8px, var(--radius-lg, 14px)) !important;
+  overflow: hidden !important;
+}
+html body[data-surface="panel"] #skin {
+  border-radius: max(8px, var(--radius-lg, 14px)) !important;
+  overflow: hidden !important;
+}
+
+/* ONE GRID, IN EVERY DESIGN (owner, 2026-11-09: *"the standard is that everything
+ * is in the same place or SLIGHTLY different by design"*). The numbers are the
+ * ones `panel.css` and `button-contract.css` already use -- 14 px slab padding,
+ * a 10 px gap, a 56 px header, the controls fixed on the header's centre line --
+ * stated here so a theme cannot move the boxes between designs. Only colour,
+ * type, radius and decoration stay the design's. */
+html body[data-surface="panel"] .panel {
+  display: grid !important;
+  grid-template-rows: 56px minmax(0, 1fr) auto !important;
+  gap: 10px !important;
+  padding: 14px 14px 10px !important;
+}
+html body[data-surface="panel"] .panel__header {
+  display: flex !important;
+  position: static !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 12px !important;
+  height: 56px !important;
+  min-height: 56px !important;
+  max-height: 56px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+html body[data-surface="panel"] .history {
+  position: relative !important;
+  z-index: 2 !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-top: 0 !important;
+}
+html body[data-surface="panel"] .history__bar {
+  display: flex !important;
+  align-items: center !important;
+  flex: 0 0 24px !important;
+  gap: 8px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+html body[data-surface="panel"] .history__body {
+  display: flex !important;
+  flex-flow: column !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+html body[data-surface="panel"] .history__note,
+html body[data-surface="panel"] #transcript-note {
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+html body[data-surface="panel"] .status {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  max-height: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 11.5px !important;
+  line-height: 1.5 !important;
+}
+
+/* THE TWO SOURCE FILTERS (owner, 2026-11-09). Two 24 px glyph buttons on their
+ * own 24 px row, so the row is at the same y in every design and opening the
+ * search cannot move it. The pressed state is a fact (`aria-pressed`), not a
+ * guess from a class: `panel.js::paintViaFilters` writes both. */
+html body[data-surface="panel"] .history__filters {
+  display: flex !important;
+  flex-flow: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 4px !important;
+  flex: 0 0 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+html body[data-surface="panel"] .history__filter-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 24px !important;
+  width: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: var(--text-primary, var(--text, #e8eef2)) !important;
+}
+html body[data-surface="panel"] .history__filter-button svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+html body[data-surface="panel"] .history__filter-button[aria-pressed="false"] {
+  opacity: 0.38 !important;
+}
+html body[data-surface="panel"] .history__tools {
+  flex: 0 0 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  margin: 0 !important;
+}
+
+/* SKIN CHROME GOES BACK INTO THE ONE GRID. `skin-layout.css` carries its bar
+ * and its status bar as ABSOLUTE, with a specificity
+ * (`body[data-skin][data-surface="panel"] .panel__header`, 0-3-1) that outranks
+ * the band rules above (0-2-2). The result measured 2026-11-09 on `cine-adobe`:
+ * both were out of flow, so the 56 px grid row was handed to `.history`
+ * (height 56 px, `#history-list` height 0) and the feed was invisible under an
+ * 809 px void. These two selectors carry one more specificity and put the bar
+ * and the status back into rows 1 and 3, so every design measures the same
+ * offsets. The stage starts below the bar instead of under it, and the feed is
+ * lifted above the stage before `#skin`'s own z-index can cover the rows. */
+html body[data-skin][data-surface="panel"] .panel__header {
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  z-index: auto !important;
+}
+html body[data-skin][data-surface="panel"] .status {
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  z-index: auto !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+html body[data-skin][data-surface="panel"] #skin {
+  top: 80px !important;
+}
+
+/* THE TWO DOTS THE OWNER NAMED (2026-11-09, verbatim: *"i dont want the little
+ * circle glowing in the left side of the right panel"*). The NODES stay:
+ * `panel.js` paints `data-live` / `data-state` into them and
+ * `_main/panel-header-oracle.js` reads those facts. What goes is the PAINT on
+ * the right panel -- no fill, no halo, no `box-shadow` glow -- and the footer
+ * dot is removed from layout outright. */
+html body[data-surface="panel"] #live-lamp {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html body[data-surface="panel"] #status-dot {
+  display: none !important;
+}

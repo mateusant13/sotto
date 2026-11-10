@@ -502,6 +502,29 @@ def _timer_period(on, log_fn=None):
 _frame_now = time.perf_counter
 
 
+#: O ASPECTO QUE A LEGENDA EMBARCA, lido UMA vez no import (2026-11-09).
+#:
+#: Dono, verbatim: *"the background in the subtitles is too wide. should be
+#: more concise and less bloaty"* e, na mesma rodada, o pedido de transparencia
+#: escolhivel. O default vive em `caption_settings.DEFAULT_PLATE` ('tight'): uma
+#: legenda sem ficheiro de configuracao ja' nasce apertada, e a configuracao so'
+#: AFASTA esse default quando o dono escolhe outra coisa.
+#:
+#: LIDO NO IMPORT, nao a cada pintura: `_caption_style` corre uma vez por quadro
+#: e um `json.load` por quadro seria 60 leituras de disco por segundo no caminho
+#: da animacao. Quem muda o valor em runtime chama `set_visual`.
+_SHIPPED_VISUAL = {'plate': 'tight', 'opacity': 1.0}
+try:
+    import caption_settings as _caption_settings
+except Exception:                       # noqa: BLE001 -- sem o modulo, o default acima
+    _caption_settings = None
+if _caption_settings is not None:
+    try:
+        _SHIPPED_VISUAL = dict(_caption_settings.visual())
+    except Exception:                   # noqa: BLE001
+        pass
+
+
 class NativeCaptionOverlay:
     #: O fade de entrada esta' DESLIGADO (ordem do dono 2026-11-03). O botao
     #: fica para o oraculo poder provar as duas metades: com `False`, nenhum
@@ -529,6 +552,10 @@ class NativeCaptionOverlay:
         # shipped before the brand contract existed (Segoe UI 34 px, green dot),
         # so a panel that never posts tokens loses nothing.
         self.theme = dict(_THEME_DEFAULT)
+        # O ASPECTO ESCOLHIDO (dono, 2026-11-09): a placa aperta-se e o alfa da
+        # placa e' escolhivel. Sem ficheiro, e' o default que embarca.
+        self.plate_mode = _SHIPPED_VISUAL.get('plate', 'tight')
+        self.opacity = _SHIPPED_VISUAL.get('opacity', 1.0)
         self._wndproc = WNDPROC(self._on_message)
         self._ready = threading.Event()
         # ── O MOTOR DA LEGENDA AO VIVO (2026-11-01) ──────────────────────
@@ -717,40 +744,75 @@ class NativeCaptionOverlay:
                     'yes' if theme.get('led') else 'no', theme.get('align')))
         return dict(theme)
 
+    def _caption_style(self):
+        """O aspecto aplicado; um objecto SEM os atributos recebe o que EMBARCA.
+
+        O default deixou de ser `normal`/1.0 em 2026-11-09 -- e' o que o dono
+        pediu (*"less bloaty"*) e o que `caption_settings.DEFAULT_PLATE` diz. O
+        oraculo (`_main/caption-plate-oracle.py`, arm A6) le exactamente esta
+        diferenca, e o `--neg-arm` dele muta esta linha.
+        """
+        mode = str(getattr(self, 'plate_mode', None)
+                   or _SHIPPED_VISUAL.get('plate') or 'tight').lower()
+        try:
+            alpha = float(getattr(self, 'opacity', _SHIPPED_VISUAL.get('opacity', 1.0)))
+        except (TypeError, ValueError):
+            alpha = 1.0
+        return {'plate_mode': mode if mode in ('tight', 'normal') else 'tight',
+                'opacity': max(0.30, min(1.0, alpha))}
+
+    def set_visual(self, opacity=None, plate=None):
+        """Aplica o aspecto vindo das configuracoes, e repinta o que esta' no ar.
+
+        UMA PORTA PARA A ESCOLHA DO DONO (2026-11-09). O valor ja' foi PRESO por
+        `caption_settings.set_visual` (o unico sitio do clamp, que grava); aqui
+        so' se aplica e se pinta -- duas copias do clamp e' como o botao mostra
+        um numero e a legenda usa outro.
+
+        `None` = nao mexe. Devolve o que ficou aplicado, para o log do shell
+        dizer o numero REAL e nao o pedido.
+        """
+        if plate is not None:
+            self.plate_mode = str(plate or '').strip().lower() or None
+        if opacity is not None:
+            try:
+                self.opacity = float(opacity)
+            except (TypeError, ValueError):
+                pass
+        applied = self._caption_style()
+        self.plate_mode, self.opacity = applied['plate_mode'], applied['opacity']
+        with self.lock:
+            _MEASURE_CACHE.clear()
+            if self.hwnd and (self.text or self.previous):
+                self._update()
+        self.log('CAPTION_OVERLAY_VISUAL plate=%s opacity=%.2f'
+                 % (applied['plate_mode'], applied['opacity']))
+        return applied
+
     def _measure(self, text, previous):
         """Largura em px: o MESMO motor que desenha, nunca `GenericTypographic`
         -- medido 2026-10-17, 4,7% mais estreito, e quebrar com um e desenhar com
         o outro corta a ultima letra."""
         _lines, _prev, width, height, _scrolled = _layout(
             text, previous, self.scale, self.work.get('width', 1920),
-            self.theme)
+            self.theme, **self._caption_style())
         return width, height
 
     def _fade_alpha(self):
         """O `SourceConstantAlpha` deste frame -- SEMPRE 255 (sem fade).
 
-        O DONO TIROU O FADE, DUAS VEZES. 2026-10-30 ele pediu a animacao do
-        YouTube; 2026-11-03, sobre uma captura: *"e ta com animacao fade in que
-        eu JA MANDEI VOCE TIRAR"*. A legenda do YouTube NAO faz fade de
-        entrada: a linha nova APARECE, e a que sai desliza para fora com o
-        roll-up. Fade na janela inteira e' invencao nossa, e custa frames:
-        cada alfa intermedio e' um `UpdateLayeredWindow` a mais.
-
-        `FADE_ON` e' o botao: com ele DESLIGADO nada aqui produz alfa
-        intermedio, e o caminho de desenho continua a existir para o oraculo
-        poder provar as duas metades (com ele ligado, a animacao antiga volta).
+        O DONO TIROU O FADE, DUAS VEZES. 2026-10-30 pediu a animacao do YouTube;
+        2026-11-03, sobre uma captura: *"e ta com animacao fade in que eu JA
+        MANDEI VOCE TIRAR"*. A linha nova APARECE, a que sai desliza para fora
+        com o roll-up; fade na janela inteira custa um `UpdateLayeredWindow`
+        por alfa intermedio. `FADE_ON` e' o botao, e o caminho de desenho existe
+        para o oraculo provar as duas metades.
         """
         if not self.FADE_ON:
             self._fade_t0 = None
             return 255
         if self._fade_t0 is None:
             return 255
-        import word_fade
-        elapsed = time.monotonic() - self._fade_t0
-        alpha = word_fade.alpha_at(elapsed)
-        if word_fade.done(alpha):
-            self._fade_t0 = None
-        return alpha
         import word_fade
         elapsed = time.monotonic() - self._fade_t0
         alpha = word_fade.alpha_at(elapsed)
@@ -1209,25 +1271,21 @@ class NativeCaptionOverlay:
                 self.hide()
             self._arm_tick()
             return True
-        # ONE layout, computed once, handed to the bitmap. Two copies of "how many
-        # lines" is how a caption gets measured at one height and drawn at another.
-        # `rows=PLAYER_ROWS`: durante o ROLL-UP sao desenhadas `PLAYER_ROWS + 1`
-        # linhas, mas a CAIXA tem de ficar no tamanho da janela -- e' o conteudo
-        # que sobe dentro dela.
+        # ONE layout, computed once, handed to the bitmap. `rows=PLAYER_ROWS`:
+        # no ROLL-UP desenha-se `PLAYER_ROWS + 1` linhas mas a CAIXA fica no
+        # tamanho da janela -- e' o conteudo que sobe dentro dela.
         cur_lines, prev_line, width, height, _scrolled = _layout(
             text, previous, self.scale, self.work.get('width', 1920),
-            self.theme,
+            self.theme, **self._caption_style(),
             rows=PLAYER_ROWS if str(text or '').count('\n') >= PLAYER_ROWS else None)
-        # OS ALFAS SAO DAS LINHAS QUE `_layout` VAI DESENHAR. Se a contagem nao
-        # bater (a `_layout` pode juntar uma linha vazia), o alfa que sobra e'
-        # ignorado e nenhuma linha recebe o alfa de outra -- a comparacao e' por
-        # indice e os dois lados vem do MESMO texto.
+        # OS ALFAS SAO DAS LINHAS QUE `_layout` VAI DESENHAR; a comparacao e' por
+        # indice e os dois lados vem do MESMO texto (alfa sobrante e' ignorado).
         if alphas and len(alphas) != len(cur_lines):
             alphas = list(alphas[:len(cur_lines)]) + [255] * max(
                 0, len(cur_lines) - len(alphas))
         bmp = _premultiplied_bitmap(cur_lines, prev_line, width, height,
                                     self.scale, self.theme, alphas,
-                                    roll=self._roll)
+                                    roll=self._roll, **self._caption_style())
         # A MARCA "DA' PRA ARRASTAR" DENTRO DO MESMO BITMAP (2026-11-08). Com o
         # Ctrl carregado o contorno pulsa; a arrastar fica solido; com ele
         # levantado nenhum pixel e' tocado. Nao ha' janela nem bitmap extra: e'
@@ -1296,8 +1354,8 @@ class NativeCaptionOverlay:
             if not ok:
                 self.log(f"CAPTION_OVERLAY_UPDATE_FAILED "
                          f"error={ctypes.get_last_error()} size={width}x{height}")
-            # O CARIMBO DA PINTURA DO CUE -- so' depois do `UpdateLayeredWindow`
-            # dizer OK, porque antes disto nao ha' pixel nenhum no ecra.
+            # O CARIMBO SO' DEPOIS DO `UpdateLayeredWindow` OK: antes nao ha'
+            # pixel nenhum no ecra.
             self._log_land()
             return bool(ok)
         except Exception as exc:

@@ -824,6 +824,18 @@ HISTORY_ROUTE_SOURCES = ('worker-stamped', 'worker-stamped-producer', 'panel-dea
 #: Outside this list nothing is written, same rule as the routes above.
 HISTORY_PRODUCERS = ('redux', 'live')
 
+#: DE ONDE VEIO O SOM — a ORIGEM do audio, escrita como `via=` (dono, 2026-11-09:
+#: *"dois filtros no historico: icone PC e icone YouTube, ambos on/off, nunca os
+#: dois off"*). `producer=` diz QUAL motor fechou a linha (o mesmo motor de
+#: fundo transcreve o loopback do PC), logo ele nao responde a pergunta do dono:
+#: uma linha de anime vista no YouTube e uma fala do microfone saem as duas com
+#: `producer=live`. Tres valores, e a razao de serem TRES: o terceiro player
+#: (Stremio, VLC) fornece linha pelo mesmo canal externo do YouTube e chamar-lhe
+#: `pc` seria mentir sobre o que ele ouviu -- o botao do YouTube mostra
+#: `youtube` E `external`, que juntos sao "o que veio de um video".
+#: Fora desta lista nada e' escrito, a mesma regra de `HISTORY_ROUTES`.
+HISTORY_VIAS = ('pc', 'youtube', 'external')
+
 #: UMA LINHA NAO E' UMA LISTA DE EVENTOS (dono, 2026-11-04, verbatim: *"o
 #: historico da legenda e completamente IMBECIL na logica. fica duplicando
 #: frase. fica dando append ou sei la"*). MEDIDO na captura dele, 10:01:44 ->
@@ -844,7 +856,7 @@ HISTORY_MERGE_WINDOW_S = 3.0
 
 
 def history_merge(last, new_body, now_s=None, start=None,
-                  window_s=HISTORY_MERGE_WINDOW_S, audio=None):
+                  window_s=HISTORY_MERGE_WINDOW_S, audio=None, via=None):
     """O que fazer com UMA linha nova, contra a ULTIMA gravada.
 
     Devolve `'skip'` (a mesma linha outra vez), `'replace'` (a mesma linha, ainda
@@ -886,6 +898,14 @@ def history_merge(last, new_body, now_s=None, start=None,
     _last_audio = str(last.get('audio') or '').strip()
     _new_audio = str(audio or '').strip()
     audio_differs = bool(_last_audio and _new_audio and _last_audio != _new_audio)
+    # A ORIGEM DO AUDIO E' OUTRA IDENTIDADE (dono, 2026-11-09). O microfone do
+    # PC e o video do YouTube podem dizer a MESMA frase no mesmo segundo -- e
+    # um deles e' a traducao do outro, nao uma correccao --, logo `via`
+    # diferente nunca funde: sao duas falas com dois lugares de origem, e o
+    # filtro do painel depende de as duas existirem.
+    _last_via = str(last.get('via') or '').strip()
+    _new_via = str(via or '').strip()
+    via_differs = bool(_last_via and _new_via and _last_via != _new_via)
 
     def _gap():
         _last_s = last.get('time_s')
@@ -903,6 +923,8 @@ def history_merge(last, new_body, now_s=None, start=None,
         if distinct_start:
             return 'append'
         if audio_differs and not same_start:
+            return 'append'
+        if via_differs and not same_start:
             return 'append'
         if not same_start:
             gap = _gap()
@@ -946,7 +968,7 @@ def history_merge(last, new_body, now_s=None, start=None,
         log('HISTORY_SHRINK_KEPT where=history_merge prev_chars=%d new_chars=%d'
             % (len(prev), len(body)))
         return 'skip'
-    if same_start and grew:
+    if same_start and grew and not via_differs:
         return 'replace'
     if not grew:
         return 'append'
@@ -3570,6 +3592,13 @@ class ExternalCaptionWatcher(threading.Thread):
     #: of the same video, and the owner must not see the microphone go and
     #: come while the video plays.
     YT_RELEASE_S = 30.0
+    #: QUANTO TEMPO UM ID NOVO TEM DE SE MANTER ANTES DE APAGAR O ECRA (2026-11-09).
+    #: Duas abas `watch` abertas fazem `target_video_id()` oscilar entre elas; uma
+    #: oscilacao apagava a legenda (`video-changed`) e esquecia a linha. Medido no
+    #: log do dono: pares de blank a cada ~1,5 s com o mesmo video a tocar. O id
+    #: candidato tem de concordar em duas leituras separadas por este intervalo --
+    #: uma troca de video A SERIO mantem-se, uma oscilacao de leitura nao.
+    YT_REBIND_CONFIRM_S = 1.5
 
     def __init__(self, shell):
         super().__init__(name='sotto-external-captions', daemon=True)
@@ -5284,9 +5313,45 @@ class ExternalCaptionWatcher(threading.Thread):
                 except Exception:             # noqa: BLE001
                     _tid = ''
                 if _tid and _tid != getattr(self, 'yt_video_id', ''):
-                    log('YOUTUBE_TARGET_REBOUND was=%s now=%s why=aba'
-                        % (getattr(self, 'yt_video_id', '') or '-', _tid))
-                    self._yt_switch_video(_tid, _src)
+                    # A TROCA DE VIDEO EXIGE DOIS ACORDOS (2026-11-09). MEDIDO
+                    # no log do dono, 21:24:33/36/37 e 21:29:56, e outra vez as
+                    # 21:18-21:24: pares de `CAPTION_WINDOW_BLANKED
+                    # reason=video-changed` a cada ~1,5 s com o MESMO video dele
+                    # a tocar, e `YOUTUBE_TRACK_READY video_id=UytYrhYLOKI
+                    # source=other-video` ao lado do alvo `guARjKjyFLY` -- duas
+                    # abas `watch` abertas fazem o `target_video_id` oscilar, e
+                    # cada oscilacao apagava a legenda (o ecra ficava sem pixel
+                    # nenhum e a linha era esquecida). O dono chama a isso "the
+                    # subtitles stays frozen".
+                    #
+                    # A oscilacao nao e' uma troca de video: e' um instrumento a
+                    # ler duas abas. A troca passa a exigir o MESMO id em duas
+                    # leituras separadas por `YT_REBIND_CONFIRM_S`; a primeira
+                    # so' ARMA o candidato e nao apaga nada.
+                    _now = time.monotonic()
+                    _cand = getattr(self, '_yt_rebind_cand', '')
+                    _cand_at = float(getattr(self, '_yt_rebind_at', 0.0) or 0.0)
+                    if _cand != _tid:
+                        self._yt_rebind_cand = _tid
+                        self._yt_rebind_at = _now
+                        log('YOUTUBE_TARGET_REBIND_ARMED was=%s now=%s '
+                            'confirm_s=%.1f'
+                            % (getattr(self, 'yt_video_id', '') or '-', _tid,
+                               self.YT_REBIND_CONFIRM_S))
+                    elif _now - _cand_at >= self.YT_REBIND_CONFIRM_S:
+                        log('YOUTUBE_TARGET_REBOUND was=%s now=%s why=aba '
+                            'confirmed=true'
+                            % (getattr(self, 'yt_video_id', '') or '-', _tid))
+                        self._yt_switch_video(_tid, _src)
+                    else:
+                        log('YOUTUBE_TARGET_REBIND_DAMPED was=%s cand=%s '
+                            'age_ms=%d'
+                            % (getattr(self, 'yt_video_id', '') or '-', _tid,
+                               int((_now - _cand_at) * 1000)))
+                else:
+                    # O id voltou a concordar: o candidato morre, senao uma
+                    # oscilacao antiga confirmava-se sozinha mais tarde.
+                    self._yt_rebind_cand = ''
                 _yt_mark(self, 'vid')
                 return '', _src, True
             vid = self._youtube_video_id(hwnd, uia, UIA)
@@ -9014,6 +9079,15 @@ ID_TRAY_EDIT = 3
 #: sempre inerte. Id 4, para os tres de cima nao mudarem de numero.
 ID_TRAY_HOTKEY = 4
 
+#: *"ctrl space is not yet known by a user, so put it on the right click of the
+#: icon as a 'activate subtitles - ctrl space'"* (dono, 2026-11-09). A TECLA que
+#: liga a legenda ao vivo nao tinha superficie nenhuma no produto: quem nao le o
+#: AGENTS.md nunca a descobre. Mesmo desenho do item do Alt+C -- UM item cujo
+#: TEXTO diz a accao e o acelerador ao lado ("Desligar legendas (Ctrl+Space)"
+#: quando esta' ligada, "Ligar legendas (Ctrl+Space)" quando nao esta').
+#: Id 5, para os quatro de cima nao mudarem de numero.
+ID_TRAY_LIVE = 5
+
 TRAY_WINDOW_CLASS = 'SottoTrayWindow'
 TRAY_TIP = 'Sotto — Alt+C shows the captions'
 
@@ -9105,7 +9179,7 @@ class TrayIcon:
     """
 
     def __init__(self, icon_path, on_command, log_fn, warn_fn,
-                 panels_state_fn=None):
+                 panels_state_fn=None, live_state_fn=None):
         self.icon_path = icon_path
         self.on_command = on_command
         self.log = log_fn
@@ -9115,6 +9189,10 @@ class TrayIcon:
         #: contrario sem ninguem se lembrar de o actualizar.
         self.panels_state = panels_state_fn or (
             lambda: {'enabled': True, 'accel': 'Alt+C'})
+        #: E o mesmo para o item da legenda ao vivo (Ctrl+Space): o texto diz a
+        #: accao, e quem sabe se ela esta' ligada e' a SHELL (`_caption_wanted`).
+        self.live_state = live_state_fn or (
+            lambda: {'on': False, 'accel': 'Ctrl+Space'})
         self.hwnd = None
         self.hicon = None
         self.menu = None
@@ -9447,6 +9525,20 @@ class TrayIcon:
         label = (f'Desativar atalho {accel}' if armed
                  else f'Ativar atalho {accel}')
         user32.AppendMenuW(menu, MF_STRING, ID_TRAY_HOTKEY, label)
+        # A LEGENDA AO VIVO TAMBEM E' UM INTERRUPTOR, e o dono nao sabia que a
+        # tecla existia. O texto diz a accao E o acelerador, ao lado do item do
+        # Alt+C para as duas teclas ficarem no mesmo bloco.
+        try:
+            live = self.live_state() or {}
+        except Exception as exc:          # noqa: BLE001
+            self.warn(f'TRAY_MENU_LIVE_STATE_FAILED {type(exc).__name__}: {exc}')
+            live = {}
+        live_accel = str(live.get('accel') or 'Ctrl+Space')
+        live_on = bool(live.get('on', False))
+        user32.AppendMenuW(
+            menu, MF_STRING, ID_TRAY_LIVE,
+            (f'Desligar legendas ({live_accel})' if live_on
+             else f'Ligar legendas ({live_accel})'))
         user32.AppendMenuW(menu, MF_STRING, ID_TRAY_EDIT,
                            'Edit caption position')
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
@@ -10209,6 +10301,17 @@ BOOTSTRAP_JS = r"""
       var want = String(lang == null ? '' : lang);
       post('translation-target', { lang: want });
       return Promise.resolve({ lang: want });
+    },
+
+    // O ASPECTO DA LEGENDA NATIVA (dono, 2026-11-09). `plate` escolhe a largura
+    // da placa ('tight' | 'normal') e `opacity` o alfa dela (0..1). O shell
+    // PRENDE o valor, grava em `_main/caption-settings.json` e aplica ao overlay
+    // vivo -- devolve o que ficou aplicado, que pode nao ser o pedido (o clamp
+    // vive num sitio so', no Python).
+    setCaptionVisual: function (opts) {
+      var payload = opts && typeof opts === 'object' ? opts : {};
+      post('caption-visual', payload);
+      return Promise.resolve(payload);
     },
 
     // PAUSE = UNLOAD (owner, 2026-10-17). The panel's pause controls have
@@ -11139,6 +11242,9 @@ class SottoHost:
             'sotto:setLiveEnabled': ('shell', '_set_live_enabled'),
             # THE TRANSLATION TARGET (owner, 2026-10-21): the 3-dot menu's selector.
             'translation-target': ('host', '_translation_target'),
+            # O ASPECTO DA LEGENDA (dono, 2026-11-09): fundo mais justo e o alfa
+            # da placa escolhivel. Um entry, um metodo: `_caption_visual`.
+            'caption-visual': ('host', '_caption_visual'),
             # PAUSE = UNLOAD (2026-10-17). One entry, one method on the shell.
             'pause': ('shell', '_pause_shell'),
             'sotto:pause': ('shell', '_pause_shell'),
@@ -11380,6 +11486,40 @@ class SottoHost:
             log(f'TRANSLATION_TARGET_FAILED code={json.dumps(code)} error={exc!r}')
             return
         log(f'TRANSLATION_TARGET code={json.dumps(code)} applied={json.dumps(applied)}')
+
+    def _caption_visual(self, payload):
+        """O aspecto da LEGENDA NATIVA escolhido no painel (dono, 2026-11-09).
+
+        Duas metades, nesta ordem e so' nesta: `caption_settings.set_visual`
+        PRENDE e GRAVA (e' o unico sitio do clamp, como o `target_lang`), e so'
+        depois o valor PRESO e' aplicado ao overlay que este shell tem vivo. Ao
+        contrario, a tela mostraria um numero que o ficheiro nao guarda -- e o
+        proximo arranque voltaria ao outro.
+
+        Sem overlay (a janela ainda nao nasceu), o ficheiro fica gravado e o
+        `NativeCaptionOverlay.__init__` le-o; a legenda nasce com o aspecto certo
+        em vez de o receber por um push que pode nunca vir.
+        """
+        data = payload if isinstance(payload, dict) else {}
+        opacity = data.get('opacity', None)
+        plate = data.get('plate', None)
+        try:
+            import caption_settings
+            applied = caption_settings.set_visual(opacity=opacity, plate=plate)
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_VISUAL_FAILED payload={json.dumps(data)} error={exc!r}')
+            return
+        ov = getattr(self, 'caption_overlay', None)
+        live = None
+        if ov is not None:
+            try:
+                live = ov.set_visual(opacity=applied.get('opacity'),
+                                     plate=applied.get('plate'))
+            except Exception as exc:  # noqa: BLE001
+                log(f'CAPTION_VISUAL_OVERLAY_FAILED error={exc!r}')
+        log('CAPTION_VISUAL plate=%s opacity=%.2f live=%s'
+            % (applied.get('plate'), float(applied.get('opacity') or 1.0),
+               json.dumps(live) if live else 'no-overlay'))
 
     def _caption_cleared(self, payload):
         remaining = (payload or {}).get('remaining', 0)
@@ -12384,30 +12524,40 @@ class SottoShell:
                         # sem `ERROR_TIMEOUT`. O TECTO existe para a app nao
                         # FICAR congelada no ecra; o caso do dono (tres
                         # amostras) nunca o alcanca.
-                        log('UI_WATCHDOG_NOERR_CAP noerr=%d err=%s -- sai sem '
+                        log('UI_WATCHDOG_NOERR_CAP noerr=%d err=%s -- tecto sem '
                             'assinatura apos %d voltas'
                             % (state.noerr, err, _wd_policy.NOERR_HARD_CAP))
                     else:
-                        log('UI_WATCHDOG_UNCONFIRMED kind=%s err=%s -- nao sai'
+                        log('UI_WATCHDOG_UNCONFIRMED kind=%s err=%s -- nao age'
                             % (kind, err))
                         continue
-                # A UI esta presa de facto: dizer ONDE, e sair para nao deixar
-                # uma janela congelada no ecra do dono. O DESPEJO E' FORCADO
-                # (2026-11-04): o despejo que precede uma SAIDA era o unico
-                # compacto -- `UI_HUNG reason=ui-thread-not-responding
-                # threads=30 compact=true` as 13:01:36.080, SEM UMA FRAME --, ou
-                # seja a app saia e levava consigo a unica prova de onde estava
-                # presa. Um estouro por 10 min continua compacto; este nao.
+                # A UI esta presa de facto: dizer ONDE, TIRAR a janela do ecra
+                # dele -- e NAO SAIR.
+                #
+                # ORDEM DO DONO (2026-11-09), verbatim: *"sotto closed by
+                # itself. maybe crashed? not sure. should close only because of
+                # me, or hard kill from task manager."* MEDIDO no log dele, o
+                # encerramento das 21:18:11 foi ESTE ramo:
+                # `UI_WATCHDOG_NOERR_CAP noerr=12 err=0 -- sai sem assinatura` e
+                # `UI_WATCHDOG_EXIT code=9`; o processo estava VIVO (ticks de
+                # YouTube a cada ~2 s, `cdp_age_ms=115781`), o erro era **0** e
+                # nao `ERROR_TIMEOUT` -- ou seja a pergunta ao Windows nao
+                # obteve resposta, o que NAO e' a assinatura de uma janela presa.
+                # A app saiu por nao saber perguntar.
+                #
+                # O que substitui a saida e' a unica accao que serve as duas
+                # metades: a janela sai do ecra (nada congelado a' frente dele) e
+                # o processo continua (nenhum encerramento que ele nao pediu). Se
+                # o fio da UI voltar, o Alt+C mostra outra vez; se nunca voltar,
+                # quem fecha e' ele.
                 self._dump_thread_stacks('ui-thread-not-responding', force=True)
-                log('UI_WATCHDOG_EXIT code=9 -- a UI estava presa; a sair para '
-                    'nao deixar janelas congeladas no ecra')
-                # A SAIDA E' A MESMA DA APP (2026-11-04). Aqui havia
-                # `sys.stdout.flush()` + `time.sleep(0.3)` + `os._exit(9)` sem
-                # prazo e SEM tocar no worker: medido as 13:01:36, o processo
-                # ficou vivo 70+ min e o worker com ele, a 3,9 GB. `_hard_exit`
-                # arma o escalador e o matador externo, faz o reap do filho com
-                # prazo e escreve a linha terminal.
-                _hard_exit(9, 'ui-watchdog', children=self._exit_children())
+                log('UI_WATCHDOG_RECOVER code=9 -- a UI nao respondeu; a janela '
+                    'sai do ecra e o processo FICA (fechar e do dono)')
+                self._ui_hung_recover('ui-watchdog')
+                # O golpe nao se repete em cadencia: o estado e' reiniciado e o
+                # proximo ciclo volta a perguntar. Sem isto o laco despejava a
+                # pilha a cada ~2 min para sempre.
+                state.reset()
 
         self._ui_watchdog = threading.Thread(target=loop, name='sotto-ui-watchdog',
                                              daemon=True)
@@ -12415,6 +12565,39 @@ class SottoShell:
         self._start_topmost_keepalive()
         self._start_power_recovery()
         self._start_slow_read_monitor()
+
+    def _ui_hung_recover(self, reason):
+        """A UI nao responde: TIRAR a janela do ecra, sem matar a app.
+
+        ORDEM DO DONO (2026-11-09): *"sotto closed by itself ... should close
+        only because of me, or hard kill from task manager."* O cao de guarda
+        da UI saia com `code=9` quando nao obtinha resposta; medido as 21:18:11
+        o `err` era **0** (nao `ERROR_TIMEOUT`), o processo estava a trabalhar
+        e a app foi-se embora sozinha.
+
+        A ACCAO e' a unica que serve as duas metades: `ShowWindow(SW_HIDE)` e'
+        uma chamada CROSS-THREAD ao Windows (nao precisa do laco de mensagens
+        do fio da UI para esconder), portanto funciona exactamente no estado em
+        que o fio esta' preso; e o processo continua vivo, com o worker, o
+        historico e a legenda como estao.
+
+        O ESTADO FICA ESCRITO para o proximo `show` poder dizer a verdade: um
+        painel que se mostra depois de um `UI_HUNG` nao pode fingir que nada
+        aconteceu. Nunca levanta -- este e' chamado de dentro do cao de guarda.
+        """
+        hwnd = self.hwnd
+        self._ui_hung_at = time.monotonic()
+        hidden = 'skipped'
+        try:
+            if hwnd:
+                hidden = 'ok' if user32.ShowWindow(hwnd, SW_HIDE) else 'refused'
+            self.visible = False
+            self.surface_applied = ''
+        except Exception as exc:  # noqa: BLE001 -- recuperar nunca pode matar
+            hidden = 'failed:%r' % (exc,)
+        log('UI_HUNG_RECOVER reason=%s hwnd=%s hidden=%s still_alive=true'
+            % (reason, hwnd, hidden))
+        return hidden == 'ok'
 
     def _start_topmost_keepalive(self):
         """O bit TOPMOST NAO SE GUARDA SOZINHO (copiado do RE de 2026-11-04).
@@ -14454,6 +14637,13 @@ class SottoShell:
         producer = str(options.get('producer') or '').strip()
         if producer in HISTORY_PRODUCERS:
             parts.append(f'producer={producer}')
+        # DE ONDE VEIO O SOM, ao lado do producer (dono, 2026-11-09). Os dois
+        # respondem perguntas diferentes: `producer` = qual motor fechou a linha,
+        # `via` = de que audio ela veio. Ausente quando o dono do caminho nao
+        # declarou nada -- nunca inventado aqui.
+        via = str(options.get('via') or '').strip()
+        if via in HISTORY_VIAS:
+            parts.append(f'via={via}')
         start = options.get('start')
         if isinstance(start, (int, float)) and not isinstance(start, bool):
             parts.append(f'start={float(start):.2f}')
@@ -14495,13 +14685,16 @@ class SottoShell:
         if not last:
             return None
         out = {'body': '', 'time_s': None, 'start': None,
-               'audio': '', 'context': {}}
+               'audio': '', 'context': {}, 'via': ''}
         start = re.search(r'\bstart=(-?\d+(?:\.\d+)?)', last)
         if start:
             try:
                 out['start'] = float(start.group(1))
             except ValueError:
                 out['start'] = None
+        _via = re.search(r'\bvia=(pc|youtube|external)\b', last)
+        if _via:
+            out['via'] = _via.group(1)
         # THE SAME-LINE TEST ALSO NEEDS THE AUDIO ORIGIN (2026-11-09): two
         # identical sentences from different sources are different lines even
         # inside the merge window. `token_in` only matches the front-anchored
@@ -14652,18 +14845,27 @@ class SottoShell:
         return history_context.snapshot(app_target=self._history_app_target())
 
 
-    def _history_find_start(self, path, start):
+    def _history_find_start(self, path, start, via=None):
         """A linha JA' gravada com este `start=`, ou None. {index, producer, entry}.
 
         Le UMA vez, de tras para a frente, e devolve o ULTIMO registo cujo
         `start=` casa em 0,05 s -- a mesma tolerancia de `history_merge`. Uma
         linha sem `start=` nunca casa: sem identidade nao se reescreve nada.
+
+        A ORIGEM DO AUDIO TAMBEM E' IDENTIDADE (medido 2026-11-09, e o defeito
+        era CARO): o `start` do YouTube e' `time.monotonic()` e o do worker e' o
+        relogio de audio dele -- dois numeros de espacos diferentes que podem
+        coincidir, e uma linha do YouTube com `start=1.00` REESCREVEU uma linha
+        do PC com `start=1.00` (medido: o ficheiro ficou com a linha do video no
+        lugar da fala do microfone). `via` diferente nunca funde; `via` ausente
+        numa das duas (uma linha anterior ao campo) mantem o comportamento.
         """
         target = None
         try:
             target = float(start)
         except (TypeError, ValueError):
             return None
+        want_via = str(via or '').strip()
         try:
             with open(path, 'r', encoding='utf-8', errors='replace') as handle:
                 rows = handle.readlines()
@@ -14680,6 +14882,10 @@ class SottoShell:
                     continue
             except ValueError:
                 continue
+            if want_via:
+                row_via = re.search(r'\bvia=(pc|youtube|external)\b', row)
+                if row_via and row_via.group(1) != want_via:
+                    continue
             body = re.match(r'- \[([0-9:]+)\] (.*)', row)
             return {
                 'index': idx,
@@ -14742,9 +14948,15 @@ class SottoShell:
         else:
             _ctx = self._history_context_for(_start)
         _audio = str(_ctx.get('audioSource') or '')
+        _via = ''
+        if isinstance(options, dict):
+            _candidate = str(options.get('via') or '').strip()
+            if _candidate in HISTORY_VIAS:
+                _via = _candidate
         _prev = self._history_tail(path)
         action = history_merge(_prev, body,
-                               now_s=_now_s, start=_start, audio=_audio)
+                               now_s=_now_s, start=_start, audio=_audio,
+                               via=_via)
         # ── A FUSAO DOS DOIS MOTORES, LIDA NO `start=` (2026-11-09) ──────────
         # O motor de LOTE re-transcreve, mais tarde, audio que o motor AO VIVO
         # ja' transcreveu. Sem esta metade a linha do lote chega quando a cauda
@@ -14756,7 +14968,7 @@ class SottoShell:
         # O LOTE NAO E' SOBRESCRITO PELO AO VIVO: se a linha gravada ja' veio do
         # motor de lote (`producer=redux`) e esta nao, a versao boa fica.
         if action == 'append' and _start is not None:
-            _hit = self._history_find_start(path, _start)
+            _hit = self._history_find_start(path, _start, via=_via)
             if _hit is not None:
                 if _hit.get('producer') == 'redux' and str(
                         (options or {}).get('producer') or '') != 'redux':
@@ -14785,6 +14997,11 @@ class SottoShell:
             #: bounded (`app/webview/history_context.py`). `{}` when unknown --
             #: the panel must not invent one.
             'context': _ctx,
+            #: DE ONDE VEIO O SOM, para os dois filtros do painel (2026-11-09).
+            #: `'pc'` quando ninguem declarou nada: uma linha antiga (antes de o
+            #: campo existir) foi transcrita do audio DESTA maquina na esmagadora
+            #: maioria dos casos, e o filtro precisa de uma resposta.
+            'via': _via or 'pc',
             #: O que o painel faz na lista dele: `append` (linha nova),
             #: `replace` (reescreve a ultima) ou `skip`. A DECISAO e' daqui --
             #: o painel obedece, para nao existirem duas regras para a mesma
@@ -14946,7 +15163,16 @@ class SottoShell:
                            #: The compact context carried on THIS line. A line
                            #: written before 2026-11-09 has no token and yields
                            #: `{}` -- unknown, never borrowed from a neighbour.
-                           'context': history_context.token_in(line)}
+                           'context': history_context.token_in(line),
+                           #: DE ONDE VEIO O SOM (2026-11-09), lido da propria
+                           #: linha para os dois filtros do painel. Sem o campo
+                           #: (toda linha antes desta data) a resposta e' `'pc'`,
+                           #: a mesma que o escritor assume: uma linha antiga veio
+                           #: do audio desta maquina, e o filtro nao pode deixar
+                           #: a lista vazia por causa de uma coluna que ainda nao
+                           #: existia.
+                           'via': (re.search(r'\bvia=(pc|youtube|external)\b', line)
+                                   or [None, 'pc'])[1]}
 
     def history_tail(self, limit=400):
         limit = max(1, int(limit))
@@ -15921,7 +16147,8 @@ class SottoShell:
         respondesse de memoria mentiria a partir do segundo clique.
         """
         self.tray = TrayIcon(SOTTO_ICON, self.tray_command, log, warn,
-                             panels_state_fn=self.panels_hotkey_state)
+                             panels_state_fn=self.panels_hotkey_state,
+                             live_state_fn=self.live_caption_state)
         ok = self.tray.start()
         if not ok:
             warn('TRAY_UNAVAILABLE the notification-area icon did not come up; '
@@ -15946,6 +16173,21 @@ class SottoShell:
                      and getattr(thread, 'registered', False)
                      and thread.is_alive())
         return {'enabled': armed, 'accel': str(accel)}
+
+    def live_caption_state(self):
+        """`{'on': bool, 'accel': str}` para o item da legenda ao vivo no menu.
+
+        `on` e' o INTERRUPTOR do dono (`_caption_wanted`), e nao "ha' pixels neste
+        instante": o blank de silencio apaga o ecra e MANTEM a escolha, e um menu
+        que dissesse "Ligar" depois de um silencio seria um botao que mente sobre
+        o que o Ctrl+Space faz a seguir. A mesma distincao que o
+        `_hotkey_resolve` faz (arm 32 de `_main/hotkey-live-toggle-oracle.py`).
+        """
+        thread = getattr(self, 'live_hotkey', None)
+        accel = (getattr(thread, 'accelerator', None)
+                 or hotkey_numbers().LIVE_ACCELERATOR)
+        return {'on': bool(getattr(self, '_caption_wanted', False)),
+                'accel': str(accel)}
 
     def toggle_panels_hotkey(self):
         """Desliga/arma o Alt+C, e GRAVA a escolha para sobreviver ao reinicio.
@@ -16018,6 +16260,13 @@ class SottoShell:
             # faz, e o menu seguinte passa a dizer a contraria (`refresh_menu`).
             log('TRAY_HOTKEY requested=true')
             self.toggle_panels_hotkey()
+        elif command == ID_TRAY_LIVE:
+            # A MESMA PORTA QUE A TECLA (2026-11-09). `hotkey_live()` e' o que o
+            # `Ctrl+Space` chama, e e' ele que entra na fila do `_hotkey_dispatch`
+            # -- logo o menu, a tecla e o botao do painel sao UMA accao, com a
+            # mesma linha de log (`HOTKEY_LIVE_STEP`) e a mesma ordenacao.
+            log('TRAY_LIVE requested=true')
+            self.hotkey_live()
 
     def request_exit(self, code=0, reason='requested'):
         if self.exiting.is_set():
@@ -16483,7 +16732,19 @@ class SottoShell:
             # Um passo com nome: o portao `_main/youtube-cdp-boot-oracle.py`
             # (arm A11) e o seu mutante procuram esta CHAMADA no arranque --
             # e ela continua a ser uma chamada, nao um efeito de um lambda.
-            self._yt_cdp_boot_attach()
+            #
+            # E ELA NAO ESPERA (2026-11-09). MEDIDO no arranque dele as
+            # 21:21:47-48: `YOUTUBE_CDP_BOOT_ATTACH` tres vezes a ~430 ms cada
+            # (`tabs=2 others=9 reason=no-playing`) = **1,33 s** entre
+            # `CAPTION_PIPELINE_START` e o primeiro spawn do worker, todo ele
+            # ANTES de a forma existir (`EXEC_JS_DEFERRED reason=no-form yet`).
+            # O anexo ja' tem o seu proprio recuo (`*_DEFERRED retry_s=2`), e o
+            # observador volta a pedir a porta no primeiro tick -- portanto
+            # nada depende destes 3 x 0,43 s estarem no caminho do arranque.
+            # O dono, verbatim: *"when i open sotto, it takes WAY TOO MUCH to
+            # answer my keybindings or ANYTHING AT ALL."*
+            threading.Thread(target=self._yt_cdp_boot_attach,
+                             name='sotto-cdp-boot', daemon=True).start()
 
         steps = (
             ('cdp', _cdp_step),
@@ -19886,6 +20147,16 @@ class SottoShell:
             # que a janela demora a fazer vem depois e diz-se por si.
             log(f'LIVE_ENABLED on={str(on).lower()} wanted={str(on).lower()} '
                 f'panel_closed=false')
+            # O MENU DO ICONE PASSA A DIZER A VERDADE (2026-11-09). O item e'
+            # escrito como a ACCAO ("Desligar legendas (Ctrl+Space)"), logo ele
+            # mente a partir do instante em que o interruptor muda sem ser por
+            # ele -- pela tecla, pelo botao do painel ou por este item.
+            try:
+                tray = getattr(self, 'tray', None)
+                if tray is not None:
+                    tray.refresh_menu('live')
+            except Exception as exc:  # noqa: BLE001 -- um menu velho nao cancela
+                log(f'TRAY_MENU_LIVE_REFRESH_FAILED error={exc!r}')
             # O PANEL NAO SE FECHA -- ver a docstring: a ordem de 2026-10-19
             # trocou a de 2026-10-17, e o `hide_panel('caption-on')` que vivia
             # aqui era a causa do "o alt c nao ta ligando ou desligando bem".

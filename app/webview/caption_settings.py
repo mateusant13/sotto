@@ -1,28 +1,17 @@
-"""A LINGUA PARA QUE O SOTTO TRADUZ -- um valor PERSISTIDO, escolhido pelo dono.
+"""O QUE O DONO ESCOLHEU PARA A LEGENDA -- persistido, nunca um literal.
 
-As duas ordens, verbatim (2026-11-08):
-
-    *"eu ja falei pra NAO traduzir entre pt br ingles e espanhol entre si. mas
-    pra traduzir o resto pra linguagem que eu escolhi pro sotto. que no caso é
-    pt br. entao eu to vendo um anime agora, e a legenda ta aparecendo japones."*
-    *"e faz o botao de config pra eu escolher pra qual lingua traduzir."*
-
-O que este ficheiro governa e' UMA coisa: o alvo da traducao para uma faixa cuja
-lingua ORIGINAL esta' fora de `en`/`pt`/`es` (a regra das tres vive em
-`youtube_captions.UNTRANSLATED_LANGS` e nao se toca aqui). O default e' `pt`
-porque e' a lingua dele -- o anime japones que ele estava vendo saia em japones
-porque o modulo servia `TARGET_LANG = 'en'`, e o clamp antigo devolvia o original
-como ultimo recurso sem nunca pedir a traducao que ele quer.
-
-POR QUE UM FICHEIRO E NAO UM LITERAL: a escolha dele tem de sobreviver ao
-reinicio da shell. O `localStorage` do painel ja' guarda o que o seletor mostra,
-mas o shell nasce antes do painel e o modulo e' importado por ele -- sem um valor
-em disco, o primeiro video de cada arranque sairia na lingua do dia anterior.
-
-O DEFAULT E' DE CLASSE E NAO DE CONVENIENCIA: `DEFAULT_TARGET = 'pt'` e' o valor
-que responde quando nao ha ficheiro, quando o ficheiro esta' corrompido ou quando
-a lingua gravada nao e' um codigo que o YouTube aceite. Nenhum caminho devolve
-`''` -- um alvo vazio faria a traducao desaparecer em silencio.
+O shell nasce antes do painel: uma escolha so' em memoria seria esquecida no
+arranque seguinte. Vive aqui (1) `target_lang`, a lingua alvo da traducao
+(ordem 2026-11-08: *"eu ja falei pra NAO traduzir entre pt br ingles e espanhol
+entre si. mas pra traduzir o resto pra linguagem que eu escolhi pro sotto"*;
+default `pt`, a regra das tres em `youtube_captions`) e (2) `opacity`/`plate`, o
+ASPECTO da legenda nativa (dono, 2026-11-09: *"the background in the subtitles
+is too wide. should be more concise and less bloaty."*): `opacity` 0.30..1.0
+escala o alfa da PLACA/regua/LED e NUNCA a tinta do texto; `plate` e' `tight`
+(a caixa abraca a linha medida, default) ou `normal` (o desenho de antes).
+Nenhum caminho levanta -- ausente, partido ou fora do dominio cai no default --
+e a escrita e' temporaria-e-renomeia, para um settings meio escrito nunca ser
+lido como "sem escolha".
 """
 
 from __future__ import annotations
@@ -30,26 +19,18 @@ from __future__ import annotations
 import json
 import os
 
-#: A lingua escolhida quando nao ha escolha registada. E' a lingua do dono.
 DEFAULT_TARGET = 'pt'
-
-#: Onde vive a escolha. `SOTTO_CAPTION_SETTINGS` desvia-o para um ficheiro
-#: temporario -- e' assim que os oraculos provam a persistencia sem tocar na
-#: escolha real dele (a mesma forma do `hotkey-settings.json`).
-def _default_path():
-    here = os.path.dirname(os.path.abspath(__file__))
-    root = os.path.dirname(os.path.dirname(here))
-    return os.path.join(root, '_main', 'caption-settings.json')
-
+DEFAULT_OPACITY = 1.0
+MIN_OPACITY = 0.30
+MAX_OPACITY = 1.0
+PLATE_MODES = ('tight', 'normal')
+DEFAULT_PLATE = 'tight'
 
 def path():
-    return os.environ.get('SOTTO_CAPTION_SETTINGS') or _default_path()
-
-
-def base_lang(code):
-    """O BASE de um codigo ('pt-BR' -> 'pt'); vazio continua vazio."""
-    return str(code or '').strip().lower().split('-')[0]
-
+    """O ficheiro; `SOTTO_CAPTION_SETTINGS` desvia-o para os oraculos."""
+    return os.environ.get('SOTTO_CAPTION_SETTINGS') or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), '_main', 'caption-settings.json')
 
 def load():
     """O dicionario em disco, ou `{}`. Nunca levanta."""
@@ -60,20 +41,26 @@ def load():
         return {}
     return data if isinstance(data, dict) else {}
 
-
 def target_lang():
     """A lingua-alvo, ja' normalizada. NUNCA vazia (ver `DEFAULT_TARGET`)."""
-    base = base_lang(load().get('target_lang'))
+    base = str(load().get('target_lang') or '').strip().lower().split('-')[0]
     return base or DEFAULT_TARGET
 
+def visual():
+    """O `{opacity, plate}` que o desenho APLICA -- o UNICO sitio do clamp."""
+    data = load()
+    try:
+        alpha = float(data.get('opacity', DEFAULT_OPACITY))
+    except (TypeError, ValueError):
+        alpha = DEFAULT_OPACITY
+    if alpha != alpha:                      # NaN
+        alpha = DEFAULT_OPACITY
+    plate = str(data.get('plate') or '').strip().lower()
+    return {'opacity': max(MIN_OPACITY, min(MAX_OPACITY, alpha)),
+            'plate': plate if plate in PLATE_MODES else DEFAULT_PLATE}
 
 def save(settings):
-    """Grava o dicionario. Devolve o caminho; falha de escrita nao levanta.
-
-    A escrita e' TEMPORARIA-E-RENOMEIA: um ficheiro de settings meio escrito
-    seria lido pelo proximo arranque como "sem escolha", e o dono veria a lingua
-    dele trocada sem ter tocado em nada.
-    """
+    """Grava o dicionario. Devolve o caminho; falha de escrita nao levanta."""
     dest = path()
     try:
         folder = os.path.dirname(dest)
@@ -88,11 +75,23 @@ def save(settings):
         pass
     return dest
 
-
 def set_target_lang(code):
     """Grava a escolha e devolve o base aplicado (`''` volta ao default)."""
-    base = base_lang(code) or DEFAULT_TARGET
+    base = str(code or '').strip().lower().split('-')[0] or DEFAULT_TARGET
     settings = load()
     settings['target_lang'] = base
     save(settings)
     return base
+
+def set_visual(opacity=None, plate=None):
+    """Grava o aspecto e devolve o APLICADO (ja' preso ao dominio).
+
+    `None` e' "nao mexer nesta chave": gravar so' a opacidade nao apaga a placa.
+    """
+    settings = load()
+    if opacity is not None:
+        settings['opacity'] = opacity
+    if plate is not None:
+        settings['plate'] = plate
+    save(settings)
+    return visual()

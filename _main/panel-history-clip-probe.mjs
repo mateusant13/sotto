@@ -463,10 +463,21 @@ async function searchArm(rpage, query) {
   if (!shown) await rpage.click('#history-search-button');
   await rpage.fill('#history-search', query);
   await rpage.press('#history-search', 'Enter');
-  await rpage.waitForFunction(() => {
-    const note = document.getElementById('history-status');
-    return Boolean(note && /match/.test(note.textContent || ''));
-  }, null, { timeout: 10000 });
+  /* O SINAL DO ROUND-TRIP NAO E' UMA FRASE (dono, 2026-11-09: *"NO EXPLANATORY
+   * PROSE IN ANY PANEL"*). `setHistoryNote` deixou de escrever texto -- a
+   * espera antiga (`/match/` em `#history-status`) nunca mais podia ser
+   * satisfeita e este braco morria em `TimeoutError`, um RED que falava do
+   * produto ter obedecido ao dono. O que a busca AINDA faz e' chamar o store e
+   * reconstruir a lista: o fixture registra cada consulta em
+   * `window.__searchCalls`, e dois rAF deixam o `renderSearchResults` (que corre
+   * depois do `await` do bridge) assentar. Vale para as DUAS consultas: a que
+   * devolve uma linha e a que nao devolve nenhuma. */
+  await rpage.waitForFunction(
+    (q) => Array.isArray(window.__searchCalls) && window.__searchCalls.includes(q),
+    query, { timeout: 10000 });
+  await rpage.evaluate(() => new Promise((done) => {
+    requestAnimationFrame(() => requestAnimationFrame(done));
+  }));
   return rpage.evaluate((q) => {
     const rows = [...document.querySelectorAll('#history-list .hist')];
     const row = rows.find((el) => (el.textContent || '').includes('RETENCAO-60D')) || null;

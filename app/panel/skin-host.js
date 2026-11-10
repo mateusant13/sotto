@@ -53,6 +53,10 @@
     level: 0,
     elapsed: null,
     query: '',
+    /* THE SAME TWO SOURCE BUTTONS, for the design's own list (owner,
+     * 2026-11-09). `panel.js` owns the policy and pushes it down with
+     * `filterVia()`; a line without `via` is PC audio, exactly as in the feed. */
+    via: { pc: true, youtube: true },
   };
   var MAX_ROWS = 60;
 
@@ -520,7 +524,6 @@
     }
     markDeadControls();
     wireSearch();
-    makeEmptyState();
     current = id;
     document.body.setAttribute('data-skin', '1');
     document.body.setAttribute('data-skin-theme', id);
@@ -614,25 +617,18 @@
     // (*"tira a BARRA de pesquisa ... so um botao pequeno com o simbolo"* was about
     // our own panel, and this field is the frozen design's own bar), so the label
     // stops being a sentence.
-    input.placeholder = 'Search';
+    input.placeholder = '';
     input.addEventListener('input', function () {
       state.query = String(input.value || '');
       renderLines();
     });
   }
 
-  /** With no closed line there is no transcript, and the vendor's mock rows are
-   *  gone on purpose. One sentence, in the design's own dim colour, says why the
-   *  list is empty. It is ours and it is true; the first real line removes it. */
-  function makeEmptyState() {
-    var scroller = refs.historySlots && refs.historySlots.scroller;
-    if (!scroller) return;
-    var el = document.createElement('div');
-    el.setAttribute('data-skin-empty', '1');
-    el.textContent = 'No transcript yet.';
-    scroller.appendChild(el);
-    refs.emptyEl = el;
-  }
+  /* NO EMPTY STATE (owner, 2026-11-09: *"NO EXPLANATORY PROSE IN ANY PANEL"*).
+   * This used to append "No transcript yet." / "No lines match this search."
+   * into the design's scroller. The owner reads an empty list as an empty list;
+   * the sentence is gone with the element, so no render path can leave it on
+   * screen under real rows. */
 
   function wordsOf(list) {
     var out = [];
@@ -728,6 +724,16 @@
   /* ── closed lines ─────────────────────────────────────────────────────── */
 
   function renderLines() {
+    /* THE VISIBLE LIST IS `panel.js`'s (owner, 2026-11-09). The vendor column is
+     * hidden by `skins/skin-shim.css` inside this shadow root, so cloning its
+     * row template on every caption would churn a tree nobody sees and keep a
+     * second writer of the same slot alive. `state.lines` is still the feed's
+     * mirror; only the count attribute is written, which is what diagnostics
+     * read. `filterVia()` updates `state.via` before this returns. */
+    if (refs.historySlots && refs.historySlots.scroller) {
+      if (refs.panelRoot) refs.panelRoot.setAttribute('data-skin-lines', String(state.lines.length));
+      return;
+    }
     if (!current || !refs.historyList || !refs.historyTemplate) return;
     var list = refs.historyList;
     var rows = list.querySelectorAll('[data-skin-line]');
@@ -747,6 +753,10 @@
       var entry = state.lines[n];
       var text = String(entry.text || '');
       if (query && text.toLowerCase().indexOf(query) < 0) continue;
+      /* THE SAME SOURCE PREDICATE AS THE FEED. `via` is `pc` when the line
+       * carries none, and `filterVia()` is pushed down by `panel.js`. */
+      var lineVia = String(entry.via || '').toLowerCase() === 'youtube' ? 'youtube' : 'pc';
+      if (state.via[lineVia] === false) continue;
       var row = template.cloneNode(true);
       var painted = paintRow(row, entry);
       // THE MOCKUP'S OWN NAME AND CLOCK COME OFF THE ROW WE JUST BUILT: the row
@@ -764,19 +774,10 @@
       for (var s = 0; s < slots.length; s += 1) slots[s].removeAttribute('data-skin-slot');
       if (painted) { list.appendChild(row); shown += 1; }
     }
-    // THE EMPTY STATE IS OURS AND IT IS HONEST. No lines yet is the normal state
-    // of a listening panel, not a rendering failure; a search with no matches is
-    // the same slot with a different sentence.
-    if (refs.emptyEl) {
-      var empty = shown === 0;
-      refs.emptyEl.hidden = !empty;
-      refs.emptyEl.textContent = query && state.lines.length
-        ? 'No lines match this search.'
-        : 'No transcript yet.';
-    }
     // A DAY HEADING WITH NO LINES UNDER IT IS A FALSE CLAIM. The vendor's section
     // is sticky chrome; with every row filtered out or none received, it is two
-    // rules and a blank count. Hide the whole section and let the sentence stand.
+    // rules and a blank count. Hide the whole section instead of painting a
+    // sentence about it (owner, 2026-11-09: no explanatory prose).
     if (refs.historyList) refs.historyList.hidden = shown === 0;
     // THE SCROLLER IS `.quiet-scroll`, NOT THE SECTION WE APPEND TO. Setting
     // `list.scrollTop` moved nothing and every screenshot showed the OLDEST rows
@@ -910,7 +911,7 @@
     line: function (payload) {
       payload = payload || {};
       if (!payload.text) return;
-      state.lines.push({ text: payload.text, time: payload.time || '' });
+      state.lines.push({ text: payload.text, time: payload.time || '', via: payload.via || '' });
       while (state.lines.length > MAX_ROWS) state.lines.shift();
       renderLines();
       renderLive();
@@ -919,6 +920,12 @@
       state.lines = Array.isArray(list) ? list.slice(-MAX_ROWS) : [];
       renderLines();
       renderLive();
+    },
+    /** The two source buttons' policy, pushed down from `panel.js`. */
+    filterVia: function (policy) {
+      var next = policy || {};
+      state.via = { pc: next.pc !== false, youtube: next.youtube !== false };
+      renderLines();
     },
     /** Short state word, and the raw state for anything the design wants to tint. */
     status: function (payload) {
