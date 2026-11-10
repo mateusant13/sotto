@@ -344,10 +344,13 @@ def judge(shell) -> list:
         # 15: o TEXTO e' a ACCAO, e muda com o estado. Um item que dissesse
         # sempre "Desativar" seria um botao que nao sabe o que faz na segunda vez.
         state = {'enabled': True}
+        live = {'on': False}
         tray3 = shell.TrayIcon(icon_path=None, on_command=lambda c: None,
                                log_fn=log, warn_fn=warn,
                                panels_state_fn=lambda: {
-                                   'enabled': state['enabled'], 'accel': 'Alt+C'})
+                                   'enabled': state['enabled'], 'accel': 'Alt+C'},
+                               live_state_fn=lambda: {
+                                   'on': live['on'], 'accel': 'Ctrl+Space'})
         # SEM JANELA, DE PROPOSITO. Uma SEGUNDA janela desta classe no mesmo
         # processo devolve `ERROR_CLASS_ALREADY_EXISTS` e deixa registada a
         # wndproc da PRIMEIRA -- um thunk `ctypes` que morre com o modulo do
@@ -359,11 +362,16 @@ def judge(shell) -> list:
             armed_items = shell.menu_items(tray3.menu)
             text_armed = [i['text'] for i in armed_items
                           if i['id'] == shell.ID_TRAY_HOTKEY]
+            text_live_off = [i['text'] for i in armed_items
+                             if i['id'] == shell.ID_TRAY_LIVE]
             state['enabled'] = False
+            live['on'] = True
             tray3.refresh_menu('oracle')
             off_items = shell.menu_items(tray3.menu)
             text_off = [i['text'] for i in off_items
                         if i['id'] == shell.ID_TRAY_HOTKEY]
+            text_live_on = [i['text'] for i in off_items
+                            if i['id'] == shell.ID_TRAY_LIVE]
             ids = [i['id'] for i in off_items if i['id']]
             checks.append(('menu_hotkey_item_says_disable_when_armed',
                            text_armed == ['Desativar atalho Alt+C'],
@@ -371,9 +379,21 @@ def judge(shell) -> list:
             checks.append(('menu_hotkey_item_says_enable_when_disarmed',
                            text_off == ['Ativar atalho Alt+C'],
                            f'text={text_off}'))
+            # O ITEM DA LEGENDA AO VIVO (dono, 2026-11-09: *"ctrl space is not
+            # yet known by a user, so put it on the right click of the icon as a
+            # 'activate subtitles - ctrl space'"*). O TEXTO nomeia a TECLA --
+            # um item que so' dissesse "Ligar legendas" deixava o dono sem saber
+            # qual e' o atalho, que e' exactamente a queixa que o item responde.
+            checks.append(('menu_live_item_says_enable_with_accel',
+                           text_live_off == ['Ligar legendas (Ctrl+Space)'],
+                           f'text={text_live_off}'))
+            checks.append(('menu_live_item_says_disable_when_on',
+                           text_live_on == ['Desligar legendas (Ctrl+Space)'],
+                           f'text={text_live_on}'))
             checks.append(('menu_keeps_the_three_shipped_ids',
                            ids == [shell.ID_TRAY_OPEN, shell.ID_TRAY_HOTKEY,
-                                   shell.ID_TRAY_EDIT, shell.ID_TRAY_QUIT],
+                                   shell.ID_TRAY_LIVE, shell.ID_TRAY_EDIT,
+                                   shell.ID_TRAY_QUIT],
                            f'ids={ids}'))
         finally:
             for handle in (tray3.menu,):
@@ -403,6 +423,14 @@ def judge(shell) -> list:
         shell.SottoShell.tray_command(fake, shell.ID_TRAY_HOTKEY)
         checks.append(('tray_command_routes_the_hotkey_id',
                        fake.calls == ['toggle'], f'calls={fake.calls}'))
+        # 17-bis: E O ITEM DA LEGENDA AO VIVO ENTRA PELA MESMA PORTA QUE A TECLA.
+        # `hotkey_live()` e' o que o `Ctrl+Space` chama; um item que chamasse um
+        # segundo caminho teria uma segunda semantica.
+        fake2 = type('FakeShell2', (), {'calls': []})()
+        fake2.hotkey_live = lambda: fake2.calls.append('live')
+        shell.SottoShell.tray_command(fake2, shell.ID_TRAY_LIVE)
+        checks.append(('tray_command_routes_the_live_id',
+                       fake2.calls == ['live'], f'calls={fake2.calls}'))
     finally:
         seam.__exit__(None, None, None)
         try:

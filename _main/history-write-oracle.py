@@ -266,6 +266,10 @@ def panel_arms(source_path):
 # --------------------------------------------------- C+D: the store --------
 
 WANTED_CONSTS = ('HISTORY_ROUTES', 'HISTORY_ROUTE_SOURCES', 'HISTORY_PRODUCERS',
+                 # `via=` (2026-11-09): os dois filtros do painel leem este campo,
+                 # e sem a constante no namespace o `_history_provenance` extraido
+                 # morre em `NameError` em vez de julgar o que escreve.
+                 'HISTORY_VIAS',
                  'HISTORY_LINE_RE', 'HISTORY_DAY_RE', 'HISTORY_TAIL_RE',
                  'HISTORY_MERGE_WINDOW_S', 'HISTORY_RETENTION_H',
                  # `_history_context_for` le' esta janela desde 2026-11-09. O curto-
@@ -276,7 +280,13 @@ WANTED_CONSTS = ('HISTORY_ROUTES', 'HISTORY_ROUTE_SOURCES', 'HISTORY_PRODUCERS',
 WANTED_FUNCS = ('history_merge', '_merge_key')
 WANTED_METHODS = ('history_append', '_history_tail', '_history_provenance',
                   '_history_path_for', '_history_prune',
-                  '_history_context_for', '_history_app_target')
+                  '_history_context_for', '_history_app_target',
+                  # A FUSAO DOS DOIS MOTORES (2026-11-09): `history_append`
+                  # chama este metodo quando a linha nova traz `start=` e a acao
+                  # e' `append`. Sem ele no namespace as arms do store morriam em
+                  # `AttributeError` e o oraculo publicava FAIL no codigo de
+                  # producao correcto -- um instrumento que cega o caminho comum.
+                  '_history_find_start')
 
 
 def store_namespace(shell_path):
@@ -421,12 +431,21 @@ def provenance_arms(shell_path):
         ('prov-unknown-producer', {'route': 'final', 'producer': 'invented'},
          ['route=final']),
         ('prov-no-producer', {'route': 'final', 'start': 3}, ['route=final']),
+        # DE ONDE VEIO O SOM (2026-11-09): os dois filtros do painel so'
+        # funcionam se o campo estiver ESCRITO na linha, e so' se ele nunca for
+        # inventado a partir de um valor que o escritor nao conhece.
+        ('prov-via-pc', {'route': 'final', 'start': 4, 'via': 'pc'},
+         ['route=final', 'via=pc']),
+        ('prov-via-youtube', {'route': 'final', 'via': 'youtube'},
+         ['via=youtube']),
+        ('prov-via-unknown', {'route': 'final', 'via': 'inventado'},
+         ['route=final']),
     ]
     out = []
     for name, options, subs in cases:
         got = call(dict(options)) or ''
         ok = all(s in got for s in subs)
-        if 'invented' in got:
+        if 'invented' in got or 'inventado' in got:
             ok = False
         out.append({'name': name, 'want': ' '.join(subs), 'got': got, 'ok': ok})
     return out, None

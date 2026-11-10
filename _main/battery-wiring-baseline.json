@@ -458,11 +458,6 @@
     },
     {
       "date": "2026-10-25",
-      "file": "ui-watchdog-oracle.py",
-      "reason": "REASON-MISSING preencher a mao"
-    },
-    {
-      "date": "2026-10-25",
       "file": "unfinished-items-coverage-oracle.py",
       "reason": "REASON-MISSING preencher a mao"
     },

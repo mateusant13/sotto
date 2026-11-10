@@ -591,7 +591,27 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-10, 02:0x):** `_main\_audit-verify-all.cmd` = **338042 B**,
+- **PIN do ficheiro (medido 2026-11-10, 02:2x):** `_main\_audit-verify-all.cmd` = **339459 B**,
+  **3953 CRLF** / 0 bare LF, sha256 `FE129D689BCFC333180A2B9C93BCE5BE390CF7DC991F09187D9D1B408E491CF6`.
+  (Mil quatrocentos e dezassete bytes e CATORZE linhas a mais do que o pin de 338042 B: o par
+  `ui-watchdog` + `red-as-expected-ui-watchdog`, o cao de guarda da UI que NAO fecha a app do dono.
+  Nasceu de uma ordem dele, verbatim: *"sotto closed by itself. maybe crashed? not sure. should close
+  only because of me, or hard kill from task manager."* MEDIDO no log dele: as 21:18:11 a app saiu
+  por `UI_WATCHDOG_NOERR_CAP noerr=12 err=0 -- sai sem assinatura apos 12 voltas` seguidas de
+  `UI_WATCHDOG_EXIT code=9`; o `err` era **0** e nao `ERROR_TIMEOUT` (=1460), ou seja a pergunta ao
+  Windows nao obteve resposta, o que NAO e' a assinatura de uma janela presa -- e o proprio log
+  dizia `nao conta como presa` doze vezes antes de sair. A cura ja' esta' no ficheiro (o ramo passou
+  a `UI_WATCHDOG_RECOVER`: despeja a pilha, tira a janela do ecra por `_ui_hung_recover` e o processo
+  FICA), e o que faltava era o instrumento ter PASSO: `_main\ui-watchdog-oracle.py` existia com 9
+  bracos, `--neg-arm` de 4 mutantes e ZERO chamadores. Ele larga tres janelas REAIS numa thread
+  propria (saudavel, congelada, `hwnd=0`) e conduz a politica que decide o golpe -- nenhuma janela e'
+  mostrada e nenhum dispositivo de audio e' aberto. Medido: positivo 9,0 s, negativo 9,9 s.
+  E o proprio oraculo tinha o defeito que esta casa chama "um controlo que nao pode falhar", na
+  direccao oposta: o `ok` era calculado ANTES de os cinco bracos da politica e a assinatura do erro
+  existirem e nunca era recalculado, logo um braco `ERRADO` publicava `PASS 8/9` com rc=0. Agora o
+  veredicto le' as linhas que imprimiu -- medido com um mutante plantado (`ok_sig=False`):
+  `FAIL -- 8/9 bracos` e rc=1, contra `PASS -- 9/9` e rc=0 no positivo.)
+- **PIN anterior (medido 2026-11-10, 02:0x):** `_main\_audit-verify-all.cmd` = **338042 B**,
   **3939 CRLF** / 0 bare LF, sha256 `52DA06DCAE7CE299E179C5390609C76EB949D18236BA04C5F184647A059515BF`.
   (Quatrocentos e vinte e dois bytes e CINCO linhas a mais do que o pin de 337620 B: UM passo,
   `caption-noise`, que da autoridade de bateria ao predicado que a lane de QUALIDADE DA TRANSCRICAO
@@ -609,8 +629,6 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   reason=stable` que o PAINEL admitiu ao historico** -- isso e' admissao do lado da shell, nao do
   worker, e trocar comportamento de legenda ao vivo por cosmetica de transcricao seria o negocio
   errado. Recibo: `_main/receipt-20261109-transcript-quality.md` §2.5.)
-- **PIN do ficheiro (medido 2026-11-10, 01:4x):** `_main\_audit-verify-all.cmd` = **337620 B**,
-  **3934 CRLF** / 0 bare LF, sha256 `ACEA7120E926B9B1236BDE4E07F4514E5EFD5D442640B9E5C0FA5D140A4C5A75`.
   (Dois mil novecentos e quarenta bytes e TREZE linhas a mais do que o pin de 334680 B: DOIS pares.
   O segundo e' o `youtube-cdp-latency` + `red-as-expected-youtube-cdp-latency` -- o oraculo da
   latencia do caminho CDP existia, medido contra o Chrome vivo do dono, com um `--neg-arm` de tres

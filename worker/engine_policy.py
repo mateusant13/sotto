@@ -356,7 +356,7 @@ def run_engine_pass(sw, held, samples, reason, start_s=0.0):
     offset = 0
     lines = 0
     windows = 0
-    sw.noise_lines = 0
+    sw.noise_lines = sw.script_lines = 0
     t0 = time.time()
     try:
         sw.engine.load()
@@ -388,7 +388,8 @@ def run_engine_pass(sw, held, samples, reason, start_s=0.0):
             f"REDUX_ENGINE_DONE reason={reason} engine={sw.engine.name()} "
             f"model={os.path.basename(sw.engine.dir)} "
             f"audio_s={round(samples / float(sw.rate), 2)} windows={windows} "
-            f"lines={lines} noise_lines={getattr(sw, 'noise_lines', 0)} loads={sw.engine.loads} "
+            f"lines={lines} noise_lines={getattr(sw, 'noise_lines', 0)} "
+            f"script_lines={getattr(sw, 'script_lines', 0)} loads={sw.engine.loads} "
             f"rss_mb={sw.rss():.1f} "
             f"wall_s={round(time.time() - t0, 2)}")
         if offset < total:

@@ -401,6 +401,25 @@ async function measure(page, id, hasSkin) {
     hasSkin ? id : '',
   );
   await page.evaluate(() => { if (window.SottoBrand && window.SottoBrand.push) window.SottoBrand.push(); });
+  /* THE PLATE VAR IS PAINTED, NOT GUESSED. On a theme switch the bridge reads the
+   * row on a timer and writes `--brand-plate`; measured on `Quotes` (2026-11-09):
+   * 220 ms after the switch the var still carried the previous design's plate
+   * (`rgba(33,26,20,.55)` = theme-1) while `SottoBrand.last()` already held this
+   * design's tokens, so `caption-plate` failed on a value the bridge had not
+   * finished painting. Wait for the two to agree (alpha is the cheap, exact
+   * witness) and then keep the original settle time. Bounded: a design the
+   * bridge never paints falls through on the catch and is judged on what is on
+   * screen. */
+  await page.waitForFunction(() => {
+    const t = window.SottoBrand && window.SottoBrand.last ? window.SottoBrand.last() : null;
+    if (!t) return false;
+    const raw = window.getComputedStyle(document.documentElement)
+      .getPropertyValue('--brand-plate').trim();
+    if (!raw || raw === 'transparent') return true;
+    const hit = /,\s*([0-9.]+)\s*\)$/.exec(raw);
+    const alpha = hit ? Number(hit[1]) : 1;
+    return Math.abs(alpha - Number(t.rowBgAlpha || 0)) < 0.01;
+  }, null, { timeout: 2500 }).catch(() => {});
   await page.waitForTimeout(220);
   const data = await page.evaluate(() => {
     const q = (s) => document.querySelector(s);
@@ -854,6 +873,22 @@ function parseRgb(text) {
     }
     return null;
   }
+  /* CSS COLOUR 4 (`color(srgb r g b / a)`) IS WHAT A `color-mix()` ROW WASH
+   * COMPUTES TO, and the plate arm could not see it: measured on `Quotes`,
+   * `cine-rooftop`, `cine-analog` and `cine-ember` (2026-11-09), `bed.rowBg` was
+   * `color(srgb 0.909804 … / 0.08)`, `parseRgb` returned null, so the only
+   * candidate left was the slab and a correct row-derived plate was judged
+   * `bed=NONE`. Channels here are 0..1. */
+  const srgb = /color\(srgb\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)(?:\s*\/\s*([0-9.]+))?\)/i
+    .exec(String(text || ''));
+  if (srgb) {
+    return {
+      r: Math.round(Number(srgb[1]) * 255),
+      g: Math.round(Number(srgb[2]) * 255),
+      b: Math.round(Number(srgb[3]) * 255),
+      a: srgb[4] === undefined ? 1 : Number(srgb[4]),
+    };
+  }
   const m = /rgba?\(([^)]+)\)/.exec(String(text || ''));
   if (!m) return null;
   const parts = m[1].split(/[,/\s]+/).filter(Boolean).map(Number);
@@ -1164,8 +1199,14 @@ async function run(dir, opts = {}) {
         page = session.page;
         errorSets.push(session.errors);
       }
-      const data = await measure(page, entry.name, entry.skin);
-      const arms = judge(data, entry.skin);
+      /* ONE DESIGN THAT THROWS MUST NOT KILL THE INVENTORY. Measured: the full
+       * 59-design run exited rc=1 without printing a single arm because one
+       * theme raised inside `measure` and the exception unwound past the
+       * report. A crash is a RED arm, not a silent gate. */
+      let arms;
+      try {
+        const data = await measure(page, entry.name, entry.skin);
+        arms = judge(data, entry.skin);
       if (data.capFace) {
         faces.add([data.capFace.family, data.capFace.size, data.capFace.weight,
           data.capFace.transform].join('|'));
@@ -1179,6 +1220,10 @@ async function run(dir, opts = {}) {
       report.themes.push({
         id: entry.name, skin: entry.skin, css: entry.css, arms, brand, layout: data.layout, layoutStyle: data.layoutStyle,
       });
+      } catch (err) {
+        arms = [{ name: 'theme-rendered', ok: false, detail: `crashed: ${(err && err.message) || err}` }];
+        report.themes.push({ id: entry.name, skin: entry.skin, css: entry.css, arms });
+      }
       for (const arm of arms) {
         if (!report.arms[arm.name]) report.arms[arm.name] = { pass: 0, fail: 0, failures: [] };
         if (arm.ok) report.arms[arm.name].pass += 1;

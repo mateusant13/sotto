@@ -253,6 +253,13 @@ print('  %-30s janela=%-5s politica=%-5s %s'
 
 resultados += [owner_case(), frozen_case(), starved_case(), confirm_case(),
                cap_case(), ok_sig]
+# O VEREDITO LE' AS LINHAS QUE ELE IMPRIMIU (medido 2026-11-10): o `ok` era
+# calculado na linha 157, ANTES destes seis bracos existirem, e nunca era
+# recalculado -- logo os cinco bracos da POLITICA e a assinatura do erro
+# imprimiam `ERRADO` e o oraculo saia com rc=0 e "PASS 8/9". Um braco que nao
+# pode reprovar o proprio oraculo e' o mesmo defeito que um controlo que nao
+# pode falhar: a contagem publicava o que o veredicto ignorava.
+ok = all(resultados)
 
 
 # ── O BRACO NEGATIVO: mutar a POLITICA e exigir que os bracos caiam ──────────

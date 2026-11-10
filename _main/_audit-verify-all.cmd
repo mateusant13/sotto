@@ -702,6 +702,20 @@ if exist _main\_panel2-dom-probe.js (
   call :record cost-watchdog !STEP_RC!
   call :step red-as-expected-cost-watchdog 1 "_main\cost-watchdog-oracle.py;app\webview\cost_watchdog.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\cost-watchdog-neg.log" python _main\cost-watchdog-oracle.py --neg-arm
   call :expectred red-as-expected-cost-watchdog !STEP_RC! "%OUT%\cost-watchdog-neg.log" "NEG-ARM: PASS"
+  rem -- O CAO DE GUARDA DA UI NAO FECHA A APP DO DONO (2026-11-10). Nasceu da ordem dele,
+  rem verbatim: *"sotto closed by itself. maybe crashed? not sure. should close only because of
+  rem me, or hard kill from task manager."* MEDIDO no log dele -- `UI_WATCHDOG_NOERR_CAP
+  rem noerr=12 err=0 -- sai sem assinatura apos 12 voltas` + `UI_WATCHDOG_EXIT code=9`, as
+  rem 21:18:11 -- e o erro era **0**, nao `ERROR_TIMEOUT`: a pergunta ao Windows nao obteve
+  rem resposta, o que NAO e' a assinatura de uma janela presa. O oraculo existia com 9 bracos
+  rem e `--neg-arm` e NAO TINHA PASSO: a doutrina do instrumento sem chamador. Ele larga tres
+  rem janelas reais (saudavel, congelada, hwnd=0) numa thread propria e conduz a POLITICA que
+  rem decide o golpe -- nenhuma janela e' mostrada, nenhum dispositivo de audio e' aberto.
+  rem Medido: positivo 9,0 s, negativo 9,9 s.
+  call :step ui-watchdog 0 "_main\ui-watchdog-oracle.py;app\webview\ui_watchdog_policy.py;app\webview\sotto_webview.py" "%OUT%\ui-watchdog.log" python _main\ui-watchdog-oracle.py
+  call :record ui-watchdog !STEP_RC!
+  call :step red-as-expected-ui-watchdog 1 "_main\ui-watchdog-oracle.py;app\webview\ui_watchdog_policy.py;app\webview\sotto_webview.py" "%OUT%\ui-watchdog-neg.log" python _main\ui-watchdog-oracle.py --neg-arm
+  call :expectred red-as-expected-ui-watchdog !STEP_RC! "%OUT%\ui-watchdog-neg.log" "NEG-ARM: PASS"
   call :step outside-click-timer 0 "_main\outside-click-timer-oracle.py;app\webview\sotto_webview.py" "%OUT%\outside-click-timer.log" python _main\outside-click-timer-oracle.py
   call :record outside-click-timer !STEP_RC!
   call :step red-as-expected-outside-click-timer 1 "_main\outside-click-timer-oracle.py;app\webview\sotto_webview.py" "%OUT%\outside-click-timer-neg.log" python _main\outside-click-timer-oracle.py --neg-arm
