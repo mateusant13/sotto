@@ -265,3 +265,47 @@ alheio devolve **err=5** neste assento; o dono do processo abre os seus proprios
   (o relay e' da shell) e a shell so' entra num arranque novo pela mao do dono
   (`--no-self-relaunch`). `UNMEASURED` ate' la -- e e' a razao pela qual nao existe um p99
   "depois" honesto neste recibo.
+
+## 8. O VIGIA DE CUSTO NUNCA DECIDIU NADA: `self.log` nao existe no `SottoShell` (2026-11-10)
+
+Medido no log vivo do dono (`_main/webview-run.log`, pid 52792, 21:23:06.046):
+
+```
+BRIDGE_COST_CALLBACK_FAILED error=AttributeError("'SottoShell' object has no attribute 'log'")
+```
+
+`on_worker_cost` chamava `self.log(...)` em tres sitios, e o `SottoShell` **nao tem** esse
+metodo (o `log` desta arvore e' de MODULO). As consequencias encadeiam-se:
+
+1. o primeiro `WORKER_COST` levantava **antes** de `if not verdict['restart']: return`;
+2. o `on_cost` do `WorkerBridge` engolia a excepcao (por desenho: um raise ali derrubaria o
+   canal de stderr e com ele o heartbeat do cao de guarda) e escrevia a linha acima;
+3. logo o vigia que existe para reiniciar um worker caro e mudo **nunca decidiu reiniciar**, e
+   a serie `BRIDGE_WORKER_COST` que ele publica nunca apareceu uma unica vez.
+
+Cura: os tres sitios passam a `log(...)` (o de modulo).
+
+**A causa de o oraculo nao o ter apanhado e' o proprio instrumento**, e essa tambem foi
+corrigida: o `ShellStub` do `_main/cost-watchdog-oracle.py` fornecia um metodo `log` que o
+`SottoShell` nao tem -- o handler extraido corria contra um dublê mais generoso do que a
+producao. Agora o stub **nao tem** `log`; o `log` de modulo e' injectado no namespace do handler
+e trocado pelo coletor em `drive()`. Duas arms novas:
+
+| arm | o que exige | medido |
+|---|---|---|
+| D7 | o handler REAL conduzido sobre um stub que so' tem o que o `SottoShell` tem: nao levanta e publica `BRIDGE_WORKER_COST` | PASS |
+| D8 | a serie conduzida (saudavel, caro, revive-a-levantar, recusa) nao levanta nenhuma volta | PASS |
+
+E o mutante novo **M11** (voltar a `self.log`) tem de cair na D7:
+
+```
+$ python _main/cost-watchdog-oracle.py           -> VERDICT: arms=39 pass=39 fail=0
+$ python _main/cost-watchdog-oracle.py --neg-arm -> NEG-ARM: PASS -- 11/11 mutantes apanhados
+   M11 o handler volta a chamar self.log        RED em D7   caught
+```
+
+Uma correccao de instrumento veio junto: o `drive()` deixou de deixar a excepcao matar o
+oraculo (o M11 derrubava o processo com `AttributeError` em vez de reprovar a arm); a excepcao
+fica REGISTADA no stub e quem possui o "nao levanta" e' a D7.
+
+`fixed, NOT verified`: o proximo arranque dele e' que diria `BRIDGE_WORKER_COST` no log.

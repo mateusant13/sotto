@@ -111,7 +111,13 @@ def load_shell_handler(cost_watchdog, source=None):
     # as constantes de classe que o corpo le
     m = re.search(r'^    COST_LOG_INTERVAL_S = ([0-9.]+)$', src, re.M)
     interval = float(m.group(1)) if m else 60.0
-    ns = {'time': time, 'cost_watchdog': cost_watchdog}
+    # O `log` e' o da FUNCAO DE MODULO, nao um metodo do stub (medido 2026-11-10):
+    # o `SottoShell` real NAO tem `self.log`, e o stub que o fornecia escondia o
+    # `BRIDGE_COST_CALLBACK_FAILED error=AttributeError("'SottoShell' object has no
+    # attribute 'log'")` do log do dono -- o handler levantava ANTES da decision de
+    # reiniciar, logo o vigia de custo nunca disparou nada. O stub deixa de o ter.
+    ns = {'time': time, 'cost_watchdog': cost_watchdog,
+          'log': lambda msg: None}
     exec(compile(textwrap.dedent(body), path, 'exec'), ns)
     fn = ns['on_worker_cost']
     fn.COST_LOG_INTERVAL_S = interval
@@ -119,7 +125,12 @@ def load_shell_handler(cost_watchdog, source=None):
 
 
 class ShellStub:
-    """O minimo que o handler toca: `log`, `revive_worker` e os quatro campos."""
+    """O minimo que o handler toca: `revive_worker` e os quatro campos.
+
+    SEM `log`, DE PROPOSITO: o `SottoShell` real nao tem esse metodo, e um stub que o
+    inventava fazia o oraculo passar sobre um handler que, em producao, levantava
+    `AttributeError` na primeira volta (ver `load_shell_handler`).
+    """
 
     COST_LOG_INTERVAL_S = 60.0
 
@@ -132,9 +143,10 @@ class ShellStub:
         self._cost_last_restart = 0.0
         self._cost_restarts_hour = 0
         self._cost_logged_at = 0.0
+        self.raises = []
         self._handler = handler
 
-    def log(self, msg):
+    def log_line(self, msg):
         self.lines.append(msg)
 
     def revive_worker(self, reason):
@@ -158,7 +170,17 @@ def drive(handler, interval, fields_list, boom=False, refuse=False):
 
     for fields in fields_list:
         handler.__globals__['time'] = FakeTime
-        handler(shell, {'fields': fields, 'childPid': 4242})
+        # o `log` de modulo, trocado por um coletor -- e' o que o fonte chama
+        handler.__globals__['log'] = shell.log_line
+        # UM HANDLER QUE LEVANTA NAO DERRUBA O JULGAMENTO: a excepcao fica REGISTADA
+        # no stub e as arms que esperam linhas caem sozinhas. Quem possui o "nao
+        # levanta" e' a D7, que conduz o handler uma vez contra o stub fiel -- e um
+        # `raise` aqui matava o proprio oraculo em vez de reprovar o mutante (medido
+        # 2026-11-10 no M11, que volta a chamar `self.log`).
+        try:
+            handler(shell, {'fields': fields, 'childPid': 4242})
+        except Exception as exc:  # noqa: BLE001
+            shell.raises.append(exc)
         clock['t'] += 10.0
     return shell
 
@@ -412,6 +434,31 @@ def run_arms(cache, mod, cw):
                                          'rows_since_tick': '0'}] * (STALL + 2),
                     refuse=True)
     line = next((ln for ln in refused.lines if 'WORKER_COST_RESTART' in ln), '')
+    # D7 -- O DEFEITO MEDIDO A 2026-11-10: o handler chamava `self.log` e o
+    # `SottoShell` NAO tem esse metodo. Todo `WORKER_COST` levantava dentro do
+    # `on_cost` do `WorkerBridge`, que engolia a excepcao e escrevia
+    # `BRIDGE_COST_CALLBACK_FAILED` -- logo o vigia de custo NUNCA decidia reiniciar,
+    # e a linha que ele existe para publicar nunca saiu. Esta arm conduz o handler
+    # REAL sobre um stub que tem SO o que o `SottoShell` tem; uma dependencia
+    # inventada (`self.log`, `self._x`) cai aqui e nao em producao.
+    probe = ShellStub(handler)
+    handler.__globals__['time'] = time
+    handler.__globals__['log'] = probe.log_line
+    try:
+        handler(probe, {'fields': {'cpu_pct_avg': '270.6', 'rows': '0',
+                                   'rows_since_tick': '0'}, 'childPid': 4242})
+        raised = ''
+    except Exception as exc:  # noqa: BLE001 -- e' o que a arm mede
+        raised = '%s: %s' % (type(exc).__name__, exc)
+    mod.arm('D7 o handler nao depende de um metodo que o SottoShell nao tem',
+            not raised and any(ln.startswith('BRIDGE_WORKER_COST')
+                               for ln in probe.lines),
+            raised or ('linhas=%r' % (probe.lines[:1],)))
+    mod.arm('D8 a serie conduzida nao levanta nenhuma volta',
+            not healthy.raises and not busy.raises and not broke.raises
+            and not refused.raises,
+            '%r' % ([type(e).__name__ for e in
+                     (healthy.raises + busy.raises + broke.raises + refused.raises)][:3],))
     mod.arm('D6 recusa do revive aparece como accepted=false e NAO gasta o piso',
             'accepted=false' in line and refused._cost_last_restart == 0.0
             and refused._cost_restarts_hour == 0, line or 'sem linha de restart')
@@ -500,6 +547,12 @@ def main(argv):
                                      if '\r\n' in src else
                                      '        if accepted:\n            self._cost_last_restart = now',
                                      '        if True:\n            self._cost_last_restart = now', 1)),
+            # M11 -- O DEFEITO DE PRODUCAO (2026-11-10): o handler voltar a chamar
+            # um metodo que o `SottoShell` nao tem. Tem de cair na D7.
+            ('M11 o handler volta a chamar self.log', 'D7',
+             lambda src: src.replace(
+                 "            log('BRIDGE_WORKER_COST cpu_pct_avg=%s",
+                 "            self.log('BRIDGE_WORKER_COST cpu_pct_avg=%s", 1)),
             ('M7 o handler journaliza a CADA tick (sem intervalo)', 'D4',
              lambda src: src.replace('        if now - getattr(self, \'_cost_logged_at\', 0.0) '
                                      '>= self.COST_LOG_INTERVAL_S:',

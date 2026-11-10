@@ -19163,7 +19163,7 @@ class SottoShell:
         if now - getattr(self, '_cost_logged_at', 0.0) >= self.COST_LOG_INTERVAL_S:
             self._cost_logged_at = now
             seen = cost_watchdog.busy_rows(fields)
-            self.log('BRIDGE_WORKER_COST cpu_pct_avg=%s rows=%s rows_per_min=%s '
+            log('BRIDGE_WORKER_COST cpu_pct_avg=%s rows=%s rows_per_min=%s '
                      'cpu_s_per_row=%s chunks_since_tick=%s ms_per_chunk=%s '
                      'rtf=%s uptime_s=%s streak=%d decision=%s '
                      'pid=%s' % (
@@ -19181,7 +19181,7 @@ class SottoShell:
         try:
             accepted = self.revive_worker('cost-watchdog') is not False
         except Exception as exc:  # noqa: BLE001
-            self.log('WORKER_COST_RESTART_FAILED error=%r' % (exc,))
+            log('WORKER_COST_RESTART_FAILED error=%r' % (exc,))
         # O VEREDITO ANTES DA CONTAGEM (2026-11-09). O `revive_worker` RECUSA por
         # desenho quando o player esta' a fornecer a legenda (`_external_parked`, 47 s
         # medidos em 2026-10-20) e quando um revive ja' esta' em voo -- e a recusa e'
@@ -19192,7 +19192,7 @@ class SottoShell:
             self._cost_last_restart = now
             self._cost_restarts_hour = getattr(self, '_cost_restarts_hour', 0) + 1
             self._cost_streak = 0
-        self.log('WORKER_COST_RESTART reason=cpu-sem-linha cpu_pct_avg=%s rows=%s '
+        log('WORKER_COST_RESTART reason=cpu-sem-linha cpu_pct_avg=%s rows=%s '
                  'streak_ticks=%d floor_s=%d restarts_hour=%d accepted=%s '
                  'why=um-arranque-novo-e-o-que-cura-a-degradacao' % (
                      fields.get('cpu_pct_avg', '-'), fields.get('rows', '-'),
