@@ -131,12 +131,12 @@
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 232665,
+      "bytes": 233918,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4701,
+      "lines": 4724,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -191,12 +191,12 @@
       "max_func_name": ""
     },
     "app/panel/theme-switcher.js": {
-      "bytes": 50710,
+      "bytes": 51055,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 1142,
+      "lines": 1148,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1349169,
+      "bytes": 1350024,
       "classes": 29,
       "defs": 158,
       "except_pass": 62,
       "globals": 8,
-      "lines": 25415,
+      "lines": 25428,
       "max_func": 414,
       "max_func_name": "main"
     },
