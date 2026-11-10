@@ -139,6 +139,34 @@ caught=3`, rc=1. Primeira versao do controle media `ok=False` por causa do propr
 simples onde o `_attr` exige `data-gate-probe-<chave>="..."`) -- corrigido, porque um controle que
 falha pelo dado nao prova nada.
 
+## 4-quater. O motor quente: a tarefa EXISTE, e o texto do `schtasks` e' cego
+
+O cartao do arranque estava escrito como "bloqueado no gate". A medicao de hoje separa as duas
+metades:
+
+| o que | como | numero |
+|---|---|---|
+| a tarefa `\SottoWarmEngine` esta' registada? | `schtasks /query /tn SottoWarmEngine` | **rc=0** |
+| o mesmo nome com uma que nao existe | `schtasks /query /tn SottoNaoExisteXYZ` | **rc=1** |
+| o XML que o Windows guardou | `C:\Windows\System32\Tasks\SottoWarmEngine` (UTF-16, sem admin) | existe, mtime **2026-11-10 06:33:05**, `<Triggers />` vazio, `IgnoreNew`, `PT0S`, `InteractiveTerminal`=InteractiveToken, accao `warm-engine-run.cmd` |
+| o TEXTO de qualquer um dos dois | `out`/`err` do `schtasks` por um cano | **0 B nos tres nomes** |
+
+Ou seja: a cura de 06:42 (`7fb5134`) fez o seu trabalho -- a tarefa existe e o `/run` deixa de ser um
+`rc=1` silencioso -- e o `rc` e' o instrumento que o diz. O **texto** do `schtasks` nao sai por um
+cano neste hospedeiro (ele escreve pela consola), logo as linhas `WARM_ENGINE_TASK_CREATED ...
+out="" err=""` nao sao uma criacao que falou pouco: sao o unico desfecho que este Windows imprime.
+Ficou escrito no docstring do oraculo e no sitio do log, porque a leitura errada ("criou com erro")
+e' o defeito seguinte.
+
+O que continua **NAO MEDIDO**, e agora com o nome certo: o `/run` + `attach` custam **1,9 GB de
+modelo** (`heavy`), e o `I:/!manager/tools/performance-gate.py status` devolve **UNKNOWN** --
+`sample-unknown: disk counter read failed`, isto e', o proprio leitor de
+`Win32_PerfRawData_PerfDisk_PhysicalDisk` por `powershell` estoura neste hospedeiro. Com o gate
+UNKNOWN nao ha lease `heavy`, logo nao se larga o `/run` a partir desta lane. O numero que falta e'
+o par `WARM_ATTACH` (0,97 s medido com motor falso) contra `BRIDGE_LOAD_MS` (~43 s), e ele precisa
+de uma janela `heavy` OU do arranque do dono, que ja' leva a cura e escreve
+`WARM_ENGINE_START_TASK ... registered=present`.
+
 ## 5. O que NAO esta' verificado
 
 * `fixed, NOT verified`: o numero que fecha este card e' o **proximo arranque do dono** -- com o

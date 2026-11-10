@@ -22,6 +22,19 @@ e o `_main/warm-engine-oracle.py` ja' mede o attach com um motor falso.
   python _main/warm-engine-task-oracle.py           # positivo
   python _main/warm-engine-task-oracle.py --neg-arm # o XML apontado a um ficheiro que falta
 
+O TEXTO DO `schtasks` E' CEGO NESTE HOSPEDEIRO, e o rc nao e'. Medido 2026-11-10 (o
+mesmo dia, tres nomes): `SottoWarmEngine` -> **rc=0, out=0 B**; `SottoNaoExisteXYZ`
+-> **rc=1, out=0 B**; `Sotto` -> rc=0. Ou seja o **rc discrimina** presenca e o
+stdout/stderr saem SEMPRE vazios por um cano, porque o `schtasks` escreve pela
+consola e nao por `WriteFile` quando nao ha consola nenhuma. Consequencia para quem
+ler o log do dono: `WARM_ENGINE_TASK_CREATED ... out="" err=""` NAO e' uma criacao
+que falou pouco -- e' o unico desfecho que este hospedeiro sabe imprimir, e o
+veredicto esta' no `rc=`. O SEGUNDO instrumento, independente do `schtasks`, e' o
+FICHEIRO que o Windows guarda: `C:\Windows\System32\Tasks\<nome>` (UTF-16, sem
+admin). Medido hoje: existe, mtime 2026-11-10 06:33:05, e o XML la' dentro tem
+`<Triggers />` vazio, `IgnoreNew`, `PT0S` e `warm-engine-run.cmd` -- exactamente o
+que o XML do repo define.
+
 Veredicto: rc=0 PASS / rc=1 FAIL. O `--neg-arm` devolve **1 quando apanha** (a
 convencao desta casa: um controlo que nao pode falhar nao e' um controlo).
 """

@@ -23654,6 +23654,11 @@ def ensure_warm_engine_task(log=log, task=WARM_ENGINE_TASK, xml=WARM_ENGINE_TASK
             return 'failing'
         rc2, out2, err2 = hidden.run(
             ['schtasks', '/create', '/tn', task, '/xml', rel, '/f'], timeout=20)
+        # `out`/`err` saem SEMPRE vazios neste hospedeiro (medido 2026-11-10: o
+        # `schtasks` escreve pela consola e nao por `WriteFile`, logo um cano sem
+        # consola nao recebe nada -- presenca e' `rc` e mais nada). A linha leva
+        # os dois campos porque um dia outro Windows pode devolver texto; quem a
+        # le' NAO pode tomar `out=""` por uma criacao que falhou.
         log('WARM_ENGINE_TASK_CREATED task=%s rc=%s out=%s err=%s'
             % (task, rc2, json.dumps((out2 or '')[:120]),
                json.dumps((err2 or '')[:120])))
