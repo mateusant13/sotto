@@ -161,7 +161,21 @@ e' o defeito seguinte.
 O que continua **NAO MEDIDO**, e agora com o nome certo: o `/run` + `attach` custam **1,9 GB de
 modelo** (`heavy`), e o `I:/!manager/tools/performance-gate.py status` devolve **UNKNOWN** --
 `sample-unknown: disk counter read failed`, isto e', o proprio leitor de
-`Win32_PerfRawData_PerfDisk_PhysicalDisk` por `powershell` estoura neste hospedeiro. Com o gate
+`Win32_PerfRawData_PerfDisk_PhysicalDisk` por `powershell` estoura neste hospedeiro.
+
+**O QUE "ESToura" QUER DIZER, medido hoje**: aquela leitura NAO devolve. O mesmo
+`Get-CimInstance Win32_PerfRawData_PerfDisk_PhysicalDisk -Filter "Name='_Total'"`, corrido a mao
+com uma consola presente, foi morto aos **180 s** (e uma corrida anterior morreu no prazo de 60 s com
+`rc=124`, `out=''`, `err=''`). Logo o gate nao fica verde por retentativa: o instrumento do gate e'
+que esta' preso. As duas substituicoes testadas no mesmo minuto sao **cegas** por cano sem consola,
+o que o `_main/hidden-launch.py` desta arvore usa: `Get-Counter '\PhysicalDisk(_Total)\Avg. Disk
+sec/Transfer' -SampleInterval 1 -MaxSamples 1` -> **rc=1, 0 B**, 4,4 s; a mesma classe CIM com
+`-OperationTimeoutSec 5` -> **rc=0, 0 B**, 6,4 s. Uma cura tem de ler por FICHEIRO (o `powershell`
+grava e o Python le') ou pela PDH por `ctypes`, nunca por um cano. A medicao foi registada na caixa
+do gestor: `I:\!watcher\state\herdr-inbox\dm-7ca781e36c80fc7f6dc5.md` (rc=0, `--no-inject`, o
+registro e' a entrega).
+
+Com o gate
 UNKNOWN nao ha lease `heavy`, logo nao se larga o `/run` a partir desta lane. O numero que falta e'
 o par `WARM_ATTACH` (0,97 s medido com motor falso) contra `BRIDGE_LOAD_MS` (~43 s), e ele precisa
 de uma janela `heavy` OU do arranque do dono, que ja' leva a cura e escreve
