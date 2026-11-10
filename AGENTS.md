@@ -591,6 +591,26 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-10, 10:1x):** `_main\_audit-verify-all.cmd` = **342605 B**,
+  **3990 CRLF** / 0 bare LF, sha256 `84375166E142874EA74437002B63406E33D2BCD32C2A96D12B263FEDBA7DDF8E`.
+  (Mil quinhentos e cinquenta e quatro bytes e DEZOITO linhas a mais do que o pin de 341051 B: o par
+  `prose-punct` + `red-as-expected-prose-punct`, a MARCA que o motor nao deu. Card do dono:
+  *"historicos desde as 15h de hoje: melhorar a qualidade da transcricao a custo barato"*. MEDIDO no
+  arquivo dele (`history/2026-11-09/17.md`, 63 linhas): **37** com `reason=stable`, **ZERO** com marca
+  terminal. A causa e' a guarda de lingua do restaurador (`worker/punctuation_model.py:supported_lang`,
+  so' `en*`) e o modelo multilingue foi RECUSADO por medicao (2,4 GB + torch, `I:` a 4,8% livre).
+  `app\webview\prose_punct.py` fecha a linha por PROSA (`.` quando a ultima palavra nao e' conector,
+  listas pt-BR **e** en porque o arquivo dele e' bilingue) e por PAUSA (a diferenca de relogio ate' a
+  linha SEGUINTE, com o piso de **600 ms** que `worker/punctuation_prosody.py` mediu em 2026-11-05:
+  a menor pausa de fim de frase 773 ms, a maior de fim de oracao 440 ms). `?` e `!` NUNCA sao
+  inventados -- nenhuma fixture desta casa tem pergunta. A fiacao e' o caminho de LEITURA
+  (`_history_entries`), nao a legenda ao vivo: ao vivo a marca exigiria esperar a linha seguinte, e um
+  texto que espera e' o atraso que o dono proibe; o arquivo em disco continua o registo CRU.
+  Medido no arquivo dele: **18 -> 57** das 63 linhas com marca. O oraculo faz 16 arms (a funcao pura,
+  o piso lido por `ast` do outro ficheiro, o stream REAL sobre um root temporario, e o disco intocado)
+  com `VERDICT: PASS` rc=0; o `--neg-arm` repoe um fecho que NAO olha a pausa e derruba **8** arms com
+  rc=1. `battery-wiring` PASS `ligados=181 sem_passo=108 populacao=289`; `battery-record-pairing`
+  446 passos / 446 nomes / 0 achados.)
 - **PIN do ficheiro (medido 2026-11-10, 06:4x):** `_main\_audit-verify-all.cmd` = **341051 B**,
   **3972 CRLF** / 0 bare LF, sha256 `AE965FD0402DC28BC2C84DF1B3D8ABC2451BA5ABD64446DF09D866E56B1D1AF6`.
   (Mil quinhentos e noventa e dois bytes e DEZANOVE linhas a mais do que o pin de 339459 B: o par

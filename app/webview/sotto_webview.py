@@ -64,6 +64,9 @@ from code_identity import code_identity as _code_identity
 #: importavel para o oraculo julgar a regra sem abrir dispositivo nem shell.
 import cost_watchdog
 import panel_state
+#: A MARCA que o motor nao deu, tirada da PROSA e da PAUSA medida (2026-11-10).
+#: Puro e importavel, para o oraculo julgar o fecho sem subir a shell.
+import prose_punct
 import topmost_keepalive as _topmost_keepalive
 import power_recovery as _power_recovery
 # A POLITICA de golpe do cao-de-guarda vive fora, e e' pura, para poder ser
@@ -785,6 +788,28 @@ HISTORY_ROOT = os.path.normpath(
 #: One history line: `- [HH:MM:SS] text`. Markdown-readable AND parseable.
 HISTORY_LINE_RE = re.compile(r'^-\s+\[(\d{2}:\d{2}:\d{2})\]\s+(.*)$')
 HISTORY_DAY_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+
+
+def _history_clock_s(stamp):
+    """`HH:MM:SS` -> segundos desde a meia-noite, ou `None` se nao for a forma.
+
+    E' o unico relogio que a linha carrega, e e' o que da' a pausa que
+    `prose_punct.close_line` exige: a diferenca entre a linha e a SEGUINTE. A
+    leitura e' tolerant: um carimbo quebrado devolve `None` e o fecho do
+    historico fica em identidade -- um arquivo estranho nunca inventa marca.
+    """
+    parts = str(stamp or '').split(':')
+    if len(parts) != 3:
+        return None
+    try:
+        h, m, s = (int(p) for p in parts)
+    except (TypeError, ValueError):
+        return None
+    if not (0 <= h < 24 and 0 <= m < 60 and 0 <= s < 60):
+        return None
+    return h * 3600 + m * 60 + s
+
+
 #: The provenance the WRITER stamps on the end of a line (M8). It is an HTML
 #: comment, so a Markdown reader shows the sentence and nothing else, and every
 #: reader of the FILE strips it before treating the rest as text.
@@ -15158,16 +15183,37 @@ class SottoShell:
     def _history_entries(self):
         """NEWEST-first stream of entries. Reverse file order AND line order, so
         a `tail()` really returns the last N written, not the first N of the
-        newest file."""
+        newest file.
+
+        ── A MARCA QUE O MOTOR NAO DEU (2026-11-10) ────────────────────────────
+        Medido no arquivo do dono: 37 linhas `reason=stable` em `17.md`, ZERO com
+        marca terminal. O restaurador de pontuacao esta' desligado em pt-BR por
+        medicao (`worker/punctuation_model.py:supported_lang`), portanto a marca
+        so' pode vir da PROSA e da PAUSA. O stream e' o UNICO lugar onde as duas
+        estao na mao ao mesmo tempo: ele anda do mais NOVO para o mais ANTIGO,
+        logo quando entrega uma linha ja' viu a seguinte e a pausa entre as duas
+        esta' medida -- sem esperar nada (a legenda ao vivo NAO usa isto: la' o
+        atraso seria o defeito). Ver `app/webview/prose_punct.py`.
+        """
         for day, hour, path in reversed(self._history_files()):
+            newer_s = None            # o relogio da linha SEGUINTE (mais nova)
             for line in reversed(self._history_read(path)):
                 match = HISTORY_LINE_RE.match(line)
                 if match:
+                    cur_s = _history_clock_s(match.group(1))
+                    #: A pausa entre o FIM desta linha e o FIM da seguinte. E'
+                    #: um teto do silencio (inclui a latencia de escrita), e por
+                    #: isso so' serve para o piso de frase de 600 ms -- o numero
+                    #: medido em `worker/punctuation_prosody.SENTENCE_MIN_MS`.
+                    gap_s = (None if (newer_s is None or cur_s is None)
+                             else max(0.0, newer_s - cur_s))
+                    newer_s = cur_s if cur_s is not None else newer_s
                     # The provenance comment is the FILE's, not the feed's:
                     # strip it so search and the feed still see the sentence
                     # (M8 — see `_history_provenance`).
+                    text = HISTORY_TAIL_RE.sub('', match.group(2)).strip()
                     yield {'date': day, 'hour': hour, 'time': match.group(1),
-                           'text': HISTORY_TAIL_RE.sub('', match.group(2)).strip(),
+                           'text': prose_punct.close_line(text, gap_s),
                            'path': path,
                            #: The compact context carried on THIS line. A line
                            #: written before 2026-11-09 has no token and yields

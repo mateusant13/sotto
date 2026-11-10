@@ -2716,6 +2716,24 @@ if exist _main\history-route-oracle.js (
   call :record history-route-long !STEP_RC!
 ) else ( call :record history-route-long MISSING )
 
+REM -- A MARCA QUE O MOTOR NAO DEU (2026-11-10)
+REM Dono: *"historicos desde as 15h de hoje: melhorar a qualidade da transcricao a
+REM custo barato"*. MEDIDO em `history/2026-11-09/17.md`: 37 linhas `reason=stable`,
+REM ZERO com marca terminal. O restaurador de pontuacao esta' desligado em pt-BR por
+REM medicao (`worker/punctuation_model.py:supported_lang`, so' `en*`) e o modelo
+REM multilingue foi RECUSADO (2,4 GB + torch, `I:` a 4,8%). O fecho agora vem da
+REM PROSA (o ponto que a linha fechada nao ganhou) e da PAUSA medida ate' a linha
+REM SEGUINTE, com o piso de 600 ms que `worker/punctuation_prosody.py` mediu em 2026-11-05.
+REM `?` e `!` NUNCA sao inventados. Medido no arquivo dele: 18 -> 57 das 63 linhas.
+if exist _main\prose-punct-oracle.py (
+  call :step always prose-punct 0 "_main\prose-punct-oracle.py;app\webview\prose_punct.py;app\webview\sotto_webview.py;worker\punctuation_prosody.py" "%OUT%\prose-punct.log" python _main\prose-punct-oracle.py
+  call :record prose-punct !STEP_RC!
+) else ( call :record prose-punct MISSING )
+if exist _main\prose-punct-oracle.py (
+  call :step always red-as-expected-prose-punct 1 "_main\prose-punct-oracle.py;app\webview\prose_punct.py;app\webview\sotto_webview.py;worker\punctuation_prosody.py" "%OUT%\prose-punct-neg.log" python _main\prose-punct-oracle.py --neg-arm
+  call :expectred red-as-expected-prose-punct !STEP_RC! "%OUT%\prose-punct-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-prose-punct MISSING "%OUT%\prose-punct-neg.log" "NEG-ARM: PASS" )
+
 REM (`reveal-clock`: a revelacao da legenda e' ancorada no AUDIO, nao na chegada
 REM do ASR. Dono, verbatim: *"a legenda do youtube ta fora de sync. atrasada.
 REM depois faz um catch up super rapido e atrasa de novo"* -- medido no log dele,
