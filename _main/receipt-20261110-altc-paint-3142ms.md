@@ -221,3 +221,39 @@ rc=1
   observado a desaparecer numa sessao nova.
 - `python _main/paint-live-show-oracle.py` sobre o log vivo responde rc=0 por
   SKIPPED (processo STALE), nao por PASS. Um PASS real exige um arranque novo.
+
+## VOLUME: o commit desta cura foi recusado pelo DISCO, e o evac foi revertido
+
+Medido, nao inferido, com o mesmo `shutil.disk_usage('H:/')` nas duas pontas:
+
+| quando | H: livre | o que aconteceu |
+|---|---|---|
+| 2026-11-10 ~14:0xZ | **0.000 GiB** | `git commit` morreu em `fatal: sha1 file 'H:/sotto/.git/index.lock' write error. Out of diskspace`; na mesma janela o `run-all` recusou `compose-probe` e `keyframe-shape-probe` com `instant replay refused` |
+| ~14:5xZ | **18.26 GiB** | medido de novo, sem eu ter apagado nada de ninguem |
+
+O evac de emergencia (113 MiB: `_main/_tmp-panel-noreveal` + `_main/_design-lane` movidos para
+`I:\cc-tmp\sotto-evac-20261110\`) foi **REVERTIDO**: o `_design-lane` nao e' copia temporaria -- o
+`shots-delta-oracle` LE-O (`_main\shots-delta.py`, `_main\intake-shots.py`) e o
+`_border-radius-probe.py` poe-no no `sys.path`. Movê-lo teria partido dois passos da bateria para
+poupar 86 MiB. Verificado depois de devolver os dois directorios:
+`python _main\shots-delta-oracle.py` -> `VERDICT: PASS  arms 19/19  mutants 11/11`, rc=0.
+
+**A atribuicao do volume, para a afirmacao "o disco esta' cheio" nao virar folclore.** Walk
+completo de `H:\` por directorio de topo (`os.scandir`, 2026-11-10): **487.84 GiB** andados.
+Os maiores nao sao deste projecto: `@@@@IA` 87.97 GiB · `jcode-target-gnu` **86.96 GiB** (um
+directorio de build) · `Riot Games` 50.67 · `SteamLibrary` 36.32 · `env` 27.98 ·
+`VOD.RIP-data` 20.46 · `codeintel` 19.96 · `deteccaoaudiodoppler` 19.00 · `ComfyUI` 16.96.
+`H:\sotto` = **8.74 GiB** (`.git` 4.79 · `_main` 2.21 · `worker` 1.21).
+
+O que isto muda na afirmacao: um commit meu **pode** morrer por ENOSPC num volume que nao e'
+meu, e o sintoma aparece em DOIS sitios que parecem do produto (`instant replay refused` no
+portao, `index.lock` no git). A regra que fica: ler o `disk_usage` do volume ANTES de acusar um
+instrumento, e nunca apagar evidencia de outro projecto para passar um commit.
+
+**O que o vaivem custou, dito inteiro.** O primeiro `mv` de ida e volta do `_tmp-panel-noreveal`
+perdeu os ficheiros IGNORADOS daquela copia (`node_modules`, ~2 674 ficheiros / ~20 MiB); o
+conteudo versionado foi recuperado do indice e esta' **inteiro**: `git ls-files` = 88, em disco =
+88, `git status` do caminho = 0 entradas. Nada de `_design-lane` se perdeu (3 129 ficheiros) e o
+seu oraculo da' PASS. Licao curta: **um `mv` entre volumes nao e' atomico** -- um directorio que
+interessa ao repo nao se evacua para "ganhar espaco", porque `git checkout` devolve o que e'
+versionado e NAO devolve o que e' ignorado.
