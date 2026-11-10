@@ -9034,6 +9034,19 @@ WINDOW_DRAG_FRAME_S = 1.0 / WINDOW_DRAG_FRAME_HZ
 #: do grao de ~1 ms com que o `sleep` volta. Medido: 215 Hz sem ele.
 WINDOW_DRAG_SPIN_S = 0.00035
 
+#: QUANTAS AMOSTRAS FAZEM UM GESTO (e nao um clique). Medido no log vivo do dono
+#: (`_main/webview-run.log`, 39 h, 2026-11-08 18:23 -> 2026-11-10 09:37): **6**
+#: `WINDOW_DRAG_BEGIN` e **6** `DONE`, e a UNICA com o seguidor novo mediu
+#: `updates=0 samples=4 hz=0.0 elapsed_ms=17`. As duas causas possiveis --
+#: "o dono clicou e nao arrastou" e "o arrasto nao consegue mover a janela" --
+#: imprimem a MESMA linha, e e' por isso que a queixa de 2026-11-09
+#: (*"os paineis nao sao draggable em 240hz"*) nao era atribuivel: um `False` do
+#: `window_drag_to` significa tanto "o pixel nao mudou" (normal) como "nao ha
+#: ancora" ou "nao ha tamanho" (arrasto partido). Abaixo deste piso de amostras
+#: o gesto e' um clique e NAO se publica `WINDOW_DRAG_STUCK`; a partir dele, e
+#: so' quando alguma amostra foi recusada POR CAUSA, publica-se com o motivo.
+WINDOW_DRAG_STUCK_SAMPLES = 8
+
 #: A RESOLUCAO DE 1 ms, LEVANTADA SO' DURANTE O GESTO. Medido no oraculo
 #: (`_main/window-drag-oracle.py`, A6) antes desta linha existir: o laco entregou
 #: **103,2 Hz com max_gap 16,1 ms** porque `time.sleep(4,17 ms)` cai no grao de
@@ -9130,6 +9143,8 @@ class WindowDragFollower(threading.Thread):
         self.hwnd = int(hwnd or 0)
         self.updates = 0
         self.samples = 0
+        self.refused = 0
+        self.refusal_cause = ''
         self.max_gap_ms = 0.0
         self.elapsed_s = 0.0
         self.active = True
@@ -9178,6 +9193,16 @@ class WindowDragFollower(threading.Thread):
                         if self.shell.window_drag_to(
                                 int(point.x), int(point.y), persist=False):
                             self.updates += 1
+                        else:
+                            # UM `False` TEM DUAS CAUSAS QUE NAO SE CONFUNDEM: o
+                            # pixel nao mudou (normal, e nao e' recusa) ou a
+                            # janela nao pode ser movida (ancora/tamanho). So' a
+                            # segunda conta, e o motivo viaja para o fim do gesto
+                            # -- uma atribuicao no caminho quente, nunca um `log`.
+                            cause = getattr(self.shell, '_window_drag_refusal', '') or ''
+                            if cause:
+                                self.refused += 1
+                                self.refusal_cause = cause
                 if not down:
                     break
                 next_tick += period
@@ -9200,10 +9225,24 @@ class WindowDragFollower(threading.Thread):
                 log(f'WINDOW_DRAG_PERSIST_FAILED error={exc!r}')
             hz = (self.updates / self.elapsed_s) if self.elapsed_s > 0 else 0.0
             log('WINDOW_DRAG_FOLLOW_END surface=%s updates=%d samples=%d '
-                'hz=%.1f max_gap_ms=%.2f elapsed_ms=%.0f ceiling_hz=%d'
+                'hz=%.1f max_gap_ms=%.2f elapsed_ms=%.0f ceiling_hz=%d '
+                'refused=%d cause=%s'
                 % (self.surface, self.updates, self.samples, hz,
                    self.max_gap_ms, self.elapsed_s * 1000.0,
-                   WINDOW_DRAG_FRAME_HZ))
+                   WINDOW_DRAG_FRAME_HZ, self.refused,
+                   self.refusal_cause or '-'))
+            # A LINHA QUE FALTAVA (dono, 2026-11-09: *"os paineis nao sao
+            # draggable em 240hz"*). Um gesto que amostrou o suficiente para ser
+            # um arrasto, nao moveu a janela UMA vez e teve amostras recusadas
+            # POR CAUSA nao e' um clique: e' um arrasto partido, e passa a ter
+            # nome proprio com o motivo em vez de se confundir com `updates=0`
+            # de um clique (que e' o desfecho normal de uma pressao curta).
+            if (self.samples >= WINDOW_DRAG_STUCK_SAMPLES
+                    and self.updates == 0 and self.refused > 0):
+                log('WINDOW_DRAG_STUCK surface=%s cause=%s refused=%d '
+                    'samples=%d elapsed_ms=%.0f'
+                    % (self.surface, self.refusal_cause or 'unknown',
+                       self.refused, self.samples, self.elapsed_s * 1000.0))
 
     def stop(self):
         self.active = False
@@ -20483,16 +20522,22 @@ class SottoShell:
             self._window_drag_anchor = None
             return True
         if not anchor or not hwnd:
+            self._window_drag_refusal = 'no-anchor' if not anchor else 'no-hwnd'
             return False
         geometry = dict(self.geometry or {})
         width = int(geometry.get('width') or 0)
         height = int(geometry.get('height') or 0)
         if width <= 0 or height <= 0:
+            self._window_drag_refusal = 'no-size'
             return False
         scale = (self.display or {}).get('scaleFactor') or 1.0
         nx, ny = drag_origin(anchor, (x, y), scale, (width, height), self.work_area())
         if nx == int(geometry.get('x') or 0) and ny == int(geometry.get('y') or 0):
+            # O PIXEL NAO MUDOU: este `False` NAO e' recusa. O canal tem de ficar
+            # limpo, senao o seguidor conta um clique parado como arrasto partido.
+            self._window_drag_refusal = ''
             return False
+        self._window_drag_refusal = ''
         geometry.update({'x': nx, 'y': ny, 'docked': 'window-drag'})
         self.geometry = geometry
         user32.SetWindowPos(hwnd, HWND_TOPMOST, int(nx * scale), int(ny * scale),

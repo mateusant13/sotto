@@ -135,10 +135,11 @@ def build_namespace(pieces, shell, hold_ms=RATE_SAMPLES):
 def measure_rate(text, hold_ms=RATE_SAMPLES):
     pieces = extract(text, {'drag_origin', 'WindowDragFollower',
                             'WINDOW_DRAG_FRAME_HZ', 'WINDOW_DRAG_FRAME_S',
-                            'WINDOW_DRAG_SPIN_S',
+                            'WINDOW_DRAG_SPIN_S', 'WINDOW_DRAG_STUCK_SAMPLES',
                             '_drag_timer_period', '_DRAG_TIMER_PERIOD'})
     missing = [n for n in ('drag_origin', 'WindowDragFollower',
-                           'WINDOW_DRAG_FRAME_S') if n not in pieces]
+                           'WINDOW_DRAG_FRAME_S',
+                           'WINDOW_DRAG_STUCK_SAMPLES') if n not in pieces]
     if missing:
         return None, 'missing:%s' % ','.join(missing)
 
@@ -198,6 +199,65 @@ def measure_rate(text, hold_ms=RATE_SAMPLES):
     }, None
 
 
+def measure_stuck(text, cause, hold_ms=80):
+    """Um gesto que NAO move a janela: o seguidor tem de NOMEAR a causa.
+
+    `cause=''` e' o clique que nao muda o pixel -- o desfecho NORMAL de uma
+    pressao curta, e tem de continuar a nao publicar nada. `cause='no-anchor'` e'
+    o arrasto partido, e e' o que a queixa do dono de 2026-11-09 nao conseguia
+    distinguir daquele.
+    """
+    pieces = extract(text, {'drag_origin', 'WindowDragFollower',
+                            'WINDOW_DRAG_FRAME_HZ', 'WINDOW_DRAG_FRAME_S',
+                            'WINDOW_DRAG_SPIN_S', 'WINDOW_DRAG_STUCK_SAMPLES',
+                            '_drag_timer_period', '_DRAG_TIMER_PERIOD'})
+    missing = [n for n in ('drag_origin', 'WindowDragFollower',
+                           'WINDOW_DRAG_FRAME_S',
+                           'WINDOW_DRAG_STUCK_SAMPLES') if n not in pieces]
+    if missing:
+        return None, 'missing:%s' % ','.join(missing)
+
+    class Shell:
+        def __init__(self):
+            self.persists = 0
+            self._window_drag_refusal = cause
+
+        def window_drag_to(self, x, y, persist=False):
+            if persist:
+                self.persists += 1
+                return True
+            # O CANAL E' REESCRITO A CADA AMOSTRA, como no produto: o caminho
+            # "o pixel nao mudou" limpa o motivo, e um `False` sem causa nao
+            # pode ser contado como recusa.
+            self._window_drag_refusal = cause
+            return False
+
+    shell = Shell()
+    ns, fake, lines = build_namespace(pieces, shell, hold_ms)
+    follower = ns['WindowDragFollower'](shell)
+    fake.t0 = time.perf_counter()
+    started = follower.begin('panel', (500, 400, 100, 100), 1)
+    deadline = time.perf_counter() + (hold_ms / 1000.0) + 2.0
+    while follower.active and time.perf_counter() < deadline:
+        time.sleep(0.01)
+    if follower.active:
+        follower.stop()
+    if follower.is_alive():
+        follower.join(2.0)
+    text_lines = [str(line) for line in lines]
+    stuck = [line for line in text_lines if 'WINDOW_DRAG_STUCK' in line]
+    ends = [line for line in text_lines if 'WINDOW_DRAG_FOLLOW_END' in line]
+    return {
+        'started': bool(started),
+        'samples': follower.samples,
+        'updates': follower.updates,
+        'refused': getattr(follower, 'refused', None),
+        'cause': getattr(follower, 'refusal_cause', None),
+        'stuck': stuck,
+        'end_line': ends[0] if ends else '',
+    }, None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--json', default='')
@@ -212,13 +272,21 @@ def main():
         checks.append({'arm': name, 'ok': bool(ok), 'evidence': evidence})
         print(('  GREEN ' if ok else '  RED   ') + name.ljust(24) + ' ' + evidence)
 
-    pieces = extract(text, {'drag_origin'})
+    pieces = extract(text, {'drag_origin', 'WINDOW_DRAG_STUCK_SAMPLES'})
     if 'drag_origin' not in pieces:
         print('CANNOT-MEASURE: drag_origin ausente do fonte')
         return 2
     ns = {}
     exec(compile(pieces['drag_origin'], '<drag_origin>', 'exec'), ns)
     origin = ns['drag_origin']
+    #: O piso vem do FONTE, nao de um literal daqui: um oraculo que repete o
+    #: numero mede a copia, e o produto podia mudar o piso sem ninguem saber.
+    _floor_ns = {}
+    if 'WINDOW_DRAG_STUCK_SAMPLES' in pieces:
+        exec(compile(pieces['WINDOW_DRAG_STUCK_SAMPLES'], '<stuck>', 'exec'),
+             _floor_ns)
+    WINDOW_DRAG_STUCK_FLOOR = int(
+        _floor_ns.get('WINDOW_DRAG_STUCK_SAMPLES') or 0)
     work = {'x': 0, 'y': 0, 'width': 1920, 'height': 1080}
     size = (380, 900)
 
@@ -296,6 +364,38 @@ def main():
         check('A8 persiste-uma-vez', rate['persists'] == 1,
               'persists=%d' % rate['persists'])
 
+    # A10/A11/A12 -- O GESTO QUE NAO ANDA. A queixa do dono (2026-11-09:
+    # *"os paineis nao sao draggable em 240hz"*) nao era atribuivel porque um
+    # `updates=0` tanto e' um clique como um arrasto partido. As tres arms
+    # separam-nos: recusa POR CAUSA num gesto real publica `WINDOW_DRAG_STUCK`
+    # com o motivo; o clique parado NAO publica; e um gesto abaixo do piso de
+    # amostras tambem nao (senao todo o clique viraria um alarme).
+    st_anchor, why_st = measure_stuck(text, 'no-anchor', hold_ms=80)
+    st_click, why_click = measure_stuck(text, '', hold_ms=80)
+    st_short, why_short = measure_stuck(text, 'no-anchor', hold_ms=12)
+    if st_anchor is None or st_click is None or st_short is None:
+        check('A10 recusa-nomeada', False,
+              'CANNOT-MEASURE %s' % (why_st or why_click or why_short))
+        check('A11 clique-nao-alarma', False, 'CANNOT-MEASURE')
+        check('A12 piso-de-amostras', False, 'CANNOT-MEASURE')
+    else:
+        named = (st_anchor['refused'] or 0) > 0 and 'cause=no-anchor' in (
+            st_anchor['stuck'][0] if st_anchor['stuck'] else '')
+        check('A10 recusa-nomeada', bool(st_anchor['stuck']) and named,
+              'samples=%d updates=%d refused=%s causas=%s'
+              % (st_anchor['samples'], st_anchor['updates'],
+                 st_anchor['refused'], (st_anchor['stuck'][0][:60]
+                                        if st_anchor['stuck'] else 'NENHUMA')))
+        check('A11 clique-nao-alarma',
+              not st_click['stuck'] and (st_click['refused'] or 0) == 0,
+              'stuck=%d refused=%s end=%s'
+              % (len(st_click['stuck']), st_click['refused'],
+                 (st_click['end_line'][-40:] or '-')))
+        check('A12 piso-de-amostras',
+              not st_short['stuck'] and st_short['samples'] < WINDOW_DRAG_STUCK_FLOOR,
+              'samples=%d stuck=%d'
+              % (st_short['samples'], len(st_short['stuck'])))
+
     ok = all(c['ok'] for c in checks)
     print('VERDICT: %s (%d/%d)' % ('PASS' if ok else 'FAIL',
                                    sum(1 for c in checks if c['ok']), len(checks)))
@@ -334,8 +434,30 @@ def main():
         rc_child, out_child, _err_child = _hl.run(
             [sys.executable, os.path.abspath(__file__)] + ns_args,
             capture=True, timeout=600)
-        caught = rc_child == 1 and 'A5 sem-loop-do-windows' in out_child
-        print('NEG-ARM: %s -- rc=%d' % ('PASS' if caught else 'FAIL', rc_child))
+        caught_a5 = rc_child == 1 and 'A5 sem-loop-do-windows' in out_child
+        # SEGUNDO MUTANTE: o veredicto de arrasto partido APAGADO. Sem ele,
+        # apagar o `WINDOW_DRAG_STUCK` deixava o negativo verde -- a classe
+        # "portao que nao pode falhar" que este ficheiro ja' pagou uma vez.
+        copy2 = os.path.join(tmp_dir, 'sotto_webview_stuck.py')
+        shutil.copyfile(args.target, copy2)
+        stuck_text = io.open(copy2, 'r', encoding='utf-8', newline='').read()
+        anchor_stuck = '            if (self.samples >= WINDOW_DRAG_STUCK_SAMPLES'
+        if anchor_stuck not in stuck_text:
+            print('NEG-ARM IMPOSSIVEL: o emissor de WINDOW_DRAG_STUCK nao esta no fonte')
+            return 2
+        io.open(copy2, 'w', encoding='utf-8', newline='').write(
+            stuck_text.replace(anchor_stuck,
+                               '            if (False and self.samples >= '
+                               'WINDOW_DRAG_STUCK_SAMPLES', 1))
+        rc2, out2, _err2 = _hl.run(
+            [sys.executable, os.path.abspath(__file__), '--target', copy2],
+            capture=True, timeout=600)
+        caught_stuck = rc2 == 1 and 'A10 recusa-nomeada' in out2
+        caught = caught_a5 and caught_stuck
+        print('NEG-ARM: %s -- A5 rc=%d (%s) / A10 rc=%d (%s)'
+              % ('PASS' if caught else 'FAIL', rc_child,
+                 'caught' if caught_a5 else 'NOT-CAUGHT', rc2,
+                 'caught' if caught_stuck else 'NOT-CAUGHT'))
         return 1 if caught else 0
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
