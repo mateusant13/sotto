@@ -179,12 +179,10 @@ export class ReplayRing {
   // into pieces and rejoining them byte-wise is only valid when the segment already
   // carries its own container -- see the report, which flags it as work outside this
   // lane's files.
-  #cutFromLastKeyframe() {
-    for (let i = this.#segments.length - 1; i >= 0; i--) {
-      if (!this.#segments[i].keyframe) continue;
-      return Buffer.concat(this.#segments.slice(i).map((s) => s.bytes));
-    }
-    return null;
+  #cutFromLastKeyframe(minFrames = 0) {
+    const at = keyframeCutIndex(this.#segments, minFrames);
+    if (at < 0) return null;
+    return Buffer.concat(this.#segments.slice(at).map((s) => s.bytes));
   }
 
   // The moment the user presses the key. Cuts on an IDR and remuxes.
@@ -208,7 +206,7 @@ export class ReplayRing {
     // `this.#minutes * 60` used to be the second argument to save() here. It was a
     // duration in seconds, which is a description of a clip rather than the clip, and
     // it is gone: what is saved now is the encoded bytes of the cut itself.
-    const clip = this.#cutFromLastKeyframe();
+    const clip = this.#cutFromLastKeyframe(this.#fps);
     if (clip === null) {
       throw new RangeError(
         `instant replay refused: the ring holds ${this.#segments.length} segment(s) and ` +
@@ -350,6 +348,36 @@ export class ReplayRing {
   // Manual recording is capped by the ring: the user cannot ask for more
   // than the ring holds (SCREENSHOTS-RECORDINGS L137-138).
   maxManualMinutes() { return this.#minutes; }
+}
+
+// WHICH SEGMENT THE REHEAT STARTS ON (2026-11-10).
+//
+// THE DEFECT THIS ENDS, MEASURED TWICE. The cut walked backwards and took the FIRST
+// keyframe it met, so a second IDR near the tail collapsed the clip to whatever sat
+// after it: at 30 fps a GOP boundary 28 frames from the end produced a 28-frame clip
+// (under one second of clock), `contentSufficientToCoverClock` went false and the
+// instant replay was REFUSED. Observed at WINDOW 2026-10-11T09:07:05Z and again at
+// 2026-11-10T10:37Z, twice inside the pre-commit gate, never in six direct runs.
+//
+// THE RULE: the newest keyframe whose tail STILL covers the clock. Same product
+// contract (the cut is the shortest replay that can stand in for its clock), and a
+// keyframe that cannot cover it is stepped over instead of collapsing the clip.
+//
+// Pure on purpose: the pure decision is what the tests can drive without ffprobe.
+export function keyframeCutIndex(segments, minFrames = 0) {
+  const need = Math.max(0, Math.floor(Number(minFrames) || 0));
+  if (!Array.isArray(segments) || segments.length === 0) return -1;
+  let tail = 0;
+  let oldest = -1;
+  for (let i = segments.length - 1; i >= 0; i--) {
+    tail += Number(segments[i].frames) || 0;
+    if (!segments[i].keyframe) continue;
+    oldest = i;               // walking backwards, the last one seen is the oldest
+    if (tail >= need) return i;
+  }
+  // Nenhuma IDR cobre o relogio: a MAIS ANTIGA e' a unica resposta honesta -- o clipe
+  // mais longo que existe. Se ela tambem nao cobrir, quem recusa e' o portao de entrega.
+  return oldest;
 }
 
 // The encoded segment a push() hands over, as bytes this ring owns.

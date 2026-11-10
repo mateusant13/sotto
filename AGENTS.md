@@ -591,6 +591,23 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-10, 11:4x):** `_main\_audit-verify-all.cmd` = **344898 B**,
+  **4011 CRLF** / 0 bare LF, sha256 `47F9A9C77CFFFC31F74836A37440B09F788089169CF7A7079480989AE593F854`.
+  (Quinhentos e setenta e tres bytes e QUATRO linhas a mais do que o pin de 344325 B: o par
+  `yt-clock-static` + `red-as-expected-yt-clock-static`, nascido de um caso MEDIDO no log do dono
+  (2026-11-09 21:29:57 -> 21:36, oito minutos): o ecra ficou com `Reeling like a desperado`,
+  `YOUTUBE_TICK_MS ... rows=2 why='painted'` a repetir a MESMA linha, e **nenhuma** linha de
+  pausa/fim em toda a janela -- a foto do DOM devolvia `paused=False` enquanto `currentTime` nao
+  avancava. Sem borda de pausa nada apaga os pixels, e a legenda fica congelada para sempre
+  (o card do dono: *"Ctrl+Space NAO desaparece, legenda congelada para sempre"*). A cura e' a
+  MEDIDA e nao a bandeira: `ExternalCaptionWatcher._yt_clock_static` compara o `currentTime` entre
+  LEITURAS e, imovel por `CLOCK_STATIC_PAUSE_S = 2.0 s`, forca `yt_cdp_paused=True` e publica
+  `YOUTUBE_CLOCK_STATIC held_s=.. t=.. paused_flag=.. vid=..` uma vez por episodio -- o
+  `_yt_pause_edge` que ja' existia apaga os pixels pela mesma via da pausa declarada, e o
+  `t` ausente NAO vira pausa (ausencia de medida nunca e' afirmacao). Medido:
+  `YT-CLOCK-STATIC VERDICT: PASS -- 6/6` e `NEG-ARM: PASS -- 3/3 mutantes apanhados` (M1 o piso a
+  1e9 derruba A3, M2 a guarda de `t` ausente derruba A4, M3 a fiacao do OR derruba A6).
+  O `code-health` absorve o crescimento declarado de `app/webview/sotto_webview.py`.)
 - **PIN do ficheiro (medido 2026-11-10, 11:1x):** `_main\_audit-verify-all.cmd` = **344325 B**,
   **4007 CRLF** / 0 bare LF, sha256 `2E1D88DFED26D4B0D0F981671D6EA1C8DB055B8B5FB011D7701285A35D7F175A`.
   (Oitenta e sete bytes e ZERO linhas a mais do que o pin de 344238 B, e o acrescimo NAO e' um passo:

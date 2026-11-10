@@ -4778,6 +4778,48 @@ class ExternalCaptionWatcher(threading.Thread):
             return None
         return source
 
+    #: QUANTOS SEGUNDOS DE `currentTime` IMOVEL CONTAM COMO PAUSA (2026-11-10).
+    #: O piso e' 2 s para ficar ACIMA do intervalo de leitura (0,25-0,5 s) e
+    #: abaixo de qualquer cue: um video a andar nunca repete o `currentTime`.
+    CLOCK_STATIC_PAUSE_S = 2.0
+
+    def _yt_clock_static(self, snap, now=None):
+        """O PLAYER ESTA' PARADO PELO RELOGIO, mesmo que `paused` diga que nao?
+
+        Nasceu de um caso MEDIDO no log do dono (2026-11-09 21:29:57 -> 21:36):
+        oito minutos com a mesma linha no ecra, `paused=False` na foto e
+        `currentTime` imovel -- nenhuma borda de pausa disparou e os pixels
+        ficaram para sempre. A comparacao e' entre LEITURAS, por isso o estado
+        vive no objeto (`_yt_ct_val`/`_yt_ct_since`); a funcao continua sendo
+        pura do ponto de vista de quem a conduz.
+
+        Devolve `(parado, held_s)`. `t` ausente NAO e' pausa: ausencia de
+        medida nunca vira afirmacao.
+        """
+        try:
+            t = snap.get('t') if snap is not None else None
+        except AttributeError:
+            t = None
+        now = time.monotonic() if now is None else float(now)
+        if t is None:
+            self._yt_ct_val = None
+            self._yt_ct_since = 0.0
+            return False, 0.0
+        try:
+            t = float(t)
+        except (TypeError, ValueError):
+            self._yt_ct_val = None
+            self._yt_ct_since = 0.0
+            return False, 0.0
+        prev = getattr(self, '_yt_ct_val', None)
+        since = float(getattr(self, '_yt_ct_since', 0.0) or 0.0)
+        if prev is None or abs(t - float(prev)) > 1e-3:
+            self._yt_ct_val = t
+            self._yt_ct_since = now
+            return False, 0.0
+        held = (now - since) if since else 0.0
+        return held >= float(self.CLOCK_STATIC_PAUSE_S), held
+
     def _yt_pause_edge(self, now_paused):
         """A BORDA DE PAUSA/FIM: apaga os pixels; a de VOLTA repinta a linha.
 
@@ -4970,6 +5012,24 @@ class ExternalCaptionWatcher(threading.Thread):
                     if snap.get('paused') is not None else False
                 self.yt_cdp_ended = bool(snap.get('ended')) \
                     if snap.get('ended') is not None else False
+                # O RELOGIO PARADO E' A PAUSA QUE A BANDEIRA NAO DISSE (2026-11-10).
+                # MEDIDO no log do dono (21:29:57 -> 21:36, 8 min): o ecra ficou com
+                # "Reeling like a desperado", `YOUTUBE_TICK_MS rows=2 why='painted'`
+                # a repetir a MESMA linha, e NENHUMA linha de pausa/fim -- a foto do
+                # DOM dizia `paused=False` enquanto o `currentTime` nao avancava.
+                # Uma bandeira sozinha mente; o relogio que nao anda e' a medida.
+                _ct_static, _ct_held = self._yt_clock_static(snap)
+                if _ct_static and not self.yt_cdp_paused:
+                    if not getattr(self, '_yt_ct_static_logged', False):
+                        self._yt_ct_static_logged = True
+                        log('YOUTUBE_CLOCK_STATIC held_s=%.1f t=%.2f '
+                            'paused_flag=%s vid=%s'
+                            % (_ct_held, float(snap.get('t') or 0.0),
+                               str(snap.get('paused')),
+                               str(getattr(self, 'yt_video_id', '') or '')))
+                    self.yt_cdp_paused = True
+                elif not _ct_static:
+                    self._yt_ct_static_logged = False
                 # `paused` AUSENTE NAO E' "A ANDAR" (2026-11-07, `youtube_clock`).
                 self.yt_cdp_playing = None if snap.get('paused') is None \
                     else (not self.yt_cdp_paused and not self.yt_cdp_ended)
@@ -22543,6 +22603,22 @@ class WorkerBridge:
                              f'pid={self.child.pid} '
                              f'worker_load_s={message.get("load_s")} '
                              f'load_bg_closed_by={message.get("load_bg_closed_by")}')
+                    # ONDE OS SEGUNDOS DO ARRANQUE FORAM GASTOS (2026-11-10). MEDIDO no
+                    # log do dono (pid 52792): `BRIDGE_SPAWNED` aos 2,0 s e a primeira
+                    # linha do worker aos 46,3 s -- 44 s sem UMA linha de progresso, e o
+                    # dono: *"o arranque demora DEMAIS a responder a keybindings/
+                    # qualquer coisa"*. O worker MEDE as fases (`boot_prof_s`,
+                    # `load_phases_s`) e manda-as no payload; o `BRIDGE_LOAD_MS` acima
+                    # publicava so' a soma, logo atribuir o custo exigia uma corrida a
+                    # parte. A mesma linha passa a levar o perfil.
+                    try:
+                        self.log('WORKER_BOOT_PROF pid=%s boot_prof_s=%s '
+                                 'load_phases_s=%s'
+                                 % (self.child.pid,
+                                    json.dumps(message.get('boot_prof_s') or {}),
+                                    json.dumps(message.get('load_phases_s') or {})))
+                    except Exception as exc:  # noqa: BLE001 -- o log nunca derruba a ponte
+                        self.log('WORKER_BOOT_PROF_FAILED error=%r' % (exc,))
             if message.get('device'):
                 # Remember WHICH endpoint this child is on. `device` names the
                 # first candidate (with the full `candidates` list); a rotation

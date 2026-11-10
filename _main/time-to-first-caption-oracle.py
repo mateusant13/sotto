@@ -106,6 +106,11 @@ _SPAWN = re.compile(r"BRIDGE_SPAWNED pid=(\d+)")
 _PROVIDERS = re.compile(r"WORKER_PROVIDERS selected=")
 _LOAD = re.compile(r"BRIDGE_LOAD_MS ms=(\d+)")
 _CAPTURE = re.compile(r'STATUS_APPLIED text="capture-started"')
+#: O PERFIL DO ARRANQUE DO WORKER (2026-11-10). A soma (`BRIDGE_LOAD_MS`) nao diz
+#: ONDE os segundos foram: medido no log do dono, 44 s entre `BRIDGE_SPAWNED` e a
+#: primeira linha do worker, e a atribuicao exigia uma corrida a parte. O worker
+#: ja' media as fases e a shell passou a publica-las nesta linha.
+_BOOT_PROF = re.compile(r"WORKER_BOOT_PROF\b")
 _METER = re.compile(r'BRIDGE_METER\b.*?"blocks":([\d.]+)')
 _YT = re.compile(r"YT_FRAME\b")
 _CAP_IN = re.compile(r"CAPTION_IN\b")
@@ -134,6 +139,7 @@ STAGES = (
     ("spawn", "BRIDGE_SPAWNED"),
     ("providers", "WORKER_PROVIDERS"),
     ("load", "BRIDGE_LOAD_MS"),
+    ("boot_prof", "WORKER_BOOT_PROF (onde o tempo do arranque foi gasto)"),
     ("capture", "capture-started"),
     ("block", "BRIDGE_METER"),
     ("caption_in", "CAPTION_IN"),
@@ -216,6 +222,8 @@ def measure(lines, pid=None):
             marks["load"] = at
         if "capture" not in marks and _CAPTURE.search(line):
             marks["capture"] = at
+        if "boot_prof" not in marks and _BOOT_PROF.search(line):
+            marks["boot_prof"] = at
         if "block" not in marks:
             m = _METER.search(line)
             if m:
@@ -457,6 +465,19 @@ def neg_arm():
     ]
     cases.append(("responsiveness-marks", responsive, 0, "PASS",
                   ("hotkey", "overlay", "panel_dom")))
+
+    # O PERFIL DO ARRANQUE CHEGA AO LOG (2026-11-10). O worker mede as fases
+    # (`boot_prof_s`/`load_phases_s`) desde 2026-10-21 e mandava-as no payload; o
+    # comentario do `BRIDGE_LOAD_MS` dizia que o payload nao ia para o log, e uma
+    # afirmacao sem linha no log do dono nao se mede. A arm exige a linha.
+    prof = [
+        "%s sotto: SHELL_STARTUP_STAGE pid=4242 stage=pre-lock" % _t(0),
+        "%s sotto: BRIDGE_SPAWNED pid=7" % _t(1978),
+        '%s sotto: BRIDGE_LOAD_MS ms=46311 pid=7 worker_load_s=32.1 load_bg_closed_by=deadline' % _t(46311),
+        '%s sotto: WORKER_BOOT_PROF pid=7 boot_prof_s={"torch": 12.3} load_phases_s={"encoder": 19.0}' % _t(46312),
+        '%s sotto: CAPTION_PAINT instant=false hwnd=9 text="audience"' % _t(1200),
+    ]
+    cases.append(("boot-prof-logged", prof, 0, "PASS", ("load", "boot_prof")))
 
     cases.append(("no-start-stamp", ['%s sotto: CAPTION_PAINT instant=false hwnd=9 text="x"' % _t(0)],
                   2, "SEM DADOS", ()))

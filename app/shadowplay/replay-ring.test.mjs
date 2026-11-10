@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { ReplayRing, idrAligned, backToNearestIdr, DEFAULT_MINUTES } from "./replay-ring.js";
+import { ReplayRing, idrAligned, backToNearestIdr, DEFAULT_MINUTES,
+         keyframeCutIndex } from "./replay-ring.js";
 import { SavePath, ClipWriter } from "./index.js";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -224,6 +225,26 @@ await t("less than one GOP of history refuses rather than returning a non-IDR", 
   // 40 frames cannot contain an IDR when the GOP is 250. Returning 497 would
   // have produced a clip that does not start on a keyframe, silently.
   assert.throws(() => backToNearestIdr(497, r.gopSize, 40), /fewer than one GOP/);
+});
+
+await t("a keyframe near the tail does not collapse the clip under one second", async () => {
+  // THE MEASURED DEFECT, AS A FIXTURE. At 30 fps a GOP boundary 28 frames from the end
+  // produced a 28-frame clip, `contentSufficientToCoverClock` went false and the instant
+  // replay was REFUSED -- seen at WINDOW 2026-10-11T09:07:05Z and again 2026-11-10T10:37Z,
+  // both inside the pre-commit gate, never in six direct runs.
+  const segs = [
+    { frames: 30, keyframe: true, bytes: Buffer.from([1]) },
+    { frames: 200, keyframe: false, bytes: Buffer.from([2]) },
+    { frames: 28, keyframe: true, bytes: Buffer.from([3]) },
+  ];
+  // One second of clock at 30 fps: the tail IDR cannot cover it, so the cut steps BACK.
+  assert.equal(keyframeCutIndex(segs, 30), 0,
+    "the newest IDR covers only 28 frames of the 30 the clock needs, so the cut must start earlier");
+  // The product intent survives: when the tail CAN cover the clock, it is still used.
+  assert.equal(keyframeCutIndex(segs, 1), 2, "a keyframe that covers the clock is still the cut");
+  // No IDR at all is still "no lawful cut", and an empty ring never pretends otherwise.
+  assert.equal(keyframeCutIndex([{ frames: 5 }, { frames: 5 }], 1), -1);
+  assert.equal(keyframeCutIndex([], 1), -1);
 });
 
 console.log(`RESULT ${passed} passed, ${failed} failed`);

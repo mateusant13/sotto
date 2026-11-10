@@ -682,6 +682,10 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-pause-payload !STEP_RC!
   call :step red-as-expected-panel-pause-payload 1 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
   call :expectred red-as-expected-panel-pause-payload !STEP_RC! "%OUT%\panel-pause-payload-neg.log" "NEG-ARM: PASS"
+  call :step yt-clock-static 0 "_main\yt-clock-static-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_cdp_source.py" "%OUT%\yt-clock-static.log" python _main\yt-clock-static-oracle.py
+  call :record yt-clock-static !STEP_RC!
+  call :step red-as-expected-yt-clock-static 1 "_main\yt-clock-static-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_cdp_source.py" "%OUT%\yt-clock-static-neg.log" python _main\yt-clock-static-oracle.py --neg-arm
+  call :expectred red-as-expected-yt-clock-static !STEP_RC! "%OUT%\yt-clock-static-neg.log" "NEG-ARM: PASS"
   REM O DISCO NUNCA CORRE NA THREAD DA JANELA (2026-11-09). Medido: o autostart do dono.
   REM fechou com HANG rc=4 as 2026-11-08 18:57 e o dump de `_startup-stacks.log` mostrou a
   REM thread da UI presa em `os.makedirs <- batch_queue.py <- load_shedding.py <-
