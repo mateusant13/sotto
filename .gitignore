@@ -359,3 +359,6 @@ history-verify/
 # `app/panel/history-store.js` (o probe a regenera em cada corrida) e ficou 492 linhas de
 # codigo duplicado no indice -- o `git add -A` de um commit anterior a varreu para dentro.
 _main/_historico-vs-redux-control-store.js
+
+# estado de runtime do Steady Watcher (escrito no cwd em que ele corre, 33 KB de snapshot)
+.steady-watcher.json

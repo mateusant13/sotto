@@ -229,8 +229,18 @@ schtasks /run /tn "\\SottoWarmEngine"        # arranca sem consola e sem janela 
 python app/webview/warm_engine.py --stop; python I:/!manager/tools/performance-gate.py release --id <id>
 ```
 
-O `attach` com `live=false` (`mode=warm-idle`) NAO abre dispositivo de audio, logo esta medicao nao
-toca no audio do dono; ela custa CPU e commit, e so' isso que o lease regula.
+O `attach` com `live=false` (`mode=warm-idle`) NAO abre dispositivo de audio: o codigo do
+`AttachedSession` so' abre o tap dentro de `if self.live:` (`app/webview/warm_engine.py:579`), logo esta
+medicao nao toca no audio do dono; ela custa CPU e commit, e so' isso que o lease regula.
+
+**Uma SEGUNDA testemunha, que nao e' o gate** (`.steady-watcher.json`, escrito as 16:15 no cwd desta
+arvore): `mood: "emergency"`, `heavy_job_cap_pct: 4.4`, e o aviso dele, verbatim: *"memory serious:
+15.6G free, commit 88% -- trimming workers, not killing -- held by python.exe (pid 2464) 4.91G
+[vodrip], python.exe (pid 39676) 3.46G [gravador], bun.exe (pid 18560) 3.23G, pythonw.exe (pid 65816)
+2.38G [gravador], bun.exe (pid 24560) 2.16G [codeintel-worktrees]"* e *"Do not retry-loop."* Os
+seguradores do commit sao **outros projetos**; nenhum deles e' o Sotto. Um pedido de 1,9 GB agora
+empilha em cima deles -- e e' por isso que a resposta certa hoje e' a recusa registada, nao uma nova
+tentativa.
 
 ## 5. O que NAO esta' verificado
 
