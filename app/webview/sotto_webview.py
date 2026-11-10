@@ -10808,11 +10808,22 @@ BOOT_PROFILE_JS = r"""
     const marks = [];
     const mark = (n) => { try { marks.push([n, Math.round(performance.now())]); } catch (e) {} };
     const long = [];
+    let longtaskSupported = false;
     try {
       new PerformanceObserver((list) => {
         for (const e of list.getEntries()) { long.push(Math.round(e.duration)); }
       }).observe({ entryTypes: ['longtask'] });
+      longtaskSupported = true;
     } catch (e) {}
+    // OS MARCOS DA PAGINA (2026-11-10). Medido no log do dono: 32
+    // `PANEL_BOOT_PROFILE`, e em TODOS `longtasks: []` E `slowest: []` -- os dois
+    // campos vazios ao mesmo tempo nao sao "nada foi lento", sao um contexto onde
+    // `PerformanceObserver('longtask')` e a Resource Timing nao entregam nada.
+    // Com `marks` a ir de 29 ms a 472 ms entre `early` e `dom` e nenhum campo a
+    // dizer ONDE, o numero do arranque existia e o bloco nao. Por isso o marco
+    // passa a ser publicado pela propria pagina (`window.__sottoBootMark`), nos
+    // pontos que ela conhece: o bloco fica nomeado entre dois marcos.
+    window.__sottoBootMark = mark;
     document.addEventListener('DOMContentLoaded', () => mark('dom'), { once: true });
     window.__sottoBootSent = {};
     const send = (phase) => {
@@ -10833,6 +10844,8 @@ BOOT_PROFILE_JS = r"""
         const box = {
           phase: phase,
           marks: marks, longtasks: long.slice(0, 15),
+          longtask_supported: longtaskSupported,
+          resources: (performance.getEntriesByType('resource') || []).length,
           slowest: res,
           firstPaint: Math.round(fp.startTime || 0),
           domInteractive: Math.round(nav.domInteractive || 0),

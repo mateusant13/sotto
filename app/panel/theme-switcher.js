@@ -965,6 +965,12 @@
       syncDropdown();
       paintAll(root.document);
       paintChevrons();
+      /* O TEMA E' O PASSO MAIS CARO DO ARRANQUE E O UNICO SEM NUMERO:
+       * `paintAll` percorre o documento inteiro. O marco diz quanto custou
+       * quando o arranque o aplica (ver `bootMark` em `panel.js`). */
+      if (typeof window.__sottoBootMark === 'function') {
+        window.__sottoBootMark('theme:' + theme.name);
+      }
       return theme.name;
     },
 

@@ -1,5 +1,17 @@
 'use strict';
 
+/* O MARCO DO ARRANQUE, publicado pela PAGINA (2026-11-10). O medidor da shell
+ * (`BOOT_PROFILE_JS`) expoe `window.__sottoBootMark`; declarado com `typeof`, um
+ * harness sem medidor nao ganha um erro por causa de um marco.
+ * PORQUE: no log do dono os 32 `PANEL_BOOT_PROFILE` trazem `longtasks: []` e
+ * `slowest: []` AO MESMO TEMPO -- os dois campos nao entregam nada neste
+ * contexto --, e `marks` foi de 29 ms (`early`) a 472 ms (`dom`) sem nomear o
+ * bloco do meio. Um marco por etapa nomeia-o entre dois numeros. */
+const bootMark = (typeof window.__sottoBootMark === 'function')
+  ? window.__sottoBootMark
+  : function () {};
+bootMark('panel-js');
+
 /**
  * Sotto — the panel renderer (v3: the live box is the product).
  *
@@ -1037,6 +1049,10 @@ if (!bridge) {
     if (noBridgeBody) noBridgeBody.textContent = 'window.sotto undefined · preload did not run';
   }
   setHistoryNote('Transcript unavailable: no bridge');
+  /* O OUTRO DESFECHO DO ARRANQUE, nomeado: sem ponte a pagina NAO liga nada,
+   * e sem este marco um arranque que nao fiou nada mede o tempo todo em
+   * `panel-js` e parece o mesmo que um arranque lento. */
+  bootMark('no-bridge');
 } else {
   wireHistory();
   wireCaptions();
@@ -1059,7 +1075,14 @@ if (!bridge) {
   wireHistorySearch();
   // The status is a repair control: one click revives the whole pipeline.
   wireRevive();
+  bootMark('wired');
   announceReady();
+  // O PRIMEIRO QUADRO DEPOIS DA FIACAO: o que o dono ve existir e' este, nao o
+  // `announceReady` (que so' diz que a ponte respondeu).
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(function () { bootMark('paint1'); });
+    setTimeout(function () { bootMark('paint2'); }, 0);
+  }
   wireLevel();
 }
 
