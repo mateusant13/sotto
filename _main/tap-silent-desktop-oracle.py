@@ -34,6 +34,8 @@ DEFAULT_WORKER = os.path.join(HERE, '..', 'worker', 'sotto_worker.py')
 FLOOR = 0.002
 WINDOW = 6.0
 CAP = 60.0
+#: Acima disto a "janela plana" ja' e' a espera longa que o defeito mediu.
+FLAT_MAX_S = 8.0
 
 
 def load_module(path):
@@ -51,15 +53,22 @@ def arms(mod):
     playing = {'a': 0.0000, 'b': 0.4400, 'c': 0.001}
     out = []
 
-    # 1-4: a maquina calada estende a MESMA tap, dobrando ate' ao tecto.
-    out.append(('1 maquina calada, janela plana -> espera 12 s',
-                hold(0.0, FLOOR, silent, WINDOW, 0, CAP), 12.0))
-    out.append(('2 segunda janela calada -> 24 s',
-                hold(0.0, FLOOR, silent, WINDOW, 1, CAP), 24.0))
-    out.append(('3 terceira -> 48 s',
-                hold(0.0, FLOOR, silent, WINDOW, 2, CAP), 48.0))
-    out.append(('4 tecto: a quarta nao passa de 60 s',
-                hold(0.0, FLOOR, silent, WINDOW, 3, CAP), 60.0))
+    # 1-4: a maquina calada estende a MESMA tap -- cada extensao e' a JANELA
+    # PLANA que o produto declara (2026-11-11: 4 s, `wasapi_loopback.
+    # FLAT_EVIDENCE_S`). O numero NAO se copia para aqui: um oraculo que carimba
+    # 12/24/48/60 a mao fica vermelho numa cura que esta' certa, e foi o que
+    # aconteceu quando a dobragem 6->12->24->48 deu lugar ao tecto da evidencia.
+    # A propriedade que os quatro arms julgam e' a que importa: o MESMO tap
+    # estende (nunca None), sempre pelo numero declarado, e esse numero e' curto.
+    flat = flat_evidence_s(mod)
+    out.append(('1 maquina calada, janela plana -> espera a janela plana',
+                hold(0.0, FLOOR, silent, WINDOW, 0, CAP), flat))
+    out.append(('2 segunda janela calada -> a MESMA janela plana',
+                hold(0.0, FLOOR, silent, WINDOW, 1, CAP), flat))
+    out.append(('3 terceira -> a MESMA janela plana',
+                hold(0.0, FLOOR, silent, WINDOW, 2, CAP), flat))
+    out.append(('4 a janela plana e curta: nunca uma espera longa',
+                hold(0.0, FLOOR, silent, WINDOW, 3, CAP), flat))
 
     # 5: o audio mudou de sitio -- a rotacao E' o movimento certo.
     out.append(('5 outro endpoint a tocar -> rotaciona (None)',
@@ -76,16 +85,35 @@ def arms(mod):
     # 22:24:32, `device-rotated (flat)` as :41, :50, 22:25:00, :07, :14, :30, :46,
     # 22:26:02, :17, :34). Ele ouviu isso como o audio a sumir. Com o medidor VIVO
     # calado, a janela espera -- e a tap acima do piso ja' nao decide nada.
-    out.append(('7 tap acima do piso mas maquina calada AGORA -> espera 12 s',
-                hold(0.050, FLOOR, silent, WINDOW, 0, CAP), 12.0))
+    out.append(('7 tap acima do piso mas maquina calada AGORA -> espera a janela plana',
+                hold(0.050, FLOOR, silent, WINDOW, 0, CAP), flat))
     # 7-bis: o numero que ele viu. Pico de janela 0.1677, medidor vivo a zero.
-    out.append(('7b pico de janela 0.1677 com a maquina calada -> espera 12 s',
-                hold(0.1677, FLOOR, silent, WINDOW, 0, CAP), 12.0))
+    out.append(('7b pico de janela 0.1677 com a maquina calada -> espera a janela plana',
+                hold(0.1677, FLOOR, silent, WINDOW, 0, CAP), flat))
 
     # 8: lixo no payload do medidor nao pode explodir nem inventar espera.
     out.append(('8 valores nao numericos -> rotaciona (None)',
                 hold(0.0, FLOOR, {'a': 'x'}, WINDOW, 0, CAP), None))
+    # 9: a janela plana e' CURTA POR DESENHO. O defeito medido foi uma espera de
+    # 43,6 s (6 -> 12 -> 24 -> 48) num rung que entregou zero; um numero acima
+    # de FLAT_MAX_S volta a ser essa espera, ainda que a funcao o devolva certo.
+    out.append(('9 a janela plana nao passa de %.1f s' % FLAT_MAX_S,
+                flat if flat <= FLAT_MAX_S else None, flat))
     return out
+
+
+def flat_evidence_s(mod):
+    """A janela plana LIDA do produto, pelo proprio resolvedor dele.
+
+    `_flat_evidence_s` e' o unico sitio que sabe o numero (importa
+    `wasapi_loopback.FLAT_EVIDENCE_S` e cai para `inf` sem o tap). Perguntar-lhe
+    e' diferente de copiar o literal: a cura pode mudar 4 para 3 ou 5 e a
+    propriedade continua a ser julgada. Sem o resolvedor NAO ha' arm: levanta.
+    """
+    fn = getattr(mod, '_flat_evidence_s', None)
+    if fn is None:
+        raise SystemExit('o product.nao tem _flat_evidence_s -- oraculo velho')
+    return float(fn())
 
 
 def emit_names_the_wait(worker_path):

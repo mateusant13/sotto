@@ -284,6 +284,14 @@ def arms(shell_mod, worker_mod, wasapi_mod):
     # -- 8: A ARM QUE MAIS IMPORTA -- a maquina calada NAO e' um candidato morto
     quiet_plan = worker_mod.dead_first_block_plan(
         [dict(dead), dict(live)], 0, dead, {'ep-dead': 0.0, 'ep-live': 0.0}, FLOOR)
+    # A JANELA PLANA VEM DO PRODUTO, NUNCA UM LITERAL DAQUI (2026-11-11). O
+    # produto passou a responder com um numero declarado (`wasapi_loopback.
+    # FLAT_EVIDENCE_S`, 4 s) em vez de dobrar 6 -> 12 -> 24 -> 48, e um oraculo
+    # que carimba 12/24 a mao fica vermelho numa cura que esta' certa -- a
+    # classe que ja' custou tres vezes nesta casa. O que os arms julgam continua
+    # a ser a propriedade: a maquina calada ESPERA a MESMA tap, por um numero
+    # curto, em vez de rotacionar para um candidato morto.
+    flat_s = float(worker_mod._flat_evidence_s())
     hold_0 = worker_mod.silent_desktop_hold(0.0, FLOOR, {'ep-dead': 0.0, 'ep-live': 0.0},
                                             WINDOW_S, 0, HOLD_CAP_S)
     hold_1 = worker_mod.silent_desktop_hold(0.0, FLOOR, {'ep-dead': 0.0}, WINDOW_S, 1, HOLD_CAP_S)
@@ -291,10 +299,11 @@ def arms(shell_mod, worker_mod, wasapi_mod):
         [dict(dead), dict(live)], 0, dead, {}, FLOOR)
     check('8-desktop-quiet-is-not-a-dead-endpoint',
           quiet_plan['action'] == 'wait' and str(quiet_plan['why']) == 'desktop-quiet'
-          and hold_0 == 12.0 and hold_1 == 24.0
+          and hold_0 == flat_s and hold_1 == flat_s
           and unreadable['action'] == 'dead',
           {'plan': quiet_plan['action'], 'why': quiet_plan['why'],
            'hold_window_0_s': hold_0, 'hold_window_1_s': hold_1,
+           'flat_window_s': flat_s,
            'unreadable_meter': unreadable['action']})
 
     # -- 9: com som NOUTRO endpoint a troca e' feita AQUI (sem morrer) --------
@@ -331,7 +340,7 @@ def arms(shell_mod, worker_mod, wasapi_mod):
     rung_without_id = worker_mod.silent_desktop_hold(
         0.0, FLOOR, {'ep-other': 0.44}, WINDOW_S, 0, HOLD_CAP_S, own_peak=None)
     check('11-the-endpoint-that-renders-is-not-abandoned',
-          own_loud == WINDOW_S * 2 and moved_away is None and no_reading == WINDOW_S * 2
+          own_loud == flat_s and moved_away is None and no_reading == flat_s
           and rung_without_id is None,
           {'own_peak_loud_hold_s': own_loud, 'signal_elsewhere': moved_away,
            'quiet_hold_s': no_reading, 'rung_without_endpoint_id': rung_without_id})
