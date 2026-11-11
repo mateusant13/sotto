@@ -19,9 +19,16 @@ composto com uma chave que e' tudo o que move um pixel dele.
 AS ARMS, todas medidas nesta corrida:
 
   A1 IGUALDADE DE PIXEL. >= 12 bases x alfa 0..255 (mais vetores de alfa
-     misturados) comparadas BYTE A BYTE contra a implementacao ANTERIOR, que este
-     oraculo carrega de `git show 058de89^:app/webview/overlay_paint.py` (o ultimo
-     commit sem o cache -- ver `HEAD_PIN`) para um modulo temporario. As bases
+     misturados) comparadas BYTE A BYTE entre o HIT e o MISS do MESMO modulo --
+     o hit e' o quadro que ja' esta' no cache e o miss e' o mesmo quadro com o
+     cache efetivamente desligado (`_PAINT_CACHE_MAX = 0`, cujo `put` evicta a
+     entrada no mesmo instante). Ate' 2026-11-11 a referencia era o codigo de
+     `git show 058de89^`, e isso deixou de ser um invariante quando a PINTURA
+     mudou por outra razao (`a90b592`: a placa entra 1 px e o anel exterior e'
+     escrito a zero): a arm acusava a diferenca de DESENHO como defeito de cache.
+     O contrato do cache e' "o hit devolve os MESMOS bytes do miss", e e' isso
+     que ela mede agora -- a contagem de hits entra no veredito (>= 12), porque
+     uma comparacao em que nada veio do cache nao prova nada. As bases
      cobrem os dois temas, as duas escalas, uma linha,
      duas linhas, o deslocamento de roll-up, a linha anterior, a placa ligada e
      desligada, a caixa estreita (borda direita) e a linha longa que quebra.
@@ -223,44 +230,66 @@ def _render(mod, base, k=None):
 
 
 # ── A1: igualdade de pixel ───────────────────────────────────────────────────
-def _arm_a1(new_mod, head_mod, bases, full_count, quiet=False):
-    """Compara BYTE A BYTE contra a implementacao anterior."""
+def _arm_a1(new_mod, bases, full_count, quiet=False):
+    """Compara BYTE A BYTE o HIT do cache contra o MISS do MESMO modulo."""
     bases = list(bases)
     full = set(range(min(full_count, len(bases))))
     compared = 0
+    hits_seen = 0
     red = []
+    max_seen = getattr(new_mod, '_PAINT_CACHE_MAX', 8)
+
+    def _stats():
+        # O NOME TEM UNDERSCORE: a primeira versao chamava
+        # `paint_cache_stats()`, o `except` comia o `AttributeError` e a
+        # contagem de hits ficava ZERO para sempre -- a arm publicava RED sem
+        # uma comparacao diferente. Um leitor de contador que engole a ausencia
+        # do contador e' o mesmo defeito que a casa ja' pagou quatro vezes.
+        return new_mod._paint_cache_stats()
+
     for index, base in enumerate(bases):
         ks = range(0, 256) if index in full else range(0, 256, STRIDE)
         if 255 not in ks:
             ks = list(ks) + [255]
         for k in ks:
-            want = _render(head_mod, base, k)
-            got = _render(new_mod, base, k)
+            # ALFA PARCIAL NAO E' UM FRACASSO DO CACHE: `_paint_key` devolve
+            # `None` para alfa < 255 e o quadro nunca entra no cache (o A2b o
+            # conta em `bypass`). So' o quadro de alfa total tem um hit para
+            # comparar, e e' dele que sai a contagem que torna a arm nao-vazia.
+            if k != 255:
+                continue
+            # O MISS: com o tecto a zero o `put` evicta a entrada no mesmo
+            # instante, logo a segunda leitura volta a pintar.
+            new_mod._PAINT_CACHE_MAX = 0
+            try:
+                want = _render(new_mod, base, k)
+            finally:
+                new_mod._PAINT_CACHE_MAX = max_seen
+            _render(new_mod, base, k)          # popula a entrada
+            before = _stats().get('hits', 0)
+            got = _render(new_mod, base, k)    # este tem de vir do cache
+            if _stats().get('hits', 0) > before:
+                hits_seen += 1
+            else:
+                red.append('%s k=%d sem hit do cache' % (base['label'], k))
+                break
             compared += 1
             if want != got:
-                red.append('%s k=%d head=%r novo=%r' % (base['label'], k,
-                                                        want, got))
+                red.append('%s k=%d miss=%r hit=%r' % (base['label'], k,
+                                                       want, got))
                 break
-        for vec in MIXED_ALPHAS:
-            cur, _p, _w, _h, _s = new_mod._layout(
-                base['text'], base['prev'], base['scale'], base['work'],
-                base['theme'], rows=base['rows'])
-            for k in (0, 128, 255):
-                alphas = [(k if i % 2 == 0 else vec[i % 3]) for i in range(len(cur))]
-                want = _digest(_paint(head_mod, base, alphas), head_mod, base)
-                got = _digest(_paint(new_mod, base, alphas), new_mod, base)
-                compared += 1
-                if want != got:
-                    red.append('%s misto=%r head=%r novo=%r'
-                               % (base['label'], alphas, want, got))
-                    break
+        # OS VETORES DE ALFA MISTURADO NAO ENTRAM AQUI, e a razao e' de
+        # desenho: um alfa parcial devolve `key=None` (`_paint_key`) e o quadro
+        # NUNCA passa pelo cache -- compara-lo com o hit seria comparar o miss
+        # consigo mesmo. O caminho do alfa parcial continua coberto pelo A2b
+        # (`bypass`) e pelo `caption-overlay-theme`.
         if not quiet:
             print('  A1 %-22s alfas=%s %s'
                   % (base['label'],
                      ('0..255' if index in full else 'passo %d' % STRIDE),
                      'RED' if red and red[-1].startswith(base['label']) else 'ok'),
                   flush=True)
-    return not red, compared, red[:4]
+    return (not red) and hits_seen >= 12, compared, red[:4]
 
 
 def _digest(bmp, mod, base):
@@ -534,11 +563,11 @@ def main(argv=None) -> int:
         return 1 if _neg_arm(head_mod, bases) else 0
 
     arms = []
-    ok, compared, red = _arm_a1(op, head_mod, bases, FULL_SWEEP_BASES)
-    print('A1 %s -- %d comparacoes byte a byte contra a referencia %s%s'
-          % ('PASS' if ok else 'RED', compared, HEAD_PIN,
+    ok, compared, red = _arm_a1(op, bases, FULL_SWEEP_BASES)
+    print('A1 %s -- %d comparacoes byte a byte HIT vs MISS do mesmo modulo%s'
+          % ('PASS' if ok else 'RED', compared,
              '' if ok else ': ' + ' | '.join(red)), flush=True)
-    arms.append(('A1 igualdade de pixel vs %s' % HEAD_PIN, ok))
+    arms.append(('A1 igualdade de pixel hit==miss', ok))
 
     ok, facts, cost = _arm_a2(op, head_mod)
     print('A2 %s -- %s' % ('PASS' if ok else 'RED', facts), flush=True)

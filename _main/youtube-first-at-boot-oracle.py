@@ -433,17 +433,34 @@ def _arm_boot_order(shell_mod, port):
     source = None
     try:
         shell_mod.SottoShell.start_caption_pipeline(sh, "pre-webview")
+        # O ANEXO CDP NAO BLOQUEIA MAIS O ARRANQUE (2026-11-09): os tres
+        # `boot_attach` de ~0,43 s eram 1,33 s ANTES do primeiro spawn do
+        # worker, e o dono chamou a isso *"when i open sotto, it takes WAY TOO
+        # MUCH to answer my keybindings or ANYTHING AT ALL."* O passo `cdp`
+        # passa a DESPACHAR o anexo num fio (`sotto-cdp-boot`), logo
+        # `source_at_watcher` e' FALSO por desenho. O invariante que fica e' o
+        # que o arranque promete: o passo e' DESPACHADO antes do watcher, o
+        # watcher nao espera por ele, e a fonte EXISTE quando o fio termina --
+        # e' ela que o `_yt_cdp_ensure` adota no primeiro tick, sem uma segunda
+        # thread sobre a mesma aba (o `yt-source-singleton` julga essa metade).
+        _t0 = time.monotonic()
+        while (time.monotonic() - _t0) < 5.0:
+            if getattr(sh, "_yt_cdp_source", None):
+                break
+            time.sleep(0.02)
         source = getattr(sh, "_yt_cdp_source", None)
+        attached_ms = int((time.monotonic() - _t0) * 1000)
         fails = [ln for ln in lines if "CAPTION_PIPELINE_STEP_FAILED step=worker" in ln]
         order_log = [ln for ln in lines if "CAPTION_PIPELINE_ORDER" in ln]
         ok = (events == ["cdp", "watcher", "worker"]
-              and bool(sh.source_at_watcher)
+              and not sh.source_at_watcher
               and bool(fails)
               and bool(order_log)
               and "steps=cdp,watcher,worker" in order_log[0]
               and bool(source is not None and source is not False))
-        return ok, ("events=%s source_at_watcher=%s worker_fail_logged=%s %r"
-                    % (events, sh.source_at_watcher, bool(fails),
+        return ok, ("events=%s source_at_watcher=%s attached_ms=%d "
+                    "worker_fail_logged=%s %r"
+                    % (events, sh.source_at_watcher, attached_ms, bool(fails),
                        (order_log or ["-"])[0][:80]))
     finally:
         shell_mod.log = old_log

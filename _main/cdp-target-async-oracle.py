@@ -246,17 +246,26 @@ def run_arms(cdp, shell_mod):
         watcher._yt_cdp_source = src2
         watcher.yt_video_id = A_VID
         watcher.shell = SimpleNamespace()
+        # O REBIND E' DE DUAS LEITURAS DESDE 2026-11-09 (a oscilacao de duas abas
+        # apagava a legenda), e a arm testava UMA: a primeira chamada so' ARMA o
+        # candidato (`YOUTUBE_TARGET_REBIND_ARMED`) e nao troca nada. A janela de
+        # confirmacao e' encurtada aqui para zero para a arm nao pagar o prazo
+        # real; a SEGUNDA chamada e' que confirma.
+        watcher.YT_REBIND_CONFIRM_S = 0.0
+        watcher._yt_identify(1234, object(), object())
+        armed = [m for m in shell_logs
+                 if m.startswith('YOUTUBE_TARGET_REBIND_ARMED')]
         watcher._yt_identify(1234, object(), object())
         rebound = [m for m in shell_logs
                    if m.startswith('YOUTUBE_TARGET_REBOUND')]
         line = rebound[-1] if rebound else ''
         arm('A2-REBIND',
-            before == A_VID and moved and bool(rebound)
+            before == A_VID and moved and bool(armed) and bool(rebound)
             and ('was=' + A_VID) in line and ('now=' + B_VID) in line
             and 'why=aba' in line and watcher.yt_video_id == B_VID,
-            'publicado=%r->%r yt_video_id=%r %s'
-            % (before, src2.target_video_id(), getattr(watcher, 'yt_video_id', None),
-               line[:78] or '-'))
+            'publicado=%r->%r armed=%d yt_video_id=%r %s'
+            % (before, src2.target_video_id(), len(armed),
+               getattr(watcher, 'yt_video_id', None), line[:78] or '-'))
     finally:
         cdp.list_targets = saved_list
         if real_log is not None:
