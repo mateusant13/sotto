@@ -145,3 +145,26 @@ prefere uma `paused-loaded` a uma a tocar; (ii) a troca de video NAO baixa o don
 linha (a transicao tem de ser escrita, e o ASR nao pinta numa superficie que o player acabou de
 esvaziar); (iii) o `CAPTION_IN` do ASR tem de carregar `tap_ms`, senao a shell nao tem como recusar.
 
+## 8. A ESCADA DE DISPOSITIVO, RUNG POR RUNG: quem decide e' 6 s, quem ESPERA e' a guarda
+
+Tabela do mesmo arranque (pid 49180), lida do log da shell:
+
+| quando | linha | delta |
+|---|---|---|
+| 17:34:42.832 | `LADDER_TRY attempt=1/11 device='...VoiceMeeter Input...' ms=16 result=opened` | -- |
+| 17:34:49.620 | `STATUS tap-silent-desktop` | +6,8 s |
+| 17:35:26.461 | `STATUS device-rotated (flat)` | **+43,6 s do open** |
+| 17:35:27.496 | `LADDER_TRY attempt=2/11 device='...CABLE Input...' ms=46 result=opened` | +1,0 s |
+| 17:35:34.282 | `STATUS tap-own-endpoint-loud` | +6,8 s |
+| 17:36:03.942 | `STATUS Receiving captions` | +40,1 s do attempt 1 |
+| 17:36:30.732 | `CAPTURE_SIGNAL_BACK gap_s=63 blocks=1072 captions=1` | -- |
+
+O numero que importa: a JANELA que decide a rotacao e' **6,0 s** (o proprio `NO_AUDIO_CLEARED
+evidence=... window_s=6.0`), mas a rotacao so' veio aos **43,6 s**. Os ~37 s do meio sao a guarda
+`silent_desktop_hold` (cura de 2026-11-04, que ESTENDE a mesma tap 6 -> 12 -> 24 -> 48 -> 60 s
+enquanto ninguem toca em endpoint nenhum) a segurar um rung que ja' tinha dado zero.
+
+E o medidor NAO estava cego -- a hipotese foi testada e caiu: 1441 `BRIDGE_METER` na sessao, 740 com
+`peak > 0` (0,3244 / 0,1924 / 0,5782 / 0,1088 / 0,652 / 0,4737 nas ultimas). Durante a janela plana o
+`peak=0.0` era VERDADE. A cura certa e' a guarda que espera, nao o instrumento que mede.
+
