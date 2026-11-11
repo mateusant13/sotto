@@ -411,13 +411,13 @@
       "max_func_name": "popen_kwargs"
     },
     "app/webview/overlay_paint.py": {
-      "bytes": 44031,
+      "bytes": 47872,
       "classes": 0,
-      "defs": 26,
+      "defs": 27,
       "except_pass": 2,
       "globals": 1,
-      "lines": 974,
-      "max_func": 148,
+      "lines": 1046,
+      "max_func": 181,
       "max_func_name": "_paint_bitmap"
     },
     "app/webview/panel_focus.py": {
@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1350024,
+      "bytes": 1351197,
       "classes": 29,
       "defs": 158,
       "except_pass": 62,
       "globals": 8,
-      "lines": 25428,
+      "lines": 25446,
       "max_func": 414,
       "max_func_name": "main"
     },
@@ -509,6 +509,16 @@
       "lines": 395,
       "max_func": 58,
       "max_func_name": "_on_event"
+    },
+    "app/webview/text_normalize.py": {
+      "bytes": 6171,
+      "classes": 0,
+      "defs": 5,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 137,
+      "max_func": 37,
+      "max_func_name": "collapse_runs"
     },
     "app/webview/thread_names.py": {
       "bytes": 3848,
@@ -669,6 +679,16 @@
       "lines": 328,
       "max_func": 53,
       "max_func_name": "_flush"
+    },
+    "worker/audio_ring.py": {
+      "bytes": 19429,
+      "classes": 1,
+      "defs": 6,
+      "except_pass": 4,
+      "globals": 0,
+      "lines": 454,
+      "max_func": 57,
+      "max_func_name": "_run"
     },
     "worker/caption_noise.py": {
       "bytes": 17782,
@@ -841,13 +861,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 500227,
+      "bytes": 503192,
       "classes": 17,
       "defs": 95,
-      "except_pass": 23,
-      "globals": 6,
-      "lines": 9286,
-      "max_func": 2789,
+      "except_pass": 25,
+      "globals": 7,
+      "lines": 9338,
+      "max_func": 2816,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
