@@ -15634,8 +15634,15 @@ class SottoShell:
                     # strip it so search and the feed still see the sentence
                     # (M8 — see `_history_provenance`).
                     text = HISTORY_TAIL_RE.sub('', match.group(2)).strip()
+                    # A LINHA QUE E' SO' `Mmm` NAO E' UMA LINHA (2026-11-11):
+                    # 121 das 1302 linhas do arquivo do dono (9,3 %). A corrida
+                    # cai primeiro, porque `Mmm Mmm Mmm.` so' se reconhece como
+                    # preenchimento depois de virar `Mmm.`. O disco nao muda.
+                    text = text_normalize.collapse_runs(text)
+                    if text_normalize.is_filler_line(text):
+                        continue
                     yield {'date': day, 'hour': hour, 'time': match.group(1),
-                           'text': prose_punct.close_line(text_normalize.collapse_runs(text), gap_s),
+                           'text': prose_punct.close_line(text, gap_s),
                            'path': path,
                            #: The compact context carried on THIS line. A line
                            #: written before 2026-11-09 has no token and yields

@@ -633,10 +633,15 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   (`push_caption_to_window`, so' o caminho do ASR -- as linhas do PLAYER sao do YouTube e vao 1:1) e
   a LEITURA do historico (`_history_entries`, ao lado de `prose_punct`; o disco continua o registo
   CRU). Medido no arquivo dele: **60** linhas curadas, **328** palavras a menos, **0** linhas que
-  cresceram e **0** que perderam a marca terminal. `_main\text-normalize-oracle.py` da'
-  `VERDICT: PASS (14/14)` e o `--neg-arm` **5/5** mutantes, cada um pela SUA arm -- o M2 so' foi
+  cresceram e **0** que perderam a marca terminal. A linha que e' SO' preenchimento nao e' linha: o
+  mesmo `_history_entries` esconde-a DEPOIS da corrida (`Mmm Mmm Mmm.` so' se reconhece como
+  preenchimento depois de virar `Mmm.`), com o padrao IDENTICO ao do motor
+  (`worker\caption_noise.py:_NOISE_WORD`, e o arm A17 exige que os dois literais sejam iguais) --
+  medido: **1302 -> 1181** linhas, **121** (9,3 %) escondidas. `_main\text-normalize-oracle.py` da'
+  `VERDICT: PASS (17/17)` e o `--neg-arm` **7/7** mutantes, cada um pela SUA arm -- o M2 so' foi
   apanhado depois de o A5 medir TRES enfases em vez de um par, porque um par sobrevive nos dois
-  lados da regra.)
+  lados da regra; e o M6/M7 mostraram a mesma classe de erro duas vezes, o julgamento olhando a
+  funcao ERRADA (o modulo original em vez da copia mutada).
 - **PIN anterior (medido 2026-11-11, 01:4x):** `_main\_audit-verify-all.cmd` = **352056 B**,
   **4086 CRLF** / 0 bare LF, sha256 `EA703D9CDF73151C0374D8D794C87EC5A1CD284F8514AA8AEC9A20109A37AB81`.
   (Mil duzentos e sessenta e oito bytes e QUATORZE linhas a mais do que o pin de 350788 B: o par

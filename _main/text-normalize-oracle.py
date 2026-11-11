@@ -24,6 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'app', 'webview'))
 
 import text_normalize  # noqa: E402  (a funcao que o produto usa)
+import text_normalize as tn  # noqa: E402
 
 SHELL = os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py')
 HISTORY = os.path.join(ROOT, 'history')
@@ -49,6 +50,17 @@ def _push_node(src):
         if isinstance(node, ast.FunctionDef) and node.name == 'push_caption_to_window':
             return node, ast.get_source_segment(src, node) or ''
     return None, ''
+
+
+def _history_order(src):
+    """As POSICOES de `collapse_runs`, `is_filler_line` e `close_line` no metodo
+    REAL `_history_entries`, por `ast` -- a ordem e' o invariante, e o `--neg-arm`
+    re-mede esta mesma funcao sobre um fonte mutado."""
+    hist = ''
+    for node in ast.walk(ast.parse(src)):
+        if isinstance(node, ast.FunctionDef) and node.name == '_history_entries':
+            hist = ast.get_source_segment(src, node) or ''
+    return hist.find('collapse_runs('), hist.find('is_filler_line('), hist.find('close_line(')
 
 
 def run():
@@ -113,19 +125,29 @@ def run():
 
     # ── A15: a ORDEM no caminho de leitura -- a corrida cai ANTES do fecho ─
     # (Se o fecho corresse primeiro, o ponto seria decidido sobre um texto que
-    #  ainda tem a corrida: `Come come come.` fecharia com `,` de cauda e o
-    #  sobrevivente herdaria a marca errada. A ordem e' o invariante.)
-    tree = ast.parse(src)
-    order_ok = False
-    for node in ast.walk(tree):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and node.func.attr == 'close_line' and node.args):
-            continue
-        inner = node.args[0]
-        if (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
-                and inner.func.attr == 'collapse_runs'):
-            order_ok = True
-    arm('A15-corrida-cai-antes-do-fecho', order_ok)
+    #  ainda tem a corrida. A ordem e' o invariante; o `continue` do
+    #  preenchimento tem de vir DEPOIS da corrida, senao `Mmm Mmm Mmm.` nunca
+    #  chega a ser so' preenchimento.)
+    pos_c, pos_f, pos_l = _history_order(src)
+    arm('A15-corrida-antes-do-fecho-e-do-preenchimento',
+        0 <= pos_c < pos_f and 0 <= pos_c < pos_l and pos_f >= 0,
+        f'collapse={pos_c} filler={pos_f} close={pos_l}')
+
+    # ── A16: o preenchimento e' a LINHA inteira, nunca a palavra solta ─────
+    arm('A16-preenchimento-e-a-linha-inteira',
+        tn.is_filler_line('Mmm Mmm.') and tn.is_filler_line('Mmm')
+        and not tn.is_filler_line('Mmm, mas eu vou.')
+        and not tn.is_filler_line('Oh.') and not tn.is_filler_line(''))
+
+    # ── A17: o padrao e' o MESMO do motor (duas regras, um numero) ────────
+    noise_path = os.path.join(ROOT, 'worker', 'caption_noise.py')
+    with io.open(noise_path, encoding='utf-8') as fh:
+        noise_src = fh.read()
+    # O literal do motor pode vir entre aspas simples OU duplas -- medido: ele
+    # usa duplas, e a primeira versao desta arm so' lia simples e dizia AUSENTE.
+    m = re.search("_NOISE_WORD\\s*=\\s*re\\.compile\\(r([\"'])(.*?)\\1", noise_src)
+    arm('A17-padrao-igual-ao-do-motor',
+        bool(m) and m.group(2) == tn._FILLER.pattern, (m.group(2) if m else 'AUSENTE'))
 
     # ── A13: a invariante que torna a cura segura, no arquivo REAL dele ────
     lines = []
@@ -179,6 +201,14 @@ def neg_arm():
          'A8-marca-terminal-preservada'),
         ('M5-a-corrida-nao-cai', 'if run >= limit:', 'if False:',
          'A1-corrida-de-11-vira-uma'),
+        ('M6-preenchimento-nunca-detectado', 'return bool(words) and all(', 'return False and all(',
+         'A16-preenchimento-e-a-linha-inteira'),
+    ]
+    # M7 mexe no FONTE da shell, nao no modulo: a ordem dos dois passos no
+    # caminho de leitura. Uma copia, nunca o ficheiro do produto.
+    shell_mutants = [
+        ('M7-filler-antes-da-corrida',
+         'A15-corrida-antes-do-fecho-e-do-preenchimento'),
     ]
     caught = 0
     for name, old, new, expect in mutants:
@@ -189,6 +219,7 @@ def neg_arm():
         ns = {'__name__': 'text_normalize_mutated'}
         exec(compile(mod, path + '<mutant>', 'exec'), ns)  # noqa: S102 (copia em memoria)
         cr = ns['collapse_runs']
+        isf = ns.get('is_filler_line', lambda _t: False)
         # Cada mutante e' julgado pelo SEU braco.
         fails = {
             'A1-corrida-de-11-vira-uma': cr('come come come come come come come').strip().count('come') != 1,
@@ -196,14 +227,38 @@ def neg_arm():
             'A5-enfase-tres-sobrevive': cr('Still super super super niche.') != 'Still super super super niche.',
             'A7-ponto-final-nao-quebra': cr('Yeah. Yeah.') != 'Yeah. Yeah.',
             'A8-marca-terminal-preservada': cr('Come come come come.') != 'Come.',
+            'A16-preenchimento-e-a-linha-inteira': isf('Mmm Mmm.') is False,
         }[expect]
         if fails:
             caught += 1
             print(f'CAUGHT {name} -- derruba {expect}')
         else:
             print(f'NOT-CAUGHT {name} -- {expect} continuou verde')
-    print(f'NEG-ARM: {"PASS" if caught == len(mutants) else "FAIL"} -- {caught}/{len(mutants)} mutantes apanhados')
-    return 1 if caught == len(mutants) else 0
+
+    # O mutante do FONTE: trocar a linha do `is_filler_line` para ANTES do
+    # `collapse_runs` no metodo real tem de derrubar o A15.
+    with io.open(SHELL, encoding='utf-8', newline='') as fh:
+        shell_src = fh.read()
+    block = ('                    text = text_normalize.collapse_runs(text)\n'
+             '                    if text_normalize.is_filler_line(text):\n'
+             '                        continue\n')
+    swapped = ('                    if text_normalize.is_filler_line(text):\n'
+               '                        continue\n'
+               '                    text = text_normalize.collapse_runs(text)\n')
+    name, expect = shell_mutants[0]
+    c_before, f_before, _ = _history_order(shell_src)
+    if block in shell_src and c_before < f_before:
+        c_after, f_after, _ = _history_order(shell_src.replace(block, swapped, 1))
+        if not (c_after < f_after):
+            caught += 1
+            print(f'CAUGHT {name} -- derruba {expect}')
+        else:
+            print(f'NOT-CAUGHT {name} -- {expect} continuou verde')
+    else:
+        print(f'NOT-CAUGHT {name} (ancora do fonte ausente)')
+    total_mutants = len(mutants) + len(shell_mutants)
+    print(f'NEG-ARM: {"PASS" if caught == total_mutants else "FAIL"} -- {caught}/{total_mutants} mutantes apanhados')
+    return 1 if caught == total_mutants else 0
 
 
 def main(argv):

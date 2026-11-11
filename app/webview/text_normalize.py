@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import re
 
-__all__ = ['MIN_RUN', 'EMPHASIS', 'collapse_runs']
+__all__ = ['MIN_RUN', 'EMPHASIS', 'collapse_runs', 'is_filler_line']
 
 #: A corrida que NAO e' fala. Medido: 64 linhas do arquivo do dono em 1302.
 MIN_RUN = 3
@@ -118,3 +118,20 @@ def collapse_runs(text: str) -> str:
     if not changed:
         return text
     return ''.join(space + word for space, word in out)
+
+#: A LINHA QUE E' SO' PREENCHIMENTO (2026-11-11): 121 das 1302 linhas do arquivo
+#: dele (9,3 %) sao `Mmm`/`Mmm Mmm.` e nada mais. O predicado e' o MESMO do motor
+#: (`worker/caption_noise.py:_NOISE_WORD`), repetido aqui porque o app nao importa
+#: o pacote do worker -- e o oraculo exige que os dois padroes sejam identicos,
+#: que e' o que impede as duas regras de divergirem em silencio.
+_FILLER = re.compile(r'(?:m+|hm+|mhm+)[.,!?…]*', re.IGNORECASE)
+
+
+def is_filler_line(text: str) -> bool:
+    """True so' quando a linha INTEIRA e' preenchimento nao lexical.
+
+    A unidade e' a LINHA, como no motor: um `Mmm` ao lado de uma palavra real e'
+    fala (`Mmm, mas eu vou.`) e fica. `fullmatch` torna o requisito atomico.
+    """
+    words = str(text or '').split()
+    return bool(words) and all(_FILLER.fullmatch(word) for word in words)
