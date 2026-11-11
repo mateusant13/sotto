@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1351197,
+      "bytes": 1422480,
       "classes": 29,
-      "defs": 158,
-      "except_pass": 62,
+      "defs": 163,
+      "except_pass": 64,
       "globals": 8,
-      "lines": 25446,
+      "lines": 26273,
       "max_func": 414,
       "max_func_name": "main"
     },
@@ -611,13 +611,13 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 102628,
+      "bytes": 120964,
       "classes": 1,
-      "defs": 29,
-      "except_pass": 8,
+      "defs": 32,
+      "except_pass": 5,
       "globals": 2,
-      "lines": 2062,
-      "max_func": 230,
+      "lines": 2393,
+      "max_func": 267,
       "max_func_name": "_run"
     },
     "app/webview/youtube_clock.py": {
@@ -721,12 +721,12 @@
       "max_func_name": "run_engine_pass"
     },
     "worker/engine_switch.py": {
-      "bytes": 90264,
+      "bytes": 96062,
       "classes": 3,
       "defs": 14,
       "except_pass": 2,
       "globals": 0,
-      "lines": 1687,
+      "lines": 1779,
       "max_func": 174,
       "max_func_name": "__init__"
     },
@@ -761,14 +761,24 @@
       "max_func_name": "resolve_lang_id"
     },
     "worker/live_queue.py": {
-      "bytes": 22447,
+      "bytes": 26306,
       "classes": 1,
       "defs": 8,
-      "except_pass": 3,
+      "except_pass": 4,
       "globals": 0,
-      "lines": 537,
-      "max_func": 52,
-      "max_func_name": "take_all"
+      "lines": 621,
+      "max_func": 83,
+      "max_func_name": "take_head"
+    },
+    "worker/live_route.py": {
+      "bytes": 15156,
+      "classes": 0,
+      "defs": 10,
+      "except_pass": 1,
+      "globals": 0,
+      "lines": 333,
+      "max_func": 68,
+      "max_func_name": "admit"
     },
     "worker/model_vram_pool.py": {
       "bytes": 16351,
@@ -861,12 +871,12 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 508600,
+      "bytes": 511599,
       "classes": 17,
-      "defs": 96,
-      "except_pass": 25,
+      "defs": 98,
+      "except_pass": 26,
       "globals": 7,
-      "lines": 9437,
+      "lines": 9493,
       "max_func": 2821,
       "max_func_name": "main"
     },
@@ -951,13 +961,13 @@
       "max_func_name": "find_foreign_holders"
     },
     "worker/wasapi_loopback.py": {
-      "bytes": 58473,
+      "bytes": 76202,
       "classes": 6,
-      "defs": 23,
-      "except_pass": 3,
+      "defs": 31,
+      "except_pass": 4,
       "globals": 0,
-      "lines": 1244,
-      "max_func": 152,
+      "lines": 1624,
+      "max_func": 174,
       "max_func_name": "_pump"
     }
   },
