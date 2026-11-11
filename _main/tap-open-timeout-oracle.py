@@ -168,6 +168,22 @@ def restore_fake_tap(mod, saved):
     mod.LoopbackTap = saved
 
 
+def silence_log(mod):
+    """O instrumento nao escreve no log que ele proprio publica.
+
+    A MESMA REGRA DO `_silent_log` DO `caption-dup-repro`: o `log()` real da
+    shell escreve por um fio ASSINCRONO (`_start_stdout_writer` com fila), logo
+    as linhas dele caem POR CIMA das linhas dos bracos -- MEDIDO 2026-11-11:
+    `ok   m1   caught by w2,w4 -- the open has no deadline2026-11-11 10:35:31
+    sotto: EXTERNAL_CAPTIONS_ENGINE_RESUMED ...` na MESMA linha. O ficheiro de
+    log do passo e' a evidencia: nenhum braco aqui julga o log, portanto ele
+    fica silencioso e o artefacto diz so' o que foi medido. (A copia mutante da
+    shell tem o seu proprio `log` e passa por aqui tambem.)
+    """
+    mod.log = lambda *_a, **_k: None
+    return mod
+
+
 def call_bounded(fn, *args, **kwargs):
     """Call `fn`, and never wait longer than `CALL_CAP_S` for it.
 
@@ -339,6 +355,16 @@ class FakeShell(object):
         self._engine_park = 'captions'
         self.resumes = []
         self.parks = []
+        # O RELEASE LIMPA O ESPELHO DA PAUSA/FIM NUMA FUNCAO SO' (2026-11-09,
+        # revisao D4) e o `on_external_captions_released` REAL chama-a ANTES de
+        # olhar o `exiting`. Este duplo nao a tinha: s1/s2 ficavam RED por
+        # `AttributeError` e m1..m4 eram dados por APANHADOS POR UM CRASH
+        # (`caught by w2,s1 (raised AttributeError(...))`) -- um mutante creditado
+        # por uma excepcao nao e' um mutante apanhado, e o mesmo crash escondia a
+        # resposta das duas arms que julgam o release. E' um reset de dois campos
+        # (`yt_source_paused`/`yt_source_ended`), puro: delega-se o corpo REAL.
+        self._clear_yt_source_mirrors = types.MethodType(
+            mod.SottoShell._clear_yt_source_mirrors, self)
         self.on_external_captions_released = types.MethodType(
             mod.SottoShell.on_external_captions_released, self)
 
@@ -466,7 +492,7 @@ def main(argv=None):
             return 2
 
     mod_worker = load_module(WORKER, "sotto_worker_live")
-    mod_shell = load_module(SHELL, "sotto_webview_live")
+    mod_shell = silence_log(load_module(SHELL, "sotto_webview_live"))
     arms = build_arms()
 
     def run_arm(fn, which, worker_mod, shell_mod):
@@ -492,6 +518,9 @@ def main(argv=None):
     if mutants is None:
         return 2
     by_name = dict(mutants)
+    for name, why, target, _old, _new in MUTANTS:
+        if target == SHELL:
+            silence_log(by_name[name])
     caught = 0
     for name, why, target, _old, _new in MUTANTS:
         mod = by_name[name]

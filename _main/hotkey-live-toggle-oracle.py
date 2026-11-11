@@ -72,10 +72,12 @@ Uso:
 from __future__ import annotations
 
 import ast
+import builtins
 import importlib.util as _ilu
 import json
 import os
 import shutil
+import symtable
 import sys
 import tempfile
 import threading
@@ -279,7 +281,13 @@ def build_methods(source: str, shell_path: Path) -> dict:
     if len(bodies) != len(wanted):
         return {}
     gesture = load_module("hotkey_gesture_probe", GESTURE)
-    namespace = {
+    # O CHAO DE CONSTANTES DO FICHEIRO (2026-11-11). A cura de 2026-11-10
+    # (`SHOW_BUDGET_S`, *"um so' relogio"* do show) fez `_hotkey_resolve` ler uma
+    # constante de MODULO; um namespace com so' as costuras do arnes morria com
+    # `NameError` e o braco julgava o proprio arnes. O valor vem do ficheiro que
+    # corre -- reinjectar o numero aqui media a copia, nao o produto.
+    namespace = module_consts(source)
+    namespace.update({
         "log": log,
         "warn": warn,
         "json": json,
@@ -287,7 +295,7 @@ def build_methods(source: str, shell_path: Path) -> dict:
         "time": time,
         "window_visible": lambda hwnd: bool(SCREEN['visible']),
         "hotkey_numbers": lambda: gesture,
-    }
+    })
     # O METODO NOVO ARRASTA UM NOME DE MODULO (2026-11-07). `_set_live_enabled`
     # passou a perguntar a `_caption_replay_allowed` se a linha ja' pintada
     # pode voltar ao ecra; um arnes que exec's so' os metodos da classe deixa o
@@ -299,6 +307,10 @@ def build_methods(source: str, shell_path: Path) -> dict:
     module = ast.Module(body=helpers
                         + [ast.parse(bodies[name]).body[0] for name in wanted],
                         type_ignores=[])
+    missing = unresolved_globals(module, namespace)
+    if missing:
+        warn(f'EXTRACAO_INCOMPLETA nomes_de_modulo_em_falta={missing}')
+        return {}
     exec(compile(module, "<sotto-shell-toggle>", "exec"), namespace)
     namespace["__consts__"] = class_consts(source, "SottoShell",
                                            ("CAPTION_REPLAY_MAX_S",))
@@ -352,13 +364,17 @@ class Shell:
         return {'x': 0, 'y': 0, 'width': 100, 'height': 100}
 
     # -- o ciclo dos paineis (Alt+C), falso no que e' janela ------------------
-    def show_strip(self, reason):
+    # `deadline=` E' DA ASSINATURA DO PRODUTO (cura de 2026-11-10: o show recebe
+    # o relogio carimbado em `HOTKEY_COALESCED`, ver `SHOW_BUDGET_S`). O corpo
+    # real passa-o; um fake com `(self, reason)` respondia `TypeError` e o braco
+    # media a assinatura do arnes em vez da do shell.
+    def show_strip(self, reason, deadline=None):
         self.visible = True
         SCREEN['visible'] = True
         self.surface_applied = 'strip'
         return 'strip'
 
-    def show_side(self, reason):
+    def show_side(self, reason, deadline=None):
         self.visible = True
         SCREEN['visible'] = True
         self.surface_applied = 'panel'
@@ -402,47 +418,84 @@ def steps():
 # ---------------------------------------------------------------------------
 # Braco (h): a PassiveHotkeyThread REAL, com o estado das teclas injectado
 # ---------------------------------------------------------------------------
-def module_literals(source: str) -> dict:
-    """Todas as constantes LITERAIS do modulo -- o chao do namespace extraido.
+def unresolved_globals(module, namespace) -> list:
+    """Os nomes de MODULO que os corpos extraidos LEEM e o namespace nao tem.
+
+    MEDIDO 2026-11-11: a cura de 2026-11-10 deu ao show UM relogio
+    (`SHOW_BUDGET_S`) e o `_hotkey_resolve` passou a ler `time`/`SHOW_BUDGET_S`
+    como nomes de modulo. O arnes injectava so' as costuras que conhecia, e o
+    braco morria a meio com `NameError` -- julgando o arnes em vez do produto, e
+    sem dizer qual nome faltava. Este portao de `symtable` (sobre o modulo que
+    vai ser exec'd, nao sobre o texto) nomeia a costura em falta ANTES de correr
+    o corpo, e o veredicto passa a dizer o que falta em vez de um traceback.
+    """
+    table = symtable.symtable(ast.unparse(module), "<extract>", "exec")
+    have = set(namespace) | set(dir(builtins))
+    for node in module.body:            # o proprio modulo define nomes
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            have.add(node.name)
+        elif isinstance(node, ast.Assign):
+            have.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            have.add(node.target.id)
+    need = set()
+    for child in table.get_children():
+        for symbol in child.get_symbols():
+            if symbol.is_global():
+                need.add(symbol.get_name())
+    return sorted(name for name in need if name not in have)
+
+
+def module_consts(source: str) -> dict:
+    """As constantes de MODULO do ficheiro -- o chao de qualquer namespace extraido.
 
     MEDIDO 2026-11-03: extrair a CLASSE de um ficheiro de 6000 linhas e injectar
     so' as duas constantes que o autor do oraculo se lembrou deixa o braco a
     morrer com `NameError` a primeira vez que o shell ganha uma terceira
     (`_MODIFIER_VARIANTS`, `_HOTKEY_TRACE`...). Na segunda vez ja' nao e' azar: e'
     o oraculo a correr atras da forma do ficheiro. Este chao pesca TODAS as
-    atribuicoes de valor literal de uma vez, e o que for injectado por cima
-    continua a ganhar.
+    atribuicoes de uma vez, e o que for injectado por cima continua a ganhar.
+
+    MEDIDO 2026-11-11 (a cura de 2026-11-10, *"um so' relogio"* do show): o
+    `SHOW_BUDGET_S = SHOW_BUDGET_MS / 1000.0` pos uma constante DERIVADA no
+    caminho de `_hotkey_resolve`. A primeira passagem so' pescava LITERAIS, a
+    segunda corria a atribuicao num namespace VAZIO -- logo o nome do lado
+    direito (`SHOW_BUDGET_MS`) nao existia, a constante ficava de fora, e as
+    tres armas que executam esse corpo morriam com `NameError: SHOW_BUDGET_S`
+    (julgavam o arnes, nao o produto). A segunda passagem leva agora as
+    constantes ja' pescadas dentro do namespace onde avalia a atribuicao.
     """
     out = {}
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return out
+    assigns = []
     for node in tree.body:
         if isinstance(node, ast.Assign):
-            try:
-                value = ast.literal_eval(node.value)
-            except (ValueError, SyntaxError):
-                continue
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    out[target.id] = value
+            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            try:
-                out[node.target.id] = ast.literal_eval(node.value)
-            except (ValueError, SyntaxError, AttributeError):
-                continue
+            names = [node.target.id]
+        else:
+            continue
+        if names:
+            assigns.append((names, node))
+    for names, node in assigns:
+        try:
+            value = ast.literal_eval(node.value)
+        except (ValueError, SyntaxError, TypeError):
+            continue
+        for name in names:
+            out[name] = value
     # SEGUNDA PASSAGEM: uma constante que nao e' literal mas e' INOFENSIVA de
-    # avaliar (`os.environ.get('SOTTO_HOTKEY_TRACE','') == '1'`) e' avaliada num
-    # namespace com `os`/`sys` -- senao o braco volta a morrer com `NameError`
-    # na proxima constante que o shell ganhar.
-    env = {"os": os, "sys": sys, "__builtins__": __builtins__}
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
+    # avaliar (`SHOW_BUDGET_MS / 1000.0`, `os.environ.get(...) == '1'`) e'
+    # avaliada numa COPIA do namespace -- com as constantes ja' pescadas la'
+    # dentro, senao o lado direito da atribuicao tambem falta.
+    for names, node in assigns:
+        if all(name in out for name in names):
             continue
-        names = [t.id for t in node.targets if isinstance(t, ast.Name)]
-        if not names or all(n in out for n in names):
-            continue
+        env = dict(out)
+        env.update({"os": os, "sys": sys, "__builtins__": __builtins__})
         try:
             exec(compile(ast.Module(body=[node], type_ignores=[]),
                          "<consts>", "exec"), env)
@@ -466,7 +519,7 @@ def passive_thread(source: str, gesture, frames, on_hotkey, log_fn):
     cls = _cls(source, "PassiveHotkeyThread")
     if cls is None:
         return None
-    namespace = module_literals(source)
+    namespace = module_consts(source)
     namespace.update({
         "threading": threading,
         # OS NOMES DE MODULO QUE O CORPO LE' (2026-11-03): o `run` do

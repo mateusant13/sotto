@@ -260,15 +260,30 @@ def neg_arm() -> int:
     A mutacao e' a classe que o modulo existe para impedir: casar por substring.
     Tambem muta a escolha da raiz para `max(pid)` -- se nenhuma arm cair, o
     oraculo nao estava a medir o que diz medir.
+
+    DOIS CENSOS, DOIS NUMEROS. Os tres primeiros mutantes julgam o COMPORTAMENTO
+    de `worker/process_target.py` (a comparacao por nome, a raiz, o pid morto); as
+    quatro seguintes julgam a FORMA do fio dono do apartamento COM em
+    `worker/sotto_worker.py` (entraram a 2026-11-09, com o defeito medido no alvo
+    real). Sao populacoes diferentes julgadas por juizes diferentes (`pt.match`
+    contra `struct_arms`), por isso cada uma publica o seu numero e o rc=1 exige
+    as duas completas.
     """
     src = io.open(os.path.join(ROOT, "worker", "process_target.py"),
                   "r", encoding="utf-8").read()
-    caught = 0
-    total = 0
+    # O NUMERO QUE O PASSO DA BATERIA FIXA E' O DO PRIMEIRO CENSO
+    # (`_main/_audit-verify-all.cmd:3620`, `NEG-ARM: 3/3 mutantes apanhados`).
+    # Quando as quatro mutacoes de FORMA entraram, um contador unico passou a
+    # imprimir `7/7` e o passo ficou vermelho SEM que nenhuma arm tivesse
+    # deixado de apanhar: o pino e' que envelheceu. Encolher o mutante para 3
+    # seria apagar medida; um contador por censo devolve a cada numero o que ele
+    # mede, e o total real continua publicado ao lado.
+    caught_b = total_b = 0
+    caught_f = total_f = 0
 
     def trial(title, old, new, arms):
-        nonlocal caught, total
-        total += 1
+        nonlocal caught_b, total_b
+        total_b += 1
         mutant = src.replace(old, new, 1)
         if mutant == src:
             print("MUTANT-NOT-APPLIED %s" % title)
@@ -277,7 +292,7 @@ def neg_arm() -> int:
         exec(compile(mutant, "process_target_mutant", "exec"), ns)   # noqa: S102
         fails = [name for name, fn in arms if not fn(ns)]
         if fails:
-            caught += 1
+            caught_b += 1
             print("CAUGHT %-34s by %s" % (title, ", ".join(fails)))
         else:
             print("NOT-CAUGHT %s" % title)
@@ -302,8 +317,8 @@ def neg_arm() -> int:
     nlw = "\r\n" if "\r\n" in wsrc else "\n"
 
     def wtrial(title, old, new, want_fail):
-        nonlocal caught, total
-        total += 1
+        nonlocal caught_f, total_f
+        total_f += 1
         mutant = wsrc.replace(old, new, 1)
         if mutant == wsrc:
             print("MUTANT-NOT-APPLIED %s" % title)
@@ -315,7 +330,7 @@ def neg_arm() -> int:
             return
         hit = [n for n in fails if n.startswith(want_fail)]
         if hit:
-            caught += 1
+            caught_f += 1
             print("CAUGHT %-40s by %s" % (title, ", ".join(hit)))
         else:
             print("NOT-CAUGHT %-36s (fails=%r)" % (title, fails))
@@ -343,7 +358,11 @@ def neg_arm() -> int:
            L('        finally:', '            pass'),
            "A13 ")
 
-    print("\nNEG-ARM: %d/%d mutantes apanhados" % (caught, total))
+    caught, total = caught_b + caught_f, total_b + total_f
+    print("\nNEG-ARM: %d/%d mutantes apanhados" % (caught_b, total_b))
+    print("NEG-ARM-FORM: %d/%d mutacoes de forma apanhadas" % (caught_f, total_f))
+    print("NEG-ARM-TOTAL: %d/%d (%d de comportamento + %d de forma)"
+          % (caught, total, total_b, total_f))
     return 1 if caught == total else 0
 
 

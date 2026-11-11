@@ -16,10 +16,12 @@ desligada) numa COPIA do ficheiro e exige que os arms 1-2 fiquem vermelhos. Um
 oraculo que nao apanha o seu proprio mutante nao e' um portao.
 
 Uso:  python _main/tap-silent-desktop-oracle.py [--worker PATH] [--neg-arm]
-rc=0  GREEN (ou, no `--neg-arm`, o mutante foi APANHADO)
-rc=1  RED   (ou o mutante passou despercebido)
+rc=0  PASS  (ou, no `--neg-arm`, o mutante passou despercebido)
+rc=1  FAIL  (ou, no `--neg-arm`, o mutante foi APANHADO)
+rc=2  o mutante nem correu (ancora ausente -- o oraculo esta' velho)
 """
 import argparse
+import ast
 import importlib.util
 import os
 import shutil
@@ -86,6 +88,37 @@ def arms(mod):
     return out
 
 
+def emit_names_the_wait(worker_path):
+    """A linha `emit(type="status", state=<... "tap-silent-desktop" ...>)` existe.
+
+    ANCORADO NA ARVORE, NAO NO TEXTO (2026-11-11). A verificacao anterior era a
+    string `state="tap-silent-desktop"`; o produto passou a escrever
+    `state="tap-own-endpoint-loud" if _loud_here else "tap-silent-desktop"` e a
+    ancora morreu SEM a propriedade mudar -- o oraculo ficava vermelho numa cura
+    que estava certa. Uma chamada `emit` com a palavra-chave `state` e a
+    constante 'tap-silent-desktop' na expressao do valor sobrevive a
+    reformatacao e a novas condicoes; so' deixa de valer se a emissao
+    desaparecer, mudar de nome ou deixar de nomear a espera.
+    """
+    try:
+        with open(worker_path, encoding='utf-8', newline='') as fh:
+            tree = ast.parse(fh.read())
+    except (OSError, SyntaxError):
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not (isinstance(node.func, ast.Name) and node.func.id == 'emit'):
+            continue
+        for kw in node.keywords:
+            if kw.arg != 'state':
+                continue
+            for sub in ast.walk(kw.value):
+                if isinstance(sub, ast.Constant) and sub.value == 'tap-silent-desktop':
+                    return True
+    return False
+
+
 def wiring(worker_path):
     """A guarda esta' LIGADA no sitio certo? Texto do fonte, braco de fiacao.
 
@@ -105,7 +138,7 @@ def wiring(worker_path):
          'return now + hold_s' in text),
         ('a escada usa essa janela',
          'extended = window_ended(' in text and 'window_end = extended' in text),
-        ('a linha da espera existe', 'state="tap-silent-desktop"' in text),
+        ('a linha da espera existe', emit_names_the_wait(worker_path)),
     ]
     return checks
 
@@ -143,8 +176,8 @@ def neg_arm(worker_path):
         mutant = ('    return None  # MUTANTE: a guarda desligada (o defeito de 2026-11-02)'
                   + nl)
         if needle not in text:
-            print('NEG-ARM: ancora nao encontrada -- o oraculo precisa de ser revisto')
-            return False
+            print('NEG-ARM IMPOSSIVEL: ancora do mutante ausente -- o oraculo precisa de ser revisto')
+            return None
         open(copy, 'w', encoding='utf-8', newline='').write(text.replace(needle, mutant, 1))
         mod = load_module(copy)
         hold = mod.silent_desktop_hold
@@ -169,12 +202,20 @@ def main(argv=None):
     worker = os.path.abspath(args.worker)
     if args.neg_arm:
         caught = neg_arm(worker)
-        print('NEG-ARM PASS' if caught else 'NEG-ARM FAIL')
+        if caught is None:
+            # rc=2 = ERRO DE MONTAGEM (a ancora do mutante desapareceu), o mesmo
+            # codigo que os outros `--neg-arm` deste repo usam: nao e' "o
+            # controlo nao apanhou", e' "o controlo nao correu".
+            return 2
+        # A frase sem dois-pontos e' a que o `:expectred` da bateria procura
+        # (`NEG-ARM PASS`); a forma com dois-pontos e' a canonica deste repo.
+        print('NEG-ARM %s' % ('PASS' if caught else 'FAIL'))
+        print('NEG-ARM: %s' % ('PASS' if caught else 'FAIL'))
         # `:expectred` NA BATERIA: um controlo que APANHA o mutante sai 1, e 0 quando
         # nao apanha -- a mesma polaridade dos outros `red-as-expected-*` deste repo.
         return 1 if caught else 0
     ok = run(worker)
-    print('VERDICT: %s' % ('GREEN' if ok else 'RED'))
+    print('VERDICT: %s' % ('PASS' if ok else 'FAIL'))
     return 0 if ok else 1
 
 

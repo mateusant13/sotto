@@ -37,9 +37,16 @@ most is `unmute-restores-the-literal-50-not-the-saved-value`: a restore
 that puts a fixed 50 instead of the value it found looks perfectly healthy
 and leaves the owner with the wrong volume for the rest of the day.
 
+THE NEGATIVE ARM IS A PURE CLASSIFIER (2026-11-11). It feeds every broken copy
+a `FakeBackend` snapshot and needs no `SOTTO_OWNER_AUDIO_OK`, no endpoint and no
+`SetMute`: a control that writes to the owner's speakers to prove that the mute
+works IS the defect the mute exists to prevent. The purity is enforced, not
+promised -- `PycawBackend` is replaced by a raising stub for each mutant, and
+the journal is pointed inside the workdir by `_JournalIn`.
+
 RUN
     python _main/mute-audio-oracle.py            # arms + mutants, rc=0 on PASS
-    python _main/mute-audio-oracle.py --neg-arm  # mutants only, rc=1 BY DESIGN
+    python _main/mute-audio-oracle.py --neg-arm  # pure mutants only, rc=1 BY DESIGN
 """
 # BATTERY-HEAVY: audio-device -- este instrumento ABRE audio device; a classe pesada da bateria so'
 # corre com opt-in (SOTTO_BATTERY_HEAVY=1). A classificacao e' a do mapa STEP_KINDS
@@ -107,9 +114,7 @@ class FakeBackend:
         self.volumes[device_id] = scalar
 
 
-def battery(mod, mod_path: str, workdir: str, source: str) -> list:
-    out = []
-
+def _runner(out):
     def attempt(name, fn):
         """An exception is a RED with a reason -- never a crash of the run."""
         try:
@@ -118,7 +123,47 @@ def battery(mod, mod_path: str, workdir: str, source: str) -> list:
             ok, detail = False, "REBENTOU com %s: %s" % (type(exc).__name__, exc)
         out.append((bool(ok), name, detail))
         return bool(ok)
+    return attempt
 
+
+class _JournalIn(object):
+    """Mantem o JOURNAL dentro do workdir enquanto o classificador puro corre.
+
+    MEDIDO (2026-11-11): `journal_record` escreve SEMPRE em `_main/audio-journal.json`
+    (o `state_path` nao o governa), por isso cada arm com o `FakeBackend` deixava
+    uma linha `device_id: "A"` no journal do dono -- e o `--repair` passaria a
+    tentar restaurar um endpoint que nunca existiu. O oracle passava a arm a18
+    ("o mute escreve SO o ficheiro de estado") e escrevia fora dele.
+    `mute-audio.py` ja' le `SOTTO_AUDIO_JOURNAL`; aqui a variavel aponta para o
+    workdir e e' reposta no fim (o bloco do endpoint REAL nao usa este guarda:
+    um mute real PRECISA do journal a serio).
+    """
+
+    def __init__(self, workdir: str):
+        self.path = os.path.join(workdir, "audio-journal.json")
+        self.saved = None
+
+    def __enter__(self):
+        self.saved = os.environ.get("SOTTO_AUDIO_JOURNAL")
+        os.environ["SOTTO_AUDIO_JOURNAL"] = self.path
+        return self
+
+    def __exit__(self, *exc_info):
+        if self.saved is None:
+            os.environ.pop("SOTTO_AUDIO_JOURNAL", None)
+        else:
+            os.environ["SOTTO_AUDIO_JOURNAL"] = self.saved
+        return False
+
+
+def live_arms(mod, mod_path: str, workdir: str) -> list:
+    """Os arms que ABREM o endpoint real (a classe `heavy` da bateria).
+
+    So' correm no modo positivo e so' com `SOTTO_OWNER_AUDIO_OK=1`. O braco
+    negativo NAO os corre: ver `pure_arms`.
+    """
+    out = []
+    attempt = _runner(out)
     states = []
 
     def state_path(tag: str) -> str:
@@ -277,6 +322,26 @@ def battery(mod, mod_path: str, workdir: str, source: str) -> list:
             backend.set_volume(device_id, original)
         except Exception:                                       # noqa: BLE001
             pass
+    return out
+
+
+def pure_arms(mod, mod_path: str, workdir: str, source: str) -> list:
+    """O CLASSIFICADOR PURO: nenhum endpoint real, nenhuma escrita no audio.
+
+    Cada arm aqui alimenta `mute-audio.py` com o `FakeBackend` (um snapshot
+    falso) e julga o que ele devolve. E' este o conjunto que o `--neg-arm` corre
+    contra as copias quebradas: um controlo que escreve no altifalante do dono
+    para provar que o mute funciona e' o proprio defeito que o mute existe para
+    impedir (ordem do dono, 2026-11-02). Nada aqui constroi `PycawBackend` e
+    nada aqui importa pycaw -- o modulo so' importa pycaw dentro dos metodos.
+    """
+    out = []
+    attempt = _runner(out)
+
+    def state_path(tag: str) -> str:
+        # O workdir e' um `mkdtemp` por corrida e o chamador apaga-o inteiro;
+        # um ficheiro de estado que sobre fica isolado por nome.
+        return os.path.join(workdir, "state-%s.json" % tag)
 
     # ------------------------------------------------------------------
     # THE FAKE DEVICE: the failure modes, deterministically.
@@ -293,6 +358,58 @@ def battery(mod, mod_path: str, workdir: str, source: str) -> list:
                 % (mod.DEFAULT_STATE_PATH,
                    os.path.dirname(os.path.abspath(mod_path))))
     attempt("o estado por omissao vive NO DIRECTORIO DO MODULO (nada e escrito fora)", a10)
+
+    # OS QUATRO ARMS QUE FALTAVAM AO CLASSIFICADOR (2026-11-11). Eles existiam so'
+    # no bloco do endpoint REAL (a2/a3/a5/a6), e por isso o braco negativo tinha
+    # de ABRIR o altifalante do dono para provar que uma copia quebrada cai. Um
+    # controlo que escreve no audio do dono nao e' um controlo: e' o defeito que
+    # o mute existe para impedir.
+    def a20():
+        fb = FakeBackend(default="A", volumes={"A": 0.75})
+        st = state_path("a20")
+        res = mod.mute_default_output("oracle", backend=fb, state_path=st)
+        during = fb.volumes["A"]
+        mod.unmute_default_output(backend=fb, state_path=st)
+        return (res.get("state") == "muted" and during == 0.0,
+                "state=%r volume_durante_o_mute=%r" % (res.get("state"), during))
+    attempt("mute poe o volume do snapshot a 0", a20)
+
+    def a21():
+        fb = FakeBackend(default="A", volumes={"A": 0.75})
+        st = state_path("a21")
+        fb.set_volume("A", 0.37)
+        saved = fb.get_volume("A")            # what the "device" READS
+        mod.mute_default_output("oracle", backend=fb, state_path=st)
+        mod.unmute_default_output(backend=fb, state_path=st)
+        back = fb.get_volume("A")
+        return (back == saved,
+                "guardado=%r restaurado=%r igual=%s" % (saved, back, back == saved))
+    attempt("unmute restaura EXACTAMENTE o valor guardado (snapshot)", a21)
+
+    def a22():
+        fb = FakeBackend(default="A", volumes={"A": 0.75})
+        st = state_path("a22")
+        fb.set_volume("A", 0.37)
+        saved = fb.get_volume("A")
+        mod.mute_default_output("oracle", backend=fb, state_path=st)
+        second = mod.mute_default_output("oracle-2", backend=fb, state_path=st)
+        mod.unmute_default_output(backend=fb, state_path=st)
+        back = fb.get_volume("A")
+        return (back == saved and second.get("already_muted") is True,
+                "guardado=%r restaurado=%r already_muted=%r"
+                % (saved, back, second.get("already_muted")))
+    attempt("duas chamadas de mute nao se anulam (snapshot)", a22)
+
+    def a23():
+        fb = FakeBackend(default="A", volumes={"A": 0.75})
+        st = state_path("a23")
+        before = fb.get_volume("A")
+        res = mod.unmute_default_output(backend=fb, state_path=st)
+        after = fb.get_volume("A")
+        return (res.get("state") == "not-muted" and res.get("restored") is False
+                and after == before and not os.path.exists(st),
+                "antes=%r depois=%r state=%r" % (before, after, res.get("state")))
+    attempt("unmute sem mute previo nao toca no volume (snapshot)", a23)
 
     def a11():
         fb = FakeBackend(default="A", volumes={"A": 0.75}, silent_fail_on=0.0)
@@ -411,6 +528,13 @@ def battery(mod, mod_path: str, workdir: str, source: str) -> list:
     return out
 
 
+def battery(mod, mod_path: str, workdir: str, source: str) -> list:
+    """O modo positivo: o endpoint real primeiro, o snapshot depois."""
+    live = live_arms(mod, mod_path, workdir)
+    with _JournalIn(workdir):
+        return live + pure_arms(mod, mod_path, workdir, source)
+
+
 # The anchors are exact strings of `_main/mute-audio.py`. A mutant whose
 # anchor is missing is DECORATIVE -- it proves nothing -- so the oracle
 # refuses to count it.
@@ -484,54 +608,13 @@ MUTANTS = [
 ]
 
 
-def main() -> int:
-    neg_only = "--neg-arm" in sys.argv[1:]
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:                                           # noqa: BLE001
-        pass
-    # O AUDIO DO DONO NAO SE TOCA (ordem 2026-11-02). Este oraculo e' um dos
-    # instrumentos que ABREM endpoint; sem a bandeira dele ele nao corre, e diz
-    # SKIPPED -- nunca GREEN, porque um passo saltado nao e' um portao que passou.
-    if str(os.environ.get("SOTTO_OWNER_AUDIO_OK") or "").strip() != "1":
-        print("MUTE-AUDIO VERDICT: SKIPPED")
-        print("recusa: audio do dono (mute-audio-oracle nao corre sem "
-              "SOTTO_OWNER_AUDIO_OK=1)")
-        print("\nVERDICT: SKIPPED")
-        return EXIT_PASS
-    if not os.path.isfile(MODULE_PATH):
-        print("RED   module missing: %s" % MODULE_PATH)
-        return EXIT_FAIL
-    with open(MODULE_PATH, "r", encoding="utf-8", newline="") as fh:
-        source = fh.read()
+def catch_mutants(source: str) -> tuple:
+    """Corre cada copia quebrada contra o CLASSIFICADOR PURO (`pure_arms`).
 
-    arms_total = arms_green = 0
-    if not neg_only:
-        print("ARMS (the real mute, on the real default output)")
-        workdir = tempfile.mkdtemp(prefix="mute-oracle-")
-        try:
-            mod = load_module(MODULE_PATH, "mute_audio_live")
-            rows = battery(mod, MODULE_PATH, workdir, source)
-        finally:
-            shutil.rmtree(workdir, ignore_errors=True)
-        # The REAL module only: the shipped file must keep its state inside
-        # `_main/`. (The battery checks the relative property -- the state
-        # lives next to the code -- because an absolute check would go RED
-        # for every mutant, which lives in a temp dir, and a mutant caught
-        # by an unrelated check is a decorative mutant.)
-        rows.append((
-            os.path.dirname(os.path.abspath(mod.DEFAULT_STATE_PATH))
-            == os.path.abspath(MAIN_DIR),
-            "o estado por omissao do modulo REAL vive em _main/",
-            mod.DEFAULT_STATE_PATH))
-        for ok, name, detail in rows:
-            print("  %s %s%s" % ("GREEN" if ok else "RED  ", name,
-                                 ("  " + detail) if detail else ""))
-        arms_green = sum(1 for ok, _, _ in rows if ok)
-        arms_total = len(rows)
-        print("\n  %d/%d" % (arms_green, arms_total))
-
-    print("\nNEGATIVE ARM (broken copies must go RED)")
+    Devolve (apanhados, total, fracos). Nenhum `PycawBackend` e' construido
+    aqui: as copias quebradas sao julgadas com o snapshot falso, nunca com uma
+    escrita no altifalante do dono.
+    """
     caught = 0
     weak = 0
     workdir = tempfile.mkdtemp(prefix="mute-oracle-mut-")
@@ -539,13 +622,14 @@ def main() -> int:
         for idx, (label, old, new) in enumerate(MUTANTS):
             hits = source.count(old)
             if hits != 1:
-                print("  RED   mutant %-48s ANCHOR %s -- oracle is stale"
-                      % (label, "MISSING" if hits == 0 else "AMBIGUOUS"))
+                print("  RED   mutant %-48s ANCORA %s -- o oraculo esta' velho"
+                      % (label, "AUSENTE" if hits == 0 else "AMBIGUA"))
                 weak += 1
                 continue
+            mutated = source.replace(old, new, 1)
             path = os.path.join(workdir, "mutant_%d.py" % idx)
             with open(path, "w", encoding="utf-8", newline="") as fh:
-                fh.write(source.replace(old, new, 1))
+                fh.write(mutated)
             try:
                 bad = load_module(path, "mute_audio_mut_%d" % idx)
             except Exception as exc:                            # noqa: BLE001
@@ -553,11 +637,19 @@ def main() -> int:
                       "NAO foi testado" % (label, type(exc).__name__))
                 weak += 1
                 continue
+            # PROVA DE PUREZA, IMPOSTA E NAO PROMETIDA (2026-11-11): se algum
+            # arm do classificador chegar a pedir o backend real, o controlo
+            # REBENTA aqui -- nunca escreve no altifalante do dono e nunca
+            # devolve "apanhado" a custa de um `SetMute`.
+            def _no_real_backend(*_a, **_k):
+                raise AssertionError("o braco negativo tentou construir PycawBackend")
+            bad.PycawBackend = _no_real_backend
             sub = tempfile.mkdtemp(prefix="mute-oracle-mut-run-")
             try:
-                res = battery(bad, path, sub, source.replace(old, new, 1))
+                with _JournalIn(sub):
+                    res = pure_arms(bad, path, sub, mutated)
             except Exception as exc:                            # noqa: BLE001
-                print("  RED   mutant %-48s a bateria rebentou (%s) -- "
+                print("  RED   mutant %-48s o classificador rebentou (%s) -- "
                       "NAO foi testado" % (label, type(exc).__name__))
                 weak += 1
                 continue
@@ -573,14 +665,81 @@ def main() -> int:
                       % label)
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
+    return caught, len(MUTANTS), weak
 
-    total = len(MUTANTS)
-    if neg_only:
-        # rc=1 BY DESIGN: the negative arm reproves on purpose.
-        print("\nVERDICT: NEG-ARM %s  mutants %d/%d  (rc=1 por desenho: o braco "
-              "negativo REPROVA de proposito)" % ("PASS" if caught == total else "FAIL",
-                                                  caught, total))
+
+def main() -> int:
+    neg_only = "--neg-arm" in sys.argv[1:]
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:                                           # noqa: BLE001
+        pass
+    if not os.path.isfile(MODULE_PATH):
+        print("RED   module missing: %s" % MODULE_PATH)
         return EXIT_FAIL
+    with open(MODULE_PATH, "r", encoding="utf-8", newline="") as fh:
+        source = fh.read()
+
+    # O BRACO NEGATIVO E' UM CLASSIFICADOR PURO (2026-11-11). Ele NAO pede
+    # `SOTTO_OWNER_AUDIO_OK`, NAO constroi `PycawBackend` e NAO escreve num
+    # endpoint: julga copias quebradas do modulo com o `FakeBackend`. Antes ele
+    # nem corria sem a bandeira (saia 0 com `VERDICT: SKIPPED`, ou seja o
+    # controlo NAO APANHAVA nada), e quando corria abria o altifalante do dono
+    # uma vez por mutante -- exactamente o que o mute existe para impedir.
+    if neg_only:
+        print("NEGATIVE ARM (pure classifier: broken copies must go RED, "
+              "nenhum endpoint real)")
+        caught, total, weak = catch_mutants(source)
+        if weak:
+            print("\nNEG-ARM IMPOSSIVEL: %d mutante(s) sem ancora valida/"
+                  "nao carregaram -- o oraculo precisa de ser revisto" % weak)
+            return 2
+        ok = caught == total
+        # A frase sem dois-pontos e' a que o `:expectred` da bateria procura;
+        # a forma com dois-pontos e' a canonica deste repo.
+        print("\nNEG-ARM %s  mutantes %d/%d"
+              % ("PASS" if ok else "FAIL", caught, total))
+        print("NEG-ARM: %s" % ("PASS" if ok else "FAIL"))
+        # rc=1 BY DESIGN: um controlo que APANHA sai 1, para o `:expectred`
+        # da bateria exigir rc=1 E a frase `NEG-ARM PASS` no log.
+        return 1 if ok else 0
+
+    # O AUDIO DO DONO NAO SE TOCA (ordem 2026-11-02). Este oraculo e' um dos
+    # instrumentos que ABREM endpoint; sem a bandeira dele ele nao corre, e diz
+    # SKIPPED -- nunca GREEN, porque um passo saltado nao e' um portao que passou.
+    if str(os.environ.get("SOTTO_OWNER_AUDIO_OK") or "").strip() != "1":
+        print("MUTE-AUDIO VERDICT: SKIPPED")
+        print("recusa: audio do dono (mute-audio-oracle nao corre sem "
+              "SOTTO_OWNER_AUDIO_OK=1)")
+        print("\nVERDICT: SKIPPED")
+        return EXIT_PASS
+
+    print("ARMS (the real mute, on the real default output)")
+    workdir = tempfile.mkdtemp(prefix="mute-oracle-")
+    try:
+        mod = load_module(MODULE_PATH, "mute_audio_live")
+        rows = battery(mod, MODULE_PATH, workdir, source)
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+    # The REAL module only: the shipped file must keep its state inside
+    # `_main/`. (The battery checks the relative property -- the state
+    # lives next to the code -- because an absolute check would go RED
+    # for every mutant, which lives in a temp dir, and a mutant caught
+    # by an unrelated check is a decorative mutant.)
+    rows.append((
+        os.path.dirname(os.path.abspath(mod.DEFAULT_STATE_PATH))
+        == os.path.abspath(MAIN_DIR),
+        "o estado por omissao do modulo REAL vive em _main/",
+        mod.DEFAULT_STATE_PATH))
+    for ok, name, detail in rows:
+        print("  %s %s%s" % ("GREEN" if ok else "RED  ", name,
+                             ("  " + detail) if detail else ""))
+    arms_green = sum(1 for ok, _, _ in rows if ok)
+    arms_total = len(rows)
+    print("\n  %d/%d" % (arms_green, arms_total))
+
+    print("\nNEGATIVE ARM (broken copies must go RED)")
+    caught, total, weak = catch_mutants(source)
 
     ok = (arms_green == arms_total and caught == total and weak == 0)
     print("\nVERDICT: %s  arms %d/%d  mutants %d/%d"

@@ -19,8 +19,9 @@ O QUE FAZ (quatro fases, uma so invocacao)
 3. `--replay`    corre o INVOCADOR REAL (`SottoShell.history_append`, o metodo da classe, com um
                  duplo que so substitui o caminho e a proveniencia) sobre cinco casos e conta as
                  linhas que ficam no ficheiro.
-4. `--neg-arm`   MUTACAO: tira a guarda (`_history_last_body` -> None) e exige que o replay fique
-                 VERMELHO. Se o mutante passar, o laco nao apanha o defeito e o laco esta errado.
+4. `--neg-arm`   MUTACAO: tira a guarda (`_history_tail` -> None, a identidade que o
+                 `history_append` le desde 2026-11-04) e exige que o replay fique VERMELHO. Se o
+                 mutante passar, o laco nao apanha o defeito e o laco esta errado.
 5. `--panel`     a OUTRA camada: `youtube_window.collapse_growth` (o *"a frase era maior, foi
                  sumindo"*), com o seu proprio mutante -- a identidade, que e o mundo de antes.
 
@@ -240,8 +241,30 @@ def _run_checks(module):
         def _history_path_for(self, now):
             return path
 
-        def _history_last_body(self, p):
-            return shell_cls._history_last_body(p)
+        # O CONTEXTO E' LIDO NO CHOKE POINT DESDE 2026-11-09: o `history_append`
+        # resolve a janela da fala com `self._history_context_for(_start)` (e com
+        # `fresh=False` quando o chamador traz metadata explicita) antes de
+        # decidir a accao. Sem esta delegacao o duble rebentava com
+        # `AttributeError: 'Double' object has no attribute
+        # '_history_context_for'` -- medido 2026-11-11 -- e o laco media a
+        # excepcao em vez da guarda. `_history_last_body` saiu do shell na
+        # mesma cura (`_history_tail` e' a identidade que a guarda le desde
+        # 2026-11-04); um duble que ainda o nomeasse oferecia um metodo que a
+        # producao ja' nao tem.
+        #
+        # A leitura que a delegacao faz e' a REAL: o anel de contexto desta
+        # linha nao existe num duble, logo o metodo cai no `snapshot` da
+        # producao (`history_context.foreground`, cacheado). O que este repro
+        # mede -- a accao da guarda -- nao depende dela, e inventar o contexto
+        # aqui seria medir um shell que nao existe.
+        def _history_context_for(self, start, fresh=True):
+            return shell_cls._history_context_for(self, start, fresh=fresh)
+
+        #: `_history_context_for` chama este metodo no caminho sem anel. O
+        #: `args` ausente no duble faz `app_target_request` responder `(None,
+        #: None)` -- o mesmo "sem tap por app" do shell sem `--app-target`.
+        def _history_app_target(self):
+            return shell_cls._history_app_target(self)
 
         # A CAUDA E' `staticmethod` NO SHELL DESDE 2026-11-04 e o `history_append`
         # passou a le-la no choke point (`self._history_tail(path)`), para decidir
@@ -250,8 +273,16 @@ def _run_checks(module):
         def _history_tail(self, p):
             return shell_cls._history_tail(p)
 
-        def _history_provenance(self, options):
-            return ' <!-- route=final start=1 reason=ok -->'
+        # A PROVENIENCIA E' A DA PRODUCAO (2026-11-11). O duble devolvia um
+        # marcador FIXO (`route=final start=1 reason=ok`), e desde a cura da
+        # identidade (2026-11-04) o `start=` da linha e' a regra MAIS FORTE do
+        # `history_merge`: um `start=1` inventado pelo instrumento entregava a'
+        # guarda uma identidade que o chamador nunca declarou, e a assinatura
+        # mudou (o `history_append` passa `ctx1=` desde 2026-11-09), pelo que o
+        # marcador fixo tambem rebentava com `TypeError`. Delegar mantem o
+        # ficheiro exactamente como a producao o escreve.
+        def _history_provenance(self, options, context_token=''):
+            return shell_cls._history_provenance(options, context_token)
 
         # A RETENCAO NAO E' O QUE ESTE REPRO MEDE (medido 2026-11-07). O
         # `history_append` passou a chamar `self._history_prune()` no choke point e

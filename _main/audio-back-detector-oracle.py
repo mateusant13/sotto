@@ -319,7 +319,12 @@ def main(argv):
         total = len(mutants)
         print("NEG-ARM: %s -- %d/%d mutantes apanhados"
               % ("PASS" if caught == total else "FAIL", caught, total))
-        return 0 if caught == total else 1
+        # CONVENCAO DA CASA: o negativo devolve **1 quando APANHA**. Aqui estava
+        # ao contrario (`0` ao apanhar), logo o `:expectred ... 1` do passo via
+        # rc=0 e chamava-lhe "o controlo nao foi para vermelho" -- o controlo
+        # apanhava os SEIS mutantes e o passo publicava-o como falha. Medido
+        # 2026-11-11: 6/6 CAUGHT e rc=0; depois da cura, 6/6 CAUGHT e rc=1.
+        return 1 if caught == total else 0
 
     print("AUDIO-BACK-DETECTOR")
     fails = run_arms(audio_back_step, src, tree, consts, say)

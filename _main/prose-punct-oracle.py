@@ -54,6 +54,7 @@ if APP not in sys.path:
     sys.path.insert(0, APP)
 
 import prose_punct  # noqa: E402 -- depois do sys.path, de proposito
+import text_normalize  # noqa: E402 -- o helper que o stream embarca le' hoje
 
 
 class Arms:
@@ -147,6 +148,16 @@ def arm_stream(arm):
             'HISTORY_LINE_RE': __import__('re').compile(r'^-\s+\[(\d{2}:\d{2}:\d{2})\]\s+(.*)$'),
             'HISTORY_TAIL_RE': __import__('re').compile(r'\s*<!--.*?-->\s*$'),
             'prose_punct': prose_punct,
+            # A CORRIDA E O PREENCHIMENTO ENTRARAM NA LEITURA (2026-11-11):
+            # `_history_entries` passou a chamar `text_normalize.collapse_runs`
+            # e `text_normalize.is_filler_line` antes do `prose_punct`, para a
+            # linha que e' so' `Mmm` nao chegar ao feed (121 das 1302 linhas do
+            # arquivo do dono). O namespace deste braco e' FECHADO -- so' tem o
+            # que esta' escrito aqui --, logo o helper que o modulo embarca
+            # passou a ser uma dependencia da extracao: sem ele o stream morre
+            # em `NameError` e o braco C/D mede a excepcao. E' o modulo REAL,
+            # importado de `app/webview`, e nao uma copia.
+            'text_normalize': text_normalize,
             '_history_clock_s': clock,
             'history_context': _STUB_CTX,
         }

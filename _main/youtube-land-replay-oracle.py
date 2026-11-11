@@ -97,6 +97,20 @@ class FakeShell(object):
             raise AttributeError(name)
         return 0
 
+    def note_history_context(self, meta):
+        """A linha FECHADA chegou ao gravador de contexto (2026-11-11).
+
+        O `external_caption` REAL chama isto em toda a linha `final=True`, e o
+        `__getattr__` abaixo respondia `0` -- `0(meta)` e' o
+        `TypeError: 'int' object is not callable` medido no passo. O metodo real
+        grava o contexto amostrando a janela EM FRENTE (`history_context.
+        snapshot` -> `foreground`, USER32): e' a costura de ecra que este
+        oraculo declara nao levantar ("sem janela e sem dispositivo de audio").
+        Por isso o duplo REGISTA o que a producao lhe entregou; os quatro bracos
+        julgam o que chega ao overlay, e nenhum le' este registo.
+        """
+        self.contexts.append(dict(meta))
+
 
 def fake_shell(mod):
     """Um `self` on minimo para os metodos REAIS do `SottoShell` correrem."""
@@ -131,6 +145,23 @@ def fake_shell(mod):
     shell._last_caption_was_player = False
     shell._caption_idle_seq = 0
     shell.CAPTION_IDLE_HIDE_S = 6.0
+    # O CONTEXTO DA LINHA DO PLAYER (2026-11-09/11) -- as tres costuras que o
+    # `external_caption` REAL passou a chamar e que o `0` do `__getattr__`
+    # escondia:
+    #   * `_history_ctx_observe_session` e' perguntado com `getattr(..., None)`,
+    #     e o `0` PASSAVA o `is not None`: a chamada seguinte era `0('external')`
+    #     -- o `TypeError: 'int' object is not callable` medido 2026-11-11. E' um
+    #     reset de estado puro (larga o anel quando a sessao de audio muda):
+    #     corpo REAL.
+    #   * `_external_context` e' `staticmethod` PURA (`source` -> `{'viewingUrl':
+    #     ...}` ou `{}`): corpo REAL, porque um `{}` de mentira provaria so' que
+    #     o `{}` voltou, e o URL do player e' a prova de que a linha e' do video.
+    #   * `note_history_context` (metodo da classe, nao `0`) registra em vez de
+    #     amostrar a janela em frente -- ver o docstring dele.
+    shell._history_ctx_observe_session = types.MethodType(
+        mod.SottoShell._history_ctx_observe_session, shell)
+    shell._external_context = mod.SottoShell._external_context
+    shell.contexts = []
     shell.work_area = lambda: {"x": 0, "y": 0, "w": 1200, "h": 200}
     shell.emit = lambda *_a, **_k: None
     shell._arm_caption_idle_hide = lambda *_a, **_k: None

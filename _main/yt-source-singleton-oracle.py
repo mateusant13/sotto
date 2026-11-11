@@ -37,18 +37,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 
 
-def _hidden_si():
-    """`STARTUPINFO` with SW_HIDE -- the half `CREATE_NO_WINDOW` leaves out.
-
-    MEASURED (owner's screen, 2026-11-04 and again 2026-11-09): a console child spawned from a parent
-    that owns no console gets a NEW console, and `CREATE_NO_WINDOW` alone does not keep the show state
-    hidden, so Windows paints the window. `_main/console-window-audit.py` classes that pair WEAK-FLAG
-    and this file was one of its six hits.
-    """
-    si = subprocess.STARTUPINFO()
-    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    si.wShowWindow = 0
-    return si
 SHELL = os.path.join(REPO, 'app', 'webview', 'sotto_webview.py')
 WEBVIEW = os.path.join(REPO, 'app', 'webview')
 sys.path.insert(0, WEBVIEW)
@@ -59,24 +47,29 @@ def load_module():
     return youtube_cdp_source
 
 
-def head_source():
-    """O MESMO ficheiro, na versao de `HEAD` -- o braco ANTES (2026-11-09).
+#: O BRACO ANTES NAO SE LE' DO `HEAD` (2026-11-11, MEDIDO). Ele lia: enquanto a
+#: cura estava so' no working tree, `git show HEAD:...` devolvia o codigo velho
+#: e o braco reproduzia a multiplicacao; no dia em que a cura foi COMETIDA, HEAD
+#: passou a conter a cura, o "antes" mediu `construcoes=1` e o `--neg-arm`
+#: morreu em rc=0 com a mensagem certa -- um controlo que existe e nao controla.
+#: A casa ja' pagou esta classe no `panel-history-wheel`. O "antes" passa a ser
+#: uma MUTACAO CIRURGICA do fonte VIVO: a chamada ao registo de modulo
+#: (`live_source(...)`) volta a ser uma construcao directa, que e' exactamente o
+#: comportamento medido antes da cura (675 objetos/600 s no log do dono).
+BEFORE_ANCHOR = (
+    "        source = youtube_cdp_source.live_source(\n"
+    "            lambda: youtube_cdp_source.CdpCaptionSource(log=log), log=log)\n")
+BEFORE_BODY = "        source = youtube_cdp_source.CdpCaptionSource(log=log)\n"
 
-    Medir "depois" sozinho nao prova nada: o numero antes tem de sair do mesmo
-    instrumento. `git show` nascido de um agente leva `CREATE_NO_WINDOW`, porque
-    um `git.exe` largado de um pai sem consola pinta uma janela na tela do dono
-    (medido 2026-11-08, `gh.exe(41080)`).
-    """
-    import subprocess
-    r = subprocess.run(['git', '-C', REPO, 'show',
-                        'HEAD:app/webview/sotto_webview.py'],
-                       capture_output=True, text=True, encoding='utf-8',
-                       errors='replace',
-                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
-                       startupinfo=_hidden_si())
-    if r.returncode != 0:
-        raise SystemExit('git show HEAD falhou: %r' % (r.stderr,))
-    return r.stdout
+
+def before_source():
+    """O fonte VIVO com o registo de modulo removido -- o braco ANTES."""
+    src = open(SHELL, encoding='utf-8', errors='replace').read()
+    if BEFORE_ANCHOR not in src:
+        raise SystemExit('ANCORA AUSENTE: o call site do `live_source` mudou; '
+                         're-ancorar BEFORE_ANCHOR (um controlo que nao corre '
+                         'nao e um controlo)')
+    return src.replace(BEFORE_ANCHOR, BEFORE_BODY, 1)
 
 
 def extract_ensure(src=None):
@@ -216,7 +209,7 @@ def run(n=200):
 def before(n=200):
     """O BRACO ANTES: a mesma populacao contra o metodo de `HEAD`."""
     mod = load_module()
-    ensure = extract_ensure(head_source())
+    ensure = extract_ensure(before_source())
     saved = mod.CdpCaptionSource
     FakeSource.built = 0
     FakeSource.started = 0
@@ -226,7 +219,11 @@ def before(n=200):
             ensure(FakeWatcher(), 'grlc')
     finally:
         mod.CdpCaptionSource = saved
-    print('ANTES (HEAD): %d irmaos -> construcoes=%d' % (n, FakeSource.built))
+    # O ROTULO NAO DIZ `HEAD` (2026-11-11): o braco nao le' mais o commit --
+    # le' o fonte vivo com o registo de modulo removido, e um rotulo que
+    # nomeasse o commit seria a mentira que fez este controlo morrer em rc=0.
+    print('ANTES (sem registo): %d irmaos -> construcoes=%d'
+          % (n, FakeSource.built))
     # CONVENCAO DA CASA: o braco negativo devolve **1 quando APANHA** o defeito.
     # Aqui ele "apanha" quando a populacao de HEAD reproduz a multiplicacao --
     # e esse e' exactamente o defeito medido no log do dono (675 objetos/600 s).

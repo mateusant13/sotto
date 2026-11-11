@@ -253,16 +253,78 @@ def extract(source, names):
     return found
 
 
+#: Os metodos REAIS que o `build` extrai -- a fonte UNICA do que o observador
+#: falso sabe fazer. O `_yt_cdp_snapshot` chama este conjunto no objecto (e so'
+#: este), e a lista cresceu com o caminho, cada entrada nascida de um
+#: `AttributeError` MEDIDO dentro de um braco:
+#:   2026-11-10 `_yt_clock_static`/`_yt_pause_edge` (o relogio parado e a borda
+#:              da pausa passaram a ser publicados pelo snapshot),
+#:   2026-11-11 `_yt_rate_tick` (a telemetria do `YOUTUBE_LOOP_HZ`).
+#: As duas ultimas so' correm quando o snapshot PUBLICA o estado (`declared`
+#: casa com a foto); o B1/B2 positivo nunca as alcança, mas o mutante M3 -- que
+#: e' exactamente "publica o estado de qualquer foto" -- alcanca, e era ali que
+#: o mutante era dado por apanhado por um CRASH em vez de por um numero errado.
+EXTRACTED = ("_youtube_time", "_yt_decide", "yt_live_frame", "_yt_lines",
+             "_yt_rate_tick", "_yt_cdp_snapshot",
+             "_yt_clock_static", "_yt_pause_edge")
+
+#: As constantes de CLASSE que os corpos extraidos leem em `self`. Vao para o
+#: objecto pelo `bind`, com o valor lido do ficheiro: o duplo nao pode medir um
+#: limiar que a producao ja' mudou (`CLOCK_STATIC_PAUSE_S` decide o "relogio
+#: parado" e um 3,0 s copiado aqui mediria outra regra em silencio).
+CLASS_CONSTS = ("CLOCK_STATIC_PAUSE_S",)
+
+
+def _literal(source, name):
+    """O literal de `NAME = ...`, de modulo OU de corpo de classe, por AST."""
+    tree = ast.parse(source)
+    scopes = [tree.body]
+    scopes += [node.body for node in tree.body if isinstance(node, ast.ClassDef)]
+    for body in scopes:
+        for node in body:
+            if isinstance(node, ast.Assign):
+                for tgt in node.targets:
+                    if isinstance(tgt, ast.Name) and tgt.id == name:
+                        try:
+                            return ast.literal_eval(node.value)
+                        except ValueError:
+                            break
+    raise SystemExit('ORACLE-BROKEN: %s nao define %s' % (SHELL.name, name))
+
+
+def bind(ns, player):
+    """Liga ao observador os metodos REAIS extraidos -- num so' sitio.
+
+    Devolve o mesmo objecto, para o chamador encadear. Um nome que o `build` nao
+    extraiu fica AUSENTE de proposito: o braco tem de morrer alto, e nao herdar
+    um `0` que finge de metodo.
+    """
+    for name in EXTRACTED:
+        fn = ns.get(name)
+        if fn is not None:
+            setattr(player, name, fn.__get__(player, type(player)))
+    for name in CLASS_CONSTS:
+        setattr(player, name, ns['_' + name])
+    return player
+
+
 def build(source):
     """O namespace com `time`/`log` e as funcoes REAIS ligadas ao observador."""
     if str(WEBVIEW) not in sys.path:
         sys.path.insert(0, str(WEBVIEW))
-    bodies = extract(source, ("_youtube_time", "_yt_decide", "yt_live_frame",
-                              "_yt_lines", "_yt_cdp_snapshot"))
+    bodies = extract(source, EXTRACTED)
     ns = {"time": Clock, "log": _log, "os": os,
           # `_yt_mark` e' um helper de MODULO (perfil de fase); aqui so' precisa
           # de nao rebentar, nao de medir nada.
-          "_yt_mark": lambda *_a, **_k: None}
+          "_yt_mark": lambda *_a, **_k: None,
+          # A JANELA DO `YOUTUBE_LOOP_HZ` E' DESTE NUMERO (2026-11-11). O corpo
+          # REAL do `_yt_rate_tick` fecha a janela do log com ele; sem a
+          # constante o `NameError` cairia no `except` do proprio metodo e a
+          # telemetria ficaria MUDA -- indistinguivel de um duplo que nao corre.
+          # Vem do ficheiro por AST, nao de um literal copiado para aqui.
+          "_YT_RATE_LOG_S": _literal(source, "_YT_RATE_LOG_S")}
+    for name in CLASS_CONSTS:
+        ns['_' + name] = _literal(source, name)
     for name, body in bodies.items():
         module = ast.Module(body=[ast.parse(body).body[0]], type_ignores=[])
         exec(compile(module, "<%s>" % name, "exec"), ns)
@@ -323,7 +385,7 @@ def foreign_state_arm(ns, track):
 
     # B1 -- a NOSSA aba publicou PARADO em 42,0 e a fonte tem a OUTRA a tocar.
     Clock.now = 300.0
-    p = ForeignPlayer(track, "OURS", FakeSource("OTHER", t=7.0, paused=False))
+    p = bind(ns, ForeignPlayer(track, "OURS", FakeSource("OTHER", t=7.0, paused=False)))
     p.yt_cdp_clock = (42.0, Clock.now)
     p.yt_cdp_paused = True
     p.yt_cdp_ended = False
@@ -336,7 +398,7 @@ def foreign_state_arm(ns, track):
 
     # B2 -- a NOSSA aba TOCA em 42,0 e a fonte tem a OUTRA parada em 7,0.
     Clock.now = 400.0
-    q = ForeignPlayer(track, "OURS", FakeSource("OTHER", t=7.0, paused=True))
+    q = bind(ns, ForeignPlayer(track, "OURS", FakeSource("OTHER", t=7.0, paused=True)))
     q.yt_cdp_clock = (42.0, Clock.now)
     q.yt_cdp_paused = False
     q.yt_cdp_ended = False
@@ -368,7 +430,7 @@ def probe(ns, track, stall_s, *, paused=False, unknown=False, mutate=None,
     Clock.now = 100.0
     del LOGS[:]
     ns["time"] = CLOCK
-    player = Player(track)
+    player = bind(ns, Player(track))
     fn_time = ns["_youtube_time"].__get__(player, Player)
     fn_decide = ns["_yt_decide"].__get__(player, Player)
     fn_live = ns["yt_live_frame"].__get__(player, Player)
@@ -469,7 +531,7 @@ def probe(ns, track, stall_s, *, paused=False, unknown=False, mutate=None,
 
 def anchor_arm(ns, track):
     """As duas metades da regra do ancora, sem laco: 4 s depois da leitura."""
-    player = Player(track)
+    player = bind(ns, Player(track))
     fn_live = ns["yt_live_frame"].__get__(player, Player)
     player._yt_lines = ns["_yt_lines"].__get__(player, Player)
     Clock.now = 200.0

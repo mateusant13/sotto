@@ -21,6 +21,14 @@ THE RULE THIS PROVES. The OPEN TABS are the authority on which video is being
 watched. A declared id that is not open is dropped, the window title (or the
 only tab) decides, and the rebind SAYS ITS NAME in the log.
 
+THE CONTRACT CHANGED, AND THIS INSTRUMENT FOLLOWS IT (2026-11-09 -> fixed
+2026-11-11). The rebind used to be decided by ONE reading; the product now
+requires the SAME id on TWO readings separated by `YT_REBIND_CONFIRM_S`
+(measured 1,5 s in `sotto_webview.py`), because two open `watch` tabs made
+`target_video_id` oscillate and every oscillation blanked the caption. The
+REBOUND arms below therefore drive TWO real ticks and read the window from the
+product; the old arm drove one tick and went red on a cure that worked.
+
 ARMS
   1. STALE-TARGET -- declared id absent from the tab list: `target_video_id()`
                      answers the OPEN tab, and `_choose` says why it skipped;
@@ -30,14 +38,33 @@ ARMS
                      websocket is created; the arm reads the choice);
   4. REBOUND      -- the real shell, with a source whose tab says another video:
                      `YOUTUBE_TARGET_REBOUND was=..  now=..` is logged and
-                     `yt_video_id` moves;
+                     `yt_video_id` moves -- on the SECOND agreement, not the
+                     first (see ARMED-ONLY);
   5. NO-REBOUND   -- the same shell with the SAME id on both sides does not
-                     rebind (a log line every tick is a defect of its own).
+                     rebind (a log line every tick is a defect of its own);
+  6. ARMED-ONLY   -- the first disagreement only ARMS the candidate: the tick
+                     that sees it does NOT rebind and does not move the id.
+                     (2026-11-09: two `watch` tabs make `target_video_id`
+                     oscillate; a one-tick rebind blanked the caption every
+                     ~1,5 s with the owner's own video playing.)
+
+EVERY REBOUND ARM IS DRIVEN BY `YT_REBIND_CONFIRM_S` READ FROM THE PRODUCT, and
+it sleeps that window between the two ticks. The arm that shipped before this
+one called `_youtube` ONCE and could therefore never see the confirmation: it
+went red on a cure that worked (`linhas=0 yt_video_id='m_bJQ4G1Ht8'`). A
+published protocol of two readings is measured with two readings, never with a
+number copied into the instrument.
 
 Usage:
   py -3 _main/yt-target-stale-oracle.py             # the working tree
-  py -3 _main/yt-target-stale-oracle.py --neg-arm   # the fallback removed in a
-                                                    # copy -> arms 1/3/4 RED
+  py -3 _main/yt-target-stale-oracle.py --neg-arm   # in copies: the
+                                                    # stale-declared fallback
+                                                    # removed and the rebind made
+                                                    # immediate -> RED on
+                                                    # STALE-TARGET, CONNECT,
+                                                    # ARMED-ONLY, REBOUND,
+                                                    # SOURCE-NAME (measured
+                                                    # 2026-11-11)
 """
 import argparse
 import importlib.util
@@ -115,21 +142,48 @@ def main():
         source_path = os.path.join(tmpdir, 'youtube_cdp_source.py')
         open(source_path, 'w', encoding='utf-8', newline='').write(
             src.replace(ANCHOR, '', 1))
-        # A normalizacao do NOME sai da COPIA do shell: o braco SOURCE-NAME tem
-        # de cair, senao ele nao esta' ligado ao codigo que cura.
+        # DUAS MUTACOES NA COPIA DO SHELL, porque dois grupos de arms nao sao
+        # julgados por `youtube_cdp_source.py` de modo nenhum:
+        #   * SOURCE-NAME -- a normalizacao do NOME sai;
+        #   * ARMED-ONLY/REBOUND -- a troca volta a ser IMEDIATA (o defeito de
+        #     2026-11-09: com duas abas `watch` o id oscilava e cada oscilacao
+        #     apagava a legenda). Sem esta segunda ancora os dois bracos do
+        #     protocolo de troca passavam debaixo de QUALQUER mutante -- prova
+        #     de um braco so', que e' o que este ficheiro existe para nao ser.
         shell_copy = os.path.join(tmpdir, 'sotto_webview.py')
         shell_src = open(SHELL, encoding='utf-8', newline='').read()
         _seol = "\r\n" if "\r\n" in shell_src else "\n"
         normal = ("        if source and 'youtube.com/watch' in str(source):" + _seol
                   + "            source = 'external:youtube'" + _seol)
-        if normal in shell_src:
-            open(shell_copy, 'w', encoding='utf-8', newline='').write(
-                shell_src.replace(normal, '', 1))
-            SHELL_USED = shell_copy
-            print('[neg] copia do shell: %s existe=%s' % (shell_copy, os.path.exists(shell_copy)))
+        # A ancora do rebind e' o BLOCO de armacao inteiro (a atribuicao do
+        # candidato), nao uma linha solta: ela existe para inserir a troca
+        # imediata no sitio onde o produto apenas ARMA, e o texto tem de casar
+        # exactamente uma vez ou o mutante nao e' aplicado e o braco diz isso.
+        arm_block = _seol.join([
+            '                    if _cand != _tid:',
+            '                        self._yt_rebind_cand = _tid',
+            '                        self._yt_rebind_at = _now',
+        ]) + _seol
+        arm_mutant = _seol.join([
+            '                    if _cand != _tid:',
+            '                        self._yt_rebind_cand = _tid',
+            '                        self._yt_rebind_at = _now',
+            '                        self._yt_switch_video(_tid, _src)',
+        ]) + _seol
+        shell_mutant = shell_src
+        if normal in shell_mutant:
+            shell_mutant = shell_mutant.replace(normal, '', 1)
         else:
-            SHELL_USED = SHELL
             print('[neg] normalizacao NAO encontrada no shell; braco SOURCE-NAME nao pode cair')
+        if shell_mutant.count(arm_block) != 1:
+            print('NEG-ARM IMPOSSIVEL: ancora do rebind ausente ou nao unica '
+                  '(ocorrencias=%d)' % shell_mutant.count(arm_block))
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            return 2
+        shell_mutant = shell_mutant.replace(arm_block, arm_mutant, 1)
+        open(shell_copy, 'w', encoding='utf-8', newline='').write(shell_mutant)
+        SHELL_USED = shell_copy
+        print('[neg] copia do shell: %s existe=%s' % (shell_copy, os.path.exists(shell_copy)))
 
     cdp = load(source_path, '_stale_oracle_cdp')
     shell_mod = load(SHELL_USED, '_stale_oracle_shell')
@@ -253,20 +307,47 @@ def main():
     real_log = shell_mod.log
     shell_mod.log = lambda message, *a, **k: logs.append(str(message))
     try:
-        logs[:] = []
+        # A JANELA VEM DO PRODUTO (2026-11-11). O protocolo de troca exige o
+        # MESMO id em duas leituras separadas por `YT_REBIND_CONFIRM_S`; o
+        # valor e' lido do objecto, nunca copiado para aqui, senao mudar a
+        # janela no produto volta a pintar este instrumento de vermelho.
         w = build(OPEN_VID, DEAD_VID)
+        _confirm = float(getattr(w, 'YT_REBIND_CONFIRM_S', 1.5))
+        _gap = _confirm + 0.25
+
+        # -- 6. ARMED-ONLY: o primeiro desacordo nao troca nada ------------
+        logs[:] = []
+        w._youtube(1234, object(), object())
+        armed = [m for m in logs if m.startswith('YOUTUBE_TARGET_REBIND_ARMED')]
+        early = [m for m in logs if m.startswith('YOUTUBE_TARGET_REBOUND')]
+        arm('ARMED-ONLY',
+            bool(armed) and not early and w.yt_video_id == DEAD_VID,
+            'armou=%d trocou=%d yt_video_id=%r %s'
+            % (len(armed), len(early), w.yt_video_id,
+               armed[0][:74] if armed else ''))
+
+        # -- 4. REBOUND: a SEGUNDA leitura, passada a janela, confirma -----
+        logs[:] = []
+        time.sleep(_gap)
         w._youtube(1234, object(), object())
         rebound = [m for m in logs if m.startswith('YOUTUBE_TARGET_REBOUND')]
-        arm('REBOUND', bool(rebound) and w.yt_video_id == OPEN_VID,
-            'linhas=%d yt_video_id=%r %s'
-            % (len(rebound), w.yt_video_id, rebound[0][:78] if rebound else ''))
+        arm('REBOUND',
+            len(rebound) == 1 and w.yt_video_id == OPEN_VID,
+            'linhas=%d yt_video_id=%r confirm_s=%.2f %s'
+            % (len(rebound), w.yt_video_id, _confirm,
+               rebound[0][:78] if rebound else ''))
 
+        # -- 5. NO-REBOUND: o MESMO id dos dois lados, duas leituras -------
         logs[:] = []
         w2 = build(OPEN_VID, OPEN_VID)
         w2._youtube(1234, object(), object())
+        time.sleep(_gap)
+        w2._youtube(1234, object(), object())
         rebound2 = [m for m in logs if m.startswith('YOUTUBE_TARGET_REBOUND')]
-        arm('NO-REBOUND', not rebound2,
-            'linhas=%d (mesmo id nao se re-declara)' % len(rebound2))
+        armed2 = [m for m in logs if m.startswith('YOUTUBE_TARGET_REBIND_ARMED')]
+        arm('NO-REBOUND', not rebound2 and not armed2,
+            'trocas=%d armados=%d (mesmo id nao se re-declara)'
+            % (len(rebound2), len(armed2)))
     finally:
         shell_mod.log = real_log
 

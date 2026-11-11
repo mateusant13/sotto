@@ -36,7 +36,8 @@ OS BRACOS (a lista e' impressa no arranque, e cada um diz o que julga):
 
 COMO. Os corpos de `hotkey_pressed`, `hotkey_live`, `_hotkey_resolve` e
 `_on_press` sao EXTRAIDOS DO FICHEIRO QUE VAI CORRER com `ast` e exec'd contra um
-shell falso, um relogio-ESPIAO (qualquer leitura de tempo reprova o braco) e um
+shell falso, um relogio-ESPIAO (UMA leitura por pressao aplicada, so' para
+carimbar o orcamento do show -- a decisao nao le' tempo nenhum) e um
 `threading`-espiao (um Timer significa adiamento). Nenhuma janela e' aberta,
 nenhum ctypes e' tocado, nada e' posto no ecra do dono.
 
@@ -48,11 +49,13 @@ Uso:
 from __future__ import annotations
 
 import ast
+import builtins
 import importlib.util as _ilu
 import json
 import os
 import re
 import shutil
+import symtable
 import tempfile
 import textwrap
 import threading
@@ -76,7 +79,7 @@ ARM_LIST = (
     "(c) uma pressao com 300 ms -> uma mudanca (e nenhuma legenda)",
     "(d) Ctrl+Space comuta a legenda uma vez por pressao",
     "(e) --neg-arm: adiamento de 400 ms / limiar de HOLD reinstalados -> RED",
-    "(f) 4 pressoes de C com o ALT EM BAIXO (soltas perdidas) -> show,hide,show,hide",
+    "(f) 4 pressoes de C com o ALT EM BAIXO (soltas perdidas) -> show,show,hide,show",
 )
 
 
@@ -283,6 +286,104 @@ class FakeLog:
 SCREEN = {'visible': False}
 
 
+def unresolved_globals(module, namespace) -> list:
+    """Os nomes de MODULO que os corpos extraidos LEEM e o namespace nao tem.
+
+    MEDIDO 2026-11-11: a cura de 2026-11-10 deu ao show UM relogio
+    (`SHOW_BUDGET_S`) e o `_hotkey_resolve` passou a ler nomes de modulo que o
+    arnes nao injectava; o braco morria a meio com `NameError` -- julgando o
+    arnes em vez do produto, e sem dizer qual nome faltava. Este portao de
+    `symtable` (sobre o modulo que vai ser exec'd) nomeia a costura em falta
+    ANTES de correr o corpo: a extraccao incompleta passa a ser um veredicto
+    DITO, nao um traceback (ou, pior, um `except` a esconder o `NameError`).
+    """
+    table = symtable.symtable(ast.unparse(module), "<extract>", "exec")
+    have = set(namespace) | set(dir(builtins))
+    for node in module.body:            # o proprio modulo define nomes
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            have.add(node.name)
+        elif isinstance(node, ast.Assign):
+            have.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            have.add(node.target.id)
+    need = set()
+    for child in table.get_children():
+        for symbol in child.get_symbols():
+            if symbol.is_global():
+                need.add(symbol.get_name())
+    return sorted(name for name in need if name not in have)
+
+
+def module_consts(source: str) -> dict:
+    """As constantes de MODULO do ficheiro -- o chao de qualquer namespace extraido.
+
+    MEDIDO 2026-11-11: a cura de 2026-11-10 que deu UM so' relogio ao show
+    (`SHOW_BUDGET_S = SHOW_BUDGET_MS / 1000.0`) pos uma constante DERIVADA no
+    caminho de `_hotkey_resolve`. O arnes injectava so' as costuras que conhecia
+    (`time`, `log`, `window_visible`, `hotkey_numbers`), o nome de modulo ficava
+    por definir, e o braco executado morria com `NameError: SHOW_BUDGET_S` -- ou
+    seja, julgava o arnes em vez do produto. O valor e' lido do PROPRIO ficheiro,
+    literais e derivadas, e o que for injectado por cima continua a ganhar (um
+    oraculo nunca reencena a regra que julga).
+    """
+    out = {}
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return out
+    assigns = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names = [node.target.id]
+        else:
+            continue
+        if names:
+            assigns.append((names, node))
+    for names, node in assigns:
+        try:
+            value = ast.literal_eval(node.value)
+        except (ValueError, SyntaxError, TypeError):
+            continue
+        for name in names:
+            out[name] = value
+    # SEGUNDA PASSAGEM: o que nao e' literal mas e' INOFENSIVO de avaliar
+    # (`SHOW_BUDGET_MS / 1000.0`) corre numa COPIA do namespace, com as
+    # constantes ja' pescadas la' dentro -- sem isso o lado direito da
+    # atribuicao tambem falta.
+    for names, node in assigns:
+        if all(name in out for name in names):
+            continue
+        env = dict(out)
+        env.update({"os": os, "sys": os.sys, "time": real_time,
+                    "__builtins__": __builtins__})
+        try:
+            exec(compile(ast.Module(body=[node], type_ignores=[]),
+                         "<consts>", "exec"), env)
+        except Exception:                                        # noqa: BLE001
+            continue
+        for name in names:
+            if name in env:
+                out[name] = env[name]
+    return out
+
+
+def clock_stamps_ok(spies, presses: int) -> bool:
+    """Uma leitura de relogio por pressao APLICADA -- e so' `monotonic`.
+
+    A CURA DE 2026-11-10 MUDOU ESTE CONTRATO, e a razao esta' no produto: o show
+    passou a ter UM relogio (`SHOW_BUDGET_S`), carimbado em `_hotkey_resolve` na
+    linha `HOTKEY_COALESCED` e entregue a `show_strip`/`show_side` por
+    `deadline=`. Antes dessa cura o caminho da pressao nao lia relogio NENHUM, e
+    este oraculo exigia `reads == []`; a expectativa morreu com a cura, nao com o
+    orgao. O que continua a ser julgado, e e' a razao de a arm existir: o relogio
+    NAO decide (a decisao e' `hotkey_gesture.advance`, que nao aceita tempo
+    nenhum como parametro) e nada e' ADIADO por ele (zero `Timer`, ver as arms).
+    """
+    return spies['time'].reads == ['monotonic'] * presses
+
+
 def build_shell(source: str, gesture):
     """Os metodos do shell, exec'd contra um `self` falso."""
     wanted = ("hotkey_pressed", "hotkey_live", "_hotkey_resolve")
@@ -290,16 +391,24 @@ def build_shell(source: str, gesture):
     if len(bodies) != len(wanted):
         return None
     spies = {'time': SpyTime(), 'threading': SpyThreading(), 'log': FakeLog()}
-    namespace = {
+    # O CHAO DE CONSTANTES DO FICHEIRO (2026-11-11): a cura de 2026-11-10
+    # (`SHOW_BUDGET_S`) fez `_hotkey_resolve` ler uma constante de MODULO, e o
+    # namespace do arnes so' tinha as costuras injectadas abaixo.
+    namespace = module_consts(source)
+    namespace.update({
         "time": spies['time'],
         "threading": spies['threading'],
         "log": spies['log'],
         "hotkey_numbers": lambda: gesture,
         "window_visible": lambda hwnd: bool(SCREEN['visible']),
         "_spies": spies,
-    }
+    })
     module = ast.Module(body=[ast.parse(bodies[name]).body[0] for name in wanted],
                         type_ignores=[])
+    missing = unresolved_globals(module, namespace)
+    if missing:
+        spies['log'](f'EXTRACAO_INCOMPLETA nomes_de_modulo_em_falta={missing}')
+        return None
     exec(compile(module, "<sotto-shell-hotkey>", "exec"), namespace)
     return namespace
 
@@ -350,11 +459,14 @@ class FakeShell:
         SCREEN['visible'] = True
         self.events.append(('show', surface))
 
-    def show_strip(self, reason):
+    # `deadline=` E' DA ASSINATURA DO PRODUTO (cura de 2026-11-10: o show recebe
+    # o relogio carimbado em `HOTKEY_COALESCED`). `_hotkey_resolve` passa-o; um
+    # fake com `(self, reason)` respondia `TypeError` e o braco media o arnes.
+    def show_strip(self, reason, deadline=None):
         self._shown('strip')
         return 'strip'
 
-    def show_side(self, reason):
+    def show_side(self, reason, deadline=None):
         self._shown('panel')
         return 'panel'
 
@@ -544,6 +656,7 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
 
     # (a) DEZ pressoes -> DEZ mudancas.
     host = FakeShell(ns, visible=False, surface='panel')
+    spies['time'].reads.clear()
     t0 = real_time.perf_counter()
     for _ in range(10):
         ns['hotkey_pressed'](host)
@@ -562,8 +675,9 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
         str([kind for kind, _ in events]))
     add(host.live_calls == [], "(a) nenhuma das 10 pressoes de Alt+C mexe na legenda",
         str(host.live_calls))
-    add(spies['time'].reads == [],
-        "(a) o caminho da pressao NAO LE' RELOGIO nenhum",
+    add(clock_stamps_ok(spies, 10),
+        "(a) o caminho da pressao carimba o orcamento do show UMA vez por "
+        "pressao, e a DECISAO nao le' relogio",
         str(spies['time'].reads) or "zero leituras")
     add(spies['threading'].timers == [],
         "(a) nenhum Timer armado: nao ha adiamento nenhum",
@@ -575,14 +689,15 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
 
     # (b) duas pressoes separadas por 10 s de relogio: DUAS mudancas.
     host = FakeShell(ns, visible=False, surface='panel')
+    spies['time'].reads.clear()
     ns['hotkey_pressed'](host)
     spies['time'].now += 10.0           # o dono demora 10 s a carregar outra vez
     ns['hotkey_pressed'](host)
     add(visibility_changes(host.events) == 2,
         "(b) duas pressoes a 10 s -> DUAS mudancas (nao e' um gesto duplo)",
         str(host.events))
-    add(spies['time'].reads == [],
-        "(b) os 10 s nao mudam nada porque o codigo nao os le'",
+    add(clock_stamps_ok(spies, 2),
+        "(b) os 10 s nao decidem nada: as duas pressoes so' carimbam o orcamento",
         str(spies['time'].reads) or "zero leituras")
 
     # (c) uma pressao com 300 ms de relogio: UMA mudanca, nenhuma legenda.
@@ -717,12 +832,32 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
             # arranque e o dono tinha de o carregar outra vez. Ele passou a existir
             # DEPOIS de esta arm ser escrita, e a arm estava a acusar o que a
             # regra sempre permitiu -- um flag, nao um motor.
+            #
+            # O `tray` ENTRA a 2026-11-11, e a razao esta' no PRODUTO: a cura de
+            # 2026-11-09 (*"o menu do icone passa a dizer a verdade"*) pos
+            # `tray.refresh_menu('live')` em `_set_live_enabled`, porque o item do
+            # menu e' escrito como a ACCAO ("Desligar legendas (Ctrl+Space)") e
+            # mentia sempre que a tecla mudava o interruptor. O duplo antigo nao
+            # tinha `tray`: `getattr(self, 'tray', None)` caia no `__getattr__`,
+            # era ANOTADO como toque e devolvia uma lambda -- a arm acusava um
+            # colaborador que o produto sempre permitiu (um ROTULO, nao um motor)
+            # e o `TRAY_MENU_LIVE_REFRESH_FAILED` morria dentro do `except` dele.
+            # O que a arm julga nao mudou: desligar a legenda nao fecha painel,
+            # nao para o worker e nao toca no historico.
             ALLOWED = {"_caption_wanted", "_caption_wanted_store",
                        "show_caption_window"}
+
+            class Tray:
+                def __init__(self):
+                    self.calls = []
+
+                def refresh_menu(self, what):
+                    self.calls.append(str(what))
 
             def __init__(self):
                 object.__setattr__(self, "touched", [])
                 object.__setattr__(self, "_caption_wanted", True)
+                object.__setattr__(self, "tray", WatchedShell.Tray())
 
             def __getattr__(self, name):
                 if name in WatchedShell.ALLOWED:
@@ -739,6 +874,9 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
         lns["_set_live_enabled"](watched, {"on": False})
         add(watched.touched == ["show_caption_window(False)"],
             "desligar a legenda toca SO' na janela da legenda", str(watched.touched))
+        add(watched.tray.calls == ["live"],
+            "e o ROTULO do icone fica a dizer a verdade (cura de 2026-11-09)",
+            str(watched.tray.calls))
         add(watched._caption_wanted is False, "a flag `_caption_wanted` fica em False")
         live_code = code_only(source, "SottoShell", "_set_live_enabled")
         for forbidden in ("_pause_shell", "_reload_worker", "_restart_worker",
@@ -754,6 +892,7 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
     #       alt c era pra mostrar o painel da direita"*.
     host = FakeShell(ns, visible=False, surface='panel')
     spies['log'].lines.clear()
+    spies['time'].reads.clear()
     replay = []
     for index in range(1, 5):
         before = len(host.events)
@@ -784,8 +923,9 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
                     'HOTKEY_TOGGLE step=hide surface=panel',
                     'HOTKEY_TOGGLE step=show surface=strip'],
         "(f) o LOG diz a mesma sequencia, pressao a pressao", str(toggles))
-    add(spies['time'].reads == [] and spies['threading'].timers == [],
-        "(f) o ALT preso nao muda nada: nada neste caminho le' teclado nem relogio",
+    add(clock_stamps_ok(spies, 4) and spies['threading'].timers == [],
+        "(f) o ALT preso nao muda nada: quatro pressoes, quatro carimbos, "
+        "nenhum adiamento",
         str(spies['time'].reads) or "zero leituras")
 
     # (f-ii) O OBSERVADOR REAL (`PassiveHotkeyThread.run`, do ficheiro), com o

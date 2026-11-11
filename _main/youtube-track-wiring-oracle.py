@@ -189,6 +189,27 @@ class FakeShell(object):
         self._bridge = FakeBridge()
         self.bridge = self._bridge
         self._reload_policy = FakePolicy()
+        # O CONTEXTO DA LINHA DO PLAYER E' O DA PRODUCAO (2026-11-11). O
+        # `external_caption` REAL resolve `self._external_context(source)` desde
+        # a revisao D4 (2026-11-09) e este duplo nao tinha o metodo: o caminho
+        # morria em `AttributeError` em vez de julgar a rota (medido no log do
+        # passo). Ele e' uma `staticmethod` PURA (`source` -> `{'viewingUrl':
+        # ...}` ou `{}`), logo delega-se o corpo REAL -- um `return {}` provaria
+        # so' que o `{}` voltou, e um dia o URL do player passa a ser a unica
+        # prova de que a linha veio do video certo.
+        self._external_context = mod.SottoShell._external_context
+        # O RELEASE LIMPA O ESPELHO DA PAUSA/FIM NUMA FUNCAO SO' (2026-11-09,
+        # revisao D4) e o `on_external_captions_released` REAL chama-a antes de
+        # qualquer `return`. O duplo nao a tinha e o release morria em
+        # `AttributeError` -- ENGOLIDO pelo `except Exception` do `_release`
+        # (`EXTERNAL_CAPTIONS_RESUME_FAILED`), que o `Sandbox` silencia. O
+        # sintoma medido era o a11: `releases=1` (contado ANTES da chamada real)
+        # e `resumes []` -- o microfone nao voltava e a causa ficava no log que o
+        # oraculo apaga. E' um reset de dois campos, puro: delega-se o corpo REAL.
+        self._clear_yt_source_mirrors = types.MethodType(
+            mod.SottoShell._clear_yt_source_mirrors, self)
+        #: O que a producao entregou ao gravador de contexto, por linha fechada.
+        self.contexts = []
         #: THE SHELL'S "I AM DYING" FLAG. The real `on_external_captions_
         #: released` reads it (2026-10-20: a worker spawned while the shell
         #: was closing was an ORPHAN, because `os._exit` does not kill a
@@ -218,6 +239,21 @@ class FakeShell(object):
         self.on_external_captions_released = on_external_captions_released
 
     # the bits the real methods call
+    def note_history_context(self, meta):
+        """A linha FECHADA chegou ao gravador de contexto (2026-11-11).
+
+        O `external_caption` REAL chama isto em toda a linha `final=True`
+        (a11/a12 fecham a linha quando ela muda), e o duplo nao o tinha: o
+        percurso morria em `AttributeError`. O metodo real grava o contexto
+        amostrando a janela EM FRENTE (`history_context.snapshot` ->
+        `foreground`), que e' exactamente a costura de ecra que este oraculo nao
+        levanta -- a prova e' o `ctypes.windll.user32` que o `Sandbox` ja'
+        substitui. Por isso o duplo REGISTA o que a producao entregou; os bracos
+        julgam a ROTA (texto, estacionamento, liberacoes), e nenhum deles le'
+        este registo.
+        """
+        self.contexts.append(dict(meta))
+
     def emit(self, kind, payload):
         self.emitted.append((kind, payload))
 

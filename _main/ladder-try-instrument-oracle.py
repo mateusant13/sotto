@@ -138,6 +138,13 @@ def neg_arm():
     def expect(name, mutated_src, arm):
         nonlocal mutants, caught
         mutants += 1
+        if mutated_src == src:
+            # ANCORA AUSENTE (medido 2026-11-11 no `cdp-target-async-oracle`:
+            # duas ancoras tinham apodrecido e o braco lia `NOT-CAUGHT`, que
+            # acusa a sensibilidade do portao quando o problema e' o texto a
+            # mutar ja' nao existir).
+            print("  %-4s ANCORA AUSENTE -- o texto a mutar ja' nao existe" % name)
+            return
         open(dst, "w", encoding="utf-8").write(mutated_src)
         # Carrega o mutante por caminho, sem poluir `worker.sotto_worker`.
         import types
@@ -174,8 +181,19 @@ def neg_arm():
                      'result = "refused"')
     expect("M4", m4, "M4")
     shutil.rmtree(tmp, ignore_errors=True)
+    if caught != mutants:
+        # A CONVENCAO DA CASA (a mesma que o `hotkey-spam` documenta): o braco
+        # negativo devolve 1 QUANDO APANHA e 0 quando NAO apanha. Ate' 2026-11-11
+        # este ramo estava ao contrario (`0 if caught == mutants else 1`), logo o
+        # passo `:expectred red-as-expected-ladder-try-instrument` lia rc=0 com os
+        # quatro mutantes apanhados -- "CONTROL FAILED: rc=0 - este passo tem de
+        # encontrar o defeito injectado e sair 1" -- e o unico sinal era a linha
+        # do log. O `USO` no topo sempre disse `exige rc=1`: era o codigo que
+        # mentia, nao a expectativa.
+        print("NEG-ARM: FAIL -- %d/%d mutantes apanhados" % (caught, mutants))
+        return 0
     print("NEG-ARM: PASS -- %d/%d mutantes apanhados" % (caught, mutants))
-    return 0 if caught == mutants else 1
+    return 1
 
 
 def main(argv):

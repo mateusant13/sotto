@@ -53,11 +53,13 @@ Uso:
 from __future__ import annotations
 
 import ast
+import builtins
 import importlib.util as _ilu
 import os
 import queue
 import re
 import shutil
+import symtable
 import sys
 import tempfile
 import threading
@@ -129,23 +131,117 @@ def load_module(name: str, path: Path):
     return module
 
 
+def unresolved_globals(module, namespace) -> list:
+    """Os nomes de MODULO que os corpos extraidos LEEM e o namespace nao tem.
+
+    MEDIDO 2026-11-11: com o `SHOW_BUDGET_S`/`time` em falta, o `NameError`
+    saia DENTRO do `except` do `_hotkey_worker_loop` e o oraculo lia
+    `transitions=0` -- ou seja, acusava o produto de nao coalescer quando o que
+    nao corria era o arnes. Este portao de `symtable` (sobre o modulo que vai ser
+    exec'd) nomeia a costura em falta ANTES de correr o corpo.
+    """
+    table = symtable.symtable(ast.unparse(module), "<extract>", "exec")
+    have = set(namespace) | set(dir(builtins))
+    for node in module.body:            # o proprio modulo define nomes
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            have.add(node.name)
+        elif isinstance(node, ast.Assign):
+            have.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            have.add(node.target.id)
+    need = set()
+    for child in table.get_children():
+        for symbol in child.get_symbols():
+            if symbol.is_global():
+                need.add(symbol.get_name())
+    return sorted(name for name in need if name not in have)
+
+
+def module_consts(source: str) -> dict:
+    """As constantes de MODULO do ficheiro -- o chao de qualquer namespace extraido.
+
+    MEDIDO 2026-11-11: a cura de 2026-11-10 que deu UM so' relogio ao show
+    (`SHOW_BUDGET_S = SHOW_BUDGET_MS / 1000.0`) pos uma constante DERIVADA no
+    caminho de `_hotkey_resolve`. O arnes so' injectava as costuras que conhecia,
+    o nome de modulo ficava por definir, e o `NameError` era ENGOLIDO pelo
+    `except` do `_hotkey_worker_loop` -- o oraculo via `transitions=0` e acusava
+    o produto de nao coalescer, quando o que nao corria era o ARNES. O valor e'
+    lido do PROPRIO ficheiro (literais e derivadas); o que for injectado por
+    cima continua a ganhar.
+    """
+    out = {}
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return out
+    assigns = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names = [node.target.id]
+        else:
+            continue
+        if names:
+            assigns.append((names, node))
+    for names, node in assigns:
+        try:
+            value = ast.literal_eval(node.value)
+        except (ValueError, SyntaxError, TypeError):
+            continue
+        for name in names:
+            out[name] = value
+    # SEGUNDA PASSAGEM: o que nao e' literal mas e' INOFENSIVO de avaliar
+    # (`SHOW_BUDGET_MS / 1000.0`) corre numa COPIA do namespace, com as
+    # constantes ja' pescadas la' dentro -- sem isso o lado direito da
+    # atribuicao tambem falta.
+    for names, node in assigns:
+        if all(name in out for name in names):
+            continue
+        env = dict(out)
+        env.update({"os": os, "sys": sys, "time": time,
+                    "__builtins__": __builtins__})
+        try:
+            exec(compile(ast.Module(body=[node], type_ignores=[]),
+                         "<consts>", "exec"), env)
+        except Exception:                                        # noqa: BLE001
+            continue
+        for name in names:
+            if name in env:
+                out[name] = env[name]
+    return out
+
+
 def build_dispatch(source: str, gesture):
     """Os corpos REAIS de despacho/worker/resolve, exec'd contra um `self` falso."""
     wanted = ("_hotkey_dispatch", "_hotkey_worker_loop", "_hotkey_resolve")
     bodies = class_methods(source, "SottoShell", wanted)
     if len(bodies) != len(wanted):
         return None
-    namespace = {
+    # O CHAO DE CONSTANTES DO FICHEIRO (2026-11-11): a cura de 2026-11-10
+    # (`SHOW_BUDGET_S`) fez `_hotkey_resolve` ler uma constante de MODULO, e o
+    # namespace do arnes so' tinha as costuras injectadas abaixo.
+    namespace = module_consts(source)
+    namespace.update({
         "log": log,
         "warn": warn,
         "threading": threading,
         "queue": queue,
+        # `time` E' DO CORPO, e nao so' do oraculo (cura de 2026-11-10): o
+        # `_hotkey_resolve` carimba o orcamento do show com `time.monotonic()`.
+        # Sem ele o `except` do worker escondia o `NameError` e o oraculo lia
+        # `transitions=0` -- acusando o produto de nao coalescer.
+        "time": time,
         "window_visible": lambda hwnd: bool(SCREEN['visible']),
         "hotkey_numbers": lambda: gesture,
-    }
+    })
     module = ast.Module(
         body=[ast.parse(bodies[name]).body[0] for name in wanted],
         type_ignores=[])
+    missing = unresolved_globals(module, namespace)
+    if missing:
+        print(f"  EXTRACAO INCOMPLETA: nomes de modulo em falta: {missing}")
+        return None
     exec(compile(module, "<sotto-shell-spam>", "exec"), namespace)
     return namespace
 
@@ -213,10 +309,14 @@ class Shell:
         self.in_transition = False
         return True
 
-    def show_strip(self, reason):
+    # `deadline=` E' DA ASSINATURA DO PRODUTO (cura de 2026-11-10: o show recebe
+    # o relogio carimbado em `HOTKEY_COALESCED`). `_hotkey_resolve` passa-o; um
+    # fake com `(self, reason)` respondia `TypeError` -- dentro do worker, onde o
+    # `except` o transforma em `HOTKEY_HANDLER_FAILED` e em `transitions=0`.
+    def show_strip(self, reason, deadline=None):
         return self._transition('show', 'strip')
 
-    def show_side(self, reason):
+    def show_side(self, reason, deadline=None):
         return self._transition('show', 'panel')
 
     def hide_panel(self, reason):
@@ -495,7 +595,11 @@ def neg_arm() -> int:
             # um contrato trocado e o braco negativo nao valia nada.
             return EXIT_FAIL
         print("NEG-ARM FAIL -- o oraculo NAO ve a regressao FIFO")
-        return EXIT_FAIL
+        # ... e um braco negativo que NAO apanha tem de ser distinguivel de um
+        # que apanha: a casa conta rc=1 como "apanhou". Medido 2026-11-11: os
+        # dois ramos devolviam 1, logo o passo `:expectred` ficava verde com um
+        # mutante vivo -- o unico sinal era a linha do log.
+        return EXIT_PASS
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

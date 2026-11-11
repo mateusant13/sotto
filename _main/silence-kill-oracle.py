@@ -25,11 +25,12 @@ ARMS
      reimprime nao compra vida eterna)
 
 BRACO NEGATIVO (`--neg-arm`): duas copias da shell -- uma sem a marca do kill,
-outra sem as `PROGRESS_TAGS` -- e as arms 2 e 4 tem de ficar RED em cada uma.
+outra sem as `PROGRESS_TAGS`. O juizo e' o dicionario que `run_arms` devolve, e
+cada mutante tem de deixar VERMELHO o arm que o nomeia: a marca do kill cai no
+arm 1, as `PROGRESS_TAGS` caem no arm 4 (medido 2026-11-11).
 """
 import importlib.util
 import os
-import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -137,16 +138,25 @@ def run_arms(path, tag):
     f4 = Fake()
     cls._pump(f4, io.StringIO("REDUX_ENGINE_DONE reason=interval\n"), "stderr")
     armed_batch = f4.armed
+    armed_each = []
+    for line in ("REDUX_BATCH_KICK reason=interval\n",
+                 "REDUX_MODE mode=batch\n"):
+        f = Fake()
+        cls._pump(f, io.StringIO(line), "stderr")
+        armed_each.append(f.armed)
     f5 = Fake()
     cls._pump(f5, io.StringIO("qualquer coisa sem significado\n"), "stderr")
     armed_junk = f5.armed
-    f6 = Fake()
-    cls._pump(f6, io.StringIO("WORKER_STATS tag=tick blocks=9\n"
-                              "REDUX_BATCH_KICK reason=interval\n"), "stderr")
-    res["4"] = armed_batch == 1 and f6.armed == 1
+    # SO' AS TRES TAGS DE `PROGRESS_TAGS` (2026-11-11). Este arm trazia
+    # `WORKER_STATS tag=tick blocks=9` a' frente da linha do lote, e o
+    # `WORKER_STATS` re-arma sozinho por `_note_progress` -- o arm passava mesmo
+    # com as `PROGRESS_TAGS` desligadas, ou seja media uma coisa e dizia outra.
+    # Agora cada linha e' testada SOZINHA: e' o unico sinal presente.
+    res["4"] = armed_batch == 1 and armed_each == [1, 1]
     res["5"] = armed_junk == 0
-    print("ARM 4  armaram: lote=%d (stats+batch=%d)  %s"
-          % (armed_batch, f6.armed, "PASS" if res["4"] else "FAIL"))
+    print("ARM 4  armaram: done=%d batch=%d mode=%d (cada um sozinho)  %s"
+          % (armed_batch, armed_each[0], armed_each[1],
+             "PASS" if res["4"] else "FAIL"))
     print("ARM 5  armaram com stderr inerte=%d  %s"
           % (armed_junk, "PASS" if res["5"] else "FAIL"))
     return res
@@ -158,7 +168,8 @@ def _mutant(needle, repl, name):
     # "ancora encontrada 0 vez(es)" em vez de provar o mutante).
     text = open(SHELL, encoding="utf-8", newline="").read().replace("\r\n", "\n")
     if text.count(needle) != 1:
-        print("NEG-ARM FAIL: ancora %r encontrada %d vez(es)" % (needle, text.count(needle)))
+        print("NEG-ARM IMPOSSIVEL: ancora %r encontrada %d vez(es)"
+              % (needle, text.count(needle)))
         return None
     path = os.path.join(os.path.dirname(SHELL), "_mutant_%s.py" % name)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
@@ -167,30 +178,49 @@ def _mutant(needle, repl, name):
 
 
 def neg_arm():
+    """Cada mutante tem de deixar VERMELHO o arm que o nomeia.
+
+    JULGADO PELO DICIONARIO DE ARMS, NAO PELA LINHA DE STDOUT (2026-11-11). O
+    detector antigo corria o oraculo num subprocesso e exigia que a linha
+    TERMINASSE em `FAIL`; o produto escreve no MESMO stdout por um fio
+    assincrono (`log()` -> `_enqueue_stdout`), e a linha do lote colou-se ao fim
+    do arm: medido,
+    `ARM 4  armaram: lote=0 (stats+batch=0)  FAIL2026-11-11 10:22:58.332 sotto:
+    WORKER REDUX_BATCH_KICK reason=interval`. O arm 4 estava VERMELHO, rc=1, e o
+    controlo dizia "nao apanhou" -- um controlo cego ao seu proprio vermelho.
+    `run_arms` ja devolve {arm: bool}; e' esse o juizo, e nenhuma escrita do
+    produto o pode contaminar.
+    """
     ok = True
     for name, needle, repl, must_fail in (
-            ("kill", "        self.killed = child is not None\n", "        self.killed = False\n", "1"),
+            ("kill", "        self.killed = child is not None\n",
+             "        self.killed = False\n", ("1",)),
             ("tags", "                    if line.startswith(PROGRESS_TAGS):\n",
-             "                    if False:\n", "4")):
+             "                    if False:\n", ("4",))):
         path = _mutant(needle, repl, name)
         if path is None:
-            return 1
+            return 2
         try:
-            proc = subprocess.run([sys.executable, os.path.abspath(__file__), "--shell", path],
-                                  capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
+            res = run_arms(path, "neg_%s" % name)
+        except Exception as exc:                     # noqa: BLE001 - montagem
+            print("NEG-ARM IMPOSSIVEL: o mutante %r nem correu (%s: %s)"
+                  % (name, type(exc).__name__, exc))
+            return 2
         finally:
             try:
                 os.remove(path)
             except OSError:
                 pass
-        out = proc.stdout or ""
-        failed = [ln for ln in out.splitlines() if ln.rstrip().endswith("FAIL")]
-        caught = proc.returncode != 0 and any(
-            ln.startswith("ARM %s " % must_fail) for ln in failed)
-        print("NEG-ARM(%s) rc=%d arm_%s_red=%s  %s"
-              % (name, proc.returncode, must_fail, caught, "PASS" if caught else "FAIL"))
+        red = [arm for arm in must_fail if res.get(arm) is False]
+        caught = len(red) == len(must_fail)
+        print("NEG-ARM(%s) arm(s)=%s vermelho(s)=%s  %s"
+              % (name, "/".join(must_fail), "/".join(red) or "-",
+                 "PASS" if caught else "FAIL"))
         ok = ok and caught
-    print("NEG-ARM PASS" if ok else "NEG-ARM FAIL")
+    # A frase sem dois-pontos e' a que o `:expectred` da bateria procura;
+    # a forma com dois-pontos e' a canonica deste repo.
+    print("NEG-ARM %s" % ("PASS" if ok else "FAIL"))
+    print("NEG-ARM: %s" % ("PASS" if ok else "FAIL"))
     # RED as designed: um braco negativo que FUNCIONA sai 1, para o `:expectred`
     # da bateria exigir rc=1 E a frase `NEG-ARM PASS` no log.
     return 1 if ok else 0
@@ -208,5 +238,5 @@ if __name__ == "__main__":
             shell = a.split("=", 1)[1]
     r = run_arms(shell, os.path.basename(shell).replace(".", "_"))
     ok = all(r.values())
-    print("VERDICT:", "GREEN" if ok else "RED")
+    print("VERDICT: %s" % ("PASS" if ok else "FAIL"))
     raise SystemExit(0 if ok else 1)
