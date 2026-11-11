@@ -2563,6 +2563,21 @@ Seis propriedades, nenhuma opcional:
 6. **ABORTO NAO E' VEREDICTO.** O sumario escreve-se no fim, carimbado com run id + inicio, e o leitor
    recusa um sumario mais velho que a corrida que esta' a julgar.
 
+**UM CORTE NO PRAZO NAO E' UMA DURACAO (medido 2026-11-11).** O `battery-budget` le
+`_cache\battery-steps.json`, e ali a coluna `elapsed_s` de um passo que estourou o prazo de 240 s e'
+**240.476 s** -- o PRAZO, nao o custo. Medido nesta arvore: `red-as-expected-load-shedding` tinha
+duas dessas amostras no historico e a mediana das tres fingia uma regressao de **+504 %** (40.256 s
+reais, medidos tres vezes) num passo que nao mudou uma linha; o RED custou uma sessao inteira a
+perseguir um numero que era a regua. `smooth_rows` descarta amostra **historica** que caia a menos de
+1 s do prazo e **imprime** cada uma como `KILL-SAMPLE dropped step=..`, e as amostras desta corrida
+NUNCA sao descartadas (um corte de hoje reprova hoje). O par de oraculos julga as duas metades: S1-S5
+(a mediana sobrevive ao corte) e M3 do `--neg-arm` (banda a 0 e o S1 tem de cair), medido
+`NEG-ARM: PASS (3/3)`. Corolario para o REBASELINE: ele julga com a **mesma** regua do portao --
+piso `PER_STEP_FLOOR_S`, `PER_STEP_PCT` e `PER_STEP_SLACK_S` --, porque um rebaseline mais estrito do
+que o portao que ele serve nunca passa e bloqueia o trabalho que ele existe para registar (medido: a
+regua antiga recusou 18 passos de sub-segundo). E um artefato de corrida (o log do largador) escreve-se
+com prefixo `_` dentro de `_main\_audit-verify\`, senao o `skip-verdict-guard` o le' como log de passo.
+
 **DEVER DE TRANSPORTE - parte do "done".** Toda mudanca que altere COMO o trabalho se faz escreve a
 regra AQUI, no mesmo commit: este ficheiro e' lido por este assento e por **todo** subagente
 despachado, e e' o unico lugar onde uma regra sobrevive a sessao. Forma obrigatoria: a lei datada com

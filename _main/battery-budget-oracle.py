@@ -137,16 +137,51 @@ def save_history(history, path=HISTORY):
         pass  # o historico e' uma ajuda, nunca um portao: falhar a escreve-lo nao muda o veredicto
 
 
-def smooth(rows, history, policy=None, record=True):
+#: UM CORTE NO PRAZO NAO E' UMA DURACAO (medido 2026-11-11). O `:step` mata o job
+#: em `SOTTO_STEP_DEADLINE_S` e o que fica registado e' o PRAZO, nao o custo do
+#: passo: `red-as-expected-load-shedding` apareceu com **240,476 s** duas vezes
+#: (deadline de 240 s) enquanto o MESMO controlo custa **40,3 s** medido. Com o
+#: prazo dentro da janela de tres leituras, a mediana dizia 240,476 e o portao
+#: chamava "regressao de +504 %" a um numero produzido pelo proprio cortador.
+#: A banda e' de 1 s: um passo cujo custo real caia a menos de 1 s do prazo nao
+#: existe nesta populacao (o mais caro legitimo medido e' 168 s), e mesmo que
+#: existisse ele continua a ser julgado pela regra de `over-deadline`, que usa a
+#: leitura deste corrida -- o que este filtro tira e' so' o PESO dela na mediana.
+KILL_BAND_S = 1.0
+
+#: As amostras descartadas por `smooth` nesta invocacao (nome, valor), impressas.
+KILL_SAMPLES: list[tuple[str, float]] = []
+
+
+def _is_kill_sample(value, deadline_s):
+    """True quando a leitura e' o PRAZO, e nao o custo: o job foi cortado."""
+    return deadline_s and abs(float(value) - float(deadline_s)) <= KILL_BAND_S
+
+
+def smooth(rows, history, policy=None, record=True, deadline_s=None):
     """Troca o `elapsed_s` de cada passo pela MEDIANA das ultimas leituras.
 
     `record=False` (o braco negativo) julga o numero CRU: um mutante somado a uma
     mediana historica podia ser diluido e o controlo deixaria de apanhar.
+
+    Amostras HISTORICAS que sao um corte no prazo (`_is_kill_sample`) saem da
+    serie, e cada uma e' impressa (`KILL-SAMPLE`) -- um filtro mudo seria a mesma
+    doenca do passo saltado contado como verde. A leitura DESTA corrida NUNCA
+    sai: um corte de hoje tem de continuar a reprovar hoje.
     """
     out = []
     for row in rows:
         name = row['name']
-        series = [float(x) for x in (history.get(name) or []) if isinstance(x, (int, float))]
+        hist = [float(x) for x in (history.get(name) or []) if isinstance(x, (int, float))]
+        kept = []
+        for value in hist:
+            if _is_kill_sample(value, deadline_s):
+                KILL_SAMPLES.append((name, value))
+            else:
+                kept.append(value)
+        # Toda a serie historica sendo corte deixa `kept` vazio: a leitura de
+        # agora fica SOZINHA (nunca "0 s por falta de dados").
+        series = kept
         series.append(row['elapsed_s'])
         series = series[-HISTORY_N:]
         if record and (row.get('policy') or None) == (policy or None):
@@ -245,6 +280,51 @@ def deadline():
         return float(os.environ.get('SOTTO_STEP_DEADLINE_S') or 240)
     except ValueError:
         return 240.0
+
+
+def smooth_arms():
+    """OS BRACOS DO FILTRO DE CORTE, puros: nenhum le' disco, nenhum escreve historico.
+
+    Nasceram do defeito MEDIDO na corrida de 2026-11-11: a historia de
+    `red-as-expected-load-shedding` era `[240,476, 240,476, 40,256]` -- duas
+    mortes no prazo de 240 s e o custo real do controlo -- e a mediana (240,476)
+    fez o portao chamar "regressao de +504 %" a um numero que o proprio cortador
+    escreveu. O filtro novo tira da serie as amostras historicas que sao o PRAZO,
+    e estes bracos existem porque um filtro sem controlo e' o mesmo que nenhum.
+    """
+    arms = []
+
+    def arm(name, hist, current, want_med, want_dropped, deadline_s=240.0):
+        saved = list(KILL_SAMPLES)
+        KILL_SAMPLES.clear()
+        rows = [{'name': 'x', 'elapsed_s': float(current)}]
+        out = smooth(rows, {'x': list(hist)}, None, record=False,
+                     deadline_s=deadline_s)
+        dropped = list(KILL_SAMPLES)
+        KILL_SAMPLES[:] = saved
+        med = out[0]['elapsed_s']
+        good = (abs(med - want_med) < 0.01) and (len(dropped) == want_dropped)
+        arms.append({'arm': name, 'ok': good,
+                     'detail': 'mediana=%.3f (want %.3f); descartadas=%d (want %d)'
+                               % (med, want_med, len(dropped), want_dropped)})
+
+    arm('S1 duas mortes no prazo nao fazem a mediana do controlo (o caso medido)',
+        [240.476, 240.476, 40.256], 40.256, 40.256, 2)
+    # S2: com a historia sendo SO' cortes, a leitura de agora e' a unica medida --
+    # se o filtro comesse tambem a de hoje, a mediana cairia para o valor antigo e
+    # um passo morto no prazo passaria a "rapido". O valor esperado e' o de HOJE.
+    arm('S2 a leitura DESTA corrida nunca e\' filtrada: um corte de hoje reprova hoje',
+        [240.476, 240.476], 240.4, 240.4, 2)
+    arm('S3 so\' cortes na historia: a leitura de agora fica sozinha',
+        [240.476, 240.476], 62.0, 62.0, 2)
+    # S4: a mediana de uma serie PAR e' o elemento de cima (comportamento antigo,
+    # nao tocado por este filtro); o que a arm prova e' `descartadas=0` -- um custo
+    # legitimo de 100 s nao e' confundido com um corte no prazo.
+    arm('S4 um custo legitimo de 100 s nao e\' descartado',
+        [100.0], 110.0, 110.0, 0)
+    arm('S5 historia vazia continua devolvendo a leitura de agora',
+        [], 5.0, 5.0, 0)
+    return arms
 
 
 def judge_arms():
@@ -466,9 +546,24 @@ def neg_arm():
         for line in why_after:
             print('    RED', line)
         row['elapsed_s'] = original
-    total_ok = caught == len(plan)
+    # M3: o FILTRO DE CORTE. Desligar a banda (0 s) e' a mutacao do filtro, e o
+    # braco S1 tem de cair -- senao o filtro novo entrava na casa sem controlo.
+    global KILL_BAND_S
+    saved_band = KILL_BAND_S
+    KILL_BAND_S = 0.0
+    try:
+        m3 = [a for a in smooth_arms() if a['arm'].startswith('S1')][0]
+    finally:
+        KILL_BAND_S = saved_band
+    m3_ok = not m3['ok']
+    caught += 1 if m3_ok else 0
+    print('NEG-ARM %-14s %-32s %s %s'
+          % ('KILL_BAND=0', 'M3 filtro de corte desligado',
+             'APANHADO' if m3_ok else 'PASSOU', m3['detail']))
+    plan_n = len(plan) + 1
+    total_ok = caught == plan_n
     print('NEG-ARM: %s (%d/%d mutantes apanhados; juiz antes: %s)'
-          % ('PASS' if total_ok else 'FAIL', caught, len(plan), base_ok))
+          % ('PASS' if total_ok else 'FAIL', caught, plan_n, base_ok))
     return 1 if total_ok else 0
 
 
@@ -509,10 +604,22 @@ def main(argv):
         # O BASELINE SO' APERTA POR OMISSAO. Um rebaseline que gravasse em
         # silencio um passo que engordou seria o ratchet a assinar o proprio
         # aumento -- o passo tem de nomear o que aceita em `--accept-growth`.
+        # O REBASELINE JULGA COM A MESMA REGUA DO PORTAO (medido 2026-11-11). A
+        # primeira forma usava `before * 1.05` sobre TUDO, sem piso nem folga, e
+        # recusou um rebaseline legitimo citando dezoito passos de sub-segundo
+        # (`claims-date 0.3 -> 0.8`, `panel-deps 0.3 -> 0.7`, `live-code-freshness
+        # 0.4 -> 0.5`): um rebaseline mais estrito do que o portao que ele serve
+        # nunca passa, e o trabalho que ele existe para registar fica bloqueado.
+        # A regua e' a do `judge`: piso de `PER_STEP_FLOOR_S`, `PER_STEP_PCT` e a
+        # folga absoluta de `PER_STEP_SLACK_S`.
         grew = []
         for name, secs in sorted(measured['per_step'].items()):
             before = (old.get('per_step') or {}).get(name)
-            if before and secs > before * RATCHET_PCT and name not in allowed:
+            if not before or name in allowed:
+                continue
+            if max(before, secs) < PER_STEP_FLOOR_S:
+                continue
+            if secs > before * PER_STEP_PCT and (secs - before) > PER_STEP_SLACK_S:
                 grew.append('%s %.1fs -> %.1fs' % (name, before, secs))
         if old_policy != policy:
             grew = []      # a regua antiga nao julga a politica nova; a razao foi dita
@@ -548,8 +655,11 @@ def main(argv):
     rows = read_steps(CACHE)
     policy = _policy_arg(argv)
     history = load_history()
-    rows = smooth(rows, history, policy)
+    rows = smooth(rows, history, policy, deadline_s=deadline())
     save_history(history)
+    for name, value in KILL_SAMPLES:
+        print('KILL-SAMPLE dropped step=%s s=%.3f prazo=%.0fs -- o registo era o '
+              'CORTE, nao o custo do passo' % (name, value, deadline()))
     measured = measure(rows, deadline(), policy)
     if not measured['steps']:
         # Populacao VAZIA sob esta politica: a comparacao nao existe, e um PASS
@@ -569,7 +679,7 @@ def main(argv):
     report(measured, base, gap)
     for line in why:
         print('  RED', line)
-    arms = judge_arms()
+    arms = judge_arms() + smooth_arms()
     bad_arms = [a for a in arms if not a['ok']]
     for a in arms:
         print('  ARM %s %s -- %s' % ('ok  ' if a['ok'] else 'RED ', a['arm'], a['detail']))
