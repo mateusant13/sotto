@@ -591,7 +591,30 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-10, 15:0x):** `_main\_audit-verify-all.cmd` = **350788 B**,
+- **PIN do ficheiro (medido 2026-11-11, 01:4x):** `_main\_audit-verify-all.cmd` = **352056 B**,
+  **4086 CRLF** / 0 bare LF, sha256 `EA703D9CDF73151C0374D8D794C87EC5A1CD284F8514AA8AEC9A20109A37AB81`.
+  (Mil duzentos e sessenta e oito bytes e QUATORZE linhas a mais do que o pin de 350788 B: o par
+  `audio-ring` + `red-as-expected-audio-ring`, o RING DE AUDIO DAS ULTIMAS 12 HORAS. Ordem do dono,
+  verbatim: *"MANTENHA o audio INTEIRO das ultimas 12 horas pra benchmark/replay pra gente melhorar
+  a taxa de acerto de palavras"*, e depois *"o trecho de audio 'que nao fez sentido' [... vai] ate
+  passar por modelo melhor, depois o audio e deletado"* -- as duas metades precisam do mesmo
+  artefacto: o audio do trecho tem de existir DEPOIS de a legenda ter sido escrita.
+  `worker\audio_ring.py` escreve o audio do tap em segmentos de 10 min (opus 24 kbps, 168 MB por
+  12 h) com `index.jsonl` (t0/t1/amostras/bytes por segmento) e `lines.jsonl` (a ANCORA de cada
+  linha fechada), poda por IDADE (12 h) e por TECTO (600 MB, o mais velho sai primeiro, o segmento
+  ABERTO nunca), e `_main\audio-replay.py` corta um intervalo ou uma linha por amostra e monta um
+  `--corpus` com todas as linhas ancoradas. As duas emendas que a medicao obrigou: a ROTACAO e' por
+  AUDIO e nao por relogio (20 s de audio empurrados em 1 s de parede davam UM segmento com a
+  rotacao por relogio; por audio dao quatro, medido no `--selftest`), e o `t0` de cada segmento vem
+  do relogio de AUDIO (`first_epoch + amostras_guardadas/rate`), pelo mesmo motivo: o `start`/`end`
+  de uma legenda conta audio, logo um indice por relogio de parede sai deslocado sempre que o
+  escritor fica para tras.
+  `_main\audio-replay.py --selftest` mede **6/6** (tom de 440 Hz, 20 s, 4 segmentos, nivel RMS
+  0.349, pico 439 Hz, corte de 2,000 s); `_main\audio-ring-oracle.py` da' `AUDIO-RING VERDICT: PASS
+  -- 4/4` e o `--neg-arm` **4/4** mutantes, cada um pela SUA arm (o M4 -- o `close()` apagado --
+  passou a ser apanhado so' depois de a arm A4 deixar de medir a MENCAO do global e passar a exigir
+  um `close()` chamado LITERALMENTE sobre `_AUDIO_RING`; medido: M4 NOT-CAUGHT na primeira forma).)
+- **PIN anterior (medido 2026-11-10, 15:0x):** `_main\_audit-verify-all.cmd` = **350788 B**,
   **4072 CRLF** / 0 bare LF, sha256 `0E048935B20A0976DEC88A6685E4B10E8EB7AD176C145D1DA41E32CD4417946E`.
   (Mil trezentos e noventa e cinco bytes e QUATRO linhas a mais do que o pin de 349393 B: o passo
   `boot-interaction-paint-arm`, que liga a' bateria o braco da PINTURA do show.

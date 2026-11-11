@@ -3625,6 +3625,20 @@ REM corrida (contenda 2,7x), logo um limite de 5 % por passo gritaria em ruido, 
 REM portao que grita em ruido e' desligado pela primeira pessoa que o veja vermelho.
 REM O baseline grava `per_step` e so' APERTA por omissao: um rebaseline que aceitasse em
 REM silencio um passo que engordou e' recusado, e aceitar exige `--accept-growth <nome,...>`.
+REM O RING DE AUDIO DAS 12 HORAS (ordem do dono, 2026-11-11): um modulo que grava
+REM audio e ninguem chama e' a doenca que esta casa ja' pagou tres vezes. O positivo
+REM corre o `--selftest` do leitor (o modulo E o corte por linha, contra uma senoide
+REM conhecida) e le por AST as tres emendas no worker: o ring nasce em `main()` so'
+REM na captura viva, `on_block` empurra, e a linha fechada escreve ancora + o ring
+REM fecha. O negativo muta uma COPIA do worker em quatro sitios e exige 4/4.
+if exist _main\audio-ring-oracle.py (
+  call :step audio-ring 0 "worker\audio_ring.py;worker\sotto_worker.py;_main\audio-replay.py;_main\audio-ring-oracle.py" "%OUT%\audio-ring.log" python _main\audio-ring-oracle.py
+  call :record audio-ring !STEP_RC!
+) else ( call :record audio-ring MISSING )
+if exist _main\audio-ring-oracle.py (
+  call :step red-as-expected-audio-ring 1 "worker\audio_ring.py;worker\sotto_worker.py;_main\audio-replay.py;_main\audio-ring-oracle.py" "%OUT%\audio-ring-neg.log" python _main\audio-ring-oracle.py --neg-arm
+  call :expectred red-as-expected-audio-ring !STEP_RC! "%OUT%\audio-ring-neg.log" "NEG-ARM: PASS -- 4/4"
+) else ( call :expectred red-as-expected-audio-ring MISSING "%OUT%\audio-ring-neg.log" "NEG-ARM: PASS -- 4/4" )
 REM SEIS BRACOS DO JUIZ correm em toda invocacao normal (A1 +10 % passa, A2 +26 % reprova e
 REM nomeia, A3 total IGUAL com um passo 10->60 reprova, A4 passo novo acima do prazo, A5
 REM passo que saiu da populacao nao reprova, A6 abaixo do piso nao reprova): um juiz que nao

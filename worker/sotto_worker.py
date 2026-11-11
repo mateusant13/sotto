@@ -131,6 +131,7 @@ DEFAULT_MODEL = os.path.join(HERE, "models", "nemotron-3.5-asr-ptbr-onnx-int4")
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 import punctuation_model  # noqa: E402 -- pontuacao de modelo (opcional, degrada para identidade)
+import audio_ring  # noqa: E402 -- o audio inteiro das ultimas 12 h (ordem do dono 2026-11-11)
 from engine_switch import (  # noqa: E402,F401 -- superficie historica do worker
     ParakeetEngine, PanelVisibilityReader, REDUX_BATCH_INTERVAL_DEFAULT_S,
     REDUX_CHECKPOINT_FILES, REDUX_CHECKPOINT_RELPATH,
@@ -5054,6 +5055,13 @@ def dedup_seam_repeat(text):
     return " ".join(words) if changed else text
 
 
+#: O RING DE AUDIO (dono, 2026-11-11). Um objecto por PROCESSO, criado em
+#: `main()` e lido pelo emissor da linha fechada. `None` significa "desligado":
+#: `--selftest`, a arm de ficheiro e qualquer probe constroem o worker sem ring,
+#: e nesse caso o emissor nao paga nem uma chamada (a guarda e' `is None`).
+_AUDIO_RING = None
+
+
 class LineFormer:
     """Accumulate decoded chunk text into a LINE, and say when to emit it.
 
@@ -5266,6 +5274,23 @@ class LineFormer:
             # `route`/`start`/`routeSource` keep their exact meanings.
             **({"source": self.source} if self.source is not None else {}),
         }
+        # O AUDIO DESTA LINHA, NO INDICE DO RING (dono, 2026-11-11). So' a linha
+        # FECHADA leva ancora: uma parcial e' uma hipotese que a proxima
+        # substitui, e guardar audio para ela encheria o indice de trechos que
+        # ninguem vai reouvir. O `t0`/`t1` sao o AUDIO da linha convertido para
+        # epoch de parede pelo ring; sem ring (selftest, arm de ficheiro) nada
+        # e' escrito e o evento fica exactamente como antes.
+        ring = _AUDIO_RING
+        if ring is not None and (final or closed) and text and self._start is not None:
+            try:
+                audio_ring.append_line_anchor(
+                    ring.root,
+                    ring.epoch_for(self._start),
+                    ring.epoch_for(self._end if self._end is not None else self._start),
+                    text,
+                    {'source': self.source} if self.source is not None else None)
+            except Exception:  # noqa: BLE001 -- um indice nao derruba a legenda
+                pass
         return self._attribute(event)
 
     def _attribute(self, event):
@@ -6590,6 +6615,19 @@ def main():
     )
     args = ap.parse_args()
 
+    # O RING DE AUDIO DAS ULTIMAS 12 HORAS (ordem do dono, 2026-11-11). Nasce
+    # ANTES de qualquer dispositivo abrir e so' no caminho de captura VIVA:
+    # `--selftest` e o braco de ficheiro nao tem tap, e guardar o proprio
+    # fixture num ring seria audio de teste a passar por audio do dono. Um
+    # ring que falha a abrir NAO derruba a legenda -- ele desliga-se e diz por
+    # que, porque transcrever continua a ser o produto.
+    global _AUDIO_RING
+    if not args.selftest and not args.audio:
+        try:
+            _AUDIO_RING = audio_ring.AudioRing(os.path.dirname(HERE))
+        except Exception as exc:  # noqa: BLE001 -- o produto nao depende disto
+            err("AUDIO_RING off error=%r" % (exc,))
+
     # -- the panel WAVE: resolve the meter rate BEFORE the audio path ---------
     # Precedence: --meter-hz > SOTTO_METER_HZ > METER_HZ (10.0) -- the same
     # shape as --lang-id > SOTTO_LANG_ID > config > auto below. The ENV rung is
@@ -7356,6 +7394,12 @@ def main():
         return line
 
     def on_block(block):
+        # O RING OUVINDO ANTES DE TUDO (ordem do dono, 2026-11-11): o audio que
+        # nao foi guardado nao se pode reouvir, e este e' o unico ponto por onde
+        # TODO bloco do tap passa. `push` nao bloqueia e nao faz I/O -- devolve
+        # no maximo uma copia para a fila do escritor.
+        if _AUDIO_RING is not None:
+            _AUDIO_RING.push(block)
         counters["blocks"] += 1
         counters["block_samples"] += int(block.size)
         device_blocks["value"] += 1
@@ -8903,6 +8947,14 @@ def main():
                 if payload.get("type") == "caption":
                     counters["redux_captions"] += 1
                 emit(**payload)
+        # O RING FECHA POR ULTIMO, depois do drain: um segmento aberto e'
+        # fechado e indexado por `close()`, e o que faltar e' audio que nunca
+        # foi tocado. `close()` e' idempotente.
+        if _AUDIO_RING is not None:
+            try:
+                _AUDIO_RING.close()
+            except Exception:  # noqa: BLE001 -- a saida nao depende disto
+                pass
         # The overlay's own tail, again, for the path that never reached the asr
         # thread's end (a device that died, a tap that was refused). Idempotent.
         if overlay is not None:
