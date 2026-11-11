@@ -224,3 +224,43 @@ acima: pintura em 0,11 s contra um blank de 7 ms.
 
 A leitura do DONO (*"fica aparecendo na tela de forma aleatoria so' por que ta tocando um audio, que nem
 speaker e'"*) estava certa em cada palavra: e' o audio do video, e o momento e' o do blank/adocao.
+
+## 10. AS CURAS, com o numero de cada uma (2026-11-11, sessao inteira)
+
+| # | o que estava partido (medido) | a cura | o numero |
+|---|---|---|---|
+| 1 | o Ctrl+Space registava e o ecra ficava mudo: primeiro pixel **95,8 s** depois (so' quando uma faixa do YouTube apareceu) | o toggle LE o bloqueador no instante e escreve a razao verdadeira na mesma fenda da legenda (`model-loading`, `waiting-first-line`, `no-track`, `no-audio`, `waiting-player-row`), com poll de 250 ms enquanto houver status no ecra | status em **<= 2 ms** no harness; `_main/live-ack-oracle.py` **9/9**, neg-arm **7/7** |
+| 2 | audio de **301 s** atras pintado como ao vivo (`CAPTION_IN start=381.84 final=true tap_ms=None`) | `LIVE_PAINT_MAX_AGE_S = 30.0` (3,7x o pior caso HONESTO medido: 1846 parciais com `tap_ms`, p99 **1837 ms**, max **8070 ms**) recusa a PINTURA e nunca o texto -- o `emit_async` ja' correu, o historico fica | `LIVE_PAINT_REFUSED` uma vez por episodio |
+| 3 | **1818** pinturas com audio velho no log, pior caso **3543,40 s**; o lote pintava e o ruido (`Mmm`) pintava | `worker/live_route.py` (puro) com as portas na ordem em que cada uma cala a linha: rota de lote -> posse do player -> ruido -> velho/fresco/desconhecido; `admit` e' o ponto UNICO no `emit` | replay do corpus: **0** pinturas de lote, `live_paints=1943`, `live_refused=143`; oraculo **42/42**, neg-arm **8/8** |
+| 4 | a escada de dispositivo esperava **43,63 s** num rung que entregou ZERO (dobragem 6->12->24->48) e abria antes um endpoint plano conhecido | `FLAT_EVIDENCE_S = 4.0` (janela em que um endpoint a renderizar teria entregue ~2000 amostras = 50x o piso) + journal do tap (`%LOCALAPPDATA%\Sotto\endpoint-signal.json`) que poe o sinal a' frente e o plano provado no fim | rung->rotacao **43,63 s -> 0,00 s**; abertura->1o dispositivo com sinal **43,673 -> 0,016 s** (journal quente); oraculo **17/17**, neg-arm **6/6** |
+| 5 | o `log=err` do filtro da rota levantava `UnboundLocalError` na PRIMEIRA legenda -- a cura custava a legenda que existia para proteger | `route_log` (stderr que nunca levanta); o filtro da rota nao pode partir o `emit` | `emit-pipe-dead` **PASS** (5 arms) e neg-arm a apanhar 4 |
+
+### 10-bis. A ORDEM DOS COMMITS, e por que cada um e' um so'
+
+`52b9884` a lei (troca de dono se escreve; reconexao e' transporte) -> `cb60f58` o recibo do blank
+repintado em 0,11 s -> `58ee568` o shell (ack + idade) -> `b0bfa76`/`540f11b` a escada e o journal ->
+`0136e19` os dois instrumentos da janela plana -> `3cd27c6` a rota ao vivo no worker ->
+`fb3206d` o `UnboundLocalError` -> `9c9212e`/`69975d0` os dois stubs com a assinatura de ontem.
+
+### 10-ter. TRES DEFEITOS DE INSTRUMENTO, todos da mesma forma
+
+1. **`boot-interaction-oracle` dizia UNMEASURED** "arranque -> 1a legenda" com pinturas no log (casava
+   duas das cinco formas de linha). Corrigido; e' o juiz desta rodada.
+2. **Dois oraculos carimbavam 12/24/48/60** e ficaram vermelhos quando a janela plana passou a 4 s --
+   o instrumento a acusar quem esta' certo. Agora perguntam o numero ao PRODUTO e um arm novo exige
+   que ele seja curto (<= 8 s).
+3. **Dois stubs tinham a assinatura de ontem** (`take_pending(max_s=)`, `_start_pass(..., last_s)`), e o
+   `TypeError` subia de DENTRO do produto. Corrigidos nos dois sitios.
+
+E uma limitacao que fica escrita: o `undefined-names` **nao** apanha a classe do `UnboundLocalError`
+(`err` esta' definido no escopo, via `except ... as err`). Quem a fecha e' a arm que conduz o `emit`
+REAL -- a que a lane da rota esta' a escrever.
+
+### 10-quater. O QUE CONTINUA NAO MEDIDO
+
+* Nada disto correu na INSTANCIA dele: as curas estao no disco e o processo vivo (`pid 49180`) e'
+  anterior ao codigo. `live-code-freshness-oracle --strict` diz **STALE**, logo o veredicto e'
+  **fixed, NOT verified** ate' ele reiniciar a app (a shell nao se relanca sozinha: `--no-self-relaunch`).
+* Os numeros de "antes" sao do log dele; os de "depois" sao de replay e de harness. A medicao que
+  fecha o ciclo e' o proximo arranque dele com `CAPTION_STATUS_SHOWN`, `LIVE_PAINT_REFUSED` e
+  `CAPTION_PAINT_SURFACE` no log.
