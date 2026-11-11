@@ -118,29 +118,39 @@ def py_provenance_callable(shell_path, routes_override=None):
     with open(shell_path, 'r', encoding='utf-8', newline='') as fh:
         src = fh.read()
     tree = ast.parse(src)
+    fn_node = None
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            for sub in node.body:
+                if isinstance(sub, ast.FunctionDef) and sub.name == '_history_provenance':
+                    fn_node = sub
+    if fn_node is None:
+        raise SystemExit('FATAL: _history_provenance nao encontrada em ' + shell_path)
+    fn_src = ast.get_source_segment(src, fn_node)
+    # AS CONSTANTES SAO LIDAS DA FUNCAO, NAO DE UMA LISTA A MAO (medido
+    # 2026-11-11). A lista fixa era {HISTORY_ROUTES, HISTORY_ROUTE_SOURCES,
+    # HISTORY_PRODUCERS} e a lane do contexto de origem acrescentou
+    # `HISTORY_VIAS`: o `_history_provenance` chamou-a, o namespace extraido nao
+    # a tinha, e TRES arms deste passo morreram num `NameError` -- o defeito e'
+    # do INSTRUMENTO, e a lista a mao e' a sua causa, porque cada constante
+    # nova a montante volta a abri-lo. Agora os nomes que a funcao LE sao
+    # cruzados com os `Assign` de topo de modulo, em ordem de fonte.
+    needed = {n.id for n in ast.walk(fn_node)
+              if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
     keep = {}
-    wanted_consts = {'HISTORY_ROUTES', 'HISTORY_ROUTE_SOURCES', 'HISTORY_PRODUCERS'}
     for node in tree.body:
         if isinstance(node, ast.Assign):
             for tgt in node.targets:
-                if isinstance(tgt, ast.Name) and tgt.id in wanted_consts:
+                if isinstance(tgt, ast.Name) and tgt.id in needed:
                     keep[tgt.id] = ast.get_source_segment(src, node)
     if 'HISTORY_ROUTES' not in keep:
         raise SystemExit('FATAL: HISTORY_ROUTES nao encontrado em ' + shell_path)
     if routes_override is not None:
         keep['HISTORY_ROUTES'] = 'HISTORY_ROUTES = (' + ', '.join(
             repr(r) for r in routes_override) + ',)'
-    fn_src = None
-    for node in tree.body:
-        if isinstance(node, ast.ClassDef):
-            for sub in node.body:
-                if isinstance(sub, ast.FunctionDef) and sub.name == '_history_provenance':
-                    fn_src = ast.get_source_segment(src, sub)
-    if fn_src is None:
-        raise SystemExit('FATAL: _history_provenance nao encontrada em ' + shell_path)
 
     ns = {}
-    header = '\n'.join(keep[k] for k in ('HISTORY_ROUTES', 'HISTORY_ROUTE_SOURCES', 'HISTORY_PRODUCERS') if k in keep)
+    header = '\n'.join(keep[k] for k in keep)
     body = (
         'import re\n'
         + header + '\n'
@@ -204,6 +214,31 @@ while (i < src.length && depth > 0) {
 if (depth !== 0) { process.stdout.write(JSON.stringify({error: 'corpo desbalanceado'})); process.exit(0); }
 const body = src.slice(at, i);
 
+// O `recordHistory` passou a chamar `normaliseContext`, que vive NO MESMO
+// ficheiro mas fora do corpo dele (medido 2026-11-11: `ReferenceError:
+// normaliseContext is not defined` derrubava este passo). Ela e' LIFTADA pelo
+// mesmo caminho -- nunca reimplementada aqui, senao esta arm julgaria uma copia
+// da regra enquanto a que embarca muda.
+function lift(name) {
+  const head = 'function ' + name + '(';
+  const at = src.indexOf(head);
+  if (at < 0) return '';
+  const open = src.indexOf('{', at);
+  let i = open + 1, depth = 1;
+  while (i < src.length && depth > 0) {
+    const ch = src[i];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') depth -= 1;
+    else if (ch === "'" || ch === '"' || ch === '`') {
+      const quote = ch; i += 1;
+      while (i < src.length && src[i] !== quote) { if (src[i] === '\\') i += 1; i += 1; }
+    } else if (ch === '/' && src[i + 1] === '/') { while (i < src.length && src[i] !== '\n') i += 1; }
+    i += 1;
+  }
+  return depth === 0 ? src.slice(at, i) : '';
+}
+const helpers = lift('normaliseContext');
+
 const prelude = `
   const sent = [];
   const MAX_HISTORY = 100;
@@ -244,7 +279,7 @@ const call = `
   arm('provisional',    {producer: 'redux', route: 'provisional-draft'});
   process.stdout.write(JSON.stringify({arms: results}));
 `;
-new Function('require', 'sourcePath', prelude + '\n' + body + '\n' + call)(require, sourcePath);
+new Function('require', 'sourcePath', prelude + '\n' + helpers + '\n' + body + '\n' + call)(require, sourcePath);
 """
 
 

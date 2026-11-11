@@ -301,8 +301,15 @@ function main() {
       reduxTagged.disk.count > 0, true);
   arm('REDUX-TAGGED: the line NAMES its producer on the disk',
       reduxTagged.disk.producers[source.CANONICAL_PRODUCER] > 0, true);
+  // O QUE ESTA ARM MEDE E' A ROTA, NAO O FILTRO DE RUIDO. Ate' 2026-11-11 ela
+  // comparava `disk.count` com `handed`, e o filtro de preenchimento
+  // (`caption_noise`/`text_normalize`, lane de 2026-11-11) passou a esconder 11
+  // das 1221 linhas: a arm lia 1210 != 1221 e chamava-lhe "a cura nao reproduz
+  // o defeito", quando o defeito que ela modela e' a PORTA aceitar tudo o que o
+  // painel mostra. A comparacao certa e' a decisao do choke point
+  // (`accepted`), e o disco fica publicado na linha impressa acima.
   arm('BEFORE: the pre-cure choke point made the two fields ONE (the defect the owner saw)',
-      before.disk.count === before.handed && before.handed > 0, true);
+      before.accepted === before.handed && before.handed > 0, true);
   arm('CONTROL: the shipped and pre-cure HISTORY counts DIFFER (the check is not vacuous)',
       asShipped.disk.count !== before.disk.count, true);
 
