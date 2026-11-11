@@ -75,3 +75,31 @@ Depois da correcao o portao diz o que o dono sentiu:
   ficheiro; enquanto nao existir, o numero acima e' o da PAGINA, e o pixel do overlay pode vir depois.
 - O `WARM_FALLBACK_COLD` e' uma CORRIDA (382 ms) medida uma vez nesta sessao. Uma corrida so' nomeia
   a classe; nao mede a frequencia. Re-medir em tres arranques antes de afirmar "sempre".
+
+## 6. "A legenda aparece de forma aleatoria" -- MEDIDO: DUAS ROTAS PINTAM NA MESMA JANELA
+
+Recorte de `_main/webview-run.log` (pid 49180), um intervalo de 4 s:
+
+```
+17:46:02.090 CAPTION_PROVISIONAL_PAINT n=1185 src=external:youtube:track text="parking space."
+17:46:05.822 CAPTION_IN start=381.84 end=383.84 final=true tap_ms=None age_ms=None text="replanement of code water, shows a level of leadership dinga"
+17:46:05.826 CAPTION_PROVISIONAL_PAINT n=1186 id=381.84 src=- conf=0 prov=10 text="replanement of code water ..."
+17:46:18.547 YT_FRAME src=external:youtube:track rows=1 lines=['My name is Chip, used to be the lead designer at Grab.']
+```
+
+Tres leituras, cada uma com o numero ao lado:
+
+1. **A rota foi DECIDIDA e o pintor nao obedeceu.** O log tem
+   `AUDIO_ROUTE external:youtube:track local=off`; mesmo assim o ASR local continuou a produzir
+   linhas (`rows_since_tick` 95 -> 141 entre 17:45:56 e 17:47:57, `chunks_since_tick=0`) e o shell
+   pintou-as com `src=-`. Quem pinta nao pergunta a rota decidida -- nao ha guarda.
+2. **O payload do ASR nao traz a idade do audio**: `tap_ms=None age_ms=None`. Sem esse numero nao
+   existe recusa possivel do lado da shell, e e' por isso que o atraso de ~5 min nao tem portao.
+3. **O texto do ASR nao e' o audio que o player toca.** No mesmo instante o player diz "My name is
+   Chip, used to be the lead designer at Grab" e o ASR diz "replanement of code water ... leadership
+   dingases". Nao e' so' corrida de rota: o tap esta' a ler outra fonte desde a rotacao
+   (`device-rotated reason=flat` 17:35:26 -> `tap-own-endpoint-loud` 17:35:34).
+
+Classe do defeito, decidida pela medicao: **(c) o tap pega a fonte errada** + **(a) nao ha guarda de
+rota na pintura**. As duas sao independentes e as duas tem de cair: uma guarda de rota sozinha
+esconde a (c) sem a corrigir.
