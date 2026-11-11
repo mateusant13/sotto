@@ -32,9 +32,14 @@ falsos):
   A7  audio-velho-nao-pinta-mas-nao-se-perde  `LIVE_PAINT_REFUSED`, 1/episodio
   A8  audio-fresco-pinta-e-diz-a-superficie    `src=asr` e o texto no ecra
   A9  player-dono-nao-recebe-linha-velha      nenhum pixel do ASR em cima do player
+  A10 desligar-responde                       `off` no ecra, 1 linha, timer leva-o
+  A11 arranque-restaurado-fala                `on=true` do ficheiro arma o estado
+  A12 as-tres-costuras-chamam-o-estado        `create_window` + 2x `start_worker`
+  A13 carimbo-no-futuro-nao-e-fresco          `age_s < -250 ms` -> idade desconhecida
+  A14 as-duas-tags-da-rota-vao-ao-log         `ENGINE_VISIBLE_TAGS` + prefixo escrito
 
-`--neg-arm` muta uma COPIA do ficheiro real (7 mutacoes) e exige que cada uma
-seja apanhada por pelo menos uma arm: rc=1 com `NEG-ARM: PASS (7/7)`, rc=0 se
+`--neg-arm` muta uma COPIA do ficheiro real (14 mutacoes) e exige que cada uma
+seja apanhada por pelo menos uma arm: rc=1 com `NEG-ARM: PASS (14/14)`, rc=0 se
 uma escapar. Nada aqui abre janela, Chrome, audio ou escreve
 `_main/caption-wanted.json`: `_post`/`exec_js_post`/`_caption_wanted_store` sao
 costuras de AMBIENTE (o overlay falso e' o destino), nunca regras copiadas.
@@ -69,12 +74,15 @@ MODULE_FUNCS = (
     "player_track_owns",
     "live_paint_age_s",
     "live_paint_stale",
+    "_measured_age",
+    "_is_number",
     "caption_status_for",
     "_caption_replay_allowed",
 )
 
 #: As constantes de modulo que elas leem.
-MODULE_CONSTS = ("PLAYER_TRACK_FRESH_S", "LIVE_PAINT_MAX_AGE_S", "CAPTION_STATUS_TEXT")
+MODULE_CONSTS = ("PLAYER_TRACK_FRESH_S", "LIVE_PAINT_MAX_AGE_S",
+                 "LIVE_PAINT_JITTER_S", "_SKIP", "CAPTION_STATUS_TEXT")
 
 #: As constantes de CLASSE usadas pelo caminho (nao pelo `__init__`).
 CLASS_CONSTS = ("CAPTION_STATUS_POLL_S", "CAPTION_BUDGET_MS", "CAPTION_REPLAY_MAX_S")
@@ -91,6 +99,9 @@ CLASS_METHODS = (
     "_caption_status_queue",
     "_caption_status_withdraw",
     "_caption_status_loop",
+    "_caption_off_ack",
+    "_caption_idle_disarm",
+    "_blank_caption_window",
     "_paint_caption_status",
     "_caption_paint_wake",
     "_caption_paint_loop",
@@ -328,7 +339,11 @@ class Seams:
         self.stored.append(bool(on))
 
     def _arm_caption_idle_hide(self):
-        return False
+        # O TEMPORIZADOR DE SILENCIO E' COSTURA (2026-11-11): a arm do `off`
+        # julga que ele foi ARMADO, nao espera 6 s por um Timer. O corpo real do
+        # `_blank_caption_window` e' que apaga, e essa e' conduzida na arm.
+        self.idle_armed = int(getattr(self, 'idle_armed', 0) or 0) + 1
+        return True
 
     def _caption_lag_note(self, *_a, **_k):
         return None
@@ -531,6 +546,184 @@ def arm_a9(src):
     return ok, "paints=%d refused=%d" % (len(ov.calls), len(refused))
 
 
+def arm_a10(src):
+    """DESLIGAR responde: `off` no ecra, UMA linha, e o silencio leva-o.
+
+    O caso real do dono: a legenda estava PERSISTIDA ligada, o modelo carregava,
+    o ecra estava vazio; o Ctrl+Space fez ON -> OFF. Sem este aviso a tecla nao
+    muda um pixel e parece nao fazer nada.
+    """
+    shell, ov, lines = make(src, bridge=Bridge(loaded=False, state="model-loading"))
+    shell._caption_wanted = True            # restaurado do ficheiro
+    shell._caption_window_shown = False     # e nada no ecra
+    t0 = time.monotonic()
+    shell._set_live_enabled({"on": False})
+    got = ov.wait_calls(1, STATUS_BUDGET_MS / 1000.0)
+    elapsed_ms = (time.monotonic() - t0) * 1000.0
+    shown = _status_lines(lines, "off")
+    painted = [t for t in ov.texts() if t.endswith("desligada")]
+    armed = int(getattr(shell, "idle_armed", 0) or 0)
+    live_off = shell._caption_wanted is False
+    visible = bool(ov.visible)
+    # O TEMPORIZADOR DE SILENCIO E' QUEM TIRA O TEXTO (o corpo real do blank).
+    shell._blank_caption_window("no-caption-for-6.0s")
+    cleared = bool(not ov.visible and not shell._caption_window_shown
+                   and not str(shell._caption_status_reason or ""))
+    # LIGAR OUTRA VEZ TROCA O AVISO PELO BLOQUEIO -- e DESARMA o timer do `off`,
+    # senao o temporizador antigo apagava o bloqueio verdadeiro 6 s depois.
+    shell._set_live_enabled({"on": True})
+    time.sleep(0.05)
+    swapped = [t for t in ov.texts() if t.endswith("modelo\u2026")]
+    off_lines = len(_status_lines(lines, "off"))
+    disarmed = int(getattr(shell, "_caption_idle_seq", 0) or 0) >= 1
+    ok = bool(got and painted and len(shown) == 1 and armed == 1 and live_off
+              and visible and cleared and swapped and off_lines == 1 and disarmed
+              and int(shown[0].get("ms", "999999")) <= STATUS_BUDGET_MS
+              and elapsed_ms <= STATUS_BUDGET_MS)
+    return ok, ("ms=%.1f shown=%d idle_armed=%d visible=%s cleared=%s "
+                "swapped=%s disarmed=%s" % (
+                    elapsed_ms, len(shown), armed, visible, cleared,
+                    bool(swapped), disarmed))
+
+
+def arm_a11(src):
+    """Arranque com `on=true` restaurado: o bloqueio fala SEM a primeira tecla.
+
+    A metade (b) e' a nao-regressao de A2: a MESMA chamada de arranque, com um
+    player saudavel a pintar, tem de continuar em silencio.
+    """
+    shell, ov, lines = make(src, bridge=Bridge(loaded=False, state="model-loading"))
+    shell._caption_wanted = True            # o ficheiro tinha `on=true`
+    t0 = time.monotonic()
+    shell._caption_status_start()           # o que `create_window`/`start_worker` chamam
+    got = ov.wait_calls(1, STATUS_BUDGET_MS / 1000.0)
+    elapsed_ms = (time.monotonic() - t0) * 1000.0
+    shown = _status_lines(lines)
+    speaks = bool(got and len(shown) == 1
+                  and shown[0].get("reason") == "model-loading")
+    watcher = Watcher(video_id="vid-1", rows=["player line"],
+                      painted_at=time.monotonic())
+    shell2, ov2, lines2 = make(src, bridge=Bridge(loaded=False), watcher=watcher)
+    shell2._caption_wanted = True
+    shell2._caption_status_start()
+    time.sleep(0.12)
+    quiet = not _status_lines(lines2) and not ov2.calls
+    shell._caption_status_stop()
+    shell2._caption_status_stop()
+    return bool(speaks and quiet), (
+        "boot_status=%s ms=%.1f player_quiet=%s" % (
+            [s.get("reason") for s in shown], elapsed_ms, quiet))
+
+
+def arm_a12(src):
+    """As TRES costuras do arranque chamam o estado (senao nada disto corre)."""
+    methods, _funcs, _consts, _class_consts = extract(src)
+    problems = []
+    # (metodo, chamada, MINIMO): o `start_worker` tem DUAS costuras (worker
+    # aquecido e carga fria); exigir so' uma deixava a outra sem pin.
+    for name, needle, want in (("start_worker", "_caption_status_start()", 2),
+                               ("create_window", "_caption_status_start()", 1),
+                               ("_set_live_enabled", "_caption_off_ack()", 1)):
+        node = methods.get(name)
+        body = ast.get_source_segment(src, node) if node is not None else ""
+        have = (body or "").count(needle)
+        if have < want:
+            problems.append("%s(%d<%d)" % (name, have, want))
+    return not problems, "missing=%s" % (problems or "none")
+
+
+WORKER_ROUTE = os.path.join(ROOT, "worker", "live_route.py")
+
+
+def worker_clock_jitter_ms(path=None):
+    """O piso de relogio declarado pelo WORKER, lido do ficheiro (fonte unica)."""
+    tree = ast.parse(read_source(path or WORKER_ROUTE))
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "CLOCK_JITTER_MS":
+                    return float(ast.literal_eval(node.value))
+    return None
+
+
+def arm_a13(src):
+    """Carimbo no FUTURO -> idade DESCONHECIDA, e o piso e' o numero do worker.
+
+    `max(0.0, negativo)` dizia "fresco" com um instrumento que nao ve' o audio;
+    a casa ja' pagou esta lei (medicao ausente nunca e' afirmacao). O texto
+    continua a pintar -- idade desconhecida NAO e' recusa --, mas nao afirma
+    frescura, e o piso nao pode divergir de `worker/live_route.CLOCK_JITTER_MS`.
+    """
+    _methods, funcs, consts, _class_consts = extract(src)
+    ns = {}
+    module = ast.Module(body=list(consts.values()) + list(funcs.values()),
+                        type_ignores=[])
+    ast.fix_missing_locations(module)
+    exec(compile(module, "<shell-funcs>", "exec"), ns)
+    age = ns["live_paint_age_s"]
+    stale = ns["live_paint_stale"]
+    now = time.time()
+    future_s = age({"age_s": -5.0}, now=now)
+    near_zero = age({"age_s": -0.05}, now=now)
+    real = age({"age_s": 2.0}, now=now)
+    garbage = age({"age_s": "x", "tap_ms": (now - 3.0) * 1000.0}, now=now)
+    back_start = age({"start": 500.0}, capture_epoch=now + 100.0, now=now)
+    floor = float(ns.get("LIVE_PAINT_JITTER_S") or 0.0)
+    worker = worker_clock_jitter_ms()
+    same_floor = bool(worker and abs(floor * 1000.0 - worker) < 1e-9)
+    # A LINHA NAO SE PERDE: idade desconhecida pinta (nao e' uma recusa).
+    shell, ov, lines = make(src, bridge=Bridge(loaded=True, capturing=True))
+    shell._caption_wanted = True
+    shell.on_worker_caption("future stamp",
+                            {"age_s": -5.0, "final": True, "producer": "live"})
+    painted = ov.wait_calls(1, 0.5)
+    refused = [l for l in lines if l.startswith("LIVE_PAINT_REFUSED ")]
+    shell._caption_status_stop()
+    ok = bool(future_s is None and near_zero == 0.0 and real == 2.0
+              and garbage is not None and abs(garbage - 3.0) < 0.05
+              and back_start is None and same_floor
+              and not stale(future_s)
+              and painted and ov.texts()[:1] == ["future stamp"] and not refused)
+    return ok, "future=%r near=%r real=%r garbage=%r back_start=%r floor=%r ms" % (
+        future_s, near_zero, real,
+        None if garbage is None else round(garbage, 3), back_start,
+        floor * 1000.0)
+
+
+def arm_a14(src):
+    """As linhas da rota viva chegam ao LOG: tag publicada E tag escrita.
+
+    O publisher da shell e' `line.startswith(ENGINE_VISIBLE_TAGS)`: uma linha
+    que nao comeca por uma destas tags morre no `stderr_tail` e so' aparece na
+    cauda da morte -- a classe medida em 2026-11-10 (`WORKER_BOOT_PROF`).
+    """
+    tree = ast.parse(src)
+    tags = None
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "ENGINE_VISIBLE_TAGS"
+                for t in node.targets):
+            try:
+                tags = [str(v) for v in ast.literal_eval(node.value)]
+            except (ValueError, SyntaxError):
+                tags = None
+    published = tuple(tags or ())
+    worker_src = read_source(os.path.join(ROOT, "worker", "live_route.py"))
+    shapes = {
+        "LIVE_ROUTE_REFUSED": "LIVE_ROUTE_REFUSED reason=",
+        "LIVE_ROUTE_UNKNOWN_AGE": "LIVE_ROUTE_UNKNOWN_AGE producer=",
+    }
+    problems = []
+    for tag, shape in shapes.items():
+        if tag not in published:
+            problems.append("%s(unpublished)" % tag)
+        if shape not in worker_src:
+            problems.append("%s(unwritten)" % tag)
+        if not shape.startswith(published):
+            problems.append("%s(no-prefix-match)" % tag)
+    return not problems, "problems=%s" % (problems or "none")
+
+
 ARMS = (
     ("A1 status-within-200ms", arm_a1),
     ("A2 player-owns-surface", arm_a2),
@@ -541,6 +734,11 @@ ARMS = (
     ("A7 stale-refused-keeps-text", arm_a7),
     ("A8 fresh-paints-asr", arm_a8),
     ("A9 player-owns-stale-noop", arm_a9),
+    ("A10 off-acks", arm_a10),
+    ("A11 boot-restored-acks", arm_a11),
+    ("A12 boot-wiring", arm_a12),
+    ("A13 future-stamp-not-fresh", arm_a13),
+    ("A14 route-tags-published", arm_a14),
 )
 
 
@@ -562,8 +760,10 @@ def run_arms(src, verbose=True):
 
 MUTANTS = (
     ("toggle-does-not-arm-status",
-     "                self._caption_status_start()\n",
-     "                pass  # MUTANT\n"),
+     "                self._caption_status_start()\n"
+     "            else:\n",
+     "                pass  # MUTANT\n"
+     "            else:\n"),
     ("status-ignores-player-owner",
      "    if state.get('player_owns') or state.get('painted_recent'):\n"
      "        return None\n",
@@ -586,8 +786,44 @@ MUTANTS = (
      "        _refused = live_paint_stale(_audio_age_s)\n",
      "        _refused = False  # MUTANT\n"),
     ("stream-clock-age-zeroed",
-     "            return max(0.0, now - (epoch + float(start)))\n",
-     "            return 0.0  # MUTANT\n"),
+     "        measured = _measured_age(now - (epoch + float(start))) \\\n"
+     "            if _is_number(start) else _SKIP\n",
+     "        measured = 0.0  # MUTANT\n"),
+    ("future-age-clamped-to-fresh",
+     "    if delta < -LIVE_PAINT_JITTER_S:\n"
+     "        return None\n",
+     "    if False:  # MUTANT\n"
+     "        return None\n"),
+    ("off-ack-silent",
+     "                self._caption_off_ack()\n",
+     "                pass  # MUTANT\n"),
+    ("off-ack-not-idle-cleared",
+     "                log('CAPTION_STATUS_SHOWN reason=off ms=%d text=%s'\n"
+     "                    % (ms, json.dumps(text)))\n"
+     "                self._arm_caption_idle_hide()\n",
+     "                log('CAPTION_STATUS_SHOWN reason=off ms=%d text=%s'\n"
+     "                    % (ms, json.dumps(text)))\n"
+     "                pass  # MUTANT\n"),
+    ("boot-deferred-arming-removed",
+     "                if pending:\n"
+     "                    self._caption_status_start()\n",
+     "                if pending:\n"
+     "                    pass  # MUTANT\n"),
+    ("cold-worker-arming-removed",
+     "            # O ARRANQUE RESTAURADO TAMBEM RESPONDE (2026-11-11): a ponte\n"
+     "            # existe agora, portanto o bloqueio (modelo a carregar, sem audio)\n"
+     "            # ja' tem nome. Uma vez por episodio; o player saudavel cala-o.\n"
+     "            if getattr(self, '_caption_wanted', False):\n"
+     "                self._caption_status_start()\n",
+     "            pass  # MUTANT\n"),
+    ("status-does-not-disarm-off-timer",
+     "            self._caption_idle_disarm()\n"
+     "            return True\n",
+     "            pass  # MUTANT\n"
+     "            return True\n"),
+    ("route-refused-tag-unpublished",
+     "                       'LIVE_ROUTE_REFUSED', 'LIVE_ROUTE_UNKNOWN_AGE')",
+     "                       'LIVE_ROUTE_REFUSED')"),
 )
 
 

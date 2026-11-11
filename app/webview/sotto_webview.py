@@ -1630,7 +1630,20 @@ ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
                        #     audio voltar sem legenda; sem elas esse par e' UNMEASURED para
                        #     sempre (o card que o pediu fechou declarando isso).
                        'LADDER_TRY', 'WORKER_BOOT_PROF',
-                       'CAPTURE_SIGNAL_BACK', 'NO_CAPTION_AFTER_AUDIO_BACK')
+                       'CAPTURE_SIGNAL_BACK', 'NO_CAPTION_AFTER_AUDIO_BACK',
+                       # A ROTA AO VIVO TAMBEM E' UM FACTO, E AS DUAS LINHAS QUE A
+                       # JULGAM MORRIAM NO `stderr_tail` (2026-11-11) -- a mesma
+                       # classe do `WORKER_BOOT_PROF` de 2026-11-10: um instrumento
+                       # cuja saida nunca chega ao log nao e' um instrumento.
+                       #   `LIVE_ROUTE_REFUSED`     -- uma legenda foi RECUSADA para a
+                       #     superficie ao vivo e GUARDADA para o historico
+                       #     (`reason=batch-route|player-owns-route|stale|noise`).
+                       #     Prova que a recusa existe e qual porta a fechou: sem ela
+                       #     "nao pintou" e' indistinguivel de "nao chegou".
+                       #   `LIVE_ROUTE_UNKNOWN_AGE` -- a legenda pintou SEM idade
+                       #     mensuravel; o buraco fica CONTADO (`unknown_age=<n>`), nao
+                       #     afirmado fresco. E' o par do `age_s < -250 ms -> None`.
+                       'LIVE_ROUTE_REFUSED', 'LIVE_ROUTE_UNKNOWN_AGE')
 
 #: O BATIMENTO DO LACO DO WORKER, reconhecido por CONTER e nao por comecar (2026-11-04).
 #: Medido com o py-spy no worker vivo: `seq=516 phase=window` e nenhuma linha no log -- o
@@ -2954,6 +2967,44 @@ def player_track_owns(state, now=None, fresh_s=PLAYER_TRACK_FRESH_S):
 #: NAO pinta na janela ao vivo (`LIVE_PAINT_REFUSED reason=stale`).
 LIVE_PAINT_MAX_AGE_S = 30.0
 
+#: O CARIMBO NO FUTURO NAO E' "AGORA" (2026-11-11). Um `age_s` NEGATIVO era
+#: convertido por `max(0.0, ...)` em 0,0 s -- ou seja, um carimbo no futuro
+#: passava a porta da idade como FRESCO. Uma medicao que diz "o audio e' de
+#: daqui a cinco segundos" nao mediu nada, e a casa ja' pagou esta lei: uma
+#: medicao ausente nunca e' uma afirmacao.
+#:
+#: O PISO E' O MESMO NUMERO QUE O WORKER DECLARA, nao um segundo piso inventado
+#: aqui: `worker/live_route.py` -> `CLOCK_JITTER_MS = 250.0` (dentro da janela o
+#: carimbo e' "agora", arredondamento entre dois relogios; alem dela esta' no
+#: futuro). `_main/live-ack-oracle.py` le' a constante do worker e FALHA se os
+#: dois numeros se separarem -- e' por isso que este e' um literal e nao um
+#: `import` (o shell nao poe `worker/` no `sys.path` para uma linha de legenda).
+LIVE_PAINT_JITTER_S = 0.25
+
+#: "O valor nem sequer e' um numero" -- distinto de `None` ("e' um numero e ele
+#: diz que nao houve medicao"): o primeiro deixa tentar o relogio seguinte, o
+#: segundo encerra a pergunta.
+_SKIP = object()
+
+
+def _measured_age(delta):
+    """Idade em segundos a partir de uma diferenca. `None` = nao medivel.
+
+    Devolve `_SKIP` quando o valor nao e' um numero finito (o chamador tenta o
+    relogio seguinte) e `None` quando e' um numero que aponta para o FUTURO
+    alem da tolerancia -- nesse caso nao ha' idade honesta que se possa afirmar,
+    e inventar 0,0 s seria dizer "fresco" com um instrumento que nao ve' o audio.
+    """
+    try:
+        delta = float(delta)
+    except (TypeError, ValueError):
+        return _SKIP
+    if delta != delta or delta in (float('inf'), float('-inf')):
+        return _SKIP
+    if delta < -LIVE_PAINT_JITTER_S:
+        return None
+    return max(0.0, delta)
+
 
 def live_paint_age_s(meta, capture_epoch=0.0, now=None):
     """A idade do AUDIO de uma legenda do worker, em segundos (None = nao se sabe).
@@ -2980,27 +3031,35 @@ def live_paint_age_s(meta, capture_epoch=0.0, now=None):
         now = time.time()
     value = meta.get('age_s')
     if value is not None:
-        try:
-            return max(0.0, float(value))
-        except (TypeError, ValueError):
-            pass
+        measured = _measured_age(value)
+        if measured is not _SKIP:
+            return measured
     tap = meta.get('tap_ms')
     if tap:
-        try:
-            return max(0.0, now - float(tap) / 1000.0)
-        except (TypeError, ValueError):
-            pass
+        measured = _measured_age(now - float(tap) / 1000.0) \
+            if _is_number(tap) else _SKIP
+        if measured is not _SKIP:
+            return measured
     start = meta.get('start')
     try:
         epoch = float(capture_epoch or 0.0)
     except (TypeError, ValueError):
         epoch = 0.0
     if start is not None and epoch > 0.0:
-        try:
-            return max(0.0, now - (epoch + float(start)))
-        except (TypeError, ValueError):
-            pass
+        measured = _measured_age(now - (epoch + float(start))) \
+            if _is_number(start) else _SKIP
+        if measured is not _SKIP:
+            return measured
     return None
+
+
+def _is_number(value):
+    """`float(value)` e' um numero finito? (a porta do `_measured_age`)."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return False
+    return not (number != number or number in (float('inf'), float('-inf')))
 
 
 def live_paint_stale(age_s, bound_s=LIVE_PAINT_MAX_AGE_S):
@@ -3031,6 +3090,15 @@ CAPTION_STATUS_TEXT = {
     'waiting-player-row': 'aguardando a legenda do player\u2026',
     'no-audio': 'sem sinal de audio',
     'waiting-first-line': 'aguardando audio\u2026',
+    #: DESLIGAR TAMBEM RESPONDE (2026-11-11). O dono, verbatim: *"meu ctrl space
+    #: nao fez nada assim que abri o sotto"*. A sessao dele tinha a legenda
+    #: PERSISTIDA LIGADA com o modelo a carregar e o ecra vazio: o Ctrl+Space
+    #: fez ON -> OFF, e um desligar num ecra ja' vazio nao muda pixel nenhum --
+    #: da cadeira dele, a tecla nao fez nada. Um `off` com nome proprio faz a
+    #: ACCAO visivel sem tocar no interruptor: pinta no mesmo overlay, e o
+    #: temporizador de silencio normal (`CAPTION_IDLE_HIDE_S`, 6 s) tira-o.
+    #: UMA linha por episodio (`CAPTION_STATUS_SHOWN reason=off`).
+    'off': 'legenda ao vivo: desligada',
 }
 
 
@@ -12761,6 +12829,17 @@ class SottoShell:
                     % str(bool(pending)).lower())
                 self._caption_window_shown = bool(pending)
                 self.caption_overlay.show(bool(pending))
+                # O ESTADO RESTAURADO TAMBEM FALA (2026-11-11). A legenda pode
+                # ser PERSISTIDA ligada: o arranque restaura `on=true`, o modelo
+                # ainda carrega, e o ecra fica vazio ate' a primeira linha. Sem
+                # isto, a PRIMEIRA tecla da sessao cai nesse ecra -- e se ela
+                # desligar, nao muda um pixel (o caso do dono). Ler o bloqueio
+                # UMA vez aqui, quando o overlay passa a existir, faz a accao do
+                # arranque visivel; o laco de 250 ms so' vive enquanto houver um
+                # bloqueio nomeavel e o player ocupado continua a calar tudo
+                # (`caption_status_for`).
+                if pending:
+                    self._caption_status_start()
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_OVERLAY_MODE_FAILED error={exc!r}')
 
@@ -17650,6 +17729,12 @@ class SottoShell:
                 if sidecar.start(reason) and getattr(self.args, 'speakers_cheap', False) \
                         and not getattr(self.args, 'speakers', False):
                     self.multivoice_watch().start(reason)
+            # O ARRANQUE RESTAURADO TAMBEM RESPONDE (2026-11-11): com a legenda
+            # persistida ligada e o ecra vazio, o primeiro Ctrl+Space nao pode
+            # cair num ecra sem linha. O bloqueio lido AGORA (worker a aquecer /
+            # modelo a carregar) entra uma vez; um player saudavel cala-o.
+            if getattr(self, '_caption_wanted', False):
+                self._caption_status_start()
             return True
         log('WARM_COLD_LOAD reason=%s' % reason)
         self.bridge = WorkerBridge(
@@ -17694,6 +17779,11 @@ class SottoShell:
             self._source_epoch = int(getattr(self, '_source_epoch', 0)) + 1
             self._caption_pending = None
             log(f'SOURCE_EPOCH n={self._source_epoch} reason=worker-started-{reason}')
+            # O ARRANQUE RESTAURADO TAMBEM RESPONDE (2026-11-11): a ponte
+            # existe agora, portanto o bloqueio (modelo a carregar, sem audio)
+            # ja' tem nome. Uma vez por episodio; o player saudavel cala-o.
+            if getattr(self, '_caption_wanted', False):
+                self._caption_status_start()
             # THE SIDECAR RIDES THE WORKER'S LIFETIME, AND ONLY WHEN THE WORKER
             # ACTUALLY STARTED. Starting it on a declined worker would leave a
             # 277 MB diarizer running against nobody, which is the failure the
@@ -17871,6 +17961,26 @@ class SottoShell:
             except Exception:
                 pass
 
+    def _caption_idle_disarm(self):
+        """Cancela o temporizador de silencio SEM armar outro (2026-11-11).
+
+        Um ESTADO a ocupar a janela nao pode ser apagado pelo temporizador que
+        foi armado para o `off` anterior: ligar outra vez tem de substituir o
+        aviso de desligar, nao de o ver desaparecer 6 s depois por um timer
+        antigo. A sequencia sobe para que um disparo em voo desista.
+        """
+        try:
+            timer = getattr(self, '_caption_idle_timer', None)
+            self._caption_idle_timer = None
+            self._caption_idle_seq = int(getattr(self, '_caption_idle_seq', 0) or 0) + 1
+            if timer is not None:
+                try:
+                    timer.cancel()
+                except Exception:
+                    pass
+        except Exception:  # noqa: BLE001
+            pass
+
     def _blank_caption_window(self, reason):
         """TIRA OS PIXELS sem desligar o interruptor do dono.
 
@@ -17922,6 +18032,15 @@ class SottoShell:
         self._caption_painted = ''
         self._caption_painted_at = 0.0
         self._last_caption_was_player = False
+        # O AVISO DE ESTADO NAO SOBREVIVE AOS PIXELS (2026-11-11): quem retira o
+        # `off` e' o temporizador de silencio, e uma retirada deliberada
+        # (`hide_panel`, pausa, fonte trocada) ENCERRA o episodio -- senao o
+        # laco de estado repintava por cima da retirada do dono e escrevia uma
+        # segunda linha para a mesma razao.
+        self._caption_status_reason = ''
+        self._caption_status_queued_for = ''
+        self._caption_status_episode_at = 0.0
+        self._caption_status_live = False
         def _blank():
             # O TEXTO GUARDADO TAMBEM VAI (2026-10-30). `show(False)` so' esconde
             # a janela: o `text`/`previous` do overlay continuavam la', e o
@@ -18417,6 +18536,13 @@ class SottoShell:
         """
         try:
             self._caption_status_live = True
+            # O AVISO DE DESLIGAR NAO SOBREVIVE AO LIGAR (2026-11-11): os pixels
+            # de `off` podem estar no ecra e o temporizador de silencio trata
+            # deles, mas o LIVRO do episodio comeca limpo -- senao o primeiro
+            # tique julgava que o bloqueio ja' estava mostrado e nao dizia nada.
+            if str(getattr(self, '_caption_status_reason', '') or '') == 'off':
+                self._caption_status_reason = ''
+                self._caption_status_episode_at = time.time()
             if not float(getattr(self, '_caption_status_episode_at', 0.0) or 0.0):
                 self._caption_status_episode_at = time.time()
             self._caption_status_tick()
@@ -18526,6 +18652,57 @@ class SottoShell:
         log('CAPTION_STATUS_CLEARED reason=%s why=%s' % (shown, cause))
         return True
 
+    def _caption_off_ack(self):
+        """DESLIGAR TAMBEM RESPONDE (2026-11-11) -- devolve True se pintou.
+
+        O CASO DO DONO, medido no log do arranque de 17:34:20: a legenda estava
+        PERSISTIDA LIGADA, o worker ainda carregava o modelo e o ecra estava
+        vazio; ele carregou em Ctrl+Space, isso fez ON -> OFF, e um desligar num
+        ecra ja' vazio nao muda um pixel. Da cadeira dele a tecla nao fez nada, e
+        a reclamacao dele e' literalmente essa.
+
+        A pintura NAO passa pelo slot: `show_caption_window(False)` acabou de
+        ENFILEIRAR o `ov.show(False)` no `_post`, e a thread de pintura nao esta'
+        nessa fila -- um slot enfileirado aqui podia pintar ANTES do esconder e
+        ser apagado por ele (a mesma corrida que o guarda do interruptor mata no
+        sentido inverso). Este `_post` fica ATRAS do esconder na MESMA fila, por
+        isso a ordem e' a do dono: desliga, depois escreve.
+
+        O texto sai pelo temporizador de silencio que ja' existe
+        (`CAPTION_IDLE_HIDE_S`), nao por um caminho novo.
+        """
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
+            return False
+        # O CARIMBO DESTE EPISODIO E' O GESTO, nao o resto da UI (o `stop()`
+        # acabou de o zerar): o `ms` da linha tem de medir a distancia ao
+        # Ctrl+Space, que e' o que a aceitacao julga.
+        self._caption_status_episode_at = time.time()
+        text = CAPTION_STATUS_TEXT['off']
+
+        def _paint():
+            try:
+                ov.set_work_area(self.work_area(),
+                                 (self.display or {}).get('scaleFactor') or 1.0)
+                ov.set_text(text, '', True)
+                ov.show(True)
+                self._caption_window_shown = True
+                self._caption_status_reason = 'off'
+                started = float(getattr(self, '_caption_status_episode_at', 0.0) or 0.0)
+                ms = int((time.time() - started) * 1000.0) if started else 0
+                log('CAPTION_STATUS_SHOWN reason=off ms=%d text=%s'
+                    % (ms, json.dumps(text)))
+                self._arm_caption_idle_hide()
+            except Exception as exc:          # noqa: BLE001
+                log('CAPTION_STATUS_OFF_PAINT_FAILED error=%r' % (exc,))
+
+        try:
+            self._post(_paint)
+            return True
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_STATUS_OFF_ACK_FAILED error=%r' % (exc,))
+            return False
+
     def _caption_status_loop(self):
         """Repinta enquanto houver um bloqueio nomeavel (ou um texto no ecra)."""
         while (getattr(self, '_caption_status_live', False)
@@ -18572,6 +18749,10 @@ class SottoShell:
             ms = int((time.time() - started) * 1000.0) if started else 0
             log('CAPTION_STATUS_SHOWN reason=%s ms=%d text=%s'
                 % (reason, ms, json.dumps(str(text)[:60])))
+            # O TIMER DO `off` NAO MANDA NUM ESTADO NOVO (2026-11-11): ligar
+            # outra vez substitui o aviso de desligar no ecra, e o temporizador
+            # que ia apaga-lo 6 s depois apagaria o bloqueio verdadeiro.
+            self._caption_idle_disarm()
             return True
         except Exception as exc:              # noqa: BLE001
             log('CAPTION_STATUS_PAINT_FAILED reason=%s error=%r' % (reason, exc))
@@ -21310,10 +21491,18 @@ class SottoShell:
                 # que o nomeie, `caption_status_for` devolve None e nada pinta.
                 self._caption_status_start()
             else:
-                # DESLIGAR NAO DEIXA UM AVISO NA MEMORIA: o episodio morre aqui
-                # (o `show_caption_window(False)` ja' levou os pixels) e o
-                # repintar nao volta a acordar ate' o dono ligar outra vez.
+                # DESLIGAR NAO DEIXA UM AVISO NA MEMORIA: o episodio de estado
+                # morre aqui (o `show_caption_window(False)` ja' levou os
+                # pixels) e o repintar nao volta a acordar ate' o dono ligar
+                # outra vez.
                 self._caption_status_stop()
+                # DESLIGAR TAMBEM RESPONDE (2026-11-11). Sem esta linha, o
+                # Ctrl+Space de um ecra ja' vazio (a legenda PERSISTIDA ligada
+                # com o modelo ainda a carregar) nao muda um pixel e parece nao
+                # fazer nada -- a reclamacao literal do dono. O `off` entra
+                # atras do esconder, no mesmo `_post`, e o temporizador de
+                # silencio normal tira-o 6 s depois.
+                self._caption_off_ack()
         except Exception as exc:  # noqa: BLE001
             log(f'LIVE_ENABLED_FAILED on={str(on).lower()} error={exc!r}')
 
