@@ -296,9 +296,14 @@ def _switch_stub(mod, engine_path):
 
     obj.engine = _Eng()
     obj.pending = _Pend()
-    obj.take_pending = lambda: ([object()], 5 * mod.TARGET_SR)
-    obj._start_pass = lambda held, samples, reason: obj.started.append(
-        (samples, reason)) or True
+    # A ASSINATURA DO PRODUTO, nao a que este oraculo lembrava (2026-11-11): o
+    # passe de lote passou a levar `held_before_s` (a janela de audio que o lote
+    # ja' tinha em maos) e um stub com tres parametros derrubava o oraculo num
+    # `TypeError` do PRODUTO -- um instrumento a acusar quem esta' certo. O
+    # primeiro elemento continua a ser a amostra, que e' o que os arms julgam.
+    obj.take_pending = lambda max_s=None: ([object()], 5 * mod.TARGET_SR)
+    obj._start_pass = lambda held, samples, reason, held_before_s=None: obj.started.append(
+        (samples, reason, held_before_s)) or True
     return obj, adm, park
 
 
