@@ -41,6 +41,16 @@ LOG = os.path.join(ROOT, "_main", "webview-run.log")
 
 TAG = "WORKER_BOOT_PROF"
 _PAIR = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(-?[0-9]+(?:\.[0-9]+)?)")
+#: AS MARCAS VIAJAM EM DOIS OBJETOS JSON, e o regex de pares planos lia `pid=`.
+#: MEDIDO no log vivo (2026-11-11): a linha do produto e'
+#:   WORKER_BOOT_PROF pid=20984 boot_prof_s={"cuda_dirs": 0.022, ...,
+#:                   "sess_joint": 5.091} load_phases_s={"encoder": 4.748, ...}
+#: -- o `_PAIR` casava o `pid` e devolvia um perfil de UMA marca, o que reprovava
+#: A2 e A4 num arranque perfeitamente atribuivel. O perfil e' a UNIAO dos dois
+#: objectos (`boot_prof_s` traz as fases de import e as sessoes ORT,
+#: `load_phases_s` traz o detalhe do carregamento), e um `pid` nao e' marca de
+#: tempo: ele fica FORA do dict que o `judge` mede.
+_OBJ = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(\{[^{}]*\})")
 
 
 def parse_profiles(text):
@@ -51,9 +61,28 @@ def parse_profiles(text):
         if i < 0:
             continue
         body = line[i + len(TAG):]
-        pairs = dict((k, float(v)) for k, v in _PAIR.findall(body))
-        if pairs:
-            out.append(pairs)
+        prof = {}
+        for key, raw in _OBJ.findall(body):
+            try:
+                loaded = json.loads(raw)
+            except ValueError:
+                continue
+            if not isinstance(loaded, dict):
+                continue
+            for name, value in loaded.items():
+                try:
+                    prof[name] = float(value)
+                except (TypeError, ValueError):
+                    continue
+        # O formato PLANO (`sess_encoder=6.5 sess_joint=6.9`) continua a ser
+        # lido: e' a forma das fixtures antigas e dos braços negativos, e um
+        # parser que so' conhecesse a forma nova transformaria `--log <fixture>`
+        # num SKIP silencioso.
+        if not prof:
+            prof = dict((k, float(v)) for k, v in _PAIR.findall(body)
+                        if k != "pid")
+        if prof:
+            out.append(prof)
     return out
 
 

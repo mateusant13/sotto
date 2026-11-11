@@ -68,20 +68,29 @@ CALLS = 1000
 P95_BUDGET_MS = 0.05
 TOTAL_BUDGET_S = 0.5   # 1000 leituras de memoria; um mutante inline estoura isto
 
-#: O CORPO QUE FAZ A PERGUNTA SEM FIO. O mutante 1 devolve este `return` a'
-#: entrada da funcao: cada chamador paga o `/json/list` outra vez.
+#: O CORPO QUE FAZ A PERGUNTA SEM FIO. O mutante 1 apaga a LEITURA do cache, e
+#: a ancora e' UMA linha, nao o bloco: o bloco inteiro ja' mudou duas vezes por
+#: curas alheias (a guarda de attach falhado em 2026-11-05, a linha de idade em
+#: 2026-11-09) e cada mudanca deixava o `--neg-arm` em `IMPOSSIVEL: ancora
+#: ausente`, ou seja um controlo que nao corre. Com `cached = None` o caminho de
+#: memoria desaparece e TODA chamada paga `_tid_refresh()` -- que e' o que o A1
+#: (1000 leituras, prazo de 0,5 s, `/json/list` falso de 1,2 s) tem de apanhar.
+#: `replace(..., 1)` atinge a PRIMEIRA ocorrencia, que vive no
+#: `target_video_id`; a segunda, dentro da espera do `_tid_inline`, nao e' o
+#: caminho que o A1 mede.
 CACHE_BODY = ("        cached = getattr(self, '_tid_cache', None)\n"
-              "        if cached is not None:\n"
-              "            return cached[1]\n"
-              "        return self._tid_refresh()\n")
-INLINE_BODY = "        return self._tid_refresh()\n"
+              "        if cached is not None:\n")
+INLINE_BODY = ("        return self._tid_refresh()\n"
+               "        cached = getattr(self, '_tid_cache', None)\n"
+               "        if cached is not None:\n")
 
 #: O mutante 2 apaga o SINAL de lentidao (a cadencia continua a esticar: o que
 #: sai do log e' o que a arm A3 julga).
 SLOW_LOG = ("            self._log('YOUTUBE_TARGET_SLOW ms=%.0f vid=%s "
             "ttl_s=%.0f '\n"
-            "                      'src=refresher'\n"
-            "                      % (cost_ms, vid or '-', _TID_SLOW_TTL_S))\n")
+            "                      'src=%s'\n"
+            "                      % (cost_ms, vid or '-', _TID_SLOW_TTL_S,\n"
+            "                         'refresher' if probe else 'inline'))\n")
 NO_SLOW_LOG = "            pass\n"
 
 
