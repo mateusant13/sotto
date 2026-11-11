@@ -46,6 +46,8 @@ No third-party dependency: ctypes + the Windows DLLs already present.
 """
 
 import ctypes
+import json
+import os
 import sys
 import threading
 import time
@@ -517,14 +519,308 @@ def _meter_peak(dev, seconds=0.15):
         _release(m)
 
 
+# ── THE ENDPOINT SIGNAL JOURNAL: what this endpoint DID last time ────────────
+# MEASURED 2026-11-11 in the owner's own boot (`_main/webview-run.log`, session
+# pid 54524): `LADDER_TRY attempt=1/11` opened `WASAPI loopback: VoiceMeeter
+# Input` -- the DEFAULT render endpoint -- at 17:34:42.834. That endpoint
+# delivered 42 s of nothing (`tap-silent-desktop` at :49.620; the rotation only
+# came at 17:35:26.461), and the endpoint that HAD carried his audio,
+# `CABLE Input`, was opened one second later (17:35:27.496). The run knew
+# nothing about the previous boot, so it paid the whole flat window again; the
+# owner read that minute as "the audio did not work".
+#
+# "Which endpoint carried audio last time, and which one was PROVEN flat" is a
+# property of THIS MACHINE that survives a process exit, and nothing remembered
+# it. This journal does: one small JSON row per endpoint id, written by the TAP
+# on `close()` from its OWN measurement (`packets`, SILENT-flagged packets,
+# peak, window length) and read by the ordering below. It writes NO audio and
+# opens NO client; a missing, unreadable or corrupt file is an EMPTY journal --
+# "nothing known" -- never a guess, because guessing is what put the flat
+# default first.
+ENV_JOURNAL = 'SOTTO_ENDPOINT_JOURNAL'
+
+#: The peak that separates DEAD from RENDERED. This is the same 0.002 the worker
+#: uses (`TAP_PEAK_FLOOR`), and the gate asserts the two numbers are equal
+#: (`_main/device-ladder-cost-oracle.py`) so they cannot drift apart in silence.
+SIGNAL_PEAK_FLOOR = 0.002
+
+#: A verdict older than this no longer orders anything. HALF AN HOUR because the
+#: routing is a property of the last half hour: the owner boots several times an
+#: hour (the log above has three spawns in 35 minutes), so this covers every
+#: boot where the answer is still the same one, and expires before a stale
+#: verdict can outvote a routing he changed this morning. The LIVE meter always
+#: wins over a verdict (tier 0 in `endpoint_rank_key`), so a long TTL could not
+#: hide an endpoint that started rendering again -- this number only decides the
+#: tie when nothing is rendering, which is exactly the boot that cost 42 s.
+VERDICT_TTL_S = 1800.0
+
+#: Every row kept, newest by `t` wins. Endpoint ids are stable but a replugged
+#: headset invents new ones, and a state file that grows without a bound is a
+#: leak in the owner's profile.
+JOURNAL_MAX_ROWS = 64
+
+#: THE FLAT WINDOW, IN SECONDS, AND WHY THIS NUMBER.
+#:
+#: `worker/sotto_worker.py::silent_desktop_hold` extends a flat window by
+#: DOUBLING (6 -> 12 -> 24 -> 48, capped at 60) and re-asks the live meter only
+#: at the end of each extension. The measured cost of that cadence is in the
+#: log above: the second extension alone is 24 s, and a rotation that should
+#: have happened when the audio moved had to wait for a window boundary. The
+#: doubling was written to protect the AUDIO ENGINE from re-opens (2026-11-02:
+#: twelve clients in three minutes, "a hard hitch"), but an extension does NOT
+#: re-open anything -- only a rotation does -- so the doubling is bounding the
+#: wrong thing: it bounds how often a PASSIVE meter read happens, and passive
+#: reads cost no client.
+#:
+#: 4.0 s because:
+#:   * the tap's block cadence is `block_ms=100`, so 4 s is 40 blocks: more than
+#:     twice the file's own evidence floor (`TAP_SILENT_BLOCKS`=20 blocks, 2 s),
+#:     i.e. a re-ask never fires on a window that has not delivered evidence;
+#:   * `live_render_peaks()` measured **0.755 s** for the six endpoints of this
+#:     box at `meter_ms=0.12` (2026-11-11), so a 4 s cadence bounds the
+#:     instrument's own cost at ~19 % of one otherwise-idle thread's WALL time
+#:     (the thread only sleeps between windows) and well under 1 % of its CPU;
+#:   * it is above `TAP_FIRST_BLOCK_MAX_S` (2.0 s), so a candidate that
+#:     delivered NOTHING is still handled by the dead-block path first;
+#:   * the worst case in which the audio moves to another endpoint and nobody
+#:     notices drops from the measured 24 s (second extension) to 4.0 s + the
+#:     0.755 s read.
+FLAT_EVIDENCE_S = 4.0
+
+#: A tap window shorter than this is NOT evidence: `TAP_SILENT_BLOCKS`=20 blocks
+#: at `block_ms=100` is 2 s, and 20 blocks is the same floor the worker uses.
+FLAT_EVIDENCE_MIN_BLOCKS = 20
+FLAT_EVIDENCE_MIN_WINDOW_S = 2.0
+
+
+def journal_path():
+    """Where the journal lives, or None when it is switched OFF.
+
+    `SOTTO_ENDPOINT_JOURNAL` overrides it (tests and oracles point it at a
+    temporary file), and the values `off`/`0`/`none` disable the journal
+    entirely -- a feature that cannot be turned off is a feature that cannot be
+    measured.
+    """
+    override = os.environ.get(ENV_JOURNAL)
+    if override is not None:
+        if override.strip().lower() in ('', '0', 'off', 'none', 'false'):
+            return None
+        return os.path.abspath(os.path.expanduser(override.strip()))
+    base = os.environ.get('LOCALAPPDATA')
+    if base:
+        return os.path.join(base, 'Sotto', 'endpoint-signal.json')
+    return os.path.join(os.path.expanduser('~'), '.sotto', 'endpoint-signal.json')
+
+
+def _journal_load(path):
+    """{endpoint_id: row} as written, or {} -- a corrupt file is NOTHING KNOWN."""
+    if not path:
+        return {}
+    try:
+        with open(path, encoding='utf-8') as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    rows = data.get('endpoints') if isinstance(data, dict) else None
+    if not isinstance(rows, dict):
+        return {}
+    return {str(k): v for k, v in rows.items() if isinstance(v, dict)}
+
+
+def _journal_save(path, rows):
+    """Atomic, tiny, and never raises: a journal that breaks a tap is worse than none."""
+    if not path:
+        return False
+    try:
+        folder = os.path.dirname(path)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+        tmp = path + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as fh:
+            json.dump({'version': 1, 'endpoints': rows}, fh,
+                      ensure_ascii=False, indent=0, sort_keys=True)
+        os.replace(tmp, path)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def endpoint_verdicts(now=None):
+    """{endpoint_id: row} with `age_s`, expired rows dropped. {} = nothing known."""
+    path = journal_path()
+    if not path:
+        return {}
+    now = time.time() if now is None else float(now)
+    out = {}
+    for eid, row in _journal_load(path).items():
+        if not row.get('verdict'):
+            continue
+        try:
+            age = now - float(row.get('t'))
+        except (TypeError, ValueError):
+            continue
+        if age < 0 or age > VERDICT_TTL_S:
+            continue
+        fresh = dict(row)
+        fresh['age_s'] = round(age, 1)
+        out[eid] = fresh
+    return out
+
+
+def tap_verdict(endpoint_id, name, peak, blocks, window_s, packets, silent_packets,
+                floor=None):
+    """(verdict, why) from ONE tap's OWN measurement. Pure -- the oracle calls it.
+
+    `signal` -- this endpoint carried samples above the floor;
+    `flat`   -- it delivered a full evidence window and every sample was silence;
+    `no-data`-- it did not listen long enough (or could not count): "I was not
+                there long enough" is NOT "this endpoint is flat", and a journal
+                that recorded it as flat would demote a good endpoint for the
+                whole TTL.
+    """
+    del endpoint_id, name  # identity is the caller's; the verdict is the numbers
+    try:
+        peak = float(peak)
+        blocks = int(blocks)
+        window_s = float(window_s)
+        packets = int(packets)
+        silent = int(silent_packets)
+    except (TypeError, ValueError):
+        return 'no-data', 'unreadable'
+    floor = SIGNAL_PEAK_FLOOR if floor is None else float(floor)
+    if (blocks < FLAT_EVIDENCE_MIN_BLOCKS
+            or window_s < FLAT_EVIDENCE_MIN_WINDOW_S
+            or packets <= 0):
+        return 'no-data', 'window-too-short'
+    if peak > floor:
+        return 'signal', 'peak=%.6f>floor=%.6f' % (peak, floor)
+    return 'flat', 'peak=%.6f<=floor=%.6f silent=%d/%d' % (peak, floor, silent, packets)
+
+
+def record_endpoint_verdict(endpoint_id, name, peak, blocks, window_s, packets,
+                            silent_packets, floor=None, now=None):
+    """Journal ONE endpoint's verdict from a tap that just closed. Never raises.
+
+    Returns the row written, or None when nothing was written (no identity, the
+    journal is off, or the tap did not listen long enough to overrule what a
+    longer listen already said).
+    """
+    if not endpoint_id:
+        return None
+    now = time.time() if now is None else float(now)
+    verdict, why = tap_verdict(endpoint_id, name, peak, blocks, window_s,
+                               packets, silent_packets, floor=floor)
+    path = journal_path()
+    if not path:
+        return None
+    current = _journal_load(path)
+    previous = current.get(str(endpoint_id)) or {}
+    if verdict == 'no-data' and previous.get('verdict') in ('signal', 'flat'):
+        try:
+            if 0 <= now - float(previous.get('t')) <= VERDICT_TTL_S:
+                return None      # a tap that did not listen cannot erase one that did
+        except (TypeError, ValueError):
+            pass
+    row = {
+        'name': str(name or '')[:120],
+        'verdict': verdict,
+        'why': why,
+        'peak': round(float(peak), 6),
+        'blocks': int(blocks),
+        'window_s': round(float(window_s), 2),
+        'packets': int(packets),
+        'silent_packets': int(silent_packets),
+        't': round(now, 3),
+    }
+    current[str(endpoint_id)] = row
+    if len(current) > JOURNAL_MAX_ROWS:
+        def _t(kv):
+            try:
+                return -float((kv[1] or {}).get('t'))
+            except (TypeError, ValueError):
+                return 0.0
+        current = dict(sorted(current.items(), key=_t)[:JOURNAL_MAX_ROWS])
+    _journal_save(path, current)
+    return row
+
+
+def reset_endpoint_journal():
+    """Forget everything. For oracles and for the owner ("start clean"). No audio."""
+    path = journal_path()
+    if not path:
+        return False
+    try:
+        os.remove(path)
+        return True
+    except OSError:
+        return False
+
+
+def endpoint_rank_key(entry, verdicts, now, floor=None):
+    """The ladder's ORDER, as a sort key. Pure -- the oracle judges this.
+
+    Tiers, in order of authority:
+      0. the LIVE meter says this endpoint is rendering NOW (0.002 floor);
+      1. a tap measured SIGNAL here recently (journal, `VERDICT_TTL_S`);
+      2. UNKNOWN -- nothing measured, or the verdict expired;
+      3. a tap PROVEN this endpoint flat recently.
+
+    Why tier 1 above tier 2 and 3: on the boot that cost 42 s, EVERY live meter
+    read 0.000 at the window boundaries, so the only thing that could tell
+    `VoiceMeeter` (the default, flat every time) from `CABLE Input` (the endpoint
+    the owner's Chrome actually renders to) was what the previous boot had
+    measured. The DEFAULT tie-break -- the pre-journal rule -- still decides
+    inside tier 2, so a machine with no journal orders EXACTLY as before; inside
+    tier 3 the OLDER flat verdict goes first, because an old flat proof is the
+    one most likely to have been fixed by a routing change since.
+    """
+    entry = entry or {}
+    floor = SIGNAL_PEAK_FLOOR if floor is None else float(floor)
+    try:
+        peak = float(entry.get('meter_peak') or 0.0)
+    except (TypeError, ValueError):
+        peak = 0.0
+    eid = str(entry.get('endpoint_id') or '')
+    row = (verdicts or {}).get(eid) or {}
+    kind = row.get('verdict')
+    try:
+        age = float(row.get('age_s'))
+    except (TypeError, ValueError):
+        age = None
+    sig_age = flat_age = None
+    if age is not None and 0 <= age <= VERDICT_TTL_S:
+        if kind == 'signal':
+            sig_age = age
+        elif kind == 'flat':
+            flat_age = age
+    if peak > floor:
+        tier = 0
+    elif sig_age is not None:
+        tier = 1
+    elif flat_age is not None:
+        tier = 3
+    else:
+        tier = 2
+    return (tier,
+            -peak,
+            sig_age if sig_age is not None else float('inf'),
+            -flat_age if flat_age is not None else -1.0,
+            not bool(entry.get('is_default')),
+            eid)
+
+
 def list_render_endpoints(role=E_CONSOLE, meter_ms=0.15):
     """EVERY ACTIVE render endpoint, each with its live meter peak.
 
     `IMMDeviceEnumerator::EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)` is
     what defines ACTIVE (Microsoft Learn). The result is ORDERED BY SIGNAL
-    (meter_peak descending; the DEFAULT endpoint breaks a tie), because the
-    defect this exists to remove is a tap that opens a SILENT endpoint while the
-    owner's audio renders on a different one.
+    (meter_peak descending), because the defect this exists to remove is a tap
+    that opens a SILENT endpoint while the owner's audio renders on a different
+    one. When the meter cannot discriminate (every peak 0.000 -- measured at all
+    three window ends of the 2026-11-11 boot) the ENDPOINT SIGNAL JOURNAL breaks
+    the tie: a recently measured `signal` outranks the default, a recently
+    proven `flat` goes last, and with no journal the DEFAULT endpoint comes
+    first exactly as before.
     """
     if sys.platform != "win32":
         raise WasapiError("WASAPI loopback is Windows-only")
@@ -591,8 +887,14 @@ def _list_render_endpoints(role, meter_ms):
             _release(coll)
     finally:
         _release(enum)
-    # ORDER IS THE CONTRACT: whoever is rendering now goes first.
-    out.sort(key=lambda e: (-(e["meter_peak"] or 0.0), not e["is_default"]))
+    # ORDER IS THE CONTRACT: whoever is rendering now goes first -- and when the
+    # meter cannot tell (every peak 0.000, which is what the 2026-11-11 boot
+    # measured at all three window ends), the journal decides: an endpoint a tap
+    # heard SIGNAL on recently outranks the default, and one a tap PROVED flat
+    # goes last. `endpoint_rank_key` is the whole rule, in one place.
+    verdicts = endpoint_verdicts()
+    now = time.time()
+    out.sort(key=lambda e: endpoint_rank_key(e, verdicts, now))
     return out
 
 
@@ -639,6 +941,14 @@ def live_endpoint_order(meter_ms=0.12, role=E_CONSOLE):
 
     Returns [] -- never raises -- when the platform or the enumeration fails; a
     caller that gets [] must keep the order it already has.
+
+    ORDER (2026-11-11): `endpoint_rank_key` -- the live meter is tier 0 and
+    always wins; a `signal` verdict this file journaled on a previous tap is
+    tier 1 (that is the boot that cost the owner 43.6 s on a flat default while
+    `CABLE Input` carried his audio); unknown is tier 2, where the DEFAULT
+    tie-break keeps the historical order byte-for-byte; a `flat` verdict is
+    tier 3, last. Tier 0 means no journal, however stale, can hide an endpoint
+    that is rendering now.
     """
     if sys.platform != "win32":
         return []
@@ -703,7 +1013,13 @@ def _live_endpoint_order(role, meter_ms):
                     _release(dev)
         finally:
             _release(coll)
-        out.sort(key=lambda e: (-(e["meter_peak"] or 0.0), not e["is_default"]))
+        # ORDER IS THE CONTRACT, and the journal is part of it (2026-11-11): the
+        # LIVE meter is still tier 0, so nothing here can hide an endpoint that
+        # renders now; the journal only decides the tie the meter cannot break
+        # (every peak 0.000 at boot), which is the tie that cost 42 s.
+        verdicts = endpoint_verdicts()
+        now = time.time()
+        out.sort(key=lambda e: endpoint_rank_key(e, verdicts, now))
         return out
     finally:
         _release(enum)
@@ -803,6 +1119,20 @@ class WasapiLoopbackTap:
         # here would delete audio the owner asked for. This changes the LEDGER,
         # not the audio.
         self.discontinuity_packets = 0
+        # ── WHAT THIS ENDPOINT DID, MEASURED HERE (2026-11-11) ──────────────
+        # The tap is the only thing that KNOWS whether the endpoint carried
+        # audio, so it keeps the evidence locally and journals it on `close()`
+        # (`record_endpoint_verdict`): the next boot then knows this endpoint was
+        # flat without opening it again. `packets` counts every GetBuffer packet
+        # that carried frames; `silent_packets` (above) counts the ones Windows
+        # marked AUDCLNT_BUFFERFLAGS_SILENT; `peak` is |max| over the packets
+        # whose samples were VALID, computed with two reductions on the existing
+        # array -- no temp allocation, no second pass over the audio.
+        self.packets = 0
+        self.blocks_delivered = 0
+        self.peak = 0.0
+        self._t_opened = time.time()
+        self._verdict_recorded = False
 
     # -- name surface the worker's reporting uses ----------------------------
     @property
@@ -1076,6 +1406,11 @@ class WasapiLoopbackTap:
                 self.pump_exit_where = "GetBuffer"
                 break
             if frames.value:
+                # COUNTED HERE, for the journal this tap writes on close: one
+                # packet with frames is one measurement of whether this endpoint
+                # was rendering. `silent_packets` (below) is the subset Windows
+                # flagged as silence.
+                self.packets += 1
                 # `pos` is the device position of this packet's first frame,
                 # wrapped to a SIGNED 64-bit carrier for the vtable. A packet
                 # that does not continue the previous one means the ring lost
@@ -1114,6 +1449,19 @@ class WasapiLoopbackTap:
                         arr = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
                     if channels > 1:
                         arr = arr.reshape(-1, channels).mean(axis=1)
+                    # |max| with TWO REDUCTIONS ON THE EXISTING ARRAY: `np.abs()`
+                    # would allocate a second buffer per packet on the audio path
+                    # for a number only the journal reads.
+                    try:
+                        hi = float(arr.max())
+                        lo = float(arr.min())
+                    except ValueError:            # empty packet
+                        hi = lo = 0.0
+                    if hi >= -lo:
+                        if hi > self.peak:
+                            self.peak = hi
+                    elif -lo > self.peak:
+                        self.peak = -lo
                 buf.append(np.asarray(arr, dtype=np.float32))
                 acc += arr.size
             release(cap, frames.value)
@@ -1144,6 +1492,10 @@ class WasapiLoopbackTap:
                 with self._cb_lock:
                     if self._stop.is_set():
                         return
+                    # Counted INSIDE the lock, beside the delivery it describes:
+                    # a block that was dropped because the stop flag was set is
+                    # not evidence about the endpoint.
+                    self.blocks_delivered += 1
                     self.on_block(np.ascontiguousarray(head, dtype=np.float32))
 
     def close(self):
@@ -1164,10 +1516,38 @@ class WasapiLoopbackTap:
         if self._thread is not None:
             self._thread.join()
             self._thread = None
+        # JOURNAL BEFORE RELEASE, and never raise: the numbers are the tap's own
+        # (`packets`/`silent_packets`/`peak`/`blocks_delivered`), and they are
+        # what the NEXT boot's ordering reads so it does not re-open an endpoint
+        # this one proved flat. `record_endpoint_verdict` is best-effort by
+        # construction -- a journal that can break `close()` is worse than none.
+        self._record_verdict()
         for ref in (self._capture, self._client, self._dev, self._enum):
             _release(ref)
         self._capture = self._client = self._dev = self._enum = None
         self._release_com()
+
+    def _record_verdict(self):
+        """Journal what THIS endpoint did, once, from counters measured here.
+
+        `no-data` (a tap that did not listen long enough) is returned by
+        `record_endpoint_verdict` without overwriting a `signal`/`flat` row a
+        longer listen already wrote -- see the guard there.
+        """
+        if self._verdict_recorded:
+            return None
+        self._verdict_recorded = True
+        try:
+            eid = getattr(self.ep, 'endpoint_id', None)
+            if not eid:
+                return None
+            return record_endpoint_verdict(
+                eid, getattr(self.ep, 'name', ''),
+                self.peak, self.blocks_delivered,
+                time.time() - self._t_opened,
+                self.packets, self.silent_packets)
+        except Exception:                    # noqa: BLE001 -- never breaks close()
+            return None
 
 
 def loopback_device_spec(role=E_CONSOLE):

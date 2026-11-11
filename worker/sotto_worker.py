@@ -2261,6 +2261,35 @@ class StreamAsr:
 
 
 # ── device selection ──────────────────────────────────────────────────────────
+def _flat_evidence_s():
+    """A JANELA PLANA DECIDE-SE NO TETO DO TAP, NAO EM 6->12->24->48 (2026-11-11).
+
+    MEDIDO no arranque do dono (pid 54524): `capture-started` as 17:34:42.834,
+    `tap-silent-desktop` as :49.620, `device-rotated (flat)` so' as 17:35:26.461
+    -- 43,6 s num rung que entregou ZERO, dos quais ~37 s foram ESPERA e nao
+    decisao: a janela plana e' 6 s (`window_s=6.0`), e `silent_desktop_hold`
+    dobrava a espera (6 -> 12 -> 24 -> 48 -> 60) perguntando ao medidor VIVO so'
+    no fim de cada extensao.
+
+    O que a dobragem protegia era o MOTOR de audio contra reaberturas (2026-11-02:
+    doze clientes WASAPI em tres minutos, "a hard hitch"), e uma extensao NAO
+    abre nada -- so' uma rotacao abre. Logo a dobragem limita a frequencia de uma
+    LEITURA PASSIVA do medidor, e o numero honesto para isso e' o do tap
+    (`wasapi_loopback.FLAT_EVIDENCE_S` = 4 s, com a medicao de 0,755 s por
+    leitura de seis endpoints escrita la'). O teto vale para as DUAS saidas de
+    `silent_desktop_hold`, porque as duas podem estar a tapar o momento em que o
+    audio mudou de sitio.
+
+    Import que falha = `inf`: sem o tap nao ha' numero, e a politica antiga fica
+    inteira -- "sem leitura" nunca encurta uma janela.
+    """
+    try:
+        import wasapi_loopback as _wl
+        return float(_wl.FLAT_EVIDENCE_S)
+    except Exception:                       # noqa: BLE001 - nunca custa a janela
+        return float('inf')
+
+
 def silent_desktop_hold(device_peak, tap_floor, live, window_s, silent_windows=0,
                         max_window_s=60.0, own_peak=None):
     """A MAQUINA CALADA NAO E' UM DISPOSITIVO PARTIDO -- a janela seguinte, ou None.
@@ -2302,7 +2331,7 @@ def silent_desktop_hold(device_peak, tap_floor, live, window_s, silent_windows=0
         mine = None
     if mine is not None and mine > float(tap_floor):
         grown = float(window_s) * (2.0 ** (max(0, int(silent_windows)) + 1))
-        return min(grown, float(max_window_s))
+        return min(grown, float(max_window_s), _flat_evidence_s())
     if not live:
         return None
     # O PICO DA JANELA NAO DECIDE (2026-11-02, medido na sessao do dono). Havia
@@ -2322,7 +2351,7 @@ def silent_desktop_hold(device_peak, tap_floor, live, window_s, silent_windows=0
     if loudest > float(tap_floor):
         return None
     grown = float(window_s) * (2.0 ** (max(0, int(silent_windows)) + 1))
-    return min(grown, float(max_window_s))
+    return min(grown, float(max_window_s), _flat_evidence_s())
 
 
 def _live_render_peaks():

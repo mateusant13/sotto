@@ -682,6 +682,16 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-pause-payload !STEP_RC!
   call :step red-as-expected-panel-pause-payload 1 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
   call :expectred red-as-expected-panel-pause-payload !STEP_RC! "%OUT%\panel-pause-payload-neg.log" "NEG-ARM: PASS"
+  REM `live-ack` -- o Ctrl+Space tem de RESPONDER com o bloqueador real (ordem do dono de
+  REM 2026-11-11: *"meu ctrl space nao fez nada assim que abri o sotto"*). O toggle registava
+  REM em 20 ms e o primeiro pixel vinha 95,8 s depois; agora o estado e' lido no instante e a
+  REM razao verdadeira vai para a mesma fenda da legenda. O oraculo extrai os metodos REAIS do
+  REM shell por `ast` -- nao importa o shell, nao abre janela, nao toca em audio -- e o braco
+  REM negativo muta uma copia em memoria. Medido: 9/9 arms e 7/7 mutantes (cada um pela SUA arm).
+  call :step live-ack 0 "_main\live-ack-oracle.py;app\webview\sotto_webview.py" "%OUT%\live-ack.log" python _main\live-ack-oracle.py
+  call :record live-ack !STEP_RC!
+  call :step red-as-expected-live-ack 1 "_main\live-ack-oracle.py;app\webview\sotto_webview.py" "%OUT%\live-ack-neg.log" python _main\live-ack-oracle.py --neg-arm
+  call :expectred red-as-expected-live-ack !STEP_RC! "%OUT%\live-ack-neg.log" "NEG-ARM: PASS"
   call :step yt-clock-static 0 "_main\yt-clock-static-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_cdp_source.py" "%OUT%\yt-clock-static.log" python _main\yt-clock-static-oracle.py
   call :record yt-clock-static !STEP_RC!
   call :step red-as-expected-yt-clock-static 1 "_main\yt-clock-static-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_cdp_source.py" "%OUT%\yt-clock-static-neg.log" python _main\yt-clock-static-oracle.py --neg-arm

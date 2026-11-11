@@ -676,6 +676,23 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-11, 18:5x):** `_main\_audit-verify-all.cmd` = **355617 B**,
+  **4123 CRLF** / 0 bare LF, sha256 `07224534ED53F8798048FB9268F678EF2DD947F906F0982651141C10DDC765D5`.
+  (Mil e nove bytes e DEZ linhas a mais do que o pin de 354618 B: o par `live-ack` +
+  `red-as-expected-live-ack`, o portao do Ctrl+Space que RESPONDE. Nasceu da ordem do dono de
+  2026-11-11, verbatim: *"meu ctrl space nao fez nada assim que abri o sotto e vi ele no icone da
+  bandeja"* -- e da medicao que a explicou: o toggle registava em **20 ms** e o primeiro pixel
+  chegava **95,8 s** depois, porque o aviso de estado era de disparo UNICO. O oraculo
+  `_main\live-ack-oracle.py` extrai os metodos REAIS do shell por `ast` (nao importa o shell, nao
+  abre janela, nao abre dispositivo de audio) e conduz a escada do bloqueador: player com a
+  superficie -> nada; linha fresca ja' pintada -> nada; faixa sem linha -> `waiting-player-row`;
+  modelo a carregar -> `model-loading`; faixa com 0 cues -> `no-track`; sem audio -> `no-audio`;
+  pronto -> `waiting-first-line`. Medido: `VERDICT: PASS (9/9)` rc=0 e `--neg-arm` **7/7**
+  mutantes, cada um apanhado pela SUA arm (o `toggle-does-not-arm-status` cai no A1, o
+  `status-ignores-player-owner` no A2, o `caption-does-not-clear-status` no A3, o
+  `unknown-state-guesses` no A4, o `surface-witness-renames-field` no A6, o `stale-gate-disabled` e
+  o `stream-clock-age-zeroed` no A7). `battery-class` PASS arms=3; `battery-record-pairing`
+  468 passos / 468 nomes com registo / 0 achados.)
 - **PIN do ficheiro (medido 2026-11-11, 11:2x):** `_main\_audit-verify-all.cmd` = **354618 B**,
   **4113 CRLF** / 0 bare LF, sha256 `3C50EFE307077943C2C71ED32DA820013B6E6A6426A663538F2EF1E87C2F1F05`.
   (Vinte e quatro bytes a mais do que o pin de 354594 B, e ZERO linhas a mais: a unica mudanca e'
