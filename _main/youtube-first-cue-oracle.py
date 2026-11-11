@@ -875,6 +875,119 @@ def arm_change_evidence(ns):
                                                                  unknown)), {}
 
 
+SH_SOURCE = os.path.join(HERE, '..', 'app', 'webview', 'sotto_webview.py')
+
+
+def _shell_funcs(path=SH_SOURCE):
+    """{nome: no} das funcoes/metodos do SHELL, por `ast`.
+
+    A CURA QUE NAO CHEGA AO PROCESSO NAO E' CURA (a classe que esta casa ja'
+    pagou com o `panel-deps` e o `cdp-target-async`): o oraculo julga as funcoes
+    PURAS do modulo, e sem esta arm nada prova que a shell as CHAMA.
+    """
+    tree = ast.parse(read(path))
+    out = {}
+    for cls in tree.body:
+        if not isinstance(cls, ast.ClassDef):
+            continue
+        for node in cls.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                out[cls.name + '.' + node.name] = node
+                out.setdefault(node.name, node)
+            elif isinstance(node, ast.ClassDef):      # classe aninhada
+                for sub in node.body:
+                    if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        out.setdefault(sub.name, sub)
+    for node in tree.body:                            # e as de modulo
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            out.setdefault(node.name, node)
+    return out
+
+
+def arm_shell_wiring(ns, path=None):                     # noqa: ARG001
+    """W1 -- a shell CHAMA a cura, uma vez por troca, com a foto em maos.
+
+    Tres coisas que o processo precisa e que nenhum braco de funcao pura toca:
+    `rebind_verdict(..., snap=...)` dentro de `_yt_identify` (sem `snap` o damp
+    volta a 1500 ms), UM `video-changed` por troca em `_yt_switch_video` (eram
+    dois `CAPTION_WINDOW_BLANKED` no mesmo ms) e o epocario a zerar a espera no
+    laco (`YOUTUBE_READ_HOLD_DROPPED`).
+    """
+    funcs = _shell_funcs(path or SH_SOURCE)
+    problems = []
+    ident = funcs.get('ExternalCaptionWatcher._yt_identify') or funcs.get('_yt_identify')
+    if ident is None:
+        problems.append('sem _yt_identify')
+    else:
+        calls = [n for n in ast.walk(ident)
+                 if isinstance(n, ast.Call)
+                 and getattr(getattr(n.func, 'attr', None), '__str__', lambda: '')() == 'rebind_verdict']
+        if not calls:
+            problems.append('_yt_identify nao chama rebind_verdict')
+        elif not any(kw.arg == 'snap' for c in calls for kw in c.keywords):
+            problems.append('rebind_verdict sem snap= (o damp volta a 1,5 s)')
+    sw = funcs.get('ExternalCaptionWatcher._yt_switch_video') or funcs.get('_yt_switch_video')
+    if sw is None:
+        problems.append('sem _yt_switch_video')
+    else:
+        blanks = [n for n in ast.walk(sw)
+                  if isinstance(n, ast.Call)
+                  and isinstance(n.func, ast.Name)
+                  and n.func.id in ('blank', '_blank_caption_window')]
+        if len(blanks) != 1:
+            problems.append('%d apagares de janela por troca (tem de ser 1)' % len(blanks))
+        logs = [n for n in ast.walk(sw)
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id == 'log' and n.args
+                and isinstance(n.args[0], ast.JoinedStr)
+                and any(isinstance(v, ast.Constant) and 'YOUTUBE_VIDEO_CHANGED' in str(v.value)
+                        for v in n.args[0].values)]
+        if not logs:
+            problems.append('sem YOUTUBE_VIDEO_CHANGED no _yt_switch_video')
+        elif not any(isinstance(v, ast.Constant) and 'why=' in str(v.value)
+                     for n in logs for v in n.args[0].values):
+            problems.append('a linha da troca nao leva why=')
+    runner = funcs.get('ExternalCaptionWatcher.run')
+    if runner is None:
+        problems.append('sem run')
+    else:
+        # `stats()` pode chegar por atributo OU por `getattr(obj, 'stats')`:
+        # as duas formas leem o MESMO epocario, e um portao que so' aceitasse a
+        # primeira acusaria a shell certa (a classe que este repo ja' pagou).
+        reads_stats = any(
+            (isinstance(n, ast.Attribute) and n.attr == 'stats')
+            or (isinstance(n, ast.Constant) and n.value == 'stats')
+            for n in ast.walk(runner))
+        if not reads_stats:
+            problems.append('o laco nao le stats() (sem epocario, sem espera a zerar)')
+        # O ZERAR TEM DE ESTAR DENTRO DA CONDICAO DO EPOCARIO. Medido: um
+        # mutante que troca essa condicao por `if False:` deixa a atribuicao no
+        # sitio e sobrevivia a uma arm que so' perguntasse se o nome existe --
+        # a classe do `A13` que media o nome em vez do caminho.
+        gated = False
+        for node in ast.walk(runner):
+            if not isinstance(node, ast.If):
+                continue
+            if not any(
+                    (isinstance(n, ast.Attribute) and n.attr == '_yt_epoch_seen')
+                    or (isinstance(n, ast.Constant) and n.value == '_yt_epoch_seen')
+                    for n in ast.walk(node.test)):
+                continue
+            for stmt in node.body:
+                for n in ast.walk(stmt):
+                    if (isinstance(n, ast.Assign)
+                            and any(isinstance(t, ast.Attribute)
+                                    and t.attr == '_read_slow_until'
+                                    for t in n.targets)
+                            and isinstance(getattr(n, 'value', None), ast.Constant)
+                            and n.value.value == 0.0):
+                        gated = True
+        if not gated:
+            problems.append('o laco nao zera a espera DENTRO da condicao do epocario')
+    ok = not problems
+    return ok, ('problems=%s' % (', '.join(problems) or 'none')), {}
+
+
 ARMS = (
     ('A1-DAMP-ROWS', arm_roundtrip),
     ('A2-KEEP-DECLARED', arm_keep_declared),
@@ -886,6 +999,7 @@ ARMS = (
     ('B4-RECHECK-LIST', arm_recheck_list),
     ('C-PACED-HOLD', arm_paced_hold),
     ('D-CHANGE-EVIDENCE', arm_change_evidence),
+    ('W1-SHELL-WIRING', arm_shell_wiring),
 )
 
 
@@ -1027,8 +1141,41 @@ def main(argv=None):
             print('   %s -> %s' % (want, 'RED' if red else 'SOBREVIVEU'))
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+    # -- e os mutantes do SHELL: a arm W1 tem de cair com cada um ----------
+    shell_original = read(SH_SOURCE)
+    shell_mutants = (
+        ('shell-sem-snap',
+         '                        _now - _cand_at, self.YT_REBIND_CONFIRM_S, snap=_snap)',
+         '                        _now - _cand_at, self.YT_REBIND_CONFIRM_S)'),
+        ('shell-dois-apagares',
+         "        blank = getattr(getattr(self, 'shell', None), '_blank_caption_window', None)",
+         "        blank = getattr(getattr(self, 'shell', None), '_blank_caption_window', None)\n"
+         "        if blank is not None:\n            blank('video-changed')"),
+        ('shell-sem-epocario',
+         "            if _ep != getattr(self, '_yt_epoch_seen', None):",
+         "            if False:"),
+    )
+    tmpdir = tempfile.mkdtemp(prefix='yt-first-cue-shell-')
+    try:
+        for label, old, new in shell_mutants:
+            if shell_original.count(old) != 1:
+                print('NEG-ARM IMPOSSIVEL: ancora de %r com %d ocorrencias'
+                      % (label, shell_original.count(old)))
+                return 2
+            path = os.path.join(tmpdir, 'shell_%s.py' % label.replace('-', '_'))
+            with io.open(path, 'w', encoding='utf-8', newline='') as fh:
+                fh.write(shell_original.replace(old, new, 1))
+            ok, detail, _n = arm_shell_wiring(None, path)
+            red = ok is False
+            caught += 1 if red else 0
+            verdict = verdict and red
+            print('== mutante %s: W1-SHELL-WIRING tem de cair -> %s (%s)'
+                  % (label, 'RED' if red else 'SOBREVIVEU', detail))
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
     print('\nNEG-ARM: %s (%d/%d)'
-          % ('PASS' if verdict else 'FAIL', caught, len(mutants)))
+          % ('PASS' if verdict else 'FAIL', caught,
+             len(mutants) + len(shell_mutants)))
     return 1 if verdict else 0
 
 

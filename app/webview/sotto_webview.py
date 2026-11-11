@@ -4130,6 +4130,27 @@ class ExternalCaptionWatcher(threading.Thread):
                 log('YOUTUBE_POLL_PACED paused=%s interval_s=%.2f'
                     % (_yt_paused, self.IDLE_INTERVAL_S if _yt_paused
                        else self.INTERVAL_S))
+            # UM ALVO NOVO NAO PAGA O CASTIGO DO ALVO VELHO (2026-11-11). O
+            # `_read_slow_until` acima existe porque a leitura que custou caro
+            # pede espaco -- mas quem custou caro foi a fonte ANTIGA: depois de a
+            # fonte ADOTAR outra aba (`stats()['epoch']`), a primeira cue do alvo
+            # novo nao pode esperar `READ_SLOW_HOLD_S` (1,0 s) por uma leitura
+            # que ja' nao existe. Medido: troca -> 1a foto 388 ms com o epocario
+            # a zerar a espera, contra o passo cheio a seguir a um martelo.
+            try:
+                _src_obj = (getattr(self, '_yt_cdp_source', None)
+                            or getattr(getattr(self, 'shell', None),
+                                       '_yt_cdp_source', None))
+                _ep = int(((getattr(_src_obj, 'stats', lambda: {})() or {})
+                           .get('epoch') or 0))
+            except Exception:                 # noqa: BLE001
+                _ep = 0
+            if _ep != getattr(self, '_yt_epoch_seen', None):
+                _was = getattr(self, '_yt_epoch_seen', None)
+                self._yt_epoch_seen = _ep
+                if _was is not None and getattr(self, '_read_slow_until', 0.0):
+                    self._read_slow_until = 0.0
+                    log('YOUTUBE_READ_HOLD_DROPPED epoch=%d' % _ep)
             _step = poll_step(_idle_for, _yt_paused,
                               self.INTERVAL_S, self.IDLE_INTERVAL_S,
                               time.monotonic() < getattr(self, '_read_slow_until', 0.0))
@@ -5680,35 +5701,52 @@ class ExternalCaptionWatcher(threading.Thread):
                 except Exception:             # noqa: BLE001
                     _tid = ''
                 if _tid and _tid != getattr(self, 'yt_video_id', ''):
-                    # A TROCA DE VIDEO EXIGE DOIS ACORDOS (2026-11-09). MEDIDO
-                    # no log do dono, 21:24:33/36/37 e 21:29:56, e outra vez as
-                    # 21:18-21:24: pares de `CAPTION_WINDOW_BLANKED
-                    # reason=video-changed` a cada ~1,5 s com o MESMO video dele
-                    # a tocar, e `YOUTUBE_TRACK_READY video_id=UytYrhYLOKI
-                    # source=other-video` ao lado do alvo `guARjKjyFLY` -- duas
-                    # abas `watch` abertas fazem o `target_video_id` oscilar, e
-                    # cada oscilacao apagava a legenda (o ecra ficava sem pixel
-                    # nenhum e a linha era esquecida). O dono chama a isso "the
-                    # subtitles stays frozen".
+                    # A TROCA DE VIDEO EXIGE DOIS ACORDOS (2026-11-09) -- E UM
+                    # DELES NAO PODE SER PAGO POR QUEM JA' ESTA' A PINTAR
+                    # (2026-11-11). MEDIDO no log do dono, 21:24:33/36/37 e
+                    # 21:29:56, e outra vez as 21:18-21:24: pares de
+                    # `CAPTION_WINDOW_BLANKED reason=video-changed` a cada ~1,5 s
+                    # com o MESMO video dele a tocar, e `YOUTUBE_TRACK_READY
+                    # video_id=UytYrhYLOKI source=other-video` ao lado do alvo
+                    # `guARjKjyFLY` -- duas abas `watch` abertas fazem o
+                    # `target_video_id` oscilar, e cada oscilacao apagava a
+                    # legenda. O dono chama a isso "the subtitles stays frozen".
                     #
-                    # A oscilacao nao e' uma troca de video: e' um instrumento a
-                    # ler duas abas. A troca passa a exigir o MESMO id em duas
-                    # leituras separadas por `YT_REBIND_CONFIRM_S`; a primeira
-                    # so' ARMA o candidato e nao apaga nada.
+                    # A OSCILACAO NAO TRAZ LINHAS. Quando a foto do candidato JA'
+                    # tem as `rows` dele, ele nao e' um instrumento a confirmar: e'
+                    # o alvo, e a primeira cue dele nao paga 1,5 s de desconfianca
+                    # -- medido, 1541 ms de damp com as linhas ja' em maos. A
+                    # decisao vive em `youtube_cdp_source.rebind_verdict` (pura,
+                    # executada por `youtube-first-cue-oracle`); a shell obedece.
                     _now = time.monotonic()
                     _cand = getattr(self, '_yt_rebind_cand', '')
                     _cand_at = float(getattr(self, '_yt_rebind_at', 0.0) or 0.0)
-                    if _cand != _tid:
+                    import youtube_cdp_source as _ycs
+                    try:
+                        _snap = _src.snapshot(max_age=0.6) if _src else None
+                    except Exception:             # noqa: BLE001
+                        _snap = None
+                    _acts = _ycs.rebind_verdict(
+                        getattr(self, 'yt_video_id', '') or '', _tid, _cand,
+                        _now - _cand_at, self.YT_REBIND_CONFIRM_S, snap=_snap)
+                    _action, _why = _acts[0], _acts[1]
+                    if _action == 'clear':
+                        self._yt_rebind_cand = ''
+                        self._yt_rebind_at = 0.0
+                    elif _action == 'armed':
                         self._yt_rebind_cand = _tid
                         self._yt_rebind_at = _now
                         log('YOUTUBE_TARGET_REBIND_ARMED was=%s now=%s '
                             'confirm_s=%.1f'
                             % (getattr(self, 'yt_video_id', '') or '-', _tid,
                                self.YT_REBIND_CONFIRM_S))
-                    elif _now - _cand_at >= self.YT_REBIND_CONFIRM_S:
-                        log('YOUTUBE_TARGET_REBOUND was=%s now=%s why=aba '
+                    elif _action == 'adopt':
+                        log('YOUTUBE_TARGET_REBOUND was=%s now=%s why=%s '
                             'confirmed=true'
-                            % (getattr(self, 'yt_video_id', '') or '-', _tid))
+                            % (getattr(self, 'yt_video_id', '') or '-', _tid,
+                               _why))
+                        self._yt_rebind_cand = ''
+                        self._yt_rebind_at = 0.0
                         self._yt_switch_video(_tid, _src)
                     else:
                         log('YOUTUBE_TARGET_REBIND_DAMPED was=%s cand=%s '
@@ -5745,18 +5783,19 @@ class ExternalCaptionWatcher(threading.Thread):
                 pass
         self.yt_cue = ''
         self._yt_switch_at = time.monotonic()
+        # UM APAGAR POR TROCA, NAO DOIS (2026-11-11). MEDIDO: esta funcao chamava
+        # `_blank_caption_window('video-changed')` aqui E outra vez no fim, no
+        # MESMO milissegundo e com dois epocarios consecutivos -- dois
+        # `CAPTION_WINDOW_BLANKED` para uma troca de video (0,390 ms de
+        # diferenca, mesma razao), o que engana quem conta episodios por linha.
+        # O que fica e' o do FIM, depois de o estado do video anterior ser
+        # limpo: a janela nao se fecha antes de nao haver nada para repintar.
         # O APAGAR DA JANELA MORA NA SHELL, NAO AQUI (2026-11-03). MEDIDO com
         # o oraculo `_main/yt-loop-uia-oracle.py`: `self._blank_caption_window`
         # nao existe neste objecto -- a chamada levantava `AttributeError` a
         # cada troca de video, ou seja o ramo que devia limpar a linha do
         # video ANTERIOR morria antes de a limpar (e a linha antiga ficava no
         # ecra, que e' o defeito que este ramo existe para evitar).
-        _bw = getattr(getattr(self, 'shell', None), '_blank_caption_window', None)
-        if _bw is not None:
-            try:
-                _bw('video-changed')
-            except Exception:             # noqa: BLE001
-                pass
         # A ULTIMA LINHA PINTADA era do video ANTERIOR. It cannot be
         # the line of this one, and it is what the clock is compared
         # with, so it goes with the video.
@@ -5797,7 +5836,15 @@ class ExternalCaptionWatcher(threading.Thread):
         blank = getattr(getattr(self, 'shell', None), '_blank_caption_window', None)
         if blank is not None:
             blank('video-changed')
-        log(f'YOUTUBE_VIDEO_CHANGED video_id={vid}')
+        # A EVIDENCIA DA TROCA VAI NO REGISTO (2026-11-11). `tab-switch` e um
+        # alvo adotado, `same-tab` e o mesmo video a mudar de faixa -- e o shell
+        # chamava "video changed" aos dois, o que fazia o portao de frescura
+        # olhar para o lado errado quando so' a faixa mudou.
+        try:
+            _why = src.video_change_evidence(vid)
+        except Exception:                 # noqa: BLE001
+            _why = 'none'
+        log(f'YOUTUBE_VIDEO_CHANGED video_id={vid} why={_why}')
 
     def _yt_cdp_fast_lines(self, hwnd, uia, UIA, vid):
         """O CAMINHO BARATO VEM PRIMEIRO (2026-11-03), e decide sozinho.
