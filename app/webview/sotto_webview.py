@@ -2932,6 +2932,151 @@ def player_track_owns(state, now=None, fresh_s=PLAYER_TRACK_FRESH_S):
     now = time.monotonic() if now is None else float(now)
     return 0.0 <= (now - painted) <= float(fresh_s)
 
+
+#: ATE' QUE IDADE DE AUDIO UMA LINHA AINDA E' AO VIVO (2026-11-11, MEDIDO).
+#:
+#: O DEFEITO. Dono, verbatim: *"abro o sotto e leva mais de um segundo pra
+#: legenda funcionar"*. A metade que ninguem via: as 17:46:05.822 o shell
+#: pintou `CAPTION_IN start=381.84 final=true tap_ms=None` -- audio de 17:41:04,
+#: **301 s** antes -- como se fosse ao vivo. `tap_ms` vinha None, logo nenhuma
+#: regua do shell podia saber, e o ecra mostrou uma frase de cinco minutos atras.
+#:
+#: O NUMERO, tirado do log do dono (`_main/webview-run.log`, 2026-11-11):
+#: 1846 linhas VIVAS (`final=false`) com `tap_ms` presente medem p50=131 ms,
+#: p99=1837 ms, max=8070 ms -- e 8070 ms e' o pior caso HONESTO de uma maquina a
+#: 174 % de CPU, nao um bug. As `final=true` medem p90=52879 ms por desenho (a
+#: cauda de silencio fecha a linha muito depois da fala).
+#:
+#: 30 s e' 3,7x acima do pior caso honesto medido e 10x abaixo da patologia
+#: medida (301 s). NAO e' um orcamento de latencia -- esse e' `CAPTION_BUDGET_MS`
+#: (1500 ms) e continua a julgar o pixel. Este e' o piso entre "legenda" e
+#: "historia": acima dele o texto VAI para o historico (nunca se perde fala) e
+#: NAO pinta na janela ao vivo (`LIVE_PAINT_REFUSED reason=stale`).
+LIVE_PAINT_MAX_AGE_S = 30.0
+
+
+def live_paint_age_s(meta, capture_epoch=0.0, now=None):
+    """A idade do AUDIO de uma legenda do worker, em segundos (None = nao se sabe).
+
+    Tres relogios, do mais directo para o mais fraco:
+
+      1. `age_s` -- o worker passa a publica'-lo (via LiveRoute); quando vem, e'
+         a medida dele e nao uma derivacao nossa;
+      2. `tap_ms` -- o instante de parede do bloco que completou a linha
+         (`worker/sotto_worker.py:_event`); e' o campo que ja' existia e que o
+         defeito medido trazia a None;
+      3. `start` + epoca da captura -- `start` e' o relogio de AUDIO do worker
+         (o `audio_s` da captura) e `capture_epoch` e' o instante de parede em
+         que o shell viu `capture-started` para ESTE filho. E' o degrau que
+         transforma um numero que sempre veio no evento num instante.
+
+    Sem nenhum dos tres devolve `None`: nao se recusa o que nao se mediu.
+    """
+    if not isinstance(meta, dict):
+        return None
+    try:
+        now = time.time() if now is None else float(now)
+    except (TypeError, ValueError):
+        now = time.time()
+    value = meta.get('age_s')
+    if value is not None:
+        try:
+            return max(0.0, float(value))
+        except (TypeError, ValueError):
+            pass
+    tap = meta.get('tap_ms')
+    if tap:
+        try:
+            return max(0.0, now - float(tap) / 1000.0)
+        except (TypeError, ValueError):
+            pass
+    start = meta.get('start')
+    try:
+        epoch = float(capture_epoch or 0.0)
+    except (TypeError, ValueError):
+        epoch = 0.0
+    if start is not None and epoch > 0.0:
+        try:
+            return max(0.0, now - (epoch + float(start)))
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def live_paint_stale(age_s, bound_s=LIVE_PAINT_MAX_AGE_S):
+    """A linha e' historia em vez de legenda? Sem idade medida, nao e'."""
+    try:
+        return age_s is not None and float(age_s) > float(bound_s)
+    except (TypeError, ValueError):
+        return False
+
+
+#: O QUE A JANELA DIZ QUANDO NAO HA' NADA PARA PINTAR (2026-11-11).
+#:
+#: O DEFEITO. Dono, verbatim: *"meu ctrl space nao fez nada assim que abri o
+#: sotto e vi ele no icone da bandeja"*. MEDIDO (pid 49180): Ctrl+Space as
+#: 17:34:26.599 -> `LIVE_ENABLED on=true` as 17:34:26.619 (20 ms, o gesto esta'
+#: certo) e NADA no ecra ate' 17:36:02.4 -- 95,8 s depois, e so' porque uma
+#: faixa do YouTube apareceu. O unico texto de estado que existia
+#: (`model-loading` -> `carregando modelo…`) e' um EVENTO unico disparado as
+#: 17:34:26.5, enquanto `_caption_wanted` ainda era False: quando o dono ligou,
+#: o evento ja' tinha passado e o estado nunca foi lido.
+#:
+#: A CURA E' O ESTADO, NAO O EVENTO. Ligar pergunta "o que falta AGORA?" e a
+#: resposta vem destas razoes, na ordem do que muda primeiro. Cada uma e' um
+#: facto lido dos objectos que o tem -- nunca um palpite: sem facto, lista vazia.
+CAPTION_STATUS_TEXT = {
+    'model-loading': 'carregando modelo\u2026',
+    'no-track': 'este video nao tem faixa de legenda',
+    'waiting-player-row': 'aguardando a legenda do player\u2026',
+    'no-audio': 'sem sinal de audio',
+    'waiting-first-line': 'aguardando audio\u2026',
+}
+
+
+def caption_status_for(state):
+    """O estado -> a razao do ecra vazio, ou None quando nao ha' nada honesto.
+
+    `state` (todos os campos vem de `SottoShell._caption_status_state`):
+
+      wanted / player_owns / painted_recent
+      track_known / track_cues / rows
+      bridge / loaded / capturing / no_audio
+
+    A ORDEM E' A DO QUE RESOLVE PRIMEIRO:
+
+      1. desligado -> nada;
+      2. o player e' dono da superficie (`player_track_owns`: tem linhas no DOM,
+         ja' pintou nos ultimos 10 s, ou a janela dele esta' no ecra) -> NADA.
+         Um texto de estado por cima do player e' o defeito de 2026-11-04;
+      3. ha' uma linha pintada agora -> nada (nao se tapa o que se acabou de ver);
+      4. o player TEM faixa com cues -> falta a primeira linha DELE
+         (`waiting-player-row`), e nao o modelo: a superficie vai ser do player;
+      5. worker a carregar -> `model-loading`;
+      6. faixa conhecida e VAZIA -> `no-track`; o ASR ainda pode pintar, mas a
+         faixa do player nao existe;
+      7. worker calado (`no_audio`) -> `no-audio`;
+      8. worker carregado e a capturar -> `waiting-first-line`;
+      9. resto -> None (nao se pinta um palpite).
+    """
+    if not state or not state.get('wanted'):
+        return None
+    if state.get('player_owns') or state.get('painted_recent'):
+        return None
+    if state.get('track_known'):
+        if int(state.get('track_cues') or 0) > 0:
+            return 'waiting-player-row' if not int(state.get('rows') or 0) else None
+    if state.get('bridge') and not state.get('loaded'):
+        return 'model-loading'
+    if state.get('track_known') and not int(state.get('track_cues') or 0):
+        return 'no-track'
+    if state.get('bridge') and state.get('no_audio'):
+        return 'no-audio'
+    if state.get('bridge') and state.get('loaded') and state.get('capturing'):
+        return 'waiting-first-line'
+    return None
+
+
 #: Bottom-strip geometry: wide and short, bottom-centred. The 1040x150 comes
 #: from the strip-surface measurements (height read from `--strip-height` in
 #: the CSS, never hard-coded); STRIP_HEIGHT_FALLBACK exists only so a missing
@@ -17978,6 +18123,15 @@ class SottoShell:
                 f'text={json.dumps((new_text or "")[:60])} '
                 'why=live-off -- o interruptor foi lido na PINTURA, nao no enfileirar')
             return
+        # ── O TEXTO DE ESTADO NAO E' LEGENDA (2026-11-11) ──────────────────
+        # Ele passou pelo MESMO slot para a ordem no ecra ser a de chegada, mas
+        # nao toca em `_caption_painted` (nao e' uma linha que se possa repetir
+        # ao religar) nem em `_overlay_pushes` (nao e' uma legenda pintada), e
+        # deixa uma linha propria no log (`CAPTION_STATUS_SHOWN`) para que um
+        # episodio possa ser julgado por um grep em vez de por uma impressao.
+        if getattr(self, '_caption_pending_status', False):
+            self._paint_caption_status(new_text)
+            return
         age_ms = int((time.time() - enqueued) * 1000)
         # QUANTO O AUDIO DESTA LINHA E' MAIS VELHO DO QUE O ECO (2026-11-04). O
         # `tap_ms` do worker diz quando o bloco que fechou a linha entrou; a
@@ -18000,6 +18154,36 @@ class SottoShell:
             ov.set_text(new_text, new_prev, instant, cue=cue, late_s=_late_s)
             ov.show(True)
             self._overlay_pushes += 1
+            # ── A TESTEMUNHA DA SUPERFICIE (2026-11-11) ────────────────────
+            # O CAMINHO DO PLAYER NAO TINHA MEDIDA NENHUMA. `_tap` e' None na via
+            # do YouTube (o `tap_ms` e' do worker), portanto o `CAPTION_PAINT_LAG`
+            # nunca saia nela; e o `CAPTION_OVERLAY_PUSH` so' aparece em
+            # `count=1/50/500`. MEDIDO no log do dono: 927 pinturas do player e
+            # ZERO linhas que dissessem quando o ecra mudou -- ou seja
+            # "video mudou -> pixels" nao era mensuravel, que e' exactamente o
+            # *"levou 3 segundos e devia ser instantaneo"* do dono.
+            #
+            # UMA LINHA POR PINTURA, nas DUAS vias, barata: o `ms` e' a idade do
+            # texto no slot (`enqueued` -> agora), o mesmo numero que o
+            # `CAPTION_OVERLAY_LAG` ja' calcula, e o resto sao inteiros que o
+            # slot tem. O `CAPTION_PAINT_LAG` (via do ASR) fica intacto: este e'
+            # a testemunha da superficie, nao o substituto.
+            _rows_src = getattr(self, '_caption_pending_rows', None)
+            log('CAPTION_PAINT_SURFACE src=%s rows=%d text=%s ms=%d epoch=%d'
+                % ('player' if _rows_src is not None else 'asr',
+                   len(_rows_src) if _rows_src else 0,
+                   json.dumps((new_text or '')[:40]), age_ms,
+                   int(getattr(self, '_source_epoch', 0))))
+            # O TEXTO DE ESTADO MORRE NO PRIMEIRO PIXEL VERDADEIRO (2026-11-11).
+            # A primeira legenda que pinta substitui-o no ecra; este campo e' o
+            # que impede o repintar de o considerar "ja' mostrado" e de o retirar
+            # outra vez -- uma retirada nunca pode apagar uma legenda.
+            if str(getattr(self, '_caption_status_reason', '') or ''):
+                log('CAPTION_STATUS_CLEARED reason=%s why=caption'
+                    % self._caption_status_reason)
+                self._caption_status_reason = ''
+                self._caption_status_episode_at = 0.0
+                self._caption_status_queued_for = ''
             # O INSTANTE DA PRIMEIRA PINTURA (2026-10-26). A linha de aceitacao
             # "Alt+C -> legenda no ecra em 1,5 s" nao tinha instrumento: a PRESSao
             # esta no log desde sempre (`HOTKEY_PRESSED`, com o carimbo de tempo de
@@ -18165,6 +18349,235 @@ class SottoShell:
         """A superficie da legenda e' do player? (ver `player_track_owns`)."""
         return player_track_owns(self._player_track_state(), now=now)
 
+    #: O INTERVALO DO REPINTAR (2026-11-11). O bloqueio muda sem evento que o
+    #: shell veja (a faixa chega numa thread propria, o `model-loaded` vem pelo
+    #: pump), por isso o estado e' AMOSTRADO enquanto houver texto no ecra:
+    #: 250 ms e' mais rapido do que o dono repara, e custa quatro leituras de
+    #: `getattr` por segundo -- e SO' enquanto o texto de estado estiver la'.
+    CAPTION_STATUS_POLL_S = 0.25
+
+    def _caption_status_state(self):
+        """OS FACTOS do ecra vazio -- lidos dos objectos que os tem, nunca copiados."""
+        state = {'wanted': bool(getattr(self, '_caption_wanted', False)),
+                 'player_owns': False, 'painted_recent': False,
+                 'track_known': False, 'track_cues': 0, 'rows': 0,
+                 'bridge': False, 'loaded': False, 'capturing': False,
+                 'no_audio': False}
+        try:
+            player = self._player_track_state()
+            state['rows'] = (int(player.get('rows') or 0)
+                             + int(player.get('snap_rows') or 0))
+            state['player_owns'] = bool(player_track_owns(player))
+        except Exception as exc:              # noqa: BLE001 -- um ack nunca derruba o gesto
+            log('CAPTION_STATUS_STATE_FAILED part=player error=%r' % (exc,))
+        try:
+            painted = str(getattr(self, '_caption_painted', '') or '').strip()
+            at = float(getattr(self, '_caption_painted_at', 0.0) or 0.0)
+            state['painted_recent'] = bool(painted) and at > 0.0 and (
+                (time.time() - at) <= float(self.CAPTION_REPLAY_MAX_S))
+        except Exception:                     # noqa: BLE001
+            state['painted_recent'] = False
+        try:
+            watcher = getattr(self, 'external_caption_watcher', None)
+            vid = str(getattr(watcher, 'yt_video_id', '') or '')
+            thread = getattr(self, 'youtube_track_thread', None)
+            current = getattr(thread, 'current', None) if thread is not None else None
+            track = current(vid) if (vid and callable(current)) else None
+            if isinstance(track, dict):
+                state['track_known'] = True
+                state['track_cues'] = len(track.get('cues') or ())
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_STATUS_STATE_FAILED part=track error=%r' % (exc,))
+        bridge = getattr(self, 'bridge', None)
+        state['bridge'] = bridge is not None
+        if bridge is not None:
+            state['loaded'] = bool(getattr(bridge, 'loaded', False))
+            state['capturing'] = bool(getattr(bridge, 'capturing', False))
+            state['no_audio'] = bool(getattr(bridge, 'no_audio', False))
+        return state
+
+    def _caption_status_now(self):
+        """A razao do ecra vazio AGORA (ver `caption_status_for`).
+
+        O NOME NAO COLIDE COM O CAMPO `_caption_status_reason` (2026-11-11): o
+        campo guarda a razao que esta' PINTADA e e' escrito por
+        `_paint_caption_status`; uma funcao com o mesmo nome ficava sombreada
+        pelo atributo de instancia no primeiro pixel, e o tique seguinte morria
+        em `'str' object is not callable` -- medido aqui, na arm A5.
+        """
+        return caption_status_for(self._caption_status_state())
+
+    def _caption_status_start(self):
+        """Ligar pergunta pelo ESTADO agora e arma o repintar. Nunca levanta.
+
+        O primeiro texto e' enfileirado nesta chamada, nao no primeiro tique do
+        laco: o orcamento e' 200 ms depois do gesto (dono, 2026-11-11: *"meu ctrl
+        space nao fez nada"*), e esperar 250 ms pelo laco seria gastar o orcamento
+        inteiro antes de comecar.
+        """
+        try:
+            self._caption_status_live = True
+            if not float(getattr(self, '_caption_status_episode_at', 0.0) or 0.0):
+                self._caption_status_episode_at = time.time()
+            self._caption_status_tick()
+            thread = getattr(self, '_caption_status_thread', None)
+            if thread is None or not thread.is_alive():
+                thread = threading.Thread(target=self._caption_status_loop,
+                                          name='sotto-caption-status',
+                                          daemon=True)
+                self._caption_status_thread = thread
+                thread.start()
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_STATUS_START_FAILED error=%r' % (exc,))
+
+    def _caption_status_stop(self):
+        """Desligar limpa o episodio. Os pixels sao do `show_caption_window(False)`."""
+        self._caption_status_live = False
+        self._caption_status_queued_for = ''
+        self._caption_status_reason = ''
+        self._caption_status_episode_at = 0.0
+        if getattr(self, '_caption_pending_status', False):
+            self._caption_pending = None
+            self._caption_pending_status = False
+
+    def _caption_status_tick(self):
+        """UMA passagem: o estado mudou? Pinta, troca ou retira. Devolve a razao."""
+        try:
+            if not getattr(self, '_caption_wanted', False):
+                self._caption_status_withdraw('live-off')
+                return None
+            want = self._caption_status_now()
+            shown = str(getattr(self, '_caption_status_reason', '') or '')
+            queued = str(getattr(self, '_caption_status_queued_for', '') or '')
+            if want == shown or (want is not None and want == queued):
+                return want
+            if want is None:
+                self._caption_status_withdraw('blocker-cleared')
+                return None
+            self._caption_status_queue(want)
+            return want
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_STATUS_TICK_FAILED error=%r' % (exc,))
+            return None
+
+    def _caption_status_queue(self, reason):
+        """POE o texto de estado no MESMO slot da legenda (2026-11-11).
+
+        O slot e' o mecanismo que ja' existe (`_drain_caption_pending`): a
+        legenda verdadeira que chegar a seguir SUBSTITUI o texto, e a ordem no
+        ecra e' a de chegada. Um caminho de pintura paralelo seria uma segunda
+        regra sobre quem manda na superficie.
+        """
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None or not getattr(self, '_caption_wanted', False):
+            return False
+        pending = getattr(self, '_caption_pending', None)
+        if pending is not None and not getattr(self, '_caption_pending_status', False):
+            return False          # ja' ha' uma legenda no slot: ela e' que pinta
+        text = CAPTION_STATUS_TEXT.get(reason)
+        if not text:
+            return False
+        self._caption_pending = (time.time(), text, '',
+                                 int(getattr(self, '_source_epoch', 0)))
+        self._caption_pending_instant = True
+        self._caption_pending_status = True
+        self._caption_pending_reason = reason
+        self._caption_pending_cue = None
+        self._caption_pending_tap_ms = None
+        self._caption_pending_rows = None
+        self._caption_status_queued_for = reason
+        try:
+            self._caption_paint_wake()
+        except Exception as exc:              # noqa: BLE001 -- sem a thread, pinta aqui
+            log('CAPTION_STATUS_PAINT_WAKE_FAILED error=%r' % (exc,))
+            self._caption_drain_posted = False
+            self._drain_caption_pending()
+        return True
+
+    def _caption_status_withdraw(self, cause):
+        """TIRA o texto de estado quando o bloqueio deixou de existir.
+
+        So' mexe nos pixels se o texto de estado AINDA for o que la' esta': o
+        campo e' limpo pela primeira legenda verdadeira que pinta, e uma retirada
+        nunca pode apagar uma legenda.
+        """
+        shown = str(getattr(self, '_caption_status_reason', '') or '')
+        self._caption_status_queued_for = ''
+        if not shown:
+            return False
+        self._caption_status_reason = ''
+        self._caption_status_episode_at = 0.0
+        if getattr(self, '_caption_pending_status', False):
+            self._caption_pending = None
+            self._caption_pending_status = False
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is not None:
+            def _hide():
+                try:
+                    ov.hide()
+                    ov.show(False)
+                except Exception as exc:      # noqa: BLE001
+                    log('CAPTION_STATUS_HIDE_FAILED error=%r' % (exc,))
+            try:
+                self._caption_window_shown = False
+                self._post(_hide)
+            except Exception:                 # noqa: BLE001
+                pass
+        log('CAPTION_STATUS_CLEARED reason=%s why=%s' % (shown, cause))
+        return True
+
+    def _caption_status_loop(self):
+        """Repinta enquanto houver um bloqueio nomeavel (ou um texto no ecra)."""
+        while (getattr(self, '_caption_status_live', False)
+               and getattr(self, '_caption_wanted', False)):
+            want = self._caption_status_tick()
+            # O LACO NAO MORRE QUANDO O SLOT ESTA' OCUPADO (2026-11-11). Um
+            # `want` nomeavel com a fila recusada (ha' uma legenda no slot) nao
+            # e' "nada a dizer": a legenda pinta ou e' descartada, e o tique
+            # seguinte pinta o texto. Sair aqui deixava o ecra vazio para sempre
+            # no unico caso em que o slot mudou de dono entre dois tiques.
+            if want is None and not str(
+                    getattr(self, '_caption_status_reason', '') or ''):
+                break
+            time.sleep(float(self.CAPTION_STATUS_POLL_S))
+        self._caption_status_live = False
+
+    def _paint_caption_status(self, text):
+        """Pinta o TEXTO DE ESTADO no overlay. Corre na thread de pintura.
+
+        E' o irmao de estado do `_drain_caption_pending`: nao mexe em
+        `_caption_painted`/`_caption_painted_at` (o "ligar de novo" nao pode
+        repetir um aviso como se fosse fala), nao conta em `_overlay_pushes` e
+        deixa UMA linha por episodio -- `reason` e' a identidade do episodio, e
+        um pedido repetido com a mesma razao nao volta a pintar nem a escrever.
+        """
+        reason = str(getattr(self, '_caption_pending_reason', '') or '')
+        self._caption_pending_status = False
+        self._caption_status_queued_for = ''
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None or not reason:
+            return False
+        if reason == str(getattr(self, '_caption_status_reason', '') or ''):
+            return False                     # ja' esta' no ecra: uma vez por episodio
+        if not getattr(self, '_caption_wanted', False):
+            return False
+        try:
+            ov.set_work_area(self.work_area(),
+                             (self.display or {}).get('scaleFactor') or 1.0)
+            ov.set_text(text, '', True)
+            ov.show(True)
+            self._caption_window_shown = True
+            self._caption_status_reason = reason
+            started = float(getattr(self, '_caption_status_episode_at', 0.0) or 0.0)
+            ms = int((time.time() - started) * 1000.0) if started else 0
+            log('CAPTION_STATUS_SHOWN reason=%s ms=%d text=%s'
+                % (reason, ms, json.dumps(str(text)[:60])))
+            return True
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_STATUS_PAINT_FAILED reason=%s error=%r' % (reason, exc))
+            self._caption_status_reason = ''
+            return False
+
     def on_worker_loading_text(self, text):
         """`model-loading` -> a superficie, MAS SO' SE O PLAYER NAO A OCUPAR.
 
@@ -18317,6 +18730,20 @@ class SottoShell:
         #: a idade que interessa ao dono nao e' a da FILA, e' a do AUDIO -- e sem
         #: este campo a janela pintava sem saber de que instante era o que pinta.
         self._caption_pending_tap_ms = tap_ms
+        #: A SUPERFICIE DESTE PUSH, AO LADO DO TEXTO (2026-11-11). O
+        #: `CAPTION_PAINT_SURFACE` tem de dizer QUAL das duas superficies pintou
+        #: (`src=player|asr`) e com quantas linhas: `rows is not None` e' a janela
+        #: do player (ja' decidida em `external_caption`), `rows=None` e' o ASR.
+        #: Sem este campo, 927 pinturas do player no log do dono nao tinham UMA
+        #: linha que dissesse quando o ecra mudou.
+        self._caption_pending_rows = rows
+        #: UMA LEGENDA VERDADEIRA NAO E' UM TEXTO DE ESTADO (2026-11-11). O
+        #: `_drain_caption_pending` le' estas duas marcas para escolher o caminho;
+        #: um `status=True` preso de um episodio anterior transformava a proxima
+        #: LEGENDA num ack (e uma legenda de estado e' pintada sem `_caption_
+        #: painted`, logo nao substituiria o texto que o dono le').
+        self._caption_pending_status = False
+        self._caption_pending_reason = ''
         dbg = self._overlay_pushes < 3
         if dbg:
             # A ETIQUETA ACOMPANHA O MECANISMO (2026-11-03): a pintura deixou de
@@ -18699,10 +19126,61 @@ class SottoShell:
                 log(f'CAPTION_ARRIVAL_BLOWN age_ms={_age_ms} '
                     f'budget_ms={self.CAPTION_BUDGET_MS} kind=live '
                     f'text={json.dumps(text[:60])}')
+        # ── A IDADE DO AUDIO DECIDE SE ISTO E' LEGENDA OU HISTORIA ─────────
+        # (2026-11-11). O TEXTO JA' FOI PARA O PAINEL/HISTORICO acima
+        # (`emit_async`) -- nada aqui pode perder fala. O que se recusa e' a
+        # PINTURA AO VIVO de audio que ja' nao e' agora.
+        #
+        # MEDIDO no log do dono, pid 49180: as 17:46:05.822 o shell pintou
+        # `CAPTION_IN start=381.84 final=true tap_ms=None` -- audio de
+        # 17:41:04.7, **301 s** antes -- e as 17:46:07.330 a linha seguinte
+        # (`CAPTION_APPLIED`) tambem, com `cpu_pct_avg=174.1`. `tap_ms` vinha
+        # None, logo o `CAPTION_PAINT_LAG` nunca existiu para a denunciar: o ecra
+        # mostrou cinco minutos de atraso como se fosse ao vivo, e nada no shell
+        # tinha com que saber.
+        #
+        # O limite e a evidencia estao em `LIVE_PAINT_MAX_AGE_S` (30 s: 3,7x o
+        # pior caso HONESTO medido, 10x abaixo da patologia). A idade sai de
+        # `live_paint_age_s`, que prefere o `age_s` do worker, aceita o `tap_ms`
+        # e, quando nenhum dos dois vem, deriva-a do relogio de AUDIO (`start`)
+        # contra a epoca da captura que o bridge guarda em `capture_epoch`.
+        # Sem idade medivel NAO se recusa (nao se inventa um veredicto).
+        #
+        # UMA LINHA POR EPISODIO, nao por legenda: uma fila de cinco minutos
+        # produz centenas de linhas recusadas e um log assim deixa de ser lido.
+        _capture_epoch = 0.0
+        if bridge is not None:
+            try:
+                _capture_epoch = float(getattr(bridge, 'capture_epoch', 0.0) or 0.0)
+            except (TypeError, ValueError):
+                _capture_epoch = 0.0
+        _audio_age_s = live_paint_age_s(_m, _capture_epoch)
+        _refused = live_paint_stale(_audio_age_s)
+        if _refused:
+            _stale_run = int(getattr(self, '_live_stale_run', 0)) + 1
+            self._live_stale_run = _stale_run
+            if _stale_run == 1:
+                try:
+                    _player_owns = bool(self.player_track_owns_surface())
+                except Exception:             # noqa: BLE001
+                    _player_owns = False
+                log('LIVE_PAINT_REFUSED reason=stale age_s=%.2f bound_s=%.1f '
+                    'producer=%s player=%s text=%s'
+                    % (_audio_age_s, LIVE_PAINT_MAX_AGE_S,
+                       _m.get('producer') or _m.get('source') or 'worker',
+                       str(_player_owns).lower(),
+                       json.dumps(text[:60])))
+            # A SUPERFICIE DO PLAYER TAMBEM NAO E' TOCADA (2026-11-11): uma linha
+            # velha do ASR nao pode apagar nem substituir as linhas que o player
+            # esta' a pintar. Sem push nenhum, as duas metades ficam de uma vez.
+        else:
+            self._live_stale_run = 0
         # E A JANELA PROPRIA DA LEGENDA RECEBE O MESMO TEXTO. O dono: *"a legenda ao vivo
         # deveria aparecer no MEIO EM BAIXO da minha tela"*. Uma janela propria e a unica
         # forma de ela pousar no fundo da TELA sem a barra no topo do mesmo caixote.
-        if bridge is None or getattr(self, 'bridge', None) is bridge:
+        if _refused:
+            pass
+        elif bridge is None or getattr(self, 'bridge', None) is bridge:
             self.push_caption_to_window(text, tap_ms=_tap)
         else:
             log('BRIDGE_CAPTION_DROP_SUPERSEDED reason=bridge-changed '
@@ -20820,6 +21298,22 @@ class SottoShell:
                         f'paused={str(_paused).lower()} '
                         f'text={json.dumps(_txt[:40])} -- ou nao ha linha, ou ela ja '
                         'e historia e nao legenda')
+                # ── LIGAR COM O ECRA VAZIO DIZ O QUE FALTA (2026-11-11) ──────
+                # Dono, verbatim: *"meu ctrl space nao fez nada assim que abri o
+                # sotto e vi ele no icone da bandeja"*. Medido: o gesto respondeu
+                # em 20 ms e o ecra ficou vazio 95,8 s, porque o unico aviso que
+                # existia (`model-loading`) era um EVENTO que ja' tinha passado
+                # enquanto a legenda estava desligada. Aqui o ESTADO e' lido no
+                # instante do clique e o aviso entra no ecra pelo mesmo slot da
+                # legenda; quando um bloqueio muda, o laco de 250 ms troca-o;
+                # quando a primeira legenda verdadeira pinta, ele sai. Sem facto
+                # que o nomeie, `caption_status_for` devolve None e nada pinta.
+                self._caption_status_start()
+            else:
+                # DESLIGAR NAO DEIXA UM AVISO NA MEMORIA: o episodio morre aqui
+                # (o `show_caption_window(False)` ja' levou os pixels) e o
+                # repintar nao volta a acordar ate' o dono ligar outra vez.
+                self._caption_status_stop()
         except Exception as exc:  # noqa: BLE001
             log(f'LIVE_ENABLED_FAILED on={str(on).lower()} error={exc!r}')
 
@@ -22274,6 +22768,16 @@ class WorkerBridge:
         #: not be restarted by a file change (owner: "o modelo loading ta toda
         #: hora saindo de load").
         self.capturing = False
+        #: O INSTANTE DE PAREDE DA CAPTURA DESTE FILHO (2026-11-11). O relogio de
+        #: AUDIO do worker (`start=`) comeca em zero quando a captura comeca, por
+        #: isso `capture_epoch + start` e' o instante de parede daquele audio --
+        #: a terceira regua de `live_paint_age_s`, e a que existe quando o worker
+        #: manda `tap_ms=None` (medido: a linha de 301 s de atraso trazia None).
+        #: Fixado na PRIMEIRA `capture-started` do filho: uma rotacao de
+        #: dispositivo reemite o estado mas NAO recomeca o `counters["chunks"]`
+        #: do worker, logo re-fixar a epoca envelheceria todas as linhas
+        #: seguintes. Zero = ainda nao se sabe.
+        self.capture_epoch = 0.0
         #: Monotonic time of the last spawn, so a queued reload can tell whether
         #: a natural respawn already re-read the file (WorkerReloadPolicy).
         # The digest of the file this child was started from: the answer to
@@ -22569,6 +23073,10 @@ class WorkerBridge:
         # when its `capture-started` line arrives. `spawned_at` lets a queued
         # reload tell whether this respawn already re-read the file.
         self.capturing = False
+        # A EPOCA DA CAPTURA VAI COM O FILHO (2026-11-11): o `start=` do novo
+        # worker recomeca em zero, logo a epoca do filho anterior nao pode
+        # sobreviver -- converteria `start=2` em "ha' cinco minutos".
+        self.capture_epoch = 0.0
         # A new child has declared nothing yet: the previous child's `silent-
         # device` is evidence about the OLD process, and letting it survive the
         # respawn would blind the watchdog for the new one.
@@ -23123,6 +23631,11 @@ class WorkerBridge:
             # the child's exit closes it. See `WorkerReloadPolicy`.
             if state in WORKER_CAPTURING_STATES:
                 self.capturing = True
+                # A EPOCA DA CAPTURA, UMA VEZ POR FILHO (2026-11-11). E' o
+                # instante de parede do `start=0` do worker, e e' o que
+                # `live_paint_age_s` usa quando o evento chega sem `tap_ms`.
+                if not self.capture_epoch:
+                    self.capture_epoch = time.time()
             elif state in WORKER_ERROR_STATES or state in ('done',
                                                            'selftest-done'):
                 self.capturing = False
