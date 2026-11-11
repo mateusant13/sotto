@@ -419,3 +419,21 @@ Medido depois: `NEG-ARM: PASS (6/6 mutantes apanhados; juiz antes: True)` rc=1 n
 ACABAVA de produzir aquele RED, e o passo positivo `RATCHET-OK -- steps=413 total=2409.5s` rc=0 no
 mesmo instante. Duas corridas inteiras (~50 min) foram gastas antes desta cura: um controlo que
 depende do ambiente mede o ambiente.
+
+## 15. UM CHECKPOINT/RESUME REAL, COM NUMEROS (nao um desenho)
+
+O ciclo que esta casa pede nao foi proposto: aconteceu, e cada passo tem o comando e a linha.
+
+| # | estado | numero | como |
+|---|---|---|---|
+| 1 | RED por amostra contaminada | `red-as-expected-battery-plan 103.674 s` (o `_stepcache` mede **20.236 s** no mesmo codigo) | o registo tinha a leitura de uma corrida em que outra lane media na mesma maquina |
+| 2 | CHECKPOINT | ficheiro `_cache/battery-steps.json` com deps + rc + log + carimbo | escrito pelo proprio `:step`, nunca a mao |
+| 3 | RE-MEDICAO | `python _main\_stepcache.py record --step ... --policy cap40` com o comando real do passo, `rc=1` | a leitura NOVA substitui a antiga (a gravacao e' idempotente pelo carimbo) |
+| 4 | RESUME do juiz | `BATTERY-BUDGET VERDICT RATCHET-OK -- steps=413 total=2293.3s` rc=0 | o juiz re-le o registo; nada foi re-executado para obter esta linha |
+| 5 | RESUME da bateria | `steps=466 gate=241 control=8 skipped=22 expect-red=195 missing=0 cached=272` | 272 dos 466 passos voltaram do cache por CONTEUDO: a corrida seguinte custou 1277 s em vez das horas de uma fria |
+| 6 | ESTADO FINAL | `BATTERY-VERDICT: GREEN WITH 22 SKIPPED`, `failed: -none-`, rc=0 | os 22 sao a classe HEAVY (a tela, o audio e a GPU do dono); um passo saltado nao conta como portao |
+
+A licao que este ciclo deixa escrita: o checkpoint NAO e' "guardar o veredicto", e' **guardar a
+leitura com a sua identidade** (deps, politica, carimbo) para que uma leitura melhor possa substituir
+uma pior sem executar tudo outra vez. Sem a substituicao, a amostra ma ficava para sempre; sem o
+carimbo, a leitura boa entrava duas vezes e a serie mentia na direcao oposta.
