@@ -1534,10 +1534,10 @@ class WasapiLoopbackTap:
         `record_endpoint_verdict` without overwriting a `signal`/`flat` row a
         longer listen already wrote -- see the guard there.
         """
-        if self._verdict_recorded:
-            return None
-        self._verdict_recorded = True
         try:
+            if self._verdict_recorded:
+                return None
+            self._verdict_recorded = True
             eid = getattr(self.ep, 'endpoint_id', None)
             if not eid:
                 return None

@@ -44,6 +44,8 @@ import ast
 import importlib.util
 import os
 import sys
+import time
+import types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORKER = os.path.abspath(os.path.join(HERE, '..', 'worker', 'sotto_worker.py'))
@@ -352,6 +354,53 @@ def arms(world):
         except OSError:
             pass
 
+    # 10b. O TAP REAL a journalizar: `_record_verdict` le' atributos que nenhuma
+    # verificacao estrutural apanha (`self.ep.endpoint_id`, nao `self.endpoint_id`)
+    # -- um tap sem `.ep` escrevia ZERO e calava-se, porque o corpo engole tudo
+    # para nunca partir o `close()`. Aqui o metodo verdadeiro corre contra um tap
+    # com os mesmos atributos que o `_pump` escreve.
+    tmp = os.path.join(HERE, '_oracle-journal-%d.json' % os.getpid())
+    old_env = os.environ.get('SOTTO_ENDPOINT_JOURNAL')
+    try:
+        os.environ['SOTTO_ENDPOINT_JOURNAL'] = tmp
+
+        def _tap(eid, peak, blocks, packets, silent, age=6.0):
+            t = object.__new__(wl.WasapiLoopbackTap)
+            t.ep = types.SimpleNamespace(endpoint_id=eid, name=eid)
+            # O MESMO formato do rung do DEFAULT: o tap resolve o endpoint em
+            # `.ep` e NAO recebe id nenhum. Ler `self.endpoint_id` aqui escrevia
+            # `None` -- nenhuma linha, em silencio (mutante M6).
+            t.endpoint_id = None
+            t.packets, t.blocks_delivered = packets, blocks
+            t.peak, t.silent_packets = peak, silent
+            t._t_opened = time.time() - age
+            t._verdict_recorded = False
+            return t
+
+        wl.WasapiLoopbackTap._record_verdict(
+            _tap('ep-flat', 0.0, 420, 420, 420))     # Windows marcou SILENT em tudo
+        wl.WasapiLoopbackTap._record_verdict(
+            _tap('ep-loud', 0.35, 420, 420, 0))      # a tocar
+        wl.WasapiLoopbackTap._record_verdict(
+            _tap('ep-flat', 0.0, 5, 5, 5, age=0.3))  # curto: nao apaga
+        got = wl.endpoint_verdicts()
+        ok = (got.get('ep-flat', {}).get('verdict') == 'flat'
+              and got.get('ep-flat', {}).get('blocks') == 420
+              and got.get('ep-loud', {}).get('verdict') == 'signal')
+        add('10b tap-real-escreve-signal-e-flat', ok,
+            'sem_ep=%r veredictos=%s'
+            % (wl.WasapiLoopbackTap._record_verdict(object.__new__(wl.WasapiLoopbackTap)) is None,
+               {k: v['verdict'] for k, v in got.items()}))
+    finally:
+        if old_env is None:
+            os.environ.pop('SOTTO_ENDPOINT_JOURNAL', None)
+        else:
+            os.environ['SOTTO_ENDPOINT_JOURNAL'] = old_env
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
     # 11. A evidencia do proprio tap, com os numeros desta sessao.
     rows = [
         ('rung1 flat 42s/420', wl.tap_verdict('vm', 'VoiceMeeter', 0.0, 420, 42.0, 420, 420), 'flat'),
@@ -484,6 +533,9 @@ MUTANTS = [
      '        pass  # MUTANTE: o close deixa de journalizar\n        for ref in (self._capture'),
     ('M5 tecto-da-janela-removido', 'worker',
      CAP_MARK + '\n', (CAP_PLAIN + '\n'), 2),
+    ('M6 journal-le-o-id-errado', 'wl',
+     "            eid = getattr(self.ep, 'endpoint_id', None)\n",
+     "            eid = self.endpoint_id  # MUTANTE: o rung do default escreve None\n"),
 ]
 
 
