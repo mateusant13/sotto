@@ -981,6 +981,23 @@ def format_worker_cost(tag, cpu_total, cpu_delta, wall_delta, rows, rows_delta,
             % (head, (' ' + ' '.join(tail)) if tail else '', uptime_s, pid))
 
 
+def route_log(message):
+    """Onde a RECUSA da rota ao vivo vai: stderr, que a shell publica por tag.
+
+    Nao se passa `err` ao `admit` de dentro do `emit` (2026-11-11): o `except ...
+    as err` do proprio `emit` torna `err` LOCAL, e a linha `log=err` escrita
+    acima dele levantava `UnboundLocalError` na PRIMEIRA legenda -- o filtro da
+    rota custava a legenda inteira, que e' exactamente o que ele existe para
+    impedir. Medido: `_main/emit-pipe-dead-oracle.py` deixou de carregar as
+    arms e o traceback foi `emit -> live_route.admit(payload, log=err)`.
+    """
+    try:
+        sys.stderr.write("%s\n" % (message,))
+        sys.stderr.flush()
+    except Exception:                         # noqa: BLE001 - stderr pode ir pelo mesmo cano
+        pass
+
+
 def emit(**payload) -> None:
     """One JSON object, one line, flushed. The whole inter-process contract.
 
@@ -1005,7 +1022,7 @@ def emit(**payload) -> None:
     # episodio. Nenhum payload de outro tipo e' tocado, e o filtro nunca levanta
     # nem perde texto.
     if payload.get("type") == "caption":
-        payload = live_route.admit(payload, log=err)
+        payload = live_route.admit(payload, log=route_log)
     try:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
         sys.stdout.flush()
