@@ -18,7 +18,8 @@ ultima `SHELL_STARTUP_STAGE`), e nada mais: quem arranca a app e' ele.
 |---|---|---|
 | `HOTKEY_PRESSED role=panels` -> `PANEL_SHOWN` | Alt+C: tecla -> janela na tela | `SHOW_BUDGET_MS` = 400 |
 | `HOTKEY_PRESSED role=live` -> `LIVE_ENABLED` | Ctrl+Space: tecla -> legenda on/off | `LIVE_BUDGET_MS` = 400 |
-| `TRAY_MENU_FOREGROUND menu_ms=` | bandeja: clique -> menu desenhado | `MENU_BUDGET_MS` = 200 |
+| `TRAY_MENU_FOREGROUND ok=` | bandeja: a fracao de menus SEM primeiro plano | `0 %` (qualquer `ok=0`) |
+| `TRAY_MENU_FOREGROUND menu_ms=` | tempo com o menu ABERTO -- e' a mao dele | informativo |
 | `CAPTION_OVERLAY_LAG`/`CAPTION_PAINT` | arranque -> primeira legenda pintada | `FIRST_CAPTION_BUDGET_MS` = 15000 |
 | `SHELL_STARTUP_STAGE` -> a primeira das de cima | arranque -> a primeira interacao DELE | informativo |
 
@@ -64,6 +65,12 @@ SHOW_BUDGET_MS = 400.0
 LIVE_BUDGET_MS = 400.0
 MENU_BUDGET_MS = 200.0
 FIRST_CAPTION_BUDGET_MS = 15000.0
+#: A perna que a APP responde: a idade do audio da primeira legenda. E' o MESMO
+#: orcamento que o `CAPTION_PAINT_LAG` ja' publica em cada legenda
+#: (`budget_ms=1500` no log dele), porque e' a mesma promessa -- nao duas.
+AUDIO_AGE_BUDGET_MS = 1500.0
+#: Informativo (nao julga): da ultima escada ABERTA ate' a primeira pintura.
+TAP_TO_CAPTION_BUDGET_MS = 15000.0
 
 STAMP = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})')
 
@@ -143,12 +150,26 @@ def measure(lines, log_name=''):
     if t0 is None:
         return {'ok': False, 'why': 'no-timestamp', 'rows': [], 'log': log_name}
 
-    def add(family, boot_ms, value_ms, budget, note=''):
+    def add(family, boot_ms, value_ms, budget, note='', kind='gate'):
+        """`kind='info'` nao e' um portao: o numero e' publicado e nao julga.
+
+        Existe por UMA razao medida (2026-11-11): "arranque -> 1a legenda" inclui
+        o tempo em que o dono ainda nao tinha audio a sair, e esse tempo nao e'
+        nosso. Quem julga a app e' a perna que comeca quando a ESCADA ABRE num
+        endpoint -- e' essa que tem orcamento.
+        """
+        if value_ms is None:
+            # INFO SEM LEITURA NAO E' UM BURACO NO PORTAO: a linha existe para
+            # PUBLICAR, e um fixture que modela so o Alt+C nao tem o que ela le.
+            verdict = 'INFO' if kind == 'info' else 'UNMEASURED'
+        elif kind == 'info':
+            verdict = 'INFO'
+        else:
+            verdict = 'PASS' if value_ms <= budget else 'FAIL'
         rows.append({'family': family, 'boot_ms': None if boot_ms is None else round(boot_ms, 1),
                      'value_ms': None if value_ms is None else round(value_ms, 1),
-                     'budget_ms': budget, 'note': note,
-                     'verdict': ('UNMEASURED' if value_ms is None
-                                 else ('PASS' if value_ms <= budget else 'FAIL'))})
+                     'budget_ms': budget, 'note': note, 'kind': kind,
+                     'verdict': verdict})
 
     # Alt+C -> painel na tela, em dois elos: DESPACHO (tecla->coalesced) e
     # PINTURA (coalesced->shown). O primeiro par e' o que ele sente ao abrir a app.
@@ -194,16 +215,26 @@ def measure(lines, log_name=''):
     else:
         add('ctrl+space primeiro toggle', None, None, LIVE_BUDGET_MS, 'nenhum par no log')
 
-    # A bandeja: o pior `menu_ms` da sessao (o menu que ele viu demorar).
-    menus = [_num(l, 'menu_ms') for l in seg if 'TRAY_MENU_FOREGROUND' in l]
-    menus = [m for m in menus if m is not None]
-    if menus:
-        add('bandeja: pior menu_ms', None, max(menus), MENU_BUDGET_MS,
-            'n=%d ok=0 em %d' % (len(menus),
-                                 sum(1 for l in seg if 'TRAY_MENU_FOREGROUND' in l
-                                     and 'ok=0' in l)))
+    # A BANDEJA, EM DUAS METADES -- porque o `menu_ms` NAO E' A NOSSA (medido
+    # 2026-11-11). Ele mede `time.monotonic()` antes e depois do
+    # `TrackPopupMenu`, que BLOQUEIA ate' o menu fechar: os 672 ms da sessao dele
+    # sao o tempo com o menu ABERTO, ou seja o tempo que ELE levou a escolher.
+    # Um portao sobre isso condena a mao do dono (e o `n=1` de uma sessao em que
+    # ele abriu o menu uma vez media um clique, nao uma interface).
+    tray = [l for l in seg if 'TRAY_MENU_FOREGROUND' in l]
+    if tray:
+        menus = [m for m in (_num(l, 'menu_ms') for l in tray) if m is not None]
+        add('bandeja: menu aberto (ms)', None, max(menus) if menus else None,
+            MENU_BUDGET_MS, 'n=%d -- tempo com o menu aberto (dele, nao da app)'
+            % len(tray), kind='info')
+        bad = sum(1 for l in tray if 'ok=0' in l)
+        # A PERNA QUE E' DA APP: o menu precisa de primeiro plano para nao comer
+        # o clique de fora, e o `SetForegroundWindow` cru era recusado 13 de 13
+        # nesta maquina antes do `AttachThreadInput` (`_take_menu_foreground`).
+        add('bandeja: primeiro plano ok', None, 100.0 * bad / len(tray), 0.0,
+            'n=%d falhas=%d (ok=0 no TRAY_MENU_FOREGROUND)' % (len(tray), bad))
     else:
-        add('bandeja: pior menu_ms', None, None, MENU_BUDGET_MS, 'sem TRAY_MENU_FOREGROUND')
+        add('bandeja: primeiro plano ok', None, None, 0.0, 'sem TRAY_MENU_FOREGROUND')
 
     # Arranque -> primeira legenda pintada (o modelo, nao uma promessa de fluidez).
     first = None
@@ -211,10 +242,51 @@ def measure(lines, log_name=''):
         if ('CAPTION_PAINT ' in line or 'CAPTION_OVERLAY_LAG' in line):
             first = line
             break
+    # A PERNA QUE E' NOSSA: da ULTIMA escada ABERTA antes da pintura ate' a
+    # pintura. O numero de cima inclui o tempo em que o dono ainda nao tinha
+    # audio a sair, e esse tempo nao e' do Sotto -- medido 2026-11-11 (pid 21400):
+    # arranque -> 1a legenda = 59,0 s, e a escada abriu o endpoint que entregou
+    # as 00:49:40.065, com a legenda 1,28 s depois. Um portao que julga a soma
+    # condena o trabalho normal e ensina a nao o ler.
+    tap_to_caption = None
+    tap_note = 'sem escada ABERTA no log'
     if first is not None:
+        for line in seg:
+            if line is first:
+                break
+            if 'LADDER_TRY' in line and 'result=opened' in line:
+                tap_to_caption = (_t(first) - _t(line)) * 1000.0
+                tap_note = 'device=%s' % (_field(line, 'device') or '-')
+    if first is not None:
+        add('escada aberta -> 1a legenda', None, tap_to_caption,
+            TAP_TO_CAPTION_BUDGET_MS, tap_note, kind='info')
         add('arranque -> 1a legenda', None, (_t(first) - t0) * 1000.0,
             FIRST_CAPTION_BUDGET_MS, ''
-            if 'CAPTION_PAINT' in first else 'age_ms=%.0f' % (_num(first, 'age_ms') or 0))
+            if 'CAPTION_PAINT' in first else 'age_ms=%.0f' % (_num(first, 'age_ms') or 0),
+            # E' UM PORTAO: 40 s ate' a primeira legenda e' o que o dono sente, e
+            # a perna do audio nao o desculpa -- no arranque de 2026-11-11 havia
+            # audio no endpoint aberto as 00:48:55.878 e a legenda saiu as
+            # 00:49:41.295 (o defeito que `silent_desktop_hold(own_peak=...)` cura).
+            )
+        # O UNICO NUMERO DESTA FAMILIA QUE E' DA APP: a idade do AUDIO da
+        # primeira legenda. `audio_ms=74` no arranque de 2026-11-11 significa que
+        # a app legendou 74 ms depois de o som existir; o resto dos 59 s foi o
+        # dono ainda a nao tocar nada. Sem esta perna, o portao condenava o
+        # trabalho normal pela espera do audio -- a classe que esta casa ja'
+        # pagou no `pin que ninguem re-mede`.
+        first_audio = None
+        for line in seg:
+            if 'CAPTION_APPLIED' in line or 'CAPTION_PAINT_LAG' in line:
+                first_audio = _num(line, 'audio_ms')
+                if first_audio is None:
+                    first_audio = _num(line, 'tap_age_ms')
+                if first_audio is not None:
+                    break
+        add('1a legenda: idade do AUDIO', None, first_audio, AUDIO_AGE_BUDGET_MS,
+            'CAPTION_APPLIED audio_ms / CAPTION_PAINT_LAG tap_age_ms',
+            # O campo so' existe a partir de 2026-11-10; um fixture anterior nao
+            # tem o que julgar, e julga-lo seria o portao a inventar um numero.
+            kind='gate' if first_audio is not None else 'info')
     else:
         add('arranque -> 1a legenda', None, None, FIRST_CAPTION_BUDGET_MS, 'sem pintura no log')
 
@@ -252,7 +324,7 @@ def render(res, out=sys.stdout):
 
 
 # ── o controle: dois logs FALSOS, um verde e um vermelho ────────────────────
-def _synthetic(show_ms, live_ms, menu_ms, caption_ms):
+def _synthetic(show_ms, live_ms, menu_ms, caption_ms, menu_ok=1):
     """Um log com a FORMA que a shell escreve -- e um unico numero mudado por braco."""
     base = '2026-11-10 10:00:00.000'
     h, m, s = 10, 0, 0.0
@@ -277,7 +349,8 @@ def _synthetic(show_ms, live_ms, menu_ms, caption_ms):
          '%s sotto: HOTKEY_PRESSED role=live count=1 source=hook accelerator=Ctrl+Space'
          ' thread=2' % at(2000.0),
          '%s sotto: LIVE_ENABLED on=true' % at(2000.0 + live_ms),
-         '%s sotto: TRAY_MENU_FOREGROUND ok=1 err=0 menu_ms=%d' % (at(3000.0), menu_ms),
+         '%s sotto: TRAY_MENU_FOREGROUND ok=%d err=0 menu_ms=%d'
+         % (at(3000.0), menu_ok, menu_ms),
          '%s sotto: CAPTION_PAINT instant=true text="oi"' % at(caption_ms)]
     return L
 
@@ -425,7 +498,12 @@ def neg_arm():
         ('G a sessao rapida tem de dar PASS', _synthetic(120.0, 90.0, 40, 4000.0), 0),
         ('R1 Alt+C a 2000 ms tem de dar FAIL', _synthetic(2000.0, 90.0, 40, 4000.0), 1),
         ('R2 Ctrl+Space a 900 ms tem de dar FAIL', _synthetic(120.0, 900.0, 40, 4000.0), 1),
-        ('R3 bandeja a 800 ms tem de dar FAIL', _synthetic(120.0, 90.0, 800, 4000.0), 1),
+        # O `menu_ms` a 800 ms e' INFO (o tempo dele com o menu aberto): passa.
+        ('G2 bandeja com o menu aberto 800 ms tem de dar PASS',
+         _synthetic(120.0, 90.0, 800, 4000.0), 0),
+        # A perna da APP: o menu sem primeiro plano falha.
+        ('R3 bandeja sem primeiro plano (ok=0) tem de dar FAIL',
+         _synthetic(120.0, 90.0, 40, 4000.0, menu_ok=0), 1),
         ('R4 primeira legenda a 40 s tem de dar FAIL', _synthetic(120.0, 90.0, 40, 40000.0), 1),
         ('R5 um log sem sessao tem de dar SKIPPED (rc=3)',
          ['2026-11-10 10:00:00.000 sotto: nada'], 3),
@@ -453,6 +531,27 @@ def neg_arm():
     return 0
 
 
+PAINT_LIVE = os.path.join(HERE, 'paint-live-show-oracle.py')
+
+
+def _fresh_helpers():
+    """`demote_stale`/`live_process_verdict` PELO CAMINHO, nao por nome.
+
+    O ficheiro chama-se `paint-live-show-oracle.py` (HIFEN): um `import` por
+    nome nao o alcanca, e uma segunda copia destas duas funcoes seria a segunda
+    convencao da casa para a mesma pergunta. Devolve `(None, None)` quando o
+    ficheiro nao esta' ao lado -- o veredicto entao fica o que a medicao deu.
+    """
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('_paint_live', PAINT_LIVE)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.demote_stale, mod.live_process_verdict
+    except Exception:                      # noqa: BLE001
+        return None, None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--log', default=LOG)
@@ -478,6 +577,28 @@ def main(argv=None):
         fh.seek(max(0, size - 4 * 1024 * 1024))
         lines = fh.read().splitlines()
     res = measure(lines, log_name=a.log)
+    if not res['ok']:
+        demote, fresh_of = _fresh_helpers()
+        if demote is not None:
+            fresh, why = fresh_of(a.log)
+            if demote('RED', fresh) == 'SKIPPED':
+                # A EVIDENCIA NAO SE APAGA -- cada linha continua impressa com o
+                # carimbo do processo que a produziu. O que muda e' o veredicto:
+                # um numero medido num processo que carregou OUTRO codigo mede o
+                # codigo velho (medido 2026-11-11: a sessao de 00:48:42 precede a
+                # cura `600e190` do endpoint que renderiza, e o boot->legenda de
+                # 59 s e' exactamente o defeito que ela cura).
+                if not a.json:
+                    render(res)
+                    for r in res['rows']:
+                        if r['verdict'] in ('FAIL', 'UNMEASURED'):
+                            print('STALE-EVIDENCE %-28s %s ms orcamento %s  %s'
+                                  % (r['family'],
+                                     '-' if r['value_ms'] is None else '%.1f' % r['value_ms'],
+                                     r['budget_ms'], r['note']))
+                print('BOOT-INTERACTION SKIPPED reason=stale-process live=%s'
+                      % (why,))
+                return 3
     if a.json:
         print(json.dumps(res, indent=2))
         return 0 if res.get('ok') else (3 if res.get('why') in ('no-session', 'no-timestamp') else 1)

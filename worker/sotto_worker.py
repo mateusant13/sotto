@@ -1072,6 +1072,11 @@ PARK_BACKOFF_MAX_S = 300.0
 #: `stop.wait(300)` de uma vez calava o batimento 300 s e a shell matava uma
 #: sessao viva, que e' o defeito que este parque existe para acabar.
 PARK_BEAT_S = 4.0
+#: O piso do ACORDAR do parque (`park_meter_wake`). Cinco vezes o piso da tap
+#: (0,002): o parque existe porque a tap leu silencio, e um residuo de 0,003 nao
+#: e' legenda a nascer -- acordar por ele so' abriria um cliente WASAPI para
+#: nada. Medido nesta maquina: silencio da 0,000000, audio real da 0,0458-0,267.
+PARK_WAKE_FLOOR = 0.01
 #: Quanto tempo o parque mantem UMA sondagem de tap aberta antes de a fechar.
 PARK_PROBE_S = 3.0
 #: Um veredito de DISPOSITIVO: o aparelho nao deu nada, o modelo nao tem culpa.
@@ -1189,9 +1194,41 @@ def silent_ledger_rows(tap_ledger, silent_min_blocks, tap_floor):
     ]
 
 
+def park_meter_wake(live, floor=None):
+    """O parque dorme por backoff -- mas o AUDIO nao espera por ele. Acordar?
+
+    MEDIDO no arranque do dono (2026-11-11, pid 21400): o worker parqueou as
+    00:49:19.788 e a primeira legenda saiu as 00:49:41.295, com o audio ja' a
+    sair no endpoint que a escada tinha aberto. O parque dorme em backoff
+    (15 s, dobrando ate' 300 s) e NAO pergunta ao medidor, portanto o custo de o
+    audio aparecer no meio da espera e' a espera inteira -- e o card dele e'
+    exactamente *"demora pra caralho pra iniciar e comecar legenda ao vivo"*.
+
+    A pergunta e' de LEITURA: `IAudioMeterInformation` nao abre cliente nenhum
+    (medido nesta maquina: 6 endpoints em 260 ms com `meter_ms=0.04`), logo o
+    `PARK_BEAT_S` do parque passa a ser um tique do medidor, e a espera cai para
+    ~4 s no pior caso.
+
+    O PISO E' MAIOR DO QUE O DA TAP (`PARK_WAKE_FLOOR`, 0,01 contra 0,002): o
+    parque existe porque a tap leu silencio, e um residuo de 0,003 nao e' uma
+    legenda a nascer -- acordar por ele so' abriria um cliente WASAPI para nada.
+    Medido: silencio nesta maquina da 0,000000 e audio real da 0,0458-0,267.
+
+    `{}` (medidor ilegivel) NUNCA acorda: sem leitura nao e' sinal, e o backoff
+    fica inteiro -- a mesma direcao de falha de `silent_desktop_hold`.
+    """
+    if not live:
+        return False
+    limit = PARK_WAKE_FLOOR if floor is None else float(floor)
+    try:
+        return max(float(v) for v in live.values()) > float(limit)
+    except (TypeError, ValueError):
+        return False
+
+
 def park_session(stop, probe, reason, emit=None, note=None, floor=0.0,
                  backoff_base_s=None, backoff_max_s=None, pause=None,
-                 should_end=None):
+                 should_end=None, meter=None):
     """Manter a SESSAO (modelo e caches residentes) em vez de a fechar.
 
     `probe(attempt)` reabre o dispositivo e devolve
@@ -1200,8 +1237,8 @@ def park_session(stop, probe, reason, emit=None, note=None, floor=0.0,
     derrubar a sessao que o parque existe para salvar.
 
     Devolve `{'resumed', 'why', 'parked_s', 'attempts', 'blocks', 'peak',
-    'captions'}`, com `why` em `'blocks' | 'captions' | 'census' | 'stop' |
-    'limited'`. O chamador RETOMA a escada em `resumed`.
+    'captions'}`, com `why` em `'blocks' | 'captions' | 'census' | 'signal' |
+    'stop' | 'limited'`. O chamador RETOMA a escada em `resumed`.
 
     O CUSTO EM CPU: entre sondagens o laco esta' em `stop.wait(...)`, em fatias de
     `PARK_BEAT_S` que so' servem para mover o batimento -- dos 15..300 s de espera
@@ -1229,28 +1266,37 @@ def park_session(stop, probe, reason, emit=None, note=None, floor=0.0,
     def _expired() -> bool:
         return bool(should_end is not None and should_end())
 
-    def _wait(seconds: float) -> bool:
-        """True = a espera ACABOU por fora (parada pedida ou limite do chamador).
+    def _wait(seconds: float) -> str:
+        """`'stop' | 'limited' | 'signal' | ''` (o tempo acabou).
 
-        As fatias de `PARK_BEAT_S` existem pelo batimento, e o limite e'
-        perguntado em CADA fatia: `--max-seconds` tem de responder DURANTE uma
-        espera de 300 s, nao so' depois dela (medido: sem isto, um parque
-        cronometrado so' olhava para o relogio ao fim da espera inteira, e a
-        corrida de 30 s deste ficheiro ficou 300 s a esperar).
+        `''` e' o caso NORMAL: a espera de backoff terminou e a sonda corre.
+        `'signal'` e' o medidor a dizer que o audio ja' esta' a sair -- o parque
+        acorda e a escada volta, em vez de esperar os 15..300 s inteiros
+        (`park_meter_wake`, 2026-11-11).
         """
         if pause is not None:
-            return bool(pause(seconds))
+            return 'limited' if bool(pause(seconds)) else ''
         deadline = time.monotonic() + float(seconds)
         while not stop.is_set():
             progress('parked')
             if _expired():
-                return True
+                return 'limited'
             left = deadline - time.monotonic()
             if left <= 0:
-                return False
+                return ''
             if stop.wait(min(PARK_BEAT_S, left)):
-                return True
-        return True
+                return 'stop'
+            # O TIQUE DO MEDIDOR: uma leitura por `PARK_BEAT_S`, nunca por
+            # fatia de 100 ms -- o censo custa ~260 ms nesta maquina e o tecto
+            # do parque e' um censo por tique.
+            if meter is not None:
+                try:
+                    live = meter() or {}
+                except Exception:                            # noqa: BLE001
+                    live = {}
+                if park_meter_wake(live):
+                    return 'signal'
+        return 'stop'
 
     out = {'resumed': False, 'why': 'stop', 'parked_s': 0.0, 'attempts': 0,
            'blocks': 0, 'peak': 0.0, 'captions': 0}
@@ -1259,7 +1305,16 @@ def park_session(stop, probe, reason, emit=None, note=None, floor=0.0,
         out['attempts'] += 1
         attempt = out['attempts']
         wait_s = park_backoff_s(attempt, base, cap)
-        if _wait(wait_s):
+        waited = _wait(wait_s)
+        if waited == 'signal':
+            # O AUDIO NAO ESPERA PELO BACKOFF. A escada volta com o censo de
+            # AGORA (o chamador re-ordena os candidatos em `PARK_RESUME_PASS`).
+            out['why'] = 'signal'
+            out['resumed'] = True
+            note_fn('WORKER_PARK_WAKE reason=signal backoff_skipped_s=%g'
+                    % (wait_s,))
+            break
+        if waited:
             out['why'] = 'stop' if stop.is_set() else 'limited'
             break
         if _expired():
@@ -8940,6 +8995,11 @@ def main():
                 break
             _parked = park_session(
                 stop, park_probe, _why, emit=emit, note=err, floor=tap_floor,
+                # O AUDIO NAO ESPERA PELO BACKOFF (2026-11-11): o tique do
+                # parque pergunta ao MEDIDOR (so' leitura, ~260 ms por censo de
+                # seis endpoints) e acorda a escada no instante em que algo
+                # comeca a tocar, em vez de dormir os 15..300 s do backoff.
+                meter=_live_render_peaks,
                 should_end=lambda: bool(
                     args.max_seconds and (time.time() - t_start) >= args.max_seconds),
             )

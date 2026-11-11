@@ -552,7 +552,70 @@ def arms_for(mod, cpu_window):
     ceil_ok, ceil_detail = park_hold_ceiling_arm(mod)
     checks.append(check('P15-the-hold-is-bounded-and-then-the-ladder-rescans',
                         ceil_ok, ceil_detail))
+
+    # -- P16/P17: O AUDIO NAO ESPERA PELO BACKOFF (2026-11-11) ---------------
+    # Medido no arranque do dono (pid 21400): parque as 00:49:19.788, primeira
+    # legenda as 00:49:41.295 -- o audio ja' estava a sair e o parque dormia o
+    # backoff. Agora o tique pergunta ao MEDIDOR (so' leitura) e acorda.
+    wake_ok, wake_detail = wake_arm(mod)
+    checks.append(check('P16-park-wakes-on-signal-instead-of-the-backoff',
+                        wake_ok, wake_detail))
+    quiet_ok, quiet_detail = unreadable_meter_arm(mod)
+    checks.append(check('P17-an-unreadable-meter-never-wakes',
+                        quiet_ok, quiet_detail))
     return checks
+
+
+def wake_arm(mod):
+    """Uma leitura que passa a 0,2 acorda o parque antes do backoff de 60 s."""
+    beat = mod.PARK_BEAT_S
+    mod.PARK_BEAT_S = 0.05
+    try:
+        seen = {'n': 0}
+
+        def meter():
+            seen['n'] += 1
+            return {'ep': 0.0} if seen['n'] < 3 else {'ep': 0.2}
+
+        t0 = time.monotonic()
+        # O TECTO DA ARM (medido 2026-11-11): com a guarda ARRANCADA na copia
+        # nenhuma leitura acorda o parque, e o `park_session` mutant volta ao
+        # laco de backoff para sempre -- esta arm ficou 7 MINUTOS presa e so'
+        # saiu porque uma lane a matou. Um braco cujo unico desfecho possivel e'
+        # "o mutante nao acorda" nao pode esperar o relogio inteiro: o
+        # `should_end` fecha-o em 2 s e o `why='limited'` e' o FAIL dele.
+        out = mod.park_session(
+            Stop(), lambda attempt: {'blocks': 0, 'peak': 0.0, 'captions': 0},
+            'silent-device', emit=lambda **kw: None, note=lambda msg: None,
+            floor=0.002, backoff_base_s=60.0, backoff_max_s=60.0, meter=meter,
+            should_end=lambda: (time.monotonic() - t0) >= 2.0)
+        wall = time.monotonic() - t0
+    finally:
+        mod.PARK_BEAT_S = beat
+    pure = (mod.park_meter_wake({}) is False
+            and mod.park_meter_wake({'a': 0.003}) is False
+            and mod.park_meter_wake({'a': 0.0458}) is True)
+    ok = bool(out['resumed']) and out['why'] == 'signal' and wall < 10.0 and pure
+    return ok, {'why': out['why'], 'wall_s': round(wall, 2), 'backoff_s': 60.0,
+                'meter_reads': seen['n'], 'pure_predicate': pure}
+
+
+def unreadable_meter_arm(mod):
+    """`{}` (nao consegui ler) NUNCA acorda: o backoff fica inteiro."""
+    box = {'n': 0}
+
+    def _few():
+        box['n'] += 1
+        return box['n'] > 3
+
+    out = mod.park_session(
+        Stop(), lambda attempt: {'blocks': 0, 'peak': 0.0, 'captions': 0},
+        'silent-device', emit=lambda **kw: None, note=lambda msg: None,
+        floor=0.002, backoff_base_s=0.02, backoff_max_s=0.02,
+        meter=lambda: {}, should_end=_few)
+    ok = (not out['resumed']) and out['why'] == 'limited'
+    return ok, {'why': out['why'], 'resumed': out['resumed'],
+                'attempts': out['attempts']}
 
 
 def emit_checks(checks, label):
@@ -567,6 +630,19 @@ def emit_checks(checks, label):
     return ok
 
 
+def _fit(src, anchor):
+    """A ancora SEGUE o separador do ficheiro (CRLF ou LF), nunca o daqui.
+
+    MEDIDO 2026-11-11: `mutate_window_hold` procurava `'        if parked:\n'` e o
+    `sotto_worker.py` em disco e' CRLF puro -- a ancora nao casava, a assercao
+    disparava e o oraculo morria em `AssertionError` em vez de julgar. O
+    `first-capture-fast-oracle` ja' fazia esta conversao no `neg_arm` dele.
+    """
+    if anchor in src:
+        return anchor
+    return anchor.replace('\n', '\r\n')
+
+
 def mutate_worker(dst):
     """REVERTER O PARQUE: `park_reason` devolve None -- o comportamento ANTERIOR.
 
@@ -577,11 +653,11 @@ def mutate_worker(dst):
     aplicacoes e mutar uma deixou a arm verde).
     """
     src = io.open(WORKER, encoding='utf-8', newline='').read()
-    out = src.replace('    if verdict in PARK_DEVICE_VERDICTS:',
-                      '    if False:', 1)
+    _v = _fit(src, '    if verdict in PARK_DEVICE_VERDICTS:')
+    out = src.replace(_v, '    if False:', 1)
     assert out != src, 'a ancora do veredito do parque nao existe'
-    src, out = out, out.replace('    if outcome in PARK_DEVICE_OUTCOMES:',
-                                '    if False:', 1)
+    _o = _fit(out, '    if outcome in PARK_DEVICE_OUTCOMES:')
+    src, out = out, out.replace(_o, '    if False:', 1)
     assert out != src, 'a ancora do outcome do parque nao existe'
     io.open(dst, 'w', encoding='utf-8', newline='').write(out)
 
@@ -594,7 +670,7 @@ def mutate_window_hold(dst):
     tem um caminho parecido) e o portao estaria a medir o bairro, nao a cura.
     """
     src = io.open(WORKER, encoding='utf-8', newline='').read()
-    anchor = '        if parked:\n'
+    anchor = _fit(src, '        if parked:\n')
     assert src.count(anchor) == 1, 'a ancora do parque da tap nao e unica'
     out = src.replace(anchor, '        if False:\n', 1)
     io.open(dst, 'w', encoding='utf-8', newline='').write(out)
@@ -683,6 +759,31 @@ def hold_detector_proof():
                       'tap-engine-park-rescan')})
 
 
+def mutate_park_wake(dst):
+    """O ACORDAR PELO MEDIDOR REMOVIDO: o parque volta a dormir o backoff inteiro."""
+    src = io.open(WORKER, encoding='utf-8', newline='').read()
+    anchor = _fit(src, '                if park_meter_wake(live):\n')
+    assert src.count(anchor) == 1, 'a ancora do acordar do parque nao e unica'
+    io.open(dst, 'w', encoding='utf-8', newline='').write(
+        src.replace(anchor, '                if False:\n', 1))
+
+
+def wake_detector_proof():
+    """O mutante que ARRANCA o acordar tem de deixar P16 RED -- dentro do passo."""
+    mutate_park_wake(NEG_COPY)
+    try:
+        neg = load_worker(NEG_COPY, 'worker_park_wake_neg')
+        ok_mutant, detail = wake_arm(neg)
+    finally:
+        try:
+            os.remove(NEG_COPY)
+        except OSError:
+            pass
+    return check('P18-the-wake-detector-can-say-no', not ok_mutant,
+                 {'mutant_P16_arm_ok': ok_mutant, 'mutant_why': detail.get('why'),
+                  'mutant_wall_s': detail.get('wall_s')})
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--neg-arm', action='store_true',
@@ -745,6 +846,7 @@ def main(argv=None):
     # da tap tem de deixar P12 RED, senao a arm mede o bairro. Um `:expectred`
     # separado custaria linhas na bateria e nao provaria mais.
     checks.append(hold_detector_proof())
+    checks.append(wake_detector_proof())
     ok = emit_checks(checks, 'VERDICT')
     print('VERDICT: %s' % ('GREEN' if ok else 'RED'))
     return 0 if ok else 1

@@ -1528,7 +1528,7 @@ if exist _main\paint-live-show-oracle.py (
 call :step always paint-live-show 0 "_main\paint-live-show-oracle.py;app\webview\sotto_webview.py;_main\live-code-freshness-oracle.py;app\webview\code_identity.py;_main\content-gate-answer-probe.py" "%OUT%\paint-live-show.log" python _main\paint-live-show-oracle.py
 call :skipped paint-live-show !STEP_RC! "%OUT%\paint-live-show.log" "PAINT-LIVE VERDICT: GREEN" "PAINT-LIVE VERDICT: SKIPPED" "VERDICT: SKIPPED"
 if exist _main\boot-interaction-oracle.py (
-call :step always boot-interaction 0 "_main\boot-interaction-oracle.py;_main\webview-run.log" "%OUT%\boot-interaction.log" python _main\boot-interaction-oracle.py
+call :step always boot-interaction 0 "_main\boot-interaction-oracle.py;_main\webview-run.log;_main\paint-live-show-oracle.py;_main\live-code-freshness-oracle.py;app\webview\code_identity.py" "%OUT%\boot-interaction.log" python _main\boot-interaction-oracle.py
 call :skipped boot-interaction !STEP_RC! "%OUT%\boot-interaction.log" "BOOT-INTERACTION VERDICT: PASS" "BOOT-INTERACTION SKIPPED" "SKIPPED"
 ) else ( call :skipped boot-interaction MISSING "%OUT%\boot-interaction.log" "BOOT-INTERACTION VERDICT: PASS" "BOOT-INTERACTION SKIPPED" "SKIPPED" )
 if exist _main\boot-interaction-oracle.py (

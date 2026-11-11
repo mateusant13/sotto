@@ -615,6 +615,28 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-11, 03:1x):** `_main\_audit-verify-all.cmd` = **353312 B**,
+  **4098 CRLF** / 0 bare LF, sha256 `AD361B164AB235246A7C0527A6154CC8510F09C71B160404AB5E79368AB7C907`.
+  (Noventa e sete bytes e ZERO linhas a mais do que o pin de 353215 B: as dependencias que faltavam ao
+  passo `boot-interaction`, a mesma classe do `panel-deps` -- o oraculo passa a perguntar ao
+  `live-code-freshness-oracle.py` se o PROCESSO que escreveu o log carregou o codigo do disco, e le'
+  `paint-live-show-oracle.py` (de onde importa `demote_stale`/`live_process_verdict` PELO CAMINHO,
+  porque o ficheiro tem HIFEN e um `import` por nome nao o alcanca) mais `app\webview\code_identity.py`.
+  Sem as tres na lista, o `_stepcache` reimprimiria o veredicto sobre um extrator que ja' mudou.
+  O MESMO bloco consertou DUAS medidas do oraculo que condenavam o trabalho normal:
+  **(a)** a bandeja publicava `menu_ms` como "clique -> menu desenhado" e o `menu_ms` mede o
+  `TrackPopupMenu`, que BLOQUEIA ate' o menu fechar -- os 672 ms da sessao dele sao o tempo com o menu
+  ABERTO, ou seja a mao dele. A familia virou DUAS linhas: `bandeja: menu aberto (ms)` INFORMATIVO e
+  `bandeja: primeiro plano ok` como PORTAO (a fracao de menus com `ok=0`; o `SetForegroundWindow` cru
+  era recusado 13 de 13 antes do `AttachThreadInput`). **(b)** a familia da primeira legenda passou a
+  separar as suas tres pernas: `arranque -> 1a legenda` continua PORTAO (59 016 ms na sessao dele,
+  FAIL -- e' o que ele sente), `1a legenda: idade do AUDIO` e' o portao da perna que e' NOSSA
+  (`audio_ms=74`, PASS) e `escada aberta -> 1a legenda` e' INFORMATIVO (1 278 ms). Medido:
+  `--neg-arm` **8/8** (o caso G2 novo exige que 800 ms de menu aberto PASSEM, e o R3 novo exige FAIL
+  no `ok=0`), `boot-interaction-paint-arm` `PAINT-ARM: PASS -- red=FAIL green=PASS mutacao=FAIL`, e no
+  log vivo o unico FAIL que sobra e' o arranque de 59 s -- que vira **SKIPPED** com
+  `STALE-EVIDENCE` enquanto o processo carregar codigo velho, exactamente como o `paint-live-show`
+  ja' faz, porque a sessao de 00:48:42 precede a cura `600e190` do endpoint que renderiza.)
 - **PIN do ficheiro (medido 2026-11-11, 02:3x):** `_main\_audit-verify-all.cmd` = **353215 B**,
   **4098 CRLF** / 0 bare LF, sha256 `D9C27F150273D336214A6EE77190708CF971B336490B365697566FE7EE5DB47D`.
   (Mil cento e cinquenta e nove bytes e DOZE linhas a mais do que o pin de 352056 B: o par
