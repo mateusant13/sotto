@@ -692,6 +692,33 @@ if exist _main\_panel2-dom-probe.js (
   call :record live-ack !STEP_RC!
   call :step red-as-expected-live-ack 1 "_main\live-ack-oracle.py;app\webview\sotto_webview.py" "%OUT%\live-ack-neg.log" python _main\live-ack-oracle.py --neg-arm
   call :expectred red-as-expected-live-ack !STEP_RC! "%OUT%\live-ack-neg.log" "NEG-ARM: PASS"
+  REM `live-route` -- a ROTA ao vivo e a idade do audio decidem se a legenda PINTA (ordem do dono:
+  REM *"a legenda fica aparecendo de forma aleatoria so' por que ta tocando um audio"*). Medido no log
+  REM dele: 1818 pinturas com audio velho, pior caso 3543,40 s -> replay do corpus com 0 pinturas de
+  REM lote. O oraculo extrai as decisoes REAIS por `ast` (42 arms) e o negativo tem 8 mutantes,
+  REM incluindo o relogio que volta para tras (idade DESCONHECIDA, nunca "fresco").
+  call :step live-route 0 "_main\live-route-oracle.py;worker\live_route.py;worker\sotto_worker.py;worker\engine_switch.py;worker\live_queue.py;app\webview\sotto_webview.py" "%OUT%\live-route.log" python _main\live-route-oracle.py
+  call :record live-route !STEP_RC!
+  call :step red-as-expected-live-route 1 "_main\live-route-oracle.py;worker\live_route.py;worker\sotto_worker.py;worker\engine_switch.py;worker\live_queue.py" "%OUT%\live-route-neg.log" python _main\live-route-oracle.py --neg-arm
+  call :expectred red-as-expected-live-route !STEP_RC! "%OUT%\live-route-neg.log" "NEG-ARM: PASS"
+  REM `device-ladder-cost` -- a ESPERA da escada de dispositivo e a ordem dos candidatos. Medido:
+  REM 43,63 s num rung que entregou ZERO (dobragem 6->12->24->48) e a abertura->1o dispositivo com
+  REM sinal 43,673 s -> 0,016 s com o journal quente. Nenhum cliente WASAPI e' aberto: as decisoes
+  REM reais sao conduzidas com as amostras do log.
+  call :step device-ladder-cost 0 "_main\device-ladder-cost-oracle.py;worker\wasapi_loopback.py;worker\sotto_worker.py" "%OUT%\device-ladder-cost.log" python _main\device-ladder-cost-oracle.py
+  call :record device-ladder-cost !STEP_RC!
+  call :step red-as-expected-device-ladder-cost 1 "_main\device-ladder-cost-oracle.py;worker\wasapi_loopback.py;worker\sotto_worker.py" "%OUT%\device-ladder-cost-neg.log" python _main\device-ladder-cost-oracle.py --neg-arm
+  call :expectred red-as-expected-device-ladder-cost !STEP_RC! "%OUT%\device-ladder-cost-neg.log" "NEG-ARM: PASS"
+  REM `youtube-first-cue` -- a PRIMEIRA cue de um video novo. Ordem do dono, verbatim:
+  REM *"eu abri um video no youtube, e levou 3 segundos pra aparecer a legenda. inves de ser
+  REM INSTANTANEO. arruma"*. MEDIDO: o damp de rebind custava 1541 ms com as linhas do candidato
+  REM JA' em maos, e um socket abandonado segurava a troca em 11203 ms (log 45.193->56.396).
+  REM A arm W1 le a SHELL por `ast`: sem ela a cura das funcoes puras nao chega ao processo (a
+  REM classe do `panel-deps`, que ja' custou tres vezes nesta casa).
+  call :step youtube-first-cue 0 "_main\youtube-first-cue-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py" "%OUT%\youtube-first-cue.log" python _main\youtube-first-cue-oracle.py
+  call :record youtube-first-cue !STEP_RC!
+  call :step red-as-expected-youtube-first-cue 1 "_main\youtube-first-cue-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py" "%OUT%\youtube-first-cue-neg.log" python _main\youtube-first-cue-oracle.py --neg-arm
+  call :expectred red-as-expected-youtube-first-cue !STEP_RC! "%OUT%\youtube-first-cue-neg.log" "NEG-ARM: PASS"
   call :step yt-clock-static 0 "_main\yt-clock-static-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_cdp_source.py" "%OUT%\yt-clock-static.log" python _main\yt-clock-static-oracle.py
   call :record yt-clock-static !STEP_RC!
   call :step red-as-expected-yt-clock-static 1 "_main\yt-clock-static-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_cdp_source.py" "%OUT%\yt-clock-static-neg.log" python _main\yt-clock-static-oracle.py --neg-arm

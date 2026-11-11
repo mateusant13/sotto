@@ -676,6 +676,28 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-11, 21:1x):** `_main\_audit-verify-all.cmd` = **358768 B**,
+  **4150 CRLF** / 0 bare LF, sha256 `2B8253401B888B9DE9F261BD52097413B3B6CFADAB53D9C5F5363DFF0C79DA39`.
+  (Tres mil cento e cinquenta e um bytes e VINTE E SETE linhas a mais do que o pin de 355617 B:
+  TRES pares, os tres nascidos das ordens do dono de 2026-11-11 e das quatro lanes despachadas
+  naquele mesmo turno.
+  `live-route` + `red-as-expected-live-route` (48 arms, `--neg-arm` 9/9): a POSSE do ecra e a
+  idade do audio decidem se a legenda PINTA -- medido no log dele, **1818** pinturas com audio
+  velho, pior caso **3 543,40 s**; o painel de 143 de 2 086 linhas ao vivo recusadas continua a ir
+  para o historico. O braco I1 CONDUZ o `emit` REAL do worker (nao o texto dele) e o mutante M9
+  reproduz o defeito que este turno encontrou: `log=err` com `err` local ao `except` derrubava
+  TODA a primeira legenda num `UnboundLocalError`.
+  `device-ladder-cost` + o seu negativo (17 arms, 6/6): a ESPERA da escada de dispositivo custava
+  **43,63 s** num rung que entregou ZERO (dobragem 6->12->24->48) e a abertura->1o dispositivo com
+  sinal media **43,673 s** -> **0,016 s** com o journal quente (TTL 1 800 s, tecto de 64 linhas).
+  `youtube-first-cue` + o seu negativo (11 arms, 11/11): o damp de rebind custava **1 541 ms** com
+  as linhas do candidato JA' em maos e um socket de aba abandonada segurava a troca em
+  **11 203 ms** (log 45.193 -> 56.396); agora **388 ms**. A arm **W1** le a SHELL por `ast` e exige
+  os tres encaixes (o `snap=` do `rebind_verdict`, UM apagar de janela por troca, e o zerar da
+  espera DENTRO da condicao do epocario) -- sem ela a cura das funcoes puras nao chega ao processo,
+  que e' a classe do `panel-deps`. Medido: `youtube-first-cue 11/11` e `NEG-ARM: PASS (11/11)`,
+  com o mutante `if False:` a derrubar a arm do epocario depois de a primeira versao dela medir o
+  NOME em vez do caminho.)
 - **PIN do ficheiro (medido 2026-11-11, 18:5x):** `_main\_audit-verify-all.cmd` = **355617 B**,
   **4123 CRLF** / 0 bare LF, sha256 `07224534ED53F8798048FB9268F678EF2DD947F906F0982651141C10DDC765D5`.
   (Mil e nove bytes e DEZ linhas a mais do que o pin de 354618 B: o par `live-ack` +
