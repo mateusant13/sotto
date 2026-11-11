@@ -1,4 +1,28 @@
 # Sotto — contexto do repo para todo agente e subagente
+## ASSUME THIS MACHINE IS 10x WEAKER THAN IT IS — AND WRITE THE CODE THAT WAY (owner order, 2026-11-11)
+Verbatim: *"ASSUME THIS MACHINE IS 10x WEAKER THAN IT IS AND WRITE THE CODE THAT WAY: one heavy job
+at a time, a declared ceiling in threads/MB/s/GiB measured BEFORE the job starts (not after it
+hurts), cache and resume so nothing is redone, and no unbounded loop, fan-out or in-memory
+accumulation."* And the ordering that goes with it: **throttling is the WORST of the approaches** —
+do less work, do it once, batch it, reuse it, make it incremental, drop the duplicate; a cap comes
+only after the work itself got cheaper, and **a limit you did not measure is not a limit**.
+
+- **ONE heavy job at a time, per lane and per machine.** Heavy = a model load, a battery run, a
+  census walk, a codec, a full-corpus sweep. Before it starts, the lane writes the ceiling it will
+  hold (threads, MB, MB/s, GiB) and the instrument that will show it, and it runs behind the
+  project's own cager from the FIRST invocation (`python -m watcher run --cpu 40 -- …` here).
+  Measured cost of skipping this: a thread benchmark with no cage was the largest producer of the
+  owner's stutter (pid 56092, `io 88.5 MB/s`, three `tick.stall` in one window).
+- **Nothing is re-executed that can be reused.** Content-addressed cache, incremental sweeps, delta
+  output (`MISS <key>` / `CACHE HIT <key>`); a repeated run with one flag changed is one data point,
+  not two (see `_packs/performance/extreme-optimization-audit` §"Reuse before re-running").
+- **No unbounded loop, fan-out or in-memory accumulation**: a queue has a ceiling and COUNTS what it
+  dropped (`LOG_STDOUT_SUPPLIED dropped=N` is the shape), a loop that derives its own period divides
+  the cost by a declared budget instead of sleeping the cost, and a corpus walk times each batch and
+  sleeps a declared multiple of what it just spent (the CPU cap bounds CPU only — measured 2026-11-10).
+- **A measurement is not work; a probe that measures by burning the machine is the defect.** Before
+  any probe: its own thread/IO ceiling, its own cache, its own deadline.
+
 ## Owner rule — ship work without paperwork drag (2026-10-31T02:59:01-03:00)
 Keep useful behavior and its minimum proof/docs moving in the same fast delivery. Skip optional process artifacts when they cost more than the change. Before agent fan-out or disk-heavy builds/tests, use `fast-land-shared-artifacts`: measure total disk growth, share the sanctioned target/cache across lanes, and serialize instead of duplicating heavy artifacts when sharing is unsafe. This owner direction supersedes older process checklists that add optional work without protecting a concrete risk; keep only minimum proof for correctness, security, data integrity, or destructive work.
 

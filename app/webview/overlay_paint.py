@@ -807,6 +807,45 @@ def _premultiplied_bitmap(cur_lines, prev_line, width, height, scale, theme=None
     return bmp
 
 
+#: A LARGURA DO ANEL TRANSPARENTE da borda do bitmap, em pixeis de dispositivo.
+#: E' um NOME DE MODULO, e nao um literal dentro de `_paint_bitmap`, porque o
+#: controlo do portao (`caption-overlay-theme-oracle.py`) tem de conseguir
+#: ARRANCAR a cura e ver o defeito voltar -- um numero que so' o desenho conhece
+#: nao tem controlo possivel.
+EDGE_PX = 1
+
+
+def _clear_outer_ring(g, width, height, edge_px=None):
+    """Escreve ALFA ZERO na fila exterior do bitmap (1 px, os quatro lados).
+
+    Existe porque a aresta de uma janela em camadas e' o unico lugar onde o
+    compositor ve' o que o GDI+ deixou a meio: medido no bitmap real, a placa
+    desenhada ate' ao rectangulo inteiro com `AntiAlias` deixava a fila 0 com
+    alfa parcial, e sobre o video isso e' uma linha visivel que o dono reportou
+    como "borda branca". Nenhum desenho pode desfazer isto: nada e' pintado
+    depois da chamada.
+
+    `CompositingMode.SourceCopy` e' o que faz a diferenca -- com o `SourceOver`
+    por omissao, pintar transparente sobre um pixel existente nao muda o alfa.
+    """
+    from System.Drawing import Color, SolidBrush, Rectangle
+    from System.Drawing.Drawing2D import CompositingMode
+    if edge_px is None:
+        edge_px = EDGE_PX
+    before = g.CompositingMode
+    brush = SolidBrush(Color.FromArgb(0, 0, 0, 0))
+    try:
+        g.CompositingMode = CompositingMode.SourceCopy
+        w, h = int(width), int(height)
+        g.FillRectangle(brush, 0, 0, w, edge_px)                     # topo
+        g.FillRectangle(brush, 0, h - edge_px, w, edge_px)           # base
+        g.FillRectangle(brush, 0, 0, edge_px, h)                     # esquerda
+        g.FillRectangle(brush, w - edge_px, 0, edge_px, h)           # direita
+    finally:
+        g.CompositingMode = before
+        brush.Dispose()
+
+
 def _paint_bitmap(cur_lines, prev_line, width, height, scale, theme, alphas,
                   roll, geo):
     """A pintura de sempre, intacta -- o caminho de cache-miss.
@@ -844,18 +883,39 @@ def _paint_bitmap(cur_lines, prev_line, width, height, scale, theme, alphas,
     fmt.FormatFlags = StringFormatFlags.NoWrap
 
     # ── the plate ────────────────────────────────────────────────────────────
+    #
+    # A PLACA NAO TOCA A BORDA DO BITMAP, E A ANEL EXTERIOR FICA TRANSPARENTE
+    # (ordem do dono, 2026-11-11: *"essa borda branca ai. que era pra ser clean
+    # e smooth e nao aparecer, e ainda aparece ... troca"*).
+    #
+    # A ABORDAGEM ANTERIOR ERA O DEFEITO: a placa era o rectangulo INTEIRO
+    # (0,0,largura,altura) desenhado com `SmoothingMode.AntiAlias`, logo os
+    # pixeis da aresta sao uma MISTURA entre a cor da placa e o transparente.
+    # Num `Format32bppPArgb` essa mistura e' premultiplicada e o compositor a
+    # re-expande; a 1 px da borda o alfa fica a meio, e sobre o video isso le-se
+    # como uma LINHA -- que nenhuma regra de CSS apaga, porque nao ha' CSS
+    # nenhum neste caminho. Nao era a cor: era a aresta.
+    #
+    # A cura e' geometrica, e nao depende do que o GDI+ faz na aresta: a placa
+    # entra `EDGE_PX` para dentro e o anel exterior e' escrito a ZERO com
+    # `SourceCopy` DEPOIS de todo o desenho (ver `_clear_outer_ring`). Assim
+    # nenhuma chamada de desenho -- placa, regra, LED, glifo com stroke -- pode
+    # deixar pixeis na fila zero do bitmap.
     if t['plate'] and t['plate'][3] > 0:
+        inset = float(EDGE_PX)
+        pw = max(1.0, float(width) - 2.0 * inset)
+        ph = max(1.0, float(height) - 2.0 * inset)
         radius = max(0.0, min(float(t['plateRadius']) * scale,
-                              min(width, height) / 2.0))
+                              min(pw, ph) / 2.0))
         plate = GraphicsPath()
         if radius <= 0.5:
-            plate.AddRectangle(RectangleF(0.0, 0.0, float(width), float(height)))
+            plate.AddRectangle(RectangleF(inset, inset, pw, ph))
         else:
             d = radius * 2.0
-            plate.AddArc(0.0, 0.0, d, d, 180.0, 90.0)
-            plate.AddArc(width - d, 0.0, d, d, 270.0, 90.0)
-            plate.AddArc(width - d, height - d, d, d, 0.0, 90.0)
-            plate.AddArc(0.0, height - d, d, d, 90.0, 90.0)
+            plate.AddArc(inset, inset, d, d, 180.0, 90.0)
+            plate.AddArc(inset + pw - d, inset, d, d, 270.0, 90.0)
+            plate.AddArc(inset + pw - d, inset + ph - d, d, d, 0.0, 90.0)
+            plate.AddArc(inset, inset + ph - d, d, d, 90.0, 90.0)
             plate.CloseFigure()
         brush = SolidBrush(_colour(t['plate']))
         g.FillPath(brush, plate)
@@ -863,9 +923,13 @@ def _paint_bitmap(cur_lines, prev_line, width, height, scale, theme, alphas,
         plate.Dispose()
 
     # ── the rule (the row's border-left) ─────────────────────────────────────
+    # A regra tambem entra 1 px: ela E' uma linha vertical de cor cheia, e no
+    # x=0 ela pousava exactamente na aresta da janela.
     if geo['rule_w'] > 0.1 and t['ruleColor'][3] > 0:
         brush = SolidBrush(_colour(t['ruleColor']))
-        g.FillRectangle(brush, 0.0, 0.0, float(geo['rule_w']), float(height))
+        g.FillRectangle(brush, float(EDGE_PX), float(EDGE_PX),
+                        float(min(geo['rule_w'], width - 2 * EDGE_PX)),
+                        float(max(1, height - 2 * EDGE_PX)))
         brush.Dispose()
 
     def faded(color, alpha):
@@ -944,6 +1008,14 @@ def _paint_bitmap(cur_lines, prev_line, width, height, scale, theme, alphas,
         g.FillEllipse(brush, float(led_x), float(cy - geo['led_h'] / 2.0),
                       float(geo['led_w']), float(geo['led_h']))
         brush.Dispose()
+    # ── O ANEL EXTERIOR, A ZERO -- A ULTIMA COISA QUE ACONTECE ───────────────
+    # Escrito DEPOIS de tudo, de proposito: e' a unica forma de a garantia valer
+    # para QUALQUER chamada que ja' desenhou (placa, regra, LED, glifo com
+    # stroke). `SourceCopy` copia a fonte COM o alfa, logo estes quatro
+    # rectangulos escrevem zeros em vez de misturar transparente com o que
+    # estava la' -- com `SourceOver` um pixel a alfa 200 continuava a alfa 200.
+    _clear_outer_ring(g, width, height)
+
     # DEBUG only when asked: a rendered bitmap is the fastest way to tell
     # "GDI+ drew nothing" from "Win32 did not composite it".
     import os

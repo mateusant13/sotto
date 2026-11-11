@@ -176,6 +176,7 @@ def _pixel_probe(payloads, applied):
     sys.path.insert(0, WEBVIEW)
     import overlay_paint
     rows = []
+    rim = []
     for tid, payload in payloads:
         theme = applied.get(tid) or {}
         plate = theme.get('plate')
@@ -186,6 +187,8 @@ def _pixel_probe(payloads, applied):
             'the quick brown fox jumps', '', 2.0, 1920, theme)
         bmp = overlay_paint._premultiplied_bitmap(
             lines, prev, int(width), int(height), 2.0, theme)
+        ring = _ring_alpha(bmp, int(width), int(height))
+        edge = _plate_edge_alpha(bmp, int(width), int(height), plate)
         px = bmp.GetPixel(3, max(1, int(height) // 2))
         # `GetPixel` num Format32bppPArgb devolve a cor JA' DESMULTIPLICADA
         # (medido: placa (37,28,21,140) -> R=36 G=27 B=21), logo a comparacao
@@ -195,8 +198,89 @@ def _pixel_probe(payloads, applied):
         got = [px.R, px.G, px.B]
         ok = px.A >= PLATE_ALPHA_FLOOR and all(abs(g - w) <= PIXEL_TOL for g, w in zip(got, want))
         rows.append((tid, f'plate={plate} px=A{px.A} rgb={got} want={want}', ok))
+        # A ARESTA: um `ring` acima de zero e' o compositor a ver o que o GDI+
+        # deixou a meio na fila 0 -- a "borda branca" do dono. E o `edge` diz se
+        # a placa tem uma fila de alfa PARCIAL onde a aresta recta dela cai: uma
+        # aresta a 110 de 220 e' uma linha translucida que ninguem desenhou.
+        rim.append((tid, ring, edge, int(plate[3])))
         bmp.Dispose()
-    return rows
+    return rows, rim
+
+
+def _ring_alpha(bmp, width, height):
+    """O maior alfa da FILA EXTERIOR do bitmap (1 px, os quatro lados)."""
+    worst = 0
+    for x in range(width):
+        worst = max(worst, bmp.GetPixel(x, 0).A, bmp.GetPixel(x, height - 1).A)
+    for y in range(height):
+        worst = max(worst, bmp.GetPixel(0, y).A, bmp.GetPixel(width - 1, y).A)
+    return worst
+
+
+def _edge_control(payloads, applied):
+    """O DEFEITO DE VOLTA: arranca a cura e mede outra vez.
+
+    Devolve `(flipped, ring, edge)` onde `ring`/`edge` sao o pior dos desenhos
+    SEM a cura. `flipped` exige as duas metades: fila exterior com alfa (o que
+    o compositor ve) e aresta da placa a alfa parcial (a "linha" translucida).
+    """
+    sys.path.insert(0, WEBVIEW)
+    import overlay_paint
+    worst_ring, worst_edge = 0, None
+    saved_px = overlay_paint.EDGE_PX
+    saved_clear = overlay_paint._clear_outer_ring
+    try:
+        overlay_paint.EDGE_PX = 0
+        overlay_paint._clear_outer_ring = lambda *a, **k: None
+        # A CACHE DE PINTURA E' POR CHAVE DE GEOMETRIA: com `EDGE_PX` mudado a
+        # chave nao muda, logo um hit devolveria o raster CURADO e o controlo
+        # mediria a cura. Limpar e' o que torna o controlo causal.
+        try:
+            overlay_paint._PAINT_CACHE.clear()
+        except Exception:  # noqa: BLE001
+            pass
+        for tid, payload in payloads[:6]:
+            theme = applied.get(tid) or {}
+            plate = theme.get('plate')
+            if not plate:
+                continue
+            lines, prev, width, height, _scrolled = overlay_paint._layout(
+                'the quick brown fox jumps', '', 2.0, 1920, theme)
+            bmp = overlay_paint._premultiplied_bitmap(
+                lines, prev, int(width), int(height), 2.0, theme)
+            worst_ring = max(worst_ring, _ring_alpha(bmp, int(width), int(height)))
+            a, want = _plate_edge_alpha(bmp, int(width), int(height), plate)
+            if worst_edge is None or a < worst_edge[0]:
+                worst_edge = (a, want)
+            bmp.Dispose()
+    except Exception as exc:  # noqa: BLE001
+        return None
+    finally:
+        overlay_paint.EDGE_PX = saved_px
+        overlay_paint._clear_outer_ring = saved_clear
+        try:
+            overlay_paint._PAINT_CACHE.clear()
+        except Exception:  # noqa: BLE001
+            pass
+    edge_bad = bool(worst_edge) and worst_edge[0] < int(worst_edge[1] * 0.95)
+    return (worst_ring > 0 or edge_bad), worst_ring, worst_edge
+
+
+def _plate_edge_alpha(bmp, width, height, plate):
+    """O alfa da PLACA logo depois do anel transparente, longe dos cantos.
+
+    A pergunta que este braco faz e' "a placa chega a' cor CHEIA a 2 px da
+    borda da janela?" -- e nao "a fila 1 tem o alfa da placa". Medido no bitmap
+    real: a placa desenhada ate' ao rectangulo inteiro deixava a fila 1 a ALFA
+    PARCIAL (110 de 219) -- uma linha translucida que ninguem desenhou e que
+    sobre o video se le' como borda. Depois da cura a transicao
+    transparente->placa acontece toda dentro dos 2 px que o anel ocupa, e a
+    partir dai' a placa e' cheia.
+    """
+    x = max(1, width // 2)
+    a_top = max(bmp.GetPixel(x, y).A for y in range(1, min(4, height)))
+    a_bottom = max(bmp.GetPixel(x, y).A for y in range(max(1, height - 4), height - 1))
+    return min(a_top, a_bottom), int(plate[3])
 
 
 def _face(theme):
@@ -276,10 +360,31 @@ def run(path, report_path, refresh):
         f'raios={len(radii)} piso={RADIUS_DISTINCT_FLOOR} {sorted(radii)[:6]}')
 
     # A6: o bitmap de verdade
-    rows = _pixel_probe(payloads, applied)
+    rows, rim = _pixel_probe(payloads, applied)
     bad_px = [r for r in rows if r[2] is not True]
     arm('pixel-fora-do-ecra', not bad_px,
         f'renders={len(rows)} fora={len(bad_px)} {[b[0] for b in bad_px][:4]}')
+    # A10 -- a aresta. Medido no bitmap real de cada desenho: a fila exterior
+    # tem de estar a ALFA ZERO (nada pode ser composto sobre o video a partir da
+    # borda da janela) e a placa nao pode ter uma fila de alfa PARCIAL na sua
+    # aresta recta (era isso que se lia como "borda branca").
+    rim_bad = [r[0] for r in rim if r[1] != 0]
+    edge_bad = [f'{r[0]}:{r[2][0]}<{r[2][1]}' for r in rim
+                if r[2][0] < int(r[3] * 0.95)]
+    arm('anel-transparente', not rim_bad,
+        f'renders={len(rim)} com_alfa_na_borda={len(rim_bad)} {rim_bad[:4]}')
+    arm('placa-sem-aresta-parcial', not edge_bad,
+        f'aresta_parcial={len(edge_bad)} {edge_bad[:4]}')
+
+    # A11 -- O CONTROLO DA ARESTA. As duas arms acima so' valem se a cura
+    # ARRANCADA as derrubar HOJE: um braco que passa com e sem a cura mede a
+    # aritmetica, nao o desenho. O controlo poe `EDGE_PX = 0`, desliga o
+    # `_clear_outer_ring` e exige o defeito de volta (alfa na borda e/ou uma
+    # fila de alfa parcial na aresta da placa).
+    ctl = _edge_control(payloads, applied)
+    arm('controlo-da-aresta', ctl is not None and ctl[0],
+        f'sem_a_cura ring={None if ctl is None else ctl[1]} '
+        f'aresta={None if ctl is None else ctl[2]}')
 
     # A7: sem desenho, sem placa -- nada e' inventado
     bare = apply({})
