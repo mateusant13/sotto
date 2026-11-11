@@ -195,3 +195,32 @@ Cinco adocoes numa sessao e' a taxa da "legenda aleatoria": cada adocao fabrica 
 significam que o epoch sobe duas vezes no mesmo instante -- dois objetos, ou um objeto a esvaziar
 duas vezes. Nenhum dos dois casos tem linha que os distinga.
 
+
+### 7-ter. O QUE ELE VE DEPOIS DO BLANK: o ASR repinta a fala do proprio video, em ingles, 0,11 s depois
+
+A pergunta que faltava responder era *"o texto que sobe depois do blank e' ruido ou e' fala?"*. Medido
+hoje em `_main/webview-run.log` (pid 49180): para cada `CAPTION_WINDOW_BLANKED`, a primeira pintura nos
+2 s seguintes, com o texto:
+
+| atraso | tipo | texto pintado |
+|---|---|---|
+| +0,11 s | final | `"It looks like we have our first."` `count=457 aged_kind=final-close` |
+| +0,98 s | partial | `"Led me."` `audio_ms=83 queue_ms=3 budget_ms=1500 over=false` |
+| +0,14 s | final | `"Mmm."` `count=506` |
+| +0,71 s | final | `"Recent knowledge it looks like opening eye testing up."` `count=529` |
+| +0,65 s | final | `"Is basically unpar or even slightly."` `count=595` |
+
+Duas conclusoes, as duas com numero:
+
+1. **O texto e' a FALA DO VIDEO, transcrita pelo NOSSO motor** (nao e' ruido nem alucinacao): o tap
+   carrega o audio do YouTube, o ASR transcreve-o em ingles, e a linha sobe para a superficie.
+2. **O blank e' desfeito em 0,11 s.** Um esvaziamento que a rota local pode repintar imediatamente nao
+   e' uma cerca: e' um piscar. Enquanto a rota local tiver permissao de pintar com o player a decorrer,
+   o `CAPTION_WINDOW_BLANKED` e' decorativo -- e sao **311** linhas `CAPTION_WINDOW_BLANKED` no log.
+
+E' exactamente a porta `player-owns-route` que o `worker/live_route.py` passou a fechar (o shell declara
+que o player pinta, a linha local do MESMO audio nao pinta por cima), e o numero que a justifica e' o par
+acima: pintura em 0,11 s contra um blank de 7 ms.
+
+A leitura do DONO (*"fica aparecendo na tela de forma aleatoria so' por que ta tocando um audio, que nem
+speaker e'"*) estava certa em cada palavra: e' o audio do video, e o momento e' o do blank/adocao.
