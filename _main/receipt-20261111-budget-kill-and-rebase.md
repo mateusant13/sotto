@@ -279,3 +279,28 @@ maquina (mediana das razoes por passo, para normalizar contenda). Medido no regi
 cache e a razao deles e' 1,0 por construcao. A mediana ficou dominada por linhas HISTORICAS e o
 normalizador virou zero informacao. Foi removido inteiro; o numero que faltava era a DURACAO do
 passo, e ela estava a ser medida no relogio errado.
+
+## 12. O BASELINE RE-MEDIDO, com o motivo de cada passo
+
+A corrida seguinte (14:04, caged, 466 passos, plan ON) fechou `RED - 2` -- `battery-budget` por
+**2731,1 s contra um tecto de 2700,4 s (1,1 %)** e quatro `neg-arm` acima do ratchet por passo, e
+`red-as-expected-battery-budget` por consequencia (o controlo recusa julgar um juiz que ja' reprova,
+como em §9).
+
+Os quatro passos cresceram de VERDADE -- medidos fora da corrida, um a um, nesta arvore:
+
+| passo | baseline | agora (fora da corrida) | porque |
+|---|---|---|---|
+| `red-as-expected-ctrlspace-swallow` | 9,7 s | **61,2 s** | 7 mutantes sobre a tabela de reserva da tecla |
+| `red-as-expected-gaming-hotkey` | 39,6 s | **86,9 s** | 5 mutantes sobre 56 arms |
+| `red-as-expected-load-shedding` | 40,3 s | **73,4 s** | a recusa dita uma vez por episodio |
+| `red-as-expected-youtube-cdp-source` | 90,1 s | **115,4 s** | 16 mutantes sobre o modulo inteiro |
+
+Nenhum e' contenda: os tres primeiros custaram, DENTRO da corrida caged, **menos** do que aqui
+(40,5 / 125,3 / 80,8 contra 61,2 / 86,9 / 73,4) -- o sinal de que a regua por passo esta' a medir o
+passo e nao o agendador desde o §11. O baseline foi re-medido nomeando cada um em
+`--accept-growth` e a razao inteira em `--rebase-policy`, porque um rebaseline que gravasse em
+silencio um passo que engordou seria o ratchet a assinar o proprio aumento.
+
+Medido depois: `BATTERY-BUDGET VERDICT RATCHET-OK -- steps=413 total=2731.4s` (rc=0) e
+`NEG-ARM: PASS (4/4 mutantes apanhados; juiz antes: True)` (rc=1).
