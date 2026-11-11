@@ -134,6 +134,21 @@ ATTACH_PROBE_TIMEOUT_S = 1.5
 #: cano partido, e esperar por ele nao traz foto nenhuma.
 SLOW_STREAK_MAX = 3
 
+#: O PRAZO DE UMA LEITURA DEPOIS DA PRIMEIRA (2026-11-03, MEDIDO): uma aba em
+#: SEGUNDO PLANO pode levar segundos a responder ao `Runtime.evaluate`, e a
+#: ligacao NAO se fecha por isso -- o `_run` pergunta outra vez (ver `_slow`).
+READ_TIMEOUT_S = 3.0
+
+#: O PRAZO DO *PRIMEIRO* PEDIDO DE UMA LIGACAO NOVA -- CURTO DE PROPOSITO
+#: (2026-11-11, MEDIDO). O handshake ja' provou que a porta responde, e uma
+#: pagina VIVA responde ao `Runtime.evaluate` em ~10 ms (medido: a foto inteira
+#: custa 10 ms). O que nao responde no primeiro pedido e' um alvo que nao e' o
+#: jogador, e o dono paga isso como *"levou 3 segundos pra aparecer a legenda"*
+#: (17:35:45.193 troca -> 56.396 attach -> 62.422 a primeira linha). Do segundo
+#: pedido em diante vale `READ_TIMEOUT_S`: ai' a lentidao pode ser da pagina, e
+#: nesse caso a ligacao fica.
+FIRST_READ_TIMEOUT_S = 0.5
+
 _WATCH = "/watch"
 
 #: O QUE O PLAYER DESENHOU, lido DENTRO da pagina (uma ida e volta).
@@ -567,7 +582,28 @@ def freeze_rows(rows, t):
     return out
 
 
-def choose_target(probes, previous='', window_title='', declared=''):
+def declared_open(tabs, declared):
+    """O video DECLARADO ainda esta' ABERTO? -- respondido pela LISTA de abas.
+
+    Duas perguntas diferentes, e a diferenca e' o defeito de 17:46: a SONDA
+    responde "esta aba tem jogador e responde agora"; a LISTA responde "a aba
+    existe". Quando so' a segunda e' verdadeira, o alvo continua a ser o
+    declarado -- nao ha' evidencia nenhuma de que o dono mudou de video.
+    """
+    vid = str(declared or '')
+    if not vid:
+        return False
+    for tab in tabs or ():
+        try:
+            if vid in str(tab.get('url') or ''):
+                return True
+        except AttributeError:                    # noqa: PERF203
+            continue
+    return False
+
+
+def choose_target(probes, previous='', window_title='', declared='',
+                  declared_open=False):
     """(video_id, porque) -- QUE ABA, decidido pela evidencia de cada uma.
 
     O dono, verbatim (2026-11-05): *"dumb picking then. do it properly. do it
@@ -598,10 +634,21 @@ def choose_target(probes, previous='', window_title='', declared=''):
          se a aba dele tiver jogador.
       5. **`sticky-last`** -- o ultimo adotado, se ainda tiver jogador. Duas abas
          a tocar nao podem fazer o ecra trocar sozinho.
-      6. **`only-player`** / **`paused-loaded`** -- ele poe o video EM PAUSA (as
+      6. **`keep-declared`** -- o id declarado continua ABERTO (`declared_open`,
+         resposta da lista de abas) e a sonda nao o viu; nao ha' evidencia de
+         troca de video, so' de um socket que nao respondeu. O picker NAO adota
+         outra aba: devolve o declarado. MEDIDO (log do dono, 2026-11-11 17:46):
+         `17:46:02.951 slow (ConnectionAbortedError)` -> `17:46:03.513
+         YOUTUBE_TARGET pick=JM1gEnmaUao why=paused-loaded declared=zEgthOmOrc0
+         tabs=7` -> `17:46:05.039 adopted:zEgthOmOrc0->JM1gEnmaUao` -> `17:46:05.108
+         CAPTION_WINDOW_BLANKED reason=video-changed` e o ASR a pintar 714 ms
+         depois. Uma queda de socket virou TROCA DE VIDEO com sete abas abertas.
+      7. **`only-player`** / **`paused-loaded`** -- ele poe o video EM PAUSA (as
          tres abas reais de hoje estavam): a linha pintada de um video pausado
          ainda e' a legenda do YouTube, e e' melhor do que a de outro video.
-         Entre varios pausados fica o de linha temporal mais avancada.
+         Entre varios pausados fica o de linha temporal mais avancada. NUNCA
+         acima de um video A TOCAR: `paused` e' a razao por que a leitura PASSA,
+         nao a razao para trocar o que o dono ve.
     """
     usable = [p for p in (probes or ()) if is_real_player(p)
               and str(p.get('videoId') or '')]
@@ -657,6 +704,14 @@ def choose_target(probes, previous='', window_title='', declared=''):
     # shell so' decide quando nao ha' nada a tocar -- e mesmo entao so' se
     # a aba dele tiver jogador (`usable`).
 
+    # O DECLARADO ESTA' ABERTO E A SONDA NAO O VIU -> `keep` (2026-11-11, MEDIDO).
+    # As tres saidas abaixo sao as que nao tem evidencia nenhuma de troca de
+    # video: `sticky-last`, `only-player` e `paused-loaded` escolhem por
+    # ELIMINACAO. Uma queda de socket (`ConnectionAbortedError`) nao e' evidencia;
+    # com sete abas abertas ela escolheu um video pausado e o ecra apagou para
+    # mostrar outro. O declarado continua a ser o alvo ate' haver testemunha.
+    if declared and declared_open:
+        return str(declared), 'keep-declared'
     if prev and any(str(p.get('videoId') or '') == prev for p in usable):
         return prev, 'sticky-last'
     if len(usable) == 1:
@@ -692,9 +747,16 @@ def pick_playing(tabs, previous='', connect=None, timeout=1.0,
     """
     probes = probe_tabs(tabs, connect=connect, timeout=timeout, gap_s=gap_s,
                         budget_s=budget_s, log=log)
-    vid, why = choose_target(probes, previous, window_title, declared)
+    vid, why = choose_target(probes, previous, window_title, declared,
+                             declared_open=declared_open(tabs, declared))
     if not vid:
         return None, '', why
+    if why == 'keep-declared':
+        # A ABA VEM DA LISTA, NAO DA SONDA -- a sonda nao a viu (2026-11-11).
+        # `keep` e' "continua este video": quem diz que a aba existe e' o URL dela
+        # na lista de abas, e o `pick_target` ja' sabe procura-lo por id.
+        named, _named_why = pick_target(tabs, vid, '')
+        return named, vid, why
     for p in probes:
         if str(p.get('videoId') or '') == vid:
             return p.get('tab'), vid, why
@@ -1047,6 +1109,58 @@ def adopt_decision(declared, seen, declared_open):
     return 'refuse', 'wrong-video'
 
 
+def rows_for(snap, vid):
+    """A foto em maos ja' tem LINHAS do video `vid`? -- a evidencia que dispensa
+    o damp de confirmacao.
+
+    E' a pergunta que o `rebind_verdict` faz e que a shell nao tem como fazer
+    sozinha: `rows` so' existe dentro da foto da CDP. Uma linha do player e'
+    evidencia de que aquela aba esta' a pintar AQUELE video -- nao e' uma
+    leitura de instrumento a confirmar.
+    """
+    if not isinstance(snap, dict) or not vid:
+        return False
+    if str(snap.get("videoId") or "") != str(vid):
+        return False
+    return bool(snap.get("rows") or ())
+
+
+def rebind_verdict(declared, candidate, armed, age_s, confirm_s, snap=None):
+    """(acao, porque) -- quando o damp de `confirm_s` pode ser dispensado.
+
+    O DEFEITO MEDIDO (log do dono, 2026-11-11 17:35, troca de aba as 45.193):
+    `YOUTUBE_TARGET_REBIND_ARMED ... confirm_s=1.5` as 45.296 e doze
+    `YOUTUBE_TARGET_REBIND_DAMPED` ate' `YOUTUBE_TARGET_REBOUND` as 46.837 --
+    **1,541 s** entre o alvo novo ser conhecido e a shell acreditar nele. Na
+    mesma sessao, 17:46:05.721 -> 10.203, o mesmo damp custou 4,482 s (1,5 s
+    dele de espera e o resto de laco preso em 15 tentativas de attach).
+
+    O damp existe por uma razao medida (2026-11-09): com duas abas `watch`
+    abertas o `target_video_id` OSCILA, e cada oscilacao apagava a legenda. Mas
+    uma oscilacao nao traz linhas: quando o player JA' esta' a pintar o
+    candidato (`rows_for(snap, candidate)`), ele nao e' uma leitura de
+    instrumento a confirmar, e' o alvo -- e a primeira cue dele nao pode pagar
+    1,5 s de desconfianca.
+
+    `acao` em `clear` | `armed` | `adopt` | `damped`, exactamente as quatro
+    decisoes que o bloco inline de `sotto_webview._yt_identify` toma hoje:
+    `clear` mata o candidato, `armed` arma-o agora, `adopt` troca de video neste
+    tick, `damped` espera. Pura de proposito: a shell so' obedece, e
+    `_main/youtube-first-cue-oracle.py` executa ESTA funcao.
+    """
+    declared = str(declared or '')
+    candidate = str(candidate or '')
+    if not candidate or candidate == declared:
+        return 'clear', 'no-candidate'
+    if rows_for(snap, candidate):
+        return 'adopt', 'rows-ready'
+    if candidate != str(armed or ''):
+        return 'armed', 'new-candidate'
+    if float(age_s or 0.0) >= float(confirm_s or 0.0):
+        return 'adopt', 'confirmed'
+    return 'damped', 'confirming'
+
+
 #: UMA FONTE VIVA POR PROCESSO -- e a razao e' medida (2026-11-09).
 #:
 #: No log do dono, numa janela de 600 s: `YOUTUBE_CDP_SOURCE state=attached`
@@ -1132,6 +1246,25 @@ class CdpCaptionSource:
         #: a legenda do video anterior nunca ser servida como a do novo.
         self._tab_key = ""
         self._selected_video_id = ""
+        #: A IDENTIDADE DA ABA, CONTADA (2026-11-11). `_adopt_tab` incrementa
+        #: `_epoch` quando a aba escolhida muda e o socket guarda o epoch com que
+        #: foi aberto (`_sock_epoch`): um socket de OUTRA aba nao esta' lento nem
+        #: morto, esta' a falar do video errado -- ver `_stale_socket`.
+        self._epoch = 0
+        self._sock_epoch = 0
+        #: O SOCKET VIVO, para o REFRESCADOR o poder fechar (2026-11-11). E' o
+        #: unico objecto que atravessa os dois fios de proposito: `_run` e' quem
+        #: o abre, `_adopt_tab` quem o fecha quando a aba que ele serve deixa de
+        #: ser a escolhida (ver o comentario la').
+        self._conn = None
+        #: O VIDEO DAS LINHAS PUBLICADAS E A ABA ONDE FOI LIDO (2026-11-11):
+        #: `stats()['snap_vid']` responde "de que video sao estas linhas?" com a
+        #: foto, e `video_change_evidence` compara a aba do id anterior para a
+        #: shell nao chamar TROCA DE VIDEO a uma troca de aba.
+        self._snap_vid = ""
+        self._snap_vid_tab = ""
+        self._change_vid = ""
+        self._change_evidence = ""
         #: O titulo da janela que o dono esta' a ver. Com duas abas `watch`, e'
         #: isto -- nao o id -- que decide qual delas ler (`pick_target`).
         self._window_title = ""
@@ -1362,9 +1495,26 @@ class CdpCaptionSource:
         if key != old:
             with self._lock:
                 self._snap = None
+            # A TROCA DE ABA INVALIDA O SOCKET (2026-11-11, MEDIDO). Quem
+            # descobre a troca e' ESTE metodo, chamado pelo refrescador ou pelo
+            # `_connect`; quem esta' preso num `recv` do socket antigo e' o
+            # `_run`. O contador e' o unico sinal que atravessa os dois fios sem
+            # partilhar o socket: `_run` compara-o com o epoch com que abriu a
+            # ligacao (`_sock_epoch`) e re-liga na primeira volta.
+            self._epoch = int(getattr(self, '_epoch', 0)) + 1
             self._log('YOUTUBE_CDP_TAB_SWITCH from=%s to=%s vid=%s'
                       % (old.rsplit('/', 1)[-1] or '-',
                          key.rsplit('/', 1)[-1] or '-', vid or '-'))
+            # E O SOCKET DA ABA ANTIGA FECHA-SE AQUI (2026-11-11, MEDIDO). O
+            # epoch sozinho so' vale na volta SEGUINTE do `_run`; se o `_run`
+            # estiver DENTRO do `recv` (que e' onde ele passa 3 s), essa volta
+            # so' chega depois do prazo. MEDIDO no log: a troca das 17:35:45.193
+            # e o primeiro prazo as 47.914 -- 2,72 s de um `recv` a esperar por
+            # uma aba que ja' nao era a escolhida. `close()` de outro fio faz o
+            # `recv` levantar JÁ, e o ramo `_slow` re-liga no primeiro erro.
+            _conn = getattr(self, '_conn', None)
+            self._conn = None
+            self._hard_close(_conn)
         self._tab_key = key
         self._selected_video_id = str(vid or '')
 
@@ -1374,11 +1524,116 @@ class CdpCaptionSource:
         # `wait(0.25)` do ramo sem ligacao antes de ver o `_stop`.
         self._tid_wake.set()
 
+    def _recheck_target(self):
+        """A LISTA AINDA DIZ QUE O ALVO E' O NOSSO? -- perguntado no 1o prazo.
+
+        O EPOCH E' SO' TAO NOVO QUANTO O REFRESCADOR (2026-11-11, MEDIDO). A
+        troca de aba das 17:35:45.193 foi vista pelo refrescador (0,5 s de
+        cadencia) e o `_adopt_tab` fechou o socket -- mas quando o refrescador
+        NAO ve' a troca (titulo igual, duas abas do mesmo canal), o epoch nao
+        muda e o `_run` espera os tres prazos do `slow-dead` mais `RETRY_S`:
+        8,482 s no log, com a lista de abas a 1,0-1,4 s de distancia (HTTP).
+
+        A pergunta e' barata e NAO sonda jogador nenhum (`pick_target` decide
+        por URL/id/titulo): se a aba escolhida agora nao e' a que este socket
+        serve, adota-se e re-liga-se JÁ. Um socket que nao responde e cuja aba
+        mudou nao esta' lento -- esta' a falar do video errado.
+        """
+        try:
+            tabs, _others = list_targets(self.port,
+                                         timeout=ATTACH_PROBE_TIMEOUT_S)
+        except Exception as exc:                  # noqa: BLE001
+            self._error(exc)
+            return False
+        title = str(getattr(self, '_window_title', '') or '')
+        target, _why = pick_target(tabs, str(getattr(self, '_video_id', '') or ''),
+                                   title)
+        if target is None and tabs:
+            target, _why = pick_target(tabs, '', title)
+        if not isinstance(target, dict):
+            return False
+        key = str(target.get('webSocketDebuggerUrl') or '')
+        if not key or key == str(getattr(self, '_tab_key', '') or ''):
+            return False
+        vid = video_id_from_url(target.get('url') or '')
+        self._adopt_tab(target, vid)
+        self._publish(None, 'target-moved (%s)' % (vid or '-'))
+        return True
+
+    def _stale_socket(self):
+        """O socket em maos aponta para uma aba que ja' nao e' a escolhida?
+
+        A TROCA DE ABA INVALIDA O SOCKET -- NAO E' UMA PAGINA LENTA (2026-11-11,
+        MEDIDO). Quem descobre a troca e' `_adopt_tab` (pelo refrescador, ou pelo
+        `_connect`), e o socket antigo nao tem como responder pelo alvo: ele fala
+        da aba anterior. MEDIDO no log do dono, troca as 17:35:45.193 conhecida
+        pelo refrescador (`YOUTUBE_CDP_TAB_SWITCH`), `_run` continuou ligado a'
+        aba antiga, o primeiro prazo saiu as 47.914, o terceiro as 54.018
+        (`slow-dead`), mais 2,0 s de `RETRY_S` ate' ao `ATTACH_OK` as 56.396 --
+        **11,2 s** desde a troca, com o alvo ja' conhecido e zero leituras dele.
+
+        O segundo defeito da mesma causa, 17:46: `ConnectionAbortedError` num
+        socket que ficara' para tras, e a foto dele (outro video) publicada como
+        se fosse a do alvo -- o `YOUTUBE_TICK_MS` passou minutos a nomear
+        `zEgthOmOrc0` com as linhas a virem de outro sitio.
+        """
+        return int(getattr(self, '_sock_epoch', 0) or 0) != int(
+            getattr(self, '_epoch', 0) or 0)
+
+    def snap_vid(self):
+        """O `videoId` da ULTIMA foto publicada -- o video das LINHAS em maos.
+
+        Existe porque `YOUTUBE_TICK_MS`/`YOUTUBE_CDP_HEALTH` nomeavam o video de
+        um ramo antigo (`vid='zEgthOmOrc0'` com `YT_FRAME
+        src=external:youtube:track` a pintar outro). A resposta certa para "de
+        que video sao estas linhas?" esta' na foto, nao no ultimo `_yt_diag`.
+        """
+        return str(getattr(self, '_snap_vid', '') or '')
+
+    def video_change_evidence(self, vid):
+        """Como o video `vid` apareceu: `same-tab` | `tab-switch` | `none`.
+
+        `YOUTUBE_VIDEO_CHANGED` so' pode sair com evidencia de troca de video --
+        e trocar de ABA nao e' trocar de video (2026-11-11, MEDIDO): com sete
+        abas abertas o picker adotou `JM1gEnmaUao` (`why=paused-loaded`), a shell
+        aceitou-o e imprimiu `YOUTUBE_VIDEO_CHANGED video_id=JM1gEnmaUao` com o
+        dono a ver outro video -- a adocao FABRICOU a mudanca que depois
+        reportou. Aqui a evidencia fica do lado que a tem: a foto que publicou o
+        id anterior e a aba em que ela foi lida.
+        """
+        cur = str(vid or '')
+        if not cur or cur != str(getattr(self, '_change_vid', '') or ''):
+            return 'none'
+        return str(getattr(self, '_change_evidence', '') or 'none')
+
+    def _note_video(self, snap):
+        """A evidencia da troca de video, gravada no instante da publicacao.
+
+        `same-tab` quando o id ANTERIOR foi lido na mesma aba (`_tab_key`), que
+        e' a navegacao real (`/watch?v=` novo no mesmo separador); `tab-switch`
+        quando a aba mudou pelo caminho. Grava-se junto com a foto para a shell
+        nao ter de reconstruir isto a partir de dois campos que ja' mudaram.
+        """
+        vid = str((snap or {}).get('videoId') or '')
+        if not vid or vid == str(getattr(self, '_snap_vid', '') or ''):
+            return
+        _prev_tab = str(getattr(self, '_snap_vid_tab', '') or '')
+        self._snap_vid = vid
+        self._snap_vid_tab = str(getattr(self, '_tab_key', '') or '')
+        self._change_vid = vid
+        self._change_evidence = (
+            'same-tab' if (_prev_tab and _prev_tab == self._snap_vid_tab)
+            else 'tab-switch')
+
     def stats(self):
         with self._lock:
             return {"reads": self._reads, "errors": self._errors,
                     "last_error": self._last_error, "note": self._note,
-                    "choice": self._choice_note}
+                    "choice": self._choice_note, "snap_vid": self.snap_vid(),
+                    #: O EPOCH DA ABA (2026-11-11): um valor novo significa "a aba
+                    # escolhida mudou". A shell usa-o para nao segurar o passo do
+                    # laco (`READ_SLOW_HOLD_S`) em cima de um alvo recem-chegado.
+                    "epoch": int(getattr(self, '_epoch', 0) or 0)}
 
     # -- leitura ----------------------------------------------------------
     def snapshot(self, max_age=0.6):
@@ -1735,6 +1990,10 @@ class CdpCaptionSource:
             if snap is not None:
                 self._snap = snap
                 self._reads += 1
+                # A EVIDENCIA DA TROCA E' GRAVADA COM A FOTO (2026-11-11): quem
+                # pergunta depois (`video_change_evidence`) nao tem como saber em
+                # que aba o id anterior foi lido -- a aba ja' pode ter mudado.
+                self._note_video(snap)
             if note is None:
                 return
             now = time.monotonic()
@@ -1754,6 +2013,41 @@ class CdpCaptionSource:
             self._last_error = "%s: %s" % (type(exc).__name__, exc)
 
     # -- a thread ---------------------------------------------------------
+    def _hard_close(self, conn):
+        """Fecha o socket de OUTRO fio, e acorda um `recv` preso nele.
+
+        `close()` de outro fio NAO acorda um `recv` bloqueado em todas as
+        plataformas; `abort()` (shutdown do socket) acorda. Quando o cliente nao
+        tem `abort` -- ou ele falha -- o `close` e' o que ha', e o prazo do
+        primeiro pedido (`FIRST_READ_TIMEOUT_S`) e' o que limita o estrago.
+        """
+        if conn is None:
+            return
+        abort = getattr(conn, 'abort', None)
+        if abort is not None:
+            try:
+                abort()
+                return
+            except Exception:                 # noqa: BLE001
+                pass
+        try:
+            conn.close()
+        except Exception:                     # noqa: BLE001
+            pass
+
+    def _drop_conn(self, conn):
+        """Fecha o socket e esquece-o -- o campo que o refrescador tambem ve'.
+
+        `_run` e' o unico que ABRE ligacoes; `_adopt_tab` (noutro fio) e' o unico
+        que as pode fechar antes do prazo (ver o comentario la'). Os dois passam
+        por aqui para `self._conn` nunca apontar para um socket ja' fechado.
+        """
+        if conn is not None:
+            self._hard_close(conn)
+            if getattr(self, '_conn', None) is conn:
+                self._conn = None
+        return None
+
     def _run(self):
         try:
             import websocket            # websocket-client
@@ -1762,13 +2056,18 @@ class CdpCaptionSource:
             return
         conn = None
         while not self._stop.is_set():
+            if conn is not None and self._stale_socket():
+                # A ABA MUDOU DEBAIXO DESTE SOCKET (2026-11-11). Nao ha' nada a
+                # perguntar-lhe: ele esta' ligado a' aba ANTERIOR. Fecha e re-liga
+                # JA -- sem prazo, sem `RETRY_S`, sem passar pelos tres prazos do
+                # `slow-dead`: o prazo de 3 s que sobra e' o do socket que a troca
+                # apanhou a meio do `recv` (ver o ramo `_slow`).
+                conn = self._drop_conn(conn)
+                self._publish(None, 'tab-stale (aba trocada)')
+                continue
             if time.monotonic() - self._last_use > IDLE_STOP_S:
                 if conn is not None:
-                    try:
-                        conn.close()
-                    except Exception:   # noqa: BLE001
-                        pass
-                    conn = None
+                    conn = self._drop_conn(conn)
                     self._publish(None, "idle-closed")
                 self._stop.wait(1.0)
                 continue
@@ -1787,6 +2086,15 @@ class CdpCaptionSource:
                 self._attached = True
                 self._retry_s = RETRY_S
                 self._attach_failed_at = None
+                # O EPOCH COM QUE ESTE SOCKET NASCEU (2026-11-11): `_connect`
+                # passou por `_choose`, que pode ter mudado de aba -- o socket e'
+                # da aba escolhida AGORA, e e' este o numero que `_stale_socket`
+                # compara depois.
+                self._sock_epoch = int(getattr(self, '_epoch', 0) or 0)
+                self._conn = conn
+                #: A PROXIMA LEITURA E' A PRIMEIRA DESTA LIGACAO (2026-11-11):
+                #: ver `FIRST_READ_TIMEOUT_S`. Cada attach re-arma o prazo curto.
+                _first_read = True
             t0 = time.monotonic()
             try:
                 # O ID DE CADA PEDIDO E' UNICO (2026-11-05, MEDIDO). Com o id
@@ -1797,6 +2105,12 @@ class CdpCaptionSource:
                 # abaixo e a foto publicada e' sempre a do pedido corrente.
                 self._msg_id = int(getattr(self, '_msg_id', 0)) + 1
                 _want = self._msg_id
+                try:
+                    conn.settimeout(FIRST_READ_TIMEOUT_S if _first_read
+                                    else READ_TIMEOUT_S)
+                except Exception:                 # noqa: BLE001
+                    pass
+                _first_read = False
                 conn.send(json.dumps({"id": _want, "method": "Runtime.evaluate",
                                       "params": {"expression": EXTRACT_JS,
                                                  "returnByValue": True}}))
@@ -1837,6 +2151,24 @@ class CdpCaptionSource:
                         break
                     # RESPOSTA DE UM PEDIDO ANTERIOR: descarta e espera a deste.
                 if _slow is not None:
+                    if self._stale_socket():
+                        # UM PRAZO NUM SOCKET DE OUTRA ABA NAO E' LENTIDAO
+                        # (2026-11-11, MEDIDO). A aba trocou enquanto este
+                        # `recv` esperava; esperar por mais dois prazos e por
+                        # `RETRY_S` atrasava a primeira cue da aba nova em 8,5 s
+                        # (17:35:47.914 -> 56.396). Re-liga no PRIMEIRO prazo.
+                        self._slow_streak = 0
+                        conn = self._drop_conn(conn)
+                        self._publish(None, 'tab-stale (%s, 1 prazo)'
+                                      % type(_slow).__name__)
+                        continue
+                    if (int(getattr(self, '_slow_streak', 0) or 0) == 0
+                            and self._recheck_target()):
+                        # A LISTA MUDOU E O EPOCH NAO (2026-11-11): um prazo
+                        # chegou para saber que este socket nao serve o alvo.
+                        self._slow_streak = 0
+                        conn = self._drop_conn(conn)
+                        continue
                     self._publish(None, 'slow (%s)' % type(_slow).__name__)
                     self._slow_streak = int(getattr(self, '_slow_streak', 0)) + 1
                     if self._slow_streak >= SLOW_STREAK_MAX:
@@ -1845,11 +2177,7 @@ class CdpCaptionSource:
                         # re-liga, em vez de perguntar eternamente a um cano
                         # partido.
                         self._slow_streak = 0
-                        try:
-                            conn.close()
-                        except Exception:             # noqa: BLE001
-                            pass
-                        conn = None
+                        conn = self._drop_conn(conn)
                         self._publish(None, 'slow-dead (%d prazos)'
                                       % SLOW_STREAK_MAX)
                         self._stop.wait(RETRY_S)
@@ -1860,6 +2188,18 @@ class CdpCaptionSource:
                 snap = parse_snapshot(payload)
                 if snap is None:
                     raise ValueError("payload sem forma")
+                if self._stale_socket():
+                    # A FOTO E' DE OUTRA ABA (2026-11-11, MEDIDO). A troca
+                    # aconteceu DURANTE este `recv`: publicar esta foto seria
+                    # servir o video anterior/errado (17:46: `state=adopted:
+                    # zEgthOmOrc0->JM1gEnmaUao` a partir de um socket abandonado),
+                    # e a shell aceita-a porque o `_selected_video_id` do momento
+                    # da troca ja' aponta para a aba nova. Descartar e re-ligar:
+                    # a primeira foto legitima chega ~1 evaluate depois.
+                    conn = self._drop_conn(conn)
+                    self._publish(None, 'tab-stale (%s descartada)'
+                                  % (snap.get("videoId") or '-'))
+                    continue
                 if snap.get("rs") == 0:
                     # A ABA NAO TEM JOGADOR (2026-11-05, MEDIDO). `rs=0` e' o
                     # `readyState` de um `<video>` sem media: e' o que uma aba
@@ -1874,11 +2214,7 @@ class CdpCaptionSource:
                               'media; a escolha volta a sonda'
                               % (snap.get("videoId") or '-'))
                     self._playing_pick_cache = None
-                    try:
-                        conn.close()
-                    except Exception:             # noqa: BLE001
-                        pass
-                    conn = None
+                    conn = self._drop_conn(conn)
                     self._stop.wait(max(0.4, float(RETRY_S) / 3.0))
                     continue
                 # A ABA PODE NAVEGAR DEPOIS DE NOS LIGARMOS A ELA (2026-11-03,
@@ -1923,11 +2259,7 @@ class CdpCaptionSource:
                     # nao esta' aberto, quem manda e' a aba a que ja' estamos
                     # ligados, e o id passa a ser dela.
                     self._publish(None, "wrong-video (%s)" % snap["videoId"])
-                    try:
-                        conn.close()
-                    except Exception:                 # noqa: BLE001
-                        pass
-                    conn = None
+                    conn = self._drop_conn(conn)
                     # TROCAR DE VIDEO NAO ESPERA 2 s (2026-11-03). O dono alterna
                     # entre videos e a legenda tem de aparecer no novo dentro de
                     # uma foto, nao de um ciclo de retry: o id ja' e' conhecido,
@@ -1952,11 +2284,7 @@ class CdpCaptionSource:
                         'WebSocketTimeoutException', 'TimeoutError', 'timeout'):
                     self._publish(None, "slow (%s)" % type(exc).__name__)
                     continue
-                try:
-                    conn.close()
-                except Exception:                 # noqa: BLE001
-                    pass
-                conn = None
+                conn = self._drop_conn(conn)
                 self._publish(None, "reconnect (%s)" % type(exc).__name__)
                 self._stop.wait(RETRY_S)
                 continue
@@ -1978,12 +2306,15 @@ class CdpCaptionSource:
                 self._playing_pick_cache = None
                 self._log('YOUTUBE_CDP_PACED paused=%s poll_s=%.2f'
                           % (_paused, _wait))
+            if self._stale_socket():
+                # O `paused` DESTA FOTO E' DO VIDEO ANTERIOR (2026-11-11). A aba
+                # trocou durante a leitura: `PAUSED_POLL_S` (0,5 s) seria meio
+                # segundo parado antes de ler a aba nova, e a primeira cue dela
+                # ja' chega depois do attach. O passo nao se aplica a um alvo
+                # novo -- a volta seguinte e' a que fecha e re-liga.
+                _wait = 0.0
             self._stop.wait(max(0.0, _wait - spent))
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:                     # noqa: BLE001
-                pass
+        self._drop_conn(conn)
 
     #: O MOTIVO DE CADA TENTATIVA DE ATTACH, ESCRITO (2026-11-04). `_publish`
     #: so' fala quando o estado MUDA, e por isso o dono leu 40 minutos de
@@ -2048,7 +2379,7 @@ class CdpCaptionSource:
             # fonte deixava de ser reconhecida. Um segundo e' mais do que a
             # leitura inteira (10 ms medidos); o que passa disso e' ligacao
             # morta, e trata-se como tal.
-            conn.settimeout(3.0)
+            conn.settimeout(READ_TIMEOUT_S)
             self._attach_log(_n, True, why, (time.monotonic() - _t0) * 1000.0,
                              'pick=%s' % (video_id_from_url(
                                  target.get("url") or "") or '-'))
