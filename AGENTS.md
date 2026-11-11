@@ -2516,6 +2516,39 @@ mesmo instrumento, `_main/paint-live-show-oracle.py`:
    instrumento inteiro: `PROBE UNMEASURED: a sonda nao respondeu em 45 s` (66-105 s por corrida)
    -> medicao completa em **13,9 s**.
 
+## A TROCA DE DONO SE ESCREVE, E A RECONEXAO E' TRANSPORTE (medido 2026-11-11)
+
+Ordem do dono na sessao dele: *"a legenda do ctrl space fica aparecendo na tela de forma aleatoria so
+por que ta tocando um audio"*. Nao era aleatorio. A cadeia medida no log vivo (pid 49180, 17:46):
+
+1. `YOUTUBE_CDP_SOURCE state=slow (ConnectionAbortedError)` -> `reconnect`;
+2. `YOUTUBE_TARGET pick=JM1gEnmaUao why=paused-loaded declared=zEgthOmOrc0 tabs=7` -- **a
+   reconexao ADOTOU outra aba**, e uma que nem estava a tocar, com o video declarado aberto;
+3. `adopted:zEgthOmOrc0->JM1gEnmaUao` -> `YOUTUBE_VIDEO_CHANGED` -> `CAPTION_WINDOW_BLANKED`:
+   a superficie fica sem dono e `last_line=''`;
+4. **714 ms depois o ASR local pinta** a hipotese dele (`src=-`, `tap_ms=None`) num ecra que o player
+   acabou de esvaziar.
+
+Duas leis, cada uma paga pelo elo que a violou:
+
+- **Uma transicao de dono que nao se escreve e' o defeito.** O unico sitio que baixa
+  `external_captions_active` e' `ExternalCaptionWatcher._release`, e a linha
+  `EXTERNAL_CAPTIONS_RELEASED` vive DENTRO de `if self.last_line:` -- uma limpeza com `last_line`
+  vazio baixa o dono **sem escrever nada**. Nenhuma linha de `EXTERNAL_CAPTIONS_RELEASED` existia
+  em 2026-11-11, e o portao de supressao mesmo assim barrou 99 linhas e deixou passar 3. Uma transicao
+  muda nao se pode datar, julgar nem curar: escreve-se UMA vez por transicao, com o motivo e com
+  `had_line`.
+- **Reconexao e' transporte, nunca evidencia de troca de video.** `slow` apareceu **65** vezes na
+  sessao contra **4** `reconnect` -- reattach silencioso e' rotina. Uma aba adotada na reconexao
+  fabrica o `VIDEO_CHANGED` que ela propria depois reporta (`adopted` = **5** na sessao, `BLANKED` =
+  **46**, com 7 milissegundos a carregar dois blanks). `pick` nunca adota aba que nao seja o video
+  declarado, e nunca prefere uma `paused-loaded` a uma a tocar.
+
+E o numero que o dono sente, para nao se discutir de ouvido: `arranque -> 1a legenda` **102 110 ms**
+contra o orcamento de 15 000 (`_main/boot-interaction-oracle.py`, que respondia `UNMEASURED` a uma
+sessao com 956 pinturas ate' 2026-11-11 -- o instrumento casava so' duas das cinco formas de linha).
+Recibo: `_main/receipt-20261111-live-start-latency.md`.
+
 ## A LEI DOS TESTES - todo teste, existente ou futuro (ordem do dono, 2026-11-05)
 
 Verbatim: *"QUALQUER TESTE EXISTENTE OU QUE SERÁ IMPLEMENTADO, DEVE SER IMPLEMENTADO DESSE JEITO PRA
