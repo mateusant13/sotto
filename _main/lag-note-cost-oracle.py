@@ -283,11 +283,25 @@ ARMS = (
 )
 
 
-def run_arms(mod, label):
+def run_arms(mod, label, only=None):
+    """Os bracos, com um SUBCONJUNTO opcional.
+
+    `only` existe por CUSTO MEDIDO (2026-11-11): o laco dos mutantes corria os
+    cinco bracos em cada um, e o `cost-flat-with-full-window` leva **43,76 s**
+    sobre o mutante `sort-per-caption` -- que ordena a janela inteira por legenda,
+    exactamente o que aquele braco mede -- para depois ser descartado, porque o
+    conjunto esperado daquele mutante e' so' `cost-under-budget`. Medido: a
+    corrida completa do `--neg-arm` custava **108,7 s** sem tecto e estourava o
+    prazo de 240 s com o tecto de CPU da bateria (o passo ficou rc=124 e o
+    controlo foi morto a meio). Cada mutante corre so' os bracos que TEM de
+    derrubar: a forca do controlo nao muda, o preco sim.
+    """
     log = Collector()
     mod.log = log
     rows = []
     for name, fn in ARMS:
+        if only is not None and name not in only:
+            continue
         log.lines[:] = []
         try:
             ok, detail = fn(mod, log)
@@ -344,7 +358,7 @@ def main(argv):
             print('=== mutante: %s' % why)
             mutant = load_shell(path, 'sotto_shell_neg_%s'
                                 % why.replace('-', '_'))
-            rows = run_arms(mutant, why)
+            rows = run_arms(mutant, why, only=expect)
             red = {n for n, ok, _ in rows if not ok}
             missed = expect - red
             total += 1

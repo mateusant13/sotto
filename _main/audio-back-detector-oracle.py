@@ -59,11 +59,78 @@ def parse(src):
     return tree, consts
 
 
-def load_namespace(src, path):
-    """Executa a fonte num namespace proprio (o mutante nao polui `worker`)."""
+#: `ast.get_source_segment` recomputa `splitlines()` da FONTE INTEIRA em cada
+#: chamada (CPython: `_splitlines_no_ff` faz `''.join(lines)` sobre tudo). Medido
+#: nesta arvore 2026-11-11 com o `cProfile` do braco positivo: **262 chamadas =
+#: 58,0 s dos 62,5 s** -- o resto do oraculo custa 4 s. O worker tem 1,5 MB, logo
+#: cada chamada era uma varredura completa e a conta crescia com a fonte, nao com
+#: a arm. Aqui a quebra em linhas e' feita UMA vez por fonte e so' a fatia e'
+#: recalculada, o que devolve exactamente o mesmo texto (mesma rotina privada do
+#: CPython que `get_source_segment` usa; `splitlines(keepends=True)` se ela faltar).
+_SEG_LINES = {}
+
+
+def _lines_of(source):
+    ent = _SEG_LINES.get(id(source))
+    if ent is not None and ent[0] is source:
+        return ent[1]
+    split = getattr(ast, "_splitlines_no_ff", None)
+    lines = split(source) if split else source.splitlines(keepends=True)
+    _SEG_LINES[id(source)] = (source, lines)
+    return lines
+
+
+def _seg(source, node):
+    """`ast.get_source_segment(source, node)`, com as linhas ja' quebradas."""
+    if node is None:
+        return None
+    if getattr(node, "end_lineno", None) is None \
+            or getattr(node, "end_col_offset", None) is None:
+        return None
+    lines = _lines_of(source)
+    first, last = node.lineno - 1, node.end_lineno - 1
+    if last == first:
+        return lines[first].encode()[node.col_offset:node.end_col_offset].decode()
+    head = lines[first].encode()[node.col_offset:].decode()
+    tail = lines[last].encode()[:node.end_col_offset].decode()
+    return head + "".join(lines[first + 1:last]) + tail
+
+
+def load_func_namespace(src, path, real_mod):
+    """A funcao `audio_back_step` SO', com os globals do worker REAL.
+
+    POR QUE NAO `load_namespace` (medido 2026-11-11): aquele executa o
+    `worker/sotto_worker.py` INTEIRO -- 1,5 MB com os imports de topo -- e o
+    `--neg-arm` fazia isso UMA VEZ POR MUTANTE. Custo medido sem tecto: positivo
+    37,4 s, controlo **136,7 s**; com o tecto de CPU da bateria o passo chegou a
+    242,4 s e morreu no prazo de 240 (`rc=124`), que e' o mesmo que nao ter
+    controlo nenhum.
+
+    As arms A1-A9 chamam so' a funcao; as arms B/B2/C1/C2 leem o FONTE mutado
+    (que continua a ser passado intacto). Entao em vez do ficheiro inteiro
+    executa-se o segmento da funcao sobre um namespace semeado com os globals do
+    modulo REAL -- que e' o que a funcao veria de qualquer forma.
+
+    O que isto NAO cobre: um mutante cuja diferenca viva FORA da funcao e que so'
+    uma arm de COMPORTAMENTO possa ver. Nenhum dos seis de hoje e' assim (M4 e M6
+    sao lidos pelo fonte, M1-M3 estao dentro da funcao) -- e se um futuro fosse,
+    o mutante sairia `NOT-CAUGHT` e o `--neg-arm` FALHA alto, nunca passa em
+    silencio.
+    """
+    tree = ast.parse(src)
+    fn = None
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "audio_back_step":
+            fn = node
+            break
+    if fn is None:
+        raise RuntimeError("audio_back_step ausente na fonte mutada")
+    segment = _seg(src, fn)
     mod = types.ModuleType("audio_back_mutant")
     mod.__file__ = path
-    exec(compile(src, path, "exec"), mod.__dict__)
+    mod.__dict__.update({k: v for k, v in vars(real_mod).items()
+                         if not k.startswith("__")})
+    exec(compile(segment, path, "exec"), mod.__dict__)
     return mod
 
 
@@ -115,9 +182,10 @@ def run_arms(fn, src, tree, consts, say):
         check("B", False, "nenhum sitio chama audio_back_step")
         check("B2", False, "sem sitio nao ha' linha")
     else:
-        seg = ast.get_source_segment(src, call) or ""
-        ok = "stall_since" in seg and "counters" in seg and "device_blocks" in seg
-        check("B", ok, seg.replace("\n", " ")[:120])
+        segment = _seg(src, call) or ""
+        ok = "stall_since" in segment and "counters" in segment \
+            and "device_blocks" in segment
+        check("B", ok, segment.replace("\n", " ")[:120])
         check("B2", "_back_line" in src and "err(" in src, "a linha sai por err(...)")
 
     # ── C: A LINHA CHEGA AO LOG (2026-11-10) ────────────────────────────────
@@ -179,10 +247,10 @@ def _visibility_arms(check, src):
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and node.func.id == "err" and node.args):
             continue
-        seg = (ast.get_source_segment(src, node.args[0]) or "").strip()
+        segment = (_seg(src, node.args[0]) or "").strip()
         for tag in VISIBLE:
             # literal que comeca pela tag
-            if seg.startswith('"%s' % tag) or seg.startswith("'%s" % tag):
+            if segment.startswith('"%s' % tag) or segment.startswith("'%s" % tag):
                 tag_first.setdefault(tag, "literal")
             # `err(<funcao_pura>(...))` -- a funcao devolve a linha COM a tag no
             # comeco, e o encadeamento de strings vive dentro dela (ver
@@ -194,7 +262,7 @@ def _visibility_arms(check, src):
             # `"%s device=%r" % (_back_line, ...)` -- a tag entra como PRIMEIRO
             # campo da formatacao, e o valor que a carrega e' a linha pura.
             if isinstance(node.args[0], ast.BinOp) and isinstance(node.args[0].op, ast.Mod):
-                left = ast.get_source_segment(src, node.args[0].left) or ""
+                left = _seg(src, node.args[0].left) or ""
                 if left.strip().startswith('"%s ') or left.strip().startswith("'%s "):
                     values = node.args[0].right
                     names = [n.id for n in ast.walk(values) if isinstance(n, ast.Name)]
@@ -233,9 +301,9 @@ def _returns_tag(tree, fname, tag):
         if isinstance(node, ast.FunctionDef) and node.name == fname:
             for sub in ast.walk(node):
                 if isinstance(sub, ast.Return) and sub.value is not None:
-                    seg = ast.get_source_segment(_SRC_CACHE.get("src", ""), sub.value) or ""
-                    if ('"%s ' % tag) in seg or ("'%s " % tag) in seg \
-                            or seg.strip().startswith(('"%s"' % tag, "'%s'" % tag)):
+                    segment = _seg(_SRC_CACHE.get("src", ""), sub.value) or ""
+                    if ('"%s ' % tag) in segment or ("'%s " % tag) in segment \
+                            or segment.strip().startswith(('"%s"' % tag, "'%s'" % tag)):
                         return True
     return False
 
@@ -252,6 +320,7 @@ def main(argv):
     src = open(WORKER, "r", encoding="utf-8").read()
     tree, consts = parse(src)
     from worker.sotto_worker import audio_back_step
+    real_mod = sys.modules["worker.sotto_worker"]
 
     if "--neg-arm" in argv:
         tmp = tempfile.mkdtemp(prefix="audio-back-neg-")
@@ -306,7 +375,7 @@ def main(argv):
             open(path, "w", encoding="utf-8").write(mutated)
             mtree, mconsts = parse(mutated)
             try:
-                mod = load_namespace(mutated, path)
+                mod = load_func_namespace(mutated, path, real_mod)
                 mfails = run_arms(mod.audio_back_step, mutated, mtree, mconsts,
                                   lambda *a, **k: None)
             except Exception:                                 # noqa: BLE001

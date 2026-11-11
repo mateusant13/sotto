@@ -425,6 +425,77 @@ def ratchet_named(why):
     return names
 
 
+def rebase_growth(old_per_step, new_per_step, allowed=()):
+    """Os passos que engordaram, pela MESMA regua do `judge`.
+
+    Nasceu de um defeito medido 2026-11-11: o `--baseline` julgava com
+    `before * 1.05` sobre TUDO, sem piso nem folga, e recusou um rebaseline
+    legitimo citando dezoito passos de sub-segundo (`claims-date 0.3 -> 0.8`,
+    `panel-deps 0.3 -> 0.7`, `live-code-freshness 0.4 -> 0.5`). Um rebaseline
+    mais estrito do que o portao que ele serve nunca passa, e o trabalho que ele
+    existe para registar fica bloqueado por ruido de arranque.
+
+    A regua e' a do `judge`, linha por linha: piso `PER_STEP_FLOOR_S` sobre o
+    MAIOR dos dois lados (um passo que nasceu pequeno e engordou nao se esconde
+    atras do proprio passado), `PER_STEP_PCT` sobre o valor anterior e a folga
+    ABSOLUTA `PER_STEP_SLACK_S`. Nomear o passo em `allowed` e' a declaracao de
+    que o crescimento e' resultado de uma mudanca deliberada.
+    """
+    allowed = {n for n in (allowed or ()) if n}
+    grew = []
+    for name, secs in sorted((new_per_step or {}).items()):
+        before = (old_per_step or {}).get(name)
+        if not before or name in allowed:
+            continue
+        if max(before, secs) < PER_STEP_FLOOR_S:
+            continue
+        if secs > before * PER_STEP_PCT and (secs - before) > PER_STEP_SLACK_S:
+            grew.append('%s %.1fs -> %.1fs' % (name, before, secs))
+    return grew
+
+
+def rebase_arms():
+    """OS BRACOS DO REBASELINE, puros: nenhum le' o disco.
+
+    Nasceram com a cura de 2026-11-11. Sem eles, o rebaseline podia voltar a
+    julgar com uma regua propria e nenhum braco caia -- a doenca que a cura
+    fechou e' exactamente a de um instrumento sem controlo.
+    """
+    arms = []
+
+    def arm(name, old, new, allowed, want):
+        got = rebase_growth(old, new, allowed)
+        good = bool(got) == bool(want) and (not want or any(want in g for g in got))
+        arms.append({'arm': name, 'ok': good,
+                     'detail': 'grew=%r (want %r)' % (got, want)})
+
+    # A12 e' o caso MEDIDO: dezoito passos de sub-segundo recusaram um rebaseline
+    # legitimo. Ruido de arranque abaixo do piso nao bloqueia nada.
+    arm('A12 rebaseline: sub-segundo (0,3 -> 0,8 s) nao bloqueia',
+        {'claims-date': 0.3, 'panel-deps': 0.3, 'live-code-freshness': 0.4},
+        {'claims-date': 0.8, 'panel-deps': 0.7, 'live-code-freshness': 0.5},
+        (), None)
+    # A13 impede a isencao total: um passo acima do piso que engordou 2x TEM de
+    # ser nomeado, senao o rebaseline assina em silencio o proprio aumento.
+    arm('A13 rebaseline: 30 -> 65 s acima do piso e\' nomeado',
+        {'paint-live-show': 30.0}, {'paint-live-show': 65.0}, (), 'paint-live-show')
+    # A14: nomear o passo e' a declaracao que o `--accept-growth` carrega.
+    arm('A14 rebaseline: o mesmo 30 -> 65 s NOMEADO e\' aceite',
+        {'paint-live-show': 30.0}, {'paint-live-show': 65.0},
+        ('paint-live-show',), None)
+    # A15: a folga absoluta tambem vale aqui -- 3,7 -> 26,8 s e' pico de agendador.
+    arm('A15 rebaseline: pico de 3,7 -> 26,8 s nao bloqueia (folga de 30 s)',
+        {'peak': 3.7}, {'peak': 26.8}, (), None)
+    # A16: um passo QUE NASCEU pequeno e engordou para 200 s e' julgado, nunca
+    # isento pelo proprio passado (o piso e' sobre o MAIOR dos dois lados).
+    arm('A16 rebaseline: passo que nasceu em 4,9 s e foi a 200 s e\' nomeado',
+        {'tiny': 4.9}, {'tiny': 200.0}, (), 'tiny')
+    # A17: passo novo (sem valor anterior) nao e' crescimento -- e' populacao.
+    arm('A17 rebaseline: passo novo nao e\' crescimento',
+        {}, {'brand-new': 102.7}, (), None)
+    return arms
+
+
 def neg_arm():
     """MUTA a LEITURA (nao o codigo) e exige que o MESMO `judge` nomeie o mutante.
 
@@ -518,6 +589,23 @@ def neg_arm():
             (second, 'M2 +folga+10s (so o ratchet por passo)',
              _m2_growth, 'ratchet')]
     base_ok, base_why, _ = judge(measured, base)
+    # UM JUIZ QUE JA' REPROVA NAO JULGA MUTANTE (medido 2026-11-11). A testemunha
+    # da M1/M2 e' "o mutante NOMEIA o passo, e o passo nao estava nomeado antes".
+    # Com a corrida ja' vermelha -- naquele dia, porque outra lane media na mesma
+    # maquina e TODO passo apareceu 3-8x mais caro --, `named_before` e' verdadeiro
+    # para os dois e o controlo conta 2/4, devolve 0, e o passo diz `CONTROL
+    # FAILED: rc=0`, que se le' como "o controlo nao pegou" quando o que ha' e' um
+    # instrumento sem base para medir. A resposta honesta e' `CANNOT-MEASURE`, e o
+    # rc=2 e' exatamente a convencao da casa para isso (erro de SETUP, nunca verde).
+    if not base_ok:
+        print('NEG-ARM CANNOT-MEASURE -- o juiz ja\' reprova ANTES de qualquer '
+              'mutacao, logo a testemunha da M1/M2 nao distingue o mutante de um '
+              'RED pre-existente:')
+        for line in base_why:
+            print('    RED', line)
+        print('  (a corrida que se julga tem de estar verde para o controlo medir; '
+              'uma maquina ocupada por outra lane produz exactamente este RED)')
+        return 2
     caught = 0
     for row, label, mut, witness in plan:
         original = row['elapsed_s']
@@ -560,7 +648,26 @@ def neg_arm():
     print('NEG-ARM %-14s %-32s %s %s'
           % ('KILL_BAND=0', 'M3 filtro de corte desligado',
              'APANHADO' if m3_ok else 'PASSOU', m3['detail']))
-    plan_n = len(plan) + 1
+    # M4: A REGUA DO REBASELINE. A mutacao devolve `before * 1.05` sobre TUDO --
+    # a forma que recusou dezoito passos de sub-segundo -- e o A12 tem de cair.
+    # Sem este braco, alguem reintroduz a regua propria e nenhuma arm se mexe.
+    saved_pct, saved_floor, saved_slack = (PER_STEP_PCT, PER_STEP_FLOOR_S,
+                                           PER_STEP_SLACK_S)
+    globals()['PER_STEP_PCT'] = 1.05
+    globals()['PER_STEP_FLOOR_S'] = 0.0
+    globals()['PER_STEP_SLACK_S'] = 0.0
+    try:
+        m4 = [a for a in rebase_arms() if a['arm'].startswith('A12')][0]
+    finally:
+        globals()['PER_STEP_PCT'] = saved_pct
+        globals()['PER_STEP_FLOOR_S'] = saved_floor
+        globals()['PER_STEP_SLACK_S'] = saved_slack
+    m4_ok = not m4['ok']
+    caught += 1 if m4_ok else 0
+    print('NEG-ARM %-14s %-32s %s %s'
+          % ('REBASE 1.05', 'M4 regua propria do rebaseline',
+             'APANHADO' if m4_ok else 'PASSOU', m4['detail']))
+    plan_n = len(plan) + 2
     total_ok = caught == plan_n
     print('NEG-ARM: %s (%d/%d mutantes apanhados; juiz antes: %s)'
           % ('PASS' if total_ok else 'FAIL', caught, plan_n, base_ok))
@@ -612,15 +719,8 @@ def main(argv):
         # nunca passa, e o trabalho que ele existe para registar fica bloqueado.
         # A regua e' a do `judge`: piso de `PER_STEP_FLOOR_S`, `PER_STEP_PCT` e a
         # folga absoluta de `PER_STEP_SLACK_S`.
-        grew = []
-        for name, secs in sorted(measured['per_step'].items()):
-            before = (old.get('per_step') or {}).get(name)
-            if not before or name in allowed:
-                continue
-            if max(before, secs) < PER_STEP_FLOOR_S:
-                continue
-            if secs > before * PER_STEP_PCT and (secs - before) > PER_STEP_SLACK_S:
-                grew.append('%s %.1fs -> %.1fs' % (name, before, secs))
+        grew = rebase_growth(old.get('per_step') or {}, measured['per_step'],
+                             allowed)
         if old_policy != policy:
             grew = []      # a regua antiga nao julga a politica nova; a razao foi dita
         if grew:
@@ -679,7 +779,7 @@ def main(argv):
     report(measured, base, gap)
     for line in why:
         print('  RED', line)
-    arms = judge_arms() + smooth_arms()
+    arms = judge_arms() + smooth_arms() + rebase_arms()
     bad_arms = [a for a in arms if not a['ok']]
     for a in arms:
         print('  ARM %s %s -- %s' % ('ok  ' if a['ok'] else 'RED ', a['arm'], a['detail']))

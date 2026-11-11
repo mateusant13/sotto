@@ -2568,7 +2568,7 @@ Seis propriedades, nenhuma opcional:
 **240.476 s** -- o PRAZO, nao o custo. Medido nesta arvore: `red-as-expected-load-shedding` tinha
 duas dessas amostras no historico e a mediana das tres fingia uma regressao de **+504 %** (40.256 s
 reais, medidos tres vezes) num passo que nao mudou uma linha; o RED custou uma sessao inteira a
-perseguir um numero que era a regua. `smooth_rows` descarta amostra **historica** que caia a menos de
+perseguir um numero que era a regua. `smooth` descarta amostra **historica** que caia a menos de
 1 s do prazo e **imprime** cada uma como `KILL-SAMPLE dropped step=..`, e as amostras desta corrida
 NUNCA sao descartadas (um corte de hoje reprova hoje). O par de oraculos julga as duas metades: S1-S5
 (a mediana sobrevive ao corte) e M3 do `--neg-arm` (banda a 0 e o S1 tem de cair), medido
