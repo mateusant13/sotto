@@ -67,6 +67,10 @@ import panel_state
 #: A MARCA que o motor nao deu, tirada da PROSA e da PAUSA medida (2026-11-10).
 #: Puro e importavel, para o oraculo julgar o fecho sem subir a shell.
 import prose_punct
+#: A CORRIDA que o decodificador inventou (`come come come ...`), cortada no
+#: texto ja' emitido (2026-11-11). Puro, e com a mesma regra estreita que o
+#: oraculo executa; ver `app/webview/text_normalize.py`.
+import text_normalize
 import topmost_keepalive as _topmost_keepalive
 import power_recovery as _power_recovery
 # A POLITICA de golpe do cao-de-guarda vive fora, e e' pura, para poder ser
@@ -15631,7 +15635,7 @@ class SottoShell:
                     # (M8 — see `_history_provenance`).
                     text = HISTORY_TAIL_RE.sub('', match.group(2)).strip()
                     yield {'date': day, 'hour': hour, 'time': match.group(1),
-                           'text': prose_punct.close_line(text, gap_s),
+                           'text': prose_punct.close_line(text_normalize.collapse_runs(text), gap_s),
                            'path': path,
                            #: The compact context carried on THIS line. A line
                            #: written before 2026-11-09 has no token and yields
@@ -18179,6 +18183,13 @@ class SottoShell:
         ov = getattr(self, 'caption_overlay', None)
         if ov is None:
             return False
+        # A CORRIDA DO MOTOR MORRE ANTES DO ECRAN (2026-11-11). So' o caminho
+        # do ASR: as linhas do PLAYER (`rows`) sao do YouTube, vao 1:1 e nao se
+        # reescrevem. Custo medido da funcao pura: ~30 us, contra 11,6 ms de
+        # pintura -- 0,3 % de um quadro, e ela devolve o MESMO objecto quando
+        # nao ha' corrida, logo o caso comum nao paga copia nenhuma.
+        if rows is None and text:
+            text = text_normalize.collapse_runs(text)
         # THE PLAYER'S ROWS TRAVEL AS ONE TEXT, ONE PER LINE (2026-10-29).
         # `caption_overlay._layout` sees the '\n' and draws them AS GIVEN --
         # it never calls `caption_wrap` on this channel. The trailing

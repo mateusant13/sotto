@@ -615,7 +615,29 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-11, 01:4x):** `_main\_audit-verify-all.cmd` = **352056 B**,
+- **PIN do ficheiro (medido 2026-11-11, 02:3x):** `_main\_audit-verify-all.cmd` = **353215 B**,
+  **4098 CRLF** / 0 bare LF, sha256 `D9C27F150273D336214A6EE77190708CF971B336490B365697566FE7EE5DB47D`.
+  (Mil cento e cinquenta e nove bytes e DOZE linhas a mais do que o pin de 352056 B: o par
+  `text-normalize` + `red-as-expected-text-normalize`, a CORRIDA DO MOTOR. Ordem do dono de
+  2026-11-11, verbatim: *"a merda da normalizacao de texto e frases ta HORRIVEL"*. MEDIDO no arquivo
+  dele (`history/2026-11-*`, 22 ficheiros, **1302** linhas, com o prefixo de hora e o comentario de
+  proveniencia removidos antes de contar): `Mmm` e' a linha INTEIRA em **121** (9,3 %), palavra
+  identica adjacente em **122** (9,4 %), linha sem marca terminal em **168** (12,9 %). Dentro da
+  segunda, **64** linhas (4,9 %) carregam uma corrida de 3+ palavras iguais -- `come come come come
+  come come come come come come come, come domain expansion`, `Watch just watch watch watch watch
+  watch everybody ...` --, e as outras **58** sao pares onde o caso legitimo existe (`super super`).
+  `app\webview\text_normalize.py` corta a corrida de 3+ e o par fora de `EMPHASIS`, e a VIRGULA
+  quebra a corrida: `No, no, no!` e `Nao, nao, nao.` nao se tocam. A marca terminal do fim vem com o
+  sobrevivente (`Come come come come.` -> `Come.`; sem isso a cura comia o ponto, medido). Fiado em
+  DOIS sitios, os dois onde o texto ja' existe inteiro: a legenda AO VIVO
+  (`push_caption_to_window`, so' o caminho do ASR -- as linhas do PLAYER sao do YouTube e vao 1:1) e
+  a LEITURA do historico (`_history_entries`, ao lado de `prose_punct`; o disco continua o registo
+  CRU). Medido no arquivo dele: **60** linhas curadas, **328** palavras a menos, **0** linhas que
+  cresceram e **0** que perderam a marca terminal. `_main\text-normalize-oracle.py` da'
+  `VERDICT: PASS (14/14)` e o `--neg-arm` **5/5** mutantes, cada um pela SUA arm -- o M2 so' foi
+  apanhado depois de o A5 medir TRES enfases em vez de um par, porque um par sobrevive nos dois
+  lados da regra.)
+- **PIN anterior (medido 2026-11-11, 01:4x):** `_main\_audit-verify-all.cmd` = **352056 B**,
   **4086 CRLF** / 0 bare LF, sha256 `EA703D9CDF73151C0374D8D794C87EC5A1CD284F8514AA8AEC9A20109A37AB81`.
   (Mil duzentos e sessenta e oito bytes e QUATORZE linhas a mais do que o pin de 350788 B: o par
   `audio-ring` + `red-as-expected-audio-ring`, o RING DE AUDIO DAS ULTIMAS 12 HORAS. Ordem do dono,
