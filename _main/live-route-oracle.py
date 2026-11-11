@@ -25,7 +25,14 @@ por `ast` (nunca por texto: um comentario que cita a chamada faria a arm passar)
   A6 SEM PERDA  `live_queue.PendingAudio.take_head` (o lote limitado): devolve
                 so' o mais antigo, na ordem, e o resto fica na fila -- o numero
                 de amostras nao muda.
-  W1..W6       AS EMENDAS: onde a guarda e' CHAMADA. O `worker/sotto_worker.py` e
+  I1 O CHAMADOR REAL: o `emit` de `worker/sotto_worker.py`, importado como
+                modulo e conduzido com `sys.stdout` trocado. Uma legenda entra,
+                UMA linha JSON sai, sem excecao -- e a recusa leva
+                `LIVE_ROUTE_REFUSED` ao stderr (nao ao stdout). Sem esta arm o
+                commit `fb3206d` passou 42 arms verdes com `log=err` (um nome
+                LOCAL de outra funcao) a rebentar no primeiro caption: a decisao
+                estava certa e a EMENDA nao existia. O mutante M9 repoe o defeito.
+  W1..W7       AS EMENDAS: onde a guarda e' CHAMADA. O `worker/sotto_worker.py` e
                 `app/webview/sotto_webview.py` sao de outras lanes nesta ronda,
                 por isso a emenda viaja como PATCH: a arm passa `pending` quando
                 o hunk esta no patch e ainda nao na arvore, e VERMELHA quando nao
@@ -38,13 +45,17 @@ from __future__ import annotations
 
 import argparse
 import ast
+import importlib.util
 import io
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import timeit
+import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -338,6 +349,92 @@ def _take_head_arms():
     return out
 
 
+# ── I1: o CHAMADOR REAL, importado e conduzido ───────────────────────────────
+_LOAD_SEQ = [0]
+
+
+def _load_worker(path):
+    """O worker INTEIRO como modulo (0,03 s medidos), como o bridge o carrega."""
+    # O worker faz `sys.path.insert(0, HERE)` e importa os irmaos; uma COPIA
+    # mutada vive noutro diretorio, por isso o diretorio do worker tem de estar
+    # no caminho primeiro (senao o mutante morre por `punctuation_model` antes de
+    # chegar ao `emit` e a arm passava a apanhar a coisa errada).
+    worker_dir = os.path.dirname(os.path.abspath(WORKER))
+    if worker_dir not in sys.path:
+        sys.path.insert(0, worker_dir)
+    _LOAD_SEQ[0] += 1
+    name = 'sotto_worker_emit_%d' % _LOAD_SEQ[0]
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _drive_emit(path):
+    """Um caption de cada porta pelo `emit` REAL. Devolve (linhas, stderr, exc)."""
+    mod = _load_worker(path)
+    buf, err = io.StringIO(), io.StringIO()
+    real_out, real_err = sys.stdout, sys.stderr
+    now_ms = time.time() * 1000.0
+    raised = None
+    sys.stdout, sys.stderr = buf, err
+    try:
+        mod.emit(type='caption', text='ola mundo', tap_ms=now_ms - 100.0)
+        mod.emit(type='caption', text='linha de ha 9 s', tap_ms=now_ms - 9000.0)
+        mod.emit(type='caption', text='Mmm.', tap_ms=now_ms - 100.0)
+        mod.emit(type='caption', text='lote', route='redux-batch', end=10.0,
+                 producer='redux')
+        mod.emit(type='status', state='probe', stage='route')
+    except BaseException as exc:                      # noqa: BLE001
+        raised = exc
+    finally:
+        sys.stdout, sys.stderr = real_out, real_err
+    lines = []
+    for line in buf.getvalue().splitlines():
+        if not line.strip():
+            continue
+        try:
+            lines.append(json.loads(line))
+        except ValueError:
+            lines.append({'__unparsed__': line})
+    return lines, err.getvalue(), raised
+
+
+def _emit_arms(path=None):
+    """As arms do chamador real. `path=None` = o worker da ARVORE."""
+    path = path or WORKER
+    lines, err, raised = _drive_emit(path)
+    out = []
+
+    def check(name, ok, evidence):
+        out.append((name, bool(ok), evidence))
+
+    check('I1 o `emit` REAL aceita 5 payloads sem excecao (o defeito `log=err` '
+          'rebentava no 1o caption)',
+          raised is None and len(lines) == 5,
+          {'raised': repr(raised)[:200], 'lines': len(lines)})
+    if raised is not None or len(lines) != 5:
+        return out
+    fresh, stale, noise, batch, status = lines
+    check('I1 fresco PINTA: sem `history_only` e `age_s` honesto',
+          fresh.get('history_only') is None and fresh.get('age_s') is not None
+          and abs(fresh['age_s'] - 0.1) < 0.01, fresh)
+    check('I1 as tres recusas marcam `history_only` com o motivo certo',
+          [stale.get('route_refused'), noise.get('route_refused'),
+           batch.get('route_refused')] == ['stale', 'noise', 'batch-route']
+          and all(x.get('history_only') is True for x in (stale, noise, batch)),
+          [stale.get('route_refused'), noise.get('route_refused'),
+           batch.get('route_refused')])
+    check('I1 a recusa e' + "'" + ' DITA no stderr e NAO polui o stdout',
+          'LIVE_ROUTE_REFUSED reason=stale' in err
+          and 'LIVE_ROUTE_REFUSED reason=noise' in err
+          and 'LIVE_ROUTE' not in json.dumps(lines[0]), err.strip()[:120])
+    check('I1 um payload que nao e' + "'" + ' caption atravessa intacto',
+          status == {'type': 'status', 'state': 'probe', 'stage': 'route'}, status)
+    return out
+
+
 # ── W: as emendas (o guarda e' CHAMADO, nao so' escrito) ────────────────────
 def _patch_added(path):
     """As linhas ADICIONADAS do patch, sem os `+` (o que a emenda escreve)."""
@@ -370,32 +467,61 @@ def _wiring_arms():
         out.append((name, bool(located), {'at': located, 'pending': pending,
                                           'evidence': evidence}))
 
-    place, pending = where(worker_src, worker_pending_src,
-                           'payload = live_route.admit(payload, log=err)')
-    check('W1 `emit` passa TODO caption por live_route.admit (ponto unico)', place,
-          pending, 'sotto_worker.emit')
+    # W1: o chamador esta' na ARVORE (o patch do worker foi aplicado em
+    # `fb3206d`; um patch pendente deixou de ser desculpa, e a arm antiga ainda
+    # lia o patch velho com `log=err` e passava -- verde sobre um artefacto morto).
+    check('W1 `emit` passa TODO caption por live_route.admit (ponto unico)',
+          'tree' if 'live_route.admit(payload, log=route_log)' in worker_src else '',
+          False, 'sotto_worker.emit')
 
-    # W1-bis: a guarda dentro do `emit` (AST, nao texto): a chamada tem de estar
-    # na FUNCAO, senao um comentario/nome solto a fazia passar.
-    in_emit = False
-    for src in (worker_src, worker_pending_src):
-        if not src:
-            continue
-        try:
-            tree = ast.parse(_patched_text(WORKER, WORKER_PATCH)
-                             if src is worker_pending_src else src)
-        except SyntaxError:
-            continue
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == 'emit':
-                for sub in ast.walk(node):
-                    if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
-                            and sub.func.attr == 'admit'
-                            and isinstance(sub.func.value, ast.Name)
-                            and sub.func.value.id == 'live_route'):
-                        in_emit = True
-    check('W1-bis a chamada esta DENTRO de `emit` (AST)', 'ast' if in_emit else '',
-          pending, {'in_emit': in_emit})
+    # W1-bis: a chamada DENTRO de `emit` (AST, nao texto: os comentarios acima
+    # citam `live_route.admit` e um grep dava verde sem invocador nenhum) e o
+    # `log=` tem de ser um nome de MODULO. E' o defeito do `log=err`: `err` era
+    # local do `except` e o primeiro caption levava UnboundLocalError.
+    emit_log_name = None
+    module_names = set()
+    worker_tree = ast.parse(worker_src)
+    for node in worker_tree.body:
+        if isinstance(node, (ast.Assign, ast.FunctionDef, ast.AsyncFunctionDef)):
+            targets = node.targets if isinstance(node, ast.Assign) else ()
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                module_names.add(node.name)
+            for target in targets:
+                for sub in ast.walk(target):
+                    if isinstance(sub, ast.Name):
+                        module_names.add(sub.id)
+    for node in ast.walk(worker_tree):
+        if isinstance(node, ast.FunctionDef) and node.name == 'emit':
+            for sub in ast.walk(node):
+                if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                        and sub.func.attr == 'admit'
+                        and isinstance(sub.func.value, ast.Name)
+                        and sub.func.value.id == 'live_route'):
+                    for kw in sub.keywords:
+                        if kw.arg == 'log' and isinstance(kw.value, ast.Name):
+                            emit_log_name = kw.value.id
+    check('W1-bis a chamada esta DENTRO de `emit` e o `log=` e' + "'" + ' um nome de MODULO',
+          'ast' if emit_log_name and emit_log_name in module_names else '',
+          False, {'log_name': emit_log_name})
+
+    # W7: AS DUAS LINHAS TEM DE CHEGAR AO LOG DO MOTOR. `stderr_tail` so' e'
+    # publicado na cauda da morte; a casa pagou isto em 2026-11-10
+    # (`WORKER_BOOT_PROF` escrito e nunca lido). A arm le a LISTA por AST: os
+    # comentarios da propria lista citam `LIVE_ROUTE_REFUSED` e
+    # `LIVE_ROUTE_UNKNOWN_AGE`, logo um grep dava verde com a lista intacta.
+    visible = set()
+    if os.path.isfile(SHELL):
+        for node in ast.walk(ast.parse(_src(SHELL))):
+            if isinstance(node, ast.Assign) and any(
+                    isinstance(t, ast.Name) and t.id == 'ENGINE_VISIBLE_TAGS'
+                    for t in node.targets):
+                for sub in ast.walk(node.value):
+                    if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                        visible.add(sub.value)
+    check('W7 as duas linhas da rota estao em ENGINE_VISIBLE_TAGS (senao morrem '
+          'no stderr_tail)',
+          'ast' if {'LIVE_ROUTE_REFUSED', 'LIVE_ROUTE_UNKNOWN_AGE'} <= visible else '',
+          False, sorted(t for t in visible if t.startswith('LIVE_ROUTE')))
 
     # W2/W3 sao meus e estao na arvore.
     drain = ''
@@ -518,6 +644,40 @@ MUTANTS = [
 ]
 
 
+WIRING_MUTANTS = [
+    ('M9 o `log=` da emenda volta a ser `err` (o defeito do commit fb3206d)',
+     'log=route_log)', 'log=err)'),
+]
+
+
+def _neg_arm_wiring():
+    """Muta o CHAMADOR numa copia do worker e exige o `emit` real a cair."""
+    src = _src(WORKER)
+    caught = 0
+    tmp = tempfile.mkdtemp(prefix='live-route-emit-')
+    try:
+        for index, (label, old, new) in enumerate(WIRING_MUTANTS, start=1):
+            if old not in src:
+                print('M%d ANCORA NAO ENCONTRADA -- mutacao impossivel (%s)'
+                      % (len(MUTANTS) + index, label))
+                continue
+            path = os.path.join(tmp, 'sotto_worker_m%d.py' % index)
+            with io.open(path, 'w', encoding='utf-8', newline='') as fh:
+                fh.write(src.replace(old, new, 1))
+            lines, _err, raised = _drive_emit(path)
+            number = len(MUTANTS) + index
+            if raised is not None or len(lines) != 5:
+                caught += 1
+                print('M%d CAUGHT [emit] by %r -- %s'
+                      % (number, repr(raised)[:80] if raised else
+                         'linhas=%d' % len(lines), label))
+            else:
+                print('M%d ** INERT ** -- %s' % (number, label))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return caught, len(WIRING_MUTANTS)
+
+
 def _neg_arm():
     """Muta uma COPIA do fonte real e exige que a MESMA tabela fique vermelha."""
     route_src = _src(ROUTE)
@@ -544,9 +704,12 @@ def _neg_arm():
             print('M%d CAUGHT [%s] by %s -- %s' % (index, target, ','.join(broken)[:150], label))
         else:
             print('M%d ** INERT ** -- %s' % (index, label))
-    print('NEG-ARM: %s (%d/%d)' % ('PASS' if caught == len(MUTANTS) else 'FAIL',
-                                   caught, len(MUTANTS)))
-    return 1 if caught == len(MUTANTS) else 0
+    wiring_caught, wiring_total = _neg_arm_wiring()
+    caught += wiring_caught
+    total = len(MUTANTS) + wiring_total
+    print('NEG-ARM: %s (%d/%d)' % ('PASS' if caught == total else 'FAIL',
+                                   caught, total))
+    return 1 if caught == total else 0
 
 
 def main(argv=None):
@@ -561,15 +724,16 @@ def main(argv=None):
     admit_checks, logs = _admit_arms()
     checks += admit_checks
     checks += _take_head_arms()
+    checks += _emit_arms()
     checks += _wiring_arms()
     ok = _report(checks)
     pending = [e for _n, _ok, e in checks
                if isinstance(e, dict) and e.get('pending')]
     if pending:
-        print('NOTE %d arm(s) pending a patch: %d hunk(s) not in the tree yet '
-              '(worker: %s | shell: %s)'
-              % (len(pending), len(pending),
-                 os.path.relpath(WORKER_PATCH, ROOT), os.path.relpath(SHELL_PATCH, ROOT)))
+        patches = [os.path.relpath(p, ROOT) for p in (WORKER_PATCH, SHELL_PATCH)
+                   if os.path.isfile(p)]
+        print('NOTE %d arm(s) pending a patch still not in the tree: %s'
+              % (len(pending), ' | '.join(patches) or '(nenhum patch em disco)'))
     print('VERDICT: %s (%d/%d)' % ('PASS' if ok else 'FAIL',
                                    sum(1 for _n, good, _e in checks if good),
                                    len(checks)))

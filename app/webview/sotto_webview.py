@@ -6814,6 +6814,14 @@ class ExternalCaptionWatcher(threading.Thread):
             self.finalized = False
         self.shell.external_captions_active = False
         self.shell.external_captions_available = False
+        # A TRANSICAO E' DITA SEMPRE (2026-11-11). A linha
+        # `EXTERNAL_CAPTIONS_RELEASED` acima vive DENTRO de `if self.last_line:`,
+        # por isso uma queda com a linha ja' gasta devolvia o ecra ao ASR sem
+        # NENHUMA linha no log -- e foi essa a transicao que deixou o ASR pintar
+        # por cima da faixa. `had_line` separa as duas quedas no proprio registo.
+        set_owner = getattr(self.shell, 'set_external_owner', None)
+        if callable(set_owner):
+            set_owner('local', reason=reason, had_line=had_line)
         # O PLAYER DEIXOU DE SER VISTO (2026-11-04). Sem isto, a chamada
         # SEGUINTE -- ja' sem linha e com as bandeiras limpas -- passava o
         # portao de cima por via do `last_seen` que o `_tick` tinha acabado de
@@ -12572,6 +12580,15 @@ class SottoShell:
         #: (its VRAM is not needed for captions that already exist).
         self.external_captions_active = False
         self.external_captions_available = False
+        #: A POSSE DO ECRA, DECIDIDA E NAO UM EFEITO LATERAL (2026-11-11).
+        #: `external_captions_active` e' um CACHE desta resposta; a guarda de
+        #: pintura le' ESTE campo, escrito so' por `set_external_owner`, que diz
+        #: a transicao. MEDIDO no log do dono: 3 pinturas do ASR (17:46:05/09/14)
+        #: entre duas linhas da faixa do YouTube e ZERO `EXTERNAL_CAPTIONS_RELEASED`
+        #: -- a posse mudou sem um registo que a datasse.
+        self.external_owner = 'local'
+        self.external_owner_episode = 0
+        self._asr_owner_episode = False
         self.external_caption_watcher = None
         #: THE YOUTUBE REAL TRACK (2026-10-19). Its own thread, because
         #: `yt_dlp`'s metadata call took 5.0 s (MEASURED) and the caption
@@ -19171,6 +19188,63 @@ class SottoShell:
         # refined text there would publish the very word the rule just blocked.
         return result.get('text') or text
 
+    def set_external_owner(self, owner, reason='', had_line=None):
+        """O DONO DO ECRA: um so' escritor, uma linha por transicao.
+
+        O DEFEITO QUE ISTO FECHA (MEDIDO 2026-11-11): a posse era o booleano
+        `external_captions_active`, escrito em tres sitios, e a queda que o limpa
+        dentro de `ExternalCaptionWatcher._release` so' deixava rasto quando
+        havia `last_line`. Uma queda com a linha ja' gasta devolvia o ecra ao ASR
+        SEM REGISTO -- e no log do dono, as 17:46:05/09/14, tres linhas do ASR
+        (`CAPTION_PROVISIONAL_PAINT ... src=- id=381.84`) pintaram entre duas
+        pinturas da faixa do YouTube (17:46:02 e 17:46:18) com **zero**
+        `EXTERNAL_CAPTIONS_RELEASED` na sessao inteira. Uma transicao que ninguem
+        regista nao pode ser datada por um portao nem por quem le' o log.
+
+        `had_line`: True/False numa queda (havia linha?), None numa tomada. A
+        linha sai SO' quando o dono muda: o tick pergunta muitas vezes a mesma
+        coisa, e um log por pergunta seria o ruido que ja' custou 51 553 linhas.
+        """
+        owner = 'player' if owner == 'player' else 'local'
+        previous = getattr(self, 'external_owner', 'local')
+        if owner == previous:
+            return previous
+        self.external_owner = owner
+        self.external_owner_episode = getattr(self, 'external_owner_episode', 0) + 1
+        self._asr_owner_episode = False
+        log(f'EXTERNAL_OWNER owner={owner} previous={previous} '
+            f'reason={reason or "-"} '
+            f'had_line={"n/a" if had_line is None else str(bool(had_line)).lower()} '
+            f'episode={self.external_owner_episode} '
+            f'active={str(bool(getattr(self, "external_captions_active", False))).lower()}')
+        return previous
+
+    def external_owner_refuses(self, source=''):
+        """`True` quando a linha LOCAL nao pode pintar: o dono do ecra e' o player.
+
+        A POSSE, E NAO O CACHE. O portao era `self.external_captions_active` --
+        um booleano que uma saida lateral (`_release`) pode limpar a meio de uma
+        vitoria do player. Aqui le'-se `external_owner`, escrito so' pelo
+        `set_external_owner` acima, que diz a transicao; a linha `external:*`
+        (o proprio player) NUNCA e' recusada, porque ela E' o dono.
+
+        A RECUSA E' POR EPISODIO, nao por legenda: um video com faixa cala o ASR
+        durante minutos, e uma linha por legenda seria o ruido que o dono ja'
+        pagou uma vez. O contador (`external_suppressed`) continua exacto.
+        """
+        if str(source or '').startswith('external:'):
+            return False
+        if getattr(self, 'external_owner', 'local') != 'player':
+            return False
+        if not getattr(self, '_asr_owner_episode', False):
+            self._asr_owner_episode = True
+            log(f'ASR_PAINT_REFUSED owner=player source={source or "-"} '
+                f'episode={getattr(self, "external_owner_episode", 0)} '
+                f'suppressed={getattr(self, "external_suppressed", 0) + 1} '
+                f'\u2014 a legenda local do audio que o player pinta vai para o '
+                f'historico e nao para o ecra')
+        return True
+
     def on_worker_caption(self, text, meta):
         # THE SESSION IS OBSERVED ON EVERY CAPTION, not only on a final
         # (2026-11-09): the first PARTIAL of a respawned worker is what proves
@@ -19201,11 +19275,12 @@ class SottoShell:
         source = ''
         if isinstance(meta, dict):
             source = str(meta.get('source') or '')
-        if self.external_captions_active and not source.startswith('external:'):
+        if self.external_owner_refuses(source):
             self.external_suppressed += 1
             if self.external_suppressed in (1, 100, 1000):
                 log(f'EXTERNAL_CAPTIONS_ASR_SUPPRESSED count={self.external_suppressed}')
             return
+        self._asr_owner_episode = False
         # THE CONTEXT OF A CLOSED LINE IS TAKEN ON ARRIVAL (2026-11-09). The
         # panel commits it later, on its own hold timer, so sampling the
         # foreground at commit time would record the app the owner switched to,
@@ -19418,6 +19493,9 @@ class SottoShell:
         if not self.external_captions_active:
             self.external_captions_active = True
             self._external_since = time.monotonic()
+        self.set_external_owner('player', reason='external-line:%s'
+                                % (str(source or 'player').split(':')[0],),
+                                had_line=True)
         # O ESTACIONAMENTO ESPERA (2026-11-02): a primeira linha do player NAO mata
         # o worker. Ver `EXTERNAL_PARK_DELAY_S`.
         self._park_worker_when_settled(source)
