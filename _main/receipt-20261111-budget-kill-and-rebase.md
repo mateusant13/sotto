@@ -304,3 +304,38 @@ silencio um passo que engordou seria o ratchet a assinar o proprio aumento.
 
 Medido depois: `BATTERY-BUDGET VERDICT RATCHET-OK -- steps=413 total=2731.4s` (rc=0) e
 `NEG-ARM: PASS (4/4 mutantes apanhados; juiz antes: True)` (rc=1).
+
+## 12-bis. A PROVENIENCIA CONFERIDA, e a causa real: um commit que engordou um passo
+nao tocou na regua
+
+A secao 12 justificou os quatro `--accept-growth` com "as lanes deram-lhes mais bracos". Isso
+era [INFERENCE] -- escrito sem conferir. Conferido agora, por `git log` (comando colado):
+
+```
+git log --oneline -3 --since=2026-11-07 -- _main/ctrlspace-swallow-oracle.py \
+    _main/load-shedding-oracle.py _main/youtube-cdp-source-oracle.py _main/gaming-hotkey-oracle.py
+5181c48 Ctrl+Space: o estado preso que engolia a tecla para sempre
+8a7c83c bateria: o controlo que nao fechava passa a 62 s com 19/19 apanhados; maquina 10x mais fraca virou regra
+bbc4387 gates: dois instrumentos que existiam sem passo, e a caixa que nao tinha chamador
+67cea7d bateria: tres instrumentos julgavam o que nao era o passo
+```
+
+A premissa e' SUSTENTADA (os quatro oraculos foram editados depois do baseline), e o commit
+`8a7c83c` da' a causa ainda mais nitida do que a que eu escrevi: o titulo daquele commit diz
+**"o controlo que nao fechava passa a 62 s"** -- a lane SABIA o numero novo e deixou o
+`battery-budget-baseline.json` com `red-as-expected-load-shedding = 40.3 s`. Ou seja, o defeito
+de PROCESSO medido aqui nao e' "a lane nao mediu": e' que **um commit que muda o custo de um
+passo nao e' obrigado a mexer na regua no mesmo commit**, e o ratchet so' o nomeia 26 minutos
+depois, no fim da corrida seguinte.
+
+O mecanismo nao foi trocado por um portao novo hoje (um portao sem chamador e' a doenca que
+este repo ja' pagou tres vezes, e a regra do dono manda nao criar artefacto de processo que
+custe mais do que protege). Fica escrito como obrigacao do MESMO commit: **quem altera um
+oraculo que e' dependencia de um passo re-mede aquele passo e reescreve a entrada do baseline na
+mesma entrega** -- `python _main/battery-budget-oracle.py --baseline --accept-growth <passo>
+--rebase-policy "<por que>"` custa 2,6 s e nao precisa de corrida inteira.
+
+Falsificador do que esta escrito acima: se os quatro oraculos NAO tivessem mudado depois do
+baseline, o acrescimo seria regressao sem causa declarada e o rebaseline teria de ser revertido.
+Medido: mudaram (quatro commits acima), logo o rebaseline fica.
+

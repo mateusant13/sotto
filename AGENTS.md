@@ -1,27 +1,51 @@
 # Sotto — contexto do repo para todo agente e subagente
 ## ASSUME THIS MACHINE IS 10x WEAKER THAN IT IS — AND WRITE THE CODE THAT WAY (owner order, 2026-11-11)
-Verbatim: *"ASSUME THIS MACHINE IS 10x WEAKER THAN IT IS AND WRITE THE CODE THAT WAY: one heavy job
-at a time, a declared ceiling in threads/MB/s/GiB measured BEFORE the job starts (not after it
-hurts), cache and resume so nothing is redone, and no unbounded loop, fan-out or in-memory
-accumulation."* And the ordering that goes with it: **throttling is the WORST of the approaches** —
-do less work, do it once, batch it, reuse it, make it incremental, drop the duplicate; a cap comes
-only after the work itself got cheaper, and **a limit you did not measure is not a limit**.
+Verbatim: *"UPDATE YOUR LOCAL AGENTS.md SO YOU STOP CAUSING PERFORMANCE DROPS ON THIS COMPUTER.
+ASSUME THIS MACHINE IS 10x WEAKER THAN IT IS AND WRITE THE CODE THAT WAY: one heavy job at a time, a
+declared ceiling in threads/MB/s/GiB measured BEFORE the job starts (not after it hurts), cache and
+resume so nothing is redone, and no unbounded loop, fan-out or in-memory accumulation. THROTTLING IS
+THE WORST OF THE APPROACHES: every preferable approach is a genuine optimization -- do less work, do
+it once, batch it, reuse it, make it incremental, drop the duplicate -- and a cap only comes after the
+work itself got cheaper. A limit you did not measure is not a limit."*
 
-- **ONE heavy job at a time, per lane and per machine.** Heavy = a model load, a battery run, a
-  census walk, a codec, a full-corpus sweep. Before it starts, the lane writes the ceiling it will
-  hold (threads, MB, MB/s, GiB) and the instrument that will show it, and it runs behind the
-  project's own cager from the FIRST invocation (`python -m watcher run --cpu 40 -- …` here).
-  Measured cost of skipping this: a thread benchmark with no cage was the largest producer of the
-  owner's stutter (pid 56092, `io 88.5 MB/s`, three `tick.stall` in one window).
-- **Nothing is re-executed that can be reused.** Content-addressed cache, incremental sweeps, delta
-  output (`MISS <key>` / `CACHE HIT <key>`); a repeated run with one flag changed is one data point,
-  not two (see `_packs/performance/extreme-optimization-audit` §"Reuse before re-running").
-- **No unbounded loop, fan-out or in-memory accumulation**: a queue has a ceiling and COUNTS what it
-  dropped (`LOG_STDOUT_SUPPLIED dropped=N` is the shape), a loop that derives its own period divides
-  the cost by a declared budget instead of sleeping the cost, and a corpus walk times each batch and
-  sleeps a declared multiple of what it just spent (the CPU cap bounds CPU only — measured 2026-11-10).
-- **A measurement is not work; a probe that measures by burning the machine is the defect.** Before
-  any probe: its own thread/IO ceiling, its own cache, its own deadline.
+Cinco obrigacoes, e a ordem entre elas e' a propria ordem dele:
+
+1. **UM trabalho pesado de cada vez**, e so' com o lease do gate central
+   (`I:\!manager\tools\performance-gate.py`). `unknown` nao e' `green`, um skip nao e' aprovacao, e
+   dois agentes a varrer disco em paralelo sao o stutter que ele reporta. Heavy = um carregamento de
+   modelo, uma corrida de bateria, uma varredura de censo, um codec, um sweep de corpus inteiro; e
+   ela corre atras do cager do proprio projeto desde a PRIMEIRA invocacao
+   (`python -m watcher run --cpu 40 -- …` aqui). Custo medido de saltar isto: um benchmark de fios
+   sem cage foi o maior produtor do stutter dele (pid 56092, `io 88.5 MB/s`, tres `tick.stall` numa
+   janela).
+2. **O tecto e' DECLARADO ANTES do trabalho**, em escola de threads (por sessao, nao por processo --
+   medido em 2026-11-09: quatro sessoes com pool proprio somam 146-201 % de um nucleo), em MB/GiB de RSS/commit, em
+   MB/s de IO e em numero de ficheiros por varredura. Depois mede-se e colam-se os dois numeros. Um
+   numero escrito DEPOIS da maquina doer nao e' um tecto, e' uma desculpa com digitos.
+3. **Cache e resume por CONTEUDO** (hash dos bytes de entrada + parametros), incremental (so' as
+   combinacoes novas) e delta (`MISS <key>` / `CACHE HIT <key>`). Medido nesta casa: a chave custa
+   0,07 s e o hit devolve em 0,16 s contra 4,5-120 s de execucao; e a mesma pergunta re-executada com
+   uma flag diferente e' zero informacao nova (ver
+   `_packs/performance/extreme-optimization-audit` §"Reuse before re-running").
+4. **Nada de laco, fan-out ou acumulacao sem tecto**: nem thread por evento (medido: `CreateThread`
+   por quadro = 90,879 criacoes/s), nem re-arma de timer por tick (medido: 2 569 Hz), nem `list`/
+   `dict`/buffer que cresce com o tempo de vida do processo (tecto declarado + corte CONTADO + linha
+   que o diz, como o `REDUX_FUSE_TRIMMED`). Uma fila tem tecto e CONTA o que largou
+   (`LOG_STDOUT_SUPPLIED dropped=N` e' a forma), e um laco que deriva o proprio periodo divide o
+   custo por um orcamento declarado em vez de dormir o custo.
+5. **O throttle vem DEPOIS da optimizacao, nunca antes.** Primeiro faz-se menos trabalho, uma vez,
+   em lote, reutilizado, incremental, sem duplicacao; so' o que sobrar desse exercicio pode levar um
+   tecto -- e o tecto nao e' a cura: o `--cpu 40` do watcher limita CPU e NAO limita IO (medido em 2026-11-10:
+   `io 20.5 MB/s` com o Job Object a 40 %), logo um trabalho que le' disco precisa do seu proprio
+   duty cycle na origem, com o custo do lote medido e o descanso derivado dele (`ratio = 4.0`), nunca
+   um `sleep` fixo por lote.
+
+O instrumento do disco e' `python I:\!watcher\tools\artifact-census.py --project H:/sotto [--budget-gib N
+--gate]` antes e depois, com os dois numeros e o volume; o do processo e' o pid + o fio COM NOME
+(`_main/shell-thread-cpu.py`) e a arvore (`_main/tree-cost-oracle.py`). **Uma medicao nao e' trabalho;
+uma sonda que mede queimando a maquina e' o defeito** -- toda sonda tem o seu proprio tecto de fios e
+de IO, a sua propria cache e o seu proprio prazo. E a frase que resume a lei:
+**um limite que nao foi medido nao e' um limite.**
 
 ## Owner rule — ship work without paperwork drag (2026-10-31T02:59:01-03:00)
 Keep useful behavior and its minimum proof/docs moving in the same fast delivery. Skip optional process artifacts when they cost more than the change. Before agent fan-out or disk-heavy builds/tests, use `fast-land-shared-artifacts`: measure total disk growth, share the sanctioned target/cache across lanes, and serialize instead of duplicating heavy artifacts when sharing is unsafe. This owner direction supersedes older process checklists that add optional work without protecting a concrete risk; keep only minimum proof for correctness, security, data integrity, or destructive work.
@@ -2420,45 +2444,6 @@ um laco que dorme exactamente o tempo que trabalha gasta **100 % de um nucleo po
 `python _main/shell-thread-budget-oracle.py` antes e depois e cola os dois numeros com o pid. Um
 stutter "resolvido" sem pid, fio e linha nao e' um stutter resolvido. Recibo de referencia:
 `_main/receipt-20261108-stutter-caption-tick.md`.
-
-## ESTA MAQUINA E' 10x MAIS FRACA DO QUE O CODIGO ASSUME (ordem do dono via herdr, 2026-11-11)
-
-Verbatim: *"UPDATE YOUR LOCAL AGENTS.md SO YOU STOP CAUSING PERFORMANCE DROPS ON THIS COMPUTER.
-ASSUME THIS MACHINE IS 10x WEAKER THAN IT IS AND WRITE THE CODE THAT WAY: one heavy job at a time, a
-declared ceiling in threads/MB/s/GiB measured BEFORE the job starts (not after it hurts), cache and
-resume so nothing is redone, and no unbounded loop, fan-out or in-memory accumulation. THROTTLING IS
-THE WORST OF THE APPROACHES: every preferable approach is a genuine optimization -- do less work, do
-it once, batch it, reuse it, make it incremental, drop the duplicate -- and a cap only comes after the
-work itself got cheaper. A limit you did not measure is not a limit."*
-
-Cinco obrigacoes, e a ordem entre elas e' a propria ordem dele:
-
-1. **UM trabalho pesado de cada vez**, e so' com o lease do gate central
-   (`I:\!manager\tools\performance-gate.py`). `unknown` nao e' `green`, um skip nao e' aprovacao, e
-   dois agentes a varrer disco em paralelo sao o stutter que ele reporta.
-2. **O tecto e' DECLARADO ANTES do trabalho**, em escola de threads (por sessao, nao por processo --
-   medido em 2026-11-09: quatro sessoes com pool proprio somam 146-201 % de um nucleo), em MB/GiB de RSS/commit, em
-   MB/s de IO e em numero de ficheiros por varredura. Depois mede-se e colam-se os dois numeros. Um
-   numero escrito DEPOIS da maquina doer nao e' um tecto, e' uma desculpa com digitos.
-3. **Cache e resume por CONTEUDO** (hash dos bytes de entrada + parametros), incremental (so' as
-   combinacoes novas) e delta (`MISS <key>` / `CACHE HIT <key>`). Medido nesta casa: a chave custa
-   0,07 s e o hit devolve em 0,16 s contra 4,5-120 s de execucao; e a mesma pergunta re-executada com
-   uma flag diferente e' zero informacao nova.
-4. **Nada de laco, fan-out ou acumulacao sem tecto**: nem thread por evento (medido: `CreateThread`
-   por quadro = 90,879 criacoes/s), nem re-arma de timer por tick (medido: 2 569 Hz), nem `list`/
-   `dict`/buffer que cresce com o tempo de vida do processo (tecto declarado + corte CONTADO + linha
-   que o diz, como o `REDUX_FUSE_TRIMMED`).
-5. **O throttle vem DEPOIS da optimizacao, nunca antes.** Primeiro faz-se menos trabalho, uma vez,
-   em lote, reutilizado, incremental, sem duplicacao; so' o que sobrar desse exercicio pode levar um
-   tecto -- e o tecto nao e' a cura: o `--cpu 40` do watcher limita CPU e NAO limita IO (medido em 2026-11-10:
-   `io 20.5 MB/s` com o Job Object a 40 %), logo um trabalho que le' disco precisa do seu proprio
-   duty cycle na origem, com o custo do lote medido e o descanso derivado dele (`ratio = 4.0`), nunca
-   um `sleep` fixo por lote.
-
-O instrumento do disco e' `python I:\!watcher\tools\artifact-census.py --project H:/sotto [--budget-gib N
---gate]` antes e depois, com os dois numeros e o volume; o do processo e' o pid + o fio COM NOME
-(`_main/shell-thread-cpu.py`) e a arvore (`_main/tree-cost-oracle.py`). E a frase que resume a lei:
-**um limite que nao foi medido nao e' um limite.**
 
 ## UM LIMITE DE MEDICAO LARGA UM INSTRUMENTO, NAO UM PARAGRAFO (2026-11-09)
 
