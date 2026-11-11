@@ -89,10 +89,16 @@ Recorte de `_main/webview-run.log` (pid 49180), um intervalo de 4 s:
 
 Tres leituras, cada uma com o numero ao lado:
 
-1. **A rota foi DECIDIDA e o pintor nao obedeceu.** O log tem
-   `AUDIO_ROUTE external:youtube:track local=off`; mesmo assim o ASR local continuou a produzir
-   linhas (`rows_since_tick` 95 -> 141 entre 17:45:56 e 17:47:57, `chunks_since_tick=0`) e o shell
-   pintou-as com `src=-`. Quem pinta nao pergunta a rota decidida -- nao ha guarda.
+1. **A guarda de rota EXISTE e a maioria das linhas e' barrada -- mas a transicao e' MUDA.**
+   `grep -c AUDIO_ROUTE` no log da' **0**: essa tag nao existe nesta arvore, e a primeira versao
+   deste paragrafo afirmou-a. O que existe medido: `EXTERNAL_CAPTIONS_ASR_SUPPRESSED count=1`
+   as 17:36:30.317 e `count=100` as 17:48:02.336 -- 99 linhas do ASR barradas em 11,5 min pelo
+   portao de `on_worker_caption` (`external_captions_active and not source.startswith('external:')`).
+   Mesmo assim 3 chegaram ao ecra (`src=-`), logo a bandeira estava **False** naqueles instantes.
+   O unico sitio que a poe a False e' `external_captions_active = False` em `_release`, e a linha
+   `EXTERNAL_CAPTIONS_RELEASED` vive DENTRO de `if self.last_line:` -- uma limpeza com `last_line`
+   vazio limpa as bandeiras **sem escrever nada**. Nenhum `EXTERNAL_CAPTIONS_RELEASED` existe em
+   2026-11-11. Ou seja: a troca de dono da superficie acontece, e o log nao a tem.
 2. **O payload do ASR nao traz a idade do audio**: `tap_ms=None age_ms=None`. Sem esse numero nao
    existe recusa possivel do lado da shell, e e' por isso que o atraso de ~5 min nao tem portao.
 3. **O texto do ASR nao e' o audio que o player toca.** No mesmo instante o player diz "My name is
