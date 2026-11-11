@@ -168,3 +168,15 @@ E o medidor NAO estava cego -- a hipotese foi testada e caiu: 1441 `BRIDGE_METER
 `peak > 0` (0,3244 / 0,1924 / 0,5782 / 0,1088 / 0,652 / 0,4737 nas ultimas). Durante a janela plana o
 `peak=0.0` era VERDADE. A cura certa e' a guarda que espera, nao o instrumento que mede.
 
+## 9. O PROCESSO VIVO JA' E' MAIS VELHO QUE O CODIGO (2026-11-11, 20:0xZ)
+
+`python _main/boot-interaction-oracle.py` passou a imprimir
+`BOOT-INTERACTION SKIPPED reason=stale-process live=LIVE_CODE STALE log=...webview-run.log`, com cada
+falha reimpressa como `STALE-EVIDENCE`. Nao e' um defeito do oraculo: o processo do dono (pid 49180)
+arrancou as 17:34 e as quatro lanes desta rodada estao a escrever a arvore agora. Qualquer numero da
+sessao viva mede o codigo ANTIGO.
+
+Consequencia, e ela vai no relatorio final sem eufemismo: as curas desta rodada sao **fixed, NOT
+verified** ate' o dono reiniciar a app. O que ja' esta' fechado e' a MEDICAO (secoes 2-8) e o
+instrumento que a torna juiz.
+
