@@ -180,3 +180,18 @@ Consequencia, e ela vai no relatorio final sem eufemismo: as curas desta rodada 
 verified** ate' o dono reiniciar a app. O que ja' esta' fechado e' a MEDICAO (secoes 2-8) e o
 instrumento que a torna juiz.
 
+### 7-bis. A FREQUENCIA do defeito, no log de hoje (pid 49180)
+
+| evento | contagem |
+|---|---|
+| `YOUTUBE_CDP_SOURCE state=slow (WebSocketTimeoutException)` | 65 |
+| `YOUTUBE_CDP_SOURCE state=reconnect` | 4 |
+| `YOUTUBE_CDP_SOURCE state=adopted:<de>-><para>` | **5** |
+| `YOUTUBE_CDP_SOURCE state=attached` | 48 |
+| `CAPTION_WINDOW_BLANKED` | 46, em **7** milissegundos com mais de um blank |
+
+Cinco adocoes numa sessao e' a taxa da "legenda aleatoria": cada adocao fabrica o
+`VIDEO_CHANGED` que esvazia a superficie e baixa o dono dela. E os 7 milissegundos com dois blanks
+significam que o epoch sobe duas vezes no mesmo instante -- dois objetos, ou um objeto a esvaziar
+duas vezes. Nenhum dos dois casos tem linha que os distinga.
+
