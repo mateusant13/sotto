@@ -2207,7 +2207,7 @@ class StreamAsr:
 
 # ── device selection ──────────────────────────────────────────────────────────
 def silent_desktop_hold(device_peak, tap_floor, live, window_s, silent_windows=0,
-                        max_window_s=60.0):
+                        max_window_s=60.0, own_peak=None):
     """A MAQUINA CALADA NAO E' UM DISPOSITIVO PARTIDO -- a janela seguinte, ou None.
 
     O DEFEITO MEDIDO (2026-11-02, sessao viva pid 4404): desktop em silencio e a
@@ -2226,8 +2226,28 @@ def silent_desktop_hold(device_peak, tap_floor, live, window_s, silent_windows=0
         tambem plana -> a maquina esta' calada: devolve o tamanho da janela
         SEGUINTE (dobra ate' `max_window_s`) e a tap NAO e' fechada nem reaberta.
       * qualquer endpoint com sinal acima do piso -> None: o audio mudou de sitio,
-        a rotacao e' o movimento certo.
+        a rotacao e' o movimento certo -- EXCEPTO quando o endpoint com sinal e' o
+        DESTA tap (`own_peak`), que entao fica aberta (ver abaixo).
     """
+    # O ENDPOINT DESTA TAP NAO SE ABANDONA (2026-11-11; medido no arranque do
+    # dono, `_main/webview-run.log` pid 21400). `live` responde "alguem toca na
+    # maquina", e a politica lida so' com isso rotaciona mesmo quando o altifalante
+    # que toca e' o que esta' debaixo da tap: medido as 00:48:55.836 a tap abriu
+    # `CABLE Input` com `BRIDGE_METER peak=0.0458` (a tocar), leu menos de
+    # `TAP_SILENT_BLOCKS` blocos, e as 00:49:03.396 publicou `device-rotated
+    # (flat)`; a escada passou por `VoiceMeeter` (mudo), `Fones` (recusado) e
+    # `Headset hands-free` (mudo) ate' parquear as 00:49:19.8 -- e a primeira
+    # legenda so' saiu as 00:49:41.3, 45,5 s depois de o audio ja' estar no
+    # endpoint que tinhamos aberto. Estrela de blocos num endpoint que RENDERIZA
+    # nao e' dispositivo morto: e' buffer a encher, e reabrir noutro sitio e'
+    # exactamente o passeio que custou os 45 s.
+    try:
+        mine = None if own_peak is None else float(own_peak)
+    except (TypeError, ValueError):
+        mine = None
+    if mine is not None and mine > float(tap_floor):
+        grown = float(window_s) * (2.0 ** (max(0, int(silent_windows)) + 1))
+        return min(grown, float(max_window_s))
     if not live:
         return None
     # O PICO DA JANELA NAO DECIDE (2026-11-02, medido na sessao do dono). Havia
@@ -2365,11 +2385,24 @@ def window_ended(now, dev, device_peak, tap_floor, tap_window, counters, emit=No
     if state is None:
         state = counters['silent'] = {'windows': 0, 'logged': False}
     live = _live_render_peaks()
+    # O PICO DESTE ENDPOINT, lido do MESMO censo (2026-11-11). Ver
+    # `silent_desktop_hold(own_peak=...)`: o censo responde "alguem toca", nao
+    # "alguem toca AQUI", e a diferenca custou 45 s no arranque dele.
+    try:
+        _ep = dev.get('endpoint_id')
+        own_peak = None if _ep is None else live.get(_ep)
+    except (TypeError, ValueError):
+        own_peak = None
     hold_s = silent_desktop_hold(device_peak['value'], tap_floor, live, tap_window,
-                                 state['windows'], TAP_SILENT_DESKTOP_MAX_S)
+                                 state['windows'], TAP_SILENT_DESKTOP_MAX_S,
+                                 own_peak=own_peak)
     if hold_s is None:
         return None
     state['windows'] += 1
+    try:
+        _loud_here = own_peak is not None and float(own_peak) > float(tap_floor)
+    except (TypeError, ValueError):
+        _loud_here = False
     # A PERGUNTA "CALADO OU MORTO?" RE-ARMA-SE AQUI (2026-11-04). Uma janela
     # estendida e' uma janela NOVA para o medidor: o audio pode ter comecado
     # NOUTRO endpoint durante a espera, e e' `dead_first_block_plan` que o
@@ -2378,10 +2411,16 @@ def window_ended(now, dev, device_peak, tap_floor, tap_window, counters, emit=No
     counters.pop('quiet', None)
     if not state['logged'] and emit is not None:
         state['logged'] = True
-        emit(type="status", state="tap-silent-desktop", device=dev.get('name'),
+        emit(type="status",
+             state="tap-own-endpoint-loud" if _loud_here else "tap-silent-desktop",
+             device=dev.get('name'),
              window_s=round(hold_s, 1), endpoints=len(live),
              peak=round(device_peak['value'], 6), floor=tap_floor,
-             why="no endpoint is rendering: keep this tap, do not reopen")
+             own_peak=None if own_peak is None else round(float(own_peak), 6),
+             why=("this endpoint is rendering: starved blocks are not a dead "
+                  "device, so the tap stays"
+                  if _loud_here else
+                  "no endpoint is rendering: keep this tap, do not reopen"))
     return now + hold_s
 
 

@@ -311,6 +311,31 @@ def arms(shell_mod, worker_mod, wasapi_mod):
            'why': plan['why'], 'after_budget': spent['action'],
            'budget': worker_mod.TAP_DEAD_SWITCH_MAX})
 
+    # -- 11: O ENDPOINT QUE TOCA NAO SE ABANDONA (medido 2026-11-11) ----------
+    # Arranque do dono, pid 21400: a tap abriu `CABLE Input` a tocar
+    # (`BRIDGE_METER peak=0.0458` as 00:48:55.878), leu poucos blocos, e as
+    # 00:49:03.396 a escada rotacionou porque o CENSO dizia "alguem toca" -- sem
+    # perguntar SE ERA ESTE. Passeou por tres endpoints e parqueou; a primeira
+    # legenda saiu as 00:49:41.3, 45,5 s depois de o audio ja' estar no endpoint
+    # aberto. As tres metades: o proprio a tocar -> fica; o proprio mudo e outro a
+    # tocar -> rotaciona (o audio mudou de sitio); proprio mudo e ninguem a tocar
+    # -> a regra do desktop parado, como sempre.
+    own_loud = worker_mod.silent_desktop_hold(
+        0.0458, FLOOR, {'ep-mine': 0.0458, 'ep-other': 0.0}, WINDOW_S, 0, HOLD_CAP_S,
+        own_peak=0.0458)
+    moved_away = worker_mod.silent_desktop_hold(
+        0.0, FLOOR, {'ep-mine': 0.0, 'ep-other': 0.44}, WINDOW_S, 0, HOLD_CAP_S,
+        own_peak=0.0)
+    no_reading = worker_mod.silent_desktop_hold(
+        0.0, FLOOR, {'ep-mine': 0.0}, WINDOW_S, 0, HOLD_CAP_S, own_peak=None)
+    rung_without_id = worker_mod.silent_desktop_hold(
+        0.0, FLOOR, {'ep-other': 0.44}, WINDOW_S, 0, HOLD_CAP_S, own_peak=None)
+    check('11-the-endpoint-that-renders-is-not-abandoned',
+          own_loud == WINDOW_S * 2 and moved_away is None and no_reading == WINDOW_S * 2
+          and rung_without_id is None,
+          {'own_peak_loud_hold_s': own_loud, 'signal_elsewhere': moved_away,
+           'quiet_hold_s': no_reading, 'rung_without_endpoint_id': rung_without_id})
+
     # -- 10: fiacao -- as decisoes estao LIGADAS onde a corrida as usa --------
     worker_src = open(WORKER, encoding='utf-8', newline='').read()
     shell_src = open(SHELL, encoding='utf-8', newline='').read()
@@ -325,6 +350,9 @@ def arms(shell_mod, worker_mod, wasapi_mod):
         'tap-quiet-publicado': 'TAP_QUIET_DESKTOP' in worker_src,
         'a-escada-consulta-o-plano': 'dead_first_block_plan(' in worker_src,
         'a-espera-rearma-a-pergunta': "counters.pop('quiet', None)" in worker_src,
+        'a-espera-le-o-pico-do-proprio-endpoint': 'own_peak=own_peak' in worker_src
+            and "live.get(_ep)" in worker_src,
+        'o-aviso-nomeia-o-endpoint-a-tocar': 'tap-own-endpoint-loud' in worker_src,
         'a-shell-registra-a-troca': 'ENDPOINT_SWITCH reason=' in shell_src,
         'a-shell-usa-a-decisao': 'device_death_delay(' in shell_src,
         'o-medidor-da-shell-e-so-leitura': 'audio_playing.loudest()' in shell_src,
@@ -373,6 +401,10 @@ MUTANTS = (
     ('m4-o-backoff-de-15s-volta-para-a-morte-de-dispositivo', 'shell',
      ('DEVICE_SWITCH_FREE = 2', 'DEVICE_SWITCH_FREE = 0  # MUTANTE'),
      '3-device-death-restarts-in-250ms'),
+    ('m5-o-endpoint-que-toca-volta-a-ser-abandonado', 'worker',
+     ('    if mine is not None and mine > float(tap_floor):',
+      '    if False and mine is not None and mine > float(tap_floor):  # MUTANTE'),
+     '11-the-endpoint-that-renders-is-not-abandoned'),
 )
 
 
