@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: mede a placa contra a tinta branca do bitmap que embarca; nao redesenha a legenda nem decide a largura que o dono quer.
 """ORACLE: a PLACA da legenda nativa abraca a linha -- e a opacidade e' da PLACA.
 
 O dono, 2026-11-09, verbatim: *"the background in the subtitles is too wide.

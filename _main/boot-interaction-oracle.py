@@ -1,3 +1,4 @@
+# NO-BUG: le a ultima `SHELL_STARTUP_STAGE` do log e NAO arranca a app -- nao torna o arranque mais rapido, so recusa um orcamento de primeira interaccao sem numero.
 """A FLUIDEZ MEDE-SE DO ARRANQUE, E DA PRIMEIRA INTERACCao -- ordem do dono, 2026-11-10.
 
 Verbatim: *"a performance e o measure de TUDO tem que comecar a partir do momento que

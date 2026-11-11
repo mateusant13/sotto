@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: mede a FUNCAO `ladder_try_line` e o site de chamada; abrir um dispositivo de audio esta' fora de alcance, logo nao mede o ms real do open.
 """O portao do `LADDER_TRY`: o custo de ABRIR cada rung tem uma linha, com ms.
 
 PORQUE ESTE ORACULO EXISTE (medido 2026-11-10, log do dono pid 52792): entre

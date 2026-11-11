@@ -1,3 +1,4 @@
+# NO-BUG: julga que a chamada de arranque volta depressa e o disco sai da thread da UI; nao acelera o `os.makedirs` nem o carregamento da fila.
 """startup-ui-thread-block-oracle.py -- o DISCO nunca corre na thread da janela.
 
 NASCIDO DE UM HANG MEDIDO (2026-11-08 18:57, pid 9628). O dono tem o autostart

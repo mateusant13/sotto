@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: conta os `call :step` sem `:record` no .cmd; nao corrige passo nenhum da bateria, so recusa um veredicto carimbado no nome do passo errado.
 """Um `call :step` que ninguem regista e' um veredicto que ninguem le.
 
 NASCEU DE UMA MEDICAO (2026-11-08). O bloco do painel da

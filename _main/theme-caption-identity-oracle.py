@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: julga os SEIS tokens de cada tema e a ausencia de literais no bloco do historico; nao desenha tema nenhum nem decide o gosto do dono.
 """Sotto -- o PORTAO DA IDENTIDADE: cada tema tem o SEU desenho de legenda.
 
 NASCEU DE UMA ORDEM DO DONO (2026-11-08, verbatim):

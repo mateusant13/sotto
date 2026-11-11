@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: conta os fios criados pelo relogio do overlay com o `_arm_tick` real; nao mede CPU nem latencia da pintura no ecra do dono.
 """O RELOGIO DO OVERLAY NAO CRIA UM FIO POR FRAME (2026-11-08).
 
 Nasceu do DM do watcher: ele mediu `creation=90.879 creations/s` na arvore do

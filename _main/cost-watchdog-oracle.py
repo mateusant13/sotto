@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# NO-BUG: julga a linha de custo e a DECISAO de reiniciar (pura), sem tocar audio e sem reiniciar worker nenhum -- nao corrige a degradacao que o worker paga.
 """cost-watchdog-oracle -- a regra "CPU sem linha" e as duas pontas da linha que a alimenta.
 
 PORQUE EXISTE. O watcher mediu o worker do dono (`worker/sotto_worker.py`, pid 20676,

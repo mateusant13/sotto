@@ -22,8 +22,9 @@ AS ARMS:
   3. `no-fade`            -- `FADE_ON` e' False e `_fade_alpha()` devolve 255.
   4. `no-plate-pixels`    -- no bitmap RENDERIZADO (o que vai para a tela) nenhum
      pixel de fundo existe: o canto e' transparente e nao ha' pixel colorido.
-  5. `theme-not-branded`  -- a shell NAO deixa o design do painel vestir a
-     legenda.
+  5. `face-youtube-plate-design` -- A FACE E' DO PLAYER, A PLACA E' DO DESENHO
+     (ordem de 2026-11-09; ate' 2026-11-11 esta arm exigia "nada do design",
+     que a ordem seguinte revogou, e o ancora dela ja' tinha apodrecido).
   6. `asr-does-not-override` -- o caminho do ASR nao empurra texto enquanto o
      player fornece linhas (o defeito medido 00:01:41-00:01:46).
 
@@ -36,6 +37,7 @@ from __future__ import annotations
 import argparse
 import io
 import os
+import re
 import sys
 import tempfile
 
@@ -89,7 +91,15 @@ ctypes_bytes = ctypes.c_ubyte
 
 
 def render_probe_alpha(width, height):
-    """O alfa de um pixel no MEIO da borda de cima do bitmap branco."""
+    """O alfa do pixel no MEIO da PRIMEIRA FILA que uma placa pode ocupar.
+
+    A FILA NAO E' A 1 (re-medido 2026-11-11). O desenho de 2026-11-11 (ordem do
+    dono: *"essa borda branca ai"*) entra a placa `EDGE_PX` para dentro e escreve
+    a fila exterior a ALFA ZERO. A sonda lia `y=1` -- a fila da aresta, que e'
+    transparente POR CONSTRUCAO, com ou sem placa -- logo media sempre 0 e nao
+    podia acusar placa nenhuma. Le' agora `EDGE_PX + 1`, a primeira fila do
+    interior, que uma placa opaca pinta.
+    """
     import clr
     clr.AddReference('System.Drawing')
     import overlay_paint
@@ -97,10 +107,40 @@ def render_probe_alpha(width, height):
     text = '\n'.join(SAMPLE)
     lines, prev, w, h, _ = overlay_paint._layout(text, '', 1.0, 1920, theme)
     bmp = overlay_paint._premultiplied_bitmap(lines, prev, w, h, 1.0, theme, None)
+    row = int(getattr(overlay_paint, 'EDGE_PX', 1)) + 1
     try:
-        return (bmp.GetPixel(w // 2, 1).ToArgb() >> 24) & 0xFF
+        return (bmp.GetPixel(w // 2, min(row, h - 1)).ToArgb() >> 24) & 0xFF
     finally:
         bmp.Dispose()
+
+
+def plate_free(edge_alpha, opaque, tinted, total):
+    """A REGRA DA PLACA, UMA SO' -- a arm positiva e o controlo chamam ESTA.
+
+    Sem placa: a primeira fila interior e' transparente, nenhum pixel e' colorido
+    e o bitmap e' quase todo transparente (so' o glifo com contorno e' opaco).
+    Com placa: qualquer das tres cai. O controlo do `--neg-arm` julga o mutante
+    por esta MESMA funcao, logo nao pode divergir da arm que ele controla.
+    """
+    return (edge_alpha == 0 and not tinted
+            and opaque < total // 3)
+
+
+def face_is_players(shell):
+    """A FACE E' DO PLAYER; A PLACA E' DO DESENHO -- a ordem de 2026-11-09.
+
+    Lida do codigo vivo, por NOME e nao por posicao: o tema parte de
+    `_THEME_DEFAULT` (a face: Arial 38, contorno, sem placa), o payload do painel
+    so' contribui com a placa (`plate`, `pad`, `rowRadius`), e o payload CRU
+    nunca chega ao `set_theme` -- e' essa ultima condicao que impede a face de
+    ser vestida pelo desenho. A arm positiva e o `--neg-arm` chamam ESTA funcao.
+    """
+    return ('base = dict(overlay_paint._THEME_DEFAULT)' in shell
+            and "base['plate'] = plate" in shell
+            and "base['pad'] = pad" in shell
+            and 'overlay.set_theme(base)' in shell
+            and re.search(r'set_theme\(\s*theme\s*\)', shell) is None
+            and 'set_theme(self._brand_tokens_last)' not in shell)
 
 
 def arms():
@@ -140,26 +180,38 @@ def arms():
 
     width, height, px = render_pixels()
     # A PLACA COM CANTOS REDONDOS NAO TOCA O CANTO (medido: o canto e'
-    # transparente mesmo com placa). O ponto que a denuncia e' o MEIO da borda
-    # de cima, a 1 px da aresta -- ali a placa esta' sempre, com ou sem raio.
-    corner = [p for p in px[:6]]
+    # transparente mesmo com placa). A sonda le' a primeira fila INTERIOR (ver
+    # `render_probe_alpha`) e as outras duas pernas -- cor e densidade -- ficam.
     opaque = [p for p in px if p[3] > 200]
     tinted = [p for p in opaque
               if max(p[:3]) - min(p[:3]) > 24 and sum(p[:3]) > 90]
     top_alpha = render_probe_alpha(width, height)
-    plate_free = (top_alpha == 0 and not tinted
-                  and len(opaque) < len(px) // 3)
-    out.append(('no-plate-pixels', plate_free,
+    free = plate_free(top_alpha, len(opaque), len(tinted), len(px))
+    out.append(('no-plate-pixels', free,
                 'borda_superior=%d opacos=%d/%d coloridos=%d'
                 % (top_alpha, len(opaque), len(px), len(tinted))))
 
+    # ARM 5, RE-ANCHORADA EM 2026-11-11, E COM A RAZAO ESCRITA. A arm antiga
+    # ("theme-not-branded") exigia `forced >= 2` contando o LITERAL
+    # `set_theme(overlay_paint._THEME_DEFAULT)` no shell; o shell de 2026-11-09
+    # passou a construir o tema numa variavel (`base`) e a chamar
+    # `overlay.set_theme(base)`, logo o literal deixou de existir e a arm ficou
+    # RED por ROT do ancora (`forced=0`), nao por defeito -- a mesma classe que
+    # ja' tinha apanhado este ficheiro. E o que ela afirmava tambem ja' nao e' a
+    # ordem: em 2026-11-09 o dono pediu *"VOCE TIROU O DESIGN DE TODAS AS
+    # LEGENDAS PRA DEIXAR ELAS IGUAIS EM TODOS OS TEMAS"*, e a ordem de hoje e' a
+    # do `_apply_overlay_theme`: A FACE E' DO PLAYER, A PLACA E' DO DESENHO.
+    # O ancora passa a ser esse CONTRATO, lido do codigo vivo: parte de
+    # `_THEME_DEFAULT` (a face), copia SO' `plate`/`pad`/`rowRadius` do payload, e
+    # nunca entrega o payload cru ao `set_theme` (era isso que vestia a face).
     shell = read(SHELL)
-    branded = ('set_theme(self._brand_tokens_last)' in shell
-               or 'set_theme(theme)' in shell)
-    forced = shell.count('set_theme(overlay_paint._THEME_DEFAULT)') + \
-        shell.count('set_theme(_op._THEME_DEFAULT)')
-    out.append(('theme-not-branded', forced >= 2 and not branded,
-                'forced=%d branded=%s' % (forced, branded)))
+    face_ok = face_is_players(shell)
+    out.append(('face-youtube-plate-design', face_ok,
+                'base=THEME_DEFAULT:%s plate=design:%s pad=design:%s set_theme(base):%s'
+                % ('base = dict(overlay_paint._THEME_DEFAULT)' in shell,
+                   "base['plate'] = plate" in shell,
+                   "base['pad'] = pad" in shell,
+                   'overlay.set_theme(base)' in shell)))
 
     gated = ('_yt_owner_until' in shell
              and 'CAPTION_OVERLAY_DROP reason=external-captions' in shell)
@@ -254,19 +306,28 @@ def neg_arm():
             bmp.Dispose()
             opaque = 0
             tinted = 0
-            corner_a = raw[(1 * stride) + (w // 2) * 4 + 3]
+            total = 0
+            # A MESMA SONDA DA ARM: a primeira fila INTERIOR (o anel exterior e'
+            # transparente por construcao desde 2026-11-11 -- ler `y=1` media a
+            # aresta e nunca via placa nenhuma, que foi como este controlo
+            # passou a dizer FAIL com o mutante a pintar a placa toda).
+            row = min(int(getattr(mod, 'EDGE_PX', 1)) + 1, h - 1)
+            edge = raw[(row * stride) + (w // 2) * 4 + 3]
             for y in range(0, h, 2):
                 for x in range(0, w, 2):
                     off = y * stride + x * 4
                     b, g, r, a = raw[off:off + 4]
+                    total += 1
                     if a > 200:
                         opaque += 1
                         if max(r, g, b) - min(r, g, b) > 24 and r + g + b > 90:
                             tinted += 1
-            # UMA PLACA E' UM CANTO OPACO. O filtro cromatico sozinho nao a ve:
-            # uma placa preta tem `max-min == 0` -- foi medido, o mutante passou
-            # com o filtro de cor e o canto e' o que a denuncia.
-            caught = corner_a > 200 or tinted > 0
+            # A MESMA REGRA DA ARM, chamada e nao copiada: uma placa opaca pinta
+            # a fila interior (leg 1) e enche o bitmap (leg 3) -- e o filtro
+            # cromatico sozinho nao a ve, porque uma placa preta tem
+            # `max-min == 0`. Foi medido: com a sonda na aresta e sem a leg da
+            # densidade, o mutante passou.
+            caught = not plate_free(edge, opaque, tinted, total)
         print('NEG-ARM %-14s %s  arm=%s' % (name, 'PASS' if caught else 'FAIL', arm))
         ok += 1 if caught else 0
         try:
@@ -295,7 +356,7 @@ def neg_arm():
     print('NEG-ARM %-14s %s  arm=no-fade alpha=%r'
           % ('fade-back', 'PASS' if caught else 'FAIL', alpha2))
     ok += 1 if caught else 0
-    total = len(cases) + 1
+    total = len(cases) + 3   # 4 theme mutants + fade + the two face wounds
     try:
         os.remove(cap_path)
     except OSError:
@@ -304,6 +365,27 @@ def neg_arm():
         os.rmdir(tmp)
     except OSError:
         pass
+    # A ARM DA FACE (2026-11-11) TAMBEM TEM CONTROLO, e ele nao abre janela: o
+    # MESMO predicado, corrido sobre uma copia FERIDA do shell. Duas feridas, os
+    # dois caminhos pelos quais a face voltaria a ser do desenho: (a) o tema
+    # deixar de partir de `_THEME_DEFAULT`; (b) o payload cru entregue ao
+    # `set_theme`. Foi esta arm que ficou sem controlo nenhum ate' hoje.
+    shell_src = read(SHELL)
+    wounds = [
+        ('face-from-design', 'base = dict(overlay_paint._THEME_DEFAULT)',
+         'base = dict(theme)'),
+        ('payload-to-set-theme', 'overlay.set_theme(base)',
+         'overlay.set_theme(theme)'),
+    ]
+    for wound_name, old, new in wounds:
+        if old not in shell_src:
+            print('NEG-ARM %-14s FAIL  arm=face-youtube-plate-design '
+                  '(a ancora nao esta no shell)' % wound_name)
+            continue
+        caught = not face_is_players(shell_src.replace(old, new, 1))
+        print('NEG-ARM %-14s %s  arm=face-youtube-plate-design'
+              % (wound_name, 'PASS' if caught else 'FAIL'))
+        ok += 1 if caught else 0
     print('NEG-ARM VERDICT: %s (%d/%d)' % ('PASS' if ok == total else 'FAIL',
                                            ok, total))
     # A CONVENCAO DA BATERIA (2026-11-03): um `red-as-expected` declara rc=1.

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: executa `SottoShell.stats` num shell FALSO; nao prova o botao de pause na UI nem o clique do dono.
 """O PAYLOAD DE `stats()` CARREGA O PAUSE -- nas DUAS saidas.
 
 ORDEM DO DONO, verbatim (2026-11-06): *"o botao de pause tambem nao ta completo.

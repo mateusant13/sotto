@@ -1,3 +1,4 @@
+# NO-BUG: soma a CPU da shell e do worker de FORA contra um tecto declarado; nao atribui a causa nem reduz o custo de nenhum dos dois processos.
 """O CUSTO DA ARVORE -- a shell E o worker, somados, contra um tecto declarado (2026-11-09).
 
 NASCEU DE TRES DMs DE STUTTER DO WATCHER na mesma noite, todas a acusar a MESMA

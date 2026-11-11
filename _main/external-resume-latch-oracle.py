@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: executa `on_external_captions_released` sobre uma shell FALSA; nao prova o release na sessao viva do dono nem o estado em disco dela.
 """O RELEASE DO PLAYER NAO PODE SER GASTO POR UM `return` -- o latch do parque.
 
 O DEFEITO QUE ESTE ORACULO MEDE (2026-11-10). `on_external_captions_released`

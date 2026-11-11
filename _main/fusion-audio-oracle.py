@@ -1,3 +1,4 @@
+# NO-BUG: julga o acumulador `add_live_audio` e o call site por `ast`; NAO julga o texto da legenda, que exige a app e audio a tocar.
 """ORACLE: o audio do AO VIVO chega ao motor de LOTE (dono, 2026-11-09).
 
 A ORDEM, verbatim: *"legenda AO VIVO otima E historico otimo"*.

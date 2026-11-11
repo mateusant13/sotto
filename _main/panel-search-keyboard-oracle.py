@@ -14,7 +14,8 @@ THAT IS NOW FIXED, and this oracle measures the fix where it can:
     the shell IPC call -> set_pointer_interactive(), which CLEARS WS_EX_NOACTIVATE and click-through while
     active and restores both on leave. show_panel SW_SHOWNOACTIVATE is untouched, so appearing still
     steals nothing; only the moment the pointer is on the panel can activate it.
-  * THE EVIDENCE FROM A REAL RUN: _main/webview-run.log carries hundreds of POINTER_INTERACTIVE lines, and
+  * THE EVIDENCE FROM A REAL RUN: _main/webview-run.log carries the POINTER_INTERACTIVE lines of
+    the runs it holds, and
     (THE LOG IS LIVE -- lanes keep writing to it, so the counts DRIFT: 671 lines read in one pass, 621 in the
     next minutes later. The arms re-derive them every run and the verdict prints the CURRENT ones; no number
     here is remembered.)
@@ -53,7 +54,6 @@ import argparse
 import hashlib
 import os
 import re
-import shutil
 import sys
 import tempfile
 
@@ -63,15 +63,19 @@ SHELL = os.path.join(ROOT, "app", "webview", "sotto_webview.py")
 PANEL_JS = os.path.join(ROOT, "app", "panel", "panel.js")
 PANEL_HTML = os.path.join(ROOT, "app", "panel", "panel.html")
 LOG = os.path.join(ROOT, "_main", "webview-run.log")
-LINE = re.compile(r"POINTER_INTERACTIVE active=(\w+) click_through=(\w+) noactivate=(\w+)")
+# THE FIELDS ARE READ BY NAME, NEVER BY ADJACENCY (re-anchored 2026-11-11). The
+# shell writes `active= click_through= applied= noactivate=` (sotto_webview.py,
+# `POINTER_INTERACTIVE` log line): a fourth field was inserted BETWEEN
+# `click_through` and `noactivate`, and the old pattern required the three to be
+# contiguous, so it matched 0 of the 139 lines in the log and arm 2 accused the
+# PRODUCT ("no POINTER_INTERACTIVE line at all") of the INSTRUMENT's rot. The
+# `.*?` between the fields is exactly what a new field must not be able to break,
+# and the capture is still anchored on the three names the invariant needs.
+LINE = re.compile(r"POINTER_INTERACTIVE active=(\w+)\b.*?\bclick_through=(\w+)\b"
+                  r".*?\bnoactivate=(\w+)\b")
 
 EXIT_PASS = 0
 EXIT_FAIL = 1
-
-#: The anchor of the control: the line that says "active, and therefore click-through
-#: off and noactivate off". It is rewritten into the contradictory form.
-ANCHOR = "POINTER_INTERACTIVE active=true click_through=false noactivate=false"
-CONTRADICTION = "POINTER_INTERACTIVE active=true click_through=true noactivate=true"
 
 
 def parse(path):
@@ -96,32 +100,48 @@ def violations(rows):
 def control(say):
     """The control: one line of a COPY of the log made contradictory.
 
+    THE VIOLATION IS SEEDED FROM A LINE THE READER ITSELF MATCHED (re-anchored
+    2026-11-11). The old control replaced one fixed literal
+    (`active=true click_through=false noactivate=false`): when the shell inserted
+    `applied=` into that same line the literal ceased to exist, and the control
+    declared "no active=true line to mutate" while arm 2 was reading the log
+    correctly -- the control was measuring the line's SPELLING, not the reader.
+    Now the anchor is a line `LINE` matched, and its two flags are rewritten BY
+    NAME: a field added anywhere on that line can change its text but never the
+    ability to seed the contradiction, so this anchor cannot rot the same way.
+
     Returns True when the invariant reader caught the contradiction (the control
     did its job), False otherwise. The real log is never modified.
     """
     workdir = os.path.join(tempfile.gettempdir(), "f9-keyboard")
     os.makedirs(workdir, exist_ok=True)
     mutant = os.path.join(workdir, "log-mutant.txt")
-    shutil.copyfile(LOG, mutant)
-    with open(mutant, encoding="utf-8", errors="replace") as handle:
-        text = handle.read()
-    hits = text.count(ANCHOR)
-    mutated = text.replace(ANCHOR, CONTRADICTION, 1)
-    if mutated == text:
+    with open(LOG, encoding="utf-8", errors="replace", newline="") as handle:
+        original = handle.read().splitlines(True)
+    seed = None
+    for index, line in enumerate(original):
+        match = LINE.search(line)
+        if match and match.group(1) == "true" and match.group(2, 3) != ("true", "true"):
+            seed = index
+            break
+    if seed is None:
         say("  arm 4  CONTROL: could not seed a violation (no active=true line to mutate)")
         return False
+    patched = re.sub(r"\bclick_through=\w+", "click_through=true", original[seed], count=1)
+    patched = re.sub(r"\bnoactivate=\w+", "noactivate=true", patched, count=1)
+    lines = list(original)
+    lines[seed] = patched
     # How far the copy differs from the original: exactly ONE line, so there is no
     # doubt about WHICH line the control patched.
-    before_lines = text.splitlines()
-    after_lines = mutated.splitlines()
-    changed = sum(1 for a, b in zip(before_lines, after_lines) if a != b)
-    changed += abs(len(before_lines) - len(after_lines))
+    changed = sum(1 for a, b in zip(original, lines) if a != b)
+    changed += abs(len(original) - len(lines))
     with open(mutant, "w", encoding="utf-8", newline="") as handle:
-        handle.write(mutated)
+        handle.write("".join(lines))
     caught = violations(parse(mutant))
-    say("  arm 4  CONTROL (one line of a COPY made contradictory): anchor matched %d line(s), "
-        "patched line #1, the copy differs from the original in %d line(s); violations caught=%d "
-        "(the original had %d)" % (hits, changed, len(caught), len(violations(parse(LOG)))))
+    say("  arm 4  CONTROL (one line of a COPY made contradictory): patched the line the "
+        "reader matched (line %d), the copy differs from the original in %d line(s); "
+        "violations caught=%d (the original had %d)"
+        % (seed + 1, changed, len(caught), len(violations(parse(LOG)))))
     os.remove(mutant)
     if changed != 1:
         say("  arm 4  CONTROL: the patch was NOT surgical -- the control is not testing what it claims")

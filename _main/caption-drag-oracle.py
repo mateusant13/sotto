@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: corre `drag_plan` e a marca num canvas falso, sem janela, rato ou `user32` -- nao prova o arrasto na tela do dono.
 """O ARRASTO DA LEGENDA COM CTRL -- decisao, marca, e os bracos vermelhos.
 
 Ordem do dono, verbatim: *"segurar control, permite eu arrastar a legenda pra

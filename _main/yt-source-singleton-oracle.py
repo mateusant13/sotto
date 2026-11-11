@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# NO-BUG: prova que a fonte CDP e' construida UMA vez por processo; nao mede o stutter da shell viva nem a CPU de 81,3 % que o originou.
 """UMA FONTE CDP POR PROCESSO -- o oraculo do defeito de 1,1 criacoes/s.
 
 O QUE FOI MEDIDO (log do dono, 2026-11-09, janela de 600 s):

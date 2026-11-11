@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: conduz `_yt_clock_static` num shell falso; nao reproduz os oito minutos de imagem congelada no player do dono.
 """O RELOGIO PARADO E' PAUSA -- mesmo quando a bandeira `paused` diz que nao.
 
 CASO MEDIDO (log do dono, 2026-11-09 21:29:57 -> 21:36, oito minutos): o ecra

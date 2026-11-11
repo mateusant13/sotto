@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: prova igualdade de BITMAP do roll-up montado com o `_layout` real; nao abre janela nem mede o que o GDI+ entrega ao ecra.
 """O ROLL-UP da legenda, medido em PIXEL: a linha velha SOBE, a caixa nao muda.
 
 O oraculo do `caption_overlay` para a ordem do dono de 2026-11-08, verbatim:

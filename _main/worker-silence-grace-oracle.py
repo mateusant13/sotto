@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: conduz o `_on_silence` REAL com um shell falso; nao reproduz a corrida de 17 ms do log do dono nem o respawn de 61,8 s.
 """O CAO DE GUARDA NAO MATA COM A PROVA DE VIDA EM VOO.
 
 DEFEITO MEDIDO, no log do dono (`_main/webview-run.log`, 2026-11-09):

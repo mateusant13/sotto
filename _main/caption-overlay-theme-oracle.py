@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: pinta o bitmap nativo FORA do ecra a partir dos payloads gravados -- nao julga a pagina do painel nem ve a legenda na tela.
 """O FUNDO DE CADA DESENHO CHEGA A JANELA NATIVA DA LEGENDA.
 
 O defeito que este portao existe para impedir, medido duas vezes:

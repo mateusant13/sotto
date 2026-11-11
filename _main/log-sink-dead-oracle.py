@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: exercita `log()` contra um stdout MORTO dentro do processo; nao reproduz o cano partido da shell viva nem observa o `OSError 22` que a historia nao provou.
 """O RELATADOR NAO MORRE COM O CANO -- `log()` executa-se contra um stdout morto.
 
 A CLASSE, e a RETRATACAO da historia que eu primeiro escrevi.

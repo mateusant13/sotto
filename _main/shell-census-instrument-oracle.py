@@ -1,3 +1,4 @@
+# NO-BUG: julga os dois predicados do censo e a memo do `code_identity`; nao liga o censo na shell nem baixa o piso de 20 %.
 """O oraculo do CENSO QUE NOMEIA A THREAD (shell, 2026-11-08).
 
 O DEFEITO QUE ELE JULGA, medido nesta arvore a 00:14:

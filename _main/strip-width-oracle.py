@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: recusa a largura auto-medida e fixa a strip em 380; nao restaura o desenho antigo do painel nem julga a estetica dele.
 """THE BOTTOM STRIP IS 380 WIDE, AND THE MEASUREMENT CANNOT WIDEN IT.
 
 Owner, verbatim (2026-11-08T06:30:55Z, `_main/owner-prompts-20261108-40h.md` W6):

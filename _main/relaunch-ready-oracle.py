@@ -1,3 +1,4 @@
+# NO-BUG: julga `wait_ready` sobre carimbos de log; nao relanca a app nem prova que o vencedor novo sobe nesta maquina.
 """O oraculo do RELANCADOR: um vencedor novo, mesmo quando o PID e' RECICLADO.
 
 O DEFEITO QUE ELE JULGA, medido nesta arvore a 2026-11-08 00:09:

@@ -1710,7 +1710,7 @@ REM UMA construcao; o `--neg-arm` roda a MESMA populacao contra o metodo de `HEA
 call :step yt-source-singleton 0 "_main\yt-source-singleton-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py" "%OUT%\yt-source-singleton.log" python _main\yt-source-singleton-oracle.py
 call :record yt-source-singleton !STEP_RC!
 call :step red-as-expected-yt-source-singleton 1 "_main\yt-source-singleton-oracle.py;app\webview\youtube_cdp_source.py;app\webview\sotto_webview.py" "%OUT%\yt-source-singleton-neg.log" python _main\yt-source-singleton-oracle.py --neg-arm
-call :expectred red-as-expected-yt-source-singleton !STEP_RC! "%OUT%\yt-source-singleton-neg.log" "ANTES (HEAD)"
+call :expectred red-as-expected-yt-source-singleton !STEP_RC! "%OUT%\yt-source-singleton-neg.log" "ANTES (sem registo)"
 REM O STUTTER NOMEIA-SE (2026-11-09, aprovado pelo watcher). `py-spy` nao anexa a esta arvore
 REM (integridade `high` vs `medium`, err=5 medido) e duas acusacoes chegaram com pid e percentagem
 REM e ZERO linha de codigo. O tripwire le CPU por FIO (`GetThreadTimes`) e o NOME de cada fio de
@@ -3445,6 +3445,21 @@ if exist _main\webview2-args-scope-oracle.py (
 call :step always red-as-expected-webview2-args-scope 1 "_main\webview2-args-scope-oracle.py;app\webview\webview2_args.py;app\webview\sotto_webview.py" "%OUT%\webview2-args-scope-neg.log" python _main\webview2-args-scope-oracle.py --neg-arm
 call :expectred red-as-expected-webview2-args-scope !STEP_RC! "%OUT%\webview2-args-scope-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-webview2-args-scope MISSING "%OUT%\webview2-args-scope-neg.log" "NEG-ARM PASS" )
+REM O RUNTIME DE WEBVIEW2 QUE A APP CARREGA (ordem do dono, 2026-11-11): a MAIOR instalada, e
+REM nenhum pin. As duas metades num par: o positivo julga que nada embarca um caminho/versao e que o
+REM LOADER resolve a maior pasta instalada (a funcao do proprio `WebView2Loader.dll`, sem host e sem
+REM janela); o negativo planta as QUATRO formas de pin num ficheiro temporario e exige as quatro
+REM apanhadas. O numero NAO e' portado: o oraculo compara com a maior lida do disco na hora -- um
+REM literal aqui seria o proprio pin que ele proibe.
+if exist _main\webview2-runtime-oracle.py (
+call :step always webview2-runtime 0 "_main\webview2-runtime-oracle.py" "%OUT%\webview2-runtime.log" python _main\webview2-runtime-oracle.py
+call :record webview2-runtime !STEP_RC!
+) else ( call :record webview2-runtime MISSING )
+
+if exist _main\webview2-runtime-oracle.py (
+call :step always red-as-expected-webview2-runtime 1 "_main\webview2-runtime-oracle.py" "%OUT%\webview2-runtime-neg.log" python _main\webview2-runtime-oracle.py --neg-arm
+call :expectred red-as-expected-webview2-runtime !STEP_RC! "%OUT%\webview2-runtime-neg.log" "NEG-ARM: PASS -- 7/7"
+) else ( call :expectred red-as-expected-webview2-runtime MISSING "%OUT%\webview2-runtime-neg.log" "NEG-ARM: PASS -- 7/7" )
 
 if exist _main\power-recovery-oracle.py (
 call :step always power-recovery 0 "_main\power-recovery-oracle.py;app\webview\power_recovery.py;app\webview\sotto_webview.py" "%OUT%\power-recovery.log" python _main\power-recovery-oracle.py
@@ -3617,7 +3632,7 @@ REM morto, exigindo que cada um caia pela SUA arm.
 call :step always process-target 0 "_main\process-target-oracle.py;worker\process_target.py;worker\sotto_worker.py" "%OUT%\process-target.log" python _main\process-target-oracle.py
 call :record process-target !STEP_RC!
 call :step always red-as-expected-process-target 1 "_main\process-target-oracle.py;worker\process_target.py;worker\sotto_worker.py" "%OUT%\process-target-neg.log" python _main\process-target-oracle.py --neg-arm
-call :expectred red-as-expected-process-target !STEP_RC! "%OUT%\process-target-neg.log" "NEG-ARM: 3/3 mutantes apanhados"
+call :expectred red-as-expected-process-target !STEP_RC! "%OUT%\process-target-neg.log" "NEG-ARM-TOTAL: 7/7"
 
 REM A CORRIDA TEM DE ESTAR FECHADA QUANDO ESTE PASSO LE' O RELOGIO. Ele le'
 REM `_cache\battery-steps.json`, que a corrida escreve passo a passo: em qualquer

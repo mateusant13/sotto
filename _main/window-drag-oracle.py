@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: julga o texto por `ast` e o seguidor de 240 Hz; nao arrasta a janela viva nem prova o `SetWindowPos` contra o `user32` desta sessao.
 """O ARRASTO DO PAINEL E' NOSSO E ANDA A 240 Hz -- medido, nao afirmado.
 
 O DEFEITO QUE ESTE PORTAO EXISTE PARA IMPEDIR (medido na instancia viva,

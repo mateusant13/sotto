@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: compara bitmaps byte a byte no HIT e no MISS do cache de pintura; nao mede o custo real do GDI+ na tela do dono.
 """O CUSTO DA PINTURA DA LEGENDA, e a igualdade de pixel que o cache nao pode quebrar.
 
 A ORDEM (watcher, 2026-11-08, DM de stutter): o processo acusado e' a app viva do

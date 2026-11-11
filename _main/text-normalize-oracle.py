@@ -1,3 +1,4 @@
+# NO-BUG: 14 arms sobre a funcao REAL `text_normalize` e 5 mutacoes; nao corrige a geracao do texto nem o que o motor escreve no historico.
 """O oraculo da CORRIDA do motor: 14 arms sobre a funcao REAL + 5 mutacoes.
 
 O defeito, medido em 2026-11-11 no arquivo do dono (22 ficheiros, 1302 linhas):

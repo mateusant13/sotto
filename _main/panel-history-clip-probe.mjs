@@ -610,16 +610,32 @@ const MUTANTS = [
     from: '  return !Number.isFinite(at) || at >= Date.now() - HISTORY_RETENTION_H * 3600 * 1000;',
     to: '  return true;',
     red: ['feedNoLeak'] },
+  /* RE-ANCHORED 2026-11-11, AND WHY IT CANNOT ROT THE SAME WAY. The old anchor
+   * was the WHOLE physical line
+   * `const list = (Array.isArray(hits) ? hits : []).filter(withinHistoryWindow);`
+   * -- it ended at the chain's `;`, so the day a second link was appended
+   * (`.filter(viaVisible)`, the row-visibility gate) the anchor vanished and this
+   * mode answered `NEG-ARM: IMPOSSIBLE` (rc=2) instead of catching the mutant.
+   * The anchor is now the PREFIX that names the window predicate and stops
+   * BEFORE the chain continues: appending, removing or reordering any LATER
+   * `.filter(...)` link is invisible to it, and the `to` value leaves the rest of
+   * the expression intact. A rename of `withinHistoryWindow` or of `hits` is a
+   * real change of the product and still says IMPOSSIBLE -- loudly, never a pass. */
   { label: 'search window removed',
-    from: '  const list = (Array.isArray(hits) ? hits : []).filter(withinHistoryWindow);',
-    to: '  const list = Array.isArray(hits) ? hits : [];',
+    from: /const list = \(Array\.isArray\(hits\) \? hits : \[\]\)\.filter\(withinHistoryWindow\)/,
+    to: 'const list = (Array.isArray(hits) ? hits : [])',
     red: ['searchNoLeak'] },
 ];
 let MUTANT_RESULTS = null;
 if (NEG_ARM) {
   MUTANT_RESULTS = [];
+  // AN ANCHOR IS A STRING OR A REGEXP, and both are proved present before the
+  // page is fed. A RegExp anchor lets a mutant name a PREFIX of a growing chain
+  // (see 'search window removed'); `String.replace` still patches only the first
+  // match, so the mutation stays surgical.
+  const present = (src, from) => (from instanceof RegExp ? from.test(src) : src.includes(from));
   for (const m of MUTANTS) {
-    if (!PANEL_JS.includes(m.from)) {
+    if (!present(PANEL_JS, m.from)) {
       console.log(`NEG-ARM: IMPOSSIBLE -- ${m.label}: the anchor is not in panel.js`);
       process.exit(2);
     }

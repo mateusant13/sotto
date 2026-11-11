@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: julga a FORMA do WORKER_BOOT_PROF (marcas monotonas e atribuiveis), nao opina sobre nenhum milissegundo do arranque nem o reduz.
 """O portao do `WORKER_BOOT_PROF`: onde os 8,5-44,3 s do arranque foram gastos.
 
 CARD DO DONO (verbatim): *"arranque: demora DEMAIS a responder"*. O custo existia

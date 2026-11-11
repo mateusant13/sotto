@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: o passo puro "audio voltou e a legenda nao" nao toca no audio nem no ecra -- nao cura a captura, so nomeia qual das duas metades parou.
 """Portao do `audio_back_step`: "o audio voltou e nada acontece" tem duas linhas.
 
 CARD DO DONO (verbatim): *"audio volta e nada acontece"*. O worker ja' publicava

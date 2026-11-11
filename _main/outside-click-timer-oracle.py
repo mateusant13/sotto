@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: mede a taxa do vigia de clique-fora na CLASSE real; nao mede a CPU da instancia viva nem cura o stutter do dono.
 """O vigia de clique-fora NAO gira -- o timer dele e' de 10 Hz, nao de 1 600.
 
 O QUE ELE MEDE, E POR QUE NAO E' UM TESTE DE ESTILO (2026-11-07, ordem do dono

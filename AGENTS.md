@@ -266,6 +266,43 @@ parakeet int4; e não faz ao vivo (janela de 30 s autorregressiva). Não integra
 checkpoint com português e sem tradução — `_main/receipt-20261030-ark-asr-vs-parakeet.md`,
 `_main/engine-compare.py` para re-medir.
 
+## O RUNTIME DE WEBVIEW2: a MAIOR instalada, e nenhum pin (ordem do dono, 2026-11-11)
+
+Verbatim: *"WEBVIEW2 RUNTIME ORDER FROM THE OWNER (2026-11-11): use the GREATER version. This is a
+measured inventory, not a preference - act on it in your tree."* Duas regras, e a segunda é a que
+ninguém vê violar:
+
+1. **NUNCA fixar** uma versão nem um caminho (`...\Application\<versão>\msedgewebview2.exe`) em
+   código, config, docs ou fixture. Se um dia for preciso apontar, calcula-se a **maior pasta
+   instalada**, ou não se aponta nada e o loader escolhe.
+2. **Que versão estou a correr é pergunta do PROCESSO, não do registo** — um host que arrancou antes
+   da actualização mantém o binário antigo mapeado até reiniciar.
+
+MEDIDO nesta máquina a 2026-11-11, com a função do próprio loader
+(`GetAvailableCoreWebView2BrowserVersionString` de `WebView2Loader.dll`, sem host e sem janela):
+pastas instaladas `157.0.4341.42` e `157.0.4341.46`; `pv` do EdgeUpdate = `157.0.4341.46`; **sem pasta
+nenhuma o loader devolve `157.0.4341.46`**; com a pasta fixada na `.42` devolve `.42` — as duas metades
+da regra, medidas lado a lado. A shell do Sotto não passa pasta nenhuma: `apply_webview2_environment`
+mexe em três knobs e nenhum é o runtime, o código não contém `BrowserExecutableFolder` nem a variável
+`WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` (censo de 236 ficheiros em `app/`), e a knob do pywebview que
+alimenta `props.BrowserExecutableFolder` está **vazia**
+(`webview.settings['WEBVIEW2_RUNTIME_PATH'] = None`, lido nesta máquina). Logo um arranque novo herda
+a `.46`. Os seis `msedgewebview2.exe` vivos que ainda correm da `.42` são de hosts alheios
+(`SearchHost.exe`) nascidos antes da actualização — é exactamente o que a regra 2 diz.
+`UNMEASURED`: o processo do Sotto a correr **depois** de reiniciar (a app não estava viva na medição, e
+uma lane não a põe na tela dele).
+
+**PORTÃO (o invariante não fica em prosa): par `webview2-runtime` + `red-as-expected-webview2-runtime`
+na bateria**, com `_main/webview2-runtime-oracle.py`: 6 arms no positivo (nenhum pin embarca · o
+inventário instalado é coerente · o loader resolve, e não é `CANNOT-MEASURE` · **resolve a MAIOR
+instalada** · a shell não passa pasta · a knob do pywebview está vazia ou aponta à maior) e o
+`--neg-arm` com **7/7** controlos apanhados (pasta fixada · kwarg do loader · versão literal em texto ·
+knob do pywebview · o juiz do maior com três pastas onde a 99.0.4341.9 é a MENOR por número · a maior
+tem de exigir `msedgewebview2.exe` · o juiz da knob: fixada dá vermelho, vazia dá verde). O número da
+versão **não** é portado: o oráculo compara com a maior lida do disco na hora, porque um literal ali
+seria o próprio pin que ele proíbe. Medido ao ligar: `VERDICT: PASS (6/6)` rc=0 e
+`NEG-ARM: PASS -- 7/7` rc=1.
+
 ## PREMISSAS PROIBIDAS (retiradas pelo dono)
 **O Sotto NÃO dá nomes a vozes e ninguém volta a propôr isso.** O objectivo da cadeia de falantes é
 **separar o áudio para transcrever cada falante em separado**; *"quem falava quando"* não é o objectivo e
@@ -615,6 +652,21 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-11, 11:0x):** `_main\_audit-verify-all.cmd` = **354594 B**,
+  **4113 CRLF** / 0 bare LF, sha256 `2824F5A48604FB998DEB38986F2D02471911FDED635794D750F9BBCC9F2E4185`.
+  (Mil duzentos e oitenta e dois bytes e QUINZE linhas a mais do que o pin de 353312 B: o par
+  `webview2-runtime` + `red-as-expected-webview2-runtime`, o RUNTIME DE WEBVIEW2 -- ordem do dono
+  de 2026-11-11, *"use the GREATER version"*. Seis linhas de comentario e nove de passo. O oraculo
+  `_main/webview2-runtime-oracle.py` julga seis invariantes e o numero da versao NAO esta' portado
+  nele: ele pergunta ao proprio `WebView2Loader.dll`
+  (`GetAvailableCoreWebView2BrowserVersionString`) que versao ele resolve sem pasta, e compara com a
+  MAIOR pasta instalada lida do disco na hora -- um literal no oraculo seria o pin que ele proibe.
+  Medido nesta maquina: com pasta nenhuma o loader devolve `157.0.4341.46`, e com a pasta fixada na
+  `.42` devolve `.42` (as duas metades da regra, lado a lado). O `--neg-arm` planta as QUATRO formas
+  de pin num ficheiro TEMPORARIO (pasta, kwarg do loader, versao em texto, knob do pywebview) e
+  julga o juiz do "maior" com tres pastas onde `99.0.4341.9` e' a MENOR por numero: **7/7**. Medido
+  ao ligar: `VERDICT: PASS (6/6)` rc=0 e `NEG-ARM: PASS -- 7/7` rc=1. Ver a seccao
+  `## O RUNTIME DE WEBVIEW2` acima.)
 - **PIN do ficheiro (medido 2026-11-11, 03:1x):** `_main\_audit-verify-all.cmd` = **353312 B**,
   **4098 CRLF** / 0 bare LF, sha256 `AD361B164AB235246A7C0527A6154CC8510F09C71B160404AB5E79368AB7C907`.
   (Noventa e sete bytes e ZERO linhas a mais do que o pin de 353215 B: as dependencias que faltavam ao
@@ -2390,7 +2442,7 @@ instrumento, e o recibo esta' em `_main/receipt-20261109-thread-bench-stutter.md
 Duas metades medidas na sessao viva do dono (pid 52792, arranque 2026-11-09 21:21:46), as duas com o
 mesmo instrumento, `_main/paint-live-show-oracle.py`:
 
-1. **O SHOW QUE CONFIA NO QUE NAO FOI CONFIRMADO.** O log tinha
+1. **O SHOW QUE CONFIA NO QUE NAO FOI CONFIRMADO.** O log de 2026-11-09 21:21:55 tinha
    `PANEL_SHOWN ... content_ack=false content_why=ui-thread-busy content_attempts=1
    content_wait_ms=250.0 paint_ack=true wait_ms=47.0`. A repeticao (`gate_should_retry` dentro do
    `while True` do `gate_probe`) existe exactamente para `ui-thread-busy`, e nunca podia disparar:
@@ -2398,7 +2450,7 @@ mesmo instrumento, `_main/paint-live-show-oracle.py`:
    sobrava um milissegundo para a segunda. Agora cada pergunta gasta no maximo
    `CONTENT_GATE_ATTEMPT_FRACTION` (0,5) do orcamento: o pior caso CONTINUA 250 ms de espera (nunca
    250 ms por tentativa), e uma pagina ocupada recebe duas perguntas. O numero 0,5 vem do campo --
-   no mesmo log o `content_wait_ms` de um show BOM tem p50 31 ms e **p95 125 ms**, que e' metade do
+   no mesmo log, medido em 2026-11-10, o `content_wait_ms` de um show BOM tem p50 31 ms e **p95 125 ms**, que e' metade do
    orcamento. O braco que prova a cura e' a pergunta que **gasta tudo o que lhe dao**
    (`busy_attempts >= 2`), porque a sequencia de brinquedo antiga consumia 50 ms por pergunta e dava
    cinco tentativas sem que a producao desse duas.
@@ -2406,7 +2458,7 @@ mesmo instrumento, `_main/paint-live-show-oracle.py`:
 2. **A SOMA E' O QUE O OLHO PAGA.** Os dois tetos julgavam cada metade (`content_wait_ms<=350`,
    `wait_ms<=400`) e um show de 300+200=**500 ms** passava com as duas verdes. O oraculo passou a
    julgar `content_wait_ms + wait_ms` contra o mesmo orcamento de 400 ms e a publicar a cauda
-   (`total_p50_ms`/`total_p95_ms`/`total_max_ms`). Medido no ficheiro inteiro (22 shows): p50 78 ms,
+   (`total_p50_ms`/`total_p95_ms`/`total_max_ms`). Medido em 2026-11-10 no ficheiro inteiro (22 shows): p50 78 ms,
    p95 157, max 297, zero `paint_ack=false` -- o teto na SOMA passa com folga, e a rede existe para
    a cauda que hoje nao existe. O mutante `show-soma-acima-do-orcamento` (300+200) e' apanhado so'
    por esta arm.
@@ -2422,7 +2474,7 @@ mesmo instrumento, `_main/paint-live-show-oracle.py`:
 
 4. **A RAIZ TEMPORARIA ESCOLHE-SE PELO CUSTO MEDIDO, E O PERFIL DO NAVEGADOR NAO VIVE NELA.**
    `_main/content-gate-answer-probe.py` punha o perfil do Edge em `I:\cc-tmp` porque a regra do
-   `TMPDIR` era lida como uma regra de EXISTENCIA. Medido hoje: o write de 64 KiB nesse volume oscila
+   `TMPDIR` era lida como uma regra de EXISTENCIA. Medido em 2026-11-10: o write de 64 KiB nesse volume oscila
    entre **0,0 ms e 1595,8 ms**, e com o perfil la' dentro o Edge **nao devolveu o DOM em 90 s**
    enquanto a MESMA pagina, com o perfil no temp do sistema, fechou em **3,4 s** (rc=0, 92 902 B de
    DOM). Duas metades, as duas com o numero impresso: (a) a raiz da sonda passa a ser escolhida por um

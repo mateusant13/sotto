@@ -1,3 +1,4 @@
+# NO-BUG: executa o contrato real e os nove bracos da morte diagnosticavel; nao impede a morte do worker nem o `OSError 22` que a causa.
 """O oraculo da MORTE DIAGNOSTICAVEL do worker (medido 2026-11-07).
 
 O DEFEITO QUE ELE JULGA, medido no log do dono (`_main/webview-run.log`):

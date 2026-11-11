@@ -759,10 +759,19 @@ def run_neg_arm():
                         "            options, history_context.encode(_ctx))",
                         "        provenance = self._history_provenance(options)"),
                     'shell'))
+    # RE-ANCHORED 2026-11-11, AND WHY IT CANNOT ROT THE SAME WAY. The old anchor
+    # ended in `...token_in(line)}` -- it borrowed the dict's CLOSING BRACE from
+    # the call site, so the day the line dict gained a sibling key (`'via':`, the
+    # sound origin) the anchor vanished and this mutant answered
+    # `NEG-ARM IMPOSSIVEL` (the control did not catch: 15/16). The anchor is now
+    # ONE COMPLETE PHYSICAL LINE, terminated by its own newline: appending a key
+    # after `'context'` edits a DIFFERENT line and cannot touch this one. The
+    # mutant still reads by name (`'context'` + `token_in`), so a rename of either
+    # is a real product change and still says IMPOSSIVEL -- loudly, never a pass.
     mutants.append(('n3-shell-nao-le-token',
                     shell_src.replace(
-                        "                           'context': history_context.token_in(line)}",
-                        "                           'context': {}}"),
+                        "                           'context': history_context.token_in(line),\n",
+                        "                           'context': {},\n"),
                     'shell'))
     mutants.append(('n4-store-nao-le-token',
                     store_src.replace("          context: contextTokenIn(lines[j]),",

@@ -1,3 +1,4 @@
+# NO-BUG: alimenta as funcoes reais com uma fonte CDP FALSA que para 3-5 s; nao apanha um stutter verdadeiro da maquina nem a app viva.
 """A LEGENDA DO YOUTUBE ATRAVESSA UM STUTTER DA MAQUINA -- e este mede-a.
 
 A ORDEM DO DONO, verbatim (2026-11-07): *"e ridiculo o fato que um stutter

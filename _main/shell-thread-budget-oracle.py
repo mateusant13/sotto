@@ -1,3 +1,4 @@
+# NO-BUG: impoe o tecto declarado (25 % no total, 15 % por fio) com ratchet; nao baixa a CPU de fio nenhum -- so recusa o numero quando cresce.
 """O ORCAMENTO DE CPU DA SHELL -- PRAZO, NAO COMPLAINT (2026-11-08).
 
 NASCEU DE UMA DM DE STUTTER DO WATCHER, a mesma que o dono ja' reclamou 149

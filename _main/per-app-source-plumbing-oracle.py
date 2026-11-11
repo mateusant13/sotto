@@ -39,6 +39,7 @@ import argparse
 import hashlib
 import importlib.util
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -48,7 +49,19 @@ WORKER_DIR = os.path.join(ROOT, "worker")
 WORKER = os.path.join(WORKER_DIR, "sotto_worker.py")
 
 SOURCE_GUARD = '**({"source": self.source} if self.source is not None else {}),'
-LADDER_GUARD = "device_candidates(audio_cfg, wanted, target_pid=target_pid)"
+#: O PID CHEGA A ESCADA POR UM ARGUMENTO, NAO POR UM NOME DE VARIAVEL. Em
+#: 2026-11-04/09 as reaberturas do parque (`park_probe`, a retoma) e a
+#: re-escolha de sinal passaram `live_target(...)` -- o pid do alvo AGORA,
+#: porque o dono reinicia o Discord e o pid morre. Pinar
+#: `target_pid=target_pid` reprovava um produto CORRECTO e deixava o mutante C
+#: com 1 de 4 ancoras (arm decorativa -> rc=2). O que o portao pergunta e' se
+#: CADA leitura da escada leva um pid; `target_pid=None` e' a doenca.
+LADDER_SITE = "device_candidates(audio_cfg, wanted"
+LADDER_PID_ARG = "device_candidates(audio_cfg, wanted, target_pid="
+PID_ARG_RE = re.compile(r"target_pid=\s*([^\s,)]*)")
+#: A mutacao do mutante C: de `target_pid=<expr>` ate' o `)` que fecha a
+#: chamada na MESMA linha (as quatro sao de uma linha so'). O `)` final fica.
+LADDER_PID_RE = re.compile(r"(" + re.escape(LADDER_PID_ARG) + r")[^\n]*\)")
 CTYPES_GUARD = "import ctypes\r\n_PLP_DWORD = ctypes.c_ulong"
 CTYPES_GUARD_LF = "import ctypes\n_PLP_DWORD = ctypes.c_ulong"
 
@@ -59,6 +72,12 @@ def check(name, ok, detail=""):
     print(("  PASS " if ok else "  FAIL ") + name + (("  " + detail) if detail else ""))
     if not ok:
         failures.append(name)
+
+
+def ladder_carries_pid(line):
+    """A leitura da escada leva o pid do alvo? `target_pid=None` NAO leva."""
+    m = PID_ARG_RE.search(line)
+    return bool(m) and m.group(1) != "None"
 
 
 def load_module(path, name):
@@ -182,8 +201,8 @@ def run_checks(mod, tag):
     # into a FAILURE instead of asking the question that matters -- does every
     # read of the ladder carry the owner's pid? The floor of 2 keeps the check
     # able to say NO when the ladder loses a site altogether.
-    ladder_sites = [ln for ln in lines if "device_candidates(audio_cfg, wanted" in ln]
-    blind = [ln.strip()[:60] for ln in ladder_sites if "target_pid=target_pid" not in ln]
+    ladder_sites = [ln for ln in lines if LADDER_SITE in ln]
+    blind = [ln.strip()[:60] for ln in ladder_sites if not ladder_carries_pid(ln)]
     check("CHK-8 the pid reaches every ladder entry",
           len(ladder_sites) >= 2 and not blind,
           "sites=%d blind=%s" % (len(ladder_sites), blind))
@@ -248,20 +267,24 @@ def neg_arm():
                 problems.append("mutant A SURVIVED -- the gate is blind here: %s" % failed_a)
 
         # MUTANT C -- the pid dropped from the ladder reads (2026-11-04). The
-        # gate is static text, so the mutant removes the keyword from EVERY
-        # site and the check must go RED: a ladder read without the owner's pid
-        # would capture the endpoint mix while the panel claims "one app".
-        hits_c = live_text.count(LADDER_GUARD)
-        if hits_c < 2:
+        # gate is static text, so the mutant removes the ARGUMENT's value from
+        # EVERY site (`target_pid=<expr>` -> `target_pid=None`) and the check
+        # must go RED: a ladder read without the owner's pid would capture the
+        # endpoint mix while the panel claims "one app". Pinar o texto do
+        # argumento era a outra metade da doenca: 1 de 4 sitios casava, a arm
+        # era decorativa e o controle saia rc=2 sem medir nada.
+        mutated_c, replaced = LADDER_PID_RE.subn(r"\1None)", live_text)
+        hits_c = live_text.count(LADDER_PID_ARG)
+        if hits_c < 2 or replaced != hits_c:
             decorative += 1
-            problems.append("mutant C anchor %s (%d hit(s)) -- DECORATIVE, not counted"
-                            % ("MISSING" if hits_c == 0 else "AMBIGUOUS", hits_c))
-            print("  FAIL mutant C anchor %s (%d hit(s)) -- DECORATIVE, not counted"
-                  % ("MISSING" if hits_c == 0 else "AMBIGUOUS", hits_c))
+            problems.append("mutant C anchor %s (%d hit(s), %d rewritable) -- DECORATIVE, not counted"
+                            % ("MISSING" if hits_c == 0 else "AMBIGUOUS", hits_c, replaced))
+            print("  FAIL mutant C anchor %s (%d hit(s), %d rewritable) -- DECORATIVE, not counted"
+                  % ("MISSING" if hits_c == 0 else "AMBIGUOUS", hits_c, replaced))
         else:
             path_c = os.path.join(tmpdir, "mutant-c-ladder-pid-worker.py")
             with open(path_c, "w", encoding="utf-8", newline="") as fh:
-                fh.write(live_text.replace(LADDER_GUARD, "device_candidates(audio_cfg, wanted)"))
+                fh.write(mutated_c)
             mod_c = load_module(path_c, "_plp_neg_ladder_worker")
             failed_c = run_checks(mod_c, "MUTANT C (pid dropped from the ladder)")
             want_c = [n for n in failed_c if n.startswith("CHK-8 the pid reaches")]
