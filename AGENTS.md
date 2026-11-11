@@ -652,8 +652,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-11, 11:0x):** `_main\_audit-verify-all.cmd` = **354594 B**,
-  **4113 CRLF** / 0 bare LF, sha256 `2824F5A48604FB998DEB38986F2D02471911FDED635794D750F9BBCC9F2E4185`.
+- **PIN do ficheiro (medido 2026-11-11, 11:2x):** `_main\_audit-verify-all.cmd` = **354618 B**,
+  **4113 CRLF** / 0 bare LF, sha256 `3C50EFE307077943C2C71ED32DA820013B6E6A6426A663538F2EF1E87C2F1F05`.
+  (Vinte e quatro bytes a mais do que o pin de 354594 B, e ZERO linhas a mais: a unica mudanca e'
+  `worker\engine_switch.py` nas dependencias de `control-redux-flag-neg-arm`. O `redux-flag-gate.py`
+  le esse modulo (as claims `stamp`/`hard-rule`/`fail-safe`/`memory-gate` vivem la' desde a
+  extracao), e o passo em cache reimprimiria um `NEG-VERDICT: GREEN` sobre um interruptor que ja'
+  mudou -- a classe do `panel-deps`. Medido: `python _main/redux-flag-gate.py --neg-arm` rc=0 com
+  `[shipped] VERDICT GREEN (13/13 claims hold)` e `NEG-VERDICT: GREEN`, e o negativo do ficheiro
+  `red-as-expected-historico-gate-off` rc=1.)
   (Mil duzentos e oitenta e dois bytes e QUINZE linhas a mais do que o pin de 353312 B: o par
   `webview2-runtime` + `red-as-expected-webview2-runtime`, o RUNTIME DE WEBVIEW2 -- ordem do dono
   de 2026-11-11, *"use the GREATER version"*. Seis linhas de comentario e nove de passo. O oraculo
@@ -2413,6 +2420,45 @@ um laco que dorme exactamente o tempo que trabalha gasta **100 % de um nucleo po
 `python _main/shell-thread-budget-oracle.py` antes e depois e cola os dois numeros com o pid. Um
 stutter "resolvido" sem pid, fio e linha nao e' um stutter resolvido. Recibo de referencia:
 `_main/receipt-20261108-stutter-caption-tick.md`.
+
+## ESTA MAQUINA E' 10x MAIS FRACA DO QUE O CODIGO ASSUME (ordem do dono via herdr, 2026-11-11)
+
+Verbatim: *"UPDATE YOUR LOCAL AGENTS.md SO YOU STOP CAUSING PERFORMANCE DROPS ON THIS COMPUTER.
+ASSUME THIS MACHINE IS 10x WEAKER THAN IT IS AND WRITE THE CODE THAT WAY: one heavy job at a time, a
+declared ceiling in threads/MB/s/GiB measured BEFORE the job starts (not after it hurts), cache and
+resume so nothing is redone, and no unbounded loop, fan-out or in-memory accumulation. THROTTLING IS
+THE WORST OF THE APPROACHES: every preferable approach is a genuine optimization -- do less work, do
+it once, batch it, reuse it, make it incremental, drop the duplicate -- and a cap only comes after the
+work itself got cheaper. A limit you did not measure is not a limit."*
+
+Cinco obrigacoes, e a ordem entre elas e' a propria ordem dele:
+
+1. **UM trabalho pesado de cada vez**, e so' com o lease do gate central
+   (`I:\!manager\tools\performance-gate.py`). `unknown` nao e' `green`, um skip nao e' aprovacao, e
+   dois agentes a varrer disco em paralelo sao o stutter que ele reporta.
+2. **O tecto e' DECLARADO ANTES do trabalho**, em escola de threads (por sessao, nao por processo --
+   medido em 2026-11-09: quatro sessoes com pool proprio somam 146-201 % de um nucleo), em MB/GiB de RSS/commit, em
+   MB/s de IO e em numero de ficheiros por varredura. Depois mede-se e colam-se os dois numeros. Um
+   numero escrito DEPOIS da maquina doer nao e' um tecto, e' uma desculpa com digitos.
+3. **Cache e resume por CONTEUDO** (hash dos bytes de entrada + parametros), incremental (so' as
+   combinacoes novas) e delta (`MISS <key>` / `CACHE HIT <key>`). Medido nesta casa: a chave custa
+   0,07 s e o hit devolve em 0,16 s contra 4,5-120 s de execucao; e a mesma pergunta re-executada com
+   uma flag diferente e' zero informacao nova.
+4. **Nada de laco, fan-out ou acumulacao sem tecto**: nem thread por evento (medido: `CreateThread`
+   por quadro = 90,879 criacoes/s), nem re-arma de timer por tick (medido: 2 569 Hz), nem `list`/
+   `dict`/buffer que cresce com o tempo de vida do processo (tecto declarado + corte CONTADO + linha
+   que o diz, como o `REDUX_FUSE_TRIMMED`).
+5. **O throttle vem DEPOIS da optimizacao, nunca antes.** Primeiro faz-se menos trabalho, uma vez,
+   em lote, reutilizado, incremental, sem duplicacao; so' o que sobrar desse exercicio pode levar um
+   tecto -- e o tecto nao e' a cura: o `--cpu 40` do watcher limita CPU e NAO limita IO (medido em 2026-11-10:
+   `io 20.5 MB/s` com o Job Object a 40 %), logo um trabalho que le' disco precisa do seu proprio
+   duty cycle na origem, com o custo do lote medido e o descanso derivado dele (`ratio = 4.0`), nunca
+   um `sleep` fixo por lote.
+
+O instrumento do disco e' `python I:\!watcher\tools\artifact-census.py --project H:/sotto [--budget-gib N
+--gate]` antes e depois, com os dois numeros e o volume; o do processo e' o pid + o fio COM NOME
+(`_main/shell-thread-cpu.py`) e a arvore (`_main/tree-cost-oracle.py`). E a frase que resume a lei:
+**um limite que nao foi medido nao e' um limite.**
 
 ## UM LIMITE DE MEDICAO LARGA UM INSTRUMENTO, NAO UM PARAGRAFO (2026-11-09)
 

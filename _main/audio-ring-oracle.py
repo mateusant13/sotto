@@ -152,10 +152,16 @@ def _raw_calls(node):
 
 def run_selftest():
     try:
+        # O PAR, NAO O BIT (`_main/console-window-audit.py` recusa um
+        # `creationflags` sozinho): medido 2026-11-04, o bit so' esconde a
+        # janela quando o pai TEM consola, e o pai desta frota nunca tem.
         proc = subprocess.run([sys.executable, REPLAY, '--selftest'],
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               timeout=180,
-                              creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+                              creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                              startupinfo=subprocess.STARTUPINFO(
+                                  dwFlags=subprocess.STARTF_USESHOWWINDOW,
+                                  wShowWindow=0))
     except Exception as exc:  # noqa: BLE001
         return False, 'selftest nao correu: %r' % (exc,), ''
     out = proc.stdout.decode('utf-8', 'replace')

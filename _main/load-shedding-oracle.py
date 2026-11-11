@@ -39,6 +39,7 @@ Uso:
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib.util as _ilu
 import os
 import json
@@ -62,6 +63,41 @@ WORKER = ROOT / "worker" / "sotto_worker.py"
 EXIT_PASS, EXIT_FAIL = 0, 1
 
 rows: list[tuple[bool, str, str]] = []
+
+#: O prazo DECLARADO de uma espera. Havia um `join(30.0)` por descida, sem tecto
+#: global: um lote que nunca fecha (um mutante, ou a maquina com seis lanes)
+#: levava a arm a 240 s e o `battery-budget` a RED -- medido 2026-11-11 no passo
+#: `red-as-expected-load-shedding` (39.8 s -> 240.5 s), pilha em `_descend` ->
+#: `_inflight.join(30.0)`. Um JOIN sem prazo nao e' uma espera, e' um bloqueio;
+#: o prazo E' o instrumento.
+JOIN_CAP_S = 15.0
+JOIN_TIMEOUTS: list[str] = []
+
+
+def _settle(s, label: str) -> bool:
+    """Espera o lote em curso com PRAZO DECLARADO; True se ele fechou.
+
+    Quando o prazo expira diz `JOIN-TIMEOUT` e NAO espera mais: a arm que
+    depende desta espera passa a NAO MEDIDA, e o braco `--neg-arm` recusa
+    creditar o mutante por uma RED que o relogio -- e nao o defeito -- produziu.
+    Sem isto o braco nao tinha tecto: medido 2026-11-11 com a maquina carregada,
+    o `--neg-arm` deste ficheiro nao fechava em 330 s e a pilha estava toda em
+    `_inflight.join(30.0)`.
+    """
+    if not s.in_flight():
+        return True
+    if JOIN_TIMEOUTS:
+        # Uma espera ja' expirou NESTA corrida: o lote seguinte e' o mesmo
+        # estado partido, e cobrar JOIN_CAP_S por cada uma punha a arm de novo
+        # nos 240 s. Paga-se o prazo UMA vez por corrida.
+        return False
+    s._inflight.join(JOIN_CAP_S)
+    if s._inflight.is_alive():
+        JOIN_TIMEOUTS.append(label)
+        print("JOIN-TIMEOUT %s waited_s=%.1f -- o lote nao fechou; a arm NAO "
+              "foi medida" % (label, JOIN_CAP_S), flush=True)
+        return False
+    return True
 
 
 def add(ok: bool, name: str, detail: str = "") -> bool:
@@ -924,6 +960,7 @@ def run(module_path: Path, shell_path: Path, batch_path: Path | None = None) -> 
     # UMA CORRIDA, UM VEREDICTO: sem isto o segundo mutante herdava as linhas do
     # primeiro e o total (`arms=82`) descrevia duas corridas como uma.
     rows.clear()
+    JOIN_TIMEOUTS.clear()
     if not module_path.exists():
         print(f"VERDICT: FAIL -- {module_path} ausente")
         return EXIT_FAIL
@@ -1465,6 +1502,18 @@ def _load_worker(path: Path):
     spec = _ilu.spec_from_file_location("sotto_worker_probe", str(path))
     mod = _ilu.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    # ESTE ORACULO NAO TEM PASSE AO VIVO -- e o fixture tem de o DIZER. O
+    # interruptor e' armado e o `mode` vira `stream`, entao o portao
+    # (`_wait_for_live`) faz o lote DORMIR o cap inteiro (`ASR_LIVE_WAIT_S=2.0`)
+    # duas vezes por janela a esperar um decode que nenhuma thread deste
+    # processo faz: medido 2026-11-11, 4 s por janela, 3 janelas = 12 s de UMA
+    # corrida de 13 s -- e o controlo (`--neg-arm`, 19 mutantes) nos 231 s.
+    # O `asr_admit` continua a ser medido como FUNCAO PURA, com as idades que
+    # cada arm declara; o que sai e' a espera por um ao vivo que nao existe.
+    cls = getattr(mod, "ReduxHiddenSwitch", None)
+    ns = getattr(getattr(cls, "_wait_for_live", None), "__globals__", None)
+    if isinstance(ns, dict):
+        ns["ASR_LIVE_WAIT_S"] = 0.0
     return mod
 
 
@@ -1623,8 +1672,7 @@ def arms_load(worker_path: Path, tmp: Path) -> None:
     add(mode == "batch", "a carga a libertar devolve o worker ao lote (sozinho)",
         f"mode={mode} level={s._shed}")
     s.maybe_kick()
-    if s.in_flight():
-        s._inflight.join(30.0)
+    _settle(s, "ARM 9/10 -- a carga a libertar")
     after = s._pending_counts()
     add(eng.loads >= 1, "o motor CARREGOU sozinho quando a carga libertou",
         f"loads={eng.loads}")
@@ -1669,8 +1717,7 @@ def arms_load(worker_path: Path, tmp: Path) -> None:
     for _i in range(9):
         s2.add_audio(np.full(1600, 0.1, dtype=np.float32))
     s2.maybe_kick()
-    if s2.in_flight():
-        s2._inflight.join(30.0)
+    _settle(s2, "ARM 10 -- a recarga apos a largada")
     add(eng2.loads >= 2, "e RECARREGOU sozinho no lote seguinte",
         f"loads={eng2.loads}")
     add(s2._pending_counts()["blocks_in"] == s2._pending_counts()["blocks_out"],
@@ -1788,8 +1835,7 @@ def _descend(sw, s, gate, ticks=12):
     for _i in range(ticks):
         s.tick()
         outs.append(sw.resume_catch_up(s, gate))
-    if s.in_flight():
-        s._inflight.join(30.0)
+    _settle(s, "ARM 23/24/25 -- a retoma por descida")
     return outs
 
 
@@ -1857,8 +1903,7 @@ def arms_resume(worker_path: Path, tmp: Path) -> None:
     for _i in range(6):
         s.tick()
         sw.resume_catch_up(s, gate)
-    if s.in_flight():
-        s._inflight.join(30.0)
+    _settle(s, "ARM 23 -- ticks calmos seguintes")
     add(eng.loads == 1 and len([l for l in logs if l.startswith("LOAD_RESUME ")]) == 1,
         "ticks calmos seguintes NAO voltam a carregar (uma vez por borda)",
         f"loads={eng.loads}")
@@ -2003,8 +2048,11 @@ def _cycle(s, eng, state, seconds=300.0, blocks_per_tick=3):
         for _b in range(blocks_per_tick):
             s.add_audio(np.full(1600, 0.2, dtype=np.float32))
         s.maybe_kick()
-        if s.in_flight():
-            s._inflight.join(30.0)
+        if s.in_flight() and not _settle(s, "ARM 23 -- a descida (por tick)"):
+            # Uma espera ja' expirou: o laco continua a custar JOIN_CAP_S por
+            # tick e a medir um estado que nao assenta. Sai, e a arm fica
+            # NAO MEDIDA (o `--neg-arm` recusa creditar o mutante).
+            break
     return levels
 
 
@@ -2246,8 +2294,7 @@ def arms_release(worker_path: Path, tmp: Path) -> None:
     kicked2 = s2.maybe_kick()
     # O lote corre num FIO: `loads` so' esta' escrito quando ele acaba. Medir
     # antes do join mede a corrida, nao a carga.
-    if s2.in_flight():
-        s2._inflight.join(30.0)
+    _settle(s2, "ARM 25 -- o piso carrega o mesmo audio")
     add(kicked2 is True and eng2.loads == loads_before + 1,
         "e cumprido o piso, o mesmo audio carrega o motor e segue",
         f"kicked={kicked2} loads={eng2.loads} (de {loads_before})")
@@ -2352,8 +2399,12 @@ def _neg_arm_gate(label, target, old, new, why, must_fail) -> int:
         # layout fecha em rc=0 (nenhum RED de ambiente); a leitura abaixo
         # continua a ser o que recusa um "PASS" quando a base ja' esta'
         # vermelha ou quando a arm nomeada desapareceu.
-        run(webview / "load_shedding.py", SHELL, BATCH)
-        base_hits = [(ok, name) for ok, name, _d in rows if must_fail in name]
+        _base_rc, base_rows = _base(webview / "load_shedding.py", SHELL, BATCH, "gate")
+        if JOIN_TIMEOUTS:
+            print(f"NEG-ARM({label}) NOT-CAUGHT -- a base nao fechou o lote "
+                  f"({JOIN_TIMEOUTS[0]}); quem decidiria seria o relogio")
+            return EXIT_PASS
+        base_hits = [(ok, name) for ok, name, _d in base_rows if must_fail in name]
         if not base_hits:
             print(f"NEG-ARM({label}) FAIL -- a arm '{must_fail}' nao existe na "
                   f"corrida de BASE (o texto da arm mudou, ou o worker nem "
@@ -2379,6 +2430,10 @@ def _neg_arm_gate(label, target, old, new, why, must_fail) -> int:
         # QUALQUER mutacao -- o braco passava por o alvo nao existir, nunca pelo
         # mutante. O modulo e o worker sao os da copia: e' la' que a guarda vive.
         run(webview / "load_shedding.py", SHELL, BATCH)
+        if JOIN_TIMEOUTS:
+            print(f"\nNEG-ARM({label}) NOT-CAUGHT -- JOIN-TIMEOUT com o mutante "
+                  f"({JOIN_TIMEOUTS[0]}): o mutante NAO foi medido")
+            return EXIT_PASS
         base_ok_names = {name for ok, name in base_hits if ok}
         base_ok_keys = {_arm_key(n) for n in base_ok_names}
         caught = [name for ok, name, _d in rows
@@ -2422,7 +2477,12 @@ def neg_arm_drain() -> int:
         switch_copy.write_text(mutant, encoding="utf-8")
         print("NEG-ARM(derrama): com a RAM cheia o audio NOVO passa a ser deitado fora")
         rows.clear()
+        JOIN_TIMEOUTS.clear()
         arms_load(worker_copy, tmp)
+        if JOIN_TIMEOUTS:
+            print("\nNEG-ARM(derrama) NOT-CAUGHT -- a espera do lote expirou "
+                  "(%s); o mutante NAO foi medido" % JOIN_TIMEOUTS[0])
+            return EXIT_PASS
         failed = [r for r in rows if not r[0]]
         if failed:
             for _ok, name, detail in failed:
@@ -2612,6 +2672,37 @@ def _mutant_copy(tmp: Path):
     return copy
 
 
+#: A BASE LIMPA CORRE-SE UMA VEZ POR CONJUNTO DE BYTES. Cada braco de mutacao
+#: corria o oraculo inteiro DUAS vezes (base + mutante): com 19 bracos a 14 s por
+#: corrida, o `--neg-arm` deste ficheiro custava ~9 min e o passo morria no prazo
+#: de 240 s. A base e' o MESMO byte-em-byte conjunto de ficheiros em todos os
+#: bracos (as copias nascem do repo a cada braco); repeti-la nao mede nada de
+#: novo -- so' gasta. A chave e' o conteudo, nao o caminho.
+_BASE_CACHE: dict = {}
+
+
+def _base(module_path: Path, shell_path: Path, batch_path, layout: str) -> tuple:
+    """(rc, rows) da corrida LIMPA, uma vez por conjunto de bytes + layout."""
+    key = (layout,) + tuple(
+        hashlib.sha256(Path(p).read_bytes()).hexdigest()
+        if p and Path(p).exists() else (str(p), '-')
+        for p in (module_path, shell_path, batch_path))
+    hit = _BASE_CACHE.get(key)
+    if hit is not None:
+        # A base JA' foi lida neste processo e estava limpa (a primeira leitura
+        # recusa a corrida se `JOIN_TIMEOUTS` nao estiver vazio); o que houver
+        # aqui e' o resto do MUTANTE anterior, e nao um facto desta base.
+        JOIN_TIMEOUTS.clear()
+        print("BASE: reutilizada a corrida limpa do mesmo conjunto de bytes "
+              "(a base nao depende do braco)")
+        return hit
+    rc = run(module_path, shell_path,
+             batch_path if batch_path and Path(batch_path).exists() else None)
+    got = (rc, list(rows))
+    _BASE_CACHE[key] = got
+    return got
+
+
 def _neg_arm_text(label, path_in_copy, old, new, why, prefix, must_fail):
     """Muta uma copia e exige que a ARM DO MUTANTE caia -- e que ela ESTIVESSE verde.
 
@@ -2637,8 +2728,12 @@ def _neg_arm_text(label, path_in_copy, old, new, why, prefix, must_fail):
     try:
         copy = _mutant_copy(tmp)
         batch = copy / "batch_queue.py"
-        run(copy / "load_shedding.py", SHELL, batch)
-        base_hits = [(ok, name) for ok, name, _d in rows if must_fail in name]
+        _base_rc, base_rows = _base(copy / "load_shedding.py", SHELL, batch, "text")
+        if JOIN_TIMEOUTS:
+            print("\nNEG-ARM(%s) NOT-CAUGHT -- a base nao fechou o lote (%s); "
+                  "quem decidiria seria o relogio" % (label, JOIN_TIMEOUTS[0]))
+            return EXIT_PASS
+        base_hits = [(ok, name) for ok, name, _d in base_rows if must_fail in name]
         if not base_hits:
             print("\nNEG-ARM(%s) FAIL -- a arm '%s' nao existe na copia limpa "
                   "(o texto da arm mudou)" % (label, must_fail))
@@ -2657,6 +2752,11 @@ def _neg_arm_text(label, path_in_copy, old, new, why, prefix, must_fail):
         _drop_bytecode(tmp)
         print("NEG-ARM(%s): %s" % (label, why))
         rc = run(copy / "load_shedding.py", SHELL, batch)
+        if JOIN_TIMEOUTS:
+            print("\nNEG-ARM(%s) NOT-CAUGHT -- JOIN-TIMEOUT com o mutante (%s): "
+                  "a espera expirou, o mutante NAO foi medido"
+                  % (label, JOIN_TIMEOUTS[0]))
+            return EXIT_PASS
         base_ok_names = {name for ok, name in base_hits if ok}
         base_ok_keys = {_arm_key(n) for n in base_ok_names}
         caught = [name for ok, name, _d in rows

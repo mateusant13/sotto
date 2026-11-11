@@ -327,6 +327,24 @@ def judge_arms():
     return arms
 
 
+def ratchet_named(why):
+    """Os NOMES que a razao do ratchet POR PASSO cita.
+
+    Nao e' um `in` sobre a razao inteira: o total e o prazo tambem nomeiam passos,
+    e a M2 tem de ser apanhada PELO RATCHET, nao por um RED que ja' existia.
+    """
+    names = set()
+    for line in why:
+        if 'engordaram alem do ratchet' not in line:
+            continue
+        tail = line.split(':', 1)[1] if ':' in line else ''
+        for part in tail.split('|'):
+            word = part.strip().split(' ')[0]
+            if word:
+                names.add(word)
+    return names
+
+
 def neg_arm():
     """MUTA a LEITURA (nao o codigo) e exige que o MESMO `judge` nomeie o mutante.
 
@@ -341,8 +359,18 @@ def neg_arm():
           `NEG-ARM: PASS` por causa da M1 (o mutante apanhado era sempre o mesmo
           tecto), que e' a classe "um controlo que prova outro portao".
 
-    O candidato da M2 e' escolhido por ARITMETICA, nao por nome: o primeiro passo
-    (por custo) cujo `x1.30` ainda caiba no prazo e no tecto do total.
+    O candidato da M2 e' escolhido por ARITMETICA, nao por nome: o passo de maior
+    custo (fora o da M1) cujo `+folga+10 s` ainda caiba no prazo.
+
+    MEDIDO 2026-11-11 (corrida da bateria): `red-as-expected-load-shedding` morreu
+    no prazo de 240 s, o total ficou ACIMA do tecto, e a condicao antiga da M2
+    (`total + folga + 10 s < tecto`) deixou de ter candidato -- o controlo saia
+    `CANNOT-MEASURE` (rc 2) exactamente na corrida em que o gate estava RED e o
+    controlo era mais necessario. A cura tem duas metades: o candidato da M2 deixa
+    de exigir folga no TOTAL (a folga que ele precisa e' no PRAZO, porque o
+    mutante nao pode virar `over_deadline`), e a testemunha da M2 passa a ser a
+    razao do ratchet POR PASSO que nomeia o passo -- nao "alguma coisa vermelha",
+    que num gate ja' RED seria verdade sem o ratchet existir.
     """
     rows = read_steps(CACHE)
     base = load_baseline()
@@ -357,7 +385,6 @@ def neg_arm():
     # tem de julgar o MESMO que o portao julga.
     measured = measure(rows, deadline(), (base.get('policy') or None))
     declared = set(base.get('over_deadline') or ())
-    ceiling = float(base['total_s']) * RATCHET_PCT
     clean = [r for r in rows
              if r['name'] not in declared and r['elapsed_s'] < deadline()
              and r['elapsed_s'] >= PER_STEP_FLOOR_S] or rows
@@ -372,34 +399,66 @@ def neg_arm():
     # `FAIL (1/2)` sem que o juiz tivesse defeito nenhum. A seleccao passa a exigir
     # a travessia; quando nenhum passo a atravessa, e' `CANNOT-MEASURE`, nunca PASS.
     per_base = base.get('per_step') or {}
-    sub_deadline = [r for r in clean
-                    if r is not worst
-                    and r['name'] in per_base
-                    and r['elapsed_s'] + PER_STEP_SLACK_S + 10.0 < deadline()
-                    and measured['total_s'] + PER_STEP_SLACK_S + 10.0 < ceiling]
+    # A ISOLACAO DA M2 NAO PODE DEPENDER DE O GATE ESTAR VERDE. Medido 2026-11-11:
+    # com `red-as-expected-load-shedding` morto no prazo (240,5 s), o total da
+    # corrida ja' estava ACIMA do tecto, a condicao antiga
+    # (`total + folga + 10 < tecto`) era falsa para TODOS os passos e o controlo
+    # saia `CANNOT-MEASURE` (rc 2) exactamente quando o gate estava vermelho --
+    # isto e', o controlo ficava cego no unico momento em que era preciso. O que
+    # prova o isolamento passa a ser o NOME do passo na razao do ratchet POR PASSO
+    # (`witness` abaixo), nao a ausencia do RED do total.
     # A M2 CRESCE EM SEGUNDOS, nao em percentagem: com a folga absoluta de 30 s a
     # regra so' dispara acima dela, logo um mutante de +30% num passo de 60 s
     # (18 s) ficaria INVISIVEL e o controlo diria `PASSOU` sem o juiz ter defeito.
     # O mutante passa a `+FOLGA+10 s`, que e' exactamente o limiar que a regra usa.
-    second = max(sub_deadline, key=lambda r: r['elapsed_s']) if sub_deadline else None
+    #
+    # E O CANDIDATO TEM DE ATRAVESSAR O RATCHET CONTRA O BASELINE DO PASSO, medido
+    # 2026-11-11: o comentario acima ja' dizia "exige a travessia" mas o codigo so'
+    # verificava prazo/tecto, e o primeiro candidato escolhido (`...youtube-cdp-
+    # source`, 82,8 s -> 122,9 s) ficou ABAIXO do `baseline * 1.20` dele -- o
+    # mutante nao era nomeado e o controlo dizia `PASSOU` sem o juiz ter defeito.
+    def _m2_growth(o):
+        return o + PER_STEP_SLACK_S + 10.1
+
+    crossing = [r for r in clean
+                if r is not worst
+                and r['name'] in per_base
+                and _m2_growth(r['elapsed_s']) < deadline()
+                and _m2_growth(r['elapsed_s']) > per_base[r['name']] * PER_STEP_PCT
+                and (_m2_growth(r['elapsed_s']) - per_base[r['name']])
+                > PER_STEP_SLACK_S]
+    second = max(crossing, key=lambda r: r['elapsed_s']) if crossing else None
     if second is None:
         print('NEG-ARM CANNOT-MEASURE -- nenhum passo ATRAVESSA o ratchet por passo '
-              '(+30%) cabendo tambem no prazo E no tecto do total; a M2 nao teria '
-              'como isolar o ratchet por passo')
+              '(+folga+10 s) cabendo no prazo; a M2 nao teria como isolar o ratchet '
+              'por passo')
         return 2
-    plan = [(worst, 'M1 x10 (prazo + total)', lambda o: max(o * 10.0, deadline() * 1.5)),
+    plan = [(worst, 'M1 x10 (prazo + total)',
+             lambda o: max(o * 10.0, deadline() * 1.5), 'any'),
             (second, 'M2 +folga+10s (so o ratchet por passo)',
-             lambda o: o + PER_STEP_SLACK_S + 10.1)]
+             _m2_growth, 'ratchet')]
     base_ok, base_why, _ = judge(measured, base)
     caught = 0
-    for row, label, mut in plan:
+    for row, label, mut, witness in plan:
         original = row['elapsed_s']
-        named_before = any(row['name'] in w for w in base_why)
+        # A TESTEMUNHA DA M2 E' A RAZAO DO RATCHET POR PASSO, e nao "alguma coisa
+        # ficou vermelha": com o total ja' acima do tecto (o caso medido hoje), o
+        # `not ok_after` sozinho nao distingue o mutante de um RED pre-existente.
+        def names(why, want_ratchet=(witness == 'ratchet')):
+            hit = []
+            for line in why:
+                if want_ratchet:
+                    if row['name'] in ratchet_named([line]):
+                        hit.append(line)
+                elif row['name'] in line:
+                    hit.append(line)
+            return hit
+        named_before = names(base_why)
         row['elapsed_s'] = mut(original)
         mutated = measure(rows, deadline(), (base.get('policy') or None))
         ok_after, why_after, _ = judge(mutated, base)
-        named_after = any(row['name'] in w for w in why_after)
-        ok = named_after and not named_before and not ok_after
+        named_after = names(why_after)
+        ok = bool(named_after) and not named_before and not ok_after
         caught += 1 if ok else 0
         print('NEG-ARM %-14s %-32s %s %.2fs -> %.2fs'
               % (row['name'], label, 'APANHADO' if ok else 'PASSOU', original,

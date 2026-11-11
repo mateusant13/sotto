@@ -302,6 +302,17 @@
       return Promise.resolve({ lang: want });
     },
 
+    // O ASPECTO DA LEGENDA NATIVA (dono, 2026-11-09). `plate` escolhe a largura
+    // da placa ('tight' | 'normal') e `opacity` o alfa dela (0..1). O shell
+    // PRENDE o valor, grava em `_main/caption-settings.json` e aplica ao overlay
+    // vivo -- devolve o que ficou aplicado, que pode nao ser o pedido (o clamp
+    // vive num sitio so', no Python).
+    setCaptionVisual: function (opts) {
+      var payload = opts && typeof opts === 'object' ? opts : {};
+      post('caption-visual', payload);
+      return Promise.resolve(payload);
+    },
+
     // PAUSE = UNLOAD (owner, 2026-10-17). The panel's pause controls have
     // always called `bridge.pause()`; the shell never had it, so the dialog
     // said "este shell ainda não consegue pausar". The shell now stops the

@@ -99,9 +99,19 @@ function loadStore() {
     console.log('SETUP ERROR: the HISTORICO-VS-REDUX guard line is not in history-store.js');
     process.exit(2);
   }
-  const tmp = path.join(HERE, '_historico-vs-redux-control-store.js');
-  fs.writeFileSync(tmp, src.replace(GUARD_LINE, ''), 'utf8');
-  return require(tmp);
+  // THE BEFORE-STATE MUST RESOLVE THE STORE'S OWN `require`s. Until 2026-11-09
+  // this wrote the mutant next to THIS probe, which worked while the store had
+  // no relative import. The store then learned `require('./history-context-store')`
+  // (commit 43784a9), so a copy in `_main/` looked for `_main/history-context-store.js`
+  // and the step died with MODULE_NOT_FOUND before printing `RESULT:` (measured
+  // 2026-11-11, rc=1). Compiled here with the ORIGINAL filename: relative
+  // resolution is the store's own directory, and nothing is written to disk.
+  const Module = require('node:module');
+  const mutant = new Module(storePath, module);
+  mutant.filename = storePath;
+  mutant.paths = Module._nodeModulePaths(path.dirname(storePath));
+  mutant._compile(src.replace(GUARD_LINE, ''), storePath);
+  return mutant.exports;
 }
 
 function routesOnDisk() {

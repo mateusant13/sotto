@@ -3001,7 +3001,7 @@ REM builds one mutant COPY per claim, requiring each to go RED on its own claim
 REM ONLY; rc=0 is that conjunction. This is the superset of the plain gate, which
 REM is why the plain form is not a separate step.
 if exist _main\redux-flag-gate.py (
-  call :step control-redux-flag-neg-arm 0 "_main\redux-flag-gate.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\control-redux-flag-neg-arm.log" python _main\redux-flag-gate.py --neg-arm
+  call :step control-redux-flag-neg-arm 0 "_main\redux-flag-gate.py;worker\sotto_worker.py;worker\engine_switch.py;app\webview\sotto_webview.py" "%OUT%\control-redux-flag-neg-arm.log" python _main\redux-flag-gate.py --neg-arm
   call :control control-redux-flag-neg-arm !STEP_RC! "%OUT%\control-redux-flag-neg-arm.log" "NEG-VERDICT: GREEN"
 ) else ( call :control control-redux-flag-neg-arm MISSING "%OUT%\control-redux-flag-neg-arm.log" "NEG-VERDICT: GREEN" )
 REM `--unit --neg-arm` is the no-shell half: the classifier's arms, the `done`

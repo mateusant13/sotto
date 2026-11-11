@@ -204,6 +204,12 @@ cd /d "{root}"
 set "ROOT={root}\\"
 set "OUT={tmp}\\"
 set "CACHE_STATE={tmp}\\state.json"
+REM O `:step_run` larga o comando por `pythonw _main\step-deadline.py --seconds
+REM %SOTTO_STEP_DEADLINE_S% -- ...` (medido 2026-11-11: o rotulo NAO define o
+REM default -- ele vive acima do `:step`, na linha 141 -- e o arnes que so' copia
+REM o bloco de rotulos passava `--seconds` VAZIO, o wrapper morria antes de
+REM largar o filho e o opt-in parecia quebrado). O default e' o da bateria.
+if not defined SOTTO_STEP_DEADLINE_S set "SOTTO_STEP_DEADLINE_S=240"
 set "N=0"
 set "GATES=0"
 set "CTRLS=0"
@@ -261,12 +267,17 @@ def _run_harness(cmd_text: str, tmp: str, heavy_env) -> dict:
     env.pop("SOTTO_BATTERY_HEAVY", None)
     if heavy_env is not None:
         env["SOTTO_BATTERY_HEAVY"] = heavy_env
+    # BYTES, NAO `text=True` (medido 2026-11-11): o `cmd.exe` deste hospedeiro
+    # escreve em cp850 e o leitor do `subprocess` estourava com
+    # `UnicodeDecodeError` a meio da captura -- o arnes ficava sem a linha
+    # `HARNESS`, e a C1 lia a falta de contadores como falha do mecanismo. Os
+    # tokens que este arnes le' sao ASCII, logo `errors="replace"` e' suficiente.
     proc = subprocess.run(
         ["cmd", "/c", harness],
-        capture_output=True, text=True, timeout=180, cwd=ROOT, env=env,
+        capture_output=True, timeout=180, cwd=ROOT, env=env,
         creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
     )
-    out = (proc.stdout or "") + (proc.stderr or "")
+    out = ((proc.stdout or b"") + (proc.stderr or b"")).decode("utf-8", "replace")
     counters = {}
     for line in out.splitlines():
         if line.startswith("HARNESS "):

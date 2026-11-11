@@ -689,6 +689,13 @@ class FakeShell:
     def on_worker_stats(self, payload):
         return None
 
+    def on_worker_cost(self, parsed):
+        # 2026-11-09: o `start_worker` passou a ligar `on_cost=self.on_worker_cost`
+        # ao bridge (o cao de guarda do CUSTO do worker -- CPU alta sem linha). O
+        # fake tem de o ter, senao as tres arms do carregamento quente medem um
+        # `AttributeError` em vez do caminho que o produto corre.
+        return None
+
     def on_worker_meter(self, sample):
         return None
 

@@ -8,9 +8,15 @@ implementation), so the strip's own "Open panel" button fell through to
 `panel.js:1245-1247` and the window stayed strip-sized.
 
 TWO COLOURS IN ONE COMMAND, the house rule: the same checks run against the REAL
-shell and against a COPY of it with the member textually removed
-(`_strip-mutant-sotto_webview.py`, deleted after the run). The oracle is GREEN
-only when the real file passes AND the mutant FAILS on the member it is missing.
+shell and against the same text with one member REMOVED, compiled in memory. The
+oracle is GREEN only when the real file passes AND the mutant FAILS on the member
+it is missing.
+
+NO COPY LANDS IN `app/` (house rule, 2026-11-11): two censuses walk `app/` and
+`worker/` and count what they find, so a mutant file left in the tree -- or left
+behind by a crash -- is product code to them. The broken text is compiled in
+memory against the ORIGINAL filename (`load_source`), which also keeps the
+`__file__`-derived REPO_ROOT the shell reads its assets with.
 
 Writes one JSON report next to itself; run it with `pythonw.exe` so no console
 ever appears on the owner's screen:
@@ -24,14 +30,12 @@ import inspect
 import json
 import os
 import re
-import shutil
 import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEBVIEW = os.path.join(os.path.dirname(HERE), 'app', 'webview')
 SHELL = os.path.join(WEBVIEW, 'sotto_webview.py')
-MUTANT = os.path.join(WEBVIEW, '_strip-mutant_sotto_webview.py')
 REPORT = os.path.join(HERE, '_strip-surface-oracle.json')
 
 if WEBVIEW not in sys.path:
@@ -43,6 +47,21 @@ def load(path, name):
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     spec.loader.exec_module(module)
+    return module
+
+
+def load_source(path, name, source):
+    """Load `source` as a module whose `__file__` is `path`.
+
+    The broken copies must NEVER be written into `app/` (see the module
+    docstring): compiling the mutated text against the original filename gives
+    the same module -- `__file__`, and with it REPO_ROOT, stays the shell's --
+    and leaves nothing on disk.
+    """
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    exec(compile(source, path, 'exec'), module.__dict__)
     return module
 
 
@@ -271,9 +290,40 @@ def check(module):
     if 'extra' not in writer_sig.parameters:
         failures.append('PanelVisibilityWriter cannot carry the `geometry` key, '
                         'so an edit could not be persisted in the one file')
-    write_src = inspect.getsource(module.PanelVisibilityWriter.write)
-    if "'geometry'" not in write_src:
-        failures.append("PanelVisibilityWriter.write never writes 'geometry'")
+    # BEHAVIOURAL, not a grep of `write`'s TEXT. Measured 2026-11-11: this arm
+    # read `inspect.getsource(write)` for "'geometry'", and the 2026-11-10
+    # refactor (commit 08a673e, the 1 185 ms Alt+C stall) moved the payload
+    # build -- geometry included -- into `_payload`, leaving `write` to ENQUEUE
+    # it to the `sotto-panel-visibility` thread. The claim still held and the arm
+    # read RED. Now the arm DRIVES the object: `write` with a writer thread
+    # present enqueues, and `_take` is the payload that thread publishes to
+    # panel-visibility.json -- so the key must be on it.
+    if not hasattr(module.PanelVisibilityWriter, '_payload'):
+        failures.append('ANCHOR-MISSING PanelVisibilityWriter._payload is gone: '
+                        "the builder of the 'geometry' key cannot be located by name")
+    else:
+        try:
+            probe = module.PanelVisibilityWriter(
+                module.PANEL_VISIBILITY_PATH, lambda: True,
+                extra=lambda: {'surface': 'panel', 'x': 1, 'y': 2,
+                               'width': 3, 'height': 4})
+            # `write` enqueues only when a writer thread exists. No thread is
+            # started here, so neither the owner's file nor the disk is touched.
+            probe._thread = object()
+            probe.write('oracle')
+            queued = probe._take()
+        except Exception as exc:  # noqa: BLE001 -- a crash here is a finding
+            failures.append('ANCHOR-MISSING PanelVisibilityWriter cannot be '
+                            'driven to a payload: %r' % (exc,))
+            queued = None
+        if isinstance(queued, dict):
+            facts['writer.payload_geometry'] = queued.get('geometry')
+            if 'geometry' not in queued:
+                failures.append('PanelVisibilityWriter.write never puts the '
+                                "`geometry` key on the payload it publishes")
+        elif queued is not None:
+            failures.append('PanelVisibilityWriter.write enqueued a %s, not a '
+                            'payload dict' % type(queued).__name__)
     facts['writer.path'] = module.PANEL_VISIBILITY_PATH
     if os.path.basename(module.PANEL_VISIBILITY_PATH) != 'panel-visibility.json':
         failures.append('the geometry is not persisted in '
@@ -713,14 +763,31 @@ def check(module):
     return failures, facts
 
 
+def setup_error(message):
+    """-> rc=2, ANCHOR-MISSING named.
+
+    A control whose textual anchor disappeared cannot build its broken copy, so
+    it measured NOTHING: that is neither a product defect (rc=3) nor a pass
+    (rc=0). The house rule for this oracle: rc=2 and the anchor is named.
+    """
+    print('ANCHOR-MISSING', message)
+    raise SystemExit(2)
+
+
 def main():
     report = {'shell': SHELL, 'arms': {}}
     real_failures, real_facts = check(load(SHELL, 'sotto_real'))
+    anchor_missing = [f for f in real_failures if f.startswith('ANCHOR-MISSING')]
+    if anchor_missing:
+        # Bail BEFORE building the five copies: the real arm already says the
+        # oracle cannot locate what it measures.
+        for line in anchor_missing:
+            print(' ', line)
+        setup_error('the real arm cannot locate its anchor -- see above')
 
     # The NEGATIVE CONTROL: the same file with the member removed. Built by a
     # literal textual revert, so what changes is exactly one thing.
-    shutil.copyfile(SHELL, MUTANT)
-    with open(MUTANT, encoding='utf-8') as fh:
+    with open(SHELL, encoding='utf-8') as fh:
         src = fh.read()
     reverted = re.sub(
         r'\n    setPanelSurface: function \(surface, reason\) \{.*?\n    \},\n',
@@ -728,17 +795,9 @@ def main():
     reverted = reverted.replace("'setPanelSurface', 'getStats', 'onStats']",
                                 "'getStats', 'onStats']")
     if reverted == src:
-        raise SystemExit('the negative control could not be built: the member '
-                         'text was not found verbatim')
-    with open(MUTANT, 'w', encoding='utf-8') as fh:
-        fh.write(reverted)
-    try:
-        mut_failures, _ = check(load(MUTANT, 'sotto_mutant'))
-    finally:
-        try:
-            os.remove(MUTANT)
-        except OSError:
-            pass
+        setup_error('the negative control could not be built: the member '
+                    'text was not found verbatim')
+    mut_failures, _ = check(load_source(SHELL, 'sotto_mutant', reverted))
 
     member_failures = [f for f in mut_failures
                        if 'setPanelSurface' in f or 'panel-surface' in f]
@@ -746,8 +805,7 @@ def main():
     # The SECOND control, and it is what keeps the DRIVEN dispatch arm honest: a
     # dict entry removed from the routing table must make that arm RED, or the
     # arm was passing on something other than the wiring.
-    shutil.copyfile(SHELL, MUTANT)
-    with open(MUTANT, encoding='utf-8') as fh:
+    with open(SHELL, encoding='utf-8') as fh:
         src2 = fh.read()
     # The table holds NAMES now (`'stats': ('host', '_stats')`, not
     # `'stats': self._stats`), so the control removes the ENTRY BY ITS KEY
@@ -760,17 +818,9 @@ def main():
     reverted2 = re.sub(r"^[ \t]*'panel-surface':[^\n]*\n", '', reverted2,
                        count=1, flags=re.M)
     if reverted2 == src2:
-        raise SystemExit('the second negative control could not be built: the '
-                         'dispatch entries were not found verbatim')
-    with open(MUTANT, 'w', encoding='utf-8') as fh:
-        fh.write(reverted2)
-    try:
-        mut2_failures, _ = check(load(MUTANT, 'sotto_mutant2'))
-    finally:
-        try:
-            os.remove(MUTANT)
-        except OSError:
-            pass
+        setup_error('the second negative control could not be built: the '
+                    'dispatch entries were not found verbatim')
+    mut2_failures, _ = check(load_source(SHELL, 'sotto_mutant2', reverted2))
     routed_failures = [f for f in mut2_failures
                        if 'dispatch does not route' in f]
 
@@ -779,49 +829,31 @@ def main():
     # that keeps its own number instead must go RED on the stylesheet arms — which
     # is the exact defect "if the value appears in two places, the next person to
     # touch the theme leaves the shell lying about the window it sized".
-    shutil.copyfile(SHELL, MUTANT)
-    with open(MUTANT, encoding='utf-8') as fh:
+    with open(SHELL, encoding='utf-8') as fh:
         src3 = fh.read()
     reverted3 = src3.replace(
         "        value = self.strip_height_from_css()\n",
         "        return False  # MUTANT: the stylesheet is not read\n"
         "        value = self.strip_height_from_css()\n", 1)
     if reverted3 == src3:
-        raise SystemExit('the third negative control could not be built: '
-                         'refresh_strip_height does not read the CSS verbatim')
-    with open(MUTANT, 'w', encoding='utf-8') as fh:
-        fh.write(reverted3)
-    try:
-        mut3_failures, _ = check(load(MUTANT, 'sotto_mutant3'))
-    finally:
-        try:
-            os.remove(MUTANT)
-        except OSError:
-            pass
+        setup_error('the third negative control could not be built: '
+                    'refresh_strip_height does not read the CSS verbatim')
+    mut3_failures, _ = check(load_source(SHELL, 'sotto_mutant3', reverted3))
     css_failures = [f for f in mut3_failures if 'strip.css' in f]
 
     # The FOURTH control: the log budget, reverted to one line per sample. The
     # 500-samples arm must go RED, and NOTHING else should move — that is what
     # makes it a control rather than a second subject.
-    shutil.copyfile(SHELL, MUTANT)
-    with open(MUTANT, encoding='utf-8') as fh:
+    with open(SHELL, encoding='utf-8') as fh:
         src4 = fh.read()
     reverted4 = src4.replace(
         "        self._stats_log_maybe(payload)\n",
         "        log('BRIDGE_STATS_PUSH count=' + str(self.stats_pushes) + ' '\n"
         "            'payload=' + json.dumps(payload, separators=(',', ':')))\n", 1)
     if reverted4 == src4:
-        raise SystemExit('the fourth negative control could not be built: '
-                         '`self._stats_log_maybe(payload)` was not found verbatim')
-    with open(MUTANT, 'w', encoding='utf-8') as fh:
-        fh.write(reverted4)
-    try:
-        mut4_failures, _ = check(load(MUTANT, 'sotto_mutant4'))
-    finally:
-        try:
-            os.remove(MUTANT)
-        except OSError:
-            pass
+        setup_error('the fourth negative control could not be built: '
+                    '`self._stats_log_maybe(payload)` was not found verbatim')
+    mut4_failures, _ = check(load_source(SHELL, 'sotto_mutant4', reverted4))
     logbudget_failures = [f for f in mut4_failures if 'stats.log' in f]
 
     # The FIFTH control, and it is the one the reload arms needed: the arms of
@@ -829,8 +861,7 @@ def main():
     # never applied on its own; the policy REPORTS. Without a control, those
     # arms would pass on every copy and would measure nothing. This copy puts
     # the ceiling back to what it was: a restart.
-    shutil.copyfile(SHELL, MUTANT)
-    with open(MUTANT, encoding='utf-8') as fh:
+    with open(SHELL, encoding='utf-8') as fh:
         src5 = fh.read()
     reverted5 = src5.replace(
         "        if forced:\n"
@@ -842,17 +873,9 @@ def main():
         "            self._boundary_hit = False\n"
         "            return\n", 1)
     if reverted5 == src5:
-        raise SystemExit('the fifth negative control could not be built: the '
-                         "`if forced:` ceiling branch was not found verbatim")
-    with open(MUTANT, 'w', encoding='utf-8') as fh:
-        fh.write(reverted5)
-    try:
-        mut5_failures, _ = check(load(MUTANT, 'sotto_mutant5'))
-    finally:
-        try:
-            os.remove(MUTANT)
-        except OSError:
-            pass
+        setup_error('the fifth negative control could not be built: the '
+                    "`if forced:` ceiling branch was not found verbatim")
+    mut5_failures, _ = check(load_source(SHELL, 'sotto_mutant5', reverted5))
     reload_failures = [f for f in mut5_failures if f.startswith('reload.')]
 
     report['arms']['real'] = {'failures': real_failures, 'facts': real_facts}

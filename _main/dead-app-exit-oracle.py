@@ -254,11 +254,25 @@ def judge_run(name, res):
 
 
 # ─── static arms: the source must carry no unbounded exit path ─────────────
+#
+# O BRACO `watchdog_uses_hard_exit` MORREU COM A CURA DE 2026-11-09, e o recibo
+# fica aqui. Ordem do dono, verbatim: *"sotto closed by itself ... should close
+# only because of me, or hard kill from task manager."* O cao de guarda da UI
+# saia com `_hard_exit(9, 'ui-watchdog')` -- medido as 21:18:11 com `err=0`
+# (nao `ERROR_TIMEOUT`), o processo a trabalhar e a app a ir-se embora sozinha.
+# A cura trocou a SAIDA pela RECUSA: `_ui_hung_recover` faz
+# `ShowWindow(SW_HIDE)` e MANTEM o processo vivo (`UI_HUNG_RECOVER ...
+# still_alive=true`). A expectativa antiga ("o watchdog larga pelo primitivo
+# limitado") deixou de ser a lei, e a lei nova e' o CONTRARIO: o watchdog NAO
+# pode chamar `_hard_exit`, e o caminho de recuperacao tem de ser o que esconde
+# a janela. As duas metades ficam no mesmo predicado -- exigir so' a ausencia do
+# texto antigo passaria um watchdog que nao recupera nada.
 STATIC_ARMS = (
     ('no_of_exit_outside_primitive',
      lambda src: len(re.findall(r'^\s*os\._exit\(', src, re.M)) == 1),
-    ('watchdog_uses_hard_exit',
-     lambda src: "_hard_exit(9, 'ui-watchdog'" in src),
+    ('watchdog_recovers_without_exiting',
+     lambda src: ("self._ui_hung_recover('ui-watchdog')" in src
+                  and re.search(r'_hard_exit\(\s*9\b', src) is None)),
     ('exit_dump_not_compacted',
      lambda src: "_dump_thread_stacks('ui-thread-not-responding', force=True)" in src),
     ('request_exit_uses_hard_exit',
@@ -280,6 +294,34 @@ def static_arms():
             ok = False
             print(f'STATIC {name}: ERROR {exc!r}')
         out.append((name, ok))
+    return out
+
+
+def source_control():
+    """O ARME REPARADO TEM DE SABER IR A VERMELHO.
+
+    A arm antiga (`watchdog_uses_hard_exit`) foi substituida em 2026-11-09 e o
+    substituto NAO pode ser um predicado que nunca falha: um portao que nao
+    consegue ficar vermelho nao e' um portao. Este controlo MUTA a fonte real EM
+    MEMORIA (o ficheiro nao e' tocado) e exige que o arme recuse as duas
+    regressoes -- voltar ao `_hard_exit(9, 'ui-watchdog')`, e ficar com um
+    caminho de recuperacao que ja' nao chama `_ui_hung_recover`.
+    """
+    try:
+        src = open(SHELL, encoding='utf-8').read()
+    except OSError:                                     # noqa: BLE001
+        return [('neg-arm:source-readable', False)]
+    arm = dict(STATIC_ARMS).get('watchdog_recovers_without_exiting')
+    if arm is None:
+        return [('neg-arm:arm-present', False)]
+    call = "self._ui_hung_recover('ui-watchdog')"
+    out = []
+    for name, mutated in (
+            ('neg-arm:old-hard-exit-rejected',
+             src.replace(call, "_hard_exit(9, 'ui-watchdog')", 1)),
+            ('neg-arm:recovery-gutted-rejected',
+             src.replace(call, 'pass  # sem recuperacao', 1))):
+        out.append((name, mutated != src and not arm(mutated)))
     return out
 
 
@@ -345,6 +387,9 @@ def main(argv=None):
     for name, ok in static_arms():
         verdicts.append(('static:' + name, ok, {}))
         print(f'STATIC {"PASS" if ok else "FAIL"} {name}')
+    for name, ok in source_control():
+        verdicts.append((name, ok, {}))
+        print(f'CONTROL {"PASS" if ok else "FAIL"} {name}')
     failed = [v for v in verdicts if not v[1]]
     print(f'CHECK arms={len(verdicts)} failed={len(failed)}')
     print('VERDICT: PASS' if not failed else 'VERDICT: FAIL')

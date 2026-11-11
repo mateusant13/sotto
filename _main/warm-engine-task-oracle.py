@@ -1,3 +1,4 @@
+# NO-BUG: registra e apaga a tarefa `SottoWarmEngine` no Windows; NAO arranca o motor quente nem mede o attach (isso e' do warm-engine-oracle).
 """O motor quente tinha um `/run` para uma tarefa que NAO EXISTE.
 
 MEDIDO 2026-11-10 nesta arvore:

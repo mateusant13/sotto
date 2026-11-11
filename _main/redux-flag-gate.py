@@ -253,8 +253,20 @@ def check_shell(src: str):
     # ── shell-loop ─────────────────────────────────────────────────────────
     # The cadence is the half that records a visibility change NOBODY announced:
     # pywebview's own navigation-time `Show`, `_reassert_hidden`, a hot reload.
-    cadence = re.search(r'while not self\._stop\.wait\(self\.interval_s\):\s*\n'
-                        r'(?:\s*#[^\n]*\n)*\s*self\.write\(', src)
+    # 2026-11-10 (commit 08a673e, the 1 185 ms Alt+C stall): the tick stopped
+    # sleeping on `_stop`. `_loop` now waits on `_wake` with `interval_s` as the
+    # TIMEOUT -- an enqueued transition publishes at once, and a TIMEOUT is
+    # still the cadence (`if not woke:` -> `write('poll')`). The old anchor
+    # (`while not self._stop.wait(self.interval_s)`) died with that refactor,
+    # so the claim read RED while the cadence was still there.
+    cadence = re.search(
+        r'def _loop\(self\) -> None:\s*\n'
+        r'(?:[^\n]*\n)*?'
+        r'\s*woke = self\._wake\.wait\(self\.interval_s\)\s*\n'
+        r'(?:[^\n]*\n)*?'
+        r'\s*if not woke:\s*\n'
+        r'(?:[^\n]*\n)*?'
+        r'\s*self\.write\([\'"]poll[\'"]\)', src)
     thread = re.search(r'name=[\'"]sotto-panel-visibility[\'"]', src)
     claims["shell-loop"] = bool(cadence) and bool(thread)
     notes.append(f'shell-loop: cadence thread={bool(thread)} '
@@ -331,9 +343,13 @@ MUTANTS = [
      'emitted = (counters.get("captions", 0) + counters.get("redux_captions", 0)\n'
      '               + counters.get("redux_live_captions", 0))',
      'emitted = (counters.get("captions", 0))'),
+    # The mutant is the before-state of the cadence: a wait with NO timeout.
+    # The thread then wakes only when a transition ENQUEUES a payload, which is
+    # exactly "transitions only". (The old anchor, the `while not
+    # self._stop.wait(...)` sleep, no longer exists in the shell -- 2026-11-10.)
     ("shell-loop", "shell",
-     'while not self._stop.wait(self.interval_s):',
-     'while False:'),
+     'woke = self._wake.wait(self.interval_s)',
+     'woke = self._wake.wait(None)'),
     ("shell-measured", "shell",
      'return bool(window_visible(hwnd)) if hwnd else False',
      'return False'),

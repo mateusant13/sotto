@@ -22,6 +22,13 @@ pelo menos 190 MiB. Sem esse braco, um `GetProcessMemoryInfo` mal declarado devo
 relatorio imprime "0,0 MiB de fuga" -- que foi exactamente o que aconteceu na primeira
 execucao desta sonda (argtypes/restype ausentes, todos os numeros a zero e nenhum aviso).
 """
+# BATTERY-HEAVY: model -- este instrumento CARREGA os modelos reais do produto (as
+# quatro sessoes ONNX do parakeet, as tres do nemotron e o `onnxruntime_genai.Model`
+# vivo), ~1,9 GB de commit e sessao CUDA; o passo `engine-commit-cycles` da bateria
+# e' `heavy` e o `_main/battery-heavy-gate.py` exige que o INSTRUMENTO declare a
+# classe onde a verdade esta' (medido 2026-11-11: C2 recusou os dois passos --
+# `engine-commit-cycles` e `red-as-expected-engine-commit-cycles` -- por falta
+# deste marker).
 import argparse
 import ctypes
 import gc
