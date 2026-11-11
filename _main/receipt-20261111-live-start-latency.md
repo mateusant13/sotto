@@ -264,3 +264,53 @@ REAL -- a que a lane da rota esta' a escrever.
 * Os numeros de "antes" sao do log dele; os de "depois" sao de replay e de harness. A medicao que
   fecha o ciclo e' o proximo arranque dele com `CAPTION_STATUS_SHOWN`, `LIVE_PAINT_REFUSED` e
   `CAPTION_PAINT_SURFACE` no log.
+
+## 11. AS QUATRO LANES, integradas (2026-11-11, tarde)
+
+O dono, verbatim: *"bota subagents pra arruamr toda tua todo list"*. Quatro lanes
+despachadas num lote unico, cada uma com o seu ficheiro e o seu oraculo; a
+integracao e' este assento, porque os ficheiros partilham a shell.
+
+| lane | pedido (verbatim do dono) | o numero antes -> depois | oraculo (positivo / negativo) |
+|---|---|---|---|
+| YtInstant | *"eu abri um video no youtube, e levou 3 segundos pra aparecer a legenda. inves de ser INSTANTANEO. arruma"* | troca -> 1a foto **11 203 -> 388 ms**; morto, 1o prazo -> 1a foto **8 482 -> 388/888 ms**; damp de rebind **1 541 -> 0 ms** | `youtube-first-cue` **11/11** / **11/11** (3 mutantes do SHELL) |
+| BootAck | *"meu ctrl space nao fez nada assim que abri o sotto"* | OFF com o ecra vazio: **0** pixeis, **0** linhas -> status em **0 ms** + timer de 6 s que o remove; `age_s=-5.0` era AFIRMADO como fresco -> `None` | `live-ack` **14/14** / **14/14** |
+| LiveRoute | *"a legenda ... aparece de forma aleatoria so' por que ta tocando um audio"* | **1818** pinturas com audio velho (pior **3 543,40 s**) -> **0** pinturas de lote no replay; 143 de 2 086 linhas ao vivo recusadas e escritas no historico | `live-route` **48/48** / **9/9** (o I1 conduz o `emit` REAL) |
+| DeviceLadder | *"abro o sotto, e leva mais de um segundo pra legenda funcionar"* | rung->rotacao **43,63 -> 0,00 s**; abertura->1o dispositivo com sinal **43,673 -> 0,016 s** | `device-ladder-cost` **17/17** / **6/6** |
+
+### 11-bis. O que a INTEGRACAO teve de decidir (e por que)
+
+- **A ordem dos encaixes na shell e' uma so'.** `on_worker_caption` recebeu a posse do ecra
+  (`81100ad`) antes de a primeira cue desta rodada (`d2c281a`); o parche da posse foi rebaseado
+  contra o ficheiro vivo, nao contra o de ontem, e o `live-route` voltou a **48/48** com as tres
+  arms de encaixe a deixarem de dizer `pending:patch`.
+- **A cura das funcoes puras nao chega ao processo sozinha.** YtInstant entregou o modulo e
+  declarou os tres encaixes na shell; este assento escreveu-os, e a arm **W1** passou a lê-los por
+  `ast`. Sem ela o oraculo ficava verde sobre um modulo que a app nunca chama -- a classe do
+  `panel-deps`, que esta casa ja' pagou tres vezes.
+- **Um instrumento a acusar quem esta' certo, tres vezes na mesma rodada.** Dois stubs com a
+  assinatura de ontem (`take_pending(max_s=)`, `_start_pass(..., held_before_s)`) levantavam
+  `TypeError` de DENTRO do produto; e a primeira versao da arm do epocario media o NOME
+  (`_read_slow_until` em qualquer sitio) em vez do caminho -- o mutante `if False:` passava. Todos
+  corrigidos e medidos.
+
+### 11-ter. O COMMIT MAP desta rodada
+
+`061b6eb` a cue do YouTube (modulo) -> `c51b104` o shell do ack/idade do ON -> `81100ad` a posse
+do ecra com um escritor -> `d2c281a` os tres encaixes na shell + a arm W1 -> `6d01948` os tres
+pares na bateria e o pin re-medido (`358768 B` / `4150 CRLF` / `0 bare LF`) -> `ff65544` o
+ratchet do `code-health` absorvendo o crescimento declarado.
+Antes: `52b9884` `cb60f58` `58ee568` `b0bfa76` `540f11b` `0136e19` `3cd27c6` `fb3206d`
+`9c9212e` `69975d0` `a9fcc3b`.
+
+### 11-quater. A FRONTEIRA, outra vez
+
+**fixed, NOT verified.** Os quatro pedidos estao no disco e provados por oraculo; o processo vivo
+(`pid 49180`, arrancado antes do codigo) continua a correr a versao anterior -- `live-code-freshness
+--strict` diz **STALE**, e a shell nao se relanca sozinha (`--no-self-relaunch`). O ciclo fecha no
+proximo arranque dele, com estas linhas no log:
+
+- `CAPTION_STATUS_SHOWN reason=model-loading|waiting-first-line|...` (o Ctrl+Space responde);
+- `LIVE_PAINT_REFUSED` e `EXTERNAL_OWNER` (a rota e a posse do ecra);
+- `YOUTUBE_VIDEO_CHANGED video_id=... why=rows-ready|tab-switch` (a cue instantanea);
+- `YOUTUBE_READ_HOLD_DROPPED` e `DEVICE_LADDER_SIGNAL` (o alvo novo e a escada).
