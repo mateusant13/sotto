@@ -568,7 +568,7 @@ def main(argv=None):
         return paint_arm(verbose=True)
     if not os.path.exists(a.log):
         print('BOOT-INTERACTION SKIPPED reason=no-log path=%s' % (a.log,))
-        return 3
+        return 0
     with open(a.log, encoding='utf-8', errors='replace') as fh:
         # 4 MiB bastam: a ultima sessao de uma app que ele abriu cabe lá, e ler
         # 21 MB para achar a cauda e' o mesmo desperdicio que a casa ja' mediu.
@@ -577,7 +577,10 @@ def main(argv=None):
         fh.seek(max(0, size - 4 * 1024 * 1024))
         lines = fh.read().splitlines()
     res = measure(lines, log_name=a.log)
-    if not res['ok']:
+    # `res['why']` posto significa que NAO HOUVE MEDICAO (sem sessao, sem
+    # carimbo): nao e' um RED a julgar, e a demissao por processo STALE nao tem
+    # o que demitir -- o `render` abaixo ja' imprime o SKIPPED dele.
+    if not res['ok'] and res.get('why') == 'measured':
         demote, fresh_of = _fresh_helpers()
         if demote is not None:
             fresh, why = fresh_of(a.log)
@@ -598,11 +601,19 @@ def main(argv=None):
                                      r['budget_ms'], r['note']))
                 print('BOOT-INTERACTION SKIPPED reason=stale-process live=%s'
                       % (why,))
-                return 3
+                # rc=0 POR DESENHO: este passo e' `:skipped` na bateria, e o
+                # `:skipped` recusa um rc diferente de 0 ("this step exits 0
+                # whether it verifies or skips") -- o veredicto dele e' o TEXTO.
+                # O oraculo irmao (`paint-live-show`) sai 0 no SKIPPED pela
+                # mesma razao; sem isto o skip honesto contava como FAIL.
+                return 0
     if a.json:
         print(json.dumps(res, indent=2))
         return 0 if res.get('ok') else (3 if res.get('why') in ('no-session', 'no-timestamp') else 1)
-    return render(res)
+    # O MESMO rc=0 DO SKIP: este passo e' `:skipped`, e o rotulo recusa rc!=0 --
+    # o veredicto e' o texto que o `render` imprime (`BOOT-INTERACTION SKIPPED`).
+    rc = render(res)
+    return 0 if res.get('why') in ('no-session', 'no-timestamp') else rc
 
 
 if __name__ == '__main__':
