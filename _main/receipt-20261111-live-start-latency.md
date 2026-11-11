@@ -109,3 +109,39 @@ Tres leituras, cada uma com o numero ao lado:
 Classe do defeito, decidida pela medicao: **(c) o tap pega a fonte errada** + **(a) nao ha guarda de
 rota na pintura**. As duas sao independentes e as duas tem de cair: uma guarda de rota sozinha
 esconde a (c) sem a corrigir.
+
+## 7. A CADEIA FECHADA: reconexao CDP -> adocao de OUTRA aba -> superficie em branco -> o ASR pinta
+
+Os mesmos 4 s da secao 6, agora com os elos que faltavam (log vivo, pid 49180):
+
+```
+17:46:02.951 YOUTUBE_CDP_SOURCE state=slow (ConnectionAbortedError)
+17:46:03.003 YOUTUBE_CDP_SOURCE state=reconnect (ConnectionAbortedError)
+17:46:03.512 YOUTUBE_CDP_TAB_SWITCH from=8C97D93B... to=4D2C5751... vid=JM1gEnmaUao
+17:46:03.513 YOUTUBE_TARGET pick=JM1gEnmaUao why=paused-loaded declared=zEgthOmOrc0 tabs=7
+17:46:05.039 YOUTUBE_CDP_SOURCE state=adopted:zEgthOmOrc0->JM1gEnmaUao
+17:46:05.108 CAPTION_WINDOW_BLANKED reason=video-changed epoch=30 wanted=false
+17:46:05.108 YOUTUBE_VIDEO_CHANGED video_id=JM1gEnmaUao
+17:46:05.822 CAPTION_IN ... text="replanement of code water, ..." ; PAINT n=1186 src=-
+17:46:18.547 YT_FRAME src=external:youtube:track lines=['My name is Chip, used to be the lead designer at Grab.']
+```
+
+Cada elo e' um facto medido, e a soma e' a queixa do dono:
+
+1. **A reconexao ADOTA outra aba.** Com 7 abas abertas, `pick` escolheu `JM1gEnmaUao`
+   (`why=paused-loaded`) embora o video declarado fosse `zEgthOmOrc0` e o dono estivesse a ver esse.
+   Uma queda de socket virou uma TROCA DE VIDEO.
+2. **A troca esvazia a superficie e baixa o dono dela** (`VIDEO_CHANGED` -> `last_line=''`). O
+   `_release` seguinte limpa `external_captions_active` sem escrever linha (secao 6).
+3. **714 ms depois o ASR pinta** a hipotese dele -- audio de outro momento (`start=381.84`), com
+   `src=-` e `tap_ms=None`. O dono ve uma frase que nao tem nada a ver com o que esta' no ecra.
+
+Ou seja, "a legenda aparece de forma aleatoria" nao e' aleatorio: e' **reconexao -> adocao de aba
+errada -> superficie sem dono -> ASR**. E' a mesma classe do `yt-target-stale` de 2026-11-03 (o id
+declarado ficou 164 linhas no log com outra aba aberta), agora com a metade da pintura.
+
+Correcoes exigidas, por elo: (i) `pick` nunca adota aba que nao seja o video declarado, e nunca
+prefere uma `paused-loaded` a uma a tocar; (ii) a troca de video NAO baixa o dono da superficie sem
+linha (a transicao tem de ser escrita, e o ASR nao pinta numa superficie que o player acabou de
+esvaziar); (iii) o `CAPTION_IN` do ASR tem de carregar `tap_ms`, senao a shell nao tem como recusar.
+
