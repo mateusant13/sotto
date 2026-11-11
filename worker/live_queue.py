@@ -431,6 +431,90 @@ class PendingAudio:
     def _samples_locked(self):
         return self._ram_samples + sum(entry[3] for entry in self._entries)
 
+    def take_head(self, max_samples):
+        """O MAIS ANTIGO, ate' `max_samples`: um lote LIMITADO, sem perder nada.
+
+        O DEFEITO QUE ISTO FECHA (medido 2026-11-11, `REDUX_BATCH_KICK ...
+        audio_s=156.24` e depois uma linha com 184-299 s de idade): `take_all`
+        entregava ao motor o atraso INTEIRO. Um passe de 156 s a RTF > 1 ocupa o
+        CPU por minutos, e enquanto ele corre o audio novo continua a entrar --
+        o atraso crescendo mais depressa do que um passe o drena. O atraso nao e'
+        um numero para se tapar com um tecto: e' o TAMANHO DA UNIDADE DE TRABALHO.
+
+        Aqui a unidade e' limitada: sai o audio mais ANTIGO ate' `max_samples` e o
+        resto fica NA FILA, na ordem, sem voltar a passar pelo disco (`take_all` +
+        `requeue` re-escrevia 8 MB por passe no spool). Nada e' deitado fora: um
+        bloco cortado a meio devolve o resto a' cabeca da espera, e um ficheiro do
+        spool so' e' apagado quando nenhuma entrada o referencia.
+
+        Devolve `(blocos, amostras)`, com a forma de `take_all`.
+        """
+        import numpy as np
+
+        limit = int(max_samples)
+        if limit <= 0:
+            return [], 0
+        held = []
+        samples = 0
+        with self._lock:
+            # 1. O SPOOL PRIMEIRO -- ele e' a cabeca da fila (o mais antigo).
+            remaining = []
+            touched = set()
+            for entry in self._entries:
+                path, offset, nbytes, nsamples = entry
+                if samples >= limit:
+                    remaining.append(entry)
+                    continue
+                take = min(int(nsamples), limit - samples)
+                if take <= 0:
+                    remaining.append(entry)
+                    continue
+                per_sample = nbytes / float(nsamples) if nsamples else 0.0
+                nbytes_take = (nbytes if take >= int(nsamples)
+                               else max(1, int(round(take * per_sample))))
+                try:
+                    with open(path, "rb") as fh:
+                        fh.seek(offset)
+                        raw = fh.read(nbytes_take)
+                except OSError:
+                    remaining.append(entry)
+                    continue
+                held.append(np.frombuffer(raw, dtype=self._dtype).copy())
+                samples += take
+                touched.add(path)
+                if take < int(nsamples):
+                    remaining.append((path, offset + nbytes_take,
+                                      nbytes - nbytes_take, int(nsamples) - take))
+            self._entries = remaining
+            # 2. OS FICHEIROS QUE NINGUEM REFERENCIA SAEM (o spool nao se gasta);
+            #    o ficheiro ABERTO para append fica sempre, mesmo vazio.
+            still = {entry[0] for entry in self._entries}
+            open_path = self._paths[-1] if self._paths else None
+            for path in touched - still:
+                if path == open_path:
+                    continue
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            self._paths = [p for p in self._paths if p in still or p == open_path]
+            # 3. A RAM, se o limite ainda nao foi atingido.
+            while self._ram and samples < limit:
+                block = self._ram[0]
+                size = int(getattr(block, "size", 0))
+                if size <= limit - samples:
+                    held.append(self._ram.pop(0))
+                    self._ram_samples -= size
+                    samples += size
+                    continue
+                cut = int(limit - samples)
+                held.append(block[:cut].copy())
+                self._ram[0] = block[cut:]
+                self._ram_samples -= cut
+                samples += cut
+            self.blocks_out += len(held)
+        return held, samples
+
     def take_all(self):
         """TUDO, na ordem de chegada. Esvazia a espera e apaga o spool.
 

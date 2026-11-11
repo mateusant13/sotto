@@ -126,6 +126,11 @@ try:                       # a fila de audio vivo (ver worker/live_queue.py)
 except Exception:          # pragma: no cover -- o import falha so' fora do repo
     _live_queue = None
 
+try:                       # a rota ao vivo: rota + idade decidem se PINTA
+    import live_route as _live_route
+except Exception:          # pragma: no cover -- o import falha so' fora do repo
+    _live_route = None
+
 try:                       # a politica dos motores (ver worker/engine_policy.py)
     import engine_policy as _policy
 except Exception:          # pragma: no cover -- o import falha so' fora do repo
@@ -179,6 +184,16 @@ REDUX_PRODUCER = "redux"
 REDUX_RUNNER_TIMEOUT_DEFAULT_S = 180.0
 #: Below this much audio a batch invocation is not worth a model load.
 REDUX_MIN_AUDIO_S = 1.0
+#: O TECTO DE UMA PASSAGEM DO LOTE, em segundos de audio (2026-11-11). Sem ele a
+#: passagem levava o atraso INTEIRO: MEDIDO `REDUX_BATCH_KICK reason=interval
+#: engine=parakeet audio_s=156.24`, um passe que ocupa o CPU por minutos enquanto
+#: o audio novo continua a entrar -- o atraso cresce mais depressa do que um
+#: passe o drena, e foi assim que uma linha de audio de 17:41:06 chegou ao ecra
+#: as 17:46:05 (299 s). 30 s e' ~10 janelas de 3 s (<= 45 s de parede a 4,5 s
+#: medidos por janela): o lote drena a fila em passagens curtas, o caminho ao
+#: vivo respira entre elas, e o audio que nao coube fica na `PendingAudio` --
+#: RAM -> disco, na ordem, sem perdas.
+REDUX_BATCH_PASS_MAX_S = 30.0
 #: FREE physical memory a batch invocation is allowed to start under, in MB.
 #: The runner's own documented peak is ~3.9 GB (the kestrel int8 kernel is
 #: unavailable on this box, so it falls back to the dense weight form) and the
@@ -936,6 +951,25 @@ class ReduxHiddenSwitch:
             shed = _policy.worse_level(
                 PanelVisibilityReader.SHED_LEVELS, shed,
                 'alta' if park == 'captions' else 'muito-alta')
+        # ── A ROTA DECIDIDA, PARA A GUARDA DE PINTURA (2026-11-11) ───────────
+        # `park=captions` e' o shell a dizer, por um canal com carimbo e razao
+        # (`ENGINE_PARK` + `writtenAtEpoch`), que o PLAYER e' o dono do ecra. A
+        # guarda de pintura (`live_route`) le' ESTA decisao -- nao um booleano da
+        # shell que uma saida lateral pode limpar sem uma linha que o registe --
+        # e a transicao e' dita UMA vez, com a visibilidade que a acompanhou.
+        # Um ficheiro MORTO nao manda (o `read` caiu para `visible=True`): um
+        # shell que morreu enquanto estava estacionado nao pode calar a legenda
+        # local para sempre.
+        if _live_route is not None:
+            owner = ('player' if park == 'captions'
+                     and self.why in ('fresh', 'fresh-no-epoch') else 'local')
+            previous = _live_route.note_route_owner(owner)
+            if previous != owner:
+                self.log(
+                    f"LIVE_ROUTE_OWNER owner={owner} reason=park-{park or 'none'} "
+                    f"visibility={self.why} visible={str(self.visible).lower()} "
+                    f"shed={shed} \u2014 o dono do ecra mudou: uma legenda local do "
+                    f"mesmo audio vai para o historico e NAO pinta")
         if shed != getattr(self, '_shed', 'leve') or park != getattr(self, '_park_reason', None):
             #: A RAZAO do estacionamento publicado pela shell. Chamava-se `_park`
             #: e colidia com o metodo `_park` que o motor de FUNDO chama no
@@ -1232,11 +1266,23 @@ class ReduxHiddenSwitch:
     def pending_seconds(self):
         return self.pending.seconds() if self.pending is not None else 0.0
 
-    def take_pending(self):
-        """Snapshot and clear: the engine gets THIS audio, once, in order."""
+    def take_pending(self, max_s=None):
+        """Snapshot and clear: the engine gets THIS audio, once, in order.
+
+        `max_s` limita a passagem ao audio MAIS ANTIGO ate' esse tamanho e o resto
+        fica na espera (`PendingAudio.take_head`). E' o tecto que impede o atraso
+        de crescer enquanto um passe o tenta drenar (ver
+        `REDUX_BATCH_PASS_MAX_S`); sem `max_s` o comportamento e' o de sempre --
+        TUDO, que e' o que a cauda do `stop()` precisa.
+        """
         if self.pending is None:
             return [], 0
-        return self.pending.take_all()
+        if max_s is None:
+            return self.pending.take_all()
+        take_head = getattr(self.pending, "take_head", None)
+        if not callable(take_head):
+            return self.pending.take_all()
+        return take_head(int(float(max_s) * TARGET_SR))
 
     # -- the batch pass -----------------------------------------------------
     def maybe_kick(self, reason="interval"):
@@ -1417,7 +1463,18 @@ class ReduxHiddenSwitch:
                     f"engine={self.batch_kind} reason={reason} attempting=anyway "
                     f"deferred={self.deferred} — a tail has no next tick, so the attempt "
                     f"is made and this line is the receipt that it was made under pressure")
-        held, samples = self.take_pending()
+        held_before_s = self.pending_seconds()
+        held, samples = self.take_pending(max_s=REDUX_BATCH_PASS_MAX_S)
+        if self.pending is not None and self.pending_seconds() > 0:
+            # O QUE NAO COUBE FICA DITO: um atraso que nao drena e' um facto que o
+            # dono paga em idade de legenda, e o numero (junto com
+            # `pass_max_s`) e' o unico jeito de o ver sem abrir o codigo.
+            self.log(
+                f"REDUX_BATCH_PARTIAL pass_max_s={REDUX_BATCH_PASS_MAX_S} "
+                f"audio_s={round(samples / float(TARGET_SR), 2)} "
+                f"held_s={self.pending_seconds()} reason={reason} "
+                f"engine={self.batch_kind} \u2014 a passagem e' limitada: o resto "
+                f"continua na fila, na ordem, sem perdas")
         if samples < int(REDUX_MIN_AUDIO_S * TARGET_SR):
             # Not worth a model load: put it back and wait for more audio. The
             # spool gives it BACK to the front in one piece -- nothing is lost,
@@ -1425,14 +1482,21 @@ class ReduxHiddenSwitch:
             if self.pending is not None:
                 self.pending.requeue(held)
             return False
-        return self._start_pass(held, samples, reason)
+        return self._start_pass(held, samples, reason, held_before_s)
 
-    def _start_pass(self, held, samples, reason):
+    def _start_pass(self, held, samples, reason, held_before_s=None):
         """Arranca UM lote na thread `redux-batch`. Nao bloqueia quem o pede.
 
         QUEM CORRE E' ESCOLHIDO AQUI, e o log diz qual: `parakeet` (o ONNX int4,
         neste processo, carregado pela propria thread) ou `runner` (o executor
         ternario num processo filho, o contrato `--wav --json` de sempre).
+
+        `held_before_s` e' quanto audio a espera tinha ANTES do snapshot. Sem ele
+        (`None`, a cauda do `stop()`) o snapshot foi TUDO e o numero coincide com
+        `samples`; com o tecto de `REDUX_BATCH_PASS_MAX_S` ele NAO coincide, e
+        usar `samples` carimbava o audio do MEIO da fila como se fosse o do fim
+        -- ou seja, uma linha de audio de 17:41 com um `start` de 17:43. A idade
+        que a rota ao vivo le' sai daqui.
         """
         if not held:
             return False
@@ -1440,7 +1504,9 @@ class ReduxHiddenSwitch:
         self.batch_seconds += samples / float(TARGET_SR)
         #: O relogio do AUDIO (nao o da parede) onde este lote comeca: e' o que
         #: faz cada linha levar `start`/`end` do audio que cobriu.
-        start_s = max(0.0, self._audio_clock_s - samples / float(TARGET_SR))
+        covered_s = (samples / float(TARGET_SR) if held_before_s is None
+                     else float(held_before_s))
+        start_s = max(0.0, self._audio_clock_s - covered_s)
         if self.batch_kind == "parakeet":
             target = _policy.run_engine_pass
             args = (self, held, samples, reason, start_s)
@@ -1636,13 +1702,39 @@ class ReduxHiddenSwitch:
                     pass
 
     def drain_captions(self):
-        """The lines the runner produced, for the ASR thread to emit. Non-blocking."""
+        """The lines the runner produced, for the ASR thread to emit. Non-blocking.
+
+        A IDADE HONESTA DE CADA LINHA E' CARIMBADA AQUI (2026-11-11). Uma linha
+        de lote nao tem `tap_ms`: ela nasce de um WAV que o motor leu DEPOIS de o
+        audio ter passado. O que ela tem e' `end`, no relogio do AUDIO do proprio
+        interruptor (`_audio_clock_s`, segundos capturados desde o arranque), e a
+        diferenca para o relogio AGORA e' a idade real em segundos de audio --
+        `370.0 - 383.84` nunca acontece, mas `386.84` de um audio de ha' 299 s
+        acontece todos os dias (MEDIDO: `CAPTION_IN start=381.84 ... tap_ms=None`
+        pintado 299 s depois do audio). Quem pinta decide com este numero
+        (`live_route.caption_age_s` le' `audio_age_s` antes de qualquer
+        estimativa); sem ele a linha voltaria a ser um `age=None` no ecra.
+        """
         out = []
         while True:
             try:
-                out.append(self._captions.get_nowait())
+                payload = self._captions.get_nowait()
             except queue.Empty:
-                return out
+                break
+            if isinstance(payload, dict) and payload.get("type") == "caption":
+                end = payload.get("end")
+                if isinstance(end, (int, float)):
+                    age = float(self._audio_clock_s) - float(end)
+                    payload = dict(payload)
+                    # RELOGIO PARA TRAS: um `end` a' frente do relogio de audio
+                    # nao e' uma idade pequena, e' uma idade que NAO SE MEDE --
+                    # `max(0.0, ...)` dizia "fresco" com o instrumento cego
+                    # (mesma lei de `live_route.CLOCK_JITTER_MS`). O carimbo
+                    # fica `None`, a rota diz `unknown-age` e a linha pinta.
+                    payload["audio_age_s"] = (round(age, 3) if age >= -0.25
+                                              else None)
+            out.append(payload)
+        return out
 
     def in_flight(self):
         return self._inflight is not None and self._inflight.is_alive()

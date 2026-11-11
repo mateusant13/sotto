@@ -132,6 +132,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 import punctuation_model  # noqa: E402 -- pontuacao de modelo (opcional, degrada para identidade)
 import audio_ring  # noqa: E402 -- o audio inteiro das ultimas 12 h (ordem do dono 2026-11-11)
+import live_route  # noqa: E402 -- a rota ao vivo: rota + idade decidem se PINTA (2026-11-11)
 from engine_switch import (  # noqa: E402,F401 -- superficie historica do worker
     ParakeetEngine, PanelVisibilityReader, REDUX_BATCH_INTERVAL_DEFAULT_S,
     REDUX_CHECKPOINT_FILES, REDUX_CHECKPOINT_RELPATH,
@@ -996,6 +997,15 @@ def emit(**payload) -> None:
     global _PIPE_DEAD
     if _PIPE_DEAD:
         os._exit(0)
+    # A ROTA AO VIVO, NUM SO' SITIO (2026-11-11). TODO caption do worker passa
+    # aqui, e e' por isso que a decisao vive aqui e nao em cada chamador: uma
+    # linha de LOTE (`route=redux-batch`) e uma linha ao vivo com audio de
+    # minutos atras sao marcadas `history_only` (entram no historico, nao
+    # pintam) por `live_route.admit`, com `LIVE_ROUTE_REFUSED` uma vez por
+    # episodio. Nenhum payload de outro tipo e' tocado, e o filtro nunca levanta
+    # nem perde texto.
+    if payload.get("type") == "caption":
+        payload = live_route.admit(payload, log=err)
     try:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
         sys.stdout.flush()
