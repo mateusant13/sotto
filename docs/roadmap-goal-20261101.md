@@ -76,3 +76,41 @@ Portanto:
 O que morre com isto: `HOTKEY_HOLD_MS`, `HOTKEY_TAP_WINDOW_MS`, `is_hold`, `resolve_taps`,
 `_hotkey_tap_count`, `_hotkey_forget`, `hotkey_hold`. O que fica: `next_surface` com a tabela
 nova. Quem julga é o `altc-gesture-oracle` reescrito, com o braço negativo a repor o adiamento.
+
+## ESTADO PARA CONTINUAR (atualizado 2026-11-11; o registo e' ESTE, nao ha ledger paralelo)
+
+Cada linha nomeia o comando de aceitacao no consumidor REAL, a identidade do candidato/entradas/
+config/avaliador, e o estado do check. `aberto` nunca e' `passou`.
+
+|#|outcome do dono|comando de aceitacao (consumidor real)|identidade do que e' julgado|estado|
+|---|---|---|---|---|
+|A|legenda do YouTube 1:1 no ecra (palavras, quebras, timing, `drift_ms`)|`python _main/youtube-1to1-oracle.py` + `python _main/youtube-drift-oracle.py`|cues do payload em `_main/fixtures` vs `app/webview/youtube_cdp_source.py` + `youtube_reveal.py` commitados|medido: 677/677 prefixos; `drift_sotto_ms` mediana -74,0 — **PASS antes desta sessao**, nao re-medido hoje|
+|B|alt c alterna paineis mesmo com Alt em baixo e spam de C|`python _main/hotkey-spam-oracle.py`|`app/webview/hotkey_gesture.py` + `_hotkey_dispatch` como embarcam|medido 6 toques: 18,5 ms despacho / 1 drain; **PASS antes desta sessao**|
+|C|Ctrl+Space nao vaza espaco para outras apps (e devolve-o em jogo)|`python _main/ctrlspace-swallow-oracle.py` (+ `--neg-arm` 7/7)|`app/webview/space_swallow.py` + `gaming_mode.live_hotkey_plan`|hoje: positivo PASS 21/21, negativo PASS 7/7 (61,2 s standalone)|
+|D|nada abre na tela dele / nenhuma consola nova|`python _main/console-window-audit.py` + `_main/owner-screen-gate.py` + `_main/lane-screen-gate.py`|AST de 1 139 ficheiros de produto|hoje: `CONSOLE-AUDIT VERDICT PASS -- 0 sitio(s)`; `owner-screen` 0 achados|
+|E|a bateria fecha com UM `steps=` e exit code 0|`_main\_audit-verify-all.cmd` (ler `BATTERY-VERDICT` **e** o exit code)|466 passos declarados; 272 vem de cache; plano num processo (`_main\_battery-plan.py`)|**ABERTO**: ultima corrida `RED - 1` (`red-as-expected-battery-budget=2`, contenda de OUTRA lane a inflar `panel-commit-stable` 33,2 -> 65,7 s); `panel-commit-stable` re-medido sozinho em maquina quieta = **24,6 s** rc=0; corrida limpa em voo (`_main\_audit-verify\_battery-run-20261111f.log`). Verde exige: `steps=` unico, `failed: -none-`, exit-code 0|
+|F|o custo em disco e em CPU desta maquina nao regride|`python I:\!watcher\tools\artifact-census.py --project H:/sotto --gate` + `python _main/battery-budget-oracle.py --policy cap40` + `python _main/shell-thread-budget-oracle.py`|baseline re-medido (`_main/battery-budget-baseline.json`, 413 passos, 2 731,4 s, politica `cap40`)|hoje: `RATCHET-OK`, `NEG-ARM: PASS (4/4)`. O unico vermelho e' `panel-commit-stable` por contenda, provado por re-medicao quieta|
+
+### Recuperacao / checkpoint (como retomar sem refazer)
+
+- **A corrida**: `_cache/battery-steps.json` (449 entradas, `version 1`, cada uma com `deps`,
+  `elapsed_s`, `policy`) + `_main/_audit-verify/_battery-plan.txt`. Um passo cujo `deps` nao mudou e
+  cujo log esta intacto vem de cache: **272 de 466** vieram hoje. Nao ha nada a refazer ao retomar.
+- **O juiz do custo**: `python _main/battery-budget-oracle.py --policy cap40` custa **1,1 s** e le'
+  o registo; `--baseline ... --rebase-policy "<razao>"` custa **2,6 s**. Nunca precisou da corrida
+  inteira para dizer um numero.
+- **Uma lane que muda o custo de um passo** reescreve a entrada do baseline no MESMO commit (regra
+  escrita no §12-bis de `_main/receipt-20261111-budget-kill-and-rebase.md`).
+- **A maquina e' 10x mais fraca**: um trabalho pesado de cada vez, tecto declarado antes (ver o
+  cabecalho deste repo).
+
+### Proxima fatia executavel (sem esperar por ninguem)
+
+1. Fechar E: ler o `BATTERY-VERDICT` + exit code da corrida limpa; se voltar a haver um passo
+   inflado por contenda, re-medir ESSE passo sozinho antes de tocar no baseline (foi assim que os
+   24,6 s apareceram) e so' declarar crescimento com o numero quieto ao lado.
+2. R9 exige o falsificador independente: um segundo agente sobre as tres afirmacoes de topo (A, D, E)
+   -- nao feito nesta sessao.
+3. R7/R8 (perfil por etapa, p50/p95) continuam sem medicao nesta janela: `py-spy` devolve `err=5`
+   nesta arvore (medido), logo o perfil de CPU e' por fio (`_main/shell-thread-cpu.py`) e nao por
+   funcao.

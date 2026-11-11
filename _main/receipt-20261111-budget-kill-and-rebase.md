@@ -339,3 +339,51 @@ Falsificador do que esta escrito acima: se os quatro oraculos NAO tivessem mudad
 baseline, o acrescimo seria regressao sem causa declarada e o rebaseline teria de ser revertido.
 Medido: mudaram (quatro commits acima), logo o rebaseline fica.
 
+## 13. O JUIZ DO CUSTO MEDIA CONTENCAO, E A SUA "MEDIANA" A ESCOLHIA
+
+Duas corridas inteiras (≈50 min de maquina) foram gastas hoje em REDs que nao existiam. MEDIDO:
+
+| passo | registo da corrida | medido sozinho, maquina quieta | baseline |
+|---|---|---|---|
+| `panel-commit-stable` | 65,696 s | **24,6 s** (e 25,771 s numa segunda) | 33,2 s |
+| `red-as-expected-battery-plan` | 103,674 s | **20,2 s** (caged, pelo `_stepcache`) | 32,5 s |
+| `red-as-expected-warm-engine` | 137,482 s | **72,8 s** (caged) | 98,4 s |
+| `red-as-expected-load-shedding` | 40,5 s | 73,4 s (2026-11-11, antes) | 40,3 s |
+
+O oraculo JA' tinha um suavizador (`smooth`, tres leituras, filtro de corte no prazo), e ele
+falhava por duas causas, as duas medidas:
+
+1. **A MEDIANA ESCOLHE O NUMERO CONTENDIDO.** Numa serie de dois elementos -- uma leitura
+   contendida (65,696 s, a maquina a partilhar com o hook de commit de outra lane) e a leitura
+   quieta (25,771 s) -- `sorted(series)[len//2]` devolve o de CIMA, isto e' o contendido. Contencao
+   so' ACRESCENTA tempo; logo o estimador sem contencao e' o **MENOR** da janela
+   (`_estimate`). Uma regressao real sobrevive: todas as amostras sobem, a antiga sai da janela e o
+   minimo sobe com elas (arm S7).
+2. **A GRAVACAO NAO ERA IDEMPOTENTE.** O passo `battery-budget` corre dentro da bateria e o mesmo
+   oraculo foi invocado a mao depois; a MESMA leitura entrou duas vezes e a serie ficou
+   `[29,932, 103,674, 103,674]` -- uma corrida contendida passou a valer por duas. Agora cada
+   amostra leva o carimbo do registo e uma leitura repetida SUBSTITUI a ultima em vez de a
+   duplicar; amostras antigas (formato float, sem carimbo) que sejam iguais as anteriores colapsam,
+   contadas DEPOIS do filtro de corte (duas mortes no prazo continuam a ser duas, e os bracos S1-S3
+   exigem esse numero).
+
+Bracos novos, todos puros (nenhum le' disco, nenhum abre dispositivo):
+`S6` a serie medida acima da' 25,771 e nao 65,696; `S7` regressao real sobrevive; `I1` re-julgar o
+mesmo registo nao duplica; `I2` carimbo novo entra e a janela fica em 3; `I3` o formato antigo
+continua a ser lido; `I4` **o falsificador**: sobre a MESMA serie, a regra antiga (mediana) tem de
+REPROVAR o passo que a de hoje aprova.
+
+Mutantes novos no `--neg-arm`: `M5` repoe a mediana em `_estimate` (a `I4` cai) e `M6` desliga a
+comparacao de carimbo (a `I1` cai).
+
+Medido depois da cura:
+`BATTERY-BUDGET VERDICT RATCHET-OK -- steps=413 total=2595.7s rc=0` e
+`NEG-ARM: PASS (6/6 mutantes apanhados; juiz antes: True)` rc=1.
+
+E a licao de instrumento que custou a tarde: **o `python -m watcher` nao existe sem
+`PYTHONPATH=I:\!watcher`** -- a primera tentativa de re-medir um passo pelo caminho do
+`_stepcache` correu `No module named watcher`, sobrescreveu dois logs de passo e gravou `0,077 s`
+no registo. Um numero desse tamanho num passo de 20 s e' o proprio defeito a falar: o `record` le o
+`elapsed` do marcador `t0`, e o marcador foi escrito imediatamente antes de um filho que morreu no
+arranque. Os dois logs foram regerados pelo comando REAL atras do cage e as duas entradas
+re-escritas (20,236 s e 72,835 s, `policy=cap40`).

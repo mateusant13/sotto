@@ -158,11 +158,61 @@ def _is_kill_sample(value, deadline_s):
     return deadline_s and abs(float(value) - float(deadline_s)) <= KILL_BAND_S
 
 
+def _estimate(series):
+    """O estimador do custo de um passo: o MENOR valor observado, nunca a mediana.
+
+    MEDIDO 2026-11-11, e esta e' a correccao da correccao. A historia de
+    `panel-commit-stable` era `[65,696, 25,771]`: 65,7 s numa corrida que
+    partilhou a maquina com o hook de commit de outra lane, 25,771 s medidos
+    sozinho (e 24,6 s numa terceira medicao independente). Com a MEDIANA, a serie
+    de dois elementos escolhe o de CIMA -- 65,696 -- e o portao chamou regressao
+    de 2x a um passo que nunca custou isso, o que custou DUAS corridas inteiras
+    (~50 min) para provar um verde que ja' era verdade.
+
+    Contencao so' ACRESCENTA tempo; nenhum agente torna um passo mais rapido por
+    estar a competir com ele. Logo o menor dos ultimos `HISTORY_N` valores e' a
+    estimativa sem contencao, e uma regressao REAL sobrevive a ela: as N amostras
+    sobem juntas, a antiga sai da janela e o minimo sobe com elas.
+    """
+    series = [float(x) for x in series]
+    return min(series) if series else 0.0
+
+
+def _old_median(series):
+    """A REGRA ANTIGA, mantida so' para o controlo: mediana da serie.
+
+    Nao e' codigo morto: o `--neg-arm` corre-a sobre a MESMA serie e exige que ela
+    reprove o passo que a regra de hoje aprova. Sem isso, "o estimador novo e'
+    melhor" seria [INFERENCE].
+    """
+    series = sorted(float(x) for x in series)
+    return series[len(series) // 2] if series else 0.0
+
+
+def _hist_pairs(hist):
+    """A serie como pares (carimbo, segundos). Aceita o formato antigo (float puro).
+
+    O CARIMBO E' O QUE TORNA A GRAVACAO IDEMPOTENTE. Medido 2026-11-11: o mesmo
+    registo de corrida foi julgado duas vezes (o passo da bateria e uma invocacao
+    manual do oraculo) e a serie ficou `[65,696, 25,771, 25,771]` -- a leitura
+    repetida pesou duas vezes e a mediana ainda apontou o numero contendido. Uma
+    leitura nova so' entra quando o carimbo do registo mudou; repetir o julgamento
+    do MESMO registo substitui a ultima amostra em vez de a duplicar.
+    """
+    out = []
+    for item in hist or []:
+        if isinstance(item, dict):
+            out.append((str(item.get('ts') or ''), float(item.get('s') or 0.0)))
+        elif isinstance(item, (int, float)):
+            out.append(('', float(item)))
+    return out
+
+
 def smooth(rows, history, policy=None, record=True, deadline_s=None):
-    """Troca o `elapsed_s` de cada passo pela MEDIANA das ultimas leituras.
+    """Troca o `elapsed_s` de cada passo pela estimativa sem contencao da serie.
 
     `record=False` (o braco negativo) julga o numero CRU: um mutante somado a uma
-    mediana historica podia ser diluido e o controlo deixaria de apanhar.
+    estimativa historica podia ser diluido e o controlo deixaria de apanhar.
 
     Amostras HISTORICAS que sao um corte no prazo (`_is_kill_sample`) saem da
     serie, e cada uma e' impressa (`KILL-SAMPLE`) -- um filtro mudo seria a mesma
@@ -172,27 +222,42 @@ def smooth(rows, history, policy=None, record=True, deadline_s=None):
     out = []
     for row in rows:
         name = row['name']
-        hist = [float(x) for x in (history.get(name) or []) if isinstance(x, (int, float))]
-        kept = []
-        for value in hist:
+        pairs = []
+        for ts, value in _hist_pairs(history.get(name)):
             if _is_kill_sample(value, deadline_s):
                 KILL_SAMPLES.append((name, value))
-            else:
-                kept.append(value)
-        # Toda a serie historica sendo corte deixa `kept` vazio: a leitura de
+                continue
+            # AMOSTRA ANTIGA REPETIDA E' UMA AMOSTRA (medido 2026-11-11). O formato
+            # antigo nao guardava carimbo, e o defeito que esta correccao cura
+            # gravou a MESMA leitura duas vezes (`[29,932, 103,674, 103,674]`).
+            # Duas medicoes independentes darem o mesmo valor com tres decimais
+            # num passo de segundos nao acontece, logo um valor antigo igual ao
+            # anterior e' a leitura repetida e conta uma vez. O corte no prazo fica
+            # FORA desta regra: duas mortes no prazo sao duas mortes e o filtro
+            # informa as duas (`KILL-SAMPLE`), que e' o numero que os bracos S1-S3
+            # exigem.
+            if out_prev := (pairs[-1] if pairs else None):
+                if out_prev[0] == '' and ts == '' and abs(out_prev[1] - value) < 1e-9:
+                    continue
+            pairs.append((ts, value))
+        # Toda a serie historica sendo corte deixa a lista vazia: a leitura de
         # agora fica SOZINHA (nunca "0 s por falta de dados").
-        series = kept
-        series.append(row['elapsed_s'])
-        series = series[-HISTORY_N:]
+        ts_now = str(row.get('timestamp') or '')
+        now = float(row['elapsed_s'])
+        if record and pairs and ts_now and pairs[-1][0] == ts_now:
+            pairs[-1] = (ts_now, now)      # re-julgar o MESMO registo nao duplica
+        else:
+            pairs.append((ts_now, now))
+        pairs = pairs[-HISTORY_N:]
         if record and (row.get('policy') or None) == (policy or None):
             # So' grava leituras da MESMA politica: uma serie que mistura cap40 com
             # corridas sem tecto compararia precos diferentes (a mesma armadilha que
             # o `measure` ja' evita).
-            history[name] = [round(x, 3) for x in series]
-        med = sorted(series)[len(series) // 2]
+            history[name] = [{'ts': t, 's': round(v, 3)} for t, v in pairs]
         merged = dict(row)
-        merged['elapsed_s'] = round(med, 3)
-        merged['raw_s'] = row['elapsed_s']
+        merged['elapsed_s'] = round(_estimate([v for _, v in pairs]), 3)
+        merged['raw_s'] = now
+        merged['series'] = [round(v, 3) for _, v in pairs]
         out.append(merged)
     return out
 
@@ -320,10 +385,74 @@ def smooth_arms():
     # S4: a mediana de uma serie PAR e' o elemento de cima (comportamento antigo,
     # nao tocado por este filtro); o que a arm prova e' `descartadas=0` -- um custo
     # legitimo de 100 s nao e' confundido com um corte no prazo.
-    arm('S4 um custo legitimo de 100 s nao e\' descartado',
-        [100.0], 110.0, 110.0, 0)
+    arm('S4 um custo legitimo de 100 s nao e\' descartado (a estimativa e o menor)',
+        [100.0], 110.0, 100.0, 0)
     arm('S5 historia vazia continua devolvendo a leitura de agora',
         [], 5.0, 5.0, 0)
+    # S6 O CASO MEDIDO DE 2026-11-11, que custou duas corridas inteiras: uma
+    # leitura contendida (65,696 s, a maquina a partilhar com o hook de commit de
+    # outra lane) ao lado da leitura quieta (25,771 s, e 24,6 s numa terceira
+    # medicao). A mediana escolhia 65,696 e reprovava; o menor da' a verdade.
+    arm('S6 uma corrida contendida nao engorda um passo que nunca custou isso',
+        [65.696, 25.771], 25.771, 25.771, 0)
+    # S7 ... e uma regressao REAL sobrevive: todas as leituras da janela subiram.
+    # Aqui a serie gravada E' a janela (record=True), porque o que se mede e' a
+    # ESTIMATIVA, nao a leitura de agora -- `record=False` julga o numero cru.
+    arms.append({'arm': 'S7 regressao real: todas as leituras da janela subiram',
+                 'ok': abs(_estimate([70.0, 72.0, 71.0]) - 70.0) < 0.01,
+                 'detail': 'estimativa=%.3f (want 70.000, todas acima do baseline)'
+                           % _estimate([70.0, 72.0, 71.0])})
+    return arms
+
+
+def smooth_idempotent_arms():
+    """O HISTORICO NAO DUPLICA quando o MESMO registo e' julgado duas vezes.
+
+    Medido 2026-11-11: o passo `battery-budget` corre dentro da bateria e o mesmo
+    oraculo foi invocado a mao logo depois; a serie de `red-as-expected-battery-plan`
+    ficou `[29,932, 103,674, 103,674]` -- a leitura repetida pesou duas vezes, e
+    uma unica corrida contendida passou a valer como duas. A gravacao passa a ser
+    idempotente pelo carimbo do registo, e estes bracos provam as duas metades.
+    """
+    arms = []
+    # I1: o mesmo carimbo gravado duas vezes deixa a serie com UMA amostra.
+    hist = {}
+    for _ in range(2):
+        smooth([{'name': 'x', 'elapsed_s': 103.674, 'policy': 'cap40',
+                'timestamp': '2026-11-11T18:40'}],
+               hist, 'cap40', True, 240.0)
+    series = [p['s'] for p in hist.get('x') or []]
+    arms.append({'arm': 'I1 re-julgar o mesmo registo nao duplica a amostra',
+                 'ok': len(series) == 1,
+                 'detail': 'serie=%r (want 1 amostra)' % (series,)})
+    # I2: um carimbo NOVO entra e a serie cresce ate' `HISTORY_N`, e o valor
+    # antigo continua na janela (o minimo veio dele).
+    for ts in ('2026-11-11T19:00', '2026-11-11T19:20', '2026-11-11T19:40'):
+        smooth([{'name': 'x', 'elapsed_s': 25.771, 'policy': 'cap40',
+                'timestamp': ts}], hist, 'cap40',
+               True, 240.0)
+    series = [p['s'] for p in hist.get('x') or []]
+    arms.append({'arm': 'I2 carimbo novo entra e a janela fica em HISTORY_N',
+                 'ok': len(series) == HISTORY_N and 103.674 not in series,
+                 'detail': 'serie=%r (want %d amostras, sem a antiga)'
+                           % (series, HISTORY_N)})
+    # I3: o OLD (formato float puro) continua a ser lido -- um historico gravado
+    # pela versao anterior nao pode virar "sem dados" e apagar a smoothed serie.
+    rows = smooth([{'name': 'x', 'elapsed_s': 30.0, 'timestamp': 'T'}],
+                  {'x': [65.696, 25.771]}, None, False, 240.0)
+    arms.append({'arm': 'I3 serie no formato antigo (floats) continua a ser lida',
+                 'ok': abs(rows[0]['elapsed_s'] - 25.771) < 0.01,
+                 'detail': 'estimativa=%.3f (want 25.771)' % rows[0]['elapsed_s']})
+    # I4 O FALSIFICADOR DO ESTIMADOR: sobre a MESMA serie do S6, a regra ANTIGA
+    # (mediana) tem de REPROVAR o passo e a de hoje tem de o aprovar. Sem esta
+    # metade, "o menor e' melhor" seria [INFERENCE] -- e foi exactamente essa a
+    # conclusao errada que custou duas corridas de 20 min.
+    series = [65.696, 25.771]
+    old = _old_median(series)
+    new = _estimate(series)
+    arms.append({'arm': 'I4 a regra antiga (mediana) reprova o caso que a de hoje aprova',
+                 'ok': old > 25.771 * 1.2 and new <= 25.771 * 1.2,
+                 'detail': 'mediana=%.3f (RED) vs menor=%.3f (GREEN)' % (old, new)})
     return arms
 
 
@@ -667,7 +796,38 @@ def neg_arm():
     print('NEG-ARM %-14s %-32s %s %s'
           % ('REBASE 1.05', 'M4 regua propria do rebaseline',
              'APANHADO' if m4_ok else 'PASSOU', m4['detail']))
-    plan_n = len(plan) + 2
+    # M5: O ESTIMADOR. Repor a MEDIANA (a regra que custou duas corridas de 20 min
+    # em 2026-11-11) no lugar do menor e exigir que a I4 caia. Sem este braco,
+    # alguem devolve a mediana e nenhuma arm se mexe -- foi exatamente assim que a
+    # correccao de 2026-11-11 nasceu ja' errada.
+    saved_est = globals()['_estimate']
+    globals()['_estimate'] = _old_median
+    try:
+        m5 = [a for a in smooth_idempotent_arms() if a['arm'].startswith('I4')][0]
+    finally:
+        globals()['_estimate'] = saved_est
+    m5_ok = not m5['ok']
+    caught += 1 if m5_ok else 0
+    print('NEG-ARM %-14s %-32s %s %s'
+          % ('ESTIMADOR', 'M5 mediana no lugar do menor',
+             'APANHADO' if m5_ok else 'PASSOU', m5['detail']))
+    # M6: A GRAVACAO IDEMPOTENTE. Desligar a comparacao de carimbo (ts sempre
+    # diferente) faz a serie duplicar a mesma leitura e a I1 cai.
+    global _hist_pairs
+    saved_pairs = _hist_pairs
+    def _no_ts(hist):
+        return [(str(i), s) for i, (_, s) in enumerate(saved_pairs(hist))]
+    globals()['_hist_pairs'] = _no_ts
+    try:
+        m6 = [a for a in smooth_idempotent_arms() if a['arm'].startswith('I1')][0]
+    finally:
+        globals()['_hist_pairs'] = saved_pairs
+    m6_ok = not m6['ok']
+    caught += 1 if m6_ok else 0
+    print('NEG-ARM %-14s %-32s %s %s'
+          % ('SEM DEDUPE', 'M6 carimbo sempre novo (serie duplica)',
+             'APANHADO' if m6_ok else 'PASSOU', m6['detail']))
+    plan_n = len(plan) + 4
     total_ok = caught == plan_n
     print('NEG-ARM: %s (%d/%d mutantes apanhados; juiz antes: %s)'
           % ('PASS' if total_ok else 'FAIL', caught, plan_n, base_ok))
@@ -779,7 +939,7 @@ def main(argv):
     report(measured, base, gap)
     for line in why:
         print('  RED', line)
-    arms = judge_arms() + smooth_arms() + rebase_arms()
+    arms = judge_arms() + smooth_arms() + smooth_idempotent_arms() + rebase_arms()
     bad_arms = [a for a in arms if not a['ok']]
     for a in arms:
         print('  ARM %s %s -- %s' % ('ok  ' if a['ok'] else 'RED ', a['arm'], a['detail']))
