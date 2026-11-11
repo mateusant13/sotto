@@ -733,7 +733,7 @@ def arm_reload_floor(run, tag):
         obj.lines = []
         obj.log = obj.lines.append
         obj.pending_seconds = lambda: 5.0
-        obj.take_pending = lambda: ([], 0)   # nada a transcrever: nenhum modelo carrega
+        obj.take_pending = lambda max_s=None: ([], 0)   # nada a transcrever: nenhum modelo carrega
         return obj
 
     s1 = switch(45.0)
