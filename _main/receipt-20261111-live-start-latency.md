@@ -1,0 +1,77 @@
+# RECIBO - "abro o sotto e a legenda nao funciona": a cadeia medida (dono, 2026-11-11)
+
+Sessao viva: pid 49180, arranque `2026-11-11 17:34:20.322`, log `_main/webview-run.log`.
+PASSO 0 (`_main/live-code-freshness-oracle.py --strict`): `LIVE_CODE FRESH` -- processo e disco
+com o mesmo sha256 (`C9F1CDB08819`, 109 ficheiros), nenhum ficheiro mudou depois do arranque.
+Logo toda a medicao abaixo e' do codigo que esta' no disco AGORA, nao de codigo velho.
+
+## 1. O que ele disse, e o numero que cada frase tem por tras
+
+| fala dele (verbatim) | medido | veredicto |
+|---|---|---|
+| "meu ctrl space nao fez nada assim que abri o sotto" | `HOTKEY_PRESSED` 17:34:26.599 -> `LIVE_ENABLED on=true` 17:34:26.619 (**20 ms**); nada no ecra ate' 17:36:02.4 | a TECLA foi honrada; a TELA ficou muda **95,8 s** |
+| "leva mais de um segundo pra legenda funcionar" | arranque -> primeira pintura **102 110 ms** | `BOOT-INTERACTION VERDICT: FAIL` (orcamento 15 000 ms) |
+| "abri um video no youtube, levou 3 segundos" | `TARGET_REBOUND` 17:46:10.205 -> `TRACK_READY has-track` 17:46:18.474 -> primeira linha 18.547 = **8,3 s** | o mesmo defeito, pior do que ele contou |
+| "aparecendo na tela de forma aleatoria so' porque ta tocando um audio" | o ASR transcreve o audio do PROPRIO YouTube enquanto a faixa do YouTube tambem pinta (`YT_FRAME rows=1` as 17:46:18.547 e `CAPTION_IN` do ASR as 17:46:05.822) | duas fontes na mesma tela |
+| "ta dando replay em audios que ja tocaram a minutos atras" | `CAPTION_IN start=381.84` pintado as 17:46:05.822; captura comecou 17:34:42.834, logo aquele audio e' de **17:41:04.7 = 5 min 01 s atras** | o relogio do stream perdeu 5 minutos |
+
+## 2. A cadeia, elo por elo (todos do log de hoje)
+
+```
+17:34:20.322  SHELL_STARTUP_STAGE
+17:34:20.517  HOTKEY_REGISTERED Alt+C
+17:34:20.523  SPACE_SWALLOW_INSTALLED (Ctrl+Space ENGOLIDO)
+17:34:20.524  HOTKEY_LIVE_ARMED Ctrl+Space          <- a tecla esta' viva 0,2 s apos o arranque
+17:34:20.539  WARM_FALLBACK_COLD reason=absent       <- o motor quente ainda NAO existia
+17:34:20.559  BRIDGE_SPAWNED pid=54524               <- o worker nasce A FRIO
+17:34:20.921  WARM_ENGINE_START_TASK rc=0            <- 382 ms DEPOIS; corrida perdida por desenho
+17:34:26.599  HOTKEY_PRESSED (Ctrl+Space)            <- o dono aperta 6,3 s apos abrir
+17:34:26.619  LIVE_ENABLED on=true                   <- honrado em 20 ms
+17:34:35.651  BRIDGE_LOAD_MS ms=15109                <- modelo pronto 15,1 s depois do spawn
+17:34:42.834  STATUS_APPLIED capture-started
+17:34:49.620  STATUS_APPLIED tap-silent-desktop
+17:35:26.461  STATUS_APPLIED device-rotated (flat)   <- 66 s num endpoint com peak 0.0
+17:36:02.432  primeira pintura visivel (927 CAPTION_PROVISIONAL_PAINT na sessao)
+```
+
+Quatro custos independentes, cada um com a sua lane:
+
+1. **Motor quente perdido por 382 ms** (`WARM_FALLBACK_COLD` antes de `WARM_ENGINE_START_TASK`):
+   o arranque paga 15,1 s de carga a frio onde a medicao da casa diz **0,97 s** de attach.
+2. **Escada de dispositivo**: 66 s num endpoint plano (`tap-silent-desktop` -> `device-rotated (flat)`)
+   e `CAPTURE_SIGNAL_BACK gap_s=63` -- a primeira legenda de audio dele nao podia existir antes disso.
+3. **YouTube**: `REBIND_ARMED confirm_s=1.5` (12 x `REBIND_DAMPED`), depois
+   `CDP_SOURCE state=slow` -> `slow-dead (3 prazos)` -- **6,1 s** de socket morto antes de qualquer
+   re-attach -- e mais 5,9 s ate' a faixa ser listada. Na sessao: **15 anexacoes** em 12 minutos
+   (`ATTACH_OK attempt=14`, `attempt=15`) e `state=wrong-video` a repetir.
+4. **Live ASR 5 minutos atras**: `WORKER_COST cpu_pct_avg=174.1 cpu_s_per_row=3.500` e
+   `REDUX_BATCH_KICK audio_s=156.24 held_in=13502 asr_waits=1 asr_expired=5` no mesmo instante.
+   O texto que ele viu "replay" e' o stream a drenar audio de 17:41:04.
+
+## 3. Por que ele viu o "nada": o aviso existe e e' de disparo unico
+
+`on_worker_loading_text` pinta `carregando modelo...` quando o worker publica `state=model-loading` e o
+shell ainda nao tem `loaded`. Foi **uma** vez, ~17:34:20.6, quando `CAPTION_WANTED_RESTORED on=false`:
+a legenda ao vivo estava DESLIGADA, logo a janela nem existia. Quando ele ligou as 26.619, o aviso ja'
+tinha sido consumido e nada o re-arma. Um EVENTO servido antes do interruptor nao e' um estado.
+
+## 4. O instrumento que devia ter apanhado isto estava cego
+
+`_main/boot-interaction-oracle.py` casava `'CAPTION_PAINT '` (com espaco) e `CAPTION_OVERLAY_LAG`.
+O log tem `CAPTION_PAINT_LAG` (29) e `CAPTION_PROVISIONAL_PAINT` (927) -- **956 pinturas invisiveis**
+ao portao, que respondia `UNMEASURED -- sem pintura no log`. Corrigido nesta rodada com
+`_paint_witness`: cinco formas, a mais antiga em TEMPO ganha, e o `--neg-arm` ganhou **G3/R6b/G4/G5**
+(um braco por forma, e o RED continua a cair em cada uma): `NEG-ARM: PASS -- 12/12`.
+
+Depois da correcao o portao diz o que o dono sentiu:
+`arranque -> 1a legenda = 102110.0 ms` contra 15000 -> **FAIL**, com a nota a dizer qual testemunha
+(`PAGINA, nao overlay`) para ninguem ler o numero como se fosse pixel do overlay.
+
+## 5. O QUE FALTA, e o que NAO esta' medido
+
+- As quatro curas estao em quatro lanes (YtInstant, BootAck, LiveRoute, DeviceLadder). Nenhuma foi
+  vista na tela dele: `verified` continua a exigir uma corrida real da app, pela mao dele.
+- `CAPTION_PAINT_SURFACE` (a testemunha do overlay para o caminho do player) ainda nao existe no
+  ficheiro; enquanto nao existir, o numero acima e' o da PAGINA, e o pixel do overlay pode vir depois.
+- O `WARM_FALLBACK_COLD` e' uma CORRIDA (382 ms) medida uma vez nesta sessao. Uma corrida so' nomeia
+  a classe; nao mede a frequencia. Re-medir em tres arranques antes de afirmar "sempre".

@@ -141,6 +141,40 @@ def _chain(seg):
     return out
 
 
+#: As testemunhas de PINTURA, na ordem em que devem ser lidas. A primeira e' a
+#: que responde "o pixel do dono mudou" nos DOIS caminhos (player e ASR); as
+#: outras sao as formas antigas, e a ultima e' a da PAGINA -- ela prova que o
+#: texto chegou ao DOM, nao que o overlay o desenhou, e por isso a nota diz qual.
+PAINT_WITNESSES = (
+    ('CAPTION_PAINT_SURFACE', 'overlay (player|asr)'),
+    ('CAPTION_PAINT ', 'overlay (forma antiga)'),
+    ('CAPTION_PAINT_LAG', 'overlay (ASR; age_ms/tap_age_ms)'),
+    ('CAPTION_OVERLAY_LAG', 'overlay (fila; forma antiga)'),
+    ('CAPTION_PROVISIONAL_PAINT', 'PAGINA, nao overlay -- o pixel do overlay pode '
+                                  'ter vindo depois'),
+)
+
+
+def _paint_witness(seg):
+    """(linha, nota) da PRIMEIRA pintura de legenda, ou (None, nota).
+
+    Uma passagem por testemunha: a primeira ocorrencia de cada forma, e entre
+    elas a MAIS ANTIGA em tempo -- um log que tem `CAPTION_PROVISIONAL_PAINT`
+    antes de `CAPTION_PAINT_LAG` pintou na pagina primeiro, e escolher pela
+    ordem da lista mentiria na direcao do optimismo.
+    """
+    best = None
+    for tag, note in PAINT_WITNESSES:
+        for line in seg:
+            if tag in line:
+                if best is None or _t(line) < _t(best[0]):
+                    best = (line, note)
+                break
+    if best is None:
+        return None, 'sem pintura no log (nenhuma das %d testemunhas)' % len(PAINT_WITNESSES)
+    return best
+
+
 def measure(lines, log_name=''):
     seg = session_lines(lines)
     rows = []
@@ -238,11 +272,14 @@ def measure(lines, log_name=''):
         add('bandeja: primeiro plano ok', None, None, 0.0, 'sem TRAY_MENU_FOREGROUND')
 
     # Arranque -> primeira legenda pintada (o modelo, nao uma promessa de fluidez).
-    first = None
-    for line in seg:
-        if ('CAPTION_PAINT ' in line or 'CAPTION_OVERLAY_LAG' in line):
-            first = line
-            break
+    # A TESTEMUNHA TEM CINCO FORMAS, e uma delas e' a que o dono ve. Medido
+    # 2026-11-11 (pid 49180): o log tinha 927 `CAPTION_PROVISIONAL_PAINT` e 29
+    # `CAPTION_PAINT_LAG`, e este oraculo publicava `UNMEASURED -- sem pintura
+    # no log` porque so' casava `CAPTION_PAINT ` (com espaco) e
+    # `CAPTION_OVERLAY_LAG`. Um instrumento que responde "nao houve nada" a um
+    # log com 956 pinturas nao e' um portao: e' a razao de ninguem medir o
+    # defeito que o dono reportou.
+    first, paint_src = _paint_witness(seg)
     # A PERNA QUE E' NOSSA: da ULTIMA escada ABERTA antes da pintura ate' a
     # pintura. O numero de cima inclui o tempo em que o dono ainda nao tinha
     # audio a sair, e esse tempo nao e' do Sotto -- medido 2026-11-11 (pid 21400):
@@ -262,8 +299,7 @@ def measure(lines, log_name=''):
         add('escada aberta -> 1a legenda', None, tap_to_caption,
             TAP_TO_CAPTION_BUDGET_MS, tap_note, kind='info')
         add('arranque -> 1a legenda', None, (_t(first) - t0) * 1000.0,
-            FIRST_CAPTION_BUDGET_MS, ''
-            if 'CAPTION_PAINT' in first else 'age_ms=%.0f' % (_num(first, 'age_ms') or 0),
+            FIRST_CAPTION_BUDGET_MS, paint_src,
             # E' UM PORTAO: 40 s ate' a primeira legenda e' o que o dono sente, e
             # a perna do audio nao o desculpa -- no arranque de 2026-11-11 havia
             # audio no endpoint aberto as 00:48:55.878 e a legenda saiu as
@@ -325,7 +361,8 @@ def render(res, out=sys.stdout):
 
 
 # ── o controle: dois logs FALSOS, um verde e um vermelho ────────────────────
-def _synthetic(show_ms, live_ms, menu_ms, caption_ms, menu_ok=1):
+def _synthetic(show_ms, live_ms, menu_ms, caption_ms, menu_ok=1,
+               paint_line=None):
     """Um log com a FORMA que a shell escreve -- e um unico numero mudado por braco."""
     base = '2026-11-10 10:00:00.000'
     h, m, s = 10, 0, 0.0
@@ -352,7 +389,8 @@ def _synthetic(show_ms, live_ms, menu_ms, caption_ms, menu_ok=1):
          '%s sotto: LIVE_ENABLED on=true' % at(2000.0 + live_ms),
          '%s sotto: TRAY_MENU_FOREGROUND ok=%d err=0 menu_ms=%d'
          % (at(3000.0), menu_ok, menu_ms),
-         '%s sotto: CAPTION_PAINT instant=true text="oi"' % at(caption_ms)]
+         '%s sotto: %s' % (at(caption_ms),
+                              paint_line or 'CAPTION_PAINT instant=true text="oi"')]
     return L
 
 
@@ -508,6 +546,28 @@ def neg_arm():
         ('R4 primeira legenda a 40 s tem de dar FAIL', _synthetic(120.0, 90.0, 40, 40000.0), 1),
         ('R5 um log sem sessao tem de dar SKIPPED (rc=3)',
          ['2026-11-10 10:00:00.000 sotto: nada'], 3),
+        # G3-G5: AS FORMAS DA TESTEMUNHA. Medido 2026-11-11 (pid 49180): o
+        # log do dono tinha 927 `CAPTION_PROVISIONAL_PAINT` e 29
+        # `CAPTION_PAINT_LAG`, e o oraculo respondia UNMEASURED porque so'
+        # casava duas formas antigas. Um braco por FORMA, e o RED tem de
+        # continuar a cair em cada uma -- senao "medir" volta a ser "nao medir"
+        # no dia em que o produtor mudar o nome da linha.
+        ('G3 a forma do ASR (CAPTION_PAINT_LAG) tem de ser MEDIDA e passar',
+         _synthetic(120.0, 90.0, 40, 4000.0,
+                    paint_line='CAPTION_PAINT_LAG audio_ms=120 queue_ms=0 '
+                               'text="oi"'), 0),
+        ('R6b a forma do ASR a 40 s tem de dar FAIL (a testemunha nao amolece)',
+         _synthetic(120.0, 90.0, 40, 40000.0,
+                    paint_line='CAPTION_PAINT_LAG audio_ms=120 queue_ms=0 '
+                               'text="oi"'), 1),
+        ('G4 a forma da PAGINA (CAPTION_PROVISIONAL_PAINT) tem de ser MEDIDA',
+         _synthetic(120.0, 90.0, 40, 4000.0,
+                    paint_line='CAPTION_PROVISIONAL_PAINT n=1 at=1 '
+                               'src=- text="oi"'), 0),
+        ('G5 a forma do overlay novo (CAPTION_PAINT_SURFACE) tem de ser MEDIDA',
+         _synthetic(120.0, 90.0, 40, 4000.0,
+                    paint_line='CAPTION_PAINT_SURFACE src=player rows=1 ms=4 '
+                               'text="oi"'), 0),
     ]
     caught = 0
     for name, lines, want in cases:
