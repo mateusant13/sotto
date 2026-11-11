@@ -688,12 +688,21 @@ def run(shell_path, gesture_path, overlay_path, gaming_path):
     add(gaming.is_game_process_detailed('random-win64-shipping.exe',
                                         cpu_pct_of_machine=5.0)[0] is True,
         "o mesmo Shipping com 5 %% da maquina E' jogo (regra do watcher)")
-    # A MAQUINA DE VERDADE: o detector real nao inventa um jogo.
+    # A MAQUINA DE VERDADE: o detector real nao INVENTA um jogo.
+    # MEDIDO 2026-11-11: a arm exigia `is_gaming() is False` -- ou seja o dono
+    # nao podia estar a jogar no momento em que a bateria corre. Com o `Deadlock`
+    # aberto ela reprovou (`hits=[GameHit(name='deadlock.exe', in_match=True)]`),
+    # um oraculo a julgar a secretaria do dono em vez do classificador. O que se
+    # prova agora e' o que de facto se quer: TODO `hit` sai de um processo que a
+    # enumeracao REAL leu (nada e' inventado) e o veredicto concorda com os hits.
     real = gaming.GamingDetector(log=FakeLog())
     real.tick()
-    add(real.is_gaming() is False,
-        "nesta maquina, agora, o detector REAL nao ve' jogo nenhum",
-        "names=%d hits=%s" % (len(real.last_names), real.last_hits))
+    names_lc = {str(n).lower() for n in real.last_names}
+    invented = [h for h in real.last_hits if str(h.name).lower() not in names_lc]
+    add(not invented and (real.is_gaming() is bool(real.last_hits)),
+        "o detector REAL nao inventa jogo: todo hit esta' na enumeracao",
+        "names=%d hits=%s invented=%s" % (len(real.last_names), real.last_hits,
+                                          invented))
     add(len(real.last_names) > 5, "a enumeracao real leu processos",
         "%d nomes" % len(real.last_names))
 

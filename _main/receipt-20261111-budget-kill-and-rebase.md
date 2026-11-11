@@ -239,3 +239,43 @@ Duas curas, as duas medidas:
 O conjunto de veredictos por mutante e' **identico** ao de antes da cura (`diff` vazio sobre as 7
 linhas: `M1 A2,A3` / `M2 A5` / `M3 A9` / `M4 B,B2,C2` / `M5 C1` / `M6 C2`), ou seja o controlo nao
 perdeu forca -- so' deixou de pagar a mesma varredura 262 vezes.
+
+## 11. A CORRIDA VERDE: tres instrumentos a julgar o que nao era o passo
+
+A corrida de 2026-11-11 13:17 (caged, plan ON) fechou `BATTERY-VERDICT: RED - 4 step(s)
+failed` em **2 521,2 s**. Os quatro nao eram o codigo sob teste:
+
+| passo | o que dizia | o que era |
+|---|---|---|
+| `youtube-cdp-boot` | `8/9`, `alive=False` | a linha `YOUTUBE_CDP_BOOT_ATTACH ok=true ms=15` sai no caminho do ARRANQUE, antes da primeira volta do fio do `_run`; a arm lia `_thread.is_alive()` UMA vez, no instante do `asked` |
+| `gaming-hotkey` | `55/56`, "o detector REAL nao ve' jogo nenhum" | o dono estava a jogar: `hits=[GameHit(name='deadlock.exe', in_match=True)]`. A arm julgava a secretaria dele em vez do classificador |
+| `battery-budget` | `total=3233,3s`, 8 passos 2,4x-15x | `worker-park` gravou **538,011 s** com o proprio log fechado aos 3 min de corrida; o MESMO comando medido aqui: **34,9 s** direto e **34,7 s** pelo `step-deadline.py` |
+| `red-as-expected-battery-budget` | `rc=2` | consequencia do anterior: o controlo recusa julgar um juiz que ja' reprova |
+
+**As tres curas, cada uma com o seu controlo medido.**
+
+1. `_stepcache.step_elapsed(t0, log_path)` -- **o fim do passo e' o ultimo byte do LOG**, nao
+   o instante em que o `pythonw` do `record` acordou. A regra antiga (`now - mtime(t0)`) mede a
+   espera do proprio `record`, que sob o tecto de 40 % custou **15,4x** o passo. Motivos
+   publicados: `log` / `sem-log` / `log-anterior-ao-marcador` / `log-no-futuro` / `sem-marcador`
+   -- um log de OUTRA corrida nunca vira duracao desta. Arms R1-R4 no `_battery-plan.py
+   --selftest`, no MESMO fixture: o R1 le' **60,0 s** (o log fecha 40 s antes do `record`) e o R4
+   prova que a regra antiga devolve **100,0 s** ali mesmo -- se o fixture deixar de separar as
+   duas, o R4 reprova. Medido: `fim do passo : log=60.0s (nao 100) sem-log=now anterior=now
+   controle=100.0s`, `VERDICT: PASS`; `--neg-arm` **3/3** mutantes.
+
+2. `youtube-cdp-boot` -- a vida do fio passa a ser **AMOSTRADA** (ate' 1 s) em vez de
+   FOTOGRAFADA no instante do `asked`. Medido depois: `VERDICT: PASS (9/9)` e `--neg-arm`
+   **6/6** (rc=1), com o mesmo conjunto de arms de antes.
+
+3. `gaming-hotkey` -- a arm deixa de exigir que o dono NAO esteja a jogar e passa a exigir o que
+   importa: **todo `hit` esta' na enumeracao real** (nada e' inventado) e `is_gaming()` concorda
+   com `last_hits`. Medido com o `Deadlock` aberto: `GAMING-HOTKEY GREEN -- arms=56 pass=56
+   fail=0` (era 55/56) e o `--neg-arm` a derrubar as cinco regressoes, como antes.
+
+**O QUE FOI RECUSADO.** A primeira cura que tentei para o `battery-budget` foi um fator de
+maquina (mediana das razoes por passo, para normalizar contenda). Medido no registro de hoje:
+**`maquina x1.000 (31 amostra(s))`** -- o fator nao via nada, porque 264 dos 413 passos vieram do
+cache e a razao deles e' 1,0 por construcao. A mediana ficou dominada por linhas HISTORICAS e o
+normalizador virou zero informacao. Foi removido inteiro; o numero que faltava era a DURACAO do
+passo, e ela estava a ser medida no relogio errado.

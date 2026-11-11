@@ -221,9 +221,25 @@ def _arm_boot(shell_mod, mod, port):
         source = getattr(sh, "_yt_cdp_source", None)
         asked = [ln for ln in lines
                  if "YOUTUBE_CDP_BOOT_ATTACH" in ln and "ok=true" in ln]
-        alive = bool(source is not None and source is not False
-                     and getattr(source, "_thread", None) is not None
-                     and source._thread.is_alive())
+        # A VIDA DO FIO E' AMOSTRADA, NAO FOTOGRAFADA (medido 2026-11-11). A
+        # linha `YOUTUBE_CDP_BOOT_ATTACH ok=true ms=15` sai no caminho do
+        # arranque, ANTES de o fio do `_run` ter feito a primeira volta: uma
+        # leitura unica no instante em que o `asked` aparece pegava o fio entre
+        # `start()` e o primeiro trabalho e publicava `alive=False` sobre um
+        # fio que sobe milissegundos depois (o passo ficou `8/9` e nenhuma
+        # linha do log do dono mudou). A arm espera ate' 1 s pela vida do fio.
+        def _alive_now():
+            src = getattr(sh, "_yt_cdp_source", None)
+            return bool(src is not None and src is not False
+                        and getattr(src, "_thread", None) is not None
+                        and src._thread.is_alive())
+
+        _alive_deadline = time.monotonic() + 1.0
+        alive = _alive_now()
+        while not alive and time.monotonic() < _alive_deadline:
+            time.sleep(0.02)
+            alive = _alive_now()
+        source = getattr(sh, "_yt_cdp_source", None) or source
         ok = (bool(asked) and alive and sh.calls == ["watcher", "worker:declined"]
               and all("panel" not in c for c in sh.calls))
         note = ("asked=%d alive=%s calls=%s %s"

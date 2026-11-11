@@ -345,6 +345,58 @@ def _selftest():
         finally:
             shutil.rmtree(d, ignore_errors=True)
 
+    # (F) O FIM DO PASSO E' O ULTIMO BYTE DO LOG, NAO O INSTANTE DO `record`
+    # (MEDIDO 2026-11-11: `worker-park` gravou **538,011 s** com o log fechado
+    # aos 3 min de corrida, e o mesmo comando custa 34,9 s direto / 34,7 s pelo
+    # `step-deadline.py`). Sem este braco, a regra antiga (`now - mtime(t0)`)
+    # continua a alimentar o ratchet com o agendador.
+    try:
+        sc2 = _load("_stepcache_elapsedarm", os.path.join(HERE, "_stepcache.py"))
+    except Exception as exc:                        # noqa: BLE001
+        sc2 = None
+        problems.append("fim do passo: o _stepcache nao carrega (%s)" % exc)
+    if sc2 is not None and hasattr(sc2, "step_elapsed"):
+        d = tempfile.mkdtemp(prefix="sotto-step-elapsed-")
+        try:
+            t0 = os.path.join(d, "state.t0")
+            log = os.path.join(d, "step.log")
+            for path in (t0, log):
+                io.open(path, "w", encoding="utf-8").write("x\n")
+            now = time.time()
+            # O passo comecou ha 100 s e o LOG fechou ha 40 s: o passo custou 60 s
+            # e o `record` acordou 40 s atrasado -- e' ESSA a distancia que a
+            # regra antiga grava (100 s), e e' por isso que o fixture tem de ver
+            # 60 e nao 100.
+            os.utime(t0, (now - 100.0, now - 100.0))
+            os.utime(log, (now - 40.0, now - 40.0))
+            got, why = sc2.step_elapsed(t0, log)
+            if not (58.0 <= float(got) <= 62.0) or why != "log":
+                problems.append("R1 o log e' o fim do passo: got=%r why=%r "
+                                "(esperado ~60 s, motivo 'log')" % (got, why))
+            os.utime(t0, (now - 100.0, now - 100.0))
+            got, why = sc2.step_elapsed(t0, os.path.join(d, "nao-existe.log"))
+            if not (99.0 <= float(got) <= 103.0) or why != "sem-log":
+                problems.append("R2 sem log volta a `now`: got=%r why=%r"
+                                % (got, why))
+            os.utime(log, (now - 500.0, now - 500.0))    # log de uma corrida ANTERIOR
+            got, why = sc2.step_elapsed(t0, log)
+            if not (99.0 <= float(got) <= 103.0) or why != "log-anterior-ao-marcador":
+                problems.append("R3 log anterior ao marcador nao serve: got=%r why=%r"
+                                % (got, why))
+            # O CONTROLE E' AQUI, no MESMO fixture: a regra ANTIGA (so' `now - t0`)
+            # devolve 100 s onde o R1 le' 60 s. Nao ha mutante de ficheiro para
+            # isto porque a regra vive no `_stepcache.py`, e o `_run_adjacent` so'
+            # copia este ficheiro -- o discriminador e' o R4, e ele reprova o
+            # selftest se o fixture deixar de separar as duas regras.
+            old_rule = max(0.0, time.time() - os.path.getmtime(t0))
+            if not (99.0 <= old_rule <= 103.0):
+                problems.append("R4 controle: a regra antiga nao devolve ~100 s "
+                                "(got=%r) -- o fixture nao mede a regra" % old_rule)
+            print("fim do passo    : log=%.1fs (nao 100) sem-log=now anterior=now "
+                  "controle=%.1fs" % (60.0, old_rule))
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
     # (D) A MEDICAO REAL, no ficheiro real: o plano inteiro de uma corrida.
     real = build(os.path.join(tempfile.gettempdir(), "sotto-plan-selftest.txt"))
     print("plano real      : %d passos em %.3f s (hits=%d misses=%d defer=%d)"

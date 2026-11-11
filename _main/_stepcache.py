@@ -292,6 +292,37 @@ def check(step: str, deps, expect_rc: int = 0, log=None, always: bool = False,
         return False, None, "log-missing-or-changed: %s" % log_path
     return True, recorded_rc, "ok"
 
+def step_elapsed(t0, log_path=None):
+    """(segundos, motivo) do passo que acabou; (None, motivo) se nao se sabe.
+
+    O FIM DO PASSO E' O ULTIMO BYTE DO LOG, NAO O INSTANTE EM QUE ESTE PROCESSO
+    ACORDOU (MEDIDO 2026-11-11). `elapsed = now - mtime(t0)` mede a distancia ate
+    o `record` correr, e isso inclui a espera pelo `pythonw` DELE: na corrida
+    caged o `worker-park` ficou com **538,011 s** gravados enquanto o proprio log
+    do passo fechou aos 3 min da corrida, e o MESMO comando medido aqui custa
+    **34,9 s** direto e **34,7 s** atraves do `step-deadline.py`. Um numero assim
+    alimenta o ratchet com o agendador, nao com o passo -- a classe que este repo
+    ja' pagou no `pump` do worker e no relogio do `monotonic`.
+
+    O log e' escrito pelo wrapper e o ultimo byte dele e' o fim do passo. So'
+    quando esse mtime nao serve (log ausente, de uma corrida anterior -- ate'
+    o `t0` -- ou no futuro) se volta a `now`, e o motivo diz qual foi.
+    """
+    now = time.time()
+    t0_m = _mtime(t0) if t0 else None
+    if t0_m is None:
+        return None, "sem-marcador"
+    by_now = max(0.0, now - t0_m)
+    log_m = _mtime(log_path) if log_path else None
+    if log_m is None:
+        return by_now, "sem-log"
+    if log_m < t0_m:
+        return by_now, "log-anterior-ao-marcador"
+    if log_m > now:
+        return by_now, "log-no-futuro"
+    return (log_m - t0_m), "log"
+
+
 def record(step: str, deps, rc: int, log=None, expect_rc: int = 0,
            state_path: str = DEFAULT_STATE, t0=None, policy=None) -> tuple:
     """(ok, reason). Records the step AS IT RAN. A step whose deps are missing
@@ -325,13 +356,9 @@ def record(step: str, deps, rc: int, log=None, expect_rc: int = 0,
         "log": log_path,
         "log_sha256": log_sha,
     }
-    elapsed = elapsed_since(t0)
+    elapsed, _why = step_elapsed(t0, log_path)
     if elapsed is not None:
         entry["elapsed_s"] = round(elapsed, 3)
-    # A POLITICA DE LARGADA sob a qual este numero foi medido (medido 2026-11-08).
-    # Um tempo por passo comparado com um baseline de OUTRA politica nao e' uma
-    # regressao: e' uma comparacao que nao existe. O `battery-budget` recusa julgar
-    # os passos cujo `policy` difere e DIZ quantos ficaram de fora.
     if policy:
         entry["policy"] = policy
     state.setdefault("steps", {})[step] = entry
@@ -384,6 +411,14 @@ def fast_threshold_s() -> float:
     except (TypeError, ValueError):
         return FAST_THRESHOLD_DEFAULT_S
     return value if value > 0 else FAST_THRESHOLD_DEFAULT_S
+
+
+def _mtime(path):
+    """mtime em segundos, ou None -- um caminho que nao existe nao e' zero."""
+    try:
+        return os.path.getmtime(str(path))
+    except (OSError, TypeError, ValueError):
+        return None
 
 
 def elapsed_since(t0) -> float | None:
