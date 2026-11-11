@@ -663,13 +663,31 @@ def neg_arm():
     # politicas diferentes, o `judge` respondia "politica diferente" em vez de
     # julgar o mutante e as duas mutacoes passavam a `FAIL (0/2)`. O controlo
     # tem de julgar o MESMO que o portao julga.
-    measured = measure(rows, deadline(), (base.get('policy') or None))
+    real = measure(rows, deadline(), (base.get('policy') or None))
     declared = set(base.get('over_deadline') or ())
-    clean = [r for r in rows
-             if r['name'] not in declared and r['elapsed_s'] < deadline()
-             and r['elapsed_s'] >= PER_STEP_FLOOR_S] or rows
+    per_base = base.get('per_step') or {}
+    # O CONTROLO JULGA UMA BASE LIMPA, NAO A CORRIDA DE HOJE (medido 2026-11-11).
+    # O `neg_arm` lia a corrida que acabou de correr, e essa corrida e' uma
+    # AMOSTRA: numa maquina partilhada ela chega 3-8x mais cara e o `judge`
+    # reprova ANTES de qualquer mutacao -- o controlo entao dizia
+    # `CANNOT-MEASURE` (rc 2) e o passo virava RED numa corrida em que o codigo
+    # estava certo. Duas corridas inteiras (~50 min) foram gastas assim hoje.
+    # A pergunta do controlo e' "o juiz NOMEIA um passo que engordou?", nao
+    # "esta' a maquina calma?": a base sintetica e' o baseline -- o proprio
+    # numero que o ratchet compara --, logo o controlo mede o juiz e mais nada.
+    # A corrida real continua a ser publicada, como INFORMACAO.
+    print('NEG-ARM base: sintetica (per_step do baseline); corrida real: total=%.1fs '
+          'steps=%d (informativo)' % (real['total_s'], real['steps']))
+    measured = {'policy': (base.get('policy') or None), 'steps': len(per_base),
+                'total_s': round(sum(per_base.values()), 1),
+                'policy_skipped': 0, 'policy_skipped_names': [],
+                'over_deadline': [], 'per_step': dict(per_base),
+                'slowest': sorted(((n, v) for n, v in per_base.items()),
+                                  key=lambda kv: -kv[1])[:10]}
+    clean = [{'name': n, 'elapsed_s': v} for n, v in per_base.items()
+             if v < deadline() and v >= PER_STEP_FLOOR_S]
     if not clean:
-        print('NEG-ARM IMPOSSIVEL -- cache sem passos')
+        print('NEG-ARM IMPOSSIVEL -- baseline sem passo utilizavel')
         return 1
     worst = max(clean, key=lambda r: r['elapsed_s'])
     # O CANDIDATO DA M2 TEM DE ATRAVESSAR O RATCHET POR PASSO, nao so' caber no
@@ -732,8 +750,9 @@ def neg_arm():
               'RED pre-existente:')
         for line in base_why:
             print('    RED', line)
-        print('  (a corrida que se julga tem de estar verde para o controlo medir; '
-              'uma maquina ocupada por outra lane produz exactamente este RED)')
+        print('  (a BASE sintetica e\' o proprio baseline e tem de passar o juiz; '
+              'se nao passa, o defeito e\' do baseline, nao da maquina -- '
+              'uma maquina ocupada deixou de poder cegar este controlo)')
         return 2
     caught = 0
     for row, label, mut, witness in plan:
@@ -752,7 +771,21 @@ def neg_arm():
             return hit
         named_before = names(base_why)
         row['elapsed_s'] = mut(original)
-        mutated = measure(rows, deadline(), (base.get('policy') or None))
+        # O MUTANTE TEM DE ATRAVESSAR O MESMO CAMINHO QUE O JUIZ LE' (medido
+        # 2026-11-11): a versao anterior mutava a linha e chamava `measure(rows)`
+        # -- que reconstroi tudo a partir do CACHE REAL e deitava a mutacao fora.
+        # Enquanto a base do controlo era a corrida de hoje isso passava por
+        # coincidencia (a linha vinha do mesmo `rows`); com a base sintetica a
+        # mutacao caia no vazio e a M2 dizia `PASSOU` sem o juiz ter defeito.
+        mutated = dict(measured)
+        mutated['per_step'] = dict(measured['per_step'])
+        mutated['per_step'][row['name']] = round(row['elapsed_s'], 1)
+        mutated['total_s'] = round(sum(mutated['per_step'].values()), 1)
+        mutated['over_deadline'] = sorted(
+            set(base.get('over_deadline') or ())
+            | {n for n, v in mutated['per_step'].items() if v >= deadline()})
+        mutated['slowest'] = sorted(mutated['per_step'].items(),
+                                    key=lambda kv: -kv[1])[:10]
         ok_after, why_after, _ = judge(mutated, base)
         named_after = names(why_after)
         ok = bool(named_after) and not named_before and not ok_after

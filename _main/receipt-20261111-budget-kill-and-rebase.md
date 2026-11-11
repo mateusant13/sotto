@@ -387,3 +387,35 @@ no registo. Um numero desse tamanho num passo de 20 s e' o proprio defeito a fal
 `elapsed` do marcador `t0`, e o marcador foi escrito imediatamente antes de um filho que morreu no
 arranque. Os dois logs foram regerados pelo comando REAL atras do cage e as duas entradas
 re-escritas (20,236 s e 72,835 s, `policy=cap40`).
+
+## 14. O CONTROLO ESTAVA CEGO PELA CORRIDA DE HOJE
+
+Terceira corrida do dia, mesmo instrumento, e o passo `red-as-expected-battery-budget` voltou a
+falhar com **rc=2**:
+
+```
+NEG-ARM CANNOT-MEASURE -- o juiz ja' reprova ANTES de qualquer mutacao ...
+    RED total 2981.1s acima do tecto 2867.7s (baseline 2731.1s x 1.05)
+    RED red-as-expected-altc-gesture 55.5s -> 166.4s | load-shedding 80.8s -> 176.1s | warm-engine 98.4s -> 139.0s
+```
+
+O controlo lia a corrida que acabou de correr (`measure(rows)`), e essa corrida e' uma AMOSTRA: com
+outra lane a medir na mesma maquina ela chega 2-3x mais cara, o `judge` reprova antes de qualquer
+mutacao e a testemunha "o mutante NOMEIA o passo, e o passo nao estava nomeado antes" deixa de
+distinguir o mutante de um RED pre-existente. O controlo ficava cego exactamente quando era preciso.
+
+**A cura, em duas metades, as duas medidas:**
+
+1. **A base do controlo e' o BASELINE, nao a corrida.** `measured` passa a ser sintetica a partir de
+   `baseline['per_step']` -- o proprio numero que o ratchet compara -- e a corrida real e' publicada
+   como linha INFORMATIVA (`NEG-ARM base: sintetica ... corrida real: total=..`) . A pergunta do
+   controlo e' "o juiz nomeia um passo que engordou?", nao "a maquina esta calma?".
+2. **O mutante tem de atravessar o mesmo caminho que o juiz le.** A versao anterior mutava a linha e
+   chamava `measure(rows)`, que reconstroi tudo do cache real -- enquanto a base era a corrida de hoje
+   isso passava por COINCIDENCIA (a linha vinha do mesmo `rows`); com a base sintetica a mutacao caia
+   no vazio e a M2 dizia `PASSOU`.
+
+Medido depois: `NEG-ARM: PASS (6/6 mutantes apanhados; juiz antes: True)` rc=1 numa maquina que
+ACABAVA de produzir aquele RED, e o passo positivo `RATCHET-OK -- steps=413 total=2409.5s` rc=0 no
+mesmo instante. Duas corridas inteiras (~50 min) foram gastas antes desta cura: um controlo que
+depende do ambiente mede o ambiente.
