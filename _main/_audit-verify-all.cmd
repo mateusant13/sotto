@@ -682,9 +682,9 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-pause-payload !STEP_RC!
   call :step red-as-expected-panel-pause-payload 1 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
   call :expectred red-as-expected-panel-pause-payload !STEP_RC! "%OUT%\panel-pause-payload-neg.log" "NEG-ARM: PASS"
-  call :step measurement-flags 0 "_main\measurement-flags-oracle.py;app\webview\sotto_webview.py" "%OUT%\measurement-flags.log" python _main\measurement-flags-oracle.py
+  call :step measurement-flags 0 "_main\measurement-flags-oracle.py;app\webview\sotto_webview.py;app\webview\batch_queue.py;app\webview\load_shedding.py" "%OUT%\measurement-flags.log" python _main\measurement-flags-oracle.py
   call :record measurement-flags !STEP_RC!
-  call :step red-as-expected-measurement-flags 1 "_main\measurement-flags-oracle.py;app\webview\sotto_webview.py" "%OUT%\measurement-flags-neg.log" python _main\measurement-flags-oracle.py --neg-arm
+  call :step red-as-expected-measurement-flags 1 "_main\measurement-flags-oracle.py;app\webview\sotto_webview.py;app\webview\batch_queue.py;app\webview\load_shedding.py" "%OUT%\measurement-flags-neg.log" python _main\measurement-flags-oracle.py --neg-arm
   call :expectred red-as-expected-measurement-flags !STEP_RC! "%OUT%\measurement-flags-neg.log" "NEG-ARM: PASS"
   REM `measurement-isolation` -- A MEDICAO NAO ESCREVE O ESTADO DO DONO (2026-11-12).
   REM Medido por leitura: `main()` decide o lock por `_measurement_flag` e

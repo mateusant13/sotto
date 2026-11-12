@@ -8770,6 +8770,46 @@ def isolated_state_file(path, args) -> str:
     return '%s.%s%s' % (stem, tag, ext)
 
 
+def isolated_queue_dir(args):
+    """A fila do batch DESTA largada; `None` na app do dono (byte-identico).
+
+    PORQUE EXISTE (medido 2026-11-12, DM do watcher sobre um stutter do dono):
+    uma MEDICAO importa a shell, a shell constroi a `BatchQueue` em
+    `_open_load_action` e o executor DRAINA o directorio que encontra --
+    `batch_queue.queue_dir()`, que e' `%TMPDIR%/sotto-batch-queue`, o MESMO da
+    app viva dele. Medido nesse episodio:
+
+        culprit = python.exe(15700)
+        cmdline = python H:\\sotto\\app\\webview\\batch_queue.py --transcribe
+                  I:\\cc-tmp\\sotto-batch-queue\\1794459181885-57128-0001.f32
+                  --rate 16000 --window-s 15.0 --json
+        io 69.1 MB/s at 20.1 ops/s (3 438 KB/op), creations 56.8/s
+
+    ou seja a sonda nao estava a MEDIR o produto: estava a CONSUMIR a fila dele,
+    a re-transcrever audio que outra instancia tinha posto la'. A regra da casa
+    -- uma medicao nunca escreve no estado do dono -- ja' valia para
+    `panel-state.json`; a fila e' o mesmo estado, um nivel abaixo.
+    """
+    tag = measurement_state_tag(args)
+    if args is None:
+        # SEM `args` NAO EXISTE APP DO DONO. Um instrumento constroi o host a
+        # mao (`panel-hidden-at-startup-oracle` faz exactamente isso) e nunca
+        # passa por `main()`; tratar isso como "sem isolamento" deixava a sonda
+        # a drenar a fila dele -- o mesmo defeito que o `args` sozinho nao
+        # fechava, um nivel abaixo do que a DM mediu.
+        tag = re.sub(r'[^A-Za-z0-9_.-]', '_', DEFAULT_MUTEX_NAME) + '.no-args'
+    if not tag:
+        return None
+    try:
+        from batch_queue import queue_dir as _queue_dir
+    except Exception:                                  # noqa: BLE001
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        from batch_queue import queue_dir as _queue_dir
+    return _queue_dir() + '.' + tag
+
+
 # ===========================================================================
 # THE TRAY — the app's face and its Quit, where the owner asked for them
 #
@@ -13685,8 +13725,15 @@ class SottoShell:
             # publicador dele, para haver UM escritor e UM numero no ficheiro.
             monitor = LoadSheddingMonitor(self)
             self._load_shedding = monitor
+            # A FILA E' ESTADO DO DONO: uma largada de MEDICAO nao drena a dele
+            # (`isolated_queue_dir`; medido 2026-11-12 -- a sonda a transcrever
+            # a fila real a 69 MB/s enquanto ele sentia o stutter).
+            queue_dir = isolated_queue_dir(getattr(self, 'args', None))
+            if queue_dir:
+                log('LOAD_QUEUE_ISOLATED dir=%s reason=measurement-launch'
+                    % queue_dir)
             self._load_action = load_shedding().open_action(
-                self, monitor=monitor, log_fn=log)
+                self, monitor=monitor, log_fn=log, queue_dir=queue_dir)
         except Exception as exc:  # noqa: BLE001 -- nunca impede a app de subir
             log('LOAD_SHEDDING_START_FAILED error=%r' % (exc,))
         else:

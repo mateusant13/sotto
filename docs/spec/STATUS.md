@@ -46,6 +46,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | D-14 | o motor quente entra na lista de *reap* da saída (`.kill()` levanta, `.wait()` não existe) e o matador externo mata-o pelo pid, com dois docstrings a prometer o contrário | MÉDIA | **aberto**, com a escolha nomeada (lista de *backstop* separada) |
 | D-15 | uma largada de MEDIÇÃO (`--probe-v2` e mais oito) tomava lock privado e escrevia `panel-state.json`/`panel-visibility.json` por cima dos ficheiros da app viva — o worker do dono recebia `visible=false` e perdia o nível de shed | ALTA | **corrigido, NÃO verificado** — um único predicado para lock e estado, sufixo = nome do lock, worker lê o mesmo ficheiro; 15 arms + neg-arm 3/3 |
 | D-16 | um `SOTTO_WEBVIEW_AFTER_LOAD_S` presente e ilegivel caia em 25 s de espera na thread que ainda nao chamou `webview.start()` — a espera que o proprio comentario diz ter produzido o `HANG rc=4` | MÉDIA | **corrigido, NÃO verificado** — `after_load_wait_s` devolve zero e a razao; 4 casos executados, neg-arm 6/6 |
+| D-17 | uma largada de MEDIÇÃO drenava a FILA DO BATCH do dono (io 69,1 MB/s medido no stutter) | ALTO | corrigido, NÃO verificado -- `isolated_queue_dir`; `measurement-flags` A9, neg-arm 6/6 |
 
 ## Números medidos nesta campanha
 

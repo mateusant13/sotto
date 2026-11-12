@@ -56,6 +56,7 @@ import ast
 import os
 import re
 import sys
+import types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, os.pardir))
@@ -309,6 +310,79 @@ def check(text):
                 if got != want:
                     failures.append("A8 _measurement_flag(%s) = %r, wanted %r"
                                     % (kwargs, got, want))
+
+    # A9: A FILA DO BATCH E' ESTADO DO DONO. A medicao que importa a shell
+    # constroi a `BatchQueue` e o executor drena `batch_queue.queue_dir()` --
+    # o MESMO directorio da app viva. Medido 2026-11-12 (DM do watcher): a
+    # sonda a transcrever `I:\cc-tmp\sotto-batch-queue\*.f32` a 69,1 MB/s com
+    # 56,8 criacoes/s, no episodio de stutter do dono. A cura e' a mesma forma
+    # do `isolated_state_file`: uma largada de medicao ganha fila propria, e a
+    # app do dono fica byte-identica (`None`).
+    qfn = module_function(tree, "isolated_queue_dir")
+    if qfn is None:
+        failures.append("A9 isolated_queue_dir is gone: a measurement launch drains the "
+                        "owner's batch queue")
+    else:
+        namespace = {"os": os, "sys": sys, "re": re, "argparse": argparse,
+                     "DEFAULT_MUTEX_NAME": "Local\\\\SottoShell"}
+        try:
+            namespace["MEASUREMENT_FLAGS"] = tuple(pairs)
+            for name in ("measurement_lock_name", "_measurement_flag",
+                         "is_measurement_launch", "measurement_state_tag",
+                         "isolated_queue_dir"):
+                fn = module_function(tree, name)
+                if fn is None:
+                    raise LookupError(name)
+                exec(segment(text, fn), namespace)      # noqa: S102
+            fake = types.ModuleType("batch_queue")
+            fake.queue_dir = lambda: os.path.join("X:", "q")
+            saved = sys.modules.get("batch_queue")
+            sys.modules["batch_queue"] = fake
+            try:
+                again = {}
+                for name in ("measurement_lock_name", "_measurement_flag",
+                             "is_measurement_launch", "measurement_state_tag",
+                             "isolated_queue_dir"):
+                    again[name] = namespace[name]
+                owner = again["isolated_queue_dir"](argparse.Namespace())
+                probe = again["isolated_queue_dir"](
+                    argparse.Namespace(probe_stats=True))
+                # UM HOST SEM `args` E' UM INSTRUMENTO, nunca a app do dono.
+                noargs = again["isolated_queue_dir"](None)
+            finally:
+                if saved is None:
+                    sys.modules.pop("batch_queue", None)
+                else:
+                    sys.modules["batch_queue"] = saved
+        except Exception as exc:                            # noqa: BLE001
+            failures.append("A9 the queue-isolation functions do not execute: %s" % exc)
+        else:
+            if owner is not None:
+                failures.append("A9 the OWNER's app gets an isolated queue (%r): his batch "
+                                "queue must stay byte-identical" % (owner,))
+            if not probe or probe == os.path.join("X:", "q"):
+                failures.append("A9 a measurement launch still resolves the owner's queue "
+                                "(%r)" % (probe,))
+            elif "probe_stats" not in probe:
+                failures.append("A9 the isolated queue is not tagged with the launch (%r)"
+                                % (probe,))
+            if not noargs:
+                failures.append("A9 a host built WITHOUT `args` (an instrument) resolves the "
+                                "owner's queue: the belt only works if the tag does")
+
+    la = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "_open_load_action":
+            la = node
+    if la is None:
+        failures.append("A9 _open_load_action is gone")
+    else:
+        body = segment(text, la)
+        if "isolated_queue_dir(" not in body:
+            failures.append("A9 _open_load_action does not ask isolated_queue_dir -- the "
+                            "helper alone changes nothing")
+        if "queue_dir=queue_dir" not in body:
+            failures.append("A9 _open_load_action does not pass `queue_dir=` into open_action")
     return failures
 
 
@@ -326,6 +400,12 @@ MUTANTS = (
      "    parser.add_argument('--probe-new-thing', action='store_true',\n"
      "                        help='a measurement flag nobody told the table about')\n"
      "    parser.add_argument('--exit-after', type=float, default=0.0,", "A3"),
+    # A FILA: M5 faz a sonda resolver a fila DO DONO outra vez (o defeito
+    # medido no stutter de 2026-11-12), M6 desliga a fiacao -- um helper
+    # correcto que ninguem chama nao muda um byte.
+    ("M5-A9", "    return _queue_dir() + '.' + tag", "    return _queue_dir()", "A9"),
+    ("M6-A9", "                self, monitor=monitor, log_fn=log, queue_dir=queue_dir)",
+     "                self, monitor=monitor, log_fn=log)", "A9"),
 )
 
 

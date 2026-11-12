@@ -725,6 +725,18 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   segunda origem para o `lock_excuse` (um reset a `None` e' inicializacao), A7 nenhum caso
   especial inline e A8 as funcoes REAIS executadas em cinco casos. Medido:
   `VERDICT: PASS` rc=0 e `NEG-ARM PASS: 4/4` rc=1.)
+- **PIN do ficheiro (medido 2026-11-12, 04:5x):** `_main\_audit-verify-all.cmd` = **367571 B**,
+ **4238 CRLF** / 0 bare LF, sha256 `8C4F79570BF8D3522079F8041173D75BC1AAA41C1068B2B6770BB8B6433AD075`.
+ (Tres mil cento e oitenta e cinco bytes e TRINTA linhas a mais do que o pin de 364386 B: as DUAS linhas do par
+ `measurement-flags` + `red-as-expected-measurement-flags` passam a nomear `app\webview\batch_queue.py`
+ e `app\webview\load_shedding.py` nas dependencias. O oraculo passou a EXECUTAR `isolated_queue_dir`
+ contra um `batch_queue` falso e a ler a fiacao em `_open_load_action`, logo uma dependencia que os
+ nao nomeie deixaria o passo em cache a descrever uma fila que ja' mudou -- a classe do `panel-deps`.
+ O que a arm nova fecha e' o D-17: uma largada de MEDICAO construia a `BatchQueue` e drenava a fila
+ DO DONO (`I:\cc-tmp\sotto-batch-queue`), medido no stutter de 2026-11-12 como
+ `python.exe(15700) python app/webview/batch_queue.py --transcribe ... io 69.1 MB/s at 20.1 ops/s`
+ com 56,8 criacoes/s. Agora dono=`None` (byte-identico), medicao=`<fila>.<tag>`, host sem `args`=
+ `<fila>.Local_SottoShell.no-args`; `--neg-arm` 6/6.)
 - **PIN do ficheiro (medido 2026-11-12, 04:0x):** `_main\_audit-verify-all.cmd` = **364386 B**,
  **4208 CRLF** / 0 bare LF, sha256 `21F0716DC40D291F07CD64F1CB5709DE8B13EE62EF86278604472921E91ED53A`.
  (Mil duzentos e trinta e seis bytes e DOZE linhas a mais do que o pin de 363150 B: o par

@@ -31,6 +31,7 @@ funcionar pela mão do dono).
 | D-14 | o motor quente entra na lista de *reap* da saída (`.kill()` levanta, `.wait()` não existe) e o matador externo mata-o pelo pid, com dois docstrings a prometer o contrário | MÉDIO | **aberto**, com a escolha nomeada (lista de *backstop* separada) |
 | D-15 | uma largada de MEDIÇÃO (`--probe-v2` e mais oito) tomava lock privado e escrevia `panel-state.json`/`panel-visibility.json` por cima dos ficheiros da app viva — o worker do dono recebia `visible=false` e perdia o nível de shed de uma sonda | ALTO | **corrigido, NÃO verificado** — um único predicado para lock e estado, sufixo = nome do lock, worker lê o mesmo ficheiro; 15 arms + neg-arm 3/3 |
 | D-16 | um `SOTTO_WEBVIEW_AFTER_LOAD_S` presente e ilegivel caia em **25 s** de espera na thread que ainda nao chamou `webview.start()` -- a espera que o proprio comentario diz ter produzido o `HANG rc=4` | MÉDIO | **corrigido, NÃO verificado** -- `after_load_wait_s` devolve zero e a razao; 4 casos executados, neg-arm 6/6 |
+| D-17 | uma largada de MEDIÇÃO drenava a FILA DO BATCH do dono (`_open_load_action` sem `queue_dir`) -- medido `io 69,1 MB/s` a transcrever um `.f32` de `I:\cc-tmp\sotto-batch-queue` no stutter dele | ALTO | **corrigido, NÃO verificado** -- `isolated_queue_dir` (dono=`None`, medicao=`<fila>.<tag>`, host sem `args`=`.no-args`) e `queue_dir=` no `open_action`; executado dono=None/probe/no-args | `measurement-flags` A9 (3 metades + fiacao), neg-arm 6/6 |
 | D-11 | a segunda legenda da janela substituía a primeira no latch de `emit_async`: **fala perdida sem uma linha no log**, e é a página que commita o histórico — o histórico perdia a mesma fala | CRÍTICO | **corrigido** — kinds de EVENTO enfileiram (tecto 32, excedente CONTADO em `CAPTION_EMIT_DROPPED`); 6 arms, neg-arm 2/2 com o mutante novo |
 
 ---
@@ -758,6 +759,51 @@ argv do worker; cada mutante cai pela sua arm, rc=1 ao apanhar). Passos `measure
 
 **Estado.** `corrigido, NÃO verificado` — o processo do dono corre código anterior; o que está medido
 é a função e o writer reais, não uma abertura da app dele.
+
+## D-17 - uma medicao drenava a FILA DO BATCH do dono
+
+**Onde.** `app/webview/sotto_webview.py` `_open_load_action` (antes: sem argumento de fila) ->
+`load_shedding.open_action(..., queue_dir=None)` -> `batch_queue.queue_dir()`.
+
+**ANTES (medido 2026-11-12, DM do watcher sobre um stutter do dono).** Uma largada de MEDICAO
+constroi a `BatchQueue` e o executor DRAINA o directorio que encontra, que e' o MESMO da app viva
+(`I:\cc-tmp\sotto-batch-queue`). O culpado do episodio, com o argv inteiro:
+
+    culprit   = python.exe(15700)
+    cmdline   = python H:\sotto\app\webview\batch_queue.py --transcribe
+                I:\cc-tmp\sotto-batch-queue\1794459181885-57128-0001.f32
+                --rate 16000 --window-s 15.0 --json
+    io 69.1 MB/s at 20.1 ops/s (3 438 KB/op), creations 56.8/s
+
+O pai era `python _main/panel-hidden-at-startup-oracle.py` -- uma sonda de DECISAO de mostrar/esconder
+que, para julgar o produto, comecou a transcrever a fila dele. A sonda nao estava a medir o produto:
+estava a consumir o estado dele (e a fila tinha 35 entradas / 23 MB, sobra de medicoes anteriores, o
+que garantia trabalho para drenar).
+
+**DEPOIS.** `isolated_queue_dir(args)` -- o mesmo dono do `isolated_state_file`: a app do dono
+devolve `None` (byte-identico, fila intacta), a medicao devolve
+`<queue_dir>.<tag>` (`measurement_state_tag`), e um host construido SEM `args` (todo instrumento que
+cria `SottoHost` a mao) devolve `<queue_dir>.Local_SottoShell.no-args` -- sem essa terceira metade o
+`args` sozinho nao fechava o buraco, porque o oraculo que causou o episodio nunca passa por `main()`.
+A shell publica `LOAD_QUEUE_ISOLATED dir=.. reason=measurement-launch`.
+
+Executado agora, os tres casos (`python -c` dentro de `app/webview`, modulo real):
+
+    owner   -> None
+    probe   -> I:\cc-tmp\sotto-batch-queue.Local_SottoShell.m.probe_stats
+    noargs  -> I:\cc-tmp\sotto-batch-queue.Local_SottoShell.no-args
+
+**Por que isto e' medido e nao suposto.** `I:\cc-tmp\sotto-batch-queue` continua a existir com as
+entradas do dono; a cura nao apaga nada dele. O que muda e' que nenhuma largada de medicao volta a
+apontar para la'.
+
+**Gravidade.** ALTO -- pressao de disco medida no episodio do dono (69 MB/s) e, pior, uma sonda a
+consumir audio enfileirado por outra instancia.
+
+**Instrumento.** `_main/measurement-flags-oracle.py` arm A9, tres metades: dono `None`, medicao com
+a tag, host sem `args` isolado; mais a FIACAO (`_open_load_action` pergunta `isolated_queue_dir` e
+passa `queue_dir=`). `--neg-arm` **6/6** mutantes (M5 devolve a fila do dono, M6 arranca o
+`queue_dir=` do call site), rc=1. Positivo: `VERDICT: PASS`.
 
 ## D-16 — um valor ilegível na env punha 25 s no primeiro pixel
 
