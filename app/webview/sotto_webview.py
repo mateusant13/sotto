@@ -63,6 +63,9 @@ from code_identity import code_identity as _code_identity
 #: A DECISAO de reiniciar um worker caro e mudo (2026-11-09). Modulo puro e
 #: importavel para o oraculo julgar a regra sem abrir dispositivo nem shell.
 import cost_watchdog
+#: O MOTOR QUENTE PAGA-SE? (D-04, 2026-11-12) Medido: 8 cargas, 0 anexos, e cada
+#: carga custa 7,5-26,0 s de disco no arranque. A serie decide, nao a omissao.
+import warm_evidence
 import panel_state
 #: A MARCA que o motor nao deu, tirada da PROSA e da PAUSA medida (2026-11-10).
 #: Puro e importavel, para o oraculo julgar o fecho sem subir a shell.
@@ -17910,6 +17913,40 @@ class SottoShell:
             log('VRAM_GUARD_START_FAILED error=%r' % (exc,))
         return True
 
+    def _request_warm_engine(self, keep):
+        """Pede ao agendador um motor quente -- SO' quando a serie diz que ele paga.
+
+        D-04 (medido 2026-11-12): o pedido era INCONDICIONAL e o log inteiro do
+        motor tem 8 cargas, 8 `WARM_EXIT` e ZERO `WARM_ATTACHED`, com as
+        aberturas do dono a distarem 2 h a 16 h contra um TTL de 600 s. Cada
+        pedido pagava 7,5-26,0 s de disco e ~1 GB por dez minutos no arranque em
+        que a shell ja' esta' a ler 1,9 GB, e o anexo nunca aconteceu.
+
+        A regra vive em `app/webview/warm_evidence.py` (pura); aqui fica so' a
+        leitura dos dois logs e a linha. `--warm-engine-keep` e' intencao
+        explicita do dono: com ela o pedido sai sem discussao.
+        """
+        if keep:
+            log('WARM_ENGINE_REQUESTED reason=keep-flag')
+            start_warm_engine_task(log=log)
+            return True
+        try:
+            engine_log = warm_module().LOG_FILE
+            verdict = warm_evidence.request_verdict_for(engine_log, _LOG_FILE)
+        except Exception as exc:  # noqa: BLE001 -- a serie nunca impede o pedido
+            log('WARM_ENGINE_EVIDENCE_FAILED error=%r -- pedindo' % (exc,))
+            start_warm_engine_task(log=log)
+            return True
+        if verdict['request']:
+            log('WARM_ENGINE_REQUESTED reason=%s loads=%s attaches=%s'
+                % (verdict['why'], verdict['loads'], verdict['attaches']))
+            start_warm_engine_task(log=log)
+            return True
+        log('WARM_ENGINE_NOT_REQUESTED reason=%s loads=%d attaches=%d '
+            'custo_da_carga_s=7.5-26.0'
+            % (verdict['why'], verdict['loads'], verdict['attaches']))
+        return False
+
     def _try_warm_attach(self, reason, target_pid=None):
         """ATTACH_TRY (design 2.5): the warm engine answers, or today's path runs.
 
@@ -17946,7 +17983,7 @@ class SottoShell:
             log('WARM_FALLBACK_COLD reason=%s reason_%s=%s'
                 % (why, 'attach', reason))
             if why in ('absent', 'busy', 'no-hello', 'pipe-timeout'):
-                start_warm_engine_task(log=log)
+                self._request_warm_engine(keep)
             return None
         self.bridge = bridge
         if not bridge.start(reason):

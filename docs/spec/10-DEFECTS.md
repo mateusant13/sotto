@@ -19,7 +19,7 @@ funcionar pela mão do dono).
 | D-01 | dois mutantes congelados do worker não estavam no git; dois oráculos dependiam deles | ALTO | **fechado** no código (`git add -f`), `git ls-files` prova |
 | D-02 | o arranque obedecia a `caption-wanted.json` e um `false` gravado suprimia a legenda em TODA a abertura seguinte | CRÍTICO | **corrigido, NÃO verificado** — o processo do dono corre código anterior |
 | D-03 | `ast.get_source_segment` re-parte o ficheiro inteiro por chamada: um passo novo custou 143,9 s | MÉDIO | corrigido no oráculo desta campanha; os outros sítios por medir |
-| D-04 | cada abertura paga uma carga de motor quente (7,5–26,0 s, ~1 GB) que expira em 600 s antes de a vez dela chegar — as aberturas distam horas | ALTO | aberto, com a escolha nomeada (TTL vs pedir por evidência) |
+| D-04 | cada abertura paga uma carga de motor quente (7,5–26,0 s, ~1 GB) que expira em 600 s antes de a vez dela chegar — as aberturas distam horas | ALTO | **corrigido, NÃO verificado** — o pedido passa a ser por EVIDÊNCIA (`warm_evidence`, fail-open: sem série PEDE), `--warm-engine-keep` manda; 13 arms + neg-arm 5/5. A escolha TTL-vs-adiar o anexo continua aberta e continua a ser do dono | `warm-evidence` |
 | D-05 | o portão do relógio julgava 36 de 449 passos quando invocado sem `--policy`, e o RED descrevia a invocação | MÉDIO | **corrigido** — recusa `CANNOT-MEASURE` (rc 2) antes de escrever; 6 arms; neg-arm 6/6 |
 | D-06 | a bateria presa a `cap40` soma 2 470,3 s em 413 passos (o portão julga 2 293,3 s), contra um alvo declarado de 60 s | MÉDIO | aberto, com a cauda nomeada |
 | D-07 | o número do painel no arranque circulou em QUATRO versões sem população (braço/arranques/fase), e o portão exigia a contradição em vez de resolvê-la | ALTO | **corrigido** — leitor puro `--read`, fixture do único log vivo, portão re-escrito; neg-arm 3/3 |
@@ -204,13 +204,36 @@ usa** — ~1 GB residente por dez minutos × 18, e a carga do worker continua a 
 maneira depois. O custo medido de uma carga de motor é **7,5–26,0 s** de disco e CPU no arranque em
 que ele já está a arrancar o resto.
 
-**Estado.** aberto, com a escolha nomeada — e é do dono, porque as duas opções mudam o produto:
+**Estado (2026-11-12).** A metade que não escolhe produto está **fechada**: o pedido deixou de ser
+incondicional e passou a ser **por evidência**, porque a série já respondia a pergunta.
+
+```
+$ python -c "import sys;sys.path.insert(0,'app/webview');import warm_evidence as w;\
+print(w.request_verdict_for('_main/warm-engine.log','_main/webview-run.log'))"
+{'request': False, 'why': 'nunca-anexou', 'loads': 8, 'attaches': 0}
+```
+
+A regra vive em `app/webview/warm_evidence.py` (pura): com `>= MIN_LOADS` (3) cargas e **zero**
+`WARM_ATTACHED`, não se pede — e a recusa sai no log como
+`WARM_ENGINE_NOT_REQUESTED reason=nunca-anexou loads=8 attaches=0`. Ela é **fail-open** (log
+ilegível ⇒ PEDE) e **auto-curável** (o instante em que um anexo acontecer devolve o pedido, porque
+a série é relida a cada arranque). `--warm-engine-keep` é intenção explícita do dono e passa por
+cima da série sem discussão.
+
+O instrumento apanhou-se a si próprio: a primeira versão da contagem exigia `startswith(tag)` e
+media **ZERO** cargas numa série de oito, porque nos dois ficheiros a linha abre com carimbo
+(`2026-11-11 20:47:16 WARM_LOAD_MS …`, `2026-11-08 18:57:23.068 sotto: WARM_FALLBACK_COLD …`). A
+contagem passou a ser **por campo** e `WARM_LOAD_MS_DEFERRED` continua a não contar. Medido:
+`VERDICT: PASS -- 13/13`, `NEG-ARM: PASS -- 5/5`.
+
+**O que continua aberto, e é do dono** (as duas mudam o produto, a cura acima não):
 
 1. **aumentar o TTL/janela** — o motor passa a sobreviver entre aberturas (`WARM_PARK_TTL_S` é a
    constante; o `IDLE_HOLD_MAX_S` do worker é o mesmo número por desenho), ao preço de ~1 GB
    residente parado enquanto ele não abre a app;
-2. **não pedir o motor** quando a abertura anterior já provou que a distância é de horas — o log
-   tem a série que diz isso, e o pedido passa a ser por evidência, não por omissão.
+2. **adiar o anexo** para depois da carga (hoje o shell pergunta antes de o motor que ele acabou de
+   pedir ter carregado — qualquer anexo só pode acontecer numa abertura SEGUINTE, e é por isso que
+   `WARM_FALLBACK_COLD reason=absent` sai 18 de 18).
 
 O que fecha nas duas: uma sessão nova em que o primeiro `Alt+C` mostra `WARM_ATTACHED`, e
 `_main/time-to-first-caption-oracle.py` mede a primeira linha dentro de 3 000 ms do primeiro áudio.

@@ -777,6 +777,14 @@ if exist _main\_panel2-dom-probe.js (
   call :record cost-watchdog !STEP_RC!
   call :step red-as-expected-cost-watchdog 1 "_main\cost-watchdog-oracle.py;app\webview\cost_watchdog.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\cost-watchdog-neg.log" python _main\cost-watchdog-oracle.py --neg-arm
   call :expectred red-as-expected-cost-watchdog !STEP_RC! "%OUT%\cost-watchdog-neg.log" "NEG-ARM: PASS"
+  REM D-04 (2026-11-12): o motor quente paga-se? Medido: 8 cargas, 8 `idle-expired` e
+  REM ZERO `WARM_ATTACHED`, com as aberturas do dono a distarem 2 h a 16 h contra um TTL
+  REM de 600 s -- cada pedido pagava 7,5-26,0 s de disco no arranque em que a shell ja'
+  REM esta' a ler 1,9 GB. A serie decide (`app\webview\warm_evidence.py`), com fail-open.
+  call :step warm-evidence 0 "_main\warm-evidence-oracle.py;app\webview\warm_evidence.py;app\webview\sotto_webview.py" "%OUT%\warm-evidence.log" python _main\warm-evidence-oracle.py
+  call :record warm-evidence !STEP_RC!
+  call :step red-as-expected-warm-evidence 1 "_main\warm-evidence-oracle.py;app\webview\warm_evidence.py;app\webview\sotto_webview.py" "%OUT%\warm-evidence-neg.log" python _main\warm-evidence-oracle.py --neg-arm
+  call :expectred red-as-expected-warm-evidence !STEP_RC! "%OUT%\warm-evidence-neg.log" "NEG-ARM: PASS"
   rem -- O CAO DE GUARDA DA UI NAO FECHA A APP DO DONO (2026-11-10). Nasceu da ordem dele,
   rem verbatim: *"sotto closed by itself. maybe crashed? not sure. should close only because of
   rem me, or hard kill from task manager."* MEDIDO no log dele -- `UI_WATCHDOG_NOERR_CAP

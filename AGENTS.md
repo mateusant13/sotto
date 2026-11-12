@@ -682,6 +682,20 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 05:4x):** `_main\_audit-verify-all.cmd` = **368469 B**,
+  **4246 CRLF** / 0 bare LF, sha256 `BA0B6D5775AC63F9989A26F8A28EC9E8D375B9ACB4AE5F300A6EBBE8EF7F5AFF`.
+  (Mil e dez bytes e OITO linhas a mais do que o pin de 367459 B: o par `warm-evidence` +
+  `red-as-expected-warm-evidence`, o portao do D-04 do ledger -- o motor quente PAGA-SE? O shell
+  pedia `SottoWarmEngine` a CADA abertura e o log inteiro do motor tem **8** `WARM_LOAD_MS`, **8**
+  `WARM_EXIT why=idle-expired held_s=600` e **ZERO** `WARM_ATTACHED`, com as aberturas do dono a
+  distarem **2 h a 16 h** contra um TTL de 600 s: cada pedido pagava 7,5-26,0 s de disco e ~1 GB
+  por dez minutos no arranque em que a shell ja' esta' a ler 1,9 GB, e o anexo nunca aconteceu --
+  nem uma vez. Agora a serie decide (`app\webview\warm_evidence.py`, pura, fail-open: sem serie
+  legivel PEDE) e `--warm-engine-keep` e' intencao explicita do dono, que passa sem discussao.
+  Medido no oraculo: `VERDICT: PASS -- 13/13` e `NEG-ARM: PASS -- 5/5` (rc=1 ao apanhar); o braco
+  A5 nasceu VERMELHO e obrigou a corrigir o instrumento -- a tag nao abre a linha em NENHUM dos
+  dois logs (`2026-11-11 20:47:16 WARM_LOAD_MS ...` e `2026-11-08 18:57:23.068 sotto: ...`), logo
+  um `startswith` media ZERO cargas numa serie de oito.)
 - **PIN do ficheiro (medido 2026-11-12, 01:4x):** `_main\_audit-verify-all.cmd` = **367459 B**,
   **4238 CRLF** / 0 bare LF, sha256 `BC267BB142D41EC502F6ACDB2A75D2B5DC4A2647B429AADAC21E756D962DF5E2`.
   (Mil quinhentos e trinta e quatro bytes e QUINZE linhas a mais do que o pin de 365925 B: o par
