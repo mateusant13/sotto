@@ -682,6 +682,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 18:0x):** `_main\_audit-verify-all.cmd` = **376484 B**,
+  **4338 CRLF** / 0 bare LF, sha256 `63B8CD3839DFAB7E5A46A4326B03D881A534FC1D5C5B65EB5574EC7527DE4D94`.
+  (Mil quatrocentos e setenta e tres bytes e DEZASSEIS linhas a mais do que o pin de 375011 B: o par
+  `cage-rc` + `red-as-expected-cage-rc`, que transforma o controlo do rc do cage de NARRATIVA em
+  passo executado. Os dois `.cmd` de tres linhas vivem versionados em `_main\fixtures\cage-rc\`
+  (`old.cmd` -> rc **0**, `new.cmd` -> rc **1**, o mesmo filho a sair 1) e o oraculo
+  `_main\cage-rc-oracle.py` julga as duas formas no cmd REAL: medido `CAGE-RC VERDICT: PASS (2/2
+  arms)` rc=0 e `--neg-arm` a apanhar a mutacao (a forma curada trocada pela antiga) com
+  `NEG-ARM: PASS`, rc=1. A licao que este par fecha: um controlo citado num pin como
+  `_main/_cache/...` morre quando a cache e' limpa -- um controle que se cita e' um ficheiro
+  versionado com um passo que o executa, senao e' a mesma doenca do instrumento sem chamador.)
 - **PIN do ficheiro (medido 2026-11-12, 17:2x):** `_main\_audit-verify-all.cmd` = **375011 B**,
   **4322 CRLF** / 0 bare LF, sha256 `A84CAE89E2E7A921FDAB575215A8E8F4E494C5075A889B8F42653B516CFD944E`.
   (Mil e noventa e sete bytes e QUINZE linhas a mais do que o pin de 373914 B: **O CAGE DEVOLVIA O

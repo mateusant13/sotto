@@ -1909,6 +1909,21 @@ if exist _main\battery-record-pairing-oracle.py (
   call :step red-as-expected-battery-record-pairing 1 "_main\battery-record-pairing-oracle.py;_main\_audit-verify-all.cmd" "%OUT%\battery-record-pairing-neg.log" python _main\battery-record-pairing-oracle.py --neg-arm
   call :expectred red-as-expected-battery-record-pairing !STEP_RC! "%OUT%\battery-record-pairing-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-battery-record-pairing MISSING "%OUT%\battery-record-pairing-neg.log" "NEG-ARM: PASS" )
+REM O rc DE UM BLOCO ENTRE PARENTESES E' LIDO ANTES DE O BLOCO CORRER (2026-11-12). Medido:
+REM uma corrida com `BATTERY-VERDICT: RED - 2 step(s) failed` e 'child exit code 1' chegou ao
+REM largador como **rc=0** -- o `.cmd` do cage fazia `exit /b %ERRORLEVEL%` DENTRO do bloco,
+REM que o cmd expande quando LE o bloco, ou seja antes de o cage correr. A cura e' a subrotina
+REM `:__battery_cage` + `if errorlevel 1 exit /b 1`. Este par julga as DUAS formas EXECUTANDO-as
+REM no cmd real (`_main\fixtures\cage-rc\old.cmd` tem de dar 0, `new.cmd` tem de dar 1, com o
+REM mesmo filho a sair 1). Nao lanca janela, audio nem modelo: dois `.cmd` de tres linhas.
+if exist _main\cage-rc-oracle.py (
+  call :step cage-rc 0 "_main\cage-rc-oracle.py;_main\fixtures\cage-rc\old.cmd;_main\fixtures\cage-rc\new.cmd;_main\_audit-verify-all.cmd" "%OUT%\cage-rc.log" python _main\cage-rc-oracle.py
+  call :record cage-rc !STEP_RC!
+) else ( call :record cage-rc MISSING )
+if exist _main\cage-rc-oracle.py (
+  call :step red-as-expected-cage-rc 1 "_main\cage-rc-oracle.py;_main\fixtures\cage-rc\old.cmd;_main\fixtures\cage-rc\new.cmd;_main\_audit-verify-all.cmd" "%OUT%\cage-rc-neg.log" python _main\cage-rc-oracle.py --neg-arm
+  call :expectred red-as-expected-cage-rc !STEP_RC! "%OUT%\cage-rc-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-cage-rc MISSING "%OUT%\cage-rc-neg.log" "NEG-ARM: PASS" )
 REM A ESPECIFICACAO APONTA PARA FICHEIROS E LINHAS QUE EXISTEM (2026-11-11). O defeito medido:
 REM o `12-GLOSSARY.md` nasceu com uma citacao `panel-visibility` no sitio errado e com
 REM `load_shedding:60` onde a constante estava na `:47`; o `README.md` listava um
@@ -4311,7 +4326,8 @@ REM  MEDIDO 2026-11-12: uma corrida com `BATTERY-VERDICT: RED - 2 step(s) failed
 REM  `child exit code 1` chegou ao largador como `rc=0` -- um portao que mente na
 REM  unica coisa que o chamador le. `call :label` volta a ler cada linha, logo o
 REM  `exit /b` da subrotina le' o codigo REAL. Controlo de dois bracos, mesmo filho
-REM  a sair 1: `_main/_cache/cage-rc-old.cmd` -> rc 0, `-new.cmd` -> rc 1.
+REM  a sair 1, versionado em `_main\fixtures\cage-rc\` e executado pelo passo `cage-rc`:
+REM  `old.cmd` -> rc 0, `new.cmd` -> rc 1.
 REM  Sem `!` nesta etiqueta: a expansao atrasada continua DESLIGADA aqui em cima,
 REM  que e' o que mantem o `I:\!watcher` literal.
 REM ===========================================================================
