@@ -62,16 +62,15 @@ Guardados aqui porque a próxima sessão não deve re-medir o que já está medi
 
 | o quê | número | como |
 |---|---|---|
-| linhas do produto | 123 543 em 229 ficheiros | `os.walk` por extensão, excluindo `.git`/`node_modules`/`_legacy`/`models`/`runs`/`_cache` |
-| shell | 26 362 linhas, `SottoShell` com 227 membros, 29 classes | `ast` + contagem de `\n` |
-| worker | 9 493 linhas, 17 classes | `ast` |
-| a especificação | 15 ficheiros, 3 865 linhas, 1 111 `[CODE]` + 173 `[MEASURED]` + 63 `[INFERENCE]` + 70 `[UNKNOWN]` | `wc -l` + `grep -o` por etiqueta |
-| citações resolvidas | 1 174 em 15 documentos, 0 sem ficheiro, 0 fora de alcance | `_main/spec-citations-oracle.py` |
-| bateria | 488 passos / 488 com registo | `_main/battery-record-pairing-oracle.py` |
-| pin da bateria | 367459 B / 4238 CRLF / 0 bare LF | `agents-md-pins-oracle.py` |
-| oráculos ligados | 199 ligados / 107 sem passo / 306 na população | `battery-wiring-oracle.py` |
-| passos com registo | 486 passos / 486 com registo | `_main/battery-record-pairing-oracle.py` |
-| custo da bateria | 2 293,3 s julgados em 413 passos presos a `cap40` | `battery-budget-oracle.py --policy cap40` |
+| linhas do produto | 128 119 em 234 ficheiros (a superfície que a spec lê) | `_main/spec-scale.py` (`app/webview/**/*.py`, `worker/**/*.py`, `app/panel/**`) |
+| shell | 26 774 linhas, `SottoShell` com 217 membros, 29 classes | `ast` sobre `app/webview/sotto_webview.py` (membros = `FunctionDef`/`AsyncFunctionDef` do corpo da classe) |
+| worker | 9 493 linhas, 17 classes | `ast` sobre `worker/sotto_worker.py` |
+| a especificação | 15 ficheiros (sem `README.md`), 5 385 linhas, 1 360 `[CODE]` + 173 `[MEASURED]` + 62 `[INFERENCE]` + 68 `[UNKNOWN]` | contagem por ficheiro de `docs/spec/*.md` com `len(t.splitlines())` e `re.findall(r'\[([A-Z]+)\]', t)` (2026-11-12) |
+| citações resolvidas | 1 477 em 16 documentos, 0 sem ficheiro, 0 fora de alcance, 0 índice ausente | `_main/spec-citations-oracle.py` |
+| bateria | 501 passos / 501 com registo | `_main/battery-record-pairing-oracle.py` |
+| pin da bateria | 377 720 B / 4 352 CRLF / 0 bare LF | `agents-md-pins-oracle.py` |
+| oráculos ligados | 205 ligados / 107 sem passo / 312 na população | `battery-wiring-oracle.py` |
+| custo da bateria | 2 134,2 s julgados em 445 passos, sob `cap40` | `battery-budget-oracle.py --policy cap40` (`RATCHET-OK`, `TARGET NOT MET`, gap 2 074,2 s de 60 s) |
 
 ## Duas contradições encontradas e resolvidas no selo
 
