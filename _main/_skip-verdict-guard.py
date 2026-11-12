@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import re
 import sys
 import tempfile
 
@@ -55,7 +56,33 @@ NEEDLE = b'VERDICT: SKIPPED'
 # self-reference above), the summary and this instrument's own log, and it
 # covers names added later without anyone maintaining a list.
 BATTERY_ARTIFACT_PREFIX = '_'
+#: A CORRIDA ESCREVE O PROPRIO TRANSCRITO DENTRO DE `%OUT%` (medido 2026-11-12):
+#: `full-run-<id>.log` nao e' o registo de um passo, e' a tela inteira da
+#: bateria -- e ela CARREGA o literal que este guarda procura (o beacon do
+#: sumario o ecoa). Lido como se fosse um passo, ele reprova a corrida por uma
+#: frase que a propria bateria imprimiu. O prefixo e' a unica coisa que o
+#: separa de um log de passo, e ele e' um FATO do ficheiro que o produz.
+BATTERY_TRANSCRIPT_PREFIX = 'full-run-'
 NEEDLE_TEXT = 'VERDICT: SKIPPED'
+#: `call :skipped <nome>` no `.cmd` e' a DECLARACAO estatica de que aquele passo
+#: pode saltar. O `--exclude` chega do `!SKIPLOGS!` de UMA corrida e por isso
+#: esquece os passos que saltaram numa corrida ANTERIOR e cujo log continuou no
+#: `%OUT%` -- medido 2026-11-12: seis passos DECLARADOS skip-capable
+#: (`paint-live-show`, `stall-under-load`, `tree-cost`, `shell-thread-budget`,
+#: `youtube-land`, `time-to-first-caption`) foram acusados, e com a lista lida do
+#: ficheiro o guarda so' apontou o transcrito. A declaracao e' do FICHEIRO, nao
+#: do historico de uma corrida.
+CALL_SKIPPED_RE = r'call\s+:skipped\s+([A-Za-z0-9_.\-]+)'
+
+
+def declared_from_cmd(path):
+    """Basenames of the step logs the battery DECLARES skip-capable."""
+    try:
+        with open(path, encoding='utf-8', errors='replace') as fh:
+            text = fh.read()
+    except OSError:
+        return set()
+    return {'%s.log' % name for name in re.findall(CALL_SKIPPED_RE, text)}
 
 
 def sweep(dirpath, exclude):
@@ -72,6 +99,9 @@ def sweep(dirpath, exclude):
     for path in sorted(glob.glob(os.path.join(dirpath, '*.log'))):
         name = os.path.basename(path)
         if name.startswith(BATTERY_ARTIFACT_PREFIX):
+            self_skipped += 1
+            continue
+        if name.startswith(BATTERY_TRANSCRIPT_PREFIX):
             self_skipped += 1
             continue
         if name in exclude:
@@ -98,6 +128,8 @@ def control():
 
         put('undeclared-step.log', payload)             # MUST be flagged
         put('_battery-run-synthetic.log', payload)      # the self-reference: MUST NOT
+        put('full-run-synthetic.log', payload)          # the run transcript: MUST NOT
+        put('my-full-run-note.log', payload)            # NOT the transcript: MUST be flagged
         put('declared-step.log', payload)               # declared: MUST NOT
         put('clean-step.log', 'the arm really ran\nVERDICT: GREEN\n')
         bad, scanned, self_skipped, declared_skipped = sweep(
@@ -105,15 +137,19 @@ def control():
 
     cases = [
         ('ARM-C1 an UNDECLARED skip verdict is CAUGHT',
-         bad == ['undeclared-step.log']),
+         bad == ['my-full-run-note.log', 'undeclared-step.log']),
         ('ARM-C2 the battery own run console is NOT read (the self-reference)',
-         '_battery-run-synthetic.log' not in bad and self_skipped == 1),
+         '_battery-run-synthetic.log' not in bad and self_skipped == 2),
+        ('ARM-C2b the RUN TRANSCRIPT is not a step log, and the rule is not a '
+         'prefix-everything rule',
+         'full-run-synthetic.log' not in bad
+         and 'my-full-run-note.log' in bad),
         ('ARM-C3 a DECLARED skip log is not a violation',
          'declared-step.log' not in bad and declared_skipped == 1),
         ('ARM-C4 a clean log is not a violation',
          'clean-step.log' not in bad),
         ('ARM-C5 the sweep really read the files (not a vacuous green)',
-         scanned == 2),
+         scanned == 3),
     ]
     return cases
 
@@ -125,15 +161,22 @@ def main(argv=None):
         help='directory holding the step logs (%OUT%)')
     ap.add_argument('--exclude', default=',',
                     help='comma-separated basenames DECLARED skip-capable')
+    ap.add_argument('--declared-from', default=os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), '_audit-verify-all.cmd'),
+        help='the .cmd whose `call :skipped` lines DECLARE skip-capable steps')
     ap.add_argument('--control-only', action='store_true',
                     help='run only the non-vacuity control')
     args = ap.parse_args(argv)
 
     exclude = {x for x in args.exclude.split(',') if x}
+    statically = declared_from_cmd(args.declared_from)
+    exclude |= statically
     print(f'cadence : once, after every step has written its log')
     print(f'dir     : {args.dir}')
     print(f'needle  : {NEEDLE_TEXT}')
-    print(f'exclude : {sorted(exclude) if exclude else "-none-"}')
+    print(f'exclude : {sorted(exclude) if exclude else "-none-"}' +
+          (' (inclui %d declaracao(oes) lidas de %s)'
+           % (len(statically), os.path.basename(args.declared_from))))
 
     cases = control()
     failed_arms = [w for w, ok in cases if not ok]

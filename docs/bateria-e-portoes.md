@@ -41,7 +41,30 @@ o log do passo leva `STEP-DEADLINE exceeded step=<nome> seconds=<N> killed=<n> j
 escreve no stdout do wrapper — o log continua a ser a evidência (a primeira versão usava `DEVNULL`
 e apagava o veredicto: medido, o filho escrevia `ran` e o log ficava vazio).
 *Preço medido:* **95 ms por passo executado** (~24 s numa corrida inteira).
-*Selftest:* 5 arms; o A5 exige que um processo **alheio** sobreviva ao corte — nasceu de um defeito
+
+**O TECTO POR PASSO VENCE O DA CORRIDA (2026-11-12).** Um numero unico por corrida nao separa
+"passo preso" de "passo caro sob contenda": `panel-hidden-at-startup-oracle` mediu **55,7 s**
+sozinho, **219,1 s** dentro de uma corrida carregada e **242,77 s** na corrida de 2026-11-12 — e
+nessa foi cortado (`rc=124`) pelo piso de 240 s. O passo paga **quatro processos filhos** (um por
+mutante, cada um num interpretador proprio: um mutante que suja o estado do pai mediria o pai), e
+quatro filhos nao sao um passo preso. A linha do passo declara o proprio tecto:
+
+```
+set "SOTTO_STEP_OVERRIDE_S=420"
+  call :step panel-hidden-at-startup-oracle 0 ...
+  call :record panel-hidden-at-startup-oracle !STEP_RC!
+set "SOTTO_STEP_OVERRIDE_S="
+```
+
+`step-deadline.py` le a variavel em `resolve_seconds()`, que e' o UNICO sitio que corta — nao no
+`main`, porque o `--selftest` chama `run_with_deadline` directamente e um override aplicado so' no
+CLI seria um no-op silencioso. O arm **A7** existe para isso: `SOTTO_STEP_OVERRIDE_S=1.5` contra
+`--seconds 120` num filho que dorme 30 s tem de dar `rc=124`. Medido: `A7 ... rc=124 killed=2 ->
+PASS`, `STEP-DEADLINE SELFTEST: PASS (7 arms)`, e pela linha que a bateria corre:
+`SOTTO_STEP_OVERRIDE_S=2 ... --seconds 240 -- sleep 6` → `rc=124`; `SOTTO_STEP_OVERRIDE_S=30 ...
+--seconds 1 -- sleep 4` → `rc=0`.
+
+*Selftest:* 7 arms (o A6 e o A7 sao os mais recentes); o A5 exige que um processo **alheio** sobreviva ao corte — nasceu de um defeito
 real, a primeira versão matava por caminhada de árvore e matou **dois `cargo.exe` de outra lane**
 (um `conhost.exe` partilhado devolve processos que o instrumento nunca largou).
 

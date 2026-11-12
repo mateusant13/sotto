@@ -175,6 +175,15 @@ def shell_for(namespace, overlay):
         CAPTION_BUDGET_MS=1500,
         CAPTION_HOLD_BAND_MS=(1490, 1520),
         CAPTION_REPLAY_MAX_S=2.0,
+        # O `show_caption_window` REAL, no ramo em que o overlay nasce, chama
+        # `_caption_status_start` (2026-11-11) para que uma legenda persistida
+        # ligada diga o bloqueio do arranque. O `self` falso nao tem o metodo, a
+        # chamada cai no `except` que loga `CAPTION_OVERLAY_MODE_FAILED`, e o arm
+        # A5c lia isso como "o interruptor falhou" -- medido 2026-11-12, duas
+        # arms RED por um harne desactualizado. O bloqueio do arranque nao e' o
+        # que este oraculo mede (a corrida de pintura e'), logo o stub e' um
+        # no-op declarado: o que se mede aqui nao depende dele.
+        _caption_status_start=lambda: None,
     )
     for name, fn in namespace.items():
         if callable(fn) and name.startswith('_') is False:

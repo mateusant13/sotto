@@ -240,12 +240,24 @@ def neg_arm():
     # `collapse_runs` no metodo real tem de derrubar o A15.
     with io.open(SHELL, encoding='utf-8', newline='') as fh:
         shell_src = fh.read()
-    block = ('                    text = text_normalize.collapse_runs(text)\n'
-             '                    if text_normalize.is_filler_line(text):\n'
-             '                        continue\n')
-    swapped = ('                    if text_normalize.is_filler_line(text):\n'
-               '                        continue\n'
-               '                    text = text_normalize.collapse_runs(text)\n')
+    # A ANCORA CARREGA O EOL DO PROPRIO FICHEIRO (medido 2026-11-12). O shell
+    # e' CRLF e este oraculo lia com `newline=''`, entao um `block` escrito com
+    # `\n` nunca casava: o mutante do FONTE respondia `NOT-CAUGHT (ancora do
+    # fonte ausente)` em toda corrida e o `--neg-arm` ficava em 6/7 com rc=0 --
+    # o passo `red-as-expected-text-normalize` publicava `CONTROL FAILED` sobre
+    # um controlo que era CEGO, nao sobre o produto. A ordem que ele vigia e' a
+    # mesma; o que muda e' o separador vir do ficheiro.
+    _seol = '\r\n' if '\r\n' in shell_src else '\n'
+    block = _seol.join([
+        '                    text = text_normalize.collapse_runs(text)',
+        '                    if text_normalize.is_filler_line(text):',
+        '                        continue',
+    ]) + _seol
+    swapped = _seol.join([
+        '                    if text_normalize.is_filler_line(text):',
+        '                        continue',
+        '                    text = text_normalize.collapse_runs(text)',
+    ]) + _seol
     name, expect = shell_mutants[0]
     c_before, f_before, _ = _history_order(shell_src)
     if block in shell_src and c_before < f_before:

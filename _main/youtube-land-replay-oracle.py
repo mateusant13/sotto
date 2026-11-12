@@ -162,6 +162,17 @@ def fake_shell(mod):
         mod.SottoShell._history_ctx_observe_session, shell)
     shell._external_context = mod.SottoShell._external_context
     shell.contexts = []
+    # A POSSE DO ECRAN (2026-11-11): `external_caption` passou a chamar
+    # `set_external_owner` e o `__getattr__` do duplo respondia `0` -- a
+    # chamada rebentava em `TypeError: 'int' object is not callable` e o passo
+    # `youtube-land-replay` ficava RED por um harne desactualizado (medido
+    # 2026-11-12). O metodo vai no laco dos REAIS logo abaixo; o estado que ele
+    # le' e escreve fica declarado aqui, com os valores iniciais da producao.
+    shell.external_owner = "local"
+    shell.external_owner_episode = 0
+    shell.external_suppressed = 0
+    shell._asr_suppressed_episode = 0
+    shell._asr_owner_episode = False
     shell.work_area = lambda: {"x": 0, "y": 0, "w": 1200, "h": 200}
     shell.emit = lambda *_a, **_k: None
     shell._arm_caption_idle_hide = lambda *_a, **_k: None
@@ -172,7 +183,8 @@ def fake_shell(mod):
     # stub e o `_arm_caption_idle_hide` (que arma um `threading.Timer`) corria com
     # um inteiro no lugar do callback.
     stubbed = {"_arm_caption_idle_hide", "_park_worker_when_settled"}
-    for name in ("external_caption", "push_caption_to_window",
+    for name in ("external_caption", "set_external_owner",
+                 "external_owner_refuses", "push_caption_to_window",
                  "_caption_paint_wake", "_caption_paint_loop",
                  "_drain_caption_pending"):
         if name in stubbed:

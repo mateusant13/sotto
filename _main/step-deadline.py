@@ -199,9 +199,30 @@ def job_close(job):
         k32.CloseHandle(job)
 
 
+def resolve_seconds(seconds=None):
+    """O prazo efectivo, com o override POR PASSO a vencer o da corrida.
+
+    `SOTTO_STEP_OVERRIDE_S` e' declarado na linha do passo que legitimamente
+    passa do tecto da corrida (medido 2026-11-12: `panel-hidden-at-startup`
+    mede 55,7 s sozinho e bateu nos 240 s dentro de uma corrida com mais lanes
+    a trabalhar). Fica AQUI, e nao no `main`, porque o selftest chama
+    `run_with_deadline` directamente: um override aplicado noutro sitio seria um
+    no-op silencioso sempre que o caminho nao fosse o do CLI.
+    """
+    value = float(seconds or DEFAULT_SECONDS)
+    override = os.environ.get('SOTTO_STEP_OVERRIDE_S', '').strip()
+    if override:
+        try:
+            return float(override)
+        except ValueError:
+            sys.stderr.write('step-deadline: SOTTO_STEP_OVERRIDE_S=%r invalido '
+                             '-- a usar %.0f s\n' % (override, value))
+    return value
+
+
 def run_with_deadline(argv, seconds=None, log=print):
     """Corre `argv`, corta-a no prazo, devolve (rc, killed)."""
-    seconds = float(seconds or DEFAULT_SECONDS)
+    seconds = resolve_seconds(seconds)
     ns = runpy.run_path(os.path.join(HERE, 'hidden-launch.py'))
     t0 = time.monotonic()
     # A SAIDA DO FILHO VAI PARA O NOSSO STDOUT -- a bateria redireciona-a para o
@@ -326,7 +347,26 @@ def selftest():
           % (rc, str(wrote).lower(), 'PASS' if a6 else 'FAIL'))
     ok &= a6
 
-    print('STEP-DEADLINE SELFTEST: %s (6 arms)' % ('PASS' if ok else 'FAIL'))
+    # A7: a variavel de override VENCE o `--seconds`, e o filho que passa dela e'
+    # cortado. Sem este braco o override podia ser um no-op silencioso -- o
+    # `--seconds` continuava a mandar e o passo caro continuava a morrer no
+    # tecto da corrida.
+    saved = os.environ.get('SOTTO_STEP_OVERRIDE_S')
+    os.environ['SOTTO_STEP_OVERRIDE_S'] = '1.5'
+    try:
+        rc, killed = run_with_deadline([py, '-c', 'import time; time.sleep(30)'],
+                                       seconds=120)
+        a7 = bool(rc == DEADLINE_RC and killed)
+    finally:
+        if saved is None:
+            os.environ.pop('SOTTO_STEP_OVERRIDE_S', None)
+        else:
+            os.environ['SOTTO_STEP_OVERRIDE_S'] = saved
+    print('A7 override de 1,5 s contra --seconds 120: rc=%s killed=%d -> %s'
+          % (rc, len(killed), 'PASS' if a7 else 'FAIL'))
+    ok &= a7
+
+    print('STEP-DEADLINE SELFTEST: %s (7 arms)' % ('PASS' if ok else 'FAIL'))
     return 0 if ok else 1
 
 
@@ -386,6 +426,7 @@ def main(argv):
     seconds = DEFAULT_SECONDS
     if '--seconds' in own:
         seconds = float(own[own.index('--seconds') + 1])
+    # O override por passo vive em `resolve_seconds` (ver la').
     if not child:
         sys.stderr.write('step-deadline: sem comando depois de `--`\n')
         return 1

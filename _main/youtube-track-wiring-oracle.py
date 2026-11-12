@@ -221,6 +221,20 @@ class FakeShell(object):
         self.releases = 0
         self.resumes = []
         self.youtube_track_thread = FakeTrackThread(track)
+        # A POSSE DO ECRAN E' METODO REAL (2026-11-11): o `external_caption`
+        # passou a chamar `set_external_owner`, e sem ele este duplo morria em
+        # `AttributeError: 'FakeShell' object has no attribute
+        # 'set_external_owner'` (medido 2026-11-12, passo `youtube-track-wiring`
+        # RED). O estado que o metodo le' e escreve fica com os valores iniciais
+        # da producao, e a funcao vem do produto, nunca de uma copia.
+        self.external_owner = 'local'
+        self.external_owner_episode = 0
+        self._asr_suppressed_episode = 0
+        self._asr_owner_episode = False
+        self.set_external_owner = types.MethodType(
+            mod.SottoShell.set_external_owner, self)
+        self.external_owner_refuses = types.MethodType(
+            mod.SottoShell.external_owner_refuses, self)
         self.external_caption = types.MethodType(
             mod.SottoShell.external_caption, self)
         self._park_worker_for_external = types.MethodType(

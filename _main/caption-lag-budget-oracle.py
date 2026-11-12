@@ -132,8 +132,20 @@ def make_shell(mod, lines, hold=False):
     else:
         shell._caption_paint_wake = types.MethodType(
             lambda self_: mod.SottoShell._drain_caption_pending(self_), shell)
+    # O DONO DO ECRA (2026-11-12). `on_worker_caption` passou a perguntar
+    # `external_owner_refuses(source)` antes de pintar -- um metodo REAL que le'
+    # `external_owner`/`_asr_owner_episode` -- e o stub morria em
+    # `AttributeError: 'types.SimpleNamespace' object has no attribute
+    # 'external_owner_refuses'` (medido na corrida `full-run-20261112b`, passos
+    # `caption-lag-budget` e o seu `--neg-arm`). O stub LIGA o metodo real e
+    # declara o dono LOCAL: um `False` de brinquedo mediria o oraculo, nao a shell,
+    # e a recusa por posse tem o seu proprio instrumento (`_main/external-owner-*`).
+    shell.external_owner = 'local'
+    shell._asr_owner_episode = False
+    shell.external_owner_episode = 0
     for name in ('on_worker_caption', 'push_caption_to_window',
-                 '_drain_caption_pending', '_caption_lag_note'):
+                 '_drain_caption_pending', '_caption_lag_note',
+                 'external_owner_refuses'):
         setattr(shell, name, types.MethodType(getattr(mod.SottoShell, name), shell))
     return shell
 

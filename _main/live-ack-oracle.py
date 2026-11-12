@@ -109,6 +109,7 @@ CLASS_METHODS = (
     "push_caption_to_window",
     "show_caption_window",
     "_set_live_enabled",
+    "external_owner_refuses",
     "on_worker_caption",
 )
 
@@ -842,9 +843,22 @@ def first_failure(src):
 def neg_arm(src):
     caught = 0
     print("NEG-ARM: %d mutacoes, copia em memoria do ficheiro real\n" % len(MUTANTS))
+    # A ANCORA ACOMPANHA A CONVENCAO DE FIM DE LINHA DO FICHEIRO (medido 2026-11-12):
+    # `sotto_webview.py` e' CRLF e as ancoras estao escritas com LF, por isso
+    # TREZE das catorze mutacoes respondiam `MUTATION-NOT-APPLIED (hits=0)` e o
+    # negativo publicava `FAIL (1/14)` -- um controlo em que 13 bracos nao
+    # chegam a correr nao prova nada, e o passo `red-as-expected-live-ack`
+    # (que exige a frase `NEG-ARM: PASS`) estava RED. Aqui a ancora e' tentada
+    # nas DUAS formas, e o `hits` reportado e' o da forma que aplicou.
     for name, old, new in MUTANTS:
-        if src.count(old) != 1:
-            print("%-36s MUTATION-NOT-APPLIED (hits=%d)" % (name, src.count(old)))
+        hits = src.count(old)
+        if hits != 1:
+            alt_old = old.replace('\n', '\r\n')
+            alt_new = new.replace('\n', '\r\n')
+            if src.count(alt_old) == 1:
+                old, new, hits = alt_old, alt_new, 1
+        if hits != 1:
+            print("%-36s MUTATION-NOT-APPLIED (hits=%d)" % (name, hits))
             continue
         mutant = src.replace(old, new)
         failure = first_failure(mutant)

@@ -337,8 +337,18 @@ def _selftest():
         os.remove(out)
     source = _selftest_source()
     if not source:
+        # SEM FONTE `high` NAO HA' O QUE MEDIR, e isso nao e' veredicto sobre a
+        # primitiva (medido 2026-11-12: o passo `launch-as-token` reprovou uma
+        # corrida inteira as 03:4x porque naquele minuto nao havia nem
+        # `explorer.exe` nem a app do dono com token abrivel, e minutos depois a
+        # MESMA maquina deu `SELFTEST PASS -- fonte pid=13636 (HIGH)`). A casa ja'
+        # tem a forma para isto (`shell-thread-budget` diz `VERDICT: SKIPPED` e o
+        # passo e' `:skipped`): um passo saltado NAO e' um portao que passou, e
+        # tambem nao e' um vermelho que fala do relogio da maquina.
         print('SELFTEST SKIP -- nenhum processo fonte abrivel nesta sessao (nao e\' um passe)')
-        return 1
+        print('VERDICT: SKIPPED reason=no-high-source integridade_desta_pane=%s'
+              % integrity_name(integrity_of()))
+        return 0
     expected = integrity_of(source)
     interpreter = sys.executable.replace('python.exe', 'pythonw.exe')
     ok, err, child = launch(source, interpreter, [probe])

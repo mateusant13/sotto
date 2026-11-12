@@ -764,6 +764,16 @@ def make_shell(shell_mod, engine_mod, pipe, args=None, spawn=None):
     shell = FakeShell(shell_mod, args or shell_args(), engine_mod, pipe)
     shell.start_worker = _types.MethodType(shell_mod.SottoShell.start_worker, shell)
     shell._try_warm_attach = _types.MethodType(shell_mod.SottoShell._try_warm_attach, shell)
+    # O PEDIDO DO MOTOR PASSOU A SER UMA DECISAO (D-04, 2026-11-12): o
+    # `_try_warm_attach` REAL chama `self._request_warm_engine(keep)`, que le' a
+    # serie dos dois logs por `app/webview/warm_evidence.py`, e o duplo nao tinha
+    # o metodo -- o passo `warm-engine` morria em
+    # `AttributeError: 'FakeShell' object has no attribute '_request_warm_engine'`
+    # (medido, arm `cold-arm`). O corpo executado e' o do PRODUTO, e a arm 16
+    # continua a exigir `task_starts == 1` porque no ambiente do oraculo nao ha'
+    # serie nenhuma e a regra e' fail-open (pedir).
+    shell._request_warm_engine = _types.MethodType(
+        shell_mod.SottoShell._request_warm_engine, shell)
     shell_mod.warm_module = lambda: warm_shim(engine_mod, pipe)
     shell_mod.start_warm_engine_task = lambda **kwargs: shell.__setattr__(
         "task_starts", shell.task_starts + 1) or True

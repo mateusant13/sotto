@@ -1175,24 +1175,35 @@ def _hidden_startupinfo():
 
 
 def run_mutant_isolated(path):
-    """Run one mutant in its own process. Returns `(payload, hung, log)`."""
+    """Um mutante no proprio processo. Devolve `(payload, hung, log)`."""
     import subprocess
 
     env = dict(os.environ)
     env['PYTHONUNBUFFERED'] = '1'
+    # `Popen` e nao `subprocess.run`: um corte sem pid nao tem COMO ser atribuido, e
+    # foi assim que o `rc=124` deste passo chegou duas vezes sem dizer quem estava a
+    # correr (`--freeze-capture`, 2026-11-12).
+    proc = subprocess.Popen(
+        [sys.executable, os.path.abspath(__file__),
+         '--mutant-only', path, '--deadline', str(MUTANT_ARM_DEADLINE_S)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        stdin=subprocess.DEVNULL,
+        creationflags=CREATE_NO_WINDOW, cwd=HERE, env=env,
+        startupinfo=_hidden_startupinfo())
     try:
-        proc = subprocess.run(
-            [sys.executable, os.path.abspath(__file__),
-             '--mutant-only', path, '--deadline', str(MUTANT_ARM_DEADLINE_S)],
-            capture_output=True, text=True, timeout=MUTANT_ARM_DEADLINE_S + 60,
-            creationflags=CREATE_NO_WINDOW, cwd=HERE, env=env,
-            startupinfo=_hidden_startupinfo())
-    except subprocess.TimeoutExpired as exc:
-        text = (exc.stdout or '') + (exc.stderr or '')
-        if isinstance(text, bytes):
-            text = text.decode('utf-8', 'replace')
-        return None, True, text
-    text = (proc.stdout or '') + (proc.stderr or '')
+        out, err = proc.communicate(timeout=MUTANT_ARM_DEADLINE_S + 60)
+        text = (out or '') + (err or '')
+    except subprocess.TimeoutExpired:
+        # O FILHO ESTOUROU O PRAZO DELE: isto e' uma medicao que NAO ACONTECEU, e o
+        # recibo tem de dizer QUAL processo estava vivo no instante do corte.
+        captured = freeze_capture(proc.pid, path)
+        _kill_tree(proc)
+        try:
+            out, err = proc.communicate(timeout=20)
+        except subprocess.TimeoutExpired:
+            out, err = '', ''
+        text = (out or '') + (err or '')
+        return None, True, text + '\n' + captured
     hung = 'Timeout (' in text and MUTANT_RESULT_TAG not in text
     payload = None
     for line in (proc.stdout or '').splitlines():
@@ -1202,6 +1213,79 @@ def run_mutant_isolated(path):
             except ValueError:
                 payload = None
     return payload, hung, text
+
+
+def _kill_tree(proc):
+    """Mata os DESCENDENTES e depois o pai. Sem janela, sem console."""
+    try:
+        import psutil
+    except Exception:
+        psutil = None
+    if psutil is not None:
+        try:
+            parent = psutil.Process(proc.pid)
+            kids = parent.children(recursive=True)
+        except Exception:
+            kids = []
+        for kid in kids:
+            try:
+                kid.kill()
+            except Exception:
+                pass
+    try:
+        proc.kill()
+    except Exception:
+        pass
+
+
+def freeze_capture(pid, mutant_path):
+    """ESCREVE no disco QUEM estava vivo no instante do corte, e devolve o caminho.
+
+    Nasceu de dois `rc=124` sem atribuicao no mesmo dia (2026-11-12): o passo
+    estoura e o log diz `Timeout` e mais nada -- nem o pid, nem o processo filho
+    que estava a importar, nem quanto tinha andado. Um corte que nao nomeia o
+    processo e' um numero de relogio, nao uma medida. A lista e' a arvore VIVA do
+    pid, com cpu acumulada, criacao e cmdline, e o ficheiro fica em
+    `_main/_cache/`, que a corrida ja' usa para evidencia.
+    """
+    import datetime
+    stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+    name = 'panel-hidden-freeze-%s-pid%d.txt' % (stamp, pid)
+    path = os.path.join(HERE, '_cache', name)
+    lines = ['FREEZE-CAPTURE pid=%d at=%s mutant=%s'
+             % (pid, stamp, os.path.basename(str(mutant_path)))]
+    try:
+        import psutil
+    except Exception as exc:
+        lines.append('psutil indisponivel: %r -- a arvore NAO foi enumerada' % (exc,))
+        psutil = None
+    if psutil is not None:
+        try:
+            root = psutil.Process(pid)
+            tree = [root] + root.children(recursive=True)
+        except Exception as exc:
+            lines.append('pid %d ilegivel: %r' % (pid, exc))
+            tree = []
+        for item in tree:
+            try:
+                info = item.as_dict(attrs=['pid', 'ppid', 'name', 'cpu_times',
+                                           'create_time', 'cmdline', 'status'])
+            except Exception as exc:
+                lines.append('pid? ilegivel: %r' % (exc,))
+                continue
+            cpu = info.get('cpu_times')
+            cpu_s = (float(getattr(cpu, 'user', 0.0)) + float(getattr(cpu, 'system', 0.0))
+                     if cpu is not None else -1.0)
+            lines.append('pid=%s ppid=%s name=%s status=%s cpu_s=%.2f born=%s cmd=%s'
+                         % (info.get('pid'), info.get('ppid'), info.get('name'),
+                            info.get('status'), cpu_s,
+                            datetime.datetime.fromtimestamp(
+                                float(info.get('create_time') or 0)).strftime('%H:%M:%S'),
+                            ' '.join(info.get('cmdline') or [])[:200] or '-'))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as handle:
+        handle.write('\n'.join(lines) + '\n')
+    return 'FREEZE-CAPTURE path=%s' % path
 
 
 def _prune_dead_temp_dirs(max_age_s=600.0):
@@ -1406,6 +1490,57 @@ def arm_neg_arm(shell_path, stage_url, panel_url):
 # main
 # ===========================================================================
 
+def arm_freeze_capture(capture=None):
+    """O capture do corte NOMEIA o processo -- provado contra um filho REAL.
+
+    Um corte que so' imprime `Timeout` e' um numero de relogio: nao diz qual
+    processo estava a correr nem quanto tinha andado. Este braco larga um filho
+    (sem janela) que dorme, pede o capture e exige o pid DELE e a cmdline DELE no
+    ficheiro; um capture que escrevesse um cabecalho vazio passaria em tudo o
+    resto e nao serve para nada.
+    """
+    import subprocess
+    import time
+    capture = capture or freeze_capture
+    results = []
+    child = subprocess.Popen(
+        [sys.executable, '-c', 'import time; time.sleep(20)'],
+        creationflags=CREATE_NO_WINDOW, stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        startupinfo=_hidden_startupinfo())
+    try:
+        time.sleep(0.6)
+        line = capture(child.pid, 'mutante-do-braco')
+        path = line.split('path=', 1)[-1].strip()
+        body = ''
+        try:
+            with open(path, encoding='utf-8') as handle:
+                body = handle.read()
+        except OSError as exc:
+            body = ''
+            detail = 'capture nao pode ser lido: %r' % (exc,)
+        else:
+            named = ('pid=%d ' % child.pid) in body and 'time.sleep(20)' in body
+            detail = ('pid=%d nomeado=%s linhas=%d' % (child.pid, named,
+                                                       len(body.splitlines())))
+            results.append({'arm': 'FREEZE', 'check': 'capture-nomeia-o-filho',
+                            'ok': bool(named), 'detail': detail})
+        if not body:
+            results.append({'arm': 'FREEZE', 'check': 'capture-nomeia-o-filho',
+                            'ok': False, 'detail': detail})
+        for target in (path,):
+            try:
+                os.remove(target)
+            except OSError:
+                pass
+    finally:
+        try:
+            child.kill()
+        except Exception:
+            pass
+    return results, (0 if all(item['ok'] for item in results) else 1)
+
+
 def main(argv=None):
     _prune_dead_temp_dirs()
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -1535,6 +1670,13 @@ def main(argv=None):
         emit('  MUTATION skipped: --shell is not the shipped shell')
         emit('  NEG-ARM skipped: --shell is not the shipped shell (the '
              'anchors are the shipped shell\'s own lines)')
+
+    res, fail = arm_freeze_capture()
+    results += res
+    failures += fail
+    for r in res:
+        emit(f"  [{'PASS' if r['ok'] else 'FAIL'}] {r['arm']} {r['check']} "
+             f'— {r["detail"]}')
 
     if args.json:
         print(json.dumps({'failures': failures, 'results': results},

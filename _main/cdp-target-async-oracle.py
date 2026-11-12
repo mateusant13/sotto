@@ -246,11 +246,17 @@ def run_arms(cdp, shell_mod):
     try:
         shell_mod.log = lambda message, *a, **k: shell_logs.append(str(message))
         src2.start()
-        wait_for(lambda: src2._tid_cache is not None, 3.0)
+        # O PRAZO E' DA CORRIDA, NAO DA ARM (medido 2026-11-12): com o mesmo
+        # codigo esta arm passa isolada e ficou RED dentro da bateria, porque o
+        # refrescador do alvo trabalha a 6 Hz e sob contenda 3,0 s nao cobrem
+        # duas voltas -- e a mensagem so' mostrava `line`, deixando a causa
+        # (`moved=False`) invisivel. O prazo passa a 10 s e a mensagem nomeia
+        # `before`/`moved`, para um RED futuro dizer qual das duas metades caiu.
+        wait_for(lambda: src2._tid_cache is not None, 10.0)
         before = src2.target_video_id()
         # A ABA A' FECHOU: a lista passa a mostrar so' o video B (a cura).
         tabs['now'] = [tab(B_VID)]
-        moved = wait_for(lambda: src2.target_video_id() == B_VID, 3.0)
+        moved = wait_for(lambda: src2.target_video_id() == B_VID, 10.0)
         watcher = shell_mod.ExternalCaptionWatcher(SimpleNamespace())
         watcher._yt_cdp_source = src2
         watcher.yt_video_id = A_VID
@@ -268,13 +274,24 @@ def run_arms(cdp, shell_mod):
         rebound = [m for m in shell_logs
                    if m.startswith('YOUTUBE_TARGET_REBOUND')]
         line = rebound[-1] if rebound else ''
+        # O `why=` DA TROCA MUDOU DE VOCABULARIO EM 2026-11-11: o bloco inline da
+        # shell passou a obedecer a `youtube_cdp_source.rebind_verdict`, cujas razoes
+        # sao `no-candidate|rows-ready|new-candidate|confirmed` -- o antigo `aba` deixou
+        # de existir. Esta arm media o VOCABULARIO e passou a RED com o produto CERTO
+        # (medido 2026-11-12: `why=confirmed confirmed`). O que ela julga e' a fiacao:
+        # `adopt` so' acontece por `rows-ready` (o player ja' pinta o candidato) ou por
+        # `confirmed` (a janela de damp pagou). O vocabulario em si e' da
+        # `_main/youtube-first-cue-oracle.py`, que executa a funcao pura.
+        ADOPT_WHY = ('rows-ready', 'confirmed')
         arm('A2-REBIND',
             before == A_VID and moved and bool(armed) and bool(rebound)
             and ('was=' + A_VID) in line and ('now=' + B_VID) in line
-            and 'why=aba' in line and watcher.yt_video_id == B_VID,
-            'publicado=%r->%r armed=%d yt_video_id=%r %s'
-            % (before, src2.target_video_id(), len(armed),
-               getattr(watcher, 'yt_video_id', None), line[:78] or '-'))
+            and 'confirmed=true' in line
+            and any(('why=' + w) in line for w in ADOPT_WHY)
+            and watcher.yt_video_id == B_VID,
+            'publicado=%r->%r moved=%s armed=%d yt_video_id=%r %s'
+            % (before, src2.target_video_id(), moved, len(armed),
+               getattr(watcher, 'yt_video_id', None), line[-96:] or '-'))
     finally:
         cdp.list_targets = saved_list
         if real_log is not None:

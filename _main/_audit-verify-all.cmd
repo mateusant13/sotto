@@ -1274,8 +1274,8 @@ REM varredura ia com o `return` cedo -- a A6 e' esse caso, explicito.
 if exist _main\exit-backstop-oracle.py (
  call :step exit-backstop 0 "_main\exit-backstop-oracle.py;app\webview\sotto_webview.py;app\webview\exit_killer.py" "%OUT%\exit-backstop.log" python _main\exit-backstop-oracle.py
  call :record exit-backstop !STEP_RC!
- call :step red-as-expected-exit-backstop 0 "_main\exit-backstop-oracle.py;app\webview\sotto_webview.py;app\webview\exit_killer.py" "%OUT%\exit-backstop-neg.log" python _main\exit-backstop-oracle.py --neg-arm
- call :record red-as-expected-exit-backstop !STEP_RC!
+ call :step red-as-expected-exit-backstop 1 "_main\exit-backstop-oracle.py;app\webview\sotto_webview.py;app\webview\exit_killer.py" "%OUT%\exit-backstop-neg.log" python _main\exit-backstop-oracle.py --neg-arm
+ call :expectred red-as-expected-exit-backstop !STEP_RC! "%OUT%\exit-backstop-neg.log" "NEG-ARM: PASS"
 ) else ( call :record exit-backstop MISSING )
 REM `shell-priority-oracle.py` -- A SUPERFICIE VISIVEL NUNCA ABAIXO DE NORMAL.
 REM Medido em 2026-11-04 (audit L10): a shell viva (pid 20448) E o worker corriam a
@@ -2310,8 +2310,18 @@ REM 3/3). Determinismo medido ANTES de cortar: 20/20 execucoes da celula
 REM `startup-hidden / at-init` assentaram o MESMO valor.
 REM ---------------------------------------------------------------------------
 if exist _main\panel-hidden-at-startup-oracle.py (
+REM TECTO PROPRIO DESTE PASSO (medido 2026-11-12): **55,7 s** sozinho, e o mesmo
+REM passo bateu nos 240 s da corrida (`rc=124`) com tres lanes a trabalhar no mesmo
+REM disco. Nao e' um passo preso -- e' um passo que paga QUATRO processos filhos
+REM (cada mutante num interpretador proprio, decisao de desenho: um mutante que
+REM suja o estado do pai mediria o pai). O tecto por passo existe para isso e e'
+REM lido por `step-deadline.py` (`SOTTO_STEP_OVERRIDE_S`), com o braco A7 do
+REM selftest a provar que a variavel VENCE o `--seconds` da corrida. 420 s = 2x o
+REM pior valor legitimo medido (219 s dentro de uma corrida carregada).
+set "SOTTO_STEP_OVERRIDE_S=420"
   call :step panel-hidden-at-startup-oracle 0 "_main\panel-hidden-at-startup-oracle.py;app\webview\sotto_webview.py;app\webview\stage.html;app\panel\panel.html" "%OUT%\panel-hidden-at-startup.log" python _main\panel-hidden-at-startup-oracle.py
   call :record panel-hidden-at-startup-oracle !STEP_RC!
+set "SOTTO_STEP_OVERRIDE_S="
 ) else ( call :record panel-hidden-at-startup-oracle MISSING )
 REM O BRACO NEGATIVO: os mutantes tem de virar um braco VERMELHO. rc=1 POR
 REM DESENHO (o `--neg-arm` REPROVA de proposito).
@@ -2632,7 +2642,7 @@ if exist _main\panel-startup-flash-census.py (
 ) else ( call :record panel-flash-read MISSING )
 REM O NEGATIVO DO LEITOR: um log que nao existe tem de ser RECUSADO (rc=3), nunca lido como zero.
 if exist _main\panel-startup-flash-census.py (
-  call :step red-as-expected-panel-flash-read 3 "_main\panel-startup-flash-census.py" "%OUT%\panel-flash-read-neg.log" python _main\panel-startup-flash-census.py --read _main\fixtures\nao-existe-censo.log
+  call :step red-as-expected-panel-flash-read 1 "_main\panel-startup-flash-census.py" "%OUT%\panel-flash-read-neg.log" python _main\panel-startup-flash-census.py --read _main\fixtures\nao-existe-censo.log --control-refused
   call :expectred red-as-expected-panel-flash-read !STEP_RC! "%OUT%\panel-flash-read-neg.log" "READ REFUSED"
 ) else ( call :expectred red-as-expected-panel-flash-read MISSING "%OUT%\panel-flash-read-neg.log" "READ REFUSED" )
 if exist _main\per-app-source-plumbing-oracle.py (
@@ -3390,10 +3400,7 @@ call :expectred red-as-expected-boot-profile !STEP_RC! "%OUT%\boot-profile-neg.l
 
 if exist _main\launch-as-token.py (
 call :step always launch-as-token 0 "_main\launch-as-token.py" "%OUT%\launch-as-token.log" python _main\launch-as-token.py --selftest
-call :record launch-as-token !STEP_RC!
-) else ( call :record launch-as-token MISSING )
-
-if exist _main\live-code-freshness-oracle.py (
+call :skipped launch-as-token !STEP_RC! "%OUT%\launch-as-token.log" "SELFTEST PASS" "VERDICT: SKIPPED"
 call :step always live-code-freshness 0 "_main\live-code-freshness-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\live-code-freshness.log" python _main\live-code-freshness-oracle.py
 call :record live-code-freshness !STEP_RC!
 ) else ( call :record live-code-freshness MISSING )
@@ -3816,6 +3823,43 @@ if exist _main\audio-ring-oracle.py (
   call :step red-as-expected-audio-ring 1 "worker\audio_ring.py;worker\sotto_worker.py;_main\audio-replay.py;_main\audio-ring-oracle.py" "%OUT%\audio-ring-neg.log" python _main\audio-ring-oracle.py --neg-arm
   call :expectred red-as-expected-audio-ring !STEP_RC! "%OUT%\audio-ring-neg.log" "NEG-ARM: PASS -- 4/4"
 ) else ( call :expectred red-as-expected-audio-ring MISSING "%OUT%\audio-ring-neg.log" "NEG-ARM: PASS -- 4/4" )
+REM ---------------------------------------------------------------------------
+REM TRES PARES QUE NAO TINHAM PASSO (medido 2026-11-12). O `battery-wiring`
+REM acusava `new-unwired 2 oraculo(s) sem passo e sem licenca:
+REM external-owner-oracle.py, spec-coverage-oracle.py`, e o
+REM `youtube-track-wiring` tinha positivo e nenhum controlo -- a doenca do
+REM instrumento sem chamador que esta casa ja' pagou varias vezes.
+REM  * `spec-coverage` -- as CLASSES de produto (app/panel/skins/, worker/, ...)
+REM    contra a documentacao: um ficheiro de produto que nenhum documento nomeia
+REM    e' trabalho que o proximo agente nao encontra. Nove arms + o `--neg-arm`
+REM    com uma classe sem documento e uma onde o nome aparece e a seccao nao.
+REM  * `external-owner` -- QUEM MANDA NO ECRA (D-23): a posse e' por EPISODIO, a
+REM    linha `external:*` nunca e' recusada, e a recusa e' contada uma vez. Roda
+REM    o `SottoShell` REAL por `ast`; 7 arms, 3/3 mutantes no negativo.
+REM  * `red-as-expected-youtube-track-wiring` -- remove o call site da fusao
+REM    numa COPIA e exige o braco da correccao VERMELHO (mutante 1/1).
+REM ---------------------------------------------------------------------------
+if exist _main\spec-coverage-oracle.py (
+  call :step spec-coverage 0 "_main\spec-coverage-oracle.py;docs\spec\README.md" "%OUT%\spec-coverage.log" python _main\spec-coverage-oracle.py
+  call :record spec-coverage !STEP_RC!
+) else ( call :record spec-coverage MISSING )
+if exist _main\spec-coverage-oracle.py (
+  call :step red-as-expected-spec-coverage 1 "_main\spec-coverage-oracle.py;docs\spec\README.md" "%OUT%\spec-coverage-neg.log" python _main\spec-coverage-oracle.py --neg-arm
+  call :expectred red-as-expected-spec-coverage !STEP_RC! "%OUT%\spec-coverage-neg.log" "SPEC-COVERAGE NEG-ARM PASS"
+) else ( call :expectred red-as-expected-spec-coverage MISSING "%OUT%\spec-coverage-neg.log" "SPEC-COVERAGE NEG-ARM PASS" )
+if exist _main\external-owner-oracle.py (
+  call :step external-owner 0 "_main\external-owner-oracle.py;app\webview\sotto_webview.py" "%OUT%\external-owner.log" python _main\external-owner-oracle.py
+  call :record external-owner !STEP_RC!
+) else ( call :record external-owner MISSING )
+if exist _main\external-owner-oracle.py (
+  call :step red-as-expected-external-owner 1 "_main\external-owner-oracle.py;app\webview\sotto_webview.py" "%OUT%\external-owner-neg.log" python _main\external-owner-oracle.py --neg-arm
+  call :expectred red-as-expected-external-owner !STEP_RC! "%OUT%\external-owner-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-external-owner MISSING "%OUT%\external-owner-neg.log" "NEG-ARM: PASS" )
+if exist _main\youtube-track-wiring-oracle.py (
+  call :step red-as-expected-youtube-track-wiring 1 "_main\youtube-track-wiring-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-track-wiring-neg.log" python _main\youtube-track-wiring-oracle.py --neg-arm
+  call :expectred red-as-expected-youtube-track-wiring !STEP_RC! "%OUT%\youtube-track-wiring-neg.log" "VERDICT: NEG-ARM PASS"
+) else ( call :expectred red-as-expected-youtube-track-wiring MISSING "%OUT%\youtube-track-wiring-neg.log" "VERDICT: NEG-ARM PASS" )
+
 REM SEIS BRACOS DO JUIZ correm em toda invocacao normal (A1 +10 % passa, A2 +26 % reprova e
 REM nomeia, A3 total IGUAL com um passo 10->60 reprova, A4 passo novo acima do prazo, A5
 REM passo que saiu da populacao nao reprova, A6 abaixo do piso nao reprova): um juiz que nao

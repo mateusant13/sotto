@@ -237,6 +237,18 @@ def arm_display_gate(src):
     }
     exec(compile(fn_src, '<external-caption>', 'exec'), ns)
     fn = ns['external_caption']
+    # A POSSE DO ECRAN E' DA SHELL REAL, NAO DESTE HARNE: `external_caption`
+    # passou a chamar `set_external_owner` (o dono unico, 2026-11-11) e o
+    # `DisplayShell` daqui nao tinha o metodo -- o braco morria em
+    # `AttributeError: 'DisplayShell' object has no attribute 'set_external_owner'`
+    # e o passo `caption-kept-on-hide` ficava RED por um harne desactualizado,
+    # nao por um defeito do produto (medido 2026-11-12). Extraido por AST, como
+    # todas as outras funcoes deste oraculo: uma copia da regra passaria a medir
+    # a copia.
+    owner_ns = {'log': lambda *_a: None, '__builtins__': __builtins__}
+    exec(compile(extract_method(src, 'set_external_owner'),
+                 '<set-external-owner>', 'exec'), owner_ns)
+    set_owner = owner_ns['set_external_owner']
 
     class DisplayShell:
         def __init__(self, wanted=True, paused=False, ended=False):
@@ -253,6 +265,15 @@ def arm_display_gate(src):
             self.asyncs = []
             self._reload_policy = types.SimpleNamespace(
                 boundary=lambda **_k: None)
+            # O estado que o `set_external_owner` REAL le' e escreve.
+            self.external_owner = 'local'
+            self.external_owner_episode = 0
+            self._asr_suppressed_episode = 0
+            self._asr_owner_episode = False
+            self.external_suppressed = 0
+
+        def set_external_owner(self, owner, reason='', had_line=None):
+            return set_owner(self, owner, reason=reason, had_line=had_line)
 
         def note_history_context(self, _meta):
             pass
@@ -431,11 +452,28 @@ def main(argv):
     # PRIMEIRO `if not getattr(` do ficheiro -- que nao e' esta guarda -- e deu
     # `0/1 recusado` sobre um fonte que ela nao tocou. Agora o alvo e' a linha da
     # guarda dentro do `hide_panel` e mais nada.
+    # A ANCORA E' ESCOPADA AO `hide_panel` (medido 2026-11-12): a mesma linha
+    # `if getattr(self, '_caption_wanted', False):` passou a existir em TRES
+    # sitios do shell (16763, 18146, 18195), e o braco respondia
+    # `NEG-ARM IMPOSSIVEL: a guarda aparece 3 vez(es)` com rc=2 -- o passo
+    # `red-as-expected-caption-kept-on-hide` estava RED por um controlo que nao
+    # chegava a correr. Um mutante TEM de atingir o sitio que a arm mede, e o
+    # sitio e' o `hide_panel`; aqui a ancora e' procurada dentro do corpo dele.
     guard = "if getattr(self, '_caption_wanted', False):"
-    if src.count(guard) != 1:
-        print('NEG-ARM IMPOSSIVEL: a guarda aparece %d vez(es) no fonte' % src.count(guard))
+    body_start = src.find('    def hide_panel(self, reason):')
+    if body_start < 0:
+        print('NEG-ARM IMPOSSIVEL: hide_panel nao esta no fonte')
         return 2
-    mutated = src.replace(guard, "if False:  # mutante: a guarda desarmada", 1)
+    body_end = src.find('\n    def ', body_start + 8)
+    body_end = len(src) if body_end < 0 else body_end
+    body = src[body_start:body_end]
+    if body.count(guard) != 1:
+        print('NEG-ARM IMPOSSIVEL: a guarda aparece %d vez(es) dentro de hide_panel'
+              % body.count(guard))
+        return 2
+    mutated = (src[:body_start]
+               + body.replace(guard, "if False:  # mutante: a guarda desarmada", 1)
+               + src[body_end:])
     if mutated == src:
         print('NEG-ARM IMPOSSIVEL: a ancora da guarda nao esta no fonte')
         return 2

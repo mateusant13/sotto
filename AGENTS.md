@@ -682,6 +682,51 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 16:1x):** `_main\_audit-verify-all.cmd` = **373914 B**,
+  **4307 CRLF** / 0 bare LF, sha256 `06FDD35FD6AAFBC4B6E3B0FC6BBD1BADBAB1D48C5E5D71E4FE6FE8241DEAC8B8`.
+  (Seiscentos e setenta e quatro bytes e SETE linhas a mais do que o pin de 373240 B, e DUAS
+  correccoes de INSTRUMENTO que a corrida de 2026-11-12 mediu -- `BATTERY-VERDICT: RED - 34 step(s)
+  failed`, o pior `panel-hidden-at-startup-oracle 242.77 s`. Recibo:
+  `_main/receipt-20261112-instrumentos.md`.)
+  **`launch-as-token` passa a skip-capable.** Medido: `python _main/launch-as-token.py --selftest`
+  devolveu `SELFTEST SKIP -- nenhum processo fonte abrivel nesta sessao (nao e' um passe)` com
+  **rc=1** num passo declarado `:record` (espera 0), o que conta como FALHA da corrida -- o proprio
+  texto do instrumento diz que nao e' um passe e a declaracao nao sabia disso. O ramo sem fonte
+  imprime agora `VERDICT: SKIPPED reason=no-high-source` e sai **rc=0**; `VERDICT: SKIPPED` e' a
+  palavra executavel do instrumento; quando ha' fonte `high` o mesmo comando continua a verificar de
+  facto (`SELFTEST PASS -- fonte pid=13636 (HIGH), filho pid=49560 executou, integridade=HIGH`). O
+  par `:step` + `:skipped` e' obrigatorio (`battery-record-pairing` recusa um `:skipped` sem o
+  `:step` do mesmo nome -- medido `R3-registo-orfao launch-as-token`), e o registo foi re-medido:
+  `497 passos / 497 nomes / 0 achados`, PASS.
+  **O TECTO POR PASSO vence o da corrida.** `panel-hidden-at-startup-oracle` mediu **55,7 s** sozinho,
+  **219,1 s** numa corrida carregada e **242,77 s** na corrida de 2026-11-12, onde foi cortado
+  (`rc=124`) pelo piso de 240 s -- e ele nao esta' preso: paga QUATRO processos filhos, um por
+  mutante. `_main\step-deadline.py` passou a ler `SOTTO_STEP_OVERRIDE_S` em `resolve_seconds()`, que
+  e' o UNICO sitio que corta (o `--selftest` chama `run_with_deadline` directo, logo um override no
+  `main` seria um no-op silencioso -- e a primeira versao da arm deu exactamente esse FAIL). A linha
+  do passo declara `set "SOTTO_STEP_OVERRIDE_S=420"` e limpa-o no fim. Medido: `STEP-DEADLINE
+  SELFTEST: PASS (7 arms)` com `A7 override de 1,5 s contra --seconds 120: rc=124`, e pela linha que
+  a bateria executa `SOTTO_STEP_OVERRIDE_S=2 ... --seconds 240 -- sleep 6` -> **rc=124** contra
+  `SOTTO_STEP_OVERRIDE_S=30 ... --seconds 1 -- sleep 4` -> **rc=0**. O piso de 240 s continua a
+  valer para os outros ~490 passos.)
+- **PIN do ficheiro (medido 2026-11-12, 15:3x):** `_main\_audit-verify-all.cmd` = **373240 B**,
+  **4300 CRLF** / 0 bare LF, sha256 `B577944F37EF77E4DC6EEFFC7BE6237EB142D5E2E00F628A39C7478DA7984EC2`.
+  (Tres mil duzentos e oitenta e seis bytes e TRINTA E SETE linhas a mais do que o pin de 369954 B, e
+  QUATRO passos novos -- os tres oraculos que existiam SEM passo e um controlo que estava declarado
+  como passo normal. `battery-wiring` acusava dois deles com razao
+  (`new-unwired 2 oraculo(s) sem passo e sem licenca: external-owner-oracle.py,
+  spec-coverage-oracle.py`) e o terceiro (`youtube-track-wiring`) tinha positivo e nenhum negativo.
+  Agora: `spec-coverage` + o seu `--neg-arm` (as CLASSES de produto contra `docs\spec\README.md`; 9
+  arms, o negativo apanhado por `SPEC-COVERAGE NEG-ARM PASS`), `external-owner` + o seu `--neg-arm`
+  (a POSSE do ecra por episodio, D-23; 7 arms, 3/3 mutantes) e `red-as-expected-youtube-track-wiring`
+  (o mutante remove o call site da fusao numa COPIA e exige o braco da correccao VERMELHO). E a
+  correccao que veio junto: `red-as-expected-exit-backstop` estava declarado `:record` com rc=0
+  esperado enquanto o oraculo devolve **1 ao apanhar** -- um controlo que nao podia falhar, agora
+  `:expectred` com a frase `NEG-ARM: PASS`; e `red-as-expected-panel-flash-read` declarava rc=**3**
+  (o codigo de recusa do proprio CLI) quando `:expectred` so' aceita **1** -- o censo ganhou
+  `--control-refused`, que devolve 1 ao apanhar e 0 se o leitor aceitar um log que nao existe.
+  Medido depois: `battery-wiring` PASS `ligados=204 sem_passo=107 populacao=311`,
+  `battery-record-pairing` 497 passos / 497 nomes / 0 achados, `battery-class` PASS arms=3.)
 - **PIN do ficheiro (medido 2026-11-12, 14:2x):** `_main\_audit-verify-all.cmd` = **369954 B**,
   **4263 CRLF** / 0 bare LF, sha256 `7053838E5F6FE5951418693297FD822ABF638667A5D43E96F66A2E9EFE9A7615`.
   (Mil quatrocentos e oitenta e cinco bytes e DEZASSETE linhas a mais do que o pin de 368469 B: o par
@@ -2730,7 +2775,7 @@ por que ta tocando um audio"*. Nao era aleatorio. A cadeia medida no log vivo (p
 3. `adopted:zEgthOmOrc0->JM1gEnmaUao` -> `YOUTUBE_VIDEO_CHANGED` -> `CAPTION_WINDOW_BLANKED`:
    a superficie fica sem dono e `last_line=''`;
 4. **714 ms depois o ASR local pinta** a hipotese dele (`src=-`, `tap_ms=None`) num ecra que o player
-   acabou de esvaziar.
+   acabou de esvaziar (medido 2026-11-11, pid 49180, `pressao -> pintura` no log da sessao dele).
 
 Duas leis, cada uma paga pelo elo que a violou:
 

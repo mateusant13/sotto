@@ -169,14 +169,23 @@ def main(argv=None):
         caught_by = []
         for tag, old, new, arm in MUTANTS:
             hits = text.count(old)
-            if hits != 1:
-                say("NEG-ARM SETUP ERROR: mutation %s anchor %r occurs %d time(s) -- %s"
-                    % (tag, old[:50], hits,
-                       "the oracle is stale" if hits == 0 else "ambiguous"))
+            # O MUTANTE ATINGE TODAS AS OCORRENCIAS, e o zero continua a ser
+            # erro de setup (medido 2026-11-12): a figura do M1
+            # (`launches_at_startup=0/19`) passou a estar citada DUAS vezes no
+            # `AGENTS.md` -- no bullet vivo e na nota do pin que registra o
+            # numero antigo -- e a exigencia de ocorrencia UNICA respondia
+            # `ambiguous` com rc=2, deixando o passo
+            # `red-as-expected-panel-flash-contradiction` RED por um controlo que
+            # nao chegava a correr. A intencao do mutante e' "a figura esta
+            # errada", e isso vale em todas as copias dela; um numero novo que
+            # apareca no texto nao pode transformar o controlo num erro.
+            if hits == 0:
+                say("NEG-ARM SETUP ERROR: mutation %s anchor %r occurs 0 time(s) -- "
+                    "the oracle is stale" % (tag, old[:50]))
                 say("")
                 say("NEG-ARM FAIL -- a decorative mutant proves nothing; it was NOT counted")
                 return 2
-            mutant_failures = check(text.replace(old, new, 1))
+            mutant_failures = check(text.replace(old, new))
             mine = [f for f in mutant_failures if f.startswith(arm)]
             if mine:
                 caught_by.append("%s->%s" % (tag, arm))

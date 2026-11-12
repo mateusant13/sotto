@@ -34,6 +34,7 @@ from __future__ import annotations
 import ast
 import io
 import os
+import re
 import sys
 import textwrap
 import threading
@@ -63,6 +64,54 @@ def methods_of(source_text, names):
     return found, missing
 
 
+def top_level_closure(source_text, seeds):
+    """Os `def`/constantes de MODULO que as sementes precisam, na ordem do ficheiro.
+
+    A CLASSE (medida 2026-11-12): o `_open_load_action` passou a chamar
+    `isolated_queue_dir`, que chama `measurement_state_tag`, que chama
+    `is_measurement_launch` e `measurement_lock_name`, que leem
+    `MEASUREMENT_FLAGS` e `DEFAULT_MUTEX_NAME`. Cada nome em falta aparecia como
+    `LOAD_SHEDDING_START_FAILED error=NameError(...)` -- o oraculo ficou RED duas
+    vezes seguidas por um `ns` incompleto, e cada rodada corrigia SO' o nome que
+    o erro anterior nomeou. Uma lista a mao teria o mesmo destino na proxima
+    costura; aqui a lista e' o FECHO de dependencias das sementes, lido do
+    proprio ficheiro.
+    """
+    tree = ast.parse(source_text)
+    defs = {}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef):
+            defs[node.name] = node
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    defs[target.id] = node
+    out = {}
+    stack = list(seeds)
+    while stack:
+        name = stack.pop()
+        if name in out or name not in defs:
+            continue
+        node = defs[name]
+        out[name] = node
+        for sub in ast.walk(node):
+            if (isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load)
+                    and sub.id in defs and sub.id not in out):
+                stack.append(sub.id)
+    return dict(sorted(out.items(), key=lambda kv: kv[1].lineno))
+
+
+def top_level_of(source_text, names):
+    """Os `def` de MODULO REAIS, por nome -- o `_open_load_action` chama um
+    deles (`isolated_queue_dir`, 2026-11-12) e um stub aqui mediria o stub."""
+    tree = ast.parse(source_text)
+    found = {}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in names:
+            found[node.name] = node
+    return found
+
+
 def build_harness(source_text, names):
     """Compila as funcoes reais numa classe falsa, com os fakes do mundo.
 
@@ -82,6 +131,7 @@ def build_harness(source_text, names):
 
     calls = []
     logs = []
+    queue_dirs = []
 
     class LoadSheddingMonitor:
         INTERVAL_S = 5.0
@@ -95,8 +145,9 @@ def build_harness(source_text, names):
                     'batch': {'queue': {'dir': 'H:/fake/queue'}}}
 
     class Shed:
-        def open_action(self, shell, monitor=None, log_fn=None):
+        def open_action(self, shell, monitor=None, log_fn=None, queue_dir=None):
             calls.append(('open_action', time.monotonic()))
+            queue_dirs.append(queue_dir)
             time.sleep(OPEN_SLEEP_S)          # o `os.makedirs` medido
             return Action()
 
@@ -104,11 +155,27 @@ def build_harness(source_text, names):
         'threading': threading,
         'time': time,
         'os': os,
+        're': re,
+        'sys': sys,
+        # `isolated_queue_dir` resolve `batch_queue` pelo directorio deste
+        # ficheiro quando o import directo falha, e le' `__file__`.
+        '__file__': SHELL,
         'log': lambda message: logs.append(message),
         'LoadSheddingMonitor': LoadSheddingMonitor,
         'load_shedding': lambda: Shed(),
         '__name__': 'sotto_webview_fake',
     }
+    # A FUNCAO DE TOPO QUE O `_open_load_action` CHAMA (medido 2026-11-12): ele
+    # passou a entregar `queue_dir=isolated_queue_dir(self.args)`, o fake do
+    # `open_action` nao aceitava o argumento, o `TypeError` caia no
+    # `except ... LOAD_SHEDDING_START_FAILED` e o passo ficava RED com A2 -- e
+    # o `--neg-arm` a apanhar 0/2, porque NADA corria em nenhum dos dois lados.
+    # Um nome ausente do `ns` teria dado o MESMO silencio, por isso a funcao vem
+    # do ficheiro por AST, e um `def` em falta diz o nome em vez de fingir.
+    top = top_level_closure(source_text, ['isolated_queue_dir'])
+    for name, node in top.items():
+        seg = ast.get_source_segment(source_text, node)
+        exec(compile(seg, '<sotto_webview:top:%s>' % name, 'exec'), ns)
     try:
         exec(compile(src, '<sotto_webview:extracted>', 'exec'), ns)
     except SyntaxError as exc:
@@ -125,7 +192,7 @@ def build_harness(source_text, names):
         def _dump_thread_stacks(self, reason, force=False):
             return None
 
-    return Shell(), [], calls, logs
+    return Shell(), [], calls, logs, queue_dirs
 
 
 def judge(shell, calls, logs, label):
@@ -168,7 +235,7 @@ def judge(shell, calls, logs, label):
     old = os.environ.get('SOTTO_LOAD_SHED')
     os.environ['SOTTO_LOAD_SHED'] = '0'
     try:
-        fresh, _missing, fresh_calls, _fresh_logs = build_harness(SOURCE, NAMES)
+        fresh, _missing, fresh_calls, _fresh_logs, _fq = build_harness(SOURCE, NAMES)
         fresh._start_slow_read_monitor()
         time.sleep(OPEN_SLEEP_S + 0.15)
         a4 = len(fresh_calls) == 0 and not getattr(fresh, '_load_action', None)
@@ -180,7 +247,16 @@ def judge(shell, calls, logs, label):
         else:
             os.environ['SOTTO_LOAD_SHED'] = old
 
-    ok = a1 and a2 and a3 and a4
+    # A5 -- o arranque nao falha CALADO. O `except` do `_open_load_action` loga
+    # `LOAD_SHEDDING_START_FAILED` e a app sobe na mesma: e' o comportamento
+    # certo do produto e o pior desfecho para o instrumento -- foi assim que
+    # um `queue_dir=` novo manteve este passo RED sem dizer por que.
+    failed = [m for m in logs if str(m).startswith('LOAD_SHEDDING_START_FAILED')]
+    a5 = not failed
+    lines.append('A5 sem LOAD_SHEDDING_START_FAILED %s'
+                 % ('ok' if a5 else 'RED %s' % (failed[-1:],)))
+
+    ok = a1 and a2 and a3 and a4 and a5
     return ok, '%s | %s' % (label, ' | '.join(lines))
 
 
@@ -189,7 +265,7 @@ SOURCE = read(SHELL)
 
 
 def run_positive():
-    shell, missing, calls, logs = build_harness(SOURCE, NAMES)
+    shell, missing, calls, logs, queue_dirs = build_harness(SOURCE, NAMES)
     if shell is None:
         return False, 'nao consegui extrair as funcoes: %s' % (missing,)
     ok, detail = judge(shell, calls, logs, 'AS-SHIPPED')
@@ -197,17 +273,36 @@ def run_positive():
     return ok, detail
 
 
+def mutate_text(source_text, old, new):
+    """Troca `old` por `new` acompanhando a convencao de fim de linha do ficheiro.
+
+    O FICHEIRO E' CRLF E AS ANCORAS SAO ESCRITAS COM LF (medido 2026-11-12): sem
+    isto, `old in SOURCE` e' sempre falso, nenhuma mutacao aplica, e o
+    `--neg-arm` publica `0/2 mutantes apanhados` -- um controlo em que nada corre
+    nao prova nada, e foi assim que este passo ficou RED ao lado de um positivo
+    que passava. A mesma classe custou `live-ack` (13 de 14 mutacoes) no mesmo dia.
+    """
+    if old in source_text:
+        return source_text.replace(old, new, 1)
+    alt_old = old.replace('\n', '\r\n')
+    if alt_old in source_text:
+        return source_text.replace(alt_old, new.replace('\n', '\r\n'), 1)
+    return None
+
+
 def run_neg_arm():
     """Duas mutacoes no TEXTO do ficheiro; cada uma tem de derrubar O SEU braco."""
     caught = []
+    applied = 0
 
     # M1 -- a forma ANTIGA: a chamada directa, sem thread.
     old = """            threading.Thread(target=self._open_load_action,
                              name='sotto-load-shed-start', daemon=True).start()"""
     new = """            self._open_load_action()"""
-    if old in SOURCE:
-        mutated = SOURCE.replace(old, new, 1)
-        shell, missing, calls, logs = build_harness(mutated, NAMES)
+    mutated = mutate_text(SOURCE, old, new)
+    if mutated is not None:
+        applied += 1
+        shell, missing, calls, logs, _q = build_harness(mutated, NAMES)
         if shell is not None:
             ok, detail = judge(shell, calls, logs, 'M1-inline')
             if not ok:
@@ -216,9 +311,10 @@ def run_neg_arm():
     # M2 -- a thread existe e nunca arranca: o trabalho desaparece em silencio.
     new2 = """            _t = threading.Thread(target=self._open_load_action,
                                   name='sotto-load-shed-start', daemon=True)"""
-    if old in SOURCE:
-        mutated2 = SOURCE.replace(old, new2, 1)
-        shell2, _m, calls2, logs2 = build_harness(mutated2, NAMES)
+    mutated2 = mutate_text(SOURCE, old, new2)
+    if mutated2 is not None:
+        applied += 1
+        shell2, _m, calls2, logs2, _q2 = build_harness(mutated2, NAMES)
         if shell2 is not None:
             ok2, detail2 = judge(shell2, calls2, logs2, 'M2-never-started')
             if not ok2:
@@ -226,8 +322,11 @@ def run_neg_arm():
 
     for line in caught:
         print('CAUGHT ' + line)
-    print('NEG-ARM: %s -- %d/2 mutantes apanhados'
-          % ('PASS' if len(caught) == 2 else 'FAIL', len(caught)))
+    # UM MUTANTE QUE NAO APLICA NAO E' UM MUTANTE APANHADO (nem escapado): o
+    # veredicto diz as duas contagens para que uma ancora partida apareca como
+    # `aplicados=0` em vez de se disfarcar de controlo que nao pega.
+    print('NEG-ARM: %s -- %d/%d mutantes apanhados (aplicados=%d)'
+          % ('PASS' if len(caught) == 2 else 'FAIL', len(caught), 2, applied))
     return len(caught) == 2
 
 

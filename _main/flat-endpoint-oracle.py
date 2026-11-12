@@ -73,6 +73,8 @@ import hashlib
 import importlib.util
 import os
 import sys
+import inspect
+import re
 import threading
 from ctypes import POINTER, wintypes
 
@@ -465,7 +467,28 @@ def pump_arm(name, mod, flags, expect_peak, frames=480, packets=3, block_ms=10):
     tap._enum = None
     tap._dev = None
     tap.ep = _FakeEndpoint(rate, channels, block_align, mod.WAVE_FORMAT_IEEE_FLOAT)
+    # OS CONTADORES QUE O `_pump` ESCREVE (medido 2026-11-12): o `packets`
+    # nasceu depois deste stub e o `_pump` passou a incrementa-lo, entao o passo
+    # `flat-endpoint` morria em
+    # `AttributeError: 'WasapiLoopbackTap' object has no attribute 'packets'`
+    # -- o oraculo reprovava o PRODUTO por um atributo que o proprio stub nao
+    # criava. `peak`, `position_gap_packets` e `discontinuity_packets` estao na
+    # mesma lista (`sed -n '1380,1470p' worker/wasapi_loopback.py`): um stub por
+    # `__new__` carrega TUDO o que o metodo escreve, senao mede o stub.
     tap.silent_packets = 0                       # read back below; not decoration
+    # O STUB CARREGA TUDO O QUE O `_pump` ESCREVE, e a lista sai do FONTE do
+    # metodo, nao da memoria de quem escreveu o stub (medido 2026-11-12: o passo
+    # `flat-endpoint` morreu DUAS vezes em `AttributeError` -- primeiro `packets`,
+    # depois `blocks_delivered` -- porque cada contador novo do produto reprovava
+    # o oraculo por um atributo que so' o `__init__` cria). Um stub por `__new__`
+    # e' um contrato com o metodo: quem le' o metodo e' o dono da lista.
+    _seeded = []
+    for _name in sorted(set(re.findall(r'self\.([A-Za-z_][A-Za-z0-9_]*)',
+                                       inspect.getsource(mod.WasapiLoopbackTap._pump)))):
+        if not hasattr(tap, _name):
+            setattr(tap, _name, 0)
+            _seeded.append(_name)
+    tap.peak = getattr(tap, 'peak', 0.0) or 0.0
     tap._pump()                                  # returns when get_buffer fails
 
     peak = max((float(abs(b).max()) for b in out), default=-1.0)

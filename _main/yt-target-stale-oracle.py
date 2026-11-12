@@ -159,13 +159,20 @@ def main():
         # candidato), nao uma linha solta: ela existe para inserir a troca
         # imediata no sitio onde o produto apenas ARMA, e o texto tem de casar
         # exactamente uma vez ou o mutante nao e' aplicado e o braco diz isso.
+        # A ANCORA MUDOU DE FORMA (medido 2026-11-12): o bloco inline
+        # `if _cand != _tid:` deixou de existir quando a shell passou a obedecer
+        # a `youtube_cdp_source.rebind_verdict` (2026-11-11), e a ancora antiga
+        # dava `NEG-ARM IMPOSSIVEL: ocorrencias=0` com rc=2 no passo. O que os
+        # dois bracos do protocolo medem nao mudou: ARMAR nao e' TROCAR. O
+        # sitio so' de armacao, hoje, e' o ramo `elif _action == 'armed':`, e o
+        # mutante devolve a troca imediata la' -- o defeito de 2026-11-09.
         arm_block = _seol.join([
-            '                    if _cand != _tid:',
+            "                    elif _action == 'armed':",
             '                        self._yt_rebind_cand = _tid',
             '                        self._yt_rebind_at = _now',
         ]) + _seol
         arm_mutant = _seol.join([
-            '                    if _cand != _tid:',
+            "                    elif _action == 'armed':",
             '                        self._yt_rebind_cand = _tid',
             '                        self._yt_rebind_at = _now',
             '                        self._yt_switch_video(_tid, _src)',

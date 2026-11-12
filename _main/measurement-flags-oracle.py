@@ -449,7 +449,7 @@ def main(argv=None):
         if missed:
             say("NEG-ARM FAIL: mutants that escaped = %s" % missed)
             return 0
-        say("NEG-ARM PASS: %d/%d mutants, each caught by its own arm (%s)"
+        say("NEG-ARM: PASS -- %d/%d mutants, each caught by its own arm (%s)"
             % (len(MUTANTS), len(MUTANTS), ", ".join(caught)))
         return 1
 

@@ -606,7 +606,27 @@ def read_log(path: str) -> int:
 def main() -> int:
     a = sys.argv[1:]
     if '--read' in a:
-        return read_log(a[a.index('--read') + 1])
+        rc = read_log(a[a.index('--read') + 1])
+        # O BRACO NEGATIVO DO LEITOR (medido 2026-11-12). O codigo 3 e' a
+        # convencao deste CLI para "nao consegui ler" -- uma recusa, nunca um
+        # vermelho. Mas o passo `red-as-expected-panel-flash-read` e' um
+        # CONTROL: ele declara "este instrumento RECUSA um log que nao existe" e
+        # a casa exige que um controlo saia **1** ao apanhar (`:expectred` le
+        # `rc=3` como `CONTROL FAILED - this step must find the injected defect
+        # and exit 1`). Sem esta bandeira os dois contratos se contradiziam e o
+        # passo ficava RED por um controlo que funcionava: medido no log da
+        # corrida, `rc=3 - CONTROL FAILED`. Com ela o CLI continua a devolver 3
+        # a quem le o codigo, e o controlo devolve 1 ao apanhar + 0 se o leitor
+        # ACEITAR o log inexistente (que e' o defeito que ele guarda).
+        if '--control-refused' in a:
+            if rc == 3:
+                say('NEG-ARM: PASS -- a leitura de um log inexistente foi '
+                    'recusada, e um numero sem log nao sai daqui')
+                return 1
+            say('NEG-ARM: FAIL -- o leitor ACEITOU um log que nao existe '
+                f'(rc={rc}); a recusa nao esta de pe')
+            return 0
+        return rc
     n = DEFAULT_N
     secs = DEFAULT_SECS
     cadence_ms = DEFAULT_MS

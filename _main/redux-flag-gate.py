@@ -331,11 +331,19 @@ MUTANTS = [
     ("hard-rule", "engine",
      'self.enabled and self.runner_available and self.model_available',
      'self.enabled'),
+    # REBASELINED 2026-11-12: o `_fallback` REAL ganhou `self.last_payload = None`
+    # (D-23-bis: a falha nao herda o pedido do produtor que morreu) e a ancora
+    # antiga deixou de casar -- o gate dizia, com razao,
+    # `SETUP: anchor NOT FOUND for mutant 'fail-safe'` e o passo
+    # `control-redux-flag-neg-arm` ficava RED por um controlo que nao se construia.
+    # A mutacao e' a MESMA (o fallback devolve False, isto e', fabrica "hidden"),
+    # e e' isso que a claim `fail-safe` proibe.
+    # A ANCORA E' O CORPO, NAO A ASSINATURA: entre o `def` e o primeiro
+    # `self.fallbacks += 1` vive o docstring D-23-bis, e uma ancora que atravesse
+    # o `def` nunca casa (medido 2026-11-12, duas rodadas perdidas).
     ("fail-safe", "engine",
-     'def _fallback(self, why, age):\n        self.fallbacks += 1\n'
-     '        self.last_reason = why\n        return True, why, age',
-     'def _fallback(self, why, age):\n        self.fallbacks += 1\n'
-     '        self.last_reason = why\n        return False, why, age'),
+     '        self.last_payload = None\n        return True, why, age',
+     '        self.last_payload = None\n        return False, why, age'),
     ("payload-guarded", "worker",
      'if switch is not None:\n        done_payload.update(',
      'if True:\n        done_payload.update('),

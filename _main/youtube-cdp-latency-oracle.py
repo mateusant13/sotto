@@ -63,10 +63,18 @@ L1_BUDGET_MS = 5.0       # p95 de 1000 chamadas do tick, com transporte de 1 s
 #: (`_tid_inline`, com tecto) pela pergunta inteira (`_tid_refresh`).
 ANCHOR_INLINE = "            return self._tid_inline()\n"
 MUT_INLINE = "            return self._tid_refresh()\n"
-ANCHOR_BUDGET = "        for th in threads:\n" \
-                "            th.join(max(0.0, deadline - time.monotonic()))\n"
-MUT_BUDGET = "        for th in threads:\n" \
-             "            th.join()\n"
+# A ANCORA ACOMPANHA A POPULACAO FATIADA (2026-11-12): o laco passou a unir
+# `threads[first:]` e ganhou o ramo `deadline is None` por cima, logo a ancora
+# antiga (`for th in threads:`) aparecia 0 vezes e o `--neg-arm` respondia
+# `NEG-ARM IMPOSSIVEL` com rc=2 -- um controlo que nao corre nao e' um controlo.
+# O mutante arranca SO' o orcamento do ramo com prazo (o outro junta sem prazo
+# por desenho), que e' exactamente a metade que a arm L3 mede.
+ANCHOR_BUDGET = "        else:\n" \
+                "            for th in threads[first:]:\n" \
+                "                th.join(max(0.0, deadline - time.monotonic()))\n"
+MUT_BUDGET = "        else:\n" \
+             "            for th in threads[first:]:\n" \
+             "                th.join()\n"
 ANCHOR_STALE = "            self._tid_stale_note(now - cached[0])\n"
 MUT_STALE = "            pass\n"
 

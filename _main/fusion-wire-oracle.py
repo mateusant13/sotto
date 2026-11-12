@@ -46,6 +46,7 @@ import importlib.util as _iu
 import io
 import json
 import os
+import re
 import sys
 import time
 import types
@@ -135,7 +136,32 @@ def build(source, fusion_mod):
     for name in ('fusion_enabled', '_fusion_module', 'fuse_caption', '_fusion_key'):
         exec(compile(extract_function(source, name),
                      '<fusion-wire:%s>' % name, 'exec'), ns)
+    # A IDADE DO AUDIO QUE A LINHA CARREGA (2026-11-12): o `on_worker_caption`
+    # REAL chama `live_paint_age_s(meta, epoch)` desde que o `tap_ms` passou a
+    # viajar ate' a pintura (`CAPTION_PAINT_LAG`), e o `ns` deste duplo nao
+    # conhecia nem ela nem os dois helpers puros dela -- o passo morria em
+    # `NameError: live_paint_age_s`. Sao funcoes sem estado (nenhuma abre
+    # dispositivo, nenhuma toca em audio): executam-se, nao se reimplementam.
+    ns['_SKIP'] = object()
+    #: o piso que o `live_paint_stale` usa por omissao, lido do FONTE e ligado
+    #: ao `ns` ANTES do `exec` que compila a funcao: a assinatura resolve o
+    #: default no momento da compilacao, e um valor escrito aqui a mao seria um
+    #: segundo numero a envelhecer sozinho.
+    _bound = re.search(r'^LIVE_PAINT_MAX_AGE_S\s*=\s*([0-9.]+)', source,
+                       re.M)
+    ns['LIVE_PAINT_MAX_AGE_S'] = float(_bound.group(1)) if _bound else 8.0
+    for name in ('_measured_age', 'live_paint_age_s', '_is_number',
+                 'live_paint_stale'):
+        exec(compile(extract_function(source, name),
+                     '<fusion-wire:%s>' % name, 'exec'), ns)
+    # A POSSE DO ECRAN E' LIDA PELA LINHA (2026-11-12). O
+    # `on_worker_caption` REAL passou a perguntar `external_owner_refuses(source)`
+    # antes de pintar (D-23, 2026-11-12) e este duplo nao tinha o metodo: o passo
+    # `fusion-wire` morria em `AttributeError: 'FakeShell' object has no attribute
+    # 'external_owner_refuses'` -- a fusao deixava de ser julgada porque a guarda
+    # de posse mudou de forma. O corpo executado e' o do PRODUTO.
     methods = '\n\n'.join([extract_method(source, '_fusion_caption'),
+                           extract_method(source, 'external_owner_refuses'),
                            extract_method(source, 'on_worker_caption')])
     exec(compile(methods, '<fusion-wire:methods>', 'exec'), ns)
     return ns, logs
@@ -146,6 +172,12 @@ class FakeShell:
 
     external_captions_active = False
     CAPTION_BUDGET_MS = 1500
+    #: a POSSE do ecra, como na shell real: `local` deixa a linha local pintar,
+    #: `player` a recusa. O duplo nasce do lado que deixa pintar -- o braco da
+    #: fusao julga o texto, nao a posse, e a posse tem o seu proprio oraculo.
+    external_owner = 'local'
+    external_owner_episode = 0
+    _asr_owner_episode = False
 
     def __init__(self):
         self.bridge = object()
@@ -191,6 +223,8 @@ class FakeShell:
 def make_shell(ns):
     shell = FakeShell()
     shell._fusion_caption = types.MethodType(ns['_fusion_caption'], shell)
+    shell.external_owner_refuses = types.MethodType(
+        ns['external_owner_refuses'], shell)
     shell.on_worker_caption = types.MethodType(ns['on_worker_caption'], shell)
     return shell
 
@@ -362,20 +396,31 @@ def run_arms(source, fusion_mod):
         os.environ['SOTTO_FUSION'] = switch_was
 
 
-CALL_SITE = (
-    "        _fuse = getattr(self, '_fusion_caption', None)\n"
-    "        if _fuse is not None:\n"
-    "            text = _fuse(text, meta)\n"
+#: O CALL SITE CARREGA O EOL DO FICHEIRO (medido 2026-11-12): o shell e' CRLF
+#: e esta ancora, escrita com `\n`, respondia `NEG-ARM: FAIL -- o call site nao
+#: foi encontrado no fonte (a copia nao mudou nada)` -- o controlo reprovava
+#: por cegueira propria e o passo `red-as-expected-fusion-wire` ficava RED. A
+#: ancora e' a MESMA linha de produto; o separador vem do fonte.
+_CALL_SITE_LINES = (
+    "        _fuse = getattr(self, '_fusion_caption', None)",
+    "        if _fuse is not None:",
+    "            text = _fuse(text, meta)",
 )
+
+
+def call_site_block(source):
+    eol = '\r\n' if '\r\n' in source else '\n'
+    return eol.join(_CALL_SITE_LINES) + eol
 
 
 def neg_arm(source, fusion_mod):
     """Remove the call site in a COPY; the correction arm must go RED."""
-    if CALL_SITE not in source:
+    site = call_site_block(source)
+    if site not in source:
         print('NEG-ARM: FAIL -- o call site nao foi encontrado no fonte '
               '(a copia nao mudou nada)')
         return 2
-    mutated = source.replace(CALL_SITE, '', 1)
+    mutated = source.replace(site, '', 1)
     if mutated == source:
         print('NEG-ARM: FAIL -- a mutacao nao alterou o fonte')
         return 2
