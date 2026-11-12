@@ -117,10 +117,27 @@ VERDICT: PASS -- 21/21 arm(s)
 real 0m0.469s
 ```
 
-**Estado.** corrigido no oráculo desta campanha. `_main/audio-back-detector-oracle.py:62-84` e
+**Estado.** corrigido em dois sítios medidos. `_main/audio-back-detector-oracle.py:62-84` e
 `_main/ctrlspace-swallow-oracle.py:619` já tinham pago e documentado a mesma conta; os outros 38
 ficheiros que chamam `ast.get_source_segment` **não foram medidos** — só um passo caro os denuncia.
-O que fecharia: um censo AST que recuse `get_source_segment` dentro de um laço sobre `ast.walk`.
+
+O segundo sítio medido, e o mais caro: `_main/gaming-hotkey-oracle.py:class_methods` extraía os
+métodos de `SottoShell` um a um. A/B na mesma fonte (2026-11-11):
+
+```
+methods=214 old=52.105s new=0.8521s identical=True diffs=0
+```
+
+61× mais barato, e **byte-idêntico** — a arm que importa, porque a emulação erra fácil:
+`get_source_segment` **não** é um `dedent`. A primeira linha começa na coluna do nó e a última corta
+na coluna final, e a indentação das linhas do meio **fica como está**; foi isso que fez a primeira
+tentativa (com `textwrap.dedent`) rebentar em `IndentationError: unexpected indent` no `ast.parse` do
+fragmento, apanhado pelo `--neg-arm` do próprio oráculo antes de qualquer commit. Medido depois:
+`GAMING-HOTKEY GREEN -- arms=56 pass=56 fail=0` (rc=0) e `NEG-ARM PASS -- 5/5` (rc=1), com o passo
+negativo de **116,4 s → 57,7 s**.
+
+O que fecharia a classe: um censo AST que recuse `get_source_segment` dentro de um laço sobre
+`ast.walk`/`cls.body`. Não está escrito: hoje só um passo caro denuncia.
 
 ## D-04 — a primeira legenda paga a carga do modelo
 

@@ -59,8 +59,8 @@ hotkey, o vigia de VRAM, o seguidor de arrasto, o monitor de carga...). O segund
 
 Três ficheiros dentro de `worker/` **não são produto**: `_prefix_audioflag.py` (4 511 linhas),
 `_sotto_worker_agcinert.py` (2 561) e `runs/_verdict-order-mutant.py` são cópias CONGELADAS do
-worker usadas como mutantes por oráculos. Ver `10-DEFECTS.md` §D-01 — dois deles não estão no git,
-e um oráculo depende deles.
+worker usadas como mutantes por oráculos. Os dois últimos não estavam no git e entravam no índice em
+2026-11-11 (`10-DEFECTS.md` §D-01 — `git ls-files` devolve os três desde então).
 
 ## A regra que este directorio respeita
 

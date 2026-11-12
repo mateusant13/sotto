@@ -149,9 +149,26 @@ def class_methods(source, cls_name, names):
     if cls is None:
         return {}
     out = {}
+    # `ast.get_source_segment` re-parte a fonte INTEIRA por chamada: medido com cProfile
+    # aqui, 2,5 s em 6 chamadas, e 57,3 s para as 214 funcoes de `SottoShell` (2026-11-11).
+    # A tabela de linhas e' uma so' para o ficheiro todo e a fatia e' aritmetica. O
+    # contrato e' o do original com `padded=False`: a PRIMEIRA linha comeca na coluna do
+    # nome e a ultima corta na coluna final -- nao e' um `dedent` (a indentacao das
+    # linhas do meio fica como esta', e e' isso que faz o `ast.parse` do fragmento valer).
+    lines = source.splitlines(keepends=True)
     for node in cls.body:
         if isinstance(node, ast.FunctionDef) and node.name in names:
-            out[node.name] = ast.get_source_segment(source, node) or ""
+            lineno = node.lineno - 1
+            end_lineno = (getattr(node, 'end_lineno', None) or node.lineno) - 1
+            col = node.col_offset
+            end_col = getattr(node, 'end_col_offset', None)
+            if end_col is None:
+                out[node.name] = ast.get_source_segment(source, node) or ""
+            elif lineno == end_lineno:
+                out[node.name] = lines[lineno][col:end_col]
+            else:
+                out[node.name] = (lines[lineno][col:] + ''.join(lines[lineno + 1:end_lineno])
+                                  + lines[end_lineno][:end_col])
     return out
 
 
