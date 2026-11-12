@@ -1,0 +1,25 @@
+CENSUS panel-startup-flash start=2026-10-11T20:23:26Z pythonw=C:\Program Files\Python311\pythonw.exe arms=live,nogate n=20 cadence_ms=25.0 secs=5.0
+HOUSE-CENSUS note: the 60 s grid cannot see this defect; this instrument samples at 25 ms.
+VARIANT path=_flash-offscreen-sotto_webview.py sha256_live=933aa193a111ee2f edits=["self.geometry = dock_right(self.display['workArea'])"]
+VARIANT path=_flash-live-sotto_webview.py sha256_live=933aa193a111ee2f edits=["self.geometry = dock_right(self.display['workArea'])"]
+VARIANT path=_flash-nogate-sotto_webview.py sha256_live=933aa193a111ee2f edits=["self.geometry = dock_right(self.display['workArea'])", 'self._gate_form_show(form)']
+=== ARM live shell=_flash-live-sotto_webview.py on_screen=false n=20 cadence_ms=25 secs=5.0 extra=[] ===
+LAUNCH live 0/20 rc=0 samples=177 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False
+LAUNCH live 1/20 rc=0 samples=148 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False
+LAUNCH live 2/20 rc=0 samples=146 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False
+LAUNCH live 3/20 rc=0 samples=119 mech=13 owner=13 occluded=0 longest_mech_ms=561 longest_owner_ms=561 at_startup=False on_screen=False first_episode t=3282-3843 ms log_n=44 last_line="sotto: TRAY_MENU [1]='Open panel' [3]='Edit caption position' [sep] [2]='Quit Sotto'"
+LAUNCH live 4/20 rc=0 samples=76 mech=13 owner=13 occluded=0 longest_mech_ms=663 longest_owner_ms=663 at_startup=False on_screen=False first_episode t=743-1406 ms log_n=25 last_line='sotto: PANEL_VISIBILITY_INVARIANT armed=true where=before_show hwnd=50144110'
+LAUNCH live 5/20 rc=0 samples=85 mech=10 owner=10 occluded=0 longest_mech_ms=422 longest_owner_ms=422 at_startup=False on_screen=False first_episode t=1449-1871 ms log_n=44 last_line="sotto: TRAY_MENU [1]='Open panel' [3]='Edit caption position' [sep] [2]='Quit Sotto'"
+LAUNCH live 6/20 rc=0 samples=163 mech=0 owner=0 occluded=1 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False first_episode t=763-763 ms log_n=25 last_line='sotto: PANEL_VISIBILITY_INVARIANT armed=true where=before_show hwnd=38281864'
+LAUNCH live 7/20 rc=0 samples=168 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False
+LAUNCH live 8/20 rc=0 samples=182 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False
+LAUNCH live 9/20 rc=0 samples=185 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False
+LAUNCH live 10/20 rc=0 samples=175 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False
+LAUNCH live 11/20 rc=0 samples=165 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False
+LAUNCH live 12/20 rc=0 samples=185 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False
+LAUNCH live 13/20 rc=0 samples=187 mech=0 owner=0 occluded=1 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False first_episode t=748-748 ms log_n=27 last_line='sotto: PANEL_VISIBILITY_INVARIANT armed=true where=before_show hwnd=32449276'
+LAUNCH live 14/20 rc=0 samples=186 mech=0 owner=0 occluded=1 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False first_episode t=713-713 ms log_n=25 last_line='sotto: PANEL_VISIBILITY_INVARIANT armed=true where=before_show hwnd=4134678'
+LAUNCH live 15/20 rc=0 samples=190 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False
+LAUNCH live 16/20 rc=0 samples=197 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False
+LAUNCH live 17/20 rc=0 samples=188 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False
+LAUNCH live 18/20 rc=0 samples=188 mech=0 owner=0 occluded=0 longest_mech_ms=0 longest_owner_ms=0 at_startup=False on_screen=False

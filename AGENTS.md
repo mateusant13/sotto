@@ -637,15 +637,21 @@ Todos corrigidos; ficam como regra. Tabela completa em **`docs/modelo-e-decode.m
 120 linhas nao vazias de medicoes com instrumento e data (contadas em 2026-10-25; o ficheiro tem
 123 linhas, as outras sao vazias. Eram 119 quando este numero nasceu). As que mais custam quando esquecidas:
 
-- **O painel no arranque esta numa CONTRADICAO que ninguem resolveu** (reposta 2026-10-24: a
-  condensagem de 748 -> 205 linhas de 2026-10-21 apagou esta nota e o portao
-  `panel-flash-contradiction-oracle.py` ficou vermelho, como devia). Dois lados do mesmo instrumento:
-  o censo de 25 ms mede `live` 0/20 com a janela mapeada (4/20 sem a cura).
-  o bullet histórico do mesmo instrumento mede 18/20 e 88/130 amostras visiveis.
-  É **NÃO reconciliada** -- e ninguem escolhe um lado antes de acreditar num dos dois. Instrumento:
-  `_main/panel-startup-flash-census.py`. (`run.cmd` cita ainda um terceiro numero do mesmo
-  instrumento, 11 de 20, tambem por reconciliar -- esta e a razao de a nota viver no AGENTS.md e nao
-  so em `docs/`.)
+- **O numero do painel no arranque TEM POPULACAO, e era ela que faltava** (medido 2026-11-12, sem
+  re-correr o censo: a ordem do dono proibe). O unico log que sobreviveu e' o de 2026-10-11
+  (`_main/fixtures/panel-startup-flash-census-20261011.log`), e o leitor puro do proprio censo diz
+  o que ele mediu: `python _main/panel-startup-flash-census.py --read <log>` ->
+  `ARM-SUMMARY-READ arm=live launches=19/20 launches_with_mech=3/19 launches_at_startup=0/19
+  longest_mech_ms=663`. Ou seja: o shell CURADO pintou em **3 de 19** arranques, e **nenhum**
+  episodio foi no arranque -- os tres caem depois de `PANEL_VISIBILITY_INVARIANT`, dois deles logo
+  apos o `TRAY_MENU`. Os outros numeros da nota antiga sao OUTRAS populacoes: **18/20** pertence ao
+  braco `nogate-nonet` (cura E rede arrancadas), que o docstring do censo nomeia; e **0/20** (mais o
+  `11 de 20` do `run.cmd`) nao tem log em disco, logo valem `UNMEASURED aqui` -- nao se re-medem por
+  ordem dele. O que escondeu isto durante um mes foi o INSTRUMENTO: o `log()` dele abria o ficheiro
+  com `'w'` a cada linha, entao cada invocacao **apagava o log** da anterior (medido: um `--read`
+  deixou **42 B** de um log de **4 073 B**). Corrigido: append com uma rotacao, e o `--read` imprime
+  sem escrever. Portao: `_main/panel-flash-contradiction-oracle.py`, que passou a exigir a
+  POPULACAO de cada numero (braco + log) e recusa a frase congelada.
 
 - **A legenda que o dono VE e a NATIVA** (`caption_overlay.py`), nao o `caption.html`: corrigir CSS
   em `app/panel/` **nao chega ao ecra** nessa via.
@@ -676,6 +682,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 04:0x):** `_main\_audit-verify-all.cmd` = **364386 B**,
+ **4208 CRLF** / 0 bare LF, sha256 `21F0716DC40D291F07CD64F1CB5709DE8B13EE62EF86278604472921E91ED53A`.
+ (Mil duzentos e trinta e seis bytes e DOZE linhas a mais do que o pin de 363150 B: o par
+ `panel-flash-read` + `red-as-expected-panel-flash-read`, o LEITOR PURO do censo do painel. Ele le o
+ unico log sobrevivente (`_main\fixtures\panel-startup-flash-census-20261011.log`) e publica a
+ POPULACAO de cada numero -- braco, arranques, fase -- sem largar nada nem abrir janela; e o negativo
+ exige `rc=3` + `READ REFUSED` para um log que nao existe, porque ler um ficheiro ausente como zero e
+ exatamente o defeito que o D-07 descreve. Medido: o positivo da
+ `ARM-SUMMARY-READ arm=live launches=19/20 launches_with_mech=3/19 launches_at_startup=0/19`;
+ o mesmo comando sobre um ficheiro ausente da `READ REFUSED` e rc=3; e o `--read` deixa o log
+ byte-a-byte igual (`cmp` = `EVIDENCE UNTOUCHED`), que e a cura do D-08.)
 - **PIN do ficheiro (medido 2026-11-12, 03:3x):** `_main\_audit-verify-all.cmd` = **363150 B**,
  **4196 CRLF** / 0 bare LF, sha256 `5113ED107C34578563BBD5C22BC903B7CCB4E311CF9D2D966C73B339A9EC888F`.
  (Mil quatrocentos e vinte e dois bytes e CATORZE linhas a mais do que o pin de 361728 B: o par

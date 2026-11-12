@@ -2568,6 +2568,18 @@ if exist _main\panel-flash-contradiction-oracle.py (
   call :step red-as-expected-panel-flash-contradiction 1 "_main\panel-flash-contradiction-oracle.py;AGENTS.md" "%OUT%\panel-flash-contradiction-neg.log" python _main\panel-flash-contradiction-oracle.py --neg-arm
   call :expectred red-as-expected-panel-flash-contradiction !STEP_RC! "%OUT%\panel-flash-contradiction-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-panel-flash-contradiction MISSING "%OUT%\panel-flash-contradiction-neg.log" "NEG-ARM PASS" )
+REM O LEITOR PURO do censo do painel: le o UNICO log sobrevivente e publica a POPULACAO de cada
+REM numero (braco, arranques, fase). Nao lanca nada, nao abre janela -- e o passo que impede um
+REM numero sem braco de voltar a circular (D-07 do ledger).
+if exist _main\panel-startup-flash-census.py (
+  call :step panel-flash-read 0 "_main\panel-startup-flash-census.py;_main\fixtures\panel-startup-flash-census-20261011.log" "%OUT%\panel-flash-read.log" python _main\panel-startup-flash-census.py --read _main\fixtures\panel-startup-flash-census-20261011.log
+  call :record panel-flash-read !STEP_RC!
+) else ( call :record panel-flash-read MISSING )
+REM O NEGATIVO DO LEITOR: um log que nao existe tem de ser RECUSADO (rc=3), nunca lido como zero.
+if exist _main\panel-startup-flash-census.py (
+  call :step red-as-expected-panel-flash-read 3 "_main\panel-startup-flash-census.py" "%OUT%\panel-flash-read-neg.log" python _main\panel-startup-flash-census.py --read _main\fixtures\nao-existe-censo.log
+  call :expectred red-as-expected-panel-flash-read !STEP_RC! "%OUT%\panel-flash-read-neg.log" "READ REFUSED"
+) else ( call :expectred red-as-expected-panel-flash-read MISSING "%OUT%\panel-flash-read-neg.log" "READ REFUSED" )
 if exist _main\per-app-source-plumbing-oracle.py (
   call :step per-app-source-plumbing 0 "_main\per-app-source-plumbing-oracle.py;worker\sotto_worker.py" "%OUT%\per-app-source-plumbing.log" python _main\per-app-source-plumbing-oracle.py
   call :record per-app-source-plumbing !STEP_RC!

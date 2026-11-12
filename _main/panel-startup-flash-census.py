@@ -67,6 +67,7 @@ from __future__ import annotations
 import ctypes
 import hashlib
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -84,6 +85,7 @@ GW_OWNER = 4
 DEFAULT_MS = 25.0
 DEFAULT_SECS = 5.0
 DEFAULT_N = 20
+LOG_ROTATE_BYTES = 4 * 1024 * 1024
 
 user32 = ctypes.WinDLL('user32', use_last_error=True)
 kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -94,9 +96,32 @@ _lines: list[str] = []
 
 
 def log(msg: str) -> None:
+    """Print the line, and APPEND it to this instrument's evidence file.
+
+    APPEND, NOT REWRITE. This function used to open the file with 'w' once per
+    line, which made every invocation of this instrument destroy the previous
+    run's log. Measured 2026-11-12: a `--read` of the 2026-10-11 run left the
+    file at **42 bytes** where it had carried 19 launches, and the run that
+    produced the numbers AGENTS.md argues about no longer existed anywhere —
+    the file is git-ignored, so the evidence was gone. An instrument that
+    erases the thing it measures cannot settle a disagreement about it.
+
+    The file is rotated once to `<name>.1` when it passes `LOG_ROTATE_BYTES`,
+    so growth is bounded AND the previous generation survives.
+    """
     _lines.append(msg)
-    with open(LOG, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(_lines) + '\n')
+    try:
+        if os.path.exists(LOG) and os.path.getsize(LOG) > LOG_ROTATE_BYTES:
+            prev = LOG + '.1'
+            if os.path.exists(prev):
+                os.remove(prev)
+            os.replace(LOG, prev)
+        with open(LOG, 'a', encoding='utf-8') as f:
+            f.write(msg + '\n')
+    except OSError as exc:
+        # A log we cannot write is worth a word on stdout, never a crash and
+        # never a silent pass.
+        print(f'CENSUS-LOG-WRITE-FAILED {exc}', flush=True)
     print(msg, flush=True)
 
 
@@ -510,8 +535,78 @@ def phase_of(last_line: str) -> str:
     return 'before-startup-markers'
 
 
+LAUNCH_RE = re.compile(
+    r'^LAUNCH (?P<tag>[A-Za-z0-9_-]+) (?P<i>\d+)/(?P<n>\d+) rc=(?P<rc>-?\d+) '
+    r'samples=(?P<samples>\d+) mech=(?P<mech>\d+) owner=(?P<owner>\d+) '
+    r'occluded=(?P<occ>\d+) longest_mech_ms=(?P<lmm>[0-9.]+) '
+    r'longest_owner_ms=(?P<lom>[0-9.]+) at_startup=(?P<startup>True|False)')
+
+
+def say(msg: str) -> None:
+    """`--read` speaks on stdout only: reading evidence must never write it."""
+    print(msg, flush=True)
+
+
+def read_log(path: str) -> int:
+    """Summarise an EXISTING census log. Launches nothing, opens no window.
+
+    A census number is worth what its POPULATION says: which arm, how many
+    launches, and at which phase. This mode makes a log's numbers citable
+    without the owner's screen and without re-running the census, which the
+    owner stop order forbids. It prints ONE line per arm, and the line names the
+    log it came from.
+    """
+    if not os.path.exists(path):
+        say(f'READ REFUSED: no such log {path}')
+        return 3
+    arms: dict = {}
+    with open(path, encoding='utf-8', errors='replace') as f:
+        for raw in f:
+            m = LAUNCH_RE.match(raw.strip())
+            if not m:
+                continue
+            d = m.groupdict()
+            a = arms.setdefault(d['tag'], {'n': int(d['n']), 'runs': 0,
+                                           'mech_runs': 0, 'owner_runs': 0,
+                                           'samples': 0, 'mech': 0, 'owner': 0,
+                                           'occ': 0, 'lmm': 0.0, 'lom': 0.0,
+                                           'at_startup': 0, 'on_screen': 0})
+            a['runs'] += 1
+            a['mech_runs'] += 1 if int(d['mech']) > 0 else 0
+            a['owner_runs'] += 1 if int(d['owner']) > 0 else 0
+            a['samples'] += int(d['samples'])
+            a['mech'] += int(d['mech'])
+            a['owner'] += int(d['owner'])
+            a['occ'] += int(d['occ'])
+            a['lmm'] = max(a['lmm'], float(d['lmm']))
+            a['lom'] = max(a['lom'], float(d['lom']))
+            a['at_startup'] += 1 if d['startup'] == 'True' else 0
+            a['on_screen'] += 1 if 'on_screen=True' in raw else 0
+    if not arms:
+        say(f'READ EMPTY: {path} carries no LAUNCH line with the current '
+            f'shape — a number from a log this reader cannot parse is not a '
+            f'number')
+        return 3
+    say(f'CENSUS-READ log={os.path.basename(path)} '
+        f'sha256={hashlib.sha256(open(path, "rb").read()).hexdigest()[:16]} '
+        f'arms={",".join(sorted(arms))}')
+    for tag in sorted(arms):
+        a = arms[tag]
+        say(f'ARM-SUMMARY-READ arm={tag} launches={a["runs"]}/{a["n"]} '
+            f'launches_with_mech={a["mech_runs"]}/{a["runs"]} '
+            f'launches_with_owner={a["owner_runs"]}/{a["runs"]} '
+            f'launches_at_startup={a["at_startup"]}/{a["runs"]} '
+            f'arm_on_screen_flag={a["on_screen"]}/{a["runs"]} '
+            f'samples={a["samples"]} mech_samples={a["mech"]} '
+            f'owner_samples={a["owner"]} occluded_samples={a["occ"]} '
+            f'longest_mech_ms={a["lmm"]:.0f} longest_owner_ms={a["lom"]:.0f}')
+    return 0
+
+
 def main() -> int:
     a = sys.argv[1:]
+    if '--read' in a:
+        return read_log(a[a.index('--read') + 1])
     n = DEFAULT_N
     secs = DEFAULT_SECS
     cadence_ms = DEFAULT_MS

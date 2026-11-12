@@ -22,6 +22,8 @@ funcionar pela mão do dono).
 | D-04 | cada abertura paga uma carga de motor quente (7,5–26,0 s, ~1 GB) que expira em 600 s antes de a vez dela chegar — as aberturas distam horas | ALTO | aberto, com a escolha nomeada (TTL vs pedir por evidência) |
 | D-05 | o portão do relógio julgava 36 de 449 passos quando invocado sem `--policy`, e o RED descrevia a invocação | MÉDIO | **corrigido** — recusa `CANNOT-MEASURE` (rc 2) antes de escrever; 6 arms; neg-arm 6/6 |
 | D-06 | a bateria presa a `cap40` soma 2 470,3 s em 413 passos (o portão julga 2 293,3 s), contra um alvo declarado de 60 s | MÉDIO | aberto, com a cauda nomeada |
+| D-07 | o número do painel no arranque circulou em QUATRO versões sem população (braço/arranques/fase), e o portão exigia a contradição em vez de resolvê-la | ALTO | **corrigido** — leitor puro `--read`, fixture do único log vivo, portão re-escrito; neg-arm 3/3 |
+| D-08 | o censo do painel abria o próprio log com `'w'` a cada linha: **cada invocação apagava a evidência da anterior** (4 073 B → 42 B, medido) | ALTO | **corrigido** — append com rotação, `--read` imprime sem escrever |
 
 ---
 
@@ -314,6 +316,107 @@ declarado da casa é 60 s a quente; a soma é **38×** o alvo (2 293,3 / 60).
 voltar a medir com `battery-budget --baseline --rebase-policy <razao>`, com o número de ANTES
 (2 293,3 s) ao lado.
 
+---
+
+## D-07 — quatro números do mesmo instrumento, nenhum com população
+
+**Antes.** `AGENTS.md` carregava uma nota que dizia, com todas as letras, que o painel no arranque
+estava numa **contradição que ninguém resolveu**, e listava três leituras do *mesmo* instrumento:
+`live` **0/20** com a janela mapeada (4/20 sem a cura), **18/20** e **88/130** amostras visíveis, e
+o `run.cmd` citava ainda **11 de 20**. Nenhuma das três dizia contra qual braço, quantos arranques
+executados, ou em que fase do arranque o episódio caiu. E o portão
+(`_main/panel-flash-contradiction-oracle.py`) **exigia** o estado congelado: as armas eram as duas
+frases, os três números, a palavra `NÃO reconciliada` e a frase "ninguém escolhe um lado". Ele
+passou por um mês — enquanto os logs que sustentavam os números eram apagados (D-08).
+
+**A resolução veio da população, não de uma nova medição** (a ordem do dono proíbe re-correr o
+censo). O único log sobrevivente é o de 2026-10-11, agora fixado em
+`_main/fixtures/panel-startup-flash-census-20261011.log`, e o leitor puro que este defeito trouxe lê
+o que ele de fato mediu:
+
+```
+$ python _main/panel-startup-flash-census.py --read _main/fixtures/panel-startup-flash-census-20261011.log
+CENSUS-READ log=panel-startup-flash-census-20261011.log sha256=2f2c641959b3db02 arms=live
+ARM-SUMMARY-READ arm=live launches=19/20 launches_with_mech=3/19 launches_with_owner=3/19
+                 launches_at_startup=0/19 arm_on_screen_flag=0/19 samples=3110
+                 mech_samples=36 owner_samples=36 occluded_samples=3
+                 longest_mech_ms=663 longest_owner_ms=663
+rc=0
+```
+
+Três consequências, cada uma uma frase nova na lei:
+
+1. O shell **curado** pintou em **3 de 19** arranques — não 0/20. `0/20` descreve uma corrida cujo
+   log não existe: vale `UNMEASURED aqui`.
+2. **Nenhum** episódio foi no arranque (`launches_at_startup=0/19`). Nos três, a linha de log
+   corrente do shell era `PANEL_VISIBILITY_INVARIANT armed=true where=before_show` e, em dois deles,
+   o `TRAY_MENU` — ou seja o que aparece não é o flash de arranque que a nota nomeava, é a dança do
+   painel **depois** de o shell já estar de pé. `18/20` é o braço `nogate-nonet` (cura **e** rede
+   arrancadas, como o docstring do censo diz): é o número de ANTES da cura, não um rival do número
+   de depois.
+3. Um número sem braço, sem arranques e sem fase não é um número — é uma frase.
+
+**Depois.** O portão foi re-escrito para exigir a população: A1 nomeia o instrumento, A2 o leitor
+puro, A3 o log sobrevivente, A4 as duas figuras do braço `live` com fase, A5 o `18/20` ao lado do
+seu braço, A6 `UNMEASURED` ao lado de todo número sem log, A7 **recusa** a frase congelada, A8 exige
+que a destruição da evidência esteja no registo (para o próximo instrumento não a repetir).
+
+```
+$ python _main/panel-flash-contradiction-oracle.py
+VERDICT: PASS -- every flash number names its arm, its launch count and its phase; the surviving log
+is citable without re-running the census, and the frozen contradiction is gone            rc=0
+
+$ python _main/panel-flash-contradiction-oracle.py --neg-arm
+  caught M1-A4 by A4   caught M2-A7 by A7   caught M3-A5 by A5
+NEG-ARM PASS: 3/3 mutants, each caught by its own arm                                     rc=1
+```
+
+Cada mutante é apanhado **pela sua própria arma** — apagar a fase derruba A4, repor a frase
+congelada derruba A7, tirar o nome do braço do `18/20` derruba A5 — e o negativo devolve `1` ao
+apanhar, que é a convenção desta casa (um negativo que devolve 0 é um controlo que não pode falhar).
+
+**Estado.** corrigido. O que continua `UNMEASURED`: se o painel aparece na tela do dono no arranque,
+e por quanto tempo. Fechar isso exige uma corrida do shell dele — e a nota agora diz o que fazer com
+esse número quando ele existir: braço, arranques, fase, arquivo.
+
+## D-08 — o instrumento apagava a própria evidência
+
+**Antes.** `_main/panel-startup-flash-census.py` gravava cada linha assim:
+
+```
+def log(msg: str) -> None:
+    _lines.append(msg)
+    with open(LOG, 'w', encoding='utf-8') as f:     # <-- 'w', POR LINHA
+        f.write('\n'.join(_lines) + '\n')
+```
+
+O `'w'` é correto **dentro** de uma corrida (o buffer `_lines` é a fonte) e destrutivo **entre**
+corridas: a primeira linha de uma invocação nova trunca o ficheiro. Medido em 2026-11-12, ao
+adicionar o modo `--read`: um `--read` inocente deixou o log de 2026-10-11 com **42 B**, onde havia
+**4 073 B** e 19 arranques. O ficheiro é `*.log` e o `.gitignore` o exclui, portanto a evidência não
+existia em mais lado nenhum.
+
+É a mesma classe que a casa já pagou três vezes (um instrumento cujo positivo só sabe falar por uma
+janela real; um portão que acusa quem está certo; um oráculo que devolve sucesso quando o próprio
+input é `None`): **um instrumento que apaga aquilo que mede não pode resolver uma discussão sobre a
+medição.**
+
+**Depois.** `log()` faz *append*, com **uma** rotação para `<nome>.1` acima de 4 MiB, e um
+`OSError` escreve `CENSUS-LOG-WRITE-FAILED` no stdout em vez de desaparecer; `--read` fala por
+`print` e nunca toca no ficheiro. Prova de que a leitura não escreve:
+
+```
+$ cp <fixture> /i/cc-tmp/flash-before.log
+$ python _main/panel-startup-flash-census.py --read <fixture> > /dev/null
+$ cmp /i/cc-tmp/flash-before.log <fixture> && echo "EVIDENCE UNTOUCHED"
+EVIDENCE UNTOUCHED
+```
+
+**Estado.** corrigido, com a reconstrução declarada: o fixture de 2026-10-11 é uma **cópia verbatim**
+do log impresso por `cat` antes de ele ser truncado, e o cabeçalho do ledger diz isso — um fixture
+que se apresenta como original quando não é seria o defeito D-08 em roupas novas.
+
+---
 ---
 
 ## O que este ledger NÃO afirma
