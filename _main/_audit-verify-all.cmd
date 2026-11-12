@@ -1917,11 +1917,11 @@ REM `:__battery_cage` + `if errorlevel 1 exit /b 1`. Este par julga as DUAS form
 REM no cmd real (`_main\fixtures\cage-rc\old.cmd` tem de dar 0, `new.cmd` tem de dar 1, com o
 REM mesmo filho a sair 1). Nao lanca janela, audio nem modelo: dois `.cmd` de tres linhas.
 if exist _main\cage-rc-oracle.py (
-  call :step cage-rc 0 "_main\cage-rc-oracle.py;_main\fixtures\cage-rc\old.cmd;_main\fixtures\cage-rc\new.cmd;_main\_audit-verify-all.cmd" "%OUT%\cage-rc.log" python _main\cage-rc-oracle.py
+  call :step cage-rc 0 "_main\cage-rc-oracle.py;_main\hidden-launch.py;_main\fixtures\cage-rc\old.cmd;_main\fixtures\cage-rc\new.cmd;_main\_audit-verify-all.cmd" "%OUT%\cage-rc.log" python _main\cage-rc-oracle.py
   call :record cage-rc !STEP_RC!
 ) else ( call :record cage-rc MISSING )
 if exist _main\cage-rc-oracle.py (
-  call :step red-as-expected-cage-rc 1 "_main\cage-rc-oracle.py;_main\fixtures\cage-rc\old.cmd;_main\fixtures\cage-rc\new.cmd;_main\_audit-verify-all.cmd" "%OUT%\cage-rc-neg.log" python _main\cage-rc-oracle.py --neg-arm
+  call :step red-as-expected-cage-rc 1 "_main\cage-rc-oracle.py;_main\hidden-launch.py;_main\fixtures\cage-rc\old.cmd;_main\fixtures\cage-rc\new.cmd;_main\_audit-verify-all.cmd" "%OUT%\cage-rc-neg.log" python _main\cage-rc-oracle.py --neg-arm
   call :expectred red-as-expected-cage-rc !STEP_RC! "%OUT%\cage-rc-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-cage-rc MISSING "%OUT%\cage-rc-neg.log" "NEG-ARM: PASS" )
 REM O LARGADOR DA BATERIA JULGA O PROPRIO rc (2026-11-12). O `battery-run.py` passa a viver
@@ -3445,7 +3445,7 @@ call :expectred red-as-expected-live-code-freshness !STEP_RC! "%OUT%\live-code-f
 ) else ( call :record live-code-freshness-control MISSING )
 
 if exist _main\load-shedding-oracle.py (
-call :step always load-shedding 0 "_main\load-shedding-oracle.py;app\webview\load_shedding.py;app\webview\sotto_webview.py;worker\sotto_worker.py;worker\engine_switch.py;worker\engine_policy.py" "%OUT%\load-shedding.log" python _main\load-shedding-oracle.py
+call :step always load-shedding 0 "_main\load-shedding-oracle.py;app\webview\load_shedding.py;app\webview\sotto_webview.py;app\webview\batch_queue.py;worker\sotto_worker.py;worker\engine_switch.py;worker\engine_policy.py" "%OUT%\load-shedding.log" python _main\load-shedding-oracle.py
 call :record load-shedding !STEP_RC!
 ) else ( call :record load-shedding MISSING )
 
@@ -3496,7 +3496,7 @@ call :expectred red-as-expected-nemotron-weights !STEP_RC! "%OUT%\nemotron-weigh
 ) else ( call :expectred red-as-expected-nemotron-weights MISSING "%OUT%\nemotron-weights-neg.log" "NEG-ARM: PASS" )
 
 if exist _main\load-shedding-oracle.py (
-call :step always red-as-expected-load-shedding 1 "_main\load-shedding-oracle.py;app\webview\load_shedding.py;app\webview\sotto_webview.py;worker\sotto_worker.py;worker\engine_switch.py;worker\engine_policy.py" "%OUT%\load-shedding-neg.log" python _main\load-shedding-oracle.py --neg-arm
+call :step always red-as-expected-load-shedding 1 "_main\load-shedding-oracle.py;app\webview\load_shedding.py;app\webview\sotto_webview.py;app\webview\batch_queue.py;worker\sotto_worker.py;worker\engine_switch.py;worker\engine_policy.py" "%OUT%\load-shedding-neg.log" python _main\load-shedding-oracle.py --neg-arm
 call :expectred red-as-expected-load-shedding !STEP_RC! "%OUT%\load-shedding-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-load-shedding MISSING "%OUT%\load-shedding-neg.log" "NEG-ARM PASS" )
 

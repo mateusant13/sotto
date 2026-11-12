@@ -682,6 +682,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 20:1x):** `_main\_audit-verify-all.cmd` = **377820 B**,
+  **4352 CRLF** / 0 bare LF, sha256 `949BE4E3B6FDE99330AAA3CA90787DC4849E9A2B265ED6A02E50DA5ABBED354F`.
+  (Cem bytes e ZERO linhas a mais do que o pin de 377720 B: DUAS dependencias que faltavam, a classe
+  do `panel-deps` outra vez. O par `load-shedding`/`red-as-expected-load-shedding` MUTA
+  `app\webview\batch_queue.py` e nao o nomeava -- a arm `cede` muta o `self._kill(child)` do
+  executor, e um passo em cache reimprimiria um PASS sobre uma fila que ja' mudou. O par `cage-rc`
+  passou a correr os fixtures pelo `_main\hidden-launch.py` (o censo classificava o
+  `subprocess.run(creationflags=...)` local como `WEAK-FLAG` e a bateria ficou RED por isso mesmo),
+  logo o helper entra nas dependencias. MEDIDO nesta rodada: `CONSOLE-AUDIT VERDICT PASS -- 0
+  sitio(s) que abrem janela` e `CAGE-RC VERDICT: PASS (2/2 arms)` rc=0, `--neg-arm` rc=1.)
 - **PIN do ficheiro (medido 2026-11-12, 18:3x):** `_main\_audit-verify-all.cmd` = **377720 B**,
   **4352 CRLF** / 0 bare LF, sha256 `554E5FF20C3972CEFAEE5A41BD115A8C9B82EF12FC74CA8CA3595A2CD19E8E63`.
   (Mil duzentos e trinta e seis bytes e CATORZE linhas a mais do que o pin de 376484 B: o par

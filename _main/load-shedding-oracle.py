@@ -2919,10 +2919,18 @@ def neg_arm_channel_arm() -> int:
 
 def neg_arm_yield() -> int:
     """O executor deixa de ceder: continua a correr com a maquina carregada."""
+    # A ANCORA NAO LEVA A INDENTACAO DA PRIMEIRA LINHA (medido 2026-11-12): o
+    # mutante guardava `                    if not self.allowed():` e o ficheiro
+    # vivo tem 16 espacos desde que o `try` foi reorganizado. O `replace` deixou
+    # de casar, o braco imprimiu "nao consegui mutar o alvo", devolveu EXIT_PASS
+    # e a bateria ficou RED em `red-as-expected-load-shedding` -- um mutante que
+    # nao muta e' um controlo que nao pode falhar. A primeira linha comeca no
+    # `if` e a segunda mantem a indentacao do CORPO, que e' o que o `replace`
+    # precisa de distinguir.
     return _neg_arm_text(
         "cede", "batch_queue.py",
-        "                    if not self.allowed():\n                        self._kill(child)",
-        "                    if False:\n                        self._kill(child)",
+        "if not self.allowed():\n                    self._kill(child)",
+        "if False:\n                    self._kill(child)",
         "o executor deixa de ceder quando a carga sobe (corre com a maquina cheia)",
         "load-shed-yield-neg-",
         "a carga a subir a meio do bloco faz o executor CEDER")

@@ -23,16 +23,26 @@ interpretador, nao a bateria -- e nenhum dos dois bracos abre janela, audio ou m
     python _main/cage-rc-oracle.py --neg-arm   -> rc 1 ao apanhar a mutacao (a forma
                                                   curada trocada pela antiga)
 """
+import importlib.util
 import io
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 FIXTURES = os.path.join(HERE, 'fixtures', 'cage-rc')
+
+# O FILHO ARRANCA PELO `hidden-launch`, nunca por um `subprocess.run` local: o censo
+# `_main/console-window-audit.py` classificou a versao anterior como `WEAK-FLAG`
+# (`creationflags` sem `startupinfo`) e a bateria ficou RED com razao -- a bandeira
+# sozinha nao cobre um filho que ignora `CREATE_NO_WINDOW`. O helper carrega as duas
+# guardas e e' o mesmo caminho que o resto desta arvore usa.
+_spec = importlib.util.spec_from_file_location(
+    'sotto_hidden_launch', os.path.join(HERE, 'hidden-launch.py'))
+_hl = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_hl)
 OLD = os.path.join(FIXTURES, 'old.cmd')
 NEW = os.path.join(FIXTURES, 'new.cmd')
 CHILD_RC = 1
@@ -40,9 +50,8 @@ CHILD_RC = 1
 
 def run_fixture(path):
     """Corre um fixture no cmd real e devolve o rc que ELE devolve."""
-    proc = subprocess.run(['cmd', '/c', path], capture_output=True,
-                          creationflags=0x08000000)
-    return proc.returncode
+    rc, _out, _err = _hl.run(['cmd', '/c', path])
+    return rc
 
 
 def judge(old_rc, new_rc):
