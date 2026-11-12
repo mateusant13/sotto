@@ -406,6 +406,28 @@ if exist _main\caption-tick-thread-oracle.py (
   call :record caption-tick-thread !STEP_RC!
   call :step red-as-expected-caption-tick-thread 1 "_main\caption-tick-thread-oracle.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\caption-tick-thread-neg.log" python _main\caption-tick-thread-oracle.py --neg-arm
   call :expectred red-as-expected-caption-tick-thread !STEP_RC! "%OUT%\caption-tick-thread-neg.log" "NEG-ARM: PASS"
+REM `clr-warm` (2026-11-12, MEDIDO oito vezes no mesmo dia): TODO arranque do dono entre 19:32 e
+REM 20:16 morreu com uma `NullReferenceException` GERIDA dentro do pythonnet, e o `run.cmd` chamou-lhe
+REM `HANG rc=4 by=run.cmd-readiness` porque o processo morria antes de tocar o ready-file. Os oito
+REM eventos estao no log `Application`/`.NET Runtime` -- nestes dez dias anteriores, ZERO. A causa e'
+REM a PRIMEIRA conversao de um tipo .NET a acontecer em duas threads ao mesmo tempo (o cache global
+REM de tipos do pythonnet desreferencia um ponteiro que a outra thread ainda nao publicou), e o
+REM `webview.start()` entrega a thread da UI a um `_on_before_show` que converte `Icon`, `Color`,
+REM `Size`, `Rectangle` e `Func[Type]` enquanto as threads da shell ja' correm. A cura e'
+REM `sotto_webview.warm_clr_types()`, chamada na PRIMEIRA linha do `main()`, antes de qualquer fio.
+REM As 4 arms correm o codigo REAL: a funcao existe E e' chamada antes do `webview.start()`; cobre os
+REM 9 tipos lidos da tupla `(rotulo, lambda)` do proprio fonte; executa num subprocesso e devolve True
+REM com custo medido (min 689 / mediana 879 / max 1506 ms em 6 amostras -- o tecto de 4000 e' de ordem
+REM de grandeza, porque com o disco saturado a MESMA funcao deu 2279,8 ms); e a chamada esta' ANTES
+REM do primeiro `Thread` da shell. O `--neg-arm` muta uma COPIA em tres sitios e exige 3/3 -- medido
+REM rc=1 com `NEG-ARM: PASS -- 3/3`. Sem janela, sem browser, sem audio, sem input.
+if exist _main\clr-warm-oracle.py (
+  call :step always clr-warm 0 "_main\clr-warm-oracle.py;app\webview\sotto_webview.py" "%OUT%\clr-warm.log" python _main\clr-warm-oracle.py
+  call :record clr-warm !STEP_RC!
+  call :step always red-as-expected-clr-warm 1 "_main\clr-warm-oracle.py;app\webview\sotto_webview.py" "%OUT%\clr-warm-neg.log" python _main\clr-warm-oracle.py --neg-arm
+  call :expectred red-as-expected-clr-warm !STEP_RC! "%OUT%\clr-warm-neg.log" "NEG-ARM: PASS"
+) else ( call :record clr-warm MISSING )
+
 REM `log-sink-dead` (2026-11-08, MEDIDO na instancia do dono): pid 42572 arrancado 04:01:44, o
 REM ULTIMO byte do log e' das 04:57:13.351 e o processo ficou VIVO a queimar 100 % de um
 REM nucleo por tres horas -- o pai morreu (`Process.parent() is None`), o `print` do `log()`

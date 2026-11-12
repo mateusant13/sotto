@@ -26352,9 +26352,116 @@ def _start_startup_stack_watch(args):
                      daemon=True).start()
 
 
+def warm_clr_types():
+    """Materializa os tipos CLR que a shell usa, ANTES de existir uma segunda thread.
+
+    MEDIDO 2026-11-12, oito vezes no mesmo dia (`Get-WinEvent` do `.NET Runtime`,
+    log `Application`): TODO arranque do dono morreu com uma excepcao gerida sem
+    tratamento dentro do pythonnet, e o `run.cmd` reportou-a como
+    `HANG rc=4 by=run.cmd-readiness` porque o processo morria ANTES de tocar o
+    ready-file. As duas pilhas medidas sao a mesma classe:
+
+        TypeManager.AllocateTypeObject <- ReflectedClrType.GetOrCreate
+            <- Converter.ToPython <- MethodBinder.Invoke
+        BorrowedReference.DangerousGetAddress <- Converter.ToPython
+            <- MethodBinder.Invoke <- ManagedType.Init <- ClassBase.Init
+
+    O pythonnet constroi o tipo Python que representa um tipo .NET na PRIMEIRA
+    conversao e guarda-o num cache global. Esse caminho nao e' seguro quando a
+    primeira conversao acontece em duas threads ao mesmo tempo -- e esta app
+    arranca exactamente assim: a thread da UI que o pywebview criou chama
+    `_on_before_show` (que faz `Icon(path)`, `Color.Transparent`, `Size(..)`,
+    `form.ClientSize = ...`) enquanto o observador do `Ctrl+Space`, o laco de
+    leitura e o `_ui` marshalling continuam a correr. Quando as duas chegam ao
+    mesmo tipo juntas, o `AllocateTypeObject` desreferencia um ponteiro que a
+    outra thread ainda nao publicou: uma `NullReferenceException` GERIDA, que
+    mata o processo (o `try/except` de Python nao apanha isso).
+
+    A cura e' fazer a primeira conversao acontecer UMA vez, na thread principal,
+    antes de qualquer thread secundaria existir. Medido nesta arvore: **1090 ms**
+    para importar e materializar todos os tipos (`clr` sozinho custa 622 ms, que
+    o `webview` ja' pagaria no `start()`), e a partir dali o cache esta' quente
+    para todas as threads.
+
+    NAO ENGOLIR O ERRO: uma maquina sem .NET (ou sem `System.Drawing`) chega aqui
+    e segue -- o `start()` do pywebview falha depois com a sua propria mensagem, e
+    um `except` mudo aqui esconderia a causa verdadeira.
+    """
+    started = time.monotonic()
+    done = []
+    failed = []
+    try:
+        import clr  # noqa: F401 -- pythonnet; o pywebview ja' depende disto
+        for _asm in ('System', 'System.Drawing', 'System.Windows.Forms',
+                     'System.Threading.Tasks'):
+            try:
+                clr.AddReference(_asm)
+            except Exception as exc:          # noqa: BLE001
+                failed.append('%s:%s' % (_asm, type(exc).__name__))
+        from System import Action, Func, Object, String, Type
+        from System.Threading.Tasks import Task
+        from System.Drawing import Color, Icon, Rectangle, Size
+        from System.Windows.Forms import DockStyle
+        # A CONVERSAO, NAO SO' O IMPORT (`Converter.ToPython` e' a metade que
+        # rebenta). `Icon(path)` e' o primeiro .NET que `_on_before_show` toca;
+        # `Func[Type]`/`Action[String]` sao os delegados de `_ui`.
+        for _label, _make in (
+                ('Icon', lambda: Icon(SOTTO_ICON)),
+                ('Color', lambda: Color.Transparent),
+                ('Size', lambda: Size(1, 1)),
+                ('Rectangle', lambda: Rectangle(0, 0, 1, 1)),
+                ('DockStyle', lambda: DockStyle.Fill),
+                ('Func[Type]', lambda: Func[Type]),
+                ('Func[Object]', lambda: Func[Object]),
+                ('Action[String]', lambda: Action[String]),
+                ('Task', lambda: Task.CompletedTask),
+        ):
+            try:
+                _make()
+                done.append(_label)
+            except Exception as exc:          # noqa: BLE001
+                failed.append('%s:%s' % (_label, type(exc).__name__))
+    except Exception as exc:                  # noqa: BLE001
+        log('CLR_WARM unavailable error=%r' % (exc,))
+        return False
+    log('CLR_WARM ok=%s types=%s failed=%s ms=%.1f'
+        % (not failed, ','.join(done), ','.join(failed) or 'none',
+           (time.monotonic() - started) * 1000.0))
+    return not failed
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = parse_args(argv)
+
+    # ── A PRIMEIRA CONVERSAO CLR ACONTECE AQUI, SOZINHA (2026-11-12) ────────
+    # Ver `warm_clr_types`: o pythonnet materializa o tipo Python que representa
+    # um tipo .NET na PRIMEIRA conversao e guarda-o num cache global que nao
+    # tolera duas threads a materializar o MESMO tipo ao mesmo tempo -- ele
+    # desreferencia um ponteiro que a outra thread ainda nao publicou, e a
+    # `NullReferenceException` e' GERIDA (mata o processo; `try/except` de Python
+    # nao a apanha). Esta app arranca nesse estado, e o `webview.start()` agrava-o:
+    # entrega a thread da UI a um `_on_before_show` que converte `Icon`, `Color`,
+    # `Size`, `Rectangle` e `Func[Type]` enquanto as threads da shell ja' correm.
+    #
+    # MEDIDO 2026-11-12: oito mortes do processo e oito eventos `NullReference`
+    # no log `Application`/`.NET Runtime`, os oito no mesmo dia (nos dez dias
+    # anteriores, ZERO), com as duas metades da mesma pilha --
+    # `TypeManager.AllocateTypeObject <- Converter.ToPython <- MethodBinder.Invoke`
+    # e `BorrowedReference.DangerousGetAddress <- ManagedType.Init`. O `run.cmd`
+    # reportava-as como `HANG rc=4 by=run.cmd-readiness`, porque o processo morria
+    # antes de tocar o ready-file.
+    #
+    # A POSICAO E' PARTE DA CURA: esta' ANTES de `_start_startup_stack_watch`,
+    # antes do `Timer` do `--exit-after` e antes de qualquer `Thread` da shell.
+    # Uma conversao a seguir ao primeiro fio nao impede corrida nenhuma -- e' o
+    # mesmo defeito com outro nome, e a arm A4 do `clr-warm-oracle` existe para
+    # nao deixar a chamada migrar para baixo outra vez.
+    #
+    # CUSTO medido (6 amostras, um processo cada): min 689 / mediana 879 / max
+    # 1506 ms. Nao e' custo novo: o `import clr` e o `AddReference` sao pagos uma
+    # vez por processo e o `webview.start()` pagava-os de qualquer maneira.
+    warm_clr_types()
     _start_startup_stack_watch(args)
 
     # ── THE VISIBLE SURFACE IS NEVER BELOW NORMAL (measured 2026-11-04) ──────

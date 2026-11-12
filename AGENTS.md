@@ -682,28 +682,47 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-12, 21:1x):** `_main\_audit-verify-all.cmd` = **379035 B**,
-  **4369 CRLF** / 0 bare LF, sha256 `CA20E0CC65A6F26D6BC00855A12FB2A7BD51DD08596513B7489BAE5D89A0E03D`.
-  (O par `cage-once` entrou DUAS vezes no mesmo bloco -- o `str.replace` casou os dois sitios do
-  ancora e o `state-page` acusou-o com `duplicados=['cage-once','red-as-expected-cage-once']`, a
-  unica falha da corrida limpa. A pagina de estado denunciou o meu erro de edicao antes de qualquer
-  outra coisa: e' o instrumento a pagar-se. O par `state-page` + `--write` foi MOVIDO para o fim da
-  lista, imediatamente antes do `battery-budget` -- ele le' `_cache\battery-steps.json`, que a
-  corrida escreve passo a passo, e a meio da lista media apenas "a corrida ate' aqui", que e' a
-  mesma classe de mentira que o `battery-budget` existe para apanhar.)
-  (Dois mil trezentos e setenta e tres bytes e VINTE E DUAS linhas a mais do que o pin de 377820 B:
-  o par `cage-once` + `red-as-expected-cage-once`, nascido de um defeito medido no proprio log da
-  corrida -- **a lista inteira corria DUAS vezes**. `PLAN steps=501` aparecia na linha 6 E na 575,
-  com **1002** beacons de passo para 501 declarados, a segunda passagem SEM o Job Object e a
-  imprimir `caged : ON`. A causa: a cura do `%ERRORLEVEL%` (2026-11-12) trocou o bloco do cage por
-  uma subrotina e deixou o CORPO logo abaixo, com o `exit` so' no ramo de falha -- um filho caged
-  que sai **0** atravessa o `if errorlevel 1` e o ficheiro cai no corpo. E' por isso que a corrida
-  RED teve um plano (rc=1 saia no `if`) e a GREEN teve dois: o defeito e' invisivel exactamente no
-  caso em que custa o DOBRO do tempo de bateria. O corpo passou para tras de um rotulo (`goto
-  :__battery_body`). MEDIDO com o MESMO ficheiro a ser o proprio filho: `A1 a forma ANTIGA corre o
-  corpo DUAS vezes -- corpo correu 2`, `A2 a forma CURADA corre o corpo UMA vez -- corpo correu 1`,
-  `A3 devolve o rc do filho que falha -- rc=1`; `CAGE-ONCE VERDICT: PASS (3/3 arms)` rc=0 e
-  `--neg-arm` com `A2 FAIL -- corpo correu 2 vez(es)`, `NEG-ARM: PASS`, rc=1.)
+- **PIN do ficheiro (medido 2026-11-12, 21:1x):** `_main\_audit-verify-all.cmd` = **385241 B**,
+  **4432 CRLF** / 0 bare LF, sha256 `5D47E96699467CDB70EC03CE9D528A550DA65493BA102737B5B3A0671339D815`.
+  (Trezentos e setenta e dois bytes e TRINTA E NOVE linhas a mais do que o pin de 381642 B: o par
+  `clr-warm` + `red-as-expected-clr-warm`, a PRIMEIRA CONVERSAO CLR a acontecer sozinha. Nasceu do
+  P0 MEDIDO hoje: TODO arranque do dono entre 19:32 e 20:16 morreu, oito vezes, e o `run.cmd`
+  chamava-lhe `HANG rc=4 by=run.cmd-readiness` -- o processo morria ANTES de tocar o ready-file. A
+  fonte e' o log `Application`/`.NET Runtime`, oito eventos `NullReferenceException` no mesmo dia
+  (nestes dez dias anteriores, ZERO), com as duas metades da mesma pilha:
+  `TypeManager.AllocateTypeObject <- ReflectedClrType.GetOrCreate <- Converter.ToPython
+  <- MethodBinder.Invoke` e `BorrowedReference.DangerousGetAddress <- ManagedType.Init
+  <- ClassBase.Init`. O pythonnet materializa o tipo Python de um tipo .NET na PRIMEIRA conversao
+  num cache global que nao tolera duas threads a materializar o MESMO tipo: ele desreferencia um
+  ponteiro que a outra ainda nao publicou, e a excepcao e' GERIDA (mata o processo; `try/except` de
+  Python nao a apanha). A cura e' `sotto_webview.warm_clr_types()`, chamada na PRIMEIRA linha do
+  `main()`, ANTES do `_start_startup_stack_watch`, do `Timer` do `--exit-after` e de qualquer
+  `Thread`: converte 9 tipos (`Icon`, `Color`, `Size`, `Rectangle`, `DockStyle`, `Func[Type]`,
+  `Func[Object]`, `Action[String]`, `Task`) e publica `CLR_WARM ok=true types=.. failed=none ms=..`.
+  Custo medido em 6 processos: min 689 / mediana 879 / max 1506 ms, e com o disco saturado a MESMA
+  funcao deu 2279,8 ms -- por isso o tecto da arm A3 e' **4000 ms**: um portao que acusa quem esta'
+  certo por contenda perde a autoridade. As 4 arms correm o codigo REAL, e a A2 le a tupla
+  `(rotulo, lambda)` do fonte em vez de casar texto. O `--neg-arm` muta uma COPIA em tres sitios
+  (chamada apagada / `Icon` trocado por `lambda: None` / chamada movida para depois do
+  `webview.start()`) e exige as tres: `NEG-ARM: PASS -- 3/3`, rc=1. Duas correccoes do PROPRIO
+  instrumento no mesmo bloco, as duas apanhadas pelo negativo: o `path=SHELL` como default de
+  argumento prendia o ficheiro original (a mutacao mudava `SHELL` e as arms re-liam o original,
+  `INERTE 0/3`), e a arm A2 aceitava o rotulo `'Icon'` como prova (o mutante que troca a conversao
+  por `lambda: None` deixava o nome la' dentro). A arm A4 nasceu de um erro MEU: a primeira versao
+  chamava a cura depois do `Thread` da varredura de perfis, ou seja com uma segunda thread viva --
+  `FAIL A4 threads_antes=[27037]`, corrigido movendo a chamada para o topo do `main()`.
+  O bloco fechou ainda 16 bare LF que tres insercoes anteriores deixaram em
+  `caption-status-hide`; o ficheiro foi normalizado para 0 bare LF antes de pinar.
+  E o `battery-record-pairing` acusou DOIS blocos com `:record` a mais -- o meu e o de
+  `caption-status-hide`, que o pin anterior ja' tinha dado por bom: um `:step ... 1` seguido de
+  `:record` exige rc=0 de um passo que tem de sair 1, e o `:expectred` a seguir relia o
+  `!STEP_RC!` do primeiro, publicando DOIS vereditos sobre o mesmo passo. A forma correcta e'
+  `:step <nome> 1` + `:expectred <nome>` e nada mais; medido depois: **509 passos, 509 nomes com
+  registo, 0 achados**.
+  NOTA DE PIN: os 385 241 B sao do ficheiro VIVO, que tambem carrega um bloco de outra lane
+  ainda NAO commitado (`caption-timeline`, `caption-status-hide`); o commit seguinte a esse
+  bloco re-mede este numero, como manda a regra do pin. UNMEASURED: que o processo do dono deixou de morrer -- essa prova exige um arranque real com
+  WebView2, que esta pane nao consegue (o WebView2 falha antes, `0x80010108 RPC_E_DISCONNECTED`).)
 - **PIN do ficheiro (medido 2026-11-12, 20:1x):** `_main\_audit-verify-all.cmd` = **377820 B**,
   **4352 CRLF** / 0 bare LF, sha256 `949BE4E3B6FDE99330AAA3CA90787DC4849E9A2B265ED6A02E50DA5ABBED354F`.
   (Cem bytes e ZERO linhas a mais do que o pin de 377720 B: DUAS dependencias que faltavam, a classe
