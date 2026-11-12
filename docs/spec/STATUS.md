@@ -3,7 +3,7 @@
 Este ficheiro é a memória do trabalho. É actualizado a cada onda; não é um relatório final.
 Cada linha diz o que está **escrito**, com que **evidência**, e o que **falta**.
 
-Última actualização: 2026-11-12 (rodada de defeitos — D-14 a D-22).
+Última actualização: 2026-11-12 (rodada de defeitos — D-14 a D-23; selo dos módulos; instrumentos).
 
 ## Ondas
 
@@ -22,14 +22,16 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | W7 histórico e estado | **feito** | `07-HISTORY-STATE.md` (348 l., 293/10/14/8): o formato da linha e o `ctx1=`, as duas portas de admissão, a fusão, a retenção de 180 dias, busca e export, o anel de 12 h, a fila de lote, e cada ficheiro de estado com escritor/leitor/contrato de falha | `sotto_webview.py:15688`; `history_context.py`; `worker/audio_ring.py`; `batch_queue.py` |
 | W8 painéis e UX | **feito** | `08-PANELS-UX.md` (346 l., 112/13/7/7): Alt+C por índice de pressão, Ctrl+Space (HOLD e o engolir do espaço), a caixa da legenda, os temas, o arrasto, as configurações e o que fica gravado | `hotkey_gesture.py`; `space_swallow.py`; `caption_drag.py`; `app/panel/**` |
 | W9 modos de falha | **feito** | `09-FAILURE-MODES.md` (350 l., 37/30/15/6): o que acontece quando cada peça falha — dispositivo, worker, página, WebView2, Chrome/CDP, disco, energia, rede — e o que o dono vê em cada caso | linha por modo com a tag do log e o oráculo que a lê |
-| W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (**22 defeitos** com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-20/D-21/D-22 corrigidos nesta rodada) | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
+| W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (**23 defeitos** com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-23 corrigido nesta rodada) | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
 | W11 spec-alvo | **feito** | `11-TARGET.md` (205 l.): o comportamento que eu escolho, jornada a jornada, com o que "funciona" quer dizer em cada uma | deriva das jornadas de `00-PROMISE.md` |
-| W12 selo | **feito** | índice, referências cruzadas e o portão das citações (`_main/spec-citations-oracle.py`, 1 174 citações em 15 documentos, 0 sem ficheiro, 0 fora de alcance) | `SPEC-CITATIONS VERDICT: PASS` |
+| W12 selo | **feito** | índice, referências cruzadas, o portão das citações (`_main/spec-citations-oracle.py`) e o do **catálogo de módulos** (`_main/spec-coverage-oracle.py`: um bloco por ficheiro de produto em `13-MODULES.md`; `docs=16 ausentes=0 nome_apenas=5 classes_sem_seccao=0`) | `SPEC-CITATIONS VERDICT: PASS`; `SPEC-COVERAGE VERDICT: PASS` (+ `--neg-arm`) |
+| W13 módulos | **feito** | `13-MODULES.md` (47 blocos: um por módulo de produto, com o que garante, quem o chama, o que escreve e o que o dono vê quando falha) | `spec-coverage-oracle.py` mede a população por `os.walk`, não por lista curada |
 
 ## Defeitos já confirmados (detalhe em `10-DEFECTS.md`)
 
 | id | uma linha | gravidade | estado |
 |---|---|---|---|
+| D-23 | a legenda local do áudio que o player pinta era **descartada** — não ia ao ecrã nem ao histórico —, e o docstring afirmava que ia ao histórico; o contador por episódio era zerado antes de ser lido e media sempre `0` | ALTA | **corrigido, NÃO verificado** — `_main/external-owner-oracle.py` 7/7 arms, `--neg-arm` 3/3; o destino definitivo da linha recusada é decisão de produto em `11-TARGET.md` §J4 |
 | D-01 | dois mutantes congelados do worker não estavam no git (`.gitignore`: `worker/_sotto_worker_agcinert.py` e `worker/runs/`), e dois oráculos dependem deles (`_main/agc_order_live.py:37`, `_main/verdict-order-oracle.py:71`): num clone limpo esses dois não corriam | ALTA | **corrigido 2026-11-11** — `git ls-files` devolve os dois (`git add -f`), `.gitignore` explica por que, e o `.gitattributes` foi REGENERADO (`python _main/_make-gitattributes.py --write`; `--verify` rc=0) |
 | D-02 | o arranque obedecia a `_main/caption-wanted.json` e um `false` gravado suprimia a legenda em TODA a abertura seguinte | CRÍTICA | **corrigido, NÃO verificado** — `caption_wanted_at_start` (21 arms + neg-arm 4/4); o processo do dono corre código anterior (`live-code-freshness` = STALE) |
 | D-03 | `ast.get_source_segment` re-parte a fonte inteira por chamada: 143,9 s para extrair 264 funções; 52,1 s → 0,85 s no `gaming-hotkey` | MÉDIA | corrigido em dois sítios medidos (0,47 s; 61× byte-idêntico); os outros 38 ficheiros por medir |

@@ -63,7 +63,7 @@ Três ficheiros dentro de `worker/` **não são produto**: `_prefix_audioflag.py
 worker usadas como mutantes por oráculos. Os dois últimos não estavam no git e entravam no índice em
 2026-11-11 (`10-DEFECTS.md` §D-01 — `git ls-files` devolve os três desde então).
 
-## O selo: 16 ficheiros, 5 323 linhas, 1 642 citações
+## O selo: 16 ficheiros, 5 299 linhas, 1 443 citações
 
 Medido em 2026-11-12 com um `os.walk`/`len(splitlines())` e `grep -o '\[TAG\]'` ficheiro a
 ficheiro, depois de entrar o `13-MODULES.md` (47 blocos, um por módulo de produto, mais as três
@@ -72,12 +72,12 @@ classes que são dados):
 | o quê | número |
 |---|---|
 | ficheiros deste directorio | 16 (14 documentos + este índice + `STATUS.md`) |
-| linhas | 5 323 |
-| `[CODE]` | 1 329 |
-| `[MEASURED]` | 175 |
-| `[INFERENCE]` | 63 |
-| `[UNKNOWN]` | 71 |
-| citações `ficheiro:linha` resolvidas | **1 442**, 0 sem ficheiro, 0 fora de alcance |
+| linhas | 5 299 |
+| `[CODE]` | 1 326 |
+| `[MEASURED]` | 170 |
+| `[INFERENCE]` | 61 |
+| `[UNKNOWN]` | 68 |
+| citações `ficheiro:linha` resolvidas | **1 443**, 0 sem ficheiro, 0 fora de alcance |
 
 Dois portões, e eles julgam metades diferentes: `_main/spec-citations-oracle.py` abre cada
 ficheiro citado, resolve cada linha e recusa uma citação a um ficheiro que não existe ou a uma
