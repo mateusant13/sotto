@@ -518,9 +518,41 @@ def arm_a9(ctx) -> tuple:
     return ok, ' | '.join(detail)
 
 
+def arm_a10(ctx) -> tuple:
+    """A MEDIDA USA O PESO QUE O DESENHO USA -- o numero, nunca um booleano.
+
+    MEDIDO 2026-11-12: `_measure_budget` calculava `bold = t['liveWeight'] >= 600`
+    e passava o BOOLEANO a `_measure`, que faz `int(weight)` -- a fonte da MEDIDA
+    nascia com peso 1 e o `weight >= 600` de `_build_font` nunca disparava, logo
+    era Regular/Light. O DESENHO usa `t['liveWeight']` verdadeiro. Medido nesta
+    arvore, Bricolage Grotesque a 34 px: 142,85 px com peso 700 contra 134,28 px
+    com o booleano -- 6,4% mais estreita. Com a placa `tight` a largura E' a
+    linha medida mais o `hug`, ou seja as ultimas letras caiam fora do bitmap.
+    """
+    overlay, detail = ctx['overlay'], []
+    for family in ('Bricolage Grotesque', 'Inter', 'Segoe UI'):
+        theme = dict(THEME)
+        theme.update({'fontFamily': family, 'liveWeight': 700})
+        g = overlay._geom(1.0, theme)
+        t = g['t']
+        px, fam, it = g['cur_px'], t['fontFamily'], t['liveItalic']
+        num = overlay._measure('MMMM', px, {}, fam, t['liveWeight'], it)('MMMM')
+        as_bool = overlay._measure('MMMM', px, {}, fam, True, it)('MMMM')
+        cur_w, _budget = overlay._measure_budget(1.0, 1920, theme)
+        got = cur_w('MMMM')
+        detail.append('%s peso=%d num=%.2f booleano=%.2f medida=%.2f'
+                      % (fam, int(t['liveWeight']), num, as_bool, got))
+        if abs(num - as_bool) <= 0.5:
+            continue          # esta familia nao tem face 600+: nao prova nada
+        ok = abs(got - num) <= 0.01 and abs(got - as_bool) > 0.5
+        return ok, ' | '.join(detail)
+    detail.append('nenhuma familia com face 600+ no manifesto: sem prova')
+    return False, ' | '.join(detail)
+
+
 ARMS = {'A1': arm_a1, 'A2': arm_a2, 'A3': arm_a3, 'A4': arm_a4,
         'A5': arm_a5, 'A6': arm_a6, 'A7': arm_a7, 'A8': arm_a8,
-        'A9': arm_a9}
+        'A9': arm_a9, 'A10': arm_a10}
 
 #: Cada mutante muda UMA ancora (que tem de existir uma vez) numa COPIA do fonte.
 MUTANTS = (
@@ -539,6 +571,11 @@ MUTANTS = (
      'anchor': "        width = min(int(widest + g['x_text'] + g['pad_r']) + 1, int(max_text))",
      'mutant': "        width = min(int(widest + g['x_text'] + g['pad_r']) - 8, int(max_text))",
      'arms': ('A3',)},
+    {'name': 'M9 a medida volta a construir a fonte com um BOOLEANO',
+     'file': 'overlay_paint.py',
+     'anchor': "                        t['liveWeight'], t['liveItalic'])(s)",
+     'mutant': "                        t['liveWeight'] >= 600, t['liveItalic'])(s)",
+     'arms': ('A10',)},
     {'name': 'M4 o overlay volta a nascer com a placa LARGA',
      'file': 'caption_overlay.py',
      'anchor': "                   or _SHIPPED_VISUAL.get('plate') or 'tight').lower()",
@@ -591,7 +628,7 @@ def main(argv=None) -> int:
     ctx = real_ctx()
 
     if args.neg_arm:
-        print('NEGATIVE ARM -- oito mutantes em COPIA; cada um nomeia a arm')
+        print('NEGATIVE ARM -- nove mutantes em COPIA; cada um nomeia a arm')
         caught = 0
         for mutant in MUTANTS:
             source = io.open(os.path.join(WEBVIEW, mutant['file']),
@@ -640,7 +677,10 @@ def main(argv=None) -> int:
         return 1 if caught == len(MUTANTS) else 0
 
     table()
-    for name in ('A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9'):
+    # A LISTA DAS ARMS E' O DICIONARIO. Era uma tupla escrita a mao ao lado do
+    # `ARMS`, e uma arm nova que entrasse so' no dicionario nunca corria -- a
+    # mesma classe de duas copias que esta casa ja' pagou varias vezes.
+    for name in sorted(ARMS, key=lambda k: int(k[1:])):
         ok, detail = ARMS[name](ctx)
         add(ok, name, detail)
     bad = [r for r in rows if not r[0]]

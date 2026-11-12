@@ -61,6 +61,45 @@ o pedido já existe.
 `10-DEFECTS.md`); promete-se que a legenda está **ligada** e que o estado é escrito, não que o modelo
 esteja quente.
 
+#### J1-bis — a decisão sobre o motor quente (D-04), que é minha
+
+**O que está medido, e o que ele obriga.** Carga a frio do worker: `BRIDGE_LOAD_MS` **5,2–21,0 s**
+para 1,9 GB. Motor quente: carrega em **7,5–26,0 s** (`WARM_LOAD_MS res=999,5 MB` na janela de
+2026-11-11), e expira por `WARM_EXIT why=idle-expired held_s=600,1` (`WARM_PARK_TTL_S`). Anexar a um
+motor já carregado custa **0,97 s**. As aberturas do dono, na mesma janela, distam **horas**
+(01:03 → 17:34 → 20:01 → 20:40).
+
+A aritmética é curta e decide sozinha: **um motor quente pedido no arranque nunca chega a tempo de
+servir o worker daquele arranque** (o motor leva 7,5–26,0 s a carregar; o worker a frio, 5,2–21,0 s)
+e **nunca sobrevive até ao arranque seguinte** (600 s de parque contra horas de intervalo). O que
+acontece hoje é por isso o pior dos dois mundos: **1,9 GB são lidos duas vezes e ~1 GB fica residente
+10 min por nada**, medido em 18 ocorrências. E o `WARM_ATTACHED` é zero porque não há a quem servir.
+
+**O comportamento que eu escolho, em três regras:**
+
+1. **R1 — o arranque a frio não pede o motor quente.** `WARM_NOT_REQUESTED
+   reason=no-reopen-expected session_gap_h=…` no log, e o worker carrega a frio como hoje. O
+   orçamento de `time-to-first-caption` (3 000 ms) já é medido com carregamento a frio, portanto
+   esta regra não promete nada que já não se cumpra.
+2. **R2 — pede-se quando a reabertura é CURTA e conhecida: no auto-relançamento.** O caminho
+   `_main/sotto-relaunch.py --relaunch` / `shell_relaunch.py` fecha e reabre em segundos, e é a única
+   reabertura com distância medida abaixo do parque. Ali o pedido é feito **antes** do relançamento,
+   com um parque declarado ≥ o tempo do relançamento, e o worker novo deve medir `BRIDGE_LOAD_MS`
+   perto de **0,97 s** em vez de 5,2–21,0 s. É esse o número que fecha a regra.
+3. **R3 — nenhuma carga de motor é muda.** Cada `WARM_LOAD_MS` ou recebe um `WARM_ATTACHED` dentro do
+   parque, ou publica `WARM_UNUSED load_s=… resident_mb=…`. Um gigabyte que ninguém usou passa a ser
+   uma linha, não um silêncio.
+
+**O que isto recusa, e por quê.** Subir o `WARM_PARK_TTL_S` para cobrir horas (segurar ~1 GB
+residente numa máquina que o dono descreve como degradada, para poupar 5–21 s uma vez) e "aquecer o
+ramo do arranque à espera do motor" (faz a PRIMEIRA linha mais lenta: 7,5–26,0 s de espera antes de
+largar o worker, contra 5,2–21,0 s de carga dele).
+
+**Estado.** decidido e escrito; `R1`–`R3` são a especificação-alvo, **não** código medido. O que
+fecha R1: `grep WARM_NOT_REQUESTED` no log de um arranque. O que fecha R2: `BRIDGE_LOAD_MS` ≤ 1 500 ms
+na sessão que nasce do relançamento. O que fecha R3: `WARM_UNUSED` presente em toda a carga sem
+attach. Nada disto exige o ecrã do dono, e nenhuma das três pode ser satisfeita por prosa.
+
 ### J2 — o YouTube como fonte externa
 
 **Ordem do dono (2026-11-04):** *"tu pode usar meu youtube e meu navegador. só que dessa vez, no
@@ -79,6 +118,13 @@ stutter de 3 s.
 **Instrumento.** `_main/youtube-1to1-oracle.py`, `_main/youtube-sotto-drift-oracle.py`,
 `_main/stutter-caption-oracle.py`, `_main/youtube-cdp-source-oracle.py`.
 
+**A escolha de aba é sobre a POPULAÇÃO, não sobre a vaga (2026-11-12).** O tecto de sondas
+simultâneas não é o tecto de candidatos: as abas `/watch` vão em vagas e o relógio decide onde a fila
+acaba. Com sete abas abertas — o caso medido no log do dono, `tabs=7` — cortar a população antes de
+saber qual delas toca fazia a escolha cair numa aba parada vizinha, e o log não podia denunciá-lo
+porque imprimia o número já cortado. O desfecho que eu escolho: `YOUTUBE_PROBE_BUDGET
+tabs_total=… probed=… done=… abandoned=…` — a diferença entre a população e o tentado é a
+informação; sem ela, faltar uma aba é indistinguível de não haver nenhuma.
 **Não se promete:** ler uma legenda que o player não está a mostrar. Sem faixa, sem cue, sem linha —
 e o log diz `no-captions`, que é uma medida e não um silêncio.
 
@@ -94,6 +140,11 @@ pixel; abertura do primeiro dispositivo com sinal ≤ 1 s com o journal quente.
 **Instrumento.** `_main/first-capture-fast-oracle.py`, `_main/device-ladder-cost-oracle.py`,
 `_main/caption-lag-budget-oracle.py`.
 
+**Um produtor morto não manda (2026-11-12).** O `panel-visibility.json` é um pedido, e um pedido sem
+produtor vivo é lixo: quando o ficheiro desaparece, fica ilegível ou envelhece, o `shed`/`park`
+voltam ao default e a visibilidade falha **aberta**. A alternativa medida é o oposto do que a
+docstring prometia — uma shell que morresse estacionada deixava `shed='muito-alta'` para sempre e
+calava o único transcritor da árvore por causa de um ficheiro que já não existe.
 **Não se promete** tempo real do nemotron: ele é o motor **local** e o atraso dele é medido, não
 hipotético (regra 2 de 2026-11-04).
 
@@ -123,6 +174,12 @@ física; a memória da última superfície faz `show/hide/show` alternar em vez 
 **Número.** Despacho ≤ 50 ms (`HOTKEY_COALESCED`), pintura ≤ 400 ms (`PANEL_SHOWN wait_ms`), rajada
 de 6 toques em <50 ms = **1** transição, não 6.
 
+**A medida da legenda usa o peso do DESENHO, e é um número (2026-11-12).** A placa `tight` tem a
+largura da linha medida mais o `hug`, logo medir com uma face diferente da que se desenha põe as
+últimas letras fora do bitmap: a medida construía a fonte com peso `1` (um booleano `bold` virou
+`int(True)`) e o desenho usava o peso verdadeiro do tema. O desfecho escolhido: `_measure` recebe
+`liveWeight`/`prevWeight` **numéricos**, iguais aos do `_build_font`, e mudar só o peso não muda a
+quebra de linha.
 **Instrumento.** `_main/altc-gesture-oracle.py`, `_main/hotkey-spam-oracle.py`,
 `_main/boot-interaction-oracle.py`.
 

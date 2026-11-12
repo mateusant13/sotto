@@ -3,7 +3,7 @@
 Este ficheiro é a memória do trabalho. É actualizado a cada onda; não é um relatório final.
 Cada linha diz o que está **escrito**, com que **evidência**, e o que **falta**.
 
-Última actualização: 2026-11-12 (rodada de defeitos — D-14, D-15 e D-16).
+Última actualização: 2026-11-12 (rodada de defeitos — D-14 a D-22).
 
 ## Ondas
 
@@ -22,7 +22,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | W7 histórico e estado | **feito** | `07-HISTORY-STATE.md` (348 l., 293/10/14/8): o formato da linha e o `ctx1=`, as duas portas de admissão, a fusão, a retenção de 180 dias, busca e export, o anel de 12 h, a fila de lote, e cada ficheiro de estado com escritor/leitor/contrato de falha | `sotto_webview.py:15688`; `history_context.py`; `worker/audio_ring.py`; `batch_queue.py` |
 | W8 painéis e UX | **feito** | `08-PANELS-UX.md` (346 l., 112/13/7/7): Alt+C por índice de pressão, Ctrl+Space (HOLD e o engolir do espaço), a caixa da legenda, os temas, o arrasto, as configurações e o que fica gravado | `hotkey_gesture.py`; `space_swallow.py`; `caption_drag.py`; `app/panel/**` |
 | W9 modos de falha | **feito** | `09-FAILURE-MODES.md` (350 l., 37/30/15/6): o que acontece quando cada peça falha — dispositivo, worker, página, WebView2, Chrome/CDP, disco, energia, rede — e o que o dono vê em cada caso | linha por modo com a tag do log e o oráculo que a lê |
-| W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (809 l.): 16 defeitos com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-15 corrigido nesta rodada | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
+| W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (**22 defeitos** com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-20/D-21/D-22 corrigidos nesta rodada) | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
 | W11 spec-alvo | **feito** | `11-TARGET.md` (205 l.): o comportamento que eu escolho, jornada a jornada, com o que "funciona" quer dizer em cada uma | deriva das jornadas de `00-PROMISE.md` |
 | W12 selo | **feito** | índice, referências cruzadas e o portão das citações (`_main/spec-citations-oracle.py`, 1 174 citações em 15 documentos, 0 sem ficheiro, 0 fora de alcance) | `SPEC-CITATIONS VERDICT: PASS` |
 
@@ -48,6 +48,10 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | D-16 | um `SOTTO_WEBVIEW_AFTER_LOAD_S` presente e ilegivel caia em 25 s de espera na thread que ainda nao chamou `webview.start()` — a espera que o proprio comentario diz ter produzido o `HANG rc=4` | MÉDIA | **corrigido, NÃO verificado** — `after_load_wait_s` devolve zero e a razao; 4 casos executados, neg-arm 6/6 |
 | D-17 | uma largada de MEDIÇÃO drenava a FILA DO BATCH do dono (io 69,1 MB/s medido no stutter) | ALTO | corrigido, NÃO verificado -- `isolated_queue_dir`; `measurement-flags` A9, neg-arm 6/6 |
 | D-18 | o ramo `no_audio` do cao de guarda nunca testava a prova de vida -- worker travado nao era reiniciado | CRÍTICO | corrigido, NÃO verificado -- 7 arms + neg-arm 2/2 |
+| D-19 | o tecto `MAX_PER_HOUR` dizia "por hora" e nunca era zerado: 3 reinícios na vida do processo | ALTO | **corrigido** — `cost_watchdog.window_expired`; 43 arms, neg-arm 13/13 |
+| D-20 | a MEDIDA da legenda construía a fonte com peso `1` (booleano `bold`) e o DESENHO com o peso do tema: com a placa `tight` as últimas letras caíam fora do bitmap | ALTO | **corrigido, NÃO verificado** — `_measure` recebe `liveWeight`/`prevWeight`; 10 arms, neg-arm 9/9 |
+| D-21 | `PanelVisibilityReader._fallback` herdava o `last_payload` da última leitura boa: uma shell morta estacionada mandava `shed='muito-alta'` para sempre e calava o transcritor | ALTO | **corrigido, NÃO verificado** — `last_payload = None` nas três falhas; ARM 6b (um leitor, duas voltas) + mutante do produtor morto |
+| D-22 | `probe_tabs` cortava a POPULAÇÃO de abas em `MAX_PROBE_TABS` antes de saber qual toca (`tabs=7` no log do dono), e o log imprimia o número já cortado | MÉDIO | **corrigido, NÃO verificado** — vagas limitadas pelo relógio; `tabs_total/probed/done/abandoned`; 24 arms, neg-arm 17/17 |
 
 ## Números medidos nesta campanha
 

@@ -583,8 +583,21 @@ class PanelVisibilityReader:
         return bool(payload["visible"]), "fresh-no-epoch", None
 
     def _fallback(self, why, age):
+        """A FALHA NAO HERDA O PEDIDO DO PRODUTOR QUE MORREU.
+
+        MEDIDO 2026-11-12: `read()` falhava aberto na VISIBILIDADE e deixava o
+        `last_payload` da ultima leitura BEM-SUCEDIDA no lugar. Como `shed()` e
+        `park()` leem `last_payload`, uma shell que morresse estacionada deixava
+        `shed='muito-alta'`/`park='vram'` para sempre: o `tick()` via
+        `visible=True` (certo) e o nivel do morto (errado), e o unico transcritor
+        desta arvore ficava calado por um ficheiro que ja' nao existe -- o oposto
+        do que a docstring de `read()` promete. A mesma direccao serve as TRES
+        falhas (ausente, ilegivel, envelhecido): nenhuma delas e' evidencia de um
+        produtor vivo, e `shed`/`park` voltam ao default (`leve`/None).
+        """
         self.fallbacks += 1
         self.last_reason = why
+        self.last_payload = None
         return True, why, age
 
 

@@ -1463,6 +1463,43 @@ def neg_arm_channel() -> int:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def neg_arm_dead_producer() -> int:
+    """O mutante do PRODUTOR MORTO: o `_fallback` volta a herdar o pedido.
+
+    MEDIDO 2026-11-12: sem esta mutacao, o ARM 6b seria uma arm que nada derruba.
+    O defeito exacto e' uma linha -- `self.last_payload = None` dentro do
+    `_fallback` --, e a diferenca comportamental e' grande: com ela, uma shell
+    que morre estacionada deixa `shed`/`park` para sempre e o unico transcritor
+    desta arvore fica calado por um ficheiro que ja' nao existe.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="load-shed-dead-neg-"))
+    saved = globals().get("WORKER", WORKER)
+    try:
+        copy = tmp / "app" / "webview"
+        copy.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(SHELL, copy / "sotto_webview.py")
+        worker_copy, _webview = _mutant_layout(tmp)
+        switch_copy = tmp / "worker" / "engine_switch.py"
+        text = switch_copy.read_text(encoding="utf-8")
+        mutant = text.replace("        self.last_reason = why\n        self.last_payload = None",
+                              "        self.last_reason = why")
+        if mutant == text:
+            print("NEG-ARM(morto): nao consegui mutar o alvo (o texto mudou)")
+            return EXIT_PASS
+        switch_copy.write_text(mutant, encoding="utf-8")
+        print("NEG-ARM(morto): o `_fallback` volta a herdar o `last_payload` do produtor")
+        globals()["WORKER"] = worker_copy
+        rc = run(copy / "load_shedding.py", copy / "sotto_webview.py", BATCH)
+        if rc == EXIT_FAIL:
+            print("\nNEG-ARM(morto) PASS -- RED as designed: o ARM 6b derruba o mutante")
+            return EXIT_FAIL
+        print("\nNEG-ARM(morto) FAIL -- o ARM 6b NAO ve o produtor morto a mandar")
+        return EXIT_PASS
+    finally:
+        globals()["WORKER"] = saved
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _load_worker(path: Path):
     """O worker REAL, importado do ficheiro (o import custa ~0 s: medido)."""
     # O directorio do worker no `sys.path`: `sotto_worker.py` faz
@@ -2571,6 +2608,41 @@ def arms_channel(shell_path: Path) -> None:
         for lv in ("leve", "alta", "muito-alta"):
             add(reader_with(pay(shed=lv)).shed() == lv, "leitura honesta de %s" % lv)
 
+        print("\nARM 6b -- o PRODUTOR MORTO nao continua a mandar: UM leitor, duas voltas")
+        # MEDIDO 2026-11-12: cada braco do ARM 6 construia um leitor NOVO, logo a
+        # sequencia que o defeito exigia era estruturalmente invisivel. Aqui e' o
+        # MESMO leitor: ele obedece enquanto o ficheiro e' fresco, e tem de
+        # ESQUECER o pedido no instante em que o ficheiro desaparece, rebenta ou
+        # envelhece -- senao `shed='muito-alta'` de uma shell morta cala o unico
+        # transcritor da arvore para sempre.
+        vis.write_text(pay(shed="muito-alta", park="vram"), encoding="utf-8")
+        vivo = sw.PanelVisibilityReader(str(vis))
+        vivo.read()
+        add((vivo.shed(), vivo.park()) == ("muito-alta", "vram"),
+            "com o produtor VIVO o pedido e' obedecido", str((vivo.shed(), vivo.park())))
+        try:
+            vis.unlink()
+        except OSError:
+            pass
+        visible, why, _age = vivo.read()
+        add(visible is True and why == "no-file",
+            "sem ficheiro a visibilidade falha ABERTA", "%r/%r" % (visible, why))
+        add((vivo.shed(), vivo.park()) == ("leve", None),
+            "e o shed/park do produtor morto NAO sobrevivem",
+            str((vivo.shed(), vivo.park())))
+        vis.write_text("{ isto nao e' json", encoding="utf-8")
+        vivo.read()
+        add((vivo.shed(), vivo.park()) == ("leve", None),
+            "um ficheiro ilegivel tambem nao herda o pedido anterior",
+            str((vivo.shed(), vivo.park())))
+        velho = json.dumps({"visible": True, "shed": "muito-alta", "park": "vram",
+                            "writtenAtEpoch": 0, "staleAfterSeconds": 1})
+        vis.write_text(velho, encoding="utf-8")
+        visible, why, _age = vivo.read()
+        add(why.startswith("stale") and (vivo.shed(), vivo.park()) == ("leve", None),
+            "um payload ENVELHECIDO e' um produtor morto: nada dele se obedece",
+            "%r %r" % (why, (vivo.shed(), vivo.park())))
+
         print("\nARM 7 -- o DECISOR do worker: o nivel pesa sobre a visibilidade")
         runner = tmp / "redux_batch.py"
         runner.write_text("# stub\n", encoding="utf-8")
@@ -2974,9 +3046,10 @@ def main(argv) -> int:
         rel_wedge = neg_arm_release_wedge()
         rel_gap = neg_arm_release_gap()
         rel_echo = neg_arm_release_echo()
+        dead = neg_arm_dead_producer()
         every = (table, channel, drain, selector, floor, sustain, persist, cede,
                  chan, dwell, rise, cpu_wiring, resume, rel_cpu, rel_persist,
-                 rel_blind, rel_wedge, rel_gap, rel_echo)
+                 rel_blind, rel_wedge, rel_gap, rel_echo, dead)
         return (EXIT_FAIL if all(rc == EXIT_FAIL for rc in every) else EXIT_PASS)
     return run(MODULE, SHELL)
 

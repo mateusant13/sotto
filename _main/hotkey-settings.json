@@ -1,1 +1,5 @@
-{"panels": "Alt+C", "live": "Ctrl+Space"}
+{
+  "panels": "Alt+C",
+  "live": "Ctrl+Space",
+  "panels_enabled": true
+}

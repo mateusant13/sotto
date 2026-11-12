@@ -407,18 +407,38 @@ def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S,
     soltos custam ~0,1 ms e morrem no prazo do proprio `recv`.
     """
     connect = connect or _default_connect()
-    items = []
-    for tab in list(tabs or ())[:MAX_PROBE_TABS]:
-        items.append(tab)
-    if not items:
+    population = list(tabs or ())
+    if not population:
         return []
+    # A POPULACAO NAO E' O QUE CABE NUMA VAGA (MEDIDO 2026-11-12).
+    # `list_targets` ja' entrega SO' abas `/watch`, e este laco cortava em
+    # `[:MAX_PROBE_TABS]` ANTES de saber qual delas toca: com SETE abas `watch`
+    # abertas -- o caso do dono, no proprio log desta arvore, `tabs=7` -- a
+    # setima nunca era sondada, e a escolha caia numa aba parada vizinha. O
+    # instrumento nao podia denunciar: `YOUTUBE_PROBE_BUDGET tabs=%d` imprimia
+    # `len(items)`, ou seja o numero JA' CORTADO.
+    #
+    # Agora `MAX_PROBE_TABS` e' o tecto de SONDAS SIMULTANEAS, nao o da
+    # populacao: as abas vao em VAGAS desse tamanho, e quem acaba a fila e' o
+    # orcamento de RELOGIO (`budget_s`), que ja' existia. Duas vagas custam
+    # ~2 x `gap_s` e caem dentro dos 0,5 s medidos do orcamento.
+    items = population
     if not parallel or len(items) == 1:
-        return [p for p in (_probe_one(t, connect, timeout, gap_s)
-                            for t in items) if p]
-    # Um fio por aba, no maximo `MAX_PROBE_TABS`: o `gap_s` de cada uma corre em
-    # paralelo com a ligacao das outras, e o custo total passa a ser o da aba
-    # MAIS LENTA em vez da soma.
+        deadline_seq = (None if budget_s is None
+                        else time.monotonic() + max(0.0, float(budget_s)))
+        out = []
+        for t in items:
+            if deadline_seq is not None and time.monotonic() >= deadline_seq:
+                break
+            p = _probe_one(t, connect, timeout, gap_s)
+            if p:
+                out.append(p)
+        return out
+    # Um fio por aba DENTRO DA VAGA, no maximo `MAX_PROBE_TABS`: o `gap_s` de
+    # cada uma corre em paralelo com a ligacao das outras, e o custo de uma vaga
+    # passa a ser o da aba MAIS LENTA dela em vez da soma.
     results = [None] * len(items)
+    attempted = [0]          # quantas sondas comecaram, para o log ser honesto
 
     def _run(idx, tab):
         try:
@@ -434,29 +454,40 @@ def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S,
     deadline = (None if budget_s is None
                 else time.monotonic() + max(0.0, float(budget_s)))
     threads = []
-    for idx, tab in enumerate(items):
+    for start in range(0, len(items), max(1, int(MAX_PROBE_TABS))):
+        wave = list(enumerate(items))[start:start + max(1, int(MAX_PROBE_TABS))]
         if deadline is not None and time.monotonic() >= deadline:
-            break                                 # sem tempo para mais um fio
-        th = threading.Thread(target=_run, args=(idx, tab), name='yt-probe',
-                              daemon=True)
-        th.start()
-        threads.append(th)
-    if deadline is None:
-        for th in threads:
-            th.join()
-    else:
-        for th in threads:
-            th.join(max(0.0, deadline - time.monotonic()))
-        late = ((len(items) - len(threads))
-                + sum(1 for th in threads if th.is_alive()))
-        if late and log is not None:
-            try:
-                log('YOUTUBE_PROBE_BUDGET tabs=%d done=%d abandoned=%d '
-                    'budget_ms=%.0f timeout_ms=%.0f'
-                    % (len(items), len(items) - late, late,
-                       float(budget_s) * 1000.0, float(timeout) * 1000.0))
-            except Exception:                     # noqa: BLE001
-                pass
+            break                                 # sem tempo para mais uma vaga
+        first = len(threads)
+        for idx, tab in wave:
+            if deadline is not None and time.monotonic() >= deadline:
+                break                             # sem tempo para mais um fio
+            th = threading.Thread(target=_run, args=(idx, tab), name='yt-probe',
+                                  daemon=True)
+            th.start()
+            attempted[0] += 1
+            threads.append(th)
+        if deadline is None:
+            for th in threads[first:]:
+                th.join()
+        else:
+            for th in threads[first:]:
+                th.join(max(0.0, deadline - time.monotonic()))
+    alive = sum(1 for th in threads if th.is_alive())
+    done = attempted[0] - alive
+    late = (len(items) - attempted[0]) + alive
+    # O NUMERO QUE DENUNCIA E' A DIFERENCA ENTRE A POPULACAO E O QUE FOI
+    # TENTADO. Antes `tabs=` era `len(items)` -- o corte -- e essas duas abas
+    # eram o mesmo numero: o log nao podia dizer que faltava alguem.
+    if late and log is not None:
+        try:
+            log('YOUTUBE_PROBE_BUDGET tabs_total=%d probed=%d done=%d abandoned=%d '
+                'waves=%d budget_ms=%.0f timeout_ms=%.0f'
+                % (len(items), attempted[0], done, late,
+                   (len(items) + max(1, int(MAX_PROBE_TABS)) - 1) // max(1, int(MAX_PROBE_TABS)),
+                   float(budget_s) * 1000.0, float(timeout) * 1000.0))
+        except Exception:                     # noqa: BLE001
+            pass
     return [p for p in results if p]
 
 

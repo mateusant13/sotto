@@ -344,6 +344,13 @@ class Shell:
         # contador a zero e o painel nunca aparecia -- o defeito seria do arnes.
         self._panel_presses = 0
         self._panel_press_lock = threading.Lock()
+        # O SLOT DE ESTADO DA LEGENDA (2026-11-11) E' DO PRODUTO, e um fake que
+        # nao o conhece paga `AttributeError` dentro do `except` de
+        # `_set_live_enabled` -- o braco media o ARNES: medido 2026-11-12,
+        # `LIVE_ENABLED_FAILED ... no attribute '_caption_status_start'` e o
+        # toque aparecia como nao-comutado. Gravador, e o braco (n2) exige a
+        # sequencia: um fake mudo deixaria a cura de 2026-11-11 sem prova.
+        self.caption_status = []
         # A CONSTANTE VEM DO FICHEIRO VIVO, nao de um numero copiado aqui: o
         # limite do replay e' uma politica (`CAPTION_REPLAY_MAX_S`), e reencena-la
         # no arnes era medir a copia em vez do produto.
@@ -355,6 +362,15 @@ class Shell:
 
     def _post(self, fn):
         return self.ui.post(fn)
+
+    def _caption_status_start(self):
+        self.caption_status.append('start')
+
+    def _caption_status_stop(self):
+        self.caption_status.append('stop')
+
+    def _caption_off_ack(self):
+        self.caption_status.append('off-ack')
 
     def push_caption_to_window(self, text, previous=None, instant=False):
         """O REPLAY tem de ser observavel: sem esta boca o braco (m) nao ve' nada."""
@@ -736,6 +752,13 @@ def run(shell_path: Path) -> int:
         and 'on=false' in live_lines()[1],
         "cada toque comutou a legenda uma vez, para lados opostos",
         str(live_lines()))
+    # (h2) O SLOT DE ESTADO DA LEGENDA E' DIRIGIDO PELO INTERRUPTOR (2026-11-11:
+    # *OFF responde*). Sem este braco o fake podia ficar MUDO e o defeito
+    # voltava em silencio -- foi exactamente o que aconteceu em 2026-11-12, com
+    # `AttributeError` dentro do `except` a fazer o toque parecer nao-comutado.
+    add(shell.caption_status == ['start', 'stop', 'off-ack'],
+        "o ON abre o slot de estado e o OFF para-o e RESPONDE (off-ack)",
+        str(shell.caption_status))
 
     # -- (i) Alt+C nao mexe na legenda ---------------------------------------
     print("\nARM (i) -- Alt+C continua a ser so' dos paineis")
@@ -889,6 +912,10 @@ MUTANTS = (
      "    if bool(paused) and bool(from_player):\n        return True\n",
      "    if False:\n        return True\n",
      "a pausa deixa de segurar a linha do player (arm m)"),
+    ("off-sem-resposta",
+     "                self._caption_status_stop()",
+     "                pass",
+     "o OFF deixa de parar o slot de estado (arm h2)"),
     ("replay-sem-teto",
      "    return 0 <= age_ms <= int(float(max_s) * 1000.0)",
      "    return True",

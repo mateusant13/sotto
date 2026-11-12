@@ -583,11 +583,18 @@ def _measure_budget(scale, work_width, theme=None):
     g = _geom(scale, theme)
     t = g['t']
     cur_px = g['cur_px']
-    bold = t['liveWeight'] >= 600
-
+    # O NUMERO, nunca um booleano. MEDIDO 2026-11-12: aqui havia
+    # `bold = t['liveWeight'] >= 600` e `_measure` faz `int(weight)` -- ou seja a
+    # MEDIDA construia a fonte com peso **1** (o `_face_for` escolhia a face mais
+    # proxima de 1, e o `weight >= 600` de `_build_font` NUNCA disparava)
+    # enquanto o DESENHO usa `t['liveWeight']` verdadeiro. A legenda era medida
+    # Regular e desenhada SemiBold/Bold: com a placa `tight` (a largura E' a linha
+    # medida mais o `hug`) as ultimas letras caiam fora do bitmap, e a quebra de
+    # linha mexia quando so' o peso mudava -- exatamente o defeito que a docstring
+    # de `_measure` diz ter curado para a familia.
     def cur_w(s):
-        return _measure(s, cur_px, _MEASURE_CACHE, t['fontFamily'], bold,
-                        t['liveItalic'])(s)
+        return _measure(s, cur_px, _MEASURE_CACHE, t['fontFamily'],
+                        t['liveWeight'], t['liveItalic'])(s)
 
     budget = (_cw.budget_px(work_width, cur_px, cur_w) if _cw
               else int(work_width * 0.5))
@@ -617,12 +624,12 @@ def _layout(text, previous, scale, work_width, theme=None, rows=None,
     cur_px, prev_px = g['cur_px'], g['prev_px']
     text = _case(text, t['liveUpper'])
     previous = _case(previous, t['prevUpper'])
-    prev_bold = t['prevWeight'] >= 600
     cur_w, budget = _measure_budget(scale, work_width, theme)
 
     def prev_w(s):
-        return _measure(s, prev_px, _MEASURE_CACHE, t['fontFamily'], prev_bold,
-                        t['prevItalic'])(s)
+        # O peso NUMERICO, a mesma razao do `cur_w` acima.
+        return _measure(s, prev_px, _MEASURE_CACHE, t['fontFamily'],
+                        t['prevWeight'], t['prevItalic'])(s)
 
     # A JANELA DESLIZA. Antes era `_overflow` (lido por NINGUEM): toda palavra
     # alem da 2a linha nunca era desenhada -- 168 de 400 legendas do dono, 772

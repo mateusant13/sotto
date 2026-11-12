@@ -675,6 +675,28 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
     a12 = same and par_s < 0.8 and seq_s > 1.2
     out.append(("abas-em-paralelo", a12,
                 "seq=%.2fs par=%.2fs mesmos=%s" % (seq_s, par_s, same)))
+    # A12b -- A POPULACAO INTEIRA, EM VAGAS (MEDIDO 2026-11-12). `probe_tabs`
+    # cortava em `[:MAX_PROBE_TABS]` ANTES de saber qual aba toca: o log do dono
+    # mostra `tabs=7` e a setima nunca era sondada, e o proprio
+    # `YOUTUBE_PROBE_BUDGET tabs=%d` imprimia o numero JA' CORTADO, ou seja o
+    # instrumento nao podia denunciar o que faltava. Agora `MAX_PROBE_TABS` e' o
+    # tecto de SONDAS SIMULTANEAS: as abas vao em vagas. Duas metades: com
+    # orcamento folgado as OITO abas sao sondadas; com o orcamento a acabar, o
+    # log diz `tabs_total=8 probed=<n>` -- a populacao e o tentado, separados.
+    tabs8 = [{"url": "https://www.youtube.com/watch?v=AAAAAAAAAAA" + str(i),
+              "webSocketDebuggerUrl": "ws%d" % i} for i in range(8)]
+    got8 = mod.probe_tabs(tabs8, connect=_slow_connect, timeout=1.0,
+                          gap_s=0.0, budget_s=8.0)
+    lines8 = []
+    tight = mod.probe_tabs(tabs8, connect=_slow_connect, timeout=1.0,
+                           gap_s=0.0, budget_s=0.45, log=lines8.append)
+    txt8 = ' '.join(str(x) for x in lines8)
+    a12b = (len(got8) == 8
+            and len(tight) < 8
+            and 'tabs_total=8' in txt8
+            and 'probed=' in txt8)
+    out.append(("populacao-inteira", a12b,
+                "folgado=%d apertado=%d log=%r" % (len(got8), len(tight), txt8[:96])))
 
     # A13..A17 -- os tres defeitos que o dono reportou a 2026-11-06
     for name, fn in (("pausa-corta-a-pintura",
@@ -986,6 +1008,20 @@ def neg_arm():
         got_dedup = dict((n, ok) for n, ok, _ in arms(module_path=mut_dedup))
         results.append(("sem-dedup-estado",
                         not got_dedup.get("estado-nao-repete", False)))
+        # (5) A POPULACAO VOLTA A SER CORTADA (2026-11-12): o laco de sondagem
+        # corta em `[:MAX_PROBE_TABS]` antes de saber quem toca -- o defeito
+        # medido no log do dono com `tabs=7`. A arm `populacao-inteira` tem de
+        # cair, senao ela descreve uma cura que nada protege.
+        mut_pop = os.path.join(tmp, "populacao_cortada.py")
+        io.open(mut_pop, "w", encoding="utf-8").write(
+            src.replace("    items = population\n",
+                        "    items = population[:MAX_PROBE_TABS]\n", 1))
+        if io.open(mut_pop, encoding="utf-8").read() == src:
+            raise RuntimeError("ancora `items = population` desapareceu: o mutante "
+                               "`populacao-cortada` nao tem onde aterrar")
+        got_pop = dict((n, ok) for n, ok, _ in arms(module_path=mut_pop))
+        results.append(("populacao-cortada",
+                        not got_pop.get("populacao-inteira", False)))
         return results
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

@@ -34,6 +34,9 @@ funcionar pela mão do dono).
 | D-17 | uma largada de MEDIÇÃO drenava a FILA DO BATCH do dono (`_open_load_action` sem `queue_dir`) -- medido `io 69,1 MB/s` a transcrever um `.f32` de `I:\cc-tmp\sotto-batch-queue` no stutter dele | ALTO | **corrigido, NÃO verificado** -- `isolated_queue_dir` (dono=`None`, medicao=`<fila>.<tag>`, host sem `args`=`.no-args`) e `queue_dir=` no `open_action`; executado dono=None/probe/no-args | `measurement-flags` A9 (3 metades + fiacao), neg-arm 6/6 |
 | D-18 | o ramo `no_audio` do cao de guarda re-armava sem perguntar se o filho estava vivo -- worker travado nunca reiniciado (`evidence_age_s=3173.9 restarts=0` no log do dono) | CRÍTICO | **corrigido, NÃO verificado** -- a prova de vida (`last_progress_at` depois do veredicto) decide; 7 arms + neg-arm 2/2 | `worker-silence-grace` |
 | D-19 | o tecto `MAX_PER_HOUR` do vigia de custo dizia "por hora" e **nunca era zerado**: 3 reinicios na VIDA do processo e o vigia recusava para sempre, dizendo `tecto-por-hora` | ALTO | **corrigido, NÃO verificado** -- `cost_watchdog.window_expired` (dono unico da janela, `WINDOW_S`) e a shell zera o contador ao virar a hora, com `WORKER_COST_WINDOW_RESET`; 43 arms, neg-arm 13/13 (M12 janela que nunca vira, M13 shell que nao pergunta) | `cost-watchdog` |
+| D-20 | a **medida** da legenda construía a fonte com peso `1` (`int(True)` de um booleano `bold`) e o **desenho** usava o peso do tema: com a placa `tight` as últimas letras caíam fora do bitmap e a quebra de linha mudava quando só o peso mudava | ALTO | **corrigido, NÃO verificado** — `_measure` recebe `liveWeight`/`prevWeight` numéricos; 10 arms, neg-arm 9/9 | `caption-plate` |
+| D-21 | `PanelVisibilityReader._fallback` falhava aberto na visibilidade e **herdava o `last_payload`** da última leitura boa: uma shell que morresse estacionada deixava `shed='muito-alta'`/`park='vram'` para sempre e calava o único transcritor por um ficheiro que já não existe | ALTO | **corrigido, NÃO verificado** — `last_payload = None` nas três falhas (ausente, ilegível, envelhecido); ARM 6b com UM leitor em duas voltas + mutante do produtor morto | `load-shedding` |
+| D-22 | `probe_tabs` cortava a **população** de abas em `MAX_PROBE_TABS` antes de saber qual toca: com sete abas `/watch` (log do dono, `tabs=7`) a sétima nunca era sondada e a escolha caía numa aba parada vizinha — e o `YOUTUBE_PROBE_BUDGET` imprimia o número já cortado, logo o instrumento não podia denunciar-se | MÉDIO | **corrigido, NÃO verificado** — vagas de `MAX_PROBE_TABS` limitadas pelo relógio, `tabs_total/probed/done/abandoned/waves`; 24 arms, neg-arm 17/17 | `youtube-cdp-source` |
 | D-11 | a segunda legenda da janela substituía a primeira no latch de `emit_async`: **fala perdida sem uma linha no log**, e é a página que commita o histórico — o histórico perdia a mesma fala | CRÍTICO | **corrigido** — kinds de EVENTO enfileiram (tecto 32, excedente CONTADO em `CAPTION_EMIT_DROPPED`); 6 arms, neg-arm 2/2 com o mutante novo |
 
 ---
@@ -754,6 +757,74 @@ linha só).
 
 ---
 
+## D-20/D-21/D-22 — a rodada de 2026-11-12 (b): medir com a face que se desenha, e não herdar o
+pedido de um morto
+
+Três defeitos de **desenho**, todos na fronteira entre duas peças que cada uma estava certa sozinha.
+
+### D-20 — a placa media Regular e desenhava Bold
+
+`app/webview/overlay_paint.py:_measure_budget` passava `bold = t['liveWeight'] >= 600` a `_measure`,
+que faz `int(weight)` — ou seja a **medida** construía a fonte com peso **1**. O `weight >= 600` de
+`_build_font` nunca disparava desse lado, enquanto o **desenho** usa `t['liveWeight']` verdadeiro. Com
+a placa `tight` (a largura é a linha medida mais o `hug`), a diferença não é cosmética: as últimas
+letras caem fora do bitmap e a quebra de linha mexe quando só o peso muda. O par `prev_w` tinha o mesmo
+defeito (`prev_bold`).
+
+```
+ANTES   cur_w: _measure(..., bold=True, ...)        -> int(True) = 1  (Regular)
+        desenho: t['liveWeight'] = 600/700          (SemiBold/Bold)
+DEPOIS  cur_w: _measure(..., t['liveWeight'], ...)   (o mesmo número que o _build_font)
+```
+
+Portão: `caption-plate` `10/10 GREEN`, `--neg-arm` 9/9 (A10 é a arm da identidade medida↔desenhada).
+
+### D-21 — o pedido de um produtor morto continuava a mandar
+
+`worker/engine_switch.py:PanelVisibilityReader._fallback` fazia o que a docstring prometia pela metade:
+`read()` falhava **aberto** na visibilidade (certo) e deixava `last_payload` da última leitura
+BEM-SUCEDIDA no lugar (errado). `shed()` e `park()` leem `last_payload`, logo uma shell que morresse
+estacionada deixava `shed='muito-alta'` + `park='vram'` para sempre: `tick()` via `visible=True`
+(certo) e o nível de um morto (errado), e o único transcritor da árvore ficava calado por um ficheiro
+que já não existe.
+
+```
+ANTES   _fallback: fallbacks += 1; last_reason = why            (last_payload fica do vivo anterior)
+DEPOIS  _fallback: fallbacks += 1; last_reason = why; last_payload = None
+```
+
+Portão: `load-shedding` `257/257` arms, com o **ARM 6b** a usar o MESMO leitor em duas voltas
+(obedece enquanto o ficheiro é fresco; tem de esquecer no instante em que ele desaparece, rebenta ou
+envelhece) e o `neg_arm_dead_producer` a repor a herança numa cópia — sem esse mutante, 6b seria uma
+arm que nada derruba.
+
+### D-22 — a população de abas não é o que cabe numa vaga
+
+`app/webview/youtube_cdp_source.py:probe_tabs` fazia `items = list(tabs)[:MAX_PROBE_TABS]` **antes** de
+saber qual aba toca. `list_targets` já entrega só abas `/watch`; com sete delas — o caso do dono, no
+próprio log desta árvore, `tabs=7` — a sétima nunca era sondada e a escolha caía numa aba parada
+vizinha. E o instrumento não podia denunciá-lo: `YOUTUBE_PROBE_BUDGET tabs=%d` imprimia
+`len(items)`, isto é, o número **já cortado**.
+
+```
+ANTES   tabs -> items[:MAX_PROBE_TABS] -> um fio por item -> log tabs=len(items)
+DEPOIS  tabs -> VAGAS de MAX_PROBE_TABS, prazo pelo relógio (budget_s)
+        -> log tabs_total=<populacao> probed=<tentado> done= abandoned= waves=
+```
+
+Portão: `youtube-cdp-source` `24/24`, com a arm `populacao-inteira` (população de oito abas, o log
+tem de dizer `tabs_total=8 probed=<n>`) e o mutante `populacao-cortada` a exigir que ela caia;
+`--neg-arm` 17/17.
+
+### O instrumento que media o arnês (não é defeito de produto, fica registado)
+
+`_main/hotkey-live-toggle-oracle.py` falhava porque o seu fake da shell não conhecia o slot de estado
+da legenda que o produto ganhou em 2026-11-11: `LIVE_ENABLED_FAILED ... no attribute
+'_caption_status_start'` dentro do `except` de `_set_live_enabled`, e o toque aparecia como
+não-comutado. O braço media o **arnês**. O fake passou a gravar a sequência (`start`, `stop`, `off-ack`)
+e o braço `n2`/`h2` exige-a; o mutante `off-sem-resposta` derruba-o. `39/39`, neg-arm 6/6.
+
+---
 ## D-15 — a medição escrevia o estado que a app do dono obedece
 
 **Onde.** `app/webview/sotto_webview.py`: `measurement_lock_name` (8712), `isolated_state_path`
