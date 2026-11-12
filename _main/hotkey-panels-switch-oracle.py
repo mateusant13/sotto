@@ -190,10 +190,16 @@ def judge_wiring(shell) -> list:
 
         settings_ref = [_settings()]
 
-        def _arm_stub(shell_obj, requested, panels=True):
+        # O STUB E' NO PAPEL, NAO NA FUNCAO COMPOSTA (2026-11-12). O handler
+        # chama `arm_hotkey_role(self, 'panels', ...)` -- a composicao das duas
+        # teclas e' do ARRANQUE. Gravar `arm_hotkey` deixava o `role` real a
+        # registar `Alt+C` no Windows DENTRO do oraculo (medido: `enabled=False`
+        # no braco do toggle, porque o `RegisterHotKey` de verdade foi pago).
+        def _arm_stub(shell_obj, role, requested, fallbacks):
             return _ThreadStub()
 
-        shell.arm_hotkey = _arm_stub
+        shell.arm_hotkey = real_arm
+        shell.arm_hotkey_role = _arm_stub
         shell.hotkey_config = lambda: _Cfg()
         try:
             shell_obj = object.__new__(shell.SottoShell)
@@ -210,6 +216,7 @@ def judge_wiring(shell) -> list:
         finally:
             shell.hotkey_config = real_cfg
             shell.arm_hotkey = real_arm
+            shell.arm_hotkey_role = real_role
         checks.append(('toggle_arms_then_disarms',
                        first.get('enabled') is True and disarmed.get('enabled') is False,
                        f'armed={first} disarmed={disarmed}'))
@@ -220,6 +227,63 @@ def judge_wiring(shell) -> list:
         checks.append(('toggle_refreshes_the_menu_each_time',
                        refreshed == ['hotkey-toggle', 'hotkey-toggle'],
                        f'refreshed={refreshed}'))
+        # ARM 10 -- O INTERRUPTOR DO Alt+C NAO RE-ARMA A TECLA DA LEGENDA.
+        # MEDIDO 2026-11-12 na leitura do caminho: a perna de ARMAR chamava
+        # `arm_hotkey(self, requested)`, que arma AS DUAS teclas e substitui
+        # `self.live_hotkey` SEM parar o fio anterior. O fio velho ficava com o
+        # `WH_KEYBOARD_LL` e o `RegisterHotKey`; o novo recebia 1409, o observador
+        # de recuo lia `registered=False` e abria o gate -- um Ctrl+Space fisico
+        # alternava duas vezes. Aqui o `arm_hotkey` e' o REAL (so' o
+        # `arm_hotkey_role` e' gravador, para nada tocar no Windows).
+        calls2 = []
+        shell.arm_hotkey = real_arm
+        shell.arm_hotkey_role = lambda sh, role, req, fb: (calls2.append(role)
+                                                          or _ThreadStub())
+        sentinel = _ThreadStub()
+        try:
+            obj = object.__new__(shell.SottoShell)
+            obj.hotkey = None
+            obj.live_hotkey = sentinel
+            obj._hotkey_requested = 'Alt+C'
+            obj.tray = type('T', (), {'refresh_menu':
+                                      lambda self, why='state': None})()
+            obj.toggle_panels_hotkey()
+        finally:
+            shell.arm_hotkey = real_arm
+            shell.arm_hotkey_role = real_role
+        checks.append(('toggle_arms_panels_only',
+                       calls2 == ['panels'] and obj.live_hotkey is sentinel,
+                       f'roles={calls2} live_kept={obj.live_hotkey is sentinel}'))
+
+        # ARM 11 -- UMA TECLA, UM DONO: com o papel JA' armado, `arm_hotkey_role`
+        # devolve o MESMO fio e nao constroi um segundo. A construcao e' uma
+        # bomba: se alguem tentar armar de novo, este braco explode em vez de
+        # pedir `Ctrl+Space` ao Windows.
+        class _Bomb:
+            def __init__(self, *a, **k):
+                raise AssertionError('construiu um SEGUNDO fio para o mesmo papel')
+
+        live_held = _ThreadStub()
+        fake = type('S', (), {})()
+        fake.live_hotkey = live_held
+        fake.hotkey = None
+        real_live_cls = getattr(shell, 'LiveHotkeyThread', None)
+        real_passive_cls = getattr(shell, 'PassiveHotkeyThread', None)
+        bomby = False
+        try:
+            shell.LiveHotkeyThread = _Bomb
+            shell.PassiveHotkeyThread = _Bomb
+            same = shell.arm_hotkey_role(fake, 'live', 'Ctrl+Space', ())
+        except AssertionError:
+            same, bomby = None, True
+        finally:
+            if real_live_cls is not None:
+                shell.LiveHotkeyThread = real_live_cls
+            if real_passive_cls is not None:
+                shell.PassiveHotkeyThread = real_passive_cls
+        checks.append(('rearm_refused_when_already_armed',
+                       same is live_held and not bomby,
+                       f'same={same is live_held} constructed={bomby}'))
     finally:
         shell.arm_hotkey_role = real_role
         shell.log = real_log
@@ -319,6 +383,44 @@ def neg_arm() -> int:
         caught += int(ok)
         print(f'MUTANT gate_ignored: {"CAUGHT" if ok else "NOT-CAUGHT"} '
               f'arms={bad}')
+
+    # OS DOIS REGRESSOS DA TECLA (2026-11-12), cada um derrubado pela SUA arm.
+    shell_mutants = [
+        ('toggle_rearms_the_live_key',
+         "            self.hotkey = arm_hotkey_role(self, 'panels', requested,\n"
+         "                                          HOTKEY_FALLBACKS)\n",
+         "            self.hotkey = arm_hotkey(self, requested)\n",
+         ['toggle_arms_panels_only']),
+        ('second_arming_creates_a_second_thread',
+         "    if _held is not None and getattr(_held, 'is_alive', lambda: False)():\n",
+         "    if False:\n",
+         ['rearm_refused_when_already_armed']),
+    ]
+    for name, before, after, must_fail in shell_mutants:
+        total += 1
+        if shell_flat.count(before) != 1:
+            print(f'MUTANT NOT APPLICABLE {name}: '
+                  f'anchor x{shell_flat.count(before)}')
+            continue
+        path = os.path.join(SHELL_DIR, 'sotto_webview__mutant_%s.py' % name)
+        mutated = shell_flat.replace(before, after, 1)
+        if shell_crlf:
+            mutated = mutated.replace('\n', '\r\n')
+        io.open(path, 'w', encoding='utf-8', newline='').write(mutated)
+        try:
+            shell_mod = load(path, 'shell_under_test')
+        finally:
+            sys.modules.pop('shell_under_test', None)
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        checks = {n: (n, o, d) for n, o, d in compact(judge_wiring(shell_mod))}
+        bad = [n for n in must_fail if not checks.get(n, (n, True, ''))[1]]
+        ok = len(bad) == len(must_fail)
+        caught += int(ok)
+        print(f'MUTANT {name}: {"CAUGHT" if ok else "NOT-CAUGHT"} arms={must_fail} '
+              f'detail={bad}')
 
     print(f'NEG-ARM SUMMARY cases={total} caught={caught}')
     print('NEG-ARM: PASS' if caught == total else 'NEG-ARM: FAIL')

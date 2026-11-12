@@ -8702,21 +8702,11 @@ def take_single_instance_lock(name=DEFAULT_MUTEX_NAME) -> bool:
     return not exists
 
 
-#: The flags that make a launch a MEASUREMENT of the panel/shell rather than the
-#: app, and therefore give it a DERIVED lock name instead of `Local\SottoShell`.
-#: Read from `args` by attribute; `--exit-after` is a FLOAT (0.0 = off) and the
-#: rest are booleans/ints, so truthiness is correct for all of them. The label is
-#: built from EVERY flag present, so two probes with different shapes keep
-#: different locks (they may run together) while two IDENTICAL ones collide (they
-#: may not stack model loads).
-_MEASUREMENT_LOCK_FLAGS = (
-    ('dump_dom', 'dump-dom'),
-    ('selftest', 'selftest'),
-    ('memory', 'memory'),
-    ('no_hotkey', 'no-hotkey'),
-    ('probe_v2', 'probe-v2'),
-    ('exit_after', 'exit-after'),
-)
+#: The label is built from EVERY measurement flag present, so two probes with
+#: different shapes keep different locks (they may run together) while two
+#: IDENTICAL ones collide (they may not stack model loads). The SET of flags is
+#: NOT listed here: it is `MEASUREMENT_FLAGS` and nothing else (see the block
+#: above it for the five copies this line replaced).
 
 
 def measurement_lock_name(args) -> str:
@@ -8729,7 +8719,7 @@ def measurement_lock_name(args) -> str:
     ("Sotto opened more than once and froze the PC"). So the lock is TAKEN by
     every launch; only the NAME differs from the app's.
     """
-    parts = [name for attr, name in _MEASUREMENT_LOCK_FLAGS
+    parts = [name.lstrip('-') for attr, name in MEASUREMENT_FLAGS
              if getattr(args, attr, False)]
     label = '.'.join(parts) if parts else 'probe'
     return DEFAULT_MUTEX_NAME + '.m.' + label.replace('-', '_')
@@ -10379,7 +10369,22 @@ def arm_hotkey(shell, requested: str, panels: bool = True):
 
 
 def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
-    """Regista `requested` (e a cadeia `fallbacks`) para `role`; devolve o thread."""
+    """Regista `requested` (e a cadeia `fallbacks`) para `role`; devolve o thread.
+
+    UMA TECLA, UM DONO. Se o papel JA' tem um fio VIVO, esta funcao devolve esse
+    fio e nao constroi um segundo: dois fios na mesma combinacao sao um hook orfao
+    mais um `RegisterHotKey` recusado (1409), e o observador de recuo -- que le
+    `registered=False` -- abre o gate e o mesmo toque alterna duas vezes. Quem
+    queria TROCAR a tecla tem de parar o fio primeiro, e isso e' dito no log
+    (`HOTKEY_REARM_REFUSED`) em vez de acontecer em silencio.
+    """
+    _slot = 'live_hotkey' if role == 'live' else 'hotkey'
+    _held = getattr(shell, _slot, None)
+    if _held is not None and getattr(_held, 'is_alive', lambda: False)():
+        log(f'HOTKEY_REARM_REFUSED role={role} '
+            f'accelerator={getattr(_held, "accelerator", "?")} '
+            f'why=already-armed slot={_slot}')
+        return _held
     order = [requested] + [a for a in fallbacks if a != requested]
     tried = []
     callback = (lambda: shell.hotkey_live()) if role == 'live' else (
@@ -12481,31 +12486,61 @@ def _caption_replay_allowed(painted, age_ms, max_s, paused=False,
     return 0 <= age_ms <= int(float(max_s) * 1000.0)
 
 
-#: As flags que dizem "esta corrida MEDE, nao usa". UMA tabela, dois leitores:
-#: `_worker_autostart_reason` (nao pagar 2 GB de modelo) e o arranque da legenda
-#: (`caption_wanted_at_start`, nao pintar no ecra do dono). Uma segunda copia da
-#: lista e' a classe do `panel-deps`: duas tabelas que divergem em silencio.
+#: As flags que dizem "esta corrida MEDE, nao usa": (atributo em `args`, nome na
+#: linha de comando). UMA TABELA, TODOS OS LEITORES:
+#:   - o nome do lock derivado (`measurement_lock_name`) -- para nao tirar o
+#:     `Local\SottoShell` ao app do dono e nao empilhar duas sondas iguais;
+#:   - `_measurement_flag` -> `_worker_autostart_reason` (nao pagar 1,9 GB de
+#:     modelo) e `caption_wanted_at_start` (nao pintar no ecra do dono);
+#:   - a recusa de armar o Alt+C (uma sonda que toma a tecla responde a pressao
+#:     dele com o painel dela) e a recusa de adoptar a janela do YouTube;
+#:   - o `elif` que decide o lock em `main()`.
+#:
+#: CADA COPIA DESTA LISTA DIVERGIU, e uma delas custou o ecra dele: medido
+#: 2026-11-12, existiam CINCO copias (esta, `_MEASUREMENT_LOCK_FLAGS`, o
+#: `SottoShell.MEASUREMENT_FLAGS`, um caso especial inline de `--probe-v2` e a
+#: cadeia de `elif` em `main()`), e a cadeia nao conhecia `--exit-after`,
+#: `--probe-stats`, `--probe-outside-click` nem `--probe-edit-mode`: essas
+#: quatro sondas tomavam o mutex DO APP -- recusadas em silencio com rc=0 quando
+#: o app estava de pe (uma medicao que mediu nada a responder 0) ou, com o app
+#: fechado, com o Alt+C armado e o `HOTKEY_UNAVAILABLE alert=messagebox` modal
+#: que a nota de 2026-10-11 registra como curado. Uma regra com cinco donos nao
+#: tem nenhum; agora tem um, e o portao e' `_main/measurement-flags-oracle.py`.
 MEASUREMENT_FLAGS = (
     ('dump_dom', '--dump-dom'),
     ('selftest', '--selftest'),
     ('memory', '--memory'),
     ('no_hotkey', '--no-hotkey'),
     ('exit_after', '--exit-after'),
+    ('probe_v2', '--probe-v2'),
     ('probe_stats', '--probe-stats'),
     ('probe_outside_click', '--probe-outside-click'),
     ('probe_edit_mode', '--probe-edit-mode'),
 )
 
+#: FLAGS DA MESMA FAMILIA QUE NAO ENTRAM NA TABELA, e a razao de cada uma.
+#: A tabela acima e' lida por VERDADE (`getattr(args, attr, False)`), e um default
+#: que ja' e' verdadeiro marcaria TODA corrida como medicao:
+#:   - `--probe-stats-wait` (float, default 8.0) e' PARAMETRO de `--probe-stats`;
+#:   - `--probe-reload` RETORNA antes da janela, do worker e do lock (`main()`, o
+#:     ramo logo abaixo do import do pywebview): nao ha o que recusar.
+#: Uma flag nova da familia tem de entrar numa DAS DUAS listas: o portao
+#: `_main/measurement-flags-oracle.py` (A3) recusa a que nao entrar em nenhuma.
+MEASUREMENT_EXEMPT = (
+    ('probe_stats_wait', '--probe-stats-wait'),
+    ('probe_reload', '--probe-reload'),
+)
+
 
 def _measurement_flag(args):
-    """O nome da flag de medicao presente em `args`, ou None."""
+    """O nome da flag de medicao presente em `args`, ou None.
+
+    UMA tabela: `--exit-after` e `--probe-v2` sao FLOAT (0.0 = desligado) e as
+    outras sao `store_true`; a verdade booleana serve as duas formas.
+    """
     for flag, name in MEASUREMENT_FLAGS:
-        # `--exit-after` e' FLOAT (0.0 = desligado) e as outras sao `store_true`;
-        # a verdade booleana e' correcta para as duas e mantem isto legivel.
         if getattr(args, flag, False):
             return name
-    if getattr(args, 'probe_v2', 0):
-        return '--probe-v2'
     return None
 
 
@@ -17128,7 +17163,19 @@ class SottoShell:
             requested = (getattr(self, '_hotkey_requested', None)
                          or state.get('accel')
                          or hotkey_numbers().PANELS_ACCELERATOR)
-            self.hotkey = arm_hotkey(self, requested)
+            # SO' A TECLA DOS PAINEIS. `arm_hotkey` arma AS DUAS (e' o que o
+            # arranque precisa), e chama-lo daqui substituia `self.live_hotkey`
+            # SEM parar o fio anterior: a tecla do dono ficava presa no hook
+            # velho e o novo `RegisterHotKey` respondia 1409
+            # (`HOTKEY_LIVE_REGISTER_FAILED role=live`), logo o fallback
+            # observador abria o gate (`registered=False`) e um Ctrl+Space
+            # fisico alternava DUAS vezes -- ligar e desligar no mesmo toque.
+            # MEDIDO 2026-11-12 na leitura do caminho: o menu do icone e' o
+            # unico sitio que re-armava depois do arranque. O
+            # `stop_panels_hotkey` sempre soube que a legenda nao e' dele; agora
+            # o ARM tambem.
+            self.hotkey = arm_hotkey_role(self, 'panels', requested,
+                                          HOTKEY_FALLBACKS)
             saved = hotkey_config().set_panels_enabled(True)
             now = self.panels_hotkey_state()
             log(f'HOTKEY_PANELS toggled=true action=arm '
@@ -19874,17 +19921,15 @@ class SottoShell:
     #: It does NOT measure the player's captions, and `--no-hotkey` is the
     #: shell's OWN name for it: the help says "for MEASUREMENT runs", and a
     #: real run cannot work without Alt+C.
-    MEASUREMENT_FLAGS = ('dump_dom', 'selftest', 'memory', 'no_hotkey',
-                         'exit_after', 'probe_stats', 'probe_outside_click',
-                         'probe_edit_mode')
-
     def _is_measurement_run(self, args=None):
-        """The measurement flag this run carries, or '' for a normal run."""
+        """The measurement flag this run carries, or '' for a normal run.
+
+        DELEGATED to the one table (2026-11-12): this class used to carry its
+        own five-item copy of the list, which knew neither `--probe-v2` nor the
+        three `--probe-*` flags the reader below must refuse.
+        """
         args = args if args is not None else getattr(self, 'args', None)
-        for name in self.MEASUREMENT_FLAGS:
-            if getattr(args, name, False):
-                return name
-        return ''
+        return _measurement_flag(args) or ''
 
     def start_external_caption_watcher(self):
         """Start the UIA reader once per process (normal runs only)."""
@@ -26130,16 +26175,13 @@ def main(argv=None):
     # an argument from OS behaviour. It is taken as-is, and it is NOT excused.
     if args.mutex_name != DEFAULT_MUTEX_NAME:
         pass
-    elif args.no_hotkey:
-        lock_excuse = '--no-hotkey'
-    elif args.dump_dom:
-        lock_excuse = '--dump-dom'
-    elif args.selftest:
-        lock_excuse = '--selftest'
-    elif args.memory:
-        lock_excuse = '--memory'
-    elif args.probe_v2 > 0:
-        lock_excuse = '--probe-v2'
+    else:
+        # ONE TABLE DECIDES. This was a chain of four `elif`s that named
+        # `--no-hotkey`, `--dump-dom`, `--selftest`, `--memory` and
+        # `--probe-v2` -- and did not name `--exit-after`, `--probe-stats`,
+        # `--probe-outside-click` or `--probe-edit-mode`, so those four took
+        # the APP's mutex (measured 2026-11-12, see the table's note).
+        lock_excuse = _measurement_flag(args)
     if lock_excuse:
         lock_name = measurement_lock_name(args)
         if not take_single_instance_lock(lock_name):

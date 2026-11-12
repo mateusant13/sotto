@@ -24,6 +24,7 @@ funcionar pela mão do dono).
 | D-06 | a bateria presa a `cap40` soma 2 470,3 s em 413 passos (o portão julga 2 293,3 s), contra um alvo declarado de 60 s | MÉDIO | aberto, com a cauda nomeada |
 | D-07 | o número do painel no arranque circulou em QUATRO versões sem população (braço/arranques/fase), e o portão exigia a contradição em vez de resolvê-la | ALTO | **corrigido** — leitor puro `--read`, fixture do único log vivo, portão re-escrito; neg-arm 3/3 |
 | D-08 | o censo do painel abria o próprio log com `'w'` a cada linha: **cada invocação apagava a evidência da anterior** (4 073 B → 42 B, medido) | ALTO | **corrigido** — append com rotação, `--read` imprime sem escrever |
+| D-09 | o menu do ícone re-armava **as duas** teclas: o `Ctrl+Space` do dono ficava preso no fio velho, o novo recebia 1409 e o gate de recuo abria — o mesmo toque alternava duas vezes | CRÍTICO | **corrigido, NÃO verificado** — `arm_hotkey_role` recusa um segundo fio por papel; oráculo + neg-arm 6/6 |
 
 ---
 
@@ -416,6 +417,54 @@ EVIDENCE UNTOUCHED
 do log impresso por `cat` antes de ele ser truncado, e o cabeçalho do ledger diz isso — um fixture
 que se apresenta como original quando não é seria o defeito D-08 em roupas novas.
 
+## D-09 — o interruptor do `Alt+C` trocava o dono da tecla da legenda
+
+**Antes.** A perna de ARMAR do menu do ícone chamava `arm_hotkey(self, requested)`, que arma **as
+duas** teclas (`panels` e `live`) e faz `shell.live_hotkey = arm_hotkey_role(shell, 'live', ...)`
+sem parar o fio anterior. O fio velho continuava com o `WH_KEYBOARD_LL` e com o `RegisterHotKey`; o
+novo pagava 1409 (`HOTKEY_LIVE_REGISTER_FAILED role=live`), o observador de recuo lia
+`registered=False` e abria o gate — logo **um** `Ctrl+Space` físico alternava o display duas vezes
+(liga e desliga no mesmo toque). O `stop_panels_hotkey` já sabia que a legenda não é dele; o arm não
+sabia.
+
+```
+$ git show HEAD:app/webview/sotto_webview.py > <tmp>/sotto_webview.py
+$ python _main/hotkey-panels-switch-oracle.py      # braços 10 e 11 contra o shell de HEAD
+BEFORE-FAIL toggle_arms_panels_only            roles=['panels', 'live'] live_kept=False
+BEFORE-FAIL rearm_refused_when_already_armed   same=False constructed=True
+```
+
+**Impacto.** O caminho principal do dono — desligar e religar o `Alt+C` no menu, que ele pediu em
+2026-11-07 — deixava a tecla da legenda com dois donos, um deles órfão.
+
+**Depois.** Duas metades, e a segunda é a que impede a classe em qualquer chamador futuro:
+
+1. o handler arma **só** `panels` (`arm_hotkey_role(self, 'panels', requested, HOTKEY_FALLBACKS)`);
+2. `arm_hotkey_role` devolve o fio **já vivo** do papel, publica `HOTKEY_REARM_REFUSED role=…
+   accelerator=… why=already-armed slot=…` e não constrói um segundo.
+
+```
+$ python _main/hotkey-panels-switch-oracle.py
+ARM PASS toggle_arms_panels_only            roles=['panels'] live_kept=True
+ARM PASS rearm_refused_when_already_armed    same=True constructed=False
+CHECK arms=19 failed=0
+VERDICT: PASS
+$ python _main/hotkey-panels-switch-oracle.py --neg-arm
+MUTANT toggle_rearms_the_live_key:            CAUGHT arms=['toggle_arms_panels_only']
+MUTANT second_arming_creates_a_second_thread: CAUGHT arms=['rearm_refused_when_already_armed']
+NEG-ARM SUMMARY cases=6 caught=6
+NEG-ARM: PASS
+```
+
+Um defeito de instrumento caiu junto: o braço 9 daquele oráculo gravava `arm_hotkey`, e desde a cura
+o handler chama `arm_hotkey_role` — o registro **real** de `Alt+C` era pago dentro do oráculo
+(medido: `enabled=False` no braço do toggle). Agora o stub é no **papel**, e nenhum
+`RegisterHotKey` de verdade é pago por um instrumento.
+
+**Estado.** corrigido, NÃO verificado: a cura está no ficheiro e o processo do dono carrega código
+anterior (lei do `STALE`). Fecha com uma abertura dele e o menu do ícone usado duas vezes.
+
+---
 ---
 ---
 
