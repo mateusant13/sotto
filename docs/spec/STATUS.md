@@ -3,7 +3,7 @@
 Este ficheiro é a memória do trabalho. É actualizado a cada onda; não é um relatório final.
 Cada linha diz o que está **escrito**, com que **evidência**, e o que **falta**.
 
-Última actualização: 2026-11-12 (rodada de defeitos — D-15 e D-16).
+Última actualização: 2026-11-12 (rodada de defeitos — D-14, D-15 e D-16).
 
 ## Ondas
 
@@ -43,7 +43,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | D-11 | a segunda legenda da janela substituía a primeira no latch de `emit_async` — fala perdida sem uma linha no log, e a página é que commita o histórico | CRÍTICA | **corrigido** — kinds de EVENTO enfileiram (tecto 32, excedente DITO em `CAPTION_EMIT_DROPPED`); 6 arms, neg-arm 2/2 |
 | D-12 | o `--ready-file` do G3 era escrito pelo caminho dos 25 s, com a página do painel pendurada: o largador respondia 0 ao único HANG que sabe medir | ALTA | **corrigido** — `_mark_launch_ready(panel_loaded)`; arms C1/C2, mutante B2 |
 | D-13 | a ordem "passe de lote ligado" valia só por `run.cmd`; o autostart do logon larga `pythonw` e não passa por ele — no logon o motor de lote corria DESLIGADO | ALTA | **corrigido** — `env.setdefault('SOTTO_REDUX_LIVE','1')` em `_child_env`; `app-target` arm e, e o oráculo passou a ter passo |
-| D-14 | o motor quente entra na lista de *reap* da saída (`.kill()` levanta, `.wait()` não existe) e o matador externo mata-o pelo pid, com dois docstrings a prometer o contrário | MÉDIA | **aberto**, com a escolha nomeada (lista de *backstop* separada) |
+| D-14 | o motor quente entra na lista de *reap* da saída (`.kill()` levanta, `.wait()` não existe) e o matador externo mata-o pelo pid, com dois docstrings a prometer o contrário | MÉDIA | **corrigido, NÃO verificado** 2026-11-12 — `children=` e `backstop_pids=` separados; e a varredura do matador passou a correr também quando o handle do pai chega tarde (`no-handle`); 13 arms + neg-arm 5/5, passo `exit-backstop` |
 | D-15 | uma largada de MEDIÇÃO (`--probe-v2` e mais oito) tomava lock privado e escrevia `panel-state.json`/`panel-visibility.json` por cima dos ficheiros da app viva — o worker do dono recebia `visible=false` e perdia o nível de shed | ALTA | **corrigido, NÃO verificado** — um único predicado para lock e estado, sufixo = nome do lock, worker lê o mesmo ficheiro; 15 arms + neg-arm 3/3 |
 | D-16 | um `SOTTO_WEBVIEW_AFTER_LOAD_S` presente e ilegivel caia em 25 s de espera na thread que ainda nao chamou `webview.start()` — a espera que o proprio comentario diz ter produzido o `HANG rc=4` | MÉDIA | **corrigido, NÃO verificado** — `after_load_wait_s` devolve zero e a razao; 4 casos executados, neg-arm 6/6 |
 | D-17 | uma largada de MEDIÇÃO drenava a FILA DO BATCH do dono (io 69,1 MB/s medido no stutter) | ALTO | corrigido, NÃO verificado -- `isolated_queue_dir`; `measurement-flags` A9, neg-arm 6/6 |

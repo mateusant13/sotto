@@ -100,11 +100,38 @@ def _log_to(path, line):
         pass
 
 
+def _sweep_children(args, say):
+    """A VARREDURA dos filhos -- roda MESMO quando o shell nao abre.
+
+    PORQUE ISTO EXISTE (medido 2026-11-12, oraculo `exit-backstop`): o shell
+    arma este processo e sai em milissegundos (`os._exit`), e o `OpenProcess`
+    do pai pode chegar DEPOIS -- o log do matador dizia
+    `EXIT_KILLER_SKIPPED pid=.. reason=no-handle winerror=..` e, com aquele
+    `return` cedo, a varredura dos filhos ia com ele. O orfao que o dono paga
+    (1,9 GB do motor warm, 3,9 GB de um worker preso a um pai morto) nao
+    depende de o pai ainda existir: cada filho chega com o SEU carimbo de
+    criacao, e e' o carimbo que impede matar um pid reciclado.
+    """
+    for spec in args.child or ():
+        pid_s, _, stamp = spec.partition(':')
+        kid, why = open_checked(pid_s, stamp)
+        if kid is None:
+            say('EXIT_KILLER_CHILD_SKIPPED pid=%s reason=%s' % (pid_s, why))
+            continue
+        try:
+            if not dead(kid, 0):
+                say('EXIT_KILLER_ORPHAN pid=%s killed=%s'
+                    % (pid_s, str(kill(kid)).lower()))
+        finally:
+            k32.CloseHandle(kid)
+
+
 def run(args):
     say = lambda line: _log_to(args.log, line)   # noqa: E731
     shell, why = open_checked(args.pid, args.stamp)
     if shell is None:
         say('EXIT_KILLER_SKIPPED pid=%s reason=%s' % (args.pid, why))
+        _sweep_children(args, say)
         return 0
     try:
         signaled = dead(shell, args.grace_ms)
@@ -137,17 +164,7 @@ def run(args):
             dead(shell, 2000)
         # A VARREDURA: mesmo numa saida limpa, um filho que sobreviva fica
         # nomeado e morto -- e' o orfao que o dono paga.
-        for spec in args.child or ():
-            pid_s, _, stamp = spec.partition(':')
-            kid, why = open_checked(pid_s, stamp)
-            if kid is None:
-                continue
-            try:
-                if not dead(kid, 0):
-                    say('EXIT_KILLER_ORPHAN pid=%s killed=%s'
-                        % (pid_s, str(kill(kid)).lower()))
-            finally:
-                k32.CloseHandle(kid)
+        _sweep_children(args, say)
         return 0
     finally:
         k32.CloseHandle(shell)

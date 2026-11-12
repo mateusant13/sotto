@@ -275,8 +275,12 @@ STATIC_ARMS = (
                   and re.search(r'_hard_exit\(\s*9\b', src) is None)),
     ('exit_dump_not_compacted',
      lambda src: "_dump_thread_stacks('ui-thread-not-responding', force=True)" in src),
+    # D-14 (2026-11-12): a saida carrega DUAS listas -- os filhos que a shell
+    # recolhe e o backstop que so' o matador externo toca. A arm pina o contrato,
+    # nao a forma antiga de uma so' lista.
     ('request_exit_uses_hard_exit',
-     lambda src: "_hard_exit(code, reason, children=_kids)" in src),
+     lambda src: ("_hard_exit(code, reason, children=_kids" in src
+                  and "backstop_pids=_backstop" in src)),
     ('emit_iterates_snapshot',
      lambda src: 'for _kind, _payload in list(q.items()):' in src),
     ('killer_script_present',
@@ -333,7 +337,7 @@ def build_mutant():
     edits = [
         ("        if _EXIT_STATE['escalated'].wait(EXIT_ESCALATE_S):\n",
          "        if True:  # RED ARM: escalador desarmado\n"),
-        ("    _spawn_exit_killer(code, pids, say)\n",
+        ("    _spawn_exit_killer(code, pids + backstop, say)\n",
          "    pass  # RED ARM: matador externo desarmado\n"),
     ]
     applied = 0

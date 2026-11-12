@@ -28,7 +28,7 @@ funcionar pela mão do dono).
 | D-10 | o braço `7d` do `altc-gesture` exigia a lista literal de toques do desligar: quando a cura de 2026-11-11 acrescentou `_caption_status_stop`/`_caption_off_ack`, o passo passou a acusar produto CERTO e a bateria ficou RED | MÉDIA | **corrigido** — o braço julga o domínio (só legenda, e a janela tem de ser tocada); 5º mutante prova; 98/98, neg-arm 5/5 |
 | D-12 | o `--ready-file` do G3 era escrito pelo caminho dos 25 s, que completa o arranque com a página do painel **pendurada**: o largador respondia 0 ao único HANG que sabe medir, e o painel ficava branco | ALTO | **corrigido** — `_mark_launch_ready(panel_loaded)`; `LAUNCH_READY_WITHHELD why=panel-nav-stalled`; arms C1/C2 + mutante B2 |
 | D-13 | a ordem do dono "passe de lote ligado" valia só por `run.cmd`; o autostart do logon larga `pythonw` e não passa por ele, logo no logon o motor de lote corria **DESLIGADO** | ALTO | **corrigido** — `env.setdefault('SOTTO_REDUX_LIVE','1')` em `_child_env`, ao lado da irmã; arms novas do `app-target` |
-| D-14 | o motor quente entra na lista de *reap* da saída (`.kill()` levanta, `.wait()` não existe) e o matador externo mata-o pelo pid, com dois docstrings a prometer o contrário | MÉDIO | **aberto**, com a escolha nomeada (lista de *backstop* separada) |
+| D-14 | o motor quente entra na lista de *reap* da saída (`.kill()` levanta, `.wait()` não existe) e o matador externo mata-o pelo pid, com dois docstrings a prometer o contrário | MÉDIO | **corrigido, NÃO verificado** — `children=` e `backstop_pids=` separados; 13 arms, neg-arm 5/5 | `exit-backstop` |
 | D-15 | uma largada de MEDIÇÃO (`--probe-v2` e mais oito) tomava lock privado e escrevia `panel-state.json`/`panel-visibility.json` por cima dos ficheiros da app viva — o worker do dono recebia `visible=false` e perdia o nível de shed de uma sonda | ALTO | **corrigido, NÃO verificado** — um único predicado para lock e estado, sufixo = nome do lock, worker lê o mesmo ficheiro; 15 arms + neg-arm 3/3 |
 | D-16 | um `SOTTO_WEBVIEW_AFTER_LOAD_S` presente e ilegivel caia em **25 s** de espera na thread que ainda nao chamou `webview.start()` -- a espera que o proprio comentario diz ter produzido o `HANG rc=4` | MÉDIO | **corrigido, NÃO verificado** -- `after_load_wait_s` devolve zero e a razao; 4 casos executados, neg-arm 6/6 |
 | D-17 | uma largada de MEDIÇÃO drenava a FILA DO BATCH do dono (`_open_load_action` sem `queue_dir`) -- medido `io 69,1 MB/s` a transcrever um `.f32` de `I:\cc-tmp\sotto-batch-queue` no stutter dele | ALTO | **corrigido, NÃO verificado** -- `isolated_queue_dir` (dono=`None`, medicao=`<fila>.<tag>`, host sem `args`=`.no-args`) e `queue_dir=` no `open_action`; executado dono=None/probe/no-args | `measurement-flags` A9 (3 metades + fiacao), neg-arm 6/6 |
@@ -725,11 +725,32 @@ está errado é **o registo**: duas linhas por saída a dizer que a shell tentou
 que ela nunca possuiu, ao lado de um docstring (`_WarmChild`) e de outro (`_exit_children`) que dizem
 que o warm fica **fora** do kill.
 
-**Decisão nomeada (não executada).** Separar as duas listas em `_hard_exit`: `children` (matar +
-recolher) e `backstop_pids` (só o matador externo). O warm viaja no segundo, o worker e a sidecar no
-primeiro, e as duas linhas mentirosas desaparecem. Custo: uma assinatura e um chamador; ganho: o log
-da saída passa a descrever o que aconteceu. **Aberto** — não é dinheiro barato num caminho de saída
-que já tem 11 arms e dois matadores.
+**Corrigido (2026-11-12).** As duas listas existem: `_hard_exit(code, reason, children=(),
+backstop_pids=())`, `_exit_backstop_pids()` como dono único do que vai no segundo, e o warm shim
+(`_WarmChild`) fora do primeiro mesmo com `keep_warm` falso. O log da saída passa a dizer as duas
+coisas certas: `EXIT_CHILD_REAPED` para o possuído e `EXIT_KILLER_ORPHAN pid=<warm>` para o backstop
+que o matador externo mata.
+
+**A execução achou uma metade que a leitura não tinha.** O shell arma o matador e sai em
+milissegundos; o `OpenProcess` do pai chega **depois**. Medido em três corridas do oráculo:
+`EXIT_KILLER_SKIPPED pid=.. reason=no-handle winerror=..` e, com o `return` cedo daquele ramo, a
+varredura dos filhos ia com ele — o órfão sobrevivia exactamente no caminho que o D-14 existe para
+fechar. A varredura passou a ser `_sweep_children` e roda **também** nesse ramo: cada filho chega com
+o seu carimbo de criação, que é o que impede matar um pid reciclado, logo não depende de o pai ainda
+existir.
+
+    ANTES  exit_killer.run: shell is None -> SKIPPED -> return 0        (sem varredura)
+    DEPOIS exit_killer.run: shell is None -> SKIPPED -> _sweep_children -> return 0
+
+**Portão.** `_main/exit-backstop-oracle.py` — 13 arms, `VERDICT: PASS` rc=0; `--neg-arm` 5/5, rc=1 ao
+apanhar. A5 executa o `_hard_exit` **real** num processo filho e A6 é o caso `no-handle` explícito
+(matador copiado com a varredura removida). O M5 mora no **matador**, não na shell, por isso é um
+mutante de ficheiro. Passo na bateria: `exit-backstop` + `red-as-expected-exit-backstop`.
+
+Duas lições de instrumento pagas nesta rodada: sair do laço de espera por `pid morto` (em vez de pela
+**linha**) lia o log antes de o matador o escrever — ele mata primeiro e diz depois; e uma mutação que
+atravessa linhas com `\n` **não aplica** num fonte com regiões CRLF (M2 e M5 foram reescritos numa
+linha só).
 
 ---
 

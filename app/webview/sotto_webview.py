@@ -1953,14 +1953,23 @@ def _log_now(message):
                 pass
 
 
-def _hard_exit(code, reason, children=(), log_fn=None):
+def _hard_exit(code, reason, children=(), backstop_pids=(), log_fn=None):
     """THE ONE EXIT. Uma saida que escreveu no log TERMINA.
 
     Idempotente: a primeira chamada e' a dona da saida; a segunda (um timer, o
-    tray) volta de imediato e deixa o processo ao primeiro. `children` sao os
-    filhos que TEM de morrer (o worker da bridge e a sidecar) -- o motor warm
-    fica de fora de proposito, porque atravessar o reinicio e' o que ele existe
-    para fazer (`keep_warm`).
+    tray) volta de imediato e deixa o processo ao primeiro.
+
+    DUAS LISTAS, e a separacao e' o D-14 (`docs/spec/10-DEFECTS.md`, 2026-11-12):
+
+      * `children` -- o que a shell CRIOU: matar e RECOLHER aqui;
+      * `backstop_pids` -- o que ela NAO possui (o motor warm): so' o matador
+        externo toca, que e' quem entrega a promessa do `--help` ("closing
+        Sotto is a request to stop paying 1.9 GB").
+
+    A lista unica escrevia duas linhas por saida a dizer que a shell tentou
+    matar o que nunca possuiu (`EXIT_CHILD_KILL_FAILED` do `RuntimeError` do
+    shim, `EXIT_CHILD_STUCK` do `AttributeError` do `wait`), e o docstring ao
+    lado dizia o contrario. O log da saida passa a descrever o que aconteceu.
     """
     say = log_fn or _log_now
     with _EXIT_STATE['lock']:
@@ -1970,8 +1979,16 @@ def _hard_exit(code, reason, children=(), log_fn=None):
     kids = [c for c in (children or ())
             if c is not None and getattr(c, 'pid', None)]
     pids = [int(c.pid) for c in kids]
-    say('EXIT_BEGIN code=%s reason=%s pid=%s children=%s'
-        % (code, reason, os.getpid(), pids))
+    backstop = []
+    for raw in (backstop_pids or ()):
+        try:
+            pid_num = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if pid_num and pid_num not in pids and pid_num not in backstop:
+            backstop.append(pid_num)
+    say('EXIT_BEGIN code=%s reason=%s pid=%s children=%s backstop=%s'
+        % (code, reason, os.getpid(), pids, backstop))
 
     def _escalate():
         if _EXIT_STATE['escalated'].wait(EXIT_ESCALATE_S):
@@ -1988,7 +2005,7 @@ def _hard_exit(code, reason, children=(), log_fn=None):
                          daemon=True).start()
     except Exception as exc:                # noqa: BLE001
         say('EXIT_ESCALATOR_FAILED error=%r' % (exc,))
-    _spawn_exit_killer(code, pids, say)
+    _spawn_exit_killer(code, pids + backstop, say)
     _reap_children_for_exit(kids, say)
     say('EXIT_TERMINATE code=%s reason=%s' % (code, reason))
     _log_drain(EXIT_LOG_DRAIN_S)
@@ -17432,6 +17449,8 @@ class SottoShell:
         # ficou de fora do kill nao teria nome nem dono. `_hard_exit` precisa
         # dele para o reap com prazo e para o matador externo.
         _kids = self._exit_children()
+        # O MOTOR WARM VIAJA NA OUTRA LISTA (D-14): a shell nao o possui.
+        _backstop = self._exit_backstop_pids()
         # The tray goes FIRST: `os._exit` at the end of this method would leave
         # the icon in the notification area as a ghost the owner cannot dismiss
         # (it would still be there, pointing at a dead window).
@@ -17495,21 +17514,26 @@ class SottoShell:
         # `os._exit` NAO TEM PRAZO NENHUM). `_hard_exit` da' prazo a todas, arma
         # os dois donos externos e escreve `EXIT_TERMINATE` -- a linha que prova
         # que a saida chegou ao fim.
-        _hard_exit(code, reason, children=_kids)
+        _hard_exit(code, reason, children=_kids, backstop_pids=_backstop)
 
     def _exit_children(self):
         """Os filhos que TEM de morrer com este processo: (worker, sidecar).
 
-        O MOTOR WARM FICA DE FORA (`keep_warm`): atravessar o reinicio e' a
-        razao de ele existir, e um kill aqui transformaria o warm num cold --
-        8,5 s de carga medidos -- a cada fecho. So' o que a shell criou para
-        servir ESTA janela viaja na lista.
+        O MOTOR WARM FICA DE FORA, SEMPRE -- e nao por causa do `keep_warm`: ele
+        nao e' um processo desta shell (`_WarmChild` existe para dar `pid`/`poll`
+        e o `.kill()` dele LEVANTA de proposito). Ate' 2026-11-12 ele entrava
+        aqui quando `keep_warm` era falso e a saida pagava duas linhas a mentir:
+        `EXIT_CHILD_KILL_FAILED` do `RuntimeError` do shim e `EXIT_CHILD_STUCK`
+        do `AttributeError` do `wait` (D-14). Quem entrega a promessa de parar
+        de pagar 1,9 GB e' o MATADOR EXTERNO, e o pid dele viaja em
+        `_exit_backstop_pids`.
         """
         kids = []
         bridge = getattr(self, 'bridge', None)
         child = getattr(bridge, 'child', None)
         if (child is not None and getattr(child, 'pid', None)
-                and not getattr(bridge, 'keep_warm', False)):
+                and not getattr(bridge, 'keep_warm', False)
+                and not isinstance(child, _WarmChild)):
             kids.append(child)
         for attr in ('_speaker_sidecar', '_multivoice_watch'):
             obj = getattr(self, attr, None)
@@ -17517,6 +17541,25 @@ class SottoShell:
             if child is not None and getattr(child, 'pid', None):
                 kids.append(child)
         return kids
+
+    def _exit_backstop_pids(self):
+        """Os pids que so' o MATADOR EXTERNO toca -- hoje, o motor warm.
+
+        A separacao e' o D-14. Um pid aqui NAO e' morto nem recolhido por esta
+        shell: ele atravessa um processo que ela nao criou (`R1`), e quem o mata
+        e' o `exit_killer.py` depois da graca. Com `--warm-engine-keep` a lista
+        e' VAZIA, porque manter o motor vivo e' exactamente o que a flag pede.
+        """
+        out = []
+        bridge = getattr(self, 'bridge', None)
+        child = getattr(bridge, 'child', None)
+        if (isinstance(child, _WarmChild) and getattr(child, 'pid', None)
+                and not getattr(bridge, 'keep_warm', False)):
+            try:
+                out.append(int(child.pid))
+            except (TypeError, ValueError):
+                pass
+        return out
 
     # -- worker ------------------------------------------------------------
     @staticmethod

@@ -1260,6 +1260,23 @@ if exist _main\dead-app-exit-oracle.py (
  call :step dead-app-exit 0 "_main\dead-app-exit-oracle.py;app\webview\sotto_webview.py;app\webview\exit_killer.py" "%OUT%\dead-app-exit.log" python _main\dead-app-exit-oracle.py --neg-arm
  call :record dead-app-exit !STEP_RC!
 ) else ( call :record dead-app-exit MISSING )
+REM `exit-backstop-oracle.py` -- O MOTOR WARM E' MORTO PELO PID, NAO RECOLHIDO.
+REM D-14 (2026-11-12): o worker estava numa lista de FILHOS e o motor de aquecimento
+REM nao, porque ele nao e' um filho desta shell -- e' um processo que ela ATTACHOU
+REM (`warm-engine.pid`), logo `_exit_children` nao o podia recolher e a saida normal
+REM deixava 1,9 GB a viver. As duas listas agora sao separadas e o pid do warm entra em
+REM `backstop_pids=`, que so' o MATADOR EXTERNO toca. O oraculo executa o `_hard_exit`
+REM REAL num processo filho (arm A5): o possuido e' recolhido, o warm sobrevive a
+REM recolha e e' o `EXIT_KILLER_ORPHAN pid=<warm>` que o mata e o NOMEIA.
+REM A varredura nao depende de o shell ainda existir: medido aqui, o matador abria o
+REM handle do pai DEPOIS de ele sair (`EXIT_KILLER_SKIPPED reason=no-handle`) e a
+REM varredura ia com o `return` cedo -- a A6 e' esse caso, explicito.
+if exist _main\exit-backstop-oracle.py (
+ call :step exit-backstop 0 "_main\exit-backstop-oracle.py;app\webview\sotto_webview.py;app\webview\exit_killer.py" "%OUT%\exit-backstop.log" python _main\exit-backstop-oracle.py
+ call :record exit-backstop !STEP_RC!
+ call :step red-as-expected-exit-backstop 0 "_main\exit-backstop-oracle.py;app\webview\sotto_webview.py;app\webview\exit_killer.py" "%OUT%\exit-backstop-neg.log" python _main\exit-backstop-oracle.py --neg-arm
+ call :record red-as-expected-exit-backstop !STEP_RC!
+) else ( call :record exit-backstop MISSING )
 REM `shell-priority-oracle.py` -- A SUPERFICIE VISIVEL NUNCA ABAIXO DE NORMAL.
 REM Medido em 2026-11-04 (audit L10): a shell viva (pid 20448) E o worker corriam a
 REM `BELOW_NORMAL`, e o par de controlo ao lado (explorer, pwsh) corria a `NORMAL` --

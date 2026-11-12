@@ -682,6 +682,27 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 14:2x):** `_main\_audit-verify-all.cmd` = **369954 B**,
+  **4263 CRLF** / 0 bare LF, sha256 `7053838E5F6FE5951418693297FD822ABF638667A5D43E96F66A2E9EFE9A7615`.
+  (Mil quatrocentos e oitenta e cinco bytes e DEZASSETE linhas a mais do que o pin de 368469 B: o par
+  `exit-backstop` + `red-as-expected-exit-backstop`, o portao do D-14 do ledger -- o motor quente e'
+  morto pelo PID, nao recolhido como filho. `app\webview\sotto_webview.py` separa agora as duas listas
+  (`children=` e `backstop_pids=`) e so' o MATADOR EXTERNO toca na segunda, porque o warm nao e' um
+  filho desta shell: e' um processo que ela ATTACHOU (`warm-engine.pid`), e `_exit_children` nao o
+  podia recolher -- a saida normal deixava ~1,9 GB a viver. O oraculo executa o `_hard_exit` REAL num
+  processo filho (A5) e publica `EXIT_CHILD_REAPED` para o possuido e `EXIT_KILLER_ORPHAN pid=<warm>`
+  para o backstop; medido `VERDICT: PASS -- 13/13` e `NEG-ARM: PASS -- 5/5` (rc=1 ao apanhar).
+  **E o proprio oraculo achou uma metade que faltava, no MATADOR:** o shell arma o matador e sai em
+  milissegundos, e o `OpenProcess` do pai pode chegar DEPOIS -- medido em tres corridas,
+  `EXIT_KILLER_SKIPPED pid=.. reason=no-handle winerror=..` e a varredura dos filhos ia com o
+  `return` cedo, deixando o orfao vivo exactamente no caso que o D-14 existe para fechar. A varredura
+  saiu para `_sweep_children` e roda TAMBEM nesse caminho (cada filho traz o SEU carimbo de criacao,
+  que e' o que impede matar um pid reciclado); a arm A6 e esse caso explicito, e o mutante M5 -- que
+  mora no matador e por isso e' um mutante de FICHEIRO, nao da shell -- derruba-a. Duas licoes de
+  instrumento pagas na mesma rodada: (a) sair do laco de espera por `pid morto` em vez de pela LINHA
+  lia o log antes de o matador o escrever (ele MATA primeiro e ESCREVE depois) e chamava-lhe
+  ausencia; (b) uma mutacao que atravessa linhas com `\n` nao aplica num fonte com regioes CRLF --
+  M2 e M5 foram reescritos numa linha so'.)
 - **PIN do ficheiro (medido 2026-11-12, 05:4x):** `_main\_audit-verify-all.cmd` = **368469 B**,
   **4246 CRLF** / 0 bare LF, sha256 `BA0B6D5775AC63F9989A26F8A28EC9E8D375B9ACB4AE5F300A6EBBE8EF7F5AFF`.
   (Mil e dez bytes e OITO linhas a mais do que o pin de 367459 B: o par `warm-evidence` +
