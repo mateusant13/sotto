@@ -26,6 +26,10 @@ funcionar pela mão do dono).
 | D-08 | o censo do painel abria o próprio log com `'w'` a cada linha: **cada invocação apagava a evidência da anterior** (4 073 B → 42 B, medido) | ALTO | **corrigido** — append com rotação, `--read` imprime sem escrever |
 | D-09 | o menu do ícone re-armava **as duas** teclas: o `Ctrl+Space` do dono ficava preso no fio velho, o novo recebia 1409 e o gate de recuo abria — o mesmo toque alternava duas vezes | CRÍTICO | **corrigido, NÃO verificado** — `arm_hotkey_role` recusa um segundo fio por papel; oráculo + neg-arm 6/6 |
 | D-10 | o braço `7d` do `altc-gesture` exigia a lista literal de toques do desligar: quando a cura de 2026-11-11 acrescentou `_caption_status_stop`/`_caption_off_ack`, o passo passou a acusar produto CERTO e a bateria ficou RED | MÉDIA | **corrigido** — o braço julga o domínio (só legenda, e a janela tem de ser tocada); 5º mutante prova; 98/98, neg-arm 5/5 |
+| D-12 | o `--ready-file` do G3 era escrito pelo caminho dos 25 s, que completa o arranque com a página do painel **pendurada**: o largador respondia 0 ao único HANG que sabe medir, e o painel ficava branco | ALTO | **corrigido** — `_mark_launch_ready(panel_loaded)`; `LAUNCH_READY_WITHHELD why=panel-nav-stalled`; arms C1/C2 + mutante B2 |
+| D-13 | a ordem do dono "passe de lote ligado" valia só por `run.cmd`; o autostart do logon larga `pythonw` e não passa por ele, logo no logon o motor de lote corria **DESLIGADO** | ALTO | **corrigido** — `env.setdefault('SOTTO_REDUX_LIVE','1')` em `_child_env`, ao lado da irmã; arms novas do `app-target` |
+| D-14 | o motor quente entra na lista de *reap* da saída (`.kill()` levanta, `.wait()` não existe) e o matador externo mata-o pelo pid, com dois docstrings a prometer o contrário | MÉDIO | **aberto**, com a escolha nomeada (lista de *backstop* separada) |
+| D-11 | a segunda legenda da janela substituía a primeira no latch de `emit_async`: **fala perdida sem uma linha no log**, e é a página que commita o histórico — o histórico perdia a mesma fala | CRÍTICO | **corrigido** — kinds de EVENTO enfileiram (tecto 32, excedente CONTADO em `CAPTION_EMIT_DROPPED`); 6 arms, neg-arm 2/2 com o mutante novo |
 
 ---
 
@@ -518,6 +522,188 @@ NEG-ARM PASS -- RED as designed: as cinco regressoes derrubam o oraculo
 ```
 
 **Estado.** corrigido; não toca no caminho da legenda, só no instrumento.
+
+## D-11 — a legenda que o latch engolia
+
+**Onde.** `app/webview/sotto_webview.py`, `emit_async` + `_run` (o latch por `kind`).
+
+**Antes** (leitura do código, 2026-11-12):
+
+```python
+with lock:
+    already = kind in pending
+    pending[kind] = payload      # substitui a pendente
+if already:
+    return
+```
+
+O latch existe para o feed do medidor, onde **43 amostras/s** foram medidas: ali a última amostra
+*é* o estado, e substituir a pendente é o certo. Uma legenda não é estado. `emit_async('caption', …)`
+(caminho do worker) e `emit_async('external-caption', …)` (YouTube com o painel escondido) são o
+**único** portador da fala até à página, e é a página que a commita ao histórico (`onCaption` →
+`historyApi`). Colapsar A com B deixa a fala de A sem linha no log e sem linha no histórico — o oposto
+do invariante que o mesmo ficheiro escreve desde 2026-11-03 ("nenhuma fala desaparece em silêncio").
+
+**É alcançável?** A janela é um despacho de UI entre o `Invoke` e o `_run`. Esta máquina tem a thread de
+UI ocupada de forma medida: `PANEL_SHOW_COST … total_ms=3142` na sessão do dono
+(`_main/receipt-20261110-altc-paint-3142ms.md`, o fixture RED do `--paint-arm`). Com legendas a
+~2/s e uma janela de 3 s, mais de uma legenda cai dentro dela.
+
+**Depois** (mesma árvore):
+
+```python
+EVENT_EMIT_KINDS = ('caption', 'external-caption')
+EVENT_EMIT_MAX = 32
+```
+
+* os dois kinds de evento **enfileiram**; o `_run` drena a lista **em ordem**, um script por payload;
+* o tecto é o que o latch existia para dar, e o que passa dele é **contado e dito**:
+  `CAPTION_EMIT_DROPPED kind="caption" n=8 cap=32 why=page-drain-fell-behind`;
+* todo o resto (`stats`, `level`, …) continua a colapsar como antes — a cura dos eventos não desfez o
+  tecto do feed.
+
+**Medido.** `_main/emit-prewebview-oracle.py`, contra o ficheiro que embarca:
+
+```
+[PASS] duas legendas antes do drain: as DUAS chegam, na ordem   queued=1 scripts=2
+[PASS] o feed de estado CONTINUA a colapsar (um script, o mais novo)   scripts=1
+[PASS] 40 legendas com a pagina parada: 32 entregues e n=8 DITO
+       dropped=['CAPTION_EMIT_DROPPED kind="caption" n=8 cap=32 why=page-drain-fell-behind']
+emit-prewebview-oracle: 6 PASS / 0 FAIL (6 arms)
+```
+
+**Controlo.** O negativo deixou de conhecer um mutante só. Cada mutante é julgado **pelas SUAS** arms:
+
+```
+NEG-ARM[guarda-removida]:  1 de 6 arm(s) vermelha(s); esperadas=['50 pushes sem pagina']
+NEG-ARM[evento-colapsado]: 2 de 6 arm(s) vermelha(s); esperadas=['duas legendas antes do drain',
+                                                               '40 legendas com a pagina parada']
+NEG-ARM PASS: 2 de 2 mutante(s) apanhado(s) pela SUA arm   (rc=1)
+```
+
+O mutante `evento-colapsado` é a implementação de **ontem** (`if False and kind in EVENT_EMIT_KINDS`),
+e é ele que prova que as arms D e F têm dentes. Um controlo que só conhece o defeito de ontem
+certifica o defeito de hoje — foi exactamente o que aconteceu aqui: o `--neg-arm` desta casa estava
+verde (3 arms, 1 mutante) enquanto a fala se perdia.
+
+**Estado.** corrigido; **não verificado** — `verified` exige o processo do dono a correr ISTO, e o
+processo dele está `STALE` até reiniciar. O caminho do YouTube com o painel ESCONDIDO
+(`external-caption`) usa o mesmo latch e não foi exercitado com uma página real nesta rodada.
+
+---
+
+## D-12 — o ficheiro de prontidão respondia 0 ao hang
+
+**Onde.** `app/webview/sotto_webview.py`: `_arm_panel_stall_watch` (25 s) → `_complete_startup` →
+`mark_launch_ready`; contrato em `app/webview/run.cmd:64-70` e `:312-319`.
+
+**Antes.** O vigia de 25 s completa o arranque **com a página do painel ainda pendurada** (é o motivo
+de ele existir: a legenda não depende da página) e chamava `_complete_startup`, que fazia
+`mark_launch_ready(self.args.ready_file)`. `run.cmd` promete, por palavras, o contrário: *"the shell
+touches it once the panel navigation has completed, and run.cmd waits for it, BOUNDED, exiting 4 on
+timeout"*. O G3 nasceu de um caso medido (2026-10-06): `STAGING_LOADED` e mais nada, e o largador a
+responder **0**. O caminho dos 25 s reintroduzia exactamente esse falso positivo — para um painel
+branco, sem documento nenhum.
+
+**Depois.** `_mark_launch_ready(panel_loaded)`:
+
+* `panel_loaded=True` (o `_on_loaded` do painel, i.e. a navegação completou) → escreve o ficheiro;
+* `panel_loaded=False` (o caminho dos 25 s) → **não escreve** e diz
+  `LAUNCH_READY_WITHHELD path=... why=panel-nav-stalled`. O `run.cmd` dá rc=4 e escreve `HANG`; a app
+  continua a correr, porque foi largada destacada (`start ""`) e a legenda já está de pé.
+
+**Medido** (`_main/panel-nav-stall-oracle.py`, o método REAL nos dois estados):
+
+```
+ARM 3 — o ficheiro de prontidao so aparece quando o painel carregou
+  [PASS] C1 stall path: ficheiro AUSENTE e a linha diz por que — existe=False
+         linhas=["LAUNCH_READY_WITHHELD path='...ready.txt' why=panel-nav-stalled"]
+  [PASS] C2 painel carregado: o ficheiro aparece com o pid — conteudo='ready pid=21460'
+VERDICT: PASS
+```
+
+**Controlo.** O negativo deste oráculo conhecia **um** mutante (o retry inline, de 2026-11-05). Entrou o
+segundo, que arranca a guarda numa cópia:
+
+```
+NEG-ARM PASS — os dois mutantes sao apanhados pelas SUAS arms   (rc=1)
+  B1 retry inline  -> a conclusao fica refem do load_url
+  B2 guarda fora   -> o ficheiro ESCRITO com o painel pendurado (o defeito)
+```
+
+**Estado.** corrigido; **não verificado** — o rc=4 do `run.cmd` só se mede com uma largada real pela
+mão dele, e um painel que não carrega não se reproduz a pedido.
+
+---
+
+## D-13 — a ordem do dono dependia da porta de entrada
+
+**Onde.** `app/webview/sotto_webview.py` (`_child_env`, `autostart_command`),
+`app/webview/run.cmd:113,140`.
+
+**Antes.** `run.cmd` escreve `if not defined SOTTO_REDUX_LIVE set "SOTTO_REDUX_LIVE=1"` no processo da
+shell, e o shell passa `os.environ` ao worker — logo uma abertura por `run.cmd` tem o passe de lote do
+parakeet LIGADO (ordem do dono de 2026-10-18). O autostart do logon **não** passa por `run.cmd`:
+`autostart_command()` larga `"pythonw.exe" "sotto_webview.py" --log ...`, e não pode largar um `.cmd`
+(um `.cmd` é consola, e uma consola no ecrã dele é proibida — medido e reclamado). A escada do worker é
+flag → ambiente → config (`worker/sotto_worker.py:5803`) com `worker/config.json` `"enabled": false`:
+no logon o passe de lote corria **desligado**, e o mesmo binário tinha dois comportamentos conforme
+quem o abriu.
+
+**Depois.** `env.setdefault('SOTTO_REDUX_LIVE', '1')` em `_child_env`, ao lado de
+`SOTTO_REDUX_WHEN_HIDDEN='1'` (que já fazia exactamente isto): a decisão vive onde **toda** abertura
+passa, e um `SOTTO_REDUX_LIVE=0` explícito continua a ganhar.
+
+**Medido** (`_main/app-target-oracle.py`, arm `e`, com o ambiente apagado por `mock.patch.dict`):
+
+```
+  ARM e  [GREEN]  no target -> no SOTTO_TARGET_PID
+    sem a variavel (logon): o filho recebe SOTTO_REDUX_LIVE=1
+    um 0 explicito do dono continua a ganhar
+VERDICT: PASS  live=GREEN(9/9)  M1 env line removed=RED-as-expected(['d'])  M2 tree-root rule removed=RED-as-expected(['b'])
+```
+
+O contrato byte-a-byte daquele oráculo (`env == os.environ + SOTTO_CAPTURE_MODE +
+SOTTO_REDUX_WHEN_HIDDEN, nada mais`) foi actualizado com a chave nova e o comentário que diz porquê.
+
+**Bónus, e a razão de a dívida do oráculo ser o mesmo defeito:** o `app-target` tinha **zero**
+chamadores na bateria (`battery-wiring` contava-o em `sem_passo`) e o banco de ensaio dele apodreceu —
+`FakeShell` não tinha `on_worker_cost`, a arma `g` morria em `AttributeError` e o oráculo publicava
+FAIL sobre um caminho que nunca correu. Reparado, com passo próprio no par `app-target` +
+`red-as-expected-app-target` (`always`, porque lê a tabela de processos viva), e a dívida congelada
+apagada do `battery-wiring-baseline.json` (`ligados=199 sem_passo=107`, PASS 7/7).
+
+**Estado.** corrigido; **não verificado** — a abertura do logon só se mede no próximo logon dele.
+
+---
+
+## D-14 — o motor quente é morto pelo pid, e o código diz que não pode
+
+**Onde.** `app/webview/sotto_webview.py`: `_exit_children` (17344-17360), `_WarmChild` (24780-24805),
+`_reap_children_for_exit`, `_hard_exit`; `app/webview/exit_killer.py:118-148`.
+
+**Medido por leitura (2026-11-12).** `request_exit` lê `_kids = self._exit_children()` **antes** de
+`bridge.stop('exit')`. Com `--warm-engine-keep` desligado (o default; a `--help` diz *"closing Sotto is
+a request to stop paying 1.9 GB"*), `bridge.keep_warm` é `False`, logo o `_WarmChild` **entra** na
+lista. Aí:
+
+* `_reap_children_for_exit` chama `child.kill()` → o shim **levanta de propósito**
+  (`RuntimeError('the shell does not own the warm engine')`) → `EXIT_CHILD_KILL_FAILED`;
+* a seguir `child.wait(timeout=...)` → `AttributeError` → `EXIT_CHILD_STUCK ... owner=killer`;
+* e o `exit_killer` mata o pid de qualquer maneira (`EXIT_KILLER_CHILD`/`EXIT_KILLER_ORPHAN`).
+
+Nada se perde — o matador é a garantia de que os 1,9 GB vão embora, e é o que a `--help` promete. O que
+está errado é **o registo**: duas linhas por saída a dizer que a shell tentou matar e não conseguiu o
+que ela nunca possuiu, ao lado de um docstring (`_WarmChild`) e de outro (`_exit_children`) que dizem
+que o warm fica **fora** do kill.
+
+**Decisão nomeada (não executada).** Separar as duas listas em `_hard_exit`: `children` (matar +
+recolher) e `backstop_pids` (só o matador externo). O warm viaja no segundo, o worker e a sidecar no
+primeiro, e as duas linhas mentirosas desaparecem. Custo: uma assinatura e um chamador; ganho: o log
+da saída passa a descrever o que aconteceu. **Aberto** — não é dinheiro barato num caminho de saída
+que já tem 11 arms e dois matadores.
+
+---
 
 ---
 ---

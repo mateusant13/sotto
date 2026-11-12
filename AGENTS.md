@@ -682,6 +682,36 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 12:0x):** `_main\_audit-verify-all.cmd` = **365925 B**,
+  **4223 CRLF** / 0 bare LF, sha256 `FBB8EF9914DAD23964380172B02F42713E597B4A39CAB8D140037B97C543AA9D`.
+  (Mil e doze bytes e ONZE linhas a mais do que o pin de 364913 B: o par `app-target` +
+  `red-as-expected-app-target`, que leva a' bateria um oraculo com ZERO chamadores. Ele apodreceu
+  exactamente como a casa ja' pagou (commit 283b2a8): o banco de ensaio dele, o `FakeShell`, nao
+  tinha `on_worker_cost` -- o `start_worker` passou a entrega-lo em 2026-11-09 -- e a arma `g` morria
+  em `AttributeError`, ou seja o oraculo publicava FAIL sobre um caminho que nunca correu. Reparado o
+  stub, medido: `live=GREEN(9/9)`, `M1=RED-as-expected(['d'])`, `M2=RED-as-expected(['b'])`. O
+  `--neg-arm` dele devolvia **0 ao apanhar** (a convencao e' 1), que e' a razao mecanica de nunca ter
+  podido ser declarado `:expectred`; agora devolve 1 e a linha `NEG-ARM PASS`, e a divida congelada em
+  `battery-wiring-baseline.json` foi apagada -- `ligados=199 sem_passo=107`, PASS 7/7.)
+
+  **4212 CRLF** / 0 bare LF, sha256 `D9D9F007C48C66DFF64A6D012ED95AA347133FFEFB933F6B9534338553E7587E`.
+  (Quinhentos e vinte e sete bytes e QUATRO linhas a mais do que o pin de 364386 B: o par
+  `measurement-flags` + `red-as-expected-measurement-flags`, o portao da tabela UNICA das flags de
+  MEDICAO. Nasceu de um defeito medido nesta arvore: existiam **CINCO copias** da lista (o
+  `MEASUREMENT_FLAGS`, o `_MEASUREMENT_LOCK_FLAGS` do lock, o `SottoShell.MEASUREMENT_FLAGS`, um
+  caso especial inline de `--probe-v2` e a cadeia de `elif` do `main()`), e a cadeia do `main()` nao
+  conhecia `--exit-after`, `--probe-stats`, `--probe-outside-click` nem `--probe-edit-mode`: essas
+  quatro sondas tomavam o mutex DO APP, ou seja eram recusadas em silencio com rc=0 enquanto o app
+  do dono estava de pe (uma medicao que mediu nada a responder 0) e, sem app, com o Alt+C armado e
+  o `HOTKEY_UNAVAILABLE alert=messagebox` modal. Agora ha UMA tabela e o portao mede as oito
+  metades: A1 a forma, A2 todo label com `add_argument`, A3 toda flag da FAMILIA declarada na
+  tabela OU na lista de isencoes (`--probe-stats-wait` e' parametro de `--probe-stats` e tem
+  default 8.0, que marcaria TODA corrida como medicao; `--probe-reload` retorna antes da janela e
+  do worker), A4 o nome do lock derivado da tabela e nenhuma segunda tabela ASSINALADA (um
+  comentario que a nomeia e' documentacao), A5 a classe nao carrega copia e delega, A6 nenhuma
+  segunda origem para o `lock_excuse` (um reset a `None` e' inicializacao), A7 nenhum caso
+  especial inline e A8 as funcoes REAIS executadas em cinco casos. Medido:
+  `VERDICT: PASS` rc=0 e `NEG-ARM PASS: 4/4` rc=1.)
 - **PIN do ficheiro (medido 2026-11-12, 04:0x):** `_main\_audit-verify-all.cmd` = **364386 B**,
  **4208 CRLF** / 0 bare LF, sha256 `21F0716DC40D291F07CD64F1CB5709DE8B13EE62EF86278604472921E91ED53A`.
  (Mil duzentos e trinta e seis bytes e DOZE linhas a mais do que o pin de 363150 B: o par

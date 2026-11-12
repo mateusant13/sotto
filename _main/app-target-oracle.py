@@ -161,6 +161,14 @@ class FakeShell:
         self.on_worker_status = lambda text, kind, info: None
         self.on_worker_stats = lambda parsed: None
         self.on_worker_meter = lambda sample: None
+        #: O `start_worker` REAL entrega `on_worker_cost=self.on_worker_cost`
+        #: (o `WORKER_COST` do vigia de custo, 2026-11-09). Sem este stub a arma
+        #: `g` morria em `AttributeError` e o oraculo publicava FAIL sobre um
+        #: caminho que nunca correu -- a TERCEIRA vez que este banco de ensaio
+        #: apanha a mesma doenca (`push_caption_to_window`, `_try_warm_attach`,
+        #: e agora este). O `ARMS`/`FakeShell` acompanham o shell: um stub que
+        #: nao acompanha transforma um oraculo num `AttributeError`.
+        self.on_worker_cost = lambda cost: None
         #: O `start_worker` REAL entrega `on_loading_text=self.on_worker_loading_text`
         #: (sotto_webview.py, `_spawn`): o texto de estado que o player retem.
         #: O stub tem de o ter, pela mesma razao que o `push_caption_to_window`
@@ -322,18 +330,35 @@ def arm_e(mod, arm, ctx):
     expected = dict(os.environ)
     expected['SOTTO_CAPTURE_MODE'] = bridge.capture_mode
     expected['SOTTO_REDUX_WHEN_HIDDEN'] = '1'
+    expected.setdefault('SOTTO_REDUX_LIVE', '1')
     arm.check(env == expected,
               'the env is byte-identical to the contract: '
-              'os.environ + SOTTO_CAPTURE_MODE + SOTTO_REDUX_WHEN_HIDDEN, nothing else')
+              'os.environ + SOTTO_CAPTURE_MODE + SOTTO_REDUX_WHEN_HIDDEN '
+              '+ SOTTO_REDUX_LIVE (default), nothing else')
     deviced = mod.WorkerBridge(command=sys.executable, worker_path=WORKER,
                                device='Dev')
     env2 = deviced._child_env()
     expected2 = dict(os.environ)
     expected2['SOTTO_CAPTURE_MODE'] = deviced.capture_mode
     expected2['SOTTO_REDUX_WHEN_HIDDEN'] = '1'
+    expected2.setdefault('SOTTO_REDUX_LIVE', '1')
     expected2['SOTTO_AUDIO_DEVICE'] = 'Dev'
     arm.check(env2 == expected2,
               'with a device: still only the keys this shell ever added')
+    # A PORTA DO LOGON (2026-11-12): `autostart_command()` larga `pythonw` e nao
+    # passa por `run.cmd`, que e' o unico sitio onde `SOTTO_REDUX_LIVE=1` era
+    # escrito -- logo o passe de lote do dono (default-on desde 2026-10-18) corria
+    # DESLIGADO em toda a abertura do logon. A arm apaga a variavel do ambiente e
+    # exige o default no filho; e exige que um `0` explicito ganhe.
+    import unittest.mock as _mock
+    with _mock.patch.dict(mod.os.environ, {}, clear=False):
+        mod.os.environ.pop('SOTTO_REDUX_LIVE', None)
+        login = mod.WorkerBridge(command=sys.executable, worker_path=WORKER)
+        arm.check(login._child_env().get('SOTTO_REDUX_LIVE') == '1',
+                  'sem a variavel (logon): o filho recebe SOTTO_REDUX_LIVE=1')
+        mod.os.environ['SOTTO_REDUX_LIVE'] = '0'
+        arm.check(login._child_env().get('SOTTO_REDUX_LIVE') == '0',
+                  'um 0 explicito do dono continua a ganhar')
 
 
 def arm_f(mod, arm, ctx):
@@ -627,6 +652,18 @@ def main(argv=None):
 
     say('')
     failed = [label for label, ok, _a, _b in verdicts if not ok]
+    if parsed.neg_arm:
+        # A CONVENCAO DA CASA (medida em 2026-11-03): o negativo devolve **1**
+        # quando APANHA o mutante. Devolvia 0, logo nao podia ser declarado
+        # `:expectred` e o oraculo ficou SEM passo nenhum na bateria -- e um
+        # instrumento sem passo apodreceu, exactamente como aconteceu aqui
+        # (`FakeShell` sem `on_worker_cost`, arm `g` em `AttributeError`).
+        if failed:
+            say('NEG-ARM FAIL: os mutantes sobreviveram (%r)' % (failed,))
+            return 0
+        say('NEG-ARM PASS: %d de %d mutante(s) apanhado(s) pela SUA arm'
+            % (len(verdicts), len(verdicts)))
+        return 1
     if failed:
         say(f'VERDICT: FAIL  ({len(verdicts) - len(failed)}/{len(verdicts)} '
             f'labels matched; wrong: {failed})')

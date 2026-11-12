@@ -33,11 +33,6 @@
     },
     {
       "date": "2026-10-25",
-      "file": "app-target-oracle.py",
-      "reason": "REASON-MISSING preencher a mao"
-    },
-    {
-      "date": "2026-10-25",
       "file": "audio-meter-oracle.py",
       "reason": "REASON-MISSING preencher a mao"
     },

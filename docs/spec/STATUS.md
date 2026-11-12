@@ -40,6 +40,10 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | D-08 | o censo do painel abria o próprio log com `'w'`: cada invocação apagava a evidência da anterior (4 073 B → 42 B) | ALTA | **corrigido** — append com rotação, `--read` não escreve |
 | D-09 | o menu do ícone re-armava as DUAS teclas: o `Ctrl+Space` ficava preso no fio velho (hook + `RegisterHotKey`), o novo pagava 1409 e o gate de recuo abria — o mesmo toque alternava duas vezes | CRÍTICA | **corrigido, NÃO verificado** — `arm_hotkey_role` recusa um segundo fio por papel; 19 arms + neg-arm 6/6 |
 | D-10 | o braço `7d` do `altc-gesture` exigia a lista literal do desligar e acusava produto CERTO desde 2026-11-11 (a bateria estava RED nesse passo, 97/98) | MÉDIA | **corrigido** — o braço julga o domínio; 5º mutante prova; 98/98, neg-arm 5/5 |
+| D-11 | a segunda legenda da janela substituía a primeira no latch de `emit_async` — fala perdida sem uma linha no log, e a página é que commita o histórico | CRÍTICA | **corrigido** — kinds de EVENTO enfileiram (tecto 32, excedente DITO em `CAPTION_EMIT_DROPPED`); 6 arms, neg-arm 2/2 |
+| D-12 | o `--ready-file` do G3 era escrito pelo caminho dos 25 s, com a página do painel pendurada: o largador respondia 0 ao único HANG que sabe medir | ALTA | **corrigido** — `_mark_launch_ready(panel_loaded)`; arms C1/C2, mutante B2 |
+| D-13 | a ordem "passe de lote ligado" valia só por `run.cmd`; o autostart do logon larga `pythonw` e não passa por ele — no logon o motor de lote corria DESLIGADO | ALTA | **corrigido** — `env.setdefault('SOTTO_REDUX_LIVE','1')` em `_child_env`; `app-target` arm e, e o oráculo passou a ter passo |
+| D-14 | o motor quente entra na lista de *reap* da saída (`.kill()` levanta, `.wait()` não existe) e o matador externo mata-o pelo pid, com dois docstrings a prometer o contrário | MÉDIA | **aberto**, com a escolha nomeada (lista de *backstop* separada) |
 
 ## Números medidos nesta campanha
 
@@ -53,8 +57,9 @@ Guardados aqui porque a próxima sessão não deve re-medir o que já está medi
 | a especificação | 15 ficheiros, 3 865 linhas, 1 111 `[CODE]` + 173 `[MEASURED]` + 63 `[INFERENCE]` + 70 `[UNKNOWN]` | `wc -l` + `grep -o` por etiqueta |
 | citações resolvidas | 1 174 em 15 documentos, 0 sem ficheiro, 0 fora de alcance | `_main/spec-citations-oracle.py` |
 | bateria | 480 passos / 480 com registo | `_main/battery-record-pairing-oracle.py` |
-| pin da bateria | 363150 B / 4196 CRLF / 0 bare LF | `agents-md-pins-oracle.py` |
-| oráculos ligados | 197 ligados / 108 sem passo / 305 na população | `battery-wiring-oracle.py` |
+| pin da bateria | 365925 B / 4223 CRLF / 0 bare LF | `agents-md-pins-oracle.py` |
+| oráculos ligados | 199 ligados / 107 sem passo / 306 na população | `battery-wiring-oracle.py` |
+| passos com registo | 486 passos / 486 com registo | `_main/battery-record-pairing-oracle.py` |
 | custo da bateria | 2 293,3 s julgados em 413 passos presos a `cap40` | `battery-budget-oracle.py --policy cap40` |
 
 ## Duas contradições encontradas e resolvidas no selo

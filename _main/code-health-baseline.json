@@ -411,12 +411,12 @@
       "max_func_name": "popen_kwargs"
     },
     "app/webview/overlay_paint.py": {
-      "bytes": 47872,
+      "bytes": 48555,
       "classes": 0,
       "defs": 27,
       "except_pass": 2,
       "globals": 1,
-      "lines": 1046,
+      "lines": 1053,
       "max_func": 181,
       "max_func_name": "_paint_bitmap"
     },
@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1430279,
+      "bytes": 1435954,
       "classes": 29,
       "defs": 164,
       "except_pass": 64,
       "globals": 8,
-      "lines": 26404,
+      "lines": 26497,
       "max_func": 411,
       "max_func_name": "main"
     },
@@ -611,12 +611,12 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 120964,
+      "bytes": 122858,
       "classes": 1,
       "defs": 32,
       "except_pass": 5,
       "globals": 2,
-      "lines": 2393,
+      "lines": 2424,
       "max_func": 267,
       "max_func_name": "_run"
     },
@@ -721,12 +721,12 @@
       "max_func_name": "run_engine_pass"
     },
     "worker/engine_switch.py": {
-      "bytes": 96062,
+      "bytes": 96877,
       "classes": 3,
       "defs": 14,
       "except_pass": 2,
       "globals": 0,
-      "lines": 1779,
+      "lines": 1792,
       "max_func": 174,
       "max_func_name": "__init__"
     },

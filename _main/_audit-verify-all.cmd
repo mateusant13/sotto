@@ -682,6 +682,10 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-pause-payload !STEP_RC!
   call :step red-as-expected-panel-pause-payload 1 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
   call :expectred red-as-expected-panel-pause-payload !STEP_RC! "%OUT%\panel-pause-payload-neg.log" "NEG-ARM: PASS"
+  call :step measurement-flags 0 "_main\measurement-flags-oracle.py;app\webview\sotto_webview.py" "%OUT%\measurement-flags.log" python _main\measurement-flags-oracle.py
+  call :record measurement-flags !STEP_RC!
+  call :step red-as-expected-measurement-flags 1 "_main\measurement-flags-oracle.py;app\webview\sotto_webview.py" "%OUT%\measurement-flags-neg.log" python _main\measurement-flags-oracle.py --neg-arm
+  call :expectred red-as-expected-measurement-flags !STEP_RC! "%OUT%\measurement-flags-neg.log" "NEG-ARM: PASS"
   REM `caption-wanted-default` -- A LEGENDA LIGA NO ARRANQUE (ordem do dono de 2026-11-11,
   REM verbatim: *"as soon as i open it, should start the subtitles in my screen. the ctrl
   REM space."*). O arranque lia `_main\caption-wanted.json` e um `false` la' escrito -- que
@@ -2298,6 +2302,17 @@ if exist _main\panel-nav-stall-oracle.py (
   call :step red-as-expected-panel-nav-stall 1 "_main\panel-nav-stall-oracle.py;app\webview\sotto_webview.py" "%OUT%\panel-nav-stall-neg.log" python _main\panel-nav-stall-oracle.py --neg-arm
   call :expectred red-as-expected-panel-nav-stall !STEP_RC! "%OUT%\panel-nav-stall-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-panel-nav-stall MISSING "%OUT%\panel-nav-stall-neg.log" "NEG-ARM PASS" )
+REM app-target -- O ORACULO DO ALVO POR NOME TINHA ZERO CHAMADORES (2026-11-12).
+REM Medido: `battery-wiring` contava-o em `sem_passo`, e o banco de ensaio dele
+REM apodreceu sem ninguem notar -- o `FakeShell` nao tinha `on_worker_cost` e a
+REM arma `g` morria em `AttributeError`, ou seja o oraculo publicava FAIL sobre um
+REM caminho que nunca correu (a MESMA doenca do commit 283b2a8). Ele e' `always`
+REM porque le a TABELA DE PROCESSOS VIVA: um resultado em cache descreveria outra
+REM maquina. Custo medido: 5,9 s o positivo, 2,2 s o negativo.
+call :step always app-target 0 "_main\app-target-oracle.py;app\webview\sotto_webview.py" "%OUT%\app-target.log" python _main\app-target-oracle.py
+call :record app-target !STEP_RC!
+call :step always red-as-expected-app-target 1 "_main\app-target-oracle.py;app\webview\sotto_webview.py" "%OUT%\app-target-neg.log" python _main\app-target-oracle.py --neg-arm
+call :expectred red-as-expected-app-target !STEP_RC! "%OUT%\app-target-neg.log" "NEG-ARM PASS"
 
 echo === the wiring and the embedded JS (the two things the other gates cannot see) ===
 if exist _main\_audit-worker-start-wiring.py (

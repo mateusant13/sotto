@@ -12560,6 +12560,25 @@ def _measurement_flag(args):
     return None
 
 
+#: OS KINDS QUE SAO **EVENTO**, NAO ESTADO -- e por isso NAO SE COLAPSAM.
+#: O latch de `emit_async` existe para o feed do medidor (43 amostras/s medidos):
+#: ali a ultima amostra E' o estado, e substituir a pendente e' o certo. Uma
+#: legenda nao e' isso: o `emit_async('caption', ...)` e' o UNICO portador da
+#: fala ate' a pagina, e e' a pagina que a commita ao historico (`onCaption` ->
+#: `historyApi`). Colapsar A com B deixa a fala de A sem linha nenhuma no log --
+#: o oposto do invariante que o mesmo ficheiro escreve ("nenhuma fala
+#: desaparece em silencio", 2026-11-03). MEDIDO 2026-11-12 na leitura do
+#: caminho: `pending[kind] = payload; if already: return` substituia a legenda
+#: pendente enquanto a UI thread estava ocupada -- e nesta maquina a UI thread
+#: fica ocupada 3 142 ms num show (log do dono).
+#:
+#: O TECTO FICA, porque a fila sem tecto era o risco que o latch resolveu: os
+#: dois kinds de evento acumulam ate' `EVENT_EMIT_MAX`, e o que passa disso e'
+#: CONTADO e DITO (`CAPTION_EMIT_DROPPED`) em vez de desaparecer calado.
+EVENT_EMIT_KINDS = ('caption', 'external-caption')
+EVENT_EMIT_MAX = 32
+
+
 class SottoShell:
     def __init__(self, args):
         self.args = args
@@ -14207,7 +14226,30 @@ class SottoShell:
         threading.Thread(target=_watch, name='sotto-panel-stall',
                          daemon=True).start()
 
-    def _complete_startup(self):
+    def _mark_launch_ready(self, panel_loaded):
+        """O FICHEIRO DE PRONTIDAO DIZ A VERDADE OU NAO DIZ NADA (2026-11-12).
+
+        `run.cmd` promete, com todas as letras: "the shell touches it once the
+        panel navigation has completed, and run.cmd waits for it, BOUNDED,
+        exiting 4 on timeout" (run.cmd:65-70). O caminho dos 25 s
+        (`_arm_panel_stall_watch`) completava o arranque com a pagina do painel
+        AINDA PENDURADA e chamava este ficheiro na mesma -- logo o G3, que existe
+        para nomear um HANG, respondia 0 ao unico hang que ele sabe medir
+        (`STAGING_LOADED` e mais nada, e' o caso medido de 2026-10-06).
+
+        A cura nao e' nao completar o arranque: a legenda nao depende da pagina,
+        e esse e' o motivo de o vigia existir. A cura e' o FICHEIRO nao mentir --
+        ele fica POR ESCREVER e a linha diz por que. `run.cmd` entao da' rc=4 e
+        escreve `HANG`, que e' a informacao que ele foi construido para dar; a
+        app continua a correr, porque foi largada `start`ada e destacada.
+        """
+        path = getattr(self.args, 'ready_file', None)
+        if not panel_loaded:
+            log('LAUNCH_READY_WITHHELD path=%r why=panel-nav-stalled' % (path,))
+            return False
+        return mark_launch_ready(path)
+
+    def _complete_startup(self, panel_loaded=False):
         """O QUE "A APP ARRANCOU" QUER DIZER, NUM SO SITIO (2026-11-03).
 
         Era o fim de `_on_loaded`. Extraido porque um `load_url` que nao volta
@@ -14218,7 +14260,7 @@ class SottoShell:
         que precisa mesmo que a pagina do painel fique pendurada.
         """
         _STARTUP_READY['done'] = True
-        mark_launch_ready(self.args.ready_file)
+        self._mark_launch_ready(panel_loaded)
 
         # Startup actions run ONCE per process, not once per navigation. A hot
         # reload re-enters this function; without this guard `--with-worker`
@@ -14519,7 +14561,7 @@ class SottoShell:
         # `PRELOAD_ACTIVE`, and run.cmd still answered 0 (launch-entry.md §3/§4).
         # run.cmd's bounded wait keys on this file (see mark_launch_ready); the
         # file appearing is the wrapper's "the app came up".
-        self._complete_startup()
+        self._complete_startup(panel_loaded=True)
 
     def _on_closing(self):
         if self.bridge is not None:
@@ -20684,8 +20726,20 @@ class SottoShell:
             lock = self._emit_lock = threading.Lock()
             pending = self._emit_pending = {}
         with lock:
-            already = kind in pending
-            pending[kind] = payload
+            if kind in EVENT_EMIT_KINDS:
+                queue = pending.get(kind)
+                already = isinstance(queue, list)
+                if not already:
+                    queue = pending[kind] = []
+                queue.append(payload)
+                if len(queue) > EVENT_EMIT_MAX:
+                    _drop = len(queue) - EVENT_EMIT_MAX
+                    del queue[:_drop]
+                    _counts = self.__dict__.setdefault('_emit_event_dropped', {})
+                    _counts[kind] = _counts.get(kind, 0) + _drop
+            else:
+                already = kind in pending
+                pending[kind] = payload
         if already:
             return
 
@@ -20706,6 +20760,14 @@ class SottoShell:
                 latest = pending.pop(kind, None)
             if latest is None:
                 return
+            payloads = latest if isinstance(latest, list) else [latest]
+            if kind in EVENT_EMIT_KINDS:
+                _counts = getattr(self, '_emit_event_dropped', None) or {}
+                _lost = _counts.pop(kind, 0) if _counts else 0
+                if _lost:
+                    log(f'CAPTION_EMIT_DROPPED kind={json.dumps(kind)} '
+                        f'n={_lost} cap={EVENT_EMIT_MAX} '
+                        'why=page-drain-fell-behind')
             # SEM PAGINA NAO HA' O QUE NOTIFICAR (2026-11-04, medido): o
             # pipeline de legendas arranca antes do WebView2 de proposito, e o
             # feed de `stats` fazia o `Invoke` rebentar num `AttributeError`
@@ -20719,11 +20781,13 @@ class SottoShell:
                         '(uma linha; as seguintes sao descartadas ate a '
                         'pagina existir)' % json.dumps(kind))
                 return
-            script = ('window.__sotto_emit(' + json.dumps(kind) + ','
-                      + json.dumps(json.dumps(latest)) + ')')
-            self.webview2.Invoke(Func[Object](
-                lambda: self.core.ExecuteScriptAsync(script).ContinueWith(
-                    Action[Task[String]](_complete))))
+            for _payload in payloads:
+                script = ('window.__sotto_emit(' + json.dumps(kind) + ','
+                          + json.dumps(json.dumps(_payload)) + ')')
+                self.webview2.Invoke(Func[Object](
+                    lambda script=script: self.core.ExecuteScriptAsync(
+                        script).ContinueWith(
+                        Action[Task[String]](_complete))))
 
         # `_post`, NOT `_ui`: the docstring above promised "no wait", but `_ui`
         # WAITS on its BeginInvoke for up to 10 s. At the measured 43 pushes/s the
@@ -23491,6 +23555,19 @@ class WorkerBridge:
         #: spool, never a dropped block); and an engine that is not on disk is
         #: REFUSED LOUDLY with the missing path while the worker keeps streaming.
         env['SOTTO_REDUX_WHEN_HIDDEN'] = '1'
+        #: A ORDEM DO DONO NAO PODE DEPENDER DE QUEM ABRIU A APP (2026-11-12).
+        #: `run.cmd:113` poe `SOTTO_REDUX_LIVE=1` no processo da SHELL, e o shell
+        #: passa `os.environ` ao worker -- por `run.cmd` o passe de lote do
+        #: parakeet vai LIGADO. O autostart do logon nao passa por `run.cmd`
+        #: (`autostart_command()` larga `pythonw shell --log`, e nao pode largar
+        #: um `.cmd`: pinta consola no ecra dele), e a escada do worker e' flag ->
+        #: ambiente -> config (`worker/sotto_worker.py:5803`) com
+        #: `worker/config.json` `"enabled": false` -- medido, no logon o passe de
+        #: lote corria DESLIGADO, e o mesmo binario tinha dois comportamentos
+        #: conforme a porta de entrada. A decisao passa a viver AQUI, ao lado da
+        #: irma' de cima, e um valor explicito (`SOTTO_REDUX_LIVE=0`) continua a
+        #: ganhar -- `setdefault`, nunca atribuicao.
+        env.setdefault('SOTTO_REDUX_LIVE', '1')
         if self.device is not None:
             env['SOTTO_AUDIO_DEVICE'] = self.device
         #: OPT-IN: `SOTTO_TARGET_PID` appears ONLY when a target was resolved.

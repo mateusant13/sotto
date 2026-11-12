@@ -174,7 +174,36 @@ def arm_shipped():
     final = [l for l in stall if 'PANEL_NAV_STALL_FINAL' in l]
     check('A5 the stall line names the state (core=no)',
           bool(final) and 'core=no' in final[0], 'lines=%r' % (final[:1],))
+    arm_ready_file(module, log_lines)
     return True
+
+
+# ---------------------------------------------------------------------------
+# arm C: o ficheiro de prontidao conta a VERDADE ao largador (dono, 2026-11-12)
+# ---------------------------------------------------------------------------
+def arm_ready_file(module, log_lines):
+    """`run.cmd` promete que o ficheiro aparece quando a NAVEGACAO do painel
+    terminou (run.cmd:65-70). O caminho dos 25 s completa o arranque com a
+    pagina pendurada -- e escrevia o ficheiro na mesma, logo o G3 respondia 0 ao
+    unico HANG que sabe medir. Aqui o metodo REAL e' conduzido nos dois estados."""
+    print('ARM 3 — o ficheiro de prontidao so aparece quando o painel carregou')
+    d = tempfile.mkdtemp(prefix='sotto-ready-')
+    path = os.path.join(d, 'ready.txt')
+    host = types.SimpleNamespace(args=types.SimpleNamespace(ready_file=path))
+    before = len(log_lines)
+    module.SottoShell._mark_launch_ready(host, False)
+    absent = not os.path.exists(path)
+    withheld = [l for l in log_lines[before:]
+                if 'LAUNCH_READY_WITHHELD' in l and 'panel-nav-stalled' in l]
+    check('C1 stall path: ficheiro AUSENTE e a linha diz por que',
+          absent and len(withheld) == 1,
+          'existe=%s linhas=%r' % (os.path.exists(path), withheld[:1]))
+    module.SottoShell._mark_launch_ready(host, True)
+    body = ''
+    if os.path.exists(path):
+        body = io.open(path, encoding='utf-8').read()
+    check('C2 painel carregado: o ficheiro aparece com o pid',
+          bool(body) and 'ready pid=' in body, 'conteudo=%r' % (body[:40],))
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +255,36 @@ def arm_mutant():
           'load_url)', caught,
           'watch_stuck_at_2s=%s complete_calls_at_2s=%d url_calls=%d'
           % (stuck_after_2s, done_by_then, len(url_calls)))
-    return caught
+    return caught and arm_ready_mutant()
+
+
+def arm_ready_mutant():
+    """O mutante do ficheiro: a guarda do `panel_loaded` arrancada numa COPIA.
+    Sem esta arm o `--neg-arm` desta casa continuava a certificar so' o defeito
+    de ontem (a navegacao inline) -- que e' a doenca de um controlo que so
+    conhece uma mutacao."""
+    print('ARM 4 (negative control) — a guarda do ficheiro arrancada')
+    src = io.open(SHELL, encoding='utf-8', newline='').read()
+    _eol = '\r\n' if '\r\n' in src else '\n'
+    guard = '        if not panel_loaded:' + _eol
+    if guard not in src:
+        raise AssertionError('anchor do ficheiro de prontidao desapareceu')
+    mutated = src.replace(guard, '        if False:' + _eol, 1)
+    tmp = os.path.join(tempfile.gettempdir(), 'sotto_ready_mutant.py')
+    io.open(tmp, 'w', encoding='utf-8', newline='').write(mutated)
+    module = load_shell(tmp, 'sotto_ready_mutant')
+    logs = []
+    module.log = logs.append
+    d = tempfile.mkdtemp(prefix='sotto-ready-neg-')
+    path = os.path.join(d, 'ready.txt')
+    host = types.SimpleNamespace(args=types.SimpleNamespace(ready_file=path))
+    module.SottoShell._mark_launch_ready(host, False)
+    leaked = os.path.exists(path)
+    silent = not any('LAUNCH_READY_WITHHELD' in l for l in logs)
+    check('B2 o mutante ESCREVE o ficheiro com o painel pendurado (o defeito)',
+          leaked and silent,
+          'ficheiro=%s linha=%s' % (leaked, bool(logs)))
+    return leaked and silent
 
 
 def main(argv=None):
@@ -240,7 +298,7 @@ def main(argv=None):
         caught = arm_mutant()
         print()
         if caught:
-            print('NEG-ARM PASS — the mutant that inlines the retry is caught')
+            print('NEG-ARM PASS — os dois mutantes sao apanhados pelas SUAS arms')
             return 1
         print('NEG-ARM FAIL — the mutant survived; this oracle proves nothing')
         return 2
