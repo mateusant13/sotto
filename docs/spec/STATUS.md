@@ -68,7 +68,7 @@ Guardados aqui porque a próxima sessão não deve re-medir o que já está medi
 | a especificação | 15 ficheiros (sem `README.md`), 5 385 linhas, 1 360 `[CODE]` + 173 `[MEASURED]` + 62 `[INFERENCE]` + 68 `[UNKNOWN]` | contagem por ficheiro de `docs/spec/*.md` com `len(t.splitlines())` e `re.findall(r'\[([A-Z]+)\]', t)` (2026-11-12) |
 | citações resolvidas | 1 477 em 16 documentos, 0 sem ficheiro, 0 fora de alcance, 0 índice ausente | `_main/spec-citations-oracle.py` |
 | bateria | 501 passos / 501 com registo | `_main/battery-record-pairing-oracle.py` |
-| pin da bateria | 377 720 B / 4 352 CRLF / 0 bare LF | `agents-md-pins-oracle.py` |
+| pin da bateria | 377 820 B / 4 352 CRLF / 0 bare LF | `agents-md-pins-oracle.py` |
 | oráculos ligados | 205 ligados / 107 sem passo / 312 na população | `battery-wiring-oracle.py` |
 | custo da bateria | 2 134,2 s julgados em 445 passos, sob `cap40` | `battery-budget-oracle.py --policy cap40` (`RATCHET-OK`, `TARGET NOT MET`, gap 2 074,2 s de 60 s) |
 
