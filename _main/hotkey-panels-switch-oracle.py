@@ -255,35 +255,84 @@ def judge_wiring(shell) -> list:
                        calls2 == ['panels'] and obj.live_hotkey is sentinel,
                        f'roles={calls2} live_kept={obj.live_hotkey is sentinel}'))
 
-        # ARM 11 -- UMA TECLA, UM DONO: com o papel JA' armado, `arm_hotkey_role`
-        # devolve o MESMO fio e nao constroi um segundo. A construcao e' uma
-        # bomba: se alguem tentar armar de novo, este braco explode em vez de
-        # pedir `Ctrl+Space` ao Windows.
-        class _Bomb:
-            def __init__(self, *a, **k):
-                raise AssertionError('construiu um SEGUNDO fio para o mesmo papel')
+        # ARM 11-13 -- UMA TECLA, UM DONO, e as tres bordas da regra. O fio e'
+        # construido por uma CLASSE falsa: nada de `RegisterHotKey` de verdade.
+        class _Rec:
+            made = []
 
-        live_held = _ThreadStub()
-        fake = type('S', (), {})()
-        fake.live_hotkey = live_held
-        fake.hotkey = None
+            def __init__(self, *a, **k):
+                self.stopped = False
+                _Rec.made.append(self)
+
+            def is_alive(self):
+                return True
+
+            def stop(self):
+                self.stopped = True
+
+            def start(self):
+                self.started = True
+
+            def join(self, timeout=None):
+                return None
+            # o contrato que `arm_hotkey_role` le' depois de `start`
+            registered = True
+            register_failed = False
+            register_error = 0
+            fallback = None
+
+            def wait_ready(self, timeout):
+                return True
+
         real_live_cls = getattr(shell, 'LiveHotkeyThread', None)
         real_passive_cls = getattr(shell, 'PassiveHotkeyThread', None)
-        bomby = False
+        results = []
         try:
-            shell.LiveHotkeyThread = _Bomb
-            shell.PassiveHotkeyThread = _Bomb
-            same = shell.arm_hotkey_role(fake, 'live', 'Ctrl+Space', ())
-        except AssertionError:
-            same, bomby = None, True
+            shell.LiveHotkeyThread = _Rec
+            shell.PassiveHotkeyThread = _Rec
+
+            def _fake(held):
+                obj = type('S', (), {})()
+                obj.live_hotkey = held
+                obj.hotkey = None
+                return obj
+
+            # ARM 11 -- MESMA combinacao, JA' registada: o fio que existe e' o dono.
+            _Rec.made = []
+            held = _ThreadStub()
+            same = shell.arm_hotkey_role(_fake(held), 'live', 'Alt+C', ())
+            results.append(('rearm_kept_when_registered',
+                            same is held and not _Rec.made
+                            and not getattr(held, 'stopped', False),
+                            f'same={same is held} made={len(_Rec.made)} '
+                            f'stopped={getattr(held, "stopped", False)}'))
+
+            # ARM 12 -- a MESMA combinacao SEM registo e' o observador de recuo:
+            # pedir para armar de novo tem de TENTAR (parar o velho, registar).
+            # Devolver o observador faria do item 'Ativar' um botao morto.
+            _Rec.made = []
+            obs = _ThreadStub()
+            obs.registered = False
+            replaced = shell.arm_hotkey_role(_fake(obs), 'live', 'Alt+C', ())
+            results.append(('rearm_retries_when_not_registered',
+                            obs.stopped and len(_Rec.made) == 1
+                            and replaced is not obs,
+                            f'stopped={obs.stopped} made={len(_Rec.made)}'))
+
+            # ARM 13 -- combinacao DIFERENTE: troca, e nao um segundo fio vivo.
+            _Rec.made = []
+            other = _ThreadStub()
+            swapped = shell.arm_hotkey_role(_fake(other), 'live', 'Ctrl+Space', ())
+            results.append(('rearm_replaces_a_different_accel',
+                            other.stopped and len(_Rec.made) == 1
+                            and swapped is not other,
+                            f'stopped={other.stopped} made={len(_Rec.made)}'))
         finally:
             if real_live_cls is not None:
                 shell.LiveHotkeyThread = real_live_cls
             if real_passive_cls is not None:
                 shell.PassiveHotkeyThread = real_passive_cls
-        checks.append(('rearm_refused_when_already_armed',
-                       same is live_held and not bomby,
-                       f'same={same is live_held} constructed={bomby}'))
+        checks.extend(results)
     finally:
         shell.arm_hotkey_role = real_role
         shell.log = real_log
@@ -295,6 +344,7 @@ class _ThreadStub:
 
     accelerator = 'Alt+C'
     registered = True
+    stopped = False
 
     def is_alive(self):
         return True
@@ -394,7 +444,14 @@ def neg_arm() -> int:
         ('second_arming_creates_a_second_thread',
          "    if _held is not None and getattr(_held, 'is_alive', lambda: False)():\n",
          "    if False:\n",
-         ['rearm_refused_when_already_armed']),
+         ['rearm_kept_when_registered']),
+        # O BOTAO MORTO: devolver o observador de recuo para sempre deixava o
+        # item 'Ativar' do menu sem efeito nenhum (`registered=False` para sempre).
+        ('rearm_refuses_a_taken_key_forever',
+         "        if _accel == str(requested) and getattr(_held, 'registered', False):\n",
+         "        if True:\n",
+         ['rearm_retries_when_not_registered',
+          'rearm_replaces_a_different_accel']),
     ]
     for name, before, after, must_fail in shell_mutants:
         total += 1

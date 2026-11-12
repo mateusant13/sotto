@@ -440,21 +440,39 @@ BEFORE-FAIL rearm_refused_when_already_armed   same=False constructed=True
 **Depois.** Duas metades, e a segunda é a que impede a classe em qualquer chamador futuro:
 
 1. o handler arma **só** `panels` (`arm_hotkey_role(self, 'panels', requested, HOTKEY_FALLBACKS)`);
-2. `arm_hotkey_role` devolve o fio **já vivo** do papel, publica `HOTKEY_REARM_REFUSED role=…
-   accelerator=… why=already-armed slot=…` e não constrói um segundo.
+2. `arm_hotkey_role` decide por **três** bordas, e cada uma é um braço do oráculo:
+
+| o papel já tem… | o pedido é… | o que a função faz | tag do log |
+|---|---|---|---|
+| fio vivo **e registado** | a **mesma** combinação | devolve o fio — um dono | `HOTKEY_REARM_USED` |
+| fio vivo **sem registo** (observador de recuo) | a mesma combinação | **pára e tenta de novo** | `HOTKEY_REARM_REPLACE why=same-accel-not-registered` |
+| fio vivo | combinação **diferente** | pára o velho e arma o novo | `HOTKEY_REARM_REPLACE why=different-accel` |
+
+A segunda linha é o que impede um defeito novo: `panels_hotkey_state()` decide o texto do menu por
+`registered`, logo devolver o observador faria do item **“Ativar atalho Alt+C”** um botão que nunca
+liga (`toggled=true armed=0` para sempre). Uma tentativa nova é honesta — ela regista e diz o
+resultado.
 
 ```
 $ python _main/hotkey-panels-switch-oracle.py
-ARM PASS toggle_arms_panels_only            roles=['panels'] live_kept=True
-ARM PASS rearm_refused_when_already_armed    same=True constructed=False
-CHECK arms=19 failed=0
+ARM PASS toggle_arms_panels_only              roles=['panels'] live_kept=True
+ARM PASS rearm_kept_when_registered            same=True  made=0 stopped=False
+ARM PASS rearm_retries_when_not_registered     stopped=True made=1
+ARM PASS rearm_replaces_a_different_accel      stopped=True made=1
+CHECK arms=21 failed=0
 VERDICT: PASS
 $ python _main/hotkey-panels-switch-oracle.py --neg-arm
-MUTANT toggle_rearms_the_live_key:            CAUGHT arms=['toggle_arms_panels_only']
-MUTANT second_arming_creates_a_second_thread: CAUGHT arms=['rearm_refused_when_already_armed']
-NEG-ARM SUMMARY cases=6 caught=6
+MUTANT toggle_rearms_the_live_key:              CAUGHT arms=['toggle_arms_panels_only']
+MUTANT second_arming_creates_a_second_thread:   CAUGHT arms=['rearm_kept_when_registered']
+MUTANT rearm_refuses_a_taken_key_forever:       CAUGHT arms=['rearm_retries_when_not_registered',
+                                                           'rearm_replaces_a_different_accel']
+NEG-ARM SUMMARY cases=7 caught=7
 NEG-ARM: PASS
 ```
+
+O “antes” dos quatro braços, medido contra o shell de `6ac68ae^` (`git show` para um temporário,
+`judge_wiring` do mesmo oráculo): `roles=['panels','live'] live_kept=False`, `made=1` sem `stopped`
+nas três bordas.
 
 Um defeito de instrumento caiu junto: o braço 9 daquele oráculo gravava `arm_hotkey`, e desde a cura
 o handler chama `arm_hotkey_role` — o registro **real** de `Alt+C` era pago dentro do oráculo

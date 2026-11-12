@@ -10376,15 +10376,31 @@ def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
     mais um `RegisterHotKey` recusado (1409), e o observador de recuo -- que le
     `registered=False` -- abre o gate e o mesmo toque alterna duas vezes. Quem
     queria TROCAR a tecla tem de parar o fio primeiro, e isso e' dito no log
-    (`HOTKEY_REARM_REFUSED`) em vez de acontecer em silencio.
+    (`HOTKEY_REARM_REPLACE`) em vez de acontecer em silencio. A excecao e' a
+    combinacao pedida IGUAL e ja' REGISTADA: aí o fio que existe e' o dono.
     """
     _slot = 'live_hotkey' if role == 'live' else 'hotkey'
     _held = getattr(shell, _slot, None)
     if _held is not None and getattr(_held, 'is_alive', lambda: False)():
-        log(f'HOTKEY_REARM_REFUSED role={role} '
-            f'accelerator={getattr(_held, "accelerator", "?")} '
-            f'why=already-armed slot={_slot}')
-        return _held
+        _accel = str(getattr(_held, 'accelerator', '') or '')
+        if _accel == str(requested) and getattr(_held, 'registered', False):
+            log(f'HOTKEY_REARM_USED role={role} accelerator={_accel} '
+                f'why=already-armed slot={_slot}')
+            return _held
+        # A MESMA COMBINACAO SEM REGISTO E' O OBSERVADOR DE RECUO (o `Alt+C`
+        # tomado por outro programa): devolver esse fio faria do item 'Ativar'
+        # do menu um botao que nunca mais liga, porque `panels_hotkey_state`
+        # le' `registered` para decidir o texto. Uma tentativa nova e' honesta:
+        # ela REGISTA de novo e diz o resultado (`HOTKEY_PANELS toggled=true
+        # armed=0`).
+        why = ('same-accel-not-registered' if _accel == str(requested)
+               else 'different-accel')
+        log(f'HOTKEY_REARM_REPLACE role={role} was={_accel or "?"} '
+            f'requested={requested} why={why} slot={_slot}')
+        try:
+            _held.stop()
+        except Exception as exc:  # noqa: BLE001 -- trocar nao pode falhar
+            log(f'HOTKEY_REARM_STOP_FAILED role={role} error={exc!r}')
     order = [requested] + [a for a in fallbacks if a != requested]
     tried = []
     callback = (lambda: shell.hotkey_live()) if role == 'live' else (
