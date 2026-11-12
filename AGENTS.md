@@ -682,6 +682,16 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 18:3x):** `_main\_audit-verify-all.cmd` = **377720 B**,
+  **4352 CRLF** / 0 bare LF, sha256 `554E5FF20C3972CEFAEE5A41BD115A8C9B82EF12FC74CA8CA3595A2CD19E8E63`.
+  (Mil duzentos e trinta e seis bytes e CATORZE linhas a mais do que o pin de 376484 B: o par
+  `battery-run` + `red-as-expected-battery-run`, e o largador MUDA DE SITIO. O
+  `_main/_cache/battery-run.py` (git-ignored) passa a `_main/battery-run.py`, versionado, com o
+  juiz do proprio rc: **`rc=0` com `BATTERY-VERDICT: RED` e' DISCORDANCIA e sai 3** -- um codigo que
+  nenhum passo devolve por acidente -- e um sumario mais VELHO que a corrida nao e' veredicto (a
+  regra do aborto). Medido: `BATTERY-RUN SELFTEST: PASS` (4 casos) rc=0 e `--neg-arm` a apanhar a
+  mutacao do caso C1 com `NEG-ARM: PASS`, rc=1. A licao: um largador que se cita num pin e vive na
+  `_cache/` morre quando a cache e' limpa.)
 - **PIN do ficheiro (medido 2026-11-12, 18:0x):** `_main\_audit-verify-all.cmd` = **376484 B**,
   **4338 CRLF** / 0 bare LF, sha256 `63B8CD3839DFAB7E5A46A4326B03D881A534FC1D5C5B65EB5574EC7527DE4D94`.
   (Mil quatrocentos e setenta e tres bytes e DEZASSEIS linhas a mais do que o pin de 375011 B: o par

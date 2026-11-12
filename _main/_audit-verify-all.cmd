@@ -1924,6 +1924,20 @@ if exist _main\cage-rc-oracle.py (
   call :step red-as-expected-cage-rc 1 "_main\cage-rc-oracle.py;_main\fixtures\cage-rc\old.cmd;_main\fixtures\cage-rc\new.cmd;_main\_audit-verify-all.cmd" "%OUT%\cage-rc-neg.log" python _main\cage-rc-oracle.py --neg-arm
   call :expectred red-as-expected-cage-rc !STEP_RC! "%OUT%\cage-rc-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-cage-rc MISSING "%OUT%\cage-rc-neg.log" "NEG-ARM: PASS" )
+REM O LARGADOR DA BATERIA JULGA O PROPRIO rc (2026-11-12). O `battery-run.py` passa a viver
+REM em `_main\` (versionado; estava em `_main\_cache\`, que e' git-ignored -- um largador que se
+REM cita num pin e nao se versiona morre quando a cache e' limpa) e o `judge()` dele e' o invariante
+REM do `:expectred` visto do lado de FORA: rc=0 com veredicto RED e' DISCORDANCIA e sai 3. O
+REM `--selftest` julga o juiz sobre quatro casos (incluindo um sumario mais velho do que a corrida,
+REM que nao e' veredicto) sem largar a bateria; o `--neg-arm` troca o caso que prova o defeito.
+if exist _main\battery-run.py (
+  call :step battery-run 0 "_main\battery-run.py;_main\hidden-launch.py" "%OUT%\battery-run.log" python _main\battery-run.py --selftest
+  call :record battery-run !STEP_RC!
+) else ( call :record battery-run MISSING )
+if exist _main\battery-run.py (
+  call :step red-as-expected-battery-run 1 "_main\battery-run.py;_main\hidden-launch.py" "%OUT%\battery-run-neg.log" python _main\battery-run.py --neg-arm
+  call :expectred red-as-expected-battery-run !STEP_RC! "%OUT%\battery-run-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-battery-run MISSING "%OUT%\battery-run-neg.log" "NEG-ARM: PASS" )
 REM A ESPECIFICACAO APONTA PARA FICHEIROS E LINHAS QUE EXISTEM (2026-11-11). O defeito medido:
 REM o `12-GLOSSARY.md` nasceu com uma citacao `panel-visibility` no sitio errado e com
 REM `load_shedding:60` onde a constante estava na `:47`; o `README.md` listava um
