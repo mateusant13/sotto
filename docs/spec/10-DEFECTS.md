@@ -19,7 +19,7 @@ funcionar pela mão do dono).
 | D-01 | dois mutantes congelados do worker não estavam no git; dois oráculos dependiam deles | ALTO | **fechado** no código (`git add -f`), `git ls-files` prova |
 | D-02 | o arranque obedecia a `caption-wanted.json` e um `false` gravado suprimia a legenda em TODA a abertura seguinte | CRÍTICO | **corrigido, NÃO verificado** — o processo do dono corre código anterior |
 | D-03 | `ast.get_source_segment` re-parte o ficheiro inteiro por chamada: um passo novo custou 143,9 s | MÉDIO | corrigido no oráculo desta campanha; os outros sítios por medir |
-| D-04 | a carga do modelo a frio custa 5,2–21,0 s no log vivo, e a primeira legenda paga-a | ALTO | aberto — o motor quente existe; `UNMEASURED` no processo dele |
+| D-04 | cada abertura paga uma carga de motor quente (7,5–26,0 s, ~1 GB) que expira em 600 s antes de a vez dela chegar — as aberturas distam horas | ALTO | aberto, com a escolha nomeada (TTL vs pedir por evidência) |
 | D-05 | o portão do relógio julgava 36 de 449 passos quando invocado sem `--policy`, e o RED descrevia a invocação | MÉDIO | **corrigido** — recusa `CANNOT-MEASURE` (rc 2) antes de escrever; 6 arms; neg-arm 6/6 |
 | D-06 | a bateria presa a `cap40` soma 2 470,3 s em 413 passos (o portão julga 2 293,3 s), contra um alvo declarado de 60 s | MÉDIO | aberto, com a cauda nomeada |
 
@@ -157,12 +157,50 @@ BRIDGE_LOAD_MS ms=19312
 2026-11-11 ("as soon as i open it, should start the subtitles") exige que a legenda esteja LIGADA —
 o que ela não pode prometer é a primeira linha.
 
-**O que já existe.** O motor quente (`_main/warm-engine/`, tarefa `SottoWarmEngine`) e o preload:
-medido na campanha do motor quente, o attach custa **0,97 s** contra 41 s de carga a frio.
+**O que já existe, e o que ele custa de facto (medido 2026-11-12).** O motor quente
+(`_main/warm-engine/`, tarefa `SottoWarmEngine`) **é** pedido pelo shell — `WARM_ENGINE_START_TASK
+rc=0 registered=present` em **7** das 18 aberturas desde a cura de 2026-11-10 — e **carrega**:
 
-**Estado.** aberto. `UNMEASURED` no processo dele: nenhum `WARM_LOAD_MS` no log vivo desta janela.
-O que fecha: uma sessão nova em que `WARM_LOAD_MS` aparece antes do primeiro `Alt+C`, e a primeira
-linha chega dentro de 3 000 ms do primeiro áudio (`_main/time-to-first-caption-oracle.py`).
+```
+$ tail -25 _main/warm-engine.log
+2026-11-11 01:04:05 WARM_LOAD_MS ms=8060.0  resident_mb=1010.2
+2026-11-11 01:13:57 WARM_EXIT why=idle-expired held_s=600.0
+2026-11-11 17:34:35 WARM_LOAD_MS ms=12471.5 resident_mb=1010.2
+2026-11-11 17:44:22 WARM_EXIT why=idle-expired held_s=600.1
+2026-11-11 20:01:27 WARM_LOAD_MS ms=26027.8 resident_mb=1012.8
+2026-11-11 20:11:01 WARM_EXIT why=idle-expired held_s=600.1
+2026-11-11 20:47:16 WARM_LOAD_MS ms=7452.1  resident_mb=999.5   (deferido antes: WARM_LOAD_DEFERRED why=shed-alta)
+2026-11-11 20:50:38 WARM_EXIT why=idle-expired held_s=600.1
+```
+
+E o shell, na abertura seguinte, diz sempre o mesmo:
+
+```
+$ grep -o "WARM_FALLBACK_COLD reason=[a-z-]*" _main/webview-run.log | sort | uniq -c
+     18 WARM_FALLBACK_COLD reason=absent        (7 delas com WARM_ENGINE_START_TASK rc=0)
+```
+
+**A leitura, e ela muda o defeito.** O attach **não** está quebrado: o motor nasce ~1 s depois da
+recusa, carrega em 7,5–26,0 s e depois **sai sozinho ao fim de exactamente 600 s**
+(`WARM_PARK_TTL_S = 600.0`, `app/webview/warm_engine.py:66` — o mesmo TTL do worker, escolhido de
+propósito). As aberturas dele distam **2 h a 16 h** (`01:03 → 17:34 → 20:01 → 20:40`), logo o
+processo expira sempre antes da vez em que pagaria.
+
+O defeito real não é "o attach falha": é que **cada abertura paga uma carga de modelo que ninguém
+usa** — ~1 GB residente por dez minutos × 18, e a carga do worker continua a acontecer de qualquer
+maneira depois. O custo medido de uma carga de motor é **7,5–26,0 s** de disco e CPU no arranque em
+que ele já está a arrancar o resto.
+
+**Estado.** aberto, com a escolha nomeada — e é do dono, porque as duas opções mudam o produto:
+
+1. **aumentar o TTL/janela** — o motor passa a sobreviver entre aberturas (`WARM_PARK_TTL_S` é a
+   constante; o `IDLE_HOLD_MAX_S` do worker é o mesmo número por desenho), ao preço de ~1 GB
+   residente parado enquanto ele não abre a app;
+2. **não pedir o motor** quando a abertura anterior já provou que a distância é de horas — o log
+   tem a série que diz isso, e o pedido passa a ser por evidência, não por omissão.
+
+O que fecha nas duas: uma sessão nova em que o primeiro `Alt+C` mostra `WARM_ATTACHED`, e
+`_main/time-to-first-caption-oracle.py` mede a primeira linha dentro de 3 000 ms do primeiro áudio.
 
 ## D-05 — o portão do relógio tem veredicto, e eu li-o mal
 
