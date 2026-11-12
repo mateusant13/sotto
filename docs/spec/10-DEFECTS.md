@@ -32,6 +32,7 @@ funcionar pela mão do dono).
 | D-15 | uma largada de MEDIÇÃO (`--probe-v2` e mais oito) tomava lock privado e escrevia `panel-state.json`/`panel-visibility.json` por cima dos ficheiros da app viva — o worker do dono recebia `visible=false` e perdia o nível de shed de uma sonda | ALTO | **corrigido, NÃO verificado** — um único predicado para lock e estado, sufixo = nome do lock, worker lê o mesmo ficheiro; 15 arms + neg-arm 3/3 |
 | D-16 | um `SOTTO_WEBVIEW_AFTER_LOAD_S` presente e ilegivel caia em **25 s** de espera na thread que ainda nao chamou `webview.start()` -- a espera que o proprio comentario diz ter produzido o `HANG rc=4` | MÉDIO | **corrigido, NÃO verificado** -- `after_load_wait_s` devolve zero e a razao; 4 casos executados, neg-arm 6/6 |
 | D-17 | uma largada de MEDIÇÃO drenava a FILA DO BATCH do dono (`_open_load_action` sem `queue_dir`) -- medido `io 69,1 MB/s` a transcrever um `.f32` de `I:\cc-tmp\sotto-batch-queue` no stutter dele | ALTO | **corrigido, NÃO verificado** -- `isolated_queue_dir` (dono=`None`, medicao=`<fila>.<tag>`, host sem `args`=`.no-args`) e `queue_dir=` no `open_action`; executado dono=None/probe/no-args | `measurement-flags` A9 (3 metades + fiacao), neg-arm 6/6 |
+| D-18 | o ramo `no_audio` do cao de guarda re-armava sem perguntar se o filho estava vivo -- worker travado nunca reiniciado (`evidence_age_s=3173.9 restarts=0` no log do dono) | CRÍTICO | **corrigido, NÃO verificado** -- a prova de vida (`last_progress_at` depois do veredicto) decide; 7 arms + neg-arm 2/2 | `worker-silence-grace` |
 | D-11 | a segunda legenda da janela substituía a primeira no latch de `emit_async`: **fala perdida sem uma linha no log**, e é a página que commita o histórico — o histórico perdia a mesma fala | CRÍTICO | **corrigido** — kinds de EVENTO enfileiram (tecto 32, excedente CONTADO em `CAPTION_EMIT_DROPPED`); 6 arms, neg-arm 2/2 com o mutante novo |
 
 ---
@@ -759,6 +760,46 @@ argv do worker; cada mutante cai pela sua arm, rc=1 ao apanhar). Passos `measure
 
 **Estado.** `corrigido, NÃO verificado` — o processo do dono corre código anterior; o que está medido
 é a função e o writer reais, não uma abertura da app dele.
+
+## D-18 - o ramo "benigno" do cao de guarda prometia vigiar e nunca vigiava
+
+**Onde.** `app/webview/sotto_webview.py`, `WorkerBridge._on_silence`, o ramo `if self.no_audio:`.
+
+**ANTES (medido por leitura + log do dono).** O ramo publicava `BRIDGE_SILENT_BENIGN`, o estado do
+painel, re-armava o temporizador e RETORNAVA -- sem nunca perguntar se o filho estava vivo. O
+comentario ao lado prometia o contrario: *"the timer is re-armed so the watchdog keeps watching -- it
+must still catch a child that wedges AFTER saying this"*. E o `no_audio` e' PEGAJOSO: so' o limpam
+uma legenda, um `_spawn` ou o `revive_worker` -- nenhum deles acontece a um laco travado. Logo, um
+worker que travava DEPOIS de publicar um veredicto de "nada a transcrever" nunca mais era reiniciado,
+e o log dizia que o cao estava a vigiar.
+
+Log do dono, `_main/webview-run.log` (19 linhas da mesma forma):
+
+    BRIDGE_SILENT_BENIGN ms=30000 pid=37112 state=no-audio
+      because="tap-silent-desktop window_s=12.0 endpoints=5 peak=0.0"
+      evidence_age_s=3173.9 restarts=0
+
+53 minutos a re-armar sobre o mesmo pid, com o `evidence_age_s` a crescer 1257 -> 3173, e nenhuma
+linha capaz de distinguir "parqueado de proposito" de "travado".
+
+**DEPOIS.** O ramo pergunta o que o worker JA' publica: o `WORKER_ALIVE` sai do proprio laco
+(`progress('parked')` a cada 4 s) e cala-se quando o laco trava. Progresso DEPOIS do veredicto =
+parqueado (re-arma e sai, como antes); nada desde o veredicto = o cao de guarda volta ao caminho
+normal (graca -> kill), e a linha passa a dizer `BRIDGE_SILENT_BENIGN_STALE
+because=no-progress-since-verdict`.
+
+**Gravidade.** CRÍTICO -- e' a classe que este ficheiro existe para nao ter: um instrumento que
+reporta saude no estado exacto em que a recuperacao se perdeu.
+
+**Instrumento.** `_main/worker-silence-grace-oracle.py`: A4 reescrita (veredicto com batimento
+posterior = benigno), A6 (veredicto sem batimento = a graca PERGUNTA) e A7 (sem batimento e sem
+resposta = MATA). `VERDICT: PASS (7/7)`, rc=0.
+
+**E o controlo estava partido.** O `--neg-arm` deste oraculo morria em `NEG-ARM IMPOSSIVEL` (rc=0!)
+porque as ancoras sao escritas com LF e o shell e' CRLF: um controlo que nao corria. Normalizado, e
+agora com DOIS mutantes cirurgicos: `grace-block-removed` (derruba A1/A2/A6) e
+`benign-returns-without-asking` -- o codigo antigo restaurado -- que derruba A6/A7.
+`NEG-ARM: PASS -- 2/2`, rc=1.
 
 ## D-17 - uma medicao drenava a FILA DO BATCH do dono
 

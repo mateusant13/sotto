@@ -24571,8 +24571,32 @@ class WorkerBridge:
             else:
                 self.log(f'BRIDGE_SILENT_BENIGN_HELD state={NO_AUDIO_STATE} '
                          f'behind={json.dumps(self.pending_error["state"])}')
-            self._arm_silence()
-            return
+            # A PROMESSA DO COMENTARIO ACIMA E' AGORA CODIGO (2026-11-12, D-18).
+            # Medido por leitura + log do dono: este ramo re-armava e RETORNAVA
+            # sempre, sem nunca perguntar se o filho estava vivo -- e o
+            # `no_audio` e' pegajoso (so' uma legenda, um `_spawn` ou o
+            # `revive_worker` o limpam), logo um worker que TRAVASSE depois do
+            # veredicto nunca mais era reiniciado. O log dele guardava
+            # `BRIDGE_SILENT_BENIGN ... evidence_age_s=3173.9 restarts=0`, 53
+            # minutos a re-armar sobre o mesmo pid, sem uma linha a distinguir
+            # "parqueado de proposito" de "travado".
+            # A testemunha e' a prova de vida que o worker JA' publica: o
+            # `WORKER_ALIVE` sai do proprio laco (`progress('parked')` a cada
+            # 4 s) e cala-se quando o laco trava. Progresso desde o veredicto =
+            # parqueado; nada desde o veredicto = o cao de guarda volta ao seu
+            # caminho normal (graca -> kill), como sempre.
+            _progress = getattr(self, 'last_progress_at', None)
+            _verdict_at = self.no_audio_evidence_at or None
+            if (_verdict_at is not None and _progress is not None
+                    and _progress > _verdict_at):
+                self._arm_silence()
+                return
+            self.log(f'BRIDGE_SILENT_BENIGN_STALE ms={self.silence_ms} '
+                     f'pid={self.child.pid} state={NO_AUDIO_STATE} '
+                     'because=no-progress-since-verdict -- o cao de guarda '
+                     'decide')
+            # cai no cao de guarda abaixo: a graca pergunta, e o kill e' o
+            # desfecho quando o progresso nao andou.
         # -- THE LOAD WINDOW (S7) ---------------------------------------------
         # Silence while `model-loaded` has not arrived is the load, not a jam.
         # The cold boot is exactly this case and it is not rare: the Windows
