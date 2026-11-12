@@ -30,6 +30,7 @@ funcionar pela mão do dono).
 | D-13 | a ordem do dono "passe de lote ligado" valia só por `run.cmd`; o autostart do logon larga `pythonw` e não passa por ele, logo no logon o motor de lote corria **DESLIGADO** | ALTO | **corrigido** — `env.setdefault('SOTTO_REDUX_LIVE','1')` em `_child_env`, ao lado da irmã; arms novas do `app-target` |
 | D-14 | o motor quente entra na lista de *reap* da saída (`.kill()` levanta, `.wait()` não existe) e o matador externo mata-o pelo pid, com dois docstrings a prometer o contrário | MÉDIO | **aberto**, com a escolha nomeada (lista de *backstop* separada) |
 | D-15 | uma largada de MEDIÇÃO (`--probe-v2` e mais oito) tomava lock privado e escrevia `panel-state.json`/`panel-visibility.json` por cima dos ficheiros da app viva — o worker do dono recebia `visible=false` e perdia o nível de shed de uma sonda | ALTO | **corrigido, NÃO verificado** — um único predicado para lock e estado, sufixo = nome do lock, worker lê o mesmo ficheiro; 15 arms + neg-arm 3/3 |
+| D-16 | um `SOTTO_WEBVIEW_AFTER_LOAD_S` presente e ilegivel caia em **25 s** de espera na thread que ainda nao chamou `webview.start()` -- a espera que o proprio comentario diz ter produzido o `HANG rc=4` | MÉDIO | **corrigido, NÃO verificado** -- `after_load_wait_s` devolve zero e a razao; 4 casos executados, neg-arm 6/6 |
 | D-11 | a segunda legenda da janela substituía a primeira no latch de `emit_async`: **fala perdida sem uma linha no log**, e é a página que commita o histórico — o histórico perdia a mesma fala | CRÍTICO | **corrigido** — kinds de EVENTO enfileiram (tecto 32, excedente CONTADO em `CAPTION_EMIT_DROPPED`); 6 arms, neg-arm 2/2 com o mutante novo |
 
 ---
@@ -757,6 +758,42 @@ argv do worker; cada mutante cai pela sua arm, rc=1 ao apanhar). Passos `measure
 
 **Estado.** `corrigido, NÃO verificado` — o processo do dono corre código anterior; o que está medido
 é a função e o writer reais, não uma abertura da app dele.
+
+## D-16 — um valor ilegível na env punha 25 s no primeiro pixel
+
+**Onde.** `app/webview/sotto_webview.py:26423-26433` (antes), dentro de `main()`, antes de
+`webview.start()`.
+
+**Medido por leitura (2026-11-12).** O comentário do próprio sítio diz que a espera pelo modelo é
+**desligada por omissão** *porque* 25 s de espera fizeram o `run.cmd` responder
+`HANG rc=4 by=run.cmd-readiness`; e o ramo de erro fazia exactamente isso:
+
+```python
+try:
+    _wait_model = float(os.environ.get('SOTTO_WEBVIEW_AFTER_LOAD_S', '0'))
+except ValueError:
+    _wait_model = 25.0        # <- a espera que o comentário chama de defeito
+```
+
+Um `SOTTO_WEBVIEW_AFTER_LOAD_S` presente e ilegível (`abc`, `25s`, um espaçamento de cópia) comprava a
+espera inteira, na thread que ainda não chamou `webview.start()`: o primeiro pixel fica 25 s mais
+tarde e o prazo de 30 s do `run.cmd` fica com cinco. O valor ilegível não vem de um pedido — vem de
+lixo no ambiente.
+
+**A cura.** `after_load_wait_s(env)` — função **pura** — devolve `(segundos, razão)` com as quatro
+razões (`default`, `off`, `env`, `unparsable`); ilegível devolve **zero** e o arranque escreve
+`SHELL_WEBVIEW_AFTER_LOAD_DEFAULTED reason=unparsable`. Pura para que um oráculo a execute sem largar
+a app, e para que a política não volte a viver dentro de um `try` de `main()`.
+
+**Portão.** O braço `legenda-antes-do-webview2-sem-espera` do `youtube-first-at-boot-oracle` deixou de
+casar a string do fonte e passou a **executar** a função nos quatro casos. Medido:
+`wait={'ausente': (0.0, 'default'), 'ilegivel': (0.0, 'unparsable'), 'pedido': (5.0, 'env'), 'zero':
+(0.0, 'off')}` e `YOUTUBE-FIRST-AT-BOOT VERDICT: PASS (12/12)`; o `--neg-arm` ganhou o mutante
+`ilegivel-espera-25s` e mediu `NEG-ARM: PASS (6/6 mutantes apanhados)` rc=1.
+
+**Estado.** `corrigido, NÃO verificado` — o processo do dono corre código anterior; e o caso que este
+defeito descreve (env ilegível) não está a acontecer na instalação dele: é uma armadilha fechada, não
+um sintoma observado.
 
 ---
 

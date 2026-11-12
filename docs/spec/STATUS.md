@@ -3,7 +3,7 @@
 Este ficheiro é a memória do trabalho. É actualizado a cada onda; não é um relatório final.
 Cada linha diz o que está **escrito**, com que **evidência**, e o que **falta**.
 
-Última actualização: 2026-11-12 (rodada de defeitos — D-09).
+Última actualização: 2026-11-12 (rodada de defeitos — D-15 e D-16).
 
 ## Ondas
 
@@ -22,7 +22,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | W7 histórico e estado | **feito** | `07-HISTORY-STATE.md` (348 l., 293/10/14/8): o formato da linha e o `ctx1=`, as duas portas de admissão, a fusão, a retenção de 180 dias, busca e export, o anel de 12 h, a fila de lote, e cada ficheiro de estado com escritor/leitor/contrato de falha | `sotto_webview.py:15688`; `history_context.py`; `worker/audio_ring.py`; `batch_queue.py` |
 | W8 painéis e UX | **feito** | `08-PANELS-UX.md` (346 l., 112/13/7/7): Alt+C por índice de pressão, Ctrl+Space (HOLD e o engolir do espaço), a caixa da legenda, os temas, o arrasto, as configurações e o que fica gravado | `hotkey_gesture.py`; `space_swallow.py`; `caption_drag.py`; `app/panel/**` |
 | W9 modos de falha | **feito** | `09-FAILURE-MODES.md` (350 l., 37/30/15/6): o que acontece quando cada peça falha — dispositivo, worker, página, WebView2, Chrome/CDP, disco, energia, rede — e o que o dono vê em cada caso | linha por modo com a tag do log e o oráculo que a lê |
-| W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (531 l.): 10 defeitos com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-05 corrigido nesta campanha | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
+| W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (809 l.): 16 defeitos com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-15 corrigido nesta rodada | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
 | W11 spec-alvo | **feito** | `11-TARGET.md` (205 l.): o comportamento que eu escolho, jornada a jornada, com o que "funciona" quer dizer em cada uma | deriva das jornadas de `00-PROMISE.md` |
 | W12 selo | **feito** | índice, referências cruzadas e o portão das citações (`_main/spec-citations-oracle.py`, 1 174 citações em 15 documentos, 0 sem ficheiro, 0 fora de alcance) | `SPEC-CITATIONS VERDICT: PASS` |
 
@@ -44,6 +44,8 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | D-12 | o `--ready-file` do G3 era escrito pelo caminho dos 25 s, com a página do painel pendurada: o largador respondia 0 ao único HANG que sabe medir | ALTA | **corrigido** — `_mark_launch_ready(panel_loaded)`; arms C1/C2, mutante B2 |
 | D-13 | a ordem "passe de lote ligado" valia só por `run.cmd`; o autostart do logon larga `pythonw` e não passa por ele — no logon o motor de lote corria DESLIGADO | ALTA | **corrigido** — `env.setdefault('SOTTO_REDUX_LIVE','1')` em `_child_env`; `app-target` arm e, e o oráculo passou a ter passo |
 | D-14 | o motor quente entra na lista de *reap* da saída (`.kill()` levanta, `.wait()` não existe) e o matador externo mata-o pelo pid, com dois docstrings a prometer o contrário | MÉDIA | **aberto**, com a escolha nomeada (lista de *backstop* separada) |
+| D-15 | uma largada de MEDIÇÃO (`--probe-v2` e mais oito) tomava lock privado e escrevia `panel-state.json`/`panel-visibility.json` por cima dos ficheiros da app viva — o worker do dono recebia `visible=false` e perdia o nível de shed | ALTA | **corrigido, NÃO verificado** — um único predicado para lock e estado, sufixo = nome do lock, worker lê o mesmo ficheiro; 15 arms + neg-arm 3/3 |
+| D-16 | um `SOTTO_WEBVIEW_AFTER_LOAD_S` presente e ilegivel caia em 25 s de espera na thread que ainda nao chamou `webview.start()` — a espera que o proprio comentario diz ter produzido o `HANG rc=4` | MÉDIA | **corrigido, NÃO verificado** — `after_load_wait_s` devolve zero e a razao; 4 casos executados, neg-arm 6/6 |
 
 ## Números medidos nesta campanha
 
@@ -56,8 +58,8 @@ Guardados aqui porque a próxima sessão não deve re-medir o que já está medi
 | worker | 9 493 linhas, 17 classes | `ast` |
 | a especificação | 15 ficheiros, 3 865 linhas, 1 111 `[CODE]` + 173 `[MEASURED]` + 63 `[INFERENCE]` + 70 `[UNKNOWN]` | `wc -l` + `grep -o` por etiqueta |
 | citações resolvidas | 1 174 em 15 documentos, 0 sem ficheiro, 0 fora de alcance | `_main/spec-citations-oracle.py` |
-| bateria | 480 passos / 480 com registo | `_main/battery-record-pairing-oracle.py` |
-| pin da bateria | 365925 B / 4223 CRLF / 0 bare LF | `agents-md-pins-oracle.py` |
+| bateria | 488 passos / 488 com registo | `_main/battery-record-pairing-oracle.py` |
+| pin da bateria | 367459 B / 4238 CRLF / 0 bare LF | `agents-md-pins-oracle.py` |
 | oráculos ligados | 199 ligados / 107 sem passo / 306 na população | `battery-wiring-oracle.py` |
 | passos com registo | 486 passos / 486 com registo | `_main/battery-record-pairing-oracle.py` |
 | custo da bateria | 2 293,3 s julgados em 413 passos presos a `cap40` | `battery-budget-oracle.py --policy cap40` |

@@ -740,7 +740,7 @@ def _arm_window_title_wins(mod):
     return ok, "exact=%r partial=%r dead-named=%r" % (exact, partial, dead_named)
 
 
-def _arm_startup_order(shell_path=SHELL):
+def _arm_startup_order(shell_path=SHELL, shell_mod=None):
     """A ORDEM ESTATICA DO ARRANQUE: a legenda antes do WebView2, sem espera.
 
     O dono, 2026-11-04: *"é estupido 'carregando o modelo' e nao mostrar
@@ -774,13 +774,33 @@ def _arm_startup_order(shell_path=SHELL):
             if isinstance(owner, ast.Name) and owner.id == "webview":
                 if webview_line is None:
                     webview_line = node.lineno
-    import re
-    default_zero = bool(re.search(
-        r"SOTTO_WEBVIEW_AFTER_LOAD_S',\s*'0'\)", src))
+    # A ESPERA E' JULGADA POR COMPORTAMENTO, NAO POR TEXTO (2026-11-12). A arm
+    # antiga casava a string `SOTTO_WEBVIEW_AFTER_LOAD_S', '0')` no fonte, e o
+    # defeito que ela deixou passar estava ao lado: um valor ILEGIVEL caia em
+    # `25.0` -- a espera que o proprio comentario diz ter produzido o
+    # `HANG rc=4` -- na thread que ainda nao chamou `webview.start()`. Agora a
+    # funcao pura e' EXECUTADA nos tres casos que importam.
+    mod = shell_mod
+    if mod is None:
+        mod = _load(shell_path, "sotto_shell_after_load_%d"
+                    % (int(time.monotonic() * 1000) % 100000))
+    got = {}
+    for label, env in (("ausente", {}),
+                       ("ilegivel", {"SOTTO_WEBVIEW_AFTER_LOAD_S": "abc"}),
+                       ("pedido", {"SOTTO_WEBVIEW_AFTER_LOAD_S": "5"}),
+                       ("zero", {"SOTTO_WEBVIEW_AFTER_LOAD_S": "0"})):
+        try:
+            got[label] = mod.after_load_wait_s(env)
+        except Exception as exc:                                   # noqa: BLE001
+            got[label] = "raised %r" % (exc,)
+    wait_ok = (got["ausente"] == (0.0, "default")
+               and got["ilegivel"] == (0.0, "unparsable")
+               and got["pedido"] == (5.0, "env")
+               and got["zero"] == (0.0, "off"))
     ok = (pipeline_line is not None and webview_line is not None
-          and pipeline_line < webview_line and default_zero)
-    return ok, ("pipeline_line=%s webview.start_line=%s default_wait_zero=%s"
-                % (pipeline_line, webview_line, default_zero))
+          and pipeline_line < webview_line and wait_ok)
+    return ok, ("pipeline_line=%s webview.start_line=%s wait=%r"
+                % (pipeline_line, webview_line, got))
 
 
 # -- as arms ----------------------------------------------------------------
@@ -802,7 +822,7 @@ def arms(shell_path=SHELL, module_path=MODULE, port_holder=None):
     with _StubCdp([_watch_tab("MOZIBMBHK-8", "boot")]) as stub:
         ok, note = _arm_boot_order(shell_mod, stub.port)
     out.append(("ordem-do-arranque", ok, note))
-    ok, note = _arm_startup_order(shell_path)
+    ok, note = _arm_startup_order(shell_path, shell_mod=shell_mod)
     out.append(("legenda-antes-do-webview2-sem-espera", ok, note))
     ok, note = _arm_track_goes_away(shell_mod)
     out.append(("queda-da-faixa-uma-so-vez", ok, note))
@@ -907,8 +927,24 @@ def neg_arm():
                 "    shell = SottoShell(args)\n    shell.create_window()"), 1)
         assert body5 != src, "a mutacao da ordem estatica nao aplicou"
         io.open(mut5, "w", encoding="utf-8", newline="").write(body5)
-        ok5, _note5 = _arm_startup_order(mut5)
+        mod5 = _load(mut5, "sotto_shell_webview_antes_%d"
+                     % (int(time.monotonic() * 1000) % 100000))
+        ok5, _note5 = _arm_startup_order(mut5, shell_mod=mod5)
         results.append(("webview-antes-da-legenda", not ok5))
+
+        # 6) O VALOR ILEGIVEL VOLTA A ESPERAR 25 s (o defeito D-16). A
+        # mutacao e' na funcao PURA: um numero ilegivel passa a pedir a espera
+        # que o `run.cmd` transforma em `HANG rc=4`.
+        mut6 = os.path.join(tmp, "shell_espera_25.py")
+        body6 = src.replace(
+            cut("        return 0.0, 'unparsable'"),
+            cut("        return 25.0, 'unparsable'"), 1)
+        assert body6 != src, "a mutacao da espera nao aplicou"
+        io.open(mut6, "w", encoding="utf-8", newline="").write(body6)
+        mod6 = _load(mut6, "sotto_shell_espera_25_%d"
+                     % (int(time.monotonic() * 1000) % 100000))
+        ok6, _note6 = _arm_startup_order(mut6, shell_mod=mod6)
+        results.append(("ilegivel-espera-25s", not ok6))
         return results
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

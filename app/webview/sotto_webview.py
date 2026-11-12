@@ -12605,6 +12605,33 @@ def _measurement_flag(args):
     return None
 
 
+def after_load_wait_s(env):
+    """Quanto o arranque espera pelo modelo antes de entregar a maquina ao
+    WebView2, e POR QUE esse numero. `(segundos, razao)`.
+
+    RAZOES: `default` (variavel ausente), `off` (presente e <= 0), `env` (um
+    numero positivo pedido), `unparsable` (presente e ilegivel).
+
+    PORQUE E' UMA FUNCAO PURA E NAO UM `try` NO `main()` (2026-11-12): o ramo
+    de erro devolvia **25,0 s** -- exactamente a espera que o comentario do
+    proprio sitio diz ter produzido o `HANG rc=4 by=run.cmd-readiness` --, e ela
+    roda na thread que ainda nao chamou `webview.start()`, portanto o FIRST
+    PIXEL e' que a paga (o prazo do `run.cmd` e' 30 s e ficam cinco). Um valor
+    ilegivel nao e' um pedido; a resposta segura e' zero e a razao escrita no
+    log. Pura para que um oraculo a execute sem largar a app.
+    """
+    raw = env.get('SOTTO_WEBVIEW_AFTER_LOAD_S', None)
+    if raw is None or str(raw).strip() == '':
+        return 0.0, 'default'
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return 0.0, 'unparsable'
+    if value <= 0:
+        return 0.0, 'off'
+    return value, 'env'
+
+
 #: OS KINDS QUE SAO **EVENTO**, NAO ESTADO -- e por isso NAO SE COLAPSAM.
 #: O latch de `emit_async` existe para o feed do medidor (43 amostras/s medidos):
 #: ali a ultima amostra E' o estado, e substituir a pendente e' o certo. Uma
@@ -26420,17 +26447,22 @@ def main(argv=None):
         # arrancava escondido. Entao: espera o modelo, com tecto, e so'
         # depois entrega a maquina ao WebView2. Tecto obrigatorio -- uma
         # app sem painel e' o defeito que se estava a evitar.
-        try:
-            # DEFAULT ZERO (2026-11-03, MEDIDO): o `run.cmd` tem um portao de
-            # prontidao e chamou `HANG rc=4 by=run.cmd-readiness` a um arranque
-            # que so' estava a espERAR pelo modelo antes de abrir a pagina -- a
-            # app ficou sem painel e o dono sem nada. A espera nao comprou nada
-            # medivel (o modelo demora o mesmo; o WebView2 nao e' o culpado),
-            # logo fica opt-in para quem a quiser medir.
-            _wait_model = float(os.environ.get('SOTTO_WEBVIEW_AFTER_LOAD_S',
-                                               '0'))
-        except ValueError:
-            _wait_model = 25.0
+        # DEFAULT ZERO (2026-11-03, MEDIDO): o `run.cmd` tem um portao de
+        # prontidao e chamou `HANG rc=4 by=run.cmd-readiness` a um arranque que
+        # so' estava a espERAR pelo modelo antes de abrir a pagina -- a app ficou
+        # sem painel e o dono sem nada. A espera nao comprou nada medivel (o
+        # modelo demora o mesmo; o WebView2 nao e' o culpado), logo fica opt-in.
+        #
+        # O RAMO DE ERRO NAO PODE RESSUSCITAR O DEFEITO (2026-11-12): um valor
+        # presente e ILEGIVEL caia em `25.0` -- o comentario acima diz que esses
+        # 25 s foram exactamente o que fez o largador responder `HANG`, e o
+        # `float` roda na thread que ainda nao chamou `webview.start()`, ou seja
+        # o PRIMEIRO PIXEL espera 25 s e o prazo de 30 s do `run.cmd` fica com
+        # cinco. Um valor que nao se le nao e' um pedido: e' lixo, e a resposta
+        # segura e' NAO esperar e DIZER por que.
+        _wait_model, _wait_reason = after_load_wait_s(os.environ)
+        if _wait_reason != 'env':
+            warn('SHELL_WEBVIEW_AFTER_LOAD_DEFAULTED reason=%s' % _wait_reason)
         if _wait_model > 0 and getattr(shell, 'bridge', None) is not None:
             _t0 = time.monotonic()
             _loaded = False
