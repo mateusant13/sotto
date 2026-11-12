@@ -682,6 +682,19 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 17:2x):** `_main\_audit-verify-all.cmd` = **375011 B**,
+  **4322 CRLF** / 0 bare LF, sha256 `A84CAE89E2E7A921FDAB575215A8E8F4E494C5075A889B8F42653B516CFD944E`.
+  (Mil e noventa e sete bytes e QUINZE linhas a mais do que o pin de 373914 B: **O CAGE DEVOLVIA O
+  rc DE ANTES DE CORRER.** Medido 2026-11-12: uma corrida com `BATTERY-VERDICT: RED - 2 step(s)
+  failed` e `child exit code 1` chegou ao largador como **`rc=0`** -- o `.cmd` imprime o veredicto
+  certo e mente na unica coisa que o chamador le, e o proprio `AGENTS.md` exige "o exit code E o
+  veredicto". Causa: `%ERRORLEVEL%` dentro de um bloco entre parenteses e' expandido quando o bloco
+  e' LIDO, ou seja ANTES de o `python -m watcher run` correr, logo `exit /b %ERRORLEVEL%` devolvia o
+  codigo de ANTES do cage. A cura e' a subrotina `:__battery_cage` (uma etiqueta `call` volta a ler
+  cada linha) mais `if defined SOTTO_BATTERY_CAGED if errorlevel 1 exit /b 1` no sitio. Controlo de
+  dois bracos, o MESMO filho a sair 1 (`_main/_cache/cage-rc-old.cmd` / `-new.cmd`): **old -> 0,
+  new -> 1**. Sem `!` na etiqueta: a expansao atrasada continua desligada acima dela, que e' o que
+  mantem o `I:\!watcher` literal.)
 - **PIN do ficheiro (medido 2026-11-12, 16:1x):** `_main\_audit-verify-all.cmd` = **373914 B**,
   **4307 CRLF** / 0 bare LF, sha256 `06FDD35FD6AAFBC4B6E3B0FC6BBD1BADBAB1D48C5E5D71E4FE6FE8241DEAC8B8`.
   (Seiscentos e setenta e quatro bytes e SETE linhas a mais do que o pin de 373240 B, e DUAS

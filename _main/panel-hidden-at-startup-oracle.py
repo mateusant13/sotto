@@ -1206,7 +1206,10 @@ def run_mutant_isolated(path):
         return None, True, text + '\n' + captured
     hung = 'Timeout (' in text and MUTANT_RESULT_TAG not in text
     payload = None
-    for line in (proc.stdout or '').splitlines():
+    # O TEXTO, nao `proc.stdout`: depois de `communicate()` o cano esta' FECHADO e um
+    # `TextIOWrapper` nao tem `.splitlines()` -- medido nesta corrida, `AttributeError`
+    # na linha 1209, que e' o passo a morrer em vez de julgar o mutante.
+    for line in text.splitlines():
         if line.startswith(MUTANT_RESULT_TAG):
             try:
                 payload = json.loads(line[len(MUTANT_RESULT_TAG):])

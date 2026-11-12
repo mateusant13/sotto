@@ -109,12 +109,8 @@ REM  SEM tecto em silencio -- medido 2026-11-08 19:2x: o primeiro run imprimiu P
 REM  e nenhuma linha de cage. Um tecto que se desliga sem dizer nada e' o mesmo
 REM  defeito que este repo chama 'um passo saltado nao e' um portao que passou'.
 if not defined SOTTO_BATTERY_CAGED if not defined SOTTO_BATTERY_NOCAGE if not exist "I:\!watcher\watcher\__init__.py" echo CAGE declined -- I:\!watcher\watcher nao existe, esta corrida corre SEM tecto de CPU
-if not defined SOTTO_BATTERY_CAGED if not defined SOTTO_BATTERY_NOCAGE if exist "I:\!watcher\watcher\__init__.py" (
-  set "SOTTO_BATTERY_CAGED=1"
-  set "PYTHONPATH=I:\!watcher;%PYTHONPATH%"
-  python -m watcher run --cpu 40 -- cmd /c ""%~f0" --caged"
-  exit /b %ERRORLEVEL%
-)
+if not defined SOTTO_BATTERY_CAGED if not defined SOTTO_BATTERY_NOCAGE if exist "I:\!watcher\watcher\__init__.py" call :__battery_cage
+if defined SOTTO_BATTERY_CAGED if errorlevel 1 exit /b 1
 setlocal EnableDelayedExpansion
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
@@ -4305,3 +4301,22 @@ set "HAS=no"
 pythonw -c "import io,sys;t=io.open(sys.argv[1],'rb').read().decode('utf-8','replace');sys.exit(0 if sys.argv[2] in t else 3)" "%~1" "%~2" >nul 2>&1
 if "!ERRORLEVEL!"=="0" set "HAS=yes"
 exit /b 0
+
+REM ===========================================================================
+REM  THE CAGE AS A SUBROUTINE -- porque `%ERRORLEVEL%` DENTRO de um bloco entre
+REM  parenteses e' expandido quando o bloco e' LIDO, ou seja ANTES de o cage
+REM  correr: a forma antiga (`python -m watcher ...` seguido de
+REM  `exit /b %ERRORLEVEL%` no mesmo bloco) devolvia o codigo de ANTES do cage.
+REM  MEDIDO 2026-11-12: uma corrida com `BATTERY-VERDICT: RED - 2 step(s) failed` e
+REM  `child exit code 1` chegou ao largador como `rc=0` -- um portao que mente na
+REM  unica coisa que o chamador le. `call :label` volta a ler cada linha, logo o
+REM  `exit /b` da subrotina le' o codigo REAL. Controlo de dois bracos, mesmo filho
+REM  a sair 1: `_main/_cache/cage-rc-old.cmd` -> rc 0, `-new.cmd` -> rc 1.
+REM  Sem `!` nesta etiqueta: a expansao atrasada continua DESLIGADA aqui em cima,
+REM  que e' o que mantem o `I:\!watcher` literal.
+REM ===========================================================================
+:__battery_cage
+set "SOTTO_BATTERY_CAGED=1"
+set "PYTHONPATH=I:\!watcher;%PYTHONPATH%"
+python -m watcher run --cpu 40 -- cmd /c ""%~f0" --caged"
+exit /b %ERRORLEVEL%
