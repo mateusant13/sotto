@@ -1486,10 +1486,37 @@ async function negativeArm() {
   const results = [];
   let caught = 0;
   try {
+    /* UMA COPIA, RESTAURADA POR BYTES ENTRE MUTANTES (2026-11-12, MEDIDO).
+     * A versao anterior copiava a arvore `app/panel` inteira por mutante: medido
+     * nesta maquina, `fs.cpSync` de 2 882 ficheiros / 35 MB custa **2 837 ms**, e
+     * com treze mutantes sao **~37 s** de copia pura dentro dos 92,2 s do passo
+     * `red-as-expected-panel-themes` -- trabalho que nao julga nada. Uma copia
+     * base e a reposicao dos BYTES originais do ficheiro mutado dao o mesmo
+     * isolamento: cada mutante ve exactamente um ficheiro diferente do original,
+     * e o `restore()` abaixo verifica-o (um restauro que nao reponha os bytes tem
+     * de GRITAR, senao o mutante seguinte mede o anterior). */
+    const copy = path.join(tmp, 'panel');
+    fs.cpSync(PANEL_DIR, copy, { recursive: true });
+    const pristine = new Map();
     for (const mutant of MUTANTS) {
-      const copy = path.join(tmp, 'panel');
-      fs.rmSync(copy, { recursive: true, force: true });
-      fs.cpSync(PANEL_DIR, copy, { recursive: true });
+      const file = path.join(copy, mutant.file);
+      if (!pristine.has(file)) pristine.set(file, fs.readFileSync(file));
+    }
+    /* O RESTAURO VERIFICA-SE, porque tres mutantes tocam o MESMO ficheiro
+     * (`panel-unified.css`) e um restauro que falhasse deixaria o mutante
+     * seguinte a medir o anterior -- e as arms cairiam pelo mutante errado. */
+    const restore = () => {
+      const bad = [];
+      for (const [file, bytes] of pristine) {
+        if (!fs.readFileSync(file).equals(bytes)) {
+          fs.writeFileSync(file, bytes);
+          if (!fs.readFileSync(file).equals(bytes)) bad.push(path.basename(file));
+        }
+      }
+      if (bad.length) throw new Error('restauro falhou: ' + bad.join(','));
+    };
+    for (const mutant of MUTANTS) {
+      restore();
       const plantError = plantMutant(copy, mutant);
       if (plantError) {
         results.push({ name: mutant.name, ok: false, why: plantError });

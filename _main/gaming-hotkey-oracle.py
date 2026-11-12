@@ -1024,18 +1024,30 @@ def run(shell_path, gesture_path, overlay_path, gaming_path):
     windows3.press(0x11)
     windows3.press(0x20)
 
+    # O TAMANHO DO RETROCESSO E' CALIBRADO, NAO ESCOLHIDO A OLHO (medido 2026-11-12).
+    # `(a+)+$` explode como 2^n: nesta maquina, UMA chamada custa 2,3 ms com 16 `a`,
+    # 35,7 ms com 20, **480,6 ms com 23** e **3 773,5 ms com 26**. A versao anterior
+    # usava 26 e um prazo de 0,45 s, logo cada chamada isolada segurava o GIL por
+    # ~3,8 s -- oito vezes o prazo -- e o `while` so' podia sair depois dela: 5
+    # mutantes x 3,8 s = ~19 s de pura espera dentro dos 53,1 s deste passo. Com 20
+    # `a` uma chamada custa **36-46 ms** (duas series medidas), 10-13x abaixo do
+    # prazo de 0,45 s, entao o excesso fica limitado a UMA chamada curta: o braco
+    # mede o MESMO fenomeno (GIL tomado por codigo C que nao larga) sem pagar 3,8 s
+    # por tentativa. Medido depois: passo de 53,1 s -> 34,8 s, 5/5 mutantes.
+    HOLD_BACKTRACK_A = 20          # 36-46 ms por chamada, medido
     def hold_the_gil(seconds):
         """Uma chamada C que NAO larga o GIL -- o que a UIA fazia (medido 29 s).
 
         `sre` corre em C sem largar o GIL, e esta expressao tem retrocesso
-        catastrofico: com 26 `a` seguidos de um `b` ela explora ~2^26 caminhos
-        numa unica chamada. E' uma pausa MEDIDA, nao um `sleep` (um `sleep` larga
-        o GIL e nao reproduz nada).
+        catastrofico. E' uma pausa MEDIDA, nao um `sleep` (um `sleep` larga o GIL
+        e nao reproduz nada). O tamanho fica em `HOLD_BACKTRACK_A` para que o
+        EXCESSO do prazo seja uma chamada curta e nao uma de 3,8 s.
         """
         pattern = re.compile(r'(a+)+$')
+        probe = 'a' * HOLD_BACKTRACK_A + 'b'
         t0 = time.monotonic()
         while time.monotonic() - t0 < seconds:
-            pattern.match('a' * 26 + 'b')
+            pattern.match(probe)
 
     hold_the_gil(0.45)
     windows3.gate.set()

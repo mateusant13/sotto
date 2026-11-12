@@ -61,6 +61,18 @@ FROZEN = {
     "worker/_sotto_worker_agcinert.py": "copia congelada (mutante do oraculo do AGC)",
 }
 
+# COPIAS QUE UM ORACULO ESCREVE DENTRO DA ARVORE DURANTE A CORRIDA, e apaga no
+# fim (`input-path-oracle.py:477` escreve `app/webview/_inputpath-neg-<nome>.py`,
+# `:487` limpa-os). Medido 2026-11-12: com a bateria a correr, este portao contou
+# CINCO delas como produto e publicou `ausentes=5 VERDICT: FAIL` sobre um ficheiro
+# que nenhum humano escreveu e que ja' nao existia quando a corrida acabou --
+# a `populacao` deste portao e' lida do DISCO, por isso uma corrida concorrente
+# muda a resposta. Nao sao produto: sao o artefacto efemero de um braco negativo,
+# com o prefixo declarado no proprio oraculo (`MUTANT_PREFIX`).
+EPHEMERAL_PREFIXES = (
+    "_inputpath-neg-",
+)
+
 
 def population():
     """Os ficheiros de produto, e as classes, medidos do disco -- nunca de uma lista escrita a mao."""
@@ -70,6 +82,8 @@ def population():
             dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
             for name in filenames:
                 if not name.endswith(PRODUCT_EXTS):
+                    continue
+                if name.startswith(EPHEMERAL_PREFIXES):
                     continue
                 rel = os.path.relpath(os.path.join(dirpath, name), ROOT).replace(os.sep, "/")
                 hit = next((label for prefix, label in GROUPS if rel.startswith(prefix)), None)

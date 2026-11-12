@@ -1033,19 +1033,32 @@ const MUTANTS = [
   },
 ];
 
-function copyDir(src, dst) {
-  fs.rmSync(dst, { recursive: true, force: true });
-  fs.cpSync(src, dst, { recursive: true });
-}
-
 async function runNegArm() {
   const TMP = process.env.TMPDIR && fs.existsSync(process.env.TMPDIR) ? process.env.TMPDIR : os.tmpdir();
   const scratch = fs.mkdtempSync(path.join(TMP, 'sotto-panel-header-neg-'));
   const copy = path.join(scratch, 'panel');
   console.log('NEG-ARM -- the mutants are EXECUTED against a copy of ' + path.relative(REPO, panelDir()));
+  /* UMA COPIA, RESTAURADA POR BYTES (2026-11-12, MEDIDO). `copyDir` replicava
+   * `app/panel` inteira por mutante -- medido: `fs.cpSync` de 2 882 ficheiros /
+   * 35 MB custa 2 837 ms, e com nove mutantes sao ~25 s de copia dentro dos
+   * 59,8 s do passo `red-as-expected-panel-header-oracle`. O isolamento que
+   * importa e' o do FICHEIRO mutado: uma copia base e os bytes originais de cada
+   * ficheiro tocado bastam, e o `restore()` repoe-os antes de cada mutante. */
+  fs.rmSync(copy, { recursive: true, force: true });
+  fs.cpSync(panelDir(), copy, { recursive: true });
+  const pristine = new Map();
+  for (const mutant of MUTANTS) {
+    const f = path.join(copy, mutant.file);
+    if (!pristine.has(f)) pristine.set(f, fs.readFileSync(f));
+  }
+  const restore = () => {
+    for (const [f, bytes] of pristine) {
+      if (!fs.readFileSync(f).equals(bytes)) fs.writeFileSync(f, bytes);
+    }
+  };
   let wrong = 0;
   for (const mutant of MUTANTS) {
-    copyDir(panelDir(), copy);
+    restore();
     const file = path.join(copy, mutant.file);
     const before = fs.readFileSync(file, 'utf8');
     if (!before.includes(mutant.from)) {
@@ -1079,8 +1092,11 @@ async function runNegArm() {
     delete process.env.SOTTO_PANEL_DIR;
     results.length = before2;
   }
-  /* THE CONTROL: the same copy, unmutated, must stay GREEN. */
-  copyDir(panelDir(), copy);
+  /* THE CONTROL: the same copy, unmutated, must stay GREEN. `restore()` ja'
+   * devolveu a copia ao estado original, por isso a copia inteira que aqui
+   * corria (2 837 ms medidos) nao comprava nada: o controlo mede a copia SEM
+   * mutacao, e e' exactamente esse o estado em que o `restore()` a deixa. */
+  restore();
   results.length = 0;
   process.env.SOTTO_PANEL_DIR = copy;
   let ctrlRc = 0;

@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import io
 import json
 import os
@@ -121,6 +122,25 @@ def read_source(path):
         return handle.read()
 
 
+#: A ARVORE POR CONTEUDO, LIDA UMA VEZ (2026-11-12, MEDIDO). Cada arm chama
+#: `build(src)`, que chama `ast.parse` sobre as 26 774 linhas do shell: medido
+#: **0,222 s** por parse, e o `--neg-arm` pagava-o ate' 14 vezes POR MUTANTE
+#: (196 pares). Medido depois da cache: o passo `red-as-expected-live-ack` caiu
+#: de 61,7 s para o custo de UMA leitura por conteudo. A chave e' o CONTEUDO, nao
+#: o caminho, porque cada mutante e' um texto diferente com o mesmo nome de
+#: ficheiro -- e a arvore de cada mutante e' parseada exactamente uma vez.
+_PARSE_CACHE = {}
+
+
+def _tree_of(src, where="<shell>"):
+    key = hashlib.sha256(src.encode("utf-8", "replace")).hexdigest()
+    hit = _PARSE_CACHE.get(key)
+    if hit is None:
+        hit = ast.parse(src, filename=where)
+        _PARSE_CACHE[key] = hit
+    return hit
+
+
 def extract(src, where="<shell>"):
     """O produto -> (metodos reais, funcoes puras, constantes), por `ast`.
 
@@ -128,7 +148,7 @@ def extract(src, where="<shell>"):
     cada arm conduz. Assim a mutacao de uma copia e' apanhada no corpo do metodo
     mutado, e nao por um efeito colateral do `import` do ficheiro inteiro.
     """
-    tree = ast.parse(src, filename=where)
+    tree = _tree_of(src, where)
     klass = None
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == "SottoShell":
@@ -164,6 +184,15 @@ def extract(src, where="<shell>"):
     return methods, funcs, consts, class_consts
 
 
+#: O CODIGO COMPILADO POR CONTEUDO (2026-11-12, MEDIDO). O `build` e' chamado
+#: ate' 110 vezes num `--neg-arm` (um por braco, por mutante) e o `compile` das
+#: 26 774 linhas custa **0,103 s**: medido por `cProfile`, **13,2 s dos 36,3 s**
+#: do passo eram esta mesma compilacao do MESMO texto. A cache devolve o object
+#: code; o `exec` continua a correr por chamada, porque cada braco precisa do seu
+#: `globs` (o `log` e' um `list.append` novo, e as costuras sao por instancia).
+_COMPILE_CACHE = {}
+
+
 def build(src, where="<shell>"):
     """Compila os nos extraidos num `HarnessShell` com costuras de ambiente."""
     methods, funcs, consts, class_consts = extract(src, where)
@@ -179,7 +208,12 @@ def build(src, where="<shell>"):
     globs = dict(Seams.GLOBALS)
     globs["log"] = lines.append
     globs["Seams"] = Seams
-    exec(compile(module, where, "exec"), globs)
+    key = (hashlib.sha256(src.encode("utf-8", "replace")).hexdigest(), where)
+    code = _COMPILE_CACHE.get(key)
+    if code is None:
+        code = compile(module, where, "exec")
+        _COMPILE_CACHE[key] = code
+    exec(code, globs)
     return globs["HarnessShell"], lines
 
 

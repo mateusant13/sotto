@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import ast
 import bisect
+import hashlib
 import io
 import json
 import os
@@ -73,6 +74,28 @@ def _reveal():
     return youtube_reveal
 
 
+_SHELL_AST_CACHE = {}
+
+
+def _shell_tree(shell_path):
+    """A arvore do shell, LIDA UMA VEZ POR CONTEUDO (2026-11-12, medido).
+
+    Cada uma das 17 mutacoes do `--neg-arm` chamava `arms()`, e `arms()` chamava
+    este `ast.parse` + `ast.walk` sobre as 26 774 linhas do shell: medido, **51
+    parses e 16,8 s de `compile`** num unico `--neg-arm` de 136 s. A chave e' o
+    CONTEUDO do ficheiro (o caminho muda por mutante e o conteudo nao), e o
+    caminho real e a copia mutada do mesmo texto partilham a entrada -- que e'
+    exactamente a propriedade que a medicao mostrou ser paga 51 vezes.
+    """
+    src = _read(shell_path)
+    key = hashlib.sha256(src.encode('utf-8', 'replace')).hexdigest()
+    hit = _SHELL_AST_CACHE.get(key)
+    if hit is None:
+        hit = ast.parse(src)
+        _SHELL_AST_CACHE[key] = hit
+    return src, hit
+
+
 def _shell_methods(shell_path, names):
     """Os metodos REAIS do shell, extraidos por `ast` e compilados sozinhos.
 
@@ -80,8 +103,7 @@ def _shell_methods(shell_path, names):
     puros o suficiente para correr sobre um dublê (`_NS`). O que corre e' o texto
     do ficheiro que embarca -- nao uma copia escrita aqui.
     """
-    src = _read(shell_path)
-    tree = ast.parse(src)
+    src, tree = _shell_tree(shell_path)
     nodes = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name in names:
@@ -472,12 +494,24 @@ def _arm_desligar_em_pausa(shell_path):
                    off_ok, no_resurrect, drain_alive))
 
 
-def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
+def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT,
+         only=None):
     # `module_path=None` = o modulo REAL, so' o SHELL mutado (A11 vive na shell).
     module_path = module_path or MODULE
     mod = _load(module_path, 'yt_cdp_under_test')
     shell = _read(shell_path)
     out = []
+
+    # `only` E' O CUSTO DO `--neg-arm`, MEDIDO (2026-11-12). Cada uma das 17
+    # mutacoes chamava a passagem INTEIRA: medido por `cProfile`, **136,1 s** num
+    # unico `--neg-arm`, dos quais **70,5 s de `time.sleep`** (a rede falsa do
+    # A12 e as 20 voltas do `_state_arms`) e **41,4 s** de extracao/compilacao do
+    # shell -- pagos 17 vezes para provar UMA mutacao cada. Uma mutacao so' pode
+    # derrubar os bracos que executam o codigo que ela mutou; o resto do trabalho
+    # e' a bateria a pagar 17 vezes o mesmo verde. Com `only`, os bracos pesados
+    # (A12, A12b, A18-A21) so' correm quando sao o ALVO do mutante.
+    def _want(name):
+        return only is None or name in only
 
     # A1 -- linhas
     payload = ('{"videoId":"abc","title":"t","why":"painted","rows":['
@@ -631,72 +665,75 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
     # O instrumento e' uma rede FALSA que atrasa 0,3 s por ligacao: com quatro
     # abas, a soma tem de passar de 1,2 s e o paralelo tem de ficar abaixo de
     # 0,8 s. E as duas formas tem de devolver os MESMOS numeros, na mesma ordem.
-    class _Conn(object):
-        def __init__(self):
-            self._id = 1
-
-        def settimeout(self, _t):
-            pass
-
-        def send(self, payload):
-            # a resposta tem de ter o `id` PEDIDO: o `_ws_eval` ignora eventos
-            # num laco e um `id` errado seria um laco infinito (medido: este
-            # braco ficou preso quando devolvia sempre 1).
-            try:
-                self._id = int(json.loads(payload).get("id") or 1)
-            except (TypeError, ValueError):
+    # A12/A12b: A REDE FALSA QUE DORME (25,5 s medidos em 17 passagens). So corre
+    # quando a mutacao pode derrubar ESTE braco.
+    if _want("abas-em-paralelo") or _want("populacao-inteira"):
+        class _Conn(object):
+            def __init__(self):
                 self._id = 1
 
-        def recv(self):
-            value = json.dumps({"videoId": "v", "t": 3.0, "paused": False})
-            return json.dumps({"id": self._id,
-                               "result": {"result": {"value": value}}})
+            def settimeout(self, _t):
+                pass
 
-        def close(self):
-            pass
+            def send(self, payload):
+                # a resposta tem de ter o `id` PEDIDO: o `_ws_eval` ignora eventos
+                # num laco e um `id` errado seria um laco infinito (medido: este
+                # braco ficou preso quando devolvia sempre 1).
+                try:
+                    self._id = int(json.loads(payload).get("id") or 1)
+                except (TypeError, ValueError):
+                    self._id = 1
 
-    def _slow_connect(_url, timeout=None):
-        time.sleep(0.3)
-        return _Conn()
+            def recv(self):
+                value = json.dumps({"videoId": "v", "t": 3.0, "paused": False})
+                return json.dumps({"id": self._id,
+                                   "result": {"result": {"value": value}}})
 
-    tabs4 = [{"url": "https://www.youtube.com/watch?v=AAAAAAAAAAA" + str(i),
-              "webSocketDebuggerUrl": "ws%d" % i} for i in range(4)]
-    t0 = time.time()
-    seq_probes = mod.probe_tabs(tabs4, connect=_slow_connect, timeout=1.0,
-                                gap_s=0.0, parallel=False)
-    seq_s = time.time() - t0
-    t0 = time.time()
-    par_probes = mod.probe_tabs(tabs4, connect=_slow_connect, timeout=1.0,
-                                gap_s=0.0, parallel=True)
-    par_s = time.time() - t0
-    same = ([(p["t1"], p["videoId"]) for p in seq_probes]
-            == [(p["t1"], p["videoId"]) for p in par_probes]
-            and len(par_probes) == 4)
-    a12 = same and par_s < 0.8 and seq_s > 1.2
-    out.append(("abas-em-paralelo", a12,
-                "seq=%.2fs par=%.2fs mesmos=%s" % (seq_s, par_s, same)))
-    # A12b -- A POPULACAO INTEIRA, EM VAGAS (MEDIDO 2026-11-12). `probe_tabs`
-    # cortava em `[:MAX_PROBE_TABS]` ANTES de saber qual aba toca: o log do dono
-    # mostra `tabs=7` e a setima nunca era sondada, e o proprio
-    # `YOUTUBE_PROBE_BUDGET tabs=%d` imprimia o numero JA' CORTADO, ou seja o
-    # instrumento nao podia denunciar o que faltava. Agora `MAX_PROBE_TABS` e' o
-    # tecto de SONDAS SIMULTANEAS: as abas vao em vagas. Duas metades: com
-    # orcamento folgado as OITO abas sao sondadas; com o orcamento a acabar, o
-    # log diz `tabs_total=8 probed=<n>` -- a populacao e o tentado, separados.
-    tabs8 = [{"url": "https://www.youtube.com/watch?v=AAAAAAAAAAA" + str(i),
-              "webSocketDebuggerUrl": "ws%d" % i} for i in range(8)]
-    got8 = mod.probe_tabs(tabs8, connect=_slow_connect, timeout=1.0,
-                          gap_s=0.0, budget_s=8.0)
-    lines8 = []
-    tight = mod.probe_tabs(tabs8, connect=_slow_connect, timeout=1.0,
-                           gap_s=0.0, budget_s=0.45, log=lines8.append)
-    txt8 = ' '.join(str(x) for x in lines8)
-    a12b = (len(got8) == 8
-            and len(tight) < 8
-            and 'tabs_total=8' in txt8
-            and 'probed=' in txt8)
-    out.append(("populacao-inteira", a12b,
-                "folgado=%d apertado=%d log=%r" % (len(got8), len(tight), txt8[:96])))
+            def close(self):
+                pass
+
+        def _slow_connect(_url, timeout=None):
+            time.sleep(0.3)
+            return _Conn()
+
+        tabs4 = [{"url": "https://www.youtube.com/watch?v=AAAAAAAAAAA" + str(i),
+                  "webSocketDebuggerUrl": "ws%d" % i} for i in range(4)]
+        t0 = time.time()
+        seq_probes = mod.probe_tabs(tabs4, connect=_slow_connect, timeout=1.0,
+                                    gap_s=0.0, parallel=False)
+        seq_s = time.time() - t0
+        t0 = time.time()
+        par_probes = mod.probe_tabs(tabs4, connect=_slow_connect, timeout=1.0,
+                                    gap_s=0.0, parallel=True)
+        par_s = time.time() - t0
+        same = ([(p["t1"], p["videoId"]) for p in seq_probes]
+                == [(p["t1"], p["videoId"]) for p in par_probes]
+                and len(par_probes) == 4)
+        a12 = same and par_s < 0.8 and seq_s > 1.2
+        out.append(("abas-em-paralelo", a12,
+                    "seq=%.2fs par=%.2fs mesmos=%s" % (seq_s, par_s, same)))
+        # A12b -- A POPULACAO INTEIRA, EM VAGAS (MEDIDO 2026-11-12). `probe_tabs`
+        # cortava em `[:MAX_PROBE_TABS]` ANTES de saber qual aba toca: o log do dono
+        # mostra `tabs=7` e a setima nunca era sondada, e o proprio
+        # `YOUTUBE_PROBE_BUDGET tabs=%d` imprimia o numero JA' CORTADO, ou seja o
+        # instrumento nao podia denunciar o que faltava. Agora `MAX_PROBE_TABS` e' o
+        # tecto de SONDAS SIMULTANEAS: as abas vao em vagas. Duas metades: com
+        # orcamento folgado as OITO abas sao sondadas; com o orcamento a acabar, o
+        # log diz `tabs_total=8 probed=<n>` -- a populacao e o tentado, separados.
+        tabs8 = [{"url": "https://www.youtube.com/watch?v=AAAAAAAAAAA" + str(i),
+                  "webSocketDebuggerUrl": "ws%d" % i} for i in range(8)]
+        got8 = mod.probe_tabs(tabs8, connect=_slow_connect, timeout=1.0,
+                              gap_s=0.0, budget_s=8.0)
+        lines8 = []
+        tight = mod.probe_tabs(tabs8, connect=_slow_connect, timeout=1.0,
+                               gap_s=0.0, budget_s=0.45, log=lines8.append)
+        txt8 = ' '.join(str(x) for x in lines8)
+        a12b = (len(got8) == 8
+                and len(tight) < 8
+                and 'tabs_total=8' in txt8
+                and 'probed=' in txt8)
+        out.append(("populacao-inteira", a12b,
+                    "folgado=%d apertado=%d log=%r" % (len(got8), len(tight), txt8[:96])))
 
     # A13..A17 -- os tres defeitos que o dono reportou a 2026-11-06
     for name, fn in (("pausa-corta-a-pintura",
@@ -711,6 +748,8 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
                       lambda: _arm_reavalia_sem_esperar(mod)),
                      ("desligar-em-pausa",
                       lambda: _arm_desligar_em_pausa(shell_path))):
+        if not _want(name):
+            continue
         try:
             ok, detail = fn()
         except Exception as exc:  # noqa: BLE001
@@ -811,9 +850,29 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT):
         yield ("escolha-diferente-escreve", n2 == n1 + 1,
                "linhas %d -> %d ao trocar de aba" % (n1, n2))
 
-    for name, ok, detail in _state_arms():
-        out.append((name, ok, detail))
+    state_names = ("estado-nao-repete", "estado-na-mudanca", "estado-batimento",
+                   "escolha-diferente-escreve")
+    if only is None or any(_want(n) for n in state_names):
+        for name, ok, detail in _state_arms():
+            if _want(name):
+                out.append((name, ok, detail))
     return out
+
+
+def _flags(pairs, arm):
+    """O veredicto de UM braco: `True`/`False`, ou `None` se ele NAO CORREU.
+
+    O DEFEITO DE INSTRUMENTO QUE ISTO FECHA (medido 2026-11-12): o `--neg-arm`
+    perguntava `not got.get(arm, False)`, logo um braco que **nao existisse**
+    devolvia "mutante nao apanhado"... e a mutacao era dada como controlo valido.
+    Um braco que desaparece (renomeado, apagado, ou fora do `only=`) e' um
+    controlo que nao pode falhar -- a mesma classe que esta casa ja' pagou. Agora
+    a ausencia e' `None` e o `neg_arm` a trata como FALHA, nunca como sucesso.
+    """
+    seen = dict((n, ok) for n, ok, _ in pairs)
+    if arm not in seen:
+        return None
+    return bool(seen[arm])
 
 
 def neg_arm():
@@ -834,14 +893,16 @@ def neg_arm():
         io.open(mut, "w", encoding="utf-8").write(
             src.replace('    if video_id:\n        named = [t for t in tabs if video_id in str(t.get("url") or "")]',
                         '    if False:\n        named = [t for t in tabs if video_id in str(t.get("url") or "")]', 1))
-        got = dict((n, ok) for n, ok, _ in arms(module_path=mut))
-        results.append(("identidade-cega", not got.get("identidade-do-video", False)))
+        _got_identidade_cega = _flags(arms(module_path=mut, only=('identidade-do-video',)), 'identidade-do-video')
+        results.append(('identidade-cega', None if _got_identidade_cega is None else (_got_identidade_cega is False)))
+
 
         mut2 = os.path.join(tmp, "sem_clip.py")
         io.open(mut2, "w", encoding="utf-8").write(
             src.replace("    return ov >= 0.5 * h;", "    return true;", 1))
-        got2 = dict((n, ok) for n, ok, _ in arms(module_path=mut2))
-        results.append(("clip-removido", not got2.get("recorte-do-clip", False)))
+        _got_clip_removido = _flags(arms(module_path=mut2, only=('recorte-do-clip',)), 'recorte-do-clip')
+        results.append(('clip-removido', None if _got_clip_removido is None else (_got_clip_removido is False)))
+
 
         mut3 = os.path.join(tmp, "linha_sem_texto.py")
         io.open(mut3, "w", encoding="utf-8").write(
@@ -849,8 +910,9 @@ def neg_arm():
             # ancora e' a linha de HOJE, que passou a chamar o normalizador.
             src.replace('        text = strip_speaker_markers(line.get("text"))',
                         '        text = str(line.get("text") or "")', 1))
-        got3 = dict((n, ok) for n, ok, _ in arms(module_path=mut3))
-        results.append(("linhas-sem-filtro", not got3.get("linhas-do-player", False)))
+        _got_linhas_sem_filtro = _flags(arms(module_path=mut3, only=('linhas-do-player',)), 'linhas-do-player')
+        results.append(('linhas-sem-filtro', None if _got_linhas_sem_filtro is None else (_got_linhas_sem_filtro is False)))
+
 
         # O `>>` VOLTA (dono, 2026-11-08): a copia entrega o texto do player cru,
         # sem passar pelo `strip_speaker_markers` -- e a arm do marcador tem de
@@ -859,9 +921,9 @@ def neg_arm():
         io.open(mut_marker, "w", encoding="utf-8").write(
             src.replace('        text = strip_speaker_markers(line.get("text"))',
                         '        text = " ".join(str(line.get("text") or "").split())', 1))
-        got_marker = dict((n, ok) for n, ok, _ in arms(module_path=mut_marker))
-        results.append(("marcador-volta",
-                        not got_marker.get("sem-marcador-de-fala", False)))
+        _got_marcador_volta = _flags(arms(module_path=mut_marker, only=('sem-marcador-de-fala',)), 'sem-marcador-de-fala')
+        results.append(('marcador-volta', None if _got_marcador_volta is None else (_got_marcador_volta is False)))
+
 
         # A ABA NAO PROVA NADA: e' o comportamento de antes de 2026-11-04 -- sem
         # jogador em primeiro plano o laco desistia e a fonte do player nunca
@@ -870,8 +932,9 @@ def neg_arm():
         io.open(mut4, "w", encoding="utf-8").write(
             src.replace("    return 'external:youtube' if str(tab_video_id or '').strip() else ''",
                         "    return ''", 1))
-        got4 = dict((n, ok) for n, ok, _ in arms(module_path=mut4))
-        results.append(("aba-nao-prova", not got4.get("janela-nao-e-obrigatoria", False)))
+        _got_aba_nao_prova = _flags(arms(module_path=mut4, only=('janela-nao-e-obrigatoria',)), 'janela-nao-e-obrigatoria')
+        results.append(('aba-nao-prova', None if _got_aba_nao_prova is None else (_got_aba_nao_prova is False)))
+
 
         # SEM ADOCAO: a foto de outro video volta a ser recusa incondicional, que
         # e' o laco preso por 13 min medido no log do dono.
@@ -879,16 +942,18 @@ def neg_arm():
         io.open(mut5, "w", encoding="utf-8").write(
             src.replace("    if not declared_open:\n        return 'adopt', 'declared-closed'",
                         "    if False:\n        return 'adopt', 'declared-closed'", 1))
-        got5 = dict((n, ok) for n, ok, _ in arms(module_path=mut5))
-        results.append(("sem-adocao", not got5.get("adota-a-aba-que-navegou", False)))
+        _got_sem_adocao = _flags(arms(module_path=mut5, only=('adota-a-aba-que-navegou',)), 'adota-a-aba-que-navegou')
+        results.append(('sem-adocao', None if _got_sem_adocao is None else (_got_sem_adocao is False)))
+
 
         # SEM PRE-ABERTURA: a chamada sai do arranque e volta a esperar o tick.
         mut6 = os.path.join(tmp, "sem_preabertura.py")
         io.open(mut6, "w", encoding="utf-8").write(
             shell_src.replace("target=self._yt_cdp_boot_attach,",
                               "target=lambda: None,", 1))
-        got6 = dict((n, ok) for n, ok, _ in arms(module_path=None, shell_path=mut6))
-        results.append(("sem-preabertura", not got6.get("porta-cdp-abre-no-arranque", False)))
+        _got_sem_preabertura = _flags(arms(module_path=None, shell_path=mut6, only=('porta-cdp-abre-no-arranque',)), 'porta-cdp-abre-no-arranque')
+        results.append(('sem-preabertura', None if _got_sem_preabertura is None else (_got_sem_preabertura is False)))
+
 
         # SEM PARALELO: as abas voltam a ser somadas uma atras da outra -- o
         # `EXTERNAL_CAPTIONS_READ_MS ms=8609` medido no log do dono.
@@ -896,8 +961,9 @@ def neg_arm():
         io.open(mut7, "w", encoding="utf-8").write(
             src.replace("    if not parallel or len(items) == 1:",
                         "    if True:", 1))
-        got7 = dict((n, ok) for n, ok, _ in arms(module_path=mut7))
-        results.append(("sem-paralelo", not got7.get("abas-em-paralelo", False)))
+        _got_sem_paralelo = _flags(arms(module_path=mut7, only=('abas-em-paralelo',)), 'abas-em-paralelo')
+        results.append(('sem-paralelo', None if _got_sem_paralelo is None else (_got_sem_paralelo is False)))
+
 
         # -- 2026-11-06: os tres defeitos do dono -----------------------------
         # (1) O CONGELAMENTO some: o payload volta a ser a linha crua, que
@@ -908,9 +974,9 @@ def neg_arm():
                         '                    "start": (start if start is not None else 0.0),\n'
                         '                    "end": None, "cap": None})',
                         '        out.append(dict(row))', 1))
-        got8 = dict((n, ok) for n, ok, _ in arms(module_path=mut8))
-        results.append(("pausa-sem-congelar",
-                        not got8.get("pausa-corta-a-pintura", False)))
+        _got_pausa_sem_congelar = _flags(arms(module_path=mut8, only=('pausa-corta-a-pintura',)), 'pausa-corta-a-pintura')
+        results.append(('pausa-sem-congelar', None if _got_pausa_sem_congelar is None else (_got_pausa_sem_congelar is False)))
+
 
         # (2) O PRIMEIRO PLANO deixa de contar: a escolha volta ao "ja' adotado
         # que ainda toca", que com duas abas a tocar fica no video errado.
@@ -918,9 +984,9 @@ def neg_arm():
         io.open(mut9, "w", encoding="utf-8").write(
             src.replace("    front = [p for p in usable if tab_is_foreground(p)]",
                         "    front = []", 1))
-        got9 = dict((n, ok) for n, ok, _ in arms(module_path=mut9))
-        results.append(("sem-primeiro-plano",
-                        not got9.get("duas-abas-primeiro-plano", False)))
+        _got_sem_primeiro_plano = _flags(arms(module_path=mut9, only=('duas-abas-primeiro-plano',)), 'duas-abas-primeiro-plano')
+        results.append(('sem-primeiro-plano', None if _got_sem_primeiro_plano is None else (_got_sem_primeiro_plano is False)))
+
 
         # (2b) A FOTO DA ABA ANTERIOR sobrevive a' troca -- legenda de um video
         # no ecra do outro, o erro que este canal nao leva `videoId` para
@@ -929,9 +995,9 @@ def neg_arm():
         io.open(mut10, "w", encoding="utf-8").write(
             src.replace("        if key != old:\n            with self._lock:\n                self._snap = None",
                         "        if False:\n            with self._lock:\n                self._snap = None", 1))
-        got10 = dict((n, ok) for n, ok, _ in arms(module_path=mut10))
-        results.append(("troca-nao-limpa",
-                        not got10.get("troca-limpa-o-estado", False)))
+        _got_troca_nao_limpa = _flags(arms(module_path=mut10, only=('troca-limpa-o-estado',)), 'troca-limpa-o-estado')
+        results.append(('troca-nao-limpa', None if _got_troca_nao_limpa is None else (_got_troca_nao_limpa is False)))
+
 
         # (2c) A ASSINATURA da lista de abas sai da chave da cache: uma aba nova
         # espera o TTL de 10 s (a legenda do video anterior).
@@ -939,9 +1005,9 @@ def neg_arm():
         io.open(mut11, "w", encoding="utf-8").write(
             src.replace("if cached and len(cached) >= 4 and cached[3] == sig:",
                         "if cached and len(cached) >= 4 and True:", 1))
-        got11 = dict((n, ok) for n, ok, _ in arms(module_path=mut11))
-        results.append(("sem-assinatura",
-                        not got11.get("reavalia-sem-esperar", False)))
+        _got_sem_assinatura = _flags(arms(module_path=mut11, only=('reavalia-sem-esperar',)), 'reavalia-sem-esperar')
+        results.append(('sem-assinatura', None if _got_sem_assinatura is None else (_got_sem_assinatura is False)))
+
 
         # (2d) O TTL VOLTA A 10 s COM DUAS ABAS: um alt-tab fica ate' 10 s no
         # video anterior -- a cache so' a tempo, sem a chave de foco.
@@ -950,9 +1016,9 @@ def neg_arm():
             src.replace("        ttl = (PLAYING_PROBE_TTL_S if len(sig) <= 1\n"
                         "               else PLAYING_PROBE_TTL_MULTI_S)",
                         "        ttl = PLAYING_PROBE_TTL_S", 1))
-        got12 = dict((n, ok) for n, ok, _ in arms(module_path=mut12))
-        results.append(("ttl-dez",
-                        not got12.get("reavalia-sem-esperar", False)))
+        _got_ttl_dez = _flags(arms(module_path=mut12, only=('reavalia-sem-esperar',)), 'reavalia-sem-esperar')
+        results.append(('ttl-dez', None if _got_ttl_dez is None else (_got_ttl_dez is False)))
+
 
         # (3) A PAUSA NAO ENVELHECE A LINHA do player: o interruptor volta a
         # recusar a linha que o video parado continua a mostrar.
@@ -960,9 +1026,9 @@ def neg_arm():
         io.open(mut13, "w", encoding="utf-8").write(
             shell_src.replace("    if bool(paused) and bool(from_player):\n        return True",
                               "    if False:\n        return True", 1))
-        got13 = dict((n, ok) for n, ok, _ in arms(module_path=None, shell_path=mut13))
-        results.append(("replay-sem-pausa",
-                        not got13.get("desligar-em-pausa", False)))
+        _got_replay_sem_pausa = _flags(arms(module_path=None, shell_path=mut13, only=('desligar-em-pausa',)), 'desligar-em-pausa')
+        results.append(('replay-sem-pausa', None if _got_replay_sem_pausa is None else (_got_replay_sem_pausa is False)))
+
 
         # (1b) A PAUSA VOLTA A CONGELAR O ECRA: o desenho que a cura de
         # 2026-11-06 fazia (e que o dono reprovou em 2026-11-09) e' reintroduzido
@@ -993,9 +1059,9 @@ def neg_arm():
             "            self.shell.push_caption_to_window(\n"
             "                self.last_line, instant=True)"
             + shell_src[_stamp_at + len(_stamp):])
-        got14 = dict((n, ok) for n, ok, _ in arms(module_path=None, shell_path=mut14))
-        results.append(("sem-borda-de-pausa",
-                        not got14.get("pausa-nao-congela", False)))
+        _got_sem_borda_de_pausa = _flags(arms(module_path=None, shell_path=mut14, only=('pausa-nao-congela',)), 'pausa-nao-congela')
+        results.append(('sem-borda-de-pausa', None if _got_sem_borda_de_pausa is None else (_got_sem_borda_de_pausa is False)))
+
 
         # (4) O LIMIAR DO ESTADO VOLTA A NAO EXISTIR: a guarda de `_publish` sai e
         # a fonte escreve `YOUTUBE_CDP_SOURCE` a cada volta -- as 6 511 linhas
@@ -1005,9 +1071,9 @@ def neg_arm():
         io.open(mut_dedup, "w", encoding="utf-8").write(
             src.replace("            if unchanged and not due:\n",
                         "            if False:\n", 1))
-        got_dedup = dict((n, ok) for n, ok, _ in arms(module_path=mut_dedup))
-        results.append(("sem-dedup-estado",
-                        not got_dedup.get("estado-nao-repete", False)))
+        _got_sem_dedup_estado = _flags(arms(module_path=mut_dedup, only=('estado-nao-repete',)), 'estado-nao-repete')
+        results.append(('sem-dedup-estado', None if _got_sem_dedup_estado is None else (_got_sem_dedup_estado is False)))
+
         # (5) A POPULACAO VOLTA A SER CORTADA (2026-11-12): o laco de sondagem
         # corta em `[:MAX_PROBE_TABS]` antes de saber quem toca -- o defeito
         # medido no log do dono com `tabs=7`. A arm `populacao-inteira` tem de
@@ -1019,9 +1085,9 @@ def neg_arm():
         if io.open(mut_pop, encoding="utf-8").read() == src:
             raise RuntimeError("ancora `items = population` desapareceu: o mutante "
                                "`populacao-cortada` nao tem onde aterrar")
-        got_pop = dict((n, ok) for n, ok, _ in arms(module_path=mut_pop))
-        results.append(("populacao-cortada",
-                        not got_pop.get("populacao-inteira", False)))
+        _got_populacao_cortada = _flags(arms(module_path=mut_pop, only=('populacao-inteira',)), 'populacao-inteira')
+        results.append(('populacao-cortada', None if _got_populacao_cortada is None else (_got_populacao_cortada is False)))
+
         return results
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -1035,7 +1101,9 @@ def main(argv=None):
         results = neg_arm()
         bad = 0
         for name, caught in results:
-            print("NEG-ARM %-20s %s" % (name, "CAUGHT" if caught else "NOT-CAUGHT"))
+            verdict = ("CAUGHT" if caught else
+                       "ARM-MISSING" if caught is None else "NOT-CAUGHT")
+            print("NEG-ARM %-20s %s" % (name, verdict))
             bad += 0 if caught else 1
         print("NEG-ARM VERDICT: %s (%d/%d)"
               % ("PASS" if not bad else "FAIL", len(results) - bad, len(results)))

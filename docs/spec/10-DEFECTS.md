@@ -22,7 +22,7 @@ funcionar pela mão do dono).
 | D-04 | cada abertura paga uma carga de motor quente (7,5–26,0 s, ~1 GB) que expira em 600 s antes de a vez dela chegar — as aberturas distam horas | ALTO | **corrigido, NÃO verificado** — o pedido passa a ser por EVIDÊNCIA (`warm_evidence`, fail-open: sem série PEDE), `--warm-engine-keep` manda; 13 arms + neg-arm 5/5. A escolha TTL-vs-adiar o anexo continua aberta e continua a ser do dono | `warm-evidence` |
 | D-05 | o portão do relógio julgava 36 de 449 passos quando invocado sem `--policy`, e o RED descrevia a invocação | MÉDIO | **corrigido** — recusa `CANNOT-MEASURE` (rc 2) antes de escrever; 6 arms; neg-arm 6/6 |
 | D-23 | a legenda local do áudio que o player pinta era descartada — não ia ao ecrã nem ao histórico —, e o docstring afirmava que ia ao histórico; o contador por episódio era zerado antes de ser lido e media sempre `0` | ALTO | **corrigido, NÃO verificado** — `external-owner` 7/7 arms, neg-arm 3/3; o destino final da linha recusada é decisão em `11-TARGET.md` §J4 |
-| D-06 | a bateria presa a `cap40` soma 2 470,3 s em 413 passos (o portão julga 2 293,3 s), contra um alvo declarado de 60 s | MÉDIO | aberto, com a cauda nomeada |
+| D-06 | a bateria presa a `cap40` soma 2 470,3 s em 413 passos (o portão julga 2 293,3 s), contra um alvo declarado de 60 s | MÉDIO | aberto — a cauda nomeada por CAUSA: quatro braços negativos pagavam o trabalho inteiro por mutante (cópia de 2 837 ms, retrocesso de 3,8 s, AST re-parseado); 92,2→56,8 s, 59,8→44,4 s, 53,1→34,8 s, 110,2→12,9 s | `battery-budget` |
 | D-07 | o número do painel no arranque circulou em QUATRO versões sem população (braço/arranques/fase), e o portão exigia a contradição em vez de resolvê-la | ALTO | **corrigido** — leitor puro `--read`, fixture do único log vivo, portão re-escrito; neg-arm 3/3 |
 | D-08 | o censo do painel abria o próprio log com `'w'` a cada linha: **cada invocação apagava a evidência da anterior** (4 073 B → 42 B, medido) | ALTO | **corrigido** — append com rotação, `--read` imprime sem escrever |
 | D-09 | o menu do ícone re-armava **as duas** teclas: o `Ctrl+Space` do dono ficava preso no fio velho, o novo recebia 1409 e o gate de recuo abria — o mesmo toque alternava duas vezes | CRÍTICO | **corrigido, NÃO verificado** — `arm_hotkey_role` recusa um segundo fio por papel; oráculo + neg-arm 6/6 |
@@ -332,7 +332,27 @@ portão julga) é a regra de censura do próprio portão, que descarta um corte 
 é de outra fase. Os dois números são verdadeiros e medem coisas diferentes: um é o que a máquina
 gastou, o outro o que o portão atribui aos passos.
 
-A cauda, na população presa:
+**MEDIDO DE NOVO EM 2026-11-12, depois das quatro curas abaixo e de uma corrida INTEIRA** (o modo
+rápido não serve: ele salta justamente os passos mais lentos da corrida anterior, e o número novo
+nunca apareceria):
+
+```
+$ python _main/battery-budget-oracle.py --policy cap40
+BATTERY-BUDGET VERDICT RATCHET-OK -- steps=452 total=1876.8s TARGET NOT MET (gap 1816.8s de 60s)
+$ soma crua da cache
+cap40 n=452 total=2363.2s
+```
+
+**1 876,8 s contra os 2 731,1 s do baseline anterior: −854,3 s, −31 %.** A fatia dos braços
+`red-as-expected-*` caiu de **60,6 %** para **53,5 %** do custo (198 passos, 1 263,3 s de 2 363,2 s).
+O baseline foi rebasado no mesmo comando, com a razão escrita, porque um ratchet que mantivesse a
+régua de 2 731,1 s deixaria passar 45 % de regressão antes de voltar a falar — e dois passos que
+"engordaram" na corrida (`caption-overlay-theme` 62,5 s, `stepcache-oracle` 67,4 s) medem **5,2 s** e
+**12,0 s** numa janela calma: era contenda dos meus próprios probes em paralelo, e o
+`--accept-growth` tem de os nomear porque um rebaseline que absorvesse um aumento em silêncio seria o
+ratchet a assinar o próprio aumento.
+
+A cauda, na população presa ANTES das curas:
 
 ```
   116.4s  red-as-expected-gaming-hotkey
@@ -349,10 +369,50 @@ A cauda, na população presa:
 são braços NEGATIVOS `red-as-expected-*` que copiam a árvore ou abrem dispositivos reais. O alvo
 declarado da casa é 60 s a quente; a soma é **38×** o alvo (2 293,3 / 60).
 
-**Estado.** aberto. O que fecha: cortar a cópia por braço (a casa já fez isso no
-`panel-hidden-at-startup`: cópia + renderização + referência **uma vez**, mutações por snapshot) e
-voltar a medir com `battery-budget --baseline --rebase-policy <razao>`, com o número de ANTES
-(2 293,3 s) ao lado.
+### A classe por trás da cauda: o braço negativo paga o trabalho INTEIRO por mutante
+
+Medido em 2026-11-12 com `cProfile` sobre cada cauda. A pergunta que ela responde é sempre a mesma:
+
+```
+        positivo   negativo   negativo/positivo
+panel-themes            34.8 s     92.2 s     2,6x
+panel-header-oracle      8.5 s     59.8 s     7,0x
+gaming-hotkey            2.8 s     53.1 s    19,0x
+youtube-cdp-source       6.2 s    110.2 s    17,8x
+warm-engine             10.0 s     71.3 s     7,1x
+```
+
+Um `--neg-arm` corre com `N` mutantes, e o custo LEGÍTIMO é `N ×` **o braço que aquele mutante
+derruba** — não `N ×` a bateria inteira. Quatro dos seis passos pagavam a segunda coisa. As quatro
+curas, cada uma medida:
+
+| # | o que estava a mais | medido | cura | efeito |
+|---|---|---|---|---|
+| 1 | `panel-themes` copiava os 2 882 ficheiros / 35 MB de `app/panel` **por mutante** | `fs.cpSync` = **2 837 ms** cada; 13 mutantes = **~37 s** de cópia pura | uma cópia base + restauro por BYTES dos 4 ficheiros mutados, com o restauro a **verificar-se** (3 mutantes tocam o mesmo `panel-unified.css`; um restauro falhado faria o mutante seguinte medir o anterior) | 92,2 s → **56,8 s** |
+| 2 | `panel-header-oracle` idem, e o braço de CONTROLO repetia a cópia | 9 mutantes × 2 837 ms, mais uma cópia no controlo | o mesmo restauro (e o controlo mede a cópia que o `restore()` acabou de repor — a cópia extra comprava nada) | 59,8 s → **44,4 s** |
+| 3 | `gaming-hotkey` segurava o GIL com `(a+)+$` sobre **26** `a` e um prazo de 0,45 s | o retrocesso explode como 2^n: **2,3 ms** com 16 `a`, **480,6 ms** com 23, **3 773,5 ms** com 26 — uma chamada isolada durava **8× o prazo**, e o `while` só sai depois dela | `HOLD_BACKTRACK_A = 20` (**36–46 ms** por chamada, 12× menor que o prazo): o excesso fica limitado a uma chamada curta e o braço mede o MESMO fenómeno | 53,1 s → **34,8 s** |
+| 4 | `youtube-cdp-source` re-parseava o shell por arm | a cache de AST por CONTEÚDO já entrou nesta árvore, e o passo em `_cache/battery-steps.json` ainda carregava o **110,2 s** de antes | rebase do ledger (nenhum código novo) | 110,2 s → **12,9 s** medidos agora |
+
+Cada cura foi verificada contra o veredicto do próprio passo, e não contra o relógio:
+
+```
+panel-themes            NEG-ARM: PASS -- 13/13 mutants caught
+panel-header-oracle     NEG-ARM VERDICT PASS -- 9 mutant(s), 0 wrong
+gaming-hotkey           NEG-ARM PASS -- RED as designed: as cinco regressoes derrubam o oraculo
+youtube-cdp-source      NEG-ARM VERDICT: PASS (17/17)
+```
+
+**O QUE NÃO SE CORTA, e por quê.** `red-as-expected-warm-engine` (71,3 s / 6 mutantes = 1,2× o
+positivo), `red-as-expected-altc-gesture` (54,2 s) e `red-as-expected-window-drag` (52,8 s) pagam um
+SUBPROCESSO real por mutante — é o isolamento que o braço compra, e um cache partilhado entre
+mutantes mediria o mutante anterior. `headphone-cut` (60,4 s) e `caption-overlay-theme` (62,5 s) leem
+dispositivo e renderizam os 59 desenhos; `panel-hidden-at-startup` já tinha sido curado em 2026-11-11.
+
+**Estado.** aberto, com a cauda agora **nomeada por causa** e o ledger rebasado (2 363,2 s, com a
+razão escrita). O que ainda falta para fechar: os seis nomes que sobraram pagam um subprocesso, um
+dispositivo de áudio ou os 59 desenhos por mutante — cortá-los exige cortar a POPULAÇÃO do braço, e
+essa é uma decisão de cobertura, não de relógio. O alvo de 60 s continua a **31×** de distância
+(1 876,8 / 60), e nenhum número deste parágrafo foi medido em modo rápido.
 
 ---
 

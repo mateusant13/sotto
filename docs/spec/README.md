@@ -48,10 +48,10 @@ no cabeçalho dele):
 
 | superfície | ficheiros | linhas |
 |---|---|---|
-| `app/webview/**/*.py` (a shell e os seus módulos) | 45 | 48 718 |
+| `app/webview/**/*.py` (a shell e os seus módulos) | 45 | 48 908 |
 | `worker/**/*.py` (o motor de transcrição) | 65 | 36 015 |
 | `app/panel/**` (a UI web: HTML/CSS/JS + os temas) | 124 | 43 196 |
-| total de produto lido | **234** | **127 929** |
+| total de produto lido | **234** | **128 119** |
 
 O ficheiro maior é `app/webview/sotto_webview.py`, **26 774 linhas**, com **217 membros** em
 `SottoShell` e mais 28 classes (o watcher de legendas externas, a ponte do worker, a bandeja, o
@@ -64,7 +64,7 @@ Três ficheiros dentro de `worker/` **não são produto**: `_prefix_audioflag.py
 worker usadas como mutantes por oráculos. Os dois últimos não estavam no git e entravam no índice em
 2026-11-11 (`10-DEFECTS.md` §D-01 — `git ls-files` devolve os três desde então).
 
-## O selo: 16 ficheiros, 5 312 linhas, 1 446 citações
+## O selo: 16 ficheiros, 5 495 linhas, 1 477 citações
 
 Medido em 2026-11-12 com um `os.walk`/`len(splitlines())` e `grep -o '\[TAG\]'` ficheiro a
 ficheiro, depois de entrar o `13-MODULES.md` (47 blocos, um por módulo de produto, mais as três
@@ -73,18 +73,18 @@ classes que são dados):
 | o quê | número |
 |---|---|
 | ficheiros deste directorio | 16 (14 documentos + este índice + `STATUS.md`) |
-| linhas | 5 312 |
-| `[CODE]` | 1 329 |
-| `[MEASURED]` | 170 |
-| `[INFERENCE]` | 61 |
+| linhas | 5 495 |
+| `[CODE]` | 1 360 |
+| `[MEASURED]` | 173 |
+| `[INFERENCE]` | 62 |
 | `[UNKNOWN]` | 68 |
-| citações `ficheiro:linha` resolvidas | **1 446**, 0 sem ficheiro, 0 fora de alcance |
+| citações `ficheiro:linha` resolvidas | **1 477**, 0 sem ficheiro, 0 fora de alcance |
 
 Dois portões, e eles julgam metades diferentes: `_main/spec-citations-oracle.py` abre cada
 ficheiro citado, resolve cada linha e recusa uma citação a um ficheiro que não existe ou a uma
 linha além do fim; `_main/spec-coverage-oracle.py` faz a pergunta simétrica — percorre os ficheiros
-de PRODUTO e recusa um módulo que documento nenhum nomeie (`115` módulos, `0` ausentes, `5`
-casados só pelo nome, que a linha `NOME-APENAS` diz). Os dois estão na bateria
+de PRODUTO e recusa um módulo que documento nenhum nomeie (`115` módulos, `0` ausentes, `0`
+casados só pelo nome). Os dois estão na bateria
 (`spec-citations`, `spec-coverage` e os respectivos `red-as-expected-*`).
 
 **O que o portão NÃO prova.** Que a linha citada diga o que a frase diz. Duas frases passaram o

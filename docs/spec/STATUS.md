@@ -38,7 +38,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | D-03 | `ast.get_source_segment` re-parte a fonte inteira por chamada: 143,9 s para extrair 264 funções; 52,1 s → 0,85 s no `gaming-hotkey` | MÉDIA | corrigido em dois sítios medidos (0,47 s; 61× byte-idêntico); os outros 38 ficheiros por medir |
 | D-04 | cada abertura paga uma carga de motor quente (7,5–26,0 s, ~1 GB residente) que sai ao fim de 600 s sem ninguém a usar; as aberturas distam horas | ALTA | **corrigido, NÃO verificado** — o pedido passa a ser por EVIDÊNCIA (`warm_evidence`, fail-open: sem série PEDE); medido antes: 8 cargas, 8 `WARM_EXIT why=idle-expired`, ZERO `WARM_ATTACHED` |
 | D-05 | o portão do relógio julgava 36 de 449 passos invocado sem `--policy`, e o RED descrevia a invocação | MÉDIA | **corrigido** — recusa `CANNOT-MEASURE` (rc 2) antes de escrever; 6 arms (`R1`–`R5`); neg-arm 6/6 |
-| D-06 | bateria: 2 470,3 s em 413 passos presos a `cap40` (o portão julga 2 293,3 s) contra o alvo de 60 s; seis passos somam 506,2 s = 20 % | MÉDIA | aberto; a cauda é `red-as-expected-*` a copiar a árvore |
+| D-06 | bateria: 2 470,3 s em 413 passos presos a `cap40` (o portão julga 2 293,3 s) contra o alvo de 60 s; seis passos somam 506,2 s = 20 % | MÉDIA | aberto, com a cauda nomeada por CAUSA — quatro braços negativos pagavam o trabalho inteiro por mutante; medidos 92,2→56,8 s, 59,8→44,4 s, 53,1→34,8 s, 110,2→12,9 s, cada um com o veredicto intacto |
 | D-07 | o número do painel no arranque circulou em QUATRO versões sem população, e o portão exigia a contradição | ALTA | **corrigido** — leitor puro `--read`, fixture do log vivo, neg-arm 3/3 |
 | D-08 | o censo do painel abria o próprio log com `'w'`: cada invocação apagava a evidência da anterior (4 073 B → 42 B) | ALTA | **corrigido** — append com rotação, `--read` não escreve |
 | D-09 | o menu do ícone re-armava as DUAS teclas: o `Ctrl+Space` ficava preso no fio velho (hook + `RegisterHotKey`), o novo pagava 1409 e o gate de recuo abria — o mesmo toque alternava duas vezes | CRÍTICA | **corrigido, NÃO verificado** — `arm_hotkey_role` recusa um segundo fio por papel; 19 arms + neg-arm 6/6 |
@@ -64,13 +64,13 @@ Guardados aqui porque a próxima sessão não deve re-medir o que já está medi
 |---|---|---|
 | linhas do produto | 128 119 em 234 ficheiros (a superfície que a spec lê) | `_main/spec-scale.py` (`app/webview/**/*.py`, `worker/**/*.py`, `app/panel/**`) |
 | shell | 26 774 linhas, `SottoShell` com 217 membros, 29 classes | `ast` sobre `app/webview/sotto_webview.py` (membros = `FunctionDef`/`AsyncFunctionDef` do corpo da classe) |
-| worker | 9 493 linhas, 17 classes | `ast` sobre `worker/sotto_worker.py` |
-| a especificação | 15 ficheiros (sem `README.md`), 5 385 linhas, 1 360 `[CODE]` + 173 `[MEASURED]` + 62 `[INFERENCE]` + 68 `[UNKNOWN]` | contagem por ficheiro de `docs/spec/*.md` com `len(t.splitlines())` e `re.findall(r'\[([A-Z]+)\]', t)` (2026-11-12) |
+| worker | 9 493 linhas, 18 classes | `ast` sobre `worker/sotto_worker.py` |
+| a especificação | 15 ficheiros (sem `README.md`), 5 495 linhas, 1 360 `[CODE]` + 173 `[MEASURED]` + 62 `[INFERENCE]` + 68 `[UNKNOWN]` | contagem por ficheiro de `docs/spec/*.md` com `len(t.splitlines())` e `re.findall(r'\[([A-Z]+)\]', t)` (2026-11-12) |
 | citações resolvidas | 1 477 em 16 documentos, 0 sem ficheiro, 0 fora de alcance, 0 índice ausente | `_main/spec-citations-oracle.py` |
-| bateria | 501 passos / 501 com registo | `_main/battery-record-pairing-oracle.py` |
-| pin da bateria | 377 820 B / 4 352 CRLF / 0 bare LF | `agents-md-pins-oracle.py` |
-| oráculos ligados | 205 ligados / 107 sem passo / 312 na população | `battery-wiring-oracle.py` |
-| custo da bateria | 2 134,2 s julgados em 445 passos, sob `cap40` | `battery-budget-oracle.py --policy cap40` (`RATCHET-OK`, `TARGET NOT MET`, gap 2 074,2 s de 60 s) |
+| bateria | 503 passos / 503 com registo | `_main/battery-record-pairing-oracle.py` |
+| pin da bateria | 379 035 B / 4 369 CRLF / 0 bare LF | `agents-md-pins-oracle.py` |
+| oráculos ligados | 206 ligados / 107 sem passo / 313 na população | `battery-wiring-oracle.py` |
+| custo da bateria | **1 876,8 s julgados em 452 passos** sob `cap40` (era 2 731,1 s no baseline de 2026-11-11: **-31 %**); os passos `red-as-expected-*` são **53,5 %** do custo medido na cache (198 passos, 1 263,3 s de 2 363,2 s) | `battery-budget-oracle.py --policy cap40` (`RATCHET-OK`, `TARGET NOT MET`, gap 1 816,8 s de 60 s) + `_cache/battery-steps.json`, depois de uma corrida INTEIRA (não em modo rápido, que salta os passos mais lentos) |
 
 ## Duas contradições encontradas e resolvidas no selo
 
