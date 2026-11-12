@@ -676,6 +676,29 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-11, 23:1x):** `_main\_audit-verify-all.cmd` = **360331 B**,
+  **4165 CRLF** / 0 bare LF, sha256 `790FDDC982034DF0261F343EA611C5D29AB3B6ED78F2A3F41CB1277B33444604`.
+  (Mil quinhentos e sessenta e tres bytes e QUINZE linhas a mais do que o pin de 358768 B: o par
+  `caption-wanted-default` + `red-as-expected-caption-wanted-default`, o portao da ordem do dono
+  de 2026-11-11, verbatim: *"as soon as i open it, should start the subtitles in my screen. the
+  ctrl space."* A regra de 2026-11-03 ("o interruptor sobrevive ao arranque") estava a ser
+  cumprida pelo lado errado: `_caption_wanted_at_start` lia `_main/caption-wanted.json` e um
+  `false` la' escrito -- que TODA sessao anterior deixava para tras quando ele desligava com o
+  HOLD -- suprimia a abertura em cada arranque seguinte, para sempre; a unica saida era premi-lo
+  outra vez. Agora a decisao e' PURA (`caption_wanted_at_start`): liga por omissao, desliga so'
+  numa corrida de MEDICAO -- a tabela `MEASUREMENT_FLAGS`, a MESMA que o `_worker_autostart_reason`
+  le, para nao haver duas listas -- ou por `SOTTO_CAPTION_WANTED_DEFAULT=0`, e o desacordo com o
+  ficheiro vai para o log (`CAPTION_WANTED_START_OVERRIDES`) em vez de o vencer. E uma
+  LARGADA DE LANE nao pinta: `SOTTO_LANE_LAUNCH=1` (o `_main/keepalive.py` que abre a app
+  escondida para uma lane medir por `panel_state` + log) devolve `False` com razao `lane(...)` --
+  sem essa guarda a ordem de ligar no arranque poria a legenda na tela dele em toda a sonda que
+  larga a app, que e' o que `SOTTO_NEVER_ON_OWNER_SCREEN` proibe. O oraculo executa os metodos
+  REAIS extraidos por `ast` (**21 arms**) e o negativo derruba **4/4** mutantes, cada um pela SUA
+  arm: o `return bool(stored)` antigo (A7), a precedencia do ambiente (A5/A6), os pixels sem
+  pedido (A10, a mentira de 2026-11-04) e a guarda de lane arrancada (A4b). E ele proprio pagou a licao do custo:
+  `ast.get_source_segment` re-parte o ficheiro INTEIRO a cada chamada -- 264 chamadas sobre 26 mil
+  linhas mediam **143,9 s** de um passo que a casa exige barato; com a tabela de linhas construida
+  uma vez, o passo inteiro mede **0,47 s** (positivo) e **2,5 s** (negativo).)
 - **PIN do ficheiro (medido 2026-11-11, 21:1x):** `_main\_audit-verify-all.cmd` = **358768 B**,
   **4150 CRLF** / 0 bare LF, sha256 `2B8253401B888B9DE9F261BD52097413B3B6CFADAB53D9C5F5363DFF0C79DA39`.
   (Tres mil cento e cinquenta e um bytes e VINTE E SETE linhas a mais do que o pin de 355617 B:

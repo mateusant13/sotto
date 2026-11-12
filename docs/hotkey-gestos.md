@@ -46,6 +46,36 @@ O ciclo alterna o **próximo show** com a **memória da última superfície apli
 do painel volta no painel. `hide_panel` **não** apaga essa memória — é ela que faz
 `show/hide/show/hide` alternar em vez de repetir o mesmo painel.
 
+## A legenda ABRE ligada (ordem do dono, 2026-11-11, verbatim)
+
+> *"as soon as i open it, should start the subtitles in my screen. the ctrl space."*
+
+Abrir a app **é** o pedido: a legenda ao vivo nasce **ligada**, sem ele carregar em
+`Ctrl+Space`. Até esta ordem o arranque lia `_main/caption-wanted.json` e um `false`
+lá escrito — que **toda** sessão anterior deixava para trás quando ele desligava com o
+`HOLD` — suprimia a abertura em cada arranque seguinte; a única saída era premir a
+tecla outra vez. O estado dele media exactamente isso (`{"on": false, "at":
+"2026-11-11T17:41:48"}`).
+
+| arranque | decisão | razão no log |
+|---|---|---|
+| duplo-clique / autostart, sem flag | **liga** | `CAPTION_WANTED_START on=true reason=default` |
+| `false` gravado em `caption-wanted.json` | **liga mesmo assim**, e o desacordo é escrito | `CAPTION_WANTED_START_OVERRIDES stored=false -- o arranque liga a legenda (ordem do dono, ...)` |
+| `SOTTO_CAPTION_WANTED_DEFAULT=0\|1` | manda nos dois sentidos | `reason=env(SOTTO_CAPTION_WANTED_DEFAULT=0)` |
+| corrida de **medição** (`--dump-dom`, `--selftest`, `--memory`, `--no-hotkey`, `--exit-after`, `--probe-*`) | **não liga** | `reason=measurement-flag(--dump-dom)` |
+| largada de **lane** (`SOTTO_LANE_LAUNCH=1`, o `_main/keepalive.py`) | **não liga** | `reason=lane(SOTTO_LANE_LAUNCH=1)` |
+
+As duas últimas linhas são a lei do ecrã (`SOTTO_NEVER_ON_OWNER_SCREEN`): uma sonda
+não pinta pixels na tela dele, e uma lane mede por `panel_state` + log. A tabela de
+flags é **a mesma** que o worker usa (`MEASUREMENT_FLAGS` / `_measurement_flag` no
+`app/webview/sotto_webview.py`) — duas listas divergiriam.
+
+O interruptor continua a desligar só o **display**: modelo, transcrição e histórico
+seguem (regra 3). Portão: `_main/caption-wanted-default-oracle.py` — 21 arms sobre os
+métodos **reais** extraídos por `ast`, e `--neg-arm` com 4/4 mutantes (o
+`return bool(stored)` antigo, a precedência do ambiente, os pixels sem pedido e a
+guarda de lane arrancada).
+
 ## O interruptor da tecla dos painéis (menu do ícone, 2026-11-07)
 
 Ordem do dono, verbatim: *"faz um botao 'desativar atalho alt c' no click direito do

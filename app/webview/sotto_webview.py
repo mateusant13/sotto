@@ -12481,6 +12481,34 @@ def _caption_replay_allowed(painted, age_ms, max_s, paused=False,
     return 0 <= age_ms <= int(float(max_s) * 1000.0)
 
 
+#: As flags que dizem "esta corrida MEDE, nao usa". UMA tabela, dois leitores:
+#: `_worker_autostart_reason` (nao pagar 2 GB de modelo) e o arranque da legenda
+#: (`caption_wanted_at_start`, nao pintar no ecra do dono). Uma segunda copia da
+#: lista e' a classe do `panel-deps`: duas tabelas que divergem em silencio.
+MEASUREMENT_FLAGS = (
+    ('dump_dom', '--dump-dom'),
+    ('selftest', '--selftest'),
+    ('memory', '--memory'),
+    ('no_hotkey', '--no-hotkey'),
+    ('exit_after', '--exit-after'),
+    ('probe_stats', '--probe-stats'),
+    ('probe_outside_click', '--probe-outside-click'),
+    ('probe_edit_mode', '--probe-edit-mode'),
+)
+
+
+def _measurement_flag(args):
+    """O nome da flag de medicao presente em `args`, ou None."""
+    for flag, name in MEASUREMENT_FLAGS:
+        # `--exit-after` e' FLOAT (0.0 = desligado) e as outras sao `store_true`;
+        # a verdade booleana e' correcta para as duas e mantem isto legivel.
+        if getattr(args, flag, False):
+            return name
+    if getattr(args, 'probe_v2', 0):
+        return '--probe-v2'
+    return None
+
+
 class SottoShell:
     def __init__(self, args):
         self.args = args
@@ -12845,10 +12873,24 @@ class SottoShell:
         # com um HOLD; um reinicio do shell nao e' um pedido para a desligar, e
         # ate' aqui CADA relancamento voltava ao `False` -- medido hoje em tres
         # relancamentos seguidos, com o dono a ver a legenda desaparecer sem ter
-        # tocado em nada. Ficheiro de estado, e so' isso: quem desligar com o
-        # mesmo HOLD grava `false` e a janela nao volta.
-        self._caption_wanted = self._caption_wanted_restored()
-        # A RESTAURACAO PEDE OS PIXELS (2026-11-04): `on=true` restaurado com a
+        # tocado em nada.
+        # A REGRA DE 2026-11-03 FOI LEVADA AO FIM EM 2026-11-11, e o ficheiro
+        # deixou de ser a autoridade do ARRANQUE: o dono, verbatim, *"as soon as
+        # i open it, should start the subtitles in my screen. the ctrl space."*
+        # -- e o estado dele dizia `{"on": false}`, logo toda a abertura nascia
+        # sem legenda. Agora `caption_wanted_at_start` (puro) decide: liga por
+        # omissao; desliga so' numa corrida de MEDICAO ou com
+        # `SOTTO_CAPTION_WANTED_DEFAULT=0`. O ficheiro continua a ser escrito
+        # pelo interruptor (e' o registo do que ele quis na sessao) e o
+        # desacordo com o arranque fica escrito no log, em vez de o vencer.
+        # A LEGENDA LIGA NO ARRANQUE (dono, 2026-11-11, verbatim: *"as soon as i
+        # open it, should start the subtitles in my screen. the ctrl space."*).
+        # O `false` gravado em `caption-wanted.json` deixa de suprimir a abertura:
+        # a decisao e' de `caption_wanted_at_start` (puro), que so' desliga numa
+        # corrida de MEDICAO ou por `SOTTO_CAPTION_WANTED_DEFAULT=0`. O estado
+        # gravado continua a ser lido e o desacordo fica escrito no log.
+        self._caption_wanted = self._caption_wanted_at_start()
+        # A DECISAO PEDE OS PIXELS (2026-11-04 --> 2026-11-11): `on=true` com a
         # janela nunca mostrada era a mentira que fazia a 1a pressao desligar uma
         # legenda que ele nao via. O pedido entra em `_caption_show_pending` e o
         # bloco DEFERRED_APPLIED abaixo o aplica quando o overlay existir.
@@ -17319,22 +17361,12 @@ class SottoShell:
         env = os.environ if env is None else env
         if str(env.get('SOTTO_NO_WORKER') or '').strip() == '1':
             return 'env'
-        # `--exit-after` is a FLOAT (0.0 = off) and the rest are `store_true`;
-        # truthiness is correct for both and keeps this one readable table.
-        for flag, name in (('dump_dom', '--dump-dom'),
-                           ('selftest', '--selftest'),
-                           ('memory', '--memory'),
-                           ('no_hotkey', '--no-hotkey'),
-                           ('exit_after', '--exit-after'),
-                           # A stats probe must not pay a ~2 GB model load:
-                           # without this entry a bare --probe-stats run falls
-                           # through to reason=default and STARTS the worker.
-                           ('probe_stats', '--probe-stats'),
-                           ('probe_outside_click',
-                            '--probe-outside-click'),
-                           ('probe_edit_mode', '--probe-edit-mode')):
-            if getattr(args, flag, False):
-                return f'measurement-flag({name})'
+        # A TABELA VIVE NUM SO' SITIO (`MEASUREMENT_FLAGS`, ao lado de
+        # `_measurement_flag`): o arranque da legenda le a MESMA lista para nao
+        # pintar num ecra que so' esta' a medir.
+        flag = _measurement_flag(args)
+        if flag:
+            return f'measurement-flag({flag})'
         return 'default'
 
     #: The reasons that may SPAWN a worker. Everything else is the decline half of
@@ -21469,20 +21501,77 @@ class SottoShell:
         os.path.dirname(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__)))), '_main', 'caption-wanted.json')
 
-    def _caption_wanted_restored(self):
-        """O estado do interruptor da legenda, como ficou da ultima sessao."""
+    #: O INTERRUPTOR DA LEGENDA LIGA NO ARRANQUE (ordem do dono, 2026-11-11).
+    CAPTION_WANTED_DEFAULT_ENV = 'SOTTO_CAPTION_WANTED_DEFAULT'
+
+    @staticmethod
+    def caption_wanted_at_start(args, stored=None, env=None):
+        """A legenda AO VIVO esta' ligada no instante em que a app abre?
+
+        O DONO, verbatim (2026-11-11): *"as soon as i open it, should start the
+        subtitles in my screen. the ctrl space."* Ate' aqui o arranque lia
+        `_main/caption-wanted.json` e um `false` la' escrito deixava a janela
+        escura ate' ele carregar em Ctrl+Space -- e o estado dele dizia
+        exactamente isso (`{"on": false, "at": "2026-11-11T17:41:48"}`), ou seja
+        TODA a abertura da app nascia sem legenda.
+
+        A REGRA, e porque e' esta:
+
+        * `True` por omissao. Abrir a app E' o pedido: a legenda e' o produto.
+        * `False` numa LANCAMENTO DE MEDICAO (`--dump-dom`, `--selftest`,
+          `--memory`, `--no-hotkey`, `--exit-after`, `--probe-*`) e numa
+          LARGADA DE LANE (`SOTTO_LANE_LAUNCH=1`). Uma sonda nao pinta nada no
+          ecra dele -- a mesma razao pela qual ela ja' nao rouba o Alt+C nem
+          carrega 2 GB de modelo (`_worker_autostart_reason`).
+        * O `stored` (o ficheiro) deixa de SUPRIMIR o arranque: um `on=false`
+          gravado a meio de uma sessao e' o pedido daquela sessao, nao um
+          contrato para a proxima -- e o dono disse-o ao contrario do que o
+          ficheiro dizia. Ele continua a ser lido e o desacordo fica no log.
+        * `SOTTO_CAPTION_WANTED_DEFAULT=0|1` sobrepoe-se a tudo, para uma sonda
+          ou uma sessao que queira o outro lado sem inventar uma flag nova.
+
+        Funcao PURA (sem `self`, sem disco): e' o que deixa o oraculo
+        `_main/caption-wanted-default-oracle.py` julga-la sem abrir WebView2 nem
+        pintar um pixel.
+        """
+        env = os.environ if env is None else env
+        raw = str(env.get(SottoShell.CAPTION_WANTED_DEFAULT_ENV) or '').strip()
+        if raw in ('0', '1'):
+            return (raw == '1',
+                    'env(%s=%s)' % (SottoShell.CAPTION_WANTED_DEFAULT_ENV, raw))
+        # UMA LARGADA DE LANE E' UMA MEDICAO (AGENTS.md, `SOTTO_NEVER_ON_OWNER_SCREEN`):
+        # `_main/keepalive.py` larga a app escondida e uma lane mede por
+        # `panel_state` + log, nunca por pixels na tela dele. Sem esta guarda, a
+        # ordem de ligar no arranque pintaria a legenda na tela do dono sempre
+        # que uma lane abrisse a app -- que e' exactamente o que a lei proibe.
+        if str(env.get('SOTTO_LANE_LAUNCH') or '').strip() == '1':
+            return False, 'lane(SOTTO_LANE_LAUNCH=1)'
+        flag = _measurement_flag(args)
+        if flag:
+            return False, 'measurement-flag(%s)' % flag
+        return True, 'default'
+
+    def _caption_wanted_at_start(self):
+        """Le o estado gravado, decide, e DIZ os dois no log."""
+        stored = None
+        stored_at = '-'
         try:
-            # `io` NAO E' IMPORTADO NESTE FICHEIRO (medido 2026-11-03: o
-            # `NameError` caia no `except` e a restauracao devolvia False em
-            # SILENCIO -- o interruptor nunca voltava). `open` do builtin.
             with open(self.CAPTION_WANTED_PATH, encoding='utf-8') as handle:
                 data = json.load(handle)
-            on = bool(data.get('on'))
-            log('CAPTION_WANTED_RESTORED on=%s from=%s'
-                % (str(on).lower(), data.get('at') or '-'))
-            return on
+            stored = bool(data.get('on'))
+            stored_at = data.get('at') or '-'
         except Exception:  # noqa: BLE001 -- ausente e' o normal da primeira vez
-            return False
+            stored = None
+        on, reason = self.caption_wanted_at_start(self.args, stored=stored)
+        log('CAPTION_WANTED_START on=%s reason=%s stored=%s stored_at=%s'
+            % (str(on).lower(), reason,
+               'none' if stored is None else str(stored).lower(), stored_at))
+        if stored is False and on:
+            log('CAPTION_WANTED_START_OVERRIDES stored=false -- o arranque liga '
+                'a legenda (ordem do dono, 2026-11-11: "as soon as i open it, '
+                'should start the subtitles")')
+        return on
+
 
     def _caption_wanted_store(self, on):
         """Grava o interruptor. Falhar nao pode derrubar o gesto do dono."""

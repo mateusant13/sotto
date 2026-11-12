@@ -682,6 +682,21 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-pause-payload !STEP_RC!
   call :step red-as-expected-panel-pause-payload 1 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
   call :expectred red-as-expected-panel-pause-payload !STEP_RC! "%OUT%\panel-pause-payload-neg.log" "NEG-ARM: PASS"
+  REM `caption-wanted-default` -- A LEGENDA LIGA NO ARRANQUE (ordem do dono de 2026-11-11,
+  REM verbatim: *"as soon as i open it, should start the subtitles in my screen. the ctrl
+  REM space."*). O arranque lia `_main\caption-wanted.json` e um `false` la' escrito -- que
+  REM TODA a sessao anterior deixava para tras quando ele desligava com o HOLD -- suprimia a
+  REM abertura, para sempre, em cada arranque seguinte. A decisao passa a ser de
+  REM `caption_wanted_at_start` (PURO): liga por omissao, desliga so' numa corrida de MEDICAO
+  REM (a tabela `MEASUREMENT_FLAGS`, a MESMA do worker) ou por
+  REM `SOTTO_CAPTION_WANTED_DEFAULT=0`, e o desacordo com o ficheiro vai para o log em vez de o
+  REM vencer. O oraculo extrai os metodos REAIS por `ast` e executa-os -- 19 arms -- e o
+  REM negativo derruba 3/3 mutantes, cada um pela SUA arm (o `return bool(stored)` antigo, a
+  REM precedencia do ambiente e os pixels sem pedido, que foi a mentira de 2026-11-04).
+  call :step caption-wanted-default 0 "_main\caption-wanted-default-oracle.py;app\webview\sotto_webview.py" "%OUT%\caption-wanted-default.log" python _main\caption-wanted-default-oracle.py
+  call :record caption-wanted-default !STEP_RC!
+  call :step red-as-expected-caption-wanted-default 1 "_main\caption-wanted-default-oracle.py;app\webview\sotto_webview.py" "%OUT%\caption-wanted-default-neg.log" python _main\caption-wanted-default-oracle.py --neg-arm
+  call :expectred red-as-expected-caption-wanted-default !STEP_RC! "%OUT%\caption-wanted-default-neg.log" "NEG-ARM: PASS"
   REM `live-ack` -- o Ctrl+Space tem de RESPONDER com o bloqueador real (ordem do dono de
   REM 2026-11-11: *"meu ctrl space nao fez nada assim que abri o sotto"*). O toggle registava
   REM em 20 ms e o primeiro pixel vinha 95,8 s depois; agora o estado e' lido no instante e a
