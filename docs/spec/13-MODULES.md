@@ -676,10 +676,10 @@ bloco.
 ## `app/panel/themes/panel-designs.css`
 
 - **O que faz** — Os **cinco** painéis do 2.º zip como estrutura própria, não como recoloração: `pd-tele`, `pd-bcast`, `pd-mano`, `pd-cine`, `pd-instr`, cada um scoped a `:root[data-theme='pd-X']` (primeiro em `:43`). A regra do dono que o ficheiro obedece — *"quero que cada tema encontrado dentro dos .zip fique com o design IGUAL, e só muda a posição dos botões"* — aterra na última regra de cada desenho, a do cluster de controlos (`.panel__controls`, `:649` em `pd-tele`; `:2947` em `pd-cine`). **Gerado** por `_main/_design-lane/gen_themes.py` (cabeçalho, `:3`), com `--trace` a imprimir a linha do zip de onde cada valor saiu.
-- **Quem o chama** — **Não** está no `<head>`. É adiada: o `lazy-assets.js` injecta-a quando o tema activo tem o prefixo `pd-` (`NEEDS['pd-'] = ['themes/panel-designs.css']`, `[CODE] app/panel/lazy-assets.js:83`), depois de o shell confirmar o pedido — o gate responde `200` vazio a um URL não pedido.
+- **Quem o chama** — **Não** está no `<head>`. É adiada: o `lazy-assets.js` injecta-a quando o tema activo tem o prefixo `pd-` (`NEEDS['pd-'] = ['themes/panel-designs.css']`, `[CODE] app/panel/lazy-assets.js:84`), depois de o shell confirmar o pedido — o gate responde `200` vazio a um URL não pedido.
 - **O que escreve/lê** — Não escreve. Lê `:root[data-theme]` (escrito pelo `theme-switcher.js`) e os tokens que o tema base deixou.
 - **Quando falha** — Se o pedido ao shell nunca aterrar, o `<link>` recebe os `200` vazios e o painel pinta o tema base sem esta folha: a aparência degrada-se para um tema que existe, sem erro de consola. Não há retry automático — o `lazy-assets.js` declara que um fetch que se repete sozinho num esquema local é como um diagnóstico se torna um hang (`[CODE] app/panel/lazy-assets.js:60`).
-- **Evidência** — `[CODE] app/panel/themes/panel-designs.css:649` (`:root[data-theme='pd-tele'] .panel__controls {`), `[CODE] app/panel/lazy-assets.js:83` (`'pd-': ['themes/panel-designs.css']`), `[CODE] app/panel/panel.html:1269` (`<script src="themes/panel-designs.js"></script>`).
+- **Evidência** — `[CODE] app/panel/themes/panel-designs.css:649` (`:root[data-theme='pd-tele'] .panel__controls {`), `[CODE] app/panel/lazy-assets.js:84` (`'pd-': ['themes/panel-designs.css']`), `[CODE] app/panel/panel.html:1269` (`<script src="themes/panel-designs.js"></script>`).
 
 ## `app/panel/themes/panel-designs.js`
 
