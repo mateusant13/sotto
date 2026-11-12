@@ -42,17 +42,18 @@ projecto tem um portão para isso (`_main/live-code-freshness-oracle.py --strict
 
 ## Escala do que está a ser descrito
 
-Medido em 2026-11-11 com um `os.walk` sobre as extensões de produto (excluindo por NOME de
-directório `.git`, `node_modules`, `_legacy`, `worker/models/`, `worker/runs/` e `_cache/`):
+Medido em 2026-11-12 com `python _main/spec-scale.py` (o instrumento existe porque um número publicado
+sem o comando que o produziu apodrece; a regra das extensões e dos directórios excluídos está escrita
+no cabeçalho dele):
 
 | superfície | ficheiros | linhas |
 |---|---|---|
-| `app/webview/**/*.py` (a shell e os seus módulos) | 44 | 48 100 |
-| `worker/**/*.py` (o motor de transcrição) | 65 | 35 980 |
-| `app/panel/**` (a UI web: HTML/CSS/JS + os temas) | 120 | 39 463 |
-| total de produto lido | **229** | **123 543** |
+| `app/webview/**/*.py` (a shell e os seus módulos) | 45 | 48 718 |
+| `worker/**/*.py` (o motor de transcrição) | 65 | 36 015 |
+| `app/panel/**` (a UI web: HTML/CSS/JS + os temas) | 124 | 43 196 |
+| total de produto lido | **234** | **127 929** |
 
-O ficheiro maior é `app/webview/sotto_webview.py`, **26 362 linhas**, com **227 membros** em
+O ficheiro maior é `app/webview/sotto_webview.py`, **26 774 linhas**, com **217 membros** em
 `SottoShell` e mais 28 classes (o watcher de legendas externas, a ponte do worker, a bandeja, o
 hotkey, o vigia de VRAM, o seguidor de arrasto, o monitor de carga...). O segundo é
 `worker/sotto_worker.py`, **9 493 linhas**, 17 classes. O maior ficheiro de UI é
@@ -63,7 +64,7 @@ Três ficheiros dentro de `worker/` **não são produto**: `_prefix_audioflag.py
 worker usadas como mutantes por oráculos. Os dois últimos não estavam no git e entravam no índice em
 2026-11-11 (`10-DEFECTS.md` §D-01 — `git ls-files` devolve os três desde então).
 
-## O selo: 16 ficheiros, 5 299 linhas, 1 443 citações
+## O selo: 16 ficheiros, 5 312 linhas, 1 446 citações
 
 Medido em 2026-11-12 com um `os.walk`/`len(splitlines())` e `grep -o '\[TAG\]'` ficheiro a
 ficheiro, depois de entrar o `13-MODULES.md` (47 blocos, um por módulo de produto, mais as três
@@ -72,12 +73,12 @@ classes que são dados):
 | o quê | número |
 |---|---|
 | ficheiros deste directorio | 16 (14 documentos + este índice + `STATUS.md`) |
-| linhas | 5 299 |
-| `[CODE]` | 1 326 |
+| linhas | 5 312 |
+| `[CODE]` | 1 329 |
 | `[MEASURED]` | 170 |
 | `[INFERENCE]` | 61 |
 | `[UNKNOWN]` | 68 |
-| citações `ficheiro:linha` resolvidas | **1 443**, 0 sem ficheiro, 0 fora de alcance |
+| citações `ficheiro:linha` resolvidas | **1 446**, 0 sem ficheiro, 0 fora de alcance |
 
 Dois portões, e eles julgam metades diferentes: `_main/spec-citations-oracle.py` abre cada
 ficheiro citado, resolve cada linha e recusa uma citação a um ficheiro que não existe ou a uma

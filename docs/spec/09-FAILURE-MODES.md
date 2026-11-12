@@ -44,6 +44,7 @@ vive do lado do worker e a shell só observa e substitui.
 | YouTube | alvo velho | `YOUTUBE_TARGET_STALE` | serve o último snapshot | linha antiga por instantes |
 | YouTube | aba sem media | `YOUTUBE_CDP_DEAD_TAB` | larga o socket e re-escolhe | idem |
 | YouTube | relógio parado | `YOUTUBE_CLOCK_STATIC` | trata como pausa e apaga pixels | ecrã limpo |
+| fonte | o player manda no ecrã e o microfone produz uma linha | `EXTERNAL_OWNER` + `ASR_PAINT_REFUSED` | a linha local é **descartada** (nem ecrã nem histórico) e o episódio é contado | nada: a legenda do player |
 | processo | shell morta à força | job object | mata `msedgewebview2` e filhos | nada fica para trás |
 | processo | 2.ª instância | `SINGLE_INSTANCE already_running=true` | sai 0 | nada aparece |
 

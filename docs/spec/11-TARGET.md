@@ -245,6 +245,14 @@ a app. O estado que fica no disco é coerente e a sessão seguinte não é julga
 Um orçamento sem dono não é um orçamento: cada linha acima nomeia o passo que a mede, e um passo
 saltado **não** é um portão que passou.
 
+**A excepção ao tecto do passo é declarada no passo, e tem de ser justificada por medição.** Um
+passo que paga N processos filhos (o `panel-hidden-at-startup` paga quatro) mediu 55,7 s sozinho e
+242,77 s numa corrida carregada — o mesmo passo, o mesmo código: a variância é a máquina, não o
+trabalho. Ele declara `SOTTO_STEP_OVERRIDE_S=420` na própria linha, `step-deadline.py` obedece, e o
+braço A7 do selftest prova que a variável vence o `--seconds` da corrida. O piso de 240 s continua a
+valer para todos os outros passos; subir o orçamento **sem** o passo que o pede é a batota que a
+skill de envelope proíbe.
+
 ## 4. Não-objectivos (o que eu recuso, com a razão)
 
 | recusa | razão |

@@ -3,7 +3,8 @@
 Este ficheiro é a memória do trabalho. É actualizado a cada onda; não é um relatório final.
 Cada linha diz o que está **escrito**, com que **evidência**, e o que **falta**.
 
-Última actualização: 2026-11-12 (rodada de defeitos — D-14 a D-23; selo dos módulos; instrumentos).
+Última actualização: 2026-11-12 (D-23 no ledger e no glossário; `STATUS`×ledger alinhados em D-04 e D-19;
+escala re-medida com `_main/spec-scale.py`).
 
 ## Ondas
 
@@ -12,7 +13,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 
 | onda | estado | o que fica escrito | evidência |
 |---|---|---|---|
-| W0 inventário + índice | **feito** | `README.md`, este `STATUS.md`, contagem medida da superfície | `os.walk` medido: 229 ficheiros / 123 543 linhas |
+| W0 inventário + índice | **feito** | `README.md`, este `STATUS.md`, contagem medida da superfície | 234 ficheiros / 127 929 linhas, medidos por `_main/spec-scale.py` |
 | W1 arquitectura | **feito** | `01-ARCHITECTURE.md` (174 l., 9 `[CODE]` / 1 `[MEASURED]`): árvore de processos, largada do `run.cmd` (6 passos), 47 nomes de fio, o contrato shell↔worker, os ficheiros de estado, as 5 guardas de processo, as 3 coisas que a shell NÃO pode fazer ao worker | `run.cmd:236,311,316`; `_spawn`; `_consume`; `_child_env` |
 | W2 arranque | **feito** | `02-BOOT.md` (350 l., 72 `[CODE]` / 16 `[MEASURED]` / 5 `[INFERENCE]` / 6 `[UNKNOWN]`): do duplo-clique ao primeiro pixel — as etapas `SHELL_STARTUP_STAGE`, os prazos de cada uma, o vigia da UI, o que falha e o que o dono vê | log vivo + oráculos `boot-interaction`, `boot-profile`, `ui-watchdog` |
 | W3 captura | **feito** | `03-CAPTURE.md` (349 l., 119/9/4/8): os quatro braços de captura, o tap por processo e a lei do fio dono, a escada `c/p/a/b/tail` com `CAPTURE_FIRST_PICK`/`LADDER_TRY`, o alvo por NOME, o silêncio e as cinco guardas, o AGC e o tecto, o que a shell vê | `worker/sotto_worker.py`; `worker/wasapi_loopback.py`; `worker/process_target.py` |
@@ -35,7 +36,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | D-01 | dois mutantes congelados do worker não estavam no git (`.gitignore`: `worker/_sotto_worker_agcinert.py` e `worker/runs/`), e dois oráculos dependem deles (`_main/agc_order_live.py:37`, `_main/verdict-order-oracle.py:71`): num clone limpo esses dois não corriam | ALTA | **corrigido 2026-11-11** — `git ls-files` devolve os dois (`git add -f`), `.gitignore` explica por que, e o `.gitattributes` foi REGENERADO (`python _main/_make-gitattributes.py --write`; `--verify` rc=0) |
 | D-02 | o arranque obedecia a `_main/caption-wanted.json` e um `false` gravado suprimia a legenda em TODA a abertura seguinte | CRÍTICA | **corrigido, NÃO verificado** — `caption_wanted_at_start` (21 arms + neg-arm 4/4); o processo do dono corre código anterior (`live-code-freshness` = STALE) |
 | D-03 | `ast.get_source_segment` re-parte a fonte inteira por chamada: 143,9 s para extrair 264 funções; 52,1 s → 0,85 s no `gaming-hotkey` | MÉDIA | corrigido em dois sítios medidos (0,47 s; 61× byte-idêntico); os outros 38 ficheiros por medir |
-| D-04 | cada abertura paga uma carga de motor quente (7,5–26,0 s, ~1 GB residente) que sai ao fim de 600 s sem ninguém a usar; as aberturas distam horas | ALTA | aberto; a escolha é do dono (TTL maior vs pedir o motor por evidência) |
+| D-04 | cada abertura paga uma carga de motor quente (7,5–26,0 s, ~1 GB residente) que sai ao fim de 600 s sem ninguém a usar; as aberturas distam horas | ALTA | **corrigido, NÃO verificado** — o pedido passa a ser por EVIDÊNCIA (`warm_evidence`, fail-open: sem série PEDE); medido antes: 8 cargas, 8 `WARM_EXIT why=idle-expired`, ZERO `WARM_ATTACHED` |
 | D-05 | o portão do relógio julgava 36 de 449 passos invocado sem `--policy`, e o RED descrevia a invocação | MÉDIA | **corrigido** — recusa `CANNOT-MEASURE` (rc 2) antes de escrever; 6 arms (`R1`–`R5`); neg-arm 6/6 |
 | D-06 | bateria: 2 470,3 s em 413 passos presos a `cap40` (o portão julga 2 293,3 s) contra o alvo de 60 s; seis passos somam 506,2 s = 20 % | MÉDIA | aberto; a cauda é `red-as-expected-*` a copiar a árvore |
 | D-07 | o número do painel no arranque circulou em QUATRO versões sem população, e o portão exigia a contradição | ALTA | **corrigido** — leitor puro `--read`, fixture do log vivo, neg-arm 3/3 |
@@ -50,7 +51,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | D-16 | um `SOTTO_WEBVIEW_AFTER_LOAD_S` presente e ilegivel caia em 25 s de espera na thread que ainda nao chamou `webview.start()` — a espera que o proprio comentario diz ter produzido o `HANG rc=4` | MÉDIA | **corrigido, NÃO verificado** — `after_load_wait_s` devolve zero e a razao; 4 casos executados, neg-arm 6/6 |
 | D-17 | uma largada de MEDIÇÃO drenava a FILA DO BATCH do dono (io 69,1 MB/s medido no stutter) | ALTO | corrigido, NÃO verificado -- `isolated_queue_dir`; `measurement-flags` A9, neg-arm 6/6 |
 | D-18 | o ramo `no_audio` do cao de guarda nunca testava a prova de vida -- worker travado nao era reiniciado | CRÍTICO | corrigido, NÃO verificado -- 7 arms + neg-arm 2/2 |
-| D-19 | o tecto `MAX_PER_HOUR` dizia "por hora" e nunca era zerado: 3 reinícios na vida do processo | ALTO | **corrigido** — `cost_watchdog.window_expired`; 43 arms, neg-arm 13/13 |
+| D-19 | o tecto `MAX_PER_HOUR` dizia "por hora" e nunca era zerado: 3 reinícios na vida do processo | ALTO | **corrigido, NÃO verificado** — `cost_watchdog.window_expired`; 43 arms, neg-arm 13/13; verificado só quando o processo dele correr este código |
 | D-20 | a MEDIDA da legenda construía a fonte com peso `1` (booleano `bold`) e o DESENHO com o peso do tema: com a placa `tight` as últimas letras caíam fora do bitmap | ALTO | **corrigido, NÃO verificado** — `_measure` recebe `liveWeight`/`prevWeight`; 10 arms, neg-arm 9/9 |
 | D-21 | `PanelVisibilityReader._fallback` herdava o `last_payload` da última leitura boa: uma shell morta estacionada mandava `shed='muito-alta'` para sempre e calava o transcritor | ALTO | **corrigido, NÃO verificado** — `last_payload = None` nas três falhas; ARM 6b (um leitor, duas voltas) + mutante do produtor morto |
 | D-22 | `probe_tabs` cortava a POPULAÇÃO de abas em `MAX_PROBE_TABS` antes de saber qual toca (`tabs=7` no log do dono), e o log imprimia o número já cortado | MÉDIO | **corrigido, NÃO verificado** — vagas limitadas pelo relógio; `tabs_total/probed/done/abandoned`; 24 arms, neg-arm 17/17 |

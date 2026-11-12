@@ -146,6 +146,9 @@ app/webview/sotto_webview.py:2594-2615`. O worker escreve a sua parte por `emit(
 | `EXTERNAL_CAPTIONS_WATCH` | o watcher arrancou, com intervalo | `[CODE] sotto_webview.py:4036` |
 | `EXTERNAL_CAPTIONS_READ_STATS` | custo da leitura externa (`mean/p95`) | `[CODE] sotto_webview.py:4064` |
 | `EXTERNAL_CAPTIONS_ENGINE_PARKED` | o motor local foi parqueado porque a fonte externa manda | `[CODE] sotto_webview.py:19737` |
+| `EXTERNAL_OWNER` | a POSSE do ecrã mudou de dono: `owner/previous/reason/had_line/episode/active` mais `suppressed_episode` (linhas locais perdidas NO episódio que acaba de terminar) e `suppressed_total` (o total da vida). Uma linha por TRANSIÇÃO, nunca por legenda | `[CODE] sotto_webview.py:19615` |
+| `ASR_PAINT_REFUSED` | uma linha do microfone foi recusada porque o player manda no ecrã: `episode/suppressed` — e ela é **descartada**: não vai ao ecrã nem ao histórico (`10-DEFECTS.md` §D-23). Um aviso por episódio, não por linha | `[CODE] sotto_webview.py:19651` |
+| `CAPTION_WANTED_START` | a decisão do arranque sobre ligar a legenda: `on/reason/stored/stored_at` (D-02; o ficheiro guardado não vence o arranque e o desacordo vai para `CAPTION_WANTED_START_OVERRIDES`) | `[CODE] sotto_webview.py:21931` |
 
 ### 3.5 Painel, faixa, hotkey, bandeja
 
