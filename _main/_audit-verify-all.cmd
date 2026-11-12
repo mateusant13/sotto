@@ -686,6 +686,21 @@ if exist _main\_panel2-dom-probe.js (
   call :record measurement-flags !STEP_RC!
   call :step red-as-expected-measurement-flags 1 "_main\measurement-flags-oracle.py;app\webview\sotto_webview.py" "%OUT%\measurement-flags-neg.log" python _main\measurement-flags-oracle.py --neg-arm
   call :expectred red-as-expected-measurement-flags !STEP_RC! "%OUT%\measurement-flags-neg.log" "NEG-ARM: PASS"
+  REM `measurement-isolation` -- A MEDICAO NAO ESCREVE O ESTADO DO DONO (2026-11-12).
+  REM Medido por leitura: `main()` decide o lock por `_measurement_flag` e
+  REM `isolated_state_path` perguntava `args.mutex_name`, que uma largada de medicao NAO
+  REM toca -- logo `--probe-v2` (e oito outras) tomava `Local\SottoShell.m.probe_v2` e
+  REM escrevia `_main\panel-state.json` e `_main\panel-visibility.json` por cima dos
+  REM ficheiros da app VIVA, que o worker OBEDECE (`PanelVisibilityReader`: `visible`
+  REM decide parque, `shed` decide o nivel). Uma sonda dizia `visible=false` ao worker do
+  REM dono. O oraculo executa o `start_panel_visibility` REAL contra um root temporario
+  REM (o writer e' o de producao, a escrita tem de aterrar no ficheiro ISOLADO e o da app
+  REM nao pode existir) e julga as nove flags, o argv do worker e as duas metades
+  REM estruturais. `--neg-arm` mutila tres sitios numa copia e cada mutante cai pela SUA arm.
+  call :step measurement-isolation 0 "_main\measurement-isolation-oracle.py;app\webview\sotto_webview.py" "%OUT%\measurement-isolation.log" python _main\measurement-isolation-oracle.py
+  call :record measurement-isolation !STEP_RC!
+  call :step red-as-expected-measurement-isolation 1 "_main\measurement-isolation-oracle.py;app\webview\sotto_webview.py" "%OUT%\measurement-isolation-neg.log" python _main\measurement-isolation-oracle.py --neg-arm
+  call :expectred red-as-expected-measurement-isolation !STEP_RC! "%OUT%\measurement-isolation-neg.log" "NEG-ARM: PASS"
   REM `caption-wanted-default` -- A LEGENDA LIGA NO ARRANQUE (ordem do dono de 2026-11-11,
   REM verbatim: *"as soon as i open it, should start the subtitles in my screen. the ctrl
   REM space."*). O arranque lia `_main\caption-wanted.json` e um `false` la' escrito -- que

@@ -29,6 +29,7 @@ funcionar pela mão do dono).
 | D-12 | o `--ready-file` do G3 era escrito pelo caminho dos 25 s, que completa o arranque com a página do painel **pendurada**: o largador respondia 0 ao único HANG que sabe medir, e o painel ficava branco | ALTO | **corrigido** — `_mark_launch_ready(panel_loaded)`; `LAUNCH_READY_WITHHELD why=panel-nav-stalled`; arms C1/C2 + mutante B2 |
 | D-13 | a ordem do dono "passe de lote ligado" valia só por `run.cmd`; o autostart do logon larga `pythonw` e não passa por ele, logo no logon o motor de lote corria **DESLIGADO** | ALTO | **corrigido** — `env.setdefault('SOTTO_REDUX_LIVE','1')` em `_child_env`, ao lado da irmã; arms novas do `app-target` |
 | D-14 | o motor quente entra na lista de *reap* da saída (`.kill()` levanta, `.wait()` não existe) e o matador externo mata-o pelo pid, com dois docstrings a prometer o contrário | MÉDIO | **aberto**, com a escolha nomeada (lista de *backstop* separada) |
+| D-15 | uma largada de MEDIÇÃO (`--probe-v2` e mais oito) tomava lock privado e escrevia `panel-state.json`/`panel-visibility.json` por cima dos ficheiros da app viva — o worker do dono recebia `visible=false` e perdia o nível de shed de uma sonda | ALTO | **corrigido, NÃO verificado** — um único predicado para lock e estado, sufixo = nome do lock, worker lê o mesmo ficheiro; 15 arms + neg-arm 3/3 |
 | D-11 | a segunda legenda da janela substituía a primeira no latch de `emit_async`: **fala perdida sem uma linha no log**, e é a página que commita o histórico — o histórico perdia a mesma fala | CRÍTICO | **corrigido** — kinds de EVENTO enfileiram (tecto 32, excedente CONTADO em `CAPTION_EMIT_DROPPED`); 6 arms, neg-arm 2/2 com o mutante novo |
 
 ---
@@ -702,6 +703,60 @@ recolher) e `backstop_pids` (só o matador externo). O warm viaja no segundo, o 
 primeiro, e as duas linhas mentirosas desaparecem. Custo: uma assinatura e um chamador; ganho: o log
 da saída passa a descrever o que aconteceu. **Aberto** — não é dinheiro barato num caminho de saída
 que já tem 11 arms e dois matadores.
+
+---
+
+## D-15 — a medição escrevia o estado que a app do dono obedece
+
+**Onde.** `app/webview/sotto_webview.py`: `measurement_lock_name` (8712), `isolated_state_path`
+(15460, antes), `start_panel_visibility` (15405), `panel_visibility_snapshot`, `worker_argv_tail`
+(23201) e a decisão de lock em `main()` (26277).
+
+**Medido por leitura e por execução (2026-11-12).** A pergunta "esta largada é a app ou uma medição?"
+estava escrita **duas vezes**, e as duas cópias discordavam:
+
+* o **lock** pergunta `_measurement_flag(args)` e cai em `measurement_lock_name` →
+  `--probe-v2` toma `Local\SottoShell.m.probe_v2`;
+* a **isolação do estado** perguntava `args.mutex_name != DEFAULT_MUTEX_NAME`, e uma largada de
+  medição **não toca** em `--mutex-name`.
+
+Logo as nove flags da família (`--dump-dom`, `--selftest`, `--memory`, `--no-hotkey`, `--exit-after`,
+`--probe-v2`, `--probe-stats`, `--probe-outside-click`, `--probe-edit-mode`) corriam com lock privado
+e **escreviam `_main\panel-state.json` e `_main\panel-visibility.json` por cima dos ficheiros da app
+viva**. O segundo não é cosmético: `worker/engine_switch.py:478` (`PanelVisibilityReader`) decide
+parque pelo `visible` e o nível pelo `shed`, e o payload de uma sonda diz `visible=false` e **não tem**
+`park`/`shed` — ou seja a sonda dizia ao worker do dono "estou escondido" e apagava-lhe o nível de
+shedding. O `panel_visibility_snapshot` ainda publicava `'path': PANEL_VISIBILITY_PATH`, o ficheiro
+que a medição **não** escrevia.
+
+```
+ANTES (HEAD 1d6578d)                       DEPOIS (working tree)
+lock  = Local\SottoShell.m.probe_v2         lock  = Local\SottoShell.m.probe_v2
+state = .\_main\panel-state.json            state = .\_main\panel-state.Local_SottoShell.m.probe_v2.json
+visib = _main\panel-visibility.json         visib = _main\panel-visibility.Local_SottoShell.m.probe_v2.json
+argv  = []                                  argv  = ['--panel-visibility', '...\panel-visibility.Local_SottoShell.m.probe_v2.json']
+```
+(script de duas linhas que carrega a shell do `git show HEAD` e a do disco e chama as funções puras;
+nenhuma largada, nenhum dispositivo, nenhuma janela)
+
+**A cura.** **UMA** pergunta — `is_measurement_launch(args)` — responde por tudo, e o sufixo do estado
+é **o nome que o lock toma** (`measurement_state_tag` → `measurement_lock_name`), pelo que as duas
+decisões não podem divergir outra vez. `isolated_state_path` delega em `isolated_state_file`;
+`start_panel_visibility` passa pelo mesmo caminho que o `panel-state` já usava; o snapshot publica
+`writer.path`; e `worker_argv_tail` entrega ao worker `--panel-visibility <ficheiro isolado>` para
+que a medição leia o ficheiro que ela própria escreve. A app do dono fica **byte a byte** igual: sem
+flag de medição e com o mutex por omissão, o caminho é o de sempre e nenhuma flag nova entra no argv.
+
+**Portão.** `_main/measurement-isolation-oracle.py` — 15 arms, **sem largar a app**: as nove flags, o
+argv do worker, as duas metades estruturais (o corpo real de `start_panel_visibility` e do snapshot) e
+um passo **vivo** que executa o `start_panel_visibility` real contra um root temporário e exige a
+escrita no ficheiro isolado com o ficheiro da app **inexistente**. Medido: `VERDICT: PASS -- 15/15` e
+`NEG-ARM: PASS -- 3/3` (M1 tira a isolação do writer, M2 repõe o predicado antigo, M3 tira a flag do
+argv do worker; cada mutante cai pela sua arm, rc=1 ao apanhar). Passos `measurement-isolation` +
+`red-as-expected-measurement-isolation` na bateria.
+
+**Estado.** `corrigido, NÃO verificado` — o processo do dono corre código anterior; o que está medido
+é a função e o writer reais, não uma abertura da app dele.
 
 ---
 

@@ -8725,6 +8725,51 @@ def measurement_lock_name(args) -> str:
     return DEFAULT_MUTEX_NAME + '.m.' + label.replace('-', '_')
 
 
+def is_measurement_launch(args) -> bool:
+    """Esta largada e' a APP do dono ou uma MEDICAO? UMA pergunta, um dono.
+
+    PORQUE EXISTE (2026-11-12, defeito de DESENHO medido por leitura): a
+    decisao estava escrita DUAS vezes e as duas copias discordavam. O lock do
+    arranque pergunta `_measurement_flag(args)` e cai em
+    `measurement_lock_name` (`main()`), mas `isolated_state_path` perguntava
+    `args.mutex_name != DEFAULT_MUTEX_NAME` -- e `--probe-v2` NAO toca em
+    `--mutex-name`. Medido: `--probe-v2` toma o lock
+    `Local\\SottoShell.m.probe_v2` e escreve `_main\\panel-state.json` e
+    `_main\\panel-visibility.json` por cima dos ficheiros da app viva, que o
+    worker le' (`PanelVisibilityReader`) para decidir parque e shed. Uma
+    medicacao publicava `visible=false` sobre o dono e o worker dele mudava de
+    modo por causa de uma sonda.
+    """
+    if _measurement_flag(args):
+        return True
+    mutex = str(getattr(args, 'mutex_name', '') or '')
+    return bool(mutex) and mutex != DEFAULT_MUTEX_NAME
+
+
+def measurement_state_tag(args) -> str:
+    """O sufixo privado do estado desta largada; '' para a app do dono.
+
+    O NOME E' O MESMO QUE O LOCK TOMA, e e' por isso que as duas coisas nao
+    podem divergir outra vez: uma medicao e' `measurement_lock_name(args)`
+    (`Local\\SottoShell.m.probe_v2`), um `--mutex-name` explicito e' o dele.
+    """
+    if not is_measurement_launch(args):
+        return ''
+    mutex = str(getattr(args, 'mutex_name', '') or '')
+    if mutex and mutex != DEFAULT_MUTEX_NAME:
+        return re.sub(r'[^A-Za-z0-9_.-]', '_', mutex)
+    return re.sub(r'[^A-Za-z0-9_.-]', '_', measurement_lock_name(args))
+
+
+def isolated_state_file(path, args) -> str:
+    """`path` com o sufixo privado da largada; byte-identico na app do dono."""
+    tag = measurement_state_tag(args)
+    if not tag:
+        return path
+    stem, ext = os.path.splitext(path)
+    return '%s.%s%s' % (stem, tag, ext)
+
+
 # ===========================================================================
 # THE TRAY — the app's face and its Quit, where the owner asked for them
 #
@@ -15366,8 +15411,14 @@ class SottoShell:
         """
         if self.panel_visibility is not None:
             return False
+        # A MESMA ISOLACAO DO `panel-state` (2026-11-12). Este ficheiro e' o que
+        # o worker OBEDECE (`PanelVisibilityReader`: `visible` decide parque,
+        # `shed` decide o nivel), por isso uma sonda escreve-lo e' a app do dono
+        # a receber ordens de uma medicao -- a classe que `isolated_state_path`
+        # ja' fechava do lado do `panel-state.json`.
+        path = self.isolated_state_path(PANEL_VISIBILITY_PATH)
         self.panel_visibility = PanelVisibilityWriter(
-            path=PANEL_VISIBILITY_PATH,
+            path=path,
             observe=self.observe_panel_visible,
             log=log,
             interval_s=PANEL_VISIBILITY_INTERVAL_S,
@@ -15403,7 +15454,11 @@ class SottoShell:
         if writer is None:
             return None
         return {
-            'path': PANEL_VISIBILITY_PATH,
+            # O CAMINHO E' O DO WRITER, nao a constante: numa medicao eles
+            # divergem por desenho (2026-11-12), e um snapshot que nomeasse o
+            # ficheiro da app seria a mentira que a isolacao existe para nao
+            # contar.
+            'path': writer.path,
             'visible': writer.visible,
             'since_ms': writer.since_ms,
             'reason': writer.reason,
@@ -15426,13 +15481,13 @@ class SottoShell:
 
         A instância normal (mutex por omissão) devolve o caminho de sempre,
         byte a byte: nenhum instrumento existente muda de sítio.
+
+        CORRIGIDO 2026-11-12: a pergunta era `args.mutex_name`, e uma largada de
+        MEDICAO nao lhe toca (`--probe-v2` deixa o nome por omissao e toma o
+        lock por `measurement_lock_name`). A pergunta passou a ser
+        `is_measurement_launch`, a MESMA que o lock responde.
         """
-        mutex = str(getattr(self.args, 'mutex_name', '') or '')
-        if not mutex or mutex == DEFAULT_MUTEX_NAME:
-            return path
-        stem, ext = os.path.splitext(path)
-        safe = re.sub(r'[^A-Za-z0-9_.-]', '_', mutex)
-        return '%s.%s%s' % (stem, safe, ext)
+        return isolated_state_file(path, self.args)
 
     def start_panel_state(self):
         """Arm the periodic + on-request dump. Idempotent per process."""
@@ -23166,6 +23221,14 @@ def worker_argv_tail(args):
         threads = 0
     if threads > 0:
         tail += ['--threads', str(threads)]
+    # O WORKER LE' O MESMO FICHEIRO QUE A SHELL ESCREVE. Sem isto, uma medicao
+    # isola o `panel-visibility.json` da shell e o worker dela continuava a ler
+    # o da app viva do dono -- o interruptor de modo a obedecer a outra
+    # instancia. Na app do dono o caminho e' o de sempre, byte a byte: nenhuma
+    # flag e' emitida.
+    isolated_visibility = isolated_state_file(PANEL_VISIBILITY_PATH, args)
+    if isolated_visibility != PANEL_VISIBILITY_PATH:
+        tail += ['--panel-visibility', isolated_visibility]
     return tail
 
 

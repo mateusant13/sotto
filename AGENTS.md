@@ -682,6 +682,19 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 01:4x):** `_main\_audit-verify-all.cmd` = **367459 B**,
+  **4238 CRLF** / 0 bare LF, sha256 `BC267BB142D41EC502F6ACDB2A75D2B5DC4A2647B429AADAC21E756D962DF5E2`.
+  (Mil quinhentos e trinta e quatro bytes e QUINZE linhas a mais do que o pin de 365925 B: o par
+  `measurement-isolation` + `red-as-expected-measurement-isolation`, o portao do defeito D-15 do
+  ledger -- uma largada de MEDICAO (`--probe-v2` e mais oito) tomava lock privado e escrevia
+  `_main\panel-state.json` e `_main\panel-visibility.json` por cima dos ficheiros da app VIVA, e o
+  segundo e' o que o worker OBEDECE (`PanelVisibilityReader`: `visible` decide parque, `shed` decide
+  o nivel). MEDIDO: `--probe-v2` decidia o lock por `_measurement_flag` e a isolacao do estado por
+  `args.mutex_name`, que a flag nao toca -- duas perguntas para a mesma coisa. Agora ha' UMA
+  (`is_measurement_launch`), o sufixo e' o NOME QUE O LOCK TOMA, e o worker recebe
+  `--panel-visibility <ficheiro isolado>`. Medido no oraculo: `VERDICT: PASS -- 15/15` e
+  `NEG-ARM: PASS -- 3/3` (rc=1 ao apanhar); na app do dono o caminho fica byte a byte.
+  O pin anterior mede o mesmo ficheiro noutro estado, e este numero e' do ficheiro VIVO.
 - **PIN do ficheiro (medido 2026-11-12, 12:0x):** `_main\_audit-verify-all.cmd` = **365925 B**,
   **4223 CRLF** / 0 bare LF, sha256 `FBB8EF9914DAD23964380172B02F42713E597B4A39CAB8D140037B97C543AA9D`.
   (Mil e doze bytes e ONZE linhas a mais do que o pin de 364913 B: o par `app-target` +
