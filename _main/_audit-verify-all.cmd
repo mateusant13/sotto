@@ -1869,6 +1869,23 @@ if exist _main\battery-record-pairing-oracle.py (
   call :step red-as-expected-battery-record-pairing 1 "_main\battery-record-pairing-oracle.py;_main\_audit-verify-all.cmd" "%OUT%\battery-record-pairing-neg.log" python _main\battery-record-pairing-oracle.py --neg-arm
   call :expectred red-as-expected-battery-record-pairing !STEP_RC! "%OUT%\battery-record-pairing-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-battery-record-pairing MISSING "%OUT%\battery-record-pairing-neg.log" "NEG-ARM: PASS" )
+REM A ESPECIFICACAO APONTA PARA FICHEIROS E LINHAS QUE EXISTEM (2026-11-11). O defeito medido:
+REM o `12-GLOSSARY.md` nasceu com uma citacao `panel-visibility` no sitio errado e com
+REM `load_shedding:60` onde a constante estava na `:47`; o `README.md` listava um
+REM `00-PROMISE.md` que nao existia; e um documento sem `## Lacunas` esquece em silencio o
+REM que nao sabe. O oraculo resolve TODA a citacao `<ficheiro>:<linha>` dos 15 documentos
+REM (1 178 citacoes medidas), exige que a linha exista no ficheiro, que o indice do README
+REM e o disco concordem nos dois sentidos, e que o `02..09`+`12` escrevam as Lacunas.
+REM SEM deps de proposito: a populacao e' um DIRECTORIO, e um passo cuja verdade vive numa
+REM lista de ficheiros que ele proprio descobre nunca pode ser cacheado (2,0 s).
+REM O `--neg-arm` planta quatro mutacoes numa COPIA (citacao de ficheiro inexistente, linha
+REM alem do fim, indice com documento ausente, documento sem Lacunas) e exige as quatro
+REM vermelhas. Nao lanca nada: le bytes.
+call :step spec-citations 0 "" "%OUT%\spec-citations.log" python _main\spec-citations-oracle.py
+call :record spec-citations !STEP_RC!
+call :step red-as-expected-spec-citations 1 "" "%OUT%\spec-citations-neg.log" python _main\spec-citations-oracle.py --neg-arm
+call :expectred red-as-expected-spec-citations !STEP_RC! "%OUT%\spec-citations-neg.log" "NEG-ARM: PASS"
+
 
 REM `_main\complaints-reconcile-gate.py` e o P3.2 do roadmap de observabilidade de 2026-10-23: as
 REM DUAS listas do dono (o backlog de 2026-10-22 com 10 ABERTO e o documento de fecho com 31/31)

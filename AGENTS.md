@@ -676,6 +676,26 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-11, 23:5x):** `_main\_audit-verify-all.cmd` = **361728 B**,
+  **4182 CRLF** / 0 bare LF, sha256 `EAD66EDF60F36F35B050D0202529324D5E754910B0DA402320030EC8757CD7C7`.
+  (Mil trezentos e noventa e sete bytes e DEZASSETE linhas a mais do que o pin de 360331 B: o par
+  `spec-citations` + `red-as-expected-spec-citations`, o portao de que a ESPECIFICACAO aponta para
+  ficheiros e linhas que existem. Nasceu de dois defeitos medidos no mesmo dia: o `12-GLOSSARY.md`
+  nasceu com uma citacao `panel-visibility` no sitio errado e com `load_shedding:60` onde a
+  constante estava na `:47` (a lane corrigiu os dois ao verificar), o `README.md` listava um
+  `00-PROMISE.md` que nao existia, e o `01-ARCHITECTURE.md` citava `run.cmd:236/311/316` onde as
+  linhas reais sao `252`, `302,308` e `312` -- nenhum `py_compile` e nenhum oraculo via isso, porque
+  um documento nao e' codigo. O oraculo resolve **1 178 citacoes** dos 15 documentos com as raizes
+  conhecidas do repo (`app/webview`, `app/panel`, `app`, `worker`, `_main`, `docs`, ...), exige que
+  a linha citada exista no ficheiro (`<=` o numero de linhas, com as linhas contadas UMA vez -- a
+  primeira versao relia o ficheiro por citacao e custava **13,3 s**), que o indice do `README.md` e
+  o disco concordem NOS DOIS SENTIDOS, e que o `02..09`+`12` escrevam `## Lacunas`. SEM deps de
+  proposito: a populacao e' um DIRECTORIO, e um passo cuja verdade vive numa lista que ele proprio
+  descobre nunca pode ser cacheado (`no-deps: a step with no deps can never be trusted`, o proprio
+  `_stepcache`). Medido: **PASS** em **1,96 s** (`docs=15 citacoes=1178 sem_ficheiro=0
+  fora_de_alcance=0`) e o `--neg-arm` **4/4** mutantes apanhados em 2,9 s, rc=1 -- cada mutacao
+  plantada numa COPIA (citacao de ficheiro inexistente, linha alem do fim, indice com documento
+  ausente, documento sem Lacunas), nunca "o documento de HEAD".)
 - **PIN do ficheiro (medido 2026-11-11, 23:1x):** `_main\_audit-verify-all.cmd` = **360331 B**,
   **4165 CRLF** / 0 bare LF, sha256 `790FDDC982034DF0261F343EA611C5D29AB3B6ED78F2A3F41CB1277B33444604`.
   (Mil quinhentos e sessenta e tres bytes e QUINZE linhas a mais do que o pin de 358768 B: o par
