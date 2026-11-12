@@ -41,17 +41,17 @@ projecto tem um portão para isso (`_main/live-code-freshness-oracle.py --strict
 
 ## Escala do que está a ser descrito
 
-Medido em 2026-11-11 com um `os.walk` sobre as extensões de produto (excluindo `_legacy`, os pesos
-de modelo em `worker/models/` e os artefactos de `worker/runs/`):
+Medido em 2026-11-11 com um `os.walk` sobre as extensões de produto (excluindo por NOME de
+directório `.git`, `node_modules`, `_legacy`, `worker/models/`, `worker/runs/` e `_cache/`):
 
 | superfície | ficheiros | linhas |
 |---|---|---|
-| `app/webview/**/*.py` (a shell e os seus módulos) | 44 | 48 014 |
-| `worker/**/*.py` (o motor de transcrição) | 65 | 36 002 |
-| `app/panel/**` (a UI web: HTML/CSS/JS + os temas) | 120 | 39 544 |
-| total de produto lido | **229** | **123 560** |
+| `app/webview/**/*.py` (a shell e os seus módulos) | 44 | 48 100 |
+| `worker/**/*.py` (o motor de transcrição) | 65 | 35 980 |
+| `app/panel/**` (a UI web: HTML/CSS/JS + os temas) | 120 | 39 463 |
+| total de produto lido | **229** | **123 543** |
 
-O ficheiro maior é `app/webview/sotto_webview.py`, **26 273 linhas**, com **227 membros** em
+O ficheiro maior é `app/webview/sotto_webview.py`, **26 362 linhas**, com **227 membros** em
 `SottoShell` e mais 28 classes (o watcher de legendas externas, a ponte do worker, a bandeja, o
 hotkey, o vigia de VRAM, o seguidor de arrasto, o monitor de carga...). O segundo é
 `worker/sotto_worker.py`, **9 493 linhas**, 17 classes. O maior ficheiro de UI é

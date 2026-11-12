@@ -110,6 +110,8 @@ _main/_probe/
 # weights + their metadata; the model's OWN spec docs live in docs/model-specs/.
 worker/models/
 worker/runs/
+# O mutante congelado do `_main/verdict-order-oracle.py:71` tambem e' forcado no indice
+# (`git add -f`), pela mesma razao do `_sotto_worker_agcinert.py` acima.
 worker/_probe/
 worker/_e2e/
 app/_legacy-electron/_hotreload/
@@ -118,6 +120,11 @@ app/_legacy-electron/_dom-probe-*.json
 app/verify/rustc/out/
 app/webview/_flash-show-*.py
 app/webview/_vis-live-*.py
+# MUTANTE CONGELADO, e por isso FORCADO no indice (`git add -f`):
+# `_main/agc_order_live.py:37` e `_main/verdict-order-oracle.py` o executam. O padrao de
+# nome `_*.py` o esconderia do git e num clone limpo essas duas sondas nao correriam --
+# e' o defeito D-01 de `docs/spec/10-DEFECTS.md`. Fica ignorado por omissao (como os
+# irmaos abaixo) mas TRACKED; `git ls-files` e' a prova.
 worker/_sotto_worker_agcinert.py
 
 # The model SIDECARS. `*.onnx` does NOT match `encoder.onnx.data`, so a whole fp32 model
