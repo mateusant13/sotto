@@ -38,6 +38,7 @@ sai com rc=1 quando APANHA o mutante (e' o que o `:expectred` verifica), rc=0
 quando o mutante sobrevive.
 """
 import importlib.util
+import json
 import inspect
 import io
 import os
@@ -92,9 +93,17 @@ class FakeChild(object):
     e' assim que o ceder e o stop sao medidos.
     """
 
-    def __init__(self, work_s=0.0, hang=False):
+    def __init__(self, work_s=0.0, hang=False, ids=()):
         self.work_s = float(work_s)
         self.hang = bool(hang)
+        # O FILHO REAL respondE um `result` por `id` (o executor passa `--ids`). Um
+        # falso que devolvesse UMA linha para um lote de oito blocos nao poderia ser
+        # atribuido -- desde 2026-11-12 o executor recusa marcar `done` o bloco cujo
+        # resultado nao veio, por isso o falso tem de falar o mesmo contrato.
+        self.ids = [str(i) for i in ids]
+        self.out = '\n'.join(
+            json.dumps({'type': 'result', 'text': 'ok', 'id': i}) for i in self.ids
+        ) + ('\n' if self.ids else '{"type":"result","text":"ok"}\n')
         self.returncode = None
         self.killed = False
         self.started = None
@@ -121,7 +130,7 @@ class FakeChild(object):
         if remaining <= 0:
             self.finished = time.monotonic()
             self.returncode = 0
-            return '{"type":"result","text":"ok"}\n', ''
+            return self.out, ''
         time.sleep(min(remaining, float(timeout or remaining)))
         if self.killed:
             self.returncode = -9
@@ -129,7 +138,7 @@ class FakeChild(object):
         if time.monotonic() - self.started >= self.work_s:
             self.finished = time.monotonic()
             self.returncode = 0
-            return '{"type":"result","text":"ok"}\n', ''
+            return self.out, ''
         raise subprocess.TimeoutExpired('batch-child', timeout)
 
     def kill(self):
@@ -148,7 +157,10 @@ def make_executor(mod, path, level='leve', work_s=0.0, hang=False):
 
     def spawn(cmd):
         box['cmds'].append(list(cmd))
-        child = FakeChild(work_s=work_s, hang=hang)
+        ids = []
+        if '--ids' in cmd:
+            ids = [i for i in str(cmd[cmd.index('--ids') + 1]).split(',') if i]
+        child = FakeChild(work_s=work_s, hang=hang, ids=ids)
         box['kids'].append(child)
         return child
 
@@ -167,13 +179,22 @@ def enqueue(mod, queue, count=1, seconds=0.5):
     return [queue.enqueue_f32(raw, source='oracle-ceiling') for _ in range(count)]
 
 
-def arm_budget(mod, path, blocks=4):
+def arm_budget(mod, path, blocks=None):
     """(1) A TAXA DE SERVICO CONVERGE PARA O ORCAMENTO -- medido no laco real.
 
-    A medida e' EXTERNA ao executor: para cada par de blocos consecutivos,
-    `duracao_do_bloco / intervalo_ate_o_proximo`. E' a definicao de duty cycle e
+    A medida e' EXTERNA ao executor: para cada par de FILHOS consecutivos,
+    `duracao_do_filho / intervalo_ate_o_proximo`. E' a definicao de duty cycle e
     nao depende de o executor se auto-reportar.
+
+    A unidade e' o FILHO, e nao o bloco, desde 2026-11-12: um filho passou a servir
+    ate' `MAX_BLOCKS_PER_CHILD` blocos com UMA carga do motor (a cura do io de
+    `162,4 MB/s` medido no dono). Por isso a populacao e' dimensionada em BLOCOS
+    para produzir varios FILHOS -- `4 * MAX_BLOCKS_PER_CHILD + 1` da' cinco --, e um
+    oraculo que fixasse `blocks=4` mediria um laco de um filho so' e chamaria isso
+    de taxa de servico.
     """
+    if blocks is None:
+        blocks = 4 * int(getattr(mod, 'MAX_BLOCKS_PER_CHILD', 1)) + 1
     ex, queue, box = make_executor(mod, path, work_s=WORK_S)
     enqueue(mod, queue, blocks)
     ex.start()

@@ -118,6 +118,21 @@ BATCH_CPU_BUDGET = 0.12
 #: em segundo plano e o que interessa e' nao se ouvir.
 BATCH_CHILD_THREADS = 2
 
+#: QUANTOS BLOCOS UM FILHO ACEITA POR CARGA DO MOTOR (medido 2026-11-12).
+#:
+#: O driver e' um PROCESSO por bloco e ele carrega o Parakeet ONNX int4 inteiro antes de
+#: decodificar -- ~1,9 GB de paginas de um mmap, em leituras de ~4 MB. O watcher mediu
+#: exactamente essa forma no dono (`python.exe(53836)`, `io 162.4MB/s (40 ops/s, 4060 KB/op)`,
+#: 2026-11-12 05:0x): um episodio inteiro de stutter e' UMA carga de modelo de um bloco.
+#: Com N blocos pendentes isso e' N cargas, e a maquina paga N x 1,9 GB de disco para
+#: transcrever N blocos de audio que ja' estao no disco.
+#:
+#: O tecto e' 8 porque o `BATCH_CPU_BUDGET` e' uma MEDIA sobre o que o laco serve: um filho
+#: que aceitasse a fila inteira seria um bloco de horas, e o `yield` por carga alta (a regra
+#: que nao se negocеia) nunca teria onde cortar entre um bloco e o seguinte. Oito blocos de
+#: 15 s = 2 min de audio por carga, e o custo de UMA carga fica amortizado em oito.
+MAX_BLOCKS_PER_CHILD = 8
+
 #: As variaveis que os motores consultam para se limitarem: o runtime ONNX le'
 #: `OMP_NUM_THREADS`, o numpy/BLAS le' as outras. O filho recebe TODAS com o mesmo
 #: valor, senao o tecto vale para um motor e o outro abre os fios todos.
@@ -300,16 +315,30 @@ class BatchQueue:
 
     def next_entry(self, now=None):
         """O proximo bloco: o mais antigo que ja' passou o backoff."""
+        found = self.next_entries(1, now=now)
+        return found[0] if found else None
+
+    def next_entries(self, limit, now=None):
+        """Os proximos `limit` blocos prontos, por ordem de chegada.
+
+        Existe para o executor poder pagar UMA carga do motor para varios blocos
+        (ver `MAX_BLOCKS_PER_CHILD`): a fila continua a entregar a lista por
+        ordem, e quem chama e' que decide quantos aceita.
+        """
         now = self._clock() if now is None else now
+        limit = max(1, int(limit))
+        out = []
         with self._lock:
             for entry in self.entries:
+                if len(out) >= limit:
+                    break
                 if entry.get('state') != 'queued':
                     continue
                 retry_at = float(entry.get('retry_at') or 0.0)
                 if retry_at and retry_at > now:
                     continue
-                return dict(entry)
-            return None
+                out.append(dict(entry))
+        return out
 
     def stats(self):
         counts = {'queued': 0, 'inflight': 0, 'done': 0, 'failed': 0}
@@ -714,89 +743,162 @@ class BatchExecutor(threading.Thread):
         """So' o nivel `leve` deixa o lote correr."""
         return self.level() == 'leve'
 
-    def command_for(self, entry):
-        """O filho: este MESMO ficheiro, em modo `--transcribe`.
+    def command_for(self, entries):
+        """O filho: este MESMO ficheiro, em modo `--transcribe`, com N blocos.
 
         Um ficheiro que sabe ser os dois lados e' o que evita um runner novo no
         `worker/`: o driver le' o `float32` cru e transcreve com o Parakeet
         (ONNX int4), sem abrir dispositivo de audio e sem tocar no spool.
+
+        Varios PAYLOADS num filho (2026-11-12): o driver carrega o motor UMA vez e
+        decodifica todos os blocos que couberem em `MAX_BLOCKS_PER_CHILD`. Sem
+        isto, cada bloco paga a leitura do mmap das pesos (~1,9 GB) -- medido no
+        watcher como `io 162.4MB/s (40 ops/s, 4060 KB/op)`. O `--ids` viaja na
+        mesma ordem dos payloads, para o resultado de cada bloco voltar ao `id`
+        dele; sem `--ids` o driver numera pela ordem (`0,1,2...`).
         """
-        return [self.python, os.path.abspath(__file__),
-                '--transcribe', self.queue.payload_path(str(entry['id'])),
-                '--rate', str(int(entry.get('rate') or RATE)),
+        entries = list(entries) if isinstance(entries, (list, tuple)) else [entries]
+        rate = int(entries[0].get('rate') or RATE) if entries else RATE
+        cmd = [self.python, os.path.abspath(__file__), '--transcribe']
+        cmd += [self.queue.payload_path(str(e['id'])) for e in entries]
+        cmd += ['--ids', ','.join(str(e['id']) for e in entries),
+                '--rate', str(rate),
                 '--window-s', str(self.window_s),
                 '--json']
+        return cmd
 
-    # -- um bloco ---------------------------------------------------------
+    # -- um bloco (ou um lote de blocos) ----------------------------------
     def step(self):
-        """Corre UM bloco. Devolve `(estado, detalhe)`; `('idle', '')` sem nada.
+        """Corre os blocos que couberem em `MAX_BLOCKS_PER_CHILD`. Devolve
+        `(estado, detalhe)`; `('idle', ...)` sem nada a fazer.
 
         Estados: `idle` (nada a fazer / carga alta), `yield` (cedeu), `done`,
         `failed`.
+
+        PORQUE UM FILHO PARA VARIOS BLOCOS (medido 2026-11-12): o driver e' um
+        processo por bloco e carrega o Parakeet inteiro antes de decodificar. Com a
+        fila a ter varios blocos, cada um pagava ~1,9 GB de leitura do mmap das
+        pesos -- a forma exacta que o watcher mediu no dono
+        (`python.exe(53836) io 162.4MB/s 40 ops/s 4060 KB/op`). Agora uma carga
+        serve ate' `MAX_BLOCKS_PER_CHILD` blocos, e o `yield` por carga alta
+        continua a ter onde cortar (entre lotes, e no maximo oito blocos depois).
         """
         if not self.allowed():
             return ('idle', 'level=%s' % self.level())
-        entry = self.queue.next_entry()
-        if entry is None:
-            return ('idle', 'queue-empty')
-        entry_id = str(entry['id'])
-        claimed = self.queue.claim(entry_id)
+        claimed = self._claim_batch()
         if claimed is None:
             return ('idle', 'claim-lost')
+        if not claimed:
+            return ('idle', 'queue-empty')
         started = time.monotonic()
         self.runs += 1
-        try:
-            child = self._spawn(self.command_for(entry))
-        except Exception as exc:                                 # noqa: BLE001
-            self.log(f'BATCH_EXEC_SPAWN_FAILED id={entry_id} error={exc!r}')
-            self._after_failure(entry, 'spawn: %r' % (exc,))
+        child, failure = self._spawn_batch(claimed)
+        if failure is not None:
             self._charge(started)
-            return ('failed', 'spawn')
+            return ('failed', failure)
         self._child = child
-        out = err = ''
         try:
-            while True:
-                if self._stop_event.is_set():
-                    self._kill(child)
-                    self.queue.requeue(entry_id, 'executor-stop',
-                                       bump_attempts=False)
-                    return ('yield', 'stop')
-                try:
-                    out, err = child.communicate(timeout=self.child_poll_s)
-                    break
-                except subprocess.TimeoutExpired:
-                    if not self.allowed():
-                        self._kill(child)
-                        self.yields += 1
-                        self.log(f'BATCH_EXEC_YIELDED id={entry_id} '
-                                 f'level={self.level()} '
-                                 f'elapsed_s={time.monotonic() - started:.1f} '
-                                 f'seconds_pending={entry.get("seconds")} -- o bloco'
-                                 f' volta a fila')
-                        self.queue.requeue(entry_id, 'load-%s' % self.level(),
-                                           bump_attempts=False)
-                        self._stop_event.wait(self.yield_backoff_s)
-                        return ('yield', 'load')
-                    continue
-                except Exception as exc:                         # noqa: BLE001
-                    self._kill(child)
-                    self._after_failure(entry, 'communicate: %r' % (exc,))
-                    self._charge(started)
-                    return ('failed', 'communicate')
+            outcome, out = self._wait_batch(child, claimed, started)
         finally:
             self._child = None
-        elapsed = self._charge(started)
+        if outcome is not None:                       # stop / yield / communicate
+            self._charge(started)
+            return outcome
+        return self._settle_batch(claimed, child, out, self._charge(started))
+
+    def _claim_batch(self):
+        """Os blocos deste lote, ja' `inflight`. `None` = o claim perdeu a corrida."""
+        entries = self.queue.next_entries(MAX_BLOCKS_PER_CHILD)
+        claimed = []
+        for entry in entries:
+            got = self.queue.claim(str(entry['id']))
+            if got is not None:
+                claimed.append(entry)
+        if entries and not claimed:
+            return None
+        return claimed
+
+    def _spawn_batch(self, claimed):
+        """`(child, None)` ou `(None, estado_de_falha)`. O erro e' nomeado por bloco."""
+        first_id = str(claimed[0]['id'])
+        try:
+            return self._spawn(self.command_for(claimed)), None
+        except Exception as exc:                                 # noqa: BLE001
+            self.log(f'BATCH_EXEC_SPAWN_FAILED id={first_id} '
+                     f'blocks={len(claimed)} error={exc!r}')
+            for entry in claimed:
+                self._after_failure(entry, 'spawn: %r' % (exc,))
+            return None, 'spawn'
+
+    def _wait_batch(self, child, claimed, started):
+        """Espera o filho. `(None, stdout)` = ele acabou; senao `((estado, detalhe), '')`.
+
+        O stdout SAI daqui porque e' o `communicate()` que o devolve -- depois dele
+        o cano esta' fechado e `child.stdout` nao e' o contrato do `Popen` que se
+        le (foi exactamente esse o `AttributeError` medido no oraculo do painel em
+        2026-11-12).
+        """
+        first_id = str(claimed[0]['id'])
+        while True:
+            if self._stop_event.is_set():
+                self._kill(child)
+                self._requeue_batch(claimed, 'executor-stop')
+                return ('yield', 'stop'), ''
+            try:
+                out, _err = child.communicate(timeout=self.child_poll_s)
+                return None, out
+            except subprocess.TimeoutExpired:
+                if not self.allowed():
+                    self._kill(child)
+                    self.yields += 1
+                    self.log(f'BATCH_EXEC_YIELDED id={first_id} '
+                             f'blocks={len(claimed)} level={self.level()} '
+                             f'elapsed_s={time.monotonic() - started:.1f} '
+                             f'seconds_pending={claimed[0].get("seconds")} -- os '
+                             f'blocos voltam a fila')
+                    self._requeue_batch(claimed, 'load-%s' % self.level())
+                    self._stop_event.wait(self.yield_backoff_s)
+                    return ('yield', 'load'), ''
+            except Exception as exc:                             # noqa: BLE001
+                self._kill(child)
+                for entry in claimed:
+                    self._after_failure(entry, 'communicate: %r' % (exc,))
+                return ('failed', 'communicate'), ''
+
+    def _requeue_batch(self, claimed, reason):
+        for entry in claimed:
+            self.queue.requeue(str(entry['id']), reason, bump_attempts=False)
+
+    def _settle_batch(self, claimed, child, out, elapsed):
+        """Fecha a conta do lote: `done` por bloco cujo resultado VEIO."""
         code = getattr(child, 'returncode', None)
-        text, captions = _parse_output(out)
-        if code == 0:
+        per_id, _text, _captions = _parse_batch_output(out)
+        if code != 0:
+            detail = 'rc=%r' % (code,)
+            for entry in claimed:
+                self._after_failure(entry, detail)
+            return ('failed', detail)
+        done_text = []
+        for entry in claimed:
+            entry_id = str(entry['id'])
+            got = per_id.get(entry_id)
+            if got is None and len(claimed) == 1:
+                # UM bloco so': o filho nao precisa de carimbar `id` (um driver
+                # antigo nao conhece `--ids`) e o resultado sem `id` e' dele. Com
+                # DOIS ou mais, o mesmo texto cairia em todos -- ai' a ausencia e'
+                # defeito e o bloco NAO pode ser dado por transcrito.
+                got = per_id.get('')
+            if got is None:
+                self._after_failure(entry, 'no-result')
+                continue
             self.done += 1
-            self.queue.mark_done(entry_id, text=text, elapsed_s=elapsed,
-                                 meta={'captions': captions})
+            self.queue.mark_done(entry_id, text=got['text'], elapsed_s=elapsed,
+                                 meta={'captions': got['captions']})
             self.log(f'BATCH_EXEC_DONE id={entry_id} seconds={entry.get("seconds")} '
-                     f'elapsed_s={elapsed:.1f} captions={captions} chars={len(text)}')
-            return ('done', text)
-        self._after_failure(entry, (err or '').strip()[-1500:] or 'rc=%r' % (code,))
-        return ('failed', 'rc=%r' % (code,))
+                     f'elapsed_s={elapsed:.1f} captions={got["captions"]} '
+                     f'chars={len(got["text"])} blocks={len(claimed)}')
+            done_text.append(got['text'])
+        return ('done', ' '.join(done_text))
 
     def _after_failure(self, entry, error):
         attempts = int(entry.get('attempts') or 0) + 1
@@ -954,13 +1056,80 @@ def _parse_output(stdout):
     return text, len(captions)
 
 
+def _parse_batch_output(stdout):
+    """`(por_id, texto_unico, n_legendas)` das linhas JSON de um filho com N blocos.
+
+    O driver com `--ids` carimba `id` em cada `caption`/`result`, e um filho de um
+    bloco so' continua a emitir o mesmo JSON sem `id` -- por isso a ausencia de
+    `id` cai num balde proprio (`''`), que o executor so' le' quando pediu UM
+    bloco. Assim o contrato antigo nao quebra e o novo e' estritamente aditivo.
+    """
+    per_id = {}
+    order = []
+    for raw in (stdout or '').splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        kind = payload.get('type')
+        if kind not in ('caption', 'result'):
+            continue
+        bucket_id = str(payload.get('id') or '')
+        bucket = per_id.get(bucket_id)
+        if bucket is None:
+            bucket = per_id[bucket_id] = {'text': '', 'captions': 0, 'lines': []}
+            order.append(bucket_id)
+        if kind == 'caption':
+            line = str(payload.get('text') or '').strip()
+            if line:
+                bucket['lines'].append(line)
+                bucket['captions'] += 1
+        else:
+            bucket['text'] = str(payload.get('text') or '').strip()
+    for bucket in per_id.values():
+        if not bucket['text']:
+            bucket['text'] = ' '.join(bucket['lines']).strip()
+        bucket.pop('lines', None)
+    if len(order) == 1:
+        only = per_id[order[0]]
+        return per_id, only['text'], only['captions']
+    return per_id, '', sum(b['captions'] for b in per_id.values())
+
+
 # ── O DRIVER: `--transcribe` -- um ficheiro, sem dispositivo, e sai ──────────
 def _worker_path(*parts):
     return os.path.join(WORKER_DIR, *parts)
 
 
+def load_engine(threads=None, onnx_dir=None, ternary_dir=None):
+    """Carrega o backend do Parakeet UMA vez. Devolve `(backend, threads)`.
+
+    Existe para o modo com varios blocos: a carga do motor e' ~1,9 GB de leitura e
+    o unico jeito de a pagar uma vez por LOTE (e nao por bloco) e' carregar aqui e
+    passar o backend a cada payload. Um payload sozinho continua a poder chamar
+    `transcribe_payload` sem engine, que carrega por dentro.
+    """
+    if threads is None:
+        threads = _env_threads()
+    threads = int(threads or BATCH_CHILD_THREADS)
+    if WORKER_DIR not in sys.path:
+        sys.path.insert(0, WORKER_DIR)
+    import redux_live
+
+    onnx_dir = onnx_dir or redux_live.DEFAULT_ONNX_DIR
+    ternary_dir = ternary_dir or redux_live.DEFAULT_TERNARY_DIR
+    backend = redux_live.load_backend('onnx', onnx_dir, ternary_dir, threads, 'cpu')
+    return backend, threads
+
+
 def transcribe_payload(path, rate=RATE, window_s=15.0, gap_s=0.6,
-                       threads=None, onnx_dir=None, ternary_dir=None):
+                       threads=None, onnx_dir=None, ternary_dir=None,
+                       engine=None, entry_id=None):
     """Transcreve um `float32` cru e devolve `[(start, end, texto), ...]`.
 
     REUSA o que ja' existe, e nao um motor paralelo: `worker/redux_live.py` tem
@@ -979,17 +1148,13 @@ def transcribe_payload(path, rate=RATE, window_s=15.0, gap_s=0.6,
     # `torch.set_num_threads` do backend so' obedece ao argumento -- por isso o
     # MESMO numero viaja nos dois caminhos e nao ha' um deles a abrir os fios
     # todos. `--threads` continua a poder-mandar sobre a env.
-    if threads is None:
-        threads = _env_threads()
-    threads = int(threads or BATCH_CHILD_THREADS)
-
     if WORKER_DIR not in sys.path:
         sys.path.insert(0, WORKER_DIR)
     import redux_live
 
-    onnx_dir = onnx_dir or redux_live.DEFAULT_ONNX_DIR
-    ternary_dir = ternary_dir or redux_live.DEFAULT_TERNARY_DIR
-    backend = redux_live.load_backend('onnx', onnx_dir, ternary_dir, threads, 'cpu')
+    if engine is None:
+        engine, threads = load_engine(threads, onnx_dir, ternary_dir)
+    backend = engine
     seg = redux_live.LiveSegmenter(window_s=float(window_s), gap_s=float(gap_s),
                                    vad=True)
     pcm = np.fromfile(path, dtype='<f4')
@@ -1023,12 +1188,16 @@ def transcribe_payload(path, rate=RATE, window_s=15.0, gap_s=0.6,
                     'start': event['start'], 'end': event['end'],
                     'producer': 'redux', 'route': 'batch-queue',
                     'final': True}
+            if entry_id is not None:
+                line['id'] = entry_id
             lines.append(line)
             print(json.dumps(line, ensure_ascii=False), flush=True)
-    print(json.dumps({'type': 'result', 'text': ' '.join(l['text'] for l in lines),
-                      'segments': len(lines), 'rate': rate,
-                      'samples': int(pcm.size), 'path': os.path.abspath(path)},
-                     ensure_ascii=False), flush=True)
+    result = {'type': 'result', 'text': ' '.join(l['text'] for l in lines),
+              'segments': len(lines), 'rate': rate,
+              'samples': int(pcm.size), 'path': os.path.abspath(path)}
+    if entry_id is not None:
+        result['id'] = entry_id
+    print(json.dumps(result, ensure_ascii=False), flush=True)
     return lines
 
 
@@ -1050,8 +1219,12 @@ def main(argv=None):
         prog='batch_queue',
         description='Fila em disco do audio sem transcricao, e o driver de um '
                     'bloco (Parakeet batch, sem dispositivo de audio).')
-    parser.add_argument('--transcribe', metavar='PAYLOAD', default=None,
-                        help='transcreve um float32 cru e sai (modo do executor)')
+    parser.add_argument('--transcribe', metavar='PAYLOAD', nargs='+', default=None,
+                        help='transcreve um ou mais float32 crus e sai (modo do '
+                             'executor); o motor e\' carregado UMA vez para todos')
+    parser.add_argument('--ids', default='',
+                        help='ids dos blocos, na mesma ordem dos PAYLOADs; cada '
+                             'linha JSON leva o seu `id` de volta')
     parser.add_argument('--rate', type=int, default=RATE)
     parser.add_argument('--window-s', type=float, default=15.0)
     parser.add_argument('--gap-s', type=float, default=0.6)
@@ -1061,15 +1234,32 @@ def main(argv=None):
     parser.add_argument('--json', action='store_true')
     args = parser.parse_args(argv)
     if args.transcribe:
+        payloads = list(args.transcribe)
+        ids = [i for i in str(args.ids or '').split(',') if i] or []
         try:
-            transcribe_payload(args.transcribe, rate=args.rate,
-                               window_s=args.window_s, gap_s=args.gap_s,
-                               threads=args.threads)
+            engine, _threads = load_engine(args.threads)
         except SystemExit as exc:
             print(json.dumps({'type': 'error', 'stage': 'load', 'detail': str(exc)}),
                   flush=True)
             return 2
-        return 0
+        rc = 0
+        for index, payload in enumerate(payloads):
+            entry_id = ids[index] if index < len(ids) else (
+                str(index) if len(payloads) > 1 else None)
+            try:
+                transcribe_payload(payload, rate=args.rate,
+                                   window_s=args.window_s, gap_s=args.gap_s,
+                                   threads=args.threads, engine=engine,
+                                   entry_id=entry_id)
+            except Exception as exc:                             # noqa: BLE001
+                # UM bloco que estoura NAO derruba os outros: o resultado dele e' uma
+                # linha de erro com o `id`, e o filho segue. Sem isto um payload
+                # corrompido mataria a transcricao dos oito blocos do lote.
+                print(json.dumps({'type': 'error', 'stage': 'decode',
+                                  'id': entry_id, 'detail': '%s: %s' % (type(exc).__name__, exc)},
+                                 ensure_ascii=False), flush=True)
+                rc = 1
+        return rc
     queue = BatchQueue()
     print(json.dumps({'dir': queue.path, 'stats': queue.stats()},
                      ensure_ascii=False), flush=True)

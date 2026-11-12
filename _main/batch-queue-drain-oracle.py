@@ -55,6 +55,7 @@ class FakeChild(object):
         self.out = out
         self.returncode = None
         self.killed = False
+        self.cmd = []
 
     def communicate(self, timeout=None):
         self.returncode = 0
@@ -73,8 +74,22 @@ def make_executor(mod, path, level='leve', spawns=None, poll_s=0.2):
 
     def spawn(cmd):
         spawns.append(list(cmd))
-        return FakeChild('{"type":"caption","text":"ok"}\n'
-                         '{"type":"result","text":"ok"}\n')
+        # O FILHO REAL responde um `result` por `id` (o executor passa `--ids`), e o
+        # executor RECUSA marcar `done` o bloco cujo resultado nao veio -- por isso o
+        # falso fala o mesmo contrato em vez de devolver uma linha para todos.
+        ids = []
+        if '--ids' in cmd:
+            ids = [i for i in str(cmd[cmd.index('--ids') + 1]).split(',') if i]
+        if ids:
+            out = ''.join('{"type":"caption","text":"ok","id":"%s"}\n'
+                          '{"type":"result","text":"ok","id":"%s"}\n' % (i, i)
+                          for i in ids)
+        else:
+            out = ('{"type":"caption","text":"ok"}\n'
+                   '{"type":"result","text":"ok"}\n')
+        child = FakeChild(out)
+        child.cmd = list(cmd)
+        return child
 
     # A ADOPCAO APONTA PARA O DIRECTORIO DESTE BRACO. Sem isto o executor
     # adoptava os spools REAIS de `TMPDIR` na primeira volta (`_last_adopt`
@@ -122,6 +137,56 @@ def arm_foreign_pickup(mod, path):
             % (ok, len(spawns), queue.stats()['done'], named))
     finally:
         ex.stop()
+
+
+def arm_one_load_per_batch(mod, path):
+    """A CARGA DO MOTOR E' POR LOTE, NAO POR BLOCO (a cura do io de 162,4 MB/s).
+
+    MEDIDO no dono, 2026-11-12: `python.exe(53836) io 162.4MB/s (40 ops/s,
+    4060 KB/op)` durante um episodio de stutter -- a forma de UMA carga do
+    Parakeet (mmap de ~1,9 GB lido em paginas de ~4 MB) paga por UM bloco, porque
+    o driver e' um processo por bloco.
+
+    O braco enfileira `MAX_BLOCKS_PER_CHILD` blocos, corre UM `step()` e exige:
+      (a) UM spawn;
+      (b) o comando com os N payloads e os N ids;
+      (c) os N blocos `done` na fila.
+    O CONTROL e' a mesma medicao com o tecto forçado a 1 -- se ele nao desse N
+    spawns, o braco estaria a medir o executor antigo e nao o lote.
+    """
+    n = int(getattr(mod, 'MAX_BLOCKS_PER_CHILD', 1))
+    if n < 2:
+        return False, 'MAX_BLOCKS_PER_CHILD=%r, nao ha lote para medir' % (n,)
+    ex, queue, spawns = make_executor(mod, path)
+    raw = b'\x00\x00\x00\x00' * int(16000 * 0.02)
+    for _ in range(n):
+        queue.enqueue_f32(raw, source='oracle-batch')
+    state, _detail = ex.step()
+    done = queue.stats()['done']
+    cmd = spawns[0] if spawns else []
+    payloads = sum(1 for a in cmd if str(a).endswith('.f32'))
+    ids = ''
+    if '--ids' in cmd:
+        ids = str(cmd[cmd.index('--ids') + 1])
+    id_count = len([i for i in ids.split(',') if i])
+    ok = (len(spawns) == 1 and payloads == n and id_count == n and done == n
+          and str(state) == 'done')
+    detail = ('spawns=%d payloads=%d ids=%d done=%d state=%s tecto=%d'
+              % (len(spawns), payloads, id_count, done, state, n))
+    # O CONTROL: o mesmo caminho com o tecto a 1 tem de dar N spawns.
+    saved = mod.MAX_BLOCKS_PER_CHILD
+    mod.MAX_BLOCKS_PER_CHILD = 1
+    try:
+        ex2, queue2, spawns2 = make_executor(mod, path + '-c1')
+        for _ in range(n):
+            queue2.enqueue_f32(raw, source='oracle-batch-control')
+        for _ in range(n):
+            ex2.step()
+        control_spawns = len(spawns2)
+    finally:
+        mod.MAX_BLOCKS_PER_CHILD = saved
+    return bool(ok and control_spawns == n), (
+        detail + ' control_spawns=%d (esperado %d)' % (control_spawns, n))
 
 
 def arm_no_work(mod, path):
@@ -278,6 +343,7 @@ def main():
     results = []
     try:
         arms = (('foreign-enqueue-is-picked-up', arm_foreign_pickup),
+                ('one-load-per-batch', arm_one_load_per_batch),
                 ('no-work-stays-idle', arm_no_work),
                 ('level-above-leve-does-not-run', arm_level_blocks),
                 ('inflight-recovers-once', arm_inflight_once),

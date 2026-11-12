@@ -273,6 +273,38 @@ O orçamento de CPU é 12 % de um núcleo e o período deriva do custo medido: `
 
 A fila é armada por `load_shedding.open_action`, que constrói `BatchQueue` e `open_executor` `[CODE]` `app/webview/load_shedding.py:1261`. `[INFERENCE]` O executor é construído mesmo quando a acção de shedding está desarmada, porque a construção está fora do `if armed` `[CODE]` `app/webview/load_shedding.py:1253`.
 
+### 9.3 Uma carga do motor por LOTE, não por bloco
+
+O driver do lote é um PROCESSO por bloco e, antes de decodificar, ele carrega o Parakeet ONNX
+int4 inteiro — ~1,9 GB de páginas de um `mmap`, lidas em operações de ~4 MB `[CODE]`
+`app/webview/batch_queue.py:1109`. Enquanto um bloco por filho foi a regra, cada bloco pagava essa
+leitura: com cinco blocos pendentes são cinco cargas do mesmo modelo, para transcrever áudio que já
+está no disco.
+
+`[MEASURED]` O watcher mediu exactamente essa forma no dono, em 2026-11-12 05:0x:
+`python.exe(53836)` = `io 162.4 MB/s (40 ops/s, 4060 KB/op)`, `cmdline = … batch_queue.py
+--transcribe …\1794459181885-57128-0001.f32 --rate 16000 --window-s 15.0 --json`, durante um
+episódio de stutter — **40 × 4 060 KB/s** é o perfil de uma carga de modelo, não de uma decodificação
+de 15 s de áudio. O mesmo directório de spool tinha seis payloads da mesma shell com ids separados
+por 5,5 s `[MEASURED]` `ls -l I:/cc-tmp/sotto-batch-queue` (2026-11-12): seis blocos, seis cargas.
+
+O contrato passou a ser: **um filho serve até `MAX_BLOCKS_PER_CHILD = 8` blocos com UMA carga do
+motor** `[CODE]` `app/webview/batch_queue.py:134`. O executor pede os blocos com `next_entries`
+`[CODE]` `app/webview/batch_queue.py:321`, monta um comando só com N payloads e N ids `[CODE]`
+`app/webview/batch_queue.py:746`, e o driver carrega o backend uma vez e responde **um `result` por
+`id`** `[CODE]` `app/webview/batch_queue.py:1222`. O executor só marca `done` o bloco cujo resultado
+chegou; sem resultado ele nomeia o defeito (`no-result`) em vez de dar o áudio por transcrito
+`[CODE]` `app/webview/batch_queue.py:872`.
+
+O tecto de 8 não é gosto: o `BATCH_CPU_BUDGET` é uma **média** sobre o que o laço serve, e o `yield`
+por carga alta tem de ter onde cortar entre um bloco e o seguinte — oito blocos de 15 s são 2 min de
+áudio por carga, e o custo de uma carga fica amortizado em oito `[INFERENCE]`.
+
+`[MEASURED]` Portão: `batch-queue-drain-oracle` arm `one-load-per-batch` mede um `step()` com oito
+blocos e exige **um** spawn com oito payloads e oito ids, com os oito `done`, e o CONTROL força o
+tecto a 1 e exige **oito** spawns — senão o braço estaria a medir o desenho antigo. Medido:
+`spawns=1 payloads=8 ids=8 done=8 state=done tecto=8 control_spawns=8`, `VERDICT: PASS (6/6 arms)`.
+
 ## 10. Cada ficheiro de estado e o seu contrato
 
 | ficheiro | forma | escritor | leitor | falha |
