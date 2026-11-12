@@ -872,7 +872,16 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
 
         watched = WatchedShell()
         lns["_set_live_enabled"](watched, {"on": False})
-        add(watched.touched == ["show_caption_window(False)"],
+        # A ARM JULGA O DOMINIO, NAO A LISTA EXACTA (medido 2026-11-12). O
+        # `_set_live_enabled` ganhou `_caption_status_stop` e `_caption_off_ack`
+        # em 2026-11-11 (desligar passa a RESPONDER no ecra), e os dois sao da
+        # MESMA janela -- a lista literal acusava produto certo. O invariante
+        # que a frase nomeia fica inteiro: para desligar, a funcao so' pode
+        # tocar no que e' legenda, e o `show_caption_window(False)` TEM de estar.
+        CAPTION_ONLY = ("show_caption_window(", "_caption_status_",
+                        "_caption_off_ack")
+        add(all(str(t).startswith(CAPTION_ONLY) for t in watched.touched)
+            and "show_caption_window(False)" in watched.touched,
             "desligar a legenda toca SO' na janela da legenda", str(watched.touched))
         add(watched.tray.calls == ["live"],
             "e o ROTULO do icone fica a dizer a verdade (cura de 2026-11-09)",
@@ -1040,7 +1049,9 @@ def neg_arm() -> int:
     for name, mutate in (("defer-400ms", _mutate_shell_defer),
                          ("hold-threshold", _mutate_gesture_hold),
                          ("blank-alternation", _mutate_gesture_blank),
-                         ("combination-latch", _mutate_shell_latch)):
+                         ("combination-latch", _mutate_shell_latch),
+                         ("caption-off-closes-the-panel",
+                          _mutate_shell_caption_domain)):
         tmp = Path(tempfile.mkdtemp(prefix="altc-neg-"))
         try:
             webview = _copy_tree(tmp)
@@ -1063,7 +1074,7 @@ def neg_arm() -> int:
     if failures:
         print("\nNEG-ARM FAIL -- o oraculo nao ve a regressao")
         return EXIT_PASS
-    print("\nNEG-ARM PASS -- RED as designed: as quatro regressoes derrubam o oraculo")
+    print("\nNEG-ARM PASS -- RED as designed: as cinco regressoes derrubam o oraculo")
     return EXIT_FAIL
 
 
@@ -1114,6 +1125,25 @@ def _mutate_gesture_blank(webview: Path):
         return None
     target.write_text(text.replace(*GESTURE_BLANK_PATCH, 1), encoding="utf-8")
     return "o ciclo dos paineis apagado (next_surface devolve sempre a faixa)"
+
+
+def _mutate_shell_caption_domain(webview: Path):
+    """O DOMINIO da legenda deixa de ser so' a legenda (mutante do braco 7d).
+
+    `_set_live_enabled` passa a fechar o PAINEL ao desligar -- a ordem do dono de
+    2026-10-19 desfez exactamente isso (*"usar alt c uma vez nao deve fechar o
+    painel"*). Se o braco do dominio nao vir este mutante, ele nao julga nada.
+    """
+    target = webview / "sotto_webview.py"
+    text = target.read_text(encoding="utf-8")
+    anchor = ("                self._caption_status_stop()")
+    if text.count(anchor) != 1:
+        return None
+    text = text.replace(
+        anchor,
+        anchor + "\n                self.hide_panel('caption-on')", 1)
+    target.write_text(text, encoding="utf-8")
+    return "desligar a legenda volta a FECHAR O PAINEL (fora do dominio)"
 
 
 def _mutate_shell_latch(webview: Path):
