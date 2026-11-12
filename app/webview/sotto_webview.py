@@ -20717,6 +20717,19 @@ class SottoShell:
         """
         fields = (parsed or {}).get('fields') or {}
         now = time.monotonic()
+        # A JANELA DO TECTO (2026-11-12, D-19). O `MAX_PER_HOUR` diz "por hora" e o
+        # contador nao era zerado por ninguem: o tecto era de 3 reinicios pela VIDA
+        # do processo, e a recusa continuava a dizer `tecto-por-hora`. A janela tem
+        # dono unico no modulo puro (`cost_watchdog.window_expired`), e a linha
+        # abaixo e' a unica escrita.
+        hour_at = getattr(self, '_cost_hour_at', 0.0)
+        if not hour_at or cost_watchdog.window_expired(now, hour_at):
+            if hour_at and getattr(self, '_cost_restarts_hour', 0):
+                log('WORKER_COST_WINDOW_RESET restarts=%d window_s=%d'
+                    % (self._cost_restarts_hour,
+                       int(cost_watchdog.WINDOW_S)))
+            self._cost_hour_at = now
+            self._cost_restarts_hour = 0
         verdict = cost_watchdog.plan(
             fields,
             getattr(self, '_cost_streak', 0),

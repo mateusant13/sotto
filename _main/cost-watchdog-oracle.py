@@ -460,6 +460,89 @@ def run_arms(cache, mod, cw):
             and not refused.raises,
             '%r' % ([type(e).__name__ for e in
                      (healthy.raises + busy.raises + broke.raises + refused.raises)][:3],))
+    # ── E. A JANELA DO TECTO (D-19) ───────────────────────────────────────────
+    # O `MAX_PER_HOUR` diz "por hora" e o contador nunca era zerado: o tecto era
+    # de 3 reinicios pela VIDA da shell (o autostart a mantem de pe o dia todo).
+    W = getattr(cw, 'WINDOW_S', None)
+    WE = getattr(cw, 'window_expired', None)
+    mod.arm('E1 a janela e um NUMERO declarado, nao um comentario',
+            W == 3600.0, 'WINDOW_S=%r' % (W,))
+    if WE is None:
+        mod.arm('E1 window_expired existe e e pura', False, 'ausente')
+    else:
+        cases = [
+            (100.0, 0.0, False, 'nunca iniciada'),
+            (100.0, 100.0, False, 'agora'),
+            (W - 1 + 100.0, 100.0, False, 'um segundo antes'),
+            (W + 100.0, 100.0, True, 'exactamente a janela'),
+            (W + 1 + 100.0, 100.0, True, 'um segundo depois'),
+            (50.0, 100.0, False, 'relogio para tras'),
+            (1e6, -50.0, True, 'inicio negativo = passado'),
+            ('x', 100.0, False, 'agora ilegivel'),
+            (100.0, 'x', False, 'inicio ilegivel'),
+        ]
+        bad = [(a, b, want, why) for a, b, want, why in cases
+               if bool(WE(a, b)) != want]
+        mod.arm('E1 window_expired: a borda e a janela, e um valor ilegivel nao a '
+                'reabre', not bad, '%r' % (bad[:3],))
+
+    # E2 -- O HANDLER REAL, com o contador CHEIO e a janela vencida: o reinicio
+    # volta a ser permitido, e a linha diz que a janela virou.
+    shell2 = ShellStub(handler)
+    shell2._cost_restarts_hour = MAXH          # o tecto atingido
+    shell2._cost_hour_at = 1e6 - (W + 5.0)      # ... numa janela que ja' virou
+    clock2 = {'t': 1e6}
+
+    class FakeTime2:
+        @staticmethod
+        def monotonic():
+            return clock2['t']
+
+    handler.__globals__['time'] = FakeTime2
+    handler.__globals__['log'] = shell2.log_line
+    for _ in range(STALL + 1):
+        try:
+            handler(shell2, {'fields': {'cpu_pct_avg': '270.6', 'rows': '0',
+                                        'rows_since_tick': '0'},
+                             'childPid': 4242})
+        except Exception as exc:  # noqa: BLE001
+            shell2.raises.append(exc)
+        clock2['t'] += 10.0
+    mod.arm('E2 a janela vencida devolve o tecto (o reinicio volta a ser permitido)',
+            not shell2.raises and shell2.revives == ['cost-watchdog']
+            and any('WORKER_COST_WINDOW_RESET' in ln for ln in shell2.lines),
+            'revives=%r raises=%r lines=%r'
+            % (shell2.revives, [type(e).__name__ for e in shell2.raises],
+               [ln for ln in shell2.lines if 'WINDOW' in ln or 'RESTART' in ln][:2]))
+
+    # E3 -- DENTRO da janela o tecto continua a valer: o contador cheio RECUSA,
+    # senao a cura seria "reiniciar para sempre", que e' o defeito oposto.
+    shell3 = ShellStub(handler)
+    shell3._cost_restarts_hour = MAXH
+    shell3._cost_hour_at = 1e6
+    clock3 = {'t': 1e6}
+
+    class FakeTime3:
+        @staticmethod
+        def monotonic():
+            return clock3['t']
+
+    handler.__globals__['time'] = FakeTime3
+    handler.__globals__['log'] = shell3.log_line
+    for _ in range(STALL + 1):
+        try:
+            handler(shell3, {'fields': {'cpu_pct_avg': '270.6', 'rows': '0',
+                                        'rows_since_tick': '0'},
+                             'childPid': 4242})
+        except Exception as exc:  # noqa: BLE001
+            shell3.raises.append(exc)
+        clock3['t'] += 10.0
+    mod.arm('E3 dentro da janela o tecto continua a recusar',
+            not shell3.revives
+            and any('tecto-por-hora' in ln for ln in shell3.lines),
+            'revives=%r lines=%r'
+            % (shell3.revives, [ln for ln in shell3.lines if 'RESTART' in ln][:1]))
+
     mod.arm('D6 recusa do revive aparece como accepted=false e NAO gasta o piso',
             'accepted=false' in line and refused._cost_last_restart == 0.0
             and refused._cost_restarts_hour == 0, line or 'sem linha de restart')
@@ -503,6 +586,12 @@ def main(argv):
              lambda s: s.replace('    if last_restart_at and (now - last_restart_at) < FLOOR_S:',
                                  '    if False:', 1),
              'C7'),
+            # D-19: a janela que nunca vira -- o defeito antigo (o tecto valia
+            # pela vida do processo) escrito como mutante.
+            ('M12 a janela nunca expira',
+             lambda s: s.replace('    if started == 0.0 or moment <= started:',
+                                 '    if True:', 1),
+             'E1'),
         ]
         caught = 0
         cw_real = load_watchdog()
@@ -554,6 +643,11 @@ def main(argv):
              lambda src: src.replace(
                  "            log('BRIDGE_WORKER_COST cpu_pct_avg=%s",
                  "            self.log('BRIDGE_WORKER_COST cpu_pct_avg=%s", 1)),
+            # D-19: a shell deixa de perguntar a janela -- o contador nunca zera.
+            ('M13 a shell nao pergunta a janela', 'E2',
+             lambda src: src.replace(
+                 '        if not hour_at or cost_watchdog.window_expired(now, hour_at):',
+                 '        if False:', 1)),
             ('M7 o handler journaliza a CADA tick (sem intervalo)', 'D4',
              lambda src: src.replace('        if now - getattr(self, \'_cost_logged_at\', 0.0) '
                                      '>= self.COST_LOG_INTERVAL_S:',

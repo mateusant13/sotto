@@ -56,6 +56,37 @@ FLOOR_S = 600.0
 #: arranja nada -- e' o codigo que esta' caro. O vigia para e diz por que.
 MAX_PER_HOUR = 3
 
+#: A JANELA do tecto, em segundos. O `MAX_PER_HOUR` acima diz "por hora", e ate
+#: 2026-11-12 o contador do chamador NUNCA era zerado: o tecto era de 3 reinicios
+#: pela VIDA do processo da shell (o autostart a mantem de pe o dia inteiro) e a
+#: linha de recusa continuava a dizer `tecto-por-hora`. Medido por leitura: o
+#: unico incremento vive no `on_worker_cost`, e um `grep` de
+#: `_cost_restarts_hour *= *0` em `app/` nao encontrava NADA.
+WINDOW_S = 3600.0
+
+
+def window_expired(now, window_started_at):
+    """A janela do tecto virou? PURA, para a regra ter um dono so'.
+
+    `0.0` (nunca iniciada) NAO esta' expirada: quem chama abre a janela no
+    primeiro tick. Um relogio que anda para tras (monotonico nao anda, mas o
+    argumento e' um numero) devolve False em vez de True: reabrir a janela por
+    um valor estranho devolveria o tecto inteiro sem uma hora ter passado. Um
+    inicio NEGATIVO, porem, e' passado: conta como expirada.
+    """
+    try:
+        started = float(window_started_at)
+        moment = float(now)
+    except (TypeError, ValueError):
+        return False
+    if started == 0.0 or moment <= started:
+        # 0.0 = "nunca iniciada": quem chama abre a janela no primeiro tick. Um
+        # inicio NEGATIVO e' um numero estranho a apontar para o passado -- e
+        # "nunca expira" seria a pior leitura, porque o tecto ficava preso pelo
+        # resto da vida do processo.
+        return False
+    return (moment - started) >= WINDOW_S
+
 
 def plan(fields, streak, now, last_restart_at, restarts_hour):
     """A decisao de reiniciar, como FUNCAO PURA.
