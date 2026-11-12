@@ -491,13 +491,13 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1439208,
+      "bytes": 1440857,
       "classes": 29,
-      "defs": 167,
+      "defs": 168,
       "except_pass": 64,
       "globals": 8,
-      "lines": 26560,
-      "max_func": 411,
+      "lines": 26592,
+      "max_func": 416,
       "max_func_name": "main"
     },
     "app/webview/space_swallow.py": {
