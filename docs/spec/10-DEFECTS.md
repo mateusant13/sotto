@@ -1004,6 +1004,75 @@ um sintoma observado.
 ---
 ---
 
+## D-23 — a legenda local do audio que o player pinta era descartada, e o documento dizia que nao
+
+**Onde.** `app/webview/sotto_webview.py` — `external_owner_refuses()` (a recusa) e
+`set_external_owner()` (a transicao de posse).
+
+**O que estava escrito.** O docstring da recusa e a linha de log diziam: *"a legenda local do audio
+que o player pinta vai para o historico e nao para o ecra"*. A frase e' tranquilizadora e e' **falsa**:
+
+```
+ANTES   on_worker_caption(text, meta)
+          if self.external_owner_refuses(source):     # player manda no ecra
+              self.external_suppressed += 1
+              log('ASR_PAINT_REFUSED ...')
+              return                                   # <- ANTES do emit_async
+        ...
+        self.emit_async(...)                           # o unico caminho ao painel
+```
+
+O painel e' o **unico escritor** de `history_append`. Recusar antes do `emit_async` significa que a
+linha nao vai ao ecra **e nao vai ao historico** — as duas metades, nao uma. O audio transcrito
+naquele intervalo (o microfone, com o YouTube a tocar) existe no modelo, existe no custo de CPU, e
+desaparece sem deixar rasto. Um utilizador que abrisse o historico depois do video concluiria que o
+Sotto nao ouviu nada — e o comentario do codigo concordaria com ele por escrito.
+
+```
+DEPOIS  o docstring e a linha de log dizem o que o codigo faz:
+        "e descartada: nao vai ao ecra nem ao historico (D-23)"
+```
+
+**A segunda metade, do mesmo sitio.** O contador por episodio (`_asr_suppressed_episode`) era zerado
+**antes** de ser lido na transicao de posse de volta:
+
+```
+ANTES   self.external_owner = owner
+        if owner == 'local':
+            self._asr_suppressed_episode = 0        # zera primeiro
+        log('EXTERNAL_OWNER ... suppressed_episode=%d' % getattr(self, '_asr_suppressed_episode', 0))
+        #                                   ^ le o zero que acabou de escrever
+
+DEPOIS  _lost = getattr(self, '_asr_suppressed_episode', 0)   # le ANTES
+        self.external_owner = owner
+        if owner == 'local':
+            self._asr_suppressed_episode = 0
+        log('EXTERNAL_OWNER ... suppressed_episode=%d suppressed_total=%d' % (_lost, total))
+```
+
+Sem essa ordem, o unico numero que responderia "quantas linhas este video me custou" saia sempre `0`
+— uma perda de episodio inteira com aparencia de episodio limpo. E' a mesma classe do
+`price a medicao no sitio errado`: o instrumento existe e imprime o valor por omissao.
+
+**Gravidade.** ALTO. Nao e' cosmetico: e' perda silenciosa de transcricao com o documento a afirmar o
+contrario, e o contador que a devia tornar legivel media zero por construcao.
+
+**Instrumento.** `_main/external-owner-oracle.py` — 7 arms sobre o codigo REAL (extraido por `ast` do
+shell que embarca), incluindo `A4-A-RECUSA-NAO-ESCREVE-HISTORICO` (`emit_async no ramo de recusa=0`),
+`A5-UMA-LINHA-POR-TRANSICAO`, `A6-EPISODIO-CONTADO` (`episodios ditos=[2, 3] com total=5`) e
+`A7-UM-AVISO-POR-EPISODIO`. Medido: `VERDICT: PASS (7/7 arms)`; `--neg-arm` **3/3** mutantes
+apanhados (`M2-aviso-sempre` -> A7 vermelha, `M3-episodio-e-total` -> A6 vermelha), rc=1.
+Entrou na bateria como par `external-owner` + `red-as-expected-external-owner`.
+
+**Estado.** `corrigido, NAO verificado` — o processo do dono corre codigo anterior; a verificacao
+exige o proximo arranque dele.
+
+**O que continua aberto, e nao e' este defeito.** Descartar a linha e' a politica **certa** (o dono
+pediu que a legenda do player mande no ecra); o que estava errado era o silencio sobre a perda e o
+numero que nao distinguia zero de cinco. Se o historico deve receber a linha recusada com a marca
+`ctx=player-owns-screen` em vez de a perder e' uma decisao de **produto**, registada em
+`11-TARGET.md` §J4 — nao uma correcao a fazer de carona neste ledger.
+
 ## O que este ledger NÃO afirma
 
 - Não afirma que o produto está quebrado fora do que está medido acima.

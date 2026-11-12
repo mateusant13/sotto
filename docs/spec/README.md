@@ -24,6 +24,7 @@ behavior of sotto. and how all connects with ux and usage. put into words the be
 | `10-DEFECTS.md` | o registo de defeitos: desenho de base, antes/depois, evidência, gravidade |
 | `11-TARGET.md` | o comportamento final que EU escolho, jornada a jornada |
 | `12-GLOSSARY.md` | cada tag do log, cada ficheiro de estado, cada termo |
+| `13-MODULES.md` | **um bloco por ficheiro de produto**: o que garante, quem o chama, o que escreve, o que o utilizador vê quando falha (o catálogo que responde pela população) |
 | `STATUS.md` | o registo vivo: o que já está escrito, o que falta, o que foi medido |
 
 ## Os três graus de evidência (usados em todos os ficheiros)
@@ -62,23 +63,28 @@ Três ficheiros dentro de `worker/` **não são produto**: `_prefix_audioflag.py
 worker usadas como mutantes por oráculos. Os dois últimos não estavam no git e entravam no índice em
 2026-11-11 (`10-DEFECTS.md` §D-01 — `git ls-files` devolve os três desde então).
 
-## O selo: 15 ficheiros, 3 865 linhas, 1 174 citações
+## O selo: 16 ficheiros, 5 323 linhas, 1 642 citações
 
-Medido em 2026-11-12 com `wc -l` e `grep -o '\[CODE\]'` ficheiro a ficheiro:
+Medido em 2026-11-12 com um `os.walk`/`len(splitlines())` e `grep -o '\[TAG\]'` ficheiro a
+ficheiro, depois de entrar o `13-MODULES.md` (47 blocos, um por módulo de produto, mais as três
+classes que são dados):
 
 | o quê | número |
 |---|---|
-| ficheiros deste directorio | 15 (13 documentos + este índice + `STATUS.md`) |
-| linhas | 3 865 |
-| `[CODE]` | 1 111 |
-| `[MEASURED]` | 173 |
+| ficheiros deste directorio | 16 (14 documentos + este índice + `STATUS.md`) |
+| linhas | 5 323 |
+| `[CODE]` | 1 329 |
+| `[MEASURED]` | 175 |
 | `[INFERENCE]` | 63 |
-| `[UNKNOWN]` | 70 |
-| citações `ficheiro:linha` resolvidas | **1 174**, 0 sem ficheiro, 0 fora de alcance |
+| `[UNKNOWN]` | 71 |
+| citações `ficheiro:linha` resolvidas | **1 442**, 0 sem ficheiro, 0 fora de alcance |
 
-O portão é `_main/spec-citations-oracle.py`, ligado à bateria pelo par
-`spec-citations` + `red-as-expected-spec-citations`: ele abre cada ficheiro citado, resolve cada
-linha e recusa uma citação a um ficheiro que não existe ou a uma linha além do fim.
+Dois portões, e eles julgam metades diferentes: `_main/spec-citations-oracle.py` abre cada
+ficheiro citado, resolve cada linha e recusa uma citação a um ficheiro que não existe ou a uma
+linha além do fim; `_main/spec-coverage-oracle.py` faz a pergunta simétrica — percorre os ficheiros
+de PRODUTO e recusa um módulo que documento nenhum nomeie (`115` módulos, `0` ausentes, `5`
+casados só pelo nome, que a linha `NOME-APENAS` diz). Os dois estão na bateria
+(`spec-citations`, `spec-coverage` e os respectivos `red-as-expected-*`).
 
 **O que o portão NÃO prova.** Que a linha citada diga o que a frase diz. Duas frases passaram o
 portão e estavam erradas — o escritor de `_main/webview-worker-tracebacks.log` e o papel de

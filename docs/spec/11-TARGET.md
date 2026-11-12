@@ -160,6 +160,15 @@ linha; exportar não perde nenhuma.
 **Instrumento.** `_main/history-route-oracle.py` (duas populações: stream curto e longo),
 `_main/history-write-oracle.py`, `_main/history-context-oracle.py`.
 
+**A linha recusada não se perde em silêncio (decisão, D-23).** Enquanto o player manda no ecrã, a
+linha do microfone não vai ao ecrã — isso é a política que o dono pediu. O que **eu escolho** para o
+futuro é que ela também não desapareça: ela entra no arquivo com a proveniência que a explica
+(`source=device:mic`, `reason=player-owns-screen`), e o painel não a mostra. O arquivo é o registo do
+que o Sotto **ouviu**; o ecrã é o que ele **mostra**, e são perguntas diferentes. Até essa decisão
+aterrar, o compromisso é o menor: a linha descartada é CONTADA por episódio
+(`EXTERNAL_OWNER ... suppressed_episode=`), e o documento diz que foi descartada em vez de afirmar
+que foi guardada.
+
 **Não se promete:** pontuação terminal inventada ao vivo. O `?` e o `!` não são inventados; o ponto
 final vem da prosa e da pausa medida, e só na LEITURA do arquivo.
 

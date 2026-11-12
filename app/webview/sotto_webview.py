@@ -19602,14 +19602,23 @@ class SottoShell:
         previous = getattr(self, 'external_owner', 'local')
         if owner == previous:
             return previous
+        # O CONTADOR DO EPISODIO QUE ACABOU e' lido ANTES de o zerar: medido pelo
+        # `_main/external-owner-oracle.py` (arm A6), a primeira versao zerava primeiro
+        # e a linha de saida dizia `suppressed_episode=0` -- a perda do episodio
+        # inteiro, que e' exactamente o numero que esta linha existe para dizer.
+        _lost = getattr(self, '_asr_suppressed_episode', 0)
         self.external_owner = owner
+        if owner == 'local':
+            self._asr_suppressed_episode = 0
         self.external_owner_episode = getattr(self, 'external_owner_episode', 0) + 1
         self._asr_owner_episode = False
         log(f'EXTERNAL_OWNER owner={owner} previous={previous} '
             f'reason={reason or "-"} '
             f'had_line={"n/a" if had_line is None else str(bool(had_line)).lower()} '
             f'episode={self.external_owner_episode} '
-            f'active={str(bool(getattr(self, "external_captions_active", False))).lower()}')
+            f'active={str(bool(getattr(self, "external_captions_active", False))).lower()} '
+            f'suppressed_episode={_lost if owner == "local" else 0} '
+            f'suppressed_total={getattr(self, "external_suppressed", 0)}')
         return previous
 
     def external_owner_refuses(self, source=''):
@@ -19624,6 +19633,14 @@ class SottoShell:
         A RECUSA E' POR EPISODIO, nao por legenda: um video com faixa cala o ASR
         durante minutos, e uma linha por legenda seria o ruido que o dono ja'
         pagou uma vez. O contador (`external_suppressed`) continua exacto.
+
+        O QUE A LINHA RECUSADA SOFRE, medido (2026-11-12, `10-DEFECTS.md` §D-23):
+        ela NAO vai ao ecra **e NAO vai ao historico**. Este docstring dizia "vai
+        para o historico e nao para o ecra" -- e era falso: `on_worker_caption`
+        devolve ANTES do `emit_async`, e o painel, unico escritor de
+        `history_append`, nunca a ve. O contador por episodio sai agora na
+        transicao de volta (`EXTERNAL_OWNER ... suppressed_episode=`), para que a
+        perda seja legivel e datavel em vez de diluida num total.
         """
         if str(source or '').startswith('external:'):
             return False
@@ -19634,8 +19651,8 @@ class SottoShell:
             log(f'ASR_PAINT_REFUSED owner=player source={source or "-"} '
                 f'episode={getattr(self, "external_owner_episode", 0)} '
                 f'suppressed={getattr(self, "external_suppressed", 0) + 1} '
-                f'\u2014 a legenda local do audio que o player pinta vai para o '
-                f'historico e nao para o ecra')
+                f'\u2014 a legenda local do audio que o player pinta e descartada: '
+                f'nao vai ao ecra nem ao historico (D-23)')
         return True
 
     def on_worker_caption(self, text, meta):
@@ -19670,6 +19687,7 @@ class SottoShell:
             source = str(meta.get('source') or '')
         if self.external_owner_refuses(source):
             self.external_suppressed += 1
+            self._asr_suppressed_episode = getattr(self, '_asr_suppressed_episode', 0) + 1
             if self.external_suppressed in (1, 100, 1000):
                 log(f'EXTERNAL_CAPTIONS_ASR_SUPPRESSED count={self.external_suppressed}')
             return
