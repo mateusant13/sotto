@@ -20,8 +20,8 @@ funcionar pela mão do dono).
 | D-02 | o arranque obedecia a `caption-wanted.json` e um `false` gravado suprimia a legenda em TODA a abertura seguinte | CRÍTICO | **corrigido, NÃO verificado** — o processo do dono corre código anterior |
 | D-03 | `ast.get_source_segment` re-parte o ficheiro inteiro por chamada: um passo novo custou 143,9 s | MÉDIO | corrigido no oráculo desta campanha; os outros sítios por medir |
 | D-04 | a carga do modelo a frio custa 5,2–21,0 s no log vivo, e a primeira legenda paga-a | ALTO | aberto — o motor quente existe; `UNMEASURED` no processo dele |
-| D-05 | o portão do relógio da bateria não dá veredicto: a política da ultima corrida não bate com o baseline | MÉDIO | aberto, com o comando que o próprio portão pede |
-| D-06 | a bateria mede 2 585,7 s em 449 passos, contra um alvo declarado de 60 s | MÉDIO | aberto, com a cauda nomeada |
+| D-05 | o portão do relógio julgava 36 de 449 passos quando invocado sem `--policy`, e o RED descrevia a invocação | MÉDIO | **corrigido** — recusa `CANNOT-MEASURE` (rc 2) antes de escrever; 6 arms; neg-arm 6/6 |
+| D-06 | a bateria presa a `cap40` soma 2 470,3 s em 413 passos (o portão julga 2 293,3 s), contra um alvo declarado de 60 s | MÉDIO | aberto, com a cauda nomeada |
 
 ---
 
@@ -164,53 +164,117 @@ medido na campanha do motor quente, o attach custa **0,97 s** contra 41 s de car
 O que fecha: uma sessão nova em que `WARM_LOAD_MS` aparece antes do primeiro `Alt+C`, e a primeira
 linha chega dentro de 3 000 ms do primeiro áudio (`_main/time-to-first-caption-oracle.py`).
 
-## D-05 — o portão do relógio da bateria não dá veredicto
+## D-05 — o portão do relógio tem veredicto, e eu li-o mal
+
+**Antes (a leitura errada, minha).** A primeira invocação que fiz foi a nua:
 
 ```
-$ python _main/battery-budget-oracle.py | grep -E "BATTERY-BUDGET (VERDICT|steps)|baseline total|RED politica"
-BATTERY-BUDGET steps=36 total=115.4s target=60s gap=0.0s
-  baseline total=2731.1s x 1.05 -> ceiling=2867.7s
-  RED politica de largada diferente do baseline (baseline='cap40', corrida=None) -- re-medir o baseline com
-  `--baseline --policy None --rebase-policy <razao>`
+$ python _main/battery-budget-oracle.py
+BATTERY-BUDGET policy=None: 413 passo(s) de OUTRA politica ficam de fora: ...
 BATTERY-BUDGET VERDICT RED -- steps=36 total=115.4s TARGET MET
+  RED politica de largada diferente do baseline (baseline='cap40', corrida=None) -- re-medir ...
 ```
 
-**Leitura.** Não é uma regressão de passo: é o portão a recusar-se a comparar duas corridas de
-políticas diferentes (uma presa a `cap40`, a outra sem política registada). Ele está a fazer o
-trabalho certo — e o resultado é que **hoje não existe veredicto de relógio**, e um passo saltado
-não é um portão que passou.
+E eu escrevi "hoje não existe veredicto de relógio". **Falso.** A bateria nunca corre o oráculo nu: o
+`.cmd` passa a política da própria corrida —
 
-**Estado.** aberto. O que fecha: correr o comando que o próprio portão imprime, com a razão escrita,
-e ver o `VERDICT` verde sem `TARGET MET` no mesmo veredicto RED. A arm I4 mostra por que isso importa:
-a regra antiga (mediana) reprovava um caso que a de hoje aprova — `mediana=65.696 (RED) vs
-menor=25.771 (GREEN)`.
+```
+$ grep -n "CAGE_POLICY" _main/_audit-verify-all.cmd | head -2
+126:if defined SOTTO_BATTERY_CAGED (set "CAGE_POLICY=cap40") else (set "CAGE_POLICY=none")
+3747:  ... python _main\battery-budget-oracle.py --policy "!CAGE_POLICY!"
+```
+
+Com a política que a corrida de facto usa:
+
+```
+$ python _main/battery-budget-oracle.py --policy cap40
+BATTERY-BUDGET VERDICT RATCHET-OK -- steps=413 total=2293.3s TARGET NOT MET (gap 2233.3s de 60s)
+```
+
+**O que fica de pé, e é o defeito.** Um `--policy` omitido não falha em voz alta: ele **redefine a
+população** (413 passos saem, 36 ficam) e comparara os 36 com um baseline de outra política, para
+depois dar RED por uma razão que descreve a invocação e não a árvore. Um leitor apressado — eu —
+conclui "o portão está quebrado". A cura óbvia é o oráculo **recusar** sem `--policy` quando o
+baseline traz uma (`CANNOT-MEASURE: invocação sem política`), em vez de julgar.
+
+**A cura, e ela é uma recusa.** Uma invocação que **omite** `--policy` sobre um baseline que tem
+uma não devolve mais um veredicto: devolve `CANNOT-MEASURE` com rc 2, antes de qualquer escrita —
+`smooth()` grava o histórico do passo, e uma invocação incompleta que reescrevesse a série seria pior
+que o RED falso. `--policy none` continua a ser uma **escolha declarada** e não recusa; um baseline
+sem política também não.
+
+```
+$ python _main/battery-budget-oracle.py
+BATTERY-BUDGET CANNOT-MEASURE -- invocacao sem `--policy`: o baseline foi medido sob 'cap40' e sem a
+bandeira a populacao comparada nao e a dele. Passe --policy 'cap40' ... ou --policy none ...
+rc=2
+
+$ python _main/battery-budget-oracle.py --policy cap40 | grep -E "VERDICT|ARM (ok|RED) R"
+  ARM ok   R1 invocacao nua sobre baseline cap40 RECUSA (rc 2) e nomeia a bandeira
+  ARM ok   R2 a MESMA invocacao com --policy cap40 passa
+  ARM ok   R3 `--policy none` e uma escolha DECLARADA e passa
+  ARM ok   R4 baseline SEM politica nao recusa invocacao nua
+  ARM ok   R4b baseline declarado `none` RECUSA a nua e nomeia `none`
+  ARM ok   R5 outra bandeira qualquer nao substitui --policy
+BATTERY-BUDGET VERDICT RATCHET-OK -- steps=413 total=2293.3s TARGET NOT MET (gap 2233.3s de 60s)
+
+$ python _main/battery-budget-oracle.py --neg-arm | tail -1
+NEG-ARM: PASS (6/6 mutantes apanhados; juiz antes: True)          rc=1
+```
+
+Os seis braços medem os **dois sentidos**: uma recusa que nunca deixa passar é tão cega quanto a que
+nunca recusa, e R2/R3 são o lado que prova que ela não engoliu a medição legítima.
+
+**Estado.** corrigido no oráculo desta campanha (`_main/battery-budget-oracle.py`;
+`policy_refusal` pura, recusa antes da escrita, `refusal_arms` na auto-prova). O veredicto real da
+árvore é `RATCHET-OK` — 2 293,3 s em 413 passos, alvo de 60 s não atingido (D-06).
 
 ## D-06 — o custo da bateria
+
+Duas populações, e é preciso dizer qual é qual — a soma bruta e a que o portão julga:
 
 ```
 $ python - <<'PY'
 import json, io
 d = json.load(io.open('_cache/battery-steps.json', encoding='utf-8'))['steps']
-rows = sorted(((v.get('elapsed_s') or 0), k) for k, v in d.items())
-print('n=%d total=%.1fs' % (len(rows), sum(r[0] for r in rows)))
-for s, k in rows[::-1][:6]: print('%7.1fs  %s' % (s, k))
+rows = [(v.get('elapsed_s') or 0, k) for k, v in d.items()]
+cap  = [r for r in rows if d[r[1]].get('policy') == 'cap40']
+print('all   n=%d total=%.1fs' % (len(rows), sum(r[0] for r in rows)))
+print('cap40 n=%d total=%.1fs' % (len(cap),  sum(r[0] for r in cap)))
 PY
-n=449 total=2585.7s
+all   n=449 total=2585.7s
+cap40 n=413 total=2470.3s
+
+$ python _main/battery-budget-oracle.py --policy cap40
+BATTERY-BUDGET VERDICT RATCHET-OK -- steps=413 total=2293.3s TARGET NOT MET (gap 2233.3s de 60s)
+```
+
+A diferença entre **2 470,3 s** (soma crua das 413 linhas presas a `cap40`) e **2 293,3 s** (o que o
+portão julga) é a regra de censura do próprio portão, que descarta um corte e uma medição cujo custo
+é de outra fase. Os dois números são verdadeiros e medem coisas diferentes: um é o que a máquina
+gastou, o outro o que o portão atribui aos passos.
+
+A cauda, na população presa:
+
+```
   116.4s  red-as-expected-gaming-hotkey
    98.2s  red-as-expected-youtube-cdp-source
    92.2s  red-as-expected-panel-themes
    78.9s  red-as-expected-warm-engine
    60.7s  headphone-cut
    59.8s  red-as-expected-panel-header-oracle
+   59.1s  red-as-expected-window-drag
+   52.6s  red-as-expected-ctrlspace-swallow
 ```
 
-**Gravidade MÉDIO, e não é cosmética:** o alvo declarado da casa é 60 s a quente; a soma medida é
-**2 585,7 s** — 43× o alvo — e seis passos fazem **506 s** dela. A cauda é quase toda
-`red-as-expected-*`, ou seja braços NEGATIVOS que copiam a árvore ou abrem dispositivos reais.
+**Gravidade MÉDIO, e não é cosmética:** seis passos fazem **506,2 s = 20 %** do total, e cinco deles
+são braços NEGATIVOS `red-as-expected-*` que copiam a árvore ou abrem dispositivos reais. O alvo
+declarado da casa é 60 s a quente; a soma é **38×** o alvo (2 293,3 / 60).
 
 **Estado.** aberto. O que fecha: cortar a cópia por braço (a casa já fez isso no
 `panel-hidden-at-startup`: cópia + renderização + referência **uma vez**, mutações por snapshot) e
-voltar a medir com `battery-budget --baseline --rebase-policy <razao>`.
+voltar a medir com `battery-budget --baseline --rebase-policy <razao>`, com o número de ANTES
+(2 293,3 s) ao lado.
 
 ---
 

@@ -2502,6 +2502,20 @@ if exist _main\_gitattributes-verify.py (
   call :step gitattributes-verify 0 "_main\_gitattributes-verify.py;_main\_make-gitattributes.py;.gitattributes" "%OUT%\gitattributes-verify.log" python _main\_gitattributes-verify.py
   call :record gitattributes-verify !STEP_RC!
 ) else ( call :record gitattributes-verify MISSING )
+REM O D-01 DO LEDGER (`docs/spec/10-DEFECTS.md`) FECHADO POR UM PORTAO, e nao por um `git add -f`
+REM que se desfaz no proximo `git rm --cached`: os TRES mutantes congelados que oraculos EXECUTAM
+REM (`agc_order_live.py:37`, `verdict-order-oracle.py:71`) tem de estar no indice E presos a
+REM `text eol=crlf`. MEDIDO 2026-11-12 antes do passo: os tres estavam no indice e o terceiro
+REM devia o pino a um GLOB (`worker/runs/*.py`), nao a uma linha literal -- a primeira versao do
+REM leitor comparava o caminho exacto e acusou um sitio CORRECTO (a arm N5 existe para isso).
+if exist _main\mutant-tracking-oracle.py (
+  call :step mutant-tracking 0 "_main\mutant-tracking-oracle.py;.gitattributes;worker\_prefix_audioflag.py;worker\_sotto_worker_agcinert.py;worker\runs\_verdict-order-mutant.py" "%OUT%\mutant-tracking.log" python _main\mutant-tracking-oracle.py
+  call :record mutant-tracking !STEP_RC!
+) else ( call :record mutant-tracking MISSING )
+if exist _main\mutant-tracking-oracle.py (
+  call :step red-as-expected-mutant-tracking 1 "_main\mutant-tracking-oracle.py;.gitattributes" "%OUT%\mutant-tracking-neg.log" python _main\mutant-tracking-oracle.py --neg-arm
+  call :expectred red-as-expected-mutant-tracking !STEP_RC! "%OUT%\mutant-tracking-neg.log" "NEG-ARM: PASS -- 5/5"
+) else ( call :expectred red-as-expected-mutant-tracking MISSING "%OUT%\mutant-tracking-neg.log" "NEG-ARM: PASS -- 5/5" )
 REM ---------------------------------------------------------------------------
 REM O PORTAO DOS PINOS DO AGENTS.md. O proprio AGENTS.md diz (linha ~767):
 REM "It is now in the battery ... a gate that is not in the battery is a

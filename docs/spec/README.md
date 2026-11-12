@@ -62,6 +62,31 @@ Três ficheiros dentro de `worker/` **não são produto**: `_prefix_audioflag.py
 worker usadas como mutantes por oráculos. Os dois últimos não estavam no git e entravam no índice em
 2026-11-11 (`10-DEFECTS.md` §D-01 — `git ls-files` devolve os três desde então).
 
+## O selo: 15 ficheiros, 3 827 linhas, 1 173 citações
+
+Medido em 2026-11-12 com `wc -l` e `grep -o '\[CODE\]'` ficheiro a ficheiro:
+
+| o quê | número |
+|---|---|
+| ficheiros deste directorio | 15 (13 documentos + este índice + `STATUS.md`) |
+| linhas | 3 827 |
+| `[CODE]` | 1 111 |
+| `[MEASURED]` | 173 |
+| `[INFERENCE]` | 63 |
+| `[UNKNOWN]` | 70 |
+| citações `ficheiro:linha` resolvidas | **1 173**, 0 sem ficheiro, 0 fora de alcance |
+
+O portão é `_main/spec-citations-oracle.py`, ligado à bateria pelo par
+`spec-citations` + `red-as-expected-spec-citations`: ele abre cada ficheiro citado, resolve cada
+linha e recusa uma citação a um ficheiro que não existe ou a uma linha além do fim.
+
+**O que o portão NÃO prova.** Que a linha citada diga o que a frase diz. Duas frases passaram o
+portão e estavam erradas — o escritor de `_main/webview-worker-tracebacks.log` e o papel de
+`history/audio/` — e as duas foram corrigidas no `01-ARCHITECTURE.md` a partir do código, com o
+`grep` ao lado (`STATUS.md` §"Duas contradições").
+
+
+
 ## A regra que este directorio respeita
 
 Este projecto já paga caro por documentação que descreve um estado que já não existe. Por isso:

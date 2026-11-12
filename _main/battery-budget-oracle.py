@@ -19,9 +19,24 @@ DUAS METADES, e a diferenca importa:
     sem ninguem decidir e' regressao.
 
 Uso:
-    python _main\\battery-budget-oracle.py            -> ratchet: rc 0 verde, 1 RED
-    python _main\\battery-budget-oracle.py --report   -> a tabela, nunca muda rc
+    python _main\\battery-budget-oracle.py --policy cap40   -> ratchet: rc 0 verde, 1 RED, 2 recusa
+    python _main\\battery-budget-oracle.py --report --policy cap40   -> a tabela, nunca muda rc
     python _main\\battery-budget-oracle.py --neg-arm  -> muta uma LEITURA e exige o RED
+
+A POLITICA E' OBRIGATORIA QUANDO O BASELINE TEM UMA (defeito medido 2026-11-11, D-05 do
+ledger da especificacao). Uma invocacao nua (`--policy` omitido) NAO falhava: redefinia a
+populacao (413 dos 449 passos presos a `cap40` caiam de fora), comparava os 36 restantes com
+um baseline de outra politica e devolvia
+
+    BATTERY-BUDGET VERDICT RED -- steps=36 total=115.4s TARGET MET
+      RED politica de largada diferente do baseline (baseline='cap40', corrida=None)
+
+-- um RED que descreve a INVOCACAO e nao a arvore, e que se le como "o portao esta' quebrado".
+Com a bandeira que a bateria passa (`--policy "!CAGE_POLICY!"`, `_audit-verify-all.cmd:3747`):
+
+    BATTERY-BUDGET VERDICT RATCHET-OK -- steps=413 total=2293.3s TARGET NOT MET (gap 2233.3s de 60s)
+
+`--policy none` continua a ser uma escolha DECLARADA (medir sem tecto), e por isso nao recusa.
 """
 from __future__ import annotations
 
@@ -874,6 +889,54 @@ def _policy_arg(argv):
     return None
 
 
+def _policy_given(argv):
+    """A bandeira foi DITA? `--policy none` e' uma escolha; omitir nao e'."""
+    return any(a == '--policy' for a in argv)
+
+
+def policy_refusal(argv, base):
+    """(recusar, texto) -- puro, para o braco poder julga-lo sem largar nada.
+
+    Uma invocacao que OMITE `--policy` sobre um baseline que tem uma compara a
+    populacao errada e chama a isso um veredicto sobre a arvore. Recusar com
+    `CANNOT-MEASURE` (rc 2) e' a resposta honesta: nao houve medicao, houve uma
+    invocacao incompleta.
+    """
+    wanted = (base or {}).get('policy') or None
+    if not wanted or _policy_given(argv):
+        return False, ''
+    return True, ('BATTERY-BUDGET CANNOT-MEASURE -- invocacao sem `--policy`: o baseline '
+                  'foi medido sob %r e sem a bandeira a populacao comparada nao e a dele. '
+                  'Passe --policy %r (a bateria faz isso por `CAGE_POLICY`), ou '
+                  '--policy none para uma medicao sem tecto DECLARADA.' % (wanted, wanted))
+
+
+def refusal_arms():
+    """Os dois sentidos, porque uma recusa que nunca deixa passar e' tao cega quanto
+    uma que nunca recusa."""
+    arms = []
+
+    def arm(name, ok, detail):
+        arms.append({'arm': name, 'ok': bool(ok), 'detail': detail})
+
+    base = {'policy': 'cap40'}
+    deny, text = policy_refusal([], base)
+    arm('R1 invocacao nua sobre baseline cap40 RECUSA (rc 2) e nomeia a bandeira',
+        deny and '--policy' in text, 'deny=%s texto=%r' % (deny, text[:60]))
+    allow, _ = policy_refusal(['--policy', 'cap40'], base)
+    arm('R2 a MESMA invocacao com --policy cap40 passa', not allow, 'deny=%s' % allow)
+    allow, _ = policy_refusal(['--policy', 'none'], base)
+    arm('R3 `--policy none` e uma escolha DECLARADA e passa', not allow, 'deny=%s' % allow)
+    deny, _ = policy_refusal([], {})
+    arm('R4 baseline SEM politica nao recusa invocacao nua', not deny, 'deny=%s' % deny)
+    deny, text = policy_refusal([], {'policy': 'none'})
+    arm('R4b baseline declarado `none` RECUSA a nua e nomeia `none`',
+        deny and "none" in text, 'deny=%s' % deny)
+    deny, _ = policy_refusal(['--report'], base)
+    arm('R5 outra bandeira qualquer nao substitui --policy', deny, 'deny=%s' % deny)
+    return arms
+
+
 def main(argv):
     if '--neg-arm' in argv:
         return neg_arm()
@@ -947,6 +1010,12 @@ def main(argv):
         return 2
     rows = read_steps(CACHE)
     policy = _policy_arg(argv)
+    # A RECUSA VEM ANTES DE QUALQUER ESCRITA: o `smooth` grava o historico do passo,
+    # e uma invocacao incompleta que reescrevesse a serie seria pior que o RED falso.
+    refused, why_refused = policy_refusal(argv, load_baseline())
+    if refused:
+        print(why_refused)
+        return 2
     history = load_history()
     rows = smooth(rows, history, policy, deadline_s=deadline())
     save_history(history)
@@ -972,7 +1041,7 @@ def main(argv):
     report(measured, base, gap)
     for line in why:
         print('  RED', line)
-    arms = judge_arms() + smooth_arms() + smooth_idempotent_arms() + rebase_arms()
+    arms = judge_arms() + smooth_arms() + smooth_idempotent_arms() + rebase_arms() + refusal_arms()
     bad_arms = [a for a in arms if not a['ok']]
     for a in arms:
         print('  ARM %s %s -- %s' % ('ok  ' if a['ok'] else 'RED ', a['arm'], a['detail']))

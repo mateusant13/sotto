@@ -7,10 +7,10 @@ e foi lida nesta campanha (2026-11-11), não herdada de um documento antigo.
 
 ```
 explorer.exe (autostart no logon, ou duplo-clique do dono)
-└── cmd.exe   app/webview/run.cmd                            [321 linhas]
-    ├── pythonw.exe ... --check-args <flags>     PRE-FLIGHT, começa NADA   (run.cmd:236)
-    ├── start "" pythonw.exe ... --log ... --ready-file ...   A APP        (run.cmd:311)
-    └── pythonw.exe ... --wait-ready <ficheiro>  ESPERA limitada, rc=4 = HANG (run.cmd:316)
+└── cmd.exe   app/webview/run.cmd                            [320 linhas]
+    ├── pythonw.exe ... --check-args <flags>     PRE-FLIGHT, começa NADA   (run.cmd:252)
+    ├── start "" pythonw.exe ... --log ... --ready-file ...   A APP        (run.cmd:302,308)
+    └── pythonw.exe ... --wait-ready <ficheiro>  ESPERA limitada, rc=4 = HANG (run.cmd:312)
 
 pythonw.exe sotto_webview.py        A SHELL — o processo que o dono vê
 ├── python.exe -u worker/sotto_worker.py      O WORKER — outro processo, BELOW_NORMAL
@@ -26,7 +26,7 @@ quando a app nasce, e a app fica sem pai de consola — é o que permite ao dono
 matar o Sotto.
 
 **A shell é GUI-subsystem (`pythonw.exe`), e por isso não tem stdout.** Medido e escrito no próprio
-`run.cmd:60-66`: `Start-Process pythonw` dá `stdout=None stderr=None GetConsoleWindow()=0`. É a
+`run.cmd:51-57`: `Start-Process pythonw` dá `stdout=None stderr=None GetConsoleWindow()=0`. É a
 razão pela qual o `--log` existe e o recibo de uma corrida é o FICHEIRO, não o ecrã. `[CODE]`
 
 **Não há fallback para `python.exe`.** `run.cmd:166-170` recusa com `rc=3` quando não há
@@ -39,7 +39,7 @@ dono. `[CODE]`
 |---|---|---|
 | 1 | `SOTTO_REDUX_LIVE=1` e `SOTTO_REDUX_WHEN_HIDDEN=1` **se não estiverem definidos** | `run.cmd:113,140` |
 | 2 | resolve `pythonw.exe` a partir de `py -3 -c "import sys;print(sys.executable)"`; sem ele, `where python` | `run.cmd:150-152` |
-| 3 | flags que IMPRIMEM (`--help`, `--selftest`, `--memory`, `--dump-dom`, autostart) vão por `python.exe` — usam o terminal que já existe | `run.cmd:178-203` |
+| 3 | flags que IMPRIMEM (`--help`, `--selftest`, `--memory`, `--dump-dom`, autostart) vão por `python.exe` — usam o terminal que já existe | `run.cmd:178-197` |
 | 4 | `--check-args`: o parser DA SHELL valida a lista; nada arranca | `run.cmd:252` |
 | 5 | `start` da app, com perfil efémero do WebView2 e log por omissão `_main\webview-run.log` | `run.cmd:298-309` |
 | 6 | `--wait-ready`: espera limitada (30 s, `SOTTO_READY_BOUND`) que a app toque o ficheiro de prontidão; `rc=4` e a frase `HANG` se não tocar | `run.cmd:312-321` |
@@ -47,7 +47,7 @@ dono. `[CODE]`
 Duas consequências de desenho que valem a pena dizer em palavras:
 
 1. **Uma flag recusada deixou de responder "sucesso".** Antes de 2026-10-06 `run.cmd --bogus-flag`
-   saía `0` com zero bytes de log e zero processos (`run.cmd:226-239`). O pre-flight existe para
+   saía `0` com zero bytes de log e zero processos (`run.cmd:199-204`). O pre-flight existe para
    isso e valida contra o `argparse` da própria shell — uma tabela só.
 2. **O recibo é escrito por `python`, não por `cmd >>`.** Medido em 2026-10-12: com a app viva, o
    `>>` do `cmd` é recusado com erro 32 e os dois recibos do wrapper ficavam mudos exactamente
@@ -136,9 +136,9 @@ Como não há `stdin`, o controlo que não é "matar e relançar" viaja em disco
 | `_main/shell-relaunch.json` | `shell_relaunch` | `shell_relaunch` | contador de relançamentos na hora (tecto por hora) |
 | `_main/diar-watch.json` | shell | instrumentos | estado da cadeia de falantes |
 | `_main/webview-run.log` | shell, `run.cmd`, worker (via ponte) | todos | o recibo vivo |
-| `_main/webview-worker-tracebacks.log` | shell | instrumentos | a frase inteira da morte do worker (tecto 256 KB) |
+| `_main/webview-worker-tracebacks.log` | worker (`sotto_worker.py:9408`) `[CODE]` | instrumentos | a frase inteira da morte do worker (tecto 256 KB) `[CODE]` |
 | `history/<AAAA-MM-DD>/<HH>.md` | shell (`history_append`) | shell, painel, busca | a transcrição; linha `- [HH:MM:SS] texto` + comentário de proveniência |
-| `history/audio/` | shell | shell | áudio que ficou sem transcrição |
+| `history/audio/` | worker (`AudioRing`) `[CODE]` `worker/audio_ring.py:102` | instrumentos de replay `[CODE]` | anel de 12 h: TODO o áudio do tap em segmentos Opus de 16 kHz mono, mais `index.jsonl`/`lines.jsonl` (`07-HISTORY-STATE.md` §8.1) |
 | spool do lote | shell (`batch_queue`) | shell | `BatchQueue` em disco com `adopted.json` |
 
 `[INFERENCE]` Isto explica porque é que o projecto tem tantos oráculos que "executam o produtor e

@@ -676,6 +676,20 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 03:3x):** `_main\_audit-verify-all.cmd` = **363150 B**,
+ **4196 CRLF** / 0 bare LF, sha256 `5113ED107C34578563BBD5C22BC903B7CCB4E311CF9D2D966C73B339A9EC888F`.
+ (Mil quatrocentos e vinte e dois bytes e CATORZE linhas a mais do que o pin de 361728 B: o par
+ `mutant-tracking` + `red-as-expected-mutant-tracking`, que fecha o D-01 do ledger da especificacao
+ (`docs/spec/10-DEFECTS.md`) por um PORTAO em vez de um `git add -f` que o proximo `git rm --cached`
+desfaz. O portao exige tres coisas dos tres mutantes congelados que oraculos EXECUTAM
+(`worker/_prefix_audioflag.py`, `worker/_sotto_worker_agcinert.py`, `worker/runs/_verdict-order-mutant.py`):
+`git ls-files --error-unmatch` responde, o `.gitattributes` prega-os a `text eol=crlf`, e — a metade
+que impede o verde vazio — o leitor sabe RECUSAR (um caminho fora do indice e um `.gitattributes` sem
+a linha reprovam pelo mesmo codigo; `NEG-ARM: PASS -- 5/5`).
+E ele nasceu a acusar um sitio CORRECTO: a primeira versao comparava `parts[0] == path` e o terceiro
+mutante deve o pino a um GLOB (`worker/runs/*.py`, linha 635). Medido em vez de suposto: `tracked=True
+eol=crlf=False` num ficheiro que ESTA preso. A arm N5 existe para que essa versao nao volte — a mesma
+licao do censo de consolas, que acusa quem esta' certo e por isso perde a autoridade.)
 - **PIN do ficheiro (medido 2026-11-11, 23:5x):** `_main\_audit-verify-all.cmd` = **361728 B**,
   **4182 CRLF** / 0 bare LF, sha256 `EAD66EDF60F36F35B050D0202529324D5E754910B0DA402320030EC8757CD7C7`.
   (Mil trezentos e noventa e sete bytes e DEZASSETE linhas a mais do que o pin de 360331 B: o par
