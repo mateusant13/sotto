@@ -19,7 +19,7 @@ Cada linha diz o que está **escrito**, com que **evidência**, e o que **falta*
 | W7 histórico e estado | — | | |
 | W8 painéis e UX | — | | |
 | W9 modos de falha | — | | |
-| W10 ledger de defeitos | — | | |
+| W10 ledger de defeitos | **feito** (2026-11-11) | `10-DEFECTS.md`: 6 defeitos com ANTES/DEPOIS/comando. D-02 é a ordem p0 do dono; D-04 e D-05 são `aberto` e nomeiam o que os fecha | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json` verbatim; `battery-budget-oracle`; `_cache/battery-steps.json` |
 | W11 spec-alvo | — | | |
 | W12 selo | — | | |
 
@@ -28,6 +28,11 @@ Cada linha diz o que está **escrito**, com que **evidência**, e o que **falta*
 | id | uma linha | gravidade | estado |
 |---|---|---|---|
 | D-01 | dois mutantes congelados do worker não estavam no git (`.gitignore`: `worker/_sotto_worker_agcinert.py` e `worker/runs/`), e dois oráculos dependem deles (`_main/agc_order_live.py:37`, `_main/verdict-order-oracle.py:71`): num clone limpo esses dois não corriam | ALTA | **corrigido 2026-11-11** — `git ls-files` passa a devolver os dois (`git add -f`), `.gitignore` explica por que, e o `.gitattributes` foi REGENERADO (`python _main/_make-gitattributes.py --write`; `--verify` rc=0) para os prender ao EOL medido (`worker/*.py` e `worker/runs/*.py` = `text eol=crlf`) |
+| D-02 | o arranque obedecia a `_main/caption-wanted.json` e um `false` gravado suprimia a legenda em TODA a abertura seguinte | CRÍTICA | **corrigido, NÃO verificado** — `caption_wanted_at_start` (21 arms + neg-arm 4/4); o processo do dono corre código anterior (`live-code-freshness` = STALE) |
+| D-03 | `ast.get_source_segment` re-parte a fonte inteira por chamada: 143,9 s para extrair 264 funções | MÉDIA | corrigido no oráculo desta campanha (0,47 s); outros 38 ficheiros por medir |
+| D-04 | carga do modelo a frio 5,2–21,0 s no log vivo; a primeira legenda paga-a | ALTA | aberto; fecha com `WARM_LOAD_MS` + `time-to-first-caption` numa sessão dele |
+| D-05 | `battery-budget` recusa comparar políticas diferentes: hoje não há veredicto de relógio | MÉDIA | aberto, com o comando que o portão imprime |
+| D-06 | bateria: 2 585,7 s em 449 passos contra o alvo de 60 s; seis passos somam 506 s | MÉDIA | aberto; a cauda é `red-as-expected-*` a copiar a árvore |
 
 ## Números medidos nesta campanha
 
