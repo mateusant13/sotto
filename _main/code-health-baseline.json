@@ -311,23 +311,23 @@
       "max_func_name": "code_files"
     },
     "app/webview/cost_watchdog.py": {
-      "bytes": 6057,
+      "bytes": 7532,
       "classes": 0,
-      "defs": 2,
+      "defs": 3,
       "except_pass": 2,
       "globals": 0,
-      "lines": 122,
+      "lines": 153,
       "max_func": 49,
       "max_func_name": "plan"
     },
     "app/webview/exit_killer.py": {
-      "bytes": 6485,
+      "bytes": 7275,
       "classes": 1,
-      "defs": 7,
+      "defs": 8,
       "except_pass": 1,
       "globals": 0,
-      "lines": 168,
-      "max_func": 51,
+      "lines": 185,
+      "max_func": 42,
       "max_func_name": "run"
     },
     "app/webview/external_subs.py": {
@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1440857,
+      "bytes": 1449911,
       "classes": 29,
-      "defs": 168,
-      "except_pass": 64,
+      "defs": 169,
+      "except_pass": 65,
       "globals": 8,
-      "lines": 26592,
+      "lines": 26756,
       "max_func": 416,
       "max_func_name": "main"
     },
@@ -559,6 +559,16 @@
       "lines": 1445,
       "max_func": 63,
       "max_func_name": "main"
+    },
+    "app/webview/warm_evidence.py": {
+      "bytes": 4734,
+      "classes": 0,
+      "defs": 3,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 117,
+      "max_func": 39,
+      "max_func_name": "count_tag"
     },
     "app/webview/warm_pipe.py": {
       "bytes": 19967,
