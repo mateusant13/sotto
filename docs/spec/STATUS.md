@@ -22,7 +22,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | W7 histórico e estado | **feito** | `07-HISTORY-STATE.md` (348 l., 293/10/14/8): o formato da linha e o `ctx1=`, as duas portas de admissão, a fusão, a retenção de 180 dias, busca e export, o anel de 12 h, a fila de lote, e cada ficheiro de estado com escritor/leitor/contrato de falha | `sotto_webview.py:15688`; `history_context.py`; `worker/audio_ring.py`; `batch_queue.py` |
 | W8 painéis e UX | **feito** | `08-PANELS-UX.md` (346 l., 112/13/7/7): Alt+C por índice de pressão, Ctrl+Space (HOLD e o engolir do espaço), a caixa da legenda, os temas, o arrasto, as configurações e o que fica gravado | `hotkey_gesture.py`; `space_swallow.py`; `caption_drag.py`; `app/panel/**` |
 | W9 modos de falha | **feito** | `09-FAILURE-MODES.md` (350 l., 37/30/15/6): o que acontece quando cada peça falha — dispositivo, worker, página, WebView2, Chrome/CDP, disco, energia, rede — e o que o dono vê em cada caso | linha por modo com a tag do log e o oráculo que a lê |
-| W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (476 l.): 9 defeitos com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-05 corrigido nesta campanha | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
+| W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (531 l.): 10 defeitos com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-05 corrigido nesta campanha | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
 | W11 spec-alvo | **feito** | `11-TARGET.md` (205 l.): o comportamento que eu escolho, jornada a jornada, com o que "funciona" quer dizer em cada uma | deriva das jornadas de `00-PROMISE.md` |
 | W12 selo | **feito** | índice, referências cruzadas e o portão das citações (`_main/spec-citations-oracle.py`, 1 174 citações em 15 documentos, 0 sem ficheiro, 0 fora de alcance) | `SPEC-CITATIONS VERDICT: PASS` |
 
@@ -39,6 +39,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | D-07 | o número do painel no arranque circulou em QUATRO versões sem população, e o portão exigia a contradição | ALTA | **corrigido** — leitor puro `--read`, fixture do log vivo, neg-arm 3/3 |
 | D-08 | o censo do painel abria o próprio log com `'w'`: cada invocação apagava a evidência da anterior (4 073 B → 42 B) | ALTA | **corrigido** — append com rotação, `--read` não escreve |
 | D-09 | o menu do ícone re-armava as DUAS teclas: o `Ctrl+Space` ficava preso no fio velho (hook + `RegisterHotKey`), o novo pagava 1409 e o gate de recuo abria — o mesmo toque alternava duas vezes | CRÍTICA | **corrigido, NÃO verificado** — `arm_hotkey_role` recusa um segundo fio por papel; 19 arms + neg-arm 6/6 |
+| D-10 | o braço `7d` do `altc-gesture` exigia a lista literal do desligar e acusava produto CERTO desde 2026-11-11 (a bateria estava RED nesse passo, 97/98) | MÉDIA | **corrigido** — o braço julga o domínio; 5º mutante prova; 98/98, neg-arm 5/5 |
 
 ## Números medidos nesta campanha
 

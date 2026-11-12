@@ -25,6 +25,7 @@ funcionar pela mão do dono).
 | D-07 | o número do painel no arranque circulou em QUATRO versões sem população (braço/arranques/fase), e o portão exigia a contradição em vez de resolvê-la | ALTO | **corrigido** — leitor puro `--read`, fixture do único log vivo, portão re-escrito; neg-arm 3/3 |
 | D-08 | o censo do painel abria o próprio log com `'w'` a cada linha: **cada invocação apagava a evidência da anterior** (4 073 B → 42 B, medido) | ALTO | **corrigido** — append com rotação, `--read` imprime sem escrever |
 | D-09 | o menu do ícone re-armava **as duas** teclas: o `Ctrl+Space` do dono ficava preso no fio velho, o novo recebia 1409 e o gate de recuo abria — o mesmo toque alternava duas vezes | CRÍTICO | **corrigido, NÃO verificado** — `arm_hotkey_role` recusa um segundo fio por papel; oráculo + neg-arm 6/6 |
+| D-10 | o braço `7d` do `altc-gesture` exigia a lista literal de toques do desligar: quando a cura de 2026-11-11 acrescentou `_caption_status_stop`/`_caption_off_ack`, o passo passou a acusar produto CERTO e a bateria ficou RED | MÉDIA | **corrigido** — o braço julga o domínio (só legenda, e a janela tem de ser tocada); 5º mutante prova; 98/98, neg-arm 5/5 |
 
 ---
 
@@ -481,6 +482,42 @@ o handler chama `arm_hotkey_role` — o registro **real** de `Alt+C` era pago de
 
 **Estado.** corrigido, NÃO verificado: a cura está no ficheiro e o processo do dono carrega código
 anterior (lei do `STALE`). Fecha com uma abertura dele e o menu do ícone usado duas vezes.
+
+---
+## D-10 — um portão que acusa quem está certo
+
+**Antes.** O braço `7d` do `_main/altc-gesture-oracle.py` afirmava
+`watched.touched == ["show_caption_window(False)"]`. A cura de 2026-11-11 (commit `c51b104`: *OFF
+responde*) pôs `_caption_status_stop()` e `_caption_off_ack()` no mesmo ramo — as duas da **mesma**
+janela —, e o braço passou a falhar. O passo é `always` na bateria, logo a bateria ficou RED sobre
+produto certo.
+
+```
+$ python _main/altc-gesture-oracle.py
+RED   desligar a legenda toca SO' na janela da legenda  ['show_caption_window(False)',
+      '_caption_status_stop', '_caption_off_ack']
+ALTC-GESTURE VERMELHO -- arms=98 pass=97 fail=1 (rc=1)
+```
+
+**Impacto.** O defeito é do instrumento e não da legenda: um portão que acusa quem está certo perde a
+autoridade, e este custa 15 s em **toda** corrida.
+
+**Depois.** O braço julga o **domínio**: cada toque tem de começar por `show_caption_window(`,
+`_caption_status_` ou `_caption_off_ack`, e `show_caption_window(False)` tem de estar na lista — a
+frase diz "só a janela da legenda" e é isso que fica medido. As armas de texto
+(`_set_live_enabled NAO nomeia hide_panel/show_panel/worker/history`) continuam a existir, e um
+**quinto** mutante fecha o buraco de "um braço que não pode falhar": `hide_panel('caption-on')`
+reinstalado no desligar derruba o oráculo.
+
+```
+$ python _main/altc-gesture-oracle.py
+ALTC-GESTURE GREEN -- arms=98 pass=98 fail=0
+$ python _main/altc-gesture-oracle.py --neg-arm
+NEG-ARM caption-off-closes-the-panel PASS -- RED as designed
+NEG-ARM PASS -- RED as designed: as cinco regressoes derrubam o oraculo
+```
+
+**Estado.** corrigido; não toca no caminho da legenda, só no instrumento.
 
 ---
 ---
