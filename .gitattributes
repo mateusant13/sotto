@@ -468,6 +468,7 @@ _main/fixtures/*.json3                                     text eol=lf
 _main/fixtures/*.log                                       text eol=lf
 _main/fixtures/*.txt                                       text eol=lf
 _main/fixtures/cage-rc/*.cmd                               text eol=crlf
+_main/fixtures/cage-once/*.cmd                             text eol=crlf
 _main/fixtures/stack-compare/*.json                        text eol=lf
 _main/fixtures/stack-compare/unified-tts/*.json            text eol=lf
 _main/incidents/*.md                                       text eol=lf

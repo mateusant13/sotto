@@ -109,8 +109,9 @@ REM  SEM tecto em silencio -- medido 2026-11-08 19:2x: o primeiro run imprimiu P
 REM  e nenhuma linha de cage. Um tecto que se desliga sem dizer nada e' o mesmo
 REM  defeito que este repo chama 'um passo saltado nao e' um portao que passou'.
 if not defined SOTTO_BATTERY_CAGED if not defined SOTTO_BATTERY_NOCAGE if not exist "I:\!watcher\watcher\__init__.py" echo CAGE declined -- I:\!watcher\watcher nao existe, esta corrida corre SEM tecto de CPU
-if not defined SOTTO_BATTERY_CAGED if not defined SOTTO_BATTERY_NOCAGE if exist "I:\!watcher\watcher\__init__.py" call :__battery_cage
-if defined SOTTO_BATTERY_CAGED if errorlevel 1 exit /b 1
+if "%~1"=="--caged" goto :__battery_body
+if not defined SOTTO_BATTERY_NOCAGE if exist "I:\!watcher\watcher\__init__.py" goto :__battery_cage_outer
+:__battery_body
 setlocal EnableDelayedExpansion
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
@@ -1851,33 +1852,6 @@ call :expectred red-as-expected-emit-pipe-dead !STEP_RC! "%OUT%\emit-pipe-dead-n
 
 REM === FIM DOS SETE =============================================================
 REM
-REM `_main\sotto-state-page.py` e o P0.2 do roadmap de observabilidade de 2026-10-23: a pagina de
-REM estado (docs\state-generated.md) e GERADA das saidas dos oraculos e recusa-se a inventar -- um
-REM passo que nao correu e `NOT RUN`, nunca um verde. CORRE SEMPRE (`always`): as seis verificacoes
-REM leem a evidencia VIVA (`_cache\battery-steps.json` + `_main\_audit-verify\*.log`) e um resultado
-REM em cache descreveria um estado que ja nao existe. Custo medido 2026-10-25: 3,49 s.
-if exist _main\sotto-state-page.py (
-call :step always state-page-write 0 "_main\sotto-state-page.py;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page-write.log" python _main\sotto-state-page.py --write
-call :record state-page-write !STEP_RC!
-) else ( call :record state-page-write MISSING )
-if exist _main\sotto-state-page.py (
-  call :step always state-page 0 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page.log" python _main\sotto-state-page.py --check
-  call :record state-page !STEP_RC!
-) else ( call :record state-page MISSING )
-REM O `--neg-arm` DA PAGINA, E O CUSTO QUE ELE TINHA (medido 2026-11-08). Ele custava
-REM **73,26 s** sozinho e **84,5 s** dentro da corrida, porque `run_mutation` copiava a
-REM arvore, renderizava a copia, escrevia a pagina e corria o check de base -- tudo
-REM identico -- UMA VEZ POR MUTACAO, oito vezes, e a copia inclui o directorio de logs da
-REM bateria. A copia e a referencia NAO dependem da mutacao: e' a mesma pergunta feita oito
-REM vezes. Agora `run_mutations_shared` faz a copia, a renderizacao e o check de base UMA vez
-REM e corre cada mutacao sobre a copia RESTAURADA (snapshot de bytes + restauro, e a unica
-REM diferenca entre a copia e a copia mutada continua a ser a mutacao). MEDIDO depois:
-REM **49,45 s**, com as 8 mutacoes a nomear o check que deviam (`NEG-ARM PASS mutations=8`).
-if exist _main\sotto-state-page.py (
-  call :step always red-as-expected-state-page 1 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page-neg.log" python _main\sotto-state-page.py --neg-arm
-  call :expectred red-as-expected-state-page !STEP_RC! "%OUT%\state-page-neg.log" "NEG-ARM PASS"
-) else ( call :expectred red-as-expected-state-page MISSING "%OUT%\state-page-neg.log" "NEG-ARM PASS" )
-
 REM `_main\battery-wiring-oracle.py` e o P3.1 do roadmap de observabilidade de 2026-10-23: nenhum
 REM oraculo de enforcement novo sem um passo que o corra, e o baseline so pode ENCOLHER. A populacao
 REM usa os MESMOS cinco globs do `tooling-intent-oracle.py`; o *wiring* e lido das linhas `call :step`
@@ -1916,6 +1890,17 @@ REM que o cmd expande quando LE o bloco, ou seja antes de o cage correr. A cura 
 REM `:__battery_cage` + `if errorlevel 1 exit /b 1`. Este par julga as DUAS formas EXECUTANDO-as
 REM no cmd real (`_main\fixtures\cage-rc\old.cmd` tem de dar 0, `new.cmd` tem de dar 1, com o
 REM mesmo filho a sair 1). Nao lanca janela, audio nem modelo: dois `.cmd` de tres linhas.
+REM O CORPO DA BATERIA CORRE UMA VEZ (medido 2026-11-12): depois de o filho caged sair 0, o
+REM cabecalho caia no corpo e a lista inteira corria DUAS vezes. Este par executa as duas
+REM formas no cmd real com o MESMO ficheiro a ser o proprio filho.
+if exist _main\cage-once-oracle.py (
+  call :step cage-once 0 "_main\cage-once-oracle.py;_main\hidden-launch.py;_main\fixtures\cage-once\old.cmd;_main\fixtures\cage-once\new.cmd;_main\fixtures\cage-once\fail.cmd;_main\_audit-verify-all.cmd" "%OUT%\cage-once.log" python _main\cage-once-oracle.py
+  call :record cage-once !STEP_RC!
+) else ( call :record cage-once MISSING )
+if exist _main\cage-once-oracle.py (
+  call :step red-as-expected-cage-once 1 "_main\cage-once-oracle.py;_main\hidden-launch.py;_main\fixtures\cage-once\old.cmd;_main\fixtures\cage-once\new.cmd;_main\fixtures\cage-once\fail.cmd;_main\_audit-verify-all.cmd" "%OUT%\cage-once-neg.log" python _main\cage-once-oracle.py --neg-arm
+  call :expectred red-as-expected-cage-once !STEP_RC! "%OUT%\cage-once-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-cage-once MISSING "%OUT%\cage-once-neg.log" "NEG-ARM: PASS" )
 if exist _main\cage-rc-oracle.py (
   call :step cage-rc 0 "_main\cage-rc-oracle.py;_main\hidden-launch.py;_main\fixtures\cage-rc\old.cmd;_main\fixtures\cage-rc\new.cmd;_main\_audit-verify-all.cmd" "%OUT%\cage-rc.log" python _main\cage-rc-oracle.py
   call :record cage-rc !STEP_RC!
@@ -3893,6 +3878,33 @@ REM O `--neg-arm` muta a LEITURA com DOIS mutantes, porque ha' dois tectos: M1 =
 REM mais lento (prazo + total) e M2 = +30 % num passo cujo resultado CONTINUA abaixo do prazo
 REM e cujo acrescimo cabe no tecto do total -- logo so' o ratchet por passo o pode ver. Sem a
 REM M2, apagar o ratchet por passo continuava a dar `NEG-ARM: PASS` por causa da M1.
+REM `_main\sotto-state-page.py` e o P0.2 do roadmap de observabilidade de 2026-10-23: a pagina de
+REM estado (docs\state-generated.md) e GERADA das saidas dos oraculos e recusa-se a inventar -- um
+REM passo que nao correu e `NOT RUN`, nunca um verde. CORRE SEMPRE (`always`): as seis verificacoes
+REM leem a evidencia VIVA (`_cache\battery-steps.json` + `_main\_audit-verify\*.log`) e um resultado
+REM em cache descreveria um estado que ja nao existe. Custo medido 2026-10-25: 3,49 s.
+if exist _main\sotto-state-page.py (
+call :step always state-page-write 0 "_main\sotto-state-page.py;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page-write.log" python _main\sotto-state-page.py --write
+call :record state-page-write !STEP_RC!
+) else ( call :record state-page-write MISSING )
+if exist _main\sotto-state-page.py (
+  call :step always state-page 0 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page.log" python _main\sotto-state-page.py --check
+  call :record state-page !STEP_RC!
+) else ( call :record state-page MISSING )
+REM O `--neg-arm` DA PAGINA, E O CUSTO QUE ELE TINHA (medido 2026-11-08). Ele custava
+REM **73,26 s** sozinho e **84,5 s** dentro da corrida, porque `run_mutation` copiava a
+REM arvore, renderizava a copia, escrevia a pagina e corria o check de base -- tudo
+REM identico -- UMA VEZ POR MUTACAO, oito vezes, e a copia inclui o directorio de logs da
+REM bateria. A copia e a referencia NAO dependem da mutacao: e' a mesma pergunta feita oito
+REM vezes. Agora `run_mutations_shared` faz a copia, a renderizacao e o check de base UMA vez
+REM e corre cada mutacao sobre a copia RESTAURADA (snapshot de bytes + restauro, e a unica
+REM diferenca entre a copia e a copia mutada continua a ser a mutacao). MEDIDO depois:
+REM **49,45 s**, com as 8 mutacoes a nomear o check que deviam (`NEG-ARM PASS mutations=8`).
+if exist _main\sotto-state-page.py (
+  call :step always red-as-expected-state-page 1 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page-neg.log" python _main\sotto-state-page.py --neg-arm
+  call :expectred red-as-expected-state-page !STEP_RC! "%OUT%\state-page-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-state-page MISSING "%OUT%\state-page-neg.log" "NEG-ARM PASS" )
+
 if exist _main\battery-budget-oracle.py (
   call :step battery-budget 0 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json;_cache\battery-steps.json" "%OUT%\battery-budget.log" python _main\battery-budget-oracle.py --policy "!CAGE_POLICY!"
   call :record battery-budget !STEP_RC!
@@ -4345,6 +4357,11 @@ REM  `old.cmd` -> rc 0, `new.cmd` -> rc 1.
 REM  Sem `!` nesta etiqueta: a expansao atrasada continua DESLIGADA aqui em cima,
 REM  que e' o que mantem o `I:\!watcher` literal.
 REM ===========================================================================
+:__battery_cage_outer
+call :__battery_cage
+if errorlevel 1 exit /b 1
+exit /b 0
+
 :__battery_cage
 set "SOTTO_BATTERY_CAGED=1"
 set "PYTHONPATH=I:\!watcher;%PYTHONPATH%"

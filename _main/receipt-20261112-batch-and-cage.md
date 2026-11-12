@@ -99,3 +99,68 @@ commit).
   `panel-hidden-at-startup-oracle` 54,26 s PASS e `skip-verdict-guard` `GREEN - 521 step log(s)`).
 - O rc do `.cmd` corrigido foi provado nos dois bracos de fixture; a corrida REAL que o exercita e' a
   proxima, e ela tem de mostrar rc igual ao `BATTERY-VERDICT`.
+
+## 7. Fecho de 2026-11-12 20:1x -- a corrida completa, e o que ela nomeou
+
+A corrida de `steps=501 gate=256 control=8 skipped=24 expect-red=213 missing=0 cached=270` fechou
+**`failed=2`**, e os dois passos eram defeitos de INSTRUMENTO, nao de produto:
+
+| passo | medido | causa |
+|---|---|---|
+| `console-window-audit` | rc=1, `WEAK-FLAG` em `_main/cage-rc-oracle.py:43` | o oraculo desta mesma rodada largava os fixtures com `creationflags` **sem** `startupinfo` |
+| `red-as-expected-load-shedding` | rc=**0** (a convencao exige 1) | o mutante `cede` guardava 20/24 espacos; o `batch_queue.py` vivo tem 16/20 desde a reorganizacao do `try` -- `replace` sem par, braco imprimiu "nao consegui mutar o alvo" e devolveu `EXIT_PASS` |
+
+Cura e prova, cada uma ao lado do comando:
+
+- `cage-rc` arranca os fixtures por `_main/hidden-launch.py` -> `CONSOLE-AUDIT VERDICT PASS -- 0
+  sitio(s) que abrem janela`; `CAGE-RC VERDICT: PASS (2/2 arms)` rc=0, `--neg-arm` rc=1.
+- a ancora do mutante comeca no `if` (imune a indentacao da primeira linha) -> `NEG-ARM(cede) PASS --
+  a SUA arm caiu`, **20** mutantes PASS, `--neg-arm` rc=1.
+
+As duas dependencias que faltavam aos passos, nomeadas no `.cmd`: `app\webview\batch_queue.py`
+(o mutante `cede` escreve nele) e `_main\hidden-launch.py` (o `cage-rc` corre por ele). Pin
+re-medido: **377 820 B / 4352 CRLF / 0 bare LF**, `AGENTS-PINS PASS`.
+
+## 8. O CABECALHO CAIA NO CORPO -- a bateria inteira corria DUAS vezes (medido 2026-11-12 18:1x)
+
+O fecho da seccao 7 leu o log de uma corrida e contou **um** `PLAN`. A corrida GREEN das 15:12
+contou **dois**:
+
+```
+PLAN steps=501 hits=285 ...      (linha 6)
+=============== BATTERY SUMMARY ===============   (linha 550)
+BATTERY-VERDICT: GREEN WITH 24 SKIPPED ...        (linha 571)
+PLAN steps=501 hits=303 ...      (linha 575)   <- o SEGUNDO plano, na mesma invocacao
+... 1002 beacons de passo para 501 declarados
+```
+
+A causa: a cura da seccao 3 trocou o bloco do cage por uma subrotina e deixou o corpo logo
+abaixo, com o `exit` so' no ramo de FALHA:
+
+    call :__battery_cage
+    if errorlevel 1 exit /b 1
+    setlocal EnableDelayedExpansion     <- o corpo comeca AQUI
+
+Um filho caged que sai **0** atravessa o `if` e o ficheiro cai no corpo, que corre outra vez na
+MESMA invocacao -- sem o Job Object e a imprimir `caged : ON`. E' por isso que a corrida RED de
+14:34 teve um plano so' (rc=1 saia no `if`) e a GREEN teve dois: **o defeito e' invisivel
+exactamente no caso em que ele mais custa**, e ele custa o dobro do tempo de bateria em toda
+corrida verde.
+
+Cura: o corpo vive atras de um rotulo.
+
+    if "%~1"=="--caged" goto :__battery_body
+    if not defined SOTTO_BATTERY_NOCAGE if exist "I:\!watcher\watcher\__init__.py" goto :__battery_cage_outer
+    :__battery_body
+    setlocal EnableDelayedExpansion
+    ...
+    :__battery_cage_outer
+    call :__battery_cage
+    if errorlevel 1 exit /b 1
+    exit /b 0
+
+Portao: `_main/cage-once-oracle.py`, que larga o MESMO ficheiro como filho (`call "%~f0" --caged`),
+que e' a forma da bateria. MEDIDO: `A1 a forma ANTIGA corre o corpo DUAS vezes -- corpo correu 2`,
+`A2 a forma CURADA corre o corpo UMA vez -- corpo correu 1`, `A3 a forma CURADA devolve o rc do
+filho que falha -- rc=1`; `CAGE-ONCE VERDICT: PASS (3/3 arms)` rc=0, e `--neg-arm` a repor a forma
+antiga com `A2 FAIL -- corpo correu 2 vez(es)` e `NEG-ARM: PASS`, rc=1.

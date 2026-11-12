@@ -682,6 +682,28 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 21:1x):** `_main\_audit-verify-all.cmd` = **379035 B**,
+  **4369 CRLF** / 0 bare LF, sha256 `CA20E0CC65A6F26D6BC00855A12FB2A7BD51DD08596513B7489BAE5D89A0E03D`.
+  (O par `cage-once` entrou DUAS vezes no mesmo bloco -- o `str.replace` casou os dois sitios do
+  ancora e o `state-page` acusou-o com `duplicados=['cage-once','red-as-expected-cage-once']`, a
+  unica falha da corrida limpa. A pagina de estado denunciou o meu erro de edicao antes de qualquer
+  outra coisa: e' o instrumento a pagar-se. O par `state-page` + `--write` foi MOVIDO para o fim da
+  lista, imediatamente antes do `battery-budget` -- ele le' `_cache\battery-steps.json`, que a
+  corrida escreve passo a passo, e a meio da lista media apenas "a corrida ate' aqui", que e' a
+  mesma classe de mentira que o `battery-budget` existe para apanhar.)
+  (Dois mil trezentos e setenta e tres bytes e VINTE E DUAS linhas a mais do que o pin de 377820 B:
+  o par `cage-once` + `red-as-expected-cage-once`, nascido de um defeito medido no proprio log da
+  corrida -- **a lista inteira corria DUAS vezes**. `PLAN steps=501` aparecia na linha 6 E na 575,
+  com **1002** beacons de passo para 501 declarados, a segunda passagem SEM o Job Object e a
+  imprimir `caged : ON`. A causa: a cura do `%ERRORLEVEL%` (2026-11-12) trocou o bloco do cage por
+  uma subrotina e deixou o CORPO logo abaixo, com o `exit` so' no ramo de falha -- um filho caged
+  que sai **0** atravessa o `if errorlevel 1` e o ficheiro cai no corpo. E' por isso que a corrida
+  RED teve um plano (rc=1 saia no `if`) e a GREEN teve dois: o defeito e' invisivel exactamente no
+  caso em que custa o DOBRO do tempo de bateria. O corpo passou para tras de um rotulo (`goto
+  :__battery_body`). MEDIDO com o MESMO ficheiro a ser o proprio filho: `A1 a forma ANTIGA corre o
+  corpo DUAS vezes -- corpo correu 2`, `A2 a forma CURADA corre o corpo UMA vez -- corpo correu 1`,
+  `A3 devolve o rc do filho que falha -- rc=1`; `CAGE-ONCE VERDICT: PASS (3/3 arms)` rc=0 e
+  `--neg-arm` com `A2 FAIL -- corpo correu 2 vez(es)`, `NEG-ARM: PASS`, rc=1.)
 - **PIN do ficheiro (medido 2026-11-12, 20:1x):** `_main\_audit-verify-all.cmd` = **377820 B**,
   **4352 CRLF** / 0 bare LF, sha256 `949BE4E3B6FDE99330AAA3CA90787DC4849E9A2B265ED6A02E50DA5ABBED354F`.
   (Cem bytes e ZERO linhas a mais do que o pin de 377720 B: DUAS dependencias que faltavam, a classe
@@ -1683,6 +1705,12 @@ licao do censo de consolas, que acusa quem esta' certo e por isso perde a autori
   **nenhuma edicao neste ficheiro com uma corrida em voo**; commit ou edicao primeiro, corrida
   depois, e nada mais a correr (nem probe, nem oraculo: o ratchet POR PASSO e absoluto e 5,4 s ->
   10,1 s de um `panel-header-oracle` e contenda, nao regressao).
+  **A MESMA REGRA VALE PARA `AGENTS.md`** (medido 2026-11-12, duas corridas seguidas): editar o PIN
+  a meio de uma corrida faz o `agents-md-pins` comparar o numero novo com um `.cmd` que ainda esta'
+  a ser lido e o `code-health` medir ficheiros a meio de escrita -- as duas corridas fecharam RED
+  com `agents-md-pins rc=1` e `code-health rc=2`, e os DOIS passos passam sozinhos depois
+  (`AGENTS-PINS PASS`, `CODE-HEALTH VERDICT PASS`). Edicao primeiro, corrida depois, nada a correr
+  ao lado.
   (Dois mil trezentos e sessenta e um bytes e TREZE linhas a mais do que o pin de 296318 B: o par
   `theme-caption-identity` + `red-as-expected-theme-caption-identity`, o portao da ordem do dono de
   2026-11-08, verbatim: *"VOCE TIROU O DESIGN DE TODAS AS LEGENDAS PRA DEIXAR ELAS IGUAIS EM TODOS OS
