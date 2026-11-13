@@ -411,13 +411,13 @@
       "max_func_name": "popen_kwargs"
     },
     "app/webview/overlay_paint.py": {
-      "bytes": 48555,
+      "bytes": 51414,
       "classes": 0,
-      "defs": 27,
+      "defs": 28,
       "except_pass": 2,
       "globals": 1,
-      "lines": 1053,
-      "max_func": 181,
+      "lines": 1126,
+      "max_func": 164,
       "max_func_name": "_paint_bitmap"
     },
     "app/webview/panel_focus.py": {

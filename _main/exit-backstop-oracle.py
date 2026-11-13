@@ -32,6 +32,7 @@ ARMS (nenhuma larga a app, nenhuma abre janela, nenhuma toca em audio):
 `--neg-arm` corre quatro mutacoes, cada uma tem de cair pela SUA arm (rc=1 ao
 apanhar).
 """
+# NO-BUG: o defeito (o motor quente dado como filho quando keep_warm e' falso, D-14, medido 2026-11-12) e' de encerramento da shell e nao pertence ao corpus do ledger
 from __future__ import annotations
 
 import ast

@@ -59,6 +59,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import symtable
 import tempfile
 import threading
@@ -137,9 +138,22 @@ def load_module(name, path):
     spec.loader.exec_module(module)
     return module
 
+#: O PROPRIO DIRECTORIO NO `sys.path`: `_astcache` vive ao lado deste ficheiro, e um
+#: import por nome so' resolve quando o directorio do SCRIPT esta' na lista -- verdade
+#: ao correr `python _main\x.py`, mentira quando o oraculo e' importado por outro
+#: instrumento (a sonda que mediu a distribuicao do max_gap foi assim que caiu num
+#: `ModuleNotFoundError`, medido 2026-11-12).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+#: A ARVORE VEM DE `_astcache` (2026-11-12). Este ficheiro tinha a SUA copia da
+#: cura (**24,9 s em `builtins.compile`** e 95 `ast.parse` num `--neg-arm` de
+#: 57 s, medido por `cProfile`) -- a quarta copia da mesma convencao na arvore.
+from _astcache import tree as _tree  # noqa: E402
+
 
 def _class_node(source, cls_name):
-    tree = ast.parse(source)
+    tree = _tree(source)
     return next((n for n in tree.body
                  if isinstance(n, ast.ClassDef) and n.name == cls_name), None)
 
@@ -349,7 +363,7 @@ def module_consts(source):
     """
     out = {}
     try:
-        tree = ast.parse(source)
+        tree = _tree(source)
     except SyntaxError:
         return out
     assigns = []
@@ -536,7 +550,7 @@ def build_toggle(source, overlay_source, recorder, log_fn):
     # extraida do ficheiro como o `hotkey-live-toggle` ja' fazia). Sem eles o
     # `except` do proprio `_set_live_enabled` engolia um `NameError` e este braco
     # passava a medir um interruptor que tinha falhado por dentro.
-    helpers = [node for node in ast.parse(source).body
+    helpers = [node for node in _tree(source).body
                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                and node.name == '_caption_replay_allowed']
     if not helpers:

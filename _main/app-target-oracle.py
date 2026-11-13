@@ -216,11 +216,27 @@ def live_rows(mod):
     return list(mod._process_table())
 
 
-def check_live_name(mod, arm, name):
-    """One live image name: the chosen pid and EVERY candidate must be a ROOT."""
-    rows = live_rows(mod)
+def check_live_name(mod, arm, name, rows=None):
+    """One live image name: the chosen pid and EVERY candidate must be a ROOT.
+
+    A POPULACAO E' UMA FOTOGRAFIA SO' (medido 2026-11-12). A primeira versao lia
+    `_process_table()` duas vezes -- uma aqui para o `by_pid`, outra DENTRO do
+    `resolve_app_target` -- e comparava as duas. Numa maquina com 30 oraculos a
+    largar filhos python, um processo pode mudar de pai entre as duas leituras, e
+    o braco acusou `python.exe: candidate 2388 is a tree ROOT (parent 53564 is
+    'python.exe')` sobre um codigo CORRECTO: o pai era o proprio filho que tinha
+    acabado de nascer. A tabela que o `resolve` ve tem de ser a mesma que a
+    assercao julga, senao o braco mede o intervalo entre duas leituras.
+    """
+    if rows is None:
+        rows = live_rows(mod)
     by_pid = {pid: (ppid, exe) for pid, ppid, exe in rows}
-    pid, candidates = mod.resolve_app_target(name)
+    real = mod._process_table
+    mod._process_table = lambda: list(rows)
+    try:
+        pid, candidates = mod.resolve_app_target(name)
+    finally:
+        mod._process_table = real
     if not arm.check(pid is not None, f'{name}: resolved to {pid!r}'):
         return
     arm.check(pid in by_pid, f'{name}: chosen pid {pid} exists in the live table')
@@ -255,11 +271,16 @@ def arm_a(mod, arm, ctx):
 
 
 def arm_b(mod, arm, ctx):
-    check_live_name(mod, arm, os.path.basename(sys.executable))
+    # UMA FOTOGRAFIA PARA TODAS AS ASSERCOES DESTE BRACO (medido 2026-11-12): a
+    # primeira versao lia a tabela uma vez por chamada e comparava leituras
+    # diferentes, e numa maquina com 30 oraculos a largar filhos acusava um
+    # processo CORRECTO de ser "tree ROOT" porque o pai mudou entre as duas.
+    snapshot = live_rows(mod)
+    check_live_name(mod, arm, os.path.basename(sys.executable), snapshot)
     # The STRONGEST live case: an image that really has a same-image
     # parent-child pair on this box right now, if one exists.
     by_name = {}
-    for pid, ppid, exe in live_rows(mod):
+    for pid, ppid, exe in snapshot:
         by_name.setdefault(str(exe), []).append((pid, ppid))
     best, best_n = None, 0
     for name, entries in by_name.items():
@@ -268,7 +289,7 @@ def arm_b(mod, arm, ctx):
             best, best_n = name, len(entries)
     if best is not None:
         arm.note(f'live same-image tree available: {best} x{best_n}')
-        check_live_name(mod, arm, best)
+        check_live_name(mod, arm, best, snapshot)
     else:
         arm.note('no live image has a same-image parent-child pair at this instant')
     # The INJECTED table: deterministic, independent of what the box is running.

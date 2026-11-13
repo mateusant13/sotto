@@ -41,6 +41,7 @@ por `ast` (nunca por texto: um comentario que cita a chamada faria a arm passar)
     python _main\\live-route-oracle.py            # VERDICT: PASS (N/N) rc=0
     python _main\\live-route-oracle.py --neg-arm   # NEG-ARM: PASS (m/m) rc=1
 """
+# NO-BUG: o defeito (o motor de lote pintar audio de 299 s antes, sessao pid 54524 em 2026-11-11) e' de rota da legenda ao vivo, fora da populacao do ledger
 from __future__ import annotations
 
 import argparse

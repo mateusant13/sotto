@@ -63,6 +63,18 @@ import sotto_worker as W  # noqa: E402
 
 RESULTS = []
 
+# UM ORACULO QUE MORRE ANTES DO VEREDITO NAO E' UM ORACULO (medido 2026-11-12).
+# Os arms usam palavras de varias linguas de proposito -- a regra nao depende da
+# palavra -- e uma delas e' cirilica. O stdout desta maquina e' cp1252, e o
+# `print` levanta `UnicodeEncodeError` no meio do braco 3: o processo morria com
+# rc=1 e a bateria lia isso como um portao vermelho quando o julgamento nem
+# tinha chegado ao fim. O `errors='replace'` mantem o veredicto, custa o glifo.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        pass
+
 
 def arm(name, real, control, want, control_must_differ=True):
     ok = real == want

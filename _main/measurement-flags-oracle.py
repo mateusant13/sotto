@@ -48,6 +48,7 @@ WHAT IT MEASURES (each a separate arm; each fails on its own):
 NO LAUNCH. This reads and executes pure functions only: no window, no audio
 device, no thread, no model.
 """
+# NO-BUG: o defeito e' uma MEDICAO comportar-se como a app (mutex, 1,9 GB de modelo, pintura na tela dele) com a regra em CINCO donos, medido 2026-11-12; nao e' bug do ledger
 
 from __future__ import annotations
 

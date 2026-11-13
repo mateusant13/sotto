@@ -26,6 +26,7 @@ O QUE ESTE ORACULO JULGA, e nenhuma das arms e' textual:
 
 CONVENCAO DA CASA: o positivo devolve 0, o `--neg-arm` devolve 1 QUANDO APANHA.
 """
+# NO-BUG: ordem do dono de 2026-11-11 ("as soon as i open it, should start the subtitles"): a legenda tem de ligar no arranque, e o ledger so cobre o corpus de stutter de 2026-10-21..23
 import argparse
 import ast
 import io

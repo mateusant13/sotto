@@ -88,7 +88,18 @@ def read_bytes(path):
 
 def load_module(path, name):
     """Import from an explicit PATH: the mutant copy shares the live module name,
-    and sys.modules must not be allowed to lie about which file was loaded."""
+    and sys.modules must not be allowed to lie about which file was loaded.
+
+    `WORKER_DIR` no `sys.path` (2026-11-12, MEDIDO): os mutantes vivem num
+    TEMPDIR, e o `sotto_worker.py` poem o DIRECTORIO DELE no `sys.path` --
+    uma copia em `G:\Temp\...` poem o tempdir, e o `import punctuation_model`
+    da linha 133 morria com `ModuleNotFoundError`. Os dois filhos do `--neg-arm`
+    ficavam vermelhos pela RAZAO ERRADA (o import, nunca o medidor) e o braco
+    dizia PASS porque o `rc` tinha sido calculado antes. Com o `worker/` no
+    caminho, a copia mutada importa exactamente o que o ficheiro vivo importa.
+    """
+    if WORKER_DIR not in sys.path:
+        sys.path.insert(0, WORKER_DIR)
     import importlib.util
     spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
@@ -449,6 +460,31 @@ def _assemble(W, on_block_src, extra=""):
     return src
 
 
+def _block_ms_default(text):
+    """O default de `audio.block_ms` LIDO do worker, pelo mesmo literal do `main()`.
+
+    O `on_block` REAL chama `_live_queue.max_blocks(block_ms)`; `block_ms` e' um
+    local de `main()`. Um arnes que injecta tudo menos esse mede o proprio arnes
+    (medido 2026-11-12: `NameError` no braco 4). O default e' lido da chamada
+    `audio_cfg.get("block_ms", <literal>)` do fonte -- um numero, nao dois.
+    """
+    tree = ast.parse(text)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        if not (isinstance(fn, ast.Attribute) and fn.attr == "get"):
+            continue
+        if len(node.args) != 2:
+            continue
+        key = node.args[0]
+        if isinstance(key, ast.Constant) and key.value == "block_ms":
+            val = node.args[1]
+            if isinstance(val, ast.Constant) and isinstance(val.value, int) and val.value > 0:
+                return val.value
+    raise SystemExit("SETUP ERROR: no positive audio.block_ms default literal in " + WORKER_PY)
+
+
 def arm_dead_copy(W, text, on_block):
     say("")
     say("== ARM 4: --meter-hz 0 is BYTE-IDENTICAL -- the emit is dead when OFF ==")
@@ -468,6 +504,14 @@ def arm_dead_copy(W, text, on_block):
         got = []
         ns = dict(W.__dict__)
         ns["meter_hz"] = rate
+        # `block_ms` E' UM LOCAL DE `main()` (2026-11-12, pre-existente): o corpo
+        # real chama `_live_queue.max_blocks(block_ms)`, que vinha de
+        # `audio_cfg.get("block_ms", 100)` dentro do `main()`. O arnes injectava
+        # tudo menos esse, e o braco 4 morria com `NameError: name 'block_ms' is
+        # not defined` -- um SETUP do instrumento, nao um defeito do produto.
+        # O valor vem do FONTE (o default literal do worker), nunca de um segundo
+        # numero escrito aqui.
+        ns["block_ms"] = _block_ms_default(text)
         ns["emit"] = lambda **kw: got.append(kw)
         ns["err"] = lambda msg: None
         ns["counters"] = {"blocks": 0, "block_samples": 0, "peak": 0.0, "sumsq": 0.0,
@@ -495,9 +539,24 @@ def arm_dead_copy(W, text, on_block):
     guard = [n for n in stmts if isinstance(n, ast.If)
              and "enabled" in (ast.get_source_segment(on_block, n.test) or "")]
     pre_existing = [n for n in stmts if isinstance(n, ast.If) and n not in guard]
+    # O QUE ESTE BRACO MEDE, e o que ele NAO pode medir (2026-11-12). A versao
+    # anterior contava os ramos de topo: `len(pre_existing) == 3`, com a frase
+    # "as tres ramificacoes de pico". MEDIDO hoje: o `on_block` vivo tem SEIS
+    # `if` de topo (`_AUDIO_RING`, os tres de pico, `evicted`, `dropped`) mais o
+    # do medidor -- a contagem fixa envelheceu e passou a acusar tres acrescimos
+    # LEGITIMOS do produto. Um braco de NAO-REGRESSAO que conta irmaos mede o
+    # crescimento do ficheiro, nao a sua propria guarda. Agora ele mede o
+    # INVARIANTE: as tres condicoes de PICO continuam la', pelo NOME das
+    # variaveis que cada uma compara, e o medidor acrescenta exatamente UM ramo.
+    peak_subs = ('counters["peak"]', 'device_peak["value"]', '1e-4')
+    pre_source = [ast.get_source_segment(on_block, n.test) or []
+                  for n in pre_existing]
+    missing = [sub for sub in peak_subs
+               if not any(sub in src for src in pre_source)]
     check("the meter adds exactly ONE top-level branch; the three peak branches on_block already had are untouched",
-          len(guard) == 1 and len(pre_existing) == 3,
-          "top-level on_block statements=%r" % ([type(s).__name__ for s in stmts],))
+          len(guard) == 1 and not missing,
+          "guard=%d missing_peak=%r top-level=%r"
+          % (len(guard), missing, [type(s).__name__ for s in stmts]))
 
     # The reverse direction: with the meter ON the same harness DOES emit, so the
     # zero above is the GUARD and not a harness that cannot emit at all.
@@ -827,7 +886,12 @@ def main():
     finally:
         import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
-    return tail_summary(rc)
+    # O VEREDITO LE' OS CHECKS QUE ELE PROPRIO IMPRIMIU (2026-11-12, medido). O
+    # `rc` daqui de cima foi calculado ANTES dos quatro checks do braco negativo,
+    # logo um `--neg-arm` com 2 FAIL publicava `64 PASS / 2 FAIL` e
+    # `VERDICT: PASS` ao mesmo tempo -- um controlo que nao pode falhar, a classe
+    # que esta casa ja' pagou. `tail_summary(None)` recalcula de `RESULTS`.
+    return tail_summary(None)
 
 
 if __name__ == "__main__":

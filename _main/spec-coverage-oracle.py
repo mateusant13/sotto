@@ -30,6 +30,7 @@ USO
     python _main/spec-coverage-oracle.py --list-gaps   # imprime os ausentes, um por linha
     python _main/spec-coverage-oracle.py --neg-arm     # rc=1 quando apanha o mutante plantado
 """
+# NO-BUG: trabalho de capacidade: ordem do dono ("your goal is done when you can turn into WORDS all behavior of sotto") pedia a POPULACAO escrita, e nenhum bug do ledger cobre documentacao
 
 from __future__ import annotations
 

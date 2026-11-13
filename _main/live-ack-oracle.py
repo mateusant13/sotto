@@ -86,7 +86,10 @@ MODULE_CONSTS = ("PLAYER_TRACK_FRESH_S", "LIVE_PAINT_MAX_AGE_S",
                  "LIVE_PAINT_JITTER_S", "_SKIP", "CAPTION_STATUS_TEXT")
 
 #: As constantes de CLASSE usadas pelo caminho (nao pelo `__init__`).
-CLASS_CONSTS = ("CAPTION_STATUS_POLL_S", "CAPTION_BUDGET_MS", "CAPTION_REPLAY_MAX_S")
+CLASS_CONSTS = ("CAPTION_STATUS_POLL_S", "CAPTION_BUDGET_MS", "CAPTION_REPLAY_MAX_S",
+                # O PRAZO DO ACK DE DESLIGAR (2026-11-12): a arm A10 julga que ele
+                # e' MENOR que o do silencio e que nunca e' o do silencio que arma.
+                "CAPTION_STATUS_HIDE_S", "CAPTION_IDLE_HIDE_S")
 
 #: Os metodos REAIS que as arms conduzem, na ordem em que a producao os chama.
 CLASS_METHODS = (
@@ -101,6 +104,9 @@ CLASS_METHODS = (
     "_caption_status_withdraw",
     "_caption_status_loop",
     "_caption_off_ack",
+    # O PRAZO DO ACK DE DESLIGAR (2026-11-12): `off` deixou de ser apagado pelo
+    # temporizador de silencio. O corpo real e' conduzido pela arm A10.
+    "_caption_status_hide",
     "_caption_idle_disarm",
     "_blank_caption_window",
     "_paint_caption_status",
@@ -121,7 +127,14 @@ def read_source(path):
     with io.open(path, "r", encoding="utf-8", newline="") as handle:
         return handle.read()
 
-
+#: O PROPRIO DIRECTORIO NO `sys.path`: `_astcache` vive ao lado deste ficheiro, e um
+#: import por nome so' resolve quando o directorio do SCRIPT esta' na lista -- verdade
+#: ao correr `python _main\x.py`, mentira quando o oraculo e' importado por outro
+#: instrumento (a sonda que mediu a distribuicao do max_gap foi assim que caiu num
+#: `ModuleNotFoundError`, medido 2026-11-12).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 #: A ARVORE POR CONTEUDO, LIDA UMA VEZ (2026-11-12, MEDIDO). Cada arm chama
 #: `build(src)`, que chama `ast.parse` sobre as 26 774 linhas do shell: medido
 #: **0,222 s** por parse, e o `--neg-arm` pagava-o ate' 14 vezes POR MUTANTE
@@ -129,16 +142,10 @@ def read_source(path):
 #: de 61,7 s para o custo de UMA leitura por conteudo. A chave e' o CONTEUDO, nao
 #: o caminho, porque cada mutante e' um texto diferente com o mesmo nome de
 #: ficheiro -- e a arvore de cada mutante e' parseada exactamente uma vez.
-_PARSE_CACHE = {}
-
-
-def _tree_of(src, where="<shell>"):
-    key = hashlib.sha256(src.encode("utf-8", "replace")).hexdigest()
-    hit = _PARSE_CACHE.get(key)
-    if hit is None:
-        hit = ast.parse(src, filename=where)
-        _PARSE_CACHE[key] = hit
-    return hit
+#: A cache vive em `_astcache` desde 2026-11-12: este ficheiro era a QUINTA copia
+#: privada da mesma convencao (com `audio-back-detector`, `youtube-cdp-source`,
+#: `altc-gesture`, `window-drag` e `gaming-hotkey`).
+from _astcache import tree as _tree_of  # noqa: E402
 
 
 def extract(src, where="<shell>"):
@@ -380,6 +387,15 @@ class Seams:
         self.idle_armed = int(getattr(self, 'idle_armed', 0) or 0) + 1
         return True
 
+    def _arm_caption_status_hide(self):
+        # O PRAZO DO ACK DE DESLIGAR TAMBEM E' COSTURA (2026-11-12): o `off`
+        # deixou de ser apagado pelo temporizador de silencio (6 s) e passou a
+        # ter o DELE (0,5 s, `CAPTION_STATUS_HIDE_S`). A arm conta o
+        # armamento; quem apaga o pixel e' `_caption_status_hide`, conduzido
+        # aqui a mao para o julgamento nao esperar meio segundo por um Timer.
+        self.status_armed = int(getattr(self, 'status_armed', 0) or 0) + 1
+        return True
+
     def _caption_lag_note(self, *_a, **_k):
         return None
 
@@ -597,10 +613,17 @@ def arm_a10(src):
     elapsed_ms = (time.monotonic() - t0) * 1000.0
     shown = _status_lines(lines, "off")
     painted = [t for t in ov.texts() if t.endswith("desligada")]
-    armed = int(getattr(shell, "idle_armed", 0) or 0)
+    # O PRAZO DO ACK, E NAO O DO SILENCIO (2026-11-12): o `off` arma
+    # `_arm_caption_status_hide` (0,5 s) e nunca `_arm_caption_idle_hide` (6 s) --
+    # encolher aquele 6.0 apagaria a linha do player meio segundo depois de ele
+    # parar de a mudar. `idle_armed` continua medido e tem de ficar em ZERO.
+    armed = int(getattr(shell, "status_armed", 0) or 0)
+    idle_armed = int(getattr(shell, "idle_armed", 0) or 0)
     live_off = shell._caption_wanted is False
     visible = bool(ov.visible)
-    # O TEMPORIZADOR DE SILENCIO E' QUEM TIRA O TEXTO (o corpo real do blank).
+    # O PRAZO DELE E' QUEM TIRA O TEXTO (conduzido aqui: a arm nao dorme 0,5 s).
+    shell._caption_status_hide(int(getattr(shell, "_caption_status_hide_seq", 0) or 0),
+                               getattr(shell, "_caption_status_hide_at", 0.0))
     shell._blank_caption_window("no-caption-for-6.0s")
     cleared = bool(not ov.visible and not shell._caption_window_shown
                    and not str(shell._caption_status_reason or ""))
@@ -611,13 +634,15 @@ def arm_a10(src):
     swapped = [t for t in ov.texts() if t.endswith("modelo\u2026")]
     off_lines = len(_status_lines(lines, "off"))
     disarmed = int(getattr(shell, "_caption_idle_seq", 0) or 0) >= 1
-    ok = bool(got and painted and len(shown) == 1 and armed == 1 and live_off
+    ok = bool(got and painted and len(shown) == 1 and armed == 1 and idle_armed == 0
+              and float(shell.CAPTION_STATUS_HIDE_S) < float(shell.CAPTION_IDLE_HIDE_S)
+              and live_off
               and visible and cleared and swapped and off_lines == 1 and disarmed
               and int(shown[0].get("ms", "999999")) <= STATUS_BUDGET_MS
               and elapsed_ms <= STATUS_BUDGET_MS)
-    return ok, ("ms=%.1f shown=%d idle_armed=%d visible=%s cleared=%s "
-                "swapped=%s disarmed=%s" % (
-                    elapsed_ms, len(shown), armed, visible, cleared,
+    return ok, ("ms=%.1f shown=%d status_armed=%d idle_armed=%d visible=%s "
+                "cleared=%s swapped=%s disarmed=%s" % (
+                    elapsed_ms, len(shown), armed, idle_armed, visible, cleared,
                     bool(swapped), disarmed))
 
 
@@ -832,12 +857,13 @@ MUTANTS = (
     ("off-ack-silent",
      "                self._caption_off_ack()\n",
      "                pass  # MUTANT\n"),
-    ("off-ack-not-idle-cleared",
-     "                log('CAPTION_STATUS_SHOWN reason=off ms=%d text=%s'\n"
-     "                    % (ms, json.dumps(text)))\n"
-     "                self._arm_caption_idle_hide()\n",
-     "                log('CAPTION_STATUS_SHOWN reason=off ms=%d text=%s'\n"
-     "                    % (ms, json.dumps(text)))\n"
+    # O ACK DE DESLIGAR JA' NAO ARMA O TEMPORIZADOR DE SILENCIO (2026-11-12):
+    # ele tem prazo PROPRIO (`_arm_caption_status_hide`, 0,5 s). Este mutante
+    # tira o armamento que o caminho REAL faz hoje; o antigo nao casava com
+    # linha nenhuma (`MUTATION-NOT-APPLIED hits=0`) e um mutante que nao se
+    # aplica nao prova nada.
+    ("off-ack-not-status-armed",
+     "                self._arm_caption_status_hide()\n",
      "                pass  # MUTANT\n"),
     ("boot-deferred-arming-removed",
      "                if pending:\n"

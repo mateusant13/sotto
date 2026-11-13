@@ -38,6 +38,7 @@ O QUE ESTE ORACULO JULGA, seis arms, nenhuma larga a app e nenhuma abre janela:
 mutante tem de cair pela SUA arm (rc=1 quando apanha, que e' a convencao desta
 casa: um negativo que devolve 0 ao apanhar e' um portao que nao pode falhar).
 """
+# NO-BUG: a pergunta "esta largada e' a app ou uma medicao?" estava escrita duas vezes com respostas diferentes (medido 2026-11-12); e' divida de instrumento, fora do ledger
 
 from __future__ import annotations
 

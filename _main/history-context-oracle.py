@@ -30,6 +30,7 @@ clearing the snapshot. Each mutation must turn its own arm RED.
 
 `--shell PATH` judges a COPY of the shell (the new-session arm's BEFORE proof).
 """
+# NO-BUG: trabalho de capacidade: ordem do dono de 2026-11-09 sobre saber meses depois de onde veio o audio e o que estava na tela; nao ha reclamacao de stutter por tras
 import importlib.util
 import io
 import json
@@ -37,6 +38,19 @@ import os
 import sys
 import tempfile
 import time
+
+#: UMA MENSAGEM QUE NAO CONSEGUE SER IMPRESSA NAO E' UM VEREDITO (medido 2026-11-12):
+#: o stdout desta maquina e' cp1252 e o `judge` imprime o texto comparado, que pode
+#: carregar U+FFFD (o substituto que o proprio oracle poe nas linhas com byte
+#: invalido). O `print` levantava `UnicodeEncodeError` DENTRO do `run_neg_arm` e o
+#: except seguinte tentava imprimir a mesma coisa e levantava outra vez: o processo
+#: morria com rc=1 sem `NEG-ARM PASS`, e a bateria lia isso como um controlo que nao
+#: pegou -- o braco nem chegou a julgar. `errors='replace'` mantem o veredicto.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        pass
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEBVIEW = os.path.join(ROOT, 'app', 'webview')

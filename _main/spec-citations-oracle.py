@@ -26,6 +26,7 @@ rc=0 verde, rc=1 falha, rc=2 sem populacao (CANNOT-MEASURE, nunca PASS).
     python _main/spec-citations-oracle.py
     python _main/spec-citations-oracle.py --neg-arm   # muta uma COPIA e exige RED
 """
+# NO-BUG: o defeito (citacoes da especificacao para ficheiros e linhas que nao existem, medido 2026-11-11) e' de documentacao e nao pertence ao corpus de stutter do ledger
 from __future__ import annotations
 
 import io

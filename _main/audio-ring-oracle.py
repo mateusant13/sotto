@@ -20,6 +20,7 @@ Os arms A2-A4 leem o FONTE por AST (a emenda e' estrutura, nao texto de
 comentario), e o `--neg-arm` muta uma COPIA do worker e exige as quatro
 vermelhas.
 """
+# NO-BUG: trabalho de capacidade: ordem do dono de 2026-11-11 ("MANTENHA o audio INTEIRO das ultimas 12 horas") e nao um bug do ledger, cuja populacao e' o corpus de stutter de 2026-10-21..23
 from __future__ import annotations
 
 import argparse

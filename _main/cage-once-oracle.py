@@ -44,6 +44,7 @@ linhas. `--neg-arm` repoe a forma antiga numa COPIA e exige A2 vermelha.
     python _main/cage-once-oracle.py             -> rc 0, tres arms verdes
     python _main/cage-once-oracle.py --neg-arm   -> rc 1 ao apanhar a mutacao
 """
+# NO-BUG: o bug e' o cabecalho do proprio _audit-verify-all.cmd a correr a lista DUAS vezes (medido 2026-11-12, steps=501 e 1002 beacons), e nao uma reclamacao do corpus de stutter que o ledger cobre
 import importlib.util
 import io
 import os

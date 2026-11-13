@@ -36,6 +36,7 @@ nenhuma toca em dispositivo de audio:
 pela SUA arm (rc=1 quando apanha -- a convencao desta casa: um negativo que
 devolve 0 ao apanhar e' um portao que nao pode falhar).
 """
+# NO-BUG: o defeito e' o motor quente nao se pagar (D-04, medido no log inteiro do WARM_* em 2026-11-12); e' custo de arranque, nao uma das reclamacoes do ledger de 2026-10
 from __future__ import annotations
 
 import ast

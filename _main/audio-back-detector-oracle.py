@@ -58,42 +58,27 @@ def parse(src):
                 pass
     return tree, consts
 
-
+#: O PROPRIO DIRECTORIO NO `sys.path`: `_astcache` vive ao lado deste ficheiro, e um
+#: import por nome so' resolve quando o directorio do SCRIPT esta' na lista -- verdade
+#: ao correr `python _main\x.py`, mentira quando o oraculo e' importado por outro
+#: instrumento (a sonda que mediu a distribuicao do max_gap foi assim que caiu num
+#: `ModuleNotFoundError`, medido 2026-11-12).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 #: `ast.get_source_segment` recomputa `splitlines()` da FONTE INTEIRA em cada
 #: chamada (CPython: `_splitlines_no_ff` faz `''.join(lines)` sobre tudo). Medido
 #: nesta arvore 2026-11-11 com o `cProfile` do braco positivo: **262 chamadas =
 #: 58,0 s dos 62,5 s** -- o resto do oraculo custa 4 s. O worker tem 1,5 MB, logo
 #: cada chamada era uma varredura completa e a conta crescia com a fonte, nao com
-#: a arm. Aqui a quebra em linhas e' feita UMA vez por fonte e so' a fatia e'
-#: recalculada, o que devolve exactamente o mesmo texto (mesma rotina privada do
-#: CPython que `get_source_segment` usa; `splitlines(keepends=True)` se ela faltar).
-_SEG_LINES = {}
-
-
-def _lines_of(source):
-    ent = _SEG_LINES.get(id(source))
-    if ent is not None and ent[0] is source:
-        return ent[1]
-    split = getattr(ast, "_splitlines_no_ff", None)
-    lines = split(source) if split else source.splitlines(keepends=True)
-    _SEG_LINES[id(source)] = (source, lines)
-    return lines
+#: a arm. A cura vive em `_astcache` desde 2026-11-12, porque este ficheiro, o
+#: `altc-gesture`, o `window-drag` e o `gaming-hotkey` tinham cada um a SUA copia.
+from _astcache import segment as _seg_shared  # noqa: E402
 
 
 def _seg(source, node):
     """`ast.get_source_segment(source, node)`, com as linhas ja' quebradas."""
-    if node is None:
-        return None
-    if getattr(node, "end_lineno", None) is None \
-            or getattr(node, "end_col_offset", None) is None:
-        return None
-    lines = _lines_of(source)
-    first, last = node.lineno - 1, node.end_lineno - 1
-    if last == first:
-        return lines[first].encode()[node.col_offset:node.end_col_offset].decode()
-    head = lines[first].encode()[node.col_offset:].decode()
-    tail = lines[last].encode()[:node.end_col_offset].decode()
-    return head + "".join(lines[first + 1:last]) + tail
+    return _seg_shared(source, node, None)
 
 
 def load_func_namespace(src, path, real_mod):

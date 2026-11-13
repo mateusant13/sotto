@@ -23,6 +23,7 @@ interpretador, nao a bateria -- e nenhum dos dois bracos abre janela, audio ou m
     python _main/cage-rc-oracle.py --neg-arm   -> rc 1 ao apanhar a mutacao (a forma
                                                   curada trocada pela antiga)
 """
+# NO-BUG: o bug e' o rc do bloco de cage lido antes de correr (medido 2026-11-12: RED no filho chega ao largador como rc=0); e' defeito da bateria, fora da populacao do ledger
 import importlib.util
 import io
 import os

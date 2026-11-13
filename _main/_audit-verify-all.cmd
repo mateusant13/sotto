@@ -115,6 +115,15 @@ if not defined SOTTO_BATTERY_NOCAGE if exist "I:\!watcher\watcher\__init__.py" g
 setlocal EnableDelayedExpansion
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
+REM O STDOUT DESTA MAQUINA E' cp1252, E O ORACULO ESCREVE O QUE JULGA (medido 2026-11-12).
+REM Dois passos morreram no `print` e a corrida leu isso como "portao vermelho" quando o
+REM julgamento nem tinha chegado ao fim: `incomplete-word` (o braco arm com uma palavra
+REM CIRILICA, `UnicodeEncodeError` no meio do braco 3) e `red-as-expected-history-context`
+REM (o `judge` imprime o texto comparado, que carrega o U+FFFD que o proprio oraculo poe nas
+REM linhas com byte invalido; o except seguinte imprimia a mesma coisa e levantava outra vez).
+REM A cura de CLASSE e' esta linha: o filho nasce com stdout utf-8 e nenhum oraculo futuro
+REM volta a morrer por causa do glifo. Medido depois: 26/26 e 16/16 mutantes, os dois rc=0.
+set "PYTHONIOENCODING=utf-8"
 set "OUT=%ROOT%\_main\_audit-verify"
 REM A POLITICA DE LARGADA, numa variavel so (medido 2026-11-08): o tempo de um passo
 REM so e comparavel com outro medido sob a MESMA politica, e o `battery-budget` recusa
@@ -406,6 +415,38 @@ if exist _main\caption-tick-thread-oracle.py (
   call :record caption-tick-thread !STEP_RC!
   call :step red-as-expected-caption-tick-thread 1 "_main\caption-tick-thread-oracle.py;app\webview\caption_overlay.py;app\webview\word_fade.py" "%OUT%\caption-tick-thread-neg.log" python _main\caption-tick-thread-oracle.py --neg-arm
   call :expectred red-as-expected-caption-tick-thread !STEP_RC! "%OUT%\caption-tick-thread-neg.log" "NEG-ARM: PASS"
+REM `caption-timeline` (ordem do dono, 2026-11-12, verbatim): *"tu tem que ter uma forma de
+REM saber exatamente como a legenda da display e se comporta"*. Ele le' a ULTIMA sessao do log
+REM vivo e julga CINCO coisas que a sessao dele de 19:21 mostrou todas: o `CAPTION_LAND` que
+REM repetiu `cue_t0=365.794 paint_t=368.740` 121 vezes em 6 min enquanto o texto pintado mudava
+REM (o numero do drift era do INSTRUMENTO, nao da legenda), a linha que o desenho diz ter e a
+REM pintura leva (`to line these up` -> `t`), a MESMA pintura entregue duas vezes em <=20 ms, o
+REM texto que fica no ecra 19 s e 47 s (o dono: *"continua mostrando as frases por muito
+REM tempo"*), e o pior intervalo entre pinturas. Sem sessao no log ele diz SKIPPED, e um passo
+REM saltado nunca conta como verde -- `:skipped` com as DUAS frases. O `--selftest` julga os
+REM detectores com uma fixture sintetica (9 arms) e o `--neg-arm` desliga cada um deles e exige
+REM que a acusacao DESAPARECA (4/4), porque um detector que nao pode falhar nao e' um detector.
+if exist _main\caption-timeline.py (
+  call :step always caption-timeline 0 "_main\caption-timeline.py;_main\webview-run.log" "%OUT%\caption-timeline.log" python _main\caption-timeline.py --selftest
+  call :record caption-timeline !STEP_RC!
+  call :step always red-as-expected-caption-timeline 1 "_main\caption-timeline.py" "%OUT%\caption-timeline-neg.log" python _main\caption-timeline.py --neg-arm
+  call :expectred red-as-expected-caption-timeline !STEP_RC! "%OUT%\caption-timeline-neg.log" "NEG-ARM: PASS"
+) else ( call :record caption-timeline MISSING )
+REM `caption-status-hide` (ordem do dono, 2026-11-12, verbatim): *"'legenda ao vivo: desligada'
+REM deve aparecer por meio segundo apenas, e sumir."*. MEDIDO antes da cura: o ack as 19:29:59.928
+REM saia ~6 s depois, pelo temporizador de SILENCIO (`CAPTION_IDLE_HIDE_S = 6.0`) -- o mesmo que
+REM esconde uma legenda verdadeira, e por isso NAO foi ele que encolheu. O ack ganhou prazo proprio
+REM (`CAPTION_STATUS_HIDE_S = 0.5`, `_arm_caption_status_hide`/`_caption_status_hide`), e as 4 arms
+REM correm o corpo REAL extraido por `ast`: o texto esta' no ecra aos 0,30 s e saiu aos 0,90 s com
+REM `ms=501` medido, uma legenda verdadeira nao e' apagada pelo disparo do ack, e duas retiradas
+REM seguidas escrevem UMA linha. O `--neg-arm` poe `6.0` (o valor antigo) e tira a guarda da razao:
+REM rc=1 com `NEG-ARM: PASS -- 2/2`. Sem janela, sem browser, sem audio, sem input.
+if exist _main\caption-status-hide-oracle.py (
+  call :step always caption-status-hide 0 "_main\caption-status-hide-oracle.py;app\webview\sotto_webview.py;_main\_astcache.py" "%OUT%\caption-status-hide.log" python _main\caption-status-hide-oracle.py
+  call :record caption-status-hide !STEP_RC!
+  call :step always red-as-expected-caption-status-hide 1 "_main\caption-status-hide-oracle.py;app\webview\sotto_webview.py;_main\_astcache.py" "%OUT%\caption-status-hide-neg.log" python _main\caption-status-hide-oracle.py --neg-arm
+  call :expectred red-as-expected-caption-status-hide !STEP_RC! "%OUT%\caption-status-hide-neg.log" "NEG-ARM: PASS"
+) else ( call :record caption-status-hide MISSING )
 REM `clr-warm` (2026-11-12, MEDIDO oito vezes no mesmo dia): TODO arranque do dono entre 19:32 e
 REM 20:16 morreu com uma `NullReferenceException` GERIDA dentro do pythonnet, e o `run.cmd` chamou-lhe
 REM `HANG rc=4 by=run.cmd-readiness` porque o processo morria antes de tocar o ready-file. Os oito
@@ -633,9 +674,9 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-drag-targets !STEP_RC!
   call :step panel-history-clip 0 "_main\panel-history-clip-probe.mjs;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js;app\panel\panel.html;app\webview\sotto_webview.py;app\webview\history_context.py;_main\history-retention-fixture.py" "%OUT%\panel-history-clip.log" node _main\panel-history-clip-probe.mjs
   call :record panel-history-clip !STEP_RC!
-  call :step window-drag 0 "_main\window-drag-oracle.py;app\webview\sotto_webview.py;app\webview\caption_drag.py" "%OUT%\window-drag.log" python _main\window-drag-oracle.py
+  call :step window-drag 0 "_main\window-drag-oracle.py;_main\_astcache.py;app\webview\sotto_webview.py;app\webview\caption_drag.py" "%OUT%\window-drag.log" python _main\window-drag-oracle.py
   call :record window-drag !STEP_RC!
-  call :step red-as-expected-window-drag 1 "_main\window-drag-oracle.py;app\webview\sotto_webview.py;app\webview\caption_drag.py" "%OUT%\window-drag-neg.log" python _main\window-drag-oracle.py --neg-arm
+  call :step red-as-expected-window-drag 1 "_main\window-drag-oracle.py;_main\_astcache.py;app\webview\sotto_webview.py;app\webview\caption_drag.py" "%OUT%\window-drag-neg.log" python _main\window-drag-oracle.py --neg-arm
   call :expectred red-as-expected-window-drag !STEP_RC! "%OUT%\window-drag-neg.log" "NEG-ARM: PASS"
   call :step panel-history-wheel 0 "_main\panel-history-wheel-probe.mjs;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-history-wheel.log" node _main\panel-history-wheel-probe.mjs
   call :record panel-history-wheel !STEP_RC!
@@ -741,9 +782,9 @@ if exist _main\_panel2-dom-probe.js (
   REM razao verdadeira vai para a mesma fenda da legenda. O oraculo extrai os metodos REAIS do
   REM shell por `ast` -- nao importa o shell, nao abre janela, nao toca em audio -- e o braco
   REM negativo muta uma copia em memoria. Medido: 9/9 arms e 7/7 mutantes (cada um pela SUA arm).
-  call :step live-ack 0 "_main\live-ack-oracle.py;app\webview\sotto_webview.py" "%OUT%\live-ack.log" python _main\live-ack-oracle.py
+  call :step live-ack 0 "_main\live-ack-oracle.py;_main\_astcache.py;app\webview\sotto_webview.py" "%OUT%\live-ack.log" python _main\live-ack-oracle.py
   call :record live-ack !STEP_RC!
-  call :step red-as-expected-live-ack 1 "_main\live-ack-oracle.py;app\webview\sotto_webview.py" "%OUT%\live-ack-neg.log" python _main\live-ack-oracle.py --neg-arm
+  call :step red-as-expected-live-ack 1 "_main\live-ack-oracle.py;_main\_astcache.py;app\webview\sotto_webview.py" "%OUT%\live-ack-neg.log" python _main\live-ack-oracle.py --neg-arm
   call :expectred red-as-expected-live-ack !STEP_RC! "%OUT%\live-ack-neg.log" "NEG-ARM: PASS"
   REM `live-route` -- a ROTA ao vivo e a idade do audio decidem se a legenda PINTA (ordem do dono:
   REM *"a legenda fica aparecendo de forma aleatoria so' por que ta tocando um audio"*). Medido no log
@@ -2010,11 +2051,11 @@ REM `Emulation.setFocusEmulationEnabled` -- medido lado a lado, ele leva a
 REM leitura de 2-5 ms para 108 ms de mediana e 5 s de p90, o que e' o instrumento
 REM a criar a lentidao que depois mede. Custo: texto, sem rede e sem janela.
 if exist _main\youtube-cdp-source-oracle.py (
-call :step always youtube-cdp-source 0 "_main\youtube-cdp-source-oracle.py;app\webview\youtube_cdp_source.py;app\webview\youtube_window.py;app\webview\sotto_webview.py;_main\_yt-live-latency.py" "%OUT%\youtube-cdp-source.log" python _main\youtube-cdp-source-oracle.py
+call :step always youtube-cdp-source 0 "_main\youtube-cdp-source-oracle.py;_main\_astcache.py;app\webview\youtube_cdp_source.py;app\webview\youtube_window.py;app\webview\sotto_webview.py;_main\_yt-live-latency.py" "%OUT%\youtube-cdp-source.log" python _main\youtube-cdp-source-oracle.py
 call :record youtube-cdp-source !STEP_RC!
 ) else ( call :record youtube-cdp-source MISSING )
 if exist _main\youtube-cdp-source-oracle.py (
-call :step always red-as-expected-youtube-cdp-source 1 "_main\youtube-cdp-source-oracle.py;app\webview\youtube_cdp_source.py;app\webview\youtube_window.py;app\webview\sotto_webview.py;_main\_yt-live-latency.py" "%OUT%\youtube-cdp-source-neg.log" python _main\youtube-cdp-source-oracle.py --neg-arm
+call :step always red-as-expected-youtube-cdp-source 1 "_main\youtube-cdp-source-oracle.py;_main\_astcache.py;app\webview\youtube_cdp_source.py;app\webview\youtube_window.py;app\webview\sotto_webview.py;_main\_yt-live-latency.py" "%OUT%\youtube-cdp-source-neg.log" python _main\youtube-cdp-source-oracle.py --neg-arm
 call :expectred red-as-expected-youtube-cdp-source !STEP_RC! "%OUT%\youtube-cdp-source-neg.log" "NEG-ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-youtube-cdp-source MISSING "%OUT%\youtube-cdp-source-neg.log" "NEG-ARM VERDICT: PASS" )
 
@@ -3373,7 +3414,7 @@ call :record altc-first-caption !STEP_RC!
 ) else ( call :record altc-first-caption MISSING )
 
 if exist _main\altc-gesture-oracle.py (
-call :step always altc-gesture 0 "_main\altc-gesture-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\altc-gesture.log" python _main\altc-gesture-oracle.py
+call :step always altc-gesture 0 "_main\altc-gesture-oracle.py;_main\_astcache.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\altc-gesture.log" python _main\altc-gesture-oracle.py
 call :record altc-gesture !STEP_RC!
 ) else ( call :record altc-gesture MISSING )
 
@@ -3403,12 +3444,12 @@ call :expectred red-as-expected-ladder-try-instrument !STEP_RC! "%OUT%\ladder-tr
 ) else ( call :record red-as-expected-ladder-try-instrument MISSING )
 
 if exist _main\audio-back-detector-oracle.py (
-call :step always audio-back-detector 0 "_main\audio-back-detector-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\audio-back-detector.log" python _main\audio-back-detector-oracle.py
+call :step always audio-back-detector 0 "_main\audio-back-detector-oracle.py;_main\_astcache.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\audio-back-detector.log" python _main\audio-back-detector-oracle.py
 call :record audio-back-detector !STEP_RC!
 ) else ( call :record audio-back-detector MISSING )
 
 if exist _main\audio-back-detector-oracle.py (
-call :step always red-as-expected-audio-back-detector 1 "_main\audio-back-detector-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\audio-back-detector-neg.log" python _main\audio-back-detector-oracle.py --neg-arm
+call :step always red-as-expected-audio-back-detector 1 "_main\audio-back-detector-oracle.py;_main\_astcache.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\audio-back-detector-neg.log" python _main\audio-back-detector-oracle.py --neg-arm
 call :expectred red-as-expected-audio-back-detector !STEP_RC! "%OUT%\audio-back-detector-neg.log" "NEG-ARM: PASS"
 ) else ( call :record red-as-expected-audio-back-detector MISSING )
 rem O CUSTO DO ARRANQUE COM DONO (2026-11-10): o `WORKER_BOOT_PROF` diz onde os
@@ -3462,7 +3503,7 @@ call :expectred red-as-expected-altc-first-caption !STEP_RC! "%OUT%\altc-first-c
 ) else ( call :expectred red-as-expected-altc-first-caption MISSING "%OUT%\altc-first-caption-neg.log" "NEG-ARM PASS" )
 
 if exist _main\altc-gesture-oracle.py (
-call :step always red-as-expected-altc-gesture 1 "_main\altc-gesture-oracle.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\altc-gesture-neg.log" python _main\altc-gesture-oracle.py --neg-arm
+call :step always red-as-expected-altc-gesture 1 "_main\altc-gesture-oracle.py;_main\_astcache.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\altc-gesture-neg.log" python _main\altc-gesture-oracle.py --neg-arm
 call :expectred red-as-expected-altc-gesture !STEP_RC! "%OUT%\altc-gesture-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-altc-gesture MISSING "%OUT%\altc-gesture-neg.log" "NEG-ARM PASS" )
 
@@ -3773,12 +3814,12 @@ REM dentro de uma volta perdida ainda e' vista (o bit 0), e que o dwell do
 REM !watcher mantem `is_gaming()` pelos ticks que ele manda. Sem janela, sem
 REM tecla sintetica.
 if exist _main\gaming-hotkey-oracle.py (
-call :step always gaming-hotkey 0 "_main\gaming-hotkey-oracle.py;app\webview\gaming_mode.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py;app\webview\caption_overlay.py" "%OUT%\gaming-hotkey.log" python _main\gaming-hotkey-oracle.py
+call :step always gaming-hotkey 0 "_main\gaming-hotkey-oracle.py;_main\_astcache.py;app\webview\gaming_mode.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py;app\webview\caption_overlay.py" "%OUT%\gaming-hotkey.log" python _main\gaming-hotkey-oracle.py
 call :record gaming-hotkey !STEP_RC!
 ) else ( call :record gaming-hotkey MISSING )
 
 if exist _main\gaming-hotkey-oracle.py (
-call :step always red-as-expected-gaming-hotkey 1 "_main\gaming-hotkey-oracle.py;app\webview\gaming_mode.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py;app\webview\caption_overlay.py" "%OUT%\gaming-hotkey-neg.log" python _main\gaming-hotkey-oracle.py --neg-arm
+call :step always red-as-expected-gaming-hotkey 1 "_main\gaming-hotkey-oracle.py;_main\_astcache.py;app\webview\gaming_mode.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py;app\webview\caption_overlay.py" "%OUT%\gaming-hotkey-neg.log" python _main\gaming-hotkey-oracle.py --neg-arm
 call :expectred red-as-expected-gaming-hotkey !STEP_RC! "%OUT%\gaming-hotkey-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-gaming-hotkey MISSING "%OUT%\gaming-hotkey-neg.log" "NEG-ARM PASS" )
 

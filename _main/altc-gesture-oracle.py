@@ -55,6 +55,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import symtable
 import tempfile
 import textwrap
@@ -95,13 +96,27 @@ def load_module(name: str, path: Path):
     spec.loader.exec_module(module)
     return module
 
-
+#: O PROPRIO DIRECTORIO NO `sys.path`: `_astcache` vive ao lado deste ficheiro, e um
+#: import por nome so' resolve quando o directorio do SCRIPT esta' na lista -- verdade
+#: ao correr `python _main\x.py`, mentira quando o oraculo e' importado por outro
+#: instrumento (a sonda que mediu a distribuicao do max_gap foi assim que caiu num
+#: `ModuleNotFoundError`, medido 2026-11-12).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 # ---------------------------------------------------------------------------
 # Extracao do proprio ficheiro (o que corre, e nao a minha transcricao)
 # ---------------------------------------------------------------------------
+#: A ARVORE E OS SEGMENTOS VEM DE `_astcache` (2026-11-12). Este ficheiro tinha
+#: a SUA copia da cura (**27,8 s em `_splitlines_no_ff`** e **25,6 s de `compile`**
+#: num `--neg-arm` de 63 s, medido por `cProfile`), e a mesma cura vivia em mais
+#: tres oraculos com outros nomes. Uma convencao, um modulo.
+from _astcache import segment, tree as _tree  # noqa: E402
+
+
 def class_methods(source: str, cls_name: str, names) -> dict:
     """`{nome: fonte}` dos metodos pedidos, lidos do ficheiro com `ast`."""
-    tree = ast.parse(source)
+    tree = _tree(source)
     cls = next((n for n in tree.body
                 if isinstance(n, ast.ClassDef) and n.name == cls_name), None)
     if cls is None:
@@ -109,12 +124,12 @@ def class_methods(source: str, cls_name: str, names) -> dict:
     out = {}
     for node in cls.body:
         if isinstance(node, ast.FunctionDef) and node.name in names:
-            out[node.name] = ast.get_source_segment(source, node) or ""
+            out[node.name] = segment(source, node)
     return out
 
 
 def class_names(source: str, cls_name: str) -> set:
-    tree = ast.parse(source)
+    tree = _tree(source)
     cls = next((n for n in tree.body
                 if isinstance(n, ast.ClassDef) and n.name == cls_name), None)
     return {n.name for n in (cls.body if cls else []) if isinstance(n, ast.FunctionDef)}
@@ -122,7 +137,7 @@ def class_names(source: str, cls_name: str) -> set:
 
 def code_only(source: str, cls_name: str, name: str) -> str:
     """O corpo de um metodo SEM a docstring -- o que ele FAZ, nao o que diz."""
-    tree = ast.parse(source)
+    tree = _tree(source)
     cls = next((n for n in tree.body
                 if isinstance(n, ast.ClassDef) and n.name == cls_name), None)
     for node in (cls.body if cls else []):
@@ -141,7 +156,7 @@ def code_only(source: str, cls_name: str, name: str) -> str:
 
 def def_body(source: str, name: str) -> str:
     """O corpo imediato de uma funcao de modulo (sem docstring)."""
-    tree = ast.parse(source)
+    tree = _tree(source)
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name == name:
             body = list(node.body)
@@ -188,7 +203,7 @@ def exec_observer(source: str, gesture, log_fn, clock):
     proprio `hotkey_gesture` por `hotkey_numbers()`. O corpo do `run`, a borda, o
     latch e a chamada do callback sao os do ficheiro.
     """
-    tree = ast.parse(source)
+    tree = _tree(source)
     node = next((n for n in tree.body
                  if isinstance(n, ast.ClassDef) and n.name == 'PassiveHotkeyThread'),
                 None)
@@ -328,7 +343,7 @@ def module_consts(source: str) -> dict:
     """
     out = {}
     try:
-        tree = ast.parse(source)
+        tree = _tree(source)
     except SyntaxError:
         return out
     assigns = []
@@ -570,8 +585,8 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
                 return True
         return False
 
-    thread_src = next((ast.get_source_segment(source, n) or "")
-                      for n in ast.walk(ast.parse(source))
+    thread_src = next((segment(source, n))
+                      for n in ast.walk(_tree(source))
                       if isinstance(n, ast.ClassDef) and n.name == "HotkeyThread")
     hotkey_methods = class_methods(
         source, "SottoShell", ("hotkey_pressed", "hotkey_live", "_hotkey_resolve"))

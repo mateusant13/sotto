@@ -22,6 +22,7 @@ pelo menos 190 MiB. Sem esse braco, um `GetProcessMemoryInfo` mal declarado devo
 relatorio imprime "0,0 MiB de fuga" -- que foi exactamente o que aconteceu na primeira
 execucao desta sonda (argtypes/restype ausentes, todos os numeros a zero e nenhum aviso).
 """
+# NO-BUG: nasceu de uma DM de stutter do watcher (2026-11-09) sobre commit privado por ciclo de motor; e' medicao de custo de 2026-11, nao um dos bugs do ledger de 2026-10
 # BATTERY-HEAVY: model -- este instrumento CARREGA os modelos reais do produto (as
 # quatro sessoes ONNX do parakeet, as tres do nemotron e o `onnxruntime_genai.Model`
 # vivo), ~1,9 GB de commit e sessao CUDA; o passo `engine-commit-cycles` da bateria
