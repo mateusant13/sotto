@@ -156,6 +156,41 @@ carregamento unico. Medido: caged `22/22 PASS`; fora do tecto `p50=0.0 ms p95=16
 max=47.0 ms n=20`, ainda julgado — afrouxar 300/500 ms ate' passar seria publicar um orcamento
 que o produto nao tem.
 
+## 3-quater. A corrida VERDE, e os dois passos que ela fechou (2026-11-13)
+
+`python _main\battery-launch.py --wait 3300`, com o ambiente limpo das cinco politicas:
+
+| linha do log | valor |
+|---|---|
+| `politica :` (linha 60, nao 568) | `cap40 -- a politica de largada desta corrida` |
+| sumario | `steps: 511  gate=261  control=8  skipped=24  expect-red=218  missing=0  cached=307` |
+| veredicto | `BATTERY-VERDICT: GREEN WITH 24 SKIPPED` · rc=**0** · parede **931,7 s** |
+| `battery-budget` | `RATCHET-OK -- steps=310 total=1176.3s TARGET NOT MET (gap 1116.3s de 60s)` |
+| `state-page --check` | `passos=511 PASS=271 EXPECTED-RED=215 FAIL=0 STALE=6`, `checks=7 fail=0` |
+| `agents-md-pins` | `PASS -- 2 pin(s) checked live, 0 failure(s)` |
+
+Os 24 skipped sao 17 da classe HEAVY (abrem a tela, o dispositivo de audio ou a GPU do dono e
+**nao** correram) mais 7 skip-capable sem sinal vivo na janela — o sumario nomeia os 24 na propria
+linha do veredicto, porque **um passo saltado nao e' um portao que passou**. Contra os 1453,6 s de
+parede da corrida anterior (RED, um passo), a diferença sao os dois passos abaixo.
+
+**Passo 1 — `panel-commit-stable` (248,7 s -> 4,6 s).** O censo custa 0,51 s para 3 527
+fragmentos; o tempo era o REPLAY. `--cpu-prof` nomeia `compoundMatches` a re-parsear a mesma
+string de seletor com duas regex por no' visitado, e o relogio de timers a escolher o proximo por
+varredura linear sem nunca tirar um morto da lista — **O(n²) sobre um corpus de 3 527 fragmentos**.
+Medido por braço: `before 61,9 s` / `after 447,6 s` antes da cura, `1,3 s` / `1,9 s` depois.
+Monte binário + cache de seletor. Um laço que se auto-cronometra é a mesma lei do custo que o
+`AGENTS.md` já tem do lado do produto, agora aplicada ao instrumento.
+
+**Passo 2 — `load-bg-window`, arm A6.** A arm abria a janela com o default de 0,75 s e só então
+chamava `close('first')` + `close('second')`; sob o tecto de 40 % o fio principal pode não ser
+escalonado durante mais de 0,75 s entre as duas chamadas, e o **timer da própria arm** fechava a
+janela com `closed_by='deadline'`. Sozinha dava `PASS`; na corrida caged dava `FAIL`. A cura é o
+confundidor sair: a A6 abre com `SOTTO_LOAD_BG_MAX_S=-1` (sem prazo — a forma que a A3 já prova
+"abre e SEM timer") e passou a exigir `entered6 == 'background'`, senão a asserção media o resíduo
+da A5 em vez de si mesma. Depois: positivo `6/6`, `--neg-arm cases=3 caught=3` com o mutante
+`idempotence` ainda CAUGHT pela A6, e a MESMA arm sob `watcher run --cpu 40` dá `A6 PASS`.
+
 ## 4. Pins
 
 * `_main\_audit-verify-all.cmd` = **267654 B**, **3283 CRLF** / 0 bare LF,
