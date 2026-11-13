@@ -106,12 +106,24 @@ def verdicts(mod) -> dict:
     closed_by = mod._LOAD_BG_WINDOW.get('closed_by')
 
     # A6 -- fechar duas vezes nao reescreve quem fechou.
-    os.environ.pop('SOTTO_LOAD_BG_MAX_S', None)
-    mod._enter_load_background_mode()
+    #
+    # SEM PRAZO (medido 2026-11-13): a versao anterior abria a janela com o
+    # default de 0.75 s, e sob o tecto de 40 % o fio principal pode nao ser
+    # escalonado durante mais de 0.75 s entre o `enter` e a SEGUNDA chamada --
+    # o proprio timer desta arm fechava a janela com `closed_by='deadline'` e a
+    # arm publicava um defeito do PRODUTO que era do INSTRUMENTO (medido:
+    # sozinha `PASS`, dentro da corrida caged `VERDICT: FAIL A6`). O prazo
+    # infinito remove o confundidor; o facto medido aqui e' o `close` a mais, e
+    # o `neg-arm` (a) continua a derrubar esta arm porque repoe a guarda de
+    # idempotencia, nao o prazo.
+    os.environ['SOTTO_LOAD_BG_MAX_S'] = '-1'
+    entered6 = mod._enter_load_background_mode()
     mod._close_load_background_mode('first')
     again = mod._close_load_background_mode('second')
     res['A6_close_is_idempotent'] = (
-        again is None and mod._LOAD_BG_WINDOW.get('closed_by') == 'first')
+        entered6 == 'background' and again is None
+        and mod._LOAD_BG_WINDOW.get('closed_by') == 'first')
+    os.environ.pop('SOTTO_LOAD_BG_MAX_S', None)
 
     res['_closed_by_routed_by'] = closed_by
     return res
