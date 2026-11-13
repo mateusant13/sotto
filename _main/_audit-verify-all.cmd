@@ -130,6 +130,16 @@ REM so e comparavel com outro medido sob a MESMA politica, e o `battery-budget` 
 REM julgar o que veio de outra -- sem isso o ratchet comparava uma corrida caged com um
 REM baseline sem tecto e chamava de regressao o preco do tecto.
 if defined SOTTO_BATTERY_CAGED (set "CAGE_POLICY=cap40") else (set "CAGE_POLICY=none")
+REM A POLITICA DIZ-SE NO ARRANQUE, NAO NO SUMARIO (medido 2026-11-12): uma corrida
+REM inteira de 21 min correu SEM tecto porque um `SOTTO_BATTERY_NOCAGE=1` herdado da
+REM shell do agente desligou o cage em silencio, e a unica linha que o dizia estava
+REM na linha 568 do log. Quem le' o comeco da corrida tem de saber o que ela prova.
+echo politica : !CAGE_POLICY! -- a politica de largada desta corrida (o `battery-budget` so' julga contra a MESMA)
+REM OS PASSOS PRECISAM DE SABER A POLITICA (medido 2026-11-12): o `warm-engine`
+REM mede a latencia do attach e dentro do tecto o fio do motor nao e' escalonado por
+REM segundos seguidos -- `not-scheduled 21.1s` no proprio wrapper. Essas armas
+REM DECLARAM-SE fora de julgamento em vez de afrouxar o orcamento do produto.
+set "SOTTO_BATTERY_POLICY=!CAGE_POLICY!"
 if not exist "%OUT%" mkdir "%OUT%"
 set "CACHE_STATE=%ROOT%\_cache\battery-steps.json"
 REM THE PER-STEP CEILING (measured 2026-11-05). `panel-hidden-at-startup-oracle`
@@ -3976,6 +3986,20 @@ if exist _main\battery-budget-oracle.py (
   call :step red-as-expected-battery-budget 1 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json;_cache\battery-steps.json" "%OUT%\battery-budget-neg.log" python _main\battery-budget-oracle.py --neg-arm
   call :expectred red-as-expected-battery-budget !STEP_RC! "%OUT%\battery-budget-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-battery-budget MISSING "%OUT%\battery-budget-neg.log" "NEG-ARM: PASS" )
+REM A POLITICA DE LARGADA NAO VEM DO AMBIENTE (medido 2026-11-12): esta corrida
+REM inteira correu 21 min SEM tecto porque um `SOTTO_BATTERY_NOCAGE=1` herdado da
+REM shell do agente desligou o cage, e o unico passo que o viu foi o ultimo a correr
+REM (`battery-budget`, RED contra o baseline cap40) -- a 568 de 568 linhas. O passo
+REM julga as duas metades da cura: `run_env` retira e NOMEIA as politicas herdadas, e
+REM o `.cmd` imprime a politica no ARRANQUE. Lanca NADA: sem shell, sem janela, 1,5 s.
+if exist _main\battery-launch-oracle.py (
+  call :step battery-launch 0 "_main\battery-launch-oracle.py;_main\battery-launch.py;_main\_audit-verify-all.cmd" "%OUT%\battery-launch.log" python _main\battery-launch-oracle.py
+  call :record battery-launch !STEP_RC!
+) else ( call :record battery-launch MISSING )
+if exist _main\battery-launch-oracle.py (
+  call :step red-as-expected-battery-launch 1 "_main\battery-launch-oracle.py;_main\battery-launch.py;_main\_audit-verify-all.cmd" "%OUT%\battery-launch-neg.log" python _main\battery-launch-oracle.py --neg-arm
+  call :expectred red-as-expected-battery-launch !STEP_RC! "%OUT%\battery-launch-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-battery-launch MISSING "%OUT%\battery-launch-neg.log" "NEG-ARM: PASS" )
 echo.
 echo =============== BATTERY SUMMARY ===============
 echo steps    : !N!   gate=!GATES!  control=!CTRLS!  skipped=!SKIPN!  expect-red=!REDS!  missing=!MISSINGN!  cached=!CACHEDN!

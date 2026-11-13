@@ -682,6 +682,33 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-12, 23:4x):** `_main\_audit-verify-all.cmd` = **387363 B**,
+  **4456 CRLF** / 0 bare LF, sha256 `7968A4802C205C7546DE6263474315CCF19524DA6D0547D7B47080AE58CA6887`.
+  (Trezentos e sessenta e oito bytes e CINCO linhas a mais do que o pin de 386995 B: o
+  `set "SOTTO_BATTERY_POLICY=!CAGE_POLICY!"`, porque o `warm-engine` precisa de saber SOB QUE TECTO
+  corre. A primeira corrida caged desta casa trouxe as duas armas de latencia vermelhas e o proprio
+  wrapper disse por que: `not-scheduled 21.1s` -- o filho nao estava a correr, estava ADIADO. Duas
+  curas, as duas do ORACULO e nenhuma do orcamento do produto: a arm 17 exige a PONTE quente e o
+  attach real estourava os 500 ms de `WARM_ATTACH_DEADLINE_MS` sob cap (o dobro do que a arm 15 ja'
+  fazia desde 2026-11-08), e a arm 21 e' uma LINHA DE LATENCIA -- dentro do tecto ela declara-se
+  `NOT-JUDGED under cap40` e continua a exigir as 20 respostas e o carregamento UNICO, em vez de
+  afrouxar 300/500 ms ate' passar. Medido: caged `22/22`, `VERDICT: PASS`; fora do tecto
+  `attach-20: p50=0.0 ms p95=16.0 ms max=47.0 ms n=20`, ainda julgado.)
+- **PIN do ficheiro (medido 2026-11-12, 22:5x):** `_main\_audit-verify-all.cmd` = **386995 B**,
+  **4451 CRLF** / 0 bare LF, sha256 `FA877D586B1E242B71AD7FDE1359A4EC10C7B453AD186C05BC75B7DC1348F7F`.
+  (Mil setecentos e cinquenta e quatro bytes e DEZANOVE linhas a mais do que o pin de 385241 B: o par
+  `battery-launch` + `red-as-expected-battery-launch`, nascido de um RED que eu diagnostiquei ERRADO.
+  A corrida `20261112-225705` deu `509 steps ... failed: battery-budget=1` em 21 min, e eu escrevi
+  "contencao" -- era fiacao: um `SOTTO_BATTERY_NOCAGE=1` esquecido na shell do agente foi HERDADO
+  pelo largador, o `.cmd` nunca entrou no cage, e o `battery-budget` recusou julgar contra o baseline
+  `cap40` (`baseline='cap40', corrida=None`). A unica linha que o dizia era a 568 de 568, e o
+  `caged: OFF` do sumario vem 21 min tarde. A CLASSE e' a do `webview2-args-scope`: uma variavel de
+  ambiente herdada muda o que o processo mede. A cura tem duas metades, e o oraculo julga as duas:
+  `battery-launch.run_env` (puro) RETIRA as quatro politicas do ambiente e NOMEIA cada uma que saiu,
+  e o `.cmd` imprime `politica : !CAGE_POLICY!` no ARRANQUE, antes de qualquer passo. Medido:
+  `VERDICT: PASS (10/10)` e `NEG-ARM: PASS -- 5/5` (M3 arranca a linha do arranque, M5 sobe o
+  `setlocal` por cima do despacho do cage, que e' a armadilha do `!` de `I:\!watcher`).
+  `battery-wiring` 209/107/316, `battery-record-pairing` 511 passos / 0 achados.)
 - **PIN do ficheiro (medido 2026-11-12, 21:1x):** `_main\_audit-verify-all.cmd` = **385241 B**,
   **4432 CRLF** / 0 bare LF, sha256 `5D47E96699467CDB70EC03CE9D528A550DA65493BA102737B5B3A0671339D815`.
   (Trezentos e setenta e dois bytes e TRINTA E NOVE linhas a mais do que o pin de 381642 B: o par

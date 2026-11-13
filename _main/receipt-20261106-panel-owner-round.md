@@ -113,6 +113,49 @@ esta' presente") sobre fiação que esta'.
 | `python _main/panel-pause-payload-oracle.py` | `VERDICT: PASS -- 5/5 arm(s)` |
 | o mesmo com `--neg-arm` | `MUTANT: 0/5`, `NEG-ARM: PASS`, rc=0 |
 
+## 3-bis. A BATERIA INTEIRA, e as tres curas que ela obrigou (2026-11-12)
+
+Duas corridas completas, as duas `509`+ passos. A primeira (`run=20261112-220539`) deu
+`RED - 7 step(s) failed`; a segunda (`run=20261112-225705`), depois das curas dos oraculos,
+deu `RED - 1 step(s) failed` — e **o passo que sobrou nao era dos oraculos: era a corrida
+inteira a medir-se a si propria.**
+
+| o que o log disse | a causa | a cura |
+|---|---|---|
+| `red-as-expected-caption-status-hide`: `MUTATION-FAIL: the reason guard was not found` | o `read_source` le' com `newline=""` (tem de ler, e' o que conta os CRLF) e a ancora levava `\n` | ancoras com o fim-de-linha do FICHEIRO; `NEG-ARM: PASS -- 2/2` |
+| `red-as-expected-stutter-caption`: `AttributeError: 'ForeignPlayer' object has no attribute '_yt_clock_moving'` | o stub nao acompanhou o chamador que passou a devolver `(andou, rate)` | stub devolve o contrato REAL; `17/17`, `NEG-ARM PASS` 3/3 |
+| `caption-style`: `face-youtube-plate-design RED` com as quatro condicoes verdadeiras | o shell tem agora DOIS escritores `set_theme`: a janela e o gravador de disco | a regex exclui o gravador de disco e continua a proibir a JANELA; `8/8`, `NEG-ARM 7/7` |
+| `code-health` e `exception-hygiene` | divida real da sessao (o `_paint_plates` extraido e os `except` das cinco curas) | linhas de base re-medidas com `--update`; `code-health 5/5`, `exception-hygiene 4/4` |
+| `battery-budget`: `politica de largada diferente do baseline (baseline='cap40', corrida=None)` | **um `SOTTO_BATTERY_NOCAGE=1` esquecido na shell do agente**, herdado pelo largador: a corrida de 21 min nunca entrou no cage | ver 3-ter |
+| `warm-engine` arm 17 (`warm bridge attached`) e arm 21 (`got 4` timeouts) | dentro do tecto de 40% o attach real estoura os 500 ms do produto e o fio do motor nao e' escalonado (`not-scheduled 21.1s`, dito pelo proprio wrapper) | ver 3-ter |
+
+**Eu diagnostiquei o `battery-budget` como "contencao" e estava ERRADO.** O passo passava
+sozinho e eu aceitei isso como prova; o que provava era que eu nao tinha lido a linha que
+importa. A regra do AGENTS.md e' exacta: uma medicao endereçada por processo, nunca por
+`cwd` — e um custo medido sob fome e' a FILA, nao o instrumento. Aqui a segunda metade vale
+e a primeira nao: nao era fila, era fiacao.
+
+## 3-ter. `battery-launch`: a politica nao vem do ambiente
+
+A classe e' a do `webview2-args-scope` — uma variavel de ambiente herdada muda o que o
+processo mede, e nada no output do arranque o dizia. Duas metades:
+
+* `_main\battery-launch.py:run_env` (puro) RETIRA as cinco politicas do ambiente e **nomeia
+  cada uma que saiu**; a politica vem do CLI (`--no-cage/--fast/--heavy`).
+* `_main\_audit-verify-all.cmd` imprime `politica : !CAGE_POLICY!` **no arranque** (linha 60
+  da corrida caged, em vez da 568 de 568) e exporta `SOTTO_BATTERY_POLICY` para os passos.
+
+O passo novo `battery-launch` + `red-as-expected-battery-launch` julga as duas metades:
+`VERDICT: PASS (10/10)`, `NEG-ARM: PASS -- 5/5` (incluindo M5, que sobe o `setlocal` por cima
+do despacho do cage — a armadilha do `!` de `I:\!watcher`).
+
+No `warm-engine`, as duas curas sao do ORACULO e nenhuma afrouxa o produto: a arm 17 passa a
+esperar o motor quente como a arm 15 ja' fazia desde 2026-11-08, e a arm 21 **declara-se fora
+de julgamento** sob `cap40` (`NOT-JUDGED under cap40`) mantendo as 20 respostas e o
+carregamento unico. Medido: caged `22/22 PASS`; fora do tecto `p50=0.0 ms p95=16.0 ms
+max=47.0 ms n=20`, ainda julgado — afrouxar 300/500 ms ate' passar seria publicar um orcamento
+que o produto nao tem.
+
 ## 4. Pins
 
 * `_main\_audit-verify-all.cmd` = **267654 B**, **3283 CRLF** / 0 bare LF,

@@ -73,11 +73,56 @@ function die(message) {
 function makeClock(startMs) {
   let seq = 0;
   const timers = [];
+  /* O RELOGIO E' O CUSTO (medido 2026-11-13). `advanceTo` escolhia o proximo
+   * timer com uma VARREDURA LINEAR sobre todos os timers, a cada disparo, e
+   * NUNCA tirava um timer morto da lista -- os dois juntos sao O(n^2) sobre a
+   * corrida inteira. Medido no corpus real: `panel-commit-stable` custava
+   * **9,2 s** no baseline de 2026-11-05 e **221,1 s** hoje, com o mesmo codigo
+   * de produto e o MESMO custo de censo (0,51 s para 3 527 fragmentos): o que
+   * cresceu foi o numero de timers armados por commit, e o replay passou a
+   * gastar o tempo a escolher qual dispara. Um laco que pergunta "e agora?" a
+   * CADA timer para cada timer e' o mesmo defeito que a lei do custo do
+   * AGENTS.md nomeia do lado do produto. Agora e' um monte binario
+   * (at, id) -- o desempate por insercao e' o do browser e continua igual --
+   * e um timer morto sai na primeira vez que sobe ao topo. */
+  const heap = [];
+  const before = (a, b) => a.at < b.at || (a.at === b.at && a.id < b.id);
+  function siftUp(i) {
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (!before(heap[i], heap[parent])) break;
+      [heap[i], heap[parent]] = [heap[parent], heap[i]];
+      i = parent;
+    }
+  }
+  function siftDown(i) {
+    for (;;) {
+      const left = 2 * i + 1;
+      const right = left + 1;
+      let best = i;
+      if (left < heap.length && before(heap[left], heap[best])) best = left;
+      if (right < heap.length && before(heap[right], heap[best])) best = right;
+      if (best === i) break;
+      [heap[i], heap[best]] = [heap[best], heap[i]];
+      i = best;
+    }
+  }
+  function push(timer) {
+    heap.push(timer);
+    siftUp(heap.length - 1);
+  }
+  function popRoot() {
+    const top = heap[0];
+    const last = heap.pop();
+    if (heap.length) { heap[0] = last; siftDown(0); }
+    return top;
+  }
   const clock = {
     now: startMs,
     setTimeout(fn, ms) {
       seq += 1;
       const timer = { id: seq, at: clock.now + Math.max(0, Number(ms) || 0), fn, dead: false };
+      push(timer);
       timers.push(timer);
       return timer.id;
     },
@@ -86,17 +131,13 @@ function makeClock(startMs) {
     },
     /** Run every timer due at or before `t`, then stand at `t`. */
     advanceTo(t) {
-      for (;;) {
-        let pick = null;
-        for (const timer of timers) {
-          if (timer.dead) continue;
-          if (timer.at > t) continue;
-          if (pick === null || timer.at < pick.at || (timer.at === pick.at && timer.id < pick.id)) pick = timer;
-        }
-        if (pick === null) break;
-        pick.dead = true;
-        clock.now = pick.at;
-        pick.fn();
+      while (heap.length) {
+        const next = heap[0];
+        if (next.dead) { popRoot(); continue; }
+        if (next.at > t) break;
+        popRoot();
+        clock.now = next.at;
+        next.fn();
       }
       if (t > clock.now) clock.now = t;
     },
@@ -110,23 +151,52 @@ function makeClock(startMs) {
  * real. Nothing here paints anything; every claim below is about the DOM the panel
  * builds in this process.
  */
+/* O SELETOR NAO MUDA ENTRE NOS (medido 2026-11-13). O perfil do corpus real
+ * (`--cpu-prof`, arm `after`) da' `compoundMatches` como 40%+ do processo: a
+ * funcao re-parseava a MESMA string de seletor com DUAS regex por no' visitado,
+ * a cada varredura da arvore. O painel pergunta muito (`classList.contains`,
+ * `closest`, `querySelectorAll`) e a populacao de nos cresce com o corpus. O
+ * parse passa a ser feito uma vez por string -- a MESMA gramatica, so'
+ * resolvida antes do laco. Nada de semantica mudou: `parseCompound` devolve
+ * exactamente o que a funcao antiga derivava. */
+const COMPOUND_CACHE = new Map();
+function parseCompound(comp) {
+  if (COMPOUND_CACHE.has(comp)) return COMPOUND_CACHE.get(comp);
+  const m = comp.match(/^([a-zA-Z][\w-]*)?((?:[.#][\w-]+|\[[^\]]*\])*)$/);
+  let parsed = null;
+  if (m) {
+    const tag = m[1] ? m[1].toUpperCase() : null;
+    const parts = [];
+    for (const p of ((m[2] || '').match(/[.#][\w-]+|\[[^\]]*\]/g) || [])) {
+      if (p[0] === '.') parts.push({ kind: 'class', name: p.slice(1) });
+      else if (p[0] === '#') parts.push({ kind: 'id', name: p.slice(1) });
+      else {
+        const inner = p.slice(1, -1);
+        const eq = inner.indexOf('=');
+        parts.push({
+          kind: 'attr',
+          name: eq === -1 ? inner : inner.slice(0, eq),
+          val: eq === -1 ? null : inner.slice(eq + 1).replace(/^["']|["']$/g, ''),
+        });
+      }
+    }
+    parsed = { tag, parts };
+  }
+  COMPOUND_CACHE.set(comp, parsed);
+  return parsed;
+}
 function compoundMatches(el, comp) {
   if (!comp) return false;
-  const m = comp.match(/^([a-zA-Z][\w-]*)?((?:[.#][\w-]+|\[[^\]]*\])*)$/);
-  if (!m) return false;
-  if (m[1] && el.tagName !== m[1].toUpperCase()) return false;
-  const parts = (m[2] || '').match(/[.#][\w-]+|\[[^\]]*\]/g) || [];
-  for (const p of parts) {
-    if (p[0] === '.') { if (!el.classList.contains(p.slice(1))) return false; }
-    else if (p[0] === '#') { if (el.id !== p.slice(1)) return false; }
+  const parsed = parseCompound(comp);
+  if (!parsed) return false;
+  if (parsed.tag && el.tagName !== parsed.tag) return false;
+  for (const p of parsed.parts) {
+    if (p.kind === 'class') { if (!el.classList.contains(p.name)) return false; }
+    else if (p.kind === 'id') { if (el.id !== p.name) return false; }
     else {
-      const inner = p.slice(1, -1);
-      const eq = inner.indexOf('=');
-      const name = eq === -1 ? inner : inner.slice(0, eq);
-      const val = eq === -1 ? null : inner.slice(eq + 1).replace(/^["']|["']$/g, '');
-      const have = el._attrs[name];
+      const have = el._attrs[p.name];
       if (have === undefined) return false;
-      if (val !== null && String(have) !== val) return false;
+      if (p.val !== null && String(have) !== p.val) return false;
     }
   }
   return true;

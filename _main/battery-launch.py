@@ -46,6 +46,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..'))
 BATTERY = os.path.join(HERE, '_audit-verify-all.cmd')
 OUT = os.path.join(HERE, '_audit-verify')
+
+# As variaveis que MUDAM O QUE A CORRIDA PROVA. Elas vem do CLI (`--no-cage`,
+# `--fast`, `--heavy`); uma que sobreviva do ambiente do chamador vira uma
+# politica que ninguem pediu -- e o `caged:` do sumario aparece 21 min depois.
+POLICY_ENV = ("SOTTO_BATTERY_NOCAGE", "SOTTO_BATTERY_CAGED",
+              "SOTTO_BATTERY_FAST", "SOTTO_BATTERY_HEAVY",
+              "SOTTO_BATTERY_POLICY")
 PYTHON = sys.executable
 
 #: As portas que uma edicao da `.cmd` obriga a re-medir, com o custo medido de
@@ -98,18 +105,41 @@ def _load_hidden_launch():
     return module
 
 
+def run_env(args, base=None):
+    """O ambiente do filho, e as chaves que foram RETIRADAS dele.
+
+    Puro de proposito: a regra que decide o que a corrida prova tem de ser
+    exercitavel sem largar 21 min de bateria -- um portao que precisa da corrida
+    inteira para julgar seis linhas nao tem controlo.
+    """
+    env = dict(os.environ if base is None else base)
+    # O AMBIENTE NAO ESCOLHE O QUE A CORRIDA PROVA (medido 2026-11-12).
+    # Um `SOTTO_BATTERY_NOCAGE=1` esquecido na shell do agente fez a corrida inteira
+    # correr SEM tecto e o `battery-budget` reprovar contra o baseline `cap40` -- e a
+    # linha do sumario dizia `caged: OFF` so' no fim, 21 min depois. A classe e' a do
+    # `webview2-args-scope`: uma variavel herdada muda o que o processo mede. As
+    # politicas desta corrida vem do CLI, e o que sobra do ambiente e' NOMEADO.
+    scrubbed = sorted(k for k in POLICY_ENV if k in env)
+    for key in scrubbed:
+        del env[key]
+    env['PYTHONIOENCODING'] = 'utf-8'
+    if getattr(args, 'no_cage', False):
+        env['SOTTO_BATTERY_NOCAGE'] = '1'
+        env.pop('SOTTO_BATTERY_CAGED', None)
+    if getattr(args, 'fast', False):
+        env['SOTTO_BATTERY_FAST'] = '1'
+    if getattr(args, 'heavy', False):
+        env['SOTTO_BATTERY_HEAVY'] = '1'
+    return env, scrubbed
+
+
 def launch(args):
     stamp = time.strftime('%Y%m%d-%H%M%S')
     log = os.path.join(OUT, f'_battery-run-{stamp}.log')
-    env = dict(os.environ)
-    env['PYTHONIOENCODING'] = 'utf-8'
-    if args.no_cage:
-        env['SOTTO_BATTERY_NOCAGE'] = '1'
-        env.pop('SOTTO_BATTERY_CAGED', None)
-    if args.fast:
-        env['SOTTO_BATTERY_FAST'] = '1'
-    if args.heavy:
-        env['SOTTO_BATTERY_HEAVY'] = '1'
+    env, scrubbed = run_env(args)
+    if scrubbed:
+        print(f'  ambiente NOMEADO e retirado: {", ".join(scrubbed)}'
+              f' -- a politica vem do CLI, nao de um export esquecido')
     argv = ['cmd', '/c', BATTERY]
     print(f'battery-launch  run={stamp}')
     print(f'  comando  {" ".join(argv)}   (hidden, cwd={ROOT})')

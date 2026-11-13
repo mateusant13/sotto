@@ -357,6 +357,12 @@ panel-state.SottoPaintFirstCensus-*.json
 # do `dead-app-exit`, o rotativo do censo de freeze e os registos de
 # `history-verify/` (que sao a MEDICAO do historico dele, nao fonte).
 *__mutant_*.py
+# O `_battery-plan.py` escreve a copia do braco negativo AO LADO do original com
+# um PONTO (`_battery-plan.mutant-defer-apagado.py`) e as duas linhas de cima nao
+# casam com essa forma -- medido 2026-11-13, depois de uma corrida cortada por
+# prazo no meio do `finally`: o ficheiro ficou no indice a espera de um
+# `git add -A`. E derivado do original, nunca fonte.
+_main/*.mutant-*.py
 _main/_deadexit/
 *.log.1
 history-verify/
