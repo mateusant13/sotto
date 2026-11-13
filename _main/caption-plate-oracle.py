@@ -550,9 +550,132 @@ def arm_a10(ctx) -> tuple:
     return False, ' | '.join(detail)
 
 
+def arm_a11(ctx) -> tuple:
+    """A PLACA EXISTE NO PRIMEIRO PIXEL -- a janela nasce com o desenho de disco.
+
+    MEDIDO na sessao do dono (pid 46056, 2026-11-12): a primeira linha pintou as
+    19:41:44.254 e o `CAPTION_OVERLAY_THEME_APPLIED ... plate=yes` so' chegou as
+    19:41:46.327 -- **2,07 s de texto SEM FUNDO** (`caption-timeline.py`:
+    `PLATE-LATE 2073.0ms`), verbatim: *"o background da legenda atrasou pra
+    aparecer. entao a legenda ficou uns segundos sem background"*.
+
+    A placa e' pintada no MESMO bitmap que os glifos, logo isto nao e' defeito de
+    pintura: e' a janela nascer sem desenho, porque o payload medido so' existe
+    depois do DOM da pagina e `_brand_tokens_last` e' memoria do PROCESSO. As
+    duas metades, as duas medidas aqui:
+
+      a) o `caption_settings.set_theme`/`theme` REAL grava e devolve o payload --
+         e devolve `{}` para um payload SEM placa, senao o arranque seguinte
+         nasceria com a cara do YouTube e o defeito voltava disfarcado;
+      b) a CRIACAO da janela le esse ficheiro quando a memoria esta' vazia: o
+         ramo `why='overlay-created'` do shell tem de nomear `caption_settings`
+         e `theme()`.
+    """
+    settings = ctx['settings']
+    detail = []
+    with tempfile.TemporaryDirectory(prefix='plate-theme-') as folder:
+        old = os.environ.get('SOTTO_CAPTION_THEME')
+        os.environ['SOTTO_CAPTION_THEME'] = os.path.join(folder, 'theme.json')
+        try:
+            empty = settings.theme()
+            payload = {'theme': 'theme-1', 'rowBg': 'rgba(0,2A,0,0.86)',
+                       'rowBgAlpha': 0.86, 'panelPad': [10, 12, 10, 12]}
+            payload['rowBg'] = 'rgba(0,0,0,0.86)'
+            settings.set_theme(payload)
+            back = settings.theme()
+            settings.set_theme({'theme': 'youtube'})
+            noplate = settings.theme()
+        finally:
+            if old is None:
+                os.environ.pop('SOTTO_CAPTION_THEME', None)
+            else:
+                os.environ['SOTTO_CAPTION_THEME'] = old
+    detail.append('vazio=%s gravado_pad=%s sem_placa=%s'
+                  % (bool(empty), bool(back.get('rowBg')), bool(noplate)))
+    ok_settings = (not empty and back.get('rowBg') == 'rgba(0,0,0,0.86)'
+                   and not noplate)
+
+    shell_src = src(ctx, 'sotto_webview.py')
+    start = shell_src.find("why='overlay-created'")
+    window = shell_src[max(0, start - 2600):start] if start >= 0 else ''
+    wired = ('caption_settings.theme()' in window
+             and 'why=\'overlay-created\'' in shell_src)
+    detail.append('janela-le-disco=%s ramo=%s' % (wired, start >= 0))
+    return bool(ok_settings and wired), ' | '.join(detail)
+
+
+def arm_a12(ctx) -> tuple:
+    """A PLACA E' DA LINHA, NAO DO BLOCO -- a largura segue a linha pintada.
+
+    ORDEM DO DONO, 2026-11-12, verbatim: *"a placa por LINHA, nao bloco --
+    largura acompanha a linha pintada"*. O modo `tight` ja' apertava a CAIXA ate'
+    o texto mais largo, mas uma legenda de DUAS linhas -- uma longa e uma curta --
+    continuava a levar um rectangulo unico com a largura da longa, e a linha curta
+    ficava com fundo a sobra: o "bloaty" que o `tight` existe para tirar.
+
+    MEDIDO no BITMAP, nao num booleano: duas linhas de larguras muito diferentes
+    (`LONGA_N` contra `curta`) e a leitura do ultimo pixel com alfa>8 na faixa
+    central de CADA linha. Antes da cura as duas faixas terminavam no mesmo x
+    (o bloco); agora a da linha curta termina perto do dobro mais perto.
+    """
+    ov = ctx['overlay']
+    detail = []
+    theme = dict(THEME)
+    scale = 1.0
+    texto = ('ESTA E A PRIMEIRA LINHA QUE E LONGA DE VERDADE E OCUPA A CAIXA '
+             'QUASE TODA\ncurta')
+    cur_lines, prev, w, hh, _scr = ov._layout(
+        texto, '', scale, 1920, theme, rows=2, plate_mode='tight')
+    geo = ov._geom(scale, theme, 'tight', 1.0)
+    if len(cur_lines) < 2:
+        return False, 'layout deu %d linha(s): %r' % (len(cur_lines), cur_lines)
+    bmp = ov._premultiplied_bitmap(cur_lines, '', w, hh, scale, theme, None,
+                                  0.0, 'tight', 1.0)
+    ends = []
+    for index in range(len(cur_lines)):
+        y = int(geo['pad_t'] + geo['line_h'] * index + geo['line_h'] / 2.0)
+        y = min(max(0, y), hh - 1)
+        last = -1
+        for x in range(bmp.Width):
+            if bmp.GetPixel(x, y).A > 8:
+                last = x
+        ends.append(last)
+    bmp.Dispose()
+    detail.append('caixa=%dx%d fins=%r' % (w, hh, ends))
+    if len(ends) < 2 or ends[0] <= 0 or ends[1] <= 0:
+        return False, ' | '.join(detail + ['uma faixa nao pintou nada'])
+    # A linha curta tem de terminar em menos de METADE da longa -- a razao e' a
+    # da diferenca entre as duas medidas, com folga para o arredondamento.
+    razao = float(ends[1]) / float(ends[0])
+    detail.append('razao=%.2f' % razao)
+    ok = razao < 0.55
+    # A segunda metade: o bloco (`normal`) CONTINUA a ser bloco -- a cura nao
+    # pode ter mudado os desenhos que pedem o rectangulo inteiro.
+    nl = ov._layout(texto, '', scale, 1920, theme, rows=2,
+                    plate_mode='normal')
+    ngeo = ov._geom(scale, theme, 'normal', 1.0)
+    nbmp = ov._premultiplied_bitmap(nl[0], '', nl[2], nl[3], scale, theme, None,
+                                    0.0, 'normal', 1.0)
+    nends = []
+    for index in range(len(nl[0])):
+        y = int(ngeo['pad_t'] + ngeo['line_h'] * index + ngeo['line_h'] / 2.0)
+        y = min(max(0, y), nl[3] - 1)
+        last = -1
+        for x in range(nbmp.Width):
+            if nbmp.GetPixel(x, y).A > 8:
+                last = x
+        nends.append(last)
+    nbmp.Dispose()
+    detail.append('normal fins=%r' % (nends,))
+    normal_ok = (len(nends) >= 2 and nends[1] > 0
+                 and abs(nends[0] - nends[1]) <= 3)
+    detail.append('bloco-intacto=%s' % normal_ok)
+    return bool(ok and normal_ok), ' | '.join(detail)
+
+
 ARMS = {'A1': arm_a1, 'A2': arm_a2, 'A3': arm_a3, 'A4': arm_a4,
         'A5': arm_a5, 'A6': arm_a6, 'A7': arm_a7, 'A8': arm_a8,
-        'A9': arm_a9, 'A10': arm_a10}
+        'A9': arm_a9, 'A10': arm_a10, 'A11': arm_a11, 'A12': arm_a12}
 
 #: Cada mutante muda UMA ancora (que tem de existir uma vez) numa COPIA do fonte.
 MUTANTS = (
@@ -591,11 +714,21 @@ MUTANTS = (
      'anchor': 'bridge.setCaptionVisual({ plate: plate, opacity: opacity });',
      'mutant': 'void 0;',
      'arms': ('A8',)},
+    {'name': 'M10 a janela volta a nascer sem o desenho de disco',
+     'file': 'sotto_webview.py',
+     'anchor': '                            stored = dict(caption_settings.theme() or {})',
+     'mutant': '                            stored = {}',
+     'arms': ('A11',)},
     {'name': 'M8 o layout recusa o estilo inteiro (opacity)',
      'file': 'overlay_paint.py',
      'anchor': "            plate_mode='normal', opacity=1.0):",
      'mutant': "            plate_mode='normal'):",
      'arms': ('A9',)},
+    {'name': 'M11 a placa volta a ser o BLOCO, nao a linha',
+     'file': 'overlay_paint.py',
+     'anchor': "    if geo['plate_mode'] != 'tight':",
+     'mutant': "    if True:",
+     'arms': ('A12',)},
     {'name': 'M7 o shell perde a entrada do mapa',
      'file': 'sotto_webview.py',
      'anchor': "            'caption-visual': ('host', '_caption_visual'),",

@@ -853,6 +853,96 @@ def _clear_outer_ring(g, width, height, edge_px=None):
         brush.Dispose()
 
 
+def _paint_plates(g, t, geo, width, height, scale, cur_lines, prev_line,
+                  cur_font, prev_font, roll, GraphicsPath, RectangleF,
+                  SolidBrush, colour, measure, cache):
+    """A PLACA -- uma por LINHA no modo `tight`, uma para o bloco em `normal`.
+
+    Extraida de `_paint_bitmap` (2026-11-12) quando a placa por linha entrou: o
+    corpo de `_paint_bitmap` estava em `max_func` 181 e o bloco novo levava-o a
+    264. O `code-health` mede o corpo, e a leitura certa e' a que separa "a
+    funcao cresceu por desenho" de "um bloco coube aqui" -- a placa e' uma
+    decisao propria e agora tem nome. Devolve `True` quando pintou alguma coisa.
+    """
+    if not (t['plate'] and t['plate'][3] > 0):
+        return False
+    inset = float(EDGE_PX)
+    radius_ceiling = t['plateRadius'] * scale
+
+    def _plate_rect(left, top, pw, ph, radius):
+        path = GraphicsPath()
+        radius = max(0.0, min(radius, min(pw, ph) / 2.0))
+        if radius <= 0.5:
+            path.AddRectangle(RectangleF(left, top, pw, ph))
+        else:
+            d = radius * 2.0
+            path.AddArc(left, top, d, d, 180.0, 90.0)
+            path.AddArc(left + pw - d, top, d, d, 270.0, 90.0)
+            path.AddArc(left + pw - d, top + ph - d, d, d, 0.0, 90.0)
+            path.AddArc(left, top + ph - d, d, d, 90.0, 90.0)
+            path.CloseFigure()
+        return path
+
+    painted = False
+    if geo['plate_mode'] != 'tight':
+        pw = max(1.0, float(width) - 2.0 * inset)
+        ph = max(1.0, float(height) - 2.0 * inset)
+        plate = _plate_rect(inset, inset, pw, ph, radius_ceiling)
+        brush = SolidBrush(colour(t['plate']))
+        g.FillPath(brush, plate)
+        brush.Dispose()
+        plate.Dispose()
+        return True
+
+    avail = max(1.0, float(width) - geo['x_text'] - geo['pad_r'])
+    hug_x = max(0.0, geo['pad_l'])
+    top = float(geo['pad_t']) - float(roll) * float(geo['line_h'])
+    rows = []
+    if prev_line:
+        rows.append((prev_line, geo['prev_h'], geo['prev_px'],
+                     t['prevWeight'], t['prevItalic']))
+    for _line in cur_lines:
+        rows.append((_case(_line, t['liveUpper']), geo['line_h'],
+                     geo['cur_px'], t['liveWeight'], t['liveItalic']))
+    tops = []
+    for _row in rows:
+        tops.append(top)
+        top += float(_row[1])
+    plates = []
+    for _index, (_text, _h, _px, _weight, _italic) in enumerate(rows):
+        if not _text:
+            continue
+        _w = measure(_text, _px, cache, t['fontFamily'], _weight, _italic)(_text)
+        if _w <= 0.0:
+            continue
+        _w = min(float(_w), avail)
+        _left = float(geo['x_text'])
+        if t['align'] == 'center':
+            _left += (avail - _w) / 2.0
+        _left = max(inset, _left - hug_x)
+        _pw = min(float(width) - 2.0 * inset, _w + 2.0 * hug_x)
+        _ptop = tops[_index]
+        _pbot = _ptop + float(_h)
+        if _index == 0:
+            _ptop = inset
+        if _index == len(rows) - 1:
+            _pbot = float(height) - inset
+        _ptop = max(inset, _ptop)
+        _pbot = min(float(height) - inset, _pbot)
+        _ph = _pbot - _ptop
+        if _pw <= 0.0 or _ph <= 0.0:
+            continue
+        plates.append((_left, _ptop, _pw, _ph))
+    brush = SolidBrush(colour(t['plate']))
+    for _left, _ptop, _pw, _ph in plates:
+        plate = _plate_rect(_left, _ptop, _pw, _ph, radius_ceiling)
+        g.FillPath(brush, plate)
+        plate.Dispose()
+        painted = True
+    brush.Dispose()
+    return painted
+
+
 def _paint_bitmap(cur_lines, prev_line, width, height, scale, theme, alphas,
                   roll, geo):
     """A pintura de sempre, intacta -- o caminho de cache-miss.
@@ -908,26 +998,9 @@ def _paint_bitmap(cur_lines, prev_line, width, height, scale, theme, alphas,
     # `SourceCopy` DEPOIS de todo o desenho (ver `_clear_outer_ring`). Assim
     # nenhuma chamada de desenho -- placa, regra, LED, glifo com stroke -- pode
     # deixar pixeis na fila zero do bitmap.
-    if t['plate'] and t['plate'][3] > 0:
-        inset = float(EDGE_PX)
-        pw = max(1.0, float(width) - 2.0 * inset)
-        ph = max(1.0, float(height) - 2.0 * inset)
-        radius = max(0.0, min(float(t['plateRadius']) * scale,
-                              min(pw, ph) / 2.0))
-        plate = GraphicsPath()
-        if radius <= 0.5:
-            plate.AddRectangle(RectangleF(inset, inset, pw, ph))
-        else:
-            d = radius * 2.0
-            plate.AddArc(inset, inset, d, d, 180.0, 90.0)
-            plate.AddArc(inset + pw - d, inset, d, d, 270.0, 90.0)
-            plate.AddArc(inset + pw - d, inset + ph - d, d, d, 0.0, 90.0)
-            plate.AddArc(inset, inset + ph - d, d, d, 90.0, 90.0)
-            plate.CloseFigure()
-        brush = SolidBrush(_colour(t['plate']))
-        g.FillPath(brush, plate)
-        brush.Dispose()
-        plate.Dispose()
+    _paint_plates(g, t, geo, width, height, scale, cur_lines, prev_line,
+                  cur_font, prev_font, roll, GraphicsPath, RectangleF,
+                  SolidBrush, _colour, _measure, _MEASURE_CACHE)
 
     # ── the rule (the row's border-left) ─────────────────────────────────────
     # A regra tambem entra 1 px: ela E' uma linha vertical de cor cheia, e no
