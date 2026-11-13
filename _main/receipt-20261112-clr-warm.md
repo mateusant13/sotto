@@ -116,7 +116,22 @@ seguir relia o `!STEP_RC!` do primeiro. A forma correcta é `:step <nome> 1` + `
 nada mais. E havia **16 bare LF** em `_main/_audit-verify-all.cmd`, deixados por três inserções
 anteriores; o ficheiro foi normalizado para 0.
 
-## 8. O QUE NÃO ESTÁ VERIFICADO
+## 8. O crescimento declarado
+
+`code-health` absorve o que este commit acrescenta, e a entrada é nomeada em vez de diluída:
+`sotto_webview.py` 1 451 183 -> **1 457 252 B**, 26 774 -> **26 881 linhas**, `defs` 169 -> **170**
+(a função), e `max_func` 416 -> **445** — este último é o bloco de comentário de 29 linhas que
+explica a posição da chamada dentro do `main()`, e é o número que um leitor futuro deve poder
+discutir, não esconder. `except_pass` **não se move** (65 -> 65): a cura não engole excepção nenhuma.
+
+A baseline foi fixada a partir do estado COMMITADO, com os ficheiros de outra lane recolhidos num
+`stash` temporário e devolvidos a seguir. Medido depois, com a árvore suja de novo:
+`piorem: 12 metrica(s)`, e **nenhuma** delas é deste commit — o `sotto_webview.py` da working tree
+tem **+11 219 B** sobre o commit e `except_pass` 65 -> **69**, contra os **+6 069 B** e
+`except_pass` inalterado deste bloco. É trabalho de outra lane, ainda não commitado, e o ratchet
+dizê-lo em voz alta é o comportamento correcto.
+
+## 9. O QUE NÃO ESTÁ VERIFICADO
 
 **Que a app do dono deixou de morrer.** Essa prova exige um arranque real com WebView2 a subir, e
 esta árvore não o consegue de uma pane `medium`: o WebView2 falha antes, em
