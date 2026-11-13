@@ -259,6 +259,14 @@ _main/shots/
 # Estado mutavel do GESTO de arrasto, escrito pela app viva (`caption_drag.STATE_PATH`,
 # app/webview/caption_drag.py:36). Nao e' fonte: um commit dele congela o arrasto do dono.
 /_main/caption-drag-offset.json
+# O ULTIMO DESENHO MEDIDO, escrito pela app viva (`caption_settings.THEME_FILE`,
+# app/webview/caption_settings.py:112) e lido na criacao da janela. E' estado do
+# PROCESSO para o arranque seguinte, nao fonte: commitá-lo congelaria a legenda do
+# dono no tema de hoje e o ficheiro voltaria sujo a cada troca de desenho.
+/_main/caption-theme.json
+# Estado efemero dos nomes de instancia que os oraculos lancam (`Local\SottoShell*`).
+/_main/panel-state.Local_SottoShell*.json
+/_main/panel-visibility.Local_SottoShell*.json
 # Relatorio de uma corrida da bateria, reescrito a cada corrida.
 /_main/_audit-verify/_launch-battery.txt
 # Stray shell-redirect artefacts that landed at the repo root.

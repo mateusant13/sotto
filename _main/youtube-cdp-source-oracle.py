@@ -37,7 +37,6 @@ from __future__ import annotations
 import argparse
 import ast
 import bisect
-import hashlib
 import io
 import json
 import os
@@ -46,6 +45,16 @@ import shutil
 import sys
 import tempfile
 import time
+
+#: O PROPRIO DIRECTORIO NO `sys.path`: `_astcache` vive ao lado deste ficheiro, e um
+#: import por nome so' resolve quando o directorio do SCRIPT esta' na lista -- verdade
+#: ao correr `python _main\x.py`, mentira quando o oraculo e' importado por outro
+#: instrumento (a sonda que mediu a distribuicao do max_gap foi assim que caiu num
+#: `ModuleNotFoundError`, medido 2026-11-12).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+import _astcache  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP = os.path.join(HERE, '..', 'app', 'webview')
@@ -74,7 +83,6 @@ def _reveal():
     return youtube_reveal
 
 
-_SHELL_AST_CACHE = {}
 
 
 def _shell_tree(shell_path):
@@ -88,12 +96,7 @@ def _shell_tree(shell_path):
     exactamente a propriedade que a medicao mostrou ser paga 51 vezes.
     """
     src = _read(shell_path)
-    key = hashlib.sha256(src.encode('utf-8', 'replace')).hexdigest()
-    hit = _SHELL_AST_CACHE.get(key)
-    if hit is None:
-        hit = ast.parse(src)
-        _SHELL_AST_CACHE[key] = hit
-    return src, hit
+    return src, _astcache.tree(src)
 
 
 def _shell_methods(shell_path, names):

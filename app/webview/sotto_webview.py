@@ -5153,6 +5153,64 @@ class ExternalCaptionWatcher(threading.Thread):
         held = (now - since) if since else 0.0
         return held >= float(self.CLOCK_STATIC_PAUSE_S), held
 
+    #: QUANTO `currentTime` TEM DE ANDAR, POR SEGUNDO DE PAREDE, PARA O VIDEO
+    #: ESTAR A ANDAR (2026-11-12). Um video a tocar anda `rate` segundos por
+    #: segundo; mesmo a 0,25x de velocidade isso e' 0,25. Um quinto disto ja' e'
+    #: prova de movimento: a deriva medida do relogio do player e' 0,034 s em
+    #: 8 s (`youtube_clock.DRIFT_RATE_S`), cinco vezes menos.
+    CLOCK_MOVING_MIN_RATE = 0.05
+
+    def _yt_clock_moving(self, snap, now=None):
+        """O RELOGIO ANDA? -- e a que velocidade. A medida que DESMENTE a bandeira.
+
+        MEDIDO na sessao do dono de 2026-11-12 (pid 46056), esta a causa do
+        congelamento que ele descreveu (*"ao apertar ctrl space algumas vezes,
+        ela travou"* e *"as vezes ta no sync, as vezes so' para"*):
+
+            19:41:49.489  YOUTUBE_CDP_PACED paused=True poll_s=0.50
+            19:41:49.537  CAPTION_WINDOW_BLANKED reason=youtube-paused epoch=3
+            ...           38 `YT_FRAME` com o texto a MUDAR ...
+            19:53:48.635  YOUTUBE_POLL_PACED paused=False   <- 12 MINUTOS depois
+            e ZERO `CAPTION_PAINT_SURFACE` nesses 12 minutos.
+
+        A bandeira `video.paused` leu True e nunca voltou a ler False; o portao
+        do `external_caption` recusa pixels enquanto `yt_source_paused` for
+        verdadeiro, e o ecra ficou vazio com o video a andar. Uma bandeira
+        sozinha mente -- a mesma licao do `_yt_clock_static`, no sentido
+        inverso. Aqui a medida e' o proprio `currentTime` a AVANCAR: enquanto
+        ele andar, o player nao esta' parado, diga o que disser a bandeira.
+
+        Devolve `(a_andar, taxa_medida)`. Sem duas leituras (t ausente, ou a
+        primeira depois de um salto) devolve `(False, 0.0)`: ausencia de medida
+        nunca vira afirmacao -- e' a bandeira que decide sozinha, como antes.
+        """
+        try:
+            t = snap.get('t') if snap is not None else None
+        except AttributeError:
+            t = None
+        now = time.monotonic() if now is None else float(now)
+        try:
+            t = None if t is None else float(t)
+        except (TypeError, ValueError):
+            t = None
+        prev = getattr(self, '_yt_mv', None)
+        if t is None:
+            self._yt_mv = None
+            return False, 0.0
+        if prev is None:
+            self._yt_mv = (t, now)
+            return False, 0.0
+        prev_t, prev_at = prev
+        gap = now - float(prev_at)
+        self._yt_mv = (t, now)
+        if gap < 0.10:
+            return False, 0.0
+        rate = (t - float(prev_t)) / gap
+        if rate < 0.0:
+            # Um seek para tras nao e' "a andar" nem e' "parado": nao e' medida.
+            return False, 0.0
+        return rate >= float(self.CLOCK_MOVING_MIN_RATE), rate
+
     def _yt_pause_edge(self, now_paused):
         """A BORDA DE PAUSA/FIM: apaga os pixels; a de VOLTA repinta a linha.
 
@@ -5190,10 +5248,19 @@ class ExternalCaptionWatcher(threading.Thread):
             if (shell is not None and line
                     and getattr(shell, '_caption_wanted', False)):
                 rows = list(getattr(self, 'last_rows', None) or ())
+                # A VOLTA REVELA, NAO DESPEJA (2026-11-12). Ordem do dono,
+                # verbatim: *"quando eu pauso e despauso, ele mostra a legenda
+                # inteira daquela secao do youtube, mas isso e' diferente do
+                # youtube. por que o youtube ainda mostra palavra por palavra,
+                # nao a frase inteira"*. `instant=True` pintava a janela toda de
+                # uma vez; com o cue do player no payload o overlay revela pelo
+                # relogio do video (`_PlayerCue`), que e' o que o YouTube faz. O
+                # `instant` so' fica para a fonte que nao tem relogio nenhum.
+                _cue = self._yt_cue_payload()
                 try:
                     shell.push_caption_to_window(
-                        line, instant=bool(rows), rows=rows or None,
-                        cue=self._yt_cue_payload())
+                        line, instant=bool(rows) and _cue is None,
+                        rows=rows or None, cue=_cue)
                 except Exception as exc:  # noqa: BLE001 -- fail-open
                     log('CAPTION_RESUME_PAINT_FAILED error=%r' % (exc,))
         self._yt_was_paused = now_paused
@@ -5345,6 +5412,26 @@ class ExternalCaptionWatcher(threading.Thread):
                     if snap.get('paused') is not None else False
                 self.yt_cdp_ended = bool(snap.get('ended')) \
                     if snap.get('ended') is not None else False
+                # A BANDEIRA QUE DIZ PAUSA COM O RELOGIO A ANDAR ESTA' ERRADA
+                # (2026-11-12, MEDIDO). Ver `_yt_clock_moving`: `paused=True`
+                # travado por 12 min com 38 quadros de texto novo a chegar custou
+                # ao dono um ecra vazio com o video a tocar, e nenhuma tecla o
+                # trouxe de volta (o `_blank_caption_window` sobe a epoch e o
+                # portao do `external_caption` recusa cada linha seguinte).
+                # A ordem e' esta': a medida DESMENTE a bandeira, nunca o
+                # contrario -- e o desmentido fica escrito UMA vez por episodio,
+                # senao um flap de ~30 s enchia o log.
+                _mv_moving, _mv_rate = self._yt_clock_moving(snap)
+                if self.yt_cdp_paused and _mv_moving:
+                    if not getattr(self, '_yt_mv_logged', False):
+                        self._yt_mv_logged = True
+                        log('YOUTUBE_PAUSE_DISAGREED paused_flag=True '
+                            'clock_rate=%.2f t=%.2f vid=%s'
+                            % (_mv_rate, float(snap.get('t') or 0.0),
+                               str(getattr(self, 'yt_video_id', '') or '')))
+                    self.yt_cdp_paused = False
+                elif not _mv_moving:
+                    self._yt_mv_logged = False
                 # O RELOGIO PARADO E' A PAUSA QUE A BANDEIRA NAO DISSE (2026-11-10).
                 # MEDIDO no log do dono (21:29:57 -> 21:36, 8 min): o ecra ficou com
                 # "Reeling like a desperado", `YOUTUBE_TICK_MS rows=2 why='painted'`
@@ -5852,6 +5939,11 @@ class ExternalCaptionWatcher(threading.Thread):
         self.yt_cdp_clock = None
         self._yt_guess_s = 0.0
         self._yt_was_paused = False
+        # A LEITURA ANTERIOR DO RELOGIO, PARA A MEDIDA DE MOVIMENTO (2026-11-12).
+        # `(t, monotonic)` ou None. Ver `_yt_clock_moving`: um video novo zera-a,
+        # senao o salto entre dois videos lia-se como "a andar a 40x".
+        self._yt_mv = None
+        self._yt_mv_logged = False
         self._yt_pause_epoch_seen = int(getattr(self, '_yt_pause_epoch', 0) or 0)
         _shell = getattr(self, 'shell', None)
         if _shell is not None:
@@ -12383,6 +12475,18 @@ class SottoHost:
                 % (theme.get('theme') or '-'))
             return
         shell._brand_tokens_last = dict(theme)
+        # O DESENHO MEDIDO VAI PARA DISCO (2026-11-12). MEDIDO na sessao do dono
+        # (pid 46056): primeira linha pintada as 19:41:44.254 e a placa a chegar
+        # as 19:41:46.327 -- 2,07 s de texto SEM FUNDO, verbatim: *"o background
+        # da legenda atrasou pra aparecer"*. O payload so' existe depois do DOM
+        # da pagina, e `_brand_tokens_last` morre com o processo, logo cada
+        # arranque repetia os mesmos segundos. Guardado aqui (o unico receptor da
+        # medida) e lido na CRIACAO da janela, a placa existe no primeiro pixel.
+        try:
+            import caption_settings
+            caption_settings.set_theme(theme)
+        except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
+            log(f'CAPTION_THEME_SAVE_FAILED error={exc!r}')
         shell._apply_overlay_theme(theme, why='page')
 
     def _boot_profile(self, payload):
@@ -13125,6 +13229,19 @@ class SottoShell:
                 # esperar por uma troca de tema que pode nunca vir.
                 try:
                     stored = dict(getattr(self, '_brand_tokens_last', None) or {})
+                    if not stored:
+                        # A JANELA NASCE COM O DESENHO DO ARRANQUE ANTERIOR
+                        # (2026-11-12, ver o comentario do `set_theme` no
+                        # receptor): o payload em disco e' o que impede o
+                        # primeiro segundo de texto sem fundo em cada arranque.
+                        try:
+                            import caption_settings
+                            stored = dict(caption_settings.theme() or {})
+                            if stored:
+                                log('CAPTION_OVERLAY_THEME_REPLAYED theme=%r '
+                                    'source=disk' % (stored.get('theme') or '-'))
+                        except Exception as exc:  # noqa: BLE001
+                            log(f'CAPTION_THEME_LOAD_FAILED error={exc!r}')
                     applied = self._apply_overlay_theme(stored, why='overlay-created')
                     if applied is None:
                         log('CAPTION_OVERLAY_THEME_REPLAYED theme=youtube '
@@ -18353,6 +18470,18 @@ class SottoShell:
     #: fica o tempo inteiro. Cada push rearma; sem fala nova, esconde.
     CAPTION_IDLE_HIDE_S = 6.0
 
+    #: QUANTO O ACK DE DESLIGAR FICA NO ECRA (ordem do dono, 2026-11-12,
+    #: verbatim): *"\'legenda ao vivo: desligada\' deve aparecer por meio
+    #: segundo apenas, e sumir."*
+    #:
+    #: E' UM TEMPORIZADOR PROPRIO, e nao um valor mais pequeno no
+    #: `CAPTION_IDLE_HIDE_S`. Aquele 6.0 e' o silencio que esconde uma LEGENDA
+    #: verdadeira (`_caption_idle_hide` e' armado por `push_caption_to_window`
+    #: nas DUAS vias, player e ASR); encolhe-lo para 0,5 s apagaria a linha do
+    #: player meio segundo depois de o player parar de a mudar, que e' o oposto
+    #: do 1:1 que ele pediu. O ack de desligar nao e' fala: tem o seu prazo.
+    CAPTION_STATUS_HIDE_S = 0.5
+
     def _arm_caption_idle_hide(self):
         """Rearma o temporizador que esconde a legenda sem fala nova.
 
@@ -18378,6 +18507,78 @@ class SottoShell:
         except Exception as exc:  # noqa: BLE001
             try:
                 log(f'CAPTION_IDLE_ARM_FAILED error={exc!r}')
+            except Exception:
+                pass
+
+    def _arm_caption_status_hide(self):
+        """O PRAZO DO ACK DE DESLIGAR -- meio segundo, e e' o DELE.
+
+        Nasceu da ordem do dono de 2026-11-12 (*"deve aparecer por meio segundo
+        apenas, e sumir"*). Reusa a forma do `_arm_caption_idle_hide` -- seq que
+        sobe, temporizador anterior cancelado -- porque a armadilha e' a mesma:
+        um disparo em voo de um episodio anterior nao pode apagar o texto de um
+        episodio novo.
+        """
+        import threading as _threading
+        try:
+            prev = getattr(self, '_caption_status_timer', None)
+            if prev is not None:
+                try:
+                    prev.cancel()
+                except Exception:         # noqa: BLE001
+                    pass
+            seq = int(getattr(self, '_caption_status_hide_seq', 0) or 0) + 1
+            self._caption_status_hide_seq = seq
+            timer = _threading.Timer(
+                float(self.CAPTION_STATUS_HIDE_S), self._caption_status_hide,
+                args=(seq, time.time()))
+            timer.daemon = True
+            self._caption_status_timer = timer
+            timer.start()
+        except Exception as exc:          # noqa: BLE001
+            try:
+                log(f'CAPTION_STATUS_HIDE_ARM_FAILED error={exc!r}')
+            except Exception:
+                pass
+
+    def _caption_status_hide(self, seq, armed=0.0):
+        """Tira o `off` do ecra ao fim do prazo DELE, e diz o numero medido.
+
+        AS TRES GUARDAS SAO O SENTIDO DISTO: (1) a seq -- um timer velho nao
+        apaga um episodio novo; (2) a razao ainda e' `off` -- uma legenda
+        verdadeira que tomou a superficie nao pode ser apagada por um ack; (3)
+        ha' pixels a apagar. Sem (2) isto era um `_blank_caption_window` com
+        prazo, e o ack mataria a linha do player.
+        """
+        try:
+            if int(getattr(self, '_caption_status_hide_seq', 0) or 0) != int(seq):
+                return
+            if str(getattr(self, '_caption_status_reason', '') or '') != 'off':
+                return
+            if not getattr(self, '_caption_window_shown', False):
+                return
+            self._caption_status_reason = ''
+            self._caption_status_queued_for = ''
+            self._caption_status_episode_at = 0.0
+            self._caption_window_shown = False
+            ov = getattr(self, 'caption_overlay', None)
+            if ov is not None:
+                def _hide():
+                    try:
+                        ov.hide()
+                        ov.show(False)
+                    except Exception as exc:   # noqa: BLE001
+                        log('CAPTION_STATUS_HIDE_FAILED error=%r' % (exc,))
+                try:
+                    self._post(_hide)
+                except Exception:               # noqa: BLE001
+                    pass
+            ms = int((time.time() - float(armed or 0.0)) * 1000.0) if armed else 0
+            log('CAPTION_STATUS_HIDDEN reason=off after_s=%.1f ms=%d'
+                % (float(self.CAPTION_STATUS_HIDE_S), ms))
+        except Exception as exc:              # noqa: BLE001
+            try:
+                log('CAPTION_STATUS_HIDE_FAILED error=%r' % (exc,))
             except Exception:
                 pass
 
@@ -19088,8 +19289,13 @@ class SottoShell:
         sentido inverso). Este `_post` fica ATRAS do esconder na MESMA fila, por
         isso a ordem e' a do dono: desliga, depois escreve.
 
-        O texto sai pelo temporizador de silencio que ja' existe
-        (`CAPTION_IDLE_HIDE_S`), nao por um caminho novo.
+        O TEXTO DE DESLIGAR TEM O PRAZO DELE (2026-11-12, ordem do dono:
+        *"\'legenda ao vivo: desligada\' deve aparecer por meio segundo apenas,
+        e sumir"*). Ate' aqui ele era apagado pelo temporizador de silencio
+        normal (`CAPTION_IDLE_HIDE_S`, 6 s), que e' o prazo de uma LEGENDA --
+        e por isso o ack ficava 6 s no ecra de um video que ja estava desligado.
+        Agora arma `_arm_caption_status_hide` (0,5 s), um prazo proprio; o
+        `_caption_idle_hide` continua a ser o unico prazo da fala.
         """
         ov = getattr(self, 'caption_overlay', None)
         if ov is None:
@@ -19112,7 +19318,7 @@ class SottoShell:
                 ms = int((time.time() - started) * 1000.0) if started else 0
                 log('CAPTION_STATUS_SHOWN reason=off ms=%d text=%s'
                     % (ms, json.dumps(text)))
-                self._arm_caption_idle_hide()
+                self._arm_caption_status_hide()
             except Exception as exc:          # noqa: BLE001
                 log('CAPTION_STATUS_OFF_PAINT_FAILED error=%r' % (exc,))
 

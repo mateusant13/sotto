@@ -95,3 +95,57 @@ def set_visual(opacity=None, plate=None):
         settings['plate'] = plate
     save(settings)
     return visual()
+
+
+# ── O ULTIMO DESENHO MEDIDO (2026-11-12) ────────────────────────────────────
+# MEDIDO na sessao do dono (pid 46056, 19:41): a primeira linha pintou as
+# 19:41:44.254 e a placa so' apareceu as 19:41:46.327 (`CAPTION_OVERLAY_THEME_
+# APPLIED ... plate=yes alpha=219 why=page`), ou seja **2,07 s de texto sem
+# fundo** -- verbatim: *"o background da legenda atrasou pra aparecer. entao a
+# legenda ficou uns segundos sem background"*. A causa nao e' o desenho (a placa
+# e' pintada no MESMO bitmap que os glifos): e' a JANELA nascer sem desenho,
+# porque o payload que a pagina mede so' existe depois do DOM dela, e o
+# `_brand_tokens_last` e' memoria do PROCESSO -- um arranque novo comeca vazio e
+# repete os mesmos segundos.
+# A CURA: o ultimo payload medido fica em DISCO e a janela nasce com ele. A
+# placa passa a existir no primeiro pixel, como em qualquer arranque seguinte.
+THEME_FILE = 'caption-theme.json'
+
+def theme_path():
+    """O ficheiro do ultimo desenho; `SOTTO_CAPTION_THEME` desvia-o (oraculos)."""
+    return os.environ.get('SOTTO_CAPTION_THEME') or os.path.join(
+        os.path.dirname(path()), THEME_FILE)
+
+def theme():
+    """O ultimo payload medido, ou `{}`. Nunca levanta.
+
+    Um payload sem `rowBg`/`plate` nao serve para nada (o YouTube nao tem placa,
+    e por isso nao e' um desenho) e nao e' devolvido: um `{}` diz "nao ha
+    desenho guardado", que e' o que o chamador precisa de saber.
+    """
+    try:
+        with open(theme_path(), 'r', encoding='utf-8') as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    has_plate = bool(data.get('rowBg') or data.get('plate'))
+    return data if has_plate else {}
+
+def set_theme(tokens):
+    """Grava o payload medido (temporario-e-renomeia). Devolve o caminho."""
+    dest = theme_path()
+    try:
+        folder = os.path.dirname(dest)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+        tmp = dest + '.tmp'
+        with open(tmp, 'w', encoding='utf-8', newline='\n') as fh:
+            json.dump(tokens if isinstance(tokens, dict) else {}, fh,
+                      indent=2, sort_keys=True)
+            fh.write('\n')
+        os.replace(tmp, dest)
+    except OSError:
+        pass
+    return dest

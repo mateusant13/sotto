@@ -191,6 +191,7 @@ from overlay_paint import (  # noqa: F401 -- superficie publica deste modulo
     _MEASURE_CACHE, _THEME_DEFAULT, _case, _colour, _font_family, _geom,
     _layout, _luminance, _make_font, _measure, _measure_budget,
     _normalise_theme, _premultiplied_bitmap, _rgba, _same_line,
+    EDGE_PX as _EDGE_PX,
 )
 
 # ── O ARRASTO COM CTRL (2026-11-08) ─────────────────────────────────────────
@@ -621,6 +622,25 @@ class NativeCaptionOverlay:
         self._drag = caption_drag.DragState(offset=self._drag_offset)
         self._drag_armed = False
         self._drag_dragging = False
+        # ── A PLACA DE CADA QUADRO, EM NUMERO (2026-11-12) ──────────────────
+        # Ordem do dono, verbatim: *"por algum motivo, o background da legenda
+        # atrasou pra aparecer. entao a legenda ficou uns segundos sem
+        # background."* A placa e' desenhada DENTRO do mesmo bitmap que o glifo
+        # (`overlay_paint._paint_bitmap`), logo a unica forma de ela faltar num
+        # quadro com texto e' o tema ainda nao ter chegado: `set_theme` repinta,
+        # mas a janela nasce com `plate=no` e o desenho do painel chega ~3 s
+        # depois (`CAPTION_OVERLAY_THEME_APPLIED ... why=page`, medido 19:41:43
+        # -> 19:41:46). Estes tres campos transformam esse atraso num NUMERO:
+        # `_paint_n` conta quadros, `_plate_state` guarda o que o ultimo levou,
+        # e o log so' escreve na MUDANCA com o contador ao lado -- uma linha por
+        # quadro a 60 Hz seria o mesmo custo que a DM de stutter cobrou ao tick.
+        self._paint_n = 0
+        self._plate_state = None
+        #: A primeira pintura que levou TEXTO, para o atraso da placa ser
+        #: medido contra ela ("texto visivel sem placa" = `text_paint_n` menor
+        #: que o quadro em que a placa entrou).
+        self._text_paint_n = None
+        self._text_paint_at = 0.0
         self._drag_pos = None
         self._drag_canvas = None
         #: `True` quando o ultimo `_arm_tick` foi armado por CONTEUDO (palavra,
@@ -1252,6 +1272,72 @@ class NativeCaptionOverlay:
         canvas.outline(inset, inset, w, h, colour, thickness)
         return (inset, inset, w, h)
 
+    def _plate_signature(self, width, height):
+        """A PLACA DESTE QUADRO EM NUMERO: `(on, w, h, alpha)`.
+
+        Ordem do dono, 2026-11-12, verbatim: *"por algum motivo, o background
+        da legenda atrasou pra aparecer. entao a legenda ficou uns segundos sem
+        background."* O glifo e a placa saem do MESMO bitmap, logo a unica
+        forma de existir texto sem placa e' o tema ainda nao ter chegado a esta
+        janela -- e ate' agora isso nao tinha numero nenhum no log.
+
+        Devolve `(1, w, h, a)` quando a placa entra no bitmap e `(0, 0, 0, a)`
+        quando nao entra. A geometria e' a MESMA conta de
+        `overlay_paint._paint_bitmap` (a placa entra `EDGE_PX` para dentro), e
+        por isso ela e' lida de `overlay_paint` em vez de recalculada aqui.
+        """
+        try:
+            geo = _geom(self.scale, self.theme, **self._caption_style())
+        except Exception:                     # noqa: BLE001 -- medir nunca parte
+            return (0, 0, 0, 0)
+        t = geo['t']
+        ink = t.get('plate')
+        if ink and int(ink[3]) > 0:
+            inset = float(_EDGE_PX)
+            return (1, int(max(1, width - 2 * inset)),
+                    int(max(1, height - 2 * inset)), int(ink[3]))
+        return (0, 0, 0, int(ink[3]) if ink else 0)
+
+    def _log_plate(self, width, height, has_text):
+        """UMA linha por MUDANCA de placa -- com o numero do quadro ao lado.
+
+        A forma e' a do `CAPTION_PAINT_SURFACE` (`ms=`/`epoch=`) de proposito:
+        o instrumento que le' a linha do tempo da legenda cruza esta linha com
+        a pintura pela HORA, e duas formas diferentes obrigariam a duas
+        gramaticas no mesmo leitor.
+
+        `plate_px` e' a caixa da placa (nao a da janela): e' o buraco que o dono
+        ve' quando a placa falta. `text_n=` diz em que quadro o TEXTO apareceu
+        pela primeira vez, para o atraso ser um numero -- quando a placa entra
+        num quadro com `plate_n > text_n`, a legenda esteve (plate_n - text_n)
+        quadros no ecra sem fundo.
+        """
+        self._paint_n = int(getattr(self, '_paint_n', 0)) + 1
+        if has_text and self._text_paint_n is None:
+            self._text_paint_n = self._paint_n
+            self._text_paint_at = time.monotonic()
+        sig = self._plate_signature(width, height)
+        if has_text:
+            sig = sig + (1,)
+        else:
+            sig = sig + (0,)
+        if sig == getattr(self, '_plate_state', None):
+            return
+        self._plate_state = sig
+        if has_text and self._text_paint_n is not None:
+            lag_n = self._paint_n - self._text_paint_n
+            lag_ms = int(round((time.monotonic()
+                                - float(self._text_paint_at or 0.0)) * 1000.0))
+        else:
+            lag_n = 0
+            lag_ms = 0
+        self.log('CAPTION_PLATE plate=%s plate_px=%dx%d plate_alpha=%d '
+                 'text=%d paint_n=%d text_n=%s lag_frames=%d lag_ms=%d'
+                 % ('on' if sig[0] else 'off', sig[1], sig[2], sig[3], sig[4],
+                    self._paint_n,
+                    '-' if self._text_paint_n is None else self._text_paint_n,
+                    lag_n, lag_ms))
+
     def _update(self):
         if not self.hwnd:
             return False
@@ -1261,6 +1347,14 @@ class NativeCaptionOverlay:
         text, alphas = self._display()
         previous = self.previous or ""
         if not text and not previous:
+            # O QUADRO SAIU SEM TEXTO (2026-11-12): a placa tambem sai do ecra, e
+            # isso e' um ESTADO que o log tem de mostrar -- sem esta linha, um
+            # leitor da linha do tempo nao distingue "placa esquecida no ecra"
+            # de "placa removida com os pixels".
+            try:
+                self._log_plate(0, 0, False)
+            except Exception:                 # noqa: BLE001 -- medir nunca parte
+                pass
             if self._cue is not None:
                 # O cue existe mas ainda nao tem palavra revelada (o relogio do
                 # player esta' antes do `start` da linha, ou entre duas linhas):
@@ -1290,6 +1384,12 @@ class NativeCaptionOverlay:
         # Ctrl carregado o contorno pulsa; a arrastar fica solido; com ele
         # levantado nenhum pixel e' tocado. Nao ha' janela nem bitmap extra: e'
         # este bitmap que ja' ia ser composto.
+        # A PLACA, EM NUMERO, ANTES do blit (2026-11-12): mede o que ESTE
+        # quadro levou, e so' escreve quando o estado muda (`_log_plate`).
+        try:
+            self._log_plate(width, height, bool(text))
+        except Exception:                     # noqa: BLE001 -- medir nunca parte
+            pass
         if getattr(self, '_drag_armed', False):
             self._paint_drag_outline(bmp, width, height)
         try:
