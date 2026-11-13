@@ -234,6 +234,36 @@ class Player:
         self._yt_anchor = None
         self._yt_track = track
         self._yt_stall_logged = None
+        # O QUE O `_yt_cdp_snapshot` REAL CHAMA (2026-11-12). O `_yt_clock_moving`
+        # entrou no shell para desmentir a bandeira `paused` com o relogio a andar,
+        # e o `_yt_cdp_snapshot` passou a chama-lo -- o corpo e' extraido do fonte
+        # REAL no `main()` deste oraculo, logo a linha `fn_snap(...)` chamava um
+        # metodo que este stub nao tinha: `AttributeError: 'ForeignPlayer' object
+        # has no attribute '_yt_clock_moving'`. Um stub que so' tem os campos que a
+        # versao anterior do chamador usava e' um stub que apodrece a cada cura do
+        # chamador (a classe do `FakeReader` sem `shed()`).
+        self._yt_mv = None
+        self._yt_mv_logged = False
+        self._yt_pause_epoch_seen = 0
+        self._yt_mv_now = 0.0
+
+    def _yt_clock_moving(self, snap, now=None):
+        """A leitura de MOVIMENTO, `(andou, rate)` -- o contrato REAL do shell."""
+        prev = self._yt_mv
+        now_v = self._yt_mv_now if now is None else float(now)
+        mov = 0.0
+        if snap.get('t') is not None:
+            mov = float(snap.get('t') or 0.0)
+        if prev is None:
+            self._yt_mv = (mov, now_v)
+            return False, 0.0
+        dt = now_v - float(prev[1])
+        delta = mov - float(prev[0] or 0.0)
+        self._yt_mv = (mov, now_v)
+        if dt <= 0.0 or delta < 0.0:
+            return False, 0.0
+        rate = delta / dt
+        return rate >= 0.05, rate
 
     def _yt_prof(self, *_a, **_k):
         return None

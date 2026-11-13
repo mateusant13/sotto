@@ -261,24 +261,24 @@
       "max_func_name": "drag_plan"
     },
     "app/webview/caption_overlay.py": {
-      "bytes": 86640,
+      "bytes": 91941,
       "classes": 8,
       "defs": 9,
-      "except_pass": 5,
+      "except_pass": 7,
       "globals": 0,
-      "lines": 1762,
-      "max_func": 116,
-      "max_func_name": "_update"
+      "lines": 1862,
+      "max_func": 134,
+      "max_func_name": "__init__"
     },
     "app/webview/caption_settings.py": {
-      "bytes": 3607,
+      "bytes": 5978,
       "classes": 0,
-      "defs": 7,
-      "except_pass": 1,
+      "defs": 10,
+      "except_pass": 2,
       "globals": 0,
-      "lines": 97,
-      "max_func": 15,
-      "max_func_name": "save"
+      "lines": 151,
+      "max_func": 16,
+      "max_func_name": "theme"
     },
     "app/webview/caption_wrap.py": {
       "bytes": 20049,
@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1431983,
+      "bytes": 1470115,
       "classes": 29,
       "defs": 171,
-      "except_pass": 65,
+      "except_pass": 69,
       "globals": 9,
-      "lines": 26913,
+      "lines": 27119,
       "max_func": 446,
       "max_func_name": "main"
     },

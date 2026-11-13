@@ -330,16 +330,32 @@ ARMS = (
 
 # -- os mutantes ------------------------------------------------------------
 
+def _nl(src):
+    """O fim-de-linha do FICHEIRO -- as ancoras levam esse, nao um `\\n` cravado.
+
+    MEDIDO (2026-11-12, primeira corrida da bateria com este passo):
+    `MUTATION-FAIL: the reason guard was not found` -- e a guarda estava la', linha
+    18556, em CRLF. O `read_source` le' com `newline=""` (e tem de ler: o commit
+    conta os CRLF do ficheiro), logo uma ancora com `\\n` simples nunca casa. O
+    `M1` passava porque nao tem newline nenhum. Um negativo que nao corre nao e'
+    um controlo -- e este falhou em silencio no primeiro positivo que escrevi.
+    """
+    return "\r\n" if "\r\n" in src else "\n"
+
+
 def _mutants(src):
     """(nome, arm, texto mutado) -- cada um tem de deixar a SUA arm RED."""
+    nl = _nl(src)
     ack_old = "    CAPTION_STATUS_HIDE_S = 0.5"
     if ack_old not in src:
         raise SystemExit("MUTATION-FAIL: `CAPTION_STATUS_HIDE_S = 0.5` not found")
     yield ("M1 ack=6.0 (o valor antigo)", "A1 meio-segundo",
            src.replace(ack_old, "    CAPTION_STATUS_HIDE_S = 6.0", 1))
-    guard = """            if str(getattr(self, '_caption_status_reason', '') or '') != 'off':
-                return
-"""
+    guard = nl.join((
+        "            if str(getattr(self, '_caption_status_reason', '') or '') != 'off':",
+        "                return",
+        "",
+    ))
     if guard not in src:
         raise SystemExit("MUTATION-FAIL: the reason guard was not found")
     yield ("M2 sem-guarda-da-razao", "A3 o-silencio-intacto",

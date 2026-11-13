@@ -135,11 +135,20 @@ def face_is_players(shell):
     nunca chega ao `set_theme` -- e' essa ultima condicao que impede a face de
     ser vestida pelo desenho. A arm positiva e o `--neg-arm` chamam ESTA funcao.
     """
+    # O PAYLOAD CRU NAO CHEGA AO `set_theme` DO OVERLAY. Sao DOIS escritores com o
+    # mesmo nome de metodo desde 2026-11-12: `overlay.set_theme(base)` (a janela) e
+    # `caption_settings.set_theme(theme)` (o ultimo desenho MEDIDO, gravado em disco
+    # para a janela nascer vestida). O segundo recebe o payload cru DE PROPOSITO --
+    # e' o que ele guarda -- e a arm antiga o lia como se fosse a janela a ser
+    # vestida pelo desenho: MEDIDO `face-youtube-plate-design RED` com as QUATRO
+    # condicoes verdadeiras, um vermelho de ANCORA. O que a ordem proibe e' a
+    # JANELA receber o payload cru, e e' isso que a regex passa a exigir.
     return ('base = dict(overlay_paint._THEME_DEFAULT)' in shell
             and "base['plate'] = plate" in shell
             and "base['pad'] = pad" in shell
             and 'overlay.set_theme(base)' in shell
-            and re.search(r'set_theme\(\s*theme\s*\)', shell) is None
+            and re.search(r'(?<!caption_settings\.)\bset_theme\(\s*theme\s*\)',
+                          shell) is None
             and 'set_theme(self._brand_tokens_last)' not in shell)
 
 
