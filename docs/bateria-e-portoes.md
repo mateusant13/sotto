@@ -77,6 +77,34 @@ um `PASS` ao lado de 5 741 s de gap seria o verde que não mede nada. O `--neg-a
 antes do sumário: em qualquer outro sítio leria `_cache\battery-steps.json` a meio, isto é "a corrida
 até aqui", um número menor do que o verdadeiro.
 
+### 4-a-bis. A POLÍTICA DA LARGADA NÃO VEM DE UM EXPORT ESQUECIDO (2026-11-13)
+
+**O DEFEITO MEDIDO, e o diagnóstico que eu errei.** A corrida caged de 2026-11-12 22:57 terminou
+em 21 min com `failed: battery-budget=1` e eu escrevi "contenção". Não era: um
+`SOTTO_BATTERY_NOCAGE=1` esquecido na shell do **agente** foi **herdado** pelo largador, o `.cmd`
+nunca entrou no cage, e o `battery-budget` recusou julgar a corrida contra o baseline `cap40`
+(`baseline='cap40', corrida=None`). As duas pistas estavam no fim do ficheiro: a linha
+`caged: OFF` do sumário (568 de 568) e o `CAGE declined` de um `if exist` que lê um caminho com o
+`!` de `I:\!watcher` expandido por `EnableDelayedExpansion`.
+
+**A CLASSE é a do `webview2-args-scope`:** uma variável de ambiente herdada muda o que o processo
+mede. A cura tem duas metades, e o oráculo julga as duas:
+
+1. **`_main\battery-launch.py`** para de repassar o ambiente tal como o recebeu:
+   `run_env()` (função **pura**, e é ela que a arm executa) retira as cinco políticas
+   (`SOTTO_BATTERY_NOCAGE`, `..._CAGED`, `..._POLICY`, `..._FAST`, `..._HEAVY`) e **nomeia cada
+   uma que saiu** (`strip=...`), em vez de as deixar decidir em silêncio.
+2. **O `.cmd` imprime a política no ARRANQUE**, antes de qualquer passo —
+   `politica : cage=ON ...` — e exporta `SOTTO_BATTERY_POLICY` para os passos saberem **sob que
+   tecto correm** (o `warm-engine` lê-a para declarar as suas arms de latência `NOT-JUDGED
+   under cap40` em vez de afrouxar 300/500 ms até passar).
+
+Portão: `battery-launch` + `red-as-expected-battery-launch` (`_main\battery-launch-oracle.py`).
+Medido: `VERDICT: PASS (10/10)` e `NEG-ARM: PASS -- 5/5`, com o M3 a arrancar a linha do arranque e
+o M5 a subir o `setlocal` por cima do despacho do cage — que é a armadilha do `!` acima. O
+`battery-budget` continua a ser o portão do **relógio**; este é o portão da **política**, e uma
+corrida sem ele pode medir 21 minutos do regime errado sem uma única linha vermelha.
+
 **A lei completa (as seis propriedades, e o dever de transporte para o `AGENTS.md`) vive em
 `AGENTS.md` §"A LEI DOS TESTES"**; a fonte longa, com os detectores D45–D52, na skill
 `extreme-optimization-audit` §L12-bis/§L12-ter.
