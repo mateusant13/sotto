@@ -89,18 +89,138 @@ preso à régua de 2 731,1 s deixaria passar **45 %** de regressão antes de vol
 calma — era contenda dos meus próprios probes em paralelo, e um rebaseline que absorvesse um aumento
 em silêncio seria o ratchet a assinar o próprio aumento.
 
-## 6. O que NÃO se corta, e por quê
+## 6. As DUAS curas que a mesma classe pedia e que faltavam (medidas nesta sessão)
 
-`red-as-expected-warm-engine` (73,4 s / 6 mutantes = 1,2× o positivo), `red-as-expected-altc-gesture`
-(56,6 s) e `red-as-expected-window-drag` (55,5 s) pagam um SUBPROCESSO real por mutante — é o
-isolamento que o braço compra, e um cache partilhado entre mutantes mediria o mutante anterior.
-`caption-overlay-theme` (62,5 s) e `headphone-cut` (60,7 s) renderizam os 59 desenhos e leem um
-dispositivo de áudio. Cortá-los exige cortar a POPULAÇÃO do braço, que é uma decisão de cobertura e
-não de relógio.
+O §2 curou quatro. Aplicada a MESMA conta aos vizinhos, `cProfile` nomeou mais três, e os três eram a
+mesma causa — **`ast.parse`/`ast.get_source_segment` a custar com o TAMANHO do ficheiro em vez de com
+o trabalho do braço**:
 
-## 7. O QUE NÃO ESTÁ VERIFICADO
+| # | passo | defeito medido | cura | efeito |
+|---|---|---|---|---|
+| 5 | `red-as-expected-altc-gesture` | `ast.get_source_segment` re-parte o shell inteiro em cada chamada: **27,8 s de `_splitlines_no_ff`** e **25,6 s de `compile`** num braço de 63 s | árvore e linhas por CONTEÚDO | **56,6 s → 8,5 s** sozinho |
+| 6 | `red-as-expected-window-drag` | idem: **37,6 s de `_splitlines_no_ff`** dos 90 s, em 51 chamadas | idem | **55,5 s → 9,9 s** sozinho |
+| 7 | `red-as-expected-gaming-hotkey` | **24,9 s em `builtins.compile`** e **95 `ast.parse`** num `--neg-arm` de 57 s | idem | **51,6 s → 30,5 s** sozinho |
+
+Os três braços somavam **163,7 s** e passam a somar **48,9 s**.
+
+**E aqui a cura foi ela própria um defeito, apanhado antes do commit.** A primeira versão escreveu a
+mesma cache **cinco vezes**, uma por oráculo, com nomes diferentes (`_PARSE_CACHE`, `_SHELL_AST_CACHE`,
+`_SEG_LINES`...). Três já existiam na árvore (`audio-back-detector` desde 2026-11-11 e
+`youtube-cdp-source` desde esta manhã, `live-ack` ontem, todas com a mesma medição escrita no
+comentário) e esta linha acrescentou três. Cinco cópias de uma convenção é
+a classe que esta casa já pagou quatro vezes. Há agora **um** módulo — `_main/_astcache.py`
+(`tree(source)`, `lines(source)`, `segment(source, node, missing)`) — e os **seis** oráculos importam
+dele (`altc-gesture`, `audio-back-detector`, `gaming-hotkey`, `live-ack`, `window-drag`,
+`youtube-cdp-source`).
+
+**O equivalente foi PROVADO, não assumido.** A `segment()` reimplementa a fatia que o CPython faz em
+`ast.get_source_segment`, e uma partição de linhas diferente deslocaria o segmento e o braço julgaria
+o texto do lado. Medido contra o próprio CPython: **751 nós** em quatro ficheiros de `app/` e **150
+nós sorteados** do shell de 26 774 linhas → **0 divergências**; o shell não tem `\f` (`ESC_FORMS
+False`), o único carácter em que as duas partições diferem.
+
+## 7. Dois defeitos de PORTÃO que a rodada revelou (e as suas curas)
+
+1. **`meter-chain-oracle --neg-arm` era um controlo que não podia falhar.** Ele imprimia
+   **`64 PASS / 2 FAIL`** e **`VERDICT: PASS`** na mesma corrida: o `rc` era calculado ANTES dos
+   quatro checks do braço negativo e o `tail_summary(rc)` recebia esse valor velho. Agora
+   `tail_summary(None)` recalcula de `RESULTS`.
+2. **Os mutantes filhos morriam pelo motivo ERRADO.** As cópias vivem num tempdir, e o
+   `worker/sotto_worker.py` põe o **seu próprio** diretório no `sys.path` — a cópia punha o tempdir,
+   logo o `import punctuation_model` da linha 133 levantava `ModuleNotFoundError` e o filho saía
+   `rc=1` por um import falhado, nunca pelo medidor. Um `rc≠0` que vem do import é indistinguível de
+   um que vem do defeito. `load_module` passa a pôr `worker/` no `sys.path` antes de carregar.
+   (Sem a cura do (1) isto teria continuado invisível: o braço dizia PASS.)
+3. **O `meter-chain` tinha ainda uma arm de contagem fixa.** `len(pre_existing) == 3` com a frase "as
+   três ramificações de pico" — o `on_block` vivo tem SEIS `if` de topo (`_AUDIO_RING`, os três de
+   pico, `evicted`, `dropped`) mais o do medidor, logo a contagem passou a acusar três acréscimos
+   LEGÍTIMOS do produto. Um braço de não-regressão que conta irmãos mede o crescimento do ficheiro.
+   Agora ele exige as três condições de PICO **pelo nome** (`counters["peak"]`,
+   `device_peak["value"]`, `1e-4`) e exactamente UM ramo do medidor.
+4. **O `meter-chain` morria antes do primeiro check** (`NameError: name 'block_ms' is not defined`):
+   `block_ms` é um LOCAL de `main()` e o `on_block` real o lê em
+   `_live_queue.max_blocks(block_ms)`; o arnês do braço 4 injectava tudo menos esse. O valor passou a
+   ser lido do FONTE (`audio.block_ms` default pelo literal do `main()`), nunca escrito à mão.
+   Estado: `meter-chain-oracle: 55 PASS / 0 FAIL`, `VERDICT: PASS`.
+
+## 8. O que NÃO se corta, e por quê
+
+`red-as-expected-warm-engine` (73,4 s / 6 mutantes = 1,2× o positivo) paga um SUBPROCESSO real por
+mutante — é o isolamento que o braço compra, e um cache partilhado entre mutantes mediria o mutante
+anterior. `caption-overlay-theme` (62,5 s) e `headphone-cut` (60,7 s) renderizam os 59 desenhos e
+leem um dispositivo de áudio. `load-shedding` (39,8 s) re-corre a população de 257 arms uma vez por
+coorte de mutantes: é a unidade de cobertura dele, e um cache por (arm, mutação) deixaria de provar
+que o mutante derruba **a** arm que o nomeia. Cortá-los exige cortar a POPULAÇÃO do braço, que é uma
+decisão de cobertura e não de relógio.
+
+**`altc-gesture` e `window-drag` saíram desta lista** porque a razão escrita aqui estava ERRADA: eles
+não pagavam subprocesso nenhum, pagavam `ast.get_source_segment` a re-partir o shell por chamada
+(§6). Um "não se corta" que nunca foi medido é a mesma classe do pin que ninguém re-mede.
+
+## 9. O QUE NÃO ESTÁ VERIFICADO
 
 * Nada disto foi visto na tela do dono. A prova é de oráculo, de cache de bateria e de uma corrida
   completa; `verified` continua a exigir uma corrida real da app pela mão dele.
 * Os 24 passos SKIPPED da corrida não são gates que passaram, e 17 deles são a classe HEAVY (abrem o
   ecrã dele, o dispositivo de áudio ou a GPU) que não corre sem `SOTTO_BATTERY_HEAVY=1`.
+
+## 10. O `window-drag` ficou RED na corrida — três defeitos do BRAÇO, nenhum do código
+
+O passo ficou RED em **duas** corridas seguidas desta linha, com duas causas DIFERENTES, e nenhuma
+delas no produto. As duas medições, coladas como saíram:
+
+```
+  RED   A6 taxa-entregue  hz=184.7 upgrades=24 gaps_p95_ms=10.49 gaps_max_ms=12.14 n=23 elapsed_ms=130 floor=200
+  RED   A6 taxa-entregue  hz=183.3 upgrades=56 gaps_p95_ms=13.76 gaps_max_ms=31.55 n=55 elapsed_ms=304 floor=200
+```
+
+### 10.1 O relógio do gesto começava antes do fio existir
+
+`n=23`, `elapsed_ms=130` para uma janela que devia ser de 300 ms: o gesto foi **truncado**. O ponteiro
+falso fixava `t0` na CONSTRUÇÃO, e `begin()` espera até 100 ms pelo fio da pega anterior — quando o
+primeiro `GetAsyncKeyState` chegava, a janela de 300 ms já ia gasta e a arm media o custo de abrir o
+fio, não a taxa do laço. Curado em dois sítios: o relógio começa no **primeiro** `GetAsyncKeyState`
+(`self.t0 is None`) e a taxa passou a ser `(n-1) / (último - primeiro carimbo)`, não
+`updates / vida_do_fio` — o `finally` que escreve o `WINDOW_DRAG_PERSIST` também entrava no
+denominador.
+
+### 10.2 A taxa absoluta mede a contenda da máquina
+
+Com o gesto inteiro, a MESMA árvore deu **239,9 / 239,7 / 240,1 Hz** fora da corrida e **183,3 / 184,7**
+dentro dela, com **61,1 %** de CPU da máquina a ser de outras lanes. Um piso de 200 Hz sobre um laço de
+240 Hz é um piso com **17 %** de margem, e ele reprovou o código correto duas vezes.
+
+### 10.3 A cauda (max, depois p95) também oscila, e é o Windows
+
+Cinco leituras de 3 gestos somados, mesma árvore, na mesma janela:
+
+| p50 | p95 | max | hz | runs_hz |
+|---|---|---|---|---|
+| 4,12–4,14 ms | 5,05–**10,50** ms | 6,83–**25,11** ms | 229,4–240,0 | 202,3–240,2 |
+
+O intervalo típico **não se move** (4,12–4,14 ms = 240 Hz) enquanto o p95 varia 2x e o máximo 3,7x. Duas
+estimativas intermediárias foram medidas e RECUSADAS antes da final: a fatia de intervalos acima de
+8 ms deu `19/62 = 30,6 %` num gesto e `0/72` no seguinte (a corrida caged rouba ~80 ms de uma vez), e
+agregar três gestos ainda deu `23,7 %` numa leitura contra `0,0 %` em outra.
+
+**A cura:** o braço julga o **p50 do intervalo** (`P50_GAP_MS = 8.0`) somando três gestos de 300 ms.
+A distância entre o laço curado e a regressão é 4x (4,17 ms contra 16,7 ms), e 8,0 fica no meio com
+1,9x de margem para cada lado. A taxa fica só como rede de sanidade (`RATE_SANITY_HZ = 100`). O que a
+mediana não vê — um gesto inteiro congelado — é medido pelo `n >= 60` e pela arm A12.
+
+Medido: **cinco execuções seguidas PASS (12/12)** e o controle com o mutante de 60 Hz:
+
+```
+NEG-ARM: PASS -- A5 rc=1 (caught) / A10 rc=1 (caught) / A6-60hz rc=1 (caught)
+A6 taxa-entregue  p50_gap_ms=4.12 p95_ms=4.59 max_ms=4.72 hz=240.1 runs_hz=[240.1, 240.1, 240.2] n=215
+```
+
+O mutante `WINDOW_DRAG_FRAME_HZ = 60` cai pelo **p50** (16,7 ms contra o teto de 8,0), que é o braço
+que ele existe para guardar.
+
+**E o caminho pelo qual o `_astcache` se parte foi encontrado por acidente, medido:** a sonda que
+levantou a distribuição acima importou o oráculo por `importlib` a partir de `H:/sotto` e caiu em
+`ModuleNotFoundError: No module named '_astcache'` — o import por nome só resolve quando o diretório
+do SCRIPT está no `sys.path`, o que é verdade em `python _main\x.py` e mentira em qualquer
+instrumento que importe outro. Os **seis** oráculos passaram a pôr o próprio diretório no `sys.path`
+antes do import.

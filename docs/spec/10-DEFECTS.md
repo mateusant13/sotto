@@ -402,17 +402,41 @@ gaming-hotkey           NEG-ARM PASS -- RED as designed: as cinco regressoes der
 youtube-cdp-source      NEG-ARM VERDICT: PASS (17/17)
 ```
 
+| 5 | `altc-gesture` re-parseava o shell e re-partia as linhas a cada `get_source_segment` | **27,8 s de `_splitlines_no_ff`** e **25,6 s de `compile`** num braço de 63 s | `_main/_astcache.py`: árvore e linhas por CONTEÚDO | 56,6 s → **8,5 s** |
+| 6 | `window-drag` idem, 51 chamadas | **37,6 s de `_splitlines_no_ff`** dos 90 s | o mesmo módulo | 55,5 s → **9,9 s** |
+| 7 | `gaming-hotkey` parseava 95 vezes | **24,9 s em `builtins.compile`** num braço de 57 s | o mesmo módulo | 51,6 s → **30,5 s** |
+
+**E a cura foi ela própria um defeito, apanhado antes do commit.** A primeira versão escreveu a mesma
+cache **cinco vezes**, uma por oráculo, com nomes diferentes; três já existiam na árvore
+(`audio-back-detector`, `youtube-cdp-source`, `live-ack`) e esta linha acrescentou três. Cinco cópias
+de uma convenção é a classe que esta casa já pagou quatro vezes. Há agora **um** módulo,
+`_main/_astcache.py` (`tree`/`lines`/`segment`), e os **seis** oráculos importam dele. O equivalente foi provado contra o
+próprio CPython — **751 nós** em quatro ficheiros de `app/` mais **150 sorteados** do shell de 26 774
+linhas, **0 divergências** — porque uma partição de linhas diferente deslocaria o segmento e o braço
+julgaria o texto do lado.
+
 **O QUE NÃO SE CORTA, e por quê.** `red-as-expected-warm-engine` (71,3 s / 6 mutantes = 1,2× o
-positivo), `red-as-expected-altc-gesture` (54,2 s) e `red-as-expected-window-drag` (52,8 s) pagam um
-SUBPROCESSO real por mutante — é o isolamento que o braço compra, e um cache partilhado entre
-mutantes mediria o mutante anterior. `headphone-cut` (60,4 s) e `caption-overlay-theme` (62,5 s) leem
-dispositivo e renderizam os 59 desenhos; `panel-hidden-at-startup` já tinha sido curado em 2026-11-11.
+positivo) paga um SUBPROCESSO real por mutante — é o isolamento que o braço compra, e um cache
+partilhado entre mutantes mediria o mutante anterior. `headphone-cut` (60,4 s) e
+`caption-overlay-theme` (62,5 s) leem dispositivo e renderizam os 59 desenhos;
+`panel-hidden-at-startup` já tinha sido curado em 2026-11-11. `load-shedding` (39,8 s) re-corre a
+população de 257 arms uma vez por coorte de mutantes: é a unidade de cobertura dele, e um cache por
+(arm, mutação) deixaria de provar que o mutante derruba **a** arm que o nomeia. `altc-gesture` e
+`window-drag` estavam nesta lista com a razão errada — não pagavam subprocesso nenhum, pagavam
+`get_source_segment` a re-partir o shell por chamada (§ linha 5 e 6 acima).
 
 **Estado.** aberto, com a cauda agora **nomeada por causa** e o ledger rebasado (2 363,2 s, com a
-razão escrita). O que ainda falta para fechar: os seis nomes que sobraram pagam um subprocesso, um
+razão escrita). O que ainda falta para fechar: os nomes que sobraram pagam um subprocesso, um
 dispositivo de áudio ou os 59 desenhos por mutante — cortá-los exige cortar a POPULAÇÃO do braço, e
 essa é uma decisão de cobertura, não de relógio. O alvo de 60 s continua a **31×** de distância
 (1 876,8 / 60), e nenhum número deste parágrafo foi medido em modo rápido.
+
+**Dois portões que a rodada revelou partidos, e a sua cura** (§7 do recibo):
+`meter-chain-oracle --neg-arm` imprimia `64 PASS / 2 FAIL` e `VERDICT: PASS` na mesma corrida — um
+controlo que não podia falhar, porque o `rc` era calculado antes dos checks do braço; e os dois
+mutantes filhos morriam por `ModuleNotFoundError` (a cópia em tempdir punha o tempdir, e não o
+`worker/`, no `sys.path`), ou seja vermelhos pelo motivo errado. As duas curas estão no oráculo e o
+braço é agora verificável nos dois sentidos.
 
 ---
 
