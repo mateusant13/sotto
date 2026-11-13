@@ -125,8 +125,24 @@ def check(overlay_path, shell_path, label="", worker_path=None):
         "_blank_caption_window" in fsrc, True)
 
     # O bloco do video novo: os campos por-video todos a zero.
-    i = st.find("YOUTUBE_VIDEO_CHANGED")
-    bloco = st[max(0, i - 2000):i] if i > 0 else ""
+    #
+    # A LEITURA E' DO NO, NAO DE UMA JANELA DE TEXTO (2026-11-12). Era
+    # `st[i-2000:i]` -- uma janela de 2000 caracteres ate' ao `log(...)` da
+    # troca -- e o reset dos campos deixou de caber nela quando o bloco ganhou
+    # comentarios por cima: medido, o `real` saiu com os CINCO primeiros campos
+    # dados por ausentes (`yt_serve_floor` ... `_yt_track`) num fonte que os
+    # repoe. Uma janela fixa publica o estado do TEXTO, nao do codigo; o dono
+    # ja' pagou esta classe (`console-window-audit`, `2026-11-08`: uma janela de
+    # 15 linhas acusava um sitio cujo `startupinfo` estava 20 linhas abaixo).
+    # A funcao que CONTEM o `log` da troca e' o sitio inteiro do reset.
+    bloco = ""
+    for node in ast.walk(stree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        _src = func_src(st, node)
+        if "YOUTUBE_VIDEO_CHANGED" in _src:
+            bloco = _src
+            break
     faltam = [k for k in ("yt_serve_floor", "yt_foreign_t", "yt_foreign_key",
                           "_yt_anchor", "_yt_track", "last_line", "last_rows",
                           "finalized", "_caption_pending", "_blank_caption_window")
