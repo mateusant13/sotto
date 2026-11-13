@@ -2672,6 +2672,16 @@ def warn(message: str) -> None:
 # OUTRA VEZ (daí o segundo `WORKER_AUTOSTART`). O ficheiro e' do
 # largador; o estado de arranque e' da app.
 _STARTUP_READY = {'done': False}
+#: O RECIBO DO AQUECIMENTO CLR, ESCRITO ANTES DE HAVER LOG (2026-11-12).
+#: `warm_clr_types` corre antes de `_open_log` por uma razao MEDIDA: e' ele que
+#: impede a `NullReferenceException` do pythonnet, e a posicao -- antes de
+#: qualquer `Thread` -- e' metade da cura (arm A4 do `clr-warm-oracle`). Mas o
+#: `log()` daquele instante escreve num stdout que `pythonw.exe` nao tem, e o
+#: espelho de ficheiro so' existe 111 linhas depois. MEDIDO no arranque
+#: 21:15:57 desta arvore: a cura correu e o log nao tinha `CLR_WARM` nenhum.
+#: A linha fica guardada aqui e e' despejada por `_flush_clr_warm_receipt` no
+#: primeiro instante em que o ficheiro existe.
+_CLR_WARM_LINE = None
 
 
 def _prune_stale_ready_files(directory, keep='', max_age_s=86400.0):
@@ -26387,6 +26397,7 @@ def warm_clr_types():
     e segue -- o `start()` do pywebview falha depois com a sua propria mensagem, e
     um `except` mudo aqui esconderia a causa verdadeira.
     """
+    global _CLR_WARM_LINE
     started = time.monotonic()
     done = []
     failed = []
@@ -26422,12 +26433,32 @@ def warm_clr_types():
             except Exception as exc:          # noqa: BLE001
                 failed.append('%s:%s' % (_label, type(exc).__name__))
     except Exception as exc:                  # noqa: BLE001
-        log('CLR_WARM unavailable error=%r' % (exc,))
+        _CLR_WARM_LINE = 'CLR_WARM unavailable error=%r' % (exc,)
+        log(_CLR_WARM_LINE)
         return False
-    log('CLR_WARM ok=%s types=%s failed=%s ms=%.1f'
-        % (not failed, ','.join(done), ','.join(failed) or 'none',
-           (time.monotonic() - started) * 1000.0))
+    _CLR_WARM_LINE = ('CLR_WARM ok=%s types=%s failed=%s ms=%.1f'
+                      % (not failed, ','.join(done), ','.join(failed) or 'none',
+                         (time.monotonic() - started) * 1000.0))
+    log(_CLR_WARM_LINE)
     return not failed
+
+
+def _flush_clr_warm_receipt():
+    """O RECIBO DO AQUECIMENTO CLR CHEGA AO FICHEIRO, MESMO TENDO NASCIDO ANTES DELE.
+
+    MEDIDO 2026-11-12, arranque 21:15:57 desta arvore: `warm_clr_types()` correu
+    (o processo sobreviveu ao `WEBVIEW2_INIT_FAILED`, coisa que os oito arranques
+    da noite nao fizeram) e o log NAO tinha uma unica linha `CLR_WARM` -- porque
+    a funcao corre antes de `_open_log` e o `log()` daquele instante escreve num
+    stdout que `pythonw.exe` nao tem. Uma cura cujo recibo nao chega ao log nao
+    e' uma cura verificavel; e' a mesma classe de "instrumento sem chamador"
+    que esta casa ja' pagou varias vezes.
+
+    Chamado imediatamente depois de `_open_log(args.log)`.
+    """
+    line = _CLR_WARM_LINE
+    if line:
+        log(line)
 
 
 def main(argv=None):
@@ -26573,6 +26604,7 @@ def main(argv=None):
         return probe_reload()
 
     _open_log(args.log)
+    _flush_clr_warm_receipt()
     log(f'shell=webview2 pywebview={pywebview_version()} '
         f'python={sys.version.split()[0]} pid={os.getpid()}')
     _aumid_set = set_process_app_user_model_id()

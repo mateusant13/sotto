@@ -52,6 +52,16 @@ O QUE ESTE ORACULO JULGA (arms sobre o codigo REAL, extraido por `ast`):
                              nenhuma thread da shell foi criada antes dela. Um
                              aquecimento a seguir ao `start()` nao impede corrida
                              nenhuma -- e' o mesmo erro com outro nome.
+  A5 recibo-no-log        -- O RECIBO TEM DE CHEGAR AO FICHEIRO. Medido
+                             2026-11-12 num arranque real desta arvore: a cura
+                             correu e o log nao tinha UMA linha `CLR_WARM`,
+                             porque a funcao corre antes de `_open_log` e o
+                             `log()` daquele instante escreve num stdout que o
+                             `pythonw.exe` nao tem. Uma cura cujo recibo nao
+                             aparece no log nao e' verificavel -- e' a classe
+                             "instrumento sem chamador" com outra roupa. A arm
+                             exige o registo, o despejo, e a POSICAO do despejo
+                             (a seguir a `_open_log`, e nao antes dela).
 
 O QUE ESTE ORACULO **NAO** PODE PROVAR, e diz-lo em vez de o esconder: que o
 processo do dono deixou de morrer. Essa prova exige uma corrida real da app, com
@@ -64,6 +74,7 @@ proximo arranque do dono a mede.
   M1 apaga a chamada a `warm_clr_types()` -> A1 e A4 RED
   M2 tira o `Icon` da lista de conversoes -> A2 RED
   M3 move a chamada para DEPOIS do `webview.start(...)` -> A4 RED
+  M4 apaga o despejo do recibo -> A5 RED
 rc=1 = todos apanhados (`NEG-ARM: PASS -- k/k`), rc=0 = algum mutante INERTE.
 
     python _main\\clr-warm-oracle.py
@@ -229,6 +240,38 @@ def arm_executes(path=SHELL):
                                                         WARM_BUDGET_MS)
 
 
+def arm_receipt_reaches_log():
+    """O recibo do aquecimento tem de ser DESPEJADO no ficheiro de log."""
+    tree, path = _parse()
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        src = fh.read()
+    if "_CLR_WARM_LINE" not in src:
+        return False, "sem registo do recibo"
+    flush = _find_func(tree, "_flush_clr_warm_receipt")
+    if flush is None:
+        return False, "sem _flush_clr_warm_receipt"
+    main = _find_func(tree, "main")
+    if main is None:
+        return False, "main ausente"
+    open_log_line = flush_line = None
+    for node in ast.walk(main):
+        if isinstance(node, ast.Call):
+            fn = node.func
+            name = fn.id if isinstance(fn, ast.Name) else (
+                fn.attr if isinstance(fn, ast.Attribute) else "")
+            if name == "_open_log" and open_log_line is None:
+                open_log_line = node.lineno
+            if name == "_flush_clr_warm_receipt" and flush_line is None:
+                flush_line = node.lineno
+    if flush_line is None:
+        return False, "o main() nao despeja o recibo"
+    if open_log_line is None:
+        return False, "sem _open_log no main()"
+    ok = flush_line > open_log_line
+    return ok, ("flush_linha=%d open_log_linha=%d"
+                % (flush_line, open_log_line))
+
+
 def arm_before_thread():
     """`warm_clr_types()` must run before anything spawns a thread."""
     tree, _ = _parse()
@@ -259,6 +302,7 @@ def run():
         ("A2 cobre-os-tipos", arm_covers_types),
         ("A3 executa-e-e-rapido", arm_executes),
         ("A4 antes-da-thread", arm_before_thread),
+        ("A5 recibo-no-log", arm_receipt_reaches_log),
     ]
     results = []
     for label, fn in arms:
@@ -300,6 +344,14 @@ def _mutate_after_start(src):
     return src
 
 
+def _mutate_drop_flush(src):
+    """Apaga o despejo do recibo -- a linha deixa de chegar ao ficheiro."""
+    for nl in ("\r\n", "\n"):
+        if ("    _flush_clr_warm_receipt()" + nl) in src:
+            return src.replace("    _flush_clr_warm_receipt()" + nl, "", 1)
+    return src
+
+
 def neg_arm():
     global SHELL
     with open(SHELL, "r", encoding="utf-8", errors="replace") as fh:
@@ -309,6 +361,7 @@ def neg_arm():
                                                      "A4 antes-da-thread")),
         ("M2 Icon fora da cura", _mutate_drop_icon, ("A2 cobre-os-tipos",)),
         ("M3 chamada depois do start", _mutate_after_start, ("A4 antes-da-thread",)),
+        ("M4 despejo do recibo apagado", _mutate_drop_flush, ("A5 recibo-no-log",)),
     ]
     backup = SHELL
     caught = 0
@@ -327,7 +380,8 @@ def neg_arm():
                 before = {name: fn() for name, fn in [
                     ("A1 existe-e-e-chamada", arm_exists_and_called),
                     ("A2 cobre-os-tipos", arm_covers_types),
-                    ("A4 antes-da-thread", arm_before_thread)]}
+                    ("A4 antes-da-thread", arm_before_thread),
+                    ("A5 recibo-no-log", arm_receipt_reaches_log)]}
                 failed = [name for name, (ok, _) in before.items() if not ok]
                 hit = all(name in failed for name in must_fail)
                 if hit:
