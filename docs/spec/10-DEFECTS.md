@@ -42,6 +42,7 @@ funcionar pela mão do dono).
 | D-33 | `worker/model_vram_pool.py` (411 linhas) não é importado por nenhum ficheiro de produção, e o oráculo que o guarda está congelado na dívida `REASON-MISSING preencher a mao` desde 2026-10-25 — passa à mão, nunca corre na bateria | MÉDIO | **APAGADO (2026-11-15)** — o pool, o `vram_residency` e o oráculo saíram (`git show 7720efcba3^:` reconstrói os dois); sem chamador de produto não há contrato a guardar | — |
 | D-34 | `text_normalize._EDGE` e `fusion._EDGE` são duas tabelas de pontuação de borda que discordam em `{}«»–` — a mesma linha é uma corrida de repetição para um módulo e três palavras para outro | BAIXO (MÉDIO se `SOTTO_FUSION` ligar) | **corrigido** — um literal único, provado igual por arm (A18) com mutante que repõe a divergência | `text-normalize` |
 | D-35 | a fusão de uma linha (`action='replace'`/`replace_at`) reescrevia o ficheiro da hora com `open(path,'w')`, que TRUNCA antes de escrever: um crash/ENOSPC entre o truncate e o flush deixava a hora vazia, e `history/` é a única cópia das palavras | CRÍTICO | **corrigido, NÃO verificado** — `rewrite_lines_atomic` (temp irmão pid/tid + fsync + `os.replace`); 4 arms, neg-arm com dois mutantes (helper truncante, call site desligado) | `history-write` |
+| D-36 | a especificação citava como evidência **dois ficheiros que o índice do git não tem** (`worker/_probe/probe2.py`, git-ignored; `_main/_cache/sotto_webview_nograce.py`, sob `_cache/`), e um terceiro que o `A1` só via por estar no disco (`worker/models/.../genai_config.json`): num clone limpo as três citações não resolvem — a mesma classe do D-01, agora na evidência da spec | MÉDIO | **corrigido** — A6 no `spec-citations-oracle.py` (todo ficheiro citado tem de estar em `git ls-files`; `CANNOT-MEASURE` sem git), três citações re-apontadas para fonte versionada, neg-arm 5/5 | `spec-citations` |
 
 ---
 
@@ -1613,3 +1614,74 @@ vazio no disco do dono.
 **Estado.** `corrigido, NÃO verificado` — falta um arranque real que execute o `replace` sobre um
 histórico vivo (exige a app na tela do dono).
 
+---
+
+## D-36 — a evidência da especificação não se reproduzia num clone limpo
+
+**O que estava errado.** O portão das citações (`_main/spec-citations-oracle.py`) provava que cada
+`ficheiro:linha` resolvia **no disco desta máquina**. Não provava que o ficheiro estivesse no
+**índice do git**. Medido em 2026-11-15, varrendo as 1 657 citações dos 16 documentos contra
+`git ls-files`: três apontavam para caminhos que existem aqui e **não** existem num clone.
+
+| citação | por que não se reproduz |
+|---|---|
+| `13-MODULES.md` → `probe2.py` (sob `worker/_probe/`) | `worker/_probe/` está no `.gitignore:115`; os 32 `.py` são rascunho desta máquina |
+| `12-GLOSSARY.md` → `sotto_webview_nograce.py` (sob `_main/_cache/`) | `_main/_cache/` está no `.gitignore:11`; é cópia de trabalho do censo |
+| `05-LIVE-PATH.md` → o `genai_config.json` de `worker/models/nemotron-...-int4/` | `worker/models/` está no `.gitignore`; pesa 1,9 GB e nunca embarca |
+
+**Por que importa.** É a mesma classe do **D-01** — evidência que o índice não reproduz —, agora na
+camada que existe para julgar evidência. Um leitor que clone o repositório vê três citações a
+ficheiros que não tem, e a spec perde autoridade exactamente onde afirmava ter comando.
+
+**ANTES.** `SPEC-CITATIONS VERDICT: PASS` com as três citações no documento. O portão estava verde
+porque a pergunta dele era "existe no disco?", e a resposta era sim.
+
+**DEPOIS.** Uma sexta arm, **A6**, no mesmo portão:
+
+- todo caminho resolvido é convertido para relativo à raiz e confrontado com o conjunto de
+  `git ls-files -z`;
+- um caminho fora do índice é `A6 RED`, com o documento, a linha e o caminho relativo;
+- sem git, ou com git a falhar, sai `A6 CANNOT-MEASURE` — **um skip não é um portão que passou**,
+  a convenção que este repositório já paga caro para manter.
+
+As três citações foram re-apontadas, nenhuma apagada:
+
+1. `probe2.py` — o bloco de `13-MODULES.md` passou a dizer, por palavras, que a pasta é ignorada e
+   que **nenhuma linha dela é citável**; o que a secção prova (a pasta existe, não embarca, ninguém
+   a importa) é provado pelo `.gitignore` e pelo censo de imports, ambos versionados.
+2. `_cache/sotto_webview_nograce.py` — a frase continua a descrever a armadilha do censo sobre
+   `_main`, agora a nomear `_cache/` como **não citável**, com a razão.
+3. `genai_config.json` — a citação mudou para `docs/model-specs/original/int4/genai_config.json:16`,
+   a cópia **versionada** do mesmo config, na **mesma linha 16** e com o **mesmo valor** `8960`
+   (medido lado a lado: `cmp` de linha, não de ficheiro — o vivo e o versionado divergem noutros
+   campos, o normativo não).
+
+**Instrumento.**
+
+```
+python _main/spec-citations-oracle.py            -> SPEC-CITATIONS VERDICT: PASS   rc=0
+                                                   A6 GREEN  citacoes a ficheiros do indice: 1657, fora do indice: 0
+python _main/spec-citations-oracle.py --neg-arm  -> NEG-ARM: PASS -- 5/5 mutantes apanhados   rc=0
+```
+
+O quinto mutante (`m5`) planta uma citação a um `.py` sob `_main/_cache/` numa
+**cópia** de `07-HISTORY-STATE.md` e exige o `A6 RED`. Ele reproduz o defeito sem depender do estado
+do repositório: `_cache/` é ignorado por construção, logo o mutante não apodrece no dia em que
+alguém commitar a cura.
+
+Duas corridas do negativo antes de aceitar o braço: a primeira versão do `m5` citava um caminho que
+**não existe no disco**, e caía em `A1 RED` — o mutante estava a testar a arm errada. Uma mutação
+que o braço vizinho apanha não prova nada sobre a arm nova; por isso o caminho tem de existir
+**e** estar fora do índice.
+
+**Gravidade.** MÉDIO. Nenhum comportamento de produto mudou. O que estava quebrado era a
+capacidade da especificação de provar o que afirma a quem não tem esta máquina — que é o único
+motivo pelo qual ela está no git.
+
+**Estado.** `corrigido` — o portão mede o estado actual e o negativo prova que ele falha quando deve.
+`verificado` continua fora de alcance por outro motivo: a spec inteira continua `NÃO verificado`
+contra o processo do dono (`live-code-freshness-oracle --strict`).
+
+**Lição de instrumento.** Um limite de medição não se fecha com prosa, fecha-se com um braço. A
+frase "a evidência tem de estar no git" vivia no `AGENTS.md` e não vivia em portão nenhum; foi
+preciso escrever o braço para descobrir que a spec violava a regra em três sítios.
