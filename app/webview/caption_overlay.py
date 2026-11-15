@@ -564,9 +564,10 @@ class NativeCaptionOverlay:
         #: pintura nenhuma.
         self._poll_lock = threading.RLock()
         #: O CADEADO DA AGENDA do tick (prazo + geracao). `_tick_loop` e o poll
-        #: tem de se re-armar MESMO com a pintura a segurar o `self.lock`: MEDIDO
-        #: no `caption-drag-oracle` P19, a janela mais longa entre dois ticks cai
-        #: de 135,2 ms para menos de 10 ms quando a agenda nao espera a pintura.
+        #: tem de se re-armar MESMO com a pintura a segurar o `self.lock`:
+        #: medido no `caption-drag-oracle` P16, com a pintura a ocupar o cadeado
+        #: por 300 ms, o codigo real entrega ~60 polls nessa janela e o mutante
+        #: que espera pela pintura entrega ZERO.
         self._sched_lock = threading.RLock()
         self.hwnd = None
         self.thread_id = None
@@ -994,7 +995,8 @@ class NativeCaptionOverlay:
         medido de 31,75 ms (`CAPTION_DRAG_RATE ... paint_ms=31.75`); esperar por
         ele aqui atrasava o ARME seguinte em exactamente esse custo, e o poll do
         arrasto perdia o compasso. Medido no `caption-drag-oracle` P16: com a
-        agenda a esperar a pintura a taxa do poll cai de 213 Hz para 25 Hz.
+        pintura a segurar o cadeado por 300 ms, o codigo real entrega ~60 polls
+        nessa janela e o mutante que poem a agenda a esperar entrega ZERO.
         """
         sched = _guard(self, '_sched_lock')
         if delay is None:
@@ -1145,9 +1147,14 @@ class NativeCaptionOverlay:
             delay = None
         due = getattr(self, '_content_due_at', None)
         if isinstance(due, float):
-            left = self._limit_by_paint(max(0.0, due - now))
+            left = max(0.0, due - now)
+            # O PISO DA PINTURA SO' VALE QUANDO O CONTEUDO E' QUE MANDA: um
+            # quadro de conteudo vencido custa a pintura, mas o poll a 240 Hz
+            # nao. Aplicar o piso aqui e depois perder por ser maior que o
+            # compasso do arrasto so' escreveria a linha `CAPTION_FRAME_LIMIT`
+            # a cada 5 s sobre um limite que ninguem aplicou.
             if delay is None or left < delay:
-                delay = left
+                delay = self._limit_by_paint(left)
         if retry and (delay is None or delay > caption_drag.DRAG_FRAME_S):
             delay = caption_drag.DRAG_FRAME_S
         if delay is not None:

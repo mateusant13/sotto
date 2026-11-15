@@ -690,7 +690,16 @@ def arm_drag_rate_under_paint(plan, *_args, module=None):
     janela (>= 66 Hz no pior caso de um poll preso a 4 ms); o mutante que devolve
     o poll para dentro do `self.lock` entrega ZERO.
     """
-    hz, ticks, inside, hz_inside = _contention_probe(module)
+    # DUAS PASSAGENS, A MELHOR CONTA -- mesma razao da P13: numa maquina
+    # repartilhada o agendador do Windows mexe nos 300 ms medidos (34..66 polls
+    # observados no mesmo binario), mas o defeito -- poll preso na pintura --
+    # entrega ZERO nas duas.
+    best = None
+    for _ in range(2):
+        got = _contention_probe(module)
+        if best is None or got[2] > best[2]:
+            best = got
+    hz, ticks, inside, hz_inside = best
     return ("P16 pintura a segurar o lock 300 ms: %d polls na janela (%.0f Hz), "
             "%d ticks em %.1f s" % (inside, hz_inside, ticks, ticks / hz
                                     if hz else 0.0),
