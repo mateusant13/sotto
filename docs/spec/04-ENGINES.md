@@ -238,16 +238,17 @@ Três pares em oito minutos nesse dia. O recibo de 2026-11-05 mede o antes e o d
 `3200` foi **um parque e uma retomada em ~13 min** `[MEASURED]`
 `_main/receipt-20261105-live-rest-and-vram.md:44-50`.
 
-`worker/model_vram_pool.py` é outra biblioteca: garante **uma cópia por modelo por processo**
-(`get_or_load` devolve as mesmas sessões para o mesmo modelo + providers) e recusa uma segunda
-cópia quando o modelo já está residente noutro processo (`foreign_policy="refuse"`) `[CODE]
-worker/model_vram_pool.py:1-23`, `:222-260`. **Não está no caminho de produção** — nenhum ficheiro
-de `app/` ou `worker/` o importa; só `_main/vram-reuse-oracle.py` o carrega (`[MEASURED]` 2026-11-15:
-censo por `ast` sobre `app/`, `worker/` e `_main/` devolve **duas** importações do pool no
-repositório, uma delas a do próprio oráculo, nenhuma de produto). O caminho real de uma carga é
-`worker/sotto_worker.py` → `StreamAsr`; o pool descreve um contrato de reutilização que o produto
-**ainda não usa**. O que ele **não** faz: a VRAM é
-privada do processo que a alocou; reutilizá-la exigiria `cudaIpcGetMemHandle` do dono `[CODE] worker/model_vram_pool.py:15-19`.
+`worker/model_vram_pool.py` existia como outra biblioteca — garantia **uma cópia por modelo por
+processo** (`get_or_load` devolvia as mesmas sessões para o mesmo modelo + providers) e recusava uma
+segunda cópia quando o modelo já estava residente noutro processo (`foreign_policy="refuse"`).
+**Foi apagado em 2026-11-15 (D-33)**: o censo por `ast` sobre `app/`, `worker/` e `_main/` media
+**duas** importações no repositório, uma delas do próprio oráculo `_main/vram-reuse-oracle.py` e
+nenhuma de produto, e o oráculo que o guardava estava congelado na dívida `REASON-MISSING` desde
+2026-10-25. Com ele saiu `worker/vram_residency.py`, cujo único consumidor era ele (`:37`); a shell
+mede VRAM por `pynvml` directamente, em `_main`-free `SottoShell`. O contrato que o pool descrevia
+continua verdadeiro e vale a pena lembrar: a VRAM é privada do processo que a alocou, logo reutilizá-la
+entre processos exigiria `cudaIpcGetMemHandle` do dono. O caminho real de uma carga é
+`worker/sotto_worker.py` → `StreamAsr`. Ver `10-DEFECTS.md` §D-33.
 
 ## 7. Load shedding: os três níveis, a histerese e o que cada um desliga
 

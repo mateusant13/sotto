@@ -511,54 +511,29 @@ bloco.
   (`reference.json`), `[CODE] worker/unified_fixtures.py:126`
   (`print("BUILT %s ...")`).
 
-## `worker/vram_residency.py`
+## `worker/vram_residency.py` e `worker/model_vram_pool.py` (APAGADOS, 2026-11-15)
 
-- **O que faz** — Mede, dentro do processo, quem ocupa VRAM: totais por dispositivo
-  e pids com contexto CUDA via NVML, e memória dedicada/partilhada por processo
-  via PDH (`GPU Process Memory`). Identifica um modelo pelo conjunto de ficheiros
-  de pesos e respectivos SHA-256 (nunca pelo nome), e detecta detentores
-  estrangeiros em dois níveis: `same-worker` (cmdline contém `sotto_worker.py`) e
-  `size-plausible` (VRAM dedicada >= tamanho do modelo em disco).
-- **Quem o chama** — `model_vram_pool.py:37` (`import vram_residency as _res`), e
-  o pool usa `pdh_snapshot`, `per_process_vram`, `model_identity`,
-  `find_foreign_holders` e `find_model_holders`. **Não está no caminho de
-  produção**: `model_vram_pool` não é importado por `sotto_worker.py`,
-  `engine_switch.py`, `engine_policy.py` nem `redux_batch.py` — só oráculos de
-  `_main/` o usam.
-- **O que escreve/lê** — Não escreve nada. Lê os pesos do `model_dir` (para
-  hashing), contadores PDH/NVML e a tabela de processos. Nenhuma env var.
-- **Quando falha** — `pdh_counter` levanta `RuntimeError` se `pywin32` não for
-  importável ou se `CollectQueryData` nunca devolver dados; `device_totals`
-  levanta `RuntimeError` sem `pynvml`. A camada de relatório engole isso em
-  campos `device_error` / `err_<counter>` (via `residency_verdict`), em vez de
-  propagar.
-- **Evidência** — `[CODE] worker/vram_residency.py:78`
-  (`raise RuntimeError("win32pdh ...")`), `[CODE] worker/vram_residency.py:143`
-  (`raise RuntimeError("pynvml ...")`), `[CODE] worker/model_vram_pool.py:37`
-  (import).
-
-## `worker/model_vram_pool.py`
-
-- **O que faz** — Garante **uma cópia por modelo por processo**: `get_or_load(model_dir,
-  providers, …)` devolve as mesmas sessões ORT para a mesma chave e incrementa uma contagem de
-  referências, e com `foreign_policy="refuse"` levanta `ResidentModelError` quando o modelo já está
-  residente noutro processo. Tem três loaders registados (`sotto`, `noop`, `onnx-single`) e uma
-  tabela de entradas com a VRAM medida por modelo.
-- **Quem o chama** — **Ninguém no produto.** Censo por `ast` sobre `app/`, `worker/` e `_main/`
-  (2026-11-15) devolve **duas** importações de `model_vram_pool` no repositório: uma em
-  `_main/vram-reuse-oracle.py`, nenhuma em código de produto. (O próprio pool importa
-  `vram_residency` uma vez, em `:37`.) O caminho real de uma carga é `worker/sotto_worker.py` →
-  `StreamAsr`. Contrato escrito para uma reutilização que o produto **ainda não usa** — ver
-  `10-DEFECTS.md` §D-33.
-- **O que escreve/lê** — Não escreve nada. Lê os pesos do `model_dir` (para o hash de identidade) e
-  delega em `vram_residency` a medição de VRAM e a detecção de detentores estrangeiros. Nenhuma env
-  var; o número de fios `intra_op` é lido de `OMP_NUM_THREADS` (default `8`) dentro dos loaders.
-- **Quando falha** — `get_or_load` levanta `RuntimeError("model_vram_pool: unknown loader %r")` num
-  loader não registado (`:211`) e recusa carregar (`RuntimeError`, `:258`) quando a mesma cópia já
-  é detida por outro processo sob `foreign_policy="refuse"`.
-- **Evidência** — `[CODE] worker/model_vram_pool.py:211` (`raise RuntimeError("model_vram_pool:
-  unknown loader %r"`), `[CODE] worker/model_vram_pool.py:258` (`REFUSING to load`),
-  `[MEASURED]` censo `ast` de importações, 2026-11-15: nenhuma de produção.
+- **Estado** — Os dois ficheiros **já não existem**. Saíram com o D-33, e a razão está medida, não
+  suposta: o censo por `ast` sobre `app/`, `worker/` e `_main/` devolvia **duas** importações de
+  `model_vram_pool` no repositório inteiro, uma delas a do oráculo que o guardava
+  (`_main/vram-reuse-oracle.py`) e **nenhuma** de produto; e `vram_residency` tinha como único
+  consumidor o próprio pool, numa linha de `import` que morreu com ele. O oráculo do primeiro estava congelado na
+  dívida `REASON-MISSING preencher a mao` desde 2026-10-25, logo nunca corria na bateria.
+- **O que se perdeu, e o que não** — Perdeu-se uma biblioteca de medição de VRAM intra-processo
+  (NVML para totais de dispositivo e pids com contexto CUDA; PDH `GPU Process Memory` para
+  dedicada/partilhada por processo; identidade de modelo por SHA-256 dos pesos, nunca pelo nome;
+  detentores estrangeiros em dois níveis, `same-worker` e `size-plausible`). **Nada disso estava no
+  caminho de produção**: a shell mede VRAM por `pynvml` directamente e o caminho real de uma carga
+  é `worker/sotto_worker.py` → `StreamAsr`.
+- **O contrato que continua verdadeiro** — A VRAM é **privada do processo que a alocou**; reutilizá-la
+  entre processos exigiria `cudaIpcGetMemHandle` do dono. Um pool `get_or_load` por processo não
+  poderia partilhar sessões ORT com outro processo, e é por isso que a cura certa para uma segunda
+  cópia é **não carregar**, não partilhar.
+- **Se um dia voltar a ser preciso** — `git show 7720efcba3^:worker/vram_residency.py` e
+  `git show 7720efcba3^:worker/model_vram_pool.py` têm o código inteiro com a proveniência das duas
+  fontes de medição (o cabeçalho do `vram_residency` explica por que `nvidia-smi` e
+  `nvmlDeviceGetComputeRunningProcesses_v2` não servem nesta box). O instrumento que os substitui
+  para a pergunta "quem ocupa a GPU agora" é `pynvml` dentro do `VramGuard` da shell.
 
 ## `worker/_probe/ (32 ficheiros)`
 

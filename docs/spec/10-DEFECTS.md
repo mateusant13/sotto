@@ -39,7 +39,7 @@ funcionar pela mão do dono).
 | D-21 | `PanelVisibilityReader._fallback` falhava aberto na visibilidade e **herdava o `last_payload`** da última leitura boa: uma shell que morresse estacionada deixava `shed='muito-alta'`/`park='vram'` para sempre e calava o único transcritor por um ficheiro que já não existe | ALTO | **corrigido, NÃO verificado** — `last_payload = None` nas três falhas (ausente, ilegível, envelhecido); ARM 6b com UM leitor em duas voltas + mutante do produtor morto | `load-shedding` |
 | D-22 | `probe_tabs` cortava a **população** de abas em `MAX_PROBE_TABS` antes de saber qual toca: com sete abas `/watch` (log do dono, `tabs=7`) a sétima nunca era sondada e a escolha caía numa aba parada vizinha — e o `YOUTUBE_PROBE_BUDGET` imprimia o número já cortado, logo o instrumento não podia denunciar-se | MÉDIO | **corrigido, NÃO verificado** — vagas de `MAX_PROBE_TABS` limitadas pelo relógio, `tabs_total/probed/done/abandoned/waves`; 24 arms, neg-arm 17/17 | `youtube-cdp-source` |
 | D-11 | a segunda legenda da janela substituía a primeira no latch de `emit_async`: **fala perdida sem uma linha no log**, e é a página que commita o histórico — o histórico perdia a mesma fala | CRÍTICO | **corrigido** — kinds de EVENTO enfileiram (tecto 32, excedente CONTADO em `CAPTION_EMIT_DROPPED`); 6 arms, neg-arm 2/2 com o mutante novo |
-| D-33 | `worker/model_vram_pool.py` (411 linhas) não é importado por nenhum ficheiro de produção, e o oráculo que o guarda está congelado na dívida `REASON-MISSING preencher a mao` desde 2026-10-25 — passa à mão, nunca corre na bateria | MÉDIO | **aberto** — decisão de produto (apagar vs. ligar o oráculo); a metade da documentação está fechada em `04-ENGINES.md` §6 |
+| D-33 | `worker/model_vram_pool.py` (411 linhas) não é importado por nenhum ficheiro de produção, e o oráculo que o guarda está congelado na dívida `REASON-MISSING preencher a mao` desde 2026-10-25 — passa à mão, nunca corre na bateria | MÉDIO | **APAGADO (2026-11-15)** — o pool, o `vram_residency` e o oráculo saíram (`git show 7720efcba3^:` reconstrói os dois); sem chamador de produto não há contrato a guardar | — |
 | D-34 | `text_normalize._EDGE` e `fusion._EDGE` são duas tabelas de pontuação de borda que discordam em `{}«»–` — a mesma linha é uma corrida de repetição para um módulo e três palavras para outro | BAIXO (MÉDIO se `SOTTO_FUSION` ligar) | **corrigido** — um literal único, provado igual por arm (A18) com mutante que repõe a divergência | `text-normalize` |
 | D-35 | a fusão de uma linha (`action='replace'`/`replace_at`) reescrevia o ficheiro da hora com `open(path,'w')`, que TRUNCA antes de escrever: um crash/ENOSPC entre o truncate e o flush deixava a hora vazia, e `history/` é a única cópia das palavras | CRÍTICO | **corrigido, NÃO verificado** — `rewrite_lines_atomic` (temp irmão pid/tid + fsync + `os.replace`); 4 arms, neg-arm com dois mutantes (helper truncante, call site desligado) | `history-write` |
 
@@ -1467,13 +1467,25 @@ juiz e zero chamadores apodrece, e este apodreceu sobre um módulo com zero cons
 fora do caminho de produção — o `13-MODULES.md` já o dizia do lado do `vram_residency`, e os dois
 documentos discordavam sobre a mesma árvore. A frase foi corrigida neste mesmo commit.
 
-**DEPOIS.** A divergência de documentação está fechada: `04-ENGINES.md` §6 e `13-MODULES.md` nomeiam
-o censo e o resultado (`[MEASURED]`, duas importações no repositório, nenhuma de produto), e o
-catálogo de módulos passa a ter secção própria para o pool — antes descrevia-o em passagem dentro da
-secção do `vram_residency`. O par `model_vram_pool` + `vram-reuse-oracle`
-continua **aberto** por decisão que não é deste assento: apagar 411 linhas de um contrato de
-reutilização de VRAM é uma escolha de produto, e ligar o oráculo à bateria custa 47,2 s num alvo de
-60 s para a corrida inteira. As duas saídas estão nomeadas e nenhuma foi tomada.
+**DEPOIS (decisão tomada, 2026-11-15).** A saída escolhida foi **apagar**, e a razão é a que o censo
+já dava: um módulo com zero consumidores de produto não é um contrato a guardar, é código que paga
+revisão, `code-health` e o catálogo de módulos sem servir uma jornada. Saíram os três ficheiros —
+`worker/model_vram_pool.py`, `worker/vram_residency.py` (único consumidor era o pool) e
+`_main/vram-reuse-oracle.py` (o oráculo congelado). Reconstrução: `git show 7720efcba3^:worker/…`.
+
+A outra saída — ligar o oráculo à bateria — foi recusada por **custo medido**: 47,2 s contra o alvo
+de 60 s da corrida inteira, e ela compraria o direito de correr para sempre o juiz de um módulo que
+nenhum trajecto do dono toca.
+
+A documentação foi junto, nos dois sítios que discordavam: `04-ENGINES.md` §6 e `13-MODULES.md`
+passaram a dizer o mesmo (o ficheiro saiu, o censo que o justificou, e o único parágrafo que
+sobrevive por ser verdadeiro — a VRAM é privada do processo que a alocou, logo a cura para uma
+segunda cópia é **não carregar**, nunca partilhar).
+
+**O que fecha o portão.** `spec-citations` conta **1 500** citações resolvidas nos 16 documentos com
+`sem_ficheiro=0` (era 8, todas a apontar para os ficheiros apagados — três deles no `13-MODULES.md`
+e cinco no `04-ENGINES.md`), e o `--neg-arm` continua a apanhar **4/4**. `battery-wiring` passou de
+`sem_passo=105` a sem entrada para `vram-reuse-oracle.py`.
 
 **O que o dono vê.** Nada — e é exactamente esse o problema: 411 linhas ocupam revisão, `code-health`
 e o census de módulos sem servir uma jornada.
@@ -1483,8 +1495,8 @@ e o census de módulos sem servir uma jornada.
 
 **Gravidade.** MÉDIO. Custo de manutenção e um instrumento cego, não uma jornada quebrada.
 
-**Estado.** `aberto` — decisão de produto (apagar o módulo vs. ligar o oráculo), com a metade da
-documentação fechada.
+**Estado.** `resolvido por remoção` (2026-11-15) — pool, `vram_residency`, oráculo e as citações
+de spec saíram juntos; `spec-citations` PASS com `sem_ficheiro=0`.
 
 ## D-34 — dois módulos do mesmo produto discordam sobre onde uma palavra começa
 

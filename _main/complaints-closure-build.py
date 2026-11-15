@@ -145,14 +145,19 @@ THEMES = [
         "title": "11-13 GB de VRAM e ridiculo; e 12->13 GB, e culpa do Sotto?",
         "ids": ["L54", "L125", "L126"],
         "cmds": [
-            C([PY, "_main/vram-reuse-oracle.py", "--loader", "noop"], r"VERDICT: PASS", 240),
             C(["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader"],
-              r"\d+ MiB", 120, cite=False, lit="MiB, "),
+              r"\d+ MiB", 120, lit="MiB, "),
         ],
-        "why": ("a VRAM e REUTILIZADA entre carregamentos: o `get_or_load` pedido duas vezes devolve "
-                "a MESMA entrada (`refs=2`, uma entrada no pool) e a chave discrimina diretorio e "
-                "providers -- e o que o `--loader noop` mede, sem GPU. A atribuicao de agora e a do "
-                "segundo comando (a maquina inteira) e a do proprio oraculo: "
+        "why": ("a atribuicao de agora e a da leitura VIVA (a maquina inteira), que e' a unica "
+                "pergunta que ainda tem resposta executavel. O `vram-reuse-oracle.py` que era a "
+                "citacao desta seccao foi APAGADO em 2026-11-15 com o `worker/model_vram_pool.py` "
+                "e o `worker/vram_residency.py` (D-33): o pool prometia uma copia por modelo por "
+                "processo e o censo por `ast` sobre `app/`, `worker/` e `_main/` nao achou um "
+                "unico consumidor de produto, so' o proprio oraculo, que estava congelado na "
+                "divida `REASON-MISSING` desde 2026-10-25 e nunca corria na bateria. A propriedade "
+                "de REUSO deixa por isso de ser afirmada como codigo deste produto -- e a leitura "
+                "deixou de ser prova de APOIO e passa a ser a CITACAO, porque agora e' a unica. "
+                "O que fica medido da mesma sessao de 2026-10-23: "
                 "`GPU: total=16303 used=8370 free=7932 MiB compute_pids=33`, com os maiores "
                 "consumidores NOMEADOS (python.exe 1831,5 / 1829,5 / 1445,5 / 1371,5 MiB, "
                 "`NVIDIA Overlay.exe` 1371,5 + 238,5, chrome 662,9) e o nosso processo a "
@@ -163,8 +168,10 @@ THEMES = [
                 "outros processos ele ficou BLOQUEADO dentro da criacao do contexto (medido: 9,2 s "
                 "de CPU e depois nenhum progresso durante >7 min, com o `faulthandler` a nao "
                 "conseguir escrever porque a chamada nativa segura o GIL). Ele passou de manha, com "
-                "a GPU livre; o que este portao mede hoje e a propriedade de REUSO (codigo), e o "
-                "delta de VRAM da nossa propria sessao fica por medir ate a GPU ficar quieta."),
+                "a GPU livre. O delta de VRAM da nossa propria sessao continua por medir ate a GPU "
+                "ficar quieta, e o instrumento que o mediria e' "
+                "`_main/_cuda-vram-footprint-probe.py` (carrega o modelo nos dois bracos: e' "
+                "`heavy`, e por isso nao entra numa citacao de portao)."),
     },
     {
         "key": "porapp",

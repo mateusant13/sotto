@@ -1603,6 +1603,8 @@ licao do censo de consolas, que acusa quem esta' certo e por isso perde a autori
   (rc=1). `battery-class` PASS, `battery-wiring` `ligados=176 sem_passo=109 populacao=285`.
   Furo declarado pela propria lane: `session-20-intra-op-2` nasce em `worker/model_vram_pool.py:378`
   (8 fios por omissao), FORA dos dois motores -- "um orcamento para o processo todo" ainda nao e' verdade.
+  **O furo do pool morreu em 2026-11-15 por REMOCAO, nao por orcamento** (D-33: zero consumidores de
+  produto); o `speaker_sidecar.py:685`, a outra metade da mesma linha, continua fora dos dois motores.
 - **PIN anterior (medido 2026-11-09, 23:1x):** `_main\_audit-verify-all.cmd` = **330374 B**,
   **3878 CRLF** / 0 bare LF, sha256 `BF01F6FAFFFFD3605DB7FD98070E60CF4250C5B069FB75E53EEC631C03922F77`.
   (Mil setecentos e trinta bytes e VINTE linhas a mais do que o pin de 328644 B: o par `tree-cost` +

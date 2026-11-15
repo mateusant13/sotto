@@ -267,36 +267,15 @@ Porque isto fecha a reclamacao: as quatro causas medidas em 2026-10-21 (preload 
 
 status: closed
 
-evidence: `python _main/vram-reuse-oracle.py --loader noop` -> VERDICT: PASS
-
-```
-      VERDICT: PASS
-    == GREEN ARM (the pool as shipped) ==
-      PASS   [green] CHK-1 same model returns the SAME entry
-             first=2642845209424 second=2642845209424 identical=True vram -1.0 -> -1.0 -> -1.0 MiB
-      PASS   [green] CHK-2 the second call adds ZERO VRAM
-             dedicated VRAM before second call 0.0 MiB, after 0.0 MiB, delta 0.0 MiB
-      PASS   [green] CHK-3 pool holds ONE entry with refs=2
-      PASS   [green] CHK-4 a different model dir is a different entry
-      PASS   [green] CHK-6 foreign_policy=refuse refuses instead of duplicating
-      FAIL   [green] CHK-7 the verdict is observable in the log
-      GPU: NVIDIA GeForce RTX 5080 driver=617.14 total=16303 used=4904 free=11398 MiB compute_pids=36
-      top GPU holders (>=50 MiB dedicated):
-        pid=43748   ded=  1831.5 MiB  python.exe
-        pid=15340   ded=   991.8 MiB  NVIDIA Overlay.exe
-```
-
-rc=0
-
 evidence: `nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader` -> MiB, 
 
 ```
-    4581 MiB, 16303 MiB
+    3524 MiB, 16303 MiB
 ```
 
 rc=0
 
-Porque isto fecha a reclamacao: a VRAM e REUTILIZADA entre carregamentos: o `get_or_load` pedido duas vezes devolve a MESMA entrada (`refs=2`, uma entrada no pool) e a chave discrimina diretorio e providers -- e o que o `--loader noop` mede, sem GPU. A atribuicao de agora e a do segundo comando (a maquina inteira) e a do proprio oraculo: `GPU: total=16303 used=8370 free=7932 MiB compute_pids=33`, com os maiores consumidores NOMEADOS (python.exe 1831,5 / 1829,5 / 1445,5 / 1371,5 MiB, `NVIDIA Overlay.exe` 1371,5 + 238,5, chrome 662,9) e o nosso processo a `my_vram_ded_MiB=0.0`; o modelo em disco mede 746,6 MiB em 7 ficheiros. A figura de 9,7 GB nunca foi reproduzida: medido 1175-1703 MiB de delta no AGENTS. LIMITE DECLARADO: o braco com sessao CUDA real (`--loader onnx-single`, o default do oraculo) NAO correu em 2026-10-23 19:3x -- com 8370 dos 16303 MiB em maos de outros processos ele ficou BLOQUEADO dentro da criacao do contexto (medido: 9,2 s de CPU e depois nenhum progresso durante >7 min, com o `faulthandler` a nao conseguir escrever porque a chamada nativa segura o GIL). Ele passou de manha, com a GPU livre; o que este portao mede hoje e a propriedade de REUSO (codigo), e o delta de VRAM da nossa propria sessao fica por medir ate a GPU ficar quieta.
+Porque isto fecha a reclamacao: a atribuicao de agora e a da leitura VIVA (a maquina inteira), que e' a unica pergunta que ainda tem resposta executavel. O `vram-reuse-oracle.py` que era a citacao desta seccao foi APAGADO em 2026-11-15 com o `worker/model_vram_pool.py` e o `worker/vram_residency.py` (D-33): o pool prometia uma copia por modelo por processo e o censo por `ast` sobre `app/`, `worker/` e `_main/` nao achou um unico consumidor de produto, so' o proprio oraculo, que estava congelado na divida `REASON-MISSING` desde 2026-10-25 e nunca corria na bateria. A propriedade de REUSO deixa por isso de ser afirmada como codigo deste produto -- e a leitura deixou de ser prova de APOIO e passa a ser a CITACAO, porque agora e' a unica. O que fica medido da mesma sessao de 2026-10-23: `GPU: total=16303 used=8370 free=7932 MiB compute_pids=33`, com os maiores consumidores NOMEADOS (python.exe 1831,5 / 1829,5 / 1445,5 / 1371,5 MiB, `NVIDIA Overlay.exe` 1371,5 + 238,5, chrome 662,9) e o nosso processo a `my_vram_ded_MiB=0.0`; o modelo em disco mede 746,6 MiB em 7 ficheiros. A figura de 9,7 GB nunca foi reproduzida: medido 1175-1703 MiB de delta no AGENTS. LIMITE DECLARADO: o braco com sessao CUDA real (`--loader onnx-single`, o default do oraculo) NAO correu em 2026-10-23 19:3x -- com 8370 dos 16303 MiB em maos de outros processos ele ficou BLOQUEADO dentro da criacao do contexto (medido: 9,2 s de CPU e depois nenhum progresso durante >7 min, com o `faulthandler` a nao conseguir escrever porque a chamada nativa segura o GIL). Ele passou de manha, com a GPU livre. O delta de VRAM da nossa propria sessao continua por medir ate a GPU ficar quieta, e o instrumento que o mediria e' `_main/_cuda-vram-footprint-probe.py` (carrega o modelo nos dois bracos: e' `heavy`, e por isso nao entra numa citacao de portao).
 
 ## R9 — aproveitar as legendas que ja existem em cada app (YouTube)
 
