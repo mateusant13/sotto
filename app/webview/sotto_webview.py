@@ -18348,7 +18348,15 @@ class SottoShell:
             return True
         try:
             engine_log = warm_module().LOG_FILE
-            verdict = warm_evidence.request_verdict_for(engine_log, _LOG_FILE)
+            # `_LOG_FILE` e' um HANDLE aberto, nao um caminho: `count_tag` abre o
+            # ficheiro por nome, e passar o handle levantava
+            # `TypeError('expected str, bytes or os.PathLike object, not
+            # TextIOWrapper')` em TODO o arranque -- o ramo fail-open pedia o
+            # motor quente sempre, e a serie nunca era consultada. Medido no log
+            # do dono: 9 `WARM_ENGINE_EVIDENCE_FAILED`, 0 `NOT_REQUESTED`,
+            # 0 `REQUESTED` (a cura do D-04 era INERTE).
+            verdict = warm_evidence.request_verdict_for(
+                engine_log, getattr(_LOG_FILE, 'name', '') or '')
         except Exception as exc:  # noqa: BLE001 -- a serie nunca impede o pedido
             log('WARM_ENGINE_EVIDENCE_FAILED error=%r -- pedindo' % (exc,))
             start_warm_engine_task(log=log)

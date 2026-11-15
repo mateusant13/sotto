@@ -3,12 +3,15 @@
 Este ficheiro é a memória do trabalho. É actualizado a cada onda; não é um relatório final.
 Cada linha diz o que está **escrito**, com que **evidência**, e o que **falta**.
 
-Última actualização: **2026-11-15**. O ledger passou de 23 para **40 defeitos** (D-24..D-32 são a
+Última actualização: **2026-11-15**. O ledger passou de 23 para **41 defeitos** (D-24..D-32 são a
 rodada de 2026-11-14/15: z-order do painel, a linha que sobrevivia ao player, a bandeira de pausa,
 a janela de aviso tomada por fala, a placa do BLOCO, o `Ctrl+Space` num jogo que ninguém jogava, e
 a carga do motor por bloco; D-33/D-34 são a varredura de base de 2026-11-15; D-36 nasceu da
 varredura de evidência da mesma data, e é a mesma classe do D-01 na camada que julga evidência; D-37..D-40
-são a corrida da bateria da mesma data, que fechou RED sobre cinco instrumentos e nenhum defeito de produto). A tabela de números foi **re-medida hoje**, coluna a coluna, com o
+são a corrida da bateria da mesma data, que fechou RED sobre cinco instrumentos e nenhum defeito de
+produto; D-41 é a cura do D-04 que estava INERTE no processo — a shell passava um handle de ficheiro
+a quem abre por nome, o `TypeError` caía no fail-open e o motor quente era pedido em todo o arranque,
+com 9 `WARM_ENGINE_EVIDENCE_FAILED` e 0 `WARM_ENGINE_NOT_REQUESTED` no log do dono). A tabela de números foi **re-medida hoje**, coluna a coluna, com o
 comando ao lado; os valores anteriores estavam 3 dias velhos e dois deles já não eram verdade
 (a bateria tinha 503 passos, tem **526**; a especificação tinha 1 477 citações, tem **1 678**).
 
@@ -29,7 +32,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | W7 histórico e estado | **feito** | `07-HISTORY-STATE.md` (380 l., 299/13/15/8): o formato da linha e o `ctx1=`, as duas portas de admissão, a fusão, a retenção de 180 dias, busca e export, o anel de 12 h, a fila de lote, e cada ficheiro de estado com escritor/leitor/contrato de falha | `sotto_webview.py:15688`; `history_context.py`; `worker/audio_ring.py`; `batch_queue.py` |
 | W8 painéis e UX | **feito** | `08-PANELS-UX.md` (346 l., 112/13/7/7): Alt+C por índice de pressão, Ctrl+Space (HOLD e o engolir do espaço), a caixa da legenda, os temas, o arrasto, as configurações e o que fica gravado | `hotkey_gesture.py`; `space_swallow.py`; `caption_drag.py`; `app/panel/**` |
 | W9 modos de falha | **feito** | `09-FAILURE-MODES.md` (350 l., 37/30/15/6): o que acontece quando cada peça falha — dispositivo, worker, página, WebView2, Chrome/CDP, disco, energia, rede — e o que o dono vê em cada caso | linha por modo com a tag do log e o oráculo que a lê |
-| W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (**40 defeitos** com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-24..D-32 entraram em 2026-11-14/15, D-33/D-34 na varredura de base de 2026-11-15 e D-35 na leitura do caminho de escrita do histórico, D-36 na varredura da própria evidência, D-37..D-40 na corrida da bateria que fechou RED sobre cinco instrumentos) | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
+| W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (**41 defeitos** com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-24..D-32 entraram em 2026-11-14/15, D-33/D-34 na varredura de base de 2026-11-15 e D-35 na leitura do caminho de escrita do histórico, D-36 na varredura da própria evidência, D-37..D-40 na corrida da bateria que fechou RED sobre cinco instrumentos, e D-41 na sessão de 2026-11-15 que apanharia a cura do D-04 a ser INERTE no processo) | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
 | W11 spec-alvo | **feito** | `11-TARGET.md` (279 l.): o comportamento que eu escolho, jornada a jornada, com o que "funciona" quer dizer em cada uma | deriva das jornadas de `00-PROMISE.md` |
 | W12 selo | **feito** | índice, referências cruzadas, o portão das citações (`_main/spec-citations-oracle.py`) e o do **catálogo de módulos** (`_main/spec-coverage-oracle.py`: um bloco por ficheiro de produto em `13-MODULES.md`; `docs=16 ausentes=0 nome_apenas=0 classes_sem_seccao=0`) | `SPEC-CITATIONS VERDICT: PASS`; `SPEC-COVERAGE VERDICT: PASS` (+ `--neg-arm`) |
 | W13 módulos | **feito** | `13-MODULES.md` (84 blocos — os 114 módulos de produto, com skin e sonda como classe — + 6 secções de cabeçalho: um bloco por ficheiro de produto, com o que garante, quem o chama, o que escreve e o que o dono vê quando falha) | `spec-coverage-oracle.py` mede a população por `os.walk`, não por lista curada |

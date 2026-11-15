@@ -208,10 +208,27 @@ def run_live(mod, text, arms):
 
     def build(verdict=None, boom=False):
         stub = ShellStub()
+        # O `_LOG_FILE` de PRODUCAO e' um HANDLE aberto (sotto_webview.py:2447),
+        # nao um caminho. A primeira versao deste stub passava uma `str` e por
+        # isso a arm A11 era CEGA a exactamente o defeito que existia: a shell
+        # passava o handle a `count_tag`, que abre por NOME, e o
+        # `TypeError('expected str, bytes or os.PathLike object, not
+        # TextIOWrapper')` caia no ramo fail-open em TODO o arranque -- medido no
+        # log do dono, 9 `WARM_ENGINE_EVIDENCE_FAILED` e 0 `NOT_REQUESTED`. Um
+        # stub que nao tem a FORMA do objecto real mede o stub.
+        class _Handle:
+            name = os.path.join(ROOT, "_main", "webview-run.log")
+
+            def write(self, *_a, **_k):
+                return 0
+
+            def flush(self):
+                return None
+
         ns = {
             "log": stub.log_line,
             "warm_evidence": mod,
-            "_LOG_FILE": os.path.join(ROOT, "_main", "webview-run.log"),
+            "_LOG_FILE": _Handle(),
             "warm_module": lambda: type("M", (), {"LOG_FILE": MODULE})(),
         }
 
@@ -252,6 +269,56 @@ def run_live(mod, text, arms):
     arms.arm("A11 o metodo real: keep pede, recusa nao pede, excecao pede", ok,
              "keep=%d no=%d yes=%d fail=%d"
              % (keep.stub.starts, no.stub.starts, yes.stub.starts, fail.stub.starts))
+
+    # A14: o metodo REAL com o MODULO REAL e o HANDLE REAL. Todo o A11 acima
+    # substitui `request_verdict_for` por um stub, portanto o que ele julga e' a
+    # ramificacao do metodo -- nunca a FORMA do que a shell passa. Foi assim que
+    # o defeito viveu: a shell passava `_LOG_FILE` (um handle aberto) a um
+    # `count_tag` que abre por NOME, o `TypeError` caia no fail-open e a serie
+    # nunca era consultada. Medido no log do dono antes desta cura: **9**
+    # `WARM_ENGINE_EVIDENCE_FAILED`, **0** `WARM_ENGINE_NOT_REQUESTED`. Um
+    # veredicto injetado nao pode apanhar isso: so' o modulo verdadeiro e o
+    # objecto com a forma verdadeira o podem.
+    real = build()
+    engine_series = tempfile.mkdtemp(prefix="warm-ev-")
+    engine_path = os.path.join(engine_series, "warm-engine.log")
+    shell_path = os.path.join(engine_series, "shell.log")
+    with open(engine_path, "w", encoding="utf-8") as fh:
+        for _ in range(4):                       # MIN_LOADS cargas, zero anexos
+            fh.write("2026-11-11 20:47:16 WARM_LOAD_MS ms=7452.1\n")
+    # O log da shell tem de EXISTIR e nao ter anexo nenhum: ausente nao e' o mesmo
+    # que vazio (`count_tag` devolve `None` e o modulo PEDE, que e' o fail-open
+    # correcto). A serie que autoriza recusar e' "carregou e nunca anexou".
+    with open(shell_path, "w", encoding="utf-8") as fh:
+        fh.write("2026-11-11 20:47:20.000 sotto: BRIDGE_SPAWNED pid=1\n")
+    try:
+        ns = {
+            "log": real.stub.log_line,
+            "warm_evidence": mod,                 # o MODULO REAL
+            "_LOG_FILE": type("H", (), {"name": shell_path})(),
+            "warm_module": lambda: type("M", (), {"LOG_FILE": engine_path})(),
+            "start_warm_engine_task": lambda **kw: real.stub.__setattr__(
+                "starts", real.stub.starts + 1),
+        }
+        body = method_source(text, "_request_warm_engine")
+        body = "\n".join(line[4:] if line.startswith("    ") else line
+                         for line in body.splitlines())
+        exec(compile(body, "<_request_warm_engine>", "exec"), ns)
+        ns["_request_warm_engine"](real.stub, False)
+        real_ok = (real.stub.starts == 0
+                   and any("WARM_ENGINE_NOT_REQUESTED" in ln
+                           for ln in real.stub.lines)
+                   and not any("WARM_ENGINE_EVIDENCE_FAILED" in ln
+                               for ln in real.stub.lines))
+        arms.arm("A14 com o modulo e o handle VERDADEIROS, a serie decide", real_ok,
+                 "starts=%d lines=%r" % (real.stub.starts,
+                                         [ln.split()[0] for ln in real.stub.lines][:3]))
+    finally:
+        try:
+            os.remove(engine_path)
+            os.rmdir(engine_series)
+        except OSError:
+            pass
 
 
 def run_numbers(mod, arms):
@@ -318,7 +385,25 @@ def main(argv):
             caught += 1 if hit else 0
             print("  %-62s RED em %-6s %s" % ("M4 a shell ignora o veredicto", "A11",
                                               "caught" if hit else "NOT-CAUGHT red=%r" % (red,)))
-        total = len(muts) + 1
+        # M6: a shell volta a passar o HANDLE em vez do caminho. E' o defeito
+        # exacto que viveu em producao ate' 2026-11-15, e so' a A14 (modulo e
+        # objecto verdadeiros) o pode apanhar: a A11 injeta o veredicto e nunca
+        # olha para o que a shell passa.
+        broken6 = text.replace(
+            "                engine_log, getattr(_LOG_FILE, 'name', '') or '')",
+            "                engine_log, _LOG_FILE)", 1)
+        if broken6 == text:
+            print("  %-62s MUTACAO-NAO-APLICOU" % "M6 a shell passa o handle, nao o caminho")
+        else:
+            fresh = Arms()
+            run_live(load_module(), broken6, fresh)
+            red = [n for n, ok, _d in fresh.arms if not ok]
+            hit = any(n.split()[0] == "A14" for n in red)
+            caught += 1 if hit else 0
+            print("  %-62s RED em %-6s %s" % ("M6 a shell passa o handle, nao o caminho",
+                                              "A14",
+                                              "caught" if hit else "NOT-CAUGHT red=%r" % (red,)))
+        total = len(muts) + 2
         print("NEG-ARM: %s -- %d/%d mutantes apanhados"
               % ("PASS" if caught == total else "FAIL", caught, total))
         return 1 if caught == total else 0

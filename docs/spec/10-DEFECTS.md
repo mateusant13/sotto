@@ -47,6 +47,7 @@ funcionar pela mão do dono).
 | D-38 | o `app-target-oracle` construía a lista esperada com `dict(os.environ)` e comparava byte a byte: uma bateria lançada **sem** `PYTHONUNBUFFERED` no ambiente do pai acusou produto CERTO (`_child_env` escreve-a sempre) e levou o `--neg-arm` a 0 por consequência | MÉDIO | **corrigido** — a lista nomeia todas as chaves que a função ESCREVE (`PYTHONUNBUFFERED`, `SOTTO_REDUX_LIVE` incluídos); verde nas duas metades do ambiente | `app-target` |
 | D-39 | o `stutter-caption-oracle` trazia `CLASS_CONSTS` com só `CLOCK_STATIC_PAUSE_S`, mas o corpo real do `_yt_pause_edge` passou a ler `self.PAUSE_BLANK_DWELL_S`: o mutante M3 morria num `AttributeError` e o braço dava por apanhado um crash em vez de um número errado | MÉDIO | **corrigido** — as duas constantes na lista; M3 passa a ser derrubado pelo número (B1 anda para t=42.50, B2 dá t=42.50 em vez de 43.00) | `stutter-caption` |
 | D-40 | duas fixtures de oráculo ficaram para trás do produto e **acusaram o produto**: o stub de `gaming` do `hotkey-observed` não tinha `owns_space_now` (existe desde 2026-11-14) e o `warm-engine-task` exigia `ExecutionTimeLimit=PT0S`, que o XML trocou por `P14D` — um limite real, que é o invariante, não o literal | MÉDIO | **corrigido** — stub com os dois métodos; a arm passa a julgar a FORMA (`judge_time_limit`: existe, não é `PT0S` nem `PT3D`), com mutante M3 que repõe `PT0S` no texto | `hotkey-observed`, `warm-engine-task` |
+| D-41 | a cura do D-04 era **INERTE em produção**: a shell passava `_LOG_FILE` (um HANDLE aberto) a um `count_tag` que abre o ficheiro por NOME, o `TypeError` caía no ramo fail-open e o motor quente era pedido em **todo** o arranque — e o oráculo não podia ver isso porque o stub dele passava uma `str`, a forma errada. Medido no log do dono: **9** `WARM_ENGINE_EVIDENCE_FAILED`, **0** `WARM_ENGINE_NOT_REQUESTED`, **0** `WARM_ENGINE_REQUESTED` desde 2026-11-12 | ALTO | **corrigido, NÃO verificado** — o call site passa `getattr(_LOG_FILE,'name','') or ''`; a arm **A14** executa o módulo e o handle VERDADEIROS e o mutante **M6** (voltar a passar o handle) é apanhado por ela; 14/14 arms, neg-arm 6/6 | `warm-evidence` |
 
 ---
 
@@ -1873,3 +1874,78 @@ tem de carregar o protocolo (não os métodos que o autor se lembrava); o litera
 pelo invariante que ele representava — aqui, "existe um limite declarado, e não é o default de 3 dias
 nem o ilimitado".
 
+## D-41 — a cura do D-04 vivia ao lado do processo: o argumento era um HANDLE
+
+**Onde.** `app/webview/sotto_webview.py:18351` (`SottoShell._request_warm_engine`) chama
+`warm_evidence.request_verdict_for(engine_log, _LOG_FILE)`; `app/webview/warm_evidence.py:83`
+(`count_tag`) faz `open(path, 'rb')`.
+
+**ANTES (medido no log do dono, 2026-11-12 19:21 → 2026-11-15 08:30).** `_LOG_FILE` é um **ficheiro
+aberto** (`sotto_webview.py:2447`, `open(path, 'a', encoding='utf-8', buffering=1)`), não um caminho.
+`count_tag` abre por nome, portanto **toda** chamada levantava:
+
+```
+TypeError('expected str, bytes or os.PathLike object, not TextIOWrapper')
+```
+
+e caía no ramo `except` que PEDE o motor quente (`WARM_ENGINE_EVIDENCE_FAILED ... -- pedindo`). O
+fail-open é a política certa quando a série não se lê; o que não é certo é que ele fosse o ÚNICO
+caminho possível. Três contagens do mesmo log, no mesmo ficheiro:
+
+```
+WARM_ENGINE_EVIDENCE_FAILED   9      (a cada arranque desde 2026-11-12)
+WARM_ENGINE_NOT_REQUESTED     0
+WARM_ENGINE_REQUESTED         0
+```
+
+Ou seja: a decisão do D-04 — "pedir só quando a série mostrar que o motor paga" — **nunca correu uma
+vez sequer**. O custo do D-04 (7,5–26,0 s de arranque, ~1 GB residente, `WARM_EXIT why=idle-expired`
+ao fim de 600 s) continuou a ser pago integralmente, e o ledger registava `corrigido, NÃO verificado`
+para uma cura que era, no processo, **inerte**.
+
+**POR QUE NENHUM PORTÃO O VIU.** O oráculo `_main/warm-evidence-oracle.py` montava o stub com
+`"_LOG_FILE": os.path.join(ROOT, "_main", "webview-run.log")` — uma **`str`**. O objecto real é um
+handle. Um stub que não tem a FORMA do objecto real mede o stub: a arm A11 injetava ainda um
+`request_verdict_for` falso, portanto nem a forma nem o módulo verdadeiro entravam na conta. A arm
+A13 só exigia que o **nome** `_LOG_FILE` aparecesse no texto do método — media o nome, não o caminho,
+que é exactamente a classe que este ledger já documenta em D-39.
+
+**DEPOIS.** Duas metades, e a segunda é a que impede a repetição:
+
+1. **O call site** passa o que `count_tag` sabe abrir, e o padrão não é novo neste ficheiro (há dois
+   usos da mesma expressão, `:1929` e `:15733`):
+
+```python
+verdict = warm_evidence.request_verdict_for(
+    engine_log, getattr(_LOG_FILE, 'name', '') or '')
+```
+
+2. **O oráculo** ganha a arm **A14**, que executa o `_request_warm_engine` REAL do fonte (por `ast`)
+   com o **módulo real**, um `_LOG_FILE` com a forma real (`.name`, sem ser `str`) e uma série de
+   verdade em disco (4 `WARM_LOAD_MS`, ZERO `WARM_ATTACHED` no log da shell). Ela exige
+   `starts == 0` e a linha `WARM_ENGINE_NOT_REQUESTED` — e proíbe `WARM_ENGINE_EVIDENCE_FAILED`.
+   O stub do `build()` passou a ter a mesma forma (`class _Handle` com `.name`), para que as outras
+   arms não voltem a medir uma `str`.
+
+   Nota de fixture, medida: a série que autoriza RECUSAR exige o log da shell **existente e sem
+   anexo**. Ausente devolve `None` e o módulo PEDE — isso é o fail-open correto, não o defeito; a
+   primeira versão da A14 falhou por plantar a ausência e ter razão.
+
+**Medido.**
+
+```
+python _main/warm-evidence-oracle.py            -> VERDICT: arms=14 pass=14 fail=0   rc=0
+python _main/warm-evidence-oracle.py --neg-arm  -> NEG-ARM: PASS -- 6/6 mutantes apanhados   rc=1
+  M6 a shell passa o handle, nao o caminho      RED em A14   caught
+                                                (starts=1, lines=['WARM_ENGINE_EVIDENCE_FAILED'])
+```
+
+O M6 é o defeito de produção reconstruído por substituição de texto, e a mensagem que ele produz é a
+mesma assinatura do log do dono — o instrumento apanha a classe, não um primo dela.
+
+**Gravidade.** ALTO. Não há jornada quebrada (falhar para "pedir o motor" é o lado caro, não o
+errado), mas o custo era pago em todo o arranque e o registo dizia que a cura estava de pé.
+
+**Estado.** `corrigido, NÃO verificado`. `verified` exige o processo do dono a correr ISTO e a linha
+`WARM_ENGINE_NOT_REQUESTED` a aparecer no log vivo dele — o que só acontece depois de um arranque
+com o código novo. O que está medido é o oráculo sobre o fonte.
