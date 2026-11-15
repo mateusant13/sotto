@@ -1487,7 +1487,67 @@ def arm_activity_not_the_tap(mod, work):
     finally:
         case.close()
     return arm
-def run_arms(mod, work, shell_mod):
+def arm_table(mod, work, shell_mod):
+    """A tabela de arms: (rotulo, funcao, argumentos) na ordem em que correm.
+
+    O rotulo vive AQUI e nao no `__name__` da funcao porque `only=` filtra pelo
+    rotulo ANTES de a funcao ser chamada -- e um filtro que so' descobre o nome
+    depois de correr o trabalho nao economiza nada.
+    """
+    return (
+        ("g1-alta-refuses", arm_g1_alta, (mod, work)),
+        ("g1-unknown-defers", arm_g1_unknown, (mod, work)),
+        ("worst-of-two", arm_worst_of_two, (mod, work)),
+        ("g1-loads-on-leve", arm_g1_loads_on_leve, (mod, work)),
+        ("g1-engine-defer-log", arm_g1_engine_defer_log, (mod, work)),
+        ("g2-tap-refused", arm_g2_tap_refused, (mod, work)),
+        ("g3-attach-shed", arm_g3_attach_shed, (mod, work)),
+        ("g4-release", arm_g4_release, (mod, work)),
+        ("ring-newest-first", arm_ring_newest_first, (mod, work)),
+        ("replay-boundary", arm_replay_boundary, (mod, work)),
+        ("attach-handshake", arm_attach_handshake, (mod, work)),
+        ("stale-sha-refused", arm_stale_sha_refused, (mod, work)),
+        ("twin-pipe", arm_twin_pipe, (mod, work)),
+        ("twin-mutex", arm_twin_mutex, (mod, work)),
+        ("single-loader", arm_single_loader, (mod, work, shell_mod)),
+        ("cold-arm", arm_cold_arm, (mod, work, shell_mod)),
+        ("stop-detaches-not-kills", arm_stop_detaches, (mod, work, shell_mod)),
+        ("sender-never-blocks", arm_sender_never_blocks, (mod, work)),
+        ("pid-identity", arm_pid_identity, (mod, work)),
+        ("no-bypass", arm_no_bypass, (mod, work)),
+        ("attach-20", arm_attach_latency, (mod, work)),
+        ("ttl-exit", arm_ttl_exit, (mod, work)),
+        ("activity-resets-idle", arm_activity_resets_idle, (mod, work)),
+        ("idle-past-hold-expires", arm_idle_past_hold_expires, (mod, work)),
+        ("reload-floor-thrash", arm_reload_floor_thrash, (mod, work)),
+        ("hold-vs-load-ratio", arm_hold_ratio, (mod, work)),
+        ("one-number-two-files", arm_two_declarations_one_number, (mod, work)),
+        ("policy-floor-scope", arm_policy_floor_scope, (mod, work)),
+        ("tap-blocks-are-not-work", arm_activity_not_the_tap, (mod, work)),
+    )
+
+
+def _table_labels():
+    """Os rotulos de TODAS as arms, sem construir nenhuma (o `mod` e' `None`).
+
+    E' o que o juiz do mapeamento compara: a populacao de nomes nao depende de
+    um mutante nem do `only=`, senao uma arm nova entraria no mapeamento sem
+    ninguem saber.
+    """
+    return tuple(row[0] for row in arm_table(None, None, None))
+
+
+def run_arms(mod, work, shell_mod, only=None):
+    """Corre as arms -- TODAS, ou so' as de `only` (o custo do `--neg-arm`).
+
+    `only` E' O CUSTO DO `--neg-arm`, MEDIDO (2026-11-15). Cada mutante chamava
+    a passagem INTEIRA: 29 arms x 12 mutantes = **348 execucoes de arm** por um
+    `--neg-arm` de **113,7 s**, quando cada mutacao so' pode derrubar as arms que
+    EXECUTAM o codigo que ela mutou -- medido nas duas unicas populacoes que
+    existem (o log em cache e uma corrida desta sessao), um mutante derruba de
+    1 a 3 arms e as outras 26 a 28 sao a bateria a pagar o mesmo verde 12 vezes.
+    O `youtube-cdp-source-oracle.py` ja' paga esta licao desde `0e54d8d`.
+    """
     results = []
     os.makedirs(work, exist_ok=True)
     #: No arm may wedge the gate. A hang is not a verdict: the traceback is
@@ -1495,8 +1555,7 @@ def run_arms(mod, work, shell_mod):
     #: red, and the `--neg-arm` step then lacks "NEG-ARM PASS" and reds too.
     import faulthandler
 
-    def run(fn, *args):
-        label = getattr(fn, "__name__", "arm")
+    def run(fn, args, label):
         say("  arm %-26s ..." % label)
         sys.stdout.flush()
         faulthandler.dump_traceback_later(ARM_TIMEOUT_S, exit=True)
@@ -1510,36 +1569,32 @@ def run_arms(mod, work, shell_mod):
         finally:
             faulthandler.cancel_dump_traceback_later()
 
-    run(arm_g1_alta, mod, work)
-    run(arm_g1_unknown, mod, work)
-    run(arm_worst_of_two, mod, work)
-    run(arm_g1_loads_on_leve, mod, work)
-    run(arm_g1_engine_defer_log, mod, work)
-    run(arm_g2_tap_refused, mod, work)
-    run(arm_g3_attach_shed, mod, work)
-    run(arm_g4_release, mod, work)
-    run(arm_ring_newest_first, mod, work)
-    run(arm_replay_boundary, mod, work)
-    run(arm_attach_handshake, mod, work)
-    run(arm_stale_sha_refused, mod, work)
-    run(arm_twin_pipe, mod, work)
-    run(arm_twin_mutex, mod, work)
-    run(arm_single_loader, mod, work, shell_mod)
-    run(arm_cold_arm, mod, work, shell_mod)
-    run(arm_stop_detaches, mod, work, shell_mod)
-    run(arm_sender_never_blocks, mod, work)
-    run(arm_pid_identity, mod, work)
-    run(arm_no_bypass, mod, work)
-    run(arm_attach_latency, mod, work)
-    run(arm_ttl_exit, mod, work)
-    run(arm_activity_resets_idle, mod, work)
-    run(arm_idle_past_hold_expires, mod, work)
-    run(arm_reload_floor_thrash, mod, work)
-    run(arm_hold_ratio, mod, work)
-    run(arm_two_declarations_one_number, mod, work)
-    run(arm_policy_floor_scope, mod, work)
-    run(arm_activity_not_the_tap, mod, work)
+    if only is None:
+        # A arm 30 julga o MAPEAMENTO do `--neg-arm`. Sem ela, um mutante novo
+        # sem entrada declarada seria simplesmente PULADO (ou, pior, correria a
+        # tabela inteira e o custo voltaria pela porta de tras em silencio).
+        results.append(_arm_mutant_map())
+    for label, fn, args in arm_table(mod, work, shell_mod):
+        if only is not None and label not in only:
+            continue
+        run(fn, args, label)
     return results
+
+
+def _arm_mutant_map():
+    """Arm 30 -- o mapeamento mutante->arms existe, aponta a arms REAIS e e' unico."""
+    arm = Arm(30, "mutant-map-complete")
+    labels = _table_labels()
+    arm.check(len(set(labels)) == len(labels), "arm labels are unique")
+    missing = [name for name, _old, _new in MUTANTS if name not in MUTANT_ARMS]
+    extra = [name for name in MUTANT_ARMS if name not in {m[0] for m in MUTANTS}]
+    arm.check(not missing, "every mutant declares its arms (missing: %s)" % (missing or "-"))
+    arm.check(not extra, "no declared mutant is absent from MUTANTS (extra: %s)" % (extra or "-"))
+    unknown = sorted({n for names in MUTANT_ARMS.values() for n in names} - set(labels))
+    arm.check(not unknown, "every declared arm exists in the table (unknown: %s)" % (unknown or "-"))
+    empty = sorted(name for name, names in MUTANT_ARMS.items() if not names)
+    arm.check(not empty, "no mutant declares an empty arm set (empty: %s)" % (empty or "-"))
+    return arm
 
 
 # ── mutants ─────────────────────────────────────────────────────────────────
@@ -1596,6 +1651,32 @@ LAUNCHER_MUTANTS = (
      "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>"),
 )
 
+#: O MAPEAMENTO mutante -> as arms que ELE derruba (medido 2026-11-15, duas
+#: populacoes independentes: o log em cache de uma corrida real e uma passagem
+#: desta sessao, MESMA tabela nos dois). E' o que o `--neg-arm` executa agora:
+#: um mutante so' pode derrubar as arms que executam o codigo que ele mutou, e
+#: as outras 26-28 eram o mesmo verde pago 12 vezes (113,7 s por 348 execucoes).
+#:
+#: ESTE MAPEAMENTO NAO E' UMA LISTA DE PERMISSOES -- e' uma IGUALDADE. O
+#: `--neg-arm` exige que as arms declaradas fiquem VERMELHAS e que nenhuma
+#: outra fique, portanto um mutante que passe a ser apanhado por uma arm a mais
+#: falha a corrida em vez de a esconder. A arm 30 (`mutant-map-complete`) exige
+#: que todo mutante de `MUTANTS` tenha entrada aqui e que todo rotulo nomeado
+#: exista na tabela -- um mutante novo sem entrada nao pode ser pulado em mudo.
+MUTANT_ARMS = {
+    'M1-gate-bypass': ('g1-unknown-defers', 'g1-engine-defer-log'),
+    'M2-unknown-allows': ('g1-alta-refuses', 'g1-unknown-defers',
+                          'g1-engine-defer-log'),
+    'M3-ring-oldest-first': ('ring-newest-first',),
+    'M4-mutex-twin': ('twin-mutex',),
+    'M5-replay-2000': ('replay-boundary',),
+    'M6-detach-quits': ('attach-handshake', 'stop-detaches-not-kills', 'attach-20'),
+    'M7-idle-clock-ignores-work': ('activity-resets-idle',),
+    'M8-floor-removed': ('reload-floor-thrash',),
+    'M9-hold-below-load-cost': ('hold-vs-load-ratio',),
+    'M10-long-release-pays-floor': ('reload-floor-thrash',),
+}
+
 
 def commands_only(text):
     """As linhas que o cmd.exe EXECUTA, sem comentarios `REM`.
@@ -1641,13 +1722,28 @@ def neg_arm(work, shell_mod):
         if module is None:
             say("MUTANT %-22s INVALID -- %s" % (name, error))
             continue
-        results = run_arms(module, os.path.join(work, "run-%s" % name), shell_mod)
+        declared = MUTANT_ARMS.get(name)
+        if not declared:
+            # Sem entrada, o `only=` seria `()` e o mutante "escapava" sem nunca
+            # correr uma arm -- o pior desfecho possivel, porque parece verde.
+            say("MUTANT %-22s NO-MAPPING -- no arms declared for this mutant" % name)
+            continue
+        results = run_arms(module, os.path.join(work, "run-%s" % name), shell_mod,
+                           only=declared)
         red = [arm.name for arm in results if not arm.ok()]
-        if red:
-            caught += 1
-            say("MUTANT %-22s CAUGHT by %s" % (name, ", ".join(red[:3])))
-        else:
-            say("MUTANT %-22s ESCAPED -- the arms cannot tell it from the real thing" % name)
+        missed = sorted(set(declared) - set(red))
+        if missed:
+            say("MUTANT %-22s ESCAPED the declared arm(s) %s (red: %s)"
+                % (name, ", ".join(missed), ", ".join(red) or "-"))
+            continue
+        # NAO HA' BRANCO "arm a mais": com `only=declared` so' as declaradas CORREM,
+        # logo `red - declared` e' vazio por construcao. Uma comparacao que nao
+        # pode falhar e' o oposto de um portao, e ficou de fora. O alcance do
+        # mapa e' julgado pela arm 30 (todo mutante tem entrada, todo rotulo existe)
+        # e pelo sentido que importa aqui: declarar A MENOS deixa a arm que
+        # apanha de fora e o mutante ESCAPA, que e' o teste acima.
+        caught += 1
+        say("MUTANT %-22s CAUGHT by %s" % (name, ", ".join(red)))
     for name, filename, old_text, new_text in LAUNCHER_MUTANTS:
         total += 1
         caught += _run_launcher_mutant(work, shell_mod, name, filename, old_text, new_text)

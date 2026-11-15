@@ -739,7 +739,15 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT,
     # forma de julgar o `isChrome`, que roda DENTRO do Chrome do dono e nao tem
     # chamador em Python: um arm que so' procurasse o nome no fonte passaria com
     # a funcao a devolver `false` sempre.
-    out.append(_arm_janela_de_aviso_dom(mod.EXTRACT_JS))
+    #
+    # SO' CORRE QUANDO E' O ALVO (medido 2026-11-16). Esta arm paga um processo
+    # `node` + `jsdom` por chamada: **1,45 s** de um `--neg-arm` de 45,4 s, e ela
+    # corria em TODAS as 19 mutacoes -- ~28 s, 62 % do passo -- porque so' UMA
+    # mutacao (`com_janela_de_aviso_dom.py`) pode derrubar este codigo. As outras
+    # 18 pagavam o mesmo processo para reimprimir um verde identico. A guarda e'
+    # a MESMA `_want` que os outros bracos pesados (A12, A12b, A18-A21) ja' usam.
+    if _want("janela-de-aviso-dom"):
+        out.append(_arm_janela_de_aviso_dom(mod.EXTRACT_JS))
 
     # A6 -- sem focus emulation em sitio nenhum do produto
     # So' CODIGO conta: o comentario do instrumento e' a medicao que justifica a
