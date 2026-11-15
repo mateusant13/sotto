@@ -383,3 +383,8 @@ _main/_historico-vs-redux-control-store.js
 
 # estado de runtime do Steady Watcher (escrito no cwd em que ele corre, 33 KB de snapshot)
 .steady-watcher.json
+
+# A CACHE DO LAB DE DESENVOLVIMENTO (2026-11-15). `_main/devlab/lab.py` guarda audio,
+# video e verdade de referencia por CONTEUDO (hash do video) -- 55 MB depois de tres
+# janelas, e inteiramente reconstruivel com `lab.py harvest`. So o codigo do lab e' fonte.
+_main/devlab/cache/

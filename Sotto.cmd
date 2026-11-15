@@ -28,5 +28,24 @@ REM  and `--help`/`--bogus-flag` answered rc 255 instead of 0/2). run.cmd is CRL
 REM  now; if it ever goes back to LF, either convert it again or invoke it as
 REM  `start "" /b cmd /c "%~dp0app\webview\run.cmd" %*`, so it is the top-level
 REM  script of its own cmd instance (which is how a double-click runs it).
+REM  `dev` is a SUBCOMMAND, not a shell flag: it never reaches the app, so the
+REM  forwarder below stays the only path to `run.cmd`. `Sotto.cmd dev ...` runs
+REM  the real pipeline over cached audio: no audio device, no hotkey, no window.
+REM  MEASURED: `%*` is NOT affected by `shift` -- it expands to the ORIGINAL
+REM  argv, so `call ...sotto-dev.cmd %*` handed the child `dev --selftest` and
+REM  the child read `dev` as its window spec. The arguments travel as
+REM  `%2..%9` instead, and anything past 9 is refused rather than dropped
+REM  silently (a dropped `--video <id>` would score the WRONG video).
+if /i "%~1"=="dev" (
+REM  There is deliberately NO "too many arguments" guard: `%~10` is not
+REM  "arg 10" (cmd reads it as `%~1` plus a literal `0`, which refused every
+REM  call -- measured), and a real count needs delayed expansion that this
+REM  file must not turn on (`!` would eat `I:\!watcher` paths elsewhere). The
+REM  lab itself refuses unknown flags with rc=2, which is the same protection
+REM  without the trap.
+  call "%~dp0_main\devlab\sotto-dev.cmd" %2 %3 %4 %5 %6 %7 %8 %9
+  exit /b %ERRORLEVEL%
+)
+
 call "%~dp0app\webview\run.cmd" %*
 exit /b %ERRORLEVEL%

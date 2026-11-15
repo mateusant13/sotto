@@ -1164,3 +1164,279 @@ numero que nao distinguia zero de cinco. Se o historico deve receber a linha rec
 - Não classifica nenhuma jornada como `verified`: `verified` exige o processo do dono a correr ESTE
   código, e a lei do `STALE` continua a valer.
 - Não copia números de outros documentos: cada `[MEASURED]` acima traz o comando que o produziu.
+
+## D-24 — o painel ficava DEBAIXO da legenda, e o código chamava-lhe topmost
+
+Ordem do dono, verbatim (2026-11-14): *"os paineis devem ficar ACIMA da legenda. no `z index`. a
+legenda, agora mesmo, ta encima do painel, e eu nao consigo enxergar o painel bem"*.
+
+**ANTES.** As duas janelas são `WS_EX_TOPMOST`, e dentro da mesma banda topmost o Z-order é o da
+última chamada. `caption_overlay.show(True)` corre a CADA linha de legenda e faz
+`SetWindowPos(hwnd, HWND_TOPMOST, …)` seguido de `ShowWindow(hwnd, SW_SHOWNOACTIVATE)`: duas
+chamadas por linha, ambas a favor da legenda. O painel recebia o bit topmost no `set_topmost` e
+ficava por baixo no instante seguinte — o código afirmava "topmost" e o Windows punha a legenda em
+cima, porque o bit não decide nada dentro da banda.
+
+**DEPOIS.** A decisão e a caminhada vivem em `app/webview/z_order.py` (puras) e o aplicador recebe
+todas as chamadas ao USER32 por argumento. A semântica foi **medida**, não suposta: com duas
+janelas reais criadas fora do écran virtual e destruídas no `finally`,
+`SetWindowPos(moved=B, insertAfter=A)` deixa **A acima**, e `SetWindowPos(moved=A, insertAfter=B)`
+deixa **B acima** — quem manda é o `insertAfter`, e o `moved` fica-lhe por baixo. Logo "o painel
+acima da legenda" é UMA chamada: mover a **legenda** com `insertAfter=painel`
+`[CODE] app/webview/sotto_webview.py:7486`. Três caminhos passam por ela: cada `show` do painel, o
+tique de 2 s do keepalive (aí o bit TOPMOST pode estar lá com a legenda por cima — um laço que só
+olha o bit nunca vê esse caso, e é o caso medido), e o `z_below` do overlay, que impede a linha nova
+de voltar a subir `[CODE] app/webview/caption_overlay.py:1926`.
+
+**O que o dono vê.** Com o painel aberto sobre a legenda, a linha nova da legenda deixa de tapar o
+painel: o painel fica legível, e a legenda continua a desenhar-se por baixo dele.
+
+**Instrumento.** `_main/z-order-oracle.py` — 16 arms. `A15` mede o Win32 real nas duas direções
+(`antes: legenda_acima=True | escrita=True | depois: painel_acima=True legenda_acima=False`); `A16`
+mede o **invariante que impede o custo** — a segunda chamada seguida escreve zero
+(`antes_ok=False agiu=True depois_ok=True 2a=False raised=1 calls=1`), e é isso que impede um
+`SetWindowPos` por tique para sempre. `--neg-arm` **5/5** mutantes, cada um apanhado pela SUA arm.
+Entrou na bateria como par `z-order` + `red-as-expected-z-order`.
+
+**Gravidade.** ALTO. Não é cosmético: o painel é a superfície de leitura do dono (histórico, busca,
+configuração) e ficava ilegível sempre que havia legenda.
+
+**Estado.** `corrigido, NÃO verificado` — o processo do dono corre código anterior; a verificação
+exige o próximo arranque dele.
+
+## D-25 — a linha do player sobrevivia ao player por 10,4 s
+
+**ANTES.** `_release` limpava `last_line`/`last_rows` e **deixava os pixels** no overlay. MEDIDO no
+log do dono: `EXTERNAL_CAPTIONS_RELEASED reason=no-caption` às `20:10:02.796` e o primeiro texto do
+ASR só às `20:10:13.226` — **10,4 s** com uma fala de um player que já não a servia, no écran. O
+estado dizia uma coisa e o écran outra.
+
+**DEPOIS.** O `_blank_caption_window('external-released')` corre **dentro** da transição de
+episódio que já existia, por isso uma segunda chamada sem transição não apaga outra vez
+`[CODE] app/webview/sotto_webview.py:7053-7057`. Apaga o pixel e **não** toca no interruptor do dono
+— a regra 3 do `AGENTS.md` ("legenda ao vivo desligada não é modelo desligado") continua inteira.
+
+**O que o dono vê.** Quando a faixa do player desaparece (fim de faixa, troca de vídeo, silêncio), a
+legenda sai do écran no mesmo instante em vez de ficar 10 s a afirmar fala morta, e o ASR entra
+quando tem texto.
+
+**Instrumento.** `_main/caption-kept-on-hide-oracle.py` ganhou o braço `release apaga os pixels do
+player UMA vez` no positivo e o mutante 11 (`_blank('external-released')` trocado por `pass`) no
+`--neg-arm`, que devolve rc=1 com os **11** mutantes apanhados.
+
+**Gravidade.** ALTO. É a classe "o produto mente sobre si mesmo" no sítio mais visível.
+
+**Estado.** `corrigido, NÃO verificado`.
+
+## D-26 — a bandeira de pausa apagava a legenda que o dono acabou de ligar
+
+**ANTES.** `_yt_pause_edge` apagava o écran na **primeira** amostra `paused=True`. MEDIDO no log do
+dono: das **59** pausas que apagaram a legenda, **27** voltaram em ≤10 s (**14** em ≤1 s); e **15 de
+40** pressões de LIGAR tiveram o écran apagado nos 15 s seguintes. O CDP anunciava
+`YOUTUBE_CDP_PACED paused=True` com o `YT_FRAME` a revelar palavra a palavra no mesmo segundo
+(22:18:24-26 contra o blank às 22:18:29). A queixa dele, verbatim: *"a porra do ctrl space parece que
+nao da hide na legenda ou show DIREITO"*.
+
+**DEPOIS.** O blank exige **duas** medidas independentes: `PAUSE_BLANK_DWELL_S = 1.5` de pausa **e**
+1,5 s sem desenho novo (`_yt_frame_at`) `[CODE] app/webview/sotto_webview.py:5228,5273`. Uma pausa
+que desenha texto novo não é pausa. A **volta** continua instantânea — o que se adiou foi o apagar,
+nunca o repintar. Uma pausa que acaba dentro do dwell não apaga nada, e o adiamento é dito uma vez
+(`YOUTUBE_PAUSE_BLANK_DEFERRED held_s=… quiet_s=… dwell_s=…`) para o log não encher num flap.
+
+**O que o dono vê.** Ligar a legenda e ela ficar ligada. Uma pausa real continua a apagar o écran,
+1,5 s depois, que é abaixo da latência que ele percebe.
+
+**Instrumento.** `caption-kept-on-hide-oracle` PASS rc=0 com o braço do dwell, `--neg-arm` 11/11
+rc=1; `_main/caption-timeline.py` publica `PAUSE-FREEZE` por sessão.
+
+**Gravidade.** CRÍTICO. A tecla principal do produto parecia quebrada.
+
+**Estado.** `corrigido, NÃO verificado`.
+
+## D-27 — a janela de aviso do player ia ao écran como se fosse fala
+
+**ANTES.** `EXTRACT_JS` lia as linhas do `caption-window` e não distinguia a fala do **texto de
+estado** do YouTube. Com a faixa a ser servida, o player abre uma janela dentro do mesmo container
+que diz `Inglês` / `Clique em para configurações`, e ela foi **pintada como legenda nossa**: medido
+`CAPTION_PAINT_SURFACE src=player rows=4 text="Inglês\n..."`.
+
+**DEPOIS.** O discriminador não é texto nem classe de linha: é o **desenho** da janela — ela carrega
+`svg`/`button` do controlete e nenhuma linha de fala carrega. O extrator marca a linha `chrome` e o
+parser **puro** a descarta (`[CODE] app/webview/youtube_cdp_source.py:184,857`), o que dá duas
+medidas: a primeira no browser, a segunda testável sem Chrome. `out.segs` filtra pelo mesmo
+predicado, e `why` deixa de dizer `painted` quando sobravam zero linhas.
+
+**O que o dono vê.** O écran deixa de mostrar `Inglês` como se fosse o que alguém disse.
+
+**Instrumento.** `youtube-cdp-source-oracle` PASS **26/26**, `--neg-arm` **19/19** rc=1.
+
+**Gravidade.** ALTO. Texto de interface apresentado como transcrição é o produto a mentir.
+
+**Estado.** `corrigido, NÃO verificado`.
+
+## D-28 — a placa do fundo era do BLOCO, não da LINHA
+
+Ordem do dono, verbatim (2026-11-12): *"a placa por LINHA, nao bloco -- largura acompanha a linha
+pintada"*.
+
+**ANTES.** O modo `tight` já apertava a **caixa** até o texto mais largo, mas uma legenda de duas
+linhas — uma longa e uma curta — levava um rectângulo **único** com a largura da longa: a curta
+ficava com fundo a sobra. MEDIDO no bitmap, caso real (1 920 px de largura, Arial 38):
+`fins=[1732, 1732]` — as duas linhas com a mesma placa.
+
+**DEPOIS.** Uma placa por faixa de linha: `fins=[1688, 899]` depois, razão 0,53 para a caixa de
+1 690 px. Duas decisões que a medição impôs: a primeira e a última faixa alcançam a borda da caixa
+(sem isso a placa encolhia `pad_t`+`pad_b` = 9 px e a legenda mudava de **altura** em desenhos que
+só pediram **largura** — a arm A5 apanhou-o: `placa 0->0` no pixel do topo); e o corpo da placa saiu
+de `_paint_bitmap` para `_paint_plates`, porque a função estava em `max_func` 181 e o bloco novo
+levava-a a 264. O `code-health` mede o **corpo**, e a leitura certa distingue "a função cresceu por
+desenho" de "um bloco coube aqui": `max_func` 164.
+
+**O que o dono vê.** A legenda de duas linhas deixa de ter um bloco de fundo onde a linha curta
+acaba — o fundo acompanha cada linha que ele lê.
+
+**Instrumento.** `_main/caption-plate-oracle.py` arm A12 (largura por linha no bitmap real, mais o
+controlo `normal`, que continua a pintar o bloco) e o mutante M11 (a placa volta a ser o bloco).
+MEDIDO `12/12 GREEN` e **11/11** mutantes apanhados. O M11 nasceu **INERTE** na primeira tentativa
+porque a arm construía o bitmap pelo módulo global em vez do overlay da `ctx`; corrigido, ele cai
+pela arm que o nomeia.
+
+**Gravidade.** MÉDIO. Visual, mas é exactamente o "bloaty" que o dono nomeou duas vezes.
+
+**Estado.** `corrigido, NÃO verificado`.
+
+## D-29 — a bandeira de pausa mandava na MEDIDA, e a janela nascia sem desenho
+
+Três ordens do dono, 2026-11-12, cada uma com o número ao lado.
+
+**ANTES, a placa atrasada.** *"o background da legenda atrasou pra aparecer. entao a legenda ficou
+uns segundos sem background"*. MEDIDO na sessão dele (pid 46056): primeira linha pintada às
+`19:41:44.254`, `CAPTION_OVERLAY_THEME_APPLIED … plate=yes` às `19:41:46.327` — **PLATE-LATE
+2073,0 ms** de texto sem fundo, **a cada arranque**. A causa não é a pintura (a placa vive no MESMO
+bitmap que os glifos): é a janela nascer **sem desenho**, porque o payload que a página mede só
+existe depois do DOM dela e o `_brand_tokens_last` é memória do **processo**.
+
+**DEPOIS.** O último desenho medido vai para disco (`caption_settings.set_theme`,
+temporário-e-renomeia) e a janela **nasce com ele** `[CODE] app/webview/caption_settings.py:112,136`.
+O ficheiro (`_main/caption-theme.json`) é **estado** e vive no `.gitignore`: commitá-lo congelaria a
+legenda dele no desenho de hoje.
+
+**ANTES, a humidade da pausa.** *"quando eu pauso e despauso, ele mostra a legenda inteira daquela
+secao do youtube, mas isso e' diferente do youtube"*. `instant=True` pintava a janela toda de uma vez.
+
+**DEPOIS.** Com o cue do player no payload, a volta passa a revelar pelo relógio do vídeo
+(`_PlayerCue`) — que é o que o YouTube faz; o `instant` fica só para a fonte que não tem relógio
+nenhum.
+
+**ANTES, a bandeira que mente.** MEDIDO: `paused=True` travado por **12 min** com **38** quadros de
+texto novo a chegar custou ao dono um écran vazio com o vídeo a tocar, e nenhuma tecla o trouxe de
+volta — o `_blank_caption_window` sobe a epoch e o portão do `external_caption` recusa cada linha
+seguinte.
+
+**DEPOIS.** A medida desmente a bandeira: `_yt_clock_moving` compara `currentTime` entre leituras, e
+o desmentido fica escrito **uma vez por episódio**. Um seek para trás não conta como medida.
+
+**Instrumentos.** `_main/caption-timeline.py` (monta a linha do tempo de uma sessão e publica
+`PLATE-LATE`, `PAUSE-FREEZE` e a cauda de pintura; `--selftest` 13/13, `NEG-ARM: PASS`) e
+`_main/caption-status-hide-oracle.py` (o texto de estado aparece 0,5 s e some; 4/4 arms). Portões da
+rodada: `youtube-cdp-source 24/24`, `caption-overlay-theme 12/12`, `caption-overlay-screen 7/7`,
+`caption-plate 12/12 + 11/11`.
+
+**Gravidade.** ALTO nas três metades: a primeira é o produto a arrancar a mentir sobre o próprio
+desenho; a terceira é um écran vazio sem recuperação.
+
+**Estado.** `corrigido, NÃO verificado`.
+
+## D-30 — o arrasto pedia Ctrl e pagava 4,2 Hz; e o motor recarregava por meia volta
+
+Ordem do dono, verbatim: *"segurar o ctrl pra mover a legenda, ate o ctrl fazer efeito, DEMORA PRA
+CARALHO, quando o sistema ta sob carga"*.
+
+**ANTES.** O poll do arrasto herdava o cadeado da pintura: nos 31 % de tempo em que o shell estava a
+pintar, o arrasto entregava **4,2 Hz** — a legenda saltava em vez de seguir o rato. E agarrar pela
+ponta direita deixava o centro 300 px atrás do cursor, porque a pega era a posição do clique.
+
+**DEPOIS.** O poll entrega **178 Hz** com o quadro a **ceder** a pintura: `_tick` tenta
+`self.lock.acquire(False)` e um quadro que encontra o shell a pintar devolve o lugar ao poll seguinte
+(`_arm_poll(retry=True)`) em vez de se enfileirar atrás de 31,75 ms de `set_text`
+`[CODE] app/webview/caption_overlay.py`. A agenda do poll tem **cadeado próprio** (`_sched_lock`)
+para o `_arm_at`/`_tick_loop` não correrem um sobre o outro, e `_drag_reset`/`_update` leem o estado
+do arrasto sob `_poll_lock` — o mesmo cadeado em que o poll o escreve; sem isso o `x` de um tique
+casava com o `y` do seguinte. E o centro da janela vai para o cursor **em todos os tiques, já no da
+pressão** `[CODE] app/webview/caption_drag.py:265-270`. MEDIDO depois: P13 **209 Hz**, P16 **65**
+polls na janela de 300 ms com **216 Hz** globais, `caption-tick-thread` **10/10**, `--neg-arm` 6/6.
+
+**ANTES, o motor.** O modelo que transcreve ao vivo descarregava e a largada seguinte pagava o piso
+da recarga por um ciclo em que não tomou parte.
+
+**DEPOIS.** O piso é do **CICLO**, não da primeira volta:
+`RELOAD_FLOOR_LONG_RESIDENT_S = 300.0` (10× o par medido de 31 s) devolve piso **0**
+`[CODE] worker/engine_policy.py:69,285`, e o `resident_s=` fica no `REDUX_ENGINE_RELEASED` — o mesmo
+número nos dois ficheiros (`one-number-two-files`).
+
+**O que o dono vê.** Segurar Ctrl e a legenda seguir o rato de perto, mesmo com o shell a pintar; e o
+áudio que volta depois de 5 min de residência não paga 60 s de silêncio.
+
+**Instrumento.** O oráculo conduz o `_tick`/`_poll_drag` REAIS com um fio competidor a segurar
+`self.lock` pelo custo medido da pintura: **16/16** arms, `--neg-arm` **6/6**, cada um pela SUA arm.
+No motor: `warm-engine 29/29`, `redux-arm-weights 28/28`.
+
+**Gravidade.** ALTO. O arrasto é a única maneira de pôr a legenda onde ele quer.
+
+**Estado.** `corrigido, NÃO verificado`.
+
+## D-31 — o `Ctrl+Space` era dado a um jogo que ninguém estava a jogar
+
+**ANTES.** A autoridade era a **residência**: `detect_games` marca `in_match=True` para qualquer
+processo com nome de jogo, sem olhar ao foco. MEDIDO no log do dono: `deadlock.exe` ficou **residente**
+(fechado na bandeja, a janela do Chrome em primeiro plano), a shell escreveu `GAMING_MODE on=true` às
+`20:44:03` e `HOTKEY_LIVE_MODE mode=passthrough plan=give-back` no mesmo segundo; das `20:44:03` às
+`22:02:04` — **78 minutos** — **zero** `HOTKEY_PRESSED`, e o dono estava a ver YouTube. A queixa dele:
+*"o ctrl space parece que nao da hide na legenda ou show DIREITO. parece que essa porra ta
+conflitando com algo"*.
+
+**DEPOIS.** A autoridade é o **FOCO**: `foreground_owns_space(foreground_name, foreground_streak,
+extra_names)` `[CODE] app/webview/gaming_mode.py:240`. Três entradas, cada uma com a sua razão: nome
+de jogo (ou `extra_names`) **em primeiro plano** → `True`, sem dwell (a devolução é idempotente e um
+jogo em foco é o jogo); `-Win64-Shipping.exe` em primeiro plano → `True` (aí não se exige CPU — um
+`-Shipping` em foco está a correr por definição, e é o único sinal que este caminho tem); o **cliente**
+de jogo → só com a streak do primeiro plano, a mesma condição de `detect_games`, para o lobby do
+League não roubar a tecla no instante em que ele pousa o rato no ícone. `foreground_name` vazio (sem
+janela em foco, app a arrancar) → `False`: a tecla fica connosco, que é o desfecho seguro — um
+`Ctrl+Space` que alterna a legenda nunca é pior do que um que não faz nada.
+
+**O que o dono vê.** O `Ctrl+Space` volta a funcionar com um jogo residente na bandeja ou minimizado,
+e continua a ser devolvido ao jogo quando ele está mesmo a jogar.
+
+**Instrumento.** `ctrlspace-swallow-oracle` PASS **24/24**; `youtube-cdp-source` 26/26 negativo
+19/19; e a arm de `live_hotkey_plan` cobre a tabela.
+
+**Gravidade.** CRÍTICO. A tecla principal do produto ficava morta por 78 minutos seguidos.
+
+**Estado.** `corrigido, NÃO verificado`.
+
+## D-32 — uma carga do motor por BLOCO, não por LOTE
+
+**ANTES.** `BatchQueue.step()` largava um filho do driver **por bloco** e cada filho carregava o
+modelo do zero. MEDIDO no stutter do dono (2026-11-12 05:0x): `python.exe(53836)` com
+`io 162,4 MB/s (40 ops/s, 4060 KB/op)` e `cmdline = … batch_queue.py --transcribe …-0001.f32 --rate
+16000 --window-s 15.0 --json` — **40 × 4 060 KB/s** é o perfil de uma carga de modelo, não de
+decodificar 15 s de áudio. O mesmo directório de spool tinha **seis** payloads da mesma shell com ids
+separados por 5,5 s: seis blocos, **seis cargas**.
+
+**DEPOIS.** `MAX_BLOCKS_PER_CHILD = 8` reclama até oito blocos de uma vez, `command_for` leva todos
+num `--transcribe` com `nargs='+'`, e `_settle_batch` casa o resultado **por id** — o fallback de
+texto único só vale para lote de UMA entrada, porque atribuí-lo a oito blocos seria duplicar a frase
+em oito linhas `[CODE] app/webview/batch_queue.py:134,321,746,1222`. `step()` foi decomposto em
+`_wait_batch`/`_settle_batch`/`_requeue_all`: `max_func` **109 → 72**.
+
+**O que o dono vê.** O stutter da carga de modelo deixa de repetir uma vez por bloco; oito blocos
+custam uma leitura de ~1,9 GB em vez de oito.
+
+**Instrumento.** `batch-queue-drain-oracle` PASS **6/6** com `spawns=1` para oito blocos,
+`--neg-arm` **3/3**; `batch-executor-ceiling-oracle` **19/19** com
+`--neg-arm taxa=0.416 orcamento=0.120 APANHADO`.
+
+**Gravidade.** ALTO. Custo medido no hardware dele, na forma exacta do stutter que ele reporta.
+
+**Estado.** `corrigido, NÃO verificado`.
