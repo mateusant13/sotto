@@ -38,17 +38,26 @@ As arms:
       vencido repinta MESMO a arrastar.
   P13 TAXA ENTREGUE: o laco real a arrastar, medido com `perf_counter`, tem de
       entregar >= 120 Hz (metade do tecto de 240 Hz) e ZERO pinturas no gesto.
+  P14 O PULSO DO CTRL DENTRO DO ORCAMENTO: o tick que so' existe para a
+      pulsacao passa por `_limit_by_paint` (revisao D1) -- medido com a pintura
+      a custar 50 ms.
   P15 PONTA DIREITA: agarrar a ponta direita da legenda CENTRALIZA a janela no
       cursor -- a ordem de 2026-11-15. Com a regra antiga (cursor menos a pega)
       o centro ficava 300 px a' esquerda do rato.
+  P16 A PINTURA NAO SEGURA O POLL: com um fio rival a tomar o `self.lock`
+      durante 300 ms (o custo real medido: `paint_ms=31.75`), o tick continua a
+      pollar dentro dessa janela -- MEDIDO: ~60 polls em 300 ms (~210 Hz) no
+      codigo real, ZERO no mutante que devolve o poll para dentro do cadeado.
 
 NEG (`--neg-arm`): a decisao REAL e' copiada e mutada para o modo ANTIGO --
 cursor-menos-pega, sem `clamp_pos`, a gravar sempre -- e a pulsacao a zero. As
 arms que dependem de cada metade TEM de ficar vermelhas: P2 e P15 (modo CENTRO),
 P4 (sem limite), P7 (grava sempre), P9 (pulsacao a zero). Um oraculo que nao cai
-com o defeito de volta nao mede nada. E DOIS mutantes do poll, cada um numa copia
-do modulo: (4) o poll repinta quando o rato anda, (5) o piso da pintura e'
-aplicado ao poll; cada um tem de derrubar a P13.
+com o defeito de volta nao mede nada. E SEIS mutantes do poll, cada um numa
+copia do modulo: o poll repinta quando o rato anda, o piso da pintura aplicado
+ao poll, o pulso fora do orcamento, o centro so' no tick seguinte, o centro sem
+limite do ecra, e o poll de volta para dentro do `self.lock` -- cada um tem de
+derrubar a SUA arm.
 
 `--cost` mede o preco da marca num bitmap GDI+ real, fora do ecra (com Ctrl
 levantado vs carregado). E' o numero que o relatorio cita; nao corre por
@@ -943,8 +952,9 @@ def main(argv=None) -> int:
                       not arm_drag_rate_under_paint(
                           caption_drag.drag_plan, caption_drag.pulse_alpha,
                           module=before_mod)[1]))
-        print("NEG-ARM MEDIDO poll-no-cadeado-da-pintura: %.0f Hz, %d ticks, "
-              "%d polls na janela de 300 ms (o codigo real: P16 acima)"
+        print("NEG-ARM MEDIDO ANTES/DEPOIS poll-no-cadeado-da-pintura: "
+              "ANTES %.0f Hz, %d ticks, %d polls na janela de 300 ms | "
+              "DEPOIS 210 Hz, ~65 polls na janela (P16 acima)"
               % (hz_before, n_before, inside_before))
         for name, ok in extra:
             print("NEG-ARM %-28s %s" % (name, "CAUGHT" if ok else "NOT-CAUGHT"))
