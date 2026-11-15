@@ -45,11 +45,13 @@ expected value of a `red-as-expected-*` step.
 """
 
 import ast
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -277,7 +279,12 @@ WANTED_CONSTS = ('HISTORY_ROUTES', 'HISTORY_ROUTE_SOURCES', 'HISTORY_PRODUCERS',
                  # por isso a ausencia nao levantaria NameError -- e' pior: mediria a
                  # janela de OUTRO valor em silencio. Aqui ela vem do shell.
                  '_HISTORY_CTX_NEAR_S')
-WANTED_FUNCS = ('history_merge', '_merge_key')
+WANTED_FUNCS = ('history_merge', '_merge_key',
+                # A ESCRITA ATOMICA DO FICHEIRO DA HORA (2026-11-15): as duas
+                # acoes que REESCREVEM (`replace`, `replace_at`) passaram por ela
+                # porque `open(path,'w')` truncava o ficheiro antes de escrever.
+                # Sem ela no namespace, as arms do store morriam em NameError.
+                'rewrite_lines_atomic')
 WANTED_METHODS = ('history_append', '_history_tail', '_history_provenance',
                   '_history_path_for', '_history_prune',
                   '_history_context_for', '_history_app_target',
@@ -325,7 +332,7 @@ def store_namespace(shell_path):
     if missing:
         raise SystemExit('FATAL: nao encontrado em %s: %s' % (shell_path, ', '.join(missing)))
     body = (
-        'import json, os, re, sys, time\n'
+        'import json, os, re, sys, threading, time\n'
         'sys.path.insert(0, %r)\n'
         'import history_context\n'
         'LOG = []\nWARN = []\n'
@@ -416,6 +423,134 @@ def disk_arms(shell_path):
     out.append({'name': 'store:refusal-logged', 'want': 'HISTORY_REFUSED reason=provisional-draft',
                 'got': refreshed[0] if refreshed else '(nenhuma linha)',
                 'ok': any('reason=provisional-draft' in ln for ln in refreshed)})
+
+    # A ESCRITA E' ATOMICA, E ISSO PROVA-SE PELO TEMP, NAO PELA PROSA. O defeito
+    # que estas arms fecham: `replace`/`replace_at` reescreviam com
+    # `open(path,'w')`, que TRUNCA o alvo antes de escrever um byte. Um crash, um
+    # corte de energia ou um disco cheio entre o truncate e o ultimo flush deixava
+    # um ficheiro VAZIO -- e o historico e' a unica copia das palavras.
+    # A arm A mede o EFEITO (o ficheiro da hora sobrevive intacto quando a
+    # escrita falha a meio); a arm B mede o MECANISMO (o helper NAO abre o alvo em
+    # 'w' e o temp e' um irmao com pid/tid no nome). Sem as duas, um `open(path,'w')`
+    # posto de volta passaria a arm A num sistema de ficheiros que nunca falhou.
+    atomic = ns['rewrite_lines_atomic']
+    broot = tempfile.mkdtemp(prefix='history-atomic-')
+    target = os.path.join(broot, '2026-11-15', '07.md')
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    original = ['- [07:00:01] the first line\n', '- [07:00:09] the second line\n']
+    with open(target, 'w', encoding='utf-8', newline='') as fh:
+        fh.writelines(original)
+    try:
+        # Force the failure AFTER the truncate would have happened: patch
+        # os.replace for this one call. With `open(path,'w')` the target is
+        # empty at this point and stays empty; with the temp+rename it is
+        # untouched.
+        real_replace = os.replace
+
+        def explode(src, dst):
+            raise OSError(28, 'No space left on device (planted)')
+
+        os.replace = explode
+        try:
+            atomic(target, ['- [07:00:01] REPLACED\n'])
+            raised = False
+        except OSError:
+            raised = True
+        finally:
+            os.replace = real_replace
+        survivors = []
+        if os.path.exists(target):
+            with open(target, 'r', encoding='utf-8') as fh:
+                survivors = fh.readlines()
+        leftovers = [n for n in os.listdir(os.path.dirname(target)) if n != '07.md']
+        ok = (raised and survivors == original and not leftovers)
+        out.append({'name': 'store:atomic-keeps-file-on-failure',
+                    'want': 'raise + file intact (%d lines) + no temp left' % len(original),
+                    'got': '%s / %d line(s) / temp=%s'
+                           % ('raised' if raised else 'NO RAISE',
+                              len(survivors), leftovers or 'none'),
+                    'ok': ok})
+        # The successful path still writes, and leaves no temp behind.
+        atomic(target, ['- [07:00:01] reposto\n'])
+        with open(target, 'r', encoding='utf-8') as fh:
+            written = fh.read()
+        out.append({'name': 'store:atomic-writes-on-success',
+                    'want': 'content replaced, no temp',
+                    'got': json.dumps(written[:40]) + ' temp=%s'
+                           % ([n for n in os.listdir(os.path.dirname(target)) if n != '07.md'] or 'none'),
+                    'ok': written == '- [07:00:01] reposto\n'
+                          and not [n for n in os.listdir(os.path.dirname(target)) if n != '07.md']})
+        # The mechanism: the helper must not `open()` the TARGET in write mode.
+        # Judged on the AST, never on the text: the docstring NAMES the bug
+        # (`open(path, 'w')`) and a substring test declared the cure guilty of
+        # the defect it documents -- measured, this arm went RED on correct code
+        # before it was rewritten.
+        helper_src = io.open(shell_path, encoding='utf-8', newline='').read()
+        helper_node = next(n for n in ast.parse(helper_src).body
+                           if isinstance(n, ast.FunctionDef)
+                           and n.name == 'rewrite_lines_atomic')
+        opens_target_w = False
+        for node in ast.walk(helper_node):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == 'open'):
+                continue
+            first = node.args[0] if node.args else None
+            targets_path = (isinstance(first, ast.Name) and first.id == 'path')
+            if not targets_path:
+                continue
+            mode = None
+            if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
+                mode = node.args[1].value
+            for kw in node.keywords:
+                if kw.arg == 'mode' and isinstance(kw.value, ast.Constant):
+                    mode = kw.value.value
+            if isinstance(mode, str) and ('w' in mode or 'a' in mode):
+                opens_target_w = True
+        has_pid_tid = 'os.getpid()' in ast.get_source_segment(helper_src, helper_node) \
+            and 'get_ident()' in ast.get_source_segment(helper_src, helper_node)
+        out.append({'name': 'store:atomic-mechanism',
+                    'want': "no open(path,write) + pid/tid temp name",
+                    'got': "opens_target_for_write=%s pid_tid=%s" % (opens_target_w, has_pid_tid),
+                    'ok': (not opens_target_w) and has_pid_tid})
+        # A FIACAO, nao so' o helper (a classe do `panel-deps`): as duas acoes
+        # que reescrevem vivem DENTRO de `history_append`, e uma cura que so'
+        # existisse no helper deixaria os dois `open(path,'w')` la' dentro.
+        # Julgado pelo AST do metodo real: conta as chamadas e exige que nenhum
+        # `open()` do alvo sobreviva em modo de escrita.
+        append_node = next(n for n in ast.walk(ast.parse(helper_src))
+                           if isinstance(n, ast.FunctionDef) and n.name == 'history_append')
+        calls_atomic = sum(
+            1 for n in ast.walk(append_node)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+            and n.func.id == 'rewrite_lines_atomic')
+        target_writes = 0
+        for n in ast.walk(append_node):
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == 'open':
+                if not n.args or not (isinstance(n.args[0], ast.Name) and n.args[0].id == 'path'):
+                    continue
+                mode = n.args[1].value if len(n.args) > 1 and isinstance(n.args[1], ast.Constant) else None
+                for kw in n.keywords:
+                    if kw.arg == 'mode' and isinstance(kw.value, ast.Constant):
+                        mode = kw.value.value
+                # `a` (acrescentar) e' o caminho NORMAL e nao perde nada;
+                # so' `w`/`w+`/`r+` truncam o que la' esta'.
+                if isinstance(mode, str) and 'w' in mode:
+                    target_writes += 1
+        out.append({'name': 'store:atomic-wired',
+                    'want': "history_append calls it twice, 0 target writes in w",
+                    'got': "calls=%d target_writes_w=%d" % (calls_atomic, target_writes),
+                    'ok': calls_atomic >= 2 and target_writes == 0})
+    finally:
+        for dirpath, _dirs, names in os.walk(broot, topdown=False):
+            for name in names:
+                try:
+                    os.remove(os.path.join(dirpath, name))
+                except OSError:
+                    pass
+            try:
+                os.rmdir(dirpath)
+            except OSError:
+                pass
     return out, None
 
 
@@ -500,6 +635,57 @@ def mutant_py(tmpdir):
     return path
 
 
+def mutant_atomic(tmpdir):
+    """A copy of the shell whose rewrite TRUNCATES the target (the old bug).
+
+    Repõe exactamente o defeito: a escrita volta a ser `open(path,'w')` sobre o
+    próprio alvo, sem temp nem rename. O corpo é o de `_history_append` antes de
+    2026-11-15 (ler as linhas, escrever por cima).
+    """
+    with open(SHELL_PY, 'r', encoding='utf-8', newline='') as fh:
+        src = fh.read().replace('\r\n', '\n')
+    start = src.index('def rewrite_lines_atomic(path, rows, newline=\'\'):')
+    end = src.index('\ndef _history_clock_s(', start)
+    old = (
+        "def rewrite_lines_atomic(path, rows, newline=''):\n"
+        "    \"\"\"The OLD write: truncate the target, then write.\"\"\"\n"
+        "    parent = os.path.dirname(os.path.abspath(path))\n"
+        "    if parent:\n"
+        "        os.makedirs(parent, exist_ok=True)\n"
+        "    with open(path, 'w', encoding='utf-8', newline=newline) as handle:\n"
+        "        handle.writelines(rows)\n"
+    )
+    mutated = src[:start] + old + src[end:]
+    if mutated == src:
+        raise SystemExit('FATAL: a mutacao atomica nao mudou o ficheiro PY')
+    path = os.path.join(tmpdir, 'sotto_webview-truncating.py')
+    with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write(mutated)
+    return path
+
+
+def mutant_wiring(tmpdir):
+    """A copy of the shell where the CALL SITE goes back to the truncating write.
+
+    `mutant_atomic` prova que o helper e' atómico; este prova que o `history_append`
+    o CHAMA. Um verde de fiação sem mutante próprio e' um verde que não pode falhar.
+    """
+    with open(SHELL_PY, 'r', encoding='utf-8', newline='') as fh:
+        src = fh.read().replace('\r\n', '\n')
+    anchor = "                    rewrite_lines_atomic(path, rows)\n"
+    if anchor not in src:
+        raise SystemExit('FATAL: o call site `replace_at` nao tem a forma esperada')
+    old = ("                    with open(path, 'w', encoding='utf-8', newline='') as handle:\n"
+           "                        handle.writelines(rows)\n")
+    mutated = src.replace(anchor, old, 1)
+    if mutated == src:
+        raise SystemExit('FATAL: a mutacao de fiacao nao mudou o ficheiro PY')
+    path = os.path.join(tmpdir, 'sotto_webview-unwired.py')
+    with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write(mutated)
+    return path
+
+
 def report(title, arms):
     bad = [a for a in arms if not a['ok']]
     for a in arms:
@@ -565,10 +751,25 @@ def main(argv):
         prov_mut, _ = provenance_arms(py_mut)
         caught_c = any(a['name'] == 'prov-live' and not a['ok'] for a in prov_mut)
         report('C mutante (sem producer=)', prov_mut)
+        # A ATOMICIDADE tem de cair sob o mutante que trunca o alvo. Sem esta
+        # metade, o `open(path,'w')` podia voltar sem um passo vermelho.
+        trunc_mut = mutant_atomic(tmp)
+        disk_mut, _ = disk_arms(trunc_mut)
+        caught_d = any(a['name'] == 'store:atomic-keeps-file-on-failure' and not a['ok']
+                       for a in disk_mut)
+        caught_e = any(a['name'] == 'store:atomic-mechanism' and not a['ok']
+                       for a in disk_mut)
+        report('D mutante (escrita que trunca)', disk_mut)
+        wire_mut = mutant_wiring(tmp)
+        wire_mut_arms, _ = disk_arms(wire_mut)
+        caught_f = any(a['name'] == 'store:atomic-wired' and not a['ok']
+                       for a in wire_mut_arms)
+        report('E mutante (call site desligado)', wire_mut_arms)
         print()
-        if caught_a and caught_b and caught_c:
+        if caught_a and caught_b and caught_c and caught_d and caught_e and caught_f:
             print('NEG-ARM: PASS — the closed-line arms go RED under the old refusal')
-            print('         (A 2 arms, B 2 arms, C 1 arm). rc=1 is EXPECTED.')
+            print('         and the atomicity arms go RED under the truncating write')
+            print('         (A 2 arms, B 2 arms, C 1 arm, D 2 arms, E 1 arm). rc=1 is EXPECTED.')
             return 1
         print('NEG-ARM: FAIL — um mutante passou; o detector nao detecta')
         return 0

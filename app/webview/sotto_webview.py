@@ -848,6 +848,53 @@ HISTORY_LINE_RE = re.compile(r'^-\s+\[(\d{2}:\d{2}:\d{2})\]\s+(.*)$')
 HISTORY_DAY_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 
+def rewrite_lines_atomic(path, rows, newline=''):
+    """Rewrite a text file THROUGH a sibling temp file and `os.replace`.
+
+    WHY THIS EXISTS. A history hour file is rewritten whenever a line is fused
+    (`action='replace'` drops the previous line, `action='replace_at'` swaps one
+    row). Both used `open(path, 'w')`, which TRUNCATES the target before writing
+    a byte: a crash, a power cut or a full disk between the truncate and the last
+    flush leaves an empty file, and that hour of speech is gone for good --
+    `history/` is the only copy (the audio ring keeps 12 h of audio, the store
+    keeps the words). Measured 2026-11-15 on this store: 33 hour files, 272 746
+    bytes total, largest 34 058 B -- so the rewrite is a few milliseconds of
+    work, and there is no cost argument for risking the whole file.
+
+    The temp name carries pid and thread id for the same reason
+    `panel_state.write_atomic` does -- two writers of the same path must not
+    share a temp name. The rename retries briefly: on Windows `os.replace`
+    fails with PermissionError while a reader has the target open, and the
+    history reader (`_history_entries`) opens it on every panel refresh.
+    """
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    tmp = '%s.%d.%d.tmp' % (path, os.getpid(), threading.get_ident())
+    try:
+        with open(tmp, 'w', encoding='utf-8', newline=newline) as handle:
+            handle.writelines(rows)
+            handle.flush()
+            os.fsync(handle.fileno())
+        last = None
+        for attempt in range(10):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError as exc:
+                last = exc
+                time.sleep(min(0.1, 0.02 * (attempt + 1)))
+        raise last if last else OSError('rewrite_lines_atomic failed')
+    except BaseException:
+        # A temp file left behind is worse than none: it would be read by
+        # nothing and copied by every census. Remove it before re-raising.
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _history_clock_s(stamp):
     """`HH:MM:SS` -> segundos desde a meia-noite, ou `None` se nao for a forma.
 
@@ -16366,8 +16413,7 @@ class SottoShell:
                 _idx = locals().get('_at')
                 if isinstance(_idx, int) and 0 <= _idx < len(rows):
                     rows[_idx] = line
-                    with open(path, 'w', encoding='utf-8', newline='') as handle:
-                        handle.writelines(rows)
+                    rewrite_lines_atomic(path, rows)
                 else:
                     with open(path, 'a', encoding='utf-8') as handle:
                         handle.write(line)
@@ -16388,8 +16434,7 @@ class SottoShell:
                     keep.append(row)
                 keep.reverse()
                 keep.append(line)
-                with open(path, 'w', encoding='utf-8', newline='') as handle:
-                    handle.writelines(keep)
+                rewrite_lines_atomic(path, keep)
             else:
                 with open(path, 'a', encoding='utf-8') as handle:
                     handle.write(line)

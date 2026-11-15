@@ -11,7 +11,7 @@ frase descreve um numero medido, `[MEASURED]` com o comando ou a linha de log.
 
 ## A populacao, medida
 
-Medido com o proprio portao (`python _main/spec-coverage-oracle.py`) em 2026-11-12: **115 modulos de produto** nas tres raizes (`app/webview`, `worker`, `app/panel`), mais as classes que sao DADOS e nao comportamento, cada uma descrita uma vez: **84 imagens de skin** em `app/panel/skins/` e **32 sondas** em `worker/_probe/`. Fora da populacao, com razao declarada no portao: `worker/_prefix_audioflag.py` e `worker/_sotto_worker_agcinert.py` (copias congeladas usadas como mutantes) e `worker/runs/` (o mesmo).
+Medido com o proprio portao (`python _main/spec-coverage-oracle.py`) em 2026-11-15: **116 modulos de produto** nas tres raizes (`app/webview`, `worker`, `app/panel`), mais as classes que sao DADOS e nao comportamento, cada uma descrita uma vez: **84 imagens de skin** em `app/panel/skins/` e **32 sondas** em `worker/_probe/`. Fora da populacao, com razao declarada no portao: `worker/_prefix_audioflag.py` e `worker/_sotto_worker_agcinert.py` (copias congeladas usadas como mutantes) e `worker/runs/` (o mesmo).
 
 O portao da cobertura e' `_main/spec-coverage-oracle.py`, ligado a bateria pelos passos
 `spec-coverage` e `red-as-expected-spec-coverage`: ele caminha as tres raizes de produto, aplica as
