@@ -341,12 +341,12 @@
       "max_func_name": "_stable"
     },
     "app/webview/gaming_mode.py": {
-      "bytes": 23629,
+      "bytes": 27801,
       "classes": 4,
-      "defs": 11,
+      "defs": 12,
       "except_pass": 0,
       "globals": 0,
-      "lines": 539,
+      "lines": 620,
       "max_func": 53,
       "max_func_name": "tick"
     },
@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1475499,
+      "bytes": 1481594,
       "classes": 29,
       "defs": 172,
       "except_pass": 69,
       "globals": 9,
-      "lines": 27225,
+      "lines": 27320,
       "max_func": 446,
       "max_func_name": "main"
     },
@@ -621,12 +621,12 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 122858,
+      "bytes": 125912,
       "classes": 1,
       "defs": 32,
       "except_pass": 5,
       "globals": 2,
-      "lines": 2424,
+      "lines": 2476,
       "max_func": 267,
       "max_func_name": "_run"
     },
