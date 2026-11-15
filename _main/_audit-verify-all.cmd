@@ -3148,11 +3148,11 @@ if exist _main\prose-punct-oracle.py (
 ; linhas carregam uma corrida de 3+ palavras iguais, e a funcao pura corta 60 delas sem
 ; tocar um unico `No, no, no!` (a virgula e a enfase quebram a corrida).
 if exist _main\text-normalize-oracle.py (
-  call :step always text-normalize 0 "_main\text-normalize-oracle.py;app\webview\text_normalize.py;app\webview\sotto_webview.py" "%OUT%\text-normalize.log" python _main\text-normalize-oracle.py
+  call :step always text-normalize 0 "_main\text-normalize-oracle.py;app\webview\text_normalize.py;app\webview\sotto_webview.py;worker\fusion.py" "%OUT%\text-normalize.log" python _main\text-normalize-oracle.py
   call :record text-normalize !STEP_RC!
 ) else ( call :record text-normalize MISSING )
 if exist _main\text-normalize-oracle.py (
-  call :step always red-as-expected-text-normalize 1 "_main\text-normalize-oracle.py;app\webview\text_normalize.py;app\webview\sotto_webview.py" "%OUT%\text-normalize-neg.log" python _main\text-normalize-oracle.py --neg-arm
+  call :step always red-as-expected-text-normalize 1 "_main\text-normalize-oracle.py;app\webview\text_normalize.py;app\webview\sotto_webview.py;worker\fusion.py" "%OUT%\text-normalize-neg.log" python _main\text-normalize-oracle.py --neg-arm
   call :expectred red-as-expected-text-normalize !STEP_RC! "%OUT%\text-normalize-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-text-normalize MISSING "%OUT%\text-normalize-neg.log" "NEG-ARM: PASS" )
 

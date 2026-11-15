@@ -82,7 +82,10 @@ _MATCH, _MISS, _GAP = 2, -1, -1
 
 # Pontuacao de borda que nao conta para a comparacao (o acento CONTA: `nao` e
 # `nao` com til sao palavras diferentes e o pt-BR do dono depende disso).
-_EDGE = '.,;:!?…"\'()[]{}«»—-–'
+#: A MESMA tabela de `app/webview/text_normalize.py:_EDGE` -- ver o
+#: comentario de la'. Duas listas que discordam fazem a mesma linha ser
+#: corrida para um modulo e tres palavras para o outro (D-34).
+_EDGE = '.,;:!?"\'()[]{}«»…—-–'
 
 
 def tokenize(text):

@@ -56,7 +56,7 @@ DEBOUNCE_MS = 250
 #: MEASURED 2026-10-17: this watcher accepted `base.endswith('.py')`, so
 #: `worker/` has THIRTEEN of them — `sotto_worker.py`, `redux_live.py`,
 #: `redux_batch.py`, `denoise.py`, `lang_prompt.py`, `qwen_summary.py`,
-#: `model_vram_pool.py`, `vram_residency.py`, `wasapi_loopback.py`,
+#: `wasapi_loopback.py`,
 #: `inspect_model.py`, `audio_recorder.py`, `audio_queue_consumer.py`, plus
 #: `_prefix_audioflag.py` — and a change to ANY of them was "the worker changed".
 #: That is how editing a recorder module, which the bridge never re-executes, ends

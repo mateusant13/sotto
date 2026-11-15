@@ -458,11 +458,6 @@
     },
     {
       "date": "2026-10-25",
-      "file": "vram-reuse-oracle.py",
-      "reason": "REASON-MISSING preencher a mao"
-    },
-    {
-      "date": "2026-10-25",
       "file": "wake-tick-gate.py",
       "reason": "REASON-MISSING preencher a mao"
     },

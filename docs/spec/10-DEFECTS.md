@@ -40,7 +40,7 @@ funcionar pela mão do dono).
 | D-22 | `probe_tabs` cortava a **população** de abas em `MAX_PROBE_TABS` antes de saber qual toca: com sete abas `/watch` (log do dono, `tabs=7`) a sétima nunca era sondada e a escolha caía numa aba parada vizinha — e o `YOUTUBE_PROBE_BUDGET` imprimia o número já cortado, logo o instrumento não podia denunciar-se | MÉDIO | **corrigido, NÃO verificado** — vagas de `MAX_PROBE_TABS` limitadas pelo relógio, `tabs_total/probed/done/abandoned/waves`; 24 arms, neg-arm 17/17 | `youtube-cdp-source` |
 | D-11 | a segunda legenda da janela substituía a primeira no latch de `emit_async`: **fala perdida sem uma linha no log**, e é a página que commita o histórico — o histórico perdia a mesma fala | CRÍTICO | **corrigido** — kinds de EVENTO enfileiram (tecto 32, excedente CONTADO em `CAPTION_EMIT_DROPPED`); 6 arms, neg-arm 2/2 com o mutante novo |
 | D-33 | `worker/model_vram_pool.py` (411 linhas) não é importado por nenhum ficheiro de produção, e o oráculo que o guarda está congelado na dívida `REASON-MISSING preencher a mao` desde 2026-10-25 — passa à mão, nunca corre na bateria | MÉDIO | **aberto** — decisão de produto (apagar vs. ligar o oráculo); a metade da documentação está fechada em `04-ENGINES.md` §6 |
-| D-34 | `text_normalize._EDGE` e `fusion._EDGE` são duas tabelas de pontuação de borda que discordam em `{}«»` — a mesma linha é uma corrida de repetição para um módulo e três palavras para outro | BAIXO (MÉDIO se `SOTTO_FUSION` ligar) | **aberto** — o caminho vive OFF por omissão; zero tipografia no arquivo real |
+| D-34 | `text_normalize._EDGE` e `fusion._EDGE` são duas tabelas de pontuação de borda que discordam em `{}«»–` — a mesma linha é uma corrida de repetição para um módulo e três palavras para outro | BAIXO (MÉDIO se `SOTTO_FUSION` ligar) | **corrigido** — um literal único, provado igual por arm (A18) com mutante que repõe a divergência | `text-normalize` |
 | D-35 | a fusão de uma linha (`action='replace'`/`replace_at`) reescrevia o ficheiro da hora com `open(path,'w')`, que TRUNCA antes de escrever: um crash/ENOSPC entre o truncate e o flush deixava a hora vazia, e `history/` é a única cópia das palavras | CRÍTICO | **corrigido, NÃO verificado** — `rewrite_lines_atomic` (temp irmão pid/tid + fsync + `os.replace`); 4 arms, neg-arm com dois mutantes (helper truncante, call site desligado) | `history-write` |
 
 ---
@@ -1519,16 +1519,28 @@ tem **zero** ocorrências de `«»{}–—` em 1 409 linhas de 33 ficheiros. Log
 não medido em produção: duas regras para a mesma pergunta, que discordam no dia em que o texto trouxer
 tipografia portuguesa — que é exactamente o tipo de texto que este produto transcreve.
 
-**DEPOIS.** Nada foi mudado no código: unificar as duas tabelas exige decidir qual é a certa (a do
-`fusion` é mais completa; a do `text_normalize` alimenta a corrida e a ênfase ao vivo), e essa decisão
-toca o caminho da legenda. Fica nomeada com a medição ao lado.
+**DEPOIS.** As duas tabelas passam a ser o **mesmo conjunto** — a do `fusion`, que é a mais completa
+(`.,;:!?"'()[]{}\u00ab\u00bb\u2026\u2014-\u2013`). Nenhum chamador mudou de comportamento no arquivo real
+(0 de 1 409 linhas tinham os caracteres que faltavam), e o caso latente deixou de existir: `«Não» Não`
+é agora uma corrida de duas para os **dois** módulos.
 
-**Instrumento.** Execução das duas funções reais por `importlib` (a tabela acima); contagem de
-tipografia no arquivo do dono; leitura de `fusion_enabled`.
+Não houve import partilhado, e a razão é estrutural: a shell e o worker são **árvores de processo
+diferentes** (`app/webview/` e `worker/`), cada uma com o seu `sys.path`. A cura segue o precedente
+que esta casa já tinha para exactamente este problema — `text_normalize._FILLER` e o `_NOISE_WORD` do
+worker são dois literais provados iguais pela **arm A17** —, e ganha a irmã: a **A18** compara o
+conjunto lido de `worker/fusion.py` por `ast` com `text_normalize._EDGE` e publica a diferença nos dois
+sentidos (`so_no_shell=[] so_no_worker=[]`).
 
-**Gravidade.** BAIXO hoje, MÉDIO no dia em que o `SOTTO_FUSION` for ligado com texto tipográfico.
+**Instrumento.** `python _main/text-normalize-oracle.py` → `VERDICT: PASS (18/18)`; o `--neg-arm` leva
+agora **8/8** mutantes, o oitavo (`M8-tabela-de-borda-que-discorda`) repõe a tabela antiga numa cópia
+e exige a A18 vermelha — `rc=1` ao apanhar. A comparação de conjuntos por `ast`, e a contagem de
+tipografia no arquivo do dono, estão no histórico desta secção.
 
-**Estado.** `aberto`.
+**Gravidade.** BAIXO, e agora fechado antes de o `SOTTO_FUSION` ligar — que era o dia em que valeria
+MÉDIO.
+
+**Estado.** `corrigido` (a igualdade é provada por arm; o efeito em produção é zero medido, porque o
+texto do arquivo real não tem a tipografia que disparava a divergência).
 
 ---
 

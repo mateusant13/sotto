@@ -150,6 +150,22 @@ def run():
     arm('A17-padrao-igual-ao-do-motor',
         bool(m) and m.group(2) == tn._FILLER.pattern, (m.group(2) if m else 'AUSENTE'))
 
+    # ── A18: as DUAS tabelas de borda sao o MESMO conjunto (D-34) ────────
+    #  Medido 2026-11-15: `text_normalize._EDGE` nao tinha `{}`/«»/–, e a mesma
+    #  linha era uma corrida de repeticao para um modulo e tres palavras para o
+    #  outro. Duas arvores de PROCESSO (shell e worker) nao partilham import,
+    #  logo a igualdade e' um literal provado aqui -- a mesma forma da A17.
+    fusion_path = os.path.join(ROOT, 'worker', 'fusion.py')
+    with io.open(fusion_path, encoding='utf-8') as fh:
+        fusion_src = fh.read()
+    fm = re.search(r"^_EDGE\s*=\s*(.+)$", fusion_src, re.M)
+    fusion_edge = ast.literal_eval(fm.group(1)) if fm else None
+    arm('A18-tabela-de-borda-igual-ao-worker',
+        fusion_edge is not None and set(fusion_edge) == set(tn._EDGE),
+        'so_no_shell=%r so_no_worker=%r' % (
+            sorted(set(tn._EDGE) - set(fusion_edge or '')),
+            sorted(set(fusion_edge or '') - set(tn._EDGE))))
+
     # ── A13: a invariante que torna a cura segura, no arquivo REAL dele ────
     lines = []
     if os.path.isdir(HISTORY):
@@ -211,6 +227,12 @@ def neg_arm():
         ('M7-filler-antes-da-corrida',
          'A15-corrida-antes-do-fecho-e-do-preenchimento'),
     ]
+    # M8 mexe no FONTE do WORKER: repoe a tabela de borda antiga, sem `{}`/«»/–,
+    # que e' a divergencia que o A18 existe para apanhar (D-34).
+    fusion_mutants = [
+        ('M8-tabela-de-borda-que-discorda',
+         'A18-tabela-de-borda-igual-ao-worker'),
+    ]
     caught = 0
     for name, old, new, expect in mutants:
         if old not in good:
@@ -269,7 +291,26 @@ def neg_arm():
             print(f'NOT-CAUGHT {name} -- {expect} continuou verde')
     else:
         print(f'NOT-CAUGHT {name} (ancora do fonte ausente)')
-    total_mutants = len(mutants) + len(shell_mutants)
+    name, expect = fusion_mutants[0]
+    with io.open(os.path.join(ROOT, 'worker', 'fusion.py'),
+                 encoding='utf-8', newline='') as fh:
+        fusion_src = fh.read()
+    fm2 = re.search(r"^_EDGE\s*=\s*(.+)$", fusion_src, re.M)
+    if fm2 is None:
+        print(f'NOT-CAUGHT {name} (ancora do fonte ausente)')
+    else:
+        good_edge = ast.literal_eval(fm2.group(1))
+        mutated_edge = good_edge.replace('{', '').replace('}', '') \
+                                  .replace('\u00ab', '').replace('\u00bb', '') \
+                                  .replace('\u2013', '')
+        # A arm julga o CONJUNTO, e o mutante tem de o mudar de facto.
+        if set(mutated_edge) == set(tn._EDGE) or set(good_edge) != set(tn._EDGE):
+            print(f'NOT-CAUGHT {name} -- {expect} continuou verde')
+        else:
+            caught += 1
+            print(f'CAUGHT {name} -- derruba {expect}')
+
+    total_mutants = len(mutants) + len(shell_mutants) + len(fusion_mutants)
     print(f'NEG-ARM: {"PASS" if caught == total_mutants else "FAIL"} -- {caught}/{total_mutants} mutantes apanhados')
     return 1 if caught == total_mutants else 0
 

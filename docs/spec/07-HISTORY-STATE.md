@@ -375,6 +375,17 @@ O carimbo mostra só `HH:MM:SS` `[CODE]` `app/panel/panel.js:4118`; o dia viaja 
 - `[UNKNOWN]` **`history/audio/` guarda todo o áudio, não só o não transcrito.** O anel de 12 h é ligado por omissão `[CODE]` `worker/audio_ring.py:114` e recebe cada bloco do tap `[CODE]` `worker/audio_ring.py:189`. O áudio "sem transcrição" vive no `PendingAudio` do worker e na fila de lote. Fechar: ler `docs/` do dono sobre a ordem de 2026-11-11, ou perguntar qual dos dois ele chamou "áudio que ficou sem transcrição".
 - `[UNKNOWN]` **O que acontece a uma `Promise` de `historyCall` sem resposta.** `historyCall` não tem prazo (`app/webview/sotto_webview.py:10774`) e não foi possível medir um handler que não responda sem abrir a app. Fechar: um oráculo que injete um handler mudo e observe `window.sotto.history.tail`.
 - `[UNKNOWN]` **Se o painel chega a escrever a tecla dos painéis.** `[MEASURED]` 2026-11-11: `grep -rn "hotkey_settings.write\|hotkey_config().write" app/` → sem saída; a chave `panels` existe no ficheiro `[CODE]` `app/webview/hotkey_settings.py:99` e não alimenta o registo. Fechar: procurar no menu da bandeja e no painel um caminho `set-hotkey` que não esteja em `app/` (por exemplo um recurso JS carregado dinamicamente) ou confirmar a ausência com o dono.
-- `[UNKNOWN]` **A janela de perda de uma reescrita da cauda.** `action == 'replace'` e `replace_at` leem o ficheiro inteiro e reescrevem-no com `open(path, 'w')` (`app/webview/sotto_webview.py:15821`), que não é atómico; um crash a meio pode truncar a hora. Não foi medido o intervalo nem a frequência. Fechar: um teste de falha injectada no `write` com um ficheiro de hora cheio, ou trocar por tmp+replace.
+- `[MEASURED]` **A reescrita da cauda deixou de poder truncar a hora (D-35, 2026-11-15).**
+  `action == 'replace'` e `replace_at` liam o ficheiro inteiro e reescreviam-no com
+  `open(path, 'w')`, que TRUNCA o alvo antes do primeiro byte: um crash, um `ENOSPC` ou um kill entre
+  o truncate e o flush deixava a hora VAZIA, e `history/` é a única cópia das palavras. Agora os dois
+  caminhos passam por `rewrite_lines_atomic` `[CODE]` `app/webview/sotto_webview.py:851`: temp irmão
+  com pid e tid no nome, `flush` + `os.fsync`, e só então `os.replace` (com retry breve no
+  `PermissionError` do Windows, porque `_history_entries` abre o alvo em cada refrescamento do
+  painel). A população medida é 33 ficheiros da hora, 272 746 B, o maior 34 058 B — a reescrita é de
+  milissegundos. As quatro arms e os dois mutantes vivem em `_main/history-write-oracle.py`
+  (`VERDICT: PASS (10/10)`, `--neg-arm` rc=1). O que continua `[UNKNOWN]`: a FREQUÊNCIA com que uma
+  reescrita acontece numa sessão real do dono — o `HISTORY_FUSED` conta as fusões, não as faltas de
+  energia, e um crash a meio não se reproduz sem a app na tela dele.
 - `[UNKNOWN]` **A poda do anel em MB nunca foi exercitada nesta campanha.** Os 600 MB e a ordem "mais velho primeiro" foram lidos (`worker/audio_ring.py:50` e `worker/audio_ring.py:388`), não observados. Fechar: `python _main/audio-ring-oracle.py` (oráculo do próprio módulo) numa árvore temporária.
 - `[UNKNOWN]` **O `summary.json` não tem chamador de produção.** `[MEASURED]` 2026-11-11: `grep -rln "qwen_summary" app/ worker/` devolve só `app/webview/hot_reload.py` (um comentário em `:58`) e `worker/qwen_summary.py` (ele próprio). Fechar: procurar um agendador em `_main/` ou confirmar que é uma ferramenta manual.

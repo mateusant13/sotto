@@ -692,8 +692,12 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-15, 16:3x):** `_main\_audit-verify-all.cmd` = **400280 B**,
-  **4596 CRLF** / 0 bare LF, sha256 `10AA3FDB4B528663366A66C0A75385405475252FE8A1A8C0300C0416E664DDB2`.
+- **PIN do ficheiro (medido 2026-11-15, 18:0x):** `_main\_audit-verify-all.cmd` = **400314 B**,
+  **4596 CRLF** / 0 bare LF, sha256 `B6685CA7FD9635DEC4050946AF8728D570151F056EAD108F39984630F8941309`.
+  (Trinta e quatro bytes e ZERO linhas a mais do que o pin de 400280 B: `worker\fusion.py` entra nas
+  dependencias dos DOIS passos do `text-normalize`, porque o oraculo passou a LER a tabela de borda
+  daquele ficheiro (a arm A18) para comparar com `text_normalize._EDGE`. Sem a dependencia o passo
+  ficaria em cache a re-imprimir um PASS sobre uma tabela que ja mudou -- a classe do `panel-deps`.)
   (Quarenta bytes e ZERO linhas a mais do que o pin de 400240 B: `_main\devlab\lab.py` entra nas
   dependencias dos DOIS passos do `battery-heavy-gate`, porque o portao passou a LER aquele ficheiro
   como instrumento `heavy` (`MARKER_RE` sobre o `BATTERY-HEAVY:` que ele agora carrega). Sem a

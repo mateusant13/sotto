@@ -60,7 +60,14 @@ _WORD = re.compile(r'(\s*)(\S+)')
 _BREAKS = re.compile(r'[,;:!?\u2026\u2014-]')
 
 #: O que nao e' letra nas bordas de uma palavra, para comparar sem caixa.
-_EDGE = '.,;:!?"\'()[]\u2026\u2014-'
+#:
+#: A MESMA tabela de `worker/fusion.py:_EDGE`, e a igualdade e' um PORTAO
+#: (`_main/text-normalize-oracle.py`, arm A18), nao um comentario: medido em
+#: 2026-11-15 que as duas listas discordavam em `{}`/`\u00ab\u00bb`/`\u2013`, e a
+#: mesma linha era uma corrida de repeticao para um modulo e tres palavras para
+#: o outro. As duas vivem em arvores de PROCESSO diferentes (a shell e o worker),
+#: por isso nao ha um import que as una -- ha um literal e uma arm que o prova.
+_EDGE = '.,;:!?"\'()[]{}\u00ab\u00bb\u2026\u2014-\u2013'
 
 
 def _bare(word: str) -> str:

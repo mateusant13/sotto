@@ -800,16 +800,6 @@
       "max_func": 68,
       "max_func_name": "admit"
     },
-    "worker/model_vram_pool.py": {
-      "bytes": 16351,
-      "classes": 2,
-      "defs": 16,
-      "except_pass": 7,
-      "globals": 0,
-      "lines": 411,
-      "max_func": 61,
-      "max_func_name": "get_or_load"
-    },
     "worker/parakeet_ultra.py": {
       "bytes": 22548,
       "classes": 4,
@@ -969,16 +959,6 @@
       "lines": 174,
       "max_func": 32,
       "max_func_name": "build"
-    },
-    "worker/vram_residency.py": {
-      "bytes": 15903,
-      "classes": 0,
-      "defs": 13,
-      "except_pass": 2,
-      "globals": 0,
-      "lines": 400,
-      "max_func": 40,
-      "max_func_name": "find_foreign_holders"
     },
     "worker/wasapi_loopback.py": {
       "bytes": 76202,
