@@ -717,6 +717,13 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   outra lane ainda NAO commitado (`docs\spec\README.md` como dependencia -> `""`). O que ESTE
   commit entrega sao 76 B (395718 -> 395794 no blob, LF), e o commit seguinte a esse bloco re-mede
   este numero, como manda a regra do pin.
+  NOTA DE PIN: os 400 480 B sao do ficheiro VIVO, e o ficheiro VIVO acumula trabalho de MAIS do que
+  um lane (o bloco do `spec-coverage`, o do motor quente e o comentario do A6 abaixo). O commit
+  `d2c0b90d9a` entrega o AGENTS.md, o `spec-citations-oracle.py` e os cinco documentos da spec, e
+  NAO entrega o `.cmd`: O COMENTARIO DAS CINCO MUTACOES FICOU NO WORKTREE, dentro do hunk de outra
+  lane. O pin mede o estado VIVO de proposito (e' o numero que o portao compara), mas a metade do
+  `.cmd` que o justifica ainda nao esta' no indice -- quem commitar aquele hunk fecha a diferenca e
+  re-mede este numero, como manda a regra do pin.
   (Noventa e oito bytes e ZERO linhas a MENOS do que o pin de 400314 B: os DOIS passos do
   `spec-coverage` perdem a dependencia `docs\spec\README.md` e passam a `""`, a MESMA forma que o
   `spec-citations` ja' usava. A populacao do portao e' o DIRECTORIO `docs/spec/` (16 documentos) e o
