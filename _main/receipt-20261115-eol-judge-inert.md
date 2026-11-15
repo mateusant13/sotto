@@ -135,6 +135,43 @@ BATTERY-CLASS VERDICT PASS -- arms=4 fail=0
 
 `git status --porcelain -uall` do repo inteiro: **vazio**.
 
+## 6-bis. O DIFF FANTASMA VOLTOU COM `abe7c44`, E O QUE O FECHOU (medido 2026-11-15, 15:2x)
+
+O commit `abe7c44` (a rodada do `spec`) regravou os BYTES CRUS do worktree nos dois ficheiros que
+este recibo tinha acabado de renormalizar. Medido antes da cura:
+
+```
+git ls-files --eol  ->  i/crlf  w/crlf  attr/text eol=crlf   _main/load-shedding-oracle.py
+                        i/crlf  w/crlf  attr/text eol=crlf   app/webview/sotto_webview.py
+git diff HEAD --ignore-cr-at-eol -- <os dois>  ->  VAZIO
+```
+
+Ou seja: **zero mudanca de conteudo** e 30 458 linhas de diff, exatamente a assinatura que a seccao 3
+descreve. O indice guardava CRLF num ficheiro cuja regra manda LF no blob, logo o filtro limpava o
+worktree, o indice ficava sempre diferente e o `git status` nunca fechava.
+
+**A cura e' a mesma via, e o worktree nao foi tocado:**
+
+```
+commit 7299e2e  "eol: os dois blobs voltam a LF no indice, como o .gitattributes manda"
+ 2 files changed, 30458 insertions(+), 30458 deletions(-)
+```
+
+Medido depois:
+
+```
+git status --porcelain -uall          ->  vazio
+git diff HEAD --stat                  ->  vazio
+git ls-files --eol                    ->  i/lf  w/crlf  attr/text eol=crlf  (os dois)
+worktree _main/_audit-verify-all.cmd  ->  401 086 B, 4606 CRLF / 0 bare LF  (cmd.exe le por OFFSET)
+worktree app/webview/sotto_webview.py ->  1 483 579 B, 27 364 CRLF / 0 bare LF
+_make-gitattributes.py --verify       ->  VERDICT: PASS -- um checkout reproduz a arvore de hoje
+```
+
+A licao que fica escrita: **um commit que grava o `.cmd` ou o shell tem de passar pelo filtro** — a
+armadilha da seccao 4 nao foi um acidente de uma sessao, ela reapareceu num commit de outra lane
+quatro dias depois, com o recibo dela na arvore.
+
 ## 7. O QUE NAO ESTA' VERIFICADO
 
 * A bateria completa (528 passos) foi largada no fim desta sessao; o veredicto dela e' o do log
