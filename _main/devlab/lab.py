@@ -53,6 +53,7 @@ _warnings.simplefilter("ignore")
 import hashlib
 import json
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -1143,10 +1144,6 @@ document.querySelector('button.cc').addEventListener('click', function () {
 """
 
 
-#: The keys are the states the arm walks, not a syntax to remember.
-S2_STEPS = ("paint", "advance", "pause", "off", "segments", "chrome-window")
-
-
 def caption_fixture_page(video):
     """Serve the fixture at a `/watch?v=<id>` URL on loopback.
 
@@ -1159,7 +1156,7 @@ def caption_fixture_page(video):
     import http.server
     import threading
 
-    body = CAPTION_FIXTURE.replace("PLACEHOLDER", "the opening line").encode("utf-8")
+    body = CAPTION_FIXTURE.encode("utf-8")
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):                                    # noqa: N802
@@ -1175,6 +1172,29 @@ def caption_fixture_page(video):
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=srv.serve_forever, name="lab-fixture", daemon=True).start()
     return srv, "http://127.0.0.1:%d/watch?v=%s" % (srv.server_address[1], video)
+
+
+def free_port(preferred):
+    """`preferred` when it is truly free, else any free port.
+
+    A FIXED PORT IS NOT A FIXED BROWSER (measured 2026-11-15): a run that starts
+    while the previous headless Chrome is still dying connects to the OLD port
+    owner, inherits a page built by an older fixture, and fails at the first
+    call the new page has -- `window.__seek is not a function`, which reads like
+    a product defect and is a leftover process. Asking the OS for a free port
+    removes the class instead of sleeping past it.
+    """
+    import socket
+    for cand in (preferred, 0):
+        s = socket.socket()
+        try:
+            s.bind(("127.0.0.1", cand))
+            port = s.getsockname()[1]
+            s.close()
+            return port
+        except OSError:
+            s.close()
+    raise SystemExit("no free port")
 
 
 #: THE MUTANTS THE NEGATIVE ARM PLANTS, each aimed at the check that must catch
@@ -1211,7 +1231,7 @@ def mutant_source(path, needle, replacement):
     return src.replace(needle, replacement, 1)
 
 
-def run_captions(video, port, steps=S2_STEPS, source=None):
+def run_captions(video, port, source=None):
     """S2 -- exercise the REAL extractor + parser over a controlled player.
 
     `source` overrides the module path so the negative arm can drive a MUTATED
@@ -1226,7 +1246,11 @@ def run_captions(video, port, steps=S2_STEPS, source=None):
     exe = next((b for b in BROWSERS if os.path.exists(b)), None)
     if not exe:
         raise SystemExit("no browser")
-    srv, watch_url = caption_fixture_page(video)
+    # A NONCE IN THE URL makes "is this my page?" answerable: a stale browser on
+    # a reused port serves a page whose URL carries no nonce, and the readiness
+    # gate below refuses it instead of measuring it.
+    nonce = "lab%d" % random.randrange(1 << 40)
+    srv, watch_url = caption_fixture_page(video + "&" + nonce)
     prof = tempfile.mkdtemp(prefix="sottocap-", dir=tempfile.gettempdir())
     fg0 = foreground()
     checks = []
@@ -1235,6 +1259,7 @@ def run_captions(video, port, steps=S2_STEPS, source=None):
         checks.append((name, bool(ok), detail))
         print("  %-40s %s %s" % (name, "PASS" if ok else "FAIL", detail))
 
+    port = free_port(port)
     proc = subprocess.Popen([exe, "--remote-debugging-port=%d" % port,
                              "--headless=new", "--disable-gpu", "--mute-audio",
                              "--no-first-run", "--no-default-browser-check",
@@ -1243,7 +1268,34 @@ def run_captions(video, port, steps=S2_STEPS, source=None):
         w, send, ev = cdp_connect(port)
         send("Page.enable")
         send("Runtime.enable")
-        time.sleep(0.6)
+        # READINESS, NOT A SLEEP (measured 2026-11-15): `cdp_connect` returns as
+        # soon as the port answers, which can be BEFORE the fixture's script has
+        # run -- and a snapshot taken then is the honest-looking `no-window` of
+        # a page that does not exist yet, so the first checks would PASS against
+        # nothing. The arm waits for the page's own API and, if it never comes,
+        # says FAIL with the reason instead of raising out of the middle.
+        ready = False
+        t0 = time.time()
+        while time.time() - t0 < 10.0:
+            try:
+                if ev("typeof window.__seek === 'function' && location.href.indexOf(%r) >= 0"
+                     % ("&" + nonce,)):
+                    ready = True
+                    break
+            except Exception:
+                pass
+            time.sleep(0.1)
+        page_url = ""
+        try:
+            page_url = ev("location.href") or ""
+        except Exception:
+            pass
+        if not ready:
+            print("  fixture never became ready at %r" % (page_url,))
+            checks.append(("fixture page ready", False, page_url))
+            raise SystemExit(1)
+        checks.append(("fixture page ready", True, page_url.split("?")[0]))
+        print("  %-40s PASS %s" % ("fixture page ready", watch_url.split("?")[0]))
 
         def snap():
             return ycs.parse_snapshot(ev(ycs.EXTRACT_JS))

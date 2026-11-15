@@ -104,7 +104,8 @@ changes the line without the lab touching a caption element. Captions are toggle
 two doors a person uses -- the `c` key (`Input.dispatchKeyEvent` into the page's own handler) and the
 CC button's own click handler (`Input.dispatchMouseEvent`) -- and the lab never writes a caption line.
 
-22 checks: before anyone enables subtitles there are zero rows and `why` is `no-painted-caption`;
+23 checks: the fixture page is confirmed ready (a reused port serving a
+stale browser's page is refused, not measured); before anyone enables subtitles there are zero rows and `why` is `no-painted-caption`;
 after the `c` key the player's line appears, segments carry geometry and `why` says `painted`; a seek
 replaces the old cue with the new one and carries the new `t`; a two-line cue keeps both and the
 `>>` speaker marker is stripped; pressing `c` again clears the rows and names the state
