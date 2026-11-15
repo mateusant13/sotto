@@ -64,7 +64,7 @@ Três ficheiros dentro de `worker/` **não são produto**: `_prefix_audioflag.py
 worker usadas como mutantes por oráculos. Os dois últimos não estavam no git e entravam no índice em
 2026-11-11 (`10-DEFECTS.md` §D-01 — `git ls-files` devolve os três desde então).
 
-## O selo: 16 ficheiros, 6 363 linhas, 1 658 citações
+## O selo: 16 ficheiros, 6 379 linhas, 1 658 citações
 
 Medido em 2026-11-15 com um `os.walk`/`len(splitlines())` e `grep -o '\[TAG\]'` ficheiro a
 ficheiro, depois de entrar o `13-MODULES.md` (84 blocos: um por cada um dos 114 módulos de produto
@@ -74,7 +74,7 @@ cabeçalho):
 | o quê | número |
 |---|---|
 | ficheiros deste directorio | 16 (14 documentos + este índice + `STATUS.md`) |
-| linhas | 6 363 |
+| linhas | 6 379 |
 | `[CODE]` | 1 542 |
 | `[MEASURED]` | 179 |
 | `[INFERENCE]` | 64 |

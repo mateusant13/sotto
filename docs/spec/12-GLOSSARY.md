@@ -302,6 +302,7 @@ um defeito novo. `HOTKEY_GESTURE_MS` sobrevive em **8** ficheiros — recibos, l
   `worker/` ou `_main/*.py`; o único exemplar é de 2026-10-06 e pode vir de uma versão anterior ao
   git deste checkout. Fechar com `git log -S summary.json`.
 - `[UNKNOWN]` — os valores de `SOTTO_STEP_DEADLINE_S` e `RATCHET_PCT` em vigor nesta corrida sem
-  executar o oráculo do orçamento (não corrido por ordem: nada da bateria nesta lane).
+  executar o oráculo do orçamento (não corrido por ordem: nada da bateria nesta lane). Fechar exige
+  `python _main/battery-budget-oracle.py --policy cap40` e os dois valores citados da sua saída.
 - `[UNKNOWN]` — o custo real de cada passo `heavy` (12 declarados): exige `SOTTO_BATTERY_HEAVY=1`,
   proibido nesta lane.

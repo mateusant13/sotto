@@ -343,9 +343,12 @@ Comandos `grep -c -F '<etiqueta>' _main/webview-run.log`, a 2026-11-11 sobre 207
   `panel.js` pinta. Fechar: `--dump-dom` num worker parqueado.
 - `[UNKNOWN]` **`BRIDGE_SILENT_LOAD_TIMEOUT`, `BRIDGE_RESTART_SUPPRESSED`, `WEBVIEW2_INIT_FAILED`,
   `PANEL_NAV_STALL`, `TAP_OPEN_TIMEOUT`, `model dir not found`** têm 0 ocorrências; são `[CODE]`, não campo.
+  Fechar exige forçar cada um (modelo renomeado, porta CDP ocupada, WebView2 sem runtime) numa largada
+  de lane escondida e ler a tag no log.
 - `[UNKNOWN]` **Os 8 minutos de relógio estático** (2026-11-09 21:29→21:36) estão fora desta janela e
   `YOUTUBE_CLOCK_STATIC` tem 0 ocorrências. Fechar: `grep` no log arquivado dessa data.
 - `[UNKNOWN]` **Não sei se a app do dono é `HEAD`** — o portão `_main/live-code-freshness-oracle.py
   --strict` existe e não o executei; sem `FRESH` todo o `[MEASURED]` é sobre código anterior ao processo.
+  Fechar exige `python _main/live-code-freshness-oracle.py --strict` devolver `FRESH` sobre o pid vivo.
 - `[UNKNOWN]` **`EXIT_KILLER_FIRED`/`EXIT_KILLER_ORPHAN`** não foram medidos, e a escalada dura só se prova
   com processo preso. Fechar: `_main/dead-app-exit-oracle.py` (não corrido, abre processo).

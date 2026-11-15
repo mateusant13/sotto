@@ -337,15 +337,19 @@ player, a troca de vídeo e as línguas estão em `06-YOUTUBE.md`.
   app e pintar uma linha em cada superfície — proibido nesta lane.
 - `[UNKNOWN]` A taxa de frames alcançada neste `HEAD`: `CAPTION_FRAME_LIMIT` só é escrito quando o custo
   morde (`[CODE] app/webview/caption_overlay.py:992-998`) e `[MEASURED] grep -c CAPTION_FRAME_LIMIT` → `23`
-  no ficheiro misto, sem separar por processo.
+  no ficheiro misto, sem separar por processo. Fechar exige `CAPTION_FRAME_LIMIT` numa sessão
+  posterior ao arranque que corre este `HEAD`, com o `pid` na mesma linha.
 - `[UNKNOWN]` A fracção de linhas que a porta de rota recusa em `HEAD`: o log tem `24`
-  `LIVE_ROUTE_REFUSED` (`[MEASURED]`, 2026-11-11), mas o processo é anterior ao disco.
+  `LIVE_ROUTE_REFUSED` (`[MEASURED]`, 2026-11-11), mas o processo é anterior ao disco. Fechar exige
+  `grep -c LIVE_ROUTE_REFUSED` e `grep -c CAPTION_IN` na MESMA sessão fresca, e a razão contada.
 - `[UNKNOWN]` Se a linha `redux-live` deve pintar: `producer=redux` (`[CODE] worker/redux_live.py:1535`) é
   classificado como `redux` (`[CODE] worker/live_route.py:142-151`) e `admit` marca `history_only` por
-  `batch-route`, mas não encontrei afirmação escrita de que seja o desenho.
+  `batch-route`, mas não encontrei afirmação escrita de que seja o desenho. Fechar exige a decisão do
+  dono em `11-TARGET.md` §J4 — é produto, não leitura de código.
 - `[UNKNOWN]` O tempo real de decode por bloco: os 120–400 ms de
   `[CODE] app/webview/sotto_webview.py:18182-18187` são comentário de 2026-11-03, não medição desta lane
-  (medir exige o modelo carregado e um tap vivo).
+  (medir exige o modelo carregado e um tap vivo). Fechar exige `WORKER_STATS` com o custo por bloco
+  numa sessão deste `HEAD`.
 - `[UNKNOWN]` O efeito da fusão em produção: `SOTTO_FUSION` está desligado por omissão
   (`[CODE] app/webview/sotto_webview.py:1083-1088`) e não li o ambiente da largada do dono; fechar exige
   `grep SOTTO_FUSION` no ambiente do processo ou `grep -c FUSION_EDIT` num log fresco.

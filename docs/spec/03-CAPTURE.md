@@ -337,13 +337,19 @@ um `device-rotated` também não são corpo: a shell usa-os como evidência de n
 - `[UNKNOWN]` Se o tecto de 4,0 s de `FLAT_EVIDENCE_S` já correu numa sessão real: o recibo de
   2026-11-11 mede 43,6 s (código anterior). Fechar exige `device-rotated reason=flat` a ≤ 4,0 s.
 - `[UNKNOWN]` O que `_flat_evidence_s()` faz quando o import de `wasapi_loopback` falha (devolve
-  `inf`, a política antiga inteira) — lido no código, não exercitado.
+  `inf`, a política antiga inteira) — lido no código, não exercitado. Fechar exige uma corrida com
+  `wasapi_loopback` removível do `sys.path` (ou um `ImportError` injectado na mesma sonda), a exigir
+  `flat_evidence` = `inf` e a política de dedobragem por relógio intacta.
 - `[UNKNOWN]` Quantos `meter` chegam ao painel por segundo em produção (10 Hz nominais): exige contar
-  eventos num log vivo, e o log só tem uma linha por 30 s.
+  eventos num log vivo, e o log só tem uma linha por 30 s. Fechar exige um contador do emissor no
+  log (uma linha por minuto com o total acumulado), não uma amostra.
 - `[UNKNOWN]` Se `SOTTO_CAPTURE_MODE` é lido por consumidor **fora** deste repositório; dentro da
-  árvore não tem leitor e fora dela não medi.
+  árvore não tem leitor e fora dela não medi. Fechar exige um censo dos lançadores desta máquina
+  (autostart, `.cmd`, tarefa agendada) que leia o ambiente de cada processo e nomeie quem o define.
 - `[UNKNOWN]` O comportamento real de um endpoint Bluetooth recusado pela rung `tail`: o código
-  exclui-o por nome/driver (`sotto_worker.py:260-273,2805-2822`), mas não abri hardware.
+  exclui-o por nome/driver (`sotto_worker.py:260-273,2805-2822`), mas não abri hardware. Fechar exige
+  um par de auscultadores BT pareado nesta máquina e a linha `LADDER_TRY result=refused` com o driver.
 - `[UNKNOWN]` Se o `ProcessLoopbackTap` foi exercido com alvo **elevado** (`denied`): o código
   permite-o (`sotto_worker.py:3924-3945`) e a activação a partir de um worker `BELOW_NORMAL` contra
-  um processo protegido não foi medida.
+  um processo protegido não foi medida. Fechar exige abrir o tap sobre um alvo `high` (o Explorer
+  desta máquina serve) e a linha `PLP_OPEN hr=` com o motivo da recusa, sem tocar em áudio do dono.
