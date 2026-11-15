@@ -680,4 +680,9 @@ for (const mutant of MUTANTS) {
 }
 say('');
 say('VERDICT: ' + (allGreen && selective ? 'PASS' : 'FAIL'));
-process.exit(allGreen && selective ? 0 : 1);
+// A CONVENCAO DA CASA (medida em `panel-prefix-row-oracle.py:364`,
+// `caption-drag-oracle.py:965`): o braco negativo devolve **1 ao APANHAR**, para
+// que a linha dele na bateria seja `:expectred ... 1` + `NEG-ARM: PASS`. Um
+// negativo que devolve 0 ao apanhar e' um controlo que nao pode falhar -- foi
+// exactamente por isso que este ficou fora da bateria desde que nasceu.
+process.exit(allGreen && selective ? 1 : 0);

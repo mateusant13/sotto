@@ -694,6 +694,29 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   banda topmost nao decide nada. A arm A16 conduz a `ZAuthority` inteira contra o Win32 real:
   `antes_ok=False agiu=True depois_ok=True 2a=False raised=1 calls=1` -- a segunda chamada escreve
   ZERO, que e' o invariante que impede um `SetWindowPos` por tique para sempre.)
+- **PIN do ficheiro (medido 2026-11-15, 05:1x):** `_main\_audit-verify-all.cmd` = **392067 B**,
+  **4509 CRLF** / 0 bare LF, sha256 `8740B59CD1A7A7098B4FF4D9B4DEDEAD49B007482FAFE0743E7CF5DC4DC8D108`.
+  (Trezentos e vinte e sete bytes e TRINTA E SEIS linhas a mais do que o pin de 388797 B: DOIS pares
+  que fecham o defeito do historico que o dono viu na tela -- *"e o historico ta COMPLETAMENTE
+  patetico ... falas cortadas, frases nao entram, tudo aleatorio ou quebrado"*.
+  `panel-row-identity` + `red-as-expected-panel-row-identity` leva a' bateria um oraculo que ja'
+  existia **com sete mutantes e ZERO chamadores**: ele corre os BYTES de `app\panel\panel.js` num
+  `vm` com DOM falso e julga as duas perdas do lado do PAINEL -- o `loadHistory` SUBSTITUIA a lista
+  inteira (toda a linha que chegasse durante a leitura era apagada, e a que ja' estava no ficheiro
+  entrava duas vezes) e o `replaceFeedRow` reescrevia sempre a ULTIMA `<li>`, o que numa fusao de
+  lote punha o texto do lote em cima de outra frase. Medido: `VERDICT: PASS`, e o `--neg-arm`
+  7/7 mutantes, cada um exigido vermelho pela SUA arm (`CHK-I` no M7). A convencao foi CORRIGIDA no
+  ato: ele devolvia **0 ao apanhar**, o que o tornava um controlo que nao pode falhar e e' a razao
+  mecanica de nunca ter podido ser `:expectred`; agora devolve 1 e a linha declara-o (medido:
+  `rc=1` ao apanhar, `rc=0` no positivo).
+  `history-classify` + `red-as-expected-history-classify` poe o CENSO do arquivo do dono sob a
+  bateria: ele le' `history\<dia>\<hora>.md` e o `webview-run.log` e conta cada classe de defeito
+  que o dono descreveu, para que cada numero do recibo tenha um comando ao lado. O negativo corre o
+  instrumento contra um ficheiro SINTETICO com uma linha de cada classe e exige que TODAS sejam
+  contadas -- uma regex que morre com o produto publicaria zeros, e zeros sao indistinguiveis de um
+  arquivo perfeito (medido: `NEG-ARM: the instrument sees every class`).
+  `battery-record-pairing` medido depois: **517 passos / 517 nomes / 0 achados**; `battery-wiring`
+  PASS `ligados=210 sem_passo=107 populacao=317`; `battery-class` PASS `arms=3`.)
 - **PIN do ficheiro (medido 2026-11-15, 14:2x):** `_main\_audit-verify-all.cmd` = **388797 B**,
   **4473 CRLF** / 0 bare LF, sha256 `3ADE9D89E9AD11E2CFCDE05AFC7585D2B7AE604148A8D855D47335CC601F0847`.
   (Mil quatrocentos e trinta e quatro bytes e DEZASSETE linhas a mais do que o pin de 387363 B:
