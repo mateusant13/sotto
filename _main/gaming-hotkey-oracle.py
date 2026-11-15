@@ -351,6 +351,39 @@ class FakeWindows(object):
         return bits
 
 
+def class_consts(source, cls, names):
+    """O valor LITERAL das constantes da CLASSE, lido do ficheiro vivo.
+
+    MEDIDO 2026-11-15: `show_caption_window` le' `self.CAPTION_REPLAY_MAX_S`, que
+    e' atributo de CLASSE (`sotto_webview.py:18935`) e nao nome de modulo -- o
+    `module_consts` nao o alcanca, o `self` do duplo nao o tem, e o corpo morria
+    em `AttributeError` dentro do `except` de `_set_live_enabled`, publicando
+    `LIVE_ENABLED_FAILED` e nenhuma janela. O defeito era do ARNES. O valor vem
+    do PROPRIO ficheiro: reencenar o numero aqui media a copia, nao o produto.
+    """
+    wanted = set(names)
+    out = {}
+    for node in _tree(source).body:
+        if isinstance(node, ast.ClassDef) and node.name == cls:
+            for item in node.body:
+                if isinstance(item, ast.Assign):
+                    for target in item.targets:
+                        if (isinstance(target, ast.Name)
+                                and target.id in wanted):
+                            try:
+                                out[target.id] = ast.literal_eval(item.value)
+                            except (ValueError, SyntaxError):
+                                continue
+                elif (isinstance(item, ast.AnnAssign)
+                      and isinstance(item.target, ast.Name)
+                      and item.target.id in wanted):
+                    try:
+                        out[item.target.id] = ast.literal_eval(item.value)
+                    except (ValueError, SyntaxError):
+                        continue
+    return out
+
+
 def module_consts(source):
     """As constantes de MODULO do ficheiro -- o chao de qualquer namespace extraido.
 
@@ -518,6 +551,15 @@ def build_toggle(source, overlay_source, recorder, log_fn):
             self._geom_logged = True
             self.lock = threading.RLock()
             self.shown = []
+            # O `show` REAL LE' DOIS ATRIBUTOS QUE O `__init__` DO FICHEIRO POE
+            # (medido 2026-11-15: `caption_overlay.py:541` e `:569`). O `show`
+            # de 2026-11-14 (o painel manda no Z) passou a chamar o provedor
+            # `z_below` e a escrever a falha em `self.log` -- um duplo sem os
+            # dois pagava `AttributeError` DENTRO do `try`, o `show` levantava
+            # e a arm lia `shown=[]`. O defeito era do ARNES: a janela nao
+            # aparecia porque o fake nao era a classe que ele dizia ser.
+            self.log = log_fn
+            self.z_below = None
 
         def _update(self):
             return True
@@ -583,9 +625,36 @@ def build_toggle(source, overlay_source, recorder, log_fn):
             self.work_area = lambda: {'x': 0, 'y': 0, 'width': 1920, 'height': 1080}
             self.display = {'scaleFactor': 1.0}
             self.live_calls = []
+            # AS CONSTANTES DE CLASSE SAEM DO FICHEIRO VIVO (medido 2026-11-15):
+            # `show_caption_window` le' `self.CAPTION_REPLAY_MAX_S`; sem ela o
+            # corpo morria em `AttributeError` dentro do `except` e o braco
+            # julgava o arnes. So' a que os corpos leem -- um mapa cheio de
+            # numeros copiados aqui seria a copia a passar pelo produto.
+            for _name, _value in class_consts(
+                    source, 'SottoShell', ('CAPTION_REPLAY_MAX_S',)).items():
+                setattr(self, _name, _value)
+            # OS TRES SLOTS DE ESTADO DA LEGENDA SAO DO PRODUTO (medido
+            # 2026-11-15, mesma rodada): `_set_live_enabled` chama
+            # `_caption_status_start()` / `_caption_status_stop()` /
+            # `_caption_off_ack()` -- o aviso de "model-loading" do Ctrl+Space de
+            # 2026-11-11. Um duplo sem eles pagava `AttributeError` dentro do
+            # `except`, e o unico sinal era `LIVE_ENABLED_FAILED` no log: a
+            # decisao (`live_calls`) continuava certa e a arm nova era a unica
+            # que via a falha. Gravados, porque um fake mudo deixaria a cura de
+            # 2026-11-11 sem prova e o braco mediria o arnes.
+            self.caption_status = []
 
         def _post(self, fn):
             return fn()
+
+        def _caption_status_start(self):
+            self.caption_status.append('start')
+
+        def _caption_status_stop(self):
+            self.caption_status.append('stop')
+
+        def _caption_off_ack(self):
+            self.caption_status.append('off-ack')
 
         def exec_js_post(self, script):
             return True
@@ -879,6 +948,20 @@ def run(shell_path, gesture_path, overlay_path, gaming_path):
     add(overlay.shown == [True, False],
         "a janela do overlay foi mostrada e escondida, por essa ordem",
         str(overlay.shown))
+    # A JANELA NAO APARECE POR ACIDENTE (medido 2026-11-15): o `show` real de
+    # 2026-11-14 le' `self.z_below` e escreve a falha em `self.log`, e
+    # `show_caption_window` le' `self.CAPTION_REPLAY_MAX_S` -- tres nomes que o
+    # `__init__` do ficheiro poe e o duplo nao tinha. O sintoma nao era um braco
+    # vermelho gritante: era `CAPTION_WINDOW_SHOW_FAILED AttributeError` DENTRO do
+    # `except` do produto, a arm a ler `shown=[]` e o log a dizer `LIVE_ENABLED_FAILED`.
+    # Um arnes que engole a excepcao do produto transforma uma falha de FIACAO num
+    # braco mudo, por isso a prova e' negativa: nenhuma linha de falha no log.
+    _fail_lines = [line for line in log.lines
+                   if 'CAPTION_WINDOW_SHOW_FAILED' in line
+                   or 'LIVE_ENABLED_FAILED' in line]
+    add(not _fail_lines,
+        "o caminho do toggle correu sem excepcao engolida (nenhuma linha de FALHA)",
+        str(_fail_lines[:2]) or '0 linhas de falha')
     add(not (set(names1) | set(names2)) & set(FOCUS_TAKING),
         "NENHUMA API de primeiro plano foi chamada",
         str(sorted((set(names1) | set(names2)) & set(FOCUS_TAKING))) or "0 chamadas")
@@ -1192,6 +1275,18 @@ def _copy_tree(tmp):
     return webview
 
 
+#: MUTANTE 6 -- a excepcao ENGOLIDA pelo `except` do produto (a classe medida em
+#: 2026-11-15): um nome que o `show_caption_window` le' e nao existe produz
+#: `CAPTION_WINDOW_SHOW_FAILED`/`LIVE_ENABLED_FAILED` e `shown=[]`, e a arm que
+#: julga isso e' a que impede o arnes de voltar a medir-se a si proprio.
+SHOW_ATTR_MISSING_PATCH = (
+    "            if on:\n"
+    "                self._caption_window_shown = True",
+    "            if on:\n"
+    "                self._caption_window_shown = self._NAME_THAT_DOES_NOT_EXIST",
+)
+
+
 def _patch_file(path, patch, note):
     text = path.read_text(encoding='utf-8')
     if patch[0] not in text:
@@ -1220,6 +1315,11 @@ def _mutate_gaming_inmatch(webview):
                        "o in_match ignorado (um jogo nomeado deixa de ser partida)")
 
 
+def _mutate_show_attr_missing(webview):
+    return _patch_file(webview / "sotto_webview.py", SHOW_ATTR_MISSING_PATCH,
+                       "o show le' um atributo que nao existe (a excepcao engolida)")
+
+
 def _mutate_shell_starve(webview):
     path = webview / "sotto_webview.py"
     text = path.read_text(encoding='utf-8')
@@ -1231,19 +1331,30 @@ def _mutate_shell_starve(webview):
     return "o observador faminto: volta de 1 s e sem a borda do bit 0"
 
 
+MUTANTS = (("foreground-stolen-on-toggle", _mutate_overlay_steal),
+           ("dwell-removed", _mutate_gaming_dwell),
+           ("in-match-ignored", _mutate_gaming_inmatch),
+           ("observer-poll-starved", _mutate_shell_starve),
+           ("tick-blocks-200ms", _mutate_gaming_tick_blocks),
+           ("show-exception-swallowed", _mutate_show_attr_missing))
+
+_NEG_MUTANTS = len(MUTANTS)
+
+
 def neg_arm():
-    """Muta uma COPIA, cinco vezes. Cada mutante tem de derrubar O SEU braco.
+    """Muta uma COPIA, uma vez por mutante. Cada um tem de derrubar O SEU braco.
 
     A prova e' o rc: um mutante que o oraculo NAO ve' e' um oraculo que nao mede
     aquele comportamento. rc=1 (a casa conta o vermelho como sucesso) e
-    `NEG-ARM` na ultima linha quando os cinco sao apanhados.
+    `NEG-ARM` na ultima linha quando todos sao apanhados.
+
+    A CONTAGEM E' DERIVADA DA TABELA (medido 2026-11-15): o texto dizia "as cinco
+    regressoes" com SEIS registadas -- o mesmo defeito de prosa que ja' custou
+    pins desatualizados nesta casa. Uma frase que conta mutantes a mao mente no
+    dia em que se acrescenta o seguinte.
     """
     failures = 0
-    for name, mutate in (("foreground-stolen-on-toggle", _mutate_overlay_steal),
-                         ("dwell-removed", _mutate_gaming_dwell),
-                         ("in-match-ignored", _mutate_gaming_inmatch),
-                         ("observer-poll-starved", _mutate_shell_starve),
-                         ("tick-blocks-200ms", _mutate_gaming_tick_blocks)):
+    for name, mutate in MUTANTS:
         tmp = Path(tempfile.mkdtemp(prefix="gaming-neg-"))
         try:
             webview = _copy_tree(tmp)
@@ -1265,7 +1376,8 @@ def neg_arm():
     if failures:
         print("\nNEG-ARM FAIL -- o oraculo nao ve a regressao")
         return EXIT_PASS
-    print("\nNEG-ARM PASS -- RED as designed: as cinco regressoes derrubam o oraculo")
+    print("\nNEG-ARM PASS -- RED as designed: as %d regressoes derrubam o oraculo"
+          % _NEG_MUTANTS)
     return EXIT_FAIL
 
 
