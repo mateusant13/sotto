@@ -257,3 +257,25 @@
   `a62` (persistencia + corrupcao), `a63` (dedupe), `a64` (o par do anime). A regra das tres linguas
   (`UNTRANSLATED_LANGS`) nao mudou: en/pt/es servem-se sempre na propria lingua.
 
+
+- **A pilha CUDA da maquina mudou debaixo desta arvore (medido 2026-11-15, DM do watcher `w12:pG`).**
+  O interpretador partilhado `H:\Python311` (`C:\Program Files\Python311` e' uma junction) passou de
+  `torch 2.7.0+cu128` para **`torch 2.15.0+cu134`** (CUDA runtime 13.4; o toolkit `H:\CUDA\v13.5` e o
+  `CUDA_PATH` nao mudaram). A consequencia que podia quebrar esta arvore e' a que o DM nomeia:
+  **`torch/lib` deixou de embarcar os DLLs `_12`** (`cublas64_12`, `cublasLt64_12`, `cudart64_12`) --
+  agora tem **so' `_13`** (`cublas64_13.dll`, `cublasLt64_13.dll`, `cudart64_13.dll`, `cudnn64_9.dll` e
+  os seus irmaos). **MEDIDO nesta arvore, com a sonda que ja' existia e nao uma nova:** o passo de CUDA
+  do worker (`worker/sotto_worker.py:_add_cuda_dll_dirs`) ja' resolve o torch **por `find_spec`** e
+  varre `site-packages/nvidia/**` por directorios que contenham DLLs, logo **nao depende de `torch/lib`
+  ter os `_12`**; a arm `cuda_spec_torch` de `worker/_probe/boot-phases.py` (a FORMA que embarca)
+  devolveu `providers ['CUDAExecutionProvider', 'CPUExecutionProvider']` com `cuda_dirs_s=0.005`,
+  `probe_joint_cuda_s=0.670` e `sess_encoder_s=4.343` (rc=0, 5,7 s de parede, sob
+  `watcher run --cpu 40 --io very-low`); os fallbacks `nvidia/cublas/bin/cublasLt64_12.dll` e
+  `nvidia/cudnn/bin/cudnn64_9.dll` estao presentes. `torch 2.15.0+cu134 cuda 13.4 avail True`, fp16
+  matmul finito, `cap (12, 0)`. Portao da casa, corrido depois: `python _main/worker-providers-oracle.py`
+  -> `WORKER-PROVIDERS VERDICT: PASS` (`selected=CUDAExecutionProvider,CPUExecutionProvider`), rc=0.
+  O que NAO se prova aqui: o backend `TorchBackend` de `worker/parakeet_ultra.py:274` -- o checkpoint
+  `worker/models/parakeet-ultra` **nao existe** nesta arvore (o modelo foi recusado por disco em
+  2026-11-08), logo o unico consumidor de `torch` em produto fica `UNMEASURED` e nao se afirma nada
+  sobre ele. Regra que fica: **nao se instala, nao se fixa e nao se correm dois jobs de GPU** no
+  interpretador partilhado; uma pilha diferente pede venv propria.
