@@ -682,6 +682,18 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-14, 12:0x):** `_main\_audit-verify-all.cmd` = **388746 B**,
+  **4473 CRLF** / 0 bare LF, sha256 `680B399FAA0C34FA30483507C42B654EC782D0ED0A572DE183678DED96AD5F00`.
+  (Mil trezentos e oitenta e tres bytes e DEZASSETE linhas a mais do que o pin de 387363 B: o par
+  `z-order` + `red-as-expected-z-order`, a ordem do dono de hoje -- *"os paineis devem ficar ACIMA da
+  legenda. no z index. a legenda, agora mesmo, ta encima do painel, e eu nao consigo enxergar o painel
+  bem"*. O oraculo tem 16 arms e o `--neg-arm` apanha **5/5** mutacoes. O arm que importa e' o A15/A16:
+  eles criam DUAS janelas reais (fora do ecra virtual, destruidas no `finally`) e medem o USER32 em vez
+  de acreditarem no nome da API -- medido: `SetWindowPos(moved, insertAfter=A)` deixa **A acima**, logo
+  a cura e' mover a LEGENDA com `insertAfter=painel`, e nao afirmar topmost no painel, que dentro de uma
+  banda topmost nao decide nada. A arm A16 conduz a `ZAuthority` inteira contra o Win32 real:
+  `antes_ok=False agiu=True depois_ok=True 2a=False raised=1 calls=1` -- a segunda chamada escreve
+  ZERO, que e' o invariante que impede um `SetWindowPos` por tique para sempre.)
 - **PIN do ficheiro (medido 2026-11-12, 23:4x):** `_main\_audit-verify-all.cmd` = **387363 B**,
   **4456 CRLF** / 0 bare LF, sha256 `7968A4802C205C7546DE6263474315CCF19524DA6D0547D7B47080AE58CA6887`.
   (Trezentos e sessenta e oito bytes e CINCO linhas a mais do que o pin de 386995 B: o

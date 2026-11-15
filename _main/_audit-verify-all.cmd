@@ -3664,6 +3664,23 @@ call :step always red-as-expected-topmost-keepalive 1 "_main\topmost-keepalive-o
 call :expectred red-as-expected-topmost-keepalive !STEP_RC! "%OUT%\topmost-keepalive-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-topmost-keepalive MISSING "%OUT%\topmost-keepalive-neg.log" "NEG-ARM PASS" )
 
+rem ---- O PAINEL ACIMA DA LEGENDA NO Z (dono, 2026-11-14) --------------------
+rem Verbatim: "os paineis devem ficar ACIMA da legenda. no z index". A legenda
+rem chama `SetWindowPos(HWND_TOPMOST)` + `ShowWindow` a CADA linha, e dentro da
+rem banda topmost quem manda e' a ultima chamada -- logo ela subia por cima do
+rem painel em toda linha nova. Dois arms do oraculo criam janelas REAIS fora do
+rem ecra virtual e medem o User32: A15 exercita a `insert_below` da shell e A16 a
+rem `ZAuthority` inteira (le o Z, age uma vez, e a segunda chamada escreve ZERO).
+if exist _main\z-order-oracle.py (
+call :step always z-order 0 "_main\z-order-oracle.py;app\webview\z_order.py;app\webview\caption_overlay.py;app\webview\topmost_keepalive.py;app\webview\sotto_webview.py" "%OUT%\z-order.log" python _main\z-order-oracle.py
+call :record z-order !STEP_RC!
+) else ( call :record z-order MISSING )
+
+if exist _main\z-order-oracle.py (
+call :step always red-as-expected-z-order 1 "_main\z-order-oracle.py;app\webview\z_order.py;app\webview\caption_overlay.py;app\webview\topmost_keepalive.py;app\webview\sotto_webview.py" "%OUT%\z-order-neg.log" python _main\z-order-oracle.py --neg-arm
+call :expectred red-as-expected-z-order !STEP_RC! "%OUT%\z-order-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-z-order MISSING "%OUT%\z-order-neg.log" "NEG-ARM: PASS" )
+
 rem ---- O PORTO DE DEPURACAO DO WEBVIEW2 E' NOSSO, NUNCA DA CAIXA -------
 rem Nascido de um defeito medido a 2026-11-04: o ambiente desta sessao tem
 rem `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333`, e o

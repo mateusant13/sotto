@@ -75,6 +75,10 @@ import prose_punct
 #: oraculo executa; ver `app/webview/text_normalize.py`.
 import text_normalize
 import topmost_keepalive as _topmost_keepalive
+#: O Z-ORDER DO PAINEL CONTRA A LEGENDA (dono, 2026-11-14). Puro e importavel:
+#: a decisao e a caminhada vivem em `app/webview/z_order.py`, e o oraculo conduz
+#: as duas sem abrir janela visivel.
+import z_order as _z_order
 import power_recovery as _power_recovery
 # A POLITICA de golpe do cao-de-guarda vive fora, e e' pura, para poder ser
 # exercitada sem uma janela (`app/webview/ui_watchdog_policy.py`). Nasceu de a
@@ -7396,6 +7400,8 @@ user32.AttachThreadInput.restype = wt.BOOL
 user32.AttachThreadInput.argtypes = [wt.DWORD, wt.DWORD, wt.BOOL]
 user32.BringWindowToTop.restype = wt.BOOL
 user32.BringWindowToTop.argtypes = [wt.HWND]
+user32.GetWindow.restype = wt.HWND
+user32.GetWindow.argtypes = [wt.HWND, ctypes.c_uint]
 
 
 #: `SetWindowPos` insert-after for "move me, keep my Z order". `HWND_TOPMOST`
@@ -7403,6 +7409,24 @@ user32.BringWindowToTop.argtypes = [wt.HWND]
 #: for geometry moves that must NOT change the Z slot.
 HWND_TOP = 0
 SWP_SHOWWINDOW = 0x0040
+
+#: `GetWindow` com esta bandeira devolve a janela imediatamente ACIMA da dada no
+#: Z-order -- o unico leitor que responde "a legenda esta' a tapar o painel?".
+GW_HWNDPREV = 3
+
+
+def insert_below(moved, insert_after) -> bool:
+    """Poe `insert_after` ACIMA de `moved`, sem mover, redimensionar nem activar.
+
+    A SEMANTICA FOI MEDIDA, nao suposta (2026-11-14, duas provas lado a lado com
+    janelas reais fora do ecra virtual): `SetWindowPos(moved, insertAfter)` deixa o
+    `insertAfter` por CIMA do `moved`. Logo esta chamada -- `moved` = a legenda,
+    `insertAfter` = o painel -- e' exactamente "o painel fica acima da legenda", a
+    ordem que o dono pediu. Ver `app/webview/z_order.py`.
+    """
+    return bool(user32.SetWindowPos(
+        wt.HWND(moved), wt.HWND(insert_after), 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
 
 
 def pointer_lock_state():
@@ -13215,6 +13239,21 @@ class SottoShell:
         try:
             import caption_overlay
             self.caption_overlay = caption_overlay.NativeCaptionOverlay(log=log)
+            # O PAINEL MANDA NO Z (dono, 2026-11-14). `caption_overlay.show(True)`
+            # corre a cada linha e re-ergue a janela dentro da banda topmost; sem
+            # isto ela aterra por cima do painel. O provedor devolve o painel so'
+            # quando ele esta' VISIVEL -- com o painel escondido a legenda volta a
+            # ser topmost puro, que e' o comportamento antigo e o correcto.
+            def _z_below_provider(_shell=self):
+                try:
+                    panel = int(getattr(_shell, 'hwnd', 0) or 0)
+                    if not panel:
+                        return 0
+                    return panel if window_visible(panel) else 0
+                except Exception:                 # noqa: BLE001
+                    return 0
+
+            self.caption_overlay.z_below = _z_below_provider
             self.caption_overlay.set_work_area(
                 wa, self.display.get('scaleFactor') or 1.0)
             if True:
@@ -13687,6 +13726,49 @@ class SottoShell:
             % (reason, hwnd, hidden))
         return hidden == 'ok'
 
+    def _z_authority(self):
+        """A autoridade do Z-order, criada uma vez (ver `z_order`).
+
+        O dono, verbatim (2026-11-14): *"os paineis devem ficar ACIMA da legenda. no
+        `z index`. a legenda, agora mesmo, ta encima do painel, e eu nao consigo
+        enxergar o painel bem"*. A decisao e a caminhada vivem em
+        `app/webview/z_order.py` (puras, medidas pelo oraculo); aqui so' entram os
+        handles e as chamadas ao USER32.
+        """
+        auth = getattr(self, '_z_authority_cache', None)
+        if auth is not None:
+            return auth
+
+        def _caption_of():
+            ov = getattr(self, 'caption_overlay', None)
+            return int(getattr(ov, 'hwnd', 0) or 0)
+
+        def _prev_of(h):
+            return int(user32.GetWindow(wt.HWND(int(h)), GW_HWNDPREV) or 0)
+
+        auth = _z_order.ZAuthority(
+            lambda: int(self.hwnd or 0), _caption_of, window_visible, _prev_of,
+            insert_below, log)
+        self._z_authority_cache = auth
+        return auth
+
+    def _raise_above_caption(self, why):
+        """O painel ACIMA da legenda, se ele estiver por baixo. Uma leitura barata.
+
+        Chamado em cada show e no tique do vigia: `ensure` le' o Z real primeiro e
+        so' chama o USER32 quando a legenda esta' mesmo a tapar o painel -- o caso
+        medido, porque `caption_overlay.show(True)` corre a cada linha e re-ergue a
+        janela dentro da banda topmost.
+        """
+        try:
+            ov = getattr(self, 'caption_overlay', None)
+            if ov is None or not getattr(ov, 'hwnd', None):
+                return False
+            return self._z_authority().ensure(why)
+        except Exception as exc:                      # noqa: BLE001
+            log('Z_ORDER_ENSURE_FAILED why=%s error=%r' % (why, exc))
+            return False
+
     def _start_topmost_keepalive(self):
         """O bit TOPMOST NAO SE GUARDA SOZINHO (copiado do RE de 2026-11-04).
 
@@ -13706,9 +13788,15 @@ class SottoShell:
         def _style_of(h):
             return int(user32.GetWindowLongW(h, GWL_EXSTYLE))
 
+        # O SEGUNDO TRABALHO DO TIQUE (dono, 2026-11-14): o bit TOPMOST pode
+        # ESTAR la' enquanto a legenda, que corre `show` a cada linha, fica por
+        # cima do painel dentro da MESMA banda. Um laco que so' olha o bit nunca
+        # ve' esse caso -- e ele e' o caso medido. `extra` poe o painel acima da
+        # legenda quando, e so' quando, o Z real diz que ele esta' por baixo.
         self._topmost_keepalive = _topmost_keepalive.TopmostKeepalive(
             hwnd, window_visible, _style_of, set_topmost, log,
-            interval=_topmost_keepalive.DEFAULT_INTERVAL_S)
+            interval=_topmost_keepalive.DEFAULT_INTERVAL_S,
+            extra=lambda: self._raise_above_caption('keepalive'))
         self._topmost_keepalive.start()
         log('TOPMOST_KEEPALIVE_STARTED hwnd=%s interval_s=%s'
             % (hwnd, _topmost_keepalive.DEFAULT_INTERVAL_S))
@@ -16801,7 +16889,13 @@ class SottoShell:
         # deliberately AFTER the map because it re-runs pywebview's own
         # navigation-time `form.Show()`.
         transparency_hack(self)
+        # O PAINEL ACIMA DA LEGENDA (dono, 2026-11-14) -- DEPOIS do mapa: uma
+        # afirmacao antes de a janela existir na tela nao ordena nada, e o
+        # `ensure` le' o Z real primeiro, logo o caso normal custa duas
+        # leituras locais e nenhuma chamada `SetWindowPos`.
+        self._raise_above_caption('show-panel')
         _t_ack0 = time.monotonic()
+
         ack = self.wait_paint_ack(ack_seq, reason, deadline=deadline)
         self.visible = window_visible(self.hwnd)
         # ── O CUSTO DO SHOW, POR SEGMENTO (2026-11-10) ───────────────────────
@@ -17246,7 +17340,13 @@ class SottoShell:
         fg = foreground_unlock(self.hwnd)
         # And the compositing hack AFTER the map — see `transparency_hack`.
         transparency_hack(self)
+        # O PAINEL ACIMA DA LEGENDA (dono, 2026-11-14) -- DEPOIS do mapa: uma
+        # afirmacao antes de a janela existir na tela nao ordena nada, e o
+        # `ensure` le' o Z real primeiro, logo o caso normal custa duas
+        # leituras locais e nenhuma chamada `SetWindowPos`.
+        self._raise_above_caption('show-strip')
         _t_ack0 = time.monotonic()
+
         ack = self.wait_paint_ack(ack_seq, reason, deadline=deadline)
         self.visible = window_visible(self.hwnd)
         self._start_deferred_worker('show-strip')
@@ -17333,7 +17433,13 @@ class SottoShell:
         # THEN the map: no activation unless a POINTER LOCK needs freeing.
         fg = foreground_unlock(self.hwnd)
         transparency_hack(self)
+        # O PAINEL ACIMA DA LEGENDA (dono, 2026-11-14) -- DEPOIS do mapa: uma
+        # afirmacao antes de a janela existir na tela nao ordena nada, e o
+        # `ensure` le' o Z real primeiro, logo o caso normal custa duas
+        # leituras locais e nenhuma chamada `SetWindowPos`.
+        self._raise_above_caption('show-side')
         _t_ack0 = time.monotonic()
+
         ack = self.wait_paint_ack(ack_seq, reason, deadline=deadline)
         self.visible = window_visible(self.hwnd)
         self._start_deferred_worker('show-side')

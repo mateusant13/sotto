@@ -557,6 +557,16 @@ class NativeCaptionOverlay:
         # placa e' escolhivel. Sem ficheiro, e' o default que embarca.
         self.plate_mode = _SHIPPED_VISUAL.get('plate', 'tight')
         self.opacity = _SHIPPED_VISUAL.get('opacity', 1.0)
+        # ── O PAINEL MANDA NO Z (dono, 2026-11-14) ───────────────────────────
+        # VERBATIM: *"os paineis devem ficar ACIMA da legenda. no `z index`. a
+        # legenda, agora mesmo, ta encima do painel"*. O `show(True)` corre a
+        # CADA linha e faz `SetWindowPos(HWND_TOPMOST)` + `ShowWindow`, e as duas
+        # re-erguem a janela dentro da banda topmost -- por isso a legenda
+        # aterrou por cima do painel. `z_below` e' um provedor que devolve o hwnd
+        # que esta' DEVE ficar acima desta janela (o painel, quando visivel), e o
+        # `show` poe a legenda logo abaixo dele DEPOIS de se erguer. None = sem
+        # painel, o comportamento antigo (topmost puro).
+        self.z_below = None
         self._wndproc = WNDPROC(self._on_message)
         self._ready = threading.Event()
         # ── O MOTOR DA LEGENDA AO VIVO (2026-11-01) ──────────────────────
@@ -1791,6 +1801,29 @@ class NativeCaptionOverlay:
                                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
                                      | SWP_SHOWWINDOW)
                 _user32.ShowWindow(self.hwnd, SW_SHOWNOACTIVATE)
+                # E O PAINEL NAO E' TAPADO POR ELA (dono, 2026-11-14). As DUAS
+                # chamadas acima re-erguem esta janela dentro da banda topmost --
+                # medido nesta maquina: `SetWindowPos(moved, insertAfter)` deixa o
+                # `insertAfter` ACIMA, e `ShowWindow` num show re-mapeia ao topo da
+                # banda. Como o `show` corre a cada linha, sem isto a legenda
+                # aterra por cima do painel de forma consistente. A chamada e' UMA:
+                # a propria legenda e' movida com `insertAfter=painel`, portanto
+                # fica logo abaixo dele. Um provedor morto nao derruba a pintura.
+                below = None
+                try:
+                    provider = self.z_below
+                    below = int(provider() or 0) if provider is not None else 0
+                except Exception as exc:          # noqa: BLE001
+                    self.log('CAPTION_Z_PROVIDER_FAILED error=%r' % (exc,))
+                    below = 0
+                if below:
+                    try:
+                        _user32.SetWindowPos(self.hwnd, wt.HWND(below), 0, 0, 0, 0,
+                                             SWP_NOMOVE | SWP_NOSIZE
+                                             | SWP_NOACTIVATE)
+                    except Exception as exc:      # noqa: BLE001
+                        self.log('CAPTION_Z_BELOW_FAILED panel=%d error=%r'
+                                 % (below, exc))
                 self.visible = True
                 if not getattr(self, '_geom_logged', False):
                     self._geom_logged = True

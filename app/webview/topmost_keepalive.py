@@ -53,7 +53,7 @@ class TopmostKeepalive(object):
 
     def __init__(self, hwnd, visible_of, style_of, reassert, log,
                  interval=DEFAULT_INTERVAL_S, sleep=None, clock=None,
-                 stop=None):
+                 stop=None, extra=None):
         import time as _time
         self.hwnd = hwnd
         self._visible_of = visible_of
@@ -64,6 +64,13 @@ class TopmostKeepalive(object):
         self._sleep = sleep or _time.sleep
         self._clock = clock or _time.monotonic
         self._stop = stop or (lambda: False)
+        #: UM SEGUNDO TRABALHO POR TIQUE, sempre (nao so' quando o bit falta).
+        #: Nasceu da ordem do dono de 2026-11-14 -- *"os paineis devem ficar ACIMA
+        #: da legenda"*: o bit TOPMOST pode ESTAR la' enquanto a legenda, que corre
+        #: `show` a cada linha, fica por cima do painel dentro da MESMA banda. Um
+        #: laco que so' olha o bit nunca ve' esse caso, e um segundo laco de 2 s
+        #: custaria mais uma thread. `extra()` nunca muda o veredicto do tique.
+        self._extra = extra
         self.ticks = 0
         self.reasserted = 0
         self.last_lost_at = None
@@ -82,6 +89,7 @@ class TopmostKeepalive(object):
             self._log('TOPMOST_READ_FAILED error=%r' % (exc,))
             return False
         if not should_reassert(visible, style):
+            self._run_extra()
             return False
         self.last_lost_at = self._clock()
         try:
@@ -94,7 +102,17 @@ class TopmostKeepalive(object):
             self._log('TOPMOST_REASSERT lost=true ticks=%d' % self.ticks)
         else:
             self._log('TOPMOST_LOST_STILL ticks=%d' % self.ticks)
+        self._run_extra()
         return ok
+
+    def _run_extra(self):
+        """O segundo trabalho do tique: nunca levanta e nunca muda o veredicto."""
+        if self._extra is None:
+            return
+        try:
+            self._extra()
+        except Exception as exc:  # noqa: BLE001 -- o laco nao morre por um extra
+            self._log('TOPMOST_EXTRA_FAILED error=%r' % (exc,))
 
     def run(self):  # pragma: no cover -- o portao chama `tick()` em vez disto
         import threading

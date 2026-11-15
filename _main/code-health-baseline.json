@@ -261,13 +261,13 @@
       "max_func_name": "drag_plan"
     },
     "app/webview/caption_overlay.py": {
-      "bytes": 91941,
+      "bytes": 94177,
       "classes": 8,
       "defs": 9,
       "except_pass": 7,
       "globals": 0,
-      "lines": 1862,
-      "max_func": 134,
+      "lines": 1895,
+      "max_func": 144,
       "max_func_name": "__init__"
     },
     "app/webview/caption_settings.py": {
@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1470115,
+      "bytes": 1475499,
       "classes": 29,
-      "defs": 171,
+      "defs": 172,
       "except_pass": 69,
       "globals": 9,
-      "lines": 27119,
+      "lines": 27225,
       "max_func": 446,
       "max_func_name": "main"
     },
@@ -531,13 +531,13 @@
       "max_func_name": "install"
     },
     "app/webview/topmost_keepalive.py": {
-      "bytes": 4639,
+      "bytes": 5570,
       "classes": 1,
       "defs": 1,
       "except_pass": 0,
       "globals": 0,
-      "lines": 113,
-      "max_func": 25,
+      "lines": 131,
+      "max_func": 27,
       "max_func_name": "tick"
     },
     "app/webview/ui_watchdog_policy.py": {
@@ -669,6 +669,16 @@
       "lines": 551,
       "max_func": 66,
       "max_func_name": "painted_rows"
+    },
+    "app/webview/z_order.py": {
+      "bytes": 6652,
+      "classes": 1,
+      "defs": 2,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 159,
+      "max_func": 21,
+      "max_func_name": "is_above"
     },
     "worker/audio_queue_consumer.py": {
       "bytes": 9793,
