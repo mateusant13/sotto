@@ -2329,7 +2329,7 @@ call :step always red-as-expected-stutter-caption 1 "_main\stutter-caption-oracl
 call :expectred red-as-expected-stutter-caption !STEP_RC! "%OUT%\stutter-caption-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-stutter-caption MISSING "%OUT%\stutter-caption-neg.log" "NEG-ARM PASS" )
 if exist _main\parakeet-ultra-oracle.py (
-call :step heavy parakeet-ultra 0 "_main\parakeet-ultra-oracle.py;worker\parakeet_ultra.py;worker\ultra_export.py;app\worker\redux_live.py" "%OUT%\parakeet-ultra.log" python _main\parakeet-ultra-oracle.py --engine all
+call :step heavy parakeet-ultra 0 "_main\parakeet-ultra-oracle.py;worker\parakeet_ultra.py;worker\ultra_export.py;worker\redux_live.py;worker\models\parakeet-redux-onnx-int4\transcribe.py" "%OUT%\parakeet-ultra.log" python _main\parakeet-ultra-oracle.py --engine all
 call :record parakeet-ultra !STEP_RC!
 ) else ( call :record parakeet-ultra MISSING )
 if exist _main\parakeet-ultra-oracle.py (
@@ -4164,7 +4164,7 @@ if "!HEAVYLIST!"=="" ( set "HEAVYTEXT=-none-" ) else ( set "HEAVYTEXT=!HEAVYLIST
 echo heavy    : !HEAVYTEXT!
 echo             (the HEAVY class opens the owner's screen, his audio device or his GPU -- these did NOT run; set SOTTO_BATTERY_HEAVY=1 to run them)
 echo priority : !BATTERY_PRIORITY_LINE!
-if defined SOTTO_BATTERY_CAGED echo caged    : ON -- the run holds a 40% CPU hard cap (Job Object, `python -m watcher run --cpu 40`); SOTTO_BATTERY_NOCAGE=1 removes it
+if defined SOTTO_BATTERY_CAGED echo caged    : ON -- 40% CPU hard cap AND io very-low (Job Object + ProcessIoPriority, `python -m watcher run --cpu 40 --io very-low`); a CPU cap alone does NOT bound IO (measured 2026-11-10, io 20.5 MB/s under a 40% cap); SOTTO_BATTERY_NOCAGE=1 removes both
 if not defined SOTTO_BATTERY_CAGED echo caged    : OFF -- NO CPU cap on this run: the watcher may name it as the stutter culprit
 if defined SOTTO_BATTERY_FAST echo fastmode : ON -- a step slower than the threshold was SKIPPED, not run, and is listed under skipped=
 if "%BATTERY_PLAN%"=="1" echo plan     : ON -- every cache answer came from one process (`_main\_battery-plan.py`), not one per step; SOTTO_BATTERY_PLAN=0 returns the per-step path
@@ -4602,5 +4602,5 @@ exit /b 0
 :__battery_cage
 set "SOTTO_BATTERY_CAGED=1"
 set "PYTHONPATH=I:\!watcher;%PYTHONPATH%"
-python -m watcher run --cpu 40 -- cmd /c ""%~f0" --caged"
+python -m watcher run --cpu 40 --io very-low -- cmd /c ""%~f0" --caged"
 exit /b %ERRORLEVEL%

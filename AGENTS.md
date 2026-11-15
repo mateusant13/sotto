@@ -692,7 +692,20 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-15, 18:4x):** `_main\_audit-verify-all.cmd` = **401223 B**,
+- **PIN do ficheiro (medido 2026-11-15, 21:3x):** `_main\_audit-verify-all.cmd` = **401272 B**,
+  **4606 CRLF** / 0 bare LF, sha256 `D94035DE9D06F97132F59710B9CB9C1C2A59C4D4925B0251FB36918AB7149A7E`.
+  (Quarenta e nove bytes e ZERO linhas a mais do que o pin de 401223 B: as dependencias do passo
+  `parakeet-ultra` passam a nomear `worker\redux_live.py` e o `transcribe.py` do export, e param de
+  nomear `app\worker\redux_live.py` -- um caminho que **nao existe** nesta arvore. Medido: o passo
+  julgava o motor `redux` (o unico que este oraculo corre por omissao) e o ficheiro que ele carrega
+  nao estava em dependencia nenhuma, logo uma edicao ao backend deixava o passo em cache a
+  reimprimir um PASS sobre outro codigo -- a classe do `panel-deps`. A terceira DM de stutter do
+  MESMO ficheiro (`pid 36448`, morto as 21:14:31Z com `cpu 15.157% of machine >= 8%`) mostrou que o
+  tecto so' existia em PROSA: `read_cpu_cap_pct()` passou a ler o Job Object de dentro do processo e
+  o oraculo imprime `# CEILING cpu 6.00% of machine` quando caged e `# CEILING none -- UNCAGED` com
+  a linha de 8 % quando nao esta'. Medido: sem cage `flags=0 rate=0` -> `None`; sob `--cpu 6`
+  `flags=5 rate=600` -> `6.0`.)
+  (O pin anterior era 401223 B,
   **4606 CRLF** / 0 bare LF, sha256 `A7A43DAE5588A117E6B2A9085989BA4F6984D37A49CE6339CF8F4CCF52EDB30C`.
   (Cento e trinta e sete bytes e ZERO linhas a mais do que o pin de 401086 B: o cage da bateria
   ganhou a **metade que faltava**, e a acusacao veio do watcher contra um passo MEU. Medido hoje:

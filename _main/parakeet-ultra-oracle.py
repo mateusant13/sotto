@@ -78,6 +78,45 @@ sys.path.insert(0, str(REPO / "worker"))
 ORACLE_THREADS = int(os.environ.get("SOTTO_ULTRA_ORACLE_THREADS", "2") or 2)
 
 
+def read_cpu_cap_pct():
+    """The Job Object CPU cap this PROCESS is actually under, or None if uncaged.
+
+    O TECTO QUE SO' EXISTE EM PROSA NAO E' UM TECTO (medido 2026-11-15, terceira
+    DM de stutter do mesmo ficheiro). A linha do docstring acima diz como largar
+    o instrumento, mas nada no PROCESSO sabia se aquela largada tinha acontecido:
+    `pid 36448` nasceu as 21:13:35Z e foi MORTO pelo braco extremo do watcher as
+    21:14:31Z com `cpu 15.157% of machine >= 8%` -- fora de qualquer Job Object,
+    porque a cura (`--cpu 6`, commit 72c7cc7) so' foi escrita as 21:22:38Z e o
+    unico sitio que a dizia era este docstring. Um numero que o proprio processo
+    nao consegue ler e' uma promessa, nao um tecto.
+
+    MEDIDO nesta maquina: `QueryInformationJobObject(NULL, 15, ...)` responde
+    DENTRO do processo, sem handle nenhum --
+      sem cage: `ok=1 flags=0 rate=0`   -> None
+      sob `--cpu 6`: `ok=1 flags=5 rate=600` -> 6.0
+    (flags=5 = JOB_OBJECT_CPU_RATE_CONTROL_ENABLE|HARD_CAP). Devolve o valor em
+    % da MAQUINA: e' a mesma unidade da linha de 8 % que mata, e e' por isso que
+    um `--cpu 40` (40 % da maquina) ficava 5x acima dela.
+    """
+    try:
+        import ctypes
+        import ctypes.wintypes as wt
+
+        class _RateInfo(ctypes.Structure):
+            _fields_ = [("ControlFlags", wt.DWORD), ("CpuRate", wt.DWORD)]
+
+        info = _RateInfo()
+        got = ctypes.c_ulong(0)
+        ok = ctypes.windll.kernel32.QueryInformationJobObject(
+            None, 15, ctypes.byref(info), ctypes.sizeof(info), ctypes.byref(got)
+        )
+        if not ok or not info.ControlFlags or not info.CpuRate:
+            return None
+        return round(info.CpuRate / 100.0, 2)
+    except Exception:  # noqa: BLE001 -- sem Windows nao ha' Job Object para ler
+        return None
+
+
 def apply_oracle_thread_budget(threads=ORACLE_THREADS):
     """Write the thread budget into the env AND hand it to every backend.
 
@@ -446,6 +485,16 @@ def main(argv=None) -> int:
     applied = apply_oracle_thread_budget()
     print("# ORACLE_THREADS applied=%s requested=%s (source=%s)"
           % (applied, ORACLE_THREADS, "flag" if applied else "auto"))
+    # O TECTO DECLARADO, LIDO DO PROPRIO PROCESSO. Uma corrida sem Job Object
+    # imprime `CEILING none` e diz a linha que a mata: e' essa a condicao que
+    # terminou o pid 36448 em 2026-11-15.
+    cap = read_cpu_cap_pct()
+    print("# CEILING %s" % ("none -- UNCAGED: no Job Object CPU cap; the watcher"
+                            " ends a tree of this project at 8% of machine"
+                            " (line: `stutter_relief_tree_min_pct`)"
+                            if cap is None else
+                            "cpu %.2f%% of machine (Job Object hard cap, read"
+                            " from inside this process)" % cap))
 
     argv = list(sys.argv[1:] if argv is None else argv)
     if "--neg-arm" in argv:
