@@ -98,6 +98,16 @@ Tres avisos que custaram medicao:
 ## Herdr: cross-project coordination only, never the default
 Default is to stay in the current harness (this session, this worktree). Use Herdr only when coordination genuinely spans canonical projects -- a decision or artifact another project's lane must receive. Ordinary project work must not create/focus/move/close a pane, and must not rewrite this file's routing/instructions; a routing edit needs an explicit owner request or a real cross-project need. When Herdr is genuinely needed: cap one visible pane per canonical project across workspaces/worktrees; create via `python I:/!manager/tools/herdr-visible-pane-budget.py workspace --cwd <root> --label <id>` only; unknown/already-present projects refuse; reuse the main pane; extra workers headless; no raw create/focus/move/close.
 
+## A TODO LIST VIVE, SEMPRE (ordem do dono, 2026-11-15)
+
+Verbatim: *"keep todo list, always. manage it. and put it in agents.md to do this."*
+
+Toda lane mantém a `todo` viva do primeiro turno ao último: `init` antes da primeira ação com 3+ passos,
+`done` no instante em que o passo passa (nunca "no fim"), `append` a cada item novo que aparece no meio do
+trabalho. Uma fala do dono vira ficha no MESMO turno em que é lida (a regra do `H:\pi-agent\AGENTS.md`
+inteira vale aqui). Um passo que não vai ser feito por bloqueio é nomeado como tal, não apagado em
+silêncio. Nenhum turno termina com trabalho acionável fora da lista.
+
 ## Mandatory task-resolver and model routing
 Use `.agents/skills/task-resolver/SKILL.md` for every non-trivial software task. At invocation, classify acceptance rows as mechanical or judgment-based and immediately implement/wire any missing task-relevant deterministic gate before dependent product edits. Follow `.agents/skills/task-resolver/references/model-routing.md`; model quota never idles or blocks a lane.
 
