@@ -692,6 +692,36 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-15, 18:4x):** `_main\_audit-verify-all.cmd` = **401223 B**,
+  **4606 CRLF** / 0 bare LF, sha256 `A7A43DAE5588A117E6B2A9085989BA4F6984D37A49CE6339CF8F4CCF52EDB30C`.
+  (Cento e trinta e sete bytes e ZERO linhas a mais do que o pin de 401086 B: o cage da bateria
+  ganhou a **metade que faltava**, e a acusacao veio do watcher contra um passo MEU. Medido hoje:
+  `python.exe(73920)` = `python _main/parakeet-ultra-oracle.py --engine all`, `cwd = H:\sotto`,
+  `cpu 13.6121% of machine` no tick que disparou o stutter do dono. `--cpu` limita o PROCESSO e
+  **nao limita IO** (lei de 2026-11-10: `io 20.5 MB/s` por baixo de um tecto de 40 %). A classe
+  `heavy` desta casa carrega 2,4 GB de modelo e le o disco, logo o largador tem de declarar as DUAS
+  metades: `python -m watcher run --cpu 40 --io very-low`. O sumario passou a dizer
+  `40% CPU hard cap AND io very-low` e a citar a medicao que prova que a primeira sem a segunda nao
+  e' um tecto. **A UNIDADE, medida 2026-11-15 no fonte do watcher e nao suposta:**
+  `cli.py:cpu_pct=args.cpu` -> `governor.py:jobs.set_cpu_rate(job, rate)` ->
+  `jobs.set_cpu_rate` cujo docstring diz *"0 disables, 10000 = 100% of the machine"*. Logo
+  **`--cpu 40` = 40 % da MAQUINA (≈8 de 20 nucleos), nunca 40 % de um nucleo** -- a versao anterior
+  desta linha afirmava o contrario e mandava um instrumento de 2 fios gastar 8 nucleos.
+  O segundo defeito e' o que o numero abaixo prova: o `ORACLE_THREADS` da primeira cura era
+  **INERTE**. Ele so' escrevia `OMP_NUM_THREADS`, e o ORT **nao le' essa variavel para
+  `intra_op_num_threads`** (o default e' o numero de nucleos fisicos) e o `transcribe.py` do export
+  faz `if threads:`, logo sem `threads=` no CONSTRUTOR o campo fica por escrever. O log imprimia
+  `applied=2` enquanto 4 sessoes abriam 20 fios cada. Agora o numero vai ao construtor de cada
+  backend (`threads=ORACLE_THREADS`) e ao `torch.set_num_threads`, e mediu-se nas duas direccoes
+  com o mesmo comando e o mesmo Job Object:
+  `--cpu 40`/2 fios = **159 % de um nucleo** (65,28 s cpu / 41,0 s wall);
+  `--cpu 40`/auto = **398 % de um nucleo** (87,64 s cpu / 22,0 s wall, cortado pelo watcher);
+  `--cpu 6`/2 fios = **5,56 % da maquina** (64,72 s cpu / 58,2 s wall, passou).
+  A linha do DM do watcher nomeia a linha da morte: `cpu 15.157% of machine >= 8% of machine` e
+  `1 process(es) TERMINATED`. **O tecto do dia a dia tem de ficar abaixo desses 8 %**: `--cpu 40`
+  sao 5x a linha de morte, logo o instrumento gastava, sozinho, metade do orcamento que faz o
+  watcher matar uma arvore. `SOTTO_ULTRA_ORACLE_THREADS=0` mantem o `auto` antigo, para o braco
+  negativo. `AGENTS-PINS` estava VERMELHO nesta edicao e ficou verde com este numero.)
 - **PIN do ficheiro (medido 2026-11-15, 14:0x):** `_main\_audit-verify-all.cmd` = **401086 B**,
   **4606 CRLF** / 0 bare LF, sha256 `4382254CC29F1E584CF8EE5D6C8CE1B353760E73E571393C31EBACCA0F243666`.
   (Cento e vinte e seis bytes e OITO linhas a mais do que o pin de 400960 B: o passo

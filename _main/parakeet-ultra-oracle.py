@@ -31,6 +31,21 @@ ARMAS
                          trocada 1/25, um vazio 25 remocoes. Se alguma dessas
                          nao mexer, o WER nao mede nada e o oraculo diz RED.
 
+COMO SE LARGA ESTE INSTRUMENTO (medido 2026-11-15, e custou tres DMs de stutter)
+-------------------------------------------------------------------------------
+    python -m watcher run --cpu 6 --io very-low -- python _main\parakeet-ultra-oracle.py
+
+`--cpu 40` NAO e' 40 % de um nucleo: `jobs.set_cpu_rate` diz *"10000 = 100% of
+the machine"*, logo 40 sao ~8 dos 20 nucleos. Com 2 fios isso nao importa -- o
+instrumento so' pede 2 -- mas o **watcher mata uma arvore a 8 % da maquina**
+(`cpu 15.157% of machine >= 8% of machine`, `1 process(es) TERMINATED`, medido
+hoje neste ficheiro), e 40 % da maquina e' 5x essa linha. Por isso o tecto do
+dia a dia e' `--cpu 6`: medido, `--cpu 6` custa 58,2 s de parede onde `--cpu 40`
+custava 41,0 s (+42 % de tempo) e cabe com margem sob a linha que mata.
+O orcamento de fios (`ORACLE_THREADS`, abaixo) e' a outra metade: sem ele o ORT
+abre 20 fios por sessao e o log MIENTE um `applied=2` que nunca chegou ao
+`SessionOptions`.
+
 SAIDA
 -----
 Uma linha JSON `RESULT {...}` por engine em stdout (UTF-8), mais `VERDICT`.
@@ -49,6 +64,56 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 sys.path.insert(0, str(REPO / "worker"))
+
+#: O TECTO DE FIOS DESTE INSTRUMENTO, escrito ANTES de medir (AGENTS: "Assume
+#: the machine is 10x weaker"; o watcher acusou este ficheiro a 2026-11-15).
+#: MEDIDO no episodio: `python.exe(73920)` = `parakeet-ultra-oracle --engine all`,
+#: `cpu 13.6121% of machine` no tick que disparou o stutter, com o Job Object a
+#: 40 % de UM nucleo -- o unico `--cpu` limita o PROCESSO e o modelo abre as
+#: sessoes com o default do ORT (8 fios por sessao, 3 engines em fila). Um
+#: instrumento de medicao nao corre com mais fios do que o produto que ele mede:
+#: o worker abre a 2 (`--worker-threads`, medido 2026-11-09) e este abre a 2.
+#: `SOTTO_ULTRA_ORACLE_THREADS` existe para re-medir um orcamento diferente; 0
+#: mantem o comportamento antigo (auto), que NAO e' o default desta casa.
+ORACLE_THREADS = int(os.environ.get("SOTTO_ULTRA_ORACLE_THREADS", "2") or 2)
+
+
+def apply_oracle_thread_budget(threads=ORACLE_THREADS):
+    """Write the thread budget into the env AND hand it to every backend.
+
+    O DEFEITO QUE ISTO CORRIGE, medido duas vezes no mesmo dia (2026-11-15): a
+    primeira versao desta funcao so' escrevia `OMP_NUM_THREADS` (via
+    `sotto_worker.limit_threads`) e chamava a isso orcamento. **O ORT nao le'
+    essa variavel para `intra_op_num_threads`**: sem `threads=` explicito no
+    construtor, o default e' o numero de nucleos FISICOS, e o `transcribe.py`
+    do export faz `if threads:` -- com `None` o campo fica por escrever. Logo o
+    `ORACLE_THREADS applied=2` da linha de log era uma AFIRMACAO SOBRE O
+    AMBIENTE enquanto 4 sessoes abriam 20 fios cada. Resultado medido no
+    watcher: `python.exe(46140)` a `39.3% of machine` no episodio de stutter
+    do dono, com o Job Object a `--cpu 40` a SATURAR -- porque 40 % da maquina
+    sao ~8 nucleos e o instrumento os pedia todos.
+
+    Duas metades, e a segunda e' a que faltava:
+    (a) o ambiente, para o BLAS/OMP que o preprocessing usa;
+    (b) o numero VAI para o construtor de cada backend (`threads=`), que e' o
+        unico caminho que chega ao `SessionOptions`.
+
+    `torch` tem o seu proprio pool (`set_num_threads`), pela mesma razao.
+    Devolve o numero aplicado, ou None quando o orcamento e' `auto`.
+    """
+    if not threads:
+        return None
+    import sotto_worker                      # noqa: PLC0415 -- o caminho ja' esta' no sys.path
+
+    applied = int(sotto_worker.limit_threads(int(threads)))
+    try:                                     # torch e' opcional (so' o braco ultra-torch)
+        import torch                         # noqa: PLC0415
+
+        torch.set_num_threads(applied)
+    except Exception:                        # noqa: BLE001 -- sem torch nao ha' pool que cortar
+        pass
+    return applied
+
 
 FIXTURES = REPO / "_main" / "fixtures" / "stack-compare"
 REFERENCE = FIXTURES / "reference.json"
@@ -376,6 +441,11 @@ def main(argv=None) -> int:
         reconfigure = getattr(stream, "reconfigure", None)
         if callable(reconfigure):
             reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+
+    # ANTES de qualquer sessao ORT (o modelo carrega dentro de `build`).
+    applied = apply_oracle_thread_budget()
+    print("# ORACLE_THREADS applied=%s requested=%s (source=%s)"
+          % (applied, ORACLE_THREADS, "flag" if applied else "auto"))
 
     argv = list(sys.argv[1:] if argv is None else argv)
     if "--neg-arm" in argv:
