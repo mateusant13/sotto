@@ -737,7 +737,28 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   a mesma lei que ele julga. Medido depois: `CONSOLE-AUDIT VERDICT PASS -- 0 sitio(s)`, e o
   `code-health` absorve o crescimento declarado de `app/webview/youtube_cdp_source.py`
   (bytes 122858 -> 125912, linhas 2424 -> 2476: o `isChrome` do extrator e o descarte no parser).)
-- **PIN do ficheiro (medido 2026-11-12, 23:4x):** `_main\_audit-verify-all.cmd` = **387363 B**,
+- **PIN do ficheiro (medido 2026-11-15):** `_main\_audit-verify-all.cmd` = **393495 B**,
+  **4519 CRLF** / 0 bare LF, sha256 `8D02FC7C2D9AE6AA97E17CD319D0116EA6F4B1984F0DB58FEAC7BE665A8279E2`.
+  (O pin cobre DUAS mudancas no mesmo ficheiro. (a) O par
+  `speech-gate` + `red-as-expected-speech-gate` entrou, e ele nasceu de um `REASON-MISSING preencher a mao`
+  -- o oraculo `speech-gate-oracle.py` estava na divida congelada do `battery-wiring` com
+  `ligados=210`, ou seja **nenhum passo o executava** desde 2026-10-25, e nesse tempo o gate que ele
+  julga passou a comer 72 % da fala de um broadcast real enquanto o oraculo dizia
+  `VERDICT: PASS (kept_frac=1.0)` nas quatro fixtures -- todas gravacoes de ESTUDIO limpas.
+  Medido: o gate ligado custava **55 % da cobertura e 0.32 de WER** (`coverage 0.80 -> 0.25`,
+  `WER 0.458 -> 0.780`, mesmo audio, `_main/devlab/lab.py score --window 60 20`), e ele **nao se
+  retuna**: em audio REAL a faixa de dB por sub-quadro mantem 0.97/0.80 de uma cama de musica
+  (`_main/diar-mix/mix-bedonly.wav`) e 0.88/0.81 do broadcast -- os dois numeros sao o mesmo. O
+  padrao passou a OFF (`source=default-off`), o oraculo ganhou as duas populacoes que nunca teve
+  mais um guarda do PADRAO lido por `ast` (`default_off=True`), e o `--neg-arm` planta dois
+  defeitos numa copia e devolve **rc=1** com `NEG-ARM: PASS -- 2/2`. Recibo:
+  `_main/receipt-20261115-speech-gate-broadcast.md`. (b) QUATRO nomes de passo estavam DUPLICADOS no
+  ficheiro herdado -- `panel-row-identity`, `red-as-expected-panel-row-identity`, `history-classify` e
+  `red-as-expected-history-classify` apareciam duas vezes (linhas 172 e 1570 do blob anterior), o que
+  publicava dois vereditos sobre o mesmo passo; o bloco repetido saiu. Medido: `grep -oP "^ call :step
+  \K[a-z0-9-]+" | sort | uniq -d` devolvia esses quatro nomes e agora devolve **zero**; os 521 `call
+  :step` do ficheiro tem 521 nomes distintos.)
+- **PIN anterior (medido 2026-11-12, 23:4x):** `_main\_audit-verify-all.cmd` = **387363 B**,
   **4456 CRLF** / 0 bare LF, sha256 `7968A4802C205C7546DE6263474315CCF19524DA6D0547D7B47080AE58CA6887`.
   (Trezentos e sessenta e oito bytes e CINCO linhas a mais do que o pin de 386995 B: o
   `set "SOTTO_BATTERY_POLICY=!CAGE_POLICY!"`, porque o `warm-engine` precisa de saber SOB QUE TECTO
