@@ -891,13 +891,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 511599,
+      "bytes": 504245,
       "classes": 17,
       "defs": 98,
-      "except_pass": 26,
+      "except_pass": 27,
       "globals": 7,
-      "lines": 9493,
-      "max_func": 2821,
+      "lines": 9529,
+      "max_func": 2837,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
