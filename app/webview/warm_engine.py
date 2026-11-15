@@ -37,6 +37,31 @@ disables an engine"), which is correct for a LIVE engine and wrong for a 1.9 GB
 preload, so G1 additionally requires a real measurement. There is deliberately
 no environment variable, CLI flag or task argument that skips them (R6).
 
+THE TIMING (2026-11-15, the owner's *"fica afk/idle ou descarrega muito rapido"*).
+Three clocks, three jobs, and the first two are the fix:
+
+  * **when does the hold start** -- on the last piece of real WORK, not on the
+    last handshake. ``WARM_ACTIVITY`` evidence is ``load`` / ``attach`` (only a
+    session that started) / ``audio`` (a block delivered to the live decoder) /
+    ``caption`` (a line painted). Measured why the old clock was wrong: the
+    owner's attach lasts **5 s** (``19:53:48 WARM_ATTACHED`` -> ``19:53:49
+    WARM_DETACHED``) while the captions keep coming, and the same log has **six**
+    ``WARM_DETACHED why=shed`` in six minutes from attaches that produced no
+    session at all. A parked-tap block is NOT evidence: the tap delivers one
+    every 0,1 s even in an empty room, and counting silence would resurrect the
+    1.9 GB idle D-04.
+  * **how long is the hold** -- ``WARM_PARK_TTL_S = 1800.0``: **158x** the
+    median measured load (11 380,6 ms) and **43,9x** the worst (41 015,3 ms) in
+    the 16 ``WARM_LOAD_MS`` in ``_main/warm-engine.log``, and **1/4** of the
+    shortest measured gap between two openings (2 h), so it cannot outlive the
+    session. It replaces 600,0, which was an analogy with the worker's
+    ``IDLE_HOLD_MAX_S`` and paid 8 loads for zero attaches.
+  * **the floor before the reload** -- ``WARM_THRASH_RESIDENT_S = 300.0``: a
+    release after a LONG residency starts reloading on the very next tick and
+    says ``WARM_RELOAD_IMMEDIATE``; only a release within 300 s of the load (the
+    measured 31 s thrash pair) waits ``WARM_LOAD_RETRY_S`` and says
+    ``WARM_RELOAD thrash=true``. Sized for the cycle, not for the first reload.
+
 Run: ``python -u app/webview/warm_engine.py`` (the task launches it with
 ``pythonw``; the ``-u`` is for the manual/CLI runs). ``--no-model`` is an
 INSTRUMENT switch that refuses to build weights -- it cannot make anything
@@ -62,14 +87,45 @@ import warm_pipe  # noqa: E402  -- same directory, imported by path
 # ── the contract's constants, all named here so the oracle can pin them ──────
 SCHEMA = warm_pipe.SCHEMA
 
-#: Park TTL. The SAME value and the SAME meaning as the worker's
-#: ``IDLE_HOLD_MAX_S = 600.0``: a held process that nobody attached to is a
-#: 1.9 GB leak with a timer, and ten minutes is the worker's own answer.
-WARM_PARK_TTL_S = 600.0
+#: THE IDLE HOLD, SIZED FROM THE LOAD IT SAVES (owner, 2026-11-15: *"o modelo
+#: que transcreve ao vivo, fica afk/idle ou descarrega muito rapido"*).
+#:
+#: What the hold buys is ONE thing: not re-reading the weights. MEASURED in
+#: ``_main/warm-engine.log`` (2026-11-11..11-15, 16 ``WARM_LOAD_MS``): min
+#: **4 505.1 ms**, median **11 380.6 ms**, max **41 015.3 ms**. The number below
+#: is **158x the median** and **43.9x the worst** measured load, so a hold that
+#: is used once in a hundred and fifty idle periods still pays for itself.
+#:
+#: The old value was ``600.0`` (copied from the worker's ``IDLE_HOLD_MAX_S`` --
+#: an analogy, never measured against this cost). It is bounded ABOVE by the
+#: owner's own usage: the shortest gap between two of those 16 openings is
+#: **2 h = 7 200 s**, and 1 800 s is **1/4** of it, so an unattached engine can
+#: never survive until the next opening on its own. That is the D-04 "1.9 GB
+#: idle" the old 600 s was trying to avoid -- and the answer to it is
+#: ``warm_evidence.py`` refusing the REQUEST, not a hold too short to be used.
+#: MEASURED that the short hold paid nothing: 8 loads, 8
+#: ``WARM_EXIT why=idle-expired held_s=600``, ZERO ``WARM_ATTACHED`` in the
+#: shell log across openings 2-16 h apart.
+WARM_PARK_TTL_S = 1800.0
 #: How long ``muito-alta`` must persist before the weights go (G4).
 WARM_RELEASE_S = 120.0
-#: A deferred load retries on this cadence; the gate, not the clock, decides.
+#: The FLOOR between a release and the reload that follows it, and ONLY for the
+#: thrash case (see ``WARM_THRASH_RESIDENT_S``). Also the cadence of a load the
+#: GATE deferred -- there the gate, not the clock, decides.
 WARM_LOAD_RETRY_S = 30.0
+#: How long the weights must have been RESIDENT for the next reload to be free
+#: of the floor. MEASURED, ``_main/warm-engine.log``: the reload that followed
+#: the 82-load/70-release cycle sat **31 s** after its release
+#: (``worker/engine_policy.py``, ``RELOAD_FLOOR_S``), and a release after a
+#: genuinely long residency was measured at ``ms_resident=3 146 344``
+#: (36.4 days). 300 s = **10x** the 31 s pair, so no quick release-after-load
+#: can claim it, and **1/6** of the 1 800 s hold, so a reload after a real quiet
+#: period never waits out a floor that was sized for a cycle it is not part of.
+WARM_THRASH_RESIDENT_S = 300.0
+#: ``WARM_ACTIVITY`` is a per-block event (a 0,1 s block on the live tap) and
+#: must not be a log per block: one line per minute is the receipt that the
+#: idle clock is being reset, and the counter is not a log.
+WARM_ACTIVITY_LOG_S = 60.0
 #: Replayed audio older than this is HISTORY ONLY, never painted (INV-5/R11).
 WARM_BACKLOG_LIVE_MS = 2000
 #: The RAM ring of raw PCM held while the tap is open (mode C). 8 s at 16 kHz
@@ -619,6 +675,11 @@ class AttachedSession:
     def _on_block(self, block):
         if self.stop.is_set() or self.queue is None:
             return
+        # AUDIO A CHEGAR E' O SINAL MAIS DIRECTO DE "A USAR" (dono, 2026-11-15).
+        # Carimbado ANTES do `put_nowait`: um bloco que a fila cheia descarta
+        # continua a ser prova de que ha audio, e e' o descarte que a
+        # contagem `blocked_dropped` ja' publica.
+        self.engine.note_activity("audio")
         try:
             self.queue.put_nowait(block)
         except Exception:  # noqa: BLE001 -- a full queue is dropped audio, counted
@@ -637,6 +698,10 @@ class AttachedSession:
             self.engine.emit_worker({"type": "caption", "text": meta.pop("text", ""),
                                      **meta})
             self.last_caption_at = time.monotonic()
+            # Uma linha PINTADA e' a prova mais forte de "a usar": ha trabalho a
+            # sair. Replay nao conta -- e' audio de antes, nao actividade de agora.
+            if audio_ms is None:
+                self.engine.note_activity("caption")
 
     def _decode_one(self, seg, start, end, audio_ms=None):
         try:
@@ -852,7 +917,21 @@ class WarmEngine:
         self.started_at = time.time()
         self._next_load_at = 0.0
         self._very_high_since = None
+        #: O RELOGIO DO IDLE E' MAX(detach, ACTIVIDADE). Um `attach` nunca foi o
+        #: sinal de "a usar" -- medido no log do dono: o anexo dura 5 s
+        #: (`19:53:48 WARM_ATTACHED` -> `19:53:49 WARM_DETACHED`) e o audio
+        #: continua a chegar por outra via, logo contar so' o anexo fazia um
+        #: motor que ESTA' a transcrever parecer parado. Ver `note_activity`.
         self._last_detach_at = self.clock()
+        self._last_activity_at = self._last_detach_at
+        self._last_activity_why = "start"
+        self._activity_since_log = self._last_detach_at
+        self._activity_count = 0
+        #: Parede da ultima largada e o que ela residiu -- o que decide se o
+        #: piso da recarga se aplica (`WARM_THRASH_RESIDENT_S`).
+        self._released_at = None
+        self._resident_s = 0.0
+        self._thrash = False
         self._client = None
         self._conn = None
         self._conn_lock = threading.Lock()
@@ -1154,6 +1233,9 @@ class WarmEngine:
         self.session_obj = session
         self.state = "attached"
         self.mode = "attached"
+        # Um anexo que criou sessao E' trabalho; o que o G3 recusa nao e' (e o
+        # log medido tem seis desses em seis minutos -- ver `note_activity`).
+        self.note_activity("attach")
         reply_mode = "warm-tap" if live else "warm-idle"
         self.emit_envelope("WARM_ATTACHED",
                            ms=round((self.clock() - t0) * 1000.0, 1),
@@ -1161,6 +1243,50 @@ class WarmEngine:
                            load_ms=round(self.load_ms, 1))
         self.log("WARM_ATTACHED ms=%.1f mode=%s"
                  % ((self.clock() - t0) * 1000.0, reply_mode))
+
+    # -- the idle clock is reset by WORK, not by a handshake -----------------
+    def note_activity(self, why, now=None):
+        """O motor esta' a TRABALHAR agora. Reinicia o relogio do idle.
+
+        PORQUE ISTO EXISTE (dono, 2026-11-15: *"o modelo que transcreve ao vivo,
+        fica afk/idle ou descarrega muito rapido"*). O relogio do idle media
+        `now - ultimo_detach`, e um detach NAO e' trabalho: o log medido tem
+        **seis** `WARM_DETACHED why=shed` em seis minutos
+        (`_main/warm-engine.log`, 2026-11-12 20:11:55 .. 20:16:53), cada um de um
+        `attach` que o G3 recusou e que **nao criou sessao nenhuma** -- seis
+        empurroes no fim da vida de um motor que nunca transcreveu nada. Na
+        direccao oposta, o anexo do dono dura **5 s** (`19:53:48 WARM_ATTACHED`
+        -> `19:53:49 WARM_DETACHED`) e a legenda continua a sair depois dele.
+
+        As fontes de evidencia, e so' estas (`why`):
+          * ``load``    -- os pesos ficaram prontos;
+          * ``attach``  -- uma sessao comecou de facto (nao o `attach` recusado);
+          * ``audio``   -- um bloco foi entregue ao descodificador vivo;
+          * ``caption`` -- uma linha foi pintada.
+
+        O QUE NAO CONTA, e por que': um bloco do ring parqueado (modo C). O
+        tap entrega um bloco a cada 0,1 s mesmo numa sala VAZIA (silencio
+        tambem e' audio), logo conta-lo faria o motor nunca expirar -- que e' o
+        D-04 outra vez, ~1 GB parado para sempre.
+        """
+        now = self.clock() if now is None else float(now)
+        self._last_activity_at = now
+        self._last_activity_why = str(why)
+        self._activity_count += 1
+        if (now - self._activity_since_log) >= WARM_ACTIVITY_LOG_S:
+            self._activity_since_log = now
+            # Uma linha por minuto, nao por bloco (0,1 s = 36 000 linhas/hora).
+            self.log("WARM_ACTIVITY why=%s n=%d idle_clock=reset"
+                     % (self._last_activity_why, self._activity_count))
+
+    def idle_s(self, now=None):
+        """Ha' quantos segundos o motor nao faz NADA e ninguem esta' ligado.
+
+        `max` e nao `min`: um detach real e' o inicio do periodo sem ninguem, e
+        o trabalho que veio DEPOIS dele (a cauda da sessao) empurra o relogio.
+        """
+        now = self.clock() if now is None else float(now)
+        return now - max(self._last_detach_at, self._last_activity_at)
 
     # -- ticks --------------------------------------------------------------
     def tick(self):
@@ -1176,12 +1302,17 @@ class WarmEngine:
                     self.release("shed", gate=gate)
             else:
                 self._very_high_since = None
-        # TTL only applies to a process nobody attached to. An attached engine
-        # is in use; its life is the shell's life.
+        # THE HOLD APPLIES TO A PROCESS THAT IS DOING NOTHING, and "doing
+        # nothing" is measured by `idle_s` (last real work) -- not by
+        # `_last_detach_at`, which a refused attach also moves. A session that
+        # is attached is in use; its life is the shell's life.
+        idle = self.idle_s(now)
         if (self.session_obj is None and self.asr is not None
-                and (now - self._last_detach_at) >= self.park_ttl_s):
-            self.log("WARM_EXIT why=idle-expired held_s=%.1f"
-                     % (now - self._last_detach_at))
+                and idle >= self.park_ttl_s):
+            self.log("WARM_EXIT why=idle-expired held_s=%.1f idle_s=%.1f "
+                     "ttl_s=%.1f evidence=%s"
+                     % (now - self._last_detach_at, idle, self.park_ttl_s,
+                        self._last_activity_why))
             self.quit = True
 
     def _try_load(self, now):
@@ -1200,6 +1331,19 @@ class WarmEngine:
                                    shed=gate["shed"])
             return
         self.state = "loading"
+        if self._released_at is not None and not getattr(self, "_reload_named", False):
+            self._reload_named = True
+            gap_s = max(0.0, now - self._released_at)
+            if self._thrash:
+                self.log("WARM_RELOAD thrash=true gap_s=%.1f resident_s=%.0f "
+                         "floor_s=%.0f — o motor mal tinha carregado; este e' o par "
+                         "que o piso existe para travar"
+                         % (gap_s, self._resident_s, WARM_LOAD_RETRY_S))
+            else:
+                self.log("WARM_RELOAD_IMMEDIATE gap_s=%.1f resident_s=%.0f floor_s=0 "
+                         "— a largada nao foi meia volta de um ciclo (>= %.0f s "
+                         "residente), logo o audio que voltou nao espera o piso"
+                         % (gap_s, self._resident_s, WARM_THRASH_RESIDENT_S))
         self.log("WARM_LOAD_BEGIN commit=%s cpu=%s level=%s shed=%s"
                  % (gate["commit_pct"], gate["cpu_pct"], gate["level"], gate["shed"]))
         self.emit_envelope("WARM_LOAD_BEGIN", commit=gate["commit_pct"],
@@ -1227,6 +1371,9 @@ class WarmEngine:
                  % (self.load_ms, self.resident_mb()))
         self.emit_envelope("WARM_LOAD_MS", ms=round(self.load_ms, 1),
                            resident_mb=self.resident_mb())
+        # Os pesos prontos sao trabalho feito: o relogio do idle comeca aqui,
+        # nao no arranque do processo (que pode estar 26 s a ler o disco).
+        self.note_activity("load")
         if self.tap_opt_in and self.session_obj is None:
             self.open_parked_tap()
 
@@ -1250,9 +1397,10 @@ class WarmEngine:
     def release(self, why, gate=None):
         if self.asr is None:
             return False
-        ms_resident = 0.0
+        resident_s = 0.0
         if self.loaded_at is not None:
-            ms_resident = (self.clock() - self.loaded_at) * 1000.0
+            resident_s = max(0.0, self.clock() - self.loaded_at)
+        ms_resident = resident_s * 1000.0
         if self.session_obj is not None:
             self.session_obj.detach("release")
             self.session_obj = None
@@ -1268,13 +1416,46 @@ class WarmEngine:
         self.state = "unloaded"
         self.mode = "unloaded"
         self._very_high_since = None
-        self._next_load_at = self.clock() + WARM_LOAD_RETRY_S
-        self.log("WARM_RELEASE ms_resident=%.0f why=%s level=%s"
-                 % (ms_resident, why, (gate or {}).get("level")))
+        # O PISO E' DO CASO DE THRASH, E SO' DELE (dono, 2026-11-15: "descarrega
+        # muito rapido"; `worker/engine_policy.py`, `RELOAD_FLOOR_S`). A largada
+        # de um motor que RESIDIU (`>= WARM_THRASH_RESIDENT_S`) nao e' meia volta
+        # de um ciclo -- e' o fim de uma sessao longa -- e o motor que volta a
+        # seguir a ela tem de comecar a carregar no tick SEGUINTE, senao o dono
+        # paga 30 s de espera por um piso que existia para um par de 31 s.
+        # MEASURED: o par do ciclo excitado foi 31 s; a largada longa medida no
+        # log foi `ms_resident=3146344` (36,4 dias).
+        self._resident_s = resident_s
+        self._thrash = resident_s < WARM_THRASH_RESIDENT_S
+        self._released_at = self.clock()
+        self._reload_named = False
+        self._next_load_at = (self._released_at + WARM_LOAD_RETRY_S
+                              if self._thrash else self._released_at)
+        self.log("WARM_RELEASE ms_resident=%.0f why=%s level=%s thrash=%s "
+                 "reload_in_s=%.1f"
+                 % (ms_resident, why, (gate or {}).get("level"),
+                    str(self._thrash).lower(),
+                    self._next_load_at - self._released_at))
         self.emit_envelope("WARM_RELEASE", why=why,
                            ms_resident=round(ms_resident, 0),
-                           level=(gate or {}).get("level"))
+                           level=(gate or {}).get("level"),
+                           thrash=self._thrash)
         return True
+
+    def reload_floor_left(self, now=None):
+        """Segundos que faltam para o motor poder recarregar (0 = livre agora).
+
+        Tres casos, e a ordem importa:
+          1. nunca largou -> 0 (a primeira carga nao paga piso nenhum);
+          2. a largada foi de um motor de LONGA residencia -> 0, e o
+             `WARM_RELOAD_IMMEDIATE` diz o numero. E' o "audio voltou e o motor
+             nao esta'" -- esperar aqui seria o defeito, nao a cura;
+          3. a largada foi de um motor que mal tinha carregado -> o piso, que e'
+             o que corta o ciclo 82-cargas/70-largadas (par de 31 s medido).
+        """
+        now = self.clock() if now is None else float(now)
+        if self._released_at is None or not self._thrash:
+            return 0.0
+        return max(0.0, WARM_LOAD_RETRY_S - (now - self._released_at))
 
     def shutdown(self):
         # TWICE IS ALLOWED, AND MUST NOT BLOCK (oracle arm 19: the run loop and

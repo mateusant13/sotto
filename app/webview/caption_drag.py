@@ -4,10 +4,20 @@ Ordem do dono, verbatim: *"segurar control, permite eu arrastar a legenda pra
 onde eu quero. e o control segurado tambem vai ter um indicativo bem minimo de
 que da pra arrastar a legenda"*.
 
+A CENTRALIZACAO (2026-11-15). Ordem do dono, verbatim: *"ao mover as legendas
+de lugar segurando o ctrl, as legendas devem se CENTRALIZAR aonde eu deixei meu
+mouse. entao se eu comecei a mover a legenda segurando pela ponta direita da
+legenda, todo o centro ja deve ir para onde meu mouse esta. assim sempre vou
+centralizar do jeito q eu quero."* Logo o DESTINO nao e' cursor - pega: e' o
+CENTRO da janela no cursor, do primeiro tick do arrasto em diante. Nao ha'
+ponto agarrado nenhum -- agarrar pela ponta direita e' so' a maneira de dizer
+"quero esta legenda", nunca um deslocamento a preservar (preserva-lo faria o
+corpo inteiro saltar para a direita ao encostar na ponta).
+
 PORQUE ESTE MODULO EXISTE SEPARADO DA JANELA. A janela (`caption_overlay`) e'
 Win32+GDI+ e nao se pode exercitar sem um ecra. A DECISAO -- "com Ctrl e o
 botao esquerdo carregado dentro do rect, isto e' um arrasto; o destino e' o
-cursor menos a pega; o resultado fica dentro da area de trabalho" -- e' uma
+cursor no CENTRO da janela; o resultado fica dentro da area de trabalho" -- e' uma
 funcao de seis numeros e e' aqui que ela vive, para o oraculo poder provar cada
 braco (armar, arrastar, largar, o limite do ecra, o clique sem Ctrl, o Ctrl
 fora do rect, o arrasto que acaba onde comecou) sem tocar em `user32`.
@@ -80,7 +90,12 @@ class DragState:
         #: O botao esquerdo no tick ANTERIOR. E' o que distingue "pressao nova"
         #: de "botao que ja' estava carregado quando o Ctrl desceu".
         self.lbutton = False
-        #: cursor - canto do rect no instante da pressao: o ponto agarrado.
+        #: O ponto da PRESSAO dentro do rect (cursor - canto, no instante da
+        #: pressao). A DECISAO NAO O LE' -- o modo CENTRO ignora-o de proposito
+        #: (ver `drag_plan`). Fica registado porque o `--neg-arm` do oraculo tem
+        #: de poder repor a regra ANTIGA (cursor - pega) numa copia do modulo: um
+        #: mutante que tivesse de inventar este campo provava o mutante, nao a
+        #: regra.
         self.grab = (0, 0)
         #: A posicao BASE (rect - offset) no instante da pressao. E' o que
         #: absorve o texto a mudar de largura a meio do arrasto: a janela segue
@@ -213,9 +228,12 @@ def drag_plan(ctrl_down, lbutton_down, cursor, rect, work, offset=(0, 0),
         o cursor DENTRO do rect. Sem Ctrl o clique passa ao video, como sempre
         passou -- o overlay e' `WS_EX_TRANSPARENT` e nao rouba clique nenhum.
       * A PRESSAO TEM DE SER NOVA (`not state.lbutton`). Com o botao ja'
-        carregado, largar o Ctrl por cima dele nao pode agarra a legenda: o
+        carregado, largar o Ctrl por cima dele nao pode agarrar a legenda: o
         dono esta' a fazer outra coisa.
-      * O DESTINO E' cursor - pega: a janela move-se exactamente com o rato.
+      * O DESTINO E' O CENTRO DA JANELA NO CURSOR, JA' NO TICK DA PRESSAO. Nao
+        ha' deslocamento relativo a preservar: agarrar pela ponta direita e'
+        so' a maneira de dizer "quero esta legenda" (ver o docstring do
+        modulo, com as palavras do dono).
       * O LIMITE E' A AREA DE TRABALHO (`clamp_pos`), em cada tick -- nao so'
         no fim. Assim nem um arrasto para fora durante um segundo tira a
         legenda do ecra.
@@ -237,8 +255,24 @@ def drag_plan(ctrl_down, lbutton_down, cursor, rect, work, offset=(0, 0),
     inside = rx <= cx < rx + rw and ry <= cy < ry + rh
     moved = False
 
-    if st.dragging:
-        desired = (cx - st.grab[0], cy - st.grab[1])
+    if st.dragging or (ctrl and lb and not st.lbutton and inside):
+        if not st.dragging:
+            # PRESSAO NOVA DENTRO DO RECT, COM CTRL: o arrasto comeca AQUI, e
+            # ja' neste tick o centro da janela vai para o cursor (ver o
+            # docstring do modulo). A base do deslocamento e' a posicao
+            # ORIGINAL -- rect - offset antes do salto --, senao o arrasto
+            # seguinte acumulava sobre o centro ja' deslocado. O "onde comecou"
+            # e' o offset ANTES do salto: e' isso que faz o salto contar como
+            # movimento (a janela mudou mesmo de sitio) e mantem "arrasto que
+            # acaba onde comecou nao grava nada" verdadeiro no modo centro.
+            st.grab = (cx - rx, cy - ry)
+            st.origin = (rx - st.offset[0], ry - st.offset[1])
+            st.start_offset = st.offset
+            st.dragging = True
+        # O CENTRO VAI PARA O CURSOR -- em TODOS os ticks, e JA' no da pressao.
+        # Meia largura/altura em vez da pega: e' a ordem do dono (ver o
+        # docstring do modulo). `st.grab` nao entra nesta conta.
+        desired = (cx - rw // 2, cy - rh // 2)
         pos = clamp_pos(desired, (rw, rh), work)
         st.offset = (pos[0] - st.origin[0], pos[1] - st.origin[1])
         moved = st.offset != st.start_offset
@@ -248,13 +282,6 @@ def drag_plan(ctrl_down, lbutton_down, cursor, rect, work, offset=(0, 0),
             st.dragging = False
             st.armed = ctrl
             persist = bool(moved)
-    elif ctrl and lb and not st.lbutton and inside:
-        # PRESSAO NOVA DENTRO DO RECT, COM CTRL: o arrasto comeca aqui.
-        st.grab = (cx - rx, cy - ry)
-        st.origin = (rx - st.offset[0], ry - st.offset[1])
-        st.start_offset = st.offset
-        st.dragging = True
-        st.armed = True
     else:
         # EM REPOUSO. A marca segue o Ctrl exatamente: aparece quando ele desce
         # (mesmo com o cursor fora do rect) e desaparece quando ele sobe.

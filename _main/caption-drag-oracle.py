@@ -15,8 +15,8 @@ com Ctrl carregado e nao existe sem ele" sem um ecra onde olhar.
 As arms:
 
   P1  ARMAR: Ctrl carregado, sem tocar no rato -> `armed`, nada arrasta.
-  P2  ARRASTAR: pressao NOVA dentro do rect + movimento -> a janela segue o
-      cursor (pos e offset exatos), `moved`.
+  P2  ARRASTAR: pressao NOVA dentro do rect + movimento -> o CENTRO da janela
+      vai para o cursor (ordem do dono, 2026-11-15), em todos os ticks.
   P3  LARGAR: o botao sobe -> deixa de arrastar, GRAVA o deslocamento.
   P4  LIMITE DO ECRA: arrastar para fora (canto superior esquerdo e inferior
       direito) -> a janela fica presa dentro da area de trabalho.
@@ -38,13 +38,17 @@ As arms:
       vencido repinta MESMO a arrastar.
   P13 TAXA ENTREGUE: o laco real a arrastar, medido com `perf_counter`, tem de
       entregar >= 120 Hz (metade do tecto de 240 Hz) e ZERO pinturas no gesto.
+  P15 PONTA DIREITA: agarrar a ponta direita da legenda CENTRALIZA a janela no
+      cursor -- a ordem de 2026-11-15. Com a regra antiga (cursor menos a pega)
+      o centro ficava 300 px a' esquerda do rato.
 
-NEG (`--neg-arm`): a decisao REAL e' copiada e mutada -- (1) sem `clamp_pos`,
-(2) largar grava sempre, (3) pulsacao a zero -- e as arms que dependem disso
-(P4, P7, P9) TEM de ficar vermelhas. Um oraculo que nao cai com o defeito de
-volta nao mede nada. E DOIS mutantes do poll, cada um numa copia do modulo:
-(4) o poll repinta quando o rato anda, (5) o piso da pintura e' aplicado ao
-poll; cada um tem de derrubar a P13.
+NEG (`--neg-arm`): a decisao REAL e' copiada e mutada para o modo ANTIGO --
+cursor-menos-pega, sem `clamp_pos`, a gravar sempre -- e a pulsacao a zero. As
+arms que dependem de cada metade TEM de ficar vermelhas: P2 e P15 (modo CENTRO),
+P4 (sem limite), P7 (grava sempre), P9 (pulsacao a zero). Um oraculo que nao cai
+com o defeito de volta nao mede nada. E DOIS mutantes do poll, cada um numa copia
+do modulo: (4) o poll repinta quando o rato anda, (5) o piso da pintura e'
+aplicado ao poll; cada um tem de derrubar a P13.
 
 `--cost` mede o preco da marca num bitmap GDI+ real, fora do ecra (com Ctrl
 levantado vs carregado). E' o numero que o relatorio cita; nao corre por
@@ -162,19 +166,26 @@ def arm_drag(plan, *_):
     d1 = _step(plan, caption_drag.DragState(), True, False, CURSOR_IN)
     d2 = _step(plan, d1.state, True, True, (700, 950))    # pressao NOVA
     d3 = _step(plan, d2.state, True, True, (760, 1000))   # movimento
-    return ("P2 arrastar (a janela segue o cursor)", (
-        d2.dragging and d2.pos == (660, 900)
-        and d3.dragging and d3.pos == (720, 950)
-        and d3.offset == (60, 50) and d3.moved and d3.changed))
+    # O CENTRO DA JANELA NO CURSOR, ja' no tick da pressao (ordem de 2026-11-15).
+    # `RECT` tem 600x120, logo o canto e' cursor - (300, 60).
+    def _centre(dec):
+        return (dec.pos[0] + RECT[2] // 2, dec.pos[1] + RECT[3] // 2)
+    return ("P2 arrastar (o CENTRO da janela segue o cursor)", (
+        d2.dragging and _centre(d2) == (700, 950)
+        and d3.dragging and _centre(d3) == (760, 1000)
+        and d3.offset == (d3.pos[0] - RECT[0], d3.pos[1] - RECT[1])
+        and d3.pos != d2.pos and d3.moved and d3.changed))
 
 
 def arm_release(plan, *_):
     d1 = _step(plan, caption_drag.DragState(), True, True, (700, 950))
     d2 = _step(plan, d1.state, True, True, (760, 1000))
     d3 = _step(plan, d2.state, True, False, (760, 1000))  # LARGAR
-    return ("P3 largar (para e grava o deslocamento)", (
-        not d3.dragging and d3.persist and d3.offset == (60, 50)
-        and d3.pos == (720, 950) and d3.armed and d3.changed))
+    return ("P3 largar (para, fica onde ficou e GRAVA esse deslocamento)", (
+        not d3.dragging and d3.persist and d3.armed
+        and d3.offset == d2.offset and d3.pos == d2.pos
+        and d3.offset == (d3.pos[0] - RECT[0], d3.pos[1] - RECT[1])
+        and d3.changed))
 
 
 def arm_clamp(plan, *_):
@@ -203,18 +214,43 @@ def arm_ctrl_outside(plan, *_):
     return ("P6 Ctrl fora do rect nao agarra (pressao tem de ser nova)", (
         not d1.dragging and not d1.persist and d1.offset == (0, 0) and d1.armed
         and not d2.dragging and not d3.dragging
-        and d4.dragging and d4.pos == RECT[:2]))
+        and d4.dragging
+        and (d4.pos[0] + RECT[2] // 2, d4.pos[1] + RECT[3] // 2) == CURSOR_IN))
 
 
 def arm_round_trip(plan, *_):
+    # "ONDE COMECOU" e' o LUGAR DA JANELA, nao o ponto do cursor: com o modo
+    # CENTRO o deslocamento ja' nasce diferente de zero no tick da pressao, logo
+    # so' voltar ao centro original devolve `offset == start_offset`.
+    start_centre = (RECT[0] + RECT[2] // 2, RECT[1] + RECT[3] // 2)
     d1 = _step(plan, caption_drag.DragState(), True, True, (700, 950))
     d2 = _step(plan, d1.state, True, True, (800, 1000))
-    d3 = _step(plan, d2.state, True, True, (700, 950))    # volta ao inicio
-    d4 = _step(plan, d3.state, True, False, (700, 950))   # largar
+    d3 = _step(plan, d2.state, True, True, start_centre)   # volta ao inicio
+    d4 = _step(plan, d3.state, True, False, start_centre)  # largar
     return ("P7 arrasto que acaba onde comecou nao grava nada", (
-        d2.moved and not d3.moved and not d4.persist
+        d1.moved and d2.moved and not d3.moved and not d4.persist
         and d3.offset == (0, 0) and d4.offset == (0, 0)
         and d4.pos == RECT[:2] and not d4.dragging))
+
+
+def arm_grab_at_edge(plan, *_):
+    """A ORDEM DE 2026-11-15, medida pela ponta: agarrar a PONTA DIREITA nao
+    desloca o corpo -- o centro da janela vai para o cursor de qualquer maneira.
+
+    E' o braco que separa o modo CENTRO do modo antigo (cursor - pega): com a
+    pega, uma pressao na ponta direita punha o canto esquerdo em `cursor - 600`
+    e o centro 300 px a' esquerda do rato.
+    """
+    right_edge = (RECT[0] + RECT[2] - 3, RECT[1] + RECT[3] // 2)
+    d1 = _step(plan, caption_drag.DragState(), True, True, right_edge)
+    moved_to = (right_edge[0] - 40, right_edge[1] + 20)
+    d2 = _step(plan, d1.state, True, True, moved_to)
+    return ("P15 agarrar pela ponta direita CENTRALIZA no cursor", (
+        d1.dragging
+        and (d1.pos[0] + RECT[2] // 2, d1.pos[1] + RECT[3] // 2) == right_edge
+        and d2.dragging
+        and (d2.pos[0] + RECT[2] // 2, d2.pos[1] + RECT[3] // 2) == moved_to
+        and d2.state.grab == (right_edge[0] - RECT[0], right_edge[1] - RECT[1])))
 
 
 def arm_persistence(plan, *_):
@@ -285,7 +321,11 @@ def _tick_probe(content, armed=False, dragging=False):
     ov.paints = []
     ov._poll_drag = lambda: False
     ov._update = lambda: ov.paints.append("paint")
+    # Os DOIS caminhos de arme: um tick que pinta rearma no `_update` (que o
+    # probe substitui) e um tick que so' poll rearma em `_arm_poll` (o caminho
+    # que existe desde 2026-11-15).
     ov._arm_tick = lambda: ov.paints.append("arm")
+    ov._arm_poll = lambda *a, **k: ov.paints.append("arm")
     return ov
 
 
@@ -511,15 +551,161 @@ def arm_drag_rate(plan, *_args, module=None, moved=False):
     agendador) e ZERO pinturas no gesto -- um poll que repinta nao entrega o
     tecto, paga a pintura.
     """
-    hz, ticks, paints = _drag_rate_probe(module=module, moved=moved)
+    # DUAS PASSAGENS, A MELHOR CONTA: esta maquina esta' repartilhada por outras
+    # lanes e uma passagem sob carga externa media o agendador do Windows, nao o
+    # codigo (medido: 45 Hz numa passagem, 209 Hz na seguinte, mesmo binario). O
+    # defeito que a arm procura -- poll preso na pintura -- e' ESTRUTURAL: ele
+    # aparece nas duas passagens.
+    best = None
+    for _ in range(2):
+        got = _drag_rate_probe(module=module, moved=moved)
+        if best is None or got[0] > best[0]:
+            best = got
+    hz, ticks, paints = best
     return ("P13 arrasto: %.0f Hz entregues, %d ticks, %d pinturas"
             % (hz, ticks, paints), (
                 hz >= 120.0 and ticks >= 60 and paints == 0))
 
 
+#: O custo da pintura do shell, MEDIDO na instancia do dono: a linha
+#: `CAPTION_DRAG_RATE ticks=311 moves=95 paints=1 seconds=6.968 hz=44.6
+#: paint_ms=31.75` do `_main/webview-run.log` (2026-11-15 00:34:02).
+SHELL_PAINT_S = 0.03175
+
+
+def _contention_probe(module, warmup=0.25, hold=0.30):
+    """P16 -- O POLL A ARRASTAR ENQUANTO A PINTURA DO SHELL SEGURA O `self.lock`.
+
+    O `set_text` do shell (`webview` -> `_update`) toma o `self.lock` pelo custo
+    de `SHELL_PAINT_S`. Este probe corre o `_tick`/`_poll_drag`/`_tick_loop`
+    REAIS a arrastar, deixa o laco estabilizar (`warmup`) e entao um fio
+    COMPETIDOR toma o `self.lock` e segura-o por `hold` -- uma pintura unica,
+    longa, em vez de muitas curtas: a medicao fica DETERMINISTICA (o numero de
+    polls que caem dentro da janela nao depende da carga da maquina, so' de o
+    poll esperar ou nao pelo cadeado).
+
+    Devolve (hz_global, ticks, ticks_na_janela, hz_na_janela). No codigo real a
+    janela de 300 ms recebe ~70 polls (~4 ms de compasso); com o poll de volta
+    dentro do `self.lock` recebe ZERO -- e' essa a diferenca que se mede, nao a
+    taxa global, que numa maquina repartilhada diz mais sobre o agendador do
+    Windows do que sobre o codigo.
+    """
+    module = module or caption_overlay
+    ov = object.__new__(module.NativeCaptionOverlay)
+    ov.lock = threading.RLock()
+    ov._poll_lock = threading.RLock()
+    ov._sched_lock = threading.RLock()
+    ov._tick_gen = 0
+    ov._tick_wake_gen = 0
+    ov._tick_event = threading.Event()
+    ov._tick_thread = None
+    ov._tick_deadline = 0.0
+    ov._tick_stop = False
+    ov.hwnd = 12345
+    ov.visible = True
+    ov._live = None
+    ov._cue = None
+    ov._roll = 0.0
+    ov._fade_t0 = None
+    ov._drag_armed = True
+    ov._drag_dragging = True
+    ov._drag = caption_drag.DragState(offset=(0, 0))
+    ov._drag.dragging = True
+    ov._drag.armed = True
+    ov._drag.lbutton = True
+    ov._drag.origin = (0, 0)
+    ov._drag_offset = (0, 0)
+    ov._drag_pos = (100, 100)
+    ov._drag_canvas = None
+    ov.work = dict(WORK)
+    ov.scale = 1.0
+    ov._paint_cost_s = SHELL_PAINT_S
+    ov._paint_limit_logged = 0.0
+    ov._content_due_at = None
+    ov._drag_ticks = 0
+    ov._drag_moves = 0
+    ov._drag_paints = 0
+    ov._drag_paint_s = 0.0
+    ov._drag_t0 = 0.0
+    ov.log = lambda *_a: None
+    ticks = []
+    window = {"t0": None, "t1": None}
+    real = (module._ctrl_held, module._lbutton_held, module._cursor_px,
+            module._window_rect, module._user32)
+    module._ctrl_held = lambda: True
+    module._lbutton_held = lambda: True
+    module._cursor_px = lambda: (700, 950)
+    module._window_rect = lambda _hwnd: (100, 100, 600, 120)
+
+    class _FakeUser32:
+        def SetWindowPos(self, *_a, **_k):
+            return 1
+
+    module._user32 = _FakeUser32()
+    ov._work_area = lambda: dict(WORK)
+    real_poll = ov._poll_drag
+    ov._poll_drag = lambda: (ticks.append(module._frame_now()) or real_poll())
+    # A PINTURA NAO REPINTA (o bitmap nao existe neste probe): ela custa
+    # `SHELL_PAINT_S`, e o competidor cobra-o no `self.lock` -- o mesmo preco.
+    ov._update = lambda: time.sleep(SHELL_PAINT_S)
+
+    def _painter():
+        with ov.lock:
+            window["t0"] = module._frame_now()
+            time.sleep(hold)
+            window["t1"] = module._frame_now()
+
+    t0 = module._frame_now()
+    try:
+        ov._arm_tick()
+        time.sleep(warmup)
+        rival = threading.Thread(target=_painter, daemon=True)
+        rival.start()
+        time.sleep(hold + 0.15)
+        rival.join(timeout=2.0)
+        ov._tick_stop = True
+        ov._tick_event.set()
+        if ov._tick_thread is not None:
+            ov._tick_thread.join(timeout=2.0)
+    finally:
+        (module._ctrl_held, module._lbutton_held, module._cursor_px,
+         module._window_rect, module._user32) = real
+    elapsed = module._frame_now() - t0
+    a, b = window["t0"], window["t1"]
+    inside = len([t for t in ticks if a is not None and b is not None
+                  and a <= t <= b]) if (a is not None and b is not None) else 0
+    span = (b - a) if (a is not None and b is not None) else 0.0
+    return (len(ticks) / elapsed if elapsed > 0 else 0.0, len(ticks), inside,
+            inside / span if span > 0 else 0.0)
+
+
+def arm_drag_rate_under_paint(plan, *_args, module=None):
+    """P16 -- o poll a arrastar NAO espera pela pintura do shell.
+
+    Ordem do dono, verbatim: *"segurar o ctrl pra mover a legenda, até o ctrl
+    fazer efeito, DEMORA PRA CARALHO, quando o sistema ta sob carga. ARRUMA."*
+    A medicao e' a que importa para a queixa dele: com a pintura a segurar o
+    `self.lock` por 300 ms, o poll continua a entregar o seu compasso -- o Ctrl
+    e' visto e a janela segue o rato DURANTE a pintura. Exige >= 20 polls na
+    janela (>= 66 Hz no pior caso de um poll preso a 4 ms); o mutante que devolve
+    o poll para dentro do `self.lock` entrega ZERO.
+    """
+    hz, ticks, inside, hz_inside = _contention_probe(module)
+    return ("P16 pintura a segurar o lock 300 ms: %d polls na janela (%.0f Hz), "
+            "%d ticks em %.1f s" % (inside, hz_inside, ticks, ticks / hz
+                                    if hz else 0.0),
+            inside >= 20 and ticks >= 30)
+
+
 # ── os mutantes (so' no --neg-arm) ─────────────────────────────────────────
 def _mutant_plan(real):
-    """A decisao real COPIADA e mutada: sem limite e a gravar sempre."""
+    """A decisao real COPIADA e mutada para o modo ANTIGO e sem guardas.
+
+    Tres metades do passado repostas de uma vez: o destino volta a ser
+    `cursor - pega` (o defeito que a ordem de 2026-11-15 curou), `pos` perde o
+    `clamp_pos` (a janela sai do ecra) e a largada grava SEMPRE (um clique sem
+    arrasto escreve ficheiro).
+    """
 
     def plan(ctrl_down, lbutton_down, cursor, rect, work, offset=(0, 0),
              state=None):
@@ -601,7 +787,10 @@ def main(argv=None) -> int:
     if neg:
         plan = _mutant_plan(caption_drag.drag_plan)
         pulse = _mutant_pulse
-        must_go_red = {"P4", "P7", "P9"}
+        # A copia mutada e' o modo ANTIGO (cursor - pega, sem limite, gravando
+        # sempre) e a pulsacao a zero. P2/P15 sao a ORDEM DE 2026-11-15 -- se o
+        # mutante antigo nao as derruba, o braco novo nao mede nada.
+        must_go_red = {"P2", "P4", "P7", "P9", "P15"}
     else:
         plan = caption_drag.drag_plan
         pulse = caption_drag.pulse_alpha
@@ -615,12 +804,14 @@ def main(argv=None) -> int:
         arm_click_without_ctrl(plan, pulse),
         arm_ctrl_outside(plan, pulse),
         arm_round_trip(plan, pulse),
+        arm_grab_at_edge(plan, pulse),
         arm_persistence(plan, pulse),
         arm_mark(pulse, pulse),
         arm_tick(plan, pulse),
         arm_gdi(pulse, pulse),
         arm_drag_poll_split(plan, pulse),
         arm_drag_rate(plan, pulse),
+        arm_drag_rate_under_paint(plan, pulse),
         arm_pulse_budget(plan, pulse),
     ]
     for name, ok in checks:
@@ -639,8 +830,12 @@ def main(argv=None) -> int:
                       encoding="utf-8", newline="").read()
         tmp = tempfile.mkdtemp(prefix="drag-poll-")
         extra = []
-        tick_anchor = ("                if (content_now or (moved and not dragging)\n"
-                       "                        or (armed and not dragging)):")
+        tick_anchor = ("            if not (content_now or (moved and not dragging)\n"
+                       "                    or (armed and not dragging)):\n"
+                       "                # Um tick que so' existiu para poll nao paga um render:\n"
+                       "                # rearma (o poll seguinte) sem tocar no bitmap.\n"
+                       "                self._arm_poll()\n"
+                       "                return\n")
         if src.count(tick_anchor) != 1:
             print("NEG-ARM IMPOSSIVEL: a condicao do _tick aparece %d vez(es)"
                   % src.count(tick_anchor))
@@ -648,24 +843,25 @@ def main(argv=None) -> int:
         mut1 = os.path.join(tmp, "overlay_repinta_ao_mover.py")
         io.open(mut1, "w", encoding="utf-8", newline="").write(src.replace(
             tick_anchor,
-            "                if (content_now or moved\n"
-            "                        or (armed and not dragging)):", 1))
+            "            if not (content_now or moved\n"
+            "                    or (armed and not dragging)):\n"
+            "                self._arm_poll()\n"
+            "                return\n", 1))
         extra.append(("poll-repinta-ao-mover", not arm_drag_rate(
             caption_drag.drag_plan, caption_drag.pulse_alpha,
             module=_load(mut1, "drag_repinta"), moved=True)[1]))
-        arm_anchor = ("            due = getattr(self, '_content_due_at', 'missing')\n"
-                      "            if isinstance(due, str):\n"
-                      "                paint_frame = True")
+        arm_anchor = ("        if getattr(self, '_drag_dragging', False):\n"
+                      "            delay = caption_drag.DRAG_FRAME_S\n")
         if src.count(arm_anchor) != 1:
-            print("NEG-ARM IMPOSSIVEL: a guarda do _arm_tick aparece %d vez(es)"
+            print("NEG-ARM IMPOSSIVEL: o poll do _arm_poll aparece %d vez(es)"
                   % src.count(arm_anchor))
             return 2
         mut2 = os.path.join(tmp, "overlay_limite_no_poll.py")
         io.open(mut2, "w", encoding="utf-8", newline="").write(src.replace(
             arm_anchor,
-            "            due = 'missing'\n"
-            "            if isinstance(due, str):\n"
-            "                paint_frame = True", 1))
+            "        if getattr(self, '_drag_dragging', False):\n"
+            "            delay = self._limit_by_paint(caption_drag.DRAG_FRAME_S)\n",
+            1))
         extra.append(("limite-da-pintura-no-poll", not arm_drag_rate(
             caption_drag.drag_plan, caption_drag.pulse_alpha,
             module=_load(mut2, "drag_limite"))[1]))
@@ -683,6 +879,64 @@ def main(argv=None) -> int:
         extra.append(("pulso-fora-do-orcamento", not arm_pulse_budget(
             caption_drag.drag_plan, caption_drag.pulse_alpha,
             module=_load(mut3, "drag_pulso"))[1]))
+        # (d) O CENTRO SO' DEPOIS DO PRIMEIRO TICK: o tick da pressao devolve o
+        #     rect sem saltar -- e' a ordem de 2026-11-15 pela metade.
+        drag_src = io.open(os.path.join(REPO, "app", "webview", "caption_drag.py"),
+                           encoding="utf-8", newline="").read()
+        late_anchor = ("            st.start_offset = st.offset\n"
+                       "            st.dragging = True\n")
+        if drag_src.count(late_anchor) != 1:
+            print("NEG-ARM IMPOSSIVEL: a largada do primeiro tick aparece %d "
+                  "vez(es)" % drag_src.count(late_anchor))
+            return 2
+        mut4 = os.path.join(tmp, "drag_centro_tarde.py")
+        io.open(mut4, "w", encoding="utf-8", newline="").write(
+            drag_src.replace(
+                late_anchor,
+                late_anchor
+                + "            return DragDecision(True, True, (rx, ry),\n"
+                  "                                st.offset, False, False,\n"
+                  "                                True, st)\n", 1))
+        late_mod = _load(mut4, "drag_centro_tarde")
+        extra.append(("centro-so-depois-do-1o-tick",
+                      not arm_grab_at_edge(late_mod.drag_plan)[1]))
+        # (e) SEM `clamp_pos` NO MODO CENTRO: o centro vai para o cursor mesmo
+        #     fora do ecra -- a legenda desaparece.
+        clamp_anchor = "        pos = clamp_pos(desired, (rw, rh), work)\n"
+        if drag_src.count(clamp_anchor) != 1:
+            print("NEG-ARM IMPOSSIVEL: o `clamp_pos` do centro aparece %d "
+                  "vez(es)" % drag_src.count(clamp_anchor))
+            return 2
+        mut5 = os.path.join(tmp, "drag_sem_limite.py")
+        io.open(mut5, "w", encoding="utf-8", newline="").write(
+            drag_src.replace(clamp_anchor, "        pos = desired\n", 1))
+        noclamp = _load(mut5, "drag_sem_limite")
+        extra.append(("centro-sem-limite-do-ecra",
+                      not arm_clamp(noclamp.drag_plan)[1]))
+        # (f) O POLL DE VOLTA PARA DENTRO DO `self.lock` -- o codigo ANTES do
+        #     arranjo de 2026-11-15. E' este mutante que da' o numero do ANTES
+        #     da P16: com o poll preso no cadeado da pintura a taxa cai para ~19
+        #     Hz aqui (4,2 Hz na maquina do dono, no log dele).
+        poll_anchor = ("            with _guard(self, '_poll_lock'):\n"
+                       "                moved = self._poll_drag()\n")
+        if src.count(poll_anchor) != 1:
+            print("NEG-ARM IMPOSSIVEL: o poll fora do cadeado aparece %d "
+                  "vez(es)" % src.count(poll_anchor))
+            return 2
+        mut6 = os.path.join(tmp, "overlay_poll_no_cadeado_da_pintura.py")
+        io.open(mut6, "w", encoding="utf-8", newline="").write(src.replace(
+            poll_anchor,
+            "            with self.lock:\n"
+            "                moved = self._poll_drag()\n", 1))
+        before_mod = _load(mut6, "drag_poll_preso")
+        hz_before, n_before, inside_before, _hz_in = _contention_probe(before_mod)
+        extra.append(("poll-no-cadeado-da-pintura",
+                      not arm_drag_rate_under_paint(
+                          caption_drag.drag_plan, caption_drag.pulse_alpha,
+                          module=before_mod)[1]))
+        print("NEG-ARM MEDIDO poll-no-cadeado-da-pintura: %.0f Hz, %d ticks, "
+              "%d polls na janela de 300 ms (o codigo real: P16 acima)"
+              % (hz_before, n_before, inside_before))
         for name, ok in extra:
             print("NEG-ARM %-28s %s" % (name, "CAUGHT" if ok else "NOT-CAUGHT"))
         caught = caught_plan and all(ok for _n, ok in extra)

@@ -56,6 +56,17 @@ RELOAD_FLOOR_S = 60.0
 #: 20 s para carregar nao pode voltar a carregar 60 s depois de o ter largado --
 #: o debito seria 1/3 do tempo em disco.
 RELOAD_FLOOR_LOAD_FACTOR = 10.0
+#: O PISO E' DO CICLO, NAO DA PRIMEIRA VOLTA (dono, 2026-11-15: *"o modelo que
+#: transcreve ao vivo, fica afk/idle ou descarrega muito rapido"*). O defeito
+#: medido acima foi um par de **31 s** entre carregar e largar; uma largada que
+#: veio DEPOIS de o motor residir este tempo nao e' meia volta desse ciclo, e'
+#: o fim de uma sessao. Sem esta separacao o piso atrasava o audio que volta
+#: (`REDUX_BATCH_DEFERRED reason=reload-floor wait_s=...`) por um ciclo em que
+#: ele nao tomou parte -- 60 s de silencio a mais para quem so' parou de falar.
+#: O numero e' **300 s = 10x** o par medido (31 s) e o mesmo valor que
+#: `app/webview/warm_engine.py` usa como `WARM_THRASH_RESIDENT_S` -- duas
+#: declaracoes, um numero so' (o oraculo do motor quente compara-os).
+RELOAD_FLOOR_LONG_RESIDENT_S = 300.0
 
 #: O modulo da decisao, carregado UMA vez por processo (ver `shedding`).
 _SHEDDING_CACHE = {"module": None, "path": None}
@@ -211,6 +222,9 @@ class ParakeetEngine:
         #: e `release_age_s` sao o que os pisos leem.
         self.loaded_t = 0.0
         self.released_t = 0.0
+        #: Quanto tempo o motor residiu na ULTIMA largada (0 = nunca largou). E' o
+        #: que decide se o piso da recarga se aplica -- ver `reload_floor_left`.
+        self.last_resident_s = 0.0
 
     def name(self):
         return self.requested
@@ -256,8 +270,19 @@ class ParakeetEngine:
         largadas numa execucao, com um par a 31 s. O piso e' `RELOAD_FLOOR_S`,
         esticado por `load_s * RELOAD_FLOOR_LOAD_FACTOR` para um motor cuja
         leitura custa dezenas de segundos.
+
+        O PISO NAO ALCANCA UMA LARGADA DE LONGA RESIDENCIA (2026-11-15). O ciclo
+        que ele corta e' "carrega, larga em 31 s, recarrega": se o motor RESIDIU
+        `RELOAD_FLOOR_LONG_RESIDENT_S` (300 s = 10x esse par), a largada foi o fim
+        de uma sessao e nao meia volta de nada -- cobrar 60 s de espera ao audio
+        que voltou seria o proprio defeito que o dono reportou, aplicado a quem
+        nao participou do ciclo. A decisao fica registada onde e' lida: a linha
+        `REDUX_BATCH_DEFERRED reason=reload-floor` deixa de sair e o piso devolve
+        0, com `release_age_s()` a dizer quanto o motor esteve carregado.
         """
         if not self.released_t:
+            return 0.0
+        if self.last_resident_s >= RELOAD_FLOOR_LONG_RESIDENT_S:
             return 0.0
         floor = max(RELOAD_FLOOR_S, RELOAD_FLOOR_LOAD_FACTOR * float(self.load_s or 0))
         return max(0.0, floor - (time.time() - self.released_t))
@@ -274,6 +299,10 @@ class ParakeetEngine:
         if self._backend is None:
             return False
         before = self.rss_fn()
+        # A RESIDENCIA FICA ESCRITA ANTES DO `loaded_t` CAIR (2026-11-15): e' ela
+        # que decide se a proxima carga paga o piso (`reload_floor_left`), e
+        # depois da largada `release_age_s()` ja' devolve 0.
+        self.last_resident_s = self.release_age_s()
         self._backend = None
         self.releases += 1
         self.released_t = time.time()
@@ -281,7 +310,8 @@ class ParakeetEngine:
         self.log(
             f"REDUX_ENGINE_RELEASED engine={self.requested} reason={reason} "
             f"rss_before_mb={before:.1f} rss_after_mb={self.rss_fn():.1f} "
-            f"releases={self.releases} — carrega outra vez quando a carga libertar")
+            f"resident_s={self.last_resident_s:.0f} releases={self.releases} "
+            f"— carrega outra vez quando a carga libertar")
         return True
 
     def transcribe(self, pcm):

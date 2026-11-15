@@ -34,8 +34,17 @@ THE ARMS (each GREEN/RED on its own):
   18 sender-never-blocks    a stalled peer drops meter/stats first, captions last
   19 pid-identity           pid+start written, removed on exit, dead pid named
   20 no-bypass              no env var / flag / task argument skips G1-G4 (R6)
+  21 attach-20              attach round-trip under the 20 ms handshake budget
+  22 ttl-exit               parked past the hold -> `WARM_EXIT why=idle-expired`
+  23 activity-resets-idle   audio/caption evidence resets the clock; no evidence expires
+  24 idle-past-hold-expires the exit names idle_s, ttl_s AND the last evidence
+  25 reload-floor-thrash    thrash pair waits the floor; long residency reloads NEXT tick
+  26 hold-vs-load-ratio     the numbers judged against the 16 measured loads
+  27 one-number-two-files   the same thrash window in warm_engine and engine_policy
+  28 policy-floor-scope     the WORKER's floor: short release waits, long one does not
+  29 tap-blocks-are-not-work  a parked-ring block is not evidence (D-04 stays closed)
 
---neg-arm: the same source is copied to %TMPDIR%, six mutants are applied by
+--neg-arm: the same source is copied to %TMPDIR%, ten mutants are applied by
 LITERAL replacement, and each mutant must turn at least one arm RED. rc=1 and
 ``NEG-ARM PASS`` when every mutant is caught; rc=0 when one escapes.
 
@@ -1178,7 +1187,280 @@ def arm_ttl_exit(mod, work):
     return arm
 
 
-# ── the arm table ───────────────────────────────────────────────────────────
+# ── arms 23-29: o timing (dono, 2026-11-15) ─────────────────────────────────
+POLICY = os.path.join(ROOT, "worker", "engine_policy.py")
+
+
+def _policy_module():
+    """`worker/engine_policy.py` carregado por caminho -- o outro lado do numero.
+
+    Duas declaracoes, um numero so' (`RELOAD_FLOOR_LONG_RESIDENT_S` la',
+    `WARM_THRASH_RESIDENT_S` aqui): o oraculo compara-os porque o defeito que
+    esta' arm impede e' exactamente um deles mudar sozinho.
+    """
+    try:
+        return load_module(POLICY, "engine_policy_oracle")
+    except Exception as exc:  # noqa: BLE001 -- an unimportable policy is a RED arm
+        say("  engine_policy.py nao carregou: %r" % (exc,))
+        return None
+
+
+def arm_activity_resets_idle(mod, work):
+    """A ACTIVIDADE REINICIA O RELOGIO DO IDLE (2026-11-15, o dono).
+
+    O sinal e' o TRABALHO, nao o aperto de mao: um motor que esta' a receber
+    audio ou a pintar uma linha nao esta' idle so' porque ninguem esta' ligado.
+    Sem esta arm o relogio volta a ser `now - _last_detach_at` e o motor
+    descarrega a meio de uma sessao -- a reclamacao literal do dono.
+    """
+    arm = Arm(23, "activity-resets-idle")
+    import queue
+    clock = Clock(1000.0)
+    case = EngineCase(mod, work, "act", probe=Probe(40.0, 5.0), clock=clock)
+    conn = case.client()
+    try:
+        case.load()
+        arm.check(case.engine.asr is not None, "the graph is resident")
+        arm.check(case.engine._last_activity_why == "load",
+                  "the load itself is the first evidence (got %r)"
+                  % (case.engine._last_activity_why,))
+        ttl = 60.0
+        case.engine.park_ttl_s = ttl
+        # Uma sessao a serio, sem threads: o caminho REAL (`_on_block` e
+        # `_emit_events`) e' o que carimba.
+        session = mod.AttachedSession(case.engine, case.engine.asr,
+                                      live=False, replay=False)
+        session.queue = queue.Queue(maxsize=8)
+        case.engine.session_obj = session
+        # 75 s sem ninguem = ja' passou o TTL. Pior: o detach ficticio fica no
+        # passado, para a arm nao poder passar por o `max` ser trivial.
+        clock.advance(75.0)
+        case.engine._last_detach_at = clock.now - 75.0
+        case.engine.session_obj = None
+        case.engine.tick()
+        arm.check(case.engine.quit is True,
+                  "control: without evidence, 75 s > 60 s DOES expire")
+        case.engine.quit = False
+        # Agora a evidencia: um bloco de audio REAL pelo caminho do tap, e uma
+        # linha pintada pela sessao.
+        import numpy as _np
+        session._on_block(_np.zeros(session.asr.chunk, dtype="float32"))
+        arm.check(case.engine._last_activity_why == "audio",
+                  "an audio block stamps evidence=audio (got %r)"
+                  % (case.engine._last_activity_why,))
+        session._emit_events([{"text": "oracle", "start": 0.0, "end": 1.0,
+                               "final": True}])
+        arm.check(case.engine._last_activity_why == "caption",
+                  "a painted line stamps evidence=caption (got %r)"
+                  % (case.engine._last_activity_why,))
+        case.flush()
+        arm.check("WARM_ACTIVITY why=audio" in case.log,
+                  "WARM_ACTIVITY why=audio was written")
+        case.engine.tick()
+        arm.check(case.engine.quit is False,
+                  "with evidence the engine does NOT expire at 75 s")
+        clock.advance(30.0)
+        case.engine.tick()
+        arm.check(case.engine.quit is False,
+                  "30 s after the evidence it is still inside a 60 s hold")
+    finally:
+        case.close()
+    return arm
+
+
+def arm_idle_past_hold_expires(mod, work):
+    """E o outro lado: SEM trabalho, o motor expira -- e diz o numero exacto."""
+    arm = Arm(24, "idle-past-hold-expires")
+    clock = Clock(2000.0)
+    case = EngineCase(mod, work, "hold", probe=Probe(40.0, 5.0), clock=clock)
+    try:
+        case.load()
+        case.engine.park_ttl_s = 60.0
+        clock.advance(59.0)
+        case.engine.tick()
+        arm.check(case.engine.quit is False, "59 s < 60 s: still parked")
+        clock.advance(2.0)
+        case.engine.tick()
+        arm.check(case.engine.quit is True, "61 s > 60 s: the engine asks to exit")
+        arm.check("WARM_EXIT why=idle-expired" in case.log,
+                  "the exit names the hold")
+        arm.check("idle_s=61.0" in case.log,
+                  "the exit carries the MEASURED idle, not just the reason")
+        arm.check("ttl_s=60.0" in case.log, "the exit carries the ttl it compared")
+        arm.check("evidence=load" in case.log,
+                  "the exit names the last evidence it had")
+    finally:
+        case.close()
+    return arm
+
+
+def arm_reload_floor_thrash(mod, work):
+    """O PISO E' DO THRASH: par carga/largada curto espera, cauda longa nao.
+
+    (iii) da aceitacao: o piso NAO pode atrasar a primeira recarga depois de um
+    periodo quieto, e TEM de travar o par imediato. Duas populacoes, um numero.
+    """
+    arm = Arm(25, "reload-floor-thrash")
+    # (a) o par do ciclo medido (31 s): larga 31 s depois de carregar.
+    clock = Clock(3000.0)
+    thrash = EngineCase(mod, work, "thr", probe=Probe(40.0, 5.0), clock=clock)
+    try:
+        thrash.load()
+        clock.advance(31.0)
+        thrash.engine.release("shed")
+        arm.check(thrash.engine._thrash is True,
+                  "a 31 s residency is the thrash class (measured pair)")
+        arm.check(thrash.engine.reload_floor_left() > 0.0,
+                  "the floor is armed for a 31 s release (got %.1f)"
+                  % thrash.engine.reload_floor_left())
+        arm.check("thrash=true" in thrash.log,
+                  "WARM_RELEASE names thrash=true in the log")
+        thrash.engine.tick()
+        arm.check(thrash.loader.calls == 1,
+                  "the tick right after a thrash release does NOT load")
+        clock.advance(29.0)
+        thrash.engine.tick()
+        arm.check(thrash.loader.calls == 1, "29 s later it still waits")
+        clock.advance(2.0)
+        thrash.engine.tick()
+        if thrash.engine._load_thread is not None:
+            thrash.engine._load_thread.join(timeout=5.0)
+        arm.check(thrash.loader.calls == 2, "31 s later it reloads exactly once")
+        arm.check("WARM_RELOAD thrash=true" in thrash.log,
+                  "the reload says it was the thrash class")
+    finally:
+        thrash.close()
+    # (b) a largada de longa residencia: recarrega no tick SEGUINTE.
+    clock2 = Clock(8000.0)
+    long_case = EngineCase(mod, work, "long", probe=Probe(40.0, 5.0), clock=clock2)
+    try:
+        long_case.load()
+        clock2.advance(3146.0)     # a residencia medida (52,4 min) do log
+        long_case.engine.release("shed")
+        arm.check(long_case.engine._thrash is False,
+                  "a 3146 s residency is the LONG class, not the thrash class")
+        arm.check(long_case.engine.reload_floor_left() == 0.0,
+                  "the floor is ZERO for a long-resident release (got %.1f)"
+                  % long_case.engine.reload_floor_left())
+        arm.check("reload_in_s=0.0" in long_case.log,
+                  "WARM_RELEASE says the reload is immediate")
+        long_case.engine.tick()
+        if long_case.engine._load_thread is not None:
+            long_case.engine._load_thread.join(timeout=5.0)
+        arm.check(long_case.loader.calls == 2,
+                  "the very NEXT tick reloads (got %d loads)" % long_case.loader.calls)
+        arm.check("WARM_RELOAD_IMMEDIATE" in long_case.log,
+                  "the log names WARM_RELOAD_IMMEDIATE, not a wait")
+        arm.check("WARM_RELOAD thrash=true" not in long_case.log,
+                  "no thrash line for the long class")
+    finally:
+        long_case.close()
+    return arm
+
+
+def arm_hold_ratio(mod, work):
+    """Os numeros escolhidos, julgados contra as medidas que os justificam."""
+    arm = Arm(26, "hold-vs-load-ratio")
+    loads = (4505.1, 4804.6, 7452.1, 7792.0, 8060.0, 8514.1, 9787.0, 11164.2,
+             11597.0, 11749.0, 12471.5, 13477.6, 16759.7, 17341.9, 26027.8,
+             41015.3)
+    ordered = sorted(loads)
+    median_ms = ordered[len(ordered) // 2]
+    worst_ms = ordered[-1]
+    ttl_ms = mod.WARM_PARK_TTL_S * 1000.0
+    say("  hold=%.0f s median_load=%.1f ms worst_load=%.1f ms ratios=%.1fx/%.1fx"
+        % (mod.WARM_PARK_TTL_S, median_ms, worst_ms, ttl_ms / median_ms,
+           ttl_ms / worst_ms))
+    arm.check(ttl_ms >= 100.0 * median_ms,
+              "the hold is >= 100x the MEDIAN measured load (%.1fx)"
+              % (ttl_ms / median_ms))
+    arm.check(ttl_ms >= 20.0 * worst_ms,
+              "the hold is >= 20x the WORST measured load (%.1fx)"
+              % (ttl_ms / worst_ms))
+    arm.check(mod.WARM_PARK_TTL_S < 7200.0,
+              "the hold is < the shortest measured gap between openings (2 h)")
+    arm.check(mod.WARM_PARK_TTL_S > 600.0,
+              "the hold grew past the old 600 s that paid 8 loads for 0 attaches")
+    arm.check(8.0 * 31.0 <= mod.WARM_THRASH_RESIDENT_S <= 30.0 * 31.0,
+              "the thrash window is 8-30x the measured 31 s pair (got %.0f = "
+              "%.1fx)" % (mod.WARM_THRASH_RESIDENT_S,
+                          mod.WARM_THRASH_RESIDENT_S / 31.0))
+    arm.check(mod.WARM_THRASH_RESIDENT_S < mod.WARM_PARK_TTL_S,
+              "the floor window is shorter than the hold")
+    return arm
+
+
+def arm_two_declarations_one_number(mod, work):
+    """O MESMO numero nos dois modulos -- o defeito e' um deles mudar sozinho."""
+    arm = Arm(27, "one-number-two-files")
+    policy = _policy_module()
+    arm.check(policy is not None, "worker/engine_policy.py loads")
+    if policy is None:
+        return arm
+    arm.check(float(policy.RELOAD_FLOOR_LONG_RESIDENT_S)
+              == float(mod.WARM_THRASH_RESIDENT_S),
+              "engine_policy.RELOAD_FLOOR_LONG_RESIDENT_S == "
+              "warm_engine.WARM_THRASH_RESIDENT_S (%.0f vs %.0f)"
+              % (float(policy.RELOAD_FLOOR_LONG_RESIDENT_S),
+                 float(mod.WARM_THRASH_RESIDENT_S)))
+    return arm
+
+
+def arm_policy_floor_scope(mod, work):
+    """No WORKER: o piso trava o par curto e nao trava a volta de uma sessao."""
+    arm = Arm(28, "policy-floor-scope")
+    policy = _policy_module()
+    if policy is None:
+        arm.check(False, "worker/engine_policy.py loads")
+        return arm
+    made = []
+
+    def engine(resident_s):
+        e = policy.ParakeetEngine("onnx", lambda: ("a", "b"), lambda *a: ([], []),
+                                  lambda: 1000.0, log_fn=made.append)
+        e._backend = object()
+        e.loaded_t = time.time() - float(resident_s)
+        e.load_s = 1.91
+        return e
+
+    short = engine(31.0)
+    short.release("shed-muito-alta")
+    arm.check(short.reload_floor_left() > 0.0,
+              "31 s residente -> o piso esta' armado (%.1f)"
+              % short.reload_floor_left())
+    arm.check(any("resident_s=31" in line for line in made),
+              "REDUX_ENGINE_RELEASED carries the residency it measured")
+    waited = engine(3146.0)
+    waited.release("shed-muito-alta")
+    arm.check(waited.reload_floor_left() == 0.0,
+              "3146 s residente -> piso ZERO, a sessao acabou e nao e' ciclo")
+    fresh = engine(0.0)
+    fresh.available = True
+    arm.check(fresh.reload_floor_left() == 0.0,
+              "nunca largou -> piso ZERO (a primeira carga nao paga piso)")
+    return arm
+
+
+def arm_activity_not_the_tap(mod, work):
+    """O RING PARQUEADO NAO E' ACTIVIDADE -- senao o motor nunca expira (D-04)."""
+    arm = Arm(29, "tap-blocks-are-not-work")
+    clock = Clock(4000.0)
+    case = EngineCase(mod, work, "ringblk", probe=Probe(40.0, 5.0), clock=clock)
+    try:
+        case.load()
+        before = case.engine._last_activity_at
+        case.engine.park_ttl_s = 30.0
+        clock.advance(31.0)
+        import numpy as _np
+        case.engine._ring_block(_np.zeros(8960, dtype="float32"))
+        case.engine.tick()
+        arm.check(case.engine._last_activity_at == before,
+                  "a parked-ring block did NOT move the activity clock")
+        arm.check(case.engine.quit is True,
+                  "silence in the ring does not keep a 1.9 GB product alive")
+    finally:
+        case.close()
+    return arm
 def run_arms(mod, work, shell_mod):
     results = []
     os.makedirs(work, exist_ok=True)
@@ -1224,6 +1506,13 @@ def run_arms(mod, work, shell_mod):
     run(arm_no_bypass, mod, work)
     run(arm_attach_latency, mod, work)
     run(arm_ttl_exit, mod, work)
+    run(arm_activity_resets_idle, mod, work)
+    run(arm_idle_past_hold_expires, mod, work)
+    run(arm_reload_floor_thrash, mod, work)
+    run(arm_hold_ratio, mod, work)
+    run(arm_two_declarations_one_number, mod, work)
+    run(arm_policy_floor_scope, mod, work)
+    run(arm_activity_not_the_tap, mod, work)
     return results
 
 
@@ -1247,6 +1536,22 @@ MUTANTS = (
     ("M6-detach-quits",
      '        if op == "detach":\n            why = str(message.get("why") or "shell-closing")',
      '        if op == "detach":\n            self.quit = True  # mutant\n            why = str(message.get("why") or "shell-closing")'),
+    # M7: o relogio do idle volta a ser o detach -- a reclamacao literal do dono.
+    ("M7-idle-clock-ignores-work",
+     "        return now - max(self._last_detach_at, self._last_activity_at)",
+     "        return now - self._last_detach_at  # mutant: work does not count"),
+    # M8: o piso removido de vez -- o ciclo 82-cargas/70-largadas volta.
+    ("M8-floor-removed",
+     "        if self._released_at is None or not self._thrash:\n            return 0.0",
+     "        return 0.0  # mutant: the floor is decorative"),
+    # M9: uma espera curta e' o que o dono tem hoje -- o hold abaixo do custo.
+    ("M9-hold-below-load-cost",
+     "WARM_PARK_TTL_S = 1800.0\n",
+     "WARM_PARK_TTL_S = 600.0  # mutant: the hold that paid 8 loads for 0 attaches\n"),
+    # M10: a largada longa volta a pagar o piso -- o atraso que o dono reportou.
+    ("M10-long-release-pays-floor",
+     "        self._thrash = resident_s < WARM_THRASH_RESIDENT_S",
+     "        self._thrash = True  # mutant: every release pays the floor"),
 )
 
 

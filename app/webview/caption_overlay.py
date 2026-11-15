@@ -465,6 +465,18 @@ class _DragCanvas:
 _TIMER_PERIOD = {'on': False}
 
 
+def _guard(obj, name):
+    """O cadeado DEDICADO do objeto, ou o `lock` geral quando ele nao existe.
+
+    Os oraculos (`caption-drag-oracle`, `caption-tick-thread-oracle`) constroem
+    o overlay com `object.__new__` e poem so' o `lock`: um atributo a mais
+    faltaria la' e o tick levantava `AttributeError`. O `getattr` e' o mesmo
+    padrao de compatibilidade que `_content_due_at` ja' usa.
+    """
+    lock = getattr(obj, name, None)
+    return lock if lock is not None else obj.lock
+
+
 def _timer_period(on, log_fn=None):
     """Liga/desliga a resolucao de 1 ms do relogio -- idempotente e fail-open."""
     if on == _TIMER_PERIOD['on']:
@@ -540,6 +552,22 @@ class NativeCaptionOverlay:
     def __init__(self, log=None):
         self.log = log or (lambda msg: None)
         self.lock = threading.RLock()
+        #: O CADEADO DO POLL DO ARRASTO (ordem do dono, verbatim: *"segurar o
+        #: ctrl pra mover a legenda, até o ctrl fazer efeito, DEMORA PRA
+        #: CARALHO, quando o sistema ta sob carga. ARRUMA."*). O `lock` geral e'
+        #: tomado pela pintura de conteudo (`set_text` -> `_update`) pelo custo
+        #: medido de 31,75 ms (`CAPTION_DRAG_RATE ... paint_ms=31.75`, no
+        #: `_main/webview-run.log`); com o poll DENTRO do mesmo lock, a taxa
+        #: entregue caiu a 4,2 Hz (mesmo log), e o Ctrl demorava a aparecer.
+        #: Só' o poll e as contas do arrasto passam por este cadeado, que a
+        #: pintura nunca toma -- por isso a janela segue o rato sem esperar
+        #: pintura nenhuma.
+        self._poll_lock = threading.RLock()
+        #: O CADEADO DA AGENDA do tick (prazo + geracao). `_tick_loop` e o poll
+        #: tem de se re-armar MESMO com a pintura a segurar o `self.lock`: MEDIDO
+        #: no `caption-drag-oracle` P19, a janela mais longa entre dois ticks cai
+        #: de 135,2 ms para menos de 10 ms quando a agenda nao espera a pintura.
+        self._sched_lock = threading.RLock()
         self.hwnd = None
         self.thread_id = None
         self.visible = False
@@ -954,13 +982,28 @@ class NativeCaptionOverlay:
                                                        False)))
             if paint_frame:
                 delay = self._limit_by_paint(delay)
+        self._arm_at(delay)
+
+    def _arm_at(self, delay):
+        """Escreve o prazo (`delay`, ou `None`) e acorda o fio do relogio.
+
+        O CADEADO E' O DA AGENDA (`_sched_lock`), NAO O DA PINTURA. Ordem do
+        dono, verbatim: *"segurar o ctrl pra mover a legenda, até o ctrl fazer
+        efeito, DEMORA PRA CARALHO, quando o sistema ta sob carga. ARRUMA."* O
+        `self.lock` esta' tomado pelo `set_text`/`_update` do shell pelo custo
+        medido de 31,75 ms (`CAPTION_DRAG_RATE ... paint_ms=31.75`); esperar por
+        ele aqui atrasava o ARME seguinte em exactamente esse custo, e o poll do
+        arrasto perdia o compasso. Medido no `caption-drag-oracle` P16: com a
+        agenda a esperar a pintura a taxa do poll cai de 213 Hz para 25 Hz.
+        """
+        sched = _guard(self, '_sched_lock')
         if delay is None:
-            with self.lock:
+            with sched:
                 self._tick_deadline = 0.0
             self._tick_event.set()
             return
-        self._tick_gen += 1
-        with self.lock:
+        with sched:
+            self._tick_gen += 1
             self._tick_deadline = _frame_now() + max(0.001, float(delay))
             self._tick_wake_gen = self._tick_gen
         if self._tick_thread is None or not self._tick_thread.is_alive():
@@ -1029,8 +1072,9 @@ class NativeCaptionOverlay:
 
     def _tick_loop(self):
         """O UNICO fio do relogio: dorme ate' ao prazo, acorda, pinta, repete."""
+        sched = _guard(self, '_sched_lock')
         while not self._tick_stop:
-            with self.lock:
+            with sched:
                 deadline = self._tick_deadline
                 gen = getattr(self, '_tick_wake_gen', self._tick_gen)
             if not deadline:
@@ -1072,53 +1116,105 @@ class NativeCaptionOverlay:
                     # 0,2 ms cedo a um quadro nao existe no ecra.
                     if deadline - _frame_now() > 0.001:
                         continue
-            with self.lock:
+            with sched:
                 if gen != self._tick_gen or self._tick_deadline != deadline:
                     continue
                 self._tick_deadline = 0.0
             self._tick(gen)
 
+    def _arm_poll(self, retry=False):
+        """O ARME SEGUINTE DE UM TICK QUE NAO PINTOU -- sem tocar na pintura.
+
+        Ate' 2026-11-15 este caminho chamava o `_arm_tick` inteiro, que
+        recalculava o prazo do CONTEUDO (`_next_delay`, `word_fade`) e passava
+        pelo orcamento. Isso tornava o poll refem do relogio do texto; agora o
+        poll usa o ritmo do ESTADO (`DRAG_FRAME_S` a arrastar, `PULSE_FRAME_S`
+        com Ctrl, `POLL_S` parado) e so' olha para o prazo do conteudo ja'
+        calculado (`_content_due_at`), nunca o recalcula. `retry` e' o caminho de
+        emergencia: a pintura do shell estava a correr e o conteudo ficou para
+        ja' -- 4 ms depois tenta outra vez.
+        """
+        now = _frame_now()
+        if getattr(self, '_drag_dragging', False):
+            delay = caption_drag.DRAG_FRAME_S
+        elif getattr(self, '_drag_armed', False):
+            delay = caption_drag.PULSE_FRAME_S
+        elif getattr(self, 'hwnd', None) and getattr(self, 'visible', False):
+            delay = caption_drag.POLL_S
+        else:
+            delay = None
+        due = getattr(self, '_content_due_at', None)
+        if isinstance(due, float):
+            left = self._limit_by_paint(max(0.0, due - now))
+            if delay is None or left < delay:
+                delay = left
+        if retry and (delay is None or delay > caption_drag.DRAG_FRAME_S):
+            delay = caption_drag.DRAG_FRAME_S
+        if delay is not None:
+            _timer_period(True, self.log)
+        self._arm_at(delay)
+
     def _tick(self, gen):
         try:
-            with self.lock:
-                if gen != self._tick_gen:
-                    return
-                # O ARRASTO LE' O TECLADO ANTES DA PINTURA (2026-11-08): e' este
-                # tick que vira "Ctrl carregado?" e "o rato mexeu-se?" -- o
-                # mesmo fio de sempre, sem hook e sem timer por frame.
+            # ── O POLL FORA DO CADEADO DA PINTURA (2026-11-15) ──────────────
+            # Ordem do dono, verbatim: *"segurar o ctrl pra mover a legenda,
+            # até o ctrl fazer efeito, DEMORA PRA CARALHO, quando o sistema ta
+            # sob carga. ARRUMA."* O `self.lock` e' o MESMO que o shell toma no
+            # `set_text`->`_update`, pelo custo medido de 31,75 ms
+            # (`CAPTION_DRAG_RATE ... paint_ms=31.75`, `_main/webview-run.log`);
+            # com o poll la' dentro, a taxa entregue foi 4,2 Hz no mesmo log.
+            # O poll do arrasto tem cadeado PROPRIO (`_poll_lock`), que a
+            # pintura nunca toma: enquanto o Ctrl esta' em baixo ou um arrasto
+            # decorre, a janela segue o rato sem esperar pintura nenhuma.
+            with _guard(self, '_poll_lock'):
                 moved = self._poll_drag()
                 armed = getattr(self, '_drag_armed', False)
                 dragging = getattr(self, '_drag_dragging', False)
-                # QUEM REPINTA: conteudo VENCIDO, o gesto a mudar, ou a pulsacao.
-                # A arrastar com o rato parado nao ha' nada a mudar no bitmap
-                # (o contorno ja' esta' solido e o `SetWindowPos` ja' moveu a
-                # janela) -- o tick continua a ler o rato, mas nao paga render.
-                # O `moved` NAO repinta durante o arrasto: a janela ja' seguiu o
-                # cursor no `_poll_drag`, e repintar aqui prendia o arrasto ao
-                # custo da pintura (11,6 ms = 34 Hz) em vez do poll barato.
-                due = getattr(self, '_content_due_at', 'missing')
-                if isinstance(due, str):
-                    content_now = bool(getattr(self, '_tick_content', True))
-                elif due is None:
-                    content_now = False
-                else:
-                    content_now = _frame_now() + 0.001 >= float(due)
-                if (content_now or (moved and not dragging)
-                        or (armed and not dragging)):
-                    # O CUSTO DA PINTURA E' O QUE DECIDE A TAXA (ver
-                    # `_limit_by_paint`): medido aqui, no caminho real.
-                    _t0 = _frame_now()
-                    self._update()
-                    _cost = _frame_now() - _t0
-                    self._paint_cost_s = _cost
-                    if dragging:
+            if gen != self._tick_gen:
+                # Um arme mais novo ja' tomou o lugar deste: o poll acima
+                # correu de qualquer forma, mas pintar seria pintar o passado.
+                return
+            # QUEM REPINTA: conteudo VENCIDO, o gesto a mudar, ou a pulsacao.
+            # A arrastar com o rato parado nao ha' nada a mudar no bitmap
+            # (o contorno ja' esta' solido e o `SetWindowPos` ja' moveu a
+            # janela) -- o tick continua a ler o rato, mas nao paga render.
+            # O `moved` NAO repinta durante o arrasto: a janela ja' seguiu o
+            # cursor no `_poll_drag`, e repintar aqui prendia o arrasto ao
+            # custo da pintura (11,6 ms = 34 Hz) em vez do poll barato.
+            due = getattr(self, '_content_due_at', 'missing')
+            if isinstance(due, str):
+                content_now = bool(getattr(self, '_tick_content', True))
+            elif due is None:
+                content_now = False
+            else:
+                content_now = _frame_now() + 0.001 >= float(due)
+            if not (content_now or (moved and not dragging)
+                    or (armed and not dragging)):
+                # Um tick que so' existiu para poll nao paga um render:
+                # rearma (o poll seguinte) sem tocar no bitmap.
+                self._arm_poll()
+                return
+            # A PINTURA ESPERA, O POLL NAO (2026-11-15). Se o shell ja' esta' a
+            # pintar (`set_text`), este quadro nao se enfileira atras dele: o
+            # poll do proximo tick volta a tentar, e o arrasto nao perde o
+            # compasso por causa de um bitmap que ja' vai ser substituido.
+            if not self.lock.acquire(False):
+                self._arm_poll(retry=True)
+                return
+            try:
+                # O CUSTO DA PINTURA E' O QUE DECIDE A TAXA (ver
+                # `_limit_by_paint`): medido aqui, no caminho real.
+                _t0 = _frame_now()
+                self._update()
+                _cost = _frame_now() - _t0
+                self._paint_cost_s = _cost
+                if dragging:
+                    with _guard(self, '_poll_lock'):
                         self._drag_paints = int(getattr(self, '_drag_paints', 0)) + 1
                         self._drag_paint_s = (float(getattr(self, '_drag_paint_s', 0.0))
                                               + _cost)
-                else:
-                    # Um tick que so' existiu para poll nao paga um render:
-                    # rearma (o poll seguinte) sem tocar no bitmap.
-                    self._arm_tick()
+            finally:
+                self.lock.release()
         except Exception as exc:  # noqa: BLE001 -- see the fail-open rule
             self._fail_open(exc)
 
@@ -1145,11 +1241,12 @@ class NativeCaptionOverlay:
 
     def _drag_reset(self):
         """Esquece o gesto em curso SEM gravar -- a legenda escondida nao se arrasta."""
-        self._drag = caption_drag.DragState(
-            offset=getattr(self, '_drag_offset', (0, 0)))
-        self._drag_armed = False
-        self._drag_dragging = False
-        self._drag_pos = None
+        with _guard(self, '_poll_lock'):
+            self._drag = caption_drag.DragState(
+                offset=getattr(self, '_drag_offset', (0, 0)))
+            self._drag_armed = False
+            self._drag_dragging = False
+            self._drag_pos = None
 
     def _poll_drag(self):
         """Le' Ctrl/botao/cursor NESTE tick e aplica a decisao. Devolve `moved`.
@@ -1435,16 +1532,24 @@ class NativeCaptionOverlay:
                          + (self.work.get('width', 1920) - width) / 2)
             base_y = int(self.work.get('y', 0) + self.work.get('height', 1080)
                          - height - 48 * self.scale)
-            dragging = bool(getattr(self, '_drag_dragging', False))
-            drag_offset = getattr(self, '_drag_offset', (0, 0))
-            if dragging and getattr(self, '_drag_pos', None) is not None:
-                x, y = int(self._drag_pos[0]), int(self._drag_pos[1])
-            else:
-                x, y = caption_drag.clamp_pos(
-                    (base_x + int(drag_offset[0]),
-                     base_y + int(drag_offset[1])),
-                    (width, height), self._work_area())
-            self._drag_offset = (int(x - base_x), int(y - base_y))
+            with _guard(self, '_poll_lock'):
+                # O POLL ESCREVE ESTES QUATRO no fio do tick (desde 2026-11-15
+                # fora do `self.lock`): ler o par aqui sem o cadeado do poll
+                # podia casar o `x` de um tick com o `y` do seguinte e gravar um
+                # deslocamento que ninguem pediu. O `self.lock` continua a
+                # excluir os dois PINTORES -- este cadeado so' fecha a janela
+                # em que o poll escreve.
+                dragging = bool(getattr(self, '_drag_dragging', False))
+                drag_pos = getattr(self, '_drag_pos', None)
+                drag_offset = getattr(self, '_drag_offset', (0, 0))
+                if dragging and drag_pos is not None:
+                    x, y = int(drag_pos[0]), int(drag_pos[1])
+                else:
+                    x, y = caption_drag.clamp_pos(
+                        (base_x + int(drag_offset[0]),
+                         base_y + int(drag_offset[1])),
+                        (width, height), self._work_area())
+                self._drag_offset = (int(x - base_x), int(y - base_y))
             pt_dst = wt.POINT(x, y)
             size_dst = wt.SIZE(width, height)
             pt_src = wt.POINT(0, 0)
@@ -1853,7 +1958,8 @@ class NativeCaptionOverlay:
         # meio de um arrasto nao pode voltar "agarrada" a um cursor que ja' nao
         # interfere. Nada e' gravado aqui -- nao houve largar.
         self._drag_reset()
-        self._tick_gen += 1
+        with _guard(self, '_sched_lock'):
+            self._tick_gen += 1
         self.visible = False
         if self.hwnd:
             _user32.ShowWindow(self.hwnd, SW_HIDE)
@@ -1862,7 +1968,7 @@ class NativeCaptionOverlay:
     def destroy(self):
         # The timer chain is daemonic, but retiring it here means a destroyed
         # overlay cannot try to `_update` a window handle that is already gone.
-        with self.lock:
+        with _guard(self, '_sched_lock'):
             self._tick_gen += 1
             self._tick_timer = None
             self._tick_deadline = 0.0
