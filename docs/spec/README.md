@@ -42,21 +42,21 @@ projecto tem um portão para isso (`_main/live-code-freshness-oracle.py --strict
 
 ## Escala do que está a ser descrito
 
-Medido em 2026-11-12 com `python _main/spec-scale.py` (o instrumento existe porque um número publicado
+Medido em 2026-11-15 com `python _main/spec-scale.py` (o instrumento existe porque um número publicado
 sem o comando que o produziu apodrece; a regra das extensões e dos directórios excluídos está escrita
 no cabeçalho dele):
 
 | superfície | ficheiros | linhas |
 |---|---|---|
-| `app/webview/**/*.py` (a shell e os seus módulos) | 46 | 50 404 |
-| `worker/**/*.py` (o motor de transcrição) | 65 | 36 081 |
+| `app/webview/**/*.py` (a shell e os seus módulos) | 46 | 50 411 |
+| `worker/**/*.py` (o motor de transcrição) | 63 | 35 273 |
 | `app/panel/**` (a UI web: HTML/CSS/JS + os temas) | 124 | 43 317 |
-| total de produto lido | **235** | **129 802** |
+| total de produto lido | **233** | **129 001** |
 
 O ficheiro maior é `app/webview/sotto_webview.py`, **27 365 linhas**, com **221 membros** em
 `SottoShell` e mais 28 classes (o watcher de legendas externas, a ponte do worker, a bandeja, o
 hotkey, o vigia de VRAM, o seguidor de arrasto, o monitor de carga...). O segundo é
-`worker/sotto_worker.py`, **9 529 linhas**, 17 classes. O maior ficheiro de UI é
+`worker/sotto_worker.py`, **9 529 linhas**, 18 classes. O maior ficheiro de UI é
 `app/panel/panel.js` (4 845 linhas) e `app/panel/themes/cinematic.css` (7 543).
 
 Três ficheiros dentro de `worker/` **não são produto**: `_prefix_audioflag.py` (4 511 linhas),
@@ -64,28 +64,27 @@ Três ficheiros dentro de `worker/` **não são produto**: `_prefix_audioflag.py
 worker usadas como mutantes por oráculos. Os dois últimos não estavam no git e entravam no índice em
 2026-11-11 (`10-DEFECTS.md` §D-01 — `git ls-files` devolve os três desde então).
 
-## O selo: 16 ficheiros, 6 046 linhas, 1 508 citações
+## O selo: 16 ficheiros, 6 363 linhas, 1 658 citações
 
 Medido em 2026-11-15 com um `os.walk`/`len(splitlines())` e `grep -o '\[TAG\]'` ficheiro a
-ficheiro, depois de entrar o `13-MODULES.md` (57 blocos, um por módulo de produto, mais as três
-classes que são dados):
+ficheiro, depois de entrar o `13-MODULES.md` (84 blocos: um por cada um dos 114 módulos de produto
+contados pelo portão — os de skin e os de sonda entram como classe —, mais as seis secções de
+cabeçalho):
 
 | o quê | número |
 |---|---|
 | ficheiros deste directorio | 16 (14 documentos + este índice + `STATUS.md`) |
-| linhas | 5 988 |
-| `[CODE]` | 1 390 |
-| `[MEASURED]` | 181 |
 | linhas | 6 363 |
 | `[CODE]` | 1 542 |
+| `[MEASURED]` | 179 |
 | `[INFERENCE]` | 64 |
 | `[UNKNOWN]` | 71 |
-| citações `ficheiro:linha` resolvidas | **1 508**, 0 sem ficheiro, 0 fora de alcance |
+| citações `ficheiro:linha` resolvidas | **1 658**, 0 sem ficheiro, 0 fora de alcance, **0 fora do índice do git** |
 
 Dois portões, e eles julgam metades diferentes: `_main/spec-citations-oracle.py` abre cada
 ficheiro citado, resolve cada linha e recusa uma citação a um ficheiro que não existe ou a uma
 linha além do fim; `_main/spec-coverage-oracle.py` faz a pergunta simétrica — percorre os ficheiros
-de PRODUTO e recusa um módulo que documento nenhum nomeie (`116` classes em 2 grupos, `0` ausentes,
+de PRODUTO e recusa um módulo que documento nenhum nomeie (`114` módulos + `2` grupos de classe, `0` ausentes,
 `0` casados só pelo nome). Os dois estão na bateria
 (`spec-citations`, `spec-coverage` e os respectivos `red-as-expected-*`).
 

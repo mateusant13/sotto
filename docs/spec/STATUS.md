@@ -3,12 +3,13 @@
 Este ficheiro é a memória do trabalho. É actualizado a cada onda; não é um relatório final.
 Cada linha diz o que está **escrito**, com que **evidência**, e o que **falta**.
 
-Última actualização: **2026-11-15**. O ledger passou de 23 para **35 defeitos** (D-24..D-32 são a
+Última actualização: **2026-11-15**. O ledger passou de 23 para **36 defeitos** (D-24..D-32 são a
 rodada de 2026-11-14/15: z-order do painel, a linha que sobrevivia ao player, a bandeira de pausa,
 a janela de aviso tomada por fala, a placa do BLOCO, o `Ctrl+Space` num jogo que ninguém jogava, e
-a carga do motor por bloco; D-33/D-34 são a varredura de base de 2026-11-15). A tabela de números foi **re-medida hoje**, coluna a coluna, com o
+a carga do motor por bloco; D-33/D-34 são a varredura de base de 2026-11-15; D-36 nasceu da
+varredura de evidência da mesma data, e é a mesma classe do D-01 na camada que julga evidência). A tabela de números foi **re-medida hoje**, coluna a coluna, com o
 comando ao lado; os valores anteriores estavam 3 dias velhos e dois deles já não eram verdade
-(a bateria tinha 503 passos, tem **525**; a especificação tinha 1 477 citações, tem 1 508).
+(a bateria tinha 503 passos, tem **525**; a especificação tinha 1 477 citações, tem **1 658**).
 
 ## Ondas
 
@@ -17,7 +18,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 
 | onda | estado | o que fica escrito | evidência |
 |---|---|---|---|
-| W0 inventário + índice | **feito** | `README.md`, este `STATUS.md`, contagem medida da superfície | 235 ficheiros / 129 802 linhas, medidos por `_main/spec-scale.py` (2026-11-15) |
+| W0 inventário + índice | **feito** | `README.md`, este `STATUS.md`, contagem medida da superfície | **233 ficheiros / 129 001 linhas**, medidos por `_main/spec-scale.py` (re-medido 2026-11-15) |
 | W1 arquitectura | **feito** | `01-ARCHITECTURE.md` (174 l., 9 `[CODE]` / 1 `[MEASURED]`): árvore de processos, largada do `run.cmd` (6 passos), 47 nomes de fio, o contrato shell↔worker, os ficheiros de estado, as 5 guardas de processo, as 3 coisas que a shell NÃO pode fazer ao worker | `run.cmd:236,311,316`; `_spawn`; `_consume`; `_child_env` |
 | W2 arranque | **feito** | `02-BOOT.md` (350 l., 72 `[CODE]` / 16 `[MEASURED]` / 5 `[INFERENCE]` / 6 `[UNKNOWN]`): do duplo-clique ao primeiro pixel — as etapas `SHELL_STARTUP_STAGE`, os prazos de cada uma, o vigia da UI, o que falha e o que o dono vê | log vivo + oráculos `boot-interaction`, `boot-profile`, `ui-watchdog` |
 | W3 captura | **feito** | `03-CAPTURE.md` (349 l., 119/9/4/8): os quatro braços de captura, o tap por processo e a lei do fio dono, a escada `c/p/a/b/tail` com `CAPTURE_FIRST_PICK`/`LADDER_TRY`, o alvo por NOME, o silêncio e as cinco guardas, o AGC e o tecto, o que a shell vê | `worker/sotto_worker.py`; `worker/wasapi_loopback.py`; `worker/process_target.py` |
@@ -27,11 +28,10 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | W7 histórico e estado | **feito** | `07-HISTORY-STATE.md` (380 l., 299/13/15/8): o formato da linha e o `ctx1=`, as duas portas de admissão, a fusão, a retenção de 180 dias, busca e export, o anel de 12 h, a fila de lote, e cada ficheiro de estado com escritor/leitor/contrato de falha | `sotto_webview.py:15688`; `history_context.py`; `worker/audio_ring.py`; `batch_queue.py` |
 | W8 painéis e UX | **feito** | `08-PANELS-UX.md` (346 l., 112/13/7/7): Alt+C por índice de pressão, Ctrl+Space (HOLD e o engolir do espaço), a caixa da legenda, os temas, o arrasto, as configurações e o que fica gravado | `hotkey_gesture.py`; `space_swallow.py`; `caption_drag.py`; `app/panel/**` |
 | W9 modos de falha | **feito** | `09-FAILURE-MODES.md` (350 l., 37/30/15/6): o que acontece quando cada peça falha — dispositivo, worker, página, WebView2, Chrome/CDP, disco, energia, rede — e o que o dono vê em cada caso | linha por modo com a tag do log e o oráculo que a lê |
-| W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (**35 defeitos** com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-24..D-32 entraram em 2026-11-14/15, D-33/D-34 na varredura de base de 2026-11-15 e D-35 na leitura do caminho de escrita do histórico) | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
 | W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (**36 defeitos** com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-24..D-32 entraram em 2026-11-14/15, D-33/D-34 na varredura de base de 2026-11-15 e D-35 na leitura do caminho de escrita do histórico, D-36 na varredura da própria evidência) | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
 | W11 spec-alvo | **feito** | `11-TARGET.md` (279 l.): o comportamento que eu escolho, jornada a jornada, com o que "funciona" quer dizer em cada uma | deriva das jornadas de `00-PROMISE.md` |
 | W12 selo | **feito** | índice, referências cruzadas, o portão das citações (`_main/spec-citations-oracle.py`) e o do **catálogo de módulos** (`_main/spec-coverage-oracle.py`: um bloco por ficheiro de produto em `13-MODULES.md`; `docs=16 ausentes=0 nome_apenas=0 classes_sem_seccao=0`) | `SPEC-CITATIONS VERDICT: PASS`; `SPEC-COVERAGE VERDICT: PASS` (+ `--neg-arm`) |
-| W13 módulos | **feito** | `13-MODULES.md` (51 blocos de módulo + 6 secções de cabeçalho: um bloco por ficheiro de produto, com o que garante, quem o chama, o que escreve e o que o dono vê quando falha) | `spec-coverage-oracle.py` mede a população por `os.walk`, não por lista curada |
+| W13 módulos | **feito** | `13-MODULES.md` (84 blocos — os 114 módulos de produto, com skin e sonda como classe — + 6 secções de cabeçalho: um bloco por ficheiro de produto, com o que garante, quem o chama, o que escreve e o que o dono vê quando falha) | `spec-coverage-oracle.py` mede a população por `os.walk`, não por lista curada |
 
 ## Defeitos já confirmados (detalhe em `10-DEFECTS.md`)
 
@@ -67,20 +67,16 @@ Guardados aqui porque a próxima sessão não deve re-medir o que já está medi
 
 | o quê | número | como |
 |---|---|---|
-| linhas do produto | 129 802 em 235 ficheiros (a superfície que a spec lê) | `_main/spec-scale.py` (`app/webview/**/*.py` 50 404 em 46; `worker/**/*.py` 36 081 em 65; `app/panel/**` 43 317 em 124) |
 | linhas do produto | **129 001 em 233 ficheiros** (a superfície que a spec lê) | `_main/spec-scale.py`, re-medido 2026-11-15 nesta sessão (`app/webview/**/*.py` 50 411 em 46; `worker/**/*.py` 35 273 em 63; `app/panel/**` 43 317 em 124; `unreadable=0`) |
 | shell | 27 365 linhas, `SottoShell` com 221 membros, 29 classes | `ast` sobre `app/webview/sotto_webview.py` (membros = `FunctionDef`/`AsyncFunctionDef` do corpo da classe) |
-| a especificação | 14 ficheiros (sem `README.md`/`STATUS.md`), 5 833 linhas, 1 384 `[CODE]` + 173 `[MEASURED]` + 60 `[INFERENCE]` + 64 `[UNKNOWN]` | contagem por ficheiro de `docs/spec/*.md` com `len(t.splitlines())` e `re.findall(r'\[([A-Z]+)\]', t)` (2026-11-15) |
-| defeitos no ledger | **35** (D-01..D-35) | `sorted(set(re.findall(r'D-(\d+)', …)))` sobre `10-DEFECTS.md` |
-| citações resolvidas | **1 508** em 16 documentos, 0 sem ficheiro, 0 fora de alcance, 0 índice ausente, 9/9 documentos com o que-não-se-sabe escrito | `_main/spec-citations-oracle.py` |
 | worker | 9 529 linhas, 18 classes (17 + `LineFormer` no topo; contadas por `ast` hoje) | `ast` sobre `worker/sotto_worker.py` |
 | a especificação | 14 documentos (sem `README.md`/`STATUS.md`), **6 148 linhas**, **1 536 `[CODE]` + 171 `[MEASURED]` + 60 `[INFERENCE]` + 64 `[UNKNOWN]`**; os 16 ficheiros somam 6 363 linhas | contagem por ficheiro de `docs/spec/*.md` com `len(t.splitlines())` e `re.findall(r'\[([A-Z]+)\]', t)`, re-medido 2026-11-15 nesta sessão |
 | defeitos no ledger | **36** (D-01..D-36) | `sorted(set(re.findall(r'D-(\d+)', …)))` sobre `10-DEFECTS.md` |
 | citações resolvidas | **1 658** em 16 documentos, 0 sem ficheiro, 0 fora de alcance, 0 índice ausente, **0 fora do índice do git (A6)**, 9/9 documentos com o que-não-se-sabe escrito | `_main/spec-citations-oracle.py` (com a arm A6 nova, neg-arm 5/5) |
 | catálogo de módulos | `docs=16 ausentes=0 nome_apenas=0 classes_sem_seccao=0`; população **114 módulos** + 2 grupos de classe (`app/panel/skins/`=84, `worker/_probe/`=32 `.py` de 96 ficheiros na pasta) | `_main/spec-coverage-oracle.py` |
 | bateria | **525 passos / 525 com registo / 0 achados** | `_main/battery-record-pairing-oracle.py` |
-| pin da bateria | **400 280 B / 4 596 CRLF / 0 bare LF** sha256 `10AA3FDB…E664DDB2` | `agents-md-pins-oracle.py` (verde, 2 pins) |
-| oráculos ligados | **211** ligados / 106 sem passo / 317 na população | `battery-wiring-oracle.py` |
+| pin da bateria | **400 480 B / 4 598 CRLF / 0 bare LF** sha256 `D6E2626E…A7E94ECD` (o blob tem 395 882 B em LF; 400 480 é o que um checkout materializa) | `agents-md-pins-oracle.py` (verde, 2 pins, re-medido 2026-11-15) |
+| oráculos ligados | **211** ligados / 105 sem passo / 316 na população | `battery-wiring-oracle.py`, re-medido hoje |
 | custo da bateria | **1 176,3 s julgados em 310 passos** sob `cap40` | `battery-budget-oracle.py --policy cap40` (`RATCHET-OK`, `TARGET NOT MET`, gap 1 116,3 s de 60 s) |
 | censo de consolas | `CONSOLE-AUDIT VERDICT PASS -- 0 sítio(s) que abrem janela` (1 336 ficheiros) | `_main/console-window-audit.py` |
 | gate do ecrã do dono | `achados=0 <= baseline=0` sobre 1 160 ficheiros de produto | `_main/owner-screen-gate.py` |

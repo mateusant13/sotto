@@ -11,7 +11,7 @@ frase descreve um numero medido, `[MEASURED]` com o comando ou a linha de log.
 
 ## A populacao, medida
 
-Medido com o proprio portao (`python _main/spec-coverage-oracle.py`) em 2026-11-15: **116 modulos de produto** nas tres raizes (`app/webview`, `worker`, `app/panel`), mais as classes que sao DADOS e nao comportamento, cada uma descrita uma vez: **84 imagens de skin** em `app/panel/skins/` e **32 sondas** em `worker/_probe/`. Fora da populacao, com razao declarada no portao: `worker/_prefix_audioflag.py` e `worker/_sotto_worker_agcinert.py` (copias congeladas usadas como mutantes) e `worker/runs/` (o mesmo).
+Medido com o proprio portao (`python _main/spec-coverage-oracle.py`) em 2026-11-15: **114 modulos de produto** nas tres raizes (`app/webview`, `worker`, `app/panel`), mais as classes que sao DADOS e nao comportamento, cada uma descrita uma vez: **84 imagens de skin** em `app/panel/skins/` e **32 sondas** em `worker/_probe/`. Fora da populacao, com razao declarada no portao: `worker/_prefix_audioflag.py` e `worker/_sotto_worker_agcinert.py` (copias congeladas usadas como mutantes) e `worker/runs/` (o mesmo).
 
 O portao da cobertura e' `_main/spec-coverage-oracle.py`, ligado a bateria pelos passos
 `spec-coverage` e `red-as-expected-spec-coverage`: ele caminha as tres raizes de produto, aplica as
@@ -42,6 +42,14 @@ FRACA -- e' a classe de erro que o `10-DEFECTS.md` §D-10 pagou caro para aprend
 - **Quando falha** — `render_peaks()` pode levantar (é a leitura COM crua, e está documentado como tal); `playing()` engole qualquer excepção e devolve `False` (`[CODE] app/webview/audio_playing.py:95`), e `loudest()` engole e devolve `('', 0.0)` (`[CODE] app/webview/audio_playing.py:104`). O utilizador não vê nada: o efeito é o vigia deixar de recusar o relançamento, ou seja, o comportamento anterior a este módulo.
 - **Evidência** — `[CODE] app/webview/audio_playing.py:31` (`PEAK_FLOOR = 0.002`); `[CODE] app/webview/audio_playing.py:89` (entrada pública `playing`); `[CODE] app/webview/audio_playing.py:99` (`loudest`).
 
+## `app/webview/batch_queue.py` (1 270 linhas — a fila em disco)
+
+- **O que faz** — A **fila em disco** do áudio que ficou sem transcrição, e o executor que a corre. Ordem do dono (2026-11-03): *"os modelos entram e saem conforme a carga do sistema, e o audio nao processado e' processado sozinho quando a carga libera -- SEM NUNCA TRAVAR A MAQUINA DO DONO"* `[CODE] app/webview/batch_queue.py:1`. Duas classes: `BatchQueue` (24 métodos, o estado durável e a adopção de spools órfãos) e `BatchExecutor` (18, o processo filho, com tecto de CPU, prioridade `BELOW_NORMAL` e tecto de fios).
+- **Quem o chama** — O shell e o `load_shedding` `[CODE] app/webview/sotto_webview.py:9083`.
+- **O que escreve/lê** — `%TMPDIR%/sotto-batch-queue` (ou `SOTTO_BATCH_QUEUE_DIR`), `adopted.json`, os spools `sotto-pending-audio-*`. O env do filho herda o tecto de threads (`THREAD_ENV_KEYS`: `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, …).
+- **Quando falha** — Um item que falha tem `MAX_ATTEMPTS` e backoff exponencial, e depois vai para o estado `done` em vez de girar para sempre. Um spool cujo dono morreu é adoptado só acima de `ADOPT_MIN_AGE_S` (nunca se rouba um spool vivo). O pior caso é o áudio ficar na fila; nunca se perde.
+- **Evidência** — `[CODE] app/webview/batch_queue.py:213` (`BatchQueue`); `[CODE] app/webview/batch_queue.py:612` (`child_env`); `[CODE] app/webview/batch_queue.py:664` (`BatchExecutor`). Portão: `_main/batch-queue-drain-oracle.py`.
+
 ## `app/webview/bridge_census.py`
 
 - **O que faz** — O censo da ponte, activo só com `SOTTO_BRIDGE_CENSUS` ligado: devolve o objecto que o `_main/bridge-census.py` constrói em `attach(log)`, ou `None` quando o interruptor está desligado. Existe para responder ONDE o tempo foi quando um `exec_js` não responde — `sys._current_frames()` em vez de `py-spy`. `task_bits()` traduz o estado .NET da chamada em `{'status', 'continuation'}`, separando "o JS respondeu e o Python nunca foi chamado" de "o renderer nunca devolveu nada". O resultado é memoizado em `_BRIDGE_CENSUS`, e o contrato é NUNCA LANÇAR.
@@ -49,6 +57,30 @@ FRACA -- e' a classe de erro que o `10-DEFECTS.md` §D-10 pagou caro para aprend
 - **O que escreve/lê** — Lê a env var `SOTTO_BRIDGE_CENSUS` (aceita `1`/`true`/`yes`/`on`) e carrega `_main/bridge-census.py` por caminho (`spec_from_file_location('bridge_census', path)`). Não escreve ficheiros nem estado persistente; mantém apenas o global `_BRIDGE_CENSUS`. Loga `BRIDGE_CENSUS_ON path=... tick_ms=...` no sucesso e `BRIDGE_CENSUS_FAILED ...` no fracasso.
 - **Quando falha** — Qualquer excepção ao carregar/executar o instrumento vira `warn('BRIDGE_CENSUS_FAILED ...')` e `_BRIDGE_CENSUS = None`: a shell arranca sem censo (`[CODE] app/webview/bridge_census.py:59`). Em `task_bits`, um `task` ilegível dá `status='unreadable'` e um evento ilegível dá `continuation='?'` (`[CODE] app/webview/bridge_census.py:86`); não há excepção que escape.
 - **Evidência** — `[CODE] app/webview/bridge_census.py:46` (leitura da env var); `[CODE] app/webview/bridge_census.py:56` (tag `BRIDGE_CENSUS_ON`); `[CODE] app/webview/bridge_census.py:68` (`def task_bits`).
+
+## `app/webview/caption_drag.py` (334 linhas — arrastar a legenda com Ctrl)
+
+- **O que faz** — O **decisor** do arrasto da legenda, puro e sem uma única chamada Win32. Ordem do dono: *"segurar control, permite eu arrastar a legenda pra onde eu quero. e o control segurado tambem vai ter um indicativo bem minimo de que da pra arrastar a legenda"* `[CODE] app/webview/caption_drag.py:1`. A emenda de 2026-11-15 é a que dá o nome ao ficheiro: *"as legendas devem se CENTRALIZAR aonde eu deixei meu mouse"* — o destino não é o cursor-pega mas o **centro da janela no cursor**, do primeiro tick em diante; agarrar pela ponta direita é só a maneira de dizer "quero esta legenda", nunca um deslocamento a preservar `[CODE] app/webview/caption_drag.py:8`. Duas funções puras fazem tudo: `drag_plan` (o plano do tick) e `clamp_pos` (nunca sai do ecrã). `pulse_alpha` dá o indicativo mínimo.
+- **Quem o chama** — `caption_overlay`, no tick da janela: é o único importador `[CODE] app/webview/caption_overlay.py:201`.
+- **O que escreve/lê** — O offset persistido (`caption-drag-offset.json`, `STATE_PATH`), para a legenda voltar onde o dono a deixou. Lê o rect do ecrã e o estado do Ctrl.
+- **Quando falha** — Um offset guardado que já não cabe no ecrã é *clampado*, nunca descartado. Sem Ctrl a tecla não faz nada — o arrasto não tem modo implícito.
+- **Evidência** — `[CODE] app/webview/caption_drag.py:170` (`clamp_pos`); `[CODE] app/webview/caption_drag.py:214` (`drag_plan`); `[CODE] app/webview/caption_drag.py:301` (`load_offset`). Portão: `_main/caption-drag-oracle.py` (11 arms).
+
+## `app/webview/caption_overlay.py` (2 008 linhas — a janela da legenda)
+
+- **O que faz** — Desenha a legenda na **tela inteira, por cima de tudo**, numa janela Win32 em camadas com transparência por pixel. Existe porque o WebView2 não consegue transparência por pixel dentro do host WinForms do pywebview (o `TransparencyKey` não consegue tratar os pixéis opacos do filho do WebView2, medido e documentado na origem) — sem este ficheiro a legenda é uma placa sólida atrás das palavras `[CODE] app/webview/caption_overlay.py:1`. Cinco classes de responsabilidade: `NativeCaptionOverlay` (40 métodos, a janela e o laço), `_PlayerCue` (a linha do player, com roll-up), `_DragCanvas` (o arrasto com Ctrl), e as estruturas Win32. A taxa de quadros é derivada de um **orçamento declarado** (`CAPTION_FRAME_BUDGET`), nunca do custo bruto: período = custo / orçamento `[CODE] app/webview/caption_overlay.py:81`.
+- **Quem o chama** — O shell, em `SottoShell`, e só ele: é o único importador, e constrói a janela preguiçosamente na primeira vez que a legenda é pedida `[CODE] app/webview/sotto_webview.py:13382`. A metade **pura** da pintura (medida, layout, bitmap) está em `overlay_paint.py`; aqui fica a **janela** e o ciclo de mensagens.
+- **O que escreve/lê** — Não escreve ficheiros de estado; lê `caption-settings.json` e `caption-theme.json` pelo `caption_settings`, e o offset do arrasto de `caption-drag-offset.json` pelo `caption_drag`. Lê do shell o provedor `z_below` para nunca subir por cima do painel: ele é consultado a cada `show` e devolve o painel só quando ele está visível `[CODE] app/webview/caption_overlay.py:1926`.
+- **Quando falha** — A janela em camadas pode existir e **não pintar** (a classe do P0 do dono: `visible=true` e nada no ecrã); por isso `_screen_proof` mede o pixel em vez de confiar no bit `WS_VISIBLE` `[CODE] app/webview/caption_overlay.py:1860`. Um `SetWindowDisplayAffinity` que falha devolve o modo lido de volta e a legenda continua visível ao dono; nunca morre por isso.
+- **Evidência** — `[CODE] app/webview/caption_overlay.py:45` (`EX_STYLE`); `[CODE] app/webview/caption_overlay.py:81` (`CAPTION_FRAME_BUDGET`); `[CODE] app/webview/caption_overlay.py:214` (`_clamp_rows`); `[CODE] app/webview/caption_overlay.py:1994` (`probe`). Portão: `_main/caption-overlay-screen-oracle.py` e `_main/caption-plate-oracle.py`.
+
+## `app/webview/caption_settings.py` (151 linhas — a escolha do dono)
+
+- **O que faz** — Persiste o que o dono escolheu para a legenda: `target_lang` (a língua alvo da tradução, default `pt`), e o **aspecto** da legenda nativa (`opacity` 0,30-1,0 e `plate` `tight`). Existe porque o shell nasce antes do painel e uma escolha só em memória seria esquecida no arranque seguinte `[CODE] app/webview/caption_settings.py:1`. O `opacity` escala o alfa da **placa** e nunca a tinta do texto.
+- **Quem o chama** — O shell, o `caption_overlay` e o `youtube_captions` `[CODE] app/webview/sotto_webview.py:12598`.
+- **O que escreve/lê** — `_main/caption-settings.json` e `_main/caption-theme.json`, com escrita atómica. Lê `SOTTO_CAPTION_SETTINGS` e `SOTTO_CAPTION_THEME`.
+- **Quando falha** — Tudo o que não resolve cai no default e o ficheiro é reescrito: um valor fora do intervalo é *clampado* (`MIN_OPACITY`..`MAX_OPACITY`), nunca aceite. Um `plate` desconhecido cai em `tight`.
+- **Evidência** — `[CODE] app/webview/caption_settings.py:29` (`path`); `[CODE] app/webview/caption_settings.py:62` (`save`); `[CODE] app/webview/caption_settings.py:86` (`set_visual`). Portão: `_main/caption-plate-oracle.py`.
 
 ## `app/webview/caption_wrap.py`
 
@@ -74,6 +106,22 @@ FRACA -- e' a classe de erro que o `10-DEFECTS.md` §D-10 pagou caro para aprend
 - **Quando falha** — Um `OSError` num ficheiro não interrompe a etiqueta: o nome entra em `missing` e a string termina com ` missing=<lista>` (`[CODE] app/webview/code_identity.py:127`); a contagem é `len(names) - len(missing)`. Erros de glob também são apanhados e registados na mesma lista. Não há excepção levantada por leitura falhada.
 - **Evidência** — `[CODE] app/webview/code_identity.py:37` (globs da página); `[CODE] app/webview/code_identity.py:42` (globs do worker); `[CODE] app/webview/code_identity.py:125` (formato da etiqueta).
 
+## `app/webview/cost_watchdog.py` (153 linhas — o custo sem trabalho)
+
+- **O que faz** — Decide **quando um worker que queima CPU não está a produzir nada** e por isso deve ser reiniciado. Nasceu de uma medição: o watcher leu o worker do dono a **270,6 %c** numa janela e **1,2 %c** noutra — e o produto não tinha série nenhuma para julgar as duas. A correcção importa tanto quanto a regra: o mesmo código, em 12 amostras de 5 s, deu **73 113 87 1 1 0 65 99 209 1 1 0 %c** (mediana 33) — o worker alterna rajadas com ociosidade, e **uma janela única pode cair inteira dentro de uma rajada** e chamar de degradação o que é trabalho `[CODE] app/webview/cost_watchdog.py:1`.
+- **Quem o chama** — O shell (`import cost_watchdog`), no vigia de custo `[CODE] app/webview/sotto_webview.py:65`.
+- **O que escreve/lê** — Nada; é puro. Lê a série `WORKER_COST` (que a shell journaliza como `BRIDGE_WORKER_COST` uma vez por minuto). O dono único da expiração de janela é `window_expired`.
+- **Quando falha** — Um worker abaixo de `BUSY_PCT` nunca é reiniciado, e há piso (`FLOOR_S`) e tecto (`MAX_PER_HOUR`) para o remédio não virar o defeito. Um caso sem série é ausência, não aprovação.
+- **Evidência** — `[CODE] app/webview/cost_watchdog.py:68` (`window_expired`); `[CODE] app/webview/cost_watchdog.py:91` (`plan`); `[CODE] app/webview/cost_watchdog.py:142` (`busy_rows`). Portão: `_main/cost-watchdog-oracle.py`.
+
+## `app/webview/exit_killer.py` (185 linhas — matar de fora, porque de dentro não se consegue)
+
+- **O que faz** — Um processo separado, criado **antes** de a saída começar, que mata o Sotto por handle se a saída não completar. Medido em 2026-11-04 no log do dono: às 13:01:36.080 o shell escreveu `UI_WATCHDOG_EXIT code=9`, e **70 minutos depois o mesmo pid (20448) estava vivo** com 36 threads, 8 de 10 janelas sem responder a `WM_NULL`, e o worker filho vivo com 3,9 GB privados `[CODE] app/webview/exit_killer.py:1`. Nenhum primitivo *dentro* do processo garante esse fim: se o processo fica preso num `DllMain` ou no loader lock, a thread que ia matar o processo também está presa.
+- **Quem o chama** — Ninguém o importa: é um **subprocesso**, largado por `_spawn_exit_killer` `[CODE] app/webview/sotto_webview.py:1917`.
+- **O que escreve/lê** — Lê o pid e um **carimbo de criação** (`identity`, `open_checked`), porque um pid reciclado nunca é morto; mata os filhos primeiro e escreve no log do shell.
+- **Quando falha** — Um pid que já morreu é sucesso silencioso; um pid cujo carimbo não bate é recusa. `_sweep_children` roda também no caminho em que `OpenProcess` chegou tarde (`EXIT_KILLER_SKIPPED ... reason=no-handle`), porque o shell arma o matador e sai em milissegundos.
+- **Evidência** — `[CODE] app/webview/exit_killer.py:62` (`identity`); `[CODE] app/webview/exit_killer.py:103` (`_sweep_children`); `[CODE] app/webview/exit_killer.py:173` (`main`). Portão: `_main/exit-backstop-oracle.py` (13/13, `--neg-arm` 5/5).
+
 ## `app/webview/external_subs.py`
 
 - **O que faz** — Lê as legendas que o próprio player já está a mostrar, pela árvore de acessibilidade (UI Automation), e devolve `[(source, [linha1, linha2])]` para o YouTube e o Stremio. O separador entre legenda e "chrome" do player é TEMPORAL e posicional: uma linha tem de se manter igual (ou crescer como prefixo de si mesma) por `_CONFIRM_POLLS` (2) polls, e uma linha confirmada que fica fora do centro por `_UNSHAPED_DROP_POLLS` (6) é apagada. `player_source()` decide a fonte com cache de 1 s; `find_player_window()` devolve o primeiro player VISÍVEL, testado por `_window_is_player` e não pelo título sozinho; `edit_values()` devolve todos os valores de controlos Edit.
@@ -81,6 +129,54 @@ FRACA -- e' a classe de erro que o `10-DEFECTS.md` §D-10 pagou caro para aprend
 - **O que escreve/lê** — Lê a árvore UIA do processo alvo (COM), a barra de endereço do Chromium e o nome do processo por `QueryFullProcessImageNameW`. Mantém dois estados de módulo, ambos só em memória: `_RUNS` (hwnd → linhas com streak/held, limitado a `_RUNS_MAX` = 32 janelas) e `_PLAYER_SOURCE_CACHE` (TTL `_PLAYER_SOURCE_TTL_S` = 1.0 s). Não escreve ficheiros nem env vars. Não emite tags de log: as linhas `EXTERNAL_CAPTIONS_*` são do shell, e o que este módulo imprime é o `--probe` (`POLL ...`, `PROBE ...`, `PROBE_ERROR`).
 - **Quando falha** — Quase todos os leitores têm `except Exception` e devolvem o vazio (`_process_name` → `""`, `_window_title` → `""`, `_descendants` → `None`, `edit_values` → `[]`); `caption_lines` devolve `[]` quando não há player reconhecido, quando o rect é degenerado ou quando não há candidatos, e nesses casos chama `_reset(hwnd)` — uma janela que não é player nunca "reclama" as legendas. `_uia()` NÃO apanha: pode levantar do COM, e é o `try` do shell que produz `EXTERNAL_CAPTIONS_UNAVAILABLE` (`[CODE] app/webview/sotto_webview.py:4054`).
 - **Evidência** — `[CODE] app/webview/external_subs.py:511` (o separador temporal `_stable`); `[CODE] app/webview/external_subs.py:725` (`player_source` e o TTL); `[CODE] app/webview/external_subs.py:818` (`caption_lines`).
+
+## `app/webview/gaming_mode.py` (620 linhas — detectar jogo, e mais nada)
+
+- **O que faz** — Responde a **uma** pergunta: o dono está num jogo agora? Ordem do dono (2026-11-04): *"em gaming: control espaço nao da display na legenda. nao faz nada. nem on nem off. fora de gaming: control espaço nao ativa o espaço em apps"* `[CODE] app/webview/gaming_mode.py:1`. Este ficheiro é a metade **detectar**: `is_gaming()` e **uma** linha de log por transição. Não suspende nada, não baixa prioridade, não mexe no worker nem no áudio — quem pergunta decide. A tabela é pura (`live_hotkey_plan`) precisamente para poder ser executada por um oráculo sem tocar no sistema.
+- **Quem o chama** — O shell, no fio da tecla ao vivo `[CODE] app/webview/sotto_webview.py:8346`.
+- **O que escreve/lê** — O censo de processos (`Toolhelp32`) e a janela em primeiro plano. Não escreve ficheiros. Tags de transição com o nome do jogo.
+- **Quando falha** — Sem permissão para ler um processo, cai em "não é jogo" (o estado seguro: a tecla volta a funcionar normalmente). Requer `CLIENT_FOREGROUND_STREAK_REQUIRED` tiques de consistência para um *client* (anti-cheat) contar, o que evita um falso positivo de uma janela de launcher.
+- **Evidência** — `[CODE] app/webview/gaming_mode.py:174` (`is_game_name`); `[CODE] app/webview/gaming_mode.py:240` (`foreground_owns_space`); `[CODE] app/webview/gaming_mode.py:578` (`live_hotkey_plan`). Portão: `_main/gaming-hotkey-oracle.py`.
+
+## `app/webview/history_context.py` (310 linhas — de onde veio o áudio)
+
+- **O que faz** — Guarda, em cada linha do histórico, o **contexto** de quando foi dito: `sourceApp`, `audioSource`, `viewingApp`, `viewingTitle` e `viewingUrl` — sem screenshots, sem gravação de ecrã, sem etiquetas de voz e sem credenciais `[CODE] app/webview/history_context.py:1`. A captura é ao **tempo da transcrição**, não ao tempo do commit: o que estava na tela quando a frase foi dita, não quando a linha fechou.
+- **Quem o chama** — O shell, ao carimbar a linha (`token_in`) e ao escrever o contexto `[CODE] app/webview/sotto_webview.py:16087`.
+- **O que escreve/lê** — Codifica o contexto num token compacto (`ctx1=...`) que viaja na própria linha do histórico. Lê o processo em primeiro plano e o título da janela, com TTL de cache.
+- **Quando falha** — Um campo que não se consegue ler é **omitido**, não inventado: a linha fica com os campos que existiam. Um URL que não faz parse é descartado em vez de guardado a meio.
+- **Evidência** — `[CODE] app/webview/history_context.py:111` (`normalize`); `[CODE] app/webview/history_context.py:128` (`encode`); `[CODE] app/webview/history_context.py:287` (`snapshot`). Portão: `_main/history-context-oracle.py`.
+
+## `app/webview/hot_reload.py` (666 linhas — editar e ver)
+
+- **O que faz** — Vigia os ficheiros-fonte e recarrega a app/shell quando o disco muda. É o **porte** do `app/_legacy-electron/hot-reload.js`, não um rival: um módulo Node/CommonJS não se pode `require` dum processo Python, mas o contrato é reproduzido à letra — **vigiar DIRECTORIOS, nunca ficheiros** (um save de editor é write-temp-then-rename, e um handle no FICHEIRO morre nesse rename: é o clássico "hot reload funciona duas vezes e depois para"), e debounce de rajada (`DEBOUNCE_MS = 250` ms de silêncio, por classe de mudança) `[CODE] app/webview/hot_reload.py:1`.
+- **Quem o chama** — O shell (`import hot_reload`), e constrói o objecto em `self.hot_reload` `[CODE] app/webview/sotto_webview.py:58`.
+- **O que escreve/lê** — `ReadDirectoryChangesW` com `FILE_NOTIFY_CHANGE_*` numa pasta por vez. A lista `PANEL_ASSETS` e `watched_worker_files` dizem o que conta como "a app mudou" — um ficheiro fora das duas listas não provoca recarga.
+- **Quando falha** — Um buffer de notificações transbordado (`ERROR_NOTIFY_ENUM_DIR`) não perde o evento: força uma re-varredura em vez de assumir "não mudou nada".
+- **Evidência** — `[CODE] app/webview/hot_reload.py:52` (`DEBOUNCE_MS`); `[CODE] app/webview/hot_reload.py:69` (`watched_worker_files`); `[CODE] app/webview/hot_reload.py:84` (`PANEL_ASSETS`).
+
+## `app/webview/hotkey_gesture.py` (260 linhas — a regra das teclas, pura)
+
+- **O que faz** — A tabela do gesto: **um passo por pressão, e nenhum relógio**. Ordem do dono, 2026-11-01: *"modifica a legenda ao vivo hotkey. bota o padrao como control espaco. e os painels deixa alt c. faz os paineis alternarem mesmo se eu deixar alt apertado o tempo inteiro e spammando c"* `[CODE] app/webview/hotkey_gesture.py:1`. Isto **substitui** o contrato anterior, que media a DURAÇÃO da segurada com três relógios a discordar (`HOTKEY_HOLD_MS`, `HOTKEY_TAP_WINDOW_MS`, `HOLD_CEILING_MS`) e uma thread a fazer polling para medir o que o dono já sabia `[CODE] app/webview/hotkey_gesture.py:12`. As funções puras são `parse_accelerator`, `hotkey_numbers`, `next_surface` e `advance`.
+- **Quem o chama** — O shell (o despacho da tecla e o ciclo dos painéis), e o `hotkey_settings` para validar o ficheiro dele `[CODE] app/webview/sotto_webview.py:2953`.
+- **O que escreve/lê** — Nada: é puro de propósito, porque é ele que o oráculo executa. `MODIFIER_BITS` é a tabela que `hotkey_numbers()` lê.
+- **Quando falha** — Um acelerador que não faz parse devolve `None` e o chamador cai no default de fábrica. Um gesto a meio (tecla presa, `keyup` perdido) não deixa estado: o contador de toques é drenado no primeiro token.
+- **Evidência** — `[CODE] app/webview/hotkey_gesture.py:123` (`parse_accelerator`); `[CODE] app/webview/hotkey_gesture.py:195` (`next_surface`); `[CODE] app/webview/hotkey_gesture.py:235` (`advance`). Portão: `_main/altc-gesture-oracle.py` e `_main/hotkey-spam-oracle.py` (19 arms).
+
+## `app/webview/hotkey_settings.py` (161 linhas — a tecla num ficheiro)
+
+- **O que faz** — Guarda as teclas do dono em disco (os painéis e a legenda ao vivo), e o interruptor `panels_enabled`. Existe porque a *regra* (`hotkey_gesture.py`) tem de continuar pura e importável sem I/O — é ela que o oráculo executa — e porque uma tecla que muda mora num ficheiro, não numa constante `[CODE] app/webview/hotkey_settings.py:1`. Três propriedades que se pagam sozinhas: um ficheiro estragado não deixa o Sotto sem hotkey (tudo o que não se lê volta ao valor de fábrica), uma escolha sobrevive ao reinício, e o menu da bandeja reescreve o texto da acção.
+- **Quem o chama** — O shell, no estado das teclas `[CODE] app/webview/sotto_webview.py:8051`.
+- **O que escreve/lê** — `_main/hotkey-settings.json` (`PATH`), com `_CACHE` para não reler o disco a cada tique. Chaves `PANELS_KEY`, `LIVE_KEY`, `PANELS_ENABLED_KEY`.
+- **Quando falha** — Tudo o que não resolve cai em `DEFAULTS`. Um valor fora do vocabulário é descartado, nunca aceite: um `panels_enabled` que não é booleano lê-se como o default.
+- **Evidência** — `[CODE] app/webview/hotkey_settings.py:55` (`DEFAULTS`); `[CODE] app/webview/hotkey_settings.py:73` (`accelerators`); `[CODE] app/webview/hotkey_settings.py:136` (`panels_enabled`). Portão: `_main/hotkey-panels-switch-oracle.py`.
+
+## `app/webview/load_shedding.py` (1 265 linhas — o shedding por carga)
+
+- **O que faz** — Decide **que motor corre** pela pressão da máquina. Ordem do dono, verbatim: *"shedding por carga -- alta: desliga nemotron, so parakeet; muito alta: desliga parakeet tambem. AUDIO SEMPRE fica para processar depois"* `[CODE] app/webview/load_shedding.py:1`. A regra é desigual de propósito: o nemotron (ao vivo, caro) cai primeiro, o parakeet (lote, leve) cai depois, e o **áudio nunca é a coisa que se larga**. A escada tem histerese e um piso de permanência (`MIN_DWELL_S`) para não oscilar.
+- **Quem o chama** — O shell (o monitor e a acção) e o `batch_queue` e o `warm_engine` `[CODE] app/webview/sotto_webview.py:14112`.
+- **O que escreve/lê** — Lê `SOTTO_LOAD_SHED`, `SOTTO_LOAD_SHED_ACT`, `SOTTO_REDUX_WHEN_HIDDEN`, `SOTTO_CAPTURE_MODE`. Lê commit e carga do sistema por `sample_load`. Publica o nível em `panel-visibility.json` (é o ficheiro que o worker **obedece**).
+- **Quando falha** — A acção é **ARMADA por omissão** (`ACTION_ARMED_DEFAULT = True`, ordem do dono de 2026-11-03); `SOTTO_LOAD_SHED_ACT=0` desarma-a e existe para as corridas de medição, não para o dia-a-dia `[CODE] app/webview/load_shedding.py:836`. A histerese é assimétrica de propósito: subir de nível é imediato (segurança), descer espera `CONFIRM_SAMPLES` e há um piso de `ACTION_FLOOR_S = 180 s` entre duas descidas, porque descer é o que **recarrega modelo** `[CODE] app/webview/load_shedding.py:839`.
+- **Evidência** — `[CODE] app/webview/load_shedding.py:86` (`level_for`); `[CODE] app/webview/load_shedding.py:450` (`sample_load`); `[CODE] app/webview/load_shedding.py:1222` (`open_action`). Portão: `_main/load-shedding-oracle.py`.
 
 ## `app/webview/no_console.py`
 
@@ -90,6 +186,14 @@ FRACA -- e' a classe de erro que o `10-DEFECTS.md` §D-10 pagou caro para aprend
 - **Quando falha** — Não tem ramo de erro. Em `os.name != 'nt'`, `startupinfo()` devolve `None` e `popen_kwargs()` devolve apenas `{'creationflags': flags}`; em Windows devolve também `'startupinfo'` (`[CODE] app/webview/no_console.py:58`). O consumidor (`_main/console-window-audit.py`, citado no cabeçalho) é quem recusa um spawn com `creationflags` sem este par.
 - **Evidência** — `[CODE] app/webview/no_console.py:39` (`CREATE_NO_WINDOW = 0x08000000`); `[CODE] app/webview/no_console.py:44` (ramo não-Windows); `[CODE] app/webview/no_console.py:56` (OR dos flags).
 
+## `app/webview/overlay_paint.py` (1 126 linhas — a metade pura da pintura)
+
+- **O que faz** — Toda a aritmética da legenda nativa que se pode medir **sem abrir janela**: medir texto, escolher a fonte, calcular o layout dentro do orçamento de largura, compor o bitmap pré-multiplicado e a **cache de tinta** (a chave guarda o raster, e um hit custa 0,063 ms contra 6,55 ms a reconstruir o texto inteiro) `[CODE] app/webview/overlay_paint.py:1`. Existe por causa do ratchet: `caption_overlay.py` cresceu para 1 337 linhas e uma função de 146, e a cura que o próprio ratchet nomeia é extrair sem tocar no comportamento `[CODE] app/webview/overlay_paint.py:692`.
+- **Quem o chama** — `caption_overlay.py` (a janela) e o shell `[CODE] app/webview/sotto_webview.py:22147`.
+- **O que escreve/lê** — Nada persistente. Lê a env var `SOTTO_CAPTION_OVERLAY_PNG` (salva o bitmap para inspecção) e os ficheiros de fonte de `_FONT_DIR`. Estatísticas da cache em `_PAINT_CACHE_STATS`.
+- **Quando falha** — Tudo o que falha devolve o **default** em vez de levantar: uma família de fonte que não resolve cai em `_THEME_DEFAULT`, um número ilegível cai no `_num` do default. A consequência de um defeito aqui é visual (placa errada, linha cortada), nunca uma excepção que mate a legenda.
+- **Evidência** — `[CODE] app/webview/overlay_paint.py:38` (`_measure`); `[CODE] app/webview/overlay_paint.py:604` (`_layout`); `[CODE] app/webview/overlay_paint.py:729` (`_paint_cache_get`). Portão: `_main/paint-cost-oracle.py`.
+
 ## `app/webview/panel_focus.py`
 
 - **O que faz** — É a política de primeiro plano do painel, e os únicos sítios do shell que chamam `SetForegroundWindow`. `pointer_lock_state()` lê o clip rect do cursor (`GetClipCursor` contra `SM_CXVIRTUALSCREEN`/`SM_CYVIRTUALSCREEN`, tolerância de 8 px) para saber se a app em primeiro plano tem o rato preso. `foreground_unlock()` só toma o primeiro plano quando há pointer lock (`SW_RESTORE` + `SW_SHOW` + `SetForegroundWindow`, com `AttachThreadInput` como segunda tentativa); com o cursor livre mapeia o painel com `SW_SHOWNOACTIVATE` e não rouba o foco. `set_topmost()` re-afirma `HWND_TOPMOST` sem mover, redimensionar nem activar.
@@ -97,6 +201,14 @@ FRACA -- e' a classe de erro que o `10-DEFECTS.md` §D-10 pagou caro para aprend
 - **O que escreve/lê** — Não escreve ficheiros nem estado. Lê `GetClipCursor`, `GetCursorInfo`, `GetSystemMetrics` e `GetForegroundWindow`. Emite as tags `FOREGROUND_TAKEN` / `FOREGROUND_KEPT` (uma por show) e `PANEL_FOREGROUND_ATTACH` / `PANEL_FOREGROUND_ATTACH_FAILED` / `PANEL_FOREGROUND_UNLOCK_FAILED`. Importa `CURSORINFO` e `RECT` de `win32_types`.
 - **Quando falha** — `foreground_unlock` nunca levanta: qualquer excepção vira `PANEL_FOREGROUND_UNLOCK_FAILED error=...`, `reason='failed'` no dict devolvido e o Alt+C segue (`[CODE] app/webview/panel_focus.py:212`). `pointer_lock_state` também não levanta: um probe falhado devolve `clipped=False` e `detail='clip-probe-failed=...'` (`[CODE] app/webview/panel_focus.py:109`) — errar para "não roubar o foco". `set_topmost` devolve o booleano do `SetWindowPos`.
 - **Evidência** — `[CODE] app/webview/panel_focus.py:47` (`set_topmost`); `[CODE] app/webview/panel_focus.py:154` (`foreground_unlock`); `[CODE] app/webview/panel_focus.py:208` (tag `FOREGROUND_KEPT`).
+
+## `app/webview/panel_state.py` (347 linhas — o painel em texto)
+
+- **O que faz** — Escreve o estado do painel num **único JSON**, a cada `interval_s` e a pedido, para que o estado se leia do disco por qualquer instrumento, sem olhos e sem captura de ecrã. Todos os campos são estado que a app **já** tem, lidos onde já aterra (o `WorkerBridge.state` e a sua máquina de estados), nunca um segundo caminho que possa discordar `[CODE] app/webview/panel_state.py:1`.
+- **Quem o chama** — O shell (`import panel_state`), que escreve por `PanelStateWriter` `[CODE] app/webview/sotto_webview.py:69`.
+- **O que escreve/lê** — `_main/panel-state.json` (`SCHEMA`), com `write_atomic` (ficheiro temporário + rename), porque um leitor nunca pode apanhar um JSON a meio. `read_state`, `age_seconds` e `freshness` são o lado leitor; `main --request` pede um dump imediato.
+- **Quando falha** — A **idade não é auto-reportada**: um ficheiro velho lê-se como velho (`freshness`), não como verdade. Um escritor que morre deixa o ficheiro com a idade a crescer, e o leitor diz `STALE` em vez de "igual".
+- **Evidência** — `[CODE] app/webview/panel_state.py:118` (`PanelStateWriter`); `[CODE] app/webview/panel_state.py:231` (`freshness`); `[CODE] app/webview/panel_state.py:307` (`main`).
 
 ## `app/webview/power_recovery.py`
 
@@ -121,6 +233,30 @@ FRACA -- e' a classe de erro que o `10-DEFECTS.md` §D-10 pagou caro para aprend
 - **O que escreve/lê** — Cria e apaga um directório temporário `sotto-reload-` com `panel/` e `worker/` em `probe_reload`; fora disso não escreve ficheiros nem env vars. Lê a janela em primeiro plano (`GetForegroundWindow`) e o PID dono (`GetWindowThreadProcessId`). Tags: `SELFTEST threads`, `SELFTEST state=hidden`, `SELFTEST step=`, `SELFTEST arm=5-ten`, `SELFTEST focus_steals=`, `SELFTEST focus_before=`/`focus_after=`, `SELFTEST broken=`, `SELFTEST expectation=`, `SELFTEST rc=`, `HOTKEY_STOP_FAILED`; `probe_reload` imprime `ARM ...`/`VERDICT ...`/`SELFTEST reload rc=`.
 - **Quando falha** — Se uma das threads de hotkey não sobe: `SELFTEST broken=um dos threads da hotkey nao subiu`, `SELFTEST rc=3` e `shell.request_exit(3, reason='selftest-threads')` (`[CODE] app/webview/selftest_instrument.py:269`). Com veredicto `broken`, `rc = 3`; nos dois casos o fim é `shell.request_exit(rc, reason='selftest')`. Em `probe_reload`, um watcher que não arranca devolve 3, e cada arma que não bate o esperado põe `rc = 3`.
 - **Evidência** — `[CODE] app/webview/selftest_instrument.py:80` (orçamento); `[CODE] app/webview/selftest_instrument.py:102` (veredicto puro); `[CODE] app/webview/selftest_instrument.py:468` (`probe_reload`).
+
+## `app/webview/shell_relaunch.py` (511 linhas — a app reabre-se sozinha)
+
+- **O que faz** — Reabre a app quando o **próprio fonte** muda: sem acção do dono, sem aprovação. Existe porque mostrar uma mudança de código no ecrã dele exigia uma de duas coisas, e ele recusou as duas — uma lane a largar a app (proibido por `SOTTO_NEVER_ON_OWNER_SCREEN`) ou ele a fechar e reabrir. Medido em 2026-10-30: dos cinco caminhos de largada a partir desta pane (`medium`, o desktop dele `high`), filho directo não fala com a taskbar/WebView2, `explorer.exe <ficheiro>` não executa (0/3), token emprestado do Explorer nunca executa, `CreateProcessAsUser` dá `err=5`; o **único** que executa é a tarefa agendada dele `[CODE] app/webview/shell_relaunch.py:1`.
+- **Quem o chama** — O shell, no fim do `main()`: `shell_relaunch.arm(shell, log)` `[CODE] app/webview/sotto_webview.py:27299`.
+- **O que escreve/lê** — O contador de relançamentos (`COUNTER_REL`, lido/escrito por `_read_counter`/`_write_counter`) e o `fingerprint` do fonte. Vigia `WATCH_DIRS` com `WATCH_SUFFIXES`.
+- **Quando falha** — A escada de limites existe para o vigia não virar um ciclo: `STABLE_S` (só depois de a app estar estável), `FLOOR_S` (piso entre relançamentos), `CAP_PER_HOUR` (tecto por hora) e `BACKOFF_S`. Audio a tocar recusa o relançamento (`sound_playing`). Um relançamento recusado **diz por quê**.
+- **Evidência** — `[CODE] app/webview/shell_relaunch.py:92` (`fingerprint`); `[CODE] app/webview/shell_relaunch.py:138` (`within_cap`); `[CODE] app/webview/shell_relaunch.py:288` (`arm`). Portão: `_main/shell-relaunch-oracle.py`.
+
+## `app/webview/sotto_webview.py` (27 365 linhas — a shell inteira)
+
+- **O que faz** — É o processo que o dono abre: cria a janela WebView2, serve `app/panel/panel.html` **byte a byte** (não há segundo copy do painel), expõe à página o objecto `window.sotto` e é o **dono único** de tudo o que é sistema operativo — a tecla global, a bandeja, a legenda nativa, o worker filho, o motor quente, a fila de lote, o vigia da UI e o matador da própria saída. Substituiu a shell Electron (`app/_legacy-electron/main.js`), e o contrato com a página é um port linha-a-linha de `preload.js` `[CODE] app/webview/sotto_webview.py:1`. A forma é de **classes com uma responsabilidade cada**: `SottoShell` (221 métodos, a coordenação), `SottoHost` (a janela), `WorkerBridge` (26 métodos, a vida do worker filho), `ExternalCaptionWatcher` (52, o caminho do YouTube), `TrayIcon` (19, a bandeja), `CaptionOverlay` fica noutro ficheiro `[CODE] app/webview/sotto_webview.py:4919`.
+- **Quem o chama** — Ninguém: é o `main()` do processo. Entra por `app/webview/run.cmd` (o `.cmd` lê `--help` do próprio shell) e é o **único** ficheiro do repo cujo `main()` é o produto. Tudo o resto ou é importado por ele, ou é um subprocesso que ele larga.
+- **O que escreve/lê** — É o maior escritor de estado do produto: `_main/webview-run.log` (o log vivo), `_main/panel-state.json` (`panel_state`), `_main/panel-visibility.json` (o ficheiro que o **worker obedece**), `_main/caption-settings.json`, `_main/caption-wanted.json`, `_main/shell-relaunch.json`, `_main/diar-watch.json`, `_main/_startup-stacks.log` (o dump das threads no arranque). Lê dezenas de env vars, e três delas mudam o produto: `SOTTO_CAPTURE_MODE`, `SOTTO_REDUX_WHEN_HIDDEN` e `SOTTO_CDP_PORT`. Tags de log: mais de 200, e as que o dono vê no painel são as que começam por `BRIDGE_`, `CAPTION_`, `PANEL_`, `YOUTUBE_`, `HOTKEY_` `[CODE] app/webview/sotto_webview.py:369`.
+- **Quando falha** — Três classes, cada uma com o seu tratamento: (1) **a página não responde** — há um orçamento (`SHOW_BUDGET_MS`, `CONTENT_GATE_TIMEOUT_MS`) e um retry que **divide o orçamento entre tentativas** (`CONTENT_GATE_ATTEMPT_FRACTION`), porque uma pergunta que consome tudo nunca tem segunda `[CODE] app/webview/sotto_webview.py:442`; (2) **o worker morre** — o `WorkerBridge` respawna com escada de backoff e um piso de 20 s para uma saída limpa (`CLEAN_EXIT_FLOOR_MS`), e carimba a causa (`BRIDGE_DEATH_CAUSE`) `[CODE] app/webview/sotto_webview.py:2007`; (3) **a saída não completa** — `_hard_exit` escala em 2,5 s e, se o `ExitProcess` não voltar com CLR/WinForms/WebView2/GDI+ carregados, o matador externo mata por handle `[CODE] app/webview/sotto_webview.py:1917`. O utilizador vê a app fechar-se; nunca um diálogo modal.
+- **Evidência** — `[CODE] app/webview/sotto_webview.py:160` (`file_url`); `[CODE] app/webview/sotto_webview.py:751` (`_bridge_census`); `[CODE] app/webview/sotto_webview.py:988` (`history_merge`); `[CODE] app/webview/sotto_webview.py:1917` (`_spawn_exit_killer`); `[CODE] app/webview/sotto_webview.py:2007` (`_hard_exit`). Ratchet estrutural: `_main/code-health-oracle.py` recusa **qualquer** crescimento de bytes/linhas/defs/classes/função-mais-longa/`except: pass`/`global` deste ficheiro — foi por isso que 20 módulos saíram dele para ficheiros próprios.
+
+## `app/webview/space_swallow.py` (395 linhas — a tecla que não vaza)
+
+- **O que faz** — Tira o `Ctrl+Space` do resto do Windows enquanto a legenda o está a usar. Ordem do dono, verbatim: *"control espaço pra ligar ou desligar a legenda nao deve vazar pra outros apps. to usando control espaço pra ativar a legenda quando vejo um video no youtube, e isso faz o espaço pausar o video"* `[CODE] app/webview/space_swallow.py:1`. A medição que o obriga: `RegisterHotKey` **não** tira a tecla do caminho de input — o Windows entrega `WM_HOTKEY` **e** continua a entregar o `WM_KEYDOWN`/`WM_CHAR` à janela em foco. O que a remove é um `WH_KEYBOARD_LL` que engole o evento.
+- **Quem o chama** — O shell, no fio da tecla ao vivo `[CODE] app/webview/sotto_webview.py:8325`.
+- **O que escreve/lê** — Só o hook; nenhum ficheiro. `STUCK_HELD_S` existe porque um `keyup` perdido deixava a tecla presa para sempre.
+- **Quando falha** — O braço que prova a cura é o **estado preso**: `key_down_swallowed` de pé há mais de 3 s sem `keyup` deixava de engolir e a tecla nunca alternava, sem uma linha no log. A testemunha é o **relógio**, não o bit físico (um `keydown` chega sempre com a tecla em baixo).
+- **Evidência** — `[CODE] app/webview/space_swallow.py:130` (`classify_event`); `[CODE] app/webview/space_swallow.py:186` (`_real_mods_down`); `[CODE] app/webview/space_swallow.py:72` (`STUCK_HELD_S`). Portão: `_main/ctrlspace-swallow-oracle.py` (21/21) + `_main/ctrlspace-swallow-probe.py` (mede no Windows: a segunda reserva da mesma combinação devolve 1409).
 
 ## `app/webview/stage.html`
 
@@ -162,6 +298,38 @@ FRACA -- e' a classe de erro que o `10-DEFECTS.md` §D-10 pagou caro para aprend
 - **Quando falha** — Entrada não numérica em `classify` devolve `'starved'`, nunca inventa um golpe (`[CODE] app/webview/ui_watchdog_policy.py:102`); `err` ilegível conta como 0, logo cai em `noerr` e não em `strike`. O módulo não levanta em uso normal; o pior caso é uma amostra inválida que zera a sequência.
 - **Evidência** — `[CODE] app/webview/ui_watchdog_policy.py:67` (`NOERR_STRIKES`); `[CODE] app/webview/ui_watchdog_policy.py:74` (`NOERR_HARD_CAP`); `[CODE] app/webview/ui_watchdog_policy.py:126` (`feed`).
 
+## `app/webview/warm_engine.py` (1 626 linhas — o motor quente)
+
+- **O que faz** — Mantém o grafo do ASR **já carregado** num processo que a shell não largou: a shell **anexa-se** a ele por um named pipe e um mutex. Existe por uma medição: a primeira legenda do dia custou **65 037 ms**, e o arranque a frio isolado **9 014 ms** — os dois números têm a mesma forma, a shell não legenda até um processo que ela largou ter lido 1,9 GB de pesos `[CODE] app/webview/warm_engine.py:1`. O contrato é "no máximo um loader", garantido por dois objectos de kernel (`warm_pipe.py`).
+- **Quem o chama** — O shell pede-o em `_request_warm_engine`, através da tarefa `SottoWarmEngine` `[CODE] app/webview/sotto_webview.py:18332`. O anexo lê-se em `warm_engine.log`/`warm_engine.pid`.
+- **O que escreve/lê** — `warm-engine.log`, `warm-engine.pid`, e lê `panel-visibility.json` (o nível de shedding publicado). TTL de parque `WARM_PARK_TTL_S = 1800 s` — 158x a mediana medida da carga (11 380,6 ms) e 1/4 da menor distância entre duas aberturas (2 h), substituindo os 600 s que pagaram 8 cargas para zero anexos —, ring de áudio `WARM_RING_S = 8,0 s` e orçamento de threads `WORKER_THREADS_DEFAULT = 2` `[CODE] app/webview/warm_engine.py:109`.
+- **Quando falha** — A decisão de **pedir ou não** o motor quente não é deste ficheiro: é de `warm_evidence.py`, e por uma razão medida — 8 cargas, 8 saídas, **zero** anexos, com aberturas a distarem 2-16 h contra um TTL de 600 s `[CODE] app/webview/warm_evidence.py:1`. Um `WARM_ATTACH_SHED` é o motor a recusar o anexo porque a máquina está sob carga; nesse caso a shell segue sem ele.
+- **Evidência** — `[CODE] app/webview/warm_engine.py:109` (`WARM_PARK_TTL_S`); `[CODE] app/webview/warm_engine.py:291` (`load_gate`); `[CODE] app/webview/warm_engine.py:1560` (`main`). Portão: `_main/warm-engine-oracle.py` (22 arms, 6/6 mutantes).
+
+## `app/webview/warm_evidence.py` (117 linhas — o motor quente paga-se?)
+
+- **O que faz** — Responde, pela **série** e não por omissão, se vale a pena pedir o motor quente. Existe por uma medição (D-04): o shell pedia `SottoWarmEngine` a cada abertura, o motor carregava 7,5-26,0 s de disco e ~1 GB, e saía ao fim do TTL; as aberturas do dono distavam **2 h a 16 h**. Resultado no log inteiro do motor: **8** `WARM_LOAD_MS`, **8** `WARM_EXIT`, **ZERO** `WARM_ATTACHED` — cada carga foi jogada fora, no arranque em que o shell já está a ler 1,9 GB `[CODE] app/webview/warm_evidence.py:1`. A regra é a mais conservadora que resolve isso sem escolher o produto: **com evidência suficiente e zero anexos, não se pede**. Uma evidência curta (menos de `MIN_LOADS` cargas) **não** autoriza recusar — um histórico de duas aberturas não diz nada sobre a terceira `[CODE] app/webview/warm_evidence.py:27`.
+- **Quem o chama** — O shell, em `_request_warm_engine` `[CODE] app/webview/sotto_webview.py:18351`.
+- **O que escreve/lê** — Nada; é puro. Lê a cauda do log do motor (`SHELL_TAIL_BYTES`, `LOAD_TAG`, `ATTACH_TAG`) e conta as tags.
+- **Quando falha** — Sem série legível é **fail-open**: pede (o comportamento anterior). O instante em que um anexo acontece reabre o crédito.
+- **Evidência** — `[CODE] app/webview/warm_evidence.py:39` (`verdict`); `[CODE] app/webview/warm_evidence.py:64` (`count_tag`); `[CODE] app/webview/warm_evidence.py:105` (`request_verdict_for`). Portão: `_main/warm-evidence-oracle.py` (13/13, `--neg-arm` 5/5).
+
+## `app/webview/warm_pipe.py` (494 linhas — os primitivos que as duas metades partilham)
+
+- **O que faz** — Os objectos de kernel e os nomes que o motor quente e a shell têm de partilhar **byte a byte**: o pipe nomeado (`FILE_FLAG_FIRST_PIPE_INSTANCE`) e o mutex nomeado segurado pela vida do processo. O motor é criado pelo Task Scheduler, sobrevive à shell, e a shell só lhe pode *anexar* — a "no máximo um loader" (INV-1/INV-2) é propriedade dos dois objectos de kernel, por isso as duas metades partilham **uma** implementação em vez de cada uma carregar a sua cópia da dança Win32 `[CODE] app/webview/warm_pipe.py:1`. **Nada aqui arranca um processo, abre um dispositivo ou toca numa janela** — é o que torna o módulo testável.
+- **Quem o chama** — O `warm_engine.py` (que o importa por caminho) e o shell pelo `WarmPipeBridge` `[CODE] app/webview/sotto_webview.py:25603`.
+- **O que escreve/lê** — Bytes no pipe; nomes derivados de `model_key`/`pipe_name`. Os códigos de erro são parte do contrato (`ERROR_PIPE_BUSY`, `ERROR_BROKEN_PIPE`, `ERROR_FILE_NOT_FOUND`, `ERROR_ACCESS_DENIED`), porque cada um significa uma acção diferente.
+- **Quando falha** — Um nome que não cabe no limite do Windows é recusado por nome, não truncado. Um pipe que já existe é `ERROR_PIPE_BUSY` — a shell *anexa*, não reconstrói.
+- **Evidência** — `[CODE] app/webview/warm_pipe.py:35` (`DEFAULT_PIPE_PREFIX`); `[CODE] app/webview/warm_pipe.py:39` (`FILE_FLAG_FIRST_PIPE_INSTANCE`). Portão: `_main/warm-engine-oracle.py`.
+
+## `app/webview/webview2_args.py` (80 linhas — o porto de depuração é nosso)
+
+- **O que faz** — Remove o `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` **herdado** do processo que largou a app. O loader do WebView2 lê essa variável do ambiente do processo uma única vez, quando o ambiente é criado — logo um valor herdado de uma lane, de um terminal com `--remote-debugging-port=9333` ou de um perfil de shell abre um porto de depuração em **todas** as janelas WebView2 da app, e — pior — faz o produto comportar-se diferente na sessão do dono e na de uma lane, que é a pior classe de defeito que existe aqui: a medição passa e o dono não tem o comportamento `[CODE] app/webview/webview2_args.py:1`. O produto não precisa de porto nenhum: a fonte do YouTube lê o browser **do dono** em 9222.
+- **Quem o chama** — O shell, dentro de `apply_webview2_environment` `[CODE] app/webview/sotto_webview.py:26743`.
+- **O que escreve/lê** — Lê e reescreve a variável de ambiente do próprio processo; `--cdp-port N` / `SOTTO_CDP_PORT=N` é a única forma de a pedir explicitamente.
+- **Quando falha** — O plano (`plan`) é puro e testável; se nada há a remover, `apply` não toca no ambiente.
+- **Evidência** — `[CODE] app/webview/webview2_args.py:36` (`plan`); `[CODE] app/webview/webview2_args.py:61` (`apply`). Portão: `_main/webview2-args-scope-oracle.py` (12 arms, 3 mutantes).
+
 ## `app/webview/win32_types.py`
 
 - **O que faz** — Declara as três estruturas Win32 puras do shell: `RECT`, `POINT` e `CURSORINFO`. São `ctypes.Structure` sem lógica, sem chamadas Win32 e sem dependências deste repo; `CURSORINFO.ptScreenPos` é um `POINT`, e é por isso que os três andam juntos. Saíram do shell por causa do tecto de classes do ratchet, sem mudar um byte do que o Windows vê.
@@ -169,6 +337,62 @@ FRACA -- e' a classe de erro que o `10-DEFECTS.md` §D-10 pagou caro para aprend
 - **O que escreve/lê** — Nada. Apenas `import ctypes` e `ctypes.wintypes as wt`; sem env vars, sem ficheiros, sem estado, sem log.
 - **Quando falha** — Não tem ramo de erro: são declarações de tipo. Um campo mal declarado não falha aqui — falha como leitura errada no chamador, que é o risco que o cabeçalho nomeia ao manter os três no mesmo sítio.
 - **Evidência** — `[CODE] app/webview/win32_types.py:23` (`class RECT`); `[CODE] app/webview/win32_types.py:28` (`class POINT`); `[CODE] app/webview/win32_types.py:32` (`class CURSORINFO`).
+
+## `app/webview/word_fade.py` (126 linhas — o fade da linha nova)
+
+- **O que faz** — O fade de ~120 ms com que uma **linha nova** entra, como no YouTube. Ordem do dono (2026-10-30): *"por que a nossa legenda nao tem a mesma animacao da do youtube? arruma."* `[CODE] app/webview/word_fade.py:1`. Só metade do que o YouTube faz precisa de código aqui: dentro de uma linha as palavras aparecem uma a uma — isso não é animação, é o instante de cada palavra, e resolve-se com o relógio de palavra (`youtube_reveal.word_clock_count`) e a recomposição a 60 ms; o fade da linha nova é **este** ficheiro.
+- **Quem o chama** — `caption_overlay`, no tick da janela `[CODE] app/webview/caption_overlay.py:875`.
+- **O que escreve/lê** — Nada. `alpha_at`, `done`, `next_delay` e `alpha_out` são aritmética sobre o tempo decorrido. `FRAME_S = 1/240` / `FRAME_HZ = 240` é o **tecto** de quadro que o dono autorizou, não a taxa: quem limita é a pintura medida.
+- **Quando falha** — Uma animação que não acaba não existe: `done` fecha por tempo decorrido, não por um quadro que chegou. O relógio é `time.perf_counter`, nunca `monotonic` (nesta máquina o `monotonic` avança de 15 em 15 ms).
+- **Evidência** — `[CODE] app/webview/word_fade.py:31` (`DURATION_S`); `[CODE] app/webview/word_fade.py:53` (`alpha_at`); `[CODE] app/webview/word_fade.py:47` (`FRAME_HZ`). Portão: `_main/word-clock-oracle.py`.
+
+## `app/webview/youtube_captions.py` (2 515 linhas — a faixa oficial)
+
+- **O que faz** — Vai buscar a **faixa de legenda real** do vídeo (json3/VTT) e o tempo do player. Ordem do dono, verbatim: *"faz a legenda do youtube mostrar na tela em tempo real. se precisar pegar o tempo do video, faça"* `[CODE] app/webview/youtube_captions.py:1`. Duas peças: o **parser** (`parse_json3`, `parse_vtt`, `cue_at`) e a **escolha de língua**, que carrega a regra das três línguas do dono — `UNTRANSLATED_LANGS = ('en','pt','es')`, com qualquer outra a ir para a língua escolhida em `caption-settings.json` `[CODE] app/webview/youtube_captions.py:625`.
+- **Quem o chama** — O shell e o `youtube_monotonic` `[CODE] app/webview/sotto_webview.py:1`.
+- **O que escreve/lê** — Uma cache em disco por vídeo (`CACHE_DIR`, `CACHE_SCHEMA`), com quatro TTLs distintos: faixa encontrada, sem faixa, retry de payload e candidato. Lê `SOTTO_YT_CACHE_DIR`, `SOTTO_YT_PLAYER_TRACK`, `SOTTO_YT_PROFILE`.
+- **Quando falha** — Sem faixa o resultado é `NO_TRACK` (com TTL curto, para não repetir a busca a cada abertura); um payload ilegível cai no retry, não numa afirmação. Nunca levanta para o chamador: o pior caso é a legenda do YouTube não existir e o ASR local continuar.
+- **Evidência** — `[CODE] app/webview/youtube_captions.py:210` (`video_id_from_url`); `[CODE] app/webview/youtube_captions.py:377` (`parse_json3`); `[CODE] app/webview/youtube_captions.py:660` (`_target_langs`). Portão: `_main/youtube-captions-oracle.py` (66 arms, `--neg-arm` 18/18).
+
+## `app/webview/youtube_cdp_source.py` (2 490 linhas — a segunda fonte do YouTube)
+
+- **O que faz** — Lê a legenda do YouTube pelo **DOM do próprio Chrome** através da CDP (DevTools Protocol), em vez da árvore de acessibilidade. Existe por uma medição: com a aba do YouTube em **segundo plano** o Chrome deixa de expor a janela de legenda na árvore de acessibilidade — 3 minutos com o instrumento todo desligado deram **um** `YOUTUBE_CAPTION` e depois nada `[CODE] app/webview/youtube_cdp_source.py:1`. Uma classe, `CdpCaptionSource` (32 métodos), que: resolve a porta, escolhe a aba certa (`choose_target`, `pick_playing`), extrai as linhas e o `video.currentTime` no **mesmo snapshot**, e faz o *rebind* quando a aba morre.
+- **Quem o chama** — O shell (`app/webview/sotto_webview.py`), única importação `[CODE] app/webview/sotto_webview.py:1`. O irmão que carrega é `youtube_window.py`, importado **pelo caminho** porque o nome tem hífen.
+- **O que escreve/lê** — Lê `SOTTO_YT_CDP_PORT` (default `DEFAULT_PORT`) e nada mais do ambiente. Não escreve ficheiros de estado: as linhas vão para o shell, que as guarda em `_LAST_PLAYER_TRACK`. As tags de erro são em português de propósito: `slow`, `dead`, `FAILED`.
+- **Quando falha** — A classe do defeito que já custou uma sessão: **reconexão não é evidência de troca de vídeo**. Uma aba adoptada numa reconexão fabricava o `VIDEO_CHANGED` que ela própria depois reportava — `adopted` 5 vezes, `CAPTION_WINDOW_BLANKED` 46 vezes, com 7 ms a carregar dois blanks. Por isso `pick` nunca adopta aba que não seja o vídeo declarado, e nunca prefere uma `paused-loaded` a uma a tocar `[CODE] app/webview/youtube_cdp_source.py:681`. Um prazo de leitura estourado é `slow` (rotina, 65 vezes numa sessão), não `dead`.
+- **Evidência** — `[CODE] app/webview/youtube_cdp_source.py:80` (`resolve_port`); `[CODE] app/webview/youtube_cdp_source.py:159` (`EXTRACT_JS`); `[CODE] app/webview/youtube_cdp_source.py:842` (`parse_snapshot`); `[CODE] app/webview/youtube_cdp_source.py:1225` (`rebind_verdict`). Portão: `_main/youtube-cdp-source-oracle.py`.
+
+## `app/webview/youtube_clock.py` (184 linhas — a tolerância da adivinha)
+
+- **O que faz** — Governa **quanto** se pode adivinhar o relógio do player entre duas leituras, pelo que o player nos disse. O defeito que o obriga (dono, 2026-11-07): *"e ridiculo o fato que um stutter qualquer do meu pc, faca a legenda dessincronizar ... se a porra da legenda do youtube ta se movendo, mesmo com o stutter acontecendo, a NOSSA legenda que pegamos do youtube, TAMBEM"* `[CODE] app/webview/youtube_clock.py:1`. O número é medido, não escolhido: `_main/fixtures/yt-paint-freeze-20261104.json` tem 745 amostras reais do Chrome dele, e para pares a 3-5 s o erro de extrapolar com o relógio de parede é mediana 1 ms / p95 4 ms / máximo 34 ms.
+- **Quem o chama** — O shell, no caminho do YouTube e no rebase da primeira amostra autoritativa `[CODE] app/webview/sotto_webview.py:5483`.
+- **O que escreve/lê** — Nada; aritmética sobre `player_state` (PLAYING/PAUSED/ENDED/UNKNOWN) e o instante da amostra.
+- **Quando falha** — Um estado ausente **não** é "a andar": serve-se a amostra em vez de extrapolar (`paused` ausente não é afirmação). Um `rebase` desfaz o que nós adiantámos na primeira amostra autoritativa.
+- **Evidência** — `[CODE] app/webview/youtube_clock.py:87` (`state_of`); `[CODE] app/webview/youtube_clock.py:121` (`instant`); `[CODE] app/webview/youtube_clock.py:160` (`rebase`). Portão: `_main/stutter-caption-oracle.py` (14 arms).
+
+## `app/webview/youtube_monotonic.py` (285 linhas — a legenda não recua)
+
+- **O que faz** — Garante que o relógio do player **nunca** faz a legenda recuar. A queixa do dono (2026-10-30): *"a legenda nao ta sincronizada direito. e parece que repete a legenda de instantes atras no ao vivo, depois desbuga, e mostra ao vivo"* `[CODE] app/webview/youtube_monotonic.py:1`. Medido em `_main/webview-run.log` (2 126 linhas `YOUTUBE_CAPTION`): **129** linhas são um cue cujo INÍCIO é anterior ao da linha servida antes — 37,6 s atrás, 40,4 s atrás, e uma **359,0 s** atrás; a cue `start=34.239` foi servida **três vezes em 24 s**. Não era lentidão: era um relógio congelado que o ramo `painted-other-track` confiava.
+- **Quem o chama** — O shell, em `_yt_decide` `[CODE] app/webview/sotto_webview.py:5629`.
+- **O que escreve/lê** — Nada; `decide` e `advance` são puras. `paint_signature`/`PaintStall` detectam a pintura parada, `STALE_S` e `CUE_SAME_EPS` separam um seek para trás legítimo de um congelamento.
+- **Quando falha** — Um **seek** do dono para trás é honrado (`SEEK_BACK_S`), não estrangulado: a regra distingue recuo espúrio de recuo pedido. Sem assinatura da pintura, não se afirma paragem.
+- **Evidência** — `[CODE] app/webview/youtube_monotonic.py:50` (`decide`); `[CODE] app/webview/youtube_monotonic.py:143` (`paint_signature`); `[CODE] app/webview/youtube_monotonic.py:155` (`PaintStall`). Portão: `_main/youtube-monotonic-oracle.py`.
+
+## `app/webview/youtube_reveal.py` (811 linhas — a janela revelada)
+
+- **O que faz** — A janela revelada pelas palavras que o player **já pintou**, para a nossa legenda aparecer palavra a palavra como no YouTube. Ordem do dono (2026-10-22): *"e pra surgir palavras, quebrar linhas, usar o timing de nova linha ou nao, igual o youtube"* `[CODE] app/webview/youtube_reveal.py:1`. O `parse_json3` carrega o `tOffsetMs` de 69 dos 106 segmentos para dentro dos cues, e `youtube_window.revealed_lines` corta a linha no instante certo — medido, o prefixo revelado bate com o do payload em **0/677** divergências.
+- **Quem o chama** — O shell, no caminho de pintura do player `[CODE] app/webview/sotto_webview.py:6619`.
+- **O que escreve/lê** — Nada. `painted_prefix_count`, `word_clock_count`, `window_by_paint`, `rows_from_cues` e `row_text` são puras.
+- **Quando falha** — Sem `tOffsetMs` no payload, não há revelação palavra a palavra e a linha aparece inteira — degradação, nunca truncagem a meio de uma palavra. `MAX_LAG_S` e `WORD_GAP_S` limitam o que se mostra.
+- **Evidência** — `[CODE] app/webview/youtube_reveal.py:235` (`word_clock_count`); `[CODE] app/webview/youtube_reveal.py:283` (`window_by_paint`); `[CODE] app/webview/youtube_reveal.py:410` (`rows_from_cues`). Portão: `_main/youtube-1to1-oracle.py` (arm `word-reveal-1to1`).
+
+## `app/webview/youtube_window.py` (551 linhas — o display de duas linhas)
+
+- **O que faz** — O display do YouTube **como ele o define**: duas linhas, quebra por linha, o histórico e a linha pintada. Ordem do dono (2026-10-22): *"e tambem ter o display 1:1. e pra surgir palavras, quebrar linhas..."* `[CODE] app/webview/youtube_window.py:1`. É também o **dono único** da lista de marcadores de fala (`_SPEAKER_MARKERS`): o `>>` (`&gt;&gt;` antes de descodificar, `>>` depois, `\u203a\u203a` na faixa automática) é do PLAYER e morre na entrada de cada caminho — `strip_speaker_markers` aplica-se a `rows`, `items` e `segs` `[CODE] app/webview/youtube_window.py:246`.
+- **Quem o chama** — O shell, no caminho do YouTube e no carregamento do irmão pelo caminho `[CODE] app/webview/sotto_webview.py:4932`.
+- **O que escreve/lê** — Nada persistente. `CAPACITY`, `ROWS_CAP` e `COLS` fixam a geometria; `window_key`, `history_line` e `paint_line` produzem as três formas de texto do mesmo cue.
+- **Quando falha** — `collapse_growth` impede o muro de prefixos (nove `<li>` para a mesma frase, cada uma com mais palavras que a anterior). Um cue sem marcador de fala não é adivinhado.
+- **Evidência** — `[CODE] app/webview/youtube_window.py:140` (`revealed_lines`); `[CODE] app/webview/youtube_window.py:351` (`strip_speaker_markers`); `[CODE] app/webview/youtube_window.py:381` (`painted_rows`). Portão: `_main/youtube-rows-oracle.py` e `_main/youtube-cdp-source-oracle.py` (arm `sem-marcador-de-fala`).
 
 ## `app/webview/z_order.py`
 

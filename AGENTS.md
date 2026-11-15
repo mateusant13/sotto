@@ -692,8 +692,6 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-15, 20:0x):** `_main\_audit-verify-all.cmd` = **400292 B**,
-  **4596 CRLF** / 0 bare LF, sha256 `E65513027146A5E1B609410F0EADC1048157E775BC3DBC5676C55032A385D4F9`.
 - **PIN do ficheiro (medido 2026-11-15, 21:1x):** `_main\_audit-verify-all.cmd` = **400480 B**,
   **4598 CRLF** / 0 bare LF, sha256 `D6E2626ED9E903672D8A54BE99DA89151436BEB29FC2866C87F525B4A7E94ECD`.
   (Cento e oitenta e oito bytes e DUAS linhas a mais do que o pin de 400292 B: o comentario do
@@ -712,18 +710,6 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   passos em cache a reimprimir um PASS sobre um launcher que ja mudou (a classe do `panel-deps`).
   O DM de 2026-11-15 mediu `pythonw.exe(42792)` a 14,15 % da maquina sem tecto declarado ao lado do
   comando que o larga; ver §"O TECTO DO MOTOR QUENTE VIVE NA LARGADA".)
-  NOTA DE PIN: os 400 292 B sao do ficheiro VIVO, que tambem carrega o bloco do `spec-coverage` de
-  NOTA DE PIN: os 400 480 B sao do ficheiro VIVO, que tambem carrega o bloco do `spec-coverage` de
-  outra lane ainda NAO commitado (`docs\spec\README.md` como dependencia -> `""`). O que ESTE
-  commit entrega sao 76 B (395718 -> 395794 no blob, LF), e o commit seguinte a esse bloco re-mede
-  este numero, como manda a regra do pin.
-  NOTA DE PIN: os 400 480 B sao do ficheiro VIVO, e o ficheiro VIVO acumula trabalho de MAIS do que
-  um lane (o bloco do `spec-coverage`, o do motor quente e o comentario do A6 abaixo). O commit
-  `d2c0b90d9a` entrega o AGENTS.md, o `spec-citations-oracle.py` e os cinco documentos da spec, e
-  NAO entrega o `.cmd`: O COMENTARIO DAS CINCO MUTACOES FICOU NO WORKTREE, dentro do hunk de outra
-  lane. O pin mede o estado VIVO de proposito (e' o numero que o portao compara), mas a metade do
-  `.cmd` que o justifica ainda nao esta' no indice -- quem commitar aquele hunk fecha a diferenca e
-  re-mede este numero, como manda a regra do pin.
   NOTA DE PIN: os 400 480 B / 4598 CRLF sao o que um CHECKOUT materializa, e o blob guarda
   395 882 B com LF -- as duas metades foram medidas num worktree detachado do proprio commit
   (`git cat-file -s` = 395882; o ficheiro em disco = 400480, 4598 CRLF, sha256 `D6E2626E...`).
