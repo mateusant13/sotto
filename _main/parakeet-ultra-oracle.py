@@ -98,6 +98,23 @@ def apply_oracle_thread_budget(threads=ORACLE_THREADS):
     (b) o numero VAI para o construtor de cada backend (`threads=`), que e' o
         unico caminho que chega ao `SessionOptions`.
 
+    O DEFEITO QUE ISTO CORRIGE, medido duas vezes no mesmo dia (2026-11-15): a
+    primeira versao desta funcao so' escrevia `OMP_NUM_THREADS` (via
+    `sotto_worker.limit_threads`) e chamava a isso orcamento. **O ORT nao le'
+    essa variavel para `intra_op_num_threads`**: sem `threads=` explicito no
+    construtor, o default e' o numero de nucleos FISICOS, e o `transcribe.py`
+    do export faz `if threads:` -- com `None` o campo fica por escrever. Logo o
+    `ORACLE_THREADS applied=2` da linha de log era uma AFIRMACAO SOBRE O
+    AMBIENTE enquanto 4 sessoes abriam 20 fios cada. Resultado medido no
+    watcher: `python.exe(46140)` a `39.3% of machine` no episodio de stutter
+    do dono, com o Job Object a `--cpu 40` a SATURAR -- porque 40 % da maquina
+    sao ~8 nucleos e o instrumento os pedia todos.
+
+    Duas metades, e a segunda e' a que faltava:
+    (a) o ambiente, para o BLAS/OMP que o preprocessing usa;
+    (b) o numero VAI para o construtor de cada backend (`threads=`), que e' o
+        unico caminho que chega ao `SessionOptions`.
+
     `torch` tem o seu proprio pool (`set_num_threads`), pela mesma razao.
     Devolve o numero aplicado, ou None quando o orcamento e' `auto`.
     """
@@ -108,6 +125,12 @@ def apply_oracle_thread_budget(threads=ORACLE_THREADS):
     applied = int(sotto_worker.limit_threads(int(threads)))
     try:                                     # torch e' opcional (so' o braco ultra-torch)
         import torch                         # noqa: PLC0415
+
+        torch.set_num_threads(applied)
+    except Exception:                        # noqa: BLE001 -- sem torch nao ha' pool que cortar
+        pass
+    return applied
+
 
         torch.set_num_threads(applied)
     except Exception:                        # noqa: BLE001 -- sem torch nao ha' pool que cortar
@@ -266,14 +289,14 @@ def build(engine: str):
         if directory is None:
             raise SystemExit("redux: no ONNX export on disk (checked %s)" % (REDUX_ONNX_DIRS,))
         started = time.perf_counter()
-        backend = redux_live.OnnxBackend(str(directory))
+        backend = redux_live.OnnxBackend(str(directory), threads=ORACLE_THREADS)
         return backend, round(time.perf_counter() - started, 2), directory
     if engine == "ultra-onnx":
         directory = resolve(ULTRA_ONNX_DIRS)
         if directory is None:
             raise SystemExit("ultra-onnx: no build on disk (checked %s)" % (ULTRA_ONNX_DIRS,))
         started = time.perf_counter()
-        backend = parakeet_ultra.OnnxBackend(str(directory))
+        backend = parakeet_ultra.OnnxBackend(str(directory), threads=ORACLE_THREADS)
         return backend, round(time.perf_counter() - started, 2), directory
     src = resolve_src()
     if src is None:
