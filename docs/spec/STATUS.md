@@ -3,12 +3,12 @@
 Este ficheiro é a memória do trabalho. É actualizado a cada onda; não é um relatório final.
 Cada linha diz o que está **escrito**, com que **evidência**, e o que **falta**.
 
-Última actualização: **2026-11-15**. O ledger passou de 23 para **32 defeitos** (D-24..D-32 são a
+Última actualização: **2026-11-15**. O ledger passou de 23 para **34 defeitos** (D-24..D-32 são a
 rodada de 2026-11-14/15: z-order do painel, a linha que sobrevivia ao player, a bandeira de pausa,
 a janela de aviso tomada por fala, a placa do BLOCO, o `Ctrl+Space` num jogo que ninguém jogava, e
-a carga do motor por bloco). A tabela de números foi **re-medida hoje**, coluna a coluna, com o
+a carga do motor por bloco; D-33/D-34 são a varredura de base de 2026-11-15). A tabela de números foi **re-medida hoje**, coluna a coluna, com o
 comando ao lado; os valores anteriores estavam 3 dias velhos e dois deles já não eram verdade
-(a bateria tinha 503 passos, tem 519; a especificação tinha 1 477 citações, tem 1 502).
+(a bateria tinha 503 passos, tem **525**; a especificação tinha 1 477 citações, tem 1 507).
 
 ## Ondas
 
@@ -66,15 +66,15 @@ Guardados aqui porque a próxima sessão não deve re-medir o que já está medi
 
 | o quê | número | como |
 |---|---|---|
-| linhas do produto | 129 743 em 235 ficheiros (a superfície que a spec lê) | `_main/spec-scale.py` (`app/webview/**/*.py` 50 345 em 46; `worker/**/*.py` 36 081 em 65; `app/panel/**` 43 317 em 124) |
+| linhas do produto | 129 757 em 235 ficheiros (a superfície que a spec lê) | `_main/spec-scale.py` (`app/webview/**/*.py` 50 359 em 46; `worker/**/*.py` 36 081 em 65; `app/panel/**` 43 317 em 124) |
 | shell | 27 320 linhas, `SottoShell` com 221 membros, 29 classes | `ast` sobre `app/webview/sotto_webview.py` (membros = `FunctionDef`/`AsyncFunctionDef` do corpo da classe) |
 | worker | 9 529 linhas, 17 classes | `ast` sobre `worker/sotto_worker.py` |
-| a especificação | 15 ficheiros (sem `README.md`/`STATUS.md`), 5 659 linhas, 1 382 `[CODE]` + 170 `[MEASURED]` + 60 `[INFERENCE]` + 64 `[UNKNOWN]` | contagem por ficheiro de `docs/spec/*.md` com `len(t.splitlines())` e `re.findall(r'\[([A-Z]+)\]', t)` (2026-11-15) |
-| defeitos no ledger | **32** (D-01..D-32) | `sorted(set(re.findall(r'D-(\d+)', …)))` sobre `10-DEFECTS.md` |
-| citações resolvidas | **1 502** em 16 documentos, 0 sem ficheiro, 0 fora de alcance, 0 índice ausente, 9/9 documentos com o que-não-se-sabe escrito | `_main/spec-citations-oracle.py` |
+| a especificação | 14 ficheiros (sem `README.md`/`STATUS.md`), 5 659 linhas, 1 382 `[CODE]` + 170 `[MEASURED]` + 60 `[INFERENCE]` + 64 `[UNKNOWN]` | contagem por ficheiro de `docs/spec/*.md` com `len(t.splitlines())` e `re.findall(r'\[([A-Z]+)\]', t)` (2026-11-15) |
+| defeitos no ledger | **34** (D-01..D-34) | `sorted(set(re.findall(r'D-(\d+)', …)))` sobre `10-DEFECTS.md` |
+| citações resolvidas | **1 507** em 16 documentos, 0 sem ficheiro, 0 fora de alcance, 0 índice ausente, 9/9 documentos com o que-não-se-sabe escrito | `_main/spec-citations-oracle.py` |
 | catálogo de módulos | `docs=16 ausentes=0 nome_apenas=0 classes_sem_seccao=0`; população 116 classes em 2 grupos (`app/panel/skins/`=84, `worker/_probe/`=32) | `_main/spec-coverage-oracle.py` |
-| bateria | **519 passos / 519 com registo / 0 achados** | `_main/battery-record-pairing-oracle.py` |
-| pin da bateria | **393 495 B / 4 519 CRLF / 0 bare LF** sha256 `8D02FC7C…A8279E2` | `agents-md-pins-oracle.py` (verde, 2 pins) |
+| bateria | **525 passos / 525 com registo / 0 achados** | `_main/battery-record-pairing-oracle.py` |
+| pin da bateria | **400 280 B / 4 596 CRLF / 0 bare LF** sha256 `10AA3FDB…E664DDB2` | `agents-md-pins-oracle.py` (verde, 2 pins) |
 | oráculos ligados | **211** ligados / 106 sem passo / 317 na população | `battery-wiring-oracle.py` |
 | custo da bateria | **1 176,3 s julgados em 310 passos** sob `cap40` | `battery-budget-oracle.py --policy cap40` (`RATCHET-OK`, `TARGET NOT MET`, gap 1 116,3 s de 60 s) |
 | censo de consolas | `CONSOLE-AUDIT VERDICT PASS -- 0 sítio(s) que abrem janela` (1 336 ficheiros) | `_main/console-window-audit.py` |

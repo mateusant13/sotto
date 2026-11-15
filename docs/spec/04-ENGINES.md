@@ -241,8 +241,13 @@ Três pares em oito minutos nesse dia. O recibo de 2026-11-05 mede o antes e o d
 `worker/model_vram_pool.py` é outra biblioteca: garante **uma cópia por modelo por processo**
 (`get_or_load` devolve as mesmas sessões para o mesmo modelo + providers) e recusa uma segunda
 cópia quando o modelo já está residente noutro processo (`foreign_policy="refuse"`) `[CODE]
-worker/model_vram_pool.py:1-23`, `:222-260`. O que ele **não** faz: a VRAM é privada do processo
-que a alocou; reutilizá-la exigiria `cudaIpcGetMemHandle` do dono `[CODE] worker/model_vram_pool.py:15-19`.
+worker/model_vram_pool.py:1-23`, `:222-260`. **Não está no caminho de produção** — nenhum ficheiro
+de `app/` ou `worker/` o importa; só `_main/vram-reuse-oracle.py` o carrega (`[MEASURED]` 2026-11-15:
+censo por `ast` sobre `app/`, `worker/` e `_main/` devolve **duas** importações do pool no
+repositório, uma delas a do próprio oráculo, nenhuma de produto). O caminho real de uma carga é
+`worker/sotto_worker.py` → `StreamAsr`; o pool descreve um contrato de reutilização que o produto
+**ainda não usa**. O que ele **não** faz: a VRAM é
+privada do processo que a alocou; reutilizá-la exigiria `cudaIpcGetMemHandle` do dono `[CODE] worker/model_vram_pool.py:15-19`.
 
 ## 7. Load shedding: os três níveis, a histerese e o que cada um desliga
 

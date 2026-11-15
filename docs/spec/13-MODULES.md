@@ -537,6 +537,29 @@ bloco.
   (`raise RuntimeError("pynvml ...")`), `[CODE] worker/model_vram_pool.py:37`
   (import).
 
+## `worker/model_vram_pool.py`
+
+- **O que faz** — Garante **uma cópia por modelo por processo**: `get_or_load(model_dir,
+  providers, …)` devolve as mesmas sessões ORT para a mesma chave e incrementa uma contagem de
+  referências, e com `foreign_policy="refuse"` levanta `ResidentModelError` quando o modelo já está
+  residente noutro processo. Tem três loaders registados (`sotto`, `noop`, `onnx-single`) e uma
+  tabela de entradas com a VRAM medida por modelo.
+- **Quem o chama** — **Ninguém no produto.** Censo por `ast` sobre `app/`, `worker/` e `_main/`
+  (2026-11-15) devolve **duas** importações de `model_vram_pool` no repositório: uma em
+  `_main/vram-reuse-oracle.py`, nenhuma em código de produto. (O próprio pool importa
+  `vram_residency` uma vez, em `:37`.) O caminho real de uma carga é `worker/sotto_worker.py` →
+  `StreamAsr`. Contrato escrito para uma reutilização que o produto **ainda não usa** — ver
+  `10-DEFECTS.md` §D-33.
+- **O que escreve/lê** — Não escreve nada. Lê os pesos do `model_dir` (para o hash de identidade) e
+  delega em `vram_residency` a medição de VRAM e a detecção de detentores estrangeiros. Nenhuma env
+  var; o número de fios `intra_op` é lido de `OMP_NUM_THREADS` (default `8`) dentro dos loaders.
+- **Quando falha** — `get_or_load` levanta `RuntimeError("model_vram_pool: unknown loader %r")` num
+  loader não registado (`:211`) e recusa carregar (`RuntimeError`, `:258`) quando a mesma cópia já
+  é detida por outro processo sob `foreign_policy="refuse"`.
+- **Evidência** — `[CODE] worker/model_vram_pool.py:211` (`raise RuntimeError("model_vram_pool:
+  unknown loader %r"`), `[CODE] worker/model_vram_pool.py:258` (`REFUSING to load`),
+  `[MEASURED]` censo `ast` de importações, 2026-11-15: nenhuma de produção.
+
 ## `worker/_probe/ (32 ficheiros)`
 
 - **O que é** — Directório de rascunho: 32 scripts `*.py` (de 96 ficheiros na

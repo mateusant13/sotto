@@ -39,6 +39,8 @@ funcionar pela mão do dono).
 | D-21 | `PanelVisibilityReader._fallback` falhava aberto na visibilidade e **herdava o `last_payload`** da última leitura boa: uma shell que morresse estacionada deixava `shed='muito-alta'`/`park='vram'` para sempre e calava o único transcritor por um ficheiro que já não existe | ALTO | **corrigido, NÃO verificado** — `last_payload = None` nas três falhas (ausente, ilegível, envelhecido); ARM 6b com UM leitor em duas voltas + mutante do produtor morto | `load-shedding` |
 | D-22 | `probe_tabs` cortava a **população** de abas em `MAX_PROBE_TABS` antes de saber qual toca: com sete abas `/watch` (log do dono, `tabs=7`) a sétima nunca era sondada e a escolha caía numa aba parada vizinha — e o `YOUTUBE_PROBE_BUDGET` imprimia o número já cortado, logo o instrumento não podia denunciar-se | MÉDIO | **corrigido, NÃO verificado** — vagas de `MAX_PROBE_TABS` limitadas pelo relógio, `tabs_total/probed/done/abandoned/waves`; 24 arms, neg-arm 17/17 | `youtube-cdp-source` |
 | D-11 | a segunda legenda da janela substituía a primeira no latch de `emit_async`: **fala perdida sem uma linha no log**, e é a página que commita o histórico — o histórico perdia a mesma fala | CRÍTICO | **corrigido** — kinds de EVENTO enfileiram (tecto 32, excedente CONTADO em `CAPTION_EMIT_DROPPED`); 6 arms, neg-arm 2/2 com o mutante novo |
+| D-33 | `worker/model_vram_pool.py` (411 linhas) não é importado por nenhum ficheiro de produção, e o oráculo que o guarda está congelado na dívida `REASON-MISSING preencher a mao` desde 2026-10-25 — passa à mão, nunca corre na bateria | MÉDIO | **aberto** — decisão de produto (apagar vs. ligar o oráculo); a metade da documentação está fechada em `04-ENGINES.md` §6 |
+| D-34 | `text_normalize._EDGE` e `fusion._EDGE` são duas tabelas de pontuação de borda que discordam em `{}«»` — a mesma linha é uma corrida de repetição para um módulo e três palavras para outro | BAIXO (MÉDIO se `SOTTO_FUSION` ligar) | **aberto** — o caminho vive OFF por omissão; zero tipografia no arquivo real |
 
 ---
 
@@ -1440,3 +1442,89 @@ custam uma leitura de ~1,9 GB em vez de oito.
 **Gravidade.** ALTO. Custo medido no hardware dele, na forma exacta do stutter que ele reporta.
 
 **Estado.** `corrigido, NÃO verificado`.
+
+## D-33 — o módulo que ninguém importa, guardado por um oráculo que ninguém corre
+
+**Antes.** `worker/model_vram_pool.py` tem **411 linhas**, duas classes e um `get_or_load` de 61
+linhas que promete "uma cópia por modelo por processo" e recusa duplicação entre processos. Nenhum
+ficheiro de `app/` nem de `worker/` o importa. Censo por `ast` sobre `app/`, `worker/` e `_main/`
+(2026-11-15) devolve **duas** importações de `model_vram_pool`: uma em `_main/vram-reuse-oracle.py`
+e nenhuma em código de produto. (O pool importa `vram_residency` uma vez, `:37`, dentro de um
+`try`; isso não é um consumidor do pool.) O caminho real de uma carga é `worker/sotto_worker.py` →
+`StreamAsr`; o pool não está nele.
+
+O instrumento que o guarda também não corre: `_main/vram-reuse-oracle.py` está na dívida congelada
+de `_main/battery-wiring-baseline.json` desde **2026-10-25** com a razão literal
+`REASON-MISSING preencher a mao` — um marcador que ninguém preencheu, e o `battery-wiring-oracle`
+conta-o como "sem passo" há 21 dias. Medido: o oráculo **passa** quando invocado à mão
+(`VERDICT: PASS`, braço verde contra o pool real, 47,2 s) e ainda assim **nenhuma corrida da bateria
+o executa**. É a mesma classe do `shell-thread-cpu` (que existia com `--neg-arm` e zero chamadores até
+o par `shell-thread-budget` o ligar, ver `AGENTS.md` §A LEI DO CUSTO) e do `lag-note-cost`: um instrumento com
+juiz e zero chamadores apodrece, e este apodreceu sobre um módulo com zero consumidores.
+
+**O que agrava.** O `04-ENGINES.md` §6 descrevia o pool como biblioteca activa sem dizer que está
+fora do caminho de produção — o `13-MODULES.md` já o dizia do lado do `vram_residency`, e os dois
+documentos discordavam sobre a mesma árvore. A frase foi corrigida neste mesmo commit.
+
+**DEPOIS.** A divergência de documentação está fechada: `04-ENGINES.md` §6 e `13-MODULES.md` nomeiam
+o censo e o resultado (`[MEASURED]`, duas importações no repositório, nenhuma de produto), e o
+catálogo de módulos passa a ter secção própria para o pool — antes descrevia-o em passagem dentro da
+secção do `vram_residency`. O par `model_vram_pool` + `vram-reuse-oracle`
+continua **aberto** por decisão que não é deste assento: apagar 411 linhas de um contrato de
+reutilização de VRAM é uma escolha de produto, e ligar o oráculo à bateria custa 47,2 s num alvo de
+60 s para a corrida inteira. As duas saídas estão nomeadas e nenhuma foi tomada.
+
+**O que o dono vê.** Nada — e é exactamente esse o problema: 411 linhas ocupam revisão, `code-health`
+e o census de módulos sem servir uma jornada.
+
+**Instrumento.** `_main/vram-reuse-oracle.py` (PASS à mão, 47,2 s); `_main/battery-wiring-oracle.py`
+(`sem_passo=106`, e a entrada congelada nomeia este ficheiro); censo `ast` desta entrada.
+
+**Gravidade.** MÉDIO. Custo de manutenção e um instrumento cego, não uma jornada quebrada.
+
+**Estado.** `aberto` — decisão de produto (apagar o módulo vs. ligar o oráculo), com a metade da
+documentação fechada.
+
+## D-34 — dois módulos do mesmo produto discordam sobre onde uma palavra começa
+
+**Antes.** O produto normaliza texto para comparar palavras em **dois** sítios, com **duas** tabelas
+de pontuação de borda diferentes:
+
+| módulo | `_EDGE` |
+|---|---|
+| `app/webview/text_normalize.py:63` | `.,;:!?"'()[]…—-` |
+| `worker/fusion.py:85` | `.,;:!?…"'()[]{}«»—-–` |
+
+A do `fusion` tem **quatro** caracteres que a do `text_normalize` não tem: `{`, `}`, `«`, `»` (e o
+`–` enquete, que a outra não lista). Medido executando as duas funções reais sobre a mesma entrada
+(2026-11-15):
+
+```
+token      text_norm._bare   fusion.normalize
+«come      '«come'           'come'
+come»      'come»'           'come'
+{word      '{word'           'word'
+word}      'word}'           'word'
+–word      '–word'           'word'
+```
+
+Ou seja: `«Não» Não «Não»` é **uma** corrida de duas palavras iguais para o `fusion` e **três**
+palavras distintas para o `text_normalize`. Medido no motor real: `collapse_runs('«Não» Não «Não»')`
+devolve a linha intacta, onde a tabela do `fusion` diria que há repetição.
+
+**O que agrava, e o que salva.** O caminho do `fusion` está **OFF por omissão**
+(`fusion_enabled()` exige `SOTTO_FUSION=1`, `sotto_webview.py:1100-1103`) e o arquivo real do dono
+tem **zero** ocorrências de `«»{}–—` em 1 409 linhas de 33 ficheiros. Logo o defeito é **latente**,
+não medido em produção: duas regras para a mesma pergunta, que discordam no dia em que o texto trouxer
+tipografia portuguesa — que é exactamente o tipo de texto que este produto transcreve.
+
+**DEPOIS.** Nada foi mudado no código: unificar as duas tabelas exige decidir qual é a certa (a do
+`fusion` é mais completa; a do `text_normalize` alimenta a corrida e a ênfase ao vivo), e essa decisão
+toca o caminho da legenda. Fica nomeada com a medição ao lado.
+
+**Instrumento.** Execução das duas funções reais por `importlib` (a tabela acima); contagem de
+tipografia no arquivo do dono; leitura de `fusion_enabled`.
+
+**Gravidade.** BAIXO hoje, MÉDIO no dia em que o `SOTTO_FUSION` for ligado com texto tipográfico.
+
+**Estado.** `aberto`.
