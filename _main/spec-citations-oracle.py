@@ -297,7 +297,7 @@ def _verdict(ok, out, stats):
 
 
 def neg_arm():
-    """Muta uma COPIA cinco vezes; cada mutante tem de derrubar O SEU braco.
+    """Muta uma COPIA seis vezes; cada mutante tem de derrubar O SEU braco.
 
     As mutacoes sao TEXTUAIS e plantadas na copia, nunca "o documento de HEAD" -- um
     negativo que depende do estado do repo apodrece no dia em que a cura e' escrita.
