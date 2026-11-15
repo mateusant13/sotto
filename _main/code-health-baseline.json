@@ -131,12 +131,12 @@
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 233918,
+      "bytes": 239866,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4724,
+      "lines": 4845,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -251,23 +251,23 @@
       "max_func_name": "census"
     },
     "app/webview/caption_drag.py": {
-      "bytes": 12566,
+      "bytes": 14551,
       "classes": 2,
       "defs": 7,
       "except_pass": 1,
       "globals": 0,
-      "lines": 307,
-      "max_func": 73,
+      "lines": 334,
+      "max_func": 85,
       "max_func_name": "drag_plan"
     },
     "app/webview/caption_overlay.py": {
-      "bytes": 94177,
+      "bytes": 100536,
       "classes": 8,
-      "defs": 9,
+      "defs": 10,
       "except_pass": 7,
       "globals": 0,
-      "lines": 1895,
-      "max_func": 144,
+      "lines": 2008,
+      "max_func": 161,
       "max_func_name": "__init__"
     },
     "app/webview/caption_settings.py": {
@@ -551,14 +551,14 @@
       "max_func_name": "_selftest"
     },
     "app/webview/warm_engine.py": {
-      "bytes": 60665,
+      "bytes": 71668,
       "classes": 8,
       "defs": 17,
       "except_pass": 13,
       "globals": 0,
-      "lines": 1445,
-      "max_func": 63,
-      "max_func_name": "main"
+      "lines": 1626,
+      "max_func": 65,
+      "max_func_name": "__init__"
     },
     "app/webview/warm_evidence.py": {
       "bytes": 4734,
@@ -731,12 +731,12 @@
       "max_func_name": "selftest"
     },
     "worker/engine_policy.py": {
-      "bytes": 23374,
+      "bytes": 25434,
       "classes": 2,
       "defs": 10,
       "except_pass": 0,
       "globals": 0,
-      "lines": 523,
+      "lines": 553,
       "max_func": 93,
       "max_func_name": "run_engine_pass"
     },

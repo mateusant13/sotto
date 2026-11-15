@@ -2173,15 +2173,90 @@ function markRevealState() {
       : 'Select a transcript line first · this button opens the selected line';
 }
 
-/** Ask the shell for the newest entries and paint the feed. */
+/**
+ * A LINHA E' UMA, E TEM UM NOME (2026-11-14).
+ *
+ * O ficheiro e o relogio da linha sao a identidade que as DUAS metades ja'
+ * carregam: o `history_tail` devolve `{date, hour, time, path}` e o
+ * `history_append` devolve o MESMO par para a linha que acabou de gravar. Era
+ * a unica coisa que os dois caminhos tinham em comum e ninguem usava: o
+ * `loadHistory` substituia a lista inteira (`historyEntries = entries`) e o
+ * `pushEntry` so' olhava para o `action` do store. Resultado medido no arquivo
+ * do dono: a mesma linha entrava DUAS vezes quando o `tail` resolvia depois de
+ * a linha ao vivo ter chegado (as duas copias existiam no ficheiro E na lista),
+ * e uma linha que chegava durante a leitura era APAGADA pela substituicao.
+ */
+function feedKey(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const time = String(entry.time || '').trim();
+  const date = String(entry.date || '').trim();
+  // SEM DIA NAO HA' IDENTIDADE. So' o store carimba `date`/`path`; a linha de
+  // recurso (shell sem store) traz so' a hora, e duas falas no mesmo segundo
+  // sao duas linhas -- fundi-las apagava uma delas.
+  if (!time || !date) return null;
+  return `${entry.path || ''}\u0000${date}\u0000${time}`;
+}
+
+/** A MESMA LINHA NUNCA ENCOLHE (mesma regra que o store ja' aplica ao ficheiro). */
+function longerOf(a, b) {
+  const la = String((a && a.text) || '').length;
+  const lb = String((b && b.text) || '').length;
+  return lb > la ? b : a;
+}
+
+/**
+ * A CAUDA NAO APAGA O QUE CHEGOU DEPOIS DELA.
+ *
+ * `history_entries` le o disco no instante do pedido; tudo o que o painel
+ * gravou DEPOIS desse instante nao esta' nessa leitura. Substituir a lista pela
+ * resposta era por isso uma perda garantida sempre que uma legenda fechava
+ * durante os ~centenas de ms da leitura -- e uma duplicata garantida para a
+ * linha que ja' estava no ficheiro E na lista. A fusao e' por `feedKey`, e em
+ * caso de colisao fica o texto MAIOR.
+ */
+function mergeHistoryTail(stored, live) {
+  const out = Array.isArray(stored) ? stored.slice() : [];
+  const at = new Map();
+  out.forEach((entry, i) => {
+    const key = feedKey(entry);
+    if (key) at.set(key, i);
+  });
+  for (const entry of (Array.isArray(live) ? live : [])) {
+    const key = feedKey(entry);
+    if (key && at.has(key)) {
+      const i = at.get(key);
+      out[i] = longerOf(out[i], entry);
+      continue;
+    }
+    if (key) at.set(key, out.length);
+    out.push(entry);
+  }
+  return out;
+}
+
+/**
+ * A CAUDA ENTRA NA LISTA, NAO A SUBSTITUI.
+ *
+ * Funcao propria porque a cauda e' ASSINCRONA: entram linhas ao vivo enquanto a
+ * leitura decorre, e o que chega DEPOIS tem de sobreviver. Separada, o braco
+ * `_main/panel-row-identity-oracle.js` (CHK-G/CHK-H) corre exactamente este
+ * caminho e o mutante M5 (`historyEntries = entries`) fica vermelho; enterrada
+ * no `.then()`, o braco so' conseguia chamar `mergeHistoryTail` e nao a
+ * atribuicao que era o defeito.
+ */
+function applyHistoryTail(entries) {
+  // A FUSAO, NAO A SUBSTITUICAO (ver `mergeHistoryTail`).
+  historyEntries = mergeHistoryTail(entries, historyEntries);
+  while (historyEntries.length > MAX_HISTORY) historyEntries.shift();
+  renderFeed();
+}
+
 function loadHistory() {
   if (!historyApi || !historyApi.tail) return;
   historyApi
     .tail(HISTORY_LOAD)
     .then((r) => {
-      const entries = normaliseEntries(r);
-      historyEntries = entries;
-      renderFeed();
+      applyHistoryTail(normaliseEntries(r));
     })
     .catch((err) => setHistoryNote('Transcript read failed: ' + errorText(err)));
 }
@@ -2408,9 +2483,35 @@ function pushEntry(entry) {
   // linha nova. Sem isto o painel duplicava a frase que ele fotografou seis
   // vezes, e o ficheiro ja' tinha a regra certa.
   if (action === 'skip') return;
+  // ── A MESMA LINHA NAO ENTRA DUAS VEZES (2026-11-14) ──────────────────────
+  // O store pode dizer `append` para uma linha que o painel JA' tem: a cauda
+  // lida (`history_tail`) pode conter esta mesma linha, ou uma re-entrega da
+  // ponte pode repetir o commit. `feedKey` e' o nome da linha nos DOIS
+  // caminhos, logo e' ele que decide, antes do `action`.
+  //
+  // `replace_at` (a fusao dos dois motores, `history_append`) devolve a entrada
+  // escrita com `action='replace_at'` e NAO diz o indice a que pertence; o
+  // `replaceFeedRow` antigo reescrevia a ULTIMA linha, o que numa fusao de lote
+  // reescrevia a linha errada. Com a chave, o painel reescreve a linha que o
+  // store realmente reescreveu; sem a chave na lista, e' uma linha nova.
+  const key = feedKey(entry);
+  const at = key === null ? -1 : historyEntries.findIndex((row) => feedKey(row) === key);
+  // `replace` = the store rewrote its LAST line (a line still growing), so the
+  // panel rewrites its last row. `replace_at` = the store rewrote a line in the
+  // MIDDLE (the batch pass said it better); that one is named by `feedKey`, and
+  // an old row the panel never loaded is appended because there is no row to
+  // rewrite -- never the last row, which belongs to a different sentence.
   const merging = action === 'replace' && !searchQuery && historyEntries.length > 0;
-  if (merging) historyEntries[historyEntries.length - 1] = entry;
-  else historyEntries.push(entry);
+  if (at >= 0) {
+    // A LINHA JA' EXISTE: reescreve-se onde esta', nunca se acrescenta.
+    historyEntries[at] = merging || action === 'replace_at'
+      ? longerOf(historyEntries[at], entry)
+      : entry;
+  } else if (merging) {
+    historyEntries[historyEntries.length - 1] = longerOf(historyEntries[historyEntries.length - 1], entry);
+  } else {
+    historyEntries.push(entry);
+  }
   while (historyEntries.length > MAX_HISTORY) historyEntries.shift();
 
   if (searchQuery) {
@@ -2436,7 +2537,8 @@ function pushEntry(entry) {
   // aparecer no painel"*. The gallery bucket that used to gate this is gone, so
   // there is no "outside the open bucket" case left: a line either grows the row
   // it belongs to (`merge`) or appends a new one.
-  if (merging) replaceFeedRow(entry);
+  if (at >= 0) replaceFeedRow(entry);
+  else if (merging && action === 'replace') replaceFeedRow(entry);
   else appendFeedRow(entry);
 }
 
@@ -2580,7 +2682,21 @@ function appendFeedRow(entry) {
 function replaceFeedRow(entry) {
   if (!dom.historyList) return;
   const rows = dom.historyList.querySelectorAll('[data-history-row]');
-  const last = rows.length ? rows[rows.length - 1] : null;
+  // A LINHA NOMEADA, NAO A ULTIMA (2026-11-14). O store devolve
+  // `action='replace_at'` quando a fusao dos dois motores reescreveu uma linha do
+  // MEIO do ficheiro; reescrever a ultima `<li>` punha o texto do lote em cima de
+  // outra frase e deixava a linha corrigida por corrigir -- duas frases trocadas
+  // no ecra com o ficheiro certo. A chave e' a mesma dos dois caminhos
+  // (`feedKey`), e o fallback para a ultima linha fica so' para quando a entrada
+  // nao tem nome (a linha ao vivo, que ainda nao foi gravada).
+  const key = feedKey(entry);
+  let target = null;
+  if (key !== null) {
+    for (const row of rows) {
+      if (row.dataset && row.dataset.historyKey === key) { target = row; break; }
+    }
+  }
+  const last = target || (rows.length ? rows[rows.length - 1] : null);
   if (!last) {
     appendFeedRow(entry);
     return;
@@ -2610,6 +2726,11 @@ function makeRow(entry, hitQuery) {
   //: same contract the two filter buttons read. On the row so a gate can count
   //: what was filtered without re-parsing the store.
   li.dataset.via = viaOf(entry);
+  //: O NOME DA LINHA NA LISTA (2026-11-14): o mesmo `feedKey` que a cauda lida e
+  //: a linha ao vivo partilham, para `replaceFeedRow` reescrever a linha NOMEADA
+  //: em vez da ultima. So' quando a entrada tem dia+hora (as linhas do store).
+  const rowKey = feedKey(entry);
+  if (rowKey !== null) li.dataset.historyKey = rowKey;
   if (entry.path) li.dataset.path = entry.path;
   if (selectedEntry && sameEntry(selectedEntry, entry)) li.classList.add('hist--selected');
 
