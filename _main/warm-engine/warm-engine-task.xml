@@ -29,7 +29,23 @@
     <RunOnlyIfIdle>false</RunOnlyIfIdle>
     <!-- PT0S: the default 3-day limit would silently kill a warm engine and
          turn every boot after day 3 back into a cold boot (F14). -->
-    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <!-- O PT0S NAO E' UM TECTO, E' O DEFAULT DELETADO (medido 2026-11-15).
+         A razao de cima continua verdadeira: os 3 DIAS do Task Scheduler matam
+         um motor quente. Mas `PT0S` diz "sem limite nenhum", e um processo sem
+         limite nenhum e' o actor que o watcher acusou DUAS vezes
+         (`pythonw.exe(42792)` a **14,15 % da maquina** e, antes, **18,2 % /
+         57 fios**). O numero tem de ser maior do que qualquer residencia
+         legitima medida e menor do que "para sempre": medido
+         `ms_resident=3 146 344` = **36,4 dias** (`_main/warm-engine.log`,
+         release depois de uma residencia longa) e o TTL de parque e' 600 s
+         (`WARM_PARK_TTL_S`). 14 dias = 1 209 600 s fica entre os dois: uma
+         sessao real (horas) nunca o alcanca, e um motor esquecido com o dono
+         fora por duas semanas nao continua a segurar ~1 GB.
+         O motor que expira por este limite NAO perde trabalho: o TTL de 600 s
+         ja' o teria expirado muito antes se estivesse parado, e se estiver a
+         transcrever o reinicio seguinte volta a carregar em 6-9 s (medido:
+         `WARM_LOAD_MS ms=6862.8`). -->
+    <ExecutionTimeLimit>P14D</ExecutionTimeLimit>
     <!-- R3: a crash-looping engine must not become a load loop. Bounded at 2;
          the third crash leaves it ABSENT and says WARM_ENGINE_DIED. -->
     <RestartOnFailure>

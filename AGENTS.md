@@ -692,8 +692,27 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-15, 18:0x):** `_main\_audit-verify-all.cmd` = **400314 B**,
-  **4596 CRLF** / 0 bare LF, sha256 `B6685CA7FD9635DEC4050946AF8728D570151F056EAD108F39984630F8941309`.
+- **PIN do ficheiro (medido 2026-11-15, 20:0x):** `_main\_audit-verify-all.cmd` = **400292 B**,
+  **4596 CRLF** / 0 bare LF, sha256 `E65513027146A5E1B609410F0EADC1048157E775BC3DBC5676C55032A385D4F9`.
+  (Setenta e seis bytes a mais do que o pin de 400216 B, e ZERO linhas a mais: os DOIS passos do
+  motor quente (`warm-engine` + `red-as-expected-warm-engine`) passam a nomear
+  `_main\warm-engine\warm-engine-run.cmd`. O oraculo daquele par deixou de julgar so' o `.py` e o
+  `.xml` e passou a julgar o FICHEIRO DE LARGADA -- a arm 20 exige `--threads 2` na linha que o
+  cmd.exe corre e recusa `--threads 1` --, logo uma dependencia que o nao nomeie deixaria os dois
+  passos em cache a reimprimir um PASS sobre um launcher que ja mudou (a classe do `panel-deps`).
+  Ver o §do motor quente: o DM de 2026-11-15 mediu `pythonw.exe(42792)` a 14,15 % da maquina sem
+  tecto declarado ao lado do comando que o larga.)
+  (Noventa e oito bytes e ZERO linhas a MENOS do que o pin de 400314 B: os DOIS passos do
+  `spec-coverage` perdem a dependencia `docs\spec\README.md` e passam a `""`, a MESMA forma que o
+  `spec-citations` ja' usava. A populacao do portao e' o DIRECTORIO `docs/spec/` (16 documentos) e o
+  produto inteiro, e a dependencia nomeava UM ficheiro: editar o `13-MODULES.md` deixava o passo em
+  cache a re-imprimir um PASS sobre uma documentacao que ja mudou -- a classe do `panel-deps`, que
+  esta casa ja pagou quatro vezes. `""` da' `MISS reason=no-deps` (`_main/_stepcache.py:266`), ou
+  seja o passo CORRE sempre; o preco medido e' **0,144 s** (`time python
+  _main/spec-coverage-oracle.py`), que e' mais barato do que a mentira que a cache podia contar.
+  Medido no mesmo bloco: `SPEC-COVERAGE VERDICT: PASS` e `SPEC-CITATIONS VERDICT: PASS`, e a sonda
+  que prova que o portao nao e' decorativo -- um `app/webview/_gate-probe.py` sem documento nenhum
+  derruba-o (`ausentes=1 ... VERDICT: FAIL` rc=1) e o ficheiro apagado devolve rc=0.)
   (Trinta e quatro bytes e ZERO linhas a mais do que o pin de 400280 B: `worker\fusion.py` entra nas
   dependencias dos DOIS passos do `text-normalize`, porque o oraculo passou a LER a tabela de borda
   daquele ficheiro (a arm A18) para comparar com `text_normalize._EDGE`. Sem a dependencia o passo

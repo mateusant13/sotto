@@ -1033,8 +1033,30 @@ def arm_no_bypass(mod, work):
     xml = open(TASK_XML, encoding="utf-8").read() if os.path.exists(TASK_XML) else ""
     arm.check("<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>" in xml,
               "the task refuses a second instance")
-    arm.check("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>" in xml,
-              "the task has no 3-day limit (F14)")
+    # O PT0S ESTAVA A PROTEGER A COISA CERTA PELA METADE (medido 2026-11-15).
+    # A intencao era o F14 -- os 3 DIAS do Task Scheduler matam um motor quente
+    # --, mas `PT0S` diz "sem limite nenhum", e um processo sem limite nenhum e'
+    # o actor que o watcher acusou DUAS vezes (`pythonw.exe(42792)` a 14,15 % da
+    # maquina; antes, 18,2 % / 57 fios). O que a arm passa a exigir e' um limite
+    # DECLARADO e maior do que qualquer residencia legitima (medido
+    # `ms_resident=3 146 344` = 36,4 dias), o que exclui os 3 dias do default e
+    # exclui "para sempre".
+    arm.check("<ExecutionTimeLimit>P14D</ExecutionTimeLimit>" in xml,
+              "the task has a DECLARED lifetime limit, not PT0S (F14 stays closed)")
+    # O TECTO DE FIOS NAO PODE VIVER SO' NO DEFAULT DO PYTHON. Um default e' um
+    # valor que alguem muda sem passar pelo ficheiro que larga o processo, e a
+    # largada nao dizia numero nenhum -- o buraco que o DM de 2026-11-15 mediu.
+    # `--threads 2` = 2 fios POR SESSAO, o mesmo numero que a shell entrega ao
+    # worker. NAO `--threads 1`: medido em 2026-11-09, o orcamento de 1 fio corta
+    # a margem sobre o tempo real de 2-5x para ~1x, e uma legenda que nao
+    # acompanha o audio e' o defeito que o tecto existe para nao criar.
+    launcher = commands_only(open(RUN_CMD, encoding="utf-8").read()) if os.path.exists(RUN_CMD) else ""
+    arm.check("--threads 2" in launcher,
+              "the LAUNCHER declares the thread ceiling (measured 14,2% of machine without it)")
+    arm.check("--threads 1" not in launcher,
+              "the ceiling is not 1 thread (measured: it removes the real-time margin)")
+    arm.check("watcher run --cpu" not in launcher,
+              "the engine is NOT CPU-caged: with a client attached it IS the live ASR")
     arm.check("<Triggers />" in xml or "<Triggers/>" in xml,
               "NO logon trigger (R4: the box is loaded at login)")
     arm.check("<RestartOnFailure>" in xml and "<Count>2</Count>" in xml,
@@ -1552,6 +1574,22 @@ MUTANTS = (
     ("M10-long-release-pays-floor",
      "        self._thrash = resident_s < WARM_THRASH_RESIDENT_S",
      "        self._thrash = True  # mutant: every release pays the floor"),
+)
+
+#: Mutantes do FICHEIRO DE LARGADA (medido 2026-11-15). Uma arm que le um ficheiro
+#: que nenhum mutante toca e' uma arm que nunca pode ficar vermelha: o `--neg-arm`
+#: antigo copiava `warm_engine.py` e mais nada, por isso o buraco do DM de hoje
+#: (o launcher sem `--threads`) ficaria verde mesmo depois desta cura.
+#: Cada mutante e' (nome, ficheiro, de, para).
+LAUNCHER_MUTANTS = (
+    ("M11-launcher-no-ceiling",
+     "warm-engine-run.cmd",
+     'warm_engine.py" --threads 2',
+     'warm_engine.py"'),
+    ("M12-task-unbounded-again",
+     "warm-engine-task.xml",
+     "<ExecutionTimeLimit>P14D</ExecutionTimeLimit>",
+     "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>"),
 )
 
 
