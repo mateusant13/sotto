@@ -73,6 +73,10 @@ WEBVIEW = os.path.join(ROOT, "app", "webview")
 ENGINE = os.path.join(WEBVIEW, "warm_engine.py")
 SHELL = os.path.join(WEBVIEW, "sotto_webview.py")
 TASK_XML = os.path.join(HERE, "warm-engine", "warm-engine-task.xml")
+#: O launcher e' o segundo ficheiro que a arm 20 julga. Sao variaveis de MODULO
+#: (e nao literais dentro da arm) porque o `--neg-arm` os aponta para uma COPIA
+#: mutada: uma arm que le o ficheiro original nunca pode ficar vermelha.
+RUN_CMD = os.path.join(HERE, "warm-engine", "warm-engine-run.cmd")
 MODEL_DIR = os.path.join(ROOT, "worker", "models", "nemotron-3.5-asr-ptbr-onnx-int4")
 
 VERBOSE = False
@@ -1593,6 +1597,24 @@ LAUNCHER_MUTANTS = (
 )
 
 
+def commands_only(text):
+    """As linhas que o cmd.exe EXECUTA, sem comentarios `REM`.
+
+    MEDIDO 2026-11-15: a arm 20 nasceu VERMELHA no positivo porque o comentario
+    que justifica a cura diz "`--threads 1` foi recusado por medicao" -- o portao
+    lia a sua propria prosa e acusava o sitio correto. Um portao que acusa quem
+    esta' certo perde a autoridade (a licao do censo de consolas), e a cura e'
+    ler o que o interpretador corre, nunca o que o ficheiro explica.
+    """
+    out = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.upper().startswith("REM "):
+            continue
+        out.append(stripped)
+    return "\n".join(out)
+
+
 def build_mutant(work, name, old, new):
     source = open(ENGINE, encoding="utf-8").read()
     if source.count(old) != 1:
@@ -1626,9 +1648,46 @@ def neg_arm(work, shell_mod):
             say("MUTANT %-22s CAUGHT by %s" % (name, ", ".join(red[:3])))
         else:
             say("MUTANT %-22s ESCAPED -- the arms cannot tell it from the real thing" % name)
+    for name, filename, old_text, new_text in LAUNCHER_MUTANTS:
+        total += 1
+        caught += _run_launcher_mutant(work, shell_mod, name, filename, old_text, new_text)
     say("NEG-ARM %s -- %d/%d mutant(s) caught"
         % ("PASS" if caught == total else "FAIL", caught, total))
     return 1 if caught == total else 0
+
+
+def _run_launcher_mutant(work, shell_mod, name, filename, old_text, new_text):
+    """Muta o FICHEIRO DE LARGADA numa copia e exige que a arm 20 fique vermelha.
+
+    A copia e' por mutante (o `--neg-arm` nunca toca no ficheiro que embarca) e a
+    arm 20 le-a por `RUN_CMD`/`TASK_XML`, que sao globais de modulo. Sem este
+    caminho, as tres verificacoes novas da arm 20 seriam as primeiras arms desta
+    casa que nao podem falhar -- a doenca que o proprio AGENTS.md nomeia.
+    """
+    global RUN_CMD, TASK_XML
+    source = open(os.path.join(HERE, "warm-engine", filename), encoding="utf-8").read()
+    if source.count(old_text) != 1:
+        say("MUTANT %-22s INVALID -- anchor appears %d times" % (name, source.count(old_text)))
+        return 0
+    directory = os.path.join(work, "mutant-%s" % name)
+    os.makedirs(directory, exist_ok=True)
+    mutated = os.path.join(directory, filename)
+    with open(mutated, "w", encoding="utf-8", newline="") as handle:
+        handle.write(source.replace(old_text, new_text))
+    saved_run, saved_xml = RUN_CMD, TASK_XML
+    try:
+        if filename.endswith(".cmd"):
+            RUN_CMD = mutated
+        else:
+            TASK_XML = mutated
+        result = arm_no_bypass(None, os.path.join(work, "run-%s" % name))
+    finally:
+        RUN_CMD, TASK_XML = saved_run, saved_xml
+    if result.ok():
+        say("MUTANT %-22s ESCAPED -- the arms cannot tell it from the real thing" % name)
+        return 0
+    say("MUTANT %-22s CAUGHT by %s" % (name, result.name))
+    return 1
 
 
 # ── main ────────────────────────────────────────────────────────────────────

@@ -1074,6 +1074,33 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   A5 nasceu VERMELHO e obrigou a corrigir o instrumento -- a tag nao abre a linha em NENHUM dos
   dois logs (`2026-11-11 20:47:16 WARM_LOAD_MS ...` e `2026-11-08 18:57:23.068 sotto: ...`), logo
   um `startswith` media ZERO cargas numa serie de oito.)
+- **O TECTO DO MOTOR QUENTE VIVE NA LARGADA, NAO NO DEFAULT DO PYTHON (medido 2026-11-15).**
+  O motor declarava `WORKER_THREADS_DEFAULT = 2` em `warm_engine.py` e a largada
+  (`_main\warm-engine\warm-engine-run.cmd`) nao dizia numero nenhum -- e um default e' um valor que
+  alguem muda sem passar pelo ficheiro que larga o processo. Medido nesta maquina:
+  `pythonw.exe(42792)` = `warm_engine.py` custou **14,15 % da maquina** (2,83 de 20 nucleos), com uma
+  leitura anterior do mesmo actor em **18,2 % / 3,6 nucleos / 57 fios**, nenhuma das duas com um tecto
+  escrito ao lado do comando. Agora a largada passa `--threads 2` (2 fios POR SESSAO ORT, o mesmo
+  numero que a shell entrega ao worker por `--worker-threads`), e o `<ExecutionTimeLimit>` deixa de
+  ser `PT0S`: **P14D**. As duas metades preservam a razao original: `--threads 1` foi recusado por
+  medicao (a margem sobre o tempo real cai de 2-5x para ~1x, e uma legenda que nao acompanha o audio
+  e' o defeito que o tecto existe para nao criar), e os 3 DIAS do Task Scheduler continuam proibidos
+  (F14: matam um motor quente e devolvem o dono ao arranque a frio). O que `PT0S` dizia era "sem
+  limite nenhum", e o limite `P14D` esta' entre a residencia legitima MEDIDA
+  (`ms_resident=3 146 344` = 36,4 dias) e "para sempre".
+  **O QUE NAO SE FAZ AQUI, e a razao e' o proprio defeito:** nao se enjaula o motor em
+  `watcher run --cpu 40`. Com um cliente LIGADO este processo E' o ASR ao vivo -- o mesmo caminho que
+  a regra do dono de 2026-11-11 proibe estrangular -- e sem cliente ele ja' nao descodifica: o tap
+  parqueado alimenta o RING, nao o descodificador, e o TTL de 600 s expira-o
+  (`WARM_EXIT why=idle-expired`). O custo medido existe enquanto o dono QUER transcricao; o tecto tem
+  de ser o de fios, nunca um corte de CPU que atrasa a legenda.
+  **O PORTAO, porque um numero em prosa nao se mantem:** a arm 20 do `warm-engine-oracle` passa a
+  exigir `--threads 2` na linha que o cmd.exe corre (`commands_only` descarta os comentarios `REM`,
+  sem o que o portao lia a PROPRIA prosa que justifica a cura e acusava o sitio correto -- medido), a
+  recusar `--threads 1` e `watcher run --cpu`, e a exigir `P14D`. Dois mutantes de FICHEIRO novos
+  (`M11-launcher-no-ceiling`, `M12-task-unbounded-again`) provam que as tres arms podem ficar
+  vermelhas. Medido: `WARM-ENGINE VERDICT: PASS -- 29 arm(s), 0 red` e
+  `NEG-ARM PASS -- 12/12 mutant(s) caught`.
 - **PIN do ficheiro (medido 2026-11-12, 01:4x):** `_main\_audit-verify-all.cmd` = **367459 B**,
   **4238 CRLF** / 0 bare LF, sha256 `BC267BB142D41EC502F6ACDB2A75D2B5DC4A2647B429AADAC21E756D962DF5E2`.
   (Mil quinhentos e trinta e quatro bytes e QUINZE linhas a mais do que o pin de 365925 B: o par
