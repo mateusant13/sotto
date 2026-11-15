@@ -4532,6 +4532,14 @@ class FileTap:
         self.native_rate = None
         self.block_ms = block_ms
         self.block = int(TARGET_SR * block_ms / 1000)
+        # ONCE ends the stream at EOF instead of looping it. MEASURED
+        # (2026-11-15): the loop replays the whole file while the model is still
+        # loading, so a harness that feeds a FINITE window got its phrases
+        # repeated and its coverage moved with the replay rather than with the
+        # model. Default stays the loop, because a live run wants a stream that
+        # never dries up; a finite-window harness opts in.
+        self.once = os.environ.get("SOTTO_FILE_TAP_ONCE", "").strip() in ("1", "true", "yes")
+        self.done = threading.Event()
         self.stream = _FileTapStream(self)
 
     def _pump(self):
@@ -4551,6 +4559,18 @@ class FileTap:
                 continue
             i += self.block
             if i >= self.pcm.size:
+                if self.once:
+                    # A FINITE window is finished: say so and stop delivering,
+                    # so the worker drains what it has and ends on its own tail
+                    # instead of transcribing a replay of the same audio.
+                    self.done.set()
+                    try:
+                        emit(type="status", state="file-tap-eof",
+                             samples=int(self.pcm.size), rate=int(self.rate),
+                             mode="once")
+                    except Exception:
+                        pass
+                    return
                 i = 0  # LOOP: keep the stream alive until the run stops it
             self.on_block(self.np.ascontiguousarray(seg, dtype=self.np.float32))
             next_t += block_s
@@ -7199,17 +7219,29 @@ def main():
 
     # ── the speech/music gate (lane SottoSpeechSeparation) ───────────────────
     # OWNER: "que divida musica de fala, isole a fala, e ai aplicamos a legenda
-    # ao vivo nisso". The gate is on by DEFAULT for the LIVE capture branch (the
-    # branch the owner watches) and off by default for the file/`--selftest`
-    # branch, because the file branch is what every existing oracle compares
-    # against and its output must not move under them. An explicit SOTTO_GATE
-    # wins in BOTH branches — `SOTTO_GATE=1` turns the file arm into the
-    # negative/positive control harness this lane's proof runs use, and
-    # `SOTTO_GATE=0` is the live CONTROL arm (same device, gate off).
+    # ao vivo nisso".
+    #
+    # OFF BY DEFAULT, INCLUDING THE LIVE BRANCH, since 2026-11-15. It shipped on
+    # for the live branch and the measurement says that was wrong:
+    #   * A/B on identical audio (`_main/devlab/lab.py score --window 60 20`):
+    #     gate off -> coverage 0.80 / WER 0.458; gate on -> 0.25 / 0.780. The
+    #     gate cost 55 % of the transcript on an ordinary YouTube video.
+    #   * It cannot be retuned: on REAL audio the sub-frame dB span does not
+    #     separate music from speech. At 6-8 dB it keeps 0.97/0.80 of a real
+    #     music bed (`_main/diar-mix/mix-bedonly.wav`) and 0.88/0.81 of
+    #     broadcast speech; at 18 dB (the default) it finally rejects music
+    #     (0.02) and rejects 72 % of broadcast speech with it (0.28).
+    #   * Its oracle passed the whole time because all four speech fixtures are
+    #     clean studio recordings (kept_frac=1.0) and the only negative was a
+    #     constant-amplitude drone, which every threshold rejects.
+    # Receipt: `_main/receipt-20261115-speech-gate-broadcast.md`.
+    #
+    # An explicit `SOTTO_GATE` still wins in BOTH branches, so the lane's proof
+    # runs keep their control arms: `SOTTO_GATE=1` turns the gate ON to
+    # reproduce the defect, `SOTTO_GATE=0` is byte-identical to the default.
     _gate_env = os.environ.get("SOTTO_GATE")
-    _file_mode = file_mode
     if _gate_env is None:
-        gate_enabled = not _file_mode
+        gate_enabled = False
     else:
         gate_enabled = _gate_env.strip().lower() not in ("0", "off", "false", "no")
     if gate_enabled:
@@ -7218,7 +7250,11 @@ def main():
         type="status",
         state="gate",
         gate="on" if gate_enabled else "off",
-        source="env" if _gate_env is not None else ("file-default" if _file_mode else "live-default"),
+        # The old label said which BRANCH chose the default, because the two
+        # branches defaulted differently. Both are off now, so the label says
+        # what actually happened instead of naming a branch that no longer
+        # decides anything.
+        source="env" if _gate_env is not None else "default-off",
         db_range_min=GATE_DB_RANGE_MIN,
         rms_floor=GATE_RMS_FLOOR,
         hold_chunks=GATE_HOLD_CHUNKS,
