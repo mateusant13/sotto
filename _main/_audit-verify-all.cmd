@@ -155,114 +155,6 @@ REM mais caro que legitimamente ja passou dos 168 s citados era `device-silence`
 REM continuam a separar um passo LENTO de um passo PRESO, mas a margem do primeiro e 21 s.
 REM SOTTO_STEP_DEADLINE_S overrides it for one run.
 if not defined SOTTO_STEP_DEADLINE_S set "SOTTO_STEP_DEADLINE_S=240"
-REM `panel-row-identity-oracle.js` -- A LINHA E' UMA, E TEM UM NOME (2026-11-14).
-REM Ordem do dono, verbatim: *"e o historico ta COMPLETAMENTE patetico ... falas
-REM cortadas, frases nao entram, tudo aleatorio ou quebrado"*. Duas perdas
-REM medidas no arquivo dele, as duas do lado do PAINEL e nao do worker: o
-REM `loadHistory` SUBSTITUIA a lista inteira (`historyEntries = entries`), o que
-REM apagava toda a linha que chegasse durante a leitura e duplicava a que ja'
-REM estava no ficheiro; e o `replaceFeedRow` reescrevia sempre a ULTIMA `<li>`,
-REM o que numa fusao de lote punha o texto do lote em cima de outra frase. O
-REM oraculo corre os BYTES de `app\panel\panel.js` num `vm` com DOM falso (nao
-REM uma copia: o painel muda, o passo muda) e o `--neg-arm` mutila sete sitios,
-REM cada um exigido vermelho pela SUA arm. A convencao do negativo e' a da casa:
-REM devolve 1 ao apanhar (`:expectred ... 1`), nunca 0 -- um controlo que nao
-REM pode falhar nao e' controlo, e foi por isso que ele ficou fora da bateria.
-if exist _main\panel-row-identity-oracle.js (
- call :step panel-row-identity 0 "_main\panel-row-identity-oracle.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\history-source.js" "%OUT%\panel-row-identity.log" node _main\panel-row-identity-oracle.js
- call :record panel-row-identity !STEP_RC!
-) else ( call :record panel-row-identity MISSING )
-if exist _main\panel-row-identity-oracle.js (
- call :step red-as-expected-panel-row-identity 1 "_main\panel-row-identity-oracle.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\history-source.js" "%OUT%\panel-row-identity-neg.log" node _main\panel-row-identity-oracle.js --neg-arm
- call :expectred red-as-expected-panel-row-identity !STEP_RC! "%OUT%\panel-row-identity-neg.log" "VERDICT: PASS"
-) else ( call :expectred red-as-expected-panel-row-identity MISSING "%OUT%\panel-row-identity-neg.log" "VERDICT: PASS" )
-REM `_history-classify.py` -- O CENSO DO ARQUIVO (2026-11-14). Ele nao julga e nao
-REM conserta: le' `history\<dia>\<hora>.md` e o `webview-run.log` e conta cada
-REM classe de defeito que o dono descreveu, para que cada numero do recibo tenha
-REM um comando ao lado. O `--neg-arm` corre o instrumento contra um ficheiro
-REM SINTETICO com exactamente uma linha de cada classe e exige que TODAS sejam
-REM contadas: uma regex que morre com o produto faria o censo publicar zeros, e
-REM zeros sao indistinguiveis de um arquivo perfeito.
-if exist _main\_history-classify.py (
- call :step history-classify 0 "_main\_history-classify.py;app\webview\prose_punct.py;history" "%OUT%\history-classify.log" python _main\_history-classify.py
- call :record history-classify !STEP_RC!
-) else ( call :record history-classify MISSING )
-if exist _main\_history-classify.py (
- call :step red-as-expected-history-classify 1 "_main\_history-classify.py;app\webview\prose_punct.py" "%OUT%\history-classify-neg.log" python _main\_history-classify.py --neg-arm
- call :expectred red-as-expected-history-classify !STEP_RC! "%OUT%\history-classify-neg.log" "NEG-ARM: the instrument sees every class"
-) else ( call :expectred red-as-expected-history-classify MISSING "%OUT%\history-classify-neg.log" "NEG-ARM: the instrument sees every class" )
-REM `panel-row-identity-oracle.js` -- A LINHA E' UMA, E TEM UM NOME (2026-11-14).
-REM Ordem do dono, verbatim: *"e o historico ta COMPLETAMENTE patetico ... falas
-REM cortadas, frases nao entram, tudo aleatorio ou quebrado"*. Duas perdas
-REM medidas no arquivo dele, as duas do lado do PAINEL e nao do worker: o
-REM `loadHistory` SUBSTITUIA a lista inteira (`historyEntries = entries`), o que
-REM apagava toda a linha que chegasse durante a leitura e duplicava a que ja'
-REM estava no ficheiro; e o `replaceFeedRow` reescrevia sempre a ULTIMA `<li>`,
-REM o que numa fusao de lote punha o texto do lote em cima de outra frase. O
-REM oraculo corre os BYTES de `app\panel\panel.js` num `vm` com DOM falso (nao
-REM uma copia: o painel muda, o passo muda) e o `--neg-arm` mutila sete sitios,
-REM cada um exigido vermelho pela SUA arm. A convencao do negativo e' a da casa:
-REM devolve 1 ao apanhar (`:expectred ... 1`), nunca 0 -- um controlo que nao
-REM pode falhar nao e' controlo, e foi por isso que ele ficou fora da bateria.
-if exist _main\panel-row-identity-oracle.js (
- call :step panel-row-identity 0 "_main\panel-row-identity-oracle.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\history-source.js" "%OUT%\panel-row-identity.log" node _main\panel-row-identity-oracle.js
- call :record panel-row-identity !STEP_RC!
-) else ( call :record panel-row-identity MISSING )
-if exist _main\panel-row-identity-oracle.js (
- call :step red-as-expected-panel-row-identity 1 "_main\panel-row-identity-oracle.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\history-source.js" "%OUT%\panel-row-identity-neg.log" node _main\panel-row-identity-oracle.js --neg-arm
- call :expectred red-as-expected-panel-row-identity !STEP_RC! "%OUT%\panel-row-identity-neg.log" "VERDICT: PASS"
-) else ( call :expectred red-as-expected-panel-row-identity MISSING "%OUT%\panel-row-identity-neg.log" "VERDICT: PASS" )
-REM `_history-classify.py` -- O CENSO DO ARQUIVO (2026-11-14). Ele nao julga e nao
-REM conserta: le' `history\<dia>\<hora>.md` e o `webview-run.log` e conta cada
-REM classe de defeito que o dono descreveu, para que cada numero do recibo tenha
-REM um comando ao lado. O `--neg-arm` corre o instrumento contra um ficheiro
-REM SINTETICO com exactamente uma linha de cada classe e exige que TODAS sejam
-REM contadas: uma regex que morre com o produto faria o censo publicar zeros, e
-REM zeros sao indistinguiveis de um arquivo perfeito.
-if exist _main\_history-classify.py (
- call :step history-classify 0 "_main\_history-classify.py;app\webview\prose_punct.py;history" "%OUT%\history-classify.log" python _main\_history-classify.py
- call :record history-classify !STEP_RC!
-) else ( call :record history-classify MISSING )
-if exist _main\_history-classify.py (
- call :step red-as-expected-history-classify 1 "_main\_history-classify.py;app\webview\prose_punct.py" "%OUT%\history-classify-neg.log" python _main\_history-classify.py --neg-arm
- call :expectred red-as-expected-history-classify !STEP_RC! "%OUT%\history-classify-neg.log" "NEG-ARM: the instrument sees every class"
-) else ( call :expectred red-as-expected-history-classify MISSING "%OUT%\history-classify-neg.log" "NEG-ARM: the instrument sees every class" )
-REM `panel-row-identity-oracle.js` -- A LINHA E' UMA, E TEM UM NOME (2026-11-14).
-REM Ordem do dono, verbatim: *"e o historico ta COMPLETAMENTE patetico ... falas
-REM cortadas, frases nao entram, tudo aleatorio ou quebrado"*. Duas perdas
-REM medidas no arquivo dele, as duas do lado do PAINEL e nao do worker: o
-REM `loadHistory` SUBSTITUIA a lista inteira (`historyEntries = entries`), o que
-REM apagava toda a linha que chegasse durante a leitura e duplicava a que ja'
-REM estava no ficheiro; e o `replaceFeedRow` reescrevia sempre a ULTIMA `<li>`,
-REM o que numa fusao de lote punha o texto do lote em cima de outra frase. O
-REM oraculo corre os BYTES de `app\panel\panel.js` num `vm` com DOM falso (nao
-REM uma copia: o painel muda, o passo muda) e o `--neg-arm` mutila sete sitios,
-REM cada um exigido vermelho pela SUA arm. A convencao do negativo e' a da casa:
-REM devolve 1 ao apanhar (`:expectred ... 1`), nunca 0 -- um controlo que nao
-REM pode falhar nao e' controlo, e foi por isso que ele ficou fora da bateria.
-if exist _main\panel-row-identity-oracle.js (
- call :step panel-row-identity 0 "_main\panel-row-identity-oracle.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\history-source.js" "%OUT%\panel-row-identity.log" node _main\panel-row-identity-oracle.js
- call :record panel-row-identity !STEP_RC!
-) else ( call :record panel-row-identity MISSING )
-if exist _main\panel-row-identity-oracle.js (
- call :step red-as-expected-panel-row-identity 1 "_main\panel-row-identity-oracle.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\history-source.js" "%OUT%\panel-row-identity-neg.log" node _main\panel-row-identity-oracle.js --neg-arm
- call :expectred red-as-expected-panel-row-identity !STEP_RC! "%OUT%\panel-row-identity-neg.log" "VERDICT: PASS"
-) else ( call :expectred red-as-expected-panel-row-identity MISSING "%OUT%\panel-row-identity-neg.log" "VERDICT: PASS" )
-REM `_history-classify.py` -- O CENSO DO ARQUIVO (2026-11-14). Ele nao julga e nao
-REM conserta: le' `history\<dia>\<hora>.md` e o `webview-run.log` e conta cada
-REM classe de defeito que o dono descreveu, para que cada numero do recibo tenha
-REM um comando ao lado. O `--neg-arm` corre o instrumento contra um ficheiro
-REM SINTETICO com exactamente uma linha de cada classe e exige que TODAS sejam
-REM contadas: uma regex que morre com o produto faria o censo publicar zeros, e
-REM zeros sao indistinguiveis de um arquivo perfeito.
-if exist _main\_history-classify.py (
- call :step history-classify 0 "_main\_history-classify.py;app\webview\prose_punct.py;history" "%OUT%\history-classify.log" python _main\_history-classify.py
- call :record history-classify !STEP_RC!
-) else ( call :record history-classify MISSING )
-if exist _main\_history-classify.py (
- call :step red-as-expected-history-classify 1 "_main\_history-classify.py;app\webview\prose_punct.py" "%OUT%\history-classify-neg.log" python _main\_history-classify.py --neg-arm
- call :expectred red-as-expected-history-classify !STEP_RC! "%OUT%\history-classify-neg.log" "NEG-ARM: the instrument sees every class"
-) else ( call :expectred red-as-expected-history-classify MISSING "%OUT%\history-classify-neg.log" "NEG-ARM: the instrument sees every class" )
 
 REM ===========================================================================
 REM  THE BATTERY'S OWN PRIORITY -- BELOW NORMAL.
@@ -836,6 +728,16 @@ if exist _main\_panel2-dom-probe.js (
   rem quem apaga as duas janelas de ruido.
   call :step caption-noise 0 "worker\caption_noise.py;worker\engine_policy.py;worker\engine_switch.py" "%OUT%\caption-noise.log" python worker\caption_noise.py --selftest
   call :record caption-noise !STEP_RC!
+  rem O PORTAO DA FALA/MUSICA (2026-11-15): o gate rodava LIGADO na branch ao vivo e recusava
+  rem 72% de uma fala de broadcast real -- 55% de cobertura e 0.32 de WER custados ao produto,
+  rem medido em `_main/devlab/lab.py score` no MESMO audio. Ele nao se retuna: no audio real a
+  rem faixa de dB por sub-quadro keeps 0.97/0.80 da MUSICA e 0.88/0.81 do broadcast. O padrao
+  rem passou a OFF e este paro de duas armas julga as populacoes que o oraculo nunca teve
+  rem (broadcast real + cama de musica real) e o PROPRIO padrao, lido por `ast`.
+  call :step speech-gate 0 "_main\speech-gate-oracle.py;worker\sotto_worker.py;worker\_prefix_audioflag.py;_main\live-sample-cable-input-90s.wav;_main\diar-mix\mix-bedonly.wav;worker\assets\sample1.flac;worker\assets\sample2.flac;_main\pt-br-sample.wav;_main\en-us-sample.wav;worker\assets\sample1_4s.flac" "%OUT%\speech-gate.log" python _main\speech-gate-oracle.py
+  call :record speech-gate !STEP_RC!
+  call :step red-as-expected-speech-gate 1 "_main\speech-gate-oracle.py;worker\sotto_worker.py;worker\_prefix_audioflag.py;_main\live-sample-cable-input-90s.wav;_main\diar-mix\mix-bedonly.wav;worker\assets\sample1.flac;worker\assets\sample2.flac;_main\pt-br-sample.wav;_main\en-us-sample.wav" "%OUT%\speech-gate-neg.log" python _main\speech-gate-oracle.py --neg-arm
+  call :expectred red-as-expected-speech-gate !STEP_RC! "%OUT%\speech-gate-neg.log" "NEG-ARM: PASS"
   call :step red-as-expected-theme-caption-identity 1 "_main\theme-caption-identity-oracle.py;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css" "%OUT%\theme-caption-identity-neg.log" python _main\theme-caption-identity-oracle.py --neg-arm
   call :expectred red-as-expected-theme-caption-identity !STEP_RC! "%OUT%\theme-caption-identity-neg.log" "NEG-ARM PASS"
   call :step caption-overlay-theme 0 "_main\caption-overlay-theme-oracle.py;_main\panel-themes-oracle.mjs;app\panel\panel.html;app\panel\brand-bridge.js;app\panel\panel-unified.css;app\webview\sotto_webview.py;app\webview\caption_overlay.py;app\webview\overlay_paint.py;app\webview\word_fade.py" "%OUT%\caption-overlay-theme.log" python _main\caption-overlay-theme-oracle.py
