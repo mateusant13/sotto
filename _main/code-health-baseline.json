@@ -361,7 +361,7 @@
       "max_func_name": "foreground"
     },
     "app/webview/hot_reload.py": {
-      "bytes": 28529,
+      "bytes": 28486,
       "classes": 4,
       "defs": 4,
       "except_pass": 0,
@@ -511,12 +511,12 @@
       "max_func_name": "_on_event"
     },
     "app/webview/text_normalize.py": {
-      "bytes": 6171,
+      "bytes": 6669,
       "classes": 0,
       "defs": 5,
       "except_pass": 0,
       "globals": 0,
-      "lines": 137,
+      "lines": 144,
       "max_func": 37,
       "max_func_name": "collapse_runs"
     },
@@ -751,12 +751,12 @@
       "max_func_name": "__init__"
     },
     "worker/fusion.py": {
-      "bytes": 19444,
+      "bytes": 19647,
       "classes": 1,
       "defs": 11,
       "except_pass": 0,
       "globals": 0,
-      "lines": 459,
+      "lines": 462,
       "max_func": 132,
       "max_func_name": "feed"
     },
