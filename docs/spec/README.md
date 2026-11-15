@@ -83,7 +83,8 @@ cabeçalho):
 
 Dois portões, e eles julgam metades diferentes: `_main/spec-citations-oracle.py` abre cada
 ficheiro citado, resolve cada linha e recusa uma citação a um ficheiro que não existe ou a uma
-linha além do fim; `_main/spec-coverage-oracle.py` faz a pergunta simétrica — percorre os ficheiros
+linha além do fim — e, desde 2026-11-15, recusa também um boletim `[UNKNOWN]` que não diga o que
+o **fecha** (arm A7: 58 boletins medidos, 0 sem condição, neg-arm 6/6); `_main/spec-coverage-oracle.py` faz a pergunta simétrica — percorre os ficheiros
 de PRODUTO e recusa um módulo que documento nenhum nomeie (`114` módulos + `2` grupos de classe, `0` ausentes,
 `0` casados só pelo nome). Os dois estão na bateria
 (`spec-citations`, `spec-coverage` e os respectivos `red-as-expected-*`).

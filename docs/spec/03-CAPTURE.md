@@ -333,7 +333,8 @@ um `device-rotated` também não são corpo: a shell usa-os como evidência de n
 - `[UNKNOWN]` **Nenhum número aqui foi medido no código de `HEAD`**: os `[MEASURED]` vêm de recibos
   datados. Fechar exige `live-code-freshness-oracle.py --strict` → `FRESH`, que não lancei.
 - `[UNKNOWN]` O custo de `live_endpoint_order()` nesta máquina **hoje**: exige medidor com áudio a
-  tocar; o recibo de 2026-11-04 (735/750 ms, 6 endpoints) não foi repetido.
+  tocar; o recibo de 2026-11-04 (735/750 ms, 6 endpoints) não foi repetido. Fechar exige correr o
+  medidor (leitura pura, `--status-all`) numa sessão com audio a tocar e citar os ms e o nº de endpoints.
 - `[UNKNOWN]` Se o tecto de 4,0 s de `FLAT_EVIDENCE_S` já correu numa sessão real: o recibo de
   2026-11-11 mede 43,6 s (código anterior). Fechar exige `device-rotated reason=flat` a ≤ 4,0 s.
 - `[UNKNOWN]` O que `_flat_evidence_s()` faz quando o import de `wasapi_loopback` falha (devolve

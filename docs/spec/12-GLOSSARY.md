@@ -305,4 +305,5 @@ um defeito novo. `HOTKEY_GESTURE_MS` sobrevive em **8** ficheiros — recibos, l
   executar o oráculo do orçamento (não corrido por ordem: nada da bateria nesta lane). Fechar exige
   `python _main/battery-budget-oracle.py --policy cap40` e os dois valores citados da sua saída.
 - `[UNKNOWN]` — o custo real de cada passo `heavy` (12 declarados): exige `SOTTO_BATTERY_HEAVY=1`,
-  proibido nesta lane.
+  proibido nesta lane. Fechar exige `SOTTO_BATTERY_HEAVY=1 python _main/battery-budget-oracle.py
+  --policy cap40` com os 12 passos medidos na mesma corrida.

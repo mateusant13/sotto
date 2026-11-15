@@ -18,6 +18,11 @@ O que ele julga (cada braco diz o seu nome no output):
   A6  todo ficheiro citado esta' no INDICE do git -- uma citacao a um caminho que existe
       so' nesta maquina (uma copia em `_cache/`, uma pasta no `.gitignore`) nao se reproduz
       num clone limpo, e uma especificacao cuja evidencia nao se reproduz nao e' evidencia
+  A7  todo boletim `- `[UNKNOWN]`` dos 14 documentos diz o que o FECHA -- o `STATUS.md`
+      afirma "cada um diz o que o fecharia", e essa frase era prosa que ninguem verificava:
+      medidos 2026-11-15, OITO boletins nomeavam o que falta e nao a accao que o encerra
+      (`03-CAPTURE` 4, `05-LIVE-PATH` 3, `09-FAILURE-MODES` 1). Uma lacuna sem condicao de
+      fecho e' indistinguivel de uma lacuna esquecida.
 
 A resolucao de caminho e' a mesma que um leitor humano faz: o nome citado pode vir
 com ou sem raiz (`sotto_webview.py` vs `app/webview/sotto_webview.py`), por isso as
@@ -234,6 +239,44 @@ def check(spec_dir, root):
     stats["untracked_red"] = untracked_red
     bad += bool(untracked_red)
 
+    # ---- A7: todo boletim [UNKNOWN] diz o que o fecha ---------------------------------
+    # O boletim e' a linha `- `[UNKNOWN]`` e o seu bloco: as linhas seguintes que nao abrem
+    # outro boletim. Uma condicao de fecho conta por CONTER `fech` (Fechar/Fecha-se/fechar),
+    # que e' a forma que o STATUS.md promete; nao se exige a palavra exacta porque os 14
+    # documentos a escrevem de varias maneiras e a promessa e' o que a frase DIZ, nao o token.
+    CLOSE = re.compile(r"fech", re.I)
+    no_close = list(stats.setdefault("no_close", []))
+    unknown_bullets = 0
+    for doc in docs:
+        # A A7 julga os documentos de COMPORTAMENTO, os que prometem `## Lacunas`: no
+        # `README.md` a linha `[UNKNOWN]` e' a LEGENDA da etiqueta e no `STATUS.md` e' a
+        # propria promessa -- julga-las seria pedir a uma definicao que se feche.
+        if doc.name not in NEEDS_LACUNAS:
+            continue
+        lines = _lines(doc)
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if line.startswith("- ") and "[UNKNOWN]" in line:
+                unknown_bullets += 1
+                block = [line]
+                j = i + 1
+                while j < len(lines) and lines[j].strip() and not lines[j].startswith("- "):
+                    block.append(lines[j])
+                    j += 1
+                if not CLOSE.search(" ".join(block)):
+                    no_close.append((doc.name, i + 1, " ".join(block)[:110]))
+                i = j
+                continue
+            i += 1
+    stats["no_close"] = no_close
+    stats["unknown_bullets"] = unknown_bullets
+    for doc, lineno, text in no_close:
+        out.append("  A7 RED %s:%d boletim [UNKNOWN] sem condicao de fecho: %s" % (doc, lineno, text))
+    out.append("  A7 %s  boletins [UNKNOWN]: %d, sem o que os fecha: %d"
+               % ("GREEN" if not no_close else "RED", unknown_bullets, len(no_close)))
+    bad += bool(no_close)
+
     if stats["ambiguous"]:
         for doc, lineno, name in stats["ambiguous"]:
             out.append("  A1 WARN %s:%d cita `%s`, que existe em duas raizes -- a citacao nao "
@@ -245,9 +288,10 @@ def _verdict(ok, out, stats):
     for line in out:
         print(line)
     print("\nSPEC-CITATIONS: docs=%d citacoes=%d sem_ficheiro=%d fora_de_alcance=%d "
-          "index_ausente=%d fora_da_tabela=%d"
+          "index_ausente=%d fora_da_tabela=%d lacunas_sem_fecho=%d"
           % (stats["docs"], stats["cites"], len(stats["unresolved"]), len(stats["extent"]),
-             len(stats["index_missing"]), len(stats["index_orphan"])))
+             len(stats["index_missing"]), len(stats["index_orphan"]),
+             len(stats.get("no_close", []))))
     print("SPEC-CITATIONS VERDICT: %s" % ("PASS" if ok else "FAIL"))
     return EXIT_PASS if ok else EXIT_FAIL
 
@@ -312,13 +356,23 @@ def neg_arm():
         p.write_text(p.read_text(encoding="utf-8")
                      + "\n`[CODE]` `_main/_cache/sotto_webview_nograce.py:10`\n", encoding="utf-8")
 
+    def m6(spec, _root):
+        # A7: um boletim [UNKNOWN] que nomeia o que falta e NAO o que o fecha -- a forma que
+        # OITO boletins tinham antes de 2026-11-15. Plantado numa copia: acrescenta-se um
+        # boletim novo, sem tocar nos que ja' existem.
+        p = spec / "03-CAPTURE.md"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + "\n- `[UNKNOWN]` Quantos blocos o tap entrega por segundo.\n",
+                     encoding="utf-8")
+
     case("citacao-de-ficheiro-inexistente", m1, "A1 RED")
     case("linha-alem-do-fim", m2, "A2 RED")
     case("indice-com-documento-ausente", m3, "A3 RED")
     case("documento-sem-lacunas", m4, "A5 RED")
     case("citacao-a-ficheiro-fora-do-indice", m5, "A6 RED")
+    case("lacuna-sem-condicao-de-fecho", m6, "A7 RED")
     print("\nNEG-ARM: %s -- %d/%d mutantes apanhados"
-          % ("PASS" if not fails else "FAIL", 5 - fails, 5))
+          % ("PASS" if not fails else "FAIL", 6 - fails, 6))
     return EXIT_FAIL if not fails else EXIT_PASS
 
 
