@@ -700,8 +700,12 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   `.xml` e passou a julgar o FICHEIRO DE LARGADA -- a arm 20 exige `--threads 2` na linha que o
   cmd.exe corre e recusa `--threads 1` --, logo uma dependencia que o nao nomeie deixaria os dois
   passos em cache a reimprimir um PASS sobre um launcher que ja mudou (a classe do `panel-deps`).
-  Ver o §do motor quente: o DM de 2026-11-15 mediu `pythonw.exe(42792)` a 14,15 % da maquina sem
-  tecto declarado ao lado do comando que o larga.)
+  O DM de 2026-11-15 mediu `pythonw.exe(42792)` a 14,15 % da maquina sem tecto declarado ao lado do
+  comando que o larga; ver §"O TECTO DO MOTOR QUENTE VIVE NA LARGADA".)
+  NOTA DE PIN: os 400 292 B sao do ficheiro VIVO, que tambem carrega o bloco do `spec-coverage` de
+  outra lane ainda NAO commitado (`docs\spec\README.md` como dependencia -> `""`). O que ESTE
+  commit entrega sao 76 B (395718 -> 395794 no blob, LF), e o commit seguinte a esse bloco re-mede
+  este numero, como manda a regra do pin.
   (Noventa e oito bytes e ZERO linhas a MENOS do que o pin de 400314 B: os DOIS passos do
   `spec-coverage` perdem a dependencia `docs\spec\README.md` e passam a `""`, a MESMA forma que o
   `spec-citations` ja' usava. A populacao do portao e' o DIRECTORIO `docs/spec/` (16 documentos) e o
