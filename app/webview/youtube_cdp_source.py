@@ -164,7 +164,15 @@ EXTRACT_JS = r"""
                rows: [], segs: [], why: 'no-window',
                t: v ? v.currentTime : null, paused: v ? v.paused : null,
                rs: v ? v.readyState : null,
-               rate: v ? v.playbackRate : null};
+               rate: v ? v.playbackRate : null,
+               // `ended` (2026-11-15): o shell le `snap['ended']` para decidir
+               // `yt_cdp_ended` e esta chave NAO vinha neste payload desde que
+               // ele existe -- `parse_snapshot` a descartava por ausencia, e
+               // `yt_cdp_ended` era `False` para sempre. Medido pelo drill de
+               // caos (S5, `T5 player_stopped reads an ended video as stopped`):
+               // o DOM publicava `ended=true` e a decisao respondia False.
+               // O `PLAYING_JS` ja' publicava; era este que faltava.
+               ended: v ? v.ended : null};
   const box = document.querySelector('.ytp-caption-window-container');
   if (!box) return JSON.stringify(out);
   const all = Array.prototype.slice.call(
@@ -894,6 +902,12 @@ def parse_snapshot(payload, now=None):
             "videoId": str(data.get("videoId") or ""),
             "t": (_float(data.get("t"))),
             "paused": (None if data.get("paused") is None else bool(data.get("paused"))),
+            # `ended` (2026-11-15): o shell le' este campo (linha ~5461) e ele
+            # nunca chegava aqui -- `EXTRACT_JS` nao o publicava, entao a chave
+            # estava sempre ausente e `yt_cdp_ended` era `False` por construcao.
+            # Ausencia continua a ser ausencia (`None`), nunca um `False`
+            # inventado: um payload velho nao afirma que o video acabou.
+            "ended": (None if data.get("ended") is None else bool(data.get("ended"))),
             "rate": _float(data.get("rate")),
             # O JOGADOR EXISTE NESTA ABA? (2026-11-05) `rs` e' o `readyState` do
             # `<video>`: 0 = nenhuma media carregada, que e' o que uma aba

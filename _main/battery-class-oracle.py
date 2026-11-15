@@ -59,6 +59,35 @@ LAUNCHERS = (
     # que JA' existe e larga um filho proprio, mas nunca sobe a app.
 )
 
+#: Os subcomandos do `_main\devlab\lab.py` que LEVANTAM o worker de ASR: os
+#: quatro `run_worker_once(` de la' largam `worker\sotto_worker.py`, que carrega
+#: ~1,8 GiB de modelo e ocupa a GPU. MEDIDO 2026-11-15: `concurrent-workers` (S4)
+#: e `devlab-crosstalk` (S6) estavam declarados `heavy` no COMENTARIO e no README
+#: e registados sem a palavra -- cada corrida pagava dois carregamentos (~3 min
+#: de parede, 3 300 MiB) que o dono nao pediu. A classe `heavy` do `:step` nao e'
+#: so' "abre a tela": e' qualquer coisa que o dono SENTE, e carregar o modelo
+#: duas vezes e' exatamente isso.
+#: `captions` e `chaos` NAO estao aqui de proposito: eles abrem um Chrome
+#: headless sobre uma pagina de fixture e nunca tocam no modelo (medidos 3,1 s e
+#: 2,0 s a quente, contra ~90 s por worker).
+MODEL_SUBCMDS = ("concurrent", "crosstalk", "strips", "feed", "score")
+
+
+def model_loaders(text):
+    """[(nome, subcomando)] dos passos que levantam o modelo SEM `heavy`."""
+    bad = []
+    for cls, name, cmd in steps(text):
+        if "heavy" in cls:
+            continue
+        low = cmd.replace("/", "\\").lower()
+        if "devlab\\lab.py" not in low:
+            continue
+        partes = low.split("devlab\\lab.py", 1)[1].split()
+        if partes and partes[0] in MODEL_SUBCMDS:
+            bad.append((name, partes[0]))
+    return bad
+
+
 RESULTS = []
 
 
@@ -133,6 +162,8 @@ def main() -> int:
                if "shell-relaunch-oracle.py" in cmd]
         arm("o relancamento (e o seu negativo) estao declarados `heavy`",
             [("heavy" in c) for c, _ in rel], [True] * len(rel) if rel else [])
+        arm("nenhum passo carrega o modelo sem `heavy` (o modelo custa ~1,8 GiB x2)",
+            model_loaders(text), [])
         fail = RESULTS.count(False)
         print(f"\nBATTERY-CLASS VERDICT {'PASS' if fail == 0 else 'RED'} "
               f"-- arms={len(RESULTS)} fail={fail}")
@@ -157,10 +188,34 @@ def main() -> int:
     print(("[PASS] neg-arm: o mutante (heavy -> always) foi apanhado e nomeado\n"
            if ok else
            "[FAIL] neg-arm: o mutante sobreviveu -- o gate nao mede a classe\n"))
-    print("BATTERY-CLASS NEG-ARM PASS -- RED as designed" if ok
+
+    # ── o SEGUNDO eixo: um carregador de modelo rebaixado tem de ser apanhado ──
+    # O braco acima muta o passo do RELANCAMENTO, e a lista dele sao LARGADORES.
+    # Esta arm prova o eixo que faltava -- um passo do devlab que carrega o
+    # modelo -- porque um unico mutante so' exercita a lista que ele nomeia, e
+    # foi exatamente por isso que `concurrent-workers` passou meses sem classe.
+    linhas2 = text.split("\n")
+    alvo2 = None
+    for i, line in enumerate(linhas2):
+        if re.match(r"\s*call :step heavy (concurrent-workers|devlab-crosstalk) ", line):
+            alvo2 = i
+            linhas2[i] = line.replace("heavy ", "", 1)
+            break
+    if alvo2 is None:
+        print("SETUP: nao encontrei um passo heavy do devlab para mutar")
+        return 2
+    p2 = os.path.join(tmp, "battery2.cmd")
+    io.open(p2, "w", encoding="utf-8").write("\n".join(linhas2))
+    mut2 = model_loaders(io.open(p2, encoding="utf-8").read())
+    ok2 = len(mut2) == 1 and mut2[0][1] in ("concurrent", "crosstalk")
+    print(("[PASS] neg-arm2: o carregador de modelo rebaixado foi apanhado e nomeado %r\n"
+           % (mut2[0][0],)) if ok2 else
+          "[FAIL] neg-arm2: o mutante do modelo sobreviveu -- o eixo nao e' medido\n")
+
+    print("BATTERY-CLASS NEG-ARM PASS -- RED as designed" if (ok and ok2)
           else "BATTERY-CLASS NEG-ARM FAIL")
     # rc=1 POR DESENHO no braco negativo (ver stale-display-oracle.py).
-    return 1 if ok else 2
+    return 1 if (ok and ok2) else 2
 
 
 if __name__ == "__main__":

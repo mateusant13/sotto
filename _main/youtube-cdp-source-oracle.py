@@ -218,10 +218,30 @@ def _arm_pausa_corta_a_pintura(mod, shell_path):
                and mod.player_stopped({'ended': True}) is True
                and mod.player_stopped({'paused': False, 'ended': False}) is False
                and mod.player_stopped({}) is False)
-    ok = mod_ok and shell_ok and stopped
-    return ok, ('freeze=%r grew=%r shell=%r payload=%r'
-                % (at10, grew, shell_ok,
-                   (payload or {}).get('paused')))
+    # A METADE QUE FALTAVA (2026-11-15, medido pelo drill de caos do devlab):
+    # `player_stopped` lia bem `{'ended': True}` -- e o `EXTRACT_JS` NUNCA
+    # publicava `ended`, logo o shell (`yt_cdp_ended = bool(snap.get('ended'))`)
+    # perguntava por uma chave que o payload nao trazia e a resposta era `False`
+    # para sempre. O oraculo passava porque LHE DAVA o dicionario de mao. As duas
+    # arms abaixo ligam o fim da cadeia: o JS publica, e o `parse_snapshot` nao
+    # descarta -- com `None` continuando a ser ausencia, nunca um `False`
+    # inventado (um payload velho nao afirma que o video acabou).
+    js_publishes = 'ended: v ? v.ended : null' in (mod.EXTRACT_JS or '')
+    parsed = mod.parse_snapshot(json.dumps({'videoId': 'x', 'rows': [], 'segs': [],
+                                            'why': 'no-painted-caption',
+                                            't': 30.0, 'paused': False,
+                                            'ended': True, 'rs': 4, 'rate': 1.0}))
+    parse_keeps = bool(parsed) and parsed.get('ended') is True
+    parse_absent_is_none = bool(mod.parse_snapshot(json.dumps(
+        {'videoId': 'x', 'rows': [], 'segs': [], 'why': 'no-painted-caption',
+         't': 30.0, 'paused': False, 'rs': 4, 'rate': 1.0}))) and \
+        mod.parse_snapshot(json.dumps(
+            {'videoId': 'x', 'rows': [], 'segs': [], 'why': 'no-painted-caption',
+             't': 30.0, 'paused': False, 'rs': 4, 'rate': 1.0})).get('ended') is None
+    ok = mod_ok and shell_ok and stopped and js_publishes and parse_keeps \
+        and parse_absent_is_none
+    return ok, ('freeze=%r grew=%r shell=%r js_ended=%r parse=%r absent_none=%r'
+                % (at10, grew, shell_ok, js_publishes, parse_keeps, parse_absent_is_none))
 
 
 def _arm_tick_da_pausa(shell_path):

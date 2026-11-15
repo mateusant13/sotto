@@ -51,7 +51,6 @@ if /i "%~1"=="--strips"    ( set "MODE=strips"    & shift & goto parse )
 if /i "%~1"=="--selftest"  ( set "MODE=selftest"  & shift & goto parse )
 if /i "%~1"=="--status"    ( set "MODE=status"    & shift & goto parse )
 if /i "%~1"=="--video"     ( set "VIDEO=%~2"      & shift & shift & goto parse )
-if /i "%~1"=="--status"    ( set "MODE=status"    & shift & goto parse )
 
 :dispatch
 if /i "%MODE%"=="selftest" goto do_selftest

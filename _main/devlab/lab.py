@@ -40,6 +40,14 @@ USAGE
 
 NOTHING here opens a device, registers a hotkey, or shows a window.
 """
+# BATTERY-HEAVY: model -- os subcomandos que LEVANTAM o worker de ASR (`concurrent`,
+# `crosstalk`, `strips`, `feed`, `score`) carregam ~1,8 GiB de modelo e ocupam a GPU,
+# DUAS vezes nos pares. A classe `heavy` do `_audit-verify-all.cmd` so' corre com
+# SOTTO_BATTERY_HEAVY=1. `selftest`, `status`, `captions` e `chaos` NAO carregam o
+# modelo (abrem um Chrome headless sobre uma fixture e fecham em 2-3 s) e por isso
+# os passos deles nao pedem a classe. MEDIDO 2026-11-15: os dois passos `heavy`
+# desta bateria estavam registados sem a palavra e cada corrida pagava os dois
+# carregamentos sem o dono ter pedido nada.
 from __future__ import annotations
 
 import argparse
@@ -66,6 +74,15 @@ CACHE = os.path.join(HERE, "cache")
 CACHE_INDEX = os.path.join(CACHE, "index.json")
 AUDIBILITY_THRESHOLD = 0.001        # peak below this is silence on this box
 SR = 16000                          # the worker's TARGET_SR
+
+#: The bed for mixed windows: the OWNER'S OWN captured audio, not a synthesised
+#: noise floor. `_main\\_diar-mix.py` established this window as non-speech by two
+#: independent instruments (the Redux ASR finds no words and the pyannote
+#: segmenter finds no speech) while the SAME file has speech at 29.5-49.4 s, so
+#: the negative is a live instrument's negative rather than a deaf one.
+BED_WAV = os.path.join(ROOT, "_main", "live-sample-cable-input-90s.wav")
+BED_START_S = 50.0
+BED_END_S = 88.0
 
 BROWSERS = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
             r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
@@ -733,6 +750,54 @@ def wer(ref, hyp):
     return prev[-1] / float(len(r)), {"ref": len(r), "hyp": len(h), "errors": prev[-1]}
 
 
+def strip_verdict(rows, noise):
+    """The S3 ordering decision, factored so a gate can exercise BOTH arms.
+
+    Three outcomes, and the middle one is the whole point:
+      * `UNDECIDED` -- nothing to compare, or the gap does not clear the noise;
+      * `CLEARS`    -- one strip is better by more than the instrument's own
+                       run-to-run spread, and the gap is reported;
+      * a tie in the gap that still clears noise is impossible by construction.
+    A verdict function that can only ever say "X is best" is the class of gate
+    this tree keeps paying for (a control that cannot fail), so the negative arm
+    of `_strip_verdict_selftest` feeds it a gap SMALLER than the noise.
+    """
+    judged = [r for r in rows if r.get("wer") is not None]
+    if len(judged) < 2:
+        return ("UNDECIDED", None, None, 0.0)
+    ordered = sorted(judged, key=lambda r: r["wer"])
+    best, second = ordered[0], ordered[1]
+    gap = second["wer"] - best["wer"]
+    if gap <= noise:
+        return ("UNDECIDED", best, second, gap)
+    return ("CLEARS", best, second, gap)
+
+
+def _strip_verdict_selftest(check):
+    """Prove the S3 judge refuses a noise-sized gap and accepts a real one.
+
+    Registered through the SAME `check` the rest of the selftest uses, because a
+    probe that prints its own PASS line is invisible to the verdict: measured,
+    this function's three arms printed PASS while the summary reported `10/10`
+    over a population that had grown to 13.
+    """
+    rows = [{"strip": "a", "wer": 0.3220}, {"strip": "b", "wer": 0.3729}]
+    v, best, _s, gap = strip_verdict(rows, 0.0509)      # the MEASURED spread
+    # `gap <= noise` is the judge's own boundary: a gap that EQUALS the measured
+    # spread is not a finding, it is the spread. The assertion mirrors it exactly
+    # -- asserting `<` here while the judge uses `<=` made this arm FAIL on a
+    # correct judge (measured: gap=0.0509 noise=0.0509, arm said FAIL).
+    check("s3 judge: noise-sized gap is undecided",
+          v == "UNDECIDED" and best is not None and gap <= 0.0509,
+          "gap=%.4f noise=%.4f" % (gap, 0.0509))
+    rows2 = [{"strip": "a", "wer": 0.10}, {"strip": "b", "wer": 0.40}]
+    v2, b2, _s2, gap2 = strip_verdict(rows2, 0.02)
+    check("s3 judge: a real gap clears it",
+          v2 == "CLEARS" and b2["strip"] == "a", "gap=%.4f" % gap2)
+    v3, _b3, _s3, _g3 = strip_verdict([{"strip": "a", "wer": 0.3}], 0.0)
+    check("s3 judge: one strip is undecided", v3 == "UNDECIDED", v3)
+
+
 # ── commands ────────────────────────────────────────────────────────────────
 def parse_windows(spec):
     out = []
@@ -782,10 +847,7 @@ def cmd_harvest(a):
 
 def cmd_feed(a):
     idx = load_index()
-    key = _window_key(a.video, a.window[0], a.window[1])
-    if key not in idx:
-        raise SystemExit("no cached audio for %s -- run harvest first" % key)
-    m = idx[key]
+    key, m = _lookup(a, idx, "feed")
     tag = "feed-%s" % key
     print("feed %s  wav=%s  max_seconds=%.1f" % (key, m["wav"], m["dur_s"]))
     _load = load_estimate()
@@ -807,10 +869,7 @@ def cmd_feed(a):
 
 def cmd_score(a):
     idx = load_index()
-    key = _window_key(a.video, a.window[0], a.window[1])
-    if key not in idx:
-        raise SystemExit("no cached audio for %s -- run harvest first" % key)
-    m = idx[key]
+    key, m = _lookup(a, idx, "score")
     truth_path = os.path.join(CACHE, "truth", "%s.json3" % a.video)
     fetch_truth(a.video, truth_path)
     ref, kept, dropped = truth_slice(truth_path, m["start"], m["seconds"])
@@ -844,7 +903,9 @@ def cmd_score(a):
     rate, detail = wer(ref, hyp)
     print("REF: %s" % (ref[:300] or "(empty)"))
     print("HYP: %s" % (hyp[:300] or "(empty)"))
-    hyp_words = len(hyp.split())
+    # The numerator is `detail["hyp"]`, the NORMALIZED count the WER divided by --
+    # a raw `split()` beside a normalized rate is two populations under one label.
+    hyp_words = detail.get("hyp") or len(hyp.split())
     coverage = (hyp_words / float(detail["ref"])) if detail.get("ref") else 0.0
     print("SCORE population: finals=%d ref_events=%d dropped=%d "
           "ref_words=%d hyp_words=%d coverage=%.2f"
@@ -861,42 +922,198 @@ def cmd_score(a):
     return 0 if rate is not None else 3
 
 
+# THE STRIP TABLE: each entry names ONE stage and the knob that REALLY removes it.
+# MEASURED DEFECT 2026-11-15, two entries were lies:
+#  * `no-denoise` set `SOTTO_GATE=0`, which is the SPEECH GATE, not denoise -- the
+#    label named a stage the entry never touched, so the row described nothing;
+#  * `single-thread` set `SOTTO_WORKER_THREADS`, a variable that exists NOWHERE in
+#    the product (`grep -rn SOTTO_WORKER_THREADS` returned this line only). The
+#    worker's own knob is `--threads`, and `effective_threads()` reads the FLAG
+#    before the environment, so an env var could never have won anyway.
+# A strip whose knob does not exist is not a cheap strip; it is the same run
+# counted twice under a confident name.
+#
+# `args` are appended to the worker command line; `env` is the environment delta.
+def _mix_window(src_wav, mix_spec, out_wav):
+    """Mix real speech with the OWNER'S OWN non-speech bed at a measured SNR.
+
+    WHY THIS EXISTS (owner order 2026-11-15: "build better test audio than the
+    easy benchmark demos"). Every score this lab produced before today came from
+    a clean single-source window, and the speech/music gate was tuned on studio
+    clean fixtures until it ate 72 % of a real broadcast. A clean window cannot
+    show that class of failure.
+
+    WHAT IS MIXED, and why these two:
+      target -- the window the lab already cached: real speech, real accents.
+      bed    -- `_main\\live-sample-cable-input-90s.wav`, the owner's OWN
+                captured audio, seconds 50.0-88.0. Provenance, not genre: both
+                the Redux ASR and the pyannote segmenter find no speech there
+                while both find speech in 29.5-49.4 s of the same file, so the
+                negative is a live instrument's negative, not a deaf one.
+
+    SNR is `20*log10(rms(target)/rms(bed))` -- the bed's level relative to the
+    WHOLE target, not to its speech frames. Stated because the choice moves the
+    number: measured on the same pair, `--mix 6` is 6 dB by this definition and
+    a different value by any other. The measured value is printed and stored,
+    never the requested one.
+
+    NOTHING IS RENDERED: two files are read, one is written.
+    """
+    import numpy as np
+    import soundfile as sf
+    x, sr = sf.read(src_wav, dtype="float32", always_2d=True)
+    target = x.mean(axis=1)
+    if sr != SR:
+        raise SystemExit("target is %d Hz, expected %d" % (sr, SR))
+    bed_all, bsr = sf.read(BED_WAV, dtype="float32", always_2d=True)
+    bed_all = bed_all.mean(axis=1)
+    if bsr != SR:
+        n_out = int(round(len(bed_all) * SR / float(bsr)))
+        t_in = np.arange(len(bed_all)) / float(bsr)
+        t_out = np.arange(n_out) / float(SR)
+        bed_all = np.interp(t_out, t_in, bed_all).astype(np.float32)
+    bed = bed_all[int(BED_START_S * SR):int(BED_END_S * SR)]
+    if bed.size < target.size:
+        reps = int(np.ceil(target.size / float(bed.size)))
+        bed = np.tile(bed, reps)
+    bed = bed[:target.size]
+    rms_t = float(np.sqrt(np.mean(target ** 2))) or 1e-9
+    rms_b = float(np.sqrt(np.mean(bed ** 2))) or 1e-9
+    want = float(mix_spec)
+    # bed gain that makes 20*log10(rms_t / rms_bed_scaled) == want
+    g = rms_t / (rms_b * (10.0 ** (want / 20.0)))
+    out = target + bed * g
+    peak = float(np.max(np.abs(out))) or 1e-9
+    if peak > 0.95:
+        out = out * (0.95 / peak)
+    out = out.astype(np.float32)
+    measured = 20.0 * np.log10((np.sqrt(np.mean(target ** 2)) or 1e-9) /
+                               (np.sqrt(np.mean((bed * g) ** 2)) or 1e-9))
+    os.makedirs(os.path.dirname(out_wav), exist_ok=True)
+    sf.write(out_wav, out, SR, subtype="FLOAT")
+    return {"snr_requested_db": want, "snr_measured_db": round(float(measured), 3),
+            "bed_gain": round(float(g), 5),
+            "target_rms": round(rms_t, 6), "bed_rms": round(rms_b, 6),
+            "out_peak": round(float(np.max(np.abs(out))), 5),
+            "dur_s": round(len(out) / float(SR), 3)}
+
+
+def cmd_mix(a):
+    """Build a mixed window from an already-cached clean one."""
+    idx = load_index()
+    src_key = _window_key(a.video, a.window[0], a.window[1])
+    if src_key not in idx:
+        raise SystemExit("no cached CLEAN audio for %s -- run harvest first" % src_key)
+    src = idx[src_key]
+    key = _window_key(a.video, a.window[0], a.window[1], a.mix)
+    wav = os.path.join(CACHE, "audio", "%s.wav" % key)
+    meta = os.path.join(CACHE, "audio", "%s.json" % key)
+    if os.path.exists(wav) and os.path.exists(meta) and not a.force:
+        with open(meta, encoding="utf-8") as fh:
+            m = json.load(fh)
+        print("CACHE HIT %s mix=%s dB  %s" % (key, a.mix, wav))
+        return 0
+    print("MISS %s mix=%s dB from %s" % (key, a.mix, src["wav"]))
+    info = _mix_window(src["wav"], a.mix, wav)
+    m = {"key": key, "video": a.video, "start": a.window[0],
+         "seconds": a.window[1], "wav": wav, "dur_s": info.pop("dur_s"),
+         "audibility": "NOT-RENDERED (mixed from files, nothing plays)",
+         "focus_unchanged": None, "mix_db": a.mix,
+         "src_key": src_key, "src_wav": src["wav"], **info}
+    with open(meta, "w", encoding="utf-8") as fh:
+        json.dump(m, fh, indent=2)
+        fh.write("\n")
+    idx[key] = m
+    save_index(idx)
+    print("MIX %s snr_req=%.1f dB snr_measured=%+.3f dB bed_gain=%.4f "
+          "out_peak=%.4f" % (key, a.mix, m["snr_measured_db"], m["bed_gain"],
+                             m["out_peak"]))
+    print("AUDIO %s %s:%ss dur=%.2fs mix_db=%s audibility=%s"
+          % (key, a.video, a.window[1], m["dur_s"], a.mix, m["audibility"]))
+    return 0
+
+
 STRIPS = {
-    "live-only":      {},
-    "batch-on":       {"SOTTO_REDUX_WHEN_HIDDEN": "1"},
-    "no-denoise":     {"SOTTO_GATE": "0"},
-    "single-thread":  {"SOTTO_WORKER_THREADS": "1"},
+    "live-only":      {"env": {}, "args": []},
+    "batch-on":       {"env": {"SOTTO_REDUX_WHEN_HIDDEN": "1"}, "args": []},
+    "gate-on":        {"env": {"SOTTO_GATE": "1"}, "args": []},
+    "single-thread":  {"env": {}, "args": ["--threads", "1"]},
 }
 
 
 def cmd_strips(a):
     idx = load_index()
-    key = _window_key(a.video, a.window[0], a.window[1])
-    if key not in idx:
-        raise SystemExit("no cached audio for %s -- run harvest first" % key)
-    m = idx[key]
+    key, m = _lookup(a, idx, "strips")
     truth_path = os.path.join(CACHE, "truth", "%s.json3" % a.video)
     fetch_truth(a.video, truth_path)
     ref, _k, _d = truth_slice(truth_path, m["start"], m["seconds"])
+    # THE NOISE FLOOR OF THIS INSTRUMENT, MEASURED 2026-11-15 and the reason
+    # `--repeats` exists. Two identical S3 runs, same audio, same knobs:
+    #   live-only    wer 0.3220 then 0.3729   (delta 0.051)
+    #   batch-on     wer 0.3559 then 0.3220   (delta 0.034)
+    #   single-thread wer 0.3898 then 0.3898  (delta 0.000)
+    # So a single run cannot separate two strips that differ by less than ~0.05:
+    # the first version of this table reported `batch-on` (0.3559) as WORSE than
+    # `live-only` (0.3220), and the next run reported the opposite order. A
+    # measurement whose noise exceeds its signal is not a measurement, and a gate
+    # that accuses a correct strip loses its authority the same way the console
+    # census did (2026-11-04).
+    # A repeat count is the honest answer, and a difference is only claimed when
+    # it clears the MEASURED spread of the same strip, printed beside it.
     rows = []
-    for name, env in STRIPS.items():
+    for name, knobs in STRIPS.items():
         tag = "strip-%s-%s" % (name, key)
-        res = run_worker_once(m["wav"], tag, run_budget(m["dur_s"]), extra_env=env)
-        lines = transcript_of(res)
-        hyp = " ".join(l["text"] for l in lines)
-        rate, detail = wer(ref, hyp)
-        rows.append({"strip": name, "rc": res["rc"], "wall_s": res["wall_s"],
-                     "lines": len(lines),
-                     "wer": None if rate is None else round(rate, 4),
-                     "detail": detail})
-        print("  %-14s rc=%s wall=%5.1fs peak_priv=%dMiB lines=%-3d wer=%s"
-              % (name, res["rc"], res["wall_s"], res.get("peak_priv_mb", 0),
-                 len(lines), ("%.4f" % rate) if rate is not None else "n/a"))
+        reps = max(1, int(getattr(a, "repeats", 1) or 1))
+        wers, covs, walls = [], [], []
+        res = detail = lines = None
+        for i in range(reps):
+            rtag = tag if reps == 1 else "%s-r%d" % (tag, i + 1)
+            res = run_worker_once(m["wav"], rtag, run_budget(m["dur_s"]),
+                                  extra_env=knobs.get("env"),
+                                  extra_args=knobs.get("args"))
+            lines = transcript_of(res)
+            hyp = " ".join(l["text"] for l in lines)
+            rate, detail = wer(ref, hyp)
+            hw = detail.get("hyp") or len(hyp.split())
+            rw = detail.get("ref") or 0
+            wers.append(None if rate is None else round(rate, 4))
+            covs.append(round((hw / float(rw)) if rw else 0.0, 3))
+            walls.append(res["wall_s"])
+        # COVERAGE BESIDE WER, the same contract the score path already honours:
+        # a WER over a third of the window is not a score, and two strips whose
+        # WER ties can differ by the words they never produced at all.
+        valid = [w for w in wers if w is not None]
+        wer_med = round(sorted(valid)[len(valid) // 2], 4) if valid else None
+        wer_spread = round(max(valid) - min(valid), 4) if len(valid) > 1 else None
+        cov_med = round(sorted(covs)[len(covs) // 2], 3) if covs else 0.0
+        rows.append({"strip": name, "rc": res["rc"],
+                     "wall_s": round(sum(walls) / float(len(walls)), 1),
+                     "wall_s_all": walls, "lines": len(lines),
+                     "wer": wer_med, "wer_runs": wers, "wer_spread": wer_spread,
+                     "coverage": cov_med, "coverage_runs": covs,
+                     "hyp_words": detail.get("hyp"), "detail": detail})
+        print("  %-14s rc=%s wall=%5.1fs peak_priv=%dMiB lines=%-3d "
+              "cov=%.2f wer=%s%s"
+              % (name, res["rc"], sum(walls) / float(len(walls)),
+                 res.get("peak_priv_mb", 0), len(lines), cov_med,
+                 ("%.4f" % wer_med) if wer_med is not None else "n/a",
+                 ("  spread=%.4f" % wer_spread) if wer_spread is not None else ""))
     out = os.path.join(CACHE, "strips-%s.json" % key)
     with open(out, "w", encoding="utf-8") as fh:
         json.dump({"key": key, "video": a.video, "window": list(a.window),
                    "ref_words": len(ref.split()), "rows": rows}, fh, indent=2)
         fh.write("\n")
+    # THE ORDERING IS CLAIMED ONLY IF IT CLEARS THE MEASURED NOISE.
+    noise = max([r["wer_spread"] or 0.0 for r in rows] or [0.0])
+    verdict, best, second, gap = strip_verdict(rows, noise)
+    if verdict == "CLEARS":
+        print("STRIPS-best %s wer=%.4f by %.4f (noise=%.4f, CLEARS it)"
+              % (best["strip"], best["wer"], gap, noise))
+    elif best is not None:
+        print("STRIPS-best UNDECIDED: %s vs %s differ by %.4f, which does "
+              "NOT clear the measured run-to-run spread %.4f -- re-run with "
+              "`--repeats 3` before claiming an order"
+              % (best["strip"], second["strip"], gap, noise))
     print("STRIPS wrote %s" % out)
     return 0
 
@@ -913,11 +1130,14 @@ def cmd_status(a):
 
 def cmd_selftest(a):
     """Judge the JUDGE: the gate must refuse a known-audible route."""
+
     checks = []
 
     def check(name, ok, detail=""):
         checks.append((name, ok, detail))
         print("  %-34s %s %s" % (name, "PASS" if ok else "FAIL", detail))
+
+    _strip_verdict_selftest(check)
 
     meter = EndpointMeter()
     eps = meter.endpoints()
@@ -941,6 +1161,68 @@ def cmd_selftest(a):
     check("capture diverts element audio", "createMediaElementSource" in CAPTURE_JS)
     check("capture never connects src to destination",
           "src.connect(sink)" not in CAPTURE_JS and "src.connect(ctx.destination)" not in CAPTURE_JS)
+    # ── S4's judge: a control that cannot fail is not a control ──────────
+    # Feed it a pair that a SHARED artifact would produce -- one stdout file,
+    # one text, one process's wall covering the other -- and require every
+    # isolation row to go red. Then feed a correct pair and require green.
+    shared = {"concurrent-a": {"rc": 0, "out": "same.jsonl", "wall_s": 30.0,
+                               "_text": "the same words"},
+              "concurrent-b": {"rc": 0, "out": "same.jsonl", "wall_s": 30.0,
+                               "_text": "the same words"}}
+    rows = dict((c[0], c[1]) for c in _concurrent_judge(shared, 55.0, [4242]))
+    check("s4 judge: a SHARED artifact pair is refused",
+          rows.get("the two transcripts are NOT the same text") is False and
+          rows.get("each worker wrote its OWN stdout file") is False and
+          rows.get("the two ran CONCURRENTLY (wall < sum of the two)") is False and
+          rows.get("no worker process was left running") is False,
+          "4 isolation rows red")
+    good = {"concurrent-a": {"rc": 0, "out": "a.jsonl", "wall_s": 30.0,
+                             "_text": "alpha beta"},
+            "concurrent-b": {"rc": 0, "out": "b.jsonl", "wall_s": 30.0,
+                             "_text": "gamma delta"}}
+    rgood = dict((c[0], c[1]) for c in _concurrent_judge(good, 35.0, []))
+    check("s4 judge: an isolated pair passes",
+          all(rgood.get(k) for k in
+              ("both workers produced text",
+               "the two transcripts are NOT the same text",
+               "each worker wrote its OWN stdout file",
+               "the two ran CONCURRENTLY (wall < sum of the two)",
+               "no worker process was left running")),
+          "5 rows green")
+    # A leak alone must fail: the "no worker left" row is the one that catches
+    # the 1.8 GB commit this lab already paid once (watcher DM, 2026-11-15).
+    rleak = dict((c[0], c[1]) for c in _concurrent_judge(good, 35.0, [999]))
+    check("s4 judge: a leaked worker fails on its own row",
+          rleak.get("no worker process was left running") is False and
+          rleak.get("the two transcripts are NOT the same text") is True,
+          "leak isolated to one row")
+    # ── S6's judge: the cross-talk comparison must be able to fail ───────
+    # A leaking worker scores the SAME against its own and its sibling's
+    # reference. That is the mutant; the clean pair is the positive.
+    leaked = _crosstalk_judge([("concurrent-a", 0.42, 0.42),
+                               ("concurrent-b", 0.38, 0.38)])
+    rows6 = dict((c[0], c[1]) for c in leaked)
+    check("s6 judge: a leaking pair is refused",
+          rows6.get("concurrent-a matches its OWN reference better") is False and
+          rows6.get("concurrent-b matches its OWN reference better") is False,
+          "both rows red on a tie")
+    inverted = _crosstalk_judge([("concurrent-a", 0.55, 0.30)])
+    check("s6 judge: a worker matching the SIBLING is refused",
+          dict((c[0], c[1]) for c in inverted)
+          .get("concurrent-a matches its OWN reference better") is False,
+          "own=0.55 cross=0.30")
+    clean6 = _crosstalk_judge([("concurrent-a", 0.30, 0.55),
+                               ("concurrent-b", 0.28, 0.60)])
+    check("s6 judge: an isolated pair passes",
+          all(c[1] for c in clean6), "2 rows green")
+    cannot = _crosstalk_judge([("concurrent-a", None, None)])
+    check("s6 judge: CANNOT-MEASURE is never a pass",
+          dict((c[0], c[1]) for c in cannot)
+          .get("concurrent-a scored against both references") is False,
+          "None WER")
+    check("s6 judge: an empty population is refused",
+          not _crosstalk_judge([])[0][1], "no pairs")
+
     ok = all(c[1] for c in checks)
     print("LAB SELFTEST: %s (%d/%d)" % ("PASS" if ok else "FAIL",
                                         sum(1 for c in checks if c[1]), len(checks)))
@@ -1036,8 +1318,71 @@ def extract_window(src, start, seconds, out_wav):
     return info
 
 
-def _window_key(video, start, seconds):
-    return cache_key("window", video, "%.3f" % start, "%.3f" % seconds)
+def _window_key(video, start, seconds, mix=None):
+    """The cache key for a window. `mix` makes a DIFFERENT population.
+
+    A mixed window is not the clean window at a different name: the audio is
+    different, so the score of one says nothing about the other. Measured, the
+    two are told apart in the key rather than in a note nobody reads.
+    """
+    if mix is None:
+        return cache_key("window", video, "%.3f" % start, "%.3f" % seconds)
+    return cache_key("window", video, "%.3f" % start, "%.3f" % seconds,
+                     "mix", "%.1f" % float(mix))
+
+
+def _lookup(a, idx, label):
+    """Resolve the window entry for a command, honouring `--mix`."""
+    mix = getattr(a, "mix", None)
+    key = _window_key(a.video, a.window[0], a.window[1], mix)
+    if key not in idx:
+        hint = ("-- run `lab.py mix --video %s --window %s %s` first"
+                % (a.video, a.window[0], a.window[1])) if mix is not None else \
+               "run harvest first"
+        raise SystemExit("no cached audio for %s (%s)\n  %s" % (key, label, hint))
+    return key, idx[key]
+
+
+def _window_for(video, start, seconds, force=False):
+    """Cut (or hit) one window and return its cached entry -- no argparse.
+
+    `cmd_window` drives the CLI; S4 needs a SECOND cut from the same track and
+    must not re-enter the parser. The extraction path is shared so the two
+    callers cannot drift into two different audio conventions.
+    """
+    import numpy as np
+    import soundfile as sf
+    src, _sm = source_file(video)
+    idx = load_index()
+    key = _window_key(video, start, seconds)
+    wav = os.path.join(CACHE, "audio", "%s.wav" % key)
+    meta = os.path.join(CACHE, "audio", "%s.json" % key)
+    if os.path.exists(wav) and os.path.exists(meta) and not force:
+        with open(meta, encoding="utf-8") as fh:
+            m = json.load(fh)
+        print("CACHE HIT %s %s %.1f:%ss dur=%.2fs"
+              % (key, video, start, seconds, m.get("dur_s") or 0))
+        return key, m
+    print("MISS %s %s %.1f:%ss" % (key, video, start, seconds))
+    info = extract_window(src, start, seconds, wav)
+    pcm, _sr = sf.read(wav, dtype="float32")
+    peak = float(np.abs(pcm).max()) if pcm.size else 0.0
+    rms = float(np.sqrt((pcm.astype(np.float64) ** 2).mean())) if pcm.size else 0.0
+    if peak < 0.01:
+        raise SystemExit("REFUSED: window is silence (peak=%.5f)" % peak)
+    m = {"key": key, "video": video, "start": start, "seconds": seconds,
+         "wav": wav, "dur_s": round(info.get("dur_s") or 0, 3),
+         "src_sr": info.get("sr"), "peak": round(peak, 5),
+         "rms": round(rms, 5), "samples": int(pcm.size), "source": src,
+         "audibility": "NO-RENDERER (audio cut from the file, nothing plays)"}
+    with open(meta, "w", encoding="utf-8") as fh:
+        json.dump(m, fh, indent=2)
+        fh.write("\n")
+    idx[key] = m
+    save_index(idx)
+    print("  wrote %s dur=%.2fs peak=%.3f rms=%.4f"
+          % (wav, m["dur_s"], peak, rms))
+    return key, m
 
 
 # ── S2: the caption arm ─────────────────────────────────────────────────────
@@ -1091,6 +1436,7 @@ window.__t = 0.0;
 window.__paused = false;
 window.__rate = 1.0;
 window.__ended = false;
+window.__muted = false;
 window.__cc = false;
 var v = document.getElementById('v');
 Object.defineProperty(v, 'currentTime', {get: function () { return window.__t; },
@@ -1100,6 +1446,8 @@ Object.defineProperty(v, 'paused', {get: function () { return window.__paused; }
 Object.defineProperty(v, 'ended', {get: function () { return window.__ended; }});
 Object.defineProperty(v, 'duration', {get: function () { return 3380.0; }});
 Object.defineProperty(v, 'playbackRate', {get: function () { return window.__rate; }});
+Object.defineProperty(v, 'muted', {get: function () { return !!window.__muted; },
+                                   set: function (m) { window.__muted = !!m; }});
 
 function win() { return document.querySelector('.caption-window'); }
 function paint(lines) {
@@ -1119,7 +1467,7 @@ function paint(lines) {
 // WHICH CUE IS ON SCREEN IS A FUNCTION OF THE CLOCK -- the same rule the real
 // player follows, so a seek changes the caption without any lab help.
 function render() {
-  if (!window.__cc) return paint([]);
+  if (!window.__cc || window.__ended) return paint([]);
   var t = window.__t;
   for (const c of window.__cues) {
     if (t >= c.s && t < c.e) return paint(c.lines);
@@ -1128,6 +1476,17 @@ function render() {
 }
 window.__toggleCC = function () { window.__cc = !window.__cc; render(); return window.__cc; };
 window.__seek = function (t) { window.__t = t; render(); return window.__t; };
+// CHAOS KNOBS (S5). Each one models a transition the real player can make
+// WHILE speech is on screen, and each is a state the extractor must survive:
+// a seek that lands in a gap, a track that is replaced under the same URL, a
+// mute, and an end-of-video. They are page state, never lab-poked DOM.
+window.__setCues = function (cues) { window.__cues = cues; render(); return window.__cues.length; };
+window.__setMuted = function (m) { window.__muted = !!m; render(); return window.__muted; };
+window.__setEnded = function (e) { window.__ended = !!e; render(); return window.__ended; };
+window.__gap = function () { return {before: 30.0, after: 45.0}; };
+// A GAP: between 30 and 45 there is NO cue. Seeking into it must clear the
+// screen without the extractor calling the old line current.
+window.__cuesGap = window.__cues.concat([{s: 45.0, e: 50.0, lines: ['after the gap']}]);
 window.__setLines = function (arr) { window.__cc = false; return paint(arr); };
 
 // DOOR 1: the `c` key. The page listens; a synthetically dispatched key event
@@ -1215,6 +1574,31 @@ CAPTION_MUTANTS = (
      'if why == "painted" and not rows:',
      'if False:',
      "chrome-window: an empty box is not called painted"),
+)
+
+#: S5's mutants: each plants a TRANSITION defect the chaos drill must catch.
+#: Every edit is applied to a COPY of the shipped module and the row it must
+#: break is NAMED -- a control that only proves "the drill runs" cannot fail.
+#: `ended` is the one that matters: a finished video that keeps its last line
+#: is exactly the owner's "legenda congelada" reported as a stopwatch.
+CHAOS_MUTANTS = (
+    ("ended ignored, so a finished video keeps its last line",
+     "return snap.get('paused') is True or snap.get('ended') is True",
+     'return snap.get("paused") is True',
+     "T5 player_stopped reads an ended video as stopped"),
+    ("a pause that names no reason is read as stopped",
+     "return snap.get('paused') is True or snap.get('ended') is True",
+     'return (snap.get("paused") is True or snap.get("ended") is True\n'
+     "            or snap.get('t') is None)",
+     "T7 a payload with no pause field is not a stop"),
+    ("an empty box is still reported as painted",
+     'if why == "painted" and not rows:',
+     'if False:',
+     "T8b a 'painted' claim with zero rows is renamed"),
+    ("the chrome-window notice reaches the screen as a line",
+     'if line.get("chrome"):\n            continue',
+     'if False:\n            continue',
+     "T8b the player's notice window is not read as a line"),
 )
 
 
@@ -1424,6 +1808,273 @@ def run_captions(video, port, source=None):
     return ok, checks
 
 
+def run_chaos(video, port, source=None):
+    """S5 -- the state machine under transitions, on the SAME fixture player.
+
+    Every row is a transition the real player makes while speech is on screen:
+    a seek that lands in a gap, a seek during speech, subtitles toggled
+    mid-line, a track replaced under the same URL, a mute, an end-of-video, a
+    pause mid-line, and a rate change. **Proves**: the surface always describes
+    the CURRENT state -- never a stale line, never a blank that never recovers,
+    never two lines at once.
+
+    The failure this drill exists for is the one the owner reports by feel: a
+    line that stays on screen after the speech moved (measured on the real log
+    as 1 818 paints with stale audio, worst case 3 543.40 s). The fixture makes
+    it a binary row instead of a stopwatch.
+    """
+    import importlib.util
+    path = source or os.path.join(ROOT, "app", "webview", "youtube_cdp_source.py")
+    spec = importlib.util.spec_from_file_location("ycs", path)
+    ycs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ycs)
+
+    exe = next((b for b in BROWSERS if os.path.exists(b)), None)
+    if not exe:
+        raise SystemExit("no browser")
+    nonce = "chaos%d" % random.randrange(1 << 40)
+    srv, watch_url = caption_fixture_page(video + "&" + nonce)
+    prof = tempfile.mkdtemp(prefix="sottochaos-", dir=tempfile.gettempdir())
+    checks = []
+
+    def check(name, ok, detail=""):
+        checks.append((name, bool(ok), detail))
+        print("  %-46s %s %s" % (name, "PASS" if ok else "FAIL", detail))
+
+    port = free_port(port)
+    proc = subprocess.Popen([exe, "--remote-debugging-port=%d" % port,
+                             "--headless=new", "--disable-gpu", "--mute-audio",
+                             "--no-first-run", "--no-default-browser-check",
+                             "--user-data-dir=" + prof, watch_url],
+                            creationflags=CREATE_NO_WINDOW,
+                            startupinfo=subprocess.STARTUPINFO(
+                                dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
+    try:
+        w, send, ev = cdp_connect(port)
+        send("Page.enable")
+        send("Runtime.enable")
+        ready = False
+        t0 = time.time()
+        while time.time() - t0 < 10.0:
+            try:
+                if ev("typeof window.__setCues === 'function' && "
+                     "location.href.indexOf(%r) >= 0" % ("&" + nonce,)):
+                    ready = True
+                    break
+            except Exception:
+                pass
+            time.sleep(0.1)
+        if not ready:
+            print("  fixture never became ready")
+            checks.append(("fixture page ready", False, ""))
+            raise SystemExit(1)
+        print("  %-46s PASS" % "fixture page ready")
+
+        def snap():
+            return ycs.parse_snapshot(ev(ycs.EXTRACT_JS))
+
+        def rows():
+            s = snap()
+            return (s["rows"] if s else []), (s["why"] if s else None)
+
+        # ── T1: a seek that lands in a GAP clears the screen ──────────────
+        ev("window.__setCues(window.__cuesGap)")
+        ev("window.__toggleCC(); window.__seek(20.0)")   # force cc on, in a cue
+        r, why = rows()
+        check("T1 baseline: a cue is on screen before the gap",
+              r == ["the closing line"], "rows=%r" % (r,))
+        ev("window.__seek(38.0)")                        # inside the gap 30..45
+        r, why = rows()
+        check("T1 seek into a GAP clears the line, target.1",
+              r == [], "rows=%r" % (r,))
+        check("T1 and the reason names an absent caption", why == "no-painted-caption", why)
+        ev("window.__seek(46.0)")
+        r, why = rows()
+        check("T1 the cue after the gap appears", r == ["after the gap"], "rows=%r" % (r,))
+
+        # ── T2: rapid seeks -- the LAST position wins, never a blend ──────
+        for t_ in (1.0, 6.0, 12.0, 20.0, 1.0, 20.0):
+            ev("window.__seek(%r)" % t_)
+        r, why = rows()
+        check("T2 after six seeks the LAST position decides",
+              r == ["the closing line"], "rows=%r" % (r,))
+        # two lines must never be shown unless the CUE has two lines
+        check("T2 a single-line cue never renders two lines", len(r) <= 1, "rows=%d" % len(r))
+        ev("window.__seek(12.0)")
+        r, _ = rows()
+        check("T2 a two-line cue renders exactly two", len(r) == 2, "rows=%r" % (r,))
+
+        # ── T3: subtitles toggled MID-LINE ────────────────────────────────
+        ev("window.__toggleCC()")       # off, with a line on screen
+        r, why = rows()
+        check("T3 toggling off mid-line clears immediately", r == [], "rows=%r" % (r,))
+        check("T3 and never reports painted", why == "no-painted-caption", why)
+        ev("window.__toggleCC()")       # on again, same clock position
+        r, _ = rows()
+        check("T3 toggling back on restores the CURRENT cue", len(r) == 2, "rows=%r" % (r,))
+
+        # ── T4: the track is REPLACED under the same URL ──────────────────
+        ev("""window.__setCues([{s: 0.0, e: 60.0, lines: ['a completely new track']}]);""")
+        ev("window.__seek(20.0)")
+        r, _ = rows()
+        check("T4 a replaced track's text is what is on screen",
+              r == ["a completely new track"], "rows=%r" % (r,))
+
+        # ── T5: END of video -- nothing stays on screen ───────────────────
+        ev("window.__setEnded(true); window.__seek(20.0)")
+        r, why = rows()
+        check("T5 an ended video paints nothing", r == [], "rows=%r" % (r,))
+        # The DECISION, not the DOM: `player_stopped` is the function the shell
+        # consults, and the ended flag is the half a "keeps its last line"
+        # defect deletes. The row above proves the page; this one proves us.
+        check("T5 player_stopped reads an ended video as stopped",
+              ycs.player_stopped(snap()) is True,
+              "stopped=%r" % (ycs.player_stopped(snap()),))
+        ev("window.__setEnded(false)")
+        r, _ = rows()
+        check("T5 clearing ended restores the current cue",
+              r == ["a completely new track"], "rows=%r" % (r,))
+
+        # ── T6: MUTE IS NOT A PAUSE, AND NOT A BLANK SURFACE ─────────────
+        # The extractor's contract does not publish `muted` (`EXTRACT_JS`
+        # carries t/paused/rs/rate and nothing else), so this arm does NOT
+        # assert a field that does not exist -- measured defect in the first
+        # run of this drill: the check read `muted=None` and failed against a
+        # product that was correct. What IS load-bearing is the pair below: a
+        # muted player is still playing, so the cue must stay on screen and
+        # the surface must never be called stopped.
+        ev("window.__setMuted(true)")
+        s = snap()
+        check("T6 mute does NOT read as player_stopped",
+              ycs.player_stopped(s) is False,
+              "stopped=%r" % (ycs.player_stopped(s),))
+        r, why = rows()
+        check("T6 a muted player still shows its cue",
+              r == ["a completely new track"] and why == "painted",
+              "rows=%r why=%r" % (r, why))
+        ev("window.__setMuted(false)")
+
+        # ── T7: paused mid-line is a stop; unpaused recovers ──────────────
+        ev("window.__paused = true")
+        s = snap()
+        check("T7 pause is a stop", ycs.player_stopped(s) is True)
+        ev("window.__paused = false")
+        check("T7 unpause is not a stop", ycs.player_stopped(snap()) is False)
+        # A payload that says NOTHING about pause must not be read as stopped:
+        # `or t is None` is the shape that freezes the caption on a bare payload.
+        check("T7 a payload with no pause field is not a stop",
+              ycs.player_stopped({"t": None}) is False,
+              "stopped=%r" % (ycs.player_stopped({"t": None}),))
+
+        # ── T8: rate change keeps the cue the clock says ──────────────────
+        ev("window.__rate = 2.0; window.__seek(20.0)")
+        s = snap()
+        check("T8 playbackRate carries through", s and abs((s.get("rate") or 0) - 2.0) < 1e-9,
+              "rate=%r" % (s and s.get("rate"),))
+        r, _ = rows()
+        check("T8 and the cue still follows the clock alone",
+              r == ["a completely new track"], "rows=%r" % (r,))
+        ev("window.__rate = 1.0")
+
+        # ── T8b: the player's own notice is not a caption line ────────────
+        ev("""(function(){
+          var w=document.querySelector('.caption-window');
+          w.innerHTML='';
+          var line=document.createElement('div');
+          line.className='caption-visual-line';
+          var seg=document.createElement('span');
+          seg.className='ytp-caption-segment';
+          seg.textContent='English';
+          line.appendChild(seg);
+          line.appendChild(document.createElement('button'));
+          w.appendChild(line);
+          return 1;})()""")
+        r, why = rows()
+        check("T8b the player's notice window is not read as a line", r == [],
+              "rows=%r" % (r,))
+        # The extractor REPORTS `painted` here (its own visible-length test sees
+        # the notice box), and the parser drops every row -- so `why` must be
+        # corrected to `no-painted-caption`. Without this row a `painted` with
+        # zero rows sails through and the log claims a paint that never happened.
+        check("T8b a 'painted' claim with zero rows is renamed",
+              why == "no-painted-caption", "why=%r" % (why,))
+        ev("window.__cc = true; render();")
+
+        # ── T9: the surface recovers after being blanked ──────────────────
+        # A blank that never recovers is the owner's "legenda congelada".
+        ev("window.__cc = false; render();")
+        ev("window.__cc = true; render();")
+        r, why = rows()
+        check("T9 after a blank the surface comes back",
+              r == ["a completely new track"] and why == "painted",
+              "rows=%r why=%r" % (r, why))
+        ok = all(c[1] for c in checks)
+        print("S5 CHAOS: %s (%d/%d)"
+              % ("PASS" if ok else "FAIL",
+                 sum(1 for c in checks if c[1]), len(checks)))
+        return ok, checks
+    finally:
+        try:
+            proc.terminate()
+            proc.wait(timeout=10)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        try:
+            srv.shutdown()
+        except Exception:
+            pass
+        import shutil
+        shutil.rmtree(prof, ignore_errors=True)
+
+
+def cmd_chaos(a):
+    """S5 -- the chaos drill, one command."""
+    ok, _checks = run_chaos(a.video, a.port)
+    return 0 if ok else 1
+
+
+def cmd_chaos_neg(a):
+    """The control: each planted transition defect must break its NAMED row.
+
+    A drill whose mutants all pass is a drill that cannot fail. Each mutant is
+    written to a COPY of the shipped module beside it (`_load_sibling` resolves
+    siblings by DIRECTORY) and driven through the same `run_chaos`.
+    """
+    shipped = os.path.join(ROOT, "app", "webview", "youtube_cdp_source.py")
+    caught = 0
+    total = 0
+    for label, needle, replacement, check_name in CHAOS_MUTANTS:
+        total += 1
+        mutated = mutant_source(shipped, needle, replacement)
+        if mutated is None:
+            print("  %-48s ANCHOR-GONE -- the mutant was never planted" % label)
+            continue
+        tmp = os.path.join(os.path.dirname(shipped), "_ycs_chaos_%d.py" % (total,))
+        with open(tmp, "w", encoding="utf-8", newline="") as fh:
+            fh.write(mutated)
+        try:
+            ok, checks = run_chaos(a.video, a.port + total, source=tmp)
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        row = next((c for c in checks if c[0] == check_name), None)
+        if row is None:
+            print("  %-48s CHECK-MISSING %r" % (label, check_name))
+        elif row[1] is False:
+            caught += 1
+            print("  %-48s CAUGHT by %r" % (label, check_name))
+        else:
+            print("  %-48s NOT-CAUGHT -- %r still passed" % (label, check_name))
+    print("S5 NEG-ARM: %s -- %d/%d mutants caught"
+          % ("PASS" if caught == total else "FAIL", caught, total))
+    return 1 if caught == total else 0
+
+
 def cmd_captions(a):
     """S2 -- the caption arm, one command."""
     ok, _checks = run_captions(a.video, a.port)
@@ -1471,6 +2122,265 @@ def cmd_captions_neg(a):
     print("S2 NEG-ARM: %s -- %d/%d mutants caught"
           % ("PASS" if caught == total else "FAIL", caught, total))
     return 1 if caught == total else 0
+
+
+def _concurrent_pair(wav_a, wav_b, budget):
+    """Two REAL workers, two files, SAME box and SAME cache root, at once.
+
+    THE CLAIM UNDER TEST IS ISOLATION, not "two sources sound good". The
+    product runs ONE bridge, ONE worker and ONE tap (`grep -c 'WorkerBridge('`
+    in the shell returns one construction site), so a test that pretended to
+    feed two programmes to one worker would be measuring a topology the
+    product does not have. What the product DOES depend on, and what nothing
+    measured before today, is that two worker processes do not step on each
+    other: they must not share a lock, must not overwrite each other's
+    transcript, and each must keep its own chunk trace.
+
+    Both are launched with the SAME declared thread ceiling by
+    `run_worker_once`, so the CPU picture is two 2-thread trees -- the shape
+    the owner's box actually runs when the app is open beside a batch pass.
+    """
+    import threading
+    results = {}
+
+    def run(tag, wav):
+        try:
+            results[tag] = run_worker_once(wav, tag, budget)
+        except Exception as exc:  # a broken arm is reported, never swallowed
+            results[tag] = {"tag": tag, "rc": None, "error": repr(exc)}
+
+    t0 = time.time()
+    threads = [threading.Thread(target=run, args=("concurrent-a", wav_a)),
+               threading.Thread(target=run, args=("concurrent-b", wav_b))]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    wall = time.time() - t0
+    return results, wall
+
+
+def _concurrent_judge(results, wall, live_pids):
+    """S4's judge, PURE: results in, checks out, no process started.
+
+    Pure on purpose. A judge that can only be exercised by launching two
+    workers costs ~3 min per arm, so nobody would ever run its negative arm --
+    which is how a control becomes decorative. `selftest` feeds this function
+    a planted shared-artifact pair and requires the isolation rows to go red.
+    """
+    checks = []
+
+    def check(name, cond, detail=""):
+        checks.append((name, bool(cond), detail))
+
+    texts = {}
+    for tag, r in results.items():
+        if r.get("rc") is None:
+            continue
+        texts[tag] = r.get("_text", "").strip()
+    check("both workers produced text",
+          len(texts) == 2 and all(bool(v) for v in texts.values()),
+          "words=%s" % ({k: len(v.split()) for k, v in texts.items()} or "-"))
+    same = bool(texts) and len(set(texts.values())) == 1
+    check("the two transcripts are NOT the same text", not same,
+          "identical" if same else "distinct")
+    outs = {t: r.get("out") for t, r in results.items()}
+    check("each worker wrote its OWN stdout file",
+          outs.get("concurrent-a") != outs.get("concurrent-b"),
+          "%s vs %s" % (os.path.basename(outs.get("concurrent-a") or ""),
+                        os.path.basename(outs.get("concurrent-b") or "")))
+    single = [r.get("wall_s") or 0 for r in results.values()]
+    check("the two ran CONCURRENTLY (wall < sum of the two)",
+          sum(single) > 0 and wall < sum(single) * 0.9,
+          "pair_wall=%.1fs sum_of_two=%.1fs" % (wall, sum(single)))
+    check("no worker process was left running", not live_pids,
+          "pids=%s" % (live_pids or "-"))
+    return checks
+
+
+def _crosstalk_judge(pairs):
+    """S6's judge, PURE: does each worker's text match ITS OWN reference best?
+
+    THE CLAIM. Two workers, two DIFFERENT cuts of audio on the same box, at the
+    same time. If either one leaks the other's audio (a shared tap, a shared
+    device session, a shared cache file) its transcript stops describing its own
+    window. So the assertion is a COMPARISON, never an absolute WER:
+
+        wer(own_text, own_ref)  <  wer(own_text, sibling_ref)
+
+    for BOTH workers. An absolute threshold would need a WER budget nobody has
+    measured on this box; the comparison is a property of isolation and costs
+    nothing to state. `pairs` is [(tag, own_wer, cross_wer), ...].
+
+    Pure for the same reason `_concurrent_judge` is: a judge only exercisable by
+    launching two 1.8 GiB workers never gets its negative arm run, and that is
+    how a control becomes decorative.
+
+    Three refusals worth naming: a `None` WER (no reference text) is
+    CANNOT-MEASURE and fails; two IDENTICAL references make the comparison
+    vacuous and fail; a tie fails, because a tie is exactly the leakage the arm
+    exists to catch -- a worker that heard its sibling scores the same against
+    both.
+    """
+    checks = []
+
+    def check(name, cond, detail=""):
+        checks.append((name, bool(cond), detail))
+
+    if not pairs:
+        check("a cross-talk pair was measured", False, "no pairs")
+        return checks
+    for tag, own, cross in pairs:
+        if own is None or cross is None:
+            check("%s scored against both references" % tag, False,
+                  "own=%r cross=%r (CANNOT-MEASURE)" % (own, cross))
+            continue
+        if abs(own - cross) < 1e-9:
+            check("%s matches its OWN reference better" % tag, False,
+                  "own=%.4f cross=%.4f identical -- the two cuts produced the "
+                  "same score, so either the references match or the audio "
+                  "leaked" % (own, cross))
+            continue
+        check("%s matches its OWN reference better" % tag, own < cross,
+              "own=%.4f cross=%.4f margin=%+.4f"
+              % (own, cross, cross - own))
+    return checks
+
+
+def cmd_concurrent(a):
+    """S4 -- two workers at once, and the things that must NOT be shared."""
+    idx = load_index()
+    key_a, m_a = _lookup(a, idx, "concurrent")
+    # The second window is a DIFFERENT cut, so the two transcripts cannot
+    # coincidentally match; it is taken from the same video because the lab's
+    # cache already holds that track (`--second-start` moves it).
+    key_b, m_b = _window_for(a.video, a.second_start, m_a["seconds"], a.force)
+    print("PAIR a=%s %.1f:%ss b=%.1f:%ss"
+          % (key_a, m_a["start"], m_a["seconds"], m_b["start"], m_b["seconds"]))
+    floor = max(m_a["dur_s"], m_b["dur_s"]) + (load_estimate() or 45.0)
+    budget = run_budget(max(m_a["dur_s"], m_b["dur_s"]), load_estimate())
+    print("BUDGET per-worker=%ds (load is paid by EACH process, so the wall "
+          "of the pair is not the budget of one)" % budget)
+    results, wall = _concurrent_pair(m_a["wav"], m_b["wav"], budget)
+    for tag, r in results.items():
+        if r.get("rc") is None:
+            print("  %-38s ERROR %s" % (tag, r.get("error")))
+            r["_text"] = ""
+            continue
+        lines = transcript_of(r)
+        r["_text"] = " ".join(l.get("text", "") for l in lines).strip()
+        print("  %-38s rc=%s wall=%.1fs finals=%d peak_priv=%.0fMiB"
+              % (tag, r.get("rc"), r.get("wall_s") or 0, len(lines),
+                 r.get("peak_priv_mb") or 0))
+        try:
+            print("  %-38s stdout=%d bytes"
+                  % ("", os.path.getsize(r["out"])))
+        except Exception:
+            pass
+    checks = _concurrent_judge(results, wall, _live_worker_pids())
+    for name, cond, detail in checks:
+        print("  %-38s %s %s" % (name, "PASS" if cond else "FAIL", detail))
+    ok = all(c[1] for c in checks)
+    print("S4 CONCURRENT: %s (%d/%d)"
+          % ("PASS" if ok else "FAIL",
+             sum(1 for c in checks if c[1]), len(checks)))
+    if a.json_out:
+        with open(a.json_out, "w", encoding="utf-8", newline="") as fh:
+            json.dump({"pair": [key_a, key_b], "wall_s": round(wall, 1),
+                       "results": results, "checks": checks}, fh, indent=2)
+            fh.write("\n")
+    return 0 if ok else 1
+
+
+def cmd_crosstalk(a):
+    """S6 -- two DIFFERENT cuts at once, and which reference each one matches.
+
+    S4 answers "do two worker processes collide". That is the process half and
+    it is not the half the owner's complaint is about: he runs a call and a
+    video together, and the failure he would hear is a transcript that mixes
+    them. This arm feeds two DIFFERENT windows through two workers at the same
+    moment and then asks, for each worker, whether its own text scores better
+    against its OWN captions than against its sibling's.
+
+    IT DOES NOT PROVE PER-PROGRAMME TAPS. The product grows those with
+    `--target-name`, and a file tap bypasses the whole device/tap layer -- which
+    is the point: this arm pins the claim that survives when two taps land, so
+    the day the second tap exists there is already a judge waiting for it.
+    """
+    idx = load_index()
+    key_a, m_a = _lookup(a, idx, "crosstalk")
+    key_b, m_b = _window_for(a.video, a.second_start, m_a["seconds"], a.force)
+    truth_path = os.path.join(CACHE, "truth", "%s.json3" % a.video)
+    fetch_truth(a.video, truth_path)
+    ref_a, kept_a, _ = truth_slice(truth_path, m_a["start"], m_a["seconds"])
+    ref_b, kept_b, _ = truth_slice(truth_path, m_b["start"], m_b["seconds"])
+    print("PAIR a=%s %.1f:%ss b=%s %.1f:%ss"
+          % (key_a, m_a["start"], m_a["seconds"], key_b, m_b["start"], m_b["seconds"]))
+    print("REF a events=%d words=%d | b events=%d words=%d | identical=%s"
+          % (kept_a, len(ref_a.split()), kept_b, len(ref_b.split()),
+             ref_a.strip() == ref_b.strip()))
+    if not ref_a.strip() or not ref_b.strip():
+        print("CROSSTALK: CANNOT-MEASURE -- a cut has no reference text")
+        return 3
+    budget = run_budget(max(m_a["dur_s"], m_b["dur_s"]), load_estimate())
+    print("BUDGET per-worker=%ds" % budget)
+    results, wall = _concurrent_pair(m_a["wav"], m_b["wav"], budget)
+    texts, refs = {}, {"concurrent-a": ref_a, "concurrent-b": ref_b}
+    for tag, r in results.items():
+        if r.get("rc") is None:
+            print("  %-14s ERROR %s" % (tag, r.get("error")))
+            texts[tag] = ""
+            continue
+        lines = transcript_of(r)
+        texts[tag] = " ".join(l.get("text", "") for l in lines).strip()
+        print("  %-14s rc=%s wall=%.1fs finals=%d peak_priv=%.0fMiB"
+              % (tag, r.get("rc"), r.get("wall_s") or 0, len(lines),
+                 r.get("peak_priv_mb") or 0))
+    pairs = []
+    for tag in ("concurrent-a", "concurrent-b"):
+        own_ref = refs[tag]
+        other = "concurrent-b" if tag == "concurrent-a" else "concurrent-a"
+        own_rate, _ = wer(own_ref, texts.get(tag, ""))
+        cross_rate, _ = wer(refs[other], texts.get(tag, ""))
+        pairs.append((tag, own_rate, cross_rate))
+        print("  %-14s wer_own=%s wer_cross=%s"
+              % (tag, "%.4f" % own_rate if own_rate is not None else "n/a",
+                 "%.4f" % cross_rate if cross_rate is not None else "n/a"))
+    checks = _crosstalk_judge(pairs)
+    for name, cond, detail in checks:
+        print("  %-46s %s %s" % (name, "PASS" if cond else "FAIL", detail))
+    ok = all(c[1] for c in checks)
+    print("S6 CROSSTALK: %s (%d/%d) pair_wall=%.1fs"
+          % ("PASS" if ok else "FAIL", sum(1 for c in checks if c[1]),
+             len(checks), wall))
+    if a.json_out:
+        with open(a.json_out, "w", encoding="utf-8", newline="") as fh:
+            json.dump({"pair": [key_a, key_b], "wall_s": round(wall, 1),
+                       "pairs": pairs, "checks": checks,
+                       "texts": texts}, fh, indent=2)
+            fh.write("\n")
+    return 0 if ok else 1
+
+
+def _live_worker_pids():
+    """Worker processes still alive, matched by the ARTEFACT in cmdline."""
+    pids = []
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             "Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | "
+             "Where-Object { $_.CommandLine -like '*sotto_worker.py*' } | "
+             "ForEach-Object { $_.ProcessId }"],
+            capture_output=True, text=True, timeout=30,
+            creationflags=CREATE_NO_WINDOW,
+            startupinfo=subprocess.STARTUPINFO(
+                dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
+        for tok in (out.stdout or "").split():
+            if tok.strip().isdigit():
+                pids.append(int(tok))
+    except Exception:
+        return []
+    return pids
 
 
 def cmd_window(a):
@@ -1536,23 +2446,45 @@ def _cli():
 
     f = sub.add_parser("feed", help="run the real worker over cached audio")
     f.add_argument("--video", required=True)
-    f.add_argument("--window", default="60:20", type=float, nargs=2)
+    f.add_argument("--window", default=[60.0, 20.0], type=float, nargs=2,
+                   metavar=("START", "SECONDS"))
     f.add_argument("--lang", default=None)
     f.add_argument("--show", type=int, default=12)
+    f.add_argument("--mix", type=float, default=None,
+                   help="use the window mixed at this SNR in dB (run `mix` first)")
     f.set_defaults(fn=cmd_feed)
 
     s_ = sub.add_parser("score", help="WER against the video's own captions")
     s_.add_argument("--video", required=True)
-    s_.add_argument("--window", default="60:20", type=float, nargs=2)
+    s_.add_argument("--window", default=[60.0, 20.0], type=float, nargs=2,
+                   metavar=("START", "SECONDS"))
     s_.add_argument("--lang", default=None)
     s_.add_argument("--gate", action="store_true",
                     help="run the speech/music gate (default OFF for quality runs)")
+    s_.add_argument("--mix", type=float, default=None,
+                     help="score the window MIXED at this SNR in dB (run `mix` first)")
     s_.set_defaults(fn=cmd_score)
 
     st = sub.add_parser("strips", help="pipeline ablations over the same audio")
     st.add_argument("--video", required=True)
-    st.add_argument("--window", default="60:20", type=float, nargs=2)
+    st.add_argument("--window", default=[60.0, 20.0], type=float, nargs=2,
+                   metavar=("START", "SECONDS"))
+    st.add_argument("--mix", type=float, default=None,
+                    help="ablate over the window MIXED at this SNR in dB")
+    st.add_argument("--repeats", type=int, default=1,
+                    help="runs per strip; >1 measures the instrument's own "
+                         "noise so an ordering is only claimed when it clears it")
     st.set_defaults(fn=cmd_strips)
+
+    mx = sub.add_parser("mix",
+                        help="mix a cached window with the owner's own non-speech bed")
+    mx.add_argument("--video", required=True)
+    mx.add_argument("--window", default=[60.0, 20.0], type=float, nargs=2,
+                    metavar=("START", "SECONDS"))
+    mx.add_argument("--mix", type=float, default=6.0,
+                    help="target SNR in dB, 20*log10(rms(target)/rms(bed))")
+    mx.add_argument("--force", action="store_true")
+    mx.set_defaults(fn=cmd_mix)
 
     c = sub.add_parser("captions",
                        help="S2: drive the REAL extractor over a controlled player")
@@ -1566,6 +2498,43 @@ def _cli():
     cn.add_argument("--video", default="rS4VMlwf2qM")
     cn.add_argument("--port", type=int, default=9460)
     cn.set_defaults(fn=cmd_captions_neg)
+
+    ch = sub.add_parser("chaos",
+                        help="S5: the state machine under transitions")
+    ch.add_argument("--video", default="rS4VMlwf2qM")
+    ch.add_argument("--port", type=int, default=9470)
+    ch.set_defaults(fn=cmd_chaos)
+
+    chn = sub.add_parser("chaos-neg",
+                         help="S5 control: each planted defect breaks its row")
+    chn.add_argument("--video", default="rS4VMlwf2qM")
+    chn.add_argument("--port", type=int, default=9480)
+    chn.set_defaults(fn=cmd_chaos_neg)
+
+    co = sub.add_parser("concurrent",
+                        help="S4: two REAL workers at once, on the same box")
+    co.add_argument("--video", required=True)
+    co.add_argument("--window", default=[60.0, 20.0], type=float, nargs=2,
+                    metavar=("START", "SECONDS"))
+    co.add_argument("--second-start", type=float, default=100.0,
+                    help="start of the SECOND cut; must differ or the arm's "
+                         "own 'not the same text' check is meaningless")
+    co.add_argument("--force", action="store_true")
+    co.add_argument("--json-out", default="")
+    co.set_defaults(fn=cmd_concurrent)
+
+    ct = sub.add_parser("crosstalk",
+                        help="S6: two DIFFERENT cuts at once; does each text "
+                             "match its OWN reference best?")
+    ct.add_argument("--video", required=True)
+    ct.add_argument("--window", default=[60.0, 20.0], type=float, nargs=2,
+                    metavar=("START", "SECONDS"))
+    ct.add_argument("--second-start", type=float, default=100.0,
+                    help="start of the SECOND cut; the two references must "
+                         "differ or the comparison is vacuous")
+    ct.add_argument("--force", action="store_true")
+    ct.add_argument("--json-out", default="")
+    ct.set_defaults(fn=cmd_crosstalk)
 
     sub.add_parser("status", help="what is cached").set_defaults(fn=cmd_status)
     sub.add_parser("selftest", help="judge the audibility gate").set_defaults(fn=cmd_selftest)

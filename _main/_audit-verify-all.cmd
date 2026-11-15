@@ -762,6 +762,83 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-pause-payload !STEP_RC!
   call :step red-as-expected-panel-pause-payload 1 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload-neg.log" python _main\panel-pause-payload-oracle.py --neg-arm
   call :expectred red-as-expected-panel-pause-payload !STEP_RC! "%OUT%\panel-pause-payload-neg.log" "NEG-ARM: PASS"
+  rem -- S2 do devlab: o extrator REAL sobre um player controlado ----------------------
+  rem  WHY THIS IS NOT A YOUTUBE ARM (measured 2026-11-15, five arms): real headless
+  rem  YouTube REFUSES to serve captions -- `is_servable: false` on every track, an empty
+  rem  `.ytp-caption-window-container` through 16 s of playback, and the track's own
+  rem  `baseUrl&fmt=json3` returning a 0-BYTE body from inside the page. A green there
+  rem  would prove nothing, so the arm drives what IS ours: a headless Chrome served a
+  rem  loopback page at a real `/watch?v=` URL (so the SHIPPED `list_targets`/`pick_target`
+  rem  see it exactly as they see a YouTube tab) through the SHIPPED `EXTRACT_JS` +
+  rem  `parse_snapshot`. Captions are toggled by the two doors a person uses -- the `c`
+  rem  key and the CC button's own handler -- and the lab never writes a caption line.
+  rem  Nothing is rendered and no window is shown; `focus unchanged` is one of the checks.
+  rem
+  rem  THE CONTROL IS PAIRED, because a control that only proves "the arm runs" cannot
+  rem  fail: each mutant is tied to the ONE check it must break and `ANCHOR-GONE` never
+  rem  counts as caught.
+  rem
+  rem  DEPENDENCIES: the shipped source module and the lab itself -- the arm reads
+  rem  `EXTRACT_JS`, `parse_snapshot`, `player_stopped`, `list_targets` and `pick_target`
+  rem  from the first and the fixture from the second, so a cached PASS over either of
+  rem  them would describe code that has moved (the `panel-deps` class).
+  call :step devlab-captions 0 "_main\devlab\lab.py;app\webview\youtube_cdp_source.py" "%OUT%\devlab-captions.log" python _main\devlab\lab.py captions
+  call :record devlab-captions !STEP_RC!
+  call :step red-as-expected-devlab-captions 1 "_main\devlab\lab.py;app\webview\youtube_cdp_source.py" "%OUT%\devlab-captions-neg.log" python _main\devlab\lab.py captions-neg
+  call :expectred red-as-expected-devlab-captions !STEP_RC! "%OUT%\devlab-captions-neg.log" "S2 NEG-ARM: PASS"
+  rem -- S5 do devlab: O ESTADO SOB TRANSICOES (drill de caos) -------------------
+  rem  Cada linha e' uma transicao que o player REAL faz com fala no ecra: um seek que
+  rem  cai num VAZIO entre cues, seis seeks em rajada, legendas ligadas/desligadas a
+  rem  MEIO de uma linha, uma faixa TROCADA sob o mesmo URL, fim de video, mudo, pausa a
+  rem  meio de uma linha e mudanca de velocidade. Mede a afirmacao que o dono reporta de
+  rem  sentir: a superficie descreve SEMPRE o estado corrente -- nunca uma linha velha,
+  rem  nunca um branco que nao volta, nunca duas linhas aonde o cue tem uma.
+  rem
+  rem  O DRILL ACHOU UM DEFEITO DE PRODUTO na primeira corrida (2026-11-15): o
+  rem  `EXTRACT_JS` publicava `t/paused/rs/rate` e NAO publicava `ended`; o shell le
+  rem  `yt_cdp_ended = bool(snap.get('ended'))` e a chave estava sempre ausente, logo
+  rem  `yt_cdp_ended` era `False` por construcao -- o oraculo do CDP passava porque LHE
+  rem  DAVA o dicionario a mao. Corrigido no extrator E no `parse_snapshot` (`None`
+  rem  continua a ser ausencia: um payload velho nao afirma que o video acabou), e o
+  rem  oraculo ganhou tres arms que ligam o fim da cadeia (`js_ended`/`parse`/`absent_none`).
+  rem
+  rem  O CONTROLE E' PAREADO: cada mutante derruba a SUA linha, e um mutante cujo alvo
+  rem  sumiu diz `ANCHOR-GONE` e nunca conta como apanhado.
+  call :step devlab-chaos 0 "_main\devlab\lab.py;app\webview\youtube_cdp_source.py" "%OUT%\devlab-chaos.log" python _main\devlab\lab.py chaos
+  call :record devlab-chaos !STEP_RC!
+  call :step red-as-expected-devlab-chaos 1 "_main\devlab\lab.py;app\webview\youtube_cdp_source.py" "%OUT%\devlab-chaos-neg.log" python _main\devlab\lab.py chaos-neg
+  call :expectred red-as-expected-devlab-chaos !STEP_RC! "%OUT%\devlab-chaos-neg.log" "S5 NEG-ARM: PASS"
+  rem -- S4 do devlab: DOIS workers ao mesmo tempo, no MESMO cache root ---------
+  rem  A afirmacao que este passo mede e' ISOLACAO, nao "dois programas soam bem". O
+  rem  produto corre UM bridge, UM worker e UM tap (uma unica construcao de
+  rem  `WorkerBridge(` na shell), logo alimentar dois programas num worker mediria uma
+  rem  topologia que o produto nao tem. O que o produto DEPENDE e que nada media: dois
+  rem  processos de worker nao partilham lock, nao se sobrepoem no transcript e cada um
+  rem  mantem o seu chunk trace.
+  rem
+  rem  CLASSE `heavy`: carrega o modelo DUAS vezes (~3 min de parede), entao so corre
+  rem  com SOTTO_BATTERY_HEAVY=1 -- a declaracao esta no bloco, nao no comentario.
+  rem  O juiz e' PURO (`_concurrent_judge`) e o `selftest` prova as TRES direcoes: um
+  rem  par com artefacto PARTILHADO tem de ficar vermelho em 4 linhas, um par isolado
+  rem  tem de passar, e um worker deixado vivo derruba a SUA linha sozinho.
+  call :step heavy concurrent-workers 0 "_main\devlab\lab.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\concurrent-workers.log" python _main\devlab\lab.py concurrent --video rS4VMlwf2qM --window 60 20 --second-start 100
+  call :record concurrent-workers !STEP_RC!
+  rem -- S6 do devlab: DUAS FALAS DIFERENTES ao mesmo tempo, e qual referencia cada texto serve
+  rem  O S4 responde "dois processos de worker colidem?" -- a metade de PROCESSO, que nao e' a
+  rem  metade da queixa do dono: ele corre uma call e um video juntos, e a falha que ele OUVIRIA
+  rem  e' um transcript que mistura os dois. Este passo alimenta duas JANELAS DIFERENTES por dois
+  rem  workers no mesmo instante e pergunta, para CADA um, se o texto dele pontua melhor contra as
+  rem  SUAS legendas do que contra as do irmao. A afirmacao e' uma COMPARACAO, nunca um WER
+  rem  absoluto: um limiar absoluto exigiria um orcamento de WER que ninguem mediu nesta maquina.
+  rem  Tres recusas nomeadas no juiz puro (`_crosstalk_judge`): um WER `None` (corte sem legenda) e'
+  rem  CANNOT-MEASURE e reprova; duas referencias iguais tornam a comparacao vazia e reprovam; e um
+  rem  EMPATE reprova, porque o empate E' exatamente o vazamento que a arm existe para apanhar.
+  rem  As arms do juiz correm no `selftest` (empate, inversao, `None`, populacao vazia), porque um
+  rem  juiz so' exercitavel largando dois workers de 1,8 GiB nunca tem o negativo corrido.
+  rem  MEDIDO 2026-11-15 (caged): own 0.4237/0.4444 contra sibling 0.9683/0.9661, pair_wall=93,3 s.
+  rem  CLASSE `heavy`: carrega o modelo DUAS vezes, logo so corre com SOTTO_BATTERY_HEAVY=1.
+  call :step heavy devlab-crosstalk 0 "_main\devlab\lab.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\devlab-crosstalk.log" python _main\devlab\lab.py crosstalk --video rS4VMlwf2qM --window 60 20 --second-start 100
+  call :record devlab-crosstalk !STEP_RC!
   call :step measurement-flags 0 "_main\measurement-flags-oracle.py;app\webview\sotto_webview.py;app\webview\batch_queue.py;app\webview\load_shedding.py" "%OUT%\measurement-flags.log" python _main\measurement-flags-oracle.py
   call :record measurement-flags !STEP_RC!
   call :step red-as-expected-measurement-flags 1 "_main\measurement-flags-oracle.py;app\webview\sotto_webview.py;app\webview\batch_queue.py;app\webview\load_shedding.py" "%OUT%\measurement-flags-neg.log" python _main\measurement-flags-oracle.py --neg-arm
@@ -1664,11 +1741,11 @@ REM ETIQUETAS DA PROPRIA BATERIA sobre um passo falso -- e o passo pesado e o
 REM opt-in, entao o portão nao abre a app do dono. O braco negativo rc=1 POR
 REM DESENHO.
 if exist _main\battery-heavy-gate.py (
-  call :step battery-heavy-gate 0 "_main\battery-heavy-gate.py;_main\_audit-verify-all.cmd;_main\_strip-surface-probe.py;_main\_strip-stats-log-probe.py;_main\_strip-restore-probe.py;_main\_strip-stats-probe.py;_main\panel-exit3-oracle.py;_main\mute-audio-oracle.py" "%OUT%\battery-heavy-gate.log" python _main\battery-heavy-gate.py
+  call :step battery-heavy-gate 0 "_main\battery-heavy-gate.py;_main\_audit-verify-all.cmd;_main\_strip-surface-probe.py;_main\_strip-stats-log-probe.py;_main\_strip-restore-probe.py;_main\_strip-stats-probe.py;_main\panel-exit3-oracle.py;_main\mute-audio-oracle.py;_main\devlab\lab.py" "%OUT%\battery-heavy-gate.log" python _main\battery-heavy-gate.py
   call :record battery-heavy-gate !STEP_RC!
 ) else ( call :record battery-heavy-gate MISSING )
 if exist _main\battery-heavy-gate.py (
-  call :step red-as-expected-battery-heavy-gate 1 "_main\battery-heavy-gate.py;_main\_audit-verify-all.cmd;_main\_strip-surface-probe.py;_main\_strip-stats-log-probe.py;_main\_strip-restore-probe.py;_main\_strip-stats-probe.py;_main\panel-exit3-oracle.py;_main\mute-audio-oracle.py" "%OUT%\battery-heavy-gate-neg.log" python _main\battery-heavy-gate.py --neg-arm
+  call :step red-as-expected-battery-heavy-gate 1 "_main\battery-heavy-gate.py;_main\_audit-verify-all.cmd;_main\_strip-surface-probe.py;_main\_strip-stats-log-probe.py;_main\_strip-restore-probe.py;_main\_strip-stats-probe.py;_main\panel-exit3-oracle.py;_main\mute-audio-oracle.py;_main\devlab\lab.py" "%OUT%\battery-heavy-gate-neg.log" python _main\battery-heavy-gate.py --neg-arm
   call :expectred red-as-expected-battery-heavy-gate !STEP_RC! "%OUT%\battery-heavy-gate-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-battery-heavy-gate MISSING "%OUT%\battery-heavy-gate-neg.log" "NEG-ARM PASS" )
 REM `scripts\task-resolver-gate.py` e o MANDATO do task-resolver como MECANISMO. O

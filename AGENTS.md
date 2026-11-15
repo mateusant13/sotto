@@ -692,6 +692,70 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-15, 16:3x):** `_main\_audit-verify-all.cmd` = **400280 B**,
+  **4596 CRLF** / 0 bare LF, sha256 `10AA3FDB4B528663366A66C0A75385405475252FE8A1A8C0300C0416E664DDB2`.
+  (Quarenta bytes e ZERO linhas a mais do que o pin de 400240 B: `_main\devlab\lab.py` entra nas
+  dependencias dos DOIS passos do `battery-heavy-gate`, porque o portao passou a LER aquele ficheiro
+  como instrumento `heavy` (`MARKER_RE` sobre o `BATTERY-HEAVY:` que ele agora carrega). Sem a
+  dependencia o passo ficaria em cache a julgar uma declaracao que ja mudou -- a classe do
+  `panel-deps`, que esta casa ja pagou quatro vezes.
+  O MESMO bloco corrigiu o `INSTRUMENT_RE` daquele portao, que parava no primeiro separador
+  (`_main[\\/][A-Za-z0-9_.\-]+`) e por isso lia `_main\devlab\lab.py` como o DIRECTORIO
+  `_main/devlab` -- medido: `PermissionError: [Errno 13] Permission denied: 'H:\\sotto\\_main\\devlab'`,
+  um crash que so aparecia no dia em que um instrumento de `_main/<sub>/<ficheiro>.py` fosse `heavy`.
+  O padrao passou a aceitar segmentos: `(?:[\\/][A-Za-z0-9_.\-]+)*`. Medido depois:
+  `BATTERY-HEAVY GATE -- PASS` rc=0 com **19** passos `heavy` (eram 17) e
+  `NEG-ARM: 5/5 mutant(s) caught` rc=1.)
+  (Doze bytes e ZERO linhas a mais do que o pin de 400228 B: a palavra `heavy` nos DOIS passos que
+  carregam o modelo DUAS vezes -- `concurrent-workers` (S4) e `devlab-crosstalk` (S6) --, que estavam
+  declarados `heavy` no COMENTARIO e no README e registados como `0` sem a classe. Um passo `heavy`
+  que nao pede a classe corre em TODA corrida: cada bateria pagava dois carregamentos de ~1,8 GiB e
+  ~3 min de parede sem o dono ter pedido nada, que e' exatamente a classe que a secao do `:step` diz
+  que nao pode acontecer. O `battery-class-oracle` nao os apanhava porque a lista de `LAUNCHERS` dele
+  e' de quem LARGA a app, e o devlab nao larga -- ele so' le' audio de ficheiro; a declaracao destes
+  dois e' `heavy` pela CARGA (modelo + GPU), nao pela tela. O oraculo ganhou o SEGUNDO eixo
+  (`MODEL_SUBCMDS` sobre o que vem depois de `devlab\lab.py`: `concurrent`, `crosstalk`, `strips`,
+  `feed`, `score`; `captions` e `chaos` ficam de fora porque abrem um Chrome de fixture e nunca tocam
+  no modelo) e o `--neg-arm` ganhou o braco `neg-arm2`, que rebaixa o passo do devlab numa COPIA e
+  exige que ELE -- nao o do relancamento -- seja nomeado: um unico mutante so' exercita a lista que
+  ele nomeia, que e' como esta classe passou despercebida. Medido depois: `battery-class PASS
+  arms=4` rc=0, `BATTERY-CLASS NEG-ARM PASS` rc=1 com os dois bracos, e o `battery-record-pairing`
+  525 passos / 525 nomes / 0 achados.)
+  (Mil seiscentos e trinta e nove bytes e DEZASSEIS linhas a mais do que o pin de 398589 B: o passo
+  `devlab-crosstalk`, o S6 do devlab -- DUAS FALAS DIFERENTES ao mesmo tempo, cada uma por um worker,
+  e a pergunta que um transcript misturado nao passa: o texto de cada worker pontua melhor contra as
+  SUAS legendas do que contra as do irmao? O S4 responde "dois processos colidem" (a metade de
+  PROCESSO); esta e' a metade que o dono OUVE, porque ele corre uma call e um video juntos. MEDIDO
+  caged a 2026-11-15: `own 0.4237 / cross 0.9683` e `own 0.4444 / cross 0.9661`, margens `+0.5445` e
+  `+0.5217`, `pair_wall=93,3 s`, `S6 CROSSTALK: PASS (2/2)` -- com as duas referencias genuinamente
+  diferentes (a 17 eventos/60 palavras, b 21/65, `identical=False`). O juiz e' PURO
+  (`_crosstalk_judge`) e as suas quatro arms negativas correm no `selftest` (empate, inversao, `None`,
+  populacao vazia, medido `LAB SELFTEST: PASS (21/21)`), porque um juiz so' exercitavel largando dois
+  workers de 1,8 GiB nunca tem o negativo corrido. Classe `heavy` (o modelo carrega duas vezes).
+  Trabalho anterior do mesmo dia, ainda neste pin:)
+  (Nove mil setecentos e noventa e dois bytes e CENTO E SETE linhas a mais do que o pin de 388797 B,
+  e a maior parte delas e' COMENTARIO, de proposito: o par `devlab-chaos` +
+  `red-as-expected-devlab-chaos`, o S5 do devlab -- o drill que dirige as transicoes que uma pessoa
+  faz com fala no ecra (um seek que cai num VAZIO entre cues, seis seeks em rajada, legendas
+  ligadas/desligadas a MEIO de uma linha pelas duas portas -- a tecla `c` e o handler do botao CC --,
+  uma faixa TROCADA sob o mesmo URL, fim de video, mudo, pausa a meio de uma linha e mudanca de
+  velocidade). Medido: `S5 CHAOS: PASS (24/24)` em 2,0 s a quente, e o `S5 NEG-ARM: PASS -- 4/4
+  mutants caught`, cada mutante derrubado pela SUA linha (o `ANCHOR-GONE` nunca conta como apanhado).
+  **O DRILL ACHOU UM DEFEITO DE PRODUTO na primeira corrida:** o `EXTRACT_JS` publicava `t`,
+  `paused`, `rs` e `rate` e **nunca publicava `ended`** -- o shell calcula
+  `yt_cdp_ended = bool(snap.get('ended'))`, logo essa leitura era `False` durante toda a vida do
+  codigo e um video ACABADO nunca era lido como acabado. O oraculo do CDP que embarca passava mesmo
+  assim porque entregava a `player_stopped` um dicionario feito a mao: a arm media a DECISAO e nunca
+  perguntou se o campo podia CHEGAR. Corrigido nas duas metades (o extrator publica `ended`, e o
+  `parse_snapshot` deixa-o passar com a AUSENCIA a continuar `None`, porque um payload velho nao
+  afirma que o video acabou) e o oraculo ganhou tres arms que fecham a cadeia -- `js_ended` (o JS
+  publica), `parse` (sobrevive ao parser) e `absent_none` (sem o campo da' `None`, nunca `False`).
+  Medido depois: `VERDICT: PASS (26/26)` com `js_ended=True parse=True absent_none=True`.
+  Os dois passos nomeiam `_main\devlab\lab.py` e `app\webview\youtube_cdp_source.py` nas dependencias,
+  porque o drill le' `EXTRACT_JS`, `parse_snapshot`, `player_stopped`, `list_targets` e `pick_target`
+  do primeiro e o fixture do segundo -- um PASS em cache sobre qualquer um dos dois descreveria
+  codigo que ja' mudou. `battery-record-pairing` medido depois: **524 passos / 524 nomes / 0 achados**;
+  `battery-wiring` PASS `ligados=211 sem_passo=106 populacao=317`; `battery-class` PASS `arms=3`.)
 - **PIN do ficheiro (medido 2026-11-14, 12:0x):** `_main\_audit-verify-all.cmd` = **388746 B**,
   **4473 CRLF** / 0 bare LF, sha256 `680B399FAA0C34FA30483507C42B654EC782D0ED0A572DE183678DED96AD5F00`.
   (Mil trezentos e oitenta e tres bytes e DEZASSETE linhas a mais do que o pin de 387363 B: o par
@@ -737,6 +801,43 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   a mesma lei que ele julga. Medido depois: `CONSOLE-AUDIT VERDICT PASS -- 0 sitio(s)`, e o
   `code-health` absorve o crescimento declarado de `app/webview/youtube_cdp_source.py`
   (bytes 122858 -> 125912, linhas 2424 -> 2476: o `isChrome` do extrator e o descarte no parser).)
+- **PIN do ficheiro (medido 2026-11-15, 09:1x):** `_main\_audit-verify-all.cmd` = **396758 B**,
+  **4558 CRLF** / 0 bare LF, sha256 `B259BFBFFC6F6610A9C6D9A828DFF234D013252DA1A090D849511346273ED913`.
+  (Mil duzentos e cinquenta e um bytes e QUINZE linhas a mais do que o pin de 395507 B: o passo
+  `concurrent-workers`, o S4 do devlab. Classe `heavy` -- carrega o modelo DUAS vezes, logo so
+  corre com `SOTTO_BATTERY_HEAVY=1`. MEDIDO: `selftest` 16/16, com o juiz do S4 provado nas TRES
+  direcoes (um par com artefacto PARTILHADO fica vermelho em 4 linhas, um par isolado passa, um
+  pid vivo derruba so' a SUA linha).
+  **O erro que este pin corrigiu no mesmo turno:** a insercao do bloco deixou 15 bare LF no
+  ficheiro (o `.cmd` passou a 4543 CRLF com bareLF=15) e o `agents-md-pins` acusou com razao; o
+  ficheiro foi normalizado para 0 bare LF ANTES de o pin ser escrito. E o pin anterior (395507 B)
+  ja' estava 1236 B atras do ficheiro vivo quando esta lane o mediu -- o numero que vale e' o do
+  ficheiro VIVO, nunca o de quem chegou primeiro.
+  **O que o S4 mede e o que NAO mede:** ISOLACAO de dois processos de worker no mesmo box, nao
+  "dois programas ao mesmo tempo". A shell constroi UM `WorkerBridge(` e o worker abre UM tap,
+  logo a topologia de duas fontes simultaneas nao existe no produto; o `concurrent` ganha a linha
+  de cross-talk no dia em que o produto tiver taps por programa. O README diz isso na seccao
+  "What this lab does NOT prove".)
+  (Dois mil e doze bytes e VINTE E QUATRO linhas a mais do que o pin de 393495 B: o par
+  `devlab-captions` + `red-as-expected-devlab-captions`, o S2 do devlab na bateria.
+  Ele existia so como cenario escrito no README e como comando que ninguem corria; agora a
+  bateria o executa e exige `S2 NEG-ARM: PASS`. MEDIDO: `S2 CAPTIONS: PASS (23/23)` em 5 de 5
+  corridas seguidas e `S2 NEG-ARM: PASS -- 3/3 mutants caught`, cada um pelo SEU check.
+  **A primeira versao deste par teria sido um verde vazio**, e por isso o bloco inteiro existe:
+  no primeiro commit do S2 a corrida seguinte falhou com `window.__seek is not a function` --
+  um Chrome headless da corrida ANTERIOR ainda morria na porta fixa e o arm media a pagina de
+  uma fixture velha. Duas curas, as duas medidas: `free_port()` (a porta preferida so vale se o
+  SO a der livre) e um nonce no URL mais um portao de prontidao que espera o
+  `typeof window.__seek === 'function'` E o nonce daquela corrida no `location.href`, em vez
+  do `time.sleep(0.6)` que fazia a primeira leitura ser o `no-window` honesto de uma pagina que
+  ainda nao existia. O controle aprendeu a mesma licao no mesmo dia: um mutante cujo alvo
+  sumiu diz `ANCHOR-GONE` e NUNCA conta como apanhado.
+  O braco NAO pode ser a pagina real do YouTube, e isto esta no bloco de comentario do passo:
+  o player headless recusa legenda (`is_servable: false` em todas as faixas, container vazio
+  por 16 s, e o `baseUrl&fmt=json3` da propria faixa devolve corpo de 0 byte de dentro da
+  pagina -- medido, cinco bracos). O que se prova e a parte que e NOSSA: o `EXTRACT_JS`, o
+  `parse_snapshot`, o `player_stopped` e o `pick_target` que EMBARCAM, sobre um player
+  controlado. UNMEASURED: a pagina real.)
 - **PIN do ficheiro (medido 2026-11-15):** `_main\_audit-verify-all.cmd` = **393495 B**,
   **4519 CRLF** / 0 bare LF, sha256 `8D02FC7C2D9AE6AA97E17CD319D0116EA6F4B1984F0DB58FEAC7BE665A8279E2`.
   (O pin cobre DUAS mudancas no mesmo ficheiro. (a) O par

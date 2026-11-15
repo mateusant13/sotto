@@ -137,7 +137,7 @@ MARKER_RE = re.compile(
 STEP_CALL_RE = re.compile(r"^\s*call\s+:step\s+(.*)$")
 STEP_ARGS_RE = re.compile(
     r'^([A-Za-z0-9_.\-]+)\s+(\d)\s+"([^"]*)"\s+"([^"]*)"\s+(.*)$')
-INSTRUMENT_RE = re.compile(r"_main[\\/][A-Za-z0-9_.\-]+")
+INSTRUMENT_RE = re.compile(r"_main[\\/][A-Za-z0-9_.\-]+(?:[\\/][A-Za-z0-9_.\-]+)*")
 
 
 # ---------------------------------------------------------------------------
