@@ -77,6 +77,24 @@ PYTHONW = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
 CREATE_NO_WINDOW = 0x08000000
 
 
+def _no_window_kwargs():
+    """The pair that hides a console child, in ONE place.
+
+    `CREATE_NO_WINDOW` alone is the defect class `AGENTS.md` names: a console-less
+    host (pythonw, the shell) can still be asked for a window through STARTUPINFO,
+    and an app that ignores the flag honours `STARTF_USESHOWWINDOW`/`wShowWindow=0`.
+    `_main/console-window-audit.py` calls a lone `creationflags` a `WEAK-FLAG` and
+    the frozen baseline is empty, so every new site fails the gate. Mirrors
+    `_main/hidden-launch._startupinfo`, duplicated rather than imported because
+    this file's whole point is to run from `Sotto.cmd dev` with no `_main` on path.
+    """
+    kw = {"creationflags": CREATE_NO_WINDOW}
+    if os.name == "nt":
+        kw["startupinfo"] = subprocess.STARTUPINFO(
+            dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0)
+    return kw
+
+
 # ── audibility gate ─────────────────────────────────────────────────────────
 class EndpointMeter:
     """Read-only peak meter over ACTIVE render endpoints (id-keyed).
@@ -440,7 +458,7 @@ def fetch_truth(video, out_path, langs=("en", "en-orig")):
                "--sub-format", "json3", "-o", out_path + ".%(ext)s",
                "https://youtu.be/%s" % video]
         r = subprocess.run(cmd, capture_output=True, text=True,
-                           creationflags=CREATE_NO_WINDOW, timeout=300)
+                           timeout=300, **_no_window_kwargs())
         cand = out_path + ".%s.json3" % lang
         if os.path.exists(cand):
             os.replace(cand, out_path)
@@ -964,7 +982,7 @@ def source_file(video, force=False):
     cmd = [sys.executable, "-m", "yt_dlp", "--no-warnings", "-f", "bestaudio",
            "-o", final.replace(".m4a", ".%(ext)s"), "https://youtu.be/%s" % video]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800,
-                       creationflags=CREATE_NO_WINDOW)
+                       **_no_window_kwargs())
     got = None
     for name in os.listdir(d):
         if name.startswith(video + ".") and not name.endswith(".json"):
@@ -993,7 +1011,7 @@ def probe_audio(path):
     ff = shutil.which("ffprobe") or "ffprobe"
     r = subprocess.run([ff, "-v", "error", "-show_entries",
                         "format=duration:stream=sample_rate,channels", "-of", "json", path],
-                       capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+                       capture_output=True, text=True, **_no_window_kwargs())
     try:
         d = json.loads(r.stdout or "{}")
         st = (d.get("streams") or [{}])[0]
@@ -1010,7 +1028,7 @@ def extract_window(src, start, seconds, out_wav):
     cmd = [ff, "-y", "-v", "error", "-ss", "%.3f" % start, "-t", "%.3f" % seconds,
            "-i", src, "-ac", "1", "-ar", str(SR), "-c:a", "pcm_f32le", out_wav]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600,
-                       creationflags=CREATE_NO_WINDOW)
+                       **_no_window_kwargs())
     if r.returncode != 0 or not os.path.exists(out_wav):
         raise SystemExit("ffmpeg failed rc=%d %s" % (r.returncode, (r.stderr or "")[-300:]))
     info = probe_audio(out_wav)
