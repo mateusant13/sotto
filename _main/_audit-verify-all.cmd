@@ -3923,12 +3923,12 @@ call :expectred red-as-expected-tap-silent-desktop !STEP_RC! "%OUT%\tap-silent-d
 ) else ( call :expectred red-as-expected-tap-silent-desktop MISSING "%OUT%\tap-silent-desktop-neg.log" "NEG-ARM PASS" )
 
 if exist _main\warm-engine-oracle.py (
-call :step always warm-engine 0 "_main\warm-engine-oracle.py;app\webview\warm_engine.py;app\webview\warm_pipe.py;app\webview\sotto_webview.py;_main\warm-engine\warm-engine-task.xml" "%OUT%\warm-engine.log" python _main\warm-engine-oracle.py
+call :step always warm-engine 0 "_main\warm-engine-oracle.py;app\webview\warm_engine.py;app\webview\warm_pipe.py;app\webview\sotto_webview.py;_main\warm-engine\warm-engine-task.xml;_main\warm-engine\warm-engine-run.cmd" "%OUT%\warm-engine.log" python _main\warm-engine-oracle.py
 call :record warm-engine !STEP_RC!
 ) else ( call :record warm-engine MISSING )
 
 if exist _main\warm-engine-oracle.py (
-call :step always red-as-expected-warm-engine 1 "_main\warm-engine-oracle.py;app\webview\warm_engine.py;app\webview\warm_pipe.py;app\webview\sotto_webview.py;_main\warm-engine\warm-engine-task.xml" "%OUT%\warm-engine-neg.log" python _main\warm-engine-oracle.py --neg-arm
+call :step always red-as-expected-warm-engine 1 "_main\warm-engine-oracle.py;app\webview\warm_engine.py;app\webview\warm_pipe.py;app\webview\sotto_webview.py;_main\warm-engine\warm-engine-task.xml;_main\warm-engine\warm-engine-run.cmd" "%OUT%\warm-engine-neg.log" python _main\warm-engine-oracle.py --neg-arm
 call :expectred red-as-expected-warm-engine !STEP_RC! "%OUT%\warm-engine-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-warm-engine MISSING "%OUT%\warm-engine-neg.log" "NEG-ARM PASS" )
 
