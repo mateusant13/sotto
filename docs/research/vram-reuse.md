@@ -139,6 +139,16 @@ Three new files, all in the lane's own scope. Nothing in worker/sotto_worker.py,
 worker/redux_live.py, worker/redux_batch.py, worker/config.json or app/**
 was modified.
 
+> **STATUS 2026-11-15: os três ficheiros foram APAGADOS (D-33).** Nada abaixo descreve código
+> que exista hoje. `worker/model_vram_pool.py`, `worker/vram_residency.py` e
+> `_main/vram-reuse-oracle.py` saíram porque o censo por `ast` sobre `app/`, `worker/` e `_main/`
+> devolvia **zero** consumidores de produto e o oráculo estava congelado na dívida
+> `REASON-MISSING` desde 2026-10-25, logo nunca corria na bateria. Reconstrução:
+> `git show 7720efcba3^:worker/model_vram_pool.py`. Este documento fica como registo das medições
+> (elas continuam verdadeiras) e da razão pela qual a integração nunca aconteceu: o passo 7.1
+> abaixo — "wire the pool into the worker" — é a decisão que nunca foi tomada, e um contrato que
+> ninguém liga não se guarda, apaga-se.
+
 | file | what it does |
 |---|---|
 | worker/vram_residency.py | The measurement layer. NVML device totals + per-process PDH VRAM, in-process, no subprocess. Model identity by weight-file sha256 (never by name). Two-tier foreign-holder detection: same-worker (runs sotto_worker.py) and size-plausible (holds enough VRAM to contain the model - a browser trips this with no ASR in sight, so it is reported as a candidate, never as a copy). |
