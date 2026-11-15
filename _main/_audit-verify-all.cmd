@@ -2128,9 +2128,11 @@ REM (1 178 citacoes medidas), exige que a linha exista no ficheiro, que o indice
 REM e o disco concordem nos dois sentidos, e que o `02..09`+`12` escrevam as Lacunas.
 REM SEM deps de proposito: a populacao e' um DIRECTORIO, e um passo cuja verdade vive numa
 REM lista de ficheiros que ele proprio descobre nunca pode ser cacheado (2,0 s).
-REM O `--neg-arm` planta quatro mutacoes numa COPIA (citacao de ficheiro inexistente, linha
-REM alem do fim, indice com documento ausente, documento sem Lacunas) e exige as quatro
-REM vermelhas. Nao lanca nada: le bytes.
+REM O `--neg-arm` planta CINCO mutacoes numa COPIA (citacao de ficheiro inexistente, linha
+REM alem do fim, indice com documento ausente, documento sem Lacunas, e citacao a um ficheiro
+REM que existe no DISCO e nao no INDICE do git -- a arm A6, classe do D-01/D-36) e exige as
+REM cinco vermelhas. Le bytes e pergunta ao indice (`git ls-files` pelo hidden-launch, que nao
+REM abre consola); nao lanca nada.
 call :step spec-citations 0 "" "%OUT%\spec-citations.log" python _main\spec-citations-oracle.py
 call :record spec-citations !STEP_RC!
 call :step red-as-expected-spec-citations 1 "" "%OUT%\spec-citations-neg.log" python _main\spec-citations-oracle.py --neg-arm
@@ -4063,11 +4065,11 @@ REM  * `red-as-expected-youtube-track-wiring` -- remove o call site da fusao
 REM    numa COPIA e exige o braco da correccao VERMELHO (mutante 1/1).
 REM ---------------------------------------------------------------------------
 if exist _main\spec-coverage-oracle.py (
-  call :step spec-coverage 0 "_main\spec-coverage-oracle.py;docs\spec\README.md" "%OUT%\spec-coverage.log" python _main\spec-coverage-oracle.py
+  call :step spec-coverage 0 "" "%OUT%\spec-coverage.log" python _main\spec-coverage-oracle.py
   call :record spec-coverage !STEP_RC!
 ) else ( call :record spec-coverage MISSING )
 if exist _main\spec-coverage-oracle.py (
-  call :step red-as-expected-spec-coverage 1 "_main\spec-coverage-oracle.py;docs\spec\README.md" "%OUT%\spec-coverage-neg.log" python _main\spec-coverage-oracle.py --neg-arm
+  call :step red-as-expected-spec-coverage 1 "" "%OUT%\spec-coverage-neg.log" python _main\spec-coverage-oracle.py --neg-arm
   call :expectred red-as-expected-spec-coverage !STEP_RC! "%OUT%\spec-coverage-neg.log" "SPEC-COVERAGE NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-spec-coverage MISSING "%OUT%\spec-coverage-neg.log" "SPEC-COVERAGE NEG-ARM PASS" )
 if exist _main\external-owner-oracle.py (
