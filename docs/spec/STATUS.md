@@ -28,6 +28,7 @@ Todas as treze ondas estão escritas. `linhas` e as contagens de etiqueta foram 
 | W8 painéis e UX | **feito** | `08-PANELS-UX.md` (346 l., 112/13/7/7): Alt+C por índice de pressão, Ctrl+Space (HOLD e o engolir do espaço), a caixa da legenda, os temas, o arrasto, as configurações e o que fica gravado | `hotkey_gesture.py`; `space_swallow.py`; `caption_drag.py`; `app/panel/**` |
 | W9 modos de falha | **feito** | `09-FAILURE-MODES.md` (350 l., 37/30/15/6): o que acontece quando cada peça falha — dispositivo, worker, página, WebView2, Chrome/CDP, disco, energia, rede — e o que o dono vê em cada caso | linha por modo com a tag do log e o oráculo que a lê |
 | W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (**35 defeitos** com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-24..D-32 entraram em 2026-11-14/15, D-33/D-34 na varredura de base de 2026-11-15 e D-35 na leitura do caminho de escrita do histórico) | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
+| W10 ledger de defeitos | **feito** | `10-DEFECTS.md` (**36 defeitos** com ANTES/DEPOIS/comando; D-02 é a ordem p0 do dono; D-24..D-32 entraram em 2026-11-14/15, D-33/D-34 na varredura de base de 2026-11-15 e D-35 na leitura do caminho de escrita do histórico, D-36 na varredura da própria evidência) | `git ls-files`; `live-code-freshness-oracle`; `caption-wanted.json`; `battery-budget-oracle` |
 | W11 spec-alvo | **feito** | `11-TARGET.md` (279 l.): o comportamento que eu escolho, jornada a jornada, com o que "funciona" quer dizer em cada uma | deriva das jornadas de `00-PROMISE.md` |
 | W12 selo | **feito** | índice, referências cruzadas, o portão das citações (`_main/spec-citations-oracle.py`) e o do **catálogo de módulos** (`_main/spec-coverage-oracle.py`: um bloco por ficheiro de produto em `13-MODULES.md`; `docs=16 ausentes=0 nome_apenas=0 classes_sem_seccao=0`) | `SPEC-CITATIONS VERDICT: PASS`; `SPEC-COVERAGE VERDICT: PASS` (+ `--neg-arm`) |
 | W13 módulos | **feito** | `13-MODULES.md` (51 blocos de módulo + 6 secções de cabeçalho: um bloco por ficheiro de produto, com o que garante, quem o chama, o que escreve e o que o dono vê quando falha) | `spec-coverage-oracle.py` mede a população por `os.walk`, não por lista curada |
@@ -67,12 +68,16 @@ Guardados aqui porque a próxima sessão não deve re-medir o que já está medi
 | o quê | número | como |
 |---|---|---|
 | linhas do produto | 129 802 em 235 ficheiros (a superfície que a spec lê) | `_main/spec-scale.py` (`app/webview/**/*.py` 50 404 em 46; `worker/**/*.py` 36 081 em 65; `app/panel/**` 43 317 em 124) |
+| linhas do produto | **129 001 em 233 ficheiros** (a superfície que a spec lê) | `_main/spec-scale.py`, re-medido 2026-11-15 nesta sessão (`app/webview/**/*.py` 50 411 em 46; `worker/**/*.py` 35 273 em 63; `app/panel/**` 43 317 em 124; `unreadable=0`) |
 | shell | 27 365 linhas, `SottoShell` com 221 membros, 29 classes | `ast` sobre `app/webview/sotto_webview.py` (membros = `FunctionDef`/`AsyncFunctionDef` do corpo da classe) |
-| worker | 9 529 linhas, 17 classes | `ast` sobre `worker/sotto_worker.py` |
 | a especificação | 14 ficheiros (sem `README.md`/`STATUS.md`), 5 833 linhas, 1 384 `[CODE]` + 173 `[MEASURED]` + 60 `[INFERENCE]` + 64 `[UNKNOWN]` | contagem por ficheiro de `docs/spec/*.md` com `len(t.splitlines())` e `re.findall(r'\[([A-Z]+)\]', t)` (2026-11-15) |
 | defeitos no ledger | **35** (D-01..D-35) | `sorted(set(re.findall(r'D-(\d+)', …)))` sobre `10-DEFECTS.md` |
 | citações resolvidas | **1 508** em 16 documentos, 0 sem ficheiro, 0 fora de alcance, 0 índice ausente, 9/9 documentos com o que-não-se-sabe escrito | `_main/spec-citations-oracle.py` |
-| catálogo de módulos | `docs=16 ausentes=0 nome_apenas=0 classes_sem_seccao=0`; população 116 classes em 2 grupos (`app/panel/skins/`=84, `worker/_probe/`=32) | `_main/spec-coverage-oracle.py` |
+| worker | 9 529 linhas, 18 classes (17 + `LineFormer` no topo; contadas por `ast` hoje) | `ast` sobre `worker/sotto_worker.py` |
+| a especificação | 14 documentos (sem `README.md`/`STATUS.md`), **6 148 linhas**, **1 536 `[CODE]` + 171 `[MEASURED]` + 60 `[INFERENCE]` + 64 `[UNKNOWN]`**; os 16 ficheiros somam 6 363 linhas | contagem por ficheiro de `docs/spec/*.md` com `len(t.splitlines())` e `re.findall(r'\[([A-Z]+)\]', t)`, re-medido 2026-11-15 nesta sessão |
+| defeitos no ledger | **36** (D-01..D-36) | `sorted(set(re.findall(r'D-(\d+)', …)))` sobre `10-DEFECTS.md` |
+| citações resolvidas | **1 658** em 16 documentos, 0 sem ficheiro, 0 fora de alcance, 0 índice ausente, **0 fora do índice do git (A6)**, 9/9 documentos com o que-não-se-sabe escrito | `_main/spec-citations-oracle.py` (com a arm A6 nova, neg-arm 5/5) |
+| catálogo de módulos | `docs=16 ausentes=0 nome_apenas=0 classes_sem_seccao=0`; população **114 módulos** + 2 grupos de classe (`app/panel/skins/`=84, `worker/_probe/`=32 `.py` de 96 ficheiros na pasta) | `_main/spec-coverage-oracle.py` |
 | bateria | **525 passos / 525 com registo / 0 achados** | `_main/battery-record-pairing-oracle.py` |
 | pin da bateria | **400 280 B / 4 596 CRLF / 0 bare LF** sha256 `10AA3FDB…E664DDB2` | `agents-md-pins-oracle.py` (verde, 2 pins) |
 | oráculos ligados | **211** ligados / 106 sem passo / 317 na população | `battery-wiring-oracle.py` |

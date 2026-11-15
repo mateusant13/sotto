@@ -694,6 +694,16 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
 
 - **PIN do ficheiro (medido 2026-11-15, 20:0x):** `_main\_audit-verify-all.cmd` = **400292 B**,
   **4596 CRLF** / 0 bare LF, sha256 `E65513027146A5E1B609410F0EADC1048157E775BC3DBC5676C55032A385D4F9`.
+- **PIN do ficheiro (medido 2026-11-15, 21:1x):** `_main\_audit-verify-all.cmd` = **400480 B**,
+  **4598 CRLF** / 0 bare LF, sha256 `D6E2626ED9E903672D8A54BE99DA89151436BEB29FC2866C87F525B4A7E94ECD`.
+  (Cento e oitenta e oito bytes e DUAS linhas a mais do que o pin de 400292 B: o comentario do
+  passo `spec-citations` passa a dizer as CINCO mutacoes do `--neg-arm`, incluindo a arm **A6**
+  -- toda citacao da especificacao tem de estar no INDICE do git, nao so' no disco. A A6 nasceu
+  de um defeito MEDIDO hoje: tres citacoes apontavam para caminhos ignorados (`worker/_probe/`,
+  `_main/_cache/`, `worker/models/`), ou seja o clone limpo nao as resolvia -- a classe do D-01
+  na camada que existe para julgar evidencia (ledger: `docs/spec/10-DEFECTS.md` §D-36). O `git`
+  do A6 corre pelo `hidden-launch`, porque o censo de consolas reprovou a primeira versao com
+  `NO-FLAG "larga git sem guarda"` -- o instrumento pegou no proprio instrumento.)
   (Setenta e seis bytes a mais do que o pin de 400216 B, e ZERO linhas a mais: os DOIS passos do
   motor quente (`warm-engine` + `red-as-expected-warm-engine`) passam a nomear
   `_main\warm-engine\warm-engine-run.cmd`. O oraculo daquele par deixou de julgar so' o `.py` e o
@@ -703,6 +713,7 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   O DM de 2026-11-15 mediu `pythonw.exe(42792)` a 14,15 % da maquina sem tecto declarado ao lado do
   comando que o larga; ver §"O TECTO DO MOTOR QUENTE VIVE NA LARGADA".)
   NOTA DE PIN: os 400 292 B sao do ficheiro VIVO, que tambem carrega o bloco do `spec-coverage` de
+  NOTA DE PIN: os 400 480 B sao do ficheiro VIVO, que tambem carrega o bloco do `spec-coverage` de
   outra lane ainda NAO commitado (`docs\spec\README.md` como dependencia -> `""`). O que ESTE
   commit entrega sao 76 B (395718 -> 395794 no blob, LF), e o commit seguinte a esse bloco re-mede
   este numero, como manda a regra do pin.

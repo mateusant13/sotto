@@ -541,9 +541,8 @@ bloco.
   pasta, incluindo logs, JSON e um `README.md` que é a model card do
   `nemotron-3.5-asr-streaming-0.6b-onnx-int4` copiada do Hugging Face) usados para
   medições pontuais de boot, CPU, grafos ONNX, quantização e decode. Executam no
-  import (código ao nível do módulo, ex.: `worker/_probe/probe2.py:13` constrói
-  `og.Model(MODEL_DIR)`), com caminhos absolutos para `worker/assets` e
-  `worker/models`.
+  import (código ao nível do módulo, ex.: um deles constrói `og.Model(MODEL_DIR)` no
+  topo), com caminhos absolutos para `worker/assets` e `worker/models`.
 - **Embarque** — Nenhum destes ficheiros embarca no produto:
   `worker/_probe/` está no `.gitignore` (linha 115), e nenhum módulo de
   `worker/` ou `app/` importa `_probe` (grep por `import _probe` / `from _probe`
@@ -552,10 +551,12 @@ bloco.
   (`python worker/_probe/<script>.py`); não há runner nem entrada no `package.json`
   que os chame. Os 5 ficheiros que ainda aparecem em `git ls-files` são restos de
   um `git add -f` anterior, cobertos pela mesma regra de ignore.
-- **Evidência** — `[CODE] .gitignore:115` (`worker/_probe/`),
-  `[CODE] worker/_probe/probe2.py:13` (`model = og.Model(MODEL_DIR)`),
-  `[CODE] worker/_probe/diag.py:1` (docstring de diagnóstico de uma execução
-  única).
+- **Evidência** — `[CODE] .gitignore:115` (`worker/_probe/`), e o facto de o directório ser
+  ignorado é a própria evidência: os 32 `.py` existem **só nesta máquina**. Nenhuma linha deles é
+  citável num clone limpo, e por isso este bloco não cita nenhuma — descreve a pasta e o que ela
+  faz, e diz que ela não embarca. Um `git add -f` de sondas de medição seria a mesma classe do
+  `D-01` (evidência que o índice não reproduz), agora paga para um ficheiro que ninguém corre em
+  produção.
 
 ---
 

@@ -15,6 +15,9 @@ O que ele julga (cada braco diz o seu nome no output):
   A3  todo o documento nomeado na tabela do `README.md` existe em `docs/spec/`
   A4  nenhum documento de `docs/spec/` fica FORA da tabela do `README.md`
   A5  todo o `02..09` e o `12` tem a seccao `## Lacunas`
+  A6  todo ficheiro citado esta' no INDICE do git -- uma citacao a um caminho que existe
+      so' nesta maquina (uma copia em `_cache/`, uma pasta no `.gitignore`) nao se reproduz
+      num clone limpo, e uma especificacao cuja evidencia nao se reproduz nao e' evidencia
 
 A resolucao de caminho e' a mesma que um leitor humano faz: o nome citado pode vir
 com ou sem raiz (`sotto_webview.py` vs `app/webview/sotto_webview.py`), por isso as
@@ -59,9 +62,45 @@ NEEDS_LACUNAS = ("02-BOOT.md", "03-CAPTURE.md", "04-ENGINES.md", "05-LIVE-PATH.m
 EXIT_PASS, EXIT_FAIL, EXIT_EMPTY = 0, 1, 2
 
 
+def _load_hidden_launch():
+    """`hidden-launch.py` tem hifen no nome: importa-se por CAMINHO.
+
+    Um `import hidden_launch` levanta `ModuleNotFoundError`, e um `except` largo a volta
+    disso transformaria o portao num "nao ha nada a medir" -- a classe que este repositorio
+    paga caro para nao repetir.
+    """
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hidden-launch.py")
+    spec = importlib.util.spec_from_file_location("hidden_launch", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_hidden = _load_hidden_launch()
+
+
 def _lines(path):
     with io.open(path, encoding="utf-8", errors="replace") as fh:
         return fh.read().splitlines()
+
+
+def _tracked(root):
+    """Os caminhos que o INDICE do git tem, relativos a `root`, ou None sem git.
+
+    A6 existe porque a A1 verifica o DISCO e nao o indice: uma copia em `_cache/` ou uma
+    pasta no `.gitignore` passa a A1 e desaparece num clone. Medido 2026-11-15: a spec citava
+    `worker/_probe/probe2.py` e `_main/_cache/sotto_webview_nograce.py`, os dois ignorados.
+
+    O `git` corre pelo `hidden-launch`: e' um executavel de CONSOLA, e um `subprocess.run`
+    directo faria o Windows alocar uma consola nova -- o censo `console-window-audit` reprovou
+    a primeira versao deste helper com `NO-FLAG "larga git sem guarda"`, com razao.
+    """
+    rc, out, _err = _hidden.run(["git", "-C", str(root), "ls-files", "-z"],
+                               capture=True, timeout=120)
+    if rc != 0:
+        return None
+    return {p.replace("\\", "/") for p in out.split("\0") if p}
 
 
 def resolve(name, root):
@@ -84,7 +123,7 @@ def check(spec_dir, root):
     out, bad = [], 0
     docs = sorted(p for p in spec_dir.glob("*.md"))
     stats = {"docs": len(docs), "cites": 0, "unresolved": [], "extent": [],
-             "ambiguous": [], "index_missing": [], "index_orphan": []}
+             "ambiguous": [], "index_missing": [], "index_orphan": [], "untracked": []}
     if not docs:
         return False, ["SPEC-CITATIONS CANNOT-MEASURE: nenhum documento em %s" % spec_dir], stats
 
@@ -113,6 +152,11 @@ def check(spec_dir, root):
                 total = line_count(path)
                 if line > total:
                     stats["extent"].append((doc.name, lineno, name, line, total))
+                try:
+                    rel = path.resolve().relative_to(root.resolve()).as_posix()
+                except ValueError:
+                    continue  # fora da raiz: a A1 ja' tem a populacao
+                stats["untracked"].append((doc.name, lineno, name, rel))
 
     for doc, lineno, name in stats["unresolved"]:
         out.append("  A1 RED %s:%d cita `%s`, que nao existe no repo" % (doc, lineno, name))
@@ -167,6 +211,28 @@ def check(spec_dir, root):
                   len([n for n in NEEDS_LACUNAS if (spec_dir / n).is_file()]) - len(missing_lac),
                   len(NEEDS_LACUNAS)))
     bad += bool(missing_lac)
+
+    untracked_red = []
+    tracked = _tracked(root)
+    if tracked is not None:
+        seen = set()
+        for doc, lineno, name, rel in stats["untracked"]:
+            if rel in tracked or (doc, rel) in seen:
+                continue
+            seen.add((doc, rel))
+            untracked_red.append((doc, lineno, name, rel))
+    for doc, lineno, name, rel in untracked_red:
+        out.append("  A6 RED %s:%d cita `%s` (%s), que o indice do git NAO tem -- nao se "
+                   "reproduz num clone limpo" % (doc, lineno, name, rel))
+    if tracked is None:
+        out.append("  A6 CANNOT-MEASURE  sem `git ls-files` nesta raiz: a populacao do "
+                   "indice nao existe, e um skip nao e' um portao que passou")
+    else:
+        out.append("  A6 %s  citacoes a ficheiros do indice: %d, fora do indice: %d"
+                   % ("GREEN" if not untracked_red else "RED",
+                      len(stats["untracked"]) - len(untracked_red), len(untracked_red)))
+    stats["untracked_red"] = untracked_red
+    bad += bool(untracked_red)
 
     if stats["ambiguous"]:
         for doc, lineno, name in stats["ambiguous"]:
@@ -238,12 +304,21 @@ def neg_arm():
         p.write_text(p.read_text(encoding="utf-8").replace("## Lacunas", "## Fim", 1),
                      encoding="utf-8")
 
+    def m5(spec, _root):
+        # A6: uma citacao a um ficheiro que EXISTE no disco e NAO esta' no indice -- a classe do
+        # commit 283b2a8 e do D-01. `_main/_cache/` e' git-ignored, logo reproduz o defeito sem
+        # depender do estado do repo.
+        p = spec / "07-HISTORY-STATE.md"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + "\n`[CODE]` `_main/_cache/sotto_webview_nograce.py:10`\n", encoding="utf-8")
+
     case("citacao-de-ficheiro-inexistente", m1, "A1 RED")
     case("linha-alem-do-fim", m2, "A2 RED")
     case("indice-com-documento-ausente", m3, "A3 RED")
     case("documento-sem-lacunas", m4, "A5 RED")
+    case("citacao-a-ficheiro-fora-do-indice", m5, "A6 RED")
     print("\nNEG-ARM: %s -- %d/%d mutantes apanhados"
-          % ("PASS" if not fails else "FAIL", 4 - fails, 4))
+          % ("PASS" if not fails else "FAIL", 5 - fails, 5))
     return EXIT_FAIL if not fails else EXIT_PASS
 
 

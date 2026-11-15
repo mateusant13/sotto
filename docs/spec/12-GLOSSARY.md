@@ -282,8 +282,10 @@ um defeito novo. `HOTKEY_GESTURE_MS` sobrevive em **8** ficheiros — recibos, l
 2. **Um ficheiro `.cmd` não é um `.py`.** `SOTTO_BATTERY_HEAVY` e `SOTTO_STEP_DEADLINE_S` dão 0 no
    corpus `.py` e são vivos em `_main/_audit-verify-all.cmd` `[MEASURED]`.
 3. **`_main` não é fonte de verdade de tags.** 723 `.py` em `_main`; vários são cópias congeladas do
-   shell (`_main/_cache/sotto_webview_nograce.py`, `_main/_panel-*-mutant.py`), por isso um censo
-   sobre `_main` conta o mesmo tag duas vezes `[MEASURED] ls`.
+   shell (`_cache/sotto_webview_nograce.py` e os `_panel-*-mutant.py`, ambos sob `_cache/` no
+   `.gitignore`), por isso um censo sobre `_main` conta o mesmo tag duas vezes `[MEASURED] ls`. Um
+   caminho sob `_cache/` **não é evidência citável**: existe só nesta máquina, e um clone limpo
+   não o tem.
 
 ## Lacunas
 

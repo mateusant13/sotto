@@ -76,6 +76,8 @@ classes que são dados):
 | linhas | 5 988 |
 | `[CODE]` | 1 390 |
 | `[MEASURED]` | 181 |
+| linhas | 6 363 |
+| `[CODE]` | 1 542 |
 | `[INFERENCE]` | 64 |
 | `[UNKNOWN]` | 71 |
 | citações `ficheiro:linha` resolvidas | **1 508**, 0 sem ficheiro, 0 fora de alcance |

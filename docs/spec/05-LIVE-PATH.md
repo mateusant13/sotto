@@ -23,7 +23,9 @@ lida do ficheiro descreve uma shell anterior à última edição de `sotto_webvi
 
 O worker fixa a taxa em 16 000 Hz (`[CODE] worker/engine_switch.py:37`, importada por
 `worker/sotto_worker.py:147`) e o tamanho do bloco vem do modelo, não de uma constante do código:
-`"chunk_samples": 8960` (`[CODE] worker/models/nemotron-3.5-asr-ptbr-onnx-int4/genai_config.json:16`),
+`"chunk_samples": 8960` (`[CODE] docs/model-specs/original/int4/genai_config.json:16`, a cópia
+versionada do config que o `worker/models/` carrega — os pesos e o config vivo são git-ignored e por
+isso não são evidência citável),
 lido em `self.chunk = cfg["chunk_samples"]` (`[CODE] worker/sotto_worker.py:1571`). `[MEASURED] python -c
 "print(8960/16000)"` → `0.56`, 2026-11-11: o bloco são **560 ms** de áudio.
 
