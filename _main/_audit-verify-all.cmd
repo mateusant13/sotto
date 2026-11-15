@@ -2770,10 +2770,18 @@ REM do AGENTS.md (`_main/*.py` = LF) e mudava o sha de tudo o que esta
 REM byte-pinhado. O verificador materializa um checkout REAL e compara
 REM os terminadores um a um com a arvore de trabalho de hoje.
 REM Custo medido: 3,35 s e 45,7 MB (pasta fixa em TMPDIR, nao cresce).
+REM
+REM `--selftest` e' o braco NEGATIVO do JUIZ: alimenta a funcao PURA `julgar`
+REM com uma fotografia falsa (um MISTO servido fora do terminador dominante) e
+REM exige a recusa. Sem ele o portao ja' rodava verde e o juiz nunca era
+REM exercitado por uma entrada errada -- a classe "um controle que nao pode
+REM falhar". Medido: 6/6 casos; com o juiz mutado (o MISTO passa) 1/6 -> rc=1.
 REM ---------------------------------------------------------------------------
 if exist _main\_gitattributes-verify.py (
   call :step gitattributes-verify 0 "_main\_gitattributes-verify.py;_main\_make-gitattributes.py;.gitattributes" "%OUT%\gitattributes-verify.log" python _main\_gitattributes-verify.py
   call :record gitattributes-verify !STEP_RC!
+  call :step gitattributes-verify-arm 0 "_main\_gitattributes-verify.py" "%OUT%\gitattributes-verify-arm.log" python _main\_gitattributes-verify.py --selftest
+  call :record gitattributes-verify-arm !STEP_RC!
 ) else ( call :record gitattributes-verify MISSING )
 REM O D-01 DO LEDGER (`docs/spec/10-DEFECTS.md`) FECHADO POR UM PORTAO, e nao por um `git add -f`
 REM que se desfaz no proximo `git rm --cached`: os TRES mutantes congelados que oraculos EXECUTAM

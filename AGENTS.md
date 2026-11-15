@@ -692,7 +692,31 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (medido 2026-11-15, 21:1x):** `_main\_audit-verify-all.cmd` = **400480 B**,
+- **PIN do ficheiro (medido 2026-11-15, 14:0x):** `_main\_audit-verify-all.cmd` = **401086 B**,
+  **4606 CRLF** / 0 bare LF, sha256 `4382254CC29F1E584CF8EE5D6C8CE1B353760E73E571393C31EBACCA0F243666`.
+  (Cento e vinte e seis bytes e OITO linhas a mais do que o pin de 400960 B: o passo
+  `gitattributes-verify-arm`, o braco NEGATIVO do juiz do `.gitattributes` -- e ele nasceu de um
+  defeito MEDIDO hoje, que era DUPLO no mesmo ficheiro.
+  **(a) O JUIZ NAO ERA EXERCITADO POR NENHUMA ENTRADA ERRADA.** `_main\_gitattributes-verify.py`
+  comparava inline, dentro do unico caminho que ele mesmo julga, logo nao tinha braco negativo
+  possivel. A comparacao saiu para a funcao PURA `julgar(ficheiro, eol_hoje, eol_checkout,
+  bytes_do_worktree)` e o `--selftest` alimenta essa funcao REAL com seis fotografias, a quinta
+  sendo o mutante que importa: um ficheiro MISTO servido FORA do terminador dominante. Medido:
+  `SELFTEST: PASS -- 6/6`; com o juiz mutado para aceitar esse caso, `1/6` e **rc=1**.
+  **(b) O MODO `--verify` DO GERADOR ERA INERTE.** `python _main/_make-gitattributes.py --verify`
+  caia no ramo de impressao: imprimia o `.gitattributes` inteiro, media NADA e devolvia **rc=0** --
+  e o `docs/spec/STATUS.md` citava exatamente "`--verify` rc=0" como prova do fecho do D-01. Um
+  verde que nenhum checkout produziu. Agora ele DELEGA no portao real e devolve o rc dele; medido
+  com as mesmas regras quebradas (`app/webview/sotto_webview.py text eol=lf` acrescentado): codigo
+  ANTIGO `rc=0`, codigo NOVO **rc=1** com `DIVERGE ... hoje=CRLF checkout=LF`.
+  A heranca de stdout tambem nao servia: com `--verify > log` o filho corria, devolvia rc=1 e o log
+  ficava com 823 B -- o censo do pai e ZERO linhas do portao (o mesmo controlo minimo herdava o
+  stream sem perder nada; so' este caminho perdia). A saida do filho viaja por PIPE e e' reimpressa.
+  Ver §"O EOL DO REPO E' UMA REGRA, E O JUIZ DELA TINHA UM VERDE QUE NAO MEDIA NADA".)
+  NOTA DE PIN: os 401 086 B / 4606 CRLF sao o que um CHECKOUT materializa; o blob guarda LF (com
+  `text eol=crlf` o indice guarda LF e o checkout fabrica o CRLF -- um blob com CRLF produz o diff
+  fantasma de 9196 linhas que os commits `52bffdb` e `7b90e5e56c` ja' curaram neste repo).
+- **PIN ANTERIOR (medido 2026-11-15):** `_main\_audit-verify-all.cmd` = **400960 B**,
   **4598 CRLF** / 0 bare LF, sha256 `D6E2626ED9E903672D8A54BE99DA89151436BEB29FC2866C87F525B4A7E94ECD`.
   (Cento e oitenta e oito bytes e DUAS linhas a mais do que o pin de 400292 B: o comentario do
   passo `spec-citations` passa a dizer as CINCO mutacoes do `--neg-arm`, incluindo a arm **A6**
@@ -3009,6 +3033,49 @@ licao do censo de consolas, que acusa quem esta' certo e por isso perde a autori
   `red-as-expected-battery-heavy-gate`). O portão do pin é
   `_main/agents-md-pins-oracle.py` - se o `.cmd` mudar, o número muda, e o gate
   obriga a re-medir **aqui** em vez de deixar um número velho.
+
+## O EOL DO REPO E' UMA REGRA, E O JUIZ DELA TINHA UM VERDE QUE NAO MEDIA NADA (medido 2026-11-15)
+
+Duas metades, as duas reproduzidas nesta arvore hoje, e as duas da mesma classe: **um comando que
+se chama `verify` e nao verifica**.
+
+1. **`_main/_make-gitattributes.py --verify` era INERTE.** O despacho era
+   `if modo == '--write': ... else: sys.stdout.write(corpo)` -- o `--verify` caia no `else`,
+   imprimia o `.gitattributes` inteiro, **media nada** e devolvia **rc=0**. E o
+   `docs/spec/STATUS.md` (linha 41) citava exatamente "`--verify` rc=0" como prova de que o D-01
+   estava fechado: um verde que **nenhum checkout produziu**. O modo passou a DELEGAR no portao real
+   (`_main/_gitattributes-verify.py`) e a devolver o rc dele. **Controlo medido**: com as mesmas
+   regras quebradas (`app/webview/sotto_webview.py text eol=lf` acrescentado ao ficheiro), o codigo
+   antigo da **rc=0** e o novo da **rc=1** com `DIVERGE ... hoje=CRLF checkout=LF`. Um modo que se
+   chama `--verify` ou verifica, ou nao existe.
+2. **A heranca de stdout do filho nao serve AQUI, e isso e' medido.** Primeira versao da cura
+   deixava o filho herdar o nosso stdout: `python _make-gitattributes.py --verify > log` corria o
+   portao, devolvia rc=1 e o log ficava com **823 B** -- exatamente o censo do pai e **ZERO** linhas
+   do portao (o resultado era escrito a partir do offset 0 por cima do do filho). O controlo minimo
+   (script que imprime, faz `flush` e larga o MESMO filho) herdava o stream sem perder nada: so'
+   este caminho perdia. A saida viaja por **PIPE** e e' reimpressa. **Um rc certo com a prova
+   apagada e' o mesmo defeito do modo inerte, so' mais dificil de ver.**
+
+E o **juiz** ganhou o braco que nao tinha: `julgar()` e' uma funcao PURA (a comparacao EOL de um
+ficheiro: igual, misto-no-dominante, ou divergente) e `--selftest` alimenta essa funcao REAL com seis
+fotografias -- a quinta e' o mutante que importa, um MISTO servido **fora** do terminador dominante.
+Medido: `SELFTEST: PASS -- 6/6`; com o juiz mutado para aceitar esse caso, **1/6 e rc=1**. Antes
+disto a comparacao vivia inline no unico caminho que ela mesma julga, logo nao tinha braco negativo
+possivel -- a classe "um controle que nao pode falhar". Passos na bateria: `gitattributes-verify`
+(portao real) e `gitattributes-verify-arm` (`--selftest`).
+
+**A metade que estava a incomodar o repo inteiro, e ela e' a MESMA classe:** `git status` mostrava
+`app/webview/sotto_webview.py` com **27 365 linhas alteradas, para sempre**. O blob guardava CRLF
+embora o `.gitattributes` diga `text eol=crlf` (indice = LF, checkout fabrica o CRLF), logo o filtro
+limpava o worktree, o indice ficava sempre diferente e o diff fantasma nunca fechava. `git add
+--renormalize` no indice **sem tocar no worktree** (sha256 do ficheiro em disco identico antes e
+depois: `8dafecb5...`) fechou-o. O proprio portao acusava mais **quatro** divergencias pre-existentes
+(`_main/clr-warm-oracle.py`, `_main/devlab/sotto-dev.cmd`, `_main/receipt-20261112-clr-warm.md`,
+`worker/sotto_worker.py`): `python _main/_make-gitattributes.py --write` (a via desenhada pelo
+proprio ficheiro, que gera as regras a partir do EOL MEDIDO) fechou as quatro. Medido depois:
+`ficheiros de texto versionados: 2733 / identico: 2725 / MISTO normalizado: 8 / DIVERGENTES: 0`,
+`git status: IDENTICO (antes e depois)`, `VERDICT: PASS`, rc=0 -- e `git status --porcelain` do repo
+inteiro passou a **vazio**.
 
 ## A LEI DO CUSTO - um laco dorme o ORCAMENTO, nunca o proprio trabalho (2026-11-08)
 

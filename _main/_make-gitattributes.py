@@ -168,6 +168,32 @@ def main() -> int:
     corpo = '\n'.join(linhas) + '\n'
 
     modo = sys.argv[1] if len(sys.argv) > 1 else '--print'
+    if modo == '--verify':
+        # O `--verify` DELEGA no portao real. Antes desta linha ele caia no
+        # ramo de impressao: media nada e devolvia rc=0, e o `docs/spec/
+        # STATUS.md` citava "`--verify` rc=0" como prova do D-01 -- um verde
+        # que nenhum checkout produziu. Um modo que se chama `--verify` ou
+        # verifica, ou nao existe.
+        alvo = os.path.join(ROOT, '_main', '_gitattributes-verify.py')
+        # A HERANCA DE stdout NAO SERVE AQUI, e isto foi medido, nao suposto:
+        # com `python _make-gitattributes.py --verify > log`, o filho corria,
+        # devolvia rc=1 e o log ficava com 823 B -- exatamente o censo do pai,
+        # ZERO linhas do portao. O mesmo controlo (script minimo que imprime,
+        # faz flush e larga o MESMO filho) herdava o stream sem perder nada:
+        # so' este caminho perde. Um rc certo com a prova apagada e' o mesmo
+        # defeito que o modo inerte, so' mais dificil de ver. Por isso a saida
+        # do filho viaja por PIPE e e' reimpressa aqui: deterministico, e nao
+        # depende de o handle do log ser herdavel.
+        r = subprocess.run([sys.executable, alvo] + sys.argv[2:],
+                           capture_output=True, text=True,
+                           creationflags=subprocess.CREATE_NO_WINDOW,
+                           startupinfo=subprocess.STARTUPINFO(
+                               dwFlags=subprocess.STARTF_USESHOWWINDOW,
+                               wShowWindow=0))
+        sys.stdout.write(r.stdout)
+        sys.stderr.write(r.stderr)
+        sys.stdout.flush()
+        return r.returncode
     if modo == '--write':
         with open(GITATT, 'wb') as fh:
             fh.write(corpo.encode('utf-8'))

@@ -63,10 +63,65 @@ def status_porcelain():
     return out
 
 
+def julgar(f: str, hoje_eol: str, checkout_eol: str, worktree_bytes: bytes):
+    """A DECISAO, pura: (tipo, detalhe) para um ficheiro.
+
+    Existe separada do checkout porque um portao cujo juiz so' corre dentro do
+    unico caminho que ele julga nao tem braco negativo possivel -- e esta casa
+    ja' pagou varias vezes por um `--neg-arm` que provava a aritmetica de um
+    `any()` em vez do juiz. Aqui o braco negativo alimenta a funcao REAL com
+    uma fotografia falsa, sem tocar no `.gitattributes` vivo.
+    """
+    if checkout_eol == 'NAO SAIU':
+        return 'DIVERGE', 'NAO SAIU'
+    if checkout_eol == hoje_eol:
+        return 'IGUAL', hoje_eol
+    if hoje_eol == 'MISTO':
+        b = worktree_bytes
+        crlf = b.count(b'\r\n')
+        bare = len(re.findall(rb'(?<!\r)\n', b))
+        dom_real = 'CRLF' if crlf > bare else 'LF'
+        if checkout_eol == dom_real:
+            return 'MISTO', dom_real
+        return 'DIVERGE', 'MISTO -> %s (esperava %s)' % (checkout_eol, dom_real)
+    return 'DIVERGE', checkout_eol
+
+
+def selftest() -> int:
+    """O braco negativo do JUIZ: uma fotografia falsa tem de ser recusada."""
+    casos = [
+        # (nome, hoje, checkout, bytes do worktree, tipo esperado, detalhe esperado)
+        ('uniforme igual', 'CRLF', 'CRLF', b'a\r\nb\r\n', 'IGUAL', 'CRLF'),
+        ('uniforme divergente', 'CRLF', 'LF', b'a\r\nb\r\n', 'DIVERGE', 'LF'),
+        ('LF que virou CRLF', 'LF', 'CRLF', b'a\nb\n', 'DIVERGE', 'CRLF'),
+        ('misto no dominante', 'MISTO', 'CRLF', b'a\r\nb\r\nc\r\nd\n', 'MISTO', 'CRLF'),
+        ('misto FORA do dominante', 'MISTO', 'LF', b'a\r\nb\r\nc\r\nd\n', 'DIVERGE',
+         'MISTO -> LF (esperava CRLF)'),
+        ('nao saiu', 'CRLF', 'NAO SAIU', b'a\r\n', 'DIVERGE', 'NAO SAIU'),
+    ]
+    falhas = 0
+    for nome, hoje_eol, check, w, tipo_esp, det_esp in casos:
+        tipo, det = julgar('x.py', hoje_eol, check, w)
+        ok = (tipo, det) == (tipo_esp, det_esp)
+        if not ok:
+            falhas += 1
+        print('  %-26s %s  %s/%s' % (nome, 'ok' if ok else 'FALHA', tipo, det))
+    if falhas:
+        print('SELFTEST: FAIL -- %d/%d casos' % (falhas, len(casos)))
+        return 1
+    print('SELFTEST: PASS -- %d/%d casos, e o caso 5 e o mutante que o juiz'
+          ' tem de recusar' % (len(casos), len(casos)))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--skip-status', action='store_true')
+    ap.add_argument('--selftest', action='store_true')
     args = ap.parse_args()
+
+    if args.selftest:
+        return selftest()
 
     antes = status_porcelain()
     ficheiros = list(versionados())
@@ -111,20 +166,15 @@ def main() -> int:
                 continue
             with open(out, 'rb') as fh:
                 e2 = eol_de(fh.read())
-            if e2 == e:
+            with open(os.path.join(ROOT, f.replace('/', os.sep)), 'rb') as fh:
+                w = fh.read()
+            veredito = julgar(f, e, e2, w)
+            if veredito[0] == 'IGUAL':
                 iguais += 1
-            elif e == 'MISTO':
-                dominante = 'CRLF' if e2 == 'CRLF' else 'LF'
-                # o dominante e o que o gerador escolheu: so conta se bater
-                with open(os.path.join(ROOT, f.replace('/', os.sep)), 'rb') as fh:
-                    b = fh.read()
-                dom_real = 'CRLF' if b.count(b'\r\n') > len(re.findall(rb'(?<!\r)\n', b)) else 'LF'
-                if e2 == dom_real:
-                    normalizados.append((f, dom_real))
-                else:
-                    divergentes.append((f, e, 'MISTO -> %s (esperava %s)' % (e2, dom_real)))
+            elif veredito[0] == 'MISTO':
+                normalizados.append((f, veredito[1]))
             else:
-                divergentes.append((f, e, e2))
+                divergentes.append((f, e, veredito[1]))
 
         print('ficheiros de texto versionados : %d' % len(hoje))
         print('checkout identico a hoje         : %d' % iguais)
