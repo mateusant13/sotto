@@ -724,6 +724,12 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   lane. O pin mede o estado VIVO de proposito (e' o numero que o portao compara), mas a metade do
   `.cmd` que o justifica ainda nao esta' no indice -- quem commitar aquele hunk fecha a diferenca e
   re-mede este numero, como manda a regra do pin.
+  NOTA DE PIN: os 400 480 B / 4598 CRLF sao o que um CHECKOUT materializa, e o blob guarda
+  395 882 B com LF -- as duas metades foram medidas num worktree detachado do proprio commit
+  (`git cat-file -s` = 395882; o ficheiro em disco = 400480, 4598 CRLF, sha256 `D6E2626E...`).
+  O commit `10b82cc132` gravou o `.cmd` com CRLF DENTRO do blob (400480 B) e o `7b90e5e56c`
+  repoe o LF no indice: com `text eol=crlf`, um blob com CRLF produz um diff fantasma de 9196
+  linhas que nunca fecha. E a mesma classe que o `52bffdb` ja' curou neste repo.
   (Noventa e oito bytes e ZERO linhas a MENOS do que o pin de 400314 B: os DOIS passos do
   `spec-coverage` perdem a dependencia `docs\spec\README.md` e passam a `""`, a MESMA forma que o
   `spec-citations` ja' usava. A populacao do portao e' o DIRECTORIO `docs/spec/` (16 documentos) e o

@@ -26,7 +26,14 @@ REPO_ROOT=$(git rev-parse --show-toplevel) || {
   printf 'install-hooks: not inside a git repository\n' >&2
   exit 1
 }
-HOOKS_DIR="$REPO_ROOT/.git/hooks"
+# WHERE GIT ACTUALLY LOOKS. `$REPO_ROOT/.git/hooks` is right only for a normal clone: in a
+# LINKED WORKTREE `.git` is a FILE, so that path never exists and `--check` reported every
+# hook ABSENT while git was running them from the common dir. MEASURED 2026-11-15: a detached
+# worktree at I:/cc-tmp/a6clone2 said `CHECK FAILED` with three ABSENT lines, and
+# `git rev-parse --git-path hooks` answered `H:/sotto/.git/hooks` with `pre-commit` present
+# and working. An instrument that accuses a correct clone loses its authority -- same class
+# as the console census that flagged a call whose `startupinfo` sat twenty lines below.
+HOOKS_DIR=$(git rev-parse --git-path hooks) || HOOKS_DIR="$REPO_ROOT/.git/hooks"
 CHECK_ONLY=0
 [ "$1" = "--check" ] && CHECK_ONLY=1
 
