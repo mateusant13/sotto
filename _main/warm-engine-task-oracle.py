@@ -46,6 +46,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -132,6 +133,18 @@ def delete(task):
     return rc
 
 
+def judge_time_limit(xml_text):
+    """`(ok, valor)` do `<ExecutionTimeLimit>`: existe e nao e' nenhum dos dois extremos.
+
+    Puro de proposito: e' o que permite ao `--neg-arm` derrubar a arm (o braco
+    muta o TEXTO, nao o disco). Ausente, `PT0S` (ilimitado) e `PT3D` (o default
+    do Task Scheduler, que mata um motor quente ao terceiro dia) reprovam.
+    """
+    match = re.search(r'<ExecutionTimeLimit>([^<]+)</ExecutionTimeLimit>', xml_text or '')
+    value = match.group(1).strip() if match else None
+    return (value not in (None, 'PT0S', 'PT3D')), value
+
+
 def run(neg_arm=False):
     lines = []
     ok = True
@@ -157,12 +170,29 @@ def run(neg_arm=False):
     second = ns['ensure_warm_engine_task'](task=TASK, xml=XML)
     arm('A2 a segunda chamada e idempotente', second, 'present')
     # O XML do repo tem de continuar a ser o que define a tarefa: sem
-    # `ExecutionTimeLimit=PT0S` o Windows mata o motor ao terceiro dia (F14) e
+    # `ExecutionTimeLimit` o Windows mata o motor ao terceiro dia (F14) e
     # sem `MultipleInstancesPolicy=IgnoreNew` um segundo `/run` carrega 1,9 GB
     # outra vez (twin lock #1).
+    #
+    # O LITERAL MUDOU EM 2026-11-15, E ESTA ARM E' QUE ESTAVA VELHA. Ela exigia
+    # `PT0S`, que nao e' um tecto: e' o DEFAULT DELETADO, e um motor sem limite
+    # nenhum foi o actor que o watcher acusou duas vezes (`pythonw.exe(42792)` a
+    # 14,15 % da maquina). O XML passou a `P14D` (commit 0f679a5) e o portao do
+    # PRODUTO (`warm-engine-oracle.py`, `arm.check("<ExecutionTimeLimit>P14D...")`)
+    # passou a exigir esse numero. O invariante que esta arm guarda nao e' o
+    # valor: e' "existe um limite declarado, e ele nao e' nem o default de 3
+    # dias nem o ilimitado" -- por isso le os dois lados, pela FUNCAO, para o
+    # `--neg-arm` do ficheiro tambem a poder derrubar.
     xml_src = open(os.path.join(REPO_ROOT, XML), encoding='utf-8').read()
-    arm('A3 o XML fixa PT0S (sem limite de 3 dias)',
-        '<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>' in xml_src, True)
+    judged_xml = xml_src
+    if neg_arm:
+        # M3: o limite volta a ser o default DELETADO -- o mutante que esta arm
+        # existe para apanhar. (Sem isto a arm lia um ficheiro do disco que o
+        # braco negativo nao alcanca, e ficava verde em qualquer mutacao.)
+        judged_xml = xml_src.replace('<ExecutionTimeLimit>P14D</ExecutionTimeLimit>',
+                                     '<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>', 1)
+    limit_ok, limit_value = judge_time_limit(judged_xml)
+    arm('A3 o XML declara um limite (nem 3 dias nem ilimitado)', limit_ok, True)
     arm('A3b o XML fixa IgnoreNew (segundo /run nao carrega)',
         '<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>' in xml_src, True)
     arm('A4 o XML aponta para o largador do repo',

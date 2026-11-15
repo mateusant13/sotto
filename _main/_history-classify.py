@@ -166,7 +166,13 @@ def main():
             ok = ok and good
             print('%s %-20s want=%-4d got=%d' % ('ok  ' if good else 'FAIL', key, want[key], got))
         print('NEG-ARM: %s' % ('the instrument sees every class' if ok else 'THE INSTRUMENT IS BLIND'))
-        return 0 if ok else 1
+        # A CONVENCAO DESTA CASA: o braco negativo devolve **1 quando APANHA**.
+        # Devolvia 0, e o passo declarado `:expectred ... 1` contava-o como
+        # falha em toda corrida (medido 2026-11-15: `red-as-expected-history-
+        # classify=0` nos 12 vermelhos da corrida 12:14) -- um controlo que nao
+        # pode falhar nao e' um controlo, e um que devolve o codigo do sucesso
+        # ao apanhar e' o mesmo defeito pelo lado do codigo de saida.
+        return 1 if ok else 0
 
     pattern = 'history/*/*.md' if args.all else os.path.join('history', args.day, '*.md')
     rows = read_store(pattern)

@@ -3048,7 +3048,7 @@ se chama `verify` e nao verifica**.
    regras quebradas (`app/webview/sotto_webview.py text eol=lf` acrescentado ao ficheiro), o codigo
    antigo da **rc=0** e o novo da **rc=1** com `DIVERGE ... hoje=CRLF checkout=LF`. Um modo que se
    chama `--verify` ou verifica, ou nao existe.
-2. **A heranca de stdout do filho nao serve AQUI, e isso e' medido.** Primeira versao da cura
+2. **A heranca de stdout do filho nao serve AQUI, e isso e' medido (2026-11-15).** Primeira versao da cura
    deixava o filho herdar o nosso stdout: `python _make-gitattributes.py --verify > log` corria o
    portao, devolvia rc=1 e o log ficava com **823 B** -- exatamente o censo do pai e **ZERO** linhas
    do portao (o resultado era escrito a partir do offset 0 por cima do do filho). O controlo minimo

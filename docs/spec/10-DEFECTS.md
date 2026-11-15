@@ -43,6 +43,10 @@ funcionar pela mão do dono).
 | D-34 | `text_normalize._EDGE` e `fusion._EDGE` são duas tabelas de pontuação de borda que discordam em `{}«»–` — a mesma linha é uma corrida de repetição para um módulo e três palavras para outro | BAIXO (MÉDIO se `SOTTO_FUSION` ligar) | **corrigido** — um literal único, provado igual por arm (A18) com mutante que repõe a divergência | `text-normalize` |
 | D-35 | a fusão de uma linha (`action='replace'`/`replace_at`) reescrevia o ficheiro da hora com `open(path,'w')`, que TRUNCA antes de escrever: um crash/ENOSPC entre o truncate e o flush deixava a hora vazia, e `history/` é a única cópia das palavras | CRÍTICO | **corrigido, NÃO verificado** — `rewrite_lines_atomic` (temp irmão pid/tid + fsync + `os.replace`); 4 arms, neg-arm com dois mutantes (helper truncante, call site desligado) | `history-write` |
 | D-36 | a especificação citava como evidência **dois ficheiros que o índice do git não tem** (`worker/_probe/probe2.py`, git-ignored; `_main/_cache/sotto_webview_nograce.py`, sob `_cache/`), e um terceiro que o `A1` só via por estar no disco (`worker/models/.../genai_config.json`): num clone limpo as três citações não resolvem — a mesma classe do D-01, agora na evidência da spec | MÉDIO | **corrigido** — A6 no `spec-citations-oracle.py` (todo ficheiro citado tem de estar em `git ls-files`; `CANNOT-MEASURE` sem git), três citações re-apontadas para fonte versionada, neg-arm 5/5 | `spec-citations` |
+| D-37 | o `--neg-arm` de cinco oráculos devolvia **0 ao apanhar** o mutante (ou morria num `AttributeError`), e o passo declarado `:expectred ... 1` lia isso como falha em toda corrida — um controlo que não pode falhar é a mesma doença pelo lado do código de saída | MÉDIO | **corrigido** — cada braço devolve 1 com a frase `NEG-ARM PASS` e o mutante que o derruba nomeado; medido nos cinco abaixo | `history-classify` |
+| D-38 | o `app-target-oracle` construía a lista esperada com `dict(os.environ)` e comparava byte a byte: uma bateria lançada **sem** `PYTHONUNBUFFERED` no ambiente do pai acusou produto CERTO (`_child_env` escreve-a sempre) e levou o `--neg-arm` a 0 por consequência | MÉDIO | **corrigido** — a lista nomeia todas as chaves que a função ESCREVE (`PYTHONUNBUFFERED`, `SOTTO_REDUX_LIVE` incluídos); verde nas duas metades do ambiente | `app-target` |
+| D-39 | o `stutter-caption-oracle` trazia `CLASS_CONSTS` com só `CLOCK_STATIC_PAUSE_S`, mas o corpo real do `_yt_pause_edge` passou a ler `self.PAUSE_BLANK_DWELL_S`: o mutante M3 morria num `AttributeError` e o braço dava por apanhado um crash em vez de um número errado | MÉDIO | **corrigido** — as duas constantes na lista; M3 passa a ser derrubado pelo número (B1 anda para t=42.50, B2 dá t=42.50 em vez de 43.00) | `stutter-caption` |
+| D-40 | duas fixtures de oráculo ficaram para trás do produto e **acusaram o produto**: o stub de `gaming` do `hotkey-observed` não tinha `owns_space_now` (existe desde 2026-11-14) e o `warm-engine-task` exigia `ExecutionTimeLimit=PT0S`, que o XML trocou por `P14D` — um limite real, que é o invariante, não o literal | MÉDIO | **corrigido** — stub com os dois métodos; a arm passa a julgar a FORMA (`judge_time_limit`: existe, não é `PT0S` nem `PT3D`), com mutante M3 que repõe `PT0S` no texto | `hotkey-observed`, `warm-engine-task` |
 
 ---
 
@@ -1687,3 +1691,185 @@ contra o processo do dono (`live-code-freshness-oracle --strict`).
 **Lição de instrumento.** Um limite de medição não se fecha com prosa, fecha-se com um braço. A
 frase "a evidência tem de estar no git" vivia no `AGENTS.md` e não vivia em portão nenhum; foi
 preciso escrever o braço para descobrir que a spec violava a regra em três sítios.
+
+## D-37 — cinco braços negativos com o código de saída ao contrário
+
+**Antes.** A convenção desta casa é a de um controlo: o `--neg-arm` devolve **1 quando apanha** o
+mutante, porque o passo da bateria é declarado `:expectred <nome> 1`. Cinco oráculos faziam o
+contrário ou não chegavam a decidir:
+
+| oráculo | o que devolvia ao apanhar |
+|---|---|
+| `_main/_history-classify.py` | **0** (`return 0 if ok else 1`) |
+| `_main/app-target-oracle.py` | **0**, por consequência do `D-38` abaixo |
+| `_main/stutter-caption-oracle.py` | nunca imprimia a frase — morria num `AttributeError` (`D-39`) |
+| `_main/hotkey-observed-oracle.py` | morria num `AttributeError` antes de julgar (`D-40`) |
+| `_main/warm-engine-task-oracle.py` | a arm A3 lia um literal que o produto trocou (`D-40`) |
+
+A consequência é igual nos cinco: o passo que existe para provar o controlo **reprova a corrida**,
+e a corrida fica RED sobre cinco instrumentos em vez de sobre o produto. Medido na corrida de
+2026-11-15 12:14 — `BATTERY-VERDICT: RED - 3 step(s) failed`, e os três eram
+`red-as-expected-stutter-caption=1`, `app-target=1`, `red-as-expected-app-target=0`.
+
+**DEPOIS.** Cada um devolve **1** com a frase que o `:expectred` procura, e o mutante que o derruba
+está nomeado no output. Medido, um comando por oráculo:
+
+```
+python _main/_history-classify.py --neg-arm                  -> rc=1  NEG-ARM: the instrument sees every class
+python _main/app-target-oracle.py                            -> rc=0  VERDICT: PASS live=GREEN(9/9) M1=RED-as-expected(['d']) M2=RED-as-expected(['b'])
+python _main/app-target-oracle.py --neg-arm                  -> rc=1  NEG-ARM PASS: 2 de 2 mutante(s)
+python _main/stutter-caption-oracle.py                       -> rc=0  STUTTER-CAPTION GREEN -- arms=17 pass=17 fail=0
+python _main/stutter-caption-oracle.py --neg-arm             -> rc=1  NEG-ARM PASS -- RED as designed (M1, M2, M3)
+python _main/hotkey-observed-oracle.py --neg-arm             -> rc=1  NEG-ARM held-removed PASS disparos=12
+python _main/load-shedding-oracle.py --neg-arm               -> rc=1  NEG-ARM(morto) PASS -- RED as designed
+python _main/warm-engine-task-oracle.py --neg-arm            -> rc=1  NEG-ARM: PASS -- 3 arm(s) vermelhas
+```
+
+**Gravidade.** MÉDIO. Nenhum comportamento de produto mudou; o que estava quebrado era a capacidade
+da bateria de distinguir "o controlo pegou" de "o produto falhou".
+
+**Estado.** `corrigido` — os cinco medidos acima, e o `battery-record-pairing` continua a exigir o
+`:step` do mesmo nome para cada `:skipped`/`:expectred`.
+
+**Lição de instrumento.** O código de saída de um controlo é parte do contrato dele. Um braço que
+devolve o código do sucesso ao apanhar não é um controlo mais brando: é um passo que passa quando o
+mutante sobrevive e falha quando o instrumento funciona — exactamente ao contrário.
+
+## D-38 — o oráculo do ambiente julgava o ambiente do CHAMADOR
+
+**Antes.** `_main/app-target-oracle.py` construía a lista esperada com `expected = dict(os.environ)`
+e comparava com `env == expected` byte a byte sobre o que `WorkerBridge._child_env` produz. Só que a
+função **escreve** `env['PYTHONUNBUFFERED'] = '1'` (contrato desde 2026-11-03) e
+`env.setdefault('SOTTO_REDUX_LIVE', '1')`. Quando a bateria foi lançada de uma shell **sem**
+`PYTHONUNBUFFERED` no ambiente do pai — que é o caso normal de um `cmd.exe` de corrida — a lista
+esperada não tinha a chave, o produto escreveu-a, e a arm `d` acusou:
+
+```
+FAIL the env is byte-identical to the contract: ... (os dois checks)
+```
+
+O produto estava certo. E o `--neg-arm` devolveu **0** por consequência: ele só devolve 1 quando o
+mutante é apanhado **e** o positivo está verde, logo a mesma linha derrubou o controlo.
+
+**DEPOIS.** A lista nomeia explicitamente o que a função escreve, em vez de herdar a sorte do
+processo que invoca o oráculo:
+
+```python
+expected = dict(os.environ)
+expected['PYTHONUNBUFFERED'] = '1'
+expected['SOTTO_CAPTURE_MODE'] = bridge.capture_mode
+expected['SOTTO_REDUX_WHEN_HIDDEN'] = '1'
+```
+
+e a docstring de `_child_env` passou a dizer a mesma lista (antes dizia
+`os.environ + SOTTO_CAPTURE_MODE + SOTTO_REDUX_WHEN_HIDDEN (+ device e pid)`, omitindo duas chaves).
+
+**Medido, nas duas metades do ambiente:**
+
+```
+python _main/app-target-oracle.py                              -> VERDICT: PASS live=GREEN(9/9)  rc=0
+env -u PYTHONUNBUFFERED python _main/app-target-oracle.py      -> VERDICT: PASS live=GREEN(9/9)  rc=0
+env -u PYTHONUNBUFFERED python _main/app-target-oracle.py --neg-arm -> NEG-ARM PASS: 2 de 2  rc=1
+```
+
+**Gravidade.** MÉDIO. É a classe "uma variável de ambiente herdada muda o que o processo mede",
+que este repositório já pagou no `battery-launch`/`webview2-args-scope`: um instrumento cujo veredicto
+depende do ambiente do chamador não é um instrumento.
+
+**Estado.** `corrigido`.
+
+**Lição de instrumento.** `dict(os.environ)` numa lista esperada é uma armadilha: o que se quer
+comparar é a **função**, e a função escreve chaves que o pai pode não ter. A lista escreve-se.
+
+## D-39 — o mutante era dado por apanhado porque o instrumento rebentava
+
+**Antes.** `_main/stutter-caption-oracle.py` extrai o corpo real do `_yt_pause_edge` por `ast` e
+conduz-no contra um stub. Esse corpo passou a ler `self.PAUSE_BLANK_DWELL_S` (o dwell da pausa), mas
+o stub `ForeignPlayer` do braço só conhecia `CLOCK_STATIC_PAUSE_S`. O mutante M3 — o que publica o
+estado de qualquer foto — caía em:
+
+```
+File "<_yt_pause_edge>", line 45, in _yt_pause_edge
+AttributeError: 'ForeignPlayer' object has no attribute 'PAUSE_BLANK_DWELL_S'
+```
+
+A arm B1/B2 era contada como vermelha **por crash**, não por número: o instrumento "apanhava" o
+mutante sem nunca comparar um valor. E o positivo nunca alcançava a borda, porque só o M3 a conduz.
+
+**DEPOIS.** `CLASS_CONSTS = ("CLOCK_STATIC_PAUSE_S", "PAUSE_BLANK_DWELL_S")` — as duas constantes
+que o corpo real lê, injectadas no stub. O M3 passa a ser derrubado pelo **número**:
+
+```
+NEG-ARM M3 estado publicado de OUTRO video: B1(andou para t=8.00 com a NOSSA aba parada),
+                                            B2(t=7.00 em vez de 43.00), B2(borda falsa epoch=0 paused=True)
+```
+
+e o positivo continua `STUTTER-CAPTION GREEN -- arms=17 pass=17 fail=0` (rc=0), com zero ocorrências
+de `AttributeError` no log (medido: `grep -c` = 0 nas duas metades).
+
+**Gravidade.** MÉDIO. Um controlo que apanha por excepção não mede nada: o mesmo crash apareceria com
+o produto são.
+
+**Estado.** `corrigido`.
+
+**Lição de instrumento.** Extrair o corpo real é o que dá dentes ao oráculo e é também o que o faz
+apodrecer quando o corpo ganha uma dependência nova. O stub tem de carregar **toda** a superfície que
+o corpo extraído toca — e a lista tem de vir de uma leitura do corpo, não da memória de quem o
+escreveu.
+
+## D-40 — duas fixtures ficaram para trás do produto e acusaram o produto
+
+**Antes.** Duas armadilhas da mesma classe, cada uma a fazer a bateria reprovar código correcto.
+
+1. `_main/hotkey-observed-oracle.py` monta um detector de jogo falso:
+   `type('G', (), {'is_gaming': staticmethod(lambda: False)})()`. Desde 2026-11-14 quem decide a
+   entrega da tecla não é `is_gaming` — é `owns_space_now()`, o foco no instante da pressão
+   (`gaming_mode.py:508`, consumido em `sotto_webview.py:10805,10834`). O stub derrubava a arm
+   inteira num `'G' object has no attribute 'owns_space_now'`.
+2. `_main/warm-engine-task-oracle.py` exigia o literal
+   `<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>`, e o XML do repo passou a `P14D`
+   (`_main/warm-engine/warm-engine-task.xml:48`, commit `0f679a5`), que é um limite real. `PT0S` não
+   é um tecto: é o default **deletado**, e um motor sem limite nenhum foi o actor que o watcher
+   acusou duas vezes.
+
+**DEPOIS.** (1) o stub carrega o protocolo inteiro —
+
+```python
+_gaming = type('G', (), {
+    'is_gaming': staticmethod(lambda: False),
+    'owns_space_now': staticmethod(lambda: False),
+})()
+```
+
+(2) a arm passa a julgar a **forma** e não o literal, por uma função pura que o `--neg-arm` também
+consegue derrubar:
+
+```python
+def judge_time_limit(xml_text):
+    """(ok, valor): existe e não é nenhum dos dois extremos."""
+    value = ...  # <ExecutionTimeLimit>...</ExecutionTimeLimit>
+    return (value not in (None, 'PT0S', 'PT3D')), value
+```
+
+com o mutante M3 a repor `PT0S` no **texto** (`replace(..., 'P14D' -> 'PT0S', 1)`), porque a arm lia
+um ficheiro do disco que o braço negativo não alcança — o mesmo erro do `D-01`.
+
+**Medido.**
+
+```
+python _main/hotkey-observed-oracle.py            -> VERDICT: PASS (7/7 arms)   rc=0
+python _main/hotkey-observed-oracle.py --neg-arm  -> NEG-ARM ... PASS           rc=1
+python _main/warm-engine-task-oracle.py           -> VERDICT: PASS              rc=0
+python _main/warm-engine-task-oracle.py --neg-arm -> NEG-ARM: PASS -- 3 arm(s) vermelhas   rc=1
+```
+
+**Gravidade.** MÉDIO. Nenhuma jornada quebrada; dois instrumentos a mentir em sentidos opostos —
+um a acusar produto certo, outro a exigir um valor que já não é o invariante.
+
+**Estado.** `corrigido`.
+
+**Lição de instrumento.** Um stub e um literal são as duas formas de uma fixture apodrecer. O stub
+tem de carregar o protocolo (não os métodos que o autor se lembrava); o literal tem de ser substituído
+pelo invariante que ele representava — aqui, "existe um limite declarado, e não é o default de 3 dias
+nem o ilimitado".
+

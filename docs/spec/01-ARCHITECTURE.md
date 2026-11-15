@@ -172,3 +172,32 @@ Três coisas que parecem naturais e não existem, e a razão de cada uma:
 `[INFERENCE]` A conclusão de desenho que isto impõe, e que `05-LIVE-PATH.md` retoma: **toda a
 política que precisa de ser rápida (drenar, parquear, trocar de motor) tem de viver do lado do
 worker**, porque do lado da shell o único verbo é "morre".
+
+## 7. As variáveis de ambiente que mudam o produto
+
+Um censo de 2026-11-15 (`environ.get`/`environ[...]` em `app/webview/*.py` + `worker/*.py`) conta
+**54** `SOTTO_*` lidas. Destas, **oito mudam comportamento que o dono sente**; o resto é alavanca de
+instrumento ou de afinação (§ abaixo). Sem a variável definida, vale o que está escrito em parênteses.
+
+| variável | o que muda | evidência |
+|---|---|---|
+| `SOTTO_HOT_RELOAD_WORKER` | `1` deixa o watcher **reiniciar** o worker; ausente = detecta e regista, nunca dispara (2026-10-17: duas edições custaram dois minutos de máquina cada) | `sotto_webview.py:23550` |
+| `SOTTO_WATCH_WORKER` | basenames vigiados, separados por `;` (ausente: `sotto_worker.py`, `redux_live.py`) | `hot_reload.py:70-73` |
+| `SOTTO_NO_SELF_RELAUNCH` | `1` desliga o auto-relançamento da shell, igual a `--no-self-relaunch` | `sotto_webview.py:27294` |
+| `SOTTO_NO_EXTERNAL` | `1` desliga o observador de legendas externas. É interruptor **próprio**: `--no-worker` não pode implicar "sem legenda nenhuma" | `sotto_webview.py:20713` |
+| `SOTTO_LIVE_HOTKEY` | acorde da legenda ao vivo; ausente = `hotkey-settings.json`, senão `hotkey_numbers()` (existe para uma sonda não roubar a tecla do dono) | `sotto_webview.py:10721` |
+| `SOTTO_HISTORY_ROOT` | raiz do arquivo de histórico (ausente: `<repo>/history`) | `sotto_webview.py:843-846` |
+| `SOTTO_WEBVIEW_WINDOW_TO_VISUAL` | `0`/`off` sai do modo `WindowToVisual` do WebView2 | `sotto_webview.py:26718` |
+| `SOTTO_LOG_CAP_MB` / `SOTTO_LOG_KEEP_MB` | rotação do log vivo e cauda guardada (64 / 16 MB) | `sotto_webview.py:2426-2427` |
+
+**As outras 46 são alavanca, não contrato.** Reproduzir um defeito (`SOTTO_LAYERED=1` volta a compor
+branco na faixa, `SOTTO_YT_TARGET_HWND` força a janela do YouTube), afinar tectos (`SOTTO_METER_HZ`,
+`SOTTO_SMALL_GRAPH_THREADS`, `SOTTO_GENAI_CPUS`, `SOTTO_LOAD_BG_MAX_S`) ou redireccionar ficheiros
+(`SOTTO_CHUNK_TRACE`, `SOTTO_REDUX_WAV_DIR`, `SOTTO_REDUX_SPOOL_DIR`, `SOTTO_WORKER_TRACEBACK_LOG`,
+`SOTTO_AUDIO_RING_DIR`). Cada uma lê-se no sítio que a consome — `worker/sotto_worker.py`,
+`worker/audio_ring.py`, `worker/engine_policy.py` — e nenhuma é forma de configurar o produto.
+
+**Fora do censo por não serem ambiente:** `SOTTO_VOICE_RE` e `SOTTO_GOLDEN_ANGLE` são `const` de JS em
+`panel.js:638-639`; `SOTTO_CMDLINE_*`, `SOTTO_PSDIAG_*` e `SOTTO_WINPROBE_` moram em
+`app/_legacy-electron/`, que está morto.
+

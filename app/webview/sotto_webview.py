@@ -24245,8 +24245,7 @@ class WorkerBridge:
         # `CUDA_MODULE_LOADING=LAZY` / `OMP_NUM_THREADS` defaults are set at
         # module scope before onnxruntime is imported, so they apply to every
         # way the worker can be launched. `_main/app-target-oracle.py` pins this
-        # dict to `os.environ + SOTTO_CAPTURE_MODE + SOTTO_REDUX_WHEN_HIDDEN`
-        # (+ the device and the target pid), and that contract is worth keeping.
+        # dict to `os.environ` + EVERY key written below (incl. PYTHONUNBUFFERED)
         # THE THREAD BUDGET IS NOT A KEY HERE (2026-11-09): it travels in ARGV
         # (`worker_argv_tail` -> `--threads N`, default 2), exactly like
         # `--speakers`, because a new key would break the pinned contract above.

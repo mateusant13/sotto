@@ -154,7 +154,16 @@ def _wiring_arm(shell_mod):
             s.gaming = gaming
         return s
 
-    _gaming = type('G', (), {'is_gaming': staticmethod(lambda: False)})()
+    # O DETECTOR FALSO CARREGA O PROTOCOLO INTEIRO, e sao DOIS metodos desde
+    # 2026-11-14: `is_gaming` (existe um processo com nome de jogo) deixou de
+    # decidir a entrega da tecla -- quem decide e' `owns_space_now()`, o foco no
+    # instante da pressao. Um stub com um metodo so' derruba a arm inteira num
+    # `AttributeError`, que e' o instrumento a apodrecer e nao o produto a falhar
+    # (medido 2026-11-15: `'G' object has no attribute 'owns_space_now'`).
+    _gaming = type('G', (), {
+        'is_gaming': staticmethod(lambda: False),
+        'owns_space_now': staticmethod(lambda: False),
+    })()
     live_cls, panel_cls, fallback_cls = [], [], []
     try:
         shell_mod.arm_hotkey_role(_shell(_gaming), 'live', 'Ctrl+Space', [])

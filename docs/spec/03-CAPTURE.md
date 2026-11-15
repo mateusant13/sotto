@@ -328,6 +328,33 @@ o dono mandou tirar da tela — `[CODE]` `sotto_worker.py:8598-8606`. O `peak`/`
 um `device-rotated` também não são corpo: a shell usa-os como evidência de no-audio e escreve-os no
 **log** (`BRIDGE_STATUS_NOAUDIO`) — `[CODE]` `sotto_webview.py:24220-24235,24070-24080`.
 
+## 7. O gate de fala/música (`SOTTO_GATE`)
+
+**`HEAD`: OFF nos dois braços.** Sem a variável, `gate_enabled = False` e o estado publicado diz
+`source=default-off`; um valor explícito (`SOTTO_GATE=1`, e `0`/`off`/`false`/`no` no sentido inverso)
+vence nos dois e muda para `source=env` - `[CODE]` `sotto_worker.py:7240-7260`.
+
+O juiz é `SpeechMusicGate.is_speech(chunk)`, numpy puro, por chunk de 560 ms, com três constantes
+(`sotto_worker.py:3216-3218`): `GATE_DB_RANGE_MIN = 18.0` dB de vão entre o máximo e o mínimo do RMS
+das sub-tramas de 320 amostras, `GATE_RMS_FLOOR = 0.004` abaixo do qual é silêncio e não fala, e
+`GATE_HOLD_CHUNKS = 3` de histerese depois de fala. Um chunk com `nsub < 2` é **mantido**: reter
+áudio por falta de evidência é a substituição silenciosa que a escada de dispositivos existe para
+remover (`sotto_worker.py:3265-3272`). O `18.0` está no vão medido entre o pior não-fala (15.6) e o
+pior p10 de fala (20.2) sobre seis fixtures (`sotto_worker.py:3200-3207`).
+
+A ordem é o motivo de o gate existir: a decisão corre no chunk **pré-ganho** e o `AutoGain` recebe-a
+em `process(block, speech=...)`, onde `speech=False` segura o ganho e regista o `would_*` do que teria
+aplicado (`sotto_worker.py:2896-2910,8088`). Chunk barrado não chega ao encoder e conta em
+`music_gated_chunks` (`sotto_worker.py:2064-2075`).
+
+**Por que está OFF (medido 2026-11-15).** Ligado, recusou fala de broadcast: em 20 s de
+`rS4VMlwf2qM` o traço por chunk deu `speech=False` em todos a partir de 8,4 s, sobre áudio cujo RMS
+sobe de 0,24 para 0,32-0,50 - o gate não vê silêncio, vê um vão dinâmico estreito. A/B no mesmo
+áudio, um processo por braço: cobertura 0,80 → 0,25, WER 0,458 → 0,780. **O oráculo não pegou**: as
+quatro fixtures de fala são gravações de estúdio limpas (`kept_frac=1.0`) e o único negativo é um
+drone de amplitude constante. Recibo em `_main/receipt-20261115-speech-gate-broadcast.md`;
+`SOTTO_GATE=1` reproduz o defeito e `=0` é byte-idêntico ao default (`sotto_worker.py:3237-3249`).
+
 ## Lacunas
 
 - `[UNKNOWN]` **Nenhum número aqui foi medido no código de `HEAD`**: os `[MEASURED]` vêm de recibos

@@ -285,6 +285,11 @@ def _not_the_instance(pid, seg, alive, started=_pid_started):
 #: memo, e uma arm que muta o ficheiro tmp continua a ver o que escreveu.
 _LOG_MEMO: dict = {}
 
+#: Quantas vezes a janela do log pode DOBRAR ate' achar um `SHELL_STARTUP_STAGE`
+#: (ver `read_log`). 3 passos = 4 -> 8 -> 16 -> 32 MB, que cobre a maior cauda
+#: medida nesta casa; o ficheiro inteiro continua fora de alcance por desenho.
+_WINDOW_GROWTH_STEPS = 3
+
 
 def read_log(path, window_mb=4.0):
     """O texto do log, com uma JANELA no fim -- e uma leitura por processo.
@@ -307,22 +312,40 @@ def read_log(path, window_mb=4.0):
         st = path.stat()
     except OSError:
         return ""
-    window = int(window_mb * 1e6)
-    start = max(0, st.st_size - window)
+    start = max(0, st.st_size - int(window_mb * 1e6))
     key = (str(path), st.st_mtime_ns, st.st_size, start)
     hit = _LOG_MEMO.get('key')
     if hit == key:
         _LOG_MEMO['hits'] = int(_LOG_MEMO.get('hits') or 0) + 1
         return _LOG_MEMO.get('text') or ""
-    try:
-        with open(path, 'rb') as handle:
-            if start:
-                handle.seek(start)
-                # a janela comeca a MEIO de uma linha: o primeiro pedaco e' lixo
-                handle.readline()
-            raw = handle.read()
-    except OSError:
-        return ""
+    raw = b""
+    # A JANELA CRESCE ATE' ENCONTRAR UMA LARGADA (medido 2026-11-15). O
+    # pressuposto escrito acima ("4 MB cobrem dezenas de SHELL_STARTUP_STAGE")
+    # deixou de valer: o dono abriu a app a 2026-11-14 22:35 e o log ganhou
+    # ~66 mil linhas a partir dali, entao os 4 MB de cauda tinham **ZERO**
+    # marcadores -- e o escolhedor respondia "nenhuma largada e' a instancia
+    # viva" com a shell dele (pid 9180) a correr e a deter o Alt+C. A bateria
+    # pagava isso em `hotkey-registration` e `hotkey-delivery` vermelhos, a
+    # acusar um defeito que nao existe. As janelas dobram ate' acharem o
+    # marcador, com tecto (a leitura mais cara que este oraculo ja' pagou foi
+    # o log inteiro, 70 MB a 145,9 MB/s, e nao se volta a isso).
+    tries = 0
+    while True:
+        try:
+            with open(path, 'rb') as handle:
+                if start:
+                    handle.seek(start)
+                    # a janela comeca a MEIO de uma linha: o primeiro pedaco e' lixo
+                    handle.readline()
+                raw = handle.read()
+        except OSError:
+            return ""
+        if b"SHELL_STARTUP_STAGE pid=" in raw or start == 0:
+            break
+        tries += 1
+        if tries >= _WINDOW_GROWTH_STEPS:
+            break
+        start = max(0, start - int(window_mb * 1e6))
     text = raw.decode('utf-8', 'replace')
     _LOG_MEMO['key'] = key
     _LOG_MEMO['text'] = text

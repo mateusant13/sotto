@@ -47,7 +47,7 @@ print(len(files), len(tags), len(collections.Counter(k.split('_')[0] for k in ta
 
 | termo | o que é no código | evidência |
 |---|---|---|
-| **shell** | `class SottoShell`, o processo que o dono vê; 26 362 linhas | `[CODE] app/webview/sotto_webview.py:12512`; `[MEASURED] wc -l` |
+| **shell** | `class SottoShell`, o processo que o dono vê; 27 364 linhas | `[CODE] app/webview/sotto_webview.py:12512`; `[MEASURED] wc -l` |
 | **worker** | `worker/sotto_worker.py`, processo separado `BELOW_NORMAL`, sem `stdin`, fala JSONL por `emit()` | `[CODE] worker/sotto_worker.py:1001`; `docs/spec/01-ARCHITECTURE.md` §4.1 |
 | **bridge** | `class WorkerBridge` (spawn + leitura JSONL) e `class WarmPipeBridge` (attach ao motor quente) | `[CODE] app/webview/sotto_webview.py:23047,24740` |
 | **tap** | a captura de áudio. Há dois: o *tap global* (rung (a), WASAPI loopback do endpoint) e o *tap por processo* (`INCLUDE_TARGET_PROCESS_TREE`, escolhido por NOME e re-escolhido quando o pid morre) | `[CODE] worker/wasapi_loopback.py:1`; `worker/process_target.py:2-8` |
@@ -289,12 +289,124 @@ um defeito novo. `HOTKEY_GESTURE_MS` sobrevive em **8** ficheiros — recibos, l
 
 ## Lacunas
 
-- `[UNKNOWN]` — a lista completa dos 89 nomes de família com o dono de cada um: medi as 14 maiores e
-  o total, não as 89. Fechar com o mesmo scanner a imprimir `família → ficheiros` e uma leitura das
-  famílias com menos de 3 tags.
-- `[UNKNOWN]` — o significado dos 23 tags do log que o scanner não apanha (nascem de literais
-  separadas da chamada). Fechar com uma passagem AST sobre `log_repeat`/`_write_stdout` em vez de
-  regex.
+- ~~`[UNKNOWN]` — a lista completa dos 89 nomes de família~~ — **fechado 2026-11-15**, com o mesmo
+  scanner e a população de hoje: **77 ficheiros, 824 tags, 91 famílias** (o inventário de 2026-11-11
+  dizia 793/89; a árvore cresceu nos commits de 2026-11-12..15 e o censo apanhou as tags que
+  chegaram com eles). O scanner passou a imprimir também `família → ficheiros`, abaixo, e a coluna
+  diz em **quantos** ficheiros cada família vive: **85** famílias vivem em menos de três, ou seja
+  são donas de um ficheiro só e não de uma camada.
+
+```
+CAPTION        90  caption_overlay.py, sotto_webview.py
+PANEL          72  panel_focus.py, panel_state.py, sotto_webview.py
+YOUTUBE        68  sotto_webview.py, youtube_cdp_source.py
+BRIDGE         55  bridge_census.py, sotto_webview.py
+WARM           50  sotto_webview.py, warm_engine.py
+HOTKEY         46  selftest_instrument.py, sotto_webview.py
+TRAY           32  sotto_webview.py
+REDUX          27  _prefix_audioflag.py, engine_policy.py, engine_switch.py
+HOT            24  hot_reload.py, sotto_webview.py
+BATCH          23  batch_queue.py, load_shedding.py
+STRIP          23  sotto_webview.py
+EXTERNAL       20  sotto_webview.py
+UI             17  sotto_webview.py
+AUDIO          15  audio_recorder.py, audio_ring.py, live_queue.py
+WINDOW         15  sotto_webview.py
+WORKER         15  sotto_webview.py, sotto_worker.py
+POWER          14  power_recovery.py, sotto_webview.py
+LOAD           13  load_shedding.py, sotto_webview.py
+SHELL          13  shell_relaunch.py, sotto_webview.py
+HISTORY        12  sotto_webview.py
+OUTSIDE        12  sotto_webview.py
+SIDECAR         8  sotto_webview.py
+SPACE           8  space_swallow.py
+TOPMOST         8  sotto_webview.py, topmost_keepalive.py
+VRAM            7  sotto_webview.py
+WATCH           6  sotto_webview.py
+WEBVIEW2        6  sotto_webview.py
+FORM            5  sotto_webview.py
+GAMING          5  gaming_mode.py, sotto_webview.py
+PAINT           5  sotto_webview.py
+REVIVE          5  sotto_webview.py
+Z               5  sotto_webview.py, z_order.py
+APP             4  sotto_webview.py
+EMIT            4  sotto_webview.py, sotto_worker.py
+LIVE            4  engine_switch.py, sotto_webview.py
+REVEAL          4  sotto_webview.py
+SINGLE          4  sotto_webview.py
+UNIFIED         4  unified_asr.py
+AUTOSTART       3  sotto_webview.py
+ENDPOINT        3  sotto_webview.py, wasapi_loopback.py
+WEBVIEW         3  sotto_webview.py
+YT              3  sotto_webview.py
+CLICK           2  sotto_webview.py
+CODE            2  sotto_webview.py
+DOMDUMP         2  sotto_webview.py
+ENGINE          2  sotto_webview.py
+FOREGROUND      2  panel_focus.py
+FUSION          2  sotto_webview.py
+PAGE            2  sotto_webview.py
+PLACEHOLDER     2  sotto_webview.py
+POINTER         2  sotto_webview.py
+PRELOAD         2  sotto_webview.py
+PROBE           2  external_subs.py, youtube_captions.py
+STAGING         2  sotto_webview.py
+STATS           2  sotto_webview.py
+STATUS          2  sotto_webview.py
+TRANSLATION     2  sotto_webview.py
+ARM             1  hot_reload.py, selftest_instrument.py
+ASR             1  sotto_webview.py
+BRIDGEPROBE     1  sotto_webview.py
+BUILT           1  unified_fixtures.py
+CAPTIONS        1  sotto_webview.py
+CURRENT         1  sotto_webview.py
+DENOISE         1  denoise.py
+EXEC            1  sotto_webview.py
+FAIL            1  shell_relaunch.py
+FIXTURE         1  unified_fixtures.py
+LAUNCH          1  sotto_webview.py
+MEMORY          1  sotto_webview.py
+MISSING         1  unified_fixtures.py
+NEG             1  caption_noise.py
+NO              1  sotto_webview.py
+OPEN            1  redux_live.py
+PARITY          1  ultra_export.py
+PLAYING         1  audio_playing.py
+POLL            1  external_subs.py
+POSTED          1  sotto_webview.py
+READY           1  sotto_webview.py
+RECEIVER        1  sotto_webview.py
+RECOGNISED      1  _prefix_audioflag.py, _sotto_worker_agcinert.py, sotto_worker.py
+REFUSED         1  lang_prompt.py
+SELFTEST        1  denoise.py, hot_reload.py, selftest_instrument.py, speaker_sidecar.py
+SKIP            1  caption_noise.py
+SOURCE          1  sotto_webview.py
+STARTUP         1  sotto_webview.py
+TEXT            1  ultra_export.py
+THREAD          1  sotto_webview.py
+TRANSPARENCY    1  sotto_webview.py
+UNKNOWN         1  sotto_webview.py
+VERDICT         1  denoise.py, hot_reload.py, selftest_instrument.py, ui_watchdog_policy.py
+WARN            1  sotto_webview.py
+```
+- ~~`[UNKNOWN]` — os tags que o scanner de regex não apanha~~ — **fechado 2026-11-15** com uma
+  passagem **AST** sobre a mesma população (77 ficheiros, chamadas a `log`/`warn`/`log_repeat`/
+  `_log`/`emit`/`print`/`write`, desembrulhando `JoinedStr` e `BinOp` à esquerda). Resultado medido:
+  **818** tags fixas contra as **824** do regex, e a diferença é **assimétrica e pequena**:
+  - **2 tags que o regex NÃO vê** (a regex exige a aspa logo depois do `(`): `CAPTURE`
+    (`worker/speaker_sidecar.py:1105`, um `print` que começa por `'\nCAPTURE SELFTEST'`) e
+    `WORKER_ALIVE_ARMED`.
+  - **8 que o regex vê e não são literal fixo na chamada**: `BRIDGE_GATE` e `PANEL_V2_GATE` usam
+    `=` em vez de espaço (`log('BRIDGE_GATE=RED …')`, `log(f'PANEL_V2_GATE={"GREEN" …}')`, cujo
+    primeiro pedaço da f-string é uma expressão), `YOUTUBE_CDP_ATTACH_%s` é formatado com o estado,
+    e `SHELL`/`NEG`/`DENOISE`/`PLAYING`/`WORKER_AUTOSTART` são cabeçalhos de mensagem humana, não
+    tags de família.
+
+  Ou seja: o inventário de 793/89 está **conservador por 2 tags e generoso por 8 pseudo-tags**, e
+  nenhum dos dois lados esconde um subsistema inteiro. A lição de instrumento é a que este
+  repositório já pagou várias vezes: a regex e o AST concordam em 99 % e discordam exactamente nos
+  sítios onde o `print`/`log` não é a primeira coisa da linha — por isso a medição que vale é a que
+  usa os dois.
 - `[UNKNOWN]` — o schema de `_main/diar-watch.json`: o ficheiro não existe nesta máquina hoje
   (`ls` devolve ausente), e o leitor aceita-o opcionalmente. Fechar correndo o sidecar
   `--watch-only` numa máquina com áudio de falantes — não nesta sessão.

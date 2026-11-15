@@ -48,15 +48,15 @@ no cabeçalho dele):
 
 | superfície | ficheiros | linhas |
 |---|---|---|
-| `app/webview/**/*.py` (a shell e os seus módulos) | 46 | 50 411 |
-| `worker/**/*.py` (o motor de transcrição) | 63 | 35 273 |
+| `app/webview/**/*.py` (a shell e os seus módulos) | 46 | 50 410 |
+| `worker/**/*.py` (o motor de transcrição) | 63 | 35 271 |
 | `app/panel/**` (a UI web: HTML/CSS/JS + os temas) | 124 | 43 317 |
-| total de produto lido | **233** | **129 001** |
+| total de produto lido | **233** | **128 998** |
 
-O ficheiro maior é `app/webview/sotto_webview.py`, **27 365 linhas**, com **221 membros** em
-`SottoShell` e mais 28 classes (o watcher de legendas externas, a ponte do worker, a bandeja, o
+O ficheiro maior é `app/webview/sotto_webview.py`, **27 364 linhas**, com **221 membros** em
+`SottoShell` e mais 34 classes (o watcher de legendas externas, a ponte do worker, a bandeja, o
 hotkey, o vigia de VRAM, o seguidor de arrasto, o monitor de carga...). O segundo é
-`worker/sotto_worker.py`, **9 529 linhas**, 18 classes. O maior ficheiro de UI é
+`worker/sotto_worker.py`, **9 527 linhas**, 18 classes. O maior ficheiro de UI é
 `app/panel/panel.js` (4 845 linhas) e `app/panel/themes/cinematic.css` (7 543).
 
 Três ficheiros dentro de `worker/` **não são produto**: `_prefix_audioflag.py` (4 511 linhas),
@@ -64,7 +64,7 @@ Três ficheiros dentro de `worker/` **não são produto**: `_prefix_audioflag.py
 worker usadas como mutantes por oráculos. Os dois últimos não estavam no git e entravam no índice em
 2026-11-11 (`10-DEFECTS.md` §D-01 — `git ls-files` devolve os três desde então).
 
-## O selo: 16 ficheiros, 6 379 linhas, 1 658 citações
+## O selo: 16 ficheiros, 6 737 linhas, 1 678 citações
 
 Medido em 2026-11-15 com um `os.walk`/`len(splitlines())` e `grep -o '\[TAG\]'` ficheiro a
 ficheiro, depois de entrar o `13-MODULES.md` (84 blocos: um por cada um dos 114 módulos de produto
@@ -74,12 +74,12 @@ cabeçalho):
 | o quê | número |
 |---|---|
 | ficheiros deste directorio | 16 (14 documentos + este índice + `STATUS.md`) |
-| linhas | 6 379 |
-| `[CODE]` | 1 542 |
+| linhas | 6 737 |
+| `[CODE]` | 1 543 |
 | `[MEASURED]` | 179 |
 | `[INFERENCE]` | 64 |
-| `[UNKNOWN]` | 71 |
-| citações `ficheiro:linha` resolvidas | **1 658**, 0 sem ficheiro, 0 fora de alcance, **0 fora do índice do git** |
+| `[UNKNOWN]` | 73 |
+| citações `ficheiro:linha` resolvidas | **1 678**, 0 sem ficheiro, 0 fora de alcance, **0 fora do índice do git** |
 
 Dois portões, e eles julgam metades diferentes: `_main/spec-citations-oracle.py` abre cada
 ficheiro citado, resolve cada linha e recusa uma citação a um ficheiro que não existe ou a uma

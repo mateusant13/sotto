@@ -303,7 +303,16 @@ EXTRACTED = ("_youtube_time", "_yt_decide", "yt_live_frame", "_yt_lines",
 #: objecto pelo `bind`, com o valor lido do ficheiro: o duplo nao pode medir um
 #: limiar que a producao ja' mudou (`CLOCK_STATIC_PAUSE_S` decide o "relogio
 #: parado" e um 3,0 s copiado aqui mediria outra regra em silencio).
-CLASS_CONSTS = ("CLOCK_STATIC_PAUSE_S",)
+#: As constantes de CLASSE que o observador falso tem de ter. Cada entrada nasceu
+#: de um `AttributeError` medido dentro de um braco -- a mesma classe do `_yt_clock_moving`
+#: no `Player`, agora do lado dos literais:
+#:   2026-11-15 `PAUSE_BLANK_DWELL_S`: o dwell da pausa passou a ser lido por
+#:              `self.PAUSE_BLANK_DWELL_S` no corpo REAL do `_yt_pause_edge`, e o
+#:              `ForeignPlayer` do braco B1/B2 nao o tinha -- o mutante M3 era dado
+#:              por apanhado por um CRASH (`AttributeError`) em vez de por um numero
+#:              errado, que e' exactamente a doenca que o comentario do `EXTRACTED`
+#:              descreve. O positivo nunca o alcançava: so' o M3 conduz essa borda.
+CLASS_CONSTS = ("CLOCK_STATIC_PAUSE_S", "PAUSE_BLANK_DWELL_S")
 
 
 def _literal(source, name):

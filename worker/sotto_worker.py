@@ -4564,12 +4564,10 @@ class FileTap:
                     # so the worker drains what it has and ends on its own tail
                     # instead of transcribing a replay of the same audio.
                     self.done.set()
-                    try:
-                        emit(type="status", state="file-tap-eof",
-                             samples=int(self.pcm.size), rate=int(self.rate),
-                             mode="once")
-                    except Exception:
-                        pass
+                    # `emit` nunca levanta: o `except: pass` era silencio puro.
+                    emit(type="status", state="file-tap-eof",
+                         samples=int(self.pcm.size), rate=int(self.rate),
+                         mode="once")
                     return
                 i = 0  # LOOP: keep the stream alive until the run stops it
             self.on_block(self.np.ascontiguousarray(seg, dtype=self.np.float32))

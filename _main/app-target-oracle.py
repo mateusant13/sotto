@@ -348,18 +348,28 @@ def arm_e(mod, arm, ctx):
               f'bridge.target_pid is None, got {bridge.target_pid!r}')
     arm.check('SOTTO_TARGET_PID' not in env,
               'SOTTO_TARGET_PID is ABSENT (not empty: absent)')
+    # `PYTHONUNBUFFERED` E' CONTRATO DESDE 2026-11-03, e a arm dependia do AMBIENTE
+    # (medido 2026-11-15: a bateria correu este passo sem a variavel no pai, o
+    # `_child_env` escreveu-a na mesma, e a arm acusou produto CERTO -- "the env is
+    # byte-identical" falhou nos dois checks). O `_child_env` escreve-a SEMPRE (e o
+    # `_spawn` ainda passa `-u` em argv, ver o comentario do `BRIDGE_LOAD_MS` la');
+    # a lista esperada nomeia-a, em vez de herdar a sorte do processo que invoca o
+    # oraculo. As duas metades da regra do instrumento: o contrato e' escrito, e o
+    # ambiente do chamador nao decide o veredicto.
     expected = dict(os.environ)
+    expected['PYTHONUNBUFFERED'] = '1'
     expected['SOTTO_CAPTURE_MODE'] = bridge.capture_mode
     expected['SOTTO_REDUX_WHEN_HIDDEN'] = '1'
     expected.setdefault('SOTTO_REDUX_LIVE', '1')
     arm.check(env == expected,
               'the env is byte-identical to the contract: '
-              'os.environ + SOTTO_CAPTURE_MODE + SOTTO_REDUX_WHEN_HIDDEN '
-              '+ SOTTO_REDUX_LIVE (default), nothing else')
+              'os.environ + PYTHONUNBUFFERED + SOTTO_CAPTURE_MODE '
+              '+ SOTTO_REDUX_WHEN_HIDDEN + SOTTO_REDUX_LIVE (default), nothing else')
     deviced = mod.WorkerBridge(command=sys.executable, worker_path=WORKER,
                                device='Dev')
     env2 = deviced._child_env()
     expected2 = dict(os.environ)
+    expected2['PYTHONUNBUFFERED'] = '1'
     expected2['SOTTO_CAPTURE_MODE'] = deviced.capture_mode
     expected2['SOTTO_REDUX_WHEN_HIDDEN'] = '1'
     expected2.setdefault('SOTTO_REDUX_LIVE', '1')
