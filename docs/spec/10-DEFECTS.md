@@ -41,6 +41,7 @@ funcionar pela mão do dono).
 | D-11 | a segunda legenda da janela substituía a primeira no latch de `emit_async`: **fala perdida sem uma linha no log**, e é a página que commita o histórico — o histórico perdia a mesma fala | CRÍTICO | **corrigido** — kinds de EVENTO enfileiram (tecto 32, excedente CONTADO em `CAPTION_EMIT_DROPPED`); 6 arms, neg-arm 2/2 com o mutante novo |
 | D-33 | `worker/model_vram_pool.py` (411 linhas) não é importado por nenhum ficheiro de produção, e o oráculo que o guarda está congelado na dívida `REASON-MISSING preencher a mao` desde 2026-10-25 — passa à mão, nunca corre na bateria | MÉDIO | **aberto** — decisão de produto (apagar vs. ligar o oráculo); a metade da documentação está fechada em `04-ENGINES.md` §6 |
 | D-34 | `text_normalize._EDGE` e `fusion._EDGE` são duas tabelas de pontuação de borda que discordam em `{}«»` — a mesma linha é uma corrida de repetição para um módulo e três palavras para outro | BAIXO (MÉDIO se `SOTTO_FUSION` ligar) | **aberto** — o caminho vive OFF por omissão; zero tipografia no arquivo real |
+| D-35 | a fusão de uma linha (`action='replace'`/`replace_at`) reescrevia o ficheiro da hora com `open(path,'w')`, que TRUNCA antes de escrever: um crash/ENOSPC entre o truncate e o flush deixava a hora vazia, e `history/` é a única cópia das palavras | CRÍTICO | **corrigido, NÃO verificado** — `rewrite_lines_atomic` (temp irmão pid/tid + fsync + `os.replace`); 4 arms, neg-arm com dois mutantes (helper truncante, call site desligado) | `history-write` |
 
 ---
 
@@ -1528,3 +1529,63 @@ tipografia no arquivo do dono; leitura de `fusion_enabled`.
 **Gravidade.** BAIXO hoje, MÉDIO no dia em que o `SOTTO_FUSION` for ligado com texto tipográfico.
 
 **Estado.** `aberto`.
+
+---
+
+## D-35 — a fusão de uma linha reescrevia o ficheiro da hora por CIMA, truncando-o antes de escrever
+
+**Antes.** `SottoShell.history_append` tem dois caminhos que REESCREVEM o ficheiro da hora em vez de
+acrescentar: `action='replace_at'` (troca uma linha, quando o motor funde a linha nova na anterior) e
+`action='replace'` (deita fora a última linha e escreve a nova). Os dois faziam
+`open(path, 'w', encoding='utf-8')` sobre o alvo e só depois `handle.writelines(rows)`:
+
+```python
+with open(path, 'w', encoding='utf-8', newline='') as handle:   # TRUNCA AQUI
+    handle.writelines(rows)                                     # escreve depois
+```
+
+O `'w'` trunca o ficheiro **antes** do primeiro byte. Um crash do processo, um corte de energia, um
+`ENOSPC` ou um kill do task manager entre o `open` e o último flush deixa um ficheiro **vazio** — e
+`history/` é a única cópia das palavras. O anel de áudio guarda 12 h de som, não o texto; a captura
+que permitiria re-transcrever já foi podada. Um ficheiro vazio é a hora inteira perdida, para sempre.
+
+**A população, medida (2026-11-15).** 33 ficheiros da hora, **272 746 B** no total, o maior
+**34 058 B**. A escrita é de milissegundos: não havia argumento de custo para arriscar o ficheiro —
+só não havia ninguém a olhar.
+
+**DEPOIS.** `rewrite_lines_atomic(path, rows, newline='')` (`sotto_webview.py:851`): escreve num
+**irmão temporário** com pid e tid no nome (`path.<pid>.<tid>.tmp`, a mesma razão do
+`panel_state.write_atomic` — dois escritores do mesmo caminho não partilham nome), `flush` +
+`os.fsync`, e só então `os.replace(tmp, path)`. O rename atómico é a fronteira: ou o ficheiro antigo,
+ou o novo, nunca um pedaço. O `replace` repete brevemente porque no Windows falha com
+`PermissionError` enquanto um leitor tem o alvo aberto (`_history_entries` abre-o em cada refrescamento
+do painel). Qualquer excepção remove o temp antes de subir — um temp deixado para trás é lido por
+ninguém e copiado por todo censo.
+
+**Instrumento.** `_main/history-write-oracle.py`, quatro arms de atomicidade:
+`store:atomic-keeps-file-on-failure` (uma escrita que falha a meio deixa o ficheiro com as 2 linhas e
+nenhum temp), `store:atomic-writes-on-success` (conteúdo substituído, sem temp, o directório do dia só
+com o `07.md`), `store:atomic-mechanism` (julga o **AST** do helper: nenhum `open(path, ...)` em modo
+`w`, e pid+tid no nome do temp — o teste de substring declarava a cura culpada do próprio defeito que
+o docstring nomeia, medido) e `store:atomic-wired` (o **call site**: `history_append` chama o helper
+duas vezes e não sobra nenhum `open(path,'w')` lá dentro — o `'a'` é o caminho normal e não trunca).
+Cada arm tem o seu mutante, cada um numa **cópia** do shell: `mutant_atomic` repõe o corpo truncante
+(`NO RAISE / 1 line(s), opens_target_for_write=True`) e `mutant_wiring` reverte só o call site
+`replace_at` (`calls=1 target_writes_w=1`). Um verde de fiação sem mutante próprio é um verde que não
+pode falhar.
+
+**Medido.**
+
+```
+python _main/history-write-oracle.py            -> VERDICT: PASS  (10/10)  rc=0
+python _main/history-write-oracle.py --neg-arm  -> NEG-ARM: PASS            rc=1
+```
+
+**Gravidade.** CRÍTICO enquanto durou — a perda é silenciosa, total para a hora e irreversível.
+Nenhuma ocorrência medida nesta árvore (o histórico tem 33 ficheiros íntegros): o defeito foi
+encontrado por leitura do caminho, com a janela de perda provada pelo mutante, não por um ficheiro
+vazio no disco do dono.
+
+**Estado.** `corrigido, NÃO verificado` — falta um arranque real que execute o `replace` sobre um
+histórico vivo (exige a app na tela do dono).
+
