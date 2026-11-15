@@ -180,6 +180,24 @@ class FElement extends FNode {
   replaceChildren(...nodes) { this.childNodes.forEach(n => { n.parentNode = null; }); this.childNodes = []; this.append(...nodes); }
   removeChild(node) { const i = this.childNodes.indexOf(node); if (i === -1) throw new Error('removeChild: not a child'); this.childNodes.splice(i, 1); node.parentNode = null; return node; }
   remove() { if (this.parentNode) this.parentNode.removeChild(this); }
+  // `replaceWith` FALTAVA (medido 2026-11-14): `replaceFeedRow` reescreve a
+  // linha com ele, e sem esta primitiva o caminho do FEED morria em
+  // `last.replaceWith is not a function` -- o seam acusava o produto de uma
+  // coisa que era dele proprio. Implementado como o padrao manda: o no' novo
+  // toma a posicao do antigo, que fica sem pai.
+  replaceWith(...nodes) {
+    const parent = this.parentNode;
+    if (!parent) return;
+    const idx = parent.childNodes.indexOf(this);
+    parent.childNodes.splice(idx, 1);
+    this.parentNode = null;
+    let at = idx;
+    for (const n of nodes) {
+      const node = (n instanceof FNode) ? n : new FText(n);
+      node.parentNode = parent;
+      parent.childNodes.splice(at++, 0, node);
+    }
+  }
   setAttribute(name, value) { this._attrs[name] = String(value); if (name === 'id') this.id = String(value); if (name === 'class') this.className = String(value); }
   getAttribute(name) { return this._attrs[name] === undefined ? null : this._attrs[name]; }
   removeAttribute(name) { delete this._attrs[name]; }
@@ -196,12 +214,18 @@ class FElement extends FNode {
   }
 }
 
-const PRESET_IDS = ['caption-list', 'captions-body', 'placeholder', 'status', 'status-text', 'status-dot', 'captions-hint', 'stats-chip'];
+// `history-list` ESTAVA EM FALTA (medido 2026-11-14): sem ele `dom.historyList`
+// era `undefined`, `appendFeedRow` fazia `return` cedo e os bracos do FEED
+// (CHK-G..J) morriam em `TypeError` -- um oraculo que nao pinta nada tem de
+// dizer RED, e dizia.
+const PRESET_IDS = ['caption-list', 'captions-body', 'placeholder', 'status', 'status-text', 'status-dot',
+  'captions-hint', 'stats-chip', 'history-list', 'history-empty', 'history-note', 'history-search',
+  'history-search-results', 'history-reveal', 'history-root-btn'];
 
 // ---------------------------------------------------------------------------
 // THE HARNESS — real panel.js, real engine, fake document.
 // ---------------------------------------------------------------------------
-function buildPanel(panelSource, engineSource) {
+function buildPanel(panelSource, engineSource, historyStub) {
   const doc = new FElement('#document');
   doc.nodeType = 9;
   doc._byId = new Map();
@@ -245,6 +269,10 @@ function buildPanel(panelSource, engineSource) {
     setInterval: () => 0,
     clearInterval: () => {},
     requestAnimationFrame: (cb) => { cb(0); return 0; },
+    // `pinHistoryToBottom` le o `overflow-y` computado (`panel.js`, was :1791).
+    // O harness so tinha o fake document; sem esta funcao o caminho do FEED
+    // morria em `ReferenceError` e os bracos do feed nao julgavam nada.
+    getComputedStyle: () => ({ overflowY: 'auto', scrollHeight: 0, clientHeight: 0 }),
     cancelAnimationFrame: () => {},
     localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
     performance: { now: () => Date.now() },
@@ -274,7 +302,7 @@ function buildPanel(panelSource, engineSource) {
     setPanelSurface: () => {},
     setLiveEnabled: () => {},
     setPointerInteractive: () => {},
-    history: {
+    history: historyStub || {
       root: () => Promise.resolve({ root: '' }),
       tail: () => Promise.resolve({ entries: [] }),
       append: () => Promise.resolve({ entry: null }),
@@ -311,7 +339,11 @@ function buildPanel(panelSource, engineSource) {
   // 'text' or the handler returns before flushing — that is the panel's own
   // contract, not a shortcut of this oracle.
   const flush = () => handlers.status({ text: 'done', kind: 'done' });
-  return { doc, list, rows, feed, flush, handlers };
+  // `historyEntries` e' um `let` de topo de script: vive no escopo lexical do
+  // contexto, NAO em `globalThis`, logo nao se le por `ctx.historyEntries`. O
+  // braco le-o pelo mesmo caminho do painel: um script no mesmo contexto.
+  const evalIn = (code) => vm.runInContext(code, ctx);
+  return { doc, list, rows, feed, flush, handlers, sandbox, ctx, evalIn };
 }
 
 // ---------------------------------------------------------------------------
@@ -536,6 +568,114 @@ function checkF(h, makePanel, panelSource) {
     + ' | append rows=' + appended.length + ' last=' + txt(appended[appended.length - 1] || { text: '' }) };
 }
 
+
+// ---------------------------------------------------------------------------
+// THE FEED ARMS (2026-11-14) — the RIGHT-HAND transcript list, not the live box.
+//
+// Owner, verbatim: *"e o historico ta COMPLETAMENTE patetico ... falas cortadas,
+// frases nao entram, tudo aleatorio ou quebrado"*. The three claims below are the
+// three mechanisms the owner's own store+log measured (see
+// `_main/receipt-20261114-history-append.md`):
+//
+//   CHK-G  a tail that resolves AFTER a live row arrived must not erase it
+//          (the panel issued `history_tail(400)` at boot and then replaced the
+//          whole list with the reply: every line committed during the read died);
+//   CHK-H  the same line arriving by both roads is ONE row, not two (the tail
+//          reply already contained the line the live push had appended);
+//   CHK-I  `replace_at` (the batch pass rewrote a line in the MIDDLE of the file)
+//          rewrites THAT row; the old code rewrote the LAST one, so a sentence
+//          from one moment was painted over a different one.
+//
+// Every arm drives the SHIPPED functions, in this file's fake DOM: `feedKey`,
+// `mergeHistoryTail`, `pushEntry`, `replaceFeedRow`, `makeRow`.
+// ---------------------------------------------------------------------------
+function entryAt(o) {
+  const p = (n) => String(n).padStart(2, '0');
+  return Object.assign({
+    date: '2026-11-14', hour: '20', path: 'H:\\sotto\\history\\2026-11-14\\20.md',
+  }, o);
+}
+function feedRows(h) {
+  const list = h.doc._byId.get('history-list');
+  return list ? list.children : [];
+}
+function feedTexts(h) { return feedRows(h).map((li) => li.querySelector('.hist__text').textContent); }
+
+function checkG(h) {
+  const F = h.ctx;
+  const list = h.doc._byId.get('history-list');
+  if (list) list.replaceChildren();
+  h.evalIn('historyEntries.length = 0;');
+  // 1. the panel BOOTS: it issues `history_tail(400)` and, while that read is in
+  //    flight, a caption closes and the live push paints its row.
+  F.pushEntry(entryAt({ time: '20:10:09', text: 'linha que fechou durante a leitura.', action: 'append' }));
+  const liveRows = feedTexts(h);
+  // 2. the tail now RESOLVES with what was on disk at request time -- two older
+  //    lines that do NOT include the one that just closed.
+  F.applyHistoryTail([entryAt({ time: '20:10:01', text: 'primeira linha do disco.' }),
+    entryAt({ time: '20:10:02', text: 'segunda linha do disco.' })]);
+  const texts = feedTexts(h);
+  const ok = liveRows.length === 1
+    && texts.length === 3
+    && texts.indexOf('linha que fechou durante a leitura.') >= 0
+    && texts[0] === 'primeira linha do disco.';
+  return { ok, detail: 'live-then-tail -> rows=' + texts.length + ' ' + JSON.stringify(texts) };
+}
+
+function checkH(h) {
+  const F = h.ctx;
+  const list = h.doc._byId.get('history-list');
+  if (list) list.replaceChildren();
+  h.evalIn('historyEntries.length = 0;');
+  // The live push commits the FINAL text (the writer stamped the terminal mark),
+  // then the tail resolves with the SAME (path,date,time) as it stood on disk
+  // WHEN THE READ STARTED -- i.e. the shorter, older body. One row, and the row
+  // keeps the LONGER text: a merge cannot lose the newer text, and a wholesale
+  // substitution (`historyEntries = entries`) would show the older one.
+  F.pushEntry(entryAt({ time: '20:10:02', text: 'a linha que as duas estradas ja tinham.' }));
+  F.applyHistoryTail([entryAt({ time: '20:10:02', text: 'a linha que as duas estradas' })]);
+  const texts = feedTexts(h);
+  const n = h.evalIn('historyEntries.length');
+  const ok = n === 1 && texts.length === 1 && texts[0] === 'a linha que as duas estradas ja tinham.';
+  return { ok, detail: 'same (path,date,time) by both roads -> entries=' + n + ' rows=' + JSON.stringify(texts) };
+}
+
+function checkI(h) {
+  const F = h.ctx;
+  const list = h.doc._byId.get('history-list');
+  if (list) list.replaceChildren();
+  h.evalIn('historyEntries.length = 0;');
+  const A = entryAt({ time: '20:10:01', text: 'frase A.' });
+  const B = entryAt({ time: '20:10:02', text: 'frase B.' });
+  const C = entryAt({ time: '20:10:03', text: 'frase C.' });
+  F.pushEntry(A); F.pushEntry(B); F.pushEntry(C);
+  const before = feedTexts(h);
+  // The batch pass rewrote B IN THE FILE: the store answers `replace_at` for B's
+  // own (path,date,time). The panel must rewrite THAT row.
+  F.pushEntry(entryAt({ time: '20:10:02', text: 'frase B, dita melhor pelo lote.', action: 'replace_at' }));
+  const after = feedTexts(h);
+  const ok = before.length === 3 && after.length === 3
+    && after[0] === 'frase A.' && after[2] === 'frase C.'
+    && after[1].indexOf('dita melhor') >= 0;
+  return { ok, detail: 'rows ' + JSON.stringify(before) + ' -> ' + JSON.stringify(after) };
+}
+
+function checkJ(h) {
+  const F = h.ctx;
+  const list = h.doc._byId.get('history-list');
+  if (list) list.replaceChildren();
+  h.evalIn('historyEntries.length = 0;');
+  const A = entryAt({ time: '20:20:01', text: 'a primeira.' });
+  F.pushEntry(A);
+  // A RE-DELIVERY: the same line, the same name, action 'append' (the store said
+  // append because its own tail did not have it). It must NOT add a second row.
+  F.pushEntry(entryAt({ time: '20:20:01', text: 'a primeira, completa.', action: 'append' }));
+  const texts = feedTexts(h);
+  const n = h.evalIn('historyEntries.length');
+  const ok = n === 1 && texts.length === 1 && texts[0].indexOf('completa') >= 0;
+  return { ok, detail: 'entries=' + n + ' rows=' + JSON.stringify(texts) };
+}
+
 const CHECKS = [
   ['CHK-A', 'same start + DIFFERENT sources -> TWO rows with their own text', checkA],
   ['CHK-B', 'the same line again -> ONE row, text replaced IN PLACE', checkB],
@@ -544,6 +684,10 @@ const CHECKS = [
   ['CHK-D', 'a partial for source A never rewrites the live row of source B', checkD],
   ['CHK-E', 'commit meta: no-source literal byte-identical, source added LAST', checkE],
   ['CHK-F', 'the trim path keeps the index on the rows that are still there', checkF],
+  ['CHK-G', 'a late history_tail reply never erases a live row (the feed merges)', checkG],
+  ['CHK-H', 'one line by both roads is ONE row, and the longer text wins', checkH],
+  ['CHK-I', 'replace_at rewrites the NAMED row, never the last one', checkI],
+  ['CHK-J', 'a re-delivered line does not add a second row', checkJ],
 ];
 
 function runArm(label, panelSource, engineSource) {
@@ -623,6 +767,48 @@ const MUTANTS = [
     },
     mustRed: ['CHK-E'],
     mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D'],
+  },
+  // ── OS MUTANTES DO FEED (2026-11-14) ──────────────────────────────────
+  // Cada um devolve os bytes EXACTOS da forma antiga (a que o dono chamou
+  // "COMPLETAMENTE patetico"), num unico ponto, para o braco que o apanha.
+  {
+    id: 'M5 the tail replaces the feed again',
+    what: 'loadHistory -> historyEntries = entries (the pre-2026-11-14 line)',
+    file: 'panel',
+    apply(source) {
+      const re = /  historyEntries = mergeHistoryTail\(entries, historyEntries\);/;
+      if (!re.test(source)) return null;
+      return source.replace(re, '  historyEntries = entries; /* NEG-ARM M5 */');
+    },
+    mustRed: ['CHK-G', 'CHK-H'],
+    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-F', 'CHK-I', 'CHK-J'],
+  },
+  {
+    id: 'M6 pushEntry never finds the row it already has',
+    what: 'pushEntry -> at = -1 (append for every delivery)',
+    file: 'panel',
+    apply(source) {
+      const anchor = '  const at = key === null ? -1 : historyEntries.findIndex((row) => feedKey(row) === key);';
+      if (source.indexOf(anchor) === -1) return null;
+      return source.replace(anchor, '  const at = -1; /* NEG-ARM M6 */');
+    },
+    mustRed: ['CHK-I', 'CHK-J'],
+    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-F', 'CHK-G', 'CHK-H'],
+  },
+  {
+    id: 'M7 replaceFeedRow rewrites the last row again',
+    what: 'replaceFeedRow -> target = null (always the tail)',
+    file: 'panel',
+    apply(source) {
+      // O ficheiro e' CRLF: um anchor com \n literal nunca casa e o mutante
+      // ficava sem cor (FOI MEDIDO -- M7 imprimiu SETUP ERROR na primeira
+      // corrida, e um mutante que nao se constroi e' uma lacuna, nao um passe).
+      const re = /  const key = feedKey\(entry\);\r?\n  let target = null;/;
+      if (!re.test(source)) return null;
+      return source.replace(re, (whole) => whole.replace('feedKey(entry)', 'null /* NEG-ARM M7 */'));
+    },
+    mustRed: ['CHK-I'],
+    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-F', 'CHK-G', 'CHK-H', 'CHK-J'],
   },
 ];
 
