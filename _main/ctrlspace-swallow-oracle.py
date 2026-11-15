@@ -160,6 +160,76 @@ def arm_classify(swallow_module, tag=''):
     return ok_all
 
 
+FOREGROUND_CASES = [
+    # (foreground, streak, esperado, porque) -- a regra do FOCO, nao da residencia
+    ('chrome.exe', 0, False, 'jogo RESIDENTE mas o Chrome em foco: a tecla e nossa'),
+    ('', 0, False, 'sem janela em foco: a tecla fica connosco (desfecho seguro)'),
+    ('deadlock.exe', 0, True, 'jogo conhecido EM PRIMEIRO PLANO: o jogo fica com ela'),
+    ('DeadLock.EXE', 0, True, 'a comparacao e case-insensitive como o resto do modulo'),
+    ('leagueclientux.exe', 1, False,
+     'cliente de jogo em foco mas streak abaixo do piso: ainda e um lobby'),
+    ('leagueclientux.exe', 3, True, 'cliente em foco com streak cheia: in_match'),
+    ('notepad.exe', 9, False, 'streak alta nao compra a tecla para quem nao e jogo'),
+]
+
+
+def arm_foreground(gaming_module, tag=''):
+    """A0: a AUTORIDADE do `Ctrl+Space` e' o FOCO (2026-11-14).
+
+    O defeito medido no log do dono: `deadlock.exe` fechado na bandeja, Chrome em
+    primeiro plano, `GAMING_MODE on=true` das 20:44:03 as 22:02:04 -- 78 minutos
+    com `plan=give-back` e ZERO `HOTKEY_PRESSED`. A arm conduz a funcao PURA que
+    decide isso, entao o mutante que troca o foco pela residencia cai aqui.
+    """
+    ok_all = True
+    for name, streak, want, why in FOREGROUND_CASES:
+        got = bool(gaming_module.foreground_owns_space(name, streak))
+        ok = got == want
+        ok_all &= ok
+        if not ok:
+            check('A0 foco=%r streak=%s%s' % (name, streak, tag), False,
+                  '%s: want=%s got=%s' % (why, want, got))
+    check('A0 a tecla e do FOCO, nao da residencia (7 casos)%s' % tag, ok_all,
+          'funcao REAL gaming_mode.foreground_owns_space')
+    ok_all &= _arm_owns_space_now(gaming_module, tag)
+    return ok_all
+
+
+def _arm_owns_space_now(mod, tag=''):
+    """A0b: o ACCESSOR do detector vivo -- o foco lido NA HORA, com o jogo residente.
+
+    A funcao pura so' ve' o nome que lhe dao; o defeito dos 78 minutos vivia no
+    accessor, que perguntava ao detector em vez do foco. Este braco conduz o
+    `GamingDetector` REAL com leitores injectados -- zero Windows, zero janela.
+    """
+    def build(fg_path):
+        return mod.GamingDetector(
+            read_names=lambda: ['deadlock.exe', 'chrome.exe'],
+            read_foreground=lambda: 4242,
+            read_foreground_name=lambda pid: fg_path,
+            clock=lambda: 0.0)
+    ok = True
+    cases = [
+        (r'C:\Games\deadlock.exe', True,
+         'o jogo em FOCO: a tecla e do jogo'),
+        (r'C:\Program Files\Chrome\chrome.exe', False,
+         'o jogo RESIDENTE e o Chrome em foco: a tecla e NOSSA -- os 78 minutos'),
+        ('', False, 'sem primeiro plano: a tecla fica connosco'),
+    ]
+    for fg_path, want, why in cases:
+        det = build(fg_path)
+        det.tick()
+        got = bool(det.owns_space_now())
+        okk = got == want
+        ok &= okk
+        if not okk:
+            check('A0b foco=%r%s' % (fg_path, tag), False,
+                  '%s: want=%s got=%s' % (why, want, got))
+    check('A0b o accessor le o FOCO, com o jogo residente (3 casos)%s' % tag, ok,
+          'GamingDetector REAL com leitores injectados')
+    return ok
+
+
 PLAN_CASES = [
     # (gaming, registered, register_failed, esperado)
     (False, False, False, 'take'),        # fora de jogo, livre -> TOMA
@@ -648,6 +718,16 @@ def arm_wiring(shell_source, tag=''):
                 body_names.add(fname)
     ok &= check('C2 o detector-presente constroi LiveHotkeyThread(gaming_fn=)%s' % tag,
                 live_call is not None and 'gaming_fn' in live_kwargs)
+    # C2c O `gaming_fn` TEM DE SER A AUTORIDADE DO FOCO (2026-11-14). A funcao
+    # pura pode estar perfeita e o fio continuar a receber `is_gaming` -- o
+    # desfecho dos 78 minutos. O que se exige e' o ATRIBUTO, lido da arvore.
+    _gfn = None
+    if live_call is not None:
+        for kw in live_call.keywords:
+            if kw.arg == 'gaming_fn':
+                _gfn = getattr(kw.value, 'attr', '')
+    ok &= check('C2c gaming_fn=owns_space_now (o FOCO, nao a residencia)%s' % tag,
+                _gfn == 'owns_space_now', 'gaming_fn=%r' % (_gfn,))
     ok &= check('C2b sem detector fica o OBSERVADOR%s' % tag,
                 'PassiveHotkeyThread' in body_names)
     ok &= check('C3 o recuo observado leva gate=%s' % tag,
@@ -680,7 +760,8 @@ def run(root=None, tag=''):
     shell_source = read(shell_path)
     gaming_module = load_gaming(gaming_path)
     swallow_module = load_space_swallow(swallow_path)
-    ok = arm_plan(gaming_module, tag)
+    ok = arm_foreground(gaming_module, tag)
+    ok &= arm_plan(gaming_module, tag)
     ok &= arm_classify(swallow_module, tag)
     ok &= arm_wiring(shell_source, tag)
     ok &= arm_thread(shell_source, gaming_module, swallow_module, tag)
@@ -803,7 +884,29 @@ def _m6(webview_dir):
            'hook-fica-instalado-em-jogo')
 
 
+def _m8(webview_dir):
+    # A RESIDENCIA VOLTA A SER A AUTORIDADE -- o comportamento de HEAD, e o que
+    # custou os 78 minutos. A funcao pura nao consegue expressar o defeito (ela
+    # so' ve' o primeiro plano); o sitio onde o defeito vive e' o accessor, que
+    # troca a pergunta do foco pela do detector.
+    mutate(os.path.join(webview_dir, 'gaming_mode.py'),
+           "        return foreground_owns_space(live, streak, self._extra_names)",
+           "        return foreground_owns_space(live, streak, self._extra_names) "
+           "or self.is_gaming()",
+           'residencia-volta-a-decidir')
+
+
+def _m9(webview_dir):
+    # O FIO VOLTA A `is_gaming`: a funcao pura continua certa e o defeito volta.
+    mutate(os.path.join(webview_dir, 'sotto_webview.py'),
+           "gaming_fn=_gaming.owns_space_now",
+           "gaming_fn=_gaming.is_gaming",
+           'fio-le-residencia')
+
+
 _MUTATORS = [
+    ('residencia-volta-a-decidir', _m8),
+    ('fio-le-residencia', _m9),
     ('plano-nao-devolve-a-tecla', _m1),
     ('fio-toma-sempre', _m2),
     ('ficacao-sem-detector', _m3),

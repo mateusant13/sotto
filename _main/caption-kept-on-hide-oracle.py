@@ -139,6 +139,20 @@ def extract_method(src: str, name: str, klass: str = 'SottoShell') -> str:
     raise SystemExit('%s.%s nao existe no fonte' % (klass, name))
 
 
+def _dwell_const(src: str, name: str = 'PAUSE_BLANK_DWELL_S') -> float:
+    """O dwell lido do FONTE, nunca copiado: um 1,5 literal aqui mediria uma
+    regra que a producao ja' mudou, em silencio."""
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == 'ExternalCaptionWatcher':
+            for member in node.body:
+                if (isinstance(member, ast.Assign)
+                        and any(isinstance(t, ast.Name) and t.id == name
+                                for t in member.targets)):
+                    return float(ast.literal_eval(member.value))
+    raise SystemExit('ORACLE-BROKEN: o shell nao define %s' % name)
+
+
 def build_idle_shell(fn_src, recorder):
     """O `_caption_idle_hide` REAL, com o blank e o re-arme gravados."""
     logs = []
@@ -362,6 +376,64 @@ def arm_release_resets(src):
     return ok
 
 
+def arm_release_blanks_pixels(src):
+    """A LINHA DO PLAYER NAO SOBREVIVE AO PLAYER (2026-11-15).
+
+    MEDIDO no log do dono: `EXTERNAL_CAPTIONS_RELEASED reason=no-caption` as
+    20:10:02.796 e o primeiro texto do ASR so' as 20:10:13.226 -- 10,4 s com a
+    ultima linha do player no ecra DEPOIS de a fonte ter morrido. A `_release`
+    limpava o estado mas nao os pixels. Esta arm conduz o `_release` REAL com uma
+    shell falsa e exige o apagamento; a segunda chamada sem transicao nao pode
+    apagar outra vez (a guarda de episodio e' o que impede a cadencia).
+    """
+    fn_src = extract_method(src, '_release', klass='ExternalCaptionWatcher')
+    ns = {'log': lambda *_a: None, '__builtins__': __builtins__}
+    exec(compile(fn_src, '<release>', 'exec'), ns)
+    fn = ns['_release']
+
+    class RelShell:
+        def __init__(self):
+            self.external_captions_active = True
+            self.external_captions_available = True
+            self.blanks = []
+            self.owners = []
+            self._external_since = None
+            self._external_park_deferred_logged = False
+
+        def _blank_caption_window(self, reason):
+            self.blanks.append(reason)
+
+        def external_caption(self, *a, **kw):
+            pass
+
+        def set_external_owner(self, owner, **kw):
+            self.owners.append((owner, kw))
+
+        def on_external_captions_released(self):
+            pass
+
+    class RelObs:
+        last_line = 'the player said this'
+        last_rows = ['the player said this']
+        last_source = 'external:youtube:track'
+        finalized = True
+        last_seen = 1.0
+        _released_for_silence = False
+
+    obs = RelObs()
+    sh = RelShell()
+    obs.shell = sh
+    first = fn(obs, 'no-caption')
+    blank_ok = (first is True and sh.blanks == ['external-released']
+                and obs.last_line == '' and obs.last_rows == [])
+    second = fn(obs, 'no-caption')
+    once_ok = second is False and len(sh.blanks) == 1
+    ok = blank_ok and once_ok
+    print('[%s] release apaga os pixels do player UMA vez  blanks=%r '
+          'segunda=%s' % ('PASS' if ok else 'FAIL', sh.blanks, second))
+    return ok
+
+
 def arm_pause_edge(src):
     """A BORDA DE PAUSA APAGA E A DE VOLTA REPINTA (2026-11-09, revisao D3).
 
@@ -371,7 +443,8 @@ def arm_pause_edge(src):
     """
     fn_src = extract_method(src, '_yt_pause_edge',
                             klass='ExternalCaptionWatcher')
-    ns = {'log': lambda *_a: None, '__builtins__': __builtins__}
+    ns = {'log': lambda *_a: None, 'time': time,
+          '__builtins__': __builtins__}
     exec(compile(fn_src, '<yt-pause-edge>', 'exec'), ns)
     fn = ns['_yt_pause_edge']
 
@@ -388,7 +461,10 @@ def arm_pause_edge(src):
         def push_caption_to_window(self, text, **kw):
             self.pushes.append((text, kw))
 
+    dwell = float(_dwell_const(src))
+
     class EdgeObserver:
+        PAUSE_BLANK_DWELL_S = dwell
         yt_cdp_paused = True
         yt_cdp_ended = False
         last_line = 'hello world'
@@ -402,23 +478,66 @@ def arm_pause_edge(src):
     obs = EdgeObserver()
     sh = EdgeShell()
     obs.shell = sh
-    fn(obs, True)
-    pause_ok = (sh.blanks == ['youtube-paused'] and not sh.pushes
-                and obs._yt_was_paused is True)
-    fn(obs, False)
+    # A PAUSA CORROBORADA: a mesma amostra repetida depois do dwell. O relogio e'
+    # injectado -- um braco que dorme 1,5 s por asserção paga 1,5 s em toda
+    # corrida da bateria, e um `sleep` mede a maquina em vez do codigo.
+    fn(obs, True, now=0.0)
+    flap_open = sh.blanks == []
+    fn(obs, True, now=dwell * 0.5)
+    flap_held = sh.blanks == []
+    fn(obs, True, now=dwell + 0.01)
+    pause_ok = (flap_open and flap_held and sh.blanks == ['youtube-paused']
+                and not sh.pushes and obs._yt_was_paused is True)
+    fn(obs, False, now=dwell + 0.02)
     resume_ok = (len(sh.pushes) == 1 and sh.pushes[0][0] == 'hello world'
                  and sh.pushes[0][1].get('instant') is True)
+    # O FLAP: a pausa acaba ANTES do dwell vencer. Nada pode ter apagado -- e' a
+    # queixa do dono de 2026-11-15 (15 de 40 pressoes de LIGAR perdiam o ecra
+    # para um `paused=True` de meio segundo).
+    obs_flap = EdgeObserver()
+    sh_flap = EdgeShell()
+    obs_flap.shell = sh_flap
+    fn(obs_flap, True, now=10.0)
+    fn(obs_flap, False, now=10.0 + dwell * 0.4)
+    fn(obs_flap, True, now=10.0 + dwell * 0.5)
+    flap_ok = sh_flap.blanks == [] and not sh_flap.pushes
+    # O DESENHO NOVO DESMENTE A PAUSA (2026-11-15): 11 das 16 pressoes de LIGAR
+    # apagadas por `youtube-paused` tinham `YT_FRAME` a revelar palavra a palavra
+    # nos 3 s anteriores. Uma pausa que desenha texto novo nao e' pausa -- o
+    # dwell sozinho nao a apanha, porque uma pausa longa que continua a desenhar
+    # venceria o tempo.
+    obs_live = EdgeObserver()
+    sh_live = EdgeShell()
+    obs_live.shell = sh_live
+    # O desenho chega continuamente: a cada amostra o carimbo e' RECENTE, que e'
+    # o que um player a tocar faz. Carimbar uma vez e deixar o tempo passar seria
+    # medir um video que desenha uma linha e para.
+    obs_live._yt_frame_at = 100.0
+    fn(obs_live, True, now=100.0)
+    obs_live._yt_frame_at = 100.0 + dwell + 0.01
+    fn(obs_live, True, now=100.0 + dwell + 0.01)      # tempo vencido, desenho fresco
+    obs_live._yt_frame_at = 100.0 + dwell + 0.02
+    fn(obs_live, True, now=100.0 + dwell + 0.02)      # o desenho continua fresco
+    frames_ok = sh_live.blanks == []
+    # ... e quando o desenho PARA, a mesma pausa apaga (o braco positivo acima ja'
+    # cobre o caso sem desenho nenhum; aqui e' o desenho a calar-se).
+    fn(obs_live, True, now=100.0 + 2 * dwell + 1.0)
+    frames_then_quiet_ok = sh_live.blanks == ['youtube-paused']
+
     obs_off = EdgeObserver()
     obs_off._yt_was_paused = True
     sh_off = EdgeShell(wanted=False)
     obs_off.shell = sh_off
-    fn(obs_off, False)
+    fn(obs_off, False, now=5.0)
     off_ok = not sh_off.pushes
-    ok = pause_ok and resume_ok and off_ok
+    ok = (pause_ok and resume_ok and flap_ok and frames_ok
+          and frames_then_quiet_ok and off_ok)
     print('[%s] borda de pausa apaga e a de volta repinta  blanks=%s '
-          'pushes=%d wanted_off_pushes=%d'
+          'pushes=%d wanted_off_pushes=%d flap_blanks=%d '
+          'frame_blanks=%d frame_quiet_blanks=%s dwell=%.2fs'
           % ('PASS' if ok else 'FAIL', sh.blanks, len(sh.pushes),
-             len(sh_off.pushes)))
+             len(sh_off.pushes), len(sh_flap.blanks),
+             len(sh_live.blanks), sh_live.blanks, dwell))
     return ok
 
 
@@ -441,6 +560,7 @@ def main(argv):
         ok = arm_blank_deferred(src) and ok
         ok = arm_display_gate(src) and ok
         ok = arm_release_resets(src) and ok
+        ok = arm_release_blanks_pixels(src) and ok
         ok = arm_pause_edge(src) and ok
         print('caption-kept-on-hide-oracle: %s' % ('PASS' if ok else 'FAIL'))
         return 0 if ok else 1
@@ -579,11 +699,57 @@ def main(argv):
         1)
     caught_resume = not arm_pause_edge(mutated8)
 
+    # 9) O DWELL DA PAUSA SOME (2026-11-15): a borda volta a apagar o ecra numa
+    # amostra solta, que e' o flap medido no log do dono. O braco do flap TEM de
+    # cair -- e' a unica coisa que o apanha, porque a pausa sustentada continua a
+    # apagar com o dwell a zero.
+    dwell_line = "    PAUSE_BLANK_DWELL_S = 1.5"
+    dwell_anchor = src.count(dwell_line)
+    if dwell_anchor != 1:
+        print('NEG-ARM IMPOSSIVEL: a constante do dwell aparece %d vez(es)'
+              % dwell_anchor)
+        return 2
+    mutated9 = src.replace(
+        dwell_line,
+        "    PAUSE_BLANK_DWELL_S = 0.0  # mutante: a amostra solta volta a apagar",
+        1)
+    caught_dwell = not arm_pause_edge(mutated9)
+
+    # 10) O DESENHO NOVO DEIXA DE DESMENTIR A PAUSA (2026-11-15): o portao do
+    # `quiet` some e a bandeira volta a apagar com o video a andar -- o defeito
+    # medido em 11 de 16 pressoes de LIGAR. O braco do desenho TEM de cair.
+    quiet_gate = "                    or quiet < float(self.PAUSE_BLANK_DWELL_S)):"
+    if src.count(quiet_gate) != 1:
+        print('NEG-ARM IMPOSSIVEL: o portao do desenho aparece %d vez(es)'
+              % src.count(quiet_gate))
+        return 2
+    mutated10 = src.replace(
+        quiet_gate,
+        "                    or quiet < 0.0):  # mutante: o desenho nao desmente",
+        1)
+    caught_frames = not arm_pause_edge(mutated10)
+
+    # 11) O RELEASE DEIXA DE APAGAR OS PIXELS (2026-11-15): a ultima linha do
+    # player fica no ecra depois de a fonte morrer -- os 10,4 s medidos no log do
+    # dono. O braco do release-pixels TEM de cair.
+    blank_release = "                _blank('external-released')"
+    if src.count(blank_release) != 1:
+        print('NEG-ARM IMPOSSIVEL: a chamada do blank no release aparece %d vez(es)'
+              % src.count(blank_release))
+        return 2
+    mutated11 = src.replace(
+        blank_release,
+        "                pass  # mutante: o player larga e a linha fica no ecra",
+        1)
+    caught_release_blank = not arm_release_blanks_pixels(mutated11)
+
     caught = (caught_hide and caught_pause and caught_deferred
               and caught_display and caught_pause_pixels and caught_release
-              and caught_scope and caught_resume)
+              and caught_scope and caught_resume and caught_dwell
+              and caught_frames and caught_release_blank)
     print('NEG-ARM: %s -- hide=%s pausa=%s deferred=%s display=%s '
-          'pausa-pixels=%s release=%s escopo=%s retoma=%s'
+          'pausa-pixels=%s release=%s escopo=%s retoma=%s dwell=%s desenho=%s'
+          ' release-pixels=%s'
           % ('PASS' if caught else 'FAIL',
              'CAUGHT' if caught_hide else 'NOT-CAUGHT',
              'CAUGHT' if caught_pause else 'NOT-CAUGHT',
@@ -592,7 +758,10 @@ def main(argv):
              'CAUGHT' if caught_pause_pixels else 'NOT-CAUGHT',
              'CAUGHT' if caught_release else 'NOT-CAUGHT',
              'CAUGHT' if caught_scope else 'NOT-CAUGHT',
-             'CAUGHT' if caught_resume else 'NOT-CAUGHT'))
+             'CAUGHT' if caught_resume else 'NOT-CAUGHT',
+             'CAUGHT' if caught_dwell else 'NOT-CAUGHT',
+             'CAUGHT' if caught_frames else 'NOT-CAUGHT',
+             'CAUGHT' if caught_release_blank else 'NOT-CAUGHT'))
     return 1 if caught else 0
 
 

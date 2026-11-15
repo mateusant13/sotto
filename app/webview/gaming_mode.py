@@ -237,6 +237,52 @@ def detect_games(names, foreground_name=None, foreground_streak=0,
     return hits
 
 
+def foreground_owns_space(foreground_name, foreground_streak=0, extra_names=None):
+    """O `Ctrl+Space` PERTENCE a um jogo AGORA? -- a pergunta do PRIMEIRO PLANO.
+
+    A PERGUNTA NAO E' `is_gaming()`, E A DIFERENCA CUSTOU 78 MINUTOS SEM TECLA
+    (medido 2026-11-14, `_main/webview-run.log`): `detect_games` marca
+    `in_match=True` para QUALQUER processo com nome de jogo, sem olhar ao foco --
+    e essa e' a regra do WATCHER, correta para o humor e para o governador, e
+    errada para esta tecla. No log do dono, `deadlock.exe` ficou RESIDENTE
+    (fechado na bandeja, a janela do Chrome em primeiro plano) e a shell escreveu
+    `GAMING_MODE on=true` as 20:44:03 e o `HOTKEY_LIVE_MODE mode=passthrough
+    plan=give-back` no mesmo segundo; das 20:44:03 as 22:02:04 -- **78 minutos**
+    -- nao ha UMA linha `HOTKEY_PRESSED`, e o dono estava a ver YouTube. A tecla
+    estava a ser dada a um jogo que ninguem estava a jogar: o `Ctrl+Space` nao
+    fazia nada, e a queixa dele e' essa, verbatim: *"o ctrl space parece que nao
+    da hide na legenda ou show DIREITO. parece que essa porra ta conflitando com
+    algo"*.
+
+    AS TRES ENTRADAS, e o porque de cada uma:
+
+      * nome de jogo conhecido (ou `extra_names`) EM PRIMEIRO PLANO -> True. Sem
+        `dwell`: a tecla devolvida e' idempotente e um jogo em foco e' o jogo.
+      * `-Win64-Shipping.exe` em primeiro plano -> True. Aqui NAO se exige CPU (o
+        `looks_like_unreal_shipping` puro pede-a no `is_game_process_detailed`
+        por causa de um processo residente a fazer trabalho de fundo); um
+        `-Shipping` em FOCO esta' a correr por definicao, e e' o unico sinal que
+        este caminho tem.
+      * o CLIENTE de jogo -> so' com a streak do primeiro plano, a mesma
+        condicao de `detect_games` (o lobby do League nao pode roubar a tecla no
+        instante em que o dono pousa o rato no icone).
+
+    `foreground_name` vazio (sem janela em foco, app a arrancar) -> False: a
+    tecla fica connosco, que e' o desfecho seguro -- um `Ctrl+Space` que alterna
+    a legenda nunca e' pior do que um que nao faz nada.
+    """
+    name = norm_name(foreground_name)
+    if not name:
+        return False
+    if is_game_name(name, extra_names):
+        return True
+    if looks_like_unreal_shipping(name):
+        return True
+    if name in CLIENT_GAME_NAMES:
+        return int(foreground_streak or 0) >= CLIENT_FOREGROUND_STREAK_REQUIRED
+    return False
+
+
 def primary_game(hits):
     """`games.py:primary_game`: o primeiro `in_match`, senao o primeiro."""
     if not hits:
@@ -442,6 +488,41 @@ class GamingDetector(object):
     def is_gaming(self):
         with self._lock:
             return bool(self._gaming)
+
+    def foreground_name(self):
+        """O nome do processo em PRIMEIRO PLANO agora -- uma leitura, sem tick.
+
+        MEDIDO nesta maquina (2026-11-14): `GetForegroundWindow` +
+        `GetWindowThreadProcessId` + `OpenProcess`/`QueryFullProcessImageNameW`
+        custam **0,068 ms** por chamada, com o `deadlock.exe` em foco. O pump do
+        `Ctrl+Space` pergunta a 4 Hz (`LIVE_MODE_RECHECK_S = 0.25 s`), logo
+        **0,03 % de um nucleo** -- barato o bastante para ser a autoridade lida
+        NO INSTANTE da pressao, em vez de uma cache de 2 s.
+        """
+        try:
+            return proc_name_from_path(self._read_foreground_name(
+                self._read_foreground() or 0))
+        except Exception:  # noqa: BLE001 -- sem leitura, sem jogo (seguro)
+            return ""
+
+    def owns_space_now(self):
+        """A autoridade do `Ctrl+Space`: o jogo tem o FOCO? (ver `foreground_owns_space`).
+
+        NAO usa `_gaming`/`_dwell`: aquilo e' a vista do watcher (qualquer
+        processo com nome de jogo, residente ou nao), e usa-la aqui dava a tecla
+        a um jogo fechado na bandeja -- os 78 minutos medidos no log do dono.
+
+        A streak do cliente vive no ULTIMO TICK (e' o unico lugar onde ela
+        existe) e so' conta se o nome dela for o que esta' em foco AGORA: um
+        numero de ticks de outra janela nao pode comprar a tecla para o cliente.
+        Sem tick, ou com outra janela em foco, a streak vale 0.
+        """
+        live = self.foreground_name()
+        with self._lock:
+            streak = int(self._streak) if (
+                live and norm_name(self._streak_pid_name) == norm_name(live)
+            ) else 0
+        return foreground_owns_space(live, streak, self._extra_names)
 
     def game_name(self):
         with self._lock:
