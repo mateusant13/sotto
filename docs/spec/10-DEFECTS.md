@@ -62,7 +62,9 @@ _main/verdict-order-oracle.py:71:  MUTANT = os.path.join(RUNS, "_verdict-order-m
 mediu a ordem do AGC. Um instrumento que só existe na máquina onde nasceu não é um instrumento.
 
 **Depois.** `git add -f` + `.gitignore` com a razão escrita; `.gitattributes` regenerado pelo próprio
-gerador do repo (`python _main/_make-gitattributes.py --write`; `--verify` rc=0), com as duas linhas
+gerador do repo (`python _main/_make-gitattributes.py --write`; `--verify` DELEGA hoje no portão real
+`_main/_gitattributes-verify.py`, porque na data deste fecho ele era inerte: media nada e devolvia
+rc=0 -- ver AGENTS.md §O EOL DO REPO), com as duas linhas
 novas a prendê-los a `text eol=crlf`.
 
 ```
