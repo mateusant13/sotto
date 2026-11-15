@@ -1039,6 +1039,388 @@ def _window_key(video, start, seconds):
     return cache_key("window", video, "%.3f" % start, "%.3f" % seconds)
 
 
+# ── S2: the caption arm ─────────────────────────────────────────────────────
+# WHY THIS DRIVES A FIXTURE AND NOT YOUTUBE (measured 2026-11-15, five arms):
+#
+# Real headless YouTube REFUSES to serve captions to this lab. Measured on
+# `rS4VMlwf2qM`: `ytInitialPlayerResponse.captions` lists 124 tracks and
+# `#movie_player.getOption('captions','track')` returns `languageCode='en'`
+# with **`is_servable: false`**; `loadModule('captions')`, `setOption(...)` and
+# `setOption('captions','reload',true)` all return success and the container
+# stays empty for 16 s of playback; the CC button reports `aria-pressed=true`
+# while `.ytp-caption-window-container` holds **0** `.caption-visual-line`;
+# and fetching the track's own `baseUrl + '&fmt=json3'` from inside the page
+# returns `status=200` with a **0-byte** body. A desktop UA string changed
+# nothing (`why=no-window` throughout). This is a platform fact about the
+# headless player, not a lab defect.
+#
+# What the lab CAN prove, and what actually matters for Sotto, is the part that
+# is ours: the extractor JS, `parse_snapshot`, `pick_target`, the pause/clock
+# rules and the "subtitles off is not no-captions" distinction. Those run
+# against a player DOM the lab controls, in a real Chrome, with the REAL code
+# from `app/webview/youtube_cdp_source.py` -- no reimplementation, so the arm
+# cannot pass while the shipped extractor rots.
+CAPTION_FIXTURE = r"""<!doctype html><html><head><meta charset="utf-8"><style>
+  body { margin:0; background:#000; font:18px sans-serif; }
+  .caption-window { position:absolute; left:40px; top:120px; width:240px; }
+  .caption-visual-line { display:block; height:26px; color:#fff; }
+  .ytp-caption-segment { display:inline-block; height:20px; }
+  .ytp-chrome-bottom { position:absolute; left:0; top:300px; }
+  button.cc { width:60px; height:30px; }
+</style></head><body>
+<video id="v" width="320" height="180"></video>
+<div class="ytp-caption-window-container">
+  <div class="caption-window"></div>
+</div>
+<div class="ytp-chrome-bottom"><button class="cc">CC</button></div>
+<script>
+// A PLAYER, NOT A PICTURE (2026-11-15). The first version of this fixture let
+// the lab push lines by hand, which measured the extractor against a script
+// nobody ships. Here the cues are the page's own data, the clock decides which
+// one is on screen, and captions are toggled by the SAME two doors a person
+// uses: the `c` key on the page and the CC button's own handler. The lab only
+// turns the clock -- it never writes a caption line.
+window.__cues = [
+  {s: 0.0, e: 5.0, lines: ['the opening line']},
+  {s: 5.0, e: 11.0, lines: ['the second sentence']},
+  {s: 11.0, e: 18.0, lines: ['first of two', '>> second with marker']},
+  {s: 18.0, e: 30.0, lines: ['the closing line']}
+];
+window.__t = 0.0;
+window.__paused = false;
+window.__rate = 1.0;
+window.__ended = false;
+window.__cc = false;
+var v = document.getElementById('v');
+Object.defineProperty(v, 'currentTime', {get: function () { return window.__t; },
+                                         set: function (x) { window.__t = x; render(); }});
+Object.defineProperty(v, 'readyState', {get: function () { return 4; }});
+Object.defineProperty(v, 'paused', {get: function () { return window.__paused; }});
+Object.defineProperty(v, 'ended', {get: function () { return window.__ended; }});
+Object.defineProperty(v, 'duration', {get: function () { return 3380.0; }});
+Object.defineProperty(v, 'playbackRate', {get: function () { return window.__rate; }});
+
+function win() { return document.querySelector('.caption-window'); }
+function paint(lines) {
+  var w = win();
+  w.innerHTML = '';
+  for (const text of lines || []) {
+    var line = document.createElement('div');
+    line.className = 'caption-visual-line';
+    var seg = document.createElement('span');
+    seg.className = 'ytp-caption-segment';
+    seg.textContent = text;
+    line.appendChild(seg);
+    w.appendChild(line);
+  }
+  return w.children.length;
+}
+// WHICH CUE IS ON SCREEN IS A FUNCTION OF THE CLOCK -- the same rule the real
+// player follows, so a seek changes the caption without any lab help.
+function render() {
+  if (!window.__cc) return paint([]);
+  var t = window.__t;
+  for (const c of window.__cues) {
+    if (t >= c.s && t < c.e) return paint(c.lines);
+  }
+  return paint([]);
+}
+window.__toggleCC = function () { window.__cc = !window.__cc; render(); return window.__cc; };
+window.__seek = function (t) { window.__t = t; render(); return window.__t; };
+window.__setLines = function (arr) { window.__cc = false; return paint(arr); };
+
+// DOOR 1: the `c` key. The page listens; a synthetically dispatched key event
+// from CDP is what reaches this handler, and it reaches it only if the handler
+// is wired -- which is the thing being measured.
+window.addEventListener('keydown', function (ev) {
+  if (ev.key === 'c' || ev.key === 'C') { ev.preventDefault(); window.__toggleCC(); }
+});
+// DOOR 2: the button's own click handler.
+document.querySelector('button.cc').addEventListener('click', function () {
+  window.__toggleCC();
+});
+</script></body></html>
+"""
+
+
+#: The keys are the states the arm walks, not a syntax to remember.
+S2_STEPS = ("paint", "advance", "pause", "off", "segments", "chrome-window")
+
+
+def caption_fixture_page(video):
+    """Serve the fixture at a `/watch?v=<id>` URL on loopback.
+
+    `list_targets` filters tabs on `_WATCH` ('/watch') -- the shipped rule, and
+    the one that decides which tabs Sotto may read. A fixture on `about:blank`
+    or a `data:` URL would be invisible to the REAL target picker, so the arm
+    would exercise a decision the app never takes. A loopback server costs one
+    thread and makes the picker see exactly what it sees on YouTube.
+    """
+    import http.server
+    import threading
+
+    body = CAPTION_FIXTURE.replace("PLACEHOLDER", "the opening line").encode("utf-8")
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):                                    # noqa: N802
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_a):                          # silence
+            return
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, name="lab-fixture", daemon=True).start()
+    return srv, "http://127.0.0.1:%d/watch?v=%s" % (srv.server_address[1], video)
+
+
+#: THE MUTANTS THE NEGATIVE ARM PLANTS, each aimed at the check that must catch
+#: it. A control that only proves "the arm runs" is a control that cannot fail;
+#: every edit here is applied to a COPY of the shipped module, and the arm has
+#: to go RED on exactly the check named beside it -- measured, not asserted.
+CAPTION_MUTANTS = (
+    # (label, needle, replacement, the check it must break)
+    ("chrome-window filter removed",
+     'if line.get("chrome"):\n            continue',
+     'if False:\n            continue',
+     "chrome-window: control window dropped from rows"),
+    ("speaker marker no longer stripped",
+     'text = strip_speaker_markers(line.get("text"))',
+     'text = (line.get("text") or "")',
+     "seek: speaker marker >> stripped"),
+    ("empty box still called painted",
+     'if why == "painted" and not rows:',
+     'if False:',
+     "chrome-window: an empty box is not called painted"),
+)
+
+
+def mutant_source(path, needle, replacement):
+    """The shipped module with ONE edit, or None when the needle is absent.
+
+    `None` is not a pass: a mutant whose anchor disappeared proves nothing, and
+    the arm says so instead of reporting a control it never planted.
+    """
+    with open(path, encoding="utf-8") as fh:
+        src = fh.read()
+    if needle not in src:
+        return None
+    return src.replace(needle, replacement, 1)
+
+
+def run_captions(video, port, steps=S2_STEPS, source=None):
+    """S2 -- exercise the REAL extractor + parser over a controlled player.
+
+    `source` overrides the module path so the negative arm can drive a MUTATED
+    copy through the same checks; the shipped path is the default.
+    """
+    import importlib.util
+    path = source or os.path.join(ROOT, "app", "webview", "youtube_cdp_source.py")
+    spec = importlib.util.spec_from_file_location("ycs", path)
+    ycs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ycs)
+
+    exe = next((b for b in BROWSERS if os.path.exists(b)), None)
+    if not exe:
+        raise SystemExit("no browser")
+    srv, watch_url = caption_fixture_page(video)
+    prof = tempfile.mkdtemp(prefix="sottocap-", dir=tempfile.gettempdir())
+    fg0 = foreground()
+    checks = []
+
+    def check(name, ok, detail=""):
+        checks.append((name, bool(ok), detail))
+        print("  %-40s %s %s" % (name, "PASS" if ok else "FAIL", detail))
+
+    proc = subprocess.Popen([exe, "--remote-debugging-port=%d" % port,
+                             "--headless=new", "--disable-gpu", "--mute-audio",
+                             "--no-first-run", "--no-default-browser-check",
+                             "--user-data-dir=" + prof, watch_url])
+    try:
+        w, send, ev = cdp_connect(port)
+        send("Page.enable")
+        send("Runtime.enable")
+        time.sleep(0.6)
+
+        def snap():
+            return ycs.parse_snapshot(ev(ycs.EXTRACT_JS))
+
+        def press_c():
+            """The `c` key, through the input pipeline, not through a property."""
+            for kind in ("keyDown", "keyUp"):
+                send("Input.dispatchKeyEvent", {"type": kind, "key": "c", "code": "KeyC",
+                                                "windowsVirtualKeyCode": 67, "text": "c"})
+            time.sleep(0.05)
+
+        def click_cc():
+            """The CC button's own handler, through a real mouse event."""
+            box = ev("""(function(){var b=document.querySelector('button.cc').getBoundingClientRect();
+                          return {x: b.left + b.width/2, y: b.top + b.height/2};})()""")
+            for kind in ("mousePressed", "mouseReleased"):
+                send("Input.dispatchMouseEvent", {"type": kind, "x": box["x"], "y": box["y"],
+                                                  "button": "left", "clickCount": 1})
+            time.sleep(0.05)
+
+        # ── never-on: subtitles that were never enabled must not invent text ─
+        s0 = snap()
+        check("never-on: zero rows before anyone enables subtitles",
+              s0 and s0["rows"] == [], "rows=%r" % (s0 and s0["rows"],))
+        check("never-on: why is no-painted-caption", s0 and s0["why"] == "no-painted-caption",
+              s0 and s0["why"])
+
+        # ── door 1: the `c` key ────────────────────────────────────────────
+        press_c()
+        s = snap()
+        check("key c: the page's cc toggles and a line appears",
+              s and s["rows"] == ["the opening line"], "rows=%r why=%r" % (s and s["rows"], s and s["why"]))
+        check("paint: segments carry geometry",
+              s and s["items"] and s["items"][0]["right"] > s["items"][0]["left"],
+              "items=%d" % len(s["items"] if s else ()))
+        check("paint: why says painted", s and s["why"] == "painted", s and s["why"])
+
+        # ── seek: the caption is a function of the player's clock ──────────
+        ev("window.__seek(6.0)")
+        s1 = snap()
+        check("seek: the new cue replaces the old one",
+              s1 and s1["rows"] == ["the second sentence"], "rows=%r" % (s1 and s1["rows"],))
+        check("seek: t carries the new position", s1 and abs((s1["t"] or 0) - 6.0) < 1e-6,
+              "t=%r" % (s1 and s1["t"]))
+        ev("window.__seek(12.0)")
+        s2 = snap()
+        check("seek: two lines kept", s2 and len(s2["rows"]) == 2, "rows=%r" % (s2 and s2["rows"],))
+        check("seek: speaker marker >> stripped",
+              s2 and all(">>" not in r for r in s2["rows"]), "rows=%r" % (s2 and s2["rows"],))
+
+        # ── off: the S2 LAW -- off is not a stale line, and not "no window" ─
+        press_c()
+        s3 = snap()
+        check("key c again: rows cleared", s3 and s3["rows"] == [], "rows=%r" % (s3 and s3["rows"],))
+        check("off: why is no-painted-caption, not painted",
+              s3 and s3["why"] == "no-painted-caption", s3 and s3["why"])
+        check("off: segs empty too", s3 and s3["segs"] == [], "segs=%d" % len(s3["segs"] if s3 else ()))
+        ev("window.__seek(20.0)")
+        s3b = snap()
+        check("off: seeking with subtitles off brings back no line",
+              s3b and s3b["rows"] == [], "rows=%r" % (s3b and s3b["rows"],))
+
+        # ── door 2: the CC button ──────────────────────────────────────────
+        click_cc()
+        s4 = snap()
+        check("button cc: the button's own handler turns subtitles back on",
+              s4 and s4["rows"] == ["the closing line"], "rows=%r" % (s4 and s4["rows"],))
+
+        # ── pause: the flag is the player's, and None is never a pause ─────
+        ev("window.__paused = true")
+        sp = snap()
+        check("pause: paused flag surfaces", sp and sp["paused"] is True, "paused=%r" % (sp and sp["paused"]))
+        check("pause: player_stopped agrees", ycs.player_stopped(sp) is True)
+        ev("window.__paused = false")
+        check("pause: cleared flag is not a pause", ycs.player_stopped(snap()) is False)
+
+        # ── chrome-window: the player's own notice is not speech ───────────
+        ev("""(function(){
+          var win=document.querySelector('.caption-window');
+          win.innerHTML='';
+          var line=document.createElement('div');
+          line.className='caption-visual-line';
+          var seg=document.createElement('span');
+          seg.className='ytp-caption-segment';
+          seg.textContent='English';
+          line.appendChild(seg);
+          var btn=document.createElement('button');   // the player's control
+          line.appendChild(btn);
+          win.appendChild(line);
+          return 1;})()""")
+        s5 = snap()
+        check("chrome-window: control window dropped from rows", s5 and s5["rows"] == [],
+              "rows=%r why=%r" % (s5 and s5["rows"], s5 and s5["why"]))
+        check("chrome-window: an empty box is not called painted",
+              s5 and s5["why"] == "no-painted-caption",
+              "why=%r rows=%r" % (s5 and s5["why"], s5 and s5["rows"]))
+
+        # ── the REAL target picker accepts the fixture tab ─────────────────
+        tabs, others = ycs.list_targets(port, timeout=3.0)
+        check("targets: the shipped picker sees the tab", len(tabs) >= 1,
+              "watch_tabs=%d others=%d" % (len(tabs), others))
+        pick, why = ycs.pick_target(tabs, video, "")
+        check("targets: pick_target names it", pick is not None, "why=%s" % why)
+
+        # ── the silence/focus guard: a headless run never takes the desktop
+        fg1 = foreground()
+        check("focus unchanged", fg0["hwnd"] == fg1["hwnd"],
+              "before=%d after=%d" % (fg0["hwnd"], fg1["hwnd"]))
+        w.close()
+    finally:
+        try:
+            proc.terminate()
+            proc.wait(timeout=10)
+        except Exception:
+            pass
+        shutil.rmtree(prof, ignore_errors=True)
+        try:
+            srv.shutdown()
+            srv.server_close()
+        except Exception:
+            pass
+
+    ok = all(c[1] for c in checks)
+    print("S2 CAPTIONS: %s (%d/%d)" % ("PASS" if ok else "FAIL",
+                                       sum(1 for c in checks if c[1]), len(checks)))
+    return ok, checks
+
+
+def cmd_captions(a):
+    """S2 -- the caption arm, one command."""
+    ok, _checks = run_captions(a.video, a.port)
+    return 0 if ok else 1
+
+
+def cmd_captions_neg(a):
+    """The control: a mutated extractor must turn the NAMED check red.
+
+    An arm whose mutants all pass is an arm that cannot fail, so each mutant is
+    paired with the one check it has to break. A mutant whose anchor vanished is
+    reported `ANCHOR-GONE`, never counted as caught -- a control that was never
+    planted proves nothing.
+    """
+    shipped = os.path.join(ROOT, "app", "webview", "youtube_cdp_source.py")
+    caught = 0
+    total = 0
+    for label, needle, replacement, check_name in CAPTION_MUTANTS:
+        total += 1
+        mutated = mutant_source(shipped, needle, replacement)
+        if mutated is None:
+            print("  %-34s ANCHOR-GONE -- the mutant was never planted" % label)
+            continue
+        # Beside the shipped module: `_load_sibling` resolves siblings BY
+        # DIRECTORY, so a copy in the temp root imports a `youtube_window`
+        # that is not there and the arm dies before it measures anything.
+        tmp = os.path.join(os.path.dirname(shipped), "_ycs_mutant_%d.py" % (total,))
+        with open(tmp, "w", encoding="utf-8", newline="") as fh:
+            fh.write(mutated)
+        try:
+            ok, checks = run_captions(a.video, a.port + total, source=tmp)
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        row = next((c for c in checks if c[0] == check_name), None)
+        if row is None:
+            print("  %-34s CHECK-MISSING %r" % (label, check_name))
+        elif row[1] is False:
+            caught += 1
+            print("  %-34s CAUGHT by %r" % (label, check_name))
+        else:
+            print("  %-34s NOT-CAUGHT -- %r still passed" % (label, check_name))
+    print("S2 NEG-ARM: %s -- %d/%d mutants caught"
+          % ("PASS" if caught == total else "FAIL", caught, total))
+    return 1 if caught == total else 0
+
+
 def cmd_window(a):
     """Cut (or hit) a cached 16 kHz WAV window from the video's audio track."""
     src, sm = source_file(a.video)
@@ -1119,6 +1501,19 @@ def _cli():
     st.add_argument("--video", required=True)
     st.add_argument("--window", default="60:20", type=float, nargs=2)
     st.set_defaults(fn=cmd_strips)
+
+    c = sub.add_parser("captions",
+                       help="S2: drive the REAL extractor over a controlled player")
+    c.add_argument("--video", default="rS4VMlwf2qM",
+                   help="the id the fixture tab declares (pick_target needs one)")
+    c.add_argument("--port", type=int, default=9450)
+    c.set_defaults(fn=cmd_captions)
+
+    cn = sub.add_parser("captions-neg",
+                        help="S2 control: each mutant must break its named check")
+    cn.add_argument("--video", default="rS4VMlwf2qM")
+    cn.add_argument("--port", type=int, default=9460)
+    cn.set_defaults(fn=cmd_captions_neg)
 
     sub.add_parser("status", help="what is cached").set_defaults(fn=cmd_status)
     sub.add_parser("selftest", help="judge the audibility gate").set_defaults(fn=cmd_selftest)

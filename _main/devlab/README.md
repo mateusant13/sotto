@@ -58,11 +58,13 @@ Sotto.cmd dev --video <id> ...      # another video
 Sotto.cmd dev --strips              # ablate the pipeline on the same audio
 Sotto.cmd dev --selftest            # judge the audibility gate itself
 Sotto.cmd dev --status              # what is cached
+python _main/devlab/lab.py captions        # S2: the real extractor over a fixture player
+python _main/devlab/lab.py captions-neg    # S2 control: every mutant must break its named check
 ```
 
 Under it: `_main/devlab/lab.py`, whose whole command set is `harvest`, `window`, `feed`, `score`,
-`strips`, `status`, `selftest`. Nothing is advertised here that the file does not implement --
-`python _main/devlab/lab.py <cmd> --help` is the authority.
+`strips`, `captions`, `captions-neg`, `status`, `selftest`. Nothing is advertised here that the file
+does not implement -- `python _main/devlab/lab.py <cmd> --help` is the authority.
 
 ## 4. The scoring contract
 
@@ -88,9 +90,36 @@ audio. Fails as: coverage < 0.9 with the budget derived (the window was truncate
 an unchanged input (non-determinism).
 
 ### S2 -- seek, subtitles on and off
-Browser arm, captions toggled on the page (the `c` key and the button are different code paths).
-**Proves**: the YouTube-caption source follows the page's track, and turning subtitles off is not
-mistaken for "no captions exist". Fails as: Sotto shows the previous line after the track is off.
+`lab.py captions`. **Why this is not the live YouTube page** (measured 2026-11-15, five arms):
+real headless YouTube refuses to serve captions -- `is_servable: false` on every track, an empty
+`.ytp-caption-window-container` through 16 s of playback, and the track's own `baseUrl&fmt=json3`
+returning a **0-byte** body from inside the page. So the browser arm cannot be a YouTube arm, and a
+green there would prove nothing. What is proven instead is the part that is ours: a headless Chrome
+is served a loopback page at a real `/watch?v=<id>` URL, so the **shipped** target picker
+(`list_targets`/`pick_target`) sees it exactly as it sees a YouTube tab, and the **shipped** extractor
+(`EXTRACT_JS`) plus `parse_snapshot` read its DOM.
+
+The player is cue-driven: which caption is on screen is a function of the page's clock, so a seek
+changes the line without the lab touching a caption element. Captions are toggled through the SAME
+two doors a person uses -- the `c` key (`Input.dispatchKeyEvent` into the page's own handler) and the
+CC button's own click handler (`Input.dispatchMouseEvent`) -- and the lab never writes a caption line.
+
+22 checks: before anyone enables subtitles there are zero rows and `why` is `no-painted-caption`;
+after the `c` key the player's line appears, segments carry geometry and `why` says `painted`; a seek
+replaces the old cue with the new one and carries the new `t`; a two-line cue keeps both and the
+`>>` speaker marker is stripped; pressing `c` again clears the rows and names the state
+`no-painted-caption` (not `painted`, not `no-window`); seeking with subtitles off brings back no
+line; the CC button's handler turns them back on; the `paused` flag surfaces and `player_stopped`
+agrees, and a cleared flag is not a pause; a box holding only the player's own notice (an
+`svg`/`button` in the line) is dropped **and** named `no-painted-caption`, because `painted` beside
+zero lines is the log line that sends the next measurement looking at the wrong thing; the shipped
+picker sees and names the tab; and the foreground window is unchanged before and after.
+
+`captions-neg` is the control: three mutants of the shipped module, each paired with the one check it
+must break (chrome filter removed, marker not stripped, empty box still called painted). Measured
+`S2 NEG-ARM: PASS -- 3/3 mutants caught`, each by its named check. A mutant whose anchor vanished
+reports `ANCHOR-GONE` rather than counting as caught -- a control that was never planted proves
+nothing.
 
 ### S3 -- pipeline strips (ablation)
 `--strips` runs the same audio with one stage removed at a time. **Proves**: which stage actually
