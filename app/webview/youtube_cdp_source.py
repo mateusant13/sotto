@@ -171,7 +171,34 @@ EXTRACT_JS = r"""
       box.querySelectorAll('.caption-visual-line'));
   const segs = Array.prototype.slice.call(
       box.querySelectorAll('.ytp-caption-segment'));
-  out.segs = segs.map(function (s) { return (s.textContent || '').trim(); })
+  // A JANELA DE AVISO NAO E' LEGENDA (MEDIDO 2026-11-14, log do dono): com a
+  // faixa a ser servida o proprio YouTube abre uma janela DENTRO do mesmo
+  // container dizendo `Ingl\u00eas` / `Clique em para configura\u00e7\u00f5es`,
+  // e o extrator a lia como linha da fala -- ela FOI AO ECRA como legenda nossa
+  // (`CAPTION_PAINT_SURFACE src=player rows=4 text="Ingl\u00eas\n...`,
+  // :272633 do `_main/webview-run.log`). O que distingue a janela de controlete
+  // nao e' o texto nem a classe da linha: e' ela carregar `svg`/`button` do
+  // proprio YouTube, coisa que nenhuma linha de fala tem. Marca-se AQUI e o
+  // parser puro (`parse_snapshot`) descarta -- duas medidas, e a segunda roda
+  // sem Chrome.
+  const isChrome = function (line) {
+    let el = line.closest ? line.closest('.caption-window') : null;
+    if (!el) {
+      // Sem `.caption-window` no caminho (o YouTube muda nomes), a janela e' o
+      // primeiro ancestral que ja' carrega controlete do proprio player. Tres
+      // niveis bastam: a linha -> a caixa de fala -> a janela.
+      el = line;
+      for (let i = 0; i < 3 && el && el !== box; i++) el = el.parentElement;
+    }
+    if (!el) return false;
+    return !!(el.querySelector('svg') || el.querySelector('button'));
+  };
+  const isChromeSeg = function (seg) {
+    const l = seg.closest ? seg.closest('.caption-visual-line') : null;
+    return !!(l && isChrome(l));
+  };
+  out.segs = segs.filter(function (s) { return !isChromeSeg(s); })
+                 .map(function (s) { return (s.textContent || '').trim(); })
                  .filter(function (t) { return t.length > 0; });
   if (!all.length) { out.why = 'no-painted-caption'; return JSON.stringify(out); }
   // O CLIP E' DO `.caption-window` (MEDIDO 2026-11-03): `overflow: hidden`, e
@@ -195,6 +222,15 @@ EXTRACT_JS = r"""
     return ov >= 0.5 * h;          // meia linha dentro = linha mostrada
   });
   out.why = visible.length ? 'painted' : 'no-painted-caption';
+  // A JANELA DE AVISO NAO E' LEGENDA (MEDIDO 2026-11-14, log do dono): com a
+  // faixa a ser servida o YouTube abre uma janela DENTRO do mesmo container
+  // que diz `Ingl\u00eas` / `Clique em para configura\u00e7\u00f5es`, e o
+  // extrator a lia como duas linhas da fala -- ela foi AO ECRA como legenda
+  // nossa (`CAPTION_PAINT_SURFACE src=player rows=4 text="Ingl\u00eas\n...`).
+  // O que a distingue nao e' texto nem classe de linha: e' o DESENHO da
+  // janela, que carrega `svg`/`button` do controlete e nunca aparece numa
+  // linha de fala. Marca-se a linha aqui e o parser puro descarta -- duas
+  // medidas, e a segunda testavel sem Chrome.
   out.rows = visible.map(function (line) {
     const items = Array.prototype.slice.call(
         line.querySelectorAll('.ytp-caption-segment')).map(function (seg) {
@@ -203,7 +239,8 @@ EXTRACT_JS = r"""
               right: b.right, bottom: b.bottom};
     }).filter(function (it) { return it.text.trim().length > 0; });
     return {text: (items.map(function (i) { return i.text; }).join(' ')
-                    .replace(/\s+/g, ' ').trim()), items: items};
+                    .replace(/\s+/g, ' ').trim()), items: items,
+            chrome: isChrome(line)};
   }).filter(function (r) { return r.text.length > 0; });
   return JSON.stringify(out);
 })()
@@ -812,6 +849,13 @@ def parse_snapshot(payload, now=None):
     for line in data.get("rows") or ():
         if not isinstance(line, dict):
             continue
+        # A JANELA DE AVISO NAO E' FALA (2026-11-14). O extrator marca a linha
+        # que vive numa janela com controlete (`svg`/`button`); `Ingl\u00eas` /
+        # `Clique em para configura\u00e7\u00f5es` sao o TEXTO DE ESTADO do
+        # player, nao a legenda. MEDIDO no log do dono: esses dois iam pintados
+        # como linhas nossas.
+        if line.get("chrome"):
+            continue
         text = strip_speaker_markers(line.get("text"))
         if not text:
             continue
@@ -837,6 +881,14 @@ def parse_snapshot(payload, now=None):
         items.extend(kids)
     segs = [m for m in (strip_speaker_markers(x) for x in (data.get("segs") or ()))
             if m]
+    # `why` NAO PODE DIZER `painted` COM ZERO LINHAS (2026-11-14). Quando o
+    # unico conteudo da caixa e' a janela de aviso do player, o extrator responde
+    # `painted` e o parser descarta tudo -- e o log passava a afirmar uma pintura
+    # que nao existe, que e' o tipo de linha que faz a proxima medicao olhar para
+    # o lado errado. O nome honesto do estado e' o mesmo de uma caixa vazia.
+    why = str(data.get("why") or ("painted" if rows else "no-painted-caption"))
+    if why == "painted" and not rows:
+        why = "no-painted-caption"
     return {"stamp": float(now if now is not None else time.monotonic()),
             "segs": segs,
             "videoId": str(data.get("videoId") or ""),
@@ -851,7 +903,7 @@ def parse_snapshot(payload, now=None):
             "rs": data.get("rs"),
             "title": str(data.get("title") or ""),
             "rows": rows, "items": items,
-            "why": str(data.get("why") or ("painted" if rows else "no-painted-caption"))}
+            "why": why}
 
 
 def _float(value):

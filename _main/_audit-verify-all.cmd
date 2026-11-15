@@ -2061,7 +2061,7 @@ REM `Emulation.setFocusEmulationEnabled` -- medido lado a lado, ele leva a
 REM leitura de 2-5 ms para 108 ms de mediana e 5 s de p90, o que e' o instrumento
 REM a criar a lentidao que depois mede. Custo: texto, sem rede e sem janela.
 if exist _main\youtube-cdp-source-oracle.py (
-call :step always youtube-cdp-source 0 "_main\youtube-cdp-source-oracle.py;_main\_astcache.py;app\webview\youtube_cdp_source.py;app\webview\youtube_window.py;app\webview\sotto_webview.py;_main\_yt-live-latency.py" "%OUT%\youtube-cdp-source.log" python _main\youtube-cdp-source-oracle.py
+call :step always youtube-cdp-source 0 "_main\youtube-cdp-source-oracle.py;_main\_astcache.py;app\webview\youtube_cdp_source.py;app\webview\youtube_window.py;app\webview\sotto_webview.py;_main\_yt-live-latency.py;_main\hidden-launch.py;_main\_audit-verify-all.cmd" "%OUT%\youtube-cdp-source.log" python _main\youtube-cdp-source-oracle.py
 call :record youtube-cdp-source !STEP_RC!
 ) else ( call :record youtube-cdp-source MISSING )
 if exist _main\youtube-cdp-source-oracle.py (

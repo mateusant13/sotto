@@ -5215,12 +5215,26 @@ class ExternalCaptionWatcher(threading.Thread):
             return False, 0.0
         return rate >= float(self.CLOCK_MOVING_MIN_RATE), rate
 
-    def _yt_pause_edge(self, now_paused):
+    #: QUANTO UMA PAUSA TEM DE DURAR PARA APAGAR O ECRA (2026-11-15).
+    #: MEDIDO no log do dono: das 59 pausas que apagaram a legenda, 27 voltaram
+    #: em <=10 s (14 em <=1 s), e **15 de 40** pressoes de LIGAR tiveram o ecra
+    #: apagado nos 15 s seguintes -- o dono liga a legenda, ela pinta, e uma
+    #: unica amostra `paused=True` do CDP (`YOUTUBE_CDP_PACED paused=True` com o
+    #: `YT_FRAME` a revelar palavra a palavra no MESMO segundo: 22:18:24-26 vs o
+    #: blank as 22:18:29) apagava tudo outra vez. Isso e' a queixa dele, verbatim:
+    #: *"a porra do ctrl space parece que nao da hide na legenda ou show
+    #: DIREITO"*. Uma pausa que a bandeira sozinha afirma nao e' medida: o ecra
+    #: so' sai quando ela se mantem por este tempo. A VOLTA continua instantanea.
+    PAUSE_BLANK_DWELL_S = 1.5
+
+    def _yt_pause_edge(self, now_paused, now=None):
         """A BORDA DE PAUSA/FIM: apaga os pixels; a de VOLTA repinta a linha.
 
         Chamado a cada snapshot, com o estado publicado. E' um metodo, e nao
         codigo inline, para o oraculo poder conduzir a borda com uma shell falsa
-        (`_main/caption-kept-on-hide-oracle.py`).
+        (`_main/caption-kept-on-hide-oracle.py`); o `now` e' injectavel pela
+        mesma razao -- o dwell mede-se com um relogio que o braco controla, nao
+        com um `sleep`.
 
         A PAUSA/ O FIM TIRA OS PIXELS NA BORDA, nao seis segundos depois. O
         dono, 2026-11-08: a legenda ficava "viva" num video parado e continuava
@@ -5228,6 +5242,10 @@ class ExternalCaptionWatcher(threading.Thread):
         o historico NAO sao tocados: `_blank_caption_window` so' apaga o ecra e
         incrementa a epoch da fonte (o interruptor `_caption_wanted` fica como
         ele o deixou).
+
+        A PAUSA TEM DE DURAR (2026-11-15, ver `PAUSE_BLANK_DWELL_S`): o apagar
+        e' adiado pelo dwell, e uma pausa que acaba dentro dele nao apaga nada --
+        o flap do CDP deixa de custar a legenda que o dono acabou de ligar.
 
         A VOLTA (2026-11-09, revisao D3): o blank limpa `ov.text`/`previous`, e
         uma linha que ja' tinha sido FECHADA (`finalized`) nao volta a ser
@@ -5237,6 +5255,32 @@ class ExternalCaptionWatcher(threading.Thread):
         now_paused = bool(now_paused)
         was = bool(getattr(self, '_yt_was_paused', False))
         shell = getattr(self, 'shell', None)
+        now = time.monotonic() if now is None else float(now)
+        if not now_paused:
+            self._yt_pause_since = None
+        elif getattr(self, '_yt_pause_since', None) is None:
+            # A ENTRADA na pausa carimba UMA vez; as amostras seguintes do mesmo
+            # episodio nao reiniciam o dwell (senao ele nunca vencia).
+            self._yt_pause_since = now
+        # A PAUSA AINDA NAO PROVOU QUE DURA: nao apaga, e a borda nao aconteceu.
+        # DUAS MEDIDAS, nao uma: o tempo da pausa E o silencio do desenho. MEDIDO
+        # no log do dono (2026-11-15): das 16 pressoes de LIGAR que foram apagadas
+        # por `youtube-paused`, **11** tinham `YT_FRAME` a revelar palavra a
+        # palavra nos 3 s anteriores -- o video estava a andar e a bandeira
+        # mentiu. Uma pausa que desenha texto novo nao e' pausa.
+        if now_paused and not was:
+            held = now - float(self._yt_pause_since)
+            quiet = now - float(getattr(self, '_yt_frame_at', 0.0) or 0.0)
+            if (held < float(self.PAUSE_BLANK_DWELL_S)
+                    or quiet < float(self.PAUSE_BLANK_DWELL_S)):
+                if not getattr(self, '_yt_pause_defer_logged', False):
+                    self._yt_pause_defer_logged = True
+                    log('YOUTUBE_PAUSE_BLANK_DEFERRED held_s=%.2f '
+                        'quiet_s=%.2f dwell_s=%.2f vid=%s'
+                        % (held, quiet, float(self.PAUSE_BLANK_DWELL_S),
+                           str(getattr(self, 'yt_video_id', '') or '')))
+                return
+        self._yt_pause_defer_logged = False
         if now_paused and not was:
             self._yt_pause_epoch = int(getattr(self, '_yt_pause_epoch', 0) or 0) + 1
             if (shell is not None
@@ -5943,6 +5987,10 @@ class ExternalCaptionWatcher(threading.Thread):
         self.yt_cdp_clock = None
         self._yt_guess_s = 0.0
         self._yt_was_paused = False
+        # O CARIMBO DO DWELL SAI COM ELE (2026-11-15): um video novo nao herda
+        # meia pausa do anterior -- herdada, a primeira amostra `paused=True`
+        # deste video ja' vinha com o dwell vencido e apagava de imediato.
+        self._yt_pause_since = None
         # A LEITURA ANTERIOR DO RELOGIO, PARA A MEDIDA DE MOVIMENTO (2026-11-12).
         # `(t, monotonic)` ou None. Ver `_yt_clock_moving`: um video novo zera-a,
         # senao o salto entre dois videos lia-se como "a andar a 40x".
@@ -6900,6 +6948,11 @@ class ExternalCaptionWatcher(threading.Thread):
             _key = '\u2028'.join(_rows_now)
             if _key != getattr(self, "yt_frame_key", None):
                 self.yt_frame_key = _key
+                # O INSTANTE DA ULTIMA LINHA NOVA (2026-11-15). Uma pausa de
+                # verdade nao desenha texto novo; um flap de bandeira desenha.
+                # E' esta a medida que desmente `paused=True` quando o `t` da
+                # foto nao permite a comparacao do `_yt_clock_moving`.
+                self._yt_frame_at = time.monotonic()
                 log('YT_FRAME src=%s rows=%d lines=%r'
                     % (source, len(_rows_now), _rows_now))
             line = lines[-1] if lines else ''
@@ -6987,6 +7040,21 @@ class ExternalCaptionWatcher(threading.Thread):
             self.finalized = False
         self.shell.external_captions_active = False
         self.shell.external_captions_available = False
+        # A LINHA DO PLAYER NAO SOBREVIVE AO PLAYER (2026-11-15). MEDIDO no dono:
+        # `EXTERNAL_CAPTIONS_RELEASED reason=no-caption` as 20:10:02.796 e o
+        # primeiro texto do ASR so' as 20:10:13.226 -- **10,4 s** com a ultima
+        # linha do player no ecra depois de a fonte morrer. A `_release` limpava
+        # `last_line`/`last_rows`, mas os PIXELS ficam no overlay: o ecra
+        # continuava a afirmar uma fala de um player que ja' nao a serve. O
+        # `_blank_caption_window` e' a funcao certa (apaga o pixel, NAO toca no
+        # interruptor do dono) e a chamada vive DENTRO da transicao, por isso a
+        # guarda de episodio acima impede a cadencia.
+        _blank = getattr(self.shell, '_blank_caption_window', None)
+        if callable(_blank) and (had_line or was_owner):
+            try:
+                _blank('external-released')
+            except Exception as exc:      # noqa: BLE001
+                log(f'EXTERNAL_CAPTIONS_BLANK_FAILED error={exc!r}')
         # A TRANSICAO E' DITA SEMPRE (2026-11-11). A linha
         # `EXTERNAL_CAPTIONS_RELEASED` acima vive DENTRO de `if self.last_line:`,
         # por isso uma queda com a linha ja' gasta devolvia o ecra ao ASR sem
@@ -8171,6 +8239,19 @@ class LiveHotkeyThread(threading.Thread):
         self.swallowing = False
 
     # -- a decisao, com uma leitura de modo que nunca derruba o pump --------
+    def foreground_note(self) -> str:
+        """O nome do primeiro plano para o log, ou `?` quando nao se sabe.
+
+        Diagnostico, nunca decisao: a decisao ja' foi tomada por `gaming_fn`, e
+        uma falha a ler o nome nao pode derrubar o pump nem mudar o plano.
+        """
+        try:
+            det = getattr(self.gaming_fn, '__self__', None)
+            reader = getattr(det, 'foreground_name', None)
+            return str(reader() or "?") if reader else "?"
+        except Exception:  # noqa: BLE001 -- log e' diagnostico, nao regra
+            return "?"
+
     def _gaming_now(self) -> bool:
         if self.gaming_fn is None:
             return True  # sem detector: a tecla pertence a quem esta' em foco
@@ -8279,8 +8360,13 @@ class LiveHotkeyThread(threading.Thread):
         if self.mode != getattr(self, '_published_mode', None):
             self._published_mode = self.mode
             self.mode_changes += 1
+            # A LINHA NOMEIA O PRIMEIRO PLANO (2026-11-14). Sem ele, um
+            # `plan=give-back` e' indistinguivel de uma tecla morta: foi assim
+            # que 78 minutos de `deadlock.exe` RESIDENTE (sem foco) se leram
+            # como "o ctrl space nao faz nada" sem uma unica pista no log.
             self.log_fn(f'HOTKEY_LIVE_MODE role={self.role} mode={self.mode} '
                         f'gaming={str(gaming).lower()} '
+                        f'fg={self.foreground_note()!r} '
                         f'swallow={str(self.swallowing).lower()} '
                         f'hook={str(_hook_live).lower()} '
                         f'registered={str(self.registered).lower()} '
@@ -10660,8 +10746,16 @@ def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
                     thread = PassiveHotkeyThread(accelerator, callback,
                                                  role=role)
                 else:
+                    # A AUTORIDADE E' O FOCO, NAO A RESIDENCIA (2026-11-14).
+                    # `is_gaming` responde "existe um processo com nome de jogo"
+                    # e o dono tem o `deadlock.exe` fechado na bandeja a maior
+                    # parte do dia: medido no log dele, das 20:44:03 as 22:02:04
+                    # -- 78 minutos -- `GAMING_MODE on=true` sem foco nenhum, o
+                    # `plan=give-back` no mesmo segundo, e ZERO `HOTKEY_PRESSED`
+                    # enquanto ele via YouTube. `owns_space_now` le' o primeiro
+                    # plano no instante da pressao (0,068 ms, medido).
                     thread = LiveHotkeyThread(accelerator, callback,
-                                              gaming_fn=_gaming.is_gaming,
+                                              gaming_fn=_gaming.owns_space_now,
                                               role=role)
             else:
                 thread = HotkeyThread(accelerator, callback, role=role)
@@ -10689,7 +10783,8 @@ def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
                 'the_space_reaches_the_app=true')
             fallback = PassiveHotkeyThread(
                 accelerator, callback, role=role,
-                gate=lambda: (not thread.registered) and (not _gaming.is_gaming()))
+                gate=lambda: (not thread.registered)
+                and (not _gaming.owns_space_now()))
             fallback.start()
             fallback.wait_ready(5)
             thread.fallback = fallback

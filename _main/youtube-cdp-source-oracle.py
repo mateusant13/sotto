@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import ast
 import bisect
+import importlib.util
 import io
 import json
 import os
@@ -497,6 +498,104 @@ def _arm_desligar_em_pausa(shell_path):
                    off_ok, no_resurrect, drain_alive))
 
 
+
+def _arm_janela_de_aviso_dom(extract_js):
+    """Executa a `EXTRACT_JS` num DOM real e exige o descarte da janela de aviso.
+
+    MEDIDO 2026-11-14 no log do dono: `Ingl\u00eas` / `Clique em para
+    configura\u00e7\u00f5es` foram PINTADOS como legenda nossa. O extrator
+    passou a marcar essas linhas com `chrome:true`; esta arm prova a MARCA
+    executando a expressao, e o parser (arm `janela-de-aviso`) prova o descarte.
+    Sem `jsdom` a arm declara `None` -- um skip NAO e' um verde.
+    """
+    node = shutil.which('node')
+    if not node:
+        return ("janela-de-aviso-dom", None, "node ausente")
+    script = r"""
+const fs = require('fs');
+const path = require('path');
+const expr = fs.readFileSync(process.argv[2], 'utf8');
+let JSDOM;
+try { JSDOM = require('jsdom').JSDOM; }
+catch (e) { console.log('NO-JSDOM'); process.exit(3); }
+const html = '<!doctype html><html><body>'
+  + '<div class="ytp-caption-window-container">'
+  + '<div class="caption-window" id="hint">'
+  + '<svg class="ytp-settings-icon"></svg><button class="ytp-button">x</button>'
+  + '<div class="caption-visual-line"><span class="ytp-caption-segment">Ingl\u00eas</span></div>'
+  + '<div class="caption-visual-line"><span class="ytp-caption-segment">Clique em para configura\u00e7\u00f5es</span></div>'
+  + '</div>'
+  + '<div class="caption-window" id="speech" style="overflow:hidden">'
+  + '<div class="caption-visual-line"><span class="ytp-caption-segment">Summoner\u2019s Rift, gameplay,</span></div>'
+  + '</div></div><video></video></body></html>';
+const dom = new JSDOM(html, {url: 'https://www.youtube.com/watch?v=abcdefghijk'});
+const w = dom.window;
+w.HTMLElement.prototype.getBoundingClientRect = function () {
+  const inHint = this.closest && this.closest('#hint');
+  const top = inHint ? 0 : 100;
+  return {left: 0, top: top, right: 300, bottom: top + 20,
+          width: 300, height: 20, x: 0, y: top};
+};
+const fn = new Function('location', 'document', 'getComputedStyle',
+                        'return ' + expr.trim() + ';');
+const data = JSON.parse(fn(w.location, w.document, w.getComputedStyle.bind(w)));
+console.log(JSON.stringify({
+  rows: data.rows.map(function (r) { return r.text; }),
+  chrome: data.rows.map(function (r) { return !!r.chrome; }),
+  segs: data.segs}));
+"""
+    tmp = tempfile.mkdtemp(prefix="yt-cdp-dom-")
+    try:
+        js_path = os.path.join(tmp, "extract.js")
+        io.open(js_path, "w", encoding="utf-8").write(extract_js)
+        script_path = os.path.join(tmp, "probe.js")
+        io.open(script_path, "w", encoding="utf-8").write(script)
+        # O LARGADOR DA CASA, NAO UM `Popen` PROPRIO (medido 2026-11-14): o
+        # `console-window-audit` reprovou esta chamada como `WEAK-FLAG` -- o par
+        # `creationflags` sozinho nao e' a guarda que o repo exige, e um oraculo
+        # que abre janela na tela do dono viola a lei que ele mesmo julga.
+        try:
+            # O nome tem HIFEN: `import hidden_launch` so' resolve com o
+            # diretorio no `sys.path` e o modulo se chamar `hidden_launch` --
+            # medido: `ModuleNotFoundError`. Carrega-se PELO CAMINHO.
+            _hl_path = os.path.join(HERE, "hidden-launch.py")
+            _spec = importlib.util.spec_from_file_location("hidden_launch", _hl_path)
+            hidden_launch = importlib.util.module_from_spec(_spec)
+            _spec.loader.exec_module(hidden_launch)
+            _root = os.path.abspath(os.path.join(HERE, '..'))
+            _rc, _out, _err = hidden_launch.run(
+                [node, script_path, js_path], cwd=_root, capture=True,
+                timeout=120,
+                # `NODE_PATH`: `require('jsdom')` resolve a partir do
+                # DIRETORIO DO SCRIPT (um `mkdtemp`), nunca do `cwd` -- medido:
+                # `cwd=H:/sotto` com o script em `G:/Temp` dava `Cannot find
+                # module 'jsdom'` e a arm mentia "jsdom ausente".
+                env=dict(os.environ,
+                         NODE_PATH=os.path.join(_root, 'node_modules')))
+        except Exception as exc:      # noqa: BLE001
+            return ("janela-de-aviso-dom", None, "node falhou: %r" % (exc,))
+        body = (_out or "").strip()
+        if 'NO-JSDOM' in body or _rc == 3:
+            return ("janela-de-aviso-dom", None, "jsdom ausente")
+        if _rc != 0 or not body:
+            return ("janela-de-aviso-dom", False,
+                    "rc=%s err=%r" % (_rc, (_err or "")[-200:]))
+        try:
+            got = json.loads(body.splitlines()[-1])
+        except ValueError:
+            return ("janela-de-aviso-dom", False, "saida ilegivel")
+        want_rows = ["Ingl\u00eas", "Clique em para configura\u00e7\u00f5es",
+                     "Summoner\u2019s Rift, gameplay,"]
+        ok = (got.get("rows") == want_rows
+              and got.get("chrome") == [True, True, False]
+              and got.get("segs") == ["Summoner\u2019s Rift, gameplay,"])
+        return ("janela-de-aviso-dom", ok,
+                "rows=%r chrome=%r segs=%r"
+                % (got.get("rows"), got.get("chrome"), got.get("segs")))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT,
          only=None):
     # `module_path=None` = o modulo REAL, so' o SHELL mutado (A11 vive na shell).
@@ -527,6 +626,30 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT,
           and [i["text"] for i in snap["items"]] == ["ola", "mundo"]
           and snap["items"][0]["left"] == 10)
     out.append(("linhas-do-player", a1, "rows=%r" % (snap or {}).get("rows")))
+
+    # A1-ter -- A JANELA DE AVISO NAO E' LEGENDA (MEDIDO 2026-11-14, log do dono:
+    # `CAPTION_PAINT_SURFACE src=player rows=4 text="Ingl\u00eas\nClique em
+    # para configura\u00e7\u00f5es\nSumm"`, :272633). O proprio YouTube abre,
+    # DENTRO do container da legenda, uma janela que diz a lingua e o convite a
+    # configurar; ela carrega `svg`/`button` do controlete e o extrator passou a
+    # marca-la (`chrome:true`). O parser tem de a DESCARTAR -- texto de estado do
+    # player nao e' fala, e ela ia ao ecra como linha nossa.
+    chrome_payload = ('{"videoId":"abc","why":"painted","rows":['
+                      '{"text":"Ingl\u00eas","chrome":true,"items":['
+                      '{"text":"Ingl\u00eas","left":0,"top":0,"right":40,"bottom":9}]},'
+                      '{"text":"Clique em para configura\u00e7\u00f5es","chrome":true,'
+                      '"items":[{"text":"Clique em para configura\u00e7\u00f5es",'
+                      '"left":0,"top":10,"right":200,"bottom":19}]},'
+                      '{"text":"Summoner\u2019s Rift, gameplay,","items":['
+                      '{"text":"Summoner\u2019s Rift, gameplay,","left":0,"top":20,'
+                      '"right":180,"bottom":29}]}]}')
+    csnap = mod.parse_snapshot(chrome_payload)
+    a1c = (csnap is not None
+           and csnap["rows"] == ["Summoner\u2019s Rift, gameplay,"]
+           and [i["text"] for i in csnap["items"]]
+               == ["Summoner\u2019s Rift, gameplay,"])
+    out.append(("janela-de-aviso", a1c,
+                "rows=%r" % (csnap or {}).get("rows")))
 
     # A1-bis -- O MARCADOR DE FALA DO PLAYER NAO PASSA (dono, 2026-11-08,
     # verbatim: *"youtube escreve >> em algumas legendas. nao transmita iss pro
@@ -587,6 +710,16 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT,
     js = mod.EXTRACT_JS
     a5 = ("overflowY" in js and "0.5 * h" in js and "getBoundingClientRect" in js)
     out.append(("recorte-do-clip", a5, "half-line=%s" % ("0.5 * h" in js)))
+
+    # A5-bis -- A EXPRESSAO EXECUTADA, NAO LIDA (2026-11-14). A A5 prova que o
+    # recorte esta' escrito; esta arm EXECUTA a `EXTRACT_JS` num DOM de verdade
+    # (jsdom, que o `node_modules` desta arvore ja' tem) contra uma janela de
+    # aviso fabricada -- `svg` + `button` + duas linhas `Ingl\u00eas` / `Clique
+    # em para configura\u00e7\u00f5es` ao lado da janela de fala. E' a unica
+    # forma de julgar o `isChrome`, que roda DENTRO do Chrome do dono e nao tem
+    # chamador em Python: um arm que so' procurasse o nome no fonte passaria com
+    # a funcao a devolver `false` sempre.
+    out.append(_arm_janela_de_aviso_dom(mod.EXTRACT_JS))
 
     # A6 -- sem focus emulation em sitio nenhum do produto
     # So' CODIGO conta: o comentario do instrumento e' a medicao que justifica a
@@ -915,6 +1048,33 @@ def neg_arm():
                         '        text = str(line.get("text") or "")', 1))
         _got_linhas_sem_filtro = _flags(arms(module_path=mut3, only=('linhas-do-player',)), 'linhas-do-player')
         results.append(('linhas-sem-filtro', None if _got_linhas_sem_filtro is None else (_got_linhas_sem_filtro is False)))
+
+        # A JANELA DE AVISO VOLTA (2026-11-14): a copia deixa de olhar o campo
+        # `chrome` que o extrator marca, e a arm tem de cair -- senao ela nao
+        # guarda nada sobre o caminho que pintou `Ingl\u00eas` como legenda.
+        mut_chrome = os.path.join(tmp, "com_janela_de_aviso.py")
+        io.open(mut_chrome, "w", encoding="utf-8").write(
+            src.replace('        if line.get("chrome"):\n            continue\n',
+                        '', 1))
+        _got_janela_de_aviso = _flags(
+            arms(module_path=mut_chrome, only=('janela-de-aviso',)),
+            'janela-de-aviso')
+        results.append(('janela-de-aviso', None if _got_janela_de_aviso is None
+                        else (_got_janela_de_aviso is False)))
+
+        # O `isChrome` A DEVOLVER SEMPRE `false` (2026-11-14): a janela de aviso
+        # volta a ser lida como fala, e as DUAS arms caem -- a do parser e a que
+        # EXECUTA a expressao no DOM. A mutacao e' no `return` da funcao, nao no
+        # nome dela: um mutante que apagasse a chamada deixaria a anterior verde.
+        mut_dom = os.path.join(tmp, "com_janela_de_aviso_dom.py")
+        io.open(mut_dom, "w", encoding="utf-8").write(
+            src.replace("    return !!(el.querySelector('svg') || el.querySelector('button'));",
+                        "    return false;", 1))
+        _got_dom = _flags(
+            arms(module_path=mut_dom, only=('janela-de-aviso-dom',)),
+            'janela-de-aviso-dom')
+        results.append(('janela-de-aviso-dom', None if _got_dom is None
+                        else (_got_dom is False)))
 
 
         # O `>>` VOLTA (dono, 2026-11-08): a copia entrega o texto do player cru,

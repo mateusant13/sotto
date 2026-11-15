@@ -694,6 +694,16 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   banda topmost nao decide nada. A arm A16 conduz a `ZAuthority` inteira contra o Win32 real:
   `antes_ok=False agiu=True depois_ok=True 2a=False raised=1 calls=1` -- a segunda chamada escreve
   ZERO, que e' o invariante que impede um `SetWindowPos` por tique para sempre.)
+- **PIN do ficheiro (medido 2026-11-15, 14:2x):** `_main\_audit-verify-all.cmd` = **388797 B**,
+  **4473 CRLF** / 0 bare LF, sha256 `3ADE9D89E9AD11E2CFCDE05AFC7585D2B7AE604148A8D855D47335CC601F0847`.
+  (Mil quatrocentos e trinta e quatro bytes e DEZASSETE linhas a mais do que o pin de 387363 B:
+  o passo `youtube-cdp-source` passa a nomear `_main\hidden-launch.py`, porque o oraculo daquela
+  linha agora EXECUTA a expressao do extrator num DOM real (jsdom) e o filho `node` sai pelo
+  largador da casa -- medido: o `console-window-audit` reprovava a chamada como `WEAK-FLAG`
+  enquanto ela passava `creationflags` sozinho, e um oraculo que abre janela na tela do dono viola
+  a mesma lei que ele julga. Medido depois: `CONSOLE-AUDIT VERDICT PASS -- 0 sitio(s)`, e o
+  `code-health` absorve o crescimento declarado de `app/webview/youtube_cdp_source.py`
+  (bytes 122858 -> 125912, linhas 2424 -> 2476: o `isChrome` do extrator e o descarte no parser).)
 - **PIN do ficheiro (medido 2026-11-12, 23:4x):** `_main\_audit-verify-all.cmd` = **387363 B**,
   **4456 CRLF** / 0 bare LF, sha256 `7968A4802C205C7546DE6263474315CCF19524DA6D0547D7B47080AE58CA6887`.
   (Trezentos e sessenta e oito bytes e CINCO linhas a mais do que o pin de 386995 B: o
