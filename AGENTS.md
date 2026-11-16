@@ -3120,6 +3120,41 @@ proprio ficheiro, que gera as regras a partir do EOL MEDIDO) fechou as quatro. M
 `git status: IDENTICO (antes e depois)`, `VERDICT: PASS`, rc=0 -- e `git status --porcelain` do repo
 inteiro passou a **vazio**.
 
+### A TERCEIRA VEZ, e o portao imprimiu PASS enquanto o defeito estava no HEAD (medido 2026-11-15, 21:3x)
+
+O defeito voltou no commit `78410bb` e o portao **passou** — porque as duas perguntas que ele fazia
+comparavam **checkout com worktree**, e com `eol=crlf` as duas pontas sao CRLF. Um blob gravado com
+CRLF (o escritor escreveu os bytes da arvore de trabalho em vez da forma canonica) produz um checkout
+identico ao worktree, logo `DIVERGENTES: 0` e `VERDICT: PASS` — enquanto `git status` ficava sujo
+**para sempre** e todo diff do ficheiro saia como reescrita inteira (**4606 linhas**).
+
+O censo que separa as tres ocorrencias, todas no mesmo ficheiro, medido por `git show <rev>:<path>`:
+
+| commit | blob | veredicto |
+|---|---|---|
+| `7b90e5e`, `d8720de`, `3456ad2` | 0 CRLF (LF) | ok |
+| `10b82cc`, `e577452`, `78410bb` | 4606 CRLF | **defeito** |
+
+**A metade que faltava, e a pergunta certa:** o blob de um ficheiro `text` guarda **LF**, sempre —
+`eol=crlf` e' do CHECKOUT, nunca do indice. Quem responde isso e' `git ls-files --eol`
+(`i/lf w/crlf attr/text eol=crlf`). O portao passou a ler essa fonte (`parse_ls_eol` + `julgar_blob`,
+as duas puras) e a falhar com `VERDICT: FAIL -- o INDICE guarda bytes que o .gitattributes proibe`,
+nomeando a cura (`git add --renormalize -- <ficheiro>`).
+
+**Controlo medido, os dois lados.** Positivo depois da cura: `i/lf w/crlf attr/text eol=crlf`,
+`blobs nao canonicos: 0`, `VERDICT: PASS`, rc=0, e `--selftest` **12/12**. Negativo, plantado num
+indice privado (`GIT_INDEX_FILE` temporario, worktree intocado) com o MESMO blob CRLF do commit
+defeituoso: o portao **antigo** imprimia `DIVERGENTES: 0` sobre aquele mesmo indice, e o portao novo
+imprime `BLOB _main/_audit-verify-all.cmd  i/crlf  blob CRLF com text`, **rc=1**.
+
+Duas licoes de instrumento pagas na mesma rodada, as duas no adaptador e nenhuma no juiz:
+**(a)** `git ls-files --eol` separa os campos da ESQUERDA por **espacos** e so' o caminho vem depois
+de um **TAB**; a primeira versao partia a linha por TAB, obtinha 2 partes e o `len < 4` descartava
+**toda** linha — a sonda de blob plantado devolveu `0 achados` e o juiz, que estava CERTO, foi
+declarado cego. Por isso o `--selftest` alimenta o ADAPTADOR com a linha REAL, nao so' o juiz.
+**(b)** um blob binario publica `i/-text`; sem essa linha os `.woff2` de `_main/_tmp-panel-noreveal/`
+saiam como `DIVERGE` e o portao acusava um sitio correto — a classe do censo de consolas.
+
 ## A LEI DO CUSTO - um laco dorme o ORCAMENTO, nunca o proprio trabalho (2026-11-08)
 
 Nascida de uma DM de stutter do watcher (2026-11-08: `pythonw.exe(42572)`, 24 episodios em 60 min) e do que ela
