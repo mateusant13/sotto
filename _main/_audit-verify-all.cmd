@@ -391,6 +391,23 @@ call :step engine-serialization 0 "_main\engine-serialization-oracle.py;worker\e
 call :record engine-serialization !STEP_RC!
 call :step red-as-expected-engine-serialization 1 "_main\engine-serialization-oracle.py;worker\engine_switch.py;worker\sotto_worker.py" "%OUT%\engine-serialization-neg.log" python _main\engine-serialization-oracle.py --neg-arm
 call :expectred red-as-expected-engine-serialization !STEP_RC! "%OUT%\engine-serialization-neg.log" "mutantes apanhados"
+REM `batch-silence-gate` (2026-11-16, o CPU medido a arder por nada). O passe de FUNDO
+REM decodificava TODAS as janelas de 3 s do pendente enquanto o endpoint entregava
+REM silencio digital: medido no worker do dono (pid 20584) `fios=309,4%` com
+REM `session-16-intra-op-3:73,4%`, `REDUX_BATCH_KICK ... audio_s=30.0` a cada 5-15 s e
+REM `redux-batch-empty` sempre -- `audio_s=30.0` em TODOS os kicks e' o tecto
+REM `REDUX_BATCH_PASS_MAX_S`, logo a fila nunca drenava. Agora o passe pergunta a
+REM `worker/silence_gate.py:window_is_digital_silence` (pico E rms abaixo do par MEDIDO
+REM de `audio_recorder`) antes de `transcribe`, conta as janelas saltadas e publica
+REM `silent_windows=N silent_s=X` uma vez por passe; a carga do modelo e' preguicosa.
+REM Custo medido, no MESMO processo cagado, com o parakeet real: 10 janelas de silencio
+REM davam 17,89 s de parede / 30,45 s de CPU e tres `Mmm` (todos descartados); com o
+REM portao dao 0,0066 s de parede e ZERO `transcribe`. 11 arms, `--neg-arm` 2/2 (sitio
+REM da chamada desligado e pisos a zero).
+call :step batch-silence-gate 0 "_main\batch-silence-gate-oracle.py;worker\engine_policy.py;worker\silence_gate.py;worker\audio_recorder.py" "%OUT%\batch-silence-gate.log" python _main\batch-silence-gate-oracle.py
+call :record batch-silence-gate !STEP_RC!
+call :step red-as-expected-batch-silence-gate 1 "_main\batch-silence-gate-oracle.py;worker\engine_policy.py;worker\silence_gate.py;worker\audio_recorder.py" "%OUT%\batch-silence-gate-neg.log" python _main\batch-silence-gate-oracle.py --neg-arm
+call :expectred red-as-expected-batch-silence-gate !STEP_RC! "%OUT%\batch-silence-gate-neg.log" "NEG-ARM: PASS"
 REM `ort-spin-idle` (2026-11-08, quatro DMs de stutter do watcher): a atribuicao por FIO
 REM pago 57,4% de um nucleo no WORKER, e tres deles eram `session-NN-intra-op-0` -- o
 REM spin-wait do onnxruntime. Medido isolado, com as tres sessoes vivas e ninguem a

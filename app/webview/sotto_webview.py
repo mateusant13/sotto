@@ -1667,6 +1667,14 @@ ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
                        # indistinguivel de "o batch foi adiado", que sao coisas
                        # diferentes. O escritor e' o `engine_switch.py`, nao o worker.
                        'REDUX_BATCH_DEFERRED',
+                       # O RESULTADO DO PASSE E' O QUE DIZ SE O BATCH FEZ ALGUM
+                       # TRABALHO (2026-11-16). Medido neste arranque: 47
+                       # `REDUX_BATCH_KICK` em 4 h e ZERO `REDUX_ENGINE_DONE` no
+                       # log vivo -- a linha existia so' no `stderr_tail` da morte,
+                       # entao `windows=`/`silent_windows=`/`silent_s=`/`lines=`
+                       # (o custo do passe e o que ele produziu) eram invisiveis
+                       # exactamente no episodio de stutter que os pediu.
+                       'REDUX_ENGINE_DONE',
                        # O CUSTO QUE O DONO PAGA E O QUE NINGUEM CONSEGUE LER (2026-11-10).
                        # As tres linhas abaixo existiam e ficavam todas no `stderr_tail`,
                        # publicado SO' na cauda da morte -- a mesma classe do

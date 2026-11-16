@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1499801,
+      "bytes": 1500408,
       "classes": 29,
       "defs": 174,
       "except_pass": 71,
       "globals": 9,
-      "lines": 27630,
+      "lines": 27638,
       "max_func": 446,
       "max_func_name": "main"
     },
@@ -711,12 +711,12 @@
       "max_func_name": "_run"
     },
     "worker/caption_noise.py": {
-      "bytes": 17782,
+      "bytes": 18305,
       "classes": 0,
       "defs": 6,
       "except_pass": 0,
       "globals": 0,
-      "lines": 401,
+      "lines": 407,
       "max_func": 207,
       "max_func_name": "_selftest"
     },
@@ -731,13 +731,13 @@
       "max_func_name": "selftest"
     },
     "worker/engine_policy.py": {
-      "bytes": 25434,
+      "bytes": 27054,
       "classes": 2,
       "defs": 10,
       "except_pass": 0,
       "globals": 0,
-      "lines": 553,
-      "max_func": 93,
+      "lines": 580,
+      "max_func": 115,
       "max_func_name": "run_engine_pass"
     },
     "worker/engine_switch.py": {
@@ -869,6 +869,16 @@
       "lines": 1596,
       "max_func": 121,
       "max_func_name": "main"
+    },
+    "worker/silence_gate.py": {
+      "bytes": 5445,
+      "classes": 0,
+      "defs": 1,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 106,
+      "max_func": 30,
+      "max_func_name": "window_is_digital_silence"
     },
     "worker/silence_tail.py": {
       "bytes": 3316,
