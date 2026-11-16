@@ -28,6 +28,7 @@ import os
 import tempfile as _tempfile
 import time
 from caption_noise import admit_batch_caption
+from silence_gate import window_is_digital_silence
 
 #: FREE physical memory a PARKEET (ONNX int4) pass may start under, in MB. The
 #: measured peak of that export is ~615 MB (`worker/redux_live.py`), so this is
@@ -360,6 +361,10 @@ class RunnerEngine:
 # `sotto_worker.py` e nao este ficheiro.
 
 
+#: O PORTAO DE SILENCIO VIVE EM `worker/silence_gate.py` (2026-11-16): o juiz, o
+#: piso MEDIDO que ele usa e a medicao que o justifica viajam juntos, e um
+#: ficheiro novo e' o sitio sancionado pelo ratchet estrutural. O que fica AQUI
+#: e' o sitio da chamada, a contagem do que foi saltado e a linha que o publica.
 def run_engine_pass(sw, held, samples, reason, start_s=0.0):
     """O parakeet NESTE processo, na thread `redux-batch`. Nunca levanta.
 
@@ -386,16 +391,29 @@ def run_engine_pass(sw, held, samples, reason, start_s=0.0):
     offset = 0
     lines = 0
     windows = 0
+    #: Windows kept OUT of the engine, in windows and in seconds: "nothing was
+    #: transcribed" must never be indistinguishable from "nothing was handed
+    #: over" -- the pass still CONSUMES this audio from the queue, as before.
+    silent_windows = silent_samples = 0
+    #: The load is LAZY now: an all-silent pass never pays the 543.8 MB / 2.17 s
+    #: of `REDUX_ENGINE_LOAD`, and the first window that has speech loads it.
+    loaded = False
     sw.noise_lines = sw.script_lines = 0
     t0 = time.time()
     try:
-        sw.engine.load()
         while offset < total:
             if sw.mode == "shed" and lines:
                 break
             chunk = pcm[offset:offset + window]
             offset += int(chunk.size)
             windows += 1
+            if window_is_digital_silence(chunk):
+                silent_windows += 1
+                silent_samples += int(chunk.size)
+                continue
+            if not loaded:
+                sw.engine.load()
+                loaded = True
             text = str(sw.engine.transcribe(chunk) or "").strip()
             if not text:
                 continue
@@ -418,6 +436,8 @@ def run_engine_pass(sw, held, samples, reason, start_s=0.0):
             f"REDUX_ENGINE_DONE reason={reason} engine={sw.engine.name()} "
             f"model={os.path.basename(sw.engine.dir)} "
             f"audio_s={round(samples / float(sw.rate), 2)} windows={windows} "
+            f"silent_windows={silent_windows} "
+            f"silent_s={round(silent_samples / float(sw.rate), 2)} "
             f"lines={lines} noise_lines={getattr(sw, 'noise_lines', 0)} "
             f"script_lines={getattr(sw, 'script_lines', 0)} loads={sw.engine.loads} "
             f"rss_mb={sw.rss():.1f} "
@@ -438,16 +458,23 @@ def run_engine_pass(sw, held, samples, reason, start_s=0.0):
                 f"— o audio que falta volta a espera e sai quando a carga libertar")
         if lines == 0:
             # Silencio e' um facto que o lote TEM de dizer: o painel estava
-            # fechado e este era o unico transcritor a correr.
+            # fechado e este era o unico transcritor a correr. Um passe que o
+            # PORTAO esvaziou nao se apresenta como um passe que o motor esvaziou.
+            heard_s = round(samples / float(sw.rate), 2)
+            detail = (
+                f"the parakeet ran over {heard_s}s of accumulated audio and "
+                f"emitted no caption; the panel is hidden and this is the only "
+                f"transcriber running") if not silent_windows else (
+                f"{silent_windows} of {windows} windows were digital silence and "
+                f"were not decoded ({round(silent_samples / float(sw.rate), 2)}s "
+                f"of {heard_s}s); the rest emitted no caption; the panel is "
+                f"hidden and this is the only transcriber running")
             sw._captions.put({
                 "type": "status",
                 "state": "redux-batch-empty",
                 "producer": sw.producer,
-                "audio_s": round(samples / float(sw.rate), 2),
-                "detail": (
-                    f"the parakeet ran over {round(samples / float(sw.rate), 2)}s "
-                    f"of accumulated audio and emitted no caption; the panel is "
-                    f"hidden and this is the only transcriber running"),
+                "audio_s": heard_s,
+                "detail": detail,
             })
     except BaseException as exc:  # noqa: BLE001 -- carregar pode estourar memoria
         sw._release_engine("pass-failed")

@@ -188,6 +188,12 @@ def _corpus_arm(check):
            "latin": latin, "unexpected": missed[:5]})
 
 
+#: O AUDIO DO HARNESS TEM DE SER AUDIO (2026-11-16). `engine_policy.run_engine_pass`
+#: passou a recusar decodificar uma janela de SILENCIO DIGITAL (`worker/silence_gate.py`),
+#: e este `_selftest` alimentava as janelas com `np.zeros` -- o buffer seria saltado
+#: antes de a regra julgada correr. Um tom a -34 dBFS (0,02) esta' ~20x acima do piso
+#: medido de silencio e muito abaixo de qualquer fala: o passe decodifica todas as
+#: janelas e so' a regra do `Mmm`/alfabeto pode remover a linha.
 def _selftest():
     """Prove the rule and its CALL SITE, in two colours.
 
@@ -255,7 +261,7 @@ def _selftest():
 
     def run(texts):
         sw = _Switch(texts)
-        held = [np.zeros(int(sw.rate * sw.engine_window_s * len(texts)), dtype="float32")]
+        held = [(0.02 * np.sin(np.arange(int(sw.rate * sw.engine_window_s * len(texts))) * 0.0864)).astype("float32")]
         policy.run_engine_pass(sw, held, held[0].size, "selftest")
         return sw
 

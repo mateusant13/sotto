@@ -277,8 +277,11 @@ def neg_arm():
     # (tira o `held`, o guarda metralha), e o --neg-arm exige a frase NEG-ARM no log.
     old = '            if mods_ready and (fresh or (down and not held)):'
     if old not in text:
+        # rc=2, NOT rc=1 (2026-11-16): the step is declared `:expectred`, and rc=1
+        # is what "the mutant was caught" means -- so a moved anchor used to be
+        # published as a control that passed while nothing had been injected.
         print('NEG-ARM: FAIL -- o corpo do guarda nao esta no ficheiro (ancora ausente)')
-        return 1
+        return 2
     mutant = text.replace(old, '            if down:', 1)
     tmpdir = tempfile.mkdtemp(prefix='sotto-neg-hotkey-')
     path = os.path.join(tmpdir, 'sotto_webview.py')
@@ -301,7 +304,7 @@ def neg_arm():
     stuck_anchor = 'elif _now_loop - self._down_since >= 3.0:'
     if stuck_anchor not in text:
         print('NEG-ARM: FAIL -- a ancora do re-armar (tecla de pedra) nao esta no ficheiro')
-        return 1
+        return 2
     mutant2 = text.replace(stuck_anchor, 'elif False:', 1)
     path2 = os.path.join(tmpdir, 'sotto_webview_stuck.py')
     io.open(path2, 'w', encoding='utf-8', newline='').write(mutant2)
@@ -330,6 +333,10 @@ def neg_arm():
     # exige, senao o passo passa como se fosse um oraculo normal e o mutante
     # nunca e' recusado. rc=0 quando um mutante escapa (o passo fica vermelho
     # de verdade, e com a frase FAIL no log).
+    #
+    # MEASURED 2026-11-16: this file returned 0 here and 1 above, i.e. exactly
+    # backwards -- the step `red-as-expected-hotkey-observed` was declared
+    # `:expectred ... 1` and could not pass while the control worked.
     return 1 if caught else 0
 
 

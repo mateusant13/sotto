@@ -497,7 +497,13 @@ def arms_pass_failure(mod, engine_path):
 
     # QUATRO janelas de 1 s: o passe estoura na PRIMEIRA de 3 s, e o que nao
     # foi consumido (a quarta) tem de voltar para a espera.
-    held = [np.zeros(16000, dtype=np.float32) for _ in range(4)]
+    # O PCM NAO PODE SER SILENCIO DIGITAL: `run_engine_pass` recusa decodificar
+    # uma janela abaixo do piso medido de silencio, e um buffer de zeros nunca
+    # chegaria ao motor -- este braco mede o caminho de FALHA, logo precisa de
+    # audio que o motor veja (tom a -34 dBFS, 20x acima do piso).
+    _t = np.arange(16000, dtype=np.float64)
+    _tone = (0.02 * np.sin(2.0 * np.pi * 220.0 * _t / 16000.0)).astype(np.float32)
+    held = [_tone.copy() for _ in range(4)]
 
     class _Boom:
         dir = '<oracle>/parakeet-redux-onnx-int4'

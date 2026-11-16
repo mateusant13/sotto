@@ -732,6 +732,28 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-16, 19:2x):** `_main\_audit-verify-all.cmd` = **405042 B**,
+  **4640 CRLF** / 0 bare LF, sha256 `BC9BE8D4A35F5B5D24CD1DD98FFE79A71340FAEACED722223CEBC0E398834918`.
+  (Mil seiscentos e oitenta e tres bytes e DEZASETE linhas a mais do que o pin de 403359 B: o par
+  `batch-silence-gate` + `red-as-expected-batch-silence-gate`, o portao que impede o passe de FUNDO de
+  decodificar SILENCIO DIGITAL -- 12 linhas `REM` e 4 linhas de `:step`/`:record`/`:expectred`.)
+  Nasceu do CPU medido a arder por nada no worker do dono (pid 20584, `--threads 2`): o passe
+  decodificava todas as janelas de 3 s do pendente com o endpoint calado, `fios=309,4%` na janela do
+  `--burst` com `session-16-intra-op-3:73,4%`, e o log a repetir `REDUX_BATCH_KICK ... audio_s=30.0`
+  (o tecto `REDUX_BATCH_PASS_MAX_S`, logo a fila nunca drenava) seguido de `redux-batch-empty`.
+  `worker/silence_gate.py` (novo) e' o juiz -- pico E rms abaixo do par MEDIDO de
+  `worker/audio_recorder.py` (`DIGITAL_SILENCE_PEAK`/`_RMS`, 0,000122 de pico com nada a tocar) -- e
+  `engine_policy.run_engine_pass` pergunta-lhe antes de `transcribe`, conta e publica
+  `silent_windows=N silent_s=X` uma vez por passe, com a carga do modelo preguicosa. Custo medido no
+  MESMO processo cagado (`python -m watcher run --cpu 40 --io very-low`, parakeet real, 10 janelas de
+  30 s de zeros): **17,89 s de parede / 30,45 s de CPU e tres `Mmm` (todos descartados) sem o portao;
+  0,0066 s de parede, ZERO `transcribe` e ZERO `load` com ele**. Medido: oraculo 11/11 arms, `--neg-arm`
+  2/2 mutantes (`if False and ...` no sitio da chamada; pisos a zero em `silence_gate.py`) com rc=1;
+  `battery-record-pairing` 531 passos / 531 nomes / 0 achados; `battery-wiring`
+  `ligados=213 sem_passo=105 populacao=318`; `battery-class` arms=4 PASS; `code-health` PASS com o
+  crescimento declarado absorvido (`engine_policy.py` 553->580 linhas, `max_func` 93->115 no
+  `run_engine_pass`; `caption_noise.py` 401->407 linhas -- o harness passou a alimentar o passe com
+  audio em vez de zeros).
 - **PIN do ficheiro (medido 2026-11-16, 18:0x):** `_main\_audit-verify-all.cmd` = **403359 B**,
   **4623 CRLF** / 0 bare LF, sha256 `2EA2C070B9740AC7912376E281D491AB7A53DA556A595A7F0CC0343D0A9A4E9D`.
   (Trezentos e sessenta e quatro bytes e DUAS linhas a mais do que o pin de 402995 B: o passo

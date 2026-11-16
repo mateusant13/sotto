@@ -240,7 +240,13 @@ def neg_arm():
                     body = body.replace(a, b, 1)
                     break
             else:
-                caught.append((name, 'ANCORA-AUSENTE'))
+                # A MOVED ANCHOR IS NOT A CATCH (measured 2026-11-16). This arm used
+                # to append the miss to `caught` and `continue`, so a rename in the
+                # shell turned the control green with nothing injected: the step
+                # read "3/3 mutantes apanhados" while proving nothing. It now says
+                # NOT-CAUGHT in its own words and leaves the final rc at 0, which
+                # the declared `:expectred` refuses.
+                print('  %-24s ANCHOR-ABSENT -- nothing was injected, and that is NOT a catch' % name)
                 continue
             path = os.path.join(tmp, name.replace('-', '_') + '.py')
             io.open(path, 'w', encoding='utf-8', newline='').write(body)
@@ -250,10 +256,13 @@ def neg_arm():
             print('  %-24s arms vermelhas: %s' % (name, ', '.join(red) or '-'))
             if red:
                 caught.append((name, red))
+        all_caught = len(caught) == len(mutants)
         print('NEG-ARM: %s (%d/%d mutantes apanhados)'
-              % ('PASS' if len(caught) == len(mutants) else 'FAIL',
-                 len(caught), len(mutants)))
-        return 0 if len(caught) == len(mutants) else 1
+              % ('PASS' if all_caught else 'FAIL', len(caught), len(mutants)))
+        # `neg_arm` reports CATCHEDNESS (0 = all caught); `main()` is what turns
+        # that into the house rc for a declared `:expectred` (1 = caught). Kept in
+        # one place on purpose: flipping it here as well would invert the step.
+        return 0 if all_caught else 1
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
