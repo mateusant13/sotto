@@ -108,3 +108,24 @@ desktop).
   open and named in the lane's acceptance.
 * Anything about the shell half of this tree: `LIVE_CODE STALE`, so its code is older than
   the disk by 12 files.
+
+## 8. Retro (one durable change, proven on the failing case)
+
+**Observed**: a decode loop burned 30,45 CPU-s over 30 s of digital silence because the
+protection the LIVE path has (`silent_desktop_hold`, the VAD gate) exists in exactly one of
+the two paths that decode audio. Cost: 17,7 % of the machine in the episode, the top ranking
+in the watcher's DM, and a backlog that grew all afternoon.
+
+**Durable change**: the oracle pair, not another paragraph —
+`_main/batch-silence-gate-oracle.py` `VERDICT: PASS (11/11)` and
+`--neg-arm: 2/2 mutants caught`, where **M1 is the pre-fix code itself** (call site removed)
+and it goes RED on A5/A6/A7/A8. The failing case is the case the gate is proven on; nothing
+here is verified by a different case.
+
+**Wiring, checked the house way**: `grep -c 'batch-silence-gate-oracle' _main\_audit-verify-all.cmd`
+is 2 (the `:step` and the `:expectred`), so the instrument is reachable from the runner and is
+not an orphaned artifact.
+
+**Not claimed**: this retro changes nothing about the second half of the same family — the live
+`session-16` 4-thread pool. That one is named in §3/§7 as an open attribution, and it needs its
+own lane because capping it touches the live caption path.
