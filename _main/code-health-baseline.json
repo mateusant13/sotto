@@ -341,12 +341,12 @@
       "max_func_name": "_stable"
     },
     "app/webview/gaming_mode.py": {
-      "bytes": 27801,
+      "bytes": 28443,
       "classes": 4,
       "defs": 12,
       "except_pass": 0,
       "globals": 0,
-      "lines": 620,
+      "lines": 632,
       "max_func": 53,
       "max_func_name": "tick"
     },
@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1484138,
+      "bytes": 1485780,
       "classes": 29,
-      "defs": 173,
-      "except_pass": 70,
+      "defs": 174,
+      "except_pass": 71,
       "globals": 9,
-      "lines": 27372,
+      "lines": 27409,
       "max_func": 446,
       "max_func_name": "main"
     },
@@ -881,12 +881,12 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 504245,
+      "bytes": 504221,
       "classes": 17,
       "defs": 98,
-      "except_pass": 27,
+      "except_pass": 26,
       "globals": 7,
-      "lines": 9529,
+      "lines": 9527,
       "max_func": 2837,
       "max_func_name": "main"
     },
