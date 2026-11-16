@@ -25,6 +25,13 @@
  * is written, no process is started, no window is opened.
  *
  *     node _main/_audit-history-dead.js
+ *
+ * `--neg-arm` is the control of the control (added 2026-11-16): it runs the SAME
+ * engine output through the RETIRED predicate (`route==='final' &&
+ * isCanonicalLine`) and requires that predicate to refuse what the shipped one
+ * accepts. Without it, the 2026-11-05 drift was invisible: the probe restated an
+ * old rule for four days, published a defect that no longer existed and could
+ * not fail. rc=1 on catch, the house convention for a `:expectred` step.
  */
 
 const fs = require('node:fs');
@@ -67,16 +74,30 @@ process.env.SOTTO_HISTORY_ROOT = root;
 delete require.cache[require.resolve(path.join(REPO, 'app', 'panel', 'history-store.js'))];
 const store = require(path.join(REPO, 'app', 'panel', 'history-store.js'));
 
-// The panel's choke point, verbatim from panel.js:335-351.
-const panelAccepts = (meta) =>
-  meta && meta.route === 'final' && source.isCanonicalLine(meta);
+// THE RULE IS THE SHIPPED ONE, never a copy (measured 2026-11-16). This line
+// restated `route === 'final' && isCanonicalLine(meta)` -- the rule the product
+// STOPPED using on 2026-11-05, when `historyDecision` made the route the only
+// gate and the producer mere provenance. The copy stayed behind, so the probe
+// reported "the panel refuses EVERY line" about a door that had already been
+// opened, and the step that carries it could never fail: it printed a dramatic
+// verdict and returned 0 either way.
+const NEG_ARM = process.argv.includes('--neg-arm');
+const shippedAccepts = (meta) => source.transcriptRoute(meta) !== null;
+//: the RETIRED predicate, kept ONLY so the control has something to prove.
+const retiredAccepts = (meta) =>
+  !!meta && meta.route === 'final' && source.isCanonicalLine(meta);
+const panelAccepts = NEG_ARM ? retiredAccepts : shippedAccepts;
 
 let accepted = 0;
+let acceptedShipped = 0;
 for (const c of commits) {
+  if (shippedAccepts(c.meta)) acceptedShipped += 1;
   if (!panelAccepts(c.meta)) {
+    const refusal = source.historyRefusal(c.meta) || { reason: 'unknown', route: null, producer: null };
     console.log(`REFUSED  text=${JSON.stringify(c.text)}`
-      + ` route=${JSON.stringify(c.meta.route)}`
-      + ` producer=${JSON.stringify(source.producerOf(c.meta))}`);
+      + ` why=${JSON.stringify(refusal.reason)}`
+      + ` route=${JSON.stringify(refusal.route)}`
+      + ` producer=${JSON.stringify(refusal.producer)}`);
     continue;
   }
   accepted += 1;
@@ -98,9 +119,27 @@ console.log(`lines written to disk       : ${lines.length}`);
 console.log(`CANONICAL_PRODUCER          : ${source.CANONICAL_PRODUCER}`);
 console.log(`producer seen on any commit : ${JSON.stringify(
   commits.map((c) => source.producerOf(c.meta)))}`);
+console.log(`commits accepted by SHIPPED : ${acceptedShipped}`);
 console.log('');
-console.log(accepted === 0
-  ? 'VERDICT: the panel refuses EVERY line this engine can produce — the feed'
-    + ' cannot fill, and the top half of the panel is unreachable by design'
-    + ' until a batch engine stamps producer:"redux".'
-  : 'VERDICT: the transcript received lines.');
+if (NEG_ARM) {
+  // The control: the retired predicate must REFUSE what the shipped one
+  // accepts. Two ways to fail, both named: the retired rule also accepts (then
+  // the two predicates are identical and this probe proves nothing), or the
+  // shipped rule accepts nothing (nothing to prove the control against).
+  const caught = acceptedShipped > 0 && accepted === 0;
+  console.log(caught
+    ? 'NEG-ARM: PASS -- the retired predicate refuses the line the shipped'
+      + ` rule accepts (retired=${accepted} shipped=${acceptedShipped})`
+    : 'NEG-ARM: FAIL -- the two predicates do not differ on this stream'
+      + ` (retired=${accepted} shipped=${acceptedShipped})`);
+  process.exitCode = caught ? 1 : 0;   // house convention: 1 WHEN CAUGHT
+} else {
+  console.log(accepted === 0
+    ? 'VERDICT: the panel refuses EVERY line this engine can produce - the feed'
+      + ' cannot fill, and the top half of the panel is unreachable.'
+    : 'VERDICT: the transcript received lines.');
+  // THE VERDICT IS THE EXIT CODE (2026-11-16). Both branches used to return 0,
+  // so the step `audit-history-dead` was declared `:record` and could never
+  // fail: a dead transcript and a live one published the same green.
+  process.exitCode = accepted === 0 ? 1 : 0;
+}

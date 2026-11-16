@@ -732,6 +732,21 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-16, 18:0x):** `_main\_audit-verify-all.cmd` = **403359 B**,
+  **4623 CRLF** / 0 bare LF, sha256 `2EA2C070B9740AC7912376E281D491AB7A53DA556A595A7F0CC0343D0A9A4E9D`.
+  (Trezentos e sessenta e quatro bytes e DUAS linhas a mais do que o pin de 402995 B: o passo
+  `red-as-expected-audit-history-dead`, o CONTROLO do instrumento que pergunta se o historico do painel
+  e' alcancavel. O oraculo `_main\_audit-history-dead.js` reescrevia a regra de aceitacao a mao
+  (`meta.route === 'final' && isCanonicalLine(meta)`) -- a regra que o produto ABANDONOU a 2026-11-05,
+  quando `historyDecision` fez da ROTA o unico portao e do produtor mera proveniencia. Medido hoje: o
+  mesmo meta que o motor entrega ao `panel.js` da' `accepted=0 -> "o painel recusa TODAS as linhas"`
+  pela copia velha e `accepted=1, 1 linha no disco` pela regra que EMBARCA. Quatro dias a publicar um
+  defeito que ja' nao existia, e o passo declarado `:record` nao podia falhar: as duas saidas devolviam
+  0. Agora ele chama `transcriptRoute`/`historyRefusal` do ficheiro que embarca, `rc=1` quando a
+  feed esta' morta, e o `--neg-arm` exige que o predicado APOSENTADO recuse o que o vivo aceita
+  (`NEG-ARM: PASS -- retired=0 shipped=1`, rc=1). Medido: positivo `VERDICT: the transcript received
+  lines.` rc=0; `battery-record-pairing` 529 passos / 529 nomes / 0 achados; `battery-wiring`
+  `ligados=212 sem_passo=105`; `battery-class` arms=4 PASS.)
 - **PIN do ficheiro (medido 2026-11-16, 16:3x):** `_main\_audit-verify-all.cmd` = **402880 B**,
   **4621 CRLF** / 0 bare LF, sha256 `EB52A632056733A28505D083EDB87689F1CB2BF831602A8B9B63E578EE3A7AD2`.
   (Mil seiscentos e oito bytes e QUINZE linhas a mais do que o pin de 401272 B: o par

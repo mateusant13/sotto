@@ -648,6 +648,8 @@ if exist _main\_lane4-tap-stop-probe.py (
 if exist _main\_audit-history-dead.js (
   call :step audit-history-dead 0 "_main\_audit-history-dead.js;app\panel\caption-formulation.js;app\panel\history-source.js;app\panel\history-store.js" "%OUT%\audit-history-dead.log" node _main\_audit-history-dead.js
   call :record audit-history-dead !STEP_RC!
+  call :step red-as-expected-audit-history-dead 1 "_main\_audit-history-dead.js;app\panel\caption-formulation.js;app\panel\history-source.js;app\panel\history-store.js" "%OUT%\audit-history-dead-neg.log" node _main\_audit-history-dead.js --neg-arm
+  call :expectred red-as-expected-audit-history-dead !STEP_RC! "%OUT%\audit-history-dead-neg.log" "NEG-ARM: PASS"
 ) else ( call :record audit-history-dead MISSING )
 
 echo === the panel's row-identity rule: the SAME probe, both colours (gate here, control in CONTROLS) ===
