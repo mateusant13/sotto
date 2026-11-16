@@ -10,21 +10,25 @@ O QUE ELE JULGA, e por que cada arm existe:
      devolve sucesso em alguns caminhos e afinidade nenhuma).
   2. A escada: com uma build abaixo de 19041 o modulo tem de cair para `0x01`
      (`WDA_MONITOR`) -- e NAO pode dizer `ok` a 0x11 num Windows que nao o tem.
-  3. O interruptor: `SOTTO_CAPTURE_EXCLUDE=0` tem de deixar a janela como antes
-     (`0x00`), porque um dono que grava a legenda de proposito tem de poder.
+  3. O interruptor: DESLIGADO de fabrica (ordem do dono, 2026-11-16: *"retira o
+     'modo stealth' da legenda. deixa desativado por padrao, e ativavel nas
+     configs do sotto"*). Sem ficheiro e sem env a janela ENTRA na captura; o
+     ficheiro `_main/caption-settings.json` (`capture_exclude`) liga-a, e o
+     override `SOTTO_CAPTURE_EXCLUDE=0|1` manda por cima do ficheiro.
   4. O ESTILO que o overlay realmente cria (`caption_overlay.EX_STYLE`) tem de
      trazer `WS_EX_TRANSPARENT` (click-through nativo = a hit-region do
      `perssua-re`, sem hook de input) e `WS_EX_NOACTIVATE` (nao rouba o foco).
 
-O BRAÇO NEGATIVO (`--neg-arm`) faz tres mutacoes numa COPIA do modulo e exige
-que o MESMO `judge` as recuse: sem isso o oraculo provaria so' que ele sabe
-dizer `ok` a si mesmo.
+O BRAÇO NEGATIVO (`--neg-arm`) faz cinco mutacoes numa COPIA do modulo e exige
+que o MESMO `judge` as recuse -- incluindo `m5`, que volta a ligar o modo por
+omissao: sem esse mutante o oraculo nao provaria que o default OFF esta' preso.
 """
 
 from __future__ import annotations
 
 import ctypes
 import io
+import json
 import os
 import shutil
 import sys
@@ -50,8 +54,25 @@ def _probe_window():
     return hwnd
 
 
-def judge(module, hwnd):
-    """As quatro verdades, sobre um modulo e uma janela reais."""
+def _settings_write(path, value):
+    """Escreve o ficheiro de settings do oraculo (ou apaga-o se `value is None`)."""
+    if value is None:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return
+    with io.open(path, 'w', encoding='utf-8') as fh:
+        json.dump({'capture_exclude': value}, fh)
+
+
+def judge(module, hwnd, settings_path):
+    """As verdades, sobre um modulo e uma janela reais.
+
+    `settings_path` e' o `SOTTO_CAPTION_SETTINGS` temporario: as arms do
+    interruptor escrevem-no para provar as tres origens (omissao, ficheiro, env)
+    sem tocar no ficheiro do dono.
+    """
     rows = []
 
     def arm(name, ok, detail):
@@ -89,29 +110,48 @@ def judge(module, hwnd):
         'modo=%s lido=%s' % (module.mode_name(off['mode']),
                              module.mode_name(off_read)))
 
-    # O EIXO DO ENV: o mesmo interruptor, lido como o overlay o le'.
-    arm('a6-env-ligado-por-omissao', module.enabled({}) is True, 'enabled({})=%s'
+    # O EIXO DO DEFAULT (ordem do dono, 2026-11-16): sem ficheiro e sem env,
+    # DESLIGADO. Este arm e' o que impede alguem de re-pinar o modo como ligado.
+    _settings_write(settings_path, None)
+    arm('a6-desligado-por-omissao', module.enabled({}) is False,
+        'enabled({})=%s ficheiro=ausente' % module.enabled({}))
+
+    # O FICHEIRO liga (a configuracao do Sotto), e o env continua a mandar.
+    _settings_write(settings_path, True)
+    arm('a7-ficheiro-liga', module.enabled({}) is True,
+        'enabled({})=%s ficheiro=capture_exclude:true'
         % module.enabled({}))
-    arm('a7-env-desliga', module.enabled({'SOTTO_CAPTURE_EXCLUDE': '0'}) is False,
-        'enabled(0)=%s' % module.enabled({'SOTTO_CAPTURE_EXCLUDE': '0'}))
+    arm('a8-env-desliga-sobre-ficheiro',
+        module.enabled({'SOTTO_CAPTURE_EXCLUDE': '0'}) is False,
+        'enabled(0)=%s ficheiro=ligado'
+        % module.enabled({'SOTTO_CAPTURE_EXCLUDE': '0'}))
+    _settings_write(settings_path, False)
+    arm('a9-env-liga-sobre-ficheiro',
+        module.enabled({'SOTTO_CAPTURE_EXCLUDE': '1'}) is True,
+        'enabled(1)=%s ficheiro=desligado'
+        % module.enabled({'SOTTO_CAPTURE_EXCLUDE': '1'}))
+    _settings_write(settings_path, None)
 
     # O ESTILO REAL DA JANELA da legenda -- nao o texto do ficheiro.
     import caption_overlay
     ex = caption_overlay.EX_STYLE
-    arm('a8-estilo-transparente-noactivate',
+    arm('a10-estilo-transparente-noactivate',
         bool(ex & 0x00000020) and bool(ex & 0x08000000) and bool(ex & 0x00080000),
         'ex_style=0x%08x always_on_top=%s' % (ex, bool(ex & 0x00000008)))
 
     # E a chamada viva do CAMINHO do overlay, para nao julgar so' o modulo:
     # o que o dono ve passa por `apply`, e o resultado tem de casar com o log
-    # que a janela escreve.
-    arm('a9-overlay-chama-o-modulo',
+    # que a janela escreve. O segundo termo e' o metodo que o painel aciona na
+    # janela VIVA -- sem ele o interruptor so' valia no arranque seguinte.
+    arm('a11-overlay-chama-o-modulo',
         callable(getattr(module, 'apply', None))
+        and callable(getattr(caption_overlay.NativeCaptionOverlay,
+                             'set_capture_exclude', None))
         and 'capture_exclusion' in io.open(os.path.join(HERE, '..', 'app',
                                                         'webview',
                                                         'caption_overlay.py'),
                                            encoding='utf-8').read(),
-        'o overlay importa capture_exclusion')
+        'o overlay importa capture_exclusion e expoe set_capture_exclude')
 
     return rows
 
@@ -140,10 +180,17 @@ def _neg_arm():
         # m3-bis: ignora o interruptor e aplica mesmo com `want=False` -> a5.
         ('m4-want-ignorado', "    if not want:\n        _user32.SetWindowDisplayAffinity(ctypes.c_void_p(hwnd), WDA_NONE)",
          "    if False:\n        _user32.SetWindowDisplayAffinity(ctypes.c_void_p(hwnd), WDA_NONE)"),
-        # m3: o interruptor deixa de existir -> a7 tem de cair
+        # m3: o interruptor deixa de existir -> a8 tem de cair
         ('m3-env-ignorado', "not in ('0', 'false', 'off', 'no')", "not in ()"),
+        # m5: RE-PINA o modo ligado por omissao -- exactamente a regressao que a
+        # ordem do dono proibe -> a6 tem de cair.
+        ('m5-ligado-por-omissao',
+         'return bool(caption_settings.capture_exclude())', 'return True'),
     ]
     tmp = tempfile.mkdtemp(prefix='cap-neg-')
+    settings_path = os.path.join(tmp, 'caption-settings.json')
+    old_settings_env = os.environ.get('SOTTO_CAPTION_SETTINGS')
+    os.environ['SOTTO_CAPTION_SETTINGS'] = settings_path
     hwnd = _probe_window()
     caught = 0
     try:
@@ -152,7 +199,11 @@ def _neg_arm():
             path = os.path.join(tmp, name + '.py')
             io.open(path, 'w', encoding='utf-8').write(text.replace(old, new, 1))
             mod = _load(path)
-            rows = judge(mod, hwnd)
+            # Cada mutante comeca numa janela limpa: sem isto um mutante que
+            # deixa 0x11 aplicado faz o `a1` do SEGUINTE ficar vermelho, e um
+            # mutante podia ser "caught" pelo residuo de outro.
+            _user32.SetWindowDisplayAffinity(ctypes.c_void_p(hwnd), 0)
+            rows = judge(mod, hwnd, settings_path)
             red = [r[0] for r in rows if not r[1]]
             ok = bool(red)
             caught += 1 if ok else 0
@@ -162,6 +213,10 @@ def _neg_arm():
                      ''))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+        if old_settings_env is None:
+            os.environ.pop('SOTTO_CAPTION_SETTINGS', None)
+        else:
+            os.environ['SOTTO_CAPTION_SETTINGS'] = old_settings_env
         if hwnd:
             _user32.DestroyWindow(hwnd)
     total = len(mutations)
@@ -174,14 +229,23 @@ def main(argv):
     if '--neg-arm' in argv:
         return _neg_arm()
     import capture_exclusion as module
+    tmp = tempfile.mkdtemp(prefix='cap-oracle-')
+    settings_path = os.path.join(tmp, 'caption-settings.json')
+    old_settings_env = os.environ.get('SOTTO_CAPTION_SETTINGS')
+    os.environ['SOTTO_CAPTION_SETTINGS'] = settings_path
     hwnd = _probe_window()
     if not hwnd:
         print('VERDICT: FAIL -- sem hwnd (error=%d)' % ctypes.get_last_error())
         return 2
     try:
-        rows = judge(module, hwnd)
+        rows = judge(module, hwnd, settings_path)
     finally:
         _user32.DestroyWindow(hwnd)
+        shutil.rmtree(tmp, ignore_errors=True)
+        if old_settings_env is None:
+            os.environ.pop('SOTTO_CAPTION_SETTINGS', None)
+        else:
+            os.environ['SOTTO_CAPTION_SETTINGS'] = old_settings_env
     bad = 0
     for name, ok, detail in rows:
         print('  %-4s %-34s %s' % ('ok' if ok else 'FAIL', name, detail))

@@ -268,6 +268,46 @@ BUG-HUNT acima. Os passos, o tracker, o fecho mecanico e as recusas estao na ski
    passar -- medido). Portao: `youtube-cdp-source-oracle.py`, arm
    `sem-marcador-de-fala` (19/19, `--neg-arm` 15/15).
 
+## A AUTORIDADE DO RELOGIO DO YOUTUBE E' UMA TESTEMUNHA DUPLA (medido 2026-11-06)
+
+Tres ordens do dono na mesma sessao, e as tres apontavam para o mesmo sitio: *"skippar o video ou
+voltar o video, buga a legenda. sai de sync, atrasda, faz varias coisas horriveis"*, *"NAO É para o
+sotto depender de ativar a legenda DO YOUTUBE para a legenda do youtube funcionar no sotto"* e
+*"aconteceu só mais de varios segundos depois"*. O elo comum: o caminho do YouTube decidia PAUSA e
+SEEK por testemunhas que nao existem com o CC do player desligado.
+
+MEDIDO na sessao dele (`_main/_cache/sess-today.log`, 2026-11-06 16:39):
+`YOUTUBE_CLOCK_HELD t=505.05 served=515.03 floor=515.03` oito vezes (o chao monotonico nunca descia,
+porque so' uma linha PINTADA podia provar um seek e sem CC nao ha' linha pintada) e, no mesmo minuto,
+`YOUTUBE_CDP_PACED paused=True` contradito por `YOUTUBE_PAUSE_DISAGREED clock_rate=1.32` ->
+`CAPTION_WINDOW_BLANKED reason=youtube-paused` = **60 s de ecra vazio** com `sotto-caption-tick` a
+89 % de um nucleo.
+
+A lei, e ela vale para qualquer fonte que publique posicao:
+
+- **Um seek prova-se pelo PAR (posicao exata, carimbo de parede)**, nunca pelo relogio nem pela
+  pintura: recuo maior que `SEEK_BACK_S` e' seek (o player nao anda para tras), avanco maior do que
+  a taxa maxima do player no intervalo tambem. Duas leituras do MESMO carimbo nao sao uma segunda
+  medida (o cache CDP de ≤1,2 s declina com `same-snapshot`), e a mudanca de video zera a serie.
+  O relogio sozinho **continua proibido de recuar** (o replay de 428 linhas: regra antiga 227
+  recuos, nova 0).
+- **O chao desce junto com a ancora e com o alinhamento**, no MESMO tique: deixar o `yt_hit` velho
+  faz o `_yt_clock_agrees` recusar o instante novo como `clock-stale-last-cue` e o ecra continua a
+  servir a linha de +10 s -- o seek nao envenenava so' o relogio, envenenava o SERVICO.
+- **A pausa so' apaga com testemunha que concorda**: `CAPTION_WINDOW_BLANKED reason=youtube-paused`
+  exige posicao medida imovel por `CLOCK_STATIC_PAUSE_S` em carimbos DISTINTOS
+  (`YOUTUBE_PAUSE_PROVEN witness=flag+clock-static`); a bandeira sozinha congela a interpolacao e
+  diz o nome (`YOUTUBE_PAUSE_UNWITNESSED`), e o primeiro tique em que o relogio anda repinta.
+- **Um snapshot em cache nao e' uma medicao**, e tambem nao e' ausencia: ele devolve o ULTIMO
+  veredicto medido (devolver `False` desarmava uma pausa provada entre publicacoes e piscava a 4-15
+  Hz; devolver `True` deixava uma foto velha confirmar uma pausa).
+
+Portao: `_main/youtube-monotonic-oracle.py` (30 arms; os arms 10-16 sao o modulo e os 17-20 conduzem
+o `_yt_cdp_snapshot`/`_yt_decide`/`_yt_pause_edge` REAIS extraidos por `ast`, com a serie medida
+deste log a entrar como fixture), mais `stutter-caption`, `yt-clock-static` e `live-route`.
+**UNMEASURED:** a sessao viva dele -- a shell carregou `SHELL_CODE_ID sha256=03F0EA30D56C` e o
+`HOT_RELOAD_DISABLED` esta' no log, logo a cura exige reiniciar a app; `fixed, NOT verified`.
+
 ## A LEI DA STACK (decidida pelo dono)
 **nemotron streaming = motor LOCAL, só com o painel aberto. Parakeet Redux = motor GERAL/de fundo**
 (batch sobre o áudio acumulado, leve em RAM). *"o nvidia é pro ao vivo, o parakeet redux é pro geral."*
@@ -714,6 +754,16 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
   Medido ao ligar: `VERDICT: PASS (5/5)` rc=0 e `NEG-ARM: PASS -- 2/2` rc=1; e o arranque real,
   largado pela MESMA linha de comando do atalho, sobreviveu ao prazo de 25 s a pintar legenda do
   YouTube (antes: rc=1 em ~1,3 s, sem uma linha de erro).)
+- **PIN do ficheiro (medido 2026-11-16):** `_main\_audit-verify-all.cmd` = **402995 B**,
+  **4621 CRLF** / 0 bare LF, sha256 `6ECF14E9AA0DAFC4D3E47BED94CFC087BE602ACF7BBE68A7E28C5B2A8CD5F9C4`.
+  (Cento e quinze bytes e ZERO linhas a mais do que o pin de 402880 B medido hoje as 16:3x: as DUAS
+  linhas do par `capture-exclude` passam a nomear
+  `app\webview\caption_settings.py`, porque o interruptor do "modo stealth" deixou de ser um literal
+  ligado por omissao e passou a ser a chave `capture_exclude` desse ficheiro (ordem do dono,
+  2026-11-06: *"retira o 'modo stealth' da legenda. deixa desativado por padrao, e ativavel nas
+  configs do sotto"*), e o comentario do passo passa a dizer os onze arms e os cinco mutantes. Uma
+  dependencia que o nao nomeie deixaria o passo em cache a reimprimir `VERDICT: PASS` sobre outro
+  interruptor -- a classe do `panel-deps`. O numero que vale e' sempre o do ficheiro VIVO.)
 - **PIN do ficheiro (medido 2026-11-15, 21:3x):** `_main\_audit-verify-all.cmd` = **401272 B**,
   **4606 CRLF** / 0 bare LF, sha256 `D94035DE9D06F97132F59710B9CB9C1C2A59C4D4925B0251FB36918AB7149A7E`.
   (Quarenta e nove bytes e ZERO linhas a mais do que o pin de 401223 B: as dependencias do passo

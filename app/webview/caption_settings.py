@@ -12,6 +12,14 @@ escala o alfa da PLACA/regua/LED e NUNCA a tinta do texto; `plate` e' `tight`
 Nenhum caminho levanta -- ausente, partido ou fora do dominio cai no default --
 e a escrita e' temporaria-e-renomeia, para um settings meio escrito nunca ser
 lido como "sem escolha".
+
+E (3) `capture_exclude`, o "modo stealth" da legenda -- a janela some de
+OBS/Zoom/Teams/Discord e continua visivel para o dono. Ordem do dono,
+2026-11-16, verbatim: *"retira o 'modo stealth' da legenda. deixa desativado por
+padrao, e ativavel nas configs do sotto."* Por isso o default e'
+`DEFAULT_CAPTURE_EXCLUDE = False`; quem quiser a esconder liga-a no painel. O
+unico leitor da decisao e' `capture_exclusion.enabled()`, que aplica o override
+`SOTTO_CAPTURE_EXCLUDE` por cima DESTE valor -- um dono, um predicado.
 """
 
 from __future__ import annotations
@@ -25,6 +33,8 @@ MIN_OPACITY = 0.30
 MAX_OPACITY = 1.0
 PLATE_MODES = ('tight', 'normal')
 DEFAULT_PLATE = 'tight'
+#: O "modo stealth" desligado de fabrica (ordem do dono, 2026-11-16).
+DEFAULT_CAPTURE_EXCLUDE = False
 
 def path():
     """O ficheiro; `SOTTO_CAPTION_SETTINGS` desvia-o para os oraculos."""
@@ -95,6 +105,28 @@ def set_visual(opacity=None, plate=None):
         settings['plate'] = plate
     save(settings)
     return visual()
+
+
+def capture_exclude():
+    """O "modo stealth" guardado; ausente/partido/ilegivel = DESLIGADO.
+
+    Nunca levanta, como `load()`. Aceita o booleano que `set_capture_exclude`
+    escreve e as formas textuais que um ficheiro editado a mao pode ter -- mas
+    so' o que diz SIM liga: o default tem de sobreviver a lixo no ficheiro.
+    """
+    raw = load().get('capture_exclude', DEFAULT_CAPTURE_EXCLUDE)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw or '').strip().lower() in ('1', 'true', 'on', 'yes')
+
+
+def set_capture_exclude(want):
+    """Grava a escolha e devolve o que ficou GRAVADO (bool)."""
+    want = bool(want)
+    settings = load()
+    settings['capture_exclude'] = want
+    save(settings)
+    return capture_exclude()
 
 
 # ── O ULTIMO DESENHO MEDIDO (2026-11-12) ────────────────────────────────────

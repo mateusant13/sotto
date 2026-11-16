@@ -117,6 +117,379 @@ def arm_rule(mono):
 
 
 # --------------------------------------------------------------------------
+# ARM 10..15 -- O SEEK SEM PINTURA (2026-11-16, a sessao do dono)
+# --------------------------------------------------------------------------
+def arm_seek(mono):
+    """A PROVA do seek que NAO precisa de uma linha pintada.
+
+    A SEQUENCIA E' A MEDIDA, nao uma invencao: a sessao do dono de 2026-11-16
+    (video `hYIymEMB9x4`, legenda do YouTube DESLIGADA, 785 cues na faixa
+    automatica) publicou `YOUTUBE_CLOCK_HELD t=505.05 served=515.03
+    floor=515.03` oito vezes, com o `video.currentTime` da CDP a andar de
+    505,05 para 505,56 -- ou seja o chao ficou 10 s a' frente do player para
+    sempre, porque `advance` so' desce com a PINTURA e nao havia pintura
+    nenhuma. As tres leituras 511,43 / 512,93 / 505,59 sao as da sessao.
+
+    Cada braco conduz a MESMA ordem do shell: `SeekWitness.observe` (o par
+    t+stamp) e, quando ele declara, `advance` + `decide` -- a lei do relogio
+    continua a ser uma so' (`decide` nunca recua por leitura).
+    """
+    out = []
+
+    def run(seq, floor, vid='hYIymEMB9x4'):
+        w = mono.SeekWitness()
+        served = floor
+        logs = []
+        verdicts = []
+        for t, stamp, v in seq:
+            verdict = w.observe(t, stamp, v if v is not None else vid)
+            verdicts.append(verdict)
+            if verdict['seek']:
+                floor = mono.advance(floor, verdict['now'])
+                if verdict['log']:
+                    logs.append(verdict)
+            served, floor = mono.decide(t, floor)
+        return served, floor, verdicts, logs
+
+    # 10. O RECUO MEDIDO (10 s) E' SEGUIDO no tick em que a 2a leitura chega.
+    seq = [(511.43, 1000.000, None), (512.93, 1009.000, None),
+           (505.59, 1023.000, None)]
+    served, floor, verdicts, logs = run(seq, 515.03)
+    out.append(("arm10-seek-rewind-followed", served == 505.59
+                and abs(floor - 505.59) < 1e-6
+                and verdicts[-1]['why'] == 'back',
+                "511.43 -> 512.93 -> 505.59 (chao 515.03): servido %r, chao %r, "
+                "why=%r (o defeito servia 515.03 para sempre)"
+                % (served, floor, verdicts[-1]['why'])))
+    # 11. A DECISAO FICA ESCRITA UMA VEZ, e nao uma por tick.
+    out.append(("arm11-seek-logged-once", len(logs) == 1,
+                "%d linha(s) de YOUTUBE_SEEK_RESYNC para um seek de 3 leituras"
+                % len(logs)))
+    # 12. O JITTER DE LEITURA NAO MEXE NO CHAO. 1,5 s e' o jitter medido da
+    #     leitura UIA (2026-11-04); a histerese do seek e' `SEEK_BACK_S`.
+    for jump in (1.5, 1.99):
+        served, floor, verdicts, logs = run(
+            [(100.0, 10.000, None), (100.0 - jump, 10.500, None)], 100.0)
+        out.append(("arm12-jitter-%ss-not-a-seek" % jump,
+                    served == 100.0 and floor == 100.0
+                    and not verdicts[-1]['seek'] and not logs,
+                    "recuo de %.2f s em 0,5 s de parede: servido %r, chao %r "
+                    "(o ecra nao pode recuar por leitura)"
+                    % (jump, served, floor)))
+    # 13. UM SALTO PARA A FRENTE SO' E' SEEK QUANDO EXCEDE O QUE O PLAYER
+    #     EXPLICARIA. 60 s em 0,2 s de parede (60 s de video em 0,2 de parede =
+    #     300x, acima dos 2x do menu) e' seek; 1,2 s em 1,0 s e' o video.
+    served, floor, verdicts, logs = run(
+        [(500.0, 20.000, None), (560.0, 20.200, None)], 500.0)
+    fwd_seek = (verdicts[-1]['seek'] and verdicts[-1]['why'] == 'forward')
+    served2, floor2, verdicts2, logs2 = run(
+        [(500.0, 30.000, None), (501.2, 31.000, None)], 500.0)
+    fwd_video = not verdicts2[-1]['seek']
+    out.append(("arm13-forward-seek-vs-video", fwd_seek and fwd_video,
+                "60 s em 0,2 s de parede: seek=%s; 1,2 s em 1,0 s: seek=%s"
+                % (verdicts[-1]['seek'], verdicts2[-1]['seek'])))
+    # 14. A MESMA FOTO (o cache de 1,2 s da CDP) NAO E' MEDIDA NOVA: sem esta
+    #     regra duas chamadas no mesmo tick comparariam a leitura com ela
+    #     propria e um stamp repetido nunca seria dado como repetido.
+    w = mono.SeekWitness()
+    w.observe(515.0, 40.000, 'v')
+    repeated = w.observe(515.0, 40.000, 'v')
+    out.append(("arm14-same-snapshot-not-a-measure",
+                not repeated['seek'] and repeated['why'] == 'same-snapshot',
+                "duas leituras do MESMO stamp: why=%r" % (repeated['why'],)))
+    # 15. TROCAR DE VIDEO NAO E' RECUAR: o video novo comeca em t=0 e um recuo
+    #     de 300 s para 5 s e' outra linha temporal. Sem este braco todo o
+    #     alt-tab declarava seek e o chao caia para 5 s.
+    served, floor, verdicts, _logs = run(
+        [(300.0, 50.000, 'A'), (5.0, 50.200, 'B')], 300.0)
+    out.append(("arm15-video-change-not-a-seek",
+                not verdicts[-1]['seek'] and served == 300.0,
+                "video A t=300 -> video B t=5: seek=%s servido=%r"
+                % (verdicts[-1]['seek'], served)))
+    # 16. A LEI ANTIGA CONTINUA DE PE': sem testemunha de seek, `decide` NAO
+    #     recua. Este braco existe para a prova nova nao abrir a porta que as
+    #     129 linhas do cabecalho fecharam.
+    s, f = mono.decide(505.59, 515.03)
+    out.append(("arm16-clock-alone-still-cannot-rewind", s == 515.03,
+                "decide(505.59, chao=515.03) serviu %r (o NUMERO do defeito; "
+                "so' um seek PROVADO o faz descer)" % (s,)))
+    return out
+
+
+# --------------------------------------------------------------------------
+# ARM 17..19 -- O WIRING REAL: `_yt_cdp_snapshot` com a serie medida
+# --------------------------------------------------------------------------
+class _Clock:
+    """`time.monotonic()` que o braco move a mao (o mesmo truque do stutter)."""
+
+    now = 100.0
+
+    def monotonic(self):
+        return _Clock.now
+
+
+def _literal(source, name):
+    """O literal de `NAME = ...` (modulo ou corpo de classe), por AST."""
+    tree = ast.parse(source)
+    scopes = [tree.body]
+    scopes += [node.body for node in tree.body if isinstance(node, ast.ClassDef)]
+    for body in scopes:
+        for node in body:
+            if isinstance(node, ast.Assign):
+                for tgt in node.targets:
+                    if isinstance(tgt, ast.Name) and tgt.id == name:
+                        return ast.literal_eval(node.value)
+    raise SystemExit('ORACLE-BROKEN: %s nao define %s' % (SHELL, name))
+
+
+def _bodies(source, names):
+    """Os corpos dos metodos `names`, por AST -- a classe que os tiver."""
+    tree = ast.parse(source)
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        found = {}
+        for sub in node.body:
+            if isinstance(sub, ast.FunctionDef) and sub.name in names:
+                found[sub.name] = ast.get_source_segment(source, sub)
+        if found:
+            return found
+    return {}
+
+
+class _Source:
+    """A foto da CDP: uma de cada vez, do mesmo video, sem linhas pintadas."""
+
+    def __init__(self, snap):
+        self.snap = snap
+
+    def set_video_id(self, _vid):
+        return None
+
+    def snapshot(self, max_age=None):
+        return dict(self.snap) if self.snap else None
+
+    def selected_video_id(self):
+        return (self.snap or {}).get('videoId') or ''
+
+    def snapshot_age(self):
+        return 0.0
+
+
+class _Shell:
+    """A shell que a borda da pausa chama -- os apagares ficam contados."""
+
+    _caption_window_shown = True
+    _caption_wanted = True
+
+    def __init__(self):
+        self.blanks = []
+        self.pushes = []
+        self.yt_source_paused = False
+        self.yt_source_ended = False
+
+    def _blank_caption_window(self, reason):
+        self.blanks.append(reason)
+
+    def push_caption_to_window(self, text, **kw):
+        self.pushes.append((text, kw))
+
+
+class _Player:
+    """So' o estado que o `_yt_cdp_snapshot` real le'/escreve."""
+
+    def __init__(self, source):
+        self._yt_cdp_source = source
+        self._yt_diag = None
+        self._yt_rate = None
+        self.yt_video_id = 'hYIymEMB9x4'
+        self.yt_cdp_clock = None
+        self.yt_cdp_rate = 1.0
+        self.yt_cdp_paused = False
+        self.yt_cdp_ended = False
+        self.yt_cdp_playing = None
+        self.yt_serve_floor = None
+        self.yt_held_logged = None
+        self._yt_anchor = None
+        # O ALINHAMENTO DA LINHA TEMPORAL ANTIGA: e' o que `_yt_clock_agrees`
+        # compara com o relogio, e o que o seek tem de desmentir.
+        self.yt_hit = {'cue': {'start': 514.0, 'end': 517.0},
+                       'text': 'the old line'}
+        self._yt_was_paused = False
+        self._yt_pause_epoch = 0
+        self._yt_pause_since = None
+        self._yt_frame_at = 0.0
+        self.last_line = 'the theme hotkey?'
+        self.last_rows = ['the theme hotkey?']
+        self.shell = _Shell()
+
+    def _yt_cdp_ensure(self, *_a):
+        return self._yt_cdp_source
+
+    def _yt_rate_tick(self, _snap, _source):
+        return None
+
+    def _yt_cue_payload(self):
+        return None
+
+
+def arm_shell_wiring(mono, shell_path=SHELL):
+    """O WIRING do seek e da pausa, conduzido nos METODOS REAIS do shell.
+
+    As arms 10..16 medem a REGRA; esta mede a LIGACAO, que e' o que falhou na
+    sessao do dono. Tres perguntas, cada uma com a sua testemunha:
+
+      * 17 -- o recuo medido (515,19 -> 505,05 com a bandeira `paused=True` no
+        MESMO instante) poe o chao e a ancora em 505,05 no tick da prova, e a
+        leitura seguinte serve 505,05 (o defeito servia 515,03);
+      * 18 -- e NAO apaga o ecra: `_yt_pause_epoch` fica em 0 com quatro
+        amostras `paused=True` e o relogio a andar (o defeito apagou as 16:39:34
+        e o ecra ficou 60 s vazio);
+      * 19 -- o controle POSITIVO: o mesmo caminho, com a posicao PARADA de
+        verdade (o mesmo `t` em carimbos distintos por 2,5 s), APAGA. Sem este
+        braco, "nao apagou" seria indistinguivel de "a borda nunca correu".
+    """
+    with io.open(shell_path, encoding="utf-8") as fh:
+        src = fh.read()
+    names = ("_yt_cdp_snapshot", "_yt_clock_moving", "_yt_clock_static",
+             "_yt_pause_edge", "_yt_decide")
+    bodies = _bodies(src, names)
+    missing = [n for n in names if n not in bodies]
+    if missing:
+        return [("arm17-wiring-extract", False,
+                 "metodos ausentes no shell: %s" % ", ".join(missing))]
+    logs = []
+    if WEBVIEW not in sys.path:
+        sys.path.insert(0, WEBVIEW)
+    ns = {"log": lambda m: logs.append(str(m)), "time": _Clock(), "os": os,
+          "_yt_mark": lambda *_a, **_k: None,
+          "_YT_RATE_LOG_S": 5.0}
+    for const in ("CLOCK_STATIC_PAUSE_S", "CLOCK_MOVING_MIN_RATE",
+                  "PAUSE_BLANK_DWELL_S"):
+        ns["_" + const] = _literal(src, const)
+    for name, body in bodies.items():
+        module = ast.Module(body=[ast.parse(body).body[0]], type_ignores=[])
+        exec(compile(module, "<%s>" % name, "exec"), ns)
+
+    def build(snap):
+        player = _Player(_Source(snap))
+        for name in names:
+            setattr(player, name, ns[name].__get__(player, type(player)))
+        for const in ("CLOCK_STATIC_PAUSE_S", "CLOCK_MOVING_MIN_RATE",
+                      "PAUSE_BLANK_DWELL_S"):
+            setattr(player, const, ns["_" + const])
+        return player
+
+    def drive(player, series):
+        """`(servido, chao_no_tick, ancora_no_tick)` -- um tick de cada vez.
+
+        O chao e a ancora sao lidos DEPOIS do snapshot e ANTES da leitura
+        seguinte: `_yt_decide` sobe o chao (regra normal), e o que a arm17
+        mede e' o que o tick da PROVA deixou escrito, nao o acumulado.
+        """
+        served, floors, anchors = [], [], []
+        for t, stamp, paused in series:
+            player._yt_cdp_source.snap = {
+                "videoId": 'hYIymEMB9x4', "t": t, "stamp": stamp,
+                "paused": paused, "ended": False, "rate": 1.0,
+                "rows": [], "items": [], "title": 'x', "why": 'no-painted-caption'}
+            _Clock.now = stamp
+            player._yt_cdp_snapshot(None, None, None, declared='hYIymEMB9x4')
+            floors.append(player.yt_serve_floor)
+            anchors.append(player._yt_anchor)
+            served.append(player._yt_decide(t))
+        return served, floors, anchors
+
+    # 17/18 -- A SERIE MEDIDA (2026-11-16): o recuo de 10 s e a bandeira presa.
+    del logs[:]
+    p = build(None)
+    served, floors, anchors = drive(
+        p, [(515.19, 100.00, False), (505.05, 100.15, True),
+            (505.55, 101.00, True), (506.05, 101.50, True)])
+    out = []
+    out.append(("arm17-seek-resync-wired",
+                abs(float(floors[1]) - 505.05) < 1e-6
+                and served[1] == 505.05 and served[3] == 506.05
+                and abs(float(anchors[1][0]) - 505.05) < 1e-6
+                and p.yt_hit is None,
+                "chao_no_tick=%r ancora=%r servido=%r alinhamento=%r (o defeito "
+                "servia 515.03 e o chao ficava la')"
+                % ([None if f is None else round(float(f), 2) for f in floors],
+                   [None if a is None else (round(float(a[0]), 2),
+                                            round(float(a[1]), 2))
+                    for a in anchors],
+                   [round(s, 2) for s in served], p.yt_hit)))
+    out.append(("arm17-seek-log-once",
+                sum(1 for m in logs if m.startswith('YOUTUBE_SEEK_RESYNC')) == 1,
+                "%d linha(s) YOUTUBE_SEEK_RESYNC: %r"
+                % (sum(1 for m in logs if m.startswith('YOUTUBE_SEEK_RESYNC')),
+                   [m for m in logs if m.startswith('YOUTUBE_SEEK')][:2])))
+    out.append(("arm18-paused-flag-alone-does-not-blank",
+                not p.shell.blanks and int(p._yt_pause_epoch) == 0,
+                "4 amostras paused=True com o relogio a andar: blanks=%r "
+                "epoch=%d (o defeito apagou e ficou 60 s vazio)"
+                % (p.shell.blanks, p._yt_pause_epoch)))
+    out.append(("arm18-disagree-named",
+                any(m.startswith('YOUTUBE_PAUSE_DISAGREED') for m in logs),
+                "o desmentido tem nome: %r"
+                % ([m for m in logs if m.startswith('YOUTUBE_PAUSE')][:2],)))
+    # 19 -- O CONTROLE: a posicao PARADA de verdade (mesmo `t`, carimbos
+    # distintos por 2,5 s) tem de apagar. `_yt_frame_at` fica no passado para o
+    # portao do desenho nao adiar o que se quer medir aqui.
+    del logs[:]
+    q = build(None)
+    drive_static = [(600.0, 200.0, True), (600.0, 201.0, True),
+                    (600.0, 202.5, True), (600.0, 204.5, True)]
+    for t, stamp, paused in drive_static:
+        q._yt_cdp_source.snap = {
+            "videoId": 'hYIymEMB9x4', "t": t, "stamp": stamp, "paused": paused,
+            "ended": False, "rate": 1.0, "rows": [], "items": [],
+            "title": 'x', "why": 'no-painted-caption'}
+        _Clock.now = stamp
+        q._yt_cdp_snapshot(None, None, None, declared='hYIymEMB9x4')
+    out.append(("arm19-static-pause-still-blanks",
+                q.shell.blanks == ['youtube-paused']
+                and int(q._yt_pause_epoch) == 1,
+                "posicao parada 2,5 s em carimbos distintos: blanks=%r epoch=%d"
+                % (q.shell.blanks, q._yt_pause_epoch)))
+    out.append(("arm19-proven-named",
+                sum(1 for m in logs if m.startswith('YOUTUBE_PAUSE_PROVEN')) == 1,
+                "%r" % ([m for m in logs if m.startswith('YOUTUBE_PAUSE')][:3],)))
+    # 19-bis -- A FOTO EM CACHE NAO DESARMA A PAUSA PROVADA: entre duas
+    # publicacoes da CDP (~0,5 s com o video parado) a shell le o MESMO carimbo;
+    # o veredicto tem de ser o ultimo MEDIDO, senao a borda de retoma repinta o
+    # ecra a cada leitura repetida -- um piscar a 4-15 Hz durante a pausa.
+    del logs[:]
+    for _ in range(4):
+        _Clock.now += 0.25
+        q._yt_cdp_snapshot(None, None, None, declared='hYIymEMB9x4')
+    out.append(("arm19b-cached-read-keeps-pause",
+                q.shell.blanks == ['youtube-paused']
+                and int(q._yt_pause_epoch) == 1
+                and not any(m.startswith('YOUTUBE_PAUSE_RESUMED') for m in logs),
+                "4 leituras do MESMO carimbo com a pausa provada: blanks=%r "
+                "epoch=%d resumed=%r"
+                % (q.shell.blanks, q._yt_pause_epoch,
+                   [m for m in logs if m.startswith('YOUTUBE_PAUSE_RESUMED')][:2])))
+    # 20 -- A MESMA FOTO NAO CONFIRMA PAUSA: com o cache de 1,2 s da CDP o mesmo
+    # `stamp` repetido nao pode valer como duas medidas.
+    del logs[:]
+    r = build(None)
+    for _ in range(4):
+        r._yt_cdp_source.snap = {
+            "videoId": 'hYIymEMB9x4', "t": 700.0, "stamp": 300.0,
+            "paused": True, "ended": False, "rate": 1.0, "rows": [], "items": [],
+            "title": 'x', "why": 'no-painted-caption'}
+        _Clock.now = 310.0
+        r._yt_cdp_snapshot(None, None, None, declared='hYIymEMB9x4')
+    out.append(("arm20-cached-snapshot-is-not-a-second-measure",
+                not r.shell.blanks and int(r._yt_pause_epoch) == 0,
+                "4 chamadas com o MESMO carimbo e 10 s de parede: blanks=%r "
+                "epoch=%d" % (r.shell.blanks, r._yt_pause_epoch)))
+    return out
+
+
+# --------------------------------------------------------------------------
 # ARM 8 -- replay do LOG REAL, com as duas regras
 # --------------------------------------------------------------------------
 def read_log(path):
@@ -407,6 +780,8 @@ def main(argv=None):
 
     mono = _load_module(MONO, "youtube_monotonic_live")
     results = arm_rule(mono)
+    results += arm_seek(mono)
+    results += arm_shell_wiring(mono, SHELL)
     results += arm_wiring(SHELL)
 
     def _measure(rows_, name):

@@ -3023,17 +3023,17 @@ if exist _main\shell-orphans.py (
 REM (`capture-exclude`: a janela da legenda desaparece de QUEM GRAVA o ecra,
 REM ordem do dono de 2026-11-04 -- as features do `perssua-re` que faltavam.
 REM O oraculo cria um HWND REAL e LE DE VOLTA a afinidade: pedir 0x11 e ficar
-REM com 0x00 e' falha. Nove arms (escada para build antiga, interruptor por
-REM env, o `EX_STYLE` do overlay com `WS_EX_TRANSPARENT`/`WS_EX_NOACTIVATE`, e a
-REM chamada viva do caminho do overlay) e quatro mutantes, cada um com o seu
-REM braco. Nenhum dos dois abre janela visivel: e' um HWND escondido em
-REM (-4000,-4000) e fechado no `finally`.)
+REM com 0x00 e' falha. Onze arms (escada para build antiga, o default DESLIGADO,
+REM o ficheiro de settings a ligar, o override por env, o `EX_STYLE` do overlay
+REM com `WS_EX_TRANSPARENT`/`WS_EX_NOACTIVATE`, e a chamada viva do caminho do
+REM overlay) e cinco mutantes, cada um com o seu braco. Nenhum dos dois abre
+REM janela visivel: e' um HWND escondido em (-4000,-4000) e fechado no `finally`.)
 if exist _main\capture-exclude-oracle.py (
-  call :step always capture-exclude 0 "_main\capture-exclude-oracle.py;app\webview\capture_exclusion.py;app\webview\caption_overlay.py" "%OUT%\capture-exclude.log" python _main\capture-exclude-oracle.py
+  call :step always capture-exclude 0 "_main\capture-exclude-oracle.py;app\webview\capture_exclusion.py;app\webview\caption_settings.py;app\webview\caption_overlay.py" "%OUT%\capture-exclude.log" python _main\capture-exclude-oracle.py
   call :record capture-exclude !STEP_RC!
 ) else ( call :record capture-exclude MISSING )
 if exist _main\capture-exclude-oracle.py (
-  call :step always red-as-expected-capture-exclude 1 "_main\capture-exclude-oracle.py;app\webview\capture_exclusion.py;app\webview\caption_overlay.py" "%OUT%\capture-exclude-neg.log" python _main\capture-exclude-oracle.py --neg-arm
+  call :step always red-as-expected-capture-exclude 1 "_main\capture-exclude-oracle.py;app\webview\capture_exclusion.py;app\webview\caption_settings.py;app\webview\caption_overlay.py" "%OUT%\capture-exclude-neg.log" python _main\capture-exclude-oracle.py --neg-arm
   call :expectred red-as-expected-capture-exclude !STEP_RC! "%OUT%\capture-exclude-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-capture-exclude MISSING "%OUT%\capture-exclude-neg.log" "NEG-ARM PASS" )
 

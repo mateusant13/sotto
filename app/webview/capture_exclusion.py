@@ -14,7 +14,12 @@ escada e' 0x11 -> 0x01 -> nada, e cada degrau e' publicado no log: um modo que
 nao se sabe qual e' nao se pode afirmar.
 
 O QUE ESTE MODULO NAO FAZ: nao toca em estilos da janela, nao faz hooks, nao
-abre device nenhum. Uma chamada por janela, no momento em que ela nasce.
+abre device nenhum. Uma chamada por janela, no momento em que ela nasce -- e
+outra quando o dono liga/desliga o modo no painel, sobre a janela VIVA.
+
+O INTERRUPTOR E' DESLIGADO DE FABRICA (ordem do dono, 2026-11-16): quem grava o
+ecra ve' a legenda como qualquer janela; o "modo stealth" e' uma escolha nas
+configuracoes do Sotto. A decisao tem UM dono, `enabled()`.
 """
 
 from __future__ import annotations
@@ -53,14 +58,27 @@ def can_exclude(build=None):
 
 
 def enabled(environ=None):
-    """O interruptor: ligado por omissao, `SOTTO_CAPTURE_EXCLUDE=0` desliga.
+    """A decisao RESOLVIDA: o override do env, senao o ficheiro, senao OFF.
 
-    Ligado por omissao porque esta e' a razao de existir do overlay: quem grava
-    o ecra nao deve ficar com a legenda colada por cima do video. Desligado, a
-    janela comporta-se como antes (entra na captura) e isso fica no log.
+    Ordem do dono, 2026-11-16, verbatim: *"retira o 'modo stealth' da legenda.
+    deixa desativado por padrao, e ativavel nas configs do sotto."* Por isso o
+    valor que falta e' `False` -- a janela ENTRA na captura ate' o dono a ligar
+    no painel (`_main/caption-settings.json`, chave `capture_exclude`).
+
+    Um so' predicado: `SOTTO_CAPTURE_EXCLUDE` (1/0) manda quando esta' definido
+    -- e' o eixo que o oraculo usa e serve para diagnosticar sem mexer no
+    ficheiro; sem ele, quem responde e' `caption_settings.capture_exclude()`,
+    que nunca levanta (ficheiro ausente/partido = OFF).
     """
     env = os.environ if environ is None else environ
-    return str(env.get('SOTTO_CAPTURE_EXCLUDE', '1')).strip() not in ('0', 'false', 'off', 'no')
+    raw = str(env.get('SOTTO_CAPTURE_EXCLUDE', '') or '').strip().lower()
+    if raw:
+        return raw not in ('0', 'false', 'off', 'no')
+    try:
+        import caption_settings
+        return bool(caption_settings.capture_exclude())
+    except Exception:  # noqa: BLE001 -- sem ficheiro/import a resposta e' OFF
+        return False
 
 
 def apply(hwnd, want=True, build=None):

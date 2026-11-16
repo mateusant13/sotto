@@ -5179,30 +5179,70 @@ class ExternalCaptionWatcher(threading.Thread):
 
         Devolve `(parado, held_s)`. `t` ausente NAO e' pausa: ausencia de
         medida nunca vira afirmacao.
+
+        E UMA FOTO REPETIDA NAO E' UMA LEITURA NOVA (2026-11-16). O carimbo do
+        snapshot (`stamp`) viaja junto; enquanto ele nao muda, a CDP devolveu a
+        MESMA foto em cache (ate' 1,2 s), e o mesmo `t` lido duas vezes nao e'
+        "o relogio nao anda" -- e' uma leitura so'. Sem este portao um `attach`
+        lento (medido: `YOUTUBE_PROBE_BUDGET ... abandoned=6`, sondas a cair no
+        orcamento) declarava PAUSA com o video a tocar, e a pausa e' o que apaga
+        o ecra. Uma testemunha precisa de duas medidas, e o carimbo e' o que
+        distingue duas medidas de uma repeticao.
         """
         try:
             t = snap.get('t') if snap is not None else None
+            stamp = snap.get('stamp') if snap is not None else None
+            vid = snap.get('videoId') if snap is not None else None
         except AttributeError:
-            t = None
+            t = stamp = vid = None
         now = time.monotonic() if now is None else float(now)
+        try:
+            stamp = None if stamp is None else float(stamp)
+        except (TypeError, ValueError):
+            stamp = None
+        vid = None if vid is None else str(vid)
+        prev_vid = getattr(self, '_yt_ct_vid', None)
+        if vid and prev_vid and vid != prev_vid:
+            # OUTRO VIDEO: a serie comeca do zero. Duas posicoes iguais de dois
+            # videos diferentes nao sao "o mesmo instante parado".
+            self._yt_ct_val = None
+            self._yt_ct_since = 0.0
+            self._yt_ct_stamp = None
+        if vid:
+            self._yt_ct_vid = vid
+        if stamp is not None:
+            if stamp == getattr(self, '_yt_ct_stamp', None):
+                # A MESMA FOTO: nao ha' medida nova. O estado de `_yt_ct_val`/
+                # `_yt_ct_since` fica como esta' (o tempo parado nao reinicia
+                # por uma repeticao) e o veredicto e' o ULTIMO MEDIDO -- nem
+                # `True` (uma foto em cache nao confirma a pausa) nem `False`
+                # (uma foto em cache nao e' movimento: devolver `False` aqui
+                # desarmava a pausa provada entre duas publicacoes da CDP, ~0,5 s,
+                # e a borda de retoma repintava o ecra em cada uma).
+                return getattr(self, '_yt_ct_verdict', (False, 0.0))
+            self._yt_ct_stamp = stamp
         if t is None:
             self._yt_ct_val = None
             self._yt_ct_since = 0.0
-            return False, 0.0
+            self._yt_ct_verdict = (False, 0.0)
+            return self._yt_ct_verdict
         try:
             t = float(t)
         except (TypeError, ValueError):
             self._yt_ct_val = None
             self._yt_ct_since = 0.0
-            return False, 0.0
+            self._yt_ct_verdict = (False, 0.0)
+            return self._yt_ct_verdict
         prev = getattr(self, '_yt_ct_val', None)
         since = float(getattr(self, '_yt_ct_since', 0.0) or 0.0)
         if prev is None or abs(t - float(prev)) > 1e-3:
             self._yt_ct_val = t
             self._yt_ct_since = now
-            return False, 0.0
+            self._yt_ct_verdict = (False, 0.0)
+            return self._yt_ct_verdict
         held = (now - since) if since else 0.0
-        return held >= float(self.CLOCK_STATIC_PAUSE_S), held
+        self._yt_ct_verdict = (held >= float(self.CLOCK_STATIC_PAUSE_S), held)
+        return self._yt_ct_verdict
 
     #: QUANTO `currentTime` TEM DE ANDAR, POR SEGUNDO DE PAREDE, PARA O VIDEO
     #: ESTAR A ANDAR (2026-11-12). Um video a tocar anda `rate` segundos por
@@ -5507,6 +5547,66 @@ class ExternalCaptionWatcher(threading.Thread):
                     if snap.get('paused') is not None else False
                 self.yt_cdp_ended = bool(snap.get('ended')) \
                     if snap.get('ended') is not None else False
+                # O SEEK NAO PRECISA DE PINTURA (2026-11-16). MEDIDO na sessao do
+                # dono (video `hYIymEMB9x4`, legenda do YouTube DESLIGADA): o
+                # `video.currentTime` da CDP recuou 515,0 -> 505,0 e o relogio
+                # servido ficou 10 s a' frente dele, com oito `YOUTUBE_CLOCK_HELD
+                # t=505.05 served=515.03 floor=515.03` e NENHUMA pintura para
+                # declarar o seek (`advance` so' desce com a PINTURA). O par que
+                # faltava ja' esta' nesta foto: `t` exacto + `stamp` de parede.
+                # A regra (e o porque' de nenhum temporizador) vive em
+                # `youtube_monotonic.SeekWitness`; aqui so' se aplica. O chao E a
+                # ancora descem no MESMO tick, senao a revelacao interpolada
+                # (`yt_live_frame`) arrastava a posicao antiga.
+                try:
+                    import youtube_monotonic as _ytm
+                    _seek = getattr(self, '_yt_seek_witness', None)
+                    if _seek is None:
+                        _seek = self._yt_seek_witness = _ytm.SeekWitness()
+                    _sk = _seek.observe(snap.get('t'), snap.get('stamp'),
+                                        seen or None)
+                    if _sk.get('seek'):
+                        self.yt_serve_floor = _ytm.advance(
+                            getattr(self, 'yt_serve_floor', None), _sk.get('now'))
+                        self._yt_anchor = (float(_sk.get('now')), time.monotonic())
+                        # O ALINHAMENTO E' DA LINHA TEMPORAL ANTIGA (2026-11-16).
+                        # `_yt_clock_agrees` recusa um relogio que nao caiba na
+                        # cue que o player PINTAVA -- e depois de um recuo de 10 s
+                        # essa cue e' de outro ponto do video, logo o ramo servia
+                        # `clock-stale-last-cue` (a linha de 10 s atras) e nao a
+                        # cue do instante novo. Uma prova de seek de DOIS lados
+                        # desmente o alinhamento, nao o relogio: o alinhamento
+                        # sai, como sai na troca de video.
+                        self.yt_hit = None
+                        if _sk.get('log'):
+                            log('YOUTUBE_SEEK_RESYNC was=%.2f now=%.2f why=%s '
+                                'dt=%.2f floor=%.2f vid=%s'
+                                % (float(_sk.get('was') or 0.0),
+                                   float(_sk.get('now') or 0.0),
+                                   str(_sk.get('why')), float(_sk.get('dt') or 0.0),
+                                   float(self.yt_serve_floor
+                                         if self.yt_serve_floor is not None else 0.0),
+                                   str(getattr(self, 'yt_video_id', '') or '')))
+                except Exception as exc:      # noqa: BLE001 -- fail-open: sem a
+                    # testemunha o chao fica como esta' (a lei antiga, que nunca
+                    # recua por uma leitura); o seek so' e' seguido no tick seguinte.
+                    log('YOUTUBE_SEEK_WITNESS_FAILED error=%r' % (exc,))
+
+                # A PAUSA PRECISA DE UMA TESTEMUNHA QUE CONCORDE (2026-11-16).
+                # MEDIDO na sessao do dono: `CAPTION_WINDOW_BLANKED
+                # reason=youtube-paused epoch=5 wanted=true` as 16:39:34 com o
+                # `YOUTUBE_PAUSE_DISAGREED paused_flag=True clock_rate=0.32` a
+                # dizer, no MESMO episodio, que o relogio andava -- e 60 s de ecra
+                # vazio depois. A bandeira veio sozinha; a medida que a desmente
+                # (ou que a confirma) tambem estava na foto e nao era consultada
+                # para o apagar. Agora o apagar exige a POSICAO PARADA, medida
+                # entre DUAS leituras distintas (`_yt_clock_static`, cujo portao
+                # de carimbo impede que uma foto em cache conte como duas); a
+                # bandeira sozinha congela a interpolacao, nunca o ecra. Como o
+                # `_yt_pause_edge` recebe `False` no primeiro tick em que o relogio
+                # mexe, a borda de VOLTA repinta a linha: o apagar desfaz-se sem
+                # esperar que a bandeira se corrija.
+                _flag_paused = bool(self.yt_cdp_paused or self.yt_cdp_ended)
                 # A BANDEIRA QUE DIZ PAUSA COM O RELOGIO A ANDAR ESTA' ERRADA
                 # (2026-11-12, MEDIDO). Ver `_yt_clock_moving`: `paused=True`
                 # travado por 12 min com 38 quadros de texto novo a chegar custou
@@ -5517,14 +5617,13 @@ class ExternalCaptionWatcher(threading.Thread):
                 # contrario -- e o desmentido fica escrito UMA vez por episodio,
                 # senao um flap de ~30 s enchia o log.
                 _mv_moving, _mv_rate = self._yt_clock_moving(snap)
-                if self.yt_cdp_paused and _mv_moving:
+                if _flag_paused and _mv_moving:
                     if not getattr(self, '_yt_mv_logged', False):
                         self._yt_mv_logged = True
                         log('YOUTUBE_PAUSE_DISAGREED paused_flag=True '
                             'clock_rate=%.2f t=%.2f vid=%s'
                             % (_mv_rate, float(snap.get('t') or 0.0),
                                str(getattr(self, 'yt_video_id', '') or '')))
-                    self.yt_cdp_paused = False
                 elif not _mv_moving:
                     self._yt_mv_logged = False
                 # O RELOGIO PARADO E' A PAUSA QUE A BANDEIRA NAO DISSE (2026-11-10).
@@ -5534,17 +5633,56 @@ class ExternalCaptionWatcher(threading.Thread):
                 # DOM dizia `paused=False` enquanto o `currentTime` nao avancava.
                 # Uma bandeira sozinha mente; o relogio que nao anda e' a medida.
                 _ct_static, _ct_held = self._yt_clock_static(snap)
-                if _ct_static and not self.yt_cdp_paused:
-                    if not getattr(self, '_yt_ct_static_logged', False):
+                if _ct_static:
+                    # A PAUSA PROVADA: a posicao esta' parada ha'
+                    # `CLOCK_STATIC_PAUSE_S` entre leituras DISTINTAS. E' a unica
+                    # testemunha que apaga o ecra -- com a bandeira a concordar ou
+                    # a calar-se.
+                    if _flag_paused:
+                        if not getattr(self, '_yt_pause_proven_logged', False):
+                            self._yt_pause_proven_logged = True
+                            log('YOUTUBE_PAUSE_PROVEN witness=flag+clock-static '
+                                'held_s=%.1f t=%.2f vid=%s'
+                                % (_ct_held, float(snap.get('t') or 0.0),
+                                   str(getattr(self, 'yt_video_id', '') or '')))
+                    elif not getattr(self, '_yt_ct_static_logged', False):
                         self._yt_ct_static_logged = True
                         log('YOUTUBE_CLOCK_STATIC held_s=%.1f t=%.2f '
                             'paused_flag=%s vid=%s'
                             % (_ct_held, float(snap.get('t') or 0.0),
                                str(snap.get('paused')),
                                str(getattr(self, 'yt_video_id', '') or '')))
-                    self.yt_cdp_paused = True
-                elif not _ct_static:
+                    if not self.yt_cdp_ended:
+                        self.yt_cdp_paused = True
+                else:
                     self._yt_ct_static_logged = False
+                    self._yt_pause_proven_logged = False
+                    # A POSICAO MEXEU (ou nunca foi medida parada): NAO HA' PAUSA
+                    # PROVADA, logo o ecra nao se apaga. A bandeira fica so' a
+                    # congelar a interpolacao, e cai no primeiro tick em que o
+                    # relogio ande -- a licao de 2026-11-12.
+                    if _mv_moving:
+                        self.yt_cdp_paused = False
+                        self.yt_cdp_ended = False
+                    if _flag_paused and not _mv_moving:
+                        # A FLAG SOZINHA, com o relogio imovel mas SEM prova de
+                        # que ele se manteve imovel: nomeia a testemunha e nao
+                        # apaga nada. E' o flap medido de 15 em 40 pressoes de
+                        # LIGAR (`_main/receipt-20261115`), e uma pausa que dura
+                        # vira `YOUTUBE_PAUSE_PROVEN` 2 s depois.
+                        if not getattr(self, '_yt_pause_unproven_logged', False):
+                            self._yt_pause_unproven_logged = True
+                            _ct_since = float(getattr(self, '_yt_ct_since', 0.0)
+                                              or 0.0)
+                            log('YOUTUBE_PAUSE_UNWITNESSED paused_flag=True '
+                                'still_s=%.2f need_s=%.2f t=%.2f vid=%s'
+                                % ((time.monotonic() - _ct_since) if _ct_since
+                                   else 0.0,
+                                   float(self.CLOCK_STATIC_PAUSE_S),
+                                   float(snap.get('t') or 0.0),
+                                   str(getattr(self, 'yt_video_id', '') or '')))
+                if not _flag_paused:
+                    self._yt_pause_unproven_logged = False
                 # `paused` AUSENTE NAO E' "A ANDAR" (2026-11-07, `youtube_clock`).
                 self.yt_cdp_playing = None if snap.get('paused') is None \
                     else (not self.yt_cdp_paused and not self.yt_cdp_ended)
@@ -5553,15 +5691,33 @@ class ExternalCaptionWatcher(threading.Thread):
                 # nao muda -- pelo contrario, e' exactamente isso que se quer -- e o
                 # overlay ficava com o relogio da ultima pintura a andar. O contador
                 # e' lido e consumido no `_tick`, que forca uma pintura congelada.
-                _now_paused = self.yt_cdp_paused or self.yt_cdp_ended
-                self._yt_pause_edge(_now_paused)
-                # O ESPELHO NA SHELL: quem arma o apagar por inatividade e' a shell,
-                # noutro objeto (`SottoShell._caption_idle_hide`). Sem este espelho o
-                # guarda ficava no objeto errado e o ecra apagava na mesma.
+                # A PAUSA QUE APAGA E' A PROVADA, e so' ela (2026-11-16): uma
+                # amostra `paused=True` sozinha congela a interpolacao, nunca o
+                # ecra. E a VOLTA nao espera pela bandeira: no primeiro tick em que
+                # a posicao mexe `_ct_static` e' False, a borda de volta chega aqui
+                # e repinta a linha mesmo que o `paused` da CDP continue em `True`.
+                _now_paused = bool(_ct_static)
+                # O ESPELHO NA SHELL VAI ANTES DA BORDA (2026-11-16), e a ordem
+                # e' a cura de uma metade muda: quem arma o apagar por
+                # inatividade e' a shell (`SottoShell._caption_idle_hide`), e o
+                # MESMO espelho e' o portao que recusa pixels do YouTube
+                # (`external_caption`, ~19144). Com o espelho escrito DEPOIS da
+                # borda, o push da RETOMA de um tick apanhava ainda
+                # `yt_source_paused=True` do tick anterior e era recusado -- a
+                # borda acontecia e a linha nao voltava ao ecra ate' a cue
+                # seguinte.
                 shell = getattr(self, 'shell', None)
                 if shell is not None:
                     shell.yt_source_paused = self.yt_cdp_paused
                     shell.yt_source_ended = self.yt_cdp_ended
+                if getattr(self, '_yt_was_paused', False) and not _now_paused:
+                    _since = getattr(self, '_yt_pause_since', None)
+                    log('YOUTUBE_PAUSE_RESUMED witness=clock-moved pause_s=%.1f '
+                        't=%.2f vid=%s'
+                        % ((time.monotonic() - float(_since)) if _since else 0.0,
+                           float(snap.get('t') or 0.0),
+                           str(getattr(self, 'yt_video_id', '') or '')))
+                self._yt_pause_edge(_now_paused)
         if snap is None or not snap.get('items'):
             return None
         if declared and seen and declared != seen:
@@ -11312,6 +11468,17 @@ BOOTSTRAP_JS = r"""
       return Promise.resolve(payload);
     },
 
+    // O "MODO STEALTH" DA LEGENDA (dono, 2026-11-16). `on` e' o campo que o
+    // painel manda; a resposta devolve o MESMO campo em camelCase
+    // (`captureExclude`), para o chamador saber o que pediu. O shell grava
+    // `capture_exclude` em `_main/caption-settings.json` e aplica a afinidade
+    // a' janela VIVA (WDA_EXCLUDEFROMCAPTURE / WDA_NONE) no mesmo gesto.
+    setCaptureExclude: function (on) {
+      var want = !!on;
+      post('caption-capture-exclude', { on: want });
+      return Promise.resolve({ captureExclude: want });
+    },
+
     // PAUSE = UNLOAD (owner, 2026-10-17). The panel's pause controls have
     // always called `bridge.pause()`; the shell never had it, so the dialog
     // said "este shell ainda não consegue pausar". The shell now stops the
@@ -12336,6 +12503,10 @@ class SottoHost:
             # O ASPECTO DA LEGENDA (dono, 2026-11-09): fundo mais justo e o alfa
             # da placa escolhivel. Um entry, um metodo: `_caption_visual`.
             'caption-visual': ('host', '_caption_visual'),
+            # O "MODO STEALTH" (dono, 2026-11-16): um entry, um metodo. Sem esta
+            # linha o `bridge.setCaptureExclude` do painel morria em
+            # BRIDGE_UNKNOWN_KIND e o controlo mentia.
+            'caption-capture-exclude': ('host', '_caption_capture_exclude'),
             # PAUSE = UNLOAD (2026-10-17). One entry, one method on the shell.
             'pause': ('shell', '_pause_shell'),
             'sotto:pause': ('shell', '_pause_shell'),
@@ -12600,7 +12771,13 @@ class SottoHost:
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_VISUAL_FAILED payload={json.dumps(data)} error={exc!r}')
             return
+        # O OVERLAY VIVO: o host de producao nao o tem (vive na shell), mas
+        # oraculos servem o receptor com um overlay falso neste objecto -- as
+        # duas formas tem de continuar a funcionar.
         ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
+            shell = getattr(self, '_shell', None)
+            ov = getattr(shell, 'caption_overlay', None) if shell is not None else None
         live = None
         if ov is not None:
             try:
@@ -12610,6 +12787,50 @@ class SottoHost:
                 log(f'CAPTION_VISUAL_OVERLAY_FAILED error={exc!r}')
         log('CAPTION_VISUAL plate=%s opacity=%.2f live=%s'
             % (applied.get('plate'), float(applied.get('opacity') or 1.0),
+               json.dumps(live) if live else 'no-overlay'))
+
+    def _caption_capture_exclude(self, payload):
+        """O "MODO STEALTH" da legenda, escolhido no painel (dono, 2026-11-16).
+
+        Ordem do dono, verbatim: *"retira o 'modo stealth' da legenda. deixa
+        desativado por padrao, e ativavel nas configs do sotto."* O campo que o
+        painel manda e' `on` (bool); a resposta do bridge devolve
+        `{captureExclude: bool}`. Duas metades, nesta ordem: o ficheiro (unico
+        sitio persistido, `caption_settings.set_capture_exclude`) e depois a
+        JANELA VIVA -- `SetWindowDisplayAffinity` sobre o HWND que ja' existe,
+        para a escolha valer sem reiniciar o Sotto.
+
+        O valor APLICADO e' lido de `capture_exclusion.enabled()`, nunca de uma
+        copia da regra: se `SOTTO_CAPTURE_EXCLUDE` estiver definido, ele manda
+        sobre o ficheiro, e o log diz os dois para a divergencia ser visivel.
+        """
+        data = payload if isinstance(payload, dict) else {}
+        want = bool(data.get('on'))
+        try:
+            import caption_settings
+            applied = caption_settings.set_capture_exclude(want)
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_CAPTURE_EXCLUDE_FAILED payload={json.dumps(data)} '
+                f'error={exc!r}')
+            return
+        try:
+            import capture_exclusion
+            effective = bool(capture_exclusion.enabled())
+        except Exception as exc:  # noqa: BLE001 -- sem modulo, a janela nao muda
+            log(f'CAPTION_CAPTURE_EXCLUDE_RESOLVE_FAILED error={exc!r}')
+            effective = applied
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
+            shell = getattr(self, '_shell', None)
+            ov = getattr(shell, 'caption_overlay', None) if shell is not None else None
+        live = None
+        if ov is not None:
+            try:
+                live = ov.set_capture_exclude(effective)
+            except Exception as exc:  # noqa: BLE001 -- a legenda nao morre por isto
+                log(f'CAPTION_CAPTURE_EXCLUDE_OVERLAY_FAILED error={exc!r}')
+        log('CAPTION_CAPTURE_EXCLUDE on=%s applied=%s effective=%s live=%s'
+            % (want, applied, effective,
                json.dumps(live) if live else 'no-overlay'))
 
     def _caption_cleared(self, payload):

@@ -480,6 +480,26 @@
               aria-label="Transparência do fundo da legenda"
             />
           </div>
+          <!-- O "MODO STEALTH" DA LEGENDA (dono, 2026-11-16, verbatim: *"retira o
+               'modo stealth' da legenda. deixa desativado por padrao, e ativavel
+               nas configs do sotto."*). `SetWindowDisplayAffinity` faz a janela
+               desaparecer de OBS/Zoom/Teams/Discord sem a esconder do dono. O
+               default e' DESLIGADO; a escolha vive em
+               `_main/caption-settings.json` (`capture_exclude`) e o shell
+               aplica-a ao overlay VIVO por `bridge.setCaptureExclude`. -->
+          <div class="tune-row">
+            <div class="tune-row__head">
+              <label class="tune-row__label" for="caption-capture-exclude-select">Esconder da captura (stealth):</label>
+            </div>
+            <select
+              class="tune-row__select"
+              id="caption-capture-exclude-select"
+              aria-label="Esconder a legenda de gravações e partilha de ecrã"
+            >
+              <option value="0">Desativado</option>
+              <option value="1">Ativado</option>
+            </select>
+          </div>
           <!-- In the popover, not the control row: no new flex slot beside
                settings and close, on any of the 59 designs. The shell writes the
                file and returns its path; this reveals it (as `#history-root`). -->

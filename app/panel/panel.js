@@ -203,6 +203,7 @@ const dom = {
   captionPlateSelect: document.getElementById('caption-plate-select'),
   captionOpacityRange: document.getElementById('caption-opacity-range'),
   captionOpacityValue: document.getElementById('caption-opacity-value'),
+  captionCaptureSelect: document.getElementById('caption-capture-exclude-select'),
   historyExport: document.getElementById('history-export-txt'),
   menuCause: document.getElementById('panel-menu-cause'),
 };
@@ -420,6 +421,10 @@ const TRANSLATION_KEY = 'sotto.translationTarget';
 // antes de o shell responder. `0` = o default que embarca (`tight`).
 const CAPTION_PLATE_KEY = 'sotto.captionPlate';
 const CAPTION_OPACITY_KEY = 'sotto.captionOpacity';
+/** O "modo stealth" (dono, 2026-11-16): DESLIGADO de fabrica. O ficheiro
+ *  `_main/caption-settings.json` e' a verdade; o localStorage aqui so' evita a
+ *  caixa abrir a mentir antes de o shell responder. */
+const CAPTION_CAPTURE_KEY = 'sotto.captionCaptureExclude';
 const CAPTION_PLATES = ['tight', 'normal'];
 /** A transparencia e' o INVERSO do alfa: 0% = placa opaca (alfa 1.0), 70% =
  *  a placa a 30% de alfa -- o piso que `caption_settings.visual()` prende. */
@@ -443,6 +448,15 @@ function sendCaptionLook(plate, transparency) {
   const opacity = 1 - (transparency / 100);
   if (bridge && typeof bridge.setCaptionVisual === 'function') {
     bridge.setCaptionVisual({ plate: plate, opacity: opacity });
+  }
+}
+
+/** O "modo stealth": `on` e' o valor que o shell grava e aplica a' janela viva.
+ *  Um shell antigo (sem `setCaptureExclude`) deixa o controlo sem efeito e sem
+ *  rebentar -- a mesma regra de todos os `typeof` acima. */
+function sendCaptionCaptureExclude(on) {
+  if (bridge && typeof bridge.setCaptureExclude === 'function') {
+    bridge.setCaptureExclude(!!on);
   }
 }
 
@@ -3120,6 +3134,33 @@ function wireMenu() {
         || window.localStorage.getItem(CAPTION_OPACITY_KEY) !== null;
     } catch (_) { stored = false; }
     if (stored) sendCaptionLook(look.plate, look.transparency);
+  }
+
+  // O "MODO STEALTH" (dono, 2026-11-16): DESLIGADO de fabrica, so' o dono o
+  // liga. `setCaptureExclude` no shell grava `capture_exclude` no ficheiro e
+  // aplica na hora a' janela que ele ja' esta' a ver.
+  const captureSelect = dom.captionCaptureSelect;
+  if (captureSelect) {
+    let captureStored = null;
+    try {
+      captureStored = window.localStorage.getItem(CAPTION_CAPTURE_KEY);
+    } catch (_) {
+      // Sem storage a caixa abre no default (off), que e' o que o ficheiro diz.
+    }
+    const captureOn = captureStored === '1';
+    captureSelect.value = captureOn ? '1' : '0';
+    captureSelect.addEventListener('change', () => {
+      const on = captureSelect.value === '1';
+      try {
+        window.localStorage.setItem(CAPTION_CAPTURE_KEY, on ? '1' : '0');
+      } catch (_) {
+        // A escolha vale para esta sessao; perder a preferencia nao e' fatal.
+      }
+      sendCaptionCaptureExclude(on);
+    });
+    // No arranque, so' um valor JA' guardado e' reenviado -- uma sessao nova
+    // nao escreve por cima do ficheiro que o shell leu ao criar o overlay.
+    if (captureStored !== null) sendCaptionCaptureExclude(captureSelect.value === '1');
   }
 
   // The export button lives in the popover, so the header contract (settings

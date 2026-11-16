@@ -848,6 +848,31 @@ class NativeCaptionOverlay:
                  % (applied['plate_mode'], applied['opacity']))
         return applied
 
+    def set_capture_exclude(self, want=None):
+        """Liga/desliga o "modo stealth" na JANELA VIVA, agora.
+
+        O dono escolhe no painel e a janela que ele ja' esta' a ver muda no mesmo
+        gesto -- sem reiniciar o Sotto, que era a unica alternativa quando isto
+        so' corria no `_create`. `want is None` volta a ler a decisao de
+        `capture_exclusion.enabled()` (env -> ficheiro), para o shell nao ter uma
+        segunda copia da regra. Devolve o modo LIDO DE VOLTA do sistema.
+        """
+        try:
+            import capture_exclusion
+        except Exception as exc:  # noqa: BLE001 -- a legenda nao morre por isto
+            return {'mode': -1, 'ok': False, 'why': repr(exc)}
+        resolved = capture_exclusion.enabled() if want is None else bool(want)
+        if not self.hwnd:
+            self.capture = {'mode': -1, 'ok': False, 'why': 'sem hwnd'}
+            self.log('CAPTION_OVERLAY_CAPTURE_DEFERRED want=%s' % resolved)
+            return dict(self.capture)
+        got = capture_exclusion.apply(self.hwnd, want=resolved)
+        self.capture = got
+        self.log('CAPTION_OVERLAY_CAPTURE mode=%s(0x%02x) ok=%s why=%s want=%s'
+                 % (capture_exclusion.mode_name(got['mode']),
+                    got['mode'] & 0xff, got['ok'], got['why'], resolved))
+        return dict(got)
+
     def _measure(self, text, previous):
         """Largura em px: o MESMO motor que desenha, nunca `GenericTypographic`
         -- medido 2026-10-17, 4,7% mais estreito, e quebrar com um e desenhar com

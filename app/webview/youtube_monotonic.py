@@ -92,6 +92,122 @@ def advance(floor, position, seek_back=SEEK_BACK_S):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# O SEEK -- a prova que NAO precisa de pintura
+#
+# O DEFEITO MEDIDO (sessao do dono de 2026-11-16, video `hYIymEMB9x4`): com a
+# legenda do YouTube DESLIGADA no player nao ha' linha pintada, e a unica prova
+# de seek que `advance()` aceita e' a PINTURA. Ele recuou o video e o relogio
+# servido ficou 10 s a' frente dele, para sempre:
+#
+#     16:39:32.301  YOUTUBE_CLOCK_HELD t=505.05 served=515.03 floor=515.03
+#     (8 vezes, com o `video.currentTime` da CDP a dizer 505,0-505,6)
+#
+# A SEGUNDA TESTEMUNHA JA' EXISTIA E NAO ERA LIDA: o snapshot da CDP traz o
+# instante EXACTO (`t` = `video.currentTime`) e o carimbo de parede em que ele
+# foi lido (`stamp`). Duas leituras consecutivas dao' os dois lados de uma
+# prova -- o SALTO e o TEMPO que ele teve para acontecer:
+#
+#   * para tras, nada explica o salto: o player nao reproduz a' velocidade
+#     negativa, logo um recuo maior que `SEEK_BACK_S` E' um seek;
+#   * para a frente, o salto so' e' seek quando passa do que o passo maximo do
+#     player (`SEEK_FWD_RATE_MAX`, o 2x do menu do YouTube) explicaria naquele
+#     intervalo, mais a mesma histerese.
+#
+# O QUE ISTO NAO FAZ, e e' a parte que importa: NAO da' voto ao relogio. Quem
+# declara o seek e' o PAR (posicao, carimbo) -- duas medidas que concordam --
+# e nao um temporizador nem uma leitura solta. O jitter medido do relogio
+# (1,5 s em 2026-11-04, 5 s em 2026-10-30) continua sem reset nenhum, e
+# `decide()` continua a nao recuar por leitura nenhuma: a lei das 129 linhas
+# do cabecalho deste ficheiro fica intacta.
+#
+# `decide()` NAO LE ESTE ESTADO. A prova chega-lhe pelo chao (`advance`), como
+# a da pintura: o modulo continua puro e o shell e' quem conduz a serie.
+# ══════════════════════════════════════════════════════════════════════════════
+
+#: O MAIOR PASSO DE REPRODUCAO que o player oferece (o menu do YouTube vai ate'
+#: 2x). Um salto para a frente maior do que isto por segundo de parede nao e'
+#: o video a andar -- e' um seek.
+SEEK_FWD_RATE_MAX = 2.0
+
+
+class SeekWitness:
+    """A PROVA DE UM SEEK a partir de dois snapshots -- estado, um tick de cada vez.
+
+    O ESTADO E' UMA AMOSTRA: `(t, stamp, video_id)`. Nao ha' temporizador, nao
+    ha' contagem de ticks, e um video novo NAO herda a serie do anterior (cada
+    video comeca em t=0, e isso nao e' um recuo).
+
+    Uma prova exige os DOIS lados; por isso nada e' declarado quando:
+      * falta o instante (`t` ausente) -- ausencia de medida nunca vira
+        afirmacao, e a serie recomeca;
+      * falta o carimbo (`stamp` ausente) -- so' ha' um lado;
+      * o carimbo e' o MESMO da leitura anterior -- a foto em cache da CDP
+        (ate' 1,2 s) nao e' uma medida nova;
+      * o video mudou -- e' uma linha temporal nova, nao um recuo.
+
+    `observe` devolve `{'seek', 'why', 'was', 'now', 'dt', 'log'}`. `why` e'
+    `back`/`forward` num seek e nomeia a recusa nos outros casos; `log` e' True
+    UMA vez por episodio (o primeiro seek ate' a serie voltar a andar), para a
+    decisao ficar escrita sem um flap encher o log.
+    """
+
+    def __init__(self, seek_back=SEEK_BACK_S, rate_max=SEEK_FWD_RATE_MAX):
+        self.seek_back = float(seek_back)
+        self.rate_max = float(rate_max)
+        self.prev = None
+        self.logged = False
+
+    def observe(self, t, stamp, video_id=None):
+        """Um snapshot: o veredicto de seek. Ver o docstring da classe."""
+        try:
+            t = None if t is None else float(t)
+        except (TypeError, ValueError):
+            t = None
+        try:
+            stamp = None if stamp is None else float(stamp)
+        except (TypeError, ValueError):
+            stamp = None
+        if t is None or stamp is None:
+            self.prev = None
+            return self._verdict(False, 'no-witness', now=t)
+        vid = None if video_id is None else str(video_id)
+        prev = self.prev
+        if prev is not None:
+            was, was_stamp, was_vid = prev
+            if (was_vid is not None and vid is not None and was_vid != vid):
+                prev = None
+        if prev is None:
+            self.prev = (t, stamp, vid)
+            return self._verdict(False, 'first', now=t)
+        was, was_stamp, _was_vid = prev
+        if stamp <= was_stamp:
+            # A MESMA FOTO: nao ha' medida nova, e uma medida nova e' metade da
+            # prova. `prev` fica como esta' -- a comparacao seguinte e' contra a
+            # ultima leitura que existiu, nao contra esta repeticao.
+            return self._verdict(False, 'same-snapshot', was=was, now=t)
+        dt = stamp - was_stamp
+        delta = t - was
+        self.prev = (t, stamp, vid)
+        if delta < 0.0:
+            excess = -delta
+            why = 'back'
+        else:
+            excess = delta - dt * self.rate_max
+            why = 'forward'
+        if excess <= self.seek_back:
+            self.logged = False
+            return self._verdict(False, 'tracking', was=was, now=t, dt=dt)
+        log_once = not self.logged
+        self.logged = True
+        return self._verdict(True, why, was=was, now=t, dt=dt, log=log_once)
+
+    @staticmethod
+    def _verdict(seek, why, was=None, now=None, dt=None, log=False):
+        return {'seek': bool(seek), 'why': str(why), 'was': was, 'now': now,
+                'dt': dt, 'log': bool(log)}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # A PINTURA CONGELADA -- quando o DOM do player para e o relogio nao
 #
 # O DEFEITO MEDIDO (2026-11-04, na Chrome do dono pela CDP 9222, video
