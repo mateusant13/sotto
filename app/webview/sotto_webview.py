@@ -27368,5 +27368,42 @@ def main(argv=None):
     return shell._exit_code
 
 
+def _crash_receipt(text):
+    """Uma morte de `pythonw` deixa recibo: o dono nao tem stderr para ler.
+
+    MEDIDO 2026-11-16: um `AttributeError` em `arm_hotkey_role` matava o arranque
+    DEPOIS de `HOTKEY_REGISTERED` e ANTES de qualquer linha de erro -- o log
+    terminava limpo, o processo sumia com rc=1, a tela do dono ficava sem app e
+    o unico sinal era "nao abriu". O recibo vai para o `--log` da largada e para
+    `_main/shell-crash.log` (tecto de 256 KB, o mesmo do traceback do worker).
+    """
+    last = text.strip().splitlines()[-1] if text.strip() else 'no-traceback'
+    targets = [os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            '..', '..', '_main', 'shell-crash.log')]
+    argv = list(sys.argv)
+    for i, arg in enumerate(argv):
+        if arg == '--log' and i + 1 < len(argv):
+            targets.insert(0, argv[i + 1])
+        elif arg.startswith('--log='):
+            targets.insert(0, arg.split('=', 1)[1])
+    for path in targets:
+        try:
+            if path.endswith('shell-crash.log') and os.path.exists(path) \
+                    and os.path.getsize(path) > 262144:
+                os.remove(path)
+            with open(path, 'a', encoding='utf-8') as fh:
+                fh.write('%s sotto: SHELL_CRASH pid=%d %s\n%s\n'
+                         % (time.strftime('%Y-%m-%d %H:%M:%S'), os.getpid(), last, text))
+        except OSError:
+            pass
+
+
 if __name__ == '__main__':
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        _crash_receipt(traceback.format_exc())
+        raise SystemExit(1)

@@ -1734,6 +1734,21 @@ if exist _main\undefined-names-oracle.py (
   call :step always red-as-expected-undefined-names 1 "_main\undefined-names-oracle.py" "%OUT%\undefined-names-neg.log" python _main\undefined-names-oracle.py --neg-arm
   call :expectred red-as-expected-undefined-names !STEP_RC! "%OUT%\undefined-names-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-undefined-names MISSING "%OUT%\undefined-names-neg.log" "NEG-ARM PASS" )
+REM O OBJETO QUE A SHELL GUARDA TEM DE SABER RESPONDER (medido 2026-11-16). O dono: "tentei
+REM abrir o sotto e nao abriu". O arranque morria em `AttributeError: 'GamingWatcher' object
+REM has no attribute 'owns_space_now'` -- a shell pergunta a `shell.gaming` (o WATCHER) um metodo
+REM que so' o DETECTOR tinha -- DEPOIS de `HOTKEY_REGISTERED`, com `pythonw` sem stderr: log
+REM limpo, rc=1 e tela sem app. O portao julga as duas metades: a superficie (toda pergunta da
+REM shell existe na classe que ela guarda E a delegacao chega ao detector) e o recibo de morte
+REM (`SHELL_CRASH` no `--log`). O braco negativo arranca o metodo do WATCHER e desliga o recibo.
+if exist _main\gaming-watcher-surface-oracle.py (
+  call :step always gaming-watcher-surface 0 "_main\gaming-watcher-surface-oracle.py;app\webview\gaming_mode.py;app\webview\sotto_webview.py" "%OUT%\gaming-watcher-surface.log" python _main\gaming-watcher-surface-oracle.py
+  call :record gaming-watcher-surface !STEP_RC!
+) else ( call :record gaming-watcher-surface MISSING )
+if exist _main\gaming-watcher-surface-oracle.py (
+  call :step always red-as-expected-gaming-watcher-surface 1 "_main\gaming-watcher-surface-oracle.py;app\webview\gaming_mode.py;app\webview\sotto_webview.py" "%OUT%\gaming-watcher-surface-neg.log" python _main\gaming-watcher-surface-oracle.py --neg-arm
+  call :expectred red-as-expected-gaming-watcher-surface !STEP_RC! "%OUT%\gaming-watcher-surface-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-gaming-watcher-surface MISSING "%OUT%\gaming-watcher-surface-neg.log" "NEG-ARM: PASS" )
 REM A BATTERIA QUE NAO ABRE O MUNDO DO DONO (owner, 2026-10-21, verbatim:
 REM *"tu ta fazendo algo que faz meu pc travar/stutter?"* e *"tu vai garantir que
 REM minha reclamacao nunca mais aconteca"*). O portão julga FICHEIROS e corre as

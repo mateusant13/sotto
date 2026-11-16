@@ -692,6 +692,28 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (medido 2026-11-16, 16:3x):** `_main\_audit-verify-all.cmd` = **402880 B**,
+  **4621 CRLF** / 0 bare LF, sha256 `EB52A632056733A28505D083EDB87689F1CB2BF831602A8B9B63E578EE3A7AD2`.
+  (Mil seiscentos e oito bytes e QUINZE linhas a mais do que o pin de 401272 B: o par
+  `gaming-watcher-surface` + `red-as-expected-gaming-watcher-surface`, nascido do defeito que o dono
+  reportou hoje como *"tentei abrir o sotto e nao abriu"* -- e que nao deixava UMA linha de erro em
+  lugar nenhum. MEDIDO: o arranque morria em
+  `AttributeError: 'GamingWatcher' object has no attribute 'owns_space_now'`
+  (`sotto_webview.py:10805`, dentro de `arm_hotkey_role`, chamado de `main():27210`), DEPOIS de
+  `HOTKEY_REGISTERED` e ANTES do primeiro desenho: a shell guarda o WATCHER em `shell.gaming` e o
+  metodo so' existia no `GamingDetector`. Com `pythonw.exe` nao ha' stderr para sangrar, logo o log
+  terminava em `HOTKEY_REGISTERED`, o processo sumia com rc=1 e a tela ficava sem app e sem motivo.
+  Duas metades no mesmo commit: a delegacao `GamingWatcher.owns_space_now` (o objeto que a shell
+  guarda responde, e a delegacao ATRAVESSA ate' ao detector) e o `_crash_receipt` no bloco
+  `__main__`, que escreve `SHELL_CRASH <excecao>` no `--log` da largada e em
+  `_main\shell-crash.log` (tecto de 256 KB) -- uma morte de `pythonw` passa a deixar recibo.
+  O oraculo tem 5 arms (as duas superficies, a delegacao executada contra um detector falso, o
+  recibo executado a serio a partir do AST) e o `--neg-arm` apanha **2/2** mutantes: o metodo
+  arrancado do WATCHER (por intervalo de LINHAS do AST -- uma ancora de texto morria no CRLF do
+  checkout e de novo na docstring) e o `_crash_receipt` desligado no bloco `__main__`.
+  Medido ao ligar: `VERDICT: PASS (5/5)` rc=0 e `NEG-ARM: PASS -- 2/2` rc=1; e o arranque real,
+  largado pela MESMA linha de comando do atalho, sobreviveu ao prazo de 25 s a pintar legenda do
+  YouTube (antes: rc=1 em ~1,3 s, sem uma linha de erro).)
 - **PIN do ficheiro (medido 2026-11-15, 21:3x):** `_main\_audit-verify-all.cmd` = **401272 B**,
   **4606 CRLF** / 0 bare LF, sha256 `D94035DE9D06F97132F59710B9CB9C1C2A59C4D4925B0251FB36918AB7149A7E`.
   (Quarenta e nove bytes e ZERO linhas a mais do que o pin de 401223 B: as dependencias do passo

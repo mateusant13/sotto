@@ -574,6 +574,18 @@ class GamingWatcher(threading.Thread):
     def is_gaming(self):
         return self.detector.is_gaming()
 
+    def owns_space_now(self):
+        """O `Ctrl+Space` e' do jogo AGORA? -- Pergunta da SHELL, respondida aqui.
+
+        A shell guarda o WATCHER (`shell.gaming`), nao o detector: por isso cada
+        pergunta que `arm_hotkey_role` faz ao objeto tem de existir NESTA classe.
+        MEDIDO 2026-11-16: o metodo vivia so' no `GamingDetector` e o arranque
+        morria em `AttributeError: 'GamingWatcher' object has no attribute
+        'owns_space_now'` -- `pythonw` sem stderr, app nenhuma na tela do dono e
+        nada no log. Portao: `_main/gaming-watcher-surface-oracle.py`.
+        """
+        return self.detector.owns_space_now()
+
 
 def live_hotkey_plan(gaming, registered, register_failed=False):
     """O `Ctrl+Space` TOMADO ou DEVOLVIDO? -- a tabela, pura e testavel.
