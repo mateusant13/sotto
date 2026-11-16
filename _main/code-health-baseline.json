@@ -131,12 +131,12 @@
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 239866,
+      "bytes": 241809,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4845,
+      "lines": 4886,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -261,22 +261,22 @@
       "max_func_name": "drag_plan"
     },
     "app/webview/caption_overlay.py": {
-      "bytes": 100536,
+      "bytes": 101867,
       "classes": 8,
       "defs": 10,
       "except_pass": 7,
       "globals": 0,
-      "lines": 2008,
+      "lines": 2033,
       "max_func": 161,
       "max_func_name": "__init__"
     },
     "app/webview/caption_settings.py": {
-      "bytes": 5978,
+      "bytes": 7352,
       "classes": 0,
-      "defs": 10,
+      "defs": 12,
       "except_pass": 2,
       "globals": 0,
-      "lines": 151,
+      "lines": 183,
       "max_func": 16,
       "max_func_name": "theme"
     },
@@ -291,12 +291,12 @@
       "max_func_name": "_seam_index"
     },
     "app/webview/capture_exclusion.py": {
-      "bytes": 4278,
+      "bytes": 5178,
       "classes": 0,
       "defs": 6,
       "except_pass": 0,
       "globals": 0,
-      "lines": 109,
+      "lines": 127,
       "max_func": 28,
       "max_func_name": "apply"
     },
@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1485780,
+      "bytes": 1499801,
       "classes": 29,
       "defs": 174,
       "except_pass": 71,
       "globals": 9,
-      "lines": 27409,
+      "lines": 27630,
       "max_func": 446,
       "max_func_name": "main"
     },
@@ -641,12 +641,12 @@
       "max_func_name": "instant"
     },
     "app/webview/youtube_monotonic.py": {
-      "bytes": 12991,
-      "classes": 1,
+      "bytes": 18649,
+      "classes": 2,
       "defs": 3,
       "except_pass": 0,
       "globals": 0,
-      "lines": 285,
+      "lines": 401,
       "max_func": 68,
       "max_func_name": "observe"
     },
