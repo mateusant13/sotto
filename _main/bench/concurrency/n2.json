@@ -1,0 +1,86 @@
+{
+  "label": "n2",
+  "streams_requested": 2,
+  "streams_finished": 2,
+  "threads_per_stream": 2,
+  "providers_arg": null,
+  "wav": "_main/bench/concurrency/window-300s-16k.wav",
+  "wav_bytes": 9600078,
+  "audio_s": 299.6,
+  "wall_s": 75.77,
+  "peak_box_pct": 22.1,
+  "peak_total_rss_mb": 2926.3,
+  "host_free_mb_after": 16591.8,
+  "rtf_worst": 0.186,
+  "rtf_best": 0.177,
+  "throughput_audio_s_per_wall_s": 7.908,
+  "mean_core_s_per_audio_s": 0.3448,
+  "per_stream": [
+    {
+      "stream": 0,
+      "rc": 0,
+      "killed": false,
+      "providers": [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "thread_plan": "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+      "load_s": 8.294,
+      "audio_s": 299.6,
+      "infer_wall_s": 55.842,
+      "rtf": 0.186,
+      "tokens": 1927,
+      "empty_chunks": 91,
+      "vad_gated_chunks": 62,
+      "stage_s": {
+        "pre": 3.917,
+        "enc": 39.443,
+        "dec": 10.287
+      },
+      "peak_rss_mb_worker": 1546.1,
+      "peak_rss_mb_sampled": 1621.1,
+      "cpu_s": 99.328,
+      "cores": 1.779,
+      "core_s_per_audio_s": 0.3315,
+      "peak_threads": 55,
+      "child_wall_s": 75.771,
+      "stderr_tail": [
+        "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+        "quality      : ok (1927 token(s) over 299.60 s, floor 4.0)"
+      ]
+    },
+    {
+      "stream": 1,
+      "rc": 0,
+      "killed": false,
+      "providers": [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "thread_plan": "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+      "load_s": 12.911,
+      "audio_s": 299.6,
+      "infer_wall_s": 53.102,
+      "rtf": 0.177,
+      "tokens": 1927,
+      "empty_chunks": 91,
+      "vad_gated_chunks": 62,
+      "stage_s": {
+        "pre": 4.1,
+        "enc": 37.099,
+        "dec": 9.757
+      },
+      "peak_rss_mb_worker": 1244.8,
+      "peak_rss_mb_sampled": 1305.2,
+      "cpu_s": 107.281,
+      "cores": 2.02,
+      "core_s_per_audio_s": 0.3581,
+      "peak_threads": 55,
+      "child_wall_s": 72.759,
+      "stderr_tail": [
+        "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+        "quality      : ok (1927 token(s) over 299.60 s, floor 4.0)"
+      ]
+    }
+  ]
+}

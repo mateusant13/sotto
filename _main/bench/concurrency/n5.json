@@ -1,0 +1,197 @@
+{
+  "label": "n5",
+  "streams_requested": 5,
+  "streams_finished": 5,
+  "streams_stalled": [],
+  "threads_per_stream": 2,
+  "providers_arg": null,
+  "wav": "_main/bench/concurrency/window-300s-16k.wav",
+  "wav_bytes": 9600078,
+  "audio_s": 299.6,
+  "wall_s": 350.35,
+  "ambient_cpu_pct_before": 69.1,
+  "peak_box_pct": 19.4,
+  "peak_total_rss_mb": 7783.5,
+  "host_free_mb_after": 14816.3,
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 5080",
+    "vram_used_before_mb": 2548.4,
+    "vram_peak_mb": 13261.3
+  },
+  "rtf_worst": 1.033,
+  "rtf_best": 0.271,
+  "throughput_audio_s_per_wall_s": 4.276,
+  "mean_core_s_per_audio_s": 0.2633,
+  "per_stream": [
+    {
+      "stream": 0,
+      "rc": 0,
+      "killed": false,
+      "stalled_at_cpu_s": null,
+      "providers": [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "thread_plan": "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+      "load_s": 3.95,
+      "audio_s": 299.6,
+      "infer_wall_s": 309.463,
+      "rtf": 1.033,
+      "tokens": 1927,
+      "empty_chunks": 91,
+      "vad_gated_chunks": 62,
+      "stage_s": {
+        "pre": 13.756,
+        "enc": 176.724,
+        "dec": 113.769
+      },
+      "peak_rss_mb_worker": 1545.3,
+      "peak_rss_mb_sampled": 1620.3,
+      "cpu_s": 69.875,
+      "cores": 0.226,
+      "core_s_per_audio_s": 0.2332,
+      "peak_threads": 55,
+      "child_wall_s": 350.345,
+      "stderr_tail": [
+        "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+        "quality      : ok (1927 token(s) over 299.60 s, floor 4.0)"
+      ]
+    },
+    {
+      "stream": 1,
+      "rc": 0,
+      "killed": false,
+      "stalled_at_cpu_s": null,
+      "providers": [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "thread_plan": "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+      "load_s": 4.264,
+      "audio_s": 299.6,
+      "infer_wall_s": 114.874,
+      "rtf": 0.383,
+      "tokens": 1927,
+      "empty_chunks": 91,
+      "vad_gated_chunks": 62,
+      "stage_s": {
+        "pre": 5.417,
+        "enc": 70.05,
+        "dec": 37.183
+      },
+      "peak_rss_mb_worker": 1546.7,
+      "peak_rss_mb_sampled": 1621.8,
+      "cpu_s": 68.25,
+      "cores": 0.594,
+      "core_s_per_audio_s": 0.2278,
+      "peak_threads": 55,
+      "child_wall_s": 344.294,
+      "stderr_tail": [
+        "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+        "quality      : ok (1927 token(s) over 299.60 s, floor 4.0)"
+      ]
+    },
+    {
+      "stream": 2,
+      "rc": 0,
+      "killed": false,
+      "stalled_at_cpu_s": null,
+      "providers": [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "thread_plan": "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+      "load_s": 9.832,
+      "audio_s": 299.6,
+      "infer_wall_s": 81.319,
+      "rtf": 0.271,
+      "tokens": 1927,
+      "empty_chunks": 91,
+      "vad_gated_chunks": 62,
+      "stage_s": {
+        "pre": 5.068,
+        "enc": 57.855,
+        "dec": 15.768
+      },
+      "peak_rss_mb_worker": 1547.4,
+      "peak_rss_mb_sampled": 1622.5,
+      "cpu_s": 111.453,
+      "cores": 1.371,
+      "core_s_per_audio_s": 0.372,
+      "peak_threads": 55,
+      "child_wall_s": 338.266,
+      "stderr_tail": [
+        "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+        "quality      : ok (1927 token(s) over 299.60 s, floor 4.0)"
+      ]
+    },
+    {
+      "stream": 3,
+      "rc": 0,
+      "killed": false,
+      "stalled_at_cpu_s": null,
+      "providers": [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "thread_plan": "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+      "load_s": 4.906,
+      "audio_s": 299.6,
+      "infer_wall_s": 298.907,
+      "rtf": 0.998,
+      "tokens": 1927,
+      "empty_chunks": 91,
+      "vad_gated_chunks": 62,
+      "stage_s": {
+        "pre": 10.773,
+        "enc": 207.791,
+        "dec": 75.869
+      },
+      "peak_rss_mb_worker": 1547.3,
+      "peak_rss_mb_sampled": 1622.5,
+      "cpu_s": 68.703,
+      "cores": 0.23,
+      "core_s_per_audio_s": 0.2293,
+      "peak_threads": 54,
+      "child_wall_s": 332.249,
+      "stderr_tail": [
+        "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+        "quality      : ok (1927 token(s) over 299.60 s, floor 4.0)"
+      ]
+    },
+    {
+      "stream": 4,
+      "rc": 0,
+      "killed": false,
+      "stalled_at_cpu_s": null,
+      "providers": [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "thread_plan": "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+      "load_s": 8.543,
+      "audio_s": 299.6,
+      "infer_wall_s": 292.865,
+      "rtf": 0.978,
+      "tokens": 1927,
+      "empty_chunks": 91,
+      "vad_gated_chunks": 62,
+      "stage_s": {
+        "pre": 8.268,
+        "enc": 205.693,
+        "dec": 75.346
+      },
+      "peak_rss_mb_worker": 1236.4,
+      "peak_rss_mb_sampled": 1296.5,
+      "cpu_s": 76.141,
+      "cores": 0.26,
+      "core_s_per_audio_s": 0.2541,
+      "peak_threads": 55,
+      "child_wall_s": 326.218,
+      "stderr_tail": [
+        "\u0000WORKER_THREAD_PLAN encoder=2 small=1 sessions=3 total_intra=4 budget_total=2 budget_batch=2",
+        "quality      : ok (1927 token(s) over 299.60 s, floor 4.0)"
+      ]
+    }
+  ]
+}

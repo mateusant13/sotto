@@ -1,0 +1,14 @@
+# THE 300 s WINDOW IS NOT SOURCE. `window-300s-16k.wav` is one caged ffmpeg
+# command from the frozen corpus (docs/live-concurrency-budget.md §"What is being
+# run", with the pinned sha256 f351295b9770685c37cdddf29071937afe155b4e16f52f123d8f00084f3bab90):
+#
+#   ffmpeg -i _main/bench/discord-call-20261116/mix-16k.wav -ss 360 -t 300 \
+#          -ac 1 -ar 16000 -c:a pcm_s16le -y _main/bench/concurrency/window-300s-16k.wav
+#
+# so a rebuilt window compares byte for byte without 9.6 MB of audio living in the
+# index. The receipts that DO live here are the numbers: n1..n5.json and logs-n*/,
+# which is what the doc's table is derived from.
+*.wav
+*.opus
+
+__pycache__/
