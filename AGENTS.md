@@ -732,6 +732,32 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (measured 2026-11-17, 20:3x):** `_main\_audit-verify-all.cmd` = **408725 B**,
+  **4679 CRLF** / 0 bare LF, sha256 `B52C7DFD89455FBCD2ECBA3A3546D277CCE7157A46656DC85CBBB684B1870206`.
+  (2 189 B and 23 lines more than the 406536 B pin: `tap-delivery-stall` +
+  `red-as-expected-tap-delivery-stall` and the `tap-stall-watchdog` step. The pair was born from the
+  same call as the ring pin and from the half the ring could not answer: 5 h 22 min of wall against
+  3 h 45 min of audio, the ASR engine **parked 1 h 11 min** behind external captions, **19**
+  endpoints opened across the window, and one of them (`AG251F1WG2`, HDMI) delivering **630,3 s**
+  with not one block — while not a single log line carried the duration, so the symptom the owner
+  saw ("audio parou e nada acontece") was indistinguishable from a healthy worker transcribing
+  silence. The invariant is now a sentence of code: **a park explains a missing CAPTION, never a
+  missing PACKET.** `worker/tap_delivery.py` owns the census (`tap_census_verdict`: `elsewhere` =
+  the audio moved, re-resolve now; `here` = this endpoint renders and the tap delivers nothing, the
+  client is wedged) and `tap_stall_reason` gained the corresponding `signal-elsewhere` /
+  `client-starved` words, guarded by `if live:` so a caller with no meter gets the pre-2026-11-17
+  answer. Measured in `_main/tap-delivery-stall-oracle.py`, which executes the REAL `window_ended`
+  and `tap_stall_reason` with the meter injected: before = ~630 s parked, after = <= 96 s, and a
+  silent desktop still waits (no churn); `VERDICT: PASS -- 21/21`, `--neg-arm` **rc=1** with 3/3
+  caught. The `tap-stall-watchdog-oracle` had **zero callers** since 2026-10-11 and had been
+  REFUSING since 2026-11-10 (it needed `audio_back_step`, `tap_floor`, `live_target` and then
+  `delivery_stall_line` as doubles); its doubles were repaired the same day and the step enters the
+  battery. **A defect the wiring found in the control itself:** the negative arm returned **0** on a
+  3/3 catch while the step is declared `:expectred` rc=1, i.e. a control that could never pass; it
+  now returns 1 when it catches (the house convention, measured in a dozen oracles) and 0 otherwise,
+  so a not-applied mutation fails loudly instead of passing quietly. Measured after the fix:
+  `battery-record-pairing` 536 steps / 536 names / 0 findings, `battery-wiring` PASS
+  `ligados=216 sem_passo=104 populacao=320`.)
 - **PIN do ficheiro (measured 2026-11-17, 01:0x):** `_main\_audit-verify-all.cmd` = **406536 B**,
   **4656 CRLF** / 0 bare LF, sha256 `0032BED1C4D0BEB68C84645284EA9DE844F84CC746B6CA63EA89AE9C3AA59D2E`.
   (1 494 B and 16 lines more than the 405042 B pin: the pair `audio-ring-loss` +

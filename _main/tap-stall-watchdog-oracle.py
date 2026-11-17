@@ -59,6 +59,45 @@ src = open(WORKER, "r", encoding="utf-8", errors="replace").read()
 tsrc = open(TAP, "r", encoding="utf-8", errors="replace").read()
 lines = src.splitlines()
 
+_CONSTS = None
+_DELIVERY_NS = None
+
+
+def _worker_consts():
+    """As constantes LITERAIS do worker, para o `def` executar como no produto.
+
+    Um default de funcao e' avaliado no `def` (`grace_s=AUDIO_BACK_GRACE_S`), por
+    isso `audio_back_step` ficava UNRESOLVED quando o nome so' existia aqui.
+    """
+    global _CONSTS
+    if _CONSTS is None:
+        _CONSTS = {}
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            tree = None
+        for node in (tree.body if tree is not None else ()):
+            if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)):
+                try:
+                    _CONSTS[node.targets[0].id] = ast.literal_eval(node.value)
+                except (ValueError, TypeError):
+                    pass
+    return _CONSTS
+
+
+def _tap_delivery():
+    """O modulo do PRODUTO que passou a ser dono do censo (2026-11-17)."""
+    global _DELIVERY_NS
+    if _DELIVERY_NS is None:
+        path = os.path.join(os.path.dirname(WORKER), "tap_delivery.py")
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+        _DELIVERY_NS = {}
+        exec(compile(text, "<product:tap_delivery>", "exec"), _DELIVERY_NS)
+    return _DELIVERY_NS
+
+
 # ---------------------------------------------------------------- ARM 6 premise
 inc = [i for i, l in enumerate(lines) if l.strip() == 'device_blocks["value"] += 1']
 iset = [i for i, l in enumerate(lines) if l.strip() == "if settled:"]
@@ -174,7 +213,12 @@ PARAMS = ("settled, device_blocks, now, err, emit, close_tap, LoopbackTap, tap_h
           "TAP_REOPEN_MAX, TAP_REOPEN_MIN_S")
 INIT = ("    tap = seed_tap\n    dev = seed_dev\n    stall_blocks = seed_stall_blocks\n"
         "    stall_since = seed_stall_since\n    stall_backoff = seed_stall_backoff\n"
-        "    stall_reopens = seed_stall_reopens\n    idle_logged = False\n")
+        "    stall_reopens = seed_stall_reopens\n    idle_logged = False\n"
+        # Locais do `main()` que o bloco settle LE (2026-11-17: o oracle passou a
+        # chegar aqui, logo o que faltava aparece como UnboundLocalError).
+        "    back_watch = None\n    window_start = time.time() - 100\n"
+        "    tap_window = 6.0\n    first_block_logged = False\n"
+        "    deadline = None\n    stage_deadline = None\n")
 RET = ("    return {\"stall_blocks\": stall_blocks, \"stall_since\": stall_since, "
        "\"stall_backoff\": stall_backoff, \"stall_reopens\": stall_reopens, "
        "\"tap\": tap, \"dev\": dev}\n")
@@ -209,7 +253,11 @@ def policy_from_source(text):
         if out and line.strip() and not line.startswith((" ", "\t")):
             break
         out.append(line)
-    ns = {"TAP_IDLE_MAX_S": TAP_IDLE_MAX_S, "TAP_REOPEN_MAX": TAP_REOPEN_MAX}
+    ns = {"TAP_IDLE_MAX_S": TAP_IDLE_MAX_S, "TAP_REOPEN_MAX": TAP_REOPEN_MAX,
+          # O censo mora no modulo do produto desde 2026-11-17; a politica so' o
+          # procura quando lhe dao uma leitura (`if live:`), mas o nome tem de
+          # existir aqui para um arm que a passe nao morrer com NameError.
+          "tap_census_verdict": _tap_delivery()["tap_census_verdict"]}
     exec(compile("\n".join(out), "<policy>", "exec"), ns)
     return ns["tap_stall_reason"]
 
@@ -276,7 +324,7 @@ def _module_value(name):
             seg = ast.get_source_segment(src, node)
             if not seg:
                 return _UNRESOLVED
-            sub = {}
+            sub = dict(_worker_consts())
             try:
                 exec(compile(seg, "<worker:%s>" % name, "exec"), sub)
             except Exception:
@@ -322,6 +370,23 @@ def run_block(text, args, tag):
     ns = dict(args)
     ns.setdefault("stop", _RecStop())
     ns.setdefault("progress", lambda *a, **k: None)
+    # LOCAIS DO `main()` QUE O BLOCO LE (2026-11-17). `tap_floor` e' decidido em
+    # `main` a partir dos args (`TAP_PEAK_FLOOR`), `live_target` e' uma funcao de
+    # dentro dele (rung c: nunca substitui o pid alvo), e `_live_render_peaks` e'
+    # o medidor -- STUBBED para `{}` ("sem leitura"), senao cada arm dependia do
+    # que esta' a tocar NESTA maquina agora. As arms do censo vivem no oraculo
+    # `_main/tap-delivery-stall-oracle.py`.
+    ns.setdefault("tap_floor", 0.002)
+    # `dev` e' local do bloco (INIT: `dev = seed_dev`) e so' continua sendo-o
+    # enquanto a rotacao o reescrever (`dev = target`). No mutante do ARM 5 esse
+    # ramo desaparece e o nome fica LIVRE -- o duplo mantem o controle negativo
+    # a medir o watchdog, e nao a resolucao de nomes.
+    ns.setdefault("dev", args.get("seed_dev"))
+    ns.setdefault("live_target", lambda *a, **k: None)
+    ns.setdefault("_live_render_peaks", lambda: {})
+    _delivery = _tap_delivery()
+    ns.setdefault("delivery_stall_line", _delivery["delivery_stall_line"])
+    ns.setdefault("tap_census_verdict", _delivery["tap_census_verdict"])
     missing = []
     for name in _free_names(text):
         if name in ns or hasattr(builtins, name):

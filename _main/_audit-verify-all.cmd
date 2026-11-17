@@ -4106,6 +4106,29 @@ if exist _main\audio-ring-loss-oracle.py (
   call :step red-as-expected-audio-ring-loss 1 "worker\audio_ring.py;_main\audio-ring-loss-oracle.py;_main\audio-ring-coverage.py" "%OUT%\audio-ring-loss-neg.log" python _main\audio-ring-loss-oracle.py --neg-arm
   call :expectred red-as-expected-audio-ring-loss !STEP_RC! "%OUT%\audio-ring-loss-neg.log" "NEG-ARM: PASS -- 4/4"
 ) else ( call :expectred red-as-expected-audio-ring-loss MISSING "%OUT%\audio-ring-loss-neg.log" "NEG-ARM: PASS -- 4/4" )
+REM UMA TAP QUE PARA DE ENTREGAR TEM DE SER VISTA (medido 2026-11-17: 5 h 22 de parede,
+REM 3 h 45 de audio; o motor parqueado 1 h 11 m pelas legendas externas e a tap a abrir
+REM 19 endpoints, um deles 630,3 s no HDMI sem um bloco, sem NENHUMA linha com a
+REM duracao). O positivo corre o `window_ended` e o `tap_stall_reason` REAIS do fonte com
+REM o medidor injectado: antes = ~630 s a rodar parqueado, depois = <= 96 s, e o desktop
+REM calado continua a esperar (sem churn). O negativo muta o PROPRIO texto em 3 sitios
+REM (o parque sem censo, a politica sem censo, a linha sem portao de episodio) e exige 3/3.
+if exist _main\tap-delivery-stall-oracle.py (
+  call :step tap-delivery-stall 0 "worker\sotto_worker.py;worker\tap_delivery.py;_main\tap-delivery-stall-oracle.py" "%OUT%\tap-delivery-stall.log" python _main\tap-delivery-stall-oracle.py
+  call :record tap-delivery-stall !STEP_RC!
+) else ( call :record tap-delivery-stall MISSING )
+if exist _main\tap-delivery-stall-oracle.py (
+  call :step red-as-expected-tap-delivery-stall 1 "worker\sotto_worker.py;worker\tap_delivery.py;_main\tap-delivery-stall-oracle.py" "%OUT%\tap-delivery-stall-neg.log" python _main\tap-delivery-stall-oracle.py --neg-arm
+  call :expectred red-as-expected-tap-delivery-stall !STEP_RC! "%OUT%\tap-delivery-stall-neg.log" "NEG-ARM: PASS -- 3/3"
+) else ( call :expectred red-as-expected-tap-delivery-stall MISSING "%OUT%\tap-delivery-stall-neg.log" "NEG-ARM: PASS -- 3/3" )
+REM O WATCHDOG DA TAP SETTLE ESTAVA SEM CHAMADOR (medido 2026-11-17): o oraculo existia
+REM desde 2026-10-11, mas RECUSAVA desde 2026-11-10 (`audio_back_step`, `tap_floor`,
+REM `live_target` e depois `delivery_stall_line` sem duplo) e nenhum passo o chamava. Os
+REM duplos e o portao de nomes foram reparados no mesmo dia e o par entra na bateria.
+if exist _main\tap-stall-watchdog-oracle.py (
+  call :step tap-stall-watchdog 0 "worker\sotto_worker.py;worker\tap_delivery.py;worker\wasapi_loopback.py;_main\tap-stall-watchdog-oracle.py" "%OUT%\tap-stall-watchdog.log" python _main\tap-stall-watchdog-oracle.py
+  call :record tap-stall-watchdog !STEP_RC!
+) else ( call :record tap-stall-watchdog MISSING )
 REM ---------------------------------------------------------------------------
 REM TRES PARES QUE NAO TINHAM PASSO (medido 2026-11-12). O `battery-wiring`
 REM acusava `new-unwired 2 oraculo(s) sem passo e sem licenca:

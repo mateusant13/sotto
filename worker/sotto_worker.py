@@ -132,6 +132,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 import punctuation_model  # noqa: E402 -- pontuacao de modelo (opcional, degrada para identidade)
 import audio_ring  # noqa: E402 -- o audio inteiro das ultimas 12 h (ordem do dono 2026-11-11)
+from tap_delivery import delivery_stall_line, tap_census_verdict  # noqa: E402 -- o censo de 2026-11-17
 import live_route  # noqa: E402 -- a rota ao vivo: rota + idade decidem se PINTA (2026-11-11)
 from engine_switch import (  # noqa: E402,F401 -- superficie historica do worker
     ParakeetEngine, PanelVisibilityReader, REDUX_BATCH_INTERVAL_DEFAULT_S,
@@ -574,41 +575,30 @@ def audio_back_step(now, blocks, captions, gap_s, back_watch, grace_s=AUDIO_BACK
 # rotates for as long as it needs to, because that rotation is the product.
 MAX_ROTATIONS_WITHOUT_SIGNAL = 8
 # -- AN IDLE ENDPOINT IS NOT A STALL (added 2026-10-12, owner freeze) ----
-# MEASURED live on the owner box (pid 39388, instrument
-# _main/rotation-burst-monitor.py, a 200 s window): the default render
-# endpoint (VoiceMeeter Input) delivers NO packets at all while nothing is
-# rendering, so block arrival stops the instant the desktop is idle. The
-# 2026-10-11 stall cure read that as a dead tap and re-opened the endpoint
-# every 8..60 s -- 32 re-opens in ONE run (reopens=32, stalled_s=60.0,
-# blocks=0, pump_exited=False) -- while the tap own pump thread was still
-# alive and the run was healthy. EVERY re-open is close_tap() plus a fresh
-# LoopbackTap() plus stream.start() on the DEFAULT RENDER ENDPOINT, the
-# audio engine the owner other apps share; that churn is a hard hitch and
-# the owner read it as a strong freeze every few seconds. So: a re-open is
-# earned by a broken CLIENT, never by an endpoint that merely renders
-# nothing.
+# A regra, a medicao (VoiceMeeter sem pacotes, 32 re-aberturas numa corrida) e
+# a testemunha honesta (o pump) estao em `tap_stall_reason`, que e' quem a
+# aplica. Um re-open e' ganho por um CLIENTE partido, nunca por um endpoint
+# que apenas nao renderiza.
 TAP_IDLE_MAX_S = 300.0   # a live pump plus zero packets for this long: re-arm ONCE
 TAP_REOPEN_MAX = 20      # never open more than this many clients in one run
 #: THE OPEN HAS A DEADLINE. Owner, 2026-10-20, verbatim: *"abrir ou fechar o
 #: sotto, principalemnte fechar, trava pra caralho meu pc. arruma."*
-#: MEASURED 2026-10-20 on this box (`_main/probe-capture-open.py --timeout 3`,
-#: 12 candidates): opening "Headset (soundcore Space Q45)" in **MME** and in
-#: **Windows WASAPI** **BLOCKS** -- the open does not come back in 3.0 s and
-#: it does NOT raise, so the ladder, which opens the candidates IN A LINE,
-#: simply sat there. The opens that WORK take 0.19-0.22 s (same probe), so
-#: 4 s is more than ten times the slowest healthy open.
-#: The owner's own log puts the price on the blocked ones: `BRIDGE_LOAD_MS
-#: ms=67969` with `worker_load_s=8.75` -- 68 s from the spawn, 8.75 s of it
-#: the model, so ~59 s in the ladder.
+#: MEASURED 2026-10-20 (`_main/probe-capture-open.py --timeout 3`, 12
+#: candidates): opening "Headset (soundcore Space Q45)" in MME and in Windows
+#: WASAPI BLOCKS and does not raise, so the ladder sat there; healthy opens take
+#: 0.19-0.22 s, and `BRIDGE_LOAD_MS ms=67969` put ~59 s in the ladder.
 TAP_OPEN_TIMEOUT_S = 4.0
 TAP_REOPEN_MIN_S = 5.0   # and never faster than this, whatever the state says
-def tap_stall_reason(pump_exited, idle_s, reopens):
-    """THE POLICY on a settled tap that stopped delivering blocks.
+def tap_stall_reason(pump_exited, idle_s, reopens, live=None, own=None, floor=0.002):
+    """THE POLICY on a tap that stopped delivering blocks: the ONE word, and why.
 
-    Added 2026-10-12, from the owner-reported freeze. Returns ONE of
-    "pump-dead" (re-open now: the client is broken), "idle-rearm" (one
-    re-armed attempt after a very long idle) or "endpoint-idle" (wait:
-    nothing is broken, the endpoint simply renders nothing).
+    Returns ONE of "pump-dead" (re-open now: the client is broken),
+    "signal-elsewhere" (the audio is on ANOTHER endpoint: re-resolve the target
+    now instead of waiting 300 s), "client-starved" (this endpoint IS rendering
+    and the tap delivers nothing: the client is wedged, a fresh one cures it),
+    "idle-rearm" (one re-armed attempt after a very long idle) or
+    "endpoint-idle" (wait: nothing is broken, the endpoint simply renders
+    nothing).
 
     MEASURED on the owner box: an idle default render endpoint (VoiceMeeter
     Input) delivers NO packets at all, and the previous policy read that as a
@@ -616,10 +606,19 @@ def tap_stall_reason(pump_exited, idle_s, reopens):
     (32 re-opens in ONE run) with the pump thread still alive. The pump is the
     honest witness: a client the engine invalidates makes it break out with an
     HRESULT, so pump_exited is the ONLY affirmative dead-client signal.
-    Pure on purpose: _main/tap-stall-policy-oracle.py tests this table.
+
+    The census arguments are OPTIONAL and the lookup is GUARDED by `live`, so a
+    caller with no meter gets exactly the pre-2026-11-17 answer: the two
+    oracles that execute this source by AST pass three arguments.
     """
     if pump_exited:
         return "pump-dead"
+    if live:
+        _census = tap_census_verdict(live, own, floor)
+        if _census == "elsewhere":
+            return "signal-elsewhere"
+        if _census == "here":
+            return "client-starved"
     if idle_s >= TAP_IDLE_MAX_S and reopens < TAP_REOPEN_MAX:
         return "idle-rearm"
     return "endpoint-idle"
@@ -2423,39 +2422,28 @@ def tap_ledger_row(dev, device_peak, device_blocks, counters, caps_before, settl
 
 
 def window_ended(now, dev, device_peak, tap_floor, tap_window, counters, emit=None,
-                 engine_parked=None):
+                 engine_parked=None, stalled_s=None):
     """Uma janela plana acabou: ESPERA na mesma tap, ou diz que a escada deve andar.
 
     Devolve o `window_end` NOVO (a tap fica aberta) ou None (o chamador rotaciona).
 
-    O DEFEITO MEDIDO (2026-11-02, sessao viva pid 4404): desktop em silencio e **12
-    clientes WASAPI abertos em 3 minutos**, `device-rotated reason=flat` a cada ~15 s
-    com `peak=0.0`, ate' um caption chegar por acidente e a limpar. Cada abertura e' um
-    hitch no motor de audio que o dono partilha com as outras apps -- o proprio ficheiro
-    documenta o custo (*"a hard hitch on the audio engine ... which the owner read as a
-    strong freeze every few seconds"*). A pergunta certa no fim de uma janela plana nao
-    e' "que candidato tem caption?" (essa ja' foi feita): e' "alguem esta' a tocar ALGUMA
-    COISA, em endpoint nenhum?", e o medidor VIVO responde-a para todos de uma vez.
+    `stalled_s` = tempo desde o ultimo bloco; `None` mantem a politica anterior.
+
+    O DEFEITO MEDIDO (2026-11-02, pid 4404: desktop calado, 12 clientes WASAPI em
+    3 min) esta' inteiro em `silent_desktop_hold`. A pergunta no fim de uma janela
+    plana nao e' "que candidato tem caption?": e' "alguem esta' a tocar ALGUMA
+    COISA?", e o medidor VIVO responde-a para todos de uma vez.
 
     O ESTADO VIVE EM `counters['silent']` para nao acrescentar locais ao `main`: quantas
     janelas esta tap ja' foi estendida, e se a linha ja' foi escrita (uma por candidato).
     Quem chama isto por candidato novo limpa a chave antes -- ver o init da janela.
     """
-    # O MOTOR LARGADO PELA SHELL NAO TORNA O DISPOSITIVO CULPADO (2026-11-05).
-    # MEDIDO nesta maquina (pid 52504, 18:04-18:16): com `VRAM_GUARD_PARKING
-    # free_mb=669` o motor fica parqueado e o audio CONTINUA a chegar -- a prova
-    # e' do proprio instrumento da shell, `noAudioEvidence` com
-    # `peak=0.317144` contra `floor=0.002` -- mas nenhuma legenda pode nascer,
-    # porque nao ha' motor. A janela lia "plana", a escada rotacionava e
-    # reabria: QUARENTA E SEIS rotacoes em onze minutos, cada uma um cliente
-    # WASAPI aberto e fechado no motor de audio que o dono partilha. A
-    # pergunta certa aqui e' "a ausencia de legenda e' do AUDIO ou do MOTOR?", e
-    # quem a responde e' a shell, que acabou de publicar o parque.
-    #
-    # A TAP FICA ABERTA: fechar e sondar perderia audio, que e' exactamente o
-    # que o parque NAO pode custar (`nunca perder audio`). A janela dobra ate'
-    # TAP_SILENT_DESKTOP_MAX_S para o parque nao custar um despertar por segundo
-    # numa maquina que ja' esta' sem GPU.
+    # O MOTOR LARGADO PELA SHELL NAO TORNA O DISPOSITIVO CULPADO (2026-11-05,
+    # pid 52504: com VRAM_GUARD_PARKING free_mb=669 o audio continuava a chegar,
+    # `noAudioEvidence peak=0.317144` contra `floor=0.002`, e a janela plana
+    # rotacionava 46 vezes em 11 min; recibo `receipt-20261105-tap-engine-parked`).
+    # A TAP FICA ABERTA -- fechar perderia audio, o que o parque NAO pode custar
+    # -- e a janela dobra ate' TAP_SILENT_DESKTOP_MAX_S.
     if engine_parked is not None:
         try:
             parked = engine_parked()
@@ -2468,12 +2456,24 @@ def window_ended(now, dev, device_peak, tap_floor, tap_window, counters, emit=No
             state['windows'] += 1
             grown = min(float(tap_window) * (2.0 ** min(state['windows'], 4)),
                         float(TAP_SILENT_DESKTOP_MAX_S))
-            # UMA TAP SEGURA E' AINDA UMA TAP NUM ENDPOINT (2026-11-05). Segurar
-            # para sempre esconderia a unica coisa que a escada existe para ver:
-            # o audio MUDOU de dispositivo enquanto esperavamos. Passado o
-            # tecto, a escada volta a varrer UMA vez e o ciclo recomeca -- com o
-            # motor parqueado isso e' no maximo um cliente por ~11 min, em vez de
-            # um a cada 15 s.
+            # O PARQUE EXPLICA LEGENDA AUSENTE, NAO PACOTE AUSENTE (2026-11-17):
+            # o motor largado cala as legendas, o tap e o ring continuam. Medido:
+            # 16:55->18:07 parqueado, 19 endpoints abertos e nenhum bloco.
+            _stall = float(stalled_s or 0.0)
+            if _stall >= TAP_STALL_MAX_S:
+                _census = tap_census_verdict(_live_render_peaks(),
+                                             dev.get('endpoint_id'), tap_floor)
+                if _census in ('here', 'elsewhere'):
+                    _line = delivery_stall_line(counters, dev.get('name'), _stall,
+                                                _census, None)
+                    if emit is not None and _line:
+                        emit(type="status", state="tap-delivery-stalled",
+                             device=dev.get('name'), reason=_line, parked=parked)
+                    state['windows'] = 0
+                    return None
+            # UMA TAP SEGURA E' AINDA UMA TAP NUM ENDPOINT (2026-11-05): segurar
+            # para sempre esconderia o audio ter MUDADO de dispositivo enquanto
+            # esperavamos. Passado o tecto, a escada re-varre UMA vez.
             if state['windows'] > TAP_ENGINE_PARK_HOLD_WINDOWS:
                 state['windows'] = 0
                 if emit is not None:
@@ -2496,9 +2496,7 @@ def window_ended(now, dev, device_peak, tap_floor, tap_window, counters, emit=No
     if state is None:
         state = counters['silent'] = {'windows': 0, 'logged': False}
     live = _live_render_peaks()
-    # O PICO DESTE ENDPOINT, lido do MESMO censo (2026-11-11). Ver
-    # `silent_desktop_hold(own_peak=...)`: o censo responde "alguem toca", nao
-    # "alguem toca AQUI", e a diferenca custou 45 s no arranque dele.
+    # O pico DESTE endpoint, do MESMO censo (ver `silent_desktop_hold(own_peak=)`).
     try:
         _ep = dev.get('endpoint_id')
         own_peak = None if _ep is None else live.get(_ep)
@@ -7587,6 +7585,9 @@ def main():
         counters["blocks"] += 1
         counters["block_samples"] += int(block.size)
         device_blocks["value"] += 1
+        # CARIMBO DA ULTIMA ENTREGA (2026-11-17): `window_ended` mede a stall
+        # contra o BLOCO, nao contra a abertura da janela.
+        counters["last_block_at"] = time.time()
         p = float(abs(block).max()) if block.size else 0.0
         if p > counters["peak"]:
             counters["peak"] = p
@@ -8758,36 +8759,23 @@ def main():
                                 stall_since = now
                                 stall_backoff = TAP_STALL_S
                             elif now - stall_since >= stall_backoff:
-                                # -- THE TAP STOPPED DELIVERING (added 2026-10-11) -----------------
-                                # A settled tap used to be PERMANENT: this loop then spun at 10 Hz for
-                                # ever and never once asked whether the tap was still delivering.
-                                # MEASURED on the owner box: device_blocks froze at 59 (5.6 s of audio,
-                                # 6 captions) and the worker sat there 34 minutes while the default
-                                # render endpoint carried peak 0.1444 -- the panel read "Audio tap
-                                # silent" and Alt+C showed nothing, for ever. The signal is BLOCK
-                                # ARRIVAL, not peak: a pumped-but-idle endpoint delivers SILENT blocks,
-                                # a starved or dead one delivers none.
+                                # UMA TAP SETTLE TAMBEM PODE MORRER (2026-10-11): o sinal e'
+                                # CHEGADA DE BLOCO, nao pico -- medidas em
+                                # `worker/tap_delivery.py`.
                                 stalled_s = now - stall_since
                                 inner = getattr(tap, "stream", tap)
-                                # -- IS IT ACTUALLY BROKEN? (added 2026-10-12) ----------------------
-                                # The cure above treats EVERY stop in block arrival as a stalled tap.
-                                # MEASURED on this box, that is wrong for an idle default endpoint:
-                                # VoiceMeeter delivers NO packets while nothing renders, so block arrival
-                                # stops the instant the desktop is idle, and the worker then re-opened that
-                                # endpoint every 8..60 s (32 times in ONE run) with the pump thread still
-                                # ALIVE -- a hard hitch on the audio engine the owner other apps share,
-                                # which the owner read as a strong freeze every few seconds. The pump is
-                                # the honest witness: a client the engine invalidates makes it BREAK OUT
-                                # with an HRESULT, so pump_exited is the ONLY affirmative dead-client
-                                # signal. A live pump plus an endpoint that renders nothing WAITS.
+                                # O pump e' a testemunha de um cliente MORTO; o censo
+                                # vivo, de um tap DESLOCADO (ver `worker/tap_delivery.py`).
                                 client_dead = bool(getattr(inner, "pump_exited", False))
-                                stall_reason = tap_stall_reason(client_dead, stalled_s, stall_reopens)
+                                stall_reason = tap_stall_reason(
+                                    client_dead, stalled_s, stall_reopens,
+                                    live=_live_render_peaks(),
+                                    own=dev.get("endpoint_id"), floor=tap_floor)
                                 idle_s = stalled_s
                                 if stall_reason == "endpoint-idle":
-                                    # NOTHING IS BROKEN -- wait instead of churning the engine. The
-                                    # backoff keeps its course, so this is ASKED AGAIN, not spun: a client
-                                    # that does break is still cured. The bridge own 30 s silence check
-                                    # already tells the owner "Audio tap silent - nothing to transcribe".
+                                    # NADA PARTIDO -- esperar em vez de mexer no motor. A
+                                    # pergunta volta (backoff), e o silencio de 30 s da bridge
+                                    # ja' diz "Audio tap silent" ao dono.
                                     if idle_s >= TAP_IDLE_MAX_S + TAP_STALL_MAX_S and not idle_logged:
                                         err(f"TAP_IDLE device={dev['name']!r} idle_s={idle_s:.0f} "
                                             f"blocks={device_blocks['value']} reopens={stall_reopens} "
@@ -8810,14 +8798,13 @@ def main():
                                     f"silent_packets={getattr(inner, 'silent_packets', None)} "
                                     f"gap_packets={getattr(inner, 'position_gap_packets', None)} "
                                     f"disco_packets={getattr(inner, 'discontinuity_packets', None)}")
-                                # Re-open IN PLACE: the first stalls re-open the SAME endpoint (an
-                                # invalidated audio engine is cured by a fresh client); after that the
-                                # audio may simply have MOVED, so take the freshest enumeration first
-                                # endpoint that is not this one. An EXPLICIT device (rung c) is never
-                                # substituted silently, and the process NEVER exits on a stall -- an
-                                # idle desktop must not become a model-load restart loop.
+                                # Reabrir NO MESMO endpoint nas primeiras stalls (um cliente
+                                # novo cura um motor invalidado); depois o audio pode ter
+                                # MOVIDO. Rung c explicito nunca e' substituido, e o processo
+                                # nunca sai numa stall (ver `worker/tap_delivery.py`).
                                 target = dev
-                                if stall_reopens >= TAP_STALL_SAME_DEVICE_TRIES and not (
+                                if (stall_reopens >= TAP_STALL_SAME_DEVICE_TRIES
+                                        or stall_reason == "signal-elsewhere") and not (
                                         wanted and dev.get("rung") == "c"):
                                     for cand in device_candidates(audio_cfg, wanted, target_pid=live_target('ladder')):
                                         if cand.get("endpoint_id") != dev.get("endpoint_id"):
@@ -8827,6 +8814,14 @@ def main():
                                      to=target["name"], device=dev["name"],
                                      stalled_s=round(stalled_s, 1), blocks=device_blocks["value"],
                                      captions=counters["captions"])
+                                # A LINHA QUE FALTOU NO CORPUS: numero, uma por episodio
+                                # (`delivery_stall_line`); `device-rotated` e' deduplicado.
+                                _dl = delivery_stall_line(counters, dev.get("name"), stalled_s,
+                                                          stall_reason, target["name"])
+                                if _dl:
+                                    err(_dl)
+                                    emit(type="status", state="tap-delivery-stalled",
+                                         reason=_dl, device=dev.get("name"))
                                 try:
                                     close_tap(tap)
                                     tap_holder["tap"] = None
@@ -8919,6 +8914,9 @@ def main():
                             extended = window_ended(
                                 now, dev, device_peak, tap_floor,
                                 tap_window, counters, emit,
+                                # HA' QUANTO TEMPO O TAP NAO ENTREGA (2026-11-17).
+                                stalled_s=now - max(
+                                    window_start, counters.get("last_block_at") or 0.0),
                                 # A SHELL E' QUEM SABE SE O MOTOR ESTA' LARGADO
                                 # (2026-11-05, ver `window_ended`).
                                 engine_parked=lambda: engine_parked_now(
