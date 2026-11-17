@@ -92,6 +92,7 @@ def _arm_a6(module_path):
 def _arm_a7(module):
     probe = object.__new__(module.NativeCaptionOverlay)
     probe._paint_cost_s = 0.0116
+    probe._paint_frame_cost_s = 0.0116
     probe._paint_limit_logged = 0.0
     lines = []
     probe.log = lines.append
@@ -247,6 +248,57 @@ def _arm_a10(module, seconds=0.9, cost=0.0116):
     return frac, hz, n, floor_hz
 
 
+def _arm_a11(module):
+    """A11 -- o orcamento divide o TICK INTEIRO, nao so' a fase de pintura.
+
+    2026-11-17: na instancia viva (pid 34520) o fio `sotto-caption-tick` gastava
+    71,7 % de um nucleo enquanto o log `CAPTION_FRAME_LIMIT` declarava 40 %,
+    porque o divisor via so' o `_update`. Aqui o poll CUSTA 10 ms e a pintura
+    2 ms: quem ler `_paint_cost_s` calcula 5 ms de periodo (240 % de um nucleo
+    por construcao); quem ler o tick inteiro calcula ~30 ms (40 %).
+
+    A prova passa pelo `_tick` REAL (o poll e a pintura correm mesmo), e nao por
+    um campo posto a' mao: o que se exige e' que o `_note_tick_cost` tenha
+    medido a SOMA das fases e que o `_limit_by_paint` a divida pelo orcamento.
+    """
+    budget = float(getattr(module, "CAPTION_FRAME_BUDGET", 0.0) or 0.0)
+    probe = object.__new__(module.NativeCaptionOverlay)
+    probe.lock = threading.RLock()
+    probe._poll_lock = threading.RLock()
+    probe._sched_lock = threading.RLock()
+    probe._tick_gen = 0
+    probe._tick_deadline = 0.0
+    probe._tick_thread = None
+    probe._tick_stop = False
+    probe._tick_event = threading.Event()
+    probe._content_due_at = 0.0          # conteudo VENCIDO: este tick pinta
+    probe._drag_armed = False
+    probe._drag_dragging = False
+    probe._paint_cost_s = 0.0
+    probe._paint_frame_cost_s = 0.0
+    probe._paint_limit_logged = 0.0
+    lines = []
+    probe.log = lines.append
+
+    def slow_poll():
+        time.sleep(0.010)                # o poll do defeito: 10 ms por tick
+        return False
+
+    def cheap_paint():
+        time.sleep(0.002)                # a pintura: 2 ms
+
+    probe._poll_drag = slow_poll
+    probe._update = cheap_paint
+    probe._tick(probe._tick_gen)         # o caminho REAL mede as duas fases
+    frame_cost = float(getattr(probe, '_paint_frame_cost_s', 0.0) or 0.0)
+    got = probe._limit_by_paint(1.0 / 240.0)
+    return (budget > 0.0
+            and frame_cost >= 0.011                       # poll + paint, somados
+            and abs(got - frame_cost / budget) < 1e-9     # o tick inteiro divide
+            and got > (0.002 / budget) * 2.0              # longe do so'-pintura
+            and any("tick_ms=" in ln for ln in lines))
+
+
 def main(argv=None) -> int:
     neg = "--neg-arm" in (argv if argv is not None else sys.argv[1:])
 
@@ -300,6 +352,7 @@ def main(argv=None) -> int:
     # pintura de 11,6 ms nunca pode honrar, e a animacao engasgaria.
     probe = object.__new__(caption_overlay.NativeCaptionOverlay)
     probe._paint_cost_s = 0.0116
+    probe._paint_frame_cost_s = 0.0116
     probe._paint_limit_logged = 0.0
     lines = []
     probe.log = lines.append
@@ -310,6 +363,7 @@ def main(argv=None) -> int:
     a7b = any("CAPTION_FRAME_LIMIT" in ln for ln in lines)
     free = object.__new__(caption_overlay.NativeCaptionOverlay)
     free._paint_cost_s = 0.0
+    free._paint_frame_cost_s = 0.0
     free._paint_limit_logged = 0.0
     free.log = lines.append
     a7c = free._limit_by_paint(1.0 / 240.0) == 1.0 / 240.0
@@ -349,7 +403,8 @@ def main(argv=None) -> int:
               ("A8 o ultimo trecho dorme em sleep", a8),
               ("A9 relogio do frame < 1 ms de grao", a9),
               ("A10 laco real: fracao de nucleo %.2f <= orcamento (%.0f Hz, %d quadros)"
-               % (frac, hz10, n10), a10))
+               % (frac, hz10, n10), a10),
+              ("A11 orcamento divide o tick inteiro (poll+paint)", _arm_a11(caption_overlay)))
     for name, ok in checks:
         print("%-46s -> %s" % (name, "PASS" if ok else "FAIL"))
     if neg:
@@ -391,6 +446,17 @@ def main(argv=None) -> int:
                 "CAPTION_FRAME_BUDGET = 0.40", "CAPTION_FRAME_BUDGET = 1.0", 1))
         extra.append(("orcamento-volta-a-1.0",
                       not _arm_a7(_load(mut2b, "tick_orc_1"))))
+        # (b2) o orcamento volta a contar SO' A PINTURA -- o defeito medido a
+        # 2026-11-17 (71,7 % de nucleo com o log a declarar 40 %). Quem apanha
+        # e' a A11, nao a A7: a A7 poe o custo a' mao, logo a mutacao do
+        # `_limit_by_paint` nao a derruba.
+        mut2c = os.path.join(tmp, "app", "webview", "caption_overlay_so_pintura.py")
+        io.open(mut2c, "w", encoding="utf-8", newline="").write(
+            io.open(MODULE, encoding="utf-8", newline="").read().replace(
+                "cost = float(getattr(self, '_paint_frame_cost_s', 0.0) or 0.0)",
+                "cost = float(getattr(self, '_paint_cost_s', 0.0) or 0.0)", 1))
+        extra.append(("orcamento-volta-a-so-pintura",
+                      not _arm_a11(_load(mut2c, "tick_so_pintura"))))
         # (c) o relogio do frame volta ao de grao grosso
         mut3 = os.path.join(tmp, "app", "webview", "caption_overlay_grosso.py")
         io.open(mut3, "w", encoding="utf-8", newline="").write(

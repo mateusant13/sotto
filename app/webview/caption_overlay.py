@@ -639,9 +639,32 @@ class NativeCaptionOverlay:
         self._tick_event = threading.Event()
         self._tick_thread = None
         self._tick_deadline = 0.0        # `_frame_now`; 0 = nada armado
-        #: O custo MEDIDO do ultimo quadro de pintura (segundos). E' ele que
-        #: decide se o tecto de 240 Hz (`word_fade.FRAME_S`) pode ser honrado.
+        #: O custo MEDIDO do ultimo `_update` (segundos) -- so' a fase de pintura.
+        #: Fica no log e no `CAPTION_FRAME_LIMIT` como INFORMACAO; quem decide a
+        #: taxa e' `_paint_frame_cost_s` (o tick inteiro), nunca esta parcela.
         self._paint_cost_s = 0.0
+        #: O custo MEDIDO do ULTIMO TICK QUE PINTOU (segundos), do inicio do
+        #: `_tick` ao fim do arme: poll + tentativa de `self.lock` + `_update`
+        #: + `_arm_poll`/`_arm_tick`. E' ESTE numero que o orcamento divide
+        #: (`_limit_by_paint`): medido na instancia viva (pid 34520, 2026-11-17)
+        #: o fio gastava 71,7 % de um nucleo enquanto o log declarava 40 %,
+        #: porque a conta so' via a pintura e todo o resto do tick era pago por
+        #: fora. Um tick de POLL (sem pintura) nao o escreve -- senao um poll
+        #: barato entre dois quadros devolvia o tecto de 240 Hz ao quadro caro.
+        self._paint_frame_cost_s = 0.0
+        #: As fases DESSE mesmo tick que pintou (poll e `_update`), para a linha
+        #: `CAPTION_TICK_COST` ser um triplo coerente: `tick >= poll + paint`.
+        #: Publicar o `tick_ms` de um tick de poll ao lado do `paint_ms` do
+        #: ultimo quadro dava `tick_ms < paint_ms` -- medido no log de 01:25:52
+        #: (`paint_ms=10.54 tick_ms=0.28`), uma linha que mente sobre a soma.
+        self._paint_frame_poll_s = 0.0
+        self._paint_frame_paint_s = 0.0
+        #: O custo do ultimo tick, seja ele de poll ou de pintura (segundos), e
+        #: o contador da janela de 5 s do `CAPTION_TICK_COST`.
+        self._tick_cost_s = 0.0
+        self._tick_poll_s = 0.0
+        self._tick_cost_logged = 0.0
+        self._tick_cost_n = 0
         #: Quando o log do limite foi escrito pela ultima vez (segundos).
         self._paint_limit_logged = 0.0
         self._tick_stop = False
@@ -1079,10 +1102,26 @@ class NativeCaptionOverlay:
         (200 Hz) -- a taxa sobe quando o quadro fica barato, que e' a ordem do
         dono, e nunca passa de 40 % do nucleo.
 
+        O `cost` E' O TICK INTEIRO, NAO A PINTURA (2026-11-17). Medido na
+        instancia viva (pid 34520,
+        `shell-thread-cpu.py 34520 --seconds 8`: `sotto-caption-tick` a 71,7 %
+        de um nucleo) enquanto o log `CAPTION_FRAME_LIMIT` declarava 40 %: a
+        conta antiga so' via o `_update` (6,59-8,71 ms) e o `_poll_drag`, a
+        tentativa de `self.lock` e o arme do tick seguinte eram pagos POR FORA
+        do divisor. O numero certo e' `_paint_frame_cost_s`, medido do inicio do
+        `_tick` ao fim do arme no ultimo tick que pintou (`CAPTION_TICK_COST`
+        publica a separacao poll/paint/tick).
+
         Quando ela morde, o log diz os numeros (uma linha a cada 5 s, nao por
         quadro) para o limite ser medivel e nao uma opiniao.
         """
-        cost = float(getattr(self, '_paint_cost_s', 0.0) or 0.0)
+        cost = float(getattr(self, '_paint_frame_cost_s', 0.0) or 0.0)
+        if cost <= 0.0:
+            # NENHUM TICK MEDIDO AINDA (ou um probe de oraculo que so' injecta o
+            # custo da pintura): o divisor nunca fica abaixo da pintura. Num
+            # overlay real o primeiro tick que pinta escreve o tick inteiro, e
+            # `tick >= paint` sempre -- logo este ramo nao muda a producao.
+            cost = float(getattr(self, '_paint_cost_s', 0.0) or 0.0)
         if cost <= 0.0:
             return delay
         floor = cost / CAPTION_FRAME_BUDGET
@@ -1091,10 +1130,12 @@ class NativeCaptionOverlay:
         now = _frame_now()
         if now - float(getattr(self, '_paint_limit_logged', 0.0)) >= 5.0:
             self._paint_limit_logged = now
-            self.log('CAPTION_FRAME_LIMIT want_hz=%.0f paint_ms=%.2f budget=%.2f '
-                 'rate_hz=%.0f' % (1.0 / max(1e-6, float(delay)), cost * 1000.0,
-                                   CAPTION_FRAME_BUDGET,
-                                   1.0 / max(1e-6, floor)))
+            self.log('CAPTION_FRAME_LIMIT want_hz=%.0f paint_ms=%.2f tick_ms=%.2f '
+                 'budget=%.2f rate_hz=%.0f'
+                 % (1.0 / max(1e-6, float(delay)),
+                    float(getattr(self, '_paint_cost_s', 0.0)) * 1000.0,
+                    cost * 1000.0, CAPTION_FRAME_BUDGET,
+                    1.0 / max(1e-6, floor)))
         return floor
 
     def _tick_loop(self):
@@ -1187,6 +1228,13 @@ class NativeCaptionOverlay:
         self._arm_at(delay)
 
     def _tick(self, gen):
+        # O TICK INTEIRO E' O QUE O ORCAMENTO DIVIDE (2026-11-17): o cronometro
+        # comeca AQUI e fecha no `finally` do fim, depois de o arme seguinte ter
+        # corrido. `_poll_s` separa a parcela do poll para o log dizer QUAL fase
+        # paga o excedente -- medido, nao suposto.
+        _tick_t0 = _frame_now()
+        _poll_s = 0.0
+        _painted = False
         try:
             # ── O POLL FORA DO CADEADO DA PINTURA (2026-11-15) ──────────────
             # Ordem do dono, verbatim: *"segurar o ctrl pra mover a legenda,
@@ -1198,10 +1246,12 @@ class NativeCaptionOverlay:
             # O poll do arrasto tem cadeado PROPRIO (`_poll_lock`), que a
             # pintura nunca toma: enquanto o Ctrl esta' em baixo ou um arrasto
             # decorre, a janela segue o rato sem esperar pintura nenhuma.
+            _poll_t0 = _frame_now()
             with _guard(self, '_poll_lock'):
                 moved = self._poll_drag()
                 armed = getattr(self, '_drag_armed', False)
                 dragging = getattr(self, '_drag_dragging', False)
+            _poll_s = _frame_now() - _poll_t0
             if gen != self._tick_gen:
                 # Um arme mais novo ja' tomou o lugar deste: o poll acima
                 # correu de qualquer forma, mas pintar seria pintar o passado.
@@ -1240,6 +1290,7 @@ class NativeCaptionOverlay:
                 self._update()
                 _cost = _frame_now() - _t0
                 self._paint_cost_s = _cost
+                _painted = True
                 if dragging:
                     with _guard(self, '_poll_lock'):
                         self._drag_paints = int(getattr(self, '_drag_paints', 0)) + 1
@@ -1249,6 +1300,61 @@ class NativeCaptionOverlay:
                 self.lock.release()
         except Exception as exc:  # noqa: BLE001 -- see the fail-open rule
             self._fail_open(exc)
+        finally:
+            self._note_tick_cost(_frame_now() - _tick_t0, _poll_s, _painted)
+
+    def _note_tick_cost(self, tick_s, poll_s, painted):
+        """Grava o custo do tick INTEIRO e publica a separacao a cada 5 s.
+
+        2026-11-17: o `CAPTION_FRAME_LIMIT` declarava 40 % de nucleo enquanto o
+        instrumento externo media 71,7 % no fio `sotto-caption-tick` (pid 34520).
+        A conta do limite so' via o `_update`; o resto do tick era invisivel.
+        Esta funcao mede o que o fio GASTA de facto e diz de que fase vem:
+
+          poll_ms  o `_poll_drag` (Win32/`drag_plan`) sob o `_poll_lock`, do
+                   MESMO tick que a linha descreve;
+          paint_ms o `_update` desse mesmo tick;
+          tick_ms  do inicio desse `_tick` ao fim do arme seguinte -- a soma que
+                   o `_limit_by_paint` divide pelo orcamento.
+
+        As tres parcelas vem do ULTIMO TICK QUE PINTOU, e nao do ultimo tick:
+        um tick de poll barato ao lado do `paint_ms` do quadro anterior dava
+        `tick_ms < paint_ms`, uma linha que mente sobre a soma.
+
+        `rate_hz` e' a taxa ENTREGUE na janela de 5 s (quadros contados / tempo),
+        nao o pedido. A primeira janela so' abre o relogio: sem uma janela
+        completa a taxa seria a idade do `perf_counter`.
+        """
+        self._tick_cost_s = float(tick_s)
+        self._tick_poll_s = float(poll_s)
+        if painted:
+            # SO' O TICK QUE PINTOU alimenta o orcamento: o proximo pedido de
+            # quadro e' limitado pelo custo do ultimo quadro, nao pelo de um poll
+            # barato que passou pelo meio.
+            self._paint_frame_cost_s = float(tick_s)
+            self._paint_frame_poll_s = float(poll_s)
+            self._paint_frame_paint_s = float(getattr(self, '_paint_cost_s', 0.0))
+        self._tick_cost_n = int(getattr(self, '_tick_cost_n', 0)) + 1
+        now = _frame_now()
+        last = float(getattr(self, '_tick_cost_logged', 0.0) or 0.0)
+        if last <= 0.0:
+            self._tick_cost_logged = now
+            return
+        elapsed = now - last
+        if elapsed < 5.0:
+            return
+        count = self._tick_cost_n
+        self._tick_cost_logged = now
+        self._tick_cost_n = 0
+        try:
+            self.log('CAPTION_TICK_COST poll_ms=%.2f paint_ms=%.2f tick_ms=%.2f '
+                     'rate_hz=%.0f'
+                     % (float(getattr(self, '_paint_frame_poll_s', 0.0)) * 1000.0,
+                        float(getattr(self, '_paint_frame_paint_s', 0.0)) * 1000.0,
+                        float(getattr(self, '_paint_frame_cost_s', 0.0)) * 1000.0,
+                        (count / elapsed) if elapsed > 0.0 else 0.0))
+        except Exception:  # noqa: BLE001 -- medir nunca parte o tick
+            pass
 
     # ── O ARRASTO: UM POLL NO TICK QUE JA' EXISTE ───────────────────────────
     def _work_area(self):
