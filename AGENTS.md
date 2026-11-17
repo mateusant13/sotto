@@ -47,6 +47,44 @@ uma sonda que mede queimando a maquina e' o defeito** -- toda sonda tem o seu pr
 de IO, a sua propria cache e o seu proprio prazo. E a frase que resume a lei:
 **um limite que nao foi medido nao e' um limite.**
 
+### A `--threads N` FLAG IS NOT A PROCESS BUDGET WHEN TWO LIBRARIES RUN IN ONE PROCESS (measured 2026-11-17)
+
+A peer lane sampled three heavy jobs "from H:/sotto" at once, summing **1276 % of one core**, while the
+owner's hover animations stopped 19 times in an hour. Attributed per pid with psutil from a `pythonw`
+child, in a 5 s window:
+
+|pid|what|measured|
+|---|---|---|
+|47520|`_main/bench/separate.py --engine mossformer2 --threads 2 --score`|**250.9 %** of one core, 30 OS threads, 2012 MB|
+|47720|the owner's live worker `sotto_worker.py --threads 2`|203.8 %|
+|34520|the owner's live shell `sotto_webview.py`|121.9 %|
+
+The `2` was applied **twice in the same process** -- `torch.set_num_threads(2)` for the separator and
+`intra_op_num_threads=2` for the ASR session -- so the process total was 4 threads, and a peer sample
+of the same job earlier in its life read 386.4 %. Neither library ignored the flag; the flag simply
+declared half the truth.
+
+The rule that follows, and it binds every multi-engine script in this tree (separation, streaming ASR
+plus batch ASR, any ORT session beside a torch model):
+
+- **The budget is the SUM over every pool alive in the process, and it is declared as a process
+  total.** `worker/engine_serialization.py` is the shipped example of the arithmetic (`total`, `live`,
+  `small`, `batch`); a second library beside the first spends the same budget, it does not double it.
+- **The process PRINTS what the libraries actually hold**: `THREADS process_budget=<n>
+  torch=<torch.get_num_threads()> ort_intra=<session value> env OMP=.. MKL=.. OPENBLAS=..`. A ceiling
+  the process never states is a claim, and this repo's rule is that an unmeasured limit is not a limit.
+- **The environment carries it too**, set from the parsed `--threads` **before** the first numpy/torch
+  import (`OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `NUMEXPR_NUM_THREADS`), because
+  a `set_num_threads` call sequences after a library that already sized a pool. Measured on this box:
+  `OMP_NUM_THREADS=2` in the environment makes the child print `OMP=2`; nothing else reaches it.
+- **Two engines in one process halve, never sum**: while the score runs beside the separator, torch
+  gets `max(1, budget-1)` and the ASR gets `max(1, budget-1)` -- or the score moves to a child process
+  after the separator is freed. A declared 2 that measures 2.5-3.9 cores is a defect of the script,
+  never a fact to report as "the flag is decorative".
+- **A heavy script launches with `--single`**: `python -m watcher run --cpu 10 --single --io very-low
+  -- <cmd>` refuses a duplicate (exit 75) instead of letting two copies of the same measurement stack,
+  and the `--cpu` number is the same process total the script prints.
+
 ## Owner rule — ship work without paperwork drag (2026-10-31T02:59:01-03:00)
 Keep useful behavior and its minimum proof/docs moving in the same fast delivery. Skip optional process artifacts when they cost more than the change. Before agent fan-out or disk-heavy builds/tests, use `fast-land-shared-artifacts`: measure total disk growth, share the sanctioned target/cache across lanes, and serialize instead of duplicating heavy artifacts when sharing is unsafe. This owner direction supersedes older process checklists that add optional work without protecting a concrete risk; keep only minimum proof for correctness, security, data integrity, or destructive work.
 
