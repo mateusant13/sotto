@@ -732,6 +732,24 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
+- **PIN do ficheiro (measured 2026-11-17, 01:0x):** `_main\_audit-verify-all.cmd` = **406536 B**,
+  **4656 CRLF** / 0 bare LF, sha256 `0032BED1C4D0BEB68C84645284EA9DE844F84CC746B6CA63EA89AE9C3AA59D2E`.
+  (1 494 B and 16 lines more than the 405042 B pin: the pair `audio-ring-loss` +
+  `red-as-expected-audio-ring-loss`, the gate that makes a ring segment admit its own loss.
+  It was born from a measured product defect: 5 h 22 min of the owner's Discord call yielded
+  3 h 45 min of audio, and the worst hole (2 325,2 s) sat INSIDE a 3-minute segment file, so no
+  reader could see the silence. `worker/audio_ring.py:289` counted a queue drop in a process-wide
+  counter and returned 0 with no log line, and the idle branch compared `time.monotonic()` against
+  a `time.time()` stamp, so the wall rotation never fired and a dead tap kept one segment open
+  across the whole hole. The writer now dates each arrival, writes counted gap markers to
+  `history/audio/gaps.jsonl`, publishes `wall_s`/`gap_s`/`dropped_s` per index row, and rotates on
+  `_seg_started_mono`. Measured on the day's own data: `_main/audio-ring-coverage.py --root H:/sotto
+  --day 2026-11-16 --tap-rate 48000` gives `segments=67 content_s=13400.0 wall_s=18747.5
+  covered=0.7148`, with `ffprobe` refuting the clock hypothesis (0 of 67 segments deviate from
+  `samples/rate`) — the audio never reached `push`, and the tap itself delivered only **70,3 %** of
+  wall (`blocks=300932 -> delivered_s=12037.3`), so the ring stores 96,4 % of what it is given and
+  the loss is upstream. `_main/audio-ring-loss-oracle.py` is `6/6` with the `--neg-arm` wired, and
+  `battery-record-pairing` measures 533 steps / 533 names / 0 findings.)
 - **PIN do ficheiro (medido 2026-11-16, 19:2x):** `_main\_audit-verify-all.cmd` = **405042 B**,
   **4640 CRLF** / 0 bare LF, sha256 `BC9BE8D4A35F5B5D24CD1DD98FFE79A71340FAEACED722223CEBC0E398834918`.
   (Mil seiscentos e oitenta e tres bytes e DEZASETE linhas a mais do que o pin de 403359 B: o par
@@ -1547,6 +1565,26 @@ licao do censo de consolas, que acusa quem esta' certo e por isso perde a autori
   -- 4/4` e o `--neg-arm` **4/4** mutantes, cada um pela SUA arm (o M4 -- o `close()` apagado --
   passou a ser apanhado so' depois de a arm A4 deixar de medir a MENCAO do global e passar a exigir
   um `close()` chamado LITERALMENTE sobre `_AUDIO_RING`; medido: M4 NOT-CAUGHT na primeira forma).)
+- **A PERDA DO RING (medido 2026-11-17):** o corpus congelado de 2026-11-16 cobria **71,6 %** do
+  proprio intervalo de parede (`content_s` 13 516,7 contra `wall_span_s` 18 866,3) e os buracos
+  maiores estavam DENTRO de um ficheiro (`173532.24k.opus`: 2 325,2 s de parede para 200,0 s de
+  audio). Nao era carimbo de tempo errado: o `ffprobe` de **67/67** segmentos da' exactamente
+  `samples/rate` (0 desvios > 0,1 s), logo o indice bate com o audio guardado -- o audio e' que
+  nunca chegou ao `push`. A cadeia medida: `WORKER_STATS` do tap = **12 037,3 s** entregues em
+  **17 129 s** de parede (70,3 %), o ring guardou **11 600 s** disso (96,4 %) -- **437 s** na fila --
+  e o diario de endpoints mostra um tap ABERTO **630,3 s com 0 pacotes**. As emendas, todas no
+  escritor: (a) `push` data a chegada e conta um buraco de chegada > `gap_min_s` (2 s) como
+  `samples_missing`, em `history/audio/gaps.jsonl` e no log, com contadores em `status()`; (b) cada
+  segmento regista `wall_s` (primeira a ultima chegada), `gap_s` e `dropped_s` -- a identidade e'
+  `wall_s - (t1-t0) == gap_s`, e `dropped_s` e' perda A MAIS; (c) o segmento aberto fecha pela
+  PAREDE quando nada chega, senao atravessa 42 min de silencio; (d) a fila recusada ja' era contada
+  no total do processo mas nao por segmento nem no log (agora as tres). `_main\audio-ring-coverage.py`
+  e' o instrumento (so' JSONL + `stat`, `--tap-rate` ou o rate inferido do proprio audio) e le
+  `provenance=recorded` nas linhas novas / `mtime,+derived` nas antigas. `_main\audio-ring-loss-oracle.py`
+  da' `AUDIO-RING-LOSS VERDICT: PASS -- 6/6` com um `AudioRing` REAL e um tap sintetico, e o
+  `--neg-arm` **4/4** mutantes pela SUA arm (buraco, campos do segmento, contagem da fila, relogio
+  da rotacao ociosa). ABERTO: o resto da conta e' o tap, que entrega apenas 70 % da parede --
+  isso e' o `wasapi_loopback`/escada de endpoints, fora do ficheiro do ring.
 - **PIN anterior (medido 2026-11-10, 15:0x):** `_main\_audit-verify-all.cmd` = **350788 B**,
   **4072 CRLF** / 0 bare LF, sha256 `0E048935B20A0976DEC88A6685E4B10E8EB7AD176C145D1DA41E32CD4417946E`.
   (Mil trezentos e noventa e cinco bytes e QUATRO linhas a mais do que o pin de 349393 B: o passo

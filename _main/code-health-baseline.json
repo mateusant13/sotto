@@ -701,13 +701,13 @@
       "max_func_name": "_flush"
     },
     "worker/audio_ring.py": {
-      "bytes": 19429,
+      "bytes": 32345,
       "classes": 1,
-      "defs": 6,
-      "except_pass": 4,
+      "defs": 7,
+      "except_pass": 5,
       "globals": 0,
-      "lines": 454,
-      "max_func": 57,
+      "lines": 703,
+      "max_func": 75,
       "max_func_name": "_run"
     },
     "worker/caption_noise.py": {

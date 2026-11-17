@@ -4090,6 +4090,22 @@ if exist _main\audio-ring-oracle.py (
   call :step red-as-expected-audio-ring 1 "worker\audio_ring.py;worker\sotto_worker.py;_main\audio-replay.py;_main\audio-ring-oracle.py" "%OUT%\audio-ring-neg.log" python _main\audio-ring-oracle.py --neg-arm
   call :expectred red-as-expected-audio-ring !STEP_RC! "%OUT%\audio-ring-neg.log" "NEG-ARM: PASS -- 4/4"
 ) else ( call :expectred red-as-expected-audio-ring MISSING "%OUT%\audio-ring-neg.log" "NEG-ARM: PASS -- 4/4" )
+REM A PERDA DO RING TEM DE FICAR REGISTADA (medido 2026-11-17 no corpus de 2026-11-16:
+REM 71,6 % de cobertura, com um buraco de 2 325,2 s DENTRO de `173532.24k.opus` que
+REM nenhum indice dizia). O positivo corre um AudioRing REAL com um tap sintetico: um
+REM buraco de chegada de 0,45 s e uma recusa de fila de 1,0 s TEM de aparecer em
+REM `gaps.jsonl`, no segmento (`wall_s`/`gap_s`/`dropped_s`), em `status()` e no log; e
+REM um segmento com 1 s de audio seguido de 3 s calado TEM de fechar pela parede. O
+REM negativo muta uma COPIA de `worker/audio_ring.py` em quatro sitios (buraco, campos
+REM do segmento, contagem da fila, relogio da rotacao ociosa) e exige 4/4.
+if exist _main\audio-ring-loss-oracle.py (
+  call :step audio-ring-loss 0 "worker\audio_ring.py;_main\audio-ring-loss-oracle.py;_main\audio-ring-coverage.py" "%OUT%\audio-ring-loss.log" python _main\audio-ring-loss-oracle.py
+  call :record audio-ring-loss !STEP_RC!
+) else ( call :record audio-ring-loss MISSING )
+if exist _main\audio-ring-loss-oracle.py (
+  call :step red-as-expected-audio-ring-loss 1 "worker\audio_ring.py;_main\audio-ring-loss-oracle.py;_main\audio-ring-coverage.py" "%OUT%\audio-ring-loss-neg.log" python _main\audio-ring-loss-oracle.py --neg-arm
+  call :expectred red-as-expected-audio-ring-loss !STEP_RC! "%OUT%\audio-ring-loss-neg.log" "NEG-ARM: PASS -- 4/4"
+) else ( call :expectred red-as-expected-audio-ring-loss MISSING "%OUT%\audio-ring-loss-neg.log" "NEG-ARM: PASS -- 4/4" )
 REM ---------------------------------------------------------------------------
 REM TRES PARES QUE NAO TINHAM PASSO (medido 2026-11-12). O `battery-wiring`
 REM acusava `new-unwired 2 oraculo(s) sem passo e sem licenca:
