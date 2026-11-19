@@ -770,7 +770,21 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (measured 2026-11-17, 20:3x):** `_main\_audit-verify-all.cmd` = **408725 B**,
+- **PIN do ficheiro (measured 2026-11-19):** `_main\_audit-verify-all.cmd` = **412023 B**,
+  **4711 CRLF** / 0 bare LF, sha256 `E44054E0591E4A7404BF5CD6BE94B154F3D56F1B6F4B038AB34899D62360F123`.
+  (3 298 B and 32 lines more than the 408725 B pin. Fifteen of those lines are this unit's battery
+  pair `stream-asr-gpu-unavailable` + `red-as-expected-stream-asr-gpu-unavailable`, committed in
+  `d7b35cb7` — the committed blob is 405532 B / 4694 lines, which is 410226 B as a CRLF checkout.
+  The remaining **17 lines are other lanes' STILL-UNCOMMITTED** work in the same file, and this pin
+  deliberately records the LIVE checkout the pin oracle reads rather than the smaller committed
+  number: the house rule is that the number that counts is the live file's. The next commit that
+  touches the `.cmd` re-measures it. The pair answers the 2026-11-17 outage — 736 `BRIDGE_EXIT rc=2`
+  in 25 h, every one at `stage=model-load`, with ONNX Runtime listing `CUDAExecutionProvider` while
+  its plugin EP registered no device. The oracle executes the REAL provider decision without loading
+  a model, opening an ORT session or touching an audio device: `VERDICT: PASS (8/8)` rc=0, and
+  `--neg-arm` **rc=1** with `NEG-ARM PASS -- fallback removed, the CUDA-less load raised:
+  RuntimeError`.)
+- **PIN anterior (measured 2026-11-17, 20:3x):** `_main\_audit-verify-all.cmd` = **408725 B**,
   **4679 CRLF** / 0 bare LF, sha256 `B52C7DFD89455FBCD2ECBA3A3546D277CCE7157A46656DC85CBBB684B1870206`.
   (2 189 B and 23 lines more than the 406536 B pin: `tap-delivery-stall` +
   `red-as-expected-tap-delivery-stall` and the `tap-stall-watchdog` step. The pair was born from the
