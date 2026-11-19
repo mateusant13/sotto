@@ -66,6 +66,26 @@ import tempfile
 import threading
 import time
 
+
+def genai_gpu_session_overlay(use_vad: bool, disable_cpu_ep_fallback: bool = True) -> str:
+    """The GenAI per-graph session options for the device this run resolved.
+
+    `disable_cpu_ep_fallback` follows the ORT sessions' own guard: a run that had
+    to relax it (CUDA control nodes) must not hand GenAI a stricter option than
+    its sessions could honour, and a CPU-degraded run passes False.
+    """
+    guard = "1" if disable_cpu_ep_fallback else "0"
+    model = {
+        "decoder": {
+            "session_options": {"disable_cpu_ep_fallback": guard}
+        }
+    }
+    if use_vad:
+        model["vad"] = {
+            "session_options": {"disable_cpu_ep_fallback": guard}
+        }
+    return json.dumps({"model": model})
+
 # THE FREEZE DEFAULTS (owner, 2026-10-17: *"abrir ou fechar o sotto causa um
 # travamento muito forte no meu pc"*). Set BEFORE onnxruntime is imported:
 #   * LAZY defers CUDA kernel compilation to first use instead of compiling the
@@ -948,6 +968,19 @@ def _add_cuda_dll_dirs() -> None:
 
 
 # ── output ────────────────────────────────────────────────────────────────────
+def _preload_cuda_runtime(ort=None) -> bool:
+    """Load ONNX Runtime's CUDA/cuDNN DLLs before creating any CUDA session."""
+    if ort is None:
+        import onnxruntime as ort
+    preload = getattr(ort, "preload_dlls", None)
+    if not callable(preload):
+        raise RuntimeError(
+            "GPU-only ASR requires onnxruntime.preload_dlls() before CUDA sessions"
+        )
+    preload()
+    return True
+
+
 _PIPE_DEAD = False
 
 
@@ -1538,11 +1571,388 @@ def _silence_tail():
     return silence_tail
 
 
+# ── the ASR provider policy: ONE decision point, judged by the ANSWER ────────
+# THE DEFECT THIS CLOSES (MEASURED on the owner's box: 2026-11-17 19:18 ->
+# 2026-11-18, 736 `BRIDGE_EXIT rc=2` in 25 h, every one dying before a model
+# existed). onnxruntime 1.30 LISTS `CUDAExecutionProvider` in
+# `get_available_providers()` while its plugin EP device is NOT registered:
+#
+#     W: No registered plugin EP device found for 'CUDAExecutionProvider'
+#        with device_id=0
+#
+# With the GPU-only guard on, every session creation then fails with
+#
+#     [ONNXRuntimeError] : 1 : FAIL : This session contains graph nodes that are
+#     assigned to the default CPU EP, but fallback to CPU EP has been explicitly
+#     disabled by the user.
+#
+# and `main()` turned that ONE engine's missing provider into `return 2`. The
+# whole worker died, the shell respawned it ~29 times an hour, and the owner got
+# 25 h of silence. A provider is a PREFERENCE; the job is to transcribe.
+#
+# THE TWO DEFECTS THIS REFUSES, and they are opposites:
+#   * a CUDA request that never tries the CPU leaves the owner with no captions,
+#     so a GPU-less run rebuilds on the CPU EP and SAYS SO on ONE named line;
+#   * a CUDA session that DOES carry the graph must keep the GPU-only guard --
+#     "degrade" is not "stop asking for the GPU". The guard is relaxed ONLY when
+#     the guard is what failed, and only when the session's OWN
+#     `get_providers()` readback proves CUDA is still first.
+ASR_CUDA_UNAVAILABLE_TAG = "ASR_CUDA_UNAVAILABLE"
+ASR_CUDA_CONTROL_FALLBACK_TAG = "ASR_CUDA_CONTROL_FALLBACK"
+#: (session name, file, carries the expensive compute) in LOAD order.
+ASR_GRAPHS = (("encoder", "encoder.onnx", True),
+              ("decoder", "decoder.onnx", False),
+              ("joint", "joint.onnx", False))
+ASR_CPU_PROVIDERS = ("CPUExecutionProvider",)
+
+
+def _asr_one_line(text, limit: int = 400) -> str:
+    """`text` on one line, quotes escaped, bounded.
+
+    The ORT reason arrives as a multi-line banner when it carries one; a log line
+    that spans lines cannot be grepped by the shell's `WORKER <tag>` publisher,
+    and a reason that is not on the line is a reason nobody has.
+    """
+    cleaned = " ".join(str(text or "").split())
+    if len(cleaned) > limit:
+        cleaned = cleaned[:limit] + "..."
+    return cleaned.replace('"', "'")
+
+
+def _asr_readback_summary(readback) -> str:
+    """`get_providers()` per graph, short enough for one log line.
+
+    One value when every graph agrees (`CPUExecutionProvider`), otherwise
+    `encoder:CUDAExecutionProvider+CPUExecutionProvider;...` -- the reader must
+    be able to tell "the encoder is on CUDA and the joiner is not" from "nothing
+    is", because those are different degradations.
+    """
+    rows = [(str(graph), list(names)) for graph, names in (readback or {}).items()]
+    if not rows:
+        return "none"
+    values = [tuple(names) for _graph, names in rows]
+    if all(value == values[0] for value in values):
+        return "+".join(values[0]) or "none"
+    return ";".join("%s:%s" % (graph, "+".join(names) or "none")
+                    for graph, names in rows)
+
+
+def asr_cuda_unavailable_line(reason, attempted, readback, device: str = "cpu") -> str:
+    """The ONE line a CUDA-less ASR engine prints before it runs on the CPU EP.
+
+    `attempted` is the provider list the sessions actually asked for and
+    `readback` is what they REPORTED, so the line answers "what was requested"
+    and "what is running" without the reader inferring either from a config file
+    that may have changed since. `reason` is the runtime's own message: "CUDA
+    unavailable" alone cannot be told apart from a missing driver, a device held
+    by another process, or a graph partition that needs the CPU.
+    """
+    return ('%s device=%s attempted=[%s] readback=%s reason="%s"'
+            % (ASR_CUDA_UNAVAILABLE_TAG, device, ",".join(attempted),
+               _asr_readback_summary(readback), _asr_one_line(reason)))
+
+
+def asr_cuda_control_fallback_line(reason, attempted, readback) -> str:
+    """The ONE line for the OTHER degradation: CUDA kept, the strict guard lost.
+
+    This is not the CPU case. It is reached ONLY when the device census already
+    reported a CUDA EP device AND the encoder session's readback lists CUDA, so
+    the GPU is doing the compute; what the graph could not honour is
+    `disable_cpu_ep_fallback`, because some control/shape nodes have no CUDA
+    kernel. Saying "CUDA unavailable" here would be a false claim in the
+    opposite direction, so the transition gets its own name and carries the
+    per-graph readback that justifies it.
+    """
+    return ('%s device=cuda attempted=[%s] readback=%s reason="%s"'
+            % (ASR_CUDA_CONTROL_FALLBACK_TAG, ",".join(attempted),
+               _asr_readback_summary(readback), _asr_one_line(reason)))
+
+
+def asr_cuda_device_registered(ort):
+    """Is a CUDA EP DEVICE registered? True / False / None (API not present).
+
+    `get_available_providers()` is the wrong instrument and this is the measured
+    reason: on the owner's box, in the outage, it lists `CUDAExecutionProvider`
+    while `get_ep_devices()` reports the CPU EP only. The plugin-EP API (ORT
+    1.30+) answers the question the session creator asks; on an older runtime it
+    does not exist, and `None` means "the runtime cannot be asked -- attempt the
+    session and let its exception speak".
+    """
+    getter = getattr(ort, "get_ep_devices", None)
+    if not callable(getter):
+        return None
+    try:
+        devices = list(getter())
+    except Exception:                                          # noqa: BLE001
+        return None
+    for device in devices:
+        if str(getattr(device, "ep_name", "")) == "CUDAExecutionProvider":
+            return True
+    return False
+
+
+def _asr_cpu_fallback_allowed(gpu_requested) -> bool:
+    """ONE predicate: with no usable GPU the engine degrades, it does not die.
+
+    The alternate arm is reachable only from a run that really asked for the GPU,
+    so a caller that asked for something else is never silently served a
+    different engine. This is the line the negative arm removes.
+    """
+    return bool(gpu_requested)
+
+
+def _asr_session_paths(model_dir):
+    return {name: os.path.join(model_dir, filename)
+            for name, filename, _expensive in ASR_GRAPHS}
+
+
+def _asr_open_once(ort, paths, provider_names, ab, share, disable_cpu_ep_fallback):
+    """One build attempt: the three graphs, with ONE guard setting for all of them.
+
+    The two `SessionOptions` objects keep the per-graph split this file measured
+    (`session_options`): the encoder gets the live thread share and BASIC
+    optimization, the small graphs share one object at the small share.
+    """
+    entries = provider_entries(provider_names)
+    so_small = session_options(ort, ab, share["small"], encoder=False,
+                               disable_cpu_ep_fallback=disable_cpu_ep_fallback)
+    so_enc = session_options(ort, ab, share["live"], encoder=True,
+                             disable_cpu_ep_fallback=disable_cpu_ep_fallback)
+    _t_load = time.time()
+    sessions = {
+        "encoder": ort.InferenceSession(paths["encoder"], so_enc, providers=entries),
+    }
+    _t_enc = time.time()
+    sessions["decoder"] = ort.InferenceSession(paths["decoder"], so_small,
+                                               providers=entries)
+    _t_dec = time.time()
+    sessions["joint"] = ort.InferenceSession(paths["joint"], so_small,
+                                             providers=entries)
+    _t_joint = time.time()
+    phases = {
+        'encoder': round(_t_enc - _t_load, 3),
+        'decoder': round(_t_dec - _t_enc, 3),
+        'joint': round(_t_joint - _t_dec, 3),
+        'sessions_total': round(_t_joint - _t_load, 3),
+    }
+    return sessions, {name: list(session.get_providers())
+                      for name, session in sessions.items()}, phases
+
+
+def _asr_cuda_probe(ort, paths, requested, ab, share):
+    """Ask the runtime about CUDA on the SMALLEST graph, without the weights.
+
+    MEASURED: `joint.onnx` is 2 KB; `encoder.onnx.data` is the 747 MB / 1.9 GB
+    load. `encoder` is also the graph that FAILS under the guard (its nodes need
+    the implicit CPU EP), so a CUDA-less run would otherwise pay a full encoder
+    load just to read its own error. The 2 KB probe returns whichever answer the
+    runtime gives -- an exception (its own text) or a readback -- and the DEVICE
+    CENSUS, not the readback, decides what that answer means.
+    """
+    try:
+        entries = provider_entries(requested)
+        so = session_options(ort, ab, share["small"], encoder=False,
+                             disable_cpu_ep_fallback=True)
+        session = ort.InferenceSession(paths["joint"], so, providers=entries)
+        readback = list(session.get_providers())
+        try:
+            session.close()
+        except Exception:                                      # noqa: BLE001
+            pass
+        return {"ok": True, "readback": readback, "reason": ""}
+    except Exception as exc:                                   # noqa: BLE001
+        return {"ok": False, "readback": [],
+                "reason": "%s: %s" % (type(exc).__name__, exc)}
+
+
+def _asr_device_of(readback) -> str:
+    """`cuda` only when a session's readback lists a GPU provider.
+
+    A readback is necessary, never sufficient (MEASURED 2026-11-19: it lists CUDA
+    while no device is registered), so the caller only reaches this with a device
+    census that does not contradict it, or on a runtime too old to be asked.
+    """
+    for names in (readback or {}).values():
+        for name in names:
+            if str(name) in ("CUDAExecutionProvider", "TensorrtExecutionProvider"):
+                return "cuda"
+    return "cpu"
+
+
+def open_asr_sessions(ort, model_dir, providers, ab: str = "", share=None, log=None):
+    """Open the three ASR graphs CUDA-first, and DEGRADE instead of dying.
+
+    Returns a dict with `sessions`, `readback`, `providers` (the encoder's
+    answer), `device`, `cpu_ep_fallback_disabled`, `gpu_failure` and `note`.
+
+    The ladder, in order, each rung decided by a SESSION and never by a flag:
+      A. CUDA + the GPU-only guard. Success is decided by every graph's
+         `get_providers()` containing CUDA; that path is byte-identical to the
+         pre-2026-11-19 behaviour and prints nothing.
+      B. CUDA + the guard relaxed. Reached only after A failed, and accepted only
+         when the encoder readback still lists CUDA -- i.e. the GPU is doing the
+         compute and only control nodes went to the CPU. ONE
+         `ASR_CUDA_CONTROL_FALLBACK` line.
+      C. The CPU EP. ONE `ASR_CUDA_UNAVAILABLE` line carrying the runtime's own
+         reason and what every graph reported.
+    A model that is genuinely unusable (a graph missing/unreadable, or the CPU
+    EP failing too) still raises -- that keeps its own `stage=model-load` error.
+    """
+    emit = log or err
+    requested = [str(item[0] if isinstance(item, (tuple, list)) else item)
+                 for item in (providers or [])]
+    if not requested:
+        raise RuntimeError("ASR needs at least one execution provider; got none")
+    share = share or asr_budget(current_threads())
+    paths = _asr_session_paths(model_dir)
+    missing = [filename for _name, filename, _expensive in ASR_GRAPHS
+               if not os.path.isfile(os.path.join(model_dir, filename))]
+    if missing:
+        raise RuntimeError("ASR model %s is missing graph(s) %r"
+                           % (model_dir, missing))
+
+    gpu_requested = "CUDAExecutionProvider" in requested
+
+    def _result(sessions, readback, phases, guard, failure, note):
+        return {
+            "sessions": sessions,
+            "readback": readback,
+            "providers": list(readback.get("encoder") or []),
+            "device": _asr_device_of(readback),
+            "cpu_ep_fallback_disabled": bool(guard),
+            "gpu_failure": failure,
+            "note": note,
+            "load_phases_s": phases,
+        }
+
+    if not gpu_requested:
+        sessions, readback, phases = _asr_open_once(
+            ort, paths, requested, ab, share, False)
+        return _result(sessions, readback, phases, False, None, "")
+
+    failure = None
+    registered = asr_cuda_device_registered(ort)
+    if registered is not True:
+        probe = _asr_cuda_probe(ort, paths, requested, ab, share)
+        if probe["ok"] and "CUDAExecutionProvider" in probe["readback"]:
+            # MEASURED (2026-11-19): the session object still comes back and
+            # `get_providers()` still lists CUDA FIRST while the EP registered no
+            # device at all -- `disable_cpu_ep_fallback` is a session OPTION, not
+            # a provider check, so the readback can only lie when no node forces
+            # the implicit CPU EP. The DEVICE CENSUS is the authority here, and
+            # it said CPU; the probe's readback is quoted as evidence, never
+            # promoted to "the GPU is running".
+            failure = {
+                "reason": ("no CUDA EP device registered (device census: only the "
+                           "CPU EP; the probe session read back [%s] -- a readback "
+                           "is not a device)" % ",".join(probe["readback"])),
+                "attempted": list(requested),
+                "source": "ep-device-absent",
+            }
+        else:
+            failure = {
+                "reason": probe["reason"] or (
+                    "readback=[%s] (requested CUDA; the session placed every node "
+                    "on the CPU EP)" % ",".join(probe["readback"])),
+                "attempted": list(requested),
+                "source": "ep-device-absent",
+            }
+
+    if failure is None:
+        try:
+            sessions, readback, phases = _asr_open_once(
+                ort, paths, requested, ab, share, True)
+        except Exception as exc:                               # noqa: BLE001
+            failure = {"reason": "%s: %s" % (type(exc).__name__, exc),
+                       "attempted": list(requested), "source": "session-load"}
+        else:
+            if all("CUDAExecutionProvider" in names for names in readback.values()):
+                return _result(sessions, readback, phases, True, None, "")
+            failure = {
+                "reason": ("readback=%s (requested CUDA; the session placed every "
+                           "node on the CPU EP)"
+                           % _asr_readback_summary(readback)),
+                "attempted": list(requested),
+                "source": "silent-cpu-readback",
+            }
+
+    # A provider-policy failure may not kill the process. Anything from here on
+    # runs only because the CUDA request failed.
+    if not _asr_cpu_fallback_allowed(gpu_requested):
+        raise RuntimeError(failure["reason"])
+
+    if registered is False:
+        # The runtime itself registered no CUDA device. Ask for the CPU EP BY
+        # NAME instead of relying on a silent fallback, so the request and the
+        # readback on the line agree.
+        try:
+            sessions, readback, phases = _asr_open_once(
+                ort, paths, list(ASR_CPU_PROVIDERS), ab, share, False)
+        except Exception:                                      # noqa: BLE001
+            emit(asr_cuda_unavailable_line(failure["reason"],
+                                           failure["attempted"], {"encoder": []}))
+            raise
+        emit(asr_cuda_unavailable_line(failure["reason"], failure["attempted"],
+                                       readback))
+        return _result(sessions, readback, phases, False, failure,
+                       "cuda-unavailable")
+
+    try:
+        relaxed_sessions, relaxed_readback, relaxed_phases = _asr_open_once(
+            ort, paths, requested, ab, share, False)
+    except Exception:                                          # noqa: BLE001
+        relaxed_sessions, relaxed_readback, relaxed_phases = None, None, None
+
+    if relaxed_sessions is not None and "CUDAExecutionProvider" in (
+            relaxed_readback.get("encoder") or []):
+        emit(asr_cuda_control_fallback_line(failure["reason"],
+                                            failure["attempted"],
+                                            relaxed_readback))
+        return _result(relaxed_sessions, relaxed_readback, relaxed_phases, False,
+                       failure, "cuda-control-fallback")
+
+    if relaxed_sessions is not None:
+        # The relaxed attempt already built every graph on the CPU EP: its
+        # readback is the proof, and a second load would only re-read the same
+        # weights to reach the same answer.
+        emit(asr_cuda_unavailable_line(failure["reason"], failure["attempted"],
+                                       relaxed_readback))
+        return _result(relaxed_sessions, relaxed_readback, relaxed_phases, False,
+                       failure, "cuda-unavailable")
+
+    try:
+        sessions, readback, phases = _asr_open_once(
+            ort, paths, list(ASR_CPU_PROVIDERS), ab, share, False)
+    except Exception:                                          # noqa: BLE001
+        emit(asr_cuda_unavailable_line(failure["reason"],
+                                       failure["attempted"], {"encoder": []}))
+        raise
+    emit(asr_cuda_unavailable_line(failure["reason"], failure["attempted"],
+                                   readback))
+    return _result(sessions, readback, phases, False, failure, "cuda-unavailable")
+
+
 class StreamAsr:
     """Streaming RNN-T over the encoder/decoder/joint ONNX graphs."""
 
     def __init__(self, model_dir: str, providers=None, use_vad: bool = False, lang_id=None,
                  on_sessions_ready=None):
+        self.providers_requested = [
+            str(item[0] if isinstance(item, (tuple, list)) else item)
+            for item in (providers or [])
+        ]
+        # NO "GPU OR DIE" GATE HERE (2026-11-19). It used to raise unless the
+        # request was exactly CUDAExecutionProvider, and that turned ONE engine's
+        # missing provider into the whole app's silence. An OMITTED request keeps
+        # the SHIPPED policy (`worker/config.json` asks for CUDA); the request is
+        # then resolved by `open_asr_sessions`, which degrades to the CPU EP and
+        # names the runtime's reason on one line.
+        if not self.providers_requested:
+            self.providers_requested = ["CUDAExecutionProvider"]
+        self.cpu_ep_fallback_disabled = True
+        self.ort_cuda_dlls_preloaded = False
+        self.genai_device_type = None
+        self.use_vad = bool(use_vad)
         # `lang_id=None` means the resolver runs its sentinel (host user locale,
         # falling back to the model's auto slot); the shipped CONFIG default is
         # "auto" (autoSlot 101). There is deliberately NO
@@ -1556,10 +1966,22 @@ class StreamAsr:
         _p1 = _time.time()
         import onnxruntime as ort
         _p2 = _time.time()
+        # A CUDA PRELOAD THAT FAILS IS NOT A DEAD WORKER (2026-11-19). This used
+        # to raise, which made an onnxruntime build without `preload_dlls` a
+        # fatal error before any provider decision existed. It is recorded and
+        # the load ladder names the real reason from the session that fails.
+        try:
+            self.ort_cuda_dlls_preloaded = _preload_cuda_runtime(ort)
+            self.cuda_preload_error = ""
+        except Exception as exc:                               # noqa: BLE001
+            self.ort_cuda_dlls_preloaded = False
+            self.cuda_preload_error = "%s: %s" % (type(exc).__name__, exc)
+        _p_cuda_dlls = _time.time()
         import onnxruntime_genai as og
         _p3 = _time.time()
         _prof("numpy_import", _p1)
         _prof("ort_import", _p2)
+        _prof("ort_cuda_dlls_preload", _p_cuda_dlls)
         _prof("og_import", _p3)
 
         self.np = np
@@ -1570,6 +1992,15 @@ class StreamAsr:
         self.chunk = cfg["chunk_samples"]
         self.hidden = cfg["decoder"]["hidden_size"]
         self.max_sym = cfg.get("max_symbols_per_step", 10)
+        self.genai_vad_configured = (
+            isinstance(cfg.get("vad"), dict) and bool(cfg["vad"].get("filename"))
+        )
+        if self.use_vad and not self.genai_vad_configured:
+            raise RuntimeError(
+                "GPU-only ASR requested VAD, but genai_config.json has no VAD model"
+            )
+        self.genai_vad_enabled = False
+        self.genai_vad_cpu_fallback_disabled = False
 
         # The prompt, resolved against the model's OWN table and validated HERE
         # as well as in main(): a probe or a test that constructs StreamAsr
@@ -1610,28 +2041,10 @@ class StreamAsr:
         # parser do ambiente nem um numero por motor. As tres sessoes deste
         # motor (encoder, decoder, joint) saem DESTA divisao.
         _share = asr_budget(_threads)
-        so = session_options(ort, _ab, _share['small'], encoder=False)
-        so_enc = session_options(ort, _ab, _share['live'], encoder=True)
-        # THE OPTIONS GO WITH THE NAMES (see `provider_entries`): without them
-        # the GPU arena rounds every allocation up to the next power of two.
-        # MEASURED 2026-10-21 on the owner's box: the worker's VRAM delta is
-        # **1175-1703 MiB** (device peak 4344-4788 MiB) for a 747 MB model --
-        # the OLD "~9.7 GB" note in this file was NOT reproduced and is not
-        # used as a justification of anything.
-        entries = provider_entries(providers)
-        # THE LOAD'S PHASES, MEASURED (owner, 2026-10-21: *"abrir ou fechar o
-        # sotto trava pra caralho meu pc"*). The load is what the owner waits
-        # for when the panel opens -- MEASURED 7.9-49.2 s on this box on
-        # 2026-10-21, and 36.9 s on the owner's own log
-        # (`BRIDGE_LOAD_MS ms=36968 ... worker_load_s=32.59`). The DISK is not
-        # the cost: the model's 747 MB read at 1.9 GB/s in 0.39 s. So the time
-        # is in the SESSION CREATION, and until the phases were timed nobody
-        # could say WHICH part. The first session carries the CUDA context
-        # (the driver's first init on the box is the expensive one); the other
-        # two carry the graph's own setup.
-        _t_load = time.time()
-        self.enc = ort.InferenceSession(os.path.join(model_dir, "encoder.onnx"), so_enc, providers=entries)
-        _t_enc = time.time()
+        so = session_options(ort, _ab, _share['small'], encoder=False,
+                             disable_cpu_ep_fallback=True)
+        so_enc = session_options(ort, _ab, _share['live'], encoder=True,
+                                 disable_cpu_ep_fallback=True)
         # O PLANO no log: um teto que muda a CPU da maquina do dono tem de ser
         # legivel na linha, nao deduzivel do codigo (2026-11-09).
         # Vai pelo STDERR porque `emit` e' o contrato JSON do pai e nao tem tipo
@@ -1648,31 +2061,44 @@ class StreamAsr:
             sys.stderr.flush()
         except Exception:            # noqa: BLE001
             pass
-        self.dec = ort.InferenceSession(os.path.join(model_dir, "decoder.onnx"), so, providers=entries)
-        _t_dec = time.time()
-        self.joint = ort.InferenceSession(os.path.join(model_dir, "joint.onnx"), so, providers=entries)
+        # ── O CARREGAMENTO, COM A POLITICA DE PROVIDER NUM SO' SITIO ─────────
+        # `open_asr_sessions` owns the CUDA -> guard-relaxed -> CPU EP ladder and
+        # prints the ONE line for whichever transition happened. This constructor
+        # no longer turns a missing provider into an exception (the 2026-11-17
+        # outage: 736 dead workers in 25 h, zero captions).
+        _t_load = time.time()
+        resolved = open_asr_sessions(ort, model_dir, providers, ab=_ab,
+                                     share=_share, log=err)
         _t_joint = time.time()
-        _prof("sess_encoder", _t_enc)
-        _prof("sess_decoder", _t_dec)
+        self.enc = resolved["sessions"]["encoder"]
+        self.dec = resolved["sessions"]["decoder"]
+        self.joint = resolved["sessions"]["joint"]
+        # THE LOAD'S PHASES, MEASURED (owner, 2026-10-21: *"abrir ou fechar o
+        # sotto trava pra caralho meu pc"*). The load is what the owner waits
+        # for when the panel opens -- MEASURED 7.9-49.2 s on this box on
+        # 2026-10-21, and 36.9 s on the owner's own log
+        # (`BRIDGE_LOAD_MS ms=36968 ... worker_load_s=32.59`). The DISK is not
+        # the cost: the model's 747 MB read at 1.9 GB/s in 0.39 s. So the time
+        # is in the SESSION CREATION, and until the phases were timed nobody
+        # could say WHICH part. The first session carries the CUDA context
+        # (the driver's first init on the box is the expensive one); the other
+        # two carry the graph's own setup.
+        self.load_phases_s = resolved["load_phases_s"]
+        _prof("sess_encoder", _t_load + self.load_phases_s['encoder'])
+        _prof("sess_decoder", _t_load + self.load_phases_s['encoder']
+              + self.load_phases_s['decoder'])
         _prof("sess_joint", _t_joint)
-        self.load_phases_s = {
-            'encoder': round(_t_enc - _t_load, 3),
-            'decoder': round(_t_dec - _t_enc, 3),
-            'joint': round(_t_joint - _t_dec, 3),
-            'sessions_total': round(_t_joint - _t_load, 3),
-        }
 
-        self.providers = self.enc.get_providers()
-        # THE ANSWER, not the request (see `choose_providers`). A CUDA EP that is
-        # REGISTERED but cannot dlopen leaves a CPU-only session; the encoder
-        # session is created with the full list, so this read-back is the
-        # liveness test the thrown-away probe used to be -- and `note` says so
-        # out loud instead of letting a silent CPU fallback pass as a GPU run.
-        self.provider_note = ""
-        if self.providers and "CUDAExecutionProvider" not in self.providers:
-            _requested = providers if isinstance(providers, (list, tuple)) else [providers]
-            if any(str(p).lower() in ("cuda", "gpu") or "CUDA" in str(p) for p in _requested if p):
-                self.provider_note = "cuda-registered-but-not-loadable"
+        # THE ANSWER, read back off the sessions that will actually run.
+        self.session_providers = resolved["readback"]
+        self.providers = resolved["providers"]
+        # Which device the SESSIONS reported. The GenAI front end follows this
+        # (see `_build_frontend`): a CPU-degraded run must not build a CUDA-only
+        # front end, which would fail the first chunk with no captions.
+        self.device = resolved["device"]
+        self.cpu_ep_fallback_disabled = resolved["cpu_ep_fallback_disabled"]
+        self.gpu_failure = resolved["gpu_failure"]
+        self.provider_note = resolved["note"]
 
         # ── THE PRIORITY WINDOW ENDS HERE, BEFORE genai (MEASURED 2026-11-03) ──
         # `PROCESS_MODE_BACKGROUND_BEGIN` (see `_enter_load_background_mode`)
@@ -1708,7 +2134,6 @@ class StreamAsr:
         # that joins — which means "the front end is ready" is still an invariant
         # of every chunk, it is just no longer something the BOOT waits for.
         self._og = og
-        self.use_vad = bool(use_vad)
         self._sp = None
         self._fe_thread = None
         self._fe_error = None
@@ -1856,10 +2281,65 @@ class StreamAsr:
 
     def _build_frontend(self):
         try:
-            self.model = self._og.Model(self.model_dir)
+            genai_config = self._og.Config(self.model_dir)
+            genai_config.clear_providers()
+            # THE FRONT END FOLLOWS THE SESSIONS (2026-11-19). It used to ask for
+            # CUDA unconditionally and then refuse any other `device_type`; on a
+            # box where the three ORT graphs had just degraded to the CPU EP that
+            # raised on the first chunk's `sp` and cost the run every caption.
+            # The device here is the one the sessions REPORTED, not the request.
+            if self.device == "cuda":
+                genai_config.append_provider("CUDAExecutionProvider")
+                if self.use_vad:
+                    # ORT-GenAI's Silero VAD creates its own ORT session from
+                    # model.vad.session_options and inherits the model provider
+                    # configuration. Disable CPU EP fallback on that session too:
+                    # the decoder's setting does not cover VAD's separate graph.
+                    self.genai_vad_cpu_fallback_disabled = self.cpu_ep_fallback_disabled
+            else:
+                genai_config.append_provider("CPUExecutionProvider")
+            genai_config.overlay(genai_gpu_session_overlay(
+                self.use_vad, self.cpu_ep_fallback_disabled))
+            self.model = self._og.Model(genai_config)
             _prof("og_model", time.time())
+            self.genai_device_type = str(getattr(self.model, "device_type", "")).strip().lower()
+            expected = ("cuda", "gpu") if self.device == "cuda" else ("cpu",)
+            if self.genai_device_type not in expected:
+                raise RuntimeError(
+                    "ASR frontend resolved device=%r but GenAI reports %r"
+                    % (self.device, self.genai_device_type)
+                )
             self._sp = self._make_processor()
             _prof("og_processor", time.time())
+            emit(
+                type="status",
+                state="gpu-policy",
+                worker_pid=os.getpid(),
+                asr_request=",".join(self.providers_requested),
+                ort_cuda_dlls_preloaded=self.ort_cuda_dlls_preloaded,
+                ort_cpu_fallback="disabled" if self.cpu_ep_fallback_disabled else "enabled",
+                ort_cuda_graphs=sum(
+                    1 for _actual in self.session_providers.values()
+                    if "CUDAExecutionProvider" in _actual
+                ),
+                ort_encoder_providers="|".join(self.session_providers["encoder"]),
+                ort_decoder_providers="|".join(self.session_providers["decoder"]),
+                ort_joint_providers="|".join(self.session_providers["joint"]),
+                genai_request=("CUDAExecutionProvider" if self.device == "cuda"
+                               else "CPUExecutionProvider"),
+                genai_device=self.genai_device_type,
+                genai_vad_configured=self.genai_vad_configured,
+                genai_vad_enabled=self.genai_vad_enabled,
+                genai_vad_request=(
+                    "CUDAExecutionProvider"
+                    if self.genai_vad_enabled and self.device == "cuda"
+                    else ("CPUExecutionProvider" if self.genai_vad_enabled
+                          else "disabled")
+                ),
+                genai_vad_cpu_fallback=(
+                    "disabled" if self.genai_vad_cpu_fallback_disabled else "not-active"
+                ),
+            )
             # O CENSO SAI SEMPRE. Os fios do genai nascem dentro de `og.Model` e sao
             # eles que carregam o stream; sem esta linha o numero que governa a CPU
             # do dono continua a nao existir em log nenhum (medido 2026-11-09).
@@ -1916,6 +2396,15 @@ class StreamAsr:
         """`og.StreamingProcessor` from the built model, with this stream's options."""
         sp = self.model.create_streaming_processor()
         sp.set_option("use_vad", "1" if self.use_vad else "0")
+        actual = str(sp.get_option("use_vad")).strip().lower()
+        if actual not in ("1", "true", "0", "false"):
+            raise RuntimeError("GPU-only ASR could not read back GenAI VAD state: %r" % actual)
+        self.genai_vad_enabled = actual in ("1", "true")
+        if self.genai_vad_enabled != self.use_vad:
+            raise RuntimeError(
+                "GPU-only ASR GenAI VAD state mismatch: requested=%s actual=%s"
+                % (self.use_vad, actual)
+            )
         return sp
 
     def fresh_processor(self):
@@ -4681,12 +5170,11 @@ def cuda_provider_options():
 
 
 def provider_entries(names):
-    """The provider list for `InferenceSession`, WITH the CUDA options.
+    """The requested provider list for `InferenceSession`, with CUDA options.
 
-    The names go in unchanged -- so `get_providers()` still answers
-    `['CUDAExecutionProvider', 'CPUExecutionProvider']` and every reader of
-    that list keeps working -- but the CUDA entry carries its options, which
-    is the only way to change the arena's appetite.
+    The production path supplies CUDA alone. Some ORT builds may still report
+    an implicit CPU provider from `get_providers()`, so every graph also sets
+    `session.disable_cpu_ep_fallback=1`; unsupported CPU nodes then fail load.
     """
     entries = []
     for name in names:
@@ -4697,7 +5185,8 @@ def provider_entries(names):
     return entries
 
 
-def session_options(ort, ab: str = "", threads=None, encoder: bool = False):
+def session_options(ort, ab: str = "", threads=None, encoder: bool = False,
+                    disable_cpu_ep_fallback: bool = False):
     """`SessionOptions` for ONE graph, with the load knobs this file has measured.
 
     WHY PER-GRAPH AND NOT ONE OBJECT (MEASURED 2026-11-03, `SOTTO_LOAD_AB` arms
@@ -4717,6 +5206,17 @@ def session_options(ort, ab: str = "", threads=None, encoder: bool = False):
     """
     so = ort.SessionOptions()
     so.log_severity_level = 3
+    if os.environ.get("SOTTO_ORT_NODE_TRACE") == "1":
+        # Focused diagnosis of ORT graph partitioning. The normal production
+        # route stays quiet; the diagnostic captures placement decisions while
+        # the GPU-only session guard accepts or rejects the graph.
+        so.log_severity_level = 0
+        so.log_verbosity_level = 1
+    if disable_cpu_ep_fallback:
+        # A GPU request is not enough: ORT otherwise assigns unsupported nodes
+        # to its implicit CPU EP. With this set, session construction fails if
+        # any graph node would need CPU execution.
+        so.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
     # O SPIN-WAIT DO ORT E' UM IMPOSTO FIXO EM REPOUSO (medido 2026-11-08):
     # enc+dec+joint ociosas gastavam 16,1% de um nucleo contra 0,0% sem spin,
     # e o preco em latencia e' 33,5 us por chamada (40,0 -> 73,4 us); num chunk
@@ -4796,7 +5296,8 @@ def choose_providers(requested, model_dir=None):
     req = [aliases.get(p.strip().lower(), p.strip()) for p in (requested or []) if p.strip()]
     auto = not req or "auto" in [p.lower() for p in req]
     if auto:
-        req = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        # GPU-only policy: auto means CUDA-only, never CUDA with a CPU tail.
+        req = ["CUDAExecutionProvider"]
 
     order = [p for p in req if p in available]
     missing = [p for p in req if p not in available]
@@ -4823,11 +5324,10 @@ def choose_providers(requested, model_dir=None):
     # and still leaving the real encoder session to do the same load again.
     # `WORKER_BOOT_PROF` put that phase at 3.5 s warm / 20.9 s on a busy box.
     #
-    # The encoder session below is the same test, and it is not thrown away: it
-    # is created with the FULL list, ORT falls back to the CPU provider if the
-    # CUDA EP cannot dlopen, and `get_providers()` on the REAL session says which
-    # one answered -- the truth, read off the graph the run will drive. A wrong
-    # request therefore costs nothing extra: there is no second creation.
+    # The real encoder session is the liveness check, with the exact CUDA-only
+    # request and CPU fallback disabled on every graph. If CUDA cannot load or
+    # any node requires CPU, session construction fails closed; the three actual
+    # session readbacks are checked after construction.
     #
     # What the caller must do with this: the list returned here is the REQUEST.
     # `StreamAsr.providers` is the ANSWER, and `StreamAsr.provider_note` names a
@@ -7067,6 +7567,22 @@ def main():
     providers, available, note, cuda_probe_model = choose_providers(
         args.providers or cfg.get("model", {}).get("providers"), model_dir
     )
+    # A PROVIDER IS A PREFERENCE, NOT A PRECONDITION (2026-11-19). This gate used
+    # to `return 2` unless the request was exactly CUDAExecutionProvider, and in
+    # the 2026-11-17 outage that was the whole app's ASR dying for 25 h: the
+    # runtime listed CUDA while its plugin EP device was missing, so nothing
+    # downstream ever got the chance to try the CPU. The load path now opens
+    # CUDA-first, names the degradation on ONE line and falls back, so here we
+    # only make sure the request is not empty: an explicit `cuda` that the
+    # runtime did not LIST still travels to the loader, whose probe reads the
+    # runtime's own reason out of it.
+    if not providers:
+        _asked = args.providers or cfg.get("model", {}).get("providers")
+        _asked_tokens = [str(p).strip().lower() for p in (
+            _asked if isinstance(_asked, (list, tuple))
+            else str(_asked or "").split(",")) if str(p).strip()]
+        if not _asked_tokens or any(p in ("auto", "cuda", "gpu") for p in _asked_tokens):
+            providers = ["CUDAExecutionProvider"]
     t_probe = time.time()
     _prof("probe", t_probe)
     # NO PROVIDER EVENT HERE ANY MORE: it moved BELOW the load, where the answer
@@ -7136,14 +7652,17 @@ def main():
         type="status",
         state="boot",
         stage="providers",
+        worker_pid=os.getpid(),
         providers_available=available,
         # THE ANSWER (see `choose_providers`): the providers the encoder session
-        # reports after the load. On a box where CUDA is registered and cannot
-        # dlopen this is ['CPUExecutionProvider'] while `providers_requested`
-        # still says CUDA -- which is exactly the silent fallback the
-        # `worker-providers-oracle` exists to red.
+        # reports after the load. The guard flag is the SESSION's own resolved
+        # state now, not the request: a run that degraded to the CPU EP reports
+        # `enabled`, and each of the three graph readbacks is also reported in
+        # `gpu-policy`.
         providers_selected=asr.providers,
         providers_requested=providers,
+        ort_cpu_ep_fallback=(
+            "disabled" if asr.cpu_ep_fallback_disabled else "enabled"),
         # O ESTADO DA PONTUACAO DE MODELO (2026-11-05). Ele era `err()`, e `err`
         # e' o canal de STDERR: a shell so' o guarda na cauda da morte, logo a
         # linha que devia dizer "a pontuacao esta' ligada?" so' existia quando
@@ -8304,9 +8823,11 @@ def main():
                     f"streaming untouched; the overlay is OFF for this run")
             else:
                 try:
+                    # Auxiliary engine: degrade to the CPU EP (one
+                    # REDUX_GPU_UNAVAILABLE line), never refuse the overlay.
                     _backend = _redux_live.load_backend(
                         _engine, _onnx_dir, _ternary_dir,
-                        _threads, "cpu")
+                        _threads, "cuda", log=err, allow_cpu_fallback=True)
                     overlay = _redux_live.ReduxLiveOverlay(
                         _backend,
                         producer_model=os.path.basename(_dir),
@@ -8318,7 +8839,9 @@ def main():
                     )
                     overlay.start()
                     err(f"REDUX_LIVE_ARMED engine={_engine} dir={_dir} "
-                        f"opt_in={_rl_why} backend={_backend.name} keep_s={overlay.keep_s} "
+                        f"opt_in={_rl_why} backend={_backend.name} "
+                        f"device={getattr(_backend, 'device', 'cuda')} "
+                        f"keep_s={overlay.keep_s} "
                         f"deadline_s={overlay.deadline_s} max_queue={overlay.max_queue} "
                         f"threads={_threads}")
                 except Exception as exc:

@@ -1705,7 +1705,32 @@ ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
                        #   `LIVE_ROUTE_UNKNOWN_AGE` -- a legenda pintou SEM idade
                        #     mensuravel; o buraco fica CONTADO (`unknown_age=<n>`), nao
                        #     afirmado fresco. E' o par do `age_s < -250 ms -> None`.
-                       'LIVE_ROUTE_REFUSED', 'LIVE_ROUTE_UNKNOWN_AGE')
+                       'LIVE_ROUTE_REFUSED', 'LIVE_ROUTE_UNKNOWN_AGE',
+                       # A DEGRADACAO DE PROVIDER DO ASR E' O FACTO QUE FALTAVA
+                       # (2026-11-19). MEDIDO no log do dono: 736 `BRIDGE_EXIT rc=2`
+                       # em 25 h e ZERO linhas `REDUX_GPU_UNAVAILABLE` no ficheiro --
+                       # a linha que dizia "esta' a correr sem GPU, e por isto" morria
+                       # no `stderr_tail`, publicado SO' na cauda da morte. O worker
+                       # agora degrada em vez de morrer (`open_asr_sessions`) e a
+                       # transicao tem de chegar ao log VIVO:
+                       #   `ASR_CUDA_UNAVAILABLE`      -- as sessoes correram no CPU EP;
+                       #     a linha leva `device`, `attempted`, o `readback` das tres
+                       #     sessoes e a razao do proprio runtime (o texto que o ORT
+                       #     deu, ou o censo de dispositivos quando nenhum EP CUDA
+                       #     registou um).
+                       #   `ASR_CUDA_CONTROL_FALLBACK` -- CUDA FICOU e o guard estrito
+                       #     caiu (nos de controlo sem kernel CUDA); o readback prova
+                       #     que o encoder continua a listar CUDA primeiro.
+                       'ASR_CUDA_UNAVAILABLE', 'ASR_CUDA_CONTROL_FALLBACK')
+
+#: How much of a published engine line survives into the log (2026-11-19).
+#: The cap was a literal 220 until the ASR degradation line existed, and that
+#: cap CUT THE REASON out of it: `ASR_CUDA_UNAVAILABLE ... reason="..."` carries
+#: the runtime's own message (the ORT failure text alone is 146 chars) plus the
+#: three sessions' readback, and a reason cut in half is the defect the line
+#: exists to close. The cost stays bounded because `log_repeat` only writes a
+#: changed line, or a repeat every 30 s, and these lines are one per transition.
+ENGINE_VISIBLE_MAX_CHARS = 480
 
 #: O BATIMENTO DO LACO DO WORKER, reconhecido por CONTER e nao por comecar (2026-11-04).
 #: Medido com o py-spy no worker vivo: `seq=516 phase=window` e nenhuma linha no log -- o
@@ -24859,7 +24884,8 @@ class WorkerBridge:
                     # `continue` que ja' custou uma tarde ao `BRIDGE_ALIVE`.
                     if line.startswith(ENGINE_VISIBLE_TAGS):
                         log_repeat('engine-' + line.split(' ', 1)[0].lower(),
-                                   'WORKER ' + line.strip()[:220], every_s=30.0)
+                                   'WORKER ' + line.strip()[:ENGINE_VISIBLE_MAX_CHARS],
+                                   every_s=30.0)
                     continue
 
                 text = line.strip()
@@ -25041,11 +25067,45 @@ class WorkerBridge:
                 punct = str(message.get('punct_model') or '')
                 if punct:
                     self.log(punct)
-                self.log('WORKER_PROVIDERS selected=%s available=%s note=%s cuda_probe=%s'
-                         % (','.join(str(x) for x in sel),
+                self.log('WORKER_PROVIDERS pid=%s selected=%s available=%s note=%s cuda_probe=%s'
+                         % (str(message.get('worker_pid') or 'missing'),
+                            ','.join(str(x) for x in sel),
                             ','.join(str(x) for x in avail),
                             str(message.get('note') or '')[:80],
                             str(message.get('cuda_probe_model') or '')))
+            if state == 'gpu-policy':
+                # Record the worker's post-load device readback, not only the
+                # providers requested during boot. The strict GPU-only oracle
+                # consumes this line from the real worker log.
+                self.log('WORKER_GPU_POLICY pid=%s asr_request=%s ort_cpu_fallback=%s '
+                         'ort_cuda_dlls_preloaded=%s ort_cuda_graphs=%s '
+                         'genai_request=%s genai_device=%s '
+                         'genai_vad_configured=%s genai_vad_enabled=%s '
+                         'genai_vad_request=%s genai_vad_cpu_fallback=%s '
+                         'ort_encoder=%s ort_decoder=%s ort_joint=%s'
+                         % (str(message.get('worker_pid') or 'missing'),
+                            str(message.get('asr_request') or 'missing'),
+                            str(message.get('ort_cpu_fallback') or 'missing'),
+                            str(message.get('ort_cuda_dlls_preloaded', 'missing')),
+                            str(message.get('ort_cuda_graphs') or 'missing'),
+                            str(message.get('genai_request') or 'missing'),
+                            str(message.get('genai_device') or 'missing'),
+                            str(message.get('genai_vad_configured', 'missing')),
+                            str(message.get('genai_vad_enabled', 'missing')),
+                            str(message.get('genai_vad_request', 'missing')),
+                            str(message.get('genai_vad_cpu_fallback', 'missing')),
+                            str(message.get('ort_encoder_providers') or 'missing'),
+                            str(message.get('ort_decoder_providers') or 'missing'),
+                            str(message.get('ort_joint_providers') or 'missing')))
+            if state == 'redux-gpu-policy':
+                self.log('REDUX_GPU_POLICY engine=%s device=%s cpu_fallback=%s '
+                         'cuda_graphs=%s/%s provider_readback=%s'
+                         % (str(message.get('engine') or 'missing'),
+                            str(message.get('device') or 'missing'),
+                            str(message.get('cpu_fallback') or 'missing'),
+                            str(message.get('ort_cuda_graphs') or 'missing'),
+                            str(message.get('ort_graphs') or 'missing'),
+                            str(message.get('provider_readback') or 'none')))
             if state == 'model-loaded':
                         # THE LOAD IS OVER, and this shell now says how long it took.
                 # `load_s` is the WORKER's own measurement of the same span
