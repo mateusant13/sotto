@@ -261,13 +261,13 @@
       "max_func_name": "drag_plan"
     },
     "app/webview/caption_overlay.py": {
-      "bytes": 101867,
+      "bytes": 107734,
       "classes": 8,
       "defs": 10,
-      "except_pass": 7,
+      "except_pass": 8,
       "globals": 0,
-      "lines": 2033,
-      "max_func": 161,
+      "lines": 2139,
+      "max_func": 184,
       "max_func_name": "__init__"
     },
     "app/webview/caption_settings.py": {
@@ -701,14 +701,14 @@
       "max_func_name": "_flush"
     },
     "worker/audio_ring.py": {
-      "bytes": 32345,
+      "bytes": 38741,
       "classes": 1,
       "defs": 7,
       "except_pass": 5,
       "globals": 0,
-      "lines": 703,
-      "max_func": 75,
-      "max_func_name": "_run"
+      "lines": 807,
+      "max_func": 83,
+      "max_func_name": "__init__"
     },
     "worker/caption_noise.py": {
       "bytes": 18305,
@@ -891,13 +891,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 504221,
+      "bytes": 529195,
       "classes": 17,
-      "defs": 98,
-      "except_pass": 26,
+      "defs": 111,
+      "except_pass": 27,
       "globals": 7,
-      "lines": 9527,
-      "max_func": 2837,
+      "lines": 10048,
+      "max_func": 2860,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
@@ -939,6 +939,16 @@
       "lines": 162,
       "max_func": 49,
       "max_func_name": "open_word_start"
+    },
+    "worker/tap_delivery.py": {
+      "bytes": 7191,
+      "classes": 0,
+      "defs": 2,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 138,
+      "max_func": 20,
+      "max_func_name": "tap_census_verdict"
     },
     "worker/ultra_export.py": {
       "bytes": 19993,
