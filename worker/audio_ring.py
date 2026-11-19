@@ -23,8 +23,10 @@ SEGUNDOS de audio e transbordar e' CONTADO, nunca uma espera no fio do audio.
 
 FORMATO NO DISCO: `history/audio/<AAAA-MM-DD>/<HHMMSS>.<kbps>k.opus` (Ogg Opus,
 16 kHz mono) + `index.jsonl` (uma linha por segmento FECHADO: `file`, `t0`, `t1`,
-`samples`, `rate`, `kbps`, `bytes`, `wall_s`, `gap_s`, `dropped_s`) + `gaps.jsonl`
-(os intervalos de PAREDE em que NENHUM bloco chegou) + `lines.jsonl` (as linhas
+`samples`, `rate`, `kbps`, `bytes`, `wall_t0`, `wall_t1`, `wall_s`, `stream_s`,
+`gap_s`, `dropped_s`) + `gaps.jsonl`
+(os intervalos de PAREDE em que NENHUM bloco chegou, com `scope: "span"` quando
+cabem num segmento e `file: null` quando passam entre dois) + `lines.jsonl` (as linhas
 do historico, com o instante do audio que as produziu, escrito pelo worker: e' o
 que deixa cortar o trecho EXACTO de uma frase).
 
@@ -36,17 +38,26 @@ de 2 325,2 s DENTRO de um ficheiro):
     hora do relogio de parede -- e' isto que faz o corte de uma linha cair no
     sample certo. Eles dizem o que o ficheiro DECLARA, que e' exactamente o que
     o ffmpeg codificou (medido: `ffprobe` de cada segmento = `samples/rate`).
-  * `wall_s`/`gap_s`/`dropped_s` sao a PERDA: quanto tempo de parede aquele
-    segmento atravessou (`wall_s`), quanto desse tempo nao teve bloco nenhum
-    (`gap_s`) e quantas amostras a fila recusou (`dropped_s`, exacto).
-  * A identidade e' `wall_s - (t1-t0) == gap_s`: o segmento NAO ficou 600 s sem
-    escrever, ficou 600 s sem RECEBER. A diferenca e' audio que nunca chegou ao
-    `push` -- tap sem stream (endpoint deixou de render), worker parado,
-    dispositivo trocado. `dropped_s` e' perda A MAIS: audio que chegou e a fila
-    recusou, invisivel no relogio do audio (nao ocupa tempo no ficheiro).
-    Foi essa a causa medida dos 5 347 s de buraco do corpus: `block_samples` do
-    tap / 48000 = 12 037,3 s em 17 129 s de parede (70,3 %), e o ring guardou
-    11 600 s disso -- a diferenca (~437 s) e' a fila, que agora se conta.
+  * `wall_s`/`stream_s`/`gap_s`/`dropped_s` sao a PERDA, e a identidade e'
+    `wall_s == stream_s + gap_s`, exacta POR CONSTRUCAO: o intervalo de parede
+    entre dois `push` consecutivos e' ou audio que chegou (`stream_s`) ou um
+    buraco medido (`gap_s`), e `wall_s` e' a soma dos dois. `wall_t0`/`wall_t1`
+    sao as duas chegadas que o delimitam, logo `wall_t1 - wall_t0 == wall_s`
+    tambem se verifica so' com os campos do ficheiro.
+  * `t1 - t0` NAO entra nessa identidade: e' o relogio do AUDIO, e o tap entrega
+    48 kHz a um ring que declara 16 kHz (`worker/sotto_worker.py:4440`), logo
+    `t1-t0` vale 3x a duracao real. Era essa a identidade publicada ate'
+    2026-11-19 (`wall_s - (t1-t0) == gap_s`) e ela nao se pode verificar com os
+    campos ao lado dela: no corpus de 2026-11-17 dava -36 289 s num dia de
+    28 183 s. Quem quiser o rate REAL do segmento faz `samples/stream_s`.
+  * ATRIBUICAO: um marcador pertence ao segmento cujo `[wall_t0, wall_t1]` o
+    CONTEM. Uma pausa do tap que atravessa a rotacao nao pertence a nenhum --
+    `file: null`, `scope: "between"` --, porque o ficheiro seguinte abre
+    exactamente no instante em que ela ACABA. Atribui-la ao ficheiro aberto no
+    momento do dreno foi o que pos 30 434,2 s num ficheiro com 558,7 s de
+    `wall_s` (medido em `2026-11-17/162543.24k.opus`).
+  * `dropped_s` e' perda A MAIS: audio que chegou e a fila recusou, invisivel no
+    relogio do audio (nao ocupa tempo no ficheiro).
 """
 from __future__ import annotations
 
@@ -187,7 +198,16 @@ class AudioRing:
         self._seg_started = 0.0
         self._seg_started_mono = 0.0
         self._seg_audio_start = 0
-        self._seg_first_wall = None
+        #: O INICIO DO INTERVALO DE PAREDE do segmento aberto: a chegada do
+        #: ultimo bloco do segmento ANTERIOR (ou a do primeiro deste, quando nao
+        #: ha' anterior). E' o que faz `wall_s` particionar o tempo em vez de
+        #: saltar os buracos: o buraco que atravessa uma rotacao pertence ao
+        #: ficheiro seguinte, porque e' exactamente nele que ele ACABA.
+        self._seg_span_start = None
+        #: A chegada do ultimo bloco GRAVADO no ultimo segmento fechado. Uma
+        #: pausa que o escritor ocioso fechou tem o `t0` aqui -- nunca no ficheiro
+        #: que ainda vai abrir (o defeito do corpus de 2026-11-17).
+        self._last_closed_wall = None
         self._seg_last_wall = None
         self._seg_dropped = 0
         self._seg_gap_s = 0.0
@@ -280,7 +300,14 @@ class AudioRing:
                 if gap >= self._gap_min_s:
                     self.gaps += 1
                     self.gap_s += gap
-                    self._seg_gap_s += gap
+                    # A ATRIBUICAO NAO ACONTECE AQUI: este fio nao sabe se o
+                    # segmento que estava aberto ainda esta' aberto (quem o fecha
+                    # e' o escritor), nem qual e' o ficheiro seguinte. O marcador
+                    # guarda o INTERVALO; `_flush_loss` (o escritor) decide a que
+                    # `[wall_t0, wall_t1]` ele pertence. Carimba-lo com
+                    # `self._file` aqui ou no dreno foi o defeito: o buraco de
+                    # 30 434,2 s de 2026-11-17 ficou no ficheiro que ABRE quando
+                    # ele acaba.
                     if len(self._pending_gaps) >= GAP_PENDING_MAX:
                         self._pending_gaps.pop(0)
                         self.gaps_dropped += 1
@@ -335,13 +362,18 @@ class AudioRing:
         #: `173532.24k.opus` atravessou 2 525 s de parede para 600 s declarados.
         self._seg_started_mono = time.monotonic()
         self._seg_samples = 0
-        self._seg_first_wall = None
+        #: O intervalo de parede deste ficheiro COMECA onde o audio anterior
+        #: acabou. Sem isto os buracos entre dois ficheiros nao pertencem a
+        #: nenhum e a soma dos `wall_s` deixa de particionar o tempo.
+        self._seg_span_start = self._last_closed_wall
         self._seg_last_wall = None
-        # A perda NAO e' zerada aqui: `_seg_dropped`/`_seg_gap_s` sao "a perda
-        # desde o ultimo segmento ESCRITO", logo um buraco que cai entre dois
-        # ficheiros (o anterior fechou pela parede, o tap so' voltou depois)
-        # entra no ficheiro SEGUINTE em vez de desaparecer. Quem os zera e'
-        # `_close_segment`, depois de os gravar.
+        # `_seg_dropped` NAO e' zerado aqui: sao as amostras que a fila recusou
+        # desde o ultimo segmento ESCRITO, e uma recusa que cai entre dois
+        # ficheiros entra no SEGUINTE em vez de desaparecer. Quem o zera e'
+        # `_close_segment`, depois de o gravar. `_seg_gap_s` NAO e' mais desse
+        # tipo: um buraco so' entra nele quando o seu `[t0,t1]` cabe no
+        # `[wall_t0, wall_t1]` deste segmento (`_attribute_gap`); os que
+        # atravessam uma rotacao ficam no `gaps.jsonl` com `file: null`.
         # O EPOCH DO SEGMENTO VEM DO RELOGIO DE AUDIO, NAO DO RELOGIO DE PAREDE.
         # `now` e' a hora em que o ficheiro abriu; o `t0` indexado e' o instante
         # do PRIMEIRO SAMPLE dele, que e' o que um corte por linha procura. Os
@@ -386,21 +418,31 @@ class AudioRing:
         with self._lock:
             seg_dropped = self._seg_dropped
             seg_gap_s = self._seg_gap_s
+        wall_t0, wall_t1 = self._seg_span_start, self._seg_last_wall
         wall_s = None
-        if self._seg_first_wall is not None and self._seg_last_wall is not None:
-            wall_s = round(self._seg_last_wall - self._seg_first_wall, 3)
+        if wall_t0 is not None and wall_t1 is not None:
+            wall_s = round(wall_t1 - wall_t0, 3)
+        #: `stream_s` e' a parede em que o tap ESTAVA a entregar: o intervalo
+        #: menos os buracos medidos. E' a unica forma de a identidade fechar com
+        #: um numero publicado, porque `t1-t0` e' relogio de audio (3x quando o
+        #: tap entrega 48 kHz a um ring de 16 kHz) -- ver o topo do modulo.
+        stream_s = round(wall_s - seg_gap_s, 3) if wall_s is not None else None
         rec = {'file': os.path.relpath(path, self.root).replace(os.sep, '/'),
                't0': round(self._t0, 3), 't1': round(t1, 3),
                'samples': self._seg_samples, 'rate': self.rate,
                'kbps': self.kbps, 'bytes': size,
-               # AS TRES MEDIDAS DA PERDA, ao lado das duas do audio. `t1-t0` e'
-               # o que o ficheiro DECLARA; `wall_s` e' o tempo de parede que os
-               # samples dele atravessaram. `wall_s - (t1-t0)` e' o buraco; ele
-               # desdobra-se em `gap_s` (nada chegou) e `dropped_s` (chegou e
-               # nao entrou no ficheiro: fila cheia ou cano partido). Sem estes
-               # campos um leitor so' tem o `mtime` do ficheiro, que e'
-               # metadados e mente num `copy`/`touch`.
+               # AS MEDIDAS DA PERDA, ao lado das duas do audio. O segmento
+               # OCUPA o intervalo de parede `[wall_t0, wall_t1]` -- que comeca
+               # onde o audio anterior acabou -- e dentro dele cada segundo ou
+               # chegou (`stream_s`) ou nao chegou (`gap_s`):
+               # `wall_t1 - wall_t0 == wall_s == stream_s + gap_s`. `dropped_s`
+               # e' perda A MAIS (chegou e a fila recusou). Sem estes campos um
+               # leitor so' tem o `mtime` do ficheiro, que e' metadados e mente
+               # num `copy`/`touch`.
+               'wall_t0': round(wall_t0, 3) if wall_t0 is not None else None,
+               'wall_t1': round(wall_t1, 3) if wall_t1 is not None else None,
                'wall_s': wall_s,
+               'stream_s': stream_s,
                'gap_s': round(seg_gap_s, 3),
                'dropped_s': round(seg_dropped / float(self.rate), 3)}
         try:
@@ -412,6 +454,8 @@ class AudioRing:
         with self._lock:
             self._seg_dropped = 0
             self._seg_gap_s = 0.0
+        if wall_t1 is not None:
+            self._last_closed_wall = wall_t1
         self.segments += 1
 
     def _run(self):
@@ -470,8 +514,10 @@ class AudioRing:
             self.written_s += n / float(self.rate)
             # O TEMPO DE PAREDE DESTE AUDIO, medido na ENTRADA (`push`), nao no
             # `dequeue`: e' o que separa "o disco foi lento" de "o tap calou-se".
-            if self._seg_first_wall is None:
-                self._seg_first_wall = wall
+            # No primeiro segmento da vida do ring nao ha' chegada anterior: o
+            # intervalo dele comeca na primeira.
+            if self._seg_span_start is None:
+                self._seg_span_start = wall
             self._seg_last_wall = wall
             self._flush_loss()
             # ROTACAO POR AUDIO, NAO POR RELOGIO. O nome do ficheiro e' a hora e
@@ -491,14 +537,43 @@ class AudioRing:
         self._log('stopped status=%s' % (json.dumps(self.status(), separators=(',', ':')),))
 
     # ── a perda: fila e chegada ──────────────────────────────────────────────
+    def _attribute_gap(self, t_from, t_to, final=False):
+        """A QUE `[wall_t0, wall_t1]` pertence o buraco `[t_from, t_to]`.
+
+        UMA regra, num sitio so': o buraco pertence ao segmento ABERTO cujo
+        intervalo de parede o contem por inteiro. Se nenhum o contem, ele
+        atravessou uma rotacao e nao pertence a ficheiro nenhum (`between`) --
+        o ficheiro seguinte abre exactamente quando ele ACABA, e carimba-lo com
+        esse ficheiro foi o defeito medido em 2026-11-17 (`162543.24k.opus`
+        levou 30 434,2 s de um buraco que terminava na sua abertura).
+
+        `hold`: o bloco que fecha o buraco ainda esta' na fila (o escritor vai
+        para tras), logo `_seg_last_wall` ainda nao chega a `t_to`. Segurar o
+        marcador e' mais honesto do que decidir com o intervalo incompleto; ele
+        e' drenado na volta seguinte, e no dreno FINAL nada fica por decidir.
+        """
+        if (self._proc is not None and self._seg_span_start is not None
+                and self._seg_last_wall is not None
+                and t_from >= self._seg_span_start - 0.001
+                and t_to <= self._seg_last_wall + 0.001):
+            return 'span', self._file
+        if (not final and self._proc is not None
+                and self._seg_span_start is not None
+                and self._seg_last_wall is not None
+                and t_from >= self._seg_span_start - 0.001
+                and t_to > self._seg_last_wall):
+            return 'hold', None
+        return 'between', None
+
     def _flush_loss(self, final=False):
         """Drena os marcadores de perda para `gaps.jsonl` e para o log.
 
         Corre no FIO DO ESCRITOR, nunca no do audio (`push` so' acumula debaixo
-        do `lock`). Uma linha por buraco de chegada, com o intervalo exacto; e
-        uma linha de log por cada `DROP_LOG_EVERY_S` com o acumulado da fila --
-        a forma desta casa (`LOG_STDOUT_SUPPLIED dropped=N`), porque uma linha
-        por bloco perdido seria um log a crescer com o defeito.
+        do `lock`). Uma linha por buraco de chegada, com o intervalo exacto e o
+        segmento que o CONTEM (`_attribute_gap`); e uma linha de log por cada
+        `DROP_LOG_EVERY_S` com o acumulado da fila -- a forma desta casa
+        (`LOG_STDOUT_SUPPLIED dropped=N`), porque uma linha por bloco perdido
+        seria um log a crescer com o defeito.
         """
         with self._lock:
             pending = self._pending_gaps
@@ -515,19 +590,43 @@ class AudioRing:
         if not pending:
             return 0
         rows = []
+        held = []
         for t_from, t_to, gap in pending:
-            file_rec = (os.path.relpath(self._file, self.root).replace(os.sep, '/')
-                        if self._file else None)
+            scope, path = self._attribute_gap(t_from, t_to, final)
+            if scope == 'hold':
+                held.append((t_from, t_to, gap))
+                continue
+            if scope == 'span':
+                # O MESMO predicado que escolhe o ficheiro escolhe o contador:
+                # a soma dos `gap_s` do indice e' a soma dos marcadores `span`.
+                with self._lock:
+                    self._seg_gap_s += gap
+            file_rec = (os.path.relpath(path, self.root).replace(os.sep, '/')
+                        if path else None)
             rows.append({'t0': round(t_from, 3), 't1': round(t_to, 3),
                          'gap_s': round(gap, 3),
                          # A estimativa de amostras usa o rate DECLARADO; o
                          # ring nao conhece o rate real do tap (o defeito de
                          # 3x documentado no topo). O numero que vale e' `gap_s`.
                          'samples_missing': int(round(gap * self.rate)),
-                         'rate': self.rate, 'file': file_rec})
-            self._log('gap t0=%.3f t1=%.3f gap_s=%.3f samples_missing=%d file=%s'
-                      % (t_from, t_to, gap, int(round(gap * self.rate)),
+                         'rate': self.rate, 'scope': scope, 'file': file_rec})
+            self._log('gap t0=%.3f t1=%.3f gap_s=%.3f samples_missing=%d scope=%s file=%s'
+                      % (t_from, t_to, gap, int(round(gap * self.rate)), scope,
                          os.path.basename(file_rec) if file_rec else '-'))
+        if held:
+            with self._lock:
+                room = GAP_PENDING_MAX - len(self._pending_gaps)
+                self._pending_gaps = held[:max(0, room)] + self._pending_gaps
+                overflow = held[max(0, room):]
+            for t_from, t_to, gap in overflow:
+                # NUNCA perder um buraco CONTADO: sem espaco para o segurar, ele
+                # sai como `between` e o log diz que a atribuicao foi sacrificada.
+                rows.append({'t0': round(t_from, 3), 't1': round(t_to, 3),
+                             'gap_s': round(gap, 3),
+                             'samples_missing': int(round(gap * self.rate)),
+                             'rate': self.rate, 'scope': 'between', 'file': None})
+                self._log('gap_unattributed t0=%.3f gap_s=%.3f reason=pending-full'
+                          % (t_from, gap))
         try:
             with open(os.path.join(self.dir, 'gaps.jsonl'), 'a',
                       encoding='utf-8') as fh:
@@ -680,7 +779,12 @@ def read_index(root):
 
 
 def read_gaps(root):
-    """Os buracos de CHEGADA que o ring viu: `[{t0, t1, gap_s, samples_missing}]`.
+    """Os buracos de CHEGADA que o ring viu.
+
+    `[{t0, t1, gap_s, samples_missing, scope, file}]`: `scope="span"` e o
+    `file` nomeiam o segmento cujo `[wall_t0, wall_t1]` contem o intervalo;
+    `scope="between"` e `file=None` dizem que ele atravessou uma rotacao e nao
+    pertence a ficheiro nenhum (o ficheiro seguinte abre quando ele acaba).
 
     Vazio num ring que nunca perdeu bloco (ou num indice escrito antes de
     2026-11-17, que nao os registava -- nesse caso a diferenca entre o `wall_s`

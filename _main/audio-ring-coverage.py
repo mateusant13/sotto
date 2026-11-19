@@ -22,6 +22,20 @@ indice pode ter atravessado 42 minutos de parede com 200 s de som dentro --
 medido em `173532.24k.opus` (2 525,2 s de parede, 600,0 s declarados, 200,0 s de
 audio real a 48 kHz).
 
+O REBUILD (2026-11-19): cada marcador de `gaps.jsonl` e' atribuido ao segmento
+cujo intervalo de parede o CONTEM -- `wall_t0`/`wall_t1` gravados pelo ring, e
+nos ficheiros anteriores o nome do ficheiro mais o `wall_s`. O que nao cabe em
+segmento nenhum atravessou uma rotacao e fica contado a' parte
+(`gap_between_s`): o ficheiro seguinte ABRE quando ele acaba. E' esta regra que
+faz a aritmetica do dia fechar -- `wall_s = audio_s + gap_in_span_s +
+residual_s` -- em vez do `wall_s - audio_s - gap_s = -36 289 s` que a soma
+ingenua dos campos dava no dia de 2026-11-17. `residual_s` e' o que o ring nao
+mede por desenho: pausas abaixo de `gap_min_s` (2 s), que nunca viram marcador.
+
+Sem audio no disco (podado) e sem `wall_s` gravado, a cobertura nao existe: o
+instrumento diz `covered_span=n/a reason=wall_s-unavailable: audio podado, N/M ...`
+em vez de imprimir `n/a` mudo.
+
 Usage (leve: so' JSONL + `stat`, nenhum decode):
   python _main/audio-ring-coverage.py [--root H:/sotto] [--day 2026-11-16] [--json]
 """
@@ -103,6 +117,44 @@ def _snap_rate(hz):
     return min(_STD_RATES, key=lambda r: abs(r - float(hz)))
 
 
+def _span(rec):
+    """O intervalo de PAREDE que o segmento OCUPA: `[wall_t0, wall_t1]`.
+
+    Duas fontes, por ordem: os campos gravados pelo ring a partir de 2026-11-19
+    (`wall_t0`/`wall_t1`, `provenance=recorded`); nos ficheiros anteriores, o
+    nome (hora de abertura, truncada ao segundo) mais o `wall_s` medido
+    (`provenance=name`). Sem nenhuma das duas -- segmento antigo cujo audio ja'
+    foi podado pelo ring -- nao ha' intervalo e o segmento nao pode atribuir
+    buraco nenhum: devolve `(None, None, None)`.
+    """
+    t0, t1 = rec.get('wall_t0'), rec.get('wall_t1')
+    if isinstance(t0, (int, float)) and isinstance(t1, (int, float)):
+        return float(t0), float(t1), 'recorded'
+    wall = rec.get('wall_s')
+    opened = _open_epoch(rec)
+    if isinstance(wall, (int, float)) and opened is not None:
+        return opened, opened + float(wall), 'name'
+    return None, None, None
+
+
+#: Folga da reconstrucao pelo NOME: o `HHMMSS` trunca a abertura ao segundo e,
+#: nos ficheiros antigos, o `wall_s` comecava no primeiro bloco (ate' um bloco
+#: depois da abertura). 2 s cobrem as duas pontas sem deixar passar um buraco.
+_SPAN_SLACK_S = 2.0
+
+
+def _marker_day(m):
+    """O dia LOCAL do marcador, pelo `t0` de PAREDE que ele mediu.
+
+    Pelo `t0` e nao pelo `file`: um marcador `scope="between"` nao tem ficheiro
+    nenhum e um buraco que comeca 23:58 pertence ao dia em que comecou.
+    """
+    t0 = m.get('t0')
+    if isinstance(t0, (int, float)):
+        return _dt.datetime.fromtimestamp(float(t0)).strftime('%Y-%m-%d')
+    return os.path.basename(os.path.dirname(str(m.get('file') or ''))) or None
+
+
 def measure(root, day=None, tap_rate=None):
     """As medidas da cobertura do ring inteiro (ou de um dia). JSON-avel.
 
@@ -131,7 +183,8 @@ def measure(root, day=None, tap_rate=None):
                 except OSError:
                     wall_s = None
         prepared.append({'rec': rec, 'rate': rate, 'declared_s': declared_s,
-                         'wall_s': wall_s, 'wall_src': wall_src})
+                         'wall_s': wall_s, 'wall_src': wall_src,
+                         'span': _span(rec)})
     # O RATE REAL, medido no audio (ou dado). `p90` e nao `max`: um segmento
     # cujo `mtime` foi tocado depois tem uma razao absurda, e um so' bastaria
     # para envenenar a inferencia inteira.
@@ -195,8 +248,33 @@ def measure(root, day=None, tap_rate=None):
                           if r['unaccounted_s'] is not None), 1)
     markers = _gaps(root)
     if day:
-        markers = [m for m in markers
-                   if ('/%s/' % day) in str(m.get('file') or '')]
+        markers = [m for m in markers if _marker_day(m) == day]
+    # A ATRIBUICAO, refeita do LEDGER: um marcador pertence ao segmento cujo
+    # `[wall_t0, wall_t1]` o contem. Os que nao cabem em nenhum atravessaram uma
+    # rotacao e ficam contados a' parte -- somar o `gap_s` gravado sem esta
+    # regra foi o que fez um dia de 28 183 s de parede dizer `gap_s=41 009`.
+    span_of = {p['rec'].get('file'): p['span'] for p in prepared if p['span'][0] is not None}
+    gap_in_span = {}
+    markers_in = markers_between = 0
+    gap_between = 0.0
+    for m in markers:
+        g = float(m.get('gap_s') or 0.0)
+        sp = span_of.get(m.get('file') or '')
+        if (sp and sp[0] - _SPAN_SLACK_S <= float(m.get('t0') or 0)
+                and float(m.get('t1') or 0) <= sp[1] + _SPAN_SLACK_S):
+            markers_in += 1
+            gap_in_span[m.get('file')] = gap_in_span.get(m.get('file'), 0.0) + g
+        else:
+            markers_between += 1
+            gap_between += g
+    for r, p in zip(out_rows, prepared):
+        r['gap_in_span_s'] = round(gap_in_span.get(p['rec'].get('file'), 0.0), 3)
+        r['residual_s'] = (round(r['wall_s'] - r['content_s'] - r['gap_in_span_s'], 3)
+                           if r['wall_s'] is not None
+                           and (markers_in or r['gap_in_span_s']) else None)
+    residual = round(sum(r['residual_s'] for r in out_rows
+                         if r['residual_s'] is not None), 1)
+    wall_missing = sum(1 for r in out_rows if r['wall_s'] is None)
     worst = sorted((r for r in out_rows if r['unaccounted_s'] is not None),
                    key=lambda r: -r['unaccounted_s'])[:5]
     return {
@@ -205,18 +283,31 @@ def measure(root, day=None, tap_rate=None):
         'segments': len(out_rows),
         'content_s': content,
         'wall_s': wall,
-        'covered': round(content / wall, 4) if wall else None,
+        'covered_span': round(content / wall, 4) if wall else None,
+        'covered_total': (round(content / (wall + gap_between), 4)
+                          if wall and (wall + gap_between) else None),
+        'covered_why': (None if wall else
+                        ('no-segments: nenhuma linha do index para este dia '
+                         '(o worker nao gravou)' if not out_rows else
+                         'wall_s-unavailable: audio podado, %d/%d segmentos sem '
+                         'mtime nem gravacao' % (wall_missing, len(out_rows)))),
         'unaccounted_s': explained,
         'tap_gap_s': gap_s,
         'queue_drop_s': drops,
         'gap_markers': len(markers),
         'gap_markers_s': round(sum(float(m.get('gap_s') or 0) for m in markers), 1),
+        'gap_in_span_s': round(sum(gap_in_span.values()), 1),
+        'gap_between_s': round(gap_between, 1),
+        'gap_markers_between': markers_between,
+        'residual_s': residual,
+        'wall_missing': wall_missing,
         'tap_rate': round(tap_rate, 0) if tap_rate else None,
         'tap_rate_raw': round(raw_rate, 0) if raw_rate else None,
         'tap_rate_src': rate_src,
         'provenance': {
             'wall': sorted({r['wall_src'] for r in out_rows if r['wall_src']}),
             'gap': sorted({r['gap_src'] for r in out_rows if r['gap_src']}),
+            'span': sorted({p['span'][2] for p in prepared if p['span'][2]}),
         },
         'worst': worst,
         'rows': out_rows,
@@ -225,30 +316,42 @@ def measure(root, day=None, tap_rate=None):
 
 def render(m):
     prov = m['provenance']
+    cov = ('%.4f' % m['covered_span']) if m['covered_span'] is not None else 'n/a'
+    if m['covered_span'] is None and m.get('covered_why'):
+        cov += ' reason=' + m['covered_why']
     print('AUDIO-RING COVERAGE root=%s day=%s' % (m['root'], m['day']))
-    print('  segments=%d content_s=%.1f wall_s=%.1f covered=%s'
-          % (m['segments'], m['content_s'], m['wall_s'],
-             ('%.4f' % m['covered']) if m['covered'] is not None else 'n/a'))
+    print('  segments=%d content_s=%.1f wall_s=%.1f covered_span=%s'
+          % (m['segments'], m['content_s'], m['wall_s'], cov))
     print('  unaccounted_s=%.1f tap_gap_s=%.1f queue_drop_s=%.1f '
           'gap_markers=%d gap_markers_s=%.1f'
           % (m['unaccounted_s'], m['tap_gap_s'], m['queue_drop_s'],
              m['gap_markers'], m['gap_markers_s']))
-    print('  tap_rate=%s src=%s  provenance wall=%s gap=%s'
+    # O REBUILD: parede = audio + buraco DENTRO do segmento + residuo, e o
+    # buraco que atravessa uma rotacao fica FORA dos segmentos (`between`).
+    print('  rebuild wall_s=%.1f = audio_s=%.1f + gap_in_span_s=%.1f + residual_s=%.1f'
+          '  | between gap_s=%.1f in %d marker(s)'
+          % (m['wall_s'], m['content_s'], m['gap_in_span_s'], m['residual_s'],
+             m['gap_between_s'], m['gap_markers_between']))
+    print('  covered_total=%s (content / (wall_s + between gap_s))'
+          % (('%.4f' % m['covered_total']) if m['covered_total'] is not None else 'n/a'))
+    print('  tap_rate=%s src=%s  provenance wall=%s gap=%s span=%s'
           % (m['tap_rate'], m['tap_rate_src'],
-             ','.join(prov['wall']) or '-', ','.join(prov['gap']) or '-'))
+             ','.join(prov['wall']) or '-', ','.join(prov['gap']) or '-',
+             ','.join(prov.get('span') or []) or '-'))
     for r in m['worst']:
         print('  worst %s content_s=%.1f wall_s=%.1f gap_s=%.1f unaccounted_s=%.1f '
               'wall_src=%s gap_src=%s'
               % (r['file'], r['content_s'], r['wall_s'] or 0.0, r['gap_s'] or 0.0,
                  r['unaccounted_s'] or 0.0, r['wall_src'] or '-', r['gap_src'] or '-'))
-    print('COVERAGE segments=%d content_s=%.1f wall_s=%.1f covered=%s '
-          'unaccounted_s=%.1f tap_gap_s=%.1f queue_drop_s=%.1f gap_markers=%d '
-          'tap_rate=%s wall_src=%s gap_src=%s'
-          % (m['segments'], m['content_s'], m['wall_s'],
-             ('%.4f' % m['covered']) if m['covered'] is not None else 'n/a',
-             m['unaccounted_s'], m['tap_gap_s'], m['queue_drop_s'],
-             m['gap_markers'], m['tap_rate'],
-             ','.join(prov['wall']) or '-', ','.join(prov['gap']) or '-'))
+    print('COVERAGE segments=%d content_s=%.1f wall_s=%.1f covered_span=%s '
+          'gap_in_span_s=%.1f gap_between_s=%.1f residual_s=%.1f '
+          'queue_drop_s=%.1f gap_markers=%d tap_rate=%s '
+          'wall_src=%s gap_src=%s span_src=%s'
+          % (m['segments'], m['content_s'], m['wall_s'], cov,
+             m['gap_in_span_s'], m['gap_between_s'], m['residual_s'],
+             m['queue_drop_s'], m['gap_markers'], m['tap_rate'],
+             ','.join(prov['wall']) or '-', ','.join(prov['gap']) or '-',
+             ','.join(prov.get('span') or []) or '-'))
     return 0 if m['segments'] else 2
 
 
