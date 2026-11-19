@@ -1,0 +1,51 @@
+{
+  "corpus": "_main/bench/discord-call-20261116/mix-16k.wav",
+  "window_s": 60,
+  "windows": {
+    "0": {
+      "path": "_main/bench/windows/w60-m000.wav",
+      "rms_db": -24.14,
+      "sha256_int16": "06980a4f5dfa4206"
+    },
+    "32": {
+      "path": "_main/bench/windows/w60-m032.wav",
+      "rms_db": -26.68,
+      "sha256_int16": "8a747842bd078e59"
+    },
+    "54": {
+      "path": "_main/bench/windows/w60-m054.wav",
+      "rms_db": -22.55,
+      "sha256_int16": "679a99e729df18f3"
+    },
+    "81": {
+      "path": "_main/bench/windows/w60-m081.wav",
+      "rms_db": -39.19,
+      "sha256_int16": "8646d85ada180f0f"
+    },
+    "102": {
+      "path": "_main/bench/windows/w60-m102.wav",
+      "rms_db": -26.75,
+      "sha256_int16": "6b893c392fb331c4"
+    },
+    "121": {
+      "path": "_main/bench/windows/w60-m121.wav",
+      "rms_db": -26.96,
+      "sha256_int16": "497f3dc8b520ec47"
+    },
+    "141": {
+      "path": "_main/bench/windows/w60-m141.wav",
+      "rms_db": -32.42,
+      "sha256_int16": "d3c9104aa8c8d12d"
+    },
+    "161": {
+      "path": "_main/bench/windows/w60-m161.wav",
+      "rms_db": -25.82,
+      "sha256_int16": "4034c6fe41d1a3ef"
+    },
+    "183": {
+      "path": "_main/bench/windows/w60-m183.wav",
+      "rms_db": -28.98,
+      "sha256_int16": "5ceb556b0dc1a809"
+    }
+  }
+}

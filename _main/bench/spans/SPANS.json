@@ -1,0 +1,30 @@
+{
+  "corpus": "_main/bench/discord-call-20261116/mix-16k.wav",
+  "corpus_sha256": "2a6503a9c41e0b21 (see logs/corpus_profile.json)",
+  "spans": [
+    {
+      "name": "s1",
+      "t": 13390.0,
+      "path": "_main/bench/spans/s1.wav",
+      "rms_db": -13.4,
+      "sha256_int16": "b7784594ae6a34ee",
+      "samples": 480000
+    },
+    {
+      "name": "s2",
+      "t": 11900.0,
+      "path": "_main/bench/spans/s2.wav",
+      "rms_db": -14.0,
+      "sha256_int16": "a62d1f7cbfbb841c",
+      "samples": 480000
+    },
+    {
+      "name": "s3",
+      "t": 5000.0,
+      "path": "_main/bench/spans/s3.wav",
+      "rms_db": -36.76,
+      "sha256_int16": "680b121e196df296",
+      "samples": 480000
+    }
+  ]
+}

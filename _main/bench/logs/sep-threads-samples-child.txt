@@ -1,0 +1,26 @@
+# waiting for the real child (budget=2, cmdline excludes 'watcher')
+# pid 2764 create 03:46:00 budget=2
+t=03:47:54 cpu_pct_of_one_core=149.4 threads=15 rss_mb=1781
+t=03:47:59 cpu_pct_of_one_core=170.6 threads=15 rss_mb=1817
+t=03:48:04 cpu_pct_of_one_core=86.9 threads=15 rss_mb=1330
+t=03:48:09 cpu_pct_of_one_core=82.5 threads=15 rss_mb=1553
+t=03:48:14 cpu_pct_of_one_core=81.2 threads=15 rss_mb=2166
+t=03:48:19 cpu_pct_of_one_core=61.9 threads=14 rss_mb=1368
+t=03:48:24 cpu_pct_of_one_core=126.2 threads=14 rss_mb=1575
+t=03:48:29 cpu_pct_of_one_core=133.1 threads=14 rss_mb=1546
+t=03:48:34 cpu_pct_of_one_core=163.8 threads=14 rss_mb=1418
+t=03:48:39 cpu_pct_of_one_core=166.2 threads=14 rss_mb=1247
+t=03:48:44 cpu_pct_of_one_core=134.4 threads=14 rss_mb=1493
+t=03:48:49 cpu_pct_of_one_core=131.5 threads=14 rss_mb=1546
+t=03:48:54 cpu_pct_of_one_core=142.5 threads=14 rss_mb=1816
+t=03:48:59 cpu_pct_of_one_core=66.9 threads=14 rss_mb=1392
+t=03:49:04 cpu_pct_of_one_core=61.2 threads=14 rss_mb=1583
+t=03:49:09 cpu_pct_of_one_core=92.5 threads=14 rss_mb=1896
+t=03:49:14 cpu_pct_of_one_core=100.6 threads=14 rss_mb=1546
+t=03:49:19 cpu_pct_of_one_core=172.2 threads=14 rss_mb=1418
+t=03:49:24 cpu_pct_of_one_core=150.6 threads=14 rss_mb=1722
+t=03:49:29 cpu_pct_of_one_core=66.2 threads=14 rss_mb=1377
+t=03:49:34 cpu_pct_of_one_core=70.6 threads=14 rss_mb=1280
+t=03:49:39 cpu_pct_of_one_core=56.6 threads=14 rss_mb=914
+t=03:49:44 cpu_pct_of_one_core=60.9 threads=14 rss_mb=941
+GONE 03:49:49
