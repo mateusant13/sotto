@@ -21,22 +21,25 @@ AS ARMS, e o que cada uma prova (todas EXECUTAM as funcoes reais extraidas por
   1. call-site-presente      -- `on_worker_caption` CHAMA `self._fusion_caption`.
   2. switch-off              -- sem `SOTTO_FUSION=1` o texto passa byte a byte.
   3. stream-only             -- so' a parcial (a hipotese do stream): sem edicao.
-  4. agreement               -- os dois modelos concordam: `confirmed`, `ops=[]`.
-  5. correction              -- discordam num span: UM `replace span=i:j`.
-  6. overlay-gets-fused      -- a superficie do overlay recebe o texto fundido.
-  7. history-gets-fused      -- o payload que o painel commita (e que o
-                                `history_append` grava) recebe o texto fundido.
+  4. agreement               -- sem edicao; `confirmed` e' so' estado interno,
+                                nao prova de precisao.
+  5. conservative-disagreement -- a divergencia mantem a hipotese do stream e
+                                  envia marca de revisao ao consumidor.
+  6. overlay-keeps-original -- o overlay recebe a hipotese original do stream.
+  7. history-keeps-and-marks -- o painel guarda o original com marca de revisao.
   8. revealed-word-locked    -- a REGRA: palavra ja' confirmada pelos dois e ja'
                                 no ecra NAO e' substituida (estabilidade).
   9. key-has-session         -- `start` reinicia a zero em cada respawn: uma
                                 sessao NOVA nao funde com a linha da anterior.
 
-BRACO NEGATIVO (`--neg-arm`): remove o CALL SITE numa COPIA do fonte e exige o
-vermelho do arm 5. Sai 1 e nomeia o arm que apanhou (o contrato do portao).
+BRACOS NEGATIVOS: `--neg-arm` testa o CALL SITE e o guard conservador; o
+`--neg-arm-review` tambem permite executar o segundo controlo isoladamente.
+Ambos saem 1 quando o controlo e apanhado.
 
 USO:
     python _main/fusion-wire-oracle.py
     python _main/fusion-wire-oracle.py --neg-arm
+    python _main/fusion-wire-oracle.py --neg-arm-review
 """
 from __future__ import annotations
 
@@ -133,7 +136,8 @@ def build(source, fusion_mod):
         'FUSION_STREAM_MAX': 32,
         '_FUSION_MODULE': fusion_mod,
     }
-    for name in ('fusion_enabled', '_fusion_module', 'fuse_caption', '_fusion_key'):
+    for name in ('fusion_enabled', '_fusion_module', 'fuse_caption',
+                 '_fusion_result_is_confirmed', '_fusion_key'):
         exec(compile(extract_function(source, name),
                      '<fusion-wire:%s>' % name, 'exec'), ns)
     # A IDADE DO AUDIO QUE A LINHA CARREGA (2026-11-12): o `on_worker_caption`
@@ -247,16 +251,23 @@ def correction_probe(ns, logs):
     logs.clear()
     shell = make_shell(ns)
     shell.on_worker_caption('o chotto ta rodando', meta(final=False))
-    shell.on_worker_caption('o sotto ta rodando', meta(final=True))
+    final_meta = meta(final=True)
+    shell.on_worker_caption('o sotto ta rodando', final_meta)
     got = shell.pushed[-1] if shell.pushed else None
     lines = edits(logs)
+    panel = [p for kind, p in shell.emitted if kind == 'caption']
+    emitted_meta = panel[-1].get('meta') if panel else {}
     ops = ns['fuse_caption']('o chotto ta rodando', 'o sotto ta rodando')[1]
     one_span = (len(ops) == 1 and ops[0].get('op') == 'replace'
                 and ops[0].get('span') == [1, 2]
                 and ops[0].get('text') == 'sotto')
-    ok = (got == 'o sotto ta rodando' and len(lines) == 1 and one_span
+    ok = (got == 'o chotto ta rodando' and len(lines) == 1 and one_span
           and 'span=1:2' in lines[0] and 'was="chotto"' in lines[0]
-          and 'now="sotto"' in lines[0])
+          and 'now="sotto"' in lines[0]
+          and emitted_meta.get('fusion_review') is True
+          and emitted_meta.get('fusion_status') == 'review'
+          and emitted_meta.get('fusion_changed_words') == 1
+          and any(line.startswith('FUSION_REVIEW ') for line in logs))
     return ok, shell, lines, ops
 
 
@@ -311,26 +322,33 @@ def run_arms(source, fusion_mod):
     shell.on_worker_caption('o sotto ta rodando', meta(final=True))
     text, ops, stability = ns['fuse_caption'](
         'o sotto ta rodando', 'o sotto ta rodando')
+    panel = [p for kind, p in shell.emitted if kind == 'caption']
+    confirmed_meta = panel[-1].get('meta') if panel else {}
     add(shell.pushed and shell.pushed[-1] == 'o sotto ta rodando'
-        and not edits(logs) and ops == [] and stability == 'confirmed',
+        and not edits(logs) and ops == [] and stability == 'confirmed'
+        and confirmed_meta.get('fusion_review') is False
+        and confirmed_meta.get('fusion_status') == 'agreement',
         'agreement', 'push=%r ops=%d stability=%s'
         % (shell.pushed[-1] if shell.pushed else None, len(ops), stability))
 
-    # 5. CORRECTION: exactly ONE replace, on exactly the span that differs.
+    # 5. DISAGREEMENT: candidate operations are reported, but the original
+    # stream wording is published until an acoustic verifier can choose.
     ok, shell, lines, ops = correction_probe(ns, logs)
     got = shell.pushed[-1] if shell.pushed else None
-    add(ok, 'correction', 'push=%r ops=%r log=%r'
+    add(ok, 'conservative-disagreement-held', 'push=%r ops=%r log=%r'
         % (got, ops, lines[0] if lines else ''))
 
-    # 6/7. BOTH SURFACES get the SAME fused text -- otherwise one of them would
-    # show a version the other never decided on.
+    # 6/7. BOTH SURFACES preserve the SAME original on disagreement, and the
+    # panel payload carries the review marker without changing transcript text.
     panel = [p for kind, p in shell.emitted if kind == 'caption']
-    add(bool(panel) and panel[-1].get('text') == 'o sotto ta rodando',
-        'overlay-gets-fused', 'push=%r' % (got,))
-    add(bool(panel) and panel[-1].get('text') == 'o sotto ta rodando',
-        'history-gets-fused',
-        'panel_text=%r (o commit do painel e o que history_append grava)'
-        % (panel[-1].get('text') if panel else None,))
+    add(bool(panel) and panel[-1].get('text') == 'o chotto ta rodando',
+        'overlay-keeps-original', 'push=%r' % (got,))
+    add(bool(panel) and panel[-1].get('text') == 'o chotto ta rodando'
+        and panel[-1].get('meta', {}).get('fusion_review') is True,
+        'history-keeps-and-marks-original',
+        'panel_text=%r review=%r'
+        % (panel[-1].get('text') if panel else None,
+           panel[-1].get('meta', {}).get('fusion_review') if panel else None))
 
     # 8. REVEALED-REPLACE RULE, through the wired state machine: after the two
     # models CONFIRMED a word and it is on screen, a later disagreement does NOT
@@ -414,7 +432,11 @@ def call_site_block(source):
 
 
 def neg_arm(source, fusion_mod):
-    """Remove the call site in a COPY; the correction arm must go RED."""
+    """Require both the call-site and conservative-guard mutants to go RED."""
+    review_rc = neg_arm_review(source, fusion_mod)
+    if review_rc != 1:
+        print('NEG-ARM: FAIL -- o mutante do guard conservador nao foi apanhado')
+        return 2
     site = call_site_block(source)
     if site not in source:
         print('NEG-ARM: FAIL -- o call site nao foi encontrado no fonte '
@@ -432,16 +454,50 @@ def neg_arm(source, fusion_mod):
               'VERDE (push=%r edits=%r)'
               % (shell.pushed[-1] if shell.pushed else None, lines))
         return 2
-    print('NEG-ARM: PASS caught=correction (sem o call site: push=%r, '
-          'FUSION_EDIT=%d) -- o arm fica VERMELHO e o portao nomeia-o'
+    print('NEG-ARM: PASS caught=call-site+conservative-guard '
+          '(sem o call site: push=%r, FUSION_EDIT=%d) -- os arms ficam '
+          'VERMELHOS e o portao nomeia-os'
           % (shell.pushed[-1] if shell.pushed else None, len(lines)))
+    return 1
+
+
+def neg_arm_review(source, fusion_mod):
+    """Make the confirmation guard unconditional in memory; review must fail."""
+    tree = ast.parse(source)
+    node = next((item for item in tree.body
+                 if isinstance(item, ast.FunctionDef)
+                 and item.name == '_fusion_result_is_confirmed'), None)
+    if node is None:
+        print('NEG-ARM-REVIEW: FAIL -- o guard nao existe no fonte')
+        return 2
+    lines = source.splitlines(keepends=True)
+    eol = '\r\n' if '\r\n' in source else '\n'
+    replacement = ('def _fusion_result_is_confirmed(result):' + eol
+                   + '    return True  # NEG-ARM-REVIEW' + eol)
+    mutated = ''.join(lines[:node.lineno - 1] + [replacement]
+                      + lines[node.end_lineno:])
+    if mutated == source:
+        print('NEG-ARM-REVIEW: FAIL -- a mutacao nao alterou o fonte')
+        return 2
+    ns, logs = build(mutated, fusion_mod)
+    os.environ['SOTTO_FUSION'] = '1'
+    ok, shell, review_lines, _ops = correction_probe(ns, logs)
+    if ok:
+        print('NEG-ARM-REVIEW: FAIL -- guard permissivo passou o arm '
+              'conservador (o mutante nao foi apanhado)')
+        return 2
+    got = shell.pushed[-1] if shell.pushed else None
+    print('NEG-ARM-REVIEW: PASS caught=conservative-disagreement-held '
+          '(mutant push=%r review=%d)' % (got, len(review_lines)))
     return 1
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='fusion-wire-oracle')
     parser.add_argument('--neg-arm', action='store_true',
-                        help='muta uma COPIA (remove o call site) e exige RED')
+                        help='muta copias e exige RED no call site e no guard')
+    parser.add_argument('--neg-arm-review', action='store_true',
+                        help='muta o guard conservador numa COPIA e exige RED')
     parser.add_argument('--pair', nargs=2, metavar=('STREAM', 'REFINED'),
                         help='imprime o veredicto do core REAL para um par '
                              '(usado pela medicao de dois bracos)')
@@ -456,6 +512,8 @@ def main(argv=None):
         return 0
     if args.neg_arm:
         return neg_arm(source, fusion_mod)
+    if args.neg_arm_review:
+        return neg_arm_review(source, fusion_mod)
     run_arms(source, fusion_mod)
     return verdict('FUSION-WIRE')
 

@@ -581,6 +581,24 @@ function createEngine(options) {
   let bufferSawProducer = false;
   /** True when two fragments of ONE buffer declared DIFFERENT producers. */
   let bufferProducerConflict = false;
+  /** Optional ASR disagreement review marker carried from the closing fragment. */
+  let bufferFusionMeta = null;
+
+  function rememberFusionMeta(meta) {
+    if (!meta || typeof meta.fusion_review !== 'boolean') return;
+    const changed = Number(meta.fusion_changed_words);
+    bufferFusionMeta = {
+      fusion_review: meta.fusion_review,
+      fusion_status: typeof meta.fusion_status === 'string'
+        ? meta.fusion_status : 'unknown',
+      fusion_changed_words: Number.isFinite(changed) && changed >= 0
+        ? Math.floor(changed) : 0,
+    };
+  }
+
+  function committedFusionMeta() {
+    return bufferFusionMeta ? Object.assign({}, bufferFusionMeta) : null;
+  }
 
   /** A producer tag as the worker writes it: a non-empty trimmed string, or null. */
   function producerOf(meta) {
@@ -781,6 +799,7 @@ function createEngine(options) {
     bufferProducer = null;
     bufferSawProducer = false;
     bufferProducerConflict = false;
+    bufferFusionMeta = null;
     return all;
   }
 
@@ -799,6 +818,7 @@ function createEngine(options) {
     // it is forwarded ONLY when the whole buffer agreed on it (see
     // `committedProducer`) — never invented, never defaulted, never guessed.
     const tag = committedProducer();
+    const fusionMeta = committedFusionMeta();
     const start = lineStart;
     const all = takeBuffer();
     if (!all.length) return '';
@@ -825,6 +845,7 @@ function createEngine(options) {
         : (tag === null
           ? { route, start, routeSource, source: engineSource }
           : { route, start, routeSource, producer: tag, source: engineSource });
+      if (fusionMeta) Object.assign(meta, fusionMeta);
       // M8 -- O QUE O FICHEIRO LEVA, e a metade que faltava (2026-11-09).
       // `panel.js` ja' lia `meta.fileText` ("the engine hands a `fileText`
       // without the terminal mark it would otherwise have INVENTED") e NENHUM
@@ -1104,6 +1125,7 @@ function createEngine(options) {
     // The producer tag of this fragment, remembered for `commit` — the field the
     // canonical transcript's guard reads, and the one this engine used to drop.
     rememberProducer(meta);
+    rememberFusionMeta(meta);
     if (lineStart === null) lineStart = start;
 
     // The watermark is the worker's LINE as last seen: every partial of one
@@ -1245,6 +1267,7 @@ function createEngine(options) {
     bufferProducer = null;
     bufferSawProducer = false;
     bufferProducerConflict = false;
+    bufferFusionMeta = null;
     lastAudioEnd = null;
     // O CONTRATO DO `reset()` E' LIMPAR TUDO O QUE O `state()` PUBLICA.
     // O `staleDropped` (2026-11-05) ficou de fora e sobrevivia ao reset: a

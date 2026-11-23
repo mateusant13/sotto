@@ -1193,6 +1193,22 @@ def fuse_caption(stream_text, refined_text):
     return result['text'], result['ops'], result['stability']
 
 
+def _fusion_result_is_confirmed(result):
+    """True only when both hypotheses agree without an edit to publish.
+
+    This is an agreement signal for routing, not proof that the spoken words
+    are correct.
+    """
+    if not isinstance(result, dict) or result.get('ops'):
+        return False
+    words = result.get('words')
+    return (result.get('stability') == 'confirmed'
+            and isinstance(words, list) and bool(words)
+            and all(isinstance(word, dict)
+                    and word.get('stability') == 'confirmed'
+                    for word in words))
+
+
 def _fusion_key(meta):
     """The line identity fusion may join on — `(session, start)`, or None.
 
@@ -20248,8 +20264,9 @@ class SottoShell:
             identity; remember it (bounded) and hand it back untouched;
           * `final:true` — this is the FINISHER's hypothesis (the M3 second
             pass, or the Redux overlay's line) for the SAME identity; feed it
-            to `worker/fusion.py` with the remembered stream text and hand back
-            the FUSED text.
+            to `worker/fusion.py` with the remembered stream text. Publish only
+            exact, fully confirmed agreement; otherwise keep the stream text
+            and mark the final for review.
 
         WHY THIS IS THE JOIN. The returned text is what `on_worker_caption`
         gives to `emit_async` (the panel row — and the panel's commit is what
@@ -20298,14 +20315,21 @@ class SottoShell:
             # once a first final has already merged words into the line.
             before = fusion.words()
             result = fusion.feed(prev, str(text or ''))
-            # The line it just returned is what the owner will read: it is on
-            # screen from this instant, so the next decision starts stable.
-            fusion.reveal()
         except Exception as exc:  # noqa: BLE001 — text must still flow
             log(f'FUSION_FAILED error={exc!r} '
                 f'text={json.dumps(str(text or "")[:60])}')
             return text
         ops = result.get('ops') or []
+        words = result.get('words') or []
+        changed_words = sum(1 for word in words
+                            if isinstance(word, dict) and word.get('changed'))
+        confirmed = _fusion_result_is_confirmed(result)
+        if isinstance(meta, dict):
+            meta['fusion_review'] = not confirmed
+            # Do not call an unpublished fusion candidate "corrected" in the
+            # consumer metadata: the stream wording remains the transcript.
+            meta['fusion_status'] = 'agreement' if confirmed else 'review'
+            meta['fusion_changed_words'] = changed_words
         if ops:
             for op in ops:
                 kind = str(op.get('op') or 'replace')
@@ -20324,12 +20348,23 @@ class SottoShell:
                     f'was={json.dumps(was)} '
                     f'now={json.dumps(str(op.get("text") or ""))} '
                     f'stability={result.get("stability")}')
-        # THE TARGET IS WHAT SHIPS, ops or not. `ops == []` means the target
-        # already equals what is on screen -- which is ALSO what happens when
-        # the rule REFUSES the finisher's word (a word both models confirmed
-        # and the owner already read is not replaced). Returning the incoming
-        # refined text there would publish the very word the rule just blocked.
-        return result.get('text') or text
+        if not confirmed:
+            # Fusion can rank a different candidate without an acoustic score
+            # proving that candidate. Keep the exact stream hypothesis already
+            # shown, carry review metadata to the panel, and reset state to what
+            # was actually published. Revealing the unpublished candidate would
+            # make the next feed treat it as if the owner had seen it.
+            log('FUSION_REVIEW state=%s changed_words=%d ops=%d action=keep-stream'
+                % (result.get('stability'), changed_words, len(ops)))
+            reset = _fusion_module().Fusion()
+            reset.feed(prev, '')
+            reset.reveal()
+            states[key] = reset
+            return prev
+        # No edits and every word confirmed: the displayed text is the state
+        # future decisions must treat as revealed.
+        fusion.reveal()
+        return result.get('text') or prev
 
     def set_external_owner(self, owner, reason='', had_line=None):
         """O DONO DO ECRA: um so' escritor, uma linha por transicao.

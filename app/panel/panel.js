@@ -1684,6 +1684,25 @@ function addCaption(text, reason, meta) {
     if (identity !== null) committedByStart.set(identity, line);
   }
 
+  // Fusion keeps the original stream wording whenever the second hypothesis
+  // disagrees and no acoustic verifier is available. Mark that uncertainty on
+  // the row itself; the marker is presentation only and is not transcript text.
+  if (meta && typeof meta.fusion_review === 'boolean') {
+    const reviewTitle = 'Trecho incerto: hipóteses divergentes; texto original preservado.';
+    if (meta.fusion_review) {
+      line.dataset.fusionReview = 'true';
+      line.classList.add('caption--fusion-review');
+      line.title = reviewTitle;
+    } else {
+      delete line.dataset.fusionReview;
+      line.classList.remove('caption--fusion-review');
+      if (line.title === reviewTitle) {
+        line.title = '';
+        line.removeAttribute('title');
+      }
+    }
+  }
+
   // Mark the newest line, drop the highlight from the previous one. A REVISED row
   // is the newest thing that happened, so the highlight follows the revision.
   const previous = dom.list.querySelector('.caption--latest');

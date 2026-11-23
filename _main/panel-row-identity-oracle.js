@@ -55,6 +55,7 @@ const cp = require('child_process');
 const REPO = path.resolve(__dirname, '..');
 const PANEL = path.join(REPO, 'app', 'panel', 'panel.js');
 const ENGINE = path.join(REPO, 'app', 'panel', 'caption-formulation.js');
+const PANEL_CSS = path.join(REPO, 'app', 'panel', 'panel.css');
 const HISTORY_SOURCE = path.join(REPO, 'app', 'panel', 'history-source.js');
 
 const NEG_ARM = process.argv.indexOf('--neg-arm') >= 0;
@@ -326,6 +327,8 @@ function buildPanel(panelSource, engineSource, historyStub) {
     el: li,
     provisional: li.classList.contains('caption--provisional'),
     latest: li.classList.contains('caption--latest'),
+    fusionReview: li.dataset.fusionReview === undefined ? null : li.dataset.fusionReview,
+    fusionReviewClass: li.classList.contains('caption--fusion-review'),
     start: li.dataset.start === undefined ? null : li.dataset.start,
     source: li.dataset.source === undefined ? null : li.dataset.source,
     revision: li.dataset.revision === undefined ? null : li.dataset.revision,
@@ -676,6 +679,40 @@ function checkJ(h) {
   return { ok, detail: 'entries=' + n + ' rows=' + JSON.stringify(texts) };
 }
 
+function checkK(h) {
+  const css = fs.readFileSync(PANEL_CSS, 'utf8');
+  const reviewRule = css.match(/\.caption--fusion-review\s+\.caption__time::after\s*\{([^}]*)\}/);
+  const visibleMarker = !!reviewRule && /content:\s*['"]\s*\?/.test(reviewRule[1]);
+  const start = 117;
+  const source = 'proc:review';
+  h.feed('uncertain original', {
+    start, end: start + 1, final: true, stable: true, source, fusion_review: true,
+  });
+  h.flush();
+  let row = h.rows().find((r) => !r.provisional && r.start === String(start));
+  const marked = !!row && row.fusionReview === 'true' && row.fusionReviewClass
+    && row.el.title === 'Trecho incerto: hipóteses divergentes; texto original preservado.'
+    && has(row.text, 'uncertain original');
+  const first = row;
+  h.feed('uncertain original accepted', {
+    start, end: start + 1, final: true, stable: true, source, fusion_review: false,
+  });
+  h.flush();
+  row = h.rows().find((r) => !r.provisional && r.start === String(start));
+  const cleared = !!row && row.fusionReview === null && !row.fusionReviewClass
+    && row.el.title === '' && has(row.text, 'accepted');
+  return {
+    ok: marked && cleared && visibleMarker,
+    detail: 'marked=' + !!marked + ' visibleCssMarker=' + visibleMarker + ' first=' + JSON.stringify(first && {
+      review: first.fusionReview, reviewClass: first.fusionReviewClass,
+      title: first.el.title, textPreserved: has(first.text, 'uncertain original'),
+    }) + ' cleared=' + !!cleared + ' second=' + JSON.stringify(row && {
+      review: row.fusionReview, reviewClass: row.fusionReviewClass,
+      title: row.el.title, acceptedUpdate: has(row.text, 'accepted'),
+    }),
+  };
+}
+
 const CHECKS = [
   ['CHK-A', 'same start + DIFFERENT sources -> TWO rows with their own text', checkA],
   ['CHK-B', 'the same line again -> ONE row, text replaced IN PLACE', checkB],
@@ -688,6 +725,7 @@ const CHECKS = [
   ['CHK-H', 'one line by both roads is ONE row, and the longer text wins', checkH],
   ['CHK-I', 'replace_at rewrites the NAMED row, never the last one', checkI],
   ['CHK-J', 'a re-delivered line does not add a second row', checkJ],
+  ['CHK-K', 'fusion uncertainty is visible on the row, not in transcript text', checkK],
 ];
 
 function runArm(label, panelSource, engineSource) {
@@ -730,7 +768,7 @@ const MUTANTS = [
       return source.replace(re, (whole, indent) => 'function engineFor(source) {\n' + indent + 'const key = null; /* NEG-ARM M1 */\n');
     },
     mustRed: ['CHK-A', 'CHK-D'],
-    mustGreen: ['CHK-B', 'CHK-C', 'CHK-C2', 'CHK-E'],
+    mustGreen: ['CHK-B', 'CHK-C', 'CHK-C2', 'CHK-E', 'CHK-K'],
   },
   {
     id: 'M2 the row key ignores the source',
@@ -742,7 +780,7 @@ const MUTANTS = [
       return source.replace(re, (whole) => whole + '  source = null; /* NEG-ARM M2 */\n');
     },
     mustRed: ['CHK-A'],
-    mustGreen: ['CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E'],
+    mustGreen: ['CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-K'],
   },
   {
     id: 'M3 the source key moves out of LAST place',
@@ -754,7 +792,7 @@ const MUTANTS = [
       return source.replace(anchor, '{ route, start, source: engineSource, routeSource }');
     },
     mustRed: ['CHK-E'],
-    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D'],
+    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-K'],
   },
   {
     id: 'M4 the no-source literal gains a source key',
@@ -766,7 +804,7 @@ const MUTANTS = [
       return source.replace(re, (whole) => whole.replace('{ route, start, routeSource }', '{ route, start, routeSource, source: null }'));
     },
     mustRed: ['CHK-E'],
-    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D'],
+    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-K'],
   },
   // ── OS MUTANTES DO FEED (2026-11-14) ──────────────────────────────────
   // Cada um devolve os bytes EXACTOS da forma antiga (a que o dono chamou
@@ -781,7 +819,7 @@ const MUTANTS = [
       return source.replace(re, '  historyEntries = entries; /* NEG-ARM M5 */');
     },
     mustRed: ['CHK-G', 'CHK-H'],
-    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-F', 'CHK-I', 'CHK-J'],
+    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-F', 'CHK-I', 'CHK-J', 'CHK-K'],
   },
   {
     id: 'M6 pushEntry never finds the row it already has',
@@ -793,7 +831,7 @@ const MUTANTS = [
       return source.replace(anchor, '  const at = -1; /* NEG-ARM M6 */');
     },
     mustRed: ['CHK-I', 'CHK-J'],
-    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-F', 'CHK-G', 'CHK-H'],
+    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-F', 'CHK-G', 'CHK-H', 'CHK-K'],
   },
   {
     id: 'M7 replaceFeedRow rewrites the last row again',
@@ -808,8 +846,32 @@ const MUTANTS = [
       return source.replace(re, (whole) => whole.replace('feedKey(entry)', 'null /* NEG-ARM M7 */'));
     },
     mustRed: ['CHK-I'],
-    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-F', 'CHK-G', 'CHK-H', 'CHK-J'],
+    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-F', 'CHK-G', 'CHK-H', 'CHK-J', 'CHK-K'],
   },
+  {
+    id: 'M8 fusion review marker removed',
+    what: 'addCaption -> omit caption--fusion-review class',
+    file: 'panel',
+    apply(source) {
+      const anchor = "      line.classList.add('caption--fusion-review');";
+      if (source.indexOf(anchor) === -1) return null;
+      return source.replace(anchor, '      /* NEG-ARM M8 */');
+    },
+    mustRed: ['CHK-K'],
+    mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-F', 'CHK-G', 'CHK-H', 'CHK-I', 'CHK-J'],
+  },
+    {
+      id: 'M9 formulation drops fusion metadata',
+      what: 'commit -> omit fusionMeta from emitted metadata',
+      file: 'engine',
+      apply(source) {
+        const anchor = '      if (fusionMeta) Object.assign(meta, fusionMeta);';
+        if (source.indexOf(anchor) === -1) return null;
+        return source.replace(anchor, '      /* NEG-ARM M9 */');
+      },
+      mustRed: ['CHK-K'],
+      mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-F', 'CHK-G', 'CHK-H', 'CHK-I', 'CHK-J'],
+    },
 ];
 
 // MAIN

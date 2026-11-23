@@ -1187,6 +1187,24 @@ body[data-level="none"] .chrome__meter i {
   background: rgba(125, 211, 252, 0.09);
 }
 
+/* A disagreement stays at the original stream hypothesis until acoustic
+   evidence can choose between the models. The timestamp marker is UI metadata,
+   not text, and the row title explains why it is present. */
+.caption--fusion-review {
+  border-left-style: dotted;
+  border-left-color: #ffd24a;
+}
+
+.caption--latest.caption--fusion-review {
+  border-left-color: #ffd24a;
+}
+
+.caption--fusion-review .caption__time::after {
+  content: ' ?';
+  color: #ffd24a;
+  font-weight: 700;
+}
+
 /* The unstable tail. It is on screen but NOT settled: the model has only
    offered one reading of it so far, and the next fragment may replace it.
    Dimmed, with a dashed rail, so the owner can see at a glance which words
