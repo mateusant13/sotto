@@ -770,7 +770,18 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (measured 2026-11-19):** `_main\_audit-verify-all.cmd` = **412023 B**,
+- **PIN do ficheiro (measured 2026-11-23):** `_main\_audit-verify-all.cmd` = **415068 B**,
+  **4744 CRLF** / 0 bare LF, sha256 `8F3970FA8FF204E7CC913BABB7AC3FB21F16D1B28CC4DAE64DA57FCA0B91B453`.
+  (1 225 B and 13 lines more than the 413843 B live-checkout pin: the pair
+  `redux-gpu-unavailable` + `red-as-expected-redux-gpu-unavailable`, eleven lines of comment and
+  two steps, wired by the lane that fixed the oracle on 2026-11-23. The oracle exercises the
+  redux live provider decision with a fake ORT session and the negative arm puts the CPU fallback
+  back: `SELFTEST: PASS (positive 3/3; constructor/run/readback mutations 3/3 caught)` rc=0 and
+  `NEG-ARM: PASS (3/3 ...)` rc=1. A verified oracle with no step rots -- `battery-wiring` named it
+  `new-unwired` -- and the same pass removed the paid-off `speaker-sidecar-oracle.py` entry from
+  `_main/battery-wiring-baseline.json` (`ligados=222 sem_passo=103`, PASS 7/7). Both numbers are
+  the LIVE checkout's, which is the number this house counts.)
+- **PIN anterior (measured 2026-11-19):** `_main\_audit-verify-all.cmd` = **412023 B**,
   **4711 CRLF** / 0 bare LF, sha256 `E44054E0591E4A7404BF5CD6BE94B154F3D56F1B6F4B038AB34899D62360F123`.
   (3 298 B and 32 lines more than the 408725 B pin. Fifteen of those lines are this unit's battery
   pair `stream-asr-gpu-unavailable` + `red-as-expected-stream-asr-gpu-unavailable`, committed in

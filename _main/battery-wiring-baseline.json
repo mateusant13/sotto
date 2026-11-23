@@ -373,11 +373,6 @@
     },
     {
       "date": "2026-10-25",
-      "file": "speaker-sidecar-oracle.py",
-      "reason": "REASON-MISSING preencher a mao"
-    },
-    {
-      "date": "2026-10-25",
       "file": "speaker-slots-oracle.py",
       "reason": "REASON-MISSING preencher a mao"
     },

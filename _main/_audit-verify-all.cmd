@@ -3262,6 +3262,19 @@ if exist _main\worker-providers-oracle.py (
   call :step always red-as-expected-worker-providers 1 "_main\worker-providers-oracle.py" "%OUT%\worker-providers-neg.log" python _main\worker-providers-oracle.py --neg-arm
   call :expectred red-as-expected-worker-providers !STEP_RC! "%OUT%\worker-providers-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-worker-providers MISSING "%OUT%\worker-providers-neg.log" "NEG-ARM: PASS" )
+REM A LARGADA QUE NAO CAI PARA CPU (2026-11-23): a decisao de provider do motor
+REM redux ao vivo recusa uma sessao sem GPU em vez de a abrir em CPU e descobrir
+REM depois que o plugin EP nao registou device nenhum. O oraculo exerce o
+REM construtor, o `run` e a leitura de volta com uma ORT falsa; o negativo repoe
+REM a queda para CPU e exige o vermelho.
+if exist _main\redux-gpu-unavailable-oracle.py (
+  call :step always redux-gpu-unavailable 0 "_main\redux-gpu-unavailable-oracle.py;worker\redux_live.py" "%OUT%\redux-gpu-unavailable.log" python _main\redux-gpu-unavailable-oracle.py --selftest
+  call :record redux-gpu-unavailable !STEP_RC!
+) else ( call :record redux-gpu-unavailable MISSING )
+if exist _main\redux-gpu-unavailable-oracle.py (
+  call :step always red-as-expected-redux-gpu-unavailable 1 "_main\redux-gpu-unavailable-oracle.py;worker\redux_live.py" "%OUT%\redux-gpu-unavailable-neg.log" python _main\redux-gpu-unavailable-oracle.py --neg-arm
+  call :expectred red-as-expected-redux-gpu-unavailable !STEP_RC! "%OUT%\redux-gpu-unavailable-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-redux-gpu-unavailable MISSING "%OUT%\redux-gpu-unavailable-neg.log" "NEG-ARM: PASS" )
 
 echo === the adversary lane's probes (corrected: the filters it wrote were RED-forever) ===
 if exist _main\_review-f1f3.py (
