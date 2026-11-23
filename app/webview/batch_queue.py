@@ -1123,7 +1123,7 @@ def load_engine(threads=None, onnx_dir=None, ternary_dir=None):
 
     onnx_dir = onnx_dir or redux_live.DEFAULT_ONNX_DIR
     ternary_dir = ternary_dir or redux_live.DEFAULT_TERNARY_DIR
-    backend = redux_live.load_backend('onnx', onnx_dir, ternary_dir, threads, 'cpu')
+    backend = redux_live.load_backend('onnx', onnx_dir, ternary_dir, threads, 'cuda')
     return backend, threads
 
 

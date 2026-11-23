@@ -131,9 +131,16 @@ def overlaps(a, b):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--threads", type=int, default=2)
+    ap.add_argument("--allow-heavy", action="store_true",
+                    help="required before this oracle loads the GPU segmentation model")
     ap.add_argument("--neg-arm", action="store_true",
                     help="estreita MULTI_CLASSES para (6,) -- tem de reprovar")
     args = ap.parse_args(argv)
+
+    if not args.allow_heavy:
+        print("REFUSED before audio/model load: pass --allow-heavy only inside "
+              "the performance-gate + Watcher lease")
+        return 2
 
     neg = bool(args.neg_arm)
     print("=" * 78)

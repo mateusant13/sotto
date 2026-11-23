@@ -529,7 +529,7 @@ class FakeDiarizer:
 # --------------------------------------------------------------------------
 
 def _load_sherpa_diarizer(seg_model: str, emb_model: str, threads: int = 2,
-                          provider: str = "cpu", num_clusters: int = -1,
+                          provider: str = "cuda", num_clusters: int = -1,
                           threshold: float = 0.9, min_on: float = 0.3,
                           min_off: float = 0.5):
     """Build the SDK's diarizer from NESTED configs.
@@ -553,7 +553,25 @@ def _load_sherpa_diarizer(seg_model: str, emb_model: str, threads: int = 2,
     release -- and the threshold belongs to the CLUSTERING, not to the process
     call, which is why `--threshold` is wired here and not at `process()` time.
     """
+    if str(provider).strip().lower() != "cuda":
+        raise RuntimeError("speaker GPU-only policy requires provider='cuda'; got %r" % provider)
+    _require_cuda_execution_provider()
     import sherpa_onnx                                             # noqa: PLC0415
+
+    # sherpa-onnx 1.13.4 accepts `provider='cuda'` in both config structs but
+    # does not expose the underlying ORT sessions, node assignments, or a
+    # `session.disable_cpu_ep_fallback` control for OfflineSpeakerDiarization.
+    # Its CUDA-unavailable path can fall back to CPU. A request string is not
+    # enough evidence for the owner's GPU-only rule, so refuse before loading
+    # either model unless an adapter can disable fallback and return actual
+    # per-model node-assignment readback.
+    factory = getattr(
+        sherpa_onnx, "create_gpu_only_offline_speaker_diarizer", None)
+    if not callable(factory):
+        raise RuntimeError(
+            "speaker GPU-only policy cannot be proven: installed sherpa-onnx "
+            "has no strict diarization adapter for CPU-fallback disable and "
+            "per-model runtime node-assignment readback")
 
     pyannote_fn = sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig
     try:
@@ -574,7 +592,115 @@ def _load_sherpa_diarizer(seg_model: str, emb_model: str, threads: int = 2,
     if not config.validate():
         raise SystemExit("sidecar: diarizer config did not validate: %s"
                          % (seg_model,))
-    return sherpa_onnx.OfflineSpeakerDiarization(config)
+
+    expected = {
+        "segmentation": _sha256_file(seg_model),
+        "embedding": _sha256_file(emb_model),
+    }
+    try:
+        diarizer = factory(
+            config, disable_cpu_ep_fallback=True,
+            expected_model_sha256=dict(expected))
+    except TypeError as exc:
+        raise RuntimeError(
+            "speaker GPU-only adapter does not accept the strict fallback "
+            "and model-hash contract") from exc
+
+    readback = getattr(diarizer, "get_runtime_node_assignment_readback", None)
+    if not callable(readback):
+        close = getattr(diarizer, "close", None)
+        if callable(close):
+            close()
+        raise RuntimeError(
+            "speaker GPU-only adapter returned no runtime node-assignment readback")
+    try:
+        _validate_gpu_speaker_attestation(readback(), expected)
+    except Exception:
+        close = getattr(diarizer, "close", None)
+        if callable(close):
+            close()
+        raise
+    return diarizer
+
+
+def _require_cuda_execution_provider() -> None:
+    """Refuse before model construction when the installed ORT lacks CUDA."""
+    try:
+        import onnxruntime                                             # noqa: PLC0415
+        available = list(onnxruntime.get_available_providers())
+    except Exception as exc:  # noqa: BLE001 -- unavailable runtime is a hard refusal
+        raise RuntimeError(
+            "speaker GPU-only policy cannot inspect ONNX Runtime providers") from exc
+    if "CUDAExecutionProvider" not in available:
+        raise RuntimeError(
+            "speaker GPU-only policy requires CUDAExecutionProvider; available=%r"
+            % available)
+
+
+def _speaker_cuda_device_registered(ort):
+    """Return True/False/None from ORT's registered EP-device census.
+
+    A compiled provider name is not proof that a CUDA device is currently
+    registered. Unknown and CPU-only inventories must refuse before a session
+    is constructed.
+    """
+    getter = getattr(ort, "get_ep_devices", None)
+    if not callable(getter):
+        return None
+    try:
+        devices = list(getter())
+    except Exception:                                          # noqa: BLE001
+        return None
+    return any(str(getattr(device, "ep_name", "")) == "CUDAExecutionProvider"
+               for device in devices)
+
+
+def _sha256_file(path: str) -> str:
+    """Hash one model file without retaining its contents in memory."""
+    import hashlib                                             # noqa: PLC0415
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _validate_gpu_speaker_attestation(attestation, expected_model_sha256):
+    """Accept only exact runtime evidence for both neural diarization graphs.
+
+    The adapter must produce ORT node-assignment evidence after session
+    creation and before audio processing. A provider request, provider list,
+    CUDA memory delta, or `debug` log is not an attestation.
+    """
+    expected_components = {"segmentation", "embedding"}
+    if not isinstance(expected_model_sha256, dict) \
+            or set(expected_model_sha256) != expected_components:
+        raise RuntimeError("speaker GPU attestation needs exact model hashes")
+    if not isinstance(attestation, dict) \
+            or attestation.get("schema") != "sotto-speaker-gpu-attestation-v1" \
+            or attestation.get("evidence") != "onnxruntime-node-assignment":
+        raise RuntimeError("speaker GPU attestation is missing or not runtime evidence")
+    components = attestation.get("components")
+    if not isinstance(components, dict) or set(components) != expected_components:
+        raise RuntimeError("speaker GPU attestation must name both exact model sessions")
+
+    for name in sorted(expected_components):
+        row = components.get(name)
+        if not isinstance(row, dict):
+            raise RuntimeError("speaker GPU attestation missing %s session" % name)
+        if row.get("model_sha256") != expected_model_sha256[name]:
+            raise RuntimeError("speaker %s model hash differs from loaded graph" % name)
+        if row.get("cpu_ep_fallback_disabled") is not True:
+            raise RuntimeError("speaker %s session did not disable CPU EP fallback" % name)
+        assignments = row.get("node_assignment_counts")
+        if not isinstance(assignments, dict) \
+                or set(assignments) != {"CUDAExecutionProvider"}:
+            raise RuntimeError("speaker %s graph has non-CUDA or unknown node assignments" % name)
+        count = assignments.get("CUDAExecutionProvider")
+        if type(count) is not int or count <= 0:
+            raise RuntimeError("speaker %s graph has no verified CUDA nodes" % name)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -679,11 +805,64 @@ def _load_powerset(seg_model: str, threads: int = 2):
     A importacao e' preguicosa de proposito: `--selftest` nunca deve tocar em
     onnxruntime, e `--watch-only` nunca deve tocar em sherpa-onnx.
     """
-    import onnxruntime                                             # noqa: PLC0415
+    import ort_cuda_runtime                                        # noqa: PLC0415
+    onnxruntime = ort_cuda_runtime.prepare_ort_runtime()
+    cuda_device = _speaker_cuda_device_registered(onnxruntime)
+    if cuda_device is not True:
+        raise RuntimeError(
+            "speaker GPU-only policy requires a positive CUDA EP-device census")
+    available = list(onnxruntime.get_available_providers())
+    if "CUDAExecutionProvider" not in available:
+        raise RuntimeError("speaker GPU-only policy requires CUDAExecutionProvider")
     opts = onnxruntime.SessionOptions()
     opts.log_severity_level = 3
     opts.intra_op_num_threads = max(1, int(threads))
-    return onnxruntime.InferenceSession(seg_model, opts)
+    opts.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+    readback = getattr(opts, "get_session_config_entry", None)
+    if not callable(readback):
+        raise RuntimeError(
+            "speaker GPU-only policy cannot read back CPU EP fallback setting")
+    try:
+        fallback_readback = str(readback("session.disable_cpu_ep_fallback"))
+    except Exception as exc:                                  # noqa: BLE001
+        raise RuntimeError(
+            "speaker GPU-only policy cannot read back CPU EP fallback setting") from exc
+    if fallback_readback != "1":
+        raise RuntimeError(
+            "speaker GPU-only policy requires CPU EP fallback readback '1'; got %r"
+            % fallback_readback)
+    session_type = getattr(onnxruntime, "InferenceSession", None)
+    if (not callable(session_type)
+            or not callable(getattr(session_type, "disable_fallback", None))):
+        raise RuntimeError(
+            "speaker GPU-only policy cannot disable Python runtime fallback")
+    try:
+        sess = session_type(
+            seg_model, opts, providers=["CUDAExecutionProvider"],
+            enable_fallback=0)
+    except TypeError as exc:
+        raise RuntimeError(
+            "speaker GPU-only policy cannot disable fallback in the session constructor") from exc
+    disable_fallback = getattr(sess, "disable_fallback", None)
+    if not callable(disable_fallback):
+        raise RuntimeError(
+            "speaker GPU-only policy session has no runtime fallback-disable API")
+    try:
+        disable_fallback()
+    except Exception as exc:  # noqa: BLE001 -- runtime fallback must stay closed
+        raise RuntimeError(
+            "speaker GPU-only policy could not disable Python runtime fallback") from exc
+    if getattr(sess, "_enable_fallback", None) is not False:
+        raise RuntimeError(
+            "speaker GPU-only policy could not read back disabled Python runtime fallback")
+    sess.sotto_runtime_fallback_readback = False
+    selected = list(sess.get_providers())
+    if "CUDAExecutionProvider" not in selected:
+        raise RuntimeError("speaker segmentation did not load CUDA; providers=%r" % selected)
+    sess.sotto_cuda_device_census = cuda_device
+    sess.sotto_cpu_ep_fallback_readback = fallback_readback
+    sess.sotto_provider_readback = selected
+    return sess
 
 
 def powerset_windows(sess, samples):
@@ -1320,6 +1499,26 @@ def main(argv=None) -> int:
                  "\n  ".join(str(s.get("name")) for s in specs)))
         return 2
 
+    diarize = None
+    if not args.watch_only:
+        try:
+            diarize = _make_live_diarizer(args)
+        except Exception as exc:  # noqa: BLE001 -- refusal must stay before capture starts
+            print("sidecar: GPU-only diarization unavailable; capture not started: %s: %s"
+                  % (type(exc).__name__, exc))
+            return 2
+
+    sess = None
+    if args.watch_only:
+        try:
+            # Complete DLL preload, packaged CUDA registration/census, CPU-EP
+            # fallback readbacks and session provider readback before capture.
+            sess = _load_powerset(args.seg_model, args.threads)
+        except Exception as exc:  # noqa: BLE001 -- no capture before GPU preflight
+            print("sidecar: GPU-only watch unavailable; capture not started: %s: %s"
+                  % (type(exc).__name__, exc))
+            return 2
+
     src_rate = int(chosen.get("rate") or args.rate)
     buf = RingBuffer(rate=args.rate, window_s=args.window_s)
 
@@ -1333,15 +1532,21 @@ def main(argv=None) -> int:
           % (chosen.get("name"), src_rate, args.rate, out_path, args.every_s))
     tap = _tap_for(chosen, sink)
     if args.watch_only:
-        sess = _load_powerset(args.seg_model, args.threads)
+        print("SPEAKER_GPU_POLICY mode=watch cuda_device_census=%s "
+              "cpu_fallback_readback=%s runtime_fallback_disabled=%s "
+              "providers=%s node_assignment=unverified"
+              % (sess.sotto_cuda_device_census,
+                 sess.sotto_cpu_ep_fallback_readback,
+                 sess.sotto_runtime_fallback_readback is False,
+                 ",".join(sess.sotto_provider_readback)))
         slots = None
         print("sidecar: FASE A -- so 'duas vozes ao mesmo tempo?', classes %s, "
               "hold %d frames (%.1f ms). Nao carrega embeddings, nao da nomes."
               % (list(MULTI_CLASSES), args.watch_hold,
                  args.watch_hold * FRAME_S * 1000))
     else:
-        sess = None
-        diarize = _make_live_diarizer(args)
+        print("SPEAKER_GPU_POLICY mode=diarize requested_provider=cuda "
+              "segmentation=cuda embedding=cuda")
         slots = None if args.no_stable_slots else StableSpeakerSlots()
         if args.window_s > SAFE_WINDOW_S:
             # AVISO, e nao recusa: quem escolheu uma janela maior pode ter

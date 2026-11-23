@@ -365,7 +365,7 @@ def verify(out: Path, src: Path, wav: Path) -> int:
     import parakeet_ultra
 
     pcm = read_wav16(wav)
-    torch_backend = parakeet_ultra.TorchBackend(src, device="cpu", frontend="nemo", onnx_dir=out)
+    torch_backend = parakeet_ultra.TorchBackend(src, device="cuda", frontend="nemo", onnx_dir=out)
     onnx_backend = parakeet_ultra.OnnxBackend(out)
     reference = onnx_backend._engine
     reference_tokens, _ = reference.greedy(reference.encode(pcm))

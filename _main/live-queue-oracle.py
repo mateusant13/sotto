@@ -15,9 +15,9 @@ fila FIFO de audio que o consumidor ia transcrever em ordem.
 A REGRA (novo `worker/live_queue.py`): tecto em SEGUNDOS, e quando ele passa e'
 o bloco mais ANTIGO que sai. O audio de agora vale mais do que o de ha 2 s.
 
-ARMS (9): a aritmetica do tecto, o comportamento real da `queue.Queue` ao encher,
+ARMS: a aritmetica do tecto, o comportamento real da `queue.Queue` ao encher,
 o controle com a regra ANTIGA (`put_nowait` + drop do NOVO, que perde o agora),
-o wiring no worker vivo (AST) e o contador publicado.
+o wiring no worker vivo e os totais exactos de blocos/amostras por motivo.
 
 O CONTROLE NEGATIVO (`--neg-arm`) inverte a politica numa COPIA do modulo e exige
 que o oraculo fique VERMELHO.
@@ -33,7 +33,9 @@ import os
 import queue
 import shutil
 import sys
+import threading
 import tempfile
+import textwrap
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, ".."))
@@ -58,6 +60,326 @@ def old_policy(q, block, cap):
         return 0
     except queue.Full:
         return 1
+
+
+class AudioBlock:
+    def __init__(self, samples):
+        self.size = int(samples)
+
+
+def queue_eviction_checks(LQ):
+    """Exercise production queue policy and its fixed, per-reason accounting."""
+    checks = []
+    counters = {"queue_evicted": 0}
+    q = queue.Queue()
+    for _ in range(30):
+        block = AudioBlock(100)
+        evicted, dropped, samples = LQ.enqueue_live_detailed(q, block, 20)
+        if evicted:
+            LQ.record_eviction(counters, "live-2s-cap", evicted, samples)
+    row = counters["queue_eviction_reasons"]["live-2s-cap"]
+    checks.extend([
+        ("2s-cap-evicts-exact-blocks", row["blocks"] == 10),
+        ("2s-cap-evicts-exact-samples", row["samples"] == 1000),
+        ("2s-cap-keeps-capacity-unchanged", q.qsize() == 20),
+        ("aggregate-evictions-match-reasons", counters["queue_evicted"] == 10),
+    ])
+
+    first = {"queue_evicted": 0}
+    LQ.record_eviction(first, "first-tap-unready", 1, 640)
+    first_row = first["queue_eviction_reasons"]["first-tap-unready"]
+    checks.extend([
+        ("first-tap-stale-backlog-block-count", first_row["blocks"] == 1),
+        ("first-tap-stale-backlog-sample-count", first_row["samples"] == 640),
+    ])
+
+    stale_q = queue.Queue()
+    stale_q.put_nowait(AudioBlock(400))
+    stale_q.put_nowait(AudioBlock(800))
+    stale, stale_samples = LQ.discard_stale_generation(stale_q, AudioBlock(160))
+    generation = {"queue_evicted": 0}
+    LQ.record_eviction(generation, "device-change-stale-generation", stale, stale_samples)
+    stale_row = generation["queue_eviction_reasons"]["device-change-stale-generation"]
+    checks.extend([
+        ("device-change-discards-current-and-stale-backlog", stale == 3 and stale_q.empty()),
+        ("device-change-counts-exact-samples", stale_row["samples"] == 1360),
+    ])
+    return checks
+
+
+def eviction_wiring_checks(worker_source):
+    """Source gate: each real production discard site must name its reason."""
+    needles = {
+        "live-cap": 'record_eviction(counters, reason, evicted, evicted_samples)',
+        "first-tap": 'record_eviction(counters, reason, 1, samples)',
+        "device-change": 'record_eviction(counters, reason, zero, zero_samples)',
+    }
+    return {name: needle in worker_source for name, needle in needles.items()}
+
+
+def concurrent_eviction_checks(LQ):
+    """Prove exact producer/consumer totals and lock-coherent snapshots."""
+    counters = {
+        "queue_evicted": 0,
+        "queue_eviction_reasons": {
+            reason: {"blocks": 0, "samples": 0}
+            for reason in LQ.QUEUE_EVICTION_REASONS
+        },
+        "queue_eviction_lock": threading.Lock(),
+    }
+    start = threading.Barrier(3)
+    failures = []
+
+    def record_many(reason):
+        try:
+            start.wait(timeout=2)
+            for _ in range(1000):
+                LQ.record_eviction(counters, reason, 1, 640)
+        except Exception as exc:  # noqa: BLE001 -- report setup/runtime failure
+            failures.append(type(exc).__name__)
+
+    producer = threading.Thread(target=record_many, args=("live-2s-cap",), daemon=True)
+    consumer = threading.Thread(target=record_many, args=("first-tap-unready",), daemon=True)
+    producer.start()
+    consumer.start()
+    start.wait(timeout=2)
+    producer.join(timeout=3)
+    consumer.join(timeout=3)
+    completed = not producer.is_alive() and not consumer.is_alive() and not failures
+    snapshot = LQ.eviction_snapshot(counters)
+    exact = (
+        completed
+        and snapshot["blocks"] == 2000
+        and snapshot["reasons"]["live-2s-cap"] == {"blocks": 1000, "samples": 640000}
+        and snapshot["reasons"]["first-tap-unready"] == {"blocks": 1000, "samples": 640000}
+    )
+
+    # Hold the production lock and prove the receipt snapshot waits for it.
+    class ObservedLock:
+        def __init__(self):
+            self.raw = threading.Lock()
+            self.requested = threading.Event()
+
+        def acquire(self):
+            return self.raw.acquire()
+
+        def release(self):
+            self.raw.release()
+
+        def __enter__(self):
+            self.requested.set()
+            self.raw.acquire()
+            return self
+
+        def __exit__(self, _type, _value, _traceback):
+            self.raw.release()
+
+    lock = ObservedLock()
+    counters["queue_eviction_lock"] = lock
+    entered = threading.Event()
+    finished = threading.Event()
+    observed = {}
+
+    def take_snapshot():
+        entered.set()
+        observed.update(LQ.eviction_snapshot(counters))
+        finished.set()
+
+    lock.acquire()
+    reader = threading.Thread(target=take_snapshot, daemon=True)
+    reader.start()
+    reader_started = entered.wait(1) and lock.requested.wait(1)
+    blocked_by_writer_lock = reader_started and not finished.is_set()
+    lock.release()
+    reader.join(timeout=2)
+    coherent = blocked_by_writer_lock and not reader.is_alive() and observed == snapshot
+    return [
+        ("producer-consumer-concurrent-counts-exact", exact),
+        ("receipt-snapshot-shares-counter-lock", coherent),
+    ]
+
+
+def file_tap_flow_checks(LQ, worker_source):
+    """Run the actual FileTap pump method through the real bounded queue policy."""
+    import ast
+
+    try:
+        tree = ast.parse(worker_source)
+        tap_class = next(node for node in tree.body
+                         if isinstance(node, ast.ClassDef) and node.name == "FileTap")
+        pump_node = next(node for node in tap_class.body
+                         if isinstance(node, ast.FunctionDef) and node.name == "_pump")
+        finite_node = next(node for node in tree.body
+                           if isinstance(node, ast.FunctionDef)
+                           and node.name == "finite_file_tap_state")
+        pump_source = textwrap.dedent(ast.get_source_segment(worker_source, pump_node))
+        finite_source = ast.get_source_segment(worker_source, finite_node)
+    except Exception as exc:  # noqa: BLE001 -- missing source seam is a red control
+        return [("actual-FileTap-EOF-source-available", type(exc).__name__, "available")]
+
+    class FakeBlock:
+        def __init__(self, start, stop):
+            self.start = int(start)
+            self.stop = int(stop)
+            self.size = max(0, self.stop - self.start)
+
+    class FakePcm:
+        size = 190400
+
+        def __getitem__(self, section):
+            start = int(section.start or 0)
+            stop = min(int(section.stop or self.size), self.size)
+            return FakeBlock(start, stop)
+
+    class FakeNumpy:
+        float32 = object()
+
+        @staticmethod
+        def ascontiguousarray(block, dtype=None):
+            return block
+
+    class FakeClock:
+        def __init__(self):
+            self.now = 0.0
+            self.pace_calls = 0
+            self.on_pace = None
+
+        def monotonic(self):
+            return self.now
+
+        def sleep(self, seconds):
+            self.now += float(seconds)
+            self.pace_calls += 1
+            if self.on_pace is not None:
+                self.on_pace()
+
+    clock = FakeClock()
+    eof_events = []
+    q = queue.Queue(maxsize=256)
+    callback_blocks = []
+    consumed_blocks = []
+    evictions = {"queue_evicted": 0, "queue_eviction_reasons": {}}
+    dropped = 0
+    max_depth = 0
+
+    class FakeStop:
+        @staticmethod
+        def is_set():
+            return False
+
+    class FakeStream:
+        _stop = FakeStop()
+
+    class TapShim:
+        def __init__(self):
+            self.pcm = FakePcm()
+            self.np = FakeNumpy()
+            self.on_block = self._on_block
+            self.block = 640
+            self.block_ms = 40
+            self.once = True
+            self.done = threading.Event()
+            self.stream = FakeStream()
+            self.rate = 16000
+
+        def _on_block(self, block):
+            nonlocal dropped, max_depth
+            callback_blocks.append((block.start, block.stop))
+            evicted, new_drops, evicted_samples = LQ.enqueue_live_detailed(
+                q, block, LQ.max_blocks(40))
+            dropped += new_drops
+            if evicted:
+                LQ.record_eviction(evictions, "live-2s-cap", evicted, evicted_samples)
+            max_depth = max(max_depth, q.qsize())
+
+        def consume_one(self):
+            block, empty = LQ.dequeue_live(q, timeout=0)
+            if not empty:
+                consumed_blocks.append(block)
+
+    tap = TapShim()
+    namespace = {
+        "FileTap": TapShim,
+        "time": clock,
+        "emit": lambda **row: eof_events.append(row),
+    }
+    exec(compile(pump_source, "<FileTap._pump source>", "exec"), namespace)
+    exec(compile(finite_source, "<finite_file_tap_state source>", "exec"), namespace)
+    # `_pump` itself is the parsed production method and gets the same callback
+    # object as a stream; only timing and the downstream consumer are synthetic.
+    namespace["FileTap"]._pump = namespace["_pump"]
+    def consume_scheduled_block():
+        if len(callback_blocks) > 16:
+            tap.consume_one()
+    clock.on_pace = consume_scheduled_block
+    namespace["FileTap"]._pump(tap)
+
+    # A fake consumer starts after a 16-block open/dispatch delay, then keeps up
+    # at one dequeue per scheduled 40 ms tick. This creates a bounded queue
+    # backlog without pausing, speeding, or looping the one-shot source.
+    # `_pump` already ran; consume the 17-block tail at 20 ms per block so the
+    # EOF-to-drained bound is checked independently of a model.
+    queued_at_eof = q.qsize()
+    drain_state_before = namespace["finite_file_tap_state"](tap, False)
+    drain_elapsed_s = 0.0
+    while True:
+        block, empty = LQ.dequeue_live(q, timeout=0)
+        if empty:
+            break
+        consumed_blocks.append(block)
+        drain_elapsed_s += 0.020
+    consumed = consumed_blocks
+    source_samples = sum(stop - start for start, stop in callback_blocks)
+    consumed_samples = sum(block.size for block in consumed)
+    continuous = (
+        bool(callback_blocks) and callback_blocks[0][0] == 0
+        and callback_blocks[-1][1] == FakePcm.size
+        and all(left[1] == right[0]
+                for left, right in zip(callback_blocks, callback_blocks[1:]))
+    )
+    consumed_contiguous = (
+        bool(consumed) and consumed[0].start == 0
+        and consumed[-1].stop == FakePcm.size
+        and all(left.stop == right.start for left, right in zip(consumed, consumed[1:]))
+    )
+    expected_audio_s = FakePcm.size / 16000.0
+    no_false_rotation = (
+        [row.get("state") for row in eof_events] == ["file-tap-eof"]
+        and tap.done.is_set()
+        and drain_state_before == "drain"
+        and namespace["finite_file_tap_state"](tap, True) == "complete"
+    )
+    drain_mutant_source = finite_source.replace(
+        'return "complete" if file_drained else "drain"',
+        'return "monitor"', 1)
+    mutant_namespace = {"FileTap": TapShim}
+    exec(compile(drain_mutant_source, "<mutated finite_file_tap_state>", "exec"),
+         mutant_namespace)
+    watchdog_mutant_caught = (
+        drain_mutant_source != finite_source
+        and mutant_namespace["finite_file_tap_state"](tap, False) != "drain"
+    )
+    return [
+        ("actual-FileTap-callbacks-298-of-298", len(callback_blocks), 298),
+        ("actual-FileTap-samples-contiguous-and-nonrepeating", continuous, True),
+        ("actual-live-queue-consumes-298-of-298-blocks", len(consumed), 298),
+        ("actual-live-queue-consumes-all-190400-samples", consumed_samples, 190400),
+        ("actual-live-queue-consumes-contiguous-source-order", consumed_contiguous, True),
+        ("actual-2s-cap-no-evictions-or-drops", (evictions["queue_evicted"], dropped), (0, 0)),
+        ("actual-FileTap-max-depth-stays-under-50-block-cap", max_depth <= 50, True),
+        ("actual-FileTap-cadence-does-not-stretch-or-loop",
+         abs(expected_audio_s - clock.now) <= 0.040 and clock.pace_calls == 297, True),
+        ("actual-FileTap-simulated-scheduled-seconds", round(clock.now, 3), 11.88),
+        ("actual-FileTap-EOF-reports-exact-source-samples",
+         (eof_events[-1].get("samples"), eof_events[-1].get("mode")), (190400, "once")),
+        ("actual-FileTap-buffered-tail-blocks", queued_at_eof, 17),
+        ("actual-FileTap-EOF-drain-simulated-ms", round(drain_elapsed_s * 1000, 3), 340.0),
+        ("actual-FileTap-EOF-drain-at-most-606ms", drain_elapsed_s <= 0.606, True),
+        ("actual-FileTap-drain-does-not-falsely-rotate", no_false_rotation, True),
+        ("production-asr-consumer-uses-dequeue-helper",
+         "_live_queue.dequeue_live(audio_q, timeout=0.25)" in worker_source, True),
+        ("file-tap-EOF-watchdog-reopen-mutant-is-detected", watchdog_mutant_caught, True),
+    ]
 
 
 # ── A ESPERA (`PendingAudio`): o audio que nenhum motor leu ──────────────────
@@ -362,12 +684,23 @@ def main() -> int:
 
     # O WIRING no worker vivo: quem manda e' a politica nova.
     src = io.open(os.path.join(WORKER, "sotto_worker.py"), encoding="utf-8").read()
-    arm("o worker chama `live_queue.enqueue_live`",
-        "_live_queue.enqueue_live(" in src, True)
+    arm("o worker chama `live_queue.enqueue_live_detailed`",
+        "_live_queue.enqueue_live_detailed(" in src, True)
     arm("o `put_nowait(block)` cru (regra antiga) ja' NAO esta' no on_block",
         "audio_q.put_nowait(block)" in src, False)
-    arm("o worker publica o contador `queue_evicted`",
-        'counters["queue_evicted"]' in src, True)
+    arm("o worker publica o contador agregado `queue_evicted`",
+        'queue_evicted=eviction_stats["blocks"]' in src
+        and "_live_queue.eviction_snapshot(counters)" in src, True)
+    for name, passed in queue_eviction_checks(LQ):
+        arm(name, passed, True)
+    for name, passed in concurrent_eviction_checks(LQ):
+        arm(name, passed, True)
+    eviction_wiring = eviction_wiring_checks(src)
+    for name in ("live-cap", "first-tap", "device-change"):
+        arm("production source accounts " + name + " eviction reason",
+            eviction_wiring[name], True)
+    for name, real, want in file_tap_flow_checks(LQ, src):
+        arm(name, real, want)
 
     # ── A ESPERA: o audio capturado com NADA carregado ───────────────────────
     # A ordem do dono de 2026-11-01 nao deixa margem: *"processa qualquer audio
@@ -448,6 +781,21 @@ def main() -> int:
             for m in [m for m in list(sys.modules) if m == "live_queue"]:
                 del sys.modules[m]
             shutil.rmtree(tmp, ignore_errors=True)
+        # One independent source mutation per production eviction detector.
+        # Each removes exactly that call site's reason-specific accounting.
+        worker_source = io.open(os.path.join(WORKER, "sotto_worker.py"), encoding="utf-8").read()
+        mutations = {
+            "live-cap": 'record_eviction(counters, reason, evicted, evicted_samples)',
+            "first-tap": 'record_eviction(counters, reason, 1, samples)',
+            "device-change": 'record_eviction(counters, reason, zero, zero_samples)',
+        }
+        for name, needle in mutations.items():
+            mutant_source = worker_source.replace(needle, "# MUTANT: attribution omitted", 1)
+            caught = (mutant_source != worker_source
+                      and not eviction_wiring_checks(mutant_source)[name])
+            print(f"[{'PASS' if caught else 'FAIL'}] neg-arm({name}-eviction-accounting): "
+                  "single missing counter is detected")
+            RESULTS.append(caught)
         # E os dois mutantes da ESPERA -- um que PERDE um bloco, outro que FECHA a
         # fila cedo. Sem eles, os arms da espera seriam os unicos deste oraculo
         # que nada derruba, e um arm que nada derruba nao mede nada.

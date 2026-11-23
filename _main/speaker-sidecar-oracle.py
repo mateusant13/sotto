@@ -28,7 +28,10 @@ that is *plausible* and *wrong*, which is exactly why they are tested.
 from __future__ import annotations
 
 import ast
+import builtins
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -36,8 +39,12 @@ import sys
 import tempfile
 import threading
 import time
+import types
 
 REPO = r"H:\sotto"
+WORKER_DIR = os.path.join(REPO, "worker")
+if WORKER_DIR not in sys.path:
+    sys.path.insert(0, WORKER_DIR)
 MODULE_PATH = os.path.join(REPO, "worker", "speaker_sidecar.py")
 BRIDGE_PATH = os.path.join(REPO, "worker", "speaker_bridge.py")
 
@@ -290,7 +297,997 @@ def battery(mod) -> list:
         chk(not leftovers, "no temporary file is left behind", repr(leftovers))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    out.extend(gpu_policy_battery(mod))
     return out
+
+
+def gpu_policy_battery(mod) -> list:
+    """Model-free controls for the full diarizer's GPU-only admission gate."""
+    out = []
+
+    def chk(ok, name, detail=""):
+        out.append((bool(ok), name, detail))
+        return bool(ok)
+
+    validator = getattr(mod, "_validate_gpu_speaker_attestation", None)
+    if not callable(validator):
+        chk(False, "full diarizer requires runtime provider attestation",
+            "validator is absent")
+        chk(False, "attestation tests are wired", "validator is absent")
+        return out
+
+    expected = {"segmentation": "a" * 64, "embedding": "b" * 64}
+
+    def component(digest, nodes=7, fallback_disabled=True, provider="CUDAExecutionProvider"):
+        assignments = {provider: nodes}
+        return {
+            "model_sha256": digest,
+            "cpu_ep_fallback_disabled": fallback_disabled,
+            "node_assignment_counts": assignments,
+        }
+
+    valid = {
+        "schema": "sotto-speaker-gpu-attestation-v1",
+        "evidence": "onnxruntime-node-assignment",
+        "components": {
+            "segmentation": component(expected["segmentation"], nodes=18),
+            "embedding": component(expected["embedding"], nodes=42),
+        },
+    }
+
+    def accepts(candidate):
+        try:
+            validator(candidate, expected)
+            return True
+        except (RuntimeError, ValueError, TypeError):
+            return False
+
+    chk(accepts(valid), "exact CUDA node attestation for both speaker models passes")
+    chk(not accepts(None), "missing runtime attestation fails closed")
+
+    bad_hash = json.loads(json.dumps(valid))
+    bad_hash["components"]["segmentation"]["model_sha256"] = "c" * 64
+    chk(not accepts(bad_hash), "source hash mismatch fails closed")
+
+    bad_cpu = json.loads(json.dumps(valid))
+    bad_cpu["components"]["embedding"]["node_assignment_counts"] = {
+        "CUDAExecutionProvider": 41, "CPUExecutionProvider": 1,
+    }
+    chk(not accepts(bad_cpu), "any CPU-assigned neural node fails closed")
+
+    bad_fallback = json.loads(json.dumps(valid))
+    bad_fallback["components"]["segmentation"]["cpu_ep_fallback_disabled"] = False
+    chk(not accepts(bad_fallback), "CPU EP fallback must be disabled")
+
+    bad_provider = json.loads(json.dumps(valid))
+    bad_provider["components"]["embedding"]["node_assignment_counts"] = {
+        "UnknownExecutionProvider": 42,
+    }
+    chk(not accepts(bad_provider), "unknown provider fails closed")
+
+    # Exercise the strict adapter path without loading an ONNX graph. The fake
+    # adapter records the exact contract and returns only synthetic readback;
+    # this proves the consumer rejects a weaker adapter before audio starts.
+    missing = object()
+    with tempfile.TemporaryDirectory(prefix="sidecar-gpu-policy-") as tmp:
+        seg_path = os.path.join(tmp, "seg.onnx")
+        emb_path = os.path.join(tmp, "emb.onnx")
+        with open(seg_path, "wb") as fh:
+            fh.write(b"seg-fixture")
+        with open(emb_path, "wb") as fh:
+            fh.write(b"emb-fixture")
+        expected_files = {
+            "segmentation": mod._sha256_file(seg_path),
+            "embedding": mod._sha256_file(emb_path),
+        }
+        actual_attestation = json.loads(json.dumps(valid))
+        actual_attestation["components"]["segmentation"]["model_sha256"] = \
+            expected_files["segmentation"]
+        actual_attestation["components"]["embedding"]["model_sha256"] = \
+            expected_files["embedding"]
+
+        class Config:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def validate(self):
+                return True
+
+        class FakeDiarizer:
+            def __init__(self, readback_value):
+                self.readback_value = readback_value
+                self.closed = False
+
+            def get_runtime_node_assignment_readback(self):
+                return self.readback_value
+
+            def close(self):
+                self.closed = True
+
+        adapter_calls = []
+        made = []
+
+        def factory(config, *, disable_cpu_ep_fallback, expected_model_sha256):
+            adapter_calls.append((disable_cpu_ep_fallback, expected_model_sha256))
+            item = FakeDiarizer(actual_attestation)
+            made.append(item)
+            return item
+
+        adapter = types.SimpleNamespace(
+            OfflineSpeakerSegmentationPyannoteModelConfig=Config,
+            OfflineSpeakerSegmentationModelConfig=Config,
+            SpeakerEmbeddingExtractorConfig=Config,
+            FastClusteringConfig=Config,
+            OfflineSpeakerDiarizationConfig=Config,
+            create_gpu_only_offline_speaker_diarizer=factory,
+        )
+        fake_ort = types.SimpleNamespace(
+            get_available_providers=lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"])
+        cpu_only_ort = types.SimpleNamespace(
+            get_available_providers=lambda: ["CPUExecutionProvider"])
+        prior = sys.modules.get("sherpa_onnx", missing)
+        prior_ort = sys.modules.get("onnxruntime", missing)
+        sys.modules["sherpa_onnx"] = adapter
+        sys.modules["onnxruntime"] = fake_ort
+        try:
+            diarizer = mod._load_sherpa_diarizer(seg_path, emb_path)
+            chk(diarizer is made[0]
+                and adapter_calls == [(True, expected_files)],
+                "real loader passes exact model hashes and disables CPU fallback")
+
+            called_before = len(adapter_calls)
+            sys.modules["onnxruntime"] = cpu_only_ort
+            try:
+                mod._load_sherpa_diarizer(seg_path, emb_path)
+                rejected = False
+            except RuntimeError as exc:
+                rejected = "CUDAExecutionProvider" in str(exc)
+            chk(rejected and len(adapter_calls) == called_before,
+                "missing CUDA provider refuses before adapter/model construction")
+            sys.modules["onnxruntime"] = fake_ort
+
+            weak = FakeDiarizer(None)
+            adapter.create_gpu_only_offline_speaker_diarizer = (
+                lambda *args, **kwargs: weak)
+            try:
+                mod._load_sherpa_diarizer(seg_path, emb_path)
+                rejected = False
+            except RuntimeError:
+                rejected = True
+            chk(rejected and weak.closed,
+                "malformed runtime readback closes adapter and fails closed")
+
+            bad = json.loads(json.dumps(valid))
+            bad["components"]["segmentation"]["node_assignment_counts"] = {
+                "CUDAExecutionProvider": 17, "CPUExecutionProvider": 1,
+            }
+            cpu = FakeDiarizer(bad)
+            adapter.create_gpu_only_offline_speaker_diarizer = (
+                lambda *args, **kwargs: cpu)
+            try:
+                mod._load_sherpa_diarizer(seg_path, emb_path)
+                rejected = False
+            except RuntimeError:
+                rejected = True
+            chk(rejected and cpu.closed,
+                "runtime CPU node readback closes adapter and fails closed")
+        finally:
+            if prior is missing:
+                sys.modules.pop("sherpa_onnx", None)
+            else:
+                sys.modules["sherpa_onnx"] = prior
+            if prior_ort is missing:
+                sys.modules.pop("onnxruntime", None)
+            else:
+                sys.modules["onnxruntime"] = prior_ort
+
+    # Exercise the loader with the API shape actually present in sherpa-onnx
+    # 1.13.4: a provider config, but no strict factory/readback surface. Its
+    # constructor must not run before the capability refusal.
+    calls = {"constructor": 0}
+
+    class LegacyDiarizer:
+        def __init__(self, config):
+            calls["constructor"] += 1
+
+    legacy = types.SimpleNamespace(OfflineSpeakerDiarization=LegacyDiarizer)
+    prior = sys.modules.get("sherpa_onnx", missing)
+    prior_ort = sys.modules.get("onnxruntime", missing)
+    sys.modules["sherpa_onnx"] = legacy
+    sys.modules["onnxruntime"] = types.SimpleNamespace(
+        get_available_providers=lambda: ["CUDAExecutionProvider"])
+    try:
+        try:
+            mod._load_sherpa_diarizer("seg.onnx", "emb.onnx")
+            refused = False
+        except RuntimeError as exc:
+            refused = "GPU-only" in str(exc) or "attestation" in str(exc)
+    except Exception as exc:  # the missing-adapter path must be intentional
+        refused = False
+        detail = "%s: %s" % (type(exc).__name__, exc)
+    else:
+        detail = ""
+    finally:
+        if prior is missing:
+            sys.modules.pop("sherpa_onnx", None)
+        else:
+            sys.modules["sherpa_onnx"] = prior
+        if prior_ort is missing:
+            sys.modules.pop("onnxruntime", None)
+        else:
+            sys.modules["onnxruntime"] = prior_ort
+    chk(refused and calls["constructor"] == 0,
+        "legacy sherpa API is refused before model construction",
+        detail or "constructor_calls=%d" % calls["constructor"])
+
+    # Explicit CPU or an unknown provider is refused before importing sherpa.
+    for requested in ("cpu", "unknown"):
+        try:
+            mod._load_sherpa_diarizer("seg.onnx", "emb.onnx", provider=requested)
+            rejected = False
+        except RuntimeError:
+            rejected = True
+        chk(rejected, "requested provider %r is refused" % requested)
+
+    out.extend(watch_policy_battery(mod))
+    return out
+
+
+def watch_policy_battery(mod) -> list:
+    """Fake-ORT controls for the actual --watch-only powerset loader."""
+    out = []
+
+    def chk(ok, name, detail=""):
+        out.append((bool(ok), name, detail))
+        return bool(ok)
+
+    def run_case(*, census="cuda", available=None, fallback="1",
+                 option_reader=True, providers=None, runtime_fallback=False,
+                 disable_api=True):
+        trace = []
+        calls = {"session": 0, "requested": None, "options": None,
+                 "enable_fallback": None, "runtime_disable": 0}
+        options = types.SimpleNamespace(entries={})
+
+        def add_entry(key, value):
+            trace.append(("option-write", key, str(value)))
+            options.entries[key] = str(value)
+
+        options.add_session_config_entry = add_entry
+        if option_reader:
+            def get_entry(key):
+                trace.append(("option-read", key))
+                return fallback
+            options.get_session_config_entry = get_entry
+
+        class FakeSession:
+            def __init__(self, path, opts, providers=None, enable_fallback=1):
+                trace.append(("session",))
+                calls["session"] += 1
+                calls["requested"] = list(providers or ())
+                calls["option_value_at_construction"] = (
+                    opts.entries.get("session.disable_cpu_ep_fallback"))
+                calls["readback_before_construction"] = (
+                    ("option-read", "session.disable_cpu_ep_fallback") in trace)
+                calls["enable_fallback"] = enable_fallback
+                self._enable_fallback = bool(enable_fallback)
+
+            def disable_fallback(self):
+                trace.append(("runtime-fallback-disable",))
+                calls["runtime_disable"] += 1
+                self._enable_fallback = bool(runtime_fallback)
+
+            def get_providers(self):
+                return list(providers or ["CUDAExecutionProvider", "CPUExecutionProvider"])
+
+        if not disable_api:
+            delattr(FakeSession, "disable_fallback")
+
+        def get_devices():
+            trace.append(("census",))
+            if census == "unknown":
+                raise RuntimeError("injected census unavailable")
+            if census == "cpu":
+                return [types.SimpleNamespace(ep_name="CPUExecutionProvider")]
+            return [types.SimpleNamespace(ep_name="CUDAExecutionProvider")]
+
+        fake = types.SimpleNamespace()
+        if census != "missing":
+            fake.get_ep_devices = get_devices
+        fake.get_available_providers = lambda: list(
+            available or ["CUDAExecutionProvider", "CPUExecutionProvider"])
+
+        def make_options():
+            trace.append(("options",))
+            calls["options"] = options
+            return options
+
+        fake.SessionOptions = make_options
+        fake.InferenceSession = FakeSession
+        missing = object()
+        prior = sys.modules.get("onnxruntime", missing)
+        helper_name = "ort_cuda_runtime"
+        prior_helper = sys.modules.get(helper_name, missing)
+        fake_helper = types.ModuleType(helper_name)
+        fake_helper.prepare_ort_runtime = lambda: fake
+        sys.modules[helper_name] = fake_helper
+        sys.modules["onnxruntime"] = fake
+        try:
+            try:
+                result = mod._load_powerset("model-free-fake.onnx", threads=3)
+                error = None
+            except Exception as exc:  # model-free injected provider failures only
+                result, error = None, exc
+        finally:
+            if prior is missing:
+                sys.modules.pop("onnxruntime", None)
+            else:
+                sys.modules["onnxruntime"] = prior
+            if prior_helper is missing:
+                sys.modules.pop(helper_name, None)
+            else:
+                sys.modules[helper_name] = prior_helper
+        return result, error, calls, trace
+
+    result, error, calls, trace = run_case()
+    chk(error is None and result is not None
+        and calls["requested"] == ["CUDAExecutionProvider"]
+        and calls["enable_fallback"] == 0
+        and calls["runtime_disable"] == 1
+        and calls.get("option_value_at_construction") == "1"
+        and calls.get("readback_before_construction") is True
+        and result.sotto_cuda_device_census is True
+        and result.sotto_cpu_ep_fallback_readback == "1"
+        and result.sotto_runtime_fallback_readback is False
+        and result.sotto_provider_readback == [
+            "CUDAExecutionProvider", "CPUExecutionProvider"],
+        "watch loader accepts positive census, exact fallback readback and CUDA provider readback",
+        "configured CPU provider name is allowed; CPU node assignment remains unverified")
+
+    for census, label in (("cpu", "CPU-only"), ("unknown", "unknown"),
+                          ("missing", "missing")):
+        result, error, calls, trace = run_case(census=census)
+        chk(isinstance(error, RuntimeError) and calls["session"] == 0,
+            "watch loader refuses %s CUDA census before session construction" % label,
+            "sessions=%d" % calls["session"])
+
+    result, error, calls, _ = run_case(
+        available=["CPUExecutionProvider"])
+    chk(isinstance(error, RuntimeError) and calls["session"] == 0,
+        "watch loader refuses when CUDA provider is unavailable before construction")
+
+    result, error, calls, _ = run_case(option_reader=False)
+    chk(isinstance(error, RuntimeError) and calls["session"] == 0,
+        "watch loader refuses missing SessionOptions fallback readback before construction")
+
+    result, error, calls, _ = run_case(fallback="0")
+    chk(isinstance(error, RuntimeError) and calls["session"] == 0,
+        "watch loader refuses non-1 SessionOptions fallback readback before construction")
+
+    result, error, calls, _ = run_case(providers=["CPUExecutionProvider"])
+    chk(isinstance(error, RuntimeError) and calls["session"] == 1,
+        "watch loader refuses session without CUDA provider readback")
+
+    result, error, calls, _ = run_case(runtime_fallback=True)
+    chk(isinstance(error, RuntimeError) and calls["runtime_disable"] == 1,
+        "watch loader refuses Python runtime fallback that remains enabled")
+
+    result, error, calls, _ = run_case(disable_api=False)
+    chk(isinstance(error, RuntimeError) and calls["session"] == 0,
+        "watch loader refuses missing Python fallback-disable API before construction")
+    out.extend(watch_cuda_bootstrap_battery(mod))
+    out.extend(watch_main_capture_order_battery(mod))
+    return out
+
+
+def watch_cuda_bootstrap_battery(mod) -> list:
+    """Prove standalone sidecar bootstraps ORT CUDA before its device census."""
+    out = []
+
+    def chk(ok, name, detail=""):
+        out.append((bool(ok), name, detail))
+
+    helper_path = os.path.join(REPO, "worker", "ort_cuda_runtime.py")
+    if not os.path.isfile(helper_path):
+        return [(False, "watch sidecar uses shared CUDA bootstrap helper",
+                 "missing %s" % helper_path)]
+
+    worker_dir = os.path.join(REPO, "worker")
+    added_path = worker_dir not in sys.path
+    if added_path:
+        sys.path.insert(0, worker_dir)
+    helper_name = "ort_cuda_runtime"
+    saved_helper = sys.modules.pop(helper_name, None)
+    saved_ort = sys.modules.get("onnxruntime", None)
+    missing = object()
+    if saved_ort is None:
+        saved_ort = missing
+
+    helper_source = open(helper_path, "r", encoding="utf-8").read()
+
+    def run_case(*, missing_preload=False, missing_register=False,
+                 initial_cuda=False,
+                 mutation=None):
+        trace = []
+        state = {"preloaded": False, "registered": False, "sessions": 0,
+                 "initial_cuda": bool(initial_cuda)}
+        options = types.SimpleNamespace(entries={})
+
+        def add_entry(key, value):
+            trace.append(("option-write", key, str(value)))
+            options.entries[key] = str(value)
+
+        def get_entry(key):
+            trace.append(("option-read", key))
+            return options.entries.get(key, "")
+
+        options.add_session_config_entry = add_entry
+        options.get_session_config_entry = get_entry
+
+        class FakeSession:
+            def __init__(self, path, opts, providers=None, enable_fallback=1):
+                trace.append(("session", int(enable_fallback)))
+                state["sessions"] += 1
+                self._enable_fallback = bool(enable_fallback)
+
+            def disable_fallback(self):
+                trace.append(("runtime-fallback-disable",))
+                self._enable_fallback = False
+
+            def get_providers(self):
+                trace.append(("provider-readback",))
+                return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+        class FakeOrt(types.ModuleType):
+            pass
+
+        fake = FakeOrt("onnxruntime")
+        if not missing_preload:
+            def preload_dlls():
+                trace.append(("preload",))
+                state["preloaded"] = True
+            fake.preload_dlls = preload_dlls
+
+        def get_devices():
+            trace.append(("census",))
+            if state["registered"] or state["initial_cuda"]:
+                return [types.SimpleNamespace(ep_name="CUDAExecutionProvider"),
+                        types.SimpleNamespace(ep_name="CPUExecutionProvider")]
+            return [types.SimpleNamespace(ep_name="CPUExecutionProvider")]
+
+        def get_available_providers():
+            trace.append(("available",))
+            return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+        def register(provider, path):
+            trace.append(("register", provider, os.path.basename(path)))
+            if not state["preloaded"]:
+                raise RuntimeError("fake CUDA plugin registration before preload")
+            if provider != "CUDAExecutionProvider" or not os.path.isfile(path):
+                raise RuntimeError("fake packaged CUDA plugin path invalid")
+            state["registered"] = True
+
+        fake.get_ep_devices = get_devices
+        fake.get_available_providers = get_available_providers
+        if not missing_register:
+            fake.register_execution_provider_library = register
+        fake.SessionOptions = lambda: options
+        fake.InferenceSession = FakeSession
+
+        with tempfile.TemporaryDirectory(prefix="speaker-ort-bootstrap-") as temp:
+            capi = os.path.join(temp, "capi")
+            os.makedirs(capi)
+            plugin_name = ("onnxruntime_providers_cuda.dll" if os.name == "nt"
+                           else "libonnxruntime_providers_cuda.dylib" if sys.platform == "darwin"
+                           else "libonnxruntime_providers_cuda.so")
+            plugin_path = os.path.join(capi, plugin_name)
+            with open(plugin_path, "wb") as fh:
+                fh.write(b"fake plugin path only")
+            fake.__file__ = os.path.join(temp, "__init__.py")
+
+            try:
+                mutated_source = helper_source
+                if mutation == "skip-preload":
+                    anchor = ("    ort = preload_dlls(ort)\n"
+                              "    register_cuda_plugin_if_needed(ort)\n")
+                    replacement = ("    register_cuda_plugin_if_needed(ort)\n")
+                elif mutation == "skip-registration":
+                    anchor = ("    register_cuda_plugin_if_needed(ort)\n"
+                              "    return True\n")
+                    replacement = ("    return True\n")
+                elif mutation == "register-before-preload":
+                    anchor = ("    ort = preload_dlls(ort)\n"
+                              "    register_cuda_plugin_if_needed(ort)\n")
+                    replacement = ("    register_cuda_plugin_if_needed(ort)\n"
+                                   "    ort = preload_dlls(ort)\n")
+                else:
+                    anchor, replacement = None, None
+                if anchor:
+                    if mutated_source.count(anchor) != 1:
+                        raise AssertionError("CUDA ordering mutation anchor missing")
+                    mutated_source = mutated_source.replace(anchor, replacement, 1)
+                helper = types.ModuleType(helper_name)
+                helper.__file__ = helper_path
+                exec(compile(mutated_source, helper_path, "exec"), helper.__dict__)  # noqa: S102
+                # Avoid real package discovery / DLL registration in this fake-only
+                # control; the helper's ordering and registration policy stay real.
+                helper.add_cuda_dll_dirs = lambda handles=None: trace.append(("dll-dirs",))
+                sys.modules[helper_name] = helper
+                sys.modules["onnxruntime"] = fake
+                prior_import = builtins.__import__
+                def trace_import(name, globals=None, locals=None, fromlist=(), level=0):
+                    if name == "onnxruntime":
+                        trace.append(("ort-import",))
+                    return prior_import(name, globals, locals, fromlist, level)
+                builtins.__import__ = trace_import
+                try:
+                    result = mod._load_powerset("model-free-fake.onnx", threads=1)
+                    error = None
+                except Exception as exc:  # only fake runtime policy paths
+                    result, error = None, exc
+            finally:
+                if "prior_import" in locals():
+                    builtins.__import__ = prior_import
+                sys.modules.pop(helper_name, None)
+                if saved_helper is not None:
+                    sys.modules[helper_name] = saved_helper
+                if saved_ort is missing:
+                    sys.modules.pop("onnxruntime", None)
+                else:
+                    sys.modules["onnxruntime"] = saved_ort
+        return result, error, trace, state
+
+    try:
+        result, error, trace, state = run_case()
+        expected_prefix = [
+            ("dll-dirs",), ("ort-import",), ("preload",),
+            ("census",), ("available",),
+            ("register", "CUDAExecutionProvider",
+             "onnxruntime_providers_cuda.dll" if os.name == "nt" else
+             "libonnxruntime_providers_cuda.dylib" if sys.platform == "darwin" else
+             "libonnxruntime_providers_cuda.so"),
+            ("census",), ("census",), ("census",), ("available",),
+        ]
+        chk(error is None and result is not None
+            and trace[:len(expected_prefix)] == expected_prefix
+            and state["sessions"] == 1
+            and result.sotto_cuda_device_census is True,
+            "watch CUDA startup orders DLL dirs, preload, registration and positive census",
+            repr(trace))
+
+        for kwargs, label in (
+                ({"missing_preload": True}, "missing preload API"),
+                ({"missing_register": True}, "missing plugin-registration API"),
+                ({"mutation": "skip-preload"}, "skipped preload mutation"),
+                ({"mutation": "skip-registration"}, "skipped registration mutation"),
+                ({"mutation": "register-before-preload"},
+                 "registration-before-preload ordering mutation")):
+            result, error, trace, state = run_case(**kwargs)
+            chk(isinstance(error, RuntimeError) and state["sessions"] == 0,
+                "watch CUDA startup refuses %s before session" % label,
+                "sessions=%d trace=%r" % (state["sessions"], trace))
+        result, error, trace, state = run_case(
+            missing_register=True, initial_cuda=True)
+        chk(error is None and result is not None and state["sessions"] == 1
+            and result.sotto_cuda_device_census is True,
+            "watch CUDA startup tolerates absent registration API after positive CUDA census",
+            "error=%r sessions=%d trace=%r" % (error, state["sessions"], trace))
+    finally:
+        if saved_helper is not None:
+            sys.modules[helper_name] = saved_helper
+        else:
+            sys.modules.pop(helper_name, None)
+        if saved_ort is missing:
+            sys.modules.pop("onnxruntime", None)
+        else:
+            sys.modules["onnxruntime"] = saved_ort
+        if added_path:
+            try:
+                sys.path.remove(worker_dir)
+            except ValueError:
+                pass
+    out.extend(cuda_dll_enumeration_battery())
+    return out
+
+
+def cuda_dll_enumeration_battery() -> list:
+    """Exercise the shared helper's total NVIDIA directory-entry budget."""
+    helper_path = os.path.join(REPO, "worker", "ort_cuda_runtime.py")
+    helper = types.ModuleType("ort_cuda_runtime_budget_fake")
+    helper.__file__ = helper_path
+    with open(helper_path, "r", encoding="utf-8") as fh:
+        helper_source = fh.read()
+    exec(compile(helper_source, helper_path, "exec"), helper.__dict__)  # noqa: S102
+    scan = getattr(helper, "_nvidia_library_dirs", None)
+    if not callable(scan):
+        return [(False, "CUDA DLL directory census has a total bounded walk",
+                 "_nvidia_library_dirs missing")]
+
+    rows = []
+    with tempfile.TemporaryDirectory(prefix="speaker-cuda-dll-budget-") as temp:
+        root = os.path.join(temp, "nvidia")
+        library_dir = os.path.join(root, "pkg", "lib")
+        os.makedirs(library_dir)
+        with open(os.path.join(library_dir, "cuda.dll"), "wb") as fh:
+            fh.write(b"placeholder")
+        try:
+            found = scan([temp], max_entries=3)
+            rows.append((found == [library_dir],
+                         "CUDA DLL census accepts tree at exact entry budget",
+                         "found=%r" % found))
+        except Exception as exc:  # noqa: BLE001 -- fake filesystem only
+            rows.append((False, "CUDA DLL census accepts tree at exact entry budget",
+                         "%s: %s" % (type(exc).__name__, exc)))
+
+    with tempfile.TemporaryDirectory(prefix="speaker-cuda-dll-overflow-") as temp:
+        root = os.path.join(temp, "nvidia")
+        os.makedirs(root)
+        for name in ("pkg-a", "pkg-b", "pkg-c"):
+            os.makedirs(os.path.join(root, name))
+        try:
+            scan([temp], max_entries=2)
+        except RuntimeError as exc:
+            refused = "cuda-dll-directory-entry-limit-exceeded" in str(exc)
+            detail = str(exc)
+        except Exception as exc:  # noqa: BLE001 -- only named refusal is accepted
+            refused, detail = False, "%s: %s" % (type(exc).__name__, exc)
+        else:
+            refused, detail = False, "unbounded walk returned normally"
+        rows.append((refused,
+                     "CUDA DLL census refuses with named error above total entry budget",
+                     detail))
+    return rows
+
+
+def watch_main_capture_order_battery(mod) -> list:
+    """Fake the watch-only main path and prove failed guards do not start capture."""
+    out = []
+
+    def chk(ok, name, detail=""):
+        out.append((bool(ok), name, detail))
+
+    wasapi_name = "wasapi_loopback"
+    prior_wasapi = sys.modules.get(wasapi_name)
+    wasapi = types.SimpleNamespace(loopback_device_specs=lambda: [{
+        "name": "fake endpoint", "rate": 48000, "default": True,
+    }])
+    calls = []
+    prior_loader, prior_tap = mod._load_powerset, mod._tap_for
+    prior_evicted = mod.resume_evicted_total
+    class FakeStream:
+        def start(self):
+            calls.append("start")
+        def stop(self):
+            calls.append("stop")
+
+    class FakeTap:
+        stream = FakeStream()
+
+    try:
+        sys.modules[wasapi_name] = wasapi
+        with tempfile.TemporaryDirectory(prefix="speaker-watch-main-") as temp:
+            model = os.path.join(temp, "placeholder.onnx")
+            with open(model, "wb") as fh:
+                fh.write(b"placeholder path only")
+            mod.resume_evicted_total = lambda _path: 0
+            mod._load_powerset = lambda *_args, **_kwargs: (
+                calls.append("load") or types.SimpleNamespace(
+                    sotto_cuda_device_census=True,
+                    sotto_cpu_ep_fallback_readback="1",
+                    sotto_runtime_fallback_readback=False,
+                    sotto_provider_readback=["CUDAExecutionProvider"]))
+            mod._tap_for = lambda *_args, **_kwargs: (calls.append("tap") or FakeTap())
+            with contextlib.redirect_stdout(io.StringIO()):
+                ok_rc = mod.main(["--watch-only", "--seg-model", model,
+                                  "--duration-s", "-1"])
+            chk(ok_rc == 0 and calls == ["load", "tap", "start", "stop"],
+                "watch main loads guarded session before constructing capture tap",
+                "rc=%r calls=%r" % (ok_rc, calls))
+
+            calls.clear()
+            def refuse(*_args, **_kwargs):
+                calls.append("load-refused")
+                raise RuntimeError("injected CUDA preflight refusal")
+            mod._load_powerset = refuse
+            with contextlib.redirect_stdout(io.StringIO()):
+                refused_rc = mod.main(["--watch-only", "--seg-model", model,
+                                       "--duration-s", "-1"])
+            chk(refused_rc == 2 and calls == ["load-refused"],
+                "watch main refuses before tap/capture when GPU preflight fails",
+                "rc=%r calls=%r" % (refused_rc, calls))
+    finally:
+        mod._load_powerset, mod._tap_for = prior_loader, prior_tap
+        mod.resume_evicted_total = prior_evicted
+        if prior_wasapi is None:
+            sys.modules.pop(wasapi_name, None)
+        else:
+            sys.modules[wasapi_name] = prior_wasapi
+    return out
+
+
+GPU_POLICY_MUTANTS = [
+    ("skip-cuda-provider-preflight",
+     "    _require_cuda_execution_provider()",
+     "    pass  # mutation: skip CUDA availability"),
+    ("allow-cpu-assigned-nodes",
+     'or set(assignments) != {"CUDAExecutionProvider"}:',
+     'or not assignments:'),
+    ("allow-cpu-ep-fallback",
+     'if row.get("cpu_ep_fallback_disabled") is not True:',
+     'if False:'),
+    ("skip-watch-cuda-device-census",
+     "    if cuda_device is not True:",
+     "    if False:"),
+    ("skip-watch-fallback-readback",
+     '    if fallback_readback != "1":',
+     "    if False:"),
+    ("skip-watch-provider-readback",
+     '    if "CUDAExecutionProvider" not in selected:',
+     "    if False:"),
+    ("skip-watch-runtime-fallback-constructor",
+     '    enable_fallback=0)',
+     ')'),
+    ("skip-watch-runtime-fallback-disable",
+     '        disable_fallback()\n',
+     '        pass  # mutation: leave Python runtime fallback untouched\n'),
+    ("skip-watch-runtime-fallback-readback",
+     '    if getattr(sess, "_enable_fallback", None) is not False:',
+     '    if False:'),
+]
+
+
+def gpu_policy_mutation_checks(source: str) -> list:
+    """Require the focused policy battery to catch weakened safety guards."""
+    rows = []
+    with tempfile.TemporaryDirectory(prefix="sidecar-gpu-mut-") as tmp:
+        for idx, (label, old, new) in enumerate(GPU_POLICY_MUTANTS):
+            if old not in source:
+                rows.append((False, "mutation anchor " + label, "anchor missing"))
+                continue
+            path = os.path.join(tmp, "mutant_%d.py" % idx)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(source.replace(old, new, 1))
+            try:
+                mutant = load_module(path, "speaker_gpu_policy_mut_%d" % idx)
+                result = gpu_policy_battery(mutant)
+            except Exception as exc:  # a mutant that fails import was not tested
+                rows.append((False, "mutation " + label,
+                             "decorative mutant: %s" % type(exc).__name__))
+                continue
+            failures = [name for ok, name, _ in result if not ok]
+            rows.append((bool(failures), "mutation caught " + label,
+                         "; ".join(failures[:2])))
+    return rows
+
+
+def installed_consumer_check(mod) -> tuple:
+    """Call the real full-diarizer consumer only when its installed API cannot load models."""
+    try:
+        import onnxruntime
+        import sherpa_onnx
+    except Exception as exc:  # noqa: BLE001 -- inventory only, no model construction
+        return False, "runtime import failed safely: %s: %s" % (type(exc).__name__, exc)
+
+    providers = list(onnxruntime.get_available_providers())
+    version = getattr(sherpa_onnx, "__version__", "unknown")
+    factory = getattr(sherpa_onnx, "create_gpu_only_offline_speaker_diarizer", None)
+    if callable(factory):
+        return False, ("strict adapter exists in sherpa-onnx %s; actual model call "
+                        "intentionally withheld pending exclusive gated lease" % version)
+
+    if not (os.path.isfile(mod.DEFAULT_SEG_MODEL) and os.path.isfile(mod.DEFAULT_EMB_MODEL)):
+        return False, "cached speaker models are absent; the --speakers CLI path cannot be exercised"
+
+    args = types.SimpleNamespace(
+        seg_model=mod.DEFAULT_SEG_MODEL,
+        emb_model=mod.DEFAULT_EMB_MODEL,
+        threads=1,
+        num_speakers=-1,
+        threshold=0.9,
+    )
+    try:
+        mod._make_live_diarizer(args)
+        return False, "_make_live_diarizer returned despite absent strict adapter"
+    except RuntimeError as exc:
+        helper_refusal = str(exc)
+    except Exception as exc:  # an unexpected exception is not the intended guard
+        return False, "%s: %s" % (type(exc).__name__, exc)
+
+    # Exercise main() with only a synthetic endpoint inventory. The default
+    # cached model files are present, but strict-adapter refusal must happen
+    # before `_tap_for` and therefore before capture can start.
+    wasapi = types.SimpleNamespace(loopback_device_specs=lambda: [{
+        "name": "model-free-test-endpoint", "rate": 48000, "default": True,
+    }])
+    prior_wasapi = sys.modules.get("wasapi_loopback", None)
+    prior_tap = mod._tap_for
+    tap_calls = []
+    mod._tap_for = lambda *args, **kwargs: tap_calls.append(True)
+    sys.modules["wasapi_loopback"] = wasapi
+    output = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(output):
+            rc = mod.main([])
+    finally:
+        mod._tap_for = prior_tap
+        if prior_wasapi is None:
+            sys.modules.pop("wasapi_loopback", None)
+        else:
+            sys.modules["wasapi_loopback"] = prior_wasapi
+    if rc != 2 or tap_calls or "GPU-only diarization unavailable" not in output.getvalue() \
+            or helper_refusal not in output.getvalue():
+        return False, "real main returned rc=%r tap_calls=%d output=%r" % (
+            rc, len(tap_calls), output.getvalue()[-240:])
+    return True, ("sherpa-onnx=%s available_providers=%r strict_factory=absent; "
+                  "_make_live_diarizer refused; main returned 2 before _tap_for "
+                  "(no capture/model construction)" % (version, providers))
+
+
+def score_fake_controls() -> list:
+    """Code-only positive/negative controls for the Redux score consumer seam."""
+    path = os.path.join(REPO, "_main", "bench", "separate.py")
+    if not os.path.isfile(path):
+        return [(False, "score benchmark module exists", path)]
+
+    pool_names = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                  "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS")
+    saved_env = {name: os.environ.get(name) for name in pool_names}
+    saved_path = list(sys.path)
+    module = None
+    rows = []
+
+    def chk(ok, name, detail=""):
+        rows.append((bool(ok), name, detail))
+
+    try:
+        spec = importlib.util.spec_from_file_location("speaker_score_fake", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        class FakeSession:
+            def __init__(self, enabled=False):
+                self._enable_fallback = enabled
+
+            def get_providers(self):
+                return ["CUDAExecutionProvider"]
+
+        class FakeEngine:
+            def __init__(self, *, device="cuda", bad_fallback=False):
+                self.device = device
+                self.cpu_execution_policy = "cuda-only" if device == "cuda" else "cpu"
+                self.transcribed = []
+                self._model = types.SimpleNamespace(
+                    cpu_ep_fallback_disabled=True,
+                    _sotto_vad_exists=False,
+                    _sotto_vad_deferred=False,
+                    preprocessor=FakeSession(), encoder=FakeSession(),
+                    decoder_joint=FakeSession(enabled=bad_fallback),
+                )
+                self.provider_readback = {
+                    graph: ["CUDAExecutionProvider"]
+                    for graph in module.REDUX_EAGER_GRAPHS
+                }
+                options = {
+                    graph: {
+                        "disable_cpu_ep_fallback": "1",
+                        "runtime_fallback_disabled": not (bad_fallback and
+                                                            graph == "decoder_joint-model.onnx"),
+                    }
+                    for graph in module.REDUX_EAGER_GRAPHS
+                }
+                self.thread_policy = {
+                    "session_options_readback": options,
+                    "runtime_fallback_readback": {
+                        graph: row["runtime_fallback_disabled"]
+                        for graph, row in options.items()
+                    },
+                }
+
+            def transcribe(self, pcm):
+                self.transcribed.append(module.np.asarray(pcm).copy())
+                return "Maria disse dado privado", [{"start": 0.0, "end": 0.1}]
+
+        events = []
+        engine = FakeEngine()
+
+        class FakeConsumer:
+            def __init__(self):
+                events.append("consumer")
+                self.engine_calls = 0
+
+            def engine(self):
+                events.append("engine")
+                self.engine_calls += 1
+                return engine
+
+        def release():
+            events.append("release")
+            return {"models_cleared": 1, "torch_cuda_reserved_mb_after": 0.0}
+
+        consumer, backend, readback = module.create_score_backend(FakeConsumer, release)
+        mix = module.np.asarray([0.1, 0.2], dtype=module.np.float32)
+        stem_0 = module.np.asarray([0.3, 0.4], dtype=module.np.float32)
+        stem_1 = module.np.asarray([-0.3, -0.4], dtype=module.np.float32)
+        scores = module.score_inputs(backend, [("mix", mix), ("stem_0", stem_0),
+                                                ("stem_1", stem_1)])
+        chk(events == ["release", "consumer", "engine"],
+            "separator release precedes one production-consumer engine construction",
+            repr(events))
+        chk(consumer.engine_calls == 1 and len(engine.transcribed) == 3
+            and all(module.np.array_equal(a, b) for a, b in
+                    zip(engine.transcribed, (mix, stem_0, stem_1))),
+            "mix and two stems are sent as three distinct audio calls")
+        encoded = json.dumps({"scores": scores, "readback": readback}, sort_keys=True)
+        chk(set(scores) == {"mix", "stem_0", "stem_1"}
+            and all("text" not in row for row in scores.values())
+            and all(len(row["text_sha256"]) == 64 for row in scores.values())
+            and "Maria" not in encoded and "speaker" not in encoded,
+            "score output stores only anonymous labels and transcript hashes")
+
+        before = len(engine.transcribed)
+        try:
+            module.score_inputs(backend, [("speaker-1", mix)])
+            identity_rejected = False
+        except ValueError:
+            identity_rejected = True
+        chk(identity_rejected and len(engine.transcribed) == before,
+            "identity labels are rejected before reaching the ASR")
+
+        cpu_engine = FakeEngine(device="cpu")
+        cpu_calls = []
+        class CpuConsumer:
+            def engine(self):
+                return cpu_engine
+        try:
+            module.create_score_backend(CpuConsumer, lambda: {"models_cleared": 0})
+            cpu_rejected = False
+        except RuntimeError:
+            cpu_rejected = True
+        chk(cpu_rejected and not cpu_engine.transcribed,
+            "CPU backend is refused before any audio transcription")
+
+        fallback_engine = FakeEngine(bad_fallback=True)
+        class FallbackConsumer:
+            def engine(self):
+                return fallback_engine
+        try:
+            module.create_score_backend(FallbackConsumer, lambda: {"models_cleared": 0})
+            fallback_rejected = False
+        except RuntimeError:
+            fallback_rejected = True
+        chk(fallback_rejected and not fallback_engine.transcribed,
+            "missing runtime fallback readback is refused before transcription")
+
+        read_calls = []
+        args = types.SimpleNamespace(score=True, wav="synthetic.wav")
+        def refuse_preflight(_args):
+            events.append("preflight-refuse")
+            raise RuntimeError("no CUDA/fallback guard")
+        def reader(wav):
+            read_calls.append(wav)
+            return object()
+        try:
+            module.read_audio_after_score_preflight(args, refuse_preflight, reader)
+            read_refused = False
+        except RuntimeError:
+            read_refused = True
+        chk(read_refused and not read_calls,
+            "failed CUDA/fallback preflight refuses before audio is opened")
+
+    except Exception as exc:
+        chk(False, "score fake controls execute", "%s: %s" % (type(exc).__name__, exc))
+    finally:
+        for name, value in saved_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        sys.path[:] = saved_path
+    env_restored = all(os.environ.get(name) == saved_env[name] for name in pool_names)
+    path_restored = sys.path == saved_path
+    chk(env_restored and path_restored,
+        "fake control restores numeric environment and import path on exit")
+    return rows
 
 
 MUTANTS = [
@@ -342,11 +1339,36 @@ MUTANTS = [
 
 
 def main() -> int:
+    if "--score-fake-only" in sys.argv[1:]:
+        rows = score_fake_controls()
+        for ok, name, detail in rows:
+            print("  %s %s%s" % ("GREEN" if ok else "RED  ", name,
+                                 ("  " + detail) if detail else ""))
+        green = sum(1 for ok, _, _ in rows if ok)
+        print("REDUX SCORE FAKE VERDICT: %s (%d/%d controls)"
+              % ("PASS" if green == len(rows) else "FAIL", green, len(rows)))
+        return EXIT_PASS if green == len(rows) else EXIT_FAIL
+
     if not os.path.isfile(MODULE_PATH):
         print("RED   module missing: %s" % MODULE_PATH)
         return EXIT_FAIL
     with open(MODULE_PATH, "r", encoding="utf-8") as fh:
         source = fh.read()
+
+    if "--gpu-policy-only" in sys.argv[1:]:
+        mod = load_module(MODULE_PATH, "speaker_sidecar_gpu_policy")
+        rows = gpu_policy_battery(mod)
+        rows.extend(gpu_policy_mutation_checks(source))
+        if "--probe-installed-consumer" in sys.argv[1:]:
+            ok, detail = installed_consumer_check(mod)
+            rows.append((ok, "installed --speakers diarizer consumer fails closed", detail))
+        for ok, name, detail in rows:
+            print("  %s %s%s" % ("GREEN" if ok else "RED  ", name,
+                                 ("  " + detail) if detail else ""))
+        green = sum(1 for ok, _, _ in rows if ok)
+        print("GPU POLICY VERDICT: %s (%d/%d checks)"
+              % ("PASS" if green == len(rows) else "FAIL", green, len(rows)))
+        return EXIT_PASS if green == len(rows) else EXIT_FAIL
 
     print("PURITY (numpy / sherpa / Win32 must be lazy, not imported)")
     # Only the MODULE BODY counts. `ast.walk` descends into functions, and the

@@ -15,7 +15,7 @@ Runtime: NeMo is installed ONLY in the isolated venv `I:/cc-tmp/nemo-venv`
 (never the system Python, whose `torch`/`numpy` belong to the rest of the repo).
 Run every command below with that interpreter:
 
-    I:/cc-tmp/nemo-venv/Scripts/python.exe worker/unified_asr.py --selftest
+    I:/cc-tmp/nemo-venv/Scripts/python.exe worker/unified_asr.py --allow-heavy --selftest
     I:/cc-tmp/nemo-venv/Scripts/python.exe worker/unified_asr.py --ladder \
         --wav _main/fixtures/stack-compare/unified-tts/ptbr-tts-01.wav,...
 
@@ -52,6 +52,36 @@ CONFIGS = {
     "lat1120": (5.6, 0.56, 0.56),
 }
 DEFAULT_CONFIG = "lat560"
+
+
+def _require_cuda_device(device: str, cuda_available: bool | None = None) -> str:
+    """The isolated NeMo candidate is GPU-only; never turn CUDA loss into CPU ASR."""
+    if str(device).strip().lower() != "cuda":
+        raise RuntimeError("UNIFIED_UNAVAILABLE reason=cpu-inference-forbidden")
+    if cuda_available is False:
+        raise RuntimeError("UNIFIED_UNAVAILABLE reason=cuda-unavailable")
+    return "cuda"
+
+
+def _selftest_device_policy() -> int:
+    cases = []
+    try:
+        cases.append(("cuda-accepted", _require_cuda_device("cuda", True) == "cuda"))
+    except RuntimeError:
+        cases.append(("cuda-accepted", False))
+    for name, device, available in (
+        ("cpu-rejected", "cpu", True),
+        ("cuda-unavailable-rejected", "cuda", False),
+    ):
+        try:
+            _require_cuda_device(device, available)
+            cases.append((name, False))
+        except RuntimeError:
+            cases.append((name, True))
+    for name, passed in cases:
+        print(("PASS " if passed else "FAIL ") + name)
+    print("UNIFIED_GPU_POLICY SELFTEST: %d/%d" % (sum(ok for _, ok in cases), len(cases)))
+    return 0 if all(ok for _, ok in cases) else 1
 
 
 def config_frames(name: str) -> tuple[int, int, int]:
@@ -147,12 +177,23 @@ class UnifiedAsr:
     def __init__(self, model_path: Path = DEFAULT_MODEL, device: str = "cuda",
                  config: str = DEFAULT_CONFIG, lang: str = "pt-BR"):
         try:
+            device = _require_cuda_device(device)
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
+        if not model_path.is_file():
+            raise SystemExit("UNIFIED_UNAVAILABLE reason=missing-model path=%s" % model_path)
+        try:
             import nemo.collections.asr as nemo_asr  # noqa: PLC0415
         except ImportError as exc:  # pragma: no cover
             raise SystemExit(
                 "UNIFIED_UNAVAILABLE reason=no-nemo detail=%s hint=run with "
                 "I:/cc-tmp/nemo-venv/Scripts/python.exe" % exc)
         import torch  # noqa: PLC0415
+
+        try:
+            device = _require_cuda_device(device, torch.cuda.is_available())
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
 
         self.torch = torch
         self.device = device
@@ -161,6 +202,10 @@ class UnifiedAsr:
         t0 = time.perf_counter()
         self.model = nemo_asr.models.ASRModel.restore_from(str(model_path), map_location=device)
         self.model.eval()
+        self.model_device_types = sorted({parameter.device.type for parameter in self.model.parameters()})
+        if self.model_device_types != ["cuda"]:
+            raise SystemExit("UNIFIED_UNAVAILABLE reason=non-cuda-model-parameters devices=%s"
+                             % ",".join(self.model_device_types))
         # Deterministic front end: no dither, no pad-to-bucket (both change frames).
         self.model.preprocessor.featurizer.dither = 0.0
         self.model.preprocessor.featurizer.pad_to = 0
@@ -334,9 +379,10 @@ def _selftest(args) -> int:
     audio_s = len(pcm) / SAMPLE_RATE
     compute_s = sum(walls)
     print("UNIFIED_TEXT cfg=%s %s" % (eng.config, json.dumps(text, ensure_ascii=False)))
-    print("UNIFIED_SELFTEST verdict=%s cfg=%s wav=%s audio_s=%.2f chunks=%d "
+    print("UNIFIED_SELFTEST verdict=%s device=%s model_devices=%s cfg=%s wav=%s audio_s=%.2f chunks=%d "
           "compute_s=%.2f rtf=%.3f p95_ms=%.1f peak_vram_mb=%s peak_rss_mb=%.0f load_s=%.1f"
-          % ("PASS" if events else "FAIL", eng.config, wav.name, audio_s, len(events),
+          % ("PASS" if events else "FAIL", args.device, ",".join(eng.model_device_types),
+             eng.config, wav.name, audio_s, len(events),
              compute_s, compute_s / audio_s if audio_s else -1,
              sorted(walls)[max(0, math.ceil(0.95 * len(walls)) - 1)] * 1000.0,
              _peak_vram_mb(eng.torch, args.device), _rss_mb(), eng.load_s))
@@ -378,6 +424,8 @@ def _ladder(args) -> int:
             compute_s = sum(walls)
             row = {
                 "cfg": cfg,
+                "device": args.device,
+                "model_device_types": eng.model_device_types,
                 "latency_s": latency_s(cfg),
                 "wav": wav.name,
                 "lang": args.lang,
@@ -416,30 +464,29 @@ def _ladder(args) -> int:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--selftest-device-policy", action="store_true",
+                    help="test GPU-only routing without importing NeMo or loading a model")
+    ap.add_argument("--allow-heavy", action="store_true",
+                    help="required for a model load inside the performance-gate + Watcher")
     ap.add_argument("--ladder", action="store_true")
     ap.add_argument("--wav")
     ap.add_argument("--config", default=DEFAULT_CONFIG)
     ap.add_argument("--configs")
     ap.add_argument("--lang", default="pt-BR")
-    ap.add_argument("--device", default="cuda" if _cuda_available() else "cpu")
+    ap.add_argument("--device", choices=("cuda",), default="cuda")
     ap.add_argument("--model", default=str(DEFAULT_MODEL))
     ap.add_argument("--offline", action="store_true",
                     help="also transcribe with NeMo's offline path (reference row)")
     ap.add_argument("--json-out")
     ap.add_argument("--rows-jsonl", default=r"I:/cc-tmp/unified-rows.jsonl")
     args = ap.parse_args(argv)
+    if args.selftest_device_policy:
+        return _selftest_device_policy()
+    if not args.allow_heavy:
+        ap.error("model load requires --allow-heavy from the gated Watcher invocation")
     if args.ladder:
         return _ladder(args)
     return _selftest(args)
-
-
-def _cuda_available() -> bool:
-    try:
-        import torch  # noqa: PLC0415
-
-        return torch.cuda.is_available()
-    except Exception:  # noqa: BLE001
-        return False
 
 
 if __name__ == "__main__":

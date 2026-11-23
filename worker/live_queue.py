@@ -45,10 +45,73 @@ oraculo sem tocar na app.
 from __future__ import annotations
 
 import os
+import queue
 import threading
 
 #: O teto de audio vivo na fila, em segundos.
 LIVE_QUEUE_MAX_S = 2.0
+
+# Fixed reason set: the live consumer publishes exact loss totals without
+# retaining an event/sample history that grows with process lifetime.
+QUEUE_EVICTION_REASONS = (
+    "live-2s-cap",
+    "first-tap-unready",
+    "device-change-stale-generation",
+)
+
+
+def audio_samples(block):
+    """Return a bounded scalar sample count for an audio block, or zero."""
+    try:
+        return max(0, int(getattr(block, "size", 0)))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def record_eviction(counters, reason, blocks, samples):
+    """Add exact discarded block/sample totals to a fixed per-reason map."""
+    if reason not in QUEUE_EVICTION_REASONS:
+        raise ValueError("unknown audio queue eviction reason: %r" % (reason,))
+    blocks = max(0, int(blocks))
+    samples = max(0, int(samples))
+    lock = counters.get("queue_eviction_lock")
+    if lock is None:
+        return _record_eviction_unlocked(counters, reason, blocks, samples)
+    with lock:
+        return _record_eviction_unlocked(counters, reason, blocks, samples)
+
+
+def _record_eviction_unlocked(counters, reason, blocks, samples):
+    reasons = counters.setdefault("queue_eviction_reasons", {})
+    row = reasons.setdefault(reason, {"blocks": 0, "samples": 0})
+    row["blocks"] += blocks
+    row["samples"] += samples
+    counters["queue_evicted"] = int(counters.get("queue_evicted", 0)) + blocks
+    return dict(row)
+
+
+def eviction_snapshot(counters):
+    """Return coherent aggregate and fixed reason totals under the writer lock."""
+    lock = counters.get("queue_eviction_lock")
+    if lock is None:
+        return _eviction_snapshot_unlocked(counters)
+    with lock:
+        return _eviction_snapshot_unlocked(counters)
+
+
+def _eviction_snapshot_unlocked(counters):
+    current = counters.get("queue_eviction_reasons", {})
+    reasons = {
+        reason: {
+            "blocks": int(current.get(reason, {}).get("blocks", 0)),
+            "samples": int(current.get(reason, {}).get("samples", 0)),
+        }
+        for reason in QUEUE_EVICTION_REASONS
+    }
+    return {
+        "blocks": int(counters.get("queue_evicted", 0)),
+        "reasons": reasons,
+    }
 
 #: A RAM que a ESPERA (`PendingAudio`) pode ocupar antes de o bloco mais ANTIGO
 #: ir para o disco, em segundos de audio. NAO e' um tecto de perda: e' onde o
@@ -70,30 +133,64 @@ def max_blocks(block_ms, cap_s=LIVE_QUEUE_MAX_S):
     return max(2, int(float(cap_s) * 1000.0 / max(1, ms)))
 
 
-def enqueue_live(q, block, cap):
+def enqueue_live_detailed(q, block, cap):
     """Enfileira o bloco mais NOVO; se a fila estiver cheia, deita fora o VELHO.
 
     `cap` e' o numero maximo de blocos (ver `max_blocks`). Uma fila com
     `maxsize=0` (ilimitada) e' tratada como sem tecto de blocos, mas o tecto em
     segundos continua a valer: o chamador passa `cap` de qualquer forma.
 
-    Devolve `(evicted, dropped)` para o chamador contar o que aconteceu:
+    Devolve `(evicted, dropped, evicted_samples)` para o chamador contar o que aconteceu:
     `evicted` = blocos VELHOS que sairam para o novo entrar; `dropped` = o novo
     nao entrou (corrida com o consumidor, fila fechada).
     """
     evicted = 0
     dropped = 0
+    evicted_samples = 0
     try:
         while q.qsize() >= max(1, int(cap)):
             try:
-                q.get_nowait()
+                old = q.get_nowait()
                 evicted += 1
+                evicted_samples += audio_samples(old)
             except Exception:  # noqa: BLE001 -- fila esvaziada por outro lado
                 break
         q.put_nowait(block)
     except Exception:  # noqa: BLE001 -- corrida com o consumidor nao pode matar o tap
         dropped += 1
+    return evicted, dropped, evicted_samples
+
+
+def enqueue_live(q, block, cap):
+    """Compatibility wrapper retaining the original two-value return shape."""
+    evicted, dropped, _samples = enqueue_live_detailed(q, block, cap)
     return evicted, dropped
+
+
+def dequeue_live(q, timeout=0.25):
+    """Production consumer read; returns `(block, empty)` without losing EOF data."""
+    try:
+        return q.get(timeout=timeout), False
+    except queue.Empty:
+        return None, True
+
+
+def discard_stale_generation(q, current_block):
+    """Discard the current old-generation block and queued old backlog.
+
+    The queue is drained in one bounded pass because its production capacity is
+    fixed at 256. Returns exact `(blocks, samples)` for receipt accounting.
+    """
+    blocks = 1 if current_block is not None else 0
+    samples = audio_samples(current_block)
+    while True:
+        try:
+            old = q.get_nowait()
+        except queue.Empty:
+            break
+        blocks += 1
+        samples += audio_samples(old)
+    return blocks, samples
 
 
 # ── A ESPERA: o audio que nenhum motor leu ───────────────────────────────────

@@ -76,7 +76,7 @@ def refuse_if_wrong_model(model_dir):
 
 class Consumer:
     def __init__(self, queue_dir, model_dir=ONNX_DIR, log=print,
-                 window_s=3.0, step_s=3.0, threads=0):
+                 window_s=3.0, step_s=3.0, threads=1):
         self.queue_dir = os.path.abspath(str(queue_dir))
         self.model_dir = str(model_dir)
         self.log = log
@@ -84,7 +84,10 @@ class Consumer:
         self.results_path = os.path.join(self.queue_dir, 'results.jsonl')
         self.window_s = float(window_s)
         self.step_s = float(step_s)
-        self.threads = int(threads)
+        self.threads = max(1, int(threads or 1))
+        for name in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS',
+                     'OPENBLAS_NUM_THREADS', 'NUMEXPR_NUM_THREADS'):
+            os.environ[name] = str(self.threads)
         self._engine = None
 
     # ── the queue ──────────────────────────────────────────────────────────
@@ -120,7 +123,22 @@ class Consumer:
         import redux_live
         self.log('audio-queue-consumer: loading Parakeet ONNX from %s' % self.model_dir)
         self._engine = redux_live.OnnxBackend(self.model_dir, threads=self.threads)
-        self.log('audio-queue-consumer: model ready (%s)' % self._engine.name)
+        providers = getattr(self._engine, 'provider_readback', {})
+        cpu_policy = getattr(self._engine, 'cpu_execution_policy', 'disabled')
+        thread_policy = getattr(self._engine, 'thread_policy', {})
+        self.log('audio-queue-consumer: model ready (%s) device=%s cuda_dlls_preloaded=%s '
+                 'cuda_graphs=%d/%d '
+                 'cpu_execution_policy=%s thread_policy=%s provider_readback=%s'
+                 % (self._engine.name,
+                    str(getattr(self._engine, 'device', 'unknown')),
+                    str(bool(getattr(self._engine, 'cuda_dlls_preloaded', False))).lower(),
+                    sum(1 for row in providers.values()
+                        if 'CUDAExecutionProvider' in row),
+                    len(providers),
+                    cpu_policy,
+                    json.dumps(thread_policy, sort_keys=True),
+                    ';'.join('%s=%s' % (name, '|'.join(row))
+                             for name, row in sorted(providers.items()))))
         return self._engine
 
     def transcribe(self, path):
@@ -199,7 +217,7 @@ def main():
                          'with 0 overruns; the engine default 5.0/2.0 gives '
                          '5 overruns on this host.')
     ap.add_argument('--step-s', type=float, default=3.0)
-    ap.add_argument('--threads', type=int, default=0)
+    ap.add_argument('--threads', type=int, default=1)
     ap.add_argument('--limit', type=int, default=None)
     ap.add_argument('--watch', action='store_true')
     ap.add_argument('--interval', type=float, default=5.0)

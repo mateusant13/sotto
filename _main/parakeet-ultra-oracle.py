@@ -318,7 +318,7 @@ def build(engine: str):
     if src is None:
         raise SystemExit("ultra-torch: no checkpoint on disk (checked %s)" % (ULTRA_SRC_DIRS,))
     started = time.perf_counter()
-    backend = parakeet_ultra.TorchBackend(src, device="auto", frontend="nemo",
+    backend = parakeet_ultra.TorchBackend(src, device="cuda", frontend="nemo",
                                           onnx_dir=resolve(ULTRA_ONNX_DIRS) or resolve(REDUX_ONNX_DIRS))
     return backend, round(time.perf_counter() - started, 2), src
 
@@ -338,6 +338,10 @@ def run_ready(engines, clips):
             backend, load_s, directory = build(engine)
             row["dir"] = str(directory)
             row["cold_load_s"] = load_s
+            row["device"] = getattr(backend, "device", "cuda")
+            row["frontend_device"] = getattr(backend, "frontend_device", "cuda")
+            row["cpu_fallback"] = "disabled"
+            row["provider_readback"] = getattr(backend, "provider_readback", None)
             resources.sample()
             wall = 0.0
             audio = 0.0

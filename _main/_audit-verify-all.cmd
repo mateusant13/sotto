@@ -2359,6 +2359,24 @@ if exist _main\stutter-caption-oracle.py (
 call :step always red-as-expected-stutter-caption 1 "_main\stutter-caption-oracle.py;app\webview\youtube_clock.py;app\webview\sotto_webview.py;_main\fixtures\yt-paint-freeze-20261104.json" "%OUT%\stutter-caption-neg.log" python _main\stutter-caption-oracle.py --neg-arm
 call :expectred red-as-expected-stutter-caption !STEP_RC! "%OUT%\stutter-caption-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-stutter-caption MISSING "%OUT%\stutter-caption-neg.log" "NEG-ARM PASS" )
+if exist _main\parakeet-ultra-gpu-policy-oracle.py (
+call :step always parakeet-ultra-gpu-policy 0 "_main\parakeet-ultra-gpu-policy-oracle.py;worker\parakeet_ultra.py;worker\models\parakeet-redux-onnx-int4\transcribe.py" "%OUT%\parakeet-ultra-gpu-policy.log" python _main\parakeet-ultra-gpu-policy-oracle.py
+call :record parakeet-ultra-gpu-policy !STEP_RC!
+) else ( call :record parakeet-ultra-gpu-policy MISSING )
+if exist _main\parakeet-ultra-gpu-policy-oracle.py (
+call :step always red-as-expected-parakeet-ultra-gpu-policy 1 "_main\parakeet-ultra-gpu-policy-oracle.py;worker\parakeet_ultra.py" "%OUT%\parakeet-ultra-gpu-policy-neg.log" python _main\parakeet-ultra-gpu-policy-oracle.py --neg-arm
+call :expectred red-as-expected-parakeet-ultra-gpu-policy !STEP_RC! "%OUT%\parakeet-ultra-gpu-policy-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-parakeet-ultra-gpu-policy MISSING "%OUT%\parakeet-ultra-gpu-policy-neg.log" "NEG-ARM PASS" )
+REM Speaker full diarization stays fail-closed until sherpa exposes a strict
+REM per-model CUDA node-assignment adapter. This model-free policy pass uses
+REM synthetic attestations, six weakening mutants (including --watch-only CUDA
+REM census/fallback/provider readbacks), and (when cached model files/API are
+REM present) proves the installed --speakers consumer refuses before
+REM tap/model construction. No acoustic graph is loaded here.
+if exist _main\speaker-sidecar-oracle.py (
+call :step always speaker-sidecar-gpu-policy 0 "_main\speaker-sidecar-oracle.py;worker\speaker_sidecar.py" "%OUT%\speaker-sidecar-gpu-policy.log" python _main\speaker-sidecar-oracle.py --gpu-policy-only --probe-installed-consumer
+call :record speaker-sidecar-gpu-policy !STEP_RC!
+) else ( call :record speaker-sidecar-gpu-policy MISSING )
 if exist _main\parakeet-ultra-oracle.py (
 call :step heavy parakeet-ultra 0 "_main\parakeet-ultra-oracle.py;worker\parakeet_ultra.py;worker\ultra_export.py;worker\redux_live.py;worker\models\parakeet-redux-onnx-int4\transcribe.py" "%OUT%\parakeet-ultra.log" python _main\parakeet-ultra-oracle.py --engine all
 call :record parakeet-ultra !STEP_RC!
@@ -2901,6 +2919,15 @@ if exist _main\per-app-source-plumbing-oracle.py (
   call :step red-as-expected-per-app-source-plumbing 1 "_main\per-app-source-plumbing-oracle.py;worker\sotto_worker.py" "%OUT%\per-app-source-plumbing-neg.log" python _main\per-app-source-plumbing-oracle.py --neg-arm
   call :expectred red-as-expected-per-app-source-plumbing !STEP_RC! "%OUT%\per-app-source-plumbing-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-per-app-source-plumbing MISSING "%OUT%\per-app-source-plumbing-neg.log" "NEG-ARM PASS" )
+if exist _main\redux-live-pending-oracle.py (
+  call :step redux-live-pending-cap 0 "_main\redux-live-pending-oracle.py;worker\redux_live.py" "%OUT%\redux-live-pending-cap.log" python _main\redux-live-pending-oracle.py
+  call :record redux-live-pending-cap !STEP_RC!
+) else ( call :record redux-live-pending-cap MISSING )
+REM O NEGATIVO desativa a poda na instância falsa; o gate tem de detetar e sair rc=1.
+if exist _main\redux-live-pending-oracle.py (
+  call :step red-as-expected-redux-live-pending-cap 1 "_main\redux-live-pending-oracle.py;worker\redux_live.py" "%OUT%\redux-live-pending-cap-neg.log" python _main\redux-live-pending-oracle.py --neg-arm
+  call :expectred red-as-expected-redux-live-pending-cap !STEP_RC! "%OUT%\redux-live-pending-cap-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-redux-live-pending-cap MISSING "%OUT%\redux-live-pending-cap-neg.log" "NEG-ARM PASS" )
 if exist _main\redux-live-contract-oracle.js (
   call :step redux-live-contract 0 "_main\redux-live-contract-oracle.js;app\panel\caption-formulation.js;app\panel\panel.js;_main\redux-live-smoke.jsonl" "%OUT%\redux-live-contract.log" node _main\redux-live-contract-oracle.js
   call :record redux-live-contract !STEP_RC!

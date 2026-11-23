@@ -214,6 +214,10 @@ class ParakeetEngine:
         self.dir = self.onnx_dir if self.requested == "onnx" else self.ternary_dir
         self.available = not self.missing
         self._backend = None
+        #: `cuda` or `cpu` for the LAST backend this object loaded (None before the
+        #: first load). Set by `load()` from the backend's own readback, so a
+        #: GPU-unavailable batch engine cannot be mistaken for a GPU one.
+        self.device = None
         self.loads = 0
         self.releases = 0
         self.load_failures = 0
@@ -243,7 +247,8 @@ class ParakeetEngine:
         started = time.perf_counter()
         try:
             backend = _redux_live.load_backend(
-                self.requested, self.onnx_dir, self.ternary_dir, self.threads, "cpu")
+                self.requested, self.onnx_dir, self.ternary_dir, self.threads, "cuda",
+                log=self.log)
         except BaseException:
             self.load_failures += 1
             raise
@@ -251,9 +256,11 @@ class ParakeetEngine:
         self.loads += 1
         self.loaded_t = time.time()
         self.load_s = round(time.perf_counter() - started, 2)
+        self.device = getattr(backend, "device", "cuda")
         self.log(
             f"REDUX_ENGINE_LOAD engine={self.requested} "
             f"model={os.path.basename(self.dir)} load_s={self.load_s} "
+            f"device={self.device} "
             f"rss_mb={self.rss_fn():.1f} loads={self.loads}")
         return backend
 

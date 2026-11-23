@@ -87,8 +87,8 @@ def _weight_form(model_dir: Path) -> str:
     original = ternary.resident_form
 
     def resident_form(device):
-        if torch.device(device).type == "cpu":
-            return "dense"
+        if torch.device(device).type != "cuda":
+            raise RuntimeError("Redux GPU-only policy refuses non-CUDA resident weights")
         return original(device)
 
     ternary.resident_form = resident_form
@@ -103,12 +103,14 @@ class _RuntimeConfig:
         self.model_path = str(model_dir)
         self.device = device
         self.decode_path = "auto"
-        self.enable_cuda_graphs = device != "cpu"
+        self.enable_cuda_graphs = True
         self.single_pass_batch_capacity = capacity
         self.cpu_threads = None  # let the runtime size its own pool
 
 
-def load_runtime(model_dir: Path, device: str = "cpu", capacity: int = 1):
+def load_runtime(model_dir: Path, device: str = "cuda", capacity: int = 1):
+    if str(device).strip().lower() != "cuda":
+        raise RuntimeError("Redux GPU-only policy requires device='cuda'; got %r" % device)
     if not (model_dir / "config.json").is_file():
         raise SystemExit(f"redux_batch: no checkpoint in {model_dir}")
     if not (model_dir / "model.safetensors").is_file():
@@ -120,6 +122,8 @@ def load_runtime(model_dir: Path, device: str = "cpu", capacity: int = 1):
         )
 
     import torch
+    if not torch.cuda.is_available():
+        raise RuntimeError("Redux GPU-only policy requires an available CUDA device")
 
     form = _weight_form(model_dir)
     _log(f"redux_batch: resident weight form = {form}")
@@ -150,8 +154,8 @@ def main(argv=None) -> int:
     parser.add_argument("--json", action="store_true", help="also print one final result line")
     parser.add_argument("--model-dir", type=Path, default=DEFAULT_MODEL_DIR,
                         help=f"checkpoint directory (default: {DEFAULT_MODEL_DIR})")
-    parser.add_argument("--device", default="cpu", choices=("cpu", "cuda", "mps"),
-                        help="Photon device (default: cpu)")
+    parser.add_argument("--device", default="cuda", choices=("cuda",),
+                        help="GPU device for Redux inference (CPU inference is disabled)")
     parser.add_argument("--timestamps", default="segment", choices=("none", "segment", "word", "character"),
                         help="caption granularity (default: segment)")
     args = parser.parse_args(argv)
