@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+# BATTERY-HEAVY: model -- carrega o grafo de segmentacao de 5,7 MB e abre uma
+# sessao CUDA (medido 2026-11-23: 46 nos CUDA + 6 nos CPU, 6,1 s com o modelo
+# quente); os dois passos `speaker-watch` e `red-as-expected-speaker-watch` sao
+# `heavy`, e o portao `_main/battery-heavy-gate.py` exige que o INSTRUMENTO
+# declare a classe onde a verdade esta' (C2 recusou o par sem este marker).
 """PORTAO do modo watch da Fase A (`worker/speaker_sidecar.py --watch-only`).
 
 O QUE ESTE PORTAO PROVA
@@ -440,6 +446,11 @@ def _run(args, neg, tmp):
     if FAILURES:
         print("VERDICT: FAIL  (%d/%d checks falharam: %s)"
               % (len(FAILURES), CHECKS[0], "; ".join(FAILURES)))
+        if neg:
+            # A frasa que a bateria procura num `:expectred`. Um braco negativo
+            # que so' diz "FAIL" e' indistinguivel de um instrumento partido.
+            print("NEG-ARM: PASS -- %d/%d checks caíram sob a mutacao real"
+                  % (len(FAILURES), CHECKS[0]))
         return 1
     if neg:
         print("VERDICT: PASS  (%d/%d checks)  -- este era o BRACO NEGATIVO: PASS "

@@ -655,6 +655,87 @@ def _speaker_cuda_device_registered(ort):
                for device in devices)
 
 
+#: OS NOS QUE O PROPRIO ORT EXECUTA NO CPU EP NESTE GRAFO -- MEDIDOS, nao supostos.
+#:
+#: MEDIDO 2026-11-23 com a API de atribuicao do proprio ORT
+#: (`session.record_ep_graph_assignment_info=1` + `get_provider_graph_assignment_info()`),
+#: no grafo de segmentacao que embarca (`speaker-models/model.onnx`):
+#:
+#:     46 nos em CUDAExecutionProvider (88,46 %) e 6 nos em CPUExecutionProvider:
+#:     /lstm/Concat  /lstm/Gather  /lstm/Unsqueeze  Equal_115  Gather  Gather_113
+#:
+#: (O perfil de execucao da MESMA sessao conta 42 nos em CUDA, porque nos dobrados
+#: por constante nao chegam a executar com esta entrada. Os dois numeros sao reais e
+#: nao se substituem: a ATRIBUICAO diz quem ficaria com o no, o PERFIL diz quem o
+#: executou. A porta usa a atribuicao porque e' ela que o ORT publica por sessao.)
+#:
+#: Eles nao estao no CPU por falta de provider: a propria ORT avisa, no arranque da
+#: sessao, "ORT explicitly assigns shape related ops to CPU to improve perf" -- ou
+#: seja, mover shape/indices para o CPU e' uma decisao DELA e e' mais rapida assim.
+#: Logo `session.disable_cpu_ep_fallback=1` (o que a politica pedia antes) nao e'
+#: uma exigencia satisfazivel: a sessao recusa-se a abrir com
+#: "graph nodes that are assigned to the default CPU EP, but fallback to CPU EP has
+#: been explicitly disabled", e a Fase A morria no arranque em 100 % das corridas
+#: (medido: `_main/diar-watch.json` nunca existiu nesta maquina).
+#:
+#: O que a politica QUER proteger e' outro risco: o grafo inteiro cair no CPU em
+#: silencio, que custa ~50x (RTF 0,5 contra 0,0097). E' isso que se mede aqui: a
+#: fracao de nos em CUDA e a LISTA EXATA dos que ficaram fora. Um no desconhecido
+#: no CPU e' recusa, nunca "provavelmente e' shape op".
+WATCH_GPU_CPU_ONLY_NODES = frozenset({
+    "/lstm/Concat",
+    "/lstm/Gather",
+    "/lstm/Unsqueeze",
+    "Equal_115",
+    "Gather",
+    "Gather_113",
+})
+
+#: A FRACAO MINIMA de nos que tem de correr em CUDA. Medido: 42/48 = 0,875.
+WATCH_CUDA_NODE_SHARE_MIN = 0.5
+
+
+def _graph_assignment(sess):
+    """Quem executa cada no, pela atribuicao do PROPRIO ORT.
+
+    Devolve `(counts, foreign)`: `counts` por EP e `foreign` como a lista
+    `(nome, op_type)` de todo no que NAO ficou em CUDA. Uma leitura vazia e' uma
+    recusa, nao um verde: a sessao precisa da entrada de configuracao
+    `session.record_ep_graph_assignment_info='1'`, escrita em `_load_powerset`.
+    """
+    getter = getattr(sess, "get_provider_graph_assignment_info", None)
+    if not callable(getter):
+        raise RuntimeError(
+            "speaker GPU-only policy cannot read back EP graph assignment")
+    try:
+        records = list(getter())
+    except Exception as exc:                                  # noqa: BLE001
+        raise RuntimeError(
+            "speaker GPU-only policy cannot read back EP graph assignment; "
+            "session.record_ep_graph_assignment_info must be '1'") from exc
+    if not records:
+        raise RuntimeError("speaker GPU-only policy graph assignment readback is empty")
+    counts, foreign = {}, []
+    for record in records:
+        provider = getattr(record, "ep_name", None)
+        nodes_of = getattr(record, "get_nodes", None)
+        if not isinstance(provider, str) or not provider or not callable(nodes_of):
+            raise RuntimeError(
+                "speaker GPU-only policy graph assignment record is incomplete")
+        nodes = list(nodes_of())
+        counts[provider] = counts.get(provider, 0) + len(nodes)
+        if provider == "CUDAExecutionProvider":
+            continue
+        for node in nodes:
+            name = getattr(node, "name", None)
+            if not isinstance(name, str) or not name:
+                raise RuntimeError(
+                    "speaker GPU-only policy cannot name a non-CUDA graph node")
+            op_type = getattr(node, "op_type", None)
+            foreign.append((name, op_type if isinstance(op_type, str) else "?"))
+    return counts, foreign
+
+
 def _sha256_file(path: str) -> str:
     """Hash one model file without retaining its contents in memory."""
     import hashlib                                             # noqa: PLC0415
@@ -817,20 +898,26 @@ def _load_powerset(seg_model: str, threads: int = 2):
     opts = onnxruntime.SessionOptions()
     opts.log_severity_level = 3
     opts.intra_op_num_threads = max(1, int(threads))
-    opts.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+    # A ATRIBUICAO DE NOS E' O QUE SE PEDE AO ORT, e nao o desligar do fallback:
+    # desligar o fallback recusa este grafo (6 nos de shape que a propria ORT poe
+    # no CPU de proposito -- ver `WATCH_GPU_CPU_ONLY_NODES`). Gravar a atribuicao
+    # custa ~0, nao precisa de forward pass nem de perfil em disco, e e' a MESMA
+    # evidencia que a Fase B ja' exige (`evidence="onnxruntime-node-assignment"`).
+    opts.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
     readback = getattr(opts, "get_session_config_entry", None)
     if not callable(readback):
         raise RuntimeError(
-            "speaker GPU-only policy cannot read back CPU EP fallback setting")
+            "speaker GPU-only policy cannot read back the EP graph-assignment setting")
     try:
-        fallback_readback = str(readback("session.disable_cpu_ep_fallback"))
+        assignment_readback = str(readback("session.record_ep_graph_assignment_info"))
     except Exception as exc:                                  # noqa: BLE001
         raise RuntimeError(
-            "speaker GPU-only policy cannot read back CPU EP fallback setting") from exc
-    if fallback_readback != "1":
+            "speaker GPU-only policy cannot read back the EP graph-assignment setting"
+        ) from exc
+    if assignment_readback != "1":
         raise RuntimeError(
-            "speaker GPU-only policy requires CPU EP fallback readback '1'; got %r"
-            % fallback_readback)
+            "speaker GPU-only policy requires graph-assignment readback '1'; got %r"
+            % assignment_readback)
     session_type = getattr(onnxruntime, "InferenceSession", None)
     if (not callable(session_type)
             or not callable(getattr(session_type, "disable_fallback", None))):
@@ -859,8 +946,31 @@ def _load_powerset(seg_model: str, threads: int = 2):
     selected = list(sess.get_providers())
     if "CUDAExecutionProvider" not in selected:
         raise RuntimeError("speaker segmentation did not load CUDA; providers=%r" % selected)
+    counts, foreign = _graph_assignment(sess)
+    unknown_eps = sorted(set(counts) - {"CUDAExecutionProvider", "CPUExecutionProvider"})
+    if unknown_eps:
+        raise RuntimeError(
+            "speaker GPU-only policy refuses unknown execution providers %r; counts=%r"
+            % (unknown_eps, counts))
+    cuda_nodes = int(counts.get("CUDAExecutionProvider", 0))
+    total_nodes = sum(int(value) for value in counts.values())
+    unexpected = sorted({name for name, _op in foreign} - WATCH_GPU_CPU_ONLY_NODES)
+    if unexpected:
+        raise RuntimeError(
+            "speaker segmentation runs non-allowlisted nodes outside CUDA: %r "
+            "(measured allowlist: %r)" % (unexpected, sorted(WATCH_GPU_CPU_ONLY_NODES)))
+    # A fracao cobre o caso "zero nos em CUDA": 0,0 fica abaixo de qualquer piso.
+    cuda_share = (cuda_nodes / float(total_nodes)) if total_nodes else 0.0
+    if cuda_share < WATCH_CUDA_NODE_SHARE_MIN:
+        raise RuntimeError(
+            "speaker segmentation CUDA node share %.3f is below the %.2f floor; counts=%r"
+            % (cuda_share, WATCH_CUDA_NODE_SHARE_MIN, counts))
     sess.sotto_cuda_device_census = cuda_device
-    sess.sotto_cpu_ep_fallback_readback = fallback_readback
+    sess.sotto_graph_assignment_readback = assignment_readback
+    sess.sotto_node_assignment_counts = dict(sorted(counts.items()))
+    sess.sotto_node_assignment_cuda_share = round(cuda_share, 4)
+    sess.sotto_node_assignment_cpu = sorted({name for name, _op in foreign})
+    sess.sotto_node_assignment_ops = sorted({"%s:%s" % (name, op) for name, op in foreign})
     sess.sotto_provider_readback = selected
     return sess
 
@@ -1533,10 +1643,13 @@ def main(argv=None) -> int:
     tap = _tap_for(chosen, sink)
     if args.watch_only:
         print("SPEAKER_GPU_POLICY mode=watch cuda_device_census=%s "
-              "cpu_fallback_readback=%s runtime_fallback_disabled=%s "
-              "providers=%s node_assignment=unverified"
+              "node_assignment=verified counts=%s cuda_share=%.4f cpu_nodes=%s "
+              "runtime_fallback_disabled=%s providers=%s"
               % (sess.sotto_cuda_device_census,
-                 sess.sotto_cpu_ep_fallback_readback,
+                 ",".join("%s=%d" % item
+                          for item in sess.sotto_node_assignment_counts.items()),
+                 sess.sotto_node_assignment_cuda_share,
+                 ",".join(sess.sotto_node_assignment_cpu) or "-",
                  sess.sotto_runtime_fallback_readback is False,
                  ",".join(sess.sotto_provider_readback)))
         slots = None

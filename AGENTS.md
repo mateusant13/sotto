@@ -770,8 +770,33 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (measured 2026-11-23, 15:2x):** `_main\_audit-verify-all.cmd` = **417953 B**,
-  **4781 CRLF** / 0 bare LF, sha256 `9BDB093C451B52DD061C9F485B26E553C18E28DDAE5E6D7F14E4C9919096D94D`.
+- **PIN do ficheiro (measured 2026-11-23, 19:5x):** `_main\_audit-verify-all.cmd` = **419611 B**,
+  **4798 CRLF** / 0 bare LF, sha256 `2EEEE84E66DEBFAC3932CDF76641A348E7C14D580C9BF331A3668EC687B51983`.
+  (**A step that describes the run must run AFTER the run, and this was not true**: measured in run
+  11 (2026-11-23 19:04:47) the page was written and `battery-budget` / `battery-launch` recorded
+  newer rows at 19:05:58-19:06:01, so a `--check` after the run named four cells `fora do registo`
+  (`when` 18:10:42 vs 19:05:58). The page already excludes its own rows from the aggregates
+  (`SELF_STEPS`); what it cannot do is see rows written after it. The triplet
+  (`state-page-write`, `state-page`, `red-as-expected-state-page`) moved to the PHYSICAL END, after
+  `red-as-expected-battery-launch`; the byte count is unchanged because it is a pure move. Measured
+  in run 12: `BATTERY-VERDICT: GREEN WITH 28 SKIPPED`, `steps 552 gate=282 control=8 skipped=28
+  expect-red=234 missing=0 cached=310`, `failed: -none-`, and `--check` **after** the run finished
+  is `PASS checks=7 fail=0` with `cells-match-record PASS 0 celula(s) fora do registo`.)
+  (Same size as the previous pin, different sha: 1 658 B and SEVENTEEN lines more than the 417953 B
+  pin of the same day: the pair `speaker-watch` +
+  `red-as-expected-speaker-watch`, both `heavy`, which gives the Fase A gate a step for the first
+  time -- `speaker-watch-oracle.py` had been carrying the placeholder licence
+  `REASON-MISSING preencher a mao` since 2026-10-25 and had never run in a battery, and that is
+  exactly how its policy rotted unnoticed. Measured 2026-11-23: the Fase A loader demanded
+  `session.disable_cpu_ep_fallback=1`, which this graph CANNOT satisfy -- ORT keeps six
+  shape/control nodes on the CPU by its own design (`/lstm/Concat`, `/lstm/Gather`,
+  `/lstm/Unsqueeze`, `Equal_115`, `Gather`, `Gather_113`), so every `--watch-only` start died
+  `rc=2` and `_main/diar-watch.json` was never written on this machine. The gate now reads the node
+  assignment ORT publishes (`session.record_ep_graph_assignment_info=1` +
+  `get_provider_graph_assignment_info()`): measured `46 CUDA + 6 CPU, share 0.8846`, published as
+  `SPEAKER_GPU_POLICY ... node_assignment=verified`. Positive measured `VERDICT: PASS (39/39)`,
+  6,1 s; the negative arm `rc=1` with `NEG-ARM: PASS -- 8/38 checks caíram`. The model-free
+  `speaker-sidecar-gpu-policy` step stays `always` and grew to 56 checks / 12 mutants.)
   (273 B and FIVE lines more than the 417680 B pin of the same day: the `tooling-intent` step loses
   its three named deps and takes `""`, because its POPULATION is every `*oracle*.py` /
   `*-gate.py` / `*-guard.py` in `_main` -- 325 files, measured -- and three names cannot describe a

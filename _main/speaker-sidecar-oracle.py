@@ -541,12 +541,46 @@ def watch_policy_battery(mod) -> list:
         out.append((bool(ok), name, detail))
         return bool(ok)
 
-    def run_case(*, census="cuda", available=None, fallback="1",
+    #: O QUE A ATRIBUICAO DO PROPRIO ORT DEVOLVE NESTE GRAFO, medido 2026-11-23.
+    measured_cpu = [("/lstm/Concat", "Concat"), ("/lstm/Gather", "Gather"),
+                    ("/lstm/Unsqueeze", "Unsqueeze"), ("Equal_115", "Equal"),
+                    ("Gather", "Gather"), ("Gather_113", "Gather")]
+    measured_cuda = 46
+    entry_key = "session.record_ep_graph_assignment_info"
+
+    def assignment_rows(cuda=measured_cuda, cpu=None, extra_ep=None):
+        cpu_nodes = measured_cpu if cpu is None else list(cpu)
+        rows = []
+        if cuda:
+            rows.append(types.SimpleNamespace(
+                ep_name="CUDAExecutionProvider",
+                get_nodes=lambda n=int(cuda): [
+                    types.SimpleNamespace(name="cuda_node_%d" % i,
+                                          op_type="Conv", domain="")
+                    for i in range(n)]))
+        if cpu_nodes:
+            rows.append(types.SimpleNamespace(
+                ep_name="CPUExecutionProvider",
+                get_nodes=lambda rows_cpu=tuple(cpu_nodes): [
+                    types.SimpleNamespace(name=name, op_type=op, domain="")
+                    for name, op in rows_cpu]))
+        for provider, count in (extra_ep or {}).items():
+            rows.append(types.SimpleNamespace(
+                ep_name=provider,
+                get_nodes=lambda n=int(count): [
+                    types.SimpleNamespace(name="%s_node_%d" % (provider, i),
+                                          op_type="Conv", domain="")
+                    for i in range(n)]))
+        return rows
+
+    def run_case(*, census="cuda", available=None, entry_readback="1",
                  option_reader=True, providers=None, runtime_fallback=False,
-                 disable_api=True):
+                 disable_api=True, assignment_api=True, assignment=None,
+                 assignment_raises=False):
         trace = []
         calls = {"session": 0, "requested": None, "options": None,
-                 "enable_fallback": None, "runtime_disable": 0}
+                 "enable_fallback": None, "runtime_disable": 0,
+                 "assignment_reads": 0}
         options = types.SimpleNamespace(entries={})
 
         def add_entry(key, value):
@@ -557,18 +591,19 @@ def watch_policy_battery(mod) -> list:
         if option_reader:
             def get_entry(key):
                 trace.append(("option-read", key))
-                return fallback
+                return entry_readback
             options.get_session_config_entry = get_entry
+
+        payload = assignment_rows() if assignment is None else assignment
 
         class FakeSession:
             def __init__(self, path, opts, providers=None, enable_fallback=1):
                 trace.append(("session",))
                 calls["session"] += 1
                 calls["requested"] = list(providers or ())
-                calls["option_value_at_construction"] = (
-                    opts.entries.get("session.disable_cpu_ep_fallback"))
+                calls["option_value_at_construction"] = opts.entries.get(entry_key)
                 calls["readback_before_construction"] = (
-                    ("option-read", "session.disable_cpu_ep_fallback") in trace)
+                    ("option-read", entry_key) in trace)
                 calls["enable_fallback"] = enable_fallback
                 self._enable_fallback = bool(enable_fallback)
 
@@ -580,8 +615,17 @@ def watch_policy_battery(mod) -> list:
             def get_providers(self):
                 return list(providers or ["CUDAExecutionProvider", "CPUExecutionProvider"])
 
+            def get_provider_graph_assignment_info(self):
+                trace.append(("assignment-read",))
+                calls["assignment_reads"] += 1
+                if assignment_raises:
+                    raise RuntimeError("injected assignment readback failure")
+                return list(payload)
+
         if not disable_api:
             delattr(FakeSession, "disable_fallback")
+        if not assignment_api:
+            delattr(FakeSession, "get_provider_graph_assignment_info")
 
         def get_devices():
             trace.append(("census",))
@@ -636,13 +680,25 @@ def watch_policy_battery(mod) -> list:
         and calls["runtime_disable"] == 1
         and calls.get("option_value_at_construction") == "1"
         and calls.get("readback_before_construction") is True
+        and calls.get("assignment_reads") == 1
         and result.sotto_cuda_device_census is True
-        and result.sotto_cpu_ep_fallback_readback == "1"
         and result.sotto_runtime_fallback_readback is False
+        and result.sotto_graph_assignment_readback == "1"
+        and result.sotto_node_assignment_counts == {
+            "CUDAExecutionProvider": 46, "CPUExecutionProvider": 6}
+        and result.sotto_node_assignment_cuda_share == 0.8846
+        and result.sotto_node_assignment_cpu == sorted(name for name, _ in measured_cpu)
         and result.sotto_provider_readback == [
             "CUDAExecutionProvider", "CPUExecutionProvider"],
-        "watch loader accepts positive census, exact fallback readback and CUDA provider readback",
-        "configured CPU provider name is allowed; CPU node assignment remains unverified")
+        "watch loader accepts the MEASURED node assignment and publishes it",
+        "counts=46 cuda / 6 allowlisted cpu; share=0.8846")
+
+    chk(mod.WATCH_GPU_CPU_ONLY_NODES == frozenset(name for name, _ in measured_cpu),
+        "the CPU allowlist is exactly the six measured node names",
+        "allowlist=%r" % sorted(mod.WATCH_GPU_CPU_ONLY_NODES))
+    chk(0.0 < mod.WATCH_CUDA_NODE_SHARE_MIN <= 1.0,
+        "the CUDA node-share floor is a fraction inside (0, 1]",
+        "floor=%r" % (mod.WATCH_CUDA_NODE_SHARE_MIN,))
 
     for census, label in (("cpu", "CPU-only"), ("unknown", "unknown"),
                           ("missing", "missing")):
@@ -658,11 +714,11 @@ def watch_policy_battery(mod) -> list:
 
     result, error, calls, _ = run_case(option_reader=False)
     chk(isinstance(error, RuntimeError) and calls["session"] == 0,
-        "watch loader refuses missing SessionOptions fallback readback before construction")
+        "watch loader refuses missing SessionOptions assignment readback before construction")
 
-    result, error, calls, _ = run_case(fallback="0")
+    result, error, calls, _ = run_case(entry_readback="0")
     chk(isinstance(error, RuntimeError) and calls["session"] == 0,
-        "watch loader refuses non-1 SessionOptions fallback readback before construction")
+        "watch loader refuses a non-1 assignment readback before construction")
 
     result, error, calls, _ = run_case(providers=["CPUExecutionProvider"])
     chk(isinstance(error, RuntimeError) and calls["session"] == 1,
@@ -675,6 +731,40 @@ def watch_policy_battery(mod) -> list:
     result, error, calls, _ = run_case(disable_api=False)
     chk(isinstance(error, RuntimeError) and calls["session"] == 0,
         "watch loader refuses missing Python fallback-disable API before construction")
+
+    result, error, calls, _ = run_case(assignment_api=False)
+    chk(isinstance(error, RuntimeError) and calls["assignment_reads"] == 0,
+        "watch loader refuses a session with no EP graph-assignment API")
+
+    result, error, calls, _ = run_case(assignment=[])
+    chk(isinstance(error, RuntimeError) and calls["assignment_reads"] == 1,
+        "watch loader refuses an empty EP graph-assignment readback")
+
+    result, error, calls, _ = run_case(assignment_raises=True)
+    chk(isinstance(error, RuntimeError) and calls["assignment_reads"] == 1,
+        "watch loader refuses an EP graph-assignment readback that raises")
+
+    result, error, calls, _ = run_case(assignment=assignment_rows(cuda=0))
+    chk(isinstance(error, RuntimeError) and "share" in str(error),
+        "watch loader refuses when every node is the allowlisted CPU set (zero CUDA)",
+        "an allowlist alone is not a green; str(err)=%s" % (error,))
+
+    result, error, calls, _ = run_case(
+        assignment=assignment_rows(cpu=measured_cpu + [("/lstm/MatMul", "MatMul")]))
+    chk(isinstance(error, RuntimeError) and "/lstm/MatMul" in str(error),
+        "watch loader refuses a CPU node that is not on the measured allowlist",
+        "a shape-op allowlist is not a licence for any op")
+
+    result, error, calls, _ = run_case(assignment=assignment_rows(cuda=2))
+    chk(isinstance(error, RuntimeError) and "share" in str(error),
+        "watch loader refuses a CUDA node share below the floor")
+
+    result, error, calls, _ = run_case(
+        assignment=assignment_rows(extra_ep={"TensorrtExecutionProvider": 4}))
+    chk(isinstance(error, RuntimeError)
+        and "refuses unknown execution providers" in str(error),
+        "watch loader refuses an execution provider the policy did not request",
+        "the refusal names the PROVIDER, not only its nodes; str(err)=%s" % (error,))
     out.extend(watch_cuda_bootstrap_battery(mod))
     out.extend(watch_main_capture_order_battery(mod))
     return out
@@ -737,6 +827,25 @@ def watch_cuda_bootstrap_battery(mod) -> list:
             def get_providers(self):
                 trace.append(("provider-readback",))
                 return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+            def get_provider_graph_assignment_info(self):
+                trace.append(("assignment-read",))
+                return [types.SimpleNamespace(
+                    ep_name="CUDAExecutionProvider",
+                    get_nodes=lambda: [types.SimpleNamespace(
+                        name="cuda_node_%d" % i, op_type="Conv", domain="")
+                        for i in range(46)]),
+                    types.SimpleNamespace(
+                        ep_name="CPUExecutionProvider",
+                        get_nodes=lambda: [types.SimpleNamespace(
+                            name=name, op_type=op, domain="")
+                            for name, op in (
+                                ("/lstm/Concat", "Concat"),
+                                ("/lstm/Gather", "Gather"),
+                                ("/lstm/Unsqueeze", "Unsqueeze"),
+                                ("Equal_115", "Equal"),
+                                ("Gather", "Gather"),
+                                ("Gather_113", "Gather"))])]
 
         class FakeOrt(types.ModuleType):
             pass
@@ -973,7 +1082,13 @@ def watch_main_capture_order_battery(mod) -> list:
             mod._load_powerset = lambda *_args, **_kwargs: (
                 calls.append("load") or types.SimpleNamespace(
                     sotto_cuda_device_census=True,
-                    sotto_cpu_ep_fallback_readback="1",
+                    sotto_graph_assignment_readback="1",
+                    sotto_node_assignment_counts={
+                        "CUDAExecutionProvider": 46, "CPUExecutionProvider": 6},
+                    sotto_node_assignment_cuda_share=0.8846,
+                    sotto_node_assignment_cpu=sorted([
+                        "/lstm/Concat", "/lstm/Gather", "/lstm/Unsqueeze",
+                        "Equal_115", "Gather", "Gather_113"]),
                     sotto_runtime_fallback_readback=False,
                     sotto_provider_readback=["CUDAExecutionProvider"]))
             mod._tap_for = lambda *_args, **_kwargs: (calls.append("tap") or FakeTap())
@@ -1018,9 +1133,12 @@ GPU_POLICY_MUTANTS = [
     ("skip-watch-cuda-device-census",
      "    if cuda_device is not True:",
      "    if False:"),
-    ("skip-watch-fallback-readback",
-     '    if fallback_readback != "1":',
+    ("skip-watch-assignment-readback",
+     '    if assignment_readback != "1":',
      "    if False:"),
+    ("drop-watch-assignment-recording",
+     '    opts.add_session_config_entry("session.record_ep_graph_assignment_info", "1")',
+     "    pass  # mutation: never ask ORT to record the node assignment"),
     ("skip-watch-provider-readback",
      '    if "CUDAExecutionProvider" not in selected:',
      "    if False:"),
@@ -1033,6 +1151,15 @@ GPU_POLICY_MUTANTS = [
     ("skip-watch-runtime-fallback-readback",
      '    if getattr(sess, "_enable_fallback", None) is not False:',
      '    if False:'),
+    ("skip-watch-unknown-ep-refusal",
+     "    if unknown_eps:",
+     "    if False:"),
+    ("allow-non-allowlisted-cpu-node",
+     "    if unexpected:",
+     "    if False:"),
+    ("skip-watch-cuda-share-floor",
+     "    if cuda_share < WATCH_CUDA_NODE_SHARE_MIN:",
+     "    if False:"),
 ]
 
 
