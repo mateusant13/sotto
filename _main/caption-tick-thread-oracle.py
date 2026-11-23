@@ -299,6 +299,100 @@ def _arm_a11(module):
             and any("tick_ms=" in ln for ln in lines))
 
 
+def _arm_a12(module):
+    """A12 -- `hide()` DESARMA O PRAZO e nao deixa o laco a girar (2026-11-23).
+
+    Medido no log do dono (`_main/webview-run.log`, 19:19:56 -> 05:44:04): dez
+    horas de `sotto-caption-tick` a 53-77 % de um nucleo imediatamente depois de
+    um `Ctrl+Space`. `hide()` retirava o tick (`_tick_gen += 1`) e deixava o
+    prazo armado; o laco acordava no instante antigo, via a geracao trocada e
+    voltava ao topo SEM dormir, para sempre. A arm arma um tick a 5 ms, chama o
+    `hide()` REAL e exige o prazo limpo e nenhuma pintura DEPOIS do hide.
+
+    A PINTURA DEPOIS DO HIDE E' MEDIDA PELA GERACAO, NAO POR CONTAGEM
+    (2026-11-23). A primeira versao exigia `not painted` e era FLAKY (medido: 1
+    FAIL em 2 corridas na mesma arvore): entre o `_arm_at(0.005)` e o `hide()`
+    o processo pode ser desalojado por mais de 5 ms, o laco pinta o tick antigo
+    LEGITIMAMENTE e a arm chamava a isso falha da cura. O que a cura promete e'
+    nao pintar a geracao que o hide publicou; um quadro de geracao anterior
+    pertence ao tick que a cura nao toca. O carimbo de tempo nao serve porque o
+    laco pode ja' estar entre o teste de geracao e o `_tick(gen)` quando o hide
+    roda -- a GERACAO que ele levou e' o unico identificador sem corrida.
+    """
+    obj = object.__new__(module.NativeCaptionOverlay)
+    obj.lock = threading.RLock()
+    obj._sched_lock = threading.RLock()
+    obj._poll_lock = threading.RLock()
+    obj._tick_gen = 0
+    obj._tick_wake_gen = 0
+    obj._tick_event = threading.Event()
+    obj._tick_stop = False
+    obj._tick_thread = None
+    obj._tick_deadline = 0.0
+    obj.hwnd = None
+    obj.visible = False
+    obj.text = ""
+    obj.previous = ""
+    obj._live = None
+    obj._cue = None
+    obj._row_alphas = None
+    obj._blank = False
+    obj.log = lambda *a: None
+    obj._drag_reset = lambda: None
+    painted = []
+    obj._tick = lambda gen: painted.append(gen)
+    obj._arm_at(0.005)
+    armed = obj._tick_deadline > 0.0
+    obj.hide()
+    hide_gen = obj._tick_gen
+    cleared = obj._tick_deadline == 0.0
+    time.sleep(0.05)                 # o laco teria acordado aqui
+    stayed = (obj._tick_deadline == 0.0
+              and hide_gen not in painted)
+    obj._tick_stop = True
+    obj._tick_event.set()
+    if obj._tick_thread is not None:
+        obj._tick_thread.join(timeout=1.0)
+    return armed and cleared and stayed
+
+
+def _arm_a13(module, seconds=0.2):
+    """A13 -- UM PRAZO ORFAO E' RETIRADO PELO LACO, nunca honrado em circulo.
+
+    Prova a segunda metade da cura: mesmo que um chamador futuro faca
+    `_tick_gen += 1` sem limpar o prazo (o defeito real de 2026-11-23), o laco
+    retira o prazo em vez de girar a 100 % de um nucleo. Sem a limpeza, esta arm
+    ve o prazo ainda armado ao fim da janela.
+
+    A JANELA E' 0,2 s E NAO 0,05 s (medido 2026-11-23): o laco precisa de ser
+    escalonado uma vez para retirar o prazo, e 50 ms deixa a arm dependente do
+    escalonador desta maquina degradada -- a mesma classe de flake que a A12.
+    A limpeza e' uma leitura e uma escrita, logo o custo de esperar 0,2 s nao se
+    paga em CPU: paga-se em nao ter um portao que mente.
+    """
+    obj = object.__new__(module.NativeCaptionOverlay)
+    obj.lock = threading.RLock()
+    obj._sched_lock = threading.RLock()
+    obj._poll_lock = threading.RLock()
+    obj._tick_gen = 1                # geracao JA' trocada...
+    obj._tick_wake_gen = 0           # ...sem o prazo ter sido retirado
+    obj._tick_event = threading.Event()
+    obj._tick_stop = False
+    obj._tick_thread = None
+    obj._tick_deadline = module._frame_now() - 0.001
+    obj.hwnd = None
+    obj.log = lambda *a: None
+    obj._tick = lambda gen: None
+    loop = threading.Thread(target=obj._tick_loop, daemon=True)
+    loop.start()
+    time.sleep(seconds)
+    retired = obj._tick_deadline == 0.0
+    obj._tick_stop = True
+    obj._tick_event.set()
+    loop.join(timeout=1.0)
+    return retired and not loop.is_alive()
+
+
 def main(argv=None) -> int:
     neg = "--neg-arm" in (argv if argv is not None else sys.argv[1:])
 
@@ -404,7 +498,9 @@ def main(argv=None) -> int:
               ("A9 relogio do frame < 1 ms de grao", a9),
               ("A10 laco real: fracao de nucleo %.2f <= orcamento (%.0f Hz, %d quadros)"
                % (frac, hz10, n10), a10),
-              ("A11 orcamento divide o tick inteiro (poll+paint)", _arm_a11(caption_overlay)))
+              ("A11 orcamento divide o tick inteiro (poll+paint)", _arm_a11(caption_overlay)),
+              ("A12 hide() desarma o prazo, sem pintura", _arm_a12(caption_overlay)),
+              ("A13 prazo orfao e' retirado pelo laco", _arm_a13(caption_overlay)))
     for name, ok in checks:
         print("%-46s -> %s" % (name, "PASS" if ok else "FAIL"))
     if neg:
@@ -457,6 +553,30 @@ def main(argv=None) -> int:
                 "cost = float(getattr(self, '_paint_cost_s', 0.0) or 0.0)", 1))
         extra.append(("orcamento-volta-a-so-pintura",
                       not _arm_a11(_load(mut2c, "tick_so_pintura"))))
+        # (b3) O DEFEITO DE 2026-11-23: `hide()` volta a retirar so' o tick e
+        # deixa o prazo armado -- o laco gira a 100 % de um nucleo. Quem apanha
+        # e' a A12.
+        mut4 = os.path.join(tmp, "app", "webview", "caption_overlay_hide_spin.py")
+        shutil.copy2(WORD_FADE, os.path.join(tmp, "app", "webview", "word_fade.py"))
+        io.open(mut4, "w", encoding="utf-8", newline="").write(
+            io.open(MODULE, encoding="utf-8", newline="").read().replace(
+                "            self._tick_gen += 1\n"
+                "            self._tick_deadline = 0.0\n"
+                "        self._tick_event.set()",
+                "            self._tick_gen += 1\n"
+                "        self._tick_event.set()", 1))
+        extra.append(("hide-deixa-o-prazo-armado",
+                      not _arm_a12(_load(mut4, "tick_hide_spin"))))
+        # (b4) A REDE DE SEGURANCA do laco volta a nao retirar o prazo orfao --
+        # um chamador futuro que troque a geracao sem limpar volta a girar.
+        # Quem apanha e' a A13.
+        mut5 = os.path.join(tmp, "app", "webview", "caption_overlay_orfao.py")
+        io.open(mut5, "w", encoding="utf-8", newline="").write(
+            io.open(MODULE, encoding="utf-8", newline="").read().replace(
+                "                    if self._tick_deadline == deadline:\n"
+                "                        self._tick_deadline = 0.0\n", "", 1))
+        extra.append(("laco-nao-retira-prazo-orfao",
+                      not _arm_a13(_load(mut5, "tick_orfao"))))
         # (c) o relogio do frame volta ao de grao grosso
         mut3 = os.path.join(tmp, "app", "webview", "caption_overlay_grosso.py")
         io.open(mut3, "w", encoding="utf-8", newline="").write(

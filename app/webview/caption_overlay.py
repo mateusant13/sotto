@@ -1185,7 +1185,16 @@ class NativeCaptionOverlay:
                     if deadline - _frame_now() > 0.001:
                         continue
             with sched:
-                if gen != self._tick_gen or self._tick_deadline != deadline:
+                if gen != self._tick_gen:
+                    # UM PRAZO ORFAO NAO SE HONRA E NAO SE REPETE (2026-11-23):
+                    # a geracao foi trocada por quem nao limpou o prazo. Deixar
+                    # o prazo aqui faz esta volta nunca ser honrada e nunca
+                    # dormir -- o laco volta ao topo com `left <= 0` e gira a
+                    # 100 % de um nucleo. Retira-se SO' o prazo DESTA volta.
+                    if self._tick_deadline == deadline:
+                        self._tick_deadline = 0.0
+                    continue
+                if self._tick_deadline != deadline:
                     continue
                 self._tick_deadline = 0.0
             self._tick(gen)
@@ -2096,8 +2105,16 @@ class NativeCaptionOverlay:
         # meio de um arrasto nao pode voltar "agarrada" a um cursor que ja' nao
         # interfere. Nada e' gravado aqui -- nao houve largar.
         self._drag_reset()
+        # O PRAZO SAI JUNTO COM A GERACAO (2026-11-23). So' retirar o tick
+        # (`_tick_gen += 1`) deixava o prazo armado: o laco acordava no instante
+        # antigo, via a geracao trocada e voltava ao topo SEM dormir, para
+        # sempre -- medido no log do dono como `sotto-caption-tick` a 53-77 % de
+        # um nucleo durante 10 h depois de um `Ctrl+Space` (hide()). E' a mesma
+        # forma do `destroy()`, que ja' limpava os dois juntos.
         with _guard(self, '_sched_lock'):
             self._tick_gen += 1
+            self._tick_deadline = 0.0
+        self._tick_event.set()
         self.visible = False
         if self.hwnd:
             _user32.ShowWindow(self.hwnd, SW_HIDE)
