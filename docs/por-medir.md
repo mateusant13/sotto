@@ -59,15 +59,19 @@
   `_main/receipt-20261109-discord-per-app-tap.md` §5.
 
 - **A FUSAO PELO SEAM VIVO DA APP** (2026-11-09, ordem do dono *"legenda AO VIVO otima E
-  historico otimo"*). O que esta' medido: `_main/fusion-wire-oracle.py` executa `on_worker_caption`
-  REAL (extraido por `ast`) e prova que o texto fundido chega as duas superficies (o overlay e o
-  payload que o painel commita, e que o `history_append` grava) -- 10 arms, `--neg-arm` rc=1; e
-  `_main/fusion-audio-oracle.py` prova que o audio do ao vivo entra no lote com tecto, corte contado
-  e cauda preservada por IDENTIDADE -- 11 arms, `--neg-arm` 5/5. O que **nao** esta' medido: o texto
-  FUSIONADO pintado na janela nativa com uma call a correr, e a linha do historico REESCRITA pelo
-  lote (o `history_merge` e' julgado no store, nao num transcript real de ponta a ponta). As duas
-  coisas pedem a app aberta e audio a tocar, que a lei desta casa proibe a uma lane. Recebem
-  `UNMEASURED` ate' o dono correr a app; o recibo declara o estado como DARK por isso mesmo.
+  historico otimo"*). Estado atual: `SOTTO_FUSION` continua desligado por padrao. Com a flag ligada,
+  `_fusion_caption` publica apenas texto sem divergencia entre as duas hipoteses (sinal de acordo,
+  nao prova acustica); sem evidencia acustica para uma divergencia, preserva a hipotese original do
+  stream e marca revisao. `_main/fusion-wire-oracle.py`
+  executa o seam real extraido por `ast` (10 arms; controles negativos apanham call-site removido e
+  guard permissivo), e `_main/panel-row-identity-oracle.js` percorre o `caption-formulation.js`, o
+  `panel.js` e o CSS reais: 11 checks positivos; M8 apanha a remocao do marcador da linha e M9 apanha
+  a perda do meta no produtor. A linha textual permanece original; o painel ganha o marcador visual
+  `?` e o titulo de revisao. `_main/fusion-audio-oracle.py` continua a provar o lote limitado, corte
+  contado e cauda preservada por identidade (11 arms, `--neg-arm` 5/5). **UNMEASURED:** pintura real
+  no WebView2/overlay durante uma sessao viva, WER/CER ou taxa de correcao com referencia humana, e
+  qualquer confirmacao acustica de palavras divergentes. Esses limites mantem a fusao desligada por
+  padrao e impedem afirmar ganho de precisao.
 
 - **O SPLIT DO ARRANQUE NA MAQUINA DELE, POR FASE** (2026-11-10) — **MEDIDO 2026-11-15, e o split com
   o disco degradado EXISTE no log dele.** O item dizia que so' o perfil de uma maquina desta arvore
