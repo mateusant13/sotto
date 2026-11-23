@@ -74,11 +74,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import itertools
 import json
 import os
+import re
 import struct
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 
@@ -652,170 +655,548 @@ ENGINES = {
 
 
 # ---------------------------------------------------------------------------
-# --score: does separation help the ASR that ships?  (words + a proxy, NO WER)
+# --score: production Redux consumer; metrics only, no transcript text or WER
 # ---------------------------------------------------------------------------
-#
-# There is no reference transcript for the call corpus, so a word error rate
-# cannot be computed here and is not reported. What IS defensible without a
-# reference:
-#
-#   words, wps        how much text the shipping ASR extracts from a stream.
-#                     Separation that mutes one talker must show up here.
-#   wps_speech        the same count divided by the VAD's own speech time in
-#                     that stream, so a stream that is 90% silence cannot win
-#                     the per-second average by being quiet.
-#   mean_peak_p       the arithmetic mean of the transducer's own posterior at
-#                     every NON-BLANK token it emitted (softmax over the 8193
-#                     vocab logits). This is the model's own confidence in the
-#                     text it produced; it is a proxy for intelligibility and
-#                     explicitly NOT a WER. Same model, same audio length, so
-#                     the numbers are comparable across arms.
-#   blank_frac        blank steps / total decode steps. Rises when the audio
-#                     stops looking like speech to the acoustic model.
+# The shipped Consumer/OnnxBackend is the scorer. Legacy copied decode code is
+# intentionally removed so the benchmark cannot silently score a different path.
 
-_ASR_CACHE: dict = {}
+REDUX_EAGER_GRAPHS = (
+    "preprocessor.onnx", "encoder-model.onnx", "decoder_joint-model.onnx",
+)
+REDUX_VAD_GRAPH = "vad-model.onnx"
+SCORE_STREAM_NAMES = frozenset(("mix", "stem_0", "stem_1"))
 
 
-def _asr_model(threads=None):
-    """Load the shipping batch ASR (`worker/models/parakeet-redux-onnx-int4`).
+def _score_gpu_preflight(args) -> dict:
+    """Refuse unsupported score runs before the WAV is opened.
 
-    Imported by explicit path with `importlib`, so nothing else on `sys.path`
-    is touched and the model directory is used read-only.
-
-    `threads` defaults to what is LEFT of `PROCESS_BUDGET` after the torch pool
-    a loaded separator is holding -- the two pools SUM, they do not each get the
-    flag (measured: 4 threads and 250.9-386.4 % of one core for `--threads 2`).
+    This checks the installed CUDA device census and the same ORT fallback
+    controls that Redux's session proxy uses. The live session readback is
+    checked again after model construction and before the first transcribe.
     """
-    if threads is None:
-        held = 0
-        if _MOSS_CACHE:
-            try:
-                import torch
-                held = int(torch.get_num_threads())
-            except Exception:
-                held = 0
-        threads = max(1, PROCESS_BUDGET - held)
-    key = ("asr", int(threads))
-    if key in _ASR_CACHE:
-        return _ASR_CACHE[key]
-    import importlib.util
+    if args.engine != "mossformer2":
+        raise RuntimeError("--score requires the MossFormer2 speech separator")
+    if args.device != "cuda":
+        raise RuntimeError("--score requires explicit --device cuda; auto/CPU is not accepted")
+    if args.no_cache:
+        raise RuntimeError("--score requires the bounded content cache for separated stems")
+    if PROCESS_BUDGET < 2:
+        raise RuntimeError("--score needs a process budget of at least 2 pools")
+    separator_threads = max(1, PROCESS_BUDGET // 2)
+    asr_threads = int(args.asr_threads or max(1, PROCESS_BUDGET - separator_threads))
+    if separator_threads + asr_threads > PROCESS_BUDGET:
+        raise RuntimeError("--score separator plus Redux threads exceed --threads process budget")
+    if args.auto_spans > 8 or args.span_s <= 0 or args.span_s > 30:
+        raise RuntimeError("--score is bounded to 1..30 s spans and at most 8 spans")
+    for name in ("transcribe.py", "preprocessor.onnx", "encoder-model.onnx",
+                 "decoder_joint-model.onnx"):
+        if not os.path.isfile(os.path.join(ASR_DIR, name)):
+            raise RuntimeError("--score Redux artifact is missing: %s" % name)
 
-    path = os.path.join(ASR_DIR, "transcribe.py")
-    if not os.path.isfile(path):
-        raise SystemExit("separate: ASR not on disk: %s" % path)
-    spec = importlib.util.spec_from_file_location("_redux_onnx_transcribe", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    model = mod.OnnxParakeet(__import__("pathlib").Path(ASR_DIR), threads=int(threads))
-    _declare_threads("asr-load", ort_intra=int(threads))
-    _ASR_CACHE[key] = (mod, model)
-    return _ASR_CACHE[key]
+    worker_dir = os.path.join(REPO, "worker")
+    if worker_dir not in sys.path:
+        sys.path.insert(0, worker_dir)
+    import onnxruntime as ort
+    import sotto_worker
 
+    options_factory = getattr(ort, "SessionOptions", None)
+    session_type = getattr(ort, "InferenceSession", None)
+    if not callable(options_factory) or not callable(session_type):
+        raise RuntimeError("--score installed ONNX Runtime lacks session APIs")
+    options = options_factory()
+    if (not callable(getattr(options, "add_session_config_entry", None))
+            or not callable(getattr(options, "get_session_config_entry", None))
+            or not callable(getattr(session_type, "disable_fallback", None))):
+        raise RuntimeError("--score ONNX Runtime cannot verify/disable session fallback")
 
-def _greedy_probs(model, encoded: np.ndarray):
-    """`OnnxParakeet.greedy` (transcribe.py, class body) PLUS a posterior probe.
-
-    The decode loop is copied because the vendor loop discards its logits and a
-    confidence proxy is the only intelligibility signal available without a
-    reference transcript. The copy is kept honest by `--verify-decode`, which
-    runs the vendor's own `transcribe()` on the same PCM and refuses to print a
-    score if the two texts differ -- so a drift in the vendor loop (a new
-    duration rule, a different blank rule) fails loudly instead of silently
-    scoring a decode nobody ships.
-    """
-    frames = encoded.shape[0]
-    state = (np.zeros(model.state_shape, np.float32), np.zeros(model.state_shape, np.float32))
-    last_token = model.blank_id
-    frame = 0
-    steps = model.max_symbols_per_step * frames
-    tokens: list[int] = []
-    durations: list[int] = []
-    peaks: list[float] = []
-    blanks = 0
-    total_steps = 0
-    target_length = np.ones(1, dtype=np.int32)
-    while frame < frames and steps > 0:
-        logits, _, hidden, cell = model.decoder_joint.run(None, {
-            "encoder_outputs": encoded[frame][None, :, None],
-            "targets": np.array([[last_token]], dtype=np.int32),
-            "target_length": target_length,
-            "input_states_1": state[0], "input_states_2": state[1]})
-        logits = logits[0, 0, 0]
-        vocab_logits = logits[: model.vocab_size]
-        token = int(vocab_logits.argmax())
-        duration = model.durations[int(logits[model.vocab_size:].argmax())]
-        if token == model.blank_id and duration == 0:
-            duration = 1
-        # posterior of the emitted token: same softmax the argmax above used
-        shifted = vocab_logits - vocab_logits.max()
-        log_z = float(np.log(np.exp(shifted).sum())) + float(vocab_logits.max())
-        total_steps += 1
-        if token == model.blank_id:
-            blanks += 1
-        else:
-            peaks.append(float(np.exp(float(vocab_logits[token]) - log_z)))
-        tokens.append(token)
-        durations.append(duration)
-        frame += duration
-        if token != model.blank_id:
-            last_token = token
-            state = (hidden, cell)
-        steps -= 1
-    return tokens, durations, peaks, blanks, total_steps
+    sotto_worker._add_cuda_dll_dirs()
+    sotto_worker._preload_cuda_runtime(ort)
+    registered = sotto_worker.asr_cuda_device_registered(ort)
+    if registered is not True:
+        raise RuntimeError("--score CUDA device census is not positive: %r" % registered)
+    separator_device, device_details = resolve_moss_device("cuda")
+    if separator_device != "cuda":
+        raise RuntimeError("--score MossFormer2 CUDA device did not read back")
+    return {
+        "cuda_device_registered": True,
+        "ort_fallback_controls": "SessionOptions readback + enable_fallback=0 + disable_fallback",
+        "model_dir": ASR_DIR,
+        "separator_device": device_details,
+    }
 
 
-def score_stream(mod, model, pcm: np.ndarray, name: str, verify_decode: bool = False) -> dict:
-    """One ASR pass over one stream: words, per-second rates, confidence proxy."""
+def read_audio_after_score_preflight(args, preflight, wav_reader):
+    """Keep the fail-closed score gate strictly before opening input audio."""
+    score_readback = preflight(args) if args.score else None
+    private_bundle = (_load_certas_reference_bundle(args.wav)
+                      if getattr(args, "score_certas", False) else None)
+    return wav_reader(args.wav), score_readback, private_bundle
+
+
+def _session_guard_readback(session) -> bool:
+    """Read the Python InferenceSession switch after Redux disabled fallback."""
+    return getattr(session, "_enable_fallback", None) is False
+
+
+def require_redux_gpu_backend(engine) -> dict:
+    """Require live device, provider, option, and session fallback readbacks."""
+    if getattr(engine, "device", None) != "cuda":
+        raise RuntimeError("--score Redux backend did not read back device=cuda")
+    if getattr(engine, "cpu_execution_policy", None) != "cuda-only":
+        raise RuntimeError("--score Redux CPU execution policy is not cuda-only")
+    model = getattr(engine, "_model", None)
+    if model is None or getattr(model, "cpu_ep_fallback_disabled", None) is not True:
+        raise RuntimeError("--score Redux model lacks CPU EP fallback-disabled readback")
+
+    # Materialize deferred VAD now, without decoding audio. Its session must
+    # have the same guards before transcribe() is allowed to reach speech_regions.
+    if getattr(model, "_sotto_vad_deferred", False):
+        factory = getattr(model, "_sotto_session_factory", None)
+        if not callable(factory):
+            raise RuntimeError("--score deferred Redux VAD has no guarded session factory")
+        model.vad = factory(REDUX_VAD_GRAPH)
+        model._sotto_vad_deferred = False
+
+    sessions = {
+        "preprocessor.onnx": getattr(model, "preprocessor", None),
+        "encoder-model.onnx": getattr(model, "encoder", None),
+        "decoder_joint-model.onnx": getattr(model, "decoder_joint", None),
+    }
+    if getattr(model, "_sotto_vad_exists", False):
+        sessions[REDUX_VAD_GRAPH] = getattr(model, "vad", None)
+    providers = getattr(engine, "provider_readback", None)
+    policy = getattr(engine, "thread_policy", None)
+    options = policy.get("session_options_readback") if isinstance(policy, dict) else None
+    fallback = policy.get("runtime_fallback_readback") if isinstance(policy, dict) else None
+    expected = set(sessions)
+    if (not isinstance(providers, dict) or set(providers) != expected
+            or not isinstance(options, dict) or set(options) != expected
+            or not isinstance(fallback, dict)):
+        raise RuntimeError("--score Redux GPU/readback graph inventory is incomplete")
+
+    provider_report = {}
+    for graph, session in sessions.items():
+        names = providers.get(graph)
+        row = options.get(graph)
+        if (session is None or not isinstance(names, (list, tuple))
+                or "CUDAExecutionProvider" not in names
+                or not isinstance(row, dict)
+                or row.get("disable_cpu_ep_fallback") != "1"
+                or row.get("runtime_fallback_disabled") is not True
+                or not _session_guard_readback(session)
+                or (graph != REDUX_VAD_GRAPH and fallback.get(graph) is not True)):
+            raise RuntimeError("--score Redux CUDA/fallback readback failed for %s" % graph)
+        provider_report[graph] = list(names)
+    return {
+        "device": "cuda",
+        "cpu_execution_policy": "cuda-only",
+        "provider_readback": provider_report,
+        "fallback_disabled_graphs": sorted(expected),
+    }
+
+
+def create_score_backend(consumer_factory, release_separator):
+    """Release separator VRAM before constructing the production ASR consumer."""
+    separator_release = release_separator()
+    consumer = consumer_factory()
+    engine = consumer.engine()
+    readback = require_redux_gpu_backend(engine)
+    return consumer, engine, {"separator_release": separator_release, "asr": readback}
+
+
+def _transcribe_private(engine, pcm: np.ndarray):
+    """Return text only to the caller's private scoring stack."""
     pcm = np.ascontiguousarray(np.asarray(pcm, dtype=np.float32))
     audio_s = pcm.size / float(RATE)
-    pieces = model.cut_segments(pcm)
-    words: list[dict] = []
-    texts: list[str] = []
-    peaks: list[float] = []
-    blanks = steps = 0
-    for a, b in pieces:
-        enc = model.encode(pcm[a:b])
-        tok, dur, pk, bl, st = _greedy_probs(model, enc)
-        text = model.vocab.decode(tok)
-        if text.strip():
-            texts.append(text.strip())
-        for w in model.vocab.words(tok, dur, model.frame_seconds):
-            w = dict(w)
-            w["start"] = min(audio_s, w["start"] + a / float(RATE))
-            w["end"] = min(audio_s, w["end"] + a / float(RATE))
-            words.append(w)
-        peaks.extend(pk)
-        blanks += bl
-        steps += st
-    speech = model.speech_regions(pcm) if model.vad is not None else [(0.0, audio_s)]
-    speech_s = sum(max(0.0, e - s) for s, e in speech)
-    out = {
+    result = engine.transcribe(pcm)
+    if isinstance(result, tuple) and result:
+        text = str(result[0] or "")
+        segments = result[1] if len(result) > 1 else ()
+    elif isinstance(result, dict):
+        text = str(result.get("text") or "")
+        segments = result.get("segments") or ()
+    else:
+        raise RuntimeError("--score Redux consumer returned an unsupported result")
+    if len(text) > 16384:
+        raise RuntimeError("--score transcript exceeds its private scoring cap")
+    return text, audio_s, len(segments)
+
+
+def _score_one(engine, pcm: np.ndarray, name: str) -> dict:
+    if name not in SCORE_STREAM_NAMES:
+        raise ValueError("score stream labels must remain anonymous")
+    text, audio_s, segment_count = _transcribe_private(engine, pcm)
+    return _public_score(text, audio_s, segment_count, name)
+
+
+def _public_score(text: str, audio_s: float, segment_count: int, name: str) -> dict:
+    if name not in CERTAS_STREAMS:
+        raise ValueError("score stream labels must remain anonymous")
+    words = len(text.split())
+    # Keep only reproducibility metrics; the transcript itself is discarded.
+    return {
         "stream": name,
         "audio_s": round(audio_s, 3),
-        "words": len(words),
-        "wps": round(len(words) / audio_s, 4) if audio_s else 0.0,
-        "vad_speech_s": round(speech_s, 3),
-        "speech_frac": round(speech_s / audio_s, 4) if audio_s else 0.0,
-        "wps_speech": round(len(words) / speech_s, 4) if speech_s > 0.05 else 0.0,
-        "mean_peak_p": round(float(np.mean(peaks)), 5) if peaks else None,
-        "blank_frac": round(blanks / steps, 4) if steps else None,
-        "text": " ".join(texts),
-        "segments": len(pieces),
+        "words": words,
+        "wps": round(words / audio_s, 4) if audio_s else 0.0,
+        "segments": segment_count,
+        "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
     }
-    if verify_decode:
-        vendor = model.transcribe(pcm, timestamps="none")
-        out["vendor_text_matches"] = (vendor["text"].strip() == out["text"].strip())
-        out["vendor_words"] = len(_vendor_words(mod, model, vendor))
-    return out
 
 
-def _vendor_words(_mod, model, result: dict) -> list:
-    """Word count from the vendor's own output (only used by --verify-decode)."""
-    n = 0
-    for seg in result.get("segments") or ():
-        for w in seg.get("words") or ():
-            n += 1
-    return [None] * n if n else []
+def score_inputs(engine, named_audio, retain_private_text: bool = False):
+    """Run distinct mix/stem calls through one already-attested backend."""
+    prepared = []
+    seen = set()
+    for index, item in enumerate(named_audio):
+        if index >= 3:
+            raise RuntimeError("--score accepts at most one mix and two anonymous stems")
+        name, pcm = item
+        if name not in SCORE_STREAM_NAMES or name in seen:
+            raise ValueError("score stream labels must be unique and anonymous")
+        seen.add(name)
+        prepared.append((name, pcm))
+    if "mix" not in seen:
+        raise RuntimeError("--score requires the mix before any stem is transcribed")
+    rows = {}
+    private_texts = {}
+    for name, pcm in prepared:
+        text, audio_s, segment_count = _transcribe_private(engine, pcm)
+        rows[name] = _public_score(text, audio_s, segment_count, name)
+        if retain_private_text:
+            private_texts[name] = text
+    return (rows, private_texts) if retain_private_text else rows
+
+
+CERTAS_STREAMS = frozenset(("mix", "stem_0", "stem_1", "clean_0", "clean_1"))
+
+
+def _private_tokens(text: str) -> list[str]:
+    if not isinstance(text, str) or len(text) > 16384:
+        raise ValueError("private reference/transcript exceeds its scoring cap")
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    return re.findall(r"[^\W_]+(?:['’][^\W_]+)*", normalized, flags=re.UNICODE)
+
+
+def _private_chars(text: str) -> list[str]:
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    return [char for char in normalized if char.isalnum()]
+
+
+def _levenshtein(left, right) -> int:
+    if len(left) > len(right):
+        left, right = right, left
+    previous = list(range(len(left) + 1))
+    for row_index, right_item in enumerate(right, 1):
+        current = [row_index]
+        for column_index, left_item in enumerate(left, 1):
+            current.append(min(
+                current[-1] + 1,
+                previous[column_index] + 1,
+                previous[column_index - 1] + (left_item != right_item),
+            ))
+        previous = current
+    return previous[-1]
+
+
+def _reference_metrics(reference: str, hypothesis: str) -> dict:
+    ref_words = _private_tokens(reference)
+    hyp_words = _private_tokens(hypothesis)
+    ref_chars = _private_chars(reference)
+    hyp_chars = _private_chars(hypothesis)
+    if not ref_words or not ref_chars:
+        raise ValueError("private Certas reference has no normalized tokens")
+    word_errors = _levenshtein(ref_words, hyp_words)
+    char_errors = _levenshtein(ref_chars, hyp_chars)
+    ref_counts = __import__("collections").Counter(ref_words)
+    hyp_counts = __import__("collections").Counter(hyp_words)
+    return {
+        "reference_words": len(ref_words),
+        "hypothesis_words": len(hyp_words),
+        "word_errors": word_errors,
+        "wer": round(word_errors / len(ref_words), 6),
+        "reference_chars": len(ref_chars),
+        "hypothesis_chars": len(hyp_chars),
+        "char_errors": char_errors,
+        "cer": round(char_errors / len(ref_chars), 6),
+        "matched_reference_tokens": sum((ref_counts & hyp_counts).values()),
+    }
+
+
+def _aggregate_reference_metrics(rows: list[dict]) -> dict:
+    words = sum(row["reference_words"] for row in rows)
+    chars = sum(row["reference_chars"] for row in rows)
+    word_errors = sum(row["word_errors"] for row in rows)
+    char_errors = sum(row["char_errors"] for row in rows)
+    return {
+        "reference_words": words,
+        "word_errors": word_errors,
+        "wer": round(word_errors / words, 6) if words else None,
+        "reference_chars": chars,
+        "char_errors": char_errors,
+        "cer": round(char_errors / chars, 6) if chars else None,
+        "matched_reference_tokens": sum(row["matched_reference_tokens"] for row in rows),
+    }
+
+
+def _require_stem_permutations(permutations: list[tuple[int, int]]) -> None:
+    expected = list(itertools.permutations((0, 1)))
+    if (len(permutations) != 2
+            or {tuple(row) for row in permutations} != set(expected)):
+        raise ValueError("Certas reference scoring requires both exact stem permutations")
+
+
+def _contains_private_text(value, private_texts: set[str], field_name: str = "") -> bool:
+    """Detect transcript payloads while allowing only explicit schema labels."""
+    sensitive_keys = {"text", "transcript", "transcription", "hypothesis",
+                      "hypotheses", "reference_text"}
+    fixed_labels = {
+        "stream": {"mix", "stem_0", "stem_1", "clean_0", "clean_1"},
+        "reference_basis": {"ordered_concat_proxy_no_word_timing"},
+        "basis": {"reference_token_inventory_delta_vs_mix_including_false_insertions"},
+        "metric_normalization": {
+            "NFKC casefold; Unicode alphanumeric words; CER excludes spaces and punctuation",
+        },
+    }
+    if isinstance(value, dict):
+        for key, item in value.items():
+            key_name = str(key).casefold()
+            if key_name in sensitive_keys:
+                return True
+            if (isinstance(item, str) and item in fixed_labels.get(key_name, set())):
+                continue
+            if _contains_private_text(item, private_texts, key_name):
+                return True
+        return False
+    if isinstance(value, (list, tuple)):
+        return any(_contains_private_text(item, private_texts, field_name) for item in value)
+    if isinstance(value, str):
+        return (value in private_texts
+                or any(len(text) >= 12 and text in value for text in private_texts))
+    return False
+
+
+def evaluate_certas_private(texts: dict, reference_rows: list[dict],
+                             prepared_key: str, reference_manifest_sha256: str) -> dict:
+    """Compare private texts to pinned refs and return aggregate metrics/hashes only."""
+    expected = {"mix", "stem_0", "stem_1", "clean_0", "clean_1"}
+    if (not isinstance(texts, dict) or set(texts) != expected
+            or not isinstance(reference_rows, list) or len(reference_rows) != 2
+            or not re.fullmatch(r"[0-9a-f]{64}", str(prepared_key))
+            or not re.fullmatch(r"[0-9a-f]{64}", str(reference_manifest_sha256))):
+        raise ValueError("Certas scoring requires exactly two anonymous stems and two references")
+    if (any(not isinstance(texts.get(name), str) for name in expected)
+            or any(len(texts[name]) > 16384 for name in expected)
+            or any(not isinstance(row, dict) for row in reference_rows)):
+        raise ValueError("Certas private scoring inputs have an invalid shape")
+    references = [row.get("reference_text") for row in reference_rows]
+    reference_hashes = [row.get("reference_sha256") for row in reference_rows]
+    if any(not isinstance(ref, str) or not ref.strip() for ref in references):
+        raise ValueError("private Certas references are incomplete")
+    if (any(not re.fullmatch(r"[0-9a-f]{64}", str(digest)) for digest in reference_hashes)
+            or any(hashlib.sha256(ref.encode("utf-8")).hexdigest() != digest
+                   for ref, digest in zip(references, reference_hashes))):
+        raise ValueError("private Certas reference identity is invalid")
+
+    clean_rows = []
+    for index in range(2):
+        metrics = _reference_metrics(references[index], texts["clean_%d" % index])
+        clean_rows.append({"stream": "clean_%d" % index,
+                           "reference_sha256": reference_hashes[index],
+                           "transcript_sha256": hashlib.sha256(
+                               texts["clean_%d" % index].encode("utf-8")).hexdigest(),
+                           **metrics})
+
+    # The overlapping mixture has no word timestamps in this small reference
+    # slice. Its ordered concatenation score is explicitly a proxy, not human
+    # word-level ground truth for simultaneous speech.
+    joined_reference = " ".join(references)
+    mix_metrics = _reference_metrics(joined_reference, texts["mix"])
+    mix_row = {
+        "stream": "mix",
+        "reference_basis": "ordered_concat_proxy_no_word_timing",
+        "reference_sha256": reference_manifest_sha256,
+        "transcript_sha256": hashlib.sha256(texts["mix"].encode("utf-8")).hexdigest(),
+        **mix_metrics,
+    }
+
+    permutation_rows = []
+    for assignment in itertools.permutations((0, 1)):
+        rows = []
+        for stem_index, reference_index in enumerate(assignment):
+            stream = "stem_%d" % stem_index
+            metrics = _reference_metrics(references[reference_index], texts[stream])
+            rows.append({
+                "stream": stream,
+                "reference_index": reference_index,
+                "reference_sha256": reference_hashes[reference_index],
+                "transcript_sha256": hashlib.sha256(texts[stream].encode("utf-8")).hexdigest(),
+                **metrics,
+            })
+        aggregate = _aggregate_reference_metrics(rows)
+        aggregate.update({"stem_to_reference": list(assignment), "streams": rows})
+        permutation_rows.append(aggregate)
+    _require_stem_permutations([tuple(row["stem_to_reference"])
+                                for row in permutation_rows])
+    selected = min(permutation_rows,
+                   key=lambda row: (row["word_errors"], row["char_errors"],
+                                    tuple(row["stem_to_reference"])))
+
+    # The aggregate token inventory avoids assigning mixture words to one
+    # speaker. Counts are a bounded proxy for words recovered/lost vs. the mix.
+    from collections import Counter
+    reference_inventory = Counter()
+    for reference in references:
+        reference_inventory.update(_private_tokens(reference))
+    mix_inventory = Counter(_private_tokens(texts["mix"]))
+    separated_inventory = Counter()
+    for stream in ("stem_0", "stem_1"):
+        separated_inventory.update(_private_tokens(texts[stream]))
+    mix_hits = sum((reference_inventory & mix_inventory).values())
+    separated_hits = sum((reference_inventory & separated_inventory).values())
+    mix_insertions = sum((mix_inventory - reference_inventory).values())
+    separated_insertions = sum((separated_inventory - reference_inventory).values())
+    correction_damage = {
+        "basis": "reference_token_inventory_delta_vs_mix_including_false_insertions",
+        "mix_matched_reference_tokens": mix_hits,
+        "separated_matched_reference_tokens": separated_hits,
+        "mix_false_insertions": mix_insertions,
+        "separated_false_insertions": separated_insertions,
+        "correction_count": (max(0, separated_hits - mix_hits)
+                             + max(0, mix_insertions - separated_insertions)),
+        "damage_count": (max(0, mix_hits - separated_hits)
+                         + max(0, separated_insertions - mix_insertions)),
+    }
+    public = {
+        "metric_normalization": "NFKC casefold; Unicode alphanumeric words; CER excludes spaces and punctuation",
+        "prepared_key": prepared_key,
+        "reference_manifest_sha256": reference_manifest_sha256,
+        "reference_rows": 2,
+        "clean_baselines": clean_rows,
+        "mix": mix_row,
+        "stem_permutations": permutation_rows,
+        "selected_stem_permutation": selected["stem_to_reference"],
+        "selected_stem_scores": {key: value for key, value in selected.items()
+                                  if key != "streams"},
+        "correction_damage": correction_damage,
+    }
+    private_values = {value for value in [*references, *texts.values()] if value}
+    if _contains_private_text(public, private_values):
+        raise RuntimeError("Certas aggregate scoring privacy guard failed")
+    return public
+
+
+def _load_certas_reference_bundle(wav_path: str) -> dict:
+    """Load the helper by path without exposing its private references."""
+    import importlib.util
+    helper_path = os.path.join(HERE, "prepare-certas-overlap.py")
+    spec = importlib.util.spec_from_file_location("_certas_overlap_private", helper_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Certas overlap helper is unavailable")
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    bundle = helper.load_reference_bundle(Path(wav_path).parent)
+    if Path(wav_path).resolve() != Path(bundle["mix_wav"]).resolve():
+        raise ValueError("--score-certas requires the pinned prepared mix.wav")
+    return bundle
+
+
+def score_selftest() -> int:
+    """Synthetic, model-free controls for reference fusion and privacy gates."""
+    secret_a = "mix"
+    secret_b = "beta private reference"
+    texts = {
+        "clean_0": secret_a, "clean_1": secret_b,
+        "mix": "beta syntheticinsertedtoken",
+        "stem_0": "beta", "stem_1": "mix",
+    }
+    refs = [
+        {"reference_text": secret_a, "reference_sha256": hashlib.sha256(secret_a.encode()).hexdigest()},
+        {"reference_text": secret_b, "reference_sha256": hashlib.sha256(secret_b.encode()).hexdigest()},
+    ]
+    key = "a" * 64
+    manifest = "b" * 64
+    result = evaluate_certas_private(texts, refs, key, manifest)
+    private_values = {value for value in [*texts.values(), secret_a, secret_b] if value}
+    score_envelope = {
+        "score": {name: _public_score(texts[name], 0.56, 1, name)
+                  for name in ("mix", "stem_0", "stem_1")},
+        "reference_score": result,
+    }
+    ok = (len(result["stem_permutations"]) == 2
+          and result["selected_stem_permutation"] == [1, 0]
+          and result["correction_damage"]["correction_count"] == 2
+          and result["correction_damage"]["damage_count"] == 0
+          and all("wer" in row and "cer" in row for row in result["stem_permutations"])
+          and "beta private reference" not in json.dumps(score_envelope)
+          and not _contains_private_text(score_envelope, private_values))
+    leaked_envelope = {"score": {name: dict(row) for name, row
+                                  in score_envelope["score"].items()},
+                       "reference_score": result}
+    leaked_envelope["score"]["mix"]["transcript"] = texts["clean_0"]
+    ok = ok and _contains_private_text(leaked_envelope, private_values)
+    normal_value_leak = {"score": {"stem_0": {"diagnostic": "mix"}}}
+    ok = ok and _contains_private_text(normal_value_leak, private_values)
+    for bad_texts in (
+        {**texts, "stem_2": "extra"},
+        {key: value for key, value in texts.items() if key != "stem_1"},
+    ):
+        try:
+            evaluate_certas_private(bad_texts, refs, key, manifest)
+            ok = False
+        except ValueError:
+            pass
+    try:
+        _require_stem_permutations([(0, 1), (0, 2)])
+        ok = False
+    except ValueError:
+        pass
+    wrong_hash_refs = [dict(refs[0]), dict(refs[1])]
+    wrong_hash_refs[0]["reference_sha256"] = "c" * 64
+    try:
+        evaluate_certas_private(texts, wrong_hash_refs, key, manifest)
+        ok = False
+    except ValueError:
+        pass
+    print("CERTAS_SCORE_SELFTEST %s controls=8" % ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
+
+
+def _load_redux_consumer(threads: int):
+    worker_dir = os.path.join(REPO, "worker")
+    if worker_dir not in sys.path:
+        sys.path.insert(0, worker_dir)
+    import audio_queue_consumer
+    return audio_queue_consumer.Consumer(
+        queue_dir=os.path.join(HERE, ".cache", "score-queue"),
+        model_dir=ASR_DIR, log=lambda _message: None,
+        window_s=3.0, step_s=3.0, threads=threads,
+    )
+
+
+def _release_mossformer2() -> dict:
+    """Drop cached separator weights and request allocator release before ASR load."""
+    entries = list(_MOSS_CACHE.values())
+    if not entries:
+        return {"models_cleared": 0, "torch_cuda_allocated_mb_after": None,
+                "torch_cuda_reserved_mb_after": None}
+    models_cleared = len(entries)
+    torch = entries[0][1]
+    allocated_before = float(torch.cuda.memory_allocated()) / 1e6
+    _MOSS_CACHE.clear()
+    del entries
+    import gc
+    gc.collect()
+    torch.cuda.synchronize()
+    torch.cuda.empty_cache()
+    allocated_after = float(torch.cuda.memory_allocated()) / 1e6
+    reserved_after = float(torch.cuda.memory_reserved()) / 1e6
+    if allocated_after >= allocated_before:
+        raise RuntimeError("--score MossFormer CUDA allocations were not released")
+    return {"models_cleared": models_cleared,
+            "torch_cuda_allocated_mb_before": round(allocated_before, 1),
+            "torch_cuda_allocated_mb_after": round(allocated_after, 1),
+            "torch_cuda_reserved_mb_after": round(reserved_after, 1)}
 
 
 # ---------------------------------------------------------------------------
@@ -983,13 +1364,15 @@ def main(argv=None) -> int:
                     help="print only this stream's cached path")
     ap.add_argument("--no-cache", action="store_true")
     ap.add_argument("--score", action="store_true",
-                    help="run the shipping batch ASR over the mix and over every stream, "
-                         "and print words / words-per-second / a confidence proxy")
-    ap.add_argument("--verify-decode", action="store_true",
-                    help="also run the vendor's own transcribe() and compare its text with "
-                         "the copied decode loop (a mismatch means the loop drifted)")
+                    help="score mix and up to two anonymous stems through the production "
+                         "audio_queue_consumer / CUDA-only Redux backend; store only hashes/metrics")
+    ap.add_argument("--score-certas", action="store_true",
+                    help="privately score the pinned two-source Certas controls and both stem mappings; "
+                         "requires --score and its content-addressed prepared mix.wav")
+    ap.add_argument("--score-selftest", action="store_true",
+                    help="run model-free synthetic controls for Certas reference metrics/privacy")
     ap.add_argument("--asr-threads", type=int, default=0,
-                    help="0 = whatever is left of --threads after the torch pool")
+                    help="Redux ORT threads; 0 = remaining --threads process budget")
     ap.add_argument("--cost-log", default="",
                     help="append each row (cost, stats, score) as one JSON line to this file; "
                          "needed because `cage.py` discards a child's stdout, so a caged run's "
@@ -998,6 +1381,11 @@ def main(argv=None) -> int:
     ap.add_argument("--clear-cache", action="store_true")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
+
+    if args.score_selftest:
+        if PROCESS_BUDGET != 1:
+            ap.error("--score-selftest requires --threads 1")
+        return score_selftest()
 
     if args.list_cache:
         rows = []
@@ -1021,7 +1409,19 @@ def main(argv=None) -> int:
 
     if not args.wav:
         ap.error("--wav is required (or --list-cache/--clear-cache)")
-    x = read_wav(args.wav)
+    if args.score and args.stream >= 0:
+        ap.error("--score needs mix plus stems; --stream cannot be combined with --score")
+    if args.score_certas and not args.score:
+        ap.error("--score-certas requires --score")
+    if args.score_certas and (args.auto_spans or args.start != 0):
+        ap.error("--score-certas is one prepared overlap span at start 0; auto/multi-span is refused")
+    if not os.path.isfile(args.wav):
+        ap.error("audio file is missing: %s" % args.wav)
+    try:
+        x, score_preflight, certas_bundle = read_audio_after_score_preflight(
+            args, _score_gpu_preflight, read_wav)
+    except (OSError, ValueError, RuntimeError) as exc:
+        ap.error(str(exc))
     if args.auto_spans:
         picks = auto_spans(x, args.auto_spans, args.span_s)
     else:
@@ -1030,6 +1430,15 @@ def main(argv=None) -> int:
         picks = picks[:1]
 
     results = []
+    score_sources = []
+    score_separator_threads = max(1, PROCESS_BUDGET // 2)
+    score_asr_threads = (int(args.asr_threads) if args.asr_threads > 0 else
+                         max(1, PROCESS_BUDGET - score_separator_threads))
+    if args.score and score_separator_threads + score_asr_threads > PROCESS_BUDGET:
+        ap.error("--asr-threads plus separator threads exceed the --threads process budget")
+    score_device = "cuda" if args.score else None
+    score_identity = (mossformer_identity("cuda", args.hash_mib_s)
+                      if args.score else None)
     for s0 in picks:
         seg = x[s0: s0 + int(args.span_s * RATE)]
         if seg.size == 0:
@@ -1042,10 +1451,15 @@ def main(argv=None) -> int:
         params = ({"chunk_s": args.chunk_s, "scale": args.scale, "rev": 3}
                   if args.engine == "mossformer2" else {})
         if args.engine == "mossformer2":
-            device, _device_details = resolve_moss_device(args.device)
+            if args.score:
+                device = score_device
+            else:
+                device, _device_details = resolve_moss_device(args.device)
             params["device"] = device
-            params["identity"] = mossformer_identity(device, args.hash_mib_s)
-        streams = separate(seg, engine=args.engine, threads=args.threads,
+            params["identity"] = (score_identity if args.score else
+                                  mossformer_identity(device, args.hash_mib_s))
+        separator_threads = score_separator_threads if args.score else args.threads
+        streams = separate(seg, engine=args.engine, threads=separator_threads,
                            use_cache=not args.no_cache, **params)
         key = span_key(args.engine, params, seg)
         row = {"engine": args.engine, "wav": os.path.abspath(args.wav),
@@ -1063,39 +1477,57 @@ def main(argv=None) -> int:
             row["wall_s"] = m.get("wall_s")
             row["rtf"] = m.get("rtf")
             row["rss_peak_mb"] = m.get("rss_peak_mb")
-        if args.score:
-            # The separator's torch pool and the ASR's ORT pool must SUM to the
-            # budget, not each claim it. Give torch 1 and the ASR the rest.
-            restored = None
-            if _MOSS_CACHE:
-                try:
-                    import torch
-                    restored = int(torch.get_num_threads())
-                    torch.set_num_threads(1)
-                except Exception:
-                    restored = None
-            asr_threads = args.asr_threads
-            if asr_threads <= 0:
-                asr_threads = max(1, PROCESS_BUDGET - (1 if restored else 0))
-            mod, asr = _asr_model(asr_threads)
-            t0 = time.perf_counter()
-            row["score"] = {"mix": score_stream(mod, asr, seg, "mix",
-                                                verify_decode=args.verify_decode)}
-            for i, s in enumerate(streams):
-                row["score"]["s%d" % i] = score_stream(
-                    mod, asr, s, "s%d" % i, verify_decode=args.verify_decode)
-            row["score_wall_s"] = round(time.perf_counter() - t0, 3)
-            row["score_rss_mb"] = _rss_mb()
-            if restored is not None:
-                try:
-                    import torch
-                    torch.set_num_threads(restored)
-                except Exception:
-                    pass
         results.append(row)
-        if args.cost_log:
+        if args.score:
+            score_sources.append((row, s0))
+        elif args.cost_log:
             with open(args.cost_log, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        del streams, seg
+
+    if args.score and results:
+        consumer, asr_engine, score_policy = create_score_backend(
+            lambda: _load_redux_consumer(score_asr_threads), _release_mossformer2)
+        del consumer
+        for row, s0 in score_sources:
+            cached = cache_load(args.engine, row["key"], len(row["streams"]))
+            if cached is None:
+                raise RuntimeError("--score separated stream cache disappeared before ASR pass")
+            stems, _meta = cached
+            if len(stems) > 2:
+                raise RuntimeError("--score separator returned more than two anonymous stems")
+            seg = x[s0: s0 + int(args.span_s * RATE)]
+            t0 = time.perf_counter()
+            named_audio = [("mix", seg)] + [
+                ("stem_%d" % i, stem) for i, stem in enumerate(stems)
+            ]
+            if certas_bundle is not None:
+                row["score"], private_texts = score_inputs(
+                    asr_engine, named_audio, retain_private_text=True)
+                for index, record in enumerate(certas_bundle["records"]):
+                    clean_audio = read_wav(str(record["clean_wav"]))
+                    clean_text, _clean_s, _clean_segments = _transcribe_private(
+                        asr_engine, clean_audio)
+                    private_texts["clean_%d" % index] = clean_text
+                    del clean_audio, clean_text
+                row["reference_score"] = evaluate_certas_private(
+                    private_texts, certas_bundle["records"],
+                    certas_bundle["meta"]["key"],
+                    certas_bundle["meta"]["source_manifest_sha256"])
+                del private_texts
+            else:
+                row["score"] = score_inputs(asr_engine, named_audio)
+            row["score_wall_s"] = round(time.perf_counter() - t0, 3)
+            row["score_rss_mb"] = _rss_mb()
+            row["asr_policy"] = score_policy["asr"]
+            row["separator_release"] = score_policy["separator_release"]
+            row["score_preflight"] = score_preflight
+            if args.cost_log:
+                with open(args.cost_log, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+            del named_audio, stems, seg
+        if certas_bundle is not None:
+            del certas_bundle
 
     if args.stream >= 0:
         if not results:
@@ -1115,19 +1547,32 @@ def main(argv=None) -> int:
                 else:
                     print("            s%d  rms %+6.1f dB  peak %.3f" % (s["stream"], s["rms_db"], s["peak"]))
             if "score" in r:
-                print("            SCORE (shipping ASR %s, score wall %.1fs)"
+                print("            SCORE (production Redux %s, score wall %.1fs)"
                       % (os.path.basename(ASR_DIR), r["score_wall_s"]))
-                print("            %-4s %6s %6s %6s %6s %7s %7s  %s"
-                      % ("strm", "words", "wps", "sp_s", "sp_fr", "wps_sp", "peak_p", "verify"))
+                print("            %-7s %6s %7s %7s %s"
+                      % ("stream", "words", "wps", "segments", "text-sha256"))
                 for name in sorted(r["score"], key=lambda k: (k != "mix", k)):
                     sc = r["score"][name]
-                    ver = "-"
-                    if "vendor_text_matches" in sc:
-                        ver = "MATCH" if sc["vendor_text_matches"] else "DRIFT"
-                    peak = "n/a" if sc["mean_peak_p"] is None else "%.3f" % sc["mean_peak_p"]
-                    print("            %-4s %6d %6.2f %6.1f %6.2f %7.2f %7s  %s"
-                          % (name, sc["words"], sc["wps"], sc["vad_speech_s"],
-                             sc["speech_frac"], sc["wps_speech"], peak, ver))
+                    print("            %-7s %6d %7.2f %7d %s"
+                          % (name, sc["words"], sc["wps"], sc["segments"],
+                             sc["text_sha256"][:16]))
+            if "reference_score" in r:
+                ref_score = r["reference_score"]
+                changes = ref_score["correction_damage"]
+                for clean in ref_score["clean_baselines"]:
+                    print("            CERTAS %-7s WER %.4f CER %.4f"
+                          % (clean["stream"], clean["wer"], clean["cer"]))
+                mix_score = ref_score["mix"]
+                print("            CERTAS mix-proxy WER %.4f CER %.4f basis=%s"
+                      % (mix_score["wer"], mix_score["cer"],
+                         mix_score["reference_basis"]))
+                for permutation in ref_score["stem_permutations"]:
+                    print("            CERTAS stems %d->ref%d,%d->ref%d WER %.4f CER %.4f"
+                          % (0, permutation["stem_to_reference"][0],
+                             1, permutation["stem_to_reference"][1],
+                             permutation["wer"], permutation["cer"]))
+                print("            token inventory vs mix: corrected=%d damaged=%d; refs/transcripts private"
+                      % (changes["correction_count"], changes["damage_count"]))
     return 0
 
 
