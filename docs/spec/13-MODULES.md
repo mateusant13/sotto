@@ -412,6 +412,54 @@ Um bloco por módulo. Cada facto abaixo foi lido no ficheiro citado; quando o
 módulo não está no caminho de produção, a evidência do grep está no próprio
 bloco.
 
+## `worker/asr_node_assignment.py`
+
+- **O que faz** — Atestação da ATRIBUIÇÃO de nós do grafo às execution providers, sem
+  guardar nomes de nós nem payloads: `collect_graph_assignment_facts(sessions)` recebe
+  o dicionário `encoder`/`decoder`/`joint` e devolve, por grafo, a contagem de nós por
+  `ep_name`. Recusa um conjunto incompleto de sessões, um readback ausente ou vazio, e
+  impõe dois tectos declarados (`MAX_ASSIGNMENT_SUBGRAPHS = 4096`,
+  `MAX_ASSIGNMENT_NODES = 1_000_000`) para um readback inesperado não virar memória.
+  O objectivo é distinguir "o EP está na lista" de "o EP recebeu nós" — a diferença que
+  produziu 736 `BRIDGE_EXIT rc=2` em 25 h com `CUDAExecutionProvider` listado e nenhum
+  dispositivo registado.
+- **Quem o chama** — `worker/sotto_worker.py` importa-o no boot das sessões acústicas,
+  com as duas formas que o worker aceita (`from worker.asr_node_assignment import …` e
+  `from asr_node_assignment import …`, conforme `worker/` esteja no `sys.path`). O
+  runner de medição `_main/fleurs-nemotron-stream-runner.py` fixa-o no fingerprint.
+- **O que escreve/lê** — Não escreve ficheiros. Lê unicamente o método
+  `get_provider_graph_assignment_info()` de cada sessão ORT, cuja ausência é erro
+  nomeado e não zero.
+- **Quando falha** — Levanta `RuntimeError` em quatro casos, cada um com a sua frase:
+  conjunto de sessões incompleto, readback indisponível, readback vazio e tecto de
+  subgrafos excedido. Uma contagem de zero nós não é resposta silenciosa: é o número.
+- **Evidência** — `[CODE] worker/asr_node_assignment.py:8` (`def collect_graph_assignment_facts`),
+  `[CODE] worker/asr_node_assignment.py:19` (conjunto de grafos obrigatório),
+  `[CODE] worker/sotto_worker.py:2072` (import no worker),
+  `[CODE] worker/asr_node_assignment.py:4` (tecto de nós).
+
+## `worker/build_nemotron_cuda_mask.py`
+
+- **O que faz** — Ferramenta de PREPARAÇÃO de modelo, não de runtime: transforma o
+  encoder Nemotron fixado num grafo equivalente onde a entrada de máscara é uma
+  BROADCAST em vez de uma forma que o EP CUDA não aceita. Duas SHA-256 estão cravadas
+  no ficheiro (`SOURCE_SHA`, `DERIVED_SHA`), pelo que uma fonte diferente da fixada dá
+  `ValueError` antes de escrever seja o que for, e o resultado é escrito de forma
+  atómica ao lado da fonte como `encoder.cuda-mask.onnx`.
+- **Quem o chama** — Ninguém em produção: `python worker/build_nemotron_cuda_mask.py`
+  (CLI `argparse`) e o produto consome o ARTEFACTO. O runner
+  `_main/fleurs-nemotron-stream-runner.py` verifica o ficheiro gerado por tamanho
+  (2 677 588 B) e SHA-256 e fá-lo entrar no fingerprint da medição.
+- **O que escreve/lê** — Lê o `encoder.onnx` do directorio do modelo e escreve
+  `encoder.cuda-mask.onnx` no MESMO directorio, via `tempfile.mkstemp` + `os.replace`.
+  Não toca em `worker/config.json` e não altera a fonte.
+- **Quando falha** — Fonte com SHA diferente: `ValueError("unexpected Nemotron source
+  encoder SHA-256")`, sem escrita. Grafo sem o nó `node_repeat` ou sem o
+  inicializador esperado: `StopIteration` da pesquisa, também antes de escrever.
+- **Evidência** — `[CODE] worker/build_nemotron_cuda_mask.py:11` (`SOURCE_SHA`),
+  `[CODE] worker/build_nemotron_cuda_mask.py:43` (`def main`),
+  `[CODE] worker/build_nemotron_cuda_mask.py:55` (`encoder.cuda-mask.onnx`).
+
 ## `worker/audio_queue_consumer.py`
 
 - **O que faz** — Consome a fila que o `audio_recorder` escreve (`index.jsonl` +
@@ -568,6 +616,33 @@ bloco.
   `[CODE] worker/lang_prompt.py:55` (`ENV_VAR = "SOTTO_LANG_ID"`),
   `[CODE] worker/sotto_worker.py:6969` (`err(f"FATAL lang-id: {exc}")`).
 
+## `worker/ort_cuda_runtime.py`
+
+- **O que faz** — O bootstrap CUDA do ONNX Runtime em stdlib pura: localiza as
+  bibliotecas NVIDIA num raio limitado com orçamento de entradas
+  (`MAX_NVIDIA_DIR_ENTRIES = 4096`), adiciona-as ao caminho de DLLs
+  (`add_cuda_dll_dirs`), carrega-as antes do ORT (`preload_dlls`), registra o plugin
+  EMPACOTADO quando o censo não vê CUDA (`register_cuda_plugin_if_needed`) e responde
+  à única pergunta que conta — há DISPOSITIVO? — por `cuda_device_census`, não pelo nome
+  de uma provider na lista. Importar o módulo não importa torch, NumPy, sherpa-onnx nem
+  ORT.
+- **Quem o chama** — `worker/sotto_worker.py` (`_ort_cuda_runtime_module()` com
+  fallback `from worker import ort_cuda_runtime`, `preload_dlls` no boot,
+  `cuda_device_census` e `register_cuda_plugin_if_needed` na decisão de provider);
+  `worker/speaker_sidecar.py` chama `prepare_ort_runtime()` para obter o módulo já
+  preparado; os oráculos `_main/stream-asr-gpu-oracle.py` e
+  `_main/speaker-sidecar-oracle.py` executam este ficheiro como sujeito.
+- **O que escreve/lê** — Não escreve ficheiros nem estado. Mantém os handles de
+  `os.add_dll_directory` vivos em `_DLL_DIR_HANDLES` (um handle libertado desfaz o
+  caminho) e lê o ambiente do processo e o directório do pacote.
+- **Quando falha** — Fail-closed por desenho: censo `None`/vazio e registo recusado
+  devolvem "sem dispositivo", nunca "deve estar bem"; `preload_cuda_runtime` devolve
+  booleano e nenhuma destas funções inventa um dispositivo a partir de nomes.
+- **Evidência** — `[CODE] worker/ort_cuda_runtime.py:100` (`def cuda_device_census`),
+  `[CODE] worker/ort_cuda_runtime.py:120` (`def register_cuda_plugin_if_needed`),
+  `[CODE] worker/ort_cuda_runtime.py:179` (`def preload_cuda_runtime`),
+  `[CODE] worker/sotto_worker.py:1645` (censo no worker).
+
 ## `worker/parakeet_ultra.py`
 
 - **O que faz** — Instrumento de comparação do Parakeet Ultra
@@ -640,6 +715,29 @@ bloco.
   (`SENTENCE_MIN_MS = 600.0`), `[CODE] worker/punctuation_prosody.py:128`
   (`if not text or not pauses ...: return text` — o guarda de entrada degenerada).
 
+## `worker/silence_gate.py`
+
+- **O que faz** — Decide se uma janela de áudio é SILÊNCIO DIGITAL, e o passe de fundo
+  pergunta-lhe antes de `transcribe`: uma janela que não é áudio não merece uma
+  decodificação. Os dois pisos são os MEDIDOS no `audio_recorder`
+  (`DIGITAL_SILENCE_PEAK = 1e-3`, `DIGITAL_SILENCE_RMS = 1e-4`, medidos em 2026-10-06
+  com pico 0,000122 em todos os loopbacks sem nada a tocar) e são importados, não
+  copiados. `window_is_digital_silence` exige pico E rms abaixo do piso: um sussurro
+  não é silêncio.
+- **Quem o chama** — `worker/engine_policy.py` importa-o e usa-o no
+  `run_engine_pass` antes de `transcribe`; o censo do passe publica
+  `silent_windows`/`silent_s` uma vez por passe em vez de uma linha por janela.
+- **O que escreve/lê** — Não escreve. Lê apenas as amostras da janela; os pisos podem
+  ser injectados (`peak_floor`/`rms_floor`) para o braço negativo do oráculo.
+- **Quando falha** — Falha ABERTO por desenho: um `chunk` que não se deixe medir
+  devolve `False` (não é silêncio) e a janela é decodificada — o custo é CPU, nunca
+  uma legenda perdida. Custo medido do portão: 0,0066 s e ZERO `transcribe` em 10
+  janelas de 30 s de zeros, contra 17,89 s de parede e três `Mmm` descartados sem ele.
+- **Evidência** — `[CODE] worker/silence_gate.py:77`
+  (`def window_is_digital_silence`), `[CODE] worker/silence_gate.py:74` (pisos
+  importados do `audio_recorder`), `[CODE] worker/engine_policy.py:417`
+  (pergunta antes de decodificar), `[CODE] worker/engine_policy.py:31` (import).
+
 ## `worker/speaker_id.py`
 
 - **O que faz** — Funções puras que decidem QUEM fala, por tempo: converte
@@ -665,6 +763,30 @@ bloco.
 - **Evidência** — `[CODE] worker/speaker_id.py:288`
   (`def attribute_from_payload`), `[CODE] worker/speaker_id.py:82`
   (`def speaker_for_window`), `[CODE] worker/speaker_bridge.py:43` (import).
+
+## `worker/tap_delivery.py`
+
+- **O que faz** — Responde ao que "sem blocos" SIGNIFICA. `tap_census_verdict(live,
+  own, floor)` classifica UMA leitura do medidor em `here` (este endpoint renderiza e a
+  tap não entrega nada: o cliente está encravado), `elsewhere` (o áudio mudou de
+  sítio: re-resolver já), `quiet` e `unknown`, e `delivery_stall_line` monta a linha de
+  diagnóstico com os contadores e a acção. A política `tap_stall_reason` continua no
+  worker (duas oráculos extraem-na por AST); este ficheiro é o CENSO que a alimenta.
+- **Quem o chama** — `worker/sotto_worker.py:169`
+  (`from tap_delivery import delivery_stall_line, tap_census_verdict`), usado no ramo
+  de tap parada e na linha `CAPTURE_SIGNAL_BACK`/`NO_CAPTION_AFTER_AUDIO_BACK`.
+  `_main/tap-delivery-stall-oracle.py` executa as funções reais com um medidor
+  injectado.
+- **O que escreve/lê** — Nada em disco. Lê dois dicionários: o censo VIVO do medidor
+  (nome do endpoint → pico) e o contador da tap (`blocks`, `packets`, `delivered_s`).
+- **Quando falha** — Um medidor ausente ou vazio devolve `unknown`, que nunca é
+  "calmo": a ausência de medição não é uma afirmação de saúde. Foi esta função que
+  transformou 630,3 s de tap aberto com zero pacotes de "dispositivo mudo" em
+  `elsewhere`, e a espera de 630 s em ≤ 96 s.
+- **Evidência** — `[CODE] worker/tap_delivery.py:103` (`def tap_census_verdict`),
+  `[CODE] worker/tap_delivery.py:125` (`def delivery_stall_line`),
+  `[CODE] worker/tap_delivery.py:120` (o ramo `here`/`elsewhere`),
+  `[CODE] worker/sotto_worker.py:169` (import no worker).
 
 ## `worker/ultra_export.py`
 
