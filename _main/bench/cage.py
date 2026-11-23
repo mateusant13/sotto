@@ -143,11 +143,18 @@ def _one(args, cmd) -> int:
     env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
 
     creation = 0
+    startup = None
     if os.name == "nt":
         creation = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        # The pair, not the bit: `CREATE_NO_WINDOW` alone leaves the console
+        # allocation to the child when this probe itself has no console.
+        startup = subprocess.STARTUPINFO()
+        startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startup.wShowWindow = 0  # SW_HIDE
 
     t0 = time.perf_counter()
-    proc = subprocess.Popen(cmd, env=env, creationflags=creation)
+    proc = subprocess.Popen(cmd, env=env, creationflags=creation,
+                            startupinfo=startup)
     try:
         ps = psutil.Process(proc.pid)
     except psutil.Error:

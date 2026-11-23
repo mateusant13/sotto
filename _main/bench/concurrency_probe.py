@@ -69,9 +69,16 @@ class Child:
         self._out = open(self.out_path, "w", encoding="utf-8", errors="replace")
         self._err = open(self.err_path, "w", encoding="utf-8", errors="replace")
         t0 = time.perf_counter()
+        startup = None
+        if os.name == "nt":
+            # The pair, not the bit: this probe may itself run without a console.
+            startup = subprocess.STARTUPINFO()
+            startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startup.wShowWindow = 0  # SW_HIDE
         self.proc = subprocess.Popen(
             argv, stdout=self._out, stderr=self._err,
             creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
+            startupinfo=startup,
         )
         self.t0 = t0
         self.ps = None

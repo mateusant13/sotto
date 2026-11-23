@@ -94,7 +94,18 @@ console.log(`THREW ${threw ? threw.slice(0, 160) : "no"}`);
 // `spawnSync` do `run-all` captura por cano) o `process.exit` pode descartar o
 // que ainda nao foi escrito, e foi exactamente isso que deixou o gate com
 // `exit 1:` e ZERO bytes de evidencia.
-const contentShort = vd ? vd.contentSufficientToCoverClock === false : null;
+// A recusa de CONTEUDO CURTO nao chega aqui como veredicto: `replay-ring`
+// `throw`a antes de devolver (`app/shadowplay/replay-ring.js:338-341`,
+// `... holds ${longestUniqueRun} contiguous distinct frames but covers ...`),
+// logo `delivered` vem `undefined` e `vd` tambem. Ler so' `vd` fazia um desktop
+// parado cair SEMPRE em `unexplained` -- a cura de 2026-11-10 era inerte
+// exactamente no caso que ela nomeia. A mensagem e' a testemunha, e o limiar
+// (`oneSecondOfClock = expectedFps`) nao e' exportado por `frame-accounting.js`,
+// por isso casa-se a FRASE, nao o numero.
+const CONTENT_SHORT_RE = /holds \d+ contiguous distinct frames but covers \d+ frame slots/;
+const contentShort = vd
+  ? vd.contentSufficientToCoverClock === false
+  : (threw ? CONTENT_SHORT_RE.test(threw) : null);
 const refusalClass = threw ? (contentShort ? "still-desktop" : "unexplained") : "none";
 console.log(`REFUSAL_CLASS ${refusalClass}`);
 console.log(`REFUSAL_UNDERSTOOD ${refusalClass !== "unexplained"}`);
