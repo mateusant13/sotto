@@ -514,3 +514,142 @@ waiting on a desktop encode.
 The lesson, and it is the same one as §8.9 with the sign flipped: **an instrument that reads the
 world outside the product reports the world**. A green tree failed a gate because the screen was
 still.
+
+## §10. Fase A: the policy that could not open the session (2026-11-23, 18:2x-19:5x)
+
+The item that had been reported as blocked was not a lease and not a missing model. It was a policy
+line that made the product refuse its own graph.
+
+### 10.1 What was measured, in the order it was measured
+
+1. `python _main/speaker-watch-oracle.py --allow-heavy --threads 2` inside the cage returned
+   `RC=2` with `REFUSED before audio/model load: pass --allow-heavy only inside the performance-gate
+   + Watcher lease`. That refusal is **by design** (it is the lease gate, not the defect), so the
+   lease was obtained and the flag passed.
+2. With the lease held, the same command died inside the loader:
+
+   ```
+   onnxruntime.capi.onnxruntime_pybind11_state.Fail: [ONNXRuntimeError] : 1 : FAIL :
+   This session contains graph nodes that are assigned to the default CPU EP, but fallback to
+   CPU EP has been explicitly disabled by the user.
+   ```
+
+   `worker/speaker_sidecar.py:_load_powerset` set `session.disable_cpu_ep_fallback = 1`. The graph
+   cannot satisfy it: ORT keeps six shape/control nodes on the CPU **by its own design** and says so
+   at startup ("ORT explicitly assigns shape related ops to CPU to improve perf"). Probes under
+   `_main/_cache/triage/`:
+
+   | probe | measured |
+   |---|---|
+   | `probe-seg-cuda.py` | providers `['Tensorrt','CUDA','CPU']`; `get_ep_devices` = CPU + CUDA; with `fallback-disabled` -> **FAIL** |
+   | `probe-seg-nodes.py` (profiler) | `{'CUDAExecutionProvider': 42, 'CPUExecutionProvider': 6}`; CPU names `/lstm/Concat`, `/lstm/Gather`, `/lstm/Unsqueeze`, `Equal_115`, `Gather`, `Gather_113` |
+   | `probe-seg-stable.py` | identical CPU set at T=4 s and T=10 s -> the set is a **graph property**, not an input-length artefact |
+
+   Consequence in the product: Fase A is spawned by `app/webview/sotto_webview.py:18992`
+   (`tail=['--watch-only']`) and **every** start exited 2, so `_main/diar-watch.json` had never been
+   written on this machine.
+
+3. **An unsatisfiable policy is not a policy.** The switch was replaced with *evidence*. ORT 1.30.0
+   API probes (`_main/_cache/triage/`):
+
+   | question | measured |
+   |---|---|
+   | does `get_provider_graph_assignment_info()` work without options? | no -- `Fail: ... 'session.record_ep_graph_assignment_info' must be set to "1"` |
+   | with that entry set? | yes: **46 CUDA + 6 CPU** |
+   | what does a record carry? | `domain`, `name`, `op_type` (CPU names identical to the profiler's) |
+   | does `disable_profiling` exist? | **no** (absent in 1.30.0) |
+   | does `end_profiling()` stop collection? | yes -- second call returns `None`, `run` still works |
+
+   The profiler counts **42** executed CUDA nodes and the assignment API counts **46** assigned: the
+   four-node difference is constant-folded nodes that never execute. The two numbers do not
+   substitute for one another, and the docstring now says which is which.
+
+### 10.2 The repair (`worker/speaker_sidecar.py`)
+
+- `WATCH_GPU_CPU_ONLY_NODES` = exactly the six measured names; `WATCH_CUDA_NODE_SHARE_MIN = 0.5`.
+- `_graph_assignment(sess)` refuses a missing API, raises on a getter exception, refuses an empty
+  record, and returns `(counts, foreign[(name, op_type)])`.
+- `_load_powerset` sets `session.record_ep_graph_assignment_info = "1"` and requires the **readback**
+  to be `"1"` before constructing, then gates on: CUDA provider present -> assignment read -> no
+  unknown EP -> no CPU node outside the allowlist -> `cuda_share >= 0.5`. It publishes
+  `sotto_graph_assignment_readback`, `sotto_node_assignment_counts`,
+  `sotto_node_assignment_cuda_share`, `sotto_node_assignment_cpu`, `sotto_node_assignment_ops`,
+  `sotto_provider_readback`. `sotto_cpu_ep_fallback_readback` is gone; nothing in the speaker path
+  mentions `disable_cpu_ep_fallback` any more.
+- Log line: `SPEAKER_GPU_POLICY mode=watch cuda_device_census=.. node_assignment=verified
+  counts=.. cuda_share=.. cpu_nodes=.. runtime_fallback_disabled=.. providers=..`.
+- **Redundancy burned, not kept**: `if cuda_nodes <= 0 or total_nodes <= 0` was subsumed by the share
+  floor (`0.0 < 0.5`), so the branch and its mutant were deleted instead of kept as decoration; the
+  unknown-EP arm was rebound to the provider-level message so its mutant is observable.
+
+### 10.3 Controls
+
+| control | measured |
+|---|---|
+| `_main/speaker-sidecar-oracle.py --gpu-policy-only --probe-installed-consumer` (caged) | `GPU POLICY VERDICT: PASS (56/56 checks)` rc=0; 12 mutants |
+| `_main/speaker-watch-oracle.py --allow-heavy --threads 2` (caged) | `VERDICT: PASS (39/39 checks)` rc=0, **6.08 s** (previously it crashed before check 1) |
+| the same with `--neg-arm` | `VERDICT: FAIL (8/38 checks falharam: ...)` + `NEG-ARM: PASS -- 8/38 checks caíram sob a mutacao real`, rc=1 |
+| **product**, real loopback endpoint, 6 s | rc=0; `sidecar: capturing 'WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)' 48000 Hz -> 16000 Hz mono`; `SPEAKER_GPU_POLICY mode=watch cuda_device_census=True node_assignment=verified counts=CPUExecutionProvider=6,CUDAExecutionProvider=46 cuda_share=0.8846 cpu_nodes=/lstm/Concat,/lstm/Gather,/lstm/Unsqueeze,Equal_115,Gather,Gather_113 runtime_fallback_disabled=True providers=CUDAExecutionProvider,CPUExecutionProvider`; `sidecar: FASE A -- so 'duas vozes ao mesmo tempo?', classes [4, 5, 6], hold 3 frames (50.6 ms).` |
+
+The negative arm prints `NEG-ARM: PASS -- ...` only when it caught the mutation -- a control that
+says nothing but `FAIL` is indistinguishable from a broken instrument, and `:expectred` needs the
+phrase as its token.
+
+### 10.4 Why the gate had no step, and what that cost
+
+`_main/speaker-watch-oracle.py` had been carrying the placeholder licence
+`REASON-MISSING preencher a mao` in `_main/battery-wiring-baseline.json` since 2026-10-25, and no
+battery step ever ran it. That is precisely how an unsatisfiable policy survived: the gate existed,
+was correct in shape, and was never executed. The licence is now paid:
+
+- the pair `speaker-watch` + `red-as-expected-speaker-watch` is in the battery, both **`heavy`**
+  (they load the model), so a normal run counts them SKIPPED and never as green;
+- the instrument carries `# BATTERY-HEAVY: model -- ...` because
+  `_main/battery-heavy-gate.py` C2 requires the declaration where the truth is. Measured in run 11:
+  `battery-heavy-gate=1` was the **only** failure of the whole run -- the gate caught the pair
+  correctly, and it was the reason to add the marker rather than to weaken the gate;
+- `_main/battery-wiring-baseline.json` lost the entry. Measured after: `ligados=223 sem_passo=102
+  populacao=325`, PASS 7/7; `battery-record-pairing` 552 steps / 552 names / 0 findings.
+
+### 10.5 The observer was describing a record that did not exist yet (run 11 -> run 12)
+
+Run 11 (`_battery-run-20261123-184638.log`) was RED for one step, and the one step was the gate
+above. But the manual `--check` after the run also named four cells `fora do registo`:
+`battery-budget.when='18:10:42' != '19:05:58'`, `red-as-expected-battery-budget`, `battery-launch`.
+Cause: the page was written at **19:04:47** and `battery-budget` / `battery-launch` recorded newer
+rows at 19:05:58-19:06:01. The page already excludes its own rows from the aggregates
+(`SELF_STEPS = ("state-page", "red-as-expected-state-page", "state-page-write")`); what it cannot do
+is see rows written **after** it. The house sentence -- *a step that describes the run runs after the
+run* -- was true for the observer and false for everything below it.
+
+The triplet moved to the physical end, after `red-as-expected-battery-launch`. Pure move: same byte
+count (419611 B), new sha. Measured in run 12 (`_battery-run-20261123-190826.log`, 1361 s):
+
+```
+steps    : 552   gate=282  control=8  skipped=28  expect-red=234  missing=0  cached=310
+failed   : -none-
+BATTERY-VERDICT: GREEN WITH 28 SKIPPED - ... 21 of them are the HEAVY class
+caged    : ON -- 40% CPU hard cap AND io very-low
+```
+
+and `_main/sotto-state-page.py --check` **after** the run finished -- the case that failed in run 11:
+
+```
+CHECK cells-match-record   PASS  0 celula(s) fora do registo
+CHECK summary-counts       PASS  resumo da pagina = contagem real
+SUMMARY passos=552 PASS=294 EXPECTED-RED=233 FAIL=0 STALE=0 NO-VERDICT=0 NOT RUN=22 CARRIED=3
+BATTERY-VERDICT state-page PASS checks=7 fail=0
+```
+
+Gates re-run after the edits: `AGENTS-PINS PASS -- 2 pin(s) checked live, 0 failure(s)` (pin
+419611 B / 4798 CRLF / 0 bare LF, sha `2EEEE84E...`), `CODE-HEALTH VERDICT PASS` (the growth of
+`worker/speaker_sidecar.py` 77104 -> 83148 B / 1637 -> 1750 lines / defs 26 -> 27 / max_func
+221 -> 224 is fixed by `--update --allow-dirty`, which printed `AVISO --allow-dirty: fixado a partir
+do working tree: worker/speaker_sidecar.py`), `TOOLING-INTENT VERDICT PASS` (`declaradas: 181`,
+`vermelhas: 0`), `BATTERY-CLASS PASS arms=4`, `BATTERY-HEAVY GATE PASS` + `--neg-arm` 5 mutants
+caught, `BATTERY-BUDGET RATCHET-OK -- steps=530 total=2170.2s`.
+
+**UNMEASURED, and named:** the app's own `--watch-only` spawn (`sotto_webview.py:18992`) writing
+`_main/diar-watch.json` on the owner's desktop. The product line above is the same entry point
+invoked as the product invokes it (same flags, real endpoint), but the shell that spawns it is the
+owner's process and a lane does not put the app on his screen.

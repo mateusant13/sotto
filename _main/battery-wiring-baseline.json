@@ -378,11 +378,6 @@
     },
     {
       "date": "2026-10-25",
-      "file": "speaker-watch-oracle.py",
-      "reason": "REASON-MISSING preencher a mao"
-    },
-    {
-      "date": "2026-10-25",
       "file": "staging-hang-artefact-oracle.py",
       "reason": "REASON-MISSING preencher a mao"
     },

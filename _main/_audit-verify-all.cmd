@@ -2386,6 +2386,23 @@ if exist _main\speaker-sidecar-oracle.py (
 call :step always speaker-sidecar-gpu-policy 0 "_main\speaker-sidecar-oracle.py;worker\speaker_sidecar.py" "%OUT%\speaker-sidecar-gpu-policy.log" python _main\speaker-sidecar-oracle.py --gpu-policy-only --probe-installed-consumer
 call :record speaker-sidecar-gpu-policy !STEP_RC!
 ) else ( call :record speaker-sidecar-gpu-policy MISSING )
+REM Fase A (--watch-only) is the only path that loads the 5,7 MB segmentation
+REM graph, and it is the path whose policy broke without anyone noticing: the
+REM loader demanded `session.disable_cpu_ep_fallback=1`, which this graph cannot
+REM satisfy -- ORT itself keeps six shape/control nodes on the CPU, so every
+REM start died rc=2 and _main\diar-watch.json was never written on this box
+REM (measured 2026-11-23). The gate now reads the node assignment ORT publishes:
+REM 46 CUDA + the six measured CPU names, share 0.8846. Both steps LOAD the
+REM model, so they are `heavy`: run them with SOTTO_BATTERY_HEAVY=1 under the
+REM cage and the performance-gate lease.
+if exist _main\speaker-watch-oracle.py (
+call :step heavy speaker-watch 0 "_main\speaker-watch-oracle.py;worker\speaker_sidecar.py;worker\ort_cuda_runtime.py;_main\diar-models\sherpa-onnx-pyannote-segmentation-3-0\model.onnx;_main\pt-br-sample.wav;_main\en-us-sample.wav" "%OUT%\speaker-watch.log" python _main\speaker-watch-oracle.py --allow-heavy --threads 2
+call :record speaker-watch !STEP_RC!
+) else ( call :record speaker-watch MISSING )
+if exist _main\speaker-watch-oracle.py (
+call :step heavy red-as-expected-speaker-watch 1 "_main\speaker-watch-oracle.py;worker\speaker_sidecar.py;_main\diar-models\sherpa-onnx-pyannote-segmentation-3-0\model.onnx" "%OUT%\speaker-watch-neg.log" python _main\speaker-watch-oracle.py --allow-heavy --threads 2 --neg-arm
+call :expectred red-as-expected-speaker-watch !STEP_RC! "%OUT%\speaker-watch-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-speaker-watch MISSING "%OUT%\speaker-watch-neg.log" "NEG-ARM: PASS" )
 if exist _main\parakeet-ultra-oracle.py (
 call :step heavy parakeet-ultra 0 "_main\parakeet-ultra-oracle.py;worker\parakeet_ultra.py;worker\ultra_export.py;worker\redux_live.py;worker\models\parakeet-redux-onnx-int4\transcribe.py" "%OUT%\parakeet-ultra.log" python _main\parakeet-ultra-oracle.py --engine all
 call :record parakeet-ultra !STEP_RC!
@@ -4269,6 +4286,29 @@ REM O `--neg-arm` muta a LEITURA com DOIS mutantes, porque ha' dois tectos: M1 =
 REM mais lento (prazo + total) e M2 = +30 % num passo cujo resultado CONTINUA abaixo do prazo
 REM e cujo acrescimo cabe no tecto do total -- logo so' o ratchet por passo o pode ver. Sem a
 REM M2, apagar o ratchet por passo continuava a dar `NEG-ARM: PASS` por causa da M1.
+
+if exist _main\battery-budget-oracle.py (
+  call :step always battery-budget 0 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json" "%OUT%\battery-budget.log" python _main\battery-budget-oracle.py --policy "!CAGE_POLICY!"
+  call :record battery-budget !STEP_RC!
+) else ( call :record battery-budget MISSING )
+if exist _main\battery-budget-oracle.py (
+  call :step always red-as-expected-battery-budget 1 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json" "%OUT%\battery-budget-neg.log" python _main\battery-budget-oracle.py --neg-arm
+  call :expectred red-as-expected-battery-budget !STEP_RC! "%OUT%\battery-budget-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-battery-budget MISSING "%OUT%\battery-budget-neg.log" "NEG-ARM: PASS" )
+REM A POLITICA DE LARGADA NAO VEM DO AMBIENTE (medido 2026-11-12): esta corrida
+REM inteira correu 21 min SEM tecto porque um `SOTTO_BATTERY_NOCAGE=1` herdado da
+REM shell do agente desligou o cage, e o unico passo que o viu foi o ultimo a correr
+REM (`battery-budget`, RED contra o baseline cap40) -- a 568 de 568 linhas. O passo
+REM julga as duas metades da cura: `run_env` retira e NOMEIA as politicas herdadas, e
+REM o `.cmd` imprime a politica no ARRANQUE. Lanca NADA: sem shell, sem janela, 1,5 s.
+if exist _main\battery-launch-oracle.py (
+  call :step battery-launch 0 "_main\battery-launch-oracle.py;_main\battery-launch.py;_main\_audit-verify-all.cmd" "%OUT%\battery-launch.log" python _main\battery-launch-oracle.py
+  call :record battery-launch !STEP_RC!
+) else ( call :record battery-launch MISSING )
+if exist _main\battery-launch-oracle.py (
+  call :step red-as-expected-battery-launch 1 "_main\battery-launch-oracle.py;_main\battery-launch.py;_main\_audit-verify-all.cmd" "%OUT%\battery-launch-neg.log" python _main\battery-launch-oracle.py --neg-arm
+  call :expectred red-as-expected-battery-launch !STEP_RC! "%OUT%\battery-launch-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-battery-launch MISSING "%OUT%\battery-launch-neg.log" "NEG-ARM: PASS" )
 REM `_main\sotto-state-page.py` e o P0.2 do roadmap de observabilidade de 2026-10-23: a pagina de
 REM estado (docs\state-generated.md) e GERADA das saidas dos oraculos e recusa-se a inventar -- um
 REM passo que nao correu e `NOT RUN`, nunca um verde. CORRE SEMPRE (`always`): as seis verificacoes
@@ -4302,29 +4342,6 @@ if exist _main\sotto-state-page.py (
   call :step always red-as-expected-state-page 1 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py" "%OUT%\state-page-neg.log" python _main\sotto-state-page.py --neg-arm
   call :expectred red-as-expected-state-page !STEP_RC! "%OUT%\state-page-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-state-page MISSING "%OUT%\state-page-neg.log" "NEG-ARM PASS" )
-
-if exist _main\battery-budget-oracle.py (
-  call :step always battery-budget 0 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json" "%OUT%\battery-budget.log" python _main\battery-budget-oracle.py --policy "!CAGE_POLICY!"
-  call :record battery-budget !STEP_RC!
-) else ( call :record battery-budget MISSING )
-if exist _main\battery-budget-oracle.py (
-  call :step always red-as-expected-battery-budget 1 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json" "%OUT%\battery-budget-neg.log" python _main\battery-budget-oracle.py --neg-arm
-  call :expectred red-as-expected-battery-budget !STEP_RC! "%OUT%\battery-budget-neg.log" "NEG-ARM: PASS"
-) else ( call :expectred red-as-expected-battery-budget MISSING "%OUT%\battery-budget-neg.log" "NEG-ARM: PASS" )
-REM A POLITICA DE LARGADA NAO VEM DO AMBIENTE (medido 2026-11-12): esta corrida
-REM inteira correu 21 min SEM tecto porque um `SOTTO_BATTERY_NOCAGE=1` herdado da
-REM shell do agente desligou o cage, e o unico passo que o viu foi o ultimo a correr
-REM (`battery-budget`, RED contra o baseline cap40) -- a 568 de 568 linhas. O passo
-REM julga as duas metades da cura: `run_env` retira e NOMEIA as politicas herdadas, e
-REM o `.cmd` imprime a politica no ARRANQUE. Lanca NADA: sem shell, sem janela, 1,5 s.
-if exist _main\battery-launch-oracle.py (
-  call :step battery-launch 0 "_main\battery-launch-oracle.py;_main\battery-launch.py;_main\_audit-verify-all.cmd" "%OUT%\battery-launch.log" python _main\battery-launch-oracle.py
-  call :record battery-launch !STEP_RC!
-) else ( call :record battery-launch MISSING )
-if exist _main\battery-launch-oracle.py (
-  call :step red-as-expected-battery-launch 1 "_main\battery-launch-oracle.py;_main\battery-launch.py;_main\_audit-verify-all.cmd" "%OUT%\battery-launch-neg.log" python _main\battery-launch-oracle.py --neg-arm
-  call :expectred red-as-expected-battery-launch !STEP_RC! "%OUT%\battery-launch-neg.log" "NEG-ARM: PASS"
-) else ( call :expectred red-as-expected-battery-launch MISSING "%OUT%\battery-launch-neg.log" "NEG-ARM: PASS" )
 echo.
 echo =============== BATTERY SUMMARY ===============
 echo steps    : !N!   gate=!GATES!  control=!CTRLS!  skipped=!SKIPN!  expect-red=!REDS!  missing=!MISSINGN!  cached=!CACHEDN!
