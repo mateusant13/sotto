@@ -40,6 +40,7 @@ NO-FLAG=0. `--neg-arm` escreve um ficheiro com um `os.system` e exige o FAIL.
 from __future__ import annotations
 
 import ast
+import hashlib
 import io
 import json
 import os
@@ -115,11 +116,49 @@ STARTF_TOKENS = ('STARTF_USESHOWWINDOW', 'SW_HIDE', 'wShowWindow',
                  'startupinfo=', 'STARTUPINFO(', 'popen_kwargs')
 #: mapa id(call) -> funcao, preenchido por ficheiro em `audit_python`
 SCOPE = [{}]
+#: (id(funcao), nome) -> no' da atribuicao, POR FICHEIRO (medido 2026-11-23:
+#: `_resolve_name` re-varria o corpo inteiro da funcao a cada nome nao resolvido --
+#: 2,55 milhoes de `ast.walk` num censo). Limpo a cada ficheiro, senao um id
+#: reciclado responderia pelo ficheiro anterior.
+ASSIGN_MEMO = [{}]
 
 SUBPROC_FUNCS = {'Popen', 'run', 'call', 'check_call', 'check_output',
                  'getoutput', 'getstatusoutput'}
 OS_FUNCS = {'system', 'popen', 'spawnv', 'spawnve', 'spawnl', 'spawnle',
             'startfile', 'execv', 'execve'}
+
+
+CACHE_PATH = None  # preenchido abaixo, depois de ROOT existir
+
+
+def _digest(path):
+    h = hashlib.sha256()
+    with io.open(path, 'rb') as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _load_rows_cache():
+    try:
+        data = json.load(io.open(CACHE_PATH, encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_rows_cache(cache):
+    tmp = CACHE_PATH + '.tmp'
+    try:
+        io.open(tmp, 'w', encoding='utf-8').write(
+            json.dumps(cache, ensure_ascii=False, sort_keys=True))
+        os.replace(tmp, CACHE_PATH)
+    except OSError as exc:
+        print('cache: nao gravado (%s) -- a proxima corrida re-parseia' % exc)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def _walk():
@@ -232,12 +271,26 @@ def _resolves_hidden(node, flags, depth=0):
 
 
 def _scope_map(tree):
-    """(id(call) -> funcao que o contem) para resolver nomes locais."""
+    """(id(call) -> funcao que o contem) para resolver nomes locais.
+
+    UMA passagem, nao uma por funcao: o desenho anterior (2026-11-23, medido) chamava
+    `ast.walk` 7,5 milhoes de vezes -- cada funcao varria a propria subarvore inteira, e
+    as aninhadas eram varridas de novo -- e custava 51,7 s dos 119 s do censo. O dono
+    do no ' e ' o mesmo: a funcao MAIS INTERNA que o contem (o walk em BFS
+    antigo sobrescrevia a externa pela interna).
+    """
     owner = {}
-    for fn in ast.walk(tree):
-        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for node in ast.walk(fn):
-                owner[id(node)] = fn
+    stack = [(None, tree)]
+    while stack:
+        cur, node = stack.pop()
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                owner[id(child)] = child
+                stack.append((child, child))
+            else:
+                if cur is not None:
+                    owner[id(child)] = cur
+                stack.append((cur, child))
     return owner
 
 
@@ -264,6 +317,10 @@ def _resolve_name(name, call, owner, module_flags, depth=0):
     for n, default in zip(args.kwonlyargs, args.kw_defaults):
         if n.arg == name and default is not None:
             return default
+    key = (id(fn), name)
+    memo = ASSIGN_MEMO[0]
+    if key in memo:
+        return memo[key]
     found = None
     for node in ast.walk(fn):
         if isinstance(node, ast.Assign) and any(
@@ -272,6 +329,7 @@ def _resolve_name(name, call, owner, module_flags, depth=0):
         elif (isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
               and node.target.id == name and node.value is not None):
             found = node.value
+    memo[key] = found
     return found
 
 
@@ -342,6 +400,32 @@ def _classify(prog, targets, guard, shell_true, os_func, src_segment=None):
     return 'INHERITS', 'programa %s (herda a consola do pai)' % low
 
 
+def _segment(src, lines, node):
+    """O texto EXATO do no ', sem re-partir o ficheiro a cada chamada.
+
+    `ast.get_source_segment` faz `src.splitlines(keepends=True)` por chamada; com 413 sitios
+    em ficheiros de milhares de linhas isso custou 21,8 s (medido 2026-11-23). A tabela de
+    linhas ja ' existe neste modulo, logo o corte e ' o mesmo, feito uma vez.
+    """
+    try:
+        first = int(node.lineno or 0)
+        last = int(getattr(node, 'end_lineno', None) or first)
+        c0 = int(getattr(node, 'col_offset', 0) or 0)
+        c1 = getattr(node, 'end_col_offset', None)
+    except (TypeError, ValueError):
+        return ast.get_source_segment(src, node)
+    if not first or first > len(lines) or last > len(lines):
+        return ast.get_source_segment(src, node)
+    if first == last:
+        line = lines[first - 1]
+        return line[c0:(c1 if c1 is not None else len(line))]
+    head = lines[first - 1][c0:]
+    mid = lines[first:last - 1]
+    tail_line = lines[last - 1]
+    tail = tail_line[:(c1 if c1 is not None else len(tail_line))]
+    return '\n'.join([head] + mid + [tail])
+
+
 def audit_python(path):
     src = io.open(path, encoding='utf-8', errors='replace').read()
     segment = src.splitlines()
@@ -352,6 +436,7 @@ def audit_python(path):
     rows = []
     flags = _module_flags(tree)
     SCOPE[0] = _scope_map(tree)
+    ASSIGN_MEMO[0] = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -381,7 +466,7 @@ def audit_python(path):
         # `WEAK-FLAG` sobre um sitio que ja' estava certo, e um portao que
         # acusa quem esta' certo perde a autoridade. O segmento EXACTO do no'
         # e' o que o AST ja' sabe; a janela fica so' como recurso.
-        seg = (ast.get_source_segment(src, node)
+        seg = (_segment(src, segment, node)
                or '\n'.join(segment[max(0, line - 3):line + 12]))
         shell_true = False
         for kw in node.keywords:
@@ -526,6 +611,7 @@ def audit_shell_script(path):
 #: HOJE e' CONGELAR a divida e recusar qualquer sitio NOVO. O ficheiro guarda
 #: `ficheiro:linha` e nao pode crescer.
 BASELINE = os.path.join(ROOT, '_main', 'console-weakflag-baseline.json')
+CACHE_PATH = os.path.join(ROOT, '_cache', 'console-window-audit-cache.json')
 
 
 def _baseline():
@@ -630,18 +716,41 @@ def main(argv):
 
     rows = []
     files = 0
+    cache = _load_rows_cache()
+    new_cache = {}
+    hits = misses = 0
     for path in _walk():
         files += 1
         low = path.lower()
+        rel = _rel(path)
+        try:
+            digest = _digest(path)
+        except OSError as exc:
+            rows.append((rel, 0, 'PARSE', repr(exc)[:70]))
+            continue
+        hit = cache.get(rel)
+        if isinstance(hit, dict) and hit.get('sha256') == digest:
+            new_cache[rel] = hit
+            rows.extend(tuple(r) for r in hit.get('rows') or [])
+            hits += 1
+            continue
+        misses += 1
         try:
             if low.endswith(PY_EXT):
-                rows.extend(audit_python(path))
+                got = audit_python(path)
             elif low.endswith(JS_EXT):
-                rows.extend(audit_js(path))
+                got = audit_js(path)
             else:
-                rows.extend(audit_shell_script(path))
+                got = audit_shell_script(path)
         except Exception as exc:               # noqa: BLE001
-            rows.append((_rel(path), 0, 'PARSE', repr(exc)[:70]))
+            got = [(rel, 0, 'PARSE', repr(exc)[:70])]
+        rows.extend(got)
+        new_cache[rel] = {'sha256': digest,
+                          'rows': [list(r) for r in got]}
+    if misses or len(new_cache) != len(cache):
+        _save_rows_cache(new_cache)
+    print('cache: %d reaproveitado(s), %d re-parseado(s) de %d ficheiro(s)'
+          % (hits, misses, files))
 
     if '--write-baseline' in argv:
         keys = sorted(_key(r) for r in rows if r[2] == 'WEAK-FLAG')

@@ -198,10 +198,18 @@ def neg_arm():
             if os.path.exists(src):
                 dst = os.path.join(work, name)
                 if os.path.getsize(src) > 1 << 20:
-                    # The graphs are only ever size-checked; a sparse stand-in of the same
-                    # length keeps the control cheap without lying about anything it reads.
-                    with open(dst, 'wb') as fh:
-                        fh.truncate(os.path.getsize(src))
+                    # The graphs are only ever size-checked, so a HARDLINK reproduces the
+                    # exact number `getsize` reads at zero allocation. Measured 2026-11-23:
+                    # allocating 658 MB of sparse truncations cost 9.96-66.7 s on this box
+                    # (root probe 98.6-4393.0 ms for the same 64 MiB) against 2.3 s of
+                    # baseline -- the allocation was the whole cost of the arm and it bought
+                    # nothing the link does not give. The link cannot leak a mutation: the
+                    # arm never writes to these paths, it writes the COPIED config.
+                    try:
+                        os.link(src, dst)
+                    except OSError:
+                        with open(dst, 'wb') as fh:
+                            fh.truncate(os.path.getsize(src))
                 else:
                     shutil.copy2(src, dst)
         cfg = json.load(open(os.path.join(work, 'genai_config.json'), encoding='utf-8'))

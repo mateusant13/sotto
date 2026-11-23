@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# NO-BUG: a tap de 2026-11-17 que entregou 630,3 s sem um bloco com o worker a transcrever silencio -- trabalho de CAPACIDADE/observabilidade sobre um defeito medido, sem id no `_main/bug-ledger.json`
 """tap-delivery-stall-oracle - uma tap que PARA de entregar tem de ser VISTA.
 
 O DEFEITO JULGADO (medido 2026-11-16, chamada real: 5 h 22 de parede, 3 h 45 de

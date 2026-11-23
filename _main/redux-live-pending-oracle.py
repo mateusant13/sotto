@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: o tecto de duracao e a contabilidade de descarte da fila ao vivo do Redux -- trabalho de CAPACIDADE/observabilidade, sem id no `_main/bug-ledger.json`
 """Model-free gate for the Redux live queue duration cap and drop accounting."""
 from __future__ import annotations
 

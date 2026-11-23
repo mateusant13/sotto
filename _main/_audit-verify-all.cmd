@@ -1264,7 +1264,12 @@ REM A divida antiga (160 ficheiros sem declaracao) esta no baseline e NAO pode
 REM crescer: e um ratchet, nao uma amnistia. Ha ~165 ferramentas em _main e
 REM nenhuma dizia para que existia.
 if exist _main\tooling-intent-oracle.py (
-  call :step tooling-intent 0 "_main\tooling-intent-oracle.py;_main\tooling-intent-baseline.json;_main\bug-ledger.json" "%OUT%\tooling-intent.log" python _main\tooling-intent-oracle.py
+  REM POPULACAO = UM DIRECTORIO, nao tres ficheiros (medido 2026-11-23): o
+REM oraculo varre 325 ficheiros de enforcement em `_main` e um deles sem
+REM declaracao e' vermelho. Com deps nomeadas, um oraculo NOVO passa por um
+REM HIT que nunca o leu -- a classe do `panel-deps`. `""` da' MISS
+REM reason=no-deps, o passo corre sempre, e custa 1,51 s medidos.
+call :step tooling-intent 0 "" "%OUT%\tooling-intent.log" python _main\tooling-intent-oracle.py
   call :record tooling-intent !STEP_RC!
 ) else ( call :record tooling-intent MISSING )
 if exist _main\tooling-intent-oracle.py (

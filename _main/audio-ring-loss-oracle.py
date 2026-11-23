@@ -1,3 +1,4 @@
+# NO-BUG: a perda do ring medida em 2026-11-17 (71,6 % de parede coberta, 2 325,2 s de buraco DENTRO de um segmento) -- trabalho de CAPACIDADE/observabilidade sobre um defeito medido e datado, para o qual `_main/bug-ledger.json` nao tem id
 """audio-ring-loss-oracle - a perda de audio do ring tem de ficar REGISTADA.
 
 O DEFEITO QUE ESTE PORTAO JULGA (medido 2026-11-17 no corpus de 2026-11-16,

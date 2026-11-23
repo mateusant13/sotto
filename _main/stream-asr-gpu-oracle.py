@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: a mesma classe CUDA/ORT do caminho de stream do Nemotron, julgada com sessoes falsas -- trabalho de CAPACIDADE/observabilidade; o ledger nao tem id para ela
 """Model-free gate for the current Nemotron GPU-only session policy.
 
 ORT can list CUDA in a session-provider readback while its device census reports

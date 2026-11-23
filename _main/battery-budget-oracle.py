@@ -598,6 +598,24 @@ def rebase_growth(old_per_step, new_per_step, allowed=()):
     return grew
 
 
+def rebaseline_population(measured, baseline_policy):
+    """O rebaseline tem populacao? Uma recusa, nunca um baseline vazio.
+
+    MEDIDO 2026-11-23: sem `--policy cap40` o `measure()` descarta toda a linha medida
+    sob `cap40`, e o tool escrevia `per_step={}` / `total_s=0.0` com rc=0 -- a regua
+    apagada por um comando que parecia ter corrido. Um baseline vazio nao e' um baseline:
+    e' o ratchet desligado, com o proximo aumento aceite em silencio.
+    """
+    n = int(measured.get('steps') or 0)
+    if n:
+        return None
+    skipped = int(measured.get('policy_skipped') or 0)
+    return ('baseline RECUSADO -- 0 passo(s) medido(s)%s. Falta `--policy %s` para casar a'
+            ' populacao que este cache mede; um baseline vazio apagaria a regua.'
+            % (('; %d linha(s) de outra politica foram descartadas' % skipped)
+               if skipped else '', baseline_policy or '<a da corrida>'))
+
+
 def rebase_arms():
     """OS BRACOS DO REBASELINE, puros: nenhum le' o disco.
 
@@ -637,6 +655,18 @@ def rebase_arms():
     # A17: passo novo (sem valor anterior) nao e' crescimento -- e' populacao.
     arm('A17 rebaseline: passo novo nao e\' crescimento',
         {}, {'brand-new': 102.7}, (), None)
+
+    # A18 e' o defeito MEDIDO em 2026-11-23: a populacao vazia tem de RECUSAR. As duas
+    # metades -- vazio recusa, com passo nao -- porque um guarda que recusa sempre e' o
+    # mesmo verde que nunca falha, so' ao contrario.
+    def pop_arm(name, measured, want_refused):
+        got = rebaseline_population(measured, 'cap40')
+        arms.append({'arm': name, 'ok': bool(got) == want_refused,
+                     'detail': 'recusa=%r' % (got,)})
+    pop_arm('A18 rebaseline com 0 passo medido RECUSA (a regua nao e\' apagada)',
+            {'steps': 0, 'policy_skipped': 526, 'total_s': 0.0}, True)
+    pop_arm('A19 rebaseline com 526 passos medidos escreve',
+            {'steps': 526, 'policy_skipped': 0, 'total_s': 2061.4}, False)
     return arms
 
 
@@ -975,6 +1005,10 @@ def main(argv):
         # nunca passa, e o trabalho que ele existe para registar fica bloqueado.
         # A regua e' a do `judge`: piso de `PER_STEP_FLOOR_S`, `PER_STEP_PCT` e a
         # folga absoluta de `PER_STEP_SLACK_S`.
+        refusal = rebaseline_population(measured, (old.get('policy') or ''))
+        if refusal:
+            print(refusal)
+            return 1
         grew = rebase_growth(old.get('per_step') or {}, measured['per_step'],
                              allowed)
         if old_policy != policy:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: o census CUDA do ORT a contradizer o provider listado pela sessao (medido 2026-11-17/23) -- trabalho de CAPACIDADE/observabilidade sobre um defeito medido, sem id no ledger
 """Model-free guard for Redux CUDA-only session creation and runtime failures.
 
 The production constructor is exercised through ``open_onnx_sessions`` and the

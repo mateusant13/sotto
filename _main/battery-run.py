@@ -40,6 +40,8 @@ SUMMARY = os.path.join(ROOT, '_main', '_audit-verify', '_battery-summary.txt')
 TOO_OLD = '(sumario mais velho -- nao contado)'
 NO_SUMMARY = '(sem sumario)'
 DISAGREE_RC = 3
+BUSY_RC = 4          # nenhum passo devolve este codigo por acidente
+LOCK = os.path.join(ROOT, '_main', '_cache', 'battery-run.lock')
 
 
 def read_verdict(summary, started_at):
@@ -67,18 +69,127 @@ def judge(rc, verdict):
     return (rc == 0) == green, verdict
 
 
+def _proc_stamp(pid):
+    """-> (pid, create_time|None). O carimbo existe para um pid RECICLADO nao herdar um cadeado."""
+    try:
+        import psutil
+        return int(pid), float(psutil.Process(int(pid)).create_time())
+    except Exception:
+        return int(pid), None
+
+
+def _holder_alive(text):
+    """Um pid vivo e' o que torna o bloqueio real; um pid morto e' um cadeado esquecido."""
+    parts = str(text or '').split()
+    if not parts:
+        return False
+    try:
+        pid = int(parts[0])
+    except ValueError:
+        return False
+    stamp = None
+    if len(parts) > 1:
+        try:
+            stamp = float(parts[1])
+        except ValueError:
+            stamp = None
+    try:
+        import psutil
+        proc = psutil.Process(pid)
+        if not proc.is_running() or proc.status() == psutil.STATUS_ZOMBIE:
+            return False
+        if stamp is not None:
+            return abs(proc.create_time() - stamp) < 1.0
+        return True
+    except Exception:
+        pass
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError as exc:
+        # winerror 5 = existe mas e' de outro utilizador; 87/22 = nao existe.
+        return getattr(exc, 'winerror', None) == 5
+    except Exception:
+        return False
+
+
+def acquire_lock(path=LOCK):
+    """-> fh quando ESTA corrida fica dona do cadeado, None quando outra o tem.
+
+    `O_CREAT|O_EXCL` e' a unica forma atomica aqui: dois largadores que perguntam
+    "existe?" antes de criar ganham os dois. Um cadeado de um pid morto e' tomado,
+    porque um cadeado esquecido nao pode bloquear a casa -- e no Windows um unlink
+    sobre o ficheiro que o dono VIVO tem aberto levanta, o que faz do sistema de
+    ficheiros uma segunda testemunha a favor da recusa.
+    """
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    for attempt in (1, 2):
+        try:
+            fh = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                held = io.open(path, encoding='utf-8', errors='replace').read().strip()
+            except OSError:
+                held = ''
+            if _holder_alive(held):
+                return None
+            if attempt == 2:
+                return None
+            print("BATTERY-LOCK stale pid=%s -- o dono do cadeado ja' nao existe; a toma-lo"
+                  % (held.split()[0] if held.split() else '?'))
+            try:
+                os.unlink(path)
+            except OSError:
+                return None
+            continue
+        pid, stamp = _proc_stamp(os.getpid())
+        line = '%d %s\n' % (pid, ('%.3f' % stamp) if stamp else '')
+        os.write(fh, line.encode('ascii'))
+        return fh
+    return None
+
+
+def release_lock(fh, path=LOCK):
+    """Fecha e apaga -- nesta ordem, senao o unlink do Windows falha com o handle aberto."""
+    if fh is None:
+        return
+    try:
+        os.close(fh)
+    except OSError:
+        pass
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 def run_battery():
     # O TRANSCRITO da corrida tem de comecar por `_`: a regra do `skip-verdict-guard`
     # diz que todo artefacto que a bateria escreve e' `_`-prefixado, e um transcript sem
     # o `_` e' lido como LOG DE PASSO -- foi exactamente esse o RED falso de 2026-11-12.
-    log_path = os.path.join(ROOT, '_main', '_audit-verify',
-                            '_battery-run-%s.log' % time.strftime('%Y%m%d-%H%M%S'))
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    t0 = time.time()
-    with io.open(log_path, 'w', encoding='utf-8', newline='') as fh:
-        proc = hl.popen(['cmd', '/c', r'_main\_audit-verify-all.cmd'],
-                        cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
-        rc = proc.wait()
+    lock = acquire_lock()
+    if lock is None:
+        try:
+            held = io.open(LOCK, encoding='utf-8', errors='replace').read().strip()
+        except OSError:
+            held = ''
+        print("BATTERY-BUSY pid=%s -- outra corrida e' dona de _main/_audit-verify; esta e' "
+              "recusada (uma segunda corrida trunca os logs de passo e o sumario da primeira)"
+              % (held.split()[0] if held.split() else '?'))
+        return BUSY_RC
+    try:
+        log_path = os.path.join(ROOT, '_main', '_audit-verify',
+                                '_battery-run-%s.log' % time.strftime('%Y%m%d-%H%M%S'))
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        t0 = time.time()
+        with io.open(log_path, 'w', encoding='utf-8', newline='') as fh:
+            proc = hl.popen(['cmd', '/c', r'_main\_audit-verify-all.cmd'],
+                            cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+            rc = proc.wait()
+    finally:
+        release_lock(lock)
     agrees, verdict = judge(rc, read_verdict(SUMMARY, t0))
     print('battery rc=%s agrees=%s verdict=%s log=%s' % (rc, agrees, verdict, log_path))
     if agrees is False:
@@ -100,6 +211,44 @@ def selftest(mutate):
         # concorda. Uma tabela de casos que nao pode falhar nao e' um controlo.
         cases[0] = ('C1 MUTADO', 0, 'RED - 2 step(s) failed', True)
     ok = True
+    # O CADEADO tem de ser julgado aqui: uma corrida dupla torna o veredicto da primeira
+    # ilegivel (medido 2026-11-23: os dois logs de passo e o sumario truncados), e um guarda
+    # que nunca recusa e' o mesmo defeito ao contrario.
+    lock_path = os.path.join(ROOT, '_main', '_cache', 'battery-run-selftest.lock')
+    try:
+        os.unlink(lock_path)
+    except OSError:
+        pass
+    if mutate:
+        # A mutacao faz um pid MORTO ser lido como vivo: e' o ramo que a L3 julga -- com ele,
+        # um cadeado esquecido bloqueia a casa para sempre.
+        globals()['_holder_alive'] = lambda text: True
+    l1 = acquire_lock(lock_path)
+    ok_lock = l1 is not None
+    print('  [%s] L1 adquire o cadeado' % ('PASS' if ok_lock else 'FAIL'))
+    l2 = acquire_lock(lock_path)
+    ok_lock = ok_lock and (l2 is None)
+    print("  [%s] L2 a segunda corrida e' RECUSADA" % ('PASS' if l2 is None else 'FAIL'))
+    if l2 is not None:
+        release_lock(l2, lock_path)
+    release_lock(l1, lock_path)
+    with io.open(lock_path, 'w', encoding='utf-8', newline='') as fh:
+        fh.write('999999 0\n')
+    l3 = acquire_lock(lock_path)
+    ok_lock = ok_lock and (l3 is not None)
+    print('  [%s] L3 um pid morto nao bloqueia a casa (cadeado tomado)'
+          % ('PASS' if l3 is not None else 'FAIL'))
+    release_lock(l3, lock_path)
+    ok_lock = ok_lock and not os.path.exists(lock_path)
+    print('  [%s] L4 libertar apaga o cadeado' % ('PASS' if not os.path.exists(lock_path) else 'FAIL'))
+    ok = ok and ok_lock
+    try:                      # o mutante deixa o cadeado em disco: nao se sai de um selftest sujo
+        os.unlink(lock_path)
+    except OSError:
+        pass
+    if mutate and not ok_lock:
+        print('BATTERY-RUN NEG-ARM: PASS -- a mutacao do cadeado foi apanhada')
+        return 1
     for name, rc, verdict, want in cases:
         got, _ = judge(rc, verdict)
         good = got is want if want is None else got == want

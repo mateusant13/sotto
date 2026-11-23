@@ -1,3 +1,4 @@
+# NO-BUG: o arranque de 2026-11-16 que morria em `AttributeError: 'GamingWatcher' object has no attribute 'owns_space_now'` sem deixar recibo -- trabalho de CAPACIDADE/observabilidade; o ledger nao lhe da' id
 """O OBJETO QUE A SHELL GUARDA TEM DE SABER RESPONDER -- e uma morte sem stderr tem recibo.
 
 Nascido de um defeito MEDIDO a 2026-11-16, reportado pelo dono como "tentei abrir o

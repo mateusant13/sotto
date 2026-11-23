@@ -1,3 +1,4 @@
+# NO-BUG: a corrida de 2026-11-12 que mediu 21 min com um export herdado a decidir a politica de largada -- integridade do INSTRUMENTO, sem id no `_main/bug-ledger.json`
 """battery-launch-oracle -- o que a corrida PROVA nao vem de um export esquecido.
 
 Nasceu de um RED medido nesta arvore (2026-11-12). A bateria inteira correu 21 min

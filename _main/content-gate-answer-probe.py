@@ -161,9 +161,57 @@ def find_browser():
 
 
 # ── O SHELL, LIDO SEM O IMPORTAR ────────────────────────────────────────────
+#: O fonte do shell e ' o MESMO megabyte em todas as perguntas deste modulo. A tabela de
+#: linhas e a arvore ficam num unico escopo com o texto por IDENTIDADE: duas chamadas com o
+#: mesmo objecto custam zero, e um texto novo invalida as duas de uma vez.
+_SHELL_CACHE = {'text': None, 'lines': None, 'tree': None}
+
+
+def _shell_lines(source_text):
+    if _SHELL_CACHE['text'] is not source_text:
+        _SHELL_CACHE['text'] = source_text
+        _SHELL_CACHE['lines'] = source_text.splitlines()
+        _SHELL_CACHE['tree'] = None
+    return _SHELL_CACHE['lines']
+
+
+def _shell_ast(source_text):
+    _shell_lines(source_text)
+    if _SHELL_CACHE['tree'] is None:
+        _SHELL_CACHE['tree'] = ast.parse(source_text)
+    return _SHELL_CACHE['tree']
+
+
+def _segment(source_text, node):
+    """O texto EXATO do no ', com a tabela de linhas feita uma vez.
+
+    `ast.get_source_segment` re-partiria o megabyte inteiro a cada chamada, num laco
+    Python (`_splitlines_no_ff`): 1,95 s por chamada, 66 chamadas no braco negativo
+    (medido 2026-11-23).
+    """
+    lines = _shell_lines(source_text)
+    try:
+        first = int(node.lineno or 0)
+        last = int(getattr(node, 'end_lineno', None) or first)
+        c0 = int(getattr(node, 'col_offset', 0) or 0)
+        c1 = getattr(node, 'end_col_offset', None)
+    except (TypeError, ValueError):
+        return ast.get_source_segment(source_text, node)
+    if not first or first > len(lines) or last > len(lines):
+        return ast.get_source_segment(source_text, node)
+    if first == last:
+        line = lines[first - 1]
+        return line[c0:(c1 if c1 is not None else len(line))]
+    head = lines[first - 1][c0:]
+    mid = lines[first:last - 1]
+    tail_line = lines[last - 1]
+    tail = tail_line[:(c1 if c1 is not None else len(tail_line))]
+    return '\n'.join([head] + mid + [tail])
+
+
 def shell_literal(source_text, name):
     """O valor de um literal de modulo (`CONTENT_GATE_JS`, ...) -- por `ast`."""
-    for node in ast.parse(source_text).body:
+    for node in _shell_ast(source_text).body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
             target = node.targets[0]
             if isinstance(target, ast.Name) and target.id == name:
@@ -191,11 +239,11 @@ def missing_gate_constants(source_text, names=GATE_NAMES):
     oraculo ficou pendurado 40 s em vez de dizer o nome que faltava. Um extractor
     que constroi um namespace INCOMPLETO tem de RECUSAR, nao de adivinhar.
     """
-    tree = ast.parse(source_text)
+    tree = _shell_ast(source_text)
     used = set()
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in names:
-            seg = ast.get_source_segment(source_text, node) or ''
+            seg = _segment(source_text, node) or ''
             used.update(re.findall(r'CONTENT_GATE_[A-Z_]+', seg))
     return sorted(used - set(GATE_CONSTANTS))
 
@@ -206,11 +254,11 @@ def shell_functions(source_text, names=GATE_NAMES):
     Nada aqui importa pywebview: as funcoes do gate sao puras por desenho, e e'
     isso que permite ao oraculo executar o codigo SHIPPED em vez de uma copia.
     """
-    tree = ast.parse(source_text)
+    tree = _shell_ast(source_text)
     found = {}
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in names:
-            found[node.name] = ast.get_source_segment(source_text, node)
+            found[node.name] = _segment(source_text, node)
     missing = [n for n in names if n not in found]
     if missing:
         raise SystemExit('fonte do shell sem %s -- o instrumento nao julga '

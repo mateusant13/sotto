@@ -1,3 +1,4 @@
+# NO-BUG: a politica GPU-only do Parakeet Ultra, julgada com um ORT falso (sem pesos, sem CUDA) -- trabalho de CAPACIDADE/observabilidade; o `_main/bug-ledger.json` nao tem id para ela
 """Model-free positive and negative controls for Parakeet Ultra GPU-only policy."""
 from __future__ import annotations
 

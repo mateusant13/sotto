@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: ordem do dono de 2026-11-05 *"usa pontuacao de forma inteligente"* -- trabalho de CAPACIDADE sobre pontuacao opcional, sem id no `_main/bug-ledger.json`
 """Optional punctuation behavior and GPU policy, checked without model weights.
 
 Ordem do dono (2026-11-05, verbatim): *"por que a gente nao normaliza as frases

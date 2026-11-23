@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: a fronteira de activacao do warm-preload (carrega estado, nao abre tap nem descodifica) -- trabalho de CAPACIDADE/observabilidade pedido pela regra 3 do dono de 2026-11-04; sem id no ledger
 """Model-free guard for the Nemotron warm-preload activation boundary.
 
 The default worker preload may load model/frontend state while the panel is
@@ -770,10 +771,29 @@ if second != \"\":
             bridge._cancel_timers()
             if child.stdin:
                 child.stdin.close()
-            try:
-                child.wait(timeout=5.0)
-            except Exception:
-                case_failures.append("fake child did not exit on parent pipe EOF")
+            # ONE control, TWO windows, and the evidence printed in between. Measured
+            # 2026-11-23: this arm passed 2/2 with the exact battery invocation minutes
+            # after run 8 published `fake child did not exit on parent pipe EOF`, so a
+            # 5.0 s window was naming a defect that was not there -- and a false MISSING
+            # costs a whole battery run.
+            waited_s = 0.0
+            exited = True
+            for window in (5.0, 10.0):
+                try:
+                    child.wait(timeout=window)
+                except Exception:
+                    waited_s += window
+                    exited = False
+                    print('NEG-CHILD alive after %.1fs (window %.1fs) poll=%r stdin_closed=%s'
+                          % (waited_s, window, child.poll(), child.stdin is None
+                             or child.stdin.closed), flush=True)
+                    continue
+                exited = True
+                break
+            if not exited:
+                case_failures.append(
+                    "fake child did not exit on parent pipe EOF (waited %.1fs alive=%s)"
+                    % (waited_s, child.poll() is None))
                 child.kill()
                 child.wait(timeout=2.0)
             if child.returncode != 0:
@@ -786,8 +806,11 @@ if second != \"\":
         for thread in list(__import__("threading").enumerate()):
             if (thread.name.startswith("sotto-worker-")
                     and thread is not __import__("threading").current_thread()):
-                thread.join(timeout=1.0)
+                # The bridge reads piped lines; a 1.0 s join raced the reader under the
+                # battery's CPU cap (measured 2026-11-23: same code, 12/12 solo).
+                thread.join(timeout=5.0)
                 if thread.is_alive():
+                    print('NEG-THREAD %s still alive after 5.0s' % thread.name, flush=True)
                     failures.append("WorkerBridge fake-child thread did not join: " + thread.name)
     except Exception as exc:
         failures.append("real WorkerBridge fake-child integration raised %s: %s" %

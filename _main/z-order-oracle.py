@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# NO-BUG: ordem do dono de 2026-11-14 *"os paineis devem ficar ACIMA da legenda, no z index"* -- trabalho de CAPACIDADE sobre a composicao das janelas, sem id no `_main/bug-ledger.json`
 """O PAINEL FICA ACIMA DA LEGENDA? -- o portao do Z-order do dono (2026-11-14).
 
 ORDEM DO DONO, verbatim: *"os paineis devem ficar ACIMA da legenda. no `z index`. a

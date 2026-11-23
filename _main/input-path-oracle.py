@@ -71,6 +71,12 @@ REPO = os.path.dirname(HERE)
 SHELL_DIR = os.path.join(REPO, "app", "webview")
 SHELL = os.path.join(SHELL_DIR, "sotto_webview.py")
 MUTANT_PREFIX = "_inputpath-neg-"
+#: MEASURED 2026-11-23: writing the ten mutant copies into `app\webview` cost 64.7 s of
+#: WALL for 22.8 s of CPU (the wrapper proved the child was scheduled: `not-scheduled
+#: 0.0s`), because each new 128 KB file in the product tree is scanned on access -- and a
+#: killed run left `_inputpath-neg-*.py` inside the product for every scan to read. A cache
+#: directory outside the tree is the same bytes with none of that.
+MUTANT_DIR = os.path.join(HERE, "_cache", "input-path-mutants")
 
 #: Nomes que so' existem para instalar um hook global. `SetWindowsHookEx` cobre
 #: `...ExA`/`...ExW`: qualquer um deles e' o mesmo mecanismo.
@@ -474,21 +480,39 @@ def build_mutant(text, name, old, new):
     out = source.replace(old, new, 1)
     if eol != "\n":
         out = out.replace("\n", eol)
-    path = os.path.join(SHELL_DIR, "%s%s.py" % (MUTANT_PREFIX, name))
+    os.makedirs(MUTANT_DIR, exist_ok=True)
+    path = os.path.join(MUTANT_DIR, "%s%s.py" % (MUTANT_PREFIX, name))
     with open(path, "w", encoding="utf-8", newline="") as fh:
         fh.write(out)
     return path
 
 
+def drop_module(name):
+    """Um mutante vive UM uso. Ver o cabecalho do `load_module`.
+
+    MEDIDO 2026-11-23: sem isto o `arms()` custa 1,09 s na primeira arvore e 5,81 s na
+    decima -- 33 dos 36 s do oraculo -- porque cada `load_module` deixa um modulo de
+    22 700 linhas em `sys.modules` e a recolha geracional seguinte varre os dez.
+    """
+    sys.modules.pop(name, None)
+
+
 def clean_mutants():
-    if not os.path.isdir(SHELL_DIR):
-        return
-    for name in os.listdir(SHELL_DIR):
-        if name.startswith(MUTANT_PREFIX) and name.endswith(".py"):
-            try:
-                os.remove(os.path.join(SHELL_DIR, name))
-            except OSError:
-                pass
+    """Nenhuma copia partida fica para tras -- em NENHUM dos dois sitios.
+
+    O directorio do produto entra nesta lista de proposito: uma corrida antiga (antes de
+    2026-11-23) escrevia os mutantes la', e um `_inputpath-neg-*.py` esquecido e' um ficheiro
+    de produto que as varreduras leem.
+    """
+    for folder in (SHELL_DIR, MUTANT_DIR):
+        if not os.path.isdir(folder):
+            continue
+        for name in os.listdir(folder):
+            if name.startswith(MUTANT_PREFIX) and name.endswith(".py"):
+                try:
+                    os.remove(os.path.join(folder, name))
+                except OSError:
+                    pass
 
 
 def main(argv=None):
@@ -513,6 +537,8 @@ def main(argv=None):
                 caught = [r for r in arms(mmod, _read(path)) if not r[1]]
             except Exception as exc:  # noqa: BLE001 -- ilegal tambem e apanhado
                 caught = [("import", False, repr(exc))]
+            finally:
+                drop_module("_inputpath_neg_only")
             if caught:
                 print("NEG-ARM PASS -- a copia partida foi apanhada:")
                 for label, _ok, got in caught:
@@ -539,11 +565,14 @@ def main(argv=None):
             print("RED   mutante %s nao pode ser construido: %s" % (name, exc))
             failures.append(name)
             continue
+        mod_name = "_inputpath_neg_%s" % name.replace("-", "_")
         try:
-            mmod = load_module(path, "_inputpath_neg_%s" % name.replace("-", "_"))
+            mmod = load_module(path, mod_name)
             caught = [r for r in arms(mmod, _read(path)) if not r[1]]
         except Exception as exc:  # noqa: BLE001 -- um mutante ilegal tambem e apanhado
             caught = [("import", False, repr(exc))]
+        finally:
+            drop_module(mod_name)
         if caught:
             print("GREEN mutante %s apanhado (%s)" % (name, why))
         else:
