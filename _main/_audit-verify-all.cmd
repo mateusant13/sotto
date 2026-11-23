@@ -1637,11 +1637,11 @@ REM cada um exigido vermelho pela SUA arm. A convencao do negativo e' a da casa:
 REM devolve 1 ao apanhar (`:expectred ... 1`), nunca 0 -- um controlo que nao
 REM pode falhar nao e' controlo, e foi por isso que ele ficou fora da bateria.
 if exist _main\panel-row-identity-oracle.js (
- call :step panel-row-identity 0 "_main\panel-row-identity-oracle.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\history-source.js" "%OUT%\panel-row-identity.log" node _main\panel-row-identity-oracle.js
+ call :step panel-row-identity 0 "_main\panel-row-identity-oracle.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\history-source.js;app\panel\panel.css" "%OUT%\panel-row-identity.log" node _main\panel-row-identity-oracle.js
  call :record panel-row-identity !STEP_RC!
 ) else ( call :record panel-row-identity MISSING )
 if exist _main\panel-row-identity-oracle.js (
- call :step red-as-expected-panel-row-identity 1 "_main\panel-row-identity-oracle.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\history-source.js" "%OUT%\panel-row-identity-neg.log" node _main\panel-row-identity-oracle.js --neg-arm
+ call :step red-as-expected-panel-row-identity 1 "_main\panel-row-identity-oracle.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\history-source.js;app\panel\panel.css" "%OUT%\panel-row-identity-neg.log" node _main\panel-row-identity-oracle.js --neg-arm
  call :expectred red-as-expected-panel-row-identity !STEP_RC! "%OUT%\panel-row-identity-neg.log" "VERDICT: PASS"
 ) else ( call :expectred red-as-expected-panel-row-identity MISSING "%OUT%\panel-row-identity-neg.log" "VERDICT: PASS" )
 REM `_history-classify.py` -- O CENSO DO ARQUIVO (2026-11-14). Ele nao julga e nao
@@ -3088,14 +3088,14 @@ if exist _main\history-merge-oracle.py (
   call :expectred red-as-expected-history-merge !STEP_RC! "%OUT%\history-merge-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-history-merge MISSING "%OUT%\history-merge-neg.log" "NEG-ARM PASS" )
 
-REM (`fusion-wire`: a fusao dos DOIS MODELOS ligada ao caminho da legenda. O
-REM core `worker/fusion.py` decidia palavra a palavra que texto o ecra leva e
-REM nao tinha UM consumidor -- uma tabela de decisao sem chamador e' uma
-REM promessa. O oraculo EXECUTA `on_worker_caption` do shell (extraido por
-REM `ast`) e exige que o texto fundido chegue as DUAS superficies (overlay e o
-REM payload que o painel commita, e que `history_append` grava), com a palavra
-REM ja' confirmada e ja' no ecra LOCKADA; o `--neg-arm` arranca o call site
-REM numa COPIA e exige o RED. Nao abre a app.)
+REM (fusion-wire: o seam real conserva o texto do stream quando as duas
+REM hipoteses divergem sem evidencia acustica; acordo entre modelos orienta
+REM o roteamento, mas nao prova que as palavras foram ditas. O oraculo
+REM executa on_worker_caption extraido por ast, verifica que o texto
+REM original e a marca de revisao chegam ao painel e ao overlay, e que o
+REM --neg-arm apanha tanto a remocao do call site quanto o guard permissivo.
+REM Nao abre a app.)
+
 if exist _main\fusion-wire-oracle.py (
   call :step always fusion-wire 0 "_main\fusion-wire-oracle.py;worker\fusion.py;app\webview\sotto_webview.py" "%OUT%\fusion-wire.log" python _main\fusion-wire-oracle.py
   call :record fusion-wire !STEP_RC!
