@@ -10,13 +10,33 @@ python sotto_worker.py                 # live loopback capture
 python sotto_worker.py --selftest      # prove the model with no audio device
 ```
 
+## GPU-only neural execution
+
+Owner requirement (2026-11-17): ASR, VAD, punctuation, diarization and source
+separation neural inference must use CUDA or refuse to run. CPU capture,
+resampling, queues and control code remain permitted. Nemotron configures CUDA
+only, disables ONNX Runtime CPU fallback per graph, checks the encoder/decoder/
+joint provider readbacks, and checks the GenAI frontend's loaded device. Redux
+ONNX disables CPU fallback and checks every graph; its Photon/Kestrel route
+requires runtime.device.type == cuda. Speaker ONNX disables CPU fallback; the
+sherpa diarizer is configured with CUDA for both segmentation and embedding.
+
+Use the real worker's WORKER_GPU_POLICY, REDUX_GPU_POLICY, and
+SPEAKER_GPU_POLICY records for runtime evidence. get_available_providers() or
+an installed CUDA wheel alone is not proof. Some ONNX Runtime builds list an
+implicit CPU provider in get_providers(); the per-session fallback-disabled
+setting is what makes unsupported CPU graph nodes fail instead of running on
+CPU. CPU figures in older benchmark tables below are historical measurements,
+not permitted production routes.
+
 ## The contract
 
 JSON Lines on **stdout**, one object per line, flushed immediately. Nothing else
 goes to stdout; diagnostics go to stderr.
 
 ```json
-{"type":"status","state":"model-loaded","model":"...","providers":["CPUExecutionProvider"],"load_s":4.48,"rss_mb":912.3,"peak_rss_mb":912.3}
+{"type":"status","state":"model-loaded","model":"...","providers":["CUDAExecutionProvider","CPUExecutionProvider"],"load_s":4.48,"rss_mb":912.3,"peak_rss_mb":912.3}
+{"type":"status","state":"gpu-policy","asr_request":"CUDAExecutionProvider","ort_cuda_dlls_preloaded":true,"ort_cpu_fallback":"disabled","ort_cuda_graphs":3,"genai_device":"cuda","genai_vad_enabled":true,"genai_vad_cpu_fallback":"disabled"}
 {"type":"caption","text":"Can I leave","start":13.44,"end":14.00,"model":"nemotron-3.5-asr-streaming-0.6b-int8"}
 ```
 

@@ -2911,20 +2911,18 @@ if exist _main\redux-live-contract-oracle.js (
   call :expectred red-as-expected-redux-live-contract !STEP_RC! "%OUT%\redux-live-contract-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-redux-live-contract MISSING "%OUT%\redux-live-contract-neg.log" "NEG-ARM PASS" )
 REM O ASR AO VIVO SEM GPU DEGRADA E DIZ PORQUE (2026-11-19). Medido no log do dono: 736
-REM BRIDGE_EXIT rc=2 em 25 h, todos em stage=model-load, com o ORT a LISTAR
-REM CUDAExecutionProvider e o plugin EP device ausente. O StreamAsr tem de abrir no CPU EP,
-REM imprimir UMA linha ASR_CUDA_UNAVAILABLE com a razao do runtime e o readback das tres
-REM sessoes, e SOBREVIVER (o processo nao pode morrer por um provider). Sem modelo.
+REM GPU-only: provider readback nao supera device census falso/unknown; sem fallback CPU.
 if exist _main\stream-asr-gpu-oracle.py (
-  call :step stream-asr-gpu-unavailable 0 "_main\stream-asr-gpu-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\stream-asr-gpu-unavailable.log" python _main\stream-asr-gpu-oracle.py
-  call :record stream-asr-gpu-unavailable !STEP_RC!
-) else ( call :record stream-asr-gpu-unavailable MISSING )
-REM O NEGATIVO tira o fallback do ficheiro real (mutante de `_asr_cpu_fallback_allowed`) e exige RED:
-REM rc=1 POR DESENHO, e o log tem de dizer NEG-ARM PASS.
+  call :step stream-asr-gpu-census-lie 0 "_main\stream-asr-gpu-oracle.py;worker\sotto_worker.py" "%OUT%\stream-asr-gpu-census-lie.log" python _main\stream-asr-gpu-oracle.py --census-lie-only
+  call :record stream-asr-gpu-census-lie !STEP_RC!
+  call :step stream-asr-gpu-only-policy 0 "_main\stream-asr-gpu-oracle.py;worker\sotto_worker.py" "%OUT%\stream-asr-gpu-only-policy.log" python _main\stream-asr-gpu-oracle.py
+  call :record stream-asr-gpu-only-policy !STEP_RC!
+) else ( call :record stream-asr-gpu-census-lie MISSING & call :record stream-asr-gpu-only-policy MISSING )
+REM O negativo remove a guarda do census positivo; exige RED do arm de readback mentiroso.
 if exist _main\stream-asr-gpu-oracle.py (
-  call :step red-as-expected-stream-asr-gpu-unavailable 1 "_main\stream-asr-gpu-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\stream-asr-gpu-unavailable-neg.log" python _main\stream-asr-gpu-oracle.py --neg-arm
-  call :expectred red-as-expected-stream-asr-gpu-unavailable !STEP_RC! "%OUT%\stream-asr-gpu-unavailable-neg.log" "NEG-ARM PASS"
-) else ( call :expectred red-as-expected-stream-asr-gpu-unavailable MISSING "%OUT%\stream-asr-gpu-unavailable-neg.log" "NEG-ARM PASS" )
+  call :step red-as-expected-stream-asr-gpu-census 1 "_main\stream-asr-gpu-oracle.py;worker\sotto_worker.py" "%OUT%\stream-asr-gpu-census-neg.log" python _main\stream-asr-gpu-oracle.py --neg-arm
+  call :expectred red-as-expected-stream-asr-gpu-census !STEP_RC! "%OUT%\stream-asr-gpu-census-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-stream-asr-gpu-census MISSING "%OUT%\stream-asr-gpu-census-neg.log" "NEG-ARM PASS" )
 if exist _main\word-split-oracle.py (
   call :step word-split-oracle 0 "_main\word-split-oracle.py;worker\sotto_worker.py;_main\word-split-trace.json;_main\_wordsplit-before.jsonl;_main\_wordsplit-after.jsonl;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\vocab.txt" "%OUT%\word-split-oracle.log" python _main\word-split-oracle.py
   call :record word-split-oracle !STEP_RC!

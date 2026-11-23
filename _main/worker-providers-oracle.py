@@ -35,10 +35,9 @@ cuDNN 9; they ship inside the nvidia wheels, NOT on PATH):
   * no `WORKER_PROVIDERS` line in the log -> `VERDICT: SKIPPED`, never GREEN: an
     instance started before this line existed is not evidence either way.
 
-`--neg-arm` feeds three synthetic lines through the SAME `judge()` that publishes
-the verdict -- the good one must PASS, the silent-fallback one must be RED, and the
-CPU-only box (CUDA not even available) must PASS, because on such a box CPU is the
-honest engine and a gate that reds it forever is a gate nobody reads.
+`--neg-arm` feeds synthetic policy records through the SAME judge that publishes
+the verdict -- the GPU-only configuration must PASS, while CPU fallback, an
+incomplete CUDA graph set, a CPU GenAI frontend, and a CPU-only host must be RED.
 """
 
 from __future__ import annotations
@@ -52,7 +51,22 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 LOG = os.path.join(REPO, "_main", "webview-run.log")
 
-LINE_RE = re.compile(r"WORKER_PROVIDERS\s+selected=(?P<sel>[^\s]*)\s+available=(?P<avail>[^\s]*)")
+LINE_RE = re.compile(
+    r"WORKER_PROVIDERS\s+pid=(?P<pid>[^\s]+)\s+"
+    r"selected=(?P<sel>[^\s]*)\s+available=(?P<avail>[^\s]*)"
+)
+GPU_POLICY_RE = re.compile(
+    r"WORKER_GPU_POLICY\s+pid=(?P<pid>[^\s]+)\s+"
+    r"asr_request=(?P<asr>[^\s]+)\s+"
+    r"ort_cpu_fallback=(?P<ort_fallback>[^\s]+)\s+"
+    r"ort_cuda_dlls_preloaded=(?P<cuda_dlls_preloaded>[^\s]+)\s+"
+    r"ort_cuda_graphs=(?P<ort_graphs>[^\s]+)\s+"
+    r"genai_request=(?P<genai>[^\s]+)\s+genai_device=(?P<device>[^\s]+)\s+"
+    r"genai_vad_configured=(?P<vad_configured>[^\s]+)\s+"
+    r"genai_vad_enabled=(?P<vad_enabled>[^\s]+)\s+"
+    r"genai_vad_request=(?P<vad_request>[^\s]+)\s+"
+    r"genai_vad_cpu_fallback=(?P<vad_fallback>[^\s]+)"
+)
 
 
 def judge(selected: list[str], available: list[str], note: str = "") -> dict:
@@ -68,40 +82,92 @@ def judge(selected: list[str], available: list[str], note: str = "") -> dict:
                        "the CPU. This is the measured silent fallback (missing cublasLt64_13/"
                        "cuDNN 9 in the DLL search path before onnxruntime loads).",
                 "selected": selected, "available": available, "note": note}
-    return {"verdict": "PASS", "why": "no GPU provider on this box: CPU is the honest engine",
+    return {"verdict": "RED", "why": "GPU-only ASR cannot run without a GPU provider",
             "selected": selected, "available": available}
 
 
-def last_line(path: str):
+def judge_gpu_only(selected: list[str], available: list[str], policy: dict | None) -> dict:
+    """Pass only when production readbacks prove GPU inference with CPU fallback disabled."""
+    base = judge(selected, available)
+    checks = {
+        "cuda_selected": "CUDAExecutionProvider" in selected,
+        "cuda_available": "CUDAExecutionProvider" in available,
+        "same_worker_process": bool(policy and policy.get("same_process")),
+        "asr_requested_cuda_only": bool(policy and policy.get("asr") == "CUDAExecutionProvider"),
+        "ort_cpu_fallback_disabled": bool(policy and policy.get("ort_fallback") == "disabled"),
+        "ort_cuda_dlls_preloaded": bool(policy and policy.get("cuda_dlls_preloaded", "").lower() == "true"),
+        "all_ort_graphs_cuda": bool(policy and policy.get("ort_graphs") == "3"),
+        "genai_requested_cuda_only": bool(policy and policy.get("genai") == "CUDAExecutionProvider"),
+        "genai_device_cuda": bool(policy and policy.get("device", "").lower() in ("cuda", "gpu")),
+        "genai_vad_configured": bool(policy and policy.get("vad_configured", "").lower() == "true"),
+        "genai_vad_enabled": bool(policy and policy.get("vad_enabled", "").lower() == "true"),
+        "genai_vad_requested_cuda_only": bool(policy and policy.get("vad_request") == "CUDAExecutionProvider"),
+        "genai_vad_cpu_fallback_disabled": bool(policy and policy.get("vad_fallback") == "disabled"),
+    }
+    passed = all(checks.values())
+    return {
+        "verdict": "PASS" if passed else "RED",
+        "why": "GPU-only ASR policy was read back from the real worker" if passed else
+               "GPU-only ASR requirement missing or contradicted",
+        "selected": selected,
+        "available": available,
+        "policy": policy,
+        "checks": checks,
+        "base": base,
+    }
+
+
+def last_readback(path: str):
+    provider_row = None
+    policy_match = None
     try:
         with open(path, "rb") as fh:
-            data = fh.read()
+            for raw in fh:
+                line = raw.decode("utf-8", "replace")
+                provider = LINE_RE.search(line)
+                if provider:
+                    provider_row = {
+                        "pid": provider.group("pid"),
+                        "selected": [x for x in provider.group("sel").split(",") if x],
+                        "available": [x for x in provider.group("avail").split(",") if x],
+                        "raw": provider.group(0),
+                    }
+                policy = GPU_POLICY_RE.search(line)
+                if policy:
+                    policy_match = policy
     except OSError:
-        return None
-    text = data.decode("utf-8", "replace")
-    found = None
-    for m in LINE_RE.finditer(text):
-        found = m
-    if not found:
-        return None
-    sel = [x for x in found.group("sel").split(",") if x]
-    avail = [x for x in found.group("avail").split(",") if x]
-    return {"selected": sel, "available": avail, "raw": found.group(0)}
+        return None, None
+    return provider_row, policy_match
 
 
 def main(argv: list[str]) -> int:
     neg = "--neg-arm" in argv
     if neg:
-        good = judge(["CUDAExecutionProvider", "CPUExecutionProvider"],
-                     ["CUDAExecutionProvider", "CPUExecutionProvider"])
-        fallback = judge(["CPUExecutionProvider"],
-                         ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"],
-                         note="No registered plugin EP device found")
-        cpu_box = judge(["CPUExecutionProvider"], ["CPUExecutionProvider"])
+        selected = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        available = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        good_policy = {
+            "asr": "CUDAExecutionProvider", "ort_fallback": "disabled",
+            "cuda_dlls_preloaded": "true", "ort_graphs": "3",
+            "genai": "CUDAExecutionProvider", "device": "cuda",
+            "vad_configured": "true", "vad_enabled": "true",
+            "vad_request": "CUDAExecutionProvider", "vad_fallback": "disabled",
+            "same_process": True,
+        }
         cases = [
-            ("cuda-selected-passes", good["verdict"] == "PASS"),
-            ("silent-cpu-fallback-reds", fallback["verdict"] == "RED"),
-            ("cpu-only-box-passes", cpu_box["verdict"] == "PASS"),
+            ("cuda-selected-passes", judge_gpu_only(selected, available, good_policy)["verdict"] == "PASS"),
+            ("cpu-ep-fallback-reds", judge_gpu_only(selected, available, {**good_policy, "ort_fallback": "enabled"})["verdict"] == "RED"),
+            ("missing-cuda-dll-preload-reds", judge_gpu_only(selected, available, {**good_policy, "cuda_dlls_preloaded": "false"})["verdict"] == "RED"),
+            ("cpu-genai-frontend-reds", judge_gpu_only(selected, available, {**good_policy, "device": "cpu"})["verdict"] == "RED"),
+            ("missing-cuda-graph-reds", judge_gpu_only(selected, available, {**good_policy, "ort_graphs": "2"})["verdict"] == "RED"),
+            ("different-worker-readbacks-red", judge_gpu_only(selected, available, {**good_policy, "same_process": False})["verdict"] == "RED"),
+            ("cpu-vad-fallback-reds", judge_gpu_only(selected, available, {**good_policy, "vad_fallback": "enabled"})["verdict"] == "RED"),
+            ("disabled-live-vad-reds", judge_gpu_only(selected, available, {**good_policy, "vad_enabled": "false", "vad_request": "disabled"})["verdict"] == "RED"),
+            ("cpu-only-box-reds", judge_gpu_only(["CPUExecutionProvider"], ["CPUExecutionProvider"], {
+                **good_policy, "asr": "CPUExecutionProvider", "ort_fallback": "enabled",
+                "ort_graphs": "0", "genai": "CPUExecutionProvider", "device": "cpu",
+                "cuda_dlls_preloaded": "false", "vad_configured": "false",
+                "vad_enabled": "false", "vad_request": "disabled", "vad_fallback": "not-active",
+            })["verdict"] == "RED"),
         ]
         caught = sum(1 for _, ok in cases if ok)
         for name, ok in cases:
@@ -112,13 +178,26 @@ def main(argv: list[str]) -> int:
         # caught the defect (the battery demands rc=1 and the phrase).
         return 1
 
-    row = last_line(LOG)
+    row, policy_match = last_readback(LOG)
     if not row:
         print("no WORKER_PROVIDERS line in %s" % os.path.relpath(LOG, REPO))
         print("WORKER-PROVIDERS VERDICT: SKIPPED")
         print("\nVERDICT: SKIPPED")
         return 0
-    result = judge(row["selected"], row["available"])
+    policy = ({
+        "asr": policy_match.group("asr"),
+        "same_process": bool(row and row["pid"] == policy_match.group("pid")),
+        "ort_fallback": policy_match.group("ort_fallback"),
+        "cuda_dlls_preloaded": policy_match.group("cuda_dlls_preloaded"),
+        "ort_graphs": policy_match.group("ort_graphs"),
+        "genai": policy_match.group("genai"),
+        "device": policy_match.group("device"),
+        "vad_configured": policy_match.group("vad_configured"),
+        "vad_enabled": policy_match.group("vad_enabled"),
+        "vad_request": policy_match.group("vad_request"),
+        "vad_fallback": policy_match.group("vad_fallback"),
+    } if policy_match else None)
+    result = judge_gpu_only(row["selected"], row["available"], policy)
     print(json.dumps(result, ensure_ascii=False))
     print("line: %s" % row["raw"])
     print("WORKER-PROVIDERS VERDICT: %s" % result["verdict"])

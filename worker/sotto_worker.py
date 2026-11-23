@@ -67,22 +67,32 @@ import threading
 import time
 
 
-def genai_gpu_session_overlay(use_vad: bool, disable_cpu_ep_fallback: bool = True) -> str:
-    """The GenAI per-graph session options for the device this run resolved.
+def genai_gpu_session_overlay(use_vad: bool, disable_cpu_ep_fallback: bool = True,
+                              encoder_filename: str | None = None) -> str:
+    """Build strict CUDA-only GenAI options; never relax CPU fallback."""
+    if not disable_cpu_ep_fallback:
+        raise RuntimeError("Nemotron GenAI requires CPU EP fallback disabled")
+    guard = "1"
+    def bounded_session(frontend_only=False):
+        options = {"disable_cpu_ep_fallback": guard, "intra_op_num_threads": 1,
+                   "inter_op_num_threads": 1}
+        if frontend_only:
+            # GenAI needs these sessions to construct Model. Sotto decodes
+            # through its separate ORT sessions, so these copies never need a
+            # graph optimized for token generation.
+            options["graph_optimization_level"] = "ORT_DISABLE_ALL"
+        return options
 
-    `disable_cpu_ep_fallback` follows the ORT sessions' own guard: a run that had
-    to relax it (CUDA control nodes) must not hand GenAI a stricter option than
-    its sessions could honour, and a CPU-degraded run passes False.
-    """
-    guard = "1" if disable_cpu_ep_fallback else "0"
-    model = {
-        "decoder": {
-            "session_options": {"disable_cpu_ep_fallback": guard}
+    model = {name: {"session_options": bounded_session(frontend_only=True)}
+             for name in ("decoder", "joiner")}
+    if encoder_filename is not None:
+        model["encoder"] = {
+            "filename": encoder_filename,
+            "session_options": bounded_session(frontend_only=True),
         }
-    }
     if use_vad:
         model["vad"] = {
-            "session_options": {"disable_cpu_ep_fallback": guard}
+            "session_options": bounded_session()
         }
     return json.dumps({"model": model})
 
@@ -117,6 +127,10 @@ _ENV_OMP_AT_IMPORT = os.environ.get("OMP_NUM_THREADS")
 DEFAULT_THREADS = 4
 os.environ.setdefault("CUDA_MODULE_LOADING", "LAZY")
 os.environ.setdefault("OMP_NUM_THREADS", str(DEFAULT_THREADS))
+# GenAI uses a separate ORT DLL. Its sessions without explicit pool settings
+# inherit these limits, independently of Python ORT's SessionOptions.
+os.environ["ORT_INTRA_OP_NUM_THREADS"] = "1"
+os.environ["ORT_INTER_OP_NUM_THREADS"] = "1"
 # O POOL DO ONNXRUNTIME NAO FICA A GIRAR ENTRE BLOCOS (medido 2026-11-08).
 # Tres sessoes (enc/dec/joint) com 4 fios intra-op cada gastavam **16,1% de um
 # nucleo OCIOSAS** -- so' o spin-wait do ORT -- contra **0,0%** com o spin
@@ -908,63 +922,19 @@ def _add_cuda_dll_dirs() -> None:
     plain shell gets a CUDA provider that silently fails to load. Must run
     BEFORE onnxruntime is imported.
     """
-    import site
+    _ort_cuda_runtime_module().add_cuda_dll_dirs(_DLL_DIR_HANDLES)
 
-    candidates = []
-    # THE DLL DIRECTORY, WITHOUT `import torch` — MEASURED 2026-11-03.
-    # This function imported torch ONLY to learn where `torch/lib` is, and the
-    # import is not free: `torch/lib` holds 5.8 GB of DLLs and importing maps a
-    # good part of it. Measured in the real worker (`WORKER_BOOT_PROF`, see
-    # `_main/receipt-20261103-worker-boot.md`): cuda_dirs = 7.9 s warm and
-    # 29.6 s on a busy box — 47 % of the whole boot to `model-loaded`, paid
-    # before a byte of the model is read. `find_spec` answers the same question
-    # (where does torch live) WITHOUT executing it, and CUDA still loads: on
-    # this host the `nvidia/*` wheels alone resolve cublasLt64_13 + cuDNN 9
-    # through the PATH line below (`cuda_nvidia_only` arm of
-    # `worker/_probe/boot-phases.py` -> providers ['CUDAExecutionProvider',
-    # 'CPUExecutionProvider']).
-    try:
-        import importlib.util
 
-        _spec = importlib.util.find_spec("torch")
-        if _spec is not None and _spec.origin:
-            candidates.append(os.path.join(os.path.dirname(_spec.origin), "lib"))
-    except Exception:
-        pass
-    bases = []
+def _ort_cuda_runtime_module():
+    """Load the stdlib-only helper whether this file is script or package."""
     try:
-        bases.extend(site.getsitepackages())
-    except Exception:
-        pass
-    try:
-        import sysconfig
-
-        bases.append(sysconfig.get_paths()["purelib"])
-    except Exception:
-        pass
-    for base in bases:
-        nv = os.path.join(base, "nvidia")
-        if not os.path.isdir(nv):
-            continue
-        # Windows and Linux lay these out differently: cu13 wheels use
-        # nvidia/cu13/bin/x86_64/, the older ones nvidia/<pkg>/lib/. Scan for
-        # directories that actually contain DLLs instead of guessing a name.
-        for root, dirs, files in os.walk(nv):
-            depth = root[len(nv) :].count(os.sep)
-            if depth > 3:
-                dirs[:] = []
-                continue
-            if any(f.lower().endswith((".dll", ".so")) for f in files):
-                candidates.append(root)
-    for d in candidates:
-        if not os.path.isdir(d):
-            continue
-        try:
-            _DLL_DIR_HANDLES.append(os.add_dll_directory(d))
-        except (AttributeError, OSError):
-            pass
-        if d not in os.environ.get("PATH", "").split(os.pathsep):
-            os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+        import ort_cuda_runtime
+        return ort_cuda_runtime
+    except ModuleNotFoundError as exc:
+        if exc.name != "ort_cuda_runtime":
+            raise
+        from worker import ort_cuda_runtime
+        return ort_cuda_runtime
 
 
 # ── output ────────────────────────────────────────────────────────────────────
@@ -972,12 +942,8 @@ def _preload_cuda_runtime(ort=None) -> bool:
     """Load ONNX Runtime's CUDA/cuDNN DLLs before creating any CUDA session."""
     if ort is None:
         import onnxruntime as ort
-    preload = getattr(ort, "preload_dlls", None)
-    if not callable(preload):
-        raise RuntimeError(
-            "GPU-only ASR requires onnxruntime.preload_dlls() before CUDA sessions"
-        )
-    preload()
+    _ort_cuda_runtime_module().preload_dlls(ort)
+    _asr_register_cuda_plugin_if_needed(ort)
     return True
 
 
@@ -1586,17 +1552,9 @@ def _silence_tail():
 #     assigned to the default CPU EP, but fallback to CPU EP has been explicitly
 #     disabled by the user.
 #
-# and `main()` turned that ONE engine's missing provider into `return 2`. The
-# whole worker died, the shell respawned it ~29 times an hour, and the owner got
-# 25 h of silence. A provider is a PREFERENCE; the job is to transcribe.
-#
-# THE TWO DEFECTS THIS REFUSES, and they are opposites:
-#   * a CUDA request that never tries the CPU leaves the owner with no captions,
-#     so a GPU-less run rebuilds on the CPU EP and SAYS SO on ONE named line;
-#   * a CUDA session that DOES carry the graph must keep the GPU-only guard --
-#     "degrade" is not "stop asking for the GPU". The guard is relaxed ONLY when
-#     the guard is what failed, and only when the session's OWN
-#     `get_providers()` readback proves CUDA is still first.
+# and `main()` reported the resulting model-load failure. The active owner policy
+# is GPU-only: a CUDA provider request is accepted only with a positive device
+# census and CUDA readback from each guarded acoustic graph.
 ASR_CUDA_UNAVAILABLE_TAG = "ASR_CUDA_UNAVAILABLE"
 ASR_CUDA_CONTROL_FALLBACK_TAG = "ASR_CUDA_CONTROL_FALLBACK"
 #: (session name, file, carries the expensive compute) in LOAD order.
@@ -1669,44 +1627,107 @@ def asr_cuda_control_fallback_line(reason, attempted, readback) -> str:
 
 
 def asr_cuda_device_registered(ort):
-    """Is a CUDA EP DEVICE registered? True / False / None (API not present).
+    """Is a CUDA EP DEVICE registered? True / False / None (unverified).
 
     `get_available_providers()` is the wrong instrument and this is the measured
     reason: on the owner's box, in the outage, it lists `CUDAExecutionProvider`
     while `get_ep_devices()` reports the CPU EP only. The plugin-EP API (ORT
     1.30+) answers the question the session creator asks; on an older runtime it
-    does not exist, and `None` means "the runtime cannot be asked -- attempt the
-    session and let its exception speak".
+    does not exist, and `None` means device placement cannot be verified. Both
+    False and None fail closed; an unknown census is never a GPU pass.
     """
-    getter = getattr(ort, "get_ep_devices", None)
-    if not callable(getter):
-        return None
-    try:
-        devices = list(getter())
-    except Exception:                                          # noqa: BLE001
-        return None
-    for device in devices:
-        if str(getattr(device, "ep_name", "")) == "CUDAExecutionProvider":
-            return True
-    return False
+    registered, _names = _asr_cuda_device_census(ort)
+    return registered
 
 
-def _asr_cpu_fallback_allowed(gpu_requested) -> bool:
-    """ONE predicate: with no usable GPU the engine degrades, it does not die.
+def _asr_cuda_device_census(ort):
+    """Return the existing CUDA census decision and its bounded EP names."""
+    return _ort_cuda_runtime_module().cuda_device_census(ort)
 
-    The alternate arm is reachable only from a run that really asked for the GPU,
-    so a caller that asked for something else is never silently served a
-    different engine. This is the line the negative arm removes.
+
+def _asr_register_cuda_plugin_if_needed(ort) -> bool:
+    """Explicitly register the packaged CUDA plugin when auto-registration missed it.
+
+    CUDA provider names are only a request surface. The positive device census
+    remains acceptance evidence before and after explicit registration. Unknown
+    or failed paths raise so the caller can preserve the GPU-only refusal.
+    Returns True only when this call added the CUDA EP device.
     """
-    return bool(gpu_requested)
+    return _ort_cuda_runtime_module().register_cuda_plugin_if_needed(ort)
+
+
+def _asr_cuda_refusal_diagnostics(ort, registered, device_names,
+                                  cuda_preload_error="") -> str:
+    """Short facts that fit the worker's bounded 280-character refusal detail."""
+    ort_file = _asr_one_line(getattr(ort, "__file__", "unavailable"), 56)
+
+    build_getter = getattr(ort, "get_build_info", None)
+    if not callable(build_getter):
+        plugin_ep = "unavailable"
+    else:
+        try:
+            build_info = str(build_getter())
+            plugin_ep = "absent"
+            for field in build_info.split(","):
+                field = field.strip()
+                if field.startswith("cuda-plugin-ep="):
+                    value = field.partition("=")[2].strip()
+                    plugin_ep = value if value in ("0", "1") else "unknown"
+                    break
+        except Exception as exc:                              # noqa: BLE001
+            plugin_ep = "error:" + type(exc).__name__
+
+    providers_getter = getattr(ort, "get_available_providers", None)
+    if not callable(providers_getter):
+        available = "unavailable"
+    else:
+        try:
+            providers = []
+            for name in providers_getter():
+                if len(providers) >= 3:
+                    break
+                providers.append(_asr_one_line(name, 28))
+            available = _asr_one_line(",".join(providers) or "none", 68)
+        except Exception as exc:                              # noqa: BLE001
+            available = "error:" + type(exc).__name__
+
+    census = ("cuda-registered" if registered is True else
+              "cuda-missing" if registered is False else "unknown")
+    devices = _asr_one_line(",".join(device_names[:2]) or "none", 30)
+    preload = _asr_one_line(cuda_preload_error, 80) or "none"
+    return _asr_one_line(
+        # Keep the decision evidence first: a long preload error used to push
+        # `census=cuda-missing` out of the bounded tail, hiding why GPU-only
+        # sessions were refused. The provider/device facts are more actionable
+        # than the path or the tail of the error.
+        "census=%s ep_devices=%s providers=%s plugin_ep=%s "
+        "ort_file=%s cuda_preload_error=%s"
+        % (census, devices, available, plugin_ep, ort_file, preload), 280)
 
 
 def _asr_session_paths(model_dir):
-    return {name: os.path.join(model_dir, filename)
-            for name, filename, _expensive in ASR_GRAPHS}
+    paths = {name: os.path.join(model_dir, filename)
+             for name, filename, _expensive in ASR_GRAPHS}
+    encoder = paths.get("encoder")
+    if encoder:
+        import hashlib
+
+        candidate = os.path.join(model_dir, "encoder.cuda-mask.onnx")
+        try:
+            if os.path.getsize(encoder) == 2677548 and os.path.getsize(candidate) == 2677588:
+                with open(encoder, "rb") as source, open(candidate, "rb") as derived:
+                    if (hashlib.file_digest(source, "sha256").hexdigest()
+                            == "0b05217594ec0bda442e43a90a298ac2471a3bdcea9b169de34214e61a730e17"
+                            and hashlib.file_digest(derived, "sha256").hexdigest()
+                            == "d564b5570c04a69c2b45c5d6c317cf47f236409bb7c2a0a9b9f3be3cd4716696"):
+                        paths["encoder"] = candidate
+        except OSError:
+            pass
+    return paths
 
 
-def _asr_open_once(ort, paths, provider_names, ab, share, disable_cpu_ep_fallback):
+def _asr_open_once(ort, paths, provider_names, ab, share, disable_cpu_ep_fallback,
+                   joint_session=None):
     """One build attempt: the three graphs, with ONE guard setting for all of them.
 
     The two `SessionOptions` objects keep the per-graph split this file measured
@@ -1719,15 +1740,21 @@ def _asr_open_once(ort, paths, provider_names, ab, share, disable_cpu_ep_fallbac
     so_enc = session_options(ort, ab, share["live"], encoder=True,
                              disable_cpu_ep_fallback=disable_cpu_ep_fallback)
     _t_load = time.time()
-    sessions = {
-        "encoder": ort.InferenceSession(paths["encoder"], so_enc, providers=entries),
-    }
+    def open_graph(name, options):
+        options.logid = f"nemotron-{name}"
+        try:
+            session = ort.InferenceSession(
+                paths[name], options, providers=entries, enable_fallback=0)
+            return _asr_disable_runtime_fallback(session, name)
+        except Exception as exc:
+            raise RuntimeError(f"Nemotron {name} session failed: {exc}") from exc
+
+    sessions = {"encoder": open_graph("encoder", so_enc)}
     _t_enc = time.time()
-    sessions["decoder"] = ort.InferenceSession(paths["decoder"], so_small,
-                                               providers=entries)
+    sessions["decoder"] = open_graph("decoder", so_small)
     _t_dec = time.time()
-    sessions["joint"] = ort.InferenceSession(paths["joint"], so_small,
-                                             providers=entries)
+    sessions["joint"] = (joint_session if joint_session is not None
+                         else open_graph("joint", so_small))
     _t_joint = time.time()
     phases = {
         'encoder': round(_t_enc - _t_load, 3),
@@ -1753,16 +1780,39 @@ def _asr_cuda_probe(ort, paths, requested, ab, share):
         entries = provider_entries(requested)
         so = session_options(ort, ab, share["small"], encoder=False,
                              disable_cpu_ep_fallback=True)
-        session = ort.InferenceSession(paths["joint"], so, providers=entries)
+        so.logid = "nemotron-joint"
+        session = ort.InferenceSession(
+            paths["joint"], so, providers=entries, enable_fallback=0)
+        _asr_disable_runtime_fallback(session, "CUDA probe")
         readback = list(session.get_providers())
-        try:
-            session.close()
-        except Exception:                                      # noqa: BLE001
-            pass
-        return {"ok": True, "readback": readback, "reason": ""}
+        return {"ok": True, "readback": readback, "reason": "", "session": session,
+                "runtime_fallback_disabled": True}
     except Exception as exc:                                   # noqa: BLE001
         return {"ok": False, "readback": [],
                 "reason": "%s: %s" % (type(exc).__name__, exc)}
+
+
+def _asr_disable_runtime_fallback(session, graph: str):
+    """Disable ORT's Python-level CPU retry for every constructed session.
+
+    `session.disable_cpu_ep_fallback=1` prevents CPU graph partitioning during
+    session creation; `InferenceSession.disable_fallback()` separately prevents
+    Python `run()` from rebuilding the session with its fallback providers after
+    a CUDA execution error. Both guards are required for the GPU-only contract.
+    """
+    disable_fallback = getattr(session, "disable_fallback", None)
+    if not callable(disable_fallback):
+        raise RuntimeError(
+            "Nemotron %s session has no runtime fallback-disable API" % graph
+        )
+    try:
+        disable_fallback()
+    except Exception as exc:                                   # noqa: BLE001
+        raise RuntimeError(
+            "Nemotron %s session could not disable runtime fallback: %s" %
+            (graph, exc)
+        ) from exc
+    return session
 
 
 def _asr_device_of(readback) -> str:
@@ -1779,30 +1829,13 @@ def _asr_device_of(readback) -> str:
     return "cpu"
 
 
-def open_asr_sessions(ort, model_dir, providers, ab: str = "", share=None, log=None):
-    """Open the three ASR graphs CUDA-first, and DEGRADE instead of dying.
-
-    Returns a dict with `sessions`, `readback`, `providers` (the encoder's
-    answer), `device`, `cpu_ep_fallback_disabled`, `gpu_failure` and `note`.
-
-    The ladder, in order, each rung decided by a SESSION and never by a flag:
-      A. CUDA + the GPU-only guard. Success is decided by every graph's
-         `get_providers()` containing CUDA; that path is byte-identical to the
-         pre-2026-11-19 behaviour and prints nothing.
-      B. CUDA + the guard relaxed. Reached only after A failed, and accepted only
-         when the encoder readback still lists CUDA -- i.e. the GPU is doing the
-         compute and only control nodes went to the CPU. ONE
-         `ASR_CUDA_CONTROL_FALLBACK` line.
-      C. The CPU EP. ONE `ASR_CUDA_UNAVAILABLE` line carrying the runtime's own
-         reason and what every graph reported.
-    A model that is genuinely unusable (a graph missing/unreadable, or the CPU
-    EP failing too) still raises -- that keeps its own `stage=model-load` error.
-    """
-    emit = log or err
+def open_asr_sessions(ort, model_dir, providers, ab: str = "", share=None, log=None,
+                      cuda_preload_error: str = ""):
+    """Open the Nemotron graphs with the CUDA-only policy."""
     requested = [str(item[0] if isinstance(item, (tuple, list)) else item)
                  for item in (providers or [])]
-    if not requested:
-        raise RuntimeError("ASR needs at least one execution provider; got none")
+    if requested != ["CUDAExecutionProvider"]:
+        raise RuntimeError("Nemotron requires CUDAExecutionProvider exclusively")
     share = share or asr_budget(current_threads())
     paths = _asr_session_paths(model_dir)
     missing = [filename for _name, filename, _expensive in ASR_GRAPHS
@@ -1811,8 +1844,6 @@ def open_asr_sessions(ort, model_dir, providers, ab: str = "", share=None, log=N
         raise RuntimeError("ASR model %s is missing graph(s) %r"
                            % (model_dir, missing))
 
-    gpu_requested = "CUDAExecutionProvider" in requested
-
     def _result(sessions, readback, phases, guard, failure, note):
         return {
             "sessions": sessions,
@@ -1820,116 +1851,30 @@ def open_asr_sessions(ort, model_dir, providers, ab: str = "", share=None, log=N
             "providers": list(readback.get("encoder") or []),
             "device": _asr_device_of(readback),
             "cpu_ep_fallback_disabled": bool(guard),
+            "runtime_fallback_disabled": True,
             "gpu_failure": failure,
             "note": note,
             "load_phases_s": phases,
+            "encoder_filename": os.path.basename(paths["encoder"]),
         }
 
-    if not gpu_requested:
-        sessions, readback, phases = _asr_open_once(
-            ort, paths, requested, ab, share, False)
-        return _result(sessions, readback, phases, False, None, "")
-
-    failure = None
-    registered = asr_cuda_device_registered(ort)
+    registered, device_names = _asr_cuda_device_census(ort)
     if registered is not True:
-        probe = _asr_cuda_probe(ort, paths, requested, ab, share)
-        if probe["ok"] and "CUDAExecutionProvider" in probe["readback"]:
-            # MEASURED (2026-11-19): the session object still comes back and
-            # `get_providers()` still lists CUDA FIRST while the EP registered no
-            # device at all -- `disable_cpu_ep_fallback` is a session OPTION, not
-            # a provider check, so the readback can only lie when no node forces
-            # the implicit CPU EP. The DEVICE CENSUS is the authority here, and
-            # it said CPU; the probe's readback is quoted as evidence, never
-            # promoted to "the GPU is running".
-            failure = {
-                "reason": ("no CUDA EP device registered (device census: only the "
-                           "CPU EP; the probe session read back [%s] -- a readback "
-                           "is not a device)" % ",".join(probe["readback"])),
-                "attempted": list(requested),
-                "source": "ep-device-absent",
-            }
-        else:
-            failure = {
-                "reason": probe["reason"] or (
-                    "readback=[%s] (requested CUDA; the session placed every node "
-                    "on the CPU EP)" % ",".join(probe["readback"])),
-                "attempted": list(requested),
-                "source": "ep-device-absent",
-            }
+        diagnostics = _asr_cuda_refusal_diagnostics(
+            ort, registered, device_names, cuda_preload_error)
+        raise RuntimeError("Nemotron GPU-only policy refused; " + diagnostics)
 
-    if failure is None:
-        try:
-            sessions, readback, phases = _asr_open_once(
-                ort, paths, requested, ab, share, True)
-        except Exception as exc:                               # noqa: BLE001
-            failure = {"reason": "%s: %s" % (type(exc).__name__, exc),
-                       "attempted": list(requested), "source": "session-load"}
-        else:
-            if all("CUDAExecutionProvider" in names for names in readback.values()):
-                return _result(sessions, readback, phases, True, None, "")
-            failure = {
-                "reason": ("readback=%s (requested CUDA; the session placed every "
-                           "node on the CPU EP)"
-                           % _asr_readback_summary(readback)),
-                "attempted": list(requested),
-                "source": "silent-cpu-readback",
-            }
-
-    # A provider-policy failure may not kill the process. Anything from here on
-    # runs only because the CUDA request failed.
-    if not _asr_cpu_fallback_allowed(gpu_requested):
-        raise RuntimeError(failure["reason"])
-
-    if registered is False:
-        # The runtime itself registered no CUDA device. Ask for the CPU EP BY
-        # NAME instead of relying on a silent fallback, so the request and the
-        # readback on the line agree.
-        try:
-            sessions, readback, phases = _asr_open_once(
-                ort, paths, list(ASR_CPU_PROVIDERS), ab, share, False)
-        except Exception:                                      # noqa: BLE001
-            emit(asr_cuda_unavailable_line(failure["reason"],
-                                           failure["attempted"], {"encoder": []}))
-            raise
-        emit(asr_cuda_unavailable_line(failure["reason"], failure["attempted"],
-                                       readback))
-        return _result(sessions, readback, phases, False, failure,
-                       "cuda-unavailable")
-
-    try:
-        relaxed_sessions, relaxed_readback, relaxed_phases = _asr_open_once(
-            ort, paths, requested, ab, share, False)
-    except Exception:                                          # noqa: BLE001
-        relaxed_sessions, relaxed_readback, relaxed_phases = None, None, None
-
-    if relaxed_sessions is not None and "CUDAExecutionProvider" in (
-            relaxed_readback.get("encoder") or []):
-        emit(asr_cuda_control_fallback_line(failure["reason"],
-                                            failure["attempted"],
-                                            relaxed_readback))
-        return _result(relaxed_sessions, relaxed_readback, relaxed_phases, False,
-                       failure, "cuda-control-fallback")
-
-    if relaxed_sessions is not None:
-        # The relaxed attempt already built every graph on the CPU EP: its
-        # readback is the proof, and a second load would only re-read the same
-        # weights to reach the same answer.
-        emit(asr_cuda_unavailable_line(failure["reason"], failure["attempted"],
-                                       relaxed_readback))
-        return _result(relaxed_sessions, relaxed_readback, relaxed_phases, False,
-                       failure, "cuda-unavailable")
-
-    try:
-        sessions, readback, phases = _asr_open_once(
-            ort, paths, list(ASR_CPU_PROVIDERS), ab, share, False)
-    except Exception:                                          # noqa: BLE001
-        emit(asr_cuda_unavailable_line(failure["reason"],
-                                       failure["attempted"], {"encoder": []}))
-        raise
-    emit(asr_cuda_unavailable_line(failure["reason"], failure["attempted"],
-                                   readback))
-    return _result(sessions, readback, phases, False, failure, "cuda-unavailable")
+    # All three acoustic graphs are constructed with CPU fallback disabled.
+    # A successful provider list cannot override a missing/unknown device census.
+    sessions, readback, phases = _asr_open_once(
+        ort, paths, requested, ab, share, True)
+    if not all("CUDAExecutionProvider" in names
+               for names in readback.values()):
+        raise RuntimeError(
+            "Nemotron GPU-only policy refused: graph provider readback lacks CUDA: "
+            + _asr_readback_summary(readback)
+        )
+    return _result(sessions, readback, phases, True, None, "")
 
 
 class StreamAsr:
@@ -1941,15 +1886,13 @@ class StreamAsr:
             str(item[0] if isinstance(item, (tuple, list)) else item)
             for item in (providers or [])
         ]
-        # NO "GPU OR DIE" GATE HERE (2026-11-19). It used to raise unless the
-        # request was exactly CUDAExecutionProvider, and that turned ONE engine's
-        # missing provider into the whole app's silence. An OMITTED request keeps
-        # the SHIPPED policy (`worker/config.json` asks for CUDA); the request is
-        # then resolved by `open_asr_sessions`, which degrades to the CPU EP and
-        # names the runtime's reason on one line.
+        # GPU-only is an enforced route contract: the session loader requires an
+        # explicit positive CUDA device census and CUDA readback on every graph.
+        # Missing or unverified CUDA fails closed before acoustic inference.
         if not self.providers_requested:
             self.providers_requested = ["CUDAExecutionProvider"]
         self.cpu_ep_fallback_disabled = True
+        self.runtime_fallback_disabled = False
         self.ort_cuda_dlls_preloaded = False
         self.genai_device_type = None
         self.use_vad = bool(use_vad)
@@ -1977,6 +1920,10 @@ class StreamAsr:
             self.ort_cuda_dlls_preloaded = False
             self.cuda_preload_error = "%s: %s" % (type(exc).__name__, exc)
         _p_cuda_dlls = _time.time()
+        genai_runtime_dir = os.path.join(HERE, "models", ".sotto-runtime", "genai-cuda")
+        if (genai_runtime_dir not in sys.path and os.path.isfile(os.path.join(
+                genai_runtime_dir, "onnxruntime_genai", "onnxruntime-genai-cuda.dll"))):
+            sys.path.insert(0, genai_runtime_dir)
         import onnxruntime_genai as og
         _p3 = _time.time()
         _prof("numpy_import", _p1)
@@ -1986,6 +1933,7 @@ class StreamAsr:
 
         self.np = np
         self.ort = ort
+        self.genai_module = og
         self.model_dir = model_dir
         cfg = json.load(open(os.path.join(model_dir, "genai_config.json"), encoding="utf-8"))["model"]
         self.blank = cfg["blank_id"]
@@ -2083,15 +2031,14 @@ class StreamAsr:
         except Exception:            # noqa: BLE001
             pass
         # ── O CARREGAMENTO, COM A POLITICA DE PROVIDER NUM SO' SITIO ─────────
-        # `open_asr_sessions` owns the CUDA -> guard-relaxed -> CPU EP ladder and
-        # prints the ONE line for whichever transition happened. This constructor
-        # no longer turns a missing provider into an exception (the 2026-11-17
-        # outage: 736 dead workers in 25 h, zero captions).
+        # open_asr_sessions verifies CUDA placement on all three sessions.
         _t_load = time.time()
         resolved = open_asr_sessions(ort, model_dir, providers, ab=_ab,
-                                     share=_share, log=err)
+                                     share=_share, log=err,
+                                     cuda_preload_error=self.cuda_preload_error)
         _t_joint = time.time()
         self.enc = resolved["sessions"]["encoder"]
+        self.encoder_filename = resolved["encoder_filename"]
         self.dec = resolved["sessions"]["decoder"]
         self.joint = resolved["sessions"]["joint"]
         # THE LOAD'S PHASES, MEASURED (owner, 2026-10-21: *"abrir ou fechar o
@@ -2113,13 +2060,22 @@ class StreamAsr:
         # THE ANSWER, read back off the sessions that will actually run.
         self.session_providers = resolved["readback"]
         self.providers = resolved["providers"]
-        # Which device the SESSIONS reported. The GenAI front end follows this
-        # (see `_build_frontend`): a CPU-degraded run must not build a CUDA-only
-        # front end, which would fail the first chunk with no captions.
+        # Which device the positively censused CUDA sessions reported. The
+        # frontend also fails closed unless this remains CUDA.
         self.device = resolved["device"]
         self.cpu_ep_fallback_disabled = resolved["cpu_ep_fallback_disabled"]
+        self.runtime_fallback_disabled = resolved["runtime_fallback_disabled"]
         self.gpu_failure = resolved["gpu_failure"]
         self.provider_note = resolved["note"]
+        if os.environ.get("SOTTO_ORT_NODE_TRACE") == "1":
+            try:
+                from worker.asr_node_assignment import collect_graph_assignment_facts
+            except ImportError:
+                from asr_node_assignment import collect_graph_assignment_facts
+            self.graph_assignment_info = collect_graph_assignment_facts(
+                {"encoder": self.enc, "decoder": self.dec, "joint": self.joint})
+        else:
+            self.graph_assignment_info = None
 
         # ── THE PRIORITY WINDOW ENDS HERE, BEFORE genai (MEASURED 2026-11-03) ──
         # `PROCESS_MODE_BACKGROUND_BEGIN` (see `_enter_load_background_mode`)
@@ -2304,23 +2260,21 @@ class StreamAsr:
         try:
             genai_config = self._og.Config(self.model_dir)
             genai_config.clear_providers()
-            # THE FRONT END FOLLOWS THE SESSIONS (2026-11-19). It used to ask for
-            # CUDA unconditionally and then refuse any other `device_type`; on a
-            # box where the three ORT graphs had just degraded to the CPU EP that
-            # raised on the first chunk's `sp` and cost the run every caption.
-            # The device here is the one the sessions REPORTED, not the request.
-            if self.device == "cuda":
-                genai_config.append_provider("CUDAExecutionProvider")
-                if self.use_vad:
-                    # ORT-GenAI's Silero VAD creates its own ORT session from
-                    # model.vad.session_options and inherits the model provider
-                    # configuration. Disable CPU EP fallback on that session too:
-                    # the decoder's setting does not cover VAD's separate graph.
-                    self.genai_vad_cpu_fallback_disabled = self.cpu_ep_fallback_disabled
-            else:
-                genai_config.append_provider("CPUExecutionProvider")
+            # Match the independently verified CUDA sessions; do not construct a
+            # CPU GenAI model if a future session-loader regression returns CPU.
+            if self.device != "cuda":
+                raise RuntimeError(
+                    "Nemotron GPU-only policy refused GenAI device=%r" % self.device
+                )
+            genai_config.append_provider("CUDAExecutionProvider")
+            if self.use_vad:
+                # ORT-GenAI's Silero VAD creates its own ORT session from
+                # model.vad.session_options and inherits the model provider
+                # configuration. Disable CPU EP fallback on that session too:
+                # the decoder's setting does not cover VAD's separate graph.
+                self.genai_vad_cpu_fallback_disabled = self.cpu_ep_fallback_disabled
             genai_config.overlay(genai_gpu_session_overlay(
-                self.use_vad, self.cpu_ep_fallback_disabled))
+                self.use_vad, self.cpu_ep_fallback_disabled, self.encoder_filename))
             self.model = self._og.Model(genai_config)
             _prof("og_model", time.time())
             self.genai_device_type = str(getattr(self.model, "device_type", "")).strip().lower()
@@ -2339,6 +2293,8 @@ class StreamAsr:
                 asr_request=",".join(self.providers_requested),
                 ort_cuda_dlls_preloaded=self.ort_cuda_dlls_preloaded,
                 ort_cpu_fallback="disabled" if self.cpu_ep_fallback_disabled else "enabled",
+                ort_runtime_fallback=("disabled" if self.runtime_fallback_disabled
+                                      else "enabled"),
                 ort_cuda_graphs=sum(
                     1 for _actual in self.session_providers.values()
                     if "CUDAExecutionProvider" in _actual
@@ -2409,7 +2365,6 @@ class StreamAsr:
                 th.join(2.0)
         if self._fe_error is not None:
             exc = self._fe_error
-            self._fe_error = None
             raise RuntimeError(
                 "onnxruntime_genai front end failed to build: %s: %s"
                 % (type(exc).__name__, exc)) from exc
@@ -5048,6 +5003,8 @@ class FileTap:
         # model. Default stays the loop, because a live run wants a stream that
         # never dries up; a finite-window harness opts in.
         self.once = os.environ.get("SOTTO_FILE_TAP_ONCE", "").strip() in ("1", "true", "yes")
+        if not self.pcm.size and not self.once:
+            raise ValueError("cannot loop an empty FileTap")
         self.done = threading.Event()
         self.stream = _FileTapStream(self)
 
@@ -5063,27 +5020,37 @@ class FileTap:
         stop = self.stream._stop
         while not stop.is_set():
             seg = self.pcm[i : i + self.block]
-            if seg.size == 0:
-                i = 0
-                continue
+            if seg.size:
+                self.on_block(self.np.ascontiguousarray(seg, dtype=self.np.float32))
             i += self.block
             if i >= self.pcm.size:
                 if self.once:
                     # A FINITE window is finished: say so and stop delivering,
                     # so the worker drains what it has and ends on its own tail
                     # instead of transcribing a replay of the same audio.
-                    self.done.set()
                     # `emit` nunca levanta: o `except: pass` era silencio puro.
                     emit(type="status", state="file-tap-eof",
                          samples=int(self.pcm.size), rate=int(self.rate),
                          mode="once")
+                    self.done.set()
                     return
                 i = 0  # LOOP: keep the stream alive until the run stops it
-            self.on_block(self.np.ascontiguousarray(seg, dtype=self.np.float32))
             next_t += block_s
             delay = next_t - time.monotonic()
             if delay > 0:
                 time.sleep(delay)
+
+
+def finite_file_tap_state(tap, file_drained: bool) -> str:
+    """Keep a one-shot file source out of live-device rotation after EOF.
+
+    A finite FileTap is a benchmark input, not an endpoint that can become
+    silent and be reopened. Once its producer reaches EOF, let the ASR consumer
+    drain the bounded queue and its final partial chunk before ending the run.
+    """
+    if not isinstance(tap, FileTap) or not tap.once or not tap.done.is_set():
+        return "monitor"
+    return "complete" if file_drained else "drain"
 
 
 def file_tap_candidate(path):
@@ -5229,11 +5196,11 @@ def session_options(ort, ab: str = "", threads=None, encoder: bool = False,
     so = ort.SessionOptions()
     so.log_severity_level = 3
     if os.environ.get("SOTTO_ORT_NODE_TRACE") == "1":
-        # Focused diagnosis of ORT graph partitioning. The normal production
-        # route stays quiet; the diagnostic captures placement decisions while
-        # the GPU-only session guard accepts or rejects the graph.
+        # Diagnostic-only: capture structured node assignments. The normal
+        # production path keeps this option off; its latency is not comparable.
         so.log_severity_level = 0
         so.log_verbosity_level = 1
+        so.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
     if disable_cpu_ep_fallback:
         # A GPU request is not enough: ORT otherwise assigns unsupported nodes
         # to its implicit CPU EP. With this set, session construction fails if
@@ -5256,7 +5223,9 @@ def session_options(ort, ab: str = "", threads=None, encoder: bool = False,
         except Exception:
             pass
     level = None
-    if encoder:
+    if encoder and ab == "encoder-no-opt":
+        level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+    elif encoder:
         level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
     if "basic" in ab:
         level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
@@ -5328,15 +5297,8 @@ def choose_providers(requested, model_dir=None):
     # isolate the execution provider ran on CUDA anyway -- and the two do not
     # agree on these quantized graphs (see the note in run_chunk). A flag that
     # names providers must be able to say "not those".
-    if not auto:
-        if missing:
-            err(f"choose_providers: not registered here, ignored: {missing}")
-    else:
-        for p in available:
-            if p not in order and p != "TensorrtExecutionProvider":
-                order.append(p)
-        if "CPUExecutionProvider" not in order:
-            order.append("CPUExecutionProvider")
+    if not auto and missing:
+        err(f"choose_providers: not registered here, ignored: {missing}")
 
     note = ""
     # NO LIVENESS SESSION IS CREATED HERE ANY MORE (MEASURED 2026-11-03).
@@ -7608,15 +7570,9 @@ def main():
     providers, available, note, cuda_probe_model = choose_providers(
         args.providers or cfg.get("model", {}).get("providers"), model_dir
     )
-    # A PROVIDER IS A PREFERENCE, NOT A PRECONDITION (2026-11-19). This gate used
-    # to `return 2` unless the request was exactly CUDAExecutionProvider, and in
-    # the 2026-11-17 outage that was the whole app's ASR dying for 25 h: the
-    # runtime listed CUDA while its plugin EP device was missing, so nothing
-    # downstream ever got the chance to try the CPU. The load path now opens
-    # CUDA-first, names the degradation on ONE line and falls back, so here we
-    # only make sure the request is not empty: an explicit `cuda` that the
-    # runtime did not LIST still travels to the loader, whose probe reads the
-    # runtime's own reason out of it.
+    # GPU-only inference is a precondition (owner requirement). Auto selection
+    # requests CUDA alone; an absent device is diagnosed by the real-session
+    # census and fails closed. Never turn a failed CUDA request into CPU ASR.
     if not providers:
         _asked = args.providers or cfg.get("model", {}).get("providers")
         _asked_tokens = [str(p).strip().lower() for p in (
@@ -7676,6 +7632,10 @@ def main():
             type="status",
             state="error",
             stage="model-load",
+            retry_policy=("explicit-revive" if
+                          "graph nodes that are assigned to the default CPU EP" in str(exc)
+                          and "fallback to CPU EP has been explicitly disabled" in str(exc)
+                          else "automatic"),
             detail=f"{type(exc).__name__}: {exc}",
             peak_rss_mb=round(peak_rss_mb(), 1),
         )
@@ -7771,6 +7731,7 @@ def main():
     # in `model-loaded` needs it. It is built here, so the emit above is already
     # out of the process before genai takes the GIL; the first chunk joins it
     # through the `sp` property, which is unchanged behaviour for a decode.
+    emit(type="status", state="frontend-preparing")
     asr.start_frontend()
 
     # ── the speech/music gate (lane SottoSpeechSeparation) ───────────────────
@@ -7922,6 +7883,7 @@ def main():
 
     audio_q: queue.Queue = queue.Queue(maxsize=256)
     stop = threading.Event()
+    file_drained = threading.Event()
     # ── one counter per stage the live path can stall at ────────────────────
     # "Zero captions" is not a diagnosis. Each of these answers a different
     # question, and until they existed the only evidence available was the
@@ -7946,6 +7908,15 @@ def main():
         "chunks": 0,
         "captions": 0,
         "queue_drops": 0,
+        "queue_evicted": 0,
+        "queue_eviction_reasons": {
+            reason: {"blocks": 0, "samples": 0}
+            for reason in _live_queue.QUEUE_EVICTION_REASONS
+        },
+        "queue_eviction_lock": threading.Lock(),
+        "queue_eviction_log_counts": {
+            reason: 0 for reason in _live_queue.QUEUE_EVICTION_REASONS
+        },
         "reruns": 0,
         "rerun_wall_s": 0.0,
         # The batch engine's own lines, counted SEPARATELY from the streaming
@@ -8096,6 +8067,7 @@ def main():
         n = max(1, counters["block_samples"])
         rms = (counters["sumsq"] / n) ** 0.5
         bf = (asr.blank_frames / asr.frames_walked) if asr.frames_walked else None
+        eviction_stats = _live_queue.eviction_snapshot(counters)
         line = (
             f"WORKER_STATS tag={tag} blocks={counters['blocks']} "
             f"block_samples={counters['block_samples']} nonzero_blocks={counters['nonzero_blocks']} "
@@ -8115,7 +8087,8 @@ def main():
             f"music_gated_chunks={asr.music_gated_chunks} "
             f"gate_kept={asr.gate.kept if asr.gate else 0} gate={'on' if asr.gate else 'off'} "
             f"queue_drops={counters['queue_drops']} "
-            f"queue_evicted={counters.get('queue_evicted', 0)} "
+            f"queue_evicted={eviction_stats['blocks']} "
+            f"queue_eviction_reasons={json.dumps(eviction_stats['reasons'], separators=(',', ':'))} "
             f"reruns={counters['reruns']} rerun_wall_s={counters['rerun_wall_s']:.2f} "
             f"audio_s={asr.audio_s:.2f} infer_wall_s={asr.wall:.2f} "
             f"rss_mb={current_rss_mb():.1f} private_mb={current_private_mb():.1f}"
@@ -8156,13 +8129,16 @@ def main():
         if p > 1e-4:
             counters["nonzero_blocks"] += 1
         counters["sumsq"] += float((block.astype("float64") ** 2).sum())
-        evicted, dropped = _live_queue.enqueue_live(
+        evicted, dropped, evicted_samples = _live_queue.enqueue_live_detailed(
             audio_q, block, _live_queue.max_blocks(block_ms))
         if evicted:
-            counters["queue_evicted"] = counters.get("queue_evicted", 0) + evicted
-            if counters["queue_evicted"] <= 3:   # 3, nao 60000: a magnitude esta' no contador
-                err(f"audio queue over {_live_queue.LIVE_QUEUE_MAX_S}s: evicted "
-                    f"{evicted} old block(s); o NOVO e' o que se transcreve")
+            reason = "live-2s-cap"
+            row = _live_queue.record_eviction(counters, reason, evicted, evicted_samples)
+            counters["queue_eviction_log_counts"][reason] += 1
+            if counters["queue_eviction_log_counts"][reason] <= 3:
+                err(f"AUDIO_QUEUE_EVICTION reason={reason} blocks={evicted} "
+                    f"samples={evicted_samples} total_blocks={row['blocks']} "
+                    f"total_samples={row['samples']}")
         if dropped:
             counters["queue_drops"] += 1
             # Three, not sixty thousand: a full queue is a slow-consumer symptom
@@ -8196,6 +8172,7 @@ def main():
     # `gen` invalida o buffer quando o dispositivo troca: audio de um tap fechado
     # nao se cola ao primeiro chunk do novo (e a taxa nativa rele'-se).
     tap_holder = {"tap": None, "gen": 0}
+    first_tap_ready = threading.Event()
 
     def asr_thread():
         import numpy as np
@@ -8437,12 +8414,33 @@ def main():
             def trace_row(**row):
                 return None
 
+        eof_tail_padded = False
         while not stop.is_set():
-            try:
-                block = audio_q.get(timeout=0.25)
-            except queue.Empty:
+            block, queue_empty = _live_queue.dequeue_live(audio_q, timeout=0.25)
+            if queue_empty:
+                tap = tap_holder["tap"]
+                if not isinstance(tap, FileTap) or not tap.done.is_set() or not audio_q.empty():
+                    continue
+                if not buf.size or eof_tail_padded:
+                    file_drained.set()
+                    break
+                # The encoder takes fixed-size chunks. Pad only the final
+                # incomplete chunk after the finite producer and queue drain.
+                block = np.zeros(asr.chunk - buf.size, dtype=np.float32)
+                eof_tail_padded = True
+            if gen == -1 and not first_tap_ready.wait(TAP_OPEN_TIMEOUT_S):
+                # A callback may fire inside stream.start(), before the ladder
+                # adopts the tap. Never assign that block to generation zero.
+                reason = "first-tap-unready"
+                samples = _live_queue.audio_samples(block)
+                row = _live_queue.record_eviction(counters, reason, 1, samples)
+                counters["queue_eviction_log_counts"][reason] += 1
+                if counters["queue_eviction_log_counts"][reason] <= 3:
+                    err(f"AUDIO_QUEUE_EVICTION reason={reason} blocks=1 samples={samples} "
+                        f"total_blocks={row['blocks']} total_samples={row['samples']}")
                 continue
             if tap_holder["gen"] != gen:
+                first_tap = gen == -1
                 gen = tap_holder["gen"]
                 buf = np.zeros(0, dtype=np.float32)
                 live = tap_holder["tap"]
@@ -8456,57 +8454,57 @@ def main():
                 agc.reset()  # a new device starts from unity gain
                 if asr.gate is not None:
                     asr.gate.reset()  # and from a closed speech/music gate
-                # ── A NEW DEVICE IS A NEW STREAM (F12), front end included ────
-                # `reset_stream_state()` cannot cover this: it cannot touch
-                # `self.sp`, whose cache-aware mel window and VAD state describe
-                # the device that was just abandoned (and, before the resample,
-                # its native rate). The live object gets a NEW processor from the
-                # same model with the same options. Reported EITHER WAY, in one
-                # line, because a front end that could not be rebuilt means the
-                # new device starts against the old device's cache.
-                try:
-                    asr.reset_frontend()
-                    err(
-                        "new device is a new stream: front end rebuilt for the tap just "
-                        "opened (cache-aware mel window + VAD start from nothing)"
-                    )
-                except Exception as exc:
-                    err(
-                        f"new device, but the front end could NOT be rebuilt "
-                        f"({type(exc).__name__}: {exc}) — the new tap starts against the "
-                        f"abandoned device's cache-aware window and VAD state"
-                    )
-                # A new device is a new stream: close the held line here rather
-                # than splice audio from a device that is no longer open onto
-                # the first chunk of its replacement. The close goes through the
-                # second pass FIRST (its audio is still held), and only then is
-                # the old device's PCM dropped.
-                for event in line_events(former.flush()):
-                    counters["captions"] += 1
-                    emit(model=asr.name, **event)
-                drain_sites["gen-change"] += 1
-                publish_captions(drain())
-                seg_pcm.clear()
-                # ── O TAP NOVO NAO HERDA O AUDIO DO ANTIGO (2026-10-30) ───────
-                # Duas metades, as duas medidas por leitura e pelo log vivo:
-                #  1. o `flush` acima e' a linha SEGURADA do tap ANTERIOR e tem de
-                #     sair com o `source` DELE -- por isso o `set_source` do tap
-                #     novo vem depois, e nao antes;
-                #  2. os blocos que ja' estao na fila sao audio do tap abandonado:
-                #     transcreve-los e' a legenda do audio anterior no audio novo.
-                #     O bloco que temos na mao tambem e' velho, e cai.
-                zero = 0
-                while True:
+                if not first_tap:
+                    # ── A NEW DEVICE IS A NEW STREAM (F12), front end included ────
+                    # `reset_stream_state()` cannot cover this: it cannot touch
+                    # `self.sp`, whose cache-aware mel window and VAD state describe
+                    # the device that was just abandoned (and, before the resample,
+                    # its native rate). The live object gets a NEW processor from the
+                    # same model with the same options. Reported EITHER WAY, in one
+                    # line, because a front end that could not be rebuilt means the
+                    # new device starts against the old device's cache.
                     try:
-                        audio_q.get_nowait()
-                        zero += 1
-                    except queue.Empty:
-                        break
-                if zero:
-                    counters["queue_evicted"] = counters.get("queue_evicted", 0) + zero
-                    err(f"AUDIO_BACKLOG_EVICTED blocks={zero} reason=device-change")
+                        asr.reset_frontend()
+                        err(
+                            "new device is a new stream: front end rebuilt for the tap just "
+                            "opened (cache-aware mel window + VAD start from nothing)"
+                        )
+                    except Exception as exc:
+                        err(
+                            f"new device, but the front end could NOT be rebuilt "
+                            f"({type(exc).__name__}: {exc}) — the new tap starts against the "
+                            f"abandoned device's cache-aware window and VAD state"
+                        )
+                    # A new device is a new stream: close the held line here rather
+                    # than splice audio from a device that is no longer open onto
+                    # the first chunk of its replacement. The close goes through the
+                    # second pass FIRST (its audio is still held), and only then is
+                    # the old device's PCM dropped.
+                    for event in line_events(former.flush()):
+                        counters["captions"] += 1
+                        emit(model=asr.name, **event)
+                    drain_sites["gen-change"] += 1
+                    publish_captions(drain())
+                    seg_pcm.clear()
+                    # ── O TAP NOVO NAO HERDA O AUDIO DO ANTIGO (2026-10-30) ───────
+                    # Duas metades, as duas medidas por leitura e pelo log vivo:
+                    #  1. o `flush` acima e' a linha SEGURADA do tap ANTERIOR e tem de
+                    #     sair com o `source` DELE -- por isso o `set_source` do tap
+                    #     novo vem depois, e nao antes;
+                    #  2. os blocos que ja' estao na fila sao audio do tap abandonado:
+                    #     transcreve-los e' a legenda do audio anterior no audio novo.
+                    #     O bloco que temos na mao tambem e' velho, e cai.
+                    zero, zero_samples = _live_queue.discard_stale_generation(audio_q, block)
+                    reason = "device-change-stale-generation"
+                    row = _live_queue.record_eviction(counters, reason, zero, zero_samples)
+                    counters["queue_eviction_log_counts"][reason] += 1
+                    if counters["queue_eviction_log_counts"][reason] <= 3:
+                        err(f"AUDIO_BACKLOG_EVICTED blocks={zero} samples={zero_samples} "
+                            f"reason={reason} total_blocks={row['blocks']} "
+                            f"total_samples={row['samples']}")
+                    former.set_source(getattr(live, "source", None))
+                    continue
                 former.set_source(getattr(live, "source", None))
-                continue
             if native:
                 # WASAPI refused 16 kHz; convert here instead.
                 block = resample_to_16k(block, rate)
@@ -8743,6 +8741,7 @@ def main():
                 recorder.close()
             except Exception as exc:  # noqa: BLE001
                 err(f"AUDIO_RECORDER_CLOSE_FAILED {type(exc).__name__}: {exc}")
+        stop.set()
 
     # ── run the candidates until one of them is measurably alive ────────────
     # The loop is bounded twice over: at most one pass per candidate, and at
@@ -8870,11 +8869,9 @@ def main():
                     f"streaming untouched; the overlay is OFF for this run")
             else:
                 try:
-                    # Auxiliary engine: degrade to the CPU EP (one
-                    # REDUX_GPU_UNAVAILABLE line), never refuse the overlay.
                     _backend = _redux_live.load_backend(
                         _engine, _onnx_dir, _ternary_dir,
-                        _threads, "cuda", log=err, allow_cpu_fallback=True)
+                        _threads, "cuda", log=err)
                     overlay = _redux_live.ReduxLiveOverlay(
                         _backend,
                         producer_model=os.path.basename(_dir),
@@ -9112,6 +9109,7 @@ def main():
                         # source (`proc:<pid>` / `device:<name>` / `file:<name>`).
                         tap_holder["tap"] = tap
                         tap_holder["gen"] += 1
+                        first_tap_ready.set()
                         open_error = None
                         break
                     except Exception as exc:
@@ -9286,6 +9284,20 @@ def main():
                         if args.max_seconds and (now - t_start) >= args.max_seconds:
                             outcome = "run-ended"
                             break
+                        # A finite FileTap is not a silent device after EOF. The
+                        # live endpoint watchdog would otherwise rotate/reopen
+                        # the same one-shot file, duplicating callbacks while
+                        # the ASR thread is still draining its queue. Let the
+                        # consumer finish the tail, then leave the candidate.
+                        finite_state = finite_file_tap_state(
+                            tap, file_drained.is_set())
+                        if finite_state == "complete":
+                            outcome = "run-ended"
+                            break
+                        if finite_state == "drain":
+                            progress("file-tap-drain")
+                            stop.wait(0.05)
+                            continue
                         if now >= next_stats:
                             err(stats_line("tick"))
                             try:
@@ -9521,6 +9533,9 @@ def main():
                     tap_holder["tap"] = None
                     tap_holder["gen"] += 1
                     close_tap(tap)
+
+                if file_drained.is_set():
+                    outcome = "run-ended"
 
                 # The ledger row is written on the way OUT of the window, whatever
                 # ended it, so it describes the CANDIDATE and not the run. It is
@@ -9911,6 +9926,7 @@ def main():
     # stops being the run's token count once anything is pruned.
     done_text_full = dedup_seam_repeat(asr.detok(asr.labels))
     done_text = capped_text(done_text_full, done_text_max_chars)
+    eviction_stats = _live_queue.eviction_snapshot(counters)
     done_payload = dict(
         type="status",
         state="done",
@@ -9933,6 +9949,8 @@ def main():
         tokens=asr.labels_total,
         labels_pruned=asr.labels_pruned,
         queue_drops=counters["queue_drops"],
+        queue_evicted=eviction_stats["blocks"],
+        queue_eviction_reasons=eviction_stats["reasons"],
         frames=asr.frames_walked,
         blanks=asr.blank_frames,
         blank_frac=round(asr.blank_frames / asr.frames_walked, 4) if asr.frames_walked else None,
