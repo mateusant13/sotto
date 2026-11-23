@@ -3216,6 +3216,7 @@ def live_paint_stale(age_s, bound_s=LIVE_PAINT_MAX_AGE_S):
 #: facto lido dos objectos que o tem -- nunca um palpite: sem facto, lista vazia.
 CAPTION_STATUS_TEXT = {
     'model-loading': 'carregando modelo\u2026',
+    'frontend-preparing': 'Preparando reconhecimento\u2026',
     'no-track': 'este video nao tem faixa de legenda',
     'waiting-player-row': 'aguardando a legenda do player\u2026',
     'no-audio': 'sem sinal de audio',
@@ -3239,7 +3240,7 @@ def caption_status_for(state):
 
       wanted / player_owns / painted_recent
       track_known / track_cues / rows
-      bridge / loaded / capturing / no_audio
+      bridge / loaded / capturing / no_audio / worker_state
 
     A ORDEM E' A DO QUE RESOLVE PRIMEIRO:
 
@@ -3266,6 +3267,9 @@ def caption_status_for(state):
             return 'waiting-player-row' if not int(state.get('rows') or 0) else None
     if state.get('bridge') and not state.get('loaded'):
         return 'model-loading'
+    if (state.get('bridge') and state.get('loaded')
+            and state.get('worker_state') in ('model-loaded', 'frontend-preparing')):
+        return 'frontend-preparing'
     if state.get('track_known') and not int(state.get('track_cues') or 0):
         return 'no-track'
     if state.get('bridge') and state.get('no_audio'):
@@ -17218,7 +17222,21 @@ class SottoShell:
         It starts ONLY for reason `default`: `--with-worker` already spawned
         at load, and a measurement flag must stay worker-free.
         """
-        if getattr(self, 'bridge', None) is not None:
+        bridge = getattr(self, 'bridge', None)
+        if bridge is not None:
+            if getattr(bridge, 'start_reason', '') == 'preload':
+                activated = bridge.request_capture()
+                if getattr(bridge, 'capture_requested', False):
+                    bridge.publish_preload_activation_status()
+                if activated:
+                    self._start_worker_sidecars('panel-open')
+                if getattr(bridge, 'capture_requested', False) \
+                        and getattr(self, '_caption_wanted', False):
+                    self._caption_status_start()
+                log('WORKER_PRELOAD_ACTIVATION source=%s sent=%s state=%s' %
+                    (source, str(bool(activated)).lower(),
+                     getattr(bridge, 'state', 'unknown')))
+                return bool(activated)
             return False
         # THE SHOW PATH MUST NOT DIE ON A MISSING FLAG. Alt+C is the owner's
         # ONLY control, and these three flags are read in the SAME `if` as the
@@ -18820,7 +18838,7 @@ class SottoShell:
             # persistida ligada e o ecra vazio, o primeiro Ctrl+Space nao pode
             # cair num ecra sem linha. O bloqueio lido AGORA (worker a aquecer /
             # modelo a carregar) entra uma vez; um player saudavel cala-o.
-            if getattr(self, '_caption_wanted', False):
+            if getattr(self, '_caption_wanted', False) and reason != 'preload':
                 self._caption_status_start()
             return True
         log('WARM_COLD_LOAD reason=%s' % reason)
@@ -18869,22 +18887,24 @@ class SottoShell:
             # O ARRANQUE RESTAURADO TAMBEM RESPONDE (2026-11-11): a ponte
             # existe agora, portanto o bloqueio (modelo a carregar, sem audio)
             # ja' tem nome. Uma vez por episodio; o player saudavel cala-o.
-            if getattr(self, '_caption_wanted', False):
+            if getattr(self, '_caption_wanted', False) and reason != 'preload':
                 self._caption_status_start()
             # THE SIDECAR RIDES THE WORKER'S LIFETIME, AND ONLY WHEN THE WORKER
             # ACTUALLY STARTED. Starting it on a declined worker would leave a
             # 277 MB diarizer running against nobody, which is the failure the
             # `WORKER_AUTOSTART=declined` path exists to prevent.
-            if getattr(self.args, 'speakers', False) \
-                    or getattr(self.args, 'speakers_cheap', False):
-                sidecar = self.speaker_sidecar()
-                if sidecar.start(reason) and getattr(self.args, 'speakers_cheap', False) \
-                        and not getattr(self.args, 'speakers', False):
-                    # Only when the sidecar ACTUALLY started: a reader polling a
-                    # file nobody writes is a thread that reports "quiet" forever,
-                    # which reads exactly like "the detector ran and saw nothing".
-                    self.multivoice_watch().start(reason)
+            if reason != 'preload':
+                self._start_worker_sidecars(reason)
         return started
+
+    def _start_worker_sidecars(self, reason):
+        """Start optional audio readers only after explicit capture activation."""
+        if (getattr(self.args, 'speakers', False)
+                or getattr(self.args, 'speakers_cheap', False)):
+            sidecar = self.speaker_sidecar()
+            if sidecar.start(reason) and getattr(self.args, 'speakers_cheap', False) \
+                    and not getattr(self.args, 'speakers', False):
+                self.multivoice_watch().start(reason)
 
     def speaker_sidecar(self):
         """The one sidecar object, created on first use.
@@ -19652,7 +19672,7 @@ class SottoShell:
                  'player_owns': False, 'painted_recent': False,
                  'track_known': False, 'track_cues': 0, 'rows': 0,
                  'bridge': False, 'loaded': False, 'capturing': False,
-                 'no_audio': False}
+                 'no_audio': False, 'worker_state': ''}
         try:
             player = self._player_track_state()
             state['rows'] = (int(player.get('rows') or 0)
@@ -19684,6 +19704,7 @@ class SottoShell:
             state['loaded'] = bool(getattr(bridge, 'loaded', False))
             state['capturing'] = bool(getattr(bridge, 'capturing', False))
             state['no_audio'] = bool(getattr(bridge, 'no_audio', False))
+            state['worker_state'] = str(getattr(bridge, 'state', '') or '')
         return state
 
     def _caption_status_now(self):
@@ -24202,6 +24223,20 @@ def worker_argv_tail(args):
     return tail
 
 
+def _send_start_capture(pipe, already_sent):
+    """Write the one bounded preload activation line, at most once per child."""
+    if already_sent:
+        return True, True
+    if pipe is None:
+        return False, False
+    try:
+        pipe.write('START_CAPTURE\n')
+        pipe.flush()
+        return True, True
+    except Exception:
+        return False, False
+
+
 class WorkerBridge:
     """Spawns worker/sotto_worker.py and turns its JSONL into panel events.
 
@@ -24303,6 +24338,10 @@ class WorkerBridge:
 
         self.child = None
         self.state = 'idle'
+        self.start_reason = ''
+        self.capture_requested = False
+        self._capture_command_sent = False
+        self._preload_error_published = False
         #: True once THIS child has published `model-loaded`. THE GATE the silence
         #: watchdog reads: before it, a silent worker is a LOADING worker, and
         #: killing it is the S7 defect (see `WORKER_LOAD_SILENCE_MS`). Per child,
@@ -24530,6 +24569,17 @@ class WorkerBridge:
 
     def _bridge_status(self, text, kind, placeholder, state):
         self.state = state
+        if self.start_reason == 'preload' and not self.capture_requested:
+            if kind == 'error':
+                info = placeholder or {}
+                self.last_error = {
+                    'state': str(state),
+                    'text': str(text or 'Worker could not start'),
+                    'explicit_revive': False,
+                    'body': str(info.get('body') or ''),
+                }
+            self._preload_error_published = False
+            return text
         self._status(text, kind, placeholder)
 
     # -- lifecycle ---------------------------------------------------------
@@ -24537,20 +24587,74 @@ class WorkerBridge:
         with self._locked():
             if self.stopped or self.child:
                 return False
+            self.start_reason = str(reason or 'start')
+            self._capture_command_sent = False
             self.log(
                 f'BRIDGE_START reason={reason} command={self.command} '
                 f'worker={self.worker_path} '
                 f'device={"auto" if self.device is None else json.dumps(self.device)} '
                 f'capture={self.capture_mode}')
-            self._bridge_status(
-                f'Starting worker... ({os.path.basename(self.worker_path)})',
-                'busy',
-                {'title': 'Starting the worker',
-                 'body': 'The transcription worker is being launched. No audio '
-                         'is being read yet.'},
-                'starting')
+            if self.start_reason == 'preload':
+                # Warm startup is intentionally invisible until a panel is
+                # explicitly opened. The panel-open status loop reads the
+                # worker's real loading/preparing state after activation.
+                self.state = 'preloading'
+            else:
+                self._bridge_status(
+                    f'Starting worker... ({os.path.basename(self.worker_path)})',
+                    'busy',
+                    {'title': 'Starting the worker',
+                     'body': 'The transcription worker is being launched. No audio '
+                             'is being read yet.'},
+                    'starting')
             # The spawn's OWN result (row #13): `return True` reported the REQUEST.
             return self._spawn() is not None
+
+    def request_capture(self):
+        """Activate a warm preload once; all other worker starts already capture."""
+        with self._locked():
+            if self.start_reason != 'preload':
+                return False
+            if self.capture_requested and self._capture_command_sent:
+                return True
+            self.capture_requested = True
+            if self.last_error:
+                # A failed prewarm can never be made into capture by a late
+                # command. Surface its retained cause and stay unactivated.
+                self._publish_preload_error()
+                self.log('WORKER_PRELOAD_ACTIVATION refused=retained-error')
+                return False
+            child = self.child
+            if child is None:
+                self.log('WORKER_PRELOAD_ACTIVATION queued=true child=starting')
+                return True
+            ok, sent = _send_start_capture(
+                getattr(child, 'stdin', None), self._capture_command_sent)
+            self._capture_command_sent = sent
+            self.log('WORKER_PRELOAD_ACTIVATION sent=%s state=%s' %
+                     (str(bool(ok)).lower(), self.state))
+            return bool(ok)
+
+    def publish_preload_activation_status(self):
+        """Replay a retained preload failure only after explicit panel activation."""
+        with self._locked():
+            if (self.start_reason != 'preload'
+                    or not self.capture_requested
+                    or not self.last_error):
+                return False
+            return self._publish_preload_error()
+
+    def _publish_preload_error(self):
+        if not self.last_error or self._preload_error_published:
+            return False
+        failure = self.last_error
+        self._status(
+            str(failure.get('text') or 'Worker could not start'),
+            'error',
+            {'title': 'Not transcribing',
+             'body': str(failure.get('body') or '')})
+        self._preload_error_published = True
+        return True
 
     def _child_env(self):
         """The child's WHOLE environment contract, in one place.
@@ -24661,6 +24765,7 @@ class WorkerBridge:
         # be red. `pending_error` (the hold) is NOT reset here: it is cleared
         # only by a caption, by design.
         self.last_error = None
+        self._preload_error_published = False
         self.last_no_audio = None
         self.no_audio_evidence = None
         #: When that evidence was MEASURED (monotonic), so a replay can be aged
@@ -24719,10 +24824,13 @@ class WorkerBridge:
             # qualquer lancamento que nao passe por este argv.
             argv = [self.command, '-u', self.worker_path] \
                 + list(self.extra_args)
+            if self.start_reason == 'preload':
+                argv.append('--preload-only')
             self.child = subprocess.Popen(
                 argv,
                 cwd=os.path.dirname(self.worker_path) or os.getcwd(),
-                stdin=subprocess.DEVNULL,
+                stdin=(subprocess.PIPE if self.start_reason == 'preload'
+                       else subprocess.DEVNULL),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env,
@@ -24743,6 +24851,13 @@ class WorkerBridge:
                 'error')
             self._schedule_restart('spawn-failed')
             return
+
+        if self.start_reason == 'preload' and self.capture_requested:
+            ok, sent = _send_start_capture(
+                getattr(self.child, 'stdin', None), self._capture_command_sent)
+            self._capture_command_sent = sent
+            if not ok:
+                self.log('WORKER_PRELOAD_ACTIVATION sent=false state=spawned')
 
         self.log(f'BRIDGE_SPAWNED pid={self.child.pid} '
                  # O ARGV QUE CORREU, nao o que se pensa que correu: esta
@@ -25106,7 +25221,10 @@ class WorkerBridge:
             # O DONO NAO FICA A OLHAR PARA O VAZIO: enquanto o modelo carrega
             # (30-38 s medidos a 2026-10-30) a janela da legenda diz que carrega.
             # O painel nao serve para isto -- `setStatus` esconde a frase.
-            if state == 'model-loading' and not self.loaded:
+            preload_hidden = (self.start_reason == 'preload'
+                              and not self.capture_requested)
+            if (state == 'model-loading' and not self.loaded
+                    and not preload_hidden):
                 # A ponte AVISA, nao pinta: `push_caption_to_window` nao existe
                 # na `WorkerBridge` (AttributeError medido, panel-exit3-oracle).
                 # SO' ANTES do primeiro `model-loaded` deste filho: um
@@ -25263,6 +25381,8 @@ class WorkerBridge:
                 # REPLACES the failure, and vice versa, so `_wait` reads the
                 # worker's most recent word rather than a stale colour.
                 self.last_error = {'state': state, 'text': text,
+                                   'explicit_revive': (info.get('stage') == 'model-load'
+                                                       and info.get('retry_policy') == 'explicit-revive'),
                                    'body': body or worker_status_body(state, message)}
                 self.last_no_audio = None
                 self.log(f'BRIDGE_STATUS_ERROR state={json.dumps(state)} '
@@ -25298,7 +25418,12 @@ class WorkerBridge:
                     body = (self.last_no_audio or {}).get('body') or ''
                 if not title:
                     title = 'No audio to transcribe'
-            self._status(text, severity, {'title': title, 'body': body})
+            if preload_hidden:
+                # Keep the worker state and any retained error above, but do not
+                # update the panel or caption overlay before explicit activation.
+                pass
+            else:
+                self._status(text, severity, {'title': title, 'body': body})
         else:
             self.malformed += 1
             self.log(f'BRIDGE_UNKNOWN type={kind!r}')
@@ -25693,6 +25818,7 @@ class WorkerBridge:
                      f'kind={death_kind} '
                      f'last={json.dumps(self.pending_error["text"])} '
                      f'stderr_tail={json.dumps(self.stderr_tail[-2:])}')
+        explicit_revive = rc == 2 and (self.last_error or {}).get('explicit_revive') is True
         self._status(text, death_kind,
                      {'title': ('Worker stopped' if death_kind == 'error'
                                 else 'No audio to transcribe'),
@@ -25701,8 +25827,12 @@ class WorkerBridge:
                            or (self.last_no_audio or {}).get('body'))
                           if rc != 0 else '',
                           stderr_note,
-                          'A restart is scheduled. Captions stay off until the '
-                          'worker reports a caption.') if x)})
+                          ('Use the panel status to retry the worker.' if explicit_revive else
+                           'A restart is scheduled. Captions stay off until the '
+                           'worker reports a caption.')) if x)})
+        if explicit_revive:
+            self.log('BRIDGE_RESTART_SUPPRESSED reason=model-gpu-placement resume=panel-status')
+            return
         self._schedule_restart('exit', no_audio=(death_kind == 'no-audio'),
                                floor_ms=(CLEAN_EXIT_FLOOR_MS if rc == 0 else 0))
 

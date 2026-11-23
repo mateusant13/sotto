@@ -2365,6 +2365,7 @@ class StreamAsr:
             # eles que carregam o stream; sem esta linha o numero que governa a CPU
             # do dono continua a nao existir em log nenhum (medido 2026-11-09).
             cap_genai_threads()
+            emit(type="status", state="frontend-ready")
         except BaseException as exc:            # re-raised by `_join_frontend`
             self._fe_error = exc
             # LOUD, not silent: this used to fail during the load, where `main()`
@@ -7105,10 +7106,29 @@ def resolve_audio_target(args, cfg, emit, err):
     return int(_pid), target_name, None
 
 
+def _wait_for_capture_activation(command_stream, emit_fn=emit):
+    """Read one exact parent command on the worker's main thread; fail closed."""
+    try:
+        line = command_stream.readline(65)
+    except Exception as exc:             # a broken control pipe means no capture
+        emit_fn(type="status", state="error", stage="preload-activation",
+                detail="%s: %s" % (type(exc).__name__, exc))
+        return False
+    if line == "START_CAPTURE\n":
+        return True
+    if line == "":                       # parent exited before panel activation
+        return None
+    emit_fn(type="status", state="error", stage="preload-activation",
+            detail="malformed START_CAPTURE command")
+    return False
+
+
 def main():
     _lower_process_priority()
     ap = argparse.ArgumentParser(description="Sotto caption worker (JSONL on stdout)")
     ap.add_argument("--config", default=os.path.join(HERE, "config.json"))
+    ap.add_argument("--preload-only", action="store_true",
+                    help="warm the ASR frontend but wait for START_CAPTURE before audio input")
     ap.add_argument("--selftest", action="store_true", help="transcribe a file, no audio device needed")
     ap.add_argument(
         "--audio",
@@ -8782,6 +8802,12 @@ def main():
             runner_timeout_s=_positive_or(
                 args.redux_runner_timeout, REDUX_RUNNER_TIMEOUT_DEFAULT_S),
             wav_dir=os.environ.get("SOTTO_REDUX_WAV_DIR") or None,
+            # O opt-in e' o contrato de politica do motor, nao apenas o nome
+            # no ambiente: sem isto o `tick()` continua em streaming quando o
+            # painel fecha e a rota Redux de fundo nunca e' seleccionada.
+            # O modelo/worker fica residente; apenas a inferencia ao vivo cede
+            # ao lote. HOLD/display-off e' outro caminho e nao toca esta rota.
+            unload_when_hidden=True,
             min_free_mb=_positive_or(
                 args.redux_min_free_mb, REDUX_MIN_FREE_MB_DEFAULT),
             probe=probe,
@@ -8890,6 +8916,25 @@ def main():
         recorder = None
         err(f"AUDIO_RECORDER_REFUSED reason={type(exc).__name__}: {exc} -- "
             f"the live stream continues without writing audio")
+    if args.preload_only:
+        try:
+            # The frontend owns cache/VAD state too. Join it before declaring
+            # the warm worker ready to accept capture; ORT/GenAI model objects
+            # are reused, and only the per-stream processor is constructed.
+            _ = asr.sp
+        except Exception as exc:
+            err("PRELOAD_FRONTEND_FAILED type=%s detail=%s" %
+                (type(exc).__name__, exc))
+            return 2
+        activation = _wait_for_capture_activation(sys.stdin, emit)
+        if activation is None:
+            err("PRELOAD_IDLE exit=parent-pipe-eof capture=never-started")
+            return 0
+        if activation is not True:
+            err("PRELOAD_ACTIVATION_REFUSED capture=never-started")
+            return 2
+        err("PRELOAD_ACTIVATED capture=panel-open")
+
     worker = threading.Thread(target=asr_thread, name="asr", daemon=True)
     worker.start()
     # THE BEAT THAT STOPS THE 30 s KILL LOOP (see `start_heartbeat`): armed

@@ -3125,6 +3125,21 @@ if exist _main\fusion-audio-oracle.py (
   call :expectred red-as-expected-fusion-audio !STEP_RC! "%OUT%\fusion-audio-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-fusion-audio MISSING "%OUT%\fusion-audio-neg.log" "NEG-ARM PASS" )
 
+REM (nemotron-preload: warm the model/frontend with the panel closed, then
+REM require one explicit parent-pipe START_CAPTURE before audio can enter the
+REM worker. The model-free oracle drives the real WorkerBridge through real OS
+REM child stdin pipes (late and early panel open), checks hidden status/error,
+REM visible/hidden Redux routing, and mutates each lifecycle guard. No model,
+REM audio endpoint, GPU or UI is loaded.)
+if exist _main\nemotron-preload-oracle.py (
+  call :step always nemotron-preload 0 "_main\nemotron-preload-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py;worker\engine_switch.py" "%OUT%\nemotron-preload.log" python _main\nemotron-preload-oracle.py
+  call :record nemotron-preload !STEP_RC!
+) else ( call :record nemotron-preload MISSING )
+if exist _main\nemotron-preload-oracle.py (
+  call :step always red-as-expected-nemotron-preload 1 "_main\nemotron-preload-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py;worker\engine_switch.py" "%OUT%\nemotron-preload-neg.log" python _main\nemotron-preload-oracle.py --neg-arm
+  call :expectred red-as-expected-nemotron-preload !STEP_RC! "%OUT%\nemotron-preload-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-nemotron-preload MISSING "%OUT%\nemotron-preload-neg.log" "NEG-ARM: PASS" )
+
 REM (`history-context`: a linha do historico carrega a origem do audio e o
 REM contexto de visualizacao, compacto e pesquisavel. Dono, 2026-11-09: meses
 REM depois, saber de onde veio o audio e o que estava na tela quando foi dito.
