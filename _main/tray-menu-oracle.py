@@ -336,19 +336,68 @@ def judge(shell) -> list:
                        f'posted={right_posted}'))
 
         # ARM 5 -- the three-part recipe, IN ORDER: foreground, WM_NULL, menu.
-        seam.calls.clear()
-        tray._show_menu()
+        #
+        # O PRIMEIRO PLANO E' UM MODELO, NAO O DO HOSPEDEIRO (medido 2026-11-23).
+        # Julgado contra o `GetForegroundWindow` VIVO, este braco mede o estado da
+        # maquina e nao o codigo: numa corrida o `_restore_menu_foreground`
+        # dispara e na outra nao (`tail=[]` vs `tail=['SetForegroundWindow']`), e
+        # um mutante que passa numa e cai na outra e' o pior tipo de arm -- a
+        # licao que as arms 19-20 deste mesmo ficheiro ja' tinham pago. Aqui o
+        # primeiro plano e' uma celula: `SetForegroundWindow` escreve-a e responde
+        # 1, `GetForegroundWindow` le'-a. Com isso o restore SEMPRE dispara (a
+        # janela da bandeja fica "em primeiro plano" logo depois da receita), a
+        # cauda e' sempre o restore, e o mutante que o poe ANTES do menu tem onde
+        # ser apanhado.
+        real_get_fg = shell.user32.GetForegroundWindow
+        real_set_fg = shell.user32.SetForegroundWindow
+        cell = {'fg': 0}
+
+        def model_get_fg():
+            # PLAIN INT, NEVER AN HWND: the shell does `int(GetForegroundWindow()
+            # or 0)`, and `int()` of a `c_void_p` is a ValueError -- the first
+            # version of this model made `_take_menu_foreground` fail with
+            # `reason=failed:ValueError` and the recipe lost its foreground call.
+            return int(cell['fg'])
+
+        def model_set_fg(hwnd):
+            # `wt.HWND(...)` chega aqui como `c_void_p`, e `int()` dele e' um
+            # ValueError: le'-se o `.value` (None quando o handle e' nulo).
+            value = int(getattr(hwnd, 'value', hwnd) or 0)
+            cell['fg'] = value
+            seam.calls.append(('SetForegroundWindow', value, 1))
+            return 1
+
+        shell.user32.GetForegroundWindow = model_get_fg
+        shell.user32.SetForegroundWindow = model_set_fg
+        try:
+            cell['fg'] = 4242
+            seam.calls.clear()
+            tray._show_menu()
+        finally:
+            shell.user32.GetForegroundWindow = real_get_fg
+            shell.user32.SetForegroundWindow = real_set_fg
         # The attach pair travels in the SAME ordered record (2026-11-10) so the
         # order between it and the foreground call is judgeable; the recipe this
         # arm freezes is still exactly these three, so the pair is filtered out.
         seq = [c[0] for c in seam.calls if c[0] != 'AttachThreadInput']
         want = ['SetForegroundWindow', 'PostMessageW', 'TrackPopupMenu']
+        # A RECEITA E' O PREFIXO, E O QUE VEM DEPOIS TEM NOME (medido
+        # 2026-11-23). O `_restore_menu_foreground` (2026-11-10) devolve o
+        # primeiro plano a quem o tinha quando o menu fecha, e ele custa UM
+        # `SetForegroundWindow` -- `calls=[SetForegroundWindow, PostMessageW,
+        # TrackPopupMenu, SetForegroundWindow]`. Julgar a lista INTEIRA como a
+        # receita fazia a arm acusar o sitio CORRECTO e perder a autoridade: a
+        # receita sao as TRES primeiras chamadas, e a cauda so' pode ser o
+        # restore, nunca uma chamada a mais dentro da receita.
         null_ok = any(c[0] == 'PostMessageW' and c[1] == shell.WM_NULL
                       and c[2] == hwnd for c in seam.calls)
         owner_ok = any(c[0] == 'TrackPopupMenu' and c[4] == hwnd
                        for c in seam.calls)
-        checks.append(('menu_recipe_order', seq == want,
+        checks.append(('menu_recipe_order', seq[:3] == want,
                        f'calls={seq}'))
+        checks.append(('menu_restore_after_menu',
+                       seq[3:] in ([], ['SetForegroundWindow']),
+                       f'tail={seq[3:]}'))
         checks.append(('menu_posts_wm_null_before', null_ok,
                        f'calls={seam.calls}'))
         checks.append(('menu_owned_by_tray_window', owner_ok,
@@ -570,6 +619,14 @@ MENU_FIXED = """        user32.PostMessageW(wt.HWND(self.hwnd), WM_NULL, 0, 0)
 """
 MENU_MUTANT = """"""
 
+# O RESTORE QUE FECHA O MENU ANTES DE ELE ABRIR. O defeito que esta mutacao
+# planta e' o que a arm `menu_restore_after_menu` existe para apanhar: a cauda
+# deixa de ser so' o restore e a receita passa a ter uma chamada de primeiro
+# plano a mais -- exactamente o `SetForegroundWindow` que roubaria o menu.
+RESTORE_ORDER_FIXED = """        command = user32.TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD,"""
+RESTORE_ORDER_MUTANT = """        self._restore_menu_foreground(fg)
+        command = user32.TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD,"""
+
 RAISE_FIXED = """    def _pump(self):
         self._raise_thread_priority()
 """
@@ -615,6 +672,10 @@ MUTANTS = [
      ['left_click_opens_panel']),
     ('wm_null_post_removed', MENU_FIXED, MENU_MUTANT,
      ['menu_posts_wm_null_before']),
+    # O restore ANTES do menu: a receita ganha uma chamada de primeiro plano a
+    # mais e a cauda deixa de ser so' o restore.
+    ('menu_restore_before_menu', RESTORE_ORDER_FIXED, RESTORE_ORDER_MUTANT,
+     ['menu_recipe_order', 'menu_restore_after_menu']),
     # O defeito de hoje: o menu reconstruido a cada clique (o `flush` no disco
     # fica entre o clique e o menu -- "aperto e nao responde").
     ('menu_rebuilt_on_every_click', REUSE_FIXED, REUSE_MUTANT,
