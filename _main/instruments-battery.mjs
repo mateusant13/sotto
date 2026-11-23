@@ -17,6 +17,10 @@ const py = [
   ['_main/audio-meter-oracle.py', 'audio-meter 11'],
   ['_main/audio-meter-oracle.py --neg-cadence', 'audio-meter neg-cadence'],
   ['_main/redux-arm-weights-oracle.py', 'redux-arm-weights 20'],
+  ['_main/redux-live-pending-oracle.py', 'redux-live pending cap 7/7'],
+  ['_main/redux-live-pending-oracle.py --neg-arm', 'redux-live pending cap neg'],
+  ['_main/parakeet-ultra-gpu-policy-oracle.py', 'parakeet-ultra GPU policy 5/5'],
+  ['_main/parakeet-ultra-gpu-policy-oracle.py --neg-arm', 'parakeet-ultra GPU policy neg'],
   ['_main/per-app-source-plumbing-oracle.py', 'per-app-source'],
   ['_main/app-target-oracle.py', 'app-target 9/9'],
   ['_main/audit-rows-tap-flags-ledger.py', 'tap-flags-ledger'],
@@ -107,6 +111,12 @@ const py = [
   ['_main/photo-scrim-census.py --neg-arm', 'photo scrim neg: zeroed scrim RED'],
   ['_main/aceitacao-gate.py', 'aceitacao: every PROVADO names a gate'],
   ['_main/panel-chrome-marks-oracle.py', 'panel chrome marks: 6 rows'],
+  // The control it did not have (2026-11-16). Measured that day: the three
+  // byte-level rows stayed GREEN with the exact defects they name injected --
+  // B3 passed on a CSS comment, C3 was vetoed by a substring that occurs 38
+  // times, C4 went green when the rule did not exist. The neg-arm injects each
+  // row's own defect and requires that row to go RED (rc=1 on catch).
+  ['_main/panel-chrome-marks-oracle.py --neg-arm', 'panel chrome marks neg: 6/6'],
   ['_main/start-menu-shortcut-gate.py', 'windows search shortcut'],
   ['_main/battery-rows-gate.py', 'battery rows: 142'],
   ['_main/run-cmd-refusal-path-oracle.py', 'refusal path resolved, not hand-written'],
