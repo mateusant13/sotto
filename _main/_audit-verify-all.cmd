@@ -1632,10 +1632,10 @@ REM apagava toda a linha que chegasse durante a leitura e duplicava a que ja'
 REM estava no ficheiro; e o `replaceFeedRow` reescrevia sempre a ULTIMA `<li>`,
 REM o que numa fusao de lote punha o texto do lote em cima de outra frase. O
 REM oraculo corre os BYTES de `app\panel\panel.js` num `vm` com DOM falso (nao
-REM uma copia: o painel muda, o passo muda) e o `--neg-arm` mutila sete sitios,
+REM uma copia: o painel muda, o passo muda) e o `--neg-arm` mutila nove sitios,
 REM cada um exigido vermelho pela SUA arm. A convencao do negativo e' a da casa:
 REM devolve 1 ao apanhar (`:expectred ... 1`), nunca 0 -- um controlo que nao
-REM pode falhar nao e' controlo, e foi por isso que ele ficou fora da bateria.
+REM pode falhar nao e' controlo; os mutantes ficam registados nesta bateria.
 if exist _main\panel-row-identity-oracle.js (
  call :step panel-row-identity 0 "_main\panel-row-identity-oracle.js;app\panel\panel.js;app\panel\caption-formulation.js;app\panel\history-source.js;app\panel\panel.css" "%OUT%\panel-row-identity.log" node _main\panel-row-identity-oracle.js
  call :record panel-row-identity !STEP_RC!
