@@ -4132,8 +4132,8 @@ if exist _main\audio-ring-loss-oracle.py (
 ) else ( call :record audio-ring-loss MISSING )
 if exist _main\audio-ring-loss-oracle.py (
   call :step red-as-expected-audio-ring-loss 1 "worker\audio_ring.py;_main\audio-ring-loss-oracle.py;_main\audio-ring-coverage.py" "%OUT%\audio-ring-loss-neg.log" python _main\audio-ring-loss-oracle.py --neg-arm
-  call :expectred red-as-expected-audio-ring-loss !STEP_RC! "%OUT%\audio-ring-loss-neg.log" "NEG-ARM: PASS -- 4/4"
-) else ( call :expectred red-as-expected-audio-ring-loss MISSING "%OUT%\audio-ring-loss-neg.log" "NEG-ARM: PASS -- 4/4" )
+  call :expectred red-as-expected-audio-ring-loss !STEP_RC! "%OUT%\audio-ring-loss-neg.log" "NEG-ARM: PASS -- 5/5"
+) else ( call :expectred red-as-expected-audio-ring-loss MISSING "%OUT%\audio-ring-loss-neg.log" "NEG-ARM: PASS -- 5/5" )
 REM UMA TAP QUE PARA DE ENTREGAR TEM DE SER VISTA (medido 2026-11-17: 5 h 22 de parede,
 REM 3 h 45 de audio; o motor parqueado 1 h 11 m pelas legendas externas e a tap a abrir
 REM 19 endpoints, um deles 630,3 s no HDMI sem um bloco, sem NENHUMA linha com a

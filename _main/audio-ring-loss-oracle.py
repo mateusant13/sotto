@@ -126,7 +126,15 @@ def probe_loss(mod, np, tmp):
         # recusado mesmo com a fila vazia -- a recusa e' deterministica.
         ring.push((np.zeros(BURST, dtype='float32')))
         time.sleep(GAP_INJECTED_S)               # > gap_min_s: o tap cala-se
-        for _ in range(12):                      # + 1,2 s fecha o segmento (2,0 s)
+        # A ROTACAO E' PEDIDA, NAO CONTADA EM BLOCOS. Medido 2026-11-23: 20 blocos
+        # de 0,1 s fecham 2,0 s exactos, mas a fila de 0,5 s RECUSA alguns sob
+        # contenda e o segmento fica abaixo do limiar -- a corrida devolvia
+        # `rows=0` e A2/A4 caiam sobre um escritor correto (2 corridas seguidas
+        # deram 7/7). Empurrar ate' o indice responder mede o mesmo invariante e
+        # nao depende de nenhum bloco ser aceito: o tecto e' 4 s de parede.
+        for _ in range(40):
+            if mod.read_index(tmp):
+                break
             ring.push(blk)
             time.sleep(0.1)
         _wait(lambda: bool(mod.read_index(tmp)), 6.0)
