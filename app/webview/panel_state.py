@@ -65,12 +65,22 @@ def now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec='seconds')
 
 
-def write_atomic(path: str, payload: dict) -> None:
-    """Write to a sibling temp file, fsync, then rename.
+def write_atomic(path: str, payload: dict, durable: bool = True) -> None:
+    """Write to a sibling temp file, optionally fsync, then rename.
 
     A reader must never see a half-written dump: `os.replace` is atomic on
     Windows for a same-directory rename, so the file is either the previous
     dump or the new one, whole.
+
+    `durable=False` FOR A LIVE-STATE FILE (2026-11-23). The owner's log carried
+    `PANEL_VISIBILITY_WRITER_STOP writes=12204 transitions=1` and
+    `PANEL_STATE_WRITER_STOP writes=17091` in one 10 h session: ~29k fsyncs to
+    publish a hint that the shell REPUBLISHES every cadence tick and rewrites
+    from scratch after a restart. The atomicity readers rely on is the
+    `os.replace`, not the fsync; the fsync only promises the bytes survive a
+    power cut, and after a power cut the shell is the thing that reconstructs
+    this file. Settings files (hotkey/caption) keep the default `durable=True`
+    because there a lost write is a lost choice, not a stale instant.
     """
     parent = os.path.dirname(os.path.abspath(path))
     if parent:
@@ -83,7 +93,8 @@ def write_atomic(path: str, payload: dict) -> None:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
         handle.write('\n')
         handle.flush()
-        os.fsync(handle.fileno())
+        if durable:
+            os.fsync(handle.fileno())
     # THE RENAME RETRIES, AND THAT IS THE WHOLE POINT OF THIS CHANGE. `os.replace` fails
     # with PermissionError(13, 'O arquivo ja esta sendo usado por outro processo') while
     # the other writer holds the target open -- measured at 1 145 063 occurrences in
@@ -201,7 +212,7 @@ class PanelStateWriter:
         payload['staleAfterSeconds'] = round(max(self.interval_s * 3.0, 5.0), 2)
         payload['producerPid'] = os.getpid()
         try:
-            write_atomic(self.path, payload)
+            write_atomic(self.path, payload, durable=False)
         except Exception as exc:
             self.errors += 1
             self.log(f'PANEL_STATE_WRITE_FAILED path={self.path} error={exc!r}')

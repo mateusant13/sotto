@@ -69,12 +69,14 @@ MUT_INLINE = "            return self._tid_refresh()\n"
 # `NEG-ARM IMPOSSIVEL` com rc=2 -- um controlo que nao corre nao e' um controlo.
 # O mutante arranca SO' o orcamento do ramo com prazo (o outro junta sem prazo
 # por desenho), que e' exactamente a metade que a arm L3 mede.
-ANCHOR_BUDGET = "        else:\n" \
-                "            for th in threads[first:]:\n" \
-                "                th.join(max(0.0, deadline - time.monotonic()))\n"
-MUT_BUDGET = "        else:\n" \
-             "            for th in threads[first:]:\n" \
-             "                th.join()\n"
+# THE ANCHOR MOVED (2026-11-23): `probe_tabs` stopped paying one
+# `Thread.start()` per tab per question -- the owner's log measured the price
+# (`tabs_total=6 probed=2 done=0 abandoned=6 budget_ms=500`) -- and the wait on
+# the reused pool workers is now `call.wait(deadline)`. The mutation is the SAME
+# one this instrument documents: the budget is NOT honored and a frozen tab
+# holds the caller for its own socket timeout.
+ANCHOR_BUDGET = "    call.wait(deadline)\n"
+MUT_BUDGET = "    call.wait(None)\n"
 ANCHOR_STALE = "            self._tid_stale_note(now - cached[0])\n"
 MUT_STALE = "            pass\n"
 

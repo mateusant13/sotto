@@ -36,6 +36,7 @@ ARMS
   B4  the retry absorbs a transient PermissionError (2 failures -> still lands)
   B5  when the rename never succeeds, it raises AND removes its temp file
   B6  two REAL PanelStateWriters on one path (the shell + the worker case)
+  S4  durable=False (live state) publishes with ZERO fsync; the default still fsyncs
 
 WHAT B3 DOES *NOT* CLAIM, MEASURED: the rename retry is BOUNDED (6 attempts), so
 under four-thread contention a write can still be LOST -- measured 2 of 100 on the
@@ -49,6 +50,7 @@ THE NEGATIVE ARM (--neg-arm) IS THE POINT OF THIS FILE: panel_state.py is copied
 a scratch directory and the cure is removed from the copy, one half at a time:
   M1  the FIXED temp name is restored (`path + ".tmp"`)
   M2  the retry is deleted (one bare os.replace)
+  M3  the durable switch is inert (`if True`) and S4 goes RED
 Both must go RED, or a green above cannot tell the cure from an untested file.
 
 USAGE
@@ -358,6 +360,36 @@ def behavioural_arms(module, scratch):
           % (results, [w.writes for w in made], [w.errors for w in made],
              both.get('schema')))
 
+    # S4 -- the durable switch is LOAD-BEARING: the live-state calls skip fsync,
+    # the settings/default call keeps it. Measured 2026-11-23: the owner's 10 h
+    # session carried ~29k fsyncs for a file republished every cadence tick.
+    class FsyncShim:
+        def __init__(self, real):
+            self._real = real
+            self.calls = 0
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+        def fsync(self, fileno):
+            self.calls += 1
+            return self._real.fsync(fileno)
+
+    live = os.path.join(scratch, 'live-state.json')
+    fsync_shim = FsyncShim(os)
+    module.os = fsync_shim
+    try:
+        module.write_atomic(live, {'schema': 'sotto.panel-state/1', 'who': 'durable'})
+        durable_calls = fsync_shim.calls
+        module.write_atomic(live, {'schema': 'sotto.panel-state/1', 'who': 'live'},
+                            durable=False)
+        live_calls = fsync_shim.calls - durable_calls
+    finally:
+        module.os = os
+    check('S4 durable=False publishes without fsync; the default still fsyncs',
+          durable_calls == 1 and live_calls == 0,
+          'default fsyncs=%d; durable=False fsyncs=%d' % (durable_calls, live_calls))
+
     module.open = real_open
 
 # ---------------------------------------------------------------------------
@@ -389,6 +421,9 @@ def mutant_edits():
         ('M2 the retry is deleted (one bare os.replace)',
          retry_block,
          '    os.replace(tmp, path)' + chr(10) + '    return'),
+        ('M3 the durable switch is inert (every write fsyncs)',
+         '        if durable:' + chr(10) + '            os.fsync(handle.fileno())',
+         '        if True:' + chr(10) + '            os.fsync(handle.fileno())'),
     ]
 
 
@@ -415,7 +450,7 @@ def main() -> int:
 
     emit('ORACLE panel-state-atomic (the panel dump that must land whole)')
     emit('  module   %s' % args.module)
-    emit('  arms     S1-S3 static / B1-B6 behavioural')
+    emit('  arms     S1-S3 static / B1-B6 + S4 behavioural')
     emit('  driver   the REAL write_atomic + the REAL PanelStateWriter, scratch target')
 
     if not os.path.exists(args.module):
@@ -476,9 +511,9 @@ def main() -> int:
         emit('')
         emit('NEG-ARM SUMMARY: red counts per mutant = %r' % (moved,))
         if all(n > 0 for n in moved):
-            emit('VERDICT: NEG-ARM PASS -- both halves of the cure are load-bearing: '
-                 'removing the unique temp name or the bounded retry turns this '
-                 'oracle RED.')
+            emit('VERDICT: NEG-ARM PASS -- every listed cure is load-bearing: the '
+                 'unique temp name, the bounded retry, and the durable switch each '
+                 'turn this oracle RED when removed.')
             # rc=1 BY DESIGN: the negative arm has to FAIL -- a green here would mean
             # the instrument cannot say NO. rc=0 is what an INERT mutant gets: the
             # mutation changed nothing, the gate is blind there, and that is a

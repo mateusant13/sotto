@@ -29,11 +29,17 @@ ARMS
                  without captions must keep falling back to the ASR);
   6. STRUCT   -- the real source: `fetch_track` has exactly one caller, and it
                  is `YouTubeTrackThread._fetch`, never the loop.
+  7. LOG      -- an answer that did not change is logged ONCE: the ask comes
+                 back every `REFRESH_S` and the owner's log held the same
+                 READY+PAINT pair 3 738 times each. A CHANGED answer (one more
+                 cue) must still be logged, or the dedupe hides a real switch.
 
 Usage:
   py -3 _main/async-track-fetch-oracle.py             # the working tree
-  py -3 _main/async-track-fetch-oracle.py --neg-arm   # the fetch put back on
-                                                      # the caller -> must be RED
+  py -3 _main/async-track-fetch-oracle.py --neg-arm   # two mutants, each must
+                                                      # go RED: the fetch put
+                                                      # back on the caller, and
+                                                      # the log dedupe removed
 """
 import argparse
 import importlib.util
@@ -52,6 +58,13 @@ MUTANT = os.path.join(os.path.dirname(SHELL), '_async-track-neg-shell.py')
 #: The one line the neg arm appends to: the ask, before it touches any state.
 ANCHOR = "        key = self._paint_key(painted)\n"
 INJECT = "        self._fetch(vid)          # MUTANT: the fetch on the caller\n"
+
+#: The log dedupe is a cure too, and a cure without a control is prose. The
+#: anchor is the guard that returns before the pair is written; removing it
+#: must put the repeated lines back and turn ARM 7 red.
+ANCHOR_LOG = ("        if answer == getattr(self, 'yt_track_answer', None):\n"
+              "            return\n")
+INJECT_LOG = "        pass  # MUTANT: the repeated answer is news again\n"
 
 #: The loop-side budget. One tick of the caption loop is the caption's latency;
 #: a lock, a dict read and a comparison cost microseconds, so 50 ms is already
@@ -90,6 +103,9 @@ class Fetcher:
         self.lock = threading.Lock()
         self.calls = []          # (video_id, thread name, monotonic)
         self.delays = {}         # video_id -> seconds
+        #: The answer. `arm_log` changes it to prove that a CHANGED answer is
+        #: still news (the log dedupe must not swallow a real transition).
+        self.cues = [{'start': 0.0, 'end': 1.0, 'text': ' '.join(PAINT)}]
 
     def __call__(self, video_id, **kwargs):
         with self.lock:
@@ -98,8 +114,7 @@ class Fetcher:
             delay = self.delays.get(video_id, 0.0)
         if delay:
             time.sleep(delay)
-        return {'state': 'has-track', 'cues': [{'start': 0.0, 'end': 1.0,
-                                                'text': ' '.join(PAINT)}],
+        return {'state': 'has-track', 'cues': list(self.cues),
                 'lang': 'en', 'source': 'oracle', 'reason': None, 'error': None,
                 'cached': False, 'video_id': video_id}
 
@@ -378,6 +393,56 @@ def arm_struct(mod, failures):
                         'loop-side call')
 
 
+def arm_log(mod, fetcher, failures):
+    """ARM 7: an answer that did not change is not news.
+
+    The track ask comes back every `REFRESH_S`; when it falls in a gap between
+    cues the answer is identical, and the owner's log held the same
+    `YOUTUBE_TRACK_READY` + `YOUTUBE_TRACK_PAINT` pair 3 738 times each. The
+    arm proves BOTH halves: an identical answer is logged once, and a CHANGED
+    answer (one more cue) is logged again -- a dedupe that swallowed the
+    transition would hide a real track change.
+    """
+    thread = mod.YouTubeTrackThread(SimpleNamespace())
+    seen = []
+    orig = mod.log
+
+    def collect(fmt, *a):
+        seen.append(fmt % a if a else fmt)
+
+    def count(tag):
+        return sum(1 for line in seen if line.startswith(tag))
+
+    before = list(fetcher.cues)
+    # The shell drops a result for a video nobody asked for; this arm is about
+    # the LOG of a published answer, so the video must be the wanted one.
+    thread.want = VID_A
+    mod.log = collect
+    try:
+        thread._fetch(VID_A)
+        first = (count('YOUTUBE_TRACK_READY'), count('YOUTUBE_TRACK_PAINT'))
+        thread._fetch(VID_A)
+        repeat = (count('YOUTUBE_TRACK_READY'), count('YOUTUBE_TRACK_PAINT'))
+        fetcher.cues = before + [{'start': 1.0, 'end': 2.0, 'text': 'more'}]
+        thread._fetch(VID_A)
+        changed = (count('YOUTUBE_TRACK_READY'), count('YOUTUBE_TRACK_PAINT'))
+    finally:
+        mod.log = orig
+        fetcher.cues = before
+    note('LOG     ready/paint lines: 1st=%s same-answer-again=%s changed-answer=%s',
+         first, repeat, changed)
+    if first != (1, 1):
+        failures.append('LOG: the first answer wrote %s READY/PAINT lines (want 1/1)'
+                        % (first,))
+    if repeat != (1, 1):
+        failures.append('LOG: the IDENTICAL answer was logged again (%s) -- the '
+                        'same pair every REFRESH_S is the noise this arm forbids'
+                        % (repeat,))
+    if changed != (2, 2):
+        failures.append('LOG: a CHANGED answer was not logged (%s) -- the dedupe '
+                        'swallowed a real track transition' % (changed,))
+
+
 def run(mod, fetcher):
     failures = []
     arm_struct(mod, failures)
@@ -386,6 +451,7 @@ def run(mod, fetcher):
     arm_supersede(mod, fetcher, failures)
     arm_dom(mod, fetcher, failures)
     arm_dedupe_ttl(mod, fetcher, failures)
+    arm_log(mod, fetcher, failures)
     return failures
 
 
@@ -409,31 +475,41 @@ def main():
     if args.neg_arm:
         with open(SHELL, encoding='utf-8') as fh:
             text = fh.read()
-        if ANCHOR not in text:
-            print('NEG-ARM: the ask line was not found -- the control is DEAD')
-            return 1
-        mutant = text.replace(ANCHOR, ANCHOR + INJECT, 1)
-        with open(MUTANT, 'w', encoding='utf-8', newline='') as fh:
-            fh.write(mutant)
-        print('mutant: %s (%d B, the fetch put back on the caller)'
-              % (MUTANT, os.path.getsize(MUTANT)))
-        try:
-            mod = load_shell(MUTANT, 'sotto_shell_async_mutant')
-            mod.log = lambda *a, **k: None
-            got = run(mod, fetcher)
-        finally:
+        mutants = [
+            ('caller', ANCHOR, ANCHOR + INJECT,
+             ('ASYNC', 'DEDUPE', 'READY', 'SUPERSEDE', 'DOM')),
+            ('log', ANCHOR_LOG, INJECT_LOG, ('LOG',)),
+        ]
+        caught = {}
+        for label, old, new, prefixes in mutants:
+            if text.count(old) != 1:
+                print('NEG-ARM IMPOSSIVEL: ancora %r aparece %d vez(es)'
+                      % (label, text.count(old)))
+                return 2
+            mutant = text.replace(old, new, 1)
+            with open(MUTANT, 'w', encoding='utf-8', newline='') as fh:
+                fh.write(mutant)
+            print('mutant: %s (%d B, %s)'
+                  % (MUTANT, os.path.getsize(MUTANT), label))
+            del NOTES[:]
             try:
-                os.remove(MUTANT)
-            except OSError:
-                pass
-        slow = [f for f in got if f.startswith(('ASYNC', 'DEDUPE', 'READY',
-                                                'SUPERSEDE', 'DOM'))]
-        print('NEG-ARM: %s' % ('PASS' if slow else
-                               'FAIL -- STILL GREEN: the oracle cannot say no'))
-        for line in NOTES:
-            print('  ' + line)
-        for line in got:
-            print('   ' + line)
+                mod = load_shell(MUTANT, 'sotto_shell_async_mutant_%s' % label)
+                mod.log = lambda *a, **k: None
+                got = run(mod, fetcher)
+            finally:
+                try:
+                    os.remove(MUTANT)
+                except OSError:
+                    pass
+            caught[label] = [f for f in got if f.startswith(prefixes)]
+            print('  %s -> %s' % (label, 'RED' if caught[label] else 'STILL GREEN'))
+            for line in NOTES:
+                print('  ' + line)
+            for line in got:
+                print('   ' + line)
+        missing = [label for label, hits in caught.items() if not hits]
+        print('NEG-ARM: %s' % (('FAIL -- STILL GREEN: %s' % missing) if missing
+                               else 'PASS (dois mutantes, os dois apanhados)'))
         # CONTRATO DA BATERIA (2026-11-03): rc=1 significa "O MUTANTE FOI
         # APANHADO" -- o `:expectred` recusa rc=0 com "the control did NOT go
         # red", e um braco que devolve 0 ao apanhar o defeito nao pode ser

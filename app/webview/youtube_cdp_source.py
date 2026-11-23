@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import threading
 import time
 import urllib.request
@@ -422,6 +423,82 @@ def _probe_one(tab, connect, timeout, gap_s):
             'tab': tab}
 
 
+#: THE PROBE WORKERS ARE REUSED, AND THE COST THEY REMOVED WAS MEASURED.
+#: The `/json/list` refresher asks once per `PLAYING_PROBE_TTL*`, and each ask
+#: used to pay one `Thread.start()` PER TAB. On this box an idle start costs
+#: ~0.2 ms, but inside the owner's live shell -- dozens of threads, 82 % commit --
+#: the probe's own log measured the OTHER regime: `YOUTUBE_PROBE_BUDGET
+#: tabs_total=6 probed=2 done=0 abandoned=6 budget_ms=500`, i.e. two starts ate
+#: the whole 500 ms budget and the remaining four tabs were never asked. The
+#: pool pays the spawn cost ONCE per process (6 daemon workers, bounded), and a
+#: probe cycle becomes `Queue.put` (microseconds) plus the sockets themselves.
+#: A queued job whose call is already abandoned is DROPPED before opening a
+#: socket, so a late caller's deadline does not buy probes nobody reads.
+_PROBE_POOL_LOCK = threading.Lock()
+_PROBE_POOL_JOBS = None
+
+
+class _ProbeCall:
+    """One `probe_tabs` call: results, progress, and the deadline wait."""
+
+    def __init__(self, count):
+        self.results = [None] * count
+        self.pending = count
+        self.started = 0
+        self.abandoned = False
+        self._cond = threading.Condition()
+
+    def begin(self):
+        with self._cond:
+            self.started += 1
+
+    def finish(self, idx, value):
+        with self._cond:
+            self.results[idx] = value
+            self.pending -= 1
+            self._cond.notify_all()
+
+    def wait(self, deadline):
+        with self._cond:
+            while self.pending:
+                if deadline is None:
+                    self._cond.wait()
+                    continue
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return
+                self._cond.wait(remaining)
+
+
+def _probe_worker(jobs):
+    while True:
+        job = jobs.get()
+        if job is None:
+            return
+        call, idx, tab, connect, timeout, gap_s = job
+        if call.abandoned:
+            continue
+        call.begin()
+        try:
+            value = _probe_one(tab, connect, timeout, gap_s)
+        except Exception:                         # noqa: BLE001
+            value = None
+        call.finish(idx, value)
+
+
+def _probe_pool():
+    """The process-wide probe workers, spawned on first use and reused."""
+    global _PROBE_POOL_JOBS
+    with _PROBE_POOL_LOCK:
+        if _PROBE_POOL_JOBS is None:
+            jobs = queue.Queue()
+            for n in range(max(1, int(MAX_PROBE_TABS))):
+                threading.Thread(target=_probe_worker, args=(jobs,),
+                                 name='yt-probe-%d' % n, daemon=True).start()
+            _PROBE_POOL_JOBS = jobs
+        return _PROBE_POOL_JOBS
+
+
 def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S,
                parallel=True, budget_s=None, log=None):
     """Sonda cada aba `watch` UMA vez (duas leituras) e devolve os numeros.
@@ -479,48 +556,29 @@ def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S,
             if p:
                 out.append(p)
         return out
-    # Um fio por aba DENTRO DA VAGA, no maximo `MAX_PROBE_TABS`: o `gap_s` de
-    # cada uma corre em paralelo com a ligacao das outras, e o custo de uma vaga
-    # passa a ser o da aba MAIS LENTA dela em vez da soma.
-    results = [None] * len(items)
-    attempted = [0]          # quantas sondas comecaram, para o log ser honesto
-
-    def _run(idx, tab):
-        try:
-            results[idx] = _probe_one(tab, connect, timeout, gap_s)
-        except Exception:                         # noqa: BLE001
-            results[idx] = None
-
-    # O PRAZO NASCE ANTES DOS FIOS (2026-11-09, MEDIDO): `Thread.start()`
-    # espera o fio ARRANCAR e numa maquina carregada mediu 240-340 ms por fio.
-    # Com o relogio a contar so' no `join`, o orcamento era decorativo -- o
-    # `start()` ja' o tinha gasto. Agora o que resta depois de arrancar e' o que
-    # os `join` podem esperar.
+    # OS FIOS SAO REUTILIZADOS (2026-11-23, MEDIDO). Antes era um
+    # `Thread.start()` POR ABA POR PERGUNTA, e o proprio log do dono mediu o
+    # preco: `YOUTUBE_PROBE_BUDGET tabs_total=6 probed=2 done=0 abandoned=6
+    # budget_ms=500` -- dois arranques comeram o orcamento e quatro abas nunca
+    # foram perguntadas. Agora a pergunta e' `Queue.put` e quem trabalha sao os
+    # `MAX_PROBE_TABS` fios do pool, que mantem o tecto de SONDAS SIMULTANEAS:
+    # a vaga passa a custar a aba MAIS LENTA, nao o arranque de cada uma.
     deadline = (None if budget_s is None
                 else time.monotonic() + max(0.0, float(budget_s)))
-    threads = []
-    for start in range(0, len(items), max(1, int(MAX_PROBE_TABS))):
-        wave = list(enumerate(items))[start:start + max(1, int(MAX_PROBE_TABS))]
-        if deadline is not None and time.monotonic() >= deadline:
-            break                                 # sem tempo para mais uma vaga
-        first = len(threads)
-        for idx, tab in wave:
-            if deadline is not None and time.monotonic() >= deadline:
-                break                             # sem tempo para mais um fio
-            th = threading.Thread(target=_run, args=(idx, tab), name='yt-probe',
-                                  daemon=True)
-            th.start()
-            attempted[0] += 1
-            threads.append(th)
-        if deadline is None:
-            for th in threads[first:]:
-                th.join()
-        else:
-            for th in threads[first:]:
-                th.join(max(0.0, deadline - time.monotonic()))
-    alive = sum(1 for th in threads if th.is_alive())
-    done = attempted[0] - alive
-    late = (len(items) - attempted[0]) + alive
+    jobs = _probe_pool()
+    call = _ProbeCall(len(items))
+    for idx, tab in enumerate(items):
+        jobs.put((call, idx, tab, connect, timeout, gap_s))
+    call.wait(deadline)
+    with call._cond:
+        started = call.started
+        done = len(items) - call.pending
+        results = list(call.results)
+        if call.pending:
+            # A PERGUNTA ACABOU: o que ainda esta' na fila nao abre socket, e o
+            # que ja' correu tem o resultado descartado pelo chamador.
+            call.abandoned = True
+    late = len(items) - done
     # O NUMERO QUE DENUNCIA E' A DIFERENCA ENTRE A POPULACAO E O QUE FOI
     # TENTADO. Antes `tabs=` era `len(items)` -- o corte -- e essas duas abas
     # eram o mesmo numero: o log nao podia dizer que faltava alguem.
@@ -528,7 +586,7 @@ def probe_tabs(tabs, connect=None, timeout=1.0, gap_s=PLAYING_GAP_S,
         try:
             log('YOUTUBE_PROBE_BUDGET tabs_total=%d probed=%d done=%d abandoned=%d '
                 'waves=%d budget_ms=%.0f timeout_ms=%.0f'
-                % (len(items), attempted[0], done, late,
+                % (len(items), started, done, late,
                    (len(items) + max(1, int(MAX_PROBE_TABS)) - 1) // max(1, int(MAX_PROBE_TABS)),
                    float(budget_s) * 1000.0, float(timeout) * 1000.0))
         except Exception:                     # noqa: BLE001

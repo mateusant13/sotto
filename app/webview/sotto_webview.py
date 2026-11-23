@@ -3842,6 +3842,24 @@ class YouTubeTrackThread(threading.Thread):
         if track is None:
             log(f'YOUTUBE_TRACK_FETCH_FAILED video_id={video_id} error=no-result')
             return
+        # A RESPOSTA REPETIDA NAO E' NOTICIA (2026-11-23, MEDIDO). O pedido da
+        # faixa volta a cada `REFRESH_S`; quando o pedido cai num vao entre
+        # cues, a resposta e' a MESMA e o log do dono guardou-a 3 738 vezes
+        # (`YOUTUBE_TRACK_READY ... cues=250 lang=en-orig cached=True` +
+        # `YOUTUBE_TRACK_PAINT source=no-player-window cue=- match=0
+        # painted_words=0`). O par so' se escreve quando a resposta MUDA --
+        # video, estado, cues, lingua, fonte, motivo, erro, cache, e a escolha
+        # da faixa --, porque uma linha identica a cada 30 s nao diz nada e
+        # come 65 KB de um log que e' a evidencia de outra coisa.
+        answer = (video_id, track.get('state'), len(track.get('cues') or ()),
+                  track.get('lang'), track.get('source'), track.get('reason'),
+                  track.get('error'), bool(track.get('cached')),
+                  track.get('player_source') or '-',
+                  track.get('paint_cue'), bool(track.get('player_match')),
+                  len(paint) if paint else 0)
+        if answer == getattr(self, 'yt_track_answer', None):
+            return
+        self.yt_track_answer = answer
         log('YOUTUBE_TRACK_READY video_id=%s state=%s cues=%d lang=%s '
             'source=%s reason=%s error=%s cached=%s'
             % (video_id, track.get('state'), len(track.get('cues') or ()),
@@ -12397,7 +12415,7 @@ class PanelVisibilityWriter:
     def _publish(self, payload) -> bool:
         """O disco, e SO' AQUI -- no fio do writer. Ver `write` para o porque."""
         try:
-            panel_state.write_atomic(self.path, payload)
+            panel_state.write_atomic(self.path, payload, durable=False)
         except Exception as exc:
             self.errors += 1
             # RATE LIMITED, AND IT IS THE FLOOD FIX. MEASURED 2026-10-13: this single
