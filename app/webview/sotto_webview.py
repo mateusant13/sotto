@@ -3884,7 +3884,9 @@ class YouTubeTrackThread(threading.Thread):
                   track.get('error'), bool(track.get('cached')),
                   track.get('player_source') or '-',
                   track.get('paint_cue'), bool(track.get('player_match')),
-                  len(paint) if paint else 0)
+                  len(paint) if paint else 0,
+                  (head.get('start'), str(head.get('text') or '')[:24],
+                   tail.get('end'), str(tail.get('text') or '')[-24:]))
         if answer == getattr(self, 'yt_track_answer', None):
             return
         self.yt_track_answer = answer
