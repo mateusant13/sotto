@@ -332,13 +332,23 @@ def record(step: str, deps, rc: int, log=None, expect_rc: int = 0,
     elapsed time is read from its mtime. A marker is a file write, not a
     process: the battery starts a Python process for every step already, and
     one more per step would be a tax on every run to serve one mode.
+
+    A step declared with `""` deps is MEASURED BUT NOT CACHED (measured
+    2026-11-23): its row is still written -- rc, elapsed, log -- because that
+    row is what the state page publishes, and refusing it left a STALE RED on
+    the page for a step the run had just judged green (`tooling-intent` stayed
+    rc=2 from an earlier run while the battery printed rc=0). `check()` refuses
+    a no-deps step BEFORE it ever reads a row, so a measurement can never
+    become a cache hit: the two questions stay separate.
     """
     items = split_deps(deps)
     if not items:
-        return False, "no-deps: refusing to record a step with no deps"
-    fp, missing = fingerprint(items)
-    if fp is None:
-        return False, "dep-missing: %s" % ", ".join(missing)
+        fp, missing, uncached = None, [], "no-deps: measured, never a cache hit"
+    else:
+        fp, missing = fingerprint(items)
+        uncached = None
+        if fp is None:
+            return False, "dep-missing: %s" % ", ".join(missing)
     state, err = load_state(state_path)
     if err:
         # a corrupt state is repaired by writing a fresh one -- but the step is
@@ -365,6 +375,8 @@ def record(step: str, deps, rc: int, log=None, expect_rc: int = 0,
     state["version"] = STATE_VERSION
     if not save_state(state, state_path):
         return False, "state-not-written: %s" % state_path
+    if uncached:
+        return True, uncached
     return True, "ok"
 
 

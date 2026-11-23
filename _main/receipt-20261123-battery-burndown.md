@@ -232,3 +232,285 @@ Both selftests had **no battery step**: they now do (`kestrel-ultra-stream`, `ce
 production replay (CUDA device census sees CPU only) and A10 word boosting need a GPU experiment
 under a GREEN heavy lease, and the natural multi-speaker reference transcripts do not exist locally.
 
+
+## 7. The observer's own rows, the single entry point, and the tool that judged a directory
+
+Three defects, all measured in run 7 (`_battery-run-20261123-142233.log`), all repaired with a
+control that can fail.
+
+### 7.1 A row cannot be judged by the run that writes it (`CARRIED`)
+
+`no-invented-green` reported the observer's own three rows as unsupported green:
+
+    no-invented-green FAIL  2 verde(s) sem sustentacao: state-page(PASS: log alterado),
+                            red-as-expected-state-page(EXPECTED-RED: deps mudaram)
+
+The mechanism: `state-page-write` renders `docs/state-generated.md` at T from the previous run's
+`_cache/battery-steps.json`; the shell then **truncates** `state-page.log` / `state-page-neg.log`
+before the check process starts, so the `log_sha256` recorded at T can never match at T+2 s, and
+`docs/state-generated.md` (a dep of both rows) has an mtime newer than either record. The page was
+therefore `NO-VERDICT` every run, which makes D2's `NO-VERDICT=0` unreachable by construction.
+
+The fix is a verdict, not an exemption: `SELF_STEPS` render as `CARRIED` with the note "auto-julgamento
+impossivel na mesma corrida … julgada na corrida seguinte". `verdict_for` is untouched, and every row
+that is not one of the observer's own is judged with the same log/dep/token evidence. Measured:
+`--write` → `passos=550 PASS=259 EXPECTED-RED=217 FAIL=1 STALE=4 NO-VERDICT=0 NOT RUN=66 CARRIED=3`;
+`--check` → `CHECK verdict-vocabulary FAIL vocabulario fora da lista: state-page-write='CARRIED',
+state-page='CARRIED', red-as-expected-state-page='CARRIED'` — i.e. the vocabulary check caught the new
+word, and `"CARRIED"` entered `VERDICTS`. Re-measured: `BATTERY-VERDICT state-page PASS checks=7 fail=0`
+with `no-invented-green PASS 0 verde(s) sem sustentacao (CARRIED=3: linhas do proprio observador,
+julgadas na corrida seguinte)`.
+
+### 7.2 A second battery run is a defect of the entry point (`BATTERY-BUSY`, rc=4)
+
+Two overlapping runs make the first one's verdicts unreadable (measured, twice: run 5 `rc=0
+agrees=False` and run 6 `red-as-expected-nemotron-preload=1` because `:hastext` read a log the peer
+was truncating). The lock lives in `_main/battery-run.py` — the documented single entry point — as
+`O_CREAT|O_EXCL` plus a holder line `pid create_time`:
+
+    BATTERY-BUSY pid=… -- outra corrida e' dona de _main/_audit-verify; esta e' recusada
+    (uma segunda corrida trunca os logs de passo e o sumario da primeira)      rc=4, launches=0
+
+`BUSY_RC = 4` is a code no step returns by accident. A holder whose pid no longer exists is taken
+over by name: `BATTERY-LOCK stale pid=999999 -- o dono do cadeado ja' nao existe; a toma-lo`.
+Measured: `--selftest` rc=0 (`L1` acquire, `L2` second run REFUSED, `L3` dead-pid takeover,
+`L4` release unlinks, plus `C1–C4` for the rc/verdict judge), repeatable, no leftover lock.
+
+**The control names the branch it exercises.** The first patch was refused before touching the real
+file, for two reasons, both measured on a copy: the block inserted *before* `ok = True` raised
+`UnboundLocalError: cannot access local variable 'ok'`, and `L2` "passed" through the wrong branch
+because on Windows `os.unlink` of a lock file whose holder has the handle open raises — so
+`acquire_lock` returned `None` for the wrong reason. `L3` therefore closes the handle, which is the
+only state where a dead-pid takeover is provable here, and the mutant (a dead pid reported as alive)
+is caught by `L3`: `--neg-arm` rc=1, `BATTERY-RUN NEG-ARM: PASS -- a mutacao do cadeado foi apanhada`.
+
+### 7.3 The step named three files and the truth was a directory
+
+`tooling-intent` declares `_main\tooling-intent-oracle.py;…baseline.json;…bug-ledger.json`, but the
+oracle's population is every `*oracle*.py`, `*-gate.py`, `*-guard.py`, `*_gate*.py`, `*_guard*.py` in
+`_main` — **325 files**, measured. Run 7: `declaradas: 170 | baseline (sem declaracao): 144 |
+vermelhas: 11`, `TOOLING-INTENT VERDICT FAIL` rc=2. Eleven enforcement files written after the
+baseline snapshot declared no intent, and a cached HIT would have re-printed a verdict over a file
+set it never read — the `panel-deps` class, paid again.
+
+Both halves are fixed. The eleven files state the measured defect or the owner order they serve
+(`# NO-BUG: …`, in the first 60 lines, at the start of the line, naming what it blocks and saying the
+ledger carries no id for it — inventing a `BLOCKS:` id would be the false intention the oracle calls
+red, and `_main/bug-ledger.json` has exactly four ids). Measured: `declaradas: 181 | vermelhas: 0 |
+TOOLING-INTENT VERDICT PASS` rc=0, `--neg-arm` rc=1 with `NEG-ARM PASS 4 of 4`. The step takes
+`""` deps, so `_stepcache` answers `MISS reason=no-deps` and the step always runs; measured cost of
+one run **1,51 s**.
+
+### 7.4 Two instrument lessons paid in this session
+
+**`kill -0 <pid>` from MSYS bash does not see Windows pids.** Two of my own "the run is GONE"
+readings were false: `kill -0 37592` answered non-zero for a live `python.exe` whose age was 3 280 s,
+because bash resolves its *own* pid namespace. The reader that works is
+`psutil.Process(pid)` — the same identity check the repo already uses for tree attribution.
+
+**A background job of this harness is killed once it has run 300 s in total.** A battery launcher
+started as a plain background job is therefore reaped mid-run and leaves the previous
+`_battery-summary.txt` on disk, which then reads as a verdict for a run that never finished (this is
+also why run 7's `failed:` line was the 14:19 one). Long waiters are started with no deadline
+(`timeout: 0`) and poll `psutil`, not `kill`.
+
+## 8. Run 7, run 8, run 9: what the ratchet refused, and the three instruments that were paying it
+
+### 8.1 The verdicts
+
+| run | started | wall | steps | failed |
+|---|---|---|---|---|
+| 7 | 14:46 | 5 020.5 s | 550 | `tooling-intent=2` (stale: the step ran at 14:46:45, the fix landed after) and `battery-budget=1` (named `input-path 29.8 -> 61.2 s`) |
+| 8 | — | 2 339 s | 550 | `nemotron-preload=1` (a false `MISSING`) and `battery-budget=1` |
+| 9 | 16:41 | 1 683.8 s | 550 | `battery-budget=1` only |
+
+Run 9 is the first run whose only red is the ratchet itself, and the ratchet was right about
+something that had to be *measured*, not argued: ten steps carried per-step times 2-5x their
+2026-11-12 baseline, and every one of them was measured while my own probes ran beside the tail of
+the run. The rebaseline **refused** them by name, which is the ratchet doing its job.
+
+### 8.2 A rebaseline that measured nothing was erasing the ratchet (measured, fixed)
+
+`battery-budget-oracle.py --baseline` without `--policy cap40` reads
+`_cache/battery-steps.json`, `measure()` drops every row because they were all measured under
+`cap40`, and the tool wrote `per_step={}`, `steps=0`, `total_s=0.0` **with rc 0** — the ceiling
+gone, silence. It happened in this session and the backup
+(`_main/_cache/triage/baseline-before.json`) is what undid it.
+
+The judge path already refused a missing `--policy` ("CANNOT-MEASURE ... o baseline foi medido sob
+'cap40'"), so the hole was exactly one branch: `--baseline` never asked. Now it does:
+`rebaseline_population(measured, baseline_policy)` is a pure guard and `--baseline` returns 1 with
+
+```
+baseline RECUSADO -- 0 passo(s) medido(s); 526 linha(s) de outra politica foram descartadas.
+Falta `--policy cap40` para casar a populacao que este cache mede; um baseline vazio apagaria a regua.
+```
+
+Two arms keep it alive: `A18` (0 measured rows must refuse) and `A19` (526 rows must write) —
+a guard that refuses always is the same green that never fails, only inverted. Measured:
+`ARM ok A18 ... recusa='baseline RECUSADO ...'`, `ARM ok A19 ... recusa=None`.
+
+### 8.3 `red-as-expected-nemotron-weights`: 24 730 ms -> 296 ms
+
+`_standin_root()` probes candidates by truncating 64 MiB; the negative arm then built **658 MB of
+sparse stand-ins** (16 files) for a check that only ever calls `os.path.getsize` (`verify()` tests
+sizes first, lines 74-86) — the stand-ins are load-bearing, the *bytes* never were. Now a file over
+1 MiB is `os.link(src, dst)` with an `OSError` fallback to the truncate. Measured:
+`9 961 / 24 730 ms -> 296 ms`, `probe_ms` 4 393 -> 79.3, `NEG-ARM: PASS`, rc=1 preserved, and the
+hardlink is *more* faithful than a sparse file pretending to be a graph.
+
+### 8.4 `nemotron-preload`: a false `MISSING` costs a whole run
+
+The child-exit arm waited a single window and printed nothing when it lost the race. It now waits in
+two windows (5.0 s then 10.0 s) and prints `NEG-CHILD alive after %.1fs (window %.1fs)
+poll=%r stdin_closed=%s`; a lost thread prints `NEG-THREAD %s still alive after 5.0s`. The battery
+line was then reproduced twice outside a run (`bat1 rc=0 ms=15 214`, `bat2 rc=0 ms=15 860`,
+`VERDICT: PASS`) — the run-8 red was contention, not a defect, and the instrument now says so with
+evidence instead of a bare `MISSING`.
+
+### 8.5 `console-window-audit`: 34.1 / 50.0 / 67.1 s -> 0.98-1.28 s (content-keyed)
+
+The same command, back to back, with no code change: **34 105 ms then 49 975 ms** (46 % spread) —
+the box, not the census. The profiler then named the work:
+
+| ncalls | cumulative | what |
+|---|---|---|
+| 7 501 847 | 68.6 s | `ast.walk` — `_scope_map` re-walked every function's whole subtree (O(n^2)) |
+| 413 | 26.7 s | `ast.get_source_segment` — `_splitlines_no_ff` re-splits the file per call |
+| 2 553 117 | 45.4 s | `ast.walk` again — `_resolve_name` re-walked a function body per name |
+| 1 021 | 20.0 s | `compile` — every file parsed on every run |
+
+Three fixes, each keeping the judged answer byte-identical (`counts` and all 26 `sites` compared
+before/after: **same**, `unparsed []`, `VERDICT PASS -- 0 sitio(s)`):
+`_scope_map` became one iterative pass; `_resolve_name` memoises `(id(fn), name)` per file; and the
+rows are cached per file under its **sha256**, so a byte change re-parses that file and only it.
+
+Measured: cold 67 123 ms (1 375 re-parsed), then **981 / 956 / 1 284 / 1 069 ms** with
+`cache: 1375 reaproveitado(s), 0 re-parseado(s)`; a touched file shows `1 re-parseado`. `--neg-arm`
+stays 5/5 (`C1(os.system)=True C2(bit sozinho RED)=True C2(baseline perdoa)=True C3(o par
+passa)=True C4(detached do JS nao esconde)=True`, rc=1) and does not touch the cache. The cache
+lives in the ignored `_cache/` (`git check-ignore` says so), never in the repo.
+
+### 8.6 `red-as-expected-paint-live-show`: 59.0 s -> 2.22 s (the same stdlib trap)
+
+The profiler found the *same* `_splitlines_no_ff`, this time in
+`_main/content-gate-answer-probe.py`: **66 calls, 158.6 s cumulative**, 1.95 s each on the 1 MB shell
+source, plus 56 `ast.parse`/`compile` calls (57.8 s) because three separate extractors each re-parsed
+the same text. One identity-keyed single-slot cache now holds the line table and the tree; the
+segment is computed from it with the same offsets. Measured: `59 000 ms -> 2 220 ms`,
+`NEG-ARM cases=19 caught=19`, `NEG-ARM PASS`, rc=1 — every arm still demands its own mutant.
+
+### 8.7 `input-path`: the wall was blocked, not throttled (no rebaseline)
+
+Caged, the step measured **64 677 ms of wall for 22.8 s of CPU** and the wrapper printed
+`not-scheduled 0.0s` — the child was scheduled, so the difference is waiting, not a CPU cap. Two
+honest optimizations were applied (mutants moved out of `app\webview` into
+`_main\_cache\input-path-mutants`, and `sys.modules` dropped per mutant) and **both were refuted as
+the cause**: 64.7 / 63.8 / 55.6 s, and `gc.disable()` made it worse (95.3 s). A phase profiler then
+measured the same arms at 1.00 / 1.09 / 1.87 / 2.32 / 3.45 / 2.54 / 3.34 / 4.65 / 5.81 / 3.53 /
+3.36 s — the same work growing with the box's mood, and the whole oracle 37.6 / 55.6 / 63.8 / 95.3 s
+on identical code inside 40 minutes. The step's own 29.8 s baseline was a warm-best-case sample.
+No rebaseline was taken from a contended sample; run 10 measures it in the quiet.
+
+### 8.8 The rule this session paid for twice
+
+**A battery run and a probe do not share the box.** Ten "regressions" in run 8 were my own probes'
+cost appearing in per-step times. The ratchet refused them (good), the rebaseline would have signed
+them (bad), and the only honest instrument is the one that runs alone: run 9 and run 10 were started
+with nothing else alive, `timeout: 0`, and `psutil` as the reader.
+
+### 8.9 The page said FAIL=1 while the run said rc=0 -- and the cache was why
+
+Run 10 came back `BATTERY-VERDICT: GREEN ... failed: -none-`, and the state page -- the Wave D2
+artifact the owner reads -- still carried `tooling-intent | FAIL | 2`. Both were "right" about their
+own source, and one of the sources was hours old.
+
+The chain, measured: `_main/_stepcache.py:record()` **refused to write a row for a step whose deps
+are empty** (`no-deps: refusing to record a step with no deps`). A step declared `"--deps ''"`
+(the four whose population is a *directory*, not a set of files) therefore never refreshed its row,
+so the page kept publishing run 7's `rc=2` while every later run executed the step and printed
+`rc=0`. The cache refusing to *hit* is correct; refusing to *record a measurement* is not -- the row
+is what the page publishes, and the two questions are different.
+
+Fixed in three places, each with a control:
+
+1. **`record()`** now writes the row for a no-deps step with `fingerprint: null` and returns
+   `(True, "no-deps: measured, never a cache hit")`. `check()` refuses a no-deps step *before* it
+   ever reads a row, so a measurement cannot become a hit.
+2. **The CLI accepted no such call.** `--deps` was `nargs="+"`, and `cmd.exe` expands `""` to
+   nothing, so every `--deps ""` invocation died in argparse (`unrecognized arguments`,
+   **rc=2**) with the message going to `>nul`. `nargs="*"` is the shape that matches the
+   declaration. (Measured along the way: MSYS bash *also* drops empty arguments to a native Windows
+   exe, so `--deps ""` cannot be tested from this shell at all -- the argv has to be built in
+   Python.)
+3. **Arm (q)** of `_stepcache-oracle.py` demands BOTH halves in one arm -- the row is written
+   (`RECORDED`, `row rc=0`, `log_sha256` present) AND `check` still says `no-deps` with
+   `hit=False` -- and a seventh mutant restores the old early `return`, which the arm catches
+   alone. Measured: `VERDICT: PASS arms 17/17 mutants 7/7`, `NEG-ARM` green on all seven.
+
+Five steps were then re-measured through the real instruments and recorded through the same CLI the
+battery uses (`--policy cap40`, marker file, `:step`'s own command):
+`tooling-intent` 0.4 s rc=0, `spec-citations` 1.2 s rc=0, `red-as-expected-spec-citations` 20.9 s
+rc=1, `spec-coverage` 0.9 s rc=0, `red-as-expected-spec-coverage` 0.2 s rc=1. The three rows that
+went STALE when `_main/_stepcache.py` changed (`stepcache-oracle`, `battery-plan`,
+`red-as-expected-battery-plan`) were re-measured the same way: 7.9 s / 6.0 s / 22.0 s.
+
+**Page after: `passos=550 PASS=294 EXPECTED-RED=233 FAIL=0 STALE=0 NO-VERDICT=0 NOT RUN=20
+CARRIED=3`, `state-page PASS checks=7 fail=0`.** Budget after the five new rows:
+`steps=530 total=2227.7s`, `RATCHET-OK`.
+
+The lesson is the one this session keeps paying for: **a status that was never re-measured is a
+status that describes an older tree** -- and a cache that refuses to record makes that permanent
+instead of momentary.
+
+## §9. The pre-commit gate was grading the owner's screen, not the product (2026-11-23, 21:2x)
+
+The commit that closes this session was refused by the repository's own pre-commit gate:
+
+```
+compose-probe.mjs  FAILED  exit 1: deliver() -> THREW Error: instant replay refused:
+  G:\watcher-state\cache\tmp\shadowplay-e2e-D6SF3N\0000.mp4 holds 27 contiguous distinct
+  frames but covers 240 frame slots; the clock is there and the content is not
+GATE 8 passed / 1 refused, exit 1
+```
+
+That sentence is the delivery gate **working**. `app/shadowplay/index.js:84-104` states the
+contract in its own header -- *"A still desktop can hold run=24 at any duration and be refused,
+which is the gate working, not a defect to route around"* -- because a replay clip whose content
+cannot cover its own clock is not a replay. Nothing on the desktop moved during a 2 772 s caged
+battery run, so every 8 s `gdigrab desktop` capture was content-short, and the probe published
+`exit 1`: it graded **the screen**, not the product. A green tree could not commit.
+
+Two measurements, same probe, same box, 122 s apart:
+
+|source|frames captured|capture bytes|longest distinct run vs slots|delivery|probe rc|
+|---|---|---|---|---|---|
+|`desktop` (gdigrab)|190 (`capture()`)|69 447 B|**27 / 240** -> refused|refused|1|
+|`testsrc2` (lavfi)|240|2 061 469 B|240 / 240|`action=instant-replay`, `0000.mp4` landed|0|
+|`testsrc2` repeat|240|2 061 469 B|240 / 240|landed, `CLIP_FILES_ON_DISK=1`|0|
+
+The repair is the source, not the verdict: `app/shadowplay/compose-probe.mjs` now asks for
+`testsrc2`, which `NvencEncoder.captureAndEncode` already routes through the SAME `-f lavfi`
+branch into the SAME NVENC, the SAME ring, the SAME IDR cut and the SAME delivery gate. The
+artifact is real (2 061 469 B, 240 frames, `firstIdr=0`); only its *content* is guaranteed to move.
+Three further facts, each in the file:
+
+- **The desktop path stays measured where it belongs**, by `still-screen-probe.mjs`, which took the
+  still/moving arm pair and PASSED in the same gate run.
+- **`gdigrab desktop` is a hazard in a pre-commit gate**, measured in `nvenc.js:67-73`: at 60 fps it
+  locks the Windows compositor, and a live 30 fps capture there already cost one
+  `UI_WATCHDOG_EXIT code=9` on this box. A gate that runs on every commit must not grab the owner's
+  screen to test a remux.
+- **The refusal is still named, and the classifier is a control that can fail.** The probe carries a
+  three-message arm (`CLASSIFY_ARMS=3/3`): the content-short sentence -> `still-desktop`, the
+  `could not measure delivery` and `could not be counted` messages -> `unexplained`. `rc 0` requires
+  BOTH the landed clip and 3/3, so a `testsrc2` clip refused content-short is a defect here -- the
+  source moves by construction -- and a regex that stopped matching turns the probe red. It prints
+  `SOURCE=testsrc2`, `DELIVER_REFUSAL_CLASS=none`, `PRODUCT_LANDS_A_NONEMPTY_CLIP=YES`.
+
+Cost: compose-probe **24.55 s -> 3.35 s**, and the whole `run-all` gate stops spending 100 s
+waiting on a desktop encode.
+
+The lesson, and it is the same one as §8.9 with the sign flipped: **an instrument that reads the
+world outside the product reports the world**. A green tree failed a gate because the screen was
+still.

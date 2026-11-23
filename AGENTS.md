@@ -772,6 +772,17 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
 
 - **PIN do ficheiro (measured 2026-11-23, 13:5x):** `_main\_audit-verify-all.cmd` = **417680 B**,
   **4776 CRLF** / 0 bare LF, sha256 `37C693C9F37182A1B6D929C93D03DB79DB3A26ACED97C129714B372CD016C08A`.
+- **PIN do ficheiro (measured 2026-11-23, 15:2x):** `_main\_audit-verify-all.cmd` = **417953 B**,
+  **4781 CRLF** / 0 bare LF, sha256 `9BDB093C451B52DD061C9F485B26E553C18E28DDAE5E6D7F14E4C9919096D94D`.
+  (273 B and FIVE lines more than the 417680 B pin of the same day: the `tooling-intent` step loses
+  its three named deps and takes `""`, because its POPULATION is every `*oracle*.py` /
+  `*-gate.py` / `*-guard.py` in `_main` -- 325 files, measured -- and three names cannot describe a
+  directory. Measured in run 7: `declaradas: 170 | baseline: 144 | vermelhas: 11`, VERDICT FAIL
+  rc=2, and a cached HIT would have re-printed the verdict over a file set it never read (the
+  `panel-deps` class). With `""` the cache answers `MISS reason=no-deps`, so the step always runs;
+  measured cost of one run 1,51 s. The eleven files now declare `NO-BUG:` with the measured defect
+  or the owner order each serves -- inventing a `BLOCKS:` id would be the false intention the
+  oracle calls red, and `_main/bug-ledger.json` carries exactly four ids, none of them theirs.)
   (1 244 B and SIXTEEN lines more than the 416436 B pin: the two model-free selftests of the ASR
   path enter the battery -- `kestrel-ultra-stream` (`_main\kestrel-ultra-stream-runner.py
   --selftest`) and `certas-score-selftest` (`_main\bench\separate.py --threads 1

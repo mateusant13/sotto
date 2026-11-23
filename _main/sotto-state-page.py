@@ -88,7 +88,7 @@ EXPRED_RE = re.compile(
     r'^[ \t]*call :expectred[ \t]+([A-Za-z0-9_.+\-]+)[ \t]+!STEP_RC![ \t]+'
     r'"([^"]*)"[ \t]+"([^"]*)"', re.IGNORECASE)
 
-VERDICTS = ("PASS", "EXPECTED-RED", "FAIL", "STALE", "NO-VERDICT", "NOT RUN")
+VERDICTS = ("PASS", "EXPECTED-RED", "FAIL", "STALE", "NO-VERDICT", "NOT RUN", "CARRIED")
 GREEN = ("PASS", "EXPECTED-RED")
 ROW_RE = re.compile(
     r'^\|[ \t]*([A-Za-z0-9_.+\-]+)[ \t]*\|[ \t]*([A-Z][A-Z \-]*?)[ \t]*\|'

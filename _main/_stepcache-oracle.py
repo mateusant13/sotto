@@ -290,6 +290,31 @@ def battery(engine, root: str, tag: str):
     add(ok_p, "p o verbo slowest lista os passos lentos",
         "rows=%s" % (slow_rows[:4],))
 
+    # (q) UM PASSO COM `""` DEPS E MEDIDO, NUNCA CACHEADO (medido 2026-11-23).
+    # A populacao de alguns portoes e um DIRECTORIO (`tooling-intent` varre 325
+    # ficheiros de `_main`), logo a unica dep honesta e' `""` -- MISS sempre. O
+    # engine RECUSAVA gravar a linha, e a linha e' o que a pagina de estado
+    # publica: o passo ficou FAIL=1 na pagina com rc=2 de uma corrida antiga
+    # enquanto a bateria imprimia `[step] tooling-intent rc=0`. Duas verdades,
+    # uma delas velha. Agora a linha e' escrita (medida) e o `check` continua a
+    # recusar (cache) -- as duas perguntas separadas, e este arm exige as DUAS.
+    fx_q = Fix(root, tag + "-q")
+    rc_q, out_q, err_q = run_cli(engine_path, [
+        "record", "--step", "s-q", "--deps", "", "--rc", "0",
+        "--log", fx_q.log, "--state", state], root, tag + "-q-rec")
+    state_q, err_state_q = engine.load_state(state)
+    row_q = ((state_q or {}).get("steps") or {}).get("s-q") or {}
+    hit_q, _rc_q, why_q = engine.check("s-q", "", 0, log=fx_q.log,
+                                       state_path=state)
+    ok_q = (rc_q == 0 and out_q.startswith("RECORDED")
+            and row_q.get("rc") == 0
+            and row_q.get("log_sha256") == sha256_file(fx_q.log)
+            and not hit_q and "no-deps" in (why_q or ""))
+    add(ok_q, "q passo com deps vazio e MEDIDO e nunca cacheado",
+        "cli rc=%s out=%r | row rc=%s sha=%s | hit=%s (%s)"
+        % (rc_q, out_q.splitlines()[:1], row_q.get("rc"),
+           (row_q.get("log_sha256") or "-")[:8], hit_q, why_q))
+
     return rows
 
 
@@ -328,6 +353,12 @@ MUTANTS = [
      ["o o modo rapido salta um passo lento e diz que o saltou"],
      '        if fast_mode() and elapsed is not None and elapsed > fast_threshold_s():',
      '        if False and elapsed is not None and elapsed > fast_threshold_s():'),
+    # O mutante que repoe a REGRA ANTIGA: um passo sem deps nao era gravado, e
+    # a linha velha ficava a falar pela corrida nova. A arm q tem de o apanhar.
+    ("no-deps-descartado",
+     ["q passo com deps vazio e MEDIDO e nunca cacheado"],
+     '        fp, missing, uncached = None, [], "no-deps: measured, never a cache hit"',
+     '        return False, "no-deps: refusing to record a step with no deps"'),
 ]
 
 
