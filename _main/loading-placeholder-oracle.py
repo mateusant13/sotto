@@ -46,7 +46,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 SHELL = os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py')
 WEBVIEW = os.path.join(ROOT, 'app', 'webview')
-GUARD = "if state == 'model-loading' and not self.loaded:"
+# ANCORA RE-MEDIDA 2026-11-23: o guarda ganhou `preload_hidden` (a ponte de
+# PRELOAD nao pinta placeholder), logo a ancora de uma linha deixou de casar e o
+# mutante ficou INERTE com `ancora ausente`. A mutacao muda UMA variavel -- o
+# `not self.loaded`, que e' o que impede um `model-loading` ATRASADO de pintar.
+GUARD = ("if (state == 'model-loading' and not self.loaded\n"
+         "                    and not preload_hidden):")
+GUARD_MUTANT = ("if (state == 'model-loading' and\n"
+                "                    not preload_hidden):")
 
 
 def load_shell(path=SHELL, name='sotto_webview_placeholder_oracle'):
@@ -122,7 +129,7 @@ def neg_arm():
     if GUARD not in text:
         print('NEG-ARM: FAIL -- o guarda nao esta no ficheiro (ancora ausente)')
         return 1
-    mutant = text.replace(GUARD, "if state == 'model-loading':", 1)
+    mutant = text.replace(GUARD, GUARD_MUTANT, 1)
     tmpdir = tempfile.mkdtemp(prefix='sotto-neg-placeholder-')
     path = os.path.join(tmpdir, 'sotto_webview.py')
     io.open(path, 'w', encoding='utf-8', newline='').write(mutant)

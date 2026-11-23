@@ -870,11 +870,16 @@ MUTANTS = (
      "                    self._caption_status_start()\n",
      "                if pending:\n"
      "                    pass  # MUTANT\n"),
+    # ANCORA RE-MEDIDA 2026-11-23: a guarda ganhou `and reason != 'preload'` e a
+    # ancora antiga deixou de casar (`hits=0`), o que fazia o mutante INERTE sem
+    # ninguem notar -- o braco negativo do ficheiro apanhava-o, e e' para isso que
+    # ele existe. A ancora passa a ser o bloco ACTUAL do arranque a FRIO (a segunda
+    # das duas costuras que o A12 exige).
     ("cold-worker-arming-removed",
      "            # O ARRANQUE RESTAURADO TAMBEM RESPONDE (2026-11-11): a ponte\n"
      "            # existe agora, portanto o bloqueio (modelo a carregar, sem audio)\n"
      "            # ja' tem nome. Uma vez por episodio; o player saudavel cala-o.\n"
-     "            if getattr(self, '_caption_wanted', False):\n"
+     "            if getattr(self, '_caption_wanted', False) and reason != 'preload':\n"
      "                self._caption_status_start()\n",
      "            pass  # MUTANT\n"),
     ("status-does-not-disarm-off-timer",
@@ -882,9 +887,13 @@ MUTANTS = (
      "            return True\n",
      "            pass  # MUTANT\n"
      "            return True\n"),
+    # ANCORA RE-MEDIDA 2026-11-23: a tupla de tags cresceu (a linha da degradacao
+    # do ASR entrou depois de `LIVE_ROUTE_UNKNOWN_AGE`), logo o `)` deixou de
+    # existir nessa linha e o mutante nao casava. O que ele tem de fazer e'
+    # TIRAR a tag do log visivel, que e' o que a arm mede.
     ("route-refused-tag-unpublished",
-     "                       'LIVE_ROUTE_REFUSED', 'LIVE_ROUTE_UNKNOWN_AGE')",
-     "                       'LIVE_ROUTE_REFUSED')"),
+     "                       'LIVE_ROUTE_REFUSED', 'LIVE_ROUTE_UNKNOWN_AGE',",
+     "                       'LIVE_ROUTE_REFUSED',"),
 )
 
 

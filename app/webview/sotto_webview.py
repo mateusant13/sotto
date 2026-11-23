@@ -11206,6 +11206,70 @@ def autostart_uninstall() -> int:
     return 0
 
 
+def _autostart_tokens(command: str):
+    """As palavras de uma linha de comando do Windows, sem inventar gramática.
+
+    So' o que a linha gerada por `autostart_command()` usa: tokens entre aspas
+    duplas e tokens soltos separados por espaco. Um token vazio no fim e' o
+    artefacto do `split` e nao uma palavra.
+    """
+    out = []
+    buf = []
+    quoted = False
+    for ch in str(command or ''):
+        if ch == '"':
+            quoted = not quoted
+            continue
+        if ch == ' ' and not quoted:
+            if buf:
+                out.append(''.join(buf))
+                buf = []
+            continue
+        buf.append(ch)
+    if buf:
+        out.append(''.join(buf))
+    return out
+
+
+def autostart_same_checkout(value: str) -> tuple:
+    """(matches, how) -- o Run aponta para ESTE checkout, por IDENTIDADE de ficheiro.
+
+    MEDIDO 2026-11-23 (a sessao do dono, 10:27): o registo diz
+    `"C:\\Program Files\\Python311\\pythonw.exe" ...` e a shell, arrancada por
+    `H:\\Python311\\pythonw.exe`, respondia `matches this checkout: False` e rc=3 --
+    `AUTOSTART_CHECK_DISAGREES`. Os dois caminhos sao O MESMO FICHEIRO
+    (`os.path.realpath` de ambos = `H:\\Python311\\pythonw.exe`; `C:\\Program
+    Files\\Python311` e' uma juncao), e `sys.executable`/`dirname` escolhe a forma
+    que o processo viu. Uma comparacao de TEXTO (`normcase`) condena uma entrada
+    CORRETA -- a classe que este repo ja' pagou varias vezes: identidade, nao
+    grafia. O interpretador compara-se por `os.path.samefile` (com a igualdade de
+    texto como recurso para um caminho ausente); o script e o `--log` continuam
+    comparados por texto normalizado, porque e' o MESMO checkout que tem de ser
+    apontado.
+    """
+    want = _autostart_tokens(autostart_command())
+    got = _autostart_tokens(value)
+    if not got or not want:
+        return False, 'unparsable'
+    if len(got) != len(want):
+        return False, 'shape'
+    same_exe = os.path.normcase(got[0]) == os.path.normcase(want[0])
+    how = 'text'
+    if not same_exe:
+        try:
+            same_exe = os.path.samefile(got[0], want[0])
+            how = 'samefile'
+        except OSError:
+            same_exe = False
+    if not same_exe:
+        return False, 'interpreter'
+    if os.path.normcase(got[1]) != os.path.normcase(want[1]):
+        return False, 'script'
+    if os.path.normcase(' '.join(got[2:])) != os.path.normcase(' '.join(want[2:])):
+        return False, 'arguments'
+    return True, how
+
+
 def autostart_status() -> int:
     import winreg
 
@@ -11219,9 +11283,9 @@ def autostart_status() -> int:
     except OSError as exc:
         print(f'sotto: AUTOSTART_STATUS_FAILED {exc!r}')
         return 2
-    matches = os.path.normcase(value) == os.path.normcase(autostart_command())
+    matches, how = autostart_same_checkout(value)
     print(f'sotto: AUTOSTART=on  value={value}')
-    print(f'sotto:   matches this checkout: {matches}  '
+    print(f'sotto:   matches this checkout: {matches}  via={how}  '
           f'(expected: {autostart_command()})')
     return 0 if matches else 3
 

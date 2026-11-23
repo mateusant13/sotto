@@ -154,6 +154,9 @@ def parse_battery(root):
     return steps, tokens
 
 
+_ENGINE_CACHE = {}
+
+
 def load_engine(root, dep_root=None):
     """O motor do `_stepcache` e a UNICA autoridade do fingerprint (nao se reimplementa).
 
@@ -162,11 +165,24 @@ def load_engine(root, dep_root=None):
     por isso as deps sao avaliadas no repo verdadeiro e so o resto vem da copia. E uma escolha
     declarada, nao um atalho escondido.
     """
+    # UMA EXECUCAO POR (root, dep_root), NAO UMA POR CHAMADA (medido 2026-11-23).
+    # `exec_module` construia um modulo NOVO -- e com ele um `_HASH_CACHE` VAZIO --
+    # a cada `build_rows`, ou seja o memo por CONTEUDO que o `_stepcache` existe para
+    # ter era deitado fora multiplicado pelo numero de renderizacoes: o `cProfile`
+    # do `--neg-arm` mediu `read` 27,3 s em 36 888 chamadas e `verdict_for` chamado
+    # 5 480 vezes (548 linhas x 10 renderizacoes). O modulo e' o MESMO ficheiro e o
+    # memo dele esta' desenhado para reutilizacao; re-executar e' trabalho que nao
+    # mede nada. A chave inclui o `dep_root` porque e' ele que fixa `REPO`.
+    key = (os.path.abspath(root), os.path.abspath(dep_root or root))
+    cached = _ENGINE_CACHE.get(key)
+    if cached is not None:
+        return cached
     path = os.path.join(root, ENGINE_REL)
     spec = importlib.util.spec_from_file_location("_sotto_state_page_stepcache", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    module.REPO = os.path.abspath(dep_root or root)
+    module.REPO = key[1]
+    _ENGINE_CACHE[key] = module
     return module
 
 
@@ -477,9 +493,81 @@ def _first_diff(live, fresh):
 COPY_FILES = (BATTERY_REL, STATE_REL, PAGE_REL, ENGINE_REL)
 
 
+_TMP_CHOSEN = []
+
+
+def _write_probe_ms(base, kib=64):
+    """O custo MEDIDO de escrever 64 KiB nesta raiz (o menor de duas voltas), em ms."""
+    import time as _time
+    best = None
+    path = os.path.join(base, ".state-page-probe.bin")
+    payload = b"x" * (kib * 1024)
+    for _ in range(2):
+        try:
+            started = _time.perf_counter()
+            with open(path, "wb") as fh:
+                fh.write(payload)
+            elapsed = (_time.perf_counter() - started) * 1000.0
+        except OSError:
+            return None
+        best = elapsed if best is None else min(best, elapsed)
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    return best
+
+
 def _tmp_base():
-    base = os.environ.get("TMPDIR") or tempfile.gettempdir()
-    return base if os.path.isdir(base) else tempfile.gettempdir()
+    """A raiz da sandbox escolhida por CUSTO MEDIDO, nao por existencia.
+
+    MEDIDO 2026-11-23: `--neg-arm` custava **81,1 s** sozinho (o baseline de
+    2026-11-12 e' 34,7 s) e o `cProfile` nomeou o sitio: `_copy_tree` **12,98 s**
+    para copiar 669 ficheiros (8,0 MiB) e `nt.stat` **22,46 s** em 20 440
+    chamadas sobre a copia, com `read` a 11,5 s -- tudo dentro de `I:\cc-tmp`,
+    o volume que esta casa ja' mediu a oscilar 0,0-1595,8 ms por 64 KiB de
+    escrita. `TMPDIR` era lido como uma regra de EXISTENCIA, e escolher a raiz
+    por existencia numa maquina com um volume doente e' a mesma classe do
+    `panel-deps`: um numero que descreve outro sitio.
+
+    A raiz passa a ser uma PERGUNTA MEDIDA: cada candidata (a da casa primeiro,
+    depois o temp do sistema, depois `cc-tmp` no volume do repo -- criado so' se
+    ele ganhar) recebe um write de 64 KiB e vale o menor de duas voltas; a mais
+    barata leva a sandbox e a escolha e' IMPRESSA com os numeros, uma vez por
+    processo. A copia continua a ser a mesma pergunta para todas as mutacoes:
+    o que muda e' o preco do volume, nao a prova.
+    """
+    if _TMP_CHOSEN:
+        return _TMP_CHOSEN[0]
+    drive = os.path.splitdrive(os.path.abspath(DEFAULT_ROOT))[0]
+    cands = []
+    for base in (os.environ.get("TMPDIR"), tempfile.gettempdir(),
+                 os.path.join(drive + os.sep, "cc-tmp")):
+        if base and base not in cands:
+            cands.append(base)
+    scored = []
+    for base in cands:
+        if not os.path.isdir(base):
+            if os.path.basename(base) == "cc-tmp":
+                try:
+                    os.makedirs(base, exist_ok=True)
+                except OSError:
+                    continue
+            else:
+                continue
+        ms = _write_probe_ms(base)
+        if ms is not None:
+            scored.append((ms, base))
+    if not scored:
+        _TMP_CHOSEN.append(tempfile.gettempdir())
+        return _TMP_CHOSEN[0]
+    scored.sort()
+    chosen = scored[0][1]
+    _TMP_CHOSEN.append(chosen)
+    print("STATE-PAGE TMPROOT chosen=%s write_ms=%.2f candidates=%s"
+          % (chosen, scored[0][0],
+             ", ".join("%s=%.2f" % (b, m) for m, b in scored)))
+    return chosen
 
 
 def _copy_tree(root, tmp):

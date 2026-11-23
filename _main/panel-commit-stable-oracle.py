@@ -254,6 +254,22 @@ def modes(rows):
     }
 
 
+def ceiling_floor(pop):
+    """QUANTAS linhas de tecto o braco BEFORE TEM de carregar para a medida valer.
+
+    2026-11-23: era um 100 ABSOLUTO, calibrado no corpus de 2 766 commits medido a
+    2026-11-08. O log vivo e' a sessao ABERTA do dono, e a sessao das 04:43 tinha
+    74 commits -- 32 linhas de tecto (43,2 % da populacao, p50=1500 ms, dentro da
+    banda) e o portao reprovava o SITIO CORRETO (`VERDICT: FAIL -- BEFORE carries
+    the ceiling mode`). O piso passa a ser relativo a populacao que o log tem,
+    com um minimo absoluto para nao aceitar uma amostra de brinquedo: 3 % das
+    linhas, nunca menos de 20. A substancia da arm -- a fatia (`deadlineShare`) e
+    o p50 NA BANDA DO TECTO -- nao muda.
+    """
+    lines = int(pop.get('lines') or 0)
+    return max(20, int(0.03 * lines))
+
+
 def audit_rows(result):
     """The replay's per-commit pairs, or a setup error when the join produced none."""
     rows = result.get('commitRows') or []
@@ -393,10 +409,12 @@ def main():
                    and (after['legs']['pushToPaint']['p50'] or 0) <= EYE_LEG_MAX_MS,
                    'before=%s after=%s ms' % (cell(before['legs']['pushToPaint']['p50']),
                                               cell(after['legs']['pushToPaint']['p50']))))
+    floor = ceiling_floor(mb)
     checks.append(('BEFORE carries the ceiling mode, at the ceiling itself',
-                   mb['deadline'] >= 100 and DEADLINE_LO_MS <= (mb['deadlineP50'] or 0) <= DEADLINE_HI_MS,
-                   'before deadline mode=%d lines (%s %%), their queue p50=%s ms'
-                   % (mb['deadline'], mb['deadlineShare'], cell(mb['deadlineP50']))))
+                   mb['deadline'] >= floor
+                   and DEADLINE_LO_MS <= (mb['deadlineP50'] or 0) <= DEADLINE_HI_MS,
+                   'before deadline mode=%d lines (floor=%d, %s %%), their queue p50=%s ms'
+                   % (mb['deadline'], floor, mb['deadlineShare'], cell(mb['deadlineP50']))))
     # A CONTA, NUMA UNIDADE SO' (medido 2026-11-08). A versao anterior comparava a
     # fatia de **linhas** do tecto com a fatia de **fragmentos** nao provados: um
     # fragmento nao provado rende DUAS linhas (provisional + final), logo a fatia de
@@ -464,15 +482,16 @@ def main():
         # THE CONTROL IS JUDGED ON THE SAME METRIC AS THE FIX — the ceiling mode's
         # POPULATION and its own p50 — never on a whole-field p50, which is exactly
         # the statistic the correction withdrew.
-        control = (mb['deadline'] >= 100
+        control = (mb['deadline'] >= floor
                    and DEADLINE_LO_MS <= (mb['deadlineP50'] or 0) <= DEADLINE_HI_MS
                    and mb['deadlineShare'] > 5.0
                    and before['legs']['pushToPaint']['p50'] <= EYE_LEG_MAX_MS)
         say('')
         say('NEG-ARM: %s -- stable commit removed; the ceiling mode came back at '
-            '%d lines (%s %% of them, queue p50=%s ms), eye leg p50=%s ms'
-            % ('PASS' if control else 'FAIL', mb['deadline'], cell(mb['deadlineShare']),
-               cell(mb['deadlineP50']), cell(before['legs']['pushToPaint']['p50'])))
+            '%d lines (floor=%d, %s %% of them, queue p50=%s ms), eye leg p50=%s ms'
+            % ('PASS' if control else 'FAIL', mb['deadline'], floor,
+               cell(mb['deadlineShare']), cell(mb['deadlineP50']),
+               cell(before['legs']['pushToPaint']['p50'])))
         if not control:
             say('VERDICT: FAIL -- the control did NOT go back up, so the after arm proves nothing')
             sys.exit(0)

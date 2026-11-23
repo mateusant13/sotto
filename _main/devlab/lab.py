@@ -94,6 +94,94 @@ CAPTURE_PROTOCOL = 3
 PYTHONW = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
 CREATE_NO_WINDOW = 0x08000000
 
+# READINESS BUDGET, MEASURED (2026-11-23). The gate waits for the fixture's own
+# API before it takes a snapshot -- a snapshot on a page that has not run its
+# script yet is the honest-looking `no-window` of a page that does not exist.
+# The literal both drills used to carry was 10 s, and the measured cold launch
+# (port answers at 0.54 s, `typeof window.__seek === 'function'` true at 4.23 s)
+# leaves only 2.4x of headroom -- under the 2.7x contention this house has
+# measured on the same box, the arm reported `fixture never became ready` for a
+# page that was merely late (measured 2026-11-23: `chaos-neg`, mutant 2 of 3,
+# after mutant 1 had already been caught).
+# A budget is a ceiling on WAITING, so it is generous here, and the FAILURE now
+# prints evidence: href, readyState, which API is missing and the page's own
+# errors -- a real breakage is diagnosable in the log instead of being a bare
+# sentence that reads the same for a slow disk and a dead page.
+FIXTURE_READY_S = 30.0
+
+
+def _fixture_root():
+    """The temp root for a browser profile, CHOSEN BY MEASURED COST.
+
+    Measured 2026-11-23 on this box: `stat()` costs 0.016 ms on `H:\\cc-tmp`,
+    0.047 ms on the cage's cache volume and **8.022 ms** on `I:\\cc-tmp` -- a 500x
+    difference for the thousands of `stat` calls a Chromium profile performs while
+    it starts. Both drills previously used `tempfile.gettempdir()`, i.e. a root
+    chosen by EXISTENCE; on the expensive volume that is how a 24-row drill was
+    reported as `fixture never became ready`. The probe performs the operation the
+    profile performs (`stat` of small files) and prints the numbers.
+    """
+    import tempfile as _tf
+    candidates = []
+    for cand in (os.environ.get('TMPDIR'), _tf.gettempdir(),
+                 os.path.join(os.path.splitdrive(os.path.abspath(__file__))[0] + os.sep,
+                              'cc-tmp')):
+        if cand:
+            cand = os.path.abspath(cand)
+            if cand not in candidates:
+                candidates.append(cand)
+    best, best_ms, detail = None, None, []
+    for cand in candidates:
+        try:
+            os.makedirs(cand, exist_ok=True)
+            probe = _tf.mkdtemp(prefix='.fixture-probe-', dir=cand)
+            files = []
+            for i in range(40):
+                fp = os.path.join(probe, 'p%d.bin' % i)
+                with open(fp, 'wb') as fh:
+                    fh.write(b'x' * 4096)
+                files.append(fp)
+            t0 = time.perf_counter()
+            for _ in range(5):
+                for fp in files:
+                    os.stat(fp)
+            for fp in files:
+                with open(fp, 'rb') as fh:
+                    fh.read()
+            ms = (time.perf_counter() - t0) * 1000.0 / (40 * 6)
+            shutil.rmtree(probe, ignore_errors=True)
+        except Exception:
+            ms = None
+        detail.append('%s=%s' % (cand, 'ERR' if ms is None else '%.3f' % ms))
+        if ms is not None and (best_ms is None or ms < best_ms):
+            best, best_ms = cand, ms
+    chosen = best or _tf.gettempdir()
+    _tf.tempdir = chosen
+    os.environ['TMPDIR'] = chosen
+    os.environ['TEMP'] = chosen
+    os.environ['TMP'] = chosen
+    print('FIXTURE TMPROOT chosen=%s per-op-ms=%s candidates=%s'
+          % (chosen, 'n/a' if best_ms is None else '%.3f' % best_ms, ', '.join(detail)),
+          flush=True)
+    return chosen
+
+
+def _page_state(ev):
+    """What the page itself says when readiness times out. Never raises."""
+    out = {}
+    for key, expr in (("href", "location.href"),
+                      ("readyState", "document.readyState"),
+                      ("seek", "typeof window.__seek"),
+                      ("setCues", "typeof window.__setCues"),
+                      ("title", "document.title"),
+                      ("errors", "JSON.stringify(window.__labErrors || [])")):
+        try:
+            out[key] = ev(expr)
+        except Exception as exc:
+            out[key] = "EXC %r" % (exc,)
+    return " ".join("%s=%r" % (k, out[k]) for k in
+                    ("href", "readyState", "seek", "setCues", "title", "errors"))
+
 
 def _no_window_kwargs():
     """The pair that hides a console child, in ONE place.
@@ -336,7 +424,7 @@ def harvest_window(video, start, seconds, port):
           % (len(eps), len(base), bfail))
     print("  baseline peaks:", json.dumps(base, sort_keys=True))
 
-    prof = tempfile.mkdtemp(prefix="sottolab-", dir=tempfile.gettempdir())
+    prof = tempfile.mkdtemp(prefix="sottolab-", dir=_fixture_root())
     args = [exe, "--remote-debugging-port=%d" % port, "--headless=new",
             "--disable-gpu", "--autoplay-policy=no-user-gesture-required",
             "--no-first-run", "--no-default-browser-check",
@@ -1635,7 +1723,7 @@ def run_captions(video, port, source=None):
     # gate below refuses it instead of measuring it.
     nonce = "lab%d" % random.randrange(1 << 40)
     srv, watch_url = caption_fixture_page(video + "&" + nonce)
-    prof = tempfile.mkdtemp(prefix="sottocap-", dir=tempfile.gettempdir())
+    prof = tempfile.mkdtemp(prefix="sottocap-", dir=_fixture_root())
     fg0 = foreground()
     checks = []
 
@@ -1652,6 +1740,20 @@ def run_captions(video, port, source=None):
         w, send, ev = cdp_connect(port)
         send("Page.enable")
         send("Runtime.enable")
+        # THE TAB WE ATTACH TO IS NOT ALWAYS THE PAGE WE LAUNCHED (measured
+        # 2026-11-23). `cdp_connect` takes whatever page target answers first,
+        # and `--headless=new` can publish an `about:blank` target beside the
+        # one carrying our URL: measured in `chaos-neg`, mutant 2 of 4, the
+        # whole 30 s budget was spent on `href='about:blank' readyState=
+        # 'complete' seek='undefined' setCues='undefined'` while the fixture
+        # page was alive on the other target. Navigating the target we HOLD is
+        # the fix -- the readiness gate then judges the page we will measure.
+        try:
+            here = ev("location.href") or ""
+        except Exception:
+            here = ""
+        if ("&" + nonce) not in here:
+            send("Page.navigate", {"url": watch_url})
         # READINESS, NOT A SLEEP (measured 2026-11-15): `cdp_connect` returns as
         # soon as the port answers, which can be BEFORE the fixture's script has
         # run -- and a snapshot taken then is the honest-looking `no-window` of
@@ -1660,7 +1762,7 @@ def run_captions(video, port, source=None):
         # says FAIL with the reason instead of raising out of the middle.
         ready = False
         t0 = time.time()
-        while time.time() - t0 < 10.0:
+        while time.time() - t0 < FIXTURE_READY_S:
             try:
                 if ev("typeof window.__seek === 'function' && location.href.indexOf(%r) >= 0"
                      % ("&" + nonce,)):
@@ -1675,7 +1777,8 @@ def run_captions(video, port, source=None):
         except Exception:
             pass
         if not ready:
-            print("  fixture never became ready at %r" % (page_url,))
+            print("  fixture never became ready at %r after %.1fs -- %s"
+                  % (page_url, time.time() - t0, _page_state(ev)))
             checks.append(("fixture page ready", False, page_url))
             raise SystemExit(1)
         checks.append(("fixture page ready", True, page_url.split("?")[0]))
@@ -1834,7 +1937,7 @@ def run_chaos(video, port, source=None):
         raise SystemExit("no browser")
     nonce = "chaos%d" % random.randrange(1 << 40)
     srv, watch_url = caption_fixture_page(video + "&" + nonce)
-    prof = tempfile.mkdtemp(prefix="sottochaos-", dir=tempfile.gettempdir())
+    prof = tempfile.mkdtemp(prefix="sottochaos-", dir=_fixture_root())
     checks = []
 
     def check(name, ok, detail=""):
@@ -1853,9 +1956,23 @@ def run_chaos(video, port, source=None):
         w, send, ev = cdp_connect(port)
         send("Page.enable")
         send("Runtime.enable")
+        # THE TAB WE ATTACH TO IS NOT ALWAYS THE PAGE WE LAUNCHED (measured
+        # 2026-11-23). `cdp_connect` takes whatever page target answers first,
+        # and `--headless=new` can publish an `about:blank` target beside the
+        # one carrying our URL: measured in `chaos-neg`, mutant 2 of 4, the
+        # whole 30 s budget was spent on `href='about:blank' readyState=
+        # 'complete' seek='undefined' setCues='undefined'` while the fixture
+        # page was alive on the other target. Navigating the target we HOLD is
+        # the fix -- the readiness gate then judges the page we will measure.
+        try:
+            here = ev("location.href") or ""
+        except Exception:
+            here = ""
+        if ("&" + nonce) not in here:
+            send("Page.navigate", {"url": watch_url})
         ready = False
         t0 = time.time()
-        while time.time() - t0 < 10.0:
+        while time.time() - t0 < FIXTURE_READY_S:
             try:
                 if ev("typeof window.__setCues === 'function' && "
                      "location.href.indexOf(%r) >= 0" % ("&" + nonce,)):
@@ -1865,7 +1982,8 @@ def run_chaos(video, port, source=None):
                 pass
             time.sleep(0.1)
         if not ready:
-            print("  fixture never became ready")
+            print("  fixture never became ready after %.1fs -- %s"
+                  % (time.time() - t0, _page_state(ev)))
             checks.append(("fixture page ready", False, ""))
             raise SystemExit(1)
         print("  %-46s PASS" % "fixture page ready")

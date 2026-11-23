@@ -191,8 +191,8 @@ def neg_arm():
     mutant('M1', src, 'CLOCK_STATIC_PAUSE_S = 2.0',
            'CLOCK_STATIC_PAUSE_S = 1000000000.0')
     mutant('M2', src,
-           "        if t is None:\n            self._yt_ct_val = None\n            self._yt_ct_since = 0.0\n            return False, 0.0",
-           "        if t is None:\n            self._yt_ct_val = None\n            self._yt_ct_since = 0.0\n            return True, 99.0")
+           "        if t is None:\n            self._yt_ct_val = None\n            self._yt_ct_since = 0.0\n            self._yt_ct_verdict = (False, 0.0)",
+           "        if t is None:\n            self._yt_ct_val = None\n            self._yt_ct_since = 0.0\n            self._yt_ct_verdict = (True, 99.0)")
     mutant('M3', src, '                    self.yt_cdp_paused = True\n',
            '                    pass\n')
     try:

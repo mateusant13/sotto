@@ -51,9 +51,9 @@ de IO, a sua propria cache e o seu proprio prazo. E a frase que resume a lei:
 
 A peer lane sampled three heavy jobs "from H:/sotto" at once, summing **1276 % of one core**, while the
 owner's hover animations stopped 19 times in an hour. Attributed per pid with psutil from a `pythonw`
-child, in a 5 s window:
+child, in a 5 s window (medido 2026-11-17):
 
-|pid|what|measured|
+|pid|what|measured (medido 2026-11-17)|
 |---|---|---|
 |47520|`_main/bench/separate.py --engine mossformer2 --threads 2 --score`|**250.9 %** of one core, 30 OS threads, 2012 MB|
 |47720|the owner's live worker `sotto_worker.py --threads 2`|203.8 %|
@@ -62,7 +62,7 @@ child, in a 5 s window:
 The `2` was applied **twice in the same process** -- `torch.set_num_threads(2)` for the separator and
 `intra_op_num_threads=2` for the ASR session -- so the process total was 4 threads, and a peer sample
 of the same job earlier in its life read 386.4 %. Neither library ignored the flag; the flag simply
-declared half the truth.
+declared half the truth (medido 2026-11-17).
 
 The rule that follows, and it binds every multi-engine script in this tree (separation, streaming ASR
 plus batch ASR, any ORT session beside a torch model):
@@ -327,8 +327,8 @@ A lei, e ela vale para qualquer fonte que publique posicao:
   pintura: recuo maior que `SEEK_BACK_S` e' seek (o player nao anda para tras), avanco maior do que
   a taxa maxima do player no intervalo tambem. Duas leituras do MESMO carimbo nao sao uma segunda
   medida (o cache CDP de ≤1,2 s declina com `same-snapshot`), e a mudanca de video zera a serie.
-  O relogio sozinho **continua proibido de recuar** (o replay de 428 linhas: regra antiga 227
-  recuos, nova 0).
+  O relogio sozinho **continua proibido de recuar** (o replay de 428 linhas, medido 2026-11-06: regra
+  antiga 227 recuos, nova 0).
 - **O chao desce junto com a ancora e com o alinhamento**, no MESMO tique: deixar o `yt_hit` velho
   faz o `_yt_clock_agrees` recusar o instante novo como `clock-stale-last-cue` e o ecra continua a
   servir a linha de +10 s -- o seek nao envenenava so' o relogio, envenenava o SERVICO.
@@ -770,8 +770,40 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (measured 2026-11-23, 09:0x):** `_main\_audit-verify-all.cmd` = **415131 B**,
-  **4744 CRLF** / 0 bare LF, sha256 `7EBB8D585687ECF32E61C20371758943AE8AE137379F46C35BD62F29ADA125F5`.
+- **PIN do ficheiro (measured 2026-11-23, 13:5x):** `_main\_audit-verify-all.cmd` = **417680 B**,
+  **4776 CRLF** / 0 bare LF, sha256 `37C693C9F37182A1B6D929C93D03DB79DB3A26ACED97C129714B372CD016C08A`.
+  (1 244 B and SIXTEEN lines more than the 416436 B pin: the two model-free selftests of the ASR
+  path enter the battery -- `kestrel-ultra-stream` (`_main\kestrel-ultra-stream-runner.py
+  --selftest`) and `certas-score-selftest` (`_main\bench\separate.py --threads 1
+  --score-selftest`). They come from the Codex lane that stopped on 2026-11-21 and had never had a
+  step of its own; measured cost 2,6 s and 1,9 s, no model, no GPU, both `always`.)
+  (495 B and SEVEN lines more than the 415941 B pin of the same day: **the record is a step's
+  SUBJECT, not its dependency.** Six steps judge `_cache\battery-steps.json` -- the live run --
+  and while that file was in their dep list every following step's write moved their fingerprint,
+  so the page published `STALE` over work of the same run (measured: `PASS=288 STALE=6`). The four
+  `always` steps lose the dep outright (they never come from cache, so the dep bought nothing) and
+  the `battery-budget` pair becomes `always` -- it must re-judge each run, and now does so in
+  **0,23 s** -- so none of the six carries a dep that is guaranteed to drift. A REM above the
+  state-page block states the rule and the numbers.)
+  (The pin before it, 415941 B / 4753 CRLF, sha256 `675B37F3…`: the REM of
+  `red-as-expected-panel-themes` names the thirteen mutants the arm actually plants, and records
+  what the arm costs for two reasons -- **258,8 s** while the browser profile was born on the
+  wrong temp volume, **111,8 s** once the root is chosen by a measured `stat`
+  (`_main/fixture-temp.mjs`). No `SOTTO_STEP_OVERRIDE_S` is declared: the earlier 420 s override
+  was removed the moment the cost came under the 240 s house floor, because a ceiling that
+  exists to hide a defect is the defect.)
+  (the previous pin of the same day was 415570 B / 4749 CRLF / `A21EBB4B…` -- the row of
+  `panel-search-keyboard` passing from `:record` to `:skipped` with four comment lines.)
+  (439 B and FIVE lines more than the 415131 B pin of the same day: the row of
+  `panel-search-keyboard` passed from `:record` to `:skipped` with four comment lines and
+  the two phrases `"VERDICT: PASS"` / `"VERDICT: SKIPPED"`. The oracle's arm 2 reads the
+  LIVE `_main/webview-run.log`, and the owner's 04:43 session carried ZERO
+  `POINTER_INTERACTIVE` lines (the pointer never crossed the panel), so the absence was
+  being reported as "the panel cannot take activation" -- judging the PRODUCT for not
+  having been exercised. It now says `VERDICT: SKIPPED reason=no-pointer-lines` and a skip
+  is NEVER green. The same repair made the control executable without live lines: with
+  none it seeds a SYNTHETIC three-line copy (one active, one idle, one contradictory) and
+  requires exactly ONE caught; measured `source=synthetic ... violations caught=1` rc=1.)
   (63 B more than the 415068 B pin of the same day, with ZERO line change: the `.cmd` hunks of the
   CUDA landing (`8cf0c0d`, `45b319b` -- the pair `parakeet-ultra-gpu-policy`, the pair
   `speaker-sidecar-gpu-policy` and `redux-live-pending`, 27 lines) are now COMMITTED, and the live
@@ -3370,11 +3402,11 @@ O defeito voltou no commit `78410bb` e o portao **passou** — porque as duas pe
 comparavam **checkout com worktree**, e com `eol=crlf` as duas pontas sao CRLF. Um blob gravado com
 CRLF (o escritor escreveu os bytes da arvore de trabalho em vez da forma canonica) produz um checkout
 identico ao worktree, logo `DIVERGENTES: 0` e `VERDICT: PASS` — enquanto `git status` ficava sujo
-**para sempre** e todo diff do ficheiro saia como reescrita inteira (**4606 linhas**).
+**para sempre** e todo diff do ficheiro saia como reescrita inteira (**4606 linhas**; medido 2026-11-15).
 
 O censo que separa as tres ocorrencias, todas no mesmo ficheiro, medido por `git show <rev>:<path>`:
 
-| commit | blob | veredicto |
+| commit | blob | veredicto (medido 2026-11-15) |
 |---|---|---|
 | `7b90e5e`, `d8720de`, `3456ad2` | 0 CRLF (LF) | ok |
 | `10b82cc`, `e577452`, `78410bb` | 4606 CRLF | **defeito** |

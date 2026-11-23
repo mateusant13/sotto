@@ -207,6 +207,40 @@ def arm_covers_types():
                                           ','.join(missing) or 'nenhum'))
 
 
+SCHED_PROBE_S = 0.020
+SCHED_PROBE_N = 5
+SCHED_CONTENDED_MS = 2.0
+
+
+def judge_warm(warm_ms, cpu_ms, sched_ms):
+    """(ok, note) -- um orcamento julgado sobre o TRABALHO, com a fila nomeada.
+
+    Nascida de uma amostra REAL de 2026-11-23: a bateria cagada mediu
+    `warm_ms=8740.7 budget_ms=4000` e o mesmo codigo mediu 727,9 / 960,0 / 1189,6 ms
+    sozinho, tres vezes seguidas. Um processo que nao foi escalonado mede a fila,
+    nao o proprio trabalho -- por isso a arm olha tres numeros e nao um:
+
+      * `cpu_ms` acima do orcamento e' a NOSSA funcao a crescer: FAIL sempre;
+      * `warm_ms` acima do orcamento com a maquina RESPONSIVA (`sched_ms` pequeno)
+        e' um caminho nosso a esperar por disco: FAIL;
+      * `warm_ms` acima do orcamento com a maquina ATRASADA e' uma amostra que nao
+        mede o nosso trabalho: `NOT-JUDGED under contention`, com os tres numeros,
+        como a arm 21 do motor quente ja' faz debaixo do tecto.
+    """
+    if cpu_ms > WARM_BUDGET_MS:
+        return False, "cpu_ms=%.1f > budget_ms=%.0f (a funcao cresceu)" % (
+            cpu_ms, WARM_BUDGET_MS)
+    if warm_ms <= WARM_BUDGET_MS:
+        return True, "warm_ms=%.1f cpu_ms=%.1f sched_ms=%.1f" % (
+            warm_ms, cpu_ms, sched_ms)
+    if sched_ms > SCHED_CONTENDED_MS:
+        return True, ("NOT-JUDGED under contention warm_ms=%.1f cpu_ms=%.1f "
+                      "sched_ms=%.1f budget_ms=%.0f") % (
+                          warm_ms, cpu_ms, sched_ms, WARM_BUDGET_MS)
+    return False, ("warm_ms=%.1f > budget_ms=%.0f com a maquina responsiva "
+                   "(sched_ms=%.1f)") % (warm_ms, WARM_BUDGET_MS, sched_ms)
+
+
 def arm_executes(path=SHELL):
     """Run the REAL function in its own process: it must return True, fast."""
     code = (
@@ -218,10 +252,18 @@ def arm_executes(path=SHELL):
         "t0 = time.time()\n"
         "spec.loader.exec_module(m)\n"
         "t1 = time.time()\n"
+        "c0 = time.process_time()\n"
         "res = m.warm_clr_types()\n"
+        "c1 = time.process_time()\n"
         "t2 = time.time()\n"
-        "print('WARM call=%%s warm_ms=%%.1f import_ms=%%.1f' %% (res, (t2-t1)*1000, (t1-t0)*1000))\n"
-        % (APP, path))
+        "late = []\n"
+        "for _ in range(%d):\n"
+        "    a = time.perf_counter(); time.sleep(%r); b = time.perf_counter()\n"
+        "    late.append((b - a - %r) * 1000.0)\n"
+        "sched = sum(late) / len(late)\n"
+        "print('WARM call=%%s warm_ms=%%.1f cpu_ms=%%.1f sched_ms=%%.2f import_ms=%%.1f'\n"
+        "      %% (res, (t2-t1)*1000, (c1-c0)*1000, sched, (t1-t0)*1000))\n"
+        % (APP, path, SCHED_PROBE_N, SCHED_PROBE_S, SCHED_PROBE_S))
     try:
         out = subprocess.run([sys.executable, "-c", code], capture_output=True,
                              text=True, timeout=180,
@@ -229,15 +271,14 @@ def arm_executes(path=SHELL):
     except subprocess.TimeoutExpired:
         return False, "timeout"
     text = (out.stdout or "") + (out.stderr or "")
-    m = re.search(r"WARM call=(\w+) warm_ms=([\d.]+)", text)
+    m = re.search(r"WARM call=(\w+) warm_ms=([\d.]+) cpu_ms=([\d.]+) "
+                  r"sched_ms=([\d.]+)", text)
     if not m:
         tail = [ln for ln in text.strip().splitlines() if ln.strip()][-2:]
         return False, "sem linha WARM (%s)" % (' / '.join(tail)[:160] or 'vazio')
     ok_call = m.group(1) == "True"
-    ms = float(m.group(2))
-    ok = ok_call and ms <= WARM_BUDGET_MS
-    return ok, "call=%s warm_ms=%.1f budget_ms=%.0f" % (m.group(1), ms,
-                                                        WARM_BUDGET_MS)
+    ok, note = judge_warm(float(m.group(2)), float(m.group(3)), float(m.group(4)))
+    return (ok_call and ok), "call=%s %s" % (m.group(1), note)
 
 
 def arm_receipt_reaches_log():
@@ -296,6 +337,28 @@ def arm_before_thread():
                                                 early[:5] or 'nenhuma'))
 
 
+def arm_judge_matrix():
+    """O JUIZ do orcamento, julgado: quatro leituras e o que cada uma e'.
+
+    A matriz existe porque o orcamento sozinho nao distingue tres coisas que a
+    corrida de 2026-11-23 mostrou juntas: funcao a crescer, disco a esperar, e
+    processo a esperar pela fila.
+    """
+    cases = [
+        # (warm, cpu, sched, quer_ok, porque)
+        (900.0, 300.0, 0.3, True, "dentro do orcamento"),
+        (8740.7, 700.0, 18.0, True, "amostra de contenda -- NOT-JUDGED"),
+        (8740.7, 700.0, 0.5, False, "caro com a maquina responsiva"),
+        (5000.0, 4200.0, 0.5, False, "a funcao cresceu"),
+    ]
+    bad = []
+    for warm, cpu, sched, want, why in cases:
+        got, note = judge_warm(warm, cpu, sched)
+        if got != want:
+            bad.append("%s: %s != %s (%s)" % (why, got, want, note))
+    return (not bad, "casos=%d errados=%s" % (len(cases), bad[:3] or 'nenhum'))
+
+
 def run():
     arms = [
         ("A1 existe-e-e-chamada", arm_exists_and_called),
@@ -303,6 +366,7 @@ def run():
         ("A3 executa-e-e-rapido", arm_executes),
         ("A4 antes-da-thread", arm_before_thread),
         ("A5 recibo-no-log", arm_receipt_reaches_log),
+        ("A6 juiz-do-orcamento", arm_judge_matrix),
     ]
     results = []
     for label, fn in arms:
@@ -362,11 +426,29 @@ def neg_arm():
         ("M2 Icon fora da cura", _mutate_drop_icon, ("A2 cobre-os-tipos",)),
         ("M3 chamada depois do start", _mutate_after_start, ("A4 antes-da-thread",)),
         ("M4 despejo do recibo apagado", _mutate_drop_flush, ("A5 recibo-no-log",)),
+        # M5 julga o proprio JUIZ do orcamento: um `judge_warm` que aceita tudo
+        # publica um verde sobre uma maquina que ninguem mediu.
+        ("M5 juiz-que-aceita-tudo", None, ("A6 juiz-do-orcamento",)),
     ]
     backup = SHELL
     caught = 0
     try:
         for label, mutate, must_fail in mutants:
+            if mutate is None:                  # M5: julga o juiz, nao um ficheiro
+                real = judge_warm
+                globals()["judge_warm"] = lambda *a: (True, "aceito")
+                try:
+                    ok6, _d6 = arm_judge_matrix()
+                finally:
+                    globals()["judge_warm"] = real
+                if not ok6:
+                    caught += 1
+                    print("CAUGHT %-26s arms_red=%s"
+                          % (label, ["A6 juiz-do-orcamento"]))
+                else:
+                    print("INERTE %-26s arms_red=[] exigia=%s"
+                          % (label, list(must_fail)))
+                continue
             mutated = mutate(original)
             if mutated == original:
                 print("MUTATION-NOT-APPLIED %s" % label)

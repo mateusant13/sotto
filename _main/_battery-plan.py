@@ -150,8 +150,10 @@ def build(out_path=DEFAULT_PLAN, state_path=DEFAULT_STATE, cmd_path=CMD):
     threshold = sc.fast_threshold_s()
     t0 = time.perf_counter()
     rows = []
+    expected_defer = 0
     for name, expect, always, deps, log in declarations(cmd_path):
         if _depends_on_state(deps, state_path):
+            expected_defer += 1
             # O ESTADO MUDA DURANTE A CORRIDA. A resposta a este passo tem de
             # ser dada no instante em que ele corre (o caminho por passo), nao
             # aqui: um plano que adivinha sobre um ficheiro que a propria corrida
@@ -169,6 +171,7 @@ def build(out_path=DEFAULT_PLAN, state_path=DEFAULT_STATE, cmd_path=CMD):
     hits = sum(1 for r in rows if r[1] == "HIT")
     defer = sum(1 for r in rows if r[1] == "DEFER")
     return {"steps": len(rows), "hits": hits, "defer": defer,
+            "expected_defer": expected_defer,
             "misses": len(rows) - hits - defer,
             "fast": fast, "threshold": threshold,
             "build_s": round(time.perf_counter() - t0, 3), "out": out_path}
@@ -397,14 +400,59 @@ def _selftest():
         finally:
             shutil.rmtree(d, ignore_errors=True)
 
+    # (C-bis) O DEFER, medido NUM FIXTURE QUE O DECLARA (2026-11-23).
+    # A bateria de verdade deixou de ter passos com dep do estado -- o registo e'
+    # o ASSUNTO deles, nao uma dep --, logo um `defer>=1` no ficheiro real seria
+    # uma exigencia impossivel e o mutante `defer-apagado` ficava invisivel
+    # (medido: `NOT-CAUGHT defer-apagado: o selftest da copia PASSOU`). O fixture
+    # abaixo DECLARA um passo com a dep e um sem ela, e o plano tem de deferir
+    # exactamente o primeiro.
+    fx = tempfile.mkdtemp(prefix="sotto-plan-defer-")
+    try:
+        state_fx = os.path.join(fx, "battery-steps.json")
+        io.open(state_fx, "w", encoding="utf-8").write("{}\n")
+        cmd_fx = os.path.join(fx, "battery.cmd")
+        io.open(cmd_fx, "w", encoding="utf-8", newline="\n").write(
+            '  call :step fixture-com-dep 0 "%s" "%%OUT%%\\a.log" python x.py\n'
+            '  call :step fixture-sem-dep 0 "" "%%OUT%%\\b.log" python y.py\n'
+            % state_fx)
+        pl = build(os.path.join(fx, "plan.txt"), state_path=state_fx,
+                   cmd_path=cmd_fx)
+        rows_fx = {}
+        with io.open(pl["out"], encoding="utf-8") as fh:
+            for line in fh:
+                parts = line.rstrip("\n").split("|")
+                rows_fx[parts[0]] = parts[1]
+        ok_defer = (rows_fx.get("fixture-com-dep") == "DEFER"
+                    and rows_fx.get("fixture-sem-dep") != "DEFER"
+                    and pl["defer"] == 1 and pl["expected_defer"] == 1)
+        print("fixture DEFER   : defer=%d deps-do-estado=%d com-dep=%s sem-dep=%s"
+              % (pl["defer"], pl["expected_defer"],
+                 rows_fx.get("fixture-com-dep"), rows_fx.get("fixture-sem-dep")))
+        if not ok_defer:
+            problems.append("fixture DEFER: a regra nao deferiu exactamente o passo "
+                            "que declara a dep do estado (defer=%d esperado=1)"
+                            % pl["defer"])
+    finally:
+        shutil.rmtree(fx, ignore_errors=True)
+
     # (D) A MEDICAO REAL, no ficheiro real: o plano inteiro de uma corrida.
     real = build(os.path.join(tempfile.gettempdir(), "sotto-plan-selftest.txt"))
-    print("plano real      : %d passos em %.3f s (hits=%d misses=%d defer=%d)"
+    print("plano real      : %d passos em %.3f s (hits=%d misses=%d defer=%d deps-do-estado=%d)"
           % (real["steps"], real["build_s"], real["hits"], real["misses"],
-             real["defer"]))
-    if real["defer"] < 1:
-        problems.append("plano real: defer=%d (nenhum passo depende do estado -- "
-                        "a regra do DEFER nao esta' a ver nada)" % real["defer"])
+             real["defer"], real["expected_defer"]))
+    # O DEFER E' EXACTAMENTE O CONJUNTO DECLARADO (medido 2026-11-23).
+    # Enquanto o `_cache\battery-steps.json` era dep de seis passos, `defer>=1` era
+    # um invariante do ficheiro. Hoje o registo e' o ASSUNTO desses passos, nao uma
+    # dep (ver o REM da bateria), logo a bateria declara ZERO deps-do-estado e um
+    # `defer>=1` seria uma exigencia que o ficheiro nao pode cumprir. A regra que
+    # fica e' a que sempre importou: o plano DEFERE todos os que o declaram e nao
+    # inventa nenhum. O mecanismo continua exercitado pelos fixtures do selftest,
+    # que DECLARAM a dep -- e o mutante `defer-apagado` tem de os apanhar.
+    if real["defer"] != real["expected_defer"]:
+        problems.append("plano real: defer=%d mas o ficheiro declara %d passo(s) "
+                        "com dep do estado -- a regra do DEFER nao esta' a ver o "
+                        "conjunto certo" % (real["defer"], real["expected_defer"]))
     if real["steps"] < 200:
         problems.append("plano real: %d passos (a gramatica perdeu passos)"
                         % real["steps"])

@@ -75,8 +75,13 @@ BATTERY_REL = os.path.join("_main", "_audit-verify-all.cmd")
 # em LF, que e' o que o checkout entrega.
 # O canonico de `I:/!manager` tem 22607 B: e' um ficheiro DIFERENTE de proposito (a copia
 # do repo e' um porto, nao um espelho), por isso o digest mede ESTA copia.
-PINNED_VERSION = "1.4.1"
-PINNED_SHA256 = "7d6b3f129d772985088679a70c80765d3e7fcc17d6f484f46bbb0febe8327c62"
+# RE-MEDIDO 2026-11-23: a skill passou a `1.4.2` (21037 B) na Wave C (`b0ae2f9`) e o pin
+# ficou para tras -- o passo ficava vermelho por um numero velho, nao por divergencia. Os
+# quatro checks de substancia passam sem edicao (agents-mandate, gate-bootstrap-law,
+# evidence-vocabulary, battery-wired), que e' a condicao da re-medicao. Era
+# `1.4.1` / `7d6b3f129d772985088679a70c80765d3e7fcc17d6f484f46bbb0febe8327c62` (20247 B).
+PINNED_VERSION = "1.4.2"
+PINNED_SHA256 = "20031262c1039feba0dff8c1c8a375912d7d9b6ea8695e167db007dde2afcf9a"
 
 # As frases que provam que a lei do bootstrap continua na skill. Cada uma e uma ideia,
 # nao uma linha: se a skill as perder, o mandato fica sem o seu unico mecanismo.

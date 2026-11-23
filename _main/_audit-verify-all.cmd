@@ -769,8 +769,12 @@ if exist _main\_panel2-dom-probe.js (
   REM circulos de demo, e TODA legenda de tela -- Ctrl+Space incluido -- com o FUNDO do
   REM desenho. Mede os 59 itens REAIS do seletor (45 CSS + 20 skins - 6 duais) num browser
   REM privado e headless: geometria e pintura COMPUTADAS, uma relacao por braco. O negativo
-  REM planta sete mutantes independentes (ordem, barra, rolagem, vazio, fundo, circulos,
-  REM inventario) e exige os sete apanhados.
+  REM planta TREZE mutantes independentes (ordem, barra, rolagem, vazio, fundo, circulos,
+  REM inventario, e os cinco de 2026-11-15: alcance, piso, canto, brilho, filtros) e exige os
+  REM treze apanhados. CUSTO MEDIDO 2026-11-23: 258,8 s quando o perfil do browser nascia no
+  REM volume errado; com a raiz de temp ESCOLHIDA POR `stat` medido (`fixture-temp.mjs`) o mesmo
+  REM braco custa 111,8 s, dentro do piso de 240 s -- nao ha override nenhum nesta linha porque
+  REM nao ha tecto a esconder.
   call :step panel-themes 0 "_main\panel-themes-oracle.mjs;app\panel\panel.html;app\panel\panel.css;app\panel\panel-unified.css;app\panel\panel.js;app\panel\brand-bridge.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\lazy-assets.js;app\panel\skin-host.js;app\panel\skin-layout.css;app\panel\caption-float.css;app\panel\button-contract.css;app\panel\themes\fonts.css;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\skins\skins.js;app\panel\skins\skin-shim.css" "%OUT%\panel-themes.log" node _main\panel-themes-oracle.mjs
   call :record panel-themes !STEP_RC!
   call :step red-as-expected-panel-themes 1 "_main\panel-themes-oracle.mjs;app\panel\panel.html;app\panel\panel.css;app\panel\panel-unified.css;app\panel\panel.js;app\panel\brand-bridge.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\lazy-assets.js;app\panel\skin-host.js;app\panel\skin-layout.css;app\panel\caption-float.css;app\panel\button-contract.css;app\panel\themes\fonts.css;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\skins\skins.js;app\panel\skins\skin-shim.css" "%OUT%\panel-themes-neg.log" node _main\panel-themes-oracle.mjs --neg-arm
@@ -3572,7 +3576,12 @@ if exist _main\search-oracle.py (
 ) else ( call :expectred red-as-expected-search-oracle MISSING "%OUT%\search-oracle-neg.log" "NEG-ARM PASS" )
 if exist _main\panel-search-keyboard-oracle.py (
   call :step panel-search-keyboard 0 "_main\panel-search-keyboard-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js;app\panel\panel.html" "%OUT%\panel-search-keyboard.log" python _main\panel-search-keyboard-oracle.py
-  call :record panel-search-keyboard !STEP_RC!
+  REM 2026-11-23: o braco 2 le' o log VIVO e o log pode nao ter NENHUMA
+  REM linha POINTER_INTERACTIVE (o ponteiro nunca passou no painel: sessao de
+  REM 04:43 medida com 0 linhas). A ausencia nao refuta a linha F9, logo o passo
+  REM e' skip-capable: `:skipped` com as DUAS frases, e um skip NUNCA conta
+  REM como verde (a mesma forma do shell-thread-budget).
+  call :skipped panel-search-keyboard !STEP_RC! "%OUT%\panel-search-keyboard.log" "VERDICT: PASS" "VERDICT: SKIPPED"
 ) else ( call :record panel-search-keyboard MISSING )
 if exist _main\panel-search-keyboard-oracle.py (
   call :step red-as-expected-panel-search-keyboard 1 "_main\panel-search-keyboard-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js;app\panel\panel.html" "%OUT%\panel-search-keyboard-neg.log" python _main\panel-search-keyboard-oracle.py --neg-arm
@@ -3603,7 +3612,7 @@ REM `check`, um a um, nas quatro formas (HIT, always, lento, MISS por dep
 REM alterado) e nos dois modos; o `--neg-arm` tem de derrubar as tres mutacoes
 REM (HIT inventado, DEFER apagado, modo rapido ignorado).
 if exist _main\_battery-plan.py (
-  call :step always battery-plan 0 "_main\_battery-plan.py;_main\_stepcache.py;_main\sotto-state-page.py;_main\_audit-verify-all.cmd;_cache\battery-steps.json" "%OUT%\battery-plan.log" python _main\_battery-plan.py --selftest
+  call :step always battery-plan 0 "_main\_battery-plan.py;_main\_stepcache.py;_main\sotto-state-page.py;_main\_audit-verify-all.cmd" "%OUT%\battery-plan.log" python _main\_battery-plan.py --selftest
   call :record battery-plan !STEP_RC!
   call :step always red-as-expected-battery-plan 1 "_main\_battery-plan.py;_main\_stepcache.py;_main\sotto-state-page.py" "%OUT%\battery-plan-neg.log" python _main\_battery-plan.py --neg-arm
   call :expectred red-as-expected-battery-plan !STEP_RC! "%OUT%\battery-plan-neg.log" "NEG-ARM: PASS"
@@ -3611,6 +3620,22 @@ if exist _main\_battery-plan.py (
   call :record battery-plan MISSING
   call :expectred red-as-expected-battery-plan MISSING "%OUT%\battery-plan-neg.log" "NEG-ARM: PASS"
 )
+
+REM  OS DOIS SELFTESTS DO CAMINHO ASR QUE ESTAVAM FORA DA BATERIA (2026-11-23). Eles
+REM  vem da lane do Codex que parou a 2026-11-21 e ficaram sem passo nenhum -- um
+REM  instrumento sem chamador apodrece, e estes dois guardam exactamente os caminhos
+REM  caros: o `kestrel-ultra-stream-runner` (cache frio, identidade do modelo, CUDA)
+REM  e o `separate.py --score` (janela por seek em vez de leitura inteira do ficheiro).
+REM  Os dois sao `always` (nao vem de cache: julgam o proprio codigo do momento) e
+REM  custam 2,6 s e 1,9 s sozinhos, medidos sem modelo e sem GPU.
+if exist _main\kestrel-ultra-stream-runner.py (
+  call :step always kestrel-ultra-stream 0 "_main\kestrel-ultra-stream-runner.py" "%OUT%\kestrel-ultra-stream.log" python _main\kestrel-ultra-stream-runner.py --selftest
+  call :record kestrel-ultra-stream !STEP_RC!
+) else ( call :record kestrel-ultra-stream MISSING )
+if exist _main\bench\separate.py (
+  call :step always certas-score-selftest 0 "_main\bench\separate.py;_main\bench\acquire-certas-slice.py" "%OUT%\certas-score-selftest.log" python _main\bench\separate.py --threads 1 --score-selftest
+  call :record certas-score-selftest !STEP_RC!
+) else ( call :record certas-score-selftest MISSING )
 
 echo === the skip guard: NO step may print a skip verdict unless its kind declares it ===
 REM Every step above wrote its log. An instrument that silently skips an arm and still
@@ -4245,11 +4270,18 @@ REM passo que nao correu e `NOT RUN`, nunca um verde. CORRE SEMPRE (`always`): a
 REM leem a evidencia VIVA (`_cache\battery-steps.json` + `_main\_audit-verify\*.log`) e um resultado
 REM em cache descreveria um estado que ja nao existe. Custo medido 2026-10-25: 3,49 s.
 if exist _main\sotto-state-page.py (
-call :step always state-page-write 0 "_main\sotto-state-page.py;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page-write.log" python _main\sotto-state-page.py --write
+REM  O REGISTO E' O ASSUNTO, NAO UMA DEPENDENCIA (medido 2026-11-23). Os passos abaixo
+REM  julgam `_cache\battery-steps.json` -- a corrida VIVA -- e por isso sao `always`: nunca
+REM  vem de cache. Enquanto o ficheiro era uma dep, o fingerprint de cada um mudava sempre que
+REM  um passo seguinte escrevia o registo, o que fazia a pagina publicar `STALE` sobre um
+REM  trabalho desta mesma corrida (seis linhas, medido: `PASS=288 STALE=6`). Medido hoje:
+REM  sem a dep nos seis (`PASS=288` e nenhum STALE sobre eles) e o `battery-budget` continua
+REM  a re-julgar a corrida -- 0,23 s -- porque `always` o corre em TODA a corrida.
+call :step always state-page-write 0 "_main\sotto-state-page.py;_main\_audit-verify-all.cmd;_main\_stepcache.py" "%OUT%\state-page-write.log" python _main\sotto-state-page.py --write
 call :record state-page-write !STEP_RC!
 ) else ( call :record state-page-write MISSING )
 if exist _main\sotto-state-page.py (
-  call :step always state-page 0 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page.log" python _main\sotto-state-page.py --check
+  call :step always state-page 0 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py" "%OUT%\state-page.log" python _main\sotto-state-page.py --check
   call :record state-page !STEP_RC!
 ) else ( call :record state-page MISSING )
 REM O `--neg-arm` DA PAGINA, E O CUSTO QUE ELE TINHA (medido 2026-11-08). Ele custava
@@ -4262,16 +4294,16 @@ REM e corre cada mutacao sobre a copia RESTAURADA (snapshot de bytes + restauro,
 REM diferenca entre a copia e a copia mutada continua a ser a mutacao). MEDIDO depois:
 REM **49,45 s**, com as 8 mutacoes a nomear o check que deviam (`NEG-ARM PASS mutations=8`).
 if exist _main\sotto-state-page.py (
-  call :step always red-as-expected-state-page 1 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py;_cache\battery-steps.json" "%OUT%\state-page-neg.log" python _main\sotto-state-page.py --neg-arm
+  call :step always red-as-expected-state-page 1 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py" "%OUT%\state-page-neg.log" python _main\sotto-state-page.py --neg-arm
   call :expectred red-as-expected-state-page !STEP_RC! "%OUT%\state-page-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-state-page MISSING "%OUT%\state-page-neg.log" "NEG-ARM PASS" )
 
 if exist _main\battery-budget-oracle.py (
-  call :step battery-budget 0 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json;_cache\battery-steps.json" "%OUT%\battery-budget.log" python _main\battery-budget-oracle.py --policy "!CAGE_POLICY!"
+  call :step always battery-budget 0 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json" "%OUT%\battery-budget.log" python _main\battery-budget-oracle.py --policy "!CAGE_POLICY!"
   call :record battery-budget !STEP_RC!
 ) else ( call :record battery-budget MISSING )
 if exist _main\battery-budget-oracle.py (
-  call :step red-as-expected-battery-budget 1 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json;_cache\battery-steps.json" "%OUT%\battery-budget-neg.log" python _main\battery-budget-oracle.py --neg-arm
+  call :step always red-as-expected-battery-budget 1 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json" "%OUT%\battery-budget-neg.log" python _main\battery-budget-oracle.py --neg-arm
   call :expectred red-as-expected-battery-budget !STEP_RC! "%OUT%\battery-budget-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-battery-budget MISSING "%OUT%\battery-budget-neg.log" "NEG-ARM: PASS" )
 REM A POLITICA DE LARGADA NAO VEM DO AMBIENTE (medido 2026-11-12): esta corrida

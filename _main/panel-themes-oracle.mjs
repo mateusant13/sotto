@@ -57,6 +57,7 @@ import vm from 'node:vm';
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium } from 'file:///H:/env/npm-global/node_modules/playwright/index.mjs';
+import { fixtureTempRoot } from './fixture-temp.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -249,6 +250,22 @@ const WORDS = 'banana pera manga uva abacaxi morango goiaba pitanga carambola ja
 const ENTRIES = Array.from({ length: ROWS }, (_, i) => at((ROWS - i) * 60000,
   `${WORDS} ${i + 1}`, i % 2 ? 'youtube' : 'pc'));
 
+/* NAVIGATION BUDGET, MEASURED (2026-11-23). The battery runs caged
+ * (`python -m watcher run --cpu 40`) and the cage also relocates TMPDIR onto the
+ * governor's own cache volume, which its logging writes continuously. Measured:
+ * the run of 2026-11-23 11:18 spent 192.67 s in this arm and one mutant died in
+ * `page.goto` with `Timeout 30000ms exceeded` -- the 30 s is puppeteer's default,
+ * not a measurement. The whole 13-mutant arm costs 258.8 s solo (~20 s per
+ * mutant including one goto), so 120 s is 6x the observed per-mutant cost and
+ * still bounded; a real breakage fails in two minutes and now NAMES the mutant
+ * and the target, instead of dying inside a library default.
+ */
+const NAV_TIMEOUT_MS = 120000;
+
+/* The profile Playwright creates for the POSITIVE arm also lands on the temp
+ * root it measured -- otherwise only the negative arm would be fast. */
+fixtureTempRoot('THEMES');
+
 async function openPanel(browser, dir) {
   const ctx = await browser.newContext({ viewport: { width: 380, height: 900 } });
   await ctx.addInitScript((rows) => {
@@ -282,7 +299,8 @@ async function openPanel(browser, dir) {
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('requestfailed', (r) => errors.push(`requestfailed ${r.url()} (${r.failure() && r.failure().errorText})`));
-  await page.goto(pathToFileURL(path.join(dir, 'panel.html')).href, { waitUntil: 'load' });
+  await page.goto(pathToFileURL(path.join(dir, 'panel.html')).href,
+    { waitUntil: 'load', timeout: NAV_TIMEOUT_MS });
   await page.waitForFunction(
     (n) => document.querySelectorAll('#history-list .hist').length >= n,
     ROWS,
@@ -1482,7 +1500,7 @@ function plantMutant(dir, mutant) {
 }
 
 async function negativeArm() {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sotto-themes-neg-'));
+  const tmp = fs.mkdtempSync(path.join(fixtureTempRoot('THEMES'), 'sotto-themes-neg-'));
   const results = [];
   let caught = 0;
   try {
@@ -1522,7 +1540,15 @@ async function negativeArm() {
         results.push({ name: mutant.name, ok: false, why: plantError });
         continue;
       }
-      const report = await run(copy, { only: SHORT });
+      console.log('THEMES mutant %d/%d %s', results.length + 1, MUTANTS.length, mutant.name);
+      let report;
+      try {
+        report = await run(copy, { only: SHORT });
+      } catch (err) {
+        console.log('THEMES mutant %s CRASHED before it could be judged: %s',
+          mutant.name, (err && err.message) || err);
+        throw err;
+      }
       if (mutant.expect === 'inventory') {
         const ok = report.inventoryOk === false;
         results.push({ name: mutant.name, ok, why: ok ? 'inventory refused' : 'inventory accepted the mutant' });

@@ -7,6 +7,6 @@
   "worker/inspect_model.py": 4,
   "worker/lang_prompt.py": 2,
   "worker/redux_live.py": 2,
-  "worker/sotto_worker.py": 8,
+  "worker/sotto_worker.py": 5,
   "worker/wasapi_loopback.py": 2
 }

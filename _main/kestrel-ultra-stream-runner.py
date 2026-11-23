@@ -371,6 +371,15 @@ def _model_identity(model_dir: Path, files: list[Path], cache_root: Path,
                     *, hash_file: Callable = _hash_file,
                     fingerprint: Callable = _fingerprint) -> dict:
     fingerprints = [{"name": path.name, "fingerprint": fingerprint(path)} for path in files]
+    # A IDENTIDADE SO' SE REAPROVEITA COM PROVA DE QUE O BYTE NAO MUDOU (2026-11-23).
+    # A revisao independente de 2026-11-21 levantou a pergunta certa -- "copiar so' o
+    # SHA antigo nao protege contra mudanca do ficheiro" -- e a resposta que o codigo
+    # ja' tinha e' o `usn` do NTFS (avanca em TODA a escrita) somado a
+    # size+mtime+ctime+file_id; o que faltava era o caso em que o volume NAO devolve
+    # `usn` (`_file_usn` devolve None): aí o fingerprint e' so' de metadados, e
+    # reaproveitar o hash seria copiar um SHA sem prova. Sem `usn` em TODOS os
+    # ficheiros, o receipt em cache e' ignorado e a identidade e' RE-MEDIDA.
+    reuse_ok = all(row["fingerprint"].get("usn") for row in fingerprints)
     root_key = _sha(_canonical({"schema": MODEL_SCHEMA, "commit": PINNED_MODEL_COMMIT,
                                 "path": str(model_dir.resolve()).casefold(),
                                 "files": fingerprints}))
@@ -379,7 +388,7 @@ def _model_identity(model_dir: Path, files: list[Path], cache_root: Path,
     _reject_reparse(identity_root, "model identity cache")
     identity_path = identity_root / (PINNED_MODEL_COMMIT + ".json")
     cached = None
-    if identity_path.exists():
+    if reuse_ok and identity_path.exists():
         _reject_reparse(identity_path, "model identity receipt")
         if identity_path.stat().st_size > MAX_IDENTITY_BYTES:
             raise Refusal("model identity receipt exceeds its size budget")
@@ -416,6 +425,7 @@ def _model_identity(model_dir: Path, files: list[Path], cache_root: Path,
             "bytes": sum(row["fingerprint"]["size"] for row in fingerprints),
             "files": len(files), "cache_hit": bytes_hashed == 0,
             "bytes_hashed": bytes_hashed, "identity_s": round(time.perf_counter() - started, 6),
+            "identity_basis": "usn+metadata" if reuse_ok else "rehash",
             "signatures": fingerprints}
 
 
@@ -1185,6 +1195,34 @@ async def _execute_engine_rows(deps: dict, model_dir: Path, source_identity: dic
             pass
 
 
+def _engine_report_inputs(result: dict) -> tuple[list, float, dict, dict]:
+    """O que o ramo de CACHE FRIO agrega, lido do resultado do motor.
+
+    Existia aqui um `UnboundLocalError` (encontrado pela revisao independente em
+    2026-11-21, no dia em que esta lane parou): `model_ready_s`, `gpu` e
+    `process_info` eram atribuidos SO' no ramo de retomada, e o ramo de cache frio
+    agregava com esses nomes -- ou seja o caminho que ainda nao tinha nada em
+    cache morria antes de escrever o relatorio que ele existe para produzir. Um
+    nome que so' um ramo atribui nao e' um valor: a leitura passa a ser DESTE
+    ponto, que recusa uma resultado incompleto em vez de estourar.
+    """
+    if not isinstance(result, dict):
+        raise Refusal("engine result is not an object")
+    rows = result.get("rows")
+    model_ready_s = result.get("model_ready_s")
+    gpu = result.get("gpu")
+    process_info = result.get("process")
+    if not isinstance(rows, list) or not rows:
+        raise Refusal("engine result carries no rows")
+    if type(model_ready_s) not in (float, int) or not math.isfinite(float(model_ready_s)) or model_ready_s < 0:
+        raise Refusal("engine result carries no model-ready receipt")
+    if not isinstance(gpu, dict) or gpu.get("device") != "cuda:0":
+        raise Refusal("engine result does not name the CUDA device")
+    if not isinstance(process_info, dict):
+        raise Refusal("engine result carries no process receipt")
+    return rows, float(model_ready_s), gpu, process_info
+
+
 def run(args: argparse.Namespace, *, dependencies: dict | None = None) -> dict:
     manifest_path = _require_h_path(args.manifest, "manifest", must_exist=True)
     cache_root = _require_h_path(args.cache_root, "cache root", must_exist=False)
@@ -1248,7 +1286,7 @@ def run(args: argparse.Namespace, *, dependencies: dict | None = None) -> dict:
             deps = _prepare_runtime(model_dir, source_identity)
         result = asyncio.run(_execute_engine_rows(deps, model_dir, source_identity,
                                                   rows, found, hypotheses_path, cache_key))
-        all_rows = result["rows"]
+        all_rows, model_ready_s, gpu, process_info = _engine_report_inputs(result)
         scorer_result = _score(hypotheses_path, manifest_path)
         report = _aggregate_rows(all_rows, model_ready_s, gpu, process_info,
                                  scorer_result, cache_key, cache_hit=False)
@@ -1584,6 +1622,53 @@ def _selftest() -> None:
                   "wer": 0.0, "hypotheses_sha256": "f" * 64}
         public_raw = json.dumps(_public_report(public), sort_keys=True)
         assert "TRANSCRIPT_SENTINEL" not in public_raw and "text" not in _public_report(public)
+        # O RAMO DE CACHE FRIO (2026-11-23): os quatro valores vem do resultado do
+        # motor, e um resultado sem o recibo e' RECUSADO em vez de estourar num
+        # `UnboundLocalError` que nem nomeia o caminho.
+        fake_engine = {"rows": [fake_row], "model_ready_s": 1.5,
+                       "gpu": {"device": "cuda:0"}, "process": {"pid": 1}}
+        got_rows, got_ready, got_gpu, got_proc = _engine_report_inputs(fake_engine)
+        assert got_rows == [fake_row] and got_ready == 1.5
+        assert got_gpu["device"] == "cuda:0" and got_proc["pid"] == 1
+        for broken, why in (({"rows": [fake_row]}, "model-ready"),
+                            ({"rows": [fake_row], "model_ready_s": 1.0}, "device"),
+                            ({"rows": [fake_row], "model_ready_s": 1.0,
+                              "gpu": {"device": "cpu"}}, "cuda"),
+                            ({"rows": [], "model_ready_s": 1.0,
+                              "gpu": {"device": "cuda:0"}, "process": {}}, "rows"),
+                            ({"rows": [fake_row], "model_ready_s": 1.0,
+                              "gpu": {"device": "cuda:0"}}, "process")):
+            try:
+                _engine_report_inputs(broken)
+            except Refusal:
+                pass
+            else:
+                raise AssertionError("cold-cache aggregate accepted a result without %s" % why)
+        # A IDENTIDADE DO MODELO, sem modelo: com `usn` o receipt e' reaproveitado;
+        # sem `usn` ele e' IGNORADO e o conteudo e' re-medido (nunca um SHA copiado
+        # sem prova de que o byte nao mudou).
+        ident_root = temp / "ident"
+        fake_files = [temp / "a.bin", temp / "b.bin"]
+        calls = {"n": 0}
+        def _fake_hash(path, *, paced=False):
+            calls["n"] += 1
+            return ("%064x" % (calls["n"] + 900)), 10
+        fp_usn = lambda _p: {"size": 10, "mtime_ns": 1, "ctime_ns": 1,
+                             "device": 1, "file_id": 7, "usn": 4242}
+        fp_nousn = lambda _p: {"size": 10, "mtime_ns": 1, "ctime_ns": 1,
+                               "device": 1, "file_id": 7, "usn": None}
+        ident1 = _model_identity(temp / "m", fake_files, ident_root,
+                                 hash_file=_fake_hash, fingerprint=fp_usn)
+        assert ident1["cache_hit"] is False and ident1["bytes_hashed"] == 20
+        assert ident1["identity_basis"] == "usn+metadata"
+        ident2 = _model_identity(temp / "m", fake_files, ident_root,
+                                 hash_file=_fake_hash, fingerprint=fp_usn)
+        assert ident2["cache_hit"] is True and ident2["sha256"] == ident1["sha256"]
+        before = calls["n"]
+        ident3 = _model_identity(temp / "m", fake_files, ident_root,
+                                 hash_file=_fake_hash, fingerprint=fp_nousn)
+        assert calls["n"] == before + 2, "sem usn a identidade TEM de ser re-medida"
+        assert ident3["cache_hit"] is False and ident3["identity_basis"] == "rehash"
         if "kestrel" in sys.modules:
             raise AssertionError("model-free selftest imported Kestrel")
     print("KESTREL_ULTRA_STREAM_SELFTEST PASS manifest/model-pin/cuda/no-download/queue/updates/resume/redaction")

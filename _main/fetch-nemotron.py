@@ -33,6 +33,7 @@ import argparse
 import json
 import os
 import sys
+import time
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS = os.path.join(HERE, 'worker', 'models')
@@ -130,6 +131,50 @@ def download():
     return 0
 
 
+def _standin_root():
+    """The cheapest volume to build 793 MB of stand-ins on, MEASURED.
+
+    `--neg-arm` does not copy the graphs -- it truncates sparse stand-ins of the
+    same length (the verifier only ever size-checks them), and that allocation is
+    the whole cost of the arm. Measured 2026-11-23 on this box: truncating 658 MB
+    costs 2 945 ms on the cage's own cache volume (`G:\\watcher-state\\cache\\tmp`,
+    where the governor writes continuously) against 1 139 ms on `H:\\cc-tmp`. The
+    root was previously `TMPDIR or gettempdir()`, i.e. chosen by EXISTENCE -- the
+    same defect already cured in `sotto-state-page.py`. Here the probe allocates
+    the thing the arm actually allocates, so the choice is measured rather than
+    assumed.
+    """
+    import tempfile as _tf
+    candidates = []
+    for cand in (os.environ.get('TMPDIR'), _tf.gettempdir(),
+                 os.path.join(os.path.splitdrive(os.path.abspath(__file__))[0] + os.sep,
+                              'cc-tmp')):
+        if not cand:
+            continue
+        cand = os.path.abspath(cand)
+        if cand not in candidates:
+            candidates.append(cand)
+    best, best_ms = None, None
+    for cand in candidates:
+        try:
+            os.makedirs(cand, exist_ok=True)
+            probe = os.path.join(cand, '.nemotron-neg-probe')
+            t0 = time.perf_counter()
+            with open(probe, 'wb') as fh:
+                fh.truncate(64 << 20)
+            ms = (time.perf_counter() - t0) * 1000.0
+            os.remove(probe)
+        except Exception:
+            continue
+        if best_ms is None or ms < best_ms:
+            best, best_ms = cand, ms
+    chosen = best or _tf.gettempdir()
+    print('NEG-ARM stand-ins root=%s probe_ms=%s candidates=%s'
+          % (chosen, None if best_ms is None else round(best_ms, 1),
+             ', '.join(candidates)), flush=True)
+    return chosen
+
+
 def neg_arm():
     """Prova o VERIFICADOR: muta um numero normativo numa COPIA e exige o RED.
 
@@ -144,10 +189,11 @@ def neg_arm():
     if not os.path.exists(cfg_src):
         print('NEG-ARM IMPOSSIVEL -- nao ha genai_config.json em %s' % TARGET)
         return 2
-    base = os.environ.get('TMPDIR') or tempfile.gettempdir()
+    base = _standin_root()
     work = tempfile.mkdtemp(prefix='nemotron-neg-', dir=base)
     try:
         for name in list(EXPECTED) + list(EXPECTED_PRESENT):
+            print('NEG-ARM: stand-in %s' % name, flush=True)
             src = os.path.join(TARGET, name)
             if os.path.exists(src):
                 dst = os.path.join(work, name)
@@ -161,7 +207,7 @@ def neg_arm():
         cfg = json.load(open(os.path.join(work, 'genai_config.json'), encoding='utf-8'))
         cfg['model']['chunk_samples'] = cfg['model'].get('chunk_samples', 8960) + 1
         json.dump(cfg, open(os.path.join(work, 'genai_config.json'), 'w', encoding='utf-8'))
-        print('NEG-ARM: chunk_samples mutado em +1 numa COPIA (%s)\n' % work)
+        print('NEG-ARM: chunk_samples mutado em +1 numa COPIA (%s)\n' % work, flush=True)
         rc = verify(work)
         print()
         print('NEG-ARM: %s' % ('PASS -- a mutacao do contrato derruba o verificador'

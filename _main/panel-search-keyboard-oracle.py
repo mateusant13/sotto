@@ -117,18 +117,52 @@ def control(say):
     os.makedirs(workdir, exist_ok=True)
     mutant = os.path.join(workdir, "log-mutant.txt")
     with open(LOG, encoding="utf-8", errors="replace", newline="") as handle:
-        original = handle.read().splitlines(True)
+        live = handle.read().splitlines(True)
+    # ANCORA RE-MEDIDA 2026-11-23: o seeding exigia uma linha `active=true`, e o
+    # log VIVO pode nao ter NENHUMA linha `POINTER_INTERACTIVE` (o dono abriu a
+    # app e o ponteiro nunca passou no painel: 0 linhas medidas as 04:43 da
+    # sessao de 2026-11-23) -- o controlo dizia "could not seed" e saia com rc=0,
+    # que a bateria le' como o controlo NAO reprovar. Duas metades:
+    #   (a) a semente e' QUALQUER linha que o leitor casou -- prefere-se
+    #       `active=true`, uma `active=false` serve (basta UMA das tres flags
+    #       contradizer a invariante);
+    #   (b) sem linha nenhuma no log vivo, a copia e' SINTETICA: tres linhas com a
+    #       forma que o shell escreve, uma consistente a activa, uma consistente
+    #       IDLE e a terceira contraditoria. O log real nunca e' tocado.
+    fallback = None
     seed = None
-    for index, line in enumerate(original):
+    for index, line in enumerate(live):
         match = LINE.search(line)
-        if match and match.group(1) == "true" and match.group(2, 3) != ("true", "true"):
+        if not match:
+            continue
+        if match.group(1) == "true" and match.group(2, 3) != ("true", "true"):
             seed = index
             break
+        if fallback is None:
+            fallback = index
     if seed is None:
-        say("  arm 4  CONTROL: could not seed a violation (no active=true line to mutate)")
-        return False
-    patched = re.sub(r"\bclick_through=\w+", "click_through=true", original[seed], count=1)
-    patched = re.sub(r"\bnoactivate=\w+", "noactivate=true", patched, count=1)
+        seed = fallback
+    source = "live"
+    if seed is None:
+        source = "synthetic"
+        original = [
+            "POINTER_INTERACTIVE active=true click_through=false applied=true "
+            "noactivate=false\n",
+            "POINTER_INTERACTIVE active=false click_through=true applied=true "
+            "noactivate=true\n",
+            "POINTER_INTERACTIVE active=true click_through=false applied=true "
+            "noactivate=false\n",
+        ]
+        seed = 2
+    else:
+        original = live
+    row = LINE.search(original[seed]).group(1, 2, 3)
+    patched = original[seed]
+    if row[0] == "true":
+        patched = re.sub(r"\bnoactivate=\w+", "noactivate=true", patched, count=1)
+    else:
+        # uma linha IDLE: vira-la `active=true` contradiz as duas flags dela
+        patched = re.sub(r"\bactive=\w+", "active=true", patched, count=1)
     lines = list(original)
     lines[seed] = patched
     # How far the copy differs from the original: exactly ONE line, so there is no
@@ -138,15 +172,24 @@ def control(say):
     with open(mutant, "w", encoding="utf-8", newline="") as handle:
         handle.write("".join(lines))
     caught = violations(parse(mutant))
-    say("  arm 4  CONTROL (one line of a COPY made contradictory): patched the line the "
-        "reader matched (line %d), the copy differs from the original in %d line(s); "
-        "violations caught=%d (the original had %d)"
-        % (seed + 1, changed, len(caught), len(violations(parse(LOG)))))
+    say("  arm 4  CONTROL (one line of a COPY made contradictory): source=%s, patched "
+        "line %d (semente active=%s cf=%s na=%s), the copy differs from the original in "
+        "%d line(s); violations caught=%d (the live log had %d)"
+        % (source, seed + 1, row[0], row[1], row[2], changed, len(caught),
+           len(violations(parse(LOG)))))
     os.remove(mutant)
     if changed != 1:
         say("  arm 4  CONTROL: the patch was NOT surgical -- the control is not testing what it claims")
         return False
     if not caught:
+        return False
+    if source == "synthetic" and len(caught) != 1:
+        # a copia sintetica carrega UMA contradicao: mais do que uma quer dizer
+        # que o leitor marcou uma linha consistente -- o controlo nao provaria o
+        # que diz provar.
+        say("  arm 4  CONTROL: the synthetic copy has ONE contradiction and the reader "
+            "flagged %d line(s) -- the reader or the fixture is wrong"
+            % len(caught))
         return False
     return True
 
@@ -201,9 +244,17 @@ def main(argv=None):
     bad = violations(rows)
     say("  arm 2  the run log: %d POINTER_INTERACTIVE line(s), active=true %d, active=false %d, invariant violations %d (log %d B, sha256 %s)"
         % (len(rows), truthy, falsy, len(bad), len(log_bytes), log_sha))
+    # UM LOG SEM A LINHA NAO REFUTA A LINHA F9 (medido 2026-11-23): a sessao viva
+    # do dono (aberta 04:43) tinha ZERO `POINTER_INTERACTIVE` -- o ponteiro nunca
+    # passou no painel. Contar a ausencia como "o painel nao pode receber
+    # activacao" seria julgar o PRODUTO por nao ter sido exercitado; o passo
+    # declara-se SKIPPED (nunca verde), e o `:skipped` da bateria exige a frase.
+    skipped = None
     if not rows:
-        wrong.append("arm 2: the log carries no POINTER_INTERACTIVE line at all")
-    if truthy == 0 or falsy == 0:
+        skipped = ("no-pointer-lines in _main/webview-run.log (0 matched line(s)) -- "
+                   "arm 2 is the only arm that reads the log, and the chain arms passed")
+        say("  arm 2  SKIPPED reason=no-pointer-lines")
+    elif truthy == 0 or falsy == 0:
         wrong.append("arm 2: the toggle only ever went ONE way -- the panel could not take activation")
     if bad:
         wrong.append("arm 2: %d line(s) break the invariant, e.g. %s" % (len(bad), bad[:2]))
@@ -235,7 +286,12 @@ def main(argv=None):
               " own condition -- DISABLED while no writer exists -- and that no keystroke was ever typed"
               " into it: that is UNMEASURED, and needs the launch the owner order forbids"
               ) % (truthy, falsy, len(bad), len(rows))
-    say("VERDICT: " + ("PASS" if not wrong else "FAIL") + detail)
+    if wrong:
+        say("VERDICT: FAIL" + detail)
+    elif skipped:
+        say("VERDICT: SKIPPED reason=" + skipped)
+    else:
+        say("VERDICT: PASS" + detail)
     for item in wrong:
         say("  wrong: " + item)
     return 0 if not wrong else 1

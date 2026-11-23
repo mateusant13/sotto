@@ -34,6 +34,7 @@
 import { chromium } from 'file:///H:/env/npm-global/node_modules/playwright/index.mjs';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { fixtureTempRoot } from './fixture-temp.mjs';
 import path from 'node:path';
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..');
@@ -84,6 +85,7 @@ const themeIds = (() => {
   return [...ids];
 })();
 
+fixtureTempRoot('HISTORY-CLIP');
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const ctx = await browser.newContext({ viewport: { width: 380, height: 900 } });
 /* O MESMO BRIDGE PARA AS DUAS CARGAS (2026-11-09): a janela de retencao e' uma
@@ -126,12 +128,23 @@ const FAKE_BRIDGE = ({ rows, hits }) => {
    * depend on the owner's stored choice. */
   try { window.localStorage.setItem('sotto.theme', 'theme-1'); } catch (err) { void err; }
 };
+/* NAVIGATION BUDGET, MEASURED (2026-11-23). Same class as
+ * `panel-themes-oracle.mjs`: puppeteer's default `page.goto` timeout is 30 s, and
+ * under the caged battery this arm measured 44.1 s against a 9.0 s baseline
+ * (battery run 2026-11-23 11:18). The page is a local `file://` tree; the 30 s is
+ * a library default, not a measurement of what loading it needs. 120 s is the
+ * same declared budget the themes oracle now carries, so that a real breakage
+ * fails in two minutes and the log names the target instead of dying inside a
+ * default.
+ */
+const NAV_TIMEOUT_MS = 120000;
+
 await ctx.addInitScript(FAKE_BRIDGE, { rows: entries, hits: {} });
 
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
-await page.goto(PANEL, { waitUntil: 'load' });
+await page.goto(PANEL, { waitUntil: 'load', timeout: NAV_TIMEOUT_MS });
 await page.waitForFunction(
   () => document.querySelectorAll('#history-list .hist').length >= 3,
   null,
@@ -506,7 +519,7 @@ async function retentionArms(mutantJs) {
       contentType: 'text/javascript', body: mutantJs,
     }));
   }
-  await rpage.goto(PANEL, { waitUntil: 'load' });
+  await rpage.goto(PANEL, { waitUntil: 'load', timeout: NAV_TIMEOUT_MS });
   await rpage.waitForFunction(
     () => document.querySelectorAll('#history-list .hist').length >= 1, null, { timeout: 15000 });
   const feed = await rpage.evaluate(() => {

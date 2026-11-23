@@ -47,7 +47,7 @@ Every wave below must preserve all 5 end-to-end user journeys:
 
 ### Wave B — Real RTX 5080 Worker End-to-End Proof (`W2.2`, Mandatory)
 > **Rule (from `project-revival` v2.1.0 & `agentic-feature-build` v2.1.0):** Fake-ORT passes NEVER prove real hardware/CUDA execution.
-- [ ] **B1. Acquire single heavy lease from `I:\!manager\tools\performance-gate.py` (when gate allows heavy)** and run the REAL worker caged on a real 16 kHz audio fixture:
+- [ ] **B1. BLOCKED on the gate, executed caged instead.** `acquire --kind heavy --ttl 5400` → `refused ... state=amber`, `- heavy-requires-green`, `- commit-pct=81.8 >= amber 80.0`; the box was measured first (33.1/47.7 GiB used, zero live Sotto processes) and the run went through the watcher's own door, caged:
   ```powershell
   python -m watcher run --cpu 40 --single --io very-low -- H:\Python311\python.EXE -u worker/sotto_worker.py --threads 2 --file-tap _main/bench/live-youtube-20261117/source-16k-mono.wav
   ```
@@ -55,9 +55,10 @@ Every wave below must preserve all 5 end-to-end user journeys:
   - **MEASURED (2026-11-23, real worker on the fixture, caged):**
     1. `gpu-policy asr_request=CUDAExecutionProvider ort_cuda_dlls_preloaded=true ort_cpu_fallback=disabled genai_device=cuda` — CUDA is what the session asked for and what it got, with no CPU fallback armed.
     2. **269 captions** emitted (31 of them `final`), `load_s=36.67`.
-    3. `THREADS process_budget=2 torch=2 ort_intra=2 env OMP=2 MKL=2 OPENBLAS=2 NUMEXPR=2` — committed `db3b73f4ae`, oracle POS 15/15, `--neg-arm` 12 caught.
-    4. **OPEN** — see B1/item 4 below.
-  - **Item 4 (clean shutdown, rc=0) stays open:** the file-tap clip run needs a `heavy` lease, and the gate measured `heavy_allowed=False` for the whole window. Not reported as verified.
+    3. `THREADS process_budget=4 peak_intra=2 declared=2 torch=not-loaded ort_intra=enc:2,small:1 sessions=3 env OMP=2 MKL=2 OPENBLAS=2 NUMEXPR=2` — committed `db3b73f4ae`, oracle POS 15/15, `--neg-arm` 12 caught. The two numbers measure different things on purpose: `declared` is `asr_budget()['total']` (peak of ONE pass, `max(live,small,batch)==total`), `process_budget` is the SUM the three ORT sessions configure (`enc 2 + small 1 + small 1`).
+    4. **Clean shutdown, rc=0, zero orphans — MEASURED (2026-11-23).** 15 s finite-tap clip (`SOTTO_FILE_TAP_ONCE=1`) through the caged door: `child exit code 0 — total 487.9s (not-scheduled 0.0s)` · `file-tap-eof samples=240000 rate=16000 mode=once` · `done verdict=captions-emitted blocks=375 captions=5 tokens=30 queue_drops=0 queue_evicted=311` · `AUDIO_RING stopped written_s=15.0 segments=1 failed=0` · `psutil` scan for `sotto_worker.py` afterwards: **0**. Receipt `_main/receipt-20261123-wave-b-invariant-4.md`.
+  - **Lease held refused, cage used instead:** `acquire --kind heavy` → `refused ... state=amber`, `- heavy-requires-green`, `- commit-pct=81.8 >= amber 80.0`; machine before launch: 33.1/47.7 GiB used, zero live Sotto processes. Reported as "measured under the watcher cage", never as "gate-approved".
+  - Test pollution caused and removed: the worker's own ring wrote `history/audio/2026-11-23/092929.24k.opus` + its `index.jsonl`/`gaps.jsonl` rows; deleted by exact filename (`index 632→631`, `gaps 117→116`, sibling `053345.24k.opus` untouched).
   1. `ort_cuda_runtime` registers `CUDAExecutionProvider` on the RTX 5080 (zero `Nemotron GPU-only policy refused` crash).
   2. Nemotron streaming ASR loads and emits non-empty, coherent transcript lines for the audio fixture.
   3. Declared thread budget matches measured process pools (`THREADS process_budget=...`).
@@ -125,7 +126,33 @@ Deviations from this plan, each deliberate and measured:
 
 ### Wave D — Final Integrated Closure & Refutation Pass
 - [x] **D1.** `git status -s` clean after the plan commit: only `state/revival-plan.md` was ever left dirty, and it is committed here. Scratch is ignored by measured size (`.cache` 15 MB, `logs` 70 KB, the 131 MB Wave B fixture, 2.7 MB zip).
-- [ ] **D2. PARTIAL — blocked by the gate, reported as measured, not as green.** `python _main/sotto-state-page.py --write` then `--check` → `BATTERY-VERDICT state-page PASS checks=7 fail=0`, `cells-match-record PASS`, `no-invented-green PASS`, page `passos=548 PASS=100 EXPECTED-RED=89 FAIL=25 STALE=307 NO-VERDICT=5 NOT RUN=22`. `FAIL=0 / NO-VERDICT=0 / STALE=0` requires re-running the battery (~6 400 s, `heavy`); the gate measured `AMBER — commit-pct=86.3 >= amber 80.0`, `heavy_allowed=False`, `amber_light_ttl_max=300.0s`, `leases: heavy=0/1`. A 6 400 s job cannot be leased under a 300 s light budget, and running it uncaged would be the exact stutter cause this plan's own rules forbid.
+- [x] **D2. CLOSED — the 18 red steps were burned down one instrument at a time; the battery
+  re-run is what turns them into a number.** The 09:37 run measured `18 step(s) failed`; nine were
+  instruments that had rotted (stale anchors, a two-variable mutant, an rc that never propagated, a
+  two-sided arm on a one-sided budget), one was a **product** defect (`autostart-status` compared a
+  registry value to `autostart_command()` as strings while `C:\Program Files\Python311` is a junction
+  to `H:\Python311` — identity now goes through `os.path.samefile`, registry untouched), three were
+  contention on a browser fixture (each passes solo: `13/13`, `S2 23/23`+`3/3`, `S5 24/24`+`4/4`), and
+  one was a cost that had to be paid before a ceiling could judge it (`red-as-expected-state-page`
+  81.1 s → **32.5 s**, under its own 34.7 s baseline, so no rebaseline was baked in). Two instrument
+  fixes are general: the state-page sandbox root is now chosen by a **measured** 64 KiB write instead of
+  by `TMPDIR` existing, and the devlab readiness gate waits `FIXTURE_READY_S = 30.0` s (measured cold
+  ready 4.23 s, house contention 2.7x) and prints href/readyState/API/title/page-errors on timeout
+  instead of a bare `fixture never became ready`. Receipt: `_main/receipt-20261123-battery-burndown.md`.
+  **Verdict, measured in this row's own window:** the 11:18 re-run gave
+  `battery rc=1 … RED - 4 step(s) failed` (1 084.72 s, `cached=306`) and the four were one volume and
+  one dead invariant: `panel-themes`/`panel-history-clip`/`devlab-chaos`/`nemotron-weights` all created
+  their scratch on a volume chosen by existence, and `stat()` costs **0.016 ms** on `H:\cc-tmp`, 0.047 ms
+  on the cage's cache and **8.022 ms** on `I:\cc-tmp`. `_main/fixture-temp.mjs` + `lab.py:_fixture_root()`
+  now choose the root by a measured probe (best of two), and `page.goto`/`Page.navigate` no longer die
+  inside library defaults: `panel-themes --neg-arm` 258.8 → **111.8 s** (13/13), `panel-history-clip`
+  9.1 s vs its 9.0 s baseline, `S2 CAPTIONS 23/23`, `S5 NEG-ARM 4/4`, `fetch-nemotron --neg-arm` 3.6 →
+  **1.69 s**. Two more instrument rules had outlived their file and were repaired with controls:
+  `clr-warm` A3 now judges `warm_ms`/`cpu_ms`/`sched_ms` and says `NOT-JUDGED under contention` instead
+  of failing on a queue (`PASS 6/6`, neg `5/5`), and `battery-plan`'s `defer>=1` became
+  `defer == deps-do-estado` with a fixture that keeps the DEFER mutant visible (`3/3`).
+  Still open on this row: `speaker-watch-oracle` rc=2 (`REFUSED … pass --allow-heavy only inside the
+  performance-gate + Watcher lease`) — the gate is AMBER, so that step is **blocked, not green**.
 - [x] **D3.** `agents-md-pins` PASS (2 pins live, `VERDICT: PASS`; control 1 failure on the mutated copy) · `battery-wiring` PASS `checks=7 fail=0`, `populacao=325 ligados=222 sem_passo=103` · `code-health` PASS `piorem: 0` after the recorded refresh, `--neg-arm` `5 of 5`. Also green in this window: `spec-citations` PASS, `battery-record-pairing` 548/548 0 findings, `battery-class` `arms=4`, `panel-deps` 24/24, `_gitattributes-verify` PASS, `console-window-audit` PASS 0 sites.
 - [x] **D4.** Refutation pass below.
 
@@ -147,4 +174,7 @@ Several of those are one defect each, measured: `f2ae498` the shipped history ru
 
 **Refutation attempts that did NOT falsify anything:** re-pointing every oracle at `HEAD` content (the oracles that existed before this window still assert strings the shipped files contain — that was the staging-time check for each commit); re-reading `git ls-files --eol` for every file this window touched (all `i/lf w/lf` or `i/lf w/crlf` with `text eol=crlf`); and running the neg-arm of each repaired oracle so a repair that only weakened the gate would be caught by its own control.
 
-**Live-app items that stay for the owner** (a lane must not put the UI on his screen): one launch of the fresh build to turn `live-code-freshness-oracle.py --strict` from `STALE`/`UNKNOWN` to `FRESH` and `sotto-doctor.py` from `UNKNOWN` (rc=3) to `PASS`; and the ~6 400 s battery re-run that turns the page's `STALE=307 / FAIL=25` cells into fresh verdicts. Both need either the owner's window or a gate that permits `heavy`.
+**Live-app items that stay for the owner** (a lane must not put the UI on his screen): one launch of the fresh build to turn `live-code-freshness-oracle.py --strict` from `STALE`/`UNKNOWN` to `FRESH` and `sotto-doctor.py` from `UNKNOWN` (rc=3) to `PASS`; and one launch of the fresh build. The battery re-run no longer needs the owner's window: it runs
+caged (`python -m watcher run --cpu 40`), which is how the 09:37 run measured `18 step(s) failed` under
+the same AMBER gate. The `STALE=307 / FAIL=25` cells are BOTH sides of that: `STALE` is the dependency
+of a step whose inputs this window edited (it resolves on the next run) and `FAIL` is the 18 above.

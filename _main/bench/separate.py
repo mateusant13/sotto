@@ -333,6 +333,15 @@ class PeakRSS:
         return False
 
 
+#: Tecto de leitura INTEIRA (2026-11-23). Um ficheiro 16 kHz mono float32 ocupa
+#: 64 KiB/s, ou seja 1 h = 230 MB e 5 h = 1,15 GB -- e o `read_wav()` inteiro
+#: acontece ANTES de o `PeakRSS` existir, logo essa alocacao nunca entrava na
+#: medicao e um ficheiro longo podia rebentar o orcamento de memoria em silencio.
+#: Medido pela revisao A3 de 2026-11-21: "`--score` limits the requested span but
+#: `read_wav()` loads the entire input before the RSS monitor starts".
+MAX_FULL_READ_MB = 512.0
+
+
 def read_wav(path: str) -> np.ndarray:
     import soundfile as sf
     x, sr = sf.read(path, dtype="float32", always_2d=False)
@@ -340,6 +349,31 @@ def read_wav(path: str) -> np.ndarray:
         x = x.mean(axis=1)
     if sr != RATE:
         raise SystemExit("separate: %s is %d Hz, expected %d" % (path, sr, RATE))
+    return np.ascontiguousarray(x, dtype=np.float32)
+
+
+def read_wav_span(path: str, start_s: float, span_s: float) -> np.ndarray:
+    """Le' SO' a janela pedida, com seek -- a alocacao e' da janela, nao do ficheiro.
+
+    O `read_wav()` inteiro e' o caminho do corpus pequeno e do `--auto-spans`
+    (a escolha por energia precisa da serie toda). Para um `--start`/`--span-s`
+    que ja' esta' declarado, ler o ficheiro inteiro para usar 30 s dele e' a
+    alocacao que a medicao nao ve'. Medido nesta funcao: um ficheiro de 5 h lido
+    por janela de 30 s aloca 1,84 MB de float32 em vez de 1 152 MB.
+    """
+    import soundfile as sf
+    with sf.SoundFile(path) as fh:
+        if fh.samplerate != RATE:
+            raise SystemExit("separate: %s is %d Hz, expected %d"
+                             % (path, fh.samplerate, RATE))
+        first = int(round(float(start_s) * RATE))
+        if first < 0 or first >= len(fh):
+            raise ValueError("span start %.2f s is outside %s" % (start_s, path))
+        want = int(round(float(span_s) * RATE))
+        fh.seek(first)
+        x = fh.read(want, dtype="float32", always_2d=False)
+    if getattr(x, "ndim", 1) > 1:
+        x = x.mean(axis=1)
     return np.ascontiguousarray(x, dtype=np.float32)
 
 
@@ -1158,7 +1192,40 @@ def score_selftest() -> int:
         ok = False
     except ValueError:
         pass
-    print("CERTAS_SCORE_SELFTEST %s controls=8" % ("PASS" if ok else "FAIL"))
+    # A JANELA POR SEEK (2026-11-23): a funcao que impede um ficheiro longo de ser
+    # lido inteiro para usar 30 s dele. Prova sintetica, sem modelo: a janela tem de
+    # ser BYTE-A-BYTE a fatia da leitura inteira, e um `--start` fora do ficheiro
+    # tem de ser recusado em vez de devolver audio vazio.
+    import tempfile
+    import soundfile as sf
+    span_ok = False
+    with tempfile.TemporaryDirectory(prefix="separate-span-") as tmp:
+        full_path = os.path.join(tmp, "full.wav")
+        sr = RATE
+        probe = np.linspace(-0.5, 0.5, sr * 4, dtype=np.float32)
+        sf.write(full_path, probe, sr, subtype="PCM_16")
+        whole = read_wav(full_path)
+        window = read_wav_span(full_path, 1.0, 0.5)
+        span_ok = (window.size == int(0.5 * sr)
+                   and float(np.max(np.abs(window - whole[sr: sr + int(0.5 * sr)]))) <= 1e-4
+                   and window.dtype == np.float32)
+        refused = False
+        # 3,9 s e' VALIDO (uma janela no rabo devolve o que existe); o que nao pode
+        # e' comecar no fim, depois do fim, ou antes do inicio.
+        for bad in (4.0, 9.0, -1.0):
+            try:
+                read_wav_span(full_path, bad, 1.0)
+            except (ValueError, SystemExit):
+                refused = True
+            else:
+                refused = False
+                break
+        span_ok = span_ok and refused
+        # e a alocacao e' da JANELA, nao do ficheiro: 0,5 s de float32 = 32 000 B.
+        span_ok = span_ok and window.nbytes == int(0.5 * sr) * 4
+    ok = ok and span_ok
+    print("CERTAS_SCORE_SELFTEST %s controls=8 span_read=%s"
+          % ("PASS" if ok else "FAIL", "PASS" if span_ok else "FAIL"))
     return 0 if ok else 1
 
 
@@ -1417,15 +1484,37 @@ def main(argv=None) -> int:
         ap.error("--score-certas is one prepared overlap span at start 0; auto/multi-span is refused")
     if not os.path.isfile(args.wav):
         ap.error("audio file is missing: %s" % args.wav)
+    #: A JANELA DECLARADA E' LIDA POR SEEK (2026-11-23). `--auto-spans` continua a
+    #: precisar da serie toda, e para esse caminho o custo e' DECLARADO antes de
+    #: acontecer: acima de `MAX_FULL_READ_MB` de float32 a leitura inteira e'
+    #: recusada por nome em vez de virar memoria invisivel.
+    span_reader = (not args.auto_spans)
+    if not span_reader:
+        try:
+            file_mb = os.path.getsize(args.wav) / 1e6
+        except OSError:
+            file_mb = 0.0
+        if file_mb > MAX_FULL_READ_MB:
+            ap.error("--auto-spans reads the whole file (%.0f MB) and the float32 "
+                     "copy would exceed the %.0f MB read ceiling; use --start/--span-s"
+                     % (file_mb, MAX_FULL_READ_MB))
+    wav_reader = (lambda p: read_wav_span(p, args.start, args.span_s)) if span_reader else read_wav
     try:
         x, score_preflight, certas_bundle = read_audio_after_score_preflight(
-            args, _score_gpu_preflight, read_wav)
+            args, _score_gpu_preflight, wav_reader)
     except (OSError, ValueError, RuntimeError) as exc:
         ap.error(str(exc))
     if args.auto_spans:
         picks = auto_spans(x, args.auto_spans, args.span_s)
+        loaded_start = 0
     else:
-        picks = [int(args.start * RATE)]
+        picks = [0]
+        loaded_start = int(round(args.start * RATE))
+        print("SPAN READ start_s=%.2f span_s=%.2f frames=%d alloc_mb=%.2f "
+              "file_mb=%.2f (seek, not a whole-file read)"
+              % (args.start, args.span_s, x.size, x.nbytes / 1e6,
+                 os.path.getsize(args.wav) / 1e6),
+              file=sys.stderr, flush=True)
     if args.stream >= 0:
         picks = picks[:1]
 
@@ -1443,7 +1532,7 @@ def main(argv=None) -> int:
         seg = x[s0: s0 + int(args.span_s * RATE)]
         if seg.size == 0:
             print("separate: span at %.1f s is past the end of %s -- nothing to do"
-                  % (s0 / float(RATE), args.wav), file=sys.stderr)
+                  % ((loaded_start + s0) / float(RATE), args.wav), file=sys.stderr)
             continue
         #: `rev` bumps whenever the SEPARATION CODE changes the bytes it writes
         #: without changing the parameters -- the content key must not serve a
@@ -1463,7 +1552,7 @@ def main(argv=None) -> int:
                            use_cache=not args.no_cache, **params)
         key = span_key(args.engine, params, seg)
         row = {"engine": args.engine, "wav": os.path.abspath(args.wav),
-               "start_s": round(s0 / float(RATE), 2),
+               "start_s": round((loaded_start + s0) / float(RATE), 2),
                "audio_s": round(seg.size / float(RATE), 2),
                "key": key,
                "cache_dir": cache_dir(args.engine, key),
