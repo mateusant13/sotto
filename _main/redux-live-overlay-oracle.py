@@ -6,9 +6,13 @@ LIVE LINE.
   ARM A  Redux ON    the live final is HELD, and exactly ONE line per segment is
                      published -- the Redux text, stamped producer="redux".
   ARM B  Redux OFF   the live final is published UNCHANGED (nemotron's text, no
-                     producer), and the canonical transcript stays EMPTY. That is
-                     the honest OFF colour, and it is what the run did before
-                     this lane existed.
+                     producer). That is the honest OFF colour, and it is what
+                     the run did before this lane existed. What the transcript
+                     takes is decided by the SHIPPED rule (`history-source.js`
+                     2026-11-05: a CLOSED line enters as route=final whatever
+                     closed it; the producer is PROVENANCE, not admission), so
+                     the arm asserts that rule instead of the pre-2026-11-05
+                     "canonical producer or nothing" door it used to repeat.
   NEG    the guard REMOVED from an in-memory copy of the SHIPPED function: the
                      live line is published TOO, so one segment produces TWO
                      finals and nemotron's text reaches the panel. The oracle
@@ -31,6 +35,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -335,26 +340,33 @@ def main():
                "start": START, "arms": []}
     for name, res in arms.items():
         payload["arms"].append({"name": name, "events": res["all"]})
-    arms_json = os.path.join(os.environ.get("TMPDIR") or HERE, "redux-live-overlay-arms.json")
-    with open(arms_json, "w", encoding="utf-8") as fh:
-        json.dump(payload, fh, ensure_ascii=False)
-
-    panel = {}
+    fd, arms_json = tempfile.mkstemp(prefix="redux-live-overlay-arms-", suffix=".json")
     try:
-        proc = subprocess.run(
-            ["node", PANEL_ORACLE, arms_json],
-            capture_output=True, text=True, timeout=120,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
-        )
-        if proc.returncode != 0:
-            print("PANEL ORACLE rc=%d" % proc.returncode)
-            print(proc.stdout[-4000:])
-            print(proc.stderr[-4000:])
-            panel = {"error": "panel oracle rc=%d" % proc.returncode}
-        else:
-            panel = json.loads(proc.stdout)
-    except Exception as exc:
-        panel = {"error": "%s: %s" % (type(exc).__name__, exc)}
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False)
+        panel = {}
+        try:
+            proc = subprocess.run(
+                ["node", PANEL_ORACLE, arms_json],
+                capture_output=True, text=True, timeout=120,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                startupinfo=subprocess.STARTUPINFO(
+                    dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
+            )
+            if proc.returncode != 0:
+                print("PANEL ORACLE rc=%d" % proc.returncode)
+                print(proc.stdout[-4000:])
+                print(proc.stderr[-4000:])
+                panel = {"error": "panel oracle rc=%d" % proc.returncode}
+            else:
+                panel = json.loads(proc.stdout)
+        except Exception as exc:
+            panel = {"error": "%s: %s" % (type(exc).__name__, exc)}
+    finally:
+        try:
+            os.unlink(arms_json)
+        except OSError:
+            pass
 
     # ── verdict ──────────────────────────────────────────────────────────────
     #
@@ -406,8 +418,9 @@ def main():
             ("the PANEL row shows the Redux text",
              norm(p.get("row_text")) == norm(REDUX),
              json.dumps(p.get("row_text"), ensure_ascii=False), False),
-            ("the HISTORY takes the Redux line (canonical)",
-             len(canon) == 1 and norm((canon[0] or {}).get("line")) == norm(REDUX),
+            ("the HISTORY takes the Redux line, NAMED as its producer",
+             len(canon) == 1 and norm((canon[0] or {}).get("line")) == norm(REDUX)
+             and (canon[0] or {}).get("producer") == "redux",
              json.dumps(canon, ensure_ascii=False)[:220], False),
         ]
 
@@ -426,9 +439,18 @@ def main():
     chk("B", "the PANEL row shows nemotron's text",
         norm(pb.get("row_text")) == norm(NEMOTRON),
         json.dumps(pb.get("row_text"), ensure_ascii=False))
-    chk("B", "the HISTORY takes NOTHING (the honest OFF colour)",
-        len(pb.get("canonical") or []) == 0,
-        json.dumps(pb.get("canonical"), ensure_ascii=False)[:220])
+    # THE SHIPPED RULE (history-source.js, 2026-11-05): a CLOSED line enters the
+    # transcript whatever closed it, and an absent producer stays absent. The
+    # pre-2026-11-05 expectation ("history stays EMPTY unless producer=redux")
+    # was the door that left the owner's panel with ZERO writers; this arm now
+    # asserts the rule that replaced it instead of the defect.
+    b_canon = pb.get("canonical") or []
+    chk("B", "the HISTORY takes the LIVE line, with NO producer invented",
+        len(b_canon) == 1
+        and norm((b_canon[0] or {}).get("line")) == norm(NEMOTRON)
+        and (b_canon[0] or {}).get("route") == "final"
+        and (b_canon[0] or {}).get("producer") is None,
+        json.dumps(b_canon, ensure_ascii=False)[:220])
 
     for c in settings["cases"]:
         chk("D", "settings: " + c["label"], c["ok"],
