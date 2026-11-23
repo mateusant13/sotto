@@ -7,7 +7,10 @@ ou usa pontuacao de forma inteligente?"*. Duas metades da resposta:
     onde ha uma marca. Custo zero de disco, funciona em qualquer lingua.
   * este ficheiro -- a metade COM modelo: um restaurador de pontuacao treinado em
     ingles (`sherpa-onnx-online-punct-en`, Apache-2.0, Edge-Punct-Casing
-    arXiv:2407.13142), int8 **7,1 MB**, CPU, 1 fio.
+    arXiv:2407.13142), int8 **7,1 MB**. It is enabled only by a native sherpa
+    API that proves CUDA device census, CPU-fallback disable, and exact CUDA
+    node assignment; the installed generic config exposes only `provider` and
+    is refused, so the ASR text remains unchanged until that API exists.
 
 MEDIDO nesta maquina (2026-11-05, 10 linhas reais do `CAPTION_IN` do log do dono):
 carga **91 ms**, por linha **6,1-8,5 ms** (mediana 6,8). Um chunk do worker e'
@@ -41,10 +44,10 @@ chama-se `nemotron-3.5-asr-ptbr-onnx-int4` -- a pontuacao DE MODELO fica
 funciona em qualquer lingua e' a de prosodia, e ela so' entra com pausas
 medidas (`punctuation_prosody.py`).
 
-AUSENTE E' UM ESTADO NORMAL: sem o modelo em `worker/models/punct-en/` este
-modulo devolve o texto intacto e `status()` diz por que. Nada aqui pode fazer
-uma legenda falhar -- toda a chamada ao modelo esta' dentro de um `try`, e o
-caminho de excepcao e' a identidade.
+AUSENTE E' UM ESTADO NORMAL: sem o modelo em `worker/models/punct-en/`, ou sem
+o strict GPU-only native API, este modulo devolve o texto intacto e `status()`
+diz por que. Nada aqui pode fazer uma legenda falhar -- todo erro do adapter e'
+fail-closed e o caminho de excepcao e' a identidade.
 """
 from __future__ import annotations
 
@@ -68,11 +71,16 @@ END_MARKS = (".", "?", "!")
 
 _LOCK = threading.Lock()
 _ENGINE = None
+# Installed vendored sherpa-onnx 2.0.1 exposes only `provider="cuda"` for
+# OnlinePunctuation: no native device census, CPU-fallback disable, or node
+# assignment readback. Keep this false until that exact runtime contract exists.
+_NATIVE_GPU_PLACEMENT_VERIFIED = False
 #: A tag de lingua do PROCESSO, posta por quem a resolveu (`StreamAsr`). O
 #: `_event` vive no `LineFormer`, que nao tem a resolucao -- e inventar uma tag
 #: la' seria adivinhar a lingua, que e' o que a guarda existe para nao fazer.
 _LANG = None
-_STATE = {"tried": False, "reason": "not-tried", "dir": None, "load_ms": None}
+_STATE = {"tried": False, "reason": "not-tried", "dir": None, "load_ms": None,
+          "provider": "cuda"}
 
 #: `SOTTO_PUNCT_MODEL` = `0` desliga mesmo com o modelo no disco; `1`/`en`
 #: liga (e a tag de lingua ainda tem de ser inglesa). Ausente = o modelo decide.
@@ -141,7 +149,7 @@ def _env_allows() -> bool:
 
 
 def load(root=None):
-    """Carrega (uma vez) e devolve o motor, ou `None` com o motivo em `status()`."""
+    """Load once with CUDA or return None; this auxiliary model never uses CPU."""
     global _ENGINE
     with _LOCK:
         if _ENGINE is not None:
@@ -151,6 +159,12 @@ def load(root=None):
         _STATE["tried"] = True
         if not _env_allows():
             _STATE["reason"] = "disabled-by-env"
+            return None
+        if not _NATIVE_GPU_PLACEMENT_VERIFIED:
+            # Refuse before even probing model files or importing the native
+            # runtime. The current public API's CUDA provider flag cannot prove
+            # device registration, disable CPU EP fallback, or attest nodes.
+            _STATE["reason"] = "gpu-placement-unprovable"
             return None
         d = find_model(root)
         if d is None:
@@ -173,6 +187,7 @@ def load(root=None):
                     cnn_bilstm=str(d / MODEL_FILE),
                     bpe_vocab=str(d / VOCAB_FILE),
                     num_threads=1,
+                    provider="cuda",
                 )
             )
             _ENGINE = sherpa_onnx.OnlinePunctuation(cfg)
@@ -258,7 +273,7 @@ def log_line() -> str:
                 f"reason=lang-unsupported lang={_LANG}")
     if s["engine"]:
         return (f"PUNCT_MODEL active=true loaded=true dir={s['dir']} "
-                f"load_ms={s['load_ms']} lang={_LANG} "
+                f"load_ms={s['load_ms']} provider={s['provider']} lang={_LANG} "
                 f"marks=comma,period max_end=question")
     return (f"PUNCT_MODEL active=false loaded=false reason={s['reason']} "
             f"dir={s['dir']} lang={_LANG}")
