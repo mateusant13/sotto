@@ -53,6 +53,11 @@ EXIT_PASS = 0
 EXIT_FAIL = 1
 EXIT_SETUP = 2
 
+#: Arms that could not run on this box, with the reason. The verdict is
+#: SKIPPED (not PASS) when the list is non-empty and nothing failed: a skipped
+#: arm is not a gate that passed.
+SKIPS = []
+
 # THE MUTANTS: each is a file this oracle judges, an EXACT anchor in it, and
 # the replacement. The anchor is matched with the FILE's own EOL.
 MUTANTS = [
@@ -108,7 +113,35 @@ def find_anchor(text, lines):
     return anchor, hits
 
 
-def battery(lp, worker_source, model_dir, sw, p):
+def _cuda_route_ready(sw, p):
+    """Is a CUDA EP DEVICE registered? The product's route is CUDA-only.
+
+    `worker/config.json` names CUDA alone and `open_asr_sessions` REFUSES any
+    other provider list, so an arm that opens a CPU session does not measure a
+    deviation in the prompt -- it dies in the route contract and reads as a RED
+    of the wrong thing (measured 2026-11-23: `RuntimeError: Nemotron requires
+    CUDAExecutionProvider exclusively`). The question this arm needs answered is
+    the one the session creator asks, so it is asked with the product's own
+    instruments: preload the DLLs, register the packaged plugin when the census
+    lacks CUDA, then read the census. `False`/`None` fail closed, and an unknown
+    census is never a GPU pass.
+    """
+    import onnxruntime as ort  # noqa: E402
+    try:
+        sw._preload_cuda_runtime(ort)
+        added = sw._asr_register_cuda_plugin_if_needed(ort)
+        p(f"  cuda plugin registered by us: {bool(added)}")
+    except Exception as exc:                                   # noqa: BLE001
+        p(f"  cuda bootstrap refused: {type(exc).__name__}: {str(exc)[:120]}")
+    registered, names = sw._asr_cuda_device_census(ort)
+    p(f"  cuda census : registered={registered} devices={list(names)}")
+    if registered is True:
+        return True, ""
+    return False, ("no CUDA EP device is registered (census=%r) and the route is "
+                   "CUDA-only, so the acoustic arm cannot run on this box" % (registered,))
+
+
+def battery(lp, worker_source, model_dir, sw, p, acoustic=True):
     """The six checks, against the `lang_prompt` module and the
     `worker/sotto_worker.py` source under test. Returns the list of failures."""
     FAILS = []
@@ -173,13 +206,30 @@ def battery(lp, worker_source, model_dir, sw, p):
     import numpy as np  # noqa: E402
     import soundfile as sf  # noqa: E402
 
+    if not acoustic:
+        p("  NOT RUN under --neg-arm: the mutants are TEXTUAL (the resolver and the")
+        p("  argparse default), so this arm would re-load the same graphs twice and")
+        p("  measure the same route twice. The mutants are caught by arms 1-4/6.")
+        _section6(worker_source, p, check, re)
+        return FAILS
+
+    cuda_ok, cuda_why = _cuda_route_ready(sw, p)
+    if not cuda_ok:
+        SKIPS.append(cuda_why)
+        p("  SKIPPED: " + cuda_why)
+        _section6(worker_source, p, check, re)
+        return FAILS
+
     pcm, sr = sf.read(os.path.join(ROOT, "worker", "assets", "sample1.flac"), dtype="float32")
     if pcm.ndim > 1:
         pcm = pcm.mean(axis=1)
     if sr != sw.TARGET_SR:
         pcm = sw.resample_to_16k(pcm, sr)
 
-    asr = sw.StreamAsr(model_dir, providers=["CPUExecutionProvider"], use_vad=False, lang_id=12)
+    # CUDA-ONLY, WITH THE PRODUCT'S OWN OPTIONS: `provider_entries` is the one
+    # place that attaches `cuda_provider_options()` to the entry.
+    asr = sw.StreamAsr(model_dir, providers=sw.provider_entries(["CUDAExecutionProvider"]),
+                       use_vad=False, lang_id=12)
     p("enc inputs  :", [i.name for i in asr.enc.get_inputs()])
     p("lang_input  :", asr.lang_input)
     p("lid fed     :", asr.lid.tolist(), asr.lid.dtype)
@@ -229,7 +279,12 @@ def battery(lp, worker_source, model_dir, sw, p):
         p("      thing standing between a typo and a silently wrong prompt. This is exactly")
         p("      why the resolver refuses instead of clamping.")
 
-    # ── 6. the dead-config defect is gone ───────────────────────────────────
+    _section6(worker_source, p, check, re)
+    return FAILS
+
+
+def _section6(worker_source, p, check, re):
+    """Arm 6, callable from both exits of arm 5: the dead-config defect is gone."""
     p("")
     p("=== 6. the defect that made config.json's lang_id dead")
 
@@ -246,8 +301,7 @@ def battery(lp, worker_source, model_dir, sw, p):
         re.search(r"default\s*=\s*None", body) is not None and "default=0" not in body.replace(" ", ""),
         body.strip()[:120],
     )
-
-    return FAILS
+    return []
 
 
 def _model_dir():
@@ -322,11 +376,13 @@ def neg_arm(p, model_dir, sw):
         try:
             if m["file"].endswith("lang_prompt.py"):
                 lp = _load_module_from(copy, "lang_prompt_mutant_%d" % idx)
-                fails = battery(lp, text, model_dir, sw, lambda *a: None)
+                fails = battery(lp, text, model_dir, sw, lambda *a: None,
+                            acoustic=False)
             else:
                 lp = _load_module_from(os.path.join(ROOT, "worker", "lang_prompt.py"),
                                        "lang_prompt_live_for_mutant")
-                fails = battery(lp, mutated_text, model_dir, sw, lambda *a: None)
+                fails = battery(lp, mutated_text, model_dir, sw, lambda *a: None,
+                            acoustic=False)
         except Exception as exc:                                    # noqa: BLE001
             p("  RED   mutant %-64s did not even run (%s: %s) -- NOT counted"
               % (m["tag"], type(exc).__name__, str(exc)[:80]))
@@ -380,7 +436,17 @@ def main():
         worker_source = fh.read()
     fails = battery(lp, worker_source, model_dir, sw, p)
     p("")
-    p("VERDICT:", "PASS" if not fails else "FAIL: " + ", ".join(fails))
+    if fails:
+        p("VERDICT:", "FAIL: " + ", ".join(fails))
+        log.close()
+        return EXIT_FAIL
+    if SKIPS:
+        # UM PASSO SALTADO NAO E' UM PORTAO QUE PASSOU. A bateria declara este
+        # passo `:skipped`, e o sumario conta-o em `skipped=`, nunca em `gate=`.
+        p("VERDICT: SKIPPED reason=" + "; ".join(SKIPS))
+        log.close()
+        return EXIT_PASS
+    p("VERDICT:", "PASS")
     log.close()
     return EXIT_PASS if not fails else EXIT_FAIL
 

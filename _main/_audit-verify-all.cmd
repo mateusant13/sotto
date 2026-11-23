@@ -2849,7 +2849,7 @@ if exist _main\agents-md-pins-oracle.py (
 ) else ( call :record agents-md-pins MISSING )
 if exist _main\lang-id-oracle.py (
   call :step lang-id-oracle 0 "_main\lang-id-oracle.py;worker\lang_prompt.py;worker\sotto_worker.py;worker\config.json;worker\models\nemotron-3.5-asr-ptbr-onnx-int4\genai_config.json;docs\model-specs\original\fp16\languages.json;worker\assets\sample1.flac" "%OUT%\lang-id-oracle.log" python _main\lang-id-oracle.py
-  call :record lang-id-oracle !STEP_RC!
+  call :skipped lang-id-oracle !STEP_RC! "%OUT%\lang-id-oracle.log" "VERDICT: PASS" "VERDICT: SKIPPED"
 ) else ( call :record lang-id-oracle MISSING )
 REM O BRACO NEGATIVO: rc=1 POR DESENHO, e o log tem de dizer NEG-ARM PASS.
 if exist _main\lang-id-oracle.py (
