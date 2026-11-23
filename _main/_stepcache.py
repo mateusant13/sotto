@@ -494,7 +494,13 @@ def main(argv=None) -> int:
     p_check = sub.add_parser("check", help="is this step already proven?")
     add_state(p_check)
     p_check.add_argument("--step", required=True)
-    p_check.add_argument("--deps", nargs="+", default=[],
+    # `nargs="*"`, NAO `"+"` (medido 2026-11-23): a bateria declara um passo cuja
+    # populacao e um DIRECTORIO com `--deps ""`, e o cmd.exe expande-o para
+    # NADA -- com `"+"` o argparse morria em `unrecognized arguments`/rc=2 e o
+    # erro ia para `>nul`, logo a linha nunca era gravada e a pagina continuava
+    # a publicar o rc velho. Zero deps e' uma resposta legitima aqui ("nunca
+    # cacheado"); quem a recusa e' o `check`, com o nome `no-deps`.
+    p_check.add_argument("--deps", nargs="*", default=[],
                          help="the files this step judges: --deps a;b OR --deps a b")
     p_check.add_argument("--log", default=None)
     p_check.add_argument("--expect-rc", type=int, default=0)
@@ -504,7 +510,7 @@ def main(argv=None) -> int:
     p_rec = sub.add_parser("record", help="record a step that just ran")
     add_state(p_rec)
     p_rec.add_argument("--step", required=True)
-    p_rec.add_argument("--deps", nargs="+", default=[],
+    p_rec.add_argument("--deps", nargs="*", default=[],
                        help="the files this step judges: --deps a;b OR --deps a b")
     p_rec.add_argument("--rc", type=int, required=True)
     p_rec.add_argument("--log", default=None)

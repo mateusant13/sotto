@@ -770,8 +770,6 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (measured 2026-11-23, 13:5x):** `_main\_audit-verify-all.cmd` = **417680 B**,
-  **4776 CRLF** / 0 bare LF, sha256 `37C693C9F37182A1B6D929C93D03DB79DB3A26ACED97C129714B372CD016C08A`.
 - **PIN do ficheiro (measured 2026-11-23, 15:2x):** `_main\_audit-verify-all.cmd` = **417953 B**,
   **4781 CRLF** / 0 bare LF, sha256 `9BDB093C451B52DD061C9F485B26E553C18E28DDAE5E6D7F14E4C9919096D94D`.
   (273 B and FIVE lines more than the 417680 B pin of the same day: the `tooling-intent` step loses

@@ -95,7 +95,8 @@ ROW_RE = re.compile(
     r'[ \t]*([^|]*?)[ \t]*\|[ \t]*([^|]*?)[ \t]*\|[ \t]*([^|]*?)[ \t]*\|'
     r'[ \t]*([^|]*?)[ \t]*\|[ \t]*([^|]*?)[ \t]*\|[ \t]*$')
 
-COUNT_KEYS = ("passos", "PASS", "EXPECTED-RED", "FAIL", "STALE", "NO-VERDICT", "NOT RUN")
+COUNT_KEYS = ("passos", "PASS", "EXPECTED-RED", "FAIL", "STALE", "NO-VERDICT", "NOT RUN",
+              "CARRIED")
 
 # O PROBLEMA DO OBSERVADOR, declarado: os dois passos desta ferramenta sao linhas da propria
 # pagina, e a corrida da bateria reescreve o log deles ANTES de este processo arrancar -- logo o
@@ -241,7 +242,15 @@ def verdict_for(step, state, tokens, engine):
     return ("PASS" if expect == 0 else "EXPECTED-RED"), str(rc), ""
 
 
-def build_rows(root, steps=None, state=None, tokens=None, engine=None, dep_root=None):
+def build_rows(root, steps=None, state=None, tokens=None, engine=None, dep_root=None,
+               defer_self=True):
+    """As linhas da pagina. `defer_self` marca as linhas do PROPRIO observador como `CARRIED`.
+
+    Medido 2026-11-23: a corrida trunca `state-page*.log` antes de o observador arrancar e
+    reescreve `docs/state-generated.md` entre a escrita e o check, logo um verde nessas linhas
+    nao pode ser sustentado NESTA corrida -- e `NO-VERDICT` nelas tambem era fabricado pela mesma
+    ordem. `CARRIED` diz o que e': esta linha e' julgada pela corrida SEGUINTE.
+    """
     engine = engine or load_engine(root, dep_root)
     steps = steps if steps is not None else parse_battery(root)[0]
     if tokens is None:
@@ -249,8 +258,22 @@ def build_rows(root, steps=None, state=None, tokens=None, engine=None, dep_root=
     state = load_state(root) if state is None else state
     rows = []
     for step in steps:
-        verdict, rc, note = verdict_for(step, state, tokens, engine)
         entry = state.get(step["name"]) or {}
+        if defer_self and step["name"] in SELF_STEPS:
+            rows.append({
+                "name": step["name"],
+                "verdict": "CARRIED",
+                "rc": str(entry.get("rc")) if isinstance(entry.get("rc"), int) else "-",
+                "expect": str(step["expect"]),
+                "when": str(entry.get("timestamp") or "-"),
+                "log": os.path.basename(step["log"]),
+                "note": "auto-julgamento impossivel na mesma corrida: o log e a pagina desta "
+                        "linha sao reescritos DEPOIS de ela ser renderizada -- julgada na "
+                        "corrida seguinte",
+                "tags": step["tags"],
+            })
+            continue
+        verdict, rc, note = verdict_for(step, state, tokens, engine)
         rows.append({
             "name": step["name"],
             "verdict": verdict,
@@ -307,6 +330,8 @@ def render(root, rows=None):
         "| `STALE` | correu bem, mas as deps mudaram depois: o verde é sobre bytes que já não existem |",
         "| `NO-VERDICT` | log ausente/alterado, token ausente, dep ausente, registo ilegível |",
         "| `NOT RUN` | o stepcache não tem registo: o passo não correu, ou não completou |",
+        "| `CARRIED` | linha do PRÓPRIO observador: a corrida reescreve o log dela depois de a"
+        " página ser escrita, logo é julgada pela corrida seguinte |",
         "",
     ]
     return "\n".join(lines), counts
@@ -406,9 +431,12 @@ def run_checks(root, dep_root=None, require_fresh=True):
                 bad_token.append("%s(sem :expectred declarado)" % name)
             elif not os.path.isfile(log) or token not in _read_text(log):
                 bad_token.append("%s(token %r ausente)" % (name, token))
+    carried = sum(1 for r in page["rows"] if r["verdict"] == "CARRIED")
     results.append(("no-invented-green", not bad_green,
-                    "%d verde(s) sem sustentacao%s" % (
-                        len(bad_green), (": " + ", ".join(bad_green[:3])) if bad_green else "")))
+                    "%d verde(s) sem sustentacao%s (CARRIED=%d: linhas do proprio observador, "
+                    "julgadas na corrida seguinte)" % (
+                        len(bad_green), (": " + ", ".join(bad_green[:3])) if bad_green else "",
+                        carried)))
     results.append(("absent-is-not-run", not bad_notrun,
                     "%d passo(s) sem registo e sem log fora de NOT RUN%s" % (
                         len(bad_notrun), (": " + ", ".join(bad_notrun[:3])) if bad_notrun else "")))
