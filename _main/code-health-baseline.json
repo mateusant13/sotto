@@ -41,12 +41,12 @@
       "max_func_name": ""
     },
     "app/panel/caption-formulation.js": {
-      "bytes": 64858,
+      "bytes": 65742,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 1302,
+      "lines": 1325,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -121,22 +121,22 @@
       "max_func_name": ""
     },
     "app/panel/panel.css": {
-      "bytes": 163429,
+      "bytes": 163931,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 3727,
+      "lines": 3745,
       "max_func": 0,
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 241809,
+      "bytes": 242603,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4886,
+      "lines": 4905,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -231,7 +231,7 @@
       "max_func_name": "_meter_interface"
     },
     "app/webview/batch_queue.py": {
-      "bytes": 56552,
+      "bytes": 56553,
       "classes": 2,
       "defs": 16,
       "except_pass": 9,
@@ -261,12 +261,12 @@
       "max_func_name": "drag_plan"
     },
     "app/webview/caption_overlay.py": {
-      "bytes": 107734,
+      "bytes": 108802,
       "classes": 8,
       "defs": 10,
       "except_pass": 8,
       "globals": 0,
-      "lines": 2139,
+      "lines": 2156,
       "max_func": 184,
       "max_func_name": "__init__"
     },
@@ -431,14 +431,14 @@
       "max_func_name": "foreground_unlock"
     },
     "app/webview/panel_state.py": {
-      "bytes": 15439,
+      "bytes": 16190,
       "classes": 1,
       "defs": 8,
       "except_pass": 1,
       "globals": 0,
-      "lines": 347,
-      "max_func": 56,
-      "max_func_name": "format_report"
+      "lines": 358,
+      "max_func": 59,
+      "max_func_name": "write_atomic"
     },
     "app/webview/power_recovery.py": {
       "bytes": 13351,
@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1500408,
+      "bytes": 1514609,
       "classes": 29,
-      "defs": 174,
+      "defs": 176,
       "except_pass": 71,
       "globals": 9,
-      "lines": 27638,
+      "lines": 27891,
       "max_func": 446,
       "max_func_name": "main"
     },
@@ -621,12 +621,12 @@
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
-      "bytes": 126973,
-      "classes": 1,
-      "defs": 32,
+      "bytes": 128830,
+      "classes": 2,
+      "defs": 34,
       "except_pass": 5,
-      "globals": 2,
-      "lines": 2490,
+      "globals": 3,
+      "lines": 2548,
       "max_func": 267,
       "max_func_name": "_run"
     },
@@ -680,13 +680,23 @@
       "max_func": 21,
       "max_func_name": "is_above"
     },
+    "worker/asr_node_assignment.py": {
+      "bytes": 2403,
+      "classes": 0,
+      "defs": 1,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 47,
+      "max_func": 40,
+      "max_func_name": "collect_graph_assignment_facts"
+    },
     "worker/audio_queue_consumer.py": {
-      "bytes": 9793,
+      "bytes": 10912,
       "classes": 1,
       "defs": 2,
       "except_pass": 2,
       "globals": 0,
-      "lines": 219,
+      "lines": 237,
       "max_func": 28,
       "max_func_name": "run_once"
     },
@@ -710,6 +720,16 @@
       "max_func": 83,
       "max_func_name": "__init__"
     },
+    "worker/build_nemotron_cuda_mask.py": {
+      "bytes": 2777,
+      "classes": 0,
+      "defs": 2,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 73,
+      "max_func": 27,
+      "max_func_name": "transform"
+    },
     "worker/caption_noise.py": {
       "bytes": 18305,
       "classes": 0,
@@ -731,12 +751,12 @@
       "max_func_name": "selftest"
     },
     "worker/engine_policy.py": {
-      "bytes": 27054,
+      "bytes": 27442,
       "classes": 2,
       "defs": 10,
       "except_pass": 0,
       "globals": 0,
-      "lines": 580,
+      "lines": 587,
       "max_func": 115,
       "max_func_name": "run_engine_pass"
     },
@@ -781,12 +801,12 @@
       "max_func_name": "resolve_lang_id"
     },
     "worker/live_queue.py": {
-      "bytes": 26306,
+      "bytes": 29617,
       "classes": 1,
-      "defs": 8,
+      "defs": 16,
       "except_pass": 4,
       "globals": 0,
-      "lines": 621,
+      "lines": 718,
       "max_func": 83,
       "max_func_name": "take_head"
     },
@@ -800,14 +820,24 @@
       "max_func": 68,
       "max_func_name": "admit"
     },
+    "worker/ort_cuda_runtime.py": {
+      "bytes": 7427,
+      "classes": 0,
+      "defs": 7,
+      "except_pass": 4,
+      "globals": 0,
+      "lines": 197,
+      "max_func": 45,
+      "max_func_name": "register_cuda_plugin_if_needed"
+    },
     "worker/parakeet_ultra.py": {
-      "bytes": 22548,
-      "classes": 4,
-      "defs": 6,
+      "bytes": 37632,
+      "classes": 5,
+      "defs": 9,
       "except_pass": 1,
       "globals": 0,
-      "lines": 487,
-      "max_func": 74,
+      "lines": 758,
+      "max_func": 81,
       "max_func_name": "__init__"
     },
     "worker/process_target.py": {
@@ -821,13 +851,13 @@
       "max_func_name": "snapshot"
     },
     "worker/punctuation_model.py": {
-      "bytes": 10834,
+      "bytes": 11834,
       "classes": 0,
       "defs": 11,
       "except_pass": 0,
       "globals": 2,
-      "lines": 273,
-      "max_func": 44,
+      "lines": 288,
+      "max_func": 51,
       "max_func_name": "load"
     },
     "worker/punctuation_prosody.py": {
@@ -851,24 +881,24 @@
       "max_func_name": "main"
     },
     "worker/redux_batch.py": {
-      "bytes": 8559,
+      "bytes": 8893,
       "classes": 1,
       "defs": 6,
       "except_pass": 1,
       "globals": 0,
-      "lines": 210,
+      "lines": 214,
       "max_func": 65,
       "max_func_name": "main"
     },
     "worker/redux_live.py": {
-      "bytes": 74357,
-      "classes": 6,
-      "defs": 16,
-      "except_pass": 4,
-      "globals": 0,
-      "lines": 1596,
-      "max_func": 121,
-      "max_func_name": "main"
+      "bytes": 208010,
+      "classes": 7,
+      "defs": 37,
+      "except_pass": 11,
+      "globals": 2,
+      "lines": 4336,
+      "max_func": 940,
+      "max_func_name": "_control_policy_selftest"
     },
     "worker/silence_gate.py": {
       "bytes": 5445,
@@ -891,13 +921,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 529195,
+      "bytes": 534303,
       "classes": 17,
-      "defs": 111,
-      "except_pass": 27,
+      "defs": 117,
+      "except_pass": 23,
       "globals": 7,
-      "lines": 10048,
-      "max_func": 2860,
+      "lines": 10132,
+      "max_func": 2943,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
@@ -921,13 +951,13 @@
       "max_func_name": "speaker_for_window"
     },
     "worker/speaker_sidecar.py": {
-      "bytes": 67261,
+      "bytes": 77104,
       "classes": 3,
-      "defs": 22,
+      "defs": 26,
       "except_pass": 5,
       "globals": 0,
-      "lines": 1432,
-      "max_func": 195,
+      "lines": 1637,
+      "max_func": 221,
       "max_func_name": "main"
     },
     "worker/stable_words.py": {
@@ -951,7 +981,7 @@
       "max_func_name": "tap_census_verdict"
     },
     "worker/ultra_export.py": {
-      "bytes": 19993,
+      "bytes": 19994,
       "classes": 3,
       "defs": 9,
       "except_pass": 0,
@@ -961,13 +991,13 @@
       "max_func_name": "export"
     },
     "worker/unified_asr.py": {
-      "bytes": 18429,
+      "bytes": 20891,
       "classes": 1,
-      "defs": 13,
+      "defs": 14,
       "except_pass": 1,
       "globals": 0,
-      "lines": 446,
-      "max_func": 68,
+      "lines": 493,
+      "max_func": 70,
       "max_func_name": "_ladder"
     },
     "worker/unified_fixtures.py": {
