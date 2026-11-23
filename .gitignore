@@ -388,3 +388,13 @@ _main/_historico-vs-redux-control-store.js
 # video e verdade de referencia por CONTEUDO (hash do video) -- 55 MB depois de tres
 # janelas, e inteiramente reconstruivel com `lab.py harvest`. So o codigo do lab e' fonte.
 _main/devlab/cache/
+
+# O MATERIAL DE MEDICAO DO BENCH (2026-11-23). Nenhum destes e' fonte: `.cache/`
+# e' reconstruivel por hash, `logs/` sao saidas de corrida, `live-youtube-20261117/`
+# e' a fixture de 131 MB usada pelo E2E do worker (`SOTTO_FILE_TAP`), e o JSON e o
+# zip sao payloads de uma medicao. O codigo que os PRODUZ fica no indice.
+_main/bench/.cache/
+_main/bench/logs/
+_main/bench/live-youtube-20261117/
+_main/bench/_arm_a_payload.json
+sotto-visual-design-directions.zip
