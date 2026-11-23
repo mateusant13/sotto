@@ -234,10 +234,13 @@ def settings_arms(worker_src):
     """Prove the config rung is READ, using the SHIPPED function, not a copy."""
     fn_src, _node = extract_function(worker_src, "redux_live_settings")
     ns = {"os": os}
+    with open(os.path.join(ROOT, "worker", "engine_switch.py"),
+              encoding="utf-8") as fh:
+        engine_switch_src = fh.read()
     for _const in ("REDUX_LIVE_ENGINE_DEFAULT", "REDUX_LIVE_KEEP_S",
                    "REDUX_LIVE_MIN_AUDIO_S", "REDUX_LIVE_DEADLINE_S",
                    "REDUX_LIVE_THREADS"):
-        _m = re.search(r"^%s\s*=\s*(.+)$" % _const, worker_src, re.M)
+        _m = re.search(r"^%s\s*=\s*(.+)$" % _const, engine_switch_src, re.M)
         if not _m:
             raise SystemExit("FATAL: constant %s not found" % _const)
         ns[_const] = ast.literal_eval(_m.group(1).strip())
