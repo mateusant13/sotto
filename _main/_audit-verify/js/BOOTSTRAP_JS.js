@@ -313,6 +313,17 @@
       return Promise.resolve(payload);
     },
 
+    // O "MODO STEALTH" DA LEGENDA (dono, 2026-11-16). `on` e' o campo que o
+    // painel manda; a resposta devolve o MESMO campo em camelCase
+    // (`captureExclude`), para o chamador saber o que pediu. O shell grava
+    // `capture_exclude` em `_main/caption-settings.json` e aplica a afinidade
+    // a' janela VIVA (WDA_EXCLUDEFROMCAPTURE / WDA_NONE) no mesmo gesto.
+    setCaptureExclude: function (on) {
+      var want = !!on;
+      post('caption-capture-exclude', { on: want });
+      return Promise.resolve({ captureExclude: want });
+    },
+
     // PAUSE = UNLOAD (owner, 2026-10-17). The panel's pause controls have
     // always called `bridge.pause()`; the shell never had it, so the dialog
     // said "este shell ainda não consegue pausar". The shell now stops the
