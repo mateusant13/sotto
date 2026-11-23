@@ -873,9 +873,19 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT,
         same = ([(p["t1"], p["videoId"]) for p in seq_probes]
                 == [(p["t1"], p["videoId"]) for p in par_probes]
                 and len(par_probes) == 4)
-        a12 = same and par_s < 0.8 and seq_s > 1.2
+        # A FRONTEIRA E' RELATIVA, NAO UM SEGUNDO ABSOLUTO (medido 2026-11-23).
+        # `par_s < 0.8` era um orcamento de relogio de parede sobre um falso
+        # `connect` de 0.3 s: numa maquina carregada o paralelo mede 0.9-1.1 s
+        # sem nada de errado, e a arm reprovava um codigo correto (o coordenador
+        # mediu 25/26 sob carga). A afirmacao que a arm carrega e' de ORDEM --
+        # quatro sondas simultaneas pagam ~uma latencia, quatro em fila pagam
+        # quatro --, e a razao sobrevive a contenda porque os dois lados inflam
+        # juntos. `seq_s > 1.2` fica: ele so' prova que a latencia falsa foi
+        # mesmo paga (4 x 0.3 s), e nao um teto de tempo.
+        a12 = same and par_s <= seq_s * 0.6 and seq_s > 1.2
         out.append(("abas-em-paralelo", a12,
-                    "seq=%.2fs par=%.2fs mesmos=%s" % (seq_s, par_s, same)))
+                    "seq=%.2fs par=%.2fs razao=%.2f mesmos=%s"
+                    % (seq_s, par_s, (par_s / seq_s) if seq_s else 0.0, same)))
         # A12b -- A POPULACAO INTEIRA, EM VAGAS (MEDIDO 2026-11-12). `probe_tabs`
         # cortava em `[:MAX_PROBE_TABS]` ANTES de saber qual aba toca: o log do dono
         # mostra `tabs=7` e a setima nunca era sondada, e o proprio
@@ -886,8 +896,12 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT,
         # log diz `tabs_total=8 probed=<n>` -- a populacao e o tentado, separados.
         tabs8 = [{"url": "https://www.youtube.com/watch?v=AAAAAAAAAAA" + str(i),
                   "webSocketDebuggerUrl": "ws%d" % i} for i in range(8)]
+        # SEM ORCAMENTO -- `budget_s=None` e' a forma EXATA de "folgado": um
+        # numero de segundos aqui era um segundo orcamento de relogio que a
+        # contenda podia estourar (2026-11-23), e a pergunta da arm nao e' "cabe
+        # em N s", e' "a populacao inteira e' sondada".
         got8 = mod.probe_tabs(tabs8, connect=_slow_connect, timeout=1.0,
-                              gap_s=0.0, budget_s=8.0)
+                              gap_s=0.0, budget_s=None)
         lines8 = []
         tight = mod.probe_tabs(tabs8, connect=_slow_connect, timeout=1.0,
                                gap_s=0.0, budget_s=0.45, log=lines8.append)
