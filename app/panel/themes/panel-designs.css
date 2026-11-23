@@ -173,12 +173,6 @@
   --accent-gradient: var(--accent);
   color-scheme: dark;
 }
-:root[data-theme='pd-tele'] .panel {
-  border-color: transparent;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
-  box-shadow: var(--shadow-slab);
-}
 :root[data-theme='pd-tele'] .panel::before {
   background: none;
   background-image: linear-gradient(90deg, var(--accent) 0%, var(--accent-soft) 100%);
@@ -908,12 +902,6 @@
   --accent-to: var(--accent);
   --accent-gradient: var(--accent);
   color-scheme: dark;
-}
-:root[data-theme='pd-bcast'] .panel {
-  border-color: transparent;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
-  box-shadow: var(--shadow-slab);
 }
 :root[data-theme='pd-bcast'] .panel::before {
   background: none;
@@ -1714,12 +1702,6 @@
   --accent-gradient: var(--accent);
   color-scheme: dark;
 }
-:root[data-theme='pd-mano'] .panel {
-  border-color: transparent;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
-  box-shadow: var(--shadow-slab);
-}
 :root[data-theme='pd-mano'] .panel::before {
   background: none;
   background-image: linear-gradient(90deg, var(--accent) 0%, var(--accent-soft) 100%);
@@ -2470,12 +2452,6 @@
   --accent-to: var(--accent);
   --accent-gradient: var(--accent);
   color-scheme: dark;
-}
-:root[data-theme='pd-cine'] .panel {
-  border-color: transparent;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
-  box-shadow: var(--shadow-slab);
 }
 :root[data-theme='pd-cine'] .panel::before {
   background: none;
@@ -3229,12 +3205,6 @@
   --accent-to: var(--accent);
   --accent-gradient: var(--accent);
   color-scheme: dark;
-}
-:root[data-theme='pd-instr'] .panel {
-  border-color: transparent;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-slab-strong) 96%, transparent) 0%, color-mix(in srgb, var(--bg-slab) 96%, transparent) 100%);
-  box-shadow: var(--shadow-slab);
 }
 :root[data-theme='pd-instr'] .panel::before {
   background: none;

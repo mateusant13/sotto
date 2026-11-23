@@ -2783,6 +2783,11 @@ BRAND_METRICS = """/* THE WORDMARK'S METRICS, pinned to the shared rule (owner, 
 """
 
 
+#: The shared slab rule as it stands AFTER `SKIN.format` -- `{S}` is already `@S@`.
+#: `\.panel\{` cannot match `.panel::before{`, which is the rule the designs DO use.
+_SKIN_SLAB = re.compile(r"@S@ \.panel\{[^{}]*\}\n?")
+
+
 def build(t):
     # "sel" is the data-theme value ("theme-1" for lane A, "pd-tele" for lane B)
     # and "chrome" is WHICH of the five chrome families this theme wears. They are
@@ -2815,6 +2820,18 @@ def build(t):
         ok_text="var(--ok)",
         err_text="color-mix(in srgb, var(--error) 72%, var(--text-primary))",
     )
+    if t.get('sel'):
+        # THE DESIGN'S OWN `.panel` IS THE PANEL (measured 2026-11-16). Every
+        # `PD_SIG` entry states the same four declarations the shared slab states --
+        # border-color, border-radius, background, box-shadow -- on the SAME
+        # selector. Both landed in `panel-designs.css`, so the file carried two
+        # paint rules per design and the earlier one was dead: the LATER rule wins
+        # every property, and its property set covers the former's completely
+        # (measured: earlier\later = empty for all five). A rule nothing can see is
+        # the definition of a design bug, and it is what the owner called "designs
+        # bugados" -- a future edit to the slab would change nothing on screen.
+        # Lane A keeps the shared slab: theme-1..5 state no `.panel` of their own.
+        skin = _SKIN_SLAB.sub('', skin)
     head = HEAD.format(
         n=t['n'], sel=sel, name=t['name'], idea=t['idea'],
         slab=t['slab'], accent=t['accent'], text_primary=t['text_primary'],
