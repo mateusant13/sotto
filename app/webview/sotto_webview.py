@@ -1645,7 +1645,7 @@ ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
                        # num processo e o teto de 4 fios era POR SESSAO (12 no total,
                        # ~1200 %c). Sem esta linha o numero que governa a CPU da
                        # maquina do dono so' existe dentro do codigo.
-                       'WORKER_THREAD_PLAN',
+                       'WORKER_THREAD_PLAN', 'THREADS',
              # O DENOMINADOR vai ao log COMO O WORKER O ESCREVEU (2026-11-09). O
              # `BRIDGE_WORKER_COST` daqui de baixo escolhe os campos que a DECISAO
              # usa; o `ms_per_chunk` que o watcher pediu e' evidencia, nao decisao,

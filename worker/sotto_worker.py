@@ -2058,6 +2058,27 @@ class StreamAsr:
                 % (so_enc.intra_op_num_threads, so.intra_op_num_threads,
                    so_enc.intra_op_num_threads + 2 * so.intra_op_num_threads,
                    _share['total'], _share['batch']))
+            # A LINHA QUE O `AGENTS.md` EXIGE DE QUALQUER PROCESSO COM DOIS
+            # MOTORES, e que este worker nao tinha (medido 2026-11-23: o
+            # invariante 3 do E2E so' podia ser afirmado por `WORKER_THREAD_PLAN`,
+            # que nao diz o que as BIBLIOTECAS seguram nem o ambiente). O
+            # orcamento e' a SOMA dos pools vivos -- o enc com o seu valor, as
+            # duas sessoes pequenas com o delas --, nunca o dobro do flag.
+            _torch_mod = sys.modules.get("torch")
+            _torch_n = ("not-loaded" if _torch_mod is None
+                        else str(int(_torch_mod.get_num_threads())))
+            sys.stderr.write(
+                "THREADS process_budget=%d peak_intra=%d declared=%d torch=%s "
+                "ort_intra=enc:%d,small:%d sessions=3 "
+                "env OMP=%s MKL=%s OPENBLAS=%s NUMEXPR=%s\n"
+                % (so_enc.intra_op_num_threads + 2 * so.intra_op_num_threads,
+                   max(so_enc.intra_op_num_threads, so.intra_op_num_threads),
+                   _share['total'], _torch_n,
+                   so_enc.intra_op_num_threads, so.intra_op_num_threads,
+                   os.environ.get("OMP_NUM_THREADS", "?"),
+                   os.environ.get("MKL_NUM_THREADS", "?"),
+                   os.environ.get("OPENBLAS_NUM_THREADS", "?"),
+                   os.environ.get("NUMEXPR_NUM_THREADS", "?")))
             sys.stderr.flush()
         except Exception:            # noqa: BLE001
             pass
