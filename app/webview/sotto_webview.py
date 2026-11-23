@@ -3851,7 +3851,15 @@ class YouTubeTrackThread(threading.Thread):
         # video, estado, cues, lingua, fonte, motivo, erro, cache, e a escolha
         # da faixa --, porque uma linha identica a cada 30 s nao diz nada e
         # come 65 KB de um log que e' a evidencia de outra coisa.
-        answer = (video_id, track.get('state'), len(track.get('cues') or ()),
+        # A CONTAGEM NAO E' A IDENTIDADE (2026-11-23): duas leituras da mesma
+        # faixa com o mesmo numero de cues podem ser faixas DIFERENTES (uma
+        # faixa trocada sob o mesmo URL, um `tOffsetMs` novo). A assinatura
+        # leva as duas pontas do texto, que e' o que um leitor de log usa para
+        # dizer "esta e' outra leitura" sem pagar o hash da lista inteira.
+        cues = track.get('cues') or ()
+        head = cues[0] if cues else {}
+        tail = cues[-1] if cues else {}
+        answer = (video_id, track.get('state'), len(cues),
                   track.get('lang'), track.get('source'), track.get('reason'),
                   track.get('error'), bool(track.get('cached')),
                   track.get('player_source') or '-',

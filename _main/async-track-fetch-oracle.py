@@ -426,14 +426,25 @@ def arm_log(mod, fetcher, failures):
         fetcher.cues = before + [{'start': 1.0, 'end': 2.0, 'text': 'more'}]
         thread._fetch(VID_A)
         changed = (count('YOUTUBE_TRACK_READY'), count('YOUTUBE_TRACK_PAINT'))
+        # SAME COUNT, DIFFERENT WORDS. A track switched under the same URL (or
+        # re-fetched with a new `tOffsetMs`) keeps `len(cues)` and would be
+        # swallowed by a signature that only counted. The two ends of the text
+        # are what makes the answer the identity.
+        fetcher.cues = [{'start': 9.5, 'end': 11.0, 'text': 'another take'}] + before[1:]
+        thread._fetch(VID_A)
+        recounted = (count('YOUTUBE_TRACK_READY'), count('YOUTUBE_TRACK_PAINT'))
     finally:
         mod.log = orig
         fetcher.cues = before
-    note('LOG     ready/paint lines: 1st=%s same-answer-again=%s changed-answer=%s',
-         first, repeat, changed)
+    note('LOG     ready/paint lines: 1st=%s same-answer-again=%s changed-answer=%s '
+         'same-count-new-words=%s', first, repeat, changed, recounted)
     if first != (1, 1):
         failures.append('LOG: the first answer wrote %s READY/PAINT lines (want 1/1)'
                         % (first,))
+    if recounted != (changed[0] + 1, changed[1] + 1):
+        failures.append('LOG: a track with the SAME cue count but DIFFERENT words was '
+                        'swallowed (%s) -- the signature must carry the text, not '
+                        'only its length' % (recounted,))
     if repeat != (1, 1):
         failures.append('LOG: the IDENTICAL answer was logged again (%s) -- the '
                         'same pair every REFRESH_S is the noise this arm forbids'
@@ -514,7 +525,7 @@ def main():
         # APANHADO" -- o `:expectred` recusa rc=0 com "the control did NOT go
         # red", e um braco que devolve 0 ao apanhar o defeito nao pode ser
         # declarado como controlo.
-        return 1 if slow else 0
+        return 1 if not missing else 0
 
     mod = load_shell(SHELL, 'sotto_shell_async_live')
     mod.log = lambda *a, **k: None
