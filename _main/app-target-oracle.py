@@ -180,6 +180,18 @@ class FakeShell:
         #: tem de o ter: sem ele a arma `g` morria com `AttributeError` e o
         #: oráculo publicava FAIL sobre um caminho que nao chegou a correr.
         self.push_caption_to_window = lambda *a, **k: None
+        #: O `start_worker` REAL chama `self._start_worker_sidecars(reason)` DEPOIS
+        #: de o bridge arrancar (sotto_webview.py, 2026-11-19): o diarizador monta
+        #: na vida do worker. Sem este stub a arma `g` morria em `AttributeError`
+        #: no CONTROL POSITIVO e o oraculo publicava `0/3 labels` sobre um caminho
+        #: que nunca correu -- a QUARTA vez que este banco de ensaio paga a mesma
+        #: doenca. A lista existe para a arma poder exigir as duas metades: um
+        #: worker RECUSADO nao pode comecar sidecar nenhum, e um que arranca
+        #: comeca-os UMA vez, com o motivo.
+        self.sidecar_reasons = []
+
+    def _start_worker_sidecars(self, reason):
+        self.sidecar_reasons.append(reason)
 
     def apply_panel_state(self, text, kind='busy', info=None):
         self._painted.append((text, kind, dict(info or {})))
@@ -464,6 +476,13 @@ def arm_g(mod, arm, ctx):
         arm.check(bool(painted)
                   and painted[0][0].startswith('App target not found'),
                   'the painted sentence names the missing target')
+        # A OUTRA METADE, e ela e' de PRODUTO, nao de forma: um worker recusado
+        # nao pode comecar sidecar nenhum. A shell so' chama
+        # `_start_worker_sidecars` dentro de `if started:`, e este braco e' o
+        # que impede essa guarda de desaparecer num refactor.
+        arm.check(shell.sidecar_reasons == [],
+                  f'no sidecar was started by a refused worker '
+                  f'(got {shell.sidecar_reasons!r})')
 
         # ── the POSITIVE CONTROL: a resolved target passes the pid ──────────
         own = os.path.basename(sys.executable)
@@ -489,6 +508,9 @@ def arm_g(mod, arm, ctx):
         arm.check(any(f'APP_TARGET_RESOLVED value="{own}" chose={want_pid}' in line
                       for line in logs),
                   'APP_TARGET_RESOLVED names the chosen pid')
+        arm.check(shell2.sidecar_reasons == ['default'],
+                  f'the sidecars ride a STARTED worker exactly once '
+                  f'(got {shell2.sidecar_reasons!r})')
 
         # ── the ENV fallback reaches the MACHINE, not just the helper ───────
         args.app_target = None
