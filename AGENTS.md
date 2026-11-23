@@ -770,7 +770,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 **O exit code E o veredicto.** Ler `BATTERY-VERDICT` + exit code, nunca o `rc` de um passo nem a
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 
-- **PIN do ficheiro (measured 2026-11-23):** `_main\_audit-verify-all.cmd` = **415068 B**,
+- **PIN do ficheiro (measured 2026-11-23, 09:0x):** `_main\_audit-verify-all.cmd` = **415131 B**,
+  **4744 CRLF** / 0 bare LF, sha256 `7EBB8D585687ECF32E61C20371758943AE8AE137379F46C35BD62F29ADA125F5`.
+  (63 B more than the 415068 B pin of the same day, with ZERO line change: the `.cmd` hunks of the
+  CUDA landing (`8cf0c0d`, `45b319b` -- the pair `parakeet-ultra-gpu-policy`, the pair
+  `speaker-sidecar-gpu-policy` and `redux-live-pending`, 27 lines) are now COMMITTED, and the live
+  checkout equals the committed blob: `git show HEAD:_main/_audit-verify-all.cmd | wc -c` =
+  **410387 B** as LF, which is 415131 B materialized with `text eol=crlf`. `git status` on the file
+  is empty, so this is the number a fresh clone produces -- the pin oracle reads the live file.)
+- **PIN anterior (measured 2026-11-23):** `_main\_audit-verify-all.cmd` = **415068 B**,
   **4744 CRLF** / 0 bare LF, sha256 `8F3970FA8FF204E7CC913BABB7AC3FB21F16D1B28CC4DAE64DA57FCA0B91B453`.
   (1 225 B and 13 lines more than the 413843 B live-checkout pin: the pair
   `redux-gpu-unavailable` + `red-as-expected-redux-gpu-unavailable`, eleven lines of comment and

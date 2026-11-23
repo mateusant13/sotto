@@ -3,7 +3,7 @@ name: task-resolver
 description: "Use for every non-trivial software task: defects…"
 license: Proprietary
 metadata:
-  version: "1.4.1"
+  version: "1.4.2"
   author: manager-house
 ---
 
@@ -55,7 +55,7 @@ Claim only what the recorded evidence proves. A passing unit test does not prove
 
 ## Escalation: procedure packs this workflow delegates to
 
-This workflow is the default spine for every non-trivial task. Two installed skills own procedure that this file does not restate. Load them by id; do not paraphrase their contents here.
+This workflow is the default spine for every non-trivial task. Two installed skills own procedure that this file does not restate. Resolve and load each through the current harness's documented skill mechanism: prefer a native skill-by-ID loader when available; when Codex has no native loader, resolve its current skill catalog entry, follow any explicit forwarder to the canonical body, and read that body from disk. Do not use a stale path from a prior task record, treat a forwarder stub as the full skill, or start another harness to simulate loading. Do not paraphrase their contents here.
 
 ### `complete-understanding` — load before the first edit
 
@@ -63,9 +63,11 @@ Load it once the task is non-trivial and the affected entrypoint has not already
 
 ### `agentic-feature-build` — load when any escalation marker is present
 
-The pack now lives **inside this repository** at `.agents/skills/agentic-feature-build/` (moved there 2026-10-27 so this spine's escalation cannot break when the global kit is pruned), with the same content also installed at `C:\Users\Administrador\.agents\skills\agentic-feature-build\`; its source lineage is `G:\superharness\.agents\skills\agentic-feature-build\`. Load the repo copy first and record the `version:` line you actually read. If the copies disagree, report the divergence with both versions instead of picking one. If neither resolves, this row is `UNKNOWN` and dependent product edits halt.
+Resolve `agentic-feature-build` from the current repository and harness, not from a historical machine path. Prefer a readable project-pinned `.agents/skills/agentic-feature-build/SKILL.md` when it exists. Otherwise use the current harness's skill catalog path; if that entry is a forwarder, follow its explicit canonical pointer and load/hash the target body, not the stub. Record machine-specific paths and hashes in the task record, where they can be refreshed for each invocation.
 
-Loading it **by id with the skill tool** is the intended path, and it is the only one: the pack declares `opencode/autoinvoke: "false"`, so it is deliberately absent from the model-facing skill list. Absence from that list is not absence of the skill — measured 2026-10-25, the live resolver (`opencode api GET /api/skill`) returns the pack with `autoinvoke=false` and its full content. Escalating here is not an unowned invocation: `AGENTS.md` makes this file the mandatory spine for every non-trivial task, so the delegation is the owner's standing instruction, not a claim this file invents.
+Prefer the host's native skill-by-ID tool when available. When Codex exposes no such tool, its documented filesystem-skill mechanism is the supported fallback: read the full canonical file from the catalog-resolved path and the selector/references needed for this task. Do not start OpenCode or another harness to simulate a loader. `opencode/autoinvoke: "false"` controls implicit OpenCode activation; it does not disable an explicit Codex filesystem load. Record the load method, canonical path, `version:` line, full SHA-256, and the escalation marker in this task record. If multiple readable copies disagree, record both versions/hashes and follow the project's pinned-source rule; never silently choose a convenient copy. If no native loader or readable canonical file resolves, mark this row `UNKNOWN`, halt only dependent product edits, and keep independent work moving.
+
+Escalation is not an unowned invocation: when `AGENTS.md` mandates this skill for the current task, that owner-authored rule is the explicit task-specific authorization. It does not enable implicit use on unrelated tasks.
 
 Load it for a task when **any** of these holds:
 
