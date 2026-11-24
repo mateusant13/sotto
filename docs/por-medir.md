@@ -98,3 +98,18 @@
   Por isso nenhuma cura se escreve aqui: o numero diz que nao ha o que adiar. O caminho que faltava ja'
   esta' montado e agora corre: a tag `WORKER_BOOT_PROF` atravessa a allowlist (commit `1583cb2`) e o
   passo `boot-profile` le' o ultimo perfil do log dele com o split impresso.
+
+- **O `ack_ms` da PRIMEIRA pintura depois das flags de desbackground (2026-11-24).** O relogio do
+  dono media `PANEL_SHOW_COST reason=hotkey-cycle-strip mode=strip ... ack_ms=328.0 total_ms=359.0
+  budget_ms=400` (pid 27448, 07:59:58.083) e `ack_ms=0.0 total_ms=109.0` no segundo show do mesmo
+  minuto: a janela nasce escondida e o renderer e' despriorizado, logo o primeiro quadro custa 328 ms
+  e os seguintes nao. As duas flags que atacam essa causa embarcam em `app/webview/webview2_args.py`
+  (`--disable-renderer-backgrounding`, `--disable-backgrounding-occluded-windows`) e o
+  `_main/webview2-args-scope-oracle.py` prova que ELAS CHEGAM ao ambiente (12/12 arms, `--neg-arm`
+  3/3) -- mas isso e' a metade do INSTRUMENTO. **A leitura que falta e' `PANEL_SHOW_COST ack_ms` de um
+  processo novo DEPOIS das flags**, e esta pane nao a produz: tentado duas vezes em 2026-11-24
+  (`pythonw app/webview/sotto_webview.py --no-warm-engine --probe-v2 25 --exit-after 200 --log
+  _main/_cache/_probe-firstshow.log`) e o WebView2 morreu antes da janela nas duas --
+  `WEBVIEW2_INIT_FAILED 0x80010108 RPC_E_DISCONNECTED` as 12:34:53 e `0x80080005 CO_E_SERVER_EXEC_FAILURE`
+  as 12:35:05, com `PANEL_V2_GATE=RED` e nenhum `PANEL_SHOW_COST`. E' a limitacao de pane ja' registada
+  em `AGENTS.md`; a medicao exige o Alt+C do dono num arranque dele. CANNOT-MEASURE aqui, NOT a pass.
