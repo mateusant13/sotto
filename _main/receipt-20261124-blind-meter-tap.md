@@ -120,3 +120,45 @@ número de cada medição, em vez de escondido.
 transporta o som; **não vai para commit** — é alavanca desta máquina, não default de
 produto. `git status` mostra apenas `worker/sotto_worker.py`,
 `_main/tap-delivery-stall-oracle.py` e esse ficheiro local.
+
+## 7. O segundo red, e ele é o que apaga a legenda agora: a sessão ORT/CUDA congela
+
+Depois do arranque novo (`sotto-relaunch.py --relaunch`, 13:38:23, pid 50268, code_id
+`2D092F4CE7DE`), dois workers nasceram e nenhum legendou:
+
+| pid | nascido | o que mediu |
+|---|---|---|
+| 56108 | 13:38:43 | `BRIDGE_LOAD_MS ms=9656` e depois **zero** blocos; morto pelo cão de guarda de silêncio às 13:39:26 (`killed=True`, `captions=0`) |
+| 51584 | 13:39:27 | `WORKER_GPU_POLICY ... asr_request=CUDAExecutionProvider` às 13:40:00; a partir daí **0,0 s de CPU, 0 bytes lidos, RSS 707 MB imóvel por 4 min** (19 fios) |
+
+Reporte reproduzido fora do produto, num processo desta lane com o MESMO binário e o MESMO
+áudio (`python worker/sotto_worker.py --threads 2 --device "CABLE Input" --max-seconds 90`),
+com `py-spy dump` a apanhar a pilha às 14 s:
+
+```
+Thread 18900 (active+gil): "MainThread"
+    _create_inference_session (onnxruntime\capi\onnxruntime_inference_collection.py:789)
+    __init__ (onnxruntime\capi\onnxruntime_inference_collection.py:683)
+    open_graph (sotto_worker.py:1771)
+    _asr_open_once (sotto_worker.py:1777)
+    open_asr_sessions (sotto_worker.py:1894)
+```
+
+Amostragem de 10 em 10 s do mesmo processo: `rss_mb` 34 → 579 → 1476 → 1549 → **1549,2 →
+1549,8 → 1550,3**, `read_mb` **71,7 nas três últimas**, `cpu_s` +0,1 por intervalo (o fio do
+audio-ring, não o ORT). Ou seja: a criação da sessão CUDA **para** a meio, com 9,9 GiB livres
+na GPU (`nvidia-smi`: 6083 MiB usados de 16303, 20 % de utilização) e o áudio a chegar.
+
+O áudio estava lá, medido no mesmo minuto com a mesma API: loopback independente no
+`CABLE Input` às 13:42:50 → `+51 blocos em 5,1 s, peak=0.2014`.
+
+E a queda para CPU não existe como saída: `--providers CPUExecutionProvider` é recusado pelo
+próprio motor — `RuntimeError: Nemotron requires CUDAExecutionProvider exclusively`
+(medido, 3,5 s, `peak_rss_mb=288.5`).
+
+**Conclusão:** o defeito que apaga a legenda hoje não é tap, não é dispositivo e não é o
+modelo — é o processo a congelar dentro de `InferenceSession` com o provider CUDA, a mesma
+classe de congelamento que já tinha matado a shell às 13:21:29 (0,0 % de CPU, log e ficheiros
+de estado parados no mesmo segundo, `TerminateProcess` pendente). Nenhuma dessas duas classe
+se resolve de dentro de uma pane `medium`: exige reiniciar a máquina (ou o driver de vídeo) —
+e é por isso que este red fica escrito aqui com os números, em vez de escondido num commit.
