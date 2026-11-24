@@ -172,6 +172,22 @@ def judge(wsrc, dsrc):
           policy(False, 20.0, 3, live={OWN: 0.0, ELSEWHERE: 0.0}, own=OWN), 'endpoint-idle')
     check('A2.4 SEM leitura a resposta e a antiga (a palavra que custou o buraco)',
           policy(False, HOLE_S, 3), 'idle-rearm')
+    # -- A2.5-A2.7 O MEDIDOR CEGO NOS CABOS VIRTUAIS (medido 2026-11-24) -----
+    # O dono via o Twitch no Chrome: os cinco endpoints liam 0,0000 enquanto um
+    # loopback INDEPENDENTE no mesmo `CABLE Input` entregava 544 blocos/5 s com
+    # peak 0.12..0.15, e a politica respondia `endpoint-idle` para sempre.
+    check('A2.5 medidor cego + janela sem bloco + corrida que JA entregou -> rotaciona',
+          policy(False, HOLE_S, 3, live={OWN: 0.0, ELSEWHERE: 0.0}, own=OWN,
+                 run_blocks=11, window_blocks=0), 'meter-blind-starved')
+    check('A2.6 desktop calado desde o arranque (run_blocks=0) NAO inventa churn',
+          policy(False, 20.0, 3, live={OWN: 0.0, ELSEWHERE: 0.0}, own=OWN,
+                 run_blocks=0, window_blocks=0), 'endpoint-idle')
+    check('A2.7 a tap entrega blocos silenciosos: nao e cliente travado',
+          policy(False, 20.0, 3, live={OWN: 0.0, ELSEWHERE: 0.0}, own=OWN,
+                 run_blocks=11, window_blocks=42), 'endpoint-idle')
+    check('A2.8 o tecto de reaberturas tambem vale para o medidor cego',
+          policy(False, HOLE_S, 999, live={OWN: 0.0}, own=OWN,
+                 run_blocks=11, window_blocks=0), 'endpoint-idle')
 
     # -- A3a a forma que embarcou: 12 janelas + rescan ----------------------
     wall, emitted = park_loop(ns, False)
@@ -218,7 +234,13 @@ def judge(wsrc, dsrc):
              'live=_live_render_peaks(),', 1),
             ('A5.4 o parque le o censo', 'tap_census_verdict(_live_render_peaks(),', 1),
             ('A5.5 o status existe nos dois caminhos', 'state="tap-delivery-stalled"', 2),
-            ('A5.6 o modulo do censo e importado', 'from tap_delivery import', 1)):
+            ('A5.6 o modulo do censo e importado', 'from tap_delivery import', 1),
+            # A testemunha que o medidor nao da' TEM de ser passada pelo laco real
+            # (2026-11-24): sem este par o veredito novo nunca dispara no produto.
+            ('A5.7 o laco passa a janela de blocos medida',
+             'window_blocks=device_blocks["value"]', 1),
+            ('A5.8 o laco passa o total da corrida',
+             'run_blocks=counters.get("blocks", 0)', 1)):
         check(name, wsrc.count(needle), want)
     return out
 
@@ -258,6 +280,13 @@ MUTATIONS = (
     ('M3 a linha fala sempre (deixa de ser um episodio)',
      lambda w, d: (w, d.replace("    if counters.get('delivery_said') == key:\n        return None\n", '')),
      ('A4.1',)),
+    # M4 (2026-11-24): o medidor cego volta a mandar esperar -- o defeito exato
+    # que deixou o dono sem legenda por 20 min com o Chrome a tocar.
+    ('M4 o medidor cego volta a responder "espera"',
+     lambda w, d: (w.replace('        if _census == "quiet" and _ran is not None and _win is not None:\n'
+                             '            if _ran > 0 and _win <= 0 and reopens < TAP_REOPEN_MAX:\n'
+                             '                return "meter-blind-starved"\n', ''), d),
+     ('A2.5',)),
 )
 
 

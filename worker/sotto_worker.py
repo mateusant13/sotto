@@ -623,13 +623,16 @@ TAP_REOPEN_MAX = 20      # never open more than this many clients in one run
 #: 0.19-0.22 s, and `BRIDGE_LOAD_MS ms=67969` put ~59 s in the ladder.
 TAP_OPEN_TIMEOUT_S = 4.0
 TAP_REOPEN_MIN_S = 5.0   # and never faster than this, whatever the state says
-def tap_stall_reason(pump_exited, idle_s, reopens, live=None, own=None, floor=0.002):
+def tap_stall_reason(pump_exited, idle_s, reopens, live=None, own=None, floor=0.002,
+                     run_blocks=None, window_blocks=None):
     """THE POLICY on a tap that stopped delivering blocks: the ONE word, and why.
 
     Returns ONE of "pump-dead" (re-open now: the client is broken),
     "signal-elsewhere" (the audio is on ANOTHER endpoint: re-resolve the target
     now instead of waiting 300 s), "client-starved" (this endpoint IS rendering
     and the tap delivers nothing: the client is wedged, a fresh one cures it),
+    "meter-blind-starved" (the meter reads zero EVERYWHERE and this tap delivered
+    nothing this window although the run has delivered before -- see below),
     "idle-rearm" (one re-armed attempt after a very long idle) or
     "endpoint-idle" (wait: nothing is broken, the endpoint simply renders
     nothing).
@@ -653,6 +656,28 @@ def tap_stall_reason(pump_exited, idle_s, reopens, live=None, own=None, floor=0.
             return "signal-elsewhere"
         if _census == "here":
             return "client-starved"
+        # O MEDIDOR E' CEGO NOS CABOS VIRTUAIS; O BLOCO E' A TESTEMUNHA QUE FALTA
+        # (medido 2026-11-24, sessao viva do dono). `IAudioMeterInformation` lia
+        # 0,0000 nos cinco endpoints -- `CABLE Input`, `VoiceMeeter Input`, HDMI,
+        # HyperX -- enquanto um cliente de loopback INDEPENDENTE no MESMO `CABLE
+        # Input` entregava 544 blocos em 5 s com `peak=0.12..0.15`, e o worker
+        # ficava em `blocks=2 peak=0.0` por 20 min com `rows=0` e
+        # `STATUS_APPLIED text="tap-silent-desktop"`: o censo chamava a isso
+        # `quiet` e a politica respondia `endpoint-idle` -- esperar para sempre
+        # num endpoint que nunca vai entregar. A desambiguacao honesta NAO precisa
+        # do medidor: uma tap que JA' entregou bloco nesta corrida e entrega ZERO
+        # na janela seguinte esta' com o cliente travado, e um cliente novo cura
+        # (medido: cliente fresco no mesmo endpoint entrega 100 blocos/s). Um
+        # desktop realmente calado tem `run_blocks == 0` e continua a esperar, que
+        # e' o que mantem a cura de 2026-11-02 (12 clientes WASAPI em 3 min).
+        try:
+            _ran = int(run_blocks) if run_blocks is not None else None
+            _win = int(window_blocks) if window_blocks is not None else None
+        except (TypeError, ValueError):
+            _ran, _win = None, None
+        if _census == "quiet" and _ran is not None and _win is not None:
+            if _ran > 0 and _win <= 0 and reopens < TAP_REOPEN_MAX:
+                return "meter-blind-starved"
     if idle_s >= TAP_IDLE_MAX_S and reopens < TAP_REOPEN_MAX:
         return "idle-rearm"
     return "endpoint-idle"
@@ -9371,7 +9396,12 @@ def main():
                                 stall_reason = tap_stall_reason(
                                     client_dead, stalled_s, stall_reopens,
                                     live=_live_render_peaks(),
-                                    own=dev.get("endpoint_id"), floor=tap_floor)
+                                    own=dev.get("endpoint_id"), floor=tap_floor,
+                                    # CORRIDA JA' ENTREGOU? JANELA NAO? o par que
+                                    # denuncia o medidor cego (`meter-blind-starved`,
+                                    # medido 2026-11-24).
+                                    run_blocks=counters.get("blocks", 0),
+                                    window_blocks=device_blocks["value"])
                                 idle_s = stalled_s
                                 if stall_reason == "endpoint-idle":
                                     # NADA PARTIDO -- esperar em vez de mexer no motor. A
