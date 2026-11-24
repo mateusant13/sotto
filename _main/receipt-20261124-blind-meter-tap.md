@@ -121,44 +121,43 @@ transporta o som; **não vai para commit** — é alavanca desta máquina, não 
 produto. `git status` mostra apenas `worker/sotto_worker.py`,
 `_main/tap-delivery-stall-oracle.py` e esse ficheiro local.
 
-## 7. O segundo red, e ele é o que apaga a legenda agora: a sessão ORT/CUDA congela
+## 7. O segundo red: um worker nasce e congela a meio da carga (e o MESMO binário funciona fora dele)
 
 Depois do arranque novo (`sotto-relaunch.py --relaunch`, 13:38:23, pid 50268, code_id
 `2D092F4CE7DE`), dois workers nasceram e nenhum legendou:
 
 | pid | nascido | o que mediu |
 |---|---|---|
-| 56108 | 13:38:43 | `BRIDGE_LOAD_MS ms=9656` e depois **zero** blocos; morto pelo cão de guarda de silêncio às 13:39:26 (`killed=True`, `captions=0`) |
-| 51584 | 13:39:27 | `WORKER_GPU_POLICY ... asr_request=CUDAExecutionProvider` às 13:40:00; a partir daí **0,0 s de CPU, 0 bytes lidos, RSS 707 MB imóvel por 4 min** (19 fios) |
+| 56108 | 13:38:43 | `BRIDGE_LOAD_MS ms=9656` e **zero** blocos; morto pelo cão de guarda de silêncio às 13:39:26 (`killed=True`, `captions=0`) |
+| 51584 | 13:39:27 | `WORKER_GPU_POLICY` às 13:40:00; depois **0,0 s de CPU, 0 bytes lidos, RSS 707 MB imóvel por 10 min** (19 fios, `state=running`) |
 
-Reporte reproduzido fora do produto, num processo desta lane com o MESMO binário e o MESMO
-áudio (`python worker/sotto_worker.py --threads 2 --device "CABLE Input" --max-seconds 90`),
-com `py-spy dump` a apanhar a pilha às 14 s:
+O MESMO binário, largado desta pane com o mesmo áudio
+(`python worker/sotto_worker.py --threads 2 --device "CABLE Input" --max-seconds 90`),
+funciona — e o número que o prova é do próprio worker:
 
 ```
-Thread 18900 (active+gil): "MainThread"
-    _create_inference_session (onnxruntime\capi\onnxruntime_inference_collection.py:789)
-    __init__ (onnxruntime\capi\onnxruntime_inference_collection.py:683)
-    open_graph (sotto_worker.py:1771)
-    _asr_open_once (sotto_worker.py:1777)
-    open_asr_sessions (sotto_worker.py:1894)
+WORKER_COST tag=tick cpu_s=9.547 cpu_pct_avg=11.8 rows=34 rows_since_tick=9
+            rows_per_min=53.7 cpu_s_per_row=0.132 chunks_since_tick=18
+            ms_per_chunk=44.273 audio_s_since_tick=9.520 rtf=0.084 uptime_s=70
 ```
 
-Amostragem de 10 em 10 s do mesmo processo: `rss_mb` 34 → 579 → 1476 → 1549 → **1549,2 →
-1549,8 → 1550,3**, `read_mb` **71,7 nas três últimas**, `cpu_s` +0,1 por intervalo (o fio do
-audio-ring, não o ORT). Ou seja: a criação da sessão CUDA **para** a meio, com 9,9 GiB livres
-na GPU (`nvidia-smi`: 6083 MiB usados de 16303, 20 % de utilização) e o áudio a chegar.
+`rtf=0.084` (12x tempo real) e 34 linhas em 70 s a partir do `CABLE Input`, com o loopback
+independente a medir `+51 blocos em 5,1 s, peak=0.2014` no mesmo minuto. Amostragem do mesmo
+processo: `rss_mb` 34 → 579 → 1476 → 1549 e `read_mb` 1,6 → 71,7, com `cpu_s` a subir 1,4 s a
+cada 10 s durante toda a transcrição — ou seja, a sessão ORT/CUDA **abre**; a primeira leitura
+desta lane (RSS plano depois dos 40 s) descrevia um worker **já carregado a transcrever**, não
+um congelamento.
 
-O áudio estava lá, medido no mesmo minuto com a mesma API: loopback independente no
-`CABLE Input` às 13:42:50 → `+51 blocos em 5,1 s, peak=0.2014`.
+O que congela é o worker **nascido dentro da shell dele**: `state=running`,
+`cpu 11,4 s` acumulados nos primeiros segundos e nada desde então, `TerminateProcess` recusado
+à pane (`Acesso negado`, integridade `high`). É a mesma classe do processo-corpse da shell às
+13:21:29 (§5) — um estado em que o processo não anda e não morre —, e não é determinística:
+o mesmo código, no mesmo minuto, noutro processo, transcreve a 12x.
 
-E a queda para CPU não existe como saída: `--providers CPUExecutionProvider` é recusado pelo
-próprio motor — `RuntimeError: Nemotron requires CUDAExecutionProvider exclusively`
-(medido, 3,5 s, `peak_rss_mb=288.5`).
+Também medido, para não se propor uma cura que não existe: `--providers CPUExecutionProvider`
+é recusado pelo motor (`RuntimeError: Nemotron requires CUDAExecutionProvider exclusively`,
+3,5 s, `peak_rss_mb=288.5`), logo não há queda para CPU como saída.
 
-**Conclusão:** o defeito que apaga a legenda hoje não é tap, não é dispositivo e não é o
-modelo — é o processo a congelar dentro de `InferenceSession` com o provider CUDA, a mesma
-classe de congelamento que já tinha matado a shell às 13:21:29 (0,0 % de CPU, log e ficheiros
-de estado parados no mesmo segundo, `TerminateProcess` pendente). Nenhuma dessas duas classe
-se resolve de dentro de uma pane `medium`: exige reiniciar a máquina (ou o driver de vídeo) —
-e é por isso que este red fica escrito aqui com os números, em vez de escondido num commit.
+**Conclusão:** o código da tap (que esta sessão curou e provou) não é o que apaga a legenda
+hoje; o que a apaga é este congelamento de processo, que exige reiniciar a máquina — e é por
+isso que este red fica escrito com os três números acima, em vez de escondido num commit.
