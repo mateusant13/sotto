@@ -231,14 +231,14 @@
       "max_func_name": "_meter_interface"
     },
     "app/webview/batch_queue.py": {
-      "bytes": 56553,
+      "bytes": 59116,
       "classes": 2,
       "defs": 16,
       "except_pass": 9,
       "globals": 0,
-      "lines": 1270,
-      "max_func": 72,
-      "max_func_name": "transcribe_payload"
+      "lines": 1310,
+      "max_func": 88,
+      "max_func_name": "refresh"
     },
     "app/webview/bridge_census.py": {
       "bytes": 3630,
