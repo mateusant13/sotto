@@ -3966,20 +3966,48 @@ READ_SLOW_MS = 200.0
 READ_SLOW_STEP_S = 0.25
 READ_SLOW_HOLD_S = 1.0
 
+#: O VIDEO PARADO NAO PEDE 4 Hz (2026-11-24, MEDIDO na instancia viva do dono,
+#: que assistia a uma live na Twitch com uma aba do YouTube PARADA numa linha
+#: final "See you in the next video."). `EXTERNAL_CAPTIONS_READ_STATS n=391
+#: mean_ms=16.9 p95_ms=110.0 max_ms=594.0 interval_s=0.10 step_s=0.25` -- a
+#: 0,25 s por volta, a leitura custa 16,9 ms, ou seja **6,76 % de um nucleo,
+#: continuamente, para reler a MESMA linha de um video que terminou**. O
+#: comment de 2026-11-05 ja' argumentava "0,45 s chega para ver o `play`
+#: voltar", mas a escada so' tinha dois degraus e o pausado caia no mesmo
+#: 0,25 s do "sem player nenhum". Sao dois casos diferentes: sem player a
+#: pergunta tem de ser rapida (um player novo pode aparecer a qualquer
+#: instante), com o player PARADO a legenda nao pode mudar.
+PAUSED_INTERVAL_S = 0.50
 
-def poll_step(idle_for, paused, base, idle, slow=False):
+#: E SE AS CUES NAO MUDARAM EM CINCO SEGUNDOS, NEM 0,5 s (2026-11-24): o caso
+#: medido acima e' um video terminado cuja ultima linha fica no ecra para
+#: sempre. 1,0 s ainda apanha o `play` no primeiro segundo (o `_tick` interpola
+#: localmente a `RENDER_S` entre leituras) e corta a carga a **1,69 % de um
+#: nucleo** pela mesma conta (1,0 Hz x 16,9 ms). A assinatura e' do CONTEUDO
+#: (texto das cues + modo), nao do relogio: no instante em que a cue muda, o
+#: degrau volta ao base -- nada aqui adivinha quando o video volta.
+STALE_CUE_S = 5.0
+STALE_INTERVAL_S = 1.00
+
+
+def poll_step(idle_for, paused, base, idle, slow=False, stale=False):
     """O PASSO DO LACO DA LEGENDA EXTERNA, como funcao pura.
 
     Existe para ser JULGADO: a decisao estava enterrada no meio de um laco de
-    200 linhas, e um laco nao se testa sem um desktop. Tres razoes descem o
-    passo -- cinco segundos sem leitura de player (`idle_for`), o video
-    PAUSADO (`paused`) e a leitura ANTERIOR medida acima de `READ_SLOW_MS`
-    (`slow`) --, porque uma legenda nao muda com o video parado e porque uma
-    fonte que acabou de custar meio segundo pede espaco, nao cadencia.
+    200 linhas, e um laco nao se testa sem um desktop. Quatro razoes descem o
+    passo -- o video PAUSADO (`paused`), a leitura ANTERIOR medida acima de
+    `READ_SLOW_MS` (`slow`), cinco segundos sem leitura de player (`idle_for`)
+    e as cues PARADAS com o video parado (`stale`) --, porque uma legenda nao
+    muda com o video parado e porque uma fonte que acabou de custar meio
+    segundo pede espaco, nao cadencia.
     MEDIDO 2026-11-05, na instancia do dono com o video pausado: o laco a 10 Hz
     custava 16,3% de um nucleo com o painel escondido; a 4 Hz custa 8,1%.
+    MEDIDO 2026-11-24 (o mesmo instrumento, 16,9 ms por leitura): 4 Hz custa
+    6,76%, o pausado 3,38% (0,50 s) e as cues paradas 1,69% (1,00 s).
     """
-    if idle_for >= 5.0 or paused:
+    if paused:
+        return STALE_INTERVAL_S if stale else PAUSED_INTERVAL_S
+    if idle_for >= 5.0:
         return idle
     if slow:
         return min(idle, max(base, READ_SLOW_STEP_S))
@@ -4359,9 +4387,21 @@ class ExternalCaptionWatcher(threading.Thread):
                 if _was is not None and getattr(self, '_read_slow_until', 0.0):
                     self._read_slow_until = 0.0
                     log('YOUTUBE_READ_HOLD_DROPPED epoch=%d' % _ep)
+            # A ASSINATURA E' DO CONTEUDO, NAO DO RELOGIO (2026-11-24, MEDIDO:
+            # 16,9 ms por leitura, 4 Hz, 6,76 % de um nucleo para reler a
+            # MESMA cue de um video terminado). Custa um tuplo de ate quatro
+            # textos por volta -- nenhuma chamada ao Windows, nenhum ficheiro.
+            _cue_sig = (bool(yt_mode), len(got or ()),
+                        tuple(str(_c)[:60] for _c in (got or ())[:4]))
+            _now_cue = time.monotonic()
+            if _cue_sig != getattr(self, '_cue_sig', None):
+                self._cue_sig = _cue_sig
+                self._cue_since = _now_cue
+            _cue_stale = (_now_cue - getattr(self, '_cue_since', _now_cue)) >= STALE_CUE_S
             _step = poll_step(_idle_for, _yt_paused,
                               self.INTERVAL_S, self.IDLE_INTERVAL_S,
-                              time.monotonic() < getattr(self, '_read_slow_until', 0.0))
+                              time.monotonic() < getattr(self, '_read_slow_until', 0.0),
+                              stale=_cue_stale)
             self._last_step = _step
             # O CUSTO DO DESENHO TAMBEM E' UM NUMERO (2026-11-03). Com a leitura
             # ja' barata (17 Hz medidos) o laco caiu para 0,5-5 Hz noutros

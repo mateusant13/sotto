@@ -79,7 +79,10 @@ def poll_step_from(path):
     keep = []
     for sub in tree.body:
         if isinstance(sub, ast.Assign) and any(
-                isinstance(t, ast.Name) and t.id.startswith('READ_SLOW_')
+                isinstance(t, ast.Name) and (t.id.startswith('READ_SLOW_')
+                                             or t.id in ('PAUSED_INTERVAL_S',
+                                                         'STALE_INTERVAL_S',
+                                                         'STALE_CUE_S'))
                 for t in sub.targets):
             keep.append(sub)
     for node in tree.body:
@@ -92,14 +95,31 @@ def poll_step_from(path):
 
 
 def arms():
+    # UMA LEITURA E UMA PARSE POR CORRIDA (2026-11-24, MEDIDO: o oraculo levou
+    # >120 s porque cada arm re-lia e re-parseava 1,5 MB de shell -- o custo de
+    # uma sonda e' do instrumento, e o braco negativo triplica-o).
+    src = _src(SHELL)
+    tree = ast.parse(src)
     fn, node = poll_step_from(SHELL)
     if fn is None:
         add(False, 'A0 `poll_step` existe no shell', 'funcao ausente')
         return
     add(fn(0.0, False, 0.10, 0.25) == 0.10,
         'A1 a correr sem silencio fica no passo BASE', fn(0.0, False, 0.10, 0.25))
-    add(fn(0.0, True, 0.10, 0.25) == 0.25,
-        'A2 o video PAUSADO desce o passo', fn(0.0, True, 0.10, 0.25))
+    # A2 e' o degrau de PAUSA (2026-11-24): o pausado custava o MESMO 0,25 s do
+    # "sem player nenhum" e isso era 6,76 % de um nucleo (16,9 ms x 4 Hz) a
+    # reler a ultima linha de um video terminado.
+    add(fn(0.0, True, 0.10, 0.25) == 0.50,
+        'A2 o video PAUSADO desce o passo (0,50 s)', fn(0.0, True, 0.10, 0.25))
+    add(fn(0.0, True, 0.10, 0.25, stale=True) == 1.00,
+        'A2-bis cues PARADAS descem o passo outra vez (1,00 s)',
+        fn(0.0, True, 0.10, 0.25, stale=True))
+    add(fn(0.0, False, 0.10, 0.25, stale=True) == 0.10,
+        'A2-ter cue estagnada NAO atrasa um video A TOCAR (o degrau e da pausa)',
+        fn(0.0, False, 0.10, 0.25, stale=True))
+    add(fn(6.0, False, 0.10, 0.25, stale=True) == 0.25,
+        'A2-quater sem player o degrau continua a ser o IDLE, nao o da pausa',
+        fn(6.0, False, 0.10, 0.25, stale=True))
     add(fn(6.0, False, 0.10, 0.25) == 0.25,
         'A3 o silencio de 5 s desce o passo', fn(6.0, False, 0.10, 0.25))
     add(fn(0.1, False, 0.10, 0.25) == 0.10,
@@ -116,7 +136,7 @@ def arms():
     add(fn(0.0, False, 0.10, 0.10, True) == 0.10,
         'A4-quater com IDLE igual ao BASE a escada nao inventa um passo mais lento')
     step_consts = {}
-    for node in ast.walk(ast.parse(_src(SHELL))):
+    for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for t in node.targets:
                 if isinstance(t, ast.Name) and t.id in ('READ_SLOW_MS',
@@ -133,7 +153,6 @@ def arms():
 
 
     # A5: no laco, `_step` e' o que a funcao devolve
-    tree = ast.parse(_src(SHELL))
     ok = False
     for sub in ast.walk(tree):
         if isinstance(sub, ast.Assign):
@@ -154,6 +173,19 @@ def arms():
             if len(call.args) >= 5 or any(k.arg == 'slow' for k in call.keywords):
                 wired = True
     add(wired, 'A5-bis o laco PASSA o estado de leitura lenta a `poll_step`')
+
+    # A5-ter: a ASSINATURA do conteudo que alimenta `stale` e' calculada no laco
+    # e PASSADA -- uma escada sem chamador e' a classe do instrumento morto.
+    stale_wired = False
+    for sub in ast.walk(tree):
+        if isinstance(sub, ast.Assign) and isinstance(sub.value, ast.Call) \
+                and getattr(sub.value.func, 'id', '') == 'poll_step':
+            if any(k.arg == 'stale' for k in sub.value.keywords):
+                stale_wired = True
+    sig_used = '_cue_sig' in src and 'STALE_CUE_S' in src
+    add(stale_wired and sig_used,
+        'A5-ter o laco calcula a assinatura da cue e PASSA `stale=..`',
+        'call=%s sig=%s' % (stale_wired, sig_used))
 
     # A6: idle < base -- lido DENTRO da classe do laco (o ficheiro tem mais de
     # um `INTERVAL_S`, e a primeira versao desta arm leu o de outra classe:
@@ -199,49 +231,53 @@ def cdp_arms():
 
 
 def neg_arm():
+    """TRES MUTANTES, cada um no SEU braco (2026-11-24).
+
+    M1 desarma o degrau de pausa (volta ao IDLE)  -> A2/A2-bis RED.
+    M2 apaga a escada da leitura lenta           -> A4-bis RED.
+    M3 ignora a assinatura (stale) da cue        -> A2-bis RED.
+    Um controlo que so' muta uma metade certifica metade; e o `stale` que
+    ninguem testa e' exatamente o degrau que hoje corta 6,76 % -> 1,69 %.
+    """
     global SHELL
     src = _src(SHELL)
-    mutated = re.sub(r'if idle_for >= 5\.0 or paused:', 'if False:', src, count=1)
-    if mutated == src:
-        print('NEG-ARM IMPOSSIVEL -- a condicao nao foi encontrada para mutar')
-        return 2
-    # OS DOIS MUTANTES, cada um no SEU braco: (1) a pausa desarmada -> A2/A4
-    # vermelhas; (2) a escada da leitura lenta apagada da funcao -> A4-bis
-    # vermelha. Um controlo que so' muta uma metade certifica metade.
-    mutated2 = re.sub(r'if slow:\n\s+return min\(idle, max\(base, READ_SLOW_STEP_S\)\)',
-                      'if False:\n        return base', mutated, count=1)
+    pause_old = 'if paused:\n        return STALE_INTERVAL_S if stale else PAUSED_INTERVAL_S'
+    m1 = src.replace(pause_old, 'if paused:\n        return idle', 1)
+    m2 = m1.replace('if slow:\n        return min(idle, max(base, READ_SLOW_STEP_S))',
+                    'if False:\n        return base', 1)
+    m3 = m1.replace('if paused:\n        return idle',
+                    'if paused:\n        return PAUSED_INTERVAL_S', 1)
+    mutants = [('M1 a pausa desarmada (volta ao IDLE)', m1, 'A2'),
+               ('M2 a escada da leitura lenta apagada', m2, 'A4-bis'),
+               ('M3 a assinatura da cue ignorada', m3, 'A2-bis')]
+    if m1 == src or m2 == m1 or m3 == m1:
+        print('NEG-ARM IMPOSSIVEL -- um mutante nao foi encontrado no ficheiro')
+        return 0
     tmp = os.path.join(tempfile.mkdtemp(prefix='neg-pace-'), 'sotto_webview.py')
-    io.open(tmp, 'w', encoding='utf-8', newline='').write(mutated)
     real = SHELL
-    SHELL = tmp
     try:
-        ROWS.clear()
-        print('=== NEG-ARM: a pausa desarmada numa COPIA')
-        arms()
-        cdp_arms()
-        red = [r for r in ROWS if not r[0]]
-        ok = any(r[1].startswith('A2') for r in red)
-        print('NEG-ARM %s -- %d arm(s) RED, A2 entre elas=%s'
-              % ('PASS' if ok else 'FAIL', len(red), ok))
-        second = True
-        if mutated2 == mutated:
-            print('NEG-ARM M2 IMPOSSIVEL -- a escada lenta nao foi encontrada')
-            second = False
-        else:
-            io.open(tmp, 'w', encoding='utf-8', newline='').write(mutated2)
+        SHELL = tmp
+        caught = 0
+        for title, text, want in mutants:
+            io.open(tmp, 'w', encoding='utf-8', newline='').write(text)
             ROWS.clear()
-            print('=== NEG-ARM M2: a escada da leitura lenta apagada numa COPIA')
+            print('=== NEG-ARM: %s numa COPIA' % title)
             arms()
-            red2 = [r for r in ROWS if not r[0]]
-            m2 = any(r[1].startswith('A4-bis') for r in red2)
-            print('NEG-ARM M2 %s -- %d arm(s) RED, A4-bis entre elas=%s'
-                  % ('PASS' if m2 else 'FAIL', len(red2), m2))
-            second = m2
-        # A CONVENCAO DA CASA: o braco negativo devolve **1** quando APANHA o
-        # mutante (o passo vizinho e' `:expectred ... 1`). Devolver 0 ao apanhar
+            red = [r for r in ROWS if not r[0]]
+            hit = any(r[1].startswith(want) for r in red)
+            print('NEG-ARM %s %s -- %d arm(s) RED, %s entre elas=%s'
+                  % (title.split()[0], 'PASS' if hit else 'FAIL', len(red), want, hit))
+            caught += 1 if hit else 0
+        # A CONVENCAO DA CASA: o braco negativo devolve **1** quando APANHA os
+        # mutantes (o passo vizinho e' `:expectred ... 1`). Devolver 0 ao apanhar
         # faz do controlo um passo que nunca pode falhar -- a primeira versao
         # deste ficheiro tinha-o ao contrario e o `:expectred` ficava decorativo.
-        return 1 if (ok and second) else 0
+        # A linha "NEG-ARM PASS" e' LIDA pela bateria (`:expectred ... "NEG-ARM
+        # PASS"`): cada mutante imprime o seu braco, mas o veredicto agregado
+        # tem de sair com esta forma exata.
+        print('NEG-ARM %s -- %d/%d mutantes apanhados'
+              % ('PASS' if caught == len(mutants) else 'FAIL', caught, len(mutants)))
+        return 1 if caught == len(mutants) else 0
     finally:
         SHELL = real
         try:
