@@ -540,8 +540,8 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-24):** `_main\_audit-verify-all.cmd` = **419611 B**,
-  **4798 CRLF** / 0 bare LF, sha256 `2EEEE84E66DEBFAC3932CDF76641A348E7C14D580C9BF331A3668EC687B51983`.
+- **PIN do ficheiro (re-medido 2026-11-24):** `_main\_audit-verify-all.cmd` = **420385 B**,
+  **4806 CRLF** / 0 bare LF, sha256 `522BBAD029AAF3BAC9EDC721BF860840BAA64E978438415E057A651A40945479`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
 
 ## O EOL DO REPO E' UMA REGRA (medido 2026-11-15)

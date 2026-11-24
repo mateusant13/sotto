@@ -229,6 +229,16 @@ class BatchQueue:
         self.entries = []
         self.recovered = 0
         self.orphans = 0
+        # A CONTAGEM DA LEITURA (2026-11-24, MEDIDO). O log do dono tinha
+        # `BATCH_QUEUE_ORPHANS manifests_without_audio=2 dir=I:\cc-tmp\sotto-batch-queue`
+        # **2288 vezes** -- um a cada 10 s (`poll_s`), sempre o MESMO conjunto --
+        # e o `sotto-batch-executor` media 4,7 % de um nucleo em `THREAD_CPU`
+        # (total da shell 12,6 %). Uma varredura cujo resultado nao pode mudar
+        # sem o directorio mudar pergunta UMA vez, nao 360 vezes por hora.
+        self.scans = 0
+        self.scan_skips = 0
+        self._scan_stamp = None
+        self._orphans_logged = 0
         try:
             os.makedirs(self.path, exist_ok=True)
         except OSError as exc:
@@ -249,22 +259,46 @@ class BatchQueue:
         return self._manifest_path(entry_id)
 
     # -- leitura ----------------------------------------------------------
-    def refresh(self):
+    def refresh(self, force=False):
         """Rele' o directorio. CRASH RECOVERY: `inflight` volta a `queued`.
 
         Um bloco `inflight` e' um bloco cujo processo morreu a meio (a shell
         fechou, o executor foi morto). Deixa-lo nesse estado seria perde-lo em
         silencio -- exactamente o que este modulo existe para impedir.
+
+        O DIRECTORIO QUE NAO MUDOU NAO SE RELE (2026-11-24, MEDIDO): o executor
+        chama isto a cada `poll_s` (10 s) e cada chamada fazia `listdir` + um
+        `open`+`json.load` por manifesto, com o resultado sempre igual -- 2288
+        linhas `BATCH_QUEUE_ORPHANS` identicas no log do dono. A guarda e' a LISTA
+        DE NOMES que o `listdir` ja' devolve: o directorio cujos nomes sao os
+        mesmos nao paga um `open`+`json.load` por manifesto. A primeira leitura e
+        o `force=True` correm sempre, e e' isso que a recuperacao de `inflight`
+        depois de um crash continua a ter.
+
+        PORQUE NAO O `st_mtime_ns` DO DIRECTORIO (medido nesta maquina, 2026-11-24):
+        no NTFS o carimbo do directorio e' actualizado de forma PREGUICOSA e
+        `os.stat` devolve o valor antigo por segundos. O braco A3 deste oraculo
+        criou um manifesto e a leitura seguinte disse `scans=1` -- a guarda
+        escondia trabalho NOVO. Um NOME e' a testemunha certa para "entrou ou saiu
+        um bloco"; um manifesto reescrito no sitio pelo MESMO processo nao precisa
+        de releitura (o manifesto em RAM ja' mudou) e nenhum outro processo
+        reescreve um manifesto existente -- `enqueue_f32` cria um id novo.
         """
         with self._lock:
-            entries = []
-            recovered = 0
-            orphans = 0
             try:
                 names = sorted(os.listdir(self.path))
             except OSError as exc:
                 self.log(f'BATCH_QUEUE_LIST_FAILED error={exc!r} dir={self.path}')
                 names = []
+            stamp = tuple(names)
+            if not force and stamp == getattr(self, '_scan_stamp', None):
+                self.scan_skips += 1
+                return list(self.entries)
+            self.scans += 1
+            self._scan_stamp = stamp
+            entries = []
+            recovered = 0
+            orphans = 0
             for name in names:
                 if name.endswith('.tmp'):
                     # Restos de uma escrita interrompida: o payload/ manifesto
@@ -304,8 +338,14 @@ class BatchQueue:
             self.orphans += orphans
             if recovered:
                 self.log(f'BATCH_QUEUE_RECOVERED inflight={recovered} dir={self.path}')
-            if orphans:
+            # A LINHA SO' QUANDO O NUMERO MUDA. O estado e' o mesmo conjunto de
+            # orfaos; repeti-lo a cada 10 s nao informa ninguem e escreve no log
+            # 360 vezes por hora (medido: 2288 linhas). A mudanca -- aparecer um
+            # orfao novo, ou o audio chegar e a lista esvaziar -- continua a ser
+            # dita no instante em que acontece.
+            if orphans and orphans != getattr(self, '_orphans_logged', 0):
                 self.log(f'BATCH_QUEUE_ORPHANS manifests_without_audio={orphans} dir={self.path}')
+            self._orphans_logged = orphans
             return list(self.entries)
 
     def pending(self):

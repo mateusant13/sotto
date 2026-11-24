@@ -2347,6 +2347,14 @@ if exist _main\paused-pace-oracle.py (
 call :step always red-as-expected-paused-pace 1 "_main\paused-pace-oracle.py;app\webview\sotto_webview.py" "%OUT%\paused-pace-neg.log" python _main\paused-pace-oracle.py --neg-arm
 call :expectred red-as-expected-paused-pace !STEP_RC! "%OUT%\paused-pace-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-paused-pace MISSING "%OUT%\paused-pace-neg.log" "NEG-ARM PASS" )
+if exist _main\batch-queue-scan-oracle.py (
+call :step always batch-queue-scan 0 "_main\batch-queue-scan-oracle.py;app\webview\batch_queue.py" "%OUT%\batch-queue-scan.log" python _main\batch-queue-scan-oracle.py
+call :record batch-queue-scan !STEP_RC!
+) else ( call :record batch-queue-scan MISSING )
+if exist _main\batch-queue-scan-oracle.py (
+call :step always red-as-expected-batch-queue-scan 1 "_main\batch-queue-scan-oracle.py;app\webview\batch_queue.py" "%OUT%\batch-queue-scan-neg.log" python _main\batch-queue-scan-oracle.py --neg-arm
+call :expectred red-as-expected-batch-queue-scan !STEP_RC! "%OUT%\batch-queue-scan-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-batch-queue-scan MISSING "%OUT%\batch-queue-scan-neg.log" "NEG-ARM PASS" )
 REM STUTTER NAO E' DESSINCRONIA (dono, 2026-11-07, verbatim): *"e ridiculo o fato que um
 REM stutter qualquer do meu pc, faca a legenda dessincronizar ... se a porra da legenda do
 REM youtube ta se movendo, mesmo com o stutter acontecendo, a NOSSA legenda que pegamos do
