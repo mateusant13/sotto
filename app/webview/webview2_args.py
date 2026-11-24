@@ -32,6 +32,28 @@ INHERIT_VAR = 'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'
 #: O argumento que so' um pedido explicito produz.
 PORT_ARG = '--remote-debugging-port=%d'
 
+#: O RENDERIZADOR NAO E' REBAIXADO POR A JANELA ESTAR ESCONDIDA (2026-11-24).
+#: ORDEM DO DONO, verbatim: *"apertei alt c, o painel que abriu demorou pra
+#: renderizar. deveria ser instantaneo"*. MEDIDO na sessao dele (`PANEL_SHOW_COST`
+#: em `_main/webview-run.log`, pid 27448):
+#:
+#:   07:59:58.083 reason=hotkey-cycle-strip surf_ms=16.0 arm_ms=0.0 gate_ms=0.0
+#:                 map_ms=15.0 ack_ms=328.0 total_ms=359.0 budget_ms=400
+#:   08:00:13.165 reason=hotkey-cycle-side  surf_ms=16.0 arm_ms=0.0 gate_ms=78.0
+#:                 map_ms=15.0 ack_ms=0.0   total_ms=109.0 budget_ms=400
+#:
+#: O PRIMEIRO map paga 328 ms de ack e o segundo, 15 s depois, paga ZERO: a
+#: diferenca nao e' o painel, e' que o WebView2 nunca tinha produzido um quadro
+#: (a janela nasce escondida e o Chromium trata janela escondida como segundo
+#: plano). Estes dois interruptores sao o que o Chromium documenta para isso --
+#: `disable-renderer-backgrounding` e `disable-backgrounding-occluded-windows` --
+#: e ficam FORA do `--disable-background-timer-throttling` de proposito: o que
+#: se pede aqui e' um quadro pronto, nao um `setInterval` a queimar CPU escondido.
+UNTHROTTLE = (
+    '--disable-renderer-backgrounding',
+    '--disable-backgrounding-occluded-windows',
+)
+
 
 def plan(inherited, cdp_port=None):
     """Decide o valor FINAL da variavel. Pura: nao toca no ambiente.
@@ -41,9 +63,9 @@ def plan(inherited, cdp_port=None):
 
     Devolve `{'action', 'value', 'dropped'}`, onde `action` e' exatamente um de:
 
-      'set'     -- um porto foi pedido; `value` e' o argumento UNICO que vai la'
-      'cleared' -- havia um valor herdado e nao houve pedido: `value` e' None
-      'none'    -- nao havia nada herdado nem pedido: nada muda no ambiente
+      'set'     -- ha' argumentos nossos a entregar; `value` e' a lista deles
+      'cleared' -- havia um valor herdado e nenhum nosso: `value` is None
+      'none'    -- nao havia nada herdado nem nosso: nada muda no ambiente
     """
     port = None
     if cdp_port not in (None, ''):
@@ -51,8 +73,13 @@ def plan(inherited, cdp_port=None):
         if not (1 <= port <= 65535):
             raise ValueError('cdp_port fora de 1..65535: %r' % (cdp_port,))
     dropped = inherited or ''
+    # O NOSSO CONJUNTO E' FIXO: o porto pedido (nunca herdado) e o
+    # DES-REBAIXAMENTO DO RENDERIZADOR (nunca opcional -- ver `UNTHROTTLE`).
+    args = list(UNTHROTTLE)
     if port is not None:
-        return {'action': 'set', 'value': PORT_ARG % port, 'dropped': dropped}
+        args.append(PORT_ARG % port)
+    if args:
+        return {'action': 'set', 'value': ' '.join(args), 'dropped': dropped}
     if inherited:
         return {'action': 'cleared', 'value': None, 'dropped': dropped}
     return {'action': 'none', 'value': None, 'dropped': ''}

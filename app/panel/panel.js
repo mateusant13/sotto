@@ -1550,6 +1550,49 @@ function wireCaptions() {
  */
 function wireExternalCaptions() {
   if (!bridge || typeof bridge.onExternalCaption !== 'function') return;
+  // A LINHA DO PLAYER QUE FOI SUBSTITUIDA E' UMA LINHA FECHADA (2026-11-24).
+  //
+  // O dono: *"as legendas ao vivo do youtube tambem nao estao sendo loggadas no
+  // painel da direita"*. MEDIDO no log dele (pid 27448): 23
+  // `HISTORY_REFUSED where=panel/recordHistory reason=provisional-draft` contra
+  // UM `HISTORY_APPEND` no mesmo trecho. A causa e' o desenho do canal: o cue
+  // do player e' CUMULATIVO, o shell marca `final=false` quando ele ESTENDE o
+  // anterior, e um cue que estende so' fechava pelo deadline do hold -- que
+  // fecha como `provisional-draft`, e essa rota e' recusada pelo arquivo POR
+  // REGRAS (`history-source.js`: o historico nunca leva a legenda ao vivo).
+  // Logo a linha que o dono viu na tela nunca entrava, e o unico cue que podia
+  // entrar era o que NAO estendia -- que e' justamente o comeco da frase
+  // seguinte.
+  //
+  // A regra do arquivo nao se afrouxa: `provisional-draft` continua recusada.
+  // O que muda e' QUEM fecha a linha do player. Um cue do player que substitui
+  // o anterior e' uma linha TERMINADA -- o player parou de crescer aquela
+  // frase e comecou outra --, e o painel e' quem sabe disso, porque ve' os dois
+  // cues. A substituicao comita o ANTERIOR com `route:'final'` antes do
+  // `reset()`, e o cue que o shell ja' marca `final` continua a fechar-se pelo
+  // `flush`. Uma linha por GRUPO de cue (a mais longa de cada frase exibida),
+  // nunca uma por cue: 133 cues de um video nao sao 133 linhas de historico.
+  const pendingExternal = new Map();   // source -> { text, meta, key }
+  const committedExternal = new Map(); // row identity -> text ja' aceite
+  const externalKey = (meta) => (meta && typeof meta.start === 'number')
+    ? String(meta.start) : null;
+  const commitExternal = (entry, reason) => {
+    if (!entry || !entry.text) return;
+    const key = entry.key;
+    if (key !== null && committedExternal.get(key) === entry.text) return;
+    const meta = Object.assign({}, entry.meta, {
+      route: 'final',
+      routeSource: 'player-replaced'
+    });
+    if (addCaption(entry.text, reason, meta) && key !== null) {
+      committedExternal.set(key, entry.text);
+      // Tecto declarado: a chave e' o `start` do cue, e um filme longo tem
+      // milhares. Sem isto o mapa cresce com o tempo de vida da pagina; uma
+      // limpeza a 2000 entradas custa um Map novo e nunca perde verificacao de
+      // uma linha recente.
+      if (committedExternal.size > 2000) committedExternal.clear();
+    }
+  };
   bridge.onExternalCaption((payload) => {
     const text = String((payload && payload.text) || '').trim();
     if (!text) return;
@@ -1557,6 +1600,11 @@ function wireExternalCaptions() {
     const source = typeof meta.source === 'string' && meta.source
       ? meta.source : 'external:player';
     const engine = engineFor(source);
+    const pending = pendingExternal.get(source);
+    if (pending && pending.text && pending.text !== text) {
+      commitExternal(pending, 'external-replaced');
+      pendingExternal.delete(source);
+    }
     engine.reset();
     engine.ingest(text, meta);
     // THE HOLD DEADLINE IS A PROPERTY OF THE LINE, NOT OF THE CHANNEL. The
@@ -1568,7 +1616,13 @@ function wireExternalCaptions() {
     // a tail is held (2026-11-04): the player is the fallback population — its
     // cues carry no `stable` stamp — so this is exactly the case the deadline
     // exists for, and `flush` below leaves nothing to expire.
-    if (meta.final === true) engine.flush('external-final');
+    if (meta.final === true) {
+      // O SHELL FECHOU A LINHA: o `flush` e' o escritor, e nao ha' nada pendente.
+      pendingExternal.delete(source);
+      engine.flush('external-final');
+    } else {
+      pendingExternal.set(source, { text, meta, key: externalKey(meta) });
+    }
     armHoldIfHeld();
   });
 }

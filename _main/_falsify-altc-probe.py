@@ -64,7 +64,7 @@ OS BRACOS (todos com o MESMO script, a MESMA forma, arvores SEPARADAS):
     neg-inverted   a arvore INTACTA, a EXPECTATIVA
                    INVERTIDA (esperar o MESMO lado duas
                    vezes seguidas)                        -> tem de dar VERMELHO
-    neg-mutant     a arvore MUTADA (`next_surface` a
+    neg-mutant     a arvore MUTADA (`next_action` a
                    devolver sempre 'strip')               -> tem de dar VERMELHO
 
 O `neg-inverted` prova que a minha sonda nao e' vacua (a mesma medicao com a

@@ -14,7 +14,7 @@ It imports the SHIPPED modules of a tree (`app/webview/sotto_webview.py` and
       -> SottoShell._hotkey_dispatch('panels')   (real production body: FIFO queue)
       -> SottoShell._hotkey_worker_loop()        (real production body: worker)
       -> SottoShell._hotkey_resolve('panels')    (real production body)
-      -> hotkey_gesture.next_surface(...)        (the shipped rule)
+      -> hotkey_gesture.advance(...)/next_action  (the shipped rule)
       -> show_strip / show_side / hide_panel     (real production bodies)
 
 WHAT IS FAKED, AND WHY
@@ -27,7 +27,7 @@ and no window in a headless run, and the repo law
 (`SOTTO_NEVER_ON_OWNER_SCREEN`) forbids putting one on the owner's screen.
 
 EVERY decision under test is the shipped code, unmodified: the rule
-(`hotkey_gesture.next_surface`), the queue, the dispatch, the show/hide
+(`hotkey_gesture.advance`/`next_action`), the queue, the dispatch, the show/hide
 bodies, the surface memory, the `_hotkey_resolve` read of the window.
 
 The fake window IS the display: its `visible` flag is the measurement, and
@@ -346,19 +346,17 @@ def main(argv):
             return _wrapper
         setattr(sw.SottoShell, _name, _make(_orig, _name))
 
-    # THE RULE IS THE SHIPPED ONE: the gesture module's `next_surface` must be
-    # the function in the file on disk, not a copy.
+    # THE RULE IS THE SHIPPED ONE: the gesture module's `next_action`/`advance`
+    # must be the functions in the file on disk, not a copy.
     _gest = sw.hotkey_numbers()
     _gest_path = os.path.join(os.path.abspath(args.tree), 'app', 'webview',
                               'hotkey_gesture.py')
     _gest_src = open(_gest_path, encoding='utf-8').read()
     chain_meta = {
         'gesture_module_file': getattr(_gest, '__file__', None),
-        'next_surface_code_matches_disk':
-            _gest.next_surface.__code__.co_code ==
-            compile(_gest_src, _gest_path, 'exec').co_consts[0].co_code
-            if False else None,
-        'next_surface_argcount': _gest.next_surface.__code__.co_argcount,
+        'next_action_argcount': _gest.next_action.__code__.co_argcount,
+        'advance_argcount': _gest.advance.__code__.co_argcount,
+        'double_tap_s': getattr(_gest, 'DOUBLE_TAP_S', None),
         'PANELS_ACCELERATOR': getattr(_gest, 'PANELS_ACCELERATOR', None),
     }
     # A REAL handle: the production code reads `self.hwnd` to decide whether it

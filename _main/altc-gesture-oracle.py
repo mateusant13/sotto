@@ -28,7 +28,7 @@ OS BRACOS (a lista e' impressa no arranque, e cada um diz o que julga):
       tem de derrubar o oraculo -- corrido, com o resultado mostrado;
   (f) QUATRO pressoes de `C` com o `Alt` EM BAIXO o tempo inteiro, pelo caminho
       REAL: a decisao do shell (`hotkey_pressed` -> `_hotkey_dispatch` ->
-      `_hotkey_resolve` -> `next_surface` -> show/hide) e o observador real
+      `_hotkey_resolve` -> `next_action`/`advance` -> show/hide) e o observador real
       (`PassiveHotkeyThread.run`, com o estado das teclas injectado e as SOLTAS
       perdidas como o GIL as perde de verdade). A sequencia exigida e'
       show,hide,show,hide -- pressao 1 mostra a faixa, 2 esconde, 3 mostra o
@@ -385,18 +385,27 @@ def module_consts(source: str) -> dict:
 
 
 def clock_stamps_ok(spies, presses: int) -> bool:
-    """Uma leitura de relogio por pressao APLICADA -- e so' `monotonic`.
+    """O relogio MEDE, e o numero de leituras e' LIMITADO por pressao.
 
-    A CURA DE 2026-11-10 MUDOU ESTE CONTRATO, e a razao esta' no produto: o show
-    passou a ter UM relogio (`SHOW_BUDGET_S`), carimbado em `_hotkey_resolve` na
-    linha `HOTKEY_COALESCED` e entregue a `show_strip`/`show_side` por
-    `deadline=`. Antes dessa cura o caminho da pressao nao lia relogio NENHUM, e
-    este oraculo exigia `reads == []`; a expectativa morreu com a cura, nao com o
-    orgao. O que continua a ser julgado, e e' a razao de a arm existir: o relogio
-    NAO decide (a decisao e' `hotkey_gesture.advance`, que nao aceita tempo
-    nenhum como parametro) e nada e' ADIADO por ele (zero `Timer`, ver as arms).
+    TRES curas mudaram este contrato, e cada uma deixou o orgao mais estreito:
+
+      * 2026-11-10 -- o show ganhou UM relogio (`SHOW_BUDGET_S`), carimbado em
+        `_hotkey_resolve` e entregue a `show_strip`/`show_side` por `deadline=`;
+      * 2026-11-24 -- a JANELA do double (`DOUBLE_TAP_S`) e' lida (`since_show_s`,
+        `time.monotonic() - _panel_hotkey_strip_mono`) e o carimbo do show da
+        faixa e' escrito no mesmo tique.
+
+    O que continua a ser julgado, e e' a razao de a arm existir: so' `monotonic`
+    (nunca `time.time`/`perf_counter`, que saltam com o relogio do sistema), o
+    numero de leituras e' LIMITADO -- `presses .. 3 x presses`, porque ha' no
+    maximo tres perguntas por pressao: a idade da janela, o carimbo do show e o
+    orcamento do show. Um laco que lesse o relogio por quadro cairia aqui, e
+    nada e' ADIADO por nenhuma delas (zero `Timer`, arms proprias).
     """
-    return spies['time'].reads == ['monotonic'] * presses
+    reads = list(spies['time'].reads)
+    if any(r != 'monotonic' for r in reads):
+        return False
+    return presses <= len(reads) <= 3 * presses
 
 
 def build_shell(source: str, gesture):
@@ -432,7 +441,7 @@ class FakeShell:
     """So' o que os tres metodos tocam. Nenhuma chamada Win32.
 
     `hide_panel` NAO limpa `surface_applied`, de proposito: o ciclo de
-    `hotkey_gesture.next_surface` depende dessa memoria para alternar o show
+    `hotkey_gesture.next_action` depende dessa memoria para o DOUBLE
     seguinte, e o shell real tambem nao a limpa (braco estrutural separado).
     """
 
@@ -630,34 +639,51 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
         "arm_hotkey arma a legenda com a tecla do FICHEIRO do dono")
 
     # -- ARM 3 -----------------------------------------------------------------
-    print("\nARM 3 -- a regra pura: um passo por pressao, sem relogio")
-    add(gesture.next_surface(False, "panel") == "strip",
-        "escondido (ultimo show: painel) -> faixa de BAIXO",
-        str(gesture.next_surface(False, "panel")))
-    add(gesture.next_surface(True, "strip") == "panel",
-        "faixa de baixo no ecra -> painel da DIREITA (o 2o toque)",
-        str(gesture.next_surface(True, "strip")))
-    add(gesture.next_surface(False, "strip") == "strip",
-        "escondido (ultimo show: faixa) -> faixa de BAIXO outra vez"
-        " (a casa 1 nao depende de memoria)",
-        str(gesture.next_surface(False, "strip")))
-    add(gesture.next_surface(True, "panel") is None,
-        "painel da direita no ecra -> ESCONDE", str(gesture.next_surface(True, "panel")))
-    add(gesture.next_surface.__code__.co_argcount == 2,
-        "a regra so' olha para a JANELA (visible, surface) -- nenhum tempo",
-        str(gesture.next_surface.__code__.co_varnames[:2]))
-    visible, surface = False, "panel"
+    print("\nARM 3 -- a regra pura: um toque, e o DOUBLE como unica porta da direita")
+    # ORDEM DO DONO, 2026-11-24, verbatim: *"ao apertar alt c segundos depois, o
+    # painel da direita abriu, o que nao deveria acontecer. ja que e' pra abrir o
+    # da direita apenas em double alt c"*. MEDIDO (pid 27448): 07:59:57.729
+    # pressao 1 -> `visible/strip`; 08:00:13.058 pressao 2, 15,3 s depois ->
+    # `visible/panel`. A casa 2 (a direita) passa a exigir a JANELA.
+    add(gesture.next_action(False, "panel") == (True, "strip"),
+        "escondido -> faixa de BAIXO", str(gesture.next_action(False, "panel")))
+    add(gesture.next_action(True, "strip", 0.05) == (True, "panel"),
+        "faixa + 2o toque DENTRO da janela -> painel da DIREITA (double)",
+        str(gesture.next_action(True, "strip", 0.05)))
+    add(gesture.next_action(True, "strip", 15.3) == (False, "strip"),
+        "faixa + toque 15,3 s depois -> ESCONDE (o defeito medido dele)",
+        str(gesture.next_action(True, "strip", 15.3)))
+    add(gesture.next_action(True, "strip", None) == (False, "strip"),
+        "faixa sem carimbo do Alt+C (mostrada por outra via) -> ESCONDE",
+        str(gesture.next_action(True, "strip", None)))
+    add(gesture.next_action(True, "panel", 0.05) == (False, "panel"),
+        "painel da direita -> ESCONDE (a janela nao promove nada)",
+        str(gesture.next_action(True, "panel", 0.05)))
+    add(gesture.next_action(False, "strip", 0.05) == (True, "strip"),
+        "escondido -> faixa mesmo com carimbo velho em maos",
+        str(gesture.next_action(False, "strip", 0.05)))
+    add(gesture.DOUBLE_TAP_S == 0.40,
+        "a janela do double e' a declarada (400 ms, abaixo do double-click do Windows)",
+        str(gesture.DOUBLE_TAP_S))
+    add(gesture.next_action.__code__.co_varnames[:4] ==
+        ("visible", "surface", "since_show_s", "window_s"),
+        "a regra recebe a IDADE do show, nunca a le' (pura)",
+        str(gesture.next_action.__code__.co_varnames[:4]))
+    # A RAJADA: `advance` caminha o mesmo passo N vezes. Uma rajada de 2 vira a
+    # direita (segundo toque a 0 ms), uma de 3 esconde, e a de 1 mostra a faixa.
+    add(gesture.advance(False, "panel", 1) == (True, "strip"),
+        "1 toque -> faixa", str(gesture.advance(False, "panel", 1)))
+    add(gesture.advance(False, "panel", 2) == (True, "panel"),
+        "2 toques em rajada -> painel da direita", str(gesture.advance(False, "panel", 2)))
+    add(gesture.advance(False, "panel", 3) == (False, "panel"),
+        "3 toques em rajada -> esconde", str(gesture.advance(False, "panel", 3)))
+    # CINCO pressoes RAPIDAS (rajada) e CINCO LENTAS sao coisas diferentes: e' a
+    # distincao que o dono pediu e que o ciclo antigo nao tinha.
     seq = []
-    for _ in range(10):
-        nxt = gesture.next_surface(visible, surface)
-        seq.append(nxt or "hide")
-        if nxt is None:
-            visible = False
-        else:
-            visible, surface = True, nxt
-    add(seq == ["strip", "panel", "hide", "strip", "panel", "hide", "strip", "panel",
-                "hide", "strip"],
-        "10 pressoes na regra pura: 10 mudancas, ciclo faixa->lado->escondido",
+    for _ in range(5):
+        seq.append(gesture.next_action(False, "panel"))
+    add(seq == [(True, "strip")] * 5,
+        "escondido, 5 toques: a casa 1 nao depende de memoria",
         str(seq))
 
     # -- ARM 4 -----------------------------------------------------------------
@@ -691,8 +717,8 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
     add(host.live_calls == [], "(a) nenhuma das 10 pressoes de Alt+C mexe na legenda",
         str(host.live_calls))
     add(clock_stamps_ok(spies, 10),
-        "(a) o caminho da pressao carimba o orcamento do show UMA vez por "
-        "pressao, e a DECISAO nao le' relogio",
+        "(a) o relogio so' mede (janela do double + orcamento do show), "
+        "com leituras LIMITADAS por pressao e nada adiado",
         str(spies['time'].reads) or "zero leituras")
     add(spies['threading'].timers == [],
         "(a) nenhum Timer armado: nao ha adiamento nenhum",
@@ -712,7 +738,7 @@ def run(gesture_path: Path, shell_path: Path, settings_path: Path,
         "(b) duas pressoes a 10 s -> DUAS mudancas (nao e' um gesto duplo)",
         str(host.events))
     add(clock_stamps_ok(spies, 2),
-        "(b) os 10 s nao decidem nada: as duas pressoes so' carimbam o orcamento",
+        "(b) os 10 s so' medem a janela: cada pressao tem leituras limitadas",
         str(spies['time'].reads) or "zero leituras")
 
     # (c) uma pressao com 300 ms de relogio: UMA mudanca, nenhuma legenda.
@@ -1053,9 +1079,11 @@ def neg_arm() -> int:
     mandou tirar em 2026-10-30: *"tem um delay DO CARALHO pra aparecer os
     painels"*). MUTANTE 2: o LIMIAR de HOLD volta ao modulo do gesto (a duracao
     da segurada volta a decidir, que e' o que ele mandou tirar hoje).
-    MUTANTE 3 (2026-11-04): o CICLO e' APAGADO -- `next_surface` devolve sempre a
-    faixa, logo nenhuma pressao esconde e a alternancia show/hide deixa de
-    existir. E' o mutante da ordem dele (*"alterna entre show e hide"*).
+    MUTANTE 3 (2026-11-04, re-ancorado em 2026-11-24): a regra NAO ESCONDE -- devolve
+    sempre a faixa, logo a alternancia show/hide deixa de existir.
+    MUTANTE 6 (2026-11-24): a JANELA DO DOUBLE e' ignorada -- qualquer segundo
+    toque promove a direita, que e' o defeito que o dono reportou (pid 27448:
+    pressao 2 **15,3 s** depois abriu `visible/panel`).
     MUTANTE 4 (2026-11-04): o LATCH por COMBINACAO volta -- o observador so'
     re-arma quando TODAS as teclas sobem, e uma solta perdida com o modificador
     em baixo engole as pressoes seguintes.
@@ -1066,7 +1094,8 @@ def neg_arm() -> int:
                          ("blank-alternation", _mutate_gesture_blank),
                          ("combination-latch", _mutate_shell_latch),
                          ("caption-off-closes-the-panel",
-                          _mutate_shell_caption_domain)):
+                          _mutate_shell_caption_domain),
+                         ("double-window-ignored", _mutate_gesture_window)):
         tmp = Path(tempfile.mkdtemp(prefix="altc-neg-"))
         try:
             webview = _copy_tree(tmp)
@@ -1089,7 +1118,7 @@ def neg_arm() -> int:
     if failures:
         print("\nNEG-ARM FAIL -- o oraculo nao ve a regressao")
         return EXIT_PASS
-    print("\nNEG-ARM PASS -- RED as designed: as cinco regressoes derrubam o oraculo")
+    print("\nNEG-ARM PASS -- RED as designed: as seis regressoes derrubam o oraculo")
     return EXIT_FAIL
 
 
@@ -1119,10 +1148,10 @@ def _mutate_gesture_hold(webview: Path):
 
 #: O CICLO INTEIRO, apagado: a regra mostra a faixa e nunca esconde.
 GESTURE_BLANK_PATCH = (
-    "    if not visible:\n"
-    "        return 'strip'\n"
-    "    return 'panel' if str(surface or '') == 'strip' else None",
-    "    return 'strip'  # MUTANT: o ciclo apagado, nenhuma pressao esconde",
+    "    if str(surface or '') == 'strip' and in_window:\n"
+    "        return True, 'panel'\n"
+    "    return False, str(surface or '')",
+    "    return True, 'strip'  # MUTANT: nenhuma pressao esconde",
 )
 
 #: O LATCH POR COMBINACAO de volta (antes de 2026-11-04): todas as teclas tem de
@@ -1139,7 +1168,24 @@ def _mutate_gesture_blank(webview: Path):
     if GESTURE_BLANK_PATCH[0] not in text:
         return None
     target.write_text(text.replace(*GESTURE_BLANK_PATCH, 1), encoding="utf-8")
-    return "o ciclo dos paineis apagado (next_surface devolve sempre a faixa)"
+    return "a regra nunca esconde (next_action devolve sempre a faixa)"
+
+
+#: A JANELA DO DOUBLE APAGADA (o defeito de 2026-11-24): a casa 2 volta a
+#: aceitar QUALQUER segundo toque, fosse quando fosse.
+GESTURE_WINDOW_PATCH = (
+    "    if str(surface or '') == 'strip' and in_window:",
+    "    if str(surface or '') == 'strip':",
+)
+
+
+def _mutate_gesture_window(webview: Path):
+    target = webview / "hotkey_gesture.py"
+    text = target.read_text(encoding="utf-8")
+    if GESTURE_WINDOW_PATCH[0] not in text:
+        return None
+    target.write_text(text.replace(*GESTURE_WINDOW_PATCH, 1), encoding="utf-8")
+    return "a janela do double ignorada (qualquer 2o toque -> direita)"
 
 
 def _mutate_shell_caption_domain(webview: Path):

@@ -364,7 +364,8 @@ def arm_shell_wiring(mono, shell_path=SHELL):
     ns = {"log": lambda m: logs.append(str(m)), "time": _Clock(), "os": os,
           "_yt_mark": lambda *_a, **_k: None,
           "_YT_RATE_LOG_S": 5.0}
-    for const in ("CLOCK_STATIC_PAUSE_S", "CLOCK_MOVING_MIN_RATE",
+    for const in ("CLOCK_STATIC_PAUSE_S", "CLOCK_STATIC_PAUSE_FLAG_S",
+                  "CLOCK_MOVING_MIN_RATE",
                   "PAUSE_BLANK_DWELL_S"):
         ns["_" + const] = _literal(src, const)
     for name, body in bodies.items():
@@ -375,7 +376,8 @@ def arm_shell_wiring(mono, shell_path=SHELL):
         player = _Player(_Source(snap))
         for name in names:
             setattr(player, name, ns[name].__get__(player, type(player)))
-        for const in ("CLOCK_STATIC_PAUSE_S", "CLOCK_MOVING_MIN_RATE",
+        for const in ("CLOCK_STATIC_PAUSE_S", "CLOCK_STATIC_PAUSE_FLAG_S",
+                  "CLOCK_MOVING_MIN_RATE",
                       "PAUSE_BLANK_DWELL_S"):
             setattr(player, const, ns["_" + const])
         return player

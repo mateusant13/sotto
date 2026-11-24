@@ -312,7 +312,8 @@ EXTRACTED = ("_youtube_time", "_yt_decide", "yt_live_frame", "_yt_lines",
 #:              por apanhado por um CRASH (`AttributeError`) em vez de por um numero
 #:              errado, que e' exactamente a doenca que o comentario do `EXTRACTED`
 #:              descreve. O positivo nunca o alcançava: so' o M3 conduz essa borda.
-CLASS_CONSTS = ("CLOCK_STATIC_PAUSE_S", "PAUSE_BLANK_DWELL_S")
+CLASS_CONSTS = ("CLOCK_STATIC_PAUSE_S", "CLOCK_STATIC_PAUSE_FLAG_S",
+                 "PAUSE_BLANK_DWELL_S")
 
 
 def _literal(source, name):

@@ -718,14 +718,18 @@ def main(argv):
     # 10) O DESENHO NOVO DEIXA DE DESMENTIR A PAUSA (2026-11-15): o portao do
     # `quiet` some e a bandeira volta a apagar com o video a andar -- o defeito
     # medido em 11 de 16 pressoes de LIGAR. O braco do desenho TEM de cair.
-    quiet_gate = "                    or quiet < float(self.PAUSE_BLANK_DWELL_S)):"
+    #: O `quiet` E A SEGUNDA METADE DO DWELL DESDE 2026-11-24 (a testemunha
+    #: `flag+clock-static` leva o dwell a zero e as duas comparacoes passam a
+    #: ler `_dwell`); o mutante arranca a metade do DESENHO, que e a que o
+    #: braco do flap mede.
+    quiet_gate = "            if (held < _dwell or quiet < _dwell):"
     if src.count(quiet_gate) != 1:
         print('NEG-ARM IMPOSSIVEL: o portao do desenho aparece %d vez(es)'
               % src.count(quiet_gate))
         return 2
     mutated10 = src.replace(
         quiet_gate,
-        "                    or quiet < 0.0):  # mutante: o desenho nao desmente",
+        "            if (held < _dwell):  # mutante: o desenho nao desmente",
         1)
     caught_frames = not arm_pause_edge(mutated10)
 

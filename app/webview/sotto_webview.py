@@ -2550,6 +2550,50 @@ def _log_writer():
             return
 
 
+def _log_drain_inline():
+    """Escreve a fila do log AQUI, no fio da saida, quando o escritor nao corre.
+
+    UMA ESPERA NAO E UM MECANISMO DE VEREDICTO (medido 2026-11-24). O
+    `_log_drain` dava `timeout_s` ao fio `sotto-log` e seguia para o
+    `os._exit`; numa maquina carregada o fio pode nao ser escalonado dentro
+    desse prazo e a linha TERMINAL (`EXIT_TERMINATE`) morria na fila COM a
+    evidencia que ela existe para deixar. Medido no `_main/dead-app-exit-oracle.py`
+    arme `birth` dentro da bateria: `{"rc": 7, "terminal": false}` -- o processo
+    saiu com o codigo certo e o log do arme nao tinha a linha.
+
+    Cada item sai da fila por UM consumidor (`get_nowait`), logo nao ha linha
+    duplicada: o escritor continua a poder escrever o que ja' tirou. O `None`
+    devolve-se a' fila para o escritor terminar assim que for escalonado.
+    """
+    fh, q = _LOG_FILE, _LOG_QUEUE
+    if fh is None or q is None:
+        return
+    written = 0
+    while True:
+        try:
+            line = q.get_nowait()
+        except Exception:                       # noqa: BLE001 -- fila vazia
+            break
+        if line is None:
+            try:
+                q.put(None)
+            except Exception:                   # noqa: BLE001
+                pass
+            break
+        try:
+            fh.write(line + '\n')
+            fh.flush()
+            written += 1
+        except Exception:                       # noqa: BLE001
+            break
+    if written:
+        try:
+            fh.write('sotto: LOG_DRAIN_INLINE lines=%d\n' % written)
+            fh.flush()
+        except Exception:                       # noqa: BLE001
+            pass
+
+
 def _log_drain(timeout_s=2.0):
     """Stop the writer, giving the ALREADY queued lines their disk time.
 
@@ -2568,6 +2612,8 @@ def _log_drain(timeout_s=2.0):
     _LOG_QUEUE.put(None)
     if _LOG_WRITER is not None:
         _LOG_WRITER.join(timeout_s)
+        if _LOG_WRITER.is_alive():
+            _log_drain_inline()
 
 
 def _stamp() -> str:
@@ -5248,6 +5294,20 @@ class ExternalCaptionWatcher(threading.Thread):
     #: abaixo de qualquer cue: um video a andar nunca repete o `currentTime`.
     CLOCK_STATIC_PAUSE_S = 2.0
 
+    #: O PISO CURTO QUANDO A BANDEIRA CONCORDA (2026-11-24). Uma pausa que o
+    #: player AFIRMA (`paused=True` na mesma foto) e que o relogio CONFIRMA
+    #: (mesmo `currentTime` em duas fotos de carimbos distintos) nao precisa dos
+    #: 2 s da bandeira calada: a dupla testemunha ja' foi medida, e o dono pediu
+    #: o ecra limpo na hora -- verbatim: *"eu pausar e despausar rapidamente o
+    #: video do youtube, faz a legenda ao vivo continuar por varios segundos,
+    #: quando deveria parar na hora"*. MEDIDO no log dele (pid 27448):
+    #: `YOUTUBE_PAUSE_PROVEN ... still_s=2.00` as 08:02:17.492 e
+    #: `CAPTION_WINDOW_BLANKED` so' as 08:02:19.3 (2 s de relogio + 1,5 s de
+    #: dwell). O piso de 2 s continua sendo o caminho da bandeira CALADA, que e'
+    #: o caso de 8 minutos do log de 2026-11-10 -- ali uma unica foto nao prova
+    #: nada.
+    CLOCK_STATIC_PAUSE_FLAG_S = 0.25
+
     def _yt_clock_static(self, snap, now=None):
         """O PLAYER ESTA' PARADO PELO RELOGIO, mesmo que `paused` diga que nao?
 
@@ -5322,7 +5382,18 @@ class ExternalCaptionWatcher(threading.Thread):
             self._yt_ct_verdict = (False, 0.0)
             return self._yt_ct_verdict
         held = (now - since) if since else 0.0
-        self._yt_ct_verdict = (held >= float(self.CLOCK_STATIC_PAUSE_S), held)
+        # DUAS TESTEMUNHAS ENCURTAM A ESPERA (2026-11-24): a bandeira do player
+        # E a posicao imovel em DUAS fotos de carimbos distintos -- o carimbo ja'
+        # recusou a foto repetida acima, logo este `held` e' tempo medido, nao
+        # tempo de cache. Com a bandeira calada fica o piso longo de 2 s, que e'
+        # o caso de 2026-11-10 (8 minutos congelados sem borda de pausa).
+        try:
+            _flag = bool(snap.get('paused')) if snap is not None else False
+        except AttributeError:
+            _flag = False
+        _need = (float(self.CLOCK_STATIC_PAUSE_FLAG_S) if _flag
+                 else float(self.CLOCK_STATIC_PAUSE_S))
+        self._yt_ct_verdict = (held >= _need, held)
         return self._yt_ct_verdict
 
     #: QUANTO `currentTime` TEM DE ANDAR, POR SEGUNDO DE PAREDE, PARA O VIDEO
@@ -5395,7 +5466,7 @@ class ExternalCaptionWatcher(threading.Thread):
     #: so' sai quando ela se mantem por este tempo. A VOLTA continua instantanea.
     PAUSE_BLANK_DWELL_S = 1.5
 
-    def _yt_pause_edge(self, now_paused, now=None):
+    def _yt_pause_edge(self, now_paused, now=None, witness=None):
         """A BORDA DE PAUSA/FIM: apaga os pixels; a de VOLTA repinta a linha.
 
         Chamado a cada snapshot, com o estado publicado. E' um metodo, e nao
@@ -5424,6 +5495,16 @@ class ExternalCaptionWatcher(threading.Thread):
         was = bool(getattr(self, '_yt_was_paused', False))
         shell = getattr(self, 'shell', None)
         now = time.monotonic() if now is None else float(now)
+        # O DWELL DEPENDE DA TESTEMUNHA (2026-11-24). `flag+clock-static` e' a
+        # dupla medida: o player DIZ que esta' parado e a posicao nao andou em
+        # duas fotos de carimbos distintos (o piso curto ja' correu dentro do
+        # `_yt_clock_static`), logo nao ha' flap a proteger -- o ecra sai na
+        # hora. O dwell de 1,5 s continua a valer para a bandeira sozinha, que e'
+        # o flap medido de 2026-11-15 (11 de 16 pressoes de LIGAR apagadas por
+        # uma unica amostra `paused=True`).
+        _witness = str(witness or '')
+        _dwell = (0.0 if _witness == 'flag+clock-static'
+                  else float(self.PAUSE_BLANK_DWELL_S))
         if not now_paused:
             self._yt_pause_since = None
         elif getattr(self, '_yt_pause_since', None) is None:
@@ -5439,13 +5520,12 @@ class ExternalCaptionWatcher(threading.Thread):
         if now_paused and not was:
             held = now - float(self._yt_pause_since)
             quiet = now - float(getattr(self, '_yt_frame_at', 0.0) or 0.0)
-            if (held < float(self.PAUSE_BLANK_DWELL_S)
-                    or quiet < float(self.PAUSE_BLANK_DWELL_S)):
+            if (held < _dwell or quiet < _dwell):
                 if not getattr(self, '_yt_pause_defer_logged', False):
                     self._yt_pause_defer_logged = True
                     log('YOUTUBE_PAUSE_BLANK_DEFERRED held_s=%.2f '
-                        'quiet_s=%.2f dwell_s=%.2f vid=%s'
-                        % (held, quiet, float(self.PAUSE_BLANK_DWELL_S),
+                        'quiet_s=%.2f dwell_s=%.2f witness=%s vid=%s'
+                        % (held, quiet, _dwell, _witness or 'none',
                            str(getattr(self, 'yt_video_id', '') or '')))
                 return
         self._yt_pause_defer_logged = False
@@ -5759,7 +5839,7 @@ class ExternalCaptionWatcher(threading.Thread):
                                 'still_s=%.2f need_s=%.2f t=%.2f vid=%s'
                                 % ((time.monotonic() - _ct_since) if _ct_since
                                    else 0.0,
-                                   float(self.CLOCK_STATIC_PAUSE_S),
+                                   float(self.CLOCK_STATIC_PAUSE_FLAG_S),
                                    float(snap.get('t') or 0.0),
                                    str(getattr(self, 'yt_video_id', '') or '')))
                 if not _flag_paused:
@@ -5798,7 +5878,10 @@ class ExternalCaptionWatcher(threading.Thread):
                         % ((time.monotonic() - float(_since)) if _since else 0.0,
                            float(snap.get('t') or 0.0),
                            str(getattr(self, 'yt_video_id', '') or '')))
-                self._yt_pause_edge(_now_paused)
+                self._yt_pause_edge(
+                    _now_paused,
+                    witness=('flag+clock-static' if _flag_paused and _ct_static
+                             else ('clock-static' if _ct_static else None)))
         if snap is None or not snap.get('items'):
             return None
         if declared and seen and declared != seen:
@@ -5897,6 +5980,76 @@ class ExternalCaptionWatcher(threading.Thread):
     #: PROPRIO snapshot (`stamp`), nao num proxy: `yt_live_paint_at` sobe com
     #: qualquer produtor de linhas e por isso nao diz QUEM as produziu.
     DOM_FRESH_S = 1.2
+
+    #: A ARVORE DE ACESSIBILIDADE E' O ULTIMO RECURSO -- E ELA COBRA SEGUNDOS
+    #: QUANDO O CHROME ESTA' OCUPADO (2026-11-24).
+    #: ORDEM DO DONO, verbatim: *"ao ficar uns segundos idle, a legenda ao vivo
+    #: simplesmente parou de acompanhar o video ... a legenda do youtube que e a
+    #: bridge e tao cheap de acontecer que nem deveria sofrer qualquer tipo de
+    #: interferencia de carga"*. MEDIDO na sessao dele (`_main/webview-run.log`):
+    #: `EXTERNAL_CAPTIONS_READ_MS ms=13359.0` com `phases={'track': 15.0,
+    #: 'youtube': 13359.0}`, e no mesmo minuto `YOUTUBE_SNAPSHOT_STALE
+    #: age_ms=11328 max_age_ms=1500/3000` -- os 13,3 s estao DEPOIS do pedido da
+    #: faixa, dentro da leitura da arvore (`phases` nao tem a marca seguinte).
+    #: Duas regras saem dai, e nenhuma delas e' um temporizador de gosto:
+    #: (a) com a ponte da CDP VIVA e fresca, nenhuma linha do tick paga a arvore
+    #: -- a foto seguinte desenha (a ponte publica a cada `_TID_TTL_S`);
+    #: (b) um tick de arvore que estoura o orcamento compra um RECUO do tamanho
+    #: do proprio custo (tecto abaixo), para um Chrome travado custar um tick
+    #: lento a cada N em vez de todos -- e o caminho barato continua a correr em
+    #: cada tick, portanto a legenda volta no instante em que a ponte publica.
+    YT_CDP_ALIVE_S = 1.5          # 2 x `DOM_FRESH_S` + a publicacao
+    YT_UIA_SLOW_S = 0.75          # orcamento de um tick de arvore
+    YT_UIA_BACKOFF_MAX_S = 6.0    # tecto do recuo (o tick rapido volta sempre)
+
+    def _yt_uia_gate(self):
+        """A ARVORE CORRE AGORA? (True = NAO, devolve `[]` neste tick.)
+
+        A COBRANCA E' FEITA AQUI, NA ENTRADA: `_yt_uia_t0` e' carimbado
+        imediatamente ANTES do scan das palavras pintadas, e a porta seguinte
+        mede o que ele custou (mais o resto do tick -- conservador, nunca
+        optimista). O numero e' o do
+        intervalo inteiro (conservador, inclui a projecao), e e' o que decide o
+        recuo -- a mesma forma do laco de desenho: **o periodo deriva do custo
+        medido, nunca e' um `sleep` fixo**.
+        """
+        now = time.monotonic()
+        t0 = getattr(self, '_yt_uia_t0', None)
+        self._yt_uia_t0 = None
+        if t0 is not None:
+            cost = now - t0
+            if cost > self.YT_UIA_SLOW_S:
+                back = min(self.YT_UIA_BACKOFF_MAX_S, cost)
+                self._yt_uia_until = now + back
+                self._yt_uia_skip_key = ''
+                log('YOUTUBE_UIA_SLOW cost_ms=%.0f backoff_ms=%.0f'
+                    % (cost * 1000.0, back * 1000.0))
+        src = getattr(self, '_yt_cdp_source', None)
+        age = None
+        if src and src is not False:
+            try:
+                age = src.snapshot_age()
+            except Exception:             # noqa: BLE001 -- sem idade, sem guarda
+                age = None
+        until = float(getattr(self, '_yt_uia_until', 0.0) or 0.0)
+        if now < until:
+            self._yt_uia_skip('backoff', age, until - now)
+            return True
+        if age is not None and age <= self.YT_CDP_ALIVE_S:
+            self._yt_uia_skip('cdp-alive', age, 0.0)
+            return True
+        self._yt_uia_skip_key = ''
+        return False
+
+    def _yt_uia_skip(self, reason, age, left_s):
+        """UMA linha por episodio, com a medida que a autoriza (nunca por tick)."""
+        key = '%s|%s' % (reason, 'y' if age is not None else 'n')
+        if getattr(self, '_yt_uia_skip_key', '') == key:
+            return
+        self._yt_uia_skip_key = key
+        log('YOUTUBE_UIA_SKIPPED reason=%s age_ms=%s left_ms=%.0f'
+            % (reason, ('%.0f' % (age * 1000.0)) if age is not None else 'none',
+               left_s * 1000.0))
 
     def _yt_dom_is_source(self):
         """O DOM do player esta' a entregar as linhas AGORA?
@@ -6017,6 +6170,20 @@ class ExternalCaptionWatcher(threading.Thread):
         reply = self._yt_cdp_fast_lines(hwnd, uia, UIA, vid)
         if reply is not None:
             return reply
+        # A ARVORE E' O ULTIMO RECURSO (2026-11-24). O caminho barato acima ja'
+        # respondeu tudo o que a foto sabia; aqui a pergunta e' se vale a pena
+        # pagar a varredura do Chrome -- e um Chrome ocupado cobra-a em SEGUNDOS
+        # (`EXTERNAL_CAPTIONS_READ_MS ms=13359.0`, medido na sessao do dono). A
+        # regra e a medida que a autoriza vivem em `_yt_uia_gate`.
+        #
+        # O RECUO NAO PULA O TICK, E ISSO E' MEDIDO: ele pula SO' o scan das
+        # palavras pintadas. A faixa (`_yt_track_poll`, DOM e nao bloqueante),
+        # o relogio e a devolucao do ASR continuam a correr, porque sao eles que
+        # produzem as TRANSICOES. A primeira versao pulava o tick inteiro e o
+        # `youtube-track-wiring` mediu as duas perdas (a11/a12): `releases 0 != 1`
+        # e a linha ja' servida deixava de ser re-servida -- um gate de CUSTO
+        # que apagava estado.
+        _pular_arvore = self._yt_uia_gate()
         thread = getattr(self.shell, 'youtube_track_thread', None)
         _yt_mark(self, 'thread')
         if thread is None:
@@ -6024,7 +6191,11 @@ class ExternalCaptionWatcher(threading.Thread):
         # THE WORDS THE PLAYER IS PAINTING. They ARE YouTube's own caption.
         _t_yt = time.monotonic()
         self._ensure_clock_sampler()
-        painted = self._youtube_painted(hwnd, uia, UIA)
+        if _pular_arvore:
+            painted = []
+        else:
+            self._yt_uia_t0 = time.monotonic()
+            painted = self._youtube_painted(hwnd, uia, UIA)
         _yt_mark(self, 'painted')
         reply = self._yt_cdp_lines(vid)
         if reply is not None:
@@ -17626,7 +17797,7 @@ class SottoShell:
         A decisao le' o que a JANELA mede (`window_visible`) e o que ela VESTE
         (`surface_applied`), nunca uma intencao: um `show` que falhou deixou o
         painel escondido, e o ciclo tem de continuar de onde o dono esta' a ver.
-        A regra inteira esta' em `hotkey_gesture.advance`/`next_surface`, e o
+        A regra inteira esta' em `hotkey_gesture.advance`/`next_action`, e o
         oraculo executa este corpo a partir do ficheiro que corre.
 
         UM TOKEN NAO E' UMA TRANSICAO. O TOKEN `panels` carrega a rajada que o
@@ -17682,9 +17853,19 @@ class SottoShell:
                 f'live={str(alive).lower()} decided_by=window')
         self.visible = alive
         shown = str(getattr(self, 'surface_applied', '') or '')
+        # A IDADE DO SHOW DA FAIXA e' a metade do DOUBLE que o gesto precisa
+        # (2026-11-24): a janela so' conta a partir do show que o Alt+C deu, e um
+        # `None` (faixa mostrada por outra via, ou ja' escondida) nunca promove.
+        _strip_shown_mono = getattr(self, '_panel_hotkey_strip_mono', None)
+        since_show_s = None
+        if _strip_shown_mono is not None and shown == 'strip':
+            try:
+                since_show_s = max(0.0, time.monotonic() - float(_strip_shown_mono))
+            except (TypeError, ValueError):
+                since_show_s = None
         try:
             target_visible, target_surface = hotkey_numbers().advance(
-                alive, shown, presses)
+                alive, shown, presses, since_show_s=since_show_s)
         except Exception as exc:  # noqa: BLE001 -- sem a regra, a faixa
             log(f'HOTKEY_GESTURE_FAILED error={exc!r}')
             target_visible, target_surface = True, 'strip'
@@ -17698,7 +17879,16 @@ class SottoShell:
                             and (not target_visible
                                  or target_surface == shown)) else 1
         log(f'HOTKEY_COALESCED presses={presses} from={from_state} '
-            f'to={to_state} steps={presses} transitions={transitions}')
+            f'to={to_state} steps={presses} transitions={transitions} '
+            f'double_since_ms={-1 if since_show_s is None else round(since_show_s * 1000.0)}')
+        # A JANELA DO DOUBLE VIVE AQUI, e so' num show da FAIXA que esta' a
+        # acontecer: um hide, ou um painel da direita, ZERA o carimbo -- a faixa
+        # que voltar a aparecer por outra via (`show_strip` do menu, arranque)
+        # nao pode ser promovida por um toque que o dono deu noutro contexto.
+        if transitions and target_visible and target_surface == 'strip':
+            self._panel_hotkey_strip_mono = time.monotonic()
+        else:
+            self._panel_hotkey_strip_mono = None
         # O RELOGIO DO SHOW COMECA AQUI, na linha que o oraculo usa como origem
         # (`HOTKEY_COALESCED`), e nao dentro de `show_strip`: o orcamento e' o do
         # que o dono sente desde a tecla, e um relogio que comecasse mais tarde

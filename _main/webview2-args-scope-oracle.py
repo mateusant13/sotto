@@ -69,23 +69,30 @@ def _judge(module_path=MODULE, shell_path=SHELL):
     KEY = mod.INHERIT_VAR
 
     # ---- 1-5: a decisao pura ------------------------------------------------
+    # O CONJUNTO PROPRIO E' O PISO (2026-11-24). Ver `webview2_args.UNTHROTTLE`:
+    # o produto entrega SEMPRE o des-rebaixamento do renderizador, e o valor
+    # herdado nunca sobrevive a ele -- nem o porto de depuracao de uma lane.
+    OURS = ' '.join(mod.UNTHROTTLE)
     d = mod.plan('--remote-debugging-port=9333', None)
-    ok = d['action'] == 'cleared' and d['value'] is None and d['dropped'] == \
-        '--remote-debugging-port=9333'
+    ok = (d['action'] == 'set' and d['value'] == OURS
+          and d['dropped'] == '--remote-debugging-port=9333'
+          and '9333' not in d['value'])
     out.append((1, ok, 'plan(herdado, sem pedido) -> %r' % (d,)))
 
     d = mod.plan(None, None)
-    out.append((2, d['action'] == 'none' and d['value'] is None and not d['dropped'],
+    out.append((2, d['action'] == 'set' and d['value'] == OURS and not d['dropped'],
                 'plan(nada, sem pedido) -> %r' % (d,)))
 
     d = mod.plan('--remote-debugging-port=9333', '9400')
     ok = (d['action'] == 'set'
-          and d['value'] == '--remote-debugging-port=9400'
+          and d['value'] == OURS + ' --remote-debugging-port=9400'
           and d['dropped'] == '--remote-debugging-port=9333')
     out.append((3, ok, 'plan(herdado, 9400) -> %r' % (d,)))
 
     d = mod.plan('--another-flag', 9400)
-    out.append((4, d['action'] == 'set' and d['value'] == '--remote-debugging-port=9400',
+    out.append((4, d['action'] == 'set'
+                and d['value'] == OURS + ' --remote-debugging-port=9400'
+                and 'another-flag' not in d['value'],
                 'plan(outro valor, 9400) -> %r' % (d,)))
 
     try:
@@ -97,18 +104,19 @@ def _judge(module_path=MODULE, shell_path=SHELL):
     # ---- 6-8: a mutacao do mapping -----------------------------------------
     env = {KEY: '--remote-debugging-port=9333'}
     got = mod.apply(mod.plan(env[KEY], None), env)
-    out.append((6, KEY not in env and got['present'] is False,
-                'apply(cleared) -> env=%r got=%r' % (env, got)))
+    out.append((6, env.get(KEY) == OURS and '9333' not in env.get(KEY, ''),
+                'apply(herdado, sem pedido) -> env=%r got=%r' % (env, got)))
 
     env = {KEY: '--remote-debugging-port=9333'}
     got = mod.apply(mod.plan(env[KEY], 9400), env)
-    out.append((7, env.get(KEY) == '--remote-debugging-port=9400' and got['present'],
+    out.append((7, env.get(KEY) == OURS + ' --remote-debugging-port=9400'
+                and got['present'],
                 'apply(set) -> env=%r' % (env,)))
 
     env = {}
     got = mod.apply(mod.plan(None, None), env)
-    out.append((8, env == {} and got['action'] == 'none' and got['present'] is False,
-                'apply(none) -> env=%r' % (env,)))
+    out.append((8, env.get(KEY) == OURS and got['action'] == 'set',
+                'apply(nada) -> env=%r' % (env,)))
 
     # ---- 9-12: a FUNCAO REAL da shell, no ambiente do PROCESSO -------------
     # A shell importa os seus irmaos (`hot_reload`, `theme_knobs`, ...) por
@@ -141,10 +149,13 @@ def _judge(module_path=MODULE, shell_path=SHELL):
                                'action=%r env=%r dropped=%r'
                         % (argv, pre, ba.get('action'), got, ba.get('dropped'))))
 
-        _arm(9, [], 'cleared', None, {KEY: '--remote-debugging-port=9333'})
-        _arm(10, ['--cdp-port', '9400'], 'set', '--remote-debugging-port=9400', {})
-        _arm(11, [], 'set', '--remote-debugging-port=9401', {'SOTTO_CDP_PORT': '9401'})
-        _arm(12, ['--cdp-port=9402'], 'set', '--remote-debugging-port=9402', {})
+        _arm(9, [], 'set', OURS, {KEY: '--remote-debugging-port=9333'})
+        _arm(10, ['--cdp-port', '9400'], 'set',
+             OURS + ' --remote-debugging-port=9400', {})
+        _arm(11, [], 'set', OURS + ' --remote-debugging-port=9401',
+             {'SOTTO_CDP_PORT': '9401'})
+        _arm(12, ['--cdp-port=9402'], 'set',
+             OURS + ' --remote-debugging-port=9402', {})
     finally:
         sys.stdout = real_stdout
         for k, v in saved.items():
@@ -196,22 +207,22 @@ def negative_arm():
         # M1: o plan deixa de limpar -- arms 1 e 6 caem.
         m1 = os.path.join(tmp, 'webview2_args_firstcome.py')
         _mutate(MODULE, m1,
-                "    if inherited:\n        return {'action': 'cleared', 'value': None, 'dropped': dropped}",
-                "    if inherited:\n        return {'action': 'set', 'value': inherited, 'dropped': ''}",
+                "    args = list(UNTHROTTLE)\n",
+                "    args = [inherited] if inherited else list(UNTHROTTLE)\n",
                 'M1 first-come')
         cases.append(('M1 o plano volta a aceitar o valor herdado', m1, SHELL, (1, 6)))
 
         # M2: o apply nega-se a remover -- arm 6 cai, e o 9 tambem.
         m2 = os.path.join(tmp, 'webview2_args_nopop.py')
         _mutate(MODULE, m2,
-                "        env.pop(INHERIT_VAR, None)",
+                "        env[INHERIT_VAR] = decision['value']",
                 "        pass  # M2",
-                'M2 no-pop')
+                'M2 no-set')
         # O arm 9 carrega o modulo REAL por nome (a shell importa-o do seu
         # `sys.path`), logo o mutante do modulo NAO o alcanca: so' o arm 6 mede
         # esta mutacao. (Escrever 9 aqui daria um NOT-CAUGHT que acusaria o
         # oraculo por uma expectativa errada dele.)
-        cases.append(('M2 o apply deixa a chave no ambiente', m2, SHELL, (6,)))
+        cases.append(('M2 o apply nao entrega o valor', m2, SHELL, (6, 7, 8)))
 
         # M3: a shell deixa de chamar a decisao -- arms 9/10/12 caem.
         m3 = os.path.join(tmp, 'sotto_webview_nocall.py')

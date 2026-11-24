@@ -178,7 +178,18 @@ def build(out_path=DEFAULT_PLAN, state_path=DEFAULT_STATE, cmd_path=CMD):
 
 
 # ── o selftest: o plano TEM de dar a MESMA resposta que o CLI ────────────────
-def _selftest():
+def _selftest(real_build=True):
+    """O selftest do plano: as quatro formas, os fixtures e o ficheiro real.
+
+    `real_build=False` e' o modo das COPias MUTADAS do `--neg-arm` (medido
+    2026-11-24): a construcao sobre o ficheiro real custa, sozinha, a maior
+    parte da arme -- ela le' 552 declaracoes e faz um `stat`/hash por dep --
+    e um mutante nao precisa dela para ser apanhado: as tres mutacoes caem nas
+    arms de FIXTURE (`normal`, `DEFER`, `rapido`), e o ficheiro real so'
+    responde pela gramatica, que a copia limpa ja' exercita uma vez. Medido
+    dentro da bateria: o passo estourava o prazo de 240 s com QUATRO
+    construcoes reais (a copia limpa + tres mutantes) e nenhuma arm a mais.
+    """
     import json
     import shutil
     import subprocess
@@ -436,6 +447,18 @@ def _selftest():
     finally:
         shutil.rmtree(fx, ignore_errors=True)
 
+    if not real_build:
+        # A construcao REAL fica com a invocacao principal: o mutante responde
+        # pelas arms de fixture, e um `--neg-arm` que paga quatro planos
+        # completos e' o passo que a bateria mata por prazo.
+        if problems:
+            for p in problems:
+                print("FAIL %s" % p)
+            print("VERDICT: FAIL")
+            return 1
+        print("VERDICT: PASS (fixtures; construcao real na invocacao principal)")
+        return 0
+
     # (D) A MEDICAO REAL, no ficheiro real: o plano inteiro de uma corrida.
     real = build(os.path.join(tempfile.gettempdir(), "sotto-plan-selftest.txt"))
     print("plano real      : %d passos em %.3f s (hits=%d misses=%d defer=%d deps-do-estado=%d)"
@@ -493,7 +516,7 @@ def _run_adjacent(text, tag):
     copy = os.path.join(HERE, "_battery-plan.mutant-%s.py" % tag)
     try:
         io.open(copy, "w", encoding="utf-8", newline="\n").write(text)
-        r = subprocess.run([sys.executable, copy, "--selftest"],
+        r = subprocess.run([sys.executable, copy, "--selftest", "--no-real"],
                            capture_output=True, text=True, cwd=REPO,
                            creationflags=NO_WINDOW, startupinfo=HIDDEN)
         return r.returncode, (r.stdout or "") + (r.stderr or "")
@@ -564,13 +587,16 @@ def main(argv=None):
     ap.add_argument("--out", default=DEFAULT_PLAN)
     ap.add_argument("--state", default=DEFAULT_STATE)
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--no-real", action="store_true",
+                    help="selftest sem a construcao sobre o ficheiro real "
+                         "(o modo das copias mutadas)")
     ap.add_argument("--neg-arm", action="store_true",
                     help="as mutacoes que o --selftest tem de apanhar (sai 1 ao apanhar)")
     args = ap.parse_args(argv)
     if args.neg_arm:
         return neg_arm()
     if args.selftest:
-        return _selftest()
+        return _selftest(real_build=not args.no_real)
     info = build(args.out, args.state, args.cmd)
     sys.stdout.write("PLAN steps=%d hits=%d misses=%d defer=%d fast=%s build_s=%.3f out=%s\n"
                      % (info["steps"], info["hits"], info["misses"], info["defer"],

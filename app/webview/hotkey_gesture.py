@@ -21,26 +21,23 @@ AS DUAS TECLAS, uma so' dona cada:
     Alt+C       UMA pressao = UM passo do ciclo dos paineis, imediato
     Ctrl+Space  UMA pressao = a legenda ao vivo liga/desliga
 
-O CICLO DOS PAINEIS. Cada pressao MUDA o que esta' no ecra -- nunca ha uma
-pressao que nao faca nada, e e' isso que faz o gesto funcionar com o Alt
-fisicamente em baixo e o C a ser martelado: nao ha janela de toques, nao ha
-limiar, nao ha adiamento, logo nao ha nada para o Alt preso estragar.
+O GESTO DOS PAINEIS, e ele tem DUAS coisas que nao podem ser confundidas:
 
-    escondido (ultimo show: painel)  -> faixa de BAIXO   (show)   pressao 1
-    faixa de baixo no ecra           -> esconde          (hide)   pressao 2
-    escondido (ultimo show: faixa)   -> painel da DIREITA (show)  pressao 3
-    painel da direita no ecra        -> esconde          (hide)   pressao 4
+    Alt+C una  -> faixa de BAIXO, no mesmo instante (nunca adia a accao)
+    Alt+C duplo -> painel da DIREITA (o 2o toque dentro de `DOUBLE_TAP_S`)
+    Alt+C outra vez com o painel no ecra -> esconde
 
-O INDICE DA PRESSAO e' o `count=` da linha `HOTKEY_PRESSED`: as impares
-MOSTRAM, as pares ESCONDEM, e as mostradas alternam faixa, painel, faixa,
-painel. A linha `HOTKEY_TOGGLE step=...` que se segue e' o resultado dessa
-pressao (a fila e' FIFO, logo a ordem das duas linhas e' a ordem das pressoes).
-A regra nao sabe em que pressao esta' -- ela so' olha para a janela e para a
-superficie aplicada -- e o oraculo prende as duas coisas (o indice ao resultado).
-
-Dez pressoes: dez mudancas de visibilidade, e os shows alternam
-faixa, painel, faixa, painel, faixa. `next_surface` e' a regra inteira, pura,
-para poder ser medida sem teclado e sem janela.
+UM TOQUE NUNCA ABRE O PAINEL DA DIREITA (ordem do dono, 2026-11-24, verbatim:
+*"ao apertar alt c segundos depois, o painel da direita abriu, o que nao deveria
+acontecer. ja que e' pra abrir o da direita apenas em double alt c"*). O ciclo
+de tres casas de 2026-11-05 fazia o segundo toque de QUALQUER momento cair na
+direita; medido no log dele (pid 27448): 07:59:57.729 pressao 1 fica em
+`visible/strip` e 08:00:13.058, **15,3 s depois**, a pressao 2 abre
+`visible/panel`. O double e' uma JANELA (`DOUBLE_TAP_S`, 0,40 s) contada do
+show da faixa -- nao um adiamento: o primeiro toque responde no mesmo instante e
+o segundo ate' 400 ms PROMOVE a faixa a painel. `next_action` e' a regra
+inteira, pura, para poder ser medida sem teclado e sem janela; `advance` caminha
+essa regra N vezes (uma rajada drenada de uma vez).
 
 O VOCABULARIO DAS TECLAS vive aqui e em mais lado nenhum: o shell traduz os
 NOMES dos modificadores nos bits do Win32 (`RegisterHotKey`) e a tecla no `vk`
@@ -103,6 +100,15 @@ POLL_S = 0.025
 #: O numero e' o do Win32 (`SetThreadPriority`), e vive aqui porque este ficheiro
 #: e' o dono dos numeros da tecla.
 OBSERVER_PRIORITY = 1
+
+#: A JANELA DO DOUBLE Alt+C, em segundos, contada do SHOW DA FAIXA. Ordem do
+#: dono, 2026-11-24 (*"abrir o da direita apenas em double alt c"*): o segundo
+#: toque ate' 400 ms do primeiro PROMOVE a faixa ao painel da direita; depois
+#: disso um toque e' um toque e esconde. O numero e' o do double-click do
+#: Windows (500 ms) apertado, porque a tecla nao e' o rato: medido no log dele
+#: (pid 27448), um double honesto fica bem abaixo disto e o intervalo que ele
+#: reportou como errado foi de 15,3 s.
+DOUBLE_TAP_S = 0.40
 
 #: As teclas que NAO sao uma letra. `vk` e' o codigo virtual do Windows da
 #: tecla (`VK_SPACE` == 0x20); uma letra e' `ord('C')`, que e' o mesmo numero
@@ -192,69 +198,79 @@ def hotkey_numbers():
     }
 
 
-def next_surface(visible, surface):
-    """UM Alt+C -> UM passo do ciclo. Devolve o que MOSTRAR, ou `None` p/ esconder.
+def next_action(visible, surface, since_show_s=None, window_s=DOUBLE_TAP_S):
+    """UM Alt+C -> `(visivel, superficie)` depois da pressao. Puro.
 
-    O CICLO TEM TRES CASAS, E A ORDEM E' A DO DONO (2026-11-05), verbatim:
-    *"meu double alt c ta dando hide no painel de baixo. sendo que o double alt
-    c era pra mostrar o painel da direita"*.
+    ORDEM DO DONO, 2026-11-24, verbatim: *"ao apertar alt c segundos depois, o
+    painel da direita abriu, o que nao deveria acontecer. ja que e' pra abrir o
+    da direita apenas em double alt c"*.
 
-        escondido --1o toque--> painel de BAIXO (strip)
-        strip     --2o toque--> painel da DIREITA (panel)
-        panel     --3o toque--> escondido
+    O ciclo de tres casas de 2026-11-05 (escondido -> faixa -> painel da
+    direita -> escondido) fazia o SEGUNDO toque, fosse quando fosse, cair no
+    painel da direita. Medido no log dele (pid 27448): 07:59:57.729 pressao 1
+    `hidden/- -> visible/strip`; 08:00:13.058 pressao 2, **15,3 s depois**,
+    `visible/strip -> visible/panel`. Um toque unico nunca pode abrir a direita;
+    a direita e' o resultado de um DOUBLE.
 
-    PORQUE ASSIM, e nao o 1-toque/2-toques por JANELA de tempo de 2026-10-21:
-    essa regra ADIA a accao ate' a janela fechar (o dono mediu 460 ms de espera
-    dos quais 8 ms eram trabalho, e pediu *"faz os paineis alternarem mesmo se
-    eu deixar alt apertado o tempo inteiro e spammando c"*). Um ciclo imediato
-    da' as duas coisas sem relogio nenhum: um toque e' instantaneo, e DOIS
-    toques rapidos caim no painel da direita -- que e' exactamente o que ele
-    pediu hoje. Aplicar `hide` no segundo toque (o comportamento que ele
-    reportou) e' o que o ciclo anterior fazia: com o painel visivel, qualquer
-    toque escondia.
+        escondido                -> mostra a faixa de BAIXO
+        faixa, ultimo show <= janela -> mostra o painel da DIREITA (double)
+        faixa fora da janela     -> esconde
+        painel                   -> esconde
+
+    `since_show_s` e' a idade MONOTONICA do show da faixa que o Alt+C deu
+    (`None` quando nao houve esse show): a janela so' existe para juntar os
+    dois toques de um double, nunca para adiar o primeiro -- o dono mediu 460 ms
+    de espera em 2026-10-21 e proibiu um relogio no caminho da tecla. Um toque
+    responde no mesmo instante; o segundo, se cair dentro da janela, PROMOVE.
 
     `visible` e' o que a JANELA mede (`IsWindowVisible`), nunca uma intencao: um
-    `show` que falhou deixou o painel escondido e o ciclo tem de continuar de
-    onde o dono esta' a ver.
-
-    `surface` e' a ultima superficie APLICADA (`surface_applied`), e ela
-    sobrevive ao `hide` de proposito. Por isso o `hide_panel` do shell NAO
-    limpa `surface_applied` (o oraculo prende as duas coisas juntas) -- e por
-    isso o escondido volta sempre ao de BAIXO: a casa 1 nao depende de memoria.
-
-    O CICLO E' O DE 3 CASAS, e nao "alterna entre 2": com dois paineis, um
-    ciclo de 2 nunca mostra os dois -- era o defeito medido (`panel` so'
-    aparecia se o painel tivesse sido escondido desde o `strip`, o que um
-    toque unico nunca faz).
+    `show` que falhou deixou o painel escondido e o gesto tem de continuar de
+    onde o dono esta' a ver. `surface` e' a ultima superficie APLICADA
+    (`surface_applied`), e ela sobrevive ao `hide` de proposito (o `hide_panel`
+    do shell NAO a limpa); por isso a casa 1 nao depende de memoria.
     """
     if not visible:
-        return 'strip'
-    return 'panel' if str(surface or '') == 'strip' else None
+        return True, 'strip'
+    in_window = False
+    if since_show_s is not None:
+        try:
+            in_window = 0.0 <= float(since_show_s) <= float(window_s)
+        except (TypeError, ValueError):
+            in_window = False
+    if str(surface or '') == 'strip' and in_window:
+        return True, 'panel'
+    return False, str(surface or '')
 
 
-def advance(visible, surface, presses=1):
-    """N Alt+C -> o estado final do ciclo, sem tocar num pixel.
+def advance(visible, surface, presses=1, since_show_s=None, window_s=DOUBLE_TAP_S):
+    """N Alt+C -> o estado final, sem tocar num pixel.
 
-    `next_surface` decide UM passo; esta funcao CAMINHA esse passo N vezes sobre
-    o estado que ele le' (`visible` medido na JANELA, `surface` aplicada) e
-    devolve `(visible, surface)` no fim. O `surface` NAO e' limpo quando o
-    painel esconde -- e' o contrato do `hide_panel` --, por isso um escondido
-    volta sempre ao `strip` independentemente do que estava vestido antes.
+    `next_action` decide UM passo; esta funcao CAMINHA esse passo N vezes sobre
+    o estado que ele le' e devolve `(visible, surface)` no fim. Depois de um
+    passo que MOSTRA, o show passou a ser agora (idade 0), que e' o que faz uma
+    rajada de 2 dentro do mesmo drain virar o painel da direita e uma de 3
+    esconder.
 
-    PURA: sem I/O, sem log, sem relogio. Quem aplica e' o worker do shell, que
-    faz UMA transicao para o estado devolvido; e' isso que permite a uma rajada
-    de presses custar um show/hide em vez de um por pressao.
+    PURA: sem I/O, sem log, sem relogio -- `since_show_s` chega de fora. Quem
+    aplica e' o worker do shell, que faz UMA transicao para o estado devolvido;
+    e' isso que permite a uma rajada de presses custar um show/hide em vez de um
+    por pressao.
     """
     visible = bool(visible)
     surface = str(surface or '')
+    since = None
+    if since_show_s is not None:
+        try:
+            since = max(0.0, float(since_show_s))
+        except (TypeError, ValueError):
+            since = None
     try:
         steps = int(presses)
     except (TypeError, ValueError):
         steps = 0
     for _ in range(max(0, steps)):
-        nxt = next_surface(visible, surface)
-        if nxt is None:
-            visible = False
-        else:
-            visible, surface = True, nxt
+        was_visible, was_surface = visible, surface
+        visible, surface = next_action(visible, surface, since, window_s)
+        shown_new = visible and (not was_visible or surface != was_surface)
+        since = 0.0 if shown_new else None
     return visible, surface
