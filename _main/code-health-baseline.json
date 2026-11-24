@@ -131,12 +131,12 @@
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 242603,
+      "bytes": 245585,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4905,
+      "lines": 4959,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -371,14 +371,14 @@
       "max_func_name": "selftest"
     },
     "app/webview/hotkey_gesture.py": {
-      "bytes": 12707,
+      "bytes": 13531,
       "classes": 0,
       "defs": 5,
       "except_pass": 0,
       "globals": 0,
-      "lines": 260,
-      "max_func": 38,
-      "max_func_name": "parse_accelerator"
+      "lines": 276,
+      "max_func": 42,
+      "max_func_name": "next_action"
     },
     "app/webview/hotkey_settings.py": {
       "bytes": 6814,
@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1517140,
+      "bytes": 1527394,
       "classes": 29,
-      "defs": 178,
-      "except_pass": 71,
+      "defs": 179,
+      "except_pass": 73,
       "globals": 9,
-      "lines": 27955,
+      "lines": 28145,
       "max_func": 446,
       "max_func_name": "main"
     },
@@ -581,13 +581,13 @@
       "max_func_name": "_declare"
     },
     "app/webview/webview2_args.py": {
-      "bytes": 3446,
+      "bytes": 4916,
       "classes": 0,
       "defs": 2,
       "except_pass": 0,
       "globals": 0,
-      "lines": 80,
-      "max_func": 23,
+      "lines": 107,
+      "max_func": 28,
       "max_func_name": "plan"
     },
     "app/webview/win32_types.py": {
