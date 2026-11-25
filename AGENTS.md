@@ -374,6 +374,29 @@ proporciona ou entao com modelo que separa vozes."* e, quando recebeu um pedido 
   RENDERIZAR AGORA** -> default do SO -> ranking -- e abre um endpoint vivo mesmo que ele falte da
   lista de specs. Nenhum instrumento do picker le o dispositivo REAL: os arms injetam
   `wasapi_loopback` (um arm que le o dispositivo desta maquina "passa" sem testar nada, medido).
+- **O MICROFONE ENTRA NO MESMO STREAM QUE O LOOPBACK (ordem do dono, 2026-11-25, verbatim: *"its
+  capture my mic and transcript it aswell, in real time. and its any mic not just mine cause this
+  will be a product"*).** O loopback carrega o que o PC TOCA (o outro lado da chamada); a fala do
+  dono nao esta' nele, logo sem isto o produto transcreve todos menos ele. `worker/mic_tap.py` abre o
+  dispositivo de captura que o **proprio Windows** aponta (`query_devices(kind="input")`), filtra
+  **so'** o que nao e' um microfone (cabo virtual VB-Audio/CABLE, Sound Mapper, "driver de captura de
+  som primario", Stereo Mix -- que e' um loopback e poria o audio do PC na conversa duas vezes) e
+  mistura 16 kHz mono por cima do bloco do loopback. Um microfone de headset Bluetooth E' oferecido
+  (recusar e' decisao do dono, nao nossa), e nenhum default de dispositivo, volume ou endpoint e'
+  tocado. Regras medidas: o ganho do loopback e' **constante** em todos os blocos (0,75/0,75 -- um
+  ganho que so' entra quando ha' fala do micro faz o nivel saltar e o AGC bombear; medido = 0,45 com
+  micro e 0,4 sem), o audio do micro que o bloco do loopback nao consumiu e' **carregado** para o
+  seguinte (2400 amostras medidas), e o buffer do loopback **nunca** e' escrito pela mistura. Sem
+  microfone o tap de loopback volta **intacto** (0,5 entra, 0,5 sai). Portao: `_main/
+  speaker-sidecar-oracle.py`, bateria `mic_battery` (15 arms, todos com `sounddevice` e taps falsos --
+  nenhum abre um dispositivo nem grava a sala de ninguem) + 4 mutantes (`mix-gain-only-on-mic-blocks`,
+  `leftover-mic-audio-dropped`, `a-virtual-cable-becomes-the-microphone`,
+  `explicit-microphone-name-ignored`, `the-mix-hides-the-tap-surface`,
+  `a-silent-microphone-is-not-reported`) -> `arms 114/114  mutants 16/16`. Um micro que so' entrega
+  zeros imprime `MIC_SILENT device=... reason=digital-silence` UMA vez (medido nesta maquina: o USB
+  dele deu pico 0,00003 em MME e DirectSound e recusou abrir em WASAPI -- mutado, nivel 0 ou
+  permissao de micro negada; nao se toca no audio dele para "resolver" isso). Desligar: `--no-mic` no
+  sidecar, `SOTTO_MIC=0` para o worker.
 - **Modelo de separacao continua REFUTADO para esta via**: MossFormer2_SS_16K sobre 60 s da mesma call
   gastou **1335,107 s (RTF 22,25)** e pos 210 palavras no stream 0 e 2 no stream 1 contra 211 no mix
   (`_main/bench/logs/moss-after.log`).

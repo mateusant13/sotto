@@ -1457,8 +1457,8 @@ def _open_endpoint(specs, wanted=None):
     return specs[0] if specs else None
 
 
-def _tap_for(spec, sink):
-    """Build a REAL `WasapiLoopbackTap` on this endpoint.
+def _tap_for(spec, sink, prefer_mic=None, mic_enabled=True):
+    """Build a REAL `WasapiLoopbackTap` on this endpoint, plus the microphone.
 
     MEASURED, and this signature was wrong in the first draft:
         WasapiLoopbackTap(on_block, block_ms=100, role=0, endpoint_id=None)
@@ -1467,10 +1467,22 @@ def _tap_for(spec, sink):
     could have said so, because every oracle drove a fake diarizer and never
     opened a device. Seven endpoints were available; not one of them was ever
     touched until this function was written.
+
+    Returns `(tap, mic_note)`. The OWNER'S MICROPHONE is mixed into the same
+    stream by `mic_tap` (owner order 2026-11-25), so the diarizer hears the whole
+    conversation -- his side included -- and the worker transcribes what he says
+    instead of only what he hears. `tap.rate` is 16 kHz when the mix is on, which
+    is why callers must read the rate back from the tap.
     """
     import wasapi_loopback                                           # noqa: PLC0415
-    return wasapi_loopback.WasapiLoopbackTap(
-        sink, block_ms=100, role=0, endpoint_id=spec.get("endpoint_id"))
+    import mic_tap                                                   # noqa: PLC0415
+
+    def make_primary(on_block):
+        return wasapi_loopback.WasapiLoopbackTap(
+            on_block, block_ms=100, role=0, endpoint_id=spec.get("endpoint_id"))
+
+    return mic_tap.open_stream(make_primary, sink, prefer=prefer_mic,
+                              enabled=mic_enabled)
 
 
 def capture_selftest(args) -> int:
@@ -1491,12 +1503,12 @@ def capture_selftest(args) -> int:
     if spec is None:
         print("selftest: no render endpoint matches %r" % (args.device,))
         return 2
-    src_rate = int(spec.get("rate") or args.rate)
+    src = {"rate": int(spec.get("rate") or args.rate)}
     buf = RingBuffer(rate=args.rate, window_s=args.window_s)
     state = {"blocks": 0, "samples": 0, "first_block_at": None, "peak": 0.0}
 
     def sink(block):
-        mono = to_mono16k(block, src_rate, args.rate)
+        mono = to_mono16k(block, src["rate"], args.rate)
         if mono.size == 0:
             return
         now = time.time()
@@ -1508,10 +1520,13 @@ def capture_selftest(args) -> int:
         state["peak"] = max(state["peak"], peak)
         buf.push(mono.tolist(), now)
 
+    tap, mic_note = _tap_for(spec, sink, prefer_mic=args.mic,
+                       mic_enabled=not args.no_mic)
+    src["rate"] = int(getattr(tap, "rate", src["rate"]) or src["rate"])
     print("selftest: capturing %r  %d Hz x %dch -> %d Hz mono, into %s"
-          % (spec.get("name"), src_rate, int(spec.get("channels") or 1),
+          % (spec.get("name"), src["rate"], int(spec.get("channels") or 1),
              args.rate, args.out))
-    tap = _tap_for(spec, sink)
+    print("MIC_CAPTURE %s  (stream rate %d Hz)" % (mic_note, src["rate"]))
     dial = FakeDiarizer()
     tap.stream.start()
     started = time.time()
@@ -1689,6 +1704,12 @@ def main(argv=None) -> int:
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--device", default=None,
                     help="loopback endpoint name; default is the render mix")
+    ap.add_argument("--mic", default=None,
+                    help="capture device name substring; default is the OS's own "
+                         "microphone, mixed into the loopback stream")
+    ap.add_argument("--no-mic", action="store_true",
+                    help="leave the microphone out: the stream is the loopback "
+                         "mix alone (the pre-2026-11-25 behaviour)")
     ap.add_argument("--seg-model", default=DEFAULT_SEG_MODEL)
     ap.add_argument("--emb-model", default=DEFAULT_EMB_MODEL)
     ap.add_argument("--duration-s", type=float, default=0.0,
@@ -1780,18 +1801,21 @@ def main(argv=None) -> int:
                   % (type(exc).__name__, exc))
             return 2
 
-    src_rate = int(chosen.get("rate") or args.rate)
+    src = {"rate": int(chosen.get("rate") or args.rate)}
     buf = RingBuffer(rate=args.rate, window_s=args.window_s)
 
     def sink(block):
-        mono = to_mono16k(block, src_rate, args.rate)
+        mono = to_mono16k(block, src["rate"], args.rate)
         if mono.size:
             buf.push(mono.tolist(), time.time())
 
     out_path = args.watch_out if args.watch_only else args.out
+    tap, mic_note = _tap_for(chosen, sink, prefer_mic=args.mic,
+                        mic_enabled=not args.no_mic)
+    src["rate"] = int(getattr(tap, "rate", src["rate"]) or src["rate"])
     print("sidecar: capturing %r  %d Hz -> %d Hz mono into %s every %.0f s"
-          % (chosen.get("name"), src_rate, args.rate, out_path, args.every_s))
-    tap = _tap_for(chosen, sink)
+          % (chosen.get("name"), src["rate"], args.rate, out_path, args.every_s))
+    print("MIC_CAPTURE %s  (stream rate %d Hz)" % (mic_note, src["rate"]))
     if args.watch_only:
         print("SPEAKER_GPU_POLICY mode=watch cuda_device_census=%s "
               "node_assignment=verified counts=%s cuda_share=%.4f cpu_nodes=%s "

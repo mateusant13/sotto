@@ -31,7 +31,10 @@ proporciona ou entao com modelo que separa vozes. vai"*, and, when asked for a b
 | `worker/speaker_bridge.py` | a payload stamped `"fake": true` is refused by name, not by age |
 | `_main/speaker-sidecar-oracle.py` | +8 arms: endpoint picker (3), sparse trim + absolute offset (3), decline-without-inference (2) |
 | `_main/sidecar-wiring-oracle.py` | +2 arms: `--speakers` default True read from the AST, `--no-speakers` present |
-| `_main/speakers-live-join.py` | the join instrument: sidecar + worker, `CREATE_NO_WINDOW`, bounded life, verifies identity before stopping |
+| `worker/speakers-live-join.py` | the join instrument: sidecar + worker, `CREATE_NO_WINDOW`, bounded life, verifies identity before stopping |
+| `worker/mic_tap.py` | **NEW**: the owner's microphone, mixed into the loopback stream — the OS's own capture default, filtered only for non-microphones, 16 kHz mono, constant loopback gain, bounded 10 s backlog that counts what it drops |
+| `worker/sotto_worker.py` | the loopback rung builds the mixed tap and logs `MIC_CAPTURE`, so the worker transcribes **both sides** of a call |
+| `_main/speaker-sidecar-oracle.py` | `mic_battery` (15 arms, all fake devices) + 6 microphone mutants |
 
 The GPU-only guard is untouched: a `cuda` request is still refused, because sherpa cannot attest
 placement there. What changed is that CPU is *asked for by name* -- no accelerator to fall back from,

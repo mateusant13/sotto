@@ -46,6 +46,7 @@ WORKER_DIR = os.path.join(REPO, "worker")
 if WORKER_DIR not in sys.path:
     sys.path.insert(0, WORKER_DIR)
 MODULE_PATH = os.path.join(REPO, "worker", "speaker_sidecar.py")
+MIC_MODULE_PATH = os.path.join(REPO, "worker", "mic_tap.py")
 BRIDGE_PATH = os.path.join(REPO, "worker", "speaker_bridge.py")
 
 EXIT_PASS, EXIT_FAIL = 0, 1
@@ -1273,7 +1274,8 @@ def watch_main_capture_order_battery(mod) -> list:
                         "Equal_115", "Gather", "Gather_113"]),
                     sotto_runtime_fallback_readback=False,
                     sotto_provider_readback=["CUDAExecutionProvider"]))
-            mod._tap_for = lambda *_args, **_kwargs: (calls.append("tap") or FakeTap())
+            mod._tap_for = lambda *_args, **_kwargs: (
+                calls.append("tap") or (FakeTap(), "mic=fake"))
             with contextlib.redirect_stdout(io.StringIO()):
                 ok_rc = mod.main(["--watch-only", "--seg-model", model,
                                   "--duration-s", "-1"])
@@ -1599,6 +1601,229 @@ def score_fake_controls() -> list:
     return rows
 
 
+def mic_battery(mod) -> list:
+    """The microphone path: which device, and what the mix does to the audio.
+
+    OWNER ORDER 2026-11-25: *"its capture my mic and transcript it aswell, in
+    real time. and its any mic not just mine cause this will be a product"*.
+    Every arm is fake: no PortAudio device is opened and no microphone is
+    recorded, so the battery runs on any machine and cannot pass by hearing the
+    developer's room.
+
+    What it proves, in the order the product needs it:
+      1. the device chosen IS a microphone -- a virtual cable, the Sound Mapper
+         and Stereo Mix never are, and the OS's default is followed otherwise;
+      2. a machine without one gets a NAMED refusal, not a crash and not the
+         loopback quietly pretending nothing happened;
+      3. the mix keeps the loopback level constant (no AGC pumping), adds the
+         microphone on top, converts 48 kHz to 16 kHz, carries microphone audio
+         a loopback block could not hold, and leaves the loopback path
+         byte-identical when there is no microphone at all.
+    """
+    rows = []
+
+    def chk(ok, name, detail=""):
+        rows.append((bool(ok), name, detail))
+
+    import numpy as np
+
+    class FakeSD:
+        def __init__(self, devices, default_input):
+            self.devices = devices
+            self.default_input = default_input
+
+        def query_devices(self, kind=None, device=None):  # noqa: ARG002
+            if kind == "input":
+                return {"name": self.default_input}
+            return self.devices
+
+    cable = {"name": "CABLE Output (VB-Audio Virtual Cable)",
+             "max_input_channels": 8, "default_samplerate": 44100}
+    usb = {"name": "Microphone (Some USB Mic)", "max_input_channels": 2,
+           "default_samplerate": 48000}
+    hfp = {"name": r"Headset (@System32\drivers\bthhfenum.sys,#2) Hands-Free",
+           "max_input_channels": 1, "default_samplerate": 16000}
+
+    dev, why = mod.pick_microphone(sd=FakeSD([cable, usb], cable["name"]))
+    chk(dev is not None and dev["name"] == usb["name"],
+        "a virtual cable is never chosen, even as the OS default", why)
+
+    dev, why = mod.pick_microphone("some usb", sd=FakeSD([cable, usb], cable["name"]))
+    chk(dev is not None and dev["name"] == usb["name"],
+        "an explicit microphone name is honoured over the default", why)
+
+    dev, why = mod.pick_microphone("cable", sd=FakeSD([cable, usb], cable["name"]))
+    chk(dev is not None and "CABLE" in dev["name"],
+        "an explicit name overrules even a device the product would not pick", why)
+
+    dev, why = mod.pick_microphone(sd=FakeSD([cable], cable["name"]))
+    chk(dev is None and "only virtual" in why,
+        "no real microphone is a NAMED refusal, not a crash", why)
+
+    dev, why = mod.pick_microphone(sd=FakeSD([hfp], hfp["name"]))
+    chk(dev is not None and dev["name"] == hfp["name"],
+        "a headset microphone IS offered: refusing it is the user's call", why)
+
+    # ── the mix arithmetic, with fake taps (no device is opened) ────────────
+    class FakePrimary:
+        rate = 48000
+        block_ms = 100
+        block = 4800
+        endpoint_id = "ep"
+        device = {"name": "loopback"}
+
+        def __init__(self, cb):
+            self.cb = cb
+            self.stream = self
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    class FakeMic:
+        rate = 16000
+        device = {"name": "mic"}
+        dropped_samples = 0
+        peak = 0.5
+
+        def __init__(self, feed):
+            self.feed = list(feed)
+            self.started = False
+            self.pushed = 0
+
+        def start(self):
+            self.started = True
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+        def drain(self):
+            return self.feed.pop(0) if self.feed else None
+
+        def push_back(self, pcm):
+            self.pushed += int(pcm.size)
+            self.feed.insert(0, pcm)
+
+    def _open(mic_feed):
+        got = []
+        mic = FakeMic(mic_feed)
+        saved = mod._mic_or_refusal
+        mod._mic_or_refusal = lambda prefer: (mic, "fake microphone")  # noqa: ARG005
+        try:
+            tap, note = mod.open_stream(FakePrimary, got.append)
+        finally:
+            mod._mic_or_refusal = saved
+        return tap, got, mic, note
+
+    tap, got, mic, note = _open([np.full(1600, 0.2, dtype=np.float32)])
+    tap.start()
+    src_block = np.full(4800, 0.4, dtype=np.float32)
+    tap.primary.cb(src_block)
+    out = got[-1]
+    chk(mic.started, "the microphone stream starts with the conversation tap", note)
+    chk(getattr(tap, "block", None) == 4800,
+        "the mix still owes the loop the loopback's block size (it does not "
+        "hide the tap surface)", "block=%r" % (getattr(tap, "block", None),))
+    chk(out.size == 1600,
+        "a 100 ms 48 kHz loopback block becomes 1600 samples at 16 kHz",
+        "n=%d" % out.size)
+    chk(abs(float(out[0]) - 0.45) < 1e-6,
+        "the microphone is added on top of an attenuated loopback block",
+        "%.4f (expected 0.75*0.4 + 0.75*0.2)" % float(out[0]))
+    chk(abs(float(src_block[0]) - 0.4) < 1e-6,
+        "the loopback's own buffer is never written by the mix",
+        "%.4f" % float(src_block[0]))
+
+    mic.feed = []
+    tap.primary.cb(np.full(4800, 0.4, dtype=np.float32))
+    chk(abs(float(got[-1][0]) - 0.3) < 1e-6,
+        "a silent microphone leaves the level CONSTANT, not 1.0 (no AGC pumping)",
+        "%.4f (expected 0.75*0.4)" % float(got[-1][0]))
+
+    mic.feed = [np.full(4000, 1.0, dtype=np.float32)]
+    tap.primary.cb(np.full(4800, 0.0, dtype=np.float32))
+    chk(mic.pushed == 2400,
+        "microphone audio a loopback block cannot hold is carried to the next one",
+        "pushed=%d (expected 2400)" % mic.pushed)
+    chk(float(np.abs(got[-1]).max()) <= 1.0,
+        "the mix is clipped, never out of range",
+        "peak=%.3f" % float(np.abs(got[-1]).max()))
+
+    # ── a microphone that delivers zeros is REPORTED, not silently absorbed ──
+    import contextlib as _ctx
+    import io as _io
+    got_silent = []
+    mic_silent = FakeMic([])
+    mic_silent.peak = 0.0
+    saved = mod._mic_or_refusal
+    mod._mic_or_refusal = lambda prefer: (mic_silent, "fake microphone")  # noqa: ARG005
+    out_buf = _io.StringIO()
+    try:
+        with _ctx.redirect_stdout(out_buf):
+            tap3, _note3 = mod.open_stream(FakePrimary, got_silent.append)
+            for _ in range(60):
+                tap3.primary.cb(np.zeros(4800, dtype=np.float32))
+    finally:
+        mod._mic_or_refusal = saved
+    said = out_buf.getvalue()
+    chk(said.count("MIC_SILENT") == 1 and "digital-silence" in said,
+        "a microphone delivering zeros is reported ONCE, by name",
+        said.strip().splitlines()[0] if said.strip() else "nothing printed")
+
+    got_none = []
+    saved = mod._mic_or_refusal
+    mod._mic_or_refusal = lambda prefer: (None, "no microphone: only virtual")  # noqa: ARG005
+    try:
+        tap2, note2 = mod.open_stream(FakePrimary, got_none.append)
+    finally:
+        mod._mic_or_refusal = saved
+    chk(not isinstance(tap2, mod.ConversationTap),
+        "without a microphone the plain loopback tap is returned", note2)
+    tap2.cb(np.full(4800, 0.5, dtype=np.float32))
+    chk(bool(got_none) and abs(float(got_none[-1][0]) - 0.5) < 1e-9,
+        "and that path is untouched: no attenuation, no resample, no mix",
+        "%.3f" % (float(got_none[-1][0]) if got_none else -1.0))
+    return rows
+
+
+MIC_MUTANTS = [
+    # The defect the first unit check measured: gain only on blocks that carry
+    # microphone audio, so the loopback level jumps between blocks.
+    ("mix-gain-only-on-mic-blocks",
+     "        pcm = pcm * LOOPBACK_GAIN",
+     "        pcm = pcm"),
+    # Microphone audio past the loopback block is DROPPED instead of carried.
+    ("leftover-mic-audio-dropped",
+     "                self.mic.push_back(microphone[n:])",
+     "                pass"),
+    # The filter that keeps a virtual cable from becoming the microphone.
+    ("a-virtual-cable-becomes-the-microphone",
+     '"vb-audio", "voicemeeter", "cable input", "cable output", "cable out",',
+     '"vb-audio-nope",'),
+    # The mix stopped delegating the rest of the tap surface, so the run loop
+    # dies on `tap.block` with zero captions (measured 2026-11-25).
+    ("the-mix-hides-the-tap-surface",
+     "        return getattr(primary, name)",
+     "        raise AttributeError(name)"),
+    # A microphone that only ever delivers zeros is absorbed as "nobody is
+    # speaking", which is exactly the silence this repo refuses to leave unnamed.
+    ("a-silent-microphone-is-not-reported",
+     "            self._silent_reported = True", "            pass"),
+    # The explicit name is ignored, so a user cannot choose their microphone.
+    ("explicit-microphone-name-ignored",
+     "    if prefer:\n        low = prefer.strip().lower()",
+     "    if False:\n        low = prefer.strip().lower()"),
+]
+
+
 MUTANTS = [
     # The plausible lie: a correct-looking payload, attributed to the wrong
     # minute of the call.
@@ -1679,6 +1904,8 @@ def main() -> int:
         return EXIT_FAIL
     with open(MODULE_PATH, "r", encoding="utf-8") as fh:
         source = fh.read()
+    with open(MIC_MODULE_PATH, "r", encoding="utf-8") as fh:
+        mic_source = fh.read()
 
     if "--gpu-policy-only" in sys.argv[1:]:
         mod = load_module(MODULE_PATH, "speaker_sidecar_gpu_policy")
@@ -1715,7 +1942,9 @@ def main() -> int:
 
     print("\nARMS (the real sidecar)")
     mod = load_module(MODULE_PATH, "speaker_sidecar_live")
+    mic_mod = load_module(MIC_MODULE_PATH, "mic_tap_live")
     rows = battery(mod)
+    rows.extend(mic_battery(mic_mod))
     for ok, name, detail in rows:
         print("  %s %s%s" % ("GREEN" if ok else "RED  ", name,
                              ("  " + detail) if detail else ""))
@@ -1764,10 +1993,43 @@ def main() -> int:
             else:
                 print("  RED   mutant %-42s SURVIVED -- the gate is blind here"
                       % label)
+        # The microphone module has its own source and its own battery; a
+        # mutant that is never run proves nothing, so it is not counted.
+        for idx, (label, old, new) in enumerate(MIC_MUTANTS):
+            if old not in mic_source:
+                print("  RED   mutant %-42s ANCHOR MISSING -- oracle is stale"
+                      % label)
+                weak += 1
+                continue
+            path = os.path.join(tmp, "mic_mutant_%d.py" % idx)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(mic_source.replace(old, new, 1))
+            try:
+                bad = load_module(path, "mic_tap_mut_%d" % idx)
+            except Exception as exc:                                # noqa: BLE001
+                print("  RED   mutant %-42s DECORATIVO: nao carregou (%s)"
+                      % (label, type(exc).__name__))
+                weak += 1
+                continue
+            try:
+                res = mic_battery(bad)
+            except Exception as exc:                                # noqa: BLE001
+                print("  RED   mutant %-42s a bateria rebentou (%s)"
+                      % (label, type(exc).__name__))
+                weak += 1
+                continue
+            reds = [name for ok, name, _ in res if not ok]
+            if reds:
+                print("  GREEN mutant %-42s caught by: %s"
+                      % (label, "; ".join(reds[:3])))
+                caught += 1
+            else:
+                print("  RED   mutant %-42s SURVIVED -- the gate is blind here"
+                      % label)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    total = len(MUTANTS)
+    total = len(MUTANTS) + len(MIC_MUTANTS)
     ok = (not heavy) and green == len(rows) and caught == total and weak == 0
     print("\nVERDICT: %s  arms %d/%d  mutants %d/%d"
           % ("PASS" if ok else "FAIL", green, len(rows), caught, total))

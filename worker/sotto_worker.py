@@ -4950,9 +4950,24 @@ def LoopbackTap(device, on_block, want_rate=TARGET_SR, block_ms=100):
         # picked any ACTIVE render endpoint, and opening "the default" here
         # would silently substitute the very endpoint whose silence is the
         # defect (`CABLE Input` rendering while the default sat idle).
-        return wasapi_loopback.WasapiLoopbackTap(
-            on_block, block_ms=block_ms, endpoint_id=device.get("endpoint_id")
-        )
+        #
+        # THE MICROPHONE IS MIXED IN HERE (owner order 2026-11-25: *"its capture
+        # my mic and transcript it aswell, in real time. and its any mic not just
+        # mine cause this will be a product"*). The loopback carries what the PC
+        # plays -- the far side of a call -- and the owner's own speech is not in
+        # it, so without this the product transcribes everyone except him.
+        # `mic_tap` picks the device the OS points at, filters only non-mics, and
+        # hands back the plain loopback tap when there is none: a missing
+        # microphone must never cost the loopback path.
+        import mic_tap
+
+        def make_primary(on_block):
+            return wasapi_loopback.WasapiLoopbackTap(
+                on_block, block_ms=block_ms, endpoint_id=device.get("endpoint_id"))
+
+        tap, mic_note = mic_tap.open_stream(make_primary, on_block)
+        err("MIC_CAPTURE %s" % mic_note)
+        return tap
     return _PortAudioTap(device, on_block, want_rate=want_rate, block_ms=block_ms)
 
 
