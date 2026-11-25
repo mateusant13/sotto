@@ -311,30 +311,48 @@ pico contra **3,90 GB** do ternário, com transcrição byte-idêntica.
   não faz ao vivo. Não integrar de novo sem um checkpoint com português e sem tradução --
   `_main/receipt-20261030-ark-asr-vs-parakeet.md`, `_main/engine-compare.py` para re-medir.
 
-## DISCORD: A DIVISAO POR FALANTE E' EXATA, E A LEGENDA SAI POR FALANTE (2026-11-24)
+## POR VOZ E' O DEFAULT: O SIDECAR NOMEIA, O WORKER CARIMBA (2026-11-24)
 
 Ordem do dono, verbatim: *"sotto é pra conseguir distinguir cada voz/camada de audio e saber
 transcrever corretamente cada uma em paralelo. faz isso de algum jeito usando o que o discord
-proporciona ou entao com modelo que separa vozes."*
+proporciona ou entao com modelo que separa vozes."* e, quando recebeu um pedido de token de bot,
+*"tu nao precisa de nada disso ai. faz direito"*.
 
-- **A via e' o que o Discord ja' entrega**: o SFU manda um stream Opus por participante (SSRC ->
-  user id pelo opcode SPEAKING), `discord/` (bot, nunca selfbot) decodifica cada um para
-  `discord/out/<user_id>/<epoch_ms>.pcm` (16 kHz mono). **A divisao e' EXATA** -- duas pessoas a
-  falar ao mesmo tempo nunca tocam os mesmos bytes.
-- **`worker/discord_streams.py` e' a metade que faltava**: segue a arvore, segmenta CADA falante em
-  separado (`redux_live.LiveSegmenter`), transcreve num unico motor (a GPU e' o recurso partilhado)
-  e emite o contrato JSONL do worker com `speaker`, `speakerId` e `source="discord/voice:speaker-N"`
-  (o painel pinta uma linha e um tom por voz sem mudanca na app). `run.cmd --worker
-  worker\discord_streams.py` com o bot a capturar.
-- **O relogio vem do indice por pacote (`t_ms`), nunca da contagem de amostras.** O Discord nao manda
-  nada enquanto o falante esta' calado, logo PCM concatenado / 16 kHz deriva em cada pausa. A prova:
-  `_main/discord-streams-oracle.py` (voz PT + voz EN, a mesma frase em linguas diferentes, um buraco
-  de 6,0 s so' no relogio; as linhas pos-buraco tem de comecar em >= 13,5 s). `--neg-arm` funde as
-  duas vozes num user id e exige que o oraculo REPROVE (rc=1 apanhado).
-- **Modelo de separacao esta' REFUTADO para esta via, medido**: MossFormer2_SS_16K sobre 60 s da call
-  Discord real de 2026-11-16 gastou **1335,107 s (RTF 22,25)** e pos **210 palavras no stream 0 e 2
-  no stream 1** contra 211 no mix (`_main/bench/logs/moss-after.log`) -- nao corre ao vivo e nao
-  separou aquele mix de 4 vozes. Nao se propoe separacao enquanto a divisao exata existir.
+- **A VIA E' A QUE JA' ESTAVA NA CASA, E ESTAVA MORTA.** `worker/speaker_sidecar.py` (diarizador)
+  escreve `_main/diar-live.json`; `worker/speaker_bridge.py` (dentro do worker) le' e carimba
+  `source=voice:speaker-N` por linha; o painel ja' pinta uma linha e um tom por voz. Nada disso
+  precisava de bot, de convite ou de token.
+- **`--speakers` PASSOU A SER O DEFAULT** (`--no-speakers` desliga). O dono abre a app por
+  duplo-clique; uma capacidade que exige uma flag que ele nunca escreve nao existe. O sidecar arranca
+  com o WORKER (nunca antes de ele arrancar) e morre com a shell.
+- **O DIARIZADOR CORRE EM CPU, PEDIDA POR NOME (`DIARIZER_PROVIDER`).** O guard GPU-only recusava
+  TODA a startup (`installed sherpa-onnx has no strict diarization adapter`) porque o sherpa 1.13.4
+  nao expoe atestacao para `OfflineSpeakerDiarization` -- a feature estava morta, nao lenta. Um pedido
+  `cuda` continua recusado; um pedido `cpu` nao tem acelerador de onde cair e e' o caminho MEDIDO:
+  **DER 0,03 %** (`_main/_diar-run.py`) e **RTF 0,416 / 277 MB / 0,9 s de load a 2 fios**. O silencio
+  nao paga inferencia: `tick` mede `speech_fraction` e, abaixo de 30 %, **RECORTA a janela para o
+  trecho com fala** (`speech_span` + `SPARSE_PAD_S=0,5 s`, piso `MIN_TRIMMED_S=1,2 s`) e soma o
+  deslocamento de volta em `to_absolute`; so' sem fala nenhuma (ou com menos que o piso) declina, e
+  declina SEM chamar o modelo. A barra nao desce -- o que muda e' o que o modelo ve'.
+  **MEDIDO 2026-11-24**: no JOIN ao vivo a fala do dono ocupava 2-8 % de 20 s, a janela inteira era
+  recusada em quase todos os tiques e 7 legendas reais saiam sem voz.
+- **Um payload `"fake": true` e' RECUSADO pelo nome**, nao pela idade: o oraculo escreve fixtures
+  frescas, e uma fixture fresca a nomear vozes reais e' o cracha a mentir que o `speaker_bridge`
+  existe para impedir.
+- **As provas, e elas correm:** `_main/speaker-sidecar-oracle.py` (95/95, 8/8 mutantes; inclui o
+  recorte esparso, o deslocamento absoluto, o declinio sem inferencia e o `_open_endpoint`),
+  `_main/sidecar-wiring-oracle.py` (26/26, mutante do BELOW_NORMAL apanhado; inclui `--speakers`
+  default ON lido do AST),
+  `_main/_sidecar-replay-real.py` em 60 s da call Discord REAL de 2026-11-16 (2 slots, 6 janelas,
+  0 vazias, 97,8 s de CPU), e `_main/speakers-live-join.py` -- o JOIN que nunca tinha corrido: arranca
+  sidecar + worker com `CREATE_NO_WINDOW`, vida limitada, e exige payload real/fresco e linhas
+  carimbadas; silencio responde `CANNOT-MEASURE reason=silence`, nunca verde.
+- **Modelo de separacao continua REFUTADO para esta via**: MossFormer2_SS_16K sobre 60 s da mesma call
+  gastou **1335,107 s (RTF 22,25)** e pos 210 palavras no stream 0 e 2 no stream 1 contra 211 no mix
+  (`_main/bench/logs/moss-after.log`).
+- **O bot (`discord/`) e' a divisao EXATA por participante** (um stream Opus por user, SSRC -> user id
+  pelo opcode SPEAKING) e `worker/discord_streams.py` transcreve essa arvore por falante, mas exige
+  token/convite: e' alternativa quando o dono a pedir, NUNCA a rota que ele tem de configurar.
 - **O CACHE `.ort` DO REDUX NAO SE SERVE QUANDO A SESSAO TEM DE ATESTAR COLOCACAO (medido
   2026-11-24).** A inicializacao ORT-format do ORT 1.30 salta o callback de atribuicao de EP, logo
   uma sessao carregada de `<graph>.ort` devolve **ZERO** linhas de
@@ -518,7 +536,7 @@ validade - re-correr antes de repetir, e colar os numeros de HOJE.**
 
 A tabela de ficheiros e o que cada um e: **`docs/layout.md`**.
 
-**PIN do `run.cmd --help` (re-measured 2026-11-24, `app\webview\run.cmd --help`):** re-measured 2026-11-24 the output is 9150 B, 140 lines, 140 CRLF / 0 bare LF, rc 0, sha256 `6EEA9E1931FDD9CB1EA4DEB76148CE4E857AA954EEA01700197130E4D3BD7094`.
+**PIN do `run.cmd --help` (re-measured 2026-11-24, `app\webview\run.cmd --help`):** re-measured 2026-11-24 the output is 9380 B, 144 lines, 144 CRLF / 0 bare LF, rc 0, sha256 `C949E51C0CB062EAEDF40E2012213E5C1CF8B57D18C80B8C0637BC9017EE3946`.
 O numero vai **sem asteriscos**: o braco negativo do portao muta o numero com um padrao que exige
 `the output is ` seguido dos digitos. O portao e' `_main/agents-md-pins-oracle.py`: se o `--help` mudar,
 este numero muda, e o gate obriga a re-medir **aqui**.

@@ -40,6 +40,13 @@ import types
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 SHELL = os.path.join(ROOT, "app", "webview", "sotto_webview.py")
+# MEASURED 2026-11-24: `SpeakerSidecar.start` now asks `no_console.popen_kwargs`
+# for the console guard (the one helper every spawn in the product uses). The
+# sandboxed class resolves that import at CALL time against `sys.path`, and the
+# oracle never put `app/webview` there -- so every behavioural arm died with
+# `ModuleNotFoundError: no_console` instead of measuring. The real module is
+# used, not a stub: the arm then asserts the guard the product actually ships.
+sys.path.insert(0, os.path.join(ROOT, "app", "webview"))
 
 rows = []
 #: Uma lista de um elemento, e nao uma variavel simples: `arm = "x"` dentro de
@@ -189,6 +196,28 @@ def wiring(src, prefix):
     tree = ast.parse(src)
     ARM[0] = prefix + " ligacao"
     chk("'--speakers'" in src, prefix + "1 a shell declara --speakers")
+    # THE DEFAULT IS THE CONTRACT (2026-11-24): the owner opens the app by
+    # double-click, so "on by default" is the difference between a feature and
+    # a flag nobody types. Read from the AST, not from a comment.
+    app_parser = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            for sub in ast.walk(node):
+                if (isinstance(sub, ast.Call)
+                        and getattr(sub.func, "attr", "") == "add_argument"
+                        and sub.args
+                        and isinstance(sub.args[0], ast.Constant)
+                        and sub.args[0].value == "--speakers"):
+                    app_parser = sub
+    defaults = {kw.arg: kw.value for kw in (app_parser.keywords
+                                            if app_parser else [])}
+    chk(isinstance(defaults.get("default"), ast.Constant)
+        and defaults["default"].value is True,
+        prefix + "1b --speakers is ON by default (owner opens the app by "
+                 "double-click)", ast.dump(defaults.get("default"))
+        if defaults.get("default") else "no default keyword")
+    chk("'--no-speakers'" in src and "store_false" in src,
+        prefix + "1c and there is an explicit --no-speakers opt-out")
     sw = seg(src, func_node(tree, "start_worker"))
     chk("extra_args=" in sw and "--speakers" in sw,
         prefix + "2 a flag chega ao WORKER por ARGV",
@@ -199,7 +228,13 @@ def wiring(src, prefix):
 
     ARM[0] = prefix + " contrato de ambiente"
     env_src = seg(src, func_node(tree, "_child_env"))
-    expected = {"SOTTO_CAPTURE_MODE", "SOTTO_AUDIO_DEVICE", "SOTTO_TARGET_PID"}
+    # The set is the LIVE contract, re-read on 2026-11-24: the live Redux route
+    # added SOTTO_REDUX_LIVE / SOTTO_REDUX_WHEN_HIDDEN after this arm was
+    # written, so the old three-key set could only stay true by the shell not
+    # growing. What the arm forbids is a SIXTH key (SOTTO_SPEAKERS) for voice
+    # attribution; that is why the set stays exact and not a superset.
+    expected = {"SOTTO_CAPTURE_MODE", "SOTTO_AUDIO_DEVICE", "SOTTO_TARGET_PID",
+                "SOTTO_REDUX_LIVE", "SOTTO_REDUX_WHEN_HIDDEN"}
     found = set(re.findall(r"SOTTO_[A-Z_]+", env_src))
     chk(env_src and found == expected,
         prefix + "3b _child_env acrescenta EXACTAMENTE o conjunto que ja tinha",
@@ -213,21 +248,46 @@ def wiring(src, prefix):
     chk("extra_args=None" in init_src,
         prefix + "4 WorkerBridge aceita extra_args com omissao vazia")
     spawn_src = seg(src, func_node(tree, "_spawn"))
-    chk("argv = [self.command, self.worker_path] + list(self.extra_args)"
-        in spawn_src,
-        prefix + "4b e argv = [command, path] + extra_args")
+    # MEASURED 2026-11-24: the argv gained `-u` (unbuffered stdout, so a caption
+    # is not held in a pipe buffer) and is now split across two source lines, so
+    # the old single-line literal could never match again. The arm asserts the
+    # three parts the contract is made of, not the formatting of one line.
+    chk("argv = [self.command, '-u', self.worker_path]" in spawn_src
+        and "+ list(self.extra_args)" in spawn_src,
+        prefix + "4b e argv = [command, -u, path] + extra_args",
+        spawn_src[:400])
 
     ARM[0] = prefix + " quando"
+    # The sidecar start moved into `_start_worker_sidecars` (one owner for the
+    # optional readers); the ORDER and the gate are the contract, so they are
+    # read where they now live instead of where they used to be pasted.
+    helpers = seg(src, func_node(tree, "_start_worker_sidecars"))
     i_start = sw.find("self.bridge.start(reason)")
-    i_side = sw.find("sidecar.start(reason)")
+    i_side = sw.find("self._start_worker_sidecars(reason)")
     chk(i_start >= 0 and i_side > i_start,
-        prefix + "9 o sidecar arranca DEPOIS de o worker ter arrancado")
-    chk(re.search(r"if started:\s*\n(?:.*\n)*?\s*if getattr\(self\.args, 'speakers'",
+        prefix + "9 o sidecar arranca DEPOIS de o worker ter arrancado",
+        "bridge.start=%d sidecars=%d" % (i_start, i_side))
+    chk(re.search(r"if started:\s*\n(?:.*\n)*?\s*self\._start_worker_sidecars\(reason\)",
                   sw) is not None,
-        prefix + "9b e so quando os.args.speakers esta ligado")
-    chk("sidecar.start" not in sw[:i_start],
-        prefix + "9c nada arranca o sidecar ANTES do worker -- um worker recusado "
-                 "nao deixa um diarizador a correr contra ninguem")
+        prefix + "9b e so quando o worker arrancou (dentro de `if started:`)")
+    chk("getattr(self.args, 'speakers', False)" in helpers,
+        prefix + "9b2 o gatilho e' o `speakers` da shell (default LIGADO, "
+                 "`--no-speakers` desliga)",
+        helpers[:300])
+    # TWO branches start optional readers and both must be preceded by a LIVE
+    # worker: the warm attach (`_try_warm_attach` already returned a bridge) and
+    # the cold spawn's `if started:`. MEASURED 2026-11-24: the single-position
+    # test spanned the whole function, so the warm branch's legitimate sidecar
+    # start (it is preceded by the attach) tripped an arm that meant "a refused
+    # worker must not leave a diarizer running".
+    i_warm = sw.find("self._try_warm_attach(")
+    i_warm_side = sw.find("sidecar = self.speaker_sidecar()")
+    chk(i_warm >= 0 and i_warm_side > i_warm,
+        prefix + "9c o sidecar do caminho quente so' arranca depois do attach "
+                 "a um worker vivo", "attach=%d sidecar=%d" % (i_warm, i_warm_side))
+    chk(i_start >= 0 and i_side > i_start,
+        prefix + "9c2 e o do caminho frio so' arranca dentro do `if started:`",
+        "start=%d sidecars=%d" % (i_start, i_side))
     chk(re.search(r"stop_hot_reload\('closing'\).*?stop\('shell-closing'\)",
                   src, re.S) is not None,
         prefix + "10 o sidecar e' parado no fecho da shell")
@@ -251,8 +311,8 @@ def main(argv=None):
         # O MUTANTE E' EXECUTADO. A versao anterior confirmava que a substituicao
         # de texto tinha acontecido -- trivialmente verdade, e prova nada.
         broken = src.replace(
-            "flags |= 0x00004000          # BELOW_NORMAL_PRIORITY_CLASS",
-            "pass  # mutante: sem prioridade reduzida")
+            "extra = 0x00004000 if os.name == 'nt' else 0   # BELOW_NORMAL_PRIORITY_CLASS",
+            "extra = 0  # mutante: sem prioridade reduzida")
         if broken == src:
             print("SETUP: a ancora do mutante nao existe mais na shell")
             return 2

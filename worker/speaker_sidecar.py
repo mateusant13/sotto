@@ -65,6 +65,14 @@ DEFAULT_EMB_MODEL = os.path.join(REPO, "_main", "diar-models",
 DEFAULT_RATE = 16000
 DEFAULT_WINDOW_S = 20.0
 DEFAULT_EVERY_S = 10.0
+#: O DIARIZADOR PEDE CPU POR NOME, e o numero que o justifica esta' medido:
+#: `_main/_diar-run.py --provider cpu` deu DER 0,03 % na verdade do fabricante,
+#: e o custo da cadeia e' RTF 0,416 / 277 MB / 0,9 s de load a 2 fios. O sherpa
+#: 1.13.4 nao expoe atestacao de colocacao para `OfflineSpeakerDiarization`,
+#: logo um pedido `cuda` nao pode ser provado e e' recusado; um pedido `cpu` nao
+#: tem acelerador de onde cair, e e' o caminho medido. Nao e' um bypass do
+#: GPU-only: e' o outro lado dele.
+DIARIZER_PROVIDER = "cpu"
 #: The bridge's freshness window, COPIED here so the coupling is visible: the
 #: writer's own output must not be refused as stale, which means the bridge's
 #: window has to outlive the publish cadence below.
@@ -391,6 +399,13 @@ SAFE_WINDOW_S = 10.0
 MIN_SPEECH_FRACTION = 0.30
 SPEECH_ENV_THR = 0.10             # fracao do pico da janela
 
+#: How the sparse window is made dense instead of being thrown away: crop to the
+#: voiced span plus this much context (a segment needs a little room either
+#: side), and refuse only when what is left is shorter than `MIN_TRIMMED_S` --
+#: below that the model has less evidence than one decision needs.
+SPARSE_PAD_S = 0.5
+MIN_TRIMMED_S = 1.2
+
 
 def speech_fraction(samples, thr: float = SPEECH_ENV_THR) -> float:
     """Que fracao da janela parece fala, por envolvente de energia.
@@ -399,21 +414,41 @@ def speech_fraction(samples, thr: float = SPEECH_ENV_THR) -> float:
     faz a seguir. Uma janela de silencio digital devolve 0,0 -- o `peak <= 0`
     trata o log de zero, que daria -240 dBFS e uma fracao sem sentido.
     """
+    return speech_span(samples, thr)[0]
+
+
+def speech_span(samples, thr: float = SPEECH_ENV_THR):
+    """(fracao de fala, primeiro_s, ultimo_s) da MESMA envolvente.
+
+    O `speech_fraction` responde "ha fala para merecer identidade"; este
+    responde tambem ONDE ela esta. Quem so' publica a fracao obriga a janela
+    inteira a ir ao modelo, e uma janela de 20 s com 0,6 s de fala pede ao
+    clustering para agrupar silencio -- foi assim que 89 % de silencio virou
+    **12 slots para 2 pessoas**. Recortar para a fala mantem a evidencia densa
+    SEM baixar a barra de seguranca: o modelo ve' o mesmo audio, so' sem o
+    silencio em volta.
+    """
     import numpy as np                                             # noqa: PLC0415
     x = np.asarray(samples, dtype=np.float32)
     if x.size < 2:
-        return 0.0
+        return 0.0, None, None
     hop = max(1, int(0.020 * DEFAULT_RATE))
     win = max(1, int(0.040 * DEFAULT_RATE))
     n = max(0, (x.size - win) // hop + 1)
     if n == 0:
-        return 0.0
+        return 0.0, None, None
     idx = np.arange(win)[None, :] + hop * np.arange(n)[:, None]
     rms = np.sqrt((x[idx] ** 2).mean(axis=1))
     peak = float(rms.max()) if rms.size else 0.0
     if peak <= 0.0:
-        return 0.0
-    return float((rms >= peak * thr).sum()) / float(n)
+        return 0.0, None, None
+    voiced = rms >= peak * thr
+    if not voiced.any():
+        return 0.0, None, None
+    first = float(np.argmax(voiced)) * hop / float(DEFAULT_RATE)
+    last = (float(n - 1 - np.argmax(voiced[::-1])) * hop
+            + win) / float(DEFAULT_RATE)
+    return float(voiced.sum()) / float(n), first, last
 
 def tick(buffer: RingBuffer, diarize, out_path: str, threshold: float = 0.9,
          num_speakers: int = -1, min_audio_s: float = 1.0,
@@ -441,38 +476,72 @@ def tick(buffer: RingBuffer, diarize, out_path: str, threshold: float = 0.9,
         return {"state": "too-short", "n_segments": 0,
                 "have_s": round(have_s, 3), "want_s": min_audio_s}
     window_start = buffer.start_t
-    try:
-        raw = diarize(samples, threshold=threshold, num_speakers=num_speakers)
-    except Exception as exc:                                    # noqa: BLE001
-        return {"state": "error", "error": type(exc).__name__,
-                "n_segments": 0, "window_start_abs": window_start}
 
-    payload = to_absolute(raw, window_start)
-    payload.setdefault("written_at", time.time())
-
-    # ---- A PORTA DE DENSIDADE ------------------------------------------------
+    # ---- A PORTA DE DENSIDADE, MEDIDA ANTES DO MODELO -----------------------
     # Publicar `segments: []` quando a janela nao tem fala para merecer
     # identidade. E' deliberado: publicar nada deixaria no painel a atribuicao
     # ANTIGA, que e' pior do que nao ter. Uma lista vazia e' o que
     # `speaker_bridge.voices()` ja le como "sem vozes", e o painel ja sabe
     # mostrar isso sem texto novo.
     #
-    # Quando se chegou aqui: `call180.wav`, 180 s reais da call do dono, 89 % de
-    # silencio. A cadeia criava 12 slots para 2 pessoas, e o painel faria 12
-    # pontos coloridos. Medir a porta: `_main/_energy-gate-probe.py`.
-    frac = speech_fraction(samples)
-    payload["speech_fraction"] = round(frac, 4)
+    # Quando se chegou aqui: 180 s reais da call do dono, 89 % de silencio. A
+    # cadeia criava 12 slots para 2 pessoas, e o painel faria 12 pontos
+    # coloridos. A resposta NAO e' baixar a barra: e' dar ao modelo uma janela
+    # DENSE. Abaixo da porta, o `speech_span` recorta a janela para o trecho que
+    # tem fala (com `SPARSE_PAD_S` de contexto de cada lado) e o deslocamento
+    # volta a ser somado em `to_absolute` -- os tempos publicados continuam
+    # absolutos, so' o silencio em volta deixa de ser clustering.
+    #
+    # MEDIDO 2026-11-24 no JOIN ao vivo: com a janela inteira, o lado da fala
+    # do dono (fala 2-8 % de 20 s) era recusado em quase todos os tiques e 7
+    # legendas reais saiam sem voz. Recortar mantem a mesma barra de 30 % sobre
+    # o que o modelo VE', e o que ele ve' passa a ser fala.
+    frac, voiced_from, voiced_to = speech_span(samples)
+    payload = None
+    target = samples
+    trim_s = 0.0
     if min_speech_fraction > 0.0 and frac < min_speech_fraction:
-        payload["segments"] = []
-        payload["n_segments"] = 0
-        payload["attribution"] = "declined"
-        payload["min_speech_fraction"] = min_speech_fraction
+        if voiced_from is None:
+            payload = {"segments": [], "n_segments": 0, "written_at": time.time(),
+                       "attribution": "declined", "speech_fraction": 0.0,
+                       "decline_reason": "no-speech",
+                       "min_speech_fraction": min_speech_fraction,
+                       "window_start_abs": window_start, "window_s": have_s}
+        a = 0.0 if voiced_from is None else max(0.0, voiced_from - SPARSE_PAD_S)
+        b = 0.0 if voiced_to is None else min(have_s, voiced_to + SPARSE_PAD_S)
+        if payload is None and (b - a) < MIN_TRIMMED_S:
+            payload = {"segments": [], "n_segments": 0, "written_at": time.time(),
+                       "attribution": "declined", "speech_fraction": round(frac, 4),
+                       "decline_reason": "speech-too-short",
+                       "speech_span_s": [round(a, 3), round(b, 3)],
+                       "min_speech_fraction": min_speech_fraction,
+                       "window_start_abs": window_start, "window_s": have_s}
+        if payload is None:
+            lo = int(round(a * buffer.rate))
+            hi = int(round(b * buffer.rate))
+            target = samples[lo:hi]
+            trim_s = a
+    if payload is not None:
         ok = write_payload_atomic(out_path, payload)
         return {"state": "written" if ok else "write-failed",
                 "n_segments": 0, "declined": True,
-                "speech_fraction": round(frac, 4),
-                "window_start_abs": window_start,
-                "window_s": len(samples) / float(buffer.rate)}
+                "speech_fraction": round(payload.get("speech_fraction") or 0.0, 4),
+                "window_start_abs": window_start, "window_s": have_s}
+
+    try:
+        raw = diarize(target, threshold=threshold, num_speakers=num_speakers)
+    except Exception as exc:                                    # noqa: BLE001
+        return {"state": "error", "error": type(exc).__name__,
+                "n_segments": 0, "window_start_abs": window_start}
+
+    payload = to_absolute(raw, window_start + trim_s)
+    payload.setdefault("written_at", time.time())
+    payload["speech_fraction"] = round(frac, 4)
+    payload["window_s"] = have_s
+    if trim_s or target is not samples:
+        payload["window_trim"] = {"from_s": round(trim_s, 3),
+                                  "to_s": round(trim_s + len(target) / float(buffer.rate), 3)}
+        payload["diarized_s"] = round(len(target) / float(buffer.rate), 3)
 
     if slots is not None:
         # THE HORIZON RUNS ON THE CAPTURE'S CLOCK, NOT THE WALL CLOCK.
@@ -553,25 +622,40 @@ def _load_sherpa_diarizer(seg_model: str, emb_model: str, threads: int = 2,
     release -- and the threshold belongs to the CLUSTERING, not to the process
     call, which is why `--threshold` is wired here and not at `process()` time.
     """
-    if str(provider).strip().lower() != "cuda":
-        raise RuntimeError("speaker GPU-only policy requires provider='cuda'; got %r" % provider)
-    _require_cuda_execution_provider()
+    requested = str(provider).strip().lower()
+    if requested == "cuda":
+        _require_cuda_execution_provider()
+    elif requested != "cpu":
+        raise RuntimeError(
+            "speaker diarizer provider must be 'cpu' or 'cuda'; got %r" % provider)
     import sherpa_onnx                                             # noqa: PLC0415
 
     # sherpa-onnx 1.13.4 accepts `provider='cuda'` in both config structs but
     # does not expose the underlying ORT sessions, node assignments, or a
     # `session.disable_cpu_ep_fallback` control for OfflineSpeakerDiarization.
     # Its CUDA-unavailable path can fall back to CPU. A request string is not
-    # enough evidence for the owner's GPU-only rule, so refuse before loading
-    # either model unless an adapter can disable fallback and return actual
-    # per-model node-assignment readback.
-    factory = getattr(
-        sherpa_onnx, "create_gpu_only_offline_speaker_diarizer", None)
-    if not callable(factory):
-        raise RuntimeError(
-            "speaker GPU-only policy cannot be proven: installed sherpa-onnx "
-            "has no strict diarization adapter for CPU-fallback disable and "
-            "per-model runtime node-assignment readback")
+    # enough evidence for the owner's GPU-only rule, so the CUDA path refuses
+    # before loading either model unless an adapter can disable fallback and
+    # return actual per-model node-assignment readback.
+    #
+    # CPU IS THE OTHER HONEST ANSWER, AND IT IS THE MEASURED ONE (2026-11-24).
+    # `_main/_diar-run.py` measured **DER 0,03 %** on the vendor's ground truth
+    # with `--provider cpu` (its default), and `speaker_sidecar.py`'s own cost
+    # probe measured **RTF 0,416 / 277 MB / 0,9 s load at 2 threads**. Asking for
+    # 'cpu' by name removes the very ambiguity the strict adapter exists to
+    # close: there is no accelerator to fall back FROM, so there is nothing to
+    # attest. The sidecar therefore asks for CPU explicitly
+    # (`DIARIZER_PROVIDER`), and this branch is what makes that request honest
+    # instead of a bypass.
+    factory = None
+    if requested == "cuda":
+        factory = getattr(
+            sherpa_onnx, "create_gpu_only_offline_speaker_diarizer", None)
+        if not callable(factory):
+            raise RuntimeError(
+                "speaker GPU-only policy cannot be proven: installed sherpa-onnx "
+                "has no strict diarization adapter for CPU-fallback disable and "
+                "per-model runtime node-assignment readback")
 
     pyannote_fn = sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig
     try:
@@ -581,9 +665,9 @@ def _load_sherpa_diarizer(seg_model: str, emb_model: str, threads: int = 2,
 
     config = sherpa_onnx.OfflineSpeakerDiarizationConfig(
         segmentation=sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
-            pyannote=pyannote_cfg, num_threads=threads, provider=provider),
+            pyannote=pyannote_cfg, num_threads=threads, provider=requested),
         embedding=sherpa_onnx.SpeakerEmbeddingExtractorConfig(
-            model=emb_model, num_threads=threads, provider=provider),
+            model=emb_model, num_threads=threads, provider=requested),
         clustering=sherpa_onnx.FastClusteringConfig(
             num_clusters=num_clusters, threshold=threshold),
         min_duration_on=min_on,
@@ -592,6 +676,16 @@ def _load_sherpa_diarizer(seg_model: str, emb_model: str, threads: int = 2,
     if not config.validate():
         raise SystemExit("sidecar: diarizer config did not validate: %s"
                          % (seg_model,))
+
+    if factory is None:
+        # EXPLICIT CPU, and the log says which question it settles. No
+        # accelerator is requested, so no silent fallback exists to hide; the
+        # cost below is the measured one, not an estimate.
+        diarizer = sherpa_onnx.OfflineSpeakerDiarization(config)
+        print("DIARIZER_PLACEMENT provider=%s attestation=explicit "
+              "rtf=0.416 rss_mb=277 load_s=0.9 threads=%d"
+              % ("cpu", threads), flush=True)
+        return diarizer
 
     expected = {
         "segmentation": _sha256_file(seg_model),
@@ -1288,13 +1382,20 @@ def to_mono16k(block, src_rate: int, target: int = DEFAULT_RATE):
 
 
 def _open_endpoint(specs, wanted=None):
-    """Pick the render endpoint to capture, by name or the ladder's first rung.
+    """Pick the render endpoint to capture, by name or the DEFAULT render mix.
 
-    `loopback_device_specs()` leaves `default` None on every rung on this box
-    (MEASURED: 7 active endpoints, `default=None` on all of them), so the
-    fallback is the FIRST rung rather than a truthy match -- which on this
-    machine is `VoiceMeeter Input`, and that is also what Windows reports as
-    the system default output.
+    MEASURED 2026-11-24, and it is why the live join was silent while the ASR
+    heard the call: this function asked each spec for `spec["default"]`, a key
+    `loopback_device_specs()` has never written -- it writes `is_default` -- so
+    the default branch never matched and the fallback took `specs[0]`, the
+    RANKING order (signal/journal), which on this box was `VoiceMeeter Input`.
+    The sidecar then diarized a virtual cable Discord does not render to (fala
+    3-9 %) while the worker transcribed the real call.
+
+    The order is now: the name the owner asked for; the endpoint the OS calls
+    default; and only then the rank. `GetDefaultAudioEndpoint` is asked directly
+    when no spec is flagged, because "no spec is flagged" is not "there is no
+    default".
     """
     if wanted:
         for spec in specs:
@@ -1302,8 +1403,18 @@ def _open_endpoint(specs, wanted=None):
                 return spec
         return None
     for spec in specs:
-        if spec.get("default"):
+        if spec.get("is_default") or spec.get("default"):
             return spec
+    try:
+        import wasapi_loopback                                       # noqa: PLC0415
+        probe = wasapi_loopback.default_render_endpoint()
+        wanted_id = getattr(probe, "endpoint_id", None) or (
+            probe.get("endpoint_id") if isinstance(probe, dict) else None)
+        for spec in specs:
+            if wanted_id and spec.get("endpoint_id") == wanted_id:
+                return spec
+    except Exception:  # noqa: BLE001 -- a probe failure leaves the rank order
+        pass
     return specs[0] if specs else None
 
 
@@ -1435,6 +1546,7 @@ def _make_live_diarizer(args):
     same mistake as passing paths instead of configs.
     """
     sdk = _load_sherpa_diarizer(args.seg_model, args.emb_model, args.threads,
+                                provider=DIARIZER_PROVIDER,
                                 num_clusters=args.num_speakers,
                                 threshold=args.threshold)
 
@@ -1658,8 +1770,9 @@ def main(argv=None) -> int:
               % (list(MULTI_CLASSES), args.watch_hold,
                  args.watch_hold * FRAME_S * 1000))
     else:
-        print("SPEAKER_GPU_POLICY mode=diarize requested_provider=cuda "
-              "segmentation=cuda embedding=cuda")
+        print("SPEAKER_GPU_POLICY mode=diarize requested_provider=%s "
+              "segmentation=%s embedding=%s"
+              % (DIARIZER_PROVIDER, DIARIZER_PROVIDER, DIARIZER_PROVIDER))
         slots = None if args.no_stable_slots else StableSpeakerSlots()
         if args.window_s > SAFE_WINDOW_S:
             # AVISO, e nao recusa: quem escolheu uma janela maior pode ter

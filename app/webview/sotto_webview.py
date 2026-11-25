@@ -27237,26 +27237,37 @@ def parse_args(argv):
                              'already starts by default (F1), so this flag now '
                              'only FORCES the worker where an automatic '
                              'opt-out would decline it -- see --no-worker')
-    #: PER-VOICE ATTRIBUTION. Off by default, because it costs a second model
-    #: (277 MB) and ~1,4x realtime of CPU on this box -- a cost nobody should
-    #: pay for a feature they did not ask for. What it does, end to end:
-    #: this shell ALSO starts `worker/speaker_sidecar.py`, which taps the same
-    #: WASAPI loopback, diarizes into `_main/diar-live.json`, and the worker
-    #: reads that file per caption (`speaker_bridge.py`) and stamps ONE `source`
-    #: PER VOICE on each line. The panel already renders one forming row per
-    #: `source` and paints a coloured dot per voice (`panel.js` `applyVoice`), so
+    #: PER-VOICE ATTRIBUTION. ON BY DEFAULT (owner order, 2026-11-24: *"sotto é
+    #: pra conseguir distinguir cada voz/camada de audio e saber transcrever
+    #: corretamente cada uma em paralelo"* -- and he runs the app by double-click,
+    #: so a capability behind a flag he never types does not exist). What it does,
+    #: end to end: this shell ALSO starts `worker/speaker_sidecar.py`, which taps
+    #: the same WASAPI loopback, diarizes into `_main/diar-live.json`, and the
+    #: worker reads that file per caption (`speaker_bridge.py`) and stamps ONE
+    #: `source` PER VOICE on each line. The panel already renders one forming row
+    #: per `source` with a coloured dot per voice (`panel.js` `applyVoice`), so
     #: nothing else in the app changes shape.
+    #:
+    #: THE COST IS BOUNDED WHERE IT IS PAID, and that is why a default is safe:
+    #: the sidecar's `tick` measures `speech_fraction` BEFORE it calls the model
+    #: and returns above `MIN_SPEECH_FRACTION` (0.30), so silence costs an
+    #: envelope scan and no inference (see `worker/speaker_sidecar.py:463-469`).
+    #: While people talk it runs the full pipeline at RTF ~0.5 on 2 threads over a
+    #: 20 s window every 10 s. The sidecar starts with the WORKER and stops with
+    #: the shell; `--no-speakers` returns the pre-2026-11-24 behaviour byte for
+    #: byte (no second model, no `speaker_bridge` provider).
     #:
     #: WHY IT IS A SHELL FLAG AND NOT A WORKER-ONLY ONE: the worker alone would
     #: read a file nobody writes. Measured end to end on the owner's own Discord
     #: call (`_main/_sidecar-replay-real.py`): the real chain over 60 s of real
     #: audio gives 2 global voice slots, which is the 2 people who were talking.
-    parser.add_argument('--speakers', action='store_true',
-                        help='ATTRIBUTE EACH LINE TO ITS SPEAKER. Also starts '
-                             'the diarizer sidecar (a second model). WITHOUT IT '
-                             'every line carries the device source and the rows '
-                             'are not separated by voice. NOTE the ~277 MB here '
-                             'is `speaker_bridge.py:12`, a figure measured on the '
+    parser.add_argument('--speakers', action='store_true', default=True,
+                        help='ATTRIBUTE EACH LINE TO ITS SPEAKER (default). Also '
+                             'starts the diarizer sidecar (a second model). '
+                             '`--no-speakers` turns both off: every line then '
+                             'carries the device source and the rows are not '
+                             'separated by voice. NOTE the ~277 MB here is '
+                             '`speaker_bridge.py:12`, a figure measured on the '
                              'STANDALONE diarizer process; two 2026-10-18 runs on '
                              'the same box, different processes, measured '
                              '207 MB for the real sidecar and 135,4 MB for a '
@@ -27265,6 +27276,9 @@ def parse_args(argv):
                              'is this process, so none of them is quoted here. '
                              '--speakers-cheap quotes its own, and that one IS '
                              'measured for what it starts.')
+    parser.add_argument('--no-speakers', dest='speakers', action='store_false',
+                        help='the pre-2026-11-24 behaviour: no second model, no '
+                             'sidecar, no `source` per voice')
     #: FASE A. Answers ONE question -- "were two voices talking at the same
     #: time?" -- and nothing else. It starts the SAME sidecar process with
     #: `--watch-only`, which loads the 5,7 MB segmentation model and NOT the

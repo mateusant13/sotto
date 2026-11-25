@@ -142,11 +142,90 @@ def battery(mod) -> list:
         chk(abs(got["window_s"] - 2.0) < 1e-9, "and how long the window was",
             repr(got.get("window_s")))
 
-        # The reader half must accept what the writer half just wrote. This is
-        # the only place the two processes are in the same room.
+        # --- A JANELA ESPARSA E' RECORTADA, NAO JOGADA FORA (2026-11-24) ------
+        # MEDIDO no JOIN ao vivo: a fala do dono ocupa 2-8 % de uma janela de
+        # 20 s, e a porta de 30 % recusava quase todos os tiques -- 7 legendas
+        # reais saiam sem voz. A cura NAO e' baixar a barra (foi a esparsa que
+        # criou 12 slots para 2 pessoas): e' dar ao modelo o trecho com fala.
+        # Estas duas arms medem o recorte e o deslocamento que ele devolve.
+        def _silence(n):
+            return [0.0] * n
+        sparse_file = os.path.join(tmp, "diar-sparse.json")
+        ring2 = mod.RingBuffer(rate=16000, window_s=8.0)
+        for sec in range(8):
+            ring2.push(_speechy(16000, 3) if sec == 2 else _silence(16000),
+                       400.0 + sec)
+        dial2 = mod.FakeDiarizer()
+        state2 = mod.tick(ring2, dial2, sparse_file, threshold=0.9,
+                          num_speakers=-1)
+        with open(sparse_file, "r", encoding="utf-8") as fh:
+            got2 = json.load(fh)
+        chk(dial2.calls == 1,
+            "a sparse window with speech still reaches the diarizer",
+            "calls=%r" % (dial2.calls,))
+        trim = got2.get("window_trim") or {}
+        chk(abs(trim.get("from_s", -1) - 1.5) < 0.11,
+            "and it is cropped to the speech it holds (0,5 s of context)",
+            repr(trim))
+        chk(1.9 <= (got2.get("diarized_s") or 0) <= 2.2,
+            "the model saw ~2 s of speech, not 8 s of mostly silence",
+            repr(got2.get("diarized_s")))
+        chk(abs(got2["window_start_abs"] - 401.5) < 0.11,
+            "the published window names the CROPPED start",
+            repr(got2.get("window_start_abs")))
+        chk(abs(got2["segments"][0]["start"] - 402.5) < 0.11,
+            "and the segment keeps the ABSOLUTE time (offset added back)",
+            "%.3f" % got2["segments"][0]["start"])
+
+        # Below the evidence floor the model is NOT asked: a click is not a
+        # person, and refusing without spending 277 MB of inference is the
+        # cheap half of the same rule.
+        click_file = os.path.join(tmp, "diar-click.json")
+        ring3 = mod.RingBuffer(rate=16000, window_s=8.0)
+        for sec in range(8):
+            block = _silence(16000)
+            if sec == 3:
+                block[8000:8040] = _speechy(40, 5)
+            ring3.push(block, 500.0 + sec)
+        dial3 = mod.FakeDiarizer()
+        state3 = mod.tick(ring3, dial3, click_file, threshold=0.9,
+                          num_speakers=-1)
+        with open(click_file, "r", encoding="utf-8") as fh:
+            got3 = json.load(fh)
+        chk(state3.get("declined") is True and dial3.calls == 0,
+            "40 ms of speech declines WITHOUT running the model",
+            "declined=%r calls=%r" % (state3.get("declined"), dial3.calls))
+        chk(got3.get("decline_reason") == "speech-too-short",
+            "and the refusal names why", repr(got3.get("decline_reason")))
+
+        silent_file = os.path.join(tmp, "diar-silent.json")
+        ring4 = mod.RingBuffer(rate=16000, window_s=4.0)
+        for sec in range(4):
+            ring4.push(_silence(16000), 600.0 + sec)
+        dial4 = mod.FakeDiarizer()
+        mod.tick(ring4, dial4, silent_file, threshold=0.9, num_speakers=-1)
+        with open(silent_file, "r", encoding="utf-8") as fh:
+            got4 = json.load(fh)
+        chk(got4.get("decline_reason") == "no-speech" and dial4.calls == 0,
+            "digital silence declines by name, costs no inference",
+            "%r calls=%r" % (got4.get("decline_reason"), dial4.calls))
+        chk(got.get("fake") is True,
+            "a fake diarizer marks its payload as fake",
+            "the marker is what keeps a fixture from naming a real voice")
+
+        # The reader half must accept what a REAL writer writes. This is the
+        # only place the two processes are in the same room, and the fixture
+        # above is deliberately stamped `fake` -- so the accept-path payload is
+        # the same one with that marker flipped, which is exactly the difference
+        # between "an oracle wrote this" and "the model wrote this".
+        real_file = out_file + ".real.json"
+        with open(real_file, "w", encoding="utf-8") as fh:
+            json.dump({k: v for k, v in got.items() if k != "fake"}, fh)
         sys.path.insert(0, os.path.join(REPO, "worker"))
         bridge = load_module(BRIDGE_PATH, "speaker_bridge_oracle")
-        payload = bridge.payload_if_fresh(out_file, max_age_s=30.0)
+        chk(bridge.payload_if_fresh(out_file, max_age_s=30.0) is None,
+            "a FRESH payload stamped fake is refused by name, not by age")
+        payload = bridge.payload_if_fresh(real_file, max_age_s=30.0)
         chk(isinstance(payload, dict), "the bridge accepts the sidecar's payload")
         lines = bridge.apply_to_lines(
             [{"start": 301.2, "end": 302.8, "text": "e ai gente"}],
@@ -520,14 +599,91 @@ def gpu_policy_battery(mod) -> list:
         "legacy sherpa API is refused before model construction",
         detail or "constructor_calls=%d" % calls["constructor"])
 
-    # Explicit CPU or an unknown provider is refused before importing sherpa.
-    for requested in ("cpu", "unknown"):
+    # MEASURED 2026-11-24: 'cpu' is the SHIPPED provider (`DIARIZER_PROVIDER`,
+    # DER 0,03 % / RTF 0,416 measured with it) and is no longer a refusal.
+    # What must still be refused, before sherpa is imported, is a provider
+    # nobody measured -- otherwise a typo becomes a silent CPU run.
+    chk(mod.DIARIZER_PROVIDER == "cpu",
+        "the sidecar asks for the MEASURED cpu provider",
+        repr(mod.DIARIZER_PROVIDER))
+    calls["constructor"] = 0
+
+    class CpuConfig:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def validate(self):
+            return True
+
+    cpu_adapter = types.SimpleNamespace(
+        OfflineSpeakerSegmentationPyannoteModelConfig=CpuConfig,
+        OfflineSpeakerSegmentationModelConfig=CpuConfig,
+        SpeakerEmbeddingExtractorConfig=CpuConfig,
+        FastClusteringConfig=CpuConfig,
+        OfflineSpeakerDiarizationConfig=CpuConfig,
+        OfflineSpeakerDiarization=lambda config: object(),
+    )
+    sy = sys.modules.get("sherpa_onnx", missing)
+    sys.modules["sherpa_onnx"] = cpu_adapter
+    try:
+        built_flag = {"n": 0}
+        cpu_adapter.OfflineSpeakerDiarization = (
+            lambda config: built_flag.__setitem__("n", built_flag["n"] + 1) or object())
+        mod._load_sherpa_diarizer("seg.onnx", "emb.onnx", provider="cpu")
+        built = built_flag["n"] == 1
+        why = "constructor_calls=%d" % built_flag["n"]
+    except Exception as exc:  # noqa: BLE001 -- an exception here is the failure
+        built = False
+        why = "%s: %s" % (type(exc).__name__, exc)
+    finally:
+        if sy is missing:
+            sys.modules.pop("sherpa_onnx", None)
+        else:
+            sys.modules["sherpa_onnx"] = sy
+    chk(built, "provider='cpu' builds the diarizer with no accelerator to attest", why)
+
+    for requested in ("unknown", "rocm"):
         try:
             mod._load_sherpa_diarizer("seg.onnx", "emb.onnx", provider=requested)
             rejected = False
-        except RuntimeError:
-            rejected = True
-        chk(rejected, "requested provider %r is refused" % requested)
+        except RuntimeError as exc:
+            rejected = "'cpu' or 'cuda'" in str(exc)
+        chk(rejected, "requested provider %r is refused by name" % requested)
+
+    # THE ENDPOINT PICKER, WHICH HAD NO GATE (2026-11-24). The live join was
+    # silent because `_open_endpoint` read `spec["default"]` while the specs
+    # writer writes `is_default`: the default branch never matched, so the
+    # sidecar diarized whatever ranked first (`VoiceMeeter Input`) while the
+    # worker transcribed the real call. These arms are the difference.
+    default_not_first = [
+        {"name": "VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)", "endpoint_id": "vm"},
+        {"name": "Headphones (Realtek)", "endpoint_id": "hp", "is_default": True},
+    ]
+    chk(mod._open_endpoint(default_not_first).get("endpoint_id") == "hp",
+        "the DEFAULT endpoint wins even when it is not first in the rank",
+        repr(mod._open_endpoint(default_not_first)))
+    chk(mod._open_endpoint(default_not_first, "voicemeeter").get("endpoint_id") == "vm",
+        "an explicit device name still wins over the default")
+    chk(mod._open_endpoint([]) is None, "no endpoints means None, not a crash")
+
+    class Probe:
+        endpoint_id = "hp2"
+
+    unflagged = [{"name": "VoiceMeeter Input", "endpoint_id": "vm"},
+                 {"name": "Speakers", "endpoint_id": "hp2"}]
+    prior_wasapi = sys.modules.get("wasapi_loopback", missing)
+    sys.modules["wasapi_loopback"] = types.SimpleNamespace(
+        default_render_endpoint=lambda: Probe())
+    try:
+        picked = mod._open_endpoint(unflagged)
+    finally:
+        if prior_wasapi is missing:
+            sys.modules.pop("wasapi_loopback", None)
+        else:
+            sys.modules["wasapi_loopback"] = prior_wasapi
+    chk(picked and picked.get("endpoint_id") == "hp2",
+        "with no spec flagged, GetDefaultAudioEndpoint decides (not the rank)",
+        repr(picked))
 
     out.extend(watch_policy_battery(mod))
     return out

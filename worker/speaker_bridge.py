@@ -89,6 +89,13 @@ def payload_if_fresh(path: str = DEFAULT_PAYLOAD,
         return None
     if not isinstance(payload, dict) or not isinstance(payload.get("segments"), list):
         return None
+    # A FIXTURE IS NOT A MEASUREMENT (2026-11-24). `_main/speaker-sidecar-oracle.py`
+    # writes a payload stamped `"fake": true`; a fresh fixture left behind by an
+    # oracle would otherwise name real voices from synthetic segments, which is
+    # exactly the "confidently wrong badge" this module exists to prevent. The
+    # writer says so itself; the reader has to believe it.
+    if payload.get("fake") is True:
+        return None
     return payload
 
 

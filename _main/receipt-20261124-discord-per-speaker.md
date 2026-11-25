@@ -1,5 +1,11 @@
 # Discord: one transcript per speaker, in parallel (2026-11-24)
 
+> **SUPERSEDED as the default route (2026-11-24).** The owner rejected the bot
+> (`"tu nao precisa de nada disso ai. faz direito."`). The shipped route is the in-repo chain,
+> default ON: `worker/speaker_sidecar.py` -> `_main/diar-live.json` -> `worker/speaker_bridge.py`.
+> See `_main/receipt-20261124-per-voice-default.md`. What follows describes the exact per-user split,
+> which stays available as an alternative when a bot token is on the table.
+
 Owner order, verbatim: *"sotto é pra conseguir distinguir cada voz/camada de audio e saber
 transcrever corretamente cada uma em paralelo. faz isso de algum jeito usando o que o discord
 proporciona ou entao com modelo que separa vozes. vai."*
