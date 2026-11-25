@@ -38,6 +38,7 @@ docs/webview-shell-20261006.md:
 from __future__ import annotations
 
 import argparse
+import bisect
 import ctypes
 import ctypes.wintypes as wt
 import hashlib
@@ -55,10 +56,35 @@ import unicodedata  # search: folding the diacritics off
 from datetime import datetime
 
 import hot_reload
+import history_context
 import panel_focus as _panel_focus
 import bridge_census as _bridge_census_mod
 from code_identity import code_identity as _code_identity
+#: A DECISAO de reiniciar um worker caro e mudo (2026-11-09). Modulo puro e
+#: importavel para o oraculo julgar a regra sem abrir dispositivo nem shell.
+import cost_watchdog
+#: O MOTOR QUENTE PAGA-SE? (D-04, 2026-11-12) Medido: 8 cargas, 0 anexos, e cada
+#: carga custa 7,5-26,0 s de disco no arranque. A serie decide, nao a omissao.
+import warm_evidence
 import panel_state
+#: A MARCA que o motor nao deu, tirada da PROSA e da PAUSA medida (2026-11-10).
+#: Puro e importavel, para o oraculo julgar o fecho sem subir a shell.
+import prose_punct
+#: A CORRIDA que o decodificador inventou (`come come come ...`), cortada no
+#: texto ja' emitido (2026-11-11). Puro, e com a mesma regra estreita que o
+#: oraculo executa; ver `app/webview/text_normalize.py`.
+import text_normalize
+import topmost_keepalive as _topmost_keepalive
+#: O Z-ORDER DO PAINEL CONTRA A LEGENDA (dono, 2026-11-14). Puro e importavel:
+#: a decisao e a caminhada vivem em `app/webview/z_order.py`, e o oraculo conduz
+#: as duas sem abrir janela visivel.
+import z_order as _z_order
+import power_recovery as _power_recovery
+# A POLITICA de golpe do cao-de-guarda vive fora, e e' pura, para poder ser
+# exercitada sem uma janela (`app/webview/ui_watchdog_policy.py`). Nasceu de a
+# app se ter MATADO a trabalhar as 06:57:25 (`err=0` tres vezes -- ver o
+# cabecalho do modulo).
+import ui_watchdog_policy as _wd_policy
 
 
 # ── O INSTRUMENTO DO SELFTEST VIVE EM `app/webview/selftest_instrument.py` ───
@@ -153,7 +179,11 @@ PANEL_MARGIN = 12
 #: reported it "spawnando muito abaixo"; 44 px leaves air under the caption bar.
 STRIP_MARGIN = 44
 PANEL_MAX_WORK_FRACTION = 0.34
-MAX_CAPTIONS = 200
+#: A janela da legenda ao vivo, em linhas. Era 200 e MEDIU-SE
+#: (`_main/receipt-20261105-right-panel-history.md`) que isso da' **7 min 37 s**
+#: de retencao no painel -- o dono enche a janela e depois cada linha nova apaga
+#: a mais antiga que ele ainda esta' a ler. 1200 linhas sao ~120 KB de DOM.
+MAX_CAPTIONS = 1200
 
 # --- the deferred-asset gate -----------------------------------------------
 # Owner's order, 2026-10-12, verbatim: "o sotto nao deve carregar tudo de uma vez,
@@ -388,6 +418,39 @@ TRANSPARENCY_HACK_WAIT_S = 0.25
 #: parte que a pagina pode confirmar -- o custo da PRIMEIRA pintura e' pago em
 #: `_warm_paint`, porque ele nao aparece em frame nenhuma antes de o dono ver.
 PAINT_ACK_TIMEOUT_MS = 400
+#: O ORCAMENTO DO SHOW INTEIRO, UM SO', MEDIDO DA TECLA (2026-11-10).
+#:
+#: O que estava medido: o primeiro Alt+C do dono custou **3 142 ms** da tecla ao
+#: `PANEL_SHOWN` (sessao de 2026-11-10 09:33:51). Desses, `wait_ms=500` era a
+#: espera declarada do ack e **2 642 ms** aconteciam FORA de qualquer espera
+#: declarada: a publicacao da visibilidade no fio da hotkey (1 185 ms, ver
+#: `PanelVisibilityWriter.write`), o gate de conteudo a estourar o proprio
+#: orcamento de 250 ms (594 ms, porque o `BeginInvoke` dele entra na fila do UI
+#: thread ATRAS das nossas proprias postagens) e duas leituras da pagina antes do
+#: mapa. Cada pedaco tinha um teto e a SOMA nao tinha nenhum: dois orcamentos de
+#: 250 e 400 ms somavam 1 094 ms, dois shows seguidos pagaram 781 ms e 1 094 ms.
+#:
+#: ESTE NUMERO NAO E' UM ORCAMENTO NOVO: e' o MESMO 400 ms que a casa ja' exige
+#: da pintura (`paint-live-show`: `wait_ms<=400`; `_main/boot-interaction-oracle.py`:
+#: `SHOW_BUDGET_MS` = 400). O que muda e' que ele passa a ser **um so' relogio,
+#: partilhado** por todas as esperas do show: um pedaco so' recebe o que RESTA do
+#: que o anterior gastou, portanto a soma nunca volta a ser 1 094 ms. Nao se
+#: espera mais em lado nenhum -- espera-se menos em cada sitio, e o que nao cabe
+#: no orcamento fica NOMEADO no log (`why=show-budget-spent`) em vez de custar ao
+#: dono. O `PANEL_SHOW_COST` publica os pedacos para o proximo Alt+C nomear quem
+#: gastou.
+SHOW_BUDGET_MS = 400.0
+#: O show mede a partir da LINHA COALESCIDA (a tecla), nao da entrada de
+#: `show_strip`: o que o dono sente inclui o despacho, e o oraculo le a mesma
+#: janela. `hotkey_gesture`/`_hotkey_resolve` passam o instante do coalesced.
+SHOW_BUDGET_S = SHOW_BUDGET_MS / 1000.0
+#: A RE-MEDICAO DA FAIXA NAO CONCORRE COM O SHOW (2026-11-10). `set_panel_surface`
+#: posta `_post_metrics_refresh` no caminho do show por desenho, e o fio dele faz
+#: DUAS idas ao UI thread (`STRIP_HEIGHT`/`STRIP_WIDTH`) mais um `SetWindowPos` de
+#: re-aplicacao -- medido a cair EM CIMA do show (13.275 -> 14.643 no log do dono,
+#: com o segundo resize a competir com o mapa). Depois do orcamento do show ela
+#: nao estorva ninguem e o numero que ela adopta ja' nao chega tarde.
+PAINT_METRICS_DELAY_S = 0.35
 #: O AQUECIMENTO DA PRIMEIRA PINTURA (2026-11-01): 2x os **325 ms** medidos,
 #: pagos no ARRANQUE com a janela fora do ecra -- o dono nao espera por ele. O
 #: porque completo, com a medicao, esta' em `_warm_paint`.
@@ -422,6 +485,241 @@ PAINT_ACK_ARM_JS = (
     '  return String(document.visibilityState || "?");'
     '})(__SEQ__)')
 PAINT_ACK_READ_JS = 'String(window.__sotto_paint_ack === __SEQ__ ? 1 : 0)'
+
+#: ── O GATE DE CONTEUDO (2026-11-04): O MAPA ESPERA PELA PAGINA ──────────────
+#: A ordem que o dono pediu, verbatim: *"o painel dar show, nao deve carregar o
+#: background e mostrar, e depois carregar a ui"*. O ack de 2026-11-01 MEDIU o
+#: show e nao o ORDENOU: `arm_paint_ack` e' postado e o mapa segue sem esperar
+#: nada, portanto a janela fica visivel com a superficie que a pagina ainda nao
+#: vestiu. `set_panel_surface(present=True)` tambem POSTA o `SottoSurfaces.set`
+#: -- e essa e' a chamada que escreve `body[data-surface]`, a regra que esconde
+#: `.panel__header` na faixa (`panel.css:1596`). Um script de mapa que chega
+#: antes do script da superficie pinta a superficie ANTERIOR e o dono ve a UI
+#: "a carregar depois".
+#:
+#: ESTE GATE E' A PERGUNTA QUE O `ShowWindow` NAO FAZ, feita ANTES do mapa: um
+#: unico script que (1) aplica a superficie (idempotente -- `surface.js:69`,
+#: mesmo valor nao notifica ninguem), (2) FORCA recalc de estilo e layout com
+#: `getBoundingClientRect()`, e (3) devolve a impressao digital do estilo JA'
+#: aplicado: o `display` COMPUTADO do `.panel__header` (difere entre as duas
+#: superficies: `none` na faixa), o rect do `.panel` e o fundo computado.
+#:
+#: O RECT E' O DO `.panel`, NAO O DO `body` (medido 2026-11-04, `msedge
+#: --headless=new` sobre o `app/panel/panel.html` que este shell carrega): em
+#: QUALQUER das duas superficies e em qualquer viewport o `body` e o `<html>`
+#: medem **altura 0** (`body { height: 0 }`; o layout vive nos filhos
+#: absolutos), portanto um `sized` lido do `body` era FALSO PARA SEMPRE e nenhum
+#: show podia alguma vez fazer ack. O `.panel` mede 380x40 na faixa (o cliente
+#: forcado) e o viewport inteiro nos outros casos -- e o rect dele e' lido no
+#: caminho do show com a janela ESCONDIDA: `STRIP_WIDTH ... to=380
+#: source=content` (12:51:45.092, 53 ms antes do gate que falhou) sai do
+#: `strip_width_dom`, que mede exactamente este rect de `.panel`. A janela estar
+#: escondida nao esconde o layout.
+#:
+#: LAYOUT NAO PRECISA DE COMPOSITOR, e e' por isso que este ack e' respondivel
+#: com a janela ESCONDIDA -- ao contrario do rAF de `PAINT_ACK_ARM_JS`, que o
+#: compositor desta maquina nao corre antes do mapa. Evidencia ja' no repo: o
+#: escritor de `panel-state.json` le `PANEL_STATE_PROBE` (que le
+#: `scrollHeight`/`clientHeight`, logo forca layout) a cada 2 s e o ficheiro
+#: tem valores reais com o painel escondido (`_main/panel-state.SottoPovSelftest.json`,
+#: `panel.live.scroll.client=749`).
+#:
+#: FALHA ABERTA. `CONTENT_GATE_TIMEOUT_MS` (250 ms) e depois o mapa acontece e a
+#: linha diz `ack=false why=...`: um Alt+C que nao faz nada e' o defeito que a
+#: casa ja' proibiu, e um show 250 ms mais lento no pior caso e' o preco de um
+#: mapa informado. O oraculo (`_main/paint-live-show-oracle.py`) le a ORDEM:
+#: `PANEL_CONTENT ack=true` tem de estar ANTES do `PANEL_SHOWN`.
+CONTENT_GATE_TIMEOUT_MS = 250.0
+#: A LEITURA DA PAGINA NO CAMINHO DO SHOW NAO ESPERA DEZ SEGUNDOS (2026-11-04).
+#: `_strip_offset_from_page` corre DENTRO de `set_panel_surface`, que e' o passo
+#: ANTERIOR ao mapa; com o orcamento por omissao do `exec_js` (10 s) um UI thread
+#: preso fazia da PRIMEIRA faixa de um processo uma espera de 10 s -- o *"abrir o
+#: sotto trava"* que a casa ja' mediu. A resposta que nao existe ja' tinha um
+#: fallback honesto (a barra no dock, `(0, 0)`); este numero e' o mesmo orcamento
+#: do gate de conteudo, e a leitura que nao responde NAO entra na cache.
+SHOW_PAGE_READ_TIMEOUT_S = 0.25
+CONTENT_GATE_JS = (
+    '(function (name) {'
+    '  var out = {surface: null, style: false, sized: false,'
+    '             w: 0, h: 0, bg: "", head: "", vis: "", error: ""};'
+    '  try {'
+    '    var S = window.SottoSurfaces;'
+    '    if (S && typeof S.set === "function") { S.set(name); }'
+    '    else if (document.body) { document.body.setAttribute("data-surface", name); }'
+    '    out.surface = (S && typeof S.current === "function") ? String(S.current())'
+    '      : (document.body'
+    '         ? String(document.body.getAttribute("data-surface") || "") : "");'
+    '    var b = document.body;'
+    '    var panel = document.querySelector(".panel");'
+    '    var r = (panel && panel.getBoundingClientRect)'
+    '      ? panel.getBoundingClientRect() : null;'
+    '    out.w = r ? Math.round(r.width) : 0;'
+    '    out.h = r ? Math.round(r.height) : 0;'
+    '    out.sized = !!(r && r.width > 0 && r.height > 0);'
+    '    var head = document.querySelector(".panel__header");'
+    '    var hcs = (head && getComputedStyle) ? getComputedStyle(head) : null;'
+    '    var bcs = (b && getComputedStyle) ? getComputedStyle(b) : null;'
+    '    out.head = hcs ? String(hcs.display) : "";'
+    '    out.bg = bcs ? String(bcs.backgroundColor) : "";'
+    '    out.style = (out.surface === name) && (hcs'
+    '      ? (name === "strip" ? out.head === "none" : out.head !== "none")'
+    '      : out.bg !== "");'
+    '    out.vis = String(document.visibilityState || "?");'
+    '  } catch (e) { out.error = String((e && e.message) || e); }'
+    '  return JSON.stringify(out);'
+    '})(__NAME__)')
+
+#: ── O QUE UMA RESPOSTA QUE NAO E' UM DICIONARIO QUER DIZER (2026-11-04) ─────
+#: O defeito medido no log do dono (`PANEL_CONTENT ... ack=false why=bad-answer`,
+#: 12:15:43.542 e 12:51:45.143) nao era a pagina a falhar: era o shell a NAO LER
+#: a resposta. `CONTENT_GATE_JS` devolve `JSON.stringify(out)` -- uma STRING -- e
+#: `ExecuteScriptAsync` (ver `exec_js`) JA' serializa o valor de retorno em JSON,
+#: portanto `json.loads` entrega aqui a string `'{"surface":...}'` e o `else` do
+#: gate chamava-lhe `bad-answer` sem guardar nada. As duas linhas do log provam a
+#: forma: `size=0x0 head="" vis=` VAZIOS sao os DEFAULTS do `out` -- o ramo do
+#: dicionario nunca correu --, e a mesma sessao, 63 ms antes, lia uma string
+#: (`STRIP_HEIGHT ... source=css css_value=40` exige `isinstance(raw, str)`).
+#: O contrato esta provado em dois sentidos: os outros leitores da pagina
+#: (`strip_height_from_css`, `strip_width_from_dom`, `_strip_offset_from_page`)
+#: devolvem strings e recebem `str`; este e' o UNICO que devolve JSON dentro de
+#: uma string. `gate_answer_payload` fecha essa classe de erro: aceita o
+#: dicionario E o JSON em string, e tudo o que nao for nenhum dos dois sai com
+#: uma RAZAO NOMEADA e o texto cru (120 chars) em `error` -- nunca um
+#: `bad-answer` mudo.
+#:
+#: A PRIMEIRA PERGUNTA NAO PODE GASTAR O ORCAMENTO INTEIRO (medido 2026-11-10).
+#: O log do dono tinha `PANEL_SHOWN ... content_ack=false content_why=ui-thread-busy
+#: content_attempts=1 content_wait_ms=250.0` as 21:21:55: a pagina nao respondeu
+#: porque a UI dela estava ocupada, a UNICA pergunta consumiu os 250 ms e a
+#: repeticao que existe exactamente para este caso nunca teve orcamento para
+#: acontecer. Metade do orcamento por pergunta mantem o pior caso em 250 ms
+#: (nunca 250 ms POR tentativa) e da' duas perguntas a uma pagina ocupada. O
+#: numero vem do campo: no mesmo log o `content_wait_ms` de um show BOM tem
+#: p50 31 ms e p95 125 ms -- a metade (125) e' o p95 medido, nao um gosto.
+CONTENT_GATE_ATTEMPT_FRACTION = 0.5
+CONTENT_GATE_RETRY_MIN_S = 0.02     # abaixo disto nao ha' orcamento para perguntar
+CONTENT_GATE_RETRY_PAUSE_S = 0.01   # entre duas perguntas, para nao girar o UI thread
+CONTENT_GATE_ERROR_MAX_CHARS = 120
+
+
+def gate_defaults(name):
+    """O `out` do gate por omissao -- a mesma forma que a linha de log publica."""
+    return {'ack': False, 'wait_ms': 0.0, 'why': 'page-not-ready', 'surface': name,
+            'applied': None, 'style': False, 'sized': False, 'w': 0, 'h': 0,
+            'bg': '', 'head': '', 'vis': '', 'error': '', 'attempts': 0}
+
+
+def gate_answer_payload(answer):
+    """A resposta crua da pagina -> `(payload, why, error)`. Puro.
+
+    `payload` e' o dicionario que o script da pagina descreve; quando ele nao
+    existe, `why` diz PORQUE e `error` traz o texto cru (120 chars) -- e' o que
+    o log publica para que uma linha `ack=false` nunca fique sem razao.
+    """
+    if isinstance(answer, str):
+        text = answer.strip()
+        try:
+            answer = json.loads(text)
+        except ValueError:
+            return None, 'page-error', text[:CONTENT_GATE_ERROR_MAX_CHARS]
+    if isinstance(answer, dict):
+        return answer, '', ''
+    if answer is None:
+        return None, 'page-not-ready', 'answer=null'
+    return None, 'page-error', repr(answer)[:CONTENT_GATE_ERROR_MAX_CHARS]
+
+
+def gate_verdict(name, payload):
+    """O dicionario da pagina -> os campos do gate, com `why` nomeado. Puro."""
+    out = gate_defaults(name)
+    out['applied'] = payload.get('surface')
+    out['style'] = bool(payload.get('style'))
+    out['sized'] = bool(payload.get('sized'))
+    try:
+        out['w'] = int(payload.get('w') or 0)
+        out['h'] = int(payload.get('h') or 0)
+    except (TypeError, ValueError):
+        out['w'] = out['h'] = 0
+    out['bg'] = str(payload.get('bg') or '')
+    out['head'] = str(payload.get('head') or '')
+    out['vis'] = str(payload.get('vis') or '')
+    out['error'] = str(payload.get('error') or '')[:CONTENT_GATE_ERROR_MAX_CHARS]
+    out['ack'] = bool(out['applied'] == name and out['style'] and out['sized'])
+    if out['error']:
+        out['why'] = 'page-error'      # o proprio script da pagina apanhou a excepcao
+    else:
+        out['why'] = 'applied' if out['ack'] else 'not-applied'
+    return out
+
+
+
+def caption_lag_aged(tap_ms, last_counted):
+    """A idade do audio so' se publica quando o tap AINDA NAO contou. Puro.
+
+    Medido no log do dono (2026-11-04, 7 788 `CAPTION_IN`): 37,3 % das linhas
+    re-usam o tap de outra e carregam 85,2 % da soma do atraso -- um bloco
+    atribuido duas vezes, com seis minutos de intervalo. O `p99` do campo move
+    8,5x por causa de 2,4 % das linhas. Logo a pergunta "esta pintura descreve
+    audio NOVO?" tem de ser respondida por identidade do tap, e nao por relogio.
+    """
+    if not tap_ms:
+        return False
+    try:
+        tap = int(tap_ms)
+    except (TypeError, ValueError):
+        return False
+    return tap != last_counted
+
+def gate_should_retry(why, ack, elapsed_s, budget_s):
+    """Uma pergunta MAIS, e so' DENTRO do mesmo orcamento. Puro."""
+    if ack or why == 'applied':
+        return False
+    return (float(budget_s) - float(elapsed_s)) >= CONTENT_GATE_RETRY_MIN_S
+
+
+def gate_probe(name, ask, budget_s, clock=time.monotonic, pause=time.sleep):
+    """Pergunta a' pagina ate' ao ack ou ao FIM de `budget_s`. Puro, dado `ask`.
+
+    O orcamento e' o de HOJE (`CONTENT_GATE_TIMEOUT_MS`): uma tentativa que
+    responde em 16 ms nao paga nada, e a repeticao so' acontece quando sobra
+    tempo -- o pior caso continua 250 ms, nunca 250 ms por tentativa. Um pedido
+    sem resposta (`NoAnswer`) ou uma resposta que nao e' um dicionario ficam com
+    a razao NOMEADA, e e' isso que a linha de log diz.
+    """
+    t0 = clock()
+    out = gate_defaults(name)
+    while True:
+        left = budget_s - (clock() - t0)
+        if out['attempts'] and left < CONTENT_GATE_RETRY_MIN_S:
+            break
+        out['attempts'] += 1
+        try:
+            # UMA PERGUNTA GASTA NO MAXIMO METADE DO ORCAMENTO
+            ask_s = max(CONTENT_GATE_RETRY_MIN_S,
+                        min(left, budget_s * CONTENT_GATE_ATTEMPT_FRACTION))
+            answer = ask(ask_s)
+        except Exception as exc:     # noqa: BLE001 -- o mapa nao morre por isto
+            answer = None
+            out['error'] = repr(exc)[:CONTENT_GATE_ERROR_MAX_CHARS]
+        if isinstance(answer, NoAnswer):
+            payload, why, err = None, 'ui-thread-busy', str(answer.get('reason') or '')
+        else:
+            payload, why, err = gate_answer_payload(answer)
+        if payload is not None:
+            attempts = out['attempts']
+            out.update(gate_verdict(name, payload))
+            out['attempts'] = attempts
+        else:
+            out['why'] = why
+            out['error'] = err or out['error']
+        if not gate_should_retry(out['why'], out['ack'], clock() - t0, budget_s):
+            break
+        pause(min(CONTENT_GATE_RETRY_PAUSE_S,
+                  max(0.0, budget_s - (clock() - t0))))
+    out['wait_ms'] = round((clock() - t0) * 1000.0, 1)
+    return out
+
+
 #: THE EXIT'S DESTROY WAIT (2026-10-21). The window destroy is COSMETIC: the
 #: shell calls `os._exit` right after, so the window dies either way. Waiting
 #: three seconds for it is three seconds the tray thread is not answering the
@@ -535,12 +833,88 @@ PANEL_VISIBILITY_SCHEMA = 'sotto.panel-visibility/1'
 # find his own data in the file manager and a search can walk it cheaply.
 # The default root is the repo's own `history/` (H:/sotto/history): the owner
 # asked for the data to live under H:/sotto. SOTTO_HISTORY_ROOT overrides it.
+# HOW LONG THE TRANSCRIPT SURVIVES ON DISK. The owner's 2026-11-06 window was
+# 48 h; on 2026-11-09 he asked for MONTHS-LATER recall, so that preference is
+# superseded FOR THIS FEATURE and the window is six months (180 days). One
+# number, read by `_history_prune`; the panel filters its feed over the same
+# window (`panel.js HISTORY_RETENTION_H`, raised by the theme lane).
+# SOTTO_HISTORY_RETENTION_H overrides it for a probe or a shorter store.
+HISTORY_RETENTION_H = int(os.environ.get('SOTTO_HISTORY_RETENTION_H') or 4320)
 HISTORY_ROOT = os.path.normpath(
     os.environ.get('SOTTO_HISTORY_ROOT')
     or os.path.join(HERE, os.pardir, os.pardir, 'history'))
 #: One history line: `- [HH:MM:SS] text`. Markdown-readable AND parseable.
 HISTORY_LINE_RE = re.compile(r'^-\s+\[(\d{2}:\d{2}:\d{2})\]\s+(.*)$')
 HISTORY_DAY_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+
+
+def rewrite_lines_atomic(path, rows, newline=''):
+    """Rewrite a text file THROUGH a sibling temp file and `os.replace`.
+
+    WHY THIS EXISTS. A history hour file is rewritten whenever a line is fused
+    (`action='replace'` drops the previous line, `action='replace_at'` swaps one
+    row). Both used `open(path, 'w')`, which TRUNCATES the target before writing
+    a byte: a crash, a power cut or a full disk between the truncate and the last
+    flush leaves an empty file, and that hour of speech is gone for good --
+    `history/` is the only copy (the audio ring keeps 12 h of audio, the store
+    keeps the words). Measured 2026-11-15 on this store: 33 hour files, 272 746
+    bytes total, largest 34 058 B -- so the rewrite is a few milliseconds of
+    work, and there is no cost argument for risking the whole file.
+
+    The temp name carries pid and thread id for the same reason
+    `panel_state.write_atomic` does -- two writers of the same path must not
+    share a temp name. The rename retries briefly: on Windows `os.replace`
+    fails with PermissionError while a reader has the target open, and the
+    history reader (`_history_entries`) opens it on every panel refresh.
+    """
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    tmp = '%s.%d.%d.tmp' % (path, os.getpid(), threading.get_ident())
+    try:
+        with open(tmp, 'w', encoding='utf-8', newline=newline) as handle:
+            handle.writelines(rows)
+            handle.flush()
+            os.fsync(handle.fileno())
+        last = None
+        for attempt in range(10):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError as exc:
+                last = exc
+                time.sleep(min(0.1, 0.02 * (attempt + 1)))
+        raise last if last else OSError('rewrite_lines_atomic failed')
+    except BaseException:
+        # A temp file left behind is worse than none: it would be read by
+        # nothing and copied by every census. Remove it before re-raising.
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _history_clock_s(stamp):
+    """`HH:MM:SS` -> segundos desde a meia-noite, ou `None` se nao for a forma.
+
+    E' o unico relogio que a linha carrega, e e' o que da' a pausa que
+    `prose_punct.close_line` exige: a diferenca entre a linha e a SEGUINTE. A
+    leitura e' tolerant: um carimbo quebrado devolve `None` e o fecho do
+    historico fica em identidade -- um arquivo estranho nunca inventa marca.
+    """
+    parts = str(stamp or '').split(':')
+    if len(parts) != 3:
+        return None
+    try:
+        h, m, s = (int(p) for p in parts)
+    except (TypeError, ValueError):
+        return None
+    if not (0 <= h < 24 and 0 <= m < 60 and 0 <= s < 60):
+        return None
+    return h * 3600 + m * 60 + s
+
+
 #: The provenance the WRITER stamps on the end of a line (M8). It is an HTML
 #: comment, so a Markdown reader shows the sentence and nothing else, and every
 #: reader of the FILE strips it before treating the rest as text.
@@ -570,6 +944,295 @@ HISTORY_ROUTES = ('final', 'provisional-draft', 'batch')
 #: written with NO `src=` marker at all: provenance thinner than the decision that
 #: produced it. The list must equal the declared set, in both twins.
 HISTORY_ROUTE_SOURCES = ('worker-stamped', 'worker-stamped-producer', 'panel-deadline', 'fallback')
+#: WHO produced the closed line, written as `producer=` (2026-11-05). This key
+#: used to be an ADMISSION gate (`producer === 'redux'` or the line was dropped),
+#: and since no engine but the batch pass ever stamped it -- and the batch pass is
+#: off by default -- the transcript had zero writers. It is provenance now: the
+#: line is written, and this field says which pass closed it, so a reader of the
+#: file can still tell a Parakeet line from a streaming one (the reason the
+#: 2026-10-07 separation existed) without the streaming line disappearing.
+#: Outside this list nothing is written, same rule as the routes above.
+HISTORY_PRODUCERS = ('redux', 'live')
+
+#: DE ONDE VEIO O SOM — a ORIGEM do audio, escrita como `via=` (dono, 2026-11-09:
+#: *"dois filtros no historico: icone PC e icone YouTube, ambos on/off, nunca os
+#: dois off"*). `producer=` diz QUAL motor fechou a linha (o mesmo motor de
+#: fundo transcreve o loopback do PC), logo ele nao responde a pergunta do dono:
+#: uma linha de anime vista no YouTube e uma fala do microfone saem as duas com
+#: `producer=live`. Tres valores, e a razao de serem TRES: o terceiro player
+#: (Stremio, VLC) fornece linha pelo mesmo canal externo do YouTube e chamar-lhe
+#: `pc` seria mentir sobre o que ele ouviu -- o botao do YouTube mostra
+#: `youtube` E `external`, que juntos sao "o que veio de um video".
+#: Fora desta lista nada e' escrito, a mesma regra de `HISTORY_ROUTES`.
+HISTORY_VIAS = ('pc', 'youtube', 'external')
+
+#: UMA LINHA NAO E' UMA LISTA DE EVENTOS (dono, 2026-11-04, verbatim: *"o
+#: historico da legenda e completamente IMBECIL na logica. fica duplicando
+#: frase. fica dando append ou sei la"*). MEDIDO na captura dele, 10:01:44 ->
+#: 10:01:57, a MESMA linha gravada seis vezes enquanto crescia:
+#:   "Because he's going for these uh these people you know those who's going
+#:    for." -> "... for there." -> "... for there is." -> (identica outra vez)
+#: -> "Is a very." -> a linha LONGA outra vez -> "Is a very high chance."
+#: Um escritor append-only com esses dados tem que publicar seis linhas para um
+#: enunciado que o dono le como UM. A regra: o transcript guarda a LINHA, e a
+#: linha e' reescrita enquanto cresce, em vez de acrescentada a cada leitura.
+#:
+#: PORQUE UMA JANELA, e nao "prefixo = mesma linha" para sempre: uma frase
+#: repetida de proposito ("nao nao", ou a mesma abertura dita a seguir) tem de
+#: continuar a entrar. MEDIDO no corpus de 10 ficheiros (`_main/caption-dup-repro.py`,
+#: 2077 linhas): 79 iguais consecutivas, 6 de sobreposicao -- nenhuma delas
+#: separada por mais de 2 s da anterior.
+HISTORY_MERGE_WINDOW_S = 3.0
+
+
+def history_merge(last, new_body, now_s=None, start=None,
+                  window_s=HISTORY_MERGE_WINDOW_S, audio=None, via=None):
+    """O que fazer com UMA linha nova, contra a ULTIMA gravada.
+
+    Devolve `'skip'` (a mesma linha outra vez), `'replace'` (a mesma linha, ainda
+    a crescer: o ficheiro reescreve a ultima em vez de acrescentar) ou `'append'`
+    (linha nova). `last` e' o que `_history_tail` devolve, ou None.
+
+    AS TRES IDENTIDADES, por ordem de forca:
+      1. O `start=` do worker e' a identidade da LINHA (`sotto_worker.py:_event`).
+         Dois registos com o mesmo `start` sao a mesma linha, mesmo que o texto
+         tenha encolhido -- medido 10:01:48, uma linha MAIS CURTA depois de uma
+         mais longa, o que um append-only nao consegue representar.
+      2. `start` DIFERENTE e' uma linha DIFERENTE, mesmo com o texto identico.
+         O `skip` por igualdade de texto vinha ANTES desta comparacao e engolia
+         fala repetida de verdade ("nao nao", ou a mesma frase dita dois minutos
+         depois) -- medido 2026-11-09 no proprio `history_merge` (mesmo corpo,
+         `start=1.0` vs `start=9.0` -> `skip`). Uma repeticao real agora ENTRA.
+      3. Sem `start`, o prefixo nos dois sentidos dentro da janela: um texto que
+         CONTEM o outro e' a mesma linha a crescer (ou uma re-leitura que a
+         cortou), e a janela impede que uma repeticao legitima seja engolida.
+         Texto IDENTICO sem identidade so' e' duplicado dentro da janela; fora
+         dela e' fala repetida e entra. `audio` (a origem do som) separa duas
+         linhas identicas que a mesma janela de tempo nao distingue.
+    """
+    if not last:
+        return 'append'
+    body = str(new_body or '')
+    if not body.strip():
+        return 'skip'
+    prev = str(last.get('body') or '')
+    _last_start = last.get('start')
+    _has_start = (isinstance(_last_start, (int, float))
+                  and not isinstance(_last_start, bool))
+    _new_has_start = (isinstance(start, (int, float))
+                      and not isinstance(start, bool))
+    same_start = (_has_start and _new_has_start
+                  and abs(float(_last_start) - float(start)) <= 0.05)
+    distinct_start = (_has_start and _new_has_start
+                      and abs(float(_last_start) - float(start)) > 0.05)
+    _last_audio = str(last.get('audio') or '').strip()
+    _new_audio = str(audio or '').strip()
+    audio_differs = bool(_last_audio and _new_audio and _last_audio != _new_audio)
+    # A ORIGEM DO AUDIO E' OUTRA IDENTIDADE (dono, 2026-11-09). O microfone do
+    # PC e o video do YouTube podem dizer a MESMA frase no mesmo segundo -- e
+    # um deles e' a traducao do outro, nao uma correccao --, logo `via`
+    # diferente nunca funde: sao duas falas com dois lugares de origem, e o
+    # filtro do painel depende de as duas existirem.
+    _last_via = str(last.get('via') or '').strip()
+    _new_via = str(via or '').strip()
+    via_differs = bool(_last_via and _new_via and _last_via != _new_via)
+
+    def _gap():
+        _last_s = last.get('time_s')
+        if now_s is None or _last_s is None:
+            return None
+        try:
+            return abs(float(now_s) - float(_last_s))
+        except (TypeError, ValueError):
+            return None
+
+    # TEXTO IDENTICO NAO E' SEMPRE A MESMA LINHA (2026-11-09). The equality
+    # check used to run first and unconditionally, so a legitimate later
+    # utterance with its own segment identity was swallowed as a duplicate.
+    if prev == body:
+        if distinct_start:
+            return 'append'
+        if audio_differs and not same_start:
+            return 'append'
+        if via_differs and not same_start:
+            return 'append'
+        if not same_start:
+            gap = _gap()
+            if gap is not None and gap > float(window_s):
+                return 'append'
+        return 'skip'
+    if not prev:
+        return 'append'
+    # A PONTUACAO FINAL NAO E' CONTEUDO (medido na captura dele). A linha cresce
+    # assim: `... going for.` -> `... going for there.` -- o que o renderizador
+    # grava primeiro fecha a frase com ponto, e a leitura seguinte CONTINUA a
+    # mesma frase. Comparar byte a byte fazia esses dois textos "alheios" um ao
+    # outro (o ponto separa) e o ficheiro ganhava uma linha por cada leitura.
+    # O `start=` SOZINHO NAO ADIANTA (medido aqui, 2026-11-04, no caminho do
+    # bridge): com o mesmo `start` e um texto SEM relacao ("Is a very high
+    # chance." sobre a linha anterior) a regra de identidade engolia uma linha
+    # NOVA -- o ficheiro ficou com uma linha so'. A identidade e' o par
+    # (mesma linha do worker, mesmo texto a crescer).
+    grew = (_merge_key(body).startswith(_merge_key(prev))
+            or _merge_key(prev).startswith(_merge_key(body)))
+    # UMA LEITURA QUE ENCOLHE NAO APAGA O RABO (owner, 2026-11-06, verbatim):
+    # *"o historico CORTA no meio da frase ... palavras NO meio de outras
+    # palavras, somem. entao 'banana pera manga' do nada vira 'banana manga'."*
+    #
+    # `grew` era SIMETRICO: crescer e encolher passavam os dois, e o `replace`
+    # reescrevia a ultima linha com o texto MAIS CURTO. Numa revisao do motor, a
+    # linha que o dono ja' tinha lido perdia o rabo e o ficheiro passava a dizer
+    # menos do que dizia. Encolher e' agora RECUSADO -- o registo fica com o texto
+    # maior -- e a recusa vai para o log, porque uma recusa silenciosa e'
+    # indistinguivel de um store que nao esta' ligado.
+    shrank = (_merge_key(prev).startswith(_merge_key(body))
+              and not _merge_key(body).startswith(_merge_key(prev)))
+    gap = _gap()
+    # ENCOLHER SO' E' A MESMA LINHA QUANDO A IDENTIDADE DIZ QUE E' (2026-11-09):
+    # a shorter repeated phrase at a DIFFERENT segment is new speech, not a
+    # correction of the previous line. Without this, `start` was ignored by the
+    # shrink rule exactly as it was by the equality rule.
+    same_line = same_start or (not _has_start and not _new_has_start
+                               and gap is not None and gap <= float(window_s))
+    if shrank and same_line:
+        log('HISTORY_SHRINK_KEPT where=history_merge prev_chars=%d new_chars=%d'
+            % (len(prev), len(body)))
+        return 'skip'
+    if same_start and grew and not via_differs:
+        return 'replace'
+    if not grew:
+        return 'append'
+    # A DIFFERENT SEGMENT IDENTITY IS A DIFFERENT LINE, even when its text
+    # happens to start with the previous line: the worker said a new segment,
+    # not a correction of the old one (2026-11-09, same class as the equality
+    # defect). Without this, a repeated phrase that grew within 3 s was
+    # rewritten over the previous line.
+    if distinct_start:
+        return 'append'
+    if gap is None:
+        return 'append'
+    return 'replace' if gap <= float(window_s) else 'append'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FUSION — the two-model text decision, wired into the ONE caption entry point
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# `worker/fusion.py` decides, word by word, which text the SCREEN takes when
+# the STREAM hypothesis and the FINISHER's hypothesis for the SAME audio span
+# disagree. The core existed with an oracle and NO consumer (`grep -rn
+# "import fusion\|from .fusion"` found nothing), so the decision never reached
+# the owner. This is the JOIN, and it lives at `on_worker_caption` because that
+# is the ONE place a worker caption passes through on its way to BOTH surfaces:
+# `emit_async` feeds the panel row the transcript writer commits, and
+# `push_caption_to_window` paints the overlay slot `_drain_caption_pending`
+# drains. ONE text in, both surfaces out — neither can show a version the other
+# did not fuse.
+#
+# OFF BY DEFAULT (`SOTTO_FUSION=1` arms it), like every other second-pass arm in
+# this tree: a switch that lands before the join is measured costs the owner a
+# changed caption for no proven gain. It only fires on a `final:true` event —
+# the finisher's hypothesis (the M3 second pass, or the Redux overlay's line)
+# for the span a PARTIAL of the same identity already painted. See
+# `_main/receipt-20261109-fusion-wire.md` for the oracle that proves the wire.
+FUSION_SWITCH_ENV = 'SOTTO_FUSION'
+#: How many `(session, start)` stream hypotheses are remembered. A line's
+#: partials arrive until it closes, so the working set is one line per open
+#: segment plus the tail of closed ones; 32 is far above the measured live rate
+#: and still a bound (the dict never grows with the session).
+FUSION_STREAM_MAX = 32
+_FUSION_MODULE = None
+
+
+def fusion_enabled():
+    """The switch, read at call time (`SOTTO_FUSION=1`); OFF for anything else."""
+    return str(os.environ.get(FUSION_SWITCH_ENV) or '').strip().lower() in (
+        '1', 'true', 'yes', 'on')
+
+
+def _fusion_module():
+    """`worker/fusion.py`, imported the FIRST time a final line needs it.
+
+    LAZY for the same reason `_speaker_bridge` is: the shell must not put
+    `worker/` on `sys.path` (or pay an import) for a run that never arms the
+    switch. `worker/` has no package `__init__`, so the DIRECTORY is the import
+    root — the same way the worker imports its own siblings.
+    """
+    global _FUSION_MODULE
+    if _FUSION_MODULE is not None:
+        return _FUSION_MODULE
+    here = os.path.dirname(os.path.abspath(__file__))
+    worker = os.path.normpath(
+        os.path.join(here, os.pardir, os.pardir, 'worker'))
+    if worker not in sys.path:
+        sys.path.insert(0, worker)
+    import fusion                                                  # noqa: PLC0415
+    _FUSION_MODULE = fusion
+    return _FUSION_MODULE
+
+
+def fuse_caption(stream_text, refined_text):
+    """One span fused: `(text, ops, stability)` — the REAL decision, no I/O.
+
+    The STREAM line is seeded as ALREADY ON SCREEN — `feed(stream, '')` builds
+    the committed list from it and `reveal()` marks every word revealed — and
+    only THEN is the FINISHER's hypothesis fed. That order is what puts the
+    decision under `REVEALED_REPLACE_RULE`: the core cannot know a word was
+    painted unless the caller says so, and this is the caller.
+
+    The seed is `feed(stream, '')` and NOT `feed(stream, stream)`: the second
+    form would stamp every word `both_models=True` before either pass produced
+    it, which is exactly the CONFIRMATION the rule requires to BLOCK a
+    correction. Empty refined leaves the words `provisional`; the finisher's
+    feed then yields `confirmed` (agreement) or `corrected` (disagreement).
+    """
+    fusion = _fusion_module().Fusion()
+    fusion.feed(stream_text, '')
+    fusion.reveal()
+    result = fusion.feed(stream_text, refined_text)
+    return result['text'], result['ops'], result['stability']
+
+
+def _fusion_result_is_confirmed(result):
+    """True only when both hypotheses agree without an edit to publish.
+
+    This is an agreement signal for routing, not proof that the spoken words
+    are correct.
+    """
+    if not isinstance(result, dict) or result.get('ops'):
+        return False
+    words = result.get('words')
+    return (result.get('stability') == 'confirmed'
+            and isinstance(words, list) and bool(words)
+            and all(isinstance(word, dict)
+                    and word.get('stability') == 'confirmed'
+                    for word in words))
+
+
+def _fusion_key(meta):
+    """The line identity fusion may join on — `(session, start)`, or None.
+
+    `start` ALONE IS NOT ENOUGH: it is the worker's audio clock and it restarts
+    at zero with every respawn (`_history_ctx_session_of`), so a new session's
+    opening words would otherwise fuse with the previous session's line that
+    happened to carry the same second.
+    """
+    if not isinstance(meta, dict):
+        return None
+    start = meta.get('start')
+    if isinstance(start, bool) or not isinstance(start, (int, float)):
+        return None
+    session = meta.get('historySession')
+    return (str(session) if isinstance(session, str) else '',
+            round(float(start), 2))
+
+
+def _merge_key(text):
+    """O texto sem a pontuacao FINAL, que e' o que separa duas leituras da
+    MESMA frase gravada ('... going for.' e '... going for there.')."""
+    return re.sub(r'[\s.!?…,;:]+$', '', str(text or ''))
+
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SEARCH. The owner asked, 2026-10-18: make the history search FIND things --
@@ -871,6 +1534,236 @@ WORKER_SILENCE_MS = 30000
 #: docs/audit/load-churn.md): ~40x um load quente e ~6x o pior load frio medido.
 WORKER_LOAD_SILENCE_MS = 180000
 
+#: A GRAÇA DA MORTE POR SILENCIO (2026-11-09). Medido no log do dono
+#: (`_main/webview-run.log`, 15:44:36): o temporizador de 30 s disparou as
+#: `.228` e o `BRIDGE_ALIVE WORKER_ALIVE seq=3944 age_ms=39657` chegou as
+#: `.245` -- dezassete milissegundos depois. O batimento existia e estava
+#: PRESO no cano, nao ausente: o worker foi morto com prova de vida em voo e
+#: o respawn custou `BRIDGE_LOAD_MS ms=61781` (61,8 s a reler 1,9 GB), que e'
+#: exactamente o pico que o watcher atribuiu a esta arvore nesse minuto.
+#: A janela de silencio continua a ser 30 s (`restart-30s-oracle` prende essa
+#: relacao); esta e' a unica pergunta que o cao de guarda faz DEPOIS de
+#: expirar: *o progresso avancou enquanto eu decidia?* Se avancou, re-arma a
+#: janela normal. Se nao avancou, mata como sempre -- um filho morto custa
+#: 3 s de espera a mais, um filho vivo custava a carga inteira.
+#: A graca e' uma FRACAO da janela, nao um numero de segundos: a relacao
+#: `silence_ms` -> decisao e' o que `restart-30s-oracle` prende com uma janela de
+#: 600 ms, e uma graca fixa de 3 s nao cabia nela (medido: as arms do wedge
+#: ficaram vermelhas por relogio, nao por codigo). Em producao 10% de 30 s = 3 s.
+WORKER_SILENCE_GRACE_FRAC = 0.10
+WORKER_SILENCE_GRACE_MIN_S = 0.05
+
+
+def silence_grace_s(silence_ms):
+    """A graça DAQUELA janela: 10% dela, com piso de 50 ms."""
+    try:
+        window_s = float(silence_ms) / 1000.0
+    except (TypeError, ValueError):
+        return WORKER_SILENCE_GRACE_MIN_S
+    return max(WORKER_SILENCE_GRACE_MIN_S, window_s * WORKER_SILENCE_GRACE_FRAC)
+
+#: O PISO DE UMA SAIDA LIMPA (2026-11-04). Medido no log do dono: `BRIDGE_EXIT pid=17044
+#: rc=0` as 03:22:41.214 e `BRIDGE_SPAWNED pid=37212` as 03:22:43.250 -- DOIS SEGUNDOS
+#: depois, ou seja uma recarga de ~1,9 GB de modelo para um worker que terminou por
+#: vontade propria (a escada de dispositivos esgotada, `rc=0`). Um retry de 1 s existe
+#: para um CRASH, onde a volta pode apanhar um dispositivo que ja' ficou livre; para uma
+#: saida limpa ele e' so' o laco de recarga. 20 s > o unico load quente medido (14-26 s) e
+#: muito menor que o piso do load-churn (180 s), que governa o reload da APP e nao este.
+CLEAN_EXIT_FLOOR_MS = 20000
+
+#: A MORTE POR DISPOSITIVO NAO ESPERA 15 s (2026-11-04). Medido no arranque do dono
+#: (12:15:34, `_main/webview-run.log`): `BRIDGE_DEATH rc=3 kind=no-audio
+#: last="Worker finished on no-callback-blocks"` -> `BRIDGE_RESTART reason=exit
+#: ladder=no-audio in_ms=15000` -> a primeira legenda 48 s depois do arranque, com
+#: 15 desses segundos a serem SO' A ESPERA. O worker nao tinha falhado: tinha aberto
+#: o endpoint errado (`VoiceMeeter Input`, zero callbacks) enquanto o audio dele saia
+#: noutro sitio -- e a volta seguinte, a mesma escada com o medidor a ver som,
+#: entregou texto. Uma morte por DISPOSITIVO e' uma troca de endpoint, e uma troca
+#: custa 250 ms, nao 15 s. O backoff de 15 s->300 s fica para o caso em que trocar
+#: NAO pode arranjar nada (nada esta' a tocar em endpoint nenhum) e depois de
+#: `DEVICE_SWITCH_FREE` trocas, que e' o tecto contra o laco de recarga de 1,9 GB.
+DEVICE_SWITCH_DELAY_MS = 250
+DEVICE_SWITCH_FREE = 2
+
+
+def device_death_delay(no_audio, switches, can_switch, restarts=0, no_audio_restarts=0,
+                       backoff_base=1000, backoff_max=30000,
+                       no_audio_backoff_base=15000, no_audio_backoff_max=300000,
+                       floor_ms=0):
+    """(delay_ms, ladder, why) -- A espera antes de ressuscitar um worker morto.
+
+    Uma funcao so' e PURA, porque `_main/first-capture-fast-oracle.py` executa-a:
+    a decisao que custou 15 s no arranque de 12:15 tem de ser reproduzivel sem
+    lancar a app.
+
+    * `no_audio` -- a morte que o PROPRIO worker declarou por dispositivo
+      (`kind=no-audio`, rc=3). Nao e' um crash: o codigo saiu inteiro e o que
+      esta' errado e' o endpoint que ele abriu.
+    * `switches` -- quantas trocas rapidas ja' se fizeram nesta serie.
+    * `can_switch` -- ha' som a sair em ALGUM endpoint agora (`audio_playing`)?
+      Sem isso, trocar de endpoint e' reabrir clientes para ouvir o mesmo nada,
+      e o backoff longo e' a resposta certa.
+    """
+    if no_audio and can_switch and switches < DEVICE_SWITCH_FREE:
+        return DEVICE_SWITCH_DELAY_MS, 'device-switch', 'device-death-switch'
+    if no_audio:
+        return (min(no_audio_backoff_max, no_audio_backoff_base * (2 ** no_audio_restarts)),
+                'no-audio',
+                ('device-switch-budget-spent' if can_switch
+                 else 'nothing-is-rendering-a-switch-cannot-help'))
+    delay = min(backoff_max, backoff_base * (2 ** restarts))
+    ladder, why = 'retry', 'crash-or-unknown-death'
+    if floor_ms and delay < floor_ms:
+        return floor_ms, ladder, why + '-clean-exit-floor'
+    return delay, ladder, why
+
+
+#: As linhas de stderr que provam que o worker esta VIVO a trabalhar. `WORKER_STATS` so'
+#: conta quando `blocks` AVANCA (`_note_progress`); num lote longo ele congela -- e o
+#: worker era morto por isso.
+PROGRESS_TAGS = ('REDUX_BATCH_KICK', 'REDUX_ENGINE_DONE', 'REDUX_MODE',
+                 # O BATIMENTO DO PROPRIO LACO (2026-11-04): um tap aberto sobre
+                 # uma maquina QUIETA nao escreve nada por desenho, e `WORKER_STATS`
+                 # tambem nao conta enquanto `blocks` nao avanca -- medido 03:20:13, o
+                 # shell matou o pid 26440 aos 130 s e pagou 1,9 GB de recarga para
+                 # voltar ao mesmo silencio. `WORKER_ALIVE` e' PROVA DE PROGRESSO
+                 # (o emissor cala-se quando o laco trava), por isso serve de batimento
+                 # sem tornar o cao de guarda decorativo.
+                 'WORKER_ALIVE')
+
+#: AS LINHAS DO MOTOR QUE O DONO VE' NO PAINEL (2026-11-05). `park_worker_for_vram`
+#: escreve no painel "the transcription engines were unloaded to free their VRAM", e
+#: essa frase nao tinha linha viva nenhuma atras dela: o `REDUX_ENGINE_RELEASED`
+#: (`rss_before_mb`/`rss_after_mb`) e o `REDUX_SHEDDING` do worker ficavam so' no
+#: `stderr_tail` e apareciam apenas na cauda da MORTE. Uma afirmacao do painel que
+#: so' se le' depois de o processo morrer nao se pode julgar -- e' a mesma classe do
+#: `reason=not-tried`. Vao por `log_repeat`, nao por `log`: a linha e' rara, mas um
+#: worker em churn nao pode encher o ficheiro do dono.
+#: `WORKER_THREADS` entrou em 2026-11-09 por uma razao MEDIDA: o orcamento de fios
+#: efectivo (`--threads N > OMP_NUM_THREADS > 4`) so' existia no stderr do worker,
+#: e o stderr so' e' publicado na CAUDA DA MORTE -- ou seja o numero que decide
+#: quantos nucleos o ONNX pode ocupar era ilegivel exactamente enquanto o worker
+#: corria. Pergunta do watcher nesse dia: "76 fios em repouso e um pico de 3,9
+#: nucleos -- que orcamento esta' a correr?". Sem esta tag a resposta exige matar
+#: o worker; com ela, a linha do arranque responde.
+#: `REDUX_SWITCH` / `REDUX_BATCH_KICK` entraram em 2026-11-09, e a razao e' medida: o
+#: worker escreve `REDUX_SWITCH armed=true by=SOTTO_REDUX_WHEN_HIDDEN=1` UMA vez por
+#: arranque, e essa linha -- a unica que responde "o passe de fundo esta' armado na app do
+#: dono?" -- nunca chegava ao log enquanto ele corria. `grep -c REDUX_SWITCH` no log vivo
+#: deu **21** ocorrencias, TODAS dentro de `stderr_tail=[...]` de um `BRIDGE_EXIT`: o facto
+#: existia e so' aparecia na morte. Sem ela o `--redux-when-hidden` e' indistinguivel de
+#: desligado, exactamente a classe de 2026-11-01 ("o interruptor existia e nunca era
+#: construido na app"). O `REDUX_BATCH_KICK` viaja pelo mesmo canal e pela mesma razao: um
+#: passe que corre sem deixar rasto nao pode ser contado nem negado.
+ENGINE_VISIBLE_TAGS = ('REDUX_ENGINE_RELEASED', 'REDUX_ENGINE_RELEASE_FAILED',
+                       'REDUX_ENGINE_LOAD', 'REDUX_SHEDDING', 'WORKER_THREADS',
+                       # O PLANO DE FIOS do nemotron (2026-11-09): tres sessoes ORT
+                       # num processo e o teto de 4 fios era POR SESSAO (12 no total,
+                       # ~1200 %c). Sem esta linha o numero que governa a CPU da
+                       # maquina do dono so' existe dentro do codigo.
+                       'WORKER_THREAD_PLAN', 'THREADS',
+             # O DENOMINADOR vai ao log COMO O WORKER O ESCREVEU (2026-11-09). O
+             # `BRIDGE_WORKER_COST` daqui de baixo escolhe os campos que a DECISAO
+             # usa; o `ms_per_chunk` que o watcher pediu e' evidencia, nao decisao,
+             # e um campo que so' existe no consumidor deixa de existir sempre que
+             # o consumidor for reescrito. A linha inteira atravessa esta tag.
+             'WORKER_COST',
+             # O CENSO DOS FIOS DO GENAI (medido 2026-11-09): `og.Model` cria as suas
+             # proprias sessoes a largura da maquina e nenhum botao as governa -- a
+             # linha que diz QUANTOS sao tem de chegar ao log, ou o numero que decide
+             # a CPU do dono existe so' dentro do processo.
+             'WORKER_GENAI_THREADS',
+                       'REDUX_SWITCH', 'REDUX_BATCH_KICK',
+                       # O PASSE DE FUNDO QUE NAO CORREU TAMBEM E' UM FACTO (2026-11-09).
+                       # O `engine_switch.py` emite `REDUX_BATCH_DEFERRED
+                       # reason=reload-floor` / `reason=low-memory free_mb=..` nas duas
+                       # saidas em que o passe fica para depois, e sem esta tag as duas
+                       # linhas morrem no stderr: o log vivo nao tinha ZERO ocorrencias
+                       # (medido pela lane de verificacao) e "o batch nao rodou" ficava
+                       # indistinguivel de "o batch foi adiado", que sao coisas
+                       # diferentes. O escritor e' o `engine_switch.py`, nao o worker.
+                       'REDUX_BATCH_DEFERRED',
+                       # O RESULTADO DO PASSE E' O QUE DIZ SE O BATCH FEZ ALGUM
+                       # TRABALHO (2026-11-16). Medido neste arranque: 47
+                       # `REDUX_BATCH_KICK` em 4 h e ZERO `REDUX_ENGINE_DONE` no
+                       # log vivo -- a linha existia so' no `stderr_tail` da morte,
+                       # entao `windows=`/`silent_windows=`/`silent_s=`/`lines=`
+                       # (o custo do passe e o que ele produziu) eram invisiveis
+                       # exactamente no episodio de stutter que os pediu.
+                       'REDUX_ENGINE_DONE',
+                       # O CUSTO QUE O DONO PAGA E O QUE NINGUEM CONSEGUE LER (2026-11-10).
+                       # As tres linhas abaixo existiam e ficavam todas no `stderr_tail`,
+                       # publicado SO' na cauda da morte -- a mesma classe do
+                       # `WORKER_THREADS` de 2026-11-09, paga outra vez:
+                       #   `LADDER_TRY`            -- uma por candidato da escada, com ms.
+                       #     Sem ela o card "o arranque demora DEMAIS" nao tinha dono:
+                       #     medido no log do dono (pid 52792), 23 s entre
+                       #     `model-loaded` e `capture-started` SEM UMA linha.
+                       #   `WORKER_BOOT_PROF`      -- onde os 8,5-44,3 s de carga foram
+                       #     gastos (`sess_encoder`/`sess_decoder`/`og_model`/`first_decode`).
+                       #     Medido: `BRIDGE_LOAD_MS ms=28938 / 8953 / 44344` no log dele e
+                       #     ZERO linhas de perfil, porque a unica copia ia para o stderr.
+                       #   `CAPTURE_SIGNAL_BACK` / `NO_CAPTION_AFTER_AUDIO_BACK`
+                       #     -- a RETOMADA do audio depois de um silencio e o defeito de o
+                       #     audio voltar sem legenda; sem elas esse par e' UNMEASURED para
+                       #     sempre (o card que o pediu fechou declarando isso).
+                       'LADDER_TRY', 'WORKER_BOOT_PROF',
+                       'CAPTURE_SIGNAL_BACK', 'NO_CAPTION_AFTER_AUDIO_BACK',
+                       # A ROTA AO VIVO TAMBEM E' UM FACTO, E AS DUAS LINHAS QUE A
+                       # JULGAM MORRIAM NO `stderr_tail` (2026-11-11) -- a mesma
+                       # classe do `WORKER_BOOT_PROF` de 2026-11-10: um instrumento
+                       # cuja saida nunca chega ao log nao e' um instrumento.
+                       #   `LIVE_ROUTE_REFUSED`     -- uma legenda foi RECUSADA para a
+                       #     superficie ao vivo e GUARDADA para o historico
+                       #     (`reason=batch-route|player-owns-route|stale|noise`).
+                       #     Prova que a recusa existe e qual porta a fechou: sem ela
+                       #     "nao pintou" e' indistinguivel de "nao chegou".
+                       #   `LIVE_ROUTE_UNKNOWN_AGE` -- a legenda pintou SEM idade
+                       #     mensuravel; o buraco fica CONTADO (`unknown_age=<n>`), nao
+                       #     afirmado fresco. E' o par do `age_s < -250 ms -> None`.
+                       'LIVE_ROUTE_REFUSED', 'LIVE_ROUTE_UNKNOWN_AGE',
+                       # A DEGRADACAO DE PROVIDER DO ASR E' O FACTO QUE FALTAVA
+                       # (2026-11-19). MEDIDO no log do dono: 736 `BRIDGE_EXIT rc=2`
+                       # em 25 h e ZERO linhas `REDUX_GPU_UNAVAILABLE` no ficheiro --
+                       # a linha que dizia "esta' a correr sem GPU, e por isto" morria
+                       # no `stderr_tail`, publicado SO' na cauda da morte. O worker
+                       # agora degrada em vez de morrer (`open_asr_sessions`) e a
+                       # transicao tem de chegar ao log VIVO:
+                       #   `ASR_CUDA_UNAVAILABLE`      -- as sessoes correram no CPU EP;
+                       #     a linha leva `device`, `attempted`, o `readback` das tres
+                       #     sessoes e a razao do proprio runtime (o texto que o ORT
+                       #     deu, ou o censo de dispositivos quando nenhum EP CUDA
+                       #     registou um).
+                       #   `ASR_CUDA_CONTROL_FALLBACK` -- CUDA FICOU e o guard estrito
+                       #     caiu (nos de controlo sem kernel CUDA); o readback prova
+                       #     que o encoder continua a listar CUDA primeiro.
+                       'ASR_CUDA_UNAVAILABLE', 'ASR_CUDA_CONTROL_FALLBACK')
+
+#: How much of a published engine line survives into the log (2026-11-19).
+#: The cap was a literal 220 until the ASR degradation line existed, and that
+#: cap CUT THE REASON out of it: `ASR_CUDA_UNAVAILABLE ... reason="..."` carries
+#: the runtime's own message (the ORT failure text alone is 146 chars) plus the
+#: three sessions' readback, and a reason cut in half is the defect the line
+#: exists to close. The cost stays bounded because `log_repeat` only writes a
+#: changed line, or a repeat every 30 s, and these lines are one per transition.
+ENGINE_VISIBLE_MAX_CHARS = 480
+
+#: O BATIMENTO DO LACO DO WORKER, reconhecido por CONTER e nao por comecar (2026-11-04).
+#: Medido com o py-spy no worker vivo: `seq=516 phase=window` e nenhuma linha no log -- o
+#: ONNX escreve WIDESTRING e sem newline (o despejo `\u1b00\u5b00...` no log prova a classe),
+#: entao a tag pode chegar precedida de lixo. Uma funcao so', para o oraculo executar ESTA.
+def is_alive_beat(line: str) -> bool:
+    return 'WORKER_ALIVE' in line
+#: Quantas linhas de stderr a morte PUBLICA. Eram TRES, e tres escondem a causa:
+#: medido 2026-11-02, o worker morreu duas vezes `rc=1` (19:22:29, 19:36:40) e a
+#: cauda era `WORKER_STATS` + `REDUX_BATCH_KICK` -- o traceback ficou de fora.
+STDERR_TAIL_MAX = 40
+#: Tecto DURO da janela de carga (2026-11-03). A janela conta silencio, mas um
+#: worker que fala SEM NUNCA carregar tambem nao pode viver para sempre: sob
+#: contencao o load medido foi de 10 s a 147 s, entao 15 min e' a fronteira
+#: entre "carrega devagar" e "esta' preso".
+WORKER_LOAD_HARD_CEILING_MS = 900_000.0
+
 
 def parse_worker_stats(line):
     """`{'tag': 'tick'|'final', 'fields': {...}, 'line': ...}` or None.
@@ -889,6 +1782,27 @@ def parse_worker_stats(line):
             fields[key] = value
     return {'tag': match.group(1), 'fields': fields,
             'line': str(line).strip()}
+
+WORKER_COST_RE = re.compile(r'^WORKER_COST\s+tag=(\S+)\s*(.*)$')
+
+
+def parse_worker_cost(line):
+    """`{'tag': ..., 'fields': {...}, 'line': ...}` da linha `WORKER_COST`, ou None.
+
+    Os valores ficam STRINGS, como o worker os imprime -- a mesma regra do
+    `parse_worker_stats`: um campo que o worker nao publicou fica AUSENTE em vez de
+    virar um zero que este ficheiro inventou.
+    """
+    match = WORKER_COST_RE.match(str(line).strip())
+    if not match:
+        return None
+    fields = {}
+    for token in match.group(2).split():
+        if '=' in token:
+            key, value = token.split('=', 1)
+            fields[key] = value
+    return {'tag': match.group(1), 'fields': fields, 'line': str(line).strip()}
+
 
 # ── hot reload of the WORKER: debounce + guard + floor ──────────────────────
 #: Trailing debounce on worker reload requests. `hot_reload.DEBOUNCE_MS` is 250
@@ -931,6 +1845,280 @@ def _reap_child(child):
         child.wait(timeout=5)
     except Exception:  # noqa: BLE001
         pass
+
+
+# ─── THE EXIT THAT MUST TERMINATE (2026-11-04, MEDIDO) ─────────────────────
+# O DEFEITO. `_main/webview-run.log`, 2026-11-04 13:01:36.080: o cao-de-guarda
+# escreveu `UI_WATCHDOG_EXIT code=9`, e as linhas da app CONTINUARAM a sair
+# (13:01:36.082, .087 e .575), depois o ficheiro ACABOU. A 14:12 o MESMO pid
+# (20448, `sotto_webview.py --log ...`) estava VIVO com 36 threads, 8 das 10
+# janelas sem responder a `WM_NULL` (medido: `IsHungAppWindow=1` na janela
+# `Sotto` e na `SottoNativeCaption`), 2,6 % de um nucleo, e o FILHO
+# (`worker/sotto_worker.py`, pid 36668) vivo com **3,9 GB** privados e 70
+# threads. Ou seja: a app registou a saida, a saida NAO completou, e nada no
+# processo nem fora dele tinha autoridade para a completar.
+#
+# A CAUSA DA CLASSE, independente de qual DllMain ficou preso no
+# `ExitProcess`: `os._exit` NAO TEM PRAZO. Se o primitivo nao volta, o processo
+# fica exactamente como ficou -- vivo, com as janelas congeladas no ecra, que e'
+# o estado que o dono recusa -- e a linha seguinte do codigo (o `bridge.stop`)
+# nunca corre. A prova de que `os._exit` pode simplesmente NAO terminar e' o
+# proprio estado medido acima; a prova de que `TerminateProcess` nao depende
+# dele esta' em `_main/_deadexit-oracle.py` (armes `pipe-os` vs `pipe-tp`).
+#
+# A REGRA, e e' a que fica escrita no codigo: **uma saida que escreveu no log
+# termina**. Para isso a saida deixa de ser uma chamada e passa a ser uma
+# SEQUENCIA com prazo em cada espera e com dois donos diferentes do processo:
+#
+#   1. `_hard_exit` arma o ESCALADOR (uma thread que, se o primitivo nao voltar
+#      em `EXIT_ESCALATE_S`, chama `TerminateProcess` no proprio processo);
+#   2. arma o MATADOR EXTERNO (`exit_killer.py`, um processo separado que
+#      espera `EXIT_KILLER_GRACE_S` pelo HANDLE do shell e, se ele nao
+#      sinalizar, mata o worker e depois o shell, e escreve as suas linhas no
+#      MESMO log). Este e' o unico primitivo que sobrevive a um bloqueio total
+#      do processo;
+#   3. faz o reap do filho com prazo TOTAL (`EXIT_TOTAL_REAP_MS`), nomeando o
+#      pid que ficou de fora;
+#   4. escreve a linha TERMINAL (`EXIT_TERMINATE`) e drena o log com prazo;
+#   5. so' entao chama o primitivo de saida.
+#
+# O QUE ACONTECE A UM WORKER QUE IGNORA O KILL: `child.kill()` e'
+# `TerminateProcess` e nao pede licenca a ninguem; se ele mesmo assim nao sair
+# (`EXIT_CHILD_STUCK`), o pid viaja para o matador externo, que o mata pelo
+# handle -- e se TAMBEM falhar, o job `kill-on-close` (`SHELL_JOB_ARMED`,
+# armado no arranque) mata a arvore quando o ULTIMO handle do job fechar, o que
+# so' acontece quando o shell morrer de facto. A cadeia tem tres donos e nenhum
+# deles espera sem prazo.
+EXIT_ESCALATE_S = 2.5
+EXIT_KILLER_GRACE_S = 4.0
+EXIT_CHILD_REAP_MS = 1200
+EXIT_TOTAL_REAP_MS = 1800
+EXIT_LOG_DRAIN_S = 0.75
+DETACHED_PROCESS = 0x00000008
+CREATE_NO_WINDOW = 0x08000000
+
+_EXIT_STATE = {'begun': False, 'lock': threading.Lock(),
+               'escalated': threading.Event()}
+
+
+def _proc_identity(pid):
+    """Creation stamp of `pid` as 'hi:lo' (100 ns ticks), or '' if unreadable.
+
+    A pid is NOT an identity on Windows: it is reused. The external killer
+    receives the stamp of the process it was told to kill and REFUSES a pid
+    whose creation time differs -- which is the whole difference between
+    cleaning up our own tree and killing a stranger's process.
+    """
+    try:
+        k32 = ctypes.windll.kernel32
+        k32.OpenProcess.restype = ctypes.c_void_p
+        k32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        h = k32.OpenProcess(0x1000, False, int(pid))   # QUERY_LIMITED_INFORMATION
+        if not h:
+            return ''
+
+        class _FT(ctypes.Structure):
+            _fields_ = [('lo', ctypes.c_uint32), ('hi', ctypes.c_uint32)]
+
+        created, exited, kernel, user = _FT(), _FT(), _FT(), _FT()
+        ok = k32.GetProcessTimes(ctypes.c_void_p(h), ctypes.byref(created),
+                                 ctypes.byref(exited), ctypes.byref(kernel),
+                                 ctypes.byref(user))
+        k32.CloseHandle(ctypes.c_void_p(h))
+        if not ok:
+            return ''
+        return '%d:%d' % (created.hi, created.lo)
+    except Exception:                      # noqa: BLE001
+        return ''
+
+
+def _terminate_self(code):
+    """`TerminateProcess` on THIS process: the primitive that cannot be queued.
+
+    `os._exit` e' `ExitProcess`: notifica cada DLL (`DLL_PROCESS_DETACH`) e so'
+    depois pede ao kernel que termine. Se um `DllMain` nao voltar -- e o shell
+    carrega o CLR do WinForms, o WebView2 e o GDI+, cada um com o seu -- o
+    processo fica vivo para sempre, que e' o estado medido. `TerminateProcess`
+    NO PROPRIO processo nao corre `DllMain`: e' uma chamada ao kernel que
+    termina tudo. Nao ha' caminho de volta a partir daqui.
+    """
+    try:
+        k32 = ctypes.windll.kernel32
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        k32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        k32.TerminateProcess(ctypes.c_void_p(k32.GetCurrentProcess()), int(code))
+    except Exception:                      # noqa: BLE001 -- cai no antigo
+        pass
+    os._exit(int(code))
+
+
+def _exit_primary(code):
+    """A chamada do caminho normal. Funcao propria para a prova poder INJETAR.
+
+    O arme RED de `_main/_deadexit-oracle.py` substitui ESTA funcao por uma que
+    nunca termina -- que e' exactamente o comportamento medido de `os._exit` no
+    shell -- e exige que o processo morra na mesma. Sem esta indireccao o arme
+    nao existia: nao se injeta um bloqueio no kernel.
+    """
+    _terminate_self(code)
+
+
+def _spawn_exit_killer(code, child_pids, say):
+    """O MATADOR EXTERNO: o unico que sobrevive a um processo bloqueado."""
+    try:
+        script = os.path.join(HERE, 'exit_killer.py')
+        if not os.path.exists(script):
+            say('EXIT_KILLER_FAILED reason=missing-script path=%s' % script)
+            return False
+        argv = [sys.executable, script,
+                '--pid', str(os.getpid()),
+                '--stamp', _proc_identity(os.getpid()),
+                '--code', str(int(code)),
+                '--grace-ms', str(int(EXIT_KILLER_GRACE_S * 1000))]
+        log_path = getattr(_LOG_FILE, 'name', '') or ''
+        if log_path:
+            argv += ['--log', log_path]
+        for pid in child_pids:
+            argv += ['--child', '%d:%s' % (pid, _proc_identity(pid))]
+        helper = subprocess.Popen(
+            argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, close_fds=True,
+            # O PAR, NAO O BIT (`_main/console-window-audit.py`, WEAK-FLAG
+            # 2026-11-05): `CREATE_NO_WINDOW` sozinho nao esconde a janela quando
+            # o pai nao tem consola -- e o pai do EXIT KILLER e' a shell, que
+            # corre em `pythonw`. `startupinfo` com SW_HIDE e' a cinta.
+            creationflags=DETACHED_PROCESS | (CREATE_NO_WINDOW if os.name == 'nt' else 0),
+            startupinfo=subprocess.STARTUPINFO(
+                dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
+        say('EXIT_KILLER_ARMED helper_pid=%s grace_ms=%d children=%s'
+            % (helper.pid, int(EXIT_KILLER_GRACE_S * 1000), child_pids))
+        return True
+    except Exception as exc:               # noqa: BLE001 -- nunca impede a saida
+        say('EXIT_KILLER_FAILED error=%r' % (exc,))
+        return False
+
+
+def _reap_children_for_exit(children, say):
+    """Mata e RECOLHE cada filho com um prazo TOTAL, nomeando quem ficou.
+
+    Um `wait()` sem prazo e' a mesma doenca de `os._exit` sem prazo: uma espera
+    que nao tem fim. Aqui cada espera e' cortada pelo que resta do prazo total,
+    e um filho que sobreviva ao seu pedaco fica ESCRITO com o pid -- porque e'
+    esse pid que o matador externo vai matar.
+    """
+    deadline = time.monotonic() + EXIT_TOTAL_REAP_MS / 1000.0
+    stuck = []
+    for child in children or ():
+        pid = getattr(child, 'pid', None)
+        if not pid:
+            continue
+        try:
+            child.kill()
+        except Exception as exc:           # noqa: BLE001
+            say('EXIT_CHILD_KILL_FAILED pid=%s error=%r' % (pid, exc))
+        left = deadline - time.monotonic()
+        if left <= 0.0:
+            stuck.append(pid)
+            say('EXIT_CHILD_STUCK pid=%s remaining_ms=0 owner=killer' % pid)
+            continue
+        t0 = time.monotonic()
+        try:
+            child.wait(timeout=min(left, EXIT_CHILD_REAP_MS / 1000.0))
+        except Exception:                  # noqa: BLE001 -- timeout OU handle morto
+            stuck.append(pid)
+            say('EXIT_CHILD_STUCK pid=%s waited_ms=%d owner=killer'
+                % (pid, int((time.monotonic() - t0) * 1000.0)))
+            continue
+        say('EXIT_CHILD_REAPED pid=%s ms=%d'
+            % (pid, int((time.monotonic() - t0) * 1000.0)))
+    return stuck
+
+
+def _log_now(message):
+    """Escreve JA', sem a fila -- a linha que prova uma saida nao pode depender
+    de um escritor que a propria saida ja' parou (`_log_drain` fecha-o, e o
+    `EXIT_ESCALATED_SELF` chega DEPOIS disso por construcao)."""
+    line = f'{_stamp()} sotto: {message}'
+    with _LOG_LOCK:
+        try:
+            print(line, flush=True)
+        except Exception:                  # noqa: BLE001 -- stdout pode estar morto
+            pass
+        fh = _LOG_FILE
+        if fh is not None:
+            try:
+                fh.write(line + '\n')
+                fh.flush()
+            except Exception:              # noqa: BLE001
+                pass
+
+
+def _hard_exit(code, reason, children=(), backstop_pids=(), log_fn=None):
+    """THE ONE EXIT. Uma saida que escreveu no log TERMINA.
+
+    Idempotente: a primeira chamada e' a dona da saida; a segunda (um timer, o
+    tray) volta de imediato e deixa o processo ao primeiro.
+
+    DUAS LISTAS, e a separacao e' o D-14 (`docs/spec/10-DEFECTS.md`, 2026-11-12):
+
+      * `children` -- o que a shell CRIOU: matar e RECOLHER aqui;
+      * `backstop_pids` -- o que ela NAO possui (o motor warm): so' o matador
+        externo toca, que e' quem entrega a promessa do `--help` ("closing
+        Sotto is a request to stop paying 1.9 GB").
+
+    A lista unica escrevia duas linhas por saida a dizer que a shell tentou
+    matar o que nunca possuiu (`EXIT_CHILD_KILL_FAILED` do `RuntimeError` do
+    shim, `EXIT_CHILD_STUCK` do `AttributeError` do `wait`), e o docstring ao
+    lado dizia o contrario. O log da saida passa a descrever o que aconteceu.
+    """
+    say = log_fn or _log_now
+    with _EXIT_STATE['lock']:
+        if _EXIT_STATE['begun']:
+            return False
+        _EXIT_STATE['begun'] = True
+    kids = [c for c in (children or ())
+            if c is not None and getattr(c, 'pid', None)]
+    pids = [int(c.pid) for c in kids]
+    backstop = []
+    for raw in (backstop_pids or ()):
+        try:
+            pid_num = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if pid_num and pid_num not in pids and pid_num not in backstop:
+            backstop.append(pid_num)
+    say('EXIT_BEGIN code=%s reason=%s pid=%s children=%s backstop=%s'
+        % (code, reason, os.getpid(), pids, backstop))
+
+    def _escalate():
+        if _EXIT_STATE['escalated'].wait(EXIT_ESCALATE_S):
+            return                          # a saida primaria voltou a tempo
+        try:
+            say('EXIT_ESCALATED_SELF code=%s reason=primary-exit-did-not-return'
+                % code)
+        except Exception:                   # noqa: BLE001
+            pass
+        _terminate_self(code)
+
+    try:
+        threading.Thread(target=_escalate, name='sotto-exit-escalator',
+                         daemon=True).start()
+    except Exception as exc:                # noqa: BLE001
+        say('EXIT_ESCALATOR_FAILED error=%r' % (exc,))
+    _spawn_exit_killer(code, pids + backstop, say)
+    _reap_children_for_exit(kids, say)
+    say('EXIT_TERMINATE code=%s reason=%s' % (code, reason))
+    _log_drain(EXIT_LOG_DRAIN_S)
+    _exit_primary(code)
+    # INALCANCAVEL quando o primitivo funciona. Se voltou -- e o arme
+    # `primary-hangs` de `_main/dead-app-exit-oracle.py` injeta exactamente
+    # isto --, o escalador NAO foi desarmado (o `set` fica AQUI, e nao antes da
+    # chamada: desarma-lo antes era o defeito que o portao apanhou) e o processo
+    # nao pode retomar o laco com `exiting` posto.
+    _EXIT_STATE['escalated'].set()
+    while True:
+        time.sleep(1.0)
+        _terminate_self(code)
 
 
 #: O TOKEN DE ESTADO PAGA UM `stat`, NAO UMA LEITURA. Medido 2026-11-01 pela
@@ -1199,9 +2387,62 @@ def worker_status_body(state, message):
 # ===========================================================================
 
 _LOG_LOCK = threading.Lock()
+#: A memoria do `log_repeat` (chave -> (ultimo texto, quando)).
+_LOG_REPEAT = {}
 _LOG_FILE = None
 _LOG_QUEUE = None      # the mirror lines, one per log() call
 _LOG_WRITER = None     # the ONE thread that owns the file
+#: O CANO NAO PARA O FIO QUE O ESCREVE (2026-11-09). Medido no log do dono,
+#: 15:44:36: `BRIDGE_SILENT` matou um worker cujo `WORKER_ALIVE ... age_ms=39657`
+#: chegou 17 ms depois -- o batimento estava PRESO no cano, nao ausente, e o
+#: respawn custou `BRIDGE_LOAD_MS ms=61781`. O `log()` fazia
+#: `print(line, flush=True)` DENTRO do `_LOG_LOCK`, ou seja o fio do `_pump`
+#: (que le o stderr do worker e e' a testemunha do cao de guarda) esperava pelo
+#: consumidor do cano do largador. O ficheiro ja' tinha ganho o seu proprio fio
+#: pela mesma razao (2026-10-13, o hook do rato); o stdout faltava.
+_STDOUT_QUEUE = None   # linhas para o stdout, uma por chamada a log()
+_STDOUT_WRITER = None  # o UNICO fio que escreve para o stdout
+_STDOUT_DROPPED = 0    # linhas largadas por o cano nao escoar (contadas, nao escondidas)
+_STDOUT_CAP = 4096
+
+
+def _stdout_writer_loop():
+    q = _STDOUT_QUEUE
+    while True:
+        try:
+            line = q.get()
+            if line is None:
+                return
+            _write_stdout(line)
+        except Exception:                       # noqa: BLE001
+            return
+
+
+def _start_stdout_writer():
+    global _STDOUT_QUEUE, _STDOUT_WRITER
+    if _STDOUT_WRITER is not None:
+        return
+    _STDOUT_QUEUE = queue.Queue(maxsize=_STDOUT_CAP)
+    _STDOUT_WRITER = threading.Thread(target=_stdout_writer_loop,
+                                      name='sotto-stdout', daemon=True)
+    _STDOUT_WRITER.start()
+
+
+def _enqueue_stdout(line):
+    """Nunca espera pelo cano; conta o que largou e DIZ quando volta a escoar."""
+    global _STDOUT_DROPPED
+    q = _STDOUT_QUEUE
+    if q is None:
+        _write_stdout(line)
+        return
+    try:
+        if _STDOUT_DROPPED:
+            dropped, _STDOUT_DROPPED = _STDOUT_DROPPED, 0
+            q.put_nowait('%s sotto: LOG_STDOUT_SUPPLIED dropped=%d (o cano voltou a escoar)'
+                         % (_stamp(), dropped))
+        q.put_nowait(line)
+    except queue.Full:
+        _STDOUT_DROPPED += 1
 
 
 
@@ -1262,6 +2503,19 @@ def _open_log(path):
         # of 11.82 clicks a minute. The pointer for the whole desktop waits for
         # that write. So the caller queues the line and never waits for a disk.
         _LOG_QUEUE = queue.SimpleQueue()
+        # TODO FIO DESTA SHELL PASSA A TER NOME AOS OLHOS DO WINDOWS (2026-11-05).
+        # `threading.Thread(name=...)` e' um atributo Python, invisivel de fora, e
+        # o `py-spy` NAO se consegue anexar a esta shell a partir de uma pane
+        # `medium` (a shell corre em integridade `high`; medido, `Acesso negado`).
+        # Sem isto, "qual fio queima este nucleo?" nao se responde por instrumento
+        # nenhum -- e era a pergunta aberta do dono ("tu nao entender 100% o
+        # caminho de cada coisa e os gargalos"). Ver `_main/shell-thread-cpu.py`.
+        try:
+            import thread_names
+            thread_names.install()
+            thread_names.name_current('sotto-main')
+        except Exception:                     # noqa: BLE001
+            pass
         _LOG_WRITER = threading.Thread(target=_log_writer, name='sotto-log',
                                        daemon=True)
         _LOG_WRITER.start()
@@ -1296,17 +2550,70 @@ def _log_writer():
             return
 
 
+def _log_drain_inline():
+    """Escreve a fila do log AQUI, no fio da saida, quando o escritor nao corre.
+
+    UMA ESPERA NAO E UM MECANISMO DE VEREDICTO (medido 2026-11-24). O
+    `_log_drain` dava `timeout_s` ao fio `sotto-log` e seguia para o
+    `os._exit`; numa maquina carregada o fio pode nao ser escalonado dentro
+    desse prazo e a linha TERMINAL (`EXIT_TERMINATE`) morria na fila COM a
+    evidencia que ela existe para deixar. Medido no `_main/dead-app-exit-oracle.py`
+    arme `birth` dentro da bateria: `{"rc": 7, "terminal": false}` -- o processo
+    saiu com o codigo certo e o log do arme nao tinha a linha.
+
+    Cada item sai da fila por UM consumidor (`get_nowait`), logo nao ha linha
+    duplicada: o escritor continua a poder escrever o que ja' tirou. O `None`
+    devolve-se a' fila para o escritor terminar assim que for escalonado.
+    """
+    fh, q = _LOG_FILE, _LOG_QUEUE
+    if fh is None or q is None:
+        return
+    written = 0
+    while True:
+        try:
+            line = q.get_nowait()
+        except Exception:                       # noqa: BLE001 -- fila vazia
+            break
+        if line is None:
+            try:
+                q.put(None)
+            except Exception:                   # noqa: BLE001
+                pass
+            break
+        try:
+            fh.write(line + '\n')
+            fh.flush()
+            written += 1
+        except Exception:                       # noqa: BLE001
+            break
+    if written:
+        try:
+            fh.write('sotto: LOG_DRAIN_INLINE lines=%d\n' % written)
+            fh.flush()
+        except Exception:                       # noqa: BLE001
+            pass
+
+
 def _log_drain(timeout_s=2.0):
     """Stop the writer, giving the ALREADY queued lines their disk time.
 
     Called on the exit path: `os._exit` does not wait for a daemon thread, and
     a SHELL_EXIT line that never lands would take its own evidence with it.
     """
+    if _STDOUT_QUEUE is not None:
+        try:
+            _STDOUT_QUEUE.put(None, block=False)
+        except Exception:                       # noqa: BLE001
+            pass
+    if _STDOUT_WRITER is not None:
+        _STDOUT_WRITER.join(timeout_s)
     if _LOG_QUEUE is None:
         return
     _LOG_QUEUE.put(None)
     if _LOG_WRITER is not None:
         _LOG_WRITER.join(timeout_s)
+        if _LOG_WRITER.is_alive():
+            _log_drain_inline()
 
 
 def _stamp() -> str:
@@ -1341,11 +2648,113 @@ def _stamp() -> str:
 #: Os ficheiros que a etiqueta cobre vivem em `code_identity` (uma definicao so'); o shell
 #: re-exporta-os porque o `_main/live-code-freshness-oracle.py` os le' daqui.
 from code_identity import _CODE_ID_FILES, _CODE_ID_GLOBS  # noqa: F401
+# A LISTA E A MESMA QUE O PORTAO RECALCULA (2026-11-05): o shell re-exporta
+# `code_files`, e `_main/live-code-freshness-oracle.py` le daqui em vez de
+# manter uma segunda lista -- foi uma segunda lista que deixou
+# `youtube_cdp_source.py` fora da etiqueta.
+from code_identity import code_files  # noqa: F401
 
 
 def code_identity():
     """`sha256=<12 hex> files=<n> ...` -- o codigo que ESTE processo carregou."""
     return _code_identity(os.path.dirname(os.path.abspath(__file__)))
+
+
+#: O MESMO NUMERO, DITO DE NOVO DE DEZ EM DEZ MINUTOS (2026-11-08). Medido: com a
+#: etiqueta escrita so' no arranque, uma instancia de 12 h respondia `UNKNOWN` ao
+#: `_main/live-code-freshness-oracle.py` depois de o log rodar. O codigo deste
+#: processo NAO muda, por isso o sha256 e' calculado uma vez (99 ficheiros) e o
+#: resto e' uma linha por batimento.
+_CODE_ID_MEMO = {}
+
+
+#: PISO DO CENSO (2026-11-08). O censo calava abaixo de 20 % de um nucleo, e foi
+#: exactamente nessa faixa (10-16 %) que ele deixou de nomear a thread com o
+#: timer curado. Duas portas: o TOTAL a 20 %, ou UMA thread a 5 %.
+CENSUS_TOTAL_FLOOR = 20.0
+CENSUS_THREAD_FLOOR = 5.0
+CENSUS_BEAT_EVERY = 10          # censos entre dois `SHELL_CODE_ID ... heartbeat=true`
+
+
+def census_should_publish(total, top_pct,
+                          floor_total=CENSUS_TOTAL_FLOOR,
+                          floor_top=CENSUS_THREAD_FLOOR):
+    """Publica quando o total passa o piso OU quando UMA thread passa o seu."""
+    return total >= floor_total or top_pct >= floor_top
+
+
+def census_beat_due(beats, every=CENSUS_BEAT_EVERY):
+    """E' este o censo em que a identidade do codigo volta a ser dita?"""
+    return every > 0 and beats % every == 0
+
+def census_line(total, top_pct, rows, beat=False):
+    """A LINHA do censo, ou None. Separada do laco para a decisao ser testavel.
+
+    Duas razoes para publicar, e a segunda nasceu de um erro de LEITURA meu
+    (medido 2026-11-08): o instrumento so' escrevia quando o total passava de
+    20 % OU uma thread de 5 %, logo a serie que ele deixa no log e' uma amostra
+    das janelas OCUPADAS -- ler `total=13 %` como "a media da shell" e' ler um
+    vies. No mesmo processo, uma janela externa de 32 s mediu 5,5 % de um core e
+    o censo nao escreveu nada.
+
+    Agora ele tambem fala no BATIMENTO (1 em cada 10 janelas de 60 s), marcado
+    `heartbeat=true`, mesmo abaixo do piso: quem quiser a distribuicao tem as
+    duas populacoes separadas por uma etiqueta, nao por uma ausencia.
+    """
+    if not rows:
+        return None
+    if not (census_should_publish(total, top_pct) or beat):
+        return None
+    return ('THREAD_CPU total=%.0f%%%s top=%s'
+            % (total, ' heartbeat=true' if beat else '',
+               ' '.join('%s:%.0f%%' % (n, p) for p, n in rows[:4])))
+
+
+
+def _code_identity_memo():
+    """`code_identity()` com memo: o processo carrega o MESMO codigo a vida toda."""
+    got = _CODE_ID_MEMO.get('id')
+    if got is None:
+        got = _CODE_ID_MEMO['id'] = code_identity()
+    return got
+
+
+#: O CANO DO LARGADOR MORREU? -- UM `log()` QUE NAO DERRUBA NINGUEM (2026-11-08).
+#:
+#: MEDIDO na instancia do dono (pid 42572, arrancada 04:01:44): o ULTIMO byte do
+#: `_main/webview-run.log` e' das **04:57:13.351** e o processo continuou VIVO e a
+#: queimar **100 % de um nucleo** por mais de tres horas -- 52 fios, o do tick a
+#: 78,5 %, e nenhum dos 12 instrumentos que leem o log com um numero novo para dar.
+#: O pai do processo estava MORTO (`Process.parent()` devolve None): o `print(...,
+#: flush=True)` do `log()` escrevia num cano cujo leitor ja' nao existia, logo cada
+#: chamada levantava `OSError: [Errno 22] Invalid argument` -- a MESMA classe que a
+#: casa ja' curou do lado do WORKER (`emit` com cano partido -> `BRIDGE_DEATH_CAUSE
+#: OSError 22`). Do lado da shell ninguem a tinha curado, e o resultado e' pior do
+#: que uma excepcao: e' o silencio. A app deixa de escrever o log E deixa de saber
+#: o que esta' a acontecer, sem morrer, e um instrumento que le' o log para julgar
+#: custo/legenda/hotkey responde sobre um processo que ha' horas nao fala.
+#:
+#: A CURA, e a regra que ela carrega: **o relatador nao levanta e nao depende de um
+#: consumidor vivo**. O cano morto e' DETECTADO uma vez, o facto vai para o
+#: ficheiro (que e' o artefacto de aceitacao) e o `print` deixa de ser tentado.
+_STDOUT_SINK = {'dead': False, 'err': ''}
+
+
+def _write_stdout(line: str) -> None:
+    """Um `print` que NAO pode matar quem o chama (cano partido e' um facto, nao uma excepcao)."""
+    if _STDOUT_SINK['dead']:
+        return
+    try:
+        print(line, flush=True)
+    except Exception as exc:                # noqa: BLE001
+        _STDOUT_SINK['dead'] = True
+        _STDOUT_SINK['err'] = f'{type(exc).__name__}: {exc}'
+        try:
+            if _LOG_FILE is not None and _LOG_QUEUE is not None:
+                _LOG_QUEUE.put(f'{_stamp()} sotto: LOG_STDOUT_DEAD err={_STDOUT_SINK["err"]} '
+                               f'-- o cano do largador morreu; o ficheiro e\' o artefacto')
+        except Exception:                   # noqa: BLE001
+            pass
 
 
 def log(message: str) -> None:
@@ -1355,16 +2764,113 @@ def log(message: str) -> None:
     alike and a claim in the receipt can be checked without watching the screen.
     The stamp is prepended by `_stamp` rather than here, so `warn()` and every
     other caller inherits it without a second code path.
+
+    NEVER RAISES (2026-11-08, see `_STDOUT_SINK`): a dead stdout must not take the
+    caller -- or the app -- with it, and the file mirror must keep working.
     """
     line = f'{_stamp()} sotto: {message}'
+    _start_stdout_writer()
     with _LOG_LOCK:
-        print(line, flush=True)
+        _enqueue_stdout(line)
         if _LOG_FILE is not None:
-            _LOG_QUEUE.put(line)
+            try:
+                _LOG_QUEUE.put(line)
+            except Exception:               # noqa: BLE001
+                pass
+
+
+def log_repeat(key: str, message: str, every_s: float = 300.0) -> None:
+    """UM `log` QUE NAO CUSTA UM FICHEIRO (2026-11-03).
+
+    MEDIDO: um arranque deste shell escreveu **382** linhas
+    `HOTKEY_OBSERVER_ALIVE`, 720 por hora, num ficheiro que so' roda aos 64 MB;
+    e o `YOUTUBE_TICK_MS` fazia o mesmo a cada 5 s com o `n=` CONGELADO (49, 49,
+    49 ...) -- um numero que nao muda, escrito para sempre. O ficheiro do dono
+    chegou aos **54 MB** nesta sessao.
+
+    A regra: a linha SAI na primeira vez e sempre que o TEXTO MUDA (o que
+    interessa: `n` cresceu, a media subiu); repetida e igual, sai de
+    `every_s` em `every_s`. Nada e' escondido: o nome do que ficou silencioso
+    vai para o log na primeira ocorrencia, e o batimento lento continua a
+    provar que o laco vive.
+    """
+    now = time.monotonic()
+    last = _LOG_REPEAT.get(key)
+    if last is None or last[0] != message or now - last[1] >= every_s:
+        _LOG_REPEAT[key] = (message, now)
+        log(message)
 
 
 def warn(message: str) -> None:
     log(f'WARN {message}')
+
+
+# O ARRANQUE ESTA' COMPLETO? -- UMA PERGUNTA, UM DONO (2026-11-03, MEDIDO).
+# `run.cmd` roda `--wait-ready <ficheiro>` e APAGA o ficheiro a seguir
+# (`del /q` no fim). A shell, porem, usava esse MESMO ficheiro como a sua
+# propria resposta a "ja arranquei?" -- no `sotto-panel-stall` e no
+# `STARTUP_NOT_READY`. Medido no arranque de 05:19:43 (pid 492):
+# `mark_launch_ready` as 05:19:51, o `del` do run.cmd logo depois, e a
+# partir dali a app passou a achar que NAO tinha arrancado --
+# `PANEL_NAV_STALL s=12 -> re-empurrar a navegacao` (um `load_url` a mais
+# na pagina que ja' estava carregada), `STARTUP_NOT_READY s=15`, e as
+# 05:20:10 um `PANEL_NAV_STALL_FINAL s=25` que chamou `_complete_startup`
+# OUTRA VEZ (daí o segundo `WORKER_AUTOSTART`). O ficheiro e' do
+# largador; o estado de arranque e' da app.
+_STARTUP_READY = {'done': False}
+#: O RECIBO DO AQUECIMENTO CLR, ESCRITO ANTES DE HAVER LOG (2026-11-12).
+#: `warm_clr_types` corre antes de `_open_log` por uma razao MEDIDA: e' ele que
+#: impede a `NullReferenceException` do pythonnet, e a posicao -- antes de
+#: qualquer `Thread` -- e' metade da cura (arm A4 do `clr-warm-oracle`). Mas o
+#: `log()` daquele instante escreve num stdout que `pythonw.exe` nao tem, e o
+#: espelho de ficheiro so' existe 111 linhas depois. MEDIDO no arranque
+#: 21:15:57 desta arvore: a cura correu e o log nao tinha `CLR_WARM` nenhum.
+#: A linha fica guardada aqui e e' despejada por `_flush_clr_warm_receipt` no
+#: primeiro instante em que o ficheiro existe.
+_CLR_WARM_LINE = None
+
+
+def _prune_stale_ready_files(directory, keep='', max_age_s=86400.0):
+    """Os `ready-*.txt` que ficaram de largadas abortadas (2026-11-03).
+
+    MEDIDO nesta box: **64** ficheiros em `_main/`, o mais antigo de 2026-10-07.
+    O `run.cmd` apaga o seu no fim da espera, logo os que sobram sao de
+    largadas que morreram antes disso -- lixo que cresce a cada falha e que o
+    dono paga em espaco. Apaga so' o PADRAO, so' o que passou de um dia, e
+    nunca o ficheiro desta propria largada.
+    """
+    try:
+        now = time.time()
+        keep = os.path.abspath(keep) if keep else ''
+        for name in os.listdir(directory):
+            if not (name.startswith('ready-') and name.endswith('.txt')):
+                continue
+            full = os.path.abspath(os.path.join(directory, name))
+            if keep and full == keep:
+                continue
+            try:
+                if now - os.path.getmtime(full) > max_age_s:
+                    os.remove(full)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
+def startup_is_ready(path=None) -> bool:
+    """Ja' arrancou? Em processo primeiro, ficheiro do largador depois.
+
+    O ficheiro continua a ser aceito porque um arranque DIRECTO (sem
+    `run.cmd`) nao tem `--ready-file`, e ha' quem o crie a' mao.
+    """
+    if _STARTUP_READY['done']:
+        return True
+    if not path:
+        return False
+    try:
+        return os.path.exists(path)
+    except Exception:                 # noqa: BLE001
+        return False
 
 
 def mark_launch_ready(path) -> bool:
@@ -1385,6 +2891,7 @@ def mark_launch_ready(path) -> bool:
         directory = os.path.dirname(os.path.abspath(path))
         if directory:
             os.makedirs(directory, exist_ok=True)
+            _prune_stale_ready_files(directory, keep=os.path.abspath(path))
         with open(path, 'w', encoding='utf-8') as f:
             f.write(f'ready pid={os.getpid()}\n')
         return True
@@ -1516,6 +3023,10 @@ HWND_TOPMOST = -1
 SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
 SWP_NOACTIVATE = 0x0010
+SWP_NOZORDER = 0x0004
+#: Faz o Windows recalcular a moldura sem remapear a janela -- e' o que faz um
+#: estilo de hit-test assentar sem o flash de um `ShowWindow` (2026-11-04).
+SWP_FRAMECHANGED = 0x0020
 
 
 #: AS DUAS HOTKEYS DO SOTTO (ordem do dono, 2026-11-01):
@@ -1539,22 +3050,300 @@ SWP_NOACTIVATE = 0x0010
 #: sozinha.
 
 
-#: Minimum seconds between two `external-end` resumes of the worker. Measured
-#: 2026-10-18: two full model loads 2 min 52 s apart, with 1 245 MB resident, each
-#: followed by the device ladder. 45 s is long enough that a player blinking its
-#: caption layer cannot drive a load, and short enough that when the owner stops
-#: watching captions the microphone comes back while he is still waiting for it.
-EXTERNAL_RESUME_MIN_S = 45.0
+#: (O PISO `EXTERNAL_RESUME_MIN_S` SAIU A 2026-11-03 COM O PROCESSO.) Ele limitava
+#: a frequencia de `start_worker` porque cada um custava uma carga de modelo --
+#: medido 2026-10-18, duas cargas em 2 min 52 s. O release passou a limpar um
+#: PEDIDO num ficheiro (`park`), que nao custa nada: manter o piso era o unico
+#: defeito que sobrava, e com ele o motor ficava largado ate' 45 s depois de o
+#: player parar. Ver `_main/external-resume-oracle.py`.
+
+#: QUANTO TEMPO UM CAPTION DO PLAYER TEM DE DURAR ANTES DE O TRABALHADOR SER
+#: ESTACIONADO (2026-11-02). O estacionamento existe para libertar a VRAM enquanto
+#: o YouTube serve a linha, mas ele MATA o worker -- e matar/reabrir um cliente
+#: WASAPI e' um hitch no motor de audio que o dono partilha com o video. MEDIDO na
+#: sessao dele: 10 `EXTERNAL_CAPTIONS_WORKER_PARKED` e 10 `_RESUMED` desde as
+#: 20:00, e ele ouviu isso como o audio a sumir (*"ja nao mandei tu parar de mutar
+#: do nada meu audio?"*). O piso e' o mesmo raciocinio do `RELEASE_S`: a cadencia
+#: e' do player, nao nossa -- uma janela curta de legenda nao pode custar um load.
+EXTERNAL_PARK_DELAY_S = 20.0
+
+#: O PLAYER MANDA NA SUPERFICIE DA LEGENDA ENQUANTO ELE FORNECER (2026-11-04).
+#: Dono, verbatim: *"é estupido 'carregando o modelo' e nao mostrar
+#: instantaneamente as legendas do youtube, assim que eu abro o app."* MEDIDO no
+#: arranque dele de 12:15:15 (pid 56116): `CAPTION_WINDOW_DEFERRED_APPLIED
+#: on=true` as 15.349 -- a superficie de legenda estava de pe' -- e a PRIMEIRA
+#: coisa que ela pintou foi `CAPTION_PAINT ... text="carregando modelo…"` as
+#: 16.816 (`CAPTION_OVERLAY_PUSH count=1`), com o YouTube aberto em 5 abas e um
+#: video a tocar. O modelo carrega em 5,6-9 s; a linha do player existe antes.
+#:
+#: Uma janela de recencia, e nao um teste de igualdade: `yt_live_paint_at` e'
+#: o instante da ULTIMA linha do player que chegou ao ecra, e o laco da shell
+#: corre a 0,1 s. 10 s cobre uma pausa de cue (o `RELEASE_S` do observador solta
+#: o player so' depois de bem mais) sem manter o texto de estado calado para
+#: sempre se o observador morrer.
+PLAYER_TRACK_FRESH_S = 10.0
+
+
+def player_track_owns(state, now=None, fresh_s=PLAYER_TRACK_FRESH_S):
+    """O estado de um player -> True quando a superficie da legenda e' DELE.
+
+    Pura de proposito: `_main/youtube-first-at-boot-oracle.py` executa ESTA
+    funcao (e a shell que a usa), para a regra poder ser julgada sem Chrome.
+
+    Tres factos, do mais forte para o mais fraco:
+
+      * `rows` / `snap_rows` -- o DOM do player TEM linhas de legenda AGORA
+        (o observador leu-as, ou a foto da CDP as traz). E' prova positiva: o
+        YouTube esta' a desenhar legenda, e o que o ecra deve mostrar e' ela;
+      * `epoch` -- uma janela do player ja' chegou a superficie e nao foi
+        libertada (ver `push_caption_to_window` / `on_external_captions_released`).
+        E' o que mantem o texto de estado fora entre duas cues de um video que
+        esta' a ser lido;
+      * `painted_at` -- ha menos de `fresh_s` o player estava a fornecer. Cobre
+        o instante entre a linha chegar e o observador publica'-la.
+
+    Sem nenhum dos tres, a superficie e' do ASR e o texto de estado e'
+    HONESTO: e' o unico caminho para o caso (c) -- sem faixa, o dono tem de ver
+    que o modelo carrega em vez de um ecra vazio.
+    """
+    if not state:
+        return False
+    if state.get('rows') or state.get('snap_rows'):
+        return True
+    if state.get('epoch'):
+        return True
+    try:
+        painted = float(state.get('painted_at') or 0.0)
+    except (TypeError, ValueError):
+        painted = 0.0
+    if not painted:
+        return False
+    now = time.monotonic() if now is None else float(now)
+    return 0.0 <= (now - painted) <= float(fresh_s)
+
+
+#: ATE' QUE IDADE DE AUDIO UMA LINHA AINDA E' AO VIVO (2026-11-11, MEDIDO).
+#:
+#: O DEFEITO. Dono, verbatim: *"abro o sotto e leva mais de um segundo pra
+#: legenda funcionar"*. A metade que ninguem via: as 17:46:05.822 o shell
+#: pintou `CAPTION_IN start=381.84 final=true tap_ms=None` -- audio de 17:41:04,
+#: **301 s** antes -- como se fosse ao vivo. `tap_ms` vinha None, logo nenhuma
+#: regua do shell podia saber, e o ecra mostrou uma frase de cinco minutos atras.
+#:
+#: O NUMERO, tirado do log do dono (`_main/webview-run.log`, 2026-11-11):
+#: 1846 linhas VIVAS (`final=false`) com `tap_ms` presente medem p50=131 ms,
+#: p99=1837 ms, max=8070 ms -- e 8070 ms e' o pior caso HONESTO de uma maquina a
+#: 174 % de CPU, nao um bug. As `final=true` medem p90=52879 ms por desenho (a
+#: cauda de silencio fecha a linha muito depois da fala).
+#:
+#: 30 s e' 3,7x acima do pior caso honesto medido e 10x abaixo da patologia
+#: medida (301 s). NAO e' um orcamento de latencia -- esse e' `CAPTION_BUDGET_MS`
+#: (1500 ms) e continua a julgar o pixel. Este e' o piso entre "legenda" e
+#: "historia": acima dele o texto VAI para o historico (nunca se perde fala) e
+#: NAO pinta na janela ao vivo (`LIVE_PAINT_REFUSED reason=stale`).
+LIVE_PAINT_MAX_AGE_S = 30.0
+
+#: O CARIMBO NO FUTURO NAO E' "AGORA" (2026-11-11). Um `age_s` NEGATIVO era
+#: convertido por `max(0.0, ...)` em 0,0 s -- ou seja, um carimbo no futuro
+#: passava a porta da idade como FRESCO. Uma medicao que diz "o audio e' de
+#: daqui a cinco segundos" nao mediu nada, e a casa ja' pagou esta lei: uma
+#: medicao ausente nunca e' uma afirmacao.
+#:
+#: O PISO E' O MESMO NUMERO QUE O WORKER DECLARA, nao um segundo piso inventado
+#: aqui: `worker/live_route.py` -> `CLOCK_JITTER_MS = 250.0` (dentro da janela o
+#: carimbo e' "agora", arredondamento entre dois relogios; alem dela esta' no
+#: futuro). `_main/live-ack-oracle.py` le' a constante do worker e FALHA se os
+#: dois numeros se separarem -- e' por isso que este e' um literal e nao um
+#: `import` (o shell nao poe `worker/` no `sys.path` para uma linha de legenda).
+LIVE_PAINT_JITTER_S = 0.25
+
+#: "O valor nem sequer e' um numero" -- distinto de `None` ("e' um numero e ele
+#: diz que nao houve medicao"): o primeiro deixa tentar o relogio seguinte, o
+#: segundo encerra a pergunta.
+_SKIP = object()
+
+
+def _measured_age(delta):
+    """Idade em segundos a partir de uma diferenca. `None` = nao medivel.
+
+    Devolve `_SKIP` quando o valor nao e' um numero finito (o chamador tenta o
+    relogio seguinte) e `None` quando e' um numero que aponta para o FUTURO
+    alem da tolerancia -- nesse caso nao ha' idade honesta que se possa afirmar,
+    e inventar 0,0 s seria dizer "fresco" com um instrumento que nao ve' o audio.
+    """
+    try:
+        delta = float(delta)
+    except (TypeError, ValueError):
+        return _SKIP
+    if delta != delta or delta in (float('inf'), float('-inf')):
+        return _SKIP
+    if delta < -LIVE_PAINT_JITTER_S:
+        return None
+    return max(0.0, delta)
+
+
+def live_paint_age_s(meta, capture_epoch=0.0, now=None):
+    """A idade do AUDIO de uma legenda do worker, em segundos (None = nao se sabe).
+
+    Tres relogios, do mais directo para o mais fraco:
+
+      1. `age_s` -- o worker passa a publica'-lo (via LiveRoute); quando vem, e'
+         a medida dele e nao uma derivacao nossa;
+      2. `tap_ms` -- o instante de parede do bloco que completou a linha
+         (`worker/sotto_worker.py:_event`); e' o campo que ja' existia e que o
+         defeito medido trazia a None;
+      3. `start` + epoca da captura -- `start` e' o relogio de AUDIO do worker
+         (o `audio_s` da captura) e `capture_epoch` e' o instante de parede em
+         que o shell viu `capture-started` para ESTE filho. E' o degrau que
+         transforma um numero que sempre veio no evento num instante.
+
+    Sem nenhum dos tres devolve `None`: nao se recusa o que nao se mediu.
+    """
+    if not isinstance(meta, dict):
+        return None
+    try:
+        now = time.time() if now is None else float(now)
+    except (TypeError, ValueError):
+        now = time.time()
+    value = meta.get('age_s')
+    if value is not None:
+        measured = _measured_age(value)
+        if measured is not _SKIP:
+            return measured
+    tap = meta.get('tap_ms')
+    if tap:
+        measured = _measured_age(now - float(tap) / 1000.0) \
+            if _is_number(tap) else _SKIP
+        if measured is not _SKIP:
+            return measured
+    start = meta.get('start')
+    try:
+        epoch = float(capture_epoch or 0.0)
+    except (TypeError, ValueError):
+        epoch = 0.0
+    if start is not None and epoch > 0.0:
+        measured = _measured_age(now - (epoch + float(start))) \
+            if _is_number(start) else _SKIP
+        if measured is not _SKIP:
+            return measured
+    return None
+
+
+def _is_number(value):
+    """`float(value)` e' um numero finito? (a porta do `_measured_age`)."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return False
+    return not (number != number or number in (float('inf'), float('-inf')))
+
+
+def live_paint_stale(age_s, bound_s=LIVE_PAINT_MAX_AGE_S):
+    """A linha e' historia em vez de legenda? Sem idade medida, nao e'."""
+    try:
+        return age_s is not None and float(age_s) > float(bound_s)
+    except (TypeError, ValueError):
+        return False
+
+
+#: O QUE A JANELA DIZ QUANDO NAO HA' NADA PARA PINTAR (2026-11-11).
+#:
+#: O DEFEITO. Dono, verbatim: *"meu ctrl space nao fez nada assim que abri o
+#: sotto e vi ele no icone da bandeja"*. MEDIDO (pid 49180): Ctrl+Space as
+#: 17:34:26.599 -> `LIVE_ENABLED on=true` as 17:34:26.619 (20 ms, o gesto esta'
+#: certo) e NADA no ecra ate' 17:36:02.4 -- 95,8 s depois, e so' porque uma
+#: faixa do YouTube apareceu. O unico texto de estado que existia
+#: (`model-loading` -> `carregando modelo…`) e' um EVENTO unico disparado as
+#: 17:34:26.5, enquanto `_caption_wanted` ainda era False: quando o dono ligou,
+#: o evento ja' tinha passado e o estado nunca foi lido.
+#:
+#: A CURA E' O ESTADO, NAO O EVENTO. Ligar pergunta "o que falta AGORA?" e a
+#: resposta vem destas razoes, na ordem do que muda primeiro. Cada uma e' um
+#: facto lido dos objectos que o tem -- nunca um palpite: sem facto, lista vazia.
+CAPTION_STATUS_TEXT = {
+    'model-loading': 'carregando modelo\u2026',
+    'frontend-preparing': 'Preparando reconhecimento\u2026',
+    'no-track': 'este video nao tem faixa de legenda',
+    'waiting-player-row': 'aguardando a legenda do player\u2026',
+    'no-audio': 'sem sinal de audio',
+    'waiting-first-line': 'aguardando audio\u2026',
+    #: DESLIGAR TAMBEM RESPONDE (2026-11-11). O dono, verbatim: *"meu ctrl space
+    #: nao fez nada assim que abri o sotto"*. A sessao dele tinha a legenda
+    #: PERSISTIDA LIGADA com o modelo a carregar e o ecra vazio: o Ctrl+Space
+    #: fez ON -> OFF, e um desligar num ecra ja' vazio nao muda pixel nenhum --
+    #: da cadeira dele, a tecla nao fez nada. Um `off` com nome proprio faz a
+    #: ACCAO visivel sem tocar no interruptor: pinta no mesmo overlay, e o
+    #: temporizador de silencio normal (`CAPTION_IDLE_HIDE_S`, 6 s) tira-o.
+    #: UMA linha por episodio (`CAPTION_STATUS_SHOWN reason=off`).
+    'off': 'legenda ao vivo: desligada',
+}
+
+
+def caption_status_for(state):
+    """O estado -> a razao do ecra vazio, ou None quando nao ha' nada honesto.
+
+    `state` (todos os campos vem de `SottoShell._caption_status_state`):
+
+      wanted / player_owns / painted_recent
+      track_known / track_cues / rows
+      bridge / loaded / capturing / no_audio / worker_state
+
+    A ORDEM E' A DO QUE RESOLVE PRIMEIRO:
+
+      1. desligado -> nada;
+      2. o player e' dono da superficie (`player_track_owns`: tem linhas no DOM,
+         ja' pintou nos ultimos 10 s, ou a janela dele esta' no ecra) -> NADA.
+         Um texto de estado por cima do player e' o defeito de 2026-11-04;
+      3. ha' uma linha pintada agora -> nada (nao se tapa o que se acabou de ver);
+      4. o player TEM faixa com cues -> falta a primeira linha DELE
+         (`waiting-player-row`), e nao o modelo: a superficie vai ser do player;
+      5. worker a carregar -> `model-loading`;
+      6. faixa conhecida e VAZIA -> `no-track`; o ASR ainda pode pintar, mas a
+         faixa do player nao existe;
+      7. worker calado (`no_audio`) -> `no-audio`;
+      8. worker carregado e a capturar -> `waiting-first-line`;
+      9. resto -> None (nao se pinta um palpite).
+    """
+    if not state or not state.get('wanted'):
+        return None
+    if state.get('player_owns') or state.get('painted_recent'):
+        return None
+    if state.get('track_known'):
+        if int(state.get('track_cues') or 0) > 0:
+            return 'waiting-player-row' if not int(state.get('rows') or 0) else None
+    if state.get('bridge') and not state.get('loaded'):
+        return 'model-loading'
+    if (state.get('bridge') and state.get('loaded')
+            and state.get('worker_state') in ('model-loaded', 'frontend-preparing')):
+        return 'frontend-preparing'
+    if state.get('track_known') and not int(state.get('track_cues') or 0):
+        return 'no-track'
+    if state.get('bridge') and state.get('no_audio'):
+        return 'no-audio'
+    if state.get('bridge') and state.get('loaded') and state.get('capturing'):
+        return 'waiting-first-line'
+    return None
+
 
 #: Bottom-strip geometry: wide and short, bottom-centred. The 1040x150 comes
 #: from the strip-surface measurements (height read from `--strip-height` in
 #: the CSS, never hard-coded); STRIP_HEIGHT_FALLBACK exists only so a missing
 #: CSS value still leaves a usable strip, and every use is logged.
-STRIP_WIDTH = 1040
+#: Bottom-strip geometry: short and centred. This number was 1040 until
+#: 2026-11-08 and the owner named the result, verbatim: *"por que a porra do
+#: painel de baixo do sotto ta gigante? restaura como era antes"* (W6,
+#: 2026-11-08T06:30:55Z). MEDIDO no log da instancia dele: a faixa abriu a
+#: **1040x40 @ (440,948)** as 03:30:29 (`STRIP_WIDTH from=None to=1040
+#: source=content`, `webview-run.log:388721`, rect em `:388799`), e a
+#: anterior era **380x40 @ (770,948)** (`:284356`, 2026-11-07 10:22:40) --
+#: 660 px mais larga, 2,74x a area. O 380 e' o rect que ele chama de "como era
+#: antes"; o `STRIP_WIDTH_MIN` desce com ele para a propria leitura nao ser
+#: recusada por um piso que ja' nasceu acima do valor.
+STRIP_WIDTH = 380
 STRIP_HEIGHT = 150
 STRIP_HEIGHT_FALLBACK = 148
 STRIP_WIDTH_MAX = 1040
-STRIP_WIDTH_MIN = 480
+STRIP_WIDTH_MIN = 320
 STRIP_WIDTH_FRACTION = 0.62
 #: The CSS custom property that IS the strip's height (`panel.css:52`).
 #: Told to the page the moment the SHELL moves the strip window. panel.html:1093
@@ -1590,10 +3379,6 @@ METER_FRESH_S = 2.0
 #: the worker side): only this log line is, on the same budget as the push.
 METER_LOG_INTERVAL_S = 30.0
 
-MOD_ALT = 0x0001
-MOD_CONTROL = 0x0002
-MOD_SHIFT = 0x0004
-MOD_WIN = 0x0008
 MOD_NOREPEAT = 0x4000
 WM_HOTKEY = 0x0312
 #: A mensagem com que `HotkeyThread.stop` ACORDA o pump: `WaitMessage` dorme ate'
@@ -1601,10 +3386,11 @@ WM_HOTKEY = 0x0312
 WM_APP = 0x8000
 #: `PeekMessageW` flag -- take the message out of the queue.
 PM_REMOVE = 0x0001
-#: O bit do Win32 de cada nome de modificador que `hotkey_gesture` aceita. A ABI
-#: fica deste lado; o VOCABULARIO das teclas fica do lado puro, num sitio so'.
-_MOD_BITS = {'alt': MOD_ALT, 'ctrl': MOD_CONTROL, 'shift': MOD_SHIFT,
-             'win': MOD_WIN}
+#: O bit do Win32 de cada nome de modificador NAO se escreve aqui: ele vive em
+#: `hotkey_gesture.MODIFIER_BITS`, lido por `hotkey_numbers()`. As constantes
+#: `MOD_*` acima continuam a existir porque sao a ABI do `RegisterHotKey`, mas a
+#: tabela nome->bit seria uma SEGUNDA copia do vocabulario, e uma segunda copia
+#: envelhece contra a primeira em silencio.
 #: O botao esquerdo do rato, lido pelo `OutsideClickWatcher` para saber se um
 #: arrasto de edit mode esta' em curso. Sem hook, isto e' a unica fonte.
 VK_LBUTTON = 0x01
@@ -1641,6 +3427,33 @@ def dpi_scale() -> float:
 MONITOR_DEFAULTTONEAREST = 0x00000002
 
 
+_SHCORE = None
+
+
+def _shcore():
+    """`shcore` loaded ONCE, with the prototype set once.
+
+    MEASURED 2026-11-25 (reviewer finding): `_monitor_scale` runs on the caption
+    path, which asks for geometry up to 240 times a second, and it built a fresh
+    `ctypes.WinDLL('shcore')` -- a LoadLibrary plus three argtype assignments --
+    on every call. The library is process-wide and its prototype never changes,
+    so it is loaded lazily and kept. `None` means "this Windows has no shcore",
+    which is also a fact worth caching once.
+    """
+    global _SHCORE
+    if _SHCORE is None:
+        try:
+            lib = ctypes.WinDLL('shcore', use_last_error=True)
+            lib.GetDpiForMonitor.argtypes = [
+                ctypes.c_void_p, ctypes.c_int,
+                ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+            lib.GetDpiForMonitor.restype = ctypes.c_long
+            _SHCORE = lib
+        except Exception:  # noqa: BLE001
+            _SHCORE = False          # tried, unavailable; do not retry per frame
+    return _SHCORE or None
+
+
 def _monitor_scale(handle) -> float:
     """Per-monitor DPI, falling back to the process DPI when shcore refuses.
 
@@ -1651,86 +3464,285 @@ def _monitor_scale(handle) -> float:
     and "em diferentes monitores faria pior ainda"; this is that defect.
     """
     try:
-        shcore = ctypes.WinDLL('shcore', use_last_error=True)
-        shcore.GetDpiForMonitor.argtypes = [
-            ctypes.c_void_p, ctypes.c_int,
-            ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
-        shcore.GetDpiForMonitor.restype = ctypes.c_long
-        dx = ctypes.c_uint(0)
-        dy = ctypes.c_uint(0)
-        if shcore.GetDpiForMonitor(handle, 0, ctypes.byref(dx),
-                                   ctypes.byref(dy)) == 0 and dx.value:
-            return dx.value / 96.0
+        shcore = _shcore()
+        if shcore is not None:
+            dx = ctypes.c_uint(0)
+            dy = ctypes.c_uint(0)
+            if shcore.GetDpiForMonitor(handle, 0, ctypes.byref(dx),
+                                       ctypes.byref(dy)) == 0 and dx.value:
+                return dx.value / 96.0
     except Exception:  # noqa: BLE001
         pass
     return dpi_scale()
 
 
-def _display_for_monitor(handle) -> dict:
+def _selection_monitor(handle) -> dict:
+    """One monitor in BOTH coordinate spaces: physical (selection) and DIP (layout).
+
+    Win32 reports the virtual screen in PHYSICAL pixels, with negative x for a
+    monitor left of the primary. `_display_for_monitor` divides by THIS
+    monitor's scale to get the DIP rect WebView2 uses; `MonitorFromPoint`
+    compares against the raw rect. Keeping both views of the same monitor is
+    what lets selection stay pure without scaling any number twice.
+    """
     mi = MONITORINFO()
     mi.cbSize = ctypes.sizeof(MONITORINFO)
     if not user32.GetMonitorInfoW(handle, ctypes.byref(mi)):
         raise ctypes.WinError(ctypes.get_last_error())
     scale = _monitor_scale(handle)
 
-    def as_rect(r):
-        return {
-            'x': round(r.left / scale),
-            'y': round(r.top / scale),
-            'width': round((r.right - r.left) / scale),
-            'height': round((r.bottom - r.top) / scale),
-        }
+    def physical(r):
+        return {'x': int(r.left), 'y': int(r.top),
+                'width': int(r.right - r.left),
+                'height': int(r.bottom - r.top)}
+
+    def dip(r):
+        return {'x': round(r.left / scale), 'y': round(r.top / scale),
+                'width': round((r.right - r.left) / scale),
+                'height': round((r.bottom - r.top) / scale)}
 
     return {
         'handle': handle,
-        'bounds': as_rect(mi.rcMonitor),
-        'workArea': as_rect(mi.rcWork),
         'scaleFactor': scale,
+        'bounds': physical(mi.rcMonitor),
+        'workArea': physical(mi.rcWork),
+        'display': {
+            'handle': handle,
+            'bounds': dip(mi.rcMonitor),
+            'workArea': dip(mi.rcWork),
+            'scaleFactor': scale,
+        },
     }
 
 
+def _display_for_monitor(handle) -> dict:
+    """The Electron-shaped DIP view of one monitor (one GetMonitorInfo source)."""
+    return _selection_monitor(handle)['display']
+
+
 def primary_display() -> dict:
-    """Primary display bounds + work area, in DIP, the shape Electron reports."""
+    """Primary display bounds + work area, in DIP, the shape Electron reports.
+
+    Kept ONLY for the docked panel's startup geometry (`compute_geometry`) and
+    as the last-resort fallback when no monitor can be probed. The strip and
+    overlay choose their monitor in `select_display_for_point`, never here.
+    """
     handle = user32.MonitorFromPoint(POINT(0, 0), MONITOR_DEFAULTTOPRIMARY)
     return _display_for_monitor(handle)
 
 
-def target_display() -> dict:
-    """The monitor the OWNER is looking at: the one under the mouse pointer.
+def select_display_for_point(point, monitors, primary_index=0, geometry=None):
+    """PURE: which monitor owns `point`, and a rect clamped to ITS work area.
 
-    Alt+C is pressed while looking at a screen, and the panel belongs on THAT
-    screen. The old code always used `MonitorFromPoint(POINT(0,0))`, i.e. the
-    primary monitor, so on a multi-monitor desk every panel opened on the
-    primary no matter where the owner was.
+    `point` is a PHYSICAL virtual-screen `(x, y)` (negative x is a monitor to
+    the LEFT of the primary, as Win32 reports it). `monitors` is a sequence of
+    dicts with physical `bounds` / `workArea` rects (`x`,`y`,`width`,`height`)
+    and a `scaleFactor` (physical px per DIP); `primary_index` names the
+    fallback. Selection mirrors `MonitorFromPoint`: containment first,
+    MONITOR_DEFAULTTONEAREST when no monitor contains the point, then primary
+    when there is nothing to choose from (including an empty monitor list).
+
+    `geometry`, when given, is a requested rect in DIP. It is converted to
+    PHYSICAL ONCE (multiply by the chosen monitor's scale), clamped into that
+    monitor's WORK AREA -- never its full bounds -- and converted back to DIP
+    ONCE. Extra keys of an input dict (`workX`, `docked`, `surface`, ...) travel
+    with it. No Win32 call, no file, no shell state: an oracle can own this.
     """
-    # First the monitor of the FOREGROUND window: Alt+C is pressed while the
-    # owner is watching/using another app, and that app's screen is the target.
-    # When Sotto itself is foreground, fall back to the mouse, then primary.
+    def num(value, default=0.0):
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return default
+        return v if v == v and abs(v) != float('inf') else default
+
+    def rect(shape):
+        shape = shape if isinstance(shape, dict) else {}
+        return (num(shape.get('x')), num(shape.get('y')),
+                max(0.0, num(shape.get('width'))),
+                max(0.0, num(shape.get('height'))))
+
+    items = list(monitors) if monitors else []
+    xy = None
+    if isinstance(point, dict):
+        xy = (num(point.get('x')), num(point.get('y')))
+    else:
+        try:
+            xy = (num(point[0]), num(point[1]))
+        except (TypeError, ValueError, IndexError, KeyError):
+            xy = None
+
+    index, reason, best = None, 'primary', None
+    primary = int(num(primary_index, 0))
+    if items:
+        for idx, mon in enumerate(items):
+            x, y, w, h = rect(mon.get('bounds'))
+            if xy is not None and x <= xy[0] < x + w and y <= xy[1] < y + h:
+                index, reason = idx, 'point'
+                break
+            if xy is None:
+                continue
+            dx = max(x - xy[0], 0.0, xy[0] - (x + w))
+            dy = max(y - xy[1], 0.0, xy[1] - (y + h))
+            dist = dx * dx + dy * dy
+            if best is None or dist < best[0]:
+                best = (dist, idx)
+        if index is None:
+            if best is not None:
+                index, reason = best[1], 'nearest'
+            else:
+                # NO POINT AT ALL (a probe that failed) is the one case that
+                # asks the caller's question: "which monitor is primary".
+                index = primary if 0 <= primary < len(items) else 0
+                reason = 'primary'
+
+    chosen = None
+    if index is not None and 0 <= index < len(items):
+        chosen = items[index]
+    else:
+        index = None
+
+    display = chosen.get('display') if isinstance(chosen, dict) else None
+    if display is None and chosen is not None:
+        scale = num(chosen.get('scaleFactor'), 1.0)
+        scale = scale if scale > 0 else 1.0
+
+        def as_dip(shape):
+            x, y, w, h = rect(shape)
+            # A DIP EXTENT IS NEVER ZERO: at 400 % DPI a one-physical-pixel
+            # work area rounds to 0, and a 0x0 window is not a window. The
+            # clamp is on the EXTENT only; the origin keeps its own rounding.
+            return {'x': round(x / scale), 'y': round(y / scale),
+                    'width': max(1, round(w / scale)),
+                    'height': max(1, round(h / scale))}
+
+        display = {
+            'handle': chosen.get('handle'),
+            'bounds': as_dip(chosen.get('bounds')),
+            'workArea': as_dip(chosen.get('workArea')),
+            'scaleFactor': scale,
+        }
+    work = display.get('workArea') if isinstance(display, dict) else None
+
+    clamped = None
+    if geometry is not None and chosen is not None:
+        scale = num(chosen.get('scaleFactor'), 1.0)
+        scale = scale if scale > 0 else 1.0
+        wx, wy, ww, wh = rect(chosen.get('workArea'))
+        if ww > 0 and wh > 0:
+            gx, gy, gw, gh = rect(geometry)
+            # ONE multiply, ONE clamp in physical space, ONE divide back.
+            px = gx * scale
+            py = gy * scale
+            pw = min(max(1.0, gw * scale), ww)
+            ph = min(max(1.0, gh * scale), wh)
+            px = max(wx, min(px, wx + ww - pw))
+            py = max(wy, min(py, wy + wh - ph))
+            clamped = dict(geometry) if isinstance(geometry, dict) else {}
+            clamped['x'] = round(px / scale)
+            clamped['y'] = round(py / scale)
+            clamped['width'] = round(pw / scale)
+            clamped['height'] = round(ph / scale)
+
+    return {
+        'index': index, 'reason': reason, 'point': xy,
+        'monitors': items, 'primaryIndex': primary_index,
+        'monitor': chosen, 'display': display,
+        'workArea': work, 'geometry': clamped,
+    }
+
+
+def _selection_monitors_and_primary():
+    """Win32 -> the PURE selector's inputs: all monitors + primary's index."""
+    cb_type = ctypes.WINFUNCTYPE(wt.BOOL, wt.HMONITOR, wt.HDC,
+                                 ctypes.POINTER(wt.RECT), wt.LPARAM)
+    monitors = []
+
+    def collect(hmon, _hdc, _lprc, _data):
+        try:
+            monitors.append(_selection_monitor(int(hmon or 0)))
+        except Exception:  # noqa: BLE001 -- a stale monitor cannot block layout
+            pass
+        return True
+
+    callback = cb_type(collect)
+    user32.EnumDisplayMonitors.argtypes = [
+        wt.HDC, ctypes.POINTER(wt.RECT), cb_type, wt.LPARAM]
+    user32.EnumDisplayMonitors.restype = wt.BOOL
+    if not user32.EnumDisplayMonitors(None, None, callback, 0):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        primary = int(user32.MonitorFromPoint(
+            POINT(0, 0), MONITOR_DEFAULTTOPRIMARY) or 0)
+    except Exception:  # noqa: BLE001
+        primary = 0
+    for index, mon in enumerate(monitors):
+        if mon['handle'] == primary:
+            return monitors, index
+    return monitors, 0
+
+
+def target_placement(geometry=None):
+    """Probe the point Win32 gives us, then let the PURE function decide.
+
+    The foreground window still wins when it belongs to another app: that is
+    the pre-existing Alt+C rule and this change does not alter it. Its monitor
+    is mapped back to an interior point so the same pure function owns the
+    final choice AND the work-area clamp. Sotto's own window means the cursor;
+    a failed probe means the primary.
+    """
+    monitors, primary_index = [], 0
+    try:
+        monitors, primary_index = _selection_monitors_and_primary()
+    except Exception:  # noqa: BLE001
+        pass
+    point = None
     try:
         user32.GetForegroundWindow.restype = wt.HWND
         user32.MonitorFromWindow.argtypes = [wt.HWND, wt.DWORD]
         user32.MonitorFromWindow.restype = ctypes.c_void_p
-    except Exception:  # noqa: BLE001
-        pass
-    try:
         fg = user32.GetForegroundWindow()
         if fg:
             b = ctypes.create_unicode_buffer(256)
             user32.GetWindowTextW(fg, b, 256)
             if not b.value.strip().lower().startswith('sotto'):
                 handle = user32.MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST)
-                if handle:
-                    return _display_for_monitor(handle)
+                for mon in monitors:
+                    if mon.get('handle') == handle:
+                        wa = mon['workArea']
+                        point = (wa['x'] + wa['width'] // 2,
+                                 wa['y'] + wa['height'] // 2)
+                        break
     except Exception:  # noqa: BLE001
         pass
-    pt = POINT()
-    try:
-        if user32.GetCursorPos(ctypes.byref(pt)):
-            handle = user32.MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST)
-            return _display_for_monitor(handle)
-    except Exception:  # noqa: BLE001
-        pass
-    return primary_display()
+    if point is None:
+        try:
+            pt = POINT()
+            if user32.GetCursorPos(ctypes.byref(pt)):
+                point = (pt.x, pt.y)
+        except Exception:  # noqa: BLE001
+            pass
+    result = select_display_for_point(point, monitors, primary_index,
+                                      geometry=geometry)
+    if not result.get('display'):
+        # No usable monitor list: the historical primary fallback, unchanged.
+        display = primary_display()
+        result = dict(result)
+        result['display'] = display
+        result['workArea'] = display['workArea']
+        if geometry is not None and result.get('geometry') is None:
+            result['geometry'] = geometry
+    return result
+
+
+def target_display() -> dict:
+    """The monitor the OWNER is looking at, in DIP (the historical return shape).
+
+    Alt+C is pressed while looking at a screen, and the strip belongs on THAT
+    screen: another app's window picks the monitor, Sotto's own window falls
+    back to the cursor, then to the primary. The DECISION now lives in the
+    pure `select_display_for_point`; this is only the Win32 probe around it.
+    """
+    return target_placement()['display']
 
 
 def set_ex_style(hwnd, add=0, remove=0) -> int:
@@ -1759,8 +3771,33 @@ class VramGuard(threading.Thread):
 
     INTERVAL_S = 3.0
     LOW_MB = 1200.0
-    RESUME_MB = 2400.0
+    #: A VRAM que o MODELO ocupa ao carregar. MEDIDO duas vezes: 1175-1703 MiB
+    #: (2026-10-21, delta do worker) e, na queda de 2921 -> 900 MiB registada em
+    #: 2026-11-05 imediatamente apos um `VRAM_GUARD_RESUMING`, ~2000 MiB. Arredonda
+    #: para o lado seguro: quem garante o espaco e' o maior dos dois numeros.
+    MODEL_VRAM_MB = 2000.0
+    #: O RESUME TEM DE DEIXAR ESPACO PARA O PROPRIO MODELO -- `LOW_MB` +
+    #: `MODEL_VRAM_MB`. Isto era um literal de 2400, e a conta mostra porque' era um
+    #: defeito e nao um numero: levantar o worker com 2400 MB livres deixa 400 MB
+    #: depois de o modelo carregar, ou seja ABAIXO de `LOW_MB`, logo o parque que se
+    #: segue e' GARANTIDO por aritmetica. Medido no log do dono em 2026-11-05: 21
+    #: `VRAM_GUARD_PARKING` e 6 `VRAM_GUARD_RESUMING` no mesmo dia, e cada volta
+    #: custa 54 s de carga de modelo. Uma retomada que garante um parque e' um bug,
+    #: nao uma politica: o modelo so' volta quando a volta e' ESTAVEL.
+    RESUME_MB = LOW_MB + MODEL_VRAM_MB
     STREAK = 2
+    #: A GRAÇA DEPOIS DE UM RESUME, em segundos. MEDIDO 2026-11-05 no log do dono
+    #: (`_main/webview-run.log`, pid 22916): `VRAM_GUARD_PARKING free_mb=635` as
+    #: 18:46:25, `RESUMING free_mb=2921` doze segundos depois, `PARKING
+    #: free_mb=901` as 18:47:58, `RESUMING free_mb=2911` as 18:48:31 -- tres
+    #: voltas em seis minutos, e cada volta e' uma carga de modelo de 54 s e
+    #: 1,9 GB lidos do disco. A banda [LOW, RESUME] = [1200, 2400] e' MAIS
+    #: ESTREITA do que o proprio modelo: libertar o modelo sobe a livre para
+    #: ~2900, levantar o modelo baixa-a para ~900, logo cada volta atravessa os
+    #: dois limiares. O dip da carga nao e' "outra app quer a GPU" -- e' a mesma
+    #: frase que o `loaded` ja' dizia num comentario deste ficheiro; aqui ela
+    #: ganha uma janela de tempo, medida em vez de suposta.
+    POST_RESUME_GRACE_S = 90.0
 
     def __init__(self, shell):
         super().__init__(name='sotto-vram-guard', daemon=True)
@@ -1770,6 +3807,19 @@ class VramGuard(threading.Thread):
         self.high = 0
         self.parked = 0
         self.resumed = 0
+        #: Quando o ultimo resume aconteceu (`time.time()`), 0 = nunca.
+        self._resumed_at = 0.0
+        #: Quantas amostras a graca pos-resume recusou parquear (o log diz a 1a).
+        self.grace_skips = 0
+
+    def allow_park(self, now=None):
+        """O DIP DA CARGA NAO E' OUTRA APP: dentro da graca pos-resume, nao se parqueia.
+
+        Puro (o relogio entra por parametro) para o oraculo poder conduzi-lo sem
+        esperar 90 s: `external-resume-oracle.py` exige os dois lados.
+        """
+        now = time.time() if now is None else now
+        return (now - self._resumed_at) >= self.POST_RESUME_GRACE_S
 
     def stop(self):
         self.stop_event.set()
@@ -1820,6 +3870,19 @@ class VramGuard(threading.Thread):
                     # free memory is low again and the guard parks the worker.
                     loaded = bool(getattr(bridge, 'loaded', False))
                     if running and loaded and free < self.LOW_MB:
+                        if not self.allow_park():
+                            # A GRAÇA: o worker que ACABOU de ser levantado esta'
+                            # a carregar o modelo, e e' ele que baixou a livre. O
+                            # contador da sequencia baixa a zero porque esta
+                            # amostra nao conta como sinal de "outra app".
+                            self.low = 0
+                            self.grace_skips += 1
+                            if self.grace_skips == 1:
+                                log(f'VRAM_GUARD_GRACE free_mb={free:.0f} '
+                                    f'grace_s={self.POST_RESUME_GRACE_S:.0f} — o '
+                                    f'dip da carga nao conta como outra app')
+                            self.stop_event.wait(self.INTERVAL_S)
+                            continue
                         self.low += 1
                         self.high = 0
                         if self.low >= self.STREAK:
@@ -1833,9 +3896,20 @@ class VramGuard(threading.Thread):
                             self.high = 0
                             if self.shell.resume_after_vram(free):
                                 self.resumed += 1
+                                self._resumed_at = time.time()
+                                self.grace_skips = 0
                     else:
                         self.low = 0
                         self.high = 0
+                # A ESPERA E' DESTE LACO (2026-11-03, MEDIDO DUAS VEZES).
+                # Aqui esteve, por um patch mal ancorado, um bloco de espera
+                # FORA do `while` -- o `while` ficou sem espera nenhuma e este
+                # thread passou a gastar **97 % de um nucleo** (`THREAD_CPU
+                # total=101% top=sotto-vram-guard:97%`, tres amostras de 30 s
+                # seguidas no pid 36568), a perguntar a' NVML em ciclo fechado.
+                # Medido antes disso: a shell inteira em 102 % de um nucleo com a
+                # app em repouso, e o culpado so' apareceu quando o censo por
+                # NOME de thread passou a existir.
                 self.stop_event.wait(self.INTERVAL_S)
         finally:
             try:
@@ -1911,9 +3985,39 @@ class YouTubeTrackThread(threading.Thread):
         #: The video we last searched BY PAINT, and when.
         self.paint_search_for = ''
         self.paint_search_at = 0.0
+        #: THE QUESTION LAST ASKED, not the tick: the loop re-sends the same
+        #: painted words 20 times a second, and re-sending them is not a new
+        #: question. Without this key every tick re-armed the fetch.
+        self.paint_key = ''
+        self.paint_key_for = ''
+        #: HOW THE LOOP SIDE COSTS NOTHING IS A NUMBER: asks, and the slow
+        #: ones written to the log. A tick that waits for the network shows up
+        #: here as a millisecond count, not as a frozen caption.
+        self.polls = 0
+        self.ask_slow_at = 0.0
+        #: A fetch whose video nobody asks about anymore. It is not published
+        #: as THE track, and it does not arm the next window.
+        self.dropped = 0
+
+    @staticmethod
+    def _paint_key(painted):
+        """The painted words as ONE key, or '' when there is no paint."""
+        if not painted:
+            return ''
+        return ' '.join(str(w) for w in painted)[:200]
 
     def request(self, video_id, painted=None):
-        """Ask for this video's track. Returns the track if it is already here.
+        """Ask for this video's track -- FIRE AND FORGET. NEVER blocks.
+
+        Returns the track when one is ALREADY here for this video, and None
+        otherwise. It does NOT call `fetch_track` and does NOT wait for the
+        thread: the caller is the caption loop, and its tick IS the caption's
+        latency. MEASURED 2026-11-03 in the owner's own log
+        (`_main/webview-run.log`): `EXTERNAL_CAPTIONS_READ_MS ms=46766.0
+        phases={'target': 0.0, 'source': 0.0}` immediately before
+        `YOUTUBE_TRACK_READY video_id=... cues=1083`, then `ms=62234.0`. A
+        46 s tick whose two cheap phases are both named is the `yt-dlp` of the
+        track running INSIDE the loop.
 
         `painted` is the list of words the player is painting RIGHT NOW. It
         is the QUESTION that decides the track: the track the player shows
@@ -1921,9 +4025,18 @@ class YouTubeTrackThread(threading.Thread):
         owner's own video: the player painted `en-orig` while the language
         preference would have served `pt-orig` -- Portuguese against
         English, in the owner's own comparison.
+
+        NO DUPLICATE FETCH: the same video with the SAME painted words is the
+        same question, and it is asked once per `REFRESH_S` (and once per
+        `PAINT_SEARCH_RETRY_S` when the words CHANGE). A NEW video supersedes
+        the old one -- see `_fetch`.
         """
+        t0 = time.monotonic()
         vid = str(video_id or '')
+        key = self._paint_key(painted)
+        now = time.monotonic()
         with self.lock:
+            new_video = vid != self.want
             if vid != self.track_for:
                 # A NEW video: ask for it NOW, not in up to `REFRESH_S`.
                 self.next_fetch_at = 0.0
@@ -1931,20 +4044,27 @@ class YouTubeTrackThread(threading.Thread):
             if painted:
                 self.painted = list(painted)
                 self.painted_for = vid
-                now = time.monotonic()
-                if (self.paint_search_for != vid
-                        or (now - self.paint_search_at)
-                        > self.PAINT_SEARCH_RETRY_S):
+                if key != self.paint_key or vid != self.paint_key_for:
                     # A NEW QUESTION for the track: the player is painting
                     # words the track we have does not hold, so the track we
                     # have is the WRONG one. Ask again NOW -- and not more
                     # than once every `PAINT_SEARCH_RETRY_S`.
-                    self.paint_search_for = vid
-                    self.paint_search_at = now
-                    self.next_fetch_at = 0.0
-            if self.track_for == vid:
-                return self.track
-        return None
+                    self.paint_key = key
+                    self.paint_key_for = vid
+                    if (self.paint_search_for != vid
+                            or (now - self.paint_search_at)
+                            > self.PAINT_SEARCH_RETRY_S):
+                        self.paint_search_for = vid
+                        self.paint_search_at = now
+                        self.next_fetch_at = 0.0
+            track = self.track if self.track_for == vid else None
+        self.polls += 1
+        ms = (time.monotonic() - t0) * 1000.0
+        if ms > 5.0 and (time.monotonic() - self.ask_slow_at) > 5.0:
+            self.ask_slow_at = time.monotonic()
+            log('YOUTUBE_TRACK_ASK_MS ms=%.1f vid=%s polls=%d new=%s'
+                % (ms, vid, self.polls, int(bool(new_video))))
+        return track
 
     def current(self, video_id):
         """The track of this video, if it is the one we already have."""
@@ -1979,20 +4099,69 @@ class YouTubeTrackThread(threading.Thread):
         with self.lock:
             self.inflight = ''
             self.done_for = video_id
-            self.track = track
-            self.track_for = video_id
             self.fetches += 1
-            if track is None or track.get('reason') == 'extract-failed':
+            failed = track is None or (
+                isinstance(track, dict) and track.get('reason') == 'extract-failed')
+            if failed:
                 self.failures += 1
-            # The NEXT ask is `REFRESH_S` away, so the module's own retry of a
-            # refused payload (60 s) can happen.
-            self.next_fetch_at = time.monotonic() + self.REFRESH_S
+            # A NEW VIDEO SUPERSEDES THE OLD ONE (2026-11-03). The owner
+            # alternates between videos all the time, and a fetch lands
+            # seconds later. Two rules, and both are about the LOOP never
+            # waiting: the result of a video nobody is asking about anymore
+            # is NOT published as THE track, and -- the measured part -- it
+            # does NOT arm the `REFRESH_S` window that would make the NEW
+            # video wait behind it. Before this, a 5 s fetch for video A
+            # finishing after the owner switched to B made B wait 30 s, with
+            # the box empty and the ASR parked.
+            superseded = self.want != video_id
+            if superseded:
+                self.dropped += 1
+                self.next_fetch_at = 0.0
+            else:
+                self.track = track
+                self.track_for = video_id
+                # The NEXT ask is `REFRESH_S` away, so the module's own retry
+                # of a refused payload (60 s) can happen.
+                self.next_fetch_at = time.monotonic() + self.REFRESH_S
+        if superseded:
+            log('YOUTUBE_TRACK_DROPPED video_id=%s reason=superseded want=%s '
+                'fetches=%d dropped=%d'
+                % (video_id, self.want, self.fetches, self.dropped))
+            return
         if error is not None:
             log(f'YOUTUBE_TRACK_FETCH_FAILED video_id={video_id} error={error!r}')
             return
         if track is None:
             log(f'YOUTUBE_TRACK_FETCH_FAILED video_id={video_id} error=no-result')
             return
+        # A RESPOSTA REPETIDA NAO E' NOTICIA (2026-11-23, MEDIDO). O pedido da
+        # faixa volta a cada `REFRESH_S`; quando o pedido cai num vao entre
+        # cues, a resposta e' a MESMA e o log do dono guardou-a 3 738 vezes
+        # (`YOUTUBE_TRACK_READY ... cues=250 lang=en-orig cached=True` +
+        # `YOUTUBE_TRACK_PAINT source=no-player-window cue=- match=0
+        # painted_words=0`). O par so' se escreve quando a resposta MUDA --
+        # video, estado, cues, lingua, fonte, motivo, erro, cache, e a escolha
+        # da faixa --, porque uma linha identica a cada 30 s nao diz nada e
+        # come 65 KB de um log que e' a evidencia de outra coisa.
+        # A CONTAGEM NAO E' A IDENTIDADE (2026-11-23): duas leituras da mesma
+        # faixa com o mesmo numero de cues podem ser faixas DIFERENTES (uma
+        # faixa trocada sob o mesmo URL, um `tOffsetMs` novo). A assinatura
+        # leva as duas pontas do texto, que e' o que um leitor de log usa para
+        # dizer "esta e' outra leitura" sem pagar o hash da lista inteira.
+        cues = track.get('cues') or ()
+        head = cues[0] if cues else {}
+        tail = cues[-1] if cues else {}
+        answer = (video_id, track.get('state'), len(cues),
+                  track.get('lang'), track.get('source'), track.get('reason'),
+                  track.get('error'), bool(track.get('cached')),
+                  track.get('player_source') or '-',
+                  track.get('paint_cue'), bool(track.get('player_match')),
+                  len(paint) if paint else 0,
+                  (head.get('start'), str(head.get('text') or '')[:24],
+                   tail.get('end'), str(tail.get('text') or '')[-24:]))
+        if answer == getattr(self, 'yt_track_answer', None):
+            return
+        self.yt_track_answer = answer
         log('YOUTUBE_TRACK_READY video_id=%s state=%s cues=%d lang=%s '
             'source=%s reason=%s error=%s cached=%s'
             % (video_id, track.get('state'), len(track.get('cues') or ()),
@@ -2010,7 +4179,124 @@ class YouTubeTrackThread(threading.Thread):
                len(paint) if paint else 0))
 
 
+#: A LEITURA QUE CUSTOU CARO DESCE O PASSO (2026-11-09, MEDIDO).
+#: O laco pedia 10 Hz sem olhar ao que a leitura ANTERIOR custou. Medido no log do
+#: dono (19:50-19:56): `EXTERNAL_CAPTIONS_READ_STATS n=548 mean_ms=0.3 max_ms=125.0`
+#: e `max_ms=406.0` -- a media e' barata e o pico de meio segundo existe, e o
+#: pico e' o que trava a thread da UI (`UI_HUNG reason=caption-read-slow`).
+#: Quando uma leitura passa disto, o passo vai para `READ_SLOW_STEP_S` durante
+#: `READ_SLOW_HOLD_S`: pedir MAIS VEZES a mesma fonte que acabou de custar meio
+#: segundo e' pagar a contencao em vez de esperar por ela. Nunca acima do passo
+#: IDLE (uma escada nao pode ser mais lenta que o fundo).
+READ_SLOW_MS = 200.0
+READ_SLOW_STEP_S = 0.25
+READ_SLOW_HOLD_S = 1.0
+
+#: O VIDEO PARADO NAO PEDE 4 Hz (2026-11-24, MEDIDO na instancia viva do dono,
+#: que assistia a uma live na Twitch com uma aba do YouTube PARADA numa linha
+#: final "See you in the next video."). `EXTERNAL_CAPTIONS_READ_STATS n=391
+#: mean_ms=16.9 p95_ms=110.0 max_ms=594.0 interval_s=0.10 step_s=0.25` -- a
+#: 0,25 s por volta, a leitura custa 16,9 ms, ou seja **6,76 % de um nucleo,
+#: continuamente, para reler a MESMA linha de um video que terminou**. O
+#: comment de 2026-11-05 ja' argumentava "0,45 s chega para ver o `play`
+#: voltar", mas a escada so' tinha dois degraus e o pausado caia no mesmo
+#: 0,25 s do "sem player nenhum". Sao dois casos diferentes: sem player a
+#: pergunta tem de ser rapida (um player novo pode aparecer a qualquer
+#: instante), com o player PARADO a legenda nao pode mudar.
+PAUSED_INTERVAL_S = 0.50
+
+#: E SE AS CUES NAO MUDARAM EM CINCO SEGUNDOS, NEM 0,5 s (2026-11-24): o caso
+#: medido acima e' um video terminado cuja ultima linha fica no ecra para
+#: sempre. 1,0 s ainda apanha o `play` no primeiro segundo (o `_tick` interpola
+#: localmente a `RENDER_S` entre leituras) e corta a carga a **1,69 % de um
+#: nucleo** pela mesma conta (1,0 Hz x 16,9 ms). A assinatura e' do CONTEUDO
+#: (texto das cues + modo), nao do relogio: no instante em que a cue muda, o
+#: degrau volta ao base -- nada aqui adivinha quando o video volta.
+STALE_CUE_S = 5.0
+STALE_INTERVAL_S = 1.00
+
+
+def poll_step(idle_for, paused, base, idle, slow=False, stale=False):
+    """O PASSO DO LACO DA LEGENDA EXTERNA, como funcao pura.
+
+    Existe para ser JULGADO: a decisao estava enterrada no meio de um laco de
+    200 linhas, e um laco nao se testa sem um desktop. Quatro razoes descem o
+    passo -- o video PAUSADO (`paused`), a leitura ANTERIOR medida acima de
+    `READ_SLOW_MS` (`slow`), cinco segundos sem leitura de player (`idle_for`)
+    e as cues PARADAS com o video parado (`stale`) --, porque uma legenda nao
+    muda com o video parado e porque uma fonte que acabou de custar meio
+    segundo pede espaco, nao cadencia.
+    MEDIDO 2026-11-05, na instancia do dono com o video pausado: o laco a 10 Hz
+    custava 16,3% de um nucleo com o painel escondido; a 4 Hz custa 8,1%.
+    MEDIDO 2026-11-24 (o mesmo instrumento, 16,9 ms por leitura): 4 Hz custa
+    6,76%, o pausado 3,38% (0,50 s) e as cues paradas 1,69% (1,00 s).
+    """
+    if paused:
+        return STALE_INTERVAL_S if stale else PAUSED_INTERVAL_S
+    if idle_for >= 5.0:
+        return idle
+    if slow:
+        return min(idle, max(base, READ_SLOW_STEP_S))
+    return base
+
+
+def _yt_mark(owner, phase):
+    """Marca a fase em ms desde o inicio da LEITURA (2026-11-03).
+
+    Existe por um `EXTERNAL_CAPTIONS_READ_MS ms=58516.0` medido nesta sessao: uma
+    leitura de 58 s sem nome de fase. Um numero assim sem nome e' um beco.
+    """
+    try:
+        # O RELOGIO E' UNICO E E' O INICIO DA LEITURA (2026-11-05). Medido:
+        # `EXTERNAL_CAPTIONS_READ_MS ms=1703.0 phases={'target': 0.0,
+        # 'source': 0.0}` -- duas fases a zero e um total de 1,7 s, ou seja um
+        # instrumento que nao sabe onde o tempo foi e o diz com dois zeros que
+        # parecem bons. A causa: a fase criava o seu PROPRIO instante zero
+        # quando `_yt_phase_start` faltava, e o total era medido por outro
+        # relogio. Um marco nunca inventa o zero -- quem le' a leitura faz isso.
+        start = getattr(owner, '_yt_phase_start', None)
+        if not start:
+            start = time.monotonic()
+            owner._yt_phase_start = start
+        phases = getattr(owner, '_yt_phases', None)
+        if phases is None:
+            phases = {}
+            owner._yt_phases = phases
+        phases[phase] = round((time.monotonic() - start) * 1000.0, 1)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+#: Instante zero para os marcos `WEBVIEW_NAV t=` (2026-11-03).
+_WEBVIEW_T0 = time.monotonic()
+
+
+#: O ORCAMENTO DO LOG DE ESTADO (DM do watcher, stutter 50452, 2026-11-09).
+#:
+#: MEDIDO no log do dono (2 h 32 min, 9120 s): `YOUTUBE_CDP_SOURCE` 10 763
+#: linhas (1,18/s), `YOUTUBE_TARGET` 10 738 (1,18/s), `YOUTUBE_CDP_HEALTH`
+#: 3 453 (0,38/s) e `YOUTUBE_LOOP_HZ` 1 715 (0,19/s) -- ~3,1 linhas/s de estado
+#: repetido num log de 64,7 MB, e 16 linhas/s nas rajadas. O estado que nao
+#: mudou nao e' noticia: as duas linhas de ESTADO saem na MUDANCA (batimento de
+#: 60 s em `youtube_cdp_source._STATE_HEARTBEAT_S`) e as duas de MEDIDA ficam
+#: limitadas aqui. A soma parada e' 1/60+1/60+1/30+1/10 = 0,17 linhas/s, contra
+#: o alvo de <= 0,2/s.
+_YT_RATE_LOG_S = 10.0
+_YT_HEALTH_LOG_S = 30.0
+
+
+#: Ate' onde um snapshot de contexto pode ser doado (2026-11-09): o contexto e'
+#: lido quando o EVENTO chega, o ASR atrasa, e uma fala de 20 s atras nao pode
+#: herdar a janela que o dono abriu depois. Ver `_history_context_for`.
+_HISTORY_CTX_NEAR_S = 8.0
+
+
 class ExternalCaptionWatcher(threading.Thread):
+    #: A FOTO DO DOM do tick em curso (`None` = nao ha'). Declarada aqui para
+    #: NENHUM caminho a ler antes de alguem a escrever: medido 2026-11-03,
+    #: `YOUTUBE_PAINT_READ_FAILED error=AttributeError("'ExternalCaptionWatcher'
+    #: object has no attribute 'yt_cdp_rows'")` a cada arranque.
+    yt_cdp_rows = None
     """READ THE CAPTIONS A PLAYER ALREADY SHOWS (owner, 2026-10-17).
 
     YouTube and Stremio (Electron) render their subtitles as UI Automation Text
@@ -2028,7 +4314,34 @@ class ExternalCaptionWatcher(threading.Thread):
     untouched.
     """
 
-    INTERVAL_S = 0.30
+    #: A LEITURA E' A LATENCIA DA LEGENDA (2026-11-02). Era 0,30 s, e com a
+    #: varredura da arvore por tick a leitura custava 650-3500 ms -- o numero
+    #: nunca chegava a valer, porque quem mandava era o custo. Depois dos caches
+    #: (janela da legenda, relogio em thread propria, cache do `player_source`)
+    #: a leitura caiu para 16-125 ms MEDIDOS, e o intervalo passa a ser ele.
+    #: NAO E' UMA ESPERA OCIOSA, E' O RESTO DO ORCAMENTO (2026-11-03). A
+    #: leitura da pintura custa 62-110 ms MEDIDOS nesta box (`UIA`,
+    #: 12-18 filhos por cue), e o laco esperava mais 120 ms em cima dela: o
+    #: periodo real ficava em ~200-230 ms e o ATRASO medido contra o player
+    #: (instrumento `_main/_yt-live-latency.py`, 45 s a tocar) saiu com mediana
+    #: 318 ms. O alvo e' o player: o resto do orcamento passa a ser 40 ms, para
+    #: o periodo ficar so' o custo da leitura.
+    #: 40 ms DE RESTO ERA 108 % DE UM NUCLEO (2026-11-03, MEDIDO). O laco roda
+    #: a `leitura + INTERVAL_S`; com a leitura em ~50 ms (UIA sobre a janela do
+    #: Chrome), o periodo real ficou em ~90 ms e `YOUTUBE_TICK_MS n=` contou
+    #: **100 ticks a cada 5 s (20 Hz)**, com 95,6 % de um nucleo numa unica
+    #: thread (`GetThreadTimes` no pid 28044, 5 s de amostra). A legenda nao
+    #: precisa de 20 Hz: os cues do YouTube mudam a cada ~2 s, o `_tick` custa
+    #: 0 ms, e a revelacao palavra-a-palavra interpola localmente a `RENDER_S`
+    #: (60 ms) entre duas leituras -- nenhum chamada Win32 nesse caminho. 10 Hz
+    #: e' o dobro da cadencia de desenho e dez vezes a do player.
+    INTERVAL_S = 0.10
+    #: Sem player nenhum, 4 Hz. Ver o comment do `wait` no fim do `run`. Ate'
+    #: 2026-11-03 esta constante era LETRA MORTA: o `wait` do laco pedia
+    #: sempre `INTERVAL_S`, e o laco perguntava 10x/s a janela em primeiro
+    #: plano com o player fechado (o same defeito da familia do `VramGuard`,
+    #: que tinha a espera FORA do laco).
+    IDLE_INTERVAL_S = 0.25
     #: A cadencia do DESENHO da legenda do YouTube, entre leituras do UIA. 60 ms
     #: e' mais fino do que o espaco entre palavras do payload (medido: 0, 240,
     #: 400 ms) e grosso o bastante para nao gastar CPU: recompza texto ja'
@@ -2048,6 +4361,13 @@ class ExternalCaptionWatcher(threading.Thread):
     #: of the same video, and the owner must not see the microphone go and
     #: come while the video plays.
     YT_RELEASE_S = 30.0
+    #: QUANTO TEMPO UM ID NOVO TEM DE SE MANTER ANTES DE APAGAR O ECRA (2026-11-09).
+    #: Duas abas `watch` abertas fazem `target_video_id()` oscilar entre elas; uma
+    #: oscilacao apagava a legenda (`video-changed`) e esquecia a linha. Medido no
+    #: log do dono: pares de blank a cada ~1,5 s com o mesmo video a tocar. O id
+    #: candidato tem de concordar em duas leituras separadas por este intervalo --
+    #: uma troca de video A SERIO mantem-se, uma oscilacao de leitura nao.
+    YT_REBIND_CONFIRM_S = 1.5
 
     def __init__(self, shell):
         super().__init__(name='sotto-external-captions', daemon=True)
@@ -2058,6 +4378,9 @@ class ExternalCaptionWatcher(threading.Thread):
         self.last_source = ''
         self.last_change = 0.0
         self.last_seen = 0.0
+        #: A queda JA' foi publicada para este silencio (ver `_release`). Volta
+        #: a False no primeiro quadro que o player servir outra vez.
+        self._released_for_silence = False
         self.finalized = False
         self.failures = 0
         self.reads = 0
@@ -2111,6 +4434,60 @@ class ExternalCaptionWatcher(threading.Thread):
         self.finalized = False
         self.last_change = 0.0
 
+    def _yt_cdp_row_count(self, max_age=8.0):
+        """LINHAS na foto mais recente da CDP -- a verdade sobre o ecra.
+
+        `yt_cdp_rows` NAO serve para isto (2026-11-05): e' um envio de UMA so'
+        vez, escrito pelo caminho barato e consumido no mesmo tick por
+        `_yt_rows_impl` (`= None`). Medido: 331 linhas `rows=0 why='painted'`
+        seguidas com o player a pintar -- o instrumento mentia e mandou a
+        investigacao para o sitio errado. A foto fica publicada ate' a proxima;
+        sem fonte (duplos de teste) o campo de passagem e' o que existe.
+        """
+        src = getattr(self, '_yt_cdp_source', None)
+        if src and src is not False:
+            try:
+                snap = src.snapshot(max_age=max_age)
+            except Exception:                 # noqa: BLE001
+                snap = None
+            if snap is not None:
+                return len(snap.get('rows') or ())
+        return len(getattr(self, 'yt_cdp_rows', None) or ())
+
+    def _yt_diag_now(self):
+        """(src, vid, cdp_age_ms, rows, why) -- os cinco campos, SEM `?`.
+
+        MEDIDO no log do dono, 10:56-10:57 (61 linhas seguidas):
+        `YOUTUBE_TICK_MS avg=0 max=0 n=20 src='?' vid='MOZIBMBHK-8'
+        cdp_age_ms=2413609 rows=0 why='cdp-fresh-skip'` com o dono a ver um
+        video. Duas mentiras na mesma linha: `src='?'` porque `_yt_diag` so' e'
+        escrito em dois ramos do `_read` (e os outros nao escrevem nada), e
+        `cdp_age_ms` de 40 MINUTOS porque a idade ficou congelada no instante em
+        que aquele ramo correu, nao no instante em que a linha saiu.
+
+        `src`/`why`/`vid` sao o ultimo ramo CONHECIDO; a IDADE e as LINHAS sao
+        lidas AGORA (um lock e um `len`), porque sao elas que dizem se ha' foto
+        neste instante. Nenhum campo sai `?`: uma etiqueta que nao sabe dizer o
+        que aconteceu e' pior do que nao existir.
+        """
+        d = getattr(self, '_yt_diag', None) or {}
+        vid = str(d.get('vid') or getattr(self, 'yt_video_id', '') or '')
+        src = str(d.get('src') or '')
+        if not src or src == '?':
+            src = 'external:youtube' if vid else 'unattached'
+        age = 'none'
+        src_obj = getattr(self, '_yt_cdp_source', None)
+        if src_obj and src_obj is not False:
+            try:
+                _a = src_obj.snapshot_age()
+            except Exception:                 # noqa: BLE001
+                _a = None
+            if _a is not None:
+                age = '%.0f' % (_a * 1000.0)
+        rows = self._yt_cdp_row_count()
+        why = str(d.get('why') or 'no-frame')
+        return src, vid, age, rows, why
+
     def run(self):
         try:
             import external_subs
@@ -2121,19 +4498,170 @@ class ExternalCaptionWatcher(threading.Thread):
         log('EXTERNAL_CAPTIONS_WATCH started=true interval_s=%.2f' % self.INTERVAL_S)
         while not self.stop_event.is_set():
             try:
+                # A LEITURA E' O RELOGIO (2026-11-02). Medido no dono: a varredura
+                # da arvore do Chrome inteira por tick punha as decisoes a 1,6-3 s
+                # de distancia e o ecra um cue atras. Este numero existe para a
+                # proxima regressao ser apanhada por um numero, nao por um olho.
+                _t_read = time.monotonic()
+                self._yt_phase_start = _t_read
+                self._yt_phases = {}
                 got, yt_mode = self._read(uia, UIA)
                 self.reads += 1
+                _ms = (time.monotonic() - _t_read) * 1000.0
+                # A CONTA INTEIRA, NAO SO' O QUE PASSA DOS 40 ms (2026-11-05).
+                # MEDIDO: a shell em REPOUSO (video pausado, painel escondido)
+                # queimava 23,4 % de um nucleo e NENHUMA linha aparecia, porque o
+                # instrumento so' falava acima de 40 ms -- 10 leituras por segundo
+                # a 23 ms cada sao invisiveis uma a uma e sao um nucleo inteiro
+                # somadas. Este agregado publica a media e o p95 a cada 30 s.
+                if not hasattr(self, '_read_ms'):
+                    self._read_ms = []
+                    self._read_stats_at = _t_read
+                self._read_ms.append(_ms)
+                if len(self._read_ms) > 600:
+                    del self._read_ms[:300]
+                if _t_read - self._read_stats_at >= 30.0:
+                    _n = len(self._read_ms)
+                    _sorted = sorted(self._read_ms)
+                    log('EXTERNAL_CAPTIONS_READ_STATS n=%d mean_ms=%.1f p95_ms=%.1f '
+                        'max_ms=%.1f interval_s=%.2f step_s=%.2f'
+                        % (_n, sum(_sorted) / float(_n or 1),
+                           _sorted[min(_n - 1, int(_n * 0.95))] if _n else 0.0,
+                           _sorted[-1] if _n else 0.0, self.INTERVAL_S,
+                           getattr(self, '_last_step', self.INTERVAL_S)))
+                    self._read_stats_at = _t_read
+                if _ms > 40.0:
+                    _now = time.monotonic()
+                    if _now - getattr(self, "read_slow_logged", 0.0) > 5.0:
+                        self.read_slow_logged = _now
+                        log('EXTERNAL_CAPTIONS_READ_MS ms=%.1f phases=%s'
+                            % (_ms, getattr(self, '_yt_phases', {})))
+                # A LEITURA QUE CUSTOU CARO PEDE ESPACO (2026-11-09). O passo
+                # desce durante `READ_SLOW_HOLD_S` e volta sozinho: uma leitura
+                # barata a seguir nao precisa de segunda condicao.
+                _slow = _ms > READ_SLOW_MS
+                if _slow:
+                    self._read_slow_until = time.monotonic() + READ_SLOW_HOLD_S
+                if _slow != getattr(self, '_read_slow_logged', None):
+                    self._read_slow_logged = _slow
+                    log('EXTERNAL_CAPTIONS_READ_PACED slow=%s last_ms=%.1f '
+                        'step_s=%.2f hold_s=%.1f'
+                        % (_slow, _ms, READ_SLOW_STEP_S, READ_SLOW_HOLD_S))
             except Exception as exc:  # noqa: BLE001
                 self.failures += 1
                 if self.failures <= 3:
                     log(f'EXTERNAL_CAPTIONS_READ_FAILED error={exc!r}')
                 got, yt_mode = [], False
+            _t_tick = time.monotonic()
             try:
                 self._tick(got, yt_mode)
             except Exception as exc:  # noqa: BLE001
                 self.failures += 1
                 if self.failures <= 3:
                     log(f'EXTERNAL_CAPTIONS_TICK_FAILED error={exc!r}')
+            self._yt_prof("tick", _t_tick)
+            # SEM PLAYER, 10 Hz E' CARGA EMPRESTADA AO JOGO DO DONO
+            # (2026-11-03, MEDIDO). Com o player fechado o laco continuava a
+            # perguntar 10x/s -- `YOUTUBE_TICK_MS avg=0 max=0 n=49` congelado e
+            # 0,1 s de `INTERVAL_S` --, e cada volta resolve a JANELA EM PRIMEIRO
+            # PLANO (`GetForegroundWindow` + titulo) para concluir que nao ha'
+            # player nenhum. O dono joga com o Sotto a viver: enquanto nao houver
+            # leitura de player ha' 5 s, o passo desce para 0,5 s; a primeira
+            # leitura que traga qualquer coisa devolve o passo normal, e o custo
+            # de detetar um video novo sobe 0,4 s -- que o proprio carregamento
+            # do video ja' paga.
+            if got or yt_mode:
+                self._idle_since = 0.0
+            elif not getattr(self, '_idle_since', 0.0):
+                self._idle_since = time.monotonic()
+            _idle_for = (time.monotonic() - self._idle_since
+                         if getattr(self, '_idle_since', 0.0) else 0.0)
+            # PAUSA NAO PRECISA DE 10 Hz (2026-11-05, MEDIDO). Com o video
+            # PAUSADO o laco continuava a perguntar a CDP 10 vezes por segundo
+            # (`YOUTUBE_LOOP_HZ ... hz=9.7 src_reads=880`, `cdp_age_ms=16`), e
+            # cada pergunta e' uma ida e volta ao Chrome: a shell em REPOUSO
+            # media 16,3 % de um nucleo com o painel escondido e nada a tocar.
+            # `yt_mode` e' verdadeiro sempre que o ramo do YouTube corre -- nao
+            # significa que haja conteudo novo -- por isso a escada do silencio
+            # nunca descia. Uma legenda nao muda com o video parado: 0,45 s chega
+            # para ver o `play` voltar, e o custo de detetar o resume e' 0,45 s
+            # que a primeira cue ja' paga.
+            _yt_paused = bool(getattr(self, 'yt_cdp_paused', False))
+            if _yt_paused != getattr(self, '_paced_logged', None):
+                self._paced_logged = _yt_paused
+                log('YOUTUBE_POLL_PACED paused=%s interval_s=%.2f'
+                    % (_yt_paused, self.IDLE_INTERVAL_S if _yt_paused
+                       else self.INTERVAL_S))
+            # UM ALVO NOVO NAO PAGA O CASTIGO DO ALVO VELHO (2026-11-11). O
+            # `_read_slow_until` acima existe porque a leitura que custou caro
+            # pede espaco -- mas quem custou caro foi a fonte ANTIGA: depois de a
+            # fonte ADOTAR outra aba (`stats()['epoch']`), a primeira cue do alvo
+            # novo nao pode esperar `READ_SLOW_HOLD_S` (1,0 s) por uma leitura
+            # que ja' nao existe. Medido: troca -> 1a foto 388 ms com o epocario
+            # a zerar a espera, contra o passo cheio a seguir a um martelo.
+            try:
+                _src_obj = (getattr(self, '_yt_cdp_source', None)
+                            or getattr(getattr(self, 'shell', None),
+                                       '_yt_cdp_source', None))
+                _ep = int(((getattr(_src_obj, 'stats', lambda: {})() or {})
+                           .get('epoch') or 0))
+            except Exception:                 # noqa: BLE001
+                _ep = 0
+            if _ep != getattr(self, '_yt_epoch_seen', None):
+                _was = getattr(self, '_yt_epoch_seen', None)
+                self._yt_epoch_seen = _ep
+                if _was is not None and getattr(self, '_read_slow_until', 0.0):
+                    self._read_slow_until = 0.0
+                    log('YOUTUBE_READ_HOLD_DROPPED epoch=%d' % _ep)
+            # A ASSINATURA E' DO CONTEUDO, NAO DO RELOGIO (2026-11-24, MEDIDO:
+            # 16,9 ms por leitura, 4 Hz, 6,76 % de um nucleo para reler a
+            # MESMA cue de um video terminado). Custa um tuplo de ate quatro
+            # textos por volta -- nenhuma chamada ao Windows, nenhum ficheiro.
+            _cue_sig = (bool(yt_mode), len(got or ()),
+                        tuple(str(_c)[:60] for _c in (got or ())[:4]))
+            _now_cue = time.monotonic()
+            if _cue_sig != getattr(self, '_cue_sig', None):
+                self._cue_sig = _cue_sig
+                self._cue_since = _now_cue
+            _cue_stale = (_now_cue - getattr(self, '_cue_since', _now_cue)) >= STALE_CUE_S
+            _step = poll_step(_idle_for, _yt_paused,
+                              self.INTERVAL_S, self.IDLE_INTERVAL_S,
+                              time.monotonic() < getattr(self, '_read_slow_until', 0.0),
+                              stale=_cue_stale)
+            self._last_step = _step
+            # O CUSTO DO DESENHO TAMBEM E' UM NUMERO (2026-11-03). Com a leitura
+            # ja' barata (17 Hz medidos) o laco caiu para 0,5-5 Hz noutros
+            # momentos: o que sobra e' `_tick`, que pinta a janela. Sem esta
+            # medida a proxima optimizacao seria um palpite.
+            try:
+                _tk = (time.monotonic() - _t_tick) * 1000.0
+                _agg = getattr(self, '_yt_tick_agg', None)
+                if _agg is None:
+                    _agg = self._yt_tick_agg = [0, 0.0, 0.0, time.monotonic()]
+                _agg[0] += 1
+                _agg[1] += _tk
+                _agg[2] = max(_agg[2], _tk)
+                if time.monotonic() - _agg[3] >= 5.0:
+                    # Com o player minimizado (ou sem player) este agregado
+                    # congela em `n=49, avg=0` e era escrito de 5 em 5 s para
+                    # sempre. `log_repeat`: sai quando o numero MUDA.
+                    # A DECISAO DO LACO E' UM NUMERO TAMBEM (2026-11-03). Sem
+                    # isto, "nao pinta nada" nao tinha endereco: medido nesta
+                    # sessao, o laco a 4 Hz com `EXTERNAL_CAPTIONS_READ_MS`
+                    # AUSENTE (leitura <40 ms) e nenhuma linha -- ou seja o
+                    # caminho saia CEDO e nada dizia por onde.
+                    _src, _vid, _age_ms, _rows, _why = self._yt_diag_now()
+                    log_repeat('youtube-tick',
+                               'YOUTUBE_TICK_MS avg=%.0f max=%.0f n=%d'
+                               ' src=%r vid=%r cdp_age_ms=%s rows=%d why=%r'
+                               % (_agg[1] / _agg[0], _agg[2], _agg[0],
+                                  _src, _vid, _age_ms, _rows, _why))
+                    _agg[0] = 0
+                    _agg[1] = 0.0
+                    _agg[2] = 0.0
+                    _agg[3] = time.monotonic()
+            except Exception:                 # noqa: BLE001
+                pass
             # A PALAVRA A PALAVRA NAO CABE NUM INTERVALO DE 300 ms (2026-10-30).
             # O UIA custa, e por isso continua a ser lido a cada `INTERVAL_S`;
             # o que estava caro era o DESENHO. Entre duas leituras o relogio do
@@ -2142,7 +4670,17 @@ class ExternalCaptionWatcher(threading.Thread):
             # `revealed_text` sobre as palavras que ja' se conhecem. Sem isto, o
             # unico instante em que o ecra podia mudar era o do UIA, e uma frase
             # de quatro palavras entrava de uma vez.
-            if yt_mode:
+            # UM DONO POR VEZ NO ECRA (2026-11-02). Aqui, entre duas leituras,
+            # um SEGUNDO produtor (`yt_live_frame`) recompunha a linha a partir da
+            # FAIXA e de um relogio interpolado, enquanto a leitura seguinte punha a
+            # linha PINTADA pelo player. Os dois alternavam a cada 60-120 ms e o dono
+            # viu exactamente isso: *"ficam sumindo e aperecendo ou trocando a atual e
+            # a antiga ao mesmo tempo"*. MEDIDO na auditoria: 59 oscilacoes em 13,2 s,
+            # com A/B/A/B nos quadros. Quando a PINTURA esta a fornecer a linha, ela e'
+            # o unico produtor; o re-render da faixa volta so' se a pintura parar.
+            painted_now = (time.monotonic()
+                           - getattr(self, "yt_live_paint_at", 0.0)) < 2.0
+            if yt_mode and not painted_now:
                 deadline = time.monotonic() + self.INTERVAL_S
                 while not self.stop_event.is_set():
                     left = deadline - time.monotonic()
@@ -2164,12 +4702,108 @@ class ExternalCaptionWatcher(threading.Thread):
                             if self.failures <= 3:
                                 log(f'EXTERNAL_CAPTIONS_TICK_FAILED error={exc!r}')
                 continue
-            self.stop_event.wait(self.INTERVAL_S)
+            self.stop_event.wait(_step)
         self._release('stopped')
         log(f'EXTERNAL_CAPTIONS_WATCH stopped=true reads={self.reads} '
             f'failures={self.failures}')
 
+    def _yt_source_by_title(self, title):
+        """A fonte desta janela, decidida por TITULO contra a fonte CDP.
+
+        `document.title` (CDP) contra o titulo da janela (Win32). Devolve a
+        URL do video quando os dois casam, e `None` quando nao casa ou quando
+        a porta CDP ainda nao tem foto -- aí o chamador segue o caminho antigo.
+        MEDIDO 2026-11-03: os 1,5-34 s do laco da legenda estavam TODOS em
+        chamadas UIA; nenhuma delas e' precisa para saber que uma janela do
+        Chrome esta' a mostrar YouTube.
+        """
+        src = getattr(self, '_yt_cdp_source', None)
+        if src is None:
+            return None
+        try:
+            snap = src.snapshot(max_age=3.0)
+        except Exception:                 # noqa: BLE001
+            return None
+        if not snap:
+            return None
+        vid = str(snap.get('videoId') or '')
+        if not vid:
+            return None
+        doc = str(snap.get('title') or '').strip().lower()
+        win = str(title or '').strip().lower()
+        if doc and win and (doc[:40] in win or win[:40] in doc):
+            return 'https://www.youtube.com/watch?v=' + vid
+        if 'youtube' in win:
+            return 'https://www.youtube.com/watch?v=' + vid
+        return None
+
+    def _yt_src_resolver_start(self):
+        """A thread que responde "que fonte e' esta janela" SEM prender o laco.
+
+        Nasceu de uma medicao no dono (2026-11-03): `phases={'source': 11094.0}`
+        num `EXTERNAL_CAPTIONS_READ_MS ms=11094.0` -- onze segundos com a legenda
+        congelada enquanto o YouTube seguia. `player_source` e' UIA e pode bloquear
+        por segundos quando o Chrome esta' ocupado; o desenho nao pode depender
+        disso. Esta thread pergunta de 2 em 2 s e publica em `_yt_src_cache`.
+        """
+        if getattr(self, '_yt_src_thread', None) is not None:
+            return
+        import threading as _th
+
+        def _loop():
+            try:
+                import external_subs as _ext
+                UIA2, uia2 = _ext._uia()
+            except Exception:                 # noqa: BLE001
+                return
+            while not self.stop_event.is_set():
+                hwnd = int(getattr(self, 'target_hwnd', 0) or 0)
+                if hwnd:
+                    # O TITULO DECIDE, A ARVORE NAO (2026-11-03). Ver
+                    # `_yt_source_by_title`: a mesma pergunta respondida por Win32.
+                    src = None
+                    try:
+                        _t = _ext._window_title(hwnd)
+                    except Exception:         # noqa: BLE001
+                        _t = ''
+                    if _t:
+                        src = self._yt_source_by_title(_t)
+                        if src is None and getattr(self, '_yt_cdp_source', None) is None:
+                            try:
+                                src = _ext.player_source(hwnd, uia2, UIA2) or ''
+                            except Exception: # noqa: BLE001
+                                src = None
+                    if src is not None:
+                        self._yt_src_cache = (hwnd, src, time.monotonic())
+                self.stop_event.wait(2.0)
+
+        self._yt_src_thread = _th.Thread(target=_loop, name='yt-src-resolver',
+                                         daemon=True)
+        self._yt_src_thread.start()
+
     def _read(self, uia, UIA):
+        # MARCA DE ENTRADA PARA O VIGIA DE LEITURA LENTA (2026-11-03). MEDIDO: a
+        # instancia do dono ficou 60 s sem um unico tick e sem uma linha de log --
+        # o laco estava dentro de uma leitura e nao havia prova de ONDE. Este
+        # campo, lido por `SottoShell._slow_read_monitor`, faz um despejo de
+        # pilhas quando a leitura passa de `SLOW_READ_S`. Diagnostico nao cobra
+        # nada: e' uma escrita de um float.
+        self._in_read_since = time.monotonic()
+        # O ZERO DA LEITURA E' AQUI, para qualquer chamador -- a fase nunca o
+        # inventa (ver `_yt_mark`).
+        self._yt_phase_start = self._in_read_since
+        self._yt_phases = {}
+        try:
+            return self._read_inner(uia, UIA)
+        finally:
+            # `end` fecha a conta: o que nao tiver fase fica no intervalo entre
+            # `end` e a soma das outras, e deixa de ser um beco.
+            _yt_mark(self, 'end')
+            self._in_read_since = 0.0
+
+    SLOW_READ_S = 3.0
+
+    def _read_inner(self, uia, UIA):
         """What the caption box should show, and whether it is the real track.
 
         THE YOUTUBE BRANCH IS NOT THE PAGE. MEASURED 2026-10-19 in the
@@ -2188,21 +4822,238 @@ class ExternalCaptionWatcher(threading.Thread):
         RETURNS `(got, yt_mode)`.
         """
         import external_subs
+        _yt_mark(self, 'import')
+        _t_all = time.monotonic()
         hwnd = self._target_window(uia, UIA)
+        _yt_mark(self, 'target')
+        self._yt_prof("target", _t_all)
         if not hwnd:
-            return [], False
-        try:
-            source = external_subs.player_source(hwnd, uia, UIA)
-        except Exception:
+            # A ABA E' IDENTIDADE, MESMO SEM JOGADOR EM PRIMEIRO PLANO (2026-11-04).
+            # MEDIDO no arranque do dono (09:57:24 -> 09:58:29): este `return`
+            # disparava antes de a CDP ser questionada, e o log passou os 65 s
+            # em `YOUTUBE_TICK_MS src='?' vid='' cdp_age_ms=? rows=? why=''`
+            # com o Chrome aberto num video. A legenda que ele viu era o ASR;
+            # a faixa do player nunca chegou ao ecra. `/json/list` e' HTTP e
+            # nao precisa de janela nenhuma -- ver
+            # `youtube_cdp_source.foreground_source`.
+            _tabvid = ''
+            try:
+                import youtube_cdp_source
+                _cdp_src = self._yt_cdp_ensure()
+                if _cdp_src and _cdp_src is not False:
+                    _tabvid = _cdp_src.target_video_id() or ''
+                if not youtube_cdp_source.foreground_source(hwnd, _tabvid):
+                    # SEM `?` NENHUM (2026-11-04): ver `_yt_diag_now` -- o campo
+                    # que nao sabe responde `unattached`/`none`, que e' um facto,
+                    # e nunca a interrogacao que fez o dono procurar o defeito no
+                    # sitio errado.
+                    self._yt_diag = {'src': 'unattached', 'vid': '',
+                                     'age': 'none',
+                                     'rows': 0, 'why': 'no-player-window'}
+                    return [], False
+            except Exception as exc:              # noqa: BLE001
+                log('YOUTUBE_WINDOWLESS_SOURCE_FAILED error=%r' % (exc,))
+                self._yt_diag = {'src': 'unattached', 'vid': '',
+                                 'age': 'none',
+                                 'rows': 0,
+                                 'why': 'windowless-source-failed'}
+                return [], False
+            self._yt_diag = {'src': 'external:youtube', 'vid': _tabvid,
+                             'age': 'none',
+                             'rows': self._yt_cdp_row_count(),
+                             'why': 'no-foreground-cdp'}
+            log_repeat('YOUTUBE_SOURCE_WINDOWLESS',
+                       'YOUTUBE_SOURCE_WINDOWLESS video_id=%s' % _tabvid,
+                       every_s=60.0)
+        _t_src = time.monotonic()
+        # QUEM E' A FONTE NAO SE PERGUNTA 20x POR SEGUNDO (2026-11-03, MEDIDO).
+        # `player_source` le' o URL da janela pela arvore de acessibilidade e
+        # custa 60-140 ms -- e uma vez nesta sessao **6,8 s**
+        # (`EXTERNAL_CAPTIONS_READ_MS ms=6797.0`), tempo em que a legenda inteira
+        # parou. A resposta so' muda quando muda a JANELA `hwnd` (que e' barato de
+        # ler) ou quando a pagina navega -- e a navegacao invalida a foto da CDP,
+        # logo `_yt_snap_video()` deixa de responder e voltamos a perguntar.
+        source = ''
+        _cache = getattr(self, '_yt_src_cache', None)
+        if _cache and time.monotonic() - _cache[2] <= 6.0:
+            source = _cache[1]
+        # A PERGUNTA A' ARVORE DE ACESSIBILIDADE NAO BLOQUEIA O DESENHO (2026-11-03).
+        # MEDIDO no dono, com o video a tocar: `EXTERNAL_CAPTIONS_READ_MS
+        # ms=11094.0 phases={'source': 11094.0}` -- e o ecra ficou com a linha
+        # congelada enquanto o YouTube seguia (a imagem dele: o Sotto parado numa
+        # frase que o player ainda nem tinha mostrado). O cache so' valia 2 s e so'
+        # com a foto frescoa; quando a foto envelhecia (a fonte empurrada pela
+        # propria espera) o laco pagava a chamada inteira e voltava a empurrar. Agora
+        # quem pergunta e' uma thread propria (`_yt_src_resolver`), e este laco le'
+        # a ultima resposta. Uma resposta de 6 s atras ainda diz a VERDADE sobre
+        # quem e' a fonte: janela que muda de player muda de hwnd, e o resolver
+        # re-pergunta de 2 em 2 s.
+        if _cache is None:
             source = ''
+        self._yt_src_resolver_start()
+        loc = source
+        # A PORTA DA CDP E' IDENTIDADE, NAO SUSPEITA (2026-11-03): com o Chrome
+        # atras de outra janela o resolver respondia '' e o laco caia na varredura
+        # generica (1,1 s por volta). Uma aba `youtube.com/watch` e' prova
+        # positiva, independente de quem esta' em primeiro plano.
+        if not source:
+            _cdp_src = getattr(self, '_yt_cdp_source', None)
+            if _cdp_src and _cdp_src is not False:
+                # A LISTA DE ABAS E' HTTP, NAO WEBSOCKET (2026-11-03): a foto
+                # depende do `Runtime.evaluate`, que numa aba em segundo plano
+                # fica `slow (WebSocketTimeoutException)`; `/json/list` responde
+                # sempre, e `youtube.com/watch?v=` ali e' a prova da fonte.
+                try:
+                    _tabvid = _cdp_src.target_video_id()
+                except Exception:             # noqa: BLE001
+                    _tabvid = ''
+                if _tabvid:
+                    source = 'external:youtube'
+                    if _tabvid != getattr(self, 'yt_video_id', ''):
+                        _yt_mark(self, 'source-tab')
+                    loc = source
+                    log_repeat('YOUTUBE_SOURCE_BY_CDP',
+                               'YOUTUBE_SOURCE_BY_CDP video_id=%s'
+                               % _tabvid, every_s=60.0)
+        # DUAS FORMAS DO MESMO NOME (2026-11-03, MEDIDO AO VIVO). O resolvedor
+        # publica `_yt_source_by_title`, que devolve a URL
+        # (`https://www.youtube.com/watch?v=...`), e o ramo do YouTube compara com
+        # `'external:youtube'`. Com a porta CDP ligada, essa URL era o valor
+        # unico: o ramo do YouTube NAO rodava, e a varredura generica tambem nao
+        # (a foto estava fresca) -- medido nesta sessao,
+        # `YOUTUBE_TICK_MS src='https://www.youtube.com/watch?v=Rgx8dpiPwpA'
+        # why='cdp-fresh-skip'` a 4 Hz, com tres linhas pintadas no player e NADA
+        # no Sotto. A URL e' a mesma afirmacao; passa a ter o mesmo nome.
+        if source and 'youtube.com/watch' in str(source):
+            source = 'external:youtube'
+        _yt_mark(self, 'source')
+        loc = source
+        self._yt_prof("source", _t_src)
         if source == 'external:youtube':
-            lines, urgent = self._youtube(hwnd, uia, UIA)
+            if os.environ.get("SOTTO_YT_CPROFILE") == "1":
+                import cProfile, pstats
+                _prof = cProfile.Profile()
+                _prof.enable()
+            try:
+                lines, urgent = self._youtube(hwnd, uia, UIA)
+                # A FASE QUE NAO TINHA NOME (2026-11-03). `EXTERNAL_CAPTIONS_READ_MS
+                # ms=1250.0 phases={'target': 109.0, 'source': 109.0}`: o unico
+                # numero grande era o TOTAL, e a diferenca caia toda dentro desta
+                # chamada sem um marco que a partisse. `youtube` fecha a conta.
+                _yt_mark(self, 'youtube')
+                self._yt_prof("youtube", _t_src)
+                # UM PRODUTOR POR VEZ (2026-11-03, MEDIDO). Quando a leitura
+                # forneceu linhas, o re-render da faixa a 60 ms tem de CALAR: os
+                # dois alternavam no mesmo ecra (log: `src=...track` e
+                # `src=...liveframe` a cada 150 ms, com janelas diferentes), que e'
+                # o defeito que o dono descreveu como *"trocando a atual e a antiga
+                # ao mesmo tempo"*. O liveframe passa a ser so' o que preenche um
+                # silencio de leitura.
+                if lines:
+                    self.yt_live_paint_at = time.monotonic()
+            finally:
+                if os.environ.get("SOTTO_YT_CPROFILE") == "1":
+                    _prof.disable()
+                    self._yt_calls = int(getattr(self, "_yt_calls", 0)) + 1
+                    if self._yt_calls % 20 == 1:
+                        try:
+                            with open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                                     "_main", "_yt-cprofile.txt"), "w") as _fh:
+                                pstats.Stats(_prof, stream=_fh).sort_stats(
+                                    "cumulative").print_stats(28)
+                        except Exception:  # noqa: BLE001
+                            pass
             if urgent:
                 # NO TRACK: the ASR is the base and it comes back NOW. The
                 # owner's rule, verbatim: *"se for um video sem legenda, vaio
                 # transcrever ao vivo igual."*
                 self._release('youtube-no-track')
             return lines, True
+        # A PORTA CDP ABERTA NAO CAI NA LEITURA GENERICA DA PAGINA (2026-11-03).
+        # MEDIDO com o despejo novo (`caption-read-slow`): o laco passou 24 s em
+        # `external_subs.caption_lines(hwnd, uia, UIA)` -- a varredura UIA da
+        # PAGINA inteira, que e' a rede para players que nao sao Chrome. Com a
+        # porta aberta o YouTube ja' tem um leitor proprio e esta' varredura so'
+        # compra segundos: o tick devolve nada e a foto seguinte (80 ms) desenha.
+        _cdp = getattr(self, '_yt_cdp_source', None)
+        if _cdp and _cdp is not False:
+            # ... MAS UMA PORTA MUDA NAO DEIXA O ECRA VAZIO (2026-11-03).
+            # MEDIDO: `YOUTUBE_CDP_HEALTH age=None ... reads=0` por mais de um
+            # minuto com a fonte `attached` -- uma ligacao que nunca publica.
+            # Com a leitura generica desligada isso era 1 frame em 70 s: o dono
+            # ficava sem legenda nenhuma. Muda ha' 8 s, a rede volta.
+            try:
+                _age = _cdp.snapshot_age()
+            except Exception:                 # noqa: BLE001
+                _age = None
+            # A ETIQUETA DIZ O QUE ACONTECEU, NAO O RAMO EM QUE ESTAMOS
+            # (2026-11-04). MEDIDO no log do dono: `YOUTUBE_TICK_MS src='?'
+            # rows=0 cdp_age_ms=789250 why='cdp-fresh-skip'` -- 789 s de foto nao
+            # e' "fresh", e este ramo NAO saltou nada: caiu na varredura. Quem
+            # le o log foi procurar o problema no sitio errado porque a palavra
+            # mentia.
+            _fresh = _age is not None and _age <= 8.0
+            self._yt_diag = {'src': (loc or ('external:youtube'
+                                             if getattr(self, 'yt_video_id', '')
+                                             else 'unattached')),
+                             'vid': getattr(self, 'yt_video_id', ''),
+                             'age': ('%.0f' % (_age * 1000.0)) if _age is not None else 'none',
+                             'rows': self._yt_cdp_row_count(),
+                             'why': ('cdp-fresh-skip' if _fresh
+                                     else ('cdp-no-snapshot' if _age is None
+                                           else 'cdp-stale-fallback'))}
+            if _fresh:
+                return [], False
+        # A VARREDURA DA PAGINA INTEIRA E' PARA QUEM PINTA A LEGENDA NA PAGINA
+        # (2026-11-03, MEDIDO AO VIVO — e' a queixa do dono, verbatim: *"uma
+        # porra de extrair legenda do youtube e dar display na minha tela nao
+        # era pra ser nem o minimo de pesado"*).
+        #
+        # O QUE ESTAVA A ACONTECER (pid 49892, 10:41; Chrome aberto, nada a
+        # tocar, painel fechado): cada leitura varria a arvore UIA da PAGINA
+        # inteira — 55 ms de CPU MEDIDOS (`external_subs.caption_lines` sobre a
+        # janela do Chrome: 62 / 31 / 16 ms em tres chamadas seguidas) — quatro
+        # vezes por segundo, para concluir que nao ha legenda nenhuma numa
+        # pagina que nao e' um player. Custo medido: `EXTERNAL_CAPTIONS_READ_MS
+        # ms=765..1547` sem parar e **22 % de um nucleo** na shell em REPOUSO.
+        #
+        # A varredura existe por UMA razao: players que PINTAM a legenda na
+        # propria pagina (Stremio/Electron). Isso e' uma IDENTIDADE POSITIVA, e
+        # `player_source` ja' a devolve — entao a varredura passa a exigir essa
+        # identidade em vez de acontecer por omissao. Fonte desconhecida (toda a
+        # janela que nao e' player) nao paga nada; a rede fica a uma varredura de
+        # 5 em 5 s, que e' o tecto do atraso para um pintor que o catalogo ainda
+        # nao conheca.
+        # UM BROWSER NAO PINTA A LEGENDA NA PAGINA (2026-11-05). MEDIDO no log
+        # vivo da instancia do dono, com o video PAUSADO:
+        # `EXTERNAL_CAPTIONS_READ_MS ms=1547..1812 phases={'import': 0.0,
+        # 'target': 0.0, 'source': 0.0, 'end': 1593.0}` -- toda a leitura dentro
+        # da varredura UIA da janela do Chrome, uma vez a cada 5 s, para concluir
+        # que uma pagina de video parada nao tem legenda. A varredura existe para
+        # quem PINTA a legenda na propria pagina (Stremio, que e' Electron); um
+        # browser com barra de endereco e' lido pela CDP ou pela arvore da
+        # legenda, e nunca por pintura. Identidade POSITIVA: `_is_browser` sobre o
+        # processo da janela, nao o silencio da leitura anterior.
+        try:
+            if hwnd and external_subs._is_browser(external_subs._process_name(hwnd)):
+                self._page_scan_browser_skipped = int(
+                    getattr(self, '_page_scan_browser_skipped', 0)) + 1
+                return [], False
+        except Exception:                     # noqa: BLE001
+            pass
+        if source != 'external:stremio':
+            _now = time.monotonic()
+            if _now - getattr(self, '_page_scan_at', 0.0) < 5.0:
+                self._page_scan_skipped = int(getattr(self, '_page_scan_skipped', 0)) + 1
+                return [], False
+            self._page_scan_at = _now
+            self._page_scan_scanned = int(getattr(self, '_page_scan_scanned', 0)) + 1
+            log_repeat('PAGE_SCAN_NET',
+                       'PAGE_SCAN_NET source=%r scanned=%d skipped=%d why=a varredura '
+                       'da pagina e so para quem pinta a legenda na pagina (Stremio); '
+                       'o resto nao paga 55 ms'
+                       % (source, self._page_scan_scanned,
+                          int(getattr(self, '_page_scan_skipped', 0))), 60.0)
         return external_subs.caption_lines(hwnd, uia, UIA), False
 
     def _target_window(self, uia, UIA):
@@ -2214,7 +5065,33 @@ class ExternalCaptionWatcher(threading.Thread):
         remembered so the captions do not vanish the moment the owner
         presses Alt+C (Sotto becomes foreground) or switches to another app.
         """
+        # UM ALVO FIXO PARA A LANE MEDIR SEM TOCAR NO ECRA DO DONO (2026-11-03).
+        # `SOTTO_YT_TARGET_HWND` existe SO' para instrumento: sem ela o
+        # comportamento e' exactamente o de antes (a janela em primeiro plano,
+        # ou a que ja' se lia). Uma lane que precisa de medir o caminho do
+        # YouTube nao pode depender de o Chrome estar em primeiro plano.
+        _forced = os.environ.get('SOTTO_YT_TARGET_HWND', '').strip()
+        if _forced:
+            try:
+                # O RESOLVEDOR DE FONTE LE' `target_hwnd` (2026-11-03): sem
+                # esta linha o alvo fixo devolvia o hwnd mas a thread que
+                # pergunta "que fonte e' esta janela" ficava com 0 e nunca
+                # respondia -- medido, `cdp: []` e nenhum `YOUTUBE_CDP_SOURCE`
+                # num arranque com alvo fixo.
+                self.target_hwnd = int(_forced, 0)
+                return self.target_hwnd
+            except ValueError:
+                pass
         import external_subs
+        # O ALVO NAO SE REDECIDE 25x POR SEGUNDO (2026-11-03, MEDIDO).
+        # `EXTERNAL_CAPTIONS_READ_MS phases={'target': 47..172}` repetido: a
+        # leitura da janela e' de microssegundos, mas DECIDIR A FONTE custa
+        # 46-63 ms. Uma pergunta que so' muda quando muda a janela nao precisa
+        # da resposta a cada 40 ms: 200 ms de validade e' mais rapido do que
+        # qualquer olho distingue uma troca de janela.
+        _tc = getattr(self, '_target_cache', None)
+        if _tc and time.monotonic() - _tc[0] <= 0.2:
+            return _tc[1]
         fg = int(ctypes.windll.user32.GetForegroundWindow() or 0)
         if fg:
             try:
@@ -2222,12 +5099,85 @@ class ExternalCaptionWatcher(threading.Thread):
             except Exception:
                 title = ''
             if not title.startswith('sotto'):
-                try:
-                    src = external_subs.player_source(fg, uia, UIA)
-                except Exception:
-                    src = ''
+                # O VEREDICTO "ESTA JANELA E' UM PLAYER" FICA 2 s (2026-11-03,
+                # MEDIDO). Perguntar isto a' arvore de acessibilidade em cada um
+                # dos ~20 ticks custa 60-140 ms e uma vez custou **6,8 s**
+                # (`EXTERNAL_CAPTIONS_READ_MS ms=6797.0`): seis segundos em que a
+                # legenda nao mudou porque o laco estava preso a' espera do Chrome.
+                # A chave e' (janela, titulo) -- ambos lidos por Win32 em
+                # microssegundos, e navegar muda o titulo.
+                _fc = getattr(self, '_yt_fg_cache', None)
+                # SEIS SEGUNDOS, NAO DOIS (2026-11-03). MEDIDO no dono:
+                # `EXTERNAL_CAPTIONS_READ_MS ms=1579.0 phases={'target': 1579.0}`
+                # repetido -- a chamada UIA levou 1,6 s e, com um cache de 2 s, o
+                # laco pagava-a a cada dois segundos, ou seja metade do tempo com a
+                # legenda parada enquanto ela ja' estava no ecra. A chave e'
+                # (janela, TITULO): navegar muda o titulo em microssegundos, logo o
+                # cache longo nao atrasa uma troca de video -- so' deixa de
+                # re-perguntar o que ainda nao mudou.
+                _fast = self._yt_source_by_title(title)
+                if _fast is None:
+                    # UMA FOTO VELHA DA CDP DIZ MAIS DO QUE A UIA (2026-11-03):
+                    # o cache do veredicto expirava a cada 6 s e o laco pagava
+                    # 1,4 s de UIA (0,4 Hz). A porta ligada a uma aba do YouTube
+                    # nao muda por a foto envelhecer.
+                    _cdp_src = getattr(self, '_yt_cdp_source', None)
+                    if _cdp_src and _cdp_src is not False:
+                        try:
+                            _old = _cdp_src.snapshot(max_age=30.0)
+                        except Exception:     # noqa: BLE001
+                            _old = None
+                        if _old and _old.get('videoId'):
+                            _fast = ('https://www.youtube.com/watch?v='
+                                     + str(_old.get('videoId')))
+                if _fast is not None:
+                    # A JANELA E' O PLAYER SEM PERGUNTAR A' ARVORE (2026-11-03).
+                    # A fonte CDP ja' sabe o titulo do documento e o id do video;
+                    # comparar o titulo da janela (Win32, microssegundos) com o
+                    # do documento dispensa a chamada UIA que mediu 1,5 s, 6,8 s
+                    # e um dia 34 s. A UIA fica so' para quando a porta CDP nao
+                    # existe.
+                    src = _fast
+                    self._yt_fg_cache = (fg, title, src, time.monotonic())
+                elif (_fc and _fc[0] == fg and _fc[1] == title
+                        and time.monotonic() - _fc[3] <= 6.0):
+                    src = _fc[2]
+                else:
+                    # A ARVORE DE ACESSIBILIDADE NAO SE ABRE POR QUALQUER JANELA
+                    # (2026-11-03, MEDIDO). `player_source` so' pode responder
+                    # "player" por TITULO (precisa de um browser) ou por URL
+                    # (que aqui ainda nao existe): as duas provas se decidem
+                    # com o titulo e o NOME DO PROCESSO, ambos Win32 em
+                    # microssegundos. Perguntar a' UIA primeiro custou 29 s numa
+                    # unica leitura (`EXTERNAL_CAPTIONS_READ_MS ms=28953.0
+                    # phases={'target': 28953.0}`) -- e esses 29 s NAO SAO SO'
+                    # DO LEITOR: a chamada COM segura o GIL, e o observador do
+                    # Ctrl+Space, que roda a 25 ms, ficou 29,3 s sem correr
+                    # (`HOTKEY_OBSERVER_ALIVE max_gap_ms=29266`), logo as
+                    # pressoes do dono nesse intervalo nao existiram para a app.
+                    # O jogo dele, o editor e o Explorer nao tem "youtube" nem
+                    # "stremio" no titulo nem no nome: a UIA nunca e' chamada.
+                    try:
+                        _proc = external_subs._process_name(fg)
+                    except Exception:
+                        _proc = ''
+                    _tl = str(title or '').lower()
+                    if ('youtube' in _tl or 'stremio' in _tl
+                            or 'stremio' in str(_proc or '').lower()
+                            or not _proc):
+                        # `not _proc` = nao se sabe quem e' a janela: ai a
+                        # pergunta cara volta a ser feita, porque uma janela
+                        # desconhecida pode ser um player que a CDP nao ve.
+                        try:
+                            src = external_subs.player_source(fg, uia, UIA)
+                        except Exception:
+                            src = ''
+                    else:
+                        src = ''
+                    self._yt_fg_cache = (fg, title, src, time.monotonic())
                 if src:
                     self.target_hwnd = fg
+                    self._target_cache = (time.monotonic(), fg)
         if not self.target_hwnd or not ctypes.windll.user32.IsWindow(
                 wt.HWND(self.target_hwnd)):
             # NO WINDOW IN THE FOREGROUND (or the one we had is gone). The
@@ -2245,9 +5195,167 @@ class ExternalCaptionWatcher(threading.Thread):
                 self.target_hwnd = int(found)
         if self.target_hwnd and ctypes.windll.user32.IsWindow(
                 wt.HWND(self.target_hwnd)):
+            # A RESPOSTA FICA EM CACHE, VENHA DE ONDE VIER (2026-11-03,
+            # MEDIDO). `_target_cache` so' era escrito no ramo "a janela em
+            # primeiro plano E' o player"; com o JOGO em primeiro plano e a
+            # janela do YouTube lembrada, a funcao refazia a decisao inteira
+            # (titulo, fonte CDP, `find_player_window`) em CADA tick de 40 ms --
+            # `EXTERNAL_CAPTIONS_READ_MS phases={'target': 47..63}` repetido, e
+            # o laco externo a gastar **95,6 % de um nucleo** (medido por
+            # `GetThreadTimes` no pid 28044, 5 s de amostra: uma thread em
+            # 95,6 %, as outras abaixo de 8 %). O cache de 200 ms e' o MESMO
+            # numero do ramo de cima, com a MESMA razao: a janela nao muda a
+            # 25 Hz.
+            self._target_cache = (time.monotonic(), int(self.target_hwnd))
             return int(self.target_hwnd)
         self.target_hwnd = 0
         return 0
+
+    def _yt_rows(self, painted, hwnd=None, uia=None, UIA=None):
+        _t0 = time.monotonic()
+        try:
+            return self._yt_rows_impl(painted, hwnd=hwnd, uia=uia, UIA=UIA)
+        finally:
+            self._yt_prof("rows", _t0)
+
+    #: QUANTO TEMPO UMA MUDANCA DE LINHAS TEM DE SE AGUENTAR (2026-11-02). A caixa
+    #: do player tem 2-3 linhas e ele ROLA a mais antiga para fora enquanto a nova
+    #: cresce; nesse instante ele desenha 3 linhas e volta a 2. MEDIDO no log do
+    #: dono (auditoria de 23:07): 3<->2 a cada 60-500 ms com a MESMA ultima linha,
+    #: e e' isso que ele chama *"ficando sumindo e aperecendo"*. Crescer e'
+    #: imediato (e' o que o player esta a escrever); ENCOLHER ou ROLAR espera.
+    ROWS_SETTLE_S = 0.28
+
+    def _yt_rows_is_player_step(self, rows, shown):
+        """A mudanca e' o PROPRIO passo do player (escrever, rolar, largar)?
+
+        MEDIDO 2026-11-03 contra a legenda viva (instrumento
+        `_main/_yt-live-latency.py`, 45 s a tocar, video `I5NztYu4HL8`):
+        53 mudancas de linhas no player, 6 reproduzidas, 47 perdidas, 23 quadros
+        do Sotto com texto que o player ja' tinha deixado para tras. A histerese
+        de 280 ms e' metade desse numero: um ROLAR legitimo -- o player empurra
+        a linha velha para fora e a nova cresce -- ficava retido, e o ecra
+        mostrava o instante anterior enquanto o player ja' estava no seguinte.
+
+        Os tres passos que o player faz, e que agora passam NO MESMO tick:
+          * **cresceu**: mesma cabeca, a ultima linha alonga-se;
+          * **rolou**: as linhas subiram uma posicao (a primeira saiu da caixa)
+            e a ultima cresceu;
+          * **largou o fim**: as linhas de cima ficaram e a ultima saiu.
+        O que continua a esperar 280 ms e' so' uma mudanca que nao e' nenhum
+        destes -- uma permuta ou um encolher do MEIO, que nao e' um passo do
+        player e por isso pode ser um quadro transitorio da leitura.
+        """
+        rows = list(rows or ())
+        shown = list(shown or ())
+        if not rows or not shown:
+            return False
+        count = len(rows)
+        # escrever: cabeca igual, ultima linha alonga-se
+        if (count == len(shown) and rows[:-1] == shown[:-1]
+                and rows[-1].startswith(shown[-1])):
+            return True
+        # rolar: as de baixo subiram uma posicao e a primeira saiu da caixa. A
+        # linha nova pode CONTINUAR a que estava (`startswith`) ou ser um cue
+        # novo -- as duas sao o passo do player; o que nao passa e' uma cabeca
+        # que nao casa, que so' pode ser um quadro transitorio da leitura.
+        if count <= len(shown) and rows[:-1] == shown[1:count]:
+            return True
+        # largar o fim: as de cima ficaram
+        if count < len(shown) and rows == shown[:count]:
+            return True
+        return False
+
+    def _yt_rows_settle(self, rows):
+        """Histerese das LINHAS: um passo do player passa ja', o resto insiste.
+
+        A regra, medida em 2026-11-02 contra o log:
+          * as linhas CRESCERAM (a ultima e' um alongamento da que estava) -> adoptar
+            no mesmo tick, porque e' o player a escrever;
+          * qualquer outra mudanca (rolar a velha para fora, 3 -> 2, 2 -> 1) -> so'
+            depois de `ROWS_SETTLE_S` com a MESMA proposta. Um quadro transitorio
+            do player nao chega ao ecra dele.
+
+        E o que mudou em 2026-11-03: o ROLAR e o LARGAR tambem sao passos do
+        player, e nao quadros transitorios da leitura -- ver
+        `_yt_rows_is_player_step` para a medicao que o obrigou.
+        """
+        rows = [str(r) for r in (rows or ()) if str(r).strip()]
+        shown = getattr(self, "yt_rows_shown", None)
+        if shown is None or rows == shown:
+            self.yt_rows_shown = rows
+            self.yt_rows_pending = None
+            return rows
+        if self._yt_rows_is_player_step(rows, shown):
+            self.yt_rows_shown = rows
+            self.yt_rows_pending = None
+            return rows
+        pending = getattr(self, "yt_rows_pending", None)
+        now = time.monotonic()
+        if pending is None or pending[0] != rows:
+            self.yt_rows_pending = (rows, now)
+            return list(shown)
+        if now - pending[1] >= self.ROWS_SETTLE_S:
+            self.yt_rows_shown = rows
+            self.yt_rows_pending = None
+            return rows
+        return list(shown)
+
+    def _yt_rows_impl(self, painted, hwnd=None, uia=None, UIA=None):
+        """As linhas a desenhar: o que o player pintou, NAS LINHAS dele.
+
+        UMA FONTE, UMA FOTO (2026-11-02). Aqui havia DUAS leituras -- nomes no
+        tick e os rects numa segunda chamada quando o texto mudava -- e o desenho
+        saia de duas fotos diferentes: *"ficam sumindo e aperecendo ou trocando a
+        atual e a antiga ao mesmo tempo"*, verbatim do dono. Agora `_youtube_painted`
+        faz UMA leitura (nomes + rects, reaproveitando o rect de cada filho que nao
+        mudou) e esta funcao so' traduz ESSA foto em linhas.
+        """
+        _t0 = time.monotonic()
+        try:
+            cdp_rows = getattr(self, 'yt_cdp_rows', None)
+            if cdp_rows is not None:
+                # A FOTO DA CDP E' A DO PLAYER, LINHA A LINHA (2026-11-03): nao se
+                # reagrupa e nao se retem. A histerese de 280 ms existe para
+                # esconder TRANSITORIOS DA NOSSA LEITURA; um quadro que veio do DOM
+                # do player e' o que ele esta' a mostrar, inclusive a rolagem.
+                self.yt_cdp_rows = None
+                self.yt_live_paint_at = time.monotonic()
+                return list(cdp_rows)
+            import youtube_window as _ytw
+            rows = _ytw.painted_rows(painted, getattr(self, 'yt_paint_items', None))
+            if os.environ.get("SOTTO_YT_PROFILE") == "1" and painted and not rows:
+                self._yt_prof("rows-empty", _t0, "painted=%r items=%r"
+                              % (painted[:6], (getattr(self, "yt_paint_items", None) or [])[:3]))
+            settled = self._yt_rows_settle(rows)
+            if settled:
+                self.yt_live_paint_at = time.monotonic()
+            if os.environ.get("SOTTO_YT_PROFILE") == "1" and settled != rows:
+                self._yt_prof("rows-hold", _t0, "cand=%r shown=%r" % (rows, settled))
+            return settled
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
+            return []
+
+    def _yt_words_pool(self, track, t=None):
+        """As palavras da faixa servida, uma vez por faixa (nao por tick).
+
+        O laco de pintura corre a cada ~60 ms: varrer 1436 cues por tick seria
+        trabalho a mais no fio da shell. A faixa e' um objecto novo quando muda
+        (`youtube_track_thread` reconstroi), por isso a identidade basta como
+        chave -- nunca um `id` reciclado nem uma data de cache.
+        """
+        cached = getattr(self, '_yt_pool', None)
+        if cached and cached[0] is track:
+            return cached[1]
+        try:
+            import youtube_window as _ytw
+            pool = _ytw.track_words(track.get('cues') or ())
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_WORDS_POOL_FAILED error={exc!r}')
+            pool = set()
+        self._yt_pool = (track, pool)
+        return pool
 
     def _youtube_painted(self, hwnd, uia, UIA):
         """The words the player is painting RIGHT NOW -> [] when there are none.
@@ -2259,17 +5367,820 @@ class ExternalCaptionWatcher(threading.Thread):
         """
         try:
             import youtube_captions
-            got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd)
+            _t0 = time.monotonic()
+            # SEM RECTS NO TICK (2026-11-02): cada rect e' uma chamada fora do
+            # processo, e uma cue tem 12-18 filhos -- MEDIDO 62-125 ms por leitura,
+            # que era o relogio da legenda. O rect e' lido quando o TEXTO MUDA
+            # (`_yt_rows`), nao em cada tick.
+            # UMA FOTO POR TICK, COM OS RECTS DELA (2026-11-02). O dono viu a
+            # legenda *"flickando"*, *"sumindo e aperecendo ou trocando a atual e a
+            # antiga ao mesmo tempo"*: a leitura barata (so' nomes) montava as linhas
+            # com os RECTS do tick anterior, e o desenho alternava entre duas
+            # geometrias.
+            #
+            # E O RECT NAO SE REAPROVEITA DE OUTRA FOTO (2026-11-03). O
+            # reaproveitamento por indice existia para poupar 4 ms por filho e
+            # custou a 1:1: numa ROLAGEM o player mantem as mesmas palavras em
+            # indices diferentes, a palavra que sobreviveu no mesmo indice ja'
+            # mudou de LINHA, e `rows_from_items` agrupava pelo `left` com a
+            # geometria do instante anterior -- palavras certas, ordem trocada.
+            # MEDIDO com `_main/_yt-live-latency.py`: 20 de 32 quadros errados
+            # desse tipo. Agora cada leitura traz os rects DELA, so' os dela.
+            # A CDP E' A FONTE PRIMARIA QUANDO EXISTE (2026-11-03, MEDIDO).
+            # A leitura pela arvore de acessibilidade custa 62-110 ms por tick e
+            # le o que o Chrome EXPOE -- inclusive o no' antigo e o novo enquanto
+            # a cue vira, que e' a origem medida das linhas `['a', 'a a resposta
+            # em cima do Sniper']`. A CDP lê o DOM do player: 10 ms, as linhas
+            # que ele tem, e sem nos fantasmas. A UIA continua a ser a rede:
+            # quando a porta nao responde, o caminho antigo corre igual.
+            snap = self._yt_cdp_snapshot(hwnd, uia, UIA,
+                                        declared=getattr(self, 'yt_video_id', '') or None)
+            if snap is not None:
+                # AS LINHAS VEM PRONTAS DO DOM (2026-11-03). O `.caption-visual-line`
+                # E' a linha que o player desenhou: reagrupar por `mid` so' pode
+                # estragar -- e estragou, medido: `['a affliction ali ja' pronto ali
+                # do']` onde o player tem `['a larocache. affliction ali tem ja'
+                # pronto uma rift']`. Com o snapshot a decisao de quebra de linha
+                # deixa de ser nossa.
+                self.yt_cdp_rows = list(snap['rows'])
+                # `words` SAO PALAVRAS nos dois caminhos (2026-11-03). A arvore
+                # de acessibilidade expoe um no' por PALAVRA; o DOM expoe um por
+                # LINHA (`ytp-caption-segment`). Alinhamento e revelacao contam
+                # palavras, por isso a linha parte-se aqui -- senao o mesmo
+                # instante tinha 20 'palavras' por uma fonte e 2 pela outra, e o
+                # desenho alternava entre as duas geometrias.
+                got = {'words': [w for line in snap['rows'] for w in line.split()],
+                       'items': snap['items'], 'why': 'cdp'}
+            elif getattr(self, '_yt_cdp_source', None) is not None:
+                # A PORTA ESTA' ABERTA MAS A FOTO AINDA NAO CHEGOU (2026-11-03).
+                # MEDIDO no dono: `EXTERNAL_CAPTIONS_READ_MS ms=18921.0
+                # phases={'painted': 17843.0}` no primeiro tick depois de a fonte
+                # CDP ficar `attached` -- a foto da'None enquanto aquece, o ramo
+                # antigo caia na arvore de acessibilidade e a leitura de palavras
+                # levou DEZASSETE SEGUNDOS com o video em pausa (pagina calma, e a
+                # chamada UIA prende na mesma). Com a porta aberta a UIA ja' nao e'
+                # a rede: as linhas do ultimo snapshot continuam validas e a foto
+                # seguinte chega em 80 ms.
+                got = {'words': [w for line in (getattr(self, 'yt_cdp_rows', None) or [])
+                                 for w in line.split()],
+                       'items': [], 'why': 'cdp-stale'}
+                # O ARGUMENTO E' O PROPRIO OBJETO, nao um nome solto (medido
+                # 2026-11-09 na instancia do dono: `YOUTUBE_PAINT_READ_FAILED
+                # error=NameError("name 'source' is not defined")` a 10 Hz -- o
+                # ramo da foto VELHA levantava ANTES de entregar `got`, e a
+                # excecao era engolida pelo `except` exterior, logo nenhuma linha
+                # chegava ao ecra enquanto o snapshot aquecia).
+                self._yt_health_tick(self._yt_cdp_source, time.monotonic())
+            else:
+                self.yt_cdp_rows = None
+                got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd,
+                                                     with_rect=True)
+            if got and got.get("items"):
+                self.yt_paint_items = got["items"]
+            self._yt_prof("paint", _t0)
+            if os.environ.get("SOTTO_YT_PROFILE") == "1":
+                self._yt_prof("words", _t0, "why=%s n=%d words=%r"
+                              % (got.get("why") if isinstance(got, dict) else "?",
+                                 len((got or {}).get("words") or ()),
+                                 ((got or {}).get("words") or [])[:14]))
+            # A LEITURA E' O RELOGIO DA LEGENDA (2026-11-02). MEDIDO no log do
+            # dono antes do cache da janela: decisoes de pintura a 1,6-3 s de
+            # distancia, porque cada leitura varria a arvore do Chrome inteira.
+            # Este numero e' o que prova a cura -- um log que so' aparece quando
+            # doi', e no maximo a cada 5 s.
+            _ms = (time.monotonic() - _t0) * 1000.0
+            if _ms > 50.0:
+                _now = time.monotonic()
+                if _now - getattr(self, 'yt_read_slow_logged', 0.0) > 5.0:
+                    self.yt_read_slow_logged = _now
+                    log('YOUTUBE_PAINT_READ_MS ms=%.1f' % _ms)
         except Exception as exc:  # noqa: BLE001
             log(f'YOUTUBE_PAINT_READ_FAILED error={exc!r}')
             return []
         words = got.get('words') or []
+        # OS RECTS SÃO A QUEBRA DE LINHA DO PLAYER (2026-11-02): guardam-se aqui
+        # para `_yt_rows` compor as MESMAS linhas que ele desenhou, sem re-quebrar.
+        self.yt_paint_items = got.get('items') or []
         why = str(got.get('why') or '')
         if why != self.yt_paint_why:
             self.yt_paint_why = why
             log(f'YOUTUBE_PAINT_STATE why={why} words={len(words)}')
+        # A LEGENDA PODE PARAR COM O PLAYER A PINTAR (2026-11-03, MEDIDO).
+        # Durante uma medicao, o video tocava (`CDP` com `rows` preenchidas) e
+        # a arvore de acessibilidade do Chrome deixou de expor os filhos da
+        # janela de legenda: 4 minutos sem um unico `YOUTUBE_CAPTION` e sem uma
+        # unica linha de log a dizer porque -- a leitura continuava a 62-110 ms,
+        # vazia. Um cliente UIA NOVO, noutro processo, tambem veio vazio, o que
+        # poe o piso no Chrome e nao no Sotto. O que faltava era o NOME da
+        # paragem: esta linha diz ha' quanto tempo a pintura esta' vazia, uma
+        # vez por 5 s, e o silencio deixa de ser um estado nao escrito.
+        _now = time.monotonic()
+        if words:
+            self.yt_paint_stall_since = None
+        elif why.startswith('no-painted-caption'):
+            since = getattr(self, 'yt_paint_stall_since', None)
+            if since is None:
+                self.yt_paint_stall_since = _now
+            elif _now - getattr(self, 'yt_paint_stall_logged', 0.0) > 5.0:
+                self.yt_paint_stall_logged = _now
+                log('YOUTUBE_PAINT_STALL seconds=%.1f why=%s'
+                    % (_now - since, why))
         return words
 
+    def _yt_cdp_ensure(self, declared=None):
+        """A fonte CDP viva, criada AQUI e nao escondida no leitor da foto.
+
+        MEDIDO 2026-11-03, no banco `_main/yt-read-live-bench.py`: a fonte so'
+        nascia dentro de `_yt_cdp_snapshot`, que so' corre DEPOIS de o id do
+        video ser lido -- e o id era lido pela ARVORE (94-109 ms num tick bom,
+        dezenas de segundos num mau). Quando a varredura UIA falhava, o
+        `_youtube` saia em `no-video-id` e a porta CDP nunca chegava a abrir:
+        o caminho barato existia e nao era alcancavel. Agora a porta abre
+        primeiro e o id vem dela.
+        """
+        if os.environ.get('SOTTO_YT_CDP', '1') == '0':
+            return None
+        source = getattr(self, '_yt_cdp_source', None)
+        if source is False:
+            return None
+        if source is None:
+            # A FONTE NASCE NO ARRANQUE E E' UMA SO' (2026-11-04). MEDIDO no
+            # log do dono: `start_caption_pipeline` (SottoShell) chamava
+            # `self._yt_cdp_ensure()` -- um metodo que so' existe NESTE objeto.
+            # O `AttributeError` era apanhado e publicado como
+            # `YOUTUBE_CDP_PREOPEN_FAILED`, portanto o arranque nunca pedia o
+            # attach: a porta abria no primeiro tick do laco (4,4 s depois de a
+            # app subir, medido as 10:06:36 -> 10:06:40). Agora a shell cria a
+            # fonte no arranque e este objeto ADOTA a dela, para nao haver duas
+            # threads a ler a mesma aba.
+            _owned = getattr(getattr(self, 'shell', None), '_yt_cdp_source', None)
+            if _owned is not None and _owned is not False:
+                self._yt_cdp_source = _owned
+                source = _owned
+        if source is not None:
+            if declared:
+                try:
+                    source.set_video_id(declared)
+                except Exception:             # noqa: BLE001
+                    pass
+            return source
+        try:
+            import youtube_cdp_source
+        except Exception as exc:  # noqa: BLE001
+            log('YOUTUBE_CDP_SOURCE import_failed=%r' % (exc,))
+            self._yt_cdp_source = False
+            return None
+        # UMA FONTE POR PROCESSO (2026-11-09). Medido no log do dono: 675
+        # `YOUTUBE_CDP_SOURCE state=attached` em 600 s, todas identicas -- o memo
+        # que deduplica vive DENTRO do objeto, logo 675 copias da mesma linha sao
+        # 675 objetos, cada um com dois fios e uma `/json/list` de arranque. Este
+        # `self._yt_cdp_source` nao bastava porque o watcher e a shell guardam o
+        # seu; o registo do modulo e' um so' para os dois.
+        source = youtube_cdp_source.live_source(
+            lambda: youtube_cdp_source.CdpCaptionSource(log=log), log=log)
+        self._yt_cdp_source = source
+        if declared:
+            try:
+                source.set_video_id(declared)
+            except Exception:                 # noqa: BLE001
+                pass
+        try:
+            source.start()
+        except Exception as exc:  # noqa: BLE001
+            log('YOUTUBE_CDP_SOURCE start_failed=%r' % (exc,))
+            self._yt_cdp_source = False
+            # O registo esquece-a: uma fonte que nao arrancou nao pode ser
+            # devolvida a quem pedir a seguir.
+            youtube_cdp_source.live_source_clear(source)
+            return None
+        return source
+
+    #: QUANTOS SEGUNDOS DE `currentTime` IMOVEL CONTAM COMO PAUSA (2026-11-10).
+    #: O piso e' 2 s para ficar ACIMA do intervalo de leitura (0,25-0,5 s) e
+    #: abaixo de qualquer cue: um video a andar nunca repete o `currentTime`.
+    CLOCK_STATIC_PAUSE_S = 2.0
+
+    #: O PISO CURTO QUANDO A BANDEIRA CONCORDA (2026-11-24). Uma pausa que o
+    #: player AFIRMA (`paused=True` na mesma foto) e que o relogio CONFIRMA
+    #: (mesmo `currentTime` em duas fotos de carimbos distintos) nao precisa dos
+    #: 2 s da bandeira calada: a dupla testemunha ja' foi medida, e o dono pediu
+    #: o ecra limpo na hora -- verbatim: *"eu pausar e despausar rapidamente o
+    #: video do youtube, faz a legenda ao vivo continuar por varios segundos,
+    #: quando deveria parar na hora"*. MEDIDO no log dele (pid 27448):
+    #: `YOUTUBE_PAUSE_PROVEN ... still_s=2.00` as 08:02:17.492 e
+    #: `CAPTION_WINDOW_BLANKED` so' as 08:02:19.3 (2 s de relogio + 1,5 s de
+    #: dwell). O piso de 2 s continua sendo o caminho da bandeira CALADA, que e'
+    #: o caso de 8 minutos do log de 2026-11-10 -- ali uma unica foto nao prova
+    #: nada.
+    CLOCK_STATIC_PAUSE_FLAG_S = 0.25
+
+    def _yt_clock_static(self, snap, now=None):
+        """O PLAYER ESTA' PARADO PELO RELOGIO, mesmo que `paused` diga que nao?
+
+        Nasceu de um caso MEDIDO no log do dono (2026-11-09 21:29:57 -> 21:36):
+        oito minutos com a mesma linha no ecra, `paused=False` na foto e
+        `currentTime` imovel -- nenhuma borda de pausa disparou e os pixels
+        ficaram para sempre. A comparacao e' entre LEITURAS, por isso o estado
+        vive no objeto (`_yt_ct_val`/`_yt_ct_since`); a funcao continua sendo
+        pura do ponto de vista de quem a conduz.
+
+        Devolve `(parado, held_s)`. `t` ausente NAO e' pausa: ausencia de
+        medida nunca vira afirmacao.
+
+        E UMA FOTO REPETIDA NAO E' UMA LEITURA NOVA (2026-11-16). O carimbo do
+        snapshot (`stamp`) viaja junto; enquanto ele nao muda, a CDP devolveu a
+        MESMA foto em cache (ate' 1,2 s), e o mesmo `t` lido duas vezes nao e'
+        "o relogio nao anda" -- e' uma leitura so'. Sem este portao um `attach`
+        lento (medido: `YOUTUBE_PROBE_BUDGET ... abandoned=6`, sondas a cair no
+        orcamento) declarava PAUSA com o video a tocar, e a pausa e' o que apaga
+        o ecra. Uma testemunha precisa de duas medidas, e o carimbo e' o que
+        distingue duas medidas de uma repeticao.
+        """
+        try:
+            t = snap.get('t') if snap is not None else None
+            stamp = snap.get('stamp') if snap is not None else None
+            vid = snap.get('videoId') if snap is not None else None
+        except AttributeError:
+            t = stamp = vid = None
+        now = time.monotonic() if now is None else float(now)
+        try:
+            stamp = None if stamp is None else float(stamp)
+        except (TypeError, ValueError):
+            stamp = None
+        vid = None if vid is None else str(vid)
+        prev_vid = getattr(self, '_yt_ct_vid', None)
+        if vid and prev_vid and vid != prev_vid:
+            # OUTRO VIDEO: a serie comeca do zero. Duas posicoes iguais de dois
+            # videos diferentes nao sao "o mesmo instante parado".
+            self._yt_ct_val = None
+            self._yt_ct_since = 0.0
+            self._yt_ct_stamp = None
+        if vid:
+            self._yt_ct_vid = vid
+        if stamp is not None:
+            if stamp == getattr(self, '_yt_ct_stamp', None):
+                # A MESMA FOTO: nao ha' medida nova. O estado de `_yt_ct_val`/
+                # `_yt_ct_since` fica como esta' (o tempo parado nao reinicia
+                # por uma repeticao) e o veredicto e' o ULTIMO MEDIDO -- nem
+                # `True` (uma foto em cache nao confirma a pausa) nem `False`
+                # (uma foto em cache nao e' movimento: devolver `False` aqui
+                # desarmava a pausa provada entre duas publicacoes da CDP, ~0,5 s,
+                # e a borda de retoma repintava o ecra em cada uma).
+                return getattr(self, '_yt_ct_verdict', (False, 0.0))
+            self._yt_ct_stamp = stamp
+        if t is None:
+            self._yt_ct_val = None
+            self._yt_ct_since = 0.0
+            self._yt_ct_verdict = (False, 0.0)
+            return self._yt_ct_verdict
+        try:
+            t = float(t)
+        except (TypeError, ValueError):
+            self._yt_ct_val = None
+            self._yt_ct_since = 0.0
+            self._yt_ct_verdict = (False, 0.0)
+            return self._yt_ct_verdict
+        prev = getattr(self, '_yt_ct_val', None)
+        since = float(getattr(self, '_yt_ct_since', 0.0) or 0.0)
+        if prev is None or abs(t - float(prev)) > 1e-3:
+            self._yt_ct_val = t
+            self._yt_ct_since = now
+            self._yt_ct_verdict = (False, 0.0)
+            return self._yt_ct_verdict
+        held = (now - since) if since else 0.0
+        # DUAS TESTEMUNHAS ENCURTAM A ESPERA (2026-11-24): a bandeira do player
+        # E a posicao imovel em DUAS fotos de carimbos distintos -- o carimbo ja'
+        # recusou a foto repetida acima, logo este `held` e' tempo medido, nao
+        # tempo de cache. Com a bandeira calada fica o piso longo de 2 s, que e'
+        # o caso de 2026-11-10 (8 minutos congelados sem borda de pausa).
+        try:
+            _flag = bool(snap.get('paused')) if snap is not None else False
+        except AttributeError:
+            _flag = False
+        _need = (float(self.CLOCK_STATIC_PAUSE_FLAG_S) if _flag
+                 else float(self.CLOCK_STATIC_PAUSE_S))
+        self._yt_ct_verdict = (held >= _need, held)
+        return self._yt_ct_verdict
+
+    #: QUANTO `currentTime` TEM DE ANDAR, POR SEGUNDO DE PAREDE, PARA O VIDEO
+    #: ESTAR A ANDAR (2026-11-12). Um video a tocar anda `rate` segundos por
+    #: segundo; mesmo a 0,25x de velocidade isso e' 0,25. Um quinto disto ja' e'
+    #: prova de movimento: a deriva medida do relogio do player e' 0,034 s em
+    #: 8 s (`youtube_clock.DRIFT_RATE_S`), cinco vezes menos.
+    CLOCK_MOVING_MIN_RATE = 0.05
+
+    def _yt_clock_moving(self, snap, now=None):
+        """O RELOGIO ANDA? -- e a que velocidade. A medida que DESMENTE a bandeira.
+
+        MEDIDO na sessao do dono de 2026-11-12 (pid 46056), esta a causa do
+        congelamento que ele descreveu (*"ao apertar ctrl space algumas vezes,
+        ela travou"* e *"as vezes ta no sync, as vezes so' para"*):
+
+            19:41:49.489  YOUTUBE_CDP_PACED paused=True poll_s=0.50
+            19:41:49.537  CAPTION_WINDOW_BLANKED reason=youtube-paused epoch=3
+            ...           38 `YT_FRAME` com o texto a MUDAR ...
+            19:53:48.635  YOUTUBE_POLL_PACED paused=False   <- 12 MINUTOS depois
+            e ZERO `CAPTION_PAINT_SURFACE` nesses 12 minutos.
+
+        A bandeira `video.paused` leu True e nunca voltou a ler False; o portao
+        do `external_caption` recusa pixels enquanto `yt_source_paused` for
+        verdadeiro, e o ecra ficou vazio com o video a andar. Uma bandeira
+        sozinha mente -- a mesma licao do `_yt_clock_static`, no sentido
+        inverso. Aqui a medida e' o proprio `currentTime` a AVANCAR: enquanto
+        ele andar, o player nao esta' parado, diga o que disser a bandeira.
+
+        Devolve `(a_andar, taxa_medida)`. Sem duas leituras (t ausente, ou a
+        primeira depois de um salto) devolve `(False, 0.0)`: ausencia de medida
+        nunca vira afirmacao -- e' a bandeira que decide sozinha, como antes.
+        """
+        try:
+            t = snap.get('t') if snap is not None else None
+        except AttributeError:
+            t = None
+        now = time.monotonic() if now is None else float(now)
+        try:
+            t = None if t is None else float(t)
+        except (TypeError, ValueError):
+            t = None
+        prev = getattr(self, '_yt_mv', None)
+        if t is None:
+            self._yt_mv = None
+            return False, 0.0
+        if prev is None:
+            self._yt_mv = (t, now)
+            return False, 0.0
+        prev_t, prev_at = prev
+        gap = now - float(prev_at)
+        self._yt_mv = (t, now)
+        if gap < 0.10:
+            return False, 0.0
+        rate = (t - float(prev_t)) / gap
+        if rate < 0.0:
+            # Um seek para tras nao e' "a andar" nem e' "parado": nao e' medida.
+            return False, 0.0
+        return rate >= float(self.CLOCK_MOVING_MIN_RATE), rate
+
+    #: QUANTO UMA PAUSA TEM DE DURAR PARA APAGAR O ECRA (2026-11-15).
+    #: MEDIDO no log do dono: das 59 pausas que apagaram a legenda, 27 voltaram
+    #: em <=10 s (14 em <=1 s), e **15 de 40** pressoes de LIGAR tiveram o ecra
+    #: apagado nos 15 s seguintes -- o dono liga a legenda, ela pinta, e uma
+    #: unica amostra `paused=True` do CDP (`YOUTUBE_CDP_PACED paused=True` com o
+    #: `YT_FRAME` a revelar palavra a palavra no MESMO segundo: 22:18:24-26 vs o
+    #: blank as 22:18:29) apagava tudo outra vez. Isso e' a queixa dele, verbatim:
+    #: *"a porra do ctrl space parece que nao da hide na legenda ou show
+    #: DIREITO"*. Uma pausa que a bandeira sozinha afirma nao e' medida: o ecra
+    #: so' sai quando ela se mantem por este tempo. A VOLTA continua instantanea.
+    PAUSE_BLANK_DWELL_S = 1.5
+
+    def _yt_pause_edge(self, now_paused, now=None, witness=None):
+        """A BORDA DE PAUSA/FIM: apaga os pixels; a de VOLTA repinta a linha.
+
+        Chamado a cada snapshot, com o estado publicado. E' um metodo, e nao
+        codigo inline, para o oraculo poder conduzir a borda com uma shell falsa
+        (`_main/caption-kept-on-hide-oracle.py`); o `now` e' injectavel pela
+        mesma razao -- o dwell mede-se com um relogio que o braco controla, nao
+        com um `sleep`.
+
+        A PAUSA/ O FIM TIRA OS PIXELS NA BORDA, nao seis segundos depois. O
+        dono, 2026-11-08: a legenda ficava "viva" num video parado e continuava
+        a aparecer no historico como se estivesse a correr. O modelo, o worker e
+        o historico NAO sao tocados: `_blank_caption_window` so' apaga o ecra e
+        incrementa a epoch da fonte (o interruptor `_caption_wanted` fica como
+        ele o deixou).
+
+        A PAUSA TEM DE DURAR (2026-11-15, ver `PAUSE_BLANK_DWELL_S`): o apagar
+        e' adiado pelo dwell, e uma pausa que acaba dentro dele nao apaga nada --
+        o flap do CDP deixa de custar a legenda que o dono acabou de ligar.
+
+        A VOLTA (2026-11-09, revisao D3): o blank limpa `ov.text`/`previous`, e
+        uma linha que ja' tinha sido FECHADA (`finalized`) nao volta a ser
+        empurrada pelo `_tick` -- o ecra ficava vazio ate' ao cue seguinte. Na
+        borda de retoma, a ultima linha volta ao ecra como o player a mostrava.
+        """
+        now_paused = bool(now_paused)
+        was = bool(getattr(self, '_yt_was_paused', False))
+        shell = getattr(self, 'shell', None)
+        now = time.monotonic() if now is None else float(now)
+        # O DWELL DEPENDE DA TESTEMUNHA (2026-11-24). `flag+clock-static` e' a
+        # dupla medida: o player DIZ que esta' parado e a posicao nao andou em
+        # duas fotos de carimbos distintos (o piso curto ja' correu dentro do
+        # `_yt_clock_static`), logo nao ha' flap a proteger -- o ecra sai na
+        # hora. O dwell de 1,5 s continua a valer para a bandeira sozinha, que e'
+        # o flap medido de 2026-11-15 (11 de 16 pressoes de LIGAR apagadas por
+        # uma unica amostra `paused=True`).
+        _witness = str(witness or '')
+        _dwell = (0.0 if _witness == 'flag+clock-static'
+                  else float(self.PAUSE_BLANK_DWELL_S))
+        if not now_paused:
+            self._yt_pause_since = None
+        elif getattr(self, '_yt_pause_since', None) is None:
+            # A ENTRADA na pausa carimba UMA vez; as amostras seguintes do mesmo
+            # episodio nao reiniciam o dwell (senao ele nunca vencia).
+            self._yt_pause_since = now
+        # A PAUSA AINDA NAO PROVOU QUE DURA: nao apaga, e a borda nao aconteceu.
+        # DUAS MEDIDAS, nao uma: o tempo da pausa E o silencio do desenho. MEDIDO
+        # no log do dono (2026-11-15): das 16 pressoes de LIGAR que foram apagadas
+        # por `youtube-paused`, **11** tinham `YT_FRAME` a revelar palavra a
+        # palavra nos 3 s anteriores -- o video estava a andar e a bandeira
+        # mentiu. Uma pausa que desenha texto novo nao e' pausa.
+        if now_paused and not was:
+            held = now - float(self._yt_pause_since)
+            quiet = now - float(getattr(self, '_yt_frame_at', 0.0) or 0.0)
+            if (held < _dwell or quiet < _dwell):
+                if not getattr(self, '_yt_pause_defer_logged', False):
+                    self._yt_pause_defer_logged = True
+                    log('YOUTUBE_PAUSE_BLANK_DEFERRED held_s=%.2f '
+                        'quiet_s=%.2f dwell_s=%.2f witness=%s vid=%s'
+                        % (held, quiet, _dwell, _witness or 'none',
+                           str(getattr(self, 'yt_video_id', '') or '')))
+                return
+        self._yt_pause_defer_logged = False
+        if now_paused and not was:
+            self._yt_pause_epoch = int(getattr(self, '_yt_pause_epoch', 0) or 0) + 1
+            if (shell is not None
+                    and getattr(shell, '_caption_window_shown', False)):
+                try:
+                    shell._blank_caption_window(
+                        'youtube-paused' if getattr(self, 'yt_cdp_paused', False)
+                        else 'youtube-ended')
+                except Exception as exc:  # noqa: BLE001 -- fail-open
+                    log('CAPTION_PAUSE_BLANK_FAILED error=%r' % (exc,))
+        elif was and not now_paused:
+            line = str(getattr(self, 'last_line', '') or '')
+            if (shell is not None and line
+                    and getattr(shell, '_caption_wanted', False)):
+                rows = list(getattr(self, 'last_rows', None) or ())
+                # A VOLTA REVELA, NAO DESPEJA (2026-11-12). Ordem do dono,
+                # verbatim: *"quando eu pauso e despauso, ele mostra a legenda
+                # inteira daquela secao do youtube, mas isso e' diferente do
+                # youtube. por que o youtube ainda mostra palavra por palavra,
+                # nao a frase inteira"*. `instant=True` pintava a janela toda de
+                # uma vez; com o cue do player no payload o overlay revela pelo
+                # relogio do video (`_PlayerCue`), que e' o que o YouTube faz. O
+                # `instant` so' fica para a fonte que nao tem relogio nenhum.
+                _cue = self._yt_cue_payload()
+                try:
+                    shell.push_caption_to_window(
+                        line, instant=bool(rows) and _cue is None,
+                        rows=rows or None, cue=_cue)
+                except Exception as exc:  # noqa: BLE001 -- fail-open
+                    log('CAPTION_RESUME_PAINT_FAILED error=%r' % (exc,))
+        self._yt_was_paused = now_paused
+
+    def _yt_rate_tick(self, snap, source):
+        """O TUBO INTEIRO, publicado a cada `_YT_RATE_LOG_S` -- nunca por tick.
+
+        O dono ve' a legenda a saltar linhas, e a resposta nao pode ser um
+        palpite: a linha diz quantos ticks o laco fez, em quantos havia foto
+        fresca, a idade MEDIA dessa foto e o que a fonte acumulou. `none` alto
+        com `src_reads` a subir = a foto recusada por velha; `ticks` baixo = o
+        laco empurrado por outra coisa.
+        """
+        try:
+            _st = getattr(self, '_yt_rate', None)
+            if _st is None:
+                _st = self._yt_rate = {'t0': time.monotonic(), 'ticks': 0,
+                                       'ok': 0, 'none': 0, 'age': 0.0}
+            _st['ticks'] += 1
+            if snap is not None:
+                _st['ok'] += 1
+                _st['age'] += time.monotonic() - snap['stamp']
+            else:
+                _st['none'] += 1
+            _dt = time.monotonic() - _st['t0']
+            if _dt < _YT_RATE_LOG_S:
+                return
+            log('YOUTUBE_LOOP_HZ ticks=%d ok=%d none=%d age_ms=%.0f hz=%.1f '
+                'src_reads=%s src_errs=%s'
+                % (_st['ticks'], _st['ok'], _st['none'],
+                   1000.0 * (_st['age'] / _st['ok'] if _st['ok'] else 0.0),
+                   _st['ticks'] / _dt,
+                   getattr(source, '_reads', None),
+                   getattr(source, '_errors', None)))
+            _st['t0'] = time.monotonic()
+            _st['ticks'] = _st['ok'] = _st['none'] = 0
+            _st['age'] = 0.0
+        except Exception:                     # noqa: BLE001
+            pass
+
+    def _yt_health_tick(self, source, now):
+        """A SAUDE da foto, so' enquanto ela esta' VELHA, a cada `_YT_HEALTH_LOG_S`.
+
+        Um apagao nao se diagnostica por ausencia de linhas: medido 2026-11-03
+        no log do dono, 40 s sem `YT_FRAME` com o video a andar e nada que
+        dissesse se a culpa era da foto velha ou de outra coisa. Mas esta linha
+        publica `stats()` com contadores que mudam sempre, por isso ela e' um
+        BATIMENTO de taxa limitada -- nao um estado que muda (2026-11-09).
+        """
+        if now - getattr(self, '_yt_stale_logged', 0.0) <= _YT_HEALTH_LOG_S:
+            return
+        self._yt_stale_logged = now
+        _age = None
+        try:
+            _age = round(source.snapshot_age(), 2)
+        except Exception:                     # noqa: BLE001
+            pass
+        _st = {}
+        try:
+            _st = source.stats()
+        except Exception:                     # noqa: BLE001
+            pass
+        log('YOUTUBE_CDP_HEALTH age=%s stats=%r' % (_age, _st))
+
+    def _yt_cdp_snapshot(self, hwnd, uia, UIA, declared=None):
+        """A legenda do player pela CDP do Chrome, quando a arvore nao a tem.
+
+        Devolve o snapshot (`rows`/`items`) ou None. Recusa-se a ler quando a
+        aba da CDP mostra OUTRO video que nao o que o Sotto declarou ler: com
+        duas abas `watch` abertas isso seria mostrar a legenda de um video no
+        ecra do outro -- o erro que a `open_socket(video_id=)` do instrumento
+        ja' cometeu uma vez em 2026-11-03 e que deu um veredicto inteiro errado.
+        """
+        if os.environ.get('SOTTO_YT_CDP', '1') == '0':
+            return None
+        source = self._yt_cdp_ensure()
+        if not source:
+            return None
+        # O ID JA' FOI LIDO NESTE TICK, UM ANDAR ACIMA (2026-11-03, MEDIDO).
+        # `_youtube` pergunta-o primeiro e guarda-o em `self.yt_video_id`; reler
+        # aqui a' arvore de acessibilidade era um segundo preco de 94-109 ms por
+        # tick -- medido `phases={'vid': 109.0, 'declared': 109.0, 'painted':
+        # 109.0}`, ou seja a MESMA leitura a ser paga duas vezes, e com a maquina
+        # a 69% o laco caia de 21 Hz para 1,2 Hz (`YOUTUBE_LOOP_HZ`).
+        declared = declared if declared is not None else ''
+        if not declared:
+            # COM A PORTA CDP ABERTA, O ID NAO SE PERGUNTA A' ARVORE (2026-11-03).
+            # MEDIDO -- e este e' o 46 s: `EXTERNAL_CAPTIONS_READ_MS ms=46766.0`
+            # com `phases={'target': 0.0, 'source': 0.0}` e o despejo a mostrar a
+            # paragem dentro de `_youtube_video_id` (`edit_values`, 94-109 ms num
+            # tick bom, dezenas de segundos num mau). Sem `declared` a funcao
+            # abaixo ia perguntar; o id vem da FOTO no tick seguinte (80 ms).
+            # Um tick sem desenho nao e' um tick perdido; um tick de 46 s e'.
+            declared = ''
+        _yt_mark(self, 'declared')
+        # COM DUAS ABAS ABERTAS, SO' A DO VIDEO QUE ELE LE' (medido 2026-11-03:
+        # `list_targets` devolve 2 `watch` nesta maquina). Sem o id, o modulo
+        # responde `ambiguous` e nao se adivinha.
+        try:
+            source.set_video_id(declared)
+        except Exception:  # noqa: BLE001
+            pass
+        # UMA FOTO COM 1,2 s AINDA SERVE: a cue do player fica no ecra mais
+        # tempo do que isso, e recusar aos 0,6 s so' fazia piscar entre a CDP
+        # e a arvore de acessibilidade (medido 2026-11-03: `why=cdp` e
+        # `why=painted` alternados a cada segundo).
+        snap = source.snapshot(max_age=1.2)
+        _yt_mark(self, 'snap')
+        self._yt_rate_tick(snap, source)
+        if snap is not None:
+            # O ESTADO PUBLICADO E' DO VIDEO QUE ELE DESCREVE (2026-11-08).
+            # MEDIDO na sessao do dono (`_main/fixtures/yt-pause-foreign-state-
+            # 20261108.txt`): a app servia `KoXXVCFjbk8` com a foto de
+            # `pW2ktrJlsyE` (`YOUTUBE_TICK_MS vid='pW2ktrJlsyE'`), e o `paused`
+            # dessa OUTRA aba era publicado como se fosse deste video --
+            # alternou 6 vezes em 12 s (`YOUTUBE_CDP_PACED paused=True/False`)
+            # sem uma unica troca de video, e o relogio publicado era o dela
+            # (`YOUTUBE_CLOCK_HELD t=0.00 served=6.56`). O dono, verbatim:
+            # *"quando eu deixo o video pausado, a legenda fica ao vivo, quando
+            # eu pauso, ela volta e fica travada em outro momento"*.
+            # A fuga `seen == _selected` abaixo existe para as LINHAS do video
+            # novo chegarem antes do rebind (~80 ms). O RELOGIO e a PAUSA nao
+            # tem essa desculpa: ou sao DESTE video, ou nao se publicam -- e
+            # entao a ultima amostra nossa envelhece pelo caminho normal
+            # (`youtube_clock`, `FRESH_S`/`HOLD_S`).
+            seen = str(snap.get('videoId') or '')
+            if not (declared and seen and seen != declared):
+                # O RELOGIO DO PLAYER VEM NO MESMO SNAPSHOT (2026-11-03): `t` e'
+                # `video.currentTime`, medido a avancar 56,9 s em 57 s de relogio de
+                # parede enquanto o DOM da legenda estava CONGELADO -- e' a unica
+                # leitura que continua verdadeira com a aba escondida.
+                self.yt_cdp_clock = (float(snap.get('t')), time.monotonic()) \
+                    if snap.get('t') is not None else None
+                # A VELOCIDADE DO PLAYER NO MESMO SNAPSHOT (2026-11-04). O relogio
+                # que avanca entre leituras era 1x por construcao: a 2x o video
+                # andava o dobro e a palavra chegava tarde, tanto mais tarde quanto
+                # maior o intervalo sem leitura. `playbackRate` e' a metade que faltava.
+                try:
+                    self.yt_cdp_rate = float(snap.get('rate'))
+                except (TypeError, ValueError):
+                    self.yt_cdp_rate = 1.0
+
+                # VIDEO EM PAUSA NAO E' SILENCIO (2026-11-03, MEDIDO): com o player
+                # parado em `t=34.571` o YouTube continua a mostrar a legenda, e o
+                # Sotto apagava a dele aos 6 s (`CAPTION_WINDOW_BLANKED
+                # reason=no-caption-for-6.0s`) -- o ecra ficava vazio ao lado de um
+                # video que tem a frase escrita.
+                self.yt_cdp_paused = bool(snap.get('paused')) \
+                    if snap.get('paused') is not None else False
+                self.yt_cdp_ended = bool(snap.get('ended')) \
+                    if snap.get('ended') is not None else False
+                # O SEEK NAO PRECISA DE PINTURA (2026-11-16). MEDIDO na sessao do
+                # dono (video `hYIymEMB9x4`, legenda do YouTube DESLIGADA): o
+                # `video.currentTime` da CDP recuou 515,0 -> 505,0 e o relogio
+                # servido ficou 10 s a' frente dele, com oito `YOUTUBE_CLOCK_HELD
+                # t=505.05 served=515.03 floor=515.03` e NENHUMA pintura para
+                # declarar o seek (`advance` so' desce com a PINTURA). O par que
+                # faltava ja' esta' nesta foto: `t` exacto + `stamp` de parede.
+                # A regra (e o porque' de nenhum temporizador) vive em
+                # `youtube_monotonic.SeekWitness`; aqui so' se aplica. O chao E a
+                # ancora descem no MESMO tick, senao a revelacao interpolada
+                # (`yt_live_frame`) arrastava a posicao antiga.
+                try:
+                    import youtube_monotonic as _ytm
+                    _seek = getattr(self, '_yt_seek_witness', None)
+                    if _seek is None:
+                        _seek = self._yt_seek_witness = _ytm.SeekWitness()
+                    _sk = _seek.observe(snap.get('t'), snap.get('stamp'),
+                                        seen or None)
+                    if _sk.get('seek'):
+                        self.yt_serve_floor = _ytm.advance(
+                            getattr(self, 'yt_serve_floor', None), _sk.get('now'))
+                        self._yt_anchor = (float(_sk.get('now')), time.monotonic())
+                        # O ALINHAMENTO E' DA LINHA TEMPORAL ANTIGA (2026-11-16).
+                        # `_yt_clock_agrees` recusa um relogio que nao caiba na
+                        # cue que o player PINTAVA -- e depois de um recuo de 10 s
+                        # essa cue e' de outro ponto do video, logo o ramo servia
+                        # `clock-stale-last-cue` (a linha de 10 s atras) e nao a
+                        # cue do instante novo. Uma prova de seek de DOIS lados
+                        # desmente o alinhamento, nao o relogio: o alinhamento
+                        # sai, como sai na troca de video.
+                        self.yt_hit = None
+                        if _sk.get('log'):
+                            log('YOUTUBE_SEEK_RESYNC was=%.2f now=%.2f why=%s '
+                                'dt=%.2f floor=%.2f vid=%s'
+                                % (float(_sk.get('was') or 0.0),
+                                   float(_sk.get('now') or 0.0),
+                                   str(_sk.get('why')), float(_sk.get('dt') or 0.0),
+                                   float(self.yt_serve_floor
+                                         if self.yt_serve_floor is not None else 0.0),
+                                   str(getattr(self, 'yt_video_id', '') or '')))
+                except Exception as exc:      # noqa: BLE001 -- fail-open: sem a
+                    # testemunha o chao fica como esta' (a lei antiga, que nunca
+                    # recua por uma leitura); o seek so' e' seguido no tick seguinte.
+                    log('YOUTUBE_SEEK_WITNESS_FAILED error=%r' % (exc,))
+
+                # A PAUSA PRECISA DE UMA TESTEMUNHA QUE CONCORDE (2026-11-16).
+                # MEDIDO na sessao do dono: `CAPTION_WINDOW_BLANKED
+                # reason=youtube-paused epoch=5 wanted=true` as 16:39:34 com o
+                # `YOUTUBE_PAUSE_DISAGREED paused_flag=True clock_rate=0.32` a
+                # dizer, no MESMO episodio, que o relogio andava -- e 60 s de ecra
+                # vazio depois. A bandeira veio sozinha; a medida que a desmente
+                # (ou que a confirma) tambem estava na foto e nao era consultada
+                # para o apagar. Agora o apagar exige a POSICAO PARADA, medida
+                # entre DUAS leituras distintas (`_yt_clock_static`, cujo portao
+                # de carimbo impede que uma foto em cache conte como duas); a
+                # bandeira sozinha congela a interpolacao, nunca o ecra. Como o
+                # `_yt_pause_edge` recebe `False` no primeiro tick em que o relogio
+                # mexe, a borda de VOLTA repinta a linha: o apagar desfaz-se sem
+                # esperar que a bandeira se corrija.
+                _flag_paused = bool(self.yt_cdp_paused or self.yt_cdp_ended)
+                # A BANDEIRA QUE DIZ PAUSA COM O RELOGIO A ANDAR ESTA' ERRADA
+                # (2026-11-12, MEDIDO). Ver `_yt_clock_moving`: `paused=True`
+                # travado por 12 min com 38 quadros de texto novo a chegar custou
+                # ao dono um ecra vazio com o video a tocar, e nenhuma tecla o
+                # trouxe de volta (o `_blank_caption_window` sobe a epoch e o
+                # portao do `external_caption` recusa cada linha seguinte).
+                # A ordem e' esta': a medida DESMENTE a bandeira, nunca o
+                # contrario -- e o desmentido fica escrito UMA vez por episodio,
+                # senao um flap de ~30 s enchia o log.
+                _mv_moving, _mv_rate = self._yt_clock_moving(snap)
+                if _flag_paused and _mv_moving:
+                    if not getattr(self, '_yt_mv_logged', False):
+                        self._yt_mv_logged = True
+                        log('YOUTUBE_PAUSE_DISAGREED paused_flag=True '
+                            'clock_rate=%.2f t=%.2f vid=%s'
+                            % (_mv_rate, float(snap.get('t') or 0.0),
+                               str(getattr(self, 'yt_video_id', '') or '')))
+                elif not _mv_moving:
+                    self._yt_mv_logged = False
+                # O RELOGIO PARADO E' A PAUSA QUE A BANDEIRA NAO DISSE (2026-11-10).
+                # MEDIDO no log do dono (21:29:57 -> 21:36, 8 min): o ecra ficou com
+                # "Reeling like a desperado", `YOUTUBE_TICK_MS rows=2 why='painted'`
+                # a repetir a MESMA linha, e NENHUMA linha de pausa/fim -- a foto do
+                # DOM dizia `paused=False` enquanto o `currentTime` nao avancava.
+                # Uma bandeira sozinha mente; o relogio que nao anda e' a medida.
+                _ct_static, _ct_held = self._yt_clock_static(snap)
+                if _ct_static:
+                    # A PAUSA PROVADA: a posicao esta' parada ha'
+                    # `CLOCK_STATIC_PAUSE_S` entre leituras DISTINTAS. E' a unica
+                    # testemunha que apaga o ecra -- com a bandeira a concordar ou
+                    # a calar-se.
+                    if _flag_paused:
+                        if not getattr(self, '_yt_pause_proven_logged', False):
+                            self._yt_pause_proven_logged = True
+                            log('YOUTUBE_PAUSE_PROVEN witness=flag+clock-static '
+                                'held_s=%.1f t=%.2f vid=%s'
+                                % (_ct_held, float(snap.get('t') or 0.0),
+                                   str(getattr(self, 'yt_video_id', '') or '')))
+                    elif not getattr(self, '_yt_ct_static_logged', False):
+                        self._yt_ct_static_logged = True
+                        log('YOUTUBE_CLOCK_STATIC held_s=%.1f t=%.2f '
+                            'paused_flag=%s vid=%s'
+                            % (_ct_held, float(snap.get('t') or 0.0),
+                               str(snap.get('paused')),
+                               str(getattr(self, 'yt_video_id', '') or '')))
+                    if not self.yt_cdp_ended:
+                        self.yt_cdp_paused = True
+                else:
+                    self._yt_ct_static_logged = False
+                    self._yt_pause_proven_logged = False
+                    # A POSICAO MEXEU (ou nunca foi medida parada): NAO HA' PAUSA
+                    # PROVADA, logo o ecra nao se apaga. A bandeira fica so' a
+                    # congelar a interpolacao, e cai no primeiro tick em que o
+                    # relogio ande -- a licao de 2026-11-12.
+                    if _mv_moving:
+                        self.yt_cdp_paused = False
+                        self.yt_cdp_ended = False
+                    if _flag_paused and not _mv_moving:
+                        # A FLAG SOZINHA, com o relogio imovel mas SEM prova de
+                        # que ele se manteve imovel: nomeia a testemunha e nao
+                        # apaga nada. E' o flap medido de 15 em 40 pressoes de
+                        # LIGAR (`_main/receipt-20261115`), e uma pausa que dura
+                        # vira `YOUTUBE_PAUSE_PROVEN` 2 s depois.
+                        if not getattr(self, '_yt_pause_unproven_logged', False):
+                            self._yt_pause_unproven_logged = True
+                            _ct_since = float(getattr(self, '_yt_ct_since', 0.0)
+                                              or 0.0)
+                            log('YOUTUBE_PAUSE_UNWITNESSED paused_flag=True '
+                                'still_s=%.2f need_s=%.2f t=%.2f vid=%s'
+                                % ((time.monotonic() - _ct_since) if _ct_since
+                                   else 0.0,
+                                   float(self.CLOCK_STATIC_PAUSE_FLAG_S),
+                                   float(snap.get('t') or 0.0),
+                                   str(getattr(self, 'yt_video_id', '') or '')))
+                if not _flag_paused:
+                    self._yt_pause_unproven_logged = False
+                # `paused` AUSENTE NAO E' "A ANDAR" (2026-11-07, `youtube_clock`).
+                self.yt_cdp_playing = None if snap.get('paused') is None \
+                    else (not self.yt_cdp_paused and not self.yt_cdp_ended)
+                # A BORDA DA PAUSA E' UM EVENTO, E O `_tick` TEM DE A VER (2026-11-06).
+                # Um tick so' dispara desenho quando a LINHA muda; ao pausar a linha
+                # nao muda -- pelo contrario, e' exactamente isso que se quer -- e o
+                # overlay ficava com o relogio da ultima pintura a andar. O contador
+                # e' lido e consumido no `_tick`, que forca uma pintura congelada.
+                # A PAUSA QUE APAGA E' A PROVADA, e so' ela (2026-11-16): uma
+                # amostra `paused=True` sozinha congela a interpolacao, nunca o
+                # ecra. E a VOLTA nao espera pela bandeira: no primeiro tick em que
+                # a posicao mexe `_ct_static` e' False, a borda de volta chega aqui
+                # e repinta a linha mesmo que o `paused` da CDP continue em `True`.
+                _now_paused = bool(_ct_static)
+                # O ESPELHO NA SHELL VAI ANTES DA BORDA (2026-11-16), e a ordem
+                # e' a cura de uma metade muda: quem arma o apagar por
+                # inatividade e' a shell (`SottoShell._caption_idle_hide`), e o
+                # MESMO espelho e' o portao que recusa pixels do YouTube
+                # (`external_caption`, ~19144). Com o espelho escrito DEPOIS da
+                # borda, o push da RETOMA de um tick apanhava ainda
+                # `yt_source_paused=True` do tick anterior e era recusado -- a
+                # borda acontecia e a linha nao voltava ao ecra ate' a cue
+                # seguinte.
+                shell = getattr(self, 'shell', None)
+                if shell is not None:
+                    shell.yt_source_paused = self.yt_cdp_paused
+                    shell.yt_source_ended = self.yt_cdp_ended
+                if getattr(self, '_yt_was_paused', False) and not _now_paused:
+                    _since = getattr(self, '_yt_pause_since', None)
+                    log('YOUTUBE_PAUSE_RESUMED witness=clock-moved pause_s=%.1f '
+                        't=%.2f vid=%s'
+                        % ((time.monotonic() - float(_since)) if _since else 0.0,
+                           float(snap.get('t') or 0.0),
+                           str(getattr(self, 'yt_video_id', '') or '')))
+                self._yt_pause_edge(
+                    _now_paused,
+                    witness=('flag+clock-static' if _flag_paused and _ct_static
+                             else ('clock-static' if _ct_static else None)))
+        if snap is None or not snap.get('items'):
+            return None
+        if declared and seen and declared != seen:
+            # A ABA ESCOLHIDA MANDA SOBRE A CRENCA (2026-11-06). O guarda existe
+            # para impedir ler a aba ERRADA; quando a foto e' da aba que a sonda
+            # escolheu (`selected_video_id`), nao ha' aba errada -- ha' um
+            # `yt_video_id` que ainda nao foi rebindado (o `_yt_identify` faz
+            # isso na leitura seguinte, ~80 ms). Recusar aqui era a legenda do
+            # video novo nunca chegar depois de um alt-tab.
+            _selected = ''
+            try:
+                _selected = source.selected_video_id() or ''
+            except Exception:                     # noqa: BLE001
+                _selected = ''
+            if seen != _selected:
+                stamp = getattr(self, 'yt_cdp_mismatch_logged', None)
+                if stamp != (declared, seen):
+                    self.yt_cdp_mismatch_logged = (declared, seen)
+                    log('YOUTUBE_CDP_SOURCE refused=video-mismatch declared=%s seen=%s'
+                        % (declared, seen))
+                return None
+        # A ETIQUETA DA FONTE E' ESCRITA POR QUEM PRODUZ O QUADRO (2026-11-04).
+        # Sem isto os caminhos que NAO passam no ramo do `_read` (o caso normal
+        # quando ha' video) deixavam `_yt_diag` velho, e o log do dono passou a
+        # mostrar `src='?'` com o player a pintar. Aqui o rotulo e' o facto:
+        # esta' foto veio do DOM do player.
+        self._yt_diag = {'src': 'external:youtube:cdp',
+                         'vid': seen or str(getattr(self, 'yt_video_id', '') or ''),
+                         'age': '%.0f' % ((time.monotonic() - snap['stamp'])
+                                          * 1000.0),
+                         'rows': len(snap.get('rows') or ()),
+                         'why': str(snap.get('why') or 'cdp')}
+        return snap
     def _yt_clock_agrees(self, t):
         """Is the clock INSIDE the cue the player was painting?
 
@@ -2329,6 +6240,144 @@ class ExternalCaptionWatcher(threading.Thread):
             log(f'YOUTUBE_MONOTONIC_FAILED error={exc!r}')
         return self.yt_serve_floor
 
+    #: QUANTO TEMPO UMA FOTO DA CDP AINDA DIZ "O DOM DO PLAYER E' A FONTE"
+    #: (2026-11-03). E' a MESMA janela que a leitura ja' usa
+    #: (`_yt_cdp_snapshot` -> `snapshot(max_age=1.2)`), e e' medida no
+    #: PROPRIO snapshot (`stamp`), nao num proxy: `yt_live_paint_at` sobe com
+    #: qualquer produtor de linhas e por isso nao diz QUEM as produziu.
+    DOM_FRESH_S = 1.2
+
+    #: A ARVORE DE ACESSIBILIDADE E' O ULTIMO RECURSO -- E ELA COBRA SEGUNDOS
+    #: QUANDO O CHROME ESTA' OCUPADO (2026-11-24).
+    #: ORDEM DO DONO, verbatim: *"ao ficar uns segundos idle, a legenda ao vivo
+    #: simplesmente parou de acompanhar o video ... a legenda do youtube que e a
+    #: bridge e tao cheap de acontecer que nem deveria sofrer qualquer tipo de
+    #: interferencia de carga"*. MEDIDO na sessao dele (`_main/webview-run.log`):
+    #: `EXTERNAL_CAPTIONS_READ_MS ms=13359.0` com `phases={'track': 15.0,
+    #: 'youtube': 13359.0}`, e no mesmo minuto `YOUTUBE_SNAPSHOT_STALE
+    #: age_ms=11328 max_age_ms=1500/3000` -- os 13,3 s estao DEPOIS do pedido da
+    #: faixa, dentro da leitura da arvore (`phases` nao tem a marca seguinte).
+    #: Duas regras saem dai, e nenhuma delas e' um temporizador de gosto:
+    #: (a) com a ponte da CDP VIVA e fresca, nenhuma linha do tick paga a arvore
+    #: -- a foto seguinte desenha (a ponte publica a cada `_TID_TTL_S`);
+    #: (b) um tick de arvore que estoura o orcamento compra um RECUO do tamanho
+    #: do proprio custo (tecto abaixo), para um Chrome travado custar um tick
+    #: lento a cada N em vez de todos -- e o caminho barato continua a correr em
+    #: cada tick, portanto a legenda volta no instante em que a ponte publica.
+    YT_CDP_ALIVE_S = 1.5          # 2 x `DOM_FRESH_S` + a publicacao
+    YT_UIA_SLOW_S = 0.75          # orcamento de um tick de arvore
+    YT_UIA_BACKOFF_MAX_S = 6.0    # tecto do recuo (o tick rapido volta sempre)
+
+    def _yt_uia_gate(self):
+        """A ARVORE CORRE AGORA? (True = NAO, devolve `[]` neste tick.)
+
+        A COBRANCA E' FEITA AQUI, NA ENTRADA: `_yt_uia_t0` e' carimbado
+        imediatamente ANTES do scan das palavras pintadas, e a porta seguinte
+        mede o que ele custou (mais o resto do tick -- conservador, nunca
+        optimista). O numero e' o do
+        intervalo inteiro (conservador, inclui a projecao), e e' o que decide o
+        recuo -- a mesma forma do laco de desenho: **o periodo deriva do custo
+        medido, nunca e' um `sleep` fixo**.
+        """
+        now = time.monotonic()
+        t0 = getattr(self, '_yt_uia_t0', None)
+        self._yt_uia_t0 = None
+        if t0 is not None:
+            cost = now - t0
+            if cost > self.YT_UIA_SLOW_S:
+                back = min(self.YT_UIA_BACKOFF_MAX_S, cost)
+                self._yt_uia_until = now + back
+                self._yt_uia_skip_key = ''
+                log('YOUTUBE_UIA_SLOW cost_ms=%.0f backoff_ms=%.0f'
+                    % (cost * 1000.0, back * 1000.0))
+        src = getattr(self, '_yt_cdp_source', None)
+        age = None
+        if src and src is not False:
+            try:
+                age = src.snapshot_age()
+            except Exception:             # noqa: BLE001 -- sem idade, sem guarda
+                age = None
+        until = float(getattr(self, '_yt_uia_until', 0.0) or 0.0)
+        if now < until:
+            self._yt_uia_skip('backoff', age, until - now)
+            return True
+        if age is not None and age <= self.YT_CDP_ALIVE_S:
+            self._yt_uia_skip('cdp-alive', age, 0.0)
+            return True
+        self._yt_uia_skip_key = ''
+        return False
+
+    def _yt_uia_skip(self, reason, age, left_s):
+        """UMA linha por episodio, com a medida que a autoriza (nunca por tick)."""
+        key = '%s|%s' % (reason, 'y' if age is not None else 'n')
+        if getattr(self, '_yt_uia_skip_key', '') == key:
+            return
+        self._yt_uia_skip_key = key
+        log('YOUTUBE_UIA_SKIPPED reason=%s age_ms=%s left_ms=%.0f'
+            % (reason, ('%.0f' % (age * 1000.0)) if age is not None else 'none',
+               left_s * 1000.0))
+
+    def _yt_dom_is_source(self):
+        """O DOM do player esta' a entregar as linhas AGORA?
+
+        A pergunta que decide se a faixa e' pedida. MEDIDO 2026-11-03: pedir a
+        faixa e' um `yt-dlp` (segundos, um subprocesso por video) mais uma
+        leitura UIA; enquanto o DOM entrega as linhas, as duas sao trabalho que
+        nao muda um pixel.
+
+        A FRESCURA E' A DO SNAPSHOT (o instante em que a CDP leu o DOM), e nao a
+        do ultimo desenho: uma foto recente SEM linhas NAO conta como fonte --
+        um video sem legenda tem de continuar a pedir a faixa, senao o `no-track`
+        nunca chega e o ASR nunca recebe a caixa de volta (a regra do dono:
+        *"se for um video sem legenda, vai transcrever ao vivo igual"*).
+        """
+        source = getattr(self, '_yt_cdp_source', None)
+        if not source or source is False:
+            return False
+        try:
+            snap = source.snapshot(max_age=self.DOM_FRESH_S)
+        except Exception:                 # noqa: BLE001
+            return False
+        if not snap or not snap.get('rows'):
+            return False
+        try:
+            return (time.monotonic() - float(snap['stamp'])) <= self.DOM_FRESH_S
+        except Exception:                 # noqa: BLE001
+            return False
+
+    def _yt_track_poll(self, thread, vid, painted):
+        """O pedido da faixa: FIRE AND FORGET, e o DOM decide se ele existe.
+
+        A UNICA entrada do laco da legenda nesta thread. Duas regras:
+
+          * DOM PRIMARIO -- com o snapshot fresco a trazer linhas, a faixa NAO
+            se pede; le-se so' o que ja' chegou;
+          * NUNCA BLOQUEIA -- `thread.request` so' escreve o pedido e devolve o
+            que estiver PRONTO; quem corre o `yt-dlp` e' a thread dela.
+            MEDIDO 2026-11-03 no log do dono: 46 766 ms e 62 234 ms num tick,
+            com `YOUTUBE_TRACK_READY cues=1083` logo a seguir.
+        """
+        if thread is None:
+            return None
+        dom = self._yt_dom_is_source()
+        try:
+            if dom:
+                track = thread.current(vid)
+                why = 'dom'
+            else:
+                track = thread.request(vid, painted=painted)
+                why = 'paint' if painted else 'pending'
+        except Exception as exc:          # noqa: BLE001
+            log(f'YOUTUBE_TRACK_POLL_FAILED video_id={vid} error={exc!r}')
+            return None
+        # A PERGUNTA ESCRITA UMA VEZ POR MUDANCA: "porque e' que a faixa nao se
+        # pediu" nao pode ser um estado nao escrito.
+        if why != getattr(self, 'yt_ask_why', ''):
+            self.yt_ask_why = why
+            log('YOUTUBE_TRACK_ASK why=%s video_id=%s ready=%s dom_fresh=%.1fs'
+                % (why, vid, '0' if track is None else '1', self.DOM_FRESH_S))
+        return track
+
     def _youtube(self, hwnd, uia, UIA):
         """The YouTube video's OWN caption track, AT THE INSTANT THE PLAYER
         IS SHOWING IT.
@@ -2377,145 +6426,62 @@ class ExternalCaptionWatcher(threading.Thread):
             track blinks, and every blink would cost a model load
             (MEASURED 11.6 s, 1 218 MB resident).
         """
-        vid = self._youtube_video_id(hwnd, uia, UIA)
+        vid, _src, _wait = self._yt_identify(hwnd, uia, UIA)
+        if _wait:
+            return [], False
         if not vid:
             return [], self._yt_forget('no-video-id', urgent=False)
         if vid != self.yt_video_id:
-            self.yt_video_id = vid
-            self.yt_cue = ''
-            # A ULTIMA LINHA PINTADA era do video ANTERIOR. It cannot be
-            # the line of this one, and it is what the clock is compared
-            # with, so it goes with the video.
-            self.yt_hit = None
-            # UM VIDEO NOVO NAO HERDA NADA (2026-10-30): cada campo por-video era
-            # uma forma de a legenda do anterior voltar ao ecra.
-            self.yt_serve_floor = None
-            self.yt_foreign_t = None
-            self.yt_foreign_key = ''
-            self._yt_anchor = None
-            self._yt_track = None
-            self.last_line = ''
-            self.last_rows = []
-            self.finalized = False
-            self._caption_pending = None
-            blank = getattr(self, '_blank_caption_window', None)
-            if blank is not None:
-                blank('video-changed')
-            log(f'YOUTUBE_VIDEO_CHANGED video_id={vid}')
+            self._yt_switch_video(vid, _src)
+        reply = self._yt_cdp_fast_lines(hwnd, uia, UIA, vid)
+        if reply is not None:
+            return reply
+        # A ARVORE E' O ULTIMO RECURSO (2026-11-24). O caminho barato acima ja'
+        # respondeu tudo o que a foto sabia; aqui a pergunta e' se vale a pena
+        # pagar a varredura do Chrome -- e um Chrome ocupado cobra-a em SEGUNDOS
+        # (`EXTERNAL_CAPTIONS_READ_MS ms=13359.0`, medido na sessao do dono). A
+        # regra e a medida que a autoriza vivem em `_yt_uia_gate`.
+        #
+        # O RECUO NAO PULA O TICK, E ISSO E' MEDIDO: ele pula SO' o scan das
+        # palavras pintadas. A faixa (`_yt_track_poll`, DOM e nao bloqueante),
+        # o relogio e a devolucao do ASR continuam a correr, porque sao eles que
+        # produzem as TRANSICOES. A primeira versao pulava o tick inteiro e o
+        # `youtube-track-wiring` mediu as duas perdas (a11/a12): `releases 0 != 1`
+        # e a linha ja' servida deixava de ser re-servida -- um gate de CUSTO
+        # que apagava estado.
+        _pular_arvore = self._yt_uia_gate()
         thread = getattr(self.shell, 'youtube_track_thread', None)
+        _yt_mark(self, 'thread')
         if thread is None:
             return [], self._yt_forget('no-track-thread', urgent=False)
         # THE WORDS THE PLAYER IS PAINTING. They ARE YouTube's own caption.
-        painted = self._youtube_painted(hwnd, uia, UIA)
-        # THE THREAD IS TOLD WHAT IS BEING PAINTED, EVERY TIME. MEASURED
-        # 2026-10-20: the thread's own log said `cue=126` for a minute while
-        # the player was already painting another cue -- the paint it had
-        # was the one from the last REQUEST, and the request only happened
-        # when the alignment failed.
-        thread.request(vid, painted=painted)
-        track = thread.current(vid)
+        _t_yt = time.monotonic()
+        self._ensure_clock_sampler()
+        if _pular_arvore:
+            painted = []
+        else:
+            self._yt_uia_t0 = time.monotonic()
+            painted = self._youtube_painted(hwnd, uia, UIA)
+        _yt_mark(self, 'painted')
+        reply = self._yt_cdp_lines(vid)
+        if reply is not None:
+            return reply
+        # O PEDIDO DA FAIXA: `_yt_track_poll` decide, nao bloqueia, e o DOM do
+        # player decide se ele existe -- o porque' medido esta' no docstring dela
+        # (46 766 ms e 62 234 ms num tick eram o `yt-dlp` a correr DENTRO do laco).
+        track = self._yt_track_poll(thread, vid, painted)
+        _yt_mark(self, 'track')
         if track is None:
-            # AS PALAVRAS DO PLAYER ANTES DO TRACK. OWNER, 2026-10-22 09:35,
-            # verbatim: *"tu so viu carregar a pagina depois de varios segundos de ja
-            # ter carregado? arruma isso."* A causa era de DESENHO, nao de velocidade:
-            # a leitura das palavras pintadas (UI Automation) e barata e ja estava feita
-            # aqui em cima, mas a linha so era emitida depois de o track chegar -- e o
-            # extract mede segundos. Estas palavras SAO o texto que o YouTube esta a
-            # desenhar, logo sao 1:1 por construcao; o track substitui-as quando chega,
-            # com a janela de duas linhas e o timing. Sem palavras, nada e inventado:
-            # a linha fica vazia e o motivo continua `track-pending`.
-            try:
-                import youtube_window
-                paint_text = youtube_window.paint_line(painted)
-            except Exception as exc:  # noqa: BLE001
-                log(f"YOUTUBE_PAINT_LINE_FAILED error={exc!r}")
-                paint_text = ""
-            if paint_text:
-                self.yt_reason = "painted-untracked"
-                self.yt_cue = paint_text
-                return [("external:youtube:track", [paint_text])], False
-            return [], self._yt_forget('track-pending', urgent=False)
+            return self._yt_untracked_lines(hwnd, uia, UIA, painted)
         if track.get('state') != 'has-track':
             reason = track.get('reason') or track.get('state') or 'unknown'
             return [], self._yt_forget('no-track:%s' % reason, urgent=True)
         if painted:
-            hit = None
-            try:
-                import youtube_captions
-                hit = youtube_captions.align_painted(track.get('cues') or (),
-                                                      painted)
-            except Exception as exc:  # noqa: BLE001
-                log(f'YOUTUBE_PAINT_ALIGN_FAILED video_id={vid} error={exc!r}')
-            if hit:
-                text = str(hit.get('text') or '').strip()
-                if text:
-                    self.yt_hit = hit
-                    self.yt_foreign_t = None
-                    self.yt_cue = text
-                    self.yt_reason = 'painted'
-                    # A PINTURA E' O RELOGIO MAIS ADIANTADO QUE EXISTE: e' o
-                    # que o player esta' a desenhar agora. O chao sobe com ela,
-                    # e e' isso que impede o relogio atrasado de recuar o ecra.
-                    self._yt_advance((hit.get('cue') or {}).get('start'))
-                    # THE DECISION, WRITTEN. This is the line the owner can
-                    # compare with the screen: the cue of the track the
-                    # player is painting, at the instant it is painting it.
-                    if text != self.yt_caption_logged:
-                        self.yt_caption_logged = text
-                        log('YOUTUBE_CAPTION video_id=%s cue=%s t=%s '
-                            'track=%s words=%s text=%r'
-                            % (vid, hit.get('index'),
-                               hit.get('cue', {}).get('start'),
-                               track.get('lang') or '-', hit.get('exact'),
-                               text[:90]))
-                    # A JANELA REVELADA PELAS PALAVRAS QUE O PLAYER PINTOU
-                    # (2026-10-29). MEDIDO: este ramo montava a janela com o
-                    # INICIO DO CUE (`hit.cue.start + 0.001`), e `revealed_lines`
-                    # corta a linha pelos relogios das palavras -- logo SO a
-                    # primeira palavra passava, e a linha NUNCA crescia no ecra.
-                    # O relogio certo aqui sao as PALAVRAS QUE O PLAYER JA
-                    # PINTOU: elas sao o prefixo revelado do cue, palavra a
-                    # palavra, 1:1 por construcao. Ver `youtube_reveal.py`.
-                    # O RELOGIO DO PROPRIO PLAYER, e nao so' a pintura, para
-                    # cortar a linha na PALAVRA (2026-10-30, ver
-                    # `youtube_reveal.word_clock_count`). Este `t` e' tambem o
-                    # ANCORA da recomposicao a 60 ms: `yt_live_frame` avanca-o
-                    # com `monotonic()` entre leituras do UIA, por isso as
-                    # palavras seguintes aparecem uma a uma sem custar uma
-                    # leitura de acessibilidade por palavra.
-                    played_t = None
-                    try:
-                        played_t = self._youtube_time(hwnd, uia, UIA,
-                                                      track.get('duration'))
-                    except Exception as exc:  # noqa: BLE001
-                        log(f'YOUTUBE_PLAYED_T_FAILED error={exc!r}')
-                    if played_t is not None:
-                        self._yt_anchor = (float(played_t), time.monotonic())
-                        self._yt_track = track
-                    else:
-                        self._yt_anchor = None
-                    lines = []
-                    try:
-                        import youtube_reveal
-                        lines = youtube_reveal.window_by_paint(
-                            track.get('cues') or (), hit, played_t=played_t)
-                    except Exception as exc:  # noqa: BLE001
-                        log(f'YOUTUBE_PAINT_WINDOW_FAILED error={exc!r}')
-                    return [('external:youtube:track', lines or [text])], False
-            # THE PLAYER IS PAINTING ANOTHER TRACK -- AND THE OWNER WAS LEFT WITH NOTHING.
-            #
-            # MEDIDO 2026-10-23 (`_main/yt-1to1-live-compare.py`, Edge proprio, video
-            # WdaHAGRBB6s): o player pinta `pt`, a TRADUCAO automatica, enquanto a politica
-            # serve `en-orig`. As palavras pintadas nunca estao na faixa servida, logo o
-            # `align_painted` nao tem o que alinhar -- e a app devolvia NADA, para sempre.
-            # Nao era lentidao: era um beco sem saida, e o ASR tomava o lugar do YouTube (é
-            # isso que o dono chamou *"a legenda do youtube ta completamente bugada"*).
-            #
-            # A SAIDA NAO E SEGUIR A TRADUCAO (proibido: *"para de traduzir pra pt br do
-            # ingles e do espanhol"*). E o RELOGIO do player dizer onde o video esta e
-            # desenhar-se a cue da faixa SERVIDA nesse instante. O relogio so e usado
-            # enquanto ANDA: o congelado e medido (lia t=2.0 com o video a 530), e a prova
-            # do congelamento e uma PINTURA QUE MUDA COM O RELOGIO PARADO.
+            reply = self._yt_painted_lines_match(hwnd, uia, UIA, track, painted, vid)
+            if reply is None:
+                reply = self._yt_aligned_painted(hwnd, uia, UIA, track, painted, vid)
+            if reply is not None:
+                return reply
             now_t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
             key = ' '.join(str(w) for w in painted)[:120]
             moved = (now_t is not None
@@ -2530,29 +6496,680 @@ class ExternalCaptionWatcher(threading.Thread):
                 # ate' 359 s -- e era isto que o dono via como *"repete a
                 # legenda de instantes atras"*.
                 now_t = self._yt_decide(now_t)
-                cue = None
+                # O RELOGIO FINO NESTE RAMO TAMBEM (2026-11-02). MEDIDO na sessao
+                # do dono (pid 18676): 18 YOUTUBE_CAPTION, todas
+                # why=painted-other-track, e o relogio do UIA a saltar de segundo em
+                # segundo -- o ancora so' existia no ramo `painted`, logo a frase
+                # entrava de uma vez. Prova: _main/reveal-park-oracle.py A1/A2.
+                self._yt_anchor = (float(now_t), time.monotonic())
+                self._yt_track = track
+                reply = self._yt_clock_cue(track, now_t, vid)
+            else:
+                reply = None
+            if reply is not None:
+                return reply
+            return self._yt_no_clock_lines(hwnd, uia, UIA, track, painted, vid)
+        return self._yt_clock_lines(hwnd, uia, UIA, track, vid)
+
+    def _yt_identify(self, hwnd, uia, UIA):
+        """QUAL e' o video, e a porta da CDP ja' leu a resposta?
+
+        A IDENTIDADE VEM DA FONTE QUE JA' ESTA' LIDA (2026-11-03, MEDIDO). A
+        varredura dos `Edit` do Chrome custa 94-109 ms por tick, e o snapshot da
+        CDP ja' traz o `videoId` da pagina que ele esta' a ler. Perguntar a'
+        arvore de acessibilidade quando a resposta ja' esta' na mao era 90% da
+        leitura (`phases={'vid': 109.0, 'painted': 109.0}`). A UIA continua a ser
+        a fonte quando nao ha snapshot -- sem CDP, sem resposta.
+
+        Devolve `(vid, src, wait)`. `wait=True` e' "a foto seguinte traz o id":
+        a porta esta' viva e o id ja' e' conhecido, portanto nao se paga a
+        varredura dos `Edit` neste tick.
+        """
+        vid = ''
+        # A PORTA ABRE ANTES DE SE PERGUNTAR O ID (2026-11-03). Ver
+        # `_yt_cdp_ensure`: o id vem da foto, e a foto so' existe com a porta
+        # aberta. A ordem antiga tornava o caminho barato inalcancavel.
+        _yt_mark(self, 'yt-in')
+        _src = self._yt_cdp_ensure(getattr(self, 'yt_video_id', '') or None)
+        _yt_mark(self, 'cdp')
+        if _src and _src is not False:
+            # DUAS ABAS `watch`: O TITULO DA JANELA DECIDE (2026-11-03).
+            # MEDIDO: `YOUTUBE_CDP_SOURCE state=ambiguous` enquanto a legenda
+            # nao andava. O titulo vem do Win32 em microssegundos.
+            try:
+                # O IMPORT E' LOCAL COMO EM TODOS OS OUTROS SITIOS DESTE FICHEIRO
+                # (3494, 3778, 4039) -- e a sua AUSENCIA aqui era um `NameError`
+                # engolido pelo `except` (medido 2026-11-09 pelo `symtable`, o
+                # mesmo instrumento que apanhou o `source`): o titulo da janela
+                # NUNCA era entregue a fonte, logo o desempate de duas abas
+                # `watch` que esta linha existe para fazer nunca aconteceu.
+                import external_subs as _ext
+                _src.set_window_title(_ext._window_title(hwnd))
+            except Exception:                 # noqa: BLE001
+                pass
+        if _src and _src is not False:
+            try:
+                _early = _src.snapshot(max_age=1.5)
+            except Exception:  # noqa: BLE001
+                _early = None
+            if _early:
+                vid = str(_early.get('videoId') or '')
+        if not vid:
+            # A ARVORE SO' RESPONDE QUANDO NAO HA' FOTO NENHUMA PARA VIR (2026-11-03).
+            # Com a fonte CDP viva o id chega na foto seguinte (~80 ms); a varredura
+            # UIA dos `Edit` e' de 94-109 ms num tick bom e foi a dona dos 46 s e
+            # 62 s medidos na sessao do dono. Sem foto, espera-se o tick seguinte.
+            # UMA VEZ, PARA A PORTA SABER QUE ABA E' A NOSSA (2026-11-03).
+            # MEDIDO: com DUAS abas `watch` abertas a fonte responde
+            # `state=ambiguous` e nunca produz foto -- e sem id nunca ha' foto.
+            # O id que a arvore da' nesta primeira leitura e' o que a fonte passa
+            # a usar (`set_video_id`); a partir daí a arvore nao volta a ser
+            # perguntada, porque `yt_video_id` ja' existe.
+            if _src and _src is not False and not getattr(self, 'yt_video_id', ''):
+                # O ID SAI DA ABA ESCOLHIDA PELO TITULO DA JANELA (2026-11-03).
+                # MEDIDO: com TRES abas `watch` a fonte ficou
+                # `stats={'reads': 0, 'note': 'ambiguous'}` por minutos e a
+                # legenda parou. A arvore (UIA) era o unico caminho para o id e
+                # e' ela que custa 46-109 ms por tick. Aqui o id vem do URL da
+                # aba que o titulo da JANELA ja' identifica -- sem arvore.
                 try:
-                    import youtube_captions
-                    cue = youtube_captions.cue_at(track.get('cues') or (), now_t)
+                    vid = _src.target_video_id() or ''
+                except Exception:         # noqa: BLE001
+                    vid = ''
+            if _src and _src is not False and getattr(self, 'yt_video_id', ''):
+                # O ID DECLARADO PODE ESTAR MORTO (2026-11-03): uma vez
+                # guardado nunca era reperguntado e o `pick_target` filtra as
+                # abas por ele -- aba fechada, laco preso (164 linhas de
+                # `m_bJQ4G1Ht8` com outra aba a tocar). A ABA MANDA; o custo e'
+                # um HTTP em cache de 2 s. Ver docs/youtube-source-identity.md.
+                try:
+                    _tid = _src.target_video_id() or ''
+                except Exception:             # noqa: BLE001
+                    _tid = ''
+                if _tid and _tid != getattr(self, 'yt_video_id', ''):
+                    # A TROCA DE VIDEO EXIGE DOIS ACORDOS (2026-11-09) -- E UM
+                    # DELES NAO PODE SER PAGO POR QUEM JA' ESTA' A PINTAR
+                    # (2026-11-11). MEDIDO no log do dono, 21:24:33/36/37 e
+                    # 21:29:56, e outra vez as 21:18-21:24: pares de
+                    # `CAPTION_WINDOW_BLANKED reason=video-changed` a cada ~1,5 s
+                    # com o MESMO video dele a tocar, e `YOUTUBE_TRACK_READY
+                    # video_id=UytYrhYLOKI source=other-video` ao lado do alvo
+                    # `guARjKjyFLY` -- duas abas `watch` abertas fazem o
+                    # `target_video_id` oscilar, e cada oscilacao apagava a
+                    # legenda. O dono chama a isso "the subtitles stays frozen".
+                    #
+                    # A OSCILACAO NAO TRAZ LINHAS. Quando a foto do candidato JA'
+                    # tem as `rows` dele, ele nao e' um instrumento a confirmar: e'
+                    # o alvo, e a primeira cue dele nao paga 1,5 s de desconfianca
+                    # -- medido, 1541 ms de damp com as linhas ja' em maos. A
+                    # decisao vive em `youtube_cdp_source.rebind_verdict` (pura,
+                    # executada por `youtube-first-cue-oracle`); a shell obedece.
+                    _now = time.monotonic()
+                    _cand = getattr(self, '_yt_rebind_cand', '')
+                    _cand_at = float(getattr(self, '_yt_rebind_at', 0.0) or 0.0)
+                    import youtube_cdp_source as _ycs
+                    try:
+                        _snap = _src.snapshot(max_age=0.6) if _src else None
+                    except Exception:             # noqa: BLE001
+                        _snap = None
+                    _acts = _ycs.rebind_verdict(
+                        getattr(self, 'yt_video_id', '') or '', _tid, _cand,
+                        _now - _cand_at, self.YT_REBIND_CONFIRM_S, snap=_snap)
+                    _action, _why = _acts[0], _acts[1]
+                    if _action == 'clear':
+                        self._yt_rebind_cand = ''
+                        self._yt_rebind_at = 0.0
+                    elif _action == 'armed':
+                        self._yt_rebind_cand = _tid
+                        self._yt_rebind_at = _now
+                        log('YOUTUBE_TARGET_REBIND_ARMED was=%s now=%s '
+                            'confirm_s=%.1f'
+                            % (getattr(self, 'yt_video_id', '') or '-', _tid,
+                               self.YT_REBIND_CONFIRM_S))
+                    elif _action == 'adopt':
+                        log('YOUTUBE_TARGET_REBOUND was=%s now=%s why=%s '
+                            'confirmed=true'
+                            % (getattr(self, 'yt_video_id', '') or '-', _tid,
+                               _why))
+                        self._yt_rebind_cand = ''
+                        self._yt_rebind_at = 0.0
+                        self._yt_switch_video(_tid, _src)
+                    else:
+                        log('YOUTUBE_TARGET_REBIND_DAMPED was=%s cand=%s '
+                            'age_ms=%d'
+                            % (getattr(self, 'yt_video_id', '') or '-', _tid,
+                               int((_now - _cand_at) * 1000)))
+                else:
+                    # O id voltou a concordar: o candidato morre, senao uma
+                    # oscilacao antiga confirmava-se sozinha mais tarde.
+                    self._yt_rebind_cand = ''
+                _yt_mark(self, 'vid')
+                return '', _src, True
+            vid = self._youtube_video_id(hwnd, uia, UIA)
+        _yt_mark(self, 'vid')
+        return vid, _src, False
+
+    def _yt_switch_video(self, vid, src):
+        """TROCAR DE VIDEO NAO DEIXA A LINHA DO ANTERIOR NO ECRA (2026-11-03).
+
+        O dono alterna entre videos a toda a hora; a primeira leitura do novo
+        chega numa foto (dezenas de ms), mas ate' la' o que esta' no ecra e' a
+        ultima linha do OUTRO video -- duas legendas, uma delas falsa. A
+        janela apaga-se aqui e a linha nova entra assim que houver.
+        """
+        self.yt_video_id = vid
+        # A PORTA PASSA A SABER QUAL ABA E' A NOSSA (2026-11-03). MEDIDO:
+        # `YOUTUBE_CDP_SOURCE state=ambiguous` -- com duas abas `watch`
+        # abertas a fonte nao escolhe e a foto nunca chega; e foi este
+        # idioma que a ordem antiga (id primeiro, porta depois) escondia.
+        if src and src is not False:
+            try:
+                src.set_video_id(vid)
+            except Exception:         # noqa: BLE001
+                pass
+        self.yt_cue = ''
+        self._yt_switch_at = time.monotonic()
+        # UM APAGAR POR TROCA, NAO DOIS (2026-11-11). MEDIDO: esta funcao chamava
+        # `_blank_caption_window('video-changed')` aqui E outra vez no fim, no
+        # MESMO milissegundo e com dois epocarios consecutivos -- dois
+        # `CAPTION_WINDOW_BLANKED` para uma troca de video (0,390 ms de
+        # diferenca, mesma razao), o que engana quem conta episodios por linha.
+        # O que fica e' o do FIM, depois de o estado do video anterior ser
+        # limpo: a janela nao se fecha antes de nao haver nada para repintar.
+        # O APAGAR DA JANELA MORA NA SHELL, NAO AQUI (2026-11-03). MEDIDO com
+        # o oraculo `_main/yt-loop-uia-oracle.py`: `self._blank_caption_window`
+        # nao existe neste objecto -- a chamada levantava `AttributeError` a
+        # cada troca de video, ou seja o ramo que devia limpar a linha do
+        # video ANTERIOR morria antes de a limpar (e a linha antiga ficava no
+        # ecra, que e' o defeito que este ramo existe para evitar).
+        # A ULTIMA LINHA PINTADA era do video ANTERIOR. It cannot be
+        # the line of this one, and it is what the clock is compared
+        # with, so it goes with the video.
+        self.yt_hit = None
+        # UM VIDEO NOVO NAO HERDA NADA (2026-10-30): cada campo por-video era
+        # uma forma de a legenda do anterior voltar ao ecra.
+        self.yt_serve_floor = None
+        self.yt_foreign_t = None
+        self.yt_foreign_key = ''
+        self._yt_anchor = None
+        self._yt_track = None
+        # DOIS VIDEOS NAO PARTILHAM ESTADO (2026-11-06). `yt_cdp_rows` NAO era
+        # limpo aqui: `_yt_rows_impl` consome-o ANTES de pedir a arvore, logo um
+        # par de linhas escrito para o video A antes da troca podia ser desenhado
+        # para o video B -- e o canal de pintura nao leva `videoId`, portanto as
+        # duas linhas ficavam indistinguiveis. `yt_cdp_paused`/`yt_cdp_clock`
+        # tambem sao do video anterior; o da foto seguinte volta a dizer a
+        # verdade em ~80 ms.
+        self.yt_cdp_rows = None
+        self.yt_paint_items = []
+        self.yt_cdp_paused = False
+        self.yt_cdp_ended = False
+        self.yt_cdp_playing = None
+        self.yt_cdp_clock = None
+        self._yt_guess_s = 0.0
+        self._yt_was_paused = False
+        # O CARIMBO DO DWELL SAI COM ELE (2026-11-15): um video novo nao herda
+        # meia pausa do anterior -- herdada, a primeira amostra `paused=True`
+        # deste video ja' vinha com o dwell vencido e apagava de imediato.
+        self._yt_pause_since = None
+        # A LEITURA ANTERIOR DO RELOGIO, PARA A MEDIDA DE MOVIMENTO (2026-11-12).
+        # `(t, monotonic)` ou None. Ver `_yt_clock_moving`: um video novo zera-a,
+        # senao o salto entre dois videos lia-se como "a andar a 40x".
+        self._yt_mv = None
+        self._yt_mv_logged = False
+        self._yt_pause_epoch_seen = int(getattr(self, '_yt_pause_epoch', 0) or 0)
+        _shell = getattr(self, 'shell', None)
+        if _shell is not None:
+            try:
+                _shell._clear_yt_source_mirrors()
+            except Exception:             # noqa: BLE001
+                pass
+        self.last_line = ''
+        self.last_rows = []
+        self.finalized = False
+        self._caption_pending = None
+        blank = getattr(getattr(self, 'shell', None), '_blank_caption_window', None)
+        if blank is not None:
+            blank('video-changed')
+        # A EVIDENCIA DA TROCA VAI NO REGISTO (2026-11-11). `tab-switch` e um
+        # alvo adotado, `same-tab` e o mesmo video a mudar de faixa -- e o shell
+        # chamava "video changed" aos dois, o que fazia o portao de frescura
+        # olhar para o lado errado quando so' a faixa mudou.
+        try:
+            _why = src.video_change_evidence(vid)
+        except Exception:                 # noqa: BLE001
+            _why = 'none'
+        log(f'YOUTUBE_VIDEO_CHANGED video_id={vid} why={_why}')
+
+    def _yt_cdp_fast_lines(self, hwnd, uia, UIA, vid):
+        """O CAMINHO BARATO VEM PRIMEIRO (2026-11-03), e decide sozinho.
+
+        MEDIDO no dono: o laco pagou 46 s e 62 s num tick
+        (`EXTERNAL_CAPTIONS_READ_MS ms=46766.0`), e o custo era o que vinha
+        DEPOIS daqui: a leitura UIA das palavras (`phases={'painted':
+        17843.0}`) e o `yt-dlp` da faixa. Quando a CDP entrega as linhas do DOM
+        do player, essas linhas SAO a legenda: nao ha' nada a alinhar, nada a
+        pedir, nada a perguntar a' arvore. Este caminho e' o que faz o tick
+        custar ~20 ms em vez de dezenas de segundos.
+
+        Devolve a resposta, ou `None` quando nao ha' linhas na foto.
+        """
+        _snap_fast = self._yt_cdp_snapshot(hwnd, uia, UIA, declared=vid or None)
+        _yt_mark(self, 'fast-snap')
+        if _snap_fast and _snap_fast.get('rows'):
+            self.yt_cdp_rows = list(_snap_fast['rows'])
+            if _snap_fast.get('items'):
+                self.yt_paint_items = _snap_fast['items']
+            _yt_mark(self, 'thread')
+            _fast_rows = self._yt_rows(None, hwnd=hwnd, uia=uia, UIA=UIA)
+            _yt_mark(self, 'fast-rows')
+            if _fast_rows:
+                # A PINTURA DO DOM PODE ESTAR CONGELADA (2026-11-04): ver
+                # `_yt_paint_stall`. Com a aba escondida o Chrome para de
+                # repintar a caixa e `currentTime` continua a andar -- medido.
+                _stalled = self._yt_paint_stall(_snap_fast, _fast_rows, vid)
+                if _stalled is not None:
+                    return _stalled
+                self.yt_reason = 'cdp-lines'
+                self.yt_cue = ' '.join(_fast_rows)
+                return [('external:youtube:track', _fast_rows)], False
+            return [], False
+        if not hwnd:
+            # SEM JANELA NAO HA' ARVORE DE ACESSIBILIDADE (2026-11-04). O resto
+            # deste metodo (e o `_youtube_painted` que ele chama) pergunta a UIA
+            # da JANELA do jogador; com `hwnd=0` isso e' uma chamada a um handle
+            # que nao existe. Sem foto e sem janela, a resposta honesta e' nenhuma
+            # linha neste tick -- a foto seguinte (80 ms) desenha.
+            self.yt_reason = 'cdp-no-rows-yet'
+            return [], False
+        return None
+
+    def _yt_paint_stall(self, snap, rows, vid):
+        """A PINTURA DO DOM CONGELOU? -> a resposta da FAIXA, ou `None`.
+
+        O DEFEITO MEDIDO (2026-11-04, na Chrome do dono, CDP 9222): com a aba do
+        YouTube em segundo plano (`document.visibilityState === 'hidden'`) o
+        Chrome deixa de REPINTAR a caixa de legenda -- 40 s de reproducao,
+        `currentTime` 523,9 -> 563,0, as duas linhas NUNCA mudaram (uma unica
+        assinatura em 790 amostras a 50 ms), e o mesmo depois de um seek. O
+        caminho CDP devolve essas linhas como se fossem o presente, e e' isso
+        que o dono ouve como *"repete a legenda de instantes atras"*.
+
+        A REGRA e' um veredicto COM MEDIDA, nao um temporizador
+        (`youtube_monotonic.PaintStall`): a pintura parada E a faixa servida a
+        dizer outro cue naquele instante. Enquanto a segunda testemunha nao
+        existe (faixa ainda nao pedida, porque o DOM era a fonte) pede-se UMA vez
+        por assinatura -- `request` e' fire-and-forget (`YOUTUBE_TRACK_ASK`).
+
+        Devolve `None` no caso normal, e a resposta servida pela FAIXA quando o
+        congelamento esta' provado. O instante passa por `_yt_decide`, para o
+        ecra nunca recuar abaixo do chao monotono.
+        """
+        stall = getattr(self, 'yt_paint_stall', None)
+        if stall is None:
+            try:
+                import youtube_monotonic
+            except Exception as exc:      # noqa: BLE001
+                log(f'YOUTUBE_PAINT_STALL_IMPORT_FAILED error={exc!r}')
+                return None
+            stall = self.yt_paint_stall = youtube_monotonic.PaintStall()
+        thread = getattr(self.shell, 'youtube_track_thread', None)
+        track = None
+        if thread is not None:
+            try:
+                track = thread.current(vid)
+            except Exception:             # noqa: BLE001
+                track = None
+        cues = ()
+        if isinstance(track, dict) and track.get('state') == 'has-track':
+            cues = track.get('cues') or ()
+        verdict = stall.observe(rows, snap.get('t'), snap.get('stamp'), cues)
+        if verdict.get('ask') and thread is not None:
+            # A SEGUNDA TESTEMUNHA: a faixa e' o que diz se a pintura parada
+            # esta' velha. Uma vez por assinatura -- nao uma vez por tick.
+            try:
+                thread.request(vid, painted=[w for line in rows
+                                             for w in str(line).split()])
+            except Exception as exc:      # noqa: BLE001
+                log(f'YOUTUBE_PAINT_STALL_ASK_FAILED error={exc!r}')
+            return None
+        if verdict.get('why') not in ('stale', 'stale-gap'):
+            return None
+        now_t = self._yt_decide(snap.get('t'))
+        cue = None
+        try:
+            import youtube_captions
+            cue = youtube_captions.cue_at(cues, now_t)
+        except Exception as exc:          # noqa: BLE001
+            log(f'YOUTUBE_CUE_LOOKUP_FAILED video_id={vid} error={exc!r}')
+        cue = cue or verdict.get('cue') or {}
+        text = str(cue.get('text') or '').strip()
+        age = verdict.get('painted_age_s')
+        if not text:
+            # CONGELADA E A FAIXA NAO TEM CUE AQUI (uma lacuna): o player nao
+            # mostra nada neste instante, logo a resposta honesta e' nada --
+            # nunca a pintura em atraso.
+            self.yt_reason = 'painted-stale-gap'
+            return [], self._yt_forget('painted-stale-gap', urgent=False)
+        key = (cue.get('start'), text)
+        if key != getattr(self, 'yt_stale_logged', None):
+            self.yt_stale_logged = key
+            log('YOUTUBE_PAINT_STALE t=%.2f painted_age_s=%.1f cue=%s text=%r'
+                % (float(now_t), float(age or 0.0), cue.get('start'), text[:90]))
+        # A ETIQUETA DO QUADRO E' A DA FONTE QUE O PRODUZIU (a regra do
+        # `_yt_diag`): este quadro veio da FAIXA, nao do DOM.
+        self._yt_diag = {'src': 'external:youtube:track', 'vid': vid,
+                         'age': '0', 'rows': 1,
+                         'why': 'painted-stale:clock'}
+        self.yt_reason = 'painted-stale:clock'
+        self.yt_cue = text
+        self._yt_anchor = (float(now_t), time.monotonic())
+        self._yt_track = track
+        # O CHAO E' O DO `_yt_decide` E NAO SE MEXE AQUI (2026-11-04). `advance`
+        # existe para a PINTURA e desce o chao quando uma posicao salta >2 s
+        # para tras; chamado com o INICIO do cue, o fundo de um cue longo
+        # parecia um seek e o chao RECUAVA (medido no replay do fixture:
+        # 794,37 -> 792,40 no cue 792,399..797,8). O instante servido ja' passou
+        # por `_yt_decide`, logo o ecra nunca fica atras do chao.
+        return [('external:youtube:track',
+                 self._yt_lines(track, now_t) or [text])], False
+
+    def _yt_cdp_lines(self, vid):
+        """A LINHA DO PLAYER PASSA A' FRENTE DE TUDO (2026-11-03).
+
+        Quando a CDP entrega as linhas que o player TEM no DOM, essas linhas SAO
+        a legenda: nao se alinha com a faixa, nao se espera cue, nao se
+        re-quebra. MEDIDO nesta sessao: com a faixa a' frente o ecra ficou 60 s
+        sem uma unica linha (`CAPTION_WINDOW_BLANKED reason=no-caption-for-6.0s`)
+        enquanto o player pintava duas; e o alinhamento prendia-se em `cue=1114`
+        minutos depois de o video a ter passado. O que o player desenha e' o 1:1,
+        por definicao -- `_youtube_painted` ja' leu isso.
+
+        Devolve a resposta, ou `None` quando a foto nao trouxe linhas.
+        """
+        cdp_rows = list(getattr(self, 'yt_cdp_rows', None) or ())
+        if not cdp_rows:
+            return None
+        self.yt_cdp_rows = None
+        self.yt_reason = 'cdp-lines'
+        # A TROCA DE VIDEO TEM UM NUMERO (2026-11-03). O dono alterna entre
+        # videos e pediu para eu saber como isso se comporta: daqui sai
+        # `YOUTUBE_SWITCH_FIRST_FRAME ms=..` -- do instante em que o id mudou
+        # ate' a primeira linha do video NOVO no ecra. Sem este numero, uma
+        # troca lenta volta a ser uma impressao.
+        _sw = getattr(self, '_yt_switch_at', None)
+        if _sw is not None:
+            self._yt_switch_at = None
+            log('YOUTUBE_SWITCH_FIRST_FRAME ms=%.0f video_id=%s rows=%d'
+                % ((time.monotonic() - _sw) * 1000.0, vid, len(cdp_rows)))
+        self.yt_cue = ' '.join(cdp_rows)
+        self.yt_foreign_t = None
+        if self.yt_cue != self.yt_caption_logged:
+            self.yt_caption_logged = self.yt_cue
+            log('YOUTUBE_CAPTION video_id=%s track=- lines=%d ratio=1.00 '
+                'text=%r why=cdp-lines' % (vid, len(cdp_rows), self.yt_cue[:90]))
+        return [('external:youtube:track', cdp_rows)], False
+
+    def _yt_untracked_lines(self, hwnd, uia, UIA, painted):
+        """AS PALAVRAS DO PLAYER ANTES DO TRACK. OWNER, 2026-10-22 09:35.
+
+        verbatim: *"tu so viu carregar a pagina depois de varios segundos de ja
+        ter carregado? arruma isso."* A causa era de DESENHO, nao de velocidade:
+        a leitura das palavras pintadas (UI Automation) e barata e ja estava feita
+        aqui em cima, mas a linha so era emitida depois de o track chegar -- e o
+        extract mede segundos. Estas palavras SAO o texto que o YouTube esta a
+        desenhar, logo sao 1:1 por construcao; o track substitui-as quando chega,
+        com a janela de duas linhas e o timing. Sem palavras, nada e inventado:
+        a linha fica vazia e o motivo continua `track-pending`.
+        """
+        try:
+            import youtube_window
+            paint_text = youtube_window.paint_line(painted)
+        except Exception as exc:  # noqa: BLE001
+            log(f"YOUTUBE_PAINT_LINE_FAILED error={exc!r}")
+            paint_text = ""
+        # AS LINHAS, NAO A LINHA COLADA (2026-11-02). `paint_line` junta
+        # `['>> Nossa.', '>> ta segurando essa wave,']` num texto so', e o
+        # overlay re-quebra onde quer -- o dono viu exactamente isso. O que o
+        # player desenha sao DUAS linhas, e sao essas que saem.
+        try:
+            lines_now = self._yt_rows(painted, hwnd, uia, UIA)
+        except Exception:  # noqa: BLE001
+            lines_now = []
+        if lines_now:
+            self.yt_reason = "painted-untracked"
+            self.yt_cue = " ".join(lines_now)
+            return [("external:youtube:track", lines_now)], False
+        if paint_text:
+            self.yt_reason = "painted-untracked"
+            self.yt_cue = paint_text
+            return [("external:youtube:track", [paint_text])], False
+        return [], self._yt_forget('track-pending', urgent=False)
+
+    def _yt_painted_lines_match(self, hwnd, uia, UIA, track, painted, vid):
+        """A FAIXA MANUAL DESENHA LINHAS INTEIRAS, E `align_painted` PROCURA
+        PALAVRAS (2026-11-02).
+
+        MEDIDO nesta box no arranque de 22:16:47, com o player a pintar
+        `>> Nossa.` num video `lang=pt-orig`:
+          `YOUTUBE_TRACK_PAINT source=painted-no-match cue=- match=0
+           painted_words=5`
+        Os filhos da janela de legenda sao LINHAS, nao palavras, portanto o
+        alinhamento nunca casa -- e o ecra passava a ser servido pelo RELOGIO.
+        E' dai' que vinham as tres imagens do dono: a linha a construir-se,
+        meia palavra cortada e o cue anterior empilhado. Quando o player
+        desenha linhas inteiras E elas pertencem a faixa servida, a copia
+        directa (mesmo texto, mesmo instante) substitui a janela.
+
+        Devolve a resposta, ou `None` quando as linhas nao pertencem a faixa.
+        """
+        lines_now = []
+        try:
+            import youtube_window as _ytw
+            lines_now = self._yt_rows(painted, hwnd, uia, UIA)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
+        if lines_now and any(len(line.split()) >= 2 for line in lines_now):
+            t_probe = None
+            try:
+                t_probe = self._youtube_time(hwnd, uia, UIA,
+                                             track.get('duration'))
+            except Exception as exc:  # noqa: BLE001
+                log(f'YOUTUBE_PLAYED_T_FAILED error={exc!r}')
+            pool = self._yt_words_pool(track, t_probe)
+            try:
+                same = _ytw.match_ratio(lines_now, pool)
+            except Exception as exc:  # noqa: BLE001
+                log(f'YOUTUBE_PAINT_MATCH_FAILED error={exc!r}')
+                same = {'ok': False, 'ratio': 0.0}
+            if same.get('ok'):
+                self.yt_foreign_t = None
+                self.yt_cue = ' '.join(lines_now)
+                self.yt_reason = 'painted-lines'
+                if t_probe is not None:
+                    self._yt_anchor = (float(t_probe), time.monotonic())
+                    self._yt_track = track
+                if self.yt_cue != self.yt_caption_logged:
+                    self.yt_caption_logged = self.yt_cue
+                    log('YOUTUBE_CAPTION video_id=%s track=%s lines=%s '
+                        'ratio=%.2f text=%r why=painted-lines'
+                        % (vid, track.get('lang') or '-', len(lines_now),
+                           float(same.get('ratio') or 0.0), self.yt_cue[:90]))
+                return [('external:youtube:track', lines_now)], False
+        return None
+
+    def _yt_aligned_painted(self, hwnd, uia, UIA, track, painted, vid):
+        """A PINTURA ALINHA COM O CUE DA FAIXA SERVIDA -- e essa e' a linha.
+
+        E' o caminho 1:1 de sempre: `align_painted` diz QUAL cue o player esta'
+        a pintar, a ancora passa a ser o relogio do proprio player (a 60 ms,
+        `yt_live_frame`), e o texto servido sao as LINHAS que ele desenha, nao a
+        janela re-quebrada a partir da faixa.
+
+        Devolve a resposta, ou `None` quando a pintura nao casou com a faixa
+        (o ramo de outro track decide entao pelo relogio).
+        """
+        hit = None
+        try:
+            import youtube_captions
+            _t_align = time.monotonic()
+            hit = youtube_captions.align_painted(track.get('cues') or (),
+                                                  painted)
+            self._yt_prof("align", _t_align)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_PAINT_ALIGN_FAILED video_id={vid} error={exc!r}')
+        if not hit and painted:
+            # A MEDICAO QUE FALTAVA (2026-11-02). `match=0` com a faixa certa
+            # foi medido tres vezes nesta box e nao dizia PORQUE: agora o log
+            # traz as palavras pintadas e as primeiras palavras das cues, uma
+            # vez por texto, para a divergencia ser lida e nao adivinhada.
+            key = ' '.join(str(w) for w in painted)[:120]
+            if key != getattr(self, 'yt_miss_logged', ''):
+                self.yt_miss_logged = key
+                first = []
+                for cue in (track.get('cues') or ())[:3]:
+                    first.extend(str(cue.get('text') or '').split()[:8])
+                log('YOUTUBE_ALIGN_MISS video_id=%s painted=%r cue0=%r'
+                    % (vid, list(painted)[:6], first[:8]))
+        if hit:
+            text = str(hit.get('text') or '').strip()
+            if text:
+                self.yt_hit = hit
+                self.yt_foreign_t = None
+                self.yt_cue = text
+                self.yt_reason = 'painted'
+                # A PINTURA E' O RELOGIO MAIS ADIANTADO QUE EXISTE: e' o
+                # que o player esta' a desenhar agora. O chao sobe com ela,
+                # e e' isso que impede o relogio atrasado de recuar o ecra.
+                self._yt_advance((hit.get('cue') or {}).get('start'))
+                # THE DECISION, WRITTEN. This is the line the owner can
+                # compare with the screen: the cue of the track the
+                # player is painting, at the instant it is painting it.
+                if text != self.yt_caption_logged:
+                    self.yt_caption_logged = text
+                    log('YOUTUBE_CAPTION video_id=%s cue=%s t=%s '
+                        'track=%s words=%s text=%r'
+                        % (vid, hit.get('index'),
+                           hit.get('cue', {}).get('start'),
+                           track.get('lang') or '-', hit.get('exact'),
+                           text[:90]))
+                # A JANELA REVELADA PELAS PALAVRAS QUE O PLAYER PINTOU
+                # (2026-10-29). MEDIDO: este ramo montava a janela com o
+                # INICIO DO CUE (`hit.cue.start + 0.001`), e `revealed_lines`
+                # corta a linha pelos relogios das palavras -- logo SO a
+                # primeira palavra passava, e a linha NUNCA crescia no ecra.
+                # O relogio certo aqui sao as PALAVRAS QUE O PLAYER JA
+                # PINTOU: elas sao o prefixo revelado do cue, palavra a
+                # palavra, 1:1 por construcao. Ver `youtube_reveal.py`.
+                # O RELOGIO DO PROPRIO PLAYER, e nao so' a pintura, para
+                # cortar a linha na PALAVRA (2026-10-30, ver
+                # `youtube_reveal.word_clock_count`). Este `t` e' tambem o
+                # ANCORA da recomposicao a 60 ms: `yt_live_frame` avanca-o
+                # com `monotonic()` entre leituras do UIA, por isso as
+                # palavras seguintes aparecem uma a uma sem custar uma
+                # leitura de acessibilidade por palavra.
+                played_t = None
+                try:
+                    played_t = self._youtube_time(hwnd, uia, UIA,
+                                                  track.get('duration'))
                 except Exception as exc:  # noqa: BLE001
-                    log(f'YOUTUBE_CUE_LOOKUP_FAILED video_id={vid} error={exc!r}')
-                text = str((cue or {}).get('text') or '').strip()
-                if text:
-                    self.yt_cue = text
-                    self.yt_reason = 'painted-other-track:clock'
-                    self._yt_advance((cue or {}).get('start'))
-                    if text != self.yt_caption_logged:
-                        self.yt_caption_logged = text
-                        log('YOUTUBE_CAPTION video_id=%s cue=%s t=%s track=%s '
-                            'text=%r why=painted-other-track'
-                            % (vid, (cue or {}).get('start'), round(now_t, 2),
-                               track.get('lang') or '-', text[:90]))
-                    return [('external:youtube:track',
-                             self._yt_lines(track, now_t) or [text])], False
-            return [], self._yt_forget('painted-other-track', urgent=False)
-        # NO PAINTED LINE: the captions are off, or the player is between
-        # cues. Then the clock is the only clock there is -- but it is only
-        # trusted when the last alignment agrees with it.
+                    log(f'YOUTUBE_PLAYED_T_FAILED error={exc!r}')
+                if played_t is not None:
+                    self._yt_anchor = (float(played_t), time.monotonic())
+                    self._yt_track = track
+                else:
+                    self._yt_anchor = None
+                # O TEXTO QUE O PLAYER DESENHA E' A LEGENDA (2026-11-02, ordem
+                # do dono: *"sotto devia ta copiando 1:1 sem truncar palavras"*).
+                # Aqui estava `window_by_paint`, que re-quebra a partir do track e
+                # corta em `cap = min(pintado, relogio_de_palavra)`: dai' vem a linha
+                # que se CONSTR OI ao longo do cue, a meia palavra (`Yamato ja' d`) e
+                # a janela que empilha o cue anterior por baixo do actual -- as tres
+                # coisas que ele fotografou. As linhas pintadas JA' SAO o texto do
+                # YouTube, uma por linha: saem inteiras, no instante em que mudam.
+                try:
+                    import youtube_window
+                    lines = self._yt_rows(painted, hwnd, uia, UIA)
+                except Exception as exc:  # noqa: BLE001
+                    log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
+                    lines = []
+                return [('external:youtube:track', lines or [text])], False
+        return None
+
+    def _yt_clock_cue(self, track, now_t, vid):
+        """THE PLAYER IS PAINTING ANOTHER TRACK -- AND THE OWNER WAS LEFT WITH NOTHING.
+
+        MEDIDO 2026-10-23 (`_main/yt-1to1-live-compare.py`, Edge proprio, video
+        WdaHAGRBB6s): o player pinta `pt`, a TRADUCAO automatica, enquanto a politica
+        serve `en-orig`. As palavras pintadas nunca estao na faixa servida, logo o
+        `align_painted` nao tem o que alinhar -- e a app devolvia NADA, para sempre.
+        Nao era lentidao: era um beco sem saida, e o ASR tomava o lugar do YouTube (é
+        isso que o dono chamou *"a legenda do youtube ta completamente bugada"*).
+
+        A SAIDA NAO E SEGUIR A TRADUCAO (proibido: *"para de traduzir pra pt br do
+        ingles e do espanhol"*). E o RELOGIO do player dizer onde o video esta e
+        desenhar-se a cue da faixa SERVIDA nesse instante. O relogio so e usado
+        enquanto ANDA: o congelado e medido (lia t=2.0 com o video a 530), e a prova
+        do congelamento e uma PINTURA QUE MUDA COM O RELOGIO PARADO. Quem chama ja'
+        verificou que ele ANDA ou que a pintura nao mudou com ele parado.
+
+        Devolve a resposta, ou `None` quando nao ha' cue nesse instante -- e
+        entao quem decide e' o ramo que pinta as linhas do player
+        (`_yt_no_clock_lines`).
+        """
+        cue = None
+        try:
+            import youtube_captions
+            cue = youtube_captions.cue_at(track.get('cues') or (), now_t)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_CUE_LOOKUP_FAILED video_id={vid} error={exc!r}')
+        text = str((cue or {}).get('text') or '').strip()
+        if not text:
+            return None
+        self.yt_cue = text
+        self.yt_reason = 'painted-other-track:clock'
+        self._yt_advance((cue or {}).get('start'))
+        if text != self.yt_caption_logged:
+            self.yt_caption_logged = text
+            log('YOUTUBE_CAPTION video_id=%s cue=%s t=%s track=%s '
+                'text=%r why=painted-other-track'
+                % (vid, (cue or {}).get('start'), round(now_t, 2),
+                   track.get('lang') or '-', text[:90]))
+        return [('external:youtube:track',
+                 self._yt_lines(track, now_t) or [text])], False
+
+    def _yt_no_clock_lines(self, hwnd, uia, UIA, track, painted, vid):
+        """O RAMO QUE DEIXAVA O ECRA VAZIO COM O PLAYER A DESENHAR (2026-11-02,
+        terceira imagem do dono: duas linhas no YouTube, nada no Sotto).
+
+        Cai aqui quando o track servido nao alinha E o relogio do player nao deu
+        um instante -- ai' o unico texto verdadeiro que existe e' o que o player
+        esta' a desenhar. Nao se inventa, nao se atrasa: pinta-se.
+        """
+        try:
+            import youtube_window as _ytw
+            lines_now = self._yt_rows(painted, hwnd, uia, UIA)
+        except Exception as exc:  # noqa: BLE001
+            log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
+            lines_now = []
+        if lines_now:
+            self.yt_reason = 'painted-no-clock'
+            self.yt_cue = ' '.join(lines_now)
+            if self.yt_cue != self.yt_caption_logged:
+                self.yt_caption_logged = self.yt_cue
+                log('YOUTUBE_CAPTION video_id=%s track=%s lines=%s text=%r '
+                    'why=painted-no-clock'
+                    % (vid, track.get('lang') or '-', len(lines_now),
+                       self.yt_cue[:90]))
+            return [('external:youtube:track', lines_now)], False
+        return [], self._yt_forget('painted-other-track', urgent=False)
+
+    def _yt_clock_lines(self, hwnd, uia, UIA, track, vid):
+        """SEM LINHA PINTADA: ou a legenda esta' desligada, ou o player esta'
+        entre cues. Entao o relogio e' o unico relogio que existe -- mas so' se
+        confia nele quando o ultimo alinhamento concorda com ele.
+
+        """
         t = self._youtube_time(hwnd, uia, UIA, track.get('duration'))
         if t is None:
             # THE CLOCK CANNOT BE READ: the player may be gone. The ASR is
@@ -2585,6 +7202,10 @@ class ExternalCaptionWatcher(threading.Thread):
         # um congelamento GRANDE contra a ultima pintura; o chao fecha o resto,
         # para nao haver duas regras de tempo diferentes no mesmo ficheiro.
         t = self._yt_decide(t)
+        # O MESMO ANCORA NESTE RAMO (2026-11-02, ver acima; provado em A5 do
+        # `_main/reveal-park-oracle.py`).
+        self._yt_anchor = (float(t), time.monotonic())
+        self._yt_track = track
         cue = None
         try:
             import youtube_captions
@@ -2619,12 +7240,109 @@ class ExternalCaptionWatcher(threading.Thread):
             return None
         base_t, base_mono = anchor
         elapsed = time.monotonic() - base_mono
-        if elapsed < 0 or elapsed > self.YT_ANCHOR_MAX_S:
+        if elapsed < 0:
             return None
-        lines = self._yt_lines(track, base_t + elapsed)
+        # VELOCIDADE E PAUSA NO MESMO SITIO (2026-11-04). O relogio interpolado era
+        # 1x por construcao: a 2x o video andava o dobro e a palavra chegava
+        # atrasada. O teto agora e' o estado publicado e nao um numero redondo
+        # (`youtube_clock`, 2026-11-07): 3 s congelavam a revelacao num stutter de 5.
+        try:
+            rate = float(getattr(self, 'yt_cdp_rate', 1.0))
+        except (TypeError, ValueError):
+            rate = 1.0
+        if not (0.05 <= rate <= 16.0):
+            rate = 1.0
+        import youtube_clock
+        state = youtube_clock.state_of(self)
+        hold = self.YT_ANCHOR_MAX_S if state == youtube_clock.UNKNOWN \
+            else youtube_clock.HOLD_S
+        t, _moved, spent = youtube_clock.instant(base_t, elapsed, rate, state, hold)
+        if spent:
+            # O TETO NAO ESCONDE UMA LEITURA FALHADA (2026-11-04): a linha
+            # fica onde esta' -- o overlay nao apaga o que ja' pintou -- mas o
+            # log diz que a FONTE parou de responder, que era o que faltava para
+            # o dono (*"but then it stopped"*) ter um nome em vez de um ecra parado.
+            stamp = getattr(self, '_yt_stall_logged', None)
+            if stamp is None or elapsed - stamp > 5.0:
+                self._yt_stall_logged = elapsed
+                log('YOUTUBE_LIVE_STALLED elapsed_s=%.1f state=%s'
+                    % (elapsed, state))
+            if state == youtube_clock.UNKNOWN:
+                return None
+        lines = self._yt_lines(track, t)
         if not lines:
             return None
-        return ('external:youtube:track', lines)
+        # UMA ETIQUETA PROPRIA (2026-11-02): com `src=external:youtube:track`
+        # aqui tambem, um quadro da FAIXA e um quadro da PINTURA eram
+        # indistinguiveis no log -- e a auditoria nao podia nomear o produtor.
+        return ('external:youtube:liveframe', lines)
+
+    def _yt_cue_payload(self):
+        """O cue do player COM O RELOGIO DELE, para a janela nativa (2026-11-03).
+
+        PORQUE E' QUE ISTO EXISTE. O overlay tem desde hoje um motor que revela
+        palavra a palavra contra o relogio do PROPRIO player (`caption_overlay.
+        _PlayerCue`), mas o payload que ele recebia era so' texto: sem `cue` ele
+        desenha o cue inteiro no instante da chegada. MEDIDO no log do dono: o
+        relogio do UIA salta de segundo em segundo, portanto a frase entrava de
+        uma vez e ficava parada -- o oposto de 1:1.
+
+        O PAR QUE O OVERLAY QUER e' (instante do video, monotonic da leitura), e
+        `_yt_anchor` ja' e' exactamente isso `(t, monotonic)`, gravado nos tres
+        ramos do `_tick` que servem um cue. As `rows` seguem a forma de
+        `youtube_reveal.rows_from_cues`, com cada palavra no seu `tOffsetMs`.
+
+        A JANELA E' CURTA DE PROPOSITO: a faixa de um video longo tem milhares
+        de cues e o overlay so' precisa dos vizinhos do instante lido; mandar a
+        faixa toda por cue seria pagar o payload inteiro a cada segundo.
+        """
+        anchor = getattr(self, '_yt_anchor', None)
+        track = getattr(self, '_yt_track', None)
+        if not anchor or not track:
+            return None
+        try:
+            base_t, base_mono = float(anchor[0]), float(anchor[1])
+        except Exception:                 # noqa: BLE001
+            return None
+        try:
+            import youtube_reveal
+            rows = youtube_reveal.rows_from_cues(track.get('cues') or ())
+        except Exception as exc:          # noqa: BLE001
+            log('YOUTUBE_CUE_PAYLOAD_FAILED error=%r' % (exc,))
+            return None
+        rows = [r for r in rows
+                if (r.get('end') is None or float(r['end']) >= base_t - 1.0)
+                and float(r.get('start') or 0.0) <= base_t + 3.0]
+        if not rows:
+            return None
+        # O `rate` VAI JUNTO (2026-11-04): o overlay avanca o cue no relogio do
+        # player, e um video a 2x anda o dobro por segundo de parede.
+        try:
+            rate = float(getattr(self, 'yt_cdp_rate', 1.0))
+        except (TypeError, ValueError):
+            rate = 1.0
+        if not (0.05 <= rate <= 16.0):
+            rate = 1.0
+        # PLAYER PARADO -> PAYLOAD CONGELADO (2026-11-06). Medido no log do
+        # dono: 13,8 s de `paused=True` com a linha a CRESCER (11 -> 14
+        # palavras) e `paint_t` +0,95 s, porque o `_PlayerCue` do overlay avanca
+        # `t + (agora - at) * rate` e nada nesse motor sabe o que e' uma pausa.
+        # `freeze_rows` resolve-o no payload (e' a mesma autoridade que decide a
+        # pausa em todo o resto: `video.paused`/`video.ended` da CDP).
+        if (bool(getattr(self, 'yt_cdp_paused', False))
+                or bool(getattr(self, 'yt_cdp_ended', False))
+                or getattr(self, 'yt_cdp_playing', None) is not True):
+            try:
+                import youtube_cdp_source as _ycs
+                frozen = _ycs.freeze_rows(rows, base_t)
+            except Exception as exc:          # noqa: BLE001
+                log('YOUTUBE_FREEZE_FAILED error=%r' % (exc,))
+                frozen = []
+            if not frozen:
+                return None
+            return {'rows': frozen, 't': base_t, 'at': base_mono,
+                    'rate': rate, 'paused': True}
+        return {'rows': rows, 't': base_t, 'at': base_mono, 'rate': rate}
 
     def _yt_lines(self, track, t):
         """As linhas que o YouTube desenha em `t` -- DUAS, nao uma.
@@ -2675,6 +7393,11 @@ class ExternalCaptionWatcher(threading.Thread):
             blank('yt-forget:%s' % reason)
         return urgent
 
+    #: Quanto tempo o id do video vale sem ser lido outra vez (ver _youtube_video_id).
+    #: 30 s, com invalidação pelo TÍTULO da janela: navegar muda o titulo do
+    #: YouTube, e mesmo sem mudar, meio minuto de cache nao esconde um video novo.
+    YT_VIDEO_TTL_S = 30.0
+
     def _youtube_video_id(self, hwnd, uia, UIA):
         """The 11-character id of the video playing in this window, or ""."""
         if not hwnd:
@@ -2685,19 +7408,167 @@ class ExternalCaptionWatcher(threading.Thread):
         except Exception as exc:  # noqa: BLE001
             log(f'YOUTUBE_CAPTIONS_UNAVAILABLE error={exc!r}')
             return ''
+        # O VIDEO ID NAO MUDA A CADA TICK, E LER A BARRA DE ENDERECO CUSTA CARO.
+        # MEDIDO com cProfile em 2026-11-02 23:13 (`_main/_yt-cprofile.txt`): de
+        # 124 ms de `_youtube`, **119 ms** eram `external_subs.edit_values` -- a
+        # varredura dos controlos Edit do Chrome para achar a barra de endereco.
+        # Ela e' o que sobrava dos 109-500 ms do laco; o desenho custa 16 ms. O id
+        # fica em cache por janela e so' volta a ser lido quando o TITULO muda (uma
+        # navegacao muda o titulo do YouTube) ou quando o TTL expira.
+        key = int(hwnd or 0)
+        try:
+            import external_subs as _ext
+            title = _ext._window_title(hwnd)
+        except Exception:  # noqa: BLE001
+            title = ""
+        # O CACHE VALE PELO TITULO, NAO PELO HWND (2026-11-03, MEDIDO). O `hwnd`
+        # aqui e' o da janela em primeiro plano, que muda de tick para tick quando
+        # o dono toca em qualquer sitio; com o hwnd na chave o cache nunca servia e
+        # CADA tick pagava a varredura dos `Edit` do Chrome -- medido no log desta
+        # sessao: `phases={'declared': 156.0, 'painted': 172.0}`, ou seja, o id era
+        # 90% da leitura, e uma vez `10281.0` (dez segundos!) com o desenho a
+        # espera. O titulo do YouTube muda quando se navega, que e' exactamente a
+        # unica coisa que invalida o id.
+        cached = getattr(self, "_yt_vid_cache", None)
+        if cached and time.monotonic() - cached[3] <= self.YT_VIDEO_TTL_S:
+            # O TITULO VAZIO NAO INVALIDA NADA (2026-11-03, MEDIDO). O `hwnd` e' o
+            # da janela em PRIMEIRO PLANO, e ela alterna: um tick le' o titulo do
+            # Chrome, o seguinte le' "" porque quem esta' a frente e' outra janela.
+            # Com o titulo na comparacao, os dois ticks escreviam caches um do
+            # outro e CADA UM pagava a varredura dos `Edit` (94 ms medidos,
+            # `YOUTUBE_VID_SCAN ms=94.0 hits=1`). Titulo vazio = "nao sei se mudou":
+            # vale o ultimo id por 5 s; um titulo DIFERENTE e' navegacao e varre.
+            if not title:
+                if time.monotonic() - cached[3] <= 5.0:
+                    return cached[2]
+            elif cached[1] == title:
+                return cached[2]
+        # A FALHA TAMBEM SE LEMBRA (2026-11-03). Sem isto, uma janela em que a
+        # varredura NAO acha id (a barra de endereco escondida, outro perfil do
+        # Chrome) pagava o preco inteiro a cada tick, para sempre. Meio segundo de
+        # memoria da falha e' invisivel para um video e corta o custo por 8.
+        miss = getattr(self, "_yt_vid_miss", None)
+        if miss and miss[0] == title and time.monotonic() - miss[1] <= 0.5:
+            return ''
+        _scan_t = time.monotonic()
         try:
             values = external_subs.edit_values(hwnd, uia, UIA)
         except Exception as exc:  # noqa: BLE001
             log(f'YOUTUBE_EDIT_VALUES_FAILED error={exc!r}')
             return ''
+        # QUEM PAGA A VARREDURA, E DE QUE TITULO (2026-11-03): o cache vale pelo
+        # titulo, e sem esta linha um `declared` caro e' indistinguivel de um
+        # titulo que muda a cada tick.
+        if time.monotonic() - getattr(self, '_yt_vid_scan_logged', 0.0) > 5.0:
+            self._yt_vid_scan_logged = time.monotonic()
+            log('YOUTUBE_VID_SCAN ms=%.1f hwnd=%s title=%r hits=%d'
+                % ((time.monotonic() - _scan_t) * 1000.0, key, title[:60],
+                   len(values or [])))
         for value in values:
             try:
                 vid = youtube_captions.video_id_from_url(value)
             except Exception:
                 vid = None
             if vid:
+                self._yt_vid_cache = (key, title, vid, time.monotonic())
                 return vid
+        self._yt_vid_miss = (title, time.monotonic())
         return ''
+
+    def _yt_prof(self, stage, t0, detail=""):
+        """`YT_PROF stage=.. ms=..` -- so' com `SOTTO_YT_PROFILE=1`.
+
+        O GARGALO DEVE SER UM NUMERO, NAO UMA SUSPEITA (2026-11-02). A leitura
+        do laco externo custava 0,4-1,2 s por tick no dono e tres caches
+        sucessivos nao a moveram: cada estagio mede-se aqui, e o que sobra e'
+        o que ainda nao foi instrumentado.
+        """
+        if os.environ.get("SOTTO_YT_PROFILE") != "1":
+            return
+        try:
+            import youtube_captions as _ycp
+            if _ycp.PROF_HOOK is None:
+                _ycp.PROF_HOOK = log
+        except Exception:  # noqa: BLE001
+            return
+        try:
+            log('YT_PROF stage=%s ms=%.1f%s' % (stage, (time.monotonic() - t0) * 1000.0, (' '+detail) if detail else ''))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _ensure_clock_sampler(self):
+        """O RELOGIO DO PLAYER NAO PODE SER O TICK (2026-11-02).
+
+        MEDIDO no dono, com o video a tocar: o desenho custa 47-172 ms, mas a
+        leitura do relogio custava 391-1375 ms (a busca por ControlType=Text
+        percorre a arvore do Chrome inteira), e o laco externo e' SERIAL: cada
+        leitura de relogio empurra a leitura da legenda. Com o relogio numa
+        thread propria a cadencia do desenho passa a depender so' do que ele
+        custa, e o instante continua a ser medido -- cada amostra tem a sua
+        hora, e `_youtube_time` interpola entre amostras (o erro maximo e' o
+        passo da amostra, nao um numero inventado).
+        """
+        if getattr(self, "_yt_clock_thread", None) is not None:
+            return
+        self._yt_clock_lock = threading.Lock()
+        self._yt_clock_last = None  # (t, monotonic)
+        self._yt_clock_dur = None
+
+        def _loop():
+            try:
+                import external_subs
+                import youtube_captions as _yc
+                UIA2, uia2 = external_subs._uia()
+            except Exception as exc:  # noqa: BLE001
+                log(f'YOUTUBE_CLOCK_UNAVAILABLE error={exc!r}')
+                return
+            log('YOUTUBE_CLOCK_STARTED interval_s=0.40')
+            while not self.stop_event.is_set():
+                hwnd = int(getattr(self, "target_hwnd", 0) or 0)
+                # COM A CDP A LER O RELOGIO, ESTA AMOSTRA E' SO' DESPERDICIO
+                # (2026-11-03, MEDIDO). `player_time` e' UIA: 391-1375 ms por
+                # amostra (o comentario abaixo ja' dizia), e o `video.currentTime`
+                # chega a 12 Hz no snapshot da fonte, a 2-5 ms. Pior: esta thread
+                # era um dos clientes UIA que apareceram PRESOS no `UI_HUNG_FRAME`
+                # (`youtube_captions.player_time_detail`), e um cliente UIA preso
+                # arrasta o renderer do Chrome. Com foto fresca, nao se pergunta.
+                if hwnd and self._yt_snap_video() is None:
+                    try:
+                        _t0 = time.monotonic()
+                        t = _yc.player_time(uia2, UIA2, hwnd,
+                                            duration=self._yt_clock_dur)
+                        self._yt_prof("clock-sample", _t0)
+                        if t is not None:
+                            with self._yt_clock_lock:
+                                prev = self._yt_clock_last
+                                self._yt_clock_prev = prev
+                                self._yt_clock_last = (float(t), time.monotonic())
+                    except Exception:  # noqa: BLE001
+                        pass
+                self.stop_event.wait(0.40)
+
+        self._yt_clock_thread = threading.Thread(
+            target=_loop, name="yt-clock", daemon=True)
+        self._yt_clock_thread.start()
+
+    def _yt_snap_video(self):
+        """O id do video da foto MAIS RECENTE, ou None. Sem custo de UIA.
+
+        Existe para o laco poder responder "ainda estou a ler este video do
+        YouTube" sem voltar a perguntar a' arvore de acessibilidade (60-140 ms,
+        e uma vez 6,8 s nesta maquina). Quem consome isto re-pergunta quando o
+        resultado e' None -- e e' None exactamente quando a pagina muda.
+        """
+        src = getattr(self, '_yt_cdp_source', None)
+        if not src or src is False:
+            return None
+        try:
+            snap = src.snapshot(max_age=1.5)
+        except Exception:                     # noqa: BLE001
+            return None
+        if not snap:
+            return None
+        return str(snap.get('videoId') or '') or None
 
     def _youtube_time(self, hwnd, uia, UIA, duration):
         """Where the video is, in seconds -- or None when it is not known.
@@ -2705,18 +7576,106 @@ class ExternalCaptionWatcher(threading.Thread):
         None is NOT "the video is paused": it is "we do not know", and the
         caller keeps the ASR running.
         """
+        self._yt_clock_dur = duration
+        # O RELOGIO DA CDP PRIMEIRO (2026-11-03, MEDIDO): `video.currentTime` e'
+        # o mesmo relogio do player, 2-5 ms, e anda com a aba escondida (56,9 s
+        # em 57 s de parede) onde o texto do UIA nao atualizava.
+        cdp_clock = getattr(self, 'yt_cdp_clock', None)
+        if cdp_clock is not None:
+            try:
+                # A TOLERANCIA E' O QUE O PLAYER DISSE, NAO UM TETO (2026-11-07).
+                # Aqui estava `base_t + min(age, 0.5)`: um stutter maior que 0,5 s
+                # deixava a legenda para tras do video por (stutter - 0,5). A
+                # regra e a deriva de 34 ms que a justifica vivem em
+                # `youtube_clock`; a prova e' `_main/stutter-caption-oracle.py`.
+                import youtube_clock
+                t, spent = youtube_clock.sample_instant(
+                    self, float(cdp_clock[0]),
+                    time.monotonic() - float(cdp_clock[1]))
+                if not spent:
+                    return float(t)
+                # AMOSTRA VELHA DEMAIS: a adivinha acaba, a UIA e' o que resta.
+            except Exception as exc:          # noqa: BLE001
+                log(f'YOUTUBE_CLOCK_FAILED error={exc!r}')
+
+        last = getattr(self, "_yt_clock_last", None)
+        if last is not None:
+            age = time.monotonic() - last[1]
+            if 0.0 <= age <= 2.0:
+                prev = getattr(self, "_yt_clock_prev", None)
+                # PARADO NAO ANDA (medido: 700.0 quatro vezes seguidas com o
+                # video em pausa). Duas amostras separadas >= 0.3 s com o MESMO
+                # instante significam "ninguem se mexeu": interpolar punha a
+                # legenda 1-2 s a frente do que o player desenha.
+                if prev is not None and (last[1] - prev[1]) >= 0.3 and abs(last[0] - prev[0]) < 0.05:
+                    return last[0]
+                return last[0] + age
+        _t0 = time.monotonic()
+        _t = None
         try:
             import youtube_captions
-            return youtube_captions.player_time(uia, UIA, hwnd,
-                                                duration=duration)
+            _t = youtube_captions.player_time(uia, UIA, hwnd,
+                                              duration=duration)
+            if _t is not None:
+                self._yt_clock_last = (float(_t), time.monotonic())
+            return _t
         except Exception as exc:  # noqa: BLE001
             log(f'YOUTUBE_TIME_FAILED error={exc!r}')
             return None
+        finally:
+            self._yt_prof("time", _t0, "hwnd=%s t=%s" % (hwnd, _t))
 
     def _tick(self, got, yt_mode=False):
         now = time.monotonic()
+        # A PAUSA/ O FIM NAO REPINTA NADA (2026-11-09, ordem do dono). O carimbo
+        # `_yt_pause_epoch` continua a ser consumido para o observador nao
+        # repetir a borda, mas o desenho CONGELADO que existia aqui (2026-11-06)
+        # foi o que manteve os pixels no ecra com o video parado -- o dono,
+        # verbatim: *"quando eu deixo o video pausado, a legenda fica ao vivo,
+        # quando eu pauso, ela volta e fica travada em outro momento"*. Quem
+        # apaga agora e' o observador (`youtube-paused`/`youtube-ended` em
+        # `_observe_snapshot`) e o piso de `_caption_idle_hide`; um tick de pausa
+        # nao pinta. O MODELO, o WORKER e o HISTORICO nao sao tocados.
+        self._yt_pause_epoch_seen = int(getattr(self, '_yt_pause_epoch', 0) or 0)
+        # O QUADRO QUE O ECRA RECEBERIA, DESENHADO OU NAO (2026-11-02).
+        # `EXTERNAL_CAPTION_DRAWN` so' existe com o overlay LIGADO, e o dono
+        # desligou-o; uma auditoria que so' mede com a legenda ligada nao pode
+        # julgar a CADEIA. Esta linha e' o que o `_main/caption-frame-audit.py`
+        # le, e ela custa uma comparacao de strings: diz o que o `_tick` decidiu,
+        # com o produtor ao lado (`src=`).
         if got:
             source, lines = got[0]
+            if str(source).startswith("external:youtube"):
+                # A JANELA EM QUE O PLAYER MANDA (ver `push_caption_to_window`).
+                #
+                # NO SHELL, E NAO AQUI (medido 2026-11-03). A guarda que impede o
+                # ASR de pintar por cima do player le' `self._yt_owner_until` no
+                # `SottoShell` (`push_caption_to_window`, campo lido em exactamente
+                # UM sitio); este `_tick` pertence ao `ExternalCaptionWatcher`, e
+                # escrevia o carimbo no WATCHER. Resultado: o shell lia sempre
+                # `0.0`, a guarda nunca disparava, e a frase do ASR continuava a
+                # substituir a linha do YouTube -- que e' o defeito que o dono
+                # fotografou em 2026-11-03 ("duas legendas diferentes no mesmo
+                # ecra") e cuja cura estava escrita e desligada por um `self`.
+                # O `self.shell` e' a ponte que este mesmo `_tick` ja' usa para
+                # entregar a linha (`self.shell.external_caption(...)`).
+                shell = getattr(self, "shell", None)
+                if shell is not None:
+                    try:
+                        shell._yt_owner_until = time.monotonic() + 2.0
+                    except Exception:                            # noqa: BLE001
+                        log("YT_OWNER_STAMP_FAILED error=AttributeError")
+            _rows_now = list(lines or ())
+            _key = '\u2028'.join(_rows_now)
+            if _key != getattr(self, "yt_frame_key", None):
+                self.yt_frame_key = _key
+                # O INSTANTE DA ULTIMA LINHA NOVA (2026-11-15). Uma pausa de
+                # verdade nao desenha texto novo; um flap de bandeira desenha.
+                # E' esta a medida que desmente `paused=True` quando o `t` da
+                # foto nao permite a comparacao do `_yt_clock_moving`.
+                self._yt_frame_at = time.monotonic()
+                log('YT_FRAME src=%s rows=%d lines=%r'
+                    % (source, len(_rows_now), _rows_now))
             line = lines[-1] if lines else ''
             # THE PLAYER'S WINDOW IS ROWS, NOT ONE LINE (2026-10-29). `lines`
             # is one cue per row (youtube_reveal.window_by_paint); taking only
@@ -2725,24 +7684,31 @@ class ExternalCaptionWatcher(threading.Thread):
             rows = list(lines) if (yt_mode and lines) else None
             if line:
                 self.last_seen = now
+                self._released_for_silence = False
                 self.shell.external_captions_available = True
                 if line != self.last_line or (rows or []) != self.last_rows:
                     if self.last_line and not self.finalized:
                         self.shell.external_caption(self.last_line, self.last_source,
                                                     final=True, instant=bool(yt_mode),
-                                                    rows=self.last_rows)
+                                                    rows=self.last_rows,
+                                                    cue=self._yt_cue_payload())
                     self.last_line = line
                     self.last_source = source
                     self.last_rows = rows or []
                     self.last_change = now
                     self.finalized = False
                     self.shell.external_caption(line, source, final=False,
-                                               instant=bool(yt_mode), rows=rows)
+                                               instant=bool(yt_mode), rows=rows,
+                                               cue=self._yt_cue_payload())
                 elif not self.finalized and now - self.last_change >= self.STABLE_FINAL_S:
                     self.shell.external_caption(line, source, final=True,
-                                               instant=bool(yt_mode), rows=rows)
+                                               instant=bool(yt_mode), rows=rows,
+                                               cue=self._yt_cue_payload())
                     self.finalized = True
                 return
+        # PAUSA SEM LINHA NOVA: nada a pintar. O ecra ja' foi apagado na borda
+        # (`youtube-paused`/`youtube-ended`) e o piso de 6 s repete o apagamento
+        # se a borda se perder; um desenho congelado aqui era o defeito.
         # THE SILENCE ONLY RELEASES FOR THE PAGE READER. That reader knows
         # the player stopped only when the PAGE stops having text. The REAL
         # TRACK knows better: the track is still valid, the clock is still
@@ -2754,8 +7720,37 @@ class ExternalCaptionWatcher(threading.Thread):
         if (not yt_mode and self.last_line
                 and (now - self.last_seen) >= self.RELEASE_S):
             self._release('no-caption')
+        # A FAIXA NAO PINTA NADA: O MICROFONE VOLTA (2026-11-02). MEDIDO no dono:
+        # BRIDGE_STOP reason=external-captions as 18:52:13, spawns=1 ate' ao fim --
+        # 8 min sem transcricao ao vivo enquanto o ramo do YouTube so' APAGAVA a
+        # janela. A prova e' A3/A4 de `_main/reveal-park-oracle.py`.
+        elif yt_mode and not self.last_line and self.last_seen:
+            # O silencio do YouTube e' LONGO por desenho: entre duas cues ha' buracos
+            # de 6 a 16 s medidos, e um piso curto poria o micro em treadmill.
+            if (now - self.last_seen) >= self.YT_RELEASE_S:
+                self._release('yt-no-line')
 
     def _release(self, reason):
+        # A QUEDA E' UMA, NAO UMA CADENCIA (2026-11-04). MEDIDO: o `_tick` com
+        # `yt_mode=True` e sem linha volta a este metodo a cada leitura depois de
+        # `YT_RELEASE_S`, e o `if self.last_line` so' guardava a LINHA -- o
+        # `on_external_captions_released()` corria em TODOS os ticks seguintes.
+        # Esse e' o "flicker loop": o worker e' reerguido, a legenda do ASR entra,
+        # o player volta e a superficie troca de dono outra vez. O release
+        # pertence a UMA transicao (havia linha ou a fonte estava ativa), e a
+        # segunda chamada sem transicao nenhuma nao faz nada.
+        had_line = bool(self.last_line)
+        was_owner = bool(getattr(self.shell, 'external_captions_active', False)
+                         or getattr(self.shell, 'external_captions_available', False))
+        # O EPISODIO, E NAO O CARIMBO (2026-11-04). A primeira tentativa foi
+        # perguntar `had_line or was_owner or last_seen`, e ela deixava de fora
+        # o caso honesto: um video SEM faixa, sem uma linha pintada e com as
+        # bandeiras limpas, cuja queda DEVOLVE o microfone (`_main/
+        # youtube-track-wiring-oracle.py` arms a3/a5 -- medido RED 0 != 1). O
+        # que distingue a repeticao nao e' o carimbo, e' o EPISODIO: UMA queda
+        # por silencio, e a seguinte so' quando o player servir outra vez.
+        if self._released_for_silence and not had_line:
+            return False
         if self.last_line:
             if not self.finalized:
                 self.shell.external_caption(self.last_line, self.last_source, final=True)
@@ -2766,10 +7761,47 @@ class ExternalCaptionWatcher(threading.Thread):
             self.finalized = False
         self.shell.external_captions_active = False
         self.shell.external_captions_available = False
+        # A LINHA DO PLAYER NAO SOBREVIVE AO PLAYER (2026-11-15). MEDIDO no dono:
+        # `EXTERNAL_CAPTIONS_RELEASED reason=no-caption` as 20:10:02.796 e o
+        # primeiro texto do ASR so' as 20:10:13.226 -- **10,4 s** com a ultima
+        # linha do player no ecra depois de a fonte morrer. A `_release` limpava
+        # `last_line`/`last_rows`, mas os PIXELS ficam no overlay: o ecra
+        # continuava a afirmar uma fala de um player que ja' nao a serve. O
+        # `_blank_caption_window` e' a funcao certa (apaga o pixel, NAO toca no
+        # interruptor do dono) e a chamada vive DENTRO da transicao, por isso a
+        # guarda de episodio acima impede a cadencia.
+        _blank = getattr(self.shell, '_blank_caption_window', None)
+        if callable(_blank) and (had_line or was_owner):
+            try:
+                _blank('external-released')
+            except Exception as exc:      # noqa: BLE001
+                log(f'EXTERNAL_CAPTIONS_BLANK_FAILED error={exc!r}')
+        # A TRANSICAO E' DITA SEMPRE (2026-11-11). A linha
+        # `EXTERNAL_CAPTIONS_RELEASED` acima vive DENTRO de `if self.last_line:`,
+        # por isso uma queda com a linha ja' gasta devolvia o ecra ao ASR sem
+        # NENHUMA linha no log -- e foi essa a transicao que deixou o ASR pintar
+        # por cima da faixa. `had_line` separa as duas quedas no proprio registo.
+        set_owner = getattr(self.shell, 'set_external_owner', None)
+        if callable(set_owner):
+            set_owner('local', reason=reason, had_line=had_line)
+        # O PLAYER DEIXOU DE SER VISTO (2026-11-04). Sem isto, a chamada
+        # SEGUINTE -- ja' sem linha e com as bandeiras limpas -- passava o
+        # portao de cima por via do `last_seen` que o `_tick` tinha acabado de
+        # reescrever, e o resume corria em TODOS os ticks seguintes: o worker
+        # reerguido, o ASR a entrar, o player a voltar. E' o flicker loop, e a
+        # arm (f) de `_main/youtube-first-at-boot-oracle.py` conta-o.
+        self.last_seen = 0.0
+        self._released_for_silence = True
+        # O PISO DO ESTACIONAMENTO COMECA DE NOVO a cada janela (2026-11-02): um
+        # video que volta a servir linhas abre uma janela nova, e o worker so' e'
+        # estacionado depois do mesmo rato -- nunca "herdado" da janela anterior.
+        self.shell._external_since = None
+        self.shell._external_park_deferred_logged = False
         try:
             self.shell.on_external_captions_released()
         except Exception as exc:  # noqa: BLE001
             log(f'EXTERNAL_CAPTIONS_RESUME_FAILED error={exc!r}')
+        return True
 
 
 #: `SetLayeredWindowAttributes` flags. LWA_COLORKEY makes ONE RGB value fully
@@ -2820,6 +7852,42 @@ def make_click_through(hwnd, enabled: bool) -> int:
     if enabled:
         return set_ex_style(hwnd, add=WS_EX_TRANSPARENT)
     return set_ex_style(hwnd, remove=WS_EX_TRANSPARENT)
+
+def click_through_is_live(hwnd) -> bool:
+    """A LEITURA do bit, nao do pedido (2026-11-04). "Mandei" nao e' "esta"."""
+    try:
+        return bool(user32.GetWindowLongW(hwnd, GWL_EXSTYLE) & WS_EX_TRANSPARENT)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def apply_click_through(hwnd, enabled: bool, log=None) -> bool:
+    """Pede o bit, LE' DE VOLTA, e insiste uma vez com `SWP_FRAMECHANGED`.
+
+    Copiado do Perssua 0.28.0 (`WindowMouseControl ... reapplied renderer
+    mouse-events request after native window change`) e do `Live-Subtitles
+    overlay.py:247-252`: no Windows o estilo pode nao valer ate' a moldura ser
+    recalculada. O bit era escrito e ninguem o lia -- uma recusa ficava muda, e o
+    sintoma e' o painel a comer cliques. `SWP_FRAMECHANGED` nao remapeia: um
+    `ShowWindow` a mais e' exactamente o flash que o censo do primeiro frame proibe.
+    """
+    want = bool(enabled)
+    make_click_through(hwnd, want)
+    if click_through_is_live(hwnd) == want:
+        return True
+    try:
+        user32.SetWindowPos(hwnd, None, 0, 0, 0, 0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER
+                            | SWP_NOACTIVATE | SWP_FRAMECHANGED)
+    except Exception as exc:  # noqa: BLE001 -- reportar, nunca matar o laco
+        if callable(log):
+            log('CLICK_THROUGH_FRAMECHANGED_FAILED error=%r' % (exc,))
+    make_click_through(hwnd, want)
+    live = click_through_is_live(hwnd)
+    if callable(log) and live != want:
+        log('CLICK_THROUGH_NOT_APPLIED want=%s live=%s'
+            % (str(want).lower(), str(live).lower()))
+    return live == want
 
 
 #: The WebView2 child window's class prefix. Every WebView2 host on Windows uses
@@ -3121,6 +8189,8 @@ user32.AttachThreadInput.restype = wt.BOOL
 user32.AttachThreadInput.argtypes = [wt.DWORD, wt.DWORD, wt.BOOL]
 user32.BringWindowToTop.restype = wt.BOOL
 user32.BringWindowToTop.argtypes = [wt.HWND]
+user32.GetWindow.restype = wt.HWND
+user32.GetWindow.argtypes = [wt.HWND, ctypes.c_uint]
 
 
 #: `SetWindowPos` insert-after for "move me, keep my Z order". `HWND_TOPMOST`
@@ -3128,6 +8198,24 @@ user32.BringWindowToTop.argtypes = [wt.HWND]
 #: for geometry moves that must NOT change the Z slot.
 HWND_TOP = 0
 SWP_SHOWWINDOW = 0x0040
+
+#: `GetWindow` com esta bandeira devolve a janela imediatamente ACIMA da dada no
+#: Z-order -- o unico leitor que responde "a legenda esta' a tapar o painel?".
+GW_HWNDPREV = 3
+
+
+def insert_below(moved, insert_after) -> bool:
+    """Poe `insert_after` ACIMA de `moved`, sem mover, redimensionar nem activar.
+
+    A SEMANTICA FOI MEDIDA, nao suposta (2026-11-14, duas provas lado a lado com
+    janelas reais fora do ecra virtual): `SetWindowPos(moved, insertAfter)` deixa o
+    `insertAfter` por CIMA do `moved`. Logo esta chamada -- `moved` = a legenda,
+    `insertAfter` = o painel -- e' exactamente "o painel fica acima da legenda", a
+    ordem que o dono pediu. Ver `app/webview/z_order.py`.
+    """
+    return bool(user32.SetWindowPos(
+        wt.HWND(moved), wt.HWND(insert_after), 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
 
 
 def pointer_lock_state():
@@ -3278,6 +8366,28 @@ def normalise_surface_name(name):
     value = str(name if name is not None else '').strip().lower()
     value = re.sub(r'^surface-+', '', value)
     return value if value in SURFACE_NAMES else None
+def content_width_is_self_measure(value, window_width):
+    """True when a "content" width read is really the WINDOW measuring itself.
+
+    `body[data-surface="strip"] .panel` is `position:absolute; inset:0`, so its
+    rendered box IS the client box: a read of it returns the width the window
+    was already given, and adopting that number back is a fixed point with no
+    content in it. MEDIDO 2026-11-08: that is how the strip stayed at 1040
+    while the owner asked *"por que a porra do painel de baixo do sotto ta
+    gigante? restaura como era antes"*.
+
+    Pure, module-level and DUMB on purpose: the tolerance is one pixel (a
+    fractional DIP rounds down), and an unknown window width is never a
+    refusal, because "I could not ask" is not "it is the same number".
+    """
+    try:
+        v = int(round(float(value)))
+        w = int(window_width)
+    except (TypeError, ValueError):
+        return False
+    return bool(w > 0 and v >= w - 1)
+
+
 def dock_strip(work, width=STRIP_WIDTH, height=STRIP_HEIGHT,
                margin=STRIP_MARGIN):
     """Dock a wide short strip to the bottom centre of `work`.
@@ -3353,6 +8463,12 @@ def dock_strip(work, width=STRIP_WIDTH, height=STRIP_HEIGHT,
 # ===========================================================================
 
 SOTTO_ICON = os.path.join(HERE, 'sotto.ico')
+# O PERFIL DO WEBVIEW2 NAO PODE SER TEMPORARIO (2026-11-03). pywebview faz
+# `tempfile.TemporaryDirectory().name` a cada largada quando o modo e' privado
+# (winforms.py:757), e apaga-o no fim. Medido nesta maquina: centenas de
+# `G:\Temp\tmp*\EBWebView` (4-67 MB cada) e uma pagina LOCAL de 700 KB a
+# levar 11-25 s a ficar pronta -- cada arranque paga o perfil a frio.
+SOTTO_CACHE = os.path.join(os.path.dirname(os.path.dirname(HERE)), '_cache')
 SOTTO_APP_USER_MODEL_ID = 'sotto.overlay'
 
 WM_GETICON = 0x007F
@@ -3568,18 +8684,20 @@ def reassert_taskbar_ex_style(hwnd, where: str) -> dict:
 
 
 def parse_accelerator(accelerator: str):
-    """'Alt+C' -> (MOD_ALT, ord('C')); 'Ctrl+Space' -> (MOD_CONTROL, 0x20).
+    """'Alt+C' -> (0x0001, ord('C')); 'Ctrl+Space' -> (0x0002, 0x20).
 
     O VOCABULARIO DAS TECLAS NAO VIVE AQUI. `hotkey_gesture.parse_accelerator`
     conhece os nomes dos modificadores e das teclas (incluindo `Space`), e e' o
     MESMO parser com que `hotkey_settings` valida o ficheiro do dono -- duas
     tabelas de teclas seriam duas verdades, e a segunda envelhece sozinha. Aqui
-    so' se traduz o NOME no bit do Win32 (`_MOD_BITS`): a ABI fica deste lado.
+    so' se traduz o NOME no bit do Win32 (`hotkey_numbers().MODIFIER_BITS`): a
+    tabela vive do lado puro, num sitio so', e o shell nao guarda copia.
     """
-    names, vk = hotkey_numbers().parse_accelerator(accelerator)
+    numbers = hotkey_numbers()
+    names, vk = numbers.parse_accelerator(accelerator)
     mods = 0
     for name in names:
-        mods |= _MOD_BITS[name]
+        mods |= numbers.MODIFIER_BITS[name]
     return mods, vk
 
 
@@ -3647,6 +8765,9 @@ class HotkeyThread(threading.Thread):
         self.register_error = None
         self.thread_id = None
         self.pressed = 0
+        #: Voltas do laco -- o batimento publica este numero para que
+        #: "a tecla nao respondeu" nunca mais seja um adjectivo.
+        self.loops = 0
         #: NAO se chama `_stop`: esse nome e' o metodo interno de
         #: `threading.Thread`, e sombrea-lo tornava `HotkeyThread.join()` um
         #: `TypeError: 'Event' object is not callable` (medido 2026-11-01 num
@@ -3752,6 +8873,333 @@ class HotkeyThread(threading.Thread):
                                               _HOTKEY_ID, 0))
 
 
+#: `MsgWaitForMultipleObjects` com um prazo: o pump do `Ctrl+Space` precisa de
+#: acordar para reler o modo (jogo ou nao) sem gastar CPU em repouso.
+QS_ALLINPUT = 0x04FF
+#: Prazo da volta do pump. 250 ms e' o custo de um `PeekMessage` falhado quatro
+#: vezes por segundo, e o pior atraso que a transicao jogo<->app pode ter.
+LIVE_MODE_RECHECK_S = 0.25
+
+
+class LiveHotkeyThread(threading.Thread):
+    """`Ctrl+Space`: TOMADO fora de jogo, DEVOLVIDO ao jogo (ordem do dono, 2026-11-05).
+
+    AS DUAS METADES DA ORDEM, verbatim: *"faz o control espaço nao inputar espaço
+    pra outros apps. mas desativa isso em jogos. entao control espaço em um jogo
+    pode sim apertar espaço. só que nao vai ter display de legenda, pra ter, tenho
+    que dar alt c e ativar manualmente"*.
+
+    FORA DE JOGO: `RegisterHotKey` + `MOD_NOREPEAT` **e** o hook de baixa
+    prioridade de `space_swallow.py`.
+
+    A PREMISSA QUE ESTAVA ERRADA (corrigida a 2026-11-06). O registo so' entrega
+    `WM_HOTKEY`; NAO tira a tecla do caminho de input. O `WM_KEYDOWN` do espaco
+    continua a chegar a' janela em foco, e num browser e' o `space` do `<video>`
+    -- pausa. Foi exactamente o que o dono viu: *"to usando control espaço pra
+    ativar a legenda quando vejo um video no youtube, e isso faz o espaço
+    pausar o video"*. A clausula anterior desta docstring ("nao entrega a tecla
+    a' janela em foco") era documentacao de uma API que nao faz isso.
+
+    O que impede o vazamento e' o `WH_KEYBOARD_LL` de `space_swallow.py`, armado
+    por este fio so' quando a tabela diz `take`: ele devolve 1 para o `VK_SPACE`
+    com `Ctrl` em baixo, e o app em foco nunca ve' a tecla. O hook vive num
+    modulo proprio de proposito -- `_main/input-path-oracle.py` (C1) exige zero
+    `SetWindowsHookEx` no AST da shell, e essa lei do rato (docs/mouse-e-
+    input.md §5) continua a valer. O `RegisterHotKey` fica como a outra metade:
+    se o hook falhar a instalacao, o `WM_HOTKEY` continua a alternar a legenda e
+    o log diz `swallow=false the_space_reaches_the_app=true` (o vazamento de
+    hoje, dito em voz alta). Com o hook instalado o `WM_HOTKEY` e' ignorado para
+    nao alternar duas vezes -- quem alterna e' o hook, no `keydown` que engole.
+
+    EM JOGO: `UnregisterHotKey` **e** `UnhookWindowsHookEx` (o hook sai ANTES, no
+    mesmo passo). O jogo recebe o `Ctrl+Space` NATIVO -- nao ha' `SendInput`
+    nenhum, logo nao ha' o problema medido dos jogos que leem input por raw
+    input e ignoram teclas sinteticas. E a shell nao alterna nada: a legenda
+    liga-se com o Alt+C, que e' registado sempre.
+
+    A TABELA E' PURA E VIVE EM `gaming_mode.live_hotkey_plan` -- este fio so'
+    executa o que ela decide. `gaming_fn` e' `shell.gaming.is_gaming`; sem
+    detector (`None`) o fio NAO TOMA a tecla: sem saber se ele esta' a jogar, o
+    lado seguro e' a tecla chegar ao jogo e o observador antigo continuar.
+
+    O REGISTO QUE FALHA NAO MENTE: `winerror=1409` (outro programa tem a
+    combinacao) fica em `register_error`, `swallow=False` no log, e quem arma a
+    tecla recebe `registered=False` para ligar o observador de recuo -- que
+    alterna a legenda mas deixa o espaco vazar, e e' dito assim.
+    """
+
+    def __init__(self, accelerator: str, on_hotkey, gaming_fn=None, log_fn=log,
+                 role='live', register=True, swallow_factory=None):
+        super().__init__(name=f'sotto-hotkey-{role}-swallow', daemon=True)
+        self.accelerator = accelerator
+        self.role = role
+        self.register = bool(register)
+        self.modifiers, self.vk = parse_accelerator(accelerator)
+        self.on_hotkey = on_hotkey
+        self.gaming_fn = gaming_fn
+        self.log_fn = log_fn
+        self.registered = False
+        self.register_error = None
+        self.register_failed = False
+        self.thread_id = None
+        self.pressed = 0
+        self.mode = 'free'
+        self.mode_changes = 0
+        self.loops = 0
+        self._stop_requested = threading.Event()
+        self._ready = threading.Event()
+        #: `factory(on_toggle, log_fn, role) -> SpaceSwallowHook`. `None` importa
+        #: `space_swallow` no instante em que precisa; o oraculo injecta a MESMA
+        #: classe com um `user32`-gravador, logo o que ele mede e' o codigo real.
+        self.swallow_factory = swallow_factory
+        self.swallow = None
+        self.swallow_failed = False
+        self.swallow_error = None
+        #: `True` so' com o hook INSTALADO e a tecla tomada. `registered` sozinho
+        #: nao prova nada sobre o vazamento -- foi essa a premissa errada.
+        self.swallowing = False
+
+    # -- a decisao, com uma leitura de modo que nunca derruba o pump --------
+    def foreground_note(self) -> str:
+        """O nome do primeiro plano para o log, ou `?` quando nao se sabe.
+
+        Diagnostico, nunca decisao: a decisao ja' foi tomada por `gaming_fn`, e
+        uma falha a ler o nome nao pode derrubar o pump nem mudar o plano.
+        """
+        try:
+            det = getattr(self.gaming_fn, '__self__', None)
+            reader = getattr(det, 'foreground_name', None)
+            return str(reader() or "?") if reader else "?"
+        except Exception:  # noqa: BLE001 -- log e' diagnostico, nao regra
+            return "?"
+
+    def _gaming_now(self) -> bool:
+        if self.gaming_fn is None:
+            return True  # sem detector: a tecla pertence a quem esta' em foco
+        try:
+            return bool(self.gaming_fn())
+        except Exception as exc:  # noqa: BLE001 -- deteccao nao e' pre-requisito
+            self.log_fn(f'HOTKEY_LIVE_GAMING_FAILED role={self.role} '
+                        f'error={exc!r}')
+            return True
+
+    def _ensure_swallow(self):
+        """O hook, criado UMA vez; `None` se o modulo nao existir (e o log diz)."""
+        if self.swallow is not None:
+            return self.swallow
+        try:
+            if self.swallow_factory is not None:
+                hook = self.swallow_factory(self._on_swallowed_press,
+                                            self.log_fn, self.role,
+                                            self.vk, self.modifiers)
+            else:
+                here = os.path.dirname(os.path.abspath(__file__))
+                if here not in sys.path:
+                    sys.path.insert(0, here)
+                import space_swallow
+                hook = space_swallow.SpaceSwallowHook(
+                    on_toggle=self._on_swallowed_press, log_fn=self.log_fn,
+                    role=self.role, target_vk=self.vk,
+                    required_mods=self.modifiers)
+        except Exception as exc:  # noqa: BLE001 -- sem hook, fica o registo
+            self.swallow_failed = True
+            self.swallow_error = repr(exc)
+            self.log_fn(f'HOTKEY_LIVE_SWALLOW_UNAVAILABLE role={self.role} '
+                        f'error={exc!r} swallow=false '
+                        'the_space_reaches_the_app=true')
+            return None
+        hook.set_armed(True)
+        self.swallow = hook
+        return hook
+
+    def _apply(self):
+        """Executa UM passo da tabela e publica a transicao (uma linha por mudanca)."""
+        if not self.register:
+            return
+        try:
+            import gaming_mode
+        except Exception as exc:  # noqa: BLE001 -- sem a tabela, nao se toma nada
+            self.log_fn(f'HOTKEY_LIVE_PLAN_UNAVAILABLE role={self.role} '
+                        f'error={exc!r}')
+            return
+        gaming = self._gaming_now()
+        plan = gaming_mode.live_hotkey_plan(gaming, self.registered,
+                                           self.register_failed)
+        if plan == 'take':
+            # O HOOK E' O QUE FAZ O ESPACO NAO VAZAR (2026-11-06). Ele arma-se
+            # e instala-se no MESMO passo do registo: o registo da' a
+            # alternancia, o hook tira a tecla do caminho de input.
+            hook = self._ensure_swallow()
+            if hook is not None:
+                hook.set_armed(True)
+                if not hook.install():
+                    self.swallow_failed = True
+                    self.swallow_error = hook.last_error
+            if user32.RegisterHotKey(None, _HOTKEY_ID,
+                                     self.modifiers | MOD_NOREPEAT, self.vk):
+                self.registered = True
+            else:
+                self.register_failed = True
+                self.register_error = ctypes.get_last_error()
+                self.log_fn(f'HOTKEY_LIVE_REGISTER_FAILED role={self.role} '
+                            f'accelerator={self.accelerator} '
+                            f'winerror={self.register_error} '
+                            'swallow=false the_key_passes_through=true')
+                # SEM REGISTO A TECLA NAO E' NOSSA: um hook armado sem a tabela
+                # a dizer `take` engoliria um espaco que ninguem alterna.
+                if hook is not None:
+                    hook.set_armed(False)
+                    hook.detach('register-failed')
+        elif plan == 'give-back':
+            # O HOOK SAI PRIMEIRO. O jogo tem de receber o `Ctrl+Space` inteiro
+            # a partir do instante em que a tabela diz que ele esta' a jogar;
+            # deixar o hook instalado ate' ao `Unregister` abria uma janela em
+            # que nem o jogo nem a shell ficavam com a tecla.
+            if self.swallow is not None:
+                self.swallow.set_armed(False)
+                self.swallow.detach('gaming')
+            user32.UnregisterHotKey(None, _HOTKEY_ID)
+            self.registered = False
+        else:  # stay-free
+            # O CORNER "JA' TOMADO" E' UM NO-OP, NAO UMA ORDEM DE LARGAR. A
+            # tabela devolve `stay-free` tanto para "em jogo, livre" como para
+            # "fora de jogo, ja' registado"; largar o hook neste segundo caso
+            # desfazia o trabalho do passo anterior (medido: o hook era
+            # desinstalado na volta seguinte e o espaco voltava a vazar). So'
+            # se larga quando o registo NAO existe -- em jogo, ou recusado.
+            if (not self.registered and self.swallow is not None
+                    and self.swallow.installed):
+                self.swallow.set_armed(False)
+                self.swallow.detach('stay-free')
+        _hook_live = bool(self.swallow is not None and self.swallow.installed)
+        self.swallowing = _hook_live and self.registered
+        self.mode = ('swallow' if self.swallowing else
+                     ('passthrough' if gaming else 'free'))
+        # UMA LINHA POR TRANSICAO, NUNCA POR VOLTA. O pump relê o modo quatro
+        # vezes por segundo; logar em cada volta seriam 14 400 linhas por hora
+        # num ficheiro que so' roda aos 64 MB (a licao do `HOTKEY_OBSERVER_ALIVE`).
+        if self.mode != getattr(self, '_published_mode', None):
+            self._published_mode = self.mode
+            self.mode_changes += 1
+            # A LINHA NOMEIA O PRIMEIRO PLANO (2026-11-14). Sem ele, um
+            # `plan=give-back` e' indistinguivel de uma tecla morta: foi assim
+            # que 78 minutos de `deadlock.exe` RESIDENTE (sem foco) se leram
+            # como "o ctrl space nao faz nada" sem uma unica pista no log.
+            self.log_fn(f'HOTKEY_LIVE_MODE role={self.role} mode={self.mode} '
+                        f'gaming={str(gaming).lower()} '
+                        f'fg={self.foreground_note()!r} '
+                        f'swallow={str(self.swallowing).lower()} '
+                        f'hook={str(_hook_live).lower()} '
+                        f'registered={str(self.registered).lower()} '
+                        f'accelerator={self.accelerator} plan={plan}')
+
+    def run(self):
+        self.thread_id = int(kernel32.GetCurrentThreadId())
+        msg = MSG()
+        # A FILA TEM DE EXISTIR ANTES DO `RegisterHotKey` (o contrato do
+        # `HotkeyThread`): um thread que nunca acordou uma fila nao tem onde o
+        # sistema por o `WM_HOTKEY`.
+        user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)
+        self._apply()
+        self.log_fn(f'HOTKEY_LIVE_ARMED role={self.role} '
+                    f'accelerator={self.accelerator} '
+                    f'mode={self.mode} thread={self.thread_id}')
+        self._ready.set()
+        _last_mode = self.mode
+        while not self._stop_requested.is_set():
+            # ACORDAR NO INSTANTE DE UM `WM_HOTKEY`, COM PRAZO. `WaitMessage`
+            # (o do `HotkeyThread`) dorme para sempre e nao deixaria reler o
+            # modo; uma sonda de 25 ms gastaria CPU a ler uma tecla que ninguem
+            # carrega. Com prazo de 250 ms o reposo custa quatro chamadas por
+            # segundo e a transicao jogo<->app chega no pior caso 250 ms depois.
+            try:
+                user32.MsgWaitForMultipleObjects(0, None, False,
+                                                 int(LIVE_MODE_RECHECK_S * 1000),
+                                                 QS_ALLINPUT)
+            except Exception as exc:  # noqa: BLE001 -- cair para dormir e' recuo
+                self.log_fn(f'HOTKEY_LIVE_WAIT_FAILED role={self.role} '
+                            f'error={exc!r}')
+                self._stop_requested.wait(LIVE_MODE_RECHECK_S)
+            while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, PM_REMOVE):
+                if msg.message == WM_HOTKEY:
+                    self._on_press()
+            self.loops += 1
+            self._apply()
+            if self.mode != _last_mode:
+                _last_mode = self.mode
+        if self.registered:
+            user32.UnregisterHotKey(None, _HOTKEY_ID)
+            self.registered = False
+            self.log_fn(f'HOTKEY_LIVE_RELEASED role={self.role} '
+                        f'accelerator={self.accelerator} why=stop')
+        # O HOOK TEM DE SAIR COM O FIO. Um `WH_KEYBOARD_LL` vivo depois de o
+        # pump morrer e' uma tecla engolida para sempre: o processo e' que o
+        # installou, e o `UnhookWindowsHookEx` e' a unica devolucao.
+        if self.swallow is not None:
+            self.swallow.detach('stop')
+
+    def _fire(self, via, source='registered'):
+        self.pressed += 1
+        self.log_fn(f'HOTKEY_PRESSED role={self.role} count={self.pressed} '
+                    f'source={source} via={via} '
+                    f'accelerator={self.accelerator} thread={self.thread_id}')
+        try:
+            self.on_hotkey()
+        except Exception as exc:  # noqa: BLE001 -- a toggle nunca mata o pump
+            self.log_fn(f'HOTKEY_HANDLER_FAILED role={self.role} error={exc!r}')
+
+    def _on_swallowed_press(self):
+        """Um `Ctrl+Space` ENGOLIDO pelo hook: a alternancia da' se sai daqui."""
+        self._fire('ll_keyboard', source='hook')
+
+    def _on_press(self):
+        """Um `WM_HOTKEY`: alterna SO' quando a tecla esta' tomada (2026-11-05).
+
+        A DEFESA NAO E' TEORICA. Um `WM_HOTKEY` que ja' estava na fila quando o
+        detector viu o jogo chegaria DEPOIS do `UnregisterHotKey`, e alternaria a
+        legenda dentro do jogo -- exactamente o *"nem on nem off"* que o dono
+        proibiu. Medido no oraculo (`ctrlspace-swallow-oracle.py`, arm B4): a
+        primeira versao alternava nesse caso. A mensagem velha fica registada e
+        nao age.
+
+        E COM O HOOK INSTALADO ESTA MENSAGEM NAO ALTERNA. O `RegisterHotKey`
+        continua registado (e' o caminho de recuo se o hook falhar), mas quem
+        alterna e' o `keydown` que o hook engole; se o sistema ainda entregar o
+        `WM_HOTKEY`, alternar aqui outra vez daria DOIS passos por pressao. A
+        linha diz que a mensagem foi superada, para o log nao parecer um erro.
+        """
+        if not self.registered:
+            self.log_fn(f'HOTKEY_PRESSED role={self.role} source=registered '
+                        'via=wm_hotkey suppressed=true why=not-swallowing')
+            return
+        if self.swallowing:
+            self.log_fn(f'HOTKEY_PRESSED role={self.role} source=registered '
+                        'via=wm_hotkey suppressed=true why=ll_hook_owns_the_key')
+            return
+        self._fire('wm_hotkey')
+
+    def stop(self):
+        self._stop_requested.set()
+        if self.thread_id is not None:
+            try:
+                user32.PostThreadMessageW(self.thread_id, WM_APP, 0, 0)
+            except Exception as exc:  # noqa: BLE001 -- sair nao pode falhar
+                self.log_fn(f'HOTKEY_STOP_WAKE_FAILED role={self.role} '
+                            f'error={exc!r}')
+        # O RECUO E' DESTE FIO: quem o para tem de o parar tambem, senao o
+        # observador fica a alternar a legenda depois de a app sair.
+        _fallback = getattr(self, 'fallback', None)
+        if _fallback is not None:
+            try:
+                _fallback.stop()
+            except Exception as exc:  # noqa: BLE001
+                self.log_fn(f'HOTKEY_STOP_FAILED role={self.role}-fallback '
+                            f'error={exc!r}')
+
+    def wait_ready(self, timeout=5.0) -> bool:
+        return self._ready.wait(timeout)
+
+
 # ===========================================================================
 # Alt+C IS THE ONLY CONTROL — so its failure modes get first-class code
 # ===========================================================================
@@ -3777,6 +9225,405 @@ _SINGLE_INSTANCE = {'handle': None}
 #: The one name the shipped app uses. A DIFFERENT name is a private lock, and it
 #: is deliberately not excused by the measurement flags (see `main`).
 DEFAULT_MUTEX_NAME = 'Local\\SottoShell'
+
+# ── O MOTOR QUENTE (2026-11-04) -- o contrato esta' em
+# `state/design/warm-worker-20261104.md`. A shell nao o larga: LIGA-SE a ele.
+#: O prazo de um `attach`. Medido: a abertura de um pipe saudavel e' sub-ms; os
+#: 500 ms sao o tecto para o caso "existe e esta' ocupado", e depois disso a
+#: escada fria de hoje corre INTEIRA -- nenhum numero de aceitacao depende de o
+#: motor estar vivo (INV-3).
+WARM_ATTACH_DEADLINE_MS = 500
+#: A tarefa que cria o motor. `schtasks` e' o pai, nunca esta shell.
+WARM_ENGINE_TASK = 'SottoWarmEngine'
+#: O XML que DEFINE essa tarefa. Existe desde 2026-11-04 e nunca foi registado
+#: nesta maquina: medido 2026-11-10, `schtasks /query /tn SottoWarmEngine` devolve
+#: rc=1 ("O sistema nao pode encontrar o arquivo especificado") e o log do dono tem
+#: **11** `WARM_ENGINE_START_TASK task=SottoWarmEngine rc=1 out="" err=""` -- um por
+#: arranque. O `/run` de uma tarefa que nao existe devolve 1 e nao faz nada, logo o
+#: motor quente NUNCA subiu e cada arranque pagou a carga a frio:
+#: `BRIDGE_LOAD_MS ms=44344 pid=30804 worker_load_s=42.59` as 21:22:30 de 2026-11-09.
+#: `ensure_warm_engine_task` fecha isso registando a tarefa quando ela falta.
+WARM_ENGINE_TASK_XML = os.path.join('_main', 'warm-engine', 'warm-engine-task.xml')
+#: Um replay mais velho do que isto e' HISTORIA, nunca pintura (INV-5/R11).
+WARM_BACKLOG_LIVE_MS = 2000
+
+
+#: Os VK dos modificadores NAO se escrevem aqui. O GENERICO por modificador
+#: (0x10/0x11/0x12 responde aos dois lados) e os LATERAIS (0xA0..0xA5, para
+#: teclados e remappers que so' publicam um lado) vivem em
+#: `hotkey_gesture.MODIFIER_VKS` / `MODIFIER_VK_VARIANTS`, lidos por
+#: `hotkey_numbers()`. Uma segunda tabela aqui seria uma segunda verdade sobre a
+#: mesma tecla.
+
+#: `SOTTO_HOTKEY_TRACE=1` escreve a BORDA do estado das teclas observadas.
+#: Existe porque "carreguei e nao aconteceu nada" precisa de um numero: com
+#: isto ligado, o log mostra o que o processo VIU, nao o que se esperava.
+_HOTKEY_TRACE = os.environ.get('SOTTO_HOTKEY_TRACE', '') == '1'
+
+
+class PassiveHotkeyThread(threading.Thread):
+    """A TECLA DA LEGENDA **OBSERVADA**, NUNCA TOMADA (ordem do dono, 2026-11-02).
+
+    O QUE ESTAVA MEDIDO E ERRADO. A docstring antiga dizia que `RegisterHotKey`
+    TOMAVA a combinacao -- *"com o Sotto a viver, o `Ctrl+Space` deixa de chegar
+    a qualquer outra janela"*. Essa premissa caiu a 2026-11-06: o registo entrega
+    `WM_HOTKEY` e o espaco CONTINUA a chegar a' janela em foco (foi o espaco a
+    pausar o YouTube). O que TOMA a tecla e' o `WH_KEYBOARD_LL` de
+    `space_swallow.py`, instalado pelo `LiveHotkeyThread` enquanto a tecla e'
+    nossa; esta classe nunca instala hook nenhum.
+
+    O QUE ESTA CLASSE FAZ. Le o ESTADO das teclas (`GetAsyncKeyState`, que nao
+    consome nada) a cada `hotkey_gesture.POLL_S` e dispara na BORDA de descida
+    DA TECLA: o jogo recebe o `Ctrl+Space` inteiro porque o Windows entrega a
+    tecla a quem tem o foco e aqui ninguem a intercepta.
+
+    A PRESSAO E' DA TECLA, NAO DA COMBINACAO (2026-11-04). O latch ja' foi da
+    combinacao inteira: ele so' re-armava quando TODAS as teclas subiam, e uma
+    solta perdida (o laco do observador ja' publicou `max_gap_ms=609`, porque a
+    inferencia segura o GIL) deixava o latch preso -- o Alt/Ctrl fisicamente em
+    baixo e o `C`/`Space` martelado NAO davam uma segunda pressao. Agora:
+
+      * o MODIFICADOR e' so' uma CONDICAO (`0x8000|0x0001` no grupo dele): ele
+        pode ficar em baixo o tempo inteiro;
+      * a PRESSAO e' o bit 0 do grupo DA TECLA -- o Windows guarda a borda e
+        no'-la lemos mesmo com uma volta atrasada;
+      * `key_held` (por tecla, nunca pela combinacao) evita que a tecla em baixo
+        conte como uma pressao nova a cada volta;
+      * uma borda NOVA conta mesmo com `key_held` de pe': uma solta perdida
+        atrasa a proxima pressao, nunca a engole.
+
+    CUSTO: uma leitura de estado por modificador + uma da tecla, 40 vezes por
+    segundo. `GetAsyncKeyState` e' uma chamada de microssegundos, nao uma
+    mensagem: medido neste host, um laco de 4 teclas a 40 Hz fica abaixo de
+    0,1 % de um core.
+    """
+
+    def __init__(self, accelerator: str, on_hotkey, log_fn=log, role='live',
+                 poll_s=None, key_state=None, gate=None):
+        super().__init__(name=f'sotto-hotkey-{role}', daemon=True)
+        self.accelerator = accelerator
+        self.role = role
+        self.on_hotkey = on_hotkey
+        self.log_fn = log_fn
+        self.modifiers, self.vk = parse_accelerator(accelerator)
+        self.poll_s = float(poll_s or hotkey_numbers().POLL_S)
+        self.registered = True
+        self.register_error = None
+        self.thread_id = None
+        self.pressed = 0
+        #: Voltas do laco. O batimento publica ESTE numero: `loops=` a subir
+        #: e' a prova de que o observador corre, e `max_gap_ms=` diz se a
+        #: volta foi estrangulada. Sem ele, uma tecla morta e um observador
+        #: morto escrevem a mesma coisa no log: nada.
+        self.loops = 0
+        self._stop_requested = threading.Event()
+        self._ready = threading.Event()
+        #: `key_state(vk) -> bool` -- o oraculo injecta uma sequencia falsa; o
+        #: processo vivo le o estado real. A leitura e' a UNICA coisa trocavel: a
+        #: borda, o nao-repetir e a chamada do callback sao o que se mede.
+        self.key_state = key_state
+        #: `gate() -> bool`: a ULTIMA palavra antes de agir (2026-11-05).
+        #: Existe por causa da metade nova do `Ctrl+Space`: em JOGO a tecla
+        #: pertence ao jogo e o observador nao pode alternar a legenda, e fora
+        #: de jogo quem alterna e' o `LiveHotkeyThread` registado -- o
+        #: observador que ficou como RECUO fica calado enquanto o registo
+        #: estiver de pe', senao a tecla alternava duas vezes.
+        self.gate = gate
+        #: Os VK desta combinacao: os modificadores nomeados + a tecla. As duas
+        #: tabelas vem de `hotkey_numbers()` (o modulo do gesto), nunca de uma
+        #: copia local: o GENERICO de cada modificador e os LATERAIS.
+        numbers = hotkey_numbers()
+        self.modifier_groups = []
+        for name in str(accelerator).split('+'):
+            name = name.strip().lower()
+            if name in numbers.MODIFIER_VKS:
+                _group = [int(numbers.MODIFIER_VKS[name])]
+                for _extra in numbers.MODIFIER_VK_VARIANTS.get(name, ()):
+                    if int(_extra) not in _group:
+                        _group.append(int(_extra))
+                self.modifier_groups.append(tuple(_group))
+        #: UM GRUPO POR TECLA NOMEADA, e a TECLA tem o seu, separado: e' a tecla
+        #: que conta a pressao, e o modificador e' so' a condicao. Misturar os
+        #: dois num grupo unico era o que fazia a 'segurada' ser uma pergunta
+        #: sobre a combinacao inteira (ver `run`).
+        self.key_group = (int(self.vk),)
+        self.key_groups = list(self.modifier_groups) + [self.key_group]
+        self.keys = [g[0] for g in self.key_groups]
+
+    def run(self):
+        self.thread_id = int(kernel32.GetCurrentThreadId())
+        # A PRIORIDADE ANTES DE TUDO (2026-11-04). E' a unica defesa que este fio
+        # tem contra um jogo a comer o CPU: o escalonador do Windows serve
+        # `ABOVE_NORMAL` antes das threads normais do jogo, e a leitura de 25 ms
+        # deixa de chegar tarde. MEDIDO no log do dono: a volta chegou a 1703 ms
+        # (`HOTKEY_OBSERVER_ALIVE max_gap_ms=1703`), e um toque mais curto que a
+        # volta cai INTEIRO entre duas leituras. O numero vem de
+        # `hotkey_gesture.OBSERVER_PRIORITY` (o dono dos numeros da tecla), e a
+        # linha diz se pegou: uma prioridade pedida e nao aplicada e' uma
+        # promessa, nao um facto.
+        try:
+            _prio_ok = bool(kernel32.SetThreadPriority(
+                kernel32.GetCurrentThread(), hotkey_numbers().OBSERVER_PRIORITY))
+        except Exception as exc:  # noqa: BLE001 -- prioridade nao e' pre-requisito
+            _prio_ok = False
+            self.log_fn(f'HOTKEY_OBSERVER_PRIORITY_FAILED role={self.role} '
+                        f'error={exc!r}')
+        self.log_fn(f'HOTKEY_OBSERVER_PRIORITY role={self.role} '
+                    f'ok={str(_prio_ok).lower()} '
+                    f'priority={hotkey_numbers().OBSERVER_PRIORITY} '
+                    f'why=cpu-contention-in-games')
+        self.log_fn(f'HOTKEY_OBSERVED role={self.role} '
+                    f'accelerator={self.accelerator} register=false '
+                    f'the_key_passes_through=true poll_ms={int(self.poll_s * 1000)}')
+        self._ready.set()
+        if self.key_state is not None:
+            def get_state(vk):
+                # A COSTURA NAO PODE MENTIR SOBRE O VALOR (2026-11-04). Ela
+                # normalizava qualquer verdade em `0x8000` e DESCARTAVA o bit 0
+                # -- que e' exactamente a borda que a cura le. Um `bool` continua
+                # a significar "em baixo"; um `int` atravessa tal e qual, para o
+                # oraculo poder encenar o bit 0 sozinho.
+                _v = self.key_state(int(vk))
+                if isinstance(_v, bool):
+                    return 0x8000 if _v else 0
+                return int(_v)
+        else:
+            get_state = user32.GetAsyncKeyState
+        # O OBSERVADOR DIZ QUE ESTA' VIVO, E DIZ QUANDO PARA (2026-11-03).
+        # MEDIDO: o dono carregou em Ctrl+Space e o log do shell nao teve
+        # UMA linha `HOTKEY_PRESSED role=live` -- nem pressao, nem falha.
+        # Um observador silencioso e' indistinguivel de uma tecla morta, e
+        # as duas tambem sao indistinguiveis de uma tecla que ele nao
+        # carregou. Este batimento resolve a duvida com um numero: o contador
+        # de voltas cresce? a volta ficou presa?
+        self.log_fn('HOTKEY_OBSERVER_KEYS role=%s groups=%s'
+                    % (self.role, [[hex(int(v)) for v in g]
+                                   for g in self.key_groups]))
+        _beats = 0
+        _last_beat = time.monotonic()
+        _last_loop = time.monotonic()
+        held = False
+        while not self._stop_requested.is_set():
+            _now_loop = time.monotonic()
+            self._wake_gap = max(float(getattr(self, '_wake_gap', 0.0)),
+                                 _now_loop - _last_loop)
+            _last_loop = _now_loop
+            # O BATIMENTO NAO E' UM RELOGIO (2026-11-03, MEDIDO). A primeira
+            # versao escrevia de 5 em 5 s para sempre: num ficheiro de log que
+            # so' roda aos 64 MB (`LOG_ROTATED cap=64 MB`), o observador de uma
+            # tecla que ninguem esta' a carregar produzia **720 linhas por hora** --
+            # medido neste repo, 54 MB de `_main/webview-run.log` e 382 destas
+            # linhas num unico arranque. As duas informacoes que o batimento
+            # carrega continuam a sair: (a) vive nos primeiros 30 s, seis
+            # batimentos, que e' o que RESPONDE a "a tecla esta' viva?" depois
+            # de um arranque; (b) uma VOLTA PRESA (`max_gap_ms > 200`) sai
+            # imediatamente, porque essa e' a noticia e um batimento liso nao
+            # e'. Depois disso, de 5 em 5 minutos.
+            _gap_ms = round(getattr(self, '_wake_gap', 0.0) * 1000.0)
+            _due = (_beats < 6 and _now_loop - _last_beat >= 5.0) or \
+                   (_now_loop - _last_beat >= 300.0)
+            if _due or _gap_ms > 200:
+                _beats += 1
+                self.log_fn('HOTKEY_OBSERVER_ALIVE role=%s beats=%d '
+                            'loops=%d max_gap_ms=%d'
+                            % (self.role, _beats, self.loops, _gap_ms))
+                self._wake_gap = 0.0
+                _last_beat = _now_loop
+            self.loops += 1
+            # O BIT 0 DO `GetAsyncKeyState` E' A MEMORIA DA BORDA (2026-11-04).
+            # MEDIDO nesta sessao: `HOTKEY_OBSERVER_ALIVE max_gap_ms=281..609`
+            # -- a thread do observador fica ate' ~0,6 s sem correr (GIL tomado
+            # pela inferencia/UIA), e um toque de Ctrl+Space mais curto que a
+            # volta CAI INTEIRO entre duas leituras: foi assim que o dono viu
+            # *"funciona so' de vez em quando"*. O bit 0 diz "esta tecla foi
+            # carregada DEPOIS da chamada anterior": o Windows guarda a borda e
+            # no'-la lemos mesmo com a volta atrasada -- sem hook global e sem
+            # `RegisterHotKey` (que daria so' a descida e roubaria a tecla ao
+            # resto do sistema). 0x8000 continua a ser `down`; 0x0001 e' a borda.
+            #
+            # A PERGUNTA E' FEITA EM DUAS PARTES, e essa e' a cura de 2026-11-04
+            # (ver a docstring da classe): o MODIFICADOR e' uma CONDICAO --
+            # `0x8000` (em baixo agora) ou `0x0001` (carregado desde a leitura
+            # anterior) -- e a PRESSAO e' a borda do grupo DA TECLA. Antes o
+            # mesmo teste cobria os dois, e uma solta perdida com o Alt em baixo
+            # deixava o latch `held` de pe': o dono martelava o `C` e nao havia
+            # segunda pressao.
+            #
+            # TODOS OS GRUPOS SAO LIDOS EM TODA A VOLTA, sem `break`: ler e' o
+            # que LIMPA o bit 0. Sair mais cedo com um modificador em falta
+            # deixava a borda de um `Space` solitario guardada no Windows, e a
+            # proxima volta com o modificador em baixo a consumia como se fosse
+            # uma pressao que nao aconteceu.
+            mods_ready = True
+            for _group in self.modifier_groups:
+                _st = [int(get_state(int(vk))) for vk in _group]
+                if not any(_v & 0x8003 for _v in _st):
+                    mods_ready = False
+            _st = [int(get_state(int(vk))) for vk in self.key_group]
+            down = any(_v & 0x8000 for _v in _st)
+            fresh = any(_v & 0x0001 for _v in _st) and mods_ready
+            if _HOTKEY_TRACE and getattr(self, '_trace', None) != (down, mods_ready):
+                self._trace = (down, mods_ready)
+                self.log_fn('HOTKEY_TRACE role=%s down=%s mods=%s groups=%s'
+                            % (self.role, str(down).lower(),
+                               str(mods_ready).lower(),
+                               [[hex(int(v)) for v in g]
+                                for g in self.key_groups]))
+            if mods_ready and (fresh or (down and not held)):
+                held = True
+                if self.gate is not None:
+                    try:
+                        if not self.gate():
+                            # A tecla nao e' nossa agora: quem a tem (ou o
+                            # jogo, ou o registo) faz o trabalho. Nao
+                            # conta como pressao e nao loga: silencio e' a
+                            # diferenca entre 'consumida' e 'perdida'.
+                            if not down:
+                                held = False
+                                self._down_since = 0.0
+                            self._stop_requested.wait(self.poll_s)
+                            continue
+                    except Exception as exc:  # noqa: BLE001
+                        self.log_fn('HOTKEY_GATE_FAILED role=%s error=%r'
+                                    % (self.role, exc))
+                try:
+                    self.pressed += 1
+                    # A MESMA ETIQUETA DO REGISTADO, e o `source`: o
+                    # `altc-first-caption-oracle.py` emparelha `HOTKEY_PRESSED
+                    # role=live` com a ACCAO, e uma tecla observada tem de ser
+                    # julgada pelo mesmo instrumento que a registada. `via` diz
+                    # qual dos dois caminhos disparou: `state` (ainda em baixo a'
+                    # leitura) ou `latched` (a borda veio do bit 0 -- o toque que
+                    # ANTES se perdia).
+                    self.log_fn(f'HOTKEY_PRESSED role={self.role} '
+                                f'count={self.pressed} source=observed '
+                                f'via={"state" if down else "latched"}')
+                    self.on_hotkey()
+                except Exception as exc:  # noqa: BLE001 -- um passo perdido nao mata o observador
+                    self.log_fn(f'HOTKEY_GESTURE_FAILED kind=live error={exc!r}')
+                if not down:
+                    # O toque COMPLETOU-SE dentro de uma volta: nao ha segurada
+                    # para medir, e deixar o latch armado comia a proxima
+                    # pressao. Solta-o ja'.
+                    held = False
+                    self._down_since = 0.0
+            elif not down and held:
+                held = False
+                self._down_since = 0.0
+            # A TECLA DE PEDRA (2026-11-03, MEDIDO). O log do dono tem
+            # `HOTKEY_PRESSED role=live count=1 source=observed` DUAS vezes na
+            # historia inteira do ficheiro (03:22:19 e 04:56:26) e **nunca um
+            # `count=2`**: dentro de um arranque, a segunda pressao nunca
+            # disparou. A borda de DESCIDA e' perdida com facilidade -- o laco
+            # ja' publicou `max_gap_ms=219` (o shell a queimar um nucleo inteiro
+            # no `VramGuard`, medido hoje: 102 %) -- e o `held` fica `True` para
+            # sempre: a tecla morre ate' reiniciar a app. Uma tecla que ninguem
+            # esta' a segurar nao fica em baixo 3 s: passado esse tempo o latch
+            # RE-ARMA e o log diz que re-armou, em vez de ficar mudo.
+            if held:
+                if not getattr(self, '_down_since', 0.0):
+                    self._down_since = _now_loop
+                elif _now_loop - self._down_since >= 3.0:
+                    self.log_fn('HOTKEY_STATE_STUCK role=%s seconds=3.0 repinned=true'
+                                % self.role)
+                    held = False
+                    self._down_since = 0.0
+            self._stop_requested.wait(self.poll_s)
+
+    def wait_ready(self, timeout=None):
+        self._ready.wait(timeout)
+        return bool(self.registered)
+
+    def stop(self):
+        self._stop_requested.set()
+
+#: O JOB OBJECT QUE MATA A ARVORE (2026-11-04). Guardado aqui para o HANDLE
+#: sobreviver: fechar o ultimo handle do job e' o que dispara o kill, e um handle
+#: recolhido pelo GC mataria os filhos em qualquer momento.
+_JOB = {'handle': None}
+
+
+#: Um estouro de UI tem pilha completa de 10 em 10 min; os do meio, uma linha.
+UI_HUNG_DUMP_EVERY_S = 600.0
+
+
+def _hold_kill_on_close_job():
+    """Poe ESTE processo (e os filhos que ele criar) num job kill-on-close.
+
+    MEDIDO 2026-11-04: tres arvores `msedgewebview2.exe` orfas de instancias
+    mortas, ~390 MB, nesta maquina. O filho herda a pertenca ao job quando e'
+    criado DEPOIS da atribuicao, e o Windows mata tudo quando o ultimo handle do
+    job fecha -- inclusive num `TerminateProcess` do shell, quando nenhum codigo
+    Python corre.
+
+    Nao e' fatal: se a maquina ja' tem este processo num job que proibe
+    breakaway (uma sessao de CI, um sandbox), `AssignProcessToJobObject` devolve
+    erro e a app continua como antes -- a diferenca fica escrita no log, nunca
+    silenciosa.
+    """
+    if _JOB.get('handle'):
+        return True
+    try:
+        class _IO_COUNTERS(ctypes.Structure):
+            _fields_ = [('ReadOperationCount', ctypes.c_ulonglong),
+                        ('WriteOperationCount', ctypes.c_ulonglong),
+                        ('OtherOperationCount', ctypes.c_ulonglong),
+                        ('ReadTransferCount', ctypes.c_ulonglong),
+                        ('WriteTransferCount', ctypes.c_ulonglong),
+                        ('OtherTransferCount', ctypes.c_ulonglong)]
+
+        class _BASIC(ctypes.Structure):
+            _fields_ = [('PerProcessUserTimeLimit', ctypes.c_int64),
+                        ('PerJobUserTimeLimit', ctypes.c_int64),
+                        ('LimitFlags', wt.DWORD),
+                        ('MinimumWorkingSetSize', ctypes.c_size_t),
+                        ('MaximumWorkingSetSize', ctypes.c_size_t),
+                        ('ActiveProcessLimit', wt.DWORD),
+                        ('Affinity', ctypes.c_size_t),
+                        ('PriorityClass', wt.DWORD),
+                        ('SchedulingClass', wt.DWORD)]
+
+        class _EXTENDED(ctypes.Structure):
+            _fields_ = [('BasicLimitInformation', _BASIC),
+                        ('IoInfo', _IO_COUNTERS),
+                        ('ProcessMemoryLimit', ctypes.c_size_t),
+                        ('JobMemoryLimit', ctypes.c_size_t),
+                        ('PeakProcessMemoryUsed', ctypes.c_size_t),
+                        ('PeakJobMemoryUsed', ctypes.c_size_t)]
+
+        kernel32.CreateJobObjectW.restype = wt.HANDLE
+        kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wt.LPCWSTR]
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            log('SHELL_JOB_FAILED stage=create winerror=%d' % ctypes.get_last_error())
+            return False
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+        info = _EXTENDED()
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        ok = kernel32.SetInformationJobObject(
+            wt.HANDLE(job), 9, ctypes.byref(info), ctypes.sizeof(info))
+        if not ok:
+            log('SHELL_JOB_FAILED stage=limits winerror=%d' % ctypes.get_last_error())
+            return False
+        # O HANDLE DE `GetCurrentProcess` E' PSEUDO (-1): sem `argtypes` o ctypes
+        # recusa-o ("int too long to convert") e o job nunca fica armado.
+        kernel32.GetCurrentProcess.restype = wt.HANDLE
+        kernel32.AssignProcessToJobObject.argtypes = [wt.HANDLE, wt.HANDLE]
+        kernel32.AssignProcessToJobObject.restype = wt.BOOL
+        proc = wt.HANDLE(kernel32.GetCurrentProcess())
+        ok = kernel32.AssignProcessToJobObject(wt.HANDLE(job), proc)
+        if not ok:
+            err = ctypes.get_last_error()
+            log('SHELL_JOB_FAILED stage=assign winerror=%d (a arvore nao morre '
+                'sozinha: este processo ja\' esta\' num job que recusa)' % err)
+            kernel32.CloseHandle(wt.HANDLE(job))
+            return False
+        _JOB['handle'] = job
+        log('SHELL_JOB_ARMED pid=%d kill_on_close=true' % os.getpid())
+        return True
+    except Exception as exc:  # noqa: BLE001 -- nunca custa o arranque da app
+        log('SHELL_JOB_FAILED stage=exception error=%r' % (exc,))
+        return False
 
 
 def take_single_instance_lock(name=DEFAULT_MUTEX_NAME) -> bool:
@@ -3808,21 +9655,11 @@ def take_single_instance_lock(name=DEFAULT_MUTEX_NAME) -> bool:
     return not exists
 
 
-#: The flags that make a launch a MEASUREMENT of the panel/shell rather than the
-#: app, and therefore give it a DERIVED lock name instead of `Local\SottoShell`.
-#: Read from `args` by attribute; `--exit-after` is a FLOAT (0.0 = off) and the
-#: rest are booleans/ints, so truthiness is correct for all of them. The label is
-#: built from EVERY flag present, so two probes with different shapes keep
-#: different locks (they may run together) while two IDENTICAL ones collide (they
-#: may not stack model loads).
-_MEASUREMENT_LOCK_FLAGS = (
-    ('dump_dom', 'dump-dom'),
-    ('selftest', 'selftest'),
-    ('memory', 'memory'),
-    ('no_hotkey', 'no-hotkey'),
-    ('probe_v2', 'probe-v2'),
-    ('exit_after', 'exit-after'),
-)
+#: The label is built from EVERY measurement flag present, so two probes with
+#: different shapes keep different locks (they may run together) while two
+#: IDENTICAL ones collide (they may not stack model loads). The SET of flags is
+#: NOT listed here: it is `MEASUREMENT_FLAGS` and nothing else (see the block
+#: above it for the five copies this line replaced).
 
 
 def measurement_lock_name(args) -> str:
@@ -3835,10 +9672,95 @@ def measurement_lock_name(args) -> str:
     ("Sotto opened more than once and froze the PC"). So the lock is TAKEN by
     every launch; only the NAME differs from the app's.
     """
-    parts = [name for attr, name in _MEASUREMENT_LOCK_FLAGS
+    parts = [name.lstrip('-') for attr, name in MEASUREMENT_FLAGS
              if getattr(args, attr, False)]
     label = '.'.join(parts) if parts else 'probe'
     return DEFAULT_MUTEX_NAME + '.m.' + label.replace('-', '_')
+
+
+def is_measurement_launch(args) -> bool:
+    """Esta largada e' a APP do dono ou uma MEDICAO? UMA pergunta, um dono.
+
+    PORQUE EXISTE (2026-11-12, defeito de DESENHO medido por leitura): a
+    decisao estava escrita DUAS vezes e as duas copias discordavam. O lock do
+    arranque pergunta `_measurement_flag(args)` e cai em
+    `measurement_lock_name` (`main()`), mas `isolated_state_path` perguntava
+    `args.mutex_name != DEFAULT_MUTEX_NAME` -- e `--probe-v2` NAO toca em
+    `--mutex-name`. Medido: `--probe-v2` toma o lock
+    `Local\\SottoShell.m.probe_v2` e escreve `_main\\panel-state.json` e
+    `_main\\panel-visibility.json` por cima dos ficheiros da app viva, que o
+    worker le' (`PanelVisibilityReader`) para decidir parque e shed. Uma
+    medicacao publicava `visible=false` sobre o dono e o worker dele mudava de
+    modo por causa de uma sonda.
+    """
+    if _measurement_flag(args):
+        return True
+    mutex = str(getattr(args, 'mutex_name', '') or '')
+    return bool(mutex) and mutex != DEFAULT_MUTEX_NAME
+
+
+def measurement_state_tag(args) -> str:
+    """O sufixo privado do estado desta largada; '' para a app do dono.
+
+    O NOME E' O MESMO QUE O LOCK TOMA, e e' por isso que as duas coisas nao
+    podem divergir outra vez: uma medicao e' `measurement_lock_name(args)`
+    (`Local\\SottoShell.m.probe_v2`), um `--mutex-name` explicito e' o dele.
+    """
+    if not is_measurement_launch(args):
+        return ''
+    mutex = str(getattr(args, 'mutex_name', '') or '')
+    if mutex and mutex != DEFAULT_MUTEX_NAME:
+        return re.sub(r'[^A-Za-z0-9_.-]', '_', mutex)
+    return re.sub(r'[^A-Za-z0-9_.-]', '_', measurement_lock_name(args))
+
+
+def isolated_state_file(path, args) -> str:
+    """`path` com o sufixo privado da largada; byte-identico na app do dono."""
+    tag = measurement_state_tag(args)
+    if not tag:
+        return path
+    stem, ext = os.path.splitext(path)
+    return '%s.%s%s' % (stem, tag, ext)
+
+
+def isolated_queue_dir(args):
+    """A fila do batch DESTA largada; `None` na app do dono (byte-identico).
+
+    PORQUE EXISTE (medido 2026-11-12, DM do watcher sobre um stutter do dono):
+    uma MEDICAO importa a shell, a shell constroi a `BatchQueue` em
+    `_open_load_action` e o executor DRAINA o directorio que encontra --
+    `batch_queue.queue_dir()`, que e' `%TMPDIR%/sotto-batch-queue`, o MESMO da
+    app viva dele. Medido nesse episodio:
+
+        culprit = python.exe(15700)
+        cmdline = python H:\\sotto\\app\\webview\\batch_queue.py --transcribe
+                  I:\\cc-tmp\\sotto-batch-queue\\1794459181885-57128-0001.f32
+                  --rate 16000 --window-s 15.0 --json
+        io 69.1 MB/s at 20.1 ops/s (3 438 KB/op), creations 56.8/s
+
+    ou seja a sonda nao estava a MEDIR o produto: estava a CONSUMIR a fila dele,
+    a re-transcrever audio que outra instancia tinha posto la'. A regra da casa
+    -- uma medicao nunca escreve no estado do dono -- ja' valia para
+    `panel-state.json`; a fila e' o mesmo estado, um nivel abaixo.
+    """
+    tag = measurement_state_tag(args)
+    if args is None:
+        # SEM `args` NAO EXISTE APP DO DONO. Um instrumento constroi o host a
+        # mao (`panel-hidden-at-startup-oracle` faz exactamente isso) e nunca
+        # passa por `main()`; tratar isso como "sem isolamento" deixava a sonda
+        # a drenar a fila dele -- o mesmo defeito que o `args` sozinho nao
+        # fechava, um nivel abaixo do que a DM mediu.
+        tag = re.sub(r'[^A-Za-z0-9_.-]', '_', DEFAULT_MUTEX_NAME) + '.no-args'
+    if not tag:
+        return None
+    try:
+        from batch_queue import queue_dir as _queue_dir
+    except Exception:                                  # noqa: BLE001
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        from batch_queue import queue_dir as _queue_dir
+    return _queue_dir() + '.' + tag
 
 
 # ===========================================================================
@@ -3906,24 +9828,41 @@ WM_EDIT_DRAG = WM_APP + 10
 #: O tick do vigilante, pedido a ESTA thread (`SetTimer`), nunca a um hook.
 WM_TIMER = 0x0113
 _POLL_TIMER_ID = 1
+# O TIPO DESTAS DUAS CHAMADAS E' PARTE DA CORRECCAO (medido 2026-11-07). Sem
+# `argtypes`, `SetTimer(None, 1, 100, None)` devolveu **14973** -- um id que o
+# Windows gerou -- e o `KillTimer(None, 1)` que o `_restart_timer` fazia de
+# seguida devolveu **0**: o timer ficava VIVO para sempre. Consequencia medida
+# na instancia viva: `sotto-outside-click` a 14-27 % de um core com o painel
+# ESCONDIDO (`THREAD_CPU`, 14:16-14:19), e a classe real a girar a 1 591 Hz
+# porque o re-arme a cada tick encontrava sempre um timer novo. O id que se
+# guarda e' SEMPRE o que o `SetTimer` devolveu, nunca a constante pedida.
+user32.SetTimer.restype = ctypes.c_size_t
+user32.SetTimer.argtypes = [wt.HWND, ctypes.c_size_t, ctypes.c_uint,
+                            ctypes.c_void_p]
+user32.KillTimer.restype = wt.BOOL
+user32.KillTimer.argtypes = [wt.HWND, ctypes.c_size_t]
 #: Com o painel visivel: e' o intervalo em que o foreground e' re-lido. 100 ms e'
 #: o mesmo orcamento que um popover do Windows leva a reagir a um clique fora, e
 #: e' uma chamada de sistema por tick -- nao ha tensao nenhuma em 10 Hz.
 POLL_MS_VISIBLE = 100
-#: Com um arrasto em curso: `GetCursorPos` a 40 Hz, que e' a taxa a que o
-#: `SetWindowPos` do `edit_drag_to` corre (o tecto continua a ser
-#: `EDIT_DRAG_MIN_INTERVAL_MS`).
-POLL_MS_DRAG = 25
+#: O TECTO do arrasto de EDICAO: o mesmo 240 Hz da legenda (ordem do dono:
+#: *"acho que a animacao da legenda pode ir ate 240hz"*). O arrasto NATIVO do
+#: painel (`_begin_window_drag`) nao passa por aqui: ele entrega o movimento ao
+#: loop do Windows (`WM_NCLBUTTONDOWN`/`HTCAPTION`) e ja' segue o cursor na taxa
+#: do sistema. Este tecto existe para o caminho de EDICAO, que e' Python.
+EDIT_DRAG_FRAME_HZ = 240
+EDIT_DRAG_FRAME_MS = 1000.0 / EDIT_DRAG_FRAME_HZ
+EDIT_DRAG_MIN_INTERVAL_MS = EDIT_DRAG_FRAME_MS
+
+#: Com um arrasto em curso: `GetCursorPos` no tecto de 240 Hz, que e' a taxa a
+#: que o `SetWindowPos` do `edit_drag_to` corre. O `SetTimer` do Windows tem
+#: piso de ~15,6 ms (64 Hz): o pedido e' 240 Hz e a taxa ENTREGUE e' medida e
+#: publicada em `PANEL_EDIT_DRAG_RATE` no fim de cada gesto -- nunca afirmada.
+POLL_MS_DRAG = max(1, int(round(EDIT_DRAG_FRAME_MS)))
 
 #: A few pixels of slack on the rect test: a click on the panel's own edge is
 #: still a click on the panel, and the owner cannot aim to the pixel.
 CLICK_OUTSIDE_SLACK = 2
-
-#: The drag's ceiling: at most one `SetWindowPos` per this many ms (20 Hz). The
-#: receipt's design says it plainly — moving the NATIVE window per frame is the
-#: short path to flicker (`docs/release-and-overlay-plan.md:75-78`), so the drag
-#: is a low-frequency move, not a smooth one.
-EDIT_DRAG_MIN_INTERVAL_MS = 50
 
 
 user32.GetWindowRect.argtypes = [wt.HWND, ctypes.c_void_p]
@@ -3934,6 +9873,16 @@ user32.PostThreadMessageW.argtypes = [wt.DWORD, ctypes.c_uint, ctypes.c_size_t,
 user32.GetCurrentThreadId = None  # NOT in user32; see kernel32 below
 kernel32.GetCurrentThreadId.restype = wt.DWORD
 kernel32.GetCurrentThreadId.argtypes = []
+#: A PRIORIDADE DO OBSERVADOR (2026-11-04). `GetCurrentThread` e' um
+#: pseudo-handle (-2) e `SetThreadPriority` leva o numero do Win32
+#: (`hotkey_gesture.OBSERVER_PRIORITY`). As DUAS assinaturas sao declaradas
+#: porque sem `argtypes` um HANDLE de 64 bits atravessa um `c_int` e o pedido
+#: morre calado -- a linha `HOTKEY_OBSERVER_PRIORITY ok=...` e' o que mostra se
+#: ele pegou.
+kernel32.GetCurrentThread.restype = wt.HANDLE
+kernel32.GetCurrentThread.argtypes = []
+kernel32.SetThreadPriority.restype = wt.BOOL
+kernel32.SetThreadPriority.argtypes = [wt.HANDLE, ctypes.c_int]
 user32.WindowFromPoint.restype = wt.HWND
 user32.WindowFromPoint.argtypes = [POINT]
 
@@ -3979,7 +9928,16 @@ class OutsideClickWatcher(threading.Thread):
         self._last_drag_post = 0.0
         self.drag_samples = 0
         self._last_fg = None
+        #: Intervalo com que o tick esta' DE FACTO armado (0 = morto). E' o
+        #: memo que impede o re-arme a cada tick -- ver `_restart_timer`.
+        self._timer_ms = 0
+        #: O id que o `SetTimer` DEVOLVEU (o Windows gera um quando pedimos com
+        #: hWnd nulo; matar a constante pedida nao mata o timer -- medido).
+        self._timer_id = 0
         self.polls = 0
+        #: Quando o show armou este vigia: foreground que mude nos primeiros
+        #: 250 ms e do show (`PANEL_SHOWN` .724 -> `PANEL_HIDDEN` .736, 2026-11-02).
+        self._armed_at = 0.0
 
     # `armed`/`edit_mode` sao PROPRIEDADES: quem os escreve (o `show_panel` e o
     # item de tray do edit mode) nao precisa de saber que a escrita tem de mexer
@@ -4014,10 +9972,20 @@ class OutsideClickWatcher(threading.Thread):
         if not self.thread_id:
             return False
         try:
-            user32.PostThreadMessageW(self.thread_id, WM_TIMER, 0, 0)
-            return True
+            ok = bool(user32.PostThreadMessageW(self.thread_id, WM_TIMER, 0, 0))
         except Exception:  # noqa: BLE001
-            return False
+            ok = False
+        if not ok:
+            # O PEDIDO PODE CAIR NO VAZIO (medido 2026-11-07): `armed = True`
+            # imediatamente depois do `start` deu **0 ticks em 10 s**, porque a
+            # fila de mensagens da thread nasce no primeiro `GetMessageW`, que
+            # corre depois do `_ready.set()`. Com o painel a aparecer muito
+            # depois isto nao acontece -- mas um pedido caido tem de dizer o
+            # seu nome, senao o vigia fica armado na contabilidade e morto no
+            # sistema.
+            log('OUTSIDE_CLICK_TIMER_POST_FAILED thread=%s err=%d'
+                % (self.thread_id, ctypes.get_last_error() or 0))
+        return ok
 
     def start(self, timeout=5.0) -> bool:
         super().start()
@@ -4033,9 +10001,11 @@ class OutsideClickWatcher(threading.Thread):
         # se sincronize -- a thread vai sair. Desarma e mata o tick aqui.
         self._armed = False
         self._edit_mode = False
+        self._timer_ms = 0
+        self._timer_id = 0
         if self.thread_id:
             try:
-                user32.KillTimer(None, _POLL_TIMER_ID)
+                user32.KillTimer(None, self._timer_id or _POLL_TIMER_ID)
             except Exception:  # noqa: BLE001
                 pass
         if self.thread_id:
@@ -4096,15 +10066,40 @@ class OutsideClickWatcher(threading.Thread):
             log('OUTSIDE_CLICK_LOOP_EXIT')
 
     def _restart_timer(self):
-        """Re-arma o tick com o intervalo que o estado pede, ou mata-o."""
+        """Re-arma o tick com o intervalo que o estado pede, ou mata-o.
+
+        O RE-ARME E' MEMORIZADO, E ISSO NAO E' MICRO-OPTIMIZACAO (medido a
+        2026-11-07, ordem do dono sobre o stutter: *"é pra sempre verificar o
+        maior culpado do stutter"*). Re-armar dentro do proprio handler de
+        `WM_TIMER` DEGENERA o timer: `KillTimer`+`SetTimer` com o MESMO id a
+        cada tick mediu **2 412-3 715 Hz** contra os **9,3 Hz** de um `SetTimer`
+        pedido uma vez (`_main/outside-click-timer-oracle.py`, sonda do
+        primitivo), e a classe REAL a correr deu **1 591 Hz / 13,1 % de um
+        core** -- contra `sotto-outside-click` **19-31 %** na instancia viva
+        (`THREAD_CPU`, 14:16-14:59, com a shell em 29-41 %). Com o intervalo
+        memorizado o tick so' se re-arma quando o ESTADO muda: **9,2 Hz /
+        0,20 % de um core**.
+        """
+        want = int(self._interval_ms()) if self._wants_poll() else 0
+        if want == self._timer_ms:
+            return bool(want)          # ja' esta' armado como o estado pede
+        tid = self._timer_id or _POLL_TIMER_ID
         try:
-            user32.KillTimer(None, _POLL_TIMER_ID)
+            user32.KillTimer(None, tid)
         except Exception:  # noqa: BLE001
             pass
-        if not self._wants_poll():
+        self._timer_id = 0
+        self._timer_ms = 0
+        if not want:
             self._last_fg = None
             return False
-        user32.SetTimer(None, _POLL_TIMER_ID, int(self._interval_ms()), None)
+        got = int(user32.SetTimer(None, _POLL_TIMER_ID, want, None) or 0)
+        if not got:
+            log('OUTSIDE_CLICK_TIMER_FAILED interval_ms=%d err=%d'
+                % (want, ctypes.get_last_error() or 0))
+            return False
+        self._timer_id = got            # o ID DO WINDOWS, nunca a constante
+        self._timer_ms = want
         return True
 
     def _poll(self):
@@ -4129,6 +10124,8 @@ class OutsideClickWatcher(threading.Thread):
                 return
             was = self._last_fg
             self._last_fg = fg
+            if self._armed_at and (time.monotonic() - self._armed_at) < 0.25:
+                return     # o show e dono dos seus primeiros 12 ms (medido)
             if was == fg:
                 # JA' ERA DE OUTRA JANELA no tick anterior: a mudanca de
                 # foreground JA' disparou o fecho. Um segundo tick nao e' um
@@ -4161,11 +10158,18 @@ class OutsideClickWatcher(threading.Thread):
                 self.shell.edit_grab = (x - rect.left, y - rect.top)
                 self._dragging = True
                 self._last_drag_post = 0.0
+                # A MEDICAO COMECA NO GESTO, nao na instancia: `drag_samples` e'
+                # cumulativo e a taxa de um arrasto nao pode herdar os outros.
+                self._drag_t0 = time.perf_counter()
+                self._drag_start_samples = self.drag_samples
                 log(f'PANEL_EDIT_DRAG start point=({x},{y}) '
                     f'grab={self.shell.edit_grab}')
             return
         if down and self._dragging:
-            now = time.monotonic() * 1000.0
+            # O RELOGIO DO THROTTLE E' `perf_counter` (2026-11-09): `monotonic`
+            # nesta maquina avanca de 15 ms em 15 ms, e um tecto de 4,17 ms
+            # lido nele e' aritmetica sobre um relogio que nao ve o intervalo.
+            now = time.perf_counter() * 1000.0
             if now - self._last_drag_post < EDIT_DRAG_MIN_INTERVAL_MS:
                 return
             self._last_drag_post = now
@@ -4177,6 +10181,17 @@ class OutsideClickWatcher(threading.Thread):
             self._dragging = False
             user32.PostThreadMessageW(self.thread_id, WM_EDIT_DRAG,
                                       _pack_point(x, y), 1)
+            _elapsed = time.perf_counter() - float(
+                getattr(self, '_drag_t0', 0.0) or 0.0)
+            _posts = self.drag_samples - int(
+                getattr(self, '_drag_start_samples', self.drag_samples))
+            if _elapsed > 0.0:
+                # A TAXA ENTREGUE (posts/s), nao o tecto. `poll_ms` e' o que o
+                # `SetTimer` recebeu; o piso do Windows pode fazer a taxa real
+                # ficar abaixo dos 240 Hz pedidos, e e' este numero que o diz.
+                log(f'PANEL_EDIT_DRAG_RATE posts={_posts} '
+                    f'seconds={_elapsed:.3f} hz={_posts / _elapsed:.1f} '
+                    f'target_hz={EDIT_DRAG_FRAME_HZ} poll_ms={POLL_MS_DRAG}')
 
     # -- the decision ------------------------------------------------------
     def _consider(self, x, y, message, source='hook'):
@@ -4285,12 +10300,265 @@ def _point_in_window(hwnd, x, y) -> bool:
     return (rect.left - CLICK_OUTSIDE_SLACK <= x <= rect.right + CLICK_OUTSIDE_SLACK
             and rect.top - CLICK_OUTSIDE_SLACK <= y <= rect.bottom + CLICK_OUTSIDE_SLACK)
 
+# ===========================================================================
+# O ARRASTO DO PAINEL E' NOSSO, A 240 Hz (medido 2026-11-09)
+# ===========================================================================
+# DONO, verbatim: *"os paineis nao sao draggable em 240hz"* e depois *"DRAGGING
+# DOES NOT WORK"*. A causa NAO era o JS: o log da instancia viva mostra o
+# pedido a chegar e a voltar sem mover um pixel --
+#
+#   WINDOW_DRAG_BEGIN surface=panel hwnd=17437966  (15:05:37.072)
+#   WINDOW_DRAG_DONE  surface=panel to=(1528,12) from=(1528,12)  (.078)
+#
+# seis milissegundos, `from == to`. O loop de legenda do Windows
+# (`WM_NCLBUTTONDOWN`/`HTCAPTION` -> `DefWindowProc` -> `SC_MOVE`) e' RECUSADO
+# para a janela que este shell cria, e o estilo dela diz por que (medido no hwnd
+# vivo): `style=0x06010000` -- SEM `WS_CAPTION` e SEM `WS_THICKFRAME` -- com
+# `exstyle=0x080100A8` (`WS_EX_NOACTIVATE|TRANSPARENT|TOOLWINDOW|TOPMOST`). Um
+# `SC_MOVE` sem moldura/caption devolve ao chamador em vez de entrar no laco
+# modal: o arrasto "funciona" no log e nao existe no ecra.
+#
+# O QUE FAZ UM ARRASTO DE VERDADE AQUI: `GetCursorPos` + `GetAsyncKeyState` a
+# 240 Hz, num fio PROPRIO e so' enquanto o botao esta' em baixo, aplicando o
+# delta da pega com `SetWindowPos(SWP_NOSIZE)`. Nenhum hook (o `WH_MOUSE_LL`
+# foi removido a 2026-10-30 por ordem do dono), nenhuma mensagem por movimento
+# entre a pagina e a shell, nenhuma linha de log por amostra -- o fio da pagina
+# continua a correr, porque o movimento acontece fora dele.
+#
+# O `SetTimer` do Windows NAO serve para isto: o piso dele e' ~15,6 ms (64 Hz) e
+# a taxa pedida e' 240 Hz. Por isso e' um fio com `time.perf_counter`, o mesmo
+# relogio que a legenda usa (o `monotonic` anda de 15 em 15 ms nesta maquina).
+WINDOW_DRAG_FRAME_HZ = 240
+WINDOW_DRAG_FRAME_S = 1.0 / WINDOW_DRAG_FRAME_HZ
+#: O ultimo pedaco de cada quadro e' girado: e' o que separa a GRADE de 240 Hz
+#: do grao de ~1 ms com que o `sleep` volta. Medido: 215 Hz sem ele.
+WINDOW_DRAG_SPIN_S = 0.00035
+
+#: QUANTAS AMOSTRAS FAZEM UM GESTO (e nao um clique). Medido no log vivo do dono
+#: (`_main/webview-run.log`, 39 h, 2026-11-08 18:23 -> 2026-11-10 09:37): **6**
+#: `WINDOW_DRAG_BEGIN` e **6** `DONE`, e a UNICA com o seguidor novo mediu
+#: `updates=0 samples=4 hz=0.0 elapsed_ms=17`. As duas causas possiveis --
+#: "o dono clicou e nao arrastou" e "o arrasto nao consegue mover a janela" --
+#: imprimem a MESMA linha, e e' por isso que a queixa de 2026-11-09
+#: (*"os paineis nao sao draggable em 240hz"*) nao era atribuivel: um `False` do
+#: `window_drag_to` significa tanto "o pixel nao mudou" (normal) como "nao ha
+#: ancora" ou "nao ha tamanho" (arrasto partido). Abaixo deste piso de amostras
+#: o gesto e' um clique e NAO se publica `WINDOW_DRAG_STUCK`; a partir dele, e
+#: so' quando alguma amostra foi recusada POR CAUSA, publica-se com o motivo.
+WINDOW_DRAG_STUCK_SAMPLES = 8
+
+#: A RESOLUCAO DE 1 ms, LEVANTADA SO' DURANTE O GESTO. Medido no oraculo
+#: (`_main/window-drag-oracle.py`, A6) antes desta linha existir: o laco entregou
+#: **103,2 Hz com max_gap 16,1 ms** porque `time.sleep(4,17 ms)` cai no grao de
+#: 15,6 ms do Windows. O `caption_overlay` ja' carrega o mesmo mecanismo e mediu
+#: 4,21 ms com ele -- e' o mesmo fio de raciocinio, nao uma segunda invencao: o
+#: sono de 4 ms nao pode depender de um TERCEIRO processo ter levantado a
+#: resolucao da maquina. `timeEndPeriod(1)` devolve tudo no fim do gesto, para o
+#: custo de bateria existir so' enquanto o dedo esta' em cima.
+_DRAG_TIMER_PERIOD = {'on': False}
+
+
+def _drag_timer_period(on):
+    """Liga/desliga a resolucao de 1 ms do relogio -- idempotente e fail-open."""
+    if bool(on) == _DRAG_TIMER_PERIOD['on']:
+        return
+    try:
+        winmm = ctypes.WinDLL('winmm')
+        if on:
+            winmm.timeBeginPeriod(1)
+        else:
+            winmm.timeEndPeriod(1)
+    except Exception:  # noqa: BLE001 -- sem winmm nao ha' nada a fazer
+        return
+    _DRAG_TIMER_PERIOD['on'] = bool(on)
+
+
+def drag_origin(anchor, cursor, scale, size, work):
+    """ONDE A JANELA VAI em UMA amostra do arrasto -- funcao pura.
+
+    `anchor` = (cursor_x0, cursor_y0, janela_x0, janela_y0): o cursor e a origem
+    da janela no instante da PEGA. O deslocamento aplicado e' a DIFERENCA entre o
+    cursor de agora e a pega, nunca a posicao absoluta -- e' isso que impede o
+    salto de a janela ir para debaixo do ponteiro no primeiro movimento.
+
+    `cursor` vem em pixels fisicos (o que `GetCursorPos` devolve); `scale` e' o
+    DPI do monitor em uso; `size`/`work` em DIP. O resultado e' preso na area de
+    trabalho, para a janela nunca poder ser deixada fora do ecra.
+
+    Puro de proposito: o oraculo mede o delta e o clamp sem abrir janela nenhuma.
+    """
+    cx, cy, gx, gy = anchor
+    scale = float(scale or 1.0) or 1.0
+    dx = (float(cursor[0]) - float(cx)) / scale
+    dy = (float(cursor[1]) - float(cy)) / scale
+    nx = int(round(gx + dx))
+    ny = int(round(gy + dy))
+    width, height = int(size[0]), int(size[1])
+    nx = max(int(work['x']), min(nx, int(work['x']) + int(work['width']) - width))
+    ny = max(int(work['y']), min(ny, int(work['y']) + int(work['height']) - height))
+    return nx, ny
+
+
+class WindowDragFollower(threading.Thread):
+    """Segue o ponteiro a 240 Hz enquanto o dono arrasta o painel.
+
+    UM fio por GESTO, nao por instancia: nasce quando a pagina pede o arrasto
+    (`beginWindowDrag`) e sai no primeiro tick que ve o botao em cima. Duas
+    pegas nao podem andar a lutar pela mesma janela, por isso `begin()` recusa
+    enquanto `active`.
+
+    O TRABALHO POR AMOSTRA e' duas chamadas de sistema (`GetAsyncKeyState`,
+    `GetCursorPos`) mais um `SetWindowPos` -- e SO' quando o pixel mudou. Nao ha
+    `exec_js`, nao ha `log`, nao ha `publish_panel_visibility` no caminho: a
+    escrita de estado acontece uma vez, no fim (`PANEL_DRAG_PERSIST`).
+    """
+
+    def __init__(self, shell):
+        super().__init__(name='sotto-window-drag', daemon=True)
+        self.shell = shell
+        self.active = False
+        self.surface = ''
+        self.anchor = None
+        self.hwnd = 0
+        self.updates = 0
+        self.samples = 0
+        self.max_gap_ms = 0.0
+        self.elapsed_s = 0.0
+
+    def begin(self, surface, anchor, hwnd):
+        """Arma o gesto. Devolve False quando ja' ha um arrasto em curso."""
+        if self.active:
+            # A PEGA ANTERIOR PODE ESTAR A MORRER: o fio dela sai no primeiro
+            # tick que ve o botao em cima (ate' 1/240 s, mais o sleep). Esperar
+            # 50 ms aqui e' o que faz duas pegas seguidas serem dois arrastos em
+            # vez de o segundo cair em `WINDOW_DRAG_BUSY`.
+            for _ in range(20):
+                if not self.active:
+                    break
+                time.sleep(0.005)
+        if self.active:
+            return False
+        self.surface = surface
+        self.anchor = anchor
+        self.hwnd = int(hwnd or 0)
+        self.updates = 0
+        self.samples = 0
+        self.refused = 0
+        self.refusal_cause = ''
+        self.max_gap_ms = 0.0
+        self.elapsed_s = 0.0
+        self.active = True
+        _drag_timer_period(True)
+        try:
+            super().start()
+        except RuntimeError:
+            # UM `Thread` TERMINADO NAO SE RE-ARRANCA. O gesto seguinte ganha um
+            # follower novo, e a shell tem de passar a apontar para ele -- senao
+            # a proxima pega encontrava o mesmo fio morto para sempre.
+            fresh = WindowDragFollower(self.shell)
+            self.shell.window_drag_follower = fresh
+            return fresh.begin(surface, anchor, hwnd)
+        return True
+
+    def run(self):
+        period = WINDOW_DRAG_FRAME_S
+        start = time.perf_counter()
+        last = start
+        #: O PRAZO E' UMA GRADE, NAO UM SONO DE `period` (medido 2026-11-09 com o
+        #: primitivo isolado, `timeBeginPeriod(1)` ligado): dormir 4,167 ms
+        #: devolveu **4,653 ms de media** (215 Hz) e o
+        #: `CreateWaitableTimerExW(CREATE_WAITABLE_TIMER_HIGH_RESOLUTION)` deu
+        #: **4,798 ms** (208 Hz) -- o custo de acordar e' maior que o grao, logo
+        #: pedir o periodo a cada volta NUNCA chega a 240 Hz. Com grade, o erro
+        #: de uma volta desconta-se na seguinte: o prazo avanca por `period`
+        #: somado, e o sono e' o que sobra ate' ele.
+        next_tick = start
+        #: O QUE FICA PARA O FIM: o ultimo 0,35 ms de cada quadro e' girado, nao
+        #: dormido. Sem isto o sono arredonda para o grao acima e a taxa entrega
+        #: ~215 Hz; com isto entrega a grade, e o giro e' limitado (9 % de um
+        #: nucleo no pior caso, e SO' com o dedo em cima).
+        slack = WINDOW_DRAG_SPIN_S
+        try:
+            while self.active:
+                tick = time.perf_counter()
+                gap = (tick - last) * 1000.0
+                if gap > self.max_gap_ms:
+                    self.max_gap_ms = gap
+                last = tick
+                down = bool(user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000)
+                if down:
+                    point = POINT()
+                    if user32.GetCursorPos(ctypes.byref(point)):
+                        self.samples += 1
+                        if self.shell.window_drag_to(
+                                int(point.x), int(point.y), persist=False):
+                            self.updates += 1
+                        else:
+                            # UM `False` TEM DUAS CAUSAS QUE NAO SE CONFUNDEM: o
+                            # pixel nao mudou (normal, e nao e' recusa) ou a
+                            # janela nao pode ser movida (ancora/tamanho). So' a
+                            # segunda conta, e o motivo viaja para o fim do gesto
+                            # -- uma atribuicao no caminho quente, nunca um `log`.
+                            cause = getattr(self.shell, '_window_drag_refusal', '') or ''
+                            if cause:
+                                self.refused += 1
+                                self.refusal_cause = cause
+                if not down:
+                    break
+                next_tick += period
+                wait = next_tick - time.perf_counter()
+                if wait > slack:
+                    time.sleep(wait - slack)
+                elif wait <= 0:
+                    # Caiu atras (o `SetWindowPos` custou mais que um quadro):
+                    # re-ancora a grade em vez de somar divida para sempre.
+                    next_tick = time.perf_counter()
+        except Exception as exc:  # noqa: BLE001 -- um arrasto nunca mata a app
+            log(f'WINDOW_DRAG_FOLLOW_FAILED surface={self.surface} error={exc!r}')
+        finally:
+            self.elapsed_s = time.perf_counter() - start
+            self.active = False
+            _drag_timer_period(False)
+            try:
+                self.shell.window_drag_to(0, 0, persist=True)
+            except Exception as exc:  # noqa: BLE001
+                log(f'WINDOW_DRAG_PERSIST_FAILED error={exc!r}')
+            hz = (self.updates / self.elapsed_s) if self.elapsed_s > 0 else 0.0
+            log('WINDOW_DRAG_FOLLOW_END surface=%s updates=%d samples=%d '
+                'hz=%.1f max_gap_ms=%.2f elapsed_ms=%.0f ceiling_hz=%d '
+                'refused=%d cause=%s'
+                % (self.surface, self.updates, self.samples, hz,
+                   self.max_gap_ms, self.elapsed_s * 1000.0,
+                   WINDOW_DRAG_FRAME_HZ, self.refused,
+                   self.refusal_cause or '-'))
+            # A LINHA QUE FALTAVA (dono, 2026-11-09: *"os paineis nao sao
+            # draggable em 240hz"*). Um gesto que amostrou o suficiente para ser
+            # um arrasto, nao moveu a janela UMA vez e teve amostras recusadas
+            # POR CAUSA nao e' um clique: e' um arrasto partido, e passa a ter
+            # nome proprio com o motivo em vez de se confundir com `updates=0`
+            # de um clique (que e' o desfecho normal de uma pressao curta).
+            if (self.samples >= WINDOW_DRAG_STUCK_SAMPLES
+                    and self.updates == 0 and self.refused > 0):
+                log('WINDOW_DRAG_STUCK surface=%s cause=%s refused=%d '
+                    'samples=%d elapsed_ms=%.0f'
+                    % (self.surface, self.refusal_cause or 'unknown',
+                       self.refused, self.samples, self.elapsed_s * 1000.0))
+
+    def stop(self):
+        self.active = False
+
+
 NIM_ADD, NIM_MODIFY, NIM_DELETE = 0, 1, 2
 NIF_MESSAGE, NIF_ICON, NIF_TIP = 0x01, 0x02, 0x04
 NIF_INFO = 0x10                  # balloon tip: informs without blocking
 MF_STRING, MF_SEPARATOR = 0x0000, 0x0800
 TPM_RIGHTBUTTON, TPM_RETURNCMD = 0x0002, 0x0100
 HWND_MESSAGE = -3
+WM_NULL = 0x0000
+#: The tray's own window is a HIDDEN TOP-LEVEL popup, NOT a message-only window.
+#: See `_create_window` for the measurement that moved it.
+WS_POPUP = 0x80000000
+WS_EX_TOOLWINDOW = 0x00000080
 
 TRAY_ID = 0xB0F1              # any uid; this one is ours
 ID_TRAY_OPEN = 1              # "Open panel"
@@ -4300,6 +10568,24 @@ ID_TRAY_QUIT = 2              # "Quit Sotto" — the one the owner named
 #: trigger by accident while reading a caption). A 4th id, so the two shipped
 #: items keep their numbers and the tray probe's `[2]='Quit Sotto'` lookup works.
 ID_TRAY_EDIT = 3
+
+#: *"faz um botao 'desativar atalho alt c' no click direito do icon do sotto"*
+#: (dono, 2026-11-07) -- e, na mesma frase, *"e claro, é ativar e desativar"*.
+#: UM item cujo TEXTO diz a accao que ele faz ("Desativar atalho Alt+C" quando
+#: esta' armado, "Ativar atalho Alt+C" quando nao esta'), e nao dois items: um
+#: segundo item para a accao contraria seria um menu onde metade das linhas esta'
+#: sempre inerte. Id 4, para os tres de cima nao mudarem de numero.
+ID_TRAY_HOTKEY = 4
+
+#: *"ctrl space is not yet known by a user, so put it on the right click of the
+#: icon as a 'activate subtitles - ctrl space'"* (dono, 2026-11-09). A TECLA que
+#: liga a legenda ao vivo nao tinha superficie nenhuma no produto: quem nao le o
+#: AGENTS.md nunca a descobre. Mesmo desenho do item do Alt+C -- UM item cujo
+#: TEXTO diz a accao e o acelerador ao lado ("Desligar legendas (Ctrl+Space)"
+#: quando esta' ligada, "Ligar legendas (Ctrl+Space)" quando nao esta').
+#: Id 5, para os quatro de cima nao mudarem de numero.
+ID_TRAY_LIVE = 5
+
 TRAY_WINDOW_CLASS = 'SottoTrayWindow'
 TRAY_TIP = 'Sotto — Alt+C shows the captions'
 
@@ -4329,6 +10615,9 @@ user32.CreatePopupMenu.restype = wt.HMENU
 user32.AppendMenuW.restype = wt.BOOL
 user32.AppendMenuW.argtypes = [wt.HMENU, ctypes.c_uint, ctypes.c_size_t,
                                wt.LPCWSTR]
+#: `THREAD_PRIORITY_ABOVE_NORMAL`. The tray thread sleeps in `GetMessageW`, so
+#: raising it costs nothing and is what makes the menu answer on a starved box.
+THREAD_PRIORITY_ABOVE_NORMAL = 1
 user32.TrackPopupMenu.restype = ctypes.c_int
 user32.TrackPopupMenu.argtypes = [wt.HMENU, ctypes.c_uint, ctypes.c_int,
                                   ctypes.c_int, ctypes.c_int, wt.HWND,
@@ -4344,6 +10633,13 @@ user32.GetMenuStringW.argtypes = [wt.HMENU, ctypes.c_uint, wt.LPWSTR,
                                   ctypes.c_int, ctypes.c_uint]
 user32.GetCursorPos.argtypes = [ctypes.c_void_p]
 user32.SetForegroundWindow.argtypes = [wt.HWND]
+#: Quem esta' em primeiro plano e' um HANDLE, e o fio dele e' um DWORD: sem
+#: `argtypes` o `GetWindowThreadProcessId` recebia o HWND como int de 32 bits e
+#: devolvia lixo em silencio (a mesma classe de defeito que o `HWND_TOPMOST` de
+#: `SetWindowPos` acima). A bandeja le estes dois para decidir o `AttachThreadInput`.
+user32.GetWindowThreadProcessId.restype = wt.DWORD
+user32.GetWindowThreadProcessId.argtypes = [wt.HWND,
+                                            ctypes.POINTER(wt.DWORD)]
 user32.LoadImageW.restype = wt.HANDLE
 user32.LoadImageW.argtypes = [wt.HINSTANCE, wt.LPCWSTR, ctypes.c_uint,
                               ctypes.c_int, ctypes.c_int, ctypes.c_uint]
@@ -4387,11 +10683,21 @@ class TrayIcon:
     hook that bypasses it.
     """
 
-    def __init__(self, icon_path, on_command, log_fn, warn_fn):
+    def __init__(self, icon_path, on_command, log_fn, warn_fn,
+                 panels_state_fn=None, live_state_fn=None):
         self.icon_path = icon_path
         self.on_command = on_command
         self.log = log_fn
         self.warn = warn_fn
+        #: O que o item do Alt+C diz AGORA. E' uma FUNCAO, e nao um valor, porque
+        #: o dono desliga a tecla no menu e o menu seguinte tem de dizer o
+        #: contrario sem ninguem se lembrar de o actualizar.
+        self.panels_state = panels_state_fn or (
+            lambda: {'enabled': True, 'accel': 'Alt+C'})
+        #: E o mesmo para o item da legenda ao vivo (Ctrl+Space): o texto diz a
+        #: accao, e quem sabe se ela esta' ligada e' a SHELL (`_caption_wanted`).
+        self.live_state = live_state_fn or (
+            lambda: {'on': False, 'accel': 'Ctrl+Space'})
         self.hwnd = None
         self.hicon = None
         self.menu = None
@@ -4429,6 +10735,15 @@ class TrayIcon:
         if (self._thread is not None and self._thread.is_alive()
                 and self._thread is not threading.current_thread()):
             self._thread.join(2)
+        # O MENU E' UM RECURSO COM DONO: ele agora sobrevive ao clique, por isso
+        # tem de ser destruido aqui -- uma app que sai e deixa um `HMENU` e' uma
+        # fuga por cada arranque.
+        if self.menu:
+            try:
+                user32.DestroyMenu(self.menu)
+            except Exception:             # noqa: BLE001
+                pass
+            self.menu = None
         self.log(f'TRAY_STOP reason={reason} hwnd={self.hwnd}')
 
     # -- the icon ----------------------------------------------------------
@@ -4562,8 +10877,21 @@ class TrayIcon:
             err = ctypes.get_last_error()
             if err != 1410:  # ERROR_CLASS_ALREADY_EXISTS is fine (a restart)
                 raise OSError(err, 'RegisterClassExW')
-        hwnd = user32.CreateWindowExW(0, TRAY_WINDOW_CLASS, '', 0, 0, 0, 0, 0,
-                                      HWND_MESSAGE, None, hinst, None)
+        # A HIDDEN TOP-LEVEL POPUP, NOT `HWND_MESSAGE`.
+        #
+        # `_show_menu` calls `SetForegroundWindow(self.hwnd)` before the popup
+        # menu, because that is what makes the menu dismiss when the owner
+        # clicks elsewhere. A message-only window has no Z-order and cannot be
+        # activated, so the menu is left standing until he clicks the icon again
+        # — the owner, 2026-11-04: *"botao direito é travado pra abrir o menu
+        # dele. é extremamente diferente de outros apps onde é fluido"*.
+        # `WS_POPUP` without `WS_VISIBLE` is not visible, `WS_EX_TOOLWINDOW`
+        # keeps it out of the taskbar and Alt+Tab, and it is NOT message-only,
+        # so it can hold the foreground and it also receives the `TaskbarCreated`
+        # broadcast the message-only window could never get.
+        hwnd = user32.CreateWindowExW(WS_EX_TOOLWINDOW, TRAY_WINDOW_CLASS, '',
+                                      WS_POPUP, 0, 0, 0, 0, 0,
+                                      None, hinst, None)
         if not hwnd:
             raise OSError(ctypes.get_last_error(), 'CreateWindowExW')
         self.hwnd = int(hwnd)
@@ -4575,8 +10903,15 @@ class TrayIcon:
         except Exception:  # noqa: BLE001
             self._taskbar_created_msg = 0
         self.log(f'TRAY_WINDOW created=true hwnd={self.hwnd} '
-                 f'class={TRAY_WINDOW_CLASS} message_only=true '
+                 f'class={TRAY_WINDOW_CLASS} message_only=false '
+                 f'popup_hidden=true '
                  f'taskbar_created_msg={self._taskbar_created_msg}')
+        # O MENU NASCE AQUI, NAO NO CLIQUE (2026-11-07). O primeiro clique do
+        # dono depois de abrir a app nao pode pagar a construcao do menu.
+        try:
+            self.menu = self._build_menu()
+        except Exception as exc:          # noqa: BLE001 -- sem menu o icone ainda abre
+            self.warn(f'TRAY_MENU_PRIME_FAILED {type(exc).__name__}: {exc}')
 
     def _on_message(self, hwnd, msg, wparam, lparam):
         if (getattr(self, '_taskbar_created_msg', 0)
@@ -4590,8 +10925,16 @@ class TrayIcon:
                 self.warn(f'TRAY_READD_FAILED {type(exc).__name__}: {exc}')
             return 0
         if msg == WM_TRAY_CALLBACK:
-            if lparam in (WM_RBUTTONUP, WM_LBUTTONUP):
+            if lparam == WM_RBUTTONUP:
                 self._show_menu()
+            elif lparam == WM_LBUTTONUP:
+                # LEFT opens the thing, RIGHT gives the menu — what every other
+                # tray app on this box does (owner's reference: Vanguard). The id
+                # goes back through a REAL WM_COMMAND, the same path the menu
+                # takes, so there is still one handler.
+                self.log('TRAY_LEFT_CLICK id=%d' % ID_TRAY_OPEN)
+                user32.PostMessageW(wt.HWND(self.hwnd), WM_COMMAND,
+                                    ID_TRAY_OPEN, 0)
             return 0
         if msg == WM_COMMAND:
             command = int(wparam) & 0xFFFF
@@ -4611,36 +10954,227 @@ class TrayIcon:
         return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def _show_menu(self):
-        menu = self._build_menu()
+        # O MENU E' CONSTRUIDO UMA VEZ, NAO A CADA CLIQUE (2026-11-07). Antes,
+        # `_build_menu()` corria dentro do clique: `CreatePopupMenu` + 4
+        # `AppendMenu` + uma varredura `GetMenuState` por item + UMA linha de log
+        # com escrita e `flush` no ficheiro do log -- tudo ANTES de o menu
+        # aparecer. Com o disco saturado (o estado normal desta maquina) esse
+        # `flush` custa o mesmo que a interface toda, e o dono ve' o clique "nao
+        # responder". Reconstroi-se so' quando o TEXTO muda (`refresh_menu`).
+        menu = self.menu
+        if not menu:
+            menu = self._build_menu()
+        t_menu = time.monotonic()
         pt = POINT()
         user32.GetCursorPos(ctypes.byref(pt))
-        # SetForegroundWindow is what makes the menu dismiss correctly when the
-        # owner clicks elsewhere; without it the menu can be left orphaned.
-        user32.SetForegroundWindow(wt.HWND(self.hwnd))
+        # O PRIMEIRO PLANO -- E O QUE O SISTEMA DIZ SOBRE ELE (medido 2026-11-10).
+        #
+        # Um `SetForegroundWindow` cru NAO CHEGA nesta maquina: o clique real do
+        # dono deu 13 de 13 `TRAY_MENU_FOREGROUND ok=0 is_foreground=0`, porque o
+        # processo da bandeja nao era o processo em primeiro plano e o
+        # `SPI_GETFOREGROUNDLOCKTIMEOUT` deste hospedeiro esta' no MAXIMO
+        # (`0x7FFFFFFF` ms) -- a fechadura de primeiro plano nunca expira, logo a
+        # chamada crua e' recusada para sempre. A receita documentada para a
+        # janela de uma bandeja e' a do `AttachThreadInput` (ver
+        # `_take_menu_foreground`): filas de input ligadas durante a chamada e
+        # desligadas no `finally`.
+        #
+        # The MSDN shell-notification recipe has THREE parts, and the third is
+        # the one that is easy to forget: the foreground call, then a
+        # PostMessage(hwnd, WM_NULL) so the FIRST outside click is delivered to
+        # the menu instead of being eaten by the window coming to the front, and
+        # only then TrackPopupMenu. What the foreground step ACHIEVED is logged
+        # rather than assumed: a silent failure is the difference between a fluid
+        # menu and a stuck one.
+        fg = self._take_menu_foreground()
+        user32.PostMessageW(wt.HWND(self.hwnd), WM_NULL, 0, 0)
         command = user32.TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD,
                                         pt.x, pt.y, 0, wt.HWND(self.hwnd),
                                         None)
-        user32.DestroyMenu(menu)
-        self.menu = None
+        # O MENU NAO E' DESTRUIDO AQUI: ele e' o MESMO objecto do proximo clique
+        # (`refresh_menu` e' quem o substitui, quando o texto muda).
+        #
+        # A LINHA DO LOG VEM DEPOIS DO MENU, E NAO ANTES (2026-11-07). `log()`
+        # faz `print(..., flush=True)`: e' um `write` no ficheiro do log, que
+        # nesta maquina vive num disco saturado. Escrito ANTES do
+        # `TrackPopupMenu`, esse `flush` fica entre o clique do dono e o menu a
+        # aparecer -- e o sintoma dele e' exactamente "aperto o botao direito e
+        # nao responde". O estado do primeiro plano (`fg`) e' medido ANTES (e' o
+        # que decide a receita) e contado depois, com o custo do menu ao lado:
+        menu_ms = (time.monotonic() - t_menu) * 1000.0
+        # A JANELA INVISIVEL EM PRIMEIRO PLANO COME AS TECLAS DO DONO: depois do
+        # menu, o primeiro plano volta a quem o tinha -- mas SO' quando ainda e'
+        # nossa janela (se ele fechou o menu clicando noutra app, essa app ja' o
+        # tem e nao se lhe toca). Ver `_restore_menu_foreground`.
+        fg_restored = self._restore_menu_foreground(fg)
+        self.log(f'TRAY_MENU_FOREGROUND ok={int(fg["ok"])} '
+                 f'is_foreground={int(fg["is_foreground"])} '
+                 f'reason={fg["reason"]} attached={int(fg["attached"])} '
+                 f'attach_err={fg["attach_err"]} fg_before={fg["fg_before"]} '
+                 f'fg_thread={fg["fg_thread"]} me_thread={fg["me_thread"]} '
+                 f'fg_restored={int(fg_restored)} '
+                 f'hwnd={self.hwnd} menu_ms={menu_ms:.0f}')
         if command:
             # A REAL WM_COMMAND, so the menu and the probe take one path.
             user32.PostMessageW(wt.HWND(self.hwnd), WM_COMMAND, command, 0)
+
+    def _take_menu_foreground(self) -> dict:
+        """Take the foreground the popup menu needs, with the input queue LIGADA.
+
+        What the OS says, never what we asked for: every field of the returned
+        dict is a measurement.
+
+        ── PORQUE O `SetForegroundWindow` CRU NAO BASTA (medido 2026-11-10) ───
+        `SetForegroundWindow` so' poe uma janela em primeiro plano se o processo
+        que chama fizer parte da lista curta do Windows (e' o processo em
+        primeiro plano, foi lancado por ele, recebeu o ultimo evento de input,
+        ... ou a fechadura de primeiro plano expirou). Nesta maquina a fechadura
+        esta' no MAXIMO -- `SPI_GETFOREGROUNDLOCKTIMEOUT` = `0x7FFFFFFF` ms --
+        portanto a ultima condicao NUNCA se verifica, e o clique do dono (que e'
+        recebido pelo EXPLORER, nao por nos) deixava a janela da bandeja fora do
+        primeiro plano em 13 de 13 cliques: `ok=0 is_foreground=0`.
+
+        A saida documentada e' `AttachThreadInput`: enquanto as duas filas de
+        input estao ligadas, o Windows trata os dois fios como um so' para
+        efeitos de primeiro plano, e a chamada passa. Desligar e' OBRIGATORIO
+        (no `finally`): filas ligadas prendem o input dos dois processos um ao
+        outro.
+
+        O attach pode ser RECUSADO por UIPI quando a janela em primeiro plano
+        pertence a um processo de integridade mais alta -- medido nesta maquina
+        a partir de um processo MEDIUM (`AttachThreadInput` -> 0, `err=5`
+        ERROR_ACCESS_DENIED, com o `explorer` a correr em HIGH). Nesse caso a
+        recusa e' o que se REGISTA (`attach_err=`), e o `reason=` diz qual das
+        condicoes falhou: um log que dissesse `ok=1` sem o sistema o ter dito
+        seria pior do que a falha.
+        """
+        state = {'fg_before': 0, 'fg_thread': 0, 'me_thread': 0,
+                 'attached': False, 'attach_err': 0, 'ok': False,
+                 'is_foreground': False, 'reason': 'unknown'}
+        fg_before = 0
+        fg_thread = 0
+        attached = False
+        try:
+            user32.GetForegroundWindow.restype = wt.HWND
+            fg_before = int(user32.GetForegroundWindow() or 0)
+            state['fg_before'] = fg_before
+            state['me_thread'] = int(kernel32.GetCurrentThreadId())
+            if fg_before:
+                owner = wt.DWORD(0)
+                fg_thread = int(user32.GetWindowThreadProcessId(
+                    wt.HWND(fg_before), ctypes.byref(owner)) or 0)
+            state['fg_thread'] = fg_thread
+            # UM ATTACH A NOS PROPRIOS FIOS NAO FAZ NADA (ja' estao ligados), e o
+            # `SetForegroundWindow` passa so' porque o processo ja' tem o
+            # primeiro plano -- que e' o caso `already-foreground` abaixo.
+            if (fg_before and fg_before != int(self.hwnd) and fg_thread
+                    and fg_thread != state['me_thread']):
+                ctypes.set_last_error(0)
+                attached = bool(user32.AttachThreadInput(
+                    wt.DWORD(state['me_thread']), wt.DWORD(fg_thread), True))
+                state['attached'] = attached
+                if not attached:
+                    state['attach_err'] = ctypes.get_last_error()
+            state['ok'] = bool(user32.SetForegroundWindow(wt.HWND(self.hwnd)))
+        except Exception as exc:  # noqa: BLE001 -- o menu abre mesmo assim
+            state['reason'] = 'failed:%s' % type(exc).__name__
+        finally:
+            if attached:
+                try:
+                    user32.AttachThreadInput(wt.DWORD(state['me_thread']),
+                                             wt.DWORD(fg_thread), False)
+                except Exception:     # noqa: BLE001 -- nunca matar o clique
+                    pass
+        try:
+            user32.GetForegroundWindow.restype = wt.HWND
+            state['is_foreground'] = (int(user32.GetForegroundWindow() or 0)
+                                      == int(self.hwnd))
+        except Exception:             # noqa: BLE001
+            state['is_foreground'] = False
+        if state['reason'] == 'unknown':
+            if fg_before == int(self.hwnd):
+                state['reason'] = 'already-foreground'
+            elif state['is_foreground']:
+                state['reason'] = 'took-foreground'
+            elif not fg_before:
+                state['reason'] = 'no-foreground-window'
+            elif state['attached']:
+                # As filas estavam ligadas e o Windows recusou na mesma.
+                state['reason'] = 'foreground-denied-attached'
+            elif state['attach_err']:
+                state['reason'] = 'attach-denied'
+            elif fg_thread == state['me_thread']:
+                state['reason'] = 'foreground-denied-same-thread'
+            else:
+                state['reason'] = 'foreground-denied'
+        return state
+
+    def _restore_menu_foreground(self, fg) -> bool:
+        """Give the foreground back to whoever had it, IF we still hold it.
+
+        Uma janela INVISIVEL em primeiro plano recebe o teclado: se o dono usar
+        o menu e depois escrever sem clicar em lado nenhum, o input vai para uma
+        janela que ele nao ve'. Por isso o primeiro plano volta ao `fg_before`
+        -- mas so' quando o primeiro plano AINDA e' a nossa janela: se ele fechou
+        o menu clicando noutra app, essa app ja' o tem e mexer-lhe seria roubar
+        o foco que ele acabou de dar por um clique.
+        """
+        try:
+            if not fg.get('fg_before') or int(fg['fg_before']) == int(self.hwnd):
+                return False
+            user32.GetForegroundWindow.restype = wt.HWND
+            if int(user32.GetForegroundWindow() or 0) != int(self.hwnd):
+                return False
+            return bool(user32.SetForegroundWindow(wt.HWND(fg['fg_before'])))
+        except Exception:             # noqa: BLE001 -- devolver o foco nunca falha alto
+            return False
 
     def _build_menu(self):
         """Built, LOGGED, and then drawn — so the log proves every item exists
         (its id and its text) without anyone having to click.
 
-        THREE items now, and the two shipped ids keep their numbers: `[1]` Open
-        panel (the FULL panel — Alt+C is what opens the strip), `[3]` Edit
-        caption position, `[2]` Quit Sotto. `_main/tray-quit-probe.py` finds the
-        Quit by its TEXT (`[2]='Quit Sotto'`), so a new item cannot break it.
+        FOUR items now, and the three shipped ids keep their numbers: `[1]` Abrir
+        painel (the FULL panel — Alt+C is what opens the strip), `[4]` the Alt+C
+        switch, `[3]` Editar posição da legenda, `[2]` Sair do Sotto.
+        `_main/tray-quit-probe.py` finds the Quit by its TEXT
+        (`[2]='Sair do Sotto'`), so a new item cannot break it.
+
+        THE Alt+C ITEM IS WRITTEN AS THE ACTION, NOT AS A STATE (dono,
+        2026-11-07): *"faz um botao 'desativar atalho alt c' ... e claro, é
+        ativar e desativar"*. Armed -> "Desativar atalho Alt+C"; disarmed ->
+        "Ativar atalho Alt+C". One item, one click, and the label is the answer to
+        "what does this click do".
         """
         menu = user32.CreatePopupMenu()
-        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_OPEN, 'Open panel')
+        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_OPEN, 'Abrir painel')
+        try:
+            state = self.panels_state() or {}
+        except Exception as exc:          # noqa: BLE001 -- um menu sem estado e' um menu
+            self.warn(f'TRAY_MENU_STATE_FAILED {type(exc).__name__}: {exc}')
+            state = {}
+        accel = str(state.get('accel') or 'Alt+C')
+        armed = bool(state.get('enabled', True))
+        label = (f'Desativar atalho {accel}' if armed
+                 else f'Ativar atalho {accel}')
+        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_HOTKEY, label)
+        # A LEGENDA AO VIVO TAMBEM E' UM INTERRUPTOR, e o dono nao sabia que a
+        # tecla existia. O texto diz a accao E o acelerador, ao lado do item do
+        # Alt+C para as duas teclas ficarem no mesmo bloco.
+        try:
+            live = self.live_state() or {}
+        except Exception as exc:          # noqa: BLE001
+            self.warn(f'TRAY_MENU_LIVE_STATE_FAILED {type(exc).__name__}: {exc}')
+            live = {}
+        live_accel = str(live.get('accel') or 'Ctrl+Space')
+        live_on = bool(live.get('on', False))
+        user32.AppendMenuW(
+            menu, MF_STRING, ID_TRAY_LIVE,
+            (f'Desligar legendas ({live_accel})' if live_on
+             else f'Ligar legendas ({live_accel})'))
         user32.AppendMenuW(menu, MF_STRING, ID_TRAY_EDIT,
-                           'Edit caption position')
+                           'Editar posição da legenda')
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
-        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_QUIT, 'Quit Sotto')
+        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_QUIT, 'Sair do Sotto')
         self.menu = int(menu)
         items = menu_items(menu)
         self.log('TRAY_MENU ' + ' '.join(
@@ -4648,12 +11182,127 @@ class TrayIcon:
             for i in items))
         return menu
 
+    def refresh_menu(self, why='state'):
+        """Rebuild the popup so its TEXT tells the truth NOW.
+
+        Called from the command handler, which runs AFTER `TrackPopupMenu`
+        returned -- so the menu being replaced is not the one on the screen and
+        `DestroyMenu` cannot pull it out from under the owner's mouse. A menu that
+        outlives its state is the defect this method exists to prevent: the Alt+C
+        item would keep saying "Desativar" after the key was already disarmed.
+        """
+        old = self.menu
+        self.menu = None
+        try:
+            new = self._build_menu()
+        except Exception as exc:          # noqa: BLE001 -- um menu velho e' melhor que zero
+            self.warn(f'TRAY_MENU_REBUILD_FAILED {type(exc).__name__}: {exc}')
+            self.menu = old
+            return False
+        if old:
+            try:
+                user32.DestroyMenu(old)
+            except Exception:             # noqa: BLE001
+                pass
+        self.log(f'TRAY_MENU_REFRESHED why={why}')
+        return True
+
+    def _raise_thread_priority(self):
+        """O ICONE TEM DE RESPONDER COM A MAQUINA ESGOTADA (dono, 2026-11-05).
+
+        Verbatim: *"also make the interaction with the icon better, cause it does
+        not work when my pc is close to exhausted. but other icones, do."* — e a
+        segunda metade e' o diagnostico: os outros icones pertencem a processos
+        `NORMAL`, e a janela/`TrackPopupMenu` deles responde; o nosso nao.
+
+        O fio do icone esta' PARADO num `GetMessageW` 99,99 % do tempo, onde nao
+        gasta CPU nenhuma. Quando a caixa satura (o jogo a 8-11 GB, Chrome, Chrome
+        WebView2), um fio `NORMAL` com o quantum de 15 ms deste Windows perde a
+        corrida no instante exacto em que o dono clica — o clique entra na fila e
+        o menu aparece segundos depois, ou nunca. Subir SO' ESTE fio a
+        `ABOVE_NORMAL` nao rouba nada a ninguem (ele nao esta' a competir por CPU
+        enquanto dorme) e ganha a corrida nos dois instantes em que alguem clicou.
+
+        O `was`/`now` vai para o log: um raise que nao aconteceu e um raise que
+        nao era preciso sao factos diferentes, e so' um deles e' aceitavel.
+        """
+        try:
+            kernel32.GetThreadPriority.argtypes = [ctypes.c_void_p]
+            kernel32.GetThreadPriority.restype = ctypes.c_int
+            kernel32.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            kernel32.SetThreadPriority.restype = ctypes.c_bool
+            kernel32.GetCurrentThread.restype = ctypes.c_void_p
+            handle = kernel32.GetCurrentThread()
+            was = int(kernel32.GetThreadPriority(handle))
+            ok = bool(kernel32.SetThreadPriority(handle, THREAD_PRIORITY_ABOVE_NORMAL))
+            now = int(kernel32.GetThreadPriority(handle))
+            self.log(f'TRAY_THREAD_PRIORITY was={was} now={now} '
+                     f'ask={THREAD_PRIORITY_ABOVE_NORMAL} ok={int(ok)}')
+            return now
+        except Exception as exc:  # noqa: BLE001 -- um icone sem raise ainda abre
+            self.warn(f'TRAY_THREAD_PRIORITY_FAILED {type(exc).__name__}: {exc}')
+            return None
+
     def _pump(self):
+        self._raise_thread_priority()
         msg = MSG()
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
             user32.TranslateMessage(ctypes.byref(msg))
             user32.DispatchMessageW(ctypes.byref(msg))
         self.log('TRAY_LOOP_EXIT')
+
+
+#: Windows process priority classes, by their constant value, and their real
+#: ORDER -- the constants are NOT monotonic.
+PRIORITY_CLASS_RANK = {0x00000040: 0, 0x00004000: 1, 0x00000020: 2,
+                       0x00008000: 3, 0x00000080: 4, 0x00000100: 5}
+PRIORITY_CLASS_NAMES = {
+    0x00000040: 'IDLE', 0x00004000: 'BELOW_NORMAL', 0x00000020: 'NORMAL',
+    0x00008000: 'ABOVE_NORMAL', 0x00000080: 'HIGH', 0x00000100: 'REALTIME',
+}
+
+
+def raise_visible_priority(log_fn) -> str:
+    """Keep the window the owner looks at at least `NORMAL`.
+
+    Returns the class name the process ended at ('UNKNOWN' if Windows would not
+    say). A raise that happens is logged with `was`/`now`; a raise that is not
+    needed is logged too, because "already normal" and "could not read the class"
+    are different facts and only one of them is fine.
+    """
+    try:
+        kernel32.GetPriorityClass.argtypes = [ctypes.c_void_p]
+        kernel32.GetPriorityClass.restype = ctypes.c_uint32
+        kernel32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel32.SetPriorityClass.restype = ctypes.c_bool
+        handle = kernel32.GetCurrentProcess()
+        was = int(kernel32.GetPriorityClass(handle))
+        if was == 0:
+            log_fn(f'SHELL_PRIORITY was=UNREADABLE err={ctypes.get_last_error()} '
+                   f'now=UNCHANGED')
+            return 'UNKNOWN'
+        # THE CLASS VALUES ARE NOT ORDERED (BELOW_NORMAL is 0x4000, larger
+        # than NORMAL's 0x20), so a numeric comparison is the bug this arm
+        # caught: it read BELOW_NORMAL as "already high enough".
+        if PRIORITY_CLASS_RANK.get(was, 9) >= PRIORITY_CLASS_RANK[0x00000020]:
+            log_fn('SHELL_PRIORITY was=%s now=%s raised=false'
+                   % (PRIORITY_CLASS_NAMES.get(was, hex(was)),
+                      PRIORITY_CLASS_NAMES.get(was, hex(was))))
+            return PRIORITY_CLASS_NAMES.get(was, hex(was))
+        ok = bool(kernel32.SetPriorityClass(handle, 0x00000020))
+        now = int(kernel32.GetPriorityClass(handle)) if ok else was
+        log_fn('SHELL_PRIORITY was=%s now=%s raised=%s err=%s'
+               % (PRIORITY_CLASS_NAMES.get(was, hex(was)),
+                  PRIORITY_CLASS_NAMES.get(now, hex(now)),
+                  'true' if now == 0x00000020 else 'false',
+                  ctypes.get_last_error() if not ok else 0))
+        return PRIORITY_CLASS_NAMES.get(now, hex(now))
+    except Exception as exc:  # noqa: BLE001 -- a niceness knob must not kill the app
+        try:
+            log_fn(f'SHELL_PRIORITY raise_failed {type(exc).__name__}: {exc}')
+        except Exception:  # noqa: BLE001
+            pass
+        return 'UNKNOWN'
 
 
 def menu_items(menu) -> list:
@@ -4707,7 +11356,7 @@ def warn_hotkey_unavailable(requested: str, tried, tray=None) -> None:
         % (str(shown).lower(), 'balloon' if shown else 'log-only'))
 
 
-def arm_hotkey(shell, requested: str):
+def arm_hotkey(shell, requested: str, panels: bool = True):
     """Arma AS DUAS hotkeys e devolve o thread dos PAINEIS (ou None).
 
     Ordem do dono, 2026-11-01: *"bota o padrao como control espaco. e os painels
@@ -4725,7 +11374,17 @@ def arm_hotkey(shell, requested: str):
     a tecla dela falhar e' um recuo, nao um brick -- e inventar uma cadeia para
     ela seria uma segunda tecla que ninguem pediu.
     """
-    panels = arm_hotkey_role(shell, 'panels', requested, HOTKEY_FALLBACKS)
+    if panels:
+        panels_thread = arm_hotkey_role(shell, 'panels', requested, HOTKEY_FALLBACKS)
+    else:
+        # O INTERRUPTOR DO MENU DO ICONE SOBREVIVE AO REINICIO (dono, 2026-11-07:
+        # *"e claro, é ativar e desativar"*). Sem esta perna, o botao valia ate'
+        # a proxima largada e o Alt+C voltava sozinho -- um botao que mente na
+        # manha seguinte e' pior do que nao existir. A escolha NAO e' silenciosa:
+        # sem tecla, o log diz PORQUE.
+        panels_thread = None
+        log(f'HOTKEY_PANELS_DISABLED source=settings requested={requested} '
+            'why=owner-toggled-off-in-tray')
     #: UMA MEDIÇÃO NÃO PODE SENTAR-SE NA TECLA DELE. Medido 2026-11-01 10:14:30:
     #: uma instância largada para medir pediu `Ctrl+Space`, a app do dono já a
     #: tinha, e o log dela ficou com `HOTKEY_REGISTER_FAILED role=live
@@ -4744,18 +11403,83 @@ def arm_hotkey(shell, requested: str):
                 f'default={hotkey_numbers().LIVE_ACCELERATOR}')
             live = hotkey_numbers().LIVE_ACCELERATOR
     shell.live_hotkey = arm_hotkey_role(shell, 'live', live, ())
-    return panels
+    return panels_thread
 
 
 def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
-    """Regista `requested` (e a cadeia `fallbacks`) para `role`; devolve o thread."""
+    """Regista `requested` (e a cadeia `fallbacks`) para `role`; devolve o thread.
+
+    UMA TECLA, UM DONO. Se o papel JA' tem um fio VIVO, esta funcao devolve esse
+    fio e nao constroi um segundo: dois fios na mesma combinacao sao um hook orfao
+    mais um `RegisterHotKey` recusado (1409), e o observador de recuo -- que le
+    `registered=False` -- abre o gate e o mesmo toque alterna duas vezes. Quem
+    queria TROCAR a tecla tem de parar o fio primeiro, e isso e' dito no log
+    (`HOTKEY_REARM_REPLACE`) em vez de acontecer em silencio. A excecao e' a
+    combinacao pedida IGUAL e ja' REGISTADA: aí o fio que existe e' o dono.
+    """
+    _slot = 'live_hotkey' if role == 'live' else 'hotkey'
+    _held = getattr(shell, _slot, None)
+    if _held is not None and getattr(_held, 'is_alive', lambda: False)():
+        _accel = str(getattr(_held, 'accelerator', '') or '')
+        if _accel == str(requested) and getattr(_held, 'registered', False):
+            log(f'HOTKEY_REARM_USED role={role} accelerator={_accel} '
+                f'why=already-armed slot={_slot}')
+            return _held
+        # A MESMA COMBINACAO SEM REGISTO E' O OBSERVADOR DE RECUO (o `Alt+C`
+        # tomado por outro programa): devolver esse fio faria do item 'Ativar'
+        # do menu um botao que nunca mais liga, porque `panels_hotkey_state`
+        # le' `registered` para decidir o texto. Uma tentativa nova e' honesta:
+        # ela REGISTA de novo e diz o resultado (`HOTKEY_PANELS toggled=true
+        # armed=0`).
+        why = ('same-accel-not-registered' if _accel == str(requested)
+               else 'different-accel')
+        log(f'HOTKEY_REARM_REPLACE role={role} was={_accel or "?"} '
+            f'requested={requested} why={why} slot={_slot}')
+        try:
+            _held.stop()
+        except Exception as exc:  # noqa: BLE001 -- trocar nao pode falhar
+            log(f'HOTKEY_REARM_STOP_FAILED role={role} error={exc!r}')
     order = [requested] + [a for a in fallbacks if a != requested]
     tried = []
     callback = (lambda: shell.hotkey_live()) if role == 'live' else (
         lambda: shell.hotkey_pressed())
     for accelerator in order:
         try:
-            thread = HotkeyThread(accelerator, callback, role=role)
+            # A LEGENDA CONDICIONA O REGISTO A' DETECCAO DE JOGO (2026-11-05).
+            # Ordem do dono: *"faz o control espaço nao inputar espaço pra
+            # outros apps. mas desativa isso em jogos"*. Com o detector vivo, o
+            # `LiveHotkeyThread` TOMA a tecla fora de jogo, e quem a tira do
+            # caminho de input e' o `WH_KEYBOARD_LL` de `space_swallow.py` (o
+            # `RegisterHotKey` so' entrega o `WM_HOTKEY`; medido a 2026-11-06:
+            # o espaco continuava a chegar ao YouTube). Em jogo o hook e'
+            # DESINSTALADO e a combinacao devolvida -- o jogo recebe o
+            # `Ctrl+Space` nativo e a shell nao alterna nada. Sem detector -- ou
+            # com o registo recusado (`winerror=1409`) -- fica o observador de
+            # 2026-11-02, que alterna a legenda e deixa a tecla passar; esse
+            # recuo e' DITO no log. O Alt+C continua sempre registado: ser
+            # tomado e' o que se quer ali.
+            if role == 'live':
+                _gaming = getattr(shell, 'gaming', None)
+                if _gaming is None:
+                    log('HOTKEY_LIVE_NO_GAMING_DETECTOR accelerator=%s '
+                        'mode=observe why=cannot-tell-when-he-plays'
+                        % (accelerator,))
+                    thread = PassiveHotkeyThread(accelerator, callback,
+                                                 role=role)
+                else:
+                    # A AUTORIDADE E' O FOCO, NAO A RESIDENCIA (2026-11-14).
+                    # `is_gaming` responde "existe um processo com nome de jogo"
+                    # e o dono tem o `deadlock.exe` fechado na bandeja a maior
+                    # parte do dia: medido no log dele, das 20:44:03 as 22:02:04
+                    # -- 78 minutos -- `GAMING_MODE on=true` sem foco nenhum, o
+                    # `plan=give-back` no mesmo segundo, e ZERO `HOTKEY_PRESSED`
+                    # enquanto ele via YouTube. `owns_space_now` le' o primeiro
+                    # plano no instante da pressao (0,068 ms, medido).
+                    thread = LiveHotkeyThread(accelerator, callback,
+                                              gaming_fn=_gaming.owns_space_now,
+                                              role=role)
+            else:
+                thread = HotkeyThread(accelerator, callback, role=role)
         except ValueError as exc:
             # Uma tecla que o parser recusa nao chega a `RegisterHotKey`: e' um
             # recado, e a cadeia continua (nos paineis) ou fica sem tecla (na
@@ -4766,6 +11490,26 @@ def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
             continue
         thread.start()
         thread.wait_ready(5)
+        if role == 'live' and isinstance(thread, LiveHotkeyThread):
+            # O `LiveHotkeyThread` VIVE NOS TRES MODOS: `swallow` (hook
+            # instalado E registado -- o espaco nao chega a outra app),
+            # `passthrough` (jogo: a tecla e' do jogo) e `free` (sem registo,
+            # ou registo sem hook: alterna no `WM_HOTKEY` e o espaco vaza, e o
+            # `HOTKEY_LIVE_MODE` diz `hook=false`). So' `register_failed` pede o
+            # recuo observado: sem registo nem hook nao ha' quem alternasse.
+            if not thread.register_failed:
+                return thread
+            log(f'HOTKEY_LIVE_SWALLOW_REFUSED accelerator={accelerator} '
+                f'winerror={thread.register_error} fallback=observed '
+                'the_space_reaches_the_app=true')
+            fallback = PassiveHotkeyThread(
+                accelerator, callback, role=role,
+                gate=lambda: (not thread.registered)
+                and (not _gaming.owns_space_now()))
+            fallback.start()
+            fallback.wait_ready(5)
+            thread.fallback = fallback
+            return thread
         if thread.registered:
             if accelerator != requested:
                 warn(f'HOTKEY_FALLBACK role={role} requested={requested} '
@@ -4782,6 +11526,49 @@ def arm_hotkey_role(shell, role: str, requested: str, fallbacks):
         return None
     warn_hotkey_unavailable(requested, tried, getattr(shell, 'tray', None))
     return None
+
+
+# ===========================================================================
+# GAMING MODE — DETECTAR, e nao agir (order, 2026-11-04)
+# ===========================================================================
+def arm_gaming_watcher(shell, log_fn=log):
+    """Arranca o detector de jogo (`gaming_mode.py`) e guarda-o no shell.
+
+    ORDEM DO DONO, verbatim (2026-11-04): *"detecta 'gaming' parecido com o que
+    meu projeto !watcher do disco i faz."* O detector LE' (uma enumeracao de
+    processos a cada 2 s, sem hook nenhum) e publica UMA linha `GAMING_MODE` por
+    transicao. Ele NAO suspende, NAO baixa prioridade, NAO mexe no worker, no
+    modelo nem no audio: `is_gaming()` esta' exposto para quem um dia o quiser
+    consultar, e essa decisao nao e' deste fio.
+
+    Falhar aqui NAO pode impedir a app de viver: a legenda e os paineis nao
+    dependem da deteccao. O erro fica no log, com o nome do modulo.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    try:
+        import gaming_mode
+        watcher = gaming_mode.GamingWatcher(log=log_fn)
+        watcher.start()
+        shell.gaming = watcher
+        return watcher
+    except Exception as exc:  # noqa: BLE001 -- deteccao nao e' pre-requisito
+        log_fn(f'GAMING_WATCH_FAILED error={exc!r}')
+        return None
+
+
+def stop_gaming_watcher(shell, reason='exit'):
+    """Para o detector, se ele existe. Sair nunca pode falhar."""
+    watcher = getattr(shell, 'gaming', None)
+    if watcher is None:
+        return False
+    try:
+        watcher.stop()
+        return True
+    except Exception as exc:  # noqa: BLE001
+        log(f'GAMING_WATCH_STOP_FAILED reason={reason} error={exc!r}')
+        return False
 
 
 # ===========================================================================
@@ -4856,6 +11643,70 @@ def autostart_uninstall() -> int:
     return 0
 
 
+def _autostart_tokens(command: str):
+    """As palavras de uma linha de comando do Windows, sem inventar gramática.
+
+    So' o que a linha gerada por `autostart_command()` usa: tokens entre aspas
+    duplas e tokens soltos separados por espaco. Um token vazio no fim e' o
+    artefacto do `split` e nao uma palavra.
+    """
+    out = []
+    buf = []
+    quoted = False
+    for ch in str(command or ''):
+        if ch == '"':
+            quoted = not quoted
+            continue
+        if ch == ' ' and not quoted:
+            if buf:
+                out.append(''.join(buf))
+                buf = []
+            continue
+        buf.append(ch)
+    if buf:
+        out.append(''.join(buf))
+    return out
+
+
+def autostart_same_checkout(value: str) -> tuple:
+    """(matches, how) -- o Run aponta para ESTE checkout, por IDENTIDADE de ficheiro.
+
+    MEDIDO 2026-11-23 (a sessao do dono, 10:27): o registo diz
+    `"C:\\Program Files\\Python311\\pythonw.exe" ...` e a shell, arrancada por
+    `H:\\Python311\\pythonw.exe`, respondia `matches this checkout: False` e rc=3 --
+    `AUTOSTART_CHECK_DISAGREES`. Os dois caminhos sao O MESMO FICHEIRO
+    (`os.path.realpath` de ambos = `H:\\Python311\\pythonw.exe`; `C:\\Program
+    Files\\Python311` e' uma juncao), e `sys.executable`/`dirname` escolhe a forma
+    que o processo viu. Uma comparacao de TEXTO (`normcase`) condena uma entrada
+    CORRETA -- a classe que este repo ja' pagou varias vezes: identidade, nao
+    grafia. O interpretador compara-se por `os.path.samefile` (com a igualdade de
+    texto como recurso para um caminho ausente); o script e o `--log` continuam
+    comparados por texto normalizado, porque e' o MESMO checkout que tem de ser
+    apontado.
+    """
+    want = _autostart_tokens(autostart_command())
+    got = _autostart_tokens(value)
+    if not got or not want:
+        return False, 'unparsable'
+    if len(got) != len(want):
+        return False, 'shape'
+    same_exe = os.path.normcase(got[0]) == os.path.normcase(want[0])
+    how = 'text'
+    if not same_exe:
+        try:
+            same_exe = os.path.samefile(got[0], want[0])
+            how = 'samefile'
+        except OSError:
+            same_exe = False
+    if not same_exe:
+        return False, 'interpreter'
+    if os.path.normcase(got[1]) != os.path.normcase(want[1]):
+        return False, 'script'
+    if os.path.normcase(' '.join(got[2:])) != os.path.normcase(' '.join(want[2:])):
+        return False, 'arguments'
+    return True, how
+
+
 def autostart_status() -> int:
     import winreg
 
@@ -4869,9 +11720,9 @@ def autostart_status() -> int:
     except OSError as exc:
         print(f'sotto: AUTOSTART_STATUS_FAILED {exc!r}')
         return 2
-    matches = os.path.normcase(value) == os.path.normcase(autostart_command())
+    matches, how = autostart_same_checkout(value)
     print(f'sotto: AUTOSTART=on  value={value}')
-    print(f'sotto:   matches this checkout: {matches}  '
+    print(f'sotto:   matches this checkout: {matches}  via={how}  '
           f'(expected: {autostart_command()})')
     return 0 if matches else 3
 
@@ -5002,6 +11853,26 @@ BOOTSTRAP_JS = r"""
     emit(kind, payload);
   };
   window.__sotto_emit.counts = {};
+  // `__sotto_emit` fala com os SUBSCRITORES DA PAGINA (`emit`), nao com o Python.
+  // Um medidor que chega antes de `panel.js` nao tem subscritor nenhum: o
+  // resultado dele morria aqui. Este e' o caminho que ENTREGA (`post`), exposto
+  // com nome por isso mesmo -- 2026-11-04, medido: o perfil de arranque ficou
+  // 24 h a recolher e a descartar (0 `PANEL_BOOT_PROFILE` em 469 587 linhas).
+  window.__sotto_post = function (kind, payload) { post(kind, payload); };
+  // O INSTANTE DA PINTURA PROVISORIA ENTRA NO LOG (2026-11-04). A metrica do
+  // painel era `commit`, que e' o fim do que o olho ja' tinha visto: medido pela
+  // lane PanelCommitOnStable, `push` -> `CAPTION_PROVISIONAL_PAINT` esta' em 0 ms
+  // e `paint` -> `commit` pagava a espera toda (p50 839, p95 1 500 ms). O
+  // `panel.js` ja' produz a linha e o gancho (`SottoPaintLine`/`SottoPaintSink`);
+  // faltava o shell instalar o gancho, e sem isso a perna do OLHO so' existia
+  // para sondas de DOM. A linha e' a do painel, cortada em 400 B: um gancho que
+  // deixa a pagina escrever o log sem limite e' um gancho que o log paga.
+  window.SottoPaintSink = function (row) {
+    try {
+      post('paint-row', { line: window.SottoPaintLine(row) });
+    } catch (err) { /* a probe must not break the paint */ }
+  };
+
 
   window.__sotto_info = function (id, json) {
     var resolve = infoPending[id];
@@ -5168,6 +12039,28 @@ BOOTSTRAP_JS = r"""
       return Promise.resolve({ lang: want });
     },
 
+    // O ASPECTO DA LEGENDA NATIVA (dono, 2026-11-09). `plate` escolhe a largura
+    // da placa ('tight' | 'normal') e `opacity` o alfa dela (0..1). O shell
+    // PRENDE o valor, grava em `_main/caption-settings.json` e aplica ao overlay
+    // vivo -- devolve o que ficou aplicado, que pode nao ser o pedido (o clamp
+    // vive num sitio so', no Python).
+    setCaptionVisual: function (opts) {
+      var payload = opts && typeof opts === 'object' ? opts : {};
+      post('caption-visual', payload);
+      return Promise.resolve(payload);
+    },
+
+    // O "MODO STEALTH" DA LEGENDA (dono, 2026-11-16). `on` e' o campo que o
+    // painel manda; a resposta devolve o MESMO campo em camelCase
+    // (`captureExclude`), para o chamador saber o que pediu. O shell grava
+    // `capture_exclude` em `_main/caption-settings.json` e aplica a afinidade
+    // a' janela VIVA (WDA_EXCLUDEFROMCAPTURE / WDA_NONE) no mesmo gesto.
+    setCaptureExclude: function (on) {
+      var want = !!on;
+      post('caption-capture-exclude', { on: want });
+      return Promise.resolve({ captureExclude: want });
+    },
+
     // PAUSE = UNLOAD (owner, 2026-10-17). The panel's pause controls have
     // always called `bridge.pause()`; the shell never had it, so the dialog
     // said "este shell ainda não consegue pausar". The shell now stops the
@@ -5229,6 +12122,13 @@ BOOTSTRAP_JS = r"""
     clearApplied: function (remaining) {
       post('caption-cleared', { remaining: Number(remaining) || 0 });
     },
+    // A REFUSAL IS AN EVENT (2026-11-05). The transcript's choke point used to
+    // drop a line with a bare `return`; the shell now writes `HISTORY_REFUSED`
+    // with the reason it was dropped for, so "the history is empty" is a line in
+    // the log instead of a mystery. `post` (not `historyCall`): nothing waits.
+    historyRefused: function (payload) {
+      post('history-refused', payload || {});
+    },
 
     // The transcript history ("redux"). The SHELL owns the disk: it names the
     // file, appends the line, reads it back and reveals it in the file manager.
@@ -5247,6 +12147,16 @@ BOOTSTRAP_JS = r"""
           { query: String(query == null ? '' : query), limit: Number(limit) || 200 });
       },
       root: function () { return historyCall('history-root', {}); },
+      export: function (format, limit) {
+        return historyCall('history-export',
+          { format: String(format == null ? 'txt' : format),
+            limit: Number(limit) || 400 });
+      },
+      exportFile: function (format, limit) {
+        return historyCall('history-export-file',
+          { format: String(format == null ? 'txt' : format),
+            limit: Number(limit) || 400 });
+      },
       reveal: function (path) {
         post('history-reveal', { path: String(path == null ? '' : path) });
       }
@@ -5298,6 +12208,138 @@ BOOTSTRAP_JS = r"""
 """
 
 
+#: O MEDIDOR DO ARRANQUE DA PAGINA (2026-11-03). Corre no MESMO mundo e no MESMO
+#: instante que o resto do preload (antes do primeiro script da pagina), porque
+#: a pergunta e' "quem segurou o parser 25 s" e um medidor que chega depois so'
+#: ve o que aconteceu depois. Nao desenha, nao toca no DOM, nao muda nada: observa
+#: longtasks e marcos e manda UMA linha pela ponte que a pagina ja' usa.
+BOOT_PROFILE_JS = r"""
+;(() => {
+  if (window.__sottoBootProfile) { return; }
+  window.__sottoBootProfile = true;
+
+  try {
+    const t0 = performance.now();
+    const marks = [];
+    const mark = (n) => { try { marks.push([n, Math.round(performance.now())]); } catch (e) {} };
+    const long = [];
+    let longtaskSupported = false;
+    try {
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) { long.push(Math.round(e.duration)); }
+      }).observe({ entryTypes: ['longtask'] });
+      longtaskSupported = true;
+    } catch (e) {}
+    // OS MARCOS DA PAGINA (2026-11-10). Medido no log do dono: 32
+    // `PANEL_BOOT_PROFILE`, e em TODOS `longtasks: []` E `slowest: []` -- os dois
+    // campos vazios ao mesmo tempo nao sao "nada foi lento", sao um contexto onde
+    // `PerformanceObserver('longtask')` e a Resource Timing nao entregam nada.
+    // Com `marks` a ir de 29 ms a 472 ms entre `early` e `dom` e nenhum campo a
+    // dizer ONDE, o numero do arranque existia e o bloco nao. Por isso o marco
+    // passa a ser publicado pela propria pagina (`window.__sottoBootMark`), nos
+    // pontos que ela conhece: o bloco fica nomeado entre dois marcos.
+    window.__sottoBootMark = mark;
+    document.addEventListener('DOMContentLoaded', () => mark('dom'), { once: true });
+    window.__sottoBootSent = {};
+    const send = (phase) => {
+      // DUAS FASES, DUAS LINHAS (2026-11-04). A guarda era um booleano: a
+      // primeira chamada (no inicio do documento, sem numero nenhum) fechava
+      // a porta e a leitura RICA -- `firstPaint`, `dcl`, os recursos mais
+      // lentos -- nunca saia. `marks=[["load",18]]` foi o que se leu.
+      if (window.__sottoBootSent[phase]) { return; }
+      window.__sottoBootSent[phase] = true;
+      try {
+        mark(phase);
+        const nav = (performance.getEntriesByType('navigation') || [])[0] || {};
+        const res = (performance.getEntriesByType('resource') || [])
+          .map((r) => [String(r.name).split('/').pop().split('?')[0],
+                       Math.round(r.duration), Math.round(r.responseEnd)])
+          .sort((a, b) => b[1] - a[1]).slice(0, 10);
+        const fp = (performance.getEntriesByName('first-paint') || [])[0] || {};
+        const box = {
+          phase: phase,
+          marks: marks, longtasks: long.slice(0, 15),
+          longtask_supported: longtaskSupported,
+          resources: (performance.getEntriesByType('resource') || []).length,
+          slowest: res,
+          firstPaint: Math.round(fp.startTime || 0),
+          domInteractive: Math.round(nav.domInteractive || 0),
+          dcl: Math.round(nav.domContentLoadedEventEnd || 0),
+          loadEvent: Math.round(nav.loadEventEnd || 0),
+        };
+        // O CANAL DESTA CASA, NAO O DO PYWEBVIEW (2026-11-04, MEDIDO).
+        // `window.pywebview.api.dispatch` NAO EXISTE aqui: a ponte e'
+        // `chrome.webview.postMessage` e o bootstrap ja' publica
+        // `window.__sotto_emit` por cima dela. O medidor ficou 24 h a
+        // recolher e a descartar o proprio resultado -- `PANEL_BOOT_PROFILE`
+        // nao aparece UMA vez no log de 469 587 linhas. Um instrumento que
+        // coleta e nao publica e' pior do que nenhum.
+        const wire = window.__sotto_post;
+        if (typeof wire === 'function') {
+          wire('boot-profile', JSON.stringify(box));
+          return;
+        }
+        const api = window.pywebview && window.pywebview.api;
+        if (api && api.dispatch) {
+          api.dispatch(JSON.stringify({ kind: 'boot-profile', payload: box }));
+        } else {
+          setTimeout(send, 250);
+        }
+      } catch (e) {}
+    };
+    // DUAS SAIDAS, DE PROPOSITO (2026-11-04): uma no instante em que este
+    // script corre -- se o canal ainda nao abriu, o `post` do bootstrap
+    // ENFILEIRA e o `pywebviewready` descarrega -- e outra no `load`. Se nem a
+    // primeira nem a segunda chegam ao log, o medidor nao tem canal e nao
+    // pode continuar a fingir que mede.
+    try { send('early'); } catch (e) {}
+    window.addEventListener('load', () => { try { send('load'); } catch (e) {} }, { once: true });
+    setTimeout(() => { try { send('late'); } catch (e) {} }, 30000);
+  } catch (e) {}
+})();
+"""
+
+def sweep_stale_webview_profiles(min_age_s=5400.0):
+    """Apaga os perfis WebView2 que as largadas MORTAS deixaram em `%TEMP%`.
+
+    Medido 2026-11-03 nesta maquina: **centenas** de `%TEMP%\\tmp*\\EBWebView`
+    (4-67 MB cada), de todos os arranques que foram mortos a meio. O pywebview
+    so' apaga o seu diretorio temporario numa saida limpa (`clear_user_data`),
+    e um kill nunca e' uma saida limpa. E' o espaco em disco desperdicado que o
+    dono nomeou como inadmissivel.
+
+    A IDADE E' A GUARDA: um perfil com menos de `min_age_s` pode ter dono vivo
+    (uma sonda, uma lane), e apagar o perfil de um processo a correr parte-o.
+    Devolve `(dirs, bytes)` para o registo.
+    """
+    import glob as _glob
+    import shutil as _shutil
+    now = time.time()
+    dirs = 0
+    freed = 0
+    home = os.environ.get('TEMP') or os.environ.get('TMP') or ''
+    if not home:
+        return 0, 0
+    for webview_dir in _glob.glob(os.path.join(home, 'tmp*', 'EBWebView')):
+        try:
+            if now - os.path.getmtime(webview_dir) < min_age_s:
+                continue
+            size = 0
+            for root, _subdirs, files in os.walk(webview_dir):
+                for name in files:
+                    try:
+                        size += os.path.getsize(os.path.join(root, name))
+                    except OSError:
+                        pass
+            parent = os.path.dirname(webview_dir)
+            _shutil.rmtree(parent, ignore_errors=True)
+            if not os.path.exists(parent):
+                dirs += 1
+                freed += size
+        except OSError:
+            continue
+    return dirs, freed
+
 def _bootstrap_js():
     """BOOTSTRAP_JS + the deferred-asset loader, read from disk at import time.
 
@@ -5312,7 +12354,7 @@ def _bootstrap_js():
     except OSError as exc:
         log(f'PANEL_LAZY_LOADER_READ_FAILED error={exc!r}')
         return BOOTSTRAP_JS
-    return BOOTSTRAP_JS + "\n" + loader
+    return BOOTSTRAP_JS + "\n" + loader + "\n" + BOOT_PROFILE_JS
 
 
 #: The `--dump-dom` probe. This is main.js:273-290 VERBATIM, so the two arms
@@ -5672,17 +12714,24 @@ class PanelVisibilityWriter:
     every reader downstream would have to guess which — the ambiguity that made a
     previous generation of this repo's probes disagree with each other.
 
-    WHY A THREAD. The transition writes come from the UI thread (`show_panel`/
-    `hide_panel`) and MUST NOT wait on a file. The cadence write runs here, every
-    `interval_s`, re-reading the live window: that is what turns a map/unmap that
-    happened WITHOUT going through `show_panel`/`hide_panel` — pywebview's own
+    WHY A THREAD. The transition writes come from the show threads
+    (`set_panel_surface`/`show_panel`/`hide_panel`) and MUST NOT wait on a file.
+    Until 2026-11-10 they DID: `write` called `panel_state.write_atomic` on the
+    caller, and its `os.replace` retry loop sleeps up to ~1,9 s when another
+    process holds the file — measured at 1 185 ms and 1 404 ms of the owner's own
+    Alt+C, between the `PANEL_SURFACE` and `WEBVIEW_CHILD` lines, where this
+    publication was the only code. `write` now BUILDS the payload (the instant's
+    state) and hands it to this thread; that claim is the implementation, not a
+    wish (see `write`). The cadence write also runs here, every `interval_s`,
+    re-reading the live window: that is what turns a map/unmap that happened
+    WITHOUT going through `show_panel`/`hide_panel` — pywebview's own
     navigation-time `Show`, `_reassert_hidden`, a hot reload — into a recorded
     transition instead of a silent divergence between the file and the screen.
     """
 
     def __init__(self, path, observe, log=lambda _m: None,
                  interval_s=PANEL_VISIBILITY_INTERVAL_S, extra=None,
-                 shed_provider=None):
+                 shed_provider=None, park_provider=None):
         self.path = path
         #: `observe()` -> bool, read LIVE from the window at call time.
         self.observe = observe
@@ -5697,6 +12746,15 @@ class PanelVisibilityWriter:
         #: None. Callback for the same reason as `extra`: the level CHANGES at
         #: runtime and the file must name the level at the write.
         self.shed_provider = shed_provider
+        #: `park_provider()` -> o motivo do ESTACIONAMENTO DO MOTOR
+        #: (`captions`/`vram`) ou None. ORDEM DO DONO, 2026-11-03, verbatim:
+        #: *"tu nao consegue fazer o sotto se conectar ao audio atual inves de
+        #: ficar matando o audio toda hora?"* -- estacionar o worker por causa
+        #: das legendas do player MATAVA o processo, e com ele o cliente
+        #: WASAPI, e o audio dele piscava. Agora o pedido viaja por este
+        #: ficheiro e o worker LARGA O MOTOR, nao a captura: um processo, um
+        #: cliente de audio, nenhum blink.
+        self.park_provider = park_provider
         self.visible = None
         self.since_ms = None
         self.reason = 'boot'
@@ -5705,6 +12763,13 @@ class PanelVisibilityWriter:
         self.errors = 0
         self._stop = threading.Event()
         self._thread = None
+        #: A PUBLICACAO E' UMA ENCOMENDA, NAO UMA ESCRITA (2026-11-10, MEDIDO).
+        #: Ver `write`: o payload do instante da transicao fica aqui e o fio
+        #: `sotto-panel-visibility` e' quem o poe no disco. `_wake` acorda esse
+        #: fio no instante do pedido (a cadencia de 3 s e' o piso, nao a espera).
+        self._lock = threading.Lock()
+        self._slot = None
+        self._wake = threading.Event()
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> bool:
@@ -5727,20 +12792,82 @@ class PanelVisibilityWriter:
 
     def stop(self, reason='stop') -> None:
         self._stop.set()
+        # O FIO DORME EM `_wake` (cadencia ou encomenda): sem este set o `stop`
+        # esperava ate' `interval_s` para o fio ver a paragem.
+        self._wake.set()
         self.log(f'PANEL_VISIBILITY_WRITER_STOP reason={reason} '
                  f'writes={self.writes} transitions={self.transitions} '
                  f'errors={self.errors}')
 
     def _loop(self) -> None:
-        while not self._stop.wait(self.interval_s):
-            # Reason `poll`: this state was reached without a show/hide call, or
-            # the call's write already happened and this is the same state — the
-            # writer only logs a transition when the VALUE moved, so a steady
-            # panel produces no transition lines at all.
-            self.write('poll')
+        while True:
+            woke = self._wake.wait(self.interval_s)
+            self._wake.clear()
+            if self._stop.is_set():
+                return
+            if not woke:
+                # Reason `poll`: this state was reached without a show/hide call, or
+                # the call's write already happened and this is the same state — the
+                # writer only logs a transition when the VALUE moved, so a steady
+                # panel produces no transition lines at all.
+                self.write('poll')
+            payload = self._take()
+            if payload is not None:
+                self._publish(payload)
+
+    def _take(self):
+        """O payload encomendado, UMA vez. `None` quando nao ha nada por publicar."""
+        with self._lock:
+            payload, self._slot = self._slot, None
+        return payload
 
     # -- one publication ---------------------------------------------------
     def write(self, reason='poll', visible=None) -> bool:
+        """ENCOMENDA a publicacao do estado actual. NUNCA ESCREVE NO FIO DO CHAMADOR.
+
+        ── O DEFEITO MEDIDO (2026-11-10) ─────────────────────────────────────
+        Isto chamava `panel_state.write_atomic` NO FIO QUE PEDIU a transicao. No
+        caminho do show esse fio e' o `sotto-hotkey-steps` -- o unico fio que o
+        dono controla --, e o `write_atomic` re-tenta o `os.replace` ate' 20 vezes
+        com `time.sleep(min(0.1, 0.02 * (attempt + 1)))` enquanto OUTRO processo
+        tem o ficheiro aberto para leitura (o worker sonda-o; o Windows recusa o
+        rename com `PermissionError(13)`, o defeito que esta casa ja' mediu 1 145
+        063 vezes). O pior caso e' ~1,9 s DENTRO do show, e ele NAO deixa rasto
+        nenhum quando acaba por conseguir: `PANEL_VISIBILITY_WRITE_FAILED` so'
+        existe para a falha TOTAL.
+
+        Medido nesta maquina (`_main/show-path-stall-probe.py`), dois escritores no
+        MESMO ficheiro nas cadenciais reais: p50 9,7 ms, **p95 417 ms, max 658 ms,
+        zero falhas registadas**. E no log do dono o unico codigo entre a linha
+        `PANEL_SURFACE` e a linha `WEBVIEW_CHILD` e' esta publicacao mais o censo
+        dos filhos: **1 185 ms** (09:34:13.431 -> 14.616) no primeiro Alt+C e
+        **1 404 ms** (09:34:19.010 -> 20.428) no segundo. Aqueles milissegundos
+        eram, por construcao, o candidato unico daquele intervalo.
+
+        PORQUE UMA ENCOMENDA NAO MUDA O CONTRATO. O ficheiro e' um ESTADO, nao um
+        historico: o payload (com `since_ms`, `transitions` e `writtenAtEpoch` do
+        INSTANTE do pedido) e' construido aqui, na hora, e o fio do writer poe-no
+        no disco ao acordar -- milissegundos depois, nunca 3 s. Uma encomenda
+        mais recente substitui a anterior (`_slot`), que e' a mesma regra que o
+        `emit` desta shell ja' usa: o painel e' funcao do ultimo estado que viu.
+
+        `writes` conta encomendas publicadas e `errors` falhas do disco, os dois
+        no fio do writer -- a contagem que `panel_visibility_snapshot` publica nao
+        muda de significado (uma publicacao que falha deixa de ser contada como
+        escrita, como antes).
+        """
+        payload = self._payload(reason, visible)
+        if self._thread is None or self._stop.is_set():
+            # NADA ONDE ENCOMENDAR (o `boot` antes do fio, uma paragem): escreve
+            # aqui, que e' o que o arranque sempre fez e nao ha' quem espere.
+            return self._publish(payload)
+        with self._lock:
+            self._slot = payload
+        self._wake.set()
+        return True
+
+    def _payload(self, reason, visible) -> dict:
+        """O payload do INSTANTE do pedido -- estado, sem tocar no disco."""
         observed = bool(self.observe()) if visible is None else bool(visible)
         now_ms = int(time.time() * 1000)
         if self.visible is None:
@@ -5789,6 +12916,16 @@ class PanelVisibilityWriter:
             self.log('PANEL_VISIBILITY_SHED_FAILED error=%r' % (exc,))
         if isinstance(level, str) and level:
             payload['shed'] = level
+        # O ESTACIONAMENTO DO MOTOR TAMBEM VIAJA AQUI (2026-11-03). Additive no
+        # mesmo contrato congelado: o leitor do worker ignora chaves que nao
+        # conhece, e esta e' o pedido que substitui o `bridge.stop()`.
+        try:
+            park = self.park_provider() if self.park_provider is not None else None
+        except Exception as exc:  # noqa: BLE001 -- the file must still land
+            park = None
+            self.log('PANEL_VISIBILITY_PARK_FAILED error=%r' % (exc,))
+        if isinstance(park, str) and park:
+            payload['park'] = park
         # THE `geometry` KEY — additive, and it is why the edit mode does NOT get
         # a second file. `schema` stays `sotto.panel-visibility/1`: no field was
         # renamed or removed, and the worker's `PanelVisibilityReader` reads
@@ -5804,8 +12941,12 @@ class PanelVisibilityWriter:
                 self.log(f'PANEL_VISIBILITY_EXTRA_FAILED error={exc!r}')
             if isinstance(extra, dict):
                 payload['geometry'] = extra
+        return payload
+
+    def _publish(self, payload) -> bool:
+        """O disco, e SO' AQUI -- no fio do writer. Ver `write` para o porque."""
         try:
-            panel_state.write_atomic(self.path, payload)
+            panel_state.write_atomic(self.path, payload, durable=False)
         except Exception as exc:
             self.errors += 1
             # RATE LIMITED, AND IT IS THE FLOOD FIX. MEASURED 2026-10-13: this single
@@ -5870,42 +13011,26 @@ class SottoHost:
 
         kind = message.get('kind')
         payload = message.get('payload')
-        # ONE BAD ENTRY COSTS ONLY ITS OWN KIND, and that is a REWRITE, not the
-        # guard that stood here before. MEASURED 2026-10-13: this map was a bare
-        # dict literal, and a dict literal evaluates EVERY value, so ONE entry
-        # naming a method this class does not have (`self._set_strip_offset` -- a
-        # SottoShell method at :7005, not a SottoHost one) raised AttributeError
-        # while BUILDING the map, BEFORE `.get(kind)` ran, and `dispatch` died for
-        # EVERY kind: the deferred-asset ask (PANEL_LAZY_ALLOW 0), the panel's own
-        # `ready()` (RECEIVER_READY 0) and every probe kind. Two and a half hours
-        # of a dead page->shell channel, invisible because the exception went to
-        # pywebview's own logger instead of this shell's log.
-        #
-        # THE TABLE HOLDS NAMES, NOT VALUES, and that is the fix: a STRING cannot
-        # fail to evaluate. Every entry is resolved on its own, with `getattr`, one
-        # by one, in `_resolve_handler_map`, so an entry that does not resolve is
-        # SKIPPED, NAMES ITSELF and leaves every other kind working:
-        #     BRIDGE_HANDLER_MAP_FAILED kind='...' name='...' error=...
-        # One bad entry therefore costs exactly its own kind. A kind whose entry
-        # failed still lands in BRIDGE_UNKNOWN_KIND one line later -- the page's
-        # own view, unchanged from before, with the reason right above it.
-        #
-        # The three entries that CANNOT be a name on this class -- `hide`, `toggle`
-        # and `quit` call `self._shell.<method>('page')` and DROP the page's payload
-        # -- carry ('shell-call', method, reason); the two `setStripOffset` entries
-        # carry ('shell', method), because the receiver is the SHELL and getting
-        # that wrong is the entry that killed the channel.
-        #
-        # THE try/except BELOW IS THE LAST-RESORT NET, NOT THE FIX, said because
-        # the first version of this guard claimed the opposite. If someone writes
-        # an ATTRIBUTE ACCESS in this table again, the whole table fails to build
-        # and the net is loud about it (BRIDGE_HANDLER_MAP_FAILED with NO kind=,
-        # empty map: every kind dead, LOUDLY). The per-kind isolation is the loop
-        # in `_resolve_handler_map`, and it is what the gate's isolation arm
-        # proves: the bad entry is NAMED, and the good kinds still dispatch.
+        # UM KIND MAU CUSTA SO' O PROPRIO KIND. Medido 2026-10-13: o mapa era um dict
+        # literal, e um valor que levantava (`self._set_strip_offset`, metodo da shell e nao
+        # do host) matava o `.get(kind)` de TODOS os kinds -- canal pagina->shell morto 2,5 h,
+        # invisivel porque a excepcao ia para o logger do pywebview. A TABELA PASSOU A
+        # GUARDAR NOMES: `_resolve_handler_map` resolve um a um com `getattr` e um que nao
+        # resolve e' SALTA e DIZ-SE (`BRIDGE_HANDLER_MAP_FAILED kind=... name=... error=...`),
+        # e o kind cai em `BRIDGE_UNKNOWN_KIND` uma linha depois. As entradas que nao podem
+        # ser nome desta classe -- `hide`, `toggle`, `quit` chamam `self._shell.<m>('page')`
+        # e deitam fora o payload -- levam `('shell-call', method, reason)`; os dois
+        # `setStripOffset` levam `('shell', method)`. O `try/except` abaixo e' a REDE DE ULTIMO
+        # RECURSO, nao a cura: a isolacao por kind e' o laco, e a arm do portao prova-o.
         try:
             table = {
             'caption-observed': ('host', '_caption_observed'),
+            # O INSTANTE DA PINTURA PROVISORIA (2026-11-04): a linha que o
+            # `panel.js` ja' produzia (`SottoPaintLine`) passa a entrar no log
+            # pelo gancho que o bootstrap instala. Antes dela a perna do OLHO
+            # so' existia para sondas de DOM, e a metrica do painel media o
+            # commit -- o fim do que o olho ja' tinha visto.
+            'paint-row': ('host', '_paint_row'),
             'status-observed': ('host', '_status_observed'),
             'caption-applied': ('host', '_caption_applied'),
             'status-applied': ('host', '_status_applied'),
@@ -5915,6 +13040,7 @@ class SottoHost:
             # WITHOUT THIS ENTRY the panel re-skins and the overlay keeps the
             # default Segoe UI caption: two products on one screen.
             'brand-tokens': ('host', '_brand_tokens'),
+            'boot-profile': ('host', '_boot_profile'),
             'renderer-ready': ('host', '_renderer_ready'),
             'page-error': ('host', '_page_error'),
             'pointer': ('host', '_pointer'),
@@ -5956,6 +13082,13 @@ class SottoHost:
             'sotto:setLiveEnabled': ('shell', '_set_live_enabled'),
             # THE TRANSLATION TARGET (owner, 2026-10-21): the 3-dot menu's selector.
             'translation-target': ('host', '_translation_target'),
+            # O ASPECTO DA LEGENDA (dono, 2026-11-09): fundo mais justo e o alfa
+            # da placa escolhivel. Um entry, um metodo: `_caption_visual`.
+            'caption-visual': ('host', '_caption_visual'),
+            # O "MODO STEALTH" (dono, 2026-11-16): um entry, um metodo. Sem esta
+            # linha o `bridge.setCaptureExclude` do painel morria em
+            # BRIDGE_UNKNOWN_KIND e o controlo mentia.
+            'caption-capture-exclude': ('host', '_caption_capture_exclude'),
             # PAUSE = UNLOAD (2026-10-17). One entry, one method on the shell.
             'pause': ('shell', '_pause_shell'),
             'sotto:pause': ('shell', '_pause_shell'),
@@ -5963,6 +13096,8 @@ class SottoHost:
             'history-tail': ('host', '_history_tail'),
             'history-search': ('host', '_history_search'),
             'history-root': ('host', '_history_root'),
+            'history-export': ('host', '_history_export'),
+            'history-export-file': ('host', '_history_export_file'),
             'history-reveal': ('host', '_history_reveal'),
             # These three were lambdas (`lambda p: self._shell.x('page')`). They
             # cannot be a name on this class, so they carry the method AND the
@@ -5985,6 +13120,9 @@ class SottoHost:
             # The deferred-asset loader's only channel: it asks for the real
             # bytes of one deferred URL, and the shell lets that one through.
             'lazy-asset': ('host', '_lazy_asset'),
+            # A refusal is an event (2026-11-05): the transcript choke point's
+            # "no" used to be a bare `return` with no line anywhere.
+            'history-refused': ('host', '_history_refused'),
             }
         except Exception as exc:  # noqa: BLE001 -- a map that cannot build
             log(f'BRIDGE_HANDLER_MAP_FAILED error={exc!r} -- EVERY page->shell '
@@ -6087,12 +13225,95 @@ class SottoHost:
         text = (payload or {}).get('text', '')
         self._shell.caption_log.append(text)
         del self._shell.caption_log[:-MAX_CAPTIONS]
+        # ── O PIXEL, COM A IDADE DO AUDIO (2026-11-03) ──────────────────────
+        # O painel confirma que APLICOU a linha; este e' o instante do ecra
+        # nesta maquina. A idade do audio sai daqui e nao do `tap_ms` da
+        # chegada: entre os dois ha' a formulacao, a ponte e a pintura do DOM.
+        shell = self._shell
+        tap = getattr(shell, '_last_push_tap_ms', None)
+        # O TAP E' DE UMA PINTURA SO' (2026-11-04). A `final` chega sem
+        # `tap_ms` e herdava o da ultima parcial: medido `audio_ms=166615` num
+        # audio de 3 s, `p90=45402`, `over=109` de 200.
+        shell._last_push_tap_ms = None
+        _is_final = bool(getattr(shell, '_last_push_final', False))
+        sent_at = getattr(shell, '_last_push_at', None)
+        # O MESMO TAP NAO CONTA DUAS VEZES, NO PAINEL COMO NO OVERLAY (2026-11-04).
+        # A cura de `caption_lag_aged` tinha ficado so' no caminho do overlay e o
+        # painel e' a MAIORIA das pinturas: medido no log inteiro, 22 233
+        # `CAPTION_APPLIED` contra 1 567 `CAPTION_PAINT_LAG` (93,4 %) e 799 dos
+        # 1 018 `CAPTION_BUDGET_BLOWN` (78,5 %) com `path=panel`. Anular
+        # `_last_push_tap_ms` depois da leitura nao fecha nada: uma linha a
+        # crescer volta a publicar o MESMO tap no push seguinte.
+        _aged = caption_lag_aged(
+            tap, getattr(shell, '_caption_lag_tap_counted', None))
+        _reused = bool(tap) and not _aged
+        if tap and _aged:
+            shell._caption_lag_tap_counted = int(tap)
+        # Nunca negativo: um `tap_ms` a frente do relogio do shell (arredondamento
+        # ou desvio de relogio) entraria na serie como atraso negativo.
+        audio_ms = (max(0, int(time.time() * 1000.0) - int(tap))
+                    if _aged else None)
+        queue_ms = int((time.time() - sent_at) * 1000) if sent_at else None
+        # A LINHA FECHADA NAO ENTRA NA SERIE AO VIVO (2026-11-04): o `tap_ms` de
+        # uma `final` e' o do INICIO dela, logo mede a DURACAO da frase.
+        if audio_ms is not None and not _is_final:
+            shell._caption_lag_note(
+                audio_ms, queue_ms=queue_ms, kind='partial')
         log(f'CAPTION_APPLIED text={json.dumps(text)} '
-            f'count={len(self._shell.caption_log)}')
+            f'count={len(self._shell.caption_log)}'
+            f' kind={"final" if _is_final else "partial"}'
+            + (f' tap_reused=true queue_ms={queue_ms}'
+               if _reused else '')
+            + (f' aged_kind=final-close' if _is_final
+               else f' aged_kind={"hold-expired" if (queue_ms is not None and shell.CAPTION_HOLD_BAND_MS[0] <= int(queue_ms) <= shell.CAPTION_HOLD_BAND_MS[1]) else "transport"}'
+               if audio_ms is not None else '')
+            + (f' audio_ms={audio_ms} queue_ms={queue_ms}'
+               f' budget_ms={shell.CAPTION_BUDGET_MS}'
+               f' over={str(audio_ms > shell.CAPTION_BUDGET_MS).lower()}'
+               if audio_ms is not None else ''))
+        # A LINHA `final` NAO ESTOURA O ORCAMENTO (2026-11-04, MEDIDO).
+        # `audio_ms` sai do `tap_ms` da linha, e uma linha fechada carrega o tap
+        # do INICIO dela: medido `CAPTION_IN ... final=true ... age_ms=13494`
+        # com `CAPTION_PAINT_LAG over=true blown=36` -- trinta e seis estouros
+        # seguidos que eram a DURACAO da frase, nao atraso do ecra. O numero
+        # continua no log (`aged_kind=final-close`), o veredicto nao o conta.
+        if (audio_ms is not None and audio_ms > shell.CAPTION_BUDGET_MS
+                and not getattr(shell, '_last_push_final', False)):
+            log(f'CAPTION_BUDGET_BLOWN audio_ms={audio_ms} '
+                f'budget_ms={shell.CAPTION_BUDGET_MS} '
+                f'queue_ms={queue_ms} blown={shell._caption_lag_blown} '
+                f'path=panel text={json.dumps(text[:60])}')
+
+    def _paint_row(self, payload):
+        """A linha `CAPTION_PROVISIONAL_PAINT` do painel, no log da shell.
+
+        O painel escreve `n/at/id/src/conf/prov/text` e a forma ja' e' a do log.
+        Corta em 400 B e recusa qualquer coisa que nao comece pela etiqueta: o
+        gancho e' da pagina, e uma pagina que escreve o log sem limite e' um log
+        que ninguem le (medido: 2 592 B por linha de legenda antes desta cura,
+        n-7 do audit).
+        """
+        line = str((payload or {}).get('line') or '').replace('\r', ' ')
+        line = line.replace('\n', ' ')[:400]
+        if line.startswith('CAPTION_PROVISIONAL_PAINT'):
+            log(line)
 
     def _status_applied(self, payload):
+        # SO' NA MUDANCA (2026-11-04). O painel confirma o status a cada
+        # repintura e a linha saia sempre: medido `STATUS_APPLIED` a cada 4 s no
+        # log do dono (26 317 linhas). O que interessa e' "o painel aplicou ESTE
+        # texto", e um texto igual ja' foi respondido. A primeira e a mudanca
+        # saem; o silencio das outras prova que nada mudou.
         text = (payload or {}).get('text', '')
-        log(f'STATUS_APPLIED text={json.dumps(text)}')
+        if getattr(self, '_status_applied_last', None) == text:
+            self._status_applied_quiet = getattr(
+                self, '_status_applied_quiet', 0) + 1
+            return
+        quiet = getattr(self, '_status_applied_quiet', 0)
+        self._status_applied_quiet = 0
+        self._status_applied_last = text
+        log(f'STATUS_APPLIED text={json.dumps(text)}'
+            + (f' repetidas_silenciadas={quiet}' if quiet else ''))
 
     def _translation_target(self, payload):
         """The 3-dot menu's translation pick reached the shell. `lang == ''` clears it;
@@ -6110,36 +13331,148 @@ class SottoHost:
             return
         log(f'TRANSLATION_TARGET code={json.dumps(code)} applied={json.dumps(applied)}')
 
+    def _caption_visual(self, payload):
+        """O aspecto da LEGENDA NATIVA escolhido no painel (dono, 2026-11-09).
+
+        Duas metades, nesta ordem e so' nesta: `caption_settings.set_visual`
+        PRENDE e GRAVA (e' o unico sitio do clamp, como o `target_lang`), e so'
+        depois o valor PRESO e' aplicado ao overlay que este shell tem vivo. Ao
+        contrario, a tela mostraria um numero que o ficheiro nao guarda -- e o
+        proximo arranque voltaria ao outro.
+
+        Sem overlay (a janela ainda nao nasceu), o ficheiro fica gravado e o
+        `NativeCaptionOverlay.__init__` le-o; a legenda nasce com o aspecto certo
+        em vez de o receber por um push que pode nunca vir.
+        """
+        data = payload if isinstance(payload, dict) else {}
+        opacity = data.get('opacity', None)
+        plate = data.get('plate', None)
+        try:
+            import caption_settings
+            applied = caption_settings.set_visual(opacity=opacity, plate=plate)
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_VISUAL_FAILED payload={json.dumps(data)} error={exc!r}')
+            return
+        # O OVERLAY VIVO: o host de producao nao o tem (vive na shell), mas
+        # oraculos servem o receptor com um overlay falso neste objecto -- as
+        # duas formas tem de continuar a funcionar.
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
+            shell = getattr(self, '_shell', None)
+            ov = getattr(shell, 'caption_overlay', None) if shell is not None else None
+        live = None
+        if ov is not None:
+            try:
+                live = ov.set_visual(opacity=applied.get('opacity'),
+                                     plate=applied.get('plate'))
+            except Exception as exc:  # noqa: BLE001
+                log(f'CAPTION_VISUAL_OVERLAY_FAILED error={exc!r}')
+        log('CAPTION_VISUAL plate=%s opacity=%.2f live=%s'
+            % (applied.get('plate'), float(applied.get('opacity') or 1.0),
+               json.dumps(live) if live else 'no-overlay'))
+
+    def _caption_capture_exclude(self, payload):
+        """O "MODO STEALTH" da legenda, escolhido no painel (dono, 2026-11-16).
+
+        Ordem do dono, verbatim: *"retira o 'modo stealth' da legenda. deixa
+        desativado por padrao, e ativavel nas configs do sotto."* O campo que o
+        painel manda e' `on` (bool); a resposta do bridge devolve
+        `{captureExclude: bool}`. Duas metades, nesta ordem: o ficheiro (unico
+        sitio persistido, `caption_settings.set_capture_exclude`) e depois a
+        JANELA VIVA -- `SetWindowDisplayAffinity` sobre o HWND que ja' existe,
+        para a escolha valer sem reiniciar o Sotto.
+
+        O valor APLICADO e' lido de `capture_exclusion.enabled()`, nunca de uma
+        copia da regra: se `SOTTO_CAPTURE_EXCLUDE` estiver definido, ele manda
+        sobre o ficheiro, e o log diz os dois para a divergencia ser visivel.
+        """
+        data = payload if isinstance(payload, dict) else {}
+        want = bool(data.get('on'))
+        try:
+            import caption_settings
+            applied = caption_settings.set_capture_exclude(want)
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_CAPTURE_EXCLUDE_FAILED payload={json.dumps(data)} '
+                f'error={exc!r}')
+            return
+        try:
+            import capture_exclusion
+            effective = bool(capture_exclusion.enabled())
+        except Exception as exc:  # noqa: BLE001 -- sem modulo, a janela nao muda
+            log(f'CAPTION_CAPTURE_EXCLUDE_RESOLVE_FAILED error={exc!r}')
+            effective = applied
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
+            shell = getattr(self, '_shell', None)
+            ov = getattr(shell, 'caption_overlay', None) if shell is not None else None
+        live = None
+        if ov is not None:
+            try:
+                live = ov.set_capture_exclude(effective)
+            except Exception as exc:  # noqa: BLE001 -- a legenda nao morre por isto
+                log(f'CAPTION_CAPTURE_EXCLUDE_OVERLAY_FAILED error={exc!r}')
+        log('CAPTION_CAPTURE_EXCLUDE on=%s applied=%s effective=%s live=%s'
+            % (want, applied, effective,
+               json.dumps(live) if live else 'no-overlay'))
+
     def _caption_cleared(self, payload):
         remaining = (payload or {}).get('remaining', 0)
         self._shell.caption_log.clear()
         log(f'CAPTIONS_CLEARED remaining={remaining}')
 
     def _brand_tokens(self, payload):
-        """Wear the panel's measured design on the NATIVE overlay.
+        """A PAGINA MEDIU O DESENHO: manda-o para a JANELA NATIVA da legenda.
 
-        The panel measures its own forming row and posts the resolved values
-        (`brand-bridge.js`). This receiver keeps the LAST payload so an overlay
-        created later than the first push -- the normal boot order -- still
-        starts branded instead of defaulting to Segoe UI until the next theme
-        change. A payload that is not a dict is treated as "no design", which
-        restores the pre-brand overlay rather than raising.
+        O DONO, 2026-11-09: *"IM NOT SEEING THE SUBTITLES FROM CTRL SPACE HAVING
+        DESIGN FROM EACH DIFFERENT THEME. WHY?"* -- e a medicao do log dele
+        respondeu: 610 `CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay` e
+        **zero** `CAPTION_OVERLAY_THEME_APPLIED`; as 215 unicas linhas de tema
+        que chegaram a janela eram todas `name=youtube`.
+
+        PORQUE: este receptor mora no HOST, e o `caption_overlay` mora na SHELL.
+        `getattr(self, 'caption_overlay', None)` era `None` para sempre -- o
+        desenho era guardado e NUNCA aplicado. O payload continua a ser guardado
+        (a janela nasce depois da primeira medida), mas a aplicacao vive na shell,
+        num so' sitio (`SottoShell._apply_overlay_theme`), que e' tambem o que a
+        criacao da janela chama. Um desenho, um dono.
         """
         theme = payload if isinstance(payload, dict) else {}
-        self._brand_tokens_last = dict(theme)
-        overlay = getattr(self, 'caption_overlay', None)
-        if overlay is None:
-            log('CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay '
-                'theme=%r' % (theme.get('theme') or '-'))
+        shell = getattr(self, '_shell', None)
+        if shell is None:
+            self._brand_tokens_last = dict(theme)
+            log('CAPTION_OVERLAY_THEME_DEFERRED reason=no-shell theme=%r'
+                % (theme.get('theme') or '-'))
             return
+        shell._brand_tokens_last = dict(theme)
+        # O DESENHO MEDIDO VAI PARA DISCO (2026-11-12). MEDIDO na sessao do dono
+        # (pid 46056): primeira linha pintada as 19:41:44.254 e a placa a chegar
+        # as 19:41:46.327 -- 2,07 s de texto SEM FUNDO, verbatim: *"o background
+        # da legenda atrasou pra aparecer"*. O payload so' existe depois do DOM
+        # da pagina, e `_brand_tokens_last` morre com o processo, logo cada
+        # arranque repetia os mesmos segundos. Guardado aqui (o unico receptor da
+        # medida) e lido na CRIACAO da janela, a placa existe no primeiro pixel.
         try:
-            applied = overlay.set_theme(theme)
+            import caption_settings
+            caption_settings.set_theme(theme)
         except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
-            log(f'CAPTION_OVERLAY_THEME_FAILED error={exc!r}')
-            return
-        log('CAPTION_OVERLAY_THEME_APPLIED theme=%s font=%s live=%.1f'
-            % (applied.get('theme') or '-', applied.get('fontFamily'),
-               applied.get('livePx') or 0.0))
+            log(f'CAPTION_THEME_SAVE_FAILED error={exc!r}')
+        shell._apply_overlay_theme(theme, why='page')
+
+    def _boot_profile(self, payload):
+        """ONDE OS 25 S DA PAGINA SAO GASTOS, medido DENTRO do renderer.
+
+        Medido 2026-11-03: `WEBVIEW_NAV start` -> `WEBVIEW_NAV dom` = 25 s para
+        uma pagina LOCAL de 700 KB, e o event `DOMContentLoaded` e' do proprio
+        Chromium: alguem esta' segurando o parser. O `_bootstrap_js` instala um
+        `PerformanceObserver` de longtask antes do primeiro byte de pagina e manda
+        o resultado por `dispatch` no `load`; esta linha e' a unica saida dele.
+        """
+        payload = payload or {}
+        try:
+            log('PANEL_BOOT_PROFILE %s' % json.dumps(payload)[:1200])
+            self._shell._panel_boot_profile = payload
+        except Exception as exc:  # noqa: BLE001
+            log('PANEL_BOOT_PROFILE_FAILED error=%r' % (exc,))
 
     def _renderer_ready(self, payload):
         payload = payload or {}
@@ -6245,8 +13578,41 @@ class SottoHost:
     def _history_root(self, payload):
         self._history_reply(payload or {}, self._shell.history_root())
 
+    def _history_export(self, payload):
+        payload = payload or {}
+        self._history_reply(payload, self._shell.history_export(
+            payload.get('format', 'txt'),
+            payload.get('limit', 400)))
+
+    def _history_export_file(self, payload):
+        payload = payload or {}
+        self._history_reply(payload, self._shell.history_export_file(
+            payload.get('format', 'txt'),
+            payload.get('limit', 400)))
+
     def _history_reveal(self, payload):
         self._shell.reveal_in_folder((payload or {}).get('path'))
+
+    def _history_refused(self, payload):
+        """The panel's transcript choke point said NO, and now says why.
+
+        This is the instrument for the defect the honest field
+        (`history_root()['canonicalProducer']`) used to hide: a caption that
+        never became a line left no trace anywhere, so "the history is empty"
+        had no evidence behind it. The panel counts per signature and sends the
+        first occurrence and every 50th (`panel.js reportHistoryRefusal`), so
+        this is a line per refusal SHAPE, not a flood.
+        """
+        payload = payload or {}
+        log('HISTORY_REFUSED where=%s reason=%s route=%s final=%s producer=%s src=%s n=%s total=%s'
+            % (payload.get('where') or '-',
+               payload.get('reason') or '',
+               payload.get('route') or '-',
+               '-' if payload.get('final') is None else str(bool(payload.get('final'))).lower(),
+               payload.get('producer') or '-',
+               payload.get('src') or '-',
+               payload.get('n') if payload.get('n') is not None else '-',
+               payload.get('total') if payload.get('total') is not None else '-'))
 
 
 # ===========================================================================
@@ -6290,9 +13656,169 @@ def search_layer_cap(rank, limit):
     return max(floor, int(math.floor(limit * fraction)))
 
 
+def _caption_replay_allowed(painted, age_ms, max_s, paused=False,
+                            from_player=False):
+    """A linha ja' pintada pode VOLTAR ao ecra quando o dono liga a legenda?
+
+    Tres factos, e a ordem importa:
+
+      * sem linha nao ha' nada a repetir;
+      * A PAUSA NAO ENVELHECE A LINHA (2026-11-06). O dono: *"ela tambem buga se
+        eu desativo ela e o video ao mesmo tempo"*. Com o video parado o player
+        continua a mostrar a MESMA frase -- e o limite de `CAPTION_REPLAY_MAX_S`
+        (2 s, que existe para nao despejar uma frase de um minuto atras) recusava
+        exactamente a linha que continua verdadeira. MEDIDO no log dele:
+        `CAPTION_WINDOW_REPLAY_SKIPPED age_ms=3092` com o video em pausa e o ecra
+        VAZIO ate' o video voltar a andar. Se a linha veio do PLAYER e ele esta'
+        parado, ela e' a legenda de agora, por velha que seja;
+      * fora da pausa o limite fica: 2 s cobrem o intervalo medido entre duas
+        linhas vivas (0,5-0,6 s) e nao cobrem uma pausa de fala. Uma linha do ASR
+        em pausa tambem continua a envelhecer: o ASR nao tem "a frase que o
+        player esta' a pintar".
+
+    Pura de proposito: `_main/youtube-cdp-source-oracle.py` executa ESTA funcao
+    e o interruptor limita-se a obedecer, para a regra poder ser provada sem app.
+    """
+    if not str(painted or '').strip():
+        return False
+    if bool(paused) and bool(from_player):
+        return True
+    try:
+        age_ms = int(age_ms)
+    except (TypeError, ValueError):
+        return False
+    return 0 <= age_ms <= int(float(max_s) * 1000.0)
+
+
+#: As flags que dizem "esta corrida MEDE, nao usa": (atributo em `args`, nome na
+#: linha de comando). UMA TABELA, TODOS OS LEITORES:
+#:   - o nome do lock derivado (`measurement_lock_name`) -- para nao tirar o
+#:     `Local\SottoShell` ao app do dono e nao empilhar duas sondas iguais;
+#:   - `_measurement_flag` -> `_worker_autostart_reason` (nao pagar 1,9 GB de
+#:     modelo) e `caption_wanted_at_start` (nao pintar no ecra do dono);
+#:   - a recusa de armar o Alt+C (uma sonda que toma a tecla responde a pressao
+#:     dele com o painel dela) e a recusa de adoptar a janela do YouTube;
+#:   - o `elif` que decide o lock em `main()`.
+#:
+#: CADA COPIA DESTA LISTA DIVERGIU, e uma delas custou o ecra dele: medido
+#: 2026-11-12, existiam CINCO copias (esta, `_MEASUREMENT_LOCK_FLAGS`, o
+#: `SottoShell.MEASUREMENT_FLAGS`, um caso especial inline de `--probe-v2` e a
+#: cadeia de `elif` em `main()`), e a cadeia nao conhecia `--exit-after`,
+#: `--probe-stats`, `--probe-outside-click` nem `--probe-edit-mode`: essas
+#: quatro sondas tomavam o mutex DO APP -- recusadas em silencio com rc=0 quando
+#: o app estava de pe (uma medicao que mediu nada a responder 0) ou, com o app
+#: fechado, com o Alt+C armado e o `HOTKEY_UNAVAILABLE alert=messagebox` modal
+#: que a nota de 2026-10-11 registra como curado. Uma regra com cinco donos nao
+#: tem nenhum; agora tem um, e o portao e' `_main/measurement-flags-oracle.py`.
+MEASUREMENT_FLAGS = (
+    ('dump_dom', '--dump-dom'),
+    ('selftest', '--selftest'),
+    ('memory', '--memory'),
+    ('no_hotkey', '--no-hotkey'),
+    ('exit_after', '--exit-after'),
+    ('probe_v2', '--probe-v2'),
+    ('probe_stats', '--probe-stats'),
+    ('probe_outside_click', '--probe-outside-click'),
+    ('probe_edit_mode', '--probe-edit-mode'),
+)
+
+#: FLAGS DA MESMA FAMILIA QUE NAO ENTRAM NA TABELA, e a razao de cada uma.
+#: A tabela acima e' lida por VERDADE (`getattr(args, attr, False)`), e um default
+#: que ja' e' verdadeiro marcaria TODA corrida como medicao:
+#:   - `--probe-stats-wait` (float, default 8.0) e' PARAMETRO de `--probe-stats`;
+#:   - `--probe-reload` RETORNA antes da janela, do worker e do lock (`main()`, o
+#:     ramo logo abaixo do import do pywebview): nao ha o que recusar.
+#: Uma flag nova da familia tem de entrar numa DAS DUAS listas: o portao
+#: `_main/measurement-flags-oracle.py` (A3) recusa a que nao entrar em nenhuma.
+MEASUREMENT_EXEMPT = (
+    ('probe_stats_wait', '--probe-stats-wait'),
+    ('probe_reload', '--probe-reload'),
+)
+
+
+def _measurement_flag(args):
+    """O nome da flag de medicao presente em `args`, ou None.
+
+    UMA tabela: `--exit-after` e `--probe-v2` sao FLOAT (0.0 = desligado) e as
+    outras sao `store_true`; a verdade booleana serve as duas formas.
+    """
+    for flag, name in MEASUREMENT_FLAGS:
+        if getattr(args, flag, False):
+            return name
+    return None
+
+
+def after_load_wait_s(env):
+    """Quanto o arranque espera pelo modelo antes de entregar a maquina ao
+    WebView2, e POR QUE esse numero. `(segundos, razao)`.
+
+    RAZOES: `default` (variavel ausente), `off` (presente e <= 0), `env` (um
+    numero positivo pedido), `unparsable` (presente e ilegivel).
+
+    PORQUE E' UMA FUNCAO PURA E NAO UM `try` NO `main()` (2026-11-12): o ramo
+    de erro devolvia **25,0 s** -- exactamente a espera que o comentario do
+    proprio sitio diz ter produzido o `HANG rc=4 by=run.cmd-readiness` --, e ela
+    roda na thread que ainda nao chamou `webview.start()`, portanto o FIRST
+    PIXEL e' que a paga (o prazo do `run.cmd` e' 30 s e ficam cinco). Um valor
+    ilegivel nao e' um pedido; a resposta segura e' zero e a razao escrita no
+    log. Pura para que um oraculo a execute sem largar a app.
+    """
+    raw = env.get('SOTTO_WEBVIEW_AFTER_LOAD_S', None)
+    if raw is None or str(raw).strip() == '':
+        return 0.0, 'default'
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return 0.0, 'unparsable'
+    if value <= 0:
+        return 0.0, 'off'
+    return value, 'env'
+
+
+#: OS KINDS QUE SAO **EVENTO**, NAO ESTADO -- e por isso NAO SE COLAPSAM.
+#: O latch de `emit_async` existe para o feed do medidor (43 amostras/s medidos):
+#: ali a ultima amostra E' o estado, e substituir a pendente e' o certo. Uma
+#: legenda nao e' isso: o `emit_async('caption', ...)` e' o UNICO portador da
+#: fala ate' a pagina, e e' a pagina que a commita ao historico (`onCaption` ->
+#: `historyApi`). Colapsar A com B deixa a fala de A sem linha nenhuma no log --
+#: o oposto do invariante que o mesmo ficheiro escreve ("nenhuma fala
+#: desaparece em silencio", 2026-11-03). MEDIDO 2026-11-12 na leitura do
+#: caminho: `pending[kind] = payload; if already: return` substituia a legenda
+#: pendente enquanto a UI thread estava ocupada -- e nesta maquina a UI thread
+#: fica ocupada 3 142 ms num show (log do dono).
+#:
+#: O TECTO FICA, porque a fila sem tecto era o risco que o latch resolveu: os
+#: dois kinds de evento acumulam ate' `EVENT_EMIT_MAX`, e o que passa disso e'
+#: CONTADO e DITO (`CAPTION_EMIT_DROPPED`) em vez de desaparecer calado.
+EVENT_EMIT_KINDS = ('caption', 'external-caption')
+EVENT_EMIT_MAX = 32
+
+
 class SottoShell:
     def __init__(self, args):
         self.args = args
+        #: O `tap_ms` da ultima linha EMPURRADA (2026-11-03): o pixel do painel
+        #: mede a idade do audio contra ele em `_caption_applied`.
+        self._last_push_tap_ms = None
+        self._last_push_at = 0.0
+        #: A SERIE de idades do audio ate' ao pixel e o contador de estouros
+        #: (2026-11-03). Criados AQUI e nao pregicadamente: medido no log dele
+        #: (17:38:35) um `BRIDGE_HANDLER_FAILED kind=caption-applied`
+        #: `AttributeError: _caption_lag_blown` -- o primeiro ack estourava o
+        #: orcamento antes de a serie existir, e a excepcao comia a linha do log
+        #: exactamente no caso que interessa.
+        self._caption_ages = []
+        self._caption_lag_blown = 0
+        #: A JANELA INCREMENTAL (2026-11-04): `_caption_ordered` e' a mesma
+        #: janela ORDENADA (`bisect.insort`), os tres contadores sao CORRENTES
+        #: e `_caption_notes` diz quando publicar (a cada 25). Sem eles o resumo
+        #: re-ordenava e re-somava 200 elementos em TODAS as legendas.
+        self._caption_ordered = []
+        self._caption_ordered_src = self._caption_ages
+        self._caption_over_win = 0
+        self._caption_held_win = 0
+        self._caption_live_win = 0
+        self._caption_notes = 0
         self.window = None            # pywebview Window
         self.form = None              # pywebview's WinForms BrowserForm
         self.webview2 = None          # the WebView2 control
@@ -6357,6 +13883,14 @@ class SottoShell:
         #: and the first Alt+C is what moves it to the strip — while it is still
         #: hidden, which is the only moment a `SetWindowPos` cannot flicker.
         self.surface_applied = 'panel'
+        #: A RAJADA DO Alt+C (2026-11-08). O dono spammou a tecla: cada pressao
+        #: custava uma transicao inteira (416-700 ms entre um `HOTKEY_TOGGLE` e
+        #: o seguinte), a fila FIFO empilhava uma por pressao e o UI thread
+        #: morria. Agora cada pressao so' SOMA aqui; o worker leva o contador
+        #: inteiro de uma vez e aplica UMA transicao. O lock existe porque o
+        #: contador e' escrito pelo fio do hotkey e lido pelo worker.
+        self._panel_presses = 0
+        self._panel_press_lock = threading.Lock()
         #: The rect an EDIT session saved, read back from the `geometry` key of
         #: `_main/panel-visibility.json` at startup and re-written on every edit.
         #: `None` means "never edited" — the computed default stands.
@@ -6368,6 +13902,13 @@ class SottoShell:
         #: The cursor's offset from the window origin, captured when the drag
         #: started, so the band follows the pointer instead of jumping to it.
         self.edit_grab = None
+        #: O ARRASTO DO PAINEL (2026-11-09): a pega `(cursor_x, cursor_y,
+        #: janela_x, janela_y)` e o fio que aplica o delta a 240 Hz. `None` fora
+        #: de um gesto -- e' o que faz `window_drag_to` recusar movimento velho.
+        self._window_drag_anchor = None
+        self._window_drag_surface = None
+        self.window_drag_moves = 0
+        self.window_drag_follower = WindowDragFollower(self)
         self.last_status = ''
         self.bridge_installed = None  # None until measured, True/False after
         self.renderer_ready = threading.Event()
@@ -6399,6 +13940,15 @@ class SottoShell:
         #: (its VRAM is not needed for captions that already exist).
         self.external_captions_active = False
         self.external_captions_available = False
+        #: A POSSE DO ECRA, DECIDIDA E NAO UM EFEITO LATERAL (2026-11-11).
+        #: `external_captions_active` e' um CACHE desta resposta; a guarda de
+        #: pintura le' ESTE campo, escrito so' por `set_external_owner`, que diz
+        #: a transicao. MEDIDO no log do dono: 3 pinturas do ASR (17:46:05/09/14)
+        #: entre duas linhas da faixa do YouTube e ZERO `EXTERNAL_CAPTIONS_RELEASED`
+        #: -- a posse mudou sem um registo que a datasse.
+        self.external_owner = 'local'
+        self.external_owner_episode = 0
+        self._asr_owner_episode = False
         self.external_caption_watcher = None
         #: THE YOUTUBE REAL TRACK (2026-10-19). Its own thread, because
         #: `yt_dlp`'s metadata call took 5.0 s (MEASURED) and the caption
@@ -6410,6 +13960,11 @@ class SottoShell:
         self.external_lines = 0
         self._overlay_pushes = 0
         self.vram_guard = None
+        #: O DETECTOR DE GAMING (2026-11-04, `gaming_mode.py`). LE' e LOGA --
+        #: `is_gaming()` e' o que ele entrega. Nada neste shell age sobre ele: o
+        #: dono pediu para DETECTAR, e um auto-suspender seria uma ordem que ele
+        #: nao deu.
+        self.gaming = None
         #: The panel AS TEXT: the periodic dump writer (panel_state.py). None
         #: until the panel's first load, which is when the DOM can be read.
         self.panel_state = None
@@ -6582,6 +14137,11 @@ class SottoShell:
         # The last design the page measured, kept so the overlay can be created
         # after the first push and still be branded on its first paint.
         self._brand_tokens_last = getattr(self, '_brand_tokens_last', None)
+        #: O DESENHO QUE A PAGINA MEDIU (payload inteiro), escrito pelo receptor
+        #: `SottoHost._brand_tokens` e lido pela criacao da janela. Um so' dono:
+        #: o host guardava uma copia que ninguem aplicava (`no-overlay`, 610
+        #: vezes) e o desenho morria la'.
+        self._brand_tokens_last = self._brand_tokens_last or {}
         # THE OWNER'S SWITCH, AND IT IS NOT THE SAME FACT AS "A WINDOW IS UP".
         # Owner 2026-10-17, verbatim: *"ao clicar no botao de legenda, nao deve
         # abrir qualquer coisa. e pra ativar a legenda, na minha tela, sem
@@ -6594,21 +14154,111 @@ class SottoShell:
         # disagree. `_caption_window_shown` stays the OTHER fact — whether pixels
         # are on screen right now — because silence must be able to blank the
         # overlay without switching the owner off.
-        self._caption_wanted = False
+        # O INTERRUPTOR SOBREVIVE AO ARRANQUE (2026-11-03). Ele liga a legenda
+        # com um HOLD; um reinicio do shell nao e' um pedido para a desligar, e
+        # ate' aqui CADA relancamento voltava ao `False` -- medido hoje em tres
+        # relancamentos seguidos, com o dono a ver a legenda desaparecer sem ter
+        # tocado em nada.
+        # A REGRA DE 2026-11-03 FOI LEVADA AO FIM EM 2026-11-11, e o ficheiro
+        # deixou de ser a autoridade do ARRANQUE: o dono, verbatim, *"as soon as
+        # i open it, should start the subtitles in my screen. the ctrl space."*
+        # -- e o estado dele dizia `{"on": false}`, logo toda a abertura nascia
+        # sem legenda. Agora `caption_wanted_at_start` (puro) decide: liga por
+        # omissao; desliga so' numa corrida de MEDICAO ou com
+        # `SOTTO_CAPTION_WANTED_DEFAULT=0`. O ficheiro continua a ser escrito
+        # pelo interruptor (e' o registo do que ele quis na sessao) e o
+        # desacordo com o arranque fica escrito no log, em vez de o vencer.
+        # A LEGENDA LIGA NO ARRANQUE (dono, 2026-11-11, verbatim: *"as soon as i
+        # open it, should start the subtitles in my screen. the ctrl space."*).
+        # O `false` gravado em `caption-wanted.json` deixa de suprimir a abertura:
+        # a decisao e' de `caption_wanted_at_start` (puro), que so' desliga numa
+        # corrida de MEDICAO ou por `SOTTO_CAPTION_WANTED_DEFAULT=0`. O estado
+        # gravado continua a ser lido e o desacordo fica escrito no log.
+        self._caption_wanted = self._caption_wanted_at_start()
+        # A DECISAO PEDE OS PIXELS (2026-11-04 --> 2026-11-11): `on=true` com a
+        # janela nunca mostrada era a mentira que fazia a 1a pressao desligar uma
+        # legenda que ele nao via. O pedido entra em `_caption_show_pending` e o
+        # bloco DEFERRED_APPLIED abaixo o aplica quando o overlay existir.
+        if self._caption_wanted:
+            self._caption_show_pending = True
         try:
             import caption_overlay
             self.caption_overlay = caption_overlay.NativeCaptionOverlay(log=log)
+            # O PAINEL MANDA NO Z (dono, 2026-11-14). `caption_overlay.show(True)`
+            # corre a cada linha e re-ergue a janela dentro da banda topmost; sem
+            # isto ela aterra por cima do painel. O provedor devolve o painel so'
+            # quando ele esta' VISIVEL -- com o painel escondido a legenda volta a
+            # ser topmost puro, que e' o comportamento antigo e o correcto.
+            def _z_below_provider(_shell=self):
+                try:
+                    panel = int(getattr(_shell, 'hwnd', 0) or 0)
+                    if not panel:
+                        return 0
+                    return panel if window_visible(panel) else 0
+                except Exception:                 # noqa: BLE001
+                    return 0
+
+            self.caption_overlay.z_below = _z_below_provider
             self.caption_overlay.set_work_area(
                 wa, self.display.get('scaleFactor') or 1.0)
-            if self._brand_tokens_last:
+            if True:
+                # A JANELA NASCE COM O DESENHO QUE ESTAVA NO AR (2026-11-09).
+                # MEDIDO antes desta linha: 215 criacoes, TODAS
+                # `CAPTION_OVERLAY_THEME_REPLAYED theme=youtube brand='-'`, e
+                # `CAPTION_OVERLAY_THEME_APPLIED` **zero** no log inteiro -- a
+                # legenda do Ctrl+Space nascia com a cara da fabrica e so' mudava
+                # se o dono trocasse de tema DEPOIS, que e' o oposto do pedido.
+                # O payload guardado e' aplicado pelo MESMO caminho da pagina; e
+                # quando ele nao existe a janela pede a medida AGORA, em vez de
+                # esperar por uma troca de tema que pode nunca vir.
                 try:
-                    self.caption_overlay.set_theme(self._brand_tokens_last)
-                    log('CAPTION_OVERLAY_THEME_REPLAYED theme=%r'
-                        % (self._brand_tokens_last.get('theme') or '-'))
+                    stored = dict(getattr(self, '_brand_tokens_last', None) or {})
+                    if not stored:
+                        # A JANELA NASCE COM O DESENHO DO ARRANQUE ANTERIOR
+                        # (2026-11-12, ver o comentario do `set_theme` no
+                        # receptor): o payload em disco e' o que impede o
+                        # primeiro segundo de texto sem fundo em cada arranque.
+                        try:
+                            import caption_settings
+                            stored = dict(caption_settings.theme() or {})
+                            if stored:
+                                log('CAPTION_OVERLAY_THEME_REPLAYED theme=%r '
+                                    'source=disk' % (stored.get('theme') or '-'))
+                        except Exception as exc:  # noqa: BLE001
+                            log(f'CAPTION_THEME_LOAD_FAILED error={exc!r}')
+                    applied = self._apply_overlay_theme(stored, why='overlay-created')
+                    if applied is None:
+                        log('CAPTION_OVERLAY_THEME_REPLAYED theme=youtube '
+                            'source=default why=no-stored-design')
+                        self.exec_js(
+                            "try{window.SottoBrand&&window.SottoBrand.push();}"
+                            "catch(e){}")
+                    else:
+                        log('CAPTION_OVERLAY_THEME_REPLAYED theme=%r source=stored'
+                            % (applied.get('theme') or '-'))
                 except Exception as exc:  # noqa: BLE001
                     log(f'CAPTION_OVERLAY_THEME_REPLAY_FAILED error={exc!r}')
             log(f'CAPTION_OVERLAY_MODE native=true hwnd='
                 f'{self.caption_overlay.hwnd} work={wa["width"]}x{wa["height"]}')
+            # A PRESSAO QUE CHEGOU CEDO E' HONRADA AQUI (2026-11-03).
+            pending = getattr(self, '_caption_show_pending', None)
+            if pending is not None:
+                self._caption_show_pending = None
+                log('CAPTION_WINDOW_DEFERRED_APPLIED on=%s'
+                    % str(bool(pending)).lower())
+                self._caption_window_shown = bool(pending)
+                self.caption_overlay.show(bool(pending))
+                # O ESTADO RESTAURADO TAMBEM FALA (2026-11-11). A legenda pode
+                # ser PERSISTIDA ligada: o arranque restaura `on=true`, o modelo
+                # ainda carrega, e o ecra fica vazio ate' a primeira linha. Sem
+                # isto, a PRIMEIRA tecla da sessao cai nesse ecra -- e se ela
+                # desligar, nao muda um pixel (o caso do dono). Ler o bloqueio
+                # UMA vez aqui, quando o overlay passa a existir, faz a accao do
+                # arranque visivel; o laco de 250 ms so' vive enquanto houver um
+                # bloqueio nomeavel e o player ocupado continua a calar tudo
+                # (`caption_status_for`).
+                if pending:
+                    self._caption_status_start()
         except Exception as exc:  # noqa: BLE001
             log(f'CAPTION_OVERLAY_MODE_FAILED error={exc!r}')
 
@@ -6662,15 +14312,178 @@ class SottoShell:
     # nao bombeou (WebView2 a inicializar) nao e um congelamento, e matar a app
     # por isso seria trocar um defeito por outro.
     UI_WATCHDOG_POLL_S = 5.0
-    UI_WATCHDOG_TIMEOUT_MS = 4000
-    UI_WATCHDOG_STRIKES = 2
+    # MEDIDO 2026-11-03, na maquina do dono com os projectos dele a correr:
+    # a app MORREU duas vezes sozinha (`UI_WATCHDOG_EXIT code=9`) e o despejo
+    # mostrava a MainThread dentro do bootstrap do pywebview
+    # (`webview/platforms/winforms.py`, `thread.Join(500)`) -- ou seja, o
+    # watchdog matou uma app que o Windows estava a atrasar, nao uma que tinha
+    # um impasse nosso. 4 s num nucleo com 69 % de CPU e tres projectos a
+    # competir nao sao impasse: sao fila. Os limites passam a 6 s e tres golpes
+    # (15 s sem bombear) e, quando a pilha do UI nao tem NENHUM frame nosso,
+    # o limite sobe para seis golpes: um despejo sem codigo nosso dentro nao e'
+    # prova de impasse nosso.
+    UI_WATCHDOG_TIMEOUT_MS = 6000
+    UI_WATCHDOG_STRIKES = 3
+    UI_WATCHDOG_STRIKES_FOREIGN = 6
 
-    def _dump_thread_stacks(self, reason):
-        """A pilha de cada thread, uma linha por frame: a prova do bloqueio."""
+    def _ui_stack_is_foreign(self):
+        """A pilha do UI tem algum frame NOSSO?
+
+        MEDIDO 2026-11-03: os despejos que precederam um `UI_WATCHDOG_EXIT
+        code=9` mostravam a MainThread em `webview.start -> create_window ->
+        thread.Join(500)`. Uma app que nao bombeia porque o Windows nao lhe da'
+        CPU nao e' uma app presa; matar essa deixa o dono sem legenda a meio do
+        video. Conta-se impasse so' quando a pilha tem um frame de
+        `sotto_webview.py` que nao seja o `main` do arranque.
+        """
+        try:
+            frame = sys._current_frames().get(threading.main_thread().ident)
+            ours = 0
+            while frame is not None:
+                name = str(frame.f_code.co_filename or '')
+                if (name.endswith('sotto_webview.py')
+                        and frame.f_code.co_name != 'main'):
+                    ours += 1
+                frame = frame.f_back
+            return ours == 0
+        except Exception:              # noqa: BLE001
+            return False
+
+    def _thread_cpu_census(self, window_s=5.0, log_it=True):
+        """QUEM GASTA O NUCLEO -- por NOME, nao por tid (2026-11-03).
+
+        MEDIDO: a shell viva (pid 6040) gastava **102 % de um nucleo** em repouso,
+        e o instrumento que existia so' sabia dizer `tid 39712 94,8 %`. Um `tid`
+        nao se le: `UI_HUNG_THREAD` escreve `ident=`, e em CPython no Windows esse
+        `ident` E' o tid nativo (`PyThread_get_thread_ident` devolve
+        `GetCurrentThreadId`), logo a tabela `threading.enumerate()` e' o mapa
+        tid->nome que faltava.
+
+        `GetThreadTimes` e' read-only e funciona de medium para high (medido);
+        nao precisa de py-spy nem de administrador. Sem delta entre duas
+        amostras nao ha' numero, por isso a primeira chamada so' guarda a base.
+        """
+        try:
+            import ctypes as _ct
+            from ctypes import wintypes as _wt
+            k32 = _ct.windll.kernel32
+            names = {t.ident: t.name for t in threading.enumerate() if t.ident}
+            if not names:
+                return []
+
+            def _ticks(tid):
+                h = k32.OpenThread(0x0800, False, int(tid))  # QUERY_LIMITED
+                if not h:
+                    return None
+                try:
+                    c = _wt.FILETIME(); e = _wt.FILETIME()
+                    k = _wt.FILETIME(); u = _wt.FILETIME()
+                    if not k32.GetThreadTimes(h, _ct.byref(c), _ct.byref(e),
+                                              _ct.byref(k), _ct.byref(u)):
+                        return None
+                    ft = lambda f: (f.dwHighDateTime << 32) | f.dwLowDateTime  # noqa: E731
+                    return ft(k) + ft(u)
+                finally:
+                    k32.CloseHandle(h)
+
+            now = time.monotonic()
+            cur = {tid: _ticks(tid) for tid in names}
+            base = getattr(self, '_cpu_census_base', None)
+            self._cpu_census_base = (now, cur)
+            if not base:
+                return []
+            t0, prev = base
+            span = max(1e-3, now - t0)
+            rows = []
+            for tid, ticks in cur.items():
+                if ticks is None or prev.get(tid) is None:
+                    continue
+                rows.append(((ticks - prev[tid]) / 1e7 / span * 100.0,
+                             names.get(tid, 'tid-%s' % tid)))
+            rows.sort(reverse=True)
+            if log_it and rows:
+                total = sum(r[0] for r in rows)
+                top_pct = rows[0][0]
+                # O PISO DE 20 % ESCONDIA A THREAD EXACTAMENTE QUANDO ELA IMPORTA
+                # (medido 2026-11-08): a instancia nova (pid 19896) com o timer
+                # curado ficou em 10-16 % de um nucleo e o censo calou -- quem
+                # quisesse provar que `sotto-outside-click` deixou de girar so'
+                # tinha como resposta "nao ha' linha", que nao diz qual thread
+                # gasta. Agora publica tambem quando UMA thread passa de 5 %.
+                _line = census_line(total, top_pct, rows,
+                                    beat=bool(getattr(self, '_cpu_census_beat', False)))
+                if _line:
+                    log(_line)
+            return rows
+        except Exception:                 # noqa: BLE001
+            return []
+
+    def _start_thread_cpu_census(self, every_s=60.0):
+        """Publica `THREAD_CPU` de minuto a minuto (silencioso abaixo de 20 %)."""
+        if getattr(self, '_cpu_census_thread', None) is not None:
+            return
+        if os.environ.get('SOTTO_NO_CPU_CENSUS', '').strip() == '1':
+            log('THREAD_CPU_CENSUS disabled=env')
+            return
+
+        def _loop():
+            self._thread_cpu_census(log_it=False)   # a base
+            beats = 0
+            while True:
+                time.sleep(every_s)
+                beats += 1
+                self._cpu_census_beat = census_beat_due(beats)
+                self._thread_cpu_census()
+                # A IDENTIDADE DO CODIGO VOLTA A SER DITA (medido 2026-11-08):
+                # `SHELL_CODE_ID` era escrito UMA vez, no arranque. O log roda, e
+                # `_main/live-code-freshness-oracle.py` respondeu UNKNOWN a uma
+                # instancia de 12 h -- o portao que existe para dizer STALE ficou
+                # cego precisamente quando a instancia envelhece. Re-dizer a cada
+                # ~10 min custa uma linha e um sha256 memoizado, e o portao
+                # recupera a capacidade de decidir.
+                if census_beat_due(beats):
+                    log('SHELL_CODE_ID %s heartbeat=true' % _code_identity_memo())
+
+        self._cpu_census_thread = threading.Thread(
+            target=_loop, name='sotto-thread-cpu', daemon=True)
+        self._cpu_census_thread.start()
+
+    def _dump_thread_stacks(self, reason, force=False):
+        """A pilha da thread que trava, e so' ela: a prova, sem o volume.
+
+        MEDIDO 2026-11-04: este dump escrevia a pilha de TODAS as threads, uma
+        linha por frame -- 280 linhas por estouro e **23 194** linhas
+        `UI_HUNG_FRAME` no log do dono. O que se pergunta a` pilha e' QUAL
+        thread esta' presa, e a resposta esta' na thread principal: as outras
+        vao cortadas (2, e caladas quando nao tem frame util). Um estouro por
+        `UI_HUNG_DUMP_EVERY_S` (600) tem pilha completa; os do meio contam-se
+        numa linha so'.
+
+        `force=True` e' a excepcao que a medicao exigiu: o despejo que precede
+        uma SAIDA (`ui-thread-not-responding`) foi o unico a sair compacto, e o
+        processo ficou vivo sem deixar uma frame. Uma saida leva a prova
+        consigo ou nao serve de nada.
+        """
         import traceback
+        now = time.monotonic()
+        last = getattr(self, '_ui_hung_dump_at', 0.0)
+        compact = (now - last) < UI_HUNG_DUMP_EVERY_S and not force
+        self._ui_hung_dump_at = now
         frames = sys._current_frames()
-        log('UI_HUNG reason=%s threads=%d' % (reason, threading.active_count()))
-        for thread in threading.enumerate():
+        main_ident = None
+        try:
+            main_ident = threading.main_thread().ident
+        except Exception:                 # noqa: BLE001
+            main_ident = None
+        log('UI_HUNG reason=%s threads=%d compact=%s'
+            % (reason, threading.active_count(), str(compact).lower()))
+        if compact:
+            return
+        main_thread = threading.main_thread() if main_ident else None
+        # A PRINCIPAL PRIMEIRO, sempre; as outras duas so' como contexto.
+        ordered = ([main_thread] if main_thread is not None else []) + [
+            t for t in threading.enumerate() if t is not main_thread][:2]
+        for thread in ordered:
             frame = frames.get(thread.ident)
             log('UI_HUNG_THREAD name=%s ident=%s daemon=%s'
                 % (thread.name, thread.ident, thread.daemon))
@@ -6703,69 +14516,419 @@ class SottoShell:
 
         def loop():
             answered_once = False
-            strikes = 0
+            state = _wd_policy.State(self.UI_WATCHDOG_STRIKES)
+            budget_s = (self.UI_WATCHDOG_POLL_S
+                        + self.UI_WATCHDOG_TIMEOUT_MS / 1000.0)
+
+            def sample():
+                """Uma pergunta ao Windows: (got, err, segundos que o laco levou)."""
+                t0 = time.monotonic()
+                result = ctypes.c_size_t(0)
+                ctypes.set_last_error(0)
+                got = send(ctypes.c_void_p(hwnd), WM_NULL, 0, 0,
+                           SMTO_ABORTIFHUNG, self.UI_WATCHDOG_TIMEOUT_MS,
+                           ctypes.byref(result))
+                return got, ctypes.get_last_error(), time.monotonic() - t0
+
             while True:
                 time.sleep(self.UI_WATCHDOG_POLL_S)
-                result = ctypes.c_size_t(0)
                 try:
-                    got = send(ctypes.c_void_p(hwnd), WM_NULL, 0, 0,
-                               SMTO_ABORTIFHUNG, self.UI_WATCHDOG_TIMEOUT_MS,
-                               ctypes.byref(result))
+                    got, err, took_s = sample()
                 except Exception as exc:  # noqa: BLE001
                     log('UI_WATCHDOG_ERROR error=%r' % (exc,))
                     continue
-                if got:
+                kind = _wd_policy.classify(got, err, took_s, budget_s)
+                if kind == 'answered':
                     answered_once = True
-                    if strikes:
-                        log('UI_WATCHDOG_RECOVERED strikes=%d' % strikes)
-                    strikes = 0
+                    if state.strikes or state.noerr:
+                        log('UI_WATCHDOG_RECOVERED strikes=%d noerr=%d'
+                            % (state.strikes, state.noerr))
+                elif kind == 'starved':
+                    # O PROCESSO nao correu: o relogio deste laco nao mediu a
+                    # janela. Medido no dono as 06:55: os golpes saiam a 20,3 s
+                    # e 12,8 s quando deviam sair a ~11 s, e o
+                    # `HOTKEY_OBSERVER_ALIVE max_gap_ms=68969` do mesmo minuto
+                    # diz que o processo inteiro ficou parado 69 s. Amostra
+                    # invalida nao soma golpe, e a sequencia antiga morre com ela.
+                    log('UI_WATCHDOG_STARVED took_ms=%d budget_ms=%d strikes=%d '
+                        'noerr=%d' % (took_s * 1000, budget_s * 1000,
+                                      state.strikes, state.noerr))
+                    # QUEM comeu o nucleo enquanto o laco nao andava: a medicao
+                    # existe (`_thread_cpu_census`) e uma amostra esfomeada e'
+                    # exactamente a altura em que ela vale a pena.
+                    try:
+                        self._thread_cpu_census(window_s=1.0)
+                    except Exception:            # noqa: BLE001
+                        pass
+                elif kind == 'noerr':
+                    if not answered_once:
+                        # ANTES da primeira resposta nenhum golpe conta: um
+                        # arranque em que a UI ainda nao bombeou (WebView2 a
+                        # inicializar) nao e' um congelamento.
+                        log('UI_WATCHDOG_NOANSWER_BEFORE_FIRST goto=0 err=%d'
+                            % (err,))
+                        continue
+                    log('UI_WATCHDOG_NOERR got=0 err=%d noerr=%d -- nao e a '
+                        'assinatura (ERROR_TIMEOUT=%d); nao conta como presa'
+                        % (err, state.noerr + 1, _wd_policy.ERROR_TIMEOUT))
+                action = _wd_policy.feed(state, kind)
+                if kind in ('strike', 'noerr'):
+                    log('UI_WATCHDOG_STRIKE strike=%d hwnd=%s err=%s kind=%s'
+                        % (state.strikes if kind == 'strike' else state.noerr,
+                           hwnd, err, kind))
+                if action != 'confirm':
                     continue
-                if not answered_once:
-                    log('UI_WATCHDOG_NOANSWER_BEFORE_FIRST reason=startup')
+                reached = state.strikes or state.noerr
+                if (reached < self.UI_WATCHDOG_STRIKES_FOREIGN
+                        and self._ui_stack_is_foreign()):
+                    log('UI_WATCHDOG_BUSY strike=%d reason=sem-codigo-nosso-na-pilha'
+                        % reached)
                     continue
-                strikes += 1
-                log('UI_WATCHDOG_STRIKE strike=%d hwnd=%s err=%s'
-                    % (strikes, hwnd, ctypes.get_last_error()))
-                if strikes < self.UI_WATCHDOG_STRIKES:
-                    continue
-                # A UI esta presa de facto: dizer ONDE, e sair para nao deixar
-                # uma janela congelada no ecra do dono.
-                self._dump_thread_stacks('ui-thread-not-responding')
-                log('UI_WATCHDOG_EXIT code=9 -- a UI estava presa; a sair para '
-                    'nao deixar janelas congeladas no ecra')
-                try:
-                    sys.stdout.flush()
-                    sys.stderr.flush()
-                except Exception as exc:  # noqa: BLE001
-                    log('UI_WATCHDOG_FLUSH_FAILED error=%r' % (exc,))
-                time.sleep(0.3)
-                os._exit(9)
+                # A CONFIRMACAO: uma volta sem dormir. Uma janela que morreu
+                # (hwnd recriado) nunca responde, e sair por isso mataria a app
+                # por uma janela que ja' nao e' a dela.
+                got, err, took_s = sample()
+                kind = _wd_policy.classify(got, err, took_s, budget_s)
+                if _wd_policy.confirm(state, kind) != 'exit':
+                    if kind != 'answered' and _wd_policy.hard_cap(state):
+                        # Duas dezenas de voltas sem UMA resposta e com o relogio
+                        # sadio: e' uma janela que nao responde a nada, mesmo
+                        # sem `ERROR_TIMEOUT`. O TECTO existe para a app nao
+                        # FICAR congelada no ecra; o caso do dono (tres
+                        # amostras) nunca o alcanca.
+                        log('UI_WATCHDOG_NOERR_CAP noerr=%d err=%s -- tecto sem '
+                            'assinatura apos %d voltas'
+                            % (state.noerr, err, _wd_policy.NOERR_HARD_CAP))
+                    else:
+                        log('UI_WATCHDOG_UNCONFIRMED kind=%s err=%s -- nao age'
+                            % (kind, err))
+                        continue
+                # A UI esta presa de facto: dizer ONDE, TIRAR a janela do ecra
+                # dele -- e NAO SAIR.
+                #
+                # ORDEM DO DONO (2026-11-09), verbatim: *"sotto closed by
+                # itself. maybe crashed? not sure. should close only because of
+                # me, or hard kill from task manager."* MEDIDO no log dele, o
+                # encerramento das 21:18:11 foi ESTE ramo:
+                # `UI_WATCHDOG_NOERR_CAP noerr=12 err=0 -- sai sem assinatura` e
+                # `UI_WATCHDOG_EXIT code=9`; o processo estava VIVO (ticks de
+                # YouTube a cada ~2 s, `cdp_age_ms=115781`), o erro era **0** e
+                # nao `ERROR_TIMEOUT` -- ou seja a pergunta ao Windows nao
+                # obteve resposta, o que NAO e' a assinatura de uma janela presa.
+                # A app saiu por nao saber perguntar.
+                #
+                # O que substitui a saida e' a unica accao que serve as duas
+                # metades: a janela sai do ecra (nada congelado a' frente dele) e
+                # o processo continua (nenhum encerramento que ele nao pediu). Se
+                # o fio da UI voltar, o Alt+C mostra outra vez; se nunca voltar,
+                # quem fecha e' ele.
+                self._dump_thread_stacks('ui-thread-not-responding', force=True)
+                log('UI_WATCHDOG_RECOVER code=9 -- a UI nao respondeu; a janela '
+                    'sai do ecra e o processo FICA (fechar e do dono)')
+                self._ui_hung_recover('ui-watchdog')
+                # O golpe nao se repete em cadencia: o estado e' reiniciado e o
+                # proximo ciclo volta a perguntar. Sem isto o laco despejava a
+                # pilha a cada ~2 min para sempre.
+                state.reset()
 
         self._ui_watchdog = threading.Thread(target=loop, name='sotto-ui-watchdog',
                                              daemon=True)
         self._ui_watchdog.start()
+        self._start_topmost_keepalive()
+        self._start_power_recovery()
+        self._start_slow_read_monitor()
 
-        # SHEDDING POR CARGA (owner, 2026-10-30). Arranca com a app e PUBLICA o
-        # nivel no ficheiro da visibilidade (`shed`), que o worker ja' poll --
-        # `alta` para o ao vivo e deixa o batch, `muito-alta` para os dois e o
-        # audio fica na fila. O lever antigo (`_pause_shell`) foi retirado porque
-        # descarregava os DOIS motores e perdia o audio.
-        # `SOTTO_LOAD_SHED=0` desliga a medicao (e o `shed` deixa de ser escrito).
-        if os.environ.get('SOTTO_LOAD_SHED') != '0':
-            # O LOG FICA FORA DO GUARD DO `.start()`: medido 2026-10-30 10:56:55,
-            # a linha `STARTED` lia o `armed` retirado e, no MESMO `try`, desarmou
-            # a funcionalidade toda: diagnostico nao derruba a coisa.
-            try:
-                self._load_shedding = LoadSheddingMonitor(self)
-                self._load_shedding.start()
-            except Exception as exc:  # noqa: BLE001 -- nunca impede a app de subir
-                log('LOAD_SHEDDING_START_FAILED error=%r' % (exc,))
-            else:
+    def _ui_hung_recover(self, reason):
+        """A UI nao responde: TIRAR a janela do ecra, sem matar a app.
+
+        ORDEM DO DONO (2026-11-09): *"sotto closed by itself ... should close
+        only because of me, or hard kill from task manager."* O cao de guarda
+        da UI saia com `code=9` quando nao obtinha resposta; medido as 21:18:11
+        o `err` era **0** (nao `ERROR_TIMEOUT`), o processo estava a trabalhar
+        e a app foi-se embora sozinha.
+
+        A ACCAO e' a unica que serve as duas metades: `ShowWindow(SW_HIDE)` e'
+        uma chamada CROSS-THREAD ao Windows (nao precisa do laco de mensagens
+        do fio da UI para esconder), portanto funciona exactamente no estado em
+        que o fio esta' preso; e o processo continua vivo, com o worker, o
+        historico e a legenda como estao.
+
+        O ESTADO FICA ESCRITO para o proximo `show` poder dizer a verdade: um
+        painel que se mostra depois de um `UI_HUNG` nao pode fingir que nada
+        aconteceu. Nunca levanta -- este e' chamado de dentro do cao de guarda.
+        """
+        hwnd = self.hwnd
+        self._ui_hung_at = time.monotonic()
+        hidden = 'skipped'
+        try:
+            if hwnd:
+                hidden = 'ok' if user32.ShowWindow(hwnd, SW_HIDE) else 'refused'
+            self.visible = False
+            self.surface_applied = ''
+        except Exception as exc:  # noqa: BLE001 -- recuperar nunca pode matar
+            hidden = 'failed:%r' % (exc,)
+        log('UI_HUNG_RECOVER reason=%s hwnd=%s hidden=%s still_alive=true'
+            % (reason, hwnd, hidden))
+        return hidden == 'ok'
+
+    def _z_authority(self):
+        """A autoridade do Z-order, criada uma vez (ver `z_order`).
+
+        O dono, verbatim (2026-11-14): *"os paineis devem ficar ACIMA da legenda. no
+        `z index`. a legenda, agora mesmo, ta encima do painel, e eu nao consigo
+        enxergar o painel bem"*. A decisao e a caminhada vivem em
+        `app/webview/z_order.py` (puras, medidas pelo oraculo); aqui so' entram os
+        handles e as chamadas ao USER32.
+        """
+        auth = getattr(self, '_z_authority_cache', None)
+        if auth is not None:
+            return auth
+
+        def _caption_of():
+            ov = getattr(self, 'caption_overlay', None)
+            return int(getattr(ov, 'hwnd', 0) or 0)
+
+        def _prev_of(h):
+            return int(user32.GetWindow(wt.HWND(int(h)), GW_HWNDPREV) or 0)
+
+        auth = _z_order.ZAuthority(
+            lambda: int(self.hwnd or 0), _caption_of, window_visible, _prev_of,
+            insert_below, log)
+        self._z_authority_cache = auth
+        return auth
+
+    def _raise_above_caption(self, why):
+        """O painel ACIMA da legenda, se ele estiver por baixo. Uma leitura barata.
+
+        Chamado em cada show e no tique do vigia: `ensure` le' o Z real primeiro e
+        so' chama o USER32 quando a legenda esta' mesmo a tapar o painel -- o caso
+        medido, porque `caption_overlay.show(True)` corre a cada linha e re-ergue a
+        janela dentro da banda topmost.
+        """
+        try:
+            ov = getattr(self, 'caption_overlay', None)
+            if ov is None or not getattr(ov, 'hwnd', None):
+                return False
+            return self._z_authority().ensure(why)
+        except Exception as exc:                      # noqa: BLE001
+            log('Z_ORDER_ENSURE_FAILED why=%s error=%r' % (why, exc))
+            return False
+
+    def _start_topmost_keepalive(self):
+        """O bit TOPMOST NAO SE GUARDA SOZINHO (copiado do RE de 2026-11-04).
+
+        Medido na mesma classe de aplicacoes: um player em ecra inteiro, um
+        jogo, ou o proprio Windows a reorganizar o Z-order tiram
+        `WS_EX_TOPMOST` a uma janela que o pos no show -- e a legenda que o
+        dono pediu fica POR BAIXO, sem erro e sem log. O laco pergunta de 2
+        em 2 s se o bit ainda la' esta' e so' age quando ele desapareceu.
+        """
+        if getattr(self, '_topmost_keepalive', None) is not None:
+            return
+        hwnd = self.hwnd
+        if not hwnd:
+            log('TOPMOST_KEEPALIVE_SKIPPED reason=no-hwnd')
+            return
+
+        def _style_of(h):
+            return int(user32.GetWindowLongW(h, GWL_EXSTYLE))
+
+        # O SEGUNDO TRABALHO DO TIQUE (dono, 2026-11-14): o bit TOPMOST pode
+        # ESTAR la' enquanto a legenda, que corre `show` a cada linha, fica por
+        # cima do painel dentro da MESMA banda. Um laco que so' olha o bit nunca
+        # ve' esse caso -- e ele e' o caso medido. `extra` poe o painel acima da
+        # legenda quando, e so' quando, o Z real diz que ele esta' por baixo.
+        self._topmost_keepalive = _topmost_keepalive.TopmostKeepalive(
+            hwnd, window_visible, _style_of, set_topmost, log,
+            interval=_topmost_keepalive.DEFAULT_INTERVAL_S,
+            extra=lambda: self._raise_above_caption('keepalive'))
+        self._topmost_keepalive.start()
+        log('TOPMOST_KEEPALIVE_STARTED hwnd=%s interval_s=%s'
+            % (hwnd, _topmost_keepalive.DEFAULT_INTERVAL_S))
+
+    def _start_power_recovery(self):
+        """O Windows DIZ quando a maquina acordou; a app nao perguntava (2026-11-04).
+
+        MEDIDO: `grep -n "WM_POWERBROADCAST\\|WM_WTSSESSION_CHANGE\\|
+        WTSRegisterSessionNotification" app/webview/sotto_webview.py` = zero
+        ocorrencias. As tres consequencias e o PLANO estao no cabecalho de
+        `power_recovery.py`; aqui esta' so' a fiacao das tres accoes ao que a
+        shell ja' sabe fazer.
+
+        A JANELA E' PROPRIA, e nao a da bandeja nem a do painel: a da bandeja e'
+        `HWND_MESSAGE` e o `WM_POWERBROADCAST` e' um BROADCAST -- uma janela
+        message-only nao o recebe; e a form do painel RECRIA o handle quando o
+        WebView2 sobe, o que leva a subclasse consigo (medido 08:0x: `ATTACHED`
+        + `PostMessageW` aceite + ZERO `POWER_RESUME`). A POPUP de tamanho zero
+        que nunca se mostra e' nossa do principio ao fim.
+        """
+        if getattr(self, '_power_recovery', None) is not None:
+            return
+        hwnd = self.hwnd
+        if not hwnd:
+            log('POWER_RECOVERY_SKIPPED reason=no-hwnd')
+            return
+
+        def _topmost(event, act):
+            # O laco de 2 s devolve o bit; este e' o pedido no INSTANTE em que a
+            # maquina acorda, que e' quando o laco ainda ia demorar ate' 2 s.
+            set_topmost(hwnd)
+            log('POWER_RESUME_TOPMOST requested=true event=%s' % event)
+
+        def _worker(event, act):
+            # Nao se reinicia nada: um revive custa 14-26 s (medido) e o cao de
+            # guarda do silencio ja' e' quem decide se o worker ficou surdo. O
+            # que faltava era o NUMERO ficar escrito no instante do resume.
+            bridge = getattr(self, 'bridge', None)
+            alive = bool(getattr(getattr(bridge, 'child', None), 'pid', None))
+            log('POWER_RESUME_WORKER alive=%s silence_ms=%s event=%s '
+                'decision=%s'
+                % (str(alive).lower(), getattr(self, 'silence_ms', '?'), event,
+                   'watchdog' if alive else 'bridge-missing'))
+
+        def _geometry(event, act):
+            snap = self.geometry_snapshot()
+            if not snap:
+                log('POWER_RESUME_GEOMETRY skipped=true reason=no-geometry')
+                return
+            geometry, moved = clamp_geometry(snap, self.work_area())
+            if not moved:
+                log('POWER_RESUME_GEOMETRY moved=false event=%s' % event)
+                return
+            self._apply_window_geometry(geometry, reason='power-resume')
+            log('POWER_RESUME_GEOMETRY moved=true event=%s rect=%dx%d@(%d,%d)'
+                % (event, geometry['width'], geometry['height'],
+                   geometry['x'], geometry['y']))
+
+        self._power_recovery = _power_recovery.PowerRecovery(
+            {_power_recovery.ACT_TOPMOST: _topmost,
+             _power_recovery.ACT_WORKER: _worker,
+             _power_recovery.ACT_GEOMETRY: _geometry},
+            log=log)
+        try:
+            registered = self._power_recovery.attach()
+        except Exception as exc:  # noqa: BLE001 -- nunca impede a app de subir
+            log('POWER_RECOVERY_ATTACH_FAILED error=%r' % (exc,))
+            return
+        log('POWER_RECOVERY_READY hwnd=%s session_notify=%s'
+            % (self._power_recovery.hwnd, str(bool(registered)).lower()))
+
+    def _start_slow_read_monitor(self):
+        """Despeja pilhas quando a LEITURA DA LEGENDA passa do limite.
+
+        Nasceu da medicao de 2026-11-03: a instancia do dono ficou 60 s sem um
+        tick e sem uma linha no log, e nao havia forma de saber em QUE chamada o
+        laco estava -- o `_dump_thread_stacks` so' corria quando a UI ficava
+        surda, e a UI estava viva. Este vigia olha para o marcador que
+        `ExternalCaptionWatcher._read` escreve e, uma vez por episodio, despeja
+        a pilha de todas as threads (uma vez, nao a cada 2 s).
+        """
+        if getattr(self, '_slow_read_thread', None) is not None:
+            return
+
+        def loop():
+            dumped_for = 0.0
+            while True:
+                time.sleep(2.0)
+                w = getattr(self, 'external_caption_watcher', None)
+                since = float(getattr(w, '_in_read_since', 0.0) or 0.0) if w else 0.0
+                if not since:
+                    dumped_for = 0.0
+                    continue
+                if since == dumped_for:
+                    continue
+                if time.monotonic() - since < 3.0:
+                    continue
+                dumped_for = since
                 try:
-                    log('LOAD_SHEDDING_STARTED interval_s=%.0f canal=shed'
-                        % LoadSheddingMonitor.INTERVAL_S)
-                except Exception as exc:  # noqa: BLE001 -- uma linha nao desarma nada
-                    log('LOAD_SHEDDING_LOG_FAILED error=%r' % (exc,))
+                    self._dump_thread_stacks('caption-read-slow')
+                except Exception:             # noqa: BLE001
+                    pass
+
+        self._slow_read_thread = threading.Thread(target=loop,
+                                                 name='sotto-slow-read',
+                                                 daemon=True)
+        self._slow_read_thread.start()
+
+        # QUEM GASTA O NUCLEO, POR NOME (2026-11-03). O `THREAD_CPU` do
+        # minuto seguinte e' o instrumento que transforma "a app e' pesada"
+        # num nome de thread e uma percentagem.
+        self._start_thread_cpu_census(every_s=30.0)
+
+        # SHEDDING POR CARGA (owner, 2026-10-30) e a ACCAO que lhe da' um lever
+        # (owner, 2026-11-03): *"os modelos entram e saem conforme a carga do
+        # sistema, e o audio nao processado e' processado sozinho quando a carga
+        # libera -- SEM NUNCA TRAVAR A MAQUINA DO DONO"*.
+        #
+        # O NIVEL ARMA O MODO, NAO MATA O PROCESSO. Medido 2026-11-03: o audio so'
+        # existe DENTRO do worker (quem abre o endpoint e' o `sotto_worker.py`);
+        # matar o worker para libertar a VRAM para a captura no intervalo. O lever
+        # e' o `shed` que o worker JA' poll: `alta` poe-no em batch (larga o
+        # nemotron), `muito-alta` larga os dois e o audio continua a ser capturado
+        # e acumulado. Toda a decisao (piso, histerese, sustentacao) vive em
+        # `load_shedding.py`; a fila e o executor, em `batch_queue.py`.
+        #
+        # `SOTTO_LOAD_SHED=0` desliga a medicao (e o `shed` deixa de ser escrito);
+        # `SOTTO_LOAD_SHED_ACT=0` desarma so' a accao.
+        # A FILA E O SHEDDING ABREM FORA DA THREAD DA UI (2026-11-09, MEDIDO).
+        # Esta funcao e' alcancada de `_on_before_show`, que corre DENTRO do
+        # `winforms.py::create` -- a thread que mapeia a janela. E o
+        # `open_action` constroi o `BatchQueue`, que faz `os.makedirs` e varre o
+        # directorio: trabalho de DISCO. MEDIDO no arranque de 2026-11-08 18:57
+        # (pid 9628; `_main/_startup-stacks.log`, dump de 15 s):
+        #     os.makedirs <- batch_queue.py:218 <- load_shedding.py:1093
+        #     <- _start_slow_read_monitor <- _start_ui_watchdog <- _on_before_show
+        #     <- webview/platforms/winforms.py:775 create
+        # com a maquina a 92 % de commit: NENHUM `STAGING_SEEN`/`PRELOAD_ACTIVE`,
+        # nenhum `mark_launch_ready`, `UI_WATCHDOG_NOANSWER_BEFORE_FIRST` a cada
+        # 5 s e o `run.cmd` a publicar `HANG rc=4`. A app nao ficou lenta: ela nao
+        # subiu -- e a thread presa era a unica que podia fazer a pagina carregar.
+        # Uma chamada bloqueante aqui nao adia um widget, adia o ARRANQUE inteiro;
+        # por isso o trabalho vive numa thread propria e a UI volta a bombear.
+        if os.environ.get('SOTTO_LOAD_SHED') != '0':
+            threading.Thread(target=self._open_load_action,
+                             name='sotto-load-shed-start', daemon=True).start()
+
+    def _open_load_action(self):
+        """Abre a fila do batch e a accao do shedding FORA da thread da UI.
+
+        Nasceu de um HANG medido (ver o comentario do chamador e o dump de
+        `_main/_startup-stacks.log` para o pid 9628): um `os.makedirs` na thread
+        que mapeia a janela impediu a app de subir.
+        """
+        # O LOG FICA FORA DO GUARD DO ARRANQUE: medido 2026-10-30 10:56:55,
+        # a linha `STARTED` lia o `armed` retirado e, no MESMO `try`, desarmou
+        # a funcionalidade toda: diagnostico nao derruba a coisa.
+        try:
+            # O MONITOR NAO ARRANCA O LACO DELE. Ele mede so' o commit;
+            # `open_action` mede commit E CPU e fica com o estado e o
+            # publicador dele, para haver UM escritor e UM numero no ficheiro.
+            monitor = LoadSheddingMonitor(self)
+            self._load_shedding = monitor
+            # A FILA E' ESTADO DO DONO: uma largada de MEDICAO nao drena a dele
+            # (`isolated_queue_dir`; medido 2026-11-12 -- a sonda a transcrever
+            # a fila real a 69 MB/s enquanto ele sentia o stutter).
+            queue_dir = isolated_queue_dir(getattr(self, 'args', None))
+            if queue_dir:
+                log('LOAD_QUEUE_ISOLATED dir=%s reason=measurement-launch'
+                    % queue_dir)
+            self._load_action = load_shedding().open_action(
+                self, monitor=monitor, log_fn=log, queue_dir=queue_dir)
+        except Exception as exc:  # noqa: BLE001 -- nunca impede a app de subir
+            log('LOAD_SHEDDING_START_FAILED error=%r' % (exc,))
+        else:
+            try:
+                log('LOAD_SHEDDING_STARTED interval_s=%.0f canal=shed'
+                    % LoadSheddingMonitor.INTERVAL_S)
+                state = self._load_action.as_dict()
+                log('LOAD_ACTION_STARTED armed=%s floor_s=%.0f samples=%d'
+                    ' queue=%s'
+                    % (str(state.get('armed')).lower(),
+                       float(state.get('floor_s') or 0.0),
+                       int(state.get('samples_required') or 0),
+                       (state.get('batch') or {}).get('queue', {}).get('dir', '-')))
+            except Exception as exc:  # noqa: BLE001 -- uma linha nao desarma nada
+                log('LOAD_ACTION_LOG_FAILED error=%r' % (exc,))
 
     def _form(self):
         return getattr(self.window, 'native', None)
@@ -6863,6 +15026,19 @@ class SottoShell:
         # WS_VISIBLE and NOT alpha-occluded in 1 of 6 launches even with the
         # re-assert in place. See `_gate_form_show`.
         self._gate_form_show(form)
+
+        # O VIGIA DA NAVEGACAO ARMA AQUI, NAO NO PRIMEIRO CARREGAMENTO
+        # (2026-11-05). Ele nascia dentro do ramo que ve' `STAGING_LOADED`, ou
+        # seja: so' existia DEPOIS de um documento carregar. Medido hoje, duas
+        # largadas seguidas: a forma nasce, `PANEL_SHOW_GATE installed`, o
+        # `UI_WATCHDOG` arranca -- e nenhuma navegacao completa. Nenhum
+        # `PANEL_NAV_STALL`, nenhum `PANEL_STATE_WRITER`, nenhuma legenda por
+        # 60 s e nenhuma linha a nomear o browser. A forma criada e' o ultimo
+        # instante em que se sabe que o vigia tem o que vigiar.
+        try:
+            self._arm_panel_stall_watch()
+        except Exception as exc:              # noqa: BLE001
+            log('PANEL_STALL_ARM_FAILED error=%r' % (exc,))
 
         # The panel never takes focus and never sits in the taskbar; in Win32
         # both are extended styles, not window flags.
@@ -7161,8 +15337,41 @@ class SottoShell:
             log(f'WEBVIEW2_INIT_FAILED error={args.InitializationException}')
             return
         self.core = sender.CoreWebView2
+        self._webview_timeline()
         self._install_bootstrap('initialization-completed')
         self._arm_lazy_gate()
+
+    def _webview_timeline(self):
+        """QUANDO e' que o WebView2 faz o que diz que faz (2026-11-03).
+
+        MEDIDO: `PRELOAD_INSTALLED` as 03:48:48.8 e `STAGING_SEEN` as 03:49:16.3
+        -- 27,5 s entre a janela existir e o `loaded` da pagina de staging, e mais
+        25 s ate' o painel carregar. Sem estes marcos a proxima pergunta era um
+        palpite sobre o WebView2. Cada linha leva `t=` em ms desde o arranque do
+        processo, para o numero ser comparavel entre corridas.
+        """
+        try:
+            core = self.core
+            def _ms():
+                return (time.monotonic() - _WEBVIEW_T0) * 1000.0
+
+            def _nav_start(sender, args):
+                log('WEBVIEW_NAV start t=%.0f uri=%s'
+                    % (_ms(), str(getattr(args, 'Uri', ''))[-46:]))
+
+            def _nav_done(sender, args):
+                log('WEBVIEW_NAV done t=%.0f success=%s'
+                    % (_ms(), str(getattr(args, 'IsSuccess', '?'))))
+
+            def _dom_ready(sender, args):
+                log('WEBVIEW_NAV dom t=%.0f' % _ms())
+
+            core.NavigationStarting += _nav_start
+            core.NavigationCompleted += _nav_done
+            core.DOMContentLoaded += _dom_ready
+            log('WEBVIEW_NAV subscribed t=%.0f' % _ms())
+        except Exception as exc:              # noqa: BLE001
+            log('WEBVIEW_NAV_SUBSCRIBE_FAILED error=%r' % (exc,))
 
     def _install_bootstrap(self, where):
         """Register the preload on the CoreWebView2, on the UI thread.
@@ -7247,6 +15456,324 @@ class SottoShell:
             return None
         return (url or '').replace('\\', '/')
 
+    def _arm_panel_stall_watch(self):
+        """UM CARREGAMENTO QUE NAO VOLTA NAO VIRA UMA APP MORTA (2026-11-03).
+
+        MEDIDO tres vezes nesta sessao: `STAGING_SEEN` -> `STAGING_LOADED` ->
+        `PANEL_SHOW_REFUSED count=2` e mais NADA; `STARTUP_NOT_READY s=15/30/60`
+        com a app sem laco de legendas, sem worker e sem hotkeys. O `load_url` do
+        painel simplesmente nao voltava, e o `_on_loaded` do painel nunca corria.
+        Aqui: 12 s sem o ficheiro de prontidao -> re-empurra a navegacao (e'
+        idempotente); 25 s -> completa o arranque (worker, legendas, hotkeys) com
+        a pagina do painel ainda pendurada, porque a legenda nao depende dela.
+        """
+        if getattr(self, '_panel_stall_armed', False):
+            return
+        self._panel_stall_armed = True
+
+        def _watch():
+            path = getattr(self.args, 'ready_file', None)
+            def _ready():
+                # O FICHEIRO E' DO LARGADOR E ELE APAGA-O (2026-11-03);
+                # `startup_is_ready` pergunta primeiro a ESTE processo.
+                return startup_is_ready(path)
+            def _state():
+                """ONDE a navegacao parou, em tres campos (2026-11-05).
+
+                Nasceu de uma lesao sem nome: a forma foi criada
+                (`PANEL_SHOW_GATE installed`, `UI_WATCHDOG_STARTED hwnd=..`) e
+                a partir dali NENHUM documento carregou -- `STARTUP_NOT_READY
+                s=15/30/60` e mais nada, sem uma linha a dizer se o browser
+                existia. Medido no mesmo dia: 2 largadas seguidas, 25
+                `msedgewebview2.exe` na maquina e NENHUM desta app.
+                """
+                try:
+                    url = str(self.window.get_current_url() or '')[-60:]
+                except Exception:             # noqa: BLE001
+                    url = 'unknown'
+                return 'url=%r core=%s' % (url, 'yes' if self.core else 'no')
+
+            def _push_nav():
+                # `load_url` NAO VOLTA quando o browser nao esta' vivo. Numa
+                # thread propria, porque a conclusao do arranque AOS 25 s tem
+                # de acontecer de qualquer maneira: a legenda nao depende da
+                # pagina do painel (e' a razao de ser deste vigia).
+                def _run():
+                    try:
+                        self.window.load_url(file_url(PANEL_HTML))
+                    except Exception as exc:  # noqa: BLE001
+                        log('PANEL_NAV_RETRY_FAILED error=%r' % (exc,))
+                threading.Thread(target=_run, name='sotto-panel-nav-retry',
+                                 daemon=True).start()
+
+            time.sleep(12.0)
+            if _ready():
+                return
+            log('PANEL_NAV_STALL s=12 -> re-empurrar a navegacao state=%s'
+                % _state())
+            _push_nav()
+            time.sleep(13.0)
+            if _ready():
+                return
+            log('PANEL_NAV_STALL_FINAL s=25 -> completar o arranque sem o painel state=%s'
+                % _state())
+            try:
+                self._complete_startup()
+            except Exception as exc:          # noqa: BLE001
+                log('PANEL_NAV_COMPLETE_FAILED error=%r' % (exc,))
+
+        threading.Thread(target=_watch, name='sotto-panel-stall',
+                         daemon=True).start()
+
+    def _mark_launch_ready(self, panel_loaded):
+        """O FICHEIRO DE PRONTIDAO DIZ A VERDADE OU NAO DIZ NADA (2026-11-12).
+
+        `run.cmd` promete, com todas as letras: "the shell touches it once the
+        panel navigation has completed, and run.cmd waits for it, BOUNDED,
+        exiting 4 on timeout" (run.cmd:65-70). O caminho dos 25 s
+        (`_arm_panel_stall_watch`) completava o arranque com a pagina do painel
+        AINDA PENDURADA e chamava este ficheiro na mesma -- logo o G3, que existe
+        para nomear um HANG, respondia 0 ao unico hang que ele sabe medir
+        (`STAGING_LOADED` e mais nada, e' o caso medido de 2026-10-06).
+
+        A cura nao e' nao completar o arranque: a legenda nao depende da pagina,
+        e esse e' o motivo de o vigia existir. A cura e' o FICHEIRO nao mentir --
+        ele fica POR ESCREVER e a linha diz por que. `run.cmd` entao da' rc=4 e
+        escreve `HANG`, que e' a informacao que ele foi construido para dar; a
+        app continua a correr, porque foi largada `start`ada e destacada.
+        """
+        path = getattr(self.args, 'ready_file', None)
+        if not panel_loaded:
+            log('LAUNCH_READY_WITHHELD path=%r why=panel-nav-stalled' % (path,))
+            return False
+        return mark_launch_ready(path)
+
+    def _complete_startup(self, panel_loaded=False):
+        """O QUE "A APP ARRANCOU" QUER DIZER, NUM SO SITIO (2026-11-03).
+
+        Era o fim de `_on_loaded`. Extraido porque um `load_url` que nao volta
+        NAO pode deixar a app sem legenda: medido tres vezes hoje
+        (`STARTUP_NOT_READY s=15/30/60`, `STAGING_LOADED` e mais nada), o
+        carregamento do painel ficou preso e o laco das legendas nunca
+        arrancou. O vigia do painel chama ESTE caminho, entao a app sobe com o
+        que precisa mesmo que a pagina do painel fique pendurada.
+        """
+        _STARTUP_READY['done'] = True
+        self._mark_launch_ready(panel_loaded)
+
+        # Startup actions run ONCE per process, not once per navigation. A hot
+        # reload re-enters this function; without this guard `--with-worker`
+        # would spawn a SECOND worker and `--selftest` would run twice, so a
+        # panel save would quietly multiply the thing the panel is for.
+        if not self.startup_done:
+            self.startup_done = True
+            self.send_geometry()
+            if self.surface_applied == 'strip':
+                h_moved = self.refresh_strip_height('hot-reload')
+                w_moved = self.refresh_strip_width('hot-reload')
+                if h_moved or w_moved:
+                    self._apply_window_geometry(self.geometry_for('strip'),
+                                                reason='strip-height-hot-reload')
+            # The panel AS TEXT. Armed here — once the panel document (not the
+            # staging page) has loaded — so the DOM read has something to read.
+            # See panel_state.py and docs/audit/painel-texto.md.
+            self.start_panel_state()
+            # THE VISIBILITY CHANNEL — armed BEFORE `start_worker` below, in
+            # this same block, so a worker spawned on this launch always finds
+            # the file. The order is the point: see `self.panel_visibility`.
+            self.start_panel_visibility()
+            # AS LEGENDAS E O WORKER -- IDEMPOTENTE (2026-11-03). O main()
+            # ja' as arranca antes do `webview.start()`; esta chamada serve o
+            # caminho em que a janela nasce tarde, e nao faz nada duas vezes.
+            self.start_caption_pipeline('panel-ready')
+            # THE FIRST PRESENT IS PAID HERE, OFF THE SCREEN -- see
+            # `_warm_paint`. It must be BEFORE any show, or the first Alt+C
+            # pays it with the window on screen (measured: 19 blank frames).
+            self._warm_paint('startup')
+            if self.args.show:
+                self.show_panel('startup', surface='panel')
+            self._measure_on_screen_visibility('startup')
+            if self.args.probe_edit_mode:
+                log('PANEL_EDIT_PROBE_ARMED s=2.0')
+                timer = threading.Timer(2.0, self.run_edit_mode_probe)
+                timer.daemon = True
+                timer.start()
+            # -- F1: o worker arranca por OMISSAO (o fluxo e' agora opt-OUT).
+            # Ordem, do mais explicito ao menos, e o motivo vai no log
+            # (`WORKER_AUTOSTART started/declined reason=…`):
+            #   1. --with-worker  -> 'with-worker' (autoritativo)
+            #   2. --no-worker    -> 'no-worker'
+            #   3. SOTTO_NO_WORKER=1 -> 'env'
+            #   4. flag de MEDICAO (--dump-dom, --selftest, --memory,
+            #      --no-hotkey, --exit-after) -> 'measurement-flag(..)': essas
+            #      corridas pagariam ~2 GB de modelo e abririam um tap sem precisar.
+            #   5. resto          -> 'default'
+            # A tabela vive em `_worker_autostart_reason` (assertivel sem WebView2).
+            worker_reason = self._worker_autostart_reason(self.args)
+            # EVERY path goes through `start_worker`, so a refusal takes the
+            # SAME `WORKER_AUTOSTART=declined reason=…` line a silent failure
+            # does and no reader has to learn a second shape. `start_worker`
+            # declines by itself when a bridge already exists, and nothing
+            # added here takes `self._lock`.
+            #
+            # THE DEFAULT IS NOW DEFERRED (owner, 2026-10-17: *"abrir ou fechar
+            # o sotto causa um travamento muito forte no meu pc"*). Spawning the
+            # worker here means the app's own launch pays a ~750 MB weight read
+            # plus a CUDA context and ~2 GB of RSS before the desktop settles.
+            # Nothing is being transcribed before the panel is opened, so the
+            # load now happens on FIRST OPEN (see `show_panel`), at below-normal
+            # priority, with lazy CUDA kernels. Explicit/measurement paths are
+            # untouched: `--with-worker` still starts here, and a measurement
+            # flag still declines.
+            if worker_reason == 'default':
+                if getattr(self, 'bridge', None) is not None:
+                    # NAO ESCREVE `started` AQUI. Este ramo viu um bridge que JA'
+                    # existe e nao arranca nada; quem arrancou foi o
+                    # `start_worker` de cima, que ja' deixou a sua linha. A
+                    # mensagem certa e' a recusa do proprio `start_worker`
+                    # (`cause=already-running`), pela mesma porta que todas as
+                    # outras recusas usam.
+                    self.start_worker(worker_reason)
+                else:
+                    # THE PRELOAD (owner, 2026-10-21: *"abrir ou fechar o
+                    # sotto trava pra caralho meu pc"*). The worker used to
+                    # wait for the FIRST PANEL OPEN, which meant the model
+                    # loaded WHILE THE OWNER WAS WATCHING: MEASURED 36.9 s
+                    # from the spawn to the worker ready on the owner's own
+                    # log (`BRIDGE_LOAD_MS ms=36968 ... worker_load_s=32.59`),
+                    # so the panel he had just opened sat there with no
+                    # captions for the best part of a minute.
+                    #
+                    # THE PRELOAD MOVES THAT WAIT TO WHERE THE OWNER IS NOT
+                    # WAITING: the app's start, in the background, at the
+                    # worker's BELOW_NORMAL priority. The launch stays light
+                    # (the timer fires after a delay, not during the window
+                    # paint), and by the time he presses Alt+C the model is
+                    # there. `SOTTO_NO_PRELOAD=1` puts the old behaviour
+                    # back; a MEASUREMENT launch never preloads (those
+                    # reasons are not 'default' and they never reach here).
+                    self._schedule_preload_worker()
+            else:
+                self.start_worker(worker_reason)
+            # -- D3: no worker means the panel must say so ------------------
+            # The panel's shipped footer says "Idle · no audio source", which
+            # claims the machine has no audio -- measured false (there IS audio;
+            # what is missing is the PROCESS). Without F1 cured, no status ever
+            # arrived either, so the claim stood for the whole session. One
+            # status now, through the same path every worker status takes, so
+            # both the placeholder and the footer stop claiming a wait that
+            # cannot end -- and it NAMES THE FLAG, because "no worker" with the
+            # flag in hand is a decision the owner can undo in one argument.
+            #
+            # Only the two opt-outs and a measurement flag get it: the panel the
+            # owner reads must not claim a wait when the shell KNOWS there is no
+            # worker. The sentence NAMES THE FLAG, because "no worker" with the
+            # flag in hand is a decision he can undo in one argument -- "no audio
+            # source" never said that.
+            off_message = self._worker_off_message(worker_reason)
+            if off_message:
+                text, info = off_message
+                self.apply_panel_state(text, 'error', info)
+            # O PRAZO E' DO PROCESSO, NAO DO QUE ELE ESTA' A FAZER
+            # (2026-11-03, MEDIDO). Este `if` vivia no FIM do despacho, depois
+            # de `run_selftest()`: uma instancia largada com `--exit-after 45`
+            # ficou **1 h 50 min** viva (pid 35348, `--mutex-name
+            # SottoPovSelftest-altc-first-caption-59452`) porque o selftest
+            # nunca voltou -- o `BRIDGE_STATS_REPLY` de 60 em 60 s e' o unico
+            # sinal que ela deu. O prazo tem de ser ARMADO ANTES do trabalho,
+            # ou um trabalho que nao acaba e' um prazo que nao existe. Custou
+            # 245 MB (shell + o seu WebView2) durante quase duas horas.
+            if self.args.exit_after:
+                timer = threading.Timer(self.args.exit_after,
+                                        self.request_exit, args=(0,))
+                timer.daemon = True
+                timer.start()
+                # E a REDE: se o desligamento educado tambem ficar preso (tray,
+                # bridge, WebView2), o processo sai a' forca -- mas por
+                # `_hard_exit`, que TEM prazo e dois donos externos (2026-11-04).
+                # Uma sonda que nao morre e' pior do que uma sonda que sai sem
+                # despedida; uma que escreve "vou sair" e fica viva e' a pior
+                # das tres.
+                hard = threading.Timer(self.args.exit_after + 15.0,
+                                       _hard_exit,
+                                       args=(0, 'exit-after-net'))
+                hard.daemon = True
+                hard.start()
+
+            if self.args.probe_stats:
+                # Long enough for the panel's own 1000 ms poll to have run
+                # several times against a worker that published WORKER_STATS.
+                wait = self.args.probe_stats_wait
+                log(f'PANEL_STATS_PROBE_ARMED s={wait}')
+                timer = threading.Timer(wait, self.run_stats_probe)
+                timer.daemon = True
+                timer.start()
+            if self.args.probe_v2 > 0:
+                timer = threading.Timer(self.args.probe_v2,
+                                        self.run_panel_v2_probe)
+                timer.daemon = True
+                timer.start()
+                log(f'PANEL_V2_PROBE_WAIT s={self.args.probe_v2}')
+            elif self.args.dump_dom:
+                # `--dump-dom-wait` is the difference between measuring the
+                # panel and measuring the panel's STARTUP. A worker that will
+                # die of a silent device spends its first seconds alive, so a
+                # probe taken at t=0 photographs the warm-up and reports it as
+                # the answer — which is how "the code is surfaced on the panel"
+                # gets asserted without ever having seen the code.
+                if self.args.dump_dom_wait > 0:
+                    timer = threading.Timer(self.args.dump_dom_wait,
+                                            self.run_dump_dom)
+                    timer.daemon = True
+                    timer.start()
+                    log(f'DOMDUMP_WAIT s={self.args.dump_dom_wait}')
+                else:
+                    self.run_dump_dom()
+            elif self.args.selftest:
+                self.run_selftest()
+            if self.args.probe_outside_click:
+                # A short beat so the panel document has settled before the
+                # three decisions are driven.
+                log('OUTSIDE_CLICK_PROBE_ARMED s=2.0')
+                timer = threading.Timer(2.0, self.run_outside_click_probe)
+                timer.daemon = True
+                timer.start()
+            if self.args.memory and not self.args.memory_wait:
+                self.run_memory()
+            return
+
+        # A re-navigation (hot reload): re-send geometry and keep whatever
+        # visibility the owner had. The hotkey is registered by THIS process,
+        # so re-navigating the page cannot lose Alt+C.
+        self.send_geometry()
+        log(f'HOT_RELOAD_APPLIED reload={self.reload_count} '
+            f'visible={str(self.visible).lower()} '
+            f'hotkey_still_registered='
+            f'{str(bool(self.hotkey and self.hotkey.registered)).lower()}')
+        # ── NO RE-SHOW HERE. REMOVED ON PURPOSE (2026-10-07) ──────────────────
+        # This was `if self.visible: self.show_panel('hot-reload')`. The owner
+        # reported *"eu to tentando tirar ele da minha tela e ele respawna"*, and
+        # this call is the respawn: every time a lane saved a file under
+        # `app/panel/**` the shell re-navigated and RE-MAPPED the panel — a
+        # second path to the very map `_gate_form_show` exists to refuse, running
+        # AFTER the navigation where nothing can order against it.
+        #
+        # It is also unnecessary. pywebview re-maps the form on every navigation
+        # start and the gate refuses that; a window that was VISIBLE is still
+        # visible after a re-navigation (the content re-renders by itself), and a
+        # window that was HIDDEN must stay hidden. So the correct action is:
+        # assert the state the owner chose, and never the opposite.
+        #
+        # NOTE FOR WHOEVER READS THE F5 RECEIPT: the machine proof of the staging
+        # bounce used to include a `PANEL_SHOWN reason=hot-reload` line. That line
+        # no longer appears — by design. The reload is still proved by
+        # `HOT_RELOAD_APPLIED reload=N` plus the panel loading the real document
+        # (the `panel-state.json` `url` and a non-negative `live.count`).
+        if not self.visible:
+            self._reassert_hidden()
+            log('HOT_RELOAD_KEPT_HIDDEN reason=owner-had-it-hidden '
+                f'reload={self.reload_count}')
+
     def _on_loaded(self):
         """pywebview has injected its api and a page has finished loading."""
         if self.core is None:
@@ -7290,6 +15817,7 @@ class SottoShell:
             log(f'STAGING_LOADED core={"yes" if self.core else "no"} -> '
                 f'navigating to panel {PANEL_HTML}')
             self.window.load_url(file_url(PANEL_HTML))
+            self._arm_panel_stall_watch()
             return
         if here and not here.endswith('/panel.html'):
             # A document we do not know (an error page, a redirect): never treat
@@ -7332,203 +15860,13 @@ class SottoShell:
         # `PRELOAD_ACTIVE`, and run.cmd still answered 0 (launch-entry.md §3/§4).
         # run.cmd's bounded wait keys on this file (see mark_launch_ready); the
         # file appearing is the wrapper's "the app came up".
-        mark_launch_ready(self.args.ready_file)
-
-        # Startup actions run ONCE per process, not once per navigation. A hot
-        # reload re-enters this function; without this guard `--with-worker`
-        # would spawn a SECOND worker and `--selftest` would run twice, so a
-        # panel save would quietly multiply the thing the panel is for.
-        if not self.startup_done:
-            self.startup_done = True
-            self.send_geometry()
-            if self.surface_applied == 'strip':
-                h_moved = self.refresh_strip_height('hot-reload')
-                w_moved = self.refresh_strip_width('hot-reload')
-                if h_moved or w_moved:
-                    self._apply_window_geometry(self.geometry_for('strip'),
-                                                reason='strip-height-hot-reload')
-            # The panel AS TEXT. Armed here — once the panel document (not the
-            # staging page) has loaded — so the DOM read has something to read.
-            # See panel_state.py and docs/audit/painel-texto.md.
-            self.start_panel_state()
-            # THE VISIBILITY CHANNEL — armed BEFORE `start_worker` below, in
-            # this same block, so a worker spawned on this launch always finds
-            # the file. The order is the point: see `self.panel_visibility`.
-            self.start_panel_visibility()
-            # THE PLAYER'S OWN CAPTIONS (YouTube/Stremio), normal runs only.
-            self.start_external_caption_watcher()
-            # FREE THE GPU WHEN ANOTHER APP NEEDS IT (normal runs only).
-            try:
-                if self._worker_autostart_reason(self.args) in ('default', 'with-worker'):
-                    self.vram_guard = VramGuard(self)
-                    self.vram_guard.start()
-            except Exception as exc:  # noqa: BLE001
-                log(f'VRAM_GUARD_START_FAILED error={exc!r}')
-            # THE FIRST PRESENT IS PAID HERE, OFF THE SCREEN -- see
-            # `_warm_paint`. It must be BEFORE any show, or the first Alt+C
-            # pays it with the window on screen (measured: 19 blank frames).
-            self._warm_paint('startup')
-            if self.args.show:
-                self.show_panel('startup', surface='panel')
-            self._measure_on_screen_visibility('startup')
-            if self.args.probe_edit_mode:
-                log('PANEL_EDIT_PROBE_ARMED s=2.0')
-                timer = threading.Timer(2.0, self.run_edit_mode_probe)
-                timer.daemon = True
-                timer.start()
-            # -- F1: o worker arranca por OMISSAO (o fluxo e' agora opt-OUT).
-            # Ordem, do mais explicito ao menos, e o motivo vai no log
-            # (`WORKER_AUTOSTART started/declined reason=…`):
-            #   1. --with-worker  -> 'with-worker' (autoritativo)
-            #   2. --no-worker    -> 'no-worker'
-            #   3. SOTTO_NO_WORKER=1 -> 'env'
-            #   4. flag de MEDICAO (--dump-dom, --selftest, --memory,
-            #      --no-hotkey, --exit-after) -> 'measurement-flag(..)': essas
-            #      corridas pagariam ~2 GB de modelo e abririam um tap sem precisar.
-            #   5. resto          -> 'default'
-            # A tabela vive em `_worker_autostart_reason` (assertivel sem WebView2).
-            worker_reason = self._worker_autostart_reason(self.args)
-            # EVERY path goes through `start_worker`, so a refusal takes the
-            # SAME `WORKER_AUTOSTART=declined reason=…` line a silent failure
-            # does and no reader has to learn a second shape. `start_worker`
-            # declines by itself when a bridge already exists, and nothing
-            # added here takes `self._lock`.
-            #
-            # THE DEFAULT IS NOW DEFERRED (owner, 2026-10-17: *"abrir ou fechar
-            # o sotto causa um travamento muito forte no meu pc"*). Spawning the
-            # worker here means the app's own launch pays a ~750 MB weight read
-            # plus a CUDA context and ~2 GB of RSS before the desktop settles.
-            # Nothing is being transcribed before the panel is opened, so the
-            # load now happens on FIRST OPEN (see `show_panel`), at below-normal
-            # priority, with lazy CUDA kernels. Explicit/measurement paths are
-            # untouched: `--with-worker` still starts here, and a measurement
-            # flag still declines.
-            if worker_reason == 'default':
-                if getattr(self, 'bridge', None) is not None:
-                    log('WORKER_AUTOSTART=started reason=default by=startup-show')
-                else:
-                    # THE PRELOAD (owner, 2026-10-21: *"abrir ou fechar o
-                    # sotto trava pra caralho meu pc"*). The worker used to
-                    # wait for the FIRST PANEL OPEN, which meant the model
-                    # loaded WHILE THE OWNER WAS WATCHING: MEASURED 36.9 s
-                    # from the spawn to the worker ready on the owner's own
-                    # log (`BRIDGE_LOAD_MS ms=36968 ... worker_load_s=32.59`),
-                    # so the panel he had just opened sat there with no
-                    # captions for the best part of a minute.
-                    #
-                    # THE PRELOAD MOVES THAT WAIT TO WHERE THE OWNER IS NOT
-                    # WAITING: the app's start, in the background, at the
-                    # worker's BELOW_NORMAL priority. The launch stays light
-                    # (the timer fires after a delay, not during the window
-                    # paint), and by the time he presses Alt+C the model is
-                    # there. `SOTTO_NO_PRELOAD=1` puts the old behaviour
-                    # back; a MEASUREMENT launch never preloads (those
-                    # reasons are not 'default' and they never reach here).
-                    self._schedule_preload_worker()
-            else:
-                self.start_worker(worker_reason)
-            # -- D3: no worker means the panel must say so ------------------
-            # The panel's shipped footer says "Idle · no audio source", which
-            # claims the machine has no audio -- measured false (there IS audio;
-            # what is missing is the PROCESS). Without F1 cured, no status ever
-            # arrived either, so the claim stood for the whole session. One
-            # status now, through the same path every worker status takes, so
-            # both the placeholder and the footer stop claiming a wait that
-            # cannot end -- and it NAMES THE FLAG, because "no worker" with the
-            # flag in hand is a decision the owner can undo in one argument.
-            #
-            # Only the two opt-outs and a measurement flag get it: the panel the
-            # owner reads must not claim a wait when the shell KNOWS there is no
-            # worker. The sentence NAMES THE FLAG, because "no worker" with the
-            # flag in hand is a decision he can undo in one argument -- "no audio
-            # source" never said that.
-            off_message = self._worker_off_message(worker_reason)
-            if off_message:
-                text, info = off_message
-                self.apply_panel_state(text, 'error', info)
-            if self.args.probe_stats:
-                # Long enough for the panel's own 1000 ms poll to have run
-                # several times against a worker that published WORKER_STATS.
-                wait = self.args.probe_stats_wait
-                log(f'PANEL_STATS_PROBE_ARMED s={wait}')
-                timer = threading.Timer(wait, self.run_stats_probe)
-                timer.daemon = True
-                timer.start()
-            if self.args.probe_v2 > 0:
-                timer = threading.Timer(self.args.probe_v2,
-                                        self.run_panel_v2_probe)
-                timer.daemon = True
-                timer.start()
-                log(f'PANEL_V2_PROBE_WAIT s={self.args.probe_v2}')
-            elif self.args.dump_dom:
-                # `--dump-dom-wait` is the difference between measuring the
-                # panel and measuring the panel's STARTUP. A worker that will
-                # die of a silent device spends its first seconds alive, so a
-                # probe taken at t=0 photographs the warm-up and reports it as
-                # the answer — which is how "the code is surfaced on the panel"
-                # gets asserted without ever having seen the code.
-                if self.args.dump_dom_wait > 0:
-                    timer = threading.Timer(self.args.dump_dom_wait,
-                                            self.run_dump_dom)
-                    timer.daemon = True
-                    timer.start()
-                    log(f'DOMDUMP_WAIT s={self.args.dump_dom_wait}')
-                else:
-                    self.run_dump_dom()
-            elif self.args.selftest:
-                self.run_selftest()
-            if self.args.probe_outside_click:
-                # A short beat so the panel document has settled before the
-                # three decisions are driven.
-                log('OUTSIDE_CLICK_PROBE_ARMED s=2.0')
-                timer = threading.Timer(2.0, self.run_outside_click_probe)
-                timer.daemon = True
-                timer.start()
-            if self.args.memory and not self.args.memory_wait:
-                self.run_memory()
-            if self.args.exit_after:
-                timer = threading.Timer(self.args.exit_after,
-                                        self.request_exit, args=(0,))
-                timer.daemon = True
-                timer.start()
-            return
-
-        # A re-navigation (hot reload): re-send geometry and keep whatever
-        # visibility the owner had. The hotkey is registered by THIS process,
-        # so re-navigating the page cannot lose Alt+C.
-        self.send_geometry()
-        log(f'HOT_RELOAD_APPLIED reload={self.reload_count} '
-            f'visible={str(self.visible).lower()} '
-            f'hotkey_still_registered='
-            f'{str(bool(self.hotkey and self.hotkey.registered)).lower()}')
-        # ── NO RE-SHOW HERE. REMOVED ON PURPOSE (2026-10-07) ──────────────────
-        # This was `if self.visible: self.show_panel('hot-reload')`. The owner
-        # reported *"eu to tentando tirar ele da minha tela e ele respawna"*, and
-        # this call is the respawn: every time a lane saved a file under
-        # `app/panel/**` the shell re-navigated and RE-MAPPED the panel — a
-        # second path to the very map `_gate_form_show` exists to refuse, running
-        # AFTER the navigation where nothing can order against it.
-        #
-        # It is also unnecessary. pywebview re-maps the form on every navigation
-        # start and the gate refuses that; a window that was VISIBLE is still
-        # visible after a re-navigation (the content re-renders by itself), and a
-        # window that was HIDDEN must stay hidden. So the correct action is:
-        # assert the state the owner chose, and never the opposite.
-        #
-        # NOTE FOR WHOEVER READS THE F5 RECEIPT: the machine proof of the staging
-        # bounce used to include a `PANEL_SHOWN reason=hot-reload` line. That line
-        # no longer appears — by design. The reload is still proved by
-        # `HOT_RELOAD_APPLIED reload=N` plus the panel loading the real document
-        # (the `panel-state.json` `url` and a non-negative `live.count`).
-        if not self.visible:
-            self._reassert_hidden()
-            log('HOT_RELOAD_KEPT_HIDDEN reason=owner-had-it-hidden '
-                f'reload={self.reload_count}')
+        self._complete_startup(panel_loaded=True)
 
     def _on_closing(self):
         if self.bridge is not None:
             self.bridge.stop('closing')
         self.stop_hotkeys()
+        stop_gaming_watcher(self, 'closing')
         if self.external_caption_watcher is not None:
             self.external_caption_watcher.stop()
         if self.vram_guard is not None:
@@ -7777,9 +16115,46 @@ class SottoShell:
         """
         posted = self.emit_nowait(kind, payload)
         if not posted:
+            # UM STATUS ANTES DO FORM NAO SE PERDE -- ESPERA (2026-11-03,
+            # MEDIDO). O pipeline de legendas arranca ANTES do WebView2 (`de
+            # proposito`, para a legenda nao esperar o painel), e o mesmo
+            # arranque publica `Starting worker...`, `boot`, `model-loading`.
+            # Todos esses `emit` caiam aqui e o painel abria sem eles: o dono
+            # via o painel aparecer e so' depois receber estado -- a familia
+            # exacta do "carrega o background e depois a ui" que ele recusa.
+            # Agora o ULTIMO valor de cada `kind` fica guardado (so' o ultimo:
+            # o painel e' funcao do estado, nao de um historico) e e' entregue
+            # no primeiro `emit` que passar. Tecto de 8 kinds, para um caminho
+            # sem form nunca virar memoria retida.
+            q = getattr(self, '_emit_pending', None)
+            if q is None:
+                q = self._emit_pending = {}
+            if len(q) >= 8 and kind not in q:
+                q.pop(next(iter(q)), None)
+            q[kind] = payload
             warn(f'EMIT_DROPPED kind={json.dumps(str(kind))} '
-                 f'reason=no-form posted=false '
+                 f'reason=no-form queued=true '
                  f'payload={json.dumps(payload, separators=(",", ":"))[:120]!r}')
+        else:
+            # O `RuntimeError: dictionary changed size during iteration` E' AQUI
+            # (MEDIDO 2026-11-04 12:23:18.912, `BRIDGE_PUMP_DIED stream=stdout`).
+            # QUEM MUTA: qualquer OUTRA thread que chame `emit` enquanto o form
+            # nao existe -- o pump do stdout (via `on_caption`/`on_status`), um
+            # timer, a thread do hotkey. Todas fazem
+            # `q = getattr(self, '_emit_pending')`; esta metade REBINDA
+            # `self._emit_pending` antes de iterar, mas quem leu o dict ANTIGO
+            # um instante antes continua a inserir NELE. O iterador via a
+            # mutacao e o pump morria -- e um pump morto e' um filho que o pai
+            # ja' nao le, exactamente o estado que a saida herda.
+            # Snapshot: o FLUSH nao pode depender da corrida. E' a unica copia
+            # do ficheiro porque e' a unica iteracao de um dict compartilhado.
+            q = getattr(self, '_emit_pending', None)
+            if q:
+                self._emit_pending = {}
+                for _kind, _payload in list(q.items()):
+                    self.emit_nowait(_kind, _payload)
+                log('EMIT_FLUSHED kinds=%d after-first-post=%s'
+                    % (len(q), json.dumps(str(kind))))
         return posted
 
     def exec_js_post(self, script) -> bool:
@@ -7808,6 +16183,18 @@ class SottoShell:
                 return False
         try:
             return bool(self._post(_run))
+        except ModuleNotFoundError as exc:
+            # ANTES DO WEBVIEW2 NAO HA' PAGINA (2026-11-03). O pipeline de
+            # legendas passou a arrancar antes do `webview.start` -- de
+            # proposito, para a legenda nao esperar o painel --, e nesse
+            # instante `pythonnet` ainda nao tem `System` carregado: o
+            # `BeginInvoke` rebenta com `No module named 'System'`. Uma
+            # notificacao sem pagina nao e' um defeito, e' cedo de mais;
+            # fica UMA linha, nao um WARN por cada emit.
+            if not getattr(self, '_js_prewebview_logged', False):
+                self._js_prewebview_logged = True
+                log('EXEC_JS_DEFERRED reason=no-form yet (%s)' % (exc,))
+            return False
         except Exception as exc:  # noqa: BLE001
             warn(f'exec_js_post POST failed: {exc!r}')
             return False
@@ -7840,7 +16227,7 @@ class SottoShell:
         log(f'PAINT_ACK_ARM seq={seq} posted={str(posted).lower()} reason={reason}')
         return seq if posted else 0
 
-    def wait_paint_ack(self, seq, reason) -> dict:
+    def wait_paint_ack(self, seq, reason, deadline=None) -> dict:
         """Espera, LIMITADA, pela frame que a pagina armou. Falha sempre aberta.
 
         `paint_ack=false` e' um FACTO medido, nunca uma razao para deixar o painel
@@ -7848,18 +16235,37 @@ class SottoShell:
         segue. Uma leitura que nao responde (`NoAnswer`) TERMINA a espera em vez de
         repetir -- sem resposta do `exec_js` significa UI thread ocupado, que e'
         exactamente o momento em que este codigo tem de sair da frente do dono.
+
+        `deadline` E' O RELOGIO DO SHOW INTEIRO (ver `SHOW_BUDGET_MS`): o ack so'
+        recebe o que RESTA dele, e quando nao resta nada ele nao pergunta -- a
+        linha diz `why=show-budget-spent` em vez de gastar mais 400 ms que o
+        orcamento nao tem. Sem `deadline` o comportamento e' o de sempre (400 ms
+        do ack), para os chamadores que nao sao o show.
         """
         out = {'ack': False, 'wait_ms': 0.0, 'why': 'arm-not-posted'}
         if not seq:
             log(f'PAINT_ACK ack=false wait_ms=0 seq=0 reason={reason} '
                 f'why={out["why"]} timeout_ms={PAINT_ACK_TIMEOUT_MS}')
             return out
+        window_s = PAINT_ACK_TIMEOUT_MS / 1000.0
+        if deadline is not None:
+            window_s = min(window_s, max(0.0, deadline - time.monotonic()))
+        if deadline is not None and window_s < PAINT_ACK_POLL_S:
+            # NAO HA' ORCAMENTO PARA A PERGUNTA: nao se pergunta. Uma espera que
+            # o relogio do show nao paga deixou de ser uma espera e passou a ser
+            # o show a gastar o tempo do dono -- e a linha diz isso, nomeado.
+            out['why'] = 'show-budget-spent'
+            log('PAINT_ACK ack=false wait_ms=0.0 seq=%s reason=%s why=%s '
+                'timeout_ms=%s budget_left_ms=%.1f'
+                % (seq, reason, out['why'], PAINT_ACK_TIMEOUT_MS,
+                   window_s * 1000.0))
+            return out
         script = PAINT_ACK_READ_JS.replace('__SEQ__', str(seq))
         t0 = time.monotonic()
-        deadline = t0 + (PAINT_ACK_TIMEOUT_MS / 1000.0)
+        limit = t0 + window_s
         out['why'] = 'timeout'
         while True:
-            left = deadline - time.monotonic()
+            left = limit - time.monotonic()
             answer = self.exec_js(
                 script, timeout=max(0.05, min(left, PAINT_ACK_JS_TIMEOUT_S)))
             if isinstance(answer, NoAnswer):
@@ -7869,7 +16275,7 @@ class SottoShell:
                 out['ack'] = True
                 out['why'] = 'painted'
                 break
-            left = deadline - time.monotonic()
+            left = limit - time.monotonic()
             if left <= 0:
                 break
             time.sleep(min(PAINT_ACK_POLL_S, left))
@@ -7877,6 +16283,89 @@ class SottoShell:
         log('PAINT_ACK ack=%s wait_ms=%s seq=%s reason=%s why=%s timeout_ms=%s'
             % (str(out['ack']).lower(), out['wait_ms'], seq, reason,
                out['why'], PAINT_ACK_TIMEOUT_MS))
+        return out
+
+    def content_gate(self, reason, surface=None, deadline=None) -> dict:
+        """Confirma, ANTES do mapa, que a pagina ja' tem a superficie vestida.
+
+        ── A ORDEM DO DONO, e a parte que faltava da cura ─────────────────────
+        Verbatim: *"o painel dar show, nao deve carregar o background e
+        mostrar, e depois carregar a ui"*. Todo o show mapeia a janela com
+        `ShowWindow`/`SW_SHOW+FOREGROUND` sem perguntar nada a' pagina, e no
+        caminho do show a superficie e' POSTADA (`set_panel_surface(...,
+        present=True)`), portanto nada garante que o `body[data-surface]` que
+        escolhe o layout ja' tenha sido escrito quando o primeiro frame aparece.
+        Este metodo e' a pergunta, e ele corre ANTES de `show_without_activating`
+        / `foreground_unlock` -- ver `CONTENT_GATE_JS` para o porque de o ack
+        ser respondivel com a janela escondida (layout nao precisa de
+        compositor).
+
+        NAO ESPERA COMO UM PEDIDO: espera como um ORCAMENTO. Um UI thread preso
+        devolve `NoAnswer` e o mapa acontece na mesma -- falha aberta, igual ao
+        `wait_paint_ack`, e a linha diz qual dos dois foi.
+
+        ── O QUE ESTAVA MEDIDO, E O QUE MUDOU (2026-11-04) ────────────────────
+        As duas linhas do dono (`12:15:43.542`, `12:51:45.143`) diziam
+        `ack=false why=bad-answer` e mais NADA: `size=0x0 head="" vis=` sao os
+        DEFAULTS do `out`, logo o ramo do dicionario nunca correu. A causa esta
+        medida em `_main/content-gate-answer-probe.py` e no comentario de
+        `gate_answer_payload`: `CONTENT_GATE_JS` devolve `JSON.stringify(out)`,
+        uma string, e `exec_js` entrega-a como string -- um `bad-answer` que era
+        um erro de LEITURA do shell, nao um problema da pagina. A cura tem tres
+        partes, e as tres estao em funcoes puras para o oraculo as executar:
+        `gate_answer_payload` (dicionario OU JSON em string, com `why` NOMEADO),
+        `gate_verdict` (o ack) e `gate_probe` (as repeticoes DENTRO do mesmo
+        orcamento). Um ack que nao chega deixa `why` nomeado -- `page-error`,
+        `page-not-ready`, `not-applied`, `ui-thread-busy` --, o texto cru em
+        `error`, e o mapa segue: falha aberta, agora informada.
+        """
+        name = normalise_surface_name(surface if surface is not None else self.surface)
+        out = gate_defaults(name)
+        if name is None:
+            out['why'] = 'no-surface'
+            # SEM SUPERFICIE NAO HA' GATE, e o mapa segue: recusar o show por
+            # causa disto repetiria o defeito de `set_panel_surface` que deixou
+            # o painel sem aparecer (ver `PANEL_SURFACE_REFUSED`).
+            log('PANEL_CONTENT surface=%s ack=false wait_ms=0 why=no-surface '
+                'order=before-map reason=%s attempts=0'
+                % (json.dumps(str(surface)), reason))
+            self._last_content_gate = out
+            return out
+        script = CONTENT_GATE_JS.replace('__NAME__', json.dumps(name))
+        budget = max(CONTENT_GATE_RETRY_MIN_S, CONTENT_GATE_TIMEOUT_MS / 1000.0)
+        if deadline is not None:
+            # O GATE NAO TEM ORCAMENTO PROPRIO NO SHOW: recebe o que resta do
+            # `SHOW_BUDGET_MS`. Medido (2026-11-10): o gate declarava 250 ms e
+            # gastou 594 porque o `BeginInvoke` dele entra na fila do UI thread
+            # atras das nossas proprias postagens -- um teto por pedaco nao
+            # limita a soma, e o dono paga a soma.
+            budget = max(CONTENT_GATE_RETRY_MIN_S,
+                         min(budget, deadline - time.monotonic()))
+
+        def ask(left):
+            # UM ORCAMENTO, NAO DOIS: cada pergunta recebe o que resta do
+            # `CONTENT_GATE_TIMEOUT_MS`, nunca um orcamento novo.
+            return self.exec_js(script, timeout=max(CONTENT_GATE_RETRY_MIN_S, left))
+
+        out = gate_probe(name, ask, budget)
+        log('PANEL_CONTENT surface=%s ack=%s applied=%s style=%s sized=%s '
+            'size=%dx%d head=%s vis=%s wait_ms=%s why=%s order=before-map '
+            'reason=%s timeout_ms=%.1f attempts=%d error=%s'
+            % (name, str(out['ack']).lower(), json.dumps(str(out['applied'])),
+               str(out['style']).lower(), str(out['sized']).lower(),
+               out['w'], out['h'], json.dumps(out['head']), out['vis'],
+               out['wait_ms'], out['why'], reason, budget * 1000.0,
+               out['attempts'], json.dumps(out['error'][:CONTENT_GATE_ERROR_MAX_CHARS])))
+        if not out['ack']:
+            # O SHOW ACONTECE (falha aberta, inalterada) E O ARTEFACTO DIZ QUE
+            # ELE ACONTECEU SEM A PAGINA VESTIDA -- com a razao NOMEADA. Um
+            # `WARN` aqui e' o que impede o defeito de voltar em silencio: o
+            # dono ve a UI a chegar depois, e a linha diz por que.
+            warn('PANEL_UNDRESSED surface=%s why=%s wait_ms=%s attempts=%d '
+                 'error=%s reason=%s'
+                 % (name, out['why'], out['wait_ms'], out['attempts'],
+                    json.dumps(out['error'][:CONTENT_GATE_ERROR_MAX_CHARS]), reason))
+        self._last_content_gate = out
         return out
 
     def send_status(self, text, kind=''):
@@ -8176,13 +16665,20 @@ class SottoShell:
         """
         if self.panel_visibility is not None:
             return False
+        # A MESMA ISOLACAO DO `panel-state` (2026-11-12). Este ficheiro e' o que
+        # o worker OBEDECE (`PanelVisibilityReader`: `visible` decide parque,
+        # `shed` decide o nivel), por isso uma sonda escreve-lo e' a app do dono
+        # a receber ordens de uma medicao -- a classe que `isolated_state_path`
+        # ja' fechava do lado do `panel-state.json`.
+        path = self.isolated_state_path(PANEL_VISIBILITY_PATH)
         self.panel_visibility = PanelVisibilityWriter(
-            path=PANEL_VISIBILITY_PATH,
+            path=path,
             observe=self.observe_panel_visible,
             log=log,
             interval_s=PANEL_VISIBILITY_INTERVAL_S,
             extra=self.geometry_snapshot,
             shed_provider=self.shedding_level,
+            park_provider=self.engine_park_reason,
         )
         return self.panel_visibility.start()
 
@@ -8212,7 +16708,11 @@ class SottoShell:
         if writer is None:
             return None
         return {
-            'path': PANEL_VISIBILITY_PATH,
+            # O CAMINHO E' O DO WRITER, nao a constante: numa medicao eles
+            # divergem por desenho (2026-11-12), e um snapshot que nomeasse o
+            # ficheiro da app seria a mentira que a isolacao existe para nao
+            # contar.
+            'path': writer.path,
             'visible': writer.visible,
             'since_ms': writer.since_ms,
             'reason': writer.reason,
@@ -8235,13 +16735,13 @@ class SottoShell:
 
         A instância normal (mutex por omissão) devolve o caminho de sempre,
         byte a byte: nenhum instrumento existente muda de sítio.
+
+        CORRIGIDO 2026-11-12: a pergunta era `args.mutex_name`, e uma largada de
+        MEDICAO nao lhe toca (`--probe-v2` deixa o nome por omissao e toma o
+        lock por `measurement_lock_name`). A pergunta passou a ser
+        `is_measurement_launch`, a MESMA que o lock responde.
         """
-        mutex = str(getattr(self.args, 'mutex_name', '') or '')
-        if not mutex or mutex == DEFAULT_MUTEX_NAME:
-            return path
-        stem, ext = os.path.splitext(path)
-        safe = re.sub(r'[^A-Za-z0-9_.-]', '_', mutex)
-        return '%s.%s%s' % (stem, safe, ext)
+        return isolated_state_file(path, self.args)
 
     def start_panel_state(self):
         """Arm the periodic + on-request dump. Idempotent per process."""
@@ -8262,25 +16762,28 @@ class SottoShell:
     # appended as captions commit. The shell owns the path (the panel is handed
     # the entry back), so the folder convention lives in exactly one place.
     def history_root(self):
-        """The history store's root, and whether a canonical producer exists.
+        """The history store's root, and WHO fills it.
 
         FROZEN SHAPE (other lanes read it): `{'root': <path>,
-        'canonicalProducer': None}`.
+        'canonicalProducer': <name|null>}`.
 
-        `canonicalProducer` is `None` because of the audit's **F2**
-        (`docs/audit/auditoria-completa-20261007.md`): `app/panel/
-        history-source.js:51` accepts a canonical line only when its meta
-        carries `producer === 'redux'`, and NO engine in this repo ever stamps
-        `producer` — the live path builds its meta with three literal keys
-        (`caption-formulation.js:408`), and the batch engine that could stamp it
-        (Parakeet Redux) is neither on disk nor called. So the transcript cannot
-        fill: the feed is decorative and the search has nothing to search. The
-        shell says so HERE, as data, instead of the panel inferring it from an
-        empty list; `panel.js` (other lane) uses it to collapse the feed and
-        disable the search. It becomes a producer NAME only if a production
-        call site starts stamping one.
+        `canonicalProducer` is the panel's "is this feed alive?" answer: `None`
+        means the store can never fill, and `panel.js` collapses the drawer and
+        disables the search on it. It used to be hard-coded `None` (audit **F2**,
+        `docs/audit/auditoria-completa-20261007.md`): `app/panel/
+        history-source.js` accepted a line only when its meta carried
+        `producer === 'redux'`, NO engine in this repo stamped that key, and the
+        Parakeet Redux batch pass is off by default -- so the feed was decorative
+        and the search had nothing to search.
+
+        That admission rule is GONE (2026-11-05): the transcript takes every
+        CLOSED caption line, whichever pass closed it, and records WHO produced
+        it as `producer=` on the line. So a writer exists and this field names it
+        -- the honest answer, which is what this field was always for. It is NOT
+        a promise that the batch pass ran: that is `producer=` on each line.
         """
-        return {'root': HISTORY_ROOT, 'canonicalProducer': None}
+        return {'root': HISTORY_ROOT,
+                'canonicalProducer': 'the closed caption line (live or batch)'}
 
     def _history_path_for(self, when):
         return os.path.join(
@@ -8290,7 +16793,7 @@ class SottoShell:
         )
 
     @staticmethod
-    def _history_provenance(options):
+    def _history_provenance(options, context_token=''):
         """The `<!-- route=… start=… reason=… -->` suffix for one line (M8).
 
         WHY IT EXISTS: `formulate()` appends terminal punctuation to every line
@@ -8309,7 +16812,26 @@ class SottoShell:
         route = str(options.get('route') or '').strip()
         if route not in HISTORY_ROUTES:
             return ''
-        parts = [f'route={route}']
+        # THE TOKEN GOES FIRST (review D2, 2026-11-09): a free-text `reason`
+        # can contain `ctx1=` anywhere, so an end-anchored token is spoofable
+        # by a hand-written line. Placing it immediately after `<!--` makes
+        # the first token the only candidate; `reason` follows it.
+        parts = []
+        if context_token:
+            parts.append(f'ctx1={context_token}')
+        parts.append(f'route={route}')
+        # WHO closed it (2026-11-05), right after the route: the pair is what
+        # makes the two sources tellable apart now that BOTH reach this file.
+        producer = str(options.get('producer') or '').strip()
+        if producer in HISTORY_PRODUCERS:
+            parts.append(f'producer={producer}')
+        # DE ONDE VEIO O SOM, ao lado do producer (dono, 2026-11-09). Os dois
+        # respondem perguntas diferentes: `producer` = qual motor fechou a linha,
+        # `via` = de que audio ela veio. Ausente quando o dono do caminho nao
+        # declarou nada -- nunca inventado aqui.
+        via = str(options.get('via') or '').strip()
+        if via in HISTORY_VIAS:
+            parts.append(f'via={via}')
         start = options.get('start')
         if isinstance(start, (int, float)) and not isinstance(start, bool):
             parts.append(f'start={float(start):.2f}')
@@ -8319,18 +16841,26 @@ class SottoShell:
         src = str(options.get('routeSource') or '').strip()
         if src in HISTORY_ROUTE_SOURCES:
             parts.append(f'src={src}')
-        reason = re.sub(r'\s+', ' ', str(options.get('reason') or '')).strip()
+        # A REASON IS FREE TEXT, AND `ctx1=` IS THE TOKEN'S WORD (review D2,
+        # 2026-11-09): the token is written FIRST, so the front-anchored reader
+        # cannot select a lookalike later in the reason; the writer also
+        # removes the token form from the reason as a second guard.
+        reason = re.sub(r'(?i)\bctx1=\S*', '', str(options.get('reason') or ''))
+        reason = re.sub(r'\s+', ' ', reason).strip()
         if reason:
             parts.append(f'reason={reason}')
         return ' <!-- ' + ' '.join(parts) + ' -->'
 
     @staticmethod
-    def _history_last_body(path):
-        """O `text` da ULTIMA linha do ficheiro, sem hora e sem proveniencia.
+    def _history_tail(path):
+        """A ULTIMA linha do ficheiro: corpo, hora do dia e `start=` do worker.
 
-        A linha gravada e `- [HH:MM:SS] frase <!-- route=... -->` (ver
-        `_history_provenance`). Para comparar frases, e preciso tirar as duas
-        pontas -- senao duas linhas iguais nunca seriam iguais.
+        A linha gravada e `- [HH:MM:SS] frase <!-- route=... start=... -->` (ver
+        `_history_provenance`). Para decidir se a linha nova e' a MESMA linha a
+        crescer (`history_merge`) e' preciso mais do que o texto: a hora diz se
+        as duas estao perto, e o `start=` e' a identidade da linha que o proprio
+        worker emitiu -- a unica que sobrevive a uma correccao que ENCURTA o
+        texto. Devolve None quando o ficheiro ainda nao tem linha nenhuma.
         """
         try:
             with open(path, 'r', encoding='utf-8', errors='replace') as handle:
@@ -8342,9 +16872,220 @@ class SottoShell:
             return None
         if not last:
             return None
+        out = {'body': '', 'time_s': None, 'start': None,
+               'audio': '', 'context': {}, 'via': ''}
+        start = re.search(r'\bstart=(-?\d+(?:\.\d+)?)', last)
+        if start:
+            try:
+                out['start'] = float(start.group(1))
+            except ValueError:
+                out['start'] = None
+        _via = re.search(r'\bvia=(pc|youtube|external)\b', last)
+        if _via:
+            out['via'] = _via.group(1)
+        # THE SAME-LINE TEST ALSO NEEDS THE AUDIO ORIGIN (2026-11-09): two
+        # identical sentences from different sources are different lines even
+        # inside the merge window. `token_in` only matches the front-anchored
+        # `<!-- ctx1=…`, so it cannot pick up a lookalike inside `reason`.
+        _ctx = history_context.token_in(last)
+        out['context'] = _ctx
+        out['audio'] = str(_ctx.get('audioSource') or '')
         body = re.sub(r'\s*<!--.*?-->\s*$', '', last)
-        match = re.match(r'^- \[\d{2}:\d{2}:\d{2}\] (.*)$', body)
-        return (match.group(1) if match else body).strip()
+        match = re.match(r'^- \[(\d{2}):(\d{2}):(\d{2})\] (.*)$', body)
+        if match:
+            out['time_s'] = (int(match.group(1)) * 3600
+                             + int(match.group(2)) * 60 + int(match.group(3)))
+            out['body'] = match.group(4).strip()
+        else:
+            out['body'] = body.strip()
+        return out
+
+
+    def _history_app_target(self):
+        """The per-app tap this shell asked for, or None for the endpoint mix."""
+        try:
+            value, _source = app_target_request(getattr(self, 'args', None))
+            if value:
+                return value
+        except Exception:  # noqa: BLE001 -- context is optional, never fatal
+            pass
+        return None
+
+
+    @staticmethod
+    def _history_ctx_session_of(meta):
+        """The AUDIO SESSION that produced this line, when the caller knows it.
+
+        `start` is the WORKER's audio clock and it RESTARTS AT ZERO with every
+        respawn (`caption-formulation.js:1037`: "A WORKER RESTART resets the
+        audio clock, so the new session's first chunk carries a start far BELOW
+        the emitted line's"), so two sessions hand out overlapping `start`
+        values and the 8-second near-match window cannot tell them apart by
+        number alone.
+
+        The identity the producers prove is stamped on the event:
+        `WorkerBridge._consume` puts the CHILD PROCESS it read the line from
+        (`history_session(child)`), and `external_caption` stamps `external`.
+        A caller with no stamp (a probe, the worker selftest) returns None and
+        keeps the pre-2026-11-09 behaviour.
+        """
+        if isinstance(meta, dict):
+            value = meta.get('historySession')
+            if isinstance(value, str) and value:
+                return value
+        return None
+
+    def _history_ctx_observe_session(self, session):
+        """DROP THE SNAPSHOT WHEN THE AUDIO SESSION CHANGES (2026-11-09).
+
+        `_history_ctx_last`/`_history_ctx_ring` describe ONE session's audio
+        clock. A new worker process starts that clock again at zero, so a line
+        from the new session can carry a `start` inside `_HISTORY_CTX_NEAR_S`
+        of the PREVIOUS session's last line and inherit the app the owner was
+        looking at then -- the window belongs to the old speech, not the new.
+        Clearing here, on the first event that names the new session (a PARTIAL
+        long before the first committed line), makes that inheritance
+        impossible instead of merely unlikely.
+        """
+        if not isinstance(session, str) or not session:
+            return
+        previous = getattr(self, '_history_ctx_session', None)
+        if previous is not None and previous != session:
+            ring = getattr(self, '_history_ctx_ring', None)
+            if isinstance(ring, list):
+                del ring[:]
+            self._history_ctx_last = None
+            self._history_ctx_last_start = None
+        self._history_ctx_session = session
+
+    def note_history_context(self, meta):
+        """REMEMBER THE CONTEXT OF THE MOMENT A LINE CLOSED (2026-11-09).
+
+        Called from the two emit paths while the event is still fresh, keyed by
+        the worker's own `start=` (the same identity `history_append` receives).
+        The foreground read is bounded and cached (`history_context.snapshot`),
+        so a burst of finals does not open USER32 per line.
+
+        This is DELIBERATELY independent of `LIVE_ENABLED`, panel visibility,
+        model state and drag state: the owner's rule is that display off is not
+        history off, so nothing here may be gated on those.
+        """
+        if not isinstance(meta, dict):
+            return
+        # THE SESSION IS OBSERVED EVEN WHEN THIS CALL CANNOT RECORD (2026-11-09):
+        # a line with no `start` still proves which audio session is live, and
+        # the snapshot of the PREVIOUS one must not survive it.
+        self._history_ctx_observe_session(self._history_ctx_session_of(meta))
+        start = meta.get('start')
+        if not (isinstance(start, (int, float)) and not isinstance(start, bool)):
+            return
+        ctx = history_context.snapshot(meta, app_target=self._history_app_target())
+        if not ctx:
+            return
+        ring = getattr(self, '_history_ctx_ring', None)
+        if not isinstance(ring, list):
+            ring = []
+            self._history_ctx_ring = ring
+        ring.append((round(float(start), 2), ctx))
+        if len(ring) > 24:
+            del ring[:len(ring) - 24]
+        self._history_ctx_last = ctx
+        self._history_ctx_last_start = round(float(start), 2)
+
+
+    def _history_context_for(self, start, fresh=True):
+        """The context captured at RECEIPT time for this line, never the commit's.
+
+        Explicit caller metadata is resolved by the caller; this answers from the
+        ring keyed by `start`, then the last captured snapshot. Only when nothing
+        was ever captured does it take a fresh reading, so an old line never
+        inherits the app the owner happened to be looking at when it was written.
+        `fresh=False` is for the explicit-context case: fill the fields the caller
+        omitted from the ring, but never sample the commit-time foreground.
+        """
+        ring = getattr(self, '_history_ctx_ring', None)
+        if isinstance(ring, list) and isinstance(start, (int, float)) \
+                and not isinstance(start, bool):
+            for _s, _ctx in reversed(ring):
+                try:
+                    if abs(float(_s) - float(start)) <= 0.05:
+                        return dict(_ctx)
+                except (TypeError, ValueError):
+                    continue
+        if not fresh:
+            # Explicit caller metadata already carries the fields it knows; a
+            # LAST snapshot from another line must not donate its audio/source.
+            return {}
+        # A JANELA E' DESTA FALA OU NAO E' (2026-11-09): sem entrada no anel, o
+        # ULTIMO snapshot so' se doa a uma linha a `_HISTORY_CTX_NEAR_S` dele;
+        # fora disso a resposta e' "nao sei", nunca uma janela alheia.
+        last = getattr(self, '_history_ctx_last', None)
+        last_start = getattr(self, '_history_ctx_last_start', None)
+        if isinstance(last, dict) and last \
+                and isinstance(last_start, (int, float)) \
+                and not isinstance(last_start, bool) \
+                and isinstance(start, (int, float)) \
+                and not isinstance(start, bool) \
+                and abs(float(start) - float(last_start)) <= _HISTORY_CTX_NEAR_S:
+            return dict(last)
+        if isinstance(ring, list) and ring:
+            return {}
+        return history_context.snapshot(app_target=self._history_app_target())
+
+
+    def _history_find_start(self, path, start, via=None):
+        """A linha JA' gravada com este `start=`, ou None. {index, producer, entry}.
+
+        Le UMA vez, de tras para a frente, e devolve o ULTIMO registo cujo
+        `start=` casa em 0,05 s -- a mesma tolerancia de `history_merge`. Uma
+        linha sem `start=` nunca casa: sem identidade nao se reescreve nada.
+
+        A ORIGEM DO AUDIO TAMBEM E' IDENTIDADE (medido 2026-11-09, e o defeito
+        era CARO): o `start` do YouTube e' `time.monotonic()` e o do worker e' o
+        relogio de audio dele -- dois numeros de espacos diferentes que podem
+        coincidir, e uma linha do YouTube com `start=1.00` REESCREVEU uma linha
+        do PC com `start=1.00` (medido: o ficheiro ficou com a linha do video no
+        lugar da fala do microfone). `via` diferente nunca funde; `via` ausente
+        numa das duas (uma linha anterior ao campo) mantem o comportamento.
+        """
+        target = None
+        try:
+            target = float(start)
+        except (TypeError, ValueError):
+            return None
+        want_via = str(via or '').strip()
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+                rows = handle.readlines()
+        except OSError:
+            return None
+        rx = re.compile(r'\bstart=([-0-9.]+)')
+        for idx in range(len(rows) - 1, -1, -1):
+            row = rows[idx]
+            m = rx.search(row)
+            if not m:
+                continue
+            try:
+                if abs(float(m.group(1)) - target) > 0.05:
+                    continue
+            except ValueError:
+                continue
+            if want_via:
+                row_via = re.search(r'\bvia=(pc|youtube|external)\b', row)
+                if row_via and row_via.group(1) != want_via:
+                    continue
+            body = re.match(r'- \[([0-9:]+)\] (.*)', row)
+            return {
+                'index': idx,
+                'producer': 'redux' if 'producer=redux' in row else '',
+                'entry': {
+                    'time': body.group(1) if body else '',
+                    'text': re.split(r'<!--', body.group(2))[0].strip() if body else '',
+                    'path': path,
+                    'action': 'replace_at',
+                },
+            }
+        return None
 
     def history_append(self, text, options=None):
         """Append ONE committed caption. Returns the entry as written, or None."""
@@ -8358,36 +17099,164 @@ class SottoShell:
         # caption in the owner's transcript. The LIVE caption stays in the box.
         # See docs/audit/historico-vs-redux.md.
         if isinstance(options, dict) and str(options.get('route') or '').strip() == 'provisional-draft':
+            # A REFUSAL IS AN EVENT (2026-11-05): this `return` was silent, and a
+            # silent refusal is indistinguishable from a store that is not wired.
+            log('HISTORY_REFUSED where=history_append reason=provisional-draft'
+                ' route=provisional-draft final=false producer=%s src=- n=1 total=-'
+                % ((options.get('producer') if isinstance(options, dict) else None) or '-'))
             return None
+        self._history_prune()
         now = time.localtime()
         path = self._history_path_for(now)
-        # B5 (dono, verbatim: *"coisa duplicada"*): a MESMA linha nao entra duas
-        # vezes seguidas. Medido no painel de 2026-10-23: `live.count=2` com duas
-        # `[committed]` identicas -- `'Seems more expensive than using Opus 55.'`.
-        # Compara-se so com a ULTIMA linha do ficheiro: uma frase repetida horas
-        # depois e outra frase, e continua a entrar.
-        if self._history_last_body(path) == body:
-            log('HISTORY_DUPLICATE_SKIPPED time=%s bytes=%d'
-                % (time.strftime('%H:%M:%S'), len(body.encode('utf-8'))))
-            return None
+        # A LINHA E' UMA, NAO UM FLUXO (dono, 2026-11-04). Ver `history_merge`:
+        # a mesma linha a crescer reescreve a ultima gravada, a copia identica
+        # nao entra, e so' uma linha nova acrescenta. MEDIDO no painel dele:
+        # seis linhas para um enunciado que se le como um.
+        _now_s = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec
+        _start = None
+        if (isinstance(options, dict)
+                and isinstance(options.get('start'), (int, float))
+                and not isinstance(options.get('start'), bool)):
+            _start = float(options['start'])
+        # THE CONTEXT OF THE MOMENT THE SPEECH HAPPENED (owner, 2026-11-09).
+        # Explicit metadata from the caller wins; otherwise the receipt-time
+        # ring (keyed by `start`) answers; otherwise the last captured snapshot.
+        # NEVER sampled here unless nothing was captured at all: the commit can
+        # arrive seconds after the line closed, and the foreground app at commit
+        # time is not necessarily the one the owner was looking at.
+        _explicit = {}
+        if isinstance(options, dict):
+            _explicit = history_context.normalize(options.get('context'))
+        if _explicit:
+            # Explicit wins PER FIELD; the ring still supplies the audio/source
+            # fields the caller omitted. No commit-time foreground read here.
+            _ctx = self._history_context_for(_start, fresh=False)
+            _ctx.update(_explicit)
+            _ctx = history_context.normalize(_ctx)
+        else:
+            _ctx = self._history_context_for(_start)
+        _audio = str(_ctx.get('audioSource') or '')
+        _via = ''
+        if isinstance(options, dict):
+            _candidate = str(options.get('via') or '').strip()
+            if _candidate in HISTORY_VIAS:
+                _via = _candidate
+        _prev = self._history_tail(path)
+        action = history_merge(_prev, body,
+                               now_s=_now_s, start=_start, audio=_audio,
+                               via=_via)
+        # ── A FUSAO DOS DOIS MOTORES, LIDA NO `start=` (2026-11-09) ──────────
+        # O motor de LOTE re-transcreve, mais tarde, audio que o motor AO VIVO
+        # ja' transcreveu. Sem esta metade a linha do lote chega quando a cauda
+        # do ficheiro ja' e' outra, `history_merge` responde `append` e o
+        # historico fica com DUAS versoes da mesma fala (a pior primeiro).
+        # A identidade da linha e' o `start=` do worker (regra 1 de
+        # `history_merge`), logo uma linha anterior com o MESMO `start` e' a
+        # MESMA fala a ser dita melhor: reescreve-se onde ela esta', nao a cauda.
+        # O LOTE NAO E' SOBRESCRITO PELO AO VIVO: se a linha gravada ja' veio do
+        # motor de lote (`producer=redux`) e esta nao, a versao boa fica.
+        if action == 'append' and _start is not None:
+            _hit = self._history_find_start(path, _start, via=_via)
+            if _hit is not None:
+                if _hit.get('producer') == 'redux' and str(
+                        (options or {}).get('producer') or '') != 'redux':
+                    log('HISTORY_FUSED_KEPT producer=redux start=%.2f why=batch-wins'
+                        % _start)
+                    _kept = dict(_hit.get('entry') or {})
+                    _kept['action'] = 'skip'
+                    return _kept
+                action = 'replace_at'
+                _at = _hit.get('index')
+        if action == 'replace' and isinstance(_prev, dict):
+            # A growing line keeps the context the earlier commit captured when
+            # this call could not resolve it; never blank the line's origin.
+            _prev_ctx = _prev.get('context') or {}
+            if _prev_ctx:
+                _merged = dict(_prev_ctx)
+                _merged.update(_ctx)
+                _ctx = history_context.normalize(_merged)
         entry = {
             'date': time.strftime('%Y-%m-%d', now),
             'hour': time.strftime('%H', now),
             'time': time.strftime('%H:%M:%S', now),
             'text': body,
             'path': path,
+            #: The compact origin/viewing context, already normalised and
+            #: bounded (`app/webview/history_context.py`). `{}` when unknown --
+            #: the panel must not invent one.
+            'context': _ctx,
+            #: DE ONDE VEIO O SOM, para os dois filtros do painel (2026-11-09).
+            #: `'pc'` quando ninguem declarou nada: uma linha antiga (antes de o
+            #: campo existir) foi transcrita do audio DESTA maquina na esmagadora
+            #: maioria dos casos, e o filtro precisa de uma resposta.
+            'via': _via or 'pc',
+            #: O que o painel faz na lista dele: `append` (linha nova),
+            #: `replace` (reescreve a ultima) ou `skip`. A DECISAO e' daqui --
+            #: o painel obedece, para nao existirem duas regras para a mesma
+            #: linha (`_main/history-merge-oracle.py` executa esta funcao).
+            'action': action,
         }
-        provenance = self._history_provenance(options)
+        if action == 'skip':
+            # O `skip` DEVOLVE A ENTRADA (2026-11-04). Devolver None fazia o
+            # painel inventar uma linha de recurso
+            # (`pushEntry(entry || {time, text, path:null})`), que e' metade das
+            # repeticoes que ele fotografou: o ficheiro estava certo e o painel
+            # duplicava. `None` fica reservado a RECUSA (`provisional-draft`).
+            log('HISTORY_DUPLICATE_SKIPPED time=%s bytes=%d'
+                % (time.strftime('%H:%M:%S'), len(body.encode('utf-8'))))
+            return entry
+        provenance = self._history_provenance(
+            options, history_context.encode(_ctx))
+        line = f'- [{entry["time"]}] {body}{provenance}\n'
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, 'a', encoding='utf-8') as handle:
-                handle.write(f'- [{entry["time"]}] {body}{provenance}\n')
+            if action == 'replace_at':
+                with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+                    rows = handle.readlines()
+                _idx = locals().get('_at')
+                if isinstance(_idx, int) and 0 <= _idx < len(rows):
+                    rows[_idx] = line
+                    rewrite_lines_atomic(path, rows)
+                else:
+                    with open(path, 'a', encoding='utf-8') as handle:
+                        handle.write(line)
+                    action = 'append'
+            elif action == 'replace':
+                # REESCREVER A CAUDA EXIGE LER O FICHEIRO: um ficheiro de hora
+                # cheia tem milhares de linhas pequenas (o maior medido tem
+                # 48 KB/h), e a alternativa -- deixar a linha antiga e escrever
+                # a nova -- e' exactamente as seis linhas que ele reportou.
+                with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+                    rows = handle.readlines()
+                keep = []
+                dropped = False
+                for row in reversed(rows):
+                    if row.strip() and not dropped:
+                        dropped = True
+                        continue
+                    keep.append(row)
+                keep.reverse()
+                keep.append(line)
+                rewrite_lines_atomic(path, keep)
+            else:
+                with open(path, 'a', encoding='utf-8') as handle:
+                    handle.write(line)
         except OSError as exc:  # noqa: BLE001 -- a write miss must not kill the app
             warn(f'HISTORY_APPEND_FAILED path={json.dumps(path)} error={exc!r}')
             return None
-        log(f'HISTORY_APPEND path={json.dumps(path)} time={entry["time"]} '
-            f'bytes={len(body.encode("utf-8"))}')
+        if action == 'replace_at':
+            log('HISTORY_FUSED path=%s time=%s start=%.2f producer=%s bytes=%d'
+                % (json.dumps(path), entry['time'], _start,
+                   (options or {}).get('producer') or 'live',
+                   len(body.encode('utf-8'))))
+        elif action == 'replace':
+            log('HISTORY_LINE_MERGED path=%s time=%s bytes=%d'
+                % (json.dumps(path), entry['time'], len(body.encode('utf-8'))))
+        else:
+            log(f'HISTORY_APPEND path={json.dumps(path)} time={entry["time"]} '
+                f'bytes={len(body.encode("utf-8"))}')
         return entry
+
 
     def _history_files(self):
         """Every hour file under the root, OLDEST first: [(date, hour, path)]."""
@@ -8408,6 +17277,53 @@ class SottoShell:
                 out.append((day, name[:-3], os.path.join(folder, name)))
         return out
 
+    def _history_prune(self):
+        """DELETE DAY FOLDERS OLDER THAN THE RETENTION WINDOW.
+
+        The owner's 2026-11-06 window was 48 h; on 2026-11-09 he asked for
+        MONTHS-LATER recall, so the window is six months and that older
+        preference is superseded for this feature (`HISTORY_RETENTION_H`).
+
+        The store had no retention at all: `history/` grew a folder per day and
+        nothing ever removed one, so "48 horas" would have been a promise the panel
+        kept and the disk did not. The cheapest shape that keeps it honest: on the
+        FIRST append of each hour, list the day folders (a handful of names), drop
+        those whose date is older than the window, and remove a folder only when it
+        is empty afterwards. One `os.listdir` per hour is not a measurement anyone
+        can notice; a background sweeper would be a process to own.
+        """
+        stamp = time.strftime('%Y-%m-%dT%H', time.localtime())
+        if getattr(self, '_history_pruned_stamp', None) == stamp:
+            return
+        self._history_pruned_stamp = stamp
+        cutoff = time.localtime(time.time() - HISTORY_RETENTION_H * 3600)
+        oldest = time.strftime('%Y-%m-%d', cutoff)
+        try:
+            days = sorted(name for name in os.listdir(HISTORY_ROOT)
+                          if HISTORY_DAY_RE.match(name))
+        except OSError:
+            return
+        removed = 0
+        for day in days:
+            if day >= oldest:
+                continue
+            folder = os.path.join(HISTORY_ROOT, day)
+            try:
+                for name in sorted(os.listdir(folder)):
+                    if not name.endswith('.md'):
+                        continue
+                    try:
+                        os.remove(os.path.join(folder, name))
+                        removed += 1
+                    except OSError:
+                        pass
+                os.rmdir(folder)
+            except OSError:
+                pass
+        if removed:
+            log('HISTORY_PRUNE removed=%d keep_h=%d oldest=%s'
+                % (removed, HISTORY_RETENTION_H, oldest))
+
     def _history_read(self, path):
         try:
             with open(path, 'r', encoding='utf-8', errors='replace') as handle:
@@ -8419,17 +17335,58 @@ class SottoShell:
     def _history_entries(self):
         """NEWEST-first stream of entries. Reverse file order AND line order, so
         a `tail()` really returns the last N written, not the first N of the
-        newest file."""
+        newest file.
+
+        ── A MARCA QUE O MOTOR NAO DEU (2026-11-10) ────────────────────────────
+        Medido no arquivo do dono: 37 linhas `reason=stable` em `17.md`, ZERO com
+        marca terminal. O restaurador de pontuacao esta' desligado em pt-BR por
+        medicao (`worker/punctuation_model.py:supported_lang`), portanto a marca
+        so' pode vir da PROSA e da PAUSA. O stream e' o UNICO lugar onde as duas
+        estao na mao ao mesmo tempo: ele anda do mais NOVO para o mais ANTIGO,
+        logo quando entrega uma linha ja' viu a seguinte e a pausa entre as duas
+        esta' medida -- sem esperar nada (a legenda ao vivo NAO usa isto: la' o
+        atraso seria o defeito). Ver `app/webview/prose_punct.py`.
+        """
         for day, hour, path in reversed(self._history_files()):
+            newer_s = None            # o relogio da linha SEGUINTE (mais nova)
             for line in reversed(self._history_read(path)):
                 match = HISTORY_LINE_RE.match(line)
                 if match:
+                    cur_s = _history_clock_s(match.group(1))
+                    #: A pausa entre o FIM desta linha e o FIM da seguinte. E'
+                    #: um teto do silencio (inclui a latencia de escrita), e por
+                    #: isso so' serve para o piso de frase de 600 ms -- o numero
+                    #: medido em `worker/punctuation_prosody.SENTENCE_MIN_MS`.
+                    gap_s = (None if (newer_s is None or cur_s is None)
+                             else max(0.0, newer_s - cur_s))
+                    newer_s = cur_s if cur_s is not None else newer_s
                     # The provenance comment is the FILE's, not the feed's:
                     # strip it so search and the feed still see the sentence
                     # (M8 — see `_history_provenance`).
+                    text = HISTORY_TAIL_RE.sub('', match.group(2)).strip()
+                    # A LINHA QUE E' SO' `Mmm` NAO E' UMA LINHA (2026-11-11):
+                    # 121 das 1302 linhas do arquivo do dono (9,3 %). A corrida
+                    # cai primeiro, porque `Mmm Mmm Mmm.` so' se reconhece como
+                    # preenchimento depois de virar `Mmm.`. O disco nao muda.
+                    text = text_normalize.collapse_runs(text)
+                    if text_normalize.is_filler_line(text):
+                        continue
                     yield {'date': day, 'hour': hour, 'time': match.group(1),
-                           'text': HISTORY_TAIL_RE.sub('', match.group(2)).strip(),
-                           'path': path}
+                           'text': prose_punct.close_line(text, gap_s),
+                           'path': path,
+                           #: The compact context carried on THIS line. A line
+                           #: written before 2026-11-09 has no token and yields
+                           #: `{}` -- unknown, never borrowed from a neighbour.
+                           'context': history_context.token_in(line),
+                           #: DE ONDE VEIO O SOM (2026-11-09), lido da propria
+                           #: linha para os dois filtros do painel. Sem o campo
+                           #: (toda linha antes desta data) a resposta e' `'pc'`,
+                           #: a mesma que o escritor assume: uma linha antiga veio
+                           #: do audio desta maquina, e o filtro nao pode deixar
+                           #: a lista vazia por causa de uma coluna que ainda nao
+                           #: existia.
+                           'via': (re.search(r'\bvia=(pc|youtube|external)\b', line)
+                                   or [None, 'pc'])[1]}
 
     def history_tail(self, limit=400):
         limit = max(1, int(limit))
@@ -8479,6 +17436,18 @@ class SottoShell:
             for entry in self._history_entries():
                 rank = search_match_rank(entry['text'], folded_query, query_words)
                 if rank < 0:
+                    # THE ORIGIN AND THE VIEWING CONTEXT ARE SEARCHABLE TOO
+                    # (owner, 2026-11-09: months-later recall). A query for the
+                    # app, the window title or the audio source must find the
+                    # lines said while it was in front -- the same three layers,
+                    # so a typo in a window title still resolves.
+                    _ctx_text = ' '.join(
+                        str(_v) for _v in (entry.get('context') or {}).values()
+                        if str(_v or '').strip())
+                    if _ctx_text:
+                        rank = search_match_rank(_ctx_text, folded_query,
+                                                 query_words)
+                if rank < 0:
                     continue
                 bucket = buckets[rank]
                 if len(bucket) < caps[rank]:
@@ -8489,6 +17458,91 @@ class SottoShell:
                     break
         hits = buckets[0] + buckets[1] + buckets[2]
         return {'query': query, 'hits': hits, 'root': HISTORY_ROOT}
+
+    def history_export(self, fmt='txt', limit=400):
+        """The transcript as a COMPACT TEXT BODY, oldest-first (2026-11-09).
+
+        The owner asked for months-later recall and an export that carries the
+        same origin/viewing context the feed shows. One line per entry, the
+        context rendered after the sentence, no screenshots and no repeated
+        blobs: the on-disk token is one bounded annotation per line (not a
+        deduplicated shared blob), and the export is derived from it, never
+        stored a second time.
+
+        `fmt` is `'txt'` (default) or `'md'` (a bullet per line). `limit` is the
+        number of newest entries to include, capped at 5000 so a bad caller
+        cannot ask the shell to build the whole store in memory.
+        """
+        fmt = str(fmt or 'txt').strip().lower()
+        if fmt not in ('txt', 'md'):
+            fmt = 'txt'
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = 400
+        limit = min(max(1, limit), 5000)
+        # `_history_entries` is NEWEST first; the caller asked for the newest
+        # `limit`, so take the first `limit` and reverse them for the export.
+        # (`deque(maxlen=limit)` here kept the OLDEST limit and never reversed
+        # them -- the review's D1: `history_export('txt', 2)` returned the two
+        # oldest entries, newest-first, instead of the two newest, oldest-first.)
+        entries = []
+        for entry in self._history_entries():
+            entries.append(entry)
+            if len(entries) >= limit:
+                break
+        entries.reverse()
+        lines = []
+        for entry in entries:
+            ctx = entry.get('context') or {}
+            bits = []
+            viewing_app = str(ctx.get('viewingApp') or '').strip()
+            viewing_title = str(ctx.get('viewingTitle') or '').strip()
+            if viewing_app or viewing_title:
+                view = viewing_app
+                if viewing_title:
+                    view = (view + ' ' if view else '') + '"' + viewing_title + '"'
+                bits.append('view=' + view)
+            if ctx.get('audioSource'):
+                bits.append('audio=' + str(ctx['audioSource']))
+            if ctx.get('sourceApp'):
+                bits.append('source=' + str(ctx['sourceApp']))
+            if ctx.get('viewingUrl'):
+                bits.append('url=' + str(ctx['viewingUrl']))
+            label = ' · '.join(bits)
+            line = f'[{entry["date"]} {entry["time"]}] {entry["text"]}'
+            if label:
+                line += ' · ' + label
+            lines.append(('- ' if fmt == 'md' else '') + line)
+        return {'format': fmt, 'text': '\n'.join(lines),
+                'entries': len(lines), 'root': HISTORY_ROOT}
+
+    def history_export_file(self, fmt='txt', limit=400):
+        """Write the compact export under the history root; return its path.
+
+        A download dialog is a window on the owner's screen, so the SHELL writes
+        the file and the panel reveals it (`history.reveal`). The body is derived
+        from `history_export` -- never a second store.
+        """
+        body = self.history_export(fmt, limit)
+        if not body.get('entries'):
+            return {'path': '', 'entries': 0, 'format': body.get('format', 'txt'),
+                    'root': HISTORY_ROOT}
+        ext = 'md' if body.get('format') == 'md' else 'txt'
+        stamp = time.strftime('%Y%m%d-%H%M%S')
+        path = os.path.join(HISTORY_ROOT, 'sotto-transcript-%s.%s' % (stamp, ext))
+        try:
+            os.makedirs(HISTORY_ROOT, exist_ok=True)
+            with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+                fh.write(body['text'] + '\n')
+        except OSError as exc:  # noqa: BLE001 -- a refused write is a NAMED refusal
+            warn('HISTORY_EXPORT_FAILED path=%s err=%s' % (path, exc))
+            return {'path': '', 'entries': 0, 'format': body.get('format', 'txt'),
+                    'root': HISTORY_ROOT, 'error': str(exc)}
+        log('HISTORY_EXPORT path=%s entries=%d format=%s'
+            % (path, body['entries'], body.get('format')))
+        return {'path': path, 'entries': body['entries'],
+                'format': body.get('format', 'txt'), 'root': HISTORY_ROOT}
 
     def reply_history(self, history_id, payload):
         self.exec_js(f'window.__sotto_history({json.dumps(history_id)}, '
@@ -8525,8 +17579,13 @@ class SottoShell:
         shown = os.path.normpath(target)
         command = (f'explorer /select,"{shown}"' if is_file
                    else f'explorer "{shown}"')
+        from no_console import popen_kwargs
         try:
-            subprocess.Popen(command, creationflags=CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
+            # `explorer` e' um programa de JANELA, e e' o objectivo: o dono quer
+            # a pasta aberta. O `startupinfo` SW_HIDE so' evita a consola do
+            # processo intermedio (`CMD /c` implicito do `shell=False` nao
+            # existe), e mantem a regra do par no mesmo sítio que as outras.
+            subprocess.Popen(command, **popen_kwargs())
         except OSError as exc:  # noqa: BLE001 -- report, never crash the panel
             warn(f'REVEAL_FAILED path={json.dumps(shown)} error={exc!r}')
             return False
@@ -8565,10 +17624,11 @@ class SottoShell:
                 set_ex_style(self.hwnd, add=WS_EX_NOACTIVATE)
         except Exception as exc:  # noqa: BLE001 -- report, never kill the panel
             log(f'POINTER_INTERACTIVE_STYLE_FAILED error={exc!r}')
-        make_click_through(self.hwnd, click_through)
+        applied = apply_click_through(self.hwnd, click_through, log=log)
         self.pointer_interactive = bool(active)
         log(f'POINTER_INTERACTIVE active={str(bool(active)).lower()} '
             f'click_through={str(click_through).lower()} '
+            f'applied={str(bool(applied)).lower()} '
             f'noactivate={str(not active).lower()}')
         return True
 
@@ -8665,7 +17725,21 @@ class SottoShell:
         It starts ONLY for reason `default`: `--with-worker` already spawned
         at load, and a measurement flag must stay worker-free.
         """
-        if getattr(self, 'bridge', None) is not None:
+        bridge = getattr(self, 'bridge', None)
+        if bridge is not None:
+            if getattr(bridge, 'start_reason', '') == 'preload':
+                activated = bridge.request_capture()
+                if getattr(bridge, 'capture_requested', False):
+                    bridge.publish_preload_activation_status()
+                if activated:
+                    self._start_worker_sidecars('panel-open')
+                if getattr(bridge, 'capture_requested', False) \
+                        and getattr(self, '_caption_wanted', False):
+                    self._caption_status_start()
+                log('WORKER_PRELOAD_ACTIVATION source=%s sent=%s state=%s' %
+                    (source, str(bool(activated)).lower(),
+                     getattr(bridge, 'state', 'unknown')))
+                return bool(activated)
             return False
         # THE SHOW PATH MUST NOT DIE ON A MISSING FLAG. Alt+C is the owner's
         # ONLY control, and these three flags are read in the SAME `if` as the
@@ -8694,9 +17768,14 @@ class SottoShell:
             log(f'WORKER_PANEL_START_FAILED source={source} error={exc!r}')
             return False
 
-    def show_panel(self, reason, surface=None):
+    def show_panel(self, reason, surface=None, deadline=None):
         if self.hwnd is None:
             return False
+        if deadline is None:
+            deadline = time.monotonic() + SHOW_BUDGET_S
+        # O RELOGIO DO SHOW: `surf_ms` mede o que a superficie custa, e e' o unico
+        # segmento que o log antigo nao separava de "a pagina nao respondeu".
+        _t_surf0 = time.monotonic()
         # O ALT+C VOLTA A TENTAR -- ver `no_audio_restart_cap`. O shell para de reiniciar
         # um worker que morre por SILENCIO, porque recarregar 1 GB de modelo nao arranja
         # uma rotagem. Sem este reset o dono ficava sem caminho de volta; com ele, mostrar
@@ -8721,6 +17800,7 @@ class SottoShell:
         # page): the cycle reads this field on the next Alt+C whatever brought
         # the panel up.
         self.panel_mode = 'strip' if want == 'strip' else 'side'
+        _t_surf1 = time.monotonic()
         set_topmost(self.hwnd)
         # ── THE P0 ORDER: children FIRST, then the map ──────────────────────
         # The owner, verbatim: he pressed Alt+C, saw a solid-colour strip for
@@ -8750,6 +17830,14 @@ class SottoShell:
         # answer is actually possible -- bounded by `PAINT_ACK_TIMEOUT_MS`,
         # failing open, never holding the map.
         ack_seq = self.arm_paint_ack(reason)
+        # ── E A ORDEM: O CONTEUDO JA' APLICADO, DEPOIS O MAPA ────────────────
+        # `content_gate` e' a pergunta que `ShowWindow` nao faz (ver
+        # `CONTENT_GATE_JS`): superficie vestida, estilo recalculado, layout
+        # forçado. Fica ANTES do mapa e falha ABERTA em `CONTENT_GATE_TIMEOUT_MS`,
+        # para um show nunca deixar de acontecer por a pagina nao responder.
+        _t_gate0 = time.monotonic()
+        content = self.content_gate(reason, self.surface_applied, deadline=deadline)
+        _t_map0 = time.monotonic()
         # SW_SHOWNOACTIVATE, not Show(): the panel must never take focus away
         # from whatever the owner is typing into (main.js: `focusable=false`).
         show_without_activating(self.hwnd)
@@ -8758,8 +17846,31 @@ class SottoShell:
         # deliberately AFTER the map because it re-runs pywebview's own
         # navigation-time `form.Show()`.
         transparency_hack(self)
-        ack = self.wait_paint_ack(ack_seq, reason)
+        # O PAINEL ACIMA DA LEGENDA (dono, 2026-11-14) -- DEPOIS do mapa: uma
+        # afirmacao antes de a janela existir na tela nao ordena nada, e o
+        # `ensure` le' o Z real primeiro, logo o caso normal custa duas
+        # leituras locais e nenhuma chamada `SetWindowPos`.
+        self._raise_above_caption('show-panel')
+        _t_ack0 = time.monotonic()
+
+        ack = self.wait_paint_ack(ack_seq, reason, deadline=deadline)
         self.visible = window_visible(self.hwnd)
+        # ── O CUSTO DO SHOW, POR SEGMENTO (2026-11-10) ───────────────────────
+        # Card do dono: *"Alt+C tambem trava (lag no toggle dos paineis)"*. MEDIDO
+        # no log dele (31 pressoes): mostrar p50 **82 ms**, p90 **473 ms**, max
+        # **581 ms**; esconder p50 **3 ms**. Ou seja a cauda do SHOW e' o que ele
+        # sente, e o log nao dizia ONDE ela estava -- a linha `PANEL_SHOWN` carrega
+        # o que a PAGINA esperou, nunca o que o SHELL gastou a armar, a mandar e a
+        # mapear. Quatro numeros, um por segmento, e o total: a proxima pressao na
+        # maquina dele nomeia o culpado em vez de deixar uma teoria.
+        log('PANEL_SHOW_COST reason=%s surf_ms=%.1f arm_ms=%.1f gate_ms=%.1f '
+            'map_ms=%.1f ack_ms=%.1f total_ms=%.1f'
+            % (reason, (_t_surf1 - _t_surf0) * 1000.0,
+               (_t_gate0 - _t_surf1) * 1000.0,
+               (_t_map0 - _t_gate0) * 1000.0,
+               (_t_ack0 - _t_map0) * 1000.0,
+               (time.monotonic() - _t_ack0) * 1000.0,
+               (time.monotonic() - _t_surf0) * 1000.0))
         # THE DEFERRED DEFAULT WORKER STARTS HERE (2026-10-17). The launch is
         # light on purpose; the first time the panel is actually on screen is
         # the first moment a caption can be seen, so it is the honest moment to
@@ -8775,9 +17886,14 @@ class SottoShell:
         # this makes it explicit rather than incidental).
         if self.click_watcher is not None and self.visible:
             self.click_watcher.armed = True
+            self.click_watcher._armed_at = time.monotonic()
         log(f'PANEL_SHOWN reason={reason} hwnd={self.hwnd} '
             f'visible={str(self.visible).lower()} '
             f'show=SW_SHOWNOACTIVATE focus_stolen=false '
+            f'content_ack={str(content["ack"]).lower()} '
+            f'content_why={content["why"]} '
+            f'content_attempts={content["attempts"]} '
+            f'content_wait_ms={content["wait_ms"]} '
             f'paint_ack={str(ack["ack"]).lower()} wait_ms={ack["wait_ms"]}')
         # The worker goes back to STREAMING on this line — see the stack law at
         # `PANEL_VISIBILITY_PATH`. `self.visible` is the MEASURED value above,
@@ -8809,7 +17925,25 @@ class SottoShell:
         # painel, que e' exactamente o que ele proibiu. O que se tira sao os PIXELS
         # (`_blank_caption_window`, que nao escreve `data-caption-window`), e a legenda
         # volta a aparecer na proxima linha sem ninguem tocar em nada.
-        self._blank_caption_window('panel-hidden')
+        # ESCONDER O PAINEL NAO TOCA NA LEGENDA AO VIVO (2026-11-05). MEDIDO na
+        # sessao do dono (pid 57600, 06:04:58 / 06:05:03 / 06:05:19): tres
+        # `CAPTION_WINDOW_BLANKED reason=panel-hidden epoch=3/4/5 wanted=true`
+        # em vinte e um segundos, um por Alt+C. O comentario abaixo prometia que
+        # "a legenda volta a aparecer na proxima linha" -- mas o blank tambem
+        # zera `_caption_window_shown`, faz `ov.show(False)` e INCREMENTA o
+        # epoch, logo apaga os PIXELS e a memoria da fonte de cada vez que ele
+        # cicla os paineis. O que o dono ve e' a legenda a desaparecer sozinha
+        # ("do nada para de dar display"), e o que ele pediu, verbatim, e' que o
+        # interruptor da legenda e o painel sejam coisas separadas:
+        # *"sem estar conectada a qualquer painel. ela e' livre na minha tela"*.
+        # Com a legenda QUERIDA (`_caption_wanted`), o painel nao tem nada a
+        # apagar: os pixels nao sao do painel.
+        if getattr(self, '_caption_wanted', False):
+            log('CAPTION_WINDOW_KEPT reason=panel-hidden wanted=true '
+                'epoch=%d -- esconder o painel nao apaga a legenda ao vivo'
+                % int(getattr(self, '_source_epoch', 0)))
+        else:
+            self._blank_caption_window('panel-hidden')
         return True
 
     def toggle_panel(self, reason):
@@ -8881,8 +18015,22 @@ class SottoShell:
         return self._hotkey_dispatch('live')
 
     def _hotkey_dispatch(self, kind):
-        """Manda o passo ao worker AGORA (nunca corre na thread do hotkey)."""
+        """Manda o passo ao worker AGORA (nunca corre na thread do hotkey).
+
+        Alt+C NAO ENTRA NA FILA COMO TRABALHO (2026-11-08). O dono spammou a
+        tecla -- 17 presses com gap < 300 ms no log dele, minimo 0 ms -- e cada
+        item da fila era uma transicao inteira (`HOTKEY_TOGGLE` a `HOTKEY_TOGGLE`
+        medido em 416-700 ms): cinco presses davam ~3 s de resize de janela e
+        troca de documento WebView2, e o UI thread ficava sem vez. A pressao
+        agora so' SOMA; o worker drena o contador inteiro no primeiro token e
+        faz uma transicao. O token continua a entrar na fila por pressao, na
+        ordem de chegada, para um `live` entre dois Alt+C nao perder o lugar.
+        """
         try:
+            kind = str(kind)
+            if kind == 'panels':
+                with self._panel_press_lock:
+                    self._panel_presses = int(self._panel_presses) + 1
             q = getattr(self, '_hotkey_queue', None)
             if q is None:
                 import queue as _queue
@@ -8915,17 +18063,52 @@ class SottoShell:
         A decisao le' o que a JANELA mede (`window_visible`) e o que ela VESTE
         (`surface_applied`), nunca uma intencao: um `show` que falhou deixou o
         painel escondido, e o ciclo tem de continuar de onde o dono esta' a ver.
-        A regra inteira esta' em `hotkey_gesture.next_surface`, e o oraculo
-        executa este corpo a partir do ficheiro que corre.
+        A regra inteira esta' em `hotkey_gesture.advance`/`next_action`, e o
+        oraculo executa este corpo a partir do ficheiro que corre.
+
+        UM TOKEN NAO E' UMA TRANSICAO. O TOKEN `panels` carrega a rajada que o
+        dono escreveu: o contador e' drenado aqui e o ciclo caminha N passos de
+        uma vez (`advance`). Um token que encontra o contador a zero e' da mesma
+        rajada e nao custa nada.
         """
         if str(kind) == 'live':
-            on = not bool(getattr(self, '_caption_wanted', False))
-            log(f'HOTKEY_LIVE_STEP caption_on={str(on).lower()}')
+            # A TECLA COMUTA O INTERRUPTOR DO DONO, NAO OS PIXELS (2026-11-04).
+            # Ler `_caption_wanted` gastava a 1a pressao de um arranque
+            # restaurado; ler `_caption_window_shown` IMPEDIA o DESLIGAR depois
+            # do blank de silencio -- medido no log dele (presses 292/293). O
+            # blank apaga PIXELS e mantem o interruptor: a proxima legenda
+            # volta sozinha. `shown` fica na linha como diagnostico; a regra
+            # completa e as 32 arms estao em `_main/hotkey-live-toggle-oracle.py`.
+            shown = bool(getattr(self, '_caption_window_shown', False))
+            _ov = getattr(self, 'caption_overlay', None)
+            if _ov is not None and getattr(_ov, 'hwnd', None):
+                try:
+                    shown = bool(window_visible(_ov.hwnd))
+                except Exception as exc:  # noqa: BLE001 -- sem leitura, cache
+                    log(f'CAPTION_VISIBLE_READ_FAILED error={exc!r}')
+            wanted = bool(getattr(self, '_caption_wanted', False))
+            on = not wanted
+            log(f'HOTKEY_LIVE_STEP caption_on={str(on).lower()} '
+                f'shown={str(shown).lower()} '
+                f'wanted={str(wanted).lower()}')
             return self._set_live_enabled({'on': on})
         # A MEDICAO AO VIVO, e nao a cache: duas outras vias mapeiam e desmapeiam
         # a janela sem passar por aqui (a `form.Show()` da navegacao, gateada, e
         # o `_reassert_hidden`), e uma cache com `True` fazia o primeiro Alt+C
         # ser um HIDE de um painel que ele nao ve. Ver `toggle_panel`.
+        #
+        # A RAJADA E' DRENADA AQUI (2026-11-08). Cada token `panels` representa
+        # UMA pressao que ja' somou no contador, mas so' o primeiro a encontrar
+        # o contador cheio o esvazia: ele leva TODAS as presses que chegaram
+        # enquanto o worker nao tinha vez e aplica o estado final de uma vez.
+        # Os tokens seguintes da mesma rajada encontram 0 e NAO fazem trabalho
+        # -- existem para guardar a ordem em relacao a um `live`.
+        with self._panel_press_lock:
+            presses = int(self._panel_presses)
+            self._panel_presses = 0
+        if presses <= 0:
+            log('HOTKEY_COALESCED skipped=1 presses=0 reason=already-drained')
+            return False
         try:
             alive = window_visible(self.hwnd) if self.hwnd else False
         except Exception as exc:  # noqa: BLE001 -- sem leitura, fica o que se sabe
@@ -8936,18 +18119,56 @@ class SottoShell:
                 f'live={str(alive).lower()} decided_by=window')
         self.visible = alive
         shown = str(getattr(self, 'surface_applied', '') or '')
+        # A IDADE DO SHOW DA FAIXA e' a metade do DOUBLE que o gesto precisa
+        # (2026-11-24): a janela so' conta a partir do show que o Alt+C deu, e um
+        # `None` (faixa mostrada por outra via, ou ja' escondida) nunca promove.
+        _strip_shown_mono = getattr(self, '_panel_hotkey_strip_mono', None)
+        since_show_s = None
+        if _strip_shown_mono is not None and shown == 'strip':
+            try:
+                since_show_s = max(0.0, time.monotonic() - float(_strip_shown_mono))
+            except (TypeError, ValueError):
+                since_show_s = None
         try:
-            nxt = hotkey_numbers().next_surface(alive, shown)
+            target_visible, target_surface = hotkey_numbers().advance(
+                alive, shown, presses, since_show_s=since_show_s)
         except Exception as exc:  # noqa: BLE001 -- sem a regra, a faixa
             log(f'HOTKEY_GESTURE_FAILED error={exc!r}')
-            nxt = 'strip'
-        if nxt is None:
+            target_visible, target_surface = True, 'strip'
+        from_state = (('visible' if alive else 'hidden')
+                      + '/' + ((shown or '-') if alive else '-'))
+        to_state = (('visible' if target_visible else 'hidden')
+                    + '/' + ((target_surface or '-') if target_visible else '-'))
+        # Uma rodada de N cujo fim e' o estado em que a janela ja' esta' nao
+        # toca no ecra: 3 presses com o painel escondido voltam ao escondido.
+        transitions = 0 if (target_visible == alive
+                            and (not target_visible
+                                 or target_surface == shown)) else 1
+        log(f'HOTKEY_COALESCED presses={presses} from={from_state} '
+            f'to={to_state} steps={presses} transitions={transitions} '
+            f'double_since_ms={-1 if since_show_s is None else round(since_show_s * 1000.0)}')
+        # A JANELA DO DOUBLE VIVE AQUI, e so' num show da FAIXA que esta' a
+        # acontecer: um hide, ou um painel da direita, ZERA o carimbo -- a faixa
+        # que voltar a aparecer por outra via (`show_strip` do menu, arranque)
+        # nao pode ser promovida por um toque que o dono deu noutro contexto.
+        if transitions and target_visible and target_surface == 'strip':
+            self._panel_hotkey_strip_mono = time.monotonic()
+        else:
+            self._panel_hotkey_strip_mono = None
+        # O RELOGIO DO SHOW COMECA AQUI, na linha que o oraculo usa como origem
+        # (`HOTKEY_COALESCED`), e nao dentro de `show_strip`: o orcamento e' o do
+        # que o dono sente desde a tecla, e um relogio que comecasse mais tarde
+        # deixaria o proprio despacho de fora da conta.
+        deadline = time.monotonic() + SHOW_BUDGET_S
+        if not transitions:
+            return False
+        if not target_visible:
             log(f'HOTKEY_TOGGLE step=hide surface={shown or "-"}')
             return self.hide_panel('hotkey-toggle')
-        log(f'HOTKEY_TOGGLE step=show surface={nxt}')
-        if nxt == 'panel':
-            return self.show_side('hotkey-cycle-side')
-        return self.show_strip('hotkey-cycle-strip')
+        log(f'HOTKEY_TOGGLE step=show surface={target_surface}')
+        if target_surface == 'panel':
+            return self.show_side('hotkey-cycle-side', deadline=deadline)
+        return self.show_strip('hotkey-cycle-strip', deadline=deadline)
 
     def _warm_paint(self, reason='startup'):
         """Pay the page's FIRST presented frame OFF the owner's screen.
@@ -9003,9 +18224,39 @@ class SottoShell:
             f'ack={str(ack["ack"]).lower()} ack_wait_ms={ack["wait_ms"]} '
             f'settle_s={PAINT_WARM_SETTLE_S} '
             f'visible={str(window_visible(hwnd)).lower()}')
+        # ── E O QUE O PRIMEIRO Alt+C IA BUSCAR A PAGINA (2026-11-10) ───────────
+        # MEDIDO no log do dono: o primeiro Alt+C de um processo pagava TRES idas
+        # ao UI thread que so' existiam porque ninguem as tinha feito antes --
+        # `STRIP_HEIGHT from=148 to=40 css_value=40` (13.275), `STRIP_WIDTH
+        # from=None to=380` (13.846) e `STRIP_OFFSET_CACHE_FAILED`/a leitura do
+        # offset do drag. A pagina ja' esta' pintada AQUI (o ack acima e' a
+        # prova), portanto estas leituras custam o mesmo no arranque e deixam o
+        # `_post_metrics_refresh` e o `_strip_offset` do show servidos pela
+        # cache. Continua fora do ecra, com a janela escondida depois.
+        primed = {'height': False, 'width': False, 'offset': None}
+        try:
+            primed['height'] = bool(self.refresh_strip_height(f'warm-{reason}'))
+        except Exception as exc:  # noqa: BLE001
+            warn(f'PAINT_WARM_METRICS_FAILED what=height error={exc!r}')
+        try:
+            primed['width'] = bool(self.refresh_strip_width(f'warm-{reason}'))
+        except Exception as exc:  # noqa: BLE001
+            warn(f'PAINT_WARM_METRICS_FAILED what=width error={exc!r}')
+        try:
+            # Le' a pagina UMA vez e escreve `_strip_offset_cache`; um
+            # `NoAnswer` deixa a cache vazia e o show volta a perguntar (o
+            # mesmo contrato de `_strip_offset`).
+            primed['offset'] = self._strip_offset()
+        except Exception as exc:  # noqa: BLE001
+            warn(f'PAINT_WARM_METRICS_FAILED what=offset error={exc!r}')
+        log(f'PAINT_WARM_METRICS reason={reason} '
+            f'height_cached={str(getattr(self, "strip_height_css", None) is not None).lower()} '
+            f'width_cached={str(getattr(self, "strip_width_dom", None) is not None).lower()} '
+            f'offset={primed["offset"]} '
+            f'offset_cached={str(getattr(self, "_strip_offset_cache", None) is not None).lower()}')
         return bool(ack['ack'])
 
-    def show_strip(self, reason):
+    def show_strip(self, reason, deadline=None):
         """Show the bottom strip, and take the foreground ONLY to free a lock.
 
         The activation contract this used to promise ("Alt+C always activates
@@ -9017,11 +18268,20 @@ class SottoShell:
         """
         if self.hwnd is None:
             return False
+        if deadline is None:
+            deadline = time.monotonic() + SHOW_BUDGET_S
+        # O RELOGIO DO SHOW, e o MESMO instrumento que `show_panel` ja' carrega
+        # (`PANEL_SHOW_COST`): quatro pedacos + o total, para a proxima pressao
+        # NOMEAR o culpado em vez de deixar uma teoria. Ate' 2026-11-10 esta
+        # linha so' existia no `show_panel`, que a tecla NAO usa -- por isso o
+        # log do dono tinha 3 142 ms de Alt+C e nenhum numero por pedaco.
+        _t_surf0 = time.monotonic()
         # Geometry only — nothing here maps the window; the map is below, off
         # the screen. And `present=True`, because everything below is on the
         # path to a MAP: the page is not read and is not waited for (see
         # `exec_js_post`).
         self.set_panel_surface('strip', reason, present=True)
+        _t_surf1 = time.monotonic()
         # AND SAY WHICH PANEL IS UP: `hotkey_pressed` is a three-state cycle
         # (HIDDEN -> STRIP -> SIDE -> HIDDEN) decided on `self.panel_mode`, whose
         # OTHER writer was the dead `place_panel`. Without this line the SECOND
@@ -9041,6 +18301,14 @@ class SottoShell:
         # for the measured reason (a hidden WebView2 on this box does not answer
         # a script for 10,0 s, so a pre-map wait is a pre-map stall).
         ack_seq = self.arm_paint_ack(reason)
+        # A ORDEM (2026-11-04): o conteudo ja' aplicado, DEPOIS o mapa — ver
+        # `content_gate` e `CONTENT_GATE_JS`. A superficie e' POSTADA por
+        # `set_panel_surface(present=True)`; sem esta pergunta o primeiro frame
+        # pode sair com o `body[data-surface]` anterior, que para o dono e' a UI
+        # a "carregar depois" da faixa.
+        _t_gate0 = time.monotonic()
+        content = self.content_gate(reason, self.surface_applied, deadline=deadline)
+        _t_map0 = time.monotonic()
         # THEN the map: `SW_SHOWNOACTIVATE`, and `SW_SHOW+SetForegroundWindow`
         # only when the foreground app holds a POINTER LOCK. See
         # `foreground_unlock`; the old unconditional activation is the defect
@@ -9048,20 +18316,44 @@ class SottoShell:
         fg = foreground_unlock(self.hwnd)
         # And the compositing hack AFTER the map — see `transparency_hack`.
         transparency_hack(self)
-        ack = self.wait_paint_ack(ack_seq, reason)
+        # O PAINEL ACIMA DA LEGENDA (dono, 2026-11-14) -- DEPOIS do mapa: uma
+        # afirmacao antes de a janela existir na tela nao ordena nada, e o
+        # `ensure` le' o Z real primeiro, logo o caso normal custa duas
+        # leituras locais e nenhuma chamada `SetWindowPos`.
+        self._raise_above_caption('show-strip')
+        _t_ack0 = time.monotonic()
+
+        ack = self.wait_paint_ack(ack_seq, reason, deadline=deadline)
         self.visible = window_visible(self.hwnd)
         self._start_deferred_worker('show-strip')
         if (getattr(self, 'external_captions_available', False)
                 and self.external_caption_watcher is not None):
             self.external_caption_watcher.replay()
+        # MEDIDO NA LINHA ANTERIOR AO `PANEL_SHOWN`, e nao varios passos antes:
+        # `total_ms` tem de cobrir o MESMO intervalo que o oraculo mede
+        # (`HOTKEY_COALESCED` -> `PANEL_SHOWN`), senao um pedaco do show fica de
+        # fora da conta e o instrumento passa a mentir por omissao.
+        _t_done = time.monotonic()
+        log('PANEL_SHOW_COST reason=%s mode=strip surf_ms=%.1f arm_ms=%.1f '
+            'gate_ms=%.1f map_ms=%.1f ack_ms=%.1f total_ms=%.1f budget_ms=%.0f'
+            % (reason, (_t_surf1 - _t_surf0) * 1000.0,
+               (_t_gate0 - _t_surf1) * 1000.0,
+               (_t_map0 - _t_gate0) * 1000.0,
+               (_t_ack0 - _t_map0) * 1000.0,
+               (_t_done - _t_ack0) * 1000.0,
+               (_t_done - _t_surf0) * 1000.0, SHOW_BUDGET_MS))
         log(f'PANEL_SHOWN reason={reason} mode=strip hwnd={self.hwnd} '
             f'visible={str(self.visible).lower()} '
             f'show={fg.get("show")} focus={fg.get("reason")} '
+            f'content_ack={str(content["ack"]).lower()} '
+            f'content_why={content["why"]} '
+            f'content_attempts={content["attempts"]} '
+            f'content_wait_ms={content["wait_ms"]} '
             f'paint_ack={str(ack["ack"]).lower()} wait_ms={ack["wait_ms"]}')
         self.publish_panel_visibility(reason)
         return True
 
-    def show_side(self, reason):
+    def show_side(self, reason, deadline=None):
         """Show the RIGHT side panel — the cycle's second step.
 
         Same map contract as `show_strip`, including the focus gate: the
@@ -9077,6 +18369,10 @@ class SottoShell:
         """
         if self.hwnd is None:
             return False
+        if deadline is None:
+            deadline = time.monotonic() + SHOW_BUDGET_S
+        # O RELOGIO DO SHOW — igual ao `show_strip` (ver `PANEL_SHOW_COST`).
+        _t_surf0 = time.monotonic()
         # Geometry only — the map is below, off the screen.
         #
         # CORRECTED 2026-10-12, AND THIS IS THE OWNER'S Alt+C BUG. This line
@@ -9090,6 +18386,7 @@ class SottoShell:
         # panel -- and the `if not live` guard fixed earlier was necessary but not
         # sufficient. The surface the right panel wears is `'panel'`.
         self.set_panel_surface('panel', reason, present=True)
+        _t_surf1 = time.monotonic()
         # WHICH PANEL IS UP — see `show_strip` for the measured defect. The
         # cycle's third arm is `panel_mode == 'side'`, and that word is what
         # makes the next Alt+C HIDE. Without it the side panel is where the
@@ -9103,18 +18400,45 @@ class SottoShell:
             f'already={len(wv["already"])} failed={len(wv["failed"])}')
         # THE ACK, ARMED BEFORE THE MAP AND AWAITED AFTER IT — `show_panel`.
         ack_seq = self.arm_paint_ack(reason)
+        # A ORDEM (2026-11-04): conteudo ja' aplicado, DEPOIS o mapa — o par
+        # `show_strip`/`show_side` tem de gastar a MESMA ordem, senao a cura
+        # depende de qual superficie o ciclo sorteou.
+        _t_gate0 = time.monotonic()
+        content = self.content_gate(reason, self.surface_applied, deadline=deadline)
+        _t_map0 = time.monotonic()
         # THEN the map: no activation unless a POINTER LOCK needs freeing.
         fg = foreground_unlock(self.hwnd)
         transparency_hack(self)
-        ack = self.wait_paint_ack(ack_seq, reason)
+        # O PAINEL ACIMA DA LEGENDA (dono, 2026-11-14) -- DEPOIS do mapa: uma
+        # afirmacao antes de a janela existir na tela nao ordena nada, e o
+        # `ensure` le' o Z real primeiro, logo o caso normal custa duas
+        # leituras locais e nenhuma chamada `SetWindowPos`.
+        self._raise_above_caption('show-side')
+        _t_ack0 = time.monotonic()
+
+        ack = self.wait_paint_ack(ack_seq, reason, deadline=deadline)
         self.visible = window_visible(self.hwnd)
         self._start_deferred_worker('show-side')
         if (getattr(self, 'external_captions_available', False)
                 and self.external_caption_watcher is not None):
             self.external_caption_watcher.replay()
+        # Ver `show_strip`: medido na linha ANTERIOR ao `PANEL_SHOWN`.
+        _t_done = time.monotonic()
+        log('PANEL_SHOW_COST reason=%s mode=side surf_ms=%.1f arm_ms=%.1f '
+            'gate_ms=%.1f map_ms=%.1f ack_ms=%.1f total_ms=%.1f budget_ms=%.0f'
+            % (reason, (_t_surf1 - _t_surf0) * 1000.0,
+               (_t_gate0 - _t_surf1) * 1000.0,
+               (_t_map0 - _t_gate0) * 1000.0,
+               (_t_ack0 - _t_map0) * 1000.0,
+               (_t_done - _t_ack0) * 1000.0,
+               (_t_done - _t_surf0) * 1000.0, SHOW_BUDGET_MS))
         log(f'PANEL_SHOWN reason={reason} mode=side hwnd={self.hwnd} '
             f'visible={str(self.visible).lower()} '
             f'show={fg.get("show")} focus={fg.get("reason")} '
+            f'content_ack={str(content["ack"]).lower()} '
+            f'content_why={content["why"]} '
+            f'content_attempts={content["attempts"]} '
+            f'content_wait_ms={content["wait_ms"]} '
             f'paint_ack={str(ack["ack"]).lower()} wait_ms={ack["wait_ms"]}')
         self.publish_panel_visibility(reason)
         return True
@@ -9141,20 +18465,21 @@ class SottoShell:
             log(f'TRANSPARENCY_{state} pending=no-hwnd')
             return False
         want = bool(on)
-        live = bool(user32.GetWindowLongW(self.hwnd, GWL_EXSTYLE)
-                    & WS_EX_TRANSPARENT)
+        live = click_through_is_live(self.hwnd)
         if live == want:
             self.transparent = want
             return True
         try:
-            make_click_through(self.hwnd, want)
+            applied = apply_click_through(self.hwnd, want, log=log)
         except Exception as exc:  # noqa: BLE001 -- report, never kill the page
             log(f'TRANSPARENCY_{state}_FAILED error={exc!r}')
             return False
         self.transparent = want
         log(f'TRANSPARENCY_{state} '
-            f'click_through={str(want).lower()} captions=kept')
-        return True
+            f'click_through={str(bool(applied)).lower()} '
+            f'live={str(click_through_is_live(self.hwnd)).lower()} '
+            f'captions=kept')
+        return bool(applied)
 
     # -- page -> host handlers --------------------------------------------
     def info(self):
@@ -9184,14 +18509,112 @@ class SottoShell:
         and a tray that fails to appear would leave him with the task manager.
         It therefore says so LOUDLY (`TRAY_FAILED`) instead of being a silent
         missing feature.
+
+        O item do Alt+C le' o estado VIVO por `panels_hotkey_state`: o menu e' a
+        unica superficie onde o dono ve' se a tecla esta' armada, e um menu que
+        respondesse de memoria mentiria a partir do segundo clique.
         """
-        self.tray = TrayIcon(SOTTO_ICON, self.tray_command, log, warn)
+        self.tray = TrayIcon(SOTTO_ICON, self.tray_command, log, warn,
+                             panels_state_fn=self.panels_hotkey_state,
+                             live_state_fn=self.live_caption_state)
         ok = self.tray.start()
         if not ok:
             warn('TRAY_UNAVAILABLE the notification-area icon did not come up; '
                  'the app keeps running and Alt+C still works, but the Quit '
                  f'has no home (error={self.tray._failed})')
         return ok
+
+    def panels_hotkey_state(self):
+        """`{'enabled': bool, 'accel': str}` para o item do menu.
+
+        `enabled` e' o que a TECLA FAZ, e nao o que o ficheiro diz: um Alt+C
+        tomado por outro programa (`winerror=1409`) tem o fio vivo e nao entrega
+        tecla nenhuma, e um menu que dissesse "Desativar" nesse estado prometia
+        uma coisa que ja' nao existe. O fio diz a verdade; o ficheiro diz a
+        INTENCAO, e a intencao entra no arranque.
+        """
+        thread = getattr(self, 'hotkey', None)
+        accel = (getattr(thread, 'accelerator', None)
+                 or getattr(self, '_hotkey_requested', None)
+                 or hotkey_numbers().PANELS_ACCELERATOR)
+        armed = bool(thread is not None
+                     and getattr(thread, 'registered', False)
+                     and thread.is_alive())
+        return {'enabled': armed, 'accel': str(accel)}
+
+    def live_caption_state(self):
+        """`{'on': bool, 'accel': str}` para o item da legenda ao vivo no menu.
+
+        `on` e' o INTERRUPTOR do dono (`_caption_wanted`), e nao "ha' pixels neste
+        instante": o blank de silencio apaga o ecra e MANTEM a escolha, e um menu
+        que dissesse "Ligar" depois de um silencio seria um botao que mente sobre
+        o que o Ctrl+Space faz a seguir. A mesma distincao que o
+        `_hotkey_resolve` faz (arm 32 de `_main/hotkey-live-toggle-oracle.py`).
+        """
+        thread = getattr(self, 'live_hotkey', None)
+        accel = (getattr(thread, 'accelerator', None)
+                 or hotkey_numbers().LIVE_ACCELERATOR)
+        return {'on': bool(getattr(self, '_caption_wanted', False)),
+                'accel': str(accel)}
+
+    def toggle_panels_hotkey(self):
+        """Desliga/arma o Alt+C, e GRAVA a escolha para sobreviver ao reinicio.
+
+        Dono, 2026-11-07, verbatim: *"faz um botao 'desativar atalho alt c' no
+        click direito do icon do sotto"* e *"e claro, é ativar e desativar"*.
+
+        Corre na thread do icone (o comando chega por `WM_COMMAND`), que e' onde
+        `arm_hotkey_role` tambem corre no arranque -- a tecla e' registada e
+        desregistada sempre pelo mesmo caminho, e por isso nao ha duas verdades
+        sobre quem e' dono da combinacao.
+        """
+        state = self.panels_hotkey_state()
+        if state['enabled']:
+            self.stop_panels_hotkey()
+            saved = hotkey_config().set_panels_enabled(False)
+            log(f'HOTKEY_PANELS toggled=false action=disarm '
+                f'persisted={int(bool(saved.get("ok")))} '
+                f'error={saved.get("error")!r}')
+        else:
+            requested = (getattr(self, '_hotkey_requested', None)
+                         or state.get('accel')
+                         or hotkey_numbers().PANELS_ACCELERATOR)
+            # SO' A TECLA DOS PAINEIS. `arm_hotkey` arma AS DUAS (e' o que o
+            # arranque precisa), e chama-lo daqui substituia `self.live_hotkey`
+            # SEM parar o fio anterior: a tecla do dono ficava presa no hook
+            # velho e o novo `RegisterHotKey` respondia 1409
+            # (`HOTKEY_LIVE_REGISTER_FAILED role=live`), logo o fallback
+            # observador abria o gate (`registered=False`) e um Ctrl+Space
+            # fisico alternava DUAS vezes -- ligar e desligar no mesmo toque.
+            # MEDIDO 2026-11-12 na leitura do caminho: o menu do icone e' o
+            # unico sitio que re-armava depois do arranque. O
+            # `stop_panels_hotkey` sempre soube que a legenda nao e' dele; agora
+            # o ARM tambem.
+            self.hotkey = arm_hotkey_role(self, 'panels', requested,
+                                          HOTKEY_FALLBACKS)
+            saved = hotkey_config().set_panels_enabled(True)
+            now = self.panels_hotkey_state()
+            log(f'HOTKEY_PANELS toggled=true action=arm '
+                f'requested={requested} armed={int(now["enabled"])} '
+                f'persisted={int(bool(saved.get("ok")))} '
+                f'error={saved.get("error")!r}')
+        if self.tray is not None:
+            self.tray.refresh_menu('hotkey-toggle')
+        return self.panels_hotkey_state()
+
+    def stop_panels_hotkey(self):
+        """Solta a tecla dos paineis; a da legenda NAO e' tocada."""
+        thread = getattr(self, 'hotkey', None)
+        self.hotkey = None
+        if thread is None:
+            return True
+        try:
+            thread.stop()
+        except Exception as exc:          # noqa: BLE001 -- desligar nao pode falhar
+            log(f'HOTKEY_PANELS_STOP_FAILED error={exc!r}')
+            return False
+        log('HOTKEY_PANELS_STOPPED why=toggle')
+        return True
 
     def tray_command(self, command):
         if command == ID_TRAY_QUIT:
@@ -9212,12 +18635,31 @@ class SottoShell:
         elif command == ID_TRAY_EDIT:
             log('TRAY_EDIT requested=true')
             self.set_edit_mode(not self.edit_mode, 'tray')
+        elif command == ID_TRAY_HOTKEY:
+            # *"desativar atalho alt c"* / *"ativar"* -- o item diz a accao que
+            # faz, e o menu seguinte passa a dizer a contraria (`refresh_menu`).
+            log('TRAY_HOTKEY requested=true')
+            self.toggle_panels_hotkey()
+        elif command == ID_TRAY_LIVE:
+            # A MESMA PORTA QUE A TECLA (2026-11-09). `hotkey_live()` e' o que o
+            # `Ctrl+Space` chama, e e' ele que entra na fila do `_hotkey_dispatch`
+            # -- logo o menu, a tecla e o botao do painel sao UMA accao, com a
+            # mesma linha de log (`HOTKEY_LIVE_STEP`) e a mesma ordenacao.
+            log('TRAY_LIVE requested=true')
+            self.hotkey_live()
 
     def request_exit(self, code=0, reason='requested'):
         if self.exiting.is_set():
             return
         self.exiting.set()
         self._exit_code = code
+        # OS FILHOS SAO LIDOS ANTES DOS `stop()`: `WorkerBridge.stop` poe
+        # `self.child = None` logo depois de matar, e a partir daqui o pid que
+        # ficou de fora do kill nao teria nome nem dono. `_hard_exit` precisa
+        # dele para o reap com prazo e para o matador externo.
+        _kids = self._exit_children()
+        # O MOTOR WARM VIAJA NA OUTRA LISTA (D-14): a shell nao o possui.
+        _backstop = self._exit_backstop_pids()
         # The tray goes FIRST: `os._exit` at the end of this method would leave
         # the icon in the notification area as a ghost the owner cannot dismiss
         # (it would still be there, pointing at a dead window).
@@ -9232,6 +18674,7 @@ class SottoShell:
         if _watch_exit is not None:
             _watch_exit.stop('shell-exit')
         self.stop_hotkeys()
+        stop_gaming_watcher(self, 'exit')
         if self.panel_state is not None:
             self.panel_state.stop('exit')
         if self.panel_visibility is not None:
@@ -9274,8 +18717,58 @@ class SottoShell:
             f'statsPushes={self.stats_pushes} statsReplies={self.stats_replies} '
             f'meterPushes={self.meter_pushes}')
         sys.stdout.flush()
-        _log_drain()          # the queued mirror lines land before we go
-        os._exit(code)
+        # A SAIDA COM PRAZO (2026-11-04). Antes eram `sys.stdout.flush()` +
+        # `_log_drain()` + `os._exit(code)`: tres esperas sem prazo efectivo (o
+        # `flush` de um pipe pode bloquear, o `drain` junta-se com 2 s e o
+        # `os._exit` NAO TEM PRAZO NENHUM). `_hard_exit` da' prazo a todas, arma
+        # os dois donos externos e escreve `EXIT_TERMINATE` -- a linha que prova
+        # que a saida chegou ao fim.
+        _hard_exit(code, reason, children=_kids, backstop_pids=_backstop)
+
+    def _exit_children(self):
+        """Os filhos que TEM de morrer com este processo: (worker, sidecar).
+
+        O MOTOR WARM FICA DE FORA, SEMPRE -- e nao por causa do `keep_warm`: ele
+        nao e' um processo desta shell (`_WarmChild` existe para dar `pid`/`poll`
+        e o `.kill()` dele LEVANTA de proposito). Ate' 2026-11-12 ele entrava
+        aqui quando `keep_warm` era falso e a saida pagava duas linhas a mentir:
+        `EXIT_CHILD_KILL_FAILED` do `RuntimeError` do shim e `EXIT_CHILD_STUCK`
+        do `AttributeError` do `wait` (D-14). Quem entrega a promessa de parar
+        de pagar 1,9 GB e' o MATADOR EXTERNO, e o pid dele viaja em
+        `_exit_backstop_pids`.
+        """
+        kids = []
+        bridge = getattr(self, 'bridge', None)
+        child = getattr(bridge, 'child', None)
+        if (child is not None and getattr(child, 'pid', None)
+                and not getattr(bridge, 'keep_warm', False)
+                and not isinstance(child, _WarmChild)):
+            kids.append(child)
+        for attr in ('_speaker_sidecar', '_multivoice_watch'):
+            obj = getattr(self, attr, None)
+            child = getattr(obj, 'child', None)
+            if child is not None and getattr(child, 'pid', None):
+                kids.append(child)
+        return kids
+
+    def _exit_backstop_pids(self):
+        """Os pids que so' o MATADOR EXTERNO toca -- hoje, o motor warm.
+
+        A separacao e' o D-14. Um pid aqui NAO e' morto nem recolhido por esta
+        shell: ele atravessa um processo que ela nao criou (`R1`), e quem o mata
+        e' o `exit_killer.py` depois da graca. Com `--warm-engine-keep` a lista
+        e' VAZIA, porque manter o motor vivo e' exactamente o que a flag pede.
+        """
+        out = []
+        bridge = getattr(self, 'bridge', None)
+        child = getattr(bridge, 'child', None)
+        if (isinstance(child, _WarmChild) and getattr(child, 'pid', None)
+                and not getattr(bridge, 'keep_warm', False)):
+            try:
+                out.append(int(child.pid))
+            except (TypeError, ValueError):
+                pass
+        return out
 
     # -- worker ------------------------------------------------------------
     @staticmethod
@@ -9357,22 +18850,12 @@ class SottoShell:
         env = os.environ if env is None else env
         if str(env.get('SOTTO_NO_WORKER') or '').strip() == '1':
             return 'env'
-        # `--exit-after` is a FLOAT (0.0 = off) and the rest are `store_true`;
-        # truthiness is correct for both and keeps this one readable table.
-        for flag, name in (('dump_dom', '--dump-dom'),
-                           ('selftest', '--selftest'),
-                           ('memory', '--memory'),
-                           ('no_hotkey', '--no-hotkey'),
-                           ('exit_after', '--exit-after'),
-                           # A stats probe must not pay a ~2 GB model load:
-                           # without this entry a bare --probe-stats run falls
-                           # through to reason=default and STARTS the worker.
-                           ('probe_stats', '--probe-stats'),
-                           ('probe_outside_click',
-                            '--probe-outside-click'),
-                           ('probe_edit_mode', '--probe-edit-mode')):
-            if getattr(args, flag, False):
-                return f'measurement-flag({name})'
+        # A TABELA VIVE NUM SO' SITIO (`MEASUREMENT_FLAGS`, ao lado de
+        # `_measurement_flag`): o arranque da legenda le a MESMA lista para nao
+        # pintar num ecra que so' esta' a medir.
+        flag = _measurement_flag(args)
+        if flag:
+            return f'measurement-flag({flag})'
         return 'default'
 
     #: The reasons that may SPAWN a worker. Everything else is the decline half of
@@ -9482,8 +18965,16 @@ class SottoShell:
                 return False
             waited = time.time() - t0
             idle = self._owner_idle_s()
-            if waited >= base and (base <= 0.0 or idle is None
-                                   or idle >= WORKER_PRELOAD_IDLE_S):
+            # `base <= 0.0` NAO DISPENSA O DONO QUIETO (2026-11-03). MEDIDO:
+            # `WORKER_PRELOAD start waited_s=0.0 owner_idle_s=3.1` -- com
+            # `delay_s=0` a condicao de inatividade era curto-circuitada e o
+            # modelo comecava a carregar (36-49 s numa maquina ocupada) tres
+            # segundos depois do ultimo input, com o dono a ver um video.
+            if waited >= base and (idle is None or idle >= WORKER_PRELOAD_IDLE_S):
+                if self._external_caption_owns_screen():
+                    log('WORKER_PRELOAD skipped reason=external-captions-on-screen '
+                        'waited_s=%.1f' % waited)
+                    return False
                 log('WORKER_PRELOAD start waited_s=%.1f owner_idle_s=%s'
                     % (waited, 'unknown' if idle is None else '%.1f' % idle))
                 return self._preload_worker()
@@ -9492,14 +18983,277 @@ class SottoShell:
             % (time.time() - t0,))
         return self._preload_worker()
 
+    def _external_caption_owns_screen(self):
+        """O ecra esta' a mostrar a legenda do PLAYER? (60 s de recencia)
+
+        Existe para o preload do modelo nao competir com o que o dono esta' a ver.
+        MEDIDO 2026-11-03, na sessao dele: `WORKER_PROVIDERS selected=CUDA...` as
+        02:42:01 e a legenda PARADA 46 s -- as duas linhas do player ja'
+        desenhadas, nada de novo ate' o watchdog bater. O carregamento do modelo
+        custa 6,5-10,6 s numa maquina quieta e 36-49 s numa ocupada, e enquanto
+        ele corre quem paga o atraso e' a legenda. Quando o YouTube esta' a
+        fornecer a legenda, o ASR nao e' preciso: nao se carrega.
+        """
+        # O ESTADO VIVE NO WATCHER, NAO NA SHELL (2026-11-03). MEDIDO: o gate
+        # correu e devolveu False com o dono a ver um video porque lia
+        # `self.yt_live_paint_at`/`self._yt_cdp_source` da SHELL, e esses campos
+        # sao do `ExternalCaptionWatcher`. Um gate que le o objecto errado e'
+        # um gate desligado -- e o preload arrancou 26,6 s depois do arranque.
+        _w = getattr(self, 'external_caption_watcher', None)
+        try:
+            _at = float(getattr(_w, 'yt_live_paint_at', 0.0) or 0.0)
+            if _at and (time.monotonic() - _at) <= 60.0:
+                return True
+            if (getattr(_w, 'yt_cdp_rows', None)
+                    and getattr(_w, 'yt_source_paused', False)):
+                return True
+            if (getattr(_w, '_yt_cdp_source', None)
+                    and getattr(_w, 'yt_video_id', '')):
+                return True
+            # ANTES DA PRIMEIRA LINHA TAMBEM CONTA (2026-11-03). MEDIDO: as
+            # 02:50:06 o preload arrancou 1 s depois de a app subir, com a fonte
+            # CDP JA' `attached` e o dono a ver um video -- `_external_caption_
+            # `owns_screen` so' olhava para quem ja' tinha PINTADO, e a primeira
+            # linha chega depois do preload. Basta haver um video lido e a porta
+            # aberta: o dono esta' a ver YouTube, o ASR nao e' preciso.
+        except Exception:                 # noqa: BLE001
+            return False
+        return False
+
     def _preload_worker(self):
         """The preload's body: start the worker, unless there is no reason to."""
         if getattr(self, 'bridge', None) is not None:
             log('WORKER_PRELOAD skipped reason=worker-already-running')
             return False
+        if self._external_caption_owns_screen():
+            log('WORKER_PRELOAD skipped reason=external-captions-on-screen '
+                '-- o ASR nao e\' preciso enquanto o player pinta')
+            return False
         started = self.start_worker('preload')
         log(f'WORKER_PRELOAD done started={str(started).lower()}')
         return bool(started)
+
+    def _yt_cdp_boot_attach(self):
+        """Pede a ligacao a' aba do YouTube AGORA -- no arranque, sem painel.
+
+        PORQUE EXISTE (MEDIDO 2026-11-04, log do dono 10:56-10:57): o pedido de
+        attach morava no primeiro tick do laco das legendas, e o laco so'
+        existia depois de metade do arranque. Enquanto isso o log publicava
+        `YOUTUBE_TICK_MS src='?' vid='MOZIBMBHK-8' cdp_age_ms=2413609 rows=0`
+        e o ecra mostrava o ASR do audio do video -- nao a faixa do player. A
+        aba TEM de ser adotada no arranque e a adocao nao pode depender de
+        nenhum evento de painel: `/json/list` e' HTTP.
+
+        Devolve a fonte, ou None quando a porta esta desligada por ambiente. A
+        tentativa e' LIMITADA (`boot_attach`: 3 x 0,4 s, uma linha por falha
+        com o motivo); quem nao ligou continua a tentar dentro da thread, que
+        ja' espera `RETRY_S` entre tentativas e agora escreve o motivo de cada
+        uma (`YOUTUBE_CDP_ATTACH_FAILED`). A fonte e' criada AQUI e adotada pelo
+        watcher (`_yt_cdp_ensure`), para nao haver duas threads na mesma aba.
+        """
+        if os.environ.get('SOTTO_YT_CDP', '1') == '0':
+            log('YOUTUBE_CDP_BOOT_ATTACH skipped reason=SOTTO_YT_CDP=0')
+            return None
+        import youtube_cdp_source
+        ok, why = youtube_cdp_source.boot_attach(log=log)
+        source = getattr(self, '_yt_cdp_source', None)
+        if source is None or source is False:
+            source = youtube_cdp_source.live_source(
+                lambda: youtube_cdp_source.CdpCaptionSource(log=log), log=log)
+            self._yt_cdp_source = source
+            try:
+                # `start()` e' idempotente, e por isso pode ser chamado tambem
+                # sobre uma fonte ADOTADA do registo: uma fonte que existe e nao
+                # corre e' o pior dos dois mundos.
+                source.start()
+            except Exception as exc:          # noqa: BLE001
+                self._yt_cdp_source = None
+                youtube_cdp_source.live_source_clear(source)
+                log('YOUTUBE_CDP_BOOT_SOURCE_FAILED error=%r' % (exc,))
+                return None
+        if not ok:
+            log('YOUTUBE_CDP_BOOT_ATTACH_DEFERRED reason=%s retry_s=%.0f '
+                'by=youtube_cdp_source.retry_interval'
+                % (why, youtube_cdp_source.RETRY_S))
+        return source
+
+    def start_caption_pipeline(self, reason):
+        """LEGENDA E WORKER NAO ESPERAM PELO WEBVIEW2 (2026-11-03).
+
+        MEDIDO nesta maquina: `AddScriptToExecuteOnDocumentCreatedAsync` leva
+        11,6 s, a navegacao do staging fica `done` aos 13,4 s e o evento
+        `loaded` do painel chega 35 s depois disso -- e o worker, o observador
+        das legendas e a legenda nativa so' arrancavam DEPOIS disso, dentro de
+        `_complete_startup`. Resultado medido no dono: Ctrl+Space as 03:22:19
+        com `LIVE_ENABLED on=true` e NADA no ecra, porque metade do pipeline
+        ainda nao existia. A legenda nao depende da pagina do painel: o overlay
+        e' uma janela Win32 nativa e o worker e' um processo a parte.
+        """
+        if getattr(self, '_caption_pipeline_started', False):
+            return False
+        self._caption_pipeline_started = True
+        log('CAPTION_PIPELINE_START reason=%s' % reason)
+        # A PORTA DA CDP ABRE COM O PIPELINE, NAO COM O PRIMEIRO TICK (2026-11-04).
+        # MEDIDO no arranque do dono: 10:06:36.407 `pre-lock`, 38.272 a primeira
+        # leitura (1,9 s), 40.798 `YOUTUBE_CDP_SOURCE state=attached` e 40.889 a
+        # primeira linha do player -- 4,5 s de relogio para uma legenda que o
+        # YouTube ja' tinha pronta na pagina. Abrir a porta aqui custa um
+        # `Thread.start` e corta os 1,4 s que o primeiro tick pagava so' para
+        # chegar ao sitio onde a porta se abre.
+        #
+        # E O PEDIDO TEM DE SER FEITO A SÉRIO (2026-11-04). O que estava aqui
+        # era `self._yt_cdp_ensure()` -- um metodo do `ExternalCaptionWatcher`,
+        # chamado sobre a SHELL. O `AttributeError` era apanhado e publicado
+        # como `YOUTUBE_CDP_PREOPEN_FAILED`, e o resultado medido foi o de
+        # sempre: a porta abria no primeiro tick do laco, nunca aqui. O
+        # `YOUTUBE_CDP_PREOPEN_FAILED` que nunca apareceu no log do dono e' o
+        # proprio sintoma -- a app que ele carrega e' anterior a esta chamada.
+        # ── A ORDEM E' UMA SEQUENCIA ESCRITA, NAO UM EFEITO LATERAL ──────────
+        # Dono, verbatim (2026-11-04): *"é estupido 'carregando o modelo' e nao
+        # mostrar instantaneamente as legendas do youtube, assim que eu abro o
+        # app."* A ordem que responde a isso, da esquerda para a direita:
+        #
+        #   1. `cdp`     -- a fonte da legenda do player (Thread; abre a porta e
+        #                   sonda as abas com tecto). NAO carrega modelo nenhum;
+        #   2. `watcher` -- a thread que le e pinta a linha do player;
+        #   3. `worker`  -- o ASR, POR ULTIMO e nunca pre-condicao de 1 e 2.
+        #
+        # MEDIDO no arranque dele as 12:15:15: `BRIDGE_SPAWNED` 15.887 e
+        # `EXTERNAL_CAPTIONS_WATCH started` 16.001 -- o observador so' existia
+        # DEPOIS de o worker ser largado, e a superficie pintou `carregando
+        # modelo…` antes de qualquer linha do player. A sequencia fica numa lista
+        # ORDENADA, com uma linha de log (`CAPTION_PIPELINE_ORDER`) que torna a
+        # ordem medida no log dele, e nao inferida do codigo.
+        def _cdp_step():
+            # Um passo com nome: o portao `_main/youtube-cdp-boot-oracle.py`
+            # (arm A11) e o seu mutante procuram esta CHAMADA no arranque --
+            # e ela continua a ser uma chamada, nao um efeito de um lambda.
+            #
+            # E ELA NAO ESPERA (2026-11-09). MEDIDO no arranque dele as
+            # 21:21:47-48: `YOUTUBE_CDP_BOOT_ATTACH` tres vezes a ~430 ms cada
+            # (`tabs=2 others=9 reason=no-playing`) = **1,33 s** entre
+            # `CAPTION_PIPELINE_START` e o primeiro spawn do worker, todo ele
+            # ANTES de a forma existir (`EXEC_JS_DEFERRED reason=no-form yet`).
+            # O anexo ja' tem o seu proprio recuo (`*_DEFERRED retry_s=2`), e o
+            # observador volta a pedir a porta no primeiro tick -- portanto
+            # nada depende destes 3 x 0,43 s estarem no caminho do arranque.
+            # O dono, verbatim: *"when i open sotto, it takes WAY TOO MUCH to
+            # answer my keybindings or ANYTHING AT ALL."*
+            threading.Thread(target=self._yt_cdp_boot_attach,
+                             name='sotto-cdp-boot', daemon=True).start()
+
+        steps = (
+            ('cdp', _cdp_step),
+            ('watcher', lambda: self.start_external_caption_watcher()),
+            ('worker', lambda: self.start_worker(
+                self._worker_autostart_reason(self.args))),
+        )
+        _order = []
+        for step, call in steps:
+            _order.append(step)
+            try:
+                call()
+            except Exception as exc:          # noqa: BLE001
+                log('CAPTION_PIPELINE_STEP_FAILED step=%s error=%r' % (step, exc))
+        self._caption_pipeline_order = _order
+        log('CAPTION_PIPELINE_ORDER steps=%s' % ','.join(_order))
+        try:
+            if self._worker_autostart_reason(self.args) in ('default', 'with-worker'):
+                self.vram_guard = VramGuard(self)
+                self.vram_guard.start()
+        except Exception as exc:              # noqa: BLE001
+            log('VRAM_GUARD_START_FAILED error=%r' % (exc,))
+        return True
+
+    def _request_warm_engine(self, keep):
+        """Pede ao agendador um motor quente -- SO' quando a serie diz que ele paga.
+
+        D-04 (medido 2026-11-12): o pedido era INCONDICIONAL e o log inteiro do
+        motor tem 8 cargas, 8 `WARM_EXIT` e ZERO `WARM_ATTACHED`, com as
+        aberturas do dono a distarem 2 h a 16 h contra um TTL de 600 s. Cada
+        pedido pagava 7,5-26,0 s de disco e ~1 GB por dez minutos no arranque em
+        que a shell ja' esta' a ler 1,9 GB, e o anexo nunca aconteceu.
+
+        A regra vive em `app/webview/warm_evidence.py` (pura); aqui fica so' a
+        leitura dos dois logs e a linha. `--warm-engine-keep` e' intencao
+        explicita do dono: com ela o pedido sai sem discussao.
+        """
+        if keep:
+            log('WARM_ENGINE_REQUESTED reason=keep-flag')
+            start_warm_engine_task(log=log)
+            return True
+        try:
+            engine_log = warm_module().LOG_FILE
+            # `_LOG_FILE` e' um HANDLE aberto, nao um caminho: `count_tag` abre o
+            # ficheiro por nome, e passar o handle levantava
+            # `TypeError('expected str, bytes or os.PathLike object, not
+            # TextIOWrapper')` em TODO o arranque -- o ramo fail-open pedia o
+            # motor quente sempre, e a serie nunca era consultada. Medido no log
+            # do dono: 9 `WARM_ENGINE_EVIDENCE_FAILED`, 0 `NOT_REQUESTED`,
+            # 0 `REQUESTED` (a cura do D-04 era INERTE).
+            verdict = warm_evidence.request_verdict_for(
+                engine_log, getattr(_LOG_FILE, 'name', '') or '')
+        except Exception as exc:  # noqa: BLE001 -- a serie nunca impede o pedido
+            log('WARM_ENGINE_EVIDENCE_FAILED error=%r -- pedindo' % (exc,))
+            start_warm_engine_task(log=log)
+            return True
+        if verdict['request']:
+            log('WARM_ENGINE_REQUESTED reason=%s loads=%s attaches=%s'
+                % (verdict['why'], verdict['loads'], verdict['attaches']))
+            start_warm_engine_task(log=log)
+            return True
+        log('WARM_ENGINE_NOT_REQUESTED reason=%s loads=%d attaches=%d '
+            'custo_da_carga_s=7.5-26.0'
+            % (verdict['why'], verdict['loads'], verdict['attaches']))
+        return False
+
+    def _try_warm_attach(self, reason, target_pid=None):
+        """ATTACH_TRY (design 2.5): the warm engine answers, or today's path runs.
+
+        Runs BEFORE `WorkerBridge` is constructed, at the same point the shell
+        starts a worker today. A failure is logged as `WARM_FALLBACK_COLD` and
+        the cold ladder continues untouched -- a missing, stale or busy engine is
+        SLOW, never WRONG (INV-3). When the pipe is absent the scheduler is asked
+        to start one so the NEXT open is warm; the shell still does not own it.
+        """
+        if getattr(self.args, 'no_warm_engine', False):
+            log('WARM_ATTACH_SKIPPED reason=no-warm-engine-flag')
+            return None
+        try:
+            keep = bool(getattr(self.args, 'warm_engine_keep', False))
+            bridge, why = WarmPipeBridge.attach(
+                deadline_ms=WARM_ATTACH_DEADLINE_MS,
+                live=True,
+                device=self.args.device,
+                capture_mode=self.args.capture or DEFAULT_CAPTURE_MODE,
+                target_pid=target_pid,
+                keep_warm=keep,
+                log=log,
+                on_caption=self.on_worker_caption,
+                on_status=self.on_worker_status,
+                on_stats=self.on_worker_stats,
+                on_cost=self.on_worker_cost,
+                on_meter=self.on_worker_meter,
+                on_loading_text=self.push_caption_to_window,
+            )
+        except Exception as exc:  # noqa: BLE001 -- the cold path must survive this
+            log('WARM_ATTACH_FAILED why=exception error=%r' % (exc,))
+            bridge, why = None, 'exception'
+        if bridge is None:
+            log('WARM_FALLBACK_COLD reason=%s reason_%s=%s'
+                % (why, 'attach', reason))
+            if why in ('absent', 'busy', 'no-hello', 'pipe-timeout'):
+                self._request_warm_engine(keep)
+            return None
+        self.bridge = bridge
+        if not bridge.start(reason):
+            self.bridge = None
+            log('WARM_FALLBACK_COLD reason=start-refused reason_attach=%s' % reason)
+            return None
+        log('WARM_ATTACHED reason=%s pid=%s mode=%s load_ms=%.1f'
+            % (reason, getattr(bridge.child, 'pid', None), bridge.engine_mode,
+               bridge.load_ms))
+        return bridge
 
     def start_worker(self, reason):
         if reason not in self.START_REASONS:
@@ -9539,6 +19293,15 @@ class SottoShell:
                 'by=start_worker cause=shell-exiting')
             return False
         if self.bridge is not None:
+            # UMA RECUSA MUDA E' UM INSTRUMENTO QUE MENTE (medido 2026-11-05).
+            # O log do dono tinha `WORKER_AUTOSTART=started reason=default` DUAS
+            # vezes no MESMO arranque -- 16:19:11.098 pelo spawn real e
+            # 16:19:13.960 por um ramo que viu o bridge ja' armado e escreveu
+            # `started` as mesmas. Quem le' o log conclui que dois workers
+            # nasceram e que 1,9 GB foram lidos duas vezes. Nenhum dos dois
+            # bracos e' verdade: o segundo nao arrancou nada.
+            log(f'WORKER_AUTOSTART=declined reason={reason} '
+                'by=start_worker cause=already-running')
             return False
         # ── THE PER-APP TAP, OPT-IN -- AND AN UNRESOLVED TARGET REFUSES ──────
         # `--app-target` / `SOTTO_APP_TARGET` asks the worker for ONE app's
@@ -9574,6 +19337,33 @@ class SottoShell:
             log(f'APP_TARGET_RESOLVED value={json.dumps(target_value)} '
                 f'chose={target_pid} candidates='
                 + ','.join(str(pid) for pid in candidates))
+        # ── O MOTOR QUENTE PERGUNTA PRIMEIRO (2026-11-04) ─────────────────
+        # A ordem e' a do desenho: ATTACH_TRY antes de `start_worker` decidir
+        # qualquer coisa. Sucesso -> `self.bridge` e' a ponte LIGADA, e todos os
+        # guardas existentes (que testam `self.bridge`) passam a ser o portao do
+        # duplo load. Falha -> a escada fria de hoje corre inteira, sem uma linha
+        # mudada, e o log diz por que' (`WARM_FALLBACK_COLD`).
+        if self._try_warm_attach(reason, target_pid=target_pid) is not None:
+            self.code_state_log(f'worker-started-{reason}')
+            self._source_epoch = int(getattr(self, '_source_epoch', 0)) + 1
+            self._caption_pending = None
+            log(f'SOURCE_EPOCH n={self._source_epoch} reason=worker-warm-{reason}')
+            # O SIDECAR CAVALGA A MESMA VIDA (ver o bloco frio abaixo): um
+            # diarizador a correr contra ninguem e' 277 MB por nada.
+            if getattr(self.args, 'speakers', False) \
+                    or getattr(self.args, 'speakers_cheap', False):
+                sidecar = self.speaker_sidecar()
+                if sidecar.start(reason) and getattr(self.args, 'speakers_cheap', False) \
+                        and not getattr(self.args, 'speakers', False):
+                    self.multivoice_watch().start(reason)
+            # O ARRANQUE RESTAURADO TAMBEM RESPONDE (2026-11-11): com a legenda
+            # persistida ligada e o ecra vazio, o primeiro Ctrl+Space nao pode
+            # cair num ecra sem linha. O bloqueio lido AGORA (worker a aquecer /
+            # modelo a carregar) entra uma vez; um player saudavel cala-o.
+            if getattr(self, '_caption_wanted', False) and reason != 'preload':
+                self._caption_status_start()
+            return True
+        log('WARM_COLD_LOAD reason=%s' % reason)
         self.bridge = WorkerBridge(
             command=self.args.python,
             worker_path=self.args.worker,
@@ -9583,17 +19373,25 @@ class SottoShell:
             on_caption=self.on_worker_caption,
             on_status=self.on_worker_status,
             on_stats=self.on_worker_stats,
+            on_cost=self.on_worker_cost,
             on_meter=self.on_worker_meter,
             # A espera do modelo (30-38 s medidos) vai para a janela da legenda.
-            on_loading_text=self.push_caption_to_window,
+            # O TEXTO DE ESTADO PASSA POR UMA PORTA COM REGRA (2026-11-04):
+            # `on_worker_loading_text` recusa-o enquanto o player fornecer.
+            on_loading_text=self.on_worker_loading_text,
             target_pid=target_pid,
             # MEASURED: este parametro faltava. O --speakers chegava
             # ao SIDECAR mas nunca ao WORKER, que e' quem o consome -- e o
             # _main/sidecar-wiring-oracle.py arm 2 foi a RED exactamente por
             # isso. Um diarizador a correr e a bridge sem o flag que consome o
             # seu ficheiro e' o peor dos dois mundos: 207 MB e zero atribuicao.
-            extra_args=(['--speakers'] if getattr(self.args, 'speakers', False)
-                         else None),
+            #
+            # E O TECTO DE FIOS DO WORKER (2026-11-09): medido no dono, o worker
+            # de ASR queimava 159,5 % de um nucleo em rajadas de 9-10/hora com as
+            # sessoes ORT a 4 fios intra-op cada (`--threads` era INERTE, ver
+            # `worker/sotto_worker.limit_threads`). O valor vem de
+            # `--worker-threads`; `worker_argv_tail` e' o dono unico do argv.
+            extra_args=worker_argv_tail(self.args),
         )
         log(f'WORKER_PATH {self.args.worker}')
         log(f'WORKER_COMMAND {self.args.python}')
@@ -9608,20 +19406,27 @@ class SottoShell:
             self._source_epoch = int(getattr(self, '_source_epoch', 0)) + 1
             self._caption_pending = None
             log(f'SOURCE_EPOCH n={self._source_epoch} reason=worker-started-{reason}')
+            # O ARRANQUE RESTAURADO TAMBEM RESPONDE (2026-11-11): a ponte
+            # existe agora, portanto o bloqueio (modelo a carregar, sem audio)
+            # ja' tem nome. Uma vez por episodio; o player saudavel cala-o.
+            if getattr(self, '_caption_wanted', False) and reason != 'preload':
+                self._caption_status_start()
             # THE SIDECAR RIDES THE WORKER'S LIFETIME, AND ONLY WHEN THE WORKER
             # ACTUALLY STARTED. Starting it on a declined worker would leave a
             # 277 MB diarizer running against nobody, which is the failure the
             # `WORKER_AUTOSTART=declined` path exists to prevent.
-            if getattr(self.args, 'speakers', False) \
-                    or getattr(self.args, 'speakers_cheap', False):
-                sidecar = self.speaker_sidecar()
-                if sidecar.start(reason) and getattr(self.args, 'speakers_cheap', False) \
-                        and not getattr(self.args, 'speakers', False):
-                    # Only when the sidecar ACTUALLY started: a reader polling a
-                    # file nobody writes is a thread that reports "quiet" forever,
-                    # which reads exactly like "the detector ran and saw nothing".
-                    self.multivoice_watch().start(reason)
+            if reason != 'preload':
+                self._start_worker_sidecars(reason)
         return started
+
+    def _start_worker_sidecars(self, reason):
+        """Start optional audio readers only after explicit capture activation."""
+        if (getattr(self.args, 'speakers', False)
+                or getattr(self.args, 'speakers_cheap', False)):
+            sidecar = self.speaker_sidecar()
+            if sidecar.start(reason) and getattr(self.args, 'speakers_cheap', False) \
+                    and not getattr(self.args, 'speakers', False):
+                self.multivoice_watch().start(reason)
 
     def speaker_sidecar(self):
         """The one sidecar object, created on first use.
@@ -9757,6 +19562,18 @@ class SottoShell:
     #: fica o tempo inteiro. Cada push rearma; sem fala nova, esconde.
     CAPTION_IDLE_HIDE_S = 6.0
 
+    #: QUANTO O ACK DE DESLIGAR FICA NO ECRA (ordem do dono, 2026-11-12,
+    #: verbatim): *"\'legenda ao vivo: desligada\' deve aparecer por meio
+    #: segundo apenas, e sumir."*
+    #:
+    #: E' UM TEMPORIZADOR PROPRIO, e nao um valor mais pequeno no
+    #: `CAPTION_IDLE_HIDE_S`. Aquele 6.0 e' o silencio que esconde uma LEGENDA
+    #: verdadeira (`_caption_idle_hide` e' armado por `push_caption_to_window`
+    #: nas DUAS vias, player e ASR); encolhe-lo para 0,5 s apagaria a linha do
+    #: player meio segundo depois de o player parar de a mudar, que e' o oposto
+    #: do 1:1 que ele pediu. O ack de desligar nao e' fala: tem o seu prazo.
+    CAPTION_STATUS_HIDE_S = 0.5
+
     def _arm_caption_idle_hide(self):
         """Rearma o temporizador que esconde a legenda sem fala nova.
 
@@ -9785,6 +19602,98 @@ class SottoShell:
             except Exception:
                 pass
 
+    def _arm_caption_status_hide(self):
+        """O PRAZO DO ACK DE DESLIGAR -- meio segundo, e e' o DELE.
+
+        Nasceu da ordem do dono de 2026-11-12 (*"deve aparecer por meio segundo
+        apenas, e sumir"*). Reusa a forma do `_arm_caption_idle_hide` -- seq que
+        sobe, temporizador anterior cancelado -- porque a armadilha e' a mesma:
+        um disparo em voo de um episodio anterior nao pode apagar o texto de um
+        episodio novo.
+        """
+        import threading as _threading
+        try:
+            prev = getattr(self, '_caption_status_timer', None)
+            if prev is not None:
+                try:
+                    prev.cancel()
+                except Exception:         # noqa: BLE001
+                    pass
+            seq = int(getattr(self, '_caption_status_hide_seq', 0) or 0) + 1
+            self._caption_status_hide_seq = seq
+            timer = _threading.Timer(
+                float(self.CAPTION_STATUS_HIDE_S), self._caption_status_hide,
+                args=(seq, time.time()))
+            timer.daemon = True
+            self._caption_status_timer = timer
+            timer.start()
+        except Exception as exc:          # noqa: BLE001
+            try:
+                log(f'CAPTION_STATUS_HIDE_ARM_FAILED error={exc!r}')
+            except Exception:
+                pass
+
+    def _caption_status_hide(self, seq, armed=0.0):
+        """Tira o `off` do ecra ao fim do prazo DELE, e diz o numero medido.
+
+        AS TRES GUARDAS SAO O SENTIDO DISTO: (1) a seq -- um timer velho nao
+        apaga um episodio novo; (2) a razao ainda e' `off` -- uma legenda
+        verdadeira que tomou a superficie nao pode ser apagada por um ack; (3)
+        ha' pixels a apagar. Sem (2) isto era um `_blank_caption_window` com
+        prazo, e o ack mataria a linha do player.
+        """
+        try:
+            if int(getattr(self, '_caption_status_hide_seq', 0) or 0) != int(seq):
+                return
+            if str(getattr(self, '_caption_status_reason', '') or '') != 'off':
+                return
+            if not getattr(self, '_caption_window_shown', False):
+                return
+            self._caption_status_reason = ''
+            self._caption_status_queued_for = ''
+            self._caption_status_episode_at = 0.0
+            self._caption_window_shown = False
+            ov = getattr(self, 'caption_overlay', None)
+            if ov is not None:
+                def _hide():
+                    try:
+                        ov.hide()
+                        ov.show(False)
+                    except Exception as exc:   # noqa: BLE001
+                        log('CAPTION_STATUS_HIDE_FAILED error=%r' % (exc,))
+                try:
+                    self._post(_hide)
+                except Exception:               # noqa: BLE001
+                    pass
+            ms = int((time.time() - float(armed or 0.0)) * 1000.0) if armed else 0
+            log('CAPTION_STATUS_HIDDEN reason=off after_s=%.1f ms=%d'
+                % (float(self.CAPTION_STATUS_HIDE_S), ms))
+        except Exception as exc:              # noqa: BLE001
+            try:
+                log('CAPTION_STATUS_HIDE_FAILED error=%r' % (exc,))
+            except Exception:
+                pass
+
+    def _caption_idle_disarm(self):
+        """Cancela o temporizador de silencio SEM armar outro (2026-11-11).
+
+        Um ESTADO a ocupar a janela nao pode ser apagado pelo temporizador que
+        foi armado para o `off` anterior: ligar outra vez tem de substituir o
+        aviso de desligar, nao de o ver desaparecer 6 s depois por um timer
+        antigo. A sequencia sobe para que um disparo em voo desista.
+        """
+        try:
+            timer = getattr(self, '_caption_idle_timer', None)
+            self._caption_idle_timer = None
+            self._caption_idle_seq = int(getattr(self, '_caption_idle_seq', 0) or 0) + 1
+            if timer is not None:
+                try:
+                    timer.cancel()
+                except Exception:
+                    pass
+        except Exception:  # noqa: BLE001
+            pass
+
     def _blank_caption_window(self, reason):
         """TIRA OS PIXELS sem desligar o interruptor do dono.
 
@@ -9810,12 +19719,41 @@ class SottoShell:
         deixou."""
         ov = getattr(self, 'caption_overlay', None)
         if ov is None:
+            # UMA PRESSAO DURANTE O ARRANQUE NAO SE PERDE (2026-11-03).
+            # MEDIDO no dono: Ctrl+Space as 03:22:19.842 com
+            # `LIVE_ENABLED on=true` e NADA no ecra -- o overlay nativo ainda
+            # nao existia, a chamada devolvia False e o pedido morria ali.
+            # Agora fica guardado e e' aplicado no instante em que a janela
+            # passa a existir.
+            # Um BLANK antes do overlay existir nao e' um pedido de show: o
+            # pendente tem de ser False. A versao anterior lia `on`, que nao
+            # existe neste metodo (ele so' recebe `reason`), e o `NameError`
+            # caia no `except` do chamador -- o pedido ficava sem efeito.
+            self._caption_show_pending = False
+            log('CAPTION_WINDOW_DEFERRED on=false reason=no-overlay-yet')
             return False
         self._caption_window_shown = False
         # A FONTE MUDOU: o slot e' do instante ANTERIOR (dono, 2026-10-30).
         self._source_epoch = int(getattr(self, '_source_epoch', 0)) + 1
         self._caption_pending = None
         self._external_last_text = ''   # a fonte mudou: nada herda a frase velha
+        # A LINHA GUARDADA PARA O "LIGAR" MORRE COM OS PIXELS (2026-11-06). O
+        # `_set_live_enabled` devolve ao ecra a ultima linha pintada; sem isto um
+        # video novo (ou uma pausa longa) herdava a frase do anterior no replay
+        # do interruptor -- o mesmo jumpscare que o `ov.hide()` acima mata nos
+        # pixels, mas na memoria.
+        self._caption_painted = ''
+        self._caption_painted_at = 0.0
+        self._last_caption_was_player = False
+        # O AVISO DE ESTADO NAO SOBREVIVE AOS PIXELS (2026-11-11): quem retira o
+        # `off` e' o temporizador de silencio, e uma retirada deliberada
+        # (`hide_panel`, pausa, fonte trocada) ENCERRA o episodio -- senao o
+        # laco de estado repintava por cima da retirada do dono e escrevia uma
+        # segunda linha para a mesma razao.
+        self._caption_status_reason = ''
+        self._caption_status_queued_for = ''
+        self._caption_status_episode_at = 0.0
+        self._caption_status_live = False
         def _blank():
             # O TEXTO GUARDADO TAMBEM VAI (2026-10-30). `show(False)` so' esconde
             # a janela: o `text`/`previous` do overlay continuavam la', e o
@@ -9839,24 +19777,769 @@ class SottoShell:
                 return
             if not getattr(self, '_caption_window_shown', False):
                 return
+            # VIDEO EM PAUSA/FIM NAO SEGURA PIXELS (2026-11-09, ordem do dono).
+            # A guarda de 2026-11-03 re-armava o cao de guarda em pausa para a
+            # linha do player nao desaparecer; o dono depois mediu o contrario:
+            # *"pausa/ended tem que esconder os pixels"* (o historico continuava
+            # a receber linhas como se o video estivesse a correr). O MODELO, o
+            # WORKER e o HISTORICO continuam intactos -- `_blank_caption_window`
+            # so' apaga o ecra, nao toca em `_caption_wanted` nem no worker.
+            # A borda da pausa ja' apaga no watcher; esta metade e' o piso de
+            # 6 s que garante o mesmo se a borda se perder.
+            if (getattr(self, 'yt_source_paused', False)
+                    or getattr(self, 'yt_source_ended', False)):
+                self._blank_caption_window(
+                    'youtube-paused-or-ended')
+                return
             self._blank_caption_window('no-caption-for-%ss' % (self.CAPTION_IDLE_HIDE_S,))
         except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_WINDOW_IDLE_HIDE_FAILED error={exc!r}')
+
+
+    #: O ORCAMENTO DO ECRa, EM MILISSEGUNDOS (2026-11-03). Do instante em que o
+    #: audio que a linha descreve acabou ate' ao pixel. NAO e' um numero de
+    #: gosto: o worker entrega um bloco de 560 ms e o decode de um bloco custa
+    #: 120-400 ms nesta maquina, logo um orcamento abaixo de ~1 s esta' a pedir
+    #: ao decode que nao corra. 1500 ms e' o mesmo numero da aceitacao do Alt+C
+    #: (1,5 s para a primeira legenda), para nao haver duas reguas no repo --
+    #: e o passo que o le' diz quantas vezes ele estourou, em vez de decidir se
+    #: a legenda "parece" atrasada.
+    CAPTION_BUDGET_MS = 1500
+
+    #: A BANDA DO SEGURA INTENCIONAL (2026-11-03). MEDIDO tres vezes na sessao
+    #: do dono (17:43:02, 17:43:11, 17:40:47): `queue_ms=1504`, sempre. O painel
+    #: segura a cauda da linha ate' `COMMIT_MAX_HOLD_MS` (1500 ms,
+    #: `caption-formulation.js:150`) quando nao chega fragmento novo -- ou seja,
+    #: quando o audio ficou em silencio. O numero existe para o log distinguir
+    #: "o ecra esta' atrasado" de "o painel estava a esperar, de proposito".
+    CAPTION_HOLD_BAND_MS = (1490, 1520)
+
+    #: ATE' QUE IDADE UMA LINHA AINDA E' LEGENDA (2026-11-05). Usado no unico
+    #: sitio que devolve uma linha ja' pintada ao ecra: o `on` do interruptor
+    #: (`_set_live_enabled`). O teto tem de ficar ABAIXO da varredura de
+    #: silencio (`no-caption-for-6.0s`), senao ligar a legenda depois de um
+    #: minuto calado despejava uma frase velha -- o jumpscare que o
+    #: `_blank_caption_window` existe para matar. Do outro lado, tem de cobrir
+    #: o intervalo medido entre duas linhas vivas no log dele (0,5-0,6 s por
+    #: `CAPTION_APPLIED`): 2 s cobrem quatro linhas e nao cobrem uma pausa de
+    #: fala, que e' onde as duas coisas se separam.
+    CAPTION_REPLAY_MAX_S = 2.0
+
+    def _caption_lag_note(self, audio_ms, queue_ms=0, kind='partial'):
+        """Guarda a idade de UMA legenda pintada e publica o resumo da janela.
+
+        O resumo existe porque uma linha por legenda responde "esta linha estava
+        atrasada?", e o dono pergunta "o Sotto esta' atrasado?" -- que e' uma
+        pergunta sobre a SERIE. A cada 25 amostras sai
+        `CAPTION_LAG_STATS n=.. p50=.. p90=.. max=.. over=..` com o orcamento
+        ao lado, que e' o que faz um log passar a gritar sozinho.
+        """
+        # A JANELA LEVA O SEGURA JUNTO (medido 2026-11-04): `over`/`held` eram
+        # CONTADORES DE VIDA na MESMA frase de uma janela de 200 amostras --
+        # `over=162` lia-se como "81 % estouraram" quando era o acumulado.
+        # Ficam (ha' quem os leia); a janela publica `over_win`/`held_win`.
+        low, high = self.CAPTION_HOLD_BAND_MS
+        held = queue_ms is not None and low <= int(queue_ms) <= high
+        if held:
+            self._caption_hold = int(getattr(self, '_caption_hold', 0)) + 1
+        # SO' A LINHA AO VIVO JULGA O ORCAMENTO (medido 2026-11-04). Uma linha
+        # `final` descreve audio que acabou segundos antes por construcao: a
+        # sessao do dono (608 pinturas) tinha `p90=14140 max=166615` e **41 %**
+        # de estouros, mas as amostras grandes eram TODAS `kind=final`
+        # (`CAPTION_APPLIED text="Can you hear me? Mmm." kind=final audio_ms=166615`)
+        # e a via viva mede `p50=581 ms`. Contar as duas na mesma regua e' o
+        # mesmo erro que publicar acumulado ao lado de serie. O numero continua
+        # no log (`kind=`), o veredicto nao o conta.
+        live = (kind == 'partial')
+        blown = live and audio_ms > self.CAPTION_BUDGET_MS
+        if blown:
+            self._caption_lag_blown = int(getattr(self, '_caption_lag_blown', 0)) + 1
+        # A JANELA E' INCREMENTAL E O RESUMO E' O(1) (2026-11-04). A CAUSA do
+        # custo era o guarda: `len(ages) % 25 == 0` com a janela CHEIA (200) e'
+        # sempre verdadeiro, logo a janela era re-ordenada e re-somada em TODAS
+        # as legendas -- 27,1 us por legenda, 83 % do caminho de aplicacao
+        # (recibo `_main/receipt-20261104-opt-4x.md`). As duas metades: um
+        # CONTADOR proprio diz QUANDO publicar; a janela fica ORDENADA por
+        # insercao e os tres contadores correntes dizem O QUE publicar.
+        # `_caption_ages` mantem a forma de antes (idade, held, blown, live).
+        ages = getattr(self, '_caption_ages', None)
+        if ages is None:
+            ages = self._caption_ages = []
+        ordered = getattr(self, '_caption_ordered', None)
+        if ordered is None or getattr(self, '_caption_ordered_src', None) is not ages:
+            # Um shell que traga a janela de fora (harness, dublê, instancia
+            # antiga) e' reconstruido DELA, nao de um estado implicito: a
+            # janela e' a verdade e o resumo deriva-se uma vez.
+            ordered = sorted(s[0] for s in ages)
+            self._caption_ordered = ordered
+            self._caption_ordered_src = ages
+            self._caption_over_win = sum(1 for s in ages if s[2])
+            self._caption_held_win = sum(1 for s in ages if s[1])
+            self._caption_live_win = sum(1 for s in ages if s[3])
+            self._caption_notes = len(ages)
+        sample = (int(audio_ms), bool(held), bool(blown), live)
+        ages.append(sample)
+        bisect.insort(ordered, sample[0])
+        if sample[2]:
+            self._caption_over_win += 1
+        if sample[1]:
+            self._caption_held_win += 1
+        if live:
+            self._caption_live_win += 1
+        self._caption_notes += 1
+        if len(ages) > 200:
+            dropped = ages.pop(0)
+            del ordered[bisect.bisect_left(ordered, dropped[0])]
+            if dropped[2]:
+                self._caption_over_win -= 1
+            if dropped[1]:
+                self._caption_held_win -= 1
+            if dropped[3]:
+                self._caption_live_win -= 1
+        if self._caption_notes % 25 == 0:
+            n = len(ordered)
+
+            def pct(p):
+                return ordered[min(n - 1, int(round(p * (n - 1))))]
+
+            log(f'CAPTION_LAG_STATS n={n} p50={pct(0.5)} p90={pct(0.9)} '
+                f'max={ordered[-1]} over={self._caption_lag_blown} '
+                f'held={int(getattr(self, "_caption_hold", 0))} '
+                f'over_win={self._caption_over_win} '
+                f'held_win={self._caption_held_win} '
+                f'live_win={self._caption_live_win} '
+                f'budget_ms={self.CAPTION_BUDGET_MS}')
+
+    def _drain_caption_pending(self):
+        """Pinta o que esta' no slot. Corre na thread `sotto-caption-paint`."""
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
+            return
+        instant = bool(getattr(self, '_caption_pending_instant', False))
+        # O CUE DO PLAYER VIAJA AO LADO DO TEXTO (2026-11-03). `caption_overlay`
+        # ganhou o motor que revela palavra a palavra NO RELOGIO DO YOUTUBE
+        # (`_PlayerCue`), mas ate' aqui o shell chamava `set_text(text, prev,
+        # instant)` -- sem `cue=` o overlay recebe `instant=True` e desenha o
+        # cue INTEIRO no instante da chegada, que e' exactamente o defeito que o
+        # dono descreve. O slot segue o mesmo caminho do `instant`.
+        cue = getattr(self, '_caption_pending_cue', None)
+        self._caption_drain_posted = False
+        pending = getattr(self, '_caption_pending', None)
+        coalesced = int(getattr(self, '_caption_coalesced', 0))
+        if pending is None:
+            return
+        enqueued, new_text, new_prev, epoch = pending
+        self._caption_pending = None
+        # UM TEXTO DE EPOCH GASTO NAO PINTA -- e' o jumpscare (2026-10-30).
+        cur = int(getattr(self, '_source_epoch', 0))
+        if epoch != cur:
+            log(f'CAPTION_DROP_EPOCH enq={epoch} cur={cur} '
+                f'text={json.dumps((new_text or "")[:60])}')
+            return
+        # O SEGUNDO GUARDA DO INTERRUPTOR, E ELE E' UM RACE (2026-11-05).
+        #
+        # MEDIDO no log dele: sete `HOTKEY_PRESSED role=live count=1..7` entre
+        # 16:15:38.096 e 16:15:40.484, cada um com o seu `LIVE_ENABLED` a
+        # alternar; o ultimo diz `on=false`, o botao pinta OFF -- e a legenda
+        # continuava no ecra. A causa e' esta funcao, que pintava o slot sem
+        # perguntar nada: um texto enfileirado ANTES do desligar (o
+        # `push_caption_to_window` ja' o tinha aceitado com a flag ligada)
+        # chega aqui DEPOIS do `ov.show(False)` e chama `ov.show(True)` --
+        # a janela volta a aparecer com o interruptor em OFF, e nada a
+        # esconde outra vez ate' ele carregar na tecla de novo. O guarda do
+        # `push` corre na thread que ENFILEIRA; este corre na que PINTA, e
+        # entre as duas ha' o tempo do post. A condicao do dono tem de ser
+        # lida no instante da pintura, nao no do enfileiramento.
+        if not getattr(self, '_caption_wanted', False):
+            log(f'CAPTION_DROP_SWITCH epoch={epoch} '
+                f'text={json.dumps((new_text or "")[:60])} '
+                'why=live-off -- o interruptor foi lido na PINTURA, nao no enfileirar')
+            return
+        # ── O TEXTO DE ESTADO NAO E' LEGENDA (2026-11-11) ──────────────────
+        # Ele passou pelo MESMO slot para a ordem no ecra ser a de chegada, mas
+        # nao toca em `_caption_painted` (nao e' uma linha que se possa repetir
+        # ao religar) nem em `_overlay_pushes` (nao e' uma legenda pintada), e
+        # deixa uma linha propria no log (`CAPTION_STATUS_SHOWN`) para que um
+        # episodio possa ser julgado por um grep em vez de por uma impressao.
+        if getattr(self, '_caption_pending_status', False):
+            self._paint_caption_status(new_text)
+            return
+        age_ms = int((time.time() - enqueued) * 1000)
+        # QUANTO O AUDIO DESTA LINHA E' MAIS VELHO DO QUE O ECO (2026-11-04). O
+        # `tap_ms` do worker diz quando o bloco que fechou a linha entrou; a
+        # diferenca ate' agora e' o atraso do ASR. Passa ao overlay para a
+        # revelacao ser ancorada no AUDIO e nao na chegada -- ver a medicao em
+        # `caption_overlay.set_text` (`late_s`) e o dente de serra que ele mata.
+        # Tecto de 3 s: um `tap_ms` velho nao pode mandar a revelacao para o
+        # passado indefinidamente.
+        _late_s = 0.0
+        _tap_now = getattr(self, '_caption_pending_tap_ms', None)
+        if _tap_now:
             try:
-                log(f'CAPTION_WINDOW_IDLE_HIDE_FAILED error={exc!r}')
-            except Exception:
+                _late_s = max(0.0, min(3.0, (time.time() * 1000.0
+                                             - float(_tap_now)) / 1000.0))
+            except (TypeError, ValueError):
+                _late_s = 0.0
+        try:
+            ov.set_work_area(self.work_area(),
+                             (self.display or {}).get('scaleFactor') or 1.0)
+            ov.set_text(new_text, new_prev, instant, cue=cue, late_s=_late_s)
+            ov.show(True)
+            self._overlay_pushes += 1
+            # ── A TESTEMUNHA DA SUPERFICIE (2026-11-11) ────────────────────
+            # O CAMINHO DO PLAYER NAO TINHA MEDIDA NENHUMA. `_tap` e' None na via
+            # do YouTube (o `tap_ms` e' do worker), portanto o `CAPTION_PAINT_LAG`
+            # nunca saia nela; e o `CAPTION_OVERLAY_PUSH` so' aparece em
+            # `count=1/50/500`. MEDIDO no log do dono: 927 pinturas do player e
+            # ZERO linhas que dissessem quando o ecra mudou -- ou seja
+            # "video mudou -> pixels" nao era mensuravel, que e' exactamente o
+            # *"levou 3 segundos e devia ser instantaneo"* do dono.
+            #
+            # UMA LINHA POR PINTURA, nas DUAS vias, barata: o `ms` e' a idade do
+            # texto no slot (`enqueued` -> agora), o mesmo numero que o
+            # `CAPTION_OVERLAY_LAG` ja' calcula, e o resto sao inteiros que o
+            # slot tem. O `CAPTION_PAINT_LAG` (via do ASR) fica intacto: este e'
+            # a testemunha da superficie, nao o substituto.
+            _rows_src = getattr(self, '_caption_pending_rows', None)
+            log('CAPTION_PAINT_SURFACE src=%s rows=%d text=%s ms=%d epoch=%d'
+                % ('player' if _rows_src is not None else 'asr',
+                   len(_rows_src) if _rows_src else 0,
+                   json.dumps((new_text or '')[:40]), age_ms,
+                   int(getattr(self, '_source_epoch', 0))))
+            # O TEXTO DE ESTADO MORRE NO PRIMEIRO PIXEL VERDADEIRO (2026-11-11).
+            # A primeira legenda que pinta substitui-o no ecra; este campo e' o
+            # que impede o repintar de o considerar "ja' mostrado" e de o retirar
+            # outra vez -- uma retirada nunca pode apagar uma legenda.
+            if str(getattr(self, '_caption_status_reason', '') or ''):
+                log('CAPTION_STATUS_CLEARED reason=%s why=caption'
+                    % self._caption_status_reason)
+                self._caption_status_reason = ''
+                self._caption_status_episode_at = 0.0
+                self._caption_status_queued_for = ''
+            # O INSTANTE DA PRIMEIRA PINTURA (2026-10-26). A linha de aceitacao
+            # "Alt+C -> legenda no ecra em 1,5 s" nao tinha instrumento: a PRESSao
+            # esta no log desde sempre (`HOTKEY_PRESSED`, com o carimbo de tempo de
+            # `log()`), mas a PINTURA so aparecia em `count=1/50/500` e nas linhas
+            # `CAPTION_OVERLAY_LAG` -- logo a segunda legenda da sessao nao deixava
+            # rasto nenhum, e nao havia como medir diferenca nenhuma. Esta linha sai
+            # UMA vez por legenda que NASCE (texto vazio -> texto), que e exactamente
+            # o evento que o dono ve, com o `instant` do caminho (o YouTube entrega o
+            # prefixo ja revelado) e o hwnd. Nao muda o desenho: escreve no log.
+            was_blank = not (getattr(self, '_caption_painted', '') or '').strip()
+            self._caption_painted = new_text or ''
+            # QUANDO ESTE TEXTO FOI POSTO NO ECRAN (2026-11-05). Sem o carimbo,
+            # a unica coisa que se sabe de `_caption_painted` e' o que ele diz,
+            # nao quando o disse -- e o `_set_live_enabled` precisa exactamente
+            # disso para decidir se a linha que ele devolve ao ecra ao ligar
+            # ainda e' a LEGENDA ou ja e' HISTORICO.
+            self._caption_painted_at = time.time()
+            if was_blank and (new_text or '').strip():
+                log(f'CAPTION_PAINT instant={str(bool(instant)).lower()} '
+                    f'hwnd={ov.hwnd} text={json.dumps(new_text[:60])}')
+            if age_ms >= 100:
+                log(f'CAPTION_OVERLAY_LAG age_ms={age_ms} '
+                    f'count={self._overlay_pushes} '
+                    f'text={json.dumps(new_text[:60])}')
+            # ── A DISCREPANCIA ENTRE O AUDIO E O ECRa (2026-11-03) ─────────
+            # ORDEM DO DONO, verbatim: *"tu nao tem a porra de um teste ou log
+            # que mostra a discrepancia entre audio detectado e display na tela?
+            # nao tem nada que grita que o budget de ter mostrado ja passou do
+            # ponto?"* -- nao tinha. O `CAPTION_OVERLAY_LAG` mede a FILA (do
+            # enfileirar ao pintar), e a fila era o menor dos dois atrasos: o
+            # audio que a linha descreve ja' podia ter acabado segundos antes.
+            # `tap_ms` e' o instante de parede em que o bloco que FECHOU a linha
+            # entrou no worker; a diferenca ate' aqui e' a idade do audio que o
+            # dono esta' a ler. Uma linha por legenda pintada, com o veredicto.
+            _tap = getattr(self, '_caption_pending_tap_ms', None)
+            # UM TAP QUE JA' ATRIBUIU UMA VEZ NAO ATRIBUI OUTRA (2026-11-04,
+            # MEDIDO). O `tap_ms` e' o instante de parede do bloco que fechou a
+            # linha, e o MESMO tap era re-atribuido a cada repintura do slot:
+            # medido em 7 788 `CAPTION_IN`, 37,3 % das linhas re-usam o tap de
+            # outra (idade p50 742 ms, p95 18 970, max 655 703 -- um bloco
+            # atribuido duas vezes, seis minutos de intervalo) e essas linhas
+            # carregam 85,2 % da soma de atraso. O sintoma: `audio_ms` deixa de
+            # ser uma latencia e o p99 do log move 8,5x por causa de 2,4 % de
+            # linhas (36 269 ms com elas, 4 254 sem). A cura e' de MEDICAO e de
+            # uma condicao no sitio do emit: a idade do audio so' se publica
+            # quando o tap ainda nao contou. A linha continua (o dono ve o
+            # texto), mas sem `audio_ms`/`queue_ms` -- e com a marca que diz por
+            # que, para um leitor futuro nao a ler como "sem atraso".
+            _aged = caption_lag_aged(
+                _tap, getattr(self, '_caption_lag_tap_counted', None))
+            if _tap and not _aged:
+                log(f'CAPTION_PAINT_LAG tap_reused=true '
+                    f'tap_age_ms={int(time.time() * 1000.0) - int(_tap)} '
+                    f'queue_ms={age_ms} coalesced={coalesced} '
+                    f'text={json.dumps(new_text[:60])}')
+            if _tap and _aged:
+                self._caption_lag_tap_counted = int(_tap)
+                audio_ms = int(time.time() * 1000.0) - int(_tap)
+                self._caption_lag_note(
+                    audio_ms, queue_ms=age_ms,
+                    kind='final' if getattr(self, '_last_push_final', False)
+                    else 'partial')
+                log(f'CAPTION_PAINT_LAG audio_ms={audio_ms} queue_ms={age_ms} '
+                    f'budget_ms={self.CAPTION_BUDGET_MS} '
+                    f'over={str(audio_ms > self.CAPTION_BUDGET_MS).lower()} '
+                    f'coalesced={coalesced} '
+                    f'text={json.dumps(new_text[:60])}')
+                if audio_ms > self.CAPTION_BUDGET_MS:
+                    # O GRITO. Uma linha propria para que um `grep BASTAO`
+                    # responda a pergunta "quantas vezes o orcamento estourou?"
+                    # sem ler o resto.
+                    log(f'CAPTION_BUDGET_BLOWN audio_ms={audio_ms} '
+                        f'budget_ms={self.CAPTION_BUDGET_MS} '
+                        f'queue_ms={age_ms} blown={self._caption_lag_blown} '
+                        f'text={json.dumps(new_text[:60])}')
+            if self._overlay_pushes in (1, 50, 500):
+                log(f'CAPTION_OVERLAY_PUSH count={self._overlay_pushes} '
+                    f'visible={str(ov.visible).lower()} hwnd={ov.hwnd} '
+                    f'text={json.dumps(new_text[:60])}')
+            if coalesced:
+                # NENHUMA FALA DESAPARECE EM SILENCIO (2026-11-03): o slot e'
+                # um so' e a chegada seguinte o substitui -- juntar e' a cura,
+                # mas o numero tem de aparecer. `coalesced=2` diz que DUAS
+                # chegadas distintas se juntaram nesta pintura; `text` mostra
+                # exactamente o que o dono leu.
+                self._caption_coalesced = 0
+                log(f'CAPTION_COALESCE coalesced={coalesced} '
+                    f'audio_ms={int(time.time() * 1000.0) - int(_tap or 0)} '
+                    f'text={json.dumps(new_text[:120])}')
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_OVERLAY_PUSH_FAILED error={exc!r}')
+
+    def _caption_paint_wake(self):
+        """Acorda a thread que pinta a legenda (cria-a na primeira vez)."""
+        ev = getattr(self, '_caption_event', None)
+        if ev is None:
+            ev = self._caption_event = threading.Event()
+            threading.Thread(target=self._caption_paint_loop,
+                             name='sotto-caption-paint', daemon=True).start()
+        ev.set()
+
+    def _caption_paint_loop(self):
+        """UM slot, UMA thread: pinta sempre o texto MAIS RECENTE.
+
+        O `_drain` ja' e' dono do slot (`_caption_pending`), por isso a
+        regra de "nunca um texto velho" nao muda -- muda so' QUEM a corre.
+        Uma excepcao aqui nao pode matar a thread: sem ela a legenda nunca
+        mais pinta, e um silencio e' pior do que uma linha feia.
+        """
+        ev = self._caption_event
+        while True:
+            ev.wait(0.5)
+            ev.clear()
+            self._caption_drain_posted = False
+            try:
+                self._drain_caption_pending()
+            except Exception as exc:  # noqa: BLE001
+                try:
+                    log('CAPTION_PAINT_FAILED error=%r' % (exc,))
+                except Exception:
+                    pass
+
+    def _player_track_state(self):
+        """OS FACTOS do player, lidos dos objectos que os tem (nunca copiados).
+
+        O ESTADO VIVE NO OBSERVADOR, NAO NA SHELL (2026-11-03 -- o mesmo erro ja'
+        medido no `_external_caption_owns_screen`): `yt_cdp_rows` e
+        `yt_live_paint_at` sao do `ExternalCaptionWatcher`; a shell so' os le'.
+        A fonte CDP pode estar nos dois sitios (a shell cria-a no arranque e o
+        observador ADOTA-a), por isso procura-se primeiro no observador.
+
+        `snap_rows` e' a pergunta que fecha a corrida do arranque: o worker
+        publica `model-loading` 1,4 s depois do pipeline comecar, e o
+        observador so' pinta no primeiro tick; a FOTO da CDP, essa, ja' tem as
+        linhas do DOM nesse instante. Sem ela o texto de estado entrava ANTES de
+        a primeira linha do player existir, e o dono via exactamente isso.
+        """
+        watcher = getattr(self, 'external_caption_watcher', None)
+        state = {'rows': 0,
+                 'snap_rows': 0,
+                 'painted_at': 0.0,
+                 'epoch': bool(getattr(self, '_player_frame_seen', False))}
+        if watcher is not None:
+            state['rows'] = len(getattr(watcher, 'yt_cdp_rows', None) or ())
+            try:
+                state['painted_at'] = float(
+                    getattr(watcher, 'yt_live_paint_at', 0.0) or 0.0)
+            except (TypeError, ValueError):
+                state['painted_at'] = 0.0
+        source = getattr(watcher, '_yt_cdp_source', None)
+        if source is None or source is False:
+            source = getattr(self, '_yt_cdp_source', None)
+        if source is not None and source is not False:
+            try:
+                snap = source.snapshot(max_age=PLAYER_TRACK_FRESH_S)
+            except Exception:                 # noqa: BLE001
+                snap = None
+            if snap and snap.get('rows'):
+                state['snap_rows'] = len(snap['rows'])
+        return state
+
+    def player_track_owns_surface(self, now=None):
+        """A superficie da legenda e' do player? (ver `player_track_owns`)."""
+        return player_track_owns(self._player_track_state(), now=now)
+
+    #: O INTERVALO DO REPINTAR (2026-11-11). O bloqueio muda sem evento que o
+    #: shell veja (a faixa chega numa thread propria, o `model-loaded` vem pelo
+    #: pump), por isso o estado e' AMOSTRADO enquanto houver texto no ecra:
+    #: 250 ms e' mais rapido do que o dono repara, e custa quatro leituras de
+    #: `getattr` por segundo -- e SO' enquanto o texto de estado estiver la'.
+    CAPTION_STATUS_POLL_S = 0.25
+
+    def _caption_status_state(self):
+        """OS FACTOS do ecra vazio -- lidos dos objectos que os tem, nunca copiados."""
+        state = {'wanted': bool(getattr(self, '_caption_wanted', False)),
+                 'player_owns': False, 'painted_recent': False,
+                 'track_known': False, 'track_cues': 0, 'rows': 0,
+                 'bridge': False, 'loaded': False, 'capturing': False,
+                 'no_audio': False, 'worker_state': ''}
+        try:
+            player = self._player_track_state()
+            state['rows'] = (int(player.get('rows') or 0)
+                             + int(player.get('snap_rows') or 0))
+            state['player_owns'] = bool(player_track_owns(player))
+        except Exception as exc:              # noqa: BLE001 -- um ack nunca derruba o gesto
+            log('CAPTION_STATUS_STATE_FAILED part=player error=%r' % (exc,))
+        try:
+            painted = str(getattr(self, '_caption_painted', '') or '').strip()
+            at = float(getattr(self, '_caption_painted_at', 0.0) or 0.0)
+            state['painted_recent'] = bool(painted) and at > 0.0 and (
+                (time.time() - at) <= float(self.CAPTION_REPLAY_MAX_S))
+        except Exception:                     # noqa: BLE001
+            state['painted_recent'] = False
+        try:
+            watcher = getattr(self, 'external_caption_watcher', None)
+            vid = str(getattr(watcher, 'yt_video_id', '') or '')
+            thread = getattr(self, 'youtube_track_thread', None)
+            current = getattr(thread, 'current', None) if thread is not None else None
+            track = current(vid) if (vid and callable(current)) else None
+            if isinstance(track, dict):
+                state['track_known'] = True
+                state['track_cues'] = len(track.get('cues') or ())
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_STATUS_STATE_FAILED part=track error=%r' % (exc,))
+        bridge = getattr(self, 'bridge', None)
+        state['bridge'] = bridge is not None
+        if bridge is not None:
+            state['loaded'] = bool(getattr(bridge, 'loaded', False))
+            state['capturing'] = bool(getattr(bridge, 'capturing', False))
+            state['no_audio'] = bool(getattr(bridge, 'no_audio', False))
+            state['worker_state'] = str(getattr(bridge, 'state', '') or '')
+        return state
+
+    def _caption_status_now(self):
+        """A razao do ecra vazio AGORA (ver `caption_status_for`).
+
+        O NOME NAO COLIDE COM O CAMPO `_caption_status_reason` (2026-11-11): o
+        campo guarda a razao que esta' PINTADA e e' escrito por
+        `_paint_caption_status`; uma funcao com o mesmo nome ficava sombreada
+        pelo atributo de instancia no primeiro pixel, e o tique seguinte morria
+        em `'str' object is not callable` -- medido aqui, na arm A5.
+        """
+        return caption_status_for(self._caption_status_state())
+
+    def _caption_status_start(self):
+        """Ligar pergunta pelo ESTADO agora e arma o repintar. Nunca levanta.
+
+        O primeiro texto e' enfileirado nesta chamada, nao no primeiro tique do
+        laco: o orcamento e' 200 ms depois do gesto (dono, 2026-11-11: *"meu ctrl
+        space nao fez nada"*), e esperar 250 ms pelo laco seria gastar o orcamento
+        inteiro antes de comecar.
+        """
+        try:
+            self._caption_status_live = True
+            # O AVISO DE DESLIGAR NAO SOBREVIVE AO LIGAR (2026-11-11): os pixels
+            # de `off` podem estar no ecra e o temporizador de silencio trata
+            # deles, mas o LIVRO do episodio comeca limpo -- senao o primeiro
+            # tique julgava que o bloqueio ja' estava mostrado e nao dizia nada.
+            if str(getattr(self, '_caption_status_reason', '') or '') == 'off':
+                self._caption_status_reason = ''
+                self._caption_status_episode_at = time.time()
+            if not float(getattr(self, '_caption_status_episode_at', 0.0) or 0.0):
+                self._caption_status_episode_at = time.time()
+            self._caption_status_tick()
+            thread = getattr(self, '_caption_status_thread', None)
+            if thread is None or not thread.is_alive():
+                thread = threading.Thread(target=self._caption_status_loop,
+                                          name='sotto-caption-status',
+                                          daemon=True)
+                self._caption_status_thread = thread
+                thread.start()
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_STATUS_START_FAILED error=%r' % (exc,))
+
+    def _caption_status_stop(self):
+        """Desligar limpa o episodio. Os pixels sao do `show_caption_window(False)`."""
+        self._caption_status_live = False
+        self._caption_status_queued_for = ''
+        self._caption_status_reason = ''
+        self._caption_status_episode_at = 0.0
+        if getattr(self, '_caption_pending_status', False):
+            self._caption_pending = None
+            self._caption_pending_status = False
+
+    def _caption_status_tick(self):
+        """UMA passagem: o estado mudou? Pinta, troca ou retira. Devolve a razao."""
+        try:
+            if not getattr(self, '_caption_wanted', False):
+                self._caption_status_withdraw('live-off')
+                return None
+            want = self._caption_status_now()
+            shown = str(getattr(self, '_caption_status_reason', '') or '')
+            queued = str(getattr(self, '_caption_status_queued_for', '') or '')
+            if want == shown or (want is not None and want == queued):
+                return want
+            if want is None:
+                self._caption_status_withdraw('blocker-cleared')
+                return None
+            self._caption_status_queue(want)
+            return want
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_STATUS_TICK_FAILED error=%r' % (exc,))
+            return None
+
+    def _caption_status_queue(self, reason):
+        """POE o texto de estado no MESMO slot da legenda (2026-11-11).
+
+        O slot e' o mecanismo que ja' existe (`_drain_caption_pending`): a
+        legenda verdadeira que chegar a seguir SUBSTITUI o texto, e a ordem no
+        ecra e' a de chegada. Um caminho de pintura paralelo seria uma segunda
+        regra sobre quem manda na superficie.
+        """
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None or not getattr(self, '_caption_wanted', False):
+            return False
+        pending = getattr(self, '_caption_pending', None)
+        if pending is not None and not getattr(self, '_caption_pending_status', False):
+            return False          # ja' ha' uma legenda no slot: ela e' que pinta
+        text = CAPTION_STATUS_TEXT.get(reason)
+        if not text:
+            return False
+        self._caption_pending = (time.time(), text, '',
+                                 int(getattr(self, '_source_epoch', 0)))
+        self._caption_pending_instant = True
+        self._caption_pending_status = True
+        self._caption_pending_reason = reason
+        self._caption_pending_cue = None
+        self._caption_pending_tap_ms = None
+        self._caption_pending_rows = None
+        self._caption_status_queued_for = reason
+        try:
+            self._caption_paint_wake()
+        except Exception as exc:              # noqa: BLE001 -- sem a thread, pinta aqui
+            log('CAPTION_STATUS_PAINT_WAKE_FAILED error=%r' % (exc,))
+            self._caption_drain_posted = False
+            self._drain_caption_pending()
+        return True
+
+    def _caption_status_withdraw(self, cause):
+        """TIRA o texto de estado quando o bloqueio deixou de existir.
+
+        So' mexe nos pixels se o texto de estado AINDA for o que la' esta': o
+        campo e' limpo pela primeira legenda verdadeira que pinta, e uma retirada
+        nunca pode apagar uma legenda.
+        """
+        shown = str(getattr(self, '_caption_status_reason', '') or '')
+        self._caption_status_queued_for = ''
+        if not shown:
+            return False
+        self._caption_status_reason = ''
+        self._caption_status_episode_at = 0.0
+        if getattr(self, '_caption_pending_status', False):
+            self._caption_pending = None
+            self._caption_pending_status = False
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is not None:
+            def _hide():
+                try:
+                    ov.hide()
+                    ov.show(False)
+                except Exception as exc:      # noqa: BLE001
+                    log('CAPTION_STATUS_HIDE_FAILED error=%r' % (exc,))
+            try:
+                self._caption_window_shown = False
+                self._post(_hide)
+            except Exception:                 # noqa: BLE001
                 pass
+        log('CAPTION_STATUS_CLEARED reason=%s why=%s' % (shown, cause))
+        return True
+
+    def _caption_off_ack(self):
+        """DESLIGAR TAMBEM RESPONDE (2026-11-11) -- devolve True se pintou.
+
+        O CASO DO DONO, medido no log do arranque de 17:34:20: a legenda estava
+        PERSISTIDA LIGADA, o worker ainda carregava o modelo e o ecra estava
+        vazio; ele carregou em Ctrl+Space, isso fez ON -> OFF, e um desligar num
+        ecra ja' vazio nao muda um pixel. Da cadeira dele a tecla nao fez nada, e
+        a reclamacao dele e' literalmente essa.
+
+        A pintura NAO passa pelo slot: `show_caption_window(False)` acabou de
+        ENFILEIRAR o `ov.show(False)` no `_post`, e a thread de pintura nao esta'
+        nessa fila -- um slot enfileirado aqui podia pintar ANTES do esconder e
+        ser apagado por ele (a mesma corrida que o guarda do interruptor mata no
+        sentido inverso). Este `_post` fica ATRAS do esconder na MESMA fila, por
+        isso a ordem e' a do dono: desliga, depois escreve.
+
+        O TEXTO DE DESLIGAR TEM O PRAZO DELE (2026-11-12, ordem do dono:
+        *"\'legenda ao vivo: desligada\' deve aparecer por meio segundo apenas,
+        e sumir"*). Ate' aqui ele era apagado pelo temporizador de silencio
+        normal (`CAPTION_IDLE_HIDE_S`, 6 s), que e' o prazo de uma LEGENDA --
+        e por isso o ack ficava 6 s no ecra de um video que ja estava desligado.
+        Agora arma `_arm_caption_status_hide` (0,5 s), um prazo proprio; o
+        `_caption_idle_hide` continua a ser o unico prazo da fala.
+        """
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None:
+            return False
+        # O CARIMBO DESTE EPISODIO E' O GESTO, nao o resto da UI (o `stop()`
+        # acabou de o zerar): o `ms` da linha tem de medir a distancia ao
+        # Ctrl+Space, que e' o que a aceitacao julga.
+        self._caption_status_episode_at = time.time()
+        text = CAPTION_STATUS_TEXT['off']
+
+        def _paint():
+            try:
+                ov.set_work_area(self.work_area(),
+                                 (self.display or {}).get('scaleFactor') or 1.0)
+                ov.set_text(text, '', True)
+                ov.show(True)
+                self._caption_window_shown = True
+                self._caption_status_reason = 'off'
+                started = float(getattr(self, '_caption_status_episode_at', 0.0) or 0.0)
+                ms = int((time.time() - started) * 1000.0) if started else 0
+                log('CAPTION_STATUS_SHOWN reason=off ms=%d text=%s'
+                    % (ms, json.dumps(text)))
+                self._arm_caption_status_hide()
+            except Exception as exc:          # noqa: BLE001
+                log('CAPTION_STATUS_OFF_PAINT_FAILED error=%r' % (exc,))
+
+        try:
+            self._post(_paint)
+            return True
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_STATUS_OFF_ACK_FAILED error=%r' % (exc,))
+            return False
+
+    def _caption_status_loop(self):
+        """Repinta enquanto houver um bloqueio nomeavel (ou um texto no ecra)."""
+        while (getattr(self, '_caption_status_live', False)
+               and getattr(self, '_caption_wanted', False)):
+            want = self._caption_status_tick()
+            # O LACO NAO MORRE QUANDO O SLOT ESTA' OCUPADO (2026-11-11). Um
+            # `want` nomeavel com a fila recusada (ha' uma legenda no slot) nao
+            # e' "nada a dizer": a legenda pinta ou e' descartada, e o tique
+            # seguinte pinta o texto. Sair aqui deixava o ecra vazio para sempre
+            # no unico caso em que o slot mudou de dono entre dois tiques.
+            if want is None and not str(
+                    getattr(self, '_caption_status_reason', '') or ''):
+                break
+            time.sleep(float(self.CAPTION_STATUS_POLL_S))
+        self._caption_status_live = False
+
+    def _paint_caption_status(self, text):
+        """Pinta o TEXTO DE ESTADO no overlay. Corre na thread de pintura.
+
+        E' o irmao de estado do `_drain_caption_pending`: nao mexe em
+        `_caption_painted`/`_caption_painted_at` (o "ligar de novo" nao pode
+        repetir um aviso como se fosse fala), nao conta em `_overlay_pushes` e
+        deixa UMA linha por episodio -- `reason` e' a identidade do episodio, e
+        um pedido repetido com a mesma razao nao volta a pintar nem a escrever.
+        """
+        reason = str(getattr(self, '_caption_pending_reason', '') or '')
+        self._caption_pending_status = False
+        self._caption_status_queued_for = ''
+        ov = getattr(self, 'caption_overlay', None)
+        if ov is None or not reason:
+            return False
+        if reason == str(getattr(self, '_caption_status_reason', '') or ''):
+            return False                     # ja' esta' no ecra: uma vez por episodio
+        if not getattr(self, '_caption_wanted', False):
+            return False
+        try:
+            ov.set_work_area(self.work_area(),
+                             (self.display or {}).get('scaleFactor') or 1.0)
+            ov.set_text(text, '', True)
+            ov.show(True)
+            self._caption_window_shown = True
+            self._caption_status_reason = reason
+            started = float(getattr(self, '_caption_status_episode_at', 0.0) or 0.0)
+            ms = int((time.time() - started) * 1000.0) if started else 0
+            log('CAPTION_STATUS_SHOWN reason=%s ms=%d text=%s'
+                % (reason, ms, json.dumps(str(text)[:60])))
+            # O TIMER DO `off` NAO MANDA NUM ESTADO NOVO (2026-11-11): ligar
+            # outra vez substitui o aviso de desligar no ecra, e o temporizador
+            # que ia apaga-lo 6 s depois apagaria o bloqueio verdadeiro.
+            self._caption_idle_disarm()
+            return True
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_STATUS_PAINT_FAILED reason=%s error=%r' % (reason, exc))
+            self._caption_status_reason = ''
+            return False
+
+    def on_worker_loading_text(self, text):
+        """`model-loading` -> a superficie, MAS SO' SE O PLAYER NAO A OCUPAR.
+
+        E' este o callback que a ponte recebe (`on_loading_text`). A regra mora
+        aqui e nao no `push_caption_to_window` porque um push de ESTADO e' uma
+        coisa diferente de uma legenda: o push continua a aceitar tudo o que e'
+        fala (do ASR e do player), e so' o texto de estado passa por esta porta.
+        """
+        try:
+            owned = self.player_track_owns_surface()
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_LOADING_TEXT_GATE_FAILED error=%r' % (exc,))
+            owned = False
+        if owned:
+            log('CAPTION_LOADING_TEXT_WITHHELD reason=player-track text=%s'
+                % json.dumps(str(text or '')[:40]))
+            return False
+        return self.push_caption_to_window(text)
 
     def push_caption_to_window(self, text, previous=None, credits=None, instant=False,
-                               rows=None):
+                               cue=None, rows=None, tap_ms=None):
         """A legenda para a JANELA PROPRIA. Silencioso se ela ainda nao existir."""
         ov = getattr(self, 'caption_overlay', None)
         if ov is None:
             return False
+        # A CORRIDA DO MOTOR MORRE ANTES DO ECRAN (2026-11-11). So' o caminho
+        # do ASR: as linhas do PLAYER (`rows`) sao do YouTube, vao 1:1 e nao se
+        # reescrevem. Custo medido da funcao pura: ~30 us, contra 11,6 ms de
+        # pintura -- 0,3 % de um quadro, e ela devolve o MESMO objecto quando
+        # nao ha' corrida, logo o caso comum nao paga copia nenhuma.
+        if rows is None and text:
+            text = text_normalize.collapse_runs(text)
         # THE PLAYER'S ROWS TRAVEL AS ONE TEXT, ONE PER LINE (2026-10-29).
         # `caption_overlay._layout` sees the '\n' and draws them AS GIVEN --
         # it never calls `caption_wrap` on this channel. The trailing
         # terminator marks even a ONE-row window as pre-broken, so a lone
         # long row cannot be re-wrapped at a word YouTube did not break at.
+        # A LEGENDA DO PLAYER MANDA NA TELA, E O ASR NAO LHE PASSA POR CIMA
+        # (2026-11-03). MEDIDO na sessao do dono, 00:01:41-00:01:46: o ASR
+        # aplicou `"Pra conseguir."` no overlay AS 00:01:42.891 e o YouTube so
+        # comecou a pintar as 00:01:44.868 -- logo durante dois segundos e meio
+        # a janela mostrava uma frase que o player NAO estava a mostrar. Foi
+        # isso que ele fotografou: duas legendas diferentes no mesmo ecra.
+        # A regra: enquanto o player estiver a fornecer linhas (janela de 2 s
+        # desde a ultima leitura externa boa), o caminho do ASR NAO empurra
+        # nada. `rows=` e `instant=True` sao o caminho do player e passam.
+        self._last_caption_was_player = rows is not None
+        if rows is not None:
+            # A SUPERFICIE E' DO PLAYER ATE' ELE PARAR (2026-11-04): o epoch
+            # so' cai com o release do observador
+            # (`on_external_captions_released`), nao com uma pausa entre cues.
+            # Ver `player_track_owns`.
+            self._player_frame_seen = True
+        if rows is None and not instant:
+            owned_until = float(getattr(self, "_yt_owner_until", 0.0) or 0.0)
+            if time.monotonic() < owned_until:
+                self._asr_dropped = int(getattr(self, "_asr_dropped", 0)) + 1
+                if self._asr_dropped in (1, 10, 50, 200) or self._asr_dropped % 500 == 0:
+                    log("CAPTION_OVERLAY_DROP reason=external-captions "
+                        "dropped=%d text=%s"
+                        % (self._asr_dropped, json.dumps(str(text or "")[:60])))
+                return False
         if rows:
             import youtube_reveal
             text = youtube_reveal.rows_text(rows)
@@ -9893,57 +20576,82 @@ class SottoShell:
         # sem isto a legenda nunca mais voltava a ser pintada -- trocava-se um
         # atraso por um silencio.
         now = time.time()
-        self._caption_pending = (now, text or '', previous or '',
+        text = text or ''
+        previous = previous or ''
+        # NAO SE DEITA FALA FORA (2026-11-03). O slot e' UM so' e a chegada
+        # seguinte SOBRESCREVE a que ainda nao foi pintada -- o que esta' certo
+        # contra o atraso e ERRADO contra o conteudo. MEDIDO na sessao do dono
+        # (pid 4992, 17:17:59-17:18:03): cinco `CAPTION_IN` distintos em 4 s e
+        # UMA linha publicada com os cinco encadeados; no caminho do YouTube a
+        # mesma janela perdia as linhas interiores. Duas linhas DISTINTAS que
+        # chegam antes do pixel agora ENGROSSAM uma a outra; uma linha nova que
+        # ja' CONTEM a pendente (a re-emissao cumulativa) substitui-a, que e' o
+        # caso em que juntar duplicaria.
+        # A JANELA DO PLAYER NUNCA SE JUNTA A' ANTERIOR (medido 2026-11-04).
+        # A regra de juntar existe para a HIPOTESE do ASR, que cresce e cujo
+        # pedaco antigo pode nao estar contido no novo. A janela do player NAO
+        # e' uma hipotese: o YouTube ja' decidiu o que esta' no ecra, e duas
+        # janelas consecutivas de um cue a rolar sao DIFERENTES por desenho --
+        # `['Have you ever had to kill a man?','No.']` seguida de
+        # `['No.','Then this sword']` juntava as duas e o overlay pintava
+        # QUATRO linhas, com uma linha costurada (`Then No.`). Medido com
+        # `_main/youtube-land-replay-oracle.py` sobre as 16 amostras gravadas:
+        # 11/16 amostras certas, 16 pinturas para 16 amostras com o texto
+        # ERRADO. A janela e' autoridade -- substitui.
+        _is_player_window = rows is not None
+        _pending = getattr(self, '_caption_pending', None)
+        _coalesced = 0
+        if _pending and not _is_player_window:
+            _old = (_pending[1] or '').strip()
+            _new = text.strip()
+            if _old and _new and _old != _new and _old not in _new:
+                text = _old + ' ' + text
+                _coalesced = int(getattr(self, '_caption_coalesced', 0)) + 1
+                self._caption_coalesced = _coalesced
+                _old_tap = getattr(self, '_caption_pending_tap_ms', None)
+                if _old_tap and tap_ms:
+                    tap_ms = min(int(_old_tap), int(tap_ms))
+            elif _old and _new and _old == _new:
+                # REPETICAO EXACTA da mesma linha: nao ha' nada a juntar.
+                _coalesced = int(getattr(self, '_caption_coalesced', 0)) + 0
+        self._caption_pending = (now, text, previous,
                                  int(getattr(self, '_source_epoch', 0)))
+        # O `instant` VIVE NO SLOT (2026-11-03): a pintura deixou de ser
+        # uma closure para ser uma thread propria, e um caminho que
+        # depende de uma variavel local de OUTRA funcao nao sobrevive a
+        # essa mudanca.
+        self._caption_pending_instant = bool(instant)
+        #: O cue com o relogio do player (`youtube_reveal.rows_from_cues` + `t`
+        #: + `at`), ao lado do `instant`. `None` = nao ha' relogio e o texto
+        #: viaja sozinho, como antes.
+        self._caption_pending_cue = cue
+        #: QUANDO O AUDIO DESTA LINHA ACABOU, no relogio de parede (2026-11-03).
+        #: Vem do worker (`tap_ms`) e atravessa o slot como o `instant` e o `cue`:
+        #: a idade que interessa ao dono nao e' a da FILA, e' a do AUDIO -- e sem
+        #: este campo a janela pintava sem saber de que instante era o que pinta.
+        self._caption_pending_tap_ms = tap_ms
+        #: A SUPERFICIE DESTE PUSH, AO LADO DO TEXTO (2026-11-11). O
+        #: `CAPTION_PAINT_SURFACE` tem de dizer QUAL das duas superficies pintou
+        #: (`src=player|asr`) e com quantas linhas: `rows is not None` e' a janela
+        #: do player (ja' decidida em `external_caption`), `rows=None` e' o ASR.
+        #: Sem este campo, 927 pinturas do player no log do dono nao tinham UMA
+        #: linha que dissesse quando o ecra mudou.
+        self._caption_pending_rows = rows
+        #: UMA LEGENDA VERDADEIRA NAO E' UM TEXTO DE ESTADO (2026-11-11). O
+        #: `_drain_caption_pending` le' estas duas marcas para escolher o caminho;
+        #: um `status=True` preso de um episodio anterior transformava a proxima
+        #: LEGENDA num ack (e uma legenda de estado e' pintada sem `_caption_
+        #: painted`, logo nao substituiria o texto que o dono le').
+        self._caption_pending_status = False
+        self._caption_pending_reason = ''
         dbg = self._overlay_pushes < 3
-
-        def _drain():
-            self._caption_drain_posted = False
-            pending = getattr(self, '_caption_pending', None)
-            if pending is None:
-                return
-            enqueued, new_text, new_prev, epoch = pending
-            self._caption_pending = None
-            # UM TEXTO DE EPOCH GASTO NAO PINTA -- e' o jumpscare (2026-10-30).
-            cur = int(getattr(self, '_source_epoch', 0))
-            if epoch != cur:
-                log(f'CAPTION_DROP_EPOCH enq={epoch} cur={cur} '
-                    f'text={json.dumps((new_text or "")[:60])}')
-                return
-            age_ms = int((time.time() - enqueued) * 1000)
-            try:
-                ov.set_work_area(self.work_area(),
-                                 (self.display or {}).get('scaleFactor') or 1.0)
-                ov.set_text(new_text, new_prev, instant)
-                ov.show(True)
-                self._overlay_pushes += 1
-                # O INSTANTE DA PRIMEIRA PINTURA (2026-10-26). A linha de aceitacao
-                # "Alt+C -> legenda no ecra em 1,5 s" nao tinha instrumento: a PRESSao
-                # esta no log desde sempre (`HOTKEY_PRESSED`, com o carimbo de tempo de
-                # `log()`), mas a PINTURA so aparecia em `count=1/50/500` e nas linhas
-                # `CAPTION_OVERLAY_LAG` -- logo a segunda legenda da sessao nao deixava
-                # rasto nenhum, e nao havia como medir diferenca nenhuma. Esta linha sai
-                # UMA vez por legenda que NASCE (texto vazio -> texto), que e exactamente
-                # o evento que o dono ve, com o `instant` do caminho (o YouTube entrega o
-                # prefixo ja revelado) e o hwnd. Nao muda o desenho: escreve no log.
-                was_blank = not (getattr(self, '_caption_painted', '') or '').strip()
-                self._caption_painted = new_text or ''
-                if was_blank and (new_text or '').strip():
-                    log(f'CAPTION_PAINT instant={str(bool(instant)).lower()} '
-                        f'hwnd={ov.hwnd} text={json.dumps(new_text[:60])}')
-                if age_ms >= 100:
-                    log(f'CAPTION_OVERLAY_LAG age_ms={age_ms} '
-                        f'count={self._overlay_pushes} '
-                        f'text={json.dumps(new_text[:60])}')
-                if self._overlay_pushes in (1, 50, 500):
-                    log(f'CAPTION_OVERLAY_PUSH count={self._overlay_pushes} '
-                        f'visible={str(ov.visible).lower()} hwnd={ov.hwnd} '
-                        f'text={json.dumps(new_text[:60])}')
-            except Exception as exc:  # noqa: BLE001
-                log(f'CAPTION_OVERLAY_PUSH_FAILED error={exc!r}')
-
         if dbg:
-            log(f'CAPTION_OVERLAY_PUSH_ENTER ov={ov.hwnd} post=ui')
+            # A ETIQUETA ACOMPANHA O MECANISMO (2026-11-03): a pintura deixou de
+            # ser um `_post` para a thread de UI, e uma etiqueta `post=ui` num
+            # log que ja' pinta noutra thread e' uma pista FALSA para quem
+            # diagnosticar.
+            log(f'CAPTION_OVERLAY_PUSH_ENTER ov={ov.hwnd} '
+                f'thread=caption-paint')
         in_flight = (getattr(self, '_caption_drain_posted', False)
                      and (now - getattr(self, '_caption_drain_posted_at', 0.0)) < 2.0)
         if in_flight:
@@ -9954,9 +20662,22 @@ class SottoShell:
         self._caption_drain_posted = True
         self._caption_drain_posted_at = now
         try:
-            self._post(_drain)
-        except Exception:  # noqa: BLE001
-            _drain()
+            # A PINTURA NAO MORA NA THREAD DE UI (2026-11-03, MEDIDO).
+            # `CAPTION_OVERLAY_PUSH_ENTER 04:50:41.528` -> `CAPTION_PAINT
+            # 04:50:42.645`: 1,1 s de atraso porque o `_post` espera que a
+            # thread de UI esteja livre, e ela passa MINUTOS dentro da
+            # navegacao do WebView2 (`WEBVIEW_NAV start -> dom` = 25 s
+            # medidos). O overlay e' uma janela Win32 com thread propria
+            # (`caption_overlay._thread_main`), logo a pintura nao precisa
+            # de pywebview para nada. Uma thread so' para a legenda corta
+            # a ultima dependencia entre a legenda e o painel.
+            self._caption_paint_wake()
+        except Exception as exc:  # noqa: BLE001
+            # A THREAD NAO PODE SER A UNICA SAIDA: se ela nao arrancar,
+            # este processo pinta no sitio onde pintava antes.
+            log('CAPTION_PAINT_THREAD_FAILED error=%r' % (exc,))
+            self._caption_drain_posted = False
+            self._drain_caption_pending()
         self._arm_caption_idle_hide()
         return True
 
@@ -9981,6 +20702,31 @@ class SottoShell:
                 self._post(_show)
             else:
                 self._caption_window_shown = False
+                # O SLOT MORRE COM O INTERRUPTOR (2026-11-05). O guarda novo
+                # do `_drain_caption_pending` ja' recusa pintar com a flag em
+                # OFF; limpar o slot aqui e' a outra metade -- um texto que
+                # ninguem vai pintar nao fica a espera de a flag voltar para
+                # aparecer como uma legenda que ele nunca viu chegar.
+                self._caption_pending = None
+                # DESLIGAR E' DETERMINISTICO, COM O VIDEO NO ESTADO QUE FOR
+                # (2026-11-06). O dono: *"ela tambem buga se eu desativo ela e
+                # o video ao mesmo tempo"*. Um `push_caption_to_window` que ja'
+                # correu na thread de pintura pode ter lido o slot ANTES deste
+                # ramo; o `_drain_caption_pending` corre DEPOIS e tem de o
+                # recusar. O epoch e' exactamente essa prova: sobe aqui, e o
+                # texto com o epoch velho cai em `CAPTION_DROP_EPOCH` mesmo que
+                # a flag seja lida ja' a meio. `_caption_drain_posted` tambem
+                # volta a falso -- um flag preso bloquearia a proxima pintura
+                # depois de religar.
+                self._source_epoch = int(getattr(self, '_source_epoch', 0)) + 1
+                self._caption_drain_posted = False
+                _timer = getattr(self, '_caption_idle_timer', None)
+                if _timer is not None:
+                    try:
+                        _timer.cancel()
+                    except Exception:         # noqa: BLE001
+                        pass
+                    self._caption_idle_timer = None
                 self._post(lambda: ov.show(False))
             # E O PAINEL ESCONDE A LEGENDA DELE -- MAS SO QUANDO ESTA JANELA ESTA MESMO
             # A MOSTRAR. O dono pediu a legenda INDEPENDENTE do painel (*"nao acoplado"*),
@@ -9991,10 +20737,23 @@ class SottoShell:
             #
             # UM `exec_js` POR TRANSICAO, nao por legenda: o atributo vive no documento do
             # painel e a folha que o le e a `zip-overlay.css`, que e a ultima a carregar.
+            #
+            # E NAO ESPERA PELA RESPOSTA (2026-11-03). Era `self.window.evaluate_js`,
+            # que bloqueia em `semaphore.acquire()` sem limite
+            # (`webview/platforms/edgechromium.py:160 `) ate' o UI thread correr o
+            # script -- medido na sessao do dono: a pressao das 02:45:24.645 so'
+            # deixou `LIVE_ENABLED on=false` as 02:45:51.919, **27,3 s** depois,
+            # dentro de um `UI_WATCHDOG_STRIKE`/`RECOVERED` de 27 s. O interruptor
+            # inteiro ficava atras do trabalho de UI que nao e' dele. `exec_js_post`
+            # e' o mesmo caminho que `emit`/`arm_paint_ack` ja' usam: `BeginInvoke`,
+            # ordem preservada, e o chamador SEGUE.
             try:
-                self.window.evaluate_js(
+                posted = self.exec_js_post(
                     'document.documentElement.setAttribute('
                     '"data-caption-window", %s)' % ('"on"' if on else '"off"'))
+                if not posted:
+                    log(f'CAPTION_WINDOW_PANEL_MARK_FAILED on={on} '
+                        'reason=no-post posted=false')
             except Exception as exc2:  # noqa: BLE001
                 log(f'CAPTION_WINDOW_PANEL_MARK_FAILED on={on} error={exc2!r}')
             return True
@@ -10002,7 +20761,250 @@ class SottoShell:
             log(f'CAPTION_WINDOW_SHOW_FAILED on={on} error={exc!r}')
             return False
 
+    @staticmethod
+    def _external_context(source):
+        """The context for a player line: its URL, when `source` is a URL.
+
+        Kept as a tiny pure function so the shipped decision is testable
+        without standing up the shell (review D4).
+        """
+        value = str(source or '')
+        if value.startswith(('http://', 'https://')):
+            return {'viewingUrl': value}
+        return {}
+
+    def _viewing_url(self):
+        """The foreground player URL from the source-decision cache, or ''.
+
+        `_yt_fg_cache` is `(hwnd, title, source, monotonic)` filled by
+        `_yt_source_by_title`; only a fresh URL is a viewing context, because a
+        stale one would label a line with the video the owner already left.
+        """
+        # THE CACHE LIVES ON THE WATCHER, NOT ON THE SHELL (review R1,
+        # 2026-11-09): `ExternalCaptionWatcher._yt_fg_cache` is written by the
+        # watcher thread (`_yt_source_by_title`), and the shell only holds the
+        # watcher. A shell-level cache never exists in the real app.
+        watcher = getattr(self, 'external_caption_watcher', None)
+        cache = getattr(watcher, '_yt_fg_cache', None) if watcher else None
+        if cache is None:
+            cache = getattr(self, '_yt_fg_cache', None)
+        try:
+            if cache and len(cache) >= 4:
+                if time.monotonic() - float(cache[3]) <= 6.0:
+                    source = str(cache[2] or '')
+                    if source.startswith(('http://', 'https://')):
+                        return source
+        except (TypeError, ValueError):
+            return ''
+        return ''
+
+    def _fusion_caption(self, text, meta):
+        """The finisher's hypothesis joins the STREAM one; returns what ships.
+
+        Called for EVERY worker caption, and it keeps the two roles apart:
+
+          * `final` not true — this IS the stream hypothesis for its line
+            identity; remember it (bounded) and hand it back untouched;
+          * `final:true` — this is the FINISHER's hypothesis (the M3 second
+            pass, or the Redux overlay's line) for the SAME identity; feed it
+            to `worker/fusion.py` with the remembered stream text. Publish only
+            exact, fully confirmed agreement; otherwise keep the stream text
+            and mark the final for review.
+
+        WHY THIS IS THE JOIN. The returned text is what `on_worker_caption`
+        gives to `emit_async` (the panel row — and the panel's commit is what
+        `history_append` writes) AND to `push_caption_to_window` (the overlay
+        slot `_drain_caption_pending` drains). One decision, both surfaces; the
+        alternative — patching each surface — is two rules for one line.
+
+        OFF unless `SOTTO_FUSION=1`. A final with no stream hypothesis of its
+        own (a batch pass over audio the live engine never painted, a probe)
+        has nothing to align against and ships byte for byte.
+        """
+        if not fusion_enabled():
+            return text
+        key = _fusion_key(meta)
+        if key is None:
+            return text
+        stream = getattr(self, '_fusion_stream', None)
+        if not isinstance(stream, dict):
+            stream = self._fusion_stream = {}
+        if meta.get('final') is not True:
+            stream[key] = str(text or '')
+            if len(stream) > FUSION_STREAM_MAX:
+                for stale in list(stream)[:len(stream) - FUSION_STREAM_MAX]:
+                    stream.pop(stale, None)
+            return text
+        prev = stream.get(key)
+        if not prev:
+            return text
+        states = getattr(self, '_fusion_state', None)
+        if not isinstance(states, dict):
+            states = self._fusion_state = {}
+        fusion = states.get(key)
+        try:
+            if fusion is None:
+                fusion = _fusion_module().Fusion()
+                # Seed with the stream line AS PAINTED, then say so: `reveal()`
+                # is what arms REVEALED_REPLACE_RULE for the finisher's feed.
+                fusion.feed(prev, '')
+                fusion.reveal()
+                states[key] = fusion
+                if len(states) > FUSION_STREAM_MAX:
+                    for stale in list(states)[:len(states) - FUSION_STREAM_MAX]:
+                        states.pop(stale, None)
+            # The indices the ops use belong to the COMMITTED list of this
+            # state, which is the previous target — not necessarily `prev`
+            # once a first final has already merged words into the line.
+            before = fusion.words()
+            result = fusion.feed(prev, str(text or ''))
+        except Exception as exc:  # noqa: BLE001 — text must still flow
+            log(f'FUSION_FAILED error={exc!r} '
+                f'text={json.dumps(str(text or "")[:60])}')
+            return text
+        ops = result.get('ops') or []
+        words = result.get('words') or []
+        changed_words = sum(1 for word in words
+                            if isinstance(word, dict) and word.get('changed'))
+        confirmed = _fusion_result_is_confirmed(result)
+        if isinstance(meta, dict):
+            meta['fusion_review'] = not confirmed
+            # Do not call an unpublished fusion candidate "corrected" in the
+            # consumer metadata: the stream wording remains the transcript.
+            meta['fusion_status'] = 'agreement' if confirmed else 'review'
+            meta['fusion_changed_words'] = changed_words
+        if ops:
+            for op in ops:
+                kind = str(op.get('op') or 'replace')
+                if kind == 'append':
+                    span = '%d:%d' % (len(before), len(before))
+                    was = ''
+                else:
+                    a, b = op.get('span') or (len(before), len(before))
+                    span = '%d:%d' % (int(a), int(b))
+                    was = ' '.join(r['word'] for r in before[int(a):int(b)])
+                # ONE line per change, and it exists so the effect is
+                # MEASURABLE: `grep FUSION_EDIT` over the owner's log answers
+                # "did the join ever disagree with the screen, and on which
+                # words?" without replaying the audio.
+                log(f'FUSION_EDIT op={kind} span={span} '
+                    f'was={json.dumps(was)} '
+                    f'now={json.dumps(str(op.get("text") or ""))} '
+                    f'stability={result.get("stability")}')
+        if not confirmed:
+            # Fusion can rank a different candidate without an acoustic score
+            # proving that candidate. Keep the exact stream hypothesis already
+            # shown, carry review metadata to the panel, and reset state to what
+            # was actually published. Revealing the unpublished candidate would
+            # make the next feed treat it as if the owner had seen it.
+            log('FUSION_REVIEW state=%s changed_words=%d ops=%d action=keep-stream'
+                % (result.get('stability'), changed_words, len(ops)))
+            reset = _fusion_module().Fusion()
+            reset.feed(prev, '')
+            reset.reveal()
+            states[key] = reset
+            return prev
+        # No edits and every word confirmed: the displayed text is the state
+        # future decisions must treat as revealed.
+        fusion.reveal()
+        return result.get('text') or prev
+
+    def set_external_owner(self, owner, reason='', had_line=None):
+        """O DONO DO ECRA: um so' escritor, uma linha por transicao.
+
+        O DEFEITO QUE ISTO FECHA (MEDIDO 2026-11-11): a posse era o booleano
+        `external_captions_active`, escrito em tres sitios, e a queda que o limpa
+        dentro de `ExternalCaptionWatcher._release` so' deixava rasto quando
+        havia `last_line`. Uma queda com a linha ja' gasta devolvia o ecra ao ASR
+        SEM REGISTO -- e no log do dono, as 17:46:05/09/14, tres linhas do ASR
+        (`CAPTION_PROVISIONAL_PAINT ... src=- id=381.84`) pintaram entre duas
+        pinturas da faixa do YouTube (17:46:02 e 17:46:18) com **zero**
+        `EXTERNAL_CAPTIONS_RELEASED` na sessao inteira. Uma transicao que ninguem
+        regista nao pode ser datada por um portao nem por quem le' o log.
+
+        `had_line`: True/False numa queda (havia linha?), None numa tomada. A
+        linha sai SO' quando o dono muda: o tick pergunta muitas vezes a mesma
+        coisa, e um log por pergunta seria o ruido que ja' custou 51 553 linhas.
+        """
+        owner = 'player' if owner == 'player' else 'local'
+        previous = getattr(self, 'external_owner', 'local')
+        if owner == previous:
+            return previous
+        # O CONTADOR DO EPISODIO QUE ACABOU e' lido ANTES de o zerar: medido pelo
+        # `_main/external-owner-oracle.py` (arm A6), a primeira versao zerava primeiro
+        # e a linha de saida dizia `suppressed_episode=0` -- a perda do episodio
+        # inteiro, que e' exactamente o numero que esta linha existe para dizer.
+        _lost = getattr(self, '_asr_suppressed_episode', 0)
+        self.external_owner = owner
+        if owner == 'local':
+            self._asr_suppressed_episode = 0
+        self.external_owner_episode = getattr(self, 'external_owner_episode', 0) + 1
+        self._asr_owner_episode = False
+        log(f'EXTERNAL_OWNER owner={owner} previous={previous} '
+            f'reason={reason or "-"} '
+            f'had_line={"n/a" if had_line is None else str(bool(had_line)).lower()} '
+            f'episode={self.external_owner_episode} '
+            f'active={str(bool(getattr(self, "external_captions_active", False))).lower()} '
+            f'suppressed_episode={_lost if owner == "local" else 0} '
+            f'suppressed_total={getattr(self, "external_suppressed", 0)}')
+        return previous
+
+    def external_owner_refuses(self, source=''):
+        """`True` quando a linha LOCAL nao pode pintar: o dono do ecra e' o player.
+
+        A POSSE, E NAO O CACHE. O portao era `self.external_captions_active` --
+        um booleano que uma saida lateral (`_release`) pode limpar a meio de uma
+        vitoria do player. Aqui le'-se `external_owner`, escrito so' pelo
+        `set_external_owner` acima, que diz a transicao; a linha `external:*`
+        (o proprio player) NUNCA e' recusada, porque ela E' o dono.
+
+        A RECUSA E' POR EPISODIO, nao por legenda: um video com faixa cala o ASR
+        durante minutos, e uma linha por legenda seria o ruido que o dono ja'
+        pagou uma vez. O contador (`external_suppressed`) continua exacto.
+
+        O QUE A LINHA RECUSADA SOFRE, medido (2026-11-12, `10-DEFECTS.md` §D-23):
+        ela NAO vai ao ecra **e NAO vai ao historico**. Este docstring dizia "vai
+        para o historico e nao para o ecra" -- e era falso: `on_worker_caption`
+        devolve ANTES do `emit_async`, e o painel, unico escritor de
+        `history_append`, nunca a ve. O contador por episodio sai agora na
+        transicao de volta (`EXTERNAL_OWNER ... suppressed_episode=`), para que a
+        perda seja legivel e datavel em vez de diluida num total.
+        """
+        if str(source or '').startswith('external:'):
+            return False
+        if getattr(self, 'external_owner', 'local') != 'player':
+            return False
+        if not getattr(self, '_asr_owner_episode', False):
+            self._asr_owner_episode = True
+            log(f'ASR_PAINT_REFUSED owner=player source={source or "-"} '
+                f'episode={getattr(self, "external_owner_episode", 0)} '
+                f'suppressed={getattr(self, "external_suppressed", 0) + 1} '
+                f'\u2014 a legenda local do audio que o player pinta e descartada: '
+                f'nao vai ao ecra nem ao historico (D-23)')
+        return True
+
     def on_worker_caption(self, text, meta):
+        # THE SESSION IS OBSERVED ON EVERY CAPTION, not only on a final
+        # (2026-11-09): the first PARTIAL of a respawned worker is what proves
+        # the new audio clock, and it arrives long before any line can commit.
+        # The stamp comes from the CHILD the bridge read the line from, so a
+        # dead worker's draining pipe cannot borrow the new session's identity.
+        # getattr: a partial shell (the probe harnesses extract this method)
+        # has no session bookkeeping and must not die on its absence.
+        _observe_ctx = getattr(self, '_history_ctx_observe_session', None)
+        if _observe_ctx is not None:
+            _observe_ctx(self._history_ctx_session_of(meta))
+        # ── THE TWO-MODEL JOIN (2026-11-09) ────────────────────────────────
+        # ONE call, BEFORE the text reaches either consumer: `emit_async`
+        # below feeds the panel row (and the panel's commit is what
+        # `history_append` writes) and `push_caption_to_window` paints the
+        # overlay. A PARTIAL is remembered as the STREAM hypothesis; a FINAL
+        # for the same `(session, start)` is the FINISHER's and comes back
+        # fused. Off unless SOTTO_FUSION=1; `getattr` because a probe harness
+        # extracts this method without the rest of the class.
+        _fuse = getattr(self, '_fusion_caption', None)
+        if _fuse is not None:
+            text = _fuse(text, meta)
         # A LINHA DE UM WORKER MORTO NAO PINTA NO NOVO (troca de PROCESSO).
         bridge = getattr(self, 'bridge', None)
         # THE PLAYER'S OWN CAPTIONS WIN WHILE THEY EXIST (owner, 2026-10-17).
@@ -10011,20 +21013,170 @@ class SottoShell:
         source = ''
         if isinstance(meta, dict):
             source = str(meta.get('source') or '')
-        if self.external_captions_active and not source.startswith('external:'):
+        if self.external_owner_refuses(source):
             self.external_suppressed += 1
+            self._asr_suppressed_episode = getattr(self, '_asr_suppressed_episode', 0) + 1
             if self.external_suppressed in (1, 100, 1000):
                 log(f'EXTERNAL_CAPTIONS_ASR_SUPPRESSED count={self.external_suppressed}')
+            return
+        self._asr_owner_episode = False
+        # THE CONTEXT OF A CLOSED LINE IS TAKEN ON ARRIVAL (2026-11-09). The
+        # panel commits it later, on its own hold timer, so sampling the
+        # foreground at commit time would record the app the owner switched to,
+        # not the one he was watching while this was said. Only `final` lines
+        # reach the transcript (`history_append` refuses the rest anyway).
+        if isinstance(meta, dict) and meta.get('final') is True:
+            # THE FOREGROUND PLAYER URL (review D4, 2026-11-09): the ASR path
+            # has no URL in its worker event, but when the foreground cache
+            # names a YouTube player the line's viewing context is that video.
+            # The cache is the same one `_yt_source_by_title` fills; a stale
+            # entry is not used (6 s, the same window the source decision uses).
+            # `getattr` on both helpers, like `_observe_ctx` above: the probe
+            # harnesses that drive THIS method build a partial shell
+            # (`types.SimpleNamespace`) and a probe dying in the product is a
+            # gate that raises instead of judging. In the shipped shell both
+            # methods always exist, so the guarded branch is the same branch.
+            _viewing_url = getattr(self, '_viewing_url', None)
+            _url = _viewing_url() if callable(_viewing_url) else ''
+            if _url:
+                _ctx = meta.get('context')
+                if not isinstance(_ctx, dict):
+                    _ctx = {}
+                _ctx.setdefault('viewingUrl', _url)
+                meta['context'] = _ctx
+            _note_ctx = getattr(self, 'note_history_context', None)
+            if _note_ctx is not None:
+                _note_ctx(meta)
+        # ── REPLAY VELHO E' HISTORIA, NAO PINTURA (INV-5/R11, 2026-11-04) ────
+        # A `WarmPipeBridge` marca `history_only` uma linha cujo audio tem mais
+        # de `WARM_BACKLOG_LIVE_MS`. Ela ENTRA no historico (o painel escreve-o a
+        # partir do evento) e NAO vai para a janela da legenda: pintar audio de
+        # ha' 6 s como se fosse ao vivo e' exactamente o SilentFallback que o
+        # recibo de 2026-10-07 proibiu, com o mesmo remedio -- a proveniencia
+        # viaja no meta (`src=warm-replay`, `audio_ms`).
+        if isinstance(meta, dict) and meta.get('history_only'):
+            self.emit_async('caption', {'text': text, 'meta': meta})
+            log(f'WARM_REPLAY_TO_HISTORY audio_ms={meta.get("audio_ms")} '
+                f'text={json.dumps(str(text)[:60])}')
             return
         # `emit_async`, NAO `emit`: `emit` espera pela pagina (ate' 10 s) na thread
         # que le' o stdout do worker -- a pagina ocupada atrasava a LEITURA.
         self.emit_async('caption', {'text': text, 'meta': meta})
-        log(f'BRIDGE_CAPTION_SENT delivered=async text={json.dumps(text)}')
+        # O INSTANTE DO AUDIO QUE ACABOU DE SEGUIR PARA O ECRa (2026-11-03): a
+        # pintura nesta maquina E' o painel (o overlay nativo responde
+        # `CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay`), logo o pixel
+        # acontece em `_caption_applied`; sem guardar o `tap_ms` que saiu, o lado
+        # do painel nao tem contra o que medir a idade nem quando estourar.
+        _meta = meta if isinstance(meta, dict) else {}
+        #: A LINHA ESTA' FECHADA? (2026-11-03). `final` so' fecha quando o worker
+        #: a fecha, e com o audio em silencio a cauda fecha minutos depois (59,9 s
+        #: medidos as 17:39:38, desktop mudo); sem a etiqueta o mesmo numero
+        #: mistura "o ecra esta' atrasado" com "a linha acabou de fechar".
+        self._last_push_final = bool(_meta.get('final'))
+        # getattr: um shell parcial (harness dos probes) morria aqui com
+        # AttributeError na THREAD DO PUMP e engolia as legendas (2026-11-04).
+        self._last_push_tap_ms = _meta.get('tap_ms') or getattr(self, '_last_push_tap_ms', None)
+        self._last_push_at = time.time()
+        # AMOSTRADO (2026-11-04): saia a CADA push -- 51 553 no log do dono -- e o
+        # que se procura nela e' "a ponte entregou?"; um em cada 20 basta. O
+        # `final` sai sempre: um fecho que falta e' um defeito.
+        self._caption_sent_count = getattr(self, '_caption_sent_count', 0) + 1
+        if _meta.get('final') or self._caption_sent_count == 1 or (
+                self._caption_sent_count % 20 == 0):
+            log(f'BRIDGE_CAPTION_SENT delivered=async n={self._caption_sent_count} '
+                f'final={str(bool(_meta.get("final"))).lower()} '
+                f'text={json.dumps(text)}')
+        # ── O CONTRATO DO AUDIO, NO LOG (2026-11-03) ──────────────────────
+        # ORDEM DO DONO: *"tu nao tem a porra de um teste ou log que mostra a
+        # discrepancia entre audio detectado e display na tela?"*. O log tinha
+        # SO' o texto -- nem `start`, nem `end`, nem `final`, nem `tap_ms`. Sem
+        # eles, "a legenda esta' atrasada" era impossivel de provar e de refutar:
+        # nao havia um campo com que comparar. Esta linha e' o contrato inteiro
+        # que o worker manda, na chegada, com a idade do audio ja' calculada.
+        _m = meta if isinstance(meta, dict) else {}
+        _tap = _m.get('tap_ms')
+        _age_ms = None
+        if _tap:
+            try:
+                _age_ms = int(time.time() * 1000.0) - int(_tap)
+            except (TypeError, ValueError):
+                _age_ms = None
+        log('CAPTION_IN start=%s end=%s final=%s stable=%s tap_ms=%s age_ms=%s '
+            'text=%s'
+            % (_m.get('start'), _m.get('end'),
+               str(bool(_m.get('final'))).lower(),
+               str(bool(_m.get('stable'))).lower(),
+               _tap, _age_ms, json.dumps(text[:60])))
+        if _age_ms is not None and _age_ms > self.CAPTION_BUDGET_MS:
+            # A MESMA REGUA NA CHEGADA: se o audio ja' chegava velho, o defeito
+            # e' do worker/e do tap, nao do desenho -- e o log tem de dizer QUAL
+            # das duas metades estourou.
+            #
+            # SO' A VIA VIVA JULGA A CHEGADA (2026-11-04): uma linha `final`
+            # descreve audio fechado depois da cauda de silencio, logo idade
+            # grande e' PROJECTO -- medido no log dele as 04:49:50.981,
+            # `age_ms=114723 final=true` ao lado de `p50=240` na via viva. Os
+            # factos ficam no `CAPTION_IN` acima; o veredicto nao os conta.
+            if not _m.get('final'):
+                log(f'CAPTION_ARRIVAL_BLOWN age_ms={_age_ms} '
+                    f'budget_ms={self.CAPTION_BUDGET_MS} kind=live '
+                    f'text={json.dumps(text[:60])}')
+        # ── A IDADE DO AUDIO DECIDE SE ISTO E' LEGENDA OU HISTORIA ─────────
+        # (2026-11-11). O TEXTO JA' FOI PARA O PAINEL/HISTORICO acima
+        # (`emit_async`) -- nada aqui pode perder fala. O que se recusa e' a
+        # PINTURA AO VIVO de audio que ja' nao e' agora.
+        #
+        # MEDIDO no log do dono, pid 49180: as 17:46:05.822 o shell pintou
+        # `CAPTION_IN start=381.84 final=true tap_ms=None` -- audio de
+        # 17:41:04.7, **301 s** antes -- e as 17:46:07.330 a linha seguinte
+        # (`CAPTION_APPLIED`) tambem, com `cpu_pct_avg=174.1`. `tap_ms` vinha
+        # None, logo o `CAPTION_PAINT_LAG` nunca existiu para a denunciar: o ecra
+        # mostrou cinco minutos de atraso como se fosse ao vivo, e nada no shell
+        # tinha com que saber.
+        #
+        # O limite e a evidencia estao em `LIVE_PAINT_MAX_AGE_S` (30 s: 3,7x o
+        # pior caso HONESTO medido, 10x abaixo da patologia). A idade sai de
+        # `live_paint_age_s`, que prefere o `age_s` do worker, aceita o `tap_ms`
+        # e, quando nenhum dos dois vem, deriva-a do relogio de AUDIO (`start`)
+        # contra a epoca da captura que o bridge guarda em `capture_epoch`.
+        # Sem idade medivel NAO se recusa (nao se inventa um veredicto).
+        #
+        # UMA LINHA POR EPISODIO, nao por legenda: uma fila de cinco minutos
+        # produz centenas de linhas recusadas e um log assim deixa de ser lido.
+        _capture_epoch = 0.0
+        if bridge is not None:
+            try:
+                _capture_epoch = float(getattr(bridge, 'capture_epoch', 0.0) or 0.0)
+            except (TypeError, ValueError):
+                _capture_epoch = 0.0
+        _audio_age_s = live_paint_age_s(_m, _capture_epoch)
+        _refused = live_paint_stale(_audio_age_s)
+        if _refused:
+            _stale_run = int(getattr(self, '_live_stale_run', 0)) + 1
+            self._live_stale_run = _stale_run
+            if _stale_run == 1:
+                try:
+                    _player_owns = bool(self.player_track_owns_surface())
+                except Exception:             # noqa: BLE001
+                    _player_owns = False
+                log('LIVE_PAINT_REFUSED reason=stale age_s=%.2f bound_s=%.1f '
+                    'producer=%s player=%s text=%s'
+                    % (_audio_age_s, LIVE_PAINT_MAX_AGE_S,
+                       _m.get('producer') or _m.get('source') or 'worker',
+                       str(_player_owns).lower(),
+                       json.dumps(text[:60])))
+            # A SUPERFICIE DO PLAYER TAMBEM NAO E' TOCADA (2026-11-11): uma linha
+            # velha do ASR nao pode apagar nem substituir as linhas que o player
+            # esta' a pintar. Sem push nenhum, as duas metades ficam de uma vez.
+        else:
+            self._live_stale_run = 0
         # E A JANELA PROPRIA DA LEGENDA RECEBE O MESMO TEXTO. O dono: *"a legenda ao vivo
         # deveria aparecer no MEIO EM BAIXO da minha tela"*. Uma janela propria e a unica
         # forma de ela pousar no fundo da TELA sem a barra no topo do mesmo caixote.
-        if bridge is None or getattr(self, 'bridge', None) is bridge:
-            self.push_caption_to_window(text)
+        if _refused:
+            pass
+        elif bridge is None or getattr(self, 'bridge', None) is bridge:
+            self.push_caption_to_window(text, tap_ms=_tap)
         else:
             log('BRIDGE_CAPTION_DROP_SUPERSEDED reason=bridge-changed '
                 f'text={json.dumps(text[:60])}')
@@ -10034,7 +21186,8 @@ class SottoShell:
         if isinstance(meta, dict) and meta.get('final') is True:
             self._reload_policy.boundary(closed=True, why='closed-line')
 
-    def external_caption(self, text, source, final=False, instant=False, rows=None):
+    def external_caption(self, text, source, final=False, instant=False, rows=None,
+                        cue=None):
         """One line read from the PLAYER's own captions (YouTube/Stremio).
 
         THE OWNER'S TWO COMPLAINTS, 2026-10-18, both fixed HERE because this is
@@ -10071,11 +21224,6 @@ class SottoShell:
         if extends_previous(prev, text):
             final = False
         self._external_last_text = text
-        # Only when the owner is actually looking at Sotto. While the panel is
-        # hidden there is nothing to replace, and painting a second subtitle
-        # over YouTube would be worse than doing nothing.
-        if not (self.visible or getattr(self, '_caption_window_shown', False)):
-            return False
         self.external_lines += 1
         if self.external_lines in (1, 50, 500) or final:
             log(f'EXTERNAL_CAPTION_SENT count={self.external_lines} '
@@ -10083,16 +21231,42 @@ class SottoShell:
                 f'text={json.dumps(text[:60])}')
         if not self.external_captions_active:
             self.external_captions_active = True
-            self._park_worker_for_external(source)
+            self._external_since = time.monotonic()
+        self.set_external_owner('player', reason='external-line:%s'
+                                % (str(source or 'player').split(':')[0],),
+                                had_line=True)
+        # O ESTACIONAMENTO ESPERA (2026-11-02): a primeira linha do player NAO mata
+        # o worker. Ver `EXTERNAL_PARK_DELAY_S`.
+        self._park_worker_when_settled(source)
         now = time.monotonic()
+        _source_text = str(source or 'external:player')
         meta = {
             'start': round(now, 2),
             'end': round(now + 0.01, 2),
             'chunk_start': round(now, 2),
             'chunks': [[round(now, 2), round(now + 0.01, 2), text]],
             'final': bool(final),
-            'source': str(source or 'external:player'),
+            'source': _source_text,
+            # THE PLAYER IS ITS OWN AUDIO SESSION (2026-11-09): its `start` is
+            # `time.monotonic()`, never the worker's audio clock, so a snapshot
+            # captured under the worker's clock must not be donated to a player
+            # line (or the reverse) when the two numbers happen to be close.
+            'historySession': 'external',
         }
+        _observe_ctx = getattr(self, '_history_ctx_observe_session', None)
+        if _observe_ctx is not None:
+            _observe_ctx(meta['historySession'])
+        # THE PLAYER'S OWN URL IS THE VIEWING CONTEXT (review D4, 2026-11-09):
+        # `source` is the URL the external watcher resolved (or an
+        # `external:*` marker, which carries no URL).
+        _external_ctx = self._external_context(_source_text)
+        if _external_ctx:
+            meta['context'] = _external_ctx
+        # THE CONTEXT IS CAPTURED HERE, WHILE THE LINE IS FRESH (2026-11-09),
+        # before the display gate below: hiding the display is not stopping the
+        # history (owner rule, 2026-11-02).
+        if meta.get('final') is True:
+            self.note_history_context(meta)
         # A DEDICATED CHANNEL: the player's line must REPLACE the live box, not
         # be joined to the previous hypothesis. The panel handles this kind by
         # resetting the engine for that source, ingesting exactly one line and,
@@ -10100,24 +21274,129 @@ class SottoShell:
         # the ASR `caption` kind produced "previous. previous. current." in the
         # history, because the engine appends a new partial before its hold
         # timer commits the previous one.
-        self.emit('external-caption', {'text': text, 'meta': meta})
-        self.push_caption_to_window(text, instant=instant, rows=rows)
+        #
+        # THE EVENT GOES TO THE PAGE EVEN WHEN THE DISPLAY IS HIDDEN (2026-11-09):
+        # the page's `external-caption` handler is what writes the transcript, so
+        # the old early `return` below silently stopped history for YouTube
+        # captions whenever the panel/overlay were hidden -- exactly the
+        # "display off is not history off" defect. The native overlay push is
+        # still skipped when there is nothing on screen.
+        #
+        # O QUE DECIDE "HA' ECRAN" E' O INTERRUPTOR DO DONO (`_caption_wanted`),
+        # NAO `_caption_window_shown`: este ultimo e' TRANSITORIO (o piso de
+        # silencio e a pausa do YouTube poem-no a False) e usa-lo aqui matava a
+        # legenda para sempre depois do primeiro blank -- o proximo `push` nunca
+        # corria e a janela so' voltava com Ctrl+Space. Medido no caminho:
+        # `_caption_idle_hide` -> `_blank_caption_window` -> `_caption_window_shown
+        # = False` -> `_display_visible=False` -> `return` em TODAS as linhas
+        # seguintes. O interruptor e' dele; o blank e' um pixel.
+        #
+        # A ESCOLHA `emit` x `emit_async` continua a ser sobre a PAGINA (painel
+        # visivel), nao sobre a legenda: uma pagina escondida/ocupada nao pode
+        # segurar o leitor do YouTube por 10 s.
+        _caption_on = bool(getattr(self, '_caption_wanted', False))
+        if bool(getattr(self, 'visible', False)):
+            self.emit('external-caption', {'text': text, 'meta': meta})
+        else:
+            # The page still writes the transcript; it just has nothing to paint.
+            self.emit_async('external-caption', {'text': text, 'meta': meta})
+        # PAUSA/FIM DO PLAYER: o HISTORICO recebe (acima), o ECRAN nao. O dono,
+        # verbatim (2026-11-08): *"quando eu deixo o video pausado, a legenda
+        # fica ao vivo ... fica travada em outro momento"*. A borda apaga os
+        # pixels; este portao impede o tick seguinte de os levantar outra vez com
+        # a linha congelada. Modelo, worker e historico intactos.
+        # O PORTAO E' DO YOUTUBE, NAO DE TODA A FONTE EXTERNA (2026-11-09,
+        # revisao D2): `yt_source_paused` so' e' limpo no release, e com outro
+        # player (Stremio) a fornecer linhas o release nunca corre -- a pausa
+        # de um video do YouTube mantinha a fonte seguinte sem pixels.
+        if (str(source or '').startswith('external:youtube')
+                and (getattr(self, 'yt_source_paused', False)
+                     or getattr(self, 'yt_source_ended', False))):
+            if final:
+                self._reload_policy.boundary(closed=True, why='external-line')
+            return False
+        if not _caption_on:
+            if final:
+                self._reload_policy.boundary(closed=True, why='external-line')
+            return False
+        # O QUE CHEGOU AO ECRA, e nao so' o que se decidiu (2026-11-02). As tres
+        # imagens do dono nao distinguiam "decidimos mal" de "pintamos mal": este
+        # registo fecha essa separacao -- `rows` e' o numero de LINHAS enviadas ao
+        # overlay e `lines` o texto de cada uma. Loga na mudanca, nunca por tick.
+        _rows_for_log = list(rows or [text])
+        _key = '\u2028'.join(_rows_for_log)
+        if _key != getattr(self, '_external_rows_logged', ''):
+            self._external_rows_logged = _key
+            log('EXTERNAL_CAPTION_DRAWN rows=%d lines=%r'
+                % (len(_rows_for_log), [r[:70] for r in _rows_for_log]))
+        self.push_caption_to_window(text, instant=instant, rows=rows, cue=cue)
         if final:
             self._reload_policy.boundary(closed=True, why='external-line')
         return True
 
+    def _park_worker_when_settled(self, source):
+        """Estaciona o worker so' quando o player ja' serve linhas ha' um rato.
+
+        MEDIDO 2026-11-02 na sessao do dono: 10 paragens e 10 recargas desde as
+        20:00 -- cada uma mata e reabre um cliente WASAPI, e o audio dele pisca.
+        Uma janela curta de legenda nao pode custar isso; so' um video a servir
+        captions de forma continuada justifica libertar a VRAM.
+        """
+        since = getattr(self, '_external_since', None)
+        if not since:
+            self._external_since = time.monotonic()
+            since = self._external_since
+        age = time.monotonic() - float(since)
+        if age < EXTERNAL_PARK_DELAY_S:
+            if not getattr(self, '_external_park_deferred_logged', False):
+                self._external_park_deferred_logged = True
+                log('EXTERNAL_CAPTIONS_PARK_DEFERRED age_s=%.1f min_s=%.0f'
+                    % (age, EXTERNAL_PARK_DELAY_S))
+            return False
+        return self._park_worker_for_external(source)
+
+    def engine_park_reason(self):
+        """O pedido de estacionamento publicado no `panel-visibility.json`."""
+        return getattr(self, '_engine_park', None)
+
+    def set_engine_park(self, reason):
+        """Pede ao worker que LARGUE O MOTOR, sem matar o processo.
+
+        ORDEM DO DONO, 2026-11-03, verbatim: *"tu nao consegue fazer o sotto se
+        conectar ao audio atual inves de ficar matando o audio toda hora?"*.
+        `bridge.stop()` matava o processo e com ele o cliente WASAPI -- a cada
+        paragem o audio DELE piscava, e a volta custava 14-26 s de recarga. O
+        pedido viaja no ficheiro que o worker JA' sonda (uma chave additive), e
+        o worker larga o nemotron na thread do lote: um processo, um cliente de
+        audio, nenhum blink.
+        """
+        reason = reason if isinstance(reason, str) and reason else None
+        if getattr(self, '_engine_park', None) == reason:
+            return False
+        self._engine_park = reason
+        try:
+            log(f'ENGINE_PARK reason={reason or "off"}')
+            self.publish_panel_visibility(f'engine-park-{reason or "off"}')
+        except Exception as exc:  # noqa: BLE001 -- nunca derruba o caminho
+            log(f'ENGINE_PARK_FAILED reason={reason or "off"} error={exc!r}')
+        return True
+
     def _park_worker_for_external(self, source):
-        """Free the worker (and its VRAM) while the player supplies captions."""
+        """Larga o MOTOR AO VIVO enquanto o player fornece as legendas.
+
+        O PROCESSO FICA. E' a diferenca que o dono pediu: o modelo e' o que
+        custa VRAM, e o cliente de audio dele e' o que ele ouve a piscar.
+        """
         if self._paused or self._external_parked:
             return False
         bridge = getattr(self, 'bridge', None)
         if bridge is None or getattr(bridge, 'child', None) is None:
             return False
-        log(f'EXTERNAL_CAPTIONS_WORKER_PARKED source={source} '
-            f'pid={getattr(bridge.child, "pid", None)}')
-        bridge.stop('external-captions')
-        self.bridge = None
         self._external_parked = True
+        self.set_engine_park('captions')
+        log(f'EXTERNAL_CAPTIONS_ENGINE_PARKED source={source} '
+            f'pid={getattr(bridge.child, "pid", None)} '
+            f'mode=engine-not-process')
         return True
 
     def park_worker_for_vram(self, free_mb):
@@ -10128,10 +21407,14 @@ class SottoShell:
         if bridge is None or getattr(bridge, 'child', None) is None:
             return False
         pid = getattr(bridge.child, 'pid', None)
-        log(f'VRAM_GUARD_PARKING free_mb={free_mb:.0f} pid={pid}')
-        bridge.stop('vram-pressure')
-        self.bridge = None
+        log(f'VRAM_GUARD_PARKING free_mb={free_mb:.0f} pid={pid} '
+            f'mode=engine-not-process')
+        # A GPU E' O MOTIVO LEGITIMO DE LARGAR O MOTOR (ordem do dono,
+        # 2026-11-03) -- mas largar o MOTOR nao pede matar o PROCESSO, e era o
+        # processo que levava o cliente WASAPI com ele. `vram` larga os dois
+        # motores dentro do worker e deixa a captura e o audio acumulado.
         self._vram_parked = True
+        self.set_engine_park('vram')
         self.apply_panel_state(
             'Paused - GPU in use by another app', 'idle',
             {'title': 'GPU busy',
@@ -10141,14 +21424,41 @@ class SottoShell:
         return True
 
     def resume_after_vram(self, free_mb):
-        """The GPU is free again: reload the engines if a panel is on screen."""
+        """The GPU is free again: reload the engines if a panel is on screen.
+
+        A VISIBILIDADE DECIDE O QUE RECARREGAR, NUNCA SE O PEDIDO SE LEVANTA
+        (2026-11-05). A primeira versao saia AQUI, antes do `set_engine_park(None)`
+        e antes de qualquer linha de log, e com `_vram_parked = False` ja' escrito:
+        com a GPU livre e o painel escondido o pedido `park=vram` ficava no
+        `panel-visibility.json` PARA SEMPRE e o laco do guarda nunca mais voltava
+        a tentar (a condicao `elif ... self.shell._vram_parked` era falsa). MEDIDO
+        na instancia viva do dono (pid 52504): `park='vram'` com 2826 MB livres,
+        `VRAM_GUARD_RESUMING` zero vezes no log, e a ultima `CAPTION_IN` as 18:09
+        -- o motor ficou largado ate' o reinicio. E' a regra do dono ao contrario:
+        *"se a legenda ao vivo ta desativada, nao significa q o modelo ta
+        desativado"*.
+        """
         if not self._vram_parked or self._paused:
             return False
         self._vram_parked = False
-        if not (self.visible or getattr(self, '_caption_window_shown', False)):
-            return False
-        log(f'VRAM_GUARD_RESUMING free_mb={free_mb:.0f}')
-        return self.start_worker('vram-resume')
+        showing = bool(self.visible or getattr(self, '_caption_window_shown', False))
+        log(f'VRAM_GUARD_RESUMING free_mb={free_mb:.0f} mode=engine-not-process '
+            f'showing={showing}')
+        if self.engine_park_reason() in ('vram', None):
+            self.set_engine_park(None)
+        return showing
+
+    def _clear_yt_source_mirrors(self):
+        """O ESPELHO DA PAUSA/FIM DO YOUTUBE E' UM SO', LIMPO NOS DOIS SITIOS.
+
+        O portao de ecran do `external_caption` recusa pixels do YouTube
+        enquanto `yt_source_paused`/`yt_source_ended` forem verdadeiros. Dois
+        caminhos largam a superficie -- o release do player e a troca de video --
+        e cada um tinha a sua copia da limpeza; a de `_yt_switch_video` esquecia
+        o `ended` (2026-11-09, revisao D4). Uma funcao, duas chamadas.
+        """
+        self.yt_source_paused = False
+        self.yt_source_ended = False
 
     def on_external_captions_released(self):
         """The player stopped showing captions: give the microphone back.
@@ -10179,47 +21489,60 @@ class SottoShell:
         model). The microphone does not come back because the app is gone; it
         comes back because the app is still there.
         """
+        # O PLAYER LARGOU A SUPERFICIE (2026-11-04). Enquanto ele fornecia, o
+        # texto de estado era recusado; a partir daqui a superficie e' do ASR e
+        # o estado volta a ser honesto. Limpa-se ANTES dos `return` abaixo: um
+        # early-return que deixasse o epoch de pe' calava o `model-loading` de
+        # um worker que ia ser carregado.
+        self._player_frame_seen = False
+        # O ESPELHO DA PAUSA MORRE COM A SUPERFICIE (2026-11-09). O portao de
+        # ecran do `external_caption` recusa pixels enquanto `yt_source_paused`
+        # for verdadeiro; se o player larga a superficie (outra fonte, outra
+        # janela), a bandeira ficava de pe' e bloqueava a PROXIMA fonte. A pausa
+        # e' um estado do YouTube, nao do shell.
+        self._clear_yt_source_mirrors()
         if self.exiting.is_set():
             log('EXTERNAL_CAPTIONS_WORKER_RESUME_SKIPPED reason=shell-exiting')
             return False
         if not self._external_parked:
             return False
         self._external_parked = False
-        if self._paused:
-            return False
-        if not (self.visible or getattr(self, '_caption_window_shown', False)):
-            return False
+        # O PARQUE E' DO MOTOR, NAO DA JANELA (2026-11-10, MEDIDO). Era assim: o
+        # latch era consumido aqui e, nas DUAS linhas seguintes, um `_paused` ou
+        # um painel escondido faziam `return False` -- e como o release e' de
+        # BORDA (o watcher avisa uma vez), o `set_engine_park(None)` abaixo nunca
+        # corria. Resultado medido no estado em disco: `"park": "captions"` com
+        # `"visible": false` reimpresso a cada 3 s, `staleAfterSeconds=9.0` nunca
+        # a expirar, e **1** `EXTERNAL_CAPTIONS_ENGINE_RESUMED` contra **16**
+        # `ENGINE_PARK` em 187 339 linhas -- o motor ficava largado para sempre e
+        # ele ouvia *"a legenda congela e nunca volta"*. Uma oportunidade unica
+        # gasta por um `return` nao e' um portao, e' uma armadilha.
+        # A visibilidade e o pause desligam o DISPLAY (regra 3), nunca o pedido
+        # de parque: limpar o pedido e' uma escrita num ficheiro, custo zero.
         now = time.monotonic()
-        last = getattr(self, '_last_external_resume', 0.0)
-        waited = now - last
-        if last and waited < EXTERNAL_RESUME_MIN_S:
-            # DEFERRED, NOT DROPPED. The worker is wanted; it is simply not
-            # wanted `waited` seconds after the last time we loaded it. Saying so
-            # is the whole point -- a silent skip here is what made this
-            # invisible for as long as it was running.
-            log(f'EXTERNAL_CAPTIONS_WORKER_RESUME_DEFERRED since_s={waited:.1f} '
-                f'min_s={EXTERNAL_RESUME_MIN_S}')
-            return False
         self._last_external_resume = now
-        log('EXTERNAL_CAPTIONS_WORKER_RESUMED reason=player-stopped')
-        return self.start_worker('external-end')
+        if self.engine_park_reason() == 'captions':
+            self.set_engine_park(None)
+            log('EXTERNAL_CAPTIONS_ENGINE_RESUMED reason=player-stopped '
+                f'mode=engine-not-process paused={str(self._paused).lower()} '
+                f'visible={str(self.visible).lower()}')
+            return True
+        return False
 
     #: THE FLAGS THAT MAKE A RUN A MEASUREMENT. A measurement measures the
     #: PANEL or the SHELL -- its geometry, its edit mode, its outside click.
     #: It does NOT measure the player's captions, and `--no-hotkey` is the
     #: shell's OWN name for it: the help says "for MEASUREMENT runs", and a
     #: real run cannot work without Alt+C.
-    MEASUREMENT_FLAGS = ('dump_dom', 'selftest', 'memory', 'no_hotkey',
-                         'exit_after', 'probe_stats', 'probe_outside_click',
-                         'probe_edit_mode')
-
     def _is_measurement_run(self, args=None):
-        """The measurement flag this run carries, or '' for a normal run."""
+        """The measurement flag this run carries, or '' for a normal run.
+
+        DELEGATED to the one table (2026-11-12): this class used to carry its
+        own five-item copy of the list, which knew neither `--probe-v2` nor the
+        three `--probe-*` flags the reader below must refuse.
+        """
         args = args if args is not None else getattr(self, 'args', None)
-        for name in self.MEASUREMENT_FLAGS:
-            if getattr(args, name, False):
-                return name
-        return ''
+        return _measurement_flag(args) or ''
 
     def start_external_caption_watcher(self):
         """Start the UIA reader once per process (normal runs only)."""
@@ -10357,16 +21680,9 @@ class SottoShell:
             return False
         self.edit_mode = enabled
         if enabled:
-            # The band has to be ON SCREEN to be positioned — and the strip is
-            # what the owner is positioning, so the show path applies it (and
-            # does the resize while the window is still hidden).
-            if not window_visible(hwnd):
-                self.show_panel(f'edit-{reason}')
-            try:
-                make_click_through(hwnd, False)
-                set_ex_style(hwnd, remove=WS_EX_NOACTIVATE)
-            except Exception as exc:  # noqa: BLE001 -- report, never kill the app
-                warn(f'PANEL_EDIT_MODE_STYLE_FAILED error={exc!r}')
+            # ARMADO ANTES DO SHOW (medido 2026-11-02): o show custa o paint ack
+            # (156 ms) e, armado depois, a faixa ficava visivel com o vigia a ler
+            # `edit_mode=false` -- `PANEL_SHOWN` .307, `PANEL_HIDDEN` .311.
             if self.click_watcher is not None:
                 # The watcher's own thread reads this; it also STOPS closing the
                 # panel on an outside click while the owner is positioning it.
@@ -10379,6 +21695,16 @@ class SottoShell:
                 warn('PANEL_EDIT_MODE_NO_DRAG the outside-click watcher is not '
                      'running (--no-click-outside), so the band cannot be '
                      'dragged; the tray item still toggles the mode')
+            # The band has to be ON SCREEN to be positioned — and the strip is
+            # what the owner is positioning, so the show path applies it (and
+            # does the resize while the window is still hidden).
+            if not window_visible(hwnd):
+                self.show_panel(f'edit-{reason}')
+            try:
+                make_click_through(hwnd, False)
+                set_ex_style(hwnd, remove=WS_EX_NOACTIVATE)
+            except Exception as exc:  # noqa: BLE001 -- report, never kill the app
+                warn(f'PANEL_EDIT_MODE_STYLE_FAILED error={exc!r}')
             self.edit_moves = 0
             rect = RECT()
             user32.GetWindowRect(hwnd, ctypes.byref(rect))
@@ -10614,6 +21940,12 @@ class SottoShell:
                 value = meter.get(key)
                 if value is not None:
                     payload[key] = float(value)
+            # O PAUSE VAI TAMBEM POR ESTE RAMO. A funcao tem DUAS saidas, e esta
+            # e' a que corre quase sempre (um tick de medidor fresco substitui a
+            # linha de WORKER_STATS inteira). Carimbar o estado so' na ultima
+            # deixaria o botao sem noticia exactamente no caso NORMAL, e o
+            # defeito pareceria intermitente -- a pior forma de o entregar.
+            payload['paused'] = bool(getattr(self, '_paused', False))
             return payload
         raw = getattr(self.bridge, 'last_worker_stats', None) \
             if self.bridge is not None else None
@@ -10645,6 +21977,22 @@ class SottoShell:
                     payload[key] = float(value)
                 except (TypeError, ValueError):
                     continue
+        # O ESTADO DOS MOTORES VIAJA NESTE PAYLOAD (owner, 2026-11-06): *"o botao
+        # de pause tambem nao ta completo. o botao nao muda pra unpause."*
+        #
+        # The glyph already flips when the owner clicks (`panel.js
+        # paintPauseControls`), but that state lived ONLY in the page. Reopening
+        # the panel -- or reloading it -- while the engines were unloaded painted
+        # a PAUSE button over a shell that WAS paused: the one case where the
+        # button lied, and the one the owner meets every time he hides the panel
+        # after pausing.
+        #
+        # `stats()` is the channel the panel already polls every second and that
+        # the shell already pushes through `emit_async('stats', …)`, so the state
+        # costs one boolean on a message that is already in flight. The panel
+        # treats ABSENT as "not told" and never as "running", which keeps the old
+        # behaviour for any payload that does not carry the field.
+        payload['paused'] = bool(getattr(self, '_paused', False))
         return payload
     def reply_stats(self, stats_id, payload):
         """The panel's `getStats()` pull, ANSWERED -- without holding the caller.
@@ -10773,6 +22121,87 @@ class SottoShell:
                         Action[Task[String]](_complete))))
             except Exception as exc:  # noqa: BLE001
                 warn(f'STATS_REPLY_FAILED id={stats_id} error={exc!r}')
+    #: Quantos segundos entre duas linhas `BRIDGE_WORKER_COST` no log. O worker
+    #: publica a cada tick de stats (10 s); journalizar a cada 60 s da' uma serie de
+    #: 1/min sem flood -- e o numero que a DM do watcher pediu ("um contador de
+    #: CPU-por-minuto e de rows-por-minuto no proprio worker, journalizado").
+    COST_LOG_INTERVAL_S = 60.0
+
+    def on_worker_cost(self, parsed):
+        """O CUSTO do worker, e a decisao de reiniciar um worker caro e mudo.
+
+        PORQUE EXISTE (ordem do watcher, 2026-11-09, depois de o dono sentir tres
+        travadas): o worker do dono correu **270,6 %c com `rows=0`** por 232 min e
+        nada no produto viu isso -- o painel pintava `rows=0`, o log nao tinha serie,
+        e o unico agente que reparou foi o observador externo, que MATOU o processo.
+        Morto e respawnado, o MESMO codigo mediu **1,2 %c**: fator 240.
+
+        A regra que falta no produto e' curta: **CPU alta sem linha produzida, por N
+        minutos, e' um worker a degradar** -- e o que o cura e' um arranque novo, nao
+        um restart ao acaso. A decisao e' PURA (`app/webview/cost_watchdog.py`) e o
+        reinicio usa o caminho que ja' existe e ja' tem oraculo (`revive_worker`).
+        """
+        fields = (parsed or {}).get('fields') or {}
+        now = time.monotonic()
+        # A JANELA DO TECTO (2026-11-12, D-19). O `MAX_PER_HOUR` diz "por hora" e o
+        # contador nao era zerado por ninguem: o tecto era de 3 reinicios pela VIDA
+        # do processo, e a recusa continuava a dizer `tecto-por-hora`. A janela tem
+        # dono unico no modulo puro (`cost_watchdog.window_expired`), e a linha
+        # abaixo e' a unica escrita.
+        hour_at = getattr(self, '_cost_hour_at', 0.0)
+        if not hour_at or cost_watchdog.window_expired(now, hour_at):
+            if hour_at and getattr(self, '_cost_restarts_hour', 0):
+                log('WORKER_COST_WINDOW_RESET restarts=%d window_s=%d'
+                    % (self._cost_restarts_hour,
+                       int(cost_watchdog.WINDOW_S)))
+            self._cost_hour_at = now
+            self._cost_restarts_hour = 0
+        verdict = cost_watchdog.plan(
+            fields,
+            getattr(self, '_cost_streak', 0),
+            now,
+            getattr(self, '_cost_last_restart', 0.0),
+            getattr(self, '_cost_restarts_hour', 0))
+        self._cost_streak = verdict['streak']
+        if now - getattr(self, '_cost_logged_at', 0.0) >= self.COST_LOG_INTERVAL_S:
+            self._cost_logged_at = now
+            seen = cost_watchdog.busy_rows(fields)
+            log('BRIDGE_WORKER_COST cpu_pct_avg=%s rows=%s rows_per_min=%s '
+                     'cpu_s_per_row=%s chunks_since_tick=%s ms_per_chunk=%s '
+                     'rtf=%s uptime_s=%s streak=%d decision=%s '
+                     'pid=%s' % (
+                         fields.get('cpu_pct_avg', '-'), fields.get('rows', '-'),
+                         fields.get('rows_per_min', '-'),
+                         fields.get('cpu_s_per_row', '-'),
+                         fields.get('chunks_since_tick', '-'),
+                         fields.get('ms_per_chunk', '-'),
+                         fields.get('rtf', '-'),
+                         fields.get('uptime_s', '-'), verdict['streak'],
+                         verdict['why'], (parsed or {}).get('childPid', '-')))
+        if not verdict['restart']:
+            return
+        accepted = False
+        try:
+            accepted = self.revive_worker('cost-watchdog') is not False
+        except Exception as exc:  # noqa: BLE001
+            log('WORKER_COST_RESTART_FAILED error=%r' % (exc,))
+        # O VEREDITO ANTES DA CONTAGEM (2026-11-09). O `revive_worker` RECUSA por
+        # desenho quando o player esta' a fornecer a legenda (`_external_parked`, 47 s
+        # medidos em 2026-10-20) e quando um revive ja' esta' em voo -- e a recusa e'
+        # dele, nao minha. Carimbar o reinicio de qualquer maneira seria uma linha que
+        # MENTE no log, e gastar o piso/tecto numa recusa deixaria o worker caro sem
+        # orcamento para o reinicio que ia funcionar.
+        if accepted:
+            self._cost_last_restart = now
+            self._cost_restarts_hour = getattr(self, '_cost_restarts_hour', 0) + 1
+            self._cost_streak = 0
+        log('WORKER_COST_RESTART reason=cpu-sem-linha cpu_pct_avg=%s rows=%s '
+                 'streak_ticks=%d floor_s=%d restarts_hour=%d accepted=%s '
+                 'why=um-arranque-novo-e-o-que-cura-a-degradacao' % (
+                     fields.get('cpu_pct_avg', '-'), fields.get('rows', '-'),
+                     verdict['streak'], int(cost_watchdog.FLOOR_S),
+                     self._cost_restarts_hour, str(accepted).lower()))
+
     def on_worker_stats(self, parsed):
         """PUSH half of the stats channel: the worker just published counters.
 
@@ -10865,8 +22294,20 @@ class SottoShell:
             lock = self._emit_lock = threading.Lock()
             pending = self._emit_pending = {}
         with lock:
-            already = kind in pending
-            pending[kind] = payload
+            if kind in EVENT_EMIT_KINDS:
+                queue = pending.get(kind)
+                already = isinstance(queue, list)
+                if not already:
+                    queue = pending[kind] = []
+                queue.append(payload)
+                if len(queue) > EVENT_EMIT_MAX:
+                    _drop = len(queue) - EVENT_EMIT_MAX
+                    del queue[:_drop]
+                    _counts = self.__dict__.setdefault('_emit_event_dropped', {})
+                    _counts[kind] = _counts.get(kind, 0) + _drop
+            else:
+                already = kind in pending
+                pending[kind] = payload
         if already:
             return
 
@@ -10887,11 +22328,34 @@ class SottoShell:
                 latest = pending.pop(kind, None)
             if latest is None:
                 return
-            script = ('window.__sotto_emit(' + json.dumps(kind) + ','
-                      + json.dumps(json.dumps(latest)) + ')')
-            self.webview2.Invoke(Func[Object](
-                lambda: self.core.ExecuteScriptAsync(script).ContinueWith(
-                    Action[Task[String]](_complete))))
+            payloads = latest if isinstance(latest, list) else [latest]
+            if kind in EVENT_EMIT_KINDS:
+                _counts = getattr(self, '_emit_event_dropped', None) or {}
+                _lost = _counts.pop(kind, 0) if _counts else 0
+                if _lost:
+                    log(f'CAPTION_EMIT_DROPPED kind={json.dumps(kind)} '
+                        f'n={_lost} cap={EVENT_EMIT_MAX} '
+                        'why=page-drain-fell-behind')
+            # SEM PAGINA NAO HA' O QUE NOTIFICAR (2026-11-04, medido): o
+            # pipeline de legendas arranca antes do WebView2 de proposito, e o
+            # feed de `stats` fazia o `Invoke` rebentar num `AttributeError`
+            # por amostra -- 541 `POSTED_CALLABLE_FAILED` em ~60 s na instancia
+            # pid 42340. Uma linha; o payload sai do latch e a proxima amostra
+            # reabre-o (receipt-20261104-caption-tail.md).
+            if self.core is None or self.webview2 is None:
+                if not getattr(self, '_emit_async_prewebview_logged', False):
+                    self._emit_async_prewebview_logged = True
+                    log('EMIT_ASYNC_PREWEBVIEW kind=%s reason=no-core '
+                        '(uma linha; as seguintes sao descartadas ate a '
+                        'pagina existir)' % json.dumps(kind))
+                return
+            for _payload in payloads:
+                script = ('window.__sotto_emit(' + json.dumps(kind) + ','
+                          + json.dumps(json.dumps(_payload)) + ')')
+                self.webview2.Invoke(Func[Object](
+                    lambda script=script: self.core.ExecuteScriptAsync(
+                        script).ContinueWith(
+                        Action[Task[String]](_complete))))
 
         # `_post`, NOT `_ui`: the docstring above promised "no wait", but `_ui`
         # WAITS on its BeginInvoke for up to 10 s. At the measured 43 pushes/s the
@@ -10915,28 +22379,47 @@ class SottoShell:
             with lock:
                 pending.pop(kind, None)
 
-    def work_area(self):
-        """The WORK area of the display this shell lays out in, in DIP.
+    def work_area(self, geometry=None):
+        """The WORK area of the display the strip/overlay lays out in, in DIP.
 
-        `primary_display()` is the one source: `MonitorFromPoint(POINT(0,0),
-        MONITOR_DEFAULTTOPRIMARY)` — the PRIMARY monitor, the same one the docked
-        panel has always used. On this box there is exactly ONE monitor
-        (`_main/_strip-work-area-probe.ps1`: `monitors=1`, `work=[0,0 1920x1032]`,
-        DPI 96), so "which monitor does the strip open on" cannot be measured
-        here and is NOT guessed at: it opens on the primary, like the panel, and
-        the multi-monitor case is disclosed as unmeasured in
-        `_main/receipt-strip-surface.md`.
+        `select_display_for_point` is now the ONE owner of the choice: the
+        foreground window / cursor probe feeds it the monitor list, and it
+        picks the containing monitor, the nearest one for an off-screen point,
+        or the primary as the last resort. It clamps `geometry` (when given)
+        into that monitor's WORK AREA, never its full bounds. The primary from
+        `MonitorFromPoint(POINT(0,0), ...TOPRIMARY)` stays the DOCKED panel's
+        startup choice in `compute_geometry`, which this change leaves alone.
         """
         # RE-READ THE MONITOR ON EVERY LAYOUT, not once at startup: the owner
         # may move the mouse to another screen between two Alt+C presses, and
-        # the panel must follow. `target_display` is the mouse's monitor;
-        # fallback keeps a stale cache rather than refusing to lay out.
+        # the strip must follow. A failed probe keeps the stale cache instead
+        # of refusing to lay out.
         try:
-            display = target_display()
+            placement = target_placement(geometry=geometry)
         except Exception:  # noqa: BLE001
             display = self.display or primary_display()
+            placement = {
+                'display': display, 'workArea': display['workArea'],
+                'geometry': geometry, 'point': None, 'monitors': [],
+                'primaryIndex': 0, 'index': None, 'reason': 'primary',
+                'monitor': None,
+            }
+        self._placement = placement
+        display = placement.get('display') or self.display or primary_display()
         self.display = display
-        return display['workArea']
+        return placement.get('workArea') or display['workArea']
+
+    def _clamped_strip_geometry(self, geometry):
+        """The strip's final rect through the SAME pure work-area clamp."""
+        placement = getattr(self, '_placement', None)
+        if not placement or not geometry:
+            return geometry
+        result = select_display_for_point(
+            placement.get('point'), placement.get('monitors') or (),
+            placement.get('primaryIndex') or 0, geometry=geometry)
+        clamped = result.get('geometry')
+        return clamped if isinstance(clamped, dict) and clamped else geometry
+
     def geometry_for(self, surface):
         """The rect `surface` wants, in the CURRENT work area.
 
@@ -11006,10 +22489,12 @@ class SottoShell:
                     f'@({geometry["x"]},{geometry["y"]}) '
                     f'work={geometry["workWidth"]}x{geometry["workHeight"]}'
                     f'@({geometry["workX"]},{geometry["workY"]})')
-            return geometry
+            return (self._clamped_strip_geometry(geometry)
+                    if surface == 'strip' else geometry)
         if surface == 'strip':
-            return dock_strip(work, width=self.strip_width_live(),
-                              height=self.strip_height)
+            return self._clamped_strip_geometry(
+                dock_strip(work, width=self.strip_width_live(),
+                           height=self.strip_height))
         return dock_right(work)
     def strip_height_from_css(self):
         """The strip's height, READ OUT OF THE STYLESHEET. `None` if unavailable.
@@ -11108,7 +22593,39 @@ class SottoShell:
         if not (value > 0) or value != value or value > 20000:
             log(f'STRIP_WIDTH_DOM_UNUSABLE raw={json.dumps(raw)}')
             return None
+        # A MEASUREMENT OF THE WINDOW IS NOT A MEASUREMENT OF THE CONTENT.
+        #
+        # `body[data-surface="strip"] .panel` is `position:absolute; inset:0`
+        # (`panel.css`, THE WINDOW IS THE BAR), so its rendered box IS the
+        # window's client box: the read returns whatever width the window was
+        # already given, and `geometry_for` then writes that number back into
+        # the saved rect. That is a fixed point with no content in it, and it is
+        # how the strip got stuck at 1040 while the previous rect said 380
+        # (`STRIP_WIDTH from=None to=1040 source=content`, log :388721, and the
+        # saved 380 clobbered one line later).
+        #
+        # The read stays alive for the layout it was written for -- a
+        # `max-content` pill, whose box is NOT the window's -- and refuses the
+        # tautology by NAME, so the next reader sees why the content path was
+        # skipped instead of a silent 1040.
+        win_w = self.window_width_dip()
+        if content_width_is_self_measure(value, win_w):
+            log(f'STRIP_WIDTH source=content refused value={int(round(value))} '
+                f'window={win_w} reason=self-measure why=panel-fills-window')
+            return None
         return value
+
+    def window_width_dip(self):
+        """The window's width in DIP, or `None`. Split out so an oracle injects it."""
+        if not self.hwnd:
+            return None
+        try:
+            rect = RECT()
+            if user32.GetWindowRect(self.hwnd, ctypes.byref(rect)):
+                return int(rect.right) - int(rect.left)
+        except Exception as exc:  # noqa: BLE001
+            log(f'STRIP_WIDTH_DOM_WINDOW_FAILED error={exc!r}')
+        return None
 
     def strip_width_live(self):
         """The cached live content width, or `None`. See `strip_width_from_dom`."""
@@ -11290,6 +22807,12 @@ class SottoShell:
             except Exception as exc:  # noqa: BLE001
                 log(f'STRIP_OFFSET_CACHE_FAILED error={exc!r}')
                 cached = (0, 0)
+            if cached is None:
+                # NAO RESPONDEU: nao ha' numero para guardar. Devolver (0, 0)
+                # poe a barra no dock nesta exibicao e a proxima volta a
+                # perguntar -- gravar a ausencia seria perder o offset do dono
+                # para o resto do processo.
+                return (0, 0)
             self._strip_offset_cache = cached
         return cached
 
@@ -11306,9 +22829,22 @@ class SottoShell:
         reaplicada -- e' o unico custo: um ajuste pequeno (um nudge) na PRIMEIRA
         faixa de um processo, quando a cache ainda nao existia. A alternativa era
         1,75 s de espera em cada pressao.
+
+        ── E ELA ESPERA O SHOW ACABAR (2026-11-10, MEDIDO) ────────────────────
+        A thread comecava no INSTANTE do pedido, ou seja a meio do show, e as duas
+        idas ao UI thread dela entravam na fila A FRENTE das perguntas do proprio
+        show (o gate de conteudo e o ack). No log do dono isso esta' escrito:
+        `STRIP_HEIGHT reason=posted-hotkey-cycle-strip` 13.275, `STRIP_WIDTH` 13.846
+        e um `WINDOW_GEOMETRY reason=metrics-hotkey-cycle-strip` **14.436** -- um
+        SEGUNDO resize da janela (380x148 -> 380x40) a competir com o mapa do show
+        que ainda estava a decorrer. Medido no mesmo log: o gate declarou 250 ms e
+        gastou 594, o ack declarou 400 e gastou 500. Depois de
+        `PAINT_METRICS_DELAY_S` ela ja' nao estorva o orcamento do show, e o numero
+        que ela adopta continua a chegar antes de o dono olhar para a barra.
         """
         def _worker():
             try:
+                time.sleep(PAINT_METRICS_DELAY_S)
                 moved = self.refresh_strip_height(f'posted-{reason}')
                 moved = self.refresh_strip_width(f'posted-{reason}') or moved
                 if moved and name == 'strip' and self.hwnd \
@@ -11343,10 +22879,17 @@ class SottoShell:
                   "     + String(Math.round(Number(v.y) || 0));"
                   "} catch (err) { return null; } })()")
         try:
-            raw = self.exec_js(script)
+            raw = self.exec_js(script, timeout=SHOW_PAGE_READ_TIMEOUT_S)
         except Exception as exc:  # noqa: BLE001
             log(f'STRIP_OFFSET_READ_FAILED error={exc!r}')
             return (0, 0)
+        if isinstance(raw, NoAnswer):
+            # SEM RESPOSTA NAO E' UM OFFSET: a barra vai para o dock AGORA, e a
+            # pergunta fica para o proximo show (`_strip_offset` nao cacheia
+            # isto). Uma leitura muda nao pode virar um numero para o processo
+            # inteiro.
+            log('STRIP_OFFSET_READ_NO_ANSWER reason=%s timeout_s=%s cached=false' % (raw.get('reason'), SHOW_PAGE_READ_TIMEOUT_S))
+            return None
         if not isinstance(raw, str) or ',' not in raw:
             return (0, 0)
         a, _, b = raw.partition(',')
@@ -11439,30 +22982,149 @@ class SottoShell:
             self._strip_moved_sent = False
             self.saved_geometry = self.geometry_snapshot()
             self.publish_panel_visibility('strip-drag')
-        log(f'STRIP_DRAG phase={phase} offset=({dx},{dy}) to=({nx},{ny}) '
-            f'base={base} work={work["width"]}x{work["height"]}')
+        # UMA LINHA POR ARRASTO, NAO UMA POR MOVIMENTO (medido 2026-11-09).
+        # O `log()` escreve no stdout E enfileira no ficheiro: a 149 movimentos/s
+        # (medido 2026-10-13: 277 movimentos em 1,86 s) isso sao 149 escritas de
+        # ficheiro por segundo no caminho do arrasto -- o mesmo custo que a DM de
+        # stutter cobrou ao `sotto-caption-tick`. O numero que importa (quantos
+        # movimentos, quanto tempo) fica na PRIMEIRA linha e na do FIM.
+        moves = int(getattr(self, '_strip_drag_moves', 0)) + 1
+        self._strip_drag_moves = moves
+        if phase == 'end':
+            self._strip_drag_moves = 0
+        if moves == 1 or phase == 'end':
+            log(f'STRIP_DRAG phase={phase} moves={moves} offset=({dx},{dy}) '
+                f'to=({nx},{ny}) base={base} work={work["width"]}x{work["height"]}')
 
-    #: Windows' "start a caption drag" message pair. `WM_NCLBUTTONDOWN` with
-    #: `HTCAPTION` puts the window manager in its OWN modal move loop: the mouse
-    #: is tracked by Windows, not by the page, so there is no per-move bridge
-    #: message and no per-move `SetWindowPos`.
-    WM_NCLBUTTONDOWN = 0x00A1
-    HTCAPTION = 2
+    #: O PAR `WM_NCLBUTTONDOWN`/`HTCAPTION` SAIU EM 2026-11-09: era a tentativa de
+    #: emprestar o laco modal do Windows, e a janela deste shell o RECUSA
+    #: (medido: `BEGIN` -> `DONE` em 6 ms com `from == to`; `style=0x06010000`
+    #: sem `WS_CAPTION`/`WS_THICKFRAME`). O arrasto e' o `WindowDragFollower`,
+    #: a 240 Hz, no fio `sotto-window-drag`.
+
+    def _apply_overlay_theme(self, theme, why='page'):
+        """A JANELA NATIVA DA LEGENDA VESTE O DESENHO MEDIDO -- um caminho so'.
+
+        A FACE E' DO PLAYER; A PLACA E' DO DESENHO (ordem do dono, 2026-11-09,
+        verbatim: *"VOCE TIROU O DESIGN DE TODAS AS LEGENDAS PRA DEIXAR ELAS
+        IGUAIS EM TODOS OS TEMAS."*). A tipografia continua a do YouTube
+        (`_THEME_DEFAULT`: Arial 38, contorno 5 -- ordem de 2026-11-03), e o
+        FUNDO vem do payload do painel: `rowBg`/`rowBgAlpha`/`rowRadius`/
+        `panelPad` passam pelo normalizador que ja' existe (`_normalise_theme`,
+        que composita o slab do tema e poe piso de alfa em 140/255). Sem placa
+        no payload, a janela fica como antes -- nenhum desenho e' inventado.
+
+        A PLACA E' A UNICA COISA QUE VEM DO PAYLOAD: passar o payload inteiro ao
+        `set_theme` trocaria tambem `fontFamily`/`livePx`/`leading`, que a ordem
+        de 2026-11-03 reserva ao player.
+
+        CHAMADORES, e sao os DOIS que faltavam estar juntos: o receptor
+        `SottoHost._brand_tokens` (`why='page'`) e a CRIACAO da janela
+        (`why='overlay-created'`) -- antes desta funcao existir, a criacao
+        aplicava `_THEME_DEFAULT` e o receptor olhava para um `self` que nunca
+        tem a janela, logo o desenho nunca chegava ao ecra.
+        """
+        theme = theme if isinstance(theme, dict) else {}
+        overlay = getattr(self, 'caption_overlay', None)
+        if overlay is None:
+            log('CAPTION_OVERLAY_THEME_DEFERRED reason=no-overlay why=%s '
+                'theme=%r' % (why, theme.get('theme') or '-'))
+            return None
+        try:
+            import overlay_paint
+            base = dict(overlay_paint._THEME_DEFAULT)
+            plate = None
+            radius = 0.0
+            pad = base.get('pad')
+            try:
+                norm = overlay_paint._normalise_theme(theme)
+                plate = norm.get('plate')
+                radius = float(norm.get('plateRadius') or 0.0)
+                pad = norm.get('pad') or pad
+            except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
+                log(f'CAPTION_OVERLAY_THEME_PLATE_FAILED error={exc!r}')
+            if plate:
+                base['plate'] = plate
+                # `set_theme` normaliza OUTRA vez; com `rowRadius` a placa
+                # mantem o raio do desenho em vez de cair nos 10 px por omissao.
+                base['rowRadius'] = radius
+                base['pad'] = pad
+            base['theme'] = str(theme.get('theme') or '')
+            applied = overlay.set_theme(base)
+        except Exception as exc:  # noqa: BLE001 -- a design must not kill captions
+            log(f'CAPTION_OVERLAY_THEME_FAILED why={why} error={exc!r}')
+            return None
+        log('CAPTION_OVERLAY_THEME_APPLIED theme=%s font=%s live=%.1f '
+            'brand=%s plate=%s alpha=%s radius=%.1f fade=%s why=%s'
+            % (applied.get('theme') or '-', applied.get('fontFamily'),
+               applied.get('livePx') or 0.0, theme.get('theme') or '-',
+               'yes' if applied.get('plate') else 'no',
+               (applied.get('plate') or (0, 0, 0, 0))[3],
+               float(applied.get('plateRadius') or 0.0),
+               'yes' if getattr(overlay, 'FADE_ON', False) else 'no', why))
+        return applied
+
+    def window_drag_to(self, x, y, persist=False):
+        """UMA amostra do arrasto do painel (240 Hz, ver `WindowDragFollower`).
+
+        `persist=True` NAO move nada: le' o rect que o gesto deixou, prende-o na
+        area de trabalho e grava o estado UMA vez -- o fim do gesto, nunca o
+        meio. Sai `False` quando nao ha gesto armado, para o fio nao inventar
+        movimento a partir de um `anchor` que ja' morreu.
+        """
+        hwnd = self.hwnd
+        anchor = getattr(self, '_window_drag_anchor', None)
+        if persist:
+            if not hwnd or anchor is None:
+                return False
+            surface = getattr(self, '_window_drag_surface', None) or (
+                self.surface_applied or 'panel')
+            self._persist_dragged_geometry(hwnd, surface)
+            self._window_drag_anchor = None
+            return True
+        if not anchor or not hwnd:
+            self._window_drag_refusal = 'no-anchor' if not anchor else 'no-hwnd'
+            return False
+        geometry = dict(self.geometry or {})
+        width = int(geometry.get('width') or 0)
+        height = int(geometry.get('height') or 0)
+        if width <= 0 or height <= 0:
+            self._window_drag_refusal = 'no-size'
+            return False
+        scale = (self.display or {}).get('scaleFactor') or 1.0
+        nx, ny = drag_origin(anchor, (x, y), scale, (width, height), self.work_area())
+        if nx == int(geometry.get('x') or 0) and ny == int(geometry.get('y') or 0):
+            # O PIXEL NAO MUDOU: este `False` NAO e' recusa. O canal tem de ficar
+            # limpo, senao o seguidor conta um clique parado como arrasto partido.
+            self._window_drag_refusal = ''
+            return False
+        self._window_drag_refusal = ''
+        geometry.update({'x': nx, 'y': ny, 'docked': 'window-drag'})
+        self.geometry = geometry
+        user32.SetWindowPos(hwnd, HWND_TOPMOST, int(nx * scale), int(ny * scale),
+                            0, 0, SWP_NOSIZE | SWP_NOACTIVATE)
+        self.window_drag_moves = int(getattr(self, 'window_drag_moves', 0)) + 1
+        return True
 
     def _begin_window_drag(self, payload):
-        """ONE native drag for the panel header or the bottom strip.
+        """ONE gesture: the page asks, this shell follows the pointer at 240 Hz.
 
         Owner, 2026-10-17: *"mover os paineis e extremamente ruim e nao
-        otimizado, parece q foi implementado completamente errado."* The old
-        path moved the window from a JS `pointermove` at up to ~150 samples a
-        second, every one of them a bridge hop plus a `SetWindowPos` plus a log
-        line. This enters `DefWindowProc`'s move loop instead: `SendMessageW`
-        blocks until the owner releases the mouse, and the window follows the
-        cursor at compositor speed with zero page involvement.
+        otimizado, parece q foi implementado completamente errado."* -- e depois
+        de o loop do Windows ser tentado e recusado, 2026-11-09: *"DRAGGING DOES
+        NOT WORK"*.
 
-        The final rect is read after the loop returns, clamped into the work
-        area, and persisted exactly once -- the same `geometry`/_main/
-        panel-visibility.json contract the edit-mode drag uses.
+        O QUE FOI MEDIDO (instancia viva, 2026-11-09 15:05):
+          `WINDOW_DRAG_BEGIN surface=panel hwnd=17437966` (.072)
+          `WINDOW_DRAG_DONE  to=(1528,12) from=(1528,12)` (.078) -- 6 ms, sem
+        movimento. O `SC_MOVE` do `DefWindowProc` nao entra num laco modal para
+        esta janela (`style=0x06010000`, sem `WS_CAPTION`/`WS_THICKFRAME`;
+        `exstyle=0x080100A8`, `WS_EX_NOACTIVATE|TRANSPARENT|TOOLWINDOW`).
+
+        HOJE: a pega e' registada aqui (cursor + origem da janela) e o
+        `WindowDragFollower` aplica o DELTA a 240 Hz, num fio proprio, sem uma
+        mensagem por movimento. O rect final continua a ser preso e gravado UMA
+        vez, pelo mesmo `_persist_dragged_geometry` do caminho antigo.
         """
         payload = payload or {}
         surface = str(payload.get('surface') or self.surface_applied or 'panel')
@@ -11472,16 +23134,31 @@ class SottoShell:
         if not hwnd:
             log(f'WINDOW_DRAG_REFUSED why=no-hwnd surface={surface}')
             return
-        log(f'WINDOW_DRAG_BEGIN surface={surface} hwnd={hwnd}')
-        try:
-            user32.ReleaseCapture()
-            # The return value is 0 for this message (DefWindowProc), so it is
-            # deliberately not tested: the observable result is the rect below.
-            user32.SendMessageW(hwnd, self.WM_NCLBUTTONDOWN, self.HTCAPTION, 0)
-        except Exception as exc:  # noqa: BLE001
-            log(f'WINDOW_DRAG_FAILED surface={surface} error={exc!r}')
+        geometry = dict(self.geometry or {})
+        width = int(geometry.get('width') or 0)
+        height = int(geometry.get('height') or 0)
+        if width <= 0 or height <= 0:
+            log(f'WINDOW_DRAG_REFUSED why=no-geometry surface={surface} '
+                f'w={width} h={height}')
             return
-        self._persist_dragged_geometry(hwnd, surface)
+        follower = getattr(self, 'window_drag_follower', None)
+        if follower is None:
+            log(f'WINDOW_DRAG_REFUSED why=no-follower surface={surface}')
+            return
+        point = POINT()
+        if not user32.GetCursorPos(ctypes.byref(point)):
+            log(f'WINDOW_DRAG_REFUSED why=no-cursor surface={surface} '
+                f'last_error={ctypes.get_last_error() or 0}')
+            return
+        anchor = (int(point.x), int(point.y),
+                  int(geometry.get('x') or 0), int(geometry.get('y') or 0))
+        self._window_drag_anchor = anchor
+        self._window_drag_surface = surface
+        log(f'WINDOW_DRAG_BEGIN surface={surface} hwnd={hwnd} '
+            f'anchor=({anchor[0]},{anchor[1]}) at=({anchor[2]},{anchor[3]}) '
+            f'ceiling_hz={WINDOW_DRAG_FRAME_HZ}')
+        if not follower.begin(surface, anchor, hwnd):
+            log(f'WINDOW_DRAG_BUSY surface={surface} follower=active')
 
     def _persist_dragged_geometry(self, hwnd, surface):
         """Read the rect the native loop left, clamp it, and persist it ONCE."""
@@ -11534,6 +23211,95 @@ class SottoShell:
         log(f'WINDOW_DRAG_DONE surface={surface} to=({clamped_x},{clamped_y}) '
             f'size={width}x{height} from=({x},{y})')
 
+    CAPTION_WANTED_PATH = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), '_main', 'caption-wanted.json')
+
+    #: O INTERRUPTOR DA LEGENDA LIGA NO ARRANQUE (ordem do dono, 2026-11-11).
+    CAPTION_WANTED_DEFAULT_ENV = 'SOTTO_CAPTION_WANTED_DEFAULT'
+
+    @staticmethod
+    def caption_wanted_at_start(args, stored=None, env=None):
+        """A legenda AO VIVO esta' ligada no instante em que a app abre?
+
+        O DONO, verbatim (2026-11-11): *"as soon as i open it, should start the
+        subtitles in my screen. the ctrl space."* Ate' aqui o arranque lia
+        `_main/caption-wanted.json` e um `false` la' escrito deixava a janela
+        escura ate' ele carregar em Ctrl+Space -- e o estado dele dizia
+        exactamente isso (`{"on": false, "at": "2026-11-11T17:41:48"}`), ou seja
+        TODA a abertura da app nascia sem legenda.
+
+        A REGRA, e porque e' esta:
+
+        * `True` por omissao. Abrir a app E' o pedido: a legenda e' o produto.
+        * `False` numa LANCAMENTO DE MEDICAO (`--dump-dom`, `--selftest`,
+          `--memory`, `--no-hotkey`, `--exit-after`, `--probe-*`) e numa
+          LARGADA DE LANE (`SOTTO_LANE_LAUNCH=1`). Uma sonda nao pinta nada no
+          ecra dele -- a mesma razao pela qual ela ja' nao rouba o Alt+C nem
+          carrega 2 GB de modelo (`_worker_autostart_reason`).
+        * O `stored` (o ficheiro) deixa de SUPRIMIR o arranque: um `on=false`
+          gravado a meio de uma sessao e' o pedido daquela sessao, nao um
+          contrato para a proxima -- e o dono disse-o ao contrario do que o
+          ficheiro dizia. Ele continua a ser lido e o desacordo fica no log.
+        * `SOTTO_CAPTION_WANTED_DEFAULT=0|1` sobrepoe-se a tudo, para uma sonda
+          ou uma sessao que queira o outro lado sem inventar uma flag nova.
+
+        Funcao PURA (sem `self`, sem disco): e' o que deixa o oraculo
+        `_main/caption-wanted-default-oracle.py` julga-la sem abrir WebView2 nem
+        pintar um pixel.
+        """
+        env = os.environ if env is None else env
+        raw = str(env.get(SottoShell.CAPTION_WANTED_DEFAULT_ENV) or '').strip()
+        if raw in ('0', '1'):
+            return (raw == '1',
+                    'env(%s=%s)' % (SottoShell.CAPTION_WANTED_DEFAULT_ENV, raw))
+        # UMA LARGADA DE LANE E' UMA MEDICAO (AGENTS.md, `SOTTO_NEVER_ON_OWNER_SCREEN`):
+        # `_main/keepalive.py` larga a app escondida e uma lane mede por
+        # `panel_state` + log, nunca por pixels na tela dele. Sem esta guarda, a
+        # ordem de ligar no arranque pintaria a legenda na tela do dono sempre
+        # que uma lane abrisse a app -- que e' exactamente o que a lei proibe.
+        if str(env.get('SOTTO_LANE_LAUNCH') or '').strip() == '1':
+            return False, 'lane(SOTTO_LANE_LAUNCH=1)'
+        flag = _measurement_flag(args)
+        if flag:
+            return False, 'measurement-flag(%s)' % flag
+        return True, 'default'
+
+    def _caption_wanted_at_start(self):
+        """Le o estado gravado, decide, e DIZ os dois no log."""
+        stored = None
+        stored_at = '-'
+        try:
+            with open(self.CAPTION_WANTED_PATH, encoding='utf-8') as handle:
+                data = json.load(handle)
+            stored = bool(data.get('on'))
+            stored_at = data.get('at') or '-'
+        except Exception:  # noqa: BLE001 -- ausente e' o normal da primeira vez
+            stored = None
+        on, reason = self.caption_wanted_at_start(self.args, stored=stored)
+        log('CAPTION_WANTED_START on=%s reason=%s stored=%s stored_at=%s'
+            % (str(on).lower(), reason,
+               'none' if stored is None else str(stored).lower(), stored_at))
+        if stored is False and on:
+            log('CAPTION_WANTED_START_OVERRIDES stored=false -- o arranque liga '
+                'a legenda (ordem do dono, 2026-11-11: "as soon as i open it, '
+                'should start the subtitles")')
+        return on
+
+
+    def _caption_wanted_store(self, on):
+        """Grava o interruptor. Falhar nao pode derrubar o gesto do dono."""
+        try:
+            import datetime
+            tmp = self.CAPTION_WANTED_PATH + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as handle:
+                json.dump({'on': bool(on),
+                           'at': datetime.datetime.now().isoformat(timespec='seconds')},
+                          handle)
+            os.replace(tmp, self.CAPTION_WANTED_PATH)
+        except Exception as exc:  # noqa: BLE001
+            log(f'CAPTION_WANTED_STORE_FAILED error={exc!r}')
+
     def _set_live_enabled(self, payload):
         """O interruptor do botao LIVE: mostra/esconde a janela da legenda.
 
@@ -11568,12 +23334,103 @@ class SottoShell:
         on = bool((payload or {}).get('on'))
         try:
             self._caption_wanted = on
+            self._caption_wanted_store(on)
+            # A LINHA DO INTERRUPTOR SAI NO INSTANTE DA DECISAO, NAO NO FIM DO
+            # TRABALHO DE UI (2026-11-03). Medido no log do dono: a pressao das
+            # 02:45:24.645 so' deixou `LIVE_ENABLED on=false` as 02:45:51.919 --
+            # 27,3 s -- porque a linha vinha DEPOIS de `show_caption_window`, que
+            # esperava pelo UI thread. Resultado: as linhas do log ficavam fora de
+            # ordem em relacao as accoes (`on=true` das 19.219 e' do botao LIVE,
+            # nao de uma tecla: nao ha pressao `role=live` antes das 24.645), e o
+            # instrumento de aceitacao (`_main/altc-first-caption-oracle.py`)
+            # media a espera, nao o gesto. A ACCAO e' o que se mede primeiro; o
+            # que a janela demora a fazer vem depois e diz-se por si.
+            log(f'LIVE_ENABLED on={str(on).lower()} wanted={str(on).lower()} '
+                f'panel_closed=false')
+            # O MENU DO ICONE PASSA A DIZER A VERDADE (2026-11-09). O item e'
+            # escrito como a ACCAO ("Desligar legendas (Ctrl+Space)"), logo ele
+            # mente a partir do instante em que o interruptor muda sem ser por
+            # ele -- pela tecla, pelo botao do painel ou por este item.
+            try:
+                tray = getattr(self, 'tray', None)
+                if tray is not None:
+                    tray.refresh_menu('live')
+            except Exception as exc:  # noqa: BLE001 -- um menu velho nao cancela
+                log(f'TRAY_MENU_LIVE_REFRESH_FAILED error={exc!r}')
             # O PANEL NAO SE FECHA -- ver a docstring: a ordem de 2026-10-19
             # trocou a de 2026-10-17, e o `hide_panel('caption-on')` que vivia
             # aqui era a causa do "o alt c nao ta ligando ou desligando bem".
             self.show_caption_window(on)
-            log(f'LIVE_ENABLED on={str(on).lower()} wanted={str(on).lower()} '
-                f'panel_closed=false')
+            # LIGAR NAO ESPERA PELA PROXIMA LINHA (2026-11-05). MEDIDO no uso
+            # dele, verbatim: *"eu desativei por uns 20 segundos a legenda ao
+            # vivo ou mais, e ao ativar ela, ela lavou 1 segundo ou 1 segundo e
+            # meio pra dar display na tela. ao desativar e ativar rapidamente
+            # apos isso, ela apareceu na tela INSTANTANEAMENTE"*. O segundo
+            # `on` era instantaneo por uma unica razao: havia uma linha fresca
+            # para pintar. O primeiro esperava a proxima legenda chegar
+            # (~2 chunks de 560 ms = o segundo e meio que ele mediu), porque
+            # `show_caption_window(True)` so' MOSTRA a janela -- sem pixel
+            # dentro ela nao aparece (`caption_overlay.show` devolve cedo com
+            # `_blank`).
+            #
+            # A LINHA SO' VOLTA SE AINDA FOR LEGENDA. O teto tem de ser menor
+            # que a varredura de silencio (6 s, `no-caption-for-6.0s`), senao
+            # ligar a legenda depois de um minuto em silencio despejava no ecra
+            # uma frase velha -- o "jumpscare" que `_blank_caption_window`
+            # existe para matar. 2 s cobrem o intervalo entre duas linhas vivas
+            # (medido no log dele: `CAPTION_APPLIED` a cada 0,5-0,6 s) e nao
+            # cobrem uma pausa de fala.
+            if on:
+                _txt = (getattr(self, '_caption_painted', '') or '').strip()
+                _at = float(getattr(self, '_caption_painted_at', 0.0) or 0.0)
+                _age_ms = int((time.time() - _at) * 1000.0) if _at else -1
+                _paused = bool(getattr(self, 'yt_source_paused', False))
+                _player = bool(getattr(self, '_last_caption_was_player', False))
+                if _caption_replay_allowed(_txt, _age_ms,
+                                           self.CAPTION_REPLAY_MAX_S,
+                                           _paused, _player):
+                    log(f'CAPTION_WINDOW_REPLAYED age_ms={_age_ms} '
+                        f'paused={str(_paused).lower()} '
+                        f'player={str(_player).lower()} '
+                        f'text={json.dumps(_txt[:60])} '
+                        'why=ligar-nao-espera-a-proxima-linha')
+                    self.push_caption_to_window(_txt, previous=None, instant=True)
+                    # O REPLAY NAO PODE APAGAR A PROVA DE QUE A LINHA E' DO
+                    # PLAYER (2026-11-06): `push` com `rows=None` escreve
+                    # `_last_caption_was_player=False`, e o proximo desligar/ligar
+                    # em pausa deixava de poder repetir a linha. A regra acima ja'
+                    # decidiu com o facto antigo; devolve-se o facto.
+                    if _player:
+                        self._last_caption_was_player = True
+                else:
+                    log(f'CAPTION_WINDOW_REPLAY_SKIPPED age_ms={_age_ms} '
+                        f'paused={str(_paused).lower()} '
+                        f'text={json.dumps(_txt[:40])} -- ou nao ha linha, ou ela ja '
+                        'e historia e nao legenda')
+                # ── LIGAR COM O ECRA VAZIO DIZ O QUE FALTA (2026-11-11) ──────
+                # Dono, verbatim: *"meu ctrl space nao fez nada assim que abri o
+                # sotto e vi ele no icone da bandeja"*. Medido: o gesto respondeu
+                # em 20 ms e o ecra ficou vazio 95,8 s, porque o unico aviso que
+                # existia (`model-loading`) era um EVENTO que ja' tinha passado
+                # enquanto a legenda estava desligada. Aqui o ESTADO e' lido no
+                # instante do clique e o aviso entra no ecra pelo mesmo slot da
+                # legenda; quando um bloqueio muda, o laco de 250 ms troca-o;
+                # quando a primeira legenda verdadeira pinta, ele sai. Sem facto
+                # que o nomeie, `caption_status_for` devolve None e nada pinta.
+                self._caption_status_start()
+            else:
+                # DESLIGAR NAO DEIXA UM AVISO NA MEMORIA: o episodio de estado
+                # morre aqui (o `show_caption_window(False)` ja' levou os
+                # pixels) e o repintar nao volta a acordar ate' o dono ligar
+                # outra vez.
+                self._caption_status_stop()
+                # DESLIGAR TAMBEM RESPONDE (2026-11-11). Sem esta linha, o
+                # Ctrl+Space de um ecra ja' vazio (a legenda PERSISTIDA ligada
+                # com o modelo ainda a carregar) nao muda um pixel e parece nao
+                # fazer nada -- a reclamacao literal do dono. O `off` entra
+                # atras do esconder, no mesmo `_post`, e o temporizador de
+                # silencio normal tira-o 6 s depois.
+                self._caption_off_ack()
         except Exception as exc:  # noqa: BLE001
             log(f'LIVE_ENABLED_FAILED on={str(on).lower()} error={exc!r}')
 
@@ -12416,37 +24273,15 @@ class WorkerReloadPolicy:
                           max(0, self.max_defer_ms - waited_ms)))
             return
         if capturing and not boundary and not forced and not transcribing:
-            # ── THIS USED TO RESTART THE WORKER. IT NO LONGER DOES. ──────────
-            # O DONO, 2026-10-17, furioso: *"é tu que tá fazendo meu pc travar
-            # por 2 minutos inteiros? ... faz guard pra essa merda NUNCA MAIS
-            # ACONTECER na tua vida"* e depois *"vai no disco e o watcher e
-            # entenda por que ele nao impediu essa caga gigante. e arruma ELE.
-            # e faz ele funcionar"*.
-            #
-            # PORQUÊ O WATCHER NÃO IMPEDIU NADA, E A RESPOSTA É ESTA LINHA.
-            # O watcher (`hot_reload.py`) só decide QUANDO um estouro de
-            # edições assentou. Quem decidia SE esse estouro podia gastar um
-            # reinício era `WorkerReloadPolicy` — e a política foi escrita com a
-            # convicção, na sua própria docstring, de que
-            #     "a stale running worker is worse than one warm-up"
-            # ou seja: reiniciar logo, sem perguntar a ninguém. Foi exactamente o
-            # que aconteceu, DUAS VEZES, e o próprio log guardou o preço:
-            #     22:30:11  HOT_RELOAD_WORKER_RESTART  after_idle_ms=35000
-            #     22:35:25  HOT_RELOAD_WORKER_IDLE_APPLIED cost=one-model-warm-up
-            #
-            # Um guard a jusante (o `worker_restart_allowed`) chega para o
-            # reinício não acontecer, mas NÃO chega para o estrago parar de
-            # acontecer: a política continuava a percorrer o debounce, o
-            # boundary, o ceiling e o floor — temporizadores, linhas de log e
-            # decisões — para ir fazer algo que ia ser recusado. E, pior, o
-            # `FORCED` de baixo era um tecto que **forçava** o reinício ao fim de
-            # 25 s sem fronteira, ou seja, precisamente quando a máquina está
-            # quieta. A máquina quieta é quando se pode estragar a máquina.
-            #
-            # A CORRECÇÃO É DA POLÍTICA, E É: **não existe caminho de "um ficheiro
-            # mudou" para "reiniciar o worker".** Este ramo passa a ser um
-            # RELATÓRIO e acaba aqui. O código fica desatualizado à espera de
-            # uma PESSOA — que é quem paga a warm-up.
+            # ── UM FICHEIRO MUDOU NAO REINICIA O WORKER. SO' UM RELATORIO. ────
+            # O dono, 2026-10-17: *"é tu que tá fazendo meu pc travar por 2 minutos
+            # inteiros? ... faz guard pra essa merda NUNCA MAIS ACONTECER"*. O preco, do
+            # proprio log: `HOT_RELOAD_WORKER_RESTART after_idle_ms=35000` e
+            # `HOT_RELOAD_WORKER_IDLE_APPLIED cost=one-model-warm-up`, DUAS vezes. A
+            # `WorkerReloadPolicy` acreditava (na sua docstring) que "a stale running
+            # worker is worse than one warm-up"; hoje nao existe caminho de "um ficheiro
+            # mudou" para "reiniciar". O codigo fica desatualizado a espera de uma
+            # PESSOA -- e quem paga a warm-up e ela. (Narrativa: docs/worker-lifecycle.md.)
             disk, loaded = self._digests(bridge)
             idle_ms = (int((now_s - last_caption_at) * 1000)
                        if last_caption_at > 0.0 else None)
@@ -12657,10 +24492,11 @@ class SpeakerSidecar:
             self.log(f'SIDECAR_MISSING path={self.sidecar_path} '
                      f'reason={reason} by=SpeakerSidecar.start')
             return False
-        flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000) \
-            if os.name == 'nt' else 0
-        if os.name == 'nt':
-            flags |= 0x00004000          # BELOW_NORMAL_PRIORITY_CLASS
+        # O PAR, NAO O BIT: `CREATE_NO_WINDOW` sozinho deixa a janela aparecer
+        # quando o pai nao tem consola -- e o pai e' `pythonw.exe` (medido
+        # 2026-11-04 no ecran do dono). `no_console.popen_kwargs` traz os dois.
+        from no_console import popen_kwargs
+        extra = 0x00004000 if os.name == 'nt' else 0   # BELOW_NORMAL_PRIORITY_CLASS
         try:
             argv = [self.command, self.sidecar_path] + list(self.extra_args)
             self.child = subprocess.Popen(
@@ -12673,7 +24509,7 @@ class SpeakerSidecar:
                 encoding='utf-8',
                 errors='replace',
                 bufsize=1,
-                creationflags=flags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
+                **popen_kwargs(extra),
             )
         except Exception as exc:                                   # noqa: BLE001
             self.child = None
@@ -12896,6 +24732,54 @@ class MultiVoiceWatch:
         return True
 
 
+def worker_argv_tail(args):
+    """The flags this shell hands the WORKER, in ARGV, decided in ONE place.
+
+    PORQUE ARGV E NAO ENV. `_main/app-target-oracle.py` ARM e pina o contrato do
+    ambiente do filho a `os.environ + SOTTO_CAPTURE_MODE + SOTTO_REDUX_WHEN_HIDDEN`
+    (+ device e target pid). Um knob novo por ambiente vira uma segunda tabela de
+    chaves e essa arm fica vermelha com razao. O `--threads` do worker ja' e' um
+    flag real que ele declara; o trabalho da shell e' passa-lo -- a mesma
+    decisao que o `--speakers` tomou.
+
+    `--worker-threads 0` NAO emite flag nenhuma: o argv fica exactamente o de
+    antes e o worker resolve `ambiente > 4` sozinho. Um valor negativo e'
+    tratado como 0 (nada a impor) em vez de virar um argv invalido.
+    """
+    tail = []
+    if getattr(args, 'speakers', False):
+        tail.append('--speakers')
+    try:
+        threads = int(getattr(args, 'worker_threads', 0) or 0)
+    except (TypeError, ValueError):
+        threads = 0
+    if threads > 0:
+        tail += ['--threads', str(threads)]
+    # O WORKER LE' O MESMO FICHEIRO QUE A SHELL ESCREVE. Sem isto, uma medicao
+    # isola o `panel-visibility.json` da shell e o worker dela continuava a ler
+    # o da app viva do dono -- o interruptor de modo a obedecer a outra
+    # instancia. Na app do dono o caminho e' o de sempre, byte a byte: nenhuma
+    # flag e' emitida.
+    isolated_visibility = isolated_state_file(PANEL_VISIBILITY_PATH, args)
+    if isolated_visibility != PANEL_VISIBILITY_PATH:
+        tail += ['--panel-visibility', isolated_visibility]
+    return tail
+
+
+def _send_start_capture(pipe, already_sent):
+    """Write the one bounded preload activation line, at most once per child."""
+    if already_sent:
+        return True, True
+    if pipe is None:
+        return False, False
+    try:
+        pipe.write('START_CAPTURE\n')
+        pipe.flush()
+        return True, True
+    except Exception:
+        return False, False
+
+
 class WorkerBridge:
     """Spawns worker/sotto_worker.py and turns its JSONL into panel events.
 
@@ -12911,7 +24795,7 @@ class WorkerBridge:
 
     def __init__(self, command, worker_path, device=None,
                  capture_mode=DEFAULT_CAPTURE_MODE, log=log,
-                 on_caption=None, on_status=None, on_stats=None,
+                 on_caption=None, on_status=None, on_stats=None, on_cost=None,
                  on_meter=None,
                  silence_ms=WORKER_SILENCE_MS,
                  load_silence_ms=WORKER_LOAD_SILENCE_MS,
@@ -12960,6 +24844,10 @@ class WorkerBridge:
         #: The stats PUSH. Defaulted to a no-op like the other two, so a bridge
         #: built without it (a probe, the electron-era arm) is byte-identical.
         self.on_stats = on_stats or (lambda parsed: None)
+        #: O CUSTO SEM TRABALHO. Uma linha `WORKER_COST` por tick de stats: CPU do
+        #: PROPRIO processo e linhas produzidas, para a degradacao ficar DATADA em
+        #: vez de inferida (medido 2026-11-09: 270,6 %c com rows=0 depois de 232 min).
+        self.on_cost = on_cost or (lambda parsed: None)
         #: THE WAVE. Defaulted to a no-op like the other three, so a bridge built
         #: without it (a probe, the electron-era arm) behaves as before.
         self.on_meter = on_meter or (lambda sample: None)
@@ -12993,6 +24881,10 @@ class WorkerBridge:
 
         self.child = None
         self.state = 'idle'
+        self.start_reason = ''
+        self.capture_requested = False
+        self._capture_command_sent = False
+        self._preload_error_published = False
         #: True once THIS child has published `model-loaded`. THE GATE the silence
         #: watchdog reads: before it, a silent worker is a LOADING worker, and
         #: killing it is the S7 defect (see `WORKER_LOAD_SILENCE_MS`). Per child,
@@ -13019,6 +24911,16 @@ class WorkerBridge:
         #: not be restarted by a file change (owner: "o modelo loading ta toda
         #: hora saindo de load").
         self.capturing = False
+        #: O INSTANTE DE PAREDE DA CAPTURA DESTE FILHO (2026-11-11). O relogio de
+        #: AUDIO do worker (`start=`) comeca em zero quando a captura comeca, por
+        #: isso `capture_epoch + start` e' o instante de parede daquele audio --
+        #: a terceira regua de `live_paint_age_s`, e a que existe quando o worker
+        #: manda `tap_ms=None` (medido: a linha de 301 s de atraso trazia None).
+        #: Fixado na PRIMEIRA `capture-started` do filho: uma rotacao de
+        #: dispositivo reemite o estado mas NAO recomeca o `counters["chunks"]`
+        #: do worker, logo re-fixar a epoca envelheceria todas as linhas
+        #: seguintes. Zero = ainda nao se sabe.
+        self.capture_epoch = 0.0
         #: Monotonic time of the last spawn, so a queued reload can tell whether
         #: a natural respawn already re-read the file (WorkerReloadPolicy).
         # The digest of the file this child was started from: the answer to
@@ -13037,6 +24939,7 @@ class WorkerBridge:
         #: no-audio (or the reverse).
         self.last_no_audio = None
         self.pending_error = None
+
         #: True once THIS child has published its own verdict that the audio it
         #: opened carries nothing to transcribe (see WORKER_NO_AUDIO_STATES /
         #: WORKER_NO_AUDIO_VERDICTS). Reset on every spawn, because the verdict
@@ -13058,6 +24961,12 @@ class WorkerBridge:
         # the comment names is 0.0.
         self.no_audio_evidence_at = 0.0
         self.deaths = 0
+        #: TRUE entre o `terminate()` do proprio shell e o `_wait` que o ve morrer.
+        #: Sem isto um HOMICIDIO era publicado como morte: medido no log do dono, 9 das
+        #: 10 silencias anomalas sao seguidas do `rc=1` que o `TerminateProcess` devolve,
+        #: e o `BRIDGE_DEATH kind=error` pintava o painel de vermelho num worker saudavel.
+        self.killed = False
+        self._rss_at = 0.0
         self.stderr_tail = []
         #: The last `WORKER_STATS` line the worker printed on stderr, parsed.
         #: That stream is the ONLY place `peak`/`nonzero_blocks` are published,
@@ -13085,6 +24994,10 @@ class WorkerBridge:
         #: child: the counter starts again at 0, so a value left over from the
         #: dead process would suppress every re-arm of the new one.
         self._progress_blocks = None
+        #: O progresso observado no ULTIMO disparo da janela de silencio
+        #: (2026-11-09). `None` = nenhum disparo pendente; um valor = a graça
+        #: esta' a correr e a pergunta e' se o progresso passou dele.
+        self._silence_mark_at = None
         self._silence_timer = None
         self._restart_timer = None
         self._lock = threading.Lock()
@@ -13199,6 +25112,17 @@ class WorkerBridge:
 
     def _bridge_status(self, text, kind, placeholder, state):
         self.state = state
+        if self.start_reason == 'preload' and not self.capture_requested:
+            if kind == 'error':
+                info = placeholder or {}
+                self.last_error = {
+                    'state': str(state),
+                    'text': str(text or 'Worker could not start'),
+                    'explicit_revive': False,
+                    'body': str(info.get('body') or ''),
+                }
+            self._preload_error_published = False
+            return text
         self._status(text, kind, placeholder)
 
     # -- lifecycle ---------------------------------------------------------
@@ -13206,20 +25130,74 @@ class WorkerBridge:
         with self._locked():
             if self.stopped or self.child:
                 return False
+            self.start_reason = str(reason or 'start')
+            self._capture_command_sent = False
             self.log(
                 f'BRIDGE_START reason={reason} command={self.command} '
                 f'worker={self.worker_path} '
                 f'device={"auto" if self.device is None else json.dumps(self.device)} '
                 f'capture={self.capture_mode}')
-            self._bridge_status(
-                f'Starting worker... ({os.path.basename(self.worker_path)})',
-                'busy',
-                {'title': 'Starting the worker',
-                 'body': 'The transcription worker is being launched. No audio '
-                         'is being read yet.'},
-                'starting')
+            if self.start_reason == 'preload':
+                # Warm startup is intentionally invisible until a panel is
+                # explicitly opened. The panel-open status loop reads the
+                # worker's real loading/preparing state after activation.
+                self.state = 'preloading'
+            else:
+                self._bridge_status(
+                    f'Starting worker... ({os.path.basename(self.worker_path)})',
+                    'busy',
+                    {'title': 'Starting the worker',
+                     'body': 'The transcription worker is being launched. No audio '
+                             'is being read yet.'},
+                    'starting')
             # The spawn's OWN result (row #13): `return True` reported the REQUEST.
             return self._spawn() is not None
+
+    def request_capture(self):
+        """Activate a warm preload once; all other worker starts already capture."""
+        with self._locked():
+            if self.start_reason != 'preload':
+                return False
+            if self.capture_requested and self._capture_command_sent:
+                return True
+            self.capture_requested = True
+            if self.last_error:
+                # A failed prewarm can never be made into capture by a late
+                # command. Surface its retained cause and stay unactivated.
+                self._publish_preload_error()
+                self.log('WORKER_PRELOAD_ACTIVATION refused=retained-error')
+                return False
+            child = self.child
+            if child is None:
+                self.log('WORKER_PRELOAD_ACTIVATION queued=true child=starting')
+                return True
+            ok, sent = _send_start_capture(
+                getattr(child, 'stdin', None), self._capture_command_sent)
+            self._capture_command_sent = sent
+            self.log('WORKER_PRELOAD_ACTIVATION sent=%s state=%s' %
+                     (str(bool(ok)).lower(), self.state))
+            return bool(ok)
+
+    def publish_preload_activation_status(self):
+        """Replay a retained preload failure only after explicit panel activation."""
+        with self._locked():
+            if (self.start_reason != 'preload'
+                    or not self.capture_requested
+                    or not self.last_error):
+                return False
+            return self._publish_preload_error()
+
+    def _publish_preload_error(self):
+        if not self.last_error or self._preload_error_published:
+            return False
+        failure = self.last_error
+        self._status(
+            str(failure.get('text') or 'Worker could not start'),
+            'error',
+            {'title': 'Not transcribing',
+             'body': str(failure.get('body') or '')})
+        self._preload_error_published = True
+        return True
 
     def _child_env(self):
         """The child's WHOLE environment contract, in one place.
@@ -13234,12 +25212,46 @@ class WorkerBridge:
         """
         env = dict(os.environ)
         # THE FREEZE CURES LIVE IN THE WORKER, NOT HERE (2026-10-17). Its own
-        # `CUDA_MODULE_LOADING=LAZY` / `OMP_NUM_THREADS=4` defaults are set at
+        # `CUDA_MODULE_LOADING=LAZY` / `OMP_NUM_THREADS` defaults are set at
         # module scope before onnxruntime is imported, so they apply to every
         # way the worker can be launched. `_main/app-target-oracle.py` pins this
-        # dict to `os.environ + SOTTO_CAPTURE_MODE` (+ the target pid), and that
-        # contract is worth keeping.
+        # dict to `os.environ` + EVERY key written below (incl. PYTHONUNBUFFERED)
+        # THE THREAD BUDGET IS NOT A KEY HERE (2026-11-09): it travels in ARGV
+        # (`worker_argv_tail` -> `--threads N`, default 2), exactly like
+        # `--speakers`, because a new key would break the pinned contract above.
+        env['PYTHONUNBUFFERED'] = '1'
         env['SOTTO_CAPTURE_MODE'] = self.capture_mode
+        #: THE BACKGROUND PARAKEET PASS, OPTED IN BY THE APP ITSELF (owner,
+        #: 2026-11-01: *"quando carga liberar, carrega sozinho ... e processa
+        #: qualquer audio nao processado, com o parakeet"*). Until this line the
+        #: switch was reachable only from a shell that exported the variable by
+        #: hand -- i.e. never in the app the owner runs, which made the whole
+        #: batch path dead code in production while every oracle saw it green.
+        #: The switch's own three gates keep this safe and are why it is not a
+        #: behaviour change on a visible panel: the visibility file reads
+        #: VISIBLE (and therefore streaming) whenever it is missing, stale or
+        #: unreadable; a hidden panel only accumulates audio (RAM, then a disk
+        #: spool, never a dropped block); and an engine that is not on disk is
+        #: REFUSED LOUDLY with the missing path while the worker keeps streaming.
+        #: `setdefault`, NEVER assignment (2026-11-25): the sibling below has
+        #: always honoured an explicit operator value, and this one did not --
+        #: `set SOTTO_REDUX_WHEN_HIDDEN=0` in the parent was silently rewritten
+        #: to `1` here, so the only documented way to turn the hidden-model
+        #: switch off did nothing when the app was started from a shell. The
+        #: product default is still ON when nothing is set, which is what the
+        #: owner's order asks for.
+        env.setdefault('SOTTO_REDUX_WHEN_HIDDEN', '1')
+        #: A ORDEM DO DONO NAO PODE DEPENDER DE QUEM ABRIU A APP (2026-11-12).
+        #: Este dict e' o DONO UNICO dos dois defaults (2026-11-25): `run.cmd`
+        #: ja' nao escreve nenhum deles, e o shell passa `os.environ` + os dois
+        #: valores daqui ao worker, por isso `run.cmd`, duplo-clique e o
+        #: autostart do logon arrancam o MESMO binario com o MESMO
+        #: comportamento. O autostart nao pode largar um `.cmd` (pinta consola
+        #: no ecra dele); a escada do worker continua flag -> ambiente -> config
+        #: (`worker/sotto_worker.py`, `redux_live_settings`), e um valor
+        #: explicito (`SOTTO_REDUX_LIVE=0`, `SOTTO_REDUX_WHEN_HIDDEN=0`)
+        #: continua a ganhar -- `setdefault`, nunca atribuicao, nas duas linhas.
+        env.setdefault('SOTTO_REDUX_LIVE', '1')
         if self.device is not None:
             env['SOTTO_AUDIO_DEVICE'] = self.device
         #: OPT-IN: `SOTTO_TARGET_PID` appears ONLY when a target was resolved.
@@ -13267,6 +25279,15 @@ class WorkerBridge:
 
         self.state = 'spawning'
         self.spawns += 1
+        # UM `model-loading` SO' VALE ANTES DO PRIMEIRO `model-loaded` DESTE
+        # FILHO (2026-11-03, MEDIDO). O worker volta a publicar
+        # `model-loading` depois de o modelo ja' estar carregado (recarga,
+        # rotacao de dispositivo) e cada um desses republicava o placeholder
+        # ATRAVES do `push_caption_to_window` -- ou seja, a janela da legenda
+        # trocava a legenda por `carregando modelo…`. Medido ao vivo
+        # (pid 8168): `CAPTION_OVERLAY_PUSH count=50 text="carregando modelo…"`
+        # 5 min DEPOIS de `BRIDGE_LOAD_MS`, com `CAPTION_APPLIED count=1..49`
+        # entre os dois. O portao do primeiro `model-loaded` do filho fecha-o.
         # `stderr_tail` explains THIS death, so it is reset per child. The last
         # stats line and the last device are NOT cleared: each is stamped with
         # the pid that published it (`childPid`), so the snapshot can say whether
@@ -13277,6 +25298,10 @@ class WorkerBridge:
         # when its `capture-started` line arrives. `spawned_at` lets a queued
         # reload tell whether this respawn already re-read the file.
         self.capturing = False
+        # A EPOCA DA CAPTURA VAI COM O FILHO (2026-11-11): o `start=` do novo
+        # worker recomeca em zero, logo a epoca do filho anterior nao pode
+        # sobreviver -- converteria `start=2` em "ha' cinco minutos".
+        self.capture_epoch = 0.0
         # A new child has declared nothing yet: the previous child's `silent-
         # device` is evidence about the OLD process, and letting it survive the
         # respawn would blind the watchdog for the new one.
@@ -13288,6 +25313,7 @@ class WorkerBridge:
         # be red. `pending_error` (the hold) is NOT reset here: it is cleared
         # only by a caption, by design.
         self.last_error = None
+        self._preload_error_published = False
         self.last_no_audio = None
         self.no_audio_evidence = None
         #: When that evidence was MEASURED (monotonic), so a replay can be aged
@@ -13304,15 +25330,26 @@ class WorkerBridge:
         # `_progress_blocks`): carrying the dead process's last value over would
         # make every heartbeat look like a repeat and blind the watchdog.
         self._progress_blocks = None
+        self._silence_mark_at = None
         self.spawned_at = time.monotonic()
+        #: Quando este filho FALOU pela ultima vez (2026-11-03). A janela de
+        #: carga passou a medir SILENCIO, nao idade: um worker que ainda esta'
+        #: a carregar (35 s, 147 s sob contencao) publica linhas no stdout,
+        #: e matar quem progride custa a carga inteira outra vez.
+        self.last_progress_at = self.spawned_at
 
         # The WHOLE env contract lives in `_child_env`, so it can be asserted
         # without spawning anything (see its docstring). Nothing else in this
         # method was touched when the per-app target was added.
         env = self._child_env()
 
-        creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000) \
-            if os.name == 'nt' else 0
+        # O PAR, NAO O BIT: `CREATE_NO_WINDOW` sozinho NAO esconde a janela
+        # quando o pai nao tem consola, e o pai e' `pythonw.exe` (medido
+        # 2026-11-04 no ecran do dono: um `Popen(['cmd','/c','ping'], 0x08000000)`
+        # pintou uma consola visivel). `no_console.popen_kwargs` traz o
+        # `startupinfo` com SW_HIDE que fecha o caso, e a classe vem a parte.
+        from no_console import popen_kwargs
+        creationflags = 0x00004000 if os.name == 'nt' else 0
         if os.name == 'nt':
             # BELOW_NORMAL_PRIORITY_CLASS. The worker is a background
             # transcriber; it must never outrank the desktop while it reads a
@@ -13324,11 +25361,24 @@ class WorkerBridge:
             creationflags |= 0x00004000
 
         try:
-            argv = [self.command, self.worker_path] + list(self.extra_args)
+            # `-u` NAO E' ESTILO: E' A LATENCIA DA LEGENDA (2026-11-03,
+            # MEDIDO). O worker escreve JSONL no stdout e o stdout de um pipe
+            # e' BUFFERIZADO POR BLOCOS (8 KB): sem `-u` a linha de uma
+            # legenda fica presa no buffer do proprio filho ate' o buffer
+            # encher. Medido nesta sessao: o worker publicou
+            # `model-loaded load_s=11.66` e o shell so' a leu em
+            # `BRIDGE_LOAD_MS ms=120859` -- 109 s de linha parada num pipe.
+            # O `PYTHONUNBUFFERED=1` do `_child_env` cobre o mesmo buraco para
+            # qualquer lancamento que nao passe por este argv.
+            argv = [self.command, '-u', self.worker_path] \
+                + list(self.extra_args)
+            if self.start_reason == 'preload':
+                argv.append('--preload-only')
             self.child = subprocess.Popen(
                 argv,
                 cwd=os.path.dirname(self.worker_path) or os.getcwd(),
-                stdin=subprocess.DEVNULL,
+                stdin=(subprocess.PIPE if self.start_reason == 'preload'
+                       else subprocess.DEVNULL),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env,
@@ -13336,7 +25386,7 @@ class WorkerBridge:
                 encoding='utf-8',
                 errors='replace',
                 bufsize=1,
-                creationflags=creationflags, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
+                **popen_kwargs(creationflags),
             )
         except Exception as exc:
             self.child = None
@@ -13350,8 +25400,18 @@ class WorkerBridge:
             self._schedule_restart('spawn-failed')
             return
 
+        if self.start_reason == 'preload' and self.capture_requested:
+            ok, sent = _send_start_capture(
+                getattr(self.child, 'stdin', None), self._capture_command_sent)
+            self._capture_command_sent = sent
+            if not ok:
+                self.log('WORKER_PRELOAD_ACTIVATION sent=false state=spawned')
+
         self.log(f'BRIDGE_SPAWNED pid={self.child.pid} '
-                 f'argv={json.dumps([self.command, self.worker_path] + list(self.extra_args))} '
+                 # O ARGV QUE CORREU, nao o que se pensa que correu: esta
+                 # linha reconstruia a lista sem o `-u` e o log passou a
+                 # descrever um processo diferente do que existe.
+                 f'argv={json.dumps(argv)} '
                  f'SOTTO_CAPTURE_MODE={self.capture_mode} '
                  'SOTTO_AUDIO_DEVICE=' +
                  (self.device if self.device is not None else '(unset)'))
@@ -13445,12 +25505,63 @@ class WorkerBridge:
             return
         try:
             for line in stream:
+                # QUALQUER LINHA E' PROGRESSO (2026-11-03, ver `_on_silence`).
+                self.last_progress_at = time.monotonic()
                 if name == 'stderr':
+                    # O ONNX Runtime escreve em WIDESTRING: lido byte a byte vira
+                    # `\u0000\u001b\u0000[` (medido 19:00:24) e a mensagem fica ilegivel.
+                    if '\x00' in line:
+                        line = line[:len(line) & ~1]
+                        line = line.encode('latin-1', 'ignore').decode('utf-16-le', 'ignore')
+                    # O LOTE A CORRER TAMBEM E' PROGRESSO: um `BRIDGE_SILENT` as 19:36:40
+                    # matou um worker que tinha entregue legenda 1,9 s antes; o `blocks`
+                    # congelado (o lote segura o laco) foi o que pareceu um travao.
+                    if line.startswith(PROGRESS_TAGS):
+                        self._arm_silence()
                     self.stderr_tail.append(line.rstrip())
-                    del self.stderr_tail[:-3]
+                    # 3 linhas escondiam a causa (2026-11-02: duas mortes `rc=1` com
+                    # `WORKER_STATS` no lugar do traceback, que vem ANTES).
+                    del self.stderr_tail[:-STDERR_TAIL_MAX]
+                    # O BATIMENTO DE PROGRESSO DO LACO (2026-11-04). Fica DENTRO do
+                    # bloco de stderr, e nao depois dele: o bloco termina num `continue`
+                    # e uma copia colocada depois e' INALCANCAVEL -- medido, duas
+                    # instancias carregaram a cura e nenhuma linha saiu. A busca e' por
+                    # CONTER (o ONNX escreve WIDESTRING sem newline e prefixa a linha).
+                    if is_alive_beat(line):
+                        self._arm_silence()
+                        log_repeat('bridge-alive', 'BRIDGE_ALIVE %s%s' % (
+                            '' if line.startswith('WORKER_ALIVE') else 'garbled=1 ',
+                            line.strip()[:140]), every_s=60.0)
                     # The worker's own counters line, kept whole (see
                     # `last_worker_stats`): the text dump reads `peak` and
                     # `nonzero_blocks` from here, not from a new measurement.
+                    if line.startswith('WORKER_COST'):
+                        parsed_cost = parse_worker_cost(line)
+                        if parsed_cost is not None:
+                            if child is not None:
+                                parsed_cost['childPid'] = child.pid
+                            # GUARDADO pela mesma razao que o `on_stats` logo abaixo:
+                            # um raise aqui derrubaria o canal de stderr inteiro (e com
+                            # ele o heartbeat do cao de guarda).
+                            try:
+                                self.on_cost(parsed_cost)
+                            except Exception as exc:  # noqa: BLE001
+                                # O NOME E' O DA FUNCAO DE MODULO, NAO O DO
+                                # `WorkerBridge`: medido no log do dono
+                                # 2026-11-09 15:44:36.249,
+                                # `BRIDGE_COST_CALLBACK_FAILED
+                                # error=AttributeError("'SottoShell' object has
+                                # no attribute 'log'")` -- o handler que existe
+                                # para nao derrubar o canal de stderr levantava
+                                # ele proprio, e o custo do worker ficava sem
+                                # a linha da shell.
+                                log('BRIDGE_COST_CALLBACK_FAILED error=%r' % (exc,))
+                            # SEM `_note_progress` AQUI, de proposito: aquela funcao
+                            # trata `blocks` a AVANCAR como prova de vida, e uma linha
+                            # de CUSTO nao prova vida nenhuma -- um worker a queimar
+                            # 270 %c sem produzir linha e' exactamente o que este
+                            # vigia existe para reiniciar. Quem re-arma o cao de
+                            # guarda continua a ser o `WORKER_STATS`, logo abaixo.
                     if line.startswith('WORKER_STATS'):
                         parsed = parse_worker_stats(line)
                         if parsed is not None:
@@ -13475,7 +25586,32 @@ class WorkerBridge:
                             # `_arm_silence`, so the one periodic signal the
                             # worker publishes never reached the watchdog.
                             self._note_progress(parsed)
+                            # A MEMORIA PUBLICADA: uma linha por minuto. Sem serie nao ha'
+                            # como provar nem refutar uma fuga -- o `rss_mb` so' aparecia na
+                            # cauda da morte, ou seja exactamente quando ja' nao havia o que medir.
+                            if time.monotonic() - self._rss_at >= 60.0:
+                                self._rss_at = time.monotonic()
+                                _f = parsed.get('fields') or {}
+                                # `private_mb` viaja ao lado do working set desde
+                                # 2026-11-04: medido no worker vivo, ws 13,6 MB
+                                # contra 3 828 MB de commit privado -- no Windows
+                                # os pesos do modelo nao estao residentes, por isso
+                                # uma fuga so' e' visivel na coluna privada.
+                                self.log('BRIDGE_RSS rss_mb=%s private_mb=%s '
+                                         'blocks=%s' % (
+                                             _f.get('rss_mb', '-'),
+                                             _f.get('private_mb', '-'),
+                                             _f.get('blocks', '-')))
+                    # A LARGADA DO MOTOR TEM DE SER LEGIVEL AO VIVO (2026-11-05).
+                    # Fica DENTRO do bloco de stderr, e antes do `continue` que o
+                    # fecha: uma copia colocada depois e' inalcancavel -- e' o mesmo
+                    # `continue` que ja' custou uma tarde ao `BRIDGE_ALIVE`.
+                    if line.startswith(ENGINE_VISIBLE_TAGS):
+                        log_repeat('engine-' + line.split(' ', 1)[0].lower(),
+                                   'WORKER ' + line.strip()[:ENGINE_VISIBLE_MAX_CHARS],
+                                   every_s=30.0)
                     continue
+
                 text = line.strip()
                 if text:
                     self._consume(text, child)
@@ -13544,6 +25680,23 @@ class WorkerBridge:
             # A panel-side failure must not take the pump thread down with it:
             # that thread also carries the CAPTIONS.
             self.log(f'BRIDGE_METER_CALLBACK_FAILED error={exc!r}')
+
+    def history_session(self, child=None):
+        """The AUDIO SESSION that produced a line read off `child` (2026-11-09).
+
+        `start` is the worker's audio clock and it restarts at zero with every
+        respawn, so the clock alone cannot tell two sessions apart -- the exact
+        fact `caption-formulation.js:1037` relies on to avoid swallowing the new
+        session's opening words. The identity here is the child PROCESS (passed
+        explicitly, because a dead worker's pipe can still be draining while
+        `self.child` already points at its replacement) plus this bridge's spawn
+        counter, which never repeats within one bridge.
+        """
+        pid = getattr(child, 'pid', None)
+        if pid is None:
+            pid = getattr(getattr(self, 'child', None), 'pid', None)
+        return 'worker:%x:%s:%s' % (id(self), getattr(self, 'spawns', 0), pid or 0)
+
     def _consume(self, line, child=None):
         try:
             message = json.loads(line)
@@ -13573,6 +25726,12 @@ class WorkerBridge:
                 return
             meta = {k: v for k, v in message.items()
                     if k not in ('type', 'text')}
+            # WHICH SESSION THIS LINE CAME FROM (2026-11-09): `start` is the
+            # worker's audio clock and it restarts at zero with every respawn,
+            # so the history snapshot needs the process identity too. `child` is
+            # passed EXPLICITLY: a dead worker's pipe can still be draining
+            # while `self.child` already points at its replacement.
+            meta['historySession'] = self.history_session(child)
             self.captions += 1
             self.last_caption_at = time.monotonic()
             # A caption is the ONLY proof that the current worker is really
@@ -13610,12 +25769,72 @@ class WorkerBridge:
             # O DONO NAO FICA A OLHAR PARA O VAZIO: enquanto o modelo carrega
             # (30-38 s medidos a 2026-10-30) a janela da legenda diz que carrega.
             # O painel nao serve para isto -- `setStatus` esconde a frase.
-            if state == 'model-loading':
+            preload_hidden = (self.start_reason == 'preload'
+                              and not self.capture_requested)
+            if (state == 'model-loading' and not self.loaded
+                    and not preload_hidden):
                 # A ponte AVISA, nao pinta: `push_caption_to_window` nao existe
                 # na `WorkerBridge` (AttributeError medido, panel-exit3-oracle).
+                # SO' ANTES do primeiro `model-loaded` deste filho: um
+                # `model-loading` atrasado apagava a legenda (ver `_spawn`).
                 self.on_loading_text('carregando modelo…')
+            # O GRAFO QUE CORRE TEM DE APARECER NO LOG (medido 2026-11-02). O worker
+            # decide os providers no arranque (`stage=providers`) e ate' hoje o log
+            # da shell so' guardava o ESTADO, nunca o payload -- por isso "o Sotto
+            # esta' na GPU?" nao se respondia pelo log dele: eu tive de carregar o
+            # modelo num probe a parte e medir 10,75x contra 2,27x em CPU. Uma linha
+            # com os providers ESCOLHIDOS e os DISPONIVEIS fecha essa pergunta com
+            # um grep, e o `onaudio`/`worker-providers` oracle julga-a.
+            if state == 'boot' and str(message.get('stage') or '') == 'providers':
+                sel = message.get('providers_selected') or []
+                avail = message.get('providers_available') or []
+                # A PONTUACAO DE MODELO, no log da shell (2026-11-05): o worker
+                # ja' a publica no payload; sem esta linha ela nao passava do
+                # stderr, que so' sobrevive na cauda da morte.
+                punct = str(message.get('punct_model') or '')
+                if punct:
+                    self.log(punct)
+                self.log('WORKER_PROVIDERS pid=%s selected=%s available=%s note=%s cuda_probe=%s'
+                         % (str(message.get('worker_pid') or 'missing'),
+                            ','.join(str(x) for x in sel),
+                            ','.join(str(x) for x in avail),
+                            str(message.get('note') or '')[:80],
+                            str(message.get('cuda_probe_model') or '')))
+            if state == 'gpu-policy':
+                # Record the worker's post-load device readback, not only the
+                # providers requested during boot. The strict GPU-only oracle
+                # consumes this line from the real worker log.
+                self.log('WORKER_GPU_POLICY pid=%s asr_request=%s ort_cpu_fallback=%s '
+                         'ort_cuda_dlls_preloaded=%s ort_cuda_graphs=%s '
+                         'genai_request=%s genai_device=%s '
+                         'genai_vad_configured=%s genai_vad_enabled=%s '
+                         'genai_vad_request=%s genai_vad_cpu_fallback=%s '
+                         'ort_encoder=%s ort_decoder=%s ort_joint=%s'
+                         % (str(message.get('worker_pid') or 'missing'),
+                            str(message.get('asr_request') or 'missing'),
+                            str(message.get('ort_cpu_fallback') or 'missing'),
+                            str(message.get('ort_cuda_dlls_preloaded', 'missing')),
+                            str(message.get('ort_cuda_graphs') or 'missing'),
+                            str(message.get('genai_request') or 'missing'),
+                            str(message.get('genai_device') or 'missing'),
+                            str(message.get('genai_vad_configured', 'missing')),
+                            str(message.get('genai_vad_enabled', 'missing')),
+                            str(message.get('genai_vad_request', 'missing')),
+                            str(message.get('genai_vad_cpu_fallback', 'missing')),
+                            str(message.get('ort_encoder_providers') or 'missing'),
+                            str(message.get('ort_decoder_providers') or 'missing'),
+                            str(message.get('ort_joint_providers') or 'missing')))
+            if state == 'redux-gpu-policy':
+                self.log('REDUX_GPU_POLICY engine=%s device=%s cpu_fallback=%s '
+                         'cuda_graphs=%s/%s provider_readback=%s'
+                         % (str(message.get('engine') or 'missing'),
+                            str(message.get('device') or 'missing'),
+                            str(message.get('cpu_fallback') or 'missing'),
+                            str(message.get('ort_cuda_graphs') or 'missing'),
+                            str(message.get('ort_graphs') or 'missing'),
+                            str(message.get('provider_readback') or 'none')))
             if state == 'model-loaded':
-                # THE LOAD IS OVER, and this shell now says how long it took.
+                        # THE LOAD IS OVER, and this shell now says how long it took.
                 # `load_s` is the WORKER's own measurement of the same span
                 # (`worker/sotto_worker.py`, `StreamAsr.load_s`); `BRIDGE_LOAD_MS`
                 # is the shell's, from the spawn, so one boot log carries both
@@ -13625,9 +25844,38 @@ class WorkerBridge:
                 self.loaded = True
                 self.load_ms = (time.monotonic() - self.spawned_at) * 1000.0
                 if self.child is not None:
+                    # COMO A JANELA DE PRIORIDADE FECHOU (2026-11-05). A cura do
+                    # termo dominante (receipt `_main/receipt-20261105-extrema.md`)
+                    # poe um PRAZO na janela de fundo e publica `closed_by` no
+                    # payload de ready -- mas o payload nao vai para o log (o
+                    # `load_phases_s`/`boot_prof_s` tambem nao), logo a afirmacao
+                    # "o log passa a dizer qual das duas saidas fechou a janela"
+                    # nao era observavel no log do dono: `grep -c
+                    # load_bg_closed_by _main/webview-run.log` dava **0** com a
+                    # cura ja' em producao. Agora a linha que ja' publica o tempo
+                    # carrega tambem a saida: 'deadline' = o prazo cortou a cauda,
+                    # 'load-end' = as sessoes fecharam dentro da janela, None = a
+                    # janela nunca foi aberta.
                     self.log(f'BRIDGE_LOAD_MS ms={round(self.load_ms)} '
                              f'pid={self.child.pid} '
-                             f'worker_load_s={message.get("load_s")}')
+                             f'worker_load_s={message.get("load_s")} '
+                             f'load_bg_closed_by={message.get("load_bg_closed_by")}')
+                    # ONDE OS SEGUNDOS DO ARRANQUE FORAM GASTOS (2026-11-10). MEDIDO no
+                    # log do dono (pid 52792): `BRIDGE_SPAWNED` aos 2,0 s e a primeira
+                    # linha do worker aos 46,3 s -- 44 s sem UMA linha de progresso, e o
+                    # dono: *"o arranque demora DEMAIS a responder a keybindings/
+                    # qualquer coisa"*. O worker MEDE as fases (`boot_prof_s`,
+                    # `load_phases_s`) e manda-as no payload; o `BRIDGE_LOAD_MS` acima
+                    # publicava so' a soma, logo atribuir o custo exigia uma corrida a
+                    # parte. A mesma linha passa a levar o perfil.
+                    try:
+                        self.log('WORKER_BOOT_PROF pid=%s boot_prof_s=%s '
+                                 'load_phases_s=%s'
+                                 % (self.child.pid,
+                                    json.dumps(message.get('boot_prof_s') or {}),
+                                    json.dumps(message.get('load_phases_s') or {})))
+                    except Exception as exc:  # noqa: BLE001 -- o log nunca derruba a ponte
+                        self.log('WORKER_BOOT_PROF_FAILED error=%r' % (exc,))
             if message.get('device'):
                 # Remember WHICH endpoint this child is on. `device` names the
                 # first candidate (with the full `candidates` list); a rotation
@@ -13657,6 +25905,11 @@ class WorkerBridge:
             # the child's exit closes it. See `WorkerReloadPolicy`.
             if state in WORKER_CAPTURING_STATES:
                 self.capturing = True
+                # A EPOCA DA CAPTURA, UMA VEZ POR FILHO (2026-11-11). E' o
+                # instante de parede do `start=0` do worker, e e' o que
+                # `live_paint_age_s` usa quando o evento chega sem `tap_ms`.
+                if not self.capture_epoch:
+                    self.capture_epoch = time.time()
             elif state in WORKER_ERROR_STATES or state in ('done',
                                                            'selftest-done'):
                 self.capturing = False
@@ -13676,6 +25929,8 @@ class WorkerBridge:
                 # REPLACES the failure, and vice versa, so `_wait` reads the
                 # worker's most recent word rather than a stale colour.
                 self.last_error = {'state': state, 'text': text,
+                                   'explicit_revive': (info.get('stage') == 'model-load'
+                                                       and info.get('retry_policy') == 'explicit-revive'),
                                    'body': body or worker_status_body(state, message)}
                 self.last_no_audio = None
                 self.log(f'BRIDGE_STATUS_ERROR state={json.dumps(state)} '
@@ -13711,7 +25966,12 @@ class WorkerBridge:
                     body = (self.last_no_audio or {}).get('body') or ''
                 if not title:
                     title = 'No audio to transcribe'
-            self._status(text, severity, {'title': title, 'body': body})
+            if preload_hidden:
+                # Keep the worker state and any retained error above, but do not
+                # update the panel or caption overlay before explicit activation.
+                pass
+            else:
+                self._status(text, severity, {'title': title, 'body': body})
         else:
             self.malformed += 1
             self.log(f'BRIDGE_UNKNOWN type={kind!r}')
@@ -13837,10 +26097,28 @@ class WorkerBridge:
         message = message or {}
         if state == 'device-rotated':
             if str(message.get('reason') or '') == 'flat':
+                # O `from`/`to` FICAM NO LOG (2026-11-05): o worker ja' os manda e
+                # eles nao estao em `STATUS_BODY_FIELDS`, logo 46 rotacoes medidas
+                # em 11 min nao diziam de que aparelho para que aparelho a escada
+                # saltou. No FIM, depois do que os oraculos casam por prefixo.
                 return (f'device-rotated reason=flat '
                         f'peak={message.get("peak")} '
-                        f'floor={message.get("peak_floor")}')
+                        f'floor={message.get("peak_floor")} '
+                        f'from={message.get("from")} to={message.get("to")} '
+                        f'window_s={message.get("window_s")}')
             return None
+        if state == 'tap-silent-desktop':
+            # O WORKER DISSE QUE A MAQUINA ESTA' CALADA (2026-11-03). Sem
+            # esta linha, uma morte DEPOIS desta declaracao virava
+            # `kind=error` -> escada `retry` (1 s, 2 s, 8 s...) e cada
+            # volta RECARREGA o modelo: medido nesta sessao, 04:07-04:17,
+            # tres cargas de 35-56 s para trinta e poucos segundos de
+            # silencio de desktop. A declaracao do proprio worker ja' e' a
+            # sentenca; o que falta e' a escada certa (minutos) e o tecto.
+            return (f'tap-silent-desktop '
+                    f'window_s={message.get("window_s")} '
+                    f'endpoints={message.get("endpoints")} '
+                    f'peak={message.get("peak")}')
         if state == 'done':
             verdict = str(message.get('verdict') or '').strip()
             if verdict and verdict in WORKER_NO_AUDIO_VERDICTS:
@@ -13896,8 +26174,32 @@ class WorkerBridge:
             else:
                 self.log(f'BRIDGE_SILENT_BENIGN_HELD state={NO_AUDIO_STATE} '
                          f'behind={json.dumps(self.pending_error["state"])}')
-            self._arm_silence()
-            return
+            # A PROMESSA DO COMENTARIO ACIMA E' AGORA CODIGO (2026-11-12, D-18).
+            # Medido por leitura + log do dono: este ramo re-armava e RETORNAVA
+            # sempre, sem nunca perguntar se o filho estava vivo -- e o
+            # `no_audio` e' pegajoso (so' uma legenda, um `_spawn` ou o
+            # `revive_worker` o limpam), logo um worker que TRAVASSE depois do
+            # veredicto nunca mais era reiniciado. O log dele guardava
+            # `BRIDGE_SILENT_BENIGN ... evidence_age_s=3173.9 restarts=0`, 53
+            # minutos a re-armar sobre o mesmo pid, sem uma linha a distinguir
+            # "parqueado de proposito" de "travado".
+            # A testemunha e' a prova de vida que o worker JA' publica: o
+            # `WORKER_ALIVE` sai do proprio laco (`progress('parked')` a cada
+            # 4 s) e cala-se quando o laco trava. Progresso desde o veredicto =
+            # parqueado; nada desde o veredicto = o cao de guarda volta ao seu
+            # caminho normal (graca -> kill), como sempre.
+            _progress = getattr(self, 'last_progress_at', None)
+            _verdict_at = self.no_audio_evidence_at or None
+            if (_verdict_at is not None and _progress is not None
+                    and _progress > _verdict_at):
+                self._arm_silence()
+                return
+            self.log(f'BRIDGE_SILENT_BENIGN_STALE ms={self.silence_ms} '
+                     f'pid={self.child.pid} state={NO_AUDIO_STATE} '
+                     'because=no-progress-since-verdict -- o cao de guarda '
+                     'decide')
+            # cai no cao de guarda abaixo: a graca pergunta, e o kill e' o
+            # desfecho quando o progresso nao andou.
         # -- THE LOAD WINDOW (S7) ---------------------------------------------
         # Silence while `model-loaded` has not arrived is the load, not a jam.
         # The cold boot is exactly this case and it is not rare: the Windows
@@ -13916,9 +26218,24 @@ class WorkerBridge:
         if not self.loaded:
             elapsed_ms = ((time.monotonic() - self.spawned_at) * 1000.0
                           if self.spawned_at else 0.0)
-            if elapsed_ms < self.load_silence_ms:
-                self.log(f'BRIDGE_SILENT_LOADING ms={round(elapsed_ms)} '
+            quiet_ms = ((time.monotonic()
+                        - getattr(self, 'last_progress_at', self.spawned_at))
+                        * 1000.0)
+            if (quiet_ms < self.load_silence_ms
+                    or elapsed_ms < WORKER_LOAD_HARD_CEILING_MS * 0.5):
+                # UMA LINHA POR CARGA, NAO UMA POR SEGUNDO (2026-11-03).
+                # MEDIDO: um load de 206 s escreveu 115 destas linhas, uma
+                # por segundo, cada uma com um fsync no log de 50 MB. O
+                # vigia re-arma de 1 em 1 s; a carga e' uma so', e o
+                # espaco tambem e' um sinal (mudanca de fase).
+                _now_load = time.monotonic()
+                if _now_load - getattr(self, '_load_line_at', 0.0) < 15.0:
+                    self._arm_silence()
+                    return
+                self._load_line_at = _now_load
+                self.log(f'BRIDGE_SILENT_LOADING ms={round(quiet_ms)} '
                          f'pid={self.child.pid} '
+                         f'total_ms={round(elapsed_ms)} '
                          f'window_ms={self.load_silence_ms} '
                          'because=model-not-loaded')
                 self._arm_silence()
@@ -13937,6 +26254,43 @@ class WorkerBridge:
         # ANOMALOUS. The tap was open (or had declared itself) and then went
         # mute WITHOUT the worker ever saying what the audio was: that is the
         # jam this watchdog exists for, and it still restarts.
+        #
+        # UMA GRAÇA ANTES DE MATAR (2026-11-09). O temporizador de 30 s e' o
+        # unico que decide, e ele nao sabe se um batimento esta' a atravessar o
+        # cano: medido no log do dono, `BRIDGE_SILENT` as 15:44:36.228 e o
+        # `BRIDGE_ALIVE ... age_ms=39657` as .245 -- a prova de vida chegou 17
+        # ms depois da decisao, e o respawn custou 61,8 s de recarga. A pergunta
+        # que faltava e' factual e barata: o progresso avancou desde o ultimo
+        # disparo? Se avancou, o worker esta' vivo e a janela recomeca; se nao,
+        # mata como sempre.
+        _mark = getattr(self, '_silence_mark_at', None)
+        _progress = getattr(self, 'last_progress_at', None)
+        if _mark is not None and _progress is not None and _progress > _mark:
+            # O progresso ANDOU depois de a janela ter expirado: o worker esta'
+            # vivo e o batimento estava so' a caminho. Janela inteira outra vez.
+            self._silence_mark_at = None
+            self.log(f'BRIDGE_SILENT_GRACE ms={self.silence_ms} '
+                     f'pid={self.child.pid} '
+                     f'grace_s={round(silence_grace_s(self.silence_ms), 3)} '
+                     'because=progress-advanced')
+            self._arm_silence()
+            return
+        if _mark is None:
+            # PRIMEIRO disparo: ainda nao ha resposta a pergunta. Marca o
+            # progresso de AGORA e volta dentro da graça; se um batimento
+            # chegar nesse intervalo, o ramo acima devolve a janela inteira.
+            self._silence_mark_at = _progress
+            self.log(f'BRIDGE_SILENT_WAIT ms={self.silence_ms} '
+                     f'pid={self.child.pid} '
+                     f'grace_s={round(silence_grace_s(self.silence_ms), 3)} '
+                     'because=asking-whether-progress-is-in-flight')
+            _grace = threading.Timer(silence_grace_s(self.silence_ms),
+                                     self._on_silence)
+            _grace.daemon = True
+            self._silence_timer = _grace
+            _grace.start()
+            return
+        self._silence_mark_at = None
         self.log(f'BRIDGE_SILENT ms={self.silence_ms} pid={self.child.pid}')
         self._status('Worker is running but has said nothing', 'error',
                      {'title': 'Worker silent',
@@ -13950,12 +26304,27 @@ class WorkerBridge:
             return
         rc = child.wait()
         self.last_exit = rc
-        self.log(f'BRIDGE_EXIT pid={child.pid} rc={rc} spawns={self.spawns} '
+        killed, self.killed = self.killed, False
+        self.log(f'BRIDGE_EXIT pid={child.pid} rc={rc} killed={killed} '
+                 f'spawns={self.spawns} '
                  f'captions={self.captions} statuses={self.statuses} '
                  f'malformed={self.malformed} '
-                 f'stderr_tail={json.dumps(self.stderr_tail[-3:])}')
+                 f'stderr_tail={json.dumps(self.stderr_tail[-STDERR_TAIL_MAX:])}')
+        _exc = next((l.strip()[:200] for l in reversed(self.stderr_tail)
+                     if l[:1] not in (" ", "\t")
+                     and ("Error" in l or "Exception" in l)), None)
+        if _exc:
+            self.log(f'BRIDGE_DEATH_CAUSE {_exc}')
         self.child = None
         self.capturing = False
+        if killed:
+            # O SHELL MATOU-O (janela de silencio, timeout de load): o `rc=1` e
+            # o `TerminateProcess` do Windows, nao a sentenca do worker. Publique-se
+            # como o que e', e NAO como `BRIDGE_DEATH kind=error` + recarga contada
+            # como falha: o `_kill_and_restart` ja' agendou a volta, com a razao dele.
+            self.log(f'BRIDGE_KILLED pid={child.pid} rc={rc} '
+                     'why=the-shell-terminated-it')
+            return
         if self.stopped:
             return
         # The stderr tail is the worker's own sentence about its own death
@@ -13997,6 +26366,7 @@ class WorkerBridge:
                      f'kind={death_kind} '
                      f'last={json.dumps(self.pending_error["text"])} '
                      f'stderr_tail={json.dumps(self.stderr_tail[-2:])}')
+        explicit_revive = rc == 2 and (self.last_error or {}).get('explicit_revive') is True
         self._status(text, death_kind,
                      {'title': ('Worker stopped' if death_kind == 'error'
                                 else 'No audio to transcribe'),
@@ -14005,12 +26375,36 @@ class WorkerBridge:
                            or (self.last_no_audio or {}).get('body'))
                           if rc != 0 else '',
                           stderr_note,
-                          'A restart is scheduled. Captions stay off until the '
-                          'worker reports a caption.') if x)})
-        self._schedule_restart('exit', no_audio=(death_kind == 'no-audio'))
+                          ('Use the panel status to retry the worker.' if explicit_revive else
+                           'A restart is scheduled. Captions stay off until the '
+                           'worker reports a caption.')) if x)})
+        if explicit_revive:
+            self.log('BRIDGE_RESTART_SUPPRESSED reason=model-gpu-placement resume=panel-status')
+            return
+        self._schedule_restart('exit', no_audio=(death_kind == 'no-audio'),
+                               floor_ms=(CLEAN_EXIT_FLOOR_MS if rc == 0 else 0))
 
     def _kill_and_restart(self, reason):
         child, self.child = self.child, None
+        self.killed = child is not None
+        # UM KILL DO SHELL TAMBEM E' UMA MORTE, E O PAINEL TEM DE A PODER NOMEAR
+        # (2026-11-09). `pending_error` era escrito SO' pelo `_wait`, e o
+        # `_wait` devolve cedo quando `self.child` ja' e' None -- logo uma morte
+        # ordenada pelo PROPRIO shell (silencio, timeout de carga, revive) nunca
+        # deixava estado nenhum: medido no oraculo `restart-30s-oracle`, a arm
+        # do `panel-state` pedia `namedState='exit'` no copy pre-fix e nao
+        # aparecia em amostra nenhuma (`named_states_seen=[... 'spawning']`),
+        # com o `BRIDGE_SILENT` a disparar tres vezes na mesma corrida. O
+        # `pending_error` passa a carregar a razao e o pid, que e' o que o dump
+        # e o painel leem.
+        if child is not None and self.pending_error is None:
+            self.pending_error = {
+                'state': 'exit',
+                'text': f'worker killed by the shell ({reason})',
+                'body': (f'The shell stopped worker pid={child.pid}: {reason}. '
+                         'A restart is scheduled.'),
+            }
+            self.log(f'BRIDGE_KILL_NAMED pid={child.pid} why={reason}')
         if child is not None:
             try:
                 child.terminate()
@@ -14022,7 +26416,7 @@ class WorkerBridge:
                 self.log(f'BRIDGE_TERMINATE_FAILED pid={child.pid} error={exc!r}')
         self._schedule_restart(reason)
 
-    def _schedule_restart(self, reason, no_audio=False):
+    def _schedule_restart(self, reason, no_audio=False, floor_ms=0):
         if self.stopped:
             return
         # The two ladders. A REAL failure prices itself in seconds and doubles every
@@ -14039,6 +26433,7 @@ class WorkerBridge:
                      f'cap={self.no_audio_restart_cap} '
                      'why=restarting-cannot-fix-a-routing-problem '
                      'resume=press-Alt+C')
+            self._arm_audio_resume(reason)
             self.pending_error = {
                 'state': NO_AUDIO_STATE,
                 'text': ('Nada foi roteado para o Sotto, e o Sotto parou de '
@@ -14048,14 +26443,52 @@ class WorkerBridge:
             }
             return
         if no_audio:
-            delay = min(self.no_audio_backoff_max,
-                        self.no_audio_backoff_base * (2 ** self.no_audio_restarts))
-            self.no_audio_restarts += 1
-            ladder = 'no-audio'
+            # UMA MORTE POR DISPOSITIVO E' UMA TROCA DE ENDPOINT (2026-11-04).
+            # Medido no arranque de 12:15:34: `rc=3 kind=no-audio` -> 15 s de
+            # espera -> a primeira legenda 48 s depois do arranque, com o audio
+            # dele a sair noutro endpoint. A pergunta "trocar adianta?" e' feita
+            # ao UNICO sinal que a responde -- ha' som a sair agora? -- e essa
+            # leitura e' read-only (`audio_playing.loudest`, medidores).
+            switches = getattr(self, 'device_switches', 0)
+            if getattr(self, 'captions', 0):
+                # Uma corrida que JA' deu legenda nao esta' num ciclo de rotagem:
+                # o episodio e' novo e o orcamento de trocas volta inteiro.
+                switches = 0
+            live_name, live_peak = '', 0.0
+            try:
+                import audio_playing
+                live_name, live_peak = audio_playing.loudest()
+                can_switch = float(live_peak) > audio_playing.PEAK_FLOOR
+            except Exception as exc:  # noqa: BLE001 -- sem leitura nao se troca
+                can_switch = False
+                self.log(f'ENDPOINT_SWITCH_PROBE_FAILED error={exc!r}')
+            delay, ladder, switch_why = device_death_delay(
+                True, switches, can_switch,
+                restarts=self.restarts,
+                no_audio_restarts=self.no_audio_restarts,
+                backoff_base=self.backoff_base, backoff_max=self.backoff_max,
+                no_audio_backoff_base=self.no_audio_backoff_base,
+                no_audio_backoff_max=self.no_audio_backoff_max)
+            if ladder == 'device-switch':
+                switches += 1
+            else:
+                self.no_audio_restarts += 1
+            self.device_switches = switches
+            self.log(f'ENDPOINT_SWITCH reason={switch_why} ladder={ladder} '
+                     f'delay_ms={delay} switch={switches}/{DEVICE_SWITCH_FREE} '
+                     f'dead={json.dumps((getattr(self, "last_device_status", None) or {}).get("device"))} '
+                     f'live={json.dumps(live_name)} peak={float(live_peak or 0.0):.6f} '
+                     f'no_audio_restarts={self.no_audio_restarts}')
         else:
             delay = min(self.backoff_max, self.backoff_base * (2 ** self.restarts))
             self.restarts += 1
             ladder = 'retry'
+        if floor_ms and delay < floor_ms:
+            # UMA SAIDA LIMPA NAO E' UM CRASH (ver `CLEAN_EXIT_FLOOR_MS`): o piso
+            # nomeia-se no log, senao a espera parece um atraso do temporizador.
+            self.log(f'BRIDGE_RESTART_FLOOR ladder={ladder} delay_ms={delay} '
+                     f'floor_ms={floor_ms} why=clean-exit-not-a-crash')
+            delay = floor_ms
         self.log(f'BRIDGE_RESTART reason={reason} ladder={ladder} in_ms={delay} '
                  f'restart={self.restarts}')
         timer = threading.Timer(delay / 1000.0, self._restart)
@@ -14076,6 +26509,50 @@ class WorkerBridge:
         self._restart_timer = timer
         timer.start()
 
+    def _arm_audio_resume(self, reason):
+        """O DESKTOP CALADO NAO PODE DEIXAR O WORKER MORTO PARA SEMPRE.
+
+        Medido 2026-11-03: a escada de no-audio acaba por parar (com razao --
+        recarregar o modelo nao arranja uma rotagem errada), e ate' agora a
+        unica forma de ele voltar era o dono apertar Alt+C. Isto devolve a
+        volta ao unico sinal que importa: alguem comecou a tocar ALGUMA COISA
+        (`audio_playing.playing`, que so' LE os medidores dos endpoints).
+        Uma sonda de 3 s por volta, uma lista de dispositivos por sonda; sai
+        no primeiro som e nao toca em mais nada.
+        """
+        if getattr(self, '_audio_resume_armed', False) or self.stopped:
+            return
+        self._audio_resume_armed = True
+
+        def _watch():
+            try:
+                import audio_playing
+            except Exception as exc:  # noqa: BLE001
+                self.log(f'BRIDGE_RESUME_UNAVAILABLE error={exc!r}')
+                self._audio_resume_armed = False
+                return
+            while not self.stopped:
+                time.sleep(3.0)
+                try:
+                    if not audio_playing.playing():
+                        continue
+                except Exception:  # noqa: BLE001
+                    continue
+                self.log('BRIDGE_RESUME_AUDIO reason=audio-detected '
+                         f'after={reason}')
+                with self._locked():
+                    if self.stopped or self.child is not None:
+                        self._audio_resume_armed = False
+                        return
+                    self.no_audio_restarts = 0
+                    self.state = 'restarting'
+                    self._spawn()
+                self._audio_resume_armed = False
+                return
+
+        threading.Thread(target=_watch, name='sotto-audio-resume',
+                         daemon=True).start()
+
     def _restart(self):
         # THE LOCK (row #43, 2026-10-11): this path set the state and spawned with no
         # lock, so it could interleave with `start()`/`stop()` -- the two callers that
@@ -14087,6 +26564,404 @@ class WorkerBridge:
                 return
             self.state = 'restarting'
             self._spawn()
+
+
+# ── O MOTOR QUENTE: a ponte que se LIGA em vez de largar (2026-11-04) ────────
+#
+# O contrato inteiro esta' em `state/design/warm-worker-20261104.md`. A regra que
+# da' forma a este ficheiro: **a shell nao pode matar o que tem de adoptar**. O
+# processo que segura o grafo e' criado pela Task Scheduler (`\\SottoWarmEngine`),
+# nunca por um `Popen` desta shell, logo nao esta' dentro do job object com
+# `KILL_ON_JOB_CLOSE` e o `BRIDGE.stop` de hoje nao tem PID para matar. O que a
+# shell pode fazer e' LIGAR-SE ao pipe e, no fim, PEDIR (detach/quit), nao matar.
+#
+# PORQUE E' QUE ISTO E' UMA `WorkerBridge` E NAO UM CAMINHO NOVO. Todos os
+# guardas existentes testam `self.bridge`: `start_worker` recusa quando ele nao
+# e' None (`sotto_webview.py`, o guarda do duplo arranque), o painel le
+# `bridge.snapshot()`, o watchdog le `loaded`/`last_progress_at`, o
+# `revive_worker` chama `bridge.stop()`. Herdar a classe faz com que adoptar e
+# arrancar partilhem UM portao em vez de dois -- que e' exactamente a INV-1.
+
+
+class _WarmChild:
+    """The `child` shim: a PID the shell did NOT create, shaped like one.
+
+    `getattr(bridge, 'child', None)` is read at five sites (`_pause_shell`,
+    `revive_worker`, `snapshot`, the reload guard). They need `.pid` and
+    `.poll()`. They must NOT get a `.kill()` that works: a kill here would be the
+    shell terminating a process it does not own, which is R1.
+    """
+
+    def __init__(self, pid):
+        self.pid = int(pid)
+
+    def poll(self):
+        try:
+            import psutil
+
+            return None if psutil.pid_exists(self.pid) else 0
+        except Exception:  # noqa: BLE001
+            return None
+
+    def kill(self):
+        raise RuntimeError('the shell does not own the warm engine (pid=%d); '
+                           'detach or quit instead' % self.pid)
+
+    def terminate(self):
+        return self.kill()
+
+
+class _PipeLineStream:
+    """Iterate a connected pipe as lines, for `WorkerBridge._pump`'s `for line in`."""
+
+    def __init__(self, conn, timeout_s=0.25):
+        self.conn = conn
+        self.timeout_s = timeout_s
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while True:
+            line = self.conn.readline(timeout_s=self.timeout_s)
+            if line is None:
+                if self.conn.closed:
+                    raise StopIteration
+                continue
+            return line + "\n"
+
+    def close(self):
+        self.conn.close()
+
+
+def warm_module():
+    """The shared module (`warm_pipe` names/locks), imported like the others here."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import warm_engine as module
+
+    return module
+
+
+class WarmPipeBridge(WorkerBridge):
+    """A `WorkerBridge` whose worker already exists and is already loaded.
+
+    Every attribute the callers read is present because every attribute is
+    INHERITED; only the four edges -- start, stop, the line reader and the
+    envelope -- are this class's own.
+    """
+
+    @classmethod
+    def attach(cls, deadline_ms=WARM_ATTACH_DEADLINE_MS, live=True, device=None,
+               capture_mode=None, target_pid=None, keep_warm=False,
+               log=log, **kwargs):
+        """The five steps of design 2.5. -> (bridge, None) or (None, reason).
+
+        A failure is a REASON, never an exception: the caller's fallback is the
+        untouched cold path and a missing engine must read as "slow", not "wrong".
+        """
+        module = warm_module()
+        key = module.warm_pipe.model_key(module.model_dir_from(module.ROOT))
+        name = module.warm_pipe.pipe_name(key)
+        handle, reason = module.warm_pipe.open_client(name, deadline_ms)
+        if handle is None:
+            return None, reason
+        conn = module.warm_pipe.PipeConn(handle)
+        try:
+            line = conn.readline(timeout_s=max(0.05, deadline_ms / 1000.0))
+            if not line or not line.startswith('WARM_HELLO '):
+                log('WARM_ATTACH_FAILED why=no-hello name=%s line=%s'
+                    % (name, json.dumps((line or '')[:120])))
+                conn.close()
+                return None, 'no-hello'
+            hello = json.loads(line[len('WARM_HELLO '):])
+            disk_sha = module.plugin_sha256(module.ROOT)
+            if hello.get('schema') != module.SCHEMA:
+                log('WARM_HELLO_REFUSED why=schema engine=%s'
+                    % json.dumps(hello.get('schema')))
+            elif hello.get('plugin_sha256') != disk_sha:
+                # UNKNOWN is not FRESH: a warm engine is older than the code by
+                # construction, so freshness is a field and a mismatch is a quit.
+                log('WARM_HELLO_REFUSED why=stale-code disk_sha=%s engine_sha=%s'
+                    % (disk_sha, hello.get('plugin_sha256')))
+                conn.send_line(json.dumps({'op': 'quit', 'why': 'stale-code'}))
+                conn.close()
+                return None, 'stale-code'
+            else:
+                payload = {
+                    'op': 'attach',
+                    'shell_pid': os.getpid(),
+                    'expect_sha256': disk_sha,
+                    'model_key': key,
+                    'live': bool(live),
+                    'device': device,
+                    'capture_mode': capture_mode,
+                    'target_pid': target_pid,
+                }
+                conn.send_line(json.dumps(payload))
+                deadline = time.monotonic() + max(0.05, deadline_ms / 1000.0)
+                pre_lines = []
+                attached = None
+                while time.monotonic() < deadline:
+                    more = conn.readline(timeout_s=max(0.02, deadline - time.monotonic()))
+                    if more is None:
+                        if conn.closed:
+                            break
+                        continue
+                    if more.startswith('WARM_ATTACHED '):
+                        attached = json.loads(more[len('WARM_ATTACHED '):])
+                        break
+                    if more.startswith('WARM_HELLO_REFUSED') or \
+                            more.startswith('WARM_ATTACH_FAILED'):
+                        log('WARM_ATTACH_FAILED why=%s' % json.dumps(more[:160]))
+                        conn.close()
+                        return None, 'refused'
+                    pre_lines.append(more)
+                if attached is None:
+                    log('WARM_ATTACH_FAILED why=pipe-timeout name=%s' % name)
+                    try:
+                        conn.send_line(json.dumps({'op': 'quit',
+                                                   'why': 'attach-timeout'}))
+                    except Exception:  # noqa: BLE001
+                        pass
+                    conn.close()
+                    return None, 'pipe-timeout'
+                if str(attached.get('mode') or '') == 'shed':
+                    # G3: the level rose between load and attach. The warm graph
+                    # is NOT an argument to override the shed; the shell takes the
+                    # batch path (the owner's "alta: desliga nemotron").
+                    log('WARM_ATTACH_SHED level=%s'
+                        % json.dumps(attached.get('level')))
+                    conn.send_line(json.dumps({'op': 'detach', 'why': 'shed'}))
+                    conn.close()
+                    return None, 'shed'
+                bridge = cls(conn=conn, hello=hello, attached=attached,
+                             pre_lines=pre_lines, keep_warm=keep_warm,
+                             device=device, capture_mode=capture_mode,
+                             target_pid=target_pid, log=log, **kwargs)
+                return bridge, None
+        except Exception as exc:  # noqa: BLE001 -- a peer that vanished
+            log('WARM_ATTACH_FAILED why=exception error=%r' % (exc,))
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+            return None, 'exception'
+
+    def __init__(self, conn, hello, attached, pre_lines=None, keep_warm=False,
+                 **kwargs):
+        kwargs.pop('command', None)
+        kwargs.pop('worker_path', None)
+        super().__init__(command=warm_module().ROOT, worker_path=warm_module().ROOT,
+                         **kwargs)
+        self.conn = conn
+        self.hello = dict(hello or {})
+        self.attached = dict(attached or {})
+        self.pre_lines = list(pre_lines or [])
+        self.keep_warm = bool(keep_warm)
+        self.child = _WarmChild(self.hello.get('pid') or self.attached.get('pid') or 0)
+        self.state = 'attached'
+        #: THE GATE THE REST OF THE FILE READS. `loaded` True is what stops the
+        #: silence watchdog from treating attach as a load, and `loaded_sha256`
+        #: is the engine's digest -- a number the shell did not compute and can
+        #: therefore compare (F1).
+        self.loaded = bool(self.hello.get('loaded'))
+        self.loaded_sha256 = self.hello.get('plugin_sha256')
+        self.load_ms = float(self.hello.get('load_ms') or 0.0)
+        self.spawns = 0
+        self.spawned_at = time.monotonic()
+        self.last_progress_at = self.spawned_at
+        self.capturing = bool(self.attached.get('mode') == 'warm-tap')
+        self.engine_mode = self.attached.get('mode') or self.hello.get('mode')
+        self.warm = warm_module()
+        self._stream = None
+        self._warm_replay_dropped = 0
+        self._warm_replay_painted = 0
+
+    # -- lifecycle ----------------------------------------------------------
+    def start(self, reason='attach'):
+        with self._locked():
+            if self.stopped:
+                return False
+            self.log('WARM_ATTACHED_BRIDGE reason=%s pid=%s mode=%s '
+                     'load_ms=%.1f replay=%s'
+                     % (reason, self.child.pid if self.child else None,
+                        self.engine_mode, self.load_ms,
+                        json.dumps(self.attached.get('replay'))))
+            for line in self.pre_lines:
+                self._feed(line)
+            self.pre_lines = []
+            self._stream = _PipeLineStream(self.conn)
+            threading.Thread(target=self._pump, args=(self._stream, 'stdout', self.child),
+                             name='sotto-warm-pipe', daemon=True).start()
+            self.state = 'attached'
+            return True
+
+    def stop(self, reason='stop'):
+        """A warm stop is a MESSAGE. It never kills, and never returns False.
+
+        `reason` decides the message, and each of the five existing sites keeps
+        its meaning: quit when the code on disk changed (the engine is stale by
+        definition) or when the owner asked the app to close with keep-warm off;
+        release when the owner paused (weights go, the process and the WASAPI
+        client stay); detach for everything else.
+        """
+        with self._locked():
+            if self.stopped:
+                return False
+            self.stopped = True
+            self._cancel_timers()
+            self.capturing = False
+        if reason == 'hot-reload' or (reason == 'exit' and not self.keep_warm):
+            op = 'quit'
+        elif reason == 'pause':
+            op = 'release'
+        else:
+            op = 'detach'
+        pid = self.child.pid if self.child is not None else None
+        try:
+            self.conn.send_line(json.dumps({'op': op, 'why': reason}))
+            self.log('WARM_DETACHED why=%s op=%s pid=%s' % (reason, op, pid))
+        except Exception as exc:  # noqa: BLE001 -- the peer may already be gone
+            self.log('WARM_DETACH_SEND_FAILED why=%s op=%s error=%r'
+                     % (reason, op, exc))
+        try:
+            self.conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+        self.child = None
+        return True
+
+    # -- lines --------------------------------------------------------------
+    def _feed(self, line):
+        text = (line or '').strip()
+        if text:
+            self._consume(text, self.child)
+
+    def _consume(self, line, child=None):
+        text = (line or '').strip()
+        if text.startswith('WARM_'):
+            return self._on_envelope(text)
+        try:
+            message = json.loads(text)
+        except ValueError:
+            return super()._consume(line, child)
+        if isinstance(message, dict) and str(message.get('type') or '').lower() == 'caption' \
+                and message.get('src') == 'warm-replay':
+            # INV-5/R11: replay is newest-first and BOUNDED. Older audio is
+            # history only -- it keeps its provenance and does not paint.
+            try:
+                audio_ms = int(message.get('audio_ms') or 0)
+            except (TypeError, ValueError):
+                audio_ms = 0
+            if self.warm.replay_is_history(audio_ms):
+                self._warm_replay_dropped += 1
+                message['history_only'] = True
+                log('WARM_REPLAY_HISTORY_ONLY audio_ms=%d budget_ms=%d n=%d'
+                    % (audio_ms, WARM_BACKLOG_LIVE_MS, self._warm_replay_dropped))
+            else:
+                self._warm_replay_painted += 1
+            return super()._consume(json.dumps(message), child)
+        return super()._consume(line, child)
+
+    def _on_envelope(self, text):
+        tag, _sep, rest = text.partition(' ')
+        try:
+            payload = json.loads(rest) if rest else {}
+        except ValueError:
+            payload = {'raw': rest[:200]}
+        self.log('%s %s' % (tag, json.dumps(payload, ensure_ascii=False)[:400]))
+        if tag == 'WARM_DETACHED' and self.child is not None:
+            self.capturing = False
+        return payload
+
+
+def _hidden_launch():
+    """`_main/hidden-launch.py` as a module -- the only sanctioned spawner here.
+
+    A plain `subprocess` from a `pythonw` parent has flashed a console on the
+    owner's screen before (AGENTS: "NADA EM FOREGROUND", measured 2026-11-02),
+    and `schtasks` is a console app.
+    """
+    import importlib.util
+
+    path = os.path.join(REPO_ROOT, '_main', 'hidden-launch.py')
+    spec = importlib.util.spec_from_file_location('sotto_hidden_launch', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def ensure_warm_engine_task(log=log, task=WARM_ENGINE_TASK, xml=WARM_ENGINE_TASK_XML):
+    """Registe a tarefa do motor quente se ela FALTAR. Idempotente, sem admin.
+
+    O `/run` so' pode funcionar se a tarefa existir, e ela nunca foi registada
+    nesta maquina (medido 2026-11-10: 11 `WARM_ENGINE_START_TASK ... rc=1` no log do
+    dono e zero `WARM_ENGINE_*` de sucesso; `schtasks /query /tn SottoWarmEngine`
+    -> rc=1). Um `/run` numa tarefa ausente devolve 1 e nao faz nada, em silencio,
+    e o preco e' a carga a frio em cada arranque: `BRIDGE_LOAD_MS ms=44344`
+    (`worker_load_s=42.59`) contra os 0,97 s do `attach` medidos.
+
+    Devolve `'present'` / `'created'` / `failing`. NUNCA levanta: o motor quente e'
+    aceleracao, e a escada fria tem de continuar a correr quando ele nao sobe (INV-3).
+    """
+    try:
+        hidden = _hidden_launch()
+        rc, out, err = hidden.run(['schtasks', '/query', '/tn', task], timeout=10)
+        if rc == 0:
+            return 'present'
+        rel = xml if os.path.isabs(xml) else os.path.join(REPO_ROOT, xml)
+        log('WARM_ENGINE_TASK_ABSENT task=%s query_rc=%s xml_exists=%s'
+            % (task, rc, str(os.path.exists(rel)).lower()))
+        if not os.path.exists(rel):
+            log('WARM_ENGINE_TASK_CREATE_FAILED task=%s reason=no-xml path=%s'
+                % (task, rel))
+            return 'failing'
+        rc2, out2, err2 = hidden.run(
+            ['schtasks', '/create', '/tn', task, '/xml', rel, '/f'], timeout=20)
+        # `out`/`err` saem SEMPRE vazios neste hospedeiro (medido 2026-11-10: o
+        # `schtasks` escreve pela consola e nao por `WriteFile`, logo um cano sem
+        # consola nao recebe nada -- presenca e' `rc` e mais nada). A linha leva
+        # os dois campos porque um dia outro Windows pode devolver texto; quem a
+        # le' NAO pode tomar `out=""` por uma criacao que falhou.
+        log('WARM_ENGINE_TASK_CREATED task=%s rc=%s out=%s err=%s'
+            % (task, rc2, json.dumps((out2 or '')[:120]),
+               json.dumps((err2 or '')[:120])))
+        return 'created' if rc2 == 0 else 'failing'
+    except Exception as exc:  # noqa: BLE001 -- a missing task is not a crash
+        log('WARM_ENGINE_TASK_CREATE_FAILED task=%s error=%r' % (task, exc))
+        return 'failing'
+
+
+def start_warm_engine_task(log=log, task=WARM_ENGINE_TASK):
+    """Ask the SCHEDULER to start the engine -- never a `Popen` of ours (R1).
+
+    `schtasks` travels through `_main/hidden-launch.py`, which is the only
+    sanctioned way in this tree to start a `cmd`/`schtasks`, because a plain
+    `subprocess` from a `pythonw` parent has flashed a console on the owner's
+    screen before (AGENTS: "NADA EM FOREGROUND", measured 2026-11-02).
+
+    A tarefa e' REGISTADA primeiro quando falta: um `/run` de uma tarefa ausente
+    devolve 1 em silencio e o motor quente nunca sobe (ver `ensure_warm_engine_task`).
+    """
+
+    def _go():
+        try:
+            state = ensure_warm_engine_task(log=log, task=task)
+            module = _hidden_launch()
+            rc, out, err = module.run(['schtasks', '/run', '/tn', task], timeout=10)
+            log('WARM_ENGINE_START_TASK task=%s rc=%s registered=%s out=%s err=%s'
+                % (task, rc, state, json.dumps((out or '')[:120]),
+                   json.dumps((err or '')[:120])))
+        except Exception as exc:  # noqa: BLE001 -- a missing task is not a crash
+            log('WARM_ENGINE_START_TASK_FAILED task=%s error=%r' % (task, exc))
+
+    try:
+        threading.Thread(target=_go, name='sotto-warm-start', daemon=True).start()
+    except Exception as exc:  # noqa: BLE001
+        log('WARM_ENGINE_START_TASK_FAILED task=%s error=%r' % (task, exc))
+    return True
 
 
 def default_python() -> str:
@@ -14335,15 +27210,26 @@ class LoadSheddingMonitor(threading.Thread):
         self.shell = shell
         self.log_fn = log_fn
         self.state = load_shedding().LoadShedding()
+        # A SEGUNDA MEDIDA (2026-11-04). `observe(commit_pct, cpu_pct)` e
+        # `level_for_load` existiam desde a ordem de 2026-10-30 e o monitor
+        # chamava `observe(reading)` sem CPU nenhuma -- o dono sentiu isso a
+        # jogar: 20 nucleos, jogo a 405 % e o worker do Sotto a 270 %, com o
+        # nivel publicado a ler so' a pressao de COMMIT (46,7 % = `leve`).
+        self._cpu = load_shedding().SystemCpu()
         self._stop = threading.Event()
 
-    def step(self, reading):
-        """Uma amostra. Devolve o dict do estado vigente, para o oraculo."""
+    def step(self, reading, cpu_pct=None):
+        """Uma amostra. Devolve o dict do estado vigente, para o oraculo.
+
+        `cpu_pct` viaja para `observe` (a razao publicada leva os DOIS numeros):
+        um nivel disparado pela CPU tem de dizer a CPU que o disparou.
+        """
         module = load_shedding()
-        level, changed, why = self.state.observe(reading)
+        level, changed, why = self.state.observe(reading, cpu_pct=cpu_pct)
         if changed:
-            self.log_fn('LOAD_SHEDDING level=%s commit_pct=%s stopped=%s why=%s'
+            self.log_fn('LOAD_SHEDDING level=%s commit_pct=%s cpu_pct=%s stopped=%s why=%s'
                         % (level, 'n/a' if reading is None else '%.1f' % float(reading),
+                           'n/a' if cpu_pct is None else '%.1f' % float(cpu_pct),
                            ','.join(self.state.stopped()) or 'nenhum', why))
             # A ACCAO E' O FICHEIRO: `PanelVisibilityWriter` le' este estado por
             # `SottoShell.shedding_level()` e poe `shed=<level>` no payload que o
@@ -14372,7 +27258,7 @@ class LoadSheddingMonitor(threading.Thread):
     def run(self):
         while not self._stop.is_set():
             reading = commit_pct()
-            self.step(reading)
+            self.step(reading, self._cpu.sample())
             self._stop.wait(self.INTERVAL_S)
 
     def stop(self):
@@ -14502,13 +27388,25 @@ def app_target_request(args, env=None):
 def parse_args(argv):
     parser = argparse.ArgumentParser(
         prog='sotto-webview',
-        description='The Sotto panel, hosted by WebView2 (pywebview).')
+        description='The Sotto panel, hosted by WebView2 (pywebview).',
+        epilog='THE TWO KEYS. Alt+C -- ONE press, answering in the same instant '
+               '(no tap window, no hold threshold, no delay). From hidden it '
+               'shows the bottom STRIP; a second press within 0.40 s of that '
+               'show promotes to the RIGHT panel (a double), and a press after '
+               'that window, or any press while a panel is up, hides it. '
+               'Ctrl+Space -- live captions on/off, one press each, and no '
+               'panel moves; OFF is the DISPLAY only (the model, the worker '
+               'and the history keep running). Both accelerators live in '
+               'app/webview/hotkey_gesture.py.')
     parser.add_argument('--show', action='store_true',
                         help='show the panel at startup instead of waiting '
                              'for Alt+C')
     parser.add_argument('--hotkey', default='Alt+C',
-                        help='the PANELS global key (default: Alt+C). One press = '
-                             'one step of the panel cycle. The live-caption key is '
+                        help='the PANELS global key (default: Alt+C). One press '
+                             'shows the bottom strip; a second press inside the '
+                             'double-tap window (0.40 s of that show) promotes to '
+                             'the right panel; any later press hides. The '
+                             'live-caption key is '
                              'the owner\'s, persisted in _main/hotkey-settings.json '
                              '(factory: Ctrl+Space). If another program already owns '
                              'the panels key the shell tries '
@@ -14530,6 +27428,14 @@ def parse_args(argv):
                              'still points at THIS checkout, then exit')
     parser.add_argument('--worker', default=DEFAULT_WORKER_PATH,
                         help='worker entrypoint to spawn')
+    parser.add_argument('--worker-threads', type=int, default=2,
+                        help='CPU thread budget for the ASR worker, handed over '
+                             'as `--threads N` (default: 2; 0 = pass no flag and '
+                             'let the worker resolve OMP_NUM_THREADS, else 4). '
+                             'MEASURED 2026-11-09: the worker burned 159.5%% of '
+                             'one core in bursts with three ORT sessions at 4 '
+                             'intra-op threads each. This is a BUDGET, not a '
+                             'promise: N threads per session is not N cores')
     parser.add_argument('--python', default=None,
                         help='interpreter for the worker (default: `python`, '
                              'else this interpreter)')
@@ -14566,6 +27472,15 @@ def parse_args(argv):
     #: 10 with a worker and every one of them `reason=with-worker`. So Alt+C on
     #: the documented path opened a panel that said "Waiting for audio" forever,
     #: with no transcription process in existence. The opt-OUT is now the flag.
+    parser.add_argument('--no-warm-engine', action='store_true',
+                        help='do NOT try to attach to the warm engine: the '
+                             'cold worker path only. The warm engine is never '
+                             'started by the shell itself -- it is a Task '
+                             'Scheduler action the shell merely asks for.')
+    parser.add_argument('--warm-engine-keep', action='store_true',
+                        help='keep the warm engine ALIVE when the shell closes '
+                             '(detach instead of quit). Off by default: closing '
+                             'Sotto is a request to stop paying 1.9 GB.')
     parser.add_argument('--no-worker', action='store_true',
                         help='do NOT start the worker: the shell only. The '
                              'worker starts by default (F1); this is the '
@@ -14579,26 +27494,37 @@ def parse_args(argv):
                              'already starts by default (F1), so this flag now '
                              'only FORCES the worker where an automatic '
                              'opt-out would decline it -- see --no-worker')
-    #: PER-VOICE ATTRIBUTION. Off by default, because it costs a second model
-    #: (277 MB) and ~1,4x realtime of CPU on this box -- a cost nobody should
-    #: pay for a feature they did not ask for. What it does, end to end:
-    #: this shell ALSO starts `worker/speaker_sidecar.py`, which taps the same
-    #: WASAPI loopback, diarizes into `_main/diar-live.json`, and the worker
-    #: reads that file per caption (`speaker_bridge.py`) and stamps ONE `source`
-    #: PER VOICE on each line. The panel already renders one forming row per
-    #: `source` and paints a coloured dot per voice (`panel.js` `applyVoice`), so
+    #: PER-VOICE ATTRIBUTION. ON BY DEFAULT (owner order, 2026-11-24: *"sotto é
+    #: pra conseguir distinguir cada voz/camada de audio e saber transcrever
+    #: corretamente cada uma em paralelo"* -- and he runs the app by double-click,
+    #: so a capability behind a flag he never types does not exist). What it does,
+    #: end to end: this shell ALSO starts `worker/speaker_sidecar.py`, which taps
+    #: the same WASAPI loopback, diarizes into `_main/diar-live.json`, and the
+    #: worker reads that file per caption (`speaker_bridge.py`) and stamps ONE
+    #: `source` PER VOICE on each line. The panel already renders one forming row
+    #: per `source` with a coloured dot per voice (`panel.js` `applyVoice`), so
     #: nothing else in the app changes shape.
+    #:
+    #: THE COST IS BOUNDED WHERE IT IS PAID, and that is why a default is safe:
+    #: the sidecar's `tick` measures `speech_fraction` BEFORE it calls the model
+    #: and returns above `MIN_SPEECH_FRACTION` (0.30), so silence costs an
+    #: envelope scan and no inference (see `worker/speaker_sidecar.py:463-469`).
+    #: While people talk it runs the full pipeline at RTF ~0.5 on 2 threads over a
+    #: 20 s window every 10 s. The sidecar starts with the WORKER and stops with
+    #: the shell; `--no-speakers` returns the pre-2026-11-24 behaviour byte for
+    #: byte (no second model, no `speaker_bridge` provider).
     #:
     #: WHY IT IS A SHELL FLAG AND NOT A WORKER-ONLY ONE: the worker alone would
     #: read a file nobody writes. Measured end to end on the owner's own Discord
     #: call (`_main/_sidecar-replay-real.py`): the real chain over 60 s of real
     #: audio gives 2 global voice slots, which is the 2 people who were talking.
-    parser.add_argument('--speakers', action='store_true',
-                        help='ATTRIBUTE EACH LINE TO ITS SPEAKER. Also starts '
-                             'the diarizer sidecar (a second model). WITHOUT IT '
-                             'every line carries the device source and the rows '
-                             'are not separated by voice. NOTE the ~277 MB here '
-                             'is `speaker_bridge.py:12`, a figure measured on the '
+    parser.add_argument('--speakers', action='store_true', default=True,
+                        help='ATTRIBUTE EACH LINE TO ITS SPEAKER (default). Also '
+                             'starts the diarizer sidecar (a second model). '
+                             '`--no-speakers` turns both off: every line then '
+                             'carries the device source and the rows are not '
+                             'separated by voice. NOTE the ~277 MB here is '
+                             '`speaker_bridge.py:12`, a figure measured on the '
                              'STANDALONE diarizer process; two 2026-10-18 runs on '
                              'the same box, different processes, measured '
                              '207 MB for the real sidecar and 135,4 MB for a '
@@ -14607,6 +27533,9 @@ def parse_args(argv):
                              'is this process, so none of them is quoted here. '
                              '--speakers-cheap quotes its own, and that one IS '
                              'measured for what it starts.')
+    parser.add_argument('--no-speakers', dest='speakers', action='store_false',
+                        help='the pre-2026-11-24 behaviour: no second model, no '
+                             'sidecar, no `source` per voice')
     #: FASE A. Answers ONE question -- "were two voices talking at the same
     #: time?" -- and nothing else. It starts the SAME sidecar process with
     #: `--watch-only`, which loads the 5,7 MB segmentation model and NOT the
@@ -14677,6 +27606,10 @@ def parse_args(argv):
                         help='seconds to let the page settle before measuring')
     #: Alt+C closes when the owner clicks outside. ON by default (the owner asked
     #: for it); this turns it off for an arm that must not install a mouse hook.
+    parser.add_argument('--cdp-port', default=None, metavar='N',
+                        help='abre o porto de depuracao CDP do NOSSO WebView2 '
+                             '(sessao de depuracao; o produto nao precisa dele '
+                             'e sem esta bandeira o valor herdado e removido)')
     parser.add_argument('--no-click-outside', action='store_true',
                         help='do not close the panel when clicking outside it')
     #: MEASUREMENT: the three outside-click cases with the panel visible but not
@@ -14778,35 +27711,22 @@ def probe_reload():
 
 #: ── THE WEBVIEW2 COMPOSITION KNOBS, AND WHY THEY ARE SET HERE ────────────────
 #:
-#: WebView2 has TWO hosting models (Microsoft, "Windowed vs. Visual hosting of
-#: WebView2"). pywebview uses the first: a `WRY`/`Chrome_WidgetWin` CHILD HWND,
-#: created by `CreateCoreWebView2Controller`. DWM composites that child HWND on
-#: its own layer, independently of the parent window — so the parent's own
-#: `WS_EX_LAYERED` state, its layered alpha and its colour key do NOT reach the
-#: content, and the surface shows the compositor's default between the moment
-#: the HWND is mapped and the moment the browser process paints real pixels.
-#: That gap is the WHITE the owner reported; it is not a defect in our CSS.
+#: O BRANCO entre o HWND mapeado e o primeiro pixel NAO e' CSS nosso: o pywebview usa
+#: WINDOWED hosting (um `Chrome_WidgetWin` filho criado por `CreateCoreWebView2Controller`)
+#: e o DWM compoe esse filho na sua propria camada -- logo `WS_EX_LAYERED`/`LWA_COLORKEY`
+#: no pai nao chegam ao conteudo. Documentado e medido: MicrosoftEdge/WebView2Feedback#118
+#: (`LWA_COLORKEY` "did not work", `LWA_ALPHA` sim; a resposta da Microsoft foi "no plans to
+#: further support keying out a specific color"), unoplatform/uno#22694 (o mesmo estouro em
+#: show/hide/recreate como "a fundamental limitation of the Win32 HWND composition model")
+#: e a doc do `DefaultBackgroundColor` (o default e' BRANCO, e "just setting the color by
+#: property can still leave the app with a white flicker ... setting the color via
+#: environment variable solves this issue").
 #:
-#: Measured and independently documented upstream:
-#:   · MicrosoftEdge/WebView2Feedback#118 — `WS_EX_LAYERED` + `LWA_COLORKEY`
-#:     around a WebView2 "did not work", while `LWA_ALPHA` on the same HWND did.
-#:     Microsoft's answer was "no plans to further support keying out a specific
-#:     color"; the supported route is `DefaultBackgroundColor`.
-#:   · unoplatform/uno#22694 — the same three defects (white flash on
-#:     show/hide/recreate, position flash, airspace) from "a fundamental
-#:     limitation of the Win32 HWND composition model"; the author's own words
-#:     are that the workarounds "reduce severity but cannot eliminate the flash".
-#:   · Microsoft, `DefaultBackgroundColor` — the default is WHITE, and "just
-#:     setting the color by property can still leave the app with a white
-#:     flicker before the property takes effect. Setting the color via
-#:     environment variable solves this issue."
-#:
-#: So both knobs below are set as ENVIRONMENT VARIABLES, which is the only form
-#: that is honoured from the first frame, and both must be set BEFORE the
-#: WebView2 environment is created — i.e. before `webview.start()`. pywebview
-#: sets `DefaultBackgroundColor = Color.Transparent` itself
-#: (`webview/platforms/edgechromium.py:113-114`, `transparent=True` is our
-#: default), which covers the property but not the first frame.
+#: Por isso as duas constantes abaixo sao ENV VARS -- a unica forma honrada no PRIMEIRO
+#: frame -- e tem de ser postas ANTES de o ambiente WebView2 existir, ou seja antes de
+#: `webview.start()`. O pywebview ja' poe `DefaultBackgroundColor = Color.Transparent`
+#: (`webview/platforms/edgechromium.py:113-114`), o que cobre a propriedade e nao o frame 1.
+
 WEBVIEW2_BG_TRANSPARENT = '00000000'          # AA=00 → fully transparent
 #: Window-to-Visual hosting: "a developer experience nearly identical to Windowed
 #: hosting, but ... content is output to a Visual that is hosted in an HWND
@@ -14826,7 +27746,15 @@ WEBVIEW2_WINDOW_TO_VISUAL_DEFAULT = False
 
 
 def apply_webview2_environment(argv=None):
-    """Set the two knobs above, FIRST-COME-FIRST-KEPT, and report what happened.
+    """Set the three knobs above, and report what happened.
+
+    DOIS KNOBS SAO FIRST-COME-FIRST-KEPT, UM NAO E'. O ambiente do operador
+    ganha sobre o nosso no fundo transparente e no hosting mode, porque sao as
+    saidas de emergencia dele. `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` e' o
+    oposto: ele NUNCA e' herdado (ver `webview2_args.py`), senao um
+    `--remote-debugging-port=9333` exportado no processo que largou a app abre um
+    porto em todas as janelas WebView2 desta app e o comportamento do produto
+    passa a depender de QUEM o largou.
 
     An explicit environment value ALWAYS wins over ours, so an operator who
     measured a different answer on this box can override us without editing
@@ -14862,16 +27790,247 @@ def apply_webview2_environment(argv=None):
     if use_w2v and not had_mode:
         os.environ['COREWEBVIEW2_FORCED_HOSTING_MODE'] = WEBVIEW2_WINDOW_TO_VISUAL
 
+    # O PORTO DE DEPURACAO, ESCOPADO A ESTE PROCESSO. O pedido explicito vem do
+    # `--cdp-port N` (ou de `SOTTO_CDP_PORT`, que existe para nao editar a linha
+    # de comando de um harness); sem pedido, o valor herdado SAI do ambiente, e
+    # `dropped` fica registado para a contaminacao de uma lane nao ser silenciosa.
+    import webview2_args
+    cdp_port = _flag_value(args, '--cdp-port') or os.environ.get('SOTTO_CDP_PORT')
+    wv_args = webview2_args.apply(webview2_args.plan(
+        os.environ.get(webview2_args.INHERIT_VAR), cdp_port))
+
     return {
         'bg': WEBVIEW2_BG_TRANSPARENT, 'bg_overridden': had_bg,
         'window_to_visual': use_w2v, 'reason': why,
         'mode_overridden': had_mode,
+        'browser_args': wv_args,
     }
+
+
+def _flag_value(argv, name):
+    """O valor de `--flag V`/`--flag=V` numa lista de args, ou None.
+
+    Existe porque `apply_webview2_environment()` corre ANTES de o argparse ter
+    falado (o ambiente tem de estar posto antes do `create_window()`), e um
+    `--cdp-port` que so' o parser conhecesse chegaria tarde demais.
+    """
+    want = name + '='
+    for i, tok in enumerate(argv):
+        if tok == name:
+            return argv[i + 1] if i + 1 < len(argv) else None
+        if tok.startswith(want):
+            return tok[len(want):]
+    return None
+
+
+def _start_startup_stack_watch(args):
+    """Se o arranque nao chegar ao READY, diz ONDE esta' preso.
+
+    MEDIDO 2026-11-03 (duas vezes seguidas, 03:04:48 e 03:06:23): a app subia
+    ate' `PANEL_SHOW_REFUSED count=2` e parava -- nenhuma linha depois, nenhum
+    despejo de pilhas, e o `run.cmd` respondia `HANG rc=4 by=run.cmd-readiness`.
+    O vigia de UI so' existe depois do arranque, e a partir desta pane nao se
+    pode anexar (`py-spy`: acesso negado -- a app corre acima dela), logo um
+    arranque preso era indiagnosticavel. Este thread e' a resposta: 15 s e 30 s
+    depois do processo nascer, se o ficheiro de READY nao existir, despeja a
+    pilha de TODAS as threads no log. Custa um sleep quando corre bem.
+    """
+    path = getattr(args, 'ready_file', None)
+    if not path or getattr(args, 'wait_ready', None):
+        return
+    import faulthandler
+
+    def loop():
+        started = time.monotonic()
+        for at in (15.0, 30.0, 60.0):
+            nap = at - (time.monotonic() - started)
+            if nap > 0:
+                time.sleep(nap)
+            if startup_is_ready(path):
+                return
+            try:
+                log('STARTUP_NOT_READY s=%.0f threads=%d'
+                    % (at, threading.active_count()))
+                # O DESPEJO TEM DE IR PARA UM FICHEIRO (2026-11-03). Uma shell
+                # lancada por `pythonw` tem `sys.stderr is None`, e o
+                # `dump_traceback()` sem `file=` nao escreve NADA: medido, tres
+                # `STARTUP_NOT_READY` (15/30/60 s) sem uma linha de stack.
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                       '..', '..', '_main',
+                                       '_startup-stacks.log'), 'a') as _fh:
+                    _fh.write('\n=== STARTUP_NOT_READY s=%.0f pid=%d ===\n'
+                              % (at, os.getpid()))
+                    faulthandler.dump_traceback(file=_fh, all_threads=True)
+            except Exception:             # noqa: BLE001
+                return
+
+    threading.Thread(target=loop, name='sotto-startup-watch',
+                     daemon=True).start()
+
+
+def warm_clr_types():
+    """Materializa os tipos CLR que a shell usa, ANTES de existir uma segunda thread.
+
+    MEDIDO 2026-11-12, oito vezes no mesmo dia (`Get-WinEvent` do `.NET Runtime`,
+    log `Application`): TODO arranque do dono morreu com uma excepcao gerida sem
+    tratamento dentro do pythonnet, e o `run.cmd` reportou-a como
+    `HANG rc=4 by=run.cmd-readiness` porque o processo morria ANTES de tocar o
+    ready-file. As duas pilhas medidas sao a mesma classe:
+
+        TypeManager.AllocateTypeObject <- ReflectedClrType.GetOrCreate
+            <- Converter.ToPython <- MethodBinder.Invoke
+        BorrowedReference.DangerousGetAddress <- Converter.ToPython
+            <- MethodBinder.Invoke <- ManagedType.Init <- ClassBase.Init
+
+    O pythonnet constroi o tipo Python que representa um tipo .NET na PRIMEIRA
+    conversao e guarda-o num cache global. Esse caminho nao e' seguro quando a
+    primeira conversao acontece em duas threads ao mesmo tempo -- e esta app
+    arranca exactamente assim: a thread da UI que o pywebview criou chama
+    `_on_before_show` (que faz `Icon(path)`, `Color.Transparent`, `Size(..)`,
+    `form.ClientSize = ...`) enquanto o observador do `Ctrl+Space`, o laco de
+    leitura e o `_ui` marshalling continuam a correr. Quando as duas chegam ao
+    mesmo tipo juntas, o `AllocateTypeObject` desreferencia um ponteiro que a
+    outra thread ainda nao publicou: uma `NullReferenceException` GERIDA, que
+    mata o processo (o `try/except` de Python nao apanha isso).
+
+    A cura e' fazer a primeira conversao acontecer UMA vez, na thread principal,
+    antes de qualquer thread secundaria existir. Medido nesta arvore: **1090 ms**
+    para importar e materializar todos os tipos (`clr` sozinho custa 622 ms, que
+    o `webview` ja' pagaria no `start()`), e a partir dali o cache esta' quente
+    para todas as threads.
+
+    NAO ENGOLIR O ERRO: uma maquina sem .NET (ou sem `System.Drawing`) chega aqui
+    e segue -- o `start()` do pywebview falha depois com a sua propria mensagem, e
+    um `except` mudo aqui esconderia a causa verdadeira.
+    """
+    global _CLR_WARM_LINE
+    started = time.monotonic()
+    done = []
+    failed = []
+    try:
+        import clr  # noqa: F401 -- pythonnet; o pywebview ja' depende disto
+        for _asm in ('System', 'System.Drawing', 'System.Windows.Forms',
+                     'System.Threading.Tasks'):
+            try:
+                clr.AddReference(_asm)
+            except Exception as exc:          # noqa: BLE001
+                failed.append('%s:%s' % (_asm, type(exc).__name__))
+        from System import Action, Func, Object, String, Type
+        from System.Threading.Tasks import Task
+        from System.Drawing import Color, Icon, Rectangle, Size
+        from System.Windows.Forms import DockStyle
+        # A CONVERSAO, NAO SO' O IMPORT (`Converter.ToPython` e' a metade que
+        # rebenta). `Icon(path)` e' o primeiro .NET que `_on_before_show` toca;
+        # `Func[Type]`/`Action[String]` sao os delegados de `_ui`.
+        for _label, _make in (
+                ('Icon', lambda: Icon(SOTTO_ICON)),
+                ('Color', lambda: Color.Transparent),
+                ('Size', lambda: Size(1, 1)),
+                ('Rectangle', lambda: Rectangle(0, 0, 1, 1)),
+                ('DockStyle', lambda: DockStyle.Fill),
+                ('Func[Type]', lambda: Func[Type]),
+                ('Func[Object]', lambda: Func[Object]),
+                ('Action[String]', lambda: Action[String]),
+                ('Task', lambda: Task.CompletedTask),
+        ):
+            try:
+                _make()
+                done.append(_label)
+            except Exception as exc:          # noqa: BLE001
+                failed.append('%s:%s' % (_label, type(exc).__name__))
+    except Exception as exc:                  # noqa: BLE001
+        _CLR_WARM_LINE = 'CLR_WARM unavailable error=%r' % (exc,)
+        log(_CLR_WARM_LINE)
+        return False
+    _CLR_WARM_LINE = ('CLR_WARM ok=%s types=%s failed=%s ms=%.1f'
+                      % (not failed, ','.join(done), ','.join(failed) or 'none',
+                         (time.monotonic() - started) * 1000.0))
+    log(_CLR_WARM_LINE)
+    return not failed
+
+
+def _flush_clr_warm_receipt():
+    """O RECIBO DO AQUECIMENTO CLR CHEGA AO FICHEIRO, MESMO TENDO NASCIDO ANTES DELE.
+
+    MEDIDO 2026-11-12, arranque 21:15:57 desta arvore: `warm_clr_types()` correu
+    (o processo sobreviveu ao `WEBVIEW2_INIT_FAILED`, coisa que os oito arranques
+    da noite nao fizeram) e o log NAO tinha uma unica linha `CLR_WARM` -- porque
+    a funcao corre antes de `_open_log` e o `log()` daquele instante escreve num
+    stdout que `pythonw.exe` nao tem. Uma cura cujo recibo nao chega ao log nao
+    e' uma cura verificavel; e' a mesma classe de "instrumento sem chamador"
+    que esta casa ja' pagou varias vezes.
+
+    Chamado imediatamente depois de `_open_log(args.log)`.
+    """
+    line = _CLR_WARM_LINE
+    if line:
+        log(line)
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = parse_args(argv)
+
+    # ── A PRIMEIRA CONVERSAO CLR ACONTECE AQUI, SOZINHA (2026-11-12) ────────
+    # Ver `warm_clr_types`: o pythonnet materializa o tipo Python que representa
+    # um tipo .NET na PRIMEIRA conversao e guarda-o num cache global que nao
+    # tolera duas threads a materializar o MESMO tipo ao mesmo tempo -- ele
+    # desreferencia um ponteiro que a outra thread ainda nao publicou, e a
+    # `NullReferenceException` e' GERIDA (mata o processo; `try/except` de Python
+    # nao a apanha). Esta app arranca nesse estado, e o `webview.start()` agrava-o:
+    # entrega a thread da UI a um `_on_before_show` que converte `Icon`, `Color`,
+    # `Size`, `Rectangle` e `Func[Type]` enquanto as threads da shell ja' correm.
+    #
+    # MEDIDO 2026-11-12: oito mortes do processo e oito eventos `NullReference`
+    # no log `Application`/`.NET Runtime`, os oito no mesmo dia (nos dez dias
+    # anteriores, ZERO), com as duas metades da mesma pilha --
+    # `TypeManager.AllocateTypeObject <- Converter.ToPython <- MethodBinder.Invoke`
+    # e `BorrowedReference.DangerousGetAddress <- ManagedType.Init`. O `run.cmd`
+    # reportava-as como `HANG rc=4 by=run.cmd-readiness`, porque o processo morria
+    # antes de tocar o ready-file.
+    #
+    # A POSICAO E' PARTE DA CURA: esta' ANTES de `_start_startup_stack_watch`,
+    # antes do `Timer` do `--exit-after` e antes de qualquer `Thread` da shell.
+    # Uma conversao a seguir ao primeiro fio nao impede corrida nenhuma -- e' o
+    # mesmo defeito com outro nome, e a arm A4 do `clr-warm-oracle` existe para
+    # nao deixar a chamada migrar para baixo outra vez.
+    #
+    # CUSTO medido (6 amostras, um processo cada): min 689 / mediana 879 / max
+    # 1506 ms. Nao e' custo novo: o `import clr` e o `AddReference` sao pagos uma
+    # vez por processo e o `webview.start()` pagava-os de qualquer maneira.
+    warm_clr_types()
+    _start_startup_stack_watch(args)
+
+    # ── THE VISIBLE SURFACE IS NEVER BELOW NORMAL (measured 2026-11-04) ──────
+    # `extreme-optimization-audit` L10: a launcher, a task or a job object can cap
+    # every descendant regardless of what it asks for, and a surface the owner
+    # types into at `BELOW_NORMAL` loses every race against a batch lane. Measured
+    # on this box: the live shell (pid 20448) AND its worker were both
+    # `BELOW_NORMAL`, and the control pair beside them was `NORMAL` (explorer,
+    # pwsh) -- so the cap came from the launcher, not from the code. This raises
+    # the SHELL only; the worker keeps its own `BELOW_NORMAL` on purpose (the
+    # batch must yield). `was`/`now` are logged so the raise is reversible.
+    raise_visible_priority(log)
+
+    # O PRAZO DE UMA SONDA E' DO PROCESSO (2026-11-03, MEDIDO DUAS VEZES).
+    # `--exit-after` era armado no despacho de probes, ou seja DEPOIS do
+    # arranque inteiro; dois caminhos de arranque nao chegam la': um
+    # `run_selftest()` que nao volta (pid 35348, 1 h 50 min vivo, 245 MB) e um
+    # arranque que morre em `WEBVIEW2_INIT_FAILED` (reproduzido hoje numa
+    # instancia `--exit-after 8`, que continuou viva). Uma sonda que nao morre
+    # e' um recurso emprestado para sempre. Aqui e' o primeiro instante em que
+    # as flags existem: o relogio comeca, e o resto do arranque pode falhar a'
+    # vontade sem deixar um processo a viver.
+    if getattr(args, 'exit_after', 0):
+        # O PRAZO E' UM PRAZO DE VERDADE (2026-11-04). Aqui havia um `os._exit`
+        # local a fazer de "rede" -- o mesmo primitivo sem prazo que deixou o
+        # pid 20448 vivo depois de escrever `UI_WATCHDOG_EXIT`. `_hard_exit` e'
+        # idempotente, tem prazo em cada espera e escreve a linha terminal, nas
+        # duas pontas (o prazo normal e a rede).
+        threading.Timer(float(args.exit_after) + 15.0,
+                        _hard_exit, args=(0, 'exit-after-net')).start()
+        threading.Timer(float(args.exit_after),
+                        _hard_exit, args=(0, 'exit-after')).start()
 
     # ── THE ENVIRONMENT IS SET HERE, BEFORE ANY WINDOW EXISTS ────────────────
     # `WEBVIEW2_DEFAULT_BACKGROUND_COLOR` is read by WebView2 the moment its
@@ -14889,6 +28048,10 @@ def main(argv=None):
         % (wv['bg'], ' (env already set)' if wv['bg_overridden'] else '',
            str(wv['window_to_visual']).lower(), wv['reason'],
            ' (env already set)' if wv['mode_overridden'] else ''))
+    _ba = wv['browser_args']
+    log('WEBVIEW2_BROWSER_ARGS action=%s present=%s value=%s dropped=%s'
+        % (_ba['action'], str(_ba['present']).lower(), _ba['value'] or '-',
+           _ba['dropped'] or '-'))
 
     if args.wait_ready:
         # ---- run.cmd's bounded readiness poll: the other half of G3 ---------
@@ -14947,6 +28110,7 @@ def main(argv=None):
         return probe_reload()
 
     _open_log(args.log)
+    _flush_clr_warm_receipt()
     log(f'shell=webview2 pywebview={pywebview_version()} '
         f'python={sys.version.split()[0]} pid={os.getpid()}')
     _aumid_set = set_process_app_user_model_id()
@@ -15021,16 +28185,13 @@ def main(argv=None):
     # an argument from OS behaviour. It is taken as-is, and it is NOT excused.
     if args.mutex_name != DEFAULT_MUTEX_NAME:
         pass
-    elif args.no_hotkey:
-        lock_excuse = '--no-hotkey'
-    elif args.dump_dom:
-        lock_excuse = '--dump-dom'
-    elif args.selftest:
-        lock_excuse = '--selftest'
-    elif args.memory:
-        lock_excuse = '--memory'
-    elif args.probe_v2 > 0:
-        lock_excuse = '--probe-v2'
+    else:
+        # ONE TABLE DECIDES. This was a chain of four `elif`s that named
+        # `--no-hotkey`, `--dump-dom`, `--selftest`, `--memory` and
+        # `--probe-v2` -- and did not name `--exit-after`, `--probe-stats`,
+        # `--probe-outside-click` or `--probe-edit-mode`, so those four took
+        # the APP's mutex (measured 2026-11-12, see the table's note).
+        lock_excuse = _measurement_flag(args)
     if lock_excuse:
         lock_name = measurement_lock_name(args)
         if not take_single_instance_lock(lock_name):
@@ -15060,12 +28221,26 @@ def main(argv=None):
     # its healthy twin I:\cc-tmp\try1.log, SAME flags plus --no-hotkey, reaches
     # RECEIVER_READY and SHELL_EXIT in under 40 s). A private --mutex-name is NOT
     # coerced: that run skips no lock and may legitimately measure the hotkey.
+    # A ARVORE MORRE COM A SHELL -- OU FICA A PAGAR (2026-11-04, MEDIDO).
+    # Censo desta maquina, app viva: **25** processos `msedgewebview2.exe` em
+    # **750 MB**, de **QUATRO** arvores -- tres delas de instancias que ja' nao
+    # existiam, cada uma com o seu browser+gpu+renderer+utility. Um shell morto
+    # a` force nao leva os filhos consigo: o Windows nao faz isso por omissao.
+    # Um JOB OBJECT com KILL_ON_JOB_CLOSE e' o mecanismo que o faz pelo sistema,
+    # sem depender de nenhum caminho de saida do Python (que nao corre num kill).
+    _hold_kill_on_close_job()
+
     hotkey_off = '--no-hotkey' if args.no_hotkey else None
     if lock_excuse and not args.no_hotkey:
         hotkey_off = f'measurement-flag({lock_excuse})'
         args.no_hotkey = True
     shell = SottoShell(args)
     shell.create_window()
+
+    # O DETECTOR DE GAMING (2026-11-04) arranca ANTES das teclas e INDEPENDENTE
+    # delas: ele nao toma tecla nenhuma, so' le' processos. Uma medicao
+    # (`--no-hotkey`) continua a poder perguntar `is_gaming()`.
+    arm_gaming_watcher(shell)
 
     # The hotkey lives on its own thread with its own message queue, so it is
     # registered before the UI loop exists and cannot be starved by it.
@@ -15079,7 +28254,55 @@ def main(argv=None):
         # `HOTKEY_FALLBACKS`, then — if every one is owned by another program —
         # a dialog on a daemon thread, because a hidden app with a dead hotkey
         # and no message is indistinguishable from a broken app.
-        shell.hotkey = arm_hotkey(shell, args.hotkey)
+        shell.hotkey = arm_hotkey(
+            shell, args.hotkey, panels=hotkey_config().panels_enabled())
+        shell._hotkey_requested = args.hotkey
+        # A LEGENDA ARRANCA AQUI, NAO DEPOIS DO WEBVIEW2 (2026-11-03):
+        # o overlay e' nativo e o worker e' outro processo -- nenhum dos dois
+        # precisa da pagina do painel para existir.
+        try:
+            shell.start_caption_pipeline('pre-webview')
+        except Exception as exc:          # noqa: BLE001
+            warn('caption pipeline could not start early: %r' % (exc,))
+        # O WEBVIEW2 ESPERA O MODELO, NAO O CONTRARIO (2026-11-03, MEDIDO).
+        # Lançar o WebView2 ao mesmo tempo que o worker carrega faz o
+        # worker pagar a factura: medido nesta sessao, o modelo ficou
+        # pronto em `load_s=11.99` e o shell so' viu a linha 61 s depois
+        # (`BRIDGE_LOAD_MS ms=61297`), porque as threads do shell nao
+        # corriam enquanto o WebView2 arrancava (722 processos, 92,5% de
+        # commit). A legenda e' o produto; o painel e' opcional e ja'
+        # arrancava escondido. Entao: espera o modelo, com tecto, e so'
+        # depois entrega a maquina ao WebView2. Tecto obrigatorio -- uma
+        # app sem painel e' o defeito que se estava a evitar.
+        # DEFAULT ZERO (2026-11-03, MEDIDO): o `run.cmd` tem um portao de
+        # prontidao e chamou `HANG rc=4 by=run.cmd-readiness` a um arranque que
+        # so' estava a espERAR pelo modelo antes de abrir a pagina -- a app ficou
+        # sem painel e o dono sem nada. A espera nao comprou nada medivel (o
+        # modelo demora o mesmo; o WebView2 nao e' o culpado), logo fica opt-in.
+        #
+        # O RAMO DE ERRO NAO PODE RESSUSCITAR O DEFEITO (2026-11-12): um valor
+        # presente e ILEGIVEL caia em `25.0` -- o comentario acima diz que esses
+        # 25 s foram exactamente o que fez o largador responder `HANG`, e o
+        # `float` roda na thread que ainda nao chamou `webview.start()`, ou seja
+        # o PRIMEIRO PIXEL espera 25 s e o prazo de 30 s do `run.cmd` fica com
+        # cinco. Um valor que nao se le nao e' um pedido: e' lixo, e a resposta
+        # segura e' NAO esperar e DIZER por que.
+        _wait_model, _wait_reason = after_load_wait_s(os.environ)
+        if _wait_reason != 'env':
+            warn('SHELL_WEBVIEW_AFTER_LOAD_DEFAULTED reason=%s' % _wait_reason)
+        if _wait_model > 0 and getattr(shell, 'bridge', None) is not None:
+            _t0 = time.monotonic()
+            _loaded = False
+            while time.monotonic() - _t0 < _wait_model:
+                if getattr(shell.bridge, 'loaded', False):
+                    _loaded = True
+                    break
+                time.sleep(0.05)
+            log('SHELL_WEBVIEW_AFTER_LOAD loaded=%s waited_ms=%d '
+                'ceiling_ms=%d'
+                % (str(_loaded).lower(),
+                   round((time.monotonic() - _t0) * 1000.0),
+                   round(_wait_model * 1000.0)))
 
     # HOT RELOAD IS OFF BY DEFAULT, AND IT WAS ON -- WHICH IS THE FREEZE. MEASURED
     # 2026-10-15 on the owner own log: `HOT_RELOAD_EVENT kind=panel file=panel.css`
@@ -15159,9 +28382,75 @@ def main(argv=None):
     # `sys.executable`, i.e. `pythonw.exe`, i.e. THE PYTHON ICON, which is the
     # owner's report. `apply_window_icon` (from `_on_before_show`) re-applies it
     # with an explicit `WM_SETICON`, ICON_SMALL2 included.
+    # PERFIL PERSISTENTE SO' PARA A APP, NUNCA PARA UMA SONDA. Uma sonda
+    # (`--dump-dom`/`--selftest`/`--memory`/`--probe-v2`/`--no-hotkey`, ou uma
+    # mutex privada) larga uma SEGUNDA instancia ao lado da do dono; dois
+    # processos nao partilham o mesmo `EBWebView` (o segundo nao arranca o
+    # WebView2). Por isso o perfil e' da APP e o efemero fica nas sondas.
+    if not lock_excuse:
+        def _sweep():
+            try:
+                dirs, freed = sweep_stale_webview_profiles()
+                log('WEBVIEW2_PROFILE_SWEEP dirs=%d mb=%.1f'
+                    % (dirs, freed / (1024.0 * 1024.0)))
+            except Exception as exc:  # noqa: BLE001
+                log('WEBVIEW2_PROFILE_SWEEP_FAILED error=%r' % (exc,))
+        threading.Thread(target=_sweep, name='sotto-profile-sweep',
+                         daemon=True).start()
+    # PERFIL POR LARGADA, E O LIXO VARRIDO (2026-11-03, MEDIDO). Um perfil
+    # PARTILHADO entre largadas foi tentado e medido no mesmo dia: com o
+    # processo anterior ainda a morrer, o WebView2 do novo arranque bate em
+    # `0x800700AA Recurso solicitado em uso` e a app sobe SEM PAGINA
+    # (`WEBVIEW2_INIT_FAILED`, medido 04:31:48) -- e os `msedgewebview2.exe`
+    # sobrevivem ao kill do shell, portanto o hazard nao desaparece sozinho.
+    # E nao pagava: o perfil a quente nao mudou os 25 s do painel (03:59 e
+    # 04:28 deram o mesmo numero). Fica o perfil efemero do pywebview, e o que
+    # se ganha e' a VARREDURA: cada largada morta deixava 4-67 MB em
+    # `%TEMP%\tmp*\EBWebView` para sempre (centenas deles nesta maquina).
+    log('WEBVIEW2_PROFILE ephemeral reason=%s'
+        % (lock_excuse or ('mutex:' + str(args.mutex_name))
+           if (lock_excuse or args.mutex_name != DEFAULT_MUTEX_NAME)
+           else 'per-launch'))
     webview.start(icon=SOTTO_ICON)
     return shell._exit_code
 
 
+def _crash_receipt(text):
+    """Uma morte de `pythonw` deixa recibo: o dono nao tem stderr para ler.
+
+    MEDIDO 2026-11-16: um `AttributeError` em `arm_hotkey_role` matava o arranque
+    DEPOIS de `HOTKEY_REGISTERED` e ANTES de qualquer linha de erro -- o log
+    terminava limpo, o processo sumia com rc=1, a tela do dono ficava sem app e
+    o unico sinal era "nao abriu". O recibo vai para o `--log` da largada e para
+    `_main/shell-crash.log` (tecto de 256 KB, o mesmo do traceback do worker).
+    """
+    last = text.strip().splitlines()[-1] if text.strip() else 'no-traceback'
+    targets = [os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            '..', '..', '_main', 'shell-crash.log')]
+    argv = list(sys.argv)
+    for i, arg in enumerate(argv):
+        if arg == '--log' and i + 1 < len(argv):
+            targets.insert(0, argv[i + 1])
+        elif arg.startswith('--log='):
+            targets.insert(0, arg.split('=', 1)[1])
+    for path in targets:
+        try:
+            if path.endswith('shell-crash.log') and os.path.exists(path) \
+                    and os.path.getsize(path) > 262144:
+                os.remove(path)
+            with open(path, 'a', encoding='utf-8') as fh:
+                fh.write('%s sotto: SHELL_CRASH pid=%d %s\n%s\n'
+                         % (time.strftime('%Y-%m-%d %H:%M:%S'), os.getpid(), last, text))
+        except OSError:
+            pass
+
+
 if __name__ == '__main__':
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        _crash_receipt(traceback.format_exc())
+        raise SystemExit(1)
