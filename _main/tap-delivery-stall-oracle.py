@@ -36,7 +36,7 @@ AS ARMS (cada uma pode dizer NAO):
   A4  uma linha por episodio, com duracao, endpoint e pid.
   A5  o laco passa `stalled_s=`, a tap settle passa o censo, `on_block` carimba a
       ultima entrega, e o status existe nos DOIS caminhos.
-  A6  `--neg-arm`: muta o PROPRIO texto e exige 3/3 vermelhas.
+  A6  `--neg-arm`: muta o PROPRIO texto e exige 4/4 vermelhas (M1..M4).
 
 Usage:
   python _main/tap-delivery-stall-oracle.py

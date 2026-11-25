@@ -459,7 +459,16 @@ async function measure(page, id, hasSkin) {
     const timeEl = q('#history-list .hist .hist__time');
     const histText = q('#history-list .hist .hist__text');
     const capText = q('#brand-probe .caption--provisional .caption__text');
-    const col = q('#caption-float .caption-float__col');
+    /* THE PLATE THE OWNER SEES IS THE ROW'S OWN BED (2026-11-25). This used to
+       read `#caption-float .caption-float__col`, the in-page float caption whose
+       only painter was `caption-float.css` -- and `panel.html` no longer links that
+       sheet (the caption on screen is the NATIVE overlay). The element that the
+       shell really copies onto that overlay is the brand probe's provisional row:
+       `brand-bridge.js:190-215` (`measure` -> `readRow`, `bg: cs.backgroundColor`)
+       posts its computed background as `--brand-plate`. Measuring the probe row is
+       therefore measuring the same bytes the overlay receives, instead of a div
+       nobody paints. */
+    const col = q('#brand-probe .caption--provisional');
     const cs = (el, pseudo) => (el ? window.getComputedStyle(el, pseudo || null) : null);
     const bodyStyle = cs(histBody);
     const listStyle = cs(histList);
@@ -1007,7 +1016,15 @@ function judge(data, hasSkin) {
    * A plate that matches NONE of the design's own beds fails, so one hard-coded
    * plate shared by 59 entries cannot pass. */
   const bedOf = (data.bed || {});
-  const plate = parseRgb(data.plate);
+  /* THE PLATE IS THE TOKEN THE OVERLAY RECEIVES, not the retired div's computed
+   * background (2026-11-25). `#caption-float .caption-float__col` was painted by
+   * `caption-float.css`, and `panel.html` no longer links that sheet (the caption on
+   * screen is the NATIVE overlay, which reads `--brand-plate`). The bridge still
+   * derives that token from the brand probe's provisional row -- measured today:
+   * `plateVar=rgba(7, 8, 8, 0.860)`, `SottoBrand.last().rowBgAlpha=0.86` on theme-1,
+   * the same numbers HEAD produced -- so the token is the honest witness. The float
+   * div's own computed background is kept in the detail line for contrast. */
+  const plate = parseRgb(data.plateVar) || parseRgb(data.plate);
   const base = (() => {
     const p = parseRgb(bedOf.panelBg);
     return p && p.a > 0.5 ? [p.r, p.g, p.b] : [16, 11, 8];
@@ -1229,7 +1246,12 @@ async function run(dir, opts = {}) {
         faces.add([data.capFace.family, data.capFace.size, data.capFace.weight,
           data.capFace.transform].join('|'));
       }
-      if (data.plate) plates.add(String(data.plate));
+      /* THE PLATE POPULATION IS THE TOKEN (2026-11-25): `data.plate` is the retired
+         float div's computed background, which is transparent in every design now
+         that `caption-float.css` is not loaded -- the distinctness floor then said
+         "one bed for 59 designs" about a div nobody paints. `--brand-plate` is what
+         the native overlay receives. */
+      if (data.plateVar) plates.add(String(data.plateVar));
       /* THE PAYLOAD THE PAGE ACTUALLY POSTED, kept so the NATIVE consumer can be
        * judged against the same 59 designs instead of a re-derived guess. The
        * overlay never reads the DOM: `_brand_tokens` receives exactly this. */

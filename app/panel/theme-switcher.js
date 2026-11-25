@@ -176,7 +176,7 @@
     picker.className = 'theme-picker';
     picker.hidden = true;
     picker.setAttribute('role', 'dialog');
-    picker.setAttribute('aria-label', 'Choose a theme');
+    picker.setAttribute('aria-label', 'Escolha um tema');
 
     var list = doc.createElement('div');
     list.className = 'theme-picker__list';
@@ -571,7 +571,7 @@
     var name = currentTheme();
     var theme = known(name);
     chevrons.forEach(function (c) {
-      c.title = 'Theme list: ' + labelOf(name) + ' — open for all five, hover previews';
+      c.title = 'Lista de temas: ' + labelOf(name) + ' — abra para ver os cinco, passe o mouse para pré-visualizar';
       c.setAttribute('aria-label', c.title);
       if (theme) c.style.setProperty('--theme-swatch', theme.swatch);
     });
@@ -756,7 +756,7 @@
     box.id = 'theme-dropdown';
     box.hidden = true;
     box.setAttribute('role', 'listbox');
-    box.setAttribute('aria-label', 'Choose a theme — hover previews, click keeps');
+    box.setAttribute('aria-label', 'Escolha um tema — passe o mouse para pré-visualizar, clique para manter');
     /* ALL THE THEMES, IN TWO COLUMNS.
      *
      * IT WAS FIVE PLUS A DOOR, AND THE DOOR WAS NEVER BUILT: this function used
@@ -830,7 +830,7 @@
     var name = currentTheme();
     var theme = known(name);
     btn.dataset.themeCurrent = name;
-    btn.title = 'Theme: ' + labelOf(name) + ' — click for the next one, right-click for every theme';
+    btn.title = 'Tema: ' + labelOf(name) + ' — clique para o próximo, clique com o botão direito para ver todos';
     btn.setAttribute('aria-label', btn.title);
     if (theme) btn.style.setProperty('--theme-swatch', theme.swatch);
     var label = btn.querySelector('.theme-button__label');

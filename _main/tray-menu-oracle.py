@@ -46,6 +46,12 @@ SHELL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..',
                          'app', 'webview')
 SHELL = os.path.join(SHELL_DIR, 'sotto_webview.py')
 
+
+#: NENHUMA allowlist de rotulos: a arm de idioma procura palavras inglesas
+#: conhecidas da interface em TODOS os rotulos do menu e so' aceita zero.
+ENGLISH_UI_WORDS = re.compile(
+    r'\b(?:open|quit|edit|caption|panel|close|hide|pause|resume|'
+    r'enable|disable|show|search|settings|start)\b', re.IGNORECASE)
 GA_PARENT = 1
 GWL_STYLE = -16
 GWL_EXSTYLE = -20
@@ -551,6 +557,15 @@ def judge(shell) -> list:
             checks.append(('menu_live_item_says_disable_when_on',
                            text_live_on == ['Desligar legendas (Ctrl+Space)'],
                            f'text={text_live_on}'))
+            # IDIOMA: um unico rotulo misturado basta para a arm ficar VERMELHA.
+            # Nao ha' lista de rotulos "aceitaveis" -- procuram-se palavras
+            # inglesas da interface nos rotulos dos DOIS menus medidos acima:
+            # o menu armado (`armed_items`) e o menu atualizado (`off_items`),
+            # que e' o do clique direito. Antes so' o segundo era verificado.
+            labels = [i['text'] for i in armed_items + off_items if i['id']]
+            english = [t for t in labels if ENGLISH_UI_WORDS.search(t)]
+            checks.append(('menu_labels_are_portuguese', not english,
+                           f'labels={labels} english={english}'))
             checks.append(('menu_keeps_the_three_shipped_ids',
                            ids == [shell.ID_TRAY_OPEN, shell.ID_TRAY_HOTKEY,
                                    shell.ID_TRAY_LIVE, shell.ID_TRAY_EDIT,
@@ -644,6 +659,10 @@ LABEL_FIXED = """        label = (f'Desativar atalho {accel}' if armed
                  else f'Ativar atalho {accel}')"""
 LABEL_MUTANT = """        label = f'Desativar atalho {accel}'"""
 
+# Um unico rotulo voltado ao ingles tem de apanhar a arm de idioma.
+PT_LABEL_FIXED = """        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_OPEN, 'Abrir painel')"""
+PT_LABEL_MUTANT = """        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_OPEN, 'Open panel')"""
+
 ROUTE_FIXED = """        elif command == ID_TRAY_HOTKEY:"""
 ROUTE_MUTANT = """        elif command == 999:"""
 
@@ -683,6 +702,8 @@ MUTANTS = [
     # Um item que so' sabe desligar.
     ('hotkey_label_frozen_on_disable', LABEL_FIXED, LABEL_MUTANT,
      ['menu_hotkey_item_says_enable_when_disarmed']),
+    ('menu_open_label_reverted_to_english', PT_LABEL_FIXED, PT_LABEL_MUTANT,
+     ['menu_labels_are_portuguese']),
     # Um item que aparece e nao faz nada.
     ('hotkey_command_not_routed', ROUTE_FIXED, ROUTE_MUTANT,
      ['tray_command_routes_the_hotkey_id']),

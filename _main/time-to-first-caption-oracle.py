@@ -98,6 +98,7 @@ PLACEHOLDER_PREFIXES = (
     "Starting the worker",
     "Starting worker",
     "Waiting for audio",
+    "Aguardando áudio",
 )
 
 _TS = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})")

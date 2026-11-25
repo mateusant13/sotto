@@ -7,14 +7,11 @@ ou usa pontuacao de forma inteligente?"*. Duas metades da resposta:
     onde ha uma marca. Custo zero de disco, funciona em qualquer lingua.
   * este ficheiro -- a metade COM modelo: um restaurador de pontuacao treinado em
     ingles (`sherpa-onnx-online-punct-en`, Apache-2.0, Edge-Punct-Casing
-    arXiv:2407.13142), int8 **7,1 MB**. It is enabled only by a native sherpa
-    API that proves CUDA device census, CPU-fallback disable, and exact CUDA
-    node assignment; the installed generic config exposes only `provider` and
-    is refused, so the ASR text remains unchanged until that API exists.
-
-MEDIDO nesta maquina (2026-11-05, 10 linhas reais do `CAPTION_IN` do log do dono):
-carga **91 ms**, por linha **6,1-8,5 ms** (mediana 6,8). Um chunk do worker e'
-560 ms, logo o custo e' ~1,2 % de um chunk.
+    arXiv:2407.13142), int8 **7,1 MB**. Pede CPU POR NOME (`PROVIDER = "cpu"`):
+    carga 91 ms, 6,8 ms/linha medidos nesta maquina, sem acelerador do qual
+    cair silenciosamente. Um pedido `cuda` e' recusado por nome: a API
+    instalada nao atesta colocacao nem desliga fallback de CPU.
+    Um chunk do worker e' 560 ms, logo o custo e' ~1,2 % de um chunk.
 
 O QUE ELE FAZ MAL, e por isso a guarda de lingua e' obrigatoria: em texto
 portugues ele devolve caixa aleatoria -- medido, `"eu gosto muito disso sabe
@@ -44,10 +41,11 @@ chama-se `nemotron-3.5-asr-ptbr-onnx-int4` -- a pontuacao DE MODELO fica
 funciona em qualquer lingua e' a de prosodia, e ela so' entra com pausas
 medidas (`punctuation_prosody.py`).
 
-AUSENTE E' UM ESTADO NORMAL: sem o modelo em `worker/models/punct-en/`, ou sem
-o strict GPU-only native API, este modulo devolve o texto intacto e `status()`
-diz por que. Nada aqui pode fazer uma legenda falhar -- todo erro do adapter e'
-fail-closed e o caminho de excepcao e' a identidade.
+AUSENTE E' UM ESTADO NORMAL: sem o modelo em `worker/models/punct-en/`, sem
+pacote, com `SOTTO_PUNCT_MODEL=0` ou com um pedido `cuda`, este modulo devolve
+o texto intacto e `status()` diz por que. Nada aqui pode fazer uma legenda
+falhar -- todo erro do adapter e' fail-closed e o caminho de excepcao e' a
+identidade.
 """
 from __future__ import annotations
 
@@ -71,16 +69,21 @@ END_MARKS = (".", "?", "!")
 
 _LOCK = threading.Lock()
 _ENGINE = None
-# Installed vendored sherpa-onnx 2.0.1 exposes only `provider="cuda"` for
-# OnlinePunctuation: no native device census, CPU-fallback disable, or node
-# assignment readback. Keep this false until that exact runtime contract exists.
-_NATIVE_GPU_PLACEMENT_VERIFIED = False
+#: O restaurador pede CPU POR NOME, como o diarizador (`DIARIZER_PROVIDER` no
+#: `speaker_sidecar.py`). Medido nesta maquina: 91 ms de carga, 6,8 ms/linha
+#: (1,2 % de um chunk de 560 ms). Nao ha acelerador do qual cair
+#: silenciosamente; a API instalada nao atesta colocacao CUDA, logo um pedido
+#: `cuda` e' recusado por nome ANTES de tocar no disco ou no motor.
+PROVIDER = "cpu"
+#: Teto de fios declarado: o numero medido, nao uma aposta sobre a ASR.
+THREADS = 1
+_PLACEMENT_PRINTED = False
 #: A tag de lingua do PROCESSO, posta por quem a resolveu (`StreamAsr`). O
 #: `_event` vive no `LineFormer`, que nao tem a resolucao -- e inventar uma tag
 #: la' seria adivinhar a lingua, que e' o que a guarda existe para nao fazer.
 _LANG = None
 _STATE = {"tried": False, "reason": "not-tried", "dir": None, "load_ms": None,
-          "provider": "cuda"}
+          "provider": PROVIDER}
 
 #: `SOTTO_PUNCT_MODEL` = `0` desliga mesmo com o modelo no disco; `1`/`en`
 #: liga (e a tag de lingua ainda tem de ser inglesa). Ausente = o modelo decide.
@@ -141,16 +144,61 @@ def supported_lang(tag) -> bool:
     return str(tag).strip().lower().replace("_", "-").split("-")[0] == "en"
 
 
-def _env_allows() -> bool:
+#: A LISTA DE PERMISSAO, nao uma lista de proibicoes (2026-11-25, achado de
+#: revisao). A versao anterior perguntava "e' um dos valores de desligar?" e
+#: respondia SIM a qualquer outra coisa -- `SOTTO_PUNCT_MODEL=garbage`, `=2` ou
+#: `=ENABLE` LIGAVAM o modelo, o oposto do contrato que o docstring promete
+#: ("`0` desliga; `1`/`en` liga; ausente = o modelo decide"). Um interruptor
+#: cujo valor invalido cai para o lado caro nao e' um interruptor.
+_ENV_ON = ("1", "on", "true", "yes", "en")
+_ENV_OFF = ("0", "off", "false", "no")
+
+
+def _env_decision():
+    """("on"|"off"|"auto", reason). `auto` = ausente/vazio: o modelo decide.
+
+    Valor desconhecido e' DESLIGADO com nome (`bad-env-value`): a escada de
+    `load()` so' mostra o modelo no disco quando a resposta e' `auto`/`on`.
+    """
     v = os.environ.get(_ENV, "").strip().lower()
-    if v in ("0", "off", "false", "no"):
-        return False
-    return True
+    if v == "":
+        return "auto", "env-absent"
+    if v in _ENV_ON:
+        return "on", "env-on"
+    if v in _ENV_OFF:
+        return "off", "env-off"
+    return "off", "bad-env-value(%r)" % (v,)
+
+
+def _env_allows() -> bool:
+    return _env_decision()[0] != "off"
+
+def _requested_provider() -> str:
+    """O pedido por nome. CPU e' explicito; CUDA e' recusado por nome."""
+    return str(PROVIDER).strip().lower()
+
+
+def _provider_refusal(requested: str) -> str | None:
+    """Nao ha atestacao de colocacao CUDA na API instalada.
+
+    Um pedido `cuda` e' recusado ANTES de procurar o modelo, importar o pacote
+    ou construir o motor -- o mesmo nome que o diarizador recusa em
+    `speaker_sidecar.py`. Qualquer outro nome e' desconhecido, tambem fail-closed.
+    """
+    if requested == "cuda":
+        return "provider-cuda-refused"
+    if requested != "cpu":
+        return f"provider-unknown ({requested})"
+    return None
 
 
 def load(root=None):
-    """Load once with CUDA or return None; this auxiliary model never uses CPU."""
-    global _ENGINE
+    """Constroi o motor UMA vez no provider declarado, ou devolve None.
+
+    CPU e' pedido por nome: nao ha acelerador do qual cair silenciosamente, e
+    os 6,8 ms/linha medidos cabem num chunk de 560 ms. Falha sempre fechada.
+    """
+    global _ENGINE, _PLACEMENT_PRINTED
     with _LOCK:
         if _ENGINE is not None:
             return _ENGINE
@@ -160,11 +208,11 @@ def load(root=None):
         if not _env_allows():
             _STATE["reason"] = "disabled-by-env"
             return None
-        if not _NATIVE_GPU_PLACEMENT_VERIFIED:
-            # Refuse before even probing model files or importing the native
-            # runtime. The current public API's CUDA provider flag cannot prove
-            # device registration, disable CPU EP fallback, or attest nodes.
-            _STATE["reason"] = "gpu-placement-unprovable"
+        requested = _requested_provider()
+        _STATE["provider"] = requested
+        refusal = _provider_refusal(requested)
+        if refusal is not None:
+            _STATE["reason"] = refusal
             return None
         d = find_model(root)
         if d is None:
@@ -186,14 +234,18 @@ def load(root=None):
                 sherpa_onnx.OnlinePunctuationModelConfig(
                     cnn_bilstm=str(d / MODEL_FILE),
                     bpe_vocab=str(d / VOCAB_FILE),
-                    num_threads=1,
-                    provider="cuda",
+                    num_threads=THREADS,
+                    provider=requested,
                 )
             )
             _ENGINE = sherpa_onnx.OnlinePunctuation(cfg)
             _STATE["load_ms"] = round((time.perf_counter() - t0) * 1000, 1)
             _STATE["reason"] = "loaded"
             _STATE["dir"] = str(d)
+            if not _PLACEMENT_PRINTED:
+                print("PUNCT_PLACEMENT provider=%s threads=%d"
+                      % (requested, THREADS), flush=True)
+                _PLACEMENT_PRINTED = True
             return _ENGINE
         except Exception as exc:  # pragma: no cover - modelo corrompido
             _STATE["reason"] = f"load-failed ({type(exc).__name__}: {exc})"
@@ -208,6 +260,8 @@ def status() -> dict:
         "dir": _STATE["dir"],
         "load_ms": _STATE["load_ms"],
         "engine": _ENGINE is not None,
+        "provider": _STATE["provider"],
+        "threads": THREADS,
     }
 
 

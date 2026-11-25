@@ -679,19 +679,11 @@ if exist _main\_panel2-repeat-probe.js (
   call :record panel2-repeat-probe !STEP_RC!
 ) else ( call :record panel2-repeat-probe MISSING )
 
-echo === the day/hour gallery: the module arithmetic, and the DOM that shows it ===
-REM Two instruments, two claims. `history-gallery-oracle.js` requires the SHIPPED
-REM `app/panel/history-gallery.js` as a plain module (no DOM, no jsdom) and checks the
-REM bucketing plus the LOCAL-time stamp; its `--neg-arm` is the control row below.
-REM `_panel2-dom-probe.js` is the jsdom probe that presses the real buttons in the real
-REM document -- 78 arms, ARM G being the gallery's. Measured 2026-10-08: GREEN 78/78 on
-REM the shipped panel, and RED on exactly the two arms that name the auto-append the
-REM owner had removed when the same probe was pointed at a mutant copy via
-REM `SOTTO_PANEL_DIR` (the other 76 stayed green).
-if exist _main\history-gallery-oracle.js (
-  call :step history-gallery-oracle 0 "_main\history-gallery-oracle.js;app\panel\history-gallery.js" "%OUT%\gallery-oracle.log" node _main\history-gallery-oracle.js
-  call :record history-gallery-oracle !STEP_RC!
-) else ( call :record history-gallery-oracle MISSING )
+echo === the day/hour gallery: RETIRED 2026-11-25 ===
+REM S4 removed the day/hour gallery from the shipped document and the module that
+REM fed it (`app/panel/history-gallery.js`); `_panel2-dom-probe.js` ARM G asserts the
+REM nav is GONE, so the module and its oracle had no caller left. Deleted with their
+REM two steps -- an oracle whose subject no longer ships is the fake that never fails.
 if exist _main\_panel2-dom-probe.js (
   call :step panel2-dom-probe 0 "_main\_panel2-dom-probe.js;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel2-dom-probe.log" node _main\_panel2-dom-probe.js
   call :record panel2-dom-probe !STEP_RC!
@@ -699,6 +691,15 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-header-oracle !STEP_RC!
   call :step red-as-expected-panel-header-oracle 1 "_main\panel-header-oracle.js;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js" "%OUT%\panel-header-neg.log" node _main\panel-header-oracle.js --neg-arm
   call :expectred red-as-expected-panel-header-oracle !STEP_RC! "%OUT%\panel-header-neg.log" "NEG-ARM VERDICT PASS"
+  REM `panel-language` (2026-11-25, independent review S5): `panel.html` is Portuguese but
+  REM `panel.js` used to overwrite ~40 of those strings in English at RUNTIME. The oracle
+  REM loads the REAL page in jsdom, runs every REAL script in document order, and judges
+  REM the seven states the owner sees. Its `--neg-arm` reverts one shipped writer at a
+  REM time and must redden its own arm only (rc=1 by design).
+  call :step panel-language 0 "_main\panel-language-oracle.js;app\panel\panel.html;app\panel\panel.js;app\panel\panel.css" "%OUT%\panel-language.log" node _main\panel-language-oracle.js
+  call :record panel-language !STEP_RC!
+  call :step red-as-expected-panel-language 1 "_main\panel-language-oracle.js;app\panel\panel.html;app\panel\panel.js;app\panel\panel.css" "%OUT%\panel-language-neg.log" node _main\panel-language-oracle.js --neg-arm
+  call :expectred red-as-expected-panel-language !STEP_RC! "%OUT%\panel-language-neg.log" "NEG-ARM VERDICT: PASS"
   call :step panel-drag-targets 0 "_main\panel-drag-targets-oracle.js;app\panel\panel.html;app\panel\panel-unified.css;app\panel\skin-layout.css;app\panel\panel.js;app\panel\strip-drag.js" "%OUT%\panel-drag-targets.log" node _main\panel-drag-targets-oracle.js
   call :record panel-drag-targets !STEP_RC!
   call :step panel-history-clip 0 "_main\panel-history-clip-probe.mjs;app\panel\themes\fonts.css;app\panel\panel.css;app\panel\caption-float.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\zipc-panels.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\caption-formulation.js;app\panel\stable-words.js;app\panel\history-source.js;app\panel\surface.js;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\panel.js;app\panel\letter-swap.js;app\panel\caption-float.js;app\panel\strip-drag.js;app\panel\brand-bridge.js;app\panel\panel.html;app\webview\sotto_webview.py;app\webview\history_context.py;_main\history-retention-fixture.py" "%OUT%\panel-history-clip.log" node _main\panel-history-clip-probe.mjs
@@ -1481,6 +1482,61 @@ if exist _main\shell-priority-oracle.py (
 call :step red-as-expected-shell-priority 1 "_main\shell-priority-oracle.py;app\webview\sotto_webview.py" "%OUT%\shell-priority-neg.log" python _main\shell-priority-oracle.py --neg-arm
 call :expectred red-as-expected-shell-priority !STEP_RC! "%OUT%\shell-priority-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-shell-priority MISSING "%OUT%\shell-priority-neg.log" "NEG-ARM: PASS" )
+REM ── OS QUATRO ORACULOS DA AUDITORIA DE 2026-11-25 ─────────────────────────
+REM Nasceram da auditoria de desenho do mesmo dia; cada um julga uma promessa
+REM que ate' agora so' existia em prosa. `config-truth` (o interruptor de
+REM denoise e' o que o leitor resolve, e o device do JSON nao e' um cabo
+REM virtual); `capture-share` (o worker publica UM par de dispositivos e o
+REM sidecar le', com queda em 2 s); `punctuation` (CPU por NOME, cuda recusado
+REM por nome); `multi-monitor` (a strip abre no monitor do ponto, presa a area
+REM de trabalho DESSE monitor). Todos correm sobre fakes: nenhum abre
+REM dispositivo, modelo ou janela na tela do dono.
+if exist _main\config-truth-oracle.py (
+ call :step config-truth 0 "_main\config-truth-oracle.py;worker\config.json;worker\denoise.py;worker\sotto_worker.py" "%OUT%\config-truth.log" python _main\config-truth-oracle.py
+ call :record config-truth !STEP_RC!
+) else ( call :record config-truth MISSING )
+if exist _main\config-truth-oracle.py (
+call :step red-as-expected-config-truth 1 "_main\config-truth-oracle.py" "%OUT%\config-truth-neg.log" python _main\config-truth-oracle.py --neg-arm
+call :expectred red-as-expected-config-truth !STEP_RC! "%OUT%\config-truth-neg.log" "arms RED"
+) else ( call :expectred red-as-expected-config-truth MISSING "%OUT%\config-truth-neg.log" "arms RED" )
+if exist _main\capture-share-oracle.py (
+ call :step capture-share 0 "_main\capture-share-oracle.py;worker\capture_share.py;worker\speaker_sidecar.py;worker\sotto_worker.py;worker\mic_tap.py" "%OUT%\capture-share.log" python _main\capture-share-oracle.py
+ call :record capture-share !STEP_RC!
+) else ( call :record capture-share MISSING )
+if exist _main\capture-share-oracle.py (
+call :step red-as-expected-capture-share 1 "_main\capture-share-oracle.py;worker\capture_share.py;worker\sotto_worker.py;worker\mic_tap.py" "%OUT%\capture-share-neg.log" python _main\capture-share-oracle.py --neg-arm
+call :expectred red-as-expected-capture-share !STEP_RC! "%OUT%\capture-share-neg.log" "NEG ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-capture-share MISSING "%OUT%\capture-share-neg.log" "NEG ARM VERDICT: PASS" )
+REM `discord-streams` (2026-11-25): o passo emanava do mesmo oraculo que atende a
+REM auditoria de desenho, e o censo `battery-wiring` recusou-o por estar sem passo.
+REM Ele julga `worker/discord_streams.py` (uma arvore de PCM por falante vira uma
+REM linha com `speaker`, `source="discord/voice:speaker-N"` e o relogio do pacote) e
+REM corre sobre uma arvore FALSA em `I:\cc-tmp` -- nao abre dispositivo, modelo nem
+REM janela. O braco negativo junta as duas vozes sob um id e tem de ser apanhado.
+if exist _main\discord-streams-oracle.py (
+ call :step discord-streams 0 "_main\discord-streams-oracle.py;worker\discord_streams.py" "%OUT%\discord-streams.log" python _main\discord-streams-oracle.py
+ call :record discord-streams !STEP_RC!
+) else ( call :record discord-streams MISSING )
+if exist _main\discord-streams-oracle.py (
+call :step red-as-expected-discord-streams 1 "_main\discord-streams-oracle.py;worker\discord_streams.py" "%OUT%\discord-streams-neg.log" python _main\discord-streams-oracle.py --neg-arm
+call :expectred red-as-expected-discord-streams !STEP_RC! "%OUT%\discord-streams-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-discord-streams MISSING "%OUT%\discord-streams-neg.log" "NEG-ARM: PASS" )
+if exist _main\punctuation-oracle.py (
+ call :step punctuation 0 "_main\punctuation-oracle.py;worker\punctuation_model.py" "%OUT%\punctuation.log" python _main\punctuation-oracle.py
+ call :record punctuation !STEP_RC!
+) else ( call :record punctuation MISSING )
+if exist _main\punctuation-oracle.py (
+call :step red-as-expected-punctuation 1 "_main\punctuation-oracle.py;worker\punctuation_model.py" "%OUT%\punctuation-neg.log" python _main\punctuation-oracle.py --neg-arm
+call :expectred red-as-expected-punctuation !STEP_RC! "%OUT%\punctuation-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-punctuation MISSING "%OUT%\punctuation-neg.log" "NEG-ARM VERDICT: PASS" )
+if exist _main\multi-monitor-oracle.py (
+ call :step multi-monitor 0 "_main\multi-monitor-oracle.py;app\webview\sotto_webview.py" "%OUT%\multi-monitor.log" python _main\multi-monitor-oracle.py
+ call :record multi-monitor !STEP_RC!
+) else ( call :record multi-monitor MISSING )
+if exist _main\multi-monitor-oracle.py (
+call :step red-as-expected-multi-monitor 1 "_main\multi-monitor-oracle.py;app\webview\sotto_webview.py" "%OUT%\multi-monitor-neg.log" python _main\multi-monitor-oracle.py --neg-arm
+call :expectred red-as-expected-multi-monitor !STEP_RC! "%OUT%\multi-monitor-neg.log" "CONTROL PASS"
+) else ( call :expectred red-as-expected-multi-monitor MISSING "%OUT%\multi-monitor-neg.log" "CONTROL PASS" )
 REM `tray-menu-oracle.py` -- o icone da bandeja tem de se comportar como o de
 REM qualquer outro app. Ordem do dono de 2026-11-04, verbatim: *"icone do sotto e'
 REM uma merda de mexer. botao direito e' travado pra abrir o menu dele ... tipo o
@@ -3540,16 +3596,8 @@ if exist _main\_panel2-repeat-probe.js (
   call :step control-panel2-repeat-revert 0 "_main\_panel2-repeat-probe.js;app\panel\panel.html;app\panel\panel.js" "%OUT%\control-panel2-repeat-revert.log" node _main\_panel2-repeat-probe.js --revert
   call :control control-panel2-repeat-revert !STEP_RC! "%OUT%\control-panel2-repeat-revert.log" "CONTROL PASS" "control copy removed: true"
 ) else ( call :control control-panel2-repeat-revert MISSING "%OUT%\control-panel2-repeat-revert.log" "CONTROL PASS" "control copy removed: true" )
-REM `history-gallery-oracle.js --neg-arm` injects the bare-date stamp
-REM (`new Date(entry.date)`) into a COPY of the module's parse and requires the LOCAL-time
-REM arm to go RED while the stamp-independent arms stay green. The box is GMT-0300
-REM (offsetMinutes=180, printed by the run), so the trap is OBSERVABLE here; on a UTC box
-REM the same injection moves nothing and the oracle says so instead of claiming a control
-REM it did not have -- that vacuity is the failure this row exists to catch.
-if exist _main\history-gallery-oracle.js (
-  call :step control-history-gallery-neg-arm 0 "_main\history-gallery-oracle.js;app\panel\history-gallery.js" "%OUT%\control-history-gallery-neg-arm.log" node _main\history-gallery-oracle.js --neg-arm
-  call :control control-history-gallery-neg-arm !STEP_RC! "%OUT%\control-history-gallery-neg-arm.log" "NEG-ARM-VERDICT: PASS" "local-arm-red=true"
-) else ( call :control control-history-gallery-neg-arm MISSING "%OUT%\control-history-gallery-neg-arm.log" "NEG-ARM-VERDICT: PASS" "local-arm-red=true" )
+REM `history-gallery-oracle.js --neg-arm` and its control row were deleted with the
+REM gallery itself (2026-11-25, S4 retired the module, this closes the pair).
 REM `historico-vs-redux-probe.js --gate-off` has NO control mode of its own: the
 REM flag loads the store with the one guard line DELETED, so the probe is RED BY
 REM DESIGN and exits 1 (its own "FAIL" code) with the violation named. That is why
@@ -4239,8 +4287,8 @@ if exist _main\tap-delivery-stall-oracle.py (
 ) else ( call :record tap-delivery-stall MISSING )
 if exist _main\tap-delivery-stall-oracle.py (
   call :step red-as-expected-tap-delivery-stall 1 "worker\sotto_worker.py;worker\tap_delivery.py;_main\tap-delivery-stall-oracle.py" "%OUT%\tap-delivery-stall-neg.log" python _main\tap-delivery-stall-oracle.py --neg-arm
-  call :expectred red-as-expected-tap-delivery-stall !STEP_RC! "%OUT%\tap-delivery-stall-neg.log" "NEG-ARM: PASS -- 3/3"
-) else ( call :expectred red-as-expected-tap-delivery-stall MISSING "%OUT%\tap-delivery-stall-neg.log" "NEG-ARM: PASS -- 3/3" )
+  call :expectred red-as-expected-tap-delivery-stall !STEP_RC! "%OUT%\tap-delivery-stall-neg.log" "NEG-ARM: PASS --"
+) else ( call :expectred red-as-expected-tap-delivery-stall MISSING "%OUT%\tap-delivery-stall-neg.log" "NEG-ARM: PASS --" )
 REM O WATCHDOG DA TAP SETTLE ESTAVA SEM CHAMADOR (medido 2026-11-17): o oraculo existia
 REM desde 2026-10-11, mas RECUSAVA desde 2026-11-10 (`audio_back_step`, `tap_floor`,
 REM `live_target` e depois `delivery_stall_line` sem duplo) e nenhum passo o chamava. Os

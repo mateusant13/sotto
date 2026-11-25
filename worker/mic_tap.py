@@ -313,10 +313,29 @@ class ConversationTap:
             pass
         self.mic.close()
 
+    def _src_rate(self, block) -> int:
+        """The rate of THIS block, read from the live primary (reviewer finding).
+
+        `ProcessLoopbackTap.rate` is explicitly PROVISIONAL until `_open()`
+        reads the winning arm's format back, and the ladder really contains a
+        44.1 kHz arm. Caching `primary.rate` in `attach()` therefore measured
+        44.1 kHz audio as 48 kHz as soon as the app-target rung won: a 100 ms
+        block of 4 410 samples came out as 1 470 samples instead of 1 600, an
+        8 % pitch error on the very rung the microphone was just added to. The
+        samplerate the tap really runs at is a property of the OPEN stream, so
+        it is read at callback time; `self.rate` stays the mix's contract rate
+        (16 kHz) and never changes.
+        """
+        try:
+            return int(getattr(self.primary, "rate", None) or self.src_rate
+                       or TARGET_SR)
+        except Exception:  # noqa: BLE001 -- a broken attribute is not a crash
+            return self.src_rate or TARGET_SR
+
     def _on_primary(self, block):
         import numpy as np
 
-        pcm = to_mono16k(block, self.src_rate)
+        pcm = to_mono16k(block, self._src_rate(block))
         # THE LOOPBACK GAIN IS ALWAYS APPLIED, not only on blocks that happen to
         # carry microphone audio: a level that jumps 0.75 <-> 1.0 between blocks
         # is the AGC pumping that a fixed mix exists to avoid. Measured in the
@@ -381,14 +400,30 @@ def open_stream(make_primary, sink, prefer=None, enabled=True):
     `make_primary(on_block)` builds the loopback tap. When a microphone is
     available it is mixed in; when it is not, the primary is built exactly as
     before and the note says why.
+
+    THE SWITCH IS A PRIVACY SWITCH, so it uses an ENABLE list, not a disable
+    list (reviewer finding, 2026-11-25): `SOTTO_MIC=00` used to fall through to
+    ON, and a typo that turns a microphone on is the one direction that must
+    never be a guess. Only an explicit `1|on|true|yes|en` (or nothing at all)
+    opens it.
     """
     import os
 
-    if not enabled or os.environ.get("SOTTO_MIC", "1").strip().lower() in (
-            "0", "off", "no", "false"):
-        return make_primary(sink), "disabled by SOTTO_MIC"
+    setting = os.environ.get("SOTTO_MIC", "").strip().lower()
+    if not enabled or (setting not in ("", "1", "on", "true", "yes", "en")):
+        return make_primary(sink), "disabled by SOTTO_MIC=%r" % (setting,)
     mic, note = _mic_or_refusal(prefer)
     if mic is None:
         return make_primary(sink), note
     mixed = ConversationTap(mic, sink, note=note)
-    return mixed.attach(make_primary(mixed._on_primary)), note
+    try:
+        primary = make_primary(mixed._on_primary)
+    except BaseException:
+        # A primary that refuses to open must not leave an input stream behind:
+        # the ladder records the error and returns no tap to close.
+        try:
+            mic.close()
+        except Exception:  # noqa: BLE001
+            pass
+        raise
+    return mixed.attach(primary), note

@@ -355,6 +355,16 @@ quatro fixtures de fala são gravações de estúdio limpas (`kept_frac=1.0`) e 
 drone de amplitude constante. Recibo em `_main/receipt-20261115-speech-gate-broadcast.md`;
 `SOTTO_GATE=1` reproduz o defeito e `=0` é byte-idêntico ao default (`sotto_worker.py:3237-3249`).
 
+## 8. 2026-11-25 — micro em todos os rungs, captura partilhada, denoise ligado
+
+`LoopbackTap()` é a porta única dos rungs que abrem dispositivo, e todos passam pelo mesmo `mic_tap.open_stream(make_primary, on_block)`: P/`ProcessLoopbackTap` em `[CODE] worker/sotto_worker.py:4950-4968`, A/`WasapiLoopbackTap` em `[CODE] worker/sotto_worker.py:4972-4996`, B/C/`_PortAudioTap` em `[CODE] worker/sotto_worker.py:4997-5004`. Cada rung imprime `MIC_CAPTURE`; o rung `SOTTO_FILE_TAP` não abre dispositivo e fica fora. O micro é o default de CAPTURA do Windows, com filtro de não-microfones, ganho constante, `MIC_BACKLOG_S = 10.0` e queda contada `[CODE] worker/mic_tap.py:35,40,46-52`. Sem micro, o loopback volta byte-idêntico.
+
+O worker não abre o seu tap duas vezes: publica o bloco misturado no limite do ASR `[CODE] worker/sotto_worker.py:8609-8610` e o sidecar liga-se a esse publicador antes de enumerar endpoints `[CODE] worker/speaker_sidecar.py:1811-1844`. Um cliente só, fila `QUEUE_BLOCKS` com `CAPTURE_SHARE_DROP dropped=N`, `SOTTO_CAPTURE_SHARE=0` para desligar, fallback nomeado. `[MEASURED]` 2026-11-25: `python _main/capture-share-oracle.py` → `CAPTURE SHARE VERDICT: PASS (8/8 arms)`, braço `f` com `worker_taps=1 worker_mics=1 sidecar_taps=0`, braço `g` (um estranho calado não despe o leitor) e `--neg-arm` → `NEG ARM VERDICT: PASS (8/8 mutants caught, 0 decorative)`.
+
+O denoise deixou de ser inerte: `use_denoise` (TOP-LEVEL, `false` por omissão em `[CODE] worker/config.json:29`) aplica-se num único ponto em `StreamAsr.run_chunk`, depois do gate fala/música e antes da janela mel/VAD `[CODE] worker/sotto_worker.py:2574-2585`. `[MEASURED]` 2026-11-25: `python _main/config-truth-oracle.py` → `VERDICT: PASS`, com `false` byte-idêntico ao módulo desligado e `true` a alterar o PCM (`max|delta|=0.079018` em 8 960 amostras).
+
+---
+
 ## Lacunas
 
 - `[UNKNOWN]` **Nenhum número aqui foi medido no código de `HEAD`**: os `[MEASURED]` vêm de recibos

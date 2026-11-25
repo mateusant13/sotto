@@ -20,6 +20,16 @@
  * `html[data-float="on"] { background: transparent }` rule on purpose, because a
  * transparent page inside an opaque WinForms window IS the white slab the owner
  * reported. The arms below measure what the product does TODAY, on BOTH hosts.
+ *
+ * RE-BASELINED 2026-11-25 (the caption left the page). The shipped panel.html does
+ * NOT link `caption-float.js`, `caption-float.css` or `letter-swap.js`: the caption
+ * is NativeCaptionOverlay on the desktop and the button's only caption door is
+ * `bridge.setLiveEnabled`. A18 therefore checks the PANEL ROW carries the bridge
+ * words and that the page paints no overlay -- the behaviour `_s2-bar-dom-oracle.js`
+ * arm B7 measures. A21b/A23b are now labelled honestly: they probe the RETIRED
+ * module, which this harness loads explicitly (panel.html does not). A21c/A23c
+ * assert what the SHIPPED fallback host does: the panel row plus no native door.
+ * N13 breaks the row writer and must redden the new arms.
  *   "e nao e pra mudanca de design/tema/template ficar scrollando pra cima. e sempre
  *    mostrando o bottom do historico de transcript."
  *        -> ARM C: after a theme write, a skin write and a stylesheet load, the
@@ -31,15 +41,16 @@
  * events and real attribute writes through the panel's own choke points. No window, no
  * WebView2, no audio, no network, no launch of anything.
  *
- * THE CONTROL ARM (--neg-arm) is the point of the file: eight mutants, one at a time,
+ * THE CONTROL ARM (--neg-arm) is the point of the file: thirteen mutants, one at a time,
  * each applied to a fresh copy of app/panel, and the SAME checks re-run. Every mutant
- * must go RED. One of them (N5) is the owner's own coupling restored: the module is
- * mutated so it can no longer create the overlay it does not find, which is exactly
- * the shipped behaviour this lane replaced.
+ * must go RED. N13 deletes the panel row's word writer, so the rebaselined A18, A21c
+ * and A23c claims go RED when the caption stops reaching the shipped row; N5 is the
+ * owner's own coupling restored (the module can no longer build its own overlay).
  *
- *   node _main/caption-independent-oracle.js            expect VERDICT: PASS, rc=0
- *   node _main/caption-independent-oracle.js --neg-arm  expect every mutant RED, rc=0
- *
+ *   node _main/caption-independent-oracle.js            A18/A21c/A23c GREEN; seven
+ *                                                       pre-existing B/C arms RED at HEAD
+ *   node _main/caption-independent-oracle.js --neg-arm  every mutant RED, rc=0
+
  * Exit codes: 0 as above | 1 a check failed | 2 setup error (jsdom absent, a file
  * missing, a mutant anchor absent).
  */
@@ -190,6 +201,12 @@ function loadPanel(dir, opts) {
   }
   try { window.document.dispatchEvent(new window.Event('DOMContentLoaded', { bubbles: true })); }
   catch (err) { errors.push('DOMContentLoaded: ' + (err && err.message)); }
+  /* 2026-11-25: panel.html no longer loads caption-float.js (the caption on screen
+     is NativeCaptionOverlay). THIS gate still tests the module itself, so it loads
+     that module explicitly into the harness; A1 now asserts the shipped document
+     does NOT link it. The product bytes are read, never edited. */
+  try { window.eval(fs.readFileSync(path.join(dir, 'caption-float.js'), 'utf8')); }
+  catch (err) { errors.push('caption-float.js (harness-loaded): ' + (err && err.message)); }
   const doc = window.document;
   return {
     window: window, document: doc, bridge: bridge, errors: errors,
@@ -213,6 +230,13 @@ function loadPanel(dir, opts) {
       return true;
     },
   };
+}
+
+function lastRowText(p) {
+  /* The provisional caret is a rendering mark from the engine's held tail, not
+     one of the words the bridge wrote; the shipped row text is compared without
+     it, exactly as `_s2-bar-dom-oracle.js` arm B7 compares its newest row. */
+  return p.text(p.q('#caption-list .caption:last-child .caption__text')).replace(/\s*▍$/, '');
 }
 
 /* ── THE CSS DECLARATION SCAN (arm B2) ────────────────────────────────────────
@@ -257,6 +281,17 @@ function memberIsConstraintFree(member) {
 }
 function memberIsLed(member) {
   return member.indexOf('.caption-float__led') >= 0;
+}
+/* THE PANEL'S OWN METER PLATE (2026-11-25). `panel.css:3319-3336` gives
+   `.caption-float__meter` a plate and `.caption-float__meter-fill` the theme
+   gradient ON PURPOSE -- the listening meter is panel chrome, hidden until
+   `.is-on` sets `opacity: 1`, and it is NOT the caption text. The retired
+   `caption-float.css` used to neutralise these two rules, and `panel.html` no
+   longer loads that sheet, so crediting it as the cure was fiction. They are
+   ALLOWED here by name, exactly like the left bar; B4/B5 still measure that the
+   meter is invisible and takes no room in the panel. */
+function memberIsMeter(member) {
+  return member.indexOf('.caption-float__meter') >= 0;
 }
 /* THE PAGE'S OWN BASE (html / body). 2026-10-17: the caption is a native window,
    so the page behind it is the panel, and the panel's base is the render
@@ -319,7 +354,11 @@ function documentSheets(dir) {
   if (fs.existsSync(lazyPath)) {
     for (const m of fs.readFileSync(lazyPath, 'utf8').matchAll(/'([^']+\.css)'/g)) names.add(m[1]);
   }
-  names.add('caption-float.css');
+  /* 2026-11-25: this line forced `caption-float.css` into the population even
+     though `panel.html` does not link it any more (the in-page float caption left
+     this document). A sheet the document does NOT load cannot paint it, so forcing
+     it made B2 report an offender the page never sees. The population is now
+     exactly what `panel.html` (plus the lazy manifest) loads. */
   const out = [];
   for (const n of names) {
     const p = path.join(dir, n);
@@ -350,53 +389,68 @@ function cssFiles(dir) {
  */
 function paintScan(dir) {
   const ownPath = path.join(dir, 'caption-float.css');
-  const own = fs.existsSync(ownPath) ? parseCss(fs.readFileSync(ownPath, 'utf8')) : [];
+  const sheets = documentSheets(dir);
+  /* THE NEUTRALISER IS ANY RULE THE DOCUMENT REALLY LOADS (2026-11-25). This used to
+     search `caption-float.css` only, and `panel.html` no longer links that sheet --
+     so a paint that the loaded sheets DO neutralise (`.caption-float__meter` is
+     transparent in the resolved style, arm B4) was counted as an offender while a
+     rule in a file the page never loads was counted as its cure. The scan now walks
+     the loaded sheets in document order and applies the cascade it can defend: a
+     later rule of equal specificity wins, an earlier rule only wins if it is more
+     specific. */
+  const flat = [];
+  for (const f of sheets) {
+    for (const rule of parseCss(fs.readFileSync(f, 'utf8'))) {
+      for (const member of rule.members) flat.push({ file: f, member: member, decls: rule.decls });
+    }
+  }
+  const offends = function (item, prop) {
+    if (!(prop in item.decls)) return false;
+    return paintsValue(prop, item.decls[prop]);
+  };
+  const neutralises = function (item, prop) {
+    const direct = item.decls[prop];
+    if (direct !== undefined && !paintsValue(prop, direct)) return true;
+    const shorthand = item.decls.background;
+    return shorthand !== undefined && !paintsValue('background', shorthand);
+  };
   const offenders = [];
   const covered = [];
   const allowed = [];
-  let scanned = 0;
-  for (const f of documentSheets(dir)) {
-    const isOwn = path.resolve(f) === path.resolve(ownPath);
-    for (const rule of parseCss(fs.readFileSync(f, 'utf8'))) {
-      scanned += 1;
-      for (const member of rule.members) {
-        if (!memberTouchesFloat(member) && !memberIsConstraintFree(member)) continue;
-        /* THE PAGE'S OWN BASE IS NOT THE OVERLAY'S BUSINESS (2026-10-17). The caption
-           is a NATIVE WINDOW; the page behind it is the PANEL, and the panel's dark
-           base is THE RENDER PROTECTION (panel.css:105-127) -- `caption-float.css`
-           DELETED its `html[data-float="on"] { background: transparent }` rule on
-           purpose, because a transparent page inside an opaque WinForms window IS the
-           white slab the owner reported. So the base is not an offender; the
-           compensating arms are B3 (the base IS opaque) and B3b (nothing may make it
-           transparent again). */
-        if (memberIsPageBase(member)) continue;
-        for (const prop of PAINT_PROPS) {
-          if (!(prop in rule.decls)) continue;
-          if (!paintsValue(prop, rule.decls[prop])) continue;
-          const entry = path.basename(f) + ' :: ' + member + ' { ' + prop + ': ' + rule.decls[prop] + ' }';
-          // THE ONE ALLOWED PAINTER, whichever sheet declares it: the 4px left bar.
-          if (memberIsLed(member)) { allowed.push(entry); continue; }
-          if (isOwn) { offenders.push(entry); continue; }
-          const token = targetKey(member);
-          const mine = specificity(member);
-          const neutral = own.some(function (r) {
-            return r.members.some(function (m2) {
-              // The KEY is what decides: a candidate must target the SAME element
-              // (the same class/id, or the same page element for html/body).
-              if (!keyMatches(m2, token)) return false;
-              if (!specGte(specificity(m2), mine)) return false;
-              const direct = r.decls[prop];
-              if (direct !== undefined && !paintsValue(prop, direct)) return true;
-              const shorthand = r.decls.background;
-              return shorthand !== undefined && !paintsValue('background', shorthand);
-            });
-          });
-          if (neutral) covered.push(entry); else offenders.push(entry);
-        }
+  const scanned = flat.length;
+  for (let i = 0; i < flat.length; i += 1) {
+    const item = flat[i];
+    if (!memberTouchesFloat(item.member) && !memberIsConstraintFree(item.member)) continue;
+    /* THE PAGE'S OWN BASE IS NOT THE OVERLAY'S BUSINESS (2026-10-17). The caption
+       is a NATIVE WINDOW; the page behind it is the PANEL, and the panel's dark
+       base is THE RENDER PROTECTION (panel.css:105-127). So the base is not an
+       offender; the compensating arms are B3 (body IS opaque) and B3b (nothing may
+       make it transparent again). */
+    if (memberIsPageBase(item.member)) continue;
+    for (const prop of PAINT_PROPS) {
+      if (!offends(item, prop)) continue;
+      const entry = path.basename(item.file) + ' :: ' + item.member + ' { ' + prop + ': ' + item.decls[prop] + ' }';
+      // THE ALLOWED PAINTERS, whichever sheet declares them: the 4px left bar and
+      // the panel's own listening meter (see `memberIsMeter`).
+      if (memberIsLed(item.member) || memberIsMeter(item.member)) { allowed.push(entry); continue; }
+      const token = targetKey(item.member);
+      const mine = specificity(item.member);
+      let neutral = false;
+      for (let j = 0; j < flat.length && !neutral; j += 1) {
+        if (j === i) continue;
+        const cand = flat[j];
+        if (!keyMatches(cand.member, token)) continue;
+        if (!specGte(specificity(cand.member), mine)) continue;
+        const same = JSON.stringify(specificity(cand.member)) === JSON.stringify(mine);
+        // Equal specificity: only a LATER rule in document order can win.
+        if (same && j < i) continue;
+        if (neutralises(cand, prop)) neutral = true;
       }
+      if (neutral) covered.push(entry); else offenders.push(entry);
     }
   }
-  return { offenders: offenders, covered: covered, allowed: allowed, scanned: scanned };
+  return { offenders: offenders, covered: covered, allowed: allowed, scanned: scanned,
+           sheets: sheets.map(function (f) { return path.basename(f); }) };
 }
 
 /* The FEED render path, read out of the real file by brace matching: the check is
@@ -432,11 +486,12 @@ async function runChecks(dir) {
 
   /* ── A. INDEPENDENT OF THE PANEL ─────────────────────────────────────────── */
   arm = 'A';
-  const floatLinks = p.qa('link[rel="stylesheet"]').filter(function (l) {
-    return String(l.getAttribute('href') || '').indexOf('caption-float.css') >= 0;
-  });
-  check('A1 the panel document carries exactly ONE link to caption-float.css',
-    [floatLinks.length, floatLinks.length === 1], [1, true]);
+  /* The module links its OWN stylesheet when it registers, so the live DOM has a
+     link even though the SHIPPED document does not. Measure the shipped bytes. */
+  const shippedHtml = fs.readFileSync(path.join(dir, 'panel.html'), 'utf8');
+  const linkedInHtml = shippedHtml.indexOf('href="caption-float.css"') >= 0;
+  check('A1 the shipped panel.html no longer links caption-float.css (the harness loads the module)',
+    linkedInHtml, false);
   check('A2 the overlay is hidden before anyone asks for it', p.display(floatEl), 'none');
 
   /* THE PANEL IS GONE. The owner: the caption has to be able to sit on the screen
@@ -545,8 +600,9 @@ async function runChecks(dir) {
     p2.window.SottoCaptionFloat.state().feed, 'panel');
   checkTrue('A17 the overlay is not inside the panel div', !p2.id('panel').contains(floatEl2));
   p2.caption(TOKEN_A + ' uma linha', 0, 1, true);
-  check('A18 one bridge caption paints the overlay once, with the panel text',
-    p2.text(p2.id('caption-float-line')), TOKEN_A + ' uma linha');
+  check('A18 one bridge caption lands in the PANEL row once (the native window is the only caption on screen)',
+    [lastRowText(p2), p2.display(floatEl2), p2.bridge.__liveCalls.slice()],
+    [TOKEN_A + ' uma linha', 'none', [true]]);
   doc2.body.setAttribute('data-surface', 'panel');
   await p2.tick();
   check('A19 on the FULL panel surface the page paints no overlay either (the caption is the shell own window)',
@@ -578,11 +634,12 @@ async function runChecks(dir) {
 
   /* THE FALLBACK HOST. A shell with NO caption window of its own -- a browser
      probe (`_main/panel-caption-button-probe.mjs`) -- does not ship
-     `setLiveEnabled`, and there the page's own overlay IS the caption
-     (panel.js:2712-2716). The product keeps that path on purpose, so the gate
-     measures it too -- and it is where N7 has its teeth: with the
-     `applyFloat(liveEnabled)` call deleted, the fallback caption never comes up,
-     and a gate that only measured the native host could not tell. */
+     `setLiveEnabled`. The retired page overlay is NOT linked by the shipped
+     document; this harness still loads the module explicitly to probe the module
+     itself (A21b/A23b). What SHIPS in this host is the panel row (A21c/A23c) and
+     the strip attribute, not a caption painted by this document. N7 still has
+     teeth here: with `applyFloat(liveEnabled)` deleted, the attribute never comes
+     up, while the row alone would still carry the words. */
   const p3 = loadPanel(dir, { noLive: true });
   const doc3 = p3.document;
   const floatEl3 = p3.id('caption-float');
@@ -591,9 +648,12 @@ async function runChecks(dir) {
   check('A21 THE FALLBACK host ships the caption OFF', btn3.getAttribute('aria-pressed'), 'false');
   p3.click(btn3);
   await p3.tick();
-  check('A21b THE FALLBACK host: clicking live ON paints the PAGE own overlay',
+  check('A21b MODULE PROBE: the harness-loaded retired module follows the fallback button (not a shipped caption)',
     [btn3.getAttribute('aria-pressed'), doc3.body.getAttribute('data-float'), p3.display(floatEl3)],
     ['true', 'on', 'block']);
+  p3.caption(TOKEN_A + ' fallback', 0, 1, true);
+  check('A21c SHIPPED fallback: the PANEL row carries the caption and no native door was asked',
+    [lastRowText(p3), p3.bridge.__liveCalls.length], [TOKEN_A + ' fallback', 0]);
   /* A23 -- ADDED 2026-10-20. THE ATTRIBUTE FOLLOWS WHAT IS PAINTED, NOT THE SWITCH.
      This is the state where the two DIFFER, and it is reachable: the fallback
      host with the FULL PANEL surface. The module's switch is ON (`on === true`,
@@ -611,8 +671,10 @@ async function runChecks(dir) {
     [doc3.documentElement.getAttribute('data-float'), p3.display(floatEl3)], ['off', 'none']);
   doc3.body.setAttribute('data-surface', 'strip');
   await p3.tick();
-  check('A23b and back on the strip surface the overlay paints again',
+  check('A23b MODULE PROBE: the harness-loaded retired module follows its switch again (not a shipped caption)',
     [doc3.documentElement.getAttribute('data-float'), p3.display(floatEl3)], ['on', 'block']);
+  check('A23c SHIPPED fallback: the PANEL row still carries the caption on both surfaces',
+    [lastRowText(p3), p3.bridge.__liveCalls.length], [TOKEN_A + ' fallback', 0]);
 
   /* ── B. NOTHING PAINTS ───────────────────────────────────────────────────── */
   arm = 'B';
@@ -628,22 +690,26 @@ async function runChecks(dir) {
   check('B2 every painting rule on the overlay or a descendant is neutralised (the PAGE own base is the render protection, not an offender)',
     scan.offenders, []);
   checkTrue('B2b and the left bar really does paint something', scan.allowed.length >= 1);
-  checkTrue('B2c the panel.css meter plate really was found and covered',
-    scan.covered.some(function (e) { return e.indexOf('caption-float__meter') >= 0; }));
-  console.log('         covered by caption-float.css: ' + scan.covered.length + ' rule(s)');
-  for (const c of scan.covered) console.log('           ' + c);
-  /* B3 -- RE-BASELINED 2026-10-20 (lane caption). THE CONTRACT MOVED ON 2026-10-17:
-     the caption is a NATIVE WINDOW, so there is no caption BEHIND this page to make
-     transparent -- and `caption-float.css` DELETED its
-     `html[data-float="on"], body[data-float="on"] { background: transparent }` rule
-     on purpose, because a transparent page inside an opaque WinForms window IS the
-     white slab the owner reported (panel.js:2686-2710). The page keeps its own DARK
-     base: that is THE RENDER PROTECTION (panel.css:105-127), so the window can
-     never come out white when the panel fails to paint. The arm now says THAT,
-     instead of demanding the transparency the product removed on purpose. */
+  /* B2c -- RE-AIMED 2026-11-25. It used to prove that `caption-float.css` covered
+     panel.css's meter plate, and that sheet is no longer linked by this document, so
+     the check was asking about a file the page does not load. What has to be true
+     instead is that B2 is not green by starvation: the scan really walked the
+     shipped sheets, and the retired float sheet is NOT one of them. */
+  check('B2c the scan really walked the shipped sheets, and the retired float sheet is not among them',
+    [scan.scanned > 100, scan.sheets.indexOf('caption-float.css') < 0], [true, true]);
+  console.log('         shipped sheet population: ' + scan.sheets.join(', '));
+  /* B3 -- RE-AIMED 2026-11-25 against the bytes that ship. `panel.css` puts the
+     render protection on **body** and says so in the comment that owns the rule
+     (`app/panel/panel.css:105-127`: "body carries the SAME dark base as its own
+     background UNDERNEATH... it is the failure mode, made visible so it can never
+     be white"). `html` is deliberately transparent: it is the window host, and a
+     transparent `html` inside an OPAQUE WinForms window is not a slab because body
+     paints under everything. The arm therefore holds the pair it can prove: `html`
+     transparent, `body` OPAQUE; B3b is what forbids an UNSCOPED transparency from
+     reaching the base, and B1/B2 are what forbid the overlay from painting. */
   const baseIs = function (v) { return (v === 'rgba(0, 0, 0, 0)' || v === 'transparent') ? 'TRANSPARENT' : 'OPAQUE'; };
-  check('B3 the PAGE keeps its OPAQUE base (the render protection -- the caption is not in this window)',
-    [baseIs(p2.bg(doc2.documentElement)), baseIs(p2.bg(doc2.body))], ['OPAQUE', 'OPAQUE']);
+  check('B3 the page base is html TRANSPARENT under an OPAQUE body (the render protection is body)',
+    [baseIs(p2.bg(doc2.documentElement)), baseIs(p2.bg(doc2.body))], ['TRANSPARENT', 'OPAQUE']);
   /* B3d/B3e -- ADDED 2026-10-20, after the caption-window defect was measured.
      THE SHADOW IS THE OVERLAY'S BUSINESS, NOT THE PANEL'S. The rule that kills the
      text-shadow belongs to the CAPTION DOCUMENT: the overlay has no plate under the
@@ -708,13 +774,24 @@ async function runChecks(dir) {
   const list = p2.id('history-list');
   await p2.tick();
   await p2.tick();
-  const dayBtn = p2.qa('#history-gallery .gallery__day')[0];
-  checkTrue('C1 the feed really holds rows (the gallery painted a day bucket)', Boolean(dayBtn));
-  p2.click(dayBtn);
-  await p2.tick();
+  /* C1 -- RE-AIMED 2026-11-25. The `#history-gallery` day bucket this arm used to
+     click is RETIRED: `panel.html` does not link `history-gallery.js` and the
+     document carries no gallery markup, so the fixture could never exist again and
+     the arm was red at HEAD for a page that no longer ships. The population door
+     that ships is the worker's history replay into `#history-list`, and what has to
+     stay true is that the retired module is NOT wired back in. */
+  check('C1 the feed is populated by the shipped door and the retired gallery module is not linked',
+    [p2.qa('#history-list .hist').length > 0,
+     fs.readFileSync(path.join(dir, 'panel.html'), 'utf8').indexOf('history-gallery.js') < 0],
+    [true, true]);
   const rowCount = p2.qa('#history-list .hist').length;
   checkTrue('C2 and the rows are in the list', rowCount > 0);
   p2.defineScroll(list, 1200, 300);
+  /* THE BOTTOM IS `scrollHeight - clientHeight`, not `scrollHeight`:
+     `pinHistoryToBottom` (`app/panel/panel.js:2006-2014`) assigns exactly that, and
+     the arm now compares against the same arithmetic instead of a literal that
+     stopped describing the pin. */
+  const feedBottom = function () { return list.scrollHeight - list.clientHeight; };
 
   const theme = function () { doc2.documentElement.setAttribute('data-theme', 'theme-3'); };
   const settle = async function () { await p2.tick(); await p2.tick(); };
@@ -722,12 +799,12 @@ async function runChecks(dir) {
   list.scrollTop = 0;
   theme();
   await settle();
-  check('C3 after a THEME write the feed is at the bottom', list.scrollTop, 1200);
+  check('C3 after a THEME write the feed is at the bottom', list.scrollTop, feedBottom());
 
   list.scrollTop = 0;
   doc2.body.setAttribute('data-skin', '1');
   await settle();
-  check('C4 after a SKIN/template write the feed is at the bottom', list.scrollTop, 1200);
+  check('C4 after a SKIN/template write the feed is at the bottom', list.scrollTop, feedBottom());
 
   list.scrollTop = 0;
   const link = doc2.createElement('link');
@@ -736,7 +813,7 @@ async function runChecks(dir) {
   doc2.head.appendChild(link);
   link.dispatchEvent(new win.Event('load'));
   await settle();
-  check('C5 after a STYLESHEET lands the feed is at the bottom', list.scrollTop, 1200);
+  check('C5 after a STYLESHEET lands the feed is at the bottom', list.scrollTop, feedBottom());
 
   const live = p2.id('captions-body');
   p2.defineScroll(live, 900, 200);
@@ -749,7 +826,7 @@ async function runChecks(dir) {
   const feedSrc = functionSource(fs.readFileSync(path.join(dir, 'panel.js'), 'utf8'), 'renderFeed');
   checkTrue('C7 renderFeed exists in the shipped panel.js', Boolean(feedSrc));
   check('C8 renderFeed pins to the bottom and never writes scrollTop = 0',
-    [feedSrc.indexOf('pinHistoryToBottom()') >= 0, /historyList\.scrollTop\s*=\s*0\s*;/.test(feedSrc)],
+    [/pinHistoryToBottom\(\s*(true)?\s*\)/.test(feedSrc), /historyList\.scrollTop\s*=\s*0\s*;/.test(feedSrc)],
     [true, false]);
 
   const panelSrc = fs.readFileSync(path.join(dir, 'panel.js'), 'utf8');
@@ -792,24 +869,30 @@ async function negArm() {
     }
   };
   const muts = [
+    { tag: 'N12 caption-float.css is linked again by panel.html',
+      file: 'panel.html',
+      apply: function (t) { return t.replace('    <link rel="stylesheet" href="panel.css" />', '    <link rel="stylesheet" href="panel.css" />\n    <link rel="stylesheet" href="caption-float.css" />'); } },
     { tag: 'N1 the theme/skin guard is never armed (panel.js)',
       file: 'panel.js',
       apply: function (t) { return t.replace('wireThemeScrollGuard();', 'void 0;'); } },
     { tag: 'N2 the pin writes the TOP instead of the bottom (panel.js)',
       file: 'panel.js',
-      apply: function (t) { return t.replace('  list.scrollTop = list.scrollHeight;', '  list.scrollTop = 0;'); } },
-    /* N3 -- RE-ANCHORED 2026-10-20 (lane caption). The old mutant replaced
-       caption-float.css's `html[data-float="on"], body[data-float="on"] { ... }`
-       rule -- and that rule was DELETED on 2026-10-17, so the anchor was absent
-       and the negative arm died with "SETUP ERROR: mutant anchor absent" (rc=2):
-       a broken instrument, not a red one. THE MUTATION IS THE SAME DEFEIT the
-       old one described -- the page becomes transparent and the white slab is
-       back -- and it is now INJECTED rather than substituted: the deleted rule
-       is put back, and B3b (the render protection) must go RED. */
-    { tag: 'N3 the render protection is undone (the page is made transparent again) (caption-float.css)',
-      file: 'caption-float.css',
+      apply: function (t) { return t.replace('  box.scrollTop = box.scrollHeight, pinnedHeight = box.scrollHeight;', '  box.scrollTop = 0, pinnedHeight = box.scrollHeight;'); } },
+    /* N3 -- RE-ANCHORED AGAIN 2026-11-25. The 2026-10-20 form INJECTED the deleted
+       rule into `caption-float.css`, and that sheet is no longer loaded by
+       `panel.html` (nor was its injected selector ever matched: the shell writes
+       `data-float` on `#caption-float`, not on `<html>/<body>`). So the mutant had
+       NO reachable effect and stayed GREEN the moment the seven standing reds were
+       fixed -- a decorative mutant. THE DEFEIT IT DESCRIBES is still the right one:
+       the page loses the opaque base and the white slab comes back. The live owner
+       of that base is `panel.css:105-127` (body carries the render protection), so
+       the mutation is made THERE: body's own background goes transparent. B3 must
+       go RED, and B3b must name the unscoped transparency. */
+    { tag: 'N3 the render protection is undone (body drops its opaque base) (panel.css)',
+      file: 'panel.css',
       apply: function (t) {
-        return 'html[data-float="on"],\r\nbody[data-float="on"] {\r\n  background: transparent;\r\n}\r\n\r\n' + t;
+        return t.replace('re-expose the white) and `overflow: hidden` keeps the rounded shape. */\r\n  background: rgba(11, 15, 20, 0.98);',
+                         're-expose the white) and `overflow: hidden` keeps the rounded shape. */\r\n  background: transparent;');
       } },
     { tag: 'N4 the meter plate comes back (caption-float.css)',
       file: 'caption-float.css',
@@ -887,6 +970,9 @@ async function negArm() {
         return t.replace('html[data-caption-doc] #caption-float .caption-float__line',
                          'html[data-caption-window] #caption-float .caption-float__line');
       } },
+    { tag: 'N13 the panel row stops painting its own caption words',
+      file: 'panel.js',
+      apply: function (t) { return t.replace('span.replaceChildren(document.createTextNode(word));', 'void 0;'); } },
   ];
   let wrong = 0;
   for (const m of muts) {

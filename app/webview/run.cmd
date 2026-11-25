@@ -16,16 +16,16 @@ REM    run.cmd --no-worker      shell only: start NO transcription worker
 REM    run.cmd --with-worker    accepted alias -- the worker is the default
 REM    run.cmd --help           every flag
 REM
-REM  THE TWO KEYS.  Owner order, 2026-11-01, verbatim: *"modifica a legenda ao
-REM  vivo hotkey. bota o padrao como control espaco. e os painels deixa alt c.
-REM  faz os paineis alternarem mesmo se eu deixar alt apertado o tempo inteiro e
-REM  spammando c. alterna entre show e hide."*
+REM  THE TWO KEYS.  Owner order, 2026-11-24, verbatim: *"ao apertar alt c
+REM  segundos depois, o painel da direita abriu, o que nao deveria acontecer.
+REM  ja que e' pra abrir o da direita apenas em double alt c"* -- which is what
+REM  `hotkey_gesture.next_action` now does.
 REM
-REM    Alt+C       ONE press = ONE step of the panel cycle, immediate (no tap
-REM                window, no hold threshold, no delay). From hidden: press 1
-REM                shows the bottom STRIP, 2 hides, 3 shows the RIGHT panel,
-REM                4 hides -- and it keeps alternating with Alt held down the
-REM                whole time and C spammed.
+REM    Alt+C       ONE press, answering in the same instant (no tap window, no
+REM                hold threshold). From hidden it shows the bottom STRIP; a
+REM                second press within 0.40 s of that show promotes to the
+REM                RIGHT panel (a double); a press after that window, or any
+REM                press while a panel is up, hides it.
 REM    Ctrl+Space  live captions ON/OFF, one press each, and no panel moves.
 REM                OFF is the DISPLAY only: the model, the worker and the
 REM                history keep running.
@@ -79,66 +79,30 @@ setlocal
 set "HERE=%~dp0"
 cd /d "%HERE%"
 
-REM ---- THE REDUX LIVE OVERLAY, ON BY DEFAULT (owner, 2026-10-18) -------------
-REM WHY THIS LINE EXISTS HERE AND NOT ANYWHERE ELSE.
+REM ---- THE REDUX DEFAULTS HAVE ONE OWNER (NOT THIS FILE) --------------------
+REM The ON defaults are NOT set here. `WorkerBridge._child_env` in
+REM app\webview\sotto_webview.py gives the worker SOTTO_REDUX_LIVE=1 (via
+REM `setdefault`) and SOTTO_REDUX_WHEN_HIDDEN=1, so a DIRECT launch of the shell
+REM and this wrapper hand the worker the SAME environment -- there is no second
+REM default table in batch. The worker's resolver (`redux_live_settings`,
+REM worker/sotto_worker.py) decides: --redux-live, then SOTTO_REDUX_LIVE ("1" on,
+REM "0" explicitly off), then `redux_live.enabled` in worker/config.json.
+REM WHY THE DEFAULTS ARE ON (unchanged owner decisions, 2026-10-18 / 11-01):
+REM the closed lines are rewritten by the Parakeet, and the engines follow the
+REM machine load (verbatim: "modelos carregados dependendo a carga do sistema
+REM ... e processa qualquer audio nao processado, com o parakeet"). Only the
+REM HOME of the two values moved: `_child_env` now supplies them to EVERY
+REM launch, and the worker keeps explicit 0/1 authoritative.
 REM
-REM The owner asked for the Parakeet to rewrite the closed lines. It was turned
-REM on for the RUNNING shell by putting SOTTO_REDUX_LIVE=1 in that process's
-REM environment -- which lasts exactly as long as that process. Measured
-REM 2026-10-18: the value was also written to HKCU\Environment and
-REM WM_SETTINGCHANGE was broadcast (the call returned success), and that is
-REM NOT the same as the next launch inheriting it: a double-click here inherits
-REM the EXPLORER's environment block, built at logon, and no instrument available
-REM here can read what the Explorer will pass down. The probe that tried to ask
-REM it answered with Path= set to PowerShell's own, i.e. it asked the wrong
-REM process. So "configured and proven" was true for the shell in front of me
-REM and unproven for the one the owner returns to -- which is the state that
-REM made this line necessary.
+REM HOW TO TURN THE LIVE OVERLAY OFF: `set SOTTO_REDUX_LIVE=0` in the parent
+REM shell before running this. The resolver reads "0" and the shell's
+REM `setdefault` does not overwrite it.
 REM
-REM IT IS NOT HERE BECAUSE OF DRIFT. `WorkerBridge._child_env` builds the
-REM child's environment as `dict(os.environ)` plus the keys the bridge owns, and
-REM `_main/app-target-oracle.py` ARM e exists to hold that contract: "the env is
-REM byte-identical to the pre-existing contract: os.environ + SOTTO_CAPTURE_MODE,
-REM nothing else". Adding a default there was tried and turned ARM e RED, which
-REM is the gate being right -- a bridge that quietly starts adding keys of its
-REM own is how a second table appears. THIS file is the documented entry
-REM ("Double-click it"), it already decides things the shell cannot see, and a
-REM value set here is inherited by `start "" "%PYW%" ...` and by every child the
-REM shell spawns from there.
-REM
-REM HOW TO TURN IT OFF: `set SOTTO_REDUX_LIVE=0` in the shell before running
-REM this. The worker reads "0" and "1" as the only two values the environment
-REM rung recognises (worker/sotto_worker.py `redux_live_settings`), and "0" is an
-REM explicit off. The line below only ever supplies a value when there is none.
-if not defined SOTTO_REDUX_LIVE set "SOTTO_REDUX_LIVE=1"
-
-REM ---- OS MOTORES DECIDIDOS PELA CARGA, ON BY DEFAULT (owner, 2026-11-01) ----
-REM O dono, verbatim: *"modelos carregados dependendo a carga do sistema ou nao.
-REM quando carga liberar, carrega sozinho (NUNCA TRAVAR O PC DO USUARIO OU
-REM STUTTER OU QUALQUER COISA DESSA NATUREZA) e processa qualquer audio nao
-REM processado, com o parakeet."*
-REM
-REM O QUE ESTA LINHA LIGA. `worker/sotto_worker.py` constroi o
-REM `ReduxHiddenSwitch` quando esta env vale "1": com o painel FECHADO o decode
-REM do nemotron PARA (o custo que o dono sente como stutter) e o parakeet, em
-REM segundo plano, transcreve o audio que se acumulou (`live_queue.PendingAudio`:
-REM RAM ate --redux-max-audio, depois disco -- nada e' deitado fora). Com o
-REM painel aberto volta o nemotron, como sempre. O nivel de carga medido
-REM (commit %, CPU) desliga os motores em `alta`/`muito-alta` e a descida
-REM recarrega-os sozinha.
-REM
-REM WHY HERE AND NOT IN `WorkerBridge._child_env`: a mesma razao escrita acima
-REM para o `SOTTO_REDUX_LIVE`. `_child_env` e' pinado por
-REM `_main/app-target-oracle.py` ARM e ("os.environ + SOTTO_CAPTURE_MODE, nada
-REM mais"), e um bridge que comeca a acrescentar chaves suas e' a segunda tabela
-REM que esse gate existe para impedir. Este ficheiro e' o ponto de entrada
-REM documentado e o valor aqui atravessa o `start "" "%PYW%" ...` do shell.
-REM
-REM HOW TO TURN IT OFF: `set SOTTO_REDUX_WHEN_HIDDEN=0` antes de correr. O worker
-REM le' so' "1" como ligado: "0" (ou nada) deixa o interruptor desarmado e o
-REM worker fica EXACTAMENTE o de antes -- o caminho que os oraculos ainda medem.
-if not defined SOTTO_REDUX_WHEN_HIDDEN set "SOTTO_REDUX_WHEN_HIDDEN=1"
-
+REM This file used to carry `if not defined ... set ...=1` for both switches -- a
+REM logon workaround from before `_child_env` owned the defaults. It is gone:
+REM `_main/app-target-oracle.py` arm e pins the child env (os.environ + the
+REM bridge's own keys, nothing else) and arm j pins THESE lines. Reintroducing
+REM a default here turns arm j RED and the oracle FAILs.
 set "SHELL=%HERE%sotto_webview.py"
 if not exist "%SHELL%" (
   echo run.cmd: %SHELL% is missing. The app cannot start.

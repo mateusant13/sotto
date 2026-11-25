@@ -1,6 +1,6 @@
 # 08 — PAINÉIS E UX: o que ele vê e como conduz
 
-Este ficheiro descreve a superfície que o dono toca: as duas teclas globais, as três casas do ciclo do `Alt+C`, a janela da legenda, a geometria das duas páginas, o arrasto, os temas, a busca e o menu do ícone. Cada frase factual leva etiqueta, e todas foram lidas nesta campanha (2026-11-11) no código em `HEAD`, não herdadas de outro documento. O anexo de decisões é `docs/hotkey-gestos.md`; aqui mede-se o que o código faz.
+Este ficheiro descreve a superfície que o dono toca: as duas teclas globais, o `Alt+C` com double em `DOUBLE_TAP_S = 0,40 s`, a janela da legenda, a geometria das duas páginas, o arrasto, os temas, a busca e o menu PT-BR do ícone. Cada frase factual leva etiqueta; as frases de 2026-11-25 foram lidas no código em disco e verificadas com os oráculos nomeados. O anexo de decisões é `docs/hotkey-gestos.md`; aqui mede-se o que o código faz.
 
 ## 1. As superfícies que ele vê
 
@@ -9,32 +9,27 @@ Este ficheiro descreve a superfície que o dono toca: as duas teclas globais, as
 | **faixa de baixo** (`strip`) | barra curta: legendas vivas e poucos botões; rect 380×40 @ (770,948) | `[CODE]` `body[data-surface="strip"]` (`app/panel/panel.css:1526`); `[MEASURED]` `grep "PANEL_SURFACE surface=strip" _main/webview-run.log \| tail -1` → `2026-11-11 00:48:49.103 ... window=380x40@(770,948) docked=bottom-strip edit_mode=false` (2026-11-11) |
 | **painel da direita** (`panel`) | coluna completa: cabeçalho, transcrição, histórico, busca; rect 380×900 @ (1528,12) | `[CODE]` `SURFACES = ['strip','panel']` (`app/panel/surface.js:35`); `[MEASURED]` `grep "PANEL_SURFACE surface=panel" _main/webview-run.log \| tail -1` → `2026-11-11 00:48:54.648 ... window=380x900@(1528,12) docked=right edit_mode=false` (2026-11-11) |
 | **legenda nativa** | janela PRÓPRIA, alfa por pixel, sem placa de WebView2 | `[CODE]` "No WebView2, no colour key, no plate" (`app/webview/caption_overlay.py:16`); "ela é livre na minha tela" (`app/webview/sotto_webview.py:21614`) |
-| **escondido** | nada mapeado — a terceira casa do ciclo | `[CODE]` `hide_panel` (`app/webview/sotto_webview.py:16486`) |
-
+| **escondido** | nada mapeado — o resultado de um toque na faixa fora da janela do double, ou de um toque no painel | `[CODE]` `hide_panel` (`app/webview/sotto_webview.py`); `next_action` (`app/webview/hotkey_gesture.py:232-242`) |
 `[INFERENCE]` São duas páginas numa só janela, alternadas por um atributo (`app/panel/surface.js:10-16`), mais uma janela nativa que o painel não possui: esconder o painel não apaga a legenda, porque `hide_panel` só chama `_blank_caption_window` quando `_caption_wanted` está falso (`app/webview/sotto_webview.py:16486-16530`).
 
-## 2. `Alt+C` — um passo por pressão, sem relógio
+## 2. `Alt+C` — double promove, toque simples não
 
-| pressão, a partir de escondido | o ecrã | evidência |
+| estado antes do toque | o ecrã | evidência |
 |---|---|---|
-| 1 | faixa de baixo | `[CODE]` `if not visible: return 'strip'` (`app/webview/hotkey_gesture.py:230-231`) |
-| 2 | painel da direita | `[CODE]` `return 'panel' if surface == 'strip' else None` (`app/webview/hotkey_gesture.py:232`) |
-| 3 | escondido | `[CODE]` o mesmo `None`; a casa seguinte recomeça em `strip` |
-| 4 | faixa outra vez | `[CODE]` `advance(visible, surface, presses)` (`app/webview/hotkey_gesture.py:235-256`) |
+| escondido | faixa de baixo, no mesmo instante | `[CODE]` `if not visible: return True, 'strip'` (`app/webview/hotkey_gesture.py:232-233`) |
+| faixa mostrada por Alt+C há ≤ `DOUBLE_TAP_S = 0,40 s` | painel da direita (promoção) | `[CODE]` `DOUBLE_TAP_S = 0.40` (`hotkey_gesture.py:111`) e `next_action` (`hotkey_gesture.py:234-242`) |
+| faixa com show mais antigo, ou mostrada por outra via | escondido | `[CODE]` `since_show_s = None` (`app/webview/sotto_webview.py:18093-18099`) |
+| painel da direita | escondido | `[CODE]` `return False, str(surface)` (`hotkey_gesture.py:242`) |
 
 Três invariantes que o código sustenta:
 
-1. **Um `WM_HOTKEY` = um passo, imediato** — sem janela de espera, limiar de duração nem segundo relógio (`[CODE]` `hotkey_pressed`, `app/webview/sotto_webview.py:16550-16583`).
-2. **A decisão lê a JANELA, não uma intenção**: `window_visible(self.hwnd)` (`[CODE]` `app/webview/sotto_webview.py:16693`) e a última superfície *aplicada* (`surface_applied`), que `hide_panel` não limpa (`[CODE]` `app/webview/sotto_webview.py:16486-16530`).
-3. **Nada de trabalho na thread do `RegisterHotKey`**: `_hotkey_dispatch` soma a pressão a um contador e põe um token numa fila FIFO (`[CODE]` `app/webview/sotto_webview.py:16597-16629`), e o worker `sotto-hotkey-steps` drena o contador e faz **uma** transição (`[CODE]` `app/webview/sotto_webview.py:16640-16719`).
+1. **Um `WM_HOTKEY` = um passo, imediato** — o primeiro toque não espera; a janela de 0,40 s mede a idade do show da faixa, não a duração da tecla, e só existe para o double (`[CODE]` `next_action`, `app/webview/hotkey_gesture.py:201-242`).
+2. **A decisão lê a JANELA, não uma intenção**: `window_visible(self.hwnd)` e a última superfície *aplicada* (`surface_applied`), que `hide_panel` não limpa (`[CODE]` `app/webview/sotto_webview.py:18081-18089`).
+3. **Nada de trabalho na thread do `RegisterHotKey`**: `_hotkey_dispatch` soma a pressão a um contador e põe um token numa fila FIFO (`[CODE]` `app/webview/sotto_webview.py:18017-18058`); `_hotkey_resolve` drena a rajada e chama `hotkey_numbers().advance(...)` uma vez (`[CODE]` `app/webview/sotto_webview.py:18060-18158`).
 
-`[MEASURED]` `grep -c HOTKEY_COALESCED _main/webview-run.log` → **42** (2026-11-11); uma delas,
-verbatim: `HOTKEY_COALESCED presses=1 from=hidden/- to=visible/strip steps=1 transitions=1`
-(2026-11-11 00:48:49.094), escrita em `[CODE]` `app/webview/sotto_webview.py:16717-16720`.
+`[MEASURED]` 2026-11-25: `python _main/altc-gesture-oracle.py` → `ALTC-GESTURE GREEN -- arms=104 pass=104 fail=0`; o braço negativo derruba o oráculo nos seus seis mutantes (`ALTC-GESTURE VERMELHO`, entre `fail=2` e `fail=17` cada), `NEG-ARM PASS -- RED as designed`, rc=1. O log alive carrega `HOTKEY_COALESCED ... double_since_ms=` (`app/webview/sotto_webview.py:18147-18149`), que distingue o double do toque isolado.
 
-O show da faixa, em ordem: `PANEL_SURFACE surface=strip ...` → `WEBVIEW_CHILD` → `PANEL_SHOW_COST reason=... surf_ms= arm_ms= gate_ms= map_ms= ack_ms= total_ms= budget_ms=` → `PANEL_SHOWN reason=... mode=strip ... content_ack= paint_ack=` (`[CODE]` `app/webview/sotto_webview.py:16850-16906`); o painel da direita gasta a mesma ordem com `mode=side` (`[CODE]` `app/webview/sotto_webview.py:16911-16992`).
-
-**O foco não é roubado por omissão:** o mapa é `SW_SHOWNOACTIVATE` e o primeiro plano só é tomado quando a app em foco tem o cursor CAPTURADO (`[CODE]` `app/webview/sotto_webview.py:7290-7292`; a linha `PANEL_SHOWN` carrega `show=` e `focus=`). **E quem apaga o `Alt+C`:** o interruptor do ícone; `arm_hotkey(..., panels=False)` não regista a tecla e diz por quê (`[CODE]` `app/webview/sotto_webview.py:10358-10360`), com a escolha lida no arranque (`[CODE]` `app/webview/sotto_webview.py:26206`).
+O show da faixa, em ordem: `PANEL_SURFACE surface=strip` → `WEBVIEW_CHILD` → `PANEL_SHOW_COST` → `PANEL_SHOWN reason=... mode=strip`; a direita usa `show_side` (`[CODE]` `app/webview/sotto_webview.py:18356`). A monitor escolhido é o do cursor/work area, por `select_display_for_point` (`docs/shell-contract.md`, §2026-11-25).
 
 ## 3. `Ctrl+Space` — o interruptor da legenda ao vivo
 
@@ -276,30 +271,18 @@ store a nota é "Search is off · no transcript store" (`app/panel/panel.js:4035
 
 ## 11. O ícone da bandeja e o seu menu
 
-`[CODE]` Cinco itens, com ids fixos para nenhum mudar de número (`app/webview/sotto_webview.py:9536-9560`):
 
-| id | texto | o que faz | evidência |
+`[CODE]` Cinco itens de texto, com ids fixos para nenhum mudar de número; o menu PT-BR é construído em `app/webview/sotto_webview.py:11100-11151` e o oráculo lê os ids `[1, 4, 5, 3, 2]`.
+
+| id | texto PT-BR | o que faz | evidência |
 |---|---|---|---|
-| 1 | `Open panel` | abre/esconde o painel da direita (`show_panel('tray', surface='panel')`) | `[CODE]` `sotto_webview.py:10121,17160-17172` |
-| 2 | `Quit Sotto` | `request_exit(0, reason='tray-quit')` — a única saída | `[CODE]` `sotto_webview.py:10149,17157-17159` |
-| 3 | `Edit caption position` | alterna o modo de edição da geometria | `[CODE]` `sotto_webview.py:10146,17173-17175` |
-| 4 | `Desativar atalho Alt+C` / `Ativar atalho Alt+C` | arma/solta **só** o `Alt+C` e persiste `panels_enabled` | `[CODE]` `sotto_webview.py:10129-10131,17176-17182` |
-| 5 | `Desligar legendas (Ctrl+Space)` / `Ligar legendas (Ctrl+Space)` | chama `hotkey_live()` — a MESMA porta da tecla | `[CODE]` `sotto_webview.py:10142-10145,17183-17190` |
+| 1 | `Abrir painel` | abre o painel completo | `[CODE]` `sotto_webview.py:11117` |
+| 2 | `Sair do Sotto` | `request_exit(0, reason='tray-quit')` — a única saída; o probe encontra-a pelo texto | `[CODE]` `sotto_webview.py:11145`, `_main/tray-quit-probe.py:289` |
+| 3 | `Editar posicao da legenda` | alterna o modo de edição da geometria | `[CODE]` `sotto_webview.py:11142-11143` |
+| 4 | `Desativar atalho Alt+C` / `Ativar atalho Alt+C` | arma/solta **só** o `Alt+C` e persiste `panels_enabled` | `[CODE]` `sotto_webview.py:11123-11127` |
+| 5 | `Desligar legendas (Ctrl+Space)` / `Ligar legendas (Ctrl+Space)` | chama `hotkey_live()` — a MESMA porta da tecla | `[CODE]` `sotto_webview.py:11131-11141` |
 
-`[CODE]` O texto de cada item é a ACÇÃO que ele faz, lido do estado VIVO e não do ficheiro: o id 4 lê
-`panels_hotkey_state()` (o registo do `RegisterHotKey`) e o id 5 lê `_caption_wanted`
-(`app/webview/sotto_webview.py:17076-17107`). O menu só é reconstruído quando o texto muda
-(`[CODE]` `app/webview/sotto_webview.py:10157-10179`); o clique esquerdo no ícone abre o painel
-(`[CODE]` `app/webview/sotto_webview.py:9907-9909`).
-
-**Correcção ao breve desta tarefa:** a bandeja **não** tem item de pausa. A pausa vive no painel e na faixa
-(`#panel-pause-button`, `#strip-pause-button`, `app/panel/panel.html:356,1050`), e o menu tem exactamente
-os cinco ids acima (`[CODE]` `app/webview/sotto_webview.py:10121-10149`).
-
-`[CODE]` O ficheiro das teclas é `_main/hotkey-settings.json`, com `{"panels": "Alt+C", "live":
-"Ctrl+Space", "panels_enabled": bool}`; um ficheiro estragado cai nas teclas de fábrica
-(`app/webview/hotkey_settings.py:38-55,136-160`). `[MEASURED]` (2026-11-11):
-`{"panels": "Alt+C", "live": "Ctrl+Space"}`.
+`[CODE]` O texto de cada item é a ACÇÃO que ele faz, lido do estado VIVO e não do ficheiro (`panels_state()` / `live_state()`), e o menu só é reconstruído quando o texto muda (`[CODE]` `app/webview/sotto_webview.py:11153-11176`). `[MEASURED]` 2026-11-25: `python _main/tray-menu-oracle.py` → `CHECK arms=27 failed=0`, `VERDICT: PASS` — o mutante que repõe `Open panel` é apanhado. O painel e a faixa também são PT-BR: `Traduzir para:`, `Fundo da legenda:`, `Abrir painel`, `Esconder`, `Pausar`, `Esconder a legenda...` em `[CODE] app/panel/panel.html:411,431,453,971,1020,1078,492`.
 
 ## 12. Instrumentos que fixam este contrato
 
@@ -308,7 +291,7 @@ os cinco ids acima (`[CODE]` `app/webview/sotto_webview.py:10121-10149`).
 
 | instrumento | o que fixa |
 |---|---|
-| `_main/altc-gesture-oracle.py` | o ciclo de três casas e os mutantes que o derrubam |
+| `_main/altc-gesture-oracle.py` | o double em `DOUBLE_TAP_S` e os mutantes que o derrubam (104 arms, medido 2026-11-25) |
 | `_main/caption-wanted-default-oracle.py` | a precedência de `caption_wanted_at_start` |
 | `_main/hotkey-panels-switch-oracle.py` | o interruptor do id 4 e a persistência |
 | `_main/ctrlspace-swallow-oracle.py` | `classify_event` e o hook |

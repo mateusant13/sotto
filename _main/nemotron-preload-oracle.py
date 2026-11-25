@@ -899,6 +899,10 @@ def run_mutation_controls(shell_text, worker_text):
     expect("hidden-route", shell_text, worker_text.replace(
         "unload_when_hidden=True", "unload_when_hidden=False", 1),
         "real ReduxHiddenSwitch constructor does not enable hidden routing")
+    expect("shell-opt-in", shell_text.replace(
+        "env.setdefault('SOTTO_REDUX_WHEN_HIDDEN', '1')",
+        "env['SOTTO_REDUX_WHEN_HIDDEN'] = '0'", 1), worker_text,
+        "production WorkerBridge does not opt into hidden Redux")
     expect("batch-skip", shell_text, worker_text.replace(
         'switch.maybe_kick()\n                    continue',
         'switch.maybe_kick()\n                    pass', 1),
@@ -915,20 +919,43 @@ def run_mutation_controls(shell_text, worker_text):
     return checks
 
 
+def _opts_into_hidden(child_env):
+    """True when `_child_env` sets `SOTTO_REDUX_WHEN_HIDDEN` to `1` for the child.
+
+    TWO FORMS, ONE CONTRACT (2026-11-25). The bridge used to assign the variable
+    unconditionally; it now uses `env.setdefault(...)` so an explicit operator `0`
+    survives (`app/webview/sotto_webview.py:25243`). The control's subject is the
+    OPT-IN, not the syntactic form: a detector that only accepted `Assign` went red
+    on the shipped code while the product still opted in -- a pin on retired policy.
+    Assignment is still accepted, so the clause covers both spellings; a value other
+    than `1` (or no write at all) still fails the control.
+    """
+    for n in ast.walk(child_env):
+        if isinstance(n, ast.Assign):
+            if (any(isinstance(t, ast.Subscript)
+                    and isinstance(t.slice, ast.Constant)
+                    and t.slice.value == "SOTTO_REDUX_WHEN_HIDDEN"
+                    for t in n.targets)
+                    and isinstance(n.value, ast.Constant) and n.value.value == "1"):
+                return True
+            continue
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "setdefault"
+                and len(n.args) >= 2
+                and isinstance(n.args[0], ast.Constant)
+                and n.args[0].value == "SOTTO_REDUX_WHEN_HIDDEN"
+                and isinstance(n.args[1], ast.Constant) and n.args[1].value == "1"):
+            return True
+    return False
+
+
 def check_hidden_route(shell_text, worker_text, shell_tree=None, worker_tree=None):
     """Check the real shell opt-in, worker constructor, and stream consumer."""
     shell_tree = shell_tree or ast.parse(shell_text)
     worker_tree = worker_tree or ast.parse(worker_text)
     misses = []
     child_env = _class_method(shell_tree, "WorkerBridge", "_child_env")
-    if child_env is None or not any(
-            isinstance(n, ast.Assign)
-            and any(isinstance(t, ast.Subscript)
-                    and isinstance(t.slice, ast.Constant)
-                    and t.slice.value == "SOTTO_REDUX_WHEN_HIDDEN"
-                    for t in n.targets)
-            and isinstance(n.value, ast.Constant) and n.value.value == "1"
-            for n in ast.walk(child_env)):
+    if child_env is None or not _opts_into_hidden(child_env):
         misses.append("production WorkerBridge does not opt into hidden Redux")
 
     main = next((n for n in worker_tree.body if isinstance(n, ast.FunctionDef)

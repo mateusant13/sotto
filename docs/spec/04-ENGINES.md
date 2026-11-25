@@ -338,6 +338,14 @@ Dois motores foram **recusados por medição**, e a recusa é lei nesta árvore:
   **traduz em vez de transcrever** `[MEASURED]` `_main/receipt-20261030-ark-asr-vs-parakeet.md:22-31`
   (2026-10-30).
 
+## 9. 2026-11-25 — a pontuação de modelo voltou a correr, em CPU por nome
+
+O restaurador `sherpa-onnx-online-punct-en` (int8, 7,1 MB) esteve morto em runtime porque uma guarda de colocação GPU só aceitava uma atestação que a API instalada não expõe. A regra em vigor é a mesma do diarizador: **`PROVIDER = "cpu"` pedido por nome** e `THREADS = 1` `[CODE] worker/punctuation_model.py:77,79`; um pedido `cuda` é recusado por nome antes de disco, import ou construtor. A língua continua a decidir: `en` corre, qualquer outra tag (incluindo `pt-BR`) devolve a string BYTE-IDENTICAMENTE `[CODE] worker/punctuation_model.py:135,264`, porque o modelo inglês mediu caixa aleatória em português. Sem modelo, sem pacote ou com `SOTTO_PUNCT_MODEL=0`, a falha é fechada e nomeada (`model-absent`, `package-absent`, `disabled-by-env`).
+
+Porta: o worker liga o modelo só se `supported_lang(current_lang())` `[CODE] worker/sotto_worker.py:7723-7724` e chama `punctuate` na emissão de legenda `[CODE] worker/sotto_worker.py:5926`. `[MEASURED]` 2026-11-25: `python _main/punctuation-oracle.py` → `5/5 arms green`, `VERDICT: PASS` (`provider-cpu`, `lang-pt-skip`, `model-absent`, `env-off`, `cuda-refused`), com `sherpa_onnx` falso — nenhum peso carregado, nenhum dispositivo aberto. O custo histórico medido no módulo é 91 ms de carga e 6,8 ms/linha, contra um chunk de 560 ms.
+
+---
+
 ## Lacunas
 
 - `[UNKNOWN]` O `attach` do motor quente de ponta a ponta: zero `WARM_ATTACHED` em 18 arranques.

@@ -583,9 +583,9 @@ def arm_c(report):
         'tray_icon_delete': lines(text, 'TRAY_ICON_DELETE'),
     }
     first = menu[0] if menu else ''
-    report['C']['has_edit_item'] = f"[{ID_TRAY_EDIT}]='Edit caption position'" in first
-    report['C']['has_quit_item'] = "[2]='Quit Sotto'" in first
-    report['C']['has_open_item'] = "[1]='Open panel'" in first
+    report['C']['has_edit_item'] = f"[{ID_TRAY_EDIT}]='Editar posição da legenda'" in first
+    report['C']['has_quit_item'] = "[2]='Sair do Sotto'" in first
+    report['C']['has_open_item'] = "[1]='Abrir painel'" in first
     return run
 
 
@@ -867,8 +867,8 @@ def judge(report):
          b.get('rc') == 0 and b.get('census_samples_visible') == 0),
         ('B nothing was ever shown', not b.get('panel_shown_lines')),
         ('B the shell reached RECEIVER_READY', bool(b.get('receiver_ready'))),
-        ('C the tray menu carries Edit caption position', c.get('has_edit_item')),
-        ('C the tray menu still carries Open panel and Quit',
+        ('C the tray menu carries Editar posição da legenda', c.get('has_edit_item')),
+        ('C the tray menu still carries Abrir painel and Sair do Sotto',
          bool(c.get('has_open_item')) and bool(c.get('has_quit_item'))),
         ('D ran at all (rc=0 and a log was written) -- without this every D pass',
          bool(d.get('ran'))),

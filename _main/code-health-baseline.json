@@ -131,12 +131,12 @@
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 245585,
+      "bytes": 243012,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4959,
+      "lines": 4908,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -191,7 +191,7 @@
       "max_func_name": ""
     },
     "app/panel/theme-switcher.js": {
-      "bytes": 51055,
+      "bytes": 51131,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
@@ -361,12 +361,12 @@
       "max_func_name": "foreground"
     },
     "app/webview/hot_reload.py": {
-      "bytes": 28486,
+      "bytes": 28468,
       "classes": 4,
       "defs": 4,
       "except_pass": 0,
       "globals": 0,
-      "lines": 666,
+      "lines": 665,
       "max_func": 116,
       "max_func_name": "selftest"
     },
@@ -491,12 +491,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1529883,
+      "bytes": 1542318,
       "classes": 29,
-      "defs": 179,
-      "except_pass": 73,
-      "globals": 9,
-      "lines": 28185,
+      "defs": 184,
+      "except_pass": 74,
+      "globals": 10,
+      "lines": 28456,
       "max_func": 446,
       "max_func_name": "main"
     },
@@ -740,15 +740,35 @@
       "max_func": 207,
       "max_func_name": "_selftest"
     },
+    "worker/capture_share.py": {
+      "bytes": 16179,
+      "classes": 3,
+      "defs": 6,
+      "except_pass": 9,
+      "globals": 0,
+      "lines": 443,
+      "max_func": 55,
+      "max_func_name": "_accept_loop"
+    },
     "worker/denoise.py": {
-      "bytes": 27001,
+      "bytes": 28318,
       "classes": 1,
-      "defs": 8,
+      "defs": 9,
       "except_pass": 0,
       "globals": 0,
-      "lines": 614,
+      "lines": 645,
       "max_func": 165,
       "max_func_name": "selftest"
+    },
+    "worker/discord_streams.py": {
+      "bytes": 28399,
+      "classes": 7,
+      "defs": 6,
+      "except_pass": 1,
+      "globals": 1,
+      "lines": 724,
+      "max_func": 81,
+      "max_func_name": "main"
     },
     "worker/engine_policy.py": {
       "bytes": 27442,
@@ -820,6 +840,16 @@
       "max_func": 68,
       "max_func_name": "admit"
     },
+    "worker/mic_tap.py": {
+      "bytes": 18303,
+      "classes": 2,
+      "defs": 5,
+      "except_pass": 5,
+      "globals": 0,
+      "lines": 429,
+      "max_func": 60,
+      "max_func_name": "pick_microphone"
+    },
     "worker/ort_cuda_runtime.py": {
       "bytes": 7427,
       "classes": 0,
@@ -851,13 +881,13 @@
       "max_func_name": "snapshot"
     },
     "worker/punctuation_model.py": {
-      "bytes": 11834,
+      "bytes": 13870,
       "classes": 0,
-      "defs": 11,
+      "defs": 14,
       "except_pass": 0,
-      "globals": 2,
-      "lines": 288,
-      "max_func": 51,
+      "globals": 3,
+      "lines": 342,
+      "max_func": 59,
       "max_func_name": "load"
     },
     "worker/punctuation_prosody.py": {
@@ -870,16 +900,6 @@
       "max_func": 81,
       "max_func_name": "normalise"
     },
-    "worker/qwen_summary.py": {
-      "bytes": 84826,
-      "classes": 3,
-      "defs": 35,
-      "except_pass": 1,
-      "globals": 0,
-      "lines": 1781,
-      "max_func": 445,
-      "max_func_name": "main"
-    },
     "worker/redux_batch.py": {
       "bytes": 8893,
       "classes": 1,
@@ -891,12 +911,12 @@
       "max_func_name": "main"
     },
     "worker/redux_live.py": {
-      "bytes": 208010,
+      "bytes": 210465,
       "classes": 7,
-      "defs": 37,
+      "defs": 38,
       "except_pass": 11,
       "globals": 2,
-      "lines": 4336,
+      "lines": 4381,
       "max_func": 940,
       "max_func_name": "_control_policy_selftest"
     },
@@ -921,24 +941,24 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 536430,
+      "bytes": 540428,
       "classes": 17,
       "defs": 117,
       "except_pass": 23,
       "globals": 7,
-      "lines": 10162,
-      "max_func": 2948,
+      "lines": 10239,
+      "max_func": 2977,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
-      "bytes": 11242,
+      "bytes": 11682,
       "classes": 1,
       "defs": 5,
       "except_pass": 0,
       "globals": 0,
-      "lines": 256,
+      "lines": 263,
       "max_func": 40,
-      "max_func_name": "watch_payload_if_fresh"
+      "max_func_name": "payload_if_fresh"
     },
     "worker/speaker_id.py": {
       "bytes": 15917,
@@ -951,13 +971,13 @@
       "max_func_name": "speaker_for_window"
     },
     "worker/speaker_sidecar.py": {
-      "bytes": 83148,
+      "bytes": 95500,
       "classes": 3,
-      "defs": 27,
-      "except_pass": 5,
+      "defs": 28,
+      "except_pass": 6,
       "globals": 0,
-      "lines": 1750,
-      "max_func": 224,
+      "lines": 1971,
+      "max_func": 280,
       "max_func_name": "main"
     },
     "worker/stable_words.py": {

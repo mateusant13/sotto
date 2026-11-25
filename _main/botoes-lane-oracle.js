@@ -27,7 +27,7 @@
  *   C  NO RIGHT DOOR the right panel carries no caption-display control
  *   D  X RIGHT       the X is the rightmost CONTROL on both surfaces
  *   E  MOVABLE       the gesture exists in `strip-drag.js` and the contract is written
- *   F  THE LINK      panel.html links caption-float.css AFTER panel.css
+ *   F  THE NATIVE PATH  panel.html does NOT link the retired caption-float.css
  *   G  CLARITY       the two live states differ in WORD and in COLOUR
  *
  * NEGATIVE ARM -- how this file proves it can say NO. The whole `app/panel` tree is
@@ -39,7 +39,7 @@
  *   M3 the right panel caption label comes back
  *   M4 hide stops being the rightmost control on the strip
  *   M5 the NATIVE drag pointerdown binding is deleted (from strip-drag.js)
- *   M6 the caption-float.css link is deleted
+ *   M6 the caption-float.css link is re-added
  *   M7 the strip shows its caption box again
  *   M8 the removed Linhar button comes back
  *
@@ -64,6 +64,9 @@ const HERE = __dirname;
 const REPO = path.join(HERE, '..');
 const SHIPPED = path.join(REPO, 'app', 'panel');
 const NEG = process.argv.indexOf('--neg-arm') >= 0;
+let runtimeLiveLabel = function () { return Promise.resolve('SETUP ERROR: panel-language-oracle helper missing'); };
+try { runtimeLiveLabel = require('./panel-language-oracle.js').runtimeLiveLabel || runtimeLiveLabel; }
+catch (err) { console.error('SETUP ERROR: cannot load panel-language-oracle.js: ' + (err && err.message)); }
 
 const rows = [];
 let arm = '';
@@ -87,7 +90,7 @@ function stripIds(html) {
   return Array.from(bar[0].matchAll(/id="([^"]+)"/g)).map(function (m) { return m[1]; });
 }
 
-function runChecks(dir) {
+async function runChecks(dir) {
   rows.length = 0;
   const html = read(dir, 'panel.html');
   const css = read(dir, 'panel.css');
@@ -128,8 +131,9 @@ function runChecks(dir) {
   check('B1 the live button is the strip toggle', Boolean(live), true);
   check('B2 it carries aria-pressed (the state a screen reader announces)',
     live ? /aria-pressed="(true|false)"/.test(live[0]) : false, true);
-  check('B3 its word is the owner own word: live',
-    live ? /<span class="strip-button__label" id="strip-live-label">live<\/span>/.test(live[0]) : false, true);
+  check('B3 its word is the owner own word: ao vivo (runtime DOM, not the static bytes)',
+    [live ? /<span class="strip-button__label" id="strip-live-label">ao vivo<\/span>/.test(live[0]) : false,
+     await runtimeLiveLabel(dir)], [true, 'ao vivo']);
 
   /* ------------------------------------------------------------------ C: NO RIGHT DOOR */
   arm = 'C';
@@ -216,12 +220,12 @@ function runChecks(dir) {
   check('E9 the drag handle exists and is not a focus stop',
     /id="strip-drag-handle"[^>]*aria-hidden="true"/.test(html), true);
 
-  /* ------------------------------------------------------------------ F: THE LINK */
+  /* -------------------------------------------------- F: THE NATIVE CAPTION PATH */
   arm = 'F';
   const panelCss = html.indexOf('href="panel.css"');
   const floatCss = html.indexOf('href="caption-float.css"');
-  check('F1 caption-float.css is linked', floatCss >= 0, true);
-  check('F2 and it is linked AFTER panel.css', panelCss >= 0 && floatCss > panelCss, true);
+  check('F1 caption-float.css is NOT linked (the caption window is native)', floatCss < 0, true);
+  check('F2 panel.css IS linked (the strip still owns its own layout)', panelCss >= 0, true);
 
   /* ------------------------------------------------------------------ G: CLARITY */
   arm = 'G';
@@ -266,11 +270,14 @@ function report(label) {
 }
 
 if (!NEG) {
-  runChecks(SHIPPED);
-  process.exit(report('shipped app/panel') === 0 ? 0 : 1);
+  runChecks(SHIPPED).then(function () { process.exit(report('shipped app/panel') === 0 ? 0 : 1); });
+} else {
+  negArm();
 }
 
-/* ------------------------------- NEGATIVE ARM ------------------------------- */
+async function negArm() {
+
+// ------------------------------- NEGATIVE ARM -------------------------------
 const TMP = process.env.TMPDIR && fs.existsSync(process.env.TMPDIR) ? process.env.TMPDIR : os.tmpdir();
 const scratch = fs.mkdtempSync(path.join(TMP, 'sotto-botoes-neg-'));
 
@@ -324,9 +331,9 @@ const muts = [
       return t.replace('bar.addEventListener("pointerdown", function (event) { start("strip", event); });',
                        'void 0; /* m5: the NATIVE drag binding is GONE -- the defect */');
     } },
-  { tag: 'M6 the caption-float.css link is deleted', file: 'panel.html',
-    anchor: '<link rel="stylesheet" href="caption-float.css" />',
-    apply: function (t) { return t.replace('<link rel="stylesheet" href="caption-float.css" />', ''); } },
+  { tag: 'M6 the caption-float.css link is re-added', file: 'panel.html',
+    anchor: '<link rel="stylesheet" href="panel.css" />',
+    apply: function (t) { return t.replace('<link rel="stylesheet" href="panel.css" />', '<link rel="stylesheet" href="panel.css" />\r\n    <link rel="stylesheet" href="caption-float.css" />'); } },
   { tag: 'M7 the strip shows its caption box again', file: 'panel.css',
     anchor: 'body[data-surface="strip"] .captions {\r\n  display: none;',
     apply: function (t) { return t.replace('body[data-surface="strip"] .captions {\r\n  display: none;', 'body[data-surface="strip"] .captions {\r\n  display: block;'); } },
@@ -355,7 +362,7 @@ for (const m of muts) {
   fs.writeFileSync(file, after, 'utf8');
   const quiet = console.log;
   console.log = function () {};
-  const bad = runChecks(scratch).filter(function (r) { return !r.ok; }).length;
+  const bad = (await runChecks(scratch)).filter(function (r) { return !r.ok; }).length;
   console.log = quiet;
   const red = bad > 0;
   if (!red) wrong += 1;
@@ -374,3 +381,4 @@ if (wrong === 0) {
 console.log('NEG-ARM VERDICT: FAIL -- ' + wrong + ' mutant(s) stayed GREEN: the gate is BLIND there.');
 console.log('VERDICT: NEG-ARM FAIL -- a mutant SURVIVED; rc=0 says "the arm ran, and it found nothing".');
 process.exit(0);
+}

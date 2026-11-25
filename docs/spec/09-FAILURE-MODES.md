@@ -137,7 +137,7 @@ worker, legenda e hotkeys sem a página (`sotto_webview.py:14090-14160`), com
 `[CODE]` `_start_startup_stack_watch`, armado no início de `main`, aos 15/30/60 s sem READY escreve
 `STARTUP_NOT_READY s=<n> threads=<n>` e despeja todas as pilhas para `_main/_startup-stacks.log`
 (`sotto_webview.py:25900-25943`). O `run.cmd` espera de forma limitada e, sem ficheiro, escreve `HANG rc=4
-by=run.cmd-readiness` e sai 4 (`run.cmd:312-321`). `[MEASURED]` `grep -c STARTUP_NOT_READY` → **2**;
+by=run.cmd-readiness` e sai 4 (`run.cmd:276-285`). `[MEASURED]` `grep -c STARTUP_NOT_READY` → **2**;
 `grep -c "HANG rc=4"` → **2**, a última na linha 207056 (2026-11-11). `[INFERENCE]` O `run.cmd` **não**
 mata a app que largou — o `start ""` é anterior à espera — logo o rc=4 é relatório e a shell fica viva.
 

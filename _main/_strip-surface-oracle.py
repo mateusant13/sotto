@@ -279,7 +279,10 @@ def check(module):
     # -- 7. THE TRAY ITEM that is the edit mode's only door -------------------
     menu_src = inspect.getsource(module.TrayIcon._build_menu)
     facts['tray.menu_src'] = menu_src
-    for needle in ('Edit caption position', 'ID_TRAY_EDIT'):
+    #: The label is PT-BR since the owner's 100% PT-BR order (2026-11-25): the item
+    #: reads 'Editar posição da legenda'. This check still pins the DOOR (the item
+    #: exists and carries `ID_TRAY_EDIT`); only the retired English string moved.
+    for needle in ('Editar posição da legenda', 'ID_TRAY_EDIT'):
         if needle not in menu_src:
             failures.append(f'the tray menu has no {needle!r}')
     facts['tray.edit_id'] = getattr(module, 'ID_TRAY_EDIT', None)

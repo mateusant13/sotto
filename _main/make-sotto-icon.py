@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Generate `app/webview/sotto.ico` — the panel's face.
 
-WHY THIS FILE EXISTS: the repo had NO Sotto icon. The only `.ico` in the tree is
-`app/src-tauri/icons/icon.ico`, which is the **stock Tauri scaffold icon** (the
-Tauri logo) belonging to a shell that is not the app. Copying it would have
-replaced one lie ("this is Python") with another ("this is Tauri"), so a MINIMAL
+WHY THIS FILE EXISTS: the repo had NO Sotto icon of its own. The only `.ico` in
+the tree belonged to the abandoned Tauri scaffold (`app/src-tauri/icons/`,
+the stock Tauri logo) and that scaffold was deleted on 2026-11-25. Copying it
+would have replaced one lie ("this is Python") with another ("this is Tauri"),
+so a MINIMAL
 mark was generated instead and that is stated plainly in the receipt. It is not a
 brand: it is the panel's own accent, drawn.
 

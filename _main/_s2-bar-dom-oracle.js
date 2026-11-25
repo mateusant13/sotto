@@ -23,15 +23,16 @@
  *   A  THE BAR CARRIES NO CAPTION TEXT (strip surface), with the PANEL surface as the
  *      live control: the same two tokens must be FOUND there. An arm that cannot find
  *      the words anywhere proves nothing, so the control is part of the arm.
- *   B  THE LIVE BUTTON PUTS THE SAME LINE ON THE SCREEN: it flips data-float, the
- *      overlay becomes display:block, its live line EQUALS the panel's own newest
- *      caption row word for word, the overlay is NOT a descendant of <main class=panel>,
- *      the window-height call reaches the bridge, and a second caption lands while the
- *      panel node is DETACHED from the document (the owner's "como se nao houvesse
- *      painel"), with the previous line kept one back.
+ *   B  THE LIVE BUTTON ASKS THE NATIVE WINDOW: live starts UNPRESSED; each click
+ *      calls the shell's `setLiveEnabled`; NO page-overlay module registers, no words
+ *      are copied into the retired float host, and `body[data-float]` stays untouched.
+ *      The panel's OWN row still carries the words, including after the panel node is
+ *      detached from the document (the owner's "como se nao houvesse painel"), with
+ *      the previous line kept one back. The native window itself is not paint-visible
+ *      in jsdom; that is stated, not pretended.
  *
- * NEGATIVE ARM -- how to show this probe can say NO. Six mutants, one at a time, each
- * on a reset copy of app/panel, driven by the same checks:
+ * NEGATIVE ARM -- six mutants, one at a time, each on a reset copy of app/panel,
+ * driven by the same checks:
  *
  *   node _main/_s2-bar-dom-oracle.js            expect GREEN, rc=0
  *   node _main/_s2-bar-dom-oracle.js --neg-arm  expect every mutant RED, rc=0
@@ -132,7 +133,13 @@ function load(dir) {
   for (const src of scriptSources(html)) {
     const file = path.resolve(dir, src);
     if (!fs.existsSync(file)) { errors.push('missing ' + src); continue; }
-    try { window.eval(fs.readFileSync(file, 'utf8')); } catch (err) { errors.push(src + ': ' + (err && err.message)); }
+    /* HARNESS-ONLY SEAM. The native painter is reached by a MutationObserver, whose
+       callback jsdom queues on a microtask; this synchronous arm cannot await it.
+       Export the REAL function inside the same eval — the shipped bytes are not
+       edited — and drive it with the shell's answer, which is what the observer does. */
+    const code = fs.readFileSync(file, 'utf8');
+    const injected = src === 'panel.js' ? code + '\nwindow.__testApplyLiveEnabled = applyLiveEnabled;' : code;
+    try { window.eval(injected); } catch (err) { errors.push(src + ': ' + (err && err.message)); }
   }
   try { window.document.dispatchEvent(new window.Event('DOMContentLoaded', { bubbles: true })); }
   catch (err) { errors.push('DOMContentLoaded: ' + (err && err.message)); }
@@ -161,7 +168,7 @@ function load(dir) {
   };
 }
 
-function runChecks(dir) {
+async function runChecks(dir) {
   const p = load(dir);
   const doc = p.document;
   const strip = p.id('strip-controls') || doc.querySelector('.stripbar');
@@ -197,58 +204,74 @@ function runChecks(dir) {
   check('A5 CONTROL: the same token IS on the panel surface', foundPanel, [TOKEN1]);
   doc.body.setAttribute('data-surface', 'strip');
 
-  /* ---------------- ARM B: THE LIVE BUTTON, THE SAME LINE, LOOSE ----------------
-     RE-BASELINED 2026-10-13 AGAIN, to the contract the Lead re-applied. The caption
-     control IS #strip-live-button and the app ships the caption OFF -- the owner's
-     own model: *"primeiro, o painel de baixo. NELE EU ATIVO o segundo overlay, q e a
-     legenda independente."* So live starts UNPRESSED, the FIRST click puts the
-     caption on the screen and the SECOND takes it off, which is the reverse of the
-     interim revision this arm used to assert. The overlay is the module's own state
-     (caption-float.js) reached through `applyFloat`, and the button, the attribute
-     and the overlay are asserted in the SAME click so one fact cannot drift. */
+  /* ---------------- ARM B: THE LIVE BUTTON ASKS THE NATIVE WINDOW ----------------
+     RE-BASELINED 2026-11-25: the caption on screen is `NativeCaptionOverlay`, so the
+     retired page overlay and letter-swap module are no longer loaded by panel.html
+     and panel.js no longer pushes words into them. The button's only caption door is
+     `bridge.setLiveEnabled`; the panel's own row is the DOM this harness can judge. */
   arm = 'B';
   const btn = p.id('strip-live-button');
-  check('B1 the live button is the caption control and ships UNPRESSED (the caption is OFF)',
-    [Boolean(btn), btn ? btn.getAttribute('aria-pressed') : 'ABSENT'], [true, 'false']);
-  check('B2 the overlay is hidden before the strip repaints', p.display(floatEl), 'none');
-  p.click(btn);
-  check('B3 live ON puts the caption on the screen (button, attribute and overlay agree)',
-    [btn.getAttribute('aria-pressed'), doc.body.getAttribute('data-float'), p.display(floatEl)],
-    ['true', 'on', 'block']);
-  p.click(btn);
-  check('B4 live OFF takes the caption off the screen (button, attribute and overlay agree)',
-    [btn.getAttribute('aria-pressed'), doc.body.getAttribute('data-float'), p.display(floatEl)],
-    ['false', 'off', 'none']);
-  /* Back ON for the loose-caption half below: B6-B13 are all about the overlay while
-     the caption is on screen, and B14 is the click that lowers it again. */
-  p.click(btn);
-  check('B5 the button reports itself pressed', btn.getAttribute('aria-pressed'), 'true');
   const line = p.id('caption-float-line');
   const newest = doc.querySelector('#caption-list .caption:last-child .caption__text');
-  check('B6 the overlay paints the SAME words as the panel row', p.words(line), p.words(newest));
-  check('B7 and those words are the caption that was pushed', p.text(line), TOKEN1 + ' primeira linha');
-  check('B8 the overlay is NOT a descendant of <main class="panel">', panelEl.contains(floatEl), false);
-  check('B9 the overlay is click-through (pointer-events:none)', p.window.getComputedStyle(floatEl).pointerEvents, 'none');
-  check('B10 the height change reached the bridge as a strip surface',
-    p.bridge.__audit.surfaces.filter(function (s) { return s.surface === 'strip' && s.reason.indexOf('float-on') >= 0; }).length >= 1, true);
+  const lastLive = function () { return p.bridge.__audit.live[p.bridge.__audit.live.length - 1]; };
+  check('B1 the live button is the caption control and ships UNPRESSED (the caption is OFF)',
+    [Boolean(btn), btn ? btn.getAttribute('aria-pressed') : 'ABSENT'], [true, 'false']);
+  check('B2 the retired page-overlay module never registers (no second caption path)',
+    typeof p.window.SottoCaptionFloat, 'undefined');
+  p.click(btn);
+  check('B3 live ON asks the NATIVE window', lastLive(), true);
+  check('B4 no page overlay is created by that click',
+    [p.display(floatEl), p.text(line)], ['none', '']);
+  /* The page paints from the SHELL'S answer, not its own request: without this
+     answer `liveEnabled` never flips and a second click asks ON again. */
+  p.window.__testApplyLiveEnabled(true);
+  p.click(btn);
+  check('B5 live OFF asks the NATIVE window', lastLive(), false);
+  p.window.__testApplyLiveEnabled(false);
+  p.click(btn);
+  /* jsdom queues MutationObserver callbacks: the shell's `data-caption-window`
+     answer paints the button on the next microtask, not inside this synchronous
+     arm. Call the painter with that answer directly — the click-to-shell half is
+     already measured by B3/B5/B14 — so the DOM check is about the panel's paint. */
+  p.window.__testApplyLiveEnabled(true);
+  check('B6 the button paints the shell answer', btn.getAttribute('aria-pressed'), 'true');
+  check('B7 the panel row itself carries the words (no overlay copy needed)',
+    p.words(newest), TOKEN1 + ' primeira linha');
+  check('B8 the panel is not inside the retired overlay host', floatEl.contains(panelEl), false);
+  check('B9 the retained host is still click-through (its panel.css layout)',
+    p.window.getComputedStyle(floatEl).pointerEvents, 'none');
+  check('B10 the page asks for NO strip float geometry',
+    p.bridge.__audit.surfaces.filter(function (s) { return s.reason.indexOf('float-on') >= 0; }).length, 0);
+  check('B10b native mode leaves body[data-float] alone (no transparent page)',
+    doc.body.getAttribute('data-float'), null);
 
-  /* THE PANEL IS NOT THERE AT ALL. This is the owner's own sentence: the caption has to
-     behave "como se nao houvesse painel pra legenda, como ela tivesse solta". */
-  /* CAPTURED BEFORE THE REMOVAL: `document.querySelector` does not descend into a
-     detached subtree, so asking the document for the row after the panel is gone
-     answers null and the comparison would be against nothing at all. */
+  /* THE PANEL IS NOT THERE AT ALL. `document.querySelector` does not descend into
+     a detached subtree, so the row is captured before the removal. */
   const listEl = p.id('caption-list');
   panelEl.remove();
   p.caption(TOKEN2 + ' segunda linha', 5, 7, true);
   const detachedRow = listEl.querySelector('.caption:last-child .caption__text');
-  check('B11 with the panel DETACHED the overlay still mirrors the panel row',
-    p.words(line), p.words(detachedRow));
-  check('B11b and the new words really arrived', p.words(line).indexOf(TOKEN2) >= 0, true);
-  check('B12 and it keeps the previous line one back', p.text(p.id('caption-float-prev')), TOKEN1 + ' primeira linha');
-  check('B13 the overlay is still display:block with no panel in the document',
-    p.display(floatEl), 'block');
+  check('B11 with the panel DETACHED its own row still receives the new words',
+    p.words(detachedRow).indexOf(TOKEN2) >= 0, true);
+  const prevRow = listEl.querySelector('.caption:first-child .caption__text');
+  check('B12 and it keeps the previous line one back', p.words(prevRow), TOKEN1 + ' primeira linha');
+  check('B13 no page overlay appeared while the panel was gone',
+    [p.display(floatEl), p.text(line)], ['none', '']);
   p.click(btn);
-  check('B14 the next click lowers it', [doc.body.getAttribute('data-float'), p.display(floatEl)], ['off', 'none']);
+  check('B14 the next click asks the NATIVE window to lower it', lastLive(), false);
+
+  /* THE REAL OBSERVER, NOT THE TEST SEAM ABOVE. The shell writes its own
+   * `data-caption-window`; jsdom queues the MutationObserver on a microtask, so
+   * the button is only true ONE TICK LATER. N7 breaks the registration and this
+   * pair is what goes RED -- `applyLiveEnabled` itself still works. */
+  doc.documentElement.setAttribute('data-caption-window', 'off');
+  await new Promise(function (resolve) { setTimeout(resolve, 0); });
+  check('B15 the shell OFF answer repaints the button after a tick (real observer)',
+    btn.getAttribute('aria-pressed'), 'false');
+  doc.documentElement.setAttribute('data-caption-window', 'on');
+  await new Promise(function (resolve) { setTimeout(resolve, 0); });
+  check('B16 the shell ON answer repaints the button after a tick (real observer)',
+    btn.getAttribute('aria-pressed'), 'true');
 
   return rows;
 }
@@ -269,6 +292,7 @@ function report(label) {
 
 /* ------------------------------- NEGATIVE ARM ------------------------------- */
 if (process.argv.indexOf('--neg-arm') >= 0) {
+  (async function negArm() {
   const TMP = process.env.TMPDIR && fs.existsSync(process.env.TMPDIR) ? process.env.TMPDIR : os.tmpdir();
   const scratch = fs.mkdtempSync(path.join(TMP, 'sotto-s2-dom-neg-'));
   /* The WHOLE directory, not four files: the document loads eleven scripts and a thin
@@ -291,38 +315,29 @@ if (process.argv.indexOf('--neg-arm') >= 0) {
     { tag: 'N1 the strip shows its caption box again',
       file: 'panel.css',
       apply: function (t) { return t.replace(/body\[data-surface="strip"\] \.captions \{\s*display: none;/, 'body[data-surface="strip"] .captions { display: block;'); } },
-    /* N2 RE-BASELINED 2026-10-13: the overlay's visibility is now the MODULE's own
-       inline style (caption-float.js paint()), set through panel.js syncCaptionFloat,
-       so the old "delete the CSS display:block rule" mutant no longer moves it. This
-       neuters the panel -> overlay call instead, which is the new contract. */
-    { tag: 'N2 the live button no longer moves the overlay (the panel->overlay call is neutered)',
+    /* RE-BASELINED 2026-11-25. The old mutants neutered a module the page no longer
+       loads, so they became no-ops: a green mutant is worse than none. The seven
+       below break the contract THIS arm measures -- the native door, the panel's own
+       row, the retired module's absence, the native guard, the shipped OFF state and
+       the shell-attribute observer (N7 reddens the one-tick paint arms B15/B16). */
+    { tag: 'N2 the live button no longer reaches the native caption window',
       file: 'panel.js',
-      apply: function (t) { return t.replace("api.setFloat(state === 'on');", 'void 0;'); } },
-    { tag: 'N3 the overlay push is inert',
-      file: 'caption-float.js',
-      apply: function (t) { return t.replace('push: push', 'push: function () {}'); } },
-    { tag: 'N4 the overlay is fed different words than the panel row',
+      apply: function (t) { return t.replace('    const result = bridge.setLiveEnabled(Boolean(on));', '    void 0;'); } },
+    { tag: 'N3 the panel row stops painting its own words',
       file: 'panel.js',
-      /* BOTH push sites, or the control lies: the forming push runs after the commit push,
-         so mutating only the commit site leaves the correct sentence on screen and the
-         mutant reads GREEN for a reason that has nothing to do with the arm. */
-      apply: function (t) {
-        return t
-          .replace("window.SottoCaptionFloat.push((confWords.join(' ') + ' ' + provWords.join(' ')).trim(), null)", "window.SottoCaptionFloat.push('MUTANTE-A', null)")
-          .replace('window.SottoCaptionFloat.push(text, meta || null)', "window.SottoCaptionFloat.push('MUTANTE-B', meta || null)");
-      } },
-    /* N5/N6 ARE THE CONTROLS THE 2026-10-13 RE-BASELINE NEEDED, and they break the
-       NEW contract, not the old "Linhar button" one. N5 deletes the ONE call that
-       makes live-on mean caption-on-screen, so the button/attribute and the overlay
-       must disagree on every click (B3/B4/B13/B14). N6 restores the interim default
-       (`liveEnabled = true`), so the arm's OWN "ships UNPRESSED" claim (B1) and the
-       first-click direction (B3/B4/B5/B14) must go RED. */
-    { tag: 'N5 the live button no longer drives the overlay (applyFloat call deleted)',
+      apply: function (t) { return t.split('span.replaceChildren(document.createTextNode(word));').join('void 0;'); } },
+    { tag: 'N4 the retired page-overlay module is loaded again',
+      file: 'panel.html',
+      apply: function (t) { return t.replace('    <script src="panel.js"></script>', '    <script src="panel.js"></script>\n    <script src="caption-float.js" defer></script>'); } },
+    { tag: 'N5 applyFloat becomes unconditional (the native-caption-window guard is removed)',
       file: 'panel.js',
-      apply: function (t) { return t.replace(/  applyFloat\(liveEnabled\);\r?\n/, ''); } },
-    { tag: 'N6 the caption ships ON again (liveEnabled defaults true)',
+      apply: function (t) { return t.replace('  if (shellOwnsCaptionWindow()) return;', ''); } },
+    { tag: 'N6 the live button no longer paints the shell answer',
       file: 'panel.js',
-      apply: function (t) { return t.replace('let liveEnabled = false;', 'let liveEnabled = true;'); } },
+      apply: function (t) { return t.replace("    dom.stripLiveButton.setAttribute('aria-pressed', liveEnabled ? 'true' : 'false');", "    dom.stripLiveButton.setAttribute('aria-pressed', 'false');"); } },
+    { tag: 'N7 the native caption observer stops watching the shell attribute',
+      file: 'panel.js',
+      apply: function (t) { return t.replace(/attributeFilter: \[CAPTION_WINDOW_ATTR\],/, "attributeFilter: ['data-caption-window-mutated'],"); } },
   ];
   let wrong = 0;
   for (const m of muts) {
@@ -335,7 +350,7 @@ if (process.argv.indexOf('--neg-arm') >= 0) {
     rows.length = 0;
     /* `runChecks` returns the ROW LIST; the count is a filter, not the array. Comparing
        the array itself to 0 is always false, which made every mutant print GREEN. */
-    const bad = runChecks(scratch).filter(function (r) { return !r.ok; }).length;
+    const bad = (await runChecks(scratch)).filter(function (r) { return !r.ok; }).length;
     const red = bad > 0;
     if (!red) wrong += 1;
     console.log('  ' + (red ? 'RED  ' : 'GREEN') + '  ' + m.tag + '  -> ' + bad + ' failing check(s)');
@@ -344,7 +359,8 @@ if (process.argv.indexOf('--neg-arm') >= 0) {
   console.log('');
   console.log(wrong === 0 ? 'NEG-ARM VERDICT: PASS -- every mutant went RED.' : 'NEG-ARM VERDICT: FAIL -- ' + wrong + ' mutant(s) stayed GREEN.');
   process.exit(wrong === 0 ? 0 : 1);
+  })();
 }
-
-const bad = runChecks(SHIPPED);
-process.exit(report('shipped app/panel') === 0 ? 0 : 1);
+if (process.argv.indexOf('--neg-arm') < 0) {
+  runChecks(SHIPPED).then(function () { process.exit(report('shipped app/panel') === 0 ? 0 : 1); });
+}

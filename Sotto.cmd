@@ -10,8 +10,9 @@ REM  `run.cmd --no-worker` means, and a new flag added to the shell needs no
 REM  edit in this file.
 REM
 REM  WHAT YOU SHOULD SEE.  Nothing. The app starts hidden and waits for Alt+C;
-REM  press it once and the caption panel appears docked to the right edge, press
-REM  it again and it goes away.  The panel is the only window, it never takes
+REM  press it once and the caption strip appears at the bottom of the screen,
+REM  press again quickly and the panel opens docked to the right edge, and any
+REM  later press hides it.  The panel is the only window, it never takes
 REM  focus when it appears, and it leaves no console behind.
 REM
 REM  The one cosmetic residual: Windows gives a double-clicked .cmd its own

@@ -142,15 +142,18 @@ reads the consequence. Measured, window never seen (`Opacity = 0`):
 - **`--show` and `--selftest` were NEVER RUN, deliberately**: they map a real window on the owner's
   desk. Everything above was measured with `--no-hotkey --no-tray` and `Opacity = 0` instead. Do not
   read this section as covering the visible path.
-- **MULTI-MONITOR IS A DECLARED LIMITATION, NOT A MEASUREMENT.** This box has **one** monitor
+- **MULTI-MONITOR IS SELECTED BY POINT NOW, NOT BY THE PRIMARY.** This box still has **one** monitor
   (`DPI=96 scale=1`, `monitors=1`, `\\.\DISPLAY1 primary=True monitor=[0,0 1920x1080]`,
-  `work=[0,0 1920x1032]`). `primary_display()` uses
-  `MonitorFromPoint(POINT(0,0), MONITOR_DEFAULTTOPRARY)`, so the strip opens on the PRIMARY monitor,
-  **not the cursor's**. With one monitor that difference is unmeasurable, so "opens under the cursor" is
-  **not** a claim this lane can make. A future two-monitor lane must test: (a) strip x/y chosen by the
-  CURSOR's monitor rather than the primary, (b) clamp against the correct monitor's work area, (c) the
-  CSS `--strip-height` is device-independent so only the GEOMETRY needs per-monitor work, and (d) the
-  edit-mode drag clamps to the work area of the monitor the strip is actually on.
+  `work=[0,0 1920x1032]`), so the two-monitor *difference* is still unmeasurable here. The CODE path
+  is: Alt+C -> `toggle_panel('hotkey')` -> `show_panel(surface='strip')` -> `geometry_for('strip')`
+  -> `work_area()` -> `target_placement()` -> the pure `select_display_for_point()` in
+  `app/webview/sotto_webview.py`. Another app's foreground window picks that window's monitor;
+  Sotto's own window falls back to the cursor, then to the primary. A point outside every monitor
+  picks the NEAREST one, and the requested geometry is clamped into that monitor's WORK AREA
+  (never its full bounds), including negative x and mixed DPI scaled once.
+  `primary_display()` remains only the DOCKED panel's startup choice. The pure selector is exercised
+  by `_main/multi-monitor-oracle.py` (six arms, each with a reddening mutation); the on-screen
+  two-monitor result is NOT claimed as measured on this one-monitor box.
 - **Hover-driven height growth is NOT WIRED.** `set_strip_height()` exists and the CSS supports it, but
   nothing calls it — so there is no "the strip grows as the mouse approaches" behaviour yet. Measured
   as absent, not assumed.
@@ -207,3 +210,7 @@ reads the consequence. Measured, window never seen (`Opacity = 0`):
   36508`, 2 events each) that **reached FOCUS**. Without this rule the owner's narrative gains
   `usuario voltou pro pythonw.exe(Sotto)` — the exact leak the per-app collapse exists to remove.
   *(Recibo: `_main/receipt-focus-timeline.md` §G4 item 6, 34 799 B, 602 linhas, sha256 `5BAE4502…`.)*
+
+### 2026-11-25 — a escolha do monitor tem dono puro e oráculo
+
+O ponto de §"Declared limitations" já descrevia o caminho; o que faltava era o veredito instrumentado. `select_display_for_point(point, monitors, primary_index, geometry)` (`app/webview/sotto_webview.py:3534`) decide em água: contenção do ponto physical, depois `MONITOR_DEFAULTTONEAREST`, depois PRIMÁRIO (o `primary_index` que o chamador passou) quando não há ponto nenhum; a geometria DIP é multiplicada pelo `scaleFactor` daquele monitor **uma vez**, clampada na WORK AREA física (não nos bounds completos) e dividida pelo mesmo factor. Quem lê `GetCursorPos` é o `target_placement` (`sotto_webview.py:3684`, a leitura em `:3720`), que passa o ponto à função pura em `:3725-3726`, com `primary_display()` (`:3523`) só como fallback quando não há lista de monitores. Re-medido em 2026-11-25: `python _main/multi-monitor-oracle.py` → `MULTI-MONITOR PASS -- 6 arm(s), 30 check(s), 0 failure(s)` e `VERDICT: PASS`; os braços cobrem monitor à direita, x negativo, nearest, lista vazia, clamp e DPI misto, e o `--neg-arm` derruba os 11 mutantes, incluindo o clamp de altura e a conversão DIP. **CANNOT-MEASURE**: o resultado em dois monitores reais; esta máquina tem um só, e nenhuma lane abre janela na tela do dono.

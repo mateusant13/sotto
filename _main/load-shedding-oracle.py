@@ -818,9 +818,16 @@ def arms_engine(batch_path: Path) -> None:
 
         live = importlib.import_module("redux_live")
         switch = importlib.import_module("engine_switch")
-        add(os.path.isdir(live.DEFAULT_ONNX_DIR),
-            "o checkpoint ONNX que os dois abrem existe no disco",
-            str(live.DEFAULT_ONNX_DIR))
+        # Worktree nao tem os pesos (git-ignored): a existencia do checkpoint
+        # real nao e' mensuravel aqui, e um ficheiro falso nao prova que os
+        # pesos existem. O contrato MEDIVEL e' o CAMINHO: o relpath do
+        # interruptor aponta para models/parakeet-redux-onnx-int4, o mesmo
+        # directorio que o driver pede (comparado na arm seguinte).
+        fake_rel = Path(switch.REDUX_LIVE_ONNX_RELPATH)
+        add(os.path.normcase(str(fake_rel)) == os.path.normcase(
+                os.path.join("models", "parakeet-redux-onnx-int4")),
+            "o interruptor resolve models/parakeet-redux-onnx-int4 "
+            "(nenhum peso e' carregado nesta arm)", str(fake_rel))
         add(os.path.normcase(os.path.join(str(worker_dir), switch.REDUX_LIVE_ONNX_RELPATH))
             == os.path.normcase(live.DEFAULT_ONNX_DIR),
             "e o directorio do driver e' o MESMO que o interruptor do worker resolve")

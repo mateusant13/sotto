@@ -20,24 +20,24 @@ ponto de entrada directo `[CODE]` `run.cmd:2-4` e fixa o próprio directório em
 
 | # | passo | o que faz | onde |
 |---|---|---|---|
-| 1 | defaults de ambiente | `SOTTO_REDUX_LIVE=1` e `SOTTO_REDUX_WHEN_HIDDEN=1` só quando não estão definidos | `run.cmd:113`, `run.cmd:140` |
-| 2 | achar o interpretador | `py -3 -c "import sys;print(sys.executable)"`; sem ele, `where python` | `run.cmd:149-152` |
-| 3 | escolher GUI | `%PYEXE:python.exe=pythonw.exe%`; sem `pythonw.exe` recusa com `rc=3` — não há `fallback` para consola | `run.cmd:158`, `run.cmd:166-170` |
-| 4 | flags que IMPRIMEM | `--help`, `-h`, `--dump-dom`, `--selftest`, `--memory`, `--install-autostart`, `--uninstall-autostart`, `--autostart-status` correm sob `"%PYEXE%"` no terminal existente e saem com o `%ERRORLEVEL%` | `run.cmd:178-197` |
-| 5 | pre-flight | `"%PYW%" "%SHELL%" --check-args %*`, com o `stderr` capturado para `sotto-preflight-refusal-<rand><rand>.txt` | `run.cmd:250-252` |
-| 6 | recusa do pre-flight | imprime `the shell REFUSED this launch (rc=N). Nothing was started.`, o texto do interpretador, e escreve `sotto: PREFLIGHT_REFUSED rc=N by=run.cmd-preflight` no log | `run.cmd:254-269` |
-| 7 | `--check-args` sozinho | o pre-flight É a acção: `exit /b %PREFLIGHT_RC%`, nada arranca | `run.cmd:277` |
-| 8 | ficheiro de prontidão | `READY_FILE=%HERE%..\..\_main\ready-%RANDOM%-%RANDOM%.txt`, apagado antes de viajar | `run.cmd:294-295` |
-| 9 | `start` da app | `start "" "%PYW%" "%SHELL%" ... --ready-file "%READY_FILE%"`; log por omissão `_main\webview-run.log` quando o utilizador não passou `--log` | `run.cmd:301-309` |
-| 10 | espera limitada | `"%PYW%" "%SHELL%" --wait-ready "%READY_FILE%"` | `run.cmd:312` |
-| 11 | `rc=4` = HANG | duas frases no terminal, `sotto: HANG rc=4 by=run.cmd-readiness` no log, `exit /b 4` | `run.cmd:315-319` |
+| 1 | defaults de ambiente | `SOTTO_REDUX_LIVE=1` / `SOTTO_REDUX_WHEN_HIDDEN=1` **NÃO nascem aqui**: o dono único é `WorkerBridge._child_env` (`setdefault`), e `run.cmd` só explica porquê | `run.cmd:82-99`; `app/webview/sotto_webview.py` `_child_env` |
+| 2 | achar o interpretador | `py -3 -c "import sys;print(sys.executable)"`; sem ele, `where python` | `run.cmd:112-121` |
+| 3 | escolher GUI | `%PYEXE:python.exe=pythonw.exe%`; sem `pythonw.exe` recusa com `rc=3` — não há `fallback` para consola | `run.cmd:121`, `run.cmd:131-134` |
+| 4 | flags que IMPRIMEM | `--help`, `-h`, `--dump-dom`, `--selftest`, `--memory`, `--install-autostart`, `--uninstall-autostart`, `--autostart-status` correm sob `"%PYEXE%"` no terminal existente e saem com o `%ERRORLEVEL%` | `run.cmd:143-161` |
+| 5 | pre-flight | `"%PYW%" "%SHELL%" --check-args %*`, com o `stderr` capturado para `sotto-preflight-refusal-<rand><rand>.txt` | `run.cmd:214-217` |
+| 6 | recusa do pre-flight | imprime `the shell REFUSED this launch (rc=N). Nothing was started.`, o texto do interpretador, e escreve `sotto: PREFLIGHT_REFUSED rc=N by=run.cmd-preflight` no log | `run.cmd:218-234` |
+| 7 | `--check-args` sozinho | o pre-flight É a acção: `exit /b %PREFLIGHT_RC%`, nada arranca | `run.cmd:241` |
+| 8 | ficheiro de prontidão | `READY_FILE=%HERE%..\..\_main\ready-%RANDOM%-%RANDOM%.txt`, apagado antes de viajar | `run.cmd:258-259` |
+| 9 | `start` da app | `start "" "%PYW%" "%SHELL%" ... --ready-file "%READY_FILE%"`; log por omissão `_main\webview-run.log` quando o utilizador não passou `--log` | `run.cmd:264-273` |
+| 10 | espera limitada | `"%PYW%" "%SHELL%" --wait-ready "%READY_FILE%"` | `run.cmd:276` |
+| 11 | `rc=4` = HANG | duas frases no terminal, `sotto: HANG rc=4 by=run.cmd-readiness` no log, `exit /b 4` | `run.cmd:280-284` |
 
 Três consequências que o código impõe, e que a tabela não mostra:
 
-1. **Uma largada normal corre a shell TRÊS vezes** `[INFERENCE]` a partir de `run.cmd:252`
-   (pre-flight), `run.cmd:302`/`run.cmd:308` (app) e `run.cmd:312` (espera): três processos
+1. **Uma largada normal corre a shell TRÊS vezes** `[INFERENCE]` a partir de `run.cmd:216`
+   (pre-flight), `run.cmd:266`/`run.cmd:272` (app) e `run.cmd:276` (espera): três processos
    `pythonw.exe`, e só o segundo sobrevive.
-2. **O pre-flight valida contra o `argparse` da própria shell** `[CODE]` `run.cmd:207-212` — não há
+2. **O pre-flight valida contra o `argparse` da própria shell** `[CODE]` `run.cmd:142-156` — não há
    segunda tabela de flags em batch. O modo em si está em `main()`: `[CODE]`
    `sotto_webview.py:26016-26050` devolve 3 quando falta `PANEL_HTML` (`:26036-26038`), 1 quando
    `import webview` falha (`:26045-26049`) e 0 quando a lista passa (`:26050`); `rc=2` é o próprio

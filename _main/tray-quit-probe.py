@@ -286,7 +286,7 @@ def main() -> int:
         # ---- the Quit, through the REAL message path -----------------------
         quit_id = None
         for line in result['tray_menu']:
-            mm = re.search(r"\[(\d+)\]='Quit Sotto'", line)
+            mm = re.search(r"\[(\d+)\]='Sair do Sotto'", line)
             if mm:
                 quit_id = int(mm.group(1))
         result['quit_menu_id'] = quit_id

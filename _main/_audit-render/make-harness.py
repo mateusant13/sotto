@@ -34,7 +34,7 @@ REL = '../../app/panel/'
 with open(os.path.join(SRC, 'panel.html'), encoding='utf-8') as fh:
     html = fh.read()
 
-ASSETS = ('panel.css', 'caption-formulation.js', 'history-source.js', 'history-gallery.js',
+ASSETS = ('panel.css', 'caption-formulation.js', 'history-source.js',
           'surface.js',
           'panel.js', 'theme-switcher.js', 'themes/themes.js', 'themes/fonts.css',
           'themes/theme-1.css', 'themes/theme-2.css', 'themes/theme-3.css',

@@ -53,6 +53,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -70,6 +71,14 @@ PANEL_JS = PANEL_DIR / "panel.js"
 HISTORY_STORE = PANEL_DIR / "history-store.js"
 SHELL = ROOT / "app" / "webview" / "sotto_webview.py"
 WORKER = ROOT / "worker" / "sotto_worker.py"
+#: THE WORKER IS TWO FILES SINCE 2cc4e58 (`feat(audio): capture the microphone and
+#: transcribe both sides`): `sotto_worker.py` is the entry (argparse, startup, the
+#: batch loop) and `worker/engine_switch.py` is the core that queues the caption and
+#: writes `producer`. Every anchor below therefore resolves across BOTH files and
+#: names the one that owns it -- an oracle that kept reading only the entry file went
+#: from GREEN to a traceback (`worker stamp line not unique`, count==0) without any
+#: product change, which is a gate that stopped seeing its own subject.
+WORKER_CORE = ROOT / "worker" / "engine_switch.py"
 REDUX_RUNNER = ROOT / "worker" / "redux_batch.py"
 REDUX_MODEL_DIR = ROOT / "worker" / "models" / "parakeet-redux-ternary"
 REDUX_MODEL_DIR_INT4 = ROOT / "worker" / "models" / "parakeet-redux-onnx-int4"
@@ -113,6 +122,30 @@ def anchor(tag: str, text: str, pattern: str, path: Path, occurrence: int = 1) -
     if not n:
         check("ANCHOR", "anchor present: " + tag, False, "pattern not found: " + pattern)
     return n
+
+
+def anchor_any(tag: str, sources: list, pattern: str, occurrence: int = 1) -> int:
+    """Locate a HOP across SEVERAL live files and name the file that owns it.
+
+    The worker split into an entry and a core (2026-11-25, 2cc4e58); every hop that
+    used to live in one file now lives in one of two. Searching the union with a
+    single `path` label would print a line number that belongs to the other file --
+    a gate that accuses the right line in the wrong file loses its authority. So the
+    HOP prints `<file>:<line>` of the file that actually matched, and the return is
+    the total number of matching lines across the population (so a check can still
+    demand uniqueness).
+    """
+    total = 0
+    found = []
+    for path, text in sources:
+        hits = [i + 1 for i, line in enumerate(text.splitlines()) if re.search(pattern, line)]
+        total += len(hits)
+        if hits:
+            found.append(str(path) + ":" + str(hits[min(occurrence, len(hits)) - 1]))
+    print("HOP  " + tag + "  " + (" | ".join(found) if found else "NOT-FOUND"), flush=True)
+    if not found:
+        check("ANCHOR", "anchor present: " + tag, False, "pattern not found: " + pattern)
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -168,12 +201,37 @@ def run_node(history_js: Path, formulation_js: Path, job: dict, tmpdir: Path) ->
     return json.loads(proc.stdout)
 
 
-def load_python_module(path: Path, name: str):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
+def load_python_module(path: Path, name: str, source_text: str = None):
+    """Import a live module -- or a MUTATED COPY of its bytes, under its own path.
+
+    The red arm needs `engine_switch.py` with one field cut. Writing that copy into
+    `%TEMP%` and importing it from there was the old shape and it broke the moment the
+    worker split: the core imports its siblings by name (`import engine_policy as
+    _policy`, `worker/engine_switch.py:135`) and resolves its own checkpoints from
+    `HERE`, so a copy in `G:\\Temp` gets `_policy = None` and a wrong `HERE`. A mutant
+    that cannot be imported is not a mutant. So a `source_text` is COMPILED with the
+    live path as its filename and its directory on `sys.path`: same imports, same
+    `HERE`, one line different.
+    """
+    if source_text is None:
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        return module
+    parent = str(path.parent)
+    added = parent not in sys.path
+    if added:
+        sys.path.insert(0, parent)
+    try:
+        module = types.ModuleType(name)
+        module.__file__ = str(path)
+        sys.modules[name] = module
+        exec(compile(source_text, str(path), "exec"), module.__dict__)
+        return module
+    finally:
+        if added:
+            sys.path.remove(parent)
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +338,7 @@ def main() -> int:
     formulation_bytes = pin(FORMULATION)
     shell_bytes = pin(SHELL)
     worker_bytes = pin(WORKER)
+    worker_core_bytes = pin(WORKER_CORE)
     pin(PANEL_JS)
     pin(HISTORY_STORE)
     pin(REDUX_RUNNER)
@@ -287,6 +346,9 @@ def main() -> int:
     formulation_text = formulation_bytes.decode("utf-8")
     shell_text = shell_bytes.decode("utf-8")
     worker_text = worker_bytes.decode("utf-8")
+    worker_core_text = worker_core_bytes.decode("utf-8")
+    #: the population the worker anchors resolve across, in file order
+    worker_sources = [(WORKER, worker_text), (WORKER_CORE, worker_core_text)]
 
     # ---- mutants: copies of the REAL bytes, only ever in memory or %TEMP% ----
     gate_stamp = "const CANONICAL_PRODUCER = 'redux';"
@@ -301,10 +363,21 @@ def main() -> int:
     # and the "mutant" would be a byte-identical copy that still goes green. The byte-delta
     # check below exists because that is exactly what happened on the first run.
     worker_stamp = '"producer": str(payload.get("producer") or REDUX_PRODUCER),'
-    assert worker_text.count(worker_stamp) == 1, "worker stamp line not unique"
-    worker_mutant_text = (worker_text.replace(worker_stamp + "\r\n", "")
+    #: THE STAMP LIVES IN THE CORE SINCE 2cc4e58 (`worker/engine_switch.py`), so the
+    #: cut is made in the file that owns it -- and the assertion still demands exactly
+    #: ONE occurrence across the whole worker population, because a second stamp
+    #: elsewhere would mean two writers for one field.
+    if worker_stamp in worker_core_text:
+        stamp_owner = (WORKER_CORE, worker_core_text)
+    else:
+        stamp_owner = (WORKER, worker_text)
+    occurrences = sum(text.count(worker_stamp) for _, text in worker_sources)
+    assert occurrences == 1, ("worker stamp line not unique (count=%d, population=%s)"
+                              % (occurrences, [str(p) for p, _ in worker_sources]))
+    print("HOP  worker stamps producer on the caption  " + str(stamp_owner[0]), flush=True)
+    worker_mutant_text = (stamp_owner[1].replace(worker_stamp + "\r\n", "")
                           .replace(worker_stamp + "\n", ""))
-    worker_mutant = tmpdir / "sotto_worker.mutant.py"
+    worker_mutant = tmpdir / (stamp_owner[0].stem + ".mutant.py")
     worker_mutant.write_text(worker_mutant_text, encoding="utf-8", newline="")
 
     shell_hop = "if k not in ('type', 'text')}"
@@ -327,7 +400,12 @@ def main() -> int:
     src_subject_text = shell_src_mutant_text if args.red_arm else shell_text
 
     subject_gate = gate_mutant if args.red_arm else HISTORY_SOURCE
-    subject_worker = worker_mutant if args.red_arm else WORKER
+    #: The RED arm imports a MUTATED COPY of the file that owns the stamp, under that
+    #: file's own path (2026-11-25 -- see `load_python_module`): the core resolves its
+    #: siblings and its checkpoints from its own directory, so a copy in `%TEMP%` is not
+    #: importable as the module it is supposed to be.
+    subject_worker = stamp_owner[0] if args.red_arm else WORKER
+    subject_worker_text = worker_mutant_text if args.red_arm else None
     subject_shell_text = shell_mutant_text if args.red_arm else shell_text
     if args.red_arm:
         shell_mutant.write_text(shell_mutant_text, encoding="utf-8", newline="")
@@ -345,30 +423,29 @@ def main() -> int:
     # ANCHORS -- every hop re-located in the LIVE bytes, right now
     # =====================================================================
     print("\n-- ANCHORS (re-measured on the live bytes) " + "-" * 34, flush=True)
-    a_worker_const = anchor("worker constant REDUX_PRODUCER", worker_text,
-                            r'^REDUX_PRODUCER = "redux"', WORKER)
-    a_worker_stamp = anchor("worker stamps producer on the caption", worker_text,
-                            r'"producer": str\(payload\.get\("producer"\) or REDUX_PRODUCER\)',
-                            WORKER)
-    a_worker_put = anchor("worker queues the batch caption", worker_text,
-                          r'self\._captions\.put\(\{', WORKER)
-    a_worker_runner = anchor("worker _run_runner", worker_text,
-                             r"def _run_runner\(self, held, samples, reason\)", WORKER)
-    a_worker_emit = anchor("worker emit(**payload)", worker_text,
-                           r"def emit\(\*\*payload\)", WORKER)
-    a_worker_drain = anchor("worker drains the switch into emit", worker_text,
-                            r"for payload in switch\.drain_captions\(\):", WORKER)
-    a_worker_flag = anchor("worker flag default OFF", worker_text,
-                           r"^REDUX_WHEN_HIDDEN_DEFAULT = False", WORKER)
-    a_worker_optin = anchor("worker flag opt-in", worker_text,
-                            r"redux_optin = bool\(args\.redux_when_hidden\)", WORKER)
+    a_worker_const = anchor_any("worker constant REDUX_PRODUCER", worker_sources,
+                                r'^REDUX_PRODUCER = "redux"')
+    a_worker_stamp = anchor_any("worker stamps producer on the caption", worker_sources,
+                                r'"producer": str\(payload\.get\("producer"\) or REDUX_PRODUCER\)')
+    a_worker_put = anchor_any("worker queues the batch caption", worker_sources,
+                              r'self\._captions\.put\(\{')
+    a_worker_runner = anchor_any("worker _run_runner", worker_sources,
+                                 r"def _run_runner\(self, held, samples, reason\)")
+    a_worker_emit = anchor_any("worker emit(**payload)", worker_sources,
+                               r"def emit\(\*\*payload\)")
+    a_worker_drain = anchor_any("worker drains the switch into emit", worker_sources,
+                                r"for payload in switch\.drain_captions\(\):")
+    a_worker_flag = anchor_any("worker flag default OFF", worker_sources,
+                               r"^REDUX_WHEN_HIDDEN_DEFAULT = False")
+    a_worker_optin = anchor_any("worker flag opt-in", worker_sources,
+                                r"redux_optin = bool\(args\.redux_when_hidden\)")
     # Label corrected 2026-10-11: the regex is the runner-FILE availability fact (kept
     # verbatim when gate 2 became two facts); the old label stated the DEFECT as a fact.
-    a_worker_avail = anchor("worker's runner-FILE availability fact (gate 2, half one)", worker_text,
-                            r"self\.runner_available = os\.path\.exists\(self\.runner\)",
-                            WORKER)
-    a_worker_cut = anchor("worker SKIPS streaming while mode==batch", worker_text,
-                          r'if mode == "batch":', WORKER)
+    a_worker_avail = anchor_any("worker's runner-FILE availability fact (gate 2, half one)",
+                                worker_sources,
+                                r"self\.runner_available = os\.path\.exists\(self\.runner\)")
+    a_worker_cut = anchor_any("worker SKIPS streaming while mode==batch", worker_sources,
+                              r'if mode == "batch":')
     a_consume = anchor("shell WorkerBridge._consume", shell_text,
                        r"def _consume\(self, line, child=None\)", SHELL)
     a_shell_meta = anchor("shell builds the caption meta", shell_text,
@@ -390,8 +467,15 @@ def main() -> int:
                             r"engineFor\(source\)\.ingest\(", PANEL_JS)
     a_panel_record = anchor("panel recordHistory", PANEL_JS.read_text(encoding="utf-8"),
                             r"function recordHistory\(text, reason, meta\)", PANEL_JS)
-    a_panel_gate = anchor("panel calls the canonical gate", PANEL_JS.read_text(encoding="utf-8"),
-                          r"isCanonical\(meta\)", PANEL_JS)
+    #: RE-AIMED 2026-11-25. `isCanonical(meta)` left `panel.js` on 2026-11-05: the
+    #: admission decision moved into the DOM-free predicate in `history-source.js`
+    #: (`transcriptRoute`), and the panel now only ASKS it and reports the refusal.
+    #: The old pattern matched nothing for three weeks; the oracle crashed before this
+    #: line, so nobody saw the miss. The subject is unchanged -- the panel consults the
+    #: canonical route predicate at its choke point -- only the call site is current.
+    a_panel_gate = anchor("panel calls the canonical route predicate",
+                          PANEL_JS.read_text(encoding="utf-8"),
+                          r"sourceApi\.transcriptRoute\(meta\)", PANEL_JS)
     a_engine_producer = anchor("engine remembers the producer", formulation_text,
                                r"rememberProducer\(meta\);", FORMULATION)
     a_engine_commit = anchor("engine commits the producer tag", formulation_text,
@@ -450,7 +534,8 @@ def main() -> int:
     # =====================================================================
     print("\n-- ARM B: the REAL worker/sotto_worker.py, imported IN PROCESS "
           + "-" * 12, flush=True)
-    worker_mod = load_python_module(subject_worker, "sotto_worker_under_test")
+    worker_mod = load_python_module(subject_worker, "sotto_worker_under_test",
+                                    source_text=subject_worker_text)
     check("B", "the worker module imports in process (no launch, no capture)",
           hasattr(worker_mod, "ReduxHiddenSwitch"), str(subject_worker))
 
@@ -529,13 +614,45 @@ def main() -> int:
     # moment the defect was fixed, which is what a defect-pinning check must do). It is
     # now a REQUIREMENT, and it can still say NO: under --red-arm the subject is the
     # worker mutant with gate 2 reverted, where this goes RED again.
-    check("B", "the switch REFUSES to arm when the checkpoint it will LOAD is absent",
+    #
+    # RE-AIMED 2026-11-25, and the requirement is the SAME: never arm on the runner FILE
+    # alone. What changed is that gate 2 gained a THIRD branch -- the ONNX int4 parakeet
+    # (`engine_available`), which IS on disk -- so a switch built with the default engine
+    # legitimately arms (`armed=True`) while the ternary checkpoint is absent, and the old
+    # assertion read that correct behaviour as a violation. The isolation is a stub engine
+    # whose `available` is False: then nothing can transcribe the batch, the runner file
+    # alone must NOT arm, and the --red-arm mutant (gate 2 reverted to the file only) still
+    # arms and still turns this RED.
+    class _AbsentEngine:
+        """The batch engine when the machine has none: `available` False."""
+
+        available = False
+
+        def name(self):
+            return "absent (oracle stub)"
+
+        def load(self):  # pragma: no cover - never reached by this arm
+            return False
+
+        def release(self):  # pragma: no cover
+            return None
+
+        def transcribe(self, pcm):  # pragma: no cover
+            return ""
+
+    armed_switch = worker_mod.ReduxHiddenSwitch(
+        enabled=True, reader=object(), runner=str(REDUX_RUNNER), log_fn=lambda m: None,
+        armed_by="oracle", engine=_AbsentEngine())
+    check("B", "the switch REFUSES to arm on the runner FILE alone (checkpoint AND engine absent)",
           armed_switch.armed is False and not armed_switch.model_available,
           "runner_available=" + str(armed_switch.runner_available)
           + " model_available=" + str(armed_switch.model_available)
+          + " engine_available=" + str(armed_switch.engine_available)
+          + " armed=" + str(armed_switch.armed)
           + " missing=" + ",".join(armed_switch.model_missing)
-          + " -- gate 2 is TWO facts since 2026-10-11: the .py alone armed the switch and"
-            " every batch then died in redux_batch.load_runtime (the HARD RULE failure shape)")
+          + " -- gate 2 is THREE facts since 2026-11-25: the .py alone armed the switch and"
+            " every batch then died in redux_batch.load_runtime (the HARD RULE failure shape);"
+            " the int4 parakeet is the third branch and is deliberately stubbed absent here")
 
     # =====================================================================
     # ARM C -- the REAL chain: worker event -> REAL shell hop -> REAL engine -> REAL gate
@@ -589,9 +706,23 @@ def main() -> int:
     cm = commit.get("meta") or {}
     print("     ENGINE COMMIT META: " + json.dumps(cm, ensure_ascii=False, sort_keys=True),
           flush=True)
+    #: RE-AIMED 2026-11-25. The assertion pinned the EXACT key set of the rebuilt meta
+    #: (`route,start,routeSource,producer`) and went RED when the engine legitimately
+    #: gained a fifth: `fileText`, stamped only when the final mark was INVENTED
+    #: (`caption-formulation.js:869-873`, documented there and read by `panel.js`). The
+    #: invariant the arm exists for is unchanged -- THE GATE IS FED A REBUILT META, not
+    #: the worker's event -- so it is stated as: the four hops are present, and nothing
+    #: from the worker event rides along verbatim. The allow-list is the engine's own
+    #: declared output, not a guess: `fileText` (invented-mark rule) and `source` (one
+    #: engine per source, never the fragment's) are the only extras the code can add.
+    REBUILT_REQUIRED = {"route", "start", "routeSource", "producer"}
+    REBUILT_ALLOWED = REBUILT_REQUIRED | {"fileText", "source"}
+    cm_keys = set(cm.keys())
     check("C", "hop (iii): the gate is fed a REBUILT meta, not the worker's event",
-          set(cm.keys()) == {"route", "start", "routeSource", "producer"},
-          "keys=" + ",".join(sorted(cm.keys())))
+          REBUILT_REQUIRED <= cm_keys <= REBUILT_ALLOWED,
+          "keys=" + ",".join(sorted(cm_keys))
+          + " missing=" + ",".join(sorted(REBUILT_REQUIRED - cm_keys))
+          + " unexpected=" + ",".join(sorted(cm_keys - REBUILT_ALLOWED)))
     check("C", "the REBUILT meta carries producer == 'redux' (carried, not invented)",
           cm.get("producer") == "redux", "producer=" + repr(cm.get("producer")))
     check("C", "the REBUILT meta routes final via the worker's flag",

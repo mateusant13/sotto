@@ -11,7 +11,7 @@
 import { spawnSync } from 'node:child_process';
 
 const py = [
-  ['_main/canonical-producer-oracle.py', 'canonical-producer 47/47'],
+  ['_main/canonical-producer-oracle.py', 'canonical-producer 48/48'],
   ['_main/meter-chain-oracle.py', 'meter-chain 55'],
   ['_main/meter-chain-oracle.py --neg-arm', 'meter-chain neg 66'],
   ['_main/audio-meter-oracle.py', 'audio-meter 11'],
@@ -224,7 +224,7 @@ const node = [
   // at the retired contract). Re-anchored, they work (rc=0, 'every mutant
   // went RED') -- and a negative arm that is not listed is a mutant nobody
   // ever looks at again.
-  ['_main/caption-independent-oracle.js --neg-arm', 'caption independent neg (10 mutants)'],
+  ['_main/caption-independent-oracle.js --neg-arm', 'caption independent neg (13 mutants)'],
   ['_main/three-overlays-oracle.js', 'three overlays'],
   ['_main/three-overlays-oracle.js --neg-arm', 'three overlays neg (11/11)'],
   ['_main/strip-drag-loop-oracle.js', 'strip drag: the loop (clientX vs screenX)'],
@@ -249,6 +249,9 @@ const node = [
   // BOTH page guards are load-bearing: 5 of 6 arms RED for each mutant, measured.
   ['_main/surface-loop-panel-oracle.js', 'surface loop: page half (echo asks nothing)'],
   ['_main/surface-loop-panel-oracle.js --neg-arm', 'surface loop page neg: both guards RED'],
+  // 2026-11-25: `panel-language-oracle.js` lived here for one pass; it now runs in
+  // the house battery as the pair `panel-language` + `red-as-expected-panel-language`,
+  // which enforces the `:expectred` exit code. One invariant, one owner gate.
 ];
 
 // ── WHAT THIS BATTERY IS, AND WHAT IT IS NOT ─────────────────────────────────

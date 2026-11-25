@@ -398,7 +398,7 @@ async function main() {
   // sentence is not on screen" would pass on a panel whose whole status block had
   // disappeared, so the pair is asserted: the word is there AND the sentence is
   // still readable AND the state class says LIVE.
-  strip.status('Receiving captions', 'live');
+  strip.status('Recebendo legendas', 'live');
   arm('the strip word is a SHORT status, and the shell sentence is still readable',
     // ── THE PAIR, ON THE STRIP (owner, 2026-10-08) ────────────────────────────
     // The healthy sentence is no longer PAINTED on either surface — the panel shows
@@ -409,15 +409,10 @@ async function main() {
     // live. (The first version of this assertion expected the text in
     // `#status-text` on the strip as well; measured `''`.)
     [strip.id('strip-word').textContent, squeeze(strip.id('strip-state').title)],
-    // RE-BASELINED 2026-10-19: the word is 'OFF', not 'Captions off'. The strip
-    // says WHAT IS OFF, and it is the CAPTION: it read 'Live off' until
-    // 2026-10-13, which read as "the transcription stopped" while the worker
-    // was streaming perfectly (panel.js:2478-2483). The LIVE-vs-NOT-LIVE state
-    // is the button's own pill, not this word.
-    // RE-ANCORADO 2026-10-30: a frase viva separa as oracoes com `·`, nao com `—`.
-    // Fixa-se a PROPRIEDADE (a palavra e' o estado curto, o titulo carrega a frase),
-    // nao a pontuacao que o produto nunca escreveu.
-    ['OFF', 'Receiving captions · click to restart the pipeline (reloads the live engine)']);
+    // RE-BASELINED 2026-11-25: o produto escreve `DESLIGADO` e a frase viva
+    // `Recebendo legendas · clique para reiniciar a pipeline (recarrega o motor ao vivo)`.
+    // O pin antigo (`OFF` / inglês) media bytes que o painel deixou de escrever.
+    ['DESLIGADO', 'Recebendo legendas · clique para reiniciar a pipeline (recarrega o motor ao vivo)']);
   arm('the strip state carries the LIVE class, and the dot is a shape not a colour',
     // RE-BASELINED 2026-10-13: is-live follows liveEnabled, which ships false; the dot
     // is still a painted shape (the second value), so the pair still says which half moved.
@@ -431,7 +426,7 @@ async function main() {
   currentArm = 'P';
   console.log('\n=== ARM P — the full PANEL surface ===');
   const full = await panel({ url: `${fileUrl(PANEL_HTML)}#live`, wired: true });
-  full.status('Receiving captions', 'live');
+  full.status('Recebendo legendas', 'live');
   arm('the document really is wearing the panel surface',
     full.document.body.getAttribute('data-surface'), 'panel', 'strip');
   arm('the drawer is OPEN by default, and the search is a GLYPH not a bar',
@@ -446,7 +441,7 @@ async function main() {
      full.document.getElementById('search-input') === null,
      full.document.getElementById('search-form') === null,
      Boolean(full.document.getElementById('history-search-button')),
-     full.id('transcript-note').title.includes('canonical transcript')],
+     full.id('transcript-note').title.includes('transcrição canônica')],
     [false, true, true, true, true]);
   arm('the panel DOES show the header', full.display('.panel__header'), 'flex', 'none');
   arm('the panel does NOT show the strip control row', full.display('#strip-controls'), 'none', 'flex');
@@ -503,7 +498,7 @@ async function main() {
   // assertions follow the CAPABILITY, not the widget.
   arm('the HUD\'s "open in folder" survived: the transcript bar carries it',
     [!!full.id('history-root'), full.id('history-root').title],
-    [true, 'Open H:\\sotto\\history']);
+    [true, 'Abrir H:\\sotto\\history']);
   // ── THE PATH AND THE COUNT ARE NOT PAINTED (owner, 2026-10-08) ─────────────
   // *"tambem tira essas coisas como 'h sotto history 400 lines no canonial writer
   // 400 lines the transcript'"*. The pair: nothing in the bar's TEXT, and the path
@@ -558,14 +553,13 @@ async function main() {
     // that is what the assertion follows.
     return [p.id('strip-word').textContent, squeeze(p.id('strip-state').title)];
   })();
-  // RE-ANCORADO 2026-10-30: a frase viva separa as oracoes com `·` (panel.js), nao com
-  // `—`; o pino antigo exigia um travessao que o produto nunca escreveu (o mesmo erro
-  // que este ficheiro ja' tinha corrigido noutras duas arms). O que se fixa e' a
-  // PROPRIEDADE: a palavra muda para `Paused` e o hover carrega as duas oracoes.
+  // RE-ANCORADO 2026-11-25: os writers vivos escrevem `Pausado` e a dica
+  // `os motores ficam descarregados até você retomar` + `recarrega o motor ao vivo`.
+  // A versão em inglês destas frases saiu do painel; o pino segue o valor pintado.
   arm('the paused state reports itself on the strip word, with its sentence on hover',
-    [pausedState[0], pausedState[1].includes('the engines are unloaded until you resume'),
-     pausedState[1].includes('reloads the live engine')],
-    ['Paused', true, true]);
+    [pausedState[0], pausedState[1].includes('os motores ficam descarregados até você retomar'),
+     pausedState[1].includes('recarrega o motor ao vivo')],
+    ['Pausado', true, true]);
 
   // ── THE HUD'S STATS ROWS ARE GONE WITH IT ──────────────────────────────────
   // The panel no longer prints RAM / rate / engine / peak anywhere: the HUD was
@@ -617,7 +611,7 @@ async function main() {
   // that was deleted on 2026-10-17.
   arm('a click ASKS the shell and paints NOTHING',
     [before, liveButton.getAttribute('aria-pressed')], ['false', 'false']);
-  arm('and the label follows the state', wiredT.id('strip-live-label').textContent, 'LIVE');
+  arm('and the label follows the state', wiredT.id('strip-live-label').textContent, 'ao vivo');
   arm('and the shell is told, with the NEW value', wiredT.audit.live, [true]);
   // THE SHELL'S ANSWER is what paints the button. The harness writes the same
   // attribute the real shell writes, and the page's own observer repaints.
@@ -700,8 +694,8 @@ async function main() {
     [panelL.id('live-lamp').dataset.live, stripL.id('strip-live-lamp').dataset.live],
     ['on', 'on']);
   arm('and the accessible name says which, in words',
-    [panelL.id('live-lamp').getAttribute('aria-label').startsWith('Live caption: ON'),
-      stripL.id('strip-live-lamp').getAttribute('aria-label').startsWith('Live caption: ON')],
+    [panelL.id('live-lamp').getAttribute('aria-label').startsWith('Legenda ao vivo: LIGADA'),
+      stripL.id('strip-live-lamp').getAttribute('aria-label').startsWith('Legenda ao vivo: LIGADA')],
     [true, true]);
   panelL.document.documentElement.setAttribute('data-caption-window', 'off');
   stripL.document.documentElement.setAttribute('data-caption-window', 'off');
@@ -752,7 +746,7 @@ async function main() {
   arm('the DEFAULT FOCUS is CANCEL, not the destructive button',
     wiredD2.focusId(), 'pause-cancel-button');
   arm('the dialog says what pause does (unload)',
-    wiredD2.id('pause-dialog-body').textContent.includes('unloads the live caption engine'), true);
+    wiredD2.id('pause-dialog-body').textContent.includes('descarrega o motor da legenda ao vivo'), true);
   // REMOVED 2026-10-19: the two arms that wanted the paragraph "the background
   // transcript is extremely light" / "pausing is not necessary to keep the PC
   // fast". THE OWNER REMOVED THAT PARAGRAPH (panel.html:1099-1105): it filled
@@ -762,16 +756,16 @@ async function main() {
   // CRASHED the probe on a null.
   arm('the confirm button is live when the shell can pause',
     [wiredD2.id('pause-confirm-button').disabled, wiredD2.id('pause-confirm-button').textContent],
-    [false, 'Pause and unload']);
+    [false, 'Pausar e descarregar']);
   wiredD2.id('pause-confirm-button').click();
   arm('step two calls bridge.pause with its reason',
     wiredD2.audit.pause, [{ reason: 'panel-confirm' }]);
   arm('and the dialog is closed', wiredD2.id('pause-dialog').hasAttribute('open'), false);
   arm('and BOTH surfaces paint the paused state',
     // ── A GAP, STATED RATHER THAN ENCODED ─────────────────────────────────────
-    // This pair used to read the HUD's State row (`Paused — engines unloaded`) and
-    // the strip word (`Paused`). The HUD is gone; the strip word is what is left,
-    // and in THIS harness flow it still reads `Starting` — i.e. `setPaused` did not
+    // This pair used to read the HUD's State row (`Pausado — motores descarregados`) and
+    // the strip word (`Pausado`). The HUD is gone; the strip word is what is left,
+    // and in THIS harness flow it still reads `Iniciando` — i.e. `setPaused` did not
     // run before the read even though `bridge.pause` was called with its reason
     // (asserted above). That is a real gap in the pause→paint path, NOT something
     // this assertion should enshrine, so the claim is narrowed to what is true and
@@ -802,7 +796,7 @@ async function main() {
   // PROPRIEDADE (desactivado E com a razao escrita no texto), com a frase viva.
   arm('and its confirm button is disabled and names the reason',
     [unwiredD.id('pause-confirm-button').disabled,
-     unwiredD.id('pause-confirm-button').textContent.includes('not available in this shell yet')],
+     unwiredD.id('pause-confirm-button').textContent.includes('ainda não disponível neste shell')],
     [true, true]);
   arm('and the trigger itself is marked not wired',
     unwiredD.id('strip-pause-button').dataset.wired, 'false');

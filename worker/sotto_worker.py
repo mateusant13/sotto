@@ -2567,6 +2567,23 @@ class StreamAsr:
                 self.wall += time.time() - t_start
             return "", 0
 
+        # ── the noise remover (lane SottoDenoise), ONE call site ─────────────
+        # Everything ABOVE decided on the ORIGINAL PCM: the speech/music gate
+        # (and the caller's AGC) must not see cleaned audio. Everything BELOW
+        # sees the cleaned chunk: the mel window + Silero VAD in `self.sp` and
+        # then the encoder. Resolved once per stream; `use_denoise: false`
+        # leaves `self.denoiser` None and changes no sample and no counter.
+        if not hasattr(self, "_denoise_resolved"):
+            self._denoise_resolved = True
+            self.denoiser = None
+            try:
+                import denoise as _denoise
+                self.denoiser, _, _ = _denoise.gate_for_worker_config(TARGET_SR)
+            except Exception:                              # noqa: BLE001
+                self.denoiser = None
+        if self.denoiser is not None:
+            pcm_chunk = self.denoiser.process(pcm_chunk)
+
         _t_pre = time.time()
         feats = self.sp.process(pcm_chunk)
         self.stage_s["pre"] += time.time() - _t_pre
@@ -4934,12 +4951,21 @@ def LoopbackTap(device, on_block, want_rate=TARGET_SR, block_ms=100):
         # lane SottoPerAppTap (STEP 2): ONE process tree's audio, not the mix.
         # The pid travels with the candidate; opening "the default" here would
         # silently substitute the very mix this rung exists to avoid.
-        return ProcessLoopbackTap(
-            on_block,
-            int(device["target_pid"]),
-            pid_desc=device.get("target_desc") or "",
-            block_ms=block_ms,
-        )
+        # The owner's voice is not in a render tap either: mix it in on THIS
+        # rung with the same mic/no-mic rules as the endpoint rung.
+        import mic_tap
+
+        def make_primary(on_block):
+            return ProcessLoopbackTap(
+                on_block,
+                int(device["target_pid"]),
+                pid_desc=device.get("target_desc") or "",
+                block_ms=block_ms,
+            )
+
+        tap, mic_note = mic_tap.open_stream(make_primary, on_block)
+        err("MIC_CAPTURE %s" % mic_note)
+        return tap
     if device.get("file_tap"):
         # Lane SottoAsrTap: the LIVE loop fed from a file, no device opened.
         return FileTap(device["file_tap"], on_block, block_ms=block_ms)
@@ -4968,7 +4994,14 @@ def LoopbackTap(device, on_block, want_rate=TARGET_SR, block_ms=100):
         tap, mic_note = mic_tap.open_stream(make_primary, on_block)
         err("MIC_CAPTURE %s" % mic_note)
         return tap
-    return _PortAudioTap(device, on_block, want_rate=want_rate, block_ms=block_ms)
+    import mic_tap
+
+    def make_primary(on_block):
+        return _PortAudioTap(device, on_block, want_rate=want_rate, block_ms=block_ms)
+
+    tap, mic_note = mic_tap.open_stream(make_primary, on_block)
+    err("MIC_CAPTURE %s" % mic_note)
+    return tap
 
 
 # ── lane SottoAsrTap: the LIVE loop fed from a FILE, no audio device ──────────
@@ -8059,6 +8092,23 @@ def main():
     # the class in the file, which is what `_main/meter-chain-oracle.py` pins.
     meter = AudioMeter(meter_hz, now=time.time(), block_s=block_ms / 1000.0)
 
+    # ── ONE CAPTURE FOR BOTH HALVES (lane S6SingleCapture) ───────────────────
+    # `on_block` below is the mixed stream: `mic_tap.open_stream` has already
+    # added the owner's microphone to the loopback before this callback fires.
+    # The sidecar used to open its own loopback AND its own mic for the same
+    # call. Publish this exact block on loopback TCP so it needs no device.
+    # A refused bind (another worker, a port in use) only turns this off: the
+    # worker's own ASR loop is never made dependant on the sidecar.
+    capture_share_pub = None
+    try:
+        import capture_share                                    # noqa: PLC0415
+        capture_share_pub = capture_share.Publisher(log=err)
+        capture_share_pub.start()
+    except Exception as exc:                                    # noqa: BLE001
+        err("CAPTURE_SHARE publisher unavailable (%s: %s)"
+            % (type(exc).__name__, exc))
+        capture_share_pub = None
+
     # ── O CUSTO POR MINUTO, DATADO (2026-11-09) ────────────────────────────────
     # O watcher mediu este worker a **270,6 %c com rows=0** depois de 232 min de
     # vida, e o dono sentiu a travada; um arranque novo do MESMO codigo mediu
@@ -8552,6 +8602,12 @@ def main():
             # reached the ASR side at 16 kHz", and a zero here means the
             # conversion ate the audio even though the callback delivered it.
             counters["resampled_samples"] += int(block.size)
+            # The sidecar gets THESE bytes: the same post-mix, 16 kHz, mono
+            # float32 block the decoder is about to see. `publish` is inert
+            # without a client and never waits on the socket; the sender
+            # thread owns all I/O, so a slow reader costs drops, not stalls.
+            if capture_share_pub is not None:
+                capture_share_pub.publish(block)
             # ── THE LIVE OVERLAY's AUDIO IN ────────────────────────────────────
             # The overlay needs the SAME 16 kHz PCM the ASR thread sees, and this is
             # the one place that has already been resampled and counted. Inert when
@@ -9803,6 +9859,12 @@ def main():
                 recorder.close()
             except Exception as exc:  # noqa: BLE001
                 err(f"AUDIO_RECORDER_CLOSE_FAILED {type(exc).__name__}: {exc}")
+        if capture_share_pub is not None:
+            try:
+                capture_share_pub.stop()
+            except Exception as exc:                            # noqa: BLE001
+                err("CAPTURE_SHARE publisher close failed (%s)"
+                    % type(exc).__name__)
 
     if outcome in ("all-flat", "open-failed"):
         emit(

@@ -32,16 +32,18 @@ GUI-subsystem binary), so run it detached and read the log, or use the self-test
 .\node_modules\electron\dist\electron.exe . --selftest
 ```
 
-## Why Electron, and why the Tauri build was not touched
+## Why Electron, and what happened to the Tauri build
 
-The Tauri/Rust implementation at `../src-tauri` (main.rs, commands.rs,
-geometry.rs, memory.rs) cannot be built on this host: cargo hangs indefinitely
-at "Updating crates.io index", reproduced on both the gnu and msvc toolchains,
-while `curl` on the same host returns in 0.15 s. Rust was out of scope for this
-milestone. Nothing under `../src-tauri` was executed, edited, moved, or deleted —
-its newest `LastWriteTime` is still 2026-10-05 22:22.
+The Tauri/Rust scaffold that used to live at `../src-tauri` (main.rs,
+commands.rs, geometry.rs, memory.rs) was never buildable on this host — cargo
+hung indefinitely at "Updating crates.io index" on both the gnu and msvc
+toolchains, while `curl` on the same host returned in 0.15 s — and it was an
+M0 mock (its own `commands.rs` reported `active:false, source:"m0-no-capture"`).
+It was DELETED on 2026-11-25 by the design audit together with the abandoned
+Vite/Svelte scaffold, because nothing in the tree loaded it. The Electron shell
+below is kept as a comparison reference only; the app is `app/webview/`.
 
-The panel geometry here is a **port** of `../src-tauri/src/geometry.rs`
+The panel geometry here is a **port** of that scaffold's `geometry.rs`
 (`dock_right`), keeping its invariants: dock against the **work area** (screen
 minus taskbar), not the full screen; clamp the output inside the work area;
 apply the width cap as a fraction of the work area; never produce a

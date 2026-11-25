@@ -726,8 +726,8 @@ async function runArms() {
   arm("the shell's OWN write turns BOTH lamps GREEN",
     [lamp.dataset.live, stripLamp.dataset.live], ['on', 'on']);
   arm('and the accessible name says which, in words',
-    [lamp.getAttribute('aria-label').startsWith('Live caption: ON'),
-      stripLamp.getAttribute('aria-label').startsWith('Live caption: ON')],
+    [lamp.getAttribute('aria-label').startsWith('Legenda ao vivo: LIGADA'),
+      stripLamp.getAttribute('aria-label').startsWith('Legenda ao vivo: LIGADA')],
     [true, true]);
   panel.document.documentElement.setAttribute('data-caption-window', 'off');
   strip.document.documentElement.setAttribute('data-caption-window', 'off');

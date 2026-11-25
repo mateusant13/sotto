@@ -11,11 +11,11 @@
  * brings that worker up, so the panel reports the worker's real state instead of
  * a static "Waiting for audio".
  *
- * Why Electron and not the Tauri build next door: the Tauri/Rust tree at
- * ../src-tauri cannot be built on this host — cargo hangs at "Updating
- * crates.io index" on both the gnu and msvc toolchains while curl on the same
- * host returns in 0.15 s. Rust is out of scope for this milestone; this file is
- * the shell, and nothing under ../src-tauri is read at runtime or written to.
+ * Why this file is NOT the app: the live shell is app/webview/ (pywebview).
+ * This Electron tree is kept only because the battery runs
+ * transcript-append-oracle.js from it. The Tauri/Rust scaffold that used to sit
+ * at ../src-tauri (never buildable here: cargo hung at "Updating crates.io
+ * index") was DELETED on 2026-11-25 by the design audit; nothing loaded it.
  */
 
 const { app, BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');

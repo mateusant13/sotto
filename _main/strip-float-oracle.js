@@ -17,18 +17,12 @@
  *
  * `--neg-arm`: the same files copied with ONE behaviour removed each, and the SAME
  * checks re-run against the copies. Each mutant must go RED or the oracle cannot
- * say no, and the green is worth nothing. RE-BASELINED 2026-10-13 for the owner's
- * ruling that the LIVE button IS the caption control (*"o botao de legenda pra
- * ativar a legenda deve ser o botao 'live'. o botao 'live' ativo deve mostrar na
- * tela as legendas"*). Seven mutants:
- *   M1 the height goes back to the old 100px;
- *   M2 the applyFloat(liveEnabled) call is deleted (live no longer drives the caption);
- *   M3 the overlay push in addCaption is deleted;
- *   M4 the runtime height change through setStripHeight is deleted;
- *   M5 the overlay gains a background (the owner's *"sem fundo"*);
- *   M6 applyFloat becomes unconditional (the strip-only guard is removed);
- *   M7 the straight band gets its rounded pill corners back.
- */
+ * say no, and the green is worth nothing. RE-BASELINED 2026-11-25: the caption on
+ * screen is `NativeCaptionOverlay`, so `panel.html` no longer loads `caption-float.css`,
+ * `caption-float.js` or `letter-swap.js`, and `panel.js` no longer pushes words into
+ * a module that is never loaded. Eleven mutants now: the seven originals plus M8/M9/M10
+ * (re-add each retired file), M3 re-anchored as a re-added push, and M11 (delete the
+ * native door). The strip's `data-float` attribute and ONE height are untouched. */
 'use strict';
 
 const fs = require("node:fs");
@@ -185,10 +179,10 @@ add("S20b the row order is brand<grip<live<open<font<pause<hide<state",
   /* ---- 3. panel.js WIRING ---------------------------------------------- */
   add("W1 dom.stripLiveButton is looked up", /stripLiveButton\s*:\s*document\.getElementById\(.strip-live-button.\)/.test(js), "present");
   add("W2 the live button is bound in wireStripControls", /stripLiveButton\.addEventListener\(.click./.test(js), "present");
-  add("W3 addCaption pushes to the overlay", /SottoCaptionFloat\)\s*window\.SottoCaptionFloat\.push\(text,\s*meta/.test(js), "present");
-  add("W4 renderProvisional pushes the forming line", /SottoCaptionFloat\)\s*\{\s*window\.SottoCaptionFloat\.push\(\(confWords/.test(js), "present");
-  add("W5 paintLevel feeds the overlay meter", /SottoCaptionFloat\)\s*\{\s*window\.SottoCaptionFloat\.setMeter\(/.test(js), "present");
-  add("W6 paintLevel feeds the overlay listening", /window\.SottoCaptionFloat\.setListening\(LEVEL\.have\)/.test(js), "present");
+  add("W3 the commit path paints the panel row and pushes NO page-overlay line", /bridge\.captionApplied\(text\)/.test(jsCode) && !/SottoCaptionFloat/.test(jsCode), "renderer intact; SottoCaptionFloat in code=" + /SottoCaptionFloat/.test(jsCode));
+  add("W4 the provisional path still paints words and pushes NO page-overlay line", /paintWords\(line\.querySelector\('\.caption__provisional'\)/.test(jsCode) && !/SottoCaptionFloat/.test(jsCode), "paintWords intact; no float push");
+  add("W5 the level feeds the panel bars and skin only, not a dead overlay", /SottoSkin\.level\(/.test(jsCode) && !/SottoCaptionFloat/.test(jsCode), "SottoSkin.level present; no float meter feed");
+  add("W6 the native caption door is the only one", /bridge\.setLiveEnabled\(Boolean\(on\)\)/.test(jsCode) && !/SottoCaptionFloat/.test(jsCode), "requestCaptionOverlay -> setLiveEnabled; no float module call");
   /* W7 -- RE-ANCHORED 2026-10-20 (lane caption). The old check counted
    `bridge.setPanelSurface('strip', ...)` call sites in the RAW FILE, and it was
    GREEN ON A COMMENT: the only two `bridge.setPanelSurface('strip'` strings in
@@ -250,8 +244,9 @@ add("S20b the row order is brand<grip<live<open<font<pause<hide<state",
   add("Z7 panel.html loads the manifest fragment", /<script src="themes\/zipc-panels\.js"><\/script>/.test(html), "present");
 
   /* ---- 5. THE TWO NEW MODULES ARE DEFERRED, NOT ON FIRST PAINT --------- */
-  add("D1 letter-swap.js is deferred", /<script src="letter-swap\.js" defer>/.test(html), "present");
-  add("D2 caption-float.js is deferred", /<script src="caption-float\.js" defer>/.test(html), "present");
+  add("D1 letter-swap.js is NOT loaded by panel.html (the native overlay owns the caption)", !/<script src="letter-swap\.js"/.test(html), "absent");
+  add("D2 caption-float.js is NOT loaded by panel.html", !/<script src="caption-float\.js"/.test(html), "absent");
+  add("D4 caption-float.css is NOT linked by panel.html", !/href="caption-float\.css"/.test(html), "absent");
   const scripts = [...html.matchAll(/<script[^>]*src="([^"]+)"[^>]*>/g)].map(m => m[1]);
   add("D3 panel.js stays eager (the renderer cannot be deferred)", scripts.some(s => /panel\.js$/.test(s)), scripts.join(", "));
 
@@ -295,7 +290,7 @@ const FILES = ["panel.html", "panel.css", "panel.js", "caption-float.js", "theme
 const muts = [
   { tag: "M1 the height goes back to the old 100px", file: "panel.css", from: "--strip-height: 40px", to: "--strip-height: 100px" },
   { tag: "M2 the caption is no longer driven by live (the applyFloat call is deleted)", file: "panel.js", from: "applyFloat(liveEnabled);", to: "" },
-  { tag: "M3 the overlay push in addCaption is deleted", file: "panel.js", from: "if (window.SottoCaptionFloat) window.SottoCaptionFloat.push(text, meta || null);", to: "" },
+  { tag: "M3 a page-overlay push is wired back into panel.js", file: "panel.js", from: "  bridge.captionApplied(text);", to: "  bridge.captionApplied(text);\n  if (window.SottoCaptionFloat) window.SottoCaptionFloat.push(text, meta || null);" },
   /* M4 -- RE-ANCHORED 2026-10-20 (lane caption). The old anchor was
      `setStripHeight(on ? FLOAT_HEIGHT : STRIP_HEIGHT);`, the call the product
      DELETED on 2026-10-17 (there is ONE height now: `setStripHeight(STRIP_HEIGHT)`,
@@ -322,6 +317,10 @@ const muts = [
      now the strip band's OWN block, verified to appear exactly once. The
      mutation is the same one: the rounded pill corners come back. */
   { tag: "M7 the straight band gets its rounded pill corners back", file: "panel.css", from: "  border-bottom: 1px solid var(--line);\r\n  border-radius: 0;\r\n  background: rgba(11, 15, 20, 0.98);", to: "  border-bottom: 1px solid var(--line);\r\n  border-radius: 10px;\r\n  background: rgba(11, 15, 20, 0.98);" },
+  { tag: "M8 letter-swap.js is loaded again", file: "panel.html", from: '    <script src="panel.js"></script>', to: '    <script src="panel.js"></script>\n    <script src="letter-swap.js" defer></script>' },
+  { tag: "M9 caption-float.js is loaded again", file: "panel.html", from: '    <script src="panel.js"></script>', to: '    <script src="panel.js"></script>\n    <script src="caption-float.js" defer></script>' },
+  { tag: "M10 caption-float.css is linked again", file: "panel.html", from: '    <link rel="stylesheet" href="panel.css" />', to: '    <link rel="stylesheet" href="panel.css" />\n    <link rel="stylesheet" href="caption-float.css" />' },
+  { tag: "M11 the native caption door is deleted", file: "panel.js", from: "    const result = bridge.setLiveEnabled(Boolean(on));", to: "    void 0;" },
 ];
 let wrong = 0;
 for (const m of muts) {

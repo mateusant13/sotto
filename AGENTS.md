@@ -163,11 +163,11 @@ O detalhe medido de cada ordem vive nos docs. **Uma linha por ordem, e é isto q
 | # | a ordem | o que é lei | detalhe |
 |---|---|---|---|
 | 1 | track do YouTube na língua original | **en, pt-BR e espanhol: a LÍNGUA ORIGINAL, sem tradução em direcção nenhuma**; **qualquer outra → a língua ESCOLHIDA, default pt-BR**, persistida em `_main/caption-settings.json` | `docs/politica-youtube.md` |
-| 2 | Alt+C: o gesto é **medido**, não contado | 1 toque = painel de BAIXO · 2 toques = painel da DIREITA · **HOLD** = legenda ao vivo on/off (desligar é só DISPLAY: modelo e histórico continuam) | `docs/hotkey-gestos.md` |
-| 3 | Parakeet é o segundo pass | ao vivo = nemotron só com painel aberto; fundo = Parakeet; retoma atrás de 4 guardas + piso de 45 s | `docs/worker-lifecycle.md` |
+| 2 | Alt+C: o gesto é **medido**, não contado | **sem HOLD**: 1 toque = faixa de BAIXO; 2. toque dentro de `DOUBLE_TAP_S = 0,40 s` desde o show da faixa = painel da DIREITA; fora da janela = esconde. `Ctrl+Space` comuta a legenda ao vivo (só DISPLAY). Portão: `_main/altc-gesture-oracle.py` (104/104) | `docs/hotkey-gestos.md` |
+| 3 | Parakeet é o segundo pass | ao vivo = nemotron só com painel aberto; fundo = Parakeet; a retoma só corre se a shell NÃO estiver a sair (`exiting`), se houver latch `_external_parked` e se `engine_park_reason() == 'captions'`. Pausa e visibilidade desligam **só o DISPLAY**, nunca o pedido de parque. **Sem piso de 45 s**: `EXTERNAL_RESUME_MIN_S` e `EXTERNAL_CAPTIONS_WORKER_RESUME_DEFERRED` não existem no código vivo. Portão: `_main/external-resume-latch-oracle.py` | `docs/worker-lifecycle.md` |
 | 4 | testes lentos e pesados | cache por **conteúdo**, classe `heavy` nunca corre sem opt-in, **um passo saltado não é um portão que passou** | `docs/bateria-e-portoes.md` |
 | 4-ter | o custo do Sotto | 10 processos, pico 1801 MB, worker 104 % de CPU com dois loads; parte do stutter **não** é do Sotto | `docs/custo-medido.md` |
-| 5 | o rato não passa pelo Sotto | **nenhum** hook global de input existe em caminho nenhum (o `WH_MOUSE_LL` foi removido a 2026-10-30), e mede-se **pela ausência** | `docs/mouse-e-input.md` |
+| 5 | o rato não passa pelo Sotto | **zero hooks globais de rato** (`WH_MOUSE_LL`/`SetWindowsHookEx` removidos a 2026-10-30). A ÚNICA excepção é `app/webview/space_swallow.py` (não `worker/`): um `WH_KEYBOARD_LL` armado só quando `gaming_mode.live_hotkey_plan` diz `take`, retirado antes do jogo receber a tecla. `RegisterHotKey` entrega `WM_HOTKEY` e **não é** um hook global de input. Mede-se pela ausência: `_main/input-path-oracle.py` | `docs/mouse-e-input.md` |
 
 ## MODO BUG-HUNT - OBRIGATORIO PARA QUALQUER DEFEITO REPORTADO (2026-10-23)
 
@@ -243,7 +243,7 @@ BUG-HUNT acima. Os passos, o tracker, o fecho mecanico e as recusas estao na ski
    ao vivo ta desativada, nao signiifca q o modelo ta desativado. é o DISPLAY que ta
    desativado."* O `LIVE_ENABLED on=false` corta **o display**; o modelo continua
    carregado, a transcrição continua a correr e o histórico continua a ser escrito
-   (é a mesma lei que o HOLD do Alt+C já carrega). Nenhum caminho pode desligar
+   (o interruptor e' o `Ctrl+Space`, uma pressao; nao existe HOLD no Alt+C). Nenhum caminho pode desligar
    worker, modelo ou histórico a pretexto de "legenda ao vivo desligada".
 
 ## DUAS ORDENS DE 2026-11-08: O TECTO DE FRAME E O `>>` DO PLAYER
@@ -377,7 +377,7 @@ proporciona ou entao com modelo que separa vozes."* e, quando recebeu um pedido 
 - **O MICROFONE ENTRA NO MESMO STREAM QUE O LOOPBACK (ordem do dono, 2026-11-25, verbatim: *"its
   capture my mic and transcript it aswell, in real time. and its any mic not just mine cause this
   will be a product"*).** O loopback carrega o que o PC TOCA (o outro lado da chamada); a fala do
-  dono nao esta' nele, logo sem isto o produto transcreve todos menos ele. `worker/mic_tap.py` abre o
+  dono nao esta' nele, logo sem isto o produto transcreve todos menos ele. **`mic_tap.open_stream` envolve TODOS os rungs que abrem dispositivo** — A (`WasapiLoopbackTap`), P (`ProcessLoopbackTap`) e B/C (`_PortAudioTap`); cada um imprime `MIC_CAPTURE`. O rung `file` nao abre dispositivo. `worker/mic_tap.py` abre o
   dispositivo de captura que o **proprio Windows** aponta (`query_devices(kind="input")`), filtra
   **so'** o que nao e' um microfone (cabo virtual VB-Audio/CABLE, Sound Mapper, "driver de captura de
   som primario", Stereo Mix -- que e' um loopback e poria o audio do PC na conversa duas vezes) e
@@ -412,6 +412,15 @@ proporciona ou entao com modelo que separa vozes."* e, quando recebeu um pedido 
   `_main/redux-gpu-unavailable-oracle.py` (arm `cache-bypass`, nas duas direcoes, mais o braco do
   fake que reproduz as ZERO linhas). Nao repor o cache sem uma prova de que ele atesta.
 
+## REGRAS DATADAS DE 2026-11-25 (o detalhe vive em docs/)
+
+- **UMA CAPTURA, UM LEITOR.** O worker publica o bloco já misturado (loopback + micro, 16 kHz mono) para o sidecar por `worker/capture_share.py`: um cliente só (`BUSY`), fila `QUEUE_BLOCKS` com queda CONTADA em `CAPTURE_SHARE_DROP dropped=N`, publicação inerte sem leitor, e `SOTTO_CAPTURE_SHARE=0` desliga o cliente (fallback nomeado). Nenhum segundo loopback/micro em execução conjunta. Detalhe: `docs/worker-lifecycle.md`; prova: `_main/capture-share-oracle.py` (8/8 arms, controlo 8/8 mutantes).
+- **PONTUAÇÃO DE MODELO EM CPU POR NOME.** `worker/punctuation_model.py` pede `PROVIDER = "cpu"` e recusa `cuda` por nome; guarda de língua `en`-only, `SOTTO_PUNCT_MODEL=0` desliga, e falta de modelo/pacote devolve a string intacta. Nunca rodar sobre `pt`. Detalhe: `docs/spec/04-ENGINES.md`; prova: `_main/punctuation-oracle.py` (5/5).
+- **UM CHAMADOR PARA O DENOISE.** `use_denoise` é chave TOP-LEVEL, `false` por omissão (caminho byte-idêntico); quando `true`, o ÚNICO ponto de acção é `StreamAsr.run_chunk`, depois do gate fala/música e antes da janela mel/VAD. Detalhe: `docs/audio-ladder.md`; prova: `_main/config-truth-oracle.py` (PASS nas três afirmações).
+- **UMA TABELA DE DEFAULTS `SOTTO_REDUX_*`.** `WorkerBridge._child_env` é o dono único: `setdefault('SOTTO_REDUX_WHEN_HIDDEN','1')` e `setdefault('SOTTO_REDUX_LIVE','1')`, explícito `0` ganha, `run.cmd` não mantém segunda tabela; o worker resolve `flag > env > config` em `redux_live_settings`. Detalhe: `docs/worker-lifecycle.md`; provas: `_main/config-truth-oracle.py`, `_main/app-target-oracle.py`, `_main/load-shedding-oracle.py`.
+- **A FAIXA ABRE NO MONITOR DO CURSOR.** `select_display_for_point` escolhe por contenção física, depois `MONITOR_DEFAULTTONEAREST`, depois primário; o rect é clampado à WORK AREA daquele monitor (DPI por monitor, escalado uma vez). `primary_display()` não é o caminho do strip. Detalhe: `docs/shell-contract.md`; prova: `_main/multi-monitor-oracle.py` (6 braços).
+- **UI 100% PT-BR (2026-11-25).** Bandeja: `Abrir painel`, `Desativar/Ativar atalho Alt+C`, `Desligar/Ligar legendas (Ctrl+Space)`, `Editar posicao da legenda`, `Sair do Sotto`; painel e faixa com rótulos PT-BR, incluindo as cadeias escritas em RUNTIME pelo `panel.js` (medido: `_main/panel-language-oracle.js` → `VERDICT: PASS`, braço negativo derruba). Detalhe: `docs/spec/08-PANELS-UX.md`; provas: `_main/tray-menu-oracle.py` (27 arms) e `_main/tray-quit-probe.py`.
+
 ## O RUNTIME DE WEBVIEW2: a MAIOR instalada, e nenhum pin (ordem do dono, 2026-11-11)
 
 Verbatim: *"WEBVIEW2 RUNTIME ORDER FROM THE OWNER (2026-11-11): use the GREATER version. This is a
@@ -436,10 +445,9 @@ controlos apanhados. O número da versão **não** é portado: o oráculo compar
 na hora, porque um literal ali seria o próprio pin que ele proíbe.
 
 ## PREMISSAS PROIBIDAS (retiradas pelo dono)
-**O Sotto NÃO dá nomes a vozes e ninguém volta a propôr isso.** O objectivo da cadeia de falantes é
-**separar o áudio para transcrever cada falante em separado**; *"quem falava quando"* não é o objectivo e
-o DER **não** é métrica de aceitação. Verbatim: *"quem falava quando nao é importante, cara... sendo que é
-só separar audio pra transcrever cada falante?"*
+**O Sotto NÃO dá NOMES a vozes e ninguém volta a propôr isso.** A ordem de 2026-11-24 é *separar as camadas de áudio e transcrever CADA falante em paralelo* — a **separação → transcrição por voz é o objectivo**, e `worker/speaker_sidecar.py` + `worker/speaker_bridge.py` carimbam `voice:speaker-N` por defecto. O que está PROIBIDO é (1) atribuir NOMES de pessoas e perseguir "quem falava quando" como meta e (2) usar o DER como métrica de aceitação do produto. Cores e rótulos são **slots efémeros** da sessão, não identidades: quando o slot não é resolvível, a interface pinta **uma cor nova** em vez de inventar um nome errado. Verbatim do dono: *"quem falava quando nao é importante, cara... sendo que é só separar audio pra transcrever cada falante?"*
+
+**A IDENTIDADE DE SLOT FOI REFUTADA, NÃO ADIADA** (medido 2026-11-24, `_main/receipt-20261124-per-voice-default.md`): `_main/_slot-cosine-distribution.py` em 120 s da call mede mesma voz **min +0,655** contra vozes diferentes **max +0,743** — intervalo de limiar VAZIO. Não há cosseno que separe as populações com este modelo; por isso não há limiar no código e uma voz esparsa pode ganhar um slot extra (1 voz → 3 slots num fixture de 88 s). O custo é uma cor a mais, nunca um nome mentiroso. Prova viva: `_main/speaker-sidecar-oracle.py`.
 
 ## HARD RULES para qualquer lane
 
@@ -586,7 +594,10 @@ validade - re-correr antes de repetir, e colar os numeros de HOJE.**
 
 A tabela de ficheiros e o que cada um e: **`docs/layout.md`**.
 
-**PIN do `run.cmd --help` (re-measured 2026-11-24, `app\webview\run.cmd --help`):** re-measured 2026-11-24 the output is 9380 B, 144 lines, 144 CRLF / 0 bare LF, rc 0, sha256 `C949E51C0CB062EAEDF40E2012213E5C1CF8B57D18C80B8C0637BC9017EE3946`.
+**PIN do `run.cmd --help` (re-measured 2026-11-25, `app\webview\run.cmd --help`):** re-measured 2026-11-25 the output is 9618 B, 147 lines, 147 CRLF / 0 bare LF, rc 0, sha256 `E59D5E040028E7432361B2634D43EBC27CCABF1F55A2C6F6C7480232EC0C473E`.
+(O `--help` deixou de ensinar o ciclo de quatro passos do Alt+C, que o codigo ja' nao tem: a ordem do
+dono de 2026-11-24 -- *"abrir o da direita apenas em double alt c"* -- e' o que `hotkey_gesture.next_action`
+faz, e o texto do help diz isso mesmo. O portao e' `_main/altc-gesture-oracle.py`; o pin e' este numero.)
 O numero vai **sem asteriscos**: o braco negativo do portao muta o numero com um padrao que exige
 `the output is ` seguido dos digitos. O portao e' `_main/agents-md-pins-oracle.py`: se o `--help` mudar,
 este numero muda, e o gate obriga a re-medir **aqui**.
@@ -641,9 +652,13 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-24):** `_main\_audit-verify-all.cmd` = **420385 B**,
-  **4806 CRLF** / 0 bare LF, sha256 `522BBAD029AAF3BAC9EDC721BF860840BAA64E978438415E057A651A40945479`.
+- **PIN do ficheiro (re-medido 2026-11-25):** `_main\_audit-verify-all.cmd` = **424743 B**,
+  **4854 CRLF** / 0 bare LF, sha256 `9809613718FF0C3CE3F9948B190421BC586C32E17303FB84A04CCB2E2C50F75E`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
+  (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
+  `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
+  `panel-language` entraram depois, tambem em par com o seu `red-as-expected`, e os dois passos
+  do `history-gallery` saíram com o modulo que eles julgavam.)
 
 ## O EOL DO REPO E' UMA REGRA (medido 2026-11-15)
 

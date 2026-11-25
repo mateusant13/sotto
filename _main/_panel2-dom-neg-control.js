@@ -49,7 +49,7 @@ const MUTANTS = [
   {
     name: "the STRIP's pause button opens the dialog again",
     file: 'panel.js',
-    from: "      button.addEventListener('click', () => confirmPause());",
+    from: "      button.addEventListener('click', () => (paused ? resumePipeline() : confirmPause()));",
     to: "      button.addEventListener('click', () => openPauseConfirm(button));",
     arm: "the STRIP's pause button IS the confirmation: one click unloads",
   },

@@ -41,6 +41,8 @@ hook — ou o rato de volta — deixa C11 RED. A prova OS: `_main/ctrlspace-swal
 real num processo filho escondido (`_main/hidden-launch.py`), mede o `HOOKPROC` e retira-o em dois
 chamados (sem pump, para nenhum evento real ficar preso).
 
+**ESCLARECIMENTO DE 2026-11-25 (a excepção é `app/webview/space_swallow.py`, não `worker/space_swallow.py`).** Re-medido nesta árvore: `ls worker/space_swallow.py app/webview/space_swallow.py` → o primeiro **não existe**, o segundo existe. O `RegisterHotKey` das duas teclas (`PANELS_ACCELERATOR = 'Alt+C'`, `LIVE_ACCELERATOR = 'Ctrl+Space'` em `app/webview/hotkey_gesture.py:50-56`) **regista** uma combinação e entrega `WM_HOTKEY`; ele NÃO instala um hook, não vê o input dos outros processos e não engole o espaço. Quem engole o espaço é o `WH_KEYBOARD_LL` do módulo acima, armado só no plano `take` do `gaming_mode` e desmontado com o fio. Logo a lei da ordem 5 continua a ser **zero hooks globais de RATO e nenhum outro input hook fora daquele sítio único e condicional** — e ela mede-se pela ausência no AST da shell (`_main/input-path-oracle.py`, braço C11).
+
 **O QUE SUBSTITUIU O HOOK** (`app/webview/sotto_webview.py`, `OutsideClickWatcher`) — zero eventos de
 input a passar por Python:
 1. **fechar com um clique fora → o FOREGROUND.** `GetForegroundWindow()` a cada **100 ms**, só com o

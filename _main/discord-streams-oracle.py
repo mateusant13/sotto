@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# NO-BUG: instrumento (2026-11-24) que compara o parser de streams do Discord com capturas REAIS gravadas em disco; nao liga ao Discord, nao carrega pesos, nao corrige o produto
 """Known-answer gate for `worker/discord_streams.py` -- per-speaker transcription.
 
 WHY THIS GATE EXISTS

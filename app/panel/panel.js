@@ -470,8 +470,8 @@ let statusSnapshot = { text: '', kind: null };
 // it is declared here, above the init block, because `updateStripState` reads
 // it on every status — and anything the init block can reach is declared above
 // it (the rule the 2026-10-07 TDZ bug bought, see AGENTS.md).
-const REVIVE_HINT = 'click to restart the pipeline (reloads the live engine)';
-const REVIVE_TITLE = 'Restart the pipeline · reloads the live engine';
+const REVIVE_HINT = 'clique para reiniciar a pipeline (recarrega o motor ao vivo)';
+const REVIVE_TITLE = 'Reiniciar a pipeline · recarrega o motor ao vivo';
 //: True between asking the shell for a revive and giving up on an answer. The
 //: SHELL also refuses a second respawn (`REVIVE_REFUSED`); this flag is what
 //: lets the panel say so without a round trip it does not have.
@@ -1052,15 +1052,15 @@ let lastLevelPaint = 0;
 if (!bridge) {
   if (dom.status) dom.status.classList.add('status--error');
   document.body.dataset.state = 'error';
-  if (dom.statusText) dom.statusText.textContent = 'Preload bridge missing · captions are impossible';
+  if (dom.statusText) dom.statusText.textContent = 'Ponte de preload ausente · legendas impossíveis';
   if (dom.placeholder) {
     const noBridgeTitle = dom.placeholder.querySelector('.captions__placeholder-title');
     const noBridgeBody = dom.placeholder.querySelector('.captions__placeholder-body');
-    if (noBridgeTitle) noBridgeTitle.textContent = 'Panel not wired';
+    if (noBridgeTitle) noBridgeTitle.textContent = 'Painel não conectado';
     // The cause, not a sentence (owner, 2026-11-09: *"ZERO frases explicativas"*):
     // the body used to read "window.sotto is undefined. The preload script did not
     // run, so no caption can reach this panel."
-    if (noBridgeBody) noBridgeBody.textContent = 'window.sotto undefined · preload did not run';
+    if (noBridgeBody) noBridgeBody.textContent = 'Falta window.sotto · o preload não rodou';
   }
   setHistoryNote('Transcript unavailable: no bridge');
   /* O OUTRO DESFECHO DO ARRANQUE, nomeado: sem ponte a pagina NAO liga nada,
@@ -1457,13 +1457,6 @@ function renderProvisional(committed, provisional, source, start) {
   // its growing word is held back, and the marker is how the owner knows that.
   if (mark) mark.textContent = provWords.length ? '▍' : '';
   paintedWordsBySource.set(key, { confirmed: confWords, provisional: shownProv, total });
-  // The forming line, whole. The floated caption shows the same sentence the panel
-  // is forming — provisional words included, because that is what the owner is
-  // watching. `meta` is null here: a provisional has no producer yet, and the
-  // overlay keeps the last credits it was given rather than erasing them.
-  if (window.SottoCaptionFloat) {
-    window.SottoCaptionFloat.push((confWords.join(' ') + ' ' + shownProv.join(' ')).trim(), null);
-  }
   // AND FOLLOW, because this is a GROWTH, not an append: the line gets taller
   // while the sentence is still being formed — the exact moment the owner is
   // watching. Following only on creation (above) left the newest words below the
@@ -1701,20 +1694,11 @@ function addCaption(text, reason, meta) {
     // corrected words are never shown next to the ones they correct. It also
     // keeps its ORDINAL: a revision is the same line said better, not a new one.
     const body = existing.querySelector('.caption__text');
-    // S4's per-letter swap, applied EXACTLY as `_main/receipt-20261012-S4.md`
-    // specifies it. The module keeps its own memory per element, so the animation
-    // fires on a producer swap and on a real text change; the `else` branch keeps
-    // the panel correct if the module has not loaded (it is deferred), and a line
-    // with no producer stays plain text.
-    if (window.SottoLetterSwap) {
-      window.SottoLetterSwap.apply(body, null, text, {
-        prevText: existing ? existing.getAttribute('data-text') : null,
-        prevProducer: existing ? existing.getAttribute('data-producer') : null,
-        producer: meta && meta.producer ? String(meta.producer) : null
-      });
-    } else if (body) {
-      body.textContent = text;
-    }
+    // REPLACE IN PLACE, as plain text: `letter-swap.js` is no longer loaded by
+    // `panel.html` (the native overlay is the caption), so the panel's own row is
+    // updated here and nowhere else. The row keeps its position, its timestamp
+    // and its ordinal: a revision is the same line said better, not a new one.
+    if (body) body.textContent = text;
     if (existing && existing.getAttribute && existing.getAttribute('data-text') !== null) {
       existing.setAttribute('data-text', text);
     }
@@ -1786,18 +1770,7 @@ function addCaption(text, reason, meta) {
   updateLiveHint();
   recordHistory(text, reason, meta);
   bridge.captionApplied(text);
-  // ── AND THE FLOATED CAPTION, IF IT IS ON (owner, 2026-10-12) ──────────────
-  // The SAME closed line the panel just painted, with the meta THIS function was
-  // given — which is what carries the producer credits into the overlay
-  // (`caption-float.js` writes `#caption-float-credits` only when a meta arrives).
-  // It belongs here, in the COMMIT path, and not in `renderProvisional`: there the
-  // text is the two word arrays joined and `meta` is null. A copy of this line did
-  // stand in `renderProvisional` and referenced a `text` binding that does not exist
-  // in that scope — a ReferenceError on EVERY forming line, measured by
-  // `_main/_s2-bar-dom-oracle.js` on 2026-10-12. `caption-float.js` ignores a repeat
-  // of the sentence already on screen, so the two push sites cannot fight.
-  if (window.SottoCaptionFloat) window.SottoCaptionFloat.push(text, meta || null);
-  setStatus('Receiving captions', 'live');
+  setStatus('Recebendo legendas', 'live');
   // The frozen skin's own history list gets the same closed line (see `skin-host.js`).
   if (window.SottoSkin && SottoSkin.active) {
     SottoSkin.line({ text, time: clockTime(), via: viaOf({ via: meta && meta.via }) });
@@ -2161,7 +2134,7 @@ function wireHistory() {
         historyRootPath = root;
         if (dom.historyRoot) {
           dom.historyRoot.textContent = '';
-          dom.historyRoot.title = `Open ${root}`;
+          dom.historyRoot.title = `Abrir ${root}`;
         }
       }
       // D1 — WHO writes this feed, as the shell reports it. `null` (today) means
@@ -2239,9 +2212,9 @@ function transcriptNoteText(rows) {
 /** The same sentence, unabbreviated, for the bar's tooltip. */
 function transcriptNoteTitle() {
   return canonicalProducer
-    ? `The canonical transcript is written by ${canonicalProducer}.`
-    : 'Nothing writes the canonical transcript yet: the batch pass (Parakeet Redux) '
-      + 'does not exist on this box, so the live engine\'s lines are refused here by design.';
+    ? `A transcrição canônica é escrita por ${canonicalProducer}.`
+    : 'Nenhum gravador escreve a transcrição canônica ainda: a etapa em lote (Parakeet Redux) '
+      + 'não existe nesta máquina, então as linhas do motor ao vivo são recusadas aqui por projeto.';
 }
 
 /**
@@ -2254,10 +2227,10 @@ function markRevealState() {
   const has = Boolean(selectedEntry);
   dom.revealButton.disabled = !has || !historyApi;
   dom.revealButton.title = has && selectedEntry.path
-    ? `Show ${selectedEntry.path} in the OS file manager`
+    ? `Mostrar ${selectedEntry.path} no gerenciador de arquivos do sistema`
     : has
-      ? 'Show the transcript folder in the OS file manager'
-      : 'Select a transcript line first · this button opens the selected line';
+      ? 'Mostrar a pasta da transcrição no gerenciador de arquivos do sistema'
+      : 'Selecione primeiro uma linha da transcrição · este botão abre a linha selecionada';
 }
 
 /**
@@ -2851,8 +2824,8 @@ function makeRow(entry, hitQuery) {
   const folder = document.createElement('button');
   folder.type = 'button';
   folder.className = 'hist__folder';
-  folder.title = entry.path ? `Show ${entry.path} in folder` : 'Show in folder';
-  folder.setAttribute('aria-label', 'Show in folder');
+  folder.title = entry.path ? `Mostrar ${entry.path} na pasta` : 'Mostrar na pasta';
+  folder.setAttribute('aria-label', 'Mostrar na pasta');
   // D6 — the SAME 16x16 stroke folder as `#reveal-button` in the tools row. This
   // used to be `\u{1F4C1}`, an emoji: its glyph, weight and vertical metrics were
   // whatever Windows' emoji font decided, next to a panel built out of hairline
@@ -3393,7 +3366,7 @@ function applyCaptionScale(next, options) {
  */
 function reportFontScaleState() {
   const percent = Math.round(captionScale * 100);
-  const label = `Caption size: ${percent}%`;
+  const label = `Tamanho da legenda: ${percent}%`;
   const set = (button) => {
     if (!button) return;
     button.title = label;
@@ -3431,8 +3404,8 @@ function applyTransparency(on) {
   if (dom.stripTransparencyButton) {
     dom.stripTransparencyButton.setAttribute('aria-pressed', transparencyOn ? 'true' : 'false');
     dom.stripTransparencyButton.title = transparencyOn
-      ? 'Chrome hidden · captions only. Press again (or use the shell) to bring the controls back.'
-      : 'Transparency: hide the strip chrome and keep only the captions';
+      ? 'Chrome oculto · apenas legendas. Pressione de novo (ou use o shell) para trazer os controles de volta.'
+      : 'Transparência: esconder os controles da faixa e manter apenas as legendas';
   }
   if (bridge && typeof bridge.setTransparency === 'function') {
     try {
@@ -3494,13 +3467,13 @@ function requestCaptionOverlay(on) {
     const result = bridge.setLiveEnabled(Boolean(on));
     if (result && typeof result.then === 'function') {
       result.catch((err) => {
-        setStatus('Caption overlay refused: ' + errorText(err), '');
+        setStatus('Falha na sobreposição de legenda: ' + errorText(err), '');
         // Repaint from the FACT, not from the request: the shell did not do it.
         applyLiveEnabled(captionOverlayIsUp());
       });
     }
   } catch (err) {
-    setStatus('Caption overlay refused: ' + errorText(err), '');
+    setStatus('Falha na sobreposição de legenda: ' + errorText(err), '');
     applyLiveEnabled(captionOverlayIsUp());
   }
   return true;
@@ -3552,8 +3525,8 @@ function watchCaptionWindowState() {
 function paintLiveLamps(on) {
   const state = on ? 'on' : 'off';
   const label = on
-    ? 'Live caption: ON · the live engine is on.'
-    : 'Live caption: OFF · press Alt+C to turn it on.';
+    ? 'Legenda ao vivo: LIGADA · o motor ao vivo está ligado.'
+    : 'Legenda ao vivo: DESLIGADA · pressione Alt+C para ligar.';
   for (const lamp of [dom.liveLamp, dom.stripLiveLamp]) {
     if (!lamp) continue;
     lamp.dataset.live = state;
@@ -3578,17 +3551,17 @@ function applyLiveEnabled(enabled, options) {
     dom.stripLiveButton.dataset.wired = wired ? 'true' : 'false';
     dom.stripLiveButton.title = liveEnabled
       ? (wired
-        ? 'live · the captions are ON SCREEN and the live engine is on. Click to take them off the screen.'
-        : 'live · the captions are ON SCREEN. This shell does not implement setLiveEnabled() yet, so this switch cannot reach the engine.')
+      ? 'ao vivo · as legendas estão NA TELA e o motor ao vivo está ligado. Clique para tirá-las da tela.'
+      : 'ao vivo · as legendas estão NA TELA. Este shell ainda não implementa setLiveEnabled(), então este botão não alcança o motor.')
       : (wired
-        ? 'live is off · the captions are off the screen and the live engine is stopped. Click to bring them back.'
-        : 'live is off · the captions are off the screen. Click to put them ON SCREEN, loose like the .zip demos.');
+        ? 'ao vivo desligado · as legendas estão fora da tela e o motor ao vivo está parado. Clique para trazê-las de volta.'
+        : 'ao vivo desligado · as legendas estão fora da tela. Clique para colocá-las NA TELA, soltas como nas demos .zip.');
   }
   if (dom.stripLiveLabel) {
     // The word is the control's NAME, not its state: it stays "LIVE" (painted
     // red by base CSS) in both states, and the state is carried by aria-pressed
     // plus the title. `updateStripState` is what says "Live off" in the readout.
-    dom.stripLiveLabel.textContent = 'LIVE';
+    dom.stripLiveLabel.textContent = 'ao vivo';
   }
   if (dom.stripLiveButton && !liveEnabled) dom.stripLiveButton.dataset.state = 'off';
   else if (dom.stripLiveButton) delete dom.stripLiveButton.dataset.state;
@@ -3628,27 +3601,27 @@ function updateStripState() {
   let word;
   let state;
   if (paused) {
-    word = 'Paused';
+    word = 'Pausado';
     state = '';
   } else if (!liveEnabled) {
     // THE READOUT SAYS WHAT IS OFF, AND IT IS THE CAPTION. It said 'Live off'
     // until 2026-10-13, which read as "the transcription stopped" while the worker
     // was streaming perfectly — the button's own red/grey pill is where LIVE vs
     // NOT-LIVE is stated, and this word only says the caption is not on screen.
-    word = 'OFF';
+    word = 'DESLIGADO';
     state = '';
   } else if (kind === 'error') {
-    word = 'Error';
+    word = 'Erro';
     state = 'error';
   } else if (kind === 'no-audio') {
     // NOT red and not 'Working': the worker is alive, the endpoint is quiet.
-    word = 'No audio';
+    word = 'Sem áudio';
     state = '';
   } else if (kind === 'live') {
-    word = 'Live';
+    word = 'Ao vivo';
     state = 'live';
   } else {
-    word = statusSnapshot.text ? 'Working' : 'Starting';
+    word = statusSnapshot.text ? 'Trabalhando' : 'Iniciando';
     state = '';
   }
   if (dom.stripWord) dom.stripWord.textContent = word;
@@ -3660,8 +3633,8 @@ function updateStripState() {
   // status and would otherwise erase the one place the strip says that it is
   // clickable.
   dom.stripState.title = (paused
-    ? 'Paused · the engines are unloaded until you resume'
-    : statusSnapshot.text || 'Sotto is starting') + ' · ' + REVIVE_HINT;
+    ? 'Pausado · os motores ficam descarregados até você retomar'
+    : statusSnapshot.text || 'Sotto está iniciando') + ' · ' + REVIVE_HINT;
 }
 
 /** Open the FULL panel. `bridge.setPanelSurface('panel')` resizes in the shell. */
@@ -3684,11 +3657,10 @@ function openFullPanel(reason) {
  * ONE CONTROL, ONE ATTRIBUTE, ONE WINDOW HEIGHT — and since 2026-10-13 that
  * control is `#strip-live-button`, not a button of its own: `applyLiveEnabled`
  * is the only caller, so "live" and "the caption is on the screen" are ONE fact.
- * `body[data-float]` is the attribute; `caption-float.js` owns the overlay's
- * content; the shell owns the window, and the only runtime resize it has is a
- * re-read of `--float-height`/`--strip-height` on `setPanelSurface('strip')` —
- * so the height is raised and lowered THROUGH that call, never by the page
- * touching the window.
+ * `body[data-float]` is the attribute the CSS reads; the caption itself is the
+ * NATIVE overlay and the shell owns both the window and its size. The only page
+ * write left here is the attribute and the ONE strip height, so the fallback CSS
+ * cannot grow the panel or put a second caption on screen.
  *
  * THE STRIP SURFACE IS THE ONLY ONE THAT FLOATS. The panel already shows the
  * caption, so floating it there would hide the panel to show the same words; and
@@ -3697,8 +3669,8 @@ function openFullPanel(reason) {
  * the surface for the same reason — see `applyFloat`.
  *
  * FAILURE MODES, all silent by design: a shell without `setPanelSurface` (a
- * browser, the audit harness) still gets the attribute and the layout, just not
- * the resize; a document with no live button still gets the overlay.
+ * browser, the audit harness) still gets the attribute and the strip height,
+ * just no native overlay; a document with no live button still gets the rows.
  */
 function setStripHeight(value) {
   document.documentElement.style.setProperty('--strip-height', value);
@@ -3709,24 +3681,6 @@ function setStripHeight(value) {
  * The live button is painted by `applyLiveEnabled` from the SAME boolean that
  * drives the overlay, so there is no second state left to paint. */
 
-/**
- * Apply the floated state: the attribute, the button, and the window height.
- * Idempotent — a second call with the same state changes nothing.
- */
-/**
- * THE PANEL'S ONE WRITE INTO THE INDEPENDENT OVERLAY (lane: caption, 2026-10-12).
- * The overlay owns its own state and can be on screen with no panel mounted at all
- * (caption-float.js show()/hide()/setFloat()); this call is how the panel's own button
- * moves it. It is a CALL, never a dependency: a document without the module (an older
- * harness, a browser probe) keeps the attribute and the layout and nothing throws.
- * Returns true when the module took the state.
- */
-function syncCaptionFloat(state) {
-  const api = window.SottoCaptionFloat;
-  if (!api || typeof api.setFloat !== 'function') return false;
-  api.setFloat(state === 'on');
-  return true;
-}
 
 /**
  * THE OWNER'S RULE, 2026-10-17, verbatim — this function used to break it:
@@ -3769,11 +3723,13 @@ function syncCaptionFloat(state) {
  * panel keeps its own dark base (`panel.css:105-127`, THE RENDER PROTECTION) so
  * the window cannot come out white.
  *
- * THE FALLBACK IS WHY THIS IS A BRANCH AND NOT A DELETION. A shell with NO
- * `setLiveEnabled` — a browser probe, `_main/_audit-verify` — has no caption
- * window of its own, so there the page's own overlay IS the caption and the old
- * path is the only way a word reaches the screen. That harness is what
- * `_main/panel-caption-button-probe.mjs` drives, and it must keep working.
+ * THE FALLBACK PAGE OVERLAY IS RETIRED (2026-11-25). A shell with no
+ * `setLiveEnabled` (a browser probe, `_main/panel-caption-button-probe.mjs`) has
+ * no caption window, so there `applyFloat` still writes the attribute and the
+ * strip height, and the panel's own rows remain the only caption. Neither
+ * `caption-float.js`, `caption-float.css` nor `letter-swap.js` is loaded by
+ * `panel.html` any more: pushing words into a module that is never loaded
+ * cannot put anything on anyone's screen.
  */
 function shellOwnsCaptionWindow() {
   return typeof bridge === 'object' && bridge !== null
@@ -3781,9 +3737,9 @@ function shellOwnsCaptionWindow() {
 }
 
 /**
- * Apply the floated state. With a shell that owns a caption window this is a
- * NO-OP by design and by measurement; without one it is the page's own overlay,
- * which is all a browser probe has. Idempotent either way.
+ * Apply the floated state: the attribute and the strip height. A shell that owns
+ * a caption window gets NOTHING from this call — its overlay is the only one.
+ * Idempotent either way.
  */
 function applyFloat(on) {
   if (shellOwnsCaptionWindow()) return;
@@ -3792,7 +3748,6 @@ function applyFloat(on) {
     document.body.setAttribute('data-float', want);
   }
   setStripHeight(STRIP_HEIGHT);
-  syncCaptionFloat(want);
 }
 
 
@@ -3827,9 +3782,9 @@ function applyFloat(on) {
 function paintPauseControls() {
   for (const button of dom.pauseButtons) {
     button.setAttribute('data-paused', paused ? 'true' : 'false');
-    const label = paused ? 'Resume · reload the engines' : 'Pause · unload the engines';
+    const label = paused ? 'Retomar · recarregar os motores' : 'Pausar · descarregar os motores';
     button.title = label;
-    button.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
+    button.setAttribute('aria-label', paused ? 'Retomar' : 'Pausar');
     const svg = button.querySelector('svg');
     if (!svg) continue;
     svg.replaceChildren();
@@ -3916,16 +3871,16 @@ function applyPauseAvailability() {
     // is the honest announcement without making it unreachable.
     button.setAttribute('aria-disabled', wired ? 'false' : 'true');
     button.title = wired
-      ? 'Pause · unload the live and background engines (asks first)'
-      : 'Pause · este shell ainda não consegue pausar';
+      ? 'Pausar · descarrega os motores ao vivo e de fundo (pede confirmação)'
+      : 'Pausar · este shell ainda não consegue pausar';
   }
   if (dom.pauseConfirmButton) {
-    const label = wired ? 'Pause and unload' : 'Pause · not available in this shell yet';
+    const label = wired ? 'Pausar e descarregar' : 'Pausar · ainda não disponível neste shell';
     dom.pauseConfirmButton.textContent = label;
     dom.pauseConfirmButton.disabled = !wired;
     dom.pauseConfirmButton.title = wired
-      ? 'Unload the live and background engines now'
-      : 'This shell has no bridge.pause(), so there is nothing to unload: the panel will not pretend it paused';
+      ? 'Descarregar agora os motores ao vivo e de fundo'
+      : 'Este shell não tem bridge.pause(), então não há nada a descarregar: o painel não vai fingir que pausou';
   }
   if (dom.pauseShellNote) {
     const note = wired
@@ -3993,7 +3948,7 @@ function revivePipeline() {
     // The shell refuses a second respawn in flight too (`REVIVE_REFUSED`).
     // Saying it here as well keeps the panel's own words true with no round
     // trip, and keeps the second click from looking like a broken button.
-    const already = 'Already restarting the pipeline…';
+    const already = 'A pipeline já está reiniciando…';
     setStatus(already, 'busy');
     paintReviveSentence(already);
     return false;
@@ -4003,7 +3958,7 @@ function revivePipeline() {
     // other direction: an absent capability is STATED, never simulated. `busy`
     // and not `error` because nothing has died — this build simply cannot do
     // it, and a red light over a missing function would be a second lie.
-    const missing = 'This shell cannot restart the pipeline (no bridge.revive())';
+    const missing = 'Este shell não consegue reiniciar a pipeline (sem bridge.revive())';
     setStatus(missing, 'busy');
     paintReviveSentence(missing);
     return false;
@@ -4014,12 +3969,12 @@ function revivePipeline() {
   // a CAPTION proves recovery (AGENTS.md makes that law, `panel-exit3-oracle`
   // gates it), so "Worker stopped (exit 3)" is exactly the screen he is looking
   // at when he asks the app to try again.
-  const sentence = 'Restarting the pipeline…';
+  const sentence = 'Reiniciando a pipeline…';
   setStatus(sentence, 'busy');
   paintReviveSentence(sentence);
   // The strip says the same thing in its one word, and `updateStripState` has
   // already cleared `is-error`/`is-live` for a non-error, non-live kind.
-  if (dom.stripWord) dom.stripWord.textContent = 'Restarting';
+  if (dom.stripWord) dom.stripWord.textContent = 'Reiniciando';
   bridge.revive('panel-status');
   // `post` is fire-and-forget and the shell answers on its own thread, so there
   // is no reply to clear the flag with. A ceiling releases it instead: without
@@ -4039,7 +3994,7 @@ function wireRevive() {
     el.setAttribute('tabindex', '0');
     // The footer's title is nobody else's (the strip's is written by
     // `updateStripState`, which appends this same hint).
-    el.title = wired ? REVIVE_TITLE : REVIVE_TITLE + ' · not in this shell yet';
+    el.title = wired ? REVIVE_TITLE : REVIVE_TITLE + ' · ainda não neste shell';
     el.addEventListener('click', () => revivePipeline());
     el.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
@@ -4061,7 +4016,7 @@ function openPauseConfirm(trigger) {
   if (!dom.pauseDialog) {
     // An older shell without the dialog must not lose the capability silently:
     // the panel says what it can do instead of pretending the click worked.
-    setStatus('Pause needs a confirmation dialog this panel does not have', '');
+    setStatus('Pausar precisa de uma janela de confirmação que este painel não tem', '');
     return;
   }
   applyPauseAvailability();
@@ -4078,7 +4033,7 @@ function openPauseConfirm(trigger) {
   // Esta verificacao usa o `disabled` que o `applyPauseAvailability` acabou de pos, portanto
   // nao ha uma segunda copia da verdade sobre o que esta ligado. */
   if (dom.pauseConfirmButton && dom.pauseConfirmButton.disabled) {
-    setStatus('Pause is not available in this build yet', '');
+    setStatus('Pausar ainda não está disponível nesta versão', '');
     return;
   }
   pendingFocusReturn = (trigger && typeof trigger.focus === 'function')
@@ -4126,7 +4081,7 @@ function confirmPause() {
     result = bridge.pause({ reason: 'panel-confirm' });
   } catch (err) {
     closePauseConfirm();
-    setStatus('Pause failed: ' + errorText(err), '');
+    setStatus('Falha ao pausar: ' + errorText(err), '');
     return;
   }
   closePauseConfirm();
@@ -4134,12 +4089,12 @@ function confirmPause() {
     result.then((payload) => {
       const ok = !payload || payload.paused !== false;
       if (!ok) {
-        setStatus('The shell refused to pause', 'error');
+        setStatus('O shell recusou a pausa', 'error');
         return;
       }
       setPaused(true, payload && payload.text ? String(payload.text) : null);
     }).catch((err) => {
-      setStatus('Pause refused: ' + errorText(err), 'error');
+      setStatus('Pausa recusada: ' + errorText(err), 'error');
     });
     return;
   }
@@ -4156,7 +4111,7 @@ function setPaused(value, text) {
   if (dom.panel) dom.panel.classList.toggle('is-paused', paused);
   // The paused state is reported by the strip's one word. `setStatus` below
   // carries it into the snapshot that word reads, so one repaint is enough.
-  if (paused) setStatus(text || 'Paused · engines unloaded', '');
+  if (paused) setStatus(text || 'Pausado · motores descarregados', '');
   updateStripState();
 }
 
@@ -4612,12 +4567,6 @@ function paintLevel() {
     SottoSkin.level(LEVEL.have ? LEVEL.level : 0);
   }
   const bars = document.querySelectorAll('.chrome__meter i');
-  // The floated caption's own meter, fed the SAME smoothed level the five bars use.
-  // One number, every surface: the owner's meter is the meter.
-  if (window.SottoCaptionFloat) {
-    window.SottoCaptionFloat.setMeter(LEVEL.have ? LEVEL.level : 0);
-    window.SottoCaptionFloat.setListening(LEVEL.have);
-  }
   if (!bars.length) return;
   const want = LEVEL.have ? 'live' : 'none';
   if (document.body.dataset.level !== want) document.body.dataset.level = want;
@@ -4735,11 +4684,11 @@ function wireStats() {
       return;
     }
     const bits = [];
-    if (drops !== null && drops > 0) bits.push(`${drops} dropped`);
+    if (drops !== null && drops > 0) bits.push(`${drops} descartadas`);
     if (rate !== null && rate < 1) bits.push(`${rate.toFixed(2)}×`);
-    dom.statsChip.textContent = `behind · ${bits.join(' · ')}`;
-    dom.statsChip.title = 'The live path is not keeping up with real time '
-      + '(queue drops, or a decode rate under 1×). Captions may lag the speaker.';
+    dom.statsChip.textContent = `atrasado · ${bits.join(' · ')}`;
+    dom.statsChip.title = 'O caminho ao vivo não acompanha o tempo real '
+      + '(descartes na fila ou taxa de decodificação abaixo de 1×). As legendas podem atrasar em relação ao falante.';
     dom.statsChip.hidden = false;
   });
 }

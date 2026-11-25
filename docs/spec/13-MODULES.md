@@ -221,7 +221,7 @@ FRACA -- e' a classe de erro que o `10-DEFECTS.md` §D-10 pagou caro para aprend
 ## `app/webview/run-cmd-log-append.py`
 
 - **O que faz** — Acrescenta um recibo ao log do shell a partir do sítio onde o `cmd.exe` não consegue: `open(..., "a")` em vez de `>>`, porque o `>>` do `cmd` leva erro 32 com a app a correr. Aceita `--append-file PATH` (lê o ficheiro e acrescenta o texto, garantindo newline final) e `--line TEXT`, pela ordem em que aparecem. Não imprime nada — corre sob `pythonw.exe`, cujo stdout é `None` — e SAI 0 mesmo quando a escrita falha, porque um recibo perdido não pode transformar um bom arranque num arranque falhado.
-- **Quem o chama** — O `run.cmd` chama-o duas vezes com o interpretador windowless: `"%PYW%" "%HERE%run-cmd-log-append.py" ... --append-file "%REFUSAL%" --line "sotto: PREFLIGHT_REFUSED ..."` (`[CODE] app/webview/run.cmd:268`) e a variante `--line "sotto: HANG rc=4 by=run.cmd-readiness"` (`[CODE] app/webview/run.cmd:318`). Não é importado por nenhum módulo Python.
+- **Quem o chama** — O `run.cmd` chama-o duas vezes com o interpretador windowless: `"%PYW%" "%HERE%run-cmd-log-append.py" ... --append-file "%REFUSAL%" --line "sotto: PREFLIGHT_REFUSED ..."` (`[CODE] app/webview/run.cmd:232`) e a variante `--line "sotto: HANG rc=4 by=run.cmd-readiness"` (`[CODE] app/webview/run.cmd:282`). Não é importado por nenhum módulo Python.
 - **O que escreve/lê** — Escreve no ficheiro de log cujo caminho é o primeiro argumento (`_main/webview-run.log`, na chamada do `run.cmd`), em UTF-8 e modo append; lê o ficheiro indicado por `--append-file`. Erros vão para `stderr` com o prefixo `run-cmd-log-append:` — que sob `pythonw` não vai a lado nenhum.
 - **Quando falha** — Sem argumentos → `return 2`; argumento desconhecido → `return 2` (`[CODE] app/webview/run-cmd-log-append.py:65`); ficheiro de `--append-file` ilegível → mensagem em stderr e esse pedaço é omitido; falha ao abrir o log para append → mensagem em stderr e `return 0` (`[CODE] app/webview/run-cmd-log-append.py:74`). Sem texto nenhum → `return 0` sem tocar no ficheiro.
 - **Evidência** — `[CODE] app/webview/run-cmd-log-append.py:45` (`def main`); `[CODE] app/webview/run-cmd-log-append.py:68` (o ramo sem texto); `[CODE] app/webview/run-cmd-log-append.py:75` (`return 0` depois de falhar a escrita).
@@ -541,6 +541,13 @@ bloco.
   (`is_foreign_script_caption(text)`), `[CODE] worker/engine_policy.py:372`
   (chamada real).
 
+## `worker/capture_share.py`
+
+- **O que faz** — Publica o bloco PCM 16 kHz mono float32 que o worker JÁ entregou à ASR (loopback + micro misturados por `mic_tap`) para um único leitor local, o `speaker_sidecar`. Um segundo cliente recebe `BUSY`; a fila é limitada a `QUEUE_BLOCKS` e o que transborda é CONTADO em `CAPTURE_SHARE_DROP dropped=N`, nunca silenciosamente; sem cliente, `publish()` é um bool e não copia nada. O sidecar tem 2 s para ligar e, se falhar, abre o seu próprio tap com `CAPTURE_SHARE fallback reason=<...>`.
+- **Quem o chama** — `worker/sotto_worker.py:8102-8110` cria e arranca o `Publisher` no arranque da captura, e `sotto_worker.py:8609-8610` publica cada bloco no limite do ASR; `worker/speaker_sidecar.py:1811-1844` chama `connect_client` ANTES de enumerar endpoints e só cai para o tap local no fallback. Produção, sem dispositivo novo no sidecar quando a ligação serve.
+- **O que escreve/lê** — Socket TCP loopback (`HOST = 127.0.0.1`, `DEFAULT_PORT = 47913`, `SOTTO_CAPTURE_SHARE_PORT`), desligado por `SOTTO_CAPTURE_SHARE=0`. Wire: `uint32` little-endian com a contagem de bytes + os bytes float32, sem negociação de formato. Tags: `CAPTURE_SHARE client=connected from=worker`, `client=disconnected reason=...`, `CAPTURE_SHARE_DROP dropped=...`, `CAPTURE_SHARE fallback reason=...`. Não escreve ficheiros nem mexe em volume/endpoint.
+- **Quando falha** — Segundo cliente é recusado sem matar o primeiro; cliente lento derruba o bloco NOVO e conta; handshake que expira nomeia `handshake-timeout`; transporte indisponível nomeia `unavailable`/`no-publisher` e o sidecar continua com o tap local. O ASR nunca espera por socket, consumidor ou lock do emissor.
+- **Evidência** — `[CODE] worker/sotto_worker.py:8104` (import e `Publisher`), `[CODE] worker/sotto_worker.py:8609` (`publish(block)`), `[CODE] worker/speaker_sidecar.py:1814` (`connect_client`). `[MEASURED]` 2026-11-25: `python _main/capture-share-oracle.py` → `CAPTURE SHARE VERDICT: PASS (8/8 arms)`, com `worker_taps=1 worker_mics=1 sidecar_taps=0`; `--neg-arm` apanha os 8 mutantes, incluindo o estranho que despe o leitor e o stop ordenado tratado como falha. O módulo é novo nesta árvore e ainda não está no índice do git; por isso as citações com número de linha apontam para os chamadores versionados.
 ## `worker/denoise.py`
 
 - **O que faz** — Portão espectral causal e streaming (STFT frame 512 / hop 256,
@@ -549,24 +556,33 @@ bloco.
   devolve o mesmo comprimento e dtype, com 16 ms de latência e sem NaN.
   `denoise_decision(cfg)` lê a chave TOP-LEVEL `use_denoise` e recusa valores
   ambíguos como `refused(<valor>)`.
-- **Quem o chama** — Ninguém no produto. Grep por
-  `denoise|SpectralGate|denoise_from_config|use_denoise` em
-  `worker/sotto_worker.py`, `worker/engine_*.py`, `worker/redux_*.py` e `app/`
-  não devolve nenhum import nem chamada — **NÃO está no caminho de produção**, ao
-  contrário do que o comentário `_comment_use_denoise` de `config.json` afirma
-  ("ONE call site inside StreamAsr.run_chunk"). Os únicos pontos de entrada são
-  `main()` (`--selftest`, `--wav`) e `measure_wav`.
+- **Quem o chama** — **UM chamador de produção desde 2026-11-25**: `StreamAsr.run_chunk`
+  resolve a gate uma vez por stream e chama `self.denoiser.process(pcm_chunk)` depois
+  do gate fala/música e antes da janela mel/VAD (`worker/sotto_worker.py:2574-2585`).
+  A afirmação antiga ("ninguém no produto", `config.json` a mentir) está RETIRADA.
+  `main()` (`--selftest`, `--wav`) e `measure_wav` continuam como entradas de instrumento.
 - **O que escreve/lê** — Nenhum ficheiro por omissão; `--wav/--out` escreve um
   WAV de 16 kHz (`subtype="FLOAT"`). Lê o dict de configuração em memória; a
-  chave enviada está em `worker/config.json:27` (`"use_denoise": false`).
+  chave TOP-LEVEL está em `worker/config.json:29` (`"use_denoise": false`).
 - **Quando falha** — `denoise_decision` nunca levanta: devolve
   `(False, "refused(%r)")` para qualquer coisa que não seja booleano/string
   reconhecida. `SpectralGate.__init__` levanta `ValueError` para geometria
   inválida (`frame < 8`, `hop < 1`, `hop > frame`). `process` não levanta para
   entrada vazia (devolve cópia).
 - **Evidência** — `[CODE] worker/denoise.py:305` (`def denoise_decision`),
-  `[CODE] worker/denoise.py:605` (`if a.wav:`), `[CODE] worker/config.json:27`
-  (`"use_denoise": false`).
+  `[CODE] worker/denoise.py:605` (`if a.wav:`), `[CODE] worker/config.json:29`
+  (`"use_denoise": false`), `[CODE] worker/sotto_worker.py:2584` (`process(pcm_chunk)`,
+  o único chamador). `[MEASURED]` 2026-11-25: `python _main/config-truth-oracle.py` →
+  `VERDICT: PASS`, com falso byte-idêntico ao módulo desligado (35 840 B) e verdade
+  a mudar o PCM (`max|delta|=0.079018` em 8 960 amostras).
+
+## `worker/discord_streams.py`
+
+- **O que faz** — A divisão EXACTA por participante, quando o dono a pede: o SFU do Discord entrega um stream Opus por user (`SSRC` → id pelo opcode `SPEAKING`) e o receptor já escreve PCM 16 kHz mono por `<user_id>`. Este worker segue essa árvore, segmenta cada falante de forma independente (`redux_live.LiveSegmenter`), decodifica todos num único motor e emite a mesma JSONL que a shell consome, com `source="discord/voice:speaker-<n>"` e os campos `speaker`/`speakerId` que o painel já pinta `[CODE] worker/discord_streams.py:12,49,501`. Timestamps vêm do índice de pacotes e partilham o `started_at_ms` mais antigo da árvore, porque um falante silencioso não envia pacotes — concatenar amostras e dividir por 16 kHz faria o badge derivar minutos.
+- **Quem o chama** — É um worker autónomo com `main()`/`build_parser()` `[CODE] worker/discord_streams.py:603,640`; nenhum outro módulo de produto o importa. Não substitui o `sotto_worker.py --speakers`, que continua a rotular o stream MISTO via sidecar.
+- **O que escreve/lê** — Lê `<pcm-dir>/<user_id>/*.pcm` e o `.jsonl` de índice de pacotes; escreve só JSONL no stdout e, opcionalmente, um mapa de nomes para exibição (`--names`, `load_names`). Nomes são rótulos de interface, não identidades inferidas: a regra da casa proíbe nomes automáticos.
+- **Quando falha** — Sem árvore PCM não há linhas; um segmento inválido é ignorado e os restantes falantes continuam. Um `--names` ausente não impede a emissão: o `source` com `speaker-<n>` chega na mesma.
+- **Evidência** — `[CODE] worker/discord_streams.py:49` (`source="discord/voice:speaker-<n>"`), `[CODE] worker/discord_streams.py:126` (`class PacketIndex`), `[CODE] worker/discord_streams.py:640` (`def main`). Alternativa REFUTADA por medição: MossFormer2_SS_16K sobre 60 s da call custou **1335,107 s (RTF 22,25)** e pôs 210 palavras num stream e 2 no outro (`_main/receipt-20261124-per-voice-default.md`); exige token/convite, logo NUNCA a rota por omissão.
 
 ## `worker/inspect_model.py`
 
@@ -615,6 +631,14 @@ bloco.
 - **Evidência** — `[CODE] worker/lang_prompt.py:221` (`def resolve_lang_id`),
   `[CODE] worker/lang_prompt.py:55` (`ENV_VAR = "SOTTO_LANG_ID"`),
   `[CODE] worker/sotto_worker.py:6969` (`err(f"FATAL lang-id: {exc}")`).
+
+## `worker/mic_tap.py`
+
+- **O que faz** — Abre o microfone que o PRÓPRIO Windows aponta como default de captura e mistura o áudio dele no stream do loopback, à mesma taxa, antes da ASR e do diarizador. A escolha é por API (`query_devices(kind="input")`), filtrando só o que não pode ser microfone (`NOT_A_MICROPHONE`: cabo virtual, Sound Mapper, Primary Capture Driver, Stereo Mix) — nenhum nome de marca, modelo ou índice. Ganho constante `LOOPBACK_GAIN = MIC_GAIN = 0.75`, `TARGET_SR = 16000`, backlog limitado a `MIC_BACKLOG_S = 10.0` com queda contada; sem microfone o tap original volta INTACTO `[CODE] worker/mic_tap.py:35,40,46-52`.
+- **Quem o chama** — `LoopbackTap()` no worker envolve os três rungs que abrem dispositivo com `mic_tap.open_stream` — ProcessLoopbackTap em `sotto_worker.py:4956-4968`, WASAPI loopback em `:4988-4996` e `_PortAudioTap` em `:4997-5004` — e cada rung imprime `MIC_CAPTURE` `[CODE] worker/sotto_worker.py:4966,4994,5002`. O sidecar standalone usa o mesmo módulo por `_tap_for`.
+- **O que escreve/lê** — Nenhum ficheiro, nenhuma env var de config; lê a lista de dispositivos do SO e o fluxo de captura. Com falha/permissão negada imprime `MIC_SILENT device=... reason=...` uma vez e continua o loopback. Não altera default de áudio, volume nem endpoint — a regra da casa para o áudio do dono.
+- **Quando falha** — `pick_microphone` devolve `None` e `open_stream` entrega o tap simples; um micro que só entrega zeros é nomeado uma vez e não desliga a transcrição do outro lado da chamada. O mixer nunca escreve no buffer do loopback e carrega o resíduo do micro para o bloco seguinte.
+- **Evidência** — `[CODE] worker/mic_tap.py:64` (`def pick_microphone`), `[CODE] worker/mic_tap.py:240` (`class ConversationTap`), `[CODE] worker/mic_tap.py:378` (`def open_stream`). Bateria `mic_battery` de `_main/speaker-sidecar-oracle.py` (15 braços com `sounddevice` e taps falsos, nenhum dispositivo real aberto) e os mutantes nomeados em `AGENTS.md` §"POR VOZ E' O DEFAULT"; em 2026-11-25 o oráculo de captura partilhada confirmou `worker_taps=1 worker_mics=1`.
 
 ## `worker/ort_cuda_runtime.py`
 
@@ -671,28 +695,11 @@ bloco.
 
 ## `worker/punctuation_model.py`
 
-- **O que faz** — Restaurador de pontuação opcional (sherpa-onnx
-  `online-punct-en`, int8, CPU, 1 fio). Aplica uma guarda de língua obrigatória:
-  só corre quando a tag começa por `en`; caso contrário `punctuate()` devolve o
-  texto intacto. Depois do modelo, filtra as marcas: `?`/`!` a meio são
-  removidos, `?`/`!` finais viram `.`, e uma vírgula final é apagada.
-- **Quem o chama** — `sotto_worker.py:133` (import de topo), `1588`
-  (`punctuation_model.set_lang(self.lang_tag)`), `5353`
-  (`text = punctuation_model.punctuate(text)` na emissão de legenda), `7117-7118`
-  (`supported_lang(...)` → `load()`) e `7136` (`punct_model=punctuation_model.log_line()`
-  no status de boot). Produção.
-- **O que escreve/lê** — Lê `worker/models/punct-en/model.int8.onnx` e
-  `bpe.vocab`; env `SOTTO_PUNCT_MODEL` (`0` desliga). Não escreve ficheiros;
-  produz a linha `PUNCT_MODEL active=... loaded=... reason=... lang=...` dentro do
-  campo `punct_model` do evento de status.
-- **Quando falha** — `punctuate` é sempre seguro: sem modelo, sem pacote, com
-  língua errada ou com o motor a levantar, devolve a mesma string. `load()`
-  devolve `None` e grava o motivo em `status()` (`disabled-by-env`,
-  `model-absent`, `package-absent (...)`, `load-failed (...)`). O worker carrega
-  no boot apenas se `supported_lang(current_lang())`.
-- **Evidência** — `[CODE] worker/punctuation_model.py:218` (`def punctuate`),
-  `[CODE] worker/punctuation_model.py:133` (guarda `== "en"`),
-  `[CODE] worker/sotto_worker.py:5353` (chamada na legenda).
+- **O que faz** — Restaurador de pontuação opcional (sherpa-onnx `online-punct-en`, int8). **Desde 2026-11-25 pede CPU POR NOME** (`PROVIDER = "cpu"`, `THREADS = 1`) e recusa `cuda` por nome, como o diarizador: a API instalada não atesta colocação nem desliga fallback silencioso `[CODE] worker/punctuation_model.py:77,79`. Aplica guarda de língua obrigatória: só corre quando a tag começa por `en`; caso contrário `punctuate()` devolve o texto intacto `[CODE] worker/punctuation_model.py:135` (`supported_lang`) e `:295-297` (a recusa dentro de `punctuate`). Depois do modelo, `?`/`!` a meio são removidos, `?`/`!` finais viram `.` e uma vírgula final é apagada.
+- **Quem o chama** — `sotto_worker.py:167` (import), `:1991` (`set_lang(self.lang_tag)`), `:5926` (`punctuate(text)` na emissão de legenda), `:7723-7724` (`supported_lang(...)` → `load()` no boot) e `:7745` (`log_line()` no status). Produção; a metade sem modelo (`punctuation_prosody.py`) continua sem chamador.
+- **O que escreve/lê** — Lê `worker/models/punct-en/model.int8.onnx` e `bpe.vocab`; env `SOTTO_PUNCT_MODEL` (`0` desliga) `[CODE] worker/punctuation_model.py:90`. Não escreve ficheiros; produz a linha `PUNCT_MODEL active=... loaded=... reason=... lang=...` dentro do campo `punct_model` do evento de status.
+- **Quando falha** — `punctuate` é sempre seguro: sem modelo, sem pacote, com língua errada ou com o motor a levantar, devolve a mesma string. `load()` devolve `None` e grava o motivo em `status()` (`disabled-by-env`, `model-absent`, `package-absent (...)`, `load-failed (...)`, `provider-cuda-refused`). O worker carrega no boot apenas se `supported_lang(current_lang())`.
+- **Evidência** — `[CODE] worker/punctuation_model.py:195` (`def load`), `[CODE] worker/punctuation_model.py:256` (`def status`), `[CODE] worker/sotto_worker.py:5926` (chamada na legenda). `[MEASURED]` 2026-11-25: `python _main/punctuation-oracle.py` → `5/5 arms green`, `VERDICT: PASS`, com os braços `provider-cpu`, `lang-pt-skip`, `model-absent`, `env-off` e `cuda-refused`; nenhum peso carregado (native falso).
 
 ## `worker/punctuation_prosody.py`
 
@@ -954,13 +961,9 @@ bloco.
 - **Quando falha** — `%` malformado fica literal (não apaga o campo); um carácter não-ASCII ao lado de um escape faz `percentDecode` lançar, e `decodeContext` apanha e **omite** o campo; letra desconhecida é ignorada; URL não-http(s) devolve `''`; um campo que não cabe no orçamento é truncado por code point e os seguintes são descartados. Sem logs.
 - **Evidência** — `[CODE] app/panel/history-context-store.js:59` (`const VERSION = 'ctx1';`), `[CODE] app/panel/history-context-store.js:110` (`function percentDecode(value) {`), `[CODE] app/panel/history-context-store.js:290` (`module.exports = {`).
 
-## `app/panel/history-gallery.js`
+## `app/panel/history-gallery.js` — REMOVIDO (2026-11-25)
 
-- **O que faz** — Agrupamento puro por dia e por hora (chaves em hora **local**, construídas a partir de `date`+`time` separados, nunca de uma string concatenada) e selecção por janela (`24h` e `1h`) terminando em `now`; devolve `{days, total, skipped}` e recusa entradas no futuro.
-- **Quem o chama** — **Nada em `app/panel`**: `panel.html` não tem `<script src="history-gallery.js">` e nenhum ficheiro do painel referencia `SottoHistoryGallery`. O módulo exporta-se para `window` (linha 191) e para `module.exports` (linha 190) e é consumido pelo oráculo `_main/history-gallery-oracle.js` e pelo harness `_main/_audit-render/make-harness.py:37`. O próprio `panel.js` regista que a galeria foi removida do painel: «the markup, the counters, the pick state and the module that bucketed the entries» (`panel.js:2530-2534`).
-- **O que escreve/lê** — Nada: sem DOM, sem ficheiros, sem logs, sem estado global mutável (`RANGES` é constante).
-- **Quando falha** — Uma entrada cujo `date`/`time` não casa com os regex (ou produz `Invalid Date`) é **descartada e contada** em `skipped`, não cai em «hoje»; `inRange` devolve falso para `range` desconhecido e para `age < 0` (carimbo futuro); `select`/`pick` mantêm a ordem decrescente e devolvem `0` quando um dos carimbos é ilegível (não reordenam ao acaso).
-- **Evidência** — `[CODE] app/panel/history-gallery.js:41` (`const RANGES = [`), `[CODE] app/panel/history-gallery.js:93` (`function buckets(entries) {`), `[CODE] app/panel/history-gallery.js:191` (`window.SottoHistoryGallery = SottoHistoryGallery;`).
+O modulo da galeria dia/hora foi apagado neste commit: a S4 ja tinha tirado do painel o markup, os contadores, o estado de escolha e o modulo que agrupava as entradas (`app/panel/panel.js` regista-o), e `_main/_panel2-dom-probe.js` ARM G asserta que o `#history-gallery` esta AUSENTE do documento servido. Sem chamador em `app/panel`, so o proprio ficheiro e o oraculo que o julgava se referenciavam; os dois sairam juntos, com os seus dois passos da bateria. O historico do painel nao perdeu nada: a lista e o scroll vivem em `app/panel/panel.js` (`renderFeed`, `pinHistoryToBottom`).
 
 ## `app/panel/lazy-assets.js`
 

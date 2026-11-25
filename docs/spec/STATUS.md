@@ -106,3 +106,11 @@ frase diz. Duas frases passavam o portão e estavam erradas, e as duas foram cor
   continua a valer (`live-code-freshness-oracle --strict`).
 - Os `[UNKNOWN]` de cada documento continuam abertos. Um `[UNKNOWN]` é uma resposta, não uma dívida
   escondida: cada um diz o que o fecharia.
+
+## Actualização 2026-11-25 — auditoria de docs contra o código
+
+O selo de 2026-11-15 continuava a descrever quatro contratos que o código já tinha mudado. Nesta data, com o código como árbitro: `Alt+C` passou a double dentro de `DOUBLE_TAP_S = 0,40 s` (`docs/hotkey-gestos.md`, `docs/spec/08-PANELS-UX.md`); a retoma do fundo perdeu o piso de 45 s e ficou com duas guardas (`docs/worker-lifecycle.md`); o único hook de teclado é `app/webview/space_swallow.py`, não um ficheiro em `worker/` (`docs/mouse-e-input.md`); e "separar por voz" É o objectivo, mas nomes/DER não são métrica (`AGENTS.md` §PREMISSAS PROIBIDAS).
+
+`13-MODULES.md` ganhou os blocos que faltavam — `worker/mic_tap.py`, `worker/discord_streams.py` e `worker/capture_share.py` — e corrigiu o bloco de `worker/denoise.py`, que dizia "ninguém no produto" quando o chamador real é `StreamAsr.run_chunk`. `[MEASURED]` 2026-11-25: `python _main/spec-coverage-oracle.py` → `SPEC-COVERAGE docs=16 ausentes=0 nome_apenas=0 classes_sem_seccao=0`, `SPEC-COVERAGE VERDICT: PASS`; `python _main/agents-md-pins-oracle.py` → `VERDICT: PASS`; `python _main/altc-gesture-oracle.py` → `arms=104 pass=104 fail=0`.
+
+`_main/spec-citations-oracle.py` continua **FAIL por 15 citações fora de alcance anteriores a esta onda** (documentos antigos citam linhas do `run.cmd` além do fim do ficheiro; os números não são repetidos aqui para não criar nova citação inválida). Não são introduzidas aqui: a contagem de citações subiu de 1 704 para 1 732 e `index_ausente=0`, `sem_ficheiro=0`. **CANNOT-MEASURE** nesta atribuição: a linha pretendida nesses documentos foi reescrita noutro momento e ninguém sabe qual era o texto original; corrigi-las é trabalho de outro slice.

@@ -3427,6 +3427,33 @@ def dpi_scale() -> float:
 MONITOR_DEFAULTTONEAREST = 0x00000002
 
 
+_SHCORE = None
+
+
+def _shcore():
+    """`shcore` loaded ONCE, with the prototype set once.
+
+    MEASURED 2026-11-25 (reviewer finding): `_monitor_scale` runs on the caption
+    path, which asks for geometry up to 240 times a second, and it built a fresh
+    `ctypes.WinDLL('shcore')` -- a LoadLibrary plus three argtype assignments --
+    on every call. The library is process-wide and its prototype never changes,
+    so it is loaded lazily and kept. `None` means "this Windows has no shcore",
+    which is also a fact worth caching once.
+    """
+    global _SHCORE
+    if _SHCORE is None:
+        try:
+            lib = ctypes.WinDLL('shcore', use_last_error=True)
+            lib.GetDpiForMonitor.argtypes = [
+                ctypes.c_void_p, ctypes.c_int,
+                ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+            lib.GetDpiForMonitor.restype = ctypes.c_long
+            _SHCORE = lib
+        except Exception:  # noqa: BLE001
+            _SHCORE = False          # tried, unavailable; do not retry per frame
+    return _SHCORE or None
+
+
 def _monitor_scale(handle) -> float:
     """Per-monitor DPI, falling back to the process DPI when shcore refuses.
 
@@ -3437,86 +3464,285 @@ def _monitor_scale(handle) -> float:
     and "em diferentes monitores faria pior ainda"; this is that defect.
     """
     try:
-        shcore = ctypes.WinDLL('shcore', use_last_error=True)
-        shcore.GetDpiForMonitor.argtypes = [
-            ctypes.c_void_p, ctypes.c_int,
-            ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
-        shcore.GetDpiForMonitor.restype = ctypes.c_long
-        dx = ctypes.c_uint(0)
-        dy = ctypes.c_uint(0)
-        if shcore.GetDpiForMonitor(handle, 0, ctypes.byref(dx),
-                                   ctypes.byref(dy)) == 0 and dx.value:
-            return dx.value / 96.0
+        shcore = _shcore()
+        if shcore is not None:
+            dx = ctypes.c_uint(0)
+            dy = ctypes.c_uint(0)
+            if shcore.GetDpiForMonitor(handle, 0, ctypes.byref(dx),
+                                       ctypes.byref(dy)) == 0 and dx.value:
+                return dx.value / 96.0
     except Exception:  # noqa: BLE001
         pass
     return dpi_scale()
 
 
-def _display_for_monitor(handle) -> dict:
+def _selection_monitor(handle) -> dict:
+    """One monitor in BOTH coordinate spaces: physical (selection) and DIP (layout).
+
+    Win32 reports the virtual screen in PHYSICAL pixels, with negative x for a
+    monitor left of the primary. `_display_for_monitor` divides by THIS
+    monitor's scale to get the DIP rect WebView2 uses; `MonitorFromPoint`
+    compares against the raw rect. Keeping both views of the same monitor is
+    what lets selection stay pure without scaling any number twice.
+    """
     mi = MONITORINFO()
     mi.cbSize = ctypes.sizeof(MONITORINFO)
     if not user32.GetMonitorInfoW(handle, ctypes.byref(mi)):
         raise ctypes.WinError(ctypes.get_last_error())
     scale = _monitor_scale(handle)
 
-    def as_rect(r):
-        return {
-            'x': round(r.left / scale),
-            'y': round(r.top / scale),
-            'width': round((r.right - r.left) / scale),
-            'height': round((r.bottom - r.top) / scale),
-        }
+    def physical(r):
+        return {'x': int(r.left), 'y': int(r.top),
+                'width': int(r.right - r.left),
+                'height': int(r.bottom - r.top)}
+
+    def dip(r):
+        return {'x': round(r.left / scale), 'y': round(r.top / scale),
+                'width': round((r.right - r.left) / scale),
+                'height': round((r.bottom - r.top) / scale)}
 
     return {
         'handle': handle,
-        'bounds': as_rect(mi.rcMonitor),
-        'workArea': as_rect(mi.rcWork),
         'scaleFactor': scale,
+        'bounds': physical(mi.rcMonitor),
+        'workArea': physical(mi.rcWork),
+        'display': {
+            'handle': handle,
+            'bounds': dip(mi.rcMonitor),
+            'workArea': dip(mi.rcWork),
+            'scaleFactor': scale,
+        },
     }
 
 
+def _display_for_monitor(handle) -> dict:
+    """The Electron-shaped DIP view of one monitor (one GetMonitorInfo source)."""
+    return _selection_monitor(handle)['display']
+
+
 def primary_display() -> dict:
-    """Primary display bounds + work area, in DIP, the shape Electron reports."""
+    """Primary display bounds + work area, in DIP, the shape Electron reports.
+
+    Kept ONLY for the docked panel's startup geometry (`compute_geometry`) and
+    as the last-resort fallback when no monitor can be probed. The strip and
+    overlay choose their monitor in `select_display_for_point`, never here.
+    """
     handle = user32.MonitorFromPoint(POINT(0, 0), MONITOR_DEFAULTTOPRIMARY)
     return _display_for_monitor(handle)
 
 
-def target_display() -> dict:
-    """The monitor the OWNER is looking at: the one under the mouse pointer.
+def select_display_for_point(point, monitors, primary_index=0, geometry=None):
+    """PURE: which monitor owns `point`, and a rect clamped to ITS work area.
 
-    Alt+C is pressed while looking at a screen, and the panel belongs on THAT
-    screen. The old code always used `MonitorFromPoint(POINT(0,0))`, i.e. the
-    primary monitor, so on a multi-monitor desk every panel opened on the
-    primary no matter where the owner was.
+    `point` is a PHYSICAL virtual-screen `(x, y)` (negative x is a monitor to
+    the LEFT of the primary, as Win32 reports it). `monitors` is a sequence of
+    dicts with physical `bounds` / `workArea` rects (`x`,`y`,`width`,`height`)
+    and a `scaleFactor` (physical px per DIP); `primary_index` names the
+    fallback. Selection mirrors `MonitorFromPoint`: containment first,
+    MONITOR_DEFAULTTONEAREST when no monitor contains the point, then primary
+    when there is nothing to choose from (including an empty monitor list).
+
+    `geometry`, when given, is a requested rect in DIP. It is converted to
+    PHYSICAL ONCE (multiply by the chosen monitor's scale), clamped into that
+    monitor's WORK AREA -- never its full bounds -- and converted back to DIP
+    ONCE. Extra keys of an input dict (`workX`, `docked`, `surface`, ...) travel
+    with it. No Win32 call, no file, no shell state: an oracle can own this.
     """
-    # First the monitor of the FOREGROUND window: Alt+C is pressed while the
-    # owner is watching/using another app, and that app's screen is the target.
-    # When Sotto itself is foreground, fall back to the mouse, then primary.
+    def num(value, default=0.0):
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return default
+        return v if v == v and abs(v) != float('inf') else default
+
+    def rect(shape):
+        shape = shape if isinstance(shape, dict) else {}
+        return (num(shape.get('x')), num(shape.get('y')),
+                max(0.0, num(shape.get('width'))),
+                max(0.0, num(shape.get('height'))))
+
+    items = list(monitors) if monitors else []
+    xy = None
+    if isinstance(point, dict):
+        xy = (num(point.get('x')), num(point.get('y')))
+    else:
+        try:
+            xy = (num(point[0]), num(point[1]))
+        except (TypeError, ValueError, IndexError, KeyError):
+            xy = None
+
+    index, reason, best = None, 'primary', None
+    primary = int(num(primary_index, 0))
+    if items:
+        for idx, mon in enumerate(items):
+            x, y, w, h = rect(mon.get('bounds'))
+            if xy is not None and x <= xy[0] < x + w and y <= xy[1] < y + h:
+                index, reason = idx, 'point'
+                break
+            if xy is None:
+                continue
+            dx = max(x - xy[0], 0.0, xy[0] - (x + w))
+            dy = max(y - xy[1], 0.0, xy[1] - (y + h))
+            dist = dx * dx + dy * dy
+            if best is None or dist < best[0]:
+                best = (dist, idx)
+        if index is None:
+            if best is not None:
+                index, reason = best[1], 'nearest'
+            else:
+                # NO POINT AT ALL (a probe that failed) is the one case that
+                # asks the caller's question: "which monitor is primary".
+                index = primary if 0 <= primary < len(items) else 0
+                reason = 'primary'
+
+    chosen = None
+    if index is not None and 0 <= index < len(items):
+        chosen = items[index]
+    else:
+        index = None
+
+    display = chosen.get('display') if isinstance(chosen, dict) else None
+    if display is None and chosen is not None:
+        scale = num(chosen.get('scaleFactor'), 1.0)
+        scale = scale if scale > 0 else 1.0
+
+        def as_dip(shape):
+            x, y, w, h = rect(shape)
+            # A DIP EXTENT IS NEVER ZERO: at 400 % DPI a one-physical-pixel
+            # work area rounds to 0, and a 0x0 window is not a window. The
+            # clamp is on the EXTENT only; the origin keeps its own rounding.
+            return {'x': round(x / scale), 'y': round(y / scale),
+                    'width': max(1, round(w / scale)),
+                    'height': max(1, round(h / scale))}
+
+        display = {
+            'handle': chosen.get('handle'),
+            'bounds': as_dip(chosen.get('bounds')),
+            'workArea': as_dip(chosen.get('workArea')),
+            'scaleFactor': scale,
+        }
+    work = display.get('workArea') if isinstance(display, dict) else None
+
+    clamped = None
+    if geometry is not None and chosen is not None:
+        scale = num(chosen.get('scaleFactor'), 1.0)
+        scale = scale if scale > 0 else 1.0
+        wx, wy, ww, wh = rect(chosen.get('workArea'))
+        if ww > 0 and wh > 0:
+            gx, gy, gw, gh = rect(geometry)
+            # ONE multiply, ONE clamp in physical space, ONE divide back.
+            px = gx * scale
+            py = gy * scale
+            pw = min(max(1.0, gw * scale), ww)
+            ph = min(max(1.0, gh * scale), wh)
+            px = max(wx, min(px, wx + ww - pw))
+            py = max(wy, min(py, wy + wh - ph))
+            clamped = dict(geometry) if isinstance(geometry, dict) else {}
+            clamped['x'] = round(px / scale)
+            clamped['y'] = round(py / scale)
+            clamped['width'] = round(pw / scale)
+            clamped['height'] = round(ph / scale)
+
+    return {
+        'index': index, 'reason': reason, 'point': xy,
+        'monitors': items, 'primaryIndex': primary_index,
+        'monitor': chosen, 'display': display,
+        'workArea': work, 'geometry': clamped,
+    }
+
+
+def _selection_monitors_and_primary():
+    """Win32 -> the PURE selector's inputs: all monitors + primary's index."""
+    cb_type = ctypes.WINFUNCTYPE(wt.BOOL, wt.HMONITOR, wt.HDC,
+                                 ctypes.POINTER(wt.RECT), wt.LPARAM)
+    monitors = []
+
+    def collect(hmon, _hdc, _lprc, _data):
+        try:
+            monitors.append(_selection_monitor(int(hmon or 0)))
+        except Exception:  # noqa: BLE001 -- a stale monitor cannot block layout
+            pass
+        return True
+
+    callback = cb_type(collect)
+    user32.EnumDisplayMonitors.argtypes = [
+        wt.HDC, ctypes.POINTER(wt.RECT), cb_type, wt.LPARAM]
+    user32.EnumDisplayMonitors.restype = wt.BOOL
+    if not user32.EnumDisplayMonitors(None, None, callback, 0):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        primary = int(user32.MonitorFromPoint(
+            POINT(0, 0), MONITOR_DEFAULTTOPRIMARY) or 0)
+    except Exception:  # noqa: BLE001
+        primary = 0
+    for index, mon in enumerate(monitors):
+        if mon['handle'] == primary:
+            return monitors, index
+    return monitors, 0
+
+
+def target_placement(geometry=None):
+    """Probe the point Win32 gives us, then let the PURE function decide.
+
+    The foreground window still wins when it belongs to another app: that is
+    the pre-existing Alt+C rule and this change does not alter it. Its monitor
+    is mapped back to an interior point so the same pure function owns the
+    final choice AND the work-area clamp. Sotto's own window means the cursor;
+    a failed probe means the primary.
+    """
+    monitors, primary_index = [], 0
+    try:
+        monitors, primary_index = _selection_monitors_and_primary()
+    except Exception:  # noqa: BLE001
+        pass
+    point = None
     try:
         user32.GetForegroundWindow.restype = wt.HWND
         user32.MonitorFromWindow.argtypes = [wt.HWND, wt.DWORD]
         user32.MonitorFromWindow.restype = ctypes.c_void_p
-    except Exception:  # noqa: BLE001
-        pass
-    try:
         fg = user32.GetForegroundWindow()
         if fg:
             b = ctypes.create_unicode_buffer(256)
             user32.GetWindowTextW(fg, b, 256)
             if not b.value.strip().lower().startswith('sotto'):
                 handle = user32.MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST)
-                if handle:
-                    return _display_for_monitor(handle)
+                for mon in monitors:
+                    if mon.get('handle') == handle:
+                        wa = mon['workArea']
+                        point = (wa['x'] + wa['width'] // 2,
+                                 wa['y'] + wa['height'] // 2)
+                        break
     except Exception:  # noqa: BLE001
         pass
-    pt = POINT()
-    try:
-        if user32.GetCursorPos(ctypes.byref(pt)):
-            handle = user32.MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST)
-            return _display_for_monitor(handle)
-    except Exception:  # noqa: BLE001
-        pass
-    return primary_display()
+    if point is None:
+        try:
+            pt = POINT()
+            if user32.GetCursorPos(ctypes.byref(pt)):
+                point = (pt.x, pt.y)
+        except Exception:  # noqa: BLE001
+            pass
+    result = select_display_for_point(point, monitors, primary_index,
+                                      geometry=geometry)
+    if not result.get('display'):
+        # No usable monitor list: the historical primary fallback, unchanged.
+        display = primary_display()
+        result = dict(result)
+        result['display'] = display
+        result['workArea'] = display['workArea']
+        if geometry is not None and result.get('geometry') is None:
+            result['geometry'] = geometry
+    return result
+
+
+def target_display() -> dict:
+    """The monitor the OWNER is looking at, in DIP (the historical return shape).
+
+    Alt+C is pressed while looking at a screen, and the strip belongs on THAT
+    screen: another app's window picks the monitor, Sotto's own window falls
+    back to the cursor, then to the primary. The DECISION now lives in the
+    pure `select_display_for_point`; this is only the Win32 probe around it.
+    """
+    return target_placement()['display']
 
 
 def set_ex_style(hwnd, add=0, remove=0) -> int:
@@ -10907,11 +11133,11 @@ class TrayIcon:
         """Built, LOGGED, and then drawn — so the log proves every item exists
         (its id and its text) without anyone having to click.
 
-        FOUR items now, and the three shipped ids keep their numbers: `[1]` Open
-        panel (the FULL panel — Alt+C is what opens the strip), `[4]` the Alt+C
-        switch, `[3]` Edit caption position, `[2]` Quit Sotto.
+        FOUR items now, and the three shipped ids keep their numbers: `[1]` Abrir
+        painel (the FULL panel — Alt+C is what opens the strip), `[4]` the Alt+C
+        switch, `[3]` Editar posição da legenda, `[2]` Sair do Sotto.
         `_main/tray-quit-probe.py` finds the Quit by its TEXT
-        (`[2]='Quit Sotto'`), so a new item cannot break it.
+        (`[2]='Sair do Sotto'`), so a new item cannot break it.
 
         THE Alt+C ITEM IS WRITTEN AS THE ACTION, NOT AS A STATE (dono,
         2026-11-07): *"faz um botao 'desativar atalho alt c' ... e claro, é
@@ -10920,7 +11146,7 @@ class TrayIcon:
         "what does this click do".
         """
         menu = user32.CreatePopupMenu()
-        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_OPEN, 'Open panel')
+        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_OPEN, 'Abrir painel')
         try:
             state = self.panels_state() or {}
         except Exception as exc:          # noqa: BLE001 -- um menu sem estado e' um menu
@@ -10946,9 +11172,9 @@ class TrayIcon:
             (f'Desligar legendas ({live_accel})' if live_on
              else f'Ligar legendas ({live_accel})'))
         user32.AppendMenuW(menu, MF_STRING, ID_TRAY_EDIT,
-                           'Edit caption position')
+                           'Editar posição da legenda')
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
-        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_QUIT, 'Quit Sotto')
+        user32.AppendMenuW(menu, MF_STRING, ID_TRAY_QUIT, 'Sair do Sotto')
         self.menu = int(menu)
         items = menu_items(menu)
         self.log('TRAY_MENU ' + ' '.join(
@@ -22153,28 +22379,47 @@ class SottoShell:
             with lock:
                 pending.pop(kind, None)
 
-    def work_area(self):
-        """The WORK area of the display this shell lays out in, in DIP.
+    def work_area(self, geometry=None):
+        """The WORK area of the display the strip/overlay lays out in, in DIP.
 
-        `primary_display()` is the one source: `MonitorFromPoint(POINT(0,0),
-        MONITOR_DEFAULTTOPRIMARY)` — the PRIMARY monitor, the same one the docked
-        panel has always used. On this box there is exactly ONE monitor
-        (`_main/_strip-work-area-probe.ps1`: `monitors=1`, `work=[0,0 1920x1032]`,
-        DPI 96), so "which monitor does the strip open on" cannot be measured
-        here and is NOT guessed at: it opens on the primary, like the panel, and
-        the multi-monitor case is disclosed as unmeasured in
-        `_main/receipt-strip-surface.md`.
+        `select_display_for_point` is now the ONE owner of the choice: the
+        foreground window / cursor probe feeds it the monitor list, and it
+        picks the containing monitor, the nearest one for an off-screen point,
+        or the primary as the last resort. It clamps `geometry` (when given)
+        into that monitor's WORK AREA, never its full bounds. The primary from
+        `MonitorFromPoint(POINT(0,0), ...TOPRIMARY)` stays the DOCKED panel's
+        startup choice in `compute_geometry`, which this change leaves alone.
         """
         # RE-READ THE MONITOR ON EVERY LAYOUT, not once at startup: the owner
         # may move the mouse to another screen between two Alt+C presses, and
-        # the panel must follow. `target_display` is the mouse's monitor;
-        # fallback keeps a stale cache rather than refusing to lay out.
+        # the strip must follow. A failed probe keeps the stale cache instead
+        # of refusing to lay out.
         try:
-            display = target_display()
+            placement = target_placement(geometry=geometry)
         except Exception:  # noqa: BLE001
             display = self.display or primary_display()
+            placement = {
+                'display': display, 'workArea': display['workArea'],
+                'geometry': geometry, 'point': None, 'monitors': [],
+                'primaryIndex': 0, 'index': None, 'reason': 'primary',
+                'monitor': None,
+            }
+        self._placement = placement
+        display = placement.get('display') or self.display or primary_display()
         self.display = display
-        return display['workArea']
+        return placement.get('workArea') or display['workArea']
+
+    def _clamped_strip_geometry(self, geometry):
+        """The strip's final rect through the SAME pure work-area clamp."""
+        placement = getattr(self, '_placement', None)
+        if not placement or not geometry:
+            return geometry
+        result = select_display_for_point(
+            placement.get('point'), placement.get('monitors') or (),
+            placement.get('primaryIndex') or 0, geometry=geometry)
+        clamped = result.get('geometry')
+        return clamped if isinstance(clamped, dict) and clamped else geometry
+
     def geometry_for(self, surface):
         """The rect `surface` wants, in the CURRENT work area.
 
@@ -22244,10 +22489,12 @@ class SottoShell:
                     f'@({geometry["x"]},{geometry["y"]}) '
                     f'work={geometry["workWidth"]}x{geometry["workHeight"]}'
                     f'@({geometry["workX"]},{geometry["workY"]})')
-            return geometry
+            return (self._clamped_strip_geometry(geometry)
+                    if surface == 'strip' else geometry)
         if surface == 'strip':
-            return dock_strip(work, width=self.strip_width_live(),
-                              height=self.strip_height)
+            return self._clamped_strip_geometry(
+                dock_strip(work, width=self.strip_width_live(),
+                           height=self.strip_height))
         return dock_right(work)
     def strip_height_from_css(self):
         """The strip's height, READ OUT OF THE STYLESHEET. `None` if unavailable.
@@ -24986,19 +25233,24 @@ class WorkerBridge:
         #: unreadable; a hidden panel only accumulates audio (RAM, then a disk
         #: spool, never a dropped block); and an engine that is not on disk is
         #: REFUSED LOUDLY with the missing path while the worker keeps streaming.
-        env['SOTTO_REDUX_WHEN_HIDDEN'] = '1'
+        #: `setdefault`, NEVER assignment (2026-11-25): the sibling below has
+        #: always honoured an explicit operator value, and this one did not --
+        #: `set SOTTO_REDUX_WHEN_HIDDEN=0` in the parent was silently rewritten
+        #: to `1` here, so the only documented way to turn the hidden-model
+        #: switch off did nothing when the app was started from a shell. The
+        #: product default is still ON when nothing is set, which is what the
+        #: owner's order asks for.
+        env.setdefault('SOTTO_REDUX_WHEN_HIDDEN', '1')
         #: A ORDEM DO DONO NAO PODE DEPENDER DE QUEM ABRIU A APP (2026-11-12).
-        #: `run.cmd:113` poe `SOTTO_REDUX_LIVE=1` no processo da SHELL, e o shell
-        #: passa `os.environ` ao worker -- por `run.cmd` o passe de lote do
-        #: parakeet vai LIGADO. O autostart do logon nao passa por `run.cmd`
-        #: (`autostart_command()` larga `pythonw shell --log`, e nao pode largar
-        #: um `.cmd`: pinta consola no ecra dele), e a escada do worker e' flag ->
-        #: ambiente -> config (`worker/sotto_worker.py:5803`) com
-        #: `worker/config.json` `"enabled": false` -- medido, no logon o passe de
-        #: lote corria DESLIGADO, e o mesmo binario tinha dois comportamentos
-        #: conforme a porta de entrada. A decisao passa a viver AQUI, ao lado da
-        #: irma' de cima, e um valor explicito (`SOTTO_REDUX_LIVE=0`) continua a
-        #: ganhar -- `setdefault`, nunca atribuicao.
+        #: Este dict e' o DONO UNICO dos dois defaults (2026-11-25): `run.cmd`
+        #: ja' nao escreve nenhum deles, e o shell passa `os.environ` + os dois
+        #: valores daqui ao worker, por isso `run.cmd`, duplo-clique e o
+        #: autostart do logon arrancam o MESMO binario com o MESMO
+        #: comportamento. O autostart nao pode largar um `.cmd` (pinta consola
+        #: no ecra dele); a escada do worker continua flag -> ambiente -> config
+        #: (`worker/sotto_worker.py`, `redux_live_settings`), e um valor
+        #: explicito (`SOTTO_REDUX_LIVE=0`, `SOTTO_REDUX_WHEN_HIDDEN=0`)
+        #: continua a ganhar -- `setdefault`, nunca atribuicao, nas duas linhas.
         env.setdefault('SOTTO_REDUX_LIVE', '1')
         if self.device is not None:
             env['SOTTO_AUDIO_DEVICE'] = self.device
@@ -27137,19 +27389,24 @@ def parse_args(argv):
     parser = argparse.ArgumentParser(
         prog='sotto-webview',
         description='The Sotto panel, hosted by WebView2 (pywebview).',
-        epilog='THE TWO KEYS. Alt+C -- one press is one step of the panel cycle, '
-               'immediate: from hidden, 1 shows the bottom strip, 2 hides, 3 '
-               'shows the right panel, 4 hides, and it keeps alternating with '
-               'Alt held down the whole time and C spammed. Ctrl+Space -- live '
-               'captions on/off, one press each, and no panel moves; OFF is the '
-               'DISPLAY only (the model, the worker and the history keep '
-               'running). Both accelerators live in app/webview/hotkey_gesture.py.')
+        epilog='THE TWO KEYS. Alt+C -- ONE press, answering in the same instant '
+               '(no tap window, no hold threshold, no delay). From hidden it '
+               'shows the bottom STRIP; a second press within 0.40 s of that '
+               'show promotes to the RIGHT panel (a double), and a press after '
+               'that window, or any press while a panel is up, hides it. '
+               'Ctrl+Space -- live captions on/off, one press each, and no '
+               'panel moves; OFF is the DISPLAY only (the model, the worker '
+               'and the history keep running). Both accelerators live in '
+               'app/webview/hotkey_gesture.py.')
     parser.add_argument('--show', action='store_true',
                         help='show the panel at startup instead of waiting '
                              'for Alt+C')
     parser.add_argument('--hotkey', default='Alt+C',
-                        help='the PANELS global key (default: Alt+C). One press = '
-                             'one step of the panel cycle. The live-caption key is '
+                        help='the PANELS global key (default: Alt+C). One press '
+                             'shows the bottom strip; a second press inside the '
+                             'double-tap window (0.40 s of that show) promotes to '
+                             'the right panel; any later press hides. The '
+                             'live-caption key is '
                              'the owner\'s, persisted in _main/hotkey-settings.json '
                              '(factory: Ctrl+Space). If another program already owns '
                              'the panels key the shell tries '

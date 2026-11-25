@@ -7,7 +7,7 @@
      declares (`themes/themes.js` → `fallback`), or the two disagree for one frame.
      `theme-1` = Teleprompter, and the order is the owner's:
      1 Teleprompter · 2 Broadcast · 3 Manuscrito · 4 Cinema Card · 5 Instrumento. -->
-<html lang="en" data-theme="theme-1">
+<html lang="pt-BR" data-theme="theme-1">
   <head>
     <meta charset="utf-8" />
     <!-- No remote content, no inline event handlers: everything is local files
@@ -47,11 +47,6 @@
          a family. Unscoped on purpose (one copy for all five). -->
     <link rel="stylesheet" href="themes/fonts.css" />
     <link rel="stylesheet" href="panel.css" />
-    <!-- THE FLOATED CAPTION'S OWN STYLESHEET (lane CAPTION). Declared AFTER
-         `panel.css` on purpose: the overlay is a second surface, and its rules
-         are the last word on it. A missing file is not an error — a `file://`
-         stylesheet that does not resolve leaves the panel exactly as it is. -->
-    <link rel="stylesheet" href="caption-float.css" />
     <!-- All five themes load at once: switching is ONE attribute write on <html>,
          so there is no reload, no parse and no flicker. `theme-switcher.js`
          applies the stored choice before the panel paints, and adds its own picker
@@ -280,7 +275,7 @@
             class="live-lamp"
             id="live-lamp"
             role="img"
-            aria-label="Live caption: OFF · press Alt+C to turn it on."
+            aria-label="Legenda ao vivo: DESLIGADA · pressione Alt+C para ligar."
             data-live="off"
           ></span>
           <!-- THE OWNER REMOVED TWO BUTTONS, and neither removal is silent.
@@ -333,8 +328,8 @@
             class="icon-button"
             id="font-scale-button"
             data-font-scale-role="cycle"
-            title="Caption size"
-            aria-label="Caption size"
+            title="Tamanho da legenda"
+            aria-label="Tamanho da legenda"
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <text
@@ -355,8 +350,8 @@
             class="icon-button icon-button--danger"
             id="panel-pause-button"
             data-pause-trigger
-            title="Pause (unload the engines)"
-            aria-label="Pause"
+            title="Pausar (descarrega os motores)"
+            aria-label="Pausar"
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <path
@@ -412,8 +407,8 @@
             type="button"
             class="icon-button"
             id="hide-button"
-            title="Hide"
-            aria-label="Hide panel"
+            title="Esconder"
+            aria-label="Esconder painel"
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <path
@@ -537,7 +532,7 @@
            `history.root()` reports a canonical producer. Rows stay in the DOM
            while collapsed (CSS-only collapse), so a read-back probe still sees
            them. -->
-      <section class="history" id="history" aria-label="Transcript">
+      <section class="history" id="history" aria-label="Transcrição">
         <div class="history__bar">
           <!-- ── THE TRANSCRIPT BUTTON IS GONE (owner, 2026-10-14) ────────────
                Verbatim: *"tira o botao de transcript. ha um botao/gaveta do
@@ -586,8 +581,8 @@
             type="button"
             class="history__path"
             id="history-root"
-            aria-label="Open the transcript folder"
-            title="Open the transcript folder"
+            aria-label="Abrir a pasta da transcrição"
+            title="Abrir a pasta da transcrição"
           >
             <!-- The folder affordance, in place of the path that used to be
                  painted here. `panel.js` empties this button's TEXT (the path went
@@ -616,7 +611,7 @@
              path as the button's `title`, and both survive in the internal state.
              The empty paragraph is hidden by the rule below so it costs no height. -->
         <p class="history__note" id="transcript-note" hidden
-           title="The canonical transcript is written by the batch pass (Parakeet Redux). Its lines carry the redux producer stamp, so it stays read-only; until a line has arrived, it has nothing to show."
+           title="A transcrição canônica é escrita pela etapa em lote (Parakeet Redux). Suas linhas trazem a marca do produtor redux, por isso ela permanece somente leitura; até uma linha chegar, não há nada para mostrar."
         ></p>
 
         <div class="history__body" id="history-body">
@@ -628,15 +623,15 @@
                `panel.js::wireViaFilters` owns the state and the `aria-pressed`
                it paints; the glyphs are inline SVG from the panel's own icon
                set, never a font glyph, an emoji or a sentence. -->
-          <div class="history__filters" id="history-filters" role="group" aria-label="Transcript source">
+          <div class="history__filters" id="history-filters" role="group" aria-label="Fonte da transcrição">
             <button
               type="button"
               class="icon-button history__filter-button"
               id="history-filter-pc"
               data-via-filter="pc"
               aria-pressed="true"
-              aria-label="Show PC audio lines"
-              title="PC audio"
+              aria-label="Mostrar linhas de áudio do PC"
+              title="Áudio do PC"
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <rect x="1.9" y="2.5" width="12.2" height="8.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" />
@@ -649,7 +644,7 @@
               id="history-filter-youtube"
               data-via-filter="youtube"
               aria-pressed="true"
-              aria-label="Show YouTube lines"
+              aria-label="Mostrar linhas do YouTube"
               title="YouTube"
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -674,9 +669,9 @@
               type="button"
               class="icon-button history__search-button"
               id="history-search-button"
-              aria-label="Search the transcript"
+              aria-label="Pesquisar a transcrição"
               aria-expanded="false"
-              title="Search the transcript"
+              title="Pesquisar a transcrição"
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" stroke-width="1.4" />
@@ -688,7 +683,7 @@
               class="history__search"
               id="history-search"
               placeholder=""
-              aria-label="Search the transcript"
+              aria-label="Pesquisar a transcrição"
               hidden
             />
             <!-- ONE of the two "show in folder" affordances panel.js keeps (the
@@ -698,7 +693,7 @@
               type="button"
               class="reveal-button"
               id="reveal-button"
-              title="Select a transcript line first"
+              title="Selecione primeiro uma linha da transcrição"
               disabled
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -732,7 +727,7 @@
            caption-formulation.js, and a committed line is added here. This is
            the row that takes the panel's free height, and in the STRIP surface
            it is the only content row there is. -->
-      <section class="captions" id="captions" aria-live="polite" aria-label="Live caption">
+      <section class="captions" id="captions" aria-live="polite" aria-label="Legenda ao vivo">
         <div class="captions__bar">
           <!-- REMOVED 2026-10-12 (owner: *"tira o botao da direita de mostrar
                legenda"*). WHAT STOOD HERE WAS `#live-label` — a `<span>` that
@@ -766,7 +761,7 @@
                  ("Waiting for audio" before the first readiness push, then
                  `ready` / `not ready`); the node stays because the layout and
                  `applySurface` read it. -->
-            <p class="captions__placeholder-title">Waiting for audio</p>
+            <p class="captions__placeholder-title">Aguardando áudio</p>
             <p class="captions__placeholder-body"></p>
           </div>
           <!-- `hidden` because the empty state shows the placeholder instead.
@@ -825,7 +820,7 @@
            the removal to 2026-10-12. What stays in this row is the open button
            (`#strip-open-button`), which takes the owner to the panel where
            `#theme-chevron` opens the full list. -->
-      <section class="stripbar" id="strip-controls" aria-label="Caption controls">
+      <section class="stripbar" id="strip-controls" aria-label="Controles da legenda">
         <!-- THE NAME ON THE STRIP (owner, 2026-10-08: *"e bota o nome 'sotto' em
              todos os temas"*, and the strip is one of the two surfaces). The strip
              hides `.panel__header`, so the header's own brand is not on this
@@ -857,7 +852,7 @@
           class="live-lamp"
           id="strip-live-lamp"
           role="img"
-          aria-label="Live caption: OFF · press Alt+C to turn it on."
+          aria-label="Legenda ao vivo: DESLIGADA · pressione Alt+C para ligar."
           data-live="off"
         ></span>
         <button
@@ -865,8 +860,8 @@
           class="strip-button strip-button--toggle"
           id="strip-live-button"
           aria-pressed="false"
-          aria-label="live: off · the captions are off the screen. Click to put them on screen."
-          title="live · click to put the captions ON SCREEN (loose, like the .zip demos); the band itself stays a thin bar."
+          aria-label="ao vivo: desligado · as legendas estão fora da tela. Clique para mostrá-las."
+          title="ao vivo · clique para colocar as legendas NA TELA (soltas, como nas demos .zip); a barra continua sendo uma faixa fina."
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <rect
@@ -894,7 +889,7 @@
               stroke-linecap="round"
             />
           </svg>
-          <span class="strip-button__label" id="strip-live-label">live</span>
+          <span class="strip-button__label" id="strip-live-label">ao vivo</span>
         </button>
 
         <!-- ── REMOVED 2026-10-12 (owner: *"o painel de baixo, deve conter apenas o
@@ -954,7 +949,7 @@
           type="button"
           class="strip-button"
           id="strip-open-button"
-          title="Open the full panel (transcript, folder and details)"
+          title="Abrir o painel completo (transcrição, pasta e detalhes)"
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path
@@ -973,7 +968,7 @@
               stroke-linejoin="round"
             />
           </svg>
-          <span class="strip-button__label">Open panel</span>
+          <span class="strip-button__label">Abrir painel</span>
         </button>
 
         <!-- THE CAPTION FONT DIAL, BACK ON THE STRIP (owner, 2026-10-17,
@@ -995,8 +990,8 @@
           class="strip-button"
           id="strip-font-scale-button"
           data-font-scale-role="cycle"
-          title="Caption size"
-          aria-label="Caption size"
+          title="Tamanho da legenda"
+          aria-label="Tamanho da legenda"
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <text x="8" y="12.5" text-anchor="middle" font-size="12" fill="currentColor">A</text>
@@ -1011,7 +1006,7 @@
           type="button"
           class="strip-button"
           id="strip-hide-button"
-          title="Hide the strip (Alt+C brings it back)"
+          title="Esconder a faixa (Alt+C traz de volta)"
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path
@@ -1022,7 +1017,7 @@
               stroke-linecap="round"
             />
           </svg>
-          <span class="strip-button__label">Hide</span>
+          <span class="strip-button__label">Esconder</span>
         </button>
 
         <!-- ── REMOVED 2026-10-12 (owner: *"o painel de baixo, deve conter apenas o
@@ -1069,7 +1064,7 @@
           class="strip-button"
           id="strip-pause-button"
           data-pause-trigger
-          title="Pause"
+          title="Pausar"
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path
@@ -1080,7 +1075,7 @@
               stroke-linecap="round"
             />
           </svg>
-          <span class="strip-button__label">Pause</span>
+          <span class="strip-button__label">Pausar</span>
         </button>
 
         <!-- The status, reduced to a dot + ONE short word. The long sentence is
@@ -1088,7 +1083,7 @@
              still reads it) and this element carries the word. -->
         <span class="stripbar__state" id="strip-state">
           <span class="stripbar__dot" id="strip-dot" aria-hidden="true"></span>
-          <span class="stripbar__word" id="strip-word">Starting</span>
+          <span class="stripbar__word" id="strip-word">Iniciando</span>
         </span>
       </section>
 
@@ -1189,7 +1184,7 @@
              `panel.js` and the two bridge methods behind it — a setting whose
              only editor is deleted is dead weight, and the gesture keeps its
              own defaults in `hotkey_settings.py`. -->
-        <span class="status__text" id="status-text">Idle &middot; no audio source</span>
+        <span class="status__text" id="status-text">Ocioso &middot; sem fonte de áudio</span>
         <!-- THE SHORTCUT IS NOT ADVERTISED IN THE PANEL (owner, 2026-10-08:
              *"nao fala alt c no painel"*). A `<kbd>` hint stood here naming the
              key; it is gone, and the app's only control still works exactly as
@@ -1217,13 +1212,15 @@
          (*"tailwind classes for the caption text itself (no background, ever)"*). It is a
          SIBLING of `.panel`, not a child: the owner's rule is that nothing goes on top of the
          current panel or in the panel's div, and the slab clips its own overflow anyway.
-         `caption-float.js` owns it; `panel.js` only flips `data-float` and the window height.
-         The strip surface shows it; the panel surface does not (the panel already has captions). -->
+         RETIRED 2026-11-25: `caption-float.js` is no longer loaded and the words on
+         screen belong to `NativeCaptionOverlay`. The node stays ONLY because the
+         strip layout keys on it: `panel.css:3184` and `panel.css:3210` both use
+         `body[data-surface="strip"][data-float="on"] .caption-float` (there is no
+         third rule at :3205). Nothing writes CONTENT into it any more. -->
     <div id="caption-float" class="caption-float" data-float="off" aria-hidden="true">
-      <!-- THE ZIP'S "inst" DESIGN: a 4px breathing bar the text leans on, inside one
-           flex row. `caption-float.js` owns the CONTENT; the shape is panel.css. The
-           bar is the overlay's only BODY — there is no background, plate or box on
-           this overlay, ever. -->
+      <!-- The 4px breathing bar and the two lines are inert markup kept with the
+      host: removing the host would break the strip's data-float selectors and the
+      oracles that read them. No module fills these nodes now. -->
       <div class="caption-float__stage">
         <span class="caption-float__led" aria-hidden="true"></span>
         <div class="caption-float__col">
@@ -1238,10 +1235,10 @@
     </div>
 
     <dialog class="pause-dialog" id="pause-dialog" aria-labelledby="pause-dialog-title">
-      <h2 class="pause-dialog__title" id="pause-dialog-title">Pause and unload?</h2>
+      <h2 class="pause-dialog__title" id="pause-dialog-title">Pausar e descarregar?</h2>
       <p class="pause-dialog__body" id="pause-dialog-body">
-        Pausing unloads the live caption engine and the background transcript. RAM
-        and CPU are given back, and nothing is transcribed until you resume.
+        Pausar descarrega o motor da legenda ao vivo e a transcrição em segundo
+        plano. A RAM e a CPU são liberadas, e nada é transcrito até você retomar.
       </p>
       <!-- REMOVIDO 2026-10-15. Era o paragrafo "Worth knowing: the background
          transcript is extremely light -- it costs almost nothing to leave running.
@@ -1254,10 +1251,10 @@
       <p class="pause-dialog__shell" id="pause-dialog-shell" hidden></p>
       <div class="pause-dialog__buttons">
         <button type="button" class="dialog-button" id="pause-cancel-button">
-          Cancel · keep transcribing
+          Cancelar · continuar transcrevendo
         </button>
         <button type="button" class="dialog-button dialog-button--danger" id="pause-confirm-button">
-          Pause and unload
+          Pausar e descarregar
         </button>
       </div>
     </dialog>
@@ -1322,12 +1319,10 @@
          theme with no skin is untouched by it. -->
     <!-- skin-host.js is ASKED, not eager, for the same reason and by the same mechanism. -->
     <script src="panel.js"></script>
-    <!-- S4's per-letter swap and this lane's caption overlay. BOTH are deferred, so neither is
-         on the first-paint path. `panel.js` guards the call (`if (window.SottoLetterSwap)`) and
-         `caption-float.js` only registers itself, so the order is not load-bearing: a caption
-         that lands before they execute keeps the plain-text path and never errors. -->
-    <script src="letter-swap.js" defer></script>
-    <script src="caption-float.js" defer></script>
+    <!-- THE PAGE'S OWN CAPTION OVERLAY IS RETIRED (2026-11-25). The caption on screen
+         is `NativeCaptionOverlay` (`app/webview/caption_overlay.py`); `requestCaptionOverlay`
+         is its only door and `brand-bridge.js` below sends it the panel's design. Neither
+         `caption-float.js` / `caption-float.css` nor `letter-swap.js` is loaded here. -->
 
     <!-- ── THE STRIP'S MOVE GESTURE — THE PAGE HALF (owner, 2026-10-12: *"o painel de
          baixo tem que ser movivel pra cima ou pra baixo ou pros lados"*).

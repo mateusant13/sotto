@@ -232,6 +232,14 @@ Two further limitations, both measured and both handled rather than hidden:
 
 ---
 
+## 2026-11-25 — micro em TODOS os rungs, e denoise com UM chamador
+
+**O MICRO NÃO É SÓ DA RUNG A.** A escada continua a escolher entre `WasapiLoopbackTap` (A), `ProcessLoopbackTap` (P), `_PortAudioTap` (B/C) e `FileTap` (sem dispositivo), mas `LoopbackTap()` passa **todos os rungs que abrem dispositivo** pelo mesmo `mic_tap.open_stream(make_primary, on_block)` — `worker/sotto_worker.py:4950-4968` (P), `4972-4996` (A) e `4997-5004` (B/C) — e cada um imprime `MIC_CAPTURE`. O microfone vem do default de CAPTURA que o Windows aponta (`pick_microphone`, `worker/mic_tap.py:64`), com exclusão apenas de não-microfones (`NOT_A_MICROPHONE`, `:52`), ganho constante `LOOPBACK_GAIN = MIC_GAIN = 0.75` (`:40`), backlog de `MIC_BACKLOG_S = 10.0` s com queda contada (`:46-47`) e devolução do loopback intacto quando não há micro. Nenhum default de dispositivo, volume ou endpoint é tocado. Portão: `_main/speaker-sidecar-oracle.py`, bateria `mic_battery` (15 braços com taps falsos) e os mutantes nomeados no `AGENTS.md`.
+
+**DENOISE: UMA CHAVE, UM PONTO DE ACÇÃO.** `use_denoise` é TOP-LEVEL em `worker/config.json:29` e `false` por omissão. `StreamAsr.run_chunk` resolve o gate uma vez por stream e, quando a chave é `true`, aplica `self.denoiser.process(pcm_chunk)` exatamente uma vez — depois do gate fala/música e antes da janela mel/VAD (`worker/sotto_worker.py:2574-2585`). Com a chave `false` o PCM que chega ao encoder é byte-idêntico ao de um worker sem o módulo; a afirmação antiga de que `worker/denoise.py` era 100 % inerte está RETIRADA. `[MEASURED]` 2026-11-25: `python _main/config-truth-oracle.py` → `VERDICT: PASS`, com `false arm == module-disabled arm: 35840 bytes, sha256-prefix equal` e `true arm changed PCM: max|delta|=0.079018 over 8960 samples`. Nenhum dispositivo, modelo ou janela foi aberto pelo oráculo.
+
+---
+
 ## SELF-AUDIT
 
 * **protocolos em falta** — I should have read the harness's page-fetch policy BEFORE

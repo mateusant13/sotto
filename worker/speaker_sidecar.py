@@ -1772,15 +1772,6 @@ def main(argv=None) -> int:
         print("sidecar: diarizer models are missing:\n  %s" % "\n  ".join(missing))
         return 2
 
-    import wasapi_loopback                                           # noqa: PLC0415
-    specs = wasapi_loopback.loopback_device_specs()
-    chosen = _open_endpoint(specs, args.device)
-    if chosen is None:
-        print("sidecar: no render endpoint matches %r. Candidates:\n  %s"
-              % (args.device,
-                 "\n  ".join(str(s.get("name")) for s in specs)))
-        return 2
-
     diarize = None
     if not args.watch_only:
         try:
@@ -1801,7 +1792,15 @@ def main(argv=None) -> int:
                   % (type(exc).__name__, exc))
             return 2
 
-    src = {"rate": int(chosen.get("rate") or args.rate)}
+    # ── ONE CAPTURE FOR BOTH HALVES (lane S6SingleCapture) ────────────────────
+    # The worker already mixed the owner's mic into its loopback and publishes
+    # those exact 16 kHz mono float32 blocks. Taking that stream means this
+    # process opens NO render tap and NO microphone -- one device pair, one
+    # mix, for the whole call. Everything below keeps the same ring buffer,
+    # sink, diarizer and publish cadence; only the source changes.
+    # Enumeration is deliberately INSIDE the local branch: shared mode must
+    # not even enumerate a render endpoint, let alone open one.
+    src = {"rate": int(args.rate)}
     buf = RingBuffer(rate=args.rate, window_s=args.window_s)
 
     def sink(block):
@@ -1809,12 +1808,57 @@ def main(argv=None) -> int:
         if mono.size:
             buf.push(mono.tolist(), time.time())
 
+    share = None
+    local = {"tap": None}
+    try:
+        import capture_share                                       # noqa: PLC0415
+        share = capture_share.connect_client(log=print)
+    except Exception as exc:  # noqa: BLE001 -- a broken transport must not kill capture
+        print("CAPTURE_SHARE fallback reason=unavailable (%s)" % type(exc).__name__)
+
+    def _open_local_tap(reason):
+        """Re-open the old capture if the shared stream dies mid-call."""
+        try:
+            import wasapi_loopback                                 # noqa: PLC0415
+            specs = wasapi_loopback.loopback_device_specs()
+            spec = _open_endpoint(specs, args.device)
+            if spec is None:
+                raise RuntimeError("no render endpoint matches %r" % args.device)
+            tap, note = _tap_for(spec, sink, prefer_mic=args.mic,
+                                 mic_enabled=not args.no_mic)
+            local["tap"] = tap
+            src["rate"] = int(getattr(tap, "rate", src["rate"]) or src["rate"])
+            tap.stream.start()
+            print("MIC_CAPTURE %s  (stream rate %d Hz)" % (note, src["rate"]))
+        except Exception as exc:  # noqa: BLE001
+            print("sidecar: CAPTURE_SHARE fallback tap failed (%s): %s"
+                  % (type(exc).__name__, exc))
+
+    if share is not None:
+        # `connect_client` printed `CAPTURE_SHARE client=connected from=worker`.
+        tap = share
+        src["rate"] = int(getattr(share, "rate", args.rate))
+        share.set_sink(sink)
+        share.set_failure_callback(_open_local_tap)
+        source_name = "worker mixed capture"
+        mic_note = "worker-mixed (no local device)"
+    else:
+        import wasapi_loopback                                     # noqa: PLC0415
+        specs = wasapi_loopback.loopback_device_specs()
+        chosen = _open_endpoint(specs, args.device)
+        if chosen is None:
+            print("sidecar: no render endpoint matches %r. Candidates:\n  %s"
+                  % (args.device,
+                     "\n  ".join(str(s.get("name")) for s in specs)))
+            return 2
+        tap, mic_note = _tap_for(chosen, sink, prefer_mic=args.mic,
+                            mic_enabled=not args.no_mic)
+        src["rate"] = int(getattr(tap, "rate", src["rate"]) or src["rate"])
+        source_name = chosen.get("name")
+
     out_path = args.watch_out if args.watch_only else args.out
-    tap, mic_note = _tap_for(chosen, sink, prefer_mic=args.mic,
-                        mic_enabled=not args.no_mic)
-    src["rate"] = int(getattr(tap, "rate", src["rate"]) or src["rate"])
     print("sidecar: capturing %r  %d Hz -> %d Hz mono into %s every %.0f s"
-          % (chosen.get("name"), src["rate"], args.rate, out_path, args.every_s))
+          % (source_name, src["rate"], args.rate, out_path, args.every_s))
     print("MIC_CAPTURE %s  (stream rate %d Hz)" % (mic_note, src["rate"]))
     if args.watch_only:
         print("SPEAKER_GPU_POLICY mode=watch cuda_device_census=%s "
@@ -1919,8 +1963,9 @@ def main(argv=None) -> int:
         pass
     finally:
         tap.stream.stop()
+        if local["tap"] is not None:
+            local["tap"].stream.stop()
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

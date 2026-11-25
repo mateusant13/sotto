@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 # NO-BUG: ordem do dono de 2026-11-05 *"usa pontuacao de forma inteligente"* -- trabalho de CAPACIDADE sobre pontuacao opcional, sem id no `_main/bug-ledger.json`
-"""Optional punctuation behavior and GPU policy, checked without model weights.
+"""Optional punctuation behavior and CPU placement policy, checked without weights.
 
 Ordem do dono (2026-11-05, verbatim): *"por que a gente nao normaliza as frases
 ou usa pontuacao de forma inteligente?"*. `worker/punctuation_model.py` has an
-optional English Sherpa punctuation path. The installed native API accepts a
-CUDA provider request but offers no CPU-fallback disable or device/node
-readback; production therefore refuses before model discovery/import/creation.
-This oracle runs the real text/startup policy functions -- not a model:
+optional English Sherpa punctuation path. CPU is now asked for BY NAME
+(`PROVIDER = "cpu"`, `THREADS = 1`); a `cuda` request is refused BY NAME because
+the installed native API cannot attest device placement or disable CPU
+fallback. This oracle runs the real text/startup policy functions -- not a
+model:
 
   A. `punctuate()` on English text returns punctuation using a fake engine;
      routine checks never load or invoke optional weights;
@@ -17,23 +18,26 @@ This oracle runs the real text/startup policy functions -- not a model:
      aparencia de pontuacao, que e' pior do que nao pontuar;
   C. o `?` a meio de uma hipotese parcial e' removido (`that I? didn't` foi
      medido no log dele) e um comma que FECHA a linha tambem;
-  D. provider-list CUDA with CPU, unknown, or CUDA-only census refuses before
-     model discovery, package setup/import, constructor, or inference; input
-     text remains byte-identical and `status()` reports the refusal;
+  D. missing model/vocab files fail closed with reason=model-absent: no native
+     import and no constructor; `SOTTO_PUNCT_MODEL=0` refuses by name;
   E. o `LineFormer._event` pontua a linha FECHADA e nao a parcial -- a fiacao,
-     exercitada no objecto real.
+     exercitada no objecto real; o estado da pontuacao chega ao log da shell;
+  G. CPU requested by name builds through the real startup guard and prints
+     `PUNCT_PLACEMENT provider=cpu threads=1` exactly once; a `cuda` request is
+     refused with reason=provider-cuda-refused before discovery/import/build.
 
-The `--neg-arm` controls mutate copies and require all six regressions to go
-RED, including an inverted native GPU-placement guard.
+The `--neg-arm` controls mutate copies and require all eight regressions to go
+RED, including the CPU provider/config/thread mutations and the CUDA refusal.
 
 Uso:
     python _main/punct-model-oracle.py
-    python _main/punct-model-oracle.py --gpu-policy-only
+    python _main/punct-model-oracle.py --placement-only
     python _main/punct-model-oracle.py --neg-arm
 """
 from __future__ import annotations
 
 import ast
+import contextlib
 import importlib.util
 import io
 import os
@@ -104,57 +108,55 @@ def _startup_punctuation_guard():
     raise AssertionError("real punctuation startup guard was not found")
 
 
-def gpu_policy_controls(module_path=None) -> list[tuple[bool, str, str]]:
-    """Exercise the real startup load guard with a fake native public API."""
+def _control_module(module_path=None):
+    """Modulo real fresco, ou copia mutada carregada por caminho."""
+    if module_path is None:
+        return _fresh_module()
+    sys.modules.pop("punctuation_model", None)
+    spec = importlib.util.spec_from_file_location(
+        "punctuation_model_policy_mutant", str(module_path))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def placement_controls(module_path=None) -> list[tuple[bool, str, str]]:
+    """Exercise the real startup guard with a fake native public API."""
     import builtins  # noqa: PLC0415
 
     rows = []
 
-    def run_case(label, census):
-        with tempfile.TemporaryDirectory(prefix="punct-gpu-policy-") as tmp:
+    def run_case(requested):
+        with tempfile.TemporaryDirectory(prefix="punct-placement-") as tmp:
             root = Path(tmp)
             (root / "model.int8.onnx").write_bytes(b"fake-graph")
             (root / "bpe.vocab").write_text("fake-vocab", encoding="utf-8")
-            seen = {"find": 0, "ensure": 0, "import": 0,
-                    "construct": 0, "infer": 0}
-
-            class Device:
-                def __init__(self, ep_name):
-                    self.ep_name = ep_name
+            seen = {"find": 0, "ensure": 0, "import": 0, "cfg": 0,
+                    "engine": 0, "infer": 0, "model_cfg": {}, "placement": []}
 
             class Config:
                 def __init__(self, *args, **kwargs):
-                    seen["construct"] += 1
+                    seen["cfg"] += 1
+                    if "provider" in kwargs:
+                        seen["model_cfg"] = dict(kwargs)
 
             class GenericEngine(_FakePunctuationEngine):
                 def __init__(self, _config):
-                    seen["construct"] += 1
+                    seen["engine"] += 1
 
                 def add_punctuation_with_case(self, text):
                     seen["infer"] += 1
                     return "hello there, how are you doing today."
 
             native = types.ModuleType("sherpa_onnx")
-            # The provider list is deliberately misleading in the CPU and
-            # unknown arms: only a strict native placement API could use it.
-            native.get_available_providers = lambda: [
-                "CUDAExecutionProvider", "CPUExecutionProvider"]
             native.OnlinePunctuationModelConfig = Config
             native.OnlinePunctuationConfig = Config
             native.OnlinePunctuation = GenericEngine
-            if census is not None:
-                native.get_ep_devices = lambda: [Device(census)]
 
             prior_native = sys.modules.get("sherpa_onnx")
             sys.modules["sherpa_onnx"] = native
-            if module_path is None:
-                pm = _fresh_module()
-            else:
-                sys.modules.pop("punctuation_model", None)
-                module_spec = importlib.util.spec_from_file_location(
-                    "punctuation_model_policy_mutant", module_path)
-                pm = importlib.util.module_from_spec(module_spec)
-                module_spec.loader.exec_module(pm)
+            pm = _control_module(module_path)
+            pm.PROVIDER = requested
             pm.set_lang("en-US")
             original_find = pm.find_model
             original_ensure = pm._ensure_package_importable
@@ -170,19 +172,22 @@ def gpu_policy_controls(module_path=None) -> list[tuple[bool, str, str]]:
                 return original_import(name, *args, **kwargs)
 
             builtins.__import__ = tracked_import
+            stdout = io.StringIO()
             try:
                 # Execute the actual worker startup guard, then the real
-                # punctuation consumer. Both must preserve the ASR text.
+                # punctuation consumer. The CPU path builds and prints; the
+                # CUDA path must refuse before any of it happens.
                 startup = _startup_punctuation_guard()
-                exec(compile(ast.Module(body=[startup], type_ignores=[]),
-                             "sotto_worker.py", "exec"),
-                     {"punctuation_model": pm})
-                text_out = pm.punctuate(EN_SAMPLE, root=root)
-                result = {
-                    "reason": pm.status()["reason"],
-                    "text": text_out,
-                    **seen,
-                }
+                with contextlib.redirect_stdout(stdout):
+                    exec(compile(ast.Module(body=[startup], type_ignores=[]),
+                                 "sotto_worker.py", "exec"),
+                         {"punctuation_model": pm})
+                    text_out = pm.punctuate(EN_SAMPLE, root=root)
+                seen["placement"] = [line for line in stdout.getvalue().splitlines()
+                                     if "PUNCT_PLACEMENT" in line]
+                return {"reason": pm.status()["reason"],
+                        "provider": pm.status()["provider"],
+                        "text": text_out, **seen}
             finally:
                 builtins.__import__ = original_import
                 pm.find_model = original_find
@@ -191,27 +196,82 @@ def gpu_policy_controls(module_path=None) -> list[tuple[bool, str, str]]:
                     sys.modules.pop("sherpa_onnx", None)
                 else:
                     sys.modules["sherpa_onnx"] = prior_native
-            return result
 
-    for label, census, reason in (
-        ("provider-list-cuda-device-cpu", "CPUExecutionProvider",
-         "CUDA provider list cannot override CPU-only native census"),
-        ("provider-list-cuda-device-unknown", None,
-         "unknown native census refuses before startup model discovery"),
-        ("provider-list-cuda-device-cuda", "CUDAExecutionProvider",
-         "CUDA census alone is insufficient without fallback/readback API"),
-    ):
-        result = run_case(label, census)
-        clean = all(result[k] == 0 for k in (
-            "find", "ensure", "import", "construct", "infer"))
-        ok = (clean and result["text"] == EN_SAMPLE
-              and result["reason"] == "gpu-placement-unprovable")
-        rows.append((ok, reason,
-                     "reason=%s text_identity=%s counts=%r" %
-                     (result["reason"], result["text"] == EN_SAMPLE,
-                      {k: result[k] for k in (
-                          "find", "ensure", "import", "construct", "infer")})))
+    cpu = run_case("cpu")
+    cfg = cpu["model_cfg"]
+    cpu_ok = (cpu["reason"] == "loaded" and cpu["provider"] == "cpu"
+              and cpu["engine"] == 1 and cpu["infer"] == 1
+              and cpu["find"] == 1 and cpu["import"] == 1
+              and cfg.get("provider") == "cpu" and cfg.get("num_threads") == 1
+              and cpu["placement"] == ["PUNCT_PLACEMENT provider=cpu threads=1"]
+              and cpu["text"] != EN_SAMPLE)
+    rows.append((cpu_ok,
+                 "G1 CPU pedido por nome constroi e imprime a colocacao UMA vez",
+                 "reason=%s provider=%s engine=%d infer=%d cfg=%r placement=%r"
+                 % (cpu["reason"], cpu["provider"], cpu["engine"], cpu["infer"],
+                    cfg, cpu["placement"])))
+
+    cuda = run_case("cuda")
+    cuda_clean = all(cuda[k] == 0 for k in (
+        "find", "ensure", "import", "cfg", "engine", "infer"))
+    cuda_ok = (cuda_clean and cuda["text"] == EN_SAMPLE
+               and cuda["reason"] == "provider-cuda-refused")
+    rows.append((cuda_ok,
+                 "G2 pedido cuda e' recusado POR NOME antes de discover/import/build",
+                 "reason=%s text_identity=%s counts=%r"
+                 % (cuda["reason"], cuda["text"] == EN_SAMPLE,
+                    {k: cuda[k] for k in (
+                        "find", "ensure", "import", "cfg", "engine", "infer")})))
     return rows
+
+
+def model_absent_control(module_path=None) -> tuple[bool, str, str]:
+    """Sem ficheiros: identidade, reason nomeado, nativo nunca importado."""
+    import builtins  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory(prefix="punct-absent-") as tmp:
+        rec = {"import": 0, "cfg": 0, "engine": 0}
+        native = types.ModuleType("sherpa_onnx")
+
+        class Config:
+            def __init__(self, *args, **kwargs):
+                rec["cfg"] += 1
+
+        class Engine(_FakePunctuationEngine):
+            def __init__(self, _cfg):
+                rec["engine"] += 1
+
+        native.OnlinePunctuationModelConfig = Config
+        native.OnlinePunctuationConfig = Config
+        native.OnlinePunctuation = Engine
+        prior = sys.modules.get("sherpa_onnx")
+        sys.modules["sherpa_onnx"] = native
+        original_import = builtins.__import__
+
+        def tracked_import(name, *args, **kwargs):
+            if name == "sherpa_onnx":
+                rec["import"] += 1
+            return original_import(name, *args, **kwargs)
+
+        builtins.__import__ = tracked_import
+        try:
+            pm = _control_module(module_path)
+            pm.set_lang("en-US")
+            out = pm.punctuate(EN_SAMPLE, root=tmp)
+            status = pm.status()
+        finally:
+            builtins.__import__ = original_import
+            if prior is None:
+                sys.modules.pop("sherpa_onnx", None)
+            else:
+                sys.modules["sherpa_onnx"] = prior
+        ok = (out == EN_SAMPLE and status["reason"] == "model-absent"
+              and rec["import"] == 0 and rec["cfg"] == 0 and rec["engine"] == 0)
+        return ok, "D1 sem modelo/vocab -> identidade fail-closed, nativo intacto", (
+            "reason=%s identity=%s imports=%d cfg=%d engine=%d"
+            % (status["reason"], out == EN_SAMPLE, rec["import"],
+               rec["cfg"], rec["engine"]))
+
 def arms() -> None:
     print("modelo real nao e' carregado pelo oraculo de rotina; engine fake no consumidor")
 
@@ -253,18 +313,8 @@ def arms() -> None:
     add(pm._filter("") == "" and pm._filter("sem marca") == "sem marca",
         "C4 texto sem marca passa intacto")
 
-    # Sem modelo / desligado.
-    tmp = Path(tempfile.mkdtemp(prefix="punct-absent-"))
-    try:
-        pm2 = _fresh_module()
-        pm2.set_lang("en-US")
-        out = pm2.punctuate(EN_SAMPLE, root=tmp)
-        add(out == EN_SAMPLE
-            and pm2.status()["reason"] == "gpu-placement-unprovable",
-            "D1 placement sem prova -> identidade antes de procurar modelo",
-            pm2.status()["reason"])
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+    # Sem modelo / desligado. O controlo e' o MESMO que o neg-arm muta.
+    add(*model_absent_control())
 
     os.environ["SOTTO_PUNCT_MODEL"] = "0"
     try:
@@ -315,7 +365,7 @@ def arms() -> None:
     add("if punct:" in shell_src and "self.log(punct)" in shell_src,
         "F2 a shell ESCREVE a linha (nao a deixa no stderr)")
 
-    results.extend(gpu_policy_controls())
+    results.extend(placement_controls())
 
 
 def _mutate(target: Path, pairs) -> list[str]:
@@ -382,34 +432,45 @@ def neg_arm() -> int:
                 failures += 1
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
-    # The placement guard is part of the normal oracle's arms. Mutating it to
-    # allow the generic provider-only path must make those same arms RED.
     source = (WORKER / "punctuation_model.py").read_text(encoding="utf-8")
-    old_guard = "_NATIVE_GPU_PLACEMENT_VERIFIED = False"
-    if old_guard not in source:
-        print("NEG-ARM gpu-placement-guard FAIL -- mutation anchor missing")
-        failures += 1
-    else:
-        tmp = Path(tempfile.mkdtemp(prefix="punct-gpu-neg-"))
-        try:
-            mutant = tmp / "punctuation_model.py"
-            mutant.write_text(source.replace(
-                old_guard, "_NATIVE_GPU_PLACEMENT_VERIFIED = True", 1),
-                encoding="utf-8")
-            rows = gpu_policy_controls(module_path=mutant)
-            reds = [name for ok, name, _ in rows if not ok]
-            if reds:
-                print("NEG-ARM gpu-placement-guard PASS -- startup policy RED: %s"
-                      % "; ".join(reds))
-            else:
-                print("NEG-ARM gpu-placement-guard FAIL -- weakened guard survived")
-                failures += 1
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+    module_muts = [
+        ("model-presence", "D1", "        if d is None:\n", "        if False:\n",
+         "absent model files no longer fail closed", model_absent_control),
+        ("provider-config", "G1", "                    provider=requested,\n",
+         "                    provider=\"cuda\",\n",
+         "the CPU config no longer asks for cpu", placement_controls),
+        ("cuda-refusal", "G2", "    if requested == \"cuda\":\n",
+         "    if requested == \"gpu\":\n",
+         "cuda is no longer refused by name", placement_controls),
+    ]
+    for name, arm, old, new, why, checker in module_muts:
+        if source.count(old) != 1:
+            print("NEG-ARM %s FAIL -- anchor found %d times (stale)" %
+                  (name, source.count(old)))
+            failures += 1
+            continue
+        with tempfile.TemporaryDirectory(prefix="punct-neg-") as tmp:
+            mutant = Path(tmp) / "punctuation_model.py"
+            mutant.write_text(source.replace(old, new, 1), encoding="utf-8")
+            rows = (checker(module_path=mutant) if checker is placement_controls
+                    else [checker(module_path=mutant)])
+        reds = [row_name for ok, row_name, _ in rows if not ok]
+        if reds:
+            print("NEG-ARM %s PASS -- arm %s RED (%s)" % (name, ", ".join(reds), why))
+        else:
+            print("NEG-ARM %s FAIL -- %s stayed GREEN (%s)" % (name, arm, why))
+            failures += 1
     if failures:
         print("\nNEG-ARM FAIL -- o oraculo nao ve a regressao")
-        return EXIT_PASS
-    print("\nNEG-ARM: PASS -- as seis regressoes derrubam o oraculo")
+        print("VERDICT: FAIL")
+        return EXIT_FAIL
+    print("\nNEG-ARM: PASS -- as oito regressoes derrubam o oraculo")
+    print("VERDICT: PASS")
+    #: The house convention (`:expectred` in `_main/_audit-verify-all.cmd`) is that a
+    #: control EXITS 1 WHEN IT CATCHES: the exit code is the whole point of the row, so
+    #: a control that prints PASS and exits 0 is scored as a defect (`rc=0` where `1`
+    #: was declared). Fixed 2026-11-25 -- the battery named it: the row
+    #: `red-as-expected-punct-model` failed with `=0` while every mutant was caught.
     return EXIT_FAIL
 
 
@@ -463,14 +524,14 @@ sys.exit(0 if ok else 1)
 
 
 def main() -> int:
-    if "--gpu-policy-only" in sys.argv:
-        rows = gpu_policy_controls()
+    if "--placement-only" in sys.argv or "--gpu-policy-only" in sys.argv:
+        rows = placement_controls()
         failed = 0
         for ok, name, detail in rows:
             print(f"{'PASS' if ok else 'FAIL'}  {name}"
                   + (f"   [{detail}]" if detail else ""))
             failed += not ok
-        print(f"\nGPU POLICY VERDICT: {'PASS' if not failed else 'FAIL'} "
+        print(f"\nPLACEMENT VERDICT: {'PASS' if not failed else 'FAIL'} "
               f"({len(rows) - failed}/{len(rows)})")
         return EXIT_PASS if not failed else EXIT_FAIL
     if "--neg-arm" in sys.argv:

@@ -305,9 +305,12 @@ def denoise_block(x, sr: int = 16000, **kw) -> np.ndarray:
 def denoise_decision(cfg) -> tuple:
     """Read the TOP-LEVEL `use_denoise` key. Returns (enabled, reason).
 
-    Never raises. Anything that is not an unambiguous boolean is REFUSED back
-    to False with a reason naming the value, so a typo cannot silently turn the
-    denoiser on (and cannot silently turn it off either — the reason is logged).
+    Never raises. `true`/`false` and the STRINGS `"1"|"true"|"on"|"yes"` /
+    `"0"|"false"|"off"|"no"|""` are honoured (JSON read by a human hand produces
+    both spellings, and the selftest pins each one). Every OTHER value is
+    REFUSED back to False with a reason naming it, so a typo cannot silently
+    turn the denoiser on -- and cannot silently turn it off either: the reason
+    is logged.
     """
     if not isinstance(cfg, dict):
         return False, "no-config"
@@ -333,6 +336,34 @@ def denoise_from_config(cfg, sr: int = 16000):
     if not enabled:
         return None, False, reason
     return SpectralGate(sr=sr), True, reason
+
+
+def gate_for_worker_config(sr: int = 16000):
+    """(gate|None, enabled, reason) from the config the worker actually loads.
+
+    `main()` resolves `--config` once at startup; this is the same resolution,
+    done once per StreamAsr instance at its first chunk (the worker holds the
+    gate on `self.denoiser`). No file is read on later chunks, and an unreadable
+    config is refused back to "off" -- never an exception on the live path.
+    """
+    path = None
+    _argv = sys.argv or []
+    for _i, _arg in enumerate(_argv):
+        if _arg == "--config" and _i + 1 < len(_argv):
+            path = _argv[_i + 1]
+            break
+        if _arg.startswith("--config="):
+            path = _arg.split("=", 1)[1]
+            break
+    if path is None:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "config.json")
+    try:
+        with open(path, encoding="utf-8") as _fh:
+            cfg = json.load(_fh)
+    except Exception as exc:                               # noqa: BLE001
+        return None, False, "config-unreadable(%s)" % (type(exc).__name__,)
+    return denoise_from_config(cfg, sr=sr)
 
 
 # --- offline instrument -----------------------------------------------------

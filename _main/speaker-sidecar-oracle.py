@@ -30,6 +30,7 @@ from __future__ import annotations
 import ast
 import builtins
 import contextlib
+import gc
 import importlib.util
 import io
 import json
@@ -1371,23 +1372,57 @@ def gpu_policy_mutation_checks(source: str) -> list:
     return rows
 
 
-def installed_consumer_check(mod) -> tuple:
-    """Call the real full-diarizer consumer only when its installed API cannot load models."""
+def _installed_policy_row(mod) -> tuple:
+    """The ONE cheap arm: the shipped policy asks for the provider we measured.
+
+    Pure on purpose -- it reads a module constant, opens no model, and is what
+    `installed_consumer_mutation` reddens. The expensive arms below sit on top.
+    """
+    wanted = str(getattr(mod, "DIARIZER_PROVIDER", "")).strip().lower()
+    return (wanted == "cpu", "installed policy asks for cpu by name",
+            "DIARIZER_PROVIDER=%r" % (getattr(mod, "DIARIZER_PROVIDER", None),))
+
+
+def installed_consumer_check(mod) -> list:
+    """The real `--speakers` consumer under the MEASURED provider policy.
+
+    WHAT THIS ARM USED TO SAY, and why THAT was the defect (2026-11-25): it
+    required `_make_live_diarizer` to REFUSE -- the row was literally named
+    `installed --speakers diarizer consumer fails closed` -- because sherpa-onnx
+    1.13.4 ships no strict GPU adapter. That was the contract while the sidecar
+    asked for CUDA by default. Since 2026-11-24 it asks for CPU BY NAME
+    (`DIARIZER_PROVIDER`), the provider `_main/_diar-run.py` measured (DER
+    0,03 %, RTF 0,416, 277 MB, 0,9 s load at 2 threads): a CPU request cannot
+    fall back FROM an accelerator it never asked for, so "refuse everything"
+    became "refuse cuda, BUILD cpu". The old row therefore reported a working
+    product as RED, forever.
+
+    The contract now, both halves measured here: the shipped policy is cpu; the
+    cpu consumer really builds the full diarizer from the cached models; and a
+    cuda request is still refused by name, before either model is loaded.
+    """
+    rows = []
+
+    def chk(ok, name, detail=""):
+        rows.append((bool(ok), name, detail))
+
     try:
         import onnxruntime
         import sherpa_onnx
     except Exception as exc:  # noqa: BLE001 -- inventory only, no model construction
-        return False, "runtime import failed safely: %s: %s" % (type(exc).__name__, exc)
+        chk(False, "installed runtimes import",
+            "%s: %s" % (type(exc).__name__, exc))
+        return rows
 
     providers = list(onnxruntime.get_available_providers())
     version = getattr(sherpa_onnx, "__version__", "unknown")
-    factory = getattr(sherpa_onnx, "create_gpu_only_offline_speaker_diarizer", None)
-    if callable(factory):
-        return False, ("strict adapter exists in sherpa-onnx %s; actual model call "
-                        "intentionally withheld pending exclusive gated lease" % version)
-
-    if not (os.path.isfile(mod.DEFAULT_SEG_MODEL) and os.path.isfile(mod.DEFAULT_EMB_MODEL)):
-        return False, "cached speaker models are absent; the --speakers CLI path cannot be exercised"
+    rows.append(_installed_policy_row(mod))
+    models_present = (os.path.isfile(mod.DEFAULT_SEG_MODEL)
+                      and os.path.isfile(mod.DEFAULT_EMB_MODEL))
+    chk(models_present, "cached speaker models are on disk",
+        "" if models_present else mod.DEFAULT_SEG_MODEL)
+    if not models_present:
+        return rows
 
     args = types.SimpleNamespace(
         seg_model=mod.DEFAULT_SEG_MODEL,
@@ -1396,42 +1431,52 @@ def installed_consumer_check(mod) -> tuple:
         num_speakers=-1,
         threshold=0.9,
     )
-    try:
-        mod._make_live_diarizer(args)
-        return False, "_make_live_diarizer returned despite absent strict adapter"
-    except RuntimeError as exc:
-        helper_refusal = str(exc)
-    except Exception as exc:  # an unexpected exception is not the intended guard
-        return False, "%s: %s" % (type(exc).__name__, exc)
+    prior = getattr(mod, "DIARIZER_PROVIDER", None)
 
-    # Exercise main() with only a synthetic endpoint inventory. The default
-    # cached model files are present, but strict-adapter refusal must happen
-    # before `_tap_for` and therefore before capture can start.
-    wasapi = types.SimpleNamespace(loopback_device_specs=lambda: [{
-        "name": "model-free-test-endpoint", "rate": 48000, "default": True,
-    }])
-    prior_wasapi = sys.modules.get("wasapi_loopback", None)
-    prior_tap = mod._tap_for
-    tap_calls = []
-    mod._tap_for = lambda *args, **kwargs: tap_calls.append(True)
-    sys.modules["wasapi_loopback"] = wasapi
-    output = io.StringIO()
+    # POSITIVE: the shipped policy builds the real consumer (models load once).
     try:
-        with contextlib.redirect_stdout(output):
-            rc = mod.main([])
+        mod.DIARIZER_PROVIDER = "cpu"
+        built = mod._make_live_diarizer(args)
+        chk(callable(built), "installed cpu consumer builds the real diarizer",
+            "sherpa-onnx=%s providers=%r" % (version, providers))
+    except Exception as exc:  # noqa: BLE001 -- any failure is the arm's verdict
+        chk(False, "installed cpu consumer builds the real diarizer",
+            "%s: %s" % (type(exc).__name__, exc))
     finally:
-        mod._tap_for = prior_tap
-        if prior_wasapi is None:
-            sys.modules.pop("wasapi_loopback", None)
-        else:
-            sys.modules["wasapi_loopback"] = prior_wasapi
-    if rc != 2 or tap_calls or "GPU-only diarization unavailable" not in output.getvalue() \
-            or helper_refusal not in output.getvalue():
-        return False, "real main returned rc=%r tap_calls=%d output=%r" % (
-            rc, len(tap_calls), output.getvalue()[-240:])
-    return True, ("sherpa-onnx=%s available_providers=%r strict_factory=absent; "
-                  "_make_live_diarizer refused; main returned 2 before _tap_for "
-                  "(no capture/model construction)" % (version, providers))
+        mod.DIARIZER_PROVIDER = prior
+        built = None
+        gc.collect()
+
+    # NEGATIVE: cuda is still refused BY NAME, before any model file is read.
+    try:
+        mod.DIARIZER_PROVIDER = "cuda"
+        mod._make_live_diarizer(args)
+        chk(False, "installed cuda request is refused by name",
+            "_make_live_diarizer returned for a cuda request")
+    except RuntimeError as exc:
+        text = str(exc).lower()
+        chk("cuda" in text or "gpu" in text,
+            "installed cuda request is refused by name", str(exc)[:160])
+    except Exception as exc:  # noqa: BLE001 -- an unexpected exception is not the guard
+        chk(False, "installed cuda request is refused by name",
+            "%s: %s" % (type(exc).__name__, exc))
+    finally:
+        mod.DIARIZER_PROVIDER = prior
+    return rows
+
+
+def installed_consumer_mutation(source: str) -> list:
+    """The policy arm's own negative control: flip the constant, it must redden."""
+    old = 'DIARIZER_PROVIDER = "cpu"'
+    if old not in source:
+        return [(False, "mutation anchor installed-policy", "anchor missing")]
+    with tempfile.TemporaryDirectory(prefix="sidecar-installed-mut-") as tmp:
+        path = os.path.join(tmp, "mutant_policy.py")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(source.replace(old, 'DIARIZER_PROVIDER = "cuda"', 1))
+        mutant = load_module(path, "speaker_installed_policy_mut")
+        ok, _name, detail = _installed_policy_row(mutant)
+        return [(not ok, "mutation caught installed-policy-flipped", detail)]
 
 
 def score_fake_controls() -> list:
@@ -1712,16 +1757,34 @@ def mic_battery(mod) -> list:
             self.pushed += int(pcm.size)
             self.feed.insert(0, pcm)
 
-    def _open(mic_feed):
+    def _open(mic_feed, primary_factory=FakePrimary):
         got = []
         mic = FakeMic(mic_feed)
         saved = mod._mic_or_refusal
         mod._mic_or_refusal = lambda prefer: (mic, "fake microphone")  # noqa: ARG005
         try:
-            tap, note = mod.open_stream(FakePrimary, got.append)
+            tap, note = mod.open_stream(primary_factory, got.append)
         finally:
             mod._mic_or_refusal = saved
         return tap, got, mic, note
+
+    class LateRatePrimary(FakePrimary):
+        """The PROCESS rung's real shape: `rate` is provisional until start().
+
+        `ProcessLoopbackTap` declares 48 kHz and then `_open()` writes back the
+        format the winning arm really accepted (the ladder has a 44.1 kHz arm).
+        A mix that freezes the rate in `attach()` therefore resamples 44.1 kHz
+        audio as 48 kHz -- 4 410 samples out as 1 470 instead of 1 600, an 8 %
+        pitch error on the rung the microphone was added to (2026-11-25).
+        """
+
+        def __init__(self, cb):
+            super().__init__(cb)
+            self.rate = 48000
+
+        def start(self):
+            self.rate = 44100
+            self.block = 4410
 
     tap, got, mic, note = _open([np.full(1600, 0.2, dtype=np.float32)])
     tap.start()
@@ -1757,6 +1820,17 @@ def mic_battery(mod) -> list:
         "the mix is clipped, never out of range",
         "peak=%.3f" % float(np.abs(got[-1]).max()))
 
+    # ── the primary's rate is read from the OPEN stream, not frozen in attach ─
+    late, got_late, mic_late, _note = _open(
+        [np.full(1600, 0.2, dtype=np.float32)], primary_factory=LateRatePrimary)
+    late.start()                     # the winning arm writes 44.1 kHz back
+    late.primary.cb(np.full(late.primary.block, 0.4, dtype=np.float32))
+    out_late = got_late[-1] if got_late else np.zeros(0, dtype=np.float32)
+    chk(out_late.size == 1600 and abs(float(out_late[0]) - 0.45) < 1e-6,
+        "a primary that settles 44.1 kHz in start() is resampled at THAT rate",
+        "n=%d want=1600 v=%.4f (a frozen 48 kHz rate gives 1470 samples)"
+        % (out_late.size, float(out_late[0]) if out_late.size else -1.0))
+
     # ── a microphone that delivers zeros is REPORTED, not silently absorbed ──
     import contextlib as _ctx
     import io as _io
@@ -1791,6 +1865,232 @@ def mic_battery(mod) -> list:
     chk(bool(got_none) and abs(float(got_none[-1][0]) - 0.5) < 1e-9,
         "and that path is untouched: no attenuation, no resample, no mix",
         "%.3f" % (float(got_none[-1][0]) if got_none else -1.0))
+
+    # ── the privacy switch is an ENABLE list, and a failed primary leaks nothing ─
+    # REVIEWER FINDING 2026-11-25: `SOTTO_MIC=00` used to fall through to ON --
+    # a typo that turns a microphone on is the one direction that must never be
+    # a guess -- and a primary that raised after the mic was opened never closed
+    # it, leaving one input stream alive per failed ladder candidate.
+    saved = mod._mic_or_refusal
+    mod._mic_or_refusal = lambda prefer: (FakeMic([]), "fake microphone")  # noqa: ARG005
+    try:
+        import os as _os
+        prior_env = _os.environ.get("SOTTO_MIC")
+        verdicts = {}
+        try:
+            for value in ("00", "0", "off", "no", "false", "", "1", "YES", "en"):
+                _os.environ["SOTTO_MIC"] = value
+                got_switch = []
+                tap_switch, _n = mod.open_stream(FakePrimary, got_switch.append)
+                verdicts[value] = isinstance(tap_switch, mod.ConversationTap)
+        finally:
+            if prior_env is None:
+                _os.environ.pop("SOTTO_MIC", None)
+            else:
+                _os.environ["SOTTO_MIC"] = prior_env
+        chk(not any(verdicts[v] for v in ("00", "0", "off", "no", "false")),
+            "SOTTO_MIC: every off-looking value (including `00`) keeps the "
+            "microphone CLOSED", str(verdicts))
+        chk(all(verdicts[v] for v in ("", "1", "YES", "en")),
+            "SOTTO_MIC: an explicit enable value (or none) opens it", str(verdicts))
+
+        leak_mic = FakeMic([])
+        closed = {"n": 0}
+        leak_mic.close = lambda: closed.__setitem__("n", closed["n"] + 1)
+        mod._mic_or_refusal = lambda prefer, m=leak_mic: (m, "fake microphone")  # noqa: ARG005
+
+        def _explode(_sink):
+            raise RuntimeError("the loopback refused to open")
+
+        raised = False
+        try:
+            mod.open_stream(_explode, lambda _b: None)
+        except RuntimeError:
+            raised = True
+        chk(raised and closed["n"] == 1,
+            "a primary that fails to open closes the microphone it already "
+            "opened (no leaked input stream per ladder rung)",
+            "raised=%s closes=%d" % (raised, closed["n"]))
+    finally:
+        mod._mic_or_refusal = saved
+    # ── the LADDER FACTORY: every rung, not only the endpoint rung ────────
+    # MEASURED DEFECT 2026-11-25: `open_stream` was called on the WASAPI rung
+    # only. The process and PortAudio rungs returned their tap directly, so
+    # the owner's speech never reached the ASR whenever the ladder landed
+    # there. Drive the real factory with fake primaries (the worker module
+    # needs COM/PortAudio at import, so only this function's AST is executed)
+    # and inject THIS mic module as sys.modules["mic_tap"], so the fake
+    # microphone and SOTTO_MIC below are what the factory really sees.
+    import ast as _ast
+    import types as _types
+
+    # Mutants are loaded from a temp dir, so mod.__file__ is NOT the worker's
+    # neighbour; the module path the oracle loaded the real mic module from is.
+    worker_path = os.path.join(os.path.dirname(os.path.abspath(MIC_MODULE_PATH)),
+                               "sotto_worker.py")
+    with open(worker_path, "r", encoding="utf-8") as fh:
+        worker_source = fh.read()
+    factory_def = next(n for n in _ast.parse(worker_source).body
+                       if isinstance(n, _ast.FunctionDef) and n.name == "LoopbackTap")
+    factory_ast = _ast.fix_missing_locations(
+        _ast.Module(body=[factory_def], type_ignores=[]))
+    made = []
+    notes = []
+
+    class _FakePrimary:
+        def __init__(self, cb, rate, kind, block_ms=100, **kw):
+            self.cb = cb
+            self.rate = rate
+            self.kind = kind
+            self.block_ms = int(block_ms)
+            self.block = int(rate * self.block_ms / 1000)
+            self.device = {"name": kind}
+            self.endpoint_id = kw.get("endpoint_id")
+            self.kw = kw
+            self.stream = self
+            self.started = False
+            made.append(self)
+
+        def start(self):
+            self.started = True
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    class FakeProcessTap(_FakePrimary):
+        def __init__(self, cb, pid, pid_desc="", block_ms=100):
+            super().__init__(cb, 48000, "process", block_ms,
+                             pid=pid, pid_desc=pid_desc)
+
+    class FakePortAudioTap(_FakePrimary):
+        def __init__(self, device, cb, want_rate=16000, block_ms=100):
+            super().__init__(cb, want_rate, "portaudio", block_ms, device=device)
+
+    class FakeWasapiTap(_FakePrimary):
+        def __init__(self, cb, block_ms=100, endpoint_id=None):
+            super().__init__(cb, 48000, "wasapi", block_ms,
+                             endpoint_id=endpoint_id)
+
+    fake_wasapi = _types.ModuleType("wasapi_loopback")
+    fake_wasapi.WasapiLoopbackTap = FakeWasapiTap
+    factory_ns = {
+        "TARGET_SR": mod.TARGET_SR,
+        "ProcessLoopbackTap": FakeProcessTap,
+        "FileTap": lambda *a, **kw: None,  # noqa: ARG005
+        "_PortAudioTap": FakePortAudioTap,
+        "err": notes.append,
+        "__name__": "loopback_factory_oracle",
+    }
+    exec(compile(factory_ast, worker_path, "exec"), factory_ns)
+    factory = factory_ns["LoopbackTap"]
+
+    rungs = (
+        ("process", {"name": "app", "process_loopback": True,
+                     "target_pid": 4242, "target_desc": "app"}),
+        ("wasapi", {"name": "endpoint", "wasapi_loopback": True,
+                    "endpoint_id": "ep-1"}),
+        ("portaudio", {"name": "pa", "max_input_channels": 2,
+                       "index": 3, "default_samplerate": 16000}),
+    )
+    saved_modules = {k: sys.modules.get(k)
+                     for k in ("mic_tap", "wasapi_loopback")}
+    saved_env = os.environ.get("SOTTO_MIC")
+    saved_refusal = mod._mic_or_refusal
+    sys.modules["mic_tap"] = mod
+    sys.modules["wasapi_loopback"] = fake_wasapi
+    try:
+        for kind, dev in rungs:
+            # (1) microphone available: the mixer wraps THIS rung's primary.
+            made.clear()
+            notes.clear()
+            mod._mic_or_refusal = lambda prefer, m=FakeMic([np.full(
+                1600, 0.2, dtype=np.float32)]): (m, "fake microphone")  # noqa: ARG005
+            os.environ["SOTTO_MIC"] = "1"
+            got = []
+            tap = factory(dev, got.append)
+            chk(isinstance(tap, mod.ConversationTap),
+                "%s rung: an available microphone is mixed in" % kind,
+                "tap=%s note=%r" % (type(tap).__name__,
+                                    notes[-1] if notes else ""))
+            primary = getattr(tap, "primary", None)
+            chk(primary is made[-1] if made else False,
+                "%s rung: the mixer wraps the primary this rung would return" % kind,
+                "primary=%r" % (getattr(primary, "kind", None),))
+            if primary is not None:
+                chk((primary.kind == kind and
+                     (kind != "process" or (primary.kw.get("pid") == 4242 and
+                                            primary.kw.get("pid_desc") == "app")) and
+                     (kind != "wasapi" or primary.endpoint_id == "ep-1") and
+                     (kind != "portaudio" or primary.kw.get("device") is dev)),
+                    "%s rung: pid / endpoint / device selection is untouched" % kind,
+                    "kw=%r" % (primary.kw,))
+                got.clear()
+                src = np.full(primary.block, 0.4, dtype=np.float32)
+                primary.cb(src)
+                out = got[-1] if got else np.zeros(0, dtype=np.float32)
+                chk(out.size == 1600 and abs(float(out[0]) - 0.45) < 1e-6,
+                    "%s rung: the microphone's audio reaches ASR in the mix" % kind,
+                    "n=%d v=%.4f" % (out.size, float(out[0]) if out.size else -1.0))
+            else:
+                chk(False, "%s rung: pid / endpoint / device selection is untouched" % kind,
+                    "no primary was built")
+                chk(False, "%s rung: the microphone's audio reaches ASR in the mix" % kind,
+                    "no primary was built")
+
+            # (2) SOTTO_MIC=0: the plain tap and byte-identical audio.
+            made.clear()
+            os.environ["SOTTO_MIC"] = "0"
+            got.clear()
+            tap0 = factory(dev, got.append)
+            plain0 = made[-1] if made else None
+            chk(not isinstance(tap0, mod.ConversationTap) and plain0 is not None,
+                "%s rung: SOTTO_MIC=0 returns the plain tap" % kind,
+                "tap=%s" % type(tap0).__name__)
+            if plain0 is not None:
+                src0 = np.full(plain0.block, 0.4, dtype=np.float32)
+                plain0.cb(src0)
+                out0 = got[-1] if got else np.zeros(0, dtype=np.float32)
+                chk(out0.size == src0.size and np.array_equal(out0, src0),
+                    "%s rung: SOTTO_MIC=0 leaves the block byte-identical" % kind,
+                    "n=%d v=%.4f" % (out0.size, float(out0[0]) if out0.size else -1.0))
+            else:
+                chk(False, "%s rung: SOTTO_MIC=0 leaves the block byte-identical" % kind,
+                    "no primary was built")
+
+            # (3) a machine with no microphone: the same plain path, same bytes.
+            made.clear()
+            os.environ["SOTTO_MIC"] = "1"
+            mod._mic_or_refusal = lambda prefer: (None, "no microphone: fake")  # noqa: ARG005
+            got.clear()
+            tap2 = factory(dev, got.append)
+            plain2 = made[-1] if made else None
+            chk(not isinstance(tap2, mod.ConversationTap) and plain2 is not None,
+                "%s rung: no microphone returns the plain tap" % kind,
+                "tap=%s" % type(tap2).__name__)
+            if plain2 is not None:
+                src2 = np.full(plain2.block, 0.5, dtype=np.float32)
+                plain2.cb(src2)
+                out2 = got[-1] if got else np.zeros(0, dtype=np.float32)
+                chk(out2.size == src2.size and np.array_equal(out2, src2),
+                    "%s rung: no microphone leaves the block byte-identical" % kind,
+                    "n=%d v=%.4f" % (out2.size, float(out2[0]) if out2.size else -1.0))
+            else:
+                chk(False, "%s rung: no microphone leaves the block byte-identical" % kind,
+                    "no primary was built")
+    finally:
+        mod._mic_or_refusal = saved_refusal
+        if saved_env is None:
+            os.environ.pop("SOTTO_MIC", None)
+        else:
+            os.environ["SOTTO_MIC"] = saved_env
+        for k, v in saved_modules.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
     return rows
 
 
@@ -1821,6 +2121,38 @@ MIC_MUTANTS = [
     ("explicit-microphone-name-ignored",
      "    if prefer:\n        low = prefer.strip().lower()",
      "    if False:\n        low = prefer.strip().lower()"),
+    # The new ladder arms must have teeth too. Four DIFFERENT behaviours:
+    # the privacy switch, the microphone's contribution, the primary's sample
+    # rate (the process rung is 48 kHz), and the byte-identical no-mic path.
+    ("sotto-mic-zero-ignored",
+     '    setting = os.environ.get("SOTTO_MIC", "").strip().lower()\n'
+     '    if not enabled or (setting not in ("", "1", "on", "true", "yes", "en")):',
+     "    if not enabled:"),
+    ("the-microphone-contributes-nothing",
+     "MIC_GAIN = 0.75",
+     "MIC_GAIN = 0.0"),
+    # MEASURED 2026-11-25: the mix used to freeze the primary's rate in
+    # `attach()`, but `ProcessLoopbackTap.rate` is PROVISIONAL until `_open()`
+    # reads the winning arm back, so a 44.1 kHz arm was resampled as 48 kHz
+    # (4 410 samples -> 1 470 instead of 1 600). The mutation is the old
+    # behaviour: read the rate ONCE, before the stream starts.
+    ("a-48k-primary-is-treated-as-16k",
+     '            return int(getattr(self.primary, "rate", None) or self.src_rate\n'
+     "                       or TARGET_SR)",
+     "            return self.src_rate"),
+    ("no-microphone-path-attenuates-audio",
+     "    mic, note = _mic_or_refusal(prefer)\n"
+     "    if mic is None:\n"
+     "        return make_primary(sink), note",
+     "    mic, note = _mic_or_refusal(prefer)\n"
+     "    if mic is None:\n"
+     "        return make_primary(lambda b: sink(b * 0.9)), note"),
+    # A primary that refuses to open must close the microphone it already
+    # opened; without the `except` the ladder leaks one input stream per failed
+    # candidate (reviewer finding 2026-11-25).
+    ("a-failed-primary-leaks-the-microphone",
+     "    except BaseException:\n",
+     "    except ZeroDivisionError:\n"),
 ]
 
 
@@ -1912,8 +2244,8 @@ def main() -> int:
         rows = gpu_policy_battery(mod)
         rows.extend(gpu_policy_mutation_checks(source))
         if "--probe-installed-consumer" in sys.argv[1:]:
-            ok, detail = installed_consumer_check(mod)
-            rows.append((ok, "installed --speakers diarizer consumer fails closed", detail))
+            rows.extend(installed_consumer_check(mod))
+            rows.extend(installed_consumer_mutation(source))
         for ok, name, detail in rows:
             print("  %s %s%s" % ("GREEN" if ok else "RED  ", name,
                                  ("  " + detail) if detail else ""))

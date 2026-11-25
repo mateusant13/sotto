@@ -7,10 +7,10 @@ e foi lida nesta campanha (2026-11-11), não herdada de um documento antigo.
 
 ```
 explorer.exe (autostart no logon, ou duplo-clique do dono)
-└── cmd.exe   app/webview/run.cmd                            [320 linhas]
-    ├── pythonw.exe ... --check-args <flags>     PRE-FLIGHT, começa NADA   (run.cmd:252)
-    ├── start "" pythonw.exe ... --log ... --ready-file ...   A APP        (run.cmd:302,308)
-    └── pythonw.exe ... --wait-ready <ficheiro>  ESPERA limitada, rc=4 = HANG (run.cmd:312)
+└── cmd.exe   app/webview/run.cmd                            [285 linhas]
+    ├── pythonw.exe ... --check-args <flags>     PRE-FLIGHT, começa NADA   (run.cmd:216)
+    ├── start "" pythonw.exe ... --log ... --ready-file ...   A APP        (run.cmd:266,272)
+    └── pythonw.exe ... --wait-ready <ficheiro>  ESPERA limitada, rc=4 = HANG (run.cmd:276)
 
 pythonw.exe sotto_webview.py        A SHELL — o processo que o dono vê
 ├── python.exe -u worker/sotto_worker.py      O WORKER — outro processo, BELOW_NORMAL
@@ -21,7 +21,7 @@ pythonw.exe sotto_webview.py        A SHELL — o processo que o dono vê
 └── ~30 fios da shell             (lista em §3)
 ```
 
-`[CODE]` o par não é `detached`: `run.cmd:302,308` faz `start "" "%PYW%" ...`, ou seja o `cmd.exe` sai
+`[CODE]` o par não é `detached`: `run.cmd:266,272` faz `start "" "%PYW%" ...`, ou seja o `cmd.exe` sai
 quando a app nasce, e a app fica sem pai de consola — é o que permite ao dono fechar o `cmd` sem
 matar o Sotto.
 
@@ -37,12 +37,12 @@ dono. `[CODE]`
 
 | passo | o que faz | onde |
 |---|---|---|
-| 1 | `SOTTO_REDUX_LIVE=1` e `SOTTO_REDUX_WHEN_HIDDEN=1` **se não estiverem definidos** | `run.cmd:113,140` |
-| 2 | resolve `pythonw.exe` a partir de `py -3 -c "import sys;print(sys.executable)"`; sem ele, `where python` | `run.cmd:150-152` |
-| 3 | flags que IMPRIMEM (`--help`, `--selftest`, `--memory`, `--dump-dom`, autostart) vão por `python.exe` — usam o terminal que já existe | `run.cmd:178-197` |
-| 4 | `--check-args`: o parser DA SHELL valida a lista; nada arranca | `run.cmd:252` |
-| 5 | `start` da app, com perfil efémero do WebView2 e log por omissão `_main\webview-run.log` | `run.cmd:298-309` |
-| 6 | `--wait-ready`: espera limitada (30 s, `SOTTO_READY_BOUND`) que a app toque o ficheiro de prontidão; `rc=4` e a frase `HANG` se não tocar | `run.cmd:312-321` |
+| 1 | `SOTTO_REDUX_LIVE` / `SOTTO_REDUX_WHEN_HIDDEN`: **NÃO são definidos aqui** — o dono único é `WorkerBridge._child_env` (`setdefault`, `"1"`), e este ficheiro só o diz em comentário | `run.cmd:82-99`; `app/webview/sotto_webview.py` `_child_env` |
+| 2 | resolve `pythonw.exe` a partir de `py -3 -c "import sys;print(sys.executable)"`; sem ele, `where python` | `run.cmd:112-121` |
+| 3 | flags que IMPRIMEM (`--help`, `--selftest`, `--memory`, `--dump-dom`, autostart) vão por `python.exe` — usam o terminal que já existe | `run.cmd:143-161` |
+| 4 | `--check-args`: o parser DA SHELL valida a lista; nada arranca | `run.cmd:216` |
+| 5 | `start` da app, com perfil efémero do WebView2 e log por omissão `_main\webview-run.log` | `run.cmd:260-273` |
+| 6 | `--wait-ready`: espera limitada (30 s, `SOTTO_READY_BOUND`) que a app toque o ficheiro de prontidão; `rc=4` e a frase `HANG` se não tocar | `run.cmd:276-285` |
 
 Duas consequências de desenho que valem a pena dizer em palavras:
 

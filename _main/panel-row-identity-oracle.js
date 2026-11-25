@@ -57,6 +57,7 @@ const PANEL = path.join(REPO, 'app', 'panel', 'panel.js');
 const ENGINE = path.join(REPO, 'app', 'panel', 'caption-formulation.js');
 const PANEL_CSS = path.join(REPO, 'app', 'panel', 'panel.css');
 const HISTORY_SOURCE = path.join(REPO, 'app', 'panel', 'history-source.js');
+const HTML = path.join(REPO, 'app', 'panel', 'panel.html');
 
 const NEG_ARM = process.argv.indexOf('--neg-arm') >= 0;
 function say(line) { process.stdout.write(line + '\n'); }
@@ -713,6 +714,46 @@ function checkK(h) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// THE NATIVE-CAPTION ARM (2026-11-25): the page must NOT load the retired
+// caption-float / letter-swap files, must NOT push words into a module that is
+// never loaded, and MUST still own the native door, the brand tokens and the
+// data-float + one-height layout that other code reads. Comments in both files
+// NAME the retired modules to explain the removal; they are prose, so both are
+// measured with comments stripped.
+// ---------------------------------------------------------------------------
+function nativeArm(panelSource, htmlSource) {
+  const markup = htmlSource.replace(/<!--[\s\S]*?-->/g, '');
+  const code = panelSource.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ');
+  const tags = [...markup.matchAll(/<(?:link|script)\b[^>]*>/g)].map((m) => m[0]);
+  const dead = tags.filter((t) => /caption-float\.css|caption-float\.js|letter-swap\.js/.test(t));
+  const refs = ['SottoCaptionFloat', 'SottoLetterSwap'].filter((k) => code.indexOf(k) >= 0);
+  const door = /bridge\.setLiveEnabled\(Boolean\(on\)\)/.test(code)
+    && /function shellOwnsCaptionWindow\(\)/.test(code)
+    && /applyFloat\(liveEnabled\)/.test(code);
+  const brand = /<script src="brand-bridge\.js"><\/script>/.test(markup) && /id="brand-probe"/.test(markup);
+  const at = code.indexOf('function applyFloat(');
+  const open = at < 0 ? -1 : code.indexOf('{', at);
+  let floatSrc = '';
+  if (open >= 0) {
+    let depth = 0;
+    for (let i = open; i < code.length; i += 1) {
+      if (code[i] === '{') depth += 1;
+      else if (code[i] === '}') { depth -= 1; if (depth === 0) { floatSrc = code.slice(open, i + 1); break; } }
+    }
+  }
+  const layout = floatSrc.length > 0
+    && /document\.body\.setAttribute\('data-float', want\)/.test(floatSrc)
+    && /setStripHeight\(STRIP_HEIGHT\)/.test(floatSrc)
+    && !/setPanelSurface/.test(floatSrc);
+  return [
+    { id: 'N1', ok: dead.length === 0, detail: 'retired tags in panel.html=' + JSON.stringify(dead) },
+    { id: 'N2', ok: refs.length === 0, detail: 'live references in panel.js code=' + JSON.stringify(refs) },
+    { id: 'N3', ok: door && brand, detail: 'nativeDoor=' + door + ' brandProbe=' + brand },
+    { id: 'N4', ok: layout, detail: 'applyFloat=' + (floatSrc.length ? (/data-float/.test(floatSrc) && /setStripHeight\(STRIP_HEIGHT\)/.test(floatSrc) ? 'attribute + one height, no shell resize' : 'INCOMPLETE') : 'NOT FOUND') },
+  ];
+}
+
 const CHECKS = [
   ['CHK-A', 'same start + DIFFERENT sources -> TWO rows with their own text', checkA],
   ['CHK-B', 'the same line again -> ONE row, text replaced IN PLACE', checkB],
@@ -757,6 +798,7 @@ function runArm(label, panelSource, engineSource) {
 // ---------------------------------------------------------------------------
 // THE NEG-ARM — each mutant removes ONE thing, in memory, from the real bytes.
 // ---------------------------------------------------------------------------
+const ALL_CHECKS = CHECKS.map(([id]) => id);
 const MUTANTS = [
   {
     id: 'M1 one engine for every app',
@@ -872,6 +914,78 @@ const MUTANTS = [
       mustRed: ['CHK-K'],
       mustGreen: ['CHK-A', 'CHK-B', 'CHK-C', 'CHK-C2', 'CHK-D', 'CHK-E', 'CHK-F', 'CHK-G', 'CHK-H', 'CHK-I', 'CHK-J'],
     },
+  {
+    id: 'M10 caption-float.css is linked again',
+    what: 'panel.html links the retired float stylesheet',
+    file: 'html',
+    apply(source) {
+      const anchor = '<link rel="stylesheet" href="panel.css" />';
+      if (source.indexOf(anchor) === -1) return null;
+      return source.replace(anchor, anchor + '\n    <link rel="stylesheet" href="caption-float.css" />');
+    },
+    mustRed: ['N1'],
+    mustGreen: ALL_CHECKS.concat(['N2', 'N3', 'N4']),
+  },
+  {
+    id: 'M11 letter-swap.js is loaded again',
+    what: 'panel.html loads the retired letter-swap module',
+    file: 'html',
+    apply(source) {
+      const anchor = '    <script src="panel.js"></script>';
+      if (source.indexOf(anchor) === -1) return null;
+      return source.replace(anchor, anchor + '\n    <script src="letter-swap.js" defer></script>');
+    },
+    mustRed: ['N1'],
+    mustGreen: ALL_CHECKS.concat(['N2', 'N3', 'N4']),
+  },
+  {
+    id: 'M12 caption-float.js is loaded again',
+    what: 'panel.html loads the retired page-overlay module',
+    file: 'html',
+    apply(source) {
+      const anchor = '    <script src="panel.js"></script>';
+      if (source.indexOf(anchor) === -1) return null;
+      return source.replace(anchor, anchor + '\n    <script src="caption-float.js" defer></script>');
+    },
+    mustRed: ['N1'],
+    mustGreen: ALL_CHECKS.concat(['N2', 'N3', 'N4']),
+  },
+  {
+    id: 'M13 a float push is wired back into panel.js',
+    what: 'addCaption pushes a closed line into window.SottoCaptionFloat',
+    file: 'panel',
+    apply(source) {
+      const anchor = '  bridge.captionApplied(text);';
+      if (source.indexOf(anchor) === -1) return null;
+      return source.replace(anchor, anchor + '\n  if (window.SottoCaptionFloat) window.SottoCaptionFloat.push(text, meta || null);');
+    },
+    mustRed: ['N2'],
+    mustGreen: ALL_CHECKS.concat(['N1', 'N3', 'N4']),
+  },
+  {
+    id: 'M14 the native caption door is deleted',
+    what: 'requestCaptionOverlay no longer calls bridge.setLiveEnabled',
+    file: 'panel',
+    apply(source) {
+      const anchor = '    const result = bridge.setLiveEnabled(Boolean(on));';
+      if (source.indexOf(anchor) === -1) return null;
+      return source.replace(anchor, '    void 0;');
+    },
+    mustRed: ['N3'],
+    mustGreen: ALL_CHECKS.concat(['N1', 'N2', 'N4']),
+  },
+  {
+    id: 'M15 the one strip height is deleted',
+    what: 'applyFloat no longer writes setStripHeight(STRIP_HEIGHT)',
+    file: 'panel',
+    apply(source) {
+      const anchor = '  setStripHeight(STRIP_HEIGHT);';
+      if (source.indexOf(anchor) === -1) return null;
+      return source.replace(anchor, '  void 0;');
+    },
+    mustRed: ['N4'],
+    mustGreen: ALL_CHECKS.concat(['N1', 'N2', 'N3']),
+  },
 ];
 
 // MAIN
@@ -879,9 +993,11 @@ const MUTANTS = [
 say('panel-row-identity-oracle — real panel.js bytes in a node vm, fake DOM');
 const panelRev = revision(PANEL);
 const engineRev = revision(ENGINE);
+const htmlRev = revision(HTML);
 say('  panel.js   ' + panelRev.bytes + ' B  sha256 ' + panelRev.sha256);
 say('  panel.js   mtime ' + panelRev.mtime);
 say('  engine     ' + engineRev.bytes + ' B  sha256 ' + engineRev.sha256);
+say('  panel.html ' + htmlRev.bytes + ' B  sha256 ' + htmlRev.sha256);
 
 const parsed = cp.spawnSync(process.execPath, ['--check', PANEL], { encoding: 'utf8' });
 const checkRc = parsed.status;
@@ -892,9 +1008,15 @@ if (checkRc !== 0) {
 }
 
 const shipped = runArm('AS SHIPPED', panelRev.text, engineRev.text);
-const allGreen = shipped.loaded && CHECKS.every(([id]) => shipped.colours[id]);
+const shippedNative = nativeArm(panelRev.text, htmlRev.text);
 say('');
-say('AS-SHIPPED COLOURS: ' + CHECKS.map(([id]) => id + '=' + (shipped.colours[id] ? 'GREEN' : 'RED')).join(' '));
+say('--- NATIVE-CAPTION ARM AS SHIPPED ---');
+for (const r of shippedNative) say('  ' + (r.ok ? 'GREEN' : 'RED  ') + ' ' + r.id + '  ' + r.detail);
+const allGreen = shipped.loaded && CHECKS.every(([id]) => shipped.colours[id])
+  && shippedNative.every((r) => r.ok);
+say('');
+say('AS-SHIPPED COLOURS: ' + CHECKS.map(([id]) => id + '=' + (shipped.colours[id] ? 'GREEN' : 'RED')).join(' ')
+  + ' ' + shippedNative.map((r) => r.id + '=' + (r.ok ? 'GREEN' : 'RED')).join(' '));
 
 if (!NEG_ARM) {
   say('VERDICT: ' + (allGreen ? 'PASS' : 'FAIL'));
@@ -902,8 +1024,10 @@ if (!NEG_ARM) {
 }
 
 let selective = true;
+const NATIVE_IDS = ['N1', 'N2', 'N3', 'N4'];
 for (const mutant of MUTANTS) {
-  const target = mutant.file === 'engine' ? engineRev.text : panelRev.text;
+  const target = mutant.file === 'engine' ? engineRev.text
+    : mutant.file === 'html' ? htmlRev.text : panelRev.text;
   const mutated = mutant.apply(target);
   say('');
   say('--- NEG-ARM ' + mutant.id + ': ' + mutant.what + ' ---');
@@ -916,13 +1040,23 @@ for (const mutant of MUTANTS) {
   say('  mutant bytes ' + Buffer.byteLength(mutated, 'utf8') + ' B  sha256 ' + sha256(mutated));
   const arm = mutant.file === 'engine'
     ? runArm('NEG-ARM ' + mutant.id, panelRev.text, mutated)
-    : runArm('NEG-ARM ' + mutant.id, mutated, engineRev.text);
+    : runArm('NEG-ARM ' + mutant.id, mutant.file === 'panel' ? mutated : panelRev.text, engineRev.text);
+  const native = nativeArm(mutant.file === 'panel' ? mutated : panelRev.text,
+    mutant.file === 'html' ? mutated : htmlRev.text);
+  const nativeColour = (id) => (native.find((r) => r.id === id) || { ok: false }).ok;
+  say('  ' + mutant.id + ' NATIVE: ' + native.map((r) => r.id + '=' + (r.ok ? 'GREEN' : 'RED')).join(' '));
   say('  ' + mutant.id + ' COLOURS: ' + CHECKS.map(([id]) => id + '=' + (arm.colours[id] ? 'GREEN' : 'RED')).join(' '));
-  const redMissed = mutant.mustRed.filter((id) => arm.colours[id]);
-  const greenBroke = mutant.mustGreen.filter((id) => !arm.colours[id]);
-  const ok = arm.loaded && redMissed.length === 0 && greenBroke.length === 0;
-  say('  must be RED    ' + mutant.mustRed.join(',') + ' -> ' + (redMissed.length ? 'MISSED ' + redMissed.join(',') : 'all RED'));
-  say('  must stay GREEN ' + mutant.mustGreen.join(',') + ' -> ' + (greenBroke.length ? 'BROKE ' + greenBroke.join(',') : 'all GREEN'));
+  const redMissed = mutant.mustRed.filter((id) => NATIVE_IDS.indexOf(id) < 0 && arm.colours[id]);
+  const greenBroke = mutant.mustGreen.filter((id) => NATIVE_IDS.indexOf(id) < 0 && !arm.colours[id]);
+  const nativeMissed = mutant.mustRed.filter((id) => NATIVE_IDS.indexOf(id) >= 0 && nativeColour(id));
+  const nativeBroke = NATIVE_IDS.filter((id) => mutant.mustRed.indexOf(id) < 0 && !nativeColour(id));
+  const ok = arm.loaded && redMissed.length === 0 && greenBroke.length === 0
+    && nativeMissed.length === 0 && nativeBroke.length === 0;
+  say('  must be RED    ' + mutant.mustRed.join(',') + ' -> '
+    + ((redMissed.length || nativeMissed.length) ? 'MISSED ' + redMissed.concat(nativeMissed).join(',') : 'all RED'));
+  say('  must stay GREEN ' + ALL_CHECKS.length + ' row checks + '
+    + NATIVE_IDS.filter((id) => mutant.mustRed.indexOf(id) < 0).join(',') + ' -> '
+    + ((greenBroke.length || nativeBroke.length) ? 'BROKE ' + greenBroke.concat(nativeBroke).join(',') : 'all GREEN'));
   say('  ' + mutant.id + ' selective: ' + ok);
   if (!ok) selective = false;
 }

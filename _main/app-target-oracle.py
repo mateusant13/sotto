@@ -19,7 +19,10 @@ additionally counts THIS process's children in the kernel snapshot before and
 after the refusal, which is the instrument that proves no child was created.
 
 ARMS (each GREEN/RED on its own; every arm runs against the live shell AND
-against two mutated COPIES):
+against three mutated COPIES (two shells, one run.cmd)):
+  j  pins the ONE owner of the two REDUX defaults: run.cmd sets none, the
+     shell's `_child_env` supplies both to the worker's resolver, explicit
+     SOTTO_REDUX_LIVE=0 still wins, and config names that owner
 
   a  digits -> that pid; 0 / negative / empty / absent -> (None, [])
   b  a REAL live image name -> a pid that EXISTS and is a TREE ROOT (its parent
@@ -41,16 +44,17 @@ against two mutated COPIES):
   i  the CLI contract: `--app-target` exists, takes ONE value, and its help says
      pid/image-name, TREE ROOT, and "without it, the endpoint mix"
 
---neg-arm: the same arms against two mutated copies, both made from TODAY's
-shell by literal replacement (a kept copy goes stale -- the lesson of
-`_main/_prefix-under-test.py`):
+--neg-arm: the same arms against three mutated COPIES, made from TODAY's
+shell and run.cmd by literal replacement (a kept copy goes stale -- the
+lesson of `_main/_prefix-under-test.py`):
   M1  the ONE env line removed    -> arm d RED, every other arm GREEN
   M2  the TREE-ROOT rule removed  -> arm b RED, every other arm GREEN
+  M3  the run.cmd default back    -> arm j RED, every other arm GREEN
 The mutant files are written to %TEMP% (NOT to _main/): this lane's write scope
 is exactly three repo paths.
 
 Usage:
-    py -3 _main/app-target-oracle.py              # live arms + both mutants, one command
+    py -3 _main/app-target-oracle.py              # live arms + all three mutants, one command
     py -3 _main/app-target-oracle.py --neg-arm    # the mutant half only
     py -3 _main/app-target-oracle.py --verbose    # every sub-check line
 
@@ -74,9 +78,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, os.pardir))
 SHELL = os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py')
 WEBVIEW = os.path.join(ROOT, 'app', 'webview')
+RUN_CMD = os.path.join(ROOT, 'app', 'webview', 'run.cmd')
+CONFIG = os.path.join(ROOT, 'worker', 'config.json')
 WORKER = os.path.join(ROOT, 'worker', 'sotto_worker.py')
 
-ARMS = ('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i')
+ARMS = ('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j')
 TITLES = {
     'a': 'digits -> pid, junk -> None',
     'b': 'live image name -> TREE ROOT',
@@ -87,7 +93,14 @@ TITLES = {
     'g': 'unresolved REFUSES to start a worker',
     'h': 'not in the suppression set',
     'i': 'CLI contract',
+    'j': 'ONE owner of the REDUX defaults (no second table in run.cmd)',
 }
+#: M3 -- the second default table put BACK into a COPY of run.cmd: arm j must
+#: go RED while every other arm stays GREEN (this is the red mutation that
+#: proves arm j is not a decorative comment).
+M3_OLD = 'set "HERE=%~dp0"\n'
+M3_NEW = ('set "HERE=%~dp0"\n'
+          'if not defined SOTTO_REDUX_LIVE set "SOTTO_REDUX_LIVE=1"\n')
 
 #: M1 -- the ONE env line that makes the per-app tap reachable from the app.
 M1_OLD = ("        if self.target_pid is not None:\n"
@@ -97,6 +110,13 @@ M1_NEW = ""
 M2_OLD = ("    roots = sorted(pid for pid, parent in matches "
           "if parent not in matched_pids)\n")
 M2_NEW = "    roots = sorted(pid for pid, _parent in matches)\n"
+
+#: M4 -- THE OTHER HALF of the same defect (reviewer finding, 2026-11-25): the
+#: hidden-model default regressing from `setdefault` back to an unconditional
+#: assignment. Arm j only asked about LIVE, so this exact regression shipped
+#: once already and the detector stayed GREEN.
+M4_OLD = "        env.setdefault('SOTTO_REDUX_WHEN_HIDDEN', '1')\n"
+M4_NEW = "        env['SOTTO_REDUX_WHEN_HIDDEN'] = '1'\n"
 
 VERBOSE = False
 
@@ -586,12 +606,94 @@ def arm_i(mod, arm, ctx):
         arm.check(needle in helptext, f'--help mentions {needle!r}')
 
 
+def arm_j(mod, arm, ctx):
+    """ONE owner: the worker's resolver reads what the shell's env supplies.
+
+    run.cmd may not set either REDUX default: a direct shell launch and a
+    double-click must hand the worker the SAME environment. Arm e already pins
+    the child env's key list; this arm pins the BATCH side and the resolver's
+    precedence, with no worker launch and no model weights.
+    """
+    import json
+    import re
+    import subprocess
+    import unittest.mock as _mock
+    path = ctx.get('run_cmd') or RUN_CMD
+    with open(path, encoding='utf-8', newline='') as handle:
+        batch = handle.read()
+    # REM lines are prose. Both plain `set` and `if not defined ... set` are
+    # ACTIVE default tables -- the old run.cmd workaround used the latter.
+    assignments = [line.strip() for line in batch.splitlines()
+                   if not line.lstrip().upper().startswith('REM')
+                   and re.search(r'\bset\s+"?SOTTO_REDUX_(?:LIVE|WHEN_HIDDEN)=',
+                                 line, re.IGNORECASE)]
+    arm.check(not assignments,
+              f'run.cmd sets NO REDUX default ({len(assignments)} active '
+              f'set line(s): {assignments})')
+    # (1) STATIC: both lines must be `setdefault`. This is the exact line M4
+    # mutates, so the arm cannot go green on a reverted assignment.
+    with open(getattr(mod, '__file__', None) or SHELL, encoding='utf-8') as handle:
+        shell_src = handle.read()
+    arm.check("env.setdefault('SOTTO_REDUX_WHEN_HIDDEN', '1')" in shell_src
+              and "env.setdefault('SOTTO_REDUX_LIVE', '1')" in shell_src,
+              'both defaults are `setdefault` (an operator value always wins)')
+    # (2) DYNAMIC, in a CHILD PROCESS: the first draft ran this in-process, and
+    # `load_shedding`'s publisher thread -- which fills the key only when it is
+    # ABSENT -- raced the pop and rewrote HIDDEN=1 between the pop and the read,
+    # so the arm reported a harness race as a product defect. A child with a
+    # controlled environment measures the contract, not the scheduler.
+    probe = (
+        'import json, sys; sys.path.insert(0, r"%s"); import sotto_webview as m;'
+        'b = m.WorkerBridge(command=sys.executable, worker_path=r"%s");'
+        'e = b._child_env();'
+        'print(json.dumps({k: e.get(k) for k in'
+        ' ("SOTTO_REDUX_LIVE", "SOTTO_REDUX_WHEN_HIDDEN")}))'
+        % (os.path.dirname(SHELL), WORKER))
+
+    def _child_env_probe(overrides):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ('SOTTO_REDUX_LIVE', 'SOTTO_REDUX_WHEN_HIDDEN')}
+        env.update(overrides)
+        out = subprocess.run([sys.executable, '-c', probe], env=env,
+                             cwd=os.path.dirname(os.path.dirname(SHELL)),
+                             capture_output=True, text=True, timeout=180)
+        try:
+            return json.loads(out.stdout.strip().splitlines()[-1])
+        except Exception:                                          # noqa: BLE001
+            return {'error': (out.stderr or out.stdout or '')[-200:]}
+
+    defaults = _child_env_probe({})
+    arm.check(defaults.get('SOTTO_REDUX_LIVE') == '1'
+              and defaults.get('SOTTO_REDUX_WHEN_HIDDEN') == '1',
+              f'direct launch defaults both: {defaults}')
+    zero = _child_env_probe({'SOTTO_REDUX_LIVE': '0',
+                             'SOTTO_REDUX_WHEN_HIDDEN': '0'})
+    arm.check(zero.get('SOTTO_REDUX_LIVE') == '0'
+              and zero.get('SOTTO_REDUX_WHEN_HIDDEN') == '0',
+              'an explicit 0 for EITHER key is authoritative (setdefault, '
+              f'both lines): {zero}')
+    # The resolver the worker reads consults that env rung BEFORE config.
+    # Static on purpose: importing the worker mutates os.environ at module
+    # scope, which is exactly the contract arm e pins.
+    with open(WORKER, encoding='utf-8') as handle:
+        resolver = handle.read().split('def redux_live_settings(', 1)
+    arm.check(len(resolver) == 2
+              and 'env.get("SOTTO_REDUX_LIVE")' in resolver[1]
+              and 'rl.get("enabled", False)' in resolver[1],
+              'worker redux_live_settings reads SOTTO_REDUX_LIVE before '
+              'redux_live.enabled')
+    with open(CONFIG, encoding='utf-8') as handle:
+        comment = handle.read()
+    arm.check('_child_env' in comment and 'run.cmd sets no second default' in comment,
+              'the config comment NAMES the one owner (no stale FALSE claim)')
+
+
 ARM_FUNCS = {'a': arm_a, 'b': arm_b, 'c': arm_c, 'd': arm_d, 'e': arm_e,
-             'f': arm_f, 'g': arm_g, 'h': arm_h, 'i': arm_i}
+             'f': arm_f, 'g': arm_g, 'h': arm_h, 'i': arm_i, 'j': arm_j}
 
 
-def run_arms(mod):
-    ctx = {'logs': [], 'painted': []}
+def run_arms(mod, run_cmd=None):
+    ctx = {'logs': [], 'painted': [], 'run_cmd': run_cmd or RUN_CMD}
     results = {}
     for name in ARMS:
         arm = Arm(name)
@@ -624,7 +726,7 @@ def report(label, results, expected):
     return matched
 
 
-def make_mutant(source, old, new, label, directory):
+def make_mutant(source, old, new, label, directory, filename=None):
     """One literal replacement in TODAY's bytes, and nothing else.
 
     The anchors are written with @@BT@@\n@@BT@@; the file is CRLF, so the anchor is
@@ -638,10 +740,10 @@ def make_mutant(source, old, new, label, directory):
     count = source.count(old)
     if count != 1:
         say(f'SETUP ERROR: the {label} anchor appears {count} time(s) in '
-            f'{SHELL} (wanted exactly 1) -- the mutation would not be the one '
-            f'this oracle documents')
+            f'{filename or SHELL} (wanted exactly 1) -- the mutation would not '
+            f'be the one this oracle documents')
         raise SystemExit(2)
-    path = os.path.join(directory, f'sotto_webview_{label}.py')
+    path = os.path.join(directory, filename or f'sotto_webview_{label}.py')
     with open(path, 'w', encoding='utf-8', newline='') as handle:
         handle.write(source.replace(old, new, 1))
     say(f'  {label}: 1 literal replacement, {len(old)} B -> {len(new)} B, '
@@ -681,24 +783,37 @@ def main(argv=None):
         verdicts.append(('live', ok,
                          sum(1 for n in ARMS if not results[n].bad), len(ARMS)))
 
-    # Read the BYTES (newline='') so the mutant keeps the file's own CRLF.
+    # Read the BYTES (newline='') so each mutant keeps its file's own CRLF.
     with open(shell_path, encoding='utf-8', newline='') as handle:
         source = handle.read()
+    with open(RUN_CMD, encoding='utf-8', newline='') as handle:
+        batch_source = handle.read()
     directory = tempfile.mkdtemp(prefix='sotto-app-target-oracle-')
     say('')
     say(f'mutants    : {directory}')
     m1 = make_mutant(source, M1_OLD, M1_NEW, 'm1-env-line-removed', directory)
     m2 = make_mutant(source, M2_OLD, M2_NEW, 'm2-tree-root-removed', directory)
-    for path in (m1, m2):
+    m3 = make_mutant(batch_source, M3_OLD, M3_NEW,
+                     'm3-redux-default-back', directory, filename='run.cmd')
+    m4 = make_mutant(source, M4_OLD, M4_NEW, 'm4-hidden-default-assigned',
+                     directory, filename='sotto_webview.py')
+    for path in (m1, m2, m3, m4):
         say(f'  {os.path.basename(path)}  {os.path.getsize(path)} B  '
             f'sha256 {sha256_file(path)}')
 
     expect_m1 = {name: (name != 'd') for name in ARMS}
     expect_m2 = {name: (name != 'b') for name in ARMS}
-    for path, expected, label in ((m1, expect_m1, 'M1 env line removed'),
-                                  (m2, expect_m2, 'M2 tree-root rule removed')):
-        module = load_shell(path, 'app_target_oracle_' + label.split()[0].lower())
-        results = run_arms(module)
+    expect_m3 = {name: (name != 'j') for name in ARMS}
+    expect_m4 = {name: (name != 'j') for name in ARMS}
+    # M3 muta o BATCH, nao a shell: carregar um .cmd como modulo Python nao
+    # tem loader. A shell e' a REAL; so' o run.cmd que a arm j le' e' mutante.
+    for expected, label, batch, shell in (
+            (expect_m1, 'M1 env line removed', RUN_CMD, m1),
+            (expect_m2, 'M2 tree-root rule removed', RUN_CMD, m2),
+            (expect_m3, 'M3 run.cmd default back', m3, shell_path),
+            (expect_m4, 'M4 hidden default assigned', RUN_CMD, m4)):
+        module = load_shell(shell, 'app_target_oracle_' + label.split()[0].lower())
+        results = run_arms(module, run_cmd=batch)
         ok = report(f'{label} -- exactly ONE arm must be RED', results, expected)
         reds = [n for n in ARMS if results[n].bad]
         verdicts.append((label, ok, reds, expected))

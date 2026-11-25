@@ -20,6 +20,7 @@ mutantes** (`sem-guarda-exiting`, `sem-guarda-park`, `sem-guarda-pausa`, `sem-gu
 `legenda-nao-conta`, `sem-piso-45s`, `relogio-antes-do-piso`, `relogio-nao-anda`), na bateria com o braço
 negativo `red-as-expected-external-resume`. **A lição:** um `AGENTS.md` que descreve um buraco já fechado
 manda trabalho para o sítio errado; re-medir antes de repetir (regra 1).
+**LEITURA HISTÓRICA, NÃO A REGRA DE HOJE.** O parágrafo acima descreve o estado em 2026-10-23; a correção de 2026-11-10 logo abaixo é a que vale. Re-medido em 2026-11-25 nesta árvore: `grep -rnE 'EXTERNAL_RESUME_MIN_S|EXTERNAL_CAPTIONS_WORKER_RESUME_DEFERRED' worker` → **ZERO LINHAS** (só um comentário em `app/webview/sotto_webview.py:3053` e cópias congeladas em `_main/`). A retoma viva tem duas guardas (`exiting`, `engine_park_reason() == 'captions'`) mais o latch `_external_parked`, em `app/webview/sotto_webview.py:21472-21497`; não há piso de 45 s.
 
 **CORRECÇÃO DE 2026-11-10 — DUAS das quatro guardas saíram, e a razão é que elas GUSTAVAM o release.**
 Medido no estado em disco da sessão do dono (2026-11-09 21:36:12): `"park": "captions"` com
@@ -91,3 +92,9 @@ zero**, N entra == N sai; `muito-alta` larga o modelo e o lote seguinte recarreg
 `_main/live-queue-oracle.py` (32 braços do `PendingAudio`: ordem através da RAM e do disco, entrega total,
 devolução à frente, `dropped=0`). Braços negativos: **tabela trocada**, **canal trocado**, **um bloco
 deitado fora**, **fila fechada cedo** — os quatro ficam RED, medidos.
+
+## 2026-11-25 — uma captura para o worker e o sidecar; uma tabela de defaults `SOTTO_REDUX_*`
+
+**UMA CAPTURA, UM LEITOR.** O worker já abre o único par loopback + micro (`mic_tap.open_stream`) e entrega 16 kHz mono float32 à ASR; o sidecar abria outro par para a mesma chamada. `worker/capture_share.py` publica agora o bloco **já misturado** no limite do ASR (`worker/sotto_worker.py:8609-8610`) e o sidecar liga-se antes de enumerar qualquer dispositivo (`worker/speaker_sidecar.py:1811-1844`). Contrato medido: um cliente só (`BUSY`), fila `QUEUE_BLOCKS` com queda contada em `CAPTURE_SHARE_DROP dropped=N`, publicação inerte sem leitor, timeout de ligação de `TIMEOUT_S = 2.0` com `CAPTURE_SHARE fallback reason=<...>`, e `SOTTO_CAPTURE_SHARE=0` desliga o cliente por nome. O sidecar standalone mantém o tap local como fallback. `[MEASURED]` 2026-11-25: `python _main/capture-share-oracle.py` → `CAPTURE SHARE VERDICT: PASS (8/8 arms)`, incluindo o braço `f` com `worker_taps=1 worker_mics=1 sidecar_taps=0`, o `g` (um estranho calado não despe o leitor) e o `h` (um stop ordenado não é falha).
+
+**OS DEFAULTS TÊM UM DONO SÓ.** `WorkerBridge._child_env` usa `setdefault` para `SOTTO_REDUX_WHEN_HIDDEN` e `SOTTO_REDUX_LIVE` (`app/webview/sotto_webview.py:25243,25254`): o valor explícito `0` do operador ganha, e `run.cmd` deixou de ser a segunda tabela de defaults (só comenta a escada). Quem resolve é o worker, em `redux_live_settings` (`worker/sotto_worker.py:6375-6413`): flag → ambiente (`1` liga, `0` desliga) → `redux_live.enabled` do config → desligado, com o motivo impresso em `opt_in=`. Assim duplo-clique, autostart e `run.cmd` arrancam o mesmo binário com o mesmo comportamento. `[MEASURED]` 2026-11-25: `python _main/config-truth-oracle.py` → `VERDICT: PASS` nas três afirmações; os portões de transporte são `_main/app-target-oracle.py` e `_main/load-shedding-oracle.py`.

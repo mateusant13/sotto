@@ -14,37 +14,25 @@
 > painels deixa alt c. faz os paineis alternarem mesmo se eu deixar alt apertado
 > o tempo inteiro e spammando c. alterna entre show e hide."*
 
-> **CICLO DE TRÊS CASAS (corrigido a 2026-11-05, ordem do dono, verbatim):**
-> *"meu double alt c ta dando hide no painel de baixo. sendo que o double alt c
-> era pra mostrar o painel da direita"*. O ciclo anterior escondia no segundo
-> toque e só mostrava o painel da direita depois de um hide pelo meio — com dois
-> painéis, um ciclo de duas casas nunca mostra os dois. Ordem em vigor:
+> **CICLO DE TRÊS CASAS (2026-11-05) — RETIRADO em 2026-11-24.** Ele fazia o 2. toque, fosse quando fosse, cair no painel da direita; medido no log dele (pid 27448), 07:59:57.729 `hidden/- → visible/strip` e 08:00:13.058, **15,3 s depois**, `visible/strip → visible/panel`. Ordem do dono em vigor, verbatim: *"ao apertar alt c segundos depois, o painel da direita abriu, o que nao deveria acontecer. ja que e' pra abrir o da direita apenas em double alt c"*.
 >
-> | pressão | ecrã |
-> |---|---|
-> | 1 (de escondido) | faixa de **baixo** |
-> | 2 | painel da **direita** |
-> | 3 | **escondido** |
-> | 4 | faixa de baixo outra vez |
+> | estado antes do toque | gesto | resultado | código |
+> |---|---|---|---|
+> | escondido | 1 toque | faixa de **baixo**, imediata | `next_action`: `if not visible: return True, 'strip'` (`app/webview/hotkey_gesture.py:232-233`) |
+> | faixa mostrada pelo Alt+C há ≤ `DOUBLE_TAP_S = 0,40 s` | 2. toque seguido | **promove** para o painel da **direita** | `DOUBLE_TAP_S = 0,40` (`hotkey_gesture.py:111`), `next_action` (`hotkey_gesture.py:234-242`) |
+> | faixa com show mais antigo, ou mostrada por outra via | 1 toque | esconde | `since_show_s = None` nunca promove (`app/webview/sotto_webview.py:18125`) |
+> | painel da direita | 1 toque | esconde | `return False, surface` (`hotkey_gesture.py:242`) |
 >
-> Um toque é instantâneo (nenhum relógio no caminho) e DOIS toques seguidos
-> caem no painel da direita. `_main/altc-gesture-oracle.py` — 97 arms, e o
-> mutante `blank-alternation` (o ciclo apagado) tem de dar RED.
+> A janela mede a **idade do show da faixa**, não a duração em que o dedo ficou em baixo: o carimbo vivo é `_panel_hotkey_strip_mono`, escrito por `hotkey_pressed` em `app/webview/sotto_webview.py:18155` (e zerado em `:18157`), lido como `_strip_shown_mono` em `:18125` e publicado no log por `HOTKEY_COALESCED … double_since_ms=` em `:18147-18149`. **Não há HOLD, `is_hold`, `HOTKEY_HOLD_MS` nem limiar de duração.** Um toque nunca abre a direita. Portão: `python _main/altc-gesture-oracle.py` → `ALTC-GESTURE GREEN -- arms=104 pass=104 fail=0` (medido 2026-11-25 nesta árvore) e `--neg-arm` → seis mutantes, cada um `ALTC-GESTURE VERMELHO` (o menor `fail=2`, o maior `fail=17`) e `NEG-ARM PASS -- RED as designed`, rc=1 esperado.
 
 | tecla | o que faz | código |
 |---|---|---|
-| **Alt+C** | **um passo** do ciclo de três casas, por pressão: escondido → faixa de baixo → painel da direita → escondido | `SottoShell.hotkey_pressed` → `_hotkey_resolve` → `hotkey_gesture.next_surface` |
+| **Alt+C** | **um passo imediato**: escondido → faixa de baixo; faixa dentro de `DOUBLE_TAP_S = 0,40 s` → painel da direita; qualquer outro estado → esconde | `SottoShell.hotkey_pressed` → `_hotkey_resolve` → `hotkey_gesture.advance` → `next_action` |
 | **Ctrl+Space** | liga/desliga a **legenda ao vivo**, uma vez por pressão, e **não toca em painel nenhum** | `SottoShell.hotkey_live` → `_set_live_enabled` |
 
-**Um `WM_HOTKEY` = um passo, imediato.** Não há janela de espera, não há limiar de
-duração, não há adiamento, não há segundo relógio: o `Alt` pode ficar em baixo o
-tempo inteiro e o `C` pode ser martelado — cada entrega avança o ciclo uma vez.
-`MOD_NOREPEAT` continua a garantir **um** `WM_HOTKEY` por pressão física.
+**Um `WM_HOTKEY` = um passo, imediato.** Não há limiar de DURAÇÃO da tecla, nem adiamento do primeiro toque, nem segundo relógio no caminho da pressão: o `Alt` pode ficar em baixo o tempo inteiro e o `C` pode ser martelado. `MOD_NOREPEAT` continua a garantir **um** `WM_HOTKEY` por pressão física. A ÚNICA janela é a do **double**: `DOUBLE_TAP_S = 0,40 s` contados do carimbo `_panel_hotkey_strip_mono` (`app/webview/sotto_webview.py:18093-18103`), e ela serve só para PROMOVER a faixa ao painel da direita — nunca para adiar ou engolir o primeiro toque (`hotkey_gesture.next_action`, `app/webview/hotkey_gesture.py:201-242`).
 
-O ciclo alterna o **próximo show** com a **memória da última superfície aplicada**
-(`surface_applied`): escondido depois de uma faixa volta na faixa, escondido depois
-do painel volta no painel. `hide_panel` **não** apaga essa memória — é ela que faz
-`show/hide/show/hide` alternar em vez de repetir o mesmo painel.
+O show e o hide continuam a ler a JANELA (`window_visible`) e a última superfície APLICADA (`surface_applied`), que `hide_panel` não limpa; o que mudou em 2026-11-24 é que a direita exige o double dentro da janela. A rajada de presses é drenada de uma vez (`hotkey_gesture.advance`), e uma rodada cujo fim é o estado actual não toca no ecrã (`HOTKEY_COALESCED ... transitions=0`).
 
 ## A legenda ABRE ligada (ordem do dono, 2026-11-11, verbatim)
 
