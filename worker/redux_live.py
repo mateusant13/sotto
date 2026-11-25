@@ -421,6 +421,22 @@ def _configure_shared_ort_pools(ort_module, threads: int) -> tuple[int, int]:
     return desired
 
 
+def _placement_attestation_required(sess_options) -> bool:
+    """Does this session have to publish EP placement rows before it is used?
+
+    The proxy's own ``SessionOptions()`` sets
+    ``session.record_ep_graph_assignment_info=1`` and ``_read_node_assignment``
+    makes that census an admission condition. ORT 1.30 returns ZERO rows for a
+    session initialized from an ORT-format file, so any code path that serves
+    such a file must be refused whenever this predicate is true.
+    """
+    try:
+        return sess_options.get_session_config_entry(
+            "session.record_ep_graph_assignment_info") == "1"
+    except Exception:                                        # noqa: BLE001
+        return False
+
+
 def _expected_session_readback_graphs(model_dir: Path,
                                       node_assignment_trace: bool) -> frozenset[str]:
     """Keep normal startup core-only; diagnostic startup also attests existing VAD."""
@@ -668,6 +684,21 @@ class _ReduxControlOnlyOrtProxy:
     def _cache_identity(self, graph: Path, sess_options, providers):
         if (not self._optimized_cache or not self._gpu_only
                 or graph.name not in REDUX_ORT_CACHE_GRAPHS):
+            return None
+        # A CACHE QUE NAO SE PODE ATESTAR NAO E' CACHE (medido 2026-11-24).
+        # ORT 1.30's ORT-format initialization skips the EP assignment
+        # callback (the same fact the placement-trace branch below already
+        # names), so a session built from `<graph>.ort` returns ZERO rows from
+        # `get_provider_graph_assignment_info()`. The live log on the owner's
+        # box died on exactly that today:
+        #   `2026-11-24 07:55:08 BRIDGE_DEATH_CAUSE REDUX_BATCH_FAILED ...
+        #    RuntimeError('Redux ORT graph/node assignment readback is empty
+        #    or unbounded')`
+        # Every session this proxy creates requires the placement readback, so
+        # serving or publishing the optimized cache here can only produce a
+        # loader that refuses every second start. Refuse the cache instead:
+        # build from the pinned source bytes, which DO carry the rows.
+        if _placement_attestation_required(sess_options):
             return None
         control = REDUX_CONTROL_GRAPH_ALLOWLIST.get(graph.name)
         expected_fallback = "0" if control is not None else "1"
@@ -1052,6 +1083,13 @@ class _ReduxControlOnlyOrtProxy:
         identity_and_key = self._cache_identity(
             graph, sess_options, kwargs.get("providers"))
         if identity_and_key is None:
+            if (graph.name in REDUX_ORT_CACHE_GRAPHS
+                    and _placement_attestation_required(sess_options)):
+                self.session_cache_readback[graph.name] = {
+                    "mode": "bypass-placement-attestation",
+                    "verified_before_session_return": False,
+                    "reason": "ORT-format cache load publishes no EP placement rows",
+                }
             return self._source_control_session(
                 graph, sess_options, expected_sha, None, *args, **kwargs)
         identity, fingerprint = identity_and_key
@@ -1264,6 +1302,13 @@ class _ReduxControlOnlyOrtProxy:
                                  "pre_read_s": read_s, "pre_hash_s": time.perf_counter() - hash_started}
                 staged[name] = (graph, options, candidate, data)
                 staged_bytes += len(data)
+
+            # No candidate is the normal answer now: the cache is refused
+            # whenever placement attestation is required (see
+            # `_placement_attestation_required`). `None` sends the caller to
+            # the source-byte path; an empty dict would KeyError there.
+            if not staged:
+                return None
 
             def load_verified(name, graph_providers=None):
                 graph, options, candidate, data = staged[name]

@@ -80,10 +80,12 @@ class FakeSubgraph:
 
 
 class FakeSession:
-    def __init__(self, owner, providers, constructor_fallback, graph=None):
+    def __init__(self, owner, providers, constructor_fallback, graph=None,
+                 from_cache=False):
         self.owner = owner
         self.providers = list(providers)
         self.graph = graph
+        self.from_cache = bool(from_cache)
         # Deliberately start enabled: disable_fallback() must protect run().
         self.runtime_fallback_enabled = True
         self.constructor_fallback = constructor_fallback
@@ -111,6 +113,12 @@ class FakeSession:
         """
         import redux_live as rl
 
+        if self.from_cache:
+            # MEASURED 2026-11-24 on ORT 1.30: an ORT-format initialization
+            # skips the EP assignment callback, so the census is EMPTY. The
+            # fake reproduces that fact, because it is the reason the cache is
+            # refused; faking a populated census here would hide the defect.
+            return []
         graph = self.graph
         if graph is None:
             raise RuntimeError("fake session has no graph identity")
@@ -157,6 +165,7 @@ def make_reference(mode):
             # construction, and the cached `.ort` path does not carry it.
             graph = (str(getattr(sess_options, "logid", "") or "")
                      or Path(path).name)
+            from_cache = str(path).lower().endswith(".ort")
             providers = [str(item[0] if isinstance(item, (tuple, list)) else item)
                          for item in kwargs.get("providers", ())]
             enable_fallback = kwargs.get("enable_fallback", 1)
@@ -170,16 +179,16 @@ def make_reference(mode):
             if "CUDAExecutionProvider" not in providers:
                 self.cpu_constructor_retries += 1
                 return FakeSession(self, ["CPUExecutionProvider"], enable_fallback,
-                                   graph)
+                                   graph, from_cache=from_cache)
             if mode == "cuda-absent":
                 raise RuntimeError(ORT_FAILURE_TEXT)
             if mode == "constructor-fallback" and enable_fallback:
                 self.cpu_constructor_retries += 1
                 return FakeSession(self, ["CPUExecutionProvider"], enable_fallback,
-                                   graph)
+                                   graph, from_cache=from_cache)
             return FakeSession(
                 self, ["CUDAExecutionProvider", "CPUExecutionProvider"],
-                enable_fallback, graph)
+                enable_fallback, graph, from_cache=from_cache)
 
     class FakeVocabulary:
         blank_id = 0
@@ -340,15 +349,23 @@ def arm_cuda_success_and_run_failure(temp):
     assert all(session.disable_calls == 1 for session in sessions), (
         [session.disable_calls for session in sessions])
 
-    # Reopen the same fixture to exercise the optimized-cache constructor too.
+    # Reopen the same fixture: the optimized cache must now be BYPASSED, not
+    # served. MEASURED 2026-11-24: an ORT-format session publishes ZERO rows
+    # from `get_provider_graph_assignment_info()`, so serving the cache makes
+    # the next start die with "assignment readback is empty or unbounded" (the
+    # owner's live log, 07:55). A bypassed cache is the only attested load.
     cached = open_fake_sessions(rl, "cuda-works", temp)
     assert cached["raised"] is None, cached["raised"]
     _cached_model, cached_proxy, _cached_device, _cached_failure = cached["result"]
     assert set(cached_proxy.node_assignment_readback) == set(ALL_GRAPHS), (
         cached_proxy.node_assignment_readback)
-    assert all(cached_proxy.session_cache_readback.get(name, {}).get("mode") == "hit"
+    assert all(cached_proxy.session_cache_readback.get(name, {}).get("mode")
+               == "bypass-placement-attestation"
                for name in ("preprocessor.onnx", "encoder-model.onnx")), (
         cached_proxy.session_cache_readback)
+    assert not (Path(temp) / rl.REDUX_ORT_CACHE_DIR).exists() or not any(
+        (Path(temp) / rl.REDUX_ORT_CACHE_DIR).glob("*.ort")), (
+        "a cache that cannot be attested was published again")
     assert_calls_match_pinned_policy(cached["reference"].ort.calls, rl)
 
     out["reference"].ort.run_fail = True
@@ -360,6 +377,45 @@ def arm_cuda_success_and_run_failure(temp):
         else:
             raise AssertionError("%s run failure was swallowed or retried" % graph)
     assert out["reference"].ort.cpu_run_retries == 0
+
+
+def arm_cache_bypass_is_attestation_driven(temp):
+    """Both directions of the cache refusal, with the measured ORT behaviour.
+
+    MEASURED 2026-11-24 on ORT 1.30: an ORT-format session returns ZERO rows
+    from `get_provider_graph_assignment_info()`. The loader's admission
+    condition is that census, so the cache must be refused exactly when the
+    session is required to publish it -- and only then.
+    """
+    import redux_live as rl
+
+    reference = make_reference("cuda-works")
+    model_dir = make_model_dir(temp)
+    proxy = rl._ReduxControlOnlyOrtProxy(reference.ort, model_dir)
+    providers = [("CUDAExecutionProvider", {}), ("CPUExecutionProvider", {})]
+    graph = model_dir / "preprocessor.onnx"
+
+    # The production proxy's SessionOptions() adds exactly this entry.
+    attested = proxy.SessionOptions()
+    attested.add_session_config_entry("session.disable_cpu_ep_fallback", "0")
+    attested.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
+    attested.intra_op_num_threads = 1
+    assert rl._placement_attestation_required(attested), (
+        "the attested options lost the census requirement")
+    assert proxy._cache_identity(graph, attested, providers) is None, (
+        "an attested session was still allowed to serve the ORT cache")
+
+    plain = FakeSessionOptions()
+    plain.add_session_config_entry("session.disable_cpu_ep_fallback", "0")
+    plain.intra_op_num_threads = 1
+    assert not rl._placement_attestation_required(plain)
+    assert proxy._cache_identity(graph, plain, providers) is not None, (
+        "the cache refusal was not caused by the census requirement")
+
+    from_cache = reference.ort.InferenceSession(
+        str(graph) + ".ort", attested, providers=providers)
+    assert from_cache.get_provider_graph_assignment_info() == [], (
+        "the fake must reproduce ORT 1.30: an ORT-format load publishes no rows")
 
 
 def arm_cuda_absent_refuses_cpu(temp):
@@ -472,9 +528,10 @@ def positive():
                                      dir=scratch) as temp:
         root = Path(temp)
         arm_cuda_success_and_run_failure(root / "success")
+        arm_cache_bypass_is_attestation_driven(root / "cache-bypass")
         arm_cuda_absent_refuses_cpu(root / "absent")
         arm_cpu_routes_refused(root / "cpu-routes")
-    return 3
+    return 4
 
 
 def negative():
@@ -504,7 +561,7 @@ def main():
         print("NEG-ARM: PASS (%d/3 fallback+readback mutations caught)" % caught)
         return 1
     checked = positive()
-    if checked != 3:
+    if checked != 4:
         raise AssertionError("positive coverage changed: %d" % checked)
     if threading.active_count() != 1:
         raise AssertionError("fake oracle exceeded one Python thread")
@@ -514,9 +571,10 @@ def main():
             raise AssertionError("fallback mutation coverage changed: %d" % caught)
         if threading.active_count() != 1:
             raise AssertionError("fallback mutation oracle exceeded one Python thread")
-        print("SELFTEST: PASS (positive 3/3; constructor/run/readback mutations 3/3 caught)")
+        print("SELFTEST: PASS (positive 4/4; constructor/run/readback mutations 3/3 caught)")
         return 0
-    print("POSITIVE: PASS (GPU-only guards 4/4 incl. node census; CPU routes refused 2/2)")
+    print("POSITIVE: PASS (GPU-only guards 4/4 incl. node census; cache refused "
+          "when unattestable; CPU routes refused 2/2)")
     return 0
 
 

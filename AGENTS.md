@@ -311,6 +311,39 @@ pico contra **3,90 GB** do ternário, com transcrição byte-idêntica.
   não faz ao vivo. Não integrar de novo sem um checkpoint com português e sem tradução --
   `_main/receipt-20261030-ark-asr-vs-parakeet.md`, `_main/engine-compare.py` para re-medir.
 
+## DISCORD: A DIVISAO POR FALANTE E' EXATA, E A LEGENDA SAI POR FALANTE (2026-11-24)
+
+Ordem do dono, verbatim: *"sotto é pra conseguir distinguir cada voz/camada de audio e saber
+transcrever corretamente cada uma em paralelo. faz isso de algum jeito usando o que o discord
+proporciona ou entao com modelo que separa vozes."*
+
+- **A via e' o que o Discord ja' entrega**: o SFU manda um stream Opus por participante (SSRC ->
+  user id pelo opcode SPEAKING), `discord/` (bot, nunca selfbot) decodifica cada um para
+  `discord/out/<user_id>/<epoch_ms>.pcm` (16 kHz mono). **A divisao e' EXATA** -- duas pessoas a
+  falar ao mesmo tempo nunca tocam os mesmos bytes.
+- **`worker/discord_streams.py` e' a metade que faltava**: segue a arvore, segmenta CADA falante em
+  separado (`redux_live.LiveSegmenter`), transcreve num unico motor (a GPU e' o recurso partilhado)
+  e emite o contrato JSONL do worker com `speaker`, `speakerId` e `source="discord/voice:speaker-N"`
+  (o painel pinta uma linha e um tom por voz sem mudanca na app). `run.cmd --worker
+  worker\discord_streams.py` com o bot a capturar.
+- **O relogio vem do indice por pacote (`t_ms`), nunca da contagem de amostras.** O Discord nao manda
+  nada enquanto o falante esta' calado, logo PCM concatenado / 16 kHz deriva em cada pausa. A prova:
+  `_main/discord-streams-oracle.py` (voz PT + voz EN, a mesma frase em linguas diferentes, um buraco
+  de 6,0 s so' no relogio; as linhas pos-buraco tem de comecar em >= 13,5 s). `--neg-arm` funde as
+  duas vozes num user id e exige que o oraculo REPROVE (rc=1 apanhado).
+- **Modelo de separacao esta' REFUTADO para esta via, medido**: MossFormer2_SS_16K sobre 60 s da call
+  Discord real de 2026-11-16 gastou **1335,107 s (RTF 22,25)** e pos **210 palavras no stream 0 e 2
+  no stream 1** contra 211 no mix (`_main/bench/logs/moss-after.log`) -- nao corre ao vivo e nao
+  separou aquele mix de 4 vozes. Nao se propoe separacao enquanto a divisao exata existir.
+- **O CACHE `.ort` DO REDUX NAO SE SERVE QUANDO A SESSAO TEM DE ATESTAR COLOCACAO (medido
+  2026-11-24).** A inicializacao ORT-format do ORT 1.30 salta o callback de atribuicao de EP, logo
+  uma sessao carregada de `<graph>.ort` devolve **ZERO** linhas de
+  `get_provider_graph_assignment_info()`. O log do dono morreu nisto (`2026-11-24 07:55:08
+  REDUX_BATCH_FAILED ... 'graph/node assignment readback is empty or unbounded'`). `_cache_identity`
+  recusa o cache sempre que `_placement_attestation_required(sess_options)`; o portao e'
+  `_main/redux-gpu-unavailable-oracle.py` (arm `cache-bypass`, nas duas direcoes, mais o braco do
+  fake que reproduz as ZERO linhas). Nao repor o cache sem uma prova de que ele atesta.
+
 ## O RUNTIME DE WEBVIEW2: a MAIOR instalada, e nenhum pin (ordem do dono, 2026-11-11)
 
 Verbatim: *"WEBVIEW2 RUNTIME ORDER FROM THE OWNER (2026-11-11): use the GREATER version. This is a
