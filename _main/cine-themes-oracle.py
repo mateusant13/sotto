@@ -550,10 +550,19 @@ def neg_arm():
                       "13px", 'M1')
     mutants.append(('M1 one theme stops reading --size-closed',
                     write('m1.css', m1, 'm1'), JS_DISK, GEN, 'a', ['A3']))
-    m2 = re.sub(r":root\[data-theme='cine-warm-hour'\] \.chrome \* \{.*?\n\}\n",
-                '', css, count=1, flags=re.S)
+    # RE-ANCHORED 2026-11-25: the old anchor was
+    # `:root[data-theme='cine-warm-hour'] .chrome * { … }`, the per-theme motion
+    # block keyed on the retired chrome row. That subsystem left the generator
+    # (`gen_cinematic.py` motion blocks, 2026-11-25), so the anchor matched
+    # NOTHING and the mutant could not run -- a control that cannot run is a gate
+    # that cannot say no. The MUTATION is unchanged ("one theme stops reading
+    # `--motion-in`"); the anchor moved to the rule that carries that reader for
+    # every live theme, the panel/status transition group.
+    m2 = re.sub(r":root\[data-theme='cine-warm-hour'\] \.panel__header,\n"
+                r"(?:.*\n)*?  transition-timing-function: ease;\n\}\n",
+                '', css, count=1)
     if m2 == css:
-        raise SystemExit('mutant anchor not found: cine-warm-hour .chrome * (in M2)')
+        raise SystemExit('mutant anchor not found: cine-warm-hour motion group (in M2)')
     mutants.append(('M2 one theme stops reading --motion-in',
                     write('m2.css', m2, 'm2'), JS_DISK, GEN, 'b', ['B1']))
     m3 = replace_once(css, "--cine-scrim:", "--slab-opacity: 0.97;\n  --cine-scrim:", 'M3')

@@ -252,9 +252,15 @@ ainda FRÁGIL (ver §A bateria).
   **F4 re-ancorada** ao preload idle-gated (8 mutantes apanhados).
   O que a corrida **não** verificou está escrito no próprio veredicto: os 6 pesados, e os dois irmãos
   `unproven` do `bug-ledger`.
-- **Os três portões do hotkey ESTÃO na bateria desde 2026-10-21** — `hotkey-cycle`,
-  `hotkey-gesture`, `hotkey-triple` (eram os que **não** estavam, e é assim que um portão apodrece em
-  silêncio). Entraram com a ORDEM n.º 2 fechada. Entrou também o do **wrap nativo**
+- **Os portões do hotkey estão na bateria, e são os da ORDEM de 2026-11-01** — `altc-gesture` (Alt+C
+  alterna os paineis; Ctrl+Space a legenda ao vivo) com o par `red-as-expected-altc-gesture`, mais
+  `hotkey-live-edge`, `hotkey-live-toggle`, `hotkey-panels-switch`, `hotkey-spam`, `hotkey-delivery`,
+  `hotkey-observed`, `hotkey-registration` e o `gaming-hotkey`, cada um com o seu `red-as-expected`.
+  **`hotkey-cycle`/`hotkey-gesture`/`hotkey-triple` já não existem**: decidiam por janela de 400 ms e por
+  duração de segurada, e o dono substituiu esse contrato a 2026-11-01 (*"faz os paineis alternarem mesmo
+  se eu deixar alt apertado o tempo inteiro e spammando c"*). As linhas deles saíram da lista de
+  instrumentos no mesmo dia em que a lista passou a apontar `altc-gesture` — uma linha que cita um
+  ficheiro apagado sai 2 e não mede nada. Entrou também o do **wrap nativo**
   (`caption-native-wrap`), que julga a legenda que o dono VÊ (a nativa, não o `caption.html`).
 - **O portão do OPEN/CLOSE entrou em 2026-10-21** — `open-close-stall` + o braço
   `red-as-expected-open-close-stall` (5 mutantes, rc=1 por desenho). Julga **FICHEIROS** (5 factos

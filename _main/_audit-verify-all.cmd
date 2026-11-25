@@ -780,6 +780,29 @@ if exist _main\_panel2-dom-probe.js (
   call :record panel-themes !STEP_RC!
   call :step red-as-expected-panel-themes 1 "_main\panel-themes-oracle.mjs;app\panel\panel.html;app\panel\panel.css;app\panel\panel-unified.css;app\panel\panel.js;app\panel\brand-bridge.js;app\panel\theme-switcher.js;app\panel\theme-tune.js;app\panel\lazy-assets.js;app\panel\skin-host.js;app\panel\skin-layout.css;app\panel\caption-float.css;app\panel\button-contract.css;app\panel\themes\fonts.css;app\panel\themes\themes.js;app\panel\themes\panel-designs.js;app\panel\themes\zipc-panels.js;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\skins\skins.js;app\panel\skins\skin-shim.css" "%OUT%\panel-themes-neg.log" node _main\panel-themes-oracle.mjs --neg-arm
   call :expectred red-as-expected-panel-themes !STEP_RC! "%OUT%\panel-themes-neg.log" "NEG-ARM: PASS"
+  REM THE CHROME CONTRACT AND THE THEME CONTRACT, WIRED 2026-11-25. Both were
+  REM instruments with no step in this battery -- `panel-chrome-gate.py` lived only in
+  REM `_main\instruments-battery.mjs`, and `base-themes-oracle.py` was called by
+  REM NOTHING, which is how it stayed RED for a month without anyone seeing it.
+  REM Neither launches a browser (the painted half is `_main\_panel-chrome-arm.py`,
+  REM which does, and therefore stays out of here). Measured on this box: chrome 1,1 s,
+  REM base-themes 4,3 s (12,6 s with its control), both far under the 240 s floor.
+  if exist _main\panel-chrome-gate.py (
+   call :step panel-chrome 0 "_main\panel-chrome-gate.py;app\panel\panel.html;app\panel\panel.css;app\panel\skin-layout.css;app\panel\skin-host.js;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\themes\cinematic.css;app\panel\themes\fonts.css;app\panel\button-contract.css;app\panel\panel-unified.css;app\panel\zip-overlay.css;app\panel\caption-float.css;_main\_design-lane\gen_themes.py;_main\_design-lane\gen_cinematic.py" "%OUT%\panel-chrome.log" python _main\panel-chrome-gate.py
+   call :record panel-chrome !STEP_RC!
+  ) else ( call :record panel-chrome MISSING )
+  if exist _main\panel-chrome-gate.py (
+   call :step panel-chrome-neg 0 "_main\panel-chrome-gate.py;app\panel\panel.html;app\panel\panel.css;app\panel\skin-layout.css;app\panel\skin-host.js;app\panel\themes\theme-1.css;app\panel\themes\panel-designs.css;_main\_design-lane\gen_themes.py;_main\_design-lane\gen_cinematic.py" "%OUT%\panel-chrome-neg.log" python _main\panel-chrome-gate.py --neg-arm
+   call :record panel-chrome-neg !STEP_RC!
+  ) else ( call :record panel-chrome-neg MISSING )
+  if exist _main\base-themes-oracle.py (
+   call :step base-themes 0 "_main\base-themes-oracle.py;_main\_design-lane\gen_themes.py;_main\_design-lane\gen_cinematic.py;app\panel\panel.html;app\panel\panel.css;app\panel\skin-layout.css;app\panel\caption-float.css;app\panel\theme-tune.js;app\panel\panel.js;app\panel\themes\fonts.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\panel-designs.css;app\panel\themes\cinematic.css" "%OUT%\base-themes.log" python _main\base-themes-oracle.py
+   call :record base-themes !STEP_RC!
+  ) else ( call :record base-themes MISSING )
+  if exist _main\base-themes-oracle.py (
+   call :step base-themes-neg 0 "_main\base-themes-oracle.py;_main\_design-lane\gen_themes.py;_main\_design-lane\gen_cinematic.py;app\panel\theme-tune.js;app\panel\panel.js" "%OUT%\base-themes-neg.log" python _main\base-themes-oracle.py --neg-arm
+   call :record base-themes-neg !STEP_RC!
+  ) else ( call :record base-themes-neg MISSING )
   call :step red-as-expected-panel-history-clip 1 "_main\panel-history-clip-probe.mjs;app\panel\panel.html;app\panel\panel-unified.css;app\panel\themes\theme-1.css;app\panel\themes\theme-2.css;app\panel\themes\theme-3.css;app\panel\themes\theme-4.css;app\panel\themes\theme-5.css;app\panel\themes\cinematic.css;app\panel\themes\panel-designs.css;app\panel\themes\zipc-panels.css;app\panel\panel.css;app\panel\themes\fonts.css;app\panel\button-contract.css;app\panel\panel.js;app\webview\sotto_webview.py;app\webview\history_context.py;_main\history-retention-fixture.py" "%OUT%\panel-history-clip-neg.log" node _main\panel-history-clip-probe.mjs --neg-arm
   call :expectred red-as-expected-panel-history-clip !STEP_RC! "%OUT%\panel-history-clip-neg.log" "NEG-ARM: PASS"
   call :step panel-pause-payload 0 "_main\panel-pause-payload-oracle.py;app\webview\sotto_webview.py;app\panel\panel.js" "%OUT%\panel-pause-payload.log" python _main\panel-pause-payload-oracle.py

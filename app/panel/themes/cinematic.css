@@ -148,7 +148,6 @@
      shared set block at the top of this file reads it. The reveal is the
      theme's own animation, declared below. */
   --motion-in: 150ms;
-  --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
   --cine-scrim: rgba(4,8,16,0.68);
 }
 
@@ -270,9 +269,7 @@
 :root[data-theme='cine-midnight-rain'] .panel__header,
 :root[data-theme='cine-midnight-rain'] .panel__header *,
 :root[data-theme='cine-midnight-rain'] .status,
-:root[data-theme='cine-midnight-rain'] .status *,
-:root[data-theme='cine-midnight-rain'] .chrome,
-:root[data-theme='cine-midnight-rain'] .chrome * {
+:root[data-theme='cine-midnight-rain'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -380,7 +377,6 @@
      shared set block at the top of this file reads it. The reveal is the
      theme's own animation, declared below. */
   --motion-in: 150ms;
-  --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
   --cine-scrim: rgba(15,7,3,0.68);
 }
 
@@ -504,9 +500,7 @@
 :root[data-theme='cine-warm-hour'] .panel__header,
 :root[data-theme='cine-warm-hour'] .panel__header *,
 :root[data-theme='cine-warm-hour'] .status,
-:root[data-theme='cine-warm-hour'] .status *,
-:root[data-theme='cine-warm-hour'] .chrome,
-:root[data-theme='cine-warm-hour'] .chrome * {
+:root[data-theme='cine-warm-hour'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -614,7 +608,6 @@
      shared set block at the top of this file reads it. The reveal is the
      theme's own animation, declared below. */
   --motion-in: 150ms;
-  --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
   --cine-scrim: rgba(16,7,15,0.66);
 }
 
@@ -736,9 +729,7 @@
 :root[data-theme='cine-velvet-dusk'] .panel__header,
 :root[data-theme='cine-velvet-dusk'] .panel__header *,
 :root[data-theme='cine-velvet-dusk'] .status,
-:root[data-theme='cine-velvet-dusk'] .status *,
-:root[data-theme='cine-velvet-dusk'] .chrome,
-:root[data-theme='cine-velvet-dusk'] .chrome * {
+:root[data-theme='cine-velvet-dusk'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -846,7 +837,6 @@
      shared set block at the top of this file reads it. The reveal is the
      theme's own animation, declared below. */
   --motion-in: 150ms;
-  --type-step: 45ms;   /* the char-by-char reveal, unchanged from `panel.css` */
   --cine-scrim: rgba(12,8,4,0.7);
 }
 
@@ -968,9 +958,7 @@
 :root[data-theme='cine-study-light'] .panel__header,
 :root[data-theme='cine-study-light'] .panel__header *,
 :root[data-theme='cine-study-light'] .status,
-:root[data-theme='cine-study-light'] .status *,
-:root[data-theme='cine-study-light'] .chrome,
-:root[data-theme='cine-study-light'] .chrome * {
+:root[data-theme='cine-study-light'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -1003,7 +991,8 @@
 
 /* THE REVEAL — `type`. One word, or one character, at a time. */
 /* (`type` needs no rule of its own: it IS the character reveal `panel.css`
- * already declares, driven by the `--type-step` above. The caret is shared. */
+ * used to declare. That reveal is settled OFF by the owner's 2026-11-02
+ * order and the `--type-step` delay it read is gone with it. */
 
 /* ── Tideline — seafoam · the moon on water ─────────────────────────────────────────────────────────
  * from `cinematic/src/themes.ts`, id `tideline`, reveal `blur` (bundled photo)
@@ -1071,7 +1060,6 @@
      shared set block at the top of this file reads it. The reveal is the
      theme's own animation, declared below. */
   --motion-in: 150ms;
-  --type-step: 38ms;   /* the char-by-char reveal, unchanged from `panel.css` */
   --cine-scrim: rgba(3,10,12,0.68);
 }
 
@@ -1193,9 +1181,7 @@
 :root[data-theme='cine-tideline-body'] .panel__header,
 :root[data-theme='cine-tideline-body'] .panel__header *,
 :root[data-theme='cine-tideline-body'] .status,
-:root[data-theme='cine-tideline-body'] .status *,
-:root[data-theme='cine-tideline-body'] .chrome,
-:root[data-theme='cine-tideline-body'] .chrome * {
+:root[data-theme='cine-tideline-body'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -1232,8 +1218,9 @@
   animation: cine-blur 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 /* THE CHARACTER REVEAL, RETARGETED AT THE WORD (2026-10-20). The design
- * asked for one CHARACTER at a time, with the delay `--c-i *
- * --type-step`; the panel writes the word as ONE text node, so there is
+ * asked for one CHARACTER at a time, with a delay of `--c-i *
+ * --type-step` (that token is gone, 2026-11-25); the panel writes the
+ * word as ONE text node, so there is
  * no character index to multiply and no character span to animate. The
  * theme's own keyframe now plays on the WORD, whole and once -- the
  * owner asked for it verbatim: *"fica aparecendo como se fosse
@@ -1303,7 +1290,6 @@
      shared set block at the top of this file reads it. The reveal is the
      theme's own animation, declared below. */
   --motion-in: 150ms;
-  --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
   --cine-scrim: rgba(15,6,9,0.7);
 }
 
@@ -1427,9 +1413,7 @@
 :root[data-theme='cine-motel-glow'] .panel__header,
 :root[data-theme='cine-motel-glow'] .panel__header *,
 :root[data-theme='cine-motel-glow'] .status,
-:root[data-theme='cine-motel-glow'] .status *,
-:root[data-theme='cine-motel-glow'] .chrome,
-:root[data-theme='cine-motel-glow'] .chrome * {
+:root[data-theme='cine-motel-glow'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -1537,7 +1521,6 @@
      shared set block at the top of this file reads it. The reveal is the
      theme's own animation, declared below. */
   --motion-in: 150ms;
-  --type-step: 45ms;   /* the char-by-char reveal, unchanged from `panel.css` */
   --cine-scrim: rgba(5,6,10,0.62);
 }
 
@@ -1659,9 +1642,7 @@
 :root[data-theme='cine-paper-moon'] .panel__header,
 :root[data-theme='cine-paper-moon'] .panel__header *,
 :root[data-theme='cine-paper-moon'] .status,
-:root[data-theme='cine-paper-moon'] .status *,
-:root[data-theme='cine-paper-moon'] .chrome,
-:root[data-theme='cine-paper-moon'] .chrome * {
+:root[data-theme='cine-paper-moon'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -1694,7 +1675,8 @@
 
 /* THE REVEAL — `type`. One word, or one character, at a time. */
 /* (`type` needs no rule of its own: it IS the character reveal `panel.css`
- * already declares, driven by the `--type-step` above. The caret is shared. */
+ * used to declare. That reveal is settled OFF by the owner's 2026-11-02
+ * order and the `--type-step` delay it read is gone with it. */
 
 /* ── Quiet Streets — lamplight · snow muffles everything ─────────────────────────────────────────────────────────
  * from `cinematic/src/themes.ts`, id `quiet-streets`, reveal `fade` (bundled photo)
@@ -1760,7 +1742,6 @@
      shared set block at the top of this file reads it. The reveal is the
      theme's own animation, declared below. */
   --motion-in: 150ms;
-  --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
   --cine-scrim: rgba(6,8,14,0.68);
 }
 
@@ -1882,9 +1863,7 @@
 :root[data-theme='cine-quiet-streets'] .panel__header,
 :root[data-theme='cine-quiet-streets'] .panel__header *,
 :root[data-theme='cine-quiet-streets'] .status,
-:root[data-theme='cine-quiet-streets'] .status *,
-:root[data-theme='cine-quiet-streets'] .chrome,
-:root[data-theme='cine-quiet-streets'] .chrome * {
+:root[data-theme='cine-quiet-streets'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -1992,7 +1971,6 @@
      shared set block at the top of this file reads it. The reveal is the
      theme's own animation, declared below. */
   --motion-in: 150ms;
-  --type-step: 0ms;  /* 0: this theme reveals by WORD, not by character */
   --cine-scrim: rgba(14,8,3,0.68);
 }
 
@@ -2116,9 +2094,7 @@
 :root[data-theme='cine-last-reel'] .panel__header,
 :root[data-theme='cine-last-reel'] .panel__header *,
 :root[data-theme='cine-last-reel'] .status,
-:root[data-theme='cine-last-reel'] .status *,
-:root[data-theme='cine-last-reel'] .chrome,
-:root[data-theme='cine-last-reel'] .chrome * {
+:root[data-theme='cine-last-reel'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -2226,7 +2202,6 @@
      shared set block at the top of this file reads it. The reveal is the
      theme's own animation, declared below. */
   --motion-in: 150ms;
-  --type-step: 38ms;   /* the char-by-char reveal, unchanged from `panel.css` */
   --cine-scrim: rgba(5,10,8,0.68);
 }
 
@@ -2348,9 +2323,7 @@
 :root[data-theme='cine-north-fog'] .panel__header,
 :root[data-theme='cine-north-fog'] .panel__header *,
 :root[data-theme='cine-north-fog'] .status,
-:root[data-theme='cine-north-fog'] .status *,
-:root[data-theme='cine-north-fog'] .chrome,
-:root[data-theme='cine-north-fog'] .chrome * {
+:root[data-theme='cine-north-fog'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -2387,8 +2360,9 @@
   animation: cine-blur 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 /* THE CHARACTER REVEAL, RETARGETED AT THE WORD (2026-10-20). The design
- * asked for one CHARACTER at a time, with the delay `--c-i *
- * --type-step`; the panel writes the word as ONE text node, so there is
+ * asked for one CHARACTER at a time, with a delay of `--c-i *
+ * --type-step` (that token is gone, 2026-11-25); the panel writes the
+ * word as ONE text node, so there is
  * no character index to multiply and no character span to animate. The
  * theme's own keyframe now plays on the WORD, whole and once -- the
  * owner asked for it verbatim: *"fica aparecendo como se fosse
@@ -2437,7 +2411,6 @@
   --weight-closed: 400;
   --weight-brand: 700;
   --motion-in: 320ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -2635,9 +2608,10 @@
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word-soft (soft = true)`.
- * The panel's char-by-char typing is OFF (`--type-step: 0ms`), because this
- * zip reveals whole words and two animations on one character's opacity
- * multiply. The keyframes are declared once, in the `cine-cafe` block. */
+ * The panel's char-by-char typing is OFF, because this zip reveals whole
+ * words and two animations on one character's opacity multiply. (Its old
+ * `--type-step: 0ms` switch is gone with the token, 2026-11-25.) The
+ * keyframes are declared once, in the `cine-cafe` block. */
 :root[data-theme='cine-cafe'] .caption--provisional .caption__word[data-typing] {
   /* NO `color:` here, on purpose: this zip never recolours the newest word.
      The accent's only job on the live line is the caret. */
@@ -2660,8 +2634,9 @@
  *
  * WHY THE REVEAL IS PER WORD: `StreamText` renders ONE SPAN PER WORD with
  * `anim-word-soft` (or `anim-word` when `soft={false}`, which is the `tight`
- * variant only). The panel's per-character machinery is switched off through
- * `--type-step: 0ms`, and NOTHING IS RECOLOURED: in this zip the newest word is not
+ * variant only). The panel's per-character machinery is switched off (and its old
+ * `--type-step: 0ms` switch is gone with the token, 2026-11-25), and NOTHING IS
+ * RECOLOURED: in this zip the newest word is not
  * given the accent — only the caret is (see each theme's caret block). */
 @keyframes cine-c1-word-soft {
   from { opacity: 0; transform: translateY(0.16em); filter: blur(3px); }
@@ -2701,9 +2676,7 @@
 :root[data-theme='cine-cafe'] .panel__header,
 :root[data-theme='cine-cafe'] .panel__header *,
 :root[data-theme='cine-cafe'] .status,
-:root[data-theme='cine-cafe'] .status *,
-:root[data-theme='cine-cafe'] .chrome,
-:root[data-theme='cine-cafe'] .chrome * {
+:root[data-theme='cine-cafe'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -2773,7 +2746,6 @@
   --weight-closed: 300;
   --weight-brand: 700;
   --motion-in: 320ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -2976,9 +2948,10 @@
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word (soft = false)`.
- * The panel's char-by-char typing is OFF (`--type-step: 0ms`), because this
- * zip reveals whole words and two animations on one character's opacity
- * multiply. The keyframes are declared once, in the `cine-cafe` block. */
+ * The panel's char-by-char typing is OFF, because this zip reveals whole
+ * words and two animations on one character's opacity multiply. (Its old
+ * `--type-step: 0ms` switch is gone with the token, 2026-11-25.) The
+ * keyframes are declared once, in the `cine-cafe` block. */
 :root[data-theme='cine-rainglass'] .caption--provisional .caption__word[data-typing] {
   /* NO `color:` here, on purpose: this zip never recolours the newest word.
      The accent's only job on the live line is the caret. */
@@ -3032,9 +3005,7 @@
 :root[data-theme='cine-rainglass'] .panel__header,
 :root[data-theme='cine-rainglass'] .panel__header *,
 :root[data-theme='cine-rainglass'] .status,
-:root[data-theme='cine-rainglass'] .status *,
-:root[data-theme='cine-rainglass'] .chrome,
-:root[data-theme='cine-rainglass'] .chrome * {
+:root[data-theme='cine-rainglass'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -3104,7 +3075,6 @@
   --weight-closed: 300;
   --weight-brand: 700;
   --motion-in: 320ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -3316,9 +3286,10 @@
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word-soft (soft = true)`.
- * The panel's char-by-char typing is OFF (`--type-step: 0ms`), because this
- * zip reveals whole words and two animations on one character's opacity
- * multiply. The keyframes are declared once, in the `cine-cafe` block. */
+ * The panel's char-by-char typing is OFF, because this zip reveals whole
+ * words and two animations on one character's opacity multiply. (Its old
+ * `--type-step: 0ms` switch is gone with the token, 2026-11-25.) The
+ * keyframes are declared once, in the `cine-cafe` block. */
 :root[data-theme='cine-tideline'] .caption--provisional .caption__word[data-typing] {
   /* NO `color:` here, on purpose: this zip never recolours the newest word.
      The accent's only job on the live line is the caret. */
@@ -3358,9 +3329,7 @@
 :root[data-theme='cine-tideline'] .panel__header,
 :root[data-theme='cine-tideline'] .panel__header *,
 :root[data-theme='cine-tideline'] .status,
-:root[data-theme='cine-tideline'] .status *,
-:root[data-theme='cine-tideline'] .chrome,
-:root[data-theme='cine-tideline'] .chrome * {
+:root[data-theme='cine-tideline'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -3430,7 +3399,6 @@
   --weight-closed: 300;
   --weight-brand: 700;
   --motion-in: 320ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -3636,9 +3604,10 @@
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word (soft = false)`.
- * The panel's char-by-char typing is OFF (`--type-step: 0ms`), because this
- * zip reveals whole words and two animations on one character's opacity
- * multiply. The keyframes are declared once, in the `cine-cafe` block. */
+ * The panel's char-by-char typing is OFF, because this zip reveals whole
+ * words and two animations on one character's opacity multiply. (Its old
+ * `--type-step: 0ms` switch is gone with the token, 2026-11-25.) The
+ * keyframes are declared once, in the `cine-cafe` block. */
 :root[data-theme='cine-fieldnotes'] .caption--provisional .caption__word[data-typing] {
   /* NO `color:` here, on purpose: this zip never recolours the newest word.
      The accent's only job on the live line is the caret. */
@@ -3692,9 +3661,7 @@
 :root[data-theme='cine-fieldnotes'] .panel__header,
 :root[data-theme='cine-fieldnotes'] .panel__header *,
 :root[data-theme='cine-fieldnotes'] .status,
-:root[data-theme='cine-fieldnotes'] .status *,
-:root[data-theme='cine-fieldnotes'] .chrome,
-:root[data-theme='cine-fieldnotes'] .chrome * {
+:root[data-theme='cine-fieldnotes'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -3764,7 +3731,6 @@
   --weight-closed: 400;
   --weight-brand: 700;
   --motion-in: 320ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -3972,9 +3938,10 @@
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word-soft (soft = true)`.
- * The panel's char-by-char typing is OFF (`--type-step: 0ms`), because this
- * zip reveals whole words and two animations on one character's opacity
- * multiply. The keyframes are declared once, in the `cine-cafe` block. */
+ * The panel's char-by-char typing is OFF, because this zip reveals whole
+ * words and two animations on one character's opacity multiply. (Its old
+ * `--type-step: 0ms` switch is gone with the token, 2026-11-25.) The
+ * keyframes are declared once, in the `cine-cafe` block. */
 :root[data-theme='cine-dustlight'] .caption--provisional .caption__word[data-typing] {
   /* NO `color:` here, on purpose: this zip never recolours the newest word.
      The accent's only job on the live line is the caret. */
@@ -4028,9 +3995,7 @@
 :root[data-theme='cine-dustlight'] .panel__header,
 :root[data-theme='cine-dustlight'] .panel__header *,
 :root[data-theme='cine-dustlight'] .status,
-:root[data-theme='cine-dustlight'] .status *,
-:root[data-theme='cine-dustlight'] .chrome,
-:root[data-theme='cine-dustlight'] .chrome * {
+:root[data-theme='cine-dustlight'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -4100,7 +4065,6 @@
   --weight-closed: 400;
   --weight-brand: 700;
   --motion-in: 320ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -4291,9 +4255,10 @@
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word-soft (soft = true)`.
- * The panel's char-by-char typing is OFF (`--type-step: 0ms`), because this
- * zip reveals whole words and two animations on one character's opacity
- * multiply. The keyframes are declared once, in the `cine-cafe` block. */
+ * The panel's char-by-char typing is OFF, because this zip reveals whole
+ * words and two animations on one character's opacity multiply. (Its old
+ * `--type-step: 0ms` switch is gone with the token, 2026-11-25.) The
+ * keyframes are declared once, in the `cine-cafe` block. */
 :root[data-theme='cine-analog'] .caption--provisional .caption__word[data-typing] {
   /* NO `color:` here, on purpose: this zip never recolours the newest word.
      The accent's only job on the live line is the caret. */
@@ -4333,9 +4298,7 @@
 :root[data-theme='cine-analog'] .panel__header,
 :root[data-theme='cine-analog'] .panel__header *,
 :root[data-theme='cine-analog'] .status,
-:root[data-theme='cine-analog'] .status *,
-:root[data-theme='cine-analog'] .chrome,
-:root[data-theme='cine-analog'] .chrome * {
+:root[data-theme='cine-analog'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -4405,7 +4368,6 @@
   --weight-closed: 400;
   --weight-brand: 700;
   --motion-in: 320ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -4627,9 +4589,10 @@
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word-soft (soft = true)`.
- * The panel's char-by-char typing is OFF (`--type-step: 0ms`), because this
- * zip reveals whole words and two animations on one character's opacity
- * multiply. The keyframes are declared once, in the `cine-cafe` block. */
+ * The panel's char-by-char typing is OFF, because this zip reveals whole
+ * words and two animations on one character's opacity multiply. (Its old
+ * `--type-step: 0ms` switch is gone with the token, 2026-11-25.) The
+ * keyframes are declared once, in the `cine-cafe` block. */
 :root[data-theme='cine-shelves'] .caption--provisional .caption__word[data-typing] {
   /* NO `color:` here, on purpose: this zip never recolours the newest word.
      The accent's only job on the live line is the caret. */
@@ -4669,9 +4632,7 @@
 :root[data-theme='cine-shelves'] .panel__header,
 :root[data-theme='cine-shelves'] .panel__header *,
 :root[data-theme='cine-shelves'] .status,
-:root[data-theme='cine-shelves'] .status *,
-:root[data-theme='cine-shelves'] .chrome,
-:root[data-theme='cine-shelves'] .chrome * {
+:root[data-theme='cine-shelves'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -4741,7 +4702,6 @@
   --weight-closed: 400;
   --weight-brand: 700;
   --motion-in: 320ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -4947,9 +4907,10 @@
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word-soft (soft = true)`.
- * The panel's char-by-char typing is OFF (`--type-step: 0ms`), because this
- * zip reveals whole words and two animations on one character's opacity
- * multiply. The keyframes are declared once, in the `cine-cafe` block. */
+ * The panel's char-by-char typing is OFF, because this zip reveals whole
+ * words and two animations on one character's opacity multiply. (Its old
+ * `--type-step: 0ms` switch is gone with the token, 2026-11-25.) The
+ * keyframes are declared once, in the `cine-cafe` block. */
 :root[data-theme='cine-rooftop'] .caption--provisional .caption__word[data-typing] {
   /* NO `color:` here, on purpose: this zip never recolours the newest word.
      The accent's only job on the live line is the caret. */
@@ -5003,9 +4964,7 @@
 :root[data-theme='cine-rooftop'] .panel__header,
 :root[data-theme='cine-rooftop'] .panel__header *,
 :root[data-theme='cine-rooftop'] .status,
-:root[data-theme='cine-rooftop'] .status *,
-:root[data-theme='cine-rooftop'] .chrome,
-:root[data-theme='cine-rooftop'] .chrome * {
+:root[data-theme='cine-rooftop'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -5075,7 +5034,6 @@
   --weight-closed: 400;
   --weight-brand: 700;
   --motion-in: 320ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -5283,9 +5241,10 @@
 }
 
 /* THE REVEAL — one WORD at a time, `anim-word-soft (soft = true)`.
- * The panel's char-by-char typing is OFF (`--type-step: 0ms`), because this
- * zip reveals whole words and two animations on one character's opacity
- * multiply. The keyframes are declared once, in the `cine-cafe` block. */
+ * The panel's char-by-char typing is OFF, because this zip reveals whole
+ * words and two animations on one character's opacity multiply. (Its old
+ * `--type-step: 0ms` switch is gone with the token, 2026-11-25.) The
+ * keyframes are declared once, in the `cine-cafe` block. */
 :root[data-theme='cine-ember'] .caption--provisional .caption__word[data-typing] {
   /* NO `color:` here, on purpose: this zip never recolours the newest word.
      The accent's only job on the live line is the caret. */
@@ -5325,9 +5284,7 @@
 :root[data-theme='cine-ember'] .panel__header,
 :root[data-theme='cine-ember'] .panel__header *,
 :root[data-theme='cine-ember'] .status,
-:root[data-theme='cine-ember'] .status *,
-:root[data-theme='cine-ember'] .chrome,
-:root[data-theme='cine-ember'] .chrome * {
+:root[data-theme='cine-ember'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -5397,7 +5354,6 @@
   --weight-closed: 300;
   --weight-brand: 700;
   --motion-in: 300ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -5622,8 +5578,9 @@
 
 /* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`
  * from the zip's own `index.css`, with `both` fill. The panel's char-by-char
- * reveal is switched OFF through `--type-step: 0ms`, the documented off switch,
- * because two animations on one character's opacity multiply. NO `color:`
+ * reveal is switched OFF (its `--type-step: 0ms` switch left with the token,
+ * 2026-11-25) because two animations on one character's opacity multiply.
+ * NO `color:`
  * HERE: this zip never recolours a forming word — the accent's only job on the
  * live line is the caret below. */
 :root[data-theme='cine-rainline'] .caption--provisional .caption__word[data-typing] {
@@ -5657,7 +5614,8 @@
  * WHY THE REVEAL IS PER WORD: `WordRun` renders one span per word and gives the span
  * at index `revealed - 1` the class `.word-in`; the key includes the word's text, so
  * a changed word REMOUNTS and the animation restarts. The panel's per-character
- * machinery is switched off through `--type-step: 0ms`.
+ * machinery is switched off (its old `--type-step: 0ms` switch left with the
+ * token, 2026-11-25).
  *
  * THE CARET IS THE SET'S FORMING MARKER (see the file header, rule 4): in five of
  * this zip's six variants the forming text is styled IDENTICALLY to the settled
@@ -5723,9 +5681,7 @@
 :root[data-theme='cine-rainline'] .panel__header,
 :root[data-theme='cine-rainline'] .panel__header *,
 :root[data-theme='cine-rainline'] .status,
-:root[data-theme='cine-rainline'] .status *,
-:root[data-theme='cine-rainline'] .chrome,
-:root[data-theme='cine-rainline'] .chrome * {
+:root[data-theme='cine-rainline'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -5795,7 +5751,6 @@
   --weight-closed: 400;
   --weight-brand: 700;
   --motion-in: 300ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -6024,8 +5979,9 @@
 
 /* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`
  * from the zip's own `index.css`, with `both` fill. The panel's char-by-char
- * reveal is switched OFF through `--type-step: 0ms`, the documented off switch,
- * because two animations on one character's opacity multiply. NO `color:`
+ * reveal is switched OFF (its `--type-step: 0ms` switch left with the token,
+ * 2026-11-25) because two animations on one character's opacity multiply.
+ * NO `color:`
  * HERE: this zip never recolours a forming word — the accent's only job on the
  * live line is the caret below. */
 :root[data-theme='cine-cellar'] .caption--provisional .caption__word[data-typing] {
@@ -6076,9 +6032,7 @@
 :root[data-theme='cine-cellar'] .panel__header,
 :root[data-theme='cine-cellar'] .panel__header *,
 :root[data-theme='cine-cellar'] .status,
-:root[data-theme='cine-cellar'] .status *,
-:root[data-theme='cine-cellar'] .chrome,
-:root[data-theme='cine-cellar'] .chrome * {
+:root[data-theme='cine-cellar'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -6148,7 +6102,6 @@
   --weight-closed: 400;
   --weight-brand: 700;
   --motion-in: 300ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -6400,8 +6353,9 @@
 
 /* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`
  * from the zip's own `index.css`, with `both` fill. The panel's char-by-char
- * reveal is switched OFF through `--type-step: 0ms`, the documented off switch,
- * because two animations on one character's opacity multiply. NO `color:`
+ * reveal is switched OFF (its `--type-step: 0ms` switch left with the token,
+ * 2026-11-25) because two animations on one character's opacity multiply.
+ * NO `color:`
  * HERE: this zip never recolours a forming word — the accent's only job on the
  * live line is the caret below. */
 :root[data-theme='cine-linen'] .caption--provisional .caption__word[data-typing] {
@@ -6445,9 +6399,7 @@
 :root[data-theme='cine-linen'] .panel__header,
 :root[data-theme='cine-linen'] .panel__header *,
 :root[data-theme='cine-linen'] .status,
-:root[data-theme='cine-linen'] .status *,
-:root[data-theme='cine-linen'] .chrome,
-:root[data-theme='cine-linen'] .chrome * {
+:root[data-theme='cine-linen'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -6517,7 +6469,6 @@
   --weight-closed: 400;
   --weight-brand: 700;
   --motion-in: 300ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -6748,8 +6699,9 @@
 
 /* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`
  * from the zip's own `index.css`, with `both` fill. The panel's char-by-char
- * reveal is switched OFF through `--type-step: 0ms`, the documented off switch,
- * because two animations on one character's opacity multiply. NO `color:`
+ * reveal is switched OFF (its `--type-step: 0ms` switch left with the token,
+ * 2026-11-25) because two animations on one character's opacity multiply.
+ * NO `color:`
  * HERE: this zip never recolours a forming word — the accent's only job on the
  * live line is the caret below. */
 :root[data-theme='cine-reading-hour'] .caption--provisional .caption__word[data-typing] {
@@ -6793,9 +6745,7 @@
 :root[data-theme='cine-reading-hour'] .panel__header,
 :root[data-theme='cine-reading-hour'] .panel__header *,
 :root[data-theme='cine-reading-hour'] .status,
-:root[data-theme='cine-reading-hour'] .status *,
-:root[data-theme='cine-reading-hour'] .chrome,
-:root[data-theme='cine-reading-hour'] .chrome * {
+:root[data-theme='cine-reading-hour'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -6865,7 +6815,6 @@
   --weight-closed: 300;
   --weight-brand: 700;
   --motion-in: 300ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -7103,8 +7052,9 @@
 
 /* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`
  * from the zip's own `index.css`, with `both` fill. The panel's char-by-char
- * reveal is switched OFF through `--type-step: 0ms`, the documented off switch,
- * because two animations on one character's opacity multiply. NO `color:`
+ * reveal is switched OFF (its `--type-step: 0ms` switch left with the token,
+ * 2026-11-25) because two animations on one character's opacity multiply.
+ * NO `color:`
  * HERE: this zip never recolours a forming word — the accent's only job on the
  * live line is the caret below. */
 :root[data-theme='cine-last-train'] .caption--provisional .caption__word[data-typing] {
@@ -7148,9 +7098,7 @@
 :root[data-theme='cine-last-train'] .panel__header,
 :root[data-theme='cine-last-train'] .panel__header *,
 :root[data-theme='cine-last-train'] .status,
-:root[data-theme='cine-last-train'] .status *,
-:root[data-theme='cine-last-train'] .chrome,
-:root[data-theme='cine-last-train'] .chrome * {
+:root[data-theme='cine-last-train'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -7220,7 +7168,6 @@
   --weight-closed: 300;
   --weight-brand: 700;
   --motion-in: 300ms;
-  --type-step: 0ms;
   --bg-raised: var(--bg-slab-strong);
   --text: var(--text-primary);
   --text-dim: var(--text-secondary);
@@ -7434,8 +7381,9 @@
 
 /* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`
  * from the zip's own `index.css`, with `both` fill. The panel's char-by-char
- * reveal is switched OFF through `--type-step: 0ms`, the documented off switch,
- * because two animations on one character's opacity multiply. NO `color:`
+ * reveal is switched OFF (its `--type-step: 0ms` switch left with the token,
+ * 2026-11-25) because two animations on one character's opacity multiply.
+ * NO `color:`
  * HERE: this zip never recolours a forming word — the accent's only job on the
  * live line is the caret below. */
 :root[data-theme='cine-blue-hour'] .caption--provisional .caption__word[data-typing] {
@@ -7486,9 +7434,7 @@
 :root[data-theme='cine-blue-hour'] .panel__header,
 :root[data-theme='cine-blue-hour'] .panel__header *,
 :root[data-theme='cine-blue-hour'] .status,
-:root[data-theme='cine-blue-hour'] .status *,
-:root[data-theme='cine-blue-hour'] .chrome,
-:root[data-theme='cine-blue-hour'] .chrome * {
+:root[data-theme='cine-blue-hour'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -7535,9 +7481,7 @@
   :root[data-theme^='cine-'] .panel__header,
   :root[data-theme^='cine-'] .panel__header *,
   :root[data-theme^='cine-'] .status,
-  :root[data-theme^='cine-'] .status *,
-  :root[data-theme^='cine-'] .chrome,
-  :root[data-theme^='cine-'] .chrome * {
+  :root[data-theme^='cine-'] .status * {
     transition-duration: 0ms;
   }
 }

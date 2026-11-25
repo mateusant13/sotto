@@ -43,11 +43,6 @@
     },
     {
       "date": "2026-10-25",
-      "file": "base-themes-oracle.py",
-      "reason": "REASON-MISSING preencher a mao"
-    },
-    {
-      "date": "2026-10-25",
       "file": "battery-rows-gate.py",
       "reason": "REASON-MISSING preencher a mao"
     },
@@ -219,11 +214,6 @@
     {
       "date": "2026-10-25",
       "file": "offscreen-cure-comment-oracle.py",
-      "reason": "REASON-MISSING preencher a mao"
-    },
-    {
-      "date": "2026-10-25",
-      "file": "panel-chrome-gate.py",
       "reason": "REASON-MISSING preencher a mao"
     },
     {

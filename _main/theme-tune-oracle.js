@@ -60,7 +60,7 @@ eq('alphaOfComputed refuses garbage', tune.alphaOfComputed('none'), null);
 const sizeCaption = tune.field('sizeCaption');
 const accent = tune.field('accent');
 const weightCaption = tune.field('weightCaption');
-const typeStep = tune.field('typeStep');
+const motionIn = tune.field('motionIn');
 const fontSans = tune.field('fontSans');
 
 eq('length: a good value passes', tune.normalizeField(sizeCaption, 34), 34);
@@ -73,7 +73,11 @@ eq('select: an unknown weight is refused', tune.normalizeField(weightCaption, '8
 eq('select: a number is coerced to its option', tune.normalizeField(weightCaption, 600), '600');
 eq('color: a hex is lowercased', tune.normalizeField(accent, '#FF6A55'), '#ff6a55');
 eq('color: nonsense is refused', tune.normalizeField(accent, 'chartreuse'), undefined);
-eq('length: zero is a real value, not "unset"', tune.normalizeField(typeStep, 0), 0);
+/* RE-AIMED 2026-11-25: the fixture knob was `typeStep` (the typing speed), which
+ * left with the reveal it timed. The PROPERTY still matters and still has a live
+ * subject: `motionIn` is a length whose 0 is a real value — no transition, not
+ * "unset" — so the arm keeps its meaning instead of being deleted. */
+eq('length: zero is a real value, not "unset"', tune.normalizeField(motionIn, 0), 0);
 eq('font: a bundled stack canonicalises',
   tune.normalizeField(fontSans, '"ibm plex mono",  "cascadia mono", consolas, ui-monospace, monospace'),
   '"IBM Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace');
@@ -110,7 +114,7 @@ eq('round trip', tune.parseSettings(tune.serializeSettings(map)), map);
 
 /* ── ARM 6: the declarations a theme produces ──────────────────────────────── */
 const decls = tune.declarationsFor(
-  { sizeCaption: 34, accent: '#ff0000', typeStep: 0 },
+  { sizeCaption: 34, accent: '#ff0000' },
   { alphaOf: (token) => (token === '--accent-soft' ? 0.12 : null) }
 );
 const asMap = {};
@@ -126,7 +130,9 @@ eq('decl: the picker swatch follows the accent, solid', asMap['--theme-swatch'],
 eq('decl: the accent halo keeps the theme\'s own alpha', asMap['--accent-soft'], 'rgba(255, 0, 0, 0.12)');
 eq('decl: the hairlines are re-tinted', asMap['--line'], 'rgba(255, 0, 0, 0.18)');
 eq('decl: the strong hairline is re-tinted', asMap['--line-strong'], 'rgba(255, 0, 0, 0.4)');
-eq('decl: 0ms is written, not dropped', asMap['--type-step'], '0ms');
+/* RETIRED 2026-11-25: the knob below is gone from the module, so the arm
+ * asserting its declaration went with it — see `CLOSED_20261012`, where
+ * `--type-step` now sits with the other deleted tokens. */
 check('decl: an untouched knob is not written at all', !('--size-closed' in asMap));
 check('decl: a number field carries no unit', !String(tune.declarationsFor({ leadingCaption: 1.06 })[0][1]).includes('px'));
 
@@ -143,7 +149,14 @@ const cssPresent = [];
 for (const file of cssFiles) {
   if (!fs.existsSync(file)) continue;
   cssPresent.push(path.basename(file));
-  css += '\n' + fs.readFileSync(file, 'utf8');
+  /* COMMENTS ARE STRIPPED BEFORE ANY ARM READS THIS STRING (fixed 2026-11-25).
+   * The arms ask "is this token DECLARED / CONSUMED", and a rule that survives
+   * only inside a `/* … *\/` note is neither: the ex-`--type-step` note in
+   * `cinematic.css` says the token is gone, and reading the note as a
+   * declaration made the CLOSED arm fail on the very text that records the
+   * deletion — a gate that accuses the file which documents the removal loses
+   * the authority to accuse anything. */
+  css += '\n' + fs.readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
 }
 check('liveness: the shipped CSS was found', cssPresent.length >= 6, cssPresent.join(','));
 
@@ -187,6 +200,11 @@ const CLOSED_20261012 = [
   { t: '--slab-opacity', how: 'deleted' },
   { t: '--font-caption', how: 'deleted' },
   { t: '--font-closed', how: 'deleted' },
+  /* ADDED 2026-11-25: the typing-speed knob was the fifth inert one and it is
+   * DELETED, not merely unoffered — the token left `panel.css`'s `:root`, the
+   * generators' emissions and this module in one pass. Re-declaring it anywhere
+   * the module reads turns this arm RED. */
+  { t: '--type-step', how: 'deleted' },
 ];
 for (const { t, how } of CLOSED_20261012) {
   const declared = css.includes(`${t}:`);

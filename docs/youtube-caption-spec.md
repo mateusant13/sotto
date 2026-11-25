@@ -58,7 +58,7 @@ As fontes que ele lê, e o que cada uma pode dizer:
 | 23 | Duração e curva do fade de ENTRADA | 0,12 s, `1-(1-t)²` (ease-out quadrático) | Sotto: `word_fade.DURATION_S` no OVERLAY NATIVO -- e' ele que o dono ve' na legenda ao vivo. O painel **nao** anima palavra nenhuma: `app/panel/panel.css:2782` fixa `animation: none !important` (ordem do dono, 2026-11-02), e o `sotto-word-in`/140 ms que esta linha citava **nao existe no repo** (`grep -rn sotto-word-in app/` = 0; corrigido 2026-11-08) | **`[INFERENCE]`** no player (a captura nao resolve; ver abaixo); a politica do Sotto e' medida pelo `_main/caption-rollup-oracle.py` e pelo `reveal-clock` |
 | 24 | Duração e curva do fade de SAÍDA | 0,45 s, mesma curva | `word_fade.alpha_out` (`EXIT_S`) | **`[INFERENCE]`** (a *janela* do exit é medida: linha 13) |
 | 25 | Mesma quebra de linha que o overlay antigo | 4 de 16 (texto junto igual em 15/16) | break-position → `same_break`, `same_joined_text` | medido |
-| 26 | O painel escalona a revelação | **não** — `animation: none !important` no seletor da palavra nova (`.caption--provisional .caption__word[data-typing]`), e `--type-step` continua no `:root` so' como o atraso que um tema pode zerar | `app/panel/panel.css:2776-2782` | medido (CSS, 2026-11-08) |
+| 26 | O painel escalona a revelação | **não** — `animation: none !important` no seletor da palavra nova (`.caption--provisional .caption__word[data-typing]`); o `--type-step` que essa linha citava como atraso ZERÁVEL foi RETIRADO a 2026-11-25 (junto com o dialogo de tune e as 25 declaracoes do gerador), porque nada o lia | `app/panel/panel.css:2776-2782` | medido (CSS, 2026-11-08; token retirado 2026-11-25) |
 
 A linha 23 do lado do PAINEL foi corrigida em 2026-11-08: ela afirmava uma animacao de
 140 ms (`sotto-word-in`) que nenhum ficheiro do repo declara. O que existe e' a proibicao
@@ -189,7 +189,9 @@ quadros de três linhas, que o `_display` antes **descartava**.
   tema: a legenda é do Sotto e imita o **comportamento**, não o tipo de letra do YouTube.
 * A legenda automática (ASR do próprio YouTube): o payload medido é uma faixa curada. O que se
   mede aqui é a MECÂNICA da janela e do relógio, que é a mesma.
-* O painel. A linha 26 diz o que ele faz (um fade de 140 ms na palavra nova, sem escalonamento:
-  o multiplicador da `--type-step` é 0), e isso NÃO é um número do YouTube — é o desenho que o
-  painel já tinha. Quem imita o player é o overlay nativo (`caption_overlay` + `youtube_reveal`);
+* O painel. A linha 26 diz o que ele faz (nenhum fade na palavra nova: `animation: none
+  !important`, ordem do dono de 2026-11-02), e isso NÃO é um número do YouTube — é o desenho que o
+  painel já tinha. O `--type-step` que a versão anterior desta linha citava foi retirado a
+  2026-11-25, com o dialogo de tune e as declaracoes do gerador. Quem imita o player é o overlay
+  nativo (`caption_overlay` + `youtube_reveal`);
   o painel não ganha um segundo relógio por causa deste trabalho.

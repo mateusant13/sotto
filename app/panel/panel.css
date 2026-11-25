@@ -75,12 +75,12 @@
   --font: -apple-system, "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
   --mono: "Cascadia Mono", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* THE TYPING STEP, AS ONE NUMBER (2026-10-08): the per-character delay of the
-     live-line reveal. A theme that wants its own typing speed sets this var and
-     the reveal rule follows; a theme (or the shell) that wants NO typing at all
-     sets `--type-step: 0ms`. Zero is a real off switch: every delay collapses
-     to 0 and every character paints on its first frame. */
-   --type-step: 45ms;
+  /* THE TYPING STEP IS GONE (owner, 2026-11-02; token removed 2026-11-25).
+     *"SEM FADE"* — the new word APPEARS, and `panel.css` enforces that on the
+     newest word with `animation: none !important`. The reveal that read this
+     variable is therefore dead, and so were its three declarations (cinematic's
+     25 themes, zipc's designs) and the tune dialog's knob. A speed control for a
+     reveal that never runs is not a setting; the owner asked for no reveal. */
 
   /* THE TRANSCRIPT TEXT SIZE, AS ONE NUMBER (owner, 2026-10-09): *"bota um botao
      de aumentar ou diminuir a fonte das transcricoes, tanto no overlay abaixo,
@@ -265,25 +265,25 @@ body {
   line-height: 1.2;
 }
 
-/* ── THE NAME, `sotto`, IN EVERY DIRECTION AND ON BOTH SURFACES ───────────────
-   Owner, 2026-10-08, verbatim: *"e bota o nome 'sotto' em todos os temas."* Four
-   directions set it in their own header line and theme-1 uses its wordmark; each
-   theme's own rule (in `themes/theme-N.css`, generated) gives it that direction's
-   face, weight and colour. THIS rule is only the floor, so a theme that says
-   nothing still renders a sane name rather than an unstyled string, and it is
-   where `text-transform: none` is guaranteed: the name is lowercase and no theme
-   can make it shout. It is deliberately QUIET — muted, small, never the accent —
-   because the header also carries the state word and the clock and the name must
-   not compete with either (the header was stretched to 742.5 px once today by a
-   block of prose; the name costs a few pixels, and the receipt carries the
-   before/after). */
-.chrome__brand {
+/* ── THE NAME, `sotto`, ON BOTH SURFACES ──────────────────────────────────────
+   Owner, 2026-10-08, verbatim: *"e bota o nome 'sotto' em todos os temas."* The
+   name is `.wordmark__name` inside `.wordmark__text`, and every direction's own
+   size/weight/tracking is pinned to ONE rule by `_main/_design-lane/gen_themes.py`
+   (`BRAND_METRICS` → `:root[data-theme='n'] .wordmark__text`, owner 2026-10-21:
+   *"o `sotto` escrito em pixels diferentes, não tá padronizado"*).
+
+   THIS rule was `.chrome__brand` until 2026-11-25 — the class the per-direction
+   chrome rows carried, retired with them on 2026-11-06. The declarations moved to
+   the node that exists; `_main/wordmark-metrics-oracle.py` reads them here. */
+.wordmark__text {
+  /* THE PINNED METRICS, on the node that exists (owner 2026-10-21: *"o `sotto`
+     escrito em pixels diferentes, não tá padronizado"*). Each generated sheet
+     repeats this triple scoped to its own theme and it is measured by
+     `_main/wordmark-metrics-oracle.py`; this rule is the floor for a document
+     with no theme attribute yet. */
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.2em;
-  text-transform: none;
-  color: var(--text-muted);
-  white-space: nowrap;
   /* A LOGO NAO ENCOLHE ABAIXO DO PROPRIO TEXTO -- the owner, verbatim:
    *"muitas vezes a logo do sotto ta truncada ou tem algo por cima"*. O padrao de um
    * item flex e' `0 1 auto`, e `_main/brand-truncation-probe.mjs` MEDIU a consequencia
@@ -292,6 +292,8 @@ body {
    * a marca guarda a largura do proprio texto e quem cede e' o botao de tema, que ja'
    * tem `max-width` e reticencias. */
   flex: 0 0 auto;
+  white-space: nowrap;
+  text-transform: none;
 }
 
 .wordmark__tag {
@@ -610,29 +612,18 @@ body[data-surface="panel"] #panel-menu {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   THE LEVEL BARS — REAL DATA, AND NOTHING WHEN THERE IS NONE
+   THE LEVEL BARS — REMOVED WITH THE CHROME (2026-11-25)
    ═══════════════════════════════════════════════════════════════════════════
-   These five bars used to run a pure CSS keyframe loop that animated identically
-   with speech, with silence and with a DEAD WORKER
-   (`docs/research/12-audio-level-contract.md`). That animation is DELETED, and
-   the bars are now painted from the level the worker really reports: `panel.js`
-   writes `--meter-0 … --meter-4` (0…1) and the bar scales to it. `scaleY` is
-   compositor-only — no relayout, no repaint of the text — which is the whole
-   point on a box that is rewritten on every partial.
+   `.chrome__meter i` was the five-bar envelope in the per-direction chrome row.
+   Its node left the document with the rest of the chrome on 2026-11-06, so these
+   two rules (the `--meter-h` scale and the `data-level="none"` floor) styled
+   nothing. The REAL level is still measured and still painted: `panel.js` keeps
+   the 128-point history and hands it to the active SKIN through
+   `SottoSkin.level(...)`, and a skin draws its own meter in its own shadow root
+   (`.skin__chrome`). `docs/research/12-audio-level-contract.md` is the contract.
 
-   WITH NO DATA the custom property is absent, `var(--meter-N, 0.14)` falls back
-   to the floor, and `body[data-level="none"]` says so in the markup. A bar that
-   moves without a measurement is worse than a bar that does not move. */
-.chrome__meter i {
-  transform: scaleY(var(--meter-h, 0.14));
-  transform-origin: bottom;
-  transition: transform 90ms linear;
-}
-
-body[data-level="none"] .chrome__meter i {
-  transform: scaleY(0.14);
-  opacity: 0.45;
-}
+   Nothing here invented a bar: a wave that moves without a measurement is worse
+   than no wave, which is the owner's rule this block was written under. */
 
 .icon-button svg {
   width: 16px;
@@ -2568,72 +2559,27 @@ body[data-surface="panel"] .panel.is-paused .captions__bar .history__label {
 }
 
 /* ===========================================================================
-   THE DIRECTION'S OWN CHROME (owner, 2026-10-08)
+   THE DIRECTION'S OWN CHROME — REMOVED (owner, 2026-11-06)
    ===========================================================================
-   Each of the five directions now carries its OWN header line, footer line and
-   state indicator — the owner's words: *"quero que voce monte o painel super
-   parecido com cada tema ... nao quero a cara do design que tinhamos antes."*
-   The blocks live in the markup (`panel.html`, `.chrome--tele` … `.chrome--inst`)
-   and are ALL INERT HERE: `display: none` is the base state, and exactly one is
-   switched on by its own `themes/theme-N.css`. That is the same one-attribute
-   mechanism the five themes already use — nothing is built, moved or fetched on
-   a switch, so a switch cannot fail halfway.
+   Each of the five directions used to carry its OWN header line, footer line and
+   state indicator (owner, 2026-10-08: *"quero que voce monte o painel super
+   parecido com cada tema"*). All five blocks then left the DOCUMENT, in three
+   passes: `tele`'s two labels on 2026-10-14 (*"tira em curso e historico das
+   barras. o dono quer as barras LIMPAS."*), `mano`'s phrase on 2026-10-18, and
+   the rest on 2026-11-06 — *"NO DIRECTION-SPECIFIC FOOTER ... the meter,
+   `LIVE / EM ESPERA`, `· · ·` and `OUVINDO / EM ESPERA` were words about the
+   panel, not facts."*
 
-   WHAT IS *NOT* HERE. No number, no confidence, no buffer, no latency is painted
-   by any of this. The mockups carry `CONF 0.93`, `buffer 38ms` and `48K` because
-   `designs.ts` drives them from a SIMULATED script; this panel has no such
-   measurement, so a direction's chrome prints only what the panel can really
-   read: the state the shell reported, the clock, the line ordinal, and the
-   worker's own status sentence in `#status-text`, which is untouched.
+   WITH THE NODES WENT THE RULES. `.chrome`, `.chrome__on`/`.chrome__off`,
+   `.chrome__state`, `.chrome__meter`, `.chrome__dot` and every
+   `.chrome--<direction>` rule in this file and in the generated sheets styled a
+   node the document can no longer carry, and this repo's own rule is to remove
+   such a rule rather than leave it looking live (`panel.html:1130-1140`).
+
+   WHAT REPLACED IT: the real status sentence stays in `#status-dot` +
+   `#status-text` (`.status`, below), and the five SKINS bring their own chrome
+   through `skin-host.js` (`.skin__chrome`, `skin-layout.css`).
    --------------------------------------------------------------------------- */
-
-/* Inert until a theme claims it. */
-.chrome {
-  display: none;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-/* The state words: the SAME fact panel.js mirrors onto <body data-state>, in a
-   place both the header and the footer can see. One word is painted, never two,
-   and "no state yet" is the standby word rather than a stale LIVE one. */
-.chrome__on,
-.chrome__off {
-  display: none;
-  white-space: nowrap;
-}
-
-body[data-state="live"] .chrome__on {
-  display: inline;
-}
-
-body[data-state=""] .chrome__off,
-body[data-state="error"] .chrome__off,
-body[data-state="no-audio"] .chrome__off {
-  display: inline;
-}
-
-.chrome__state {
-  display: inline-flex;
-  align-items: center;
-}
-
-.chrome__meter {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 2.5px;
-  height: 12px;
-}
-
-.chrome__meter i {
-  display: block;
-  width: 2.5px;
-  height: 100%;
-  border-radius: 2px;
-  background: currentColor;
-  transform-origin: bottom;
-}
 
 /* --------------------------------------------------- the caption's own bits */
 
@@ -2691,8 +2637,9 @@ body[data-state="no-audio"] .chrome__off {
    still carried the same dead selector. The class `caption__ch` is not in the
    panel's DOM any more, so a rule for it is a rule for nothing.
 
-   `--type-step` still means the reveal's speed — the word reveal below uses it,
-   and a direction that wants no reveal at all still sets `--type-step: 0ms`. */
+   `--type-step` was this reveal's speed and IS GONE TOO (2026-11-25): the owner
+   settled the reveal OFF, so the variable, its three declarations and the tune
+   dialog's knob all left with it. */
 
 /* ------------------------------------------------- THE WORD REVEAL (2026-10-20)
 
@@ -2718,9 +2665,10 @@ body[data-state="no-audio"] .chrome__off {
    READABLE instead of blank. `opacity: 0` as the base plus a removable fill is
    the fail-BLANK form and is forbidden here.
 
-   `--type-step` still lives in `:root` and still means "the reveal's speed":
-   it is the delay of the word's fade, so a direction that wants no reveal at
-   all still sets `--type-step: 0ms` and gets a word that simply appears. */
+   AND THE REVEAL ITSELF IS NOW OFF EVERYWHERE: the owner's 2026-11-02 order
+   (*"SEM FADE"*) is enforced by the `animation: none !important` below, so the
+   word need not be given a fade at all — the `--type-step` that timed it is gone
+   (2026-11-25) and the rule keeps only the fail-visible base. */
 .caption--provisional .caption__word[data-typing] {
   opacity: 1;
   /* SEM FADE (dono, 2026-11-02). A palavra nova APARECE. O `!important`
@@ -2759,19 +2707,18 @@ body[data-state="no-audio"] .chrome__off {
    user never set, that he cannot see, and that cannot be turned off from inside the
    product, was silently disabling a requested feature.
 
-   WHAT REPLACES IT: the documented, first-class off switch `--type-step: 0ms` (see the
-   comment above — `:root` declares it at 45ms so a direction or the shell can set
-   it). That switch is set by an editor in one line, it is the same knob the cost
-   instrument uses for its no-typing arm, and unlike the media query it is visible in
-   the source to anyone who greps for the feature. The door is still here; it is no
-   longer self-closing.
+   WHAT REPLACED IT, and what happened to it: the reveal's own documented off switch
+   `--type-step: 0ms` — a variable, visible to anyone who greps, that a direction or
+   the shell could set, unlike a media query nobody can see. THAT SWITCH IS NOW GONE
+   AS WELL (2026-11-25), because the owner removed the thing it switched: *"SEM FADE"*
+   (2026-11-02), enforced unconditionally below. The historical point stands and is
+   worth keeping — a browser preference silently disabled a feature the owner asked
+   for twice, which is why no reveal rule here is conditioned on one.
 
    NOT YET MACHINE-CONFIRMED, stated plainly: that Chromium inside WebView2 really does
    report `matches: true` for that media query on this box is inferred from the OS flag
    and has NOT been read from the renderer — `grep` finds no `matchMedia` call anywhere
-   in the shell, so nothing has ever asked. Dropping the override is correct whether the
-   inference holds or not (with the override gone the reveal runs in both cases), but the
-   read itself is still owed. */
+   in the shell, so nothing has ever asked. It no longer gates anything. */
 
 /* ------------------------------------------------------- the strip's theme key */
 
@@ -2817,14 +2764,10 @@ body[data-surface="strip"] .theme-dropdown {
   display: none !important;
 }
 
-/* The footer chrome is a PANEL-surface thing: the strip keeps its dot and one
-   word (the status block is the only footer it has). Specificity is deliberate —
-   `body[data-surface] .status .chrome` (0,3,2) outranks a theme's
-   `:root[data-theme] .chrome--x` (0,3,0), so no theme can leak a label into the
-   strip's ~100 px. */
-body[data-surface="strip"] .status .chrome {
-  display: none;
-}
+/* THE FOOTER-CHROME GUARD IS GONE (2026-11-25): it hid a direction's footer
+   label on the strip with `body[data-surface="strip"] .status .chrome`. The
+   labels left the document on 2026-11-06, so there is nothing to hide — the
+   strip keeps its dot and the one real status word (`#strip-word`). */
 
 /* ------------------------------------------------- the theme picker, shared base
 
@@ -3400,7 +3343,7 @@ body[data-surface="strip"] .pause-dialog__buttons { padding: 0; }
 .panel__controls .icon-button { width: 28px; height: 28px; }
 #theme-button { max-width: 96px; }
 #theme-button .theme-button__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chrome__brand, .wordmark { min-width: 32px; }
+.wordmark { min-width: 32px; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    O CABECALHO NAO CABE EM 380px, E MEU ESTAVA A SOBREPOR-SE (medido 2026-10-17)
@@ -3437,24 +3380,24 @@ body[data-surface="strip"] .pause-dialog__buttons { padding: 0; }
    THE STATE IS DOTS. NO WORDS ON SCREEN (owner, 2026-10-17)
    ═══════════════════════════════════════════════════════════════════════════
    The owner looked at the running panel and said the readout was text: the
-   header painted `LENDO` (`.chrome--tele`) and the strip painted `#strip-word`.
-   HE WANTS DOTS ONLY -- "so pontos, sem palavra". The state is still a FACT and
-   it is still told, but the eye gets a dot and the accessible name keeps the
-   word.
+   header painted `LENDO` and the strip painted `#strip-word`. HE WANTS DOTS
+   ONLY -- "so pontos, sem palavra". The state is still a FACT and it is still
+   told, but the eye gets a dot and the accessible name keeps the word.
 
-   WHY `visually-hidden` AND NOT `display: none`. The word IS the real state:
-   `.chrome__on`/`.chrome__off` (panel.css:2515-2528) are switched by
-   `<body data-state>`, which `panel.js` mirrors from the worker's own status.
-   Hiding them with `display:none` would delete the only place the document
-   SAYS what state it is in, and the brief for this lane is explicit that the
-   state must not become a blind spot. The clip below removes the word from the
-   screen while leaving it in the accessibility tree, so a screen reader still
-   reads the same word the eye used to read -- and nothing is invented.
+   WHY `visually-hidden` AND NOT `display: none`. `#strip-word` IS the real
+   state: `panel.js` writes it from the worker's own status. Hiding it with
+   `display:none` would delete the only place the document SAYS what state it is
+   in, and the brief for this lane is explicit that the state must not become a
+   blind spot. The clip below removes the word from the screen while leaving it
+   in the accessibility tree, so a screen reader still reads the same word the
+   eye used to read -- and nothing is invented.
+
+   `.chrome__state` shared this rule until 2026-11-25, when the per-direction
+   chrome rows (and that class with them) left the document.
 
    `position:absolute` also takes the word out of the flow, which is what makes
    the bar a dot row: on the strip the readout was `flex:1` with the word at the
    far end, and with the word gone the dot is the whole readout. */
-.chrome__state,
 #strip-word {
   position: absolute !important;
   width: 1px !important;
@@ -3472,10 +3415,9 @@ body[data-surface="strip"] .pause-dialog__buttons { padding: 0; }
 
 /* The dot is the readout now, so it has to SAY the four states the eye can no
  * longer read. The colours are the theme's own (`--idle`, `--ok`, `--error`) and
- * are already applied by the generated themes (`.stripbar__dot`,
- * `body[data-state="live"] .chrome--tele .chrome__dot`); what is added here is
- * the ONE thing a colour cannot do -- motion, for "working" -- and it is the
- * opacity-only keyframe the generator already uses for the bcast REC lamp
+ * are already applied by the generated themes (`.stripbar__dot`); what is added
+ * here is the ONE thing a colour cannot do -- motion, for "working" -- and it is
+ * the opacity-only keyframe the generator already uses for its REC lamp
  * (`gen_themes.py` P2-1: a `box-shadow` spread keyframe is a paint property per
  * frame). `body[data-state]` is the same mirror `panel.js` writes, so nothing
  * here invents a state the worker did not report. */
@@ -3484,8 +3426,7 @@ body[data-surface="strip"] .pause-dialog__buttons { padding: 0; }
   60% { opacity: 0.35; }
   100% { opacity: 1; }
 }
-body[data-state="live"] .stripbar__state.is-live .stripbar__dot,
-body[data-state="live"] .chrome--tele .chrome__dot {
+body[data-state="live"] .stripbar__state.is-live .stripbar__dot {
   animation: sotto-state-breathe 1.8s ease-in-out infinite;
 }
 body[data-state="error"] .stripbar__state.is-error .stripbar__dot {
@@ -3493,7 +3434,6 @@ body[data-state="error"] .stripbar__state.is-error .stripbar__dot {
 }
 @media (prefers-reduced-motion: reduce) {
   body[data-state="live"] .stripbar__state.is-live .stripbar__dot,
-  body[data-state="live"] .chrome--tele .chrome__dot,
   body[data-state="error"] .stripbar__state.is-error .stripbar__dot {
     animation: none;
   }

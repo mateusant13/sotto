@@ -961,7 +961,8 @@ function paintChars(span, word, typing) {
   // 'tokens' e nao palavras inteiras. pode somente palavras inteiras."*
   //
   // This function used to give the newest word one `<span class="caption__ch">`
-  // per CHARACTER and let the CSS reveal them one at a time (`--type-step`).
+  // per CHARACTER and let the CSS reveal them one at a time (the `--type-step`
+  // delay, itself removed 2026-11-25).
   // That is a TYPEWRITER: the owner saw a half-word on the screen and read it
   // as tokens. A word is now written as ONE text node and appears whole.
   //
@@ -1027,25 +1028,25 @@ function captionOverlayIsUp() {
 // `stats.blocks`.
 //
 // SO THE WAVE IS MOUNTED AND OFF. It consumes `onStats`/`getStats` when a shell
-// has them, keeps an N=128 history (≈12.8 s at 10 Hz), smooths it with an
-// INSTANT ATTACK and a ~200 ms release, and paints five compositor-only bars.
-// With no data the bars sit at the floor, `body[data-level="none"]` says so, and
-// the probe asserts that they do not move.
+// has them, keeps an N=128 history (≈12.8 s at 10 Hz) and smooths it with an
+// INSTANT ATTACK and a ~200 ms release. The only meters are the SKINS' own (they
+// read `SottoSkin.level`); the five `.chrome__meter` bars that used to be painted
+// from this history left the document with the per-direction chrome on
+// 2026-11-06, and their painter was deleted on 2026-11-25.
 const LEVEL = {
   /** Ring buffer of window levels, newest at `(head - 1 + N) % N`. */
   hist: new Float32Array(128),
   head: 0,
   n: 0,
-  /** The smoothed value the bars show. */
+  /** The smoothed value a skin's meter shows. */
   level: 0,
   /** False until a REAL measurement arrives — never inferred from anything. */
   have: false,
   /** Local clock of the last measurement, so a stale feed can be detected. */
   at: null,
 };
-/** Instant attack, ~200 ms release: without the release the bars shake. */
+/** Instant attack, ~200 ms release: without the release the meter shakes. */
 const LEVEL_RELEASE_MS = 200;
-const LEVEL_FLOOR = 0.14;
 let lastLevelPaint = 0;
 
 /** No bridge means no captions can ever arrive; say so instead of looking idle. */
@@ -4527,9 +4528,9 @@ function statusKind(kind) {
  * THE LEVEL CONSUMER — real data or nothing.
  *
  * `pushLevel` is fed ONLY by a payload that actually carries a level. A missing
- * field is not a measurement, so it cannot make the bars move; the fallback is
- * `LEVEL_FLOOR` and `data-level="none"`, which is the honest picture of a panel
- * that has not been told anything.
+ * field is not a measurement, so it cannot move a meter; `LEVEL.have` stays false
+ * and a mounted skin is told 0, which is the honest picture of a panel that has
+ * not been told anything.
  *
  * The smoothing is the part that makes a wave readable: an INSTANT attack (a
  * transient must not be softened away) and a ~200 ms release, applied per
@@ -4560,30 +4561,17 @@ function pushLevel(peak, blocks) {
   paintLevel();
 }
 
-/** The five bars, from the smoothed history. `scaleY` only: no relayout. */
+/** The meters that exist: the ACTIVE SKIN's, fed from the smoothed history.
+ *
+ *  THE FIVE `.chrome__meter` BARS ARE GONE (2026-11-25). They belonged to the
+ *  per-direction chrome rows, which left the document on 2026-11-06; the query
+ *  below therefore matched nothing on every paint and returned at once. The
+ *  measurement itself is untouched — `LEVEL`/`pushLevel` still smooth the
+ *  worker's own `peak`, and `SottoSkin.level()` is what a mounted skin reads to
+ *  draw its meter inside its own shadow root. No bar is invented here. */
 function paintLevel() {
-  // The frozen skin's own meter, fed from the SAME smoothed history our bars use.
   if (window.SottoSkin && SottoSkin.active) {
     SottoSkin.level(LEVEL.have ? LEVEL.level : 0);
-  }
-  const bars = document.querySelectorAll('.chrome__meter i');
-  if (!bars.length) return;
-  const want = LEVEL.have ? 'live' : 'none';
-  if (document.body.dataset.level !== want) document.body.dataset.level = want;
-  if (!LEVEL.have) {
-    // Nothing to paint: clear the properties so the CSS floor applies, and say
-    // so once rather than on every call.
-    for (const bar of bars) bar.style.removeProperty('--meter-h');
-    return;
-  }
-  // Five bars, oldest-to-newest across the most recent fifth of the history, so
-  // the row reads as a short envelope rather than five copies of one number.
-  const span = Math.max(1, Math.floor(LEVEL.n / bars.length));
-  for (let i = 0; i < bars.length; i += 1) {
-    const back = (bars.length - 1 - i) * span;
-    const idx = (LEVEL.head - 1 - back + LEVEL.hist.length * 2) % LEVEL.hist.length;
-    const v = LEVEL.hist[idx];
-    bars[i].style.setProperty('--meter-h', String(Math.max(LEVEL_FLOOR, v).toFixed(3)));
   }
 }
 

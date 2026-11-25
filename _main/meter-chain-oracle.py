@@ -232,16 +232,29 @@ def _rate_rung(W, text):
     The rung is an if/elif/else CHAIN plus the negative-rate refusal: it must be
     compiled whole, or the `elif` has no `if` to belong to (measured: an `elif`
     alone is a SyntaxError).
+
+    MEASURED 2026-11-25: this function cost **101.9 s**, almost the whole 81 s
+    run, because it called `ast.get_source_segment` for EVERY statement of EVERY
+    function in a 540 KB file (`get_source_segment` re-splits the whole source per
+    call -- quadratic in the file size). The segment is only ever used as a
+    SUBSTRING test, so the statement's own LINE RANGE is enough and it costs a
+    slice: `lines` is split ONCE. Same search, same hits, 3 orders cheaper.
     """
     tree = ast.parse(text)
+    lines = text.splitlines(keepends=True)
+
+    def seg(stmt):
+        return "".join(lines[stmt.lineno - 1:stmt.end_lineno])
+
     body = None
     idx = None
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.Module)):
             continue
         for i, stmt in enumerate(node.body):
-            seg = ast.get_source_segment(text, stmt) or ""
-            if "meter_hz, meter_hz_from" in seg and isinstance(stmt, ast.If):
+            if not isinstance(stmt, ast.If):
+                continue
+            if "meter_hz, meter_hz_from" in seg(stmt):
                 body, idx = node.body, i
                 break
         if body is not None:
@@ -254,8 +267,7 @@ def _rate_rung(W, text):
     # and not just its first half.
     stmts = []
     for stmt in body[idx:]:
-        seg = ast.get_source_segment(text, stmt) or ""
-        if stmts and "meter_hz" not in seg:
+        if stmts and "meter_hz" not in seg(stmt):
             break
         stmts.append(stmt)
     rung = ast.Module(body=stmts, type_ignores=[])

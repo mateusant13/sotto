@@ -217,7 +217,7 @@ REQUIRED = [
     '--tracking-brand', '--brand-upper', '--caption-upper',
     '--size-time', '--size-closed', '--size-chrome', '--size-meta', '--size-small',
     '--leading-closed', '--weight-closed', '--weight-brand',
-    '--motion-in', '--type-step',
+    '--motion-in',
     '--bg-raised', '--text', '--text-dim', '--text-faint', '--radius',
     '--font', '--mono', '--accent-from', '--accent-to', '--accent-gradient',
 ]
@@ -309,11 +309,15 @@ FAMILIES = {
 }
 
 REVEALS = {
-    # name: (what animates, keyframes, duration, easing, --type-step)
-    'fade': ('word', 'cine-fade', '450ms', 'cubic-bezier(0.22, 1, 0.36, 1)', '0ms'),
-    'rise': ('word', 'cine-rise', '500ms', 'cubic-bezier(0.22, 1, 0.36, 1)', '0ms'),
-    'blur': ('char', 'cine-blur', '380ms', 'cubic-bezier(0.22, 1, 0.36, 1)', '38ms'),
-    'type': ('none', None, None, None, '45ms'),
+    # name: (what animates, keyframes, duration, easing)
+    # THE `--type-step` COLUMN IS GONE (2026-11-25): the owner settled the reveal on
+    # 2026-11-02 (*"SEM FADE"* -- the new word APPEARS), `panel.css` enforces it with
+    # `animation: none !important`, and this generator's own per-theme declaration of
+    # the token was then read by nothing. `cinematic-designs-oracle` A measured it.
+    'fade': ('word', 'cine-fade', '450ms', 'cubic-bezier(0.22, 1, 0.36, 1)'),
+    'rise': ('word', 'cine-rise', '500ms', 'cubic-bezier(0.22, 1, 0.36, 1)'),
+    'blur': ('char', 'cine-blur', '380ms', 'cubic-bezier(0.22, 1, 0.36, 1)'),
+    'type': ('none', None, None, None),
 }
 
 
@@ -555,7 +559,7 @@ def panel_is_light(color):
 def tokens_for(d):
     v = d['vars']
     t = typography(d['caption_class'], d['reveal'])
-    reveal_kind, _kf, _dur, _ease, step = REVEALS[d['reveal']]
+    reveal_kind, _kf, _dur, _ease = REVEALS[d['reveal']]
 
     # THE CAPTION'S COLOURS GO ON THE TOKENS THE PANEL AND THE IN-PANEL EDITOR ACTUALLY
     # READ. `--text-confirmed`/`--text-provisional` are the two the caption's own spans
@@ -587,7 +591,6 @@ def tokens_for(d):
         '--leading-caption': t['leading'],
         '--weight-caption': str(t['weight']),
         '--tracking-caption': t['tracking'],
-        '--type-step': step,
         # the zip's `--scrim`: the layer between the wallpaper and the type. Named
         # here because it is a colour of its own and nothing in the contract owns it.
         '--cine-scrim': v['--scrim'],
@@ -736,9 +739,7 @@ SHARED_TAIL = """/* ═══ THE SET'S REDUCED-MOTION OVERRIDE — THE FILE'S L
   :root[data-theme^='cine-'] .panel__header,
   :root[data-theme^='cine-'] .panel__header *,
   :root[data-theme^='cine-'] .status,
-  :root[data-theme^='cine-'] .status *,
-  :root[data-theme^='cine-'] .chrome,
-  :root[data-theme^='cine-'] .chrome * {
+  :root[data-theme^='cine-'] .status * {
     transition-duration: 0ms;
   }
 }
@@ -801,10 +802,6 @@ def theme_css(d, toks, backdrop_note):
     a('     shared set block at the top of this file reads it. The reveal is the')
     a('     theme\'s own animation, declared below. */')
     a('  --motion-in: %s;' % toks['--motion-in'])
-    a('  --type-step: %s;%s' % (
-        toks['--type-step'],
-        '   /* the char-by-char reveal, unchanged from `panel.css` */' if toks['--type-step'] != '0ms'
-        else '  /* 0: this theme reveals by WORD, not by character */'))
     a('  --cine-scrim: %s;' % toks['--cine-scrim'])
     a('}')
     a('')
@@ -1007,9 +1004,12 @@ def theme_css(d, toks, backdrop_note):
     a('%s .panel__header,' % S)
     a('%s .panel__header *,' % S)
     a('%s .status,' % S)
-    a('%s .status *,' % S)
-    a('%s .chrome,' % S)
-    a('%s .chrome * {' % S)
+    # NO `.chrome` (2026-11-25): the owner removed every per-direction chrome
+    # block from the document on 2026-11-06 ("the meter, LIVE / EM ESPERA, · · ·,
+    # OUVINDO / EM ESPERA were words about the panel, not facts"), so a rule for
+    # `.chrome` styles a node that cannot exist -- and `cine-themes` D1 and
+    # `cinematic-designs` B both name it as dead. `.status` is the live wrapper.
+    a('%s .status * {' % S)
     a('  transition-property: color, background-color, border-color, box-shadow;')
     a('  transition-duration: var(--motion-in);')
     a('  transition-timing-function: ease;')
@@ -1025,15 +1025,22 @@ def theme_css(d, toks, backdrop_note):
     a('')
 
     # ── the reveal ───────────────────────────────────────────────────────────────
-    kind, kf, dur, ease, _step = REVEALS[d['reveal']]
+    kind, kf, dur, ease = REVEALS[d['reveal']]
     a('/* THE REVEAL — `%s`. One word, or one character, at a time. */' % d['reveal'])
     if kind == 'none':
         a('/* (`type` needs no rule of its own: it IS the character reveal `panel.css`')
-        a(' * already declares, driven by the `--type-step` above. The caret is shared. */')
+        a(' * used to declare. That reveal is settled OFF by the owner\'s 2026-11-02')
+        a(' * order and the `--type-step` delay it read is gone with it. */')
     elif kind == 'word':
         a('%s .caption--provisional .caption__word[data-typing] {' % S)
         a('  color: var(--accent);   /* the newest word, the zip\'s `--caption-accent` role */')
-        a('  animation: %s %s %s both;' % (kf, dur, ease))
+        # THE OWNER KILLED THE ENTRANCE ANIMATION (2026-11-02, verbatim: *"nao quero
+        # nenhum fade na legenda"*), and the shipped CSS carried the suppression as a
+        # hand edit -- which is exactly why `cine-themes-oracle` arm H (RULE 10) said
+        # the shipped file was NOT the generator's output: 42 bytes of comment the
+        # generator never wrote. The suppression lives HERE now, so a fresh run
+        # reproduces the disk and the next regeneration cannot bring the fade back.
+        a('  /* Sem fade de entrada na legenda (dono, 2026-11-02). */')
         a('}')
         a('/* THE PER-CHARACTER REVEAL IS GONE WITH THE CHARACTER SPANS (2026-10-20).')
         a(' * This theme used to switch the character reveal OFF with a rule for')
@@ -1048,8 +1055,9 @@ def theme_css(d, toks, backdrop_note):
         a('  animation: %s %s %s both;' % (kf, dur, ease))
         a('}')
         a('/* THE CHARACTER REVEAL, RETARGETED AT THE WORD (2026-10-20). The design')
-        a(' * asked for one CHARACTER at a time, with the delay `--c-i *')
-        a(' * --type-step`; the panel writes the word as ONE text node, so there is')
+        a(' * asked for one CHARACTER at a time, with a delay of `--c-i *')
+        a(' * --type-step` (that token is gone, 2026-11-25); the panel writes the')
+        a(' * word as ONE text node, so there is')
         a(' * no character index to multiply and no character span to animate. The')
         a(' * theme\'s own keyframe now plays on the WORD, whole and once -- the')
         a(' * owner asked for it verbatim: *"fica aparecendo como se fosse')
@@ -1338,9 +1346,10 @@ def extra_rules(t):
         '%s .panel__header,' % S,
         '%s .panel__header *,' % S,
         '%s .status,' % S,
-        '%s .status *,' % S,
-        '%s .chrome,' % S,
-        '%s .chrome * {' % S,
+        # NO `.chrome` (2026-11-25): the per-direction chrome blocks left the
+        # document on 2026-11-06 (owner order), so the selector is dead and the
+        # class-list arm says so. `.status` carries the same colour transition.
+        '%s .status * {' % S,
         '  transition-property: color, background-color, border-color, box-shadow;',
         '  transition-duration: var(--motion-in);',
         '  transition-timing-function: ease;',

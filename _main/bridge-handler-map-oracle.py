@@ -68,14 +68,27 @@ EXPECTED_KINDS = (
     'setLiveEnabled', 'sotto:setLiveEnabled',
     'pause', 'sotto:pause',
     'history-append', 'history-tail', 'history-search', 'history-root',
+    # MEASURED 2026-11-25: NINE more kinds ship and this pin was behind them
+    # again (`missing=[]` -- the product had lost nothing, the LIST had). They
+    # came with the 2026-11-25 design audit: the history refused/export trio
+    # (`_history_refused`, `_history_export`, `_history_export_file`), the
+    # panel's own visual switches (`caption-visual`,
+    # `caption-capture-exclude`, `translation-target`), the brand/boot pair
+    # (`brand-tokens`, `boot-profile`) and `paint-row`.
+    'history-export', 'history-export-file', 'history-refused',
+    'caption-visual', 'caption-capture-exclude', 'translation-target',
+    'brand-tokens', 'boot-profile', 'paint-row',
     'history-reveal', 'hide', 'toggle', 'quit', 'revive', 'info',
     'panel-surface', 'stats', 'lazy-asset',
 )
 KIND_LINE = re.compile(r"^            '([^']+)': \('(?:host|shell|shell-call)', ", re.M)
 #: The page own senders, inside the preload JS this shell injects. `lazy-asset`
 #: is NOT here -- it is posted by app/panel/lazy-assets.js -- and is pinned by
-#: name in EXPECTED_KINDS.
-POST_KIND = re.compile(r"(?:post|historyCall)\('([^']+)'", re.M)
+#: name in EXPECTED_KINDS. RE-ANCHORED 2026-11-25: the Python side posts a
+#: SCRIPT through `exec_js_post('window.__sotto_emit(' + ...)`, and without the
+#: lookbehind that literal was read as a page kind named
+#: `window.__sotto_emit(` -- a red manufactured by the reader, not by the wire.
+POST_KIND = re.compile(r"(?<!exec_js_)(?:post|historyCall)\('([^']+)'", re.M)
 UNKNOWN_KIND = 'a-kind-nobody-knows-xyz'
 
 #: M1 -- defect #1 shape: an attribute ACCESS inside the table.

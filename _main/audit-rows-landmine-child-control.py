@@ -111,8 +111,12 @@ MUTANTS = {
     # (DETACHED_PROCESS dropped, measured 0 rows -> 14 rows), so this mutant puts the flag
     # BACK and reproduces the blindness instead of simulating the cure.
     'm5-census-broken-flags': (CENSUS, [
-        ('creationflags=0x08000000)',
-         'creationflags=0x08000000 | 0x00000008)')]),
+        # RE-ANCHORED 2026-11-25: the call grew `startupinfo=` after the flag,
+        # so the old `creationflags=0x08000000)` anchor matched nothing. The
+        # mutant still puts DETACHED_PROCESS back -- it now anchors on the
+        # comma that ends the flag, keeping the sibling keyword untouched.
+        ('creationflags=0x08000000, startupinfo=',
+         'creationflags=0x08000000 | 0x00000008, startupinfo=')]),
     # #34 -- THE MUTANT NOW GOES THE OTHER WAY (2026-10-11): the live oracles HAVE the
     # handler, so this mutant REMOVES it from one of the three and reproduces the orphan.
     'm34-orphan-handler-removed': (_EXIT3, [
@@ -170,13 +174,41 @@ def make_mutant(key, directory):
 # bytes half
 # ---------------------------------------------------------------------------
 def flag_expression(text):
-    """The creationflags expression python_pids() passes, evaluated."""
+    """The creationflags expression python_pids() passes, evaluated.
+
+    RE-ANCHORED 2026-11-25: the census's call grew a SECOND keyword after this
+    one -- `startupinfo=subprocess.STARTUPINFO(dwFlags=..., wShowWindow=0)` --
+    and the old cut (`text.find(')', index)`) stopped at the `)` that closes
+    STARTUPINFO, handing `eval` the half-expression
+    `0x08000000, startupinfo=subprocess.STARTUPINFO(...` and dying with
+    SyntaxError. The value is now read to the first `,` or `)` at DEPTH ZERO,
+    so a nested call in a sibling keyword can never truncate it.
+    """
     marker = 'creationflags='
     index = text.find(marker, text.find('def python_pids'))
     if index < 0:
         return None, ''
-    end = text.find(')', index)
-    expression = text[index + len(marker):end].strip()
+    start = index + len(marker)
+    depth = 0
+    quote = ''
+    end = start
+    while end < len(text):
+        char = text[end]
+        if quote:
+            if char == quote:
+                quote = ''
+        elif char in ('"', "'"):
+            quote = char
+        elif char in '([{':
+            depth += 1
+        elif char in ')]}':
+            if depth == 0:
+                break
+            depth -= 1
+        elif char == ',' and depth == 0:
+            break
+        end += 1
+    expression = text[start:end].strip()
     value = eval(expression, {'__builtins__': {}},          # noqa: S307
                  {'CREATE_NO_WINDOW': CREATE_NO_WINDOW,
                   'DETACHED_PROCESS': DETACHED_PROCESS})

@@ -186,11 +186,11 @@ def _tokens(d):
         '--leading-caption': d['leading'],
         '--weight-caption': d['weight'],
         '--tracking-caption': d['tracking'],
-        # `StreamText` animates WHOLE WORDS in this zip (one span per word), so the
-        # panel's per-character typing reveal is switched off — the documented
-        # `--type-step: 0ms` off switch, not a deleted rule. The comment in `_css()`
-        # records what that costs (no letter-by-letter typing on these nine).
-        '--type-step': '0ms',
+        # `StreamText` animates WHOLE WORDS in this zip (one span per word). The
+        # panel's per-character reveal used to be switched off from here through
+        # `--type-step: 0ms`; the owner settled the reveal OFF for every version
+        # (2026-11-02, *"SEM FADE"*), so the token is gone (2026-11-25) and there
+        # is nothing left to switch off. See `_css()` for what that costs.
         # The scene's own scrim: its `wallOverlay`'s BOTTOM stop — the darkest one,
         # and the one the caption sits under, since `CaptionStage` anchors at
         # `bottom-0 pb-[7vh]`.
@@ -225,8 +225,9 @@ _KEYFRAMES = """/* ── THE WORD REVEAL — declared ONCE for all nine `cinema
  *
  * WHY THE REVEAL IS PER WORD: `StreamText` renders ONE SPAN PER WORD with
  * `anim-word-soft` (or `anim-word` when `soft={false}`, which is the `tight`
- * variant only). The panel's per-character machinery is switched off through
- * `--type-step: 0ms`, and NOTHING IS RECOLOURED: in this zip the newest word is not
+ * variant only). The panel's per-character machinery is switched off (and its old
+ * `--type-step: 0ms` switch is gone with the token, 2026-11-25), and NOTHING IS
+ * RECOLOURED: in this zip the newest word is not
  * given the accent — only the caret is (see each theme's caret block). */
 @keyframes cine-c1-word-soft {
   from { opacity: 0; transform: translateY(0.16em); filter: blur(3px); }
@@ -466,9 +467,10 @@ def _css(d):
     w('/* THE REVEAL — one WORD at a time, `%s`.'
       % ('anim-word-soft (soft = true)' if d['word_soft']
          else 'anim-word (soft = false)'))
-    w(' * The panel\'s char-by-char typing is OFF (`--type-step: 0ms`), because this')
-    w(' * zip reveals whole words and two animations on one character\'s opacity')
-    w(' * multiply. The keyframes are declared once, in the `cine-cafe` block. */')
+    w(' * The panel\'s char-by-char typing is OFF, because this zip reveals whole')
+    w(' * words and two animations on one character\'s opacity multiply. (Its old')
+    w(' * `--type-step: 0ms` switch is gone with the token, 2026-11-25.) The')
+    w(' * keyframes are declared once, in the `cine-cafe` block. */')
     w('@S@ .caption--provisional .caption__word[data-typing] {')
     w('  /* NO `color:` here, on purpose: this zip never recolours the newest word.')
     w('     The accent\'s only job on the live line is the caret. */')

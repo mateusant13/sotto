@@ -280,7 +280,6 @@ def legacy_theme_blocks(d):
         ("--space-3", "12px"),
         ("--time-live", d["accent"]),
         ("--time-past", d["muted"]),
-        ("--type-step", "45ms"),
     ]))
     out.append((s + " .panel", [
         ("background",
@@ -469,7 +468,7 @@ TUNE_TOKENS = [
     "--font-sans", "--size-caption", "--leading-caption", "--weight-caption",
     "--tracking-caption", "--caption-upper", "--size-closed", "--leading-closed",
     "--weight-closed", "--text-provisional", "--bg-slab", "--bg-slab-strong",
-    "--radius-lg", "--motion-in", "--type-step", "--accent", "--text-secondary",
+    "--radius-lg", "--motion-in", "--accent", "--text-secondary",
 ]
 
 
@@ -497,7 +496,6 @@ def root_block(d):
         ("--bg-slab-strong", d["surface"]),
         ("--radius-lg", "%dpx" % d["radius"]),
         ("--motion-in", st["motion"]),
-        ("--type-step", "45ms"),
         ("--accent", d["accent"]),
         ("--accent-soft", d["soft"]),
         ("--theme-swatch", d["accent"]),
@@ -563,21 +561,14 @@ def shared_type(d):
         ("color", "var(--text-provisional)"),
         ("font-style", "normal"),
     ]))
-    # THE PER-CHARACTER DELAY IS GONE WITH THE CHARACTER SPANS (2026-10-20).
-    # The panel writes the word as ONE text node, so there is no `.caption__ch`
-    # to delay and no `--c-i` index to multiply -- a rule for a class the
-    # document cannot carry is a rule for nothing, and
-    # `_main/cine-themes-oracle.py` arm D1 says so out loud.
-    #
-    # THE TOKEN SURVIVES, with the SAME MEANING one step up: `--type-step` is
-    # "the reveal's speed" (`panel.css` says so), and what these designs reveal
-    # is a WORD at a time. So the delay moves to the newest WORD -- the one the
-    # panel marks `data-typing` -- and the design's own token keeps driving
-    # the reveal. The panel's own rule is the weaker selector, so the design
-    # wins, and a direction can still tune the step from the tune dialog.
-    out.append((s + " .caption--provisional .caption__word[data-typing]", [
-        ("animation-delay", "var(--type-step)"),
-    ]))
+    # THE WORD REVEAL IS OFF, AND WITH IT THE TOKEN (owner, 2026-11-02:
+    # *"SEM FADE"* -- the new word APPEARS). `panel.css` settles every reveal on
+    # the newest word with `animation: none !important`, so the `animation-delay:
+    # var(--type-step)` that stood here delayed an animation that never starts:
+    # `cinematic-designs-oracle` arm A measured `--type-step` declared by 25
+    # themes and read by NO live rule. The per-character delay went first
+    # (2026-10-20, with the character spans); the token follows it, because a knob
+    # that tunes nothing is worse than no knob -- the dialog offered it.
     return out
 
 

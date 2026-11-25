@@ -88,6 +88,39 @@ def read(path):
 
 
 # ---------------------------------------------------------------------------
+# O SEGMENTO SEM `ast.get_source_segment` (medido 2026-11-25)
+# ---------------------------------------------------------------------------
+# `ast.get_source_segment` reconstroi o indice de linhas da FONTE INTEIRA a cada
+# chamada: 190 ms por chamada neste shell de 1,5 MB / 28 456 linhas, e esta oracao
+# faz 3 delas -- 766 ms de CPU para ler tres funcoes. O helper divide o texto UMA
+# vez e corta o mesmo intervalo (mesmas regras: `lineno`/`col_offset` de 1/0,
+# `end_lineno`/`end_col_offset` exclusivo no fim).
+def source_lines(text):
+    return text.splitlines(True)
+
+
+def segment(lines, node):
+    try:
+        first = node.lineno - 1
+        last = getattr(node, 'end_lineno', node.lineno) - 1
+        col = node.col_offset or 0
+        end_col = getattr(node, 'end_col_offset', None)
+    except AttributeError:
+        return None
+    if first < 0 or last >= len(lines) or last < first:
+        return None
+    if first == last:
+        line = lines[first]
+        stop = end_col if end_col is not None else len(line)
+        return line[col:stop]
+    chunk = [lines[first][col:]]
+    chunk.extend(lines[first + 1:last])
+    tail = lines[last]
+    chunk.append(tail[:end_col] if end_col is not None else tail)
+    return ''.join(chunk)
+
+
+# ---------------------------------------------------------------------------
 # A TABELA, DA FUNCAO REAL
 # ---------------------------------------------------------------------------
 def load_gaming(path):
@@ -461,10 +494,20 @@ class FakeLog(object):
 
 
 def settle(thread, loops=6):
+    # UM SETTLE QUE GASTA O PRAZO INTEIRO DIZ O SEU NOME (medido 2026-11-25: a
+    # mesma arm custou 8 s e 25 s sem nada mudar, e o degrau que denuncia o custo
+    # era o `battery-budget` a nomear 28 s -> 59 s sem dizer ONDE). O orcamento da
+    # espera nao e' o custo do trabalho: aqui o custo e' o numero de voltas do fio,
+    # e quando o prazo acaba antes delas o instrumento escreve quantas viu.
     deadline = time.time() + 3.0
     start = thread.loops
     while time.time() < deadline and thread.loops < start + loops:
         time.sleep(0.01)
+    if thread.loops < start + loops:
+        print('SETTLE-TIMEOUT want=%d got=%d in %.1fs'
+              % (loops, thread.loops - start, 3.0), flush=True)
+        return False
+    return True
 
 
 def space_swallow_factory(swallow_module, user_fake):
@@ -668,9 +711,13 @@ def arm_wiring(shell_source, tag=''):
     except SyntaxError as exc:
         check('C shell parseia%s' % tag, False, repr(exc))
         return False
+    # A FONTE E' DIVIDIDA UMA VEZ (medido 2026-11-25: tres chamadas a
+    # `ast.get_source_segment` neste shell custavam 766 ms de CPU -- ver o
+    # cabecalho do helper -- e a CPU deste passo e' o que a bateria mede).
+    _lines = source_lines(shell_source)
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name == 'arm_hotkey_role':
-            role = ast.get_source_segment(shell_source, node) or ''
+            role = segment(_lines, node) or ''
     ok &= check('C1 arm_hotkey_role existe%s' % tag, bool(role))
     if not role:
         return False
@@ -682,7 +729,10 @@ def arm_wiring(shell_source, tag=''):
     # `LiveHotkeyThread(... gaming_fn=...)` e no `body` o observador.
     live_call = None
     none_body = None
-    for node in ast.walk(ast.parse(shell_source)):
+    # UMA PARSE, UMA ARVORE (medido 2026-11-25: este laco re-parseava a fonte
+    # inteira -- 156 ms por chamada neste shell -- sobre uma arvore identica ja'
+    # construida oito linhas acima).
+    for node in ast.walk(tree):
         if not isinstance(node, ast.If):
             continue
         # O TESTE E' LIDO DA ARVORE, NAO DO TEXTO (2026-11-05). A primeira versao
@@ -738,11 +788,11 @@ def arm_wiring(shell_source, tag=''):
         if isinstance(node, ast.ClassDef) and node.name == 'PassiveHotkeyThread':
             for sub in node.body:
                 if isinstance(sub, ast.FunctionDef) and sub.name == '__init__':
-                    obs = ast.get_source_segment(shell_source, sub) or ''
+                    obs = segment(_lines, sub) or ''
         if isinstance(node, ast.ClassDef) and node.name == 'LiveHotkeyThread':
             for sub in node.body:
                 if isinstance(sub, ast.FunctionDef) and sub.name == 'stop':
-                    stop_body = ast.get_source_segment(shell_source, sub) or ''
+                    stop_body = segment(_lines, sub) or ''
     ok &= check('C4 o observador aceita gate%s' % tag,
                 bool(obs) and 'gate' in obs)
     ok &= check('C5 stop do fio para o recuo%s' % tag,
@@ -760,11 +810,20 @@ def run(root=None, tag=''):
     shell_source = read(shell_path)
     gaming_module = load_gaming(gaming_path)
     swallow_module = load_space_swallow(swallow_path)
-    ok = arm_foreground(gaming_module, tag)
-    ok &= arm_plan(gaming_module, tag)
-    ok &= arm_classify(swallow_module, tag)
-    ok &= arm_wiring(shell_source, tag)
-    ok &= arm_thread(shell_source, gaming_module, swallow_module, tag)
+    # O CUSTO POR FASE, IMPRESSO SEMPRE (medido 2026-11-25: a mesma arm custou
+    # 9 s, 18 s e 28 s em corridas seguidas e o `battery-budget` so' sabia dizer
+    # "28 s -> 59 s"). Um passo que engorda tem de dizer QUAL fase engordou.
+    ok = True
+    for name, fn in (('foreground', lambda: arm_foreground(gaming_module, tag)),
+                     ('plan', lambda: arm_plan(gaming_module, tag)),
+                     ('classify', lambda: arm_classify(swallow_module, tag)),
+                     ('wiring', lambda: arm_wiring(shell_source, tag)),
+                     ('thread', lambda: arm_thread(shell_source, gaming_module,
+                                                   swallow_module, tag))):
+        _t = time.monotonic()
+        ok &= fn()
+        print('PHASE %-10s %7.0f ms' % (name, (time.monotonic() - _t) * 1000.0),
+              flush=True)
     return ok
 
 
@@ -791,6 +850,7 @@ def neg_arm():
     caught = 0
     try:
         for label, apply in _MUTATORS:
+            _t = time.monotonic()
             tree = os.path.join(tmp, label)
             os.makedirs(os.path.join(tree, 'app', 'webview'))
             for name in ('sotto_webview.py', 'gaming_mode.py',
@@ -814,10 +874,12 @@ def neg_arm():
             RESULTS = saved
             if not ok:
                 caught += 1
-                print('NEG-ARM %-38s RED' % label, flush=True)
+                print('NEG-ARM %-38s RED %6.1fs' % (label, time.monotonic() - _t),
+                      flush=True)
             else:
                 failed = [n for n, ok_, _ in RESULTS if not ok_]
-                print('NEG-ARM %-38s NOT-CAUGHT arms=%s' % (label, failed or 'all'),
+                print('NEG-ARM %-38s NOT-CAUGHT arms=%s %6.1fs'
+                      % (label, failed or 'all', time.monotonic() - _t),
                       flush=True)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

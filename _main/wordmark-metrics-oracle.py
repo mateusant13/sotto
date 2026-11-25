@@ -7,7 +7,7 @@ WHY THIS EXISTS (owner, 2026-10-21, verbatim):
 MEASURED on the five themes the panel actually loads (`panel.html:60-64`), before
 the fix -- this is the complaint, as numbers:
 
-    Teleprompter   shared rule (`panel.css .chrome__brand`)   11px / 600 / 0.20em
+    Teleprompter   shared rule (`panel.css .wordmark__text`)   11px / 600 / 0.20em
     Broadcast      `var(--size-time)` (= 10px)                 / 600 / 0.14em
     Manuscrito     `var(--size-time)` (= 10px)                 / 400 / 0.06em
     Cinema Card    literal                                    11px / 500 / 0.34em
@@ -22,8 +22,8 @@ size/weight/tracking to the shared `panel.css` values. Each direction keeps its 
 FAMILY and COLOUR -- that is the design, and it stays.
 
 THIS GATE SIMULATES THE CASCADE rather than looking for a magic string: it starts
-from the shared `.chrome__brand` rule in `panel.css`, applies every
-`:root[data-theme='theme-N'] ... .chrome__brand` rule in FILE ORDER (equal
+from the shared `.wordmark__text` rule in `panel.css`, applies every
+`:root[data-theme='theme-N'] ... .wordmark__text` rule in FILE ORDER (equal
 specificity: later wins), and compares the resulting metrics. That is why theme-1
 — which has no brand override at all — is judged correctly instead of being
 special-cased.
@@ -64,11 +64,11 @@ def strip_comments(css):
 
 
 def brand_rules(css):
-    """[(selector, [(prop, value)])] for every rule mentioning `.chrome__brand`."""
+    """[(selector, [(prop, value)])] for every rule mentioning `.wordmark__text`."""
     out = []
     for m in re.finditer(r"([^{}]+)\{([^}]*)\}", strip_comments(css)):
         selector = re.sub(r"\s+", " ", m.group(1)).strip()
-        if ".chrome__brand" not in selector or "::" in selector:
+        if ".wordmark__text" not in selector or "::" in selector:
             continue
         decls = []
         for decl in m.group(2).split(";"):
@@ -83,13 +83,13 @@ def reference():
     """The shared rule's metrics: the standard every theme must meet."""
     ref = {}
     for selector, decls in brand_rules(read(PANEL)):
-        if selector == ".chrome__brand":
+        if selector == ".wordmark__text":
             for prop, value in decls:
                 if prop in METRICS:
                     ref[prop] = value
     missing = [p for p in METRICS if p not in ref]
     if missing:
-        raise SystemExit("%s: `.chrome__brand` declares no %s" % (PANEL, ", ".join(missing)))
+        raise SystemExit("%s: `.wordmark__text` declares no %s" % (PANEL, ", ".join(missing)))
     return ref
 
 
@@ -189,7 +189,7 @@ def main(argv=None):
     try:
         broke = original + (
             "\n/* MUTANT: the owner's complaint, restored */\n"
-            ":root[data-theme='theme-5'] .chrome--inst .chrome__brand{\n"
+            ":root[data-theme='theme-5'] .chrome--inst .wordmark__text{\n"
             "  font-size: 9px;\n}\n")
         if broke == original:
             print("  MUTATION DID NOT APPLY -- the anchor is spent")

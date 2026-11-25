@@ -66,8 +66,7 @@ body[data-skin][data-surface="panel"] .panel::before { display: none; }
 /* HIDDEN, because the design paints them. `!important` because the five directions
    and the cinematic set turn some of these on with a theme-scoped rule of their
    own, and a skin must win over any of them. */
-body[data-skin][data-surface="panel"] .captions,
-body[data-skin][data-surface="panel"] .chrome { display: none !important; }
+body[data-skin][data-surface="panel"] .captions { display: none !important; }
 
 /* A SKIN IS A LOOK, NOT A SECOND PANEL (owner, 2026-11-06). Verbatim:
  * *"a segunda imagem mostra que o historico nao ta mostrando em todos os temas"*,
@@ -292,7 +291,7 @@ body[data-skin][data-surface="panel"] #skin {
  * up in the SKIN registry — not at the manifest's `skin` field — and `:77-82` needs
  * only one fragment, so for all six the SKIN is what mounts and what the owner sees.
  * The cinematic.css block's only rules that reach anything we still paint are its
- * `.panel` backgrounds, and `.captions` / `.history` / `.chrome` are
+ * `.panel` backgrounds, and `.captions` / `.history` are
  * `display: none !important` above. Both layers carry the SAME design: the six
  * blocks map the design's own 15 vars onto our token contract, and the 20 skin
  * entries' `vars` are byte-identical to their zip design's (0 of 20 differ). This
@@ -328,8 +327,7 @@ body[data-skin][data-surface="panel"] .status {
   letter-spacing: 0.02em;
 }
 
-/* The per-direction footer labels are chrome, not information. */
-body[data-skin] .status .chrome { display: none !important; }
+/* The per-direction footer labels were chrome: they left the document 2026-11-06. */
 body[data-skin] .status__text {
   display: block;
   max-width: 100%;

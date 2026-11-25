@@ -67,12 +67,20 @@ def load(source, mutate=False):
         snippet = head + "        raise exc" + tail
     events = []
     words = []
+    traces = []
     namespace = {
         "emit": lambda **payload: events.append(payload),
         "err": lambda message: words.append(message),
+        # RE-ANCHORED 2026-11-25: the guard gained a `_death_trace(...)` call so an
+        # unhandled death survives a broken stderr (worker/sotto_worker.py:10157).
+        # It is a sibling in the module, so extracting only the guard left the name
+        # undefined and the WHOLE oracle died with NameError. The sink is recorded
+        # here instead: arm 1 now also requires the trace to have been written once,
+        # so the guard's newest half is measured rather than merely tolerated.
+        "_death_trace": lambda text: traces.append(text),
     }
     exec(compile(snippet, "<contract_guard>", "exec"), namespace)
-    return namespace["contract_guard"], events, words
+    return namespace["contract_guard"], events, words, traces
 
 
 def exercise(guard):
@@ -109,7 +117,7 @@ def main(argv=None):
         source = handle.read()
     say("worker-eof-contract-oracle -- row F18: does any catchable exit leave the contract open?")
     try:
-        guard, events, words = load(source)
+        guard, events, words, traces = load(source)
     except LookupError as error:
         say("VERDICT: FAIL -- " + str(error))
         return 1
@@ -122,6 +130,7 @@ def main(argv=None):
     for label, fn in exercise(guard):
         events.clear()
         words.clear()
+        traces.clear()
         code, exit_code = run_arm(guard, fn)
         want = recipes[label]
         if label == "SystemExit(2)":
@@ -134,12 +143,21 @@ def main(argv=None):
             continue
         stage = events[0].get("stage") if events else None
         ok = code == want[0] and (stage == want[1] if want[1] else not events)
+        # The unhandled arm is the ONLY one whose death trace must exist: a guard
+        # that wrote it on a healthy return or on SystemExit would be reporting a
+        # death that did not happen, and the file is the last witness after a
+        # broken stderr.
+        want_traces = 1 if want[1] == "unhandled" else 0
+        ok = ok and len(traces) == want_traces
         detail = events[0].get("detail", "") if events else ""
-        say("  %-22s rc=%-4s events=%d stage=%-12s %s"
-            % (label, code, len(events), stage, ("-- " + detail[:34]) if detail else ""))
+        say("  %-22s rc=%-4s events=%d traces=%d stage=%-12s %s"
+            % (label, code, len(events), len(traces), stage,
+               ("-- " + detail[:34]) if detail else ""))
         if not ok:
             wrong.append(label + ": expected rc=" + str(want[0]) + " stage=" + str(want[1])
-                         + ", got rc=" + str(code) + " stage=" + str(stage))
+                         + " traces=" + str(want_traces)
+                         + ", got rc=" + str(code) + " stage=" + str(stage)
+                         + " traces=" + str(len(traces)))
 
     calls = source.count("contract_guard(main)")
     old_entry = "sys.exit(main())" in source
@@ -153,7 +171,7 @@ def main(argv=None):
         wrong.append("the guard's defaults no longer bind the module's own emitters")
 
     if parsed.neg_arm:
-        mutant, mevents, _words = load(source, mutate=True)
+        mutant, mevents, _words, _traces = load(source, mutate=True)
         # The mutant RE-RAISES, so the escape has to be caught here or this oracle dies with the
         # very exception it is measuring -- which is what its first version did.
         escaped = None

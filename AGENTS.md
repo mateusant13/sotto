@@ -652,13 +652,15 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-25):** `_main\_audit-verify-all.cmd` = **424743 B**,
-  **4854 CRLF** / 0 bare LF, sha256 `9809613718FF0C3CE3F9948B190421BC586C32E17303FB84A04CCB2E2C50F75E`.
+- **PIN do ficheiro (re-medido 2026-11-25):** `_main\_audit-verify-all.cmd` = **427691 B**,
+  **4877 CRLF** / 0 bare LF, sha256 `8DB784E6EAF851A5852B5E927445C170C9D915B127125AA07FE92260263A7F95`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
   `panel-language` entraram depois, tambem em par com o seu `red-as-expected`, e os dois passos
-  do `history-gallery` saíram com o modulo que eles julgavam.)
+  do `history-gallery` saíram com o modulo que eles julgavam. 2026-11-25 (mais tarde): entraram
+  `panel-chrome` + `panel-chrome-neg` e `base-themes` + `base-themes-neg` -- os dois instrumentos
+  existiam e nenhum estava ligado a esta bateria.)
 
 ## O EOL DO REPO E' UMA REGRA (medido 2026-11-15)
 

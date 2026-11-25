@@ -161,19 +161,9 @@
     { id: 'bgSlab', token: '--bg-slab', kind: 'color', label: 'Fundo do painel' },
     { id: 'bgSlabStrong', token: '--bg-slab-strong', kind: 'color', label: 'Fundo do painel (topo)' },
     { id: 'radius', token: '--radius-lg', kind: 'length', unit: 'px', min: 0, max: 28, step: 1, label: 'Cantos do painel' },
-    { id: 'motionIn', token: '--motion-in', kind: 'length', unit: 'ms', min: 0, max: 400, step: 10, label: 'Duração das transições' },
-    {
-      id: 'typeStep',
-      token: '--type-step',
-      kind: 'length',
-      unit: 'ms',
-      min: 0,
-      max: 200,
-      step: 5,
-      label: 'Digitação letra a letra (0 = desligada)',
-      /* The reveal's own documented off switch (`panel.css:1768-1776`). */
-      zeroMeansOff: true
-    }
+    { id: 'motionIn', token: '--motion-in', kind: 'length', unit: 'ms', min: 0, max: 400, step: 10, label: 'Duração das transições' }
+    /* THE TYPING KNOB IS GONE (2026-11-25): it tuned `--type-step`, which nothing
+       read once the owner removed the reveal (2026-11-02, *"SEM FADE"*). */
   ];
 
   var FIELDS_BY_ID = {};

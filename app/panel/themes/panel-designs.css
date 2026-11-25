@@ -74,22 +74,9 @@
      declared in exactly one place. */
   --theme-swatch: #E8574F;
 
-  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
-     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
-     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
-     byte-for-byte the one that shipped before the glitch existed: opacity and
-     transform only, every colour falling back to `transparent`.
-
-     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
-     animacao hacker. mas tem que combinar com cada tema"*. These four are
-     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
-     themes get a swap in their own colours without a single hand adjustment --
-     and a design that wants it stronger or quieter overrides `--ls-glitch`
-     alone, because it is declared in exactly one place per theme. */
-  --ls-accent-a: #E8574F;
-  --ls-accent-b: rgba(232, 87, 79, 0.12);
-  --ls-split: 2px;
-  --ls-glitch: 0.45;
+  /* `--ls-accent-a/-b`, `--ls-split` and `--ls-glitch` were here for the retired
+     `letter-swap.js` glitch and had ZERO readers (`base-themes-oracle` ARM B,
+     2026-11-25). See `gen_themes.py` §LETTER-SWAP for the whole history. */
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
@@ -185,9 +172,6 @@
   font-weight: var(--weight-brand);
   font-size: 13px;
 }
-:root[data-theme='pd-tele'] .wordmark__tag {
-  color: var(--text-muted);
-}
 :root[data-theme='pd-tele'] .icon-button,
 :root[data-theme='pd-tele'] .strip-button {
   border-color: var(--line-strong);
@@ -204,7 +188,6 @@
 :root[data-theme='pd-tele'] .icon-button:focus-visible,
 :root[data-theme='pd-tele'] .strip-button:focus-visible,
 :root[data-theme='pd-tele'] .reveal-button:focus-visible,
-:root[data-theme='pd-tele'] .search__button:focus-visible,
 :root[data-theme='pd-tele'] .dialog-button:focus-visible,
 :root[data-theme='pd-tele'] .history__path:focus-visible,
 :root[data-theme='pd-tele'] .hist:focus-visible,
@@ -357,22 +340,6 @@
 :root[data-theme='pd-tele'] .history__path:hover {
   color: var(--accent);
 }
-:root[data-theme='pd-tele'] .search__input {
-  border-color: var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--bg-slab-strong) 60%, transparent);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-}
-:root[data-theme='pd-tele'] .search__input::placeholder {
-  color: var(--text-muted);
-}
-:root[data-theme='pd-tele'] .search__input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-:root[data-theme='pd-tele'] .search__button,
-:root[data-theme='pd-tele'] .search__clear,
 :root[data-theme='pd-tele'] .reveal-button {
   border-color: var(--line-strong);
   border-radius: var(--radius-sm);
@@ -381,8 +348,6 @@
   font-family: var(--font-sans);
   font-size: var(--size-small);
 }
-:root[data-theme='pd-tele'] .search__button:hover,
-:root[data-theme='pd-tele'] .search__clear:hover,
 :root[data-theme='pd-tele'] .reveal-button:hover {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -586,9 +551,7 @@
 :root[data-theme='pd-tele'] .panel__header,
 :root[data-theme='pd-tele'] .panel__header *,
 :root[data-theme='pd-tele'] .status,
-:root[data-theme='pd-tele'] .status *,
-:root[data-theme='pd-tele'] .chrome,
-:root[data-theme='pd-tele'] .chrome * {
+:root[data-theme='pd-tele'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -614,47 +577,6 @@
     animation: none;
   }
 }
-:root[data-theme='pd-tele'] .wordmark__tag,
-:root[data-theme='pd-tele'] .wordmark__mark {
-  display: none;
-}
-:root[data-theme='pd-tele'] .chrome--tele[data-chrome="head"] {
-  display: inline-flex;
-  margin-left: auto;
-  gap: 7px;
-  font-family: var(--font-sans);
-  font-size: var(--size-meta);
-  font-weight: 600;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-:root[data-theme='pd-tele'] .chrome--tele .chrome__dot {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 99px;
-  background: var(--idle);
-}
-:root[data-theme='pd-tele'] body[data-state="live"] .chrome--tele .chrome__dot {
-  background: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
-}
-:root[data-theme='pd-tele'] .panel__controls {
-  gap: 2px;
-  flex: 0 1 auto;
-  min-width: 0;
-}
-:root[data-theme='pd-tele'] .panel__controls .icon-button {
-  border-color: transparent;
-  background: transparent;
-  color: var(--text-muted);
-}
-:root[data-theme='pd-tele'] .panel__controls .icon-button:hover {
-  border-color: transparent;
-  background: transparent;
-  color: var(--accent);
-}
 :root[data-theme='pd-tele'] .panel {
   background: linear-gradient(to right, rgba(5, 7, 10, 0.82) 0%, rgba(5, 7, 10, 0.42) 62%, rgba(5, 7, 10, 0.12) 100%);
   border-color: transparent;
@@ -666,15 +588,6 @@
 }
 :root[data-theme='pd-tele'] .wordmark {
   display: none;
-}
-:root[data-theme='pd-tele'] .chrome--tele .chrome__dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.2);
-}
-:root[data-theme='pd-tele'] body[data-state="live"] .chrome--tele .chrome__dot {
-  background: #E8574F;
 }
 :root[data-theme='pd-tele'] .captions__body {
   padding: 96px 28px 56px;
@@ -694,13 +607,7 @@
 :root[data-theme='pd-tele'] .caption__mark {
   display: none;
 }
-:root[data-theme='pd-tele'] body[data-surface="strip"] .chrome[data-chrome="head"],
-:root[data-theme='pd-tele'] body[data-surface="strip"] .chrome[data-chrome="foot"] {
-  display: none;
-}
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='pd-tele'] body .chrome,
-  :root[data-theme='pd-tele'] body .chrome *,
   :root[data-theme='pd-tele'] body .caption__word,
   :root[data-theme='pd-tele'] body .caption__led,
   :root[data-theme='pd-tele'] body .caption__text,
@@ -713,7 +620,6 @@
  * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
  * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
  * specificity rule in this file cannot put them back. */
-:root[data-theme='pd-tele'] .chrome__brand { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 :root[data-theme='pd-tele'] .wordmark__text { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 
 /* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
@@ -804,22 +710,9 @@
      declared in exactly one place. */
   --theme-swatch: #E8574F;
 
-  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
-     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
-     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
-     byte-for-byte the one that shipped before the glitch existed: opacity and
-     transform only, every colour falling back to `transparent`.
-
-     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
-     animacao hacker. mas tem que combinar com cada tema"*. These four are
-     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
-     themes get a swap in their own colours without a single hand adjustment --
-     and a design that wants it stronger or quieter overrides `--ls-glitch`
-     alone, because it is declared in exactly one place per theme. */
-  --ls-accent-a: #E8574F;
-  --ls-accent-b: rgba(232, 87, 79, 0.1);
-  --ls-split: 2px;
-  --ls-glitch: 0.45;
+  /* `--ls-accent-a/-b`, `--ls-split` and `--ls-glitch` were here for the retired
+     `letter-swap.js` glitch and had ZERO readers (`base-themes-oracle` ARM B,
+     2026-11-25). See `gen_themes.py` §LETTER-SWAP for the whole history. */
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
@@ -915,9 +808,6 @@
   font-weight: var(--weight-brand);
   font-size: 12px;
 }
-:root[data-theme='pd-bcast'] .wordmark__tag {
-  color: var(--text-muted);
-}
 :root[data-theme='pd-bcast'] .icon-button,
 :root[data-theme='pd-bcast'] .strip-button {
   border-color: var(--line-strong);
@@ -934,7 +824,6 @@
 :root[data-theme='pd-bcast'] .icon-button:focus-visible,
 :root[data-theme='pd-bcast'] .strip-button:focus-visible,
 :root[data-theme='pd-bcast'] .reveal-button:focus-visible,
-:root[data-theme='pd-bcast'] .search__button:focus-visible,
 :root[data-theme='pd-bcast'] .dialog-button:focus-visible,
 :root[data-theme='pd-bcast'] .history__path:focus-visible,
 :root[data-theme='pd-bcast'] .hist:focus-visible,
@@ -1087,22 +976,6 @@
 :root[data-theme='pd-bcast'] .history__path:hover {
   color: var(--accent);
 }
-:root[data-theme='pd-bcast'] .search__input {
-  border-color: var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--bg-slab-strong) 60%, transparent);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-}
-:root[data-theme='pd-bcast'] .search__input::placeholder {
-  color: var(--text-muted);
-}
-:root[data-theme='pd-bcast'] .search__input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-:root[data-theme='pd-bcast'] .search__button,
-:root[data-theme='pd-bcast'] .search__clear,
 :root[data-theme='pd-bcast'] .reveal-button {
   border-color: var(--line-strong);
   border-radius: var(--radius-sm);
@@ -1111,8 +984,6 @@
   font-family: var(--font-sans);
   font-size: var(--size-small);
 }
-:root[data-theme='pd-bcast'] .search__button:hover,
-:root[data-theme='pd-bcast'] .search__clear:hover,
 :root[data-theme='pd-bcast'] .reveal-button:hover {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -1316,9 +1187,7 @@
 :root[data-theme='pd-bcast'] .panel__header,
 :root[data-theme='pd-bcast'] .panel__header *,
 :root[data-theme='pd-bcast'] .status,
-:root[data-theme='pd-bcast'] .status *,
-:root[data-theme='pd-bcast'] .chrome,
-:root[data-theme='pd-bcast'] .chrome * {
+:root[data-theme='pd-bcast'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -1344,100 +1213,6 @@
     animation: none;
   }
 }
-:root[data-theme='pd-bcast'] .wordmark {
-  display: none;
-}
-:root[data-theme='pd-bcast'] .chrome--bcast .chrome__brand {
-  font-family: var(--font-mono);
-  font-size: var(--size-time);
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: none;
-  color: var(--text-secondary);
-}
-:root[data-theme='pd-bcast'] body:not([data-surface="strip"]) .panel__header {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 6px 10px;
-}
-:root[data-theme='pd-bcast'] .chrome--bcast[data-chrome="head"] {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--size-meta);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-:root[data-theme='pd-bcast'] .chrome--bcast .chrome__state {
-  color: var(--accent);
-  font-weight: 600;
-}
-:root[data-theme='pd-bcast'] .chrome--bcast .chrome__rec {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: 99px;
-  background: var(--idle);
-}
-:root[data-theme='pd-bcast'] body[data-state="live"] .chrome--bcast .chrome__rec {
-  background: var(--accent);
-  animation: sotto-2-rec 1.6s ease-out infinite;
-}
-@keyframes sotto-2-rec {
-  0% {
-    opacity: 1;
-  }
-  70% {
-    opacity: 0.35;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-:root[data-theme='pd-bcast'] .chrome--bcast .chrome__chan {
-  color: var(--text-muted);
-}
-:root[data-theme='pd-bcast'] .chrome--bcast .chrome__tc {
-  margin-left: auto;
-  color: var(--text-primary);
-  letter-spacing: 0.08em;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  flex: none;
-}
-:root[data-theme='pd-bcast'] body:not([data-surface="strip"]) .panel__controls {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: end;
-  gap: 4px;
-}
-:root[data-theme='pd-bcast'] .panel__controls .icon-button {
-  border-radius: 3px;
-}
-:root[data-theme='pd-bcast'] .chrome--bcast[data-chrome="foot"] {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: var(--size-meta);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-:root[data-theme='pd-bcast'] .chrome--bcast[data-chrome="foot"][data-slot="start"] {
-  order: -1;
-  color: var(--accent);
-}
-:root[data-theme='pd-bcast'] .chrome--bcast[data-chrome="foot"][data-slot="end"] {
-  order: 9;
-  color: var(--accent);
-}
 :root[data-theme='pd-bcast'] .panel {
   background: rgba(8, 10, 13, 0.88);
   border-color: transparent;
@@ -1450,23 +1225,6 @@
 }
 :root[data-theme='pd-bcast'] .wordmark {
   display: none;
-}
-:root[data-theme='pd-bcast'] .chrome--bcast .chrome__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.25);
-}
-:root[data-theme='pd-bcast'] body[data-state="live"] .chrome--bcast .chrome__dot {
-  background: #E8574F;
-}
-:root[data-theme='pd-bcast'] .chrome--bcast .chrome__tc {
-  font-size: 12px;
-  font-weight: 500;
-  color: #FFFFFF;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  flex: none;
 }
 :root[data-theme='pd-bcast'] .captions__body {
   padding: 80px 16px 12px;
@@ -1489,17 +1247,7 @@
   color: rgba(255, 255, 255, 0.45);
   font-variant-numeric: tabular-nums;
 }
-:root[data-theme='pd-bcast'] .chrome--bcast[data-chrome="foot"] {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 10px 16px;
-}
-:root[data-theme='pd-bcast'] body[data-surface="strip"] .chrome[data-chrome="head"],
-:root[data-theme='pd-bcast'] body[data-surface="strip"] .chrome[data-chrome="foot"] {
-  display: none;
-}
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='pd-bcast'] body .chrome,
-  :root[data-theme='pd-bcast'] body .chrome *,
   :root[data-theme='pd-bcast'] body .caption__word,
   :root[data-theme='pd-bcast'] body .caption__led,
   :root[data-theme='pd-bcast'] body .caption__text,
@@ -1512,7 +1260,6 @@
  * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
  * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
  * specificity rule in this file cannot put them back. */
-:root[data-theme='pd-bcast'] .chrome__brand { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 :root[data-theme='pd-bcast'] .wordmark__text { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 
 /* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
@@ -1603,22 +1350,9 @@
      declared in exactly one place. */
   --theme-swatch: #E0A63C;
 
-  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
-     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
-     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
-     byte-for-byte the one that shipped before the glitch existed: opacity and
-     transform only, every colour falling back to `transparent`.
-
-     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
-     animacao hacker. mas tem que combinar com cada tema"*. These four are
-     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
-     themes get a swap in their own colours without a single hand adjustment --
-     and a design that wants it stronger or quieter overrides `--ls-glitch`
-     alone, because it is declared in exactly one place per theme. */
-  --ls-accent-a: #E0A63C;
-  --ls-accent-b: rgba(232, 87, 79, 0.12);
-  --ls-split: 2px;
-  --ls-glitch: 0.45;
+  /* `--ls-accent-a/-b`, `--ls-split` and `--ls-glitch` were here for the retired
+     `letter-swap.js` glitch and had ZERO readers (`base-themes-oracle` ARM B,
+     2026-11-25). See `gen_themes.py` §LETTER-SWAP for the whole history. */
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
@@ -1714,9 +1448,6 @@
   font-weight: var(--weight-brand);
   font-size: 13px;
 }
-:root[data-theme='pd-mano'] .wordmark__tag {
-  color: var(--text-muted);
-}
 :root[data-theme='pd-mano'] .icon-button,
 :root[data-theme='pd-mano'] .strip-button {
   border-color: var(--line-strong);
@@ -1733,7 +1464,6 @@
 :root[data-theme='pd-mano'] .icon-button:focus-visible,
 :root[data-theme='pd-mano'] .strip-button:focus-visible,
 :root[data-theme='pd-mano'] .reveal-button:focus-visible,
-:root[data-theme='pd-mano'] .search__button:focus-visible,
 :root[data-theme='pd-mano'] .dialog-button:focus-visible,
 :root[data-theme='pd-mano'] .history__path:focus-visible,
 :root[data-theme='pd-mano'] .hist:focus-visible,
@@ -1891,22 +1621,6 @@
 :root[data-theme='pd-mano'] .history__path:hover {
   color: var(--accent);
 }
-:root[data-theme='pd-mano'] .search__input {
-  border-color: var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--bg-slab-strong) 60%, transparent);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-}
-:root[data-theme='pd-mano'] .search__input::placeholder {
-  color: var(--text-muted);
-}
-:root[data-theme='pd-mano'] .search__input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-:root[data-theme='pd-mano'] .search__button,
-:root[data-theme='pd-mano'] .search__clear,
 :root[data-theme='pd-mano'] .reveal-button {
   border-color: var(--line-strong);
   border-radius: var(--radius-sm);
@@ -1915,8 +1629,6 @@
   font-family: var(--font-sans);
   font-size: var(--size-small);
 }
-:root[data-theme='pd-mano'] .search__button:hover,
-:root[data-theme='pd-mano'] .search__clear:hover,
 :root[data-theme='pd-mano'] .reveal-button:hover {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -2120,9 +1832,7 @@
 :root[data-theme='pd-mano'] .panel__header,
 :root[data-theme='pd-mano'] .panel__header *,
 :root[data-theme='pd-mano'] .status,
-:root[data-theme='pd-mano'] .status *,
-:root[data-theme='pd-mano'] .chrome,
-:root[data-theme='pd-mano'] .chrome * {
+:root[data-theme='pd-mano'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -2147,62 +1857,6 @@
   :root[data-theme='pd-mano'] .listening span {
     animation: none;
   }
-}
-:root[data-theme='pd-mano'] .wordmark {
-  display: none;
-}
-:root[data-theme='pd-mano'] .chrome--mano .chrome__brand {
-  font-family: var(--font-serif);
-  font-size: var(--size-time);
-  font-weight: 400;
-  font-style: normal;
-  letter-spacing: 0.06em;
-  text-transform: none;
-  color: var(--text-muted);
-}
-:root[data-theme='pd-mano'] body:not([data-surface="strip"]) .panel__header {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: baseline;
-  gap: 4px 10px;
-}
-:root[data-theme='pd-mano'] .chrome--mano[data-chrome="head"] {
-  grid-column: 1;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-  font-family: var(--font-sans);
-  color: var(--text-muted);
-}
-:root[data-theme='pd-mano'] .chrome--mano .chrome__draft {
-  font-size: var(--size-meta);
-  font-style: italic;
-  color: var(--text-secondary);
-}
-:root[data-theme='pd-mano'] .chrome--mano .chrome__page {
-  display: none;
-}
-:root[data-theme='pd-mano'] body:not([data-surface="strip"]) .panel__controls {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: end;
-  gap: 4px;
-}
-:root[data-theme='pd-mano'] .chrome--mano[data-chrome="foot"] {
-  display: inline-flex;
-  flex: none;
-  font-family: var(--font-sans);
-  font-size: var(--size-meta);
-  font-style: italic;
-  color: var(--text-muted);
-}
-:root[data-theme='pd-mano'] .chrome--mano[data-chrome="foot"][data-slot="start"] {
-  order: 9;
-}
-:root[data-theme='pd-mano'] body .caption--provisional .caption__word {
-  opacity: var(--w-op, 1);
-  transition: opacity 260ms ease;
 }
 :root[data-theme='pd-mano'] .panel {
   background: rgba(12, 12, 15, 0.62);
@@ -2240,13 +1894,7 @@
 :root[data-theme='pd-mano'] .caption__mark {
   display: none;
 }
-:root[data-theme='pd-mano'] body[data-surface="strip"] .chrome[data-chrome="head"],
-:root[data-theme='pd-mano'] body[data-surface="strip"] .chrome[data-chrome="foot"] {
-  display: none;
-}
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='pd-mano'] body .chrome,
-  :root[data-theme='pd-mano'] body .chrome *,
   :root[data-theme='pd-mano'] body .caption__word,
   :root[data-theme='pd-mano'] body .caption__led,
   :root[data-theme='pd-mano'] body .caption__text,
@@ -2259,7 +1907,6 @@
  * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
  * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
  * specificity rule in this file cannot put them back. */
-:root[data-theme='pd-mano'] .chrome__brand { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 :root[data-theme='pd-mano'] .wordmark__text { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 
 /* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
@@ -2269,13 +1916,9 @@
    is the one this file was ALREADY rendering with, so nothing on screen
    moves:
    --caption-scale: the owner's dial; panel.js writes it inline, which wins over this
-   --font-serif: the mano chrome's brand face, which inherited --font-sans
-   --w-op:       the value panel.js paintWords stamps over, and the consumers' own fallback
    ------------------------------------------------------------------------ */
 :root[data-theme='pd-mano']{
   --caption-scale: 1;
-  --font-serif: var(--font-sans);
-  --w-op: 1;
 }
 
 /* Sotto -- Cartão de Cinema (pd-cine).
@@ -2354,22 +1997,9 @@
      declared in exactly one place. */
   --theme-swatch: #F1ECE2;
 
-  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
-     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
-     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
-     byte-for-byte the one that shipped before the glitch existed: opacity and
-     transform only, every colour falling back to `transparent`.
-
-     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
-     animacao hacker. mas tem que combinar com cada tema"*. These four are
-     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
-     themes get a swap in their own colours without a single hand adjustment --
-     and a design that wants it stronger or quieter overrides `--ls-glitch`
-     alone, because it is declared in exactly one place per theme. */
-  --ls-accent-a: #F1ECE2;
-  --ls-accent-b: rgba(232, 87, 79, 0.12);
-  --ls-split: 2px;
-  --ls-glitch: 0.45;
+  /* `--ls-accent-a/-b`, `--ls-split` and `--ls-glitch` were here for the retired
+     `letter-swap.js` glitch and had ZERO readers (`base-themes-oracle` ARM B,
+     2026-11-25). See `gen_themes.py` §LETTER-SWAP for the whole history. */
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
@@ -2465,9 +2095,6 @@
   font-weight: var(--weight-brand);
   font-size: 13px;
 }
-:root[data-theme='pd-cine'] .wordmark__tag {
-  color: var(--text-muted);
-}
 :root[data-theme='pd-cine'] .icon-button,
 :root[data-theme='pd-cine'] .strip-button {
   border-color: var(--line-strong);
@@ -2484,7 +2111,6 @@
 :root[data-theme='pd-cine'] .icon-button:focus-visible,
 :root[data-theme='pd-cine'] .strip-button:focus-visible,
 :root[data-theme='pd-cine'] .reveal-button:focus-visible,
-:root[data-theme='pd-cine'] .search__button:focus-visible,
 :root[data-theme='pd-cine'] .dialog-button:focus-visible,
 :root[data-theme='pd-cine'] .history__path:focus-visible,
 :root[data-theme='pd-cine'] .hist:focus-visible,
@@ -2639,22 +2265,6 @@
 :root[data-theme='pd-cine'] .history__path:hover {
   color: var(--accent);
 }
-:root[data-theme='pd-cine'] .search__input {
-  border-color: var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--bg-slab-strong) 60%, transparent);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-}
-:root[data-theme='pd-cine'] .search__input::placeholder {
-  color: var(--text-muted);
-}
-:root[data-theme='pd-cine'] .search__input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-:root[data-theme='pd-cine'] .search__button,
-:root[data-theme='pd-cine'] .search__clear,
 :root[data-theme='pd-cine'] .reveal-button {
   border-color: var(--line-strong);
   border-radius: var(--radius-sm);
@@ -2663,8 +2273,6 @@
   font-family: var(--font-sans);
   font-size: var(--size-small);
 }
-:root[data-theme='pd-cine'] .search__button:hover,
-:root[data-theme='pd-cine'] .search__clear:hover,
 :root[data-theme='pd-cine'] .reveal-button:hover {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -2868,9 +2476,7 @@
 :root[data-theme='pd-cine'] .panel__header,
 :root[data-theme='pd-cine'] .panel__header *,
 :root[data-theme='pd-cine'] .status,
-:root[data-theme='pd-cine'] .status *,
-:root[data-theme='pd-cine'] .chrome,
-:root[data-theme='pd-cine'] .chrome * {
+:root[data-theme='pd-cine'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -2896,59 +2502,6 @@
     animation: none;
   }
 }
-:root[data-theme='pd-cine'] .wordmark {
-  display: none;
-}
-:root[data-theme='pd-cine'] .chrome--cine[data-chrome="head"] {
-  display: flex;
-  align-items: baseline;
-  flex: 1 1 auto;
-  gap: 10px;
-  min-width: 0;
-  font-family: var(--font-sans);
-  color: var(--text-muted);
-}
-:root[data-theme='pd-cine'] .chrome--cine .chrome__brand {
-  font-size: var(--size-meta);
-  font-weight: 500;
-  letter-spacing: 0.34em;
-  text-transform: none;
-  color: var(--accent);
-}
-:root[data-theme='pd-cine'] .chrome--cine .chrome__state {
-  margin-left: auto;
-  font-size: var(--size-meta);
-  font-style: italic;
-}
-:root[data-theme='pd-cine'] .panel__controls {
-  gap: 4px;
-}
-:root[data-theme='pd-cine'] .panel__controls .icon-button {
-  background: transparent;
-  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
-}
-:root[data-theme='pd-cine'] .chrome--cine[data-chrome="foot"] {
-  display: inline-flex;
-  flex: none;
-  font-family: var(--font-sans);
-  font-size: var(--size-meta);
-  letter-spacing: 0.5em;
-  color: var(--accent);
-}
-:root[data-theme='pd-cine'] .chrome--cine[data-chrome="foot"][data-slot="start"] {
-  order: 9;
-}
-:root[data-theme='pd-cine'] body .caption--provisional .caption__text {
-  opacity: 0.92;
-  transition: opacity 600ms ease;
-}
-:root[data-theme='pd-cine'] body .caption--provisional .caption__provisional {
-  opacity: 0.55;
-  transition: opacity 600ms ease;
-}
-:root[data-theme='pd-cine'] body .caption:not(.caption--provisional) .caption__text {
-  opacity: 1;
-}
 :root[data-theme='pd-cine'] .panel {
   background: linear-gradient(to top, rgba(4, 5, 8, 0.72) 0%, rgba(4, 5, 8, 0.4) 55%, rgba(4, 5, 8, 0.14) 100%);
   border-color: transparent;
@@ -2965,9 +2518,6 @@
   bottom: 28px;
   z-index: 4;
 }
-:root[data-theme='pd-cine'] .wordmark__mark {
-  display: none;
-}
 :root[data-theme='pd-cine'] .wordmark__name {
   font-family: var(--font-sans);
   font-size: 13px;
@@ -2975,9 +2525,6 @@
   font-weight: 400;
   letter-spacing: 0;
   color: rgba(255, 255, 255, 0.25);
-}
-:root[data-theme='pd-cine'] .wordmark__tag {
-  display: none;
 }
 :root[data-theme='pd-cine'] .captions__body {
   padding: 128px 36px 80px;
@@ -2997,13 +2544,7 @@
 :root[data-theme='pd-cine'] .caption__time {
   display: none;
 }
-:root[data-theme='pd-cine'] body[data-surface="strip"] .chrome[data-chrome="head"],
-:root[data-theme='pd-cine'] body[data-surface="strip"] .chrome[data-chrome="foot"] {
-  display: none;
-}
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='pd-cine'] body .chrome,
-  :root[data-theme='pd-cine'] body .chrome *,
   :root[data-theme='pd-cine'] body .caption__word,
   :root[data-theme='pd-cine'] body .caption__led,
   :root[data-theme='pd-cine'] body .caption__text,
@@ -3016,7 +2557,6 @@
  * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
  * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
  * specificity rule in this file cannot put them back. */
-:root[data-theme='pd-cine'] .chrome__brand { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 :root[data-theme='pd-cine'] .wordmark__text { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 
 /* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------
@@ -3107,22 +2647,9 @@
      declared in exactly one place. */
   --theme-swatch: #E8574F;
 
-  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
-     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
-     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
-     byte-for-byte the one that shipped before the glitch existed: opacity and
-     transform only, every colour falling back to `transparent`.
-
-     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
-     animacao hacker. mas tem que combinar com cada tema"*. These four are
-     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
-     themes get a swap in their own colours without a single hand adjustment --
-     and a design that wants it stronger or quieter overrides `--ls-glitch`
-     alone, because it is declared in exactly one place per theme. */
-  --ls-accent-a: #E8574F;
-  --ls-accent-b: rgba(232, 87, 79, 0.08);
-  --ls-split: 2px;
-  --ls-glitch: 0.45;
+  /* `--ls-accent-a/-b`, `--ls-split` and `--ls-glitch` were here for the retired
+     `letter-swap.js` glitch and had ZERO readers (`base-themes-oracle` ARM B,
+     2026-11-25). See `gen_themes.py` §LETTER-SWAP for the whole history. */
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
@@ -3218,9 +2745,6 @@
   font-weight: var(--weight-brand);
   font-size: 12px;
 }
-:root[data-theme='pd-instr'] .wordmark__tag {
-  color: var(--text-muted);
-}
 :root[data-theme='pd-instr'] .icon-button,
 :root[data-theme='pd-instr'] .strip-button {
   border-color: var(--line-strong);
@@ -3237,7 +2761,6 @@
 :root[data-theme='pd-instr'] .icon-button:focus-visible,
 :root[data-theme='pd-instr'] .strip-button:focus-visible,
 :root[data-theme='pd-instr'] .reveal-button:focus-visible,
-:root[data-theme='pd-instr'] .search__button:focus-visible,
 :root[data-theme='pd-instr'] .dialog-button:focus-visible,
 :root[data-theme='pd-instr'] .history__path:focus-visible,
 :root[data-theme='pd-instr'] .hist:focus-visible,
@@ -3390,22 +2913,6 @@
 :root[data-theme='pd-instr'] .history__path:hover {
   color: var(--accent);
 }
-:root[data-theme='pd-instr'] .search__input {
-  border-color: var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--bg-slab-strong) 60%, transparent);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-}
-:root[data-theme='pd-instr'] .search__input::placeholder {
-  color: var(--text-muted);
-}
-:root[data-theme='pd-instr'] .search__input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-:root[data-theme='pd-instr'] .search__button,
-:root[data-theme='pd-instr'] .search__clear,
 :root[data-theme='pd-instr'] .reveal-button {
   border-color: var(--line-strong);
   border-radius: var(--radius-sm);
@@ -3414,8 +2921,6 @@
   font-family: var(--font-sans);
   font-size: var(--size-small);
 }
-:root[data-theme='pd-instr'] .search__button:hover,
-:root[data-theme='pd-instr'] .search__clear:hover,
 :root[data-theme='pd-instr'] .reveal-button:hover {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -3619,9 +3124,7 @@
 :root[data-theme='pd-instr'] .panel__header,
 :root[data-theme='pd-instr'] .panel__header *,
 :root[data-theme='pd-instr'] .status,
-:root[data-theme='pd-instr'] .status *,
-:root[data-theme='pd-instr'] .chrome,
-:root[data-theme='pd-instr'] .chrome * {
+:root[data-theme='pd-instr'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -3647,141 +3150,6 @@
     animation: none;
   }
 }
-:root[data-theme='pd-instr'] .wordmark {
-  display: none;
-}
-:root[data-theme='pd-instr'] .chrome--inst .chrome__brand {
-  font-family: var(--font-mono);
-  font-size: var(--size-meta);
-  font-weight: 600;
-  letter-spacing: 0.28em;
-  text-transform: none;
-  color: var(--text-muted);
-}
-:root[data-theme='pd-instr'] body:not([data-surface="strip"]) .panel__header {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 6px 10px;
-}
-:root[data-theme='pd-instr'] .chrome--inst[data-chrome="head"] {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-family: var(--font-sans);
-  font-size: var(--size-meta);
-  font-weight: 700;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: var(--text-primary);
-}
-:root[data-theme='pd-instr'] .chrome--inst .chrome__led {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: 2px;
-  background: var(--idle);
-}
-:root[data-theme='pd-instr'] body[data-state="live"] .chrome--inst .chrome__led {
-  background: var(--accent);
-  animation: sotto-5-led 1.5s ease-in-out infinite;
-}
-@keyframes sotto-5-led {
-  0%, 100% {
-    transform: scaleY(0.45);
-    opacity: 0.65;
-  }
-  50% {
-    transform: scaleY(1);
-    opacity: 1;
-  }
-}
-:root[data-theme='pd-instr'] body:not([data-surface="strip"]) .panel__controls {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: end;
-  gap: 4px;
-}
-:root[data-theme='pd-instr'] .panel__controls .icon-button {
-  border-radius: 3px;
-}
-:root[data-theme='pd-instr'] body .caption--provisional .caption__led {
-  display: block;
-  left: -4px;
-  width: 4px;
-  background: var(--accent);
-  animation: sotto-5-led-live 1.7s ease-in-out infinite alternate;
-}
-@keyframes sotto-5-led-live {
-  from {
-    opacity: 0.62;
-    transform: scaleY(0.92);
-  }
-  to {
-    opacity: 1;
-    transform: scaleY(1);
-  }
-}
-:root[data-theme='pd-instr'] .chrome--inst[data-chrome="foot"] {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-sans);
-  font-size: var(--size-meta);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-:root[data-theme='pd-instr'] .chrome--inst[data-chrome="foot"][data-slot="start"] {
-  order: -1;
-  color: var(--accent);
-}
-:root[data-theme='pd-instr'] .chrome--inst[data-chrome="foot"][data-slot="end"] {
-  order: 9;
-  color: var(--accent);
-}
-@keyframes sotto-5-eqA {
-  0%, 100% {
-    transform: scaleY(0.3);
-  }
-  28% {
-    transform: scaleY(1);
-  }
-  56% {
-    transform: scaleY(0.5);
-  }
-  80% {
-    transform: scaleY(0.85);
-  }
-}
-@keyframes sotto-5-eqB {
-  0%, 100% {
-    transform: scaleY(0.55);
-  }
-  35% {
-    transform: scaleY(0.95);
-  }
-  62% {
-    transform: scaleY(0.35);
-  }
-  85% {
-    transform: scaleY(0.75);
-  }
-}
-@keyframes sotto-5-eqC {
-  0%, 100% {
-    transform: scaleY(0.42);
-  }
-  30% {
-    transform: scaleY(0.7);
-  }
-  58% {
-    transform: scaleY(1);
-  }
-}
 :root[data-theme='pd-instr'] .panel {
   background: rgba(10, 12, 15, 0.92);
   border-color: transparent;
@@ -3794,32 +3162,6 @@
 }
 :root[data-theme='pd-instr'] .wordmark {
   display: none;
-}
-:root[data-theme='pd-instr'] .chrome--inst .chrome__meter {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 18px;
-}
-:root[data-theme='pd-instr'] .chrome--inst .chrome__meter i {
-  width: 3px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.25);
-}
-:root[data-theme='pd-instr'] .chrome--inst .chrome__meter i:nth-child(1) {
-  height: 5px;
-}
-:root[data-theme='pd-instr'] .chrome--inst .chrome__meter i:nth-child(2) {
-  height: 8px;
-}
-:root[data-theme='pd-instr'] .chrome--inst .chrome__meter i:nth-child(3) {
-  height: 4px;
-}
-:root[data-theme='pd-instr'] .chrome--inst .chrome__meter i:nth-child(n+4) {
-  display: none;
-}
-:root[data-theme='pd-instr'] body[data-state="live"] .chrome--inst .chrome__meter i {
-  background: #E8574F;
 }
 :root[data-theme='pd-instr'] .captions__body {
   padding: 64px 20px 24px;
@@ -3838,17 +3180,7 @@
   color: rgba(255, 255, 255, 0.3);
   font-variant-numeric: tabular-nums;
 }
-:root[data-theme='pd-instr'] .chrome--inst[data-chrome="foot"] {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 12px 20px;
-}
-:root[data-theme='pd-instr'] body[data-surface="strip"] .chrome[data-chrome="head"],
-:root[data-theme='pd-instr'] body[data-surface="strip"] .chrome[data-chrome="foot"] {
-  display: none;
-}
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='pd-instr'] body .chrome,
-  :root[data-theme='pd-instr'] body .chrome *,
   :root[data-theme='pd-instr'] body .caption__word,
   :root[data-theme='pd-instr'] body .caption__led,
   :root[data-theme='pd-instr'] body .caption__text,
@@ -3861,7 +3193,6 @@
  * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
  * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
  * specificity rule in this file cannot put them back. */
-:root[data-theme='pd-instr'] .chrome__brand { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 :root[data-theme='pd-instr'] .wordmark__text { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 
 /* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------

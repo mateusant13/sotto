@@ -97,7 +97,12 @@ def main(argv=None):
     # the feature and concluded "not implemented" -- a false negative of exactly the kind this repo writes
     # rules about. What IS the shipped thing is the painting below, measured by its own two anchors.
     chip_predicate = "const behind = (drops !== null && drops > 0) || (rate !== null && rate < 1);" in panel
-    chip_paint = "behind \u00b7 " in panel or "behind . " in panel
+    # RE-ANCHORED 2026-11-25: the chip paints in Portuguese now (`atrasado ·
+    # 12 descartadas · 0.86×`, panel.js:4689) -- the English `behind · ` this
+    # arm looked for stopped existing when the panel went PT-BR, and the arm
+    # read a LIVING feature as "GONE". The predicate and the docstring are
+    # unchanged; only the painted word moved.
+    chip_paint = "atrasado \u00b7 " in panel
     chip_doc = "The \"behind\" chip in the live bar" in panel
     chip_forms = [
         ("the behind predicate (drops>0 or rate<1)", chip_predicate),
@@ -105,12 +110,17 @@ def main(argv=None):
         ("its own docstring line", chip_doc),
     ]
     chip_exists = all(ok for _why, ok in chip_forms)
-    say("  arm 4  the behind chip: shell claims panel.js:1738-1740=%s; that line reads %r" % (str(chip_claim).lower(), line_1739[:40]))
+    say("  arm 4  the behind chip: shell cites panel.js:1738-1740=%s; that line reads %r" % (str(chip_claim).lower(), line_1739[:40]))
     say("         chip forms: " + ", ".join("%s=%s" % (why, str(ok).lower()) for why, ok in chip_forms))
     if not chip_exists:
         wrong.append("arm 4: the behind chip is GONE from panel.js -- the owner option would have to be built")
     cited_is_chip = "behind" in line_1739
-    say("         the cited line carries the chip: %s -- %s" % (str(cited_is_chip).lower(), "citation accurate" if cited_is_chip else "STALE CITATION in the shell comment"))
+    if not chip_claim:
+        # 2026-11-25: the shell no longer points at that line at all, so there is
+        # no citation to be stale. The chip's own anchors above are the evidence.
+        say("         the shell cites no panel line for the chip: the claim was withdrawn, nothing to verify")
+    else:
+        say("         the cited line carries the chip: %s -- %s" % (str(cited_is_chip).lower(), "citation accurate" if cited_is_chip else "STALE CITATION in the shell comment"))
     if rtf is None:
         wrong.append("arm 5: no RTF could be parsed from the artefact -- the control cannot judge")
     elif rtf <= 1.0:

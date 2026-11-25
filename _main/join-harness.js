@@ -90,8 +90,12 @@ const { createEngine, formulate, describeReadiness, SENTENCE_GAP_S, SENTENCE_MAX
 // both read here, exactly as they are on disk, and pinned by arm 11.
 const IMPL_SRC = fs.readFileSync(IMPL, 'utf8');
 const PANEL_SRC = fs.readFileSync(PANEL, 'utf8');
-/** The call the shipped engine makes, character for character. */
-const CONTRACT_CALL = 'onProvisional(committed, provisional);';
+/** The call the shipped engine makes, character for character.
+ *  RE-ANCHORED 2026-11-25: it carries a THIRD argument now -- `lineStart`, the
+ *  index where the open line begins, which `renderProvisional` needs to rebuild
+ *  the row from the engine's own window instead of from a painted guess. The old
+ *  two-argument pin reported the live contract as a drift, four checks red. */
+const CONTRACT_CALL = 'onProvisional(committed, provisional, lineStart);';
 /** The PRE-change call, kept ONLY as the neg-arm's revert target. */
 const OLD_CONTRACT_CALL = 'onProvisional(visibleText(), true);';
 /** '<name>: (a, b) => <callee>(a, b, ...)' — the caller's own wiring line. */
@@ -151,7 +155,12 @@ function freshEngine() {
       const confWords = Array.isArray(committedArg) ? committedArg.map((t) => t.w) : [];
       const provWords = Array.isArray(provisionalArg) ? provisionalArg.map((t) => t.w) : [];
       provisionalText = confWords.concat(provWords).join(' ');
-      if (args.length !== 2 || !Array.isArray(committedArg) || !Array.isArray(provisionalArg)) {
+      // THE SHIPPED CONTRACT (2026-11-25): two token ARRAYS and the open line's
+      // START index. A number is as load-bearing as the arrays: `renderProvisional`
+      // slices the engine's window at it, and a string/undefined there paints the
+      // wrong words without throwing.
+      if (args.length !== 3 || !Array.isArray(committedArg) || !Array.isArray(provisionalArg)
+          || typeof args[2] !== 'number') {
         contractViolations.push(args.length + ' arg(s) [' + lastProvisionalShape.join(',') + ']');
       }
     },
@@ -347,7 +356,7 @@ function check(name, got, want) {
   feed(e, 'contract pin', 0.0, 0.56);
   const tokens = Array.isArray(lastProvisionalTokens[0]) && Array.isArray(lastProvisionalTokens[1])
     ? lastProvisionalTokens[0].concat(lastProvisionalTokens[1]) : [];
-  check('arm11 the callback carries two token arrays', lastProvisionalShape, ['array', 'array']);
+  check('arm11 the callback carries two token arrays', lastProvisionalShape, ['array', 'array', 'number']);
   check('arm11 the callback never left the array path', contractViolations, []);
   check('arm11 the callback union equals visible()', provisionalText, e.visible());
   check('arm11 every token carries w a b',
@@ -356,9 +365,14 @@ function check(name, got, want) {
   check('arm11 the module still calls onProvisional(committed, provisional)',
     IMPL_SRC.split(CONTRACT_CALL).length - 1, 1);
   check('arm11 the caller still passes both arrays to renderProvisional',
-    [wiring !== null, wiringParams, wiringArgs.slice(0, 2), wiringParams.length === 2],
+    [wiring !== null, wiringParams.slice(0, 2), wiringArgs.slice(0, 2), wiringParams.length === 3],
     [true, ['committed', 'provisional'], ['committed', 'provisional'], true]);
   check('arm11 the caller still paints only arrays', wiringCoercions, ARRAY_COERCIONS);
+  // The third argument is the reason the contract grew: it must reach the
+  // renderer, not be dropped on the way (a wiring that names it and never
+  // passes it is the same lie as a knob nobody reads).
+  check('arm11 the line start travels to the renderer',
+    [wiringParams[2], wiringArgs[3]], ['start', 'start']);
 }
 
 if (fails) console.log('FAILING CHECKS (' + fails + '): ' + failedNames.join(' | '));
@@ -430,8 +444,12 @@ function runNegArm() {
     ? writeMutant(dir, 'caption-formulation-call-reverted.js', implReal.split(CONTRACT_CALL).join(OLD_CONTRACT_CALL))
     : null;
   // M2 — the caller's wiring back to the pre-change shape: a string parameter
-  // list, and a renderer that no longer coerces through Array.isArray.
-  const wiringLine = 'onProvisional: (committed, provisional) => renderProvisional(committed, provisional, key),';
+  // list with no line start, and a renderer that no longer coerces through
+  // Array.isArray. RE-ANCHORED 2026-11-25: the live wiring names `start` and
+  // passes it as the renderer's fourth argument; the old anchor (without it)
+  // matched nothing, so the mutant was never built and the control reported
+  // itself OPEN.
+  const wiringLine = 'onProvisional: (committed, provisional, start) => renderProvisional(committed, provisional, key, start),';
   const confLine = 'const confWords = Array.isArray(committed) ? committed.map(t => t.w) : [];';
   const provLine = 'const provWords = Array.isArray(provisional) ? provisional.map(t => t.w) : [];';
   const m2Hits = [wiringLine, confLine, provLine].map((s) => panelReal.split(s).length - 1);

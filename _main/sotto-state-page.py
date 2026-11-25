@@ -118,7 +118,20 @@ def _read_text(path, errors="replace"):
         return fh.read().decode("utf-8", errors)
 
 
-def _sha256(path):
+def _sha256(path, engine=None):
+    """sha256 of a file's BYTES -- THE ENGINE'S, never a second implementation.
+
+    Measured 2026-11-25 with a profiler over `--check`: this function was the
+    page's OWN copy of the hash and re-read 14,6 s of bytes that the engine had
+    already memoised (`_stepcache.sha256_file`, keyed by
+    `abspath|st_mtime_ns|st_size`). Two implementations of one hash is how a
+    page disagrees with the cache it is judging, so the copy is gone: the engine
+    is the authority, and `engine=None` (the selftest seam) keeps a plain read.
+    """
+    if engine is not None:
+        got = engine.sha256_file(path)
+        if got is not None:
+            return got
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
@@ -183,6 +196,28 @@ def load_engine(root, dep_root=None):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.REPO = key[1]
+    # O FINGERPRINT NAO SE REPETE DENTRO DO PROCESSO (medido 2026-11-25): o
+    # `cProfile` do `--neg-arm` mediu **109 039 `os.stat`** e 42 619 chamadas a
+    # `sha256_file` para **10 renderizacoes da MESMA arvore verdadeira** -- as
+    # mutacoes so' tocam a copia (`dep_root`), logo a resposta e' a mesma e cada
+    # renderizacao voltava a perguntar. O memo e' da LISTA DE DEPS (a identidade
+    # que o `fingerprint` consome); o memo de conteudo do `_stepcache` continua a
+    # julgar cada ficheiro por `mtime|size`.
+    _memo = {}
+
+    def _memo_fingerprint(deps, *args, **kwargs):
+        dep_key = tuple(deps)
+        hit = _memo.get(dep_key)
+        if hit is not None:
+            return hit
+        answer = _original_fingerprint(deps, *args, **kwargs)
+        _memo[dep_key] = answer
+        return answer
+
+    if not getattr(module, "_sotto_fingerprint_memo", False):
+        _original_fingerprint = module.fingerprint
+        module.fingerprint = _memo_fingerprint
+        module._sotto_fingerprint_memo = True
     _ENGINE_CACHE[key] = module
     return module
 
@@ -412,7 +447,7 @@ def run_checks(root, dep_root=None, require_fresh=True):
                 why = "rc=%s != esperado %d" % (entry.get("rc"), step["expect"])
             elif not os.path.isfile(log):
                 why = "log ausente"
-            elif entry.get("log_sha256") and _sha256(log) != entry["log_sha256"]:
+            elif entry.get("log_sha256") and _sha256(log, engine) != entry["log_sha256"]:
                 why = "log alterado"
             else:
                 fingerprint, missing_deps = engine.fingerprint(step["deps"])

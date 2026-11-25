@@ -221,6 +221,15 @@ def drive(mod, packets, block, frames_per_block_ms=100):
     tap._capture = object()
     tap.silent_packets = 0
     tap.position_gap_packets = 0
+    # RE-ANCHORED 2026-11-25: the pump's journal grew three more counters
+    # (`packets`, `peak`, `blocks_delivered`, read by `close()`), and this
+    # harness builds the tap with `__new__`. An unseeded one is an
+    # AttributeError on the FIRST packet inside the pump thread, which left
+    # `emits=0` and every arm reading a crashed pump as a defect. Seeded here
+    # and REPORTED below, so the counter is measured, not just silenced.
+    tap.packets = 0
+    tap.peak = 0.0
+    tap.blocks_delivered = 0
     # SEEDED 2026-10-11: the shipped _pump now counts the discontinuity bit too,
     # and this harness builds the tap with __new__ (no __init__), so an unseeded
     # attribute is an AttributeError INSIDE the pump thread -- which kills the
@@ -249,6 +258,9 @@ def drive(mod, packets, block, frames_per_block_ms=100):
         'position_gap_packets': tap.position_gap_packets,
         'discontinuity_packets': tap.discontinuity_packets,
         'packets_served': script.served,
+        'packets_counted': tap.packets,
+        'blocks_delivered': tap.blocks_delivered,
+        'peak': round(tap.peak, 6),
         'releases': script.releases,
         'concatenate_calls': proxy.calls,
         'concatenate_elements': proxy.elements,

@@ -151,9 +151,17 @@ def build_pair(module):
         return 'panel'
 
     shell.exec_js = _exec_js
+    # RE-ANCHORED 2026-11-25: the live method gained `present=` (the show
+    # path posts instead of waiting). A seam with the OLD signature raised
+    # TypeError inside the handler, dispatch swallowed it as
+    # BRIDGE_HANDLER_FAILED, and arms A and C read `applied=0` -- a red that
+    # was the ORACLE's own mismatch, not the guard's. The seam now mirrors the
+    # shipped signature, and the call count is the witness.
     shell._apply_window_geometry = (
-        lambda geometry, reason='surface': rec.__setattr__(
+        lambda geometry, reason='surface', present=False: rec.__setattr__(
             'geometry', rec.geometry + 1))
+    shell.exec_js_post = lambda script: rec.__setattr__(
+        'exec_js', rec.exec_js + 1) or True
     shell.refresh_strip_height = lambda reason='surface-strip': rec.__setattr__(
             'strip_remeasure', rec.strip_remeasure + 1)
     shell.refresh_strip_width = lambda reason='surface-strip': None

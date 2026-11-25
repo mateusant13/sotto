@@ -1132,7 +1132,12 @@ SKIN = """
   font-weight: var(--weight-brand);
   font-size: {brand_size};
 }}
-{S} .wordmark__tag{{ color: var(--text-muted); }}
+/* THE `.wordmark__tag` RULE IS GONE (2026-11-25). No element in `panel.html` and
+   no module ever carried that class -- it was the mockups' second wordmark line,
+   which this panel never had (the wordmark is `SOTTO` plus `#status-text`, and
+   the honest status sentence is its own row). `base-themes-oracle` ARM A counted
+   it as an unmatchable selector; a style for a class the document cannot carry is
+   not a style. */
 /* ── THE TRANSCRIPT HANDLE IS NO LONGER STYLED HERE (owner, 2026-10-14) ─────
    `{S} .history__toggle,` was a member of the three button groups below until the
    button itself was deleted from `panel.html`, verbatim: *"tira o botao de
@@ -1168,7 +1173,6 @@ SKIN = """
 {S} .icon-button:focus-visible,
 {S} .strip-button:focus-visible,
 {S} .reveal-button:focus-visible,
-{S} .search__button:focus-visible,
 {S} .dialog-button:focus-visible,
 {S} .history__path:focus-visible,
 {S} .hist:focus-visible,
@@ -1411,20 +1415,13 @@ SKIN = """
 {S} .history__count{{ color: var(--text-muted); }}
 {S} .history__path{{ color: var(--text-muted); font-family: var(--font-mono); }}
 {S} .history__path:hover{{ color: var(--accent); }}
-{S} .search__input{{
-  border-color: var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--bg-slab-strong) 60%, transparent);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-}}
-{S} .search__input::placeholder{{ color: var(--text-muted); }}
-{S} .search__input:focus{{
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}}
-{S} .search__button,
-{S} .search__clear,
+/* THE WHOLE `.search__*` GROUP IS GONE (2026-11-25). `.search__input`,
+   `.search__button`, `.search__clear` and their `::placeholder`/`:focus`/`:hover`
+   states came from the mockups' search field; this panel has no search box (the
+   history drawer is filter-free, and `panel.html` carries no `.search` node, no
+   module assigns one). `base-themes-oracle` ARM A measured nine unmatchable
+   selectors per theme from this cluster alone. The `.reveal-button` rules that
+   shared two of these groups were split out and kept -- that button EXISTS. */
 {S} .reveal-button{{
   border-color: var(--line-strong);
   border-radius: var(--radius-sm);
@@ -1433,8 +1430,6 @@ SKIN = """
   font-family: var(--font-sans);
   font-size: var(--size-small);
 }}
-{S} .search__button:hover,
-{S} .search__clear:hover,
 {S} .reveal-button:hover{{
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -1604,10 +1599,10 @@ SKIN = """
    rule 4 of the header above is what keeps it from being declared twice.
    P2-2 (2026-10-08 audit): the transition used to hang on `{S} *` — every
    element in the document, so every DOM write anywhere paid a colour
-   transition. It now hangs on the chrome only (header, footer, state
-   indicators): the caption column and the history list change instantly. */
-{S} .panel__header, {S} .panel__header *, {S} .status, {S} .status *,
-{S} .chrome, {S} .chrome *{{
+   transition. It now hangs on the instrument rows only (header, footer, state
+   indicators): the caption column and the history list change instantly. The
+   `.chrome` half left with the per-direction chrome rows on 2026-11-06. */
+{S} .panel__header, {S} .panel__header *, {S} .status, {S} .status *{{
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -1647,6 +1642,26 @@ SKIN = """
 }}
 """
 
+# ── §LETTER-SWAP ───────────────────────────────────────────────────────────────
+# THE GLITCH TOKENS ARE GONE (2026-11-25). Owner, 2026-10-18: *"como se fosse um
+# glitch/cyberpunk/animacao hacker. mas tem que combinar com cada tema"*. The
+# answer was four theme-derived tokens -- `--ls-accent-a`, `--ls-accent-b`,
+# `--ls-split`, `--ls-glitch` -- read by `app/panel/letter-swap.js`, a PAGE
+# overlay that animated a history row when Parakeet rewrote a line Nemotron had
+# streamed.
+#
+# Then the page overlay was retired: the caption the owner sees is
+# `NativeCaptionOverlay` (`app/webview/caption_overlay.py`), `panel.html` loads
+# neither `letter-swap.js` nor `caption-float.css`, and `panel.js` replaces rows
+# as plain text. The four declarations stayed, in every theme and in
+# `panel-designs.css`, and `base-themes-oracle` ARM B finally counted them:
+# every one declaring ZERO readers. The script does not read them either -- it
+# splits strings and takes no colour from a token -- so the tokens were the
+# residue of a subsystem whose animation site did not exist.
+#
+# The rule this closes, in the house's own words: a rule about a node the
+# document cannot carry is a rule about nothing. Deleted from the template
+# rather than left looking live.
 HEAD = """/* Sotto — theme {n}: {name}.
  *
  * GENERATED by `_main/_design-lane/gen_themes.py`. Do not hand-edit: the five
@@ -1660,26 +1675,27 @@ HEAD = """/* Sotto — theme {n}: {name}.
  * 2. Switching is ONE attribute write: `document.documentElement.dataset.theme`.
  *    No `@import`, no `url()` outside the repo, no network, no per-theme JS.
  * 3. It sets the tokens `panel.css`/`surface.js` consume (see the `:root` block),
- *    and it re-skins COLOUR, TYPE and SURFACE. It ALSO carries its own header
- *    line, footer line, state indicator and control placement (the `CHROME`
- *    block at the end of this file, added 2026-10-08 when the owner asked for
- *    each direction to have its own face); what it never does is touch the
- *    caption's TEXT, the transcript's rows or the shell's own status sentence.
+ *    and it re-skins COLOUR, TYPE and SURFACE. It carries NO header line, footer
+ *    line, state indicator or meter: the `CHROME` block that used to close this
+ *    file was retired with its markup (owner, 2026-11-06: *"NO
+ *    DIRECTION-SPECIFIC FOOTER ... words about the panel, not facts"*), and the
+ *    panel's status is the shell's own `#status-dot` + `#status-text`. What this
+ *    file never does is touch the caption's TEXT, the transcript's rows or that
+ *    status sentence.
  * 4. This file adds NO keyframe and NO transform to a caption's text. Here
- *    `--motion-in` covers colour and surface only. The single keyframe
- *    animation a caption carries is the TYPING REVEAL on the forming line's
- *    newest word, and it is declared in `panel.css`, never in a theme: one
- *    owner per animation, so a theme cannot fight it or double it.
- * 5. `prefers-reduced-motion: reduce` zeroes THIS file's colour transitions and
- *    the chrome's movement, and it deliberately does NOT silence the typing
- *    reveal: that reveal is the owner's explicit request (2026-10-08) and it is
- *    the reason the reduced-motion blocks below exclude `.caption__ch`. The
- *    reveal's own off switch is the token `--type-step: 0ms`. Before
- *    2026-10-08 this file (and `panel.css`) silenced it under reduced motion,
- *    which made the feature INVISIBLE on the owner's own machine: Windows
- *    reports client-area animations off there, so Chromium answers
- *    `prefers-reduced-motion: reduce` and the animation was disabled by the
- *    very query written to honour it.
+ *    `--motion-in` covers colour and surface only. The forming line's newest
+ *    word is styled by `panel.css` alone (`[data-typing]`), and since the
+ *    owner's 2026-11-02 order (*"SEM FADE"*) that rule settles the word with
+ *    `animation: none !important` — so no reveal runs in any theme, and the
+ *    `--type-step` delay that timed it is gone (2026-11-25).
+ * 5. `prefers-reduced-motion: reduce` zeroes THIS file's colour transitions.
+ *    It gates no reveal, because there is no reveal left to gate. Before
+ *    2026-10-08 this file (and `panel.css`) silenced the typing reveal under
+ *    reduced motion, which made the feature INVISIBLE on the owner's own
+ *    machine: Windows reports client-area animations off there, so Chromium
+ *    answers `prefers-reduced-motion: reduce` and the animation was disabled by
+ *    the very query written to honour it. That is why no reveal rule here is
+ *    conditioned on a media query.
  *
  * MEASURED FROM: the zip's own source, `sotto-app-design-directions.zip`,
  * unpacked at `_main/_design-lane/zips/directions/`. EVERY value in this file is
@@ -1735,22 +1751,9 @@ HEAD = """/* Sotto — theme {n}: {name}.
      declared in exactly one place. */
   --theme-swatch: {accent};
 
-  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
-     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
-     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
-     byte-for-byte the one that shipped before the glitch existed: opacity and
-     transform only, every colour falling back to `transparent`.
-
-     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
-     animacao hacker. mas tem que combinar com cada tema"*. These four are
-     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
-     themes get a swap in their own colours without a single hand adjustment --
-     and a design that wants it stronger or quieter overrides `--ls-glitch`
-     alone, because it is declared in exactly one place per theme. */
-  --ls-accent-a: {accent};
-  --ls-accent-b: {accent_soft};
-  --ls-split: 2px;
-  --ls-glitch: 0.45;
+  /* `--ls-accent-a/-b`, `--ls-split` and `--ls-glitch` were here for the retired
+     `letter-swap.js` glitch and had ZERO readers (`base-themes-oracle` ARM B,
+     2026-11-25). See `gen_themes.py` §LETTER-SWAP for the whole history. */
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
@@ -1880,551 +1883,55 @@ HEAD = """/* Sotto — theme {n}: {name}.
 # keyframe on a rewritten box replays on every partial — measured, and rejected).
 # --------------------------------------------------------------------------- #
 
-CHROME = {}
 
-CHROME[1] = """
-/* ── THE DIRECTION'S OWN CHROME: a teleprompter's header and footer ──────────
-   `SOTTO` (the wordmark, kept) + `● LENDO`. The tag line and the mark go: the
-   direction's header is two words and a dot, and "nothing is boxed" applies to
-   the controls too — they lose their chrome and stay as glyphs. */
-@S@ .wordmark__tag,
-@S@ .wordmark__mark{ display: none; }
-@S@ .chrome--tele[data-chrome="head"]{
-  display: inline-flex;
-  margin-left: auto;
-  gap: 7px;
-  font-family: var(--font-sans);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-@S@ .chrome--tele .chrome__dot{
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 99px;
-  background: var(--idle);
-}
-@S@ body[data-state="live"] .chrome--tele .chrome__dot{
-  background: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
-}
-/* "Nothing is boxed": the controls are glyphs, not buttons. */
-/* `flex: 0 1 auto; min-width: 0` is the fix for a MEASURED overlap, not a taste:
-   at 380x900 this cluster is 304px wide, the wordmark 57px, and the header has
-   ~352px -- so the two blocks overlapped by 9x16px. `flex: none` upstream means
-   the cluster refuses to shrink and `space-between` collapses into a collision.
-   Authorising the shrink here is what lets the theme BUTTON's label give way,
-   which is the only part of the row that is allowed to. Button ORDER is
-   untouched: the owner's rule is that a button never changes place. */
-@S@ .panel__controls{ gap: 2px; flex: 0 1 auto; min-width: 0; }
-@S@ .panel__controls .icon-button{
-  border-color: transparent;
-  background: transparent;
-  color: var(--text-muted);
-}
-@S@ .panel__controls .icon-button:hover{
-  border-color: transparent;
-  background: transparent;
-  color: var(--accent);
-}
-/* ── THE FOOTER CHROME IS GONE (owner, 2026-10-14) ─────────────────────────
-   Verbatim: *"tira em curso e historico das barras. o dono quer as barras
-   LIMPAS."* Three rules stood here, styling the two spans `panel.html` used
-   to carry in the footer bar: `HISTÓRICO` in the `start` slot and
-   `▲ EM CURSO` in the `end` one. BOTH SPANS WERE DELETED FROM THE MARKUP in
-   the same pass, so these rules styled nothing and went with them — a rule
-   about a node that no longer exists is a rule about nothing, and the panel
-   file's own convention is to delete it rather than leave it looking live.
 
-   WHAT THE BAR KEEPS: the REAL status sentence (`#status-dot` +
-   `#status-text`), which is the worker's own cause and not a mockup label, so
-   the footer is CLEAN rather than empty. WHAT IS UNTOUCHED: this direction's
-   HEADER chrome above (the wordmark, `● LENDO` and the dot), and every OTHER
-   direction's own footer chrome — `bcast`'s meter and LIVE/EM ESPERA,
-   `mano`'s "— escrito ao ouvido", `cine`'s "· · ·", `inst`'s meter and
-   OUVINDO/EM ESPERA — because the owner named `em curso` and `historico` and
-   nothing else. */
-"""
 
-CHROME[2] = """
-/* ── THE DIRECTION'S OWN CHROME: a broadcast monitor ─────────────────────────
-   `● REC · CH·01 ····· HH:MM:SS` on the header line, and the controls move OFF
-   the header entirely: they become the monitor's second row, right-aligned,
-   which is where a machine's operation keys belong. The wordmark is replaced by
-   the channel line — the direction's own header has no logo. */
-@S@ .wordmark{ display: none; }
-/* THE NAME, IN THIS DIRECTION'S OWN VOICE (owner, 2026-10-08: *"e bota o nome
-   'sotto' em todos os temas"*). Not a logo pasted on top: it is set in the
-   monitor's own mono face at the channel line's own size and muted, so it reads as
-   the machine's nameplate. `text-transform: none` because he wrote it lowercase. */
-@S@ .chrome--bcast .chrome__brand{
-  font-family: var(--font-mono);
-  font-size: var(--size-time);
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: none;
-  color: var(--text-secondary);
-}
-@S@ body:not([data-surface="strip"]) .panel__header{
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 6px 10px;
-}
-@S@ .chrome--bcast[data-chrome="head"]{
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-@S@ .chrome--bcast .chrome__state{ color: var(--accent); font-weight: 600; }
-@S@ .chrome--bcast .chrome__rec{
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: 99px;
-  background: var(--idle);
-}
-@S@ body[data-state="live"] .chrome--bcast .chrome__rec{
-  background: var(--accent);
-  animation: sotto-2-rec 1.6s ease-out infinite;
-}
-/* P2-1: the pulse is OPACITY only — the old keyframe animated `box-shadow`
-   spread, which is a paint property and a layout-adjacent cost every frame. */
-@keyframes sotto-2-rec{
-  0%{ opacity: 1; }
-  70%{ opacity: 0.35; }
-  100%{ opacity: 1; }
-}
-@S@ .chrome--bcast .chrome__chan{ color: var(--text-muted); }
-@S@ .chrome--bcast .chrome__tc{
-  margin-left: auto;
-  color: var(--text-primary);
-  letter-spacing: 0.08em;
-  font-variant-numeric: tabular-nums;
-  /* UMA SO LINHA (o dono, verbatim: *"coisa feia"* -- o timecode partia-se em duas
-     quando o cabecalho apertava). `nowrap` impede a quebra e `flex: none` impede o
-     item de encolher ate' partir: as duas metades sao a mesma promessa. */
-  white-space: nowrap;
-  flex: none;
-}
-/* THE CONTROLS ARE ON THE TOP ROW (owner, 2026-10-08: *"move todos os botoes
-   la pra cima tambem"*), right-aligned, small and square. */
-@S@ body:not([data-surface="strip"]) .panel__controls{
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: end;
-  gap: 4px;
-}
-@S@ .panel__controls .icon-button{ border-radius: 3px; }
-/* THE PER-LINE ORDINAL IS NOT PAINTED. This direction's mockup prints `001`,
-   `002`, … beside the clock (`pad3(h.id)` in `Panel.tsx`), and the element that
-   carried it was removed from the screen at the OWNER's own instruction
-   (2026-10-08, twice): *"tira esse numero de 033 11:21:03"*, then *"to falando
-   desse numero a esquerda. o vermelho. nao é pra ter mais ele"*. The `033` was
-   the INDEX OF THE ROW, red on the forming line and grey on the closed ones, and
-   he wants none of them. The ordinal survives as `li[data-index]` for the probes.
-   The `grid-template-columns` that used to reserve its track went with it — and
-   it was INERT anyway: nothing ever set `display: grid` on `.caption`. */
-@S@ .chrome--bcast[data-chrome="foot"]{
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: var(--size-meta);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-@S@ .chrome--bcast[data-chrome="foot"][data-slot="start"]{ order: -1; color: var(--accent); }
-@S@ .chrome--bcast[data-chrome="foot"][data-slot="end"]{ order: 9; color: var(--accent); }
-/* ── NO METER ANIMATION. MEASURED, AND DELETED. ────────────────────────────
-   A `@keyframes sotto-2-meter` loop stood here and animated the five bars
-   identically with speech, with silence and with a DEAD WORKER — a wave that
-   lies, which is exactly what the owner forbade. `docs/research/
-   12-audio-level-contract.md` is the measurement; the bars now carry the level
-   the worker really reports (`.chrome__meter` is driven by `--meter-N` custom
-   properties, see `panel.css`), and with no real data they sit at the floor. */
-"""
 
-CHROME[3] = """
-/* ── THE DIRECTION'S OWN CHROME: a manuscript being written ──────────────────
-   `rascunho ao vivo ····· pág. 1` on the header line; the controls become the
-   second header row (a manuscript has no buttons at the top of the page). */
-@S@ .wordmark{ display: none; }
-/* THE NAME, IN THIS DIRECTION'S OWN VOICE (owner, 2026-10-08: *"e bota o nome
-   'sotto' em todos os temas"*). A manuscript signs itself quietly: the name is set
-   in the same hand as the page, lowercase, in the ink colour, at the margin. */
-@S@ .chrome--mano .chrome__brand{
-  font-family: var(--font-serif);
-  font-size: var(--size-time);
-  font-weight: 400;
-  font-style: normal;
-  letter-spacing: 0.06em;
-  text-transform: none;
-  color: var(--text-muted);
-}
-@S@ body:not([data-surface="strip"]) .panel__header{
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: baseline;
-  gap: 4px 10px;
-}
-@S@ .chrome--mano[data-chrome="head"]{
-  grid-column: 1;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-  font-family: var(--font-sans);
-  color: var(--text-muted);
-}
-@S@ .chrome--mano .chrome__draft{ font-size: 12.5px; font-style: italic; color: var(--text-secondary); }
-/* THE PAGE NUMBER IS WHAT THE NAME COST (owner, 2026-10-08: *"e bota o nome
-   'sotto' em todos os temas"*, then *"Não espremas"*). MEASURED, not guessed —
-   `_main\_panel-geometry.js` on a real 380x900 panel, theme-3, header 350 px wide:
-     header grid columns       138.594px 201.406px   (1fr auto; the controls own col 2)
-     .chrome--mano   (the cell) 138.6 px
-       .chrome__brand  24.1 x 15.0   = ONE line (10px/15px)      <- the name is free
-       .chrome__draft  68.0 x 37.5   = TWO lines (12.5px/18.75px)  <- it wrapped
-       .chrome__page   26.5 x 33.0   = TWO lines (11px/16.5px)     <- it wrapped
-   Sum of the three WRAPPED widths + the two 10px gaps = 138.6 px: the cell is
-   exactly full, so both wider items were compressed and re-flowed, the block grew
-   37.5, and the header row grew 28 -> 41.5 px, taking 13.5 px off the live box
-   (760.5 -> 747). A ONE-LINE header is impossible at 380 px, not tight: the
-   wrapped widths alone already need 138.6 + a 10px column gap + the controls'
-   201.4 = 350.0, and the two items were compressed to reach that. So the name
-   cannot be added for free while all three texts stay — one of them has to go.
-   The page number goes: it is static, it names a page in a transcript that has
-   none, and the owner removed this class of decoration twice already (item B,
-   item 3). The name stays, at its own size, unsqueezed. Revert = this one line. */
-@S@ .chrome--mano .chrome__page{ display: none; }
-@S@ body:not([data-surface="strip"]) .panel__controls{ grid-column: 2; grid-row: 1; justify-self: end; gap: 4px; }
-@S@ .chrome--mano[data-chrome="foot"]{
-  display: inline-flex;
-  flex: none;
-  font-family: var(--font-sans);
-  font-size: var(--size-meta);
-  font-style: italic;
-  color: var(--text-muted);
-}
-@S@ .chrome--mano[data-chrome="foot"][data-slot="start"]{ order: 9; }
 
-/* ── THE RAMP: "cada palavra recém-chegada ganha contraste aos poucos" ───────
-   `panel.js` gives every word of the forming line `--w-op` (the mockup's own
-   `0.45 + 0.55·(i+1)/len`), and this paints it. THE TRANSITION IS THE WHOLE
-   POINT AND IT IS ALSO THE COST DECISION: it is `opacity`, which the compositor
-   owns, on a span that is REUSED across partials — so as the line grows, every
-   older word's contrast eases DOWN to its new value instead of snapping, and a
-   partial never restarts a keyframe. No per-word entry animation is shipped:
-   measured, a keyframe on a word inside a box that is rewritten every partial
-   replays on every partial (see the receipt's cost table). */
-@B@ .caption--provisional .caption__word{
-  opacity: var(--w-op, 1);
-  transition: opacity 260ms ease;
-}
-"""
 
-CHROME[4] = """
-/* ── THE DIRECTION'S OWN CHROME: a festival card ─────────────────────────────
-   `SOTTO` in gold, tracked wide, and `· ao vivo ·` in italic at the other end.
-   The wordmark GOES WHOLE — mark, name and tag — because the direction's header
-   is one word in gold and the panel's own wordmark says "Sotto" too; leaving
-   both would print the brand twice. The footer is the film's own ellipsis. The
-   controls stay top-right and lose nothing but their weight. */
-@S@ .wordmark{ display: none; }
-@S@ .chrome--cine[data-chrome="head"]{
-  display: flex;
-  align-items: baseline;
-  /* `flex: 1 1 auto`, NOT `flex: 1`. MEASURED at the real 380x900 geometry
-     (`_main/_panel-chrome-arm.py`, which asserts `innerWidth === 380` from
-     inside the page): with `flex: 1` the basis is 0, so once the control row
-     is on the top row the direction's own header line is squeezed to
-     **width 0** — present in the DOM, invisible on screen, and nothing
-     errors. `auto` keeps the line at its content width. */
-  flex: 1 1 auto;
-  gap: 10px;
-  min-width: 0;
-  font-family: var(--font-sans);
-  color: var(--text-muted);
-}
-@S@ .chrome--cine .chrome__brand{
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.34em;
-  /* LOWERCASE, KEPT LOWERCASE. The mockup prints `SOTTO` and this rule used to
-     force it with `text-transform: uppercase`, so the markup's `sotto` came out
-     shouting. The owner wrote the name in lowercase (2026-10-08: *"bota o nome
-     'sotto' em todos os temas"*) and `text-transform` is exactly the property that
-     would silently overrule him. */
-  text-transform: none;
-  color: var(--accent);
-}
-@S@ .chrome--cine .chrome__state{ margin-left: auto; font-size: 11px; font-style: italic; }
-@S@ .panel__controls{ gap: 4px; }
-@S@ .panel__controls .icon-button{ background: transparent; border-color: color-mix(in srgb, var(--accent) 22%, transparent); }
-@S@ .chrome--cine[data-chrome="foot"]{
-  display: inline-flex;
-  flex: none;
-  font-family: var(--font-sans);
-  font-size: var(--size-meta);
-  letter-spacing: 0.5em;
-  color: var(--accent);
-}
-@S@ .chrome--cine[data-chrome="foot"][data-slot="start"]{ order: 9; }
 
-/* ── THE FORMING FOG: "a frase fechada é sólida; a em curso vive na névoa" ───
-   TWO TIERS, BOTH STATIC, OPACITY ONLY (P2-6, 2026-10-08 audit): this used to be
-   a `filter: blur()` on the live line — 0.45 px on the confirmed part, 0.95 px
-   on the tail. A blur on text the worker rewrites every few hundred ms is a
-   repaint of the most expensive kind on the exact line the owner is reading, and
-   at sub-pixel radii it reads as unfocused rather than misted. The direction
-   keeps its two tiers — confirmed barely held back, tail harder — as opacity
-   steps, and the transition still dissolves the fog when the line commits. */
-@B@ .caption--provisional .caption__text{
-  opacity: 0.92;
-  transition: opacity 600ms ease;
-}
-@B@ .caption--provisional .caption__provisional{
-  opacity: 0.55;
-  transition: opacity 600ms ease;
-}
-@B@ .caption:not(.caption--provisional) .caption__text{ opacity: 1; }
-"""
 
-CHROME[5] = """
-/* ── THE DIRECTION'S OWN CHROME: an instrument that is ON ────────────────────
-   `■ ON ················· ALT+C` on the header line, the controls on the second
-   header row, and the footer's own level meter beside `OUVINDO`. The wordmark is
-   replaced by the state line — the direction's header says whether the thing is
-   ON, not what it is called. */
-@S@ .wordmark{ display: none; }
-/* THE NAME, IN THIS DIRECTION'S OWN VOICE (owner, 2026-10-08: *"e bota o nome
-   'sotto' em todos os temas"*). An instrument is LABELLED: the name is silkscreened
-   in the panel's own mono legend face, tracked wide like the other legends, in the
-   legend colour rather than the accent, so it never competes with the state lamp. */
-@S@ .chrome--inst .chrome__brand{
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.28em;
-  text-transform: none;
-  color: var(--text-muted);
-}
-@S@ body:not([data-surface="strip"]) .panel__header{
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 6px 10px;
-}
-@S@ .chrome--inst[data-chrome="head"]{
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-family: var(--font-sans);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: var(--text-primary);
-}
-@S@ .chrome--inst .chrome__led{
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: 2px;
-  background: var(--idle);
-}
-@S@ body[data-state="live"] .chrome--inst .chrome__led{
-  background: var(--accent);
-  animation: sotto-5-led 1.5s ease-in-out infinite;
-}
-/* D5, CLOSED: `@S@ .chrome--inst .chrome__key` stood here — the Alt+C badge of the
-   Instrumento header (`ON / ALT+C`, quoted in this file's own chrome header). The
-   owner ordered that hint OUT of the panel (`panel.html:935`), the element went
-   with it, and `.chrome__key` is not one of the 12 `chrome__*` classes the panel
-   actually carries (brand, chan, dot, draft, led, meter, off, on, page, rec,
-   state, tc). Measured: 0 matches in `panel.html`, in the 12 loaded modules, in
-   the 105 skin files, and in the five zips' panel sources. The rule is gone. */
-@keyframes sotto-5-led{
-  0%, 100%{ transform: scaleY(0.45); opacity: 0.65; }
-  50%{ transform: scaleY(1); opacity: 1; }
-}
-@S@ body:not([data-surface="strip"]) .panel__controls{ grid-column: 2; grid-row: 1; justify-self: end; gap: 4px; }
-@S@ .panel__controls .icon-button{ border-radius: 3px; }
-/* ── THE INDICATOR: "o indicador da linha ativa é o principal elemento
-   dinâmico" ────────────────────────────────────────────────────────────────
-   The live line already carries its 4 px LED rail as a BORDER (the direction's
-   own mark, and the probe reads it). A border cannot be animated on the
-   compositor, so the breathing is a REAL element laid exactly over that rail:
-   `transform: scaleY()` + `opacity`, both compositor properties, on a 4 px
-   box — the one thing in this panel that moves while a sentence forms. */
-@B@ .caption--provisional .caption__led{
-  display: block;
-  left: -4px;
-  width: 4px;
-  background: var(--accent);
-  animation: sotto-5-led-live 1.7s ease-in-out infinite alternate;
-}
-@keyframes sotto-5-led-live{
-  from{ opacity: 0.62; transform: scaleY(0.92); }
-  to{ opacity: 1; transform: scaleY(1); }
-}
-@S@ .chrome--inst[data-chrome="foot"]{
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-sans);
-  font-size: 9px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-@S@ .chrome--inst[data-chrome="foot"][data-slot="start"]{ order: -1; color: var(--accent); }
-@S@ .chrome--inst[data-chrome="foot"][data-slot="end"]{ order: 9; color: var(--accent); }
-/* ── NO EQUALISER ANIMATION. Same measurement, same deletion: three keyframe
-   loops (`sotto-5-eqA/B/C`) animated the instrument's bars regardless of what
-   the microphone heard. The bars are now painted from the worker's own reported
-   level. */
-@keyframes sotto-5-eqA{
-  0%, 100%{ transform: scaleY(0.3); }
-  28%{ transform: scaleY(1); }
-  56%{ transform: scaleY(0.5); }
-  80%{ transform: scaleY(0.85); }
-}
-@keyframes sotto-5-eqB{
-  0%, 100%{ transform: scaleY(0.55); }
-  35%{ transform: scaleY(0.95); }
-  62%{ transform: scaleY(0.35); }
-  85%{ transform: scaleY(0.75); }
-}
-@keyframes sotto-5-eqC{
-  0%, 100%{ transform: scaleY(0.42); }
-  30%{ transform: scaleY(0.7); }
-  58%{ transform: scaleY(1); }
-}
-"""
+
+
+
 
 # The scope every rule is written under. `%s` is the theme number, so each file
 # can only ever style its own theme and five of them coexist in one document.
 ROOT = ":root[data-theme='%s']"
 
 # --------------------------------------------------------------------------- #
-# LANE B's CHROME PAINTS THE DESIGN'S OWN META SIZE, NOT THE FIRST ZIP'S.
-#
-# THE ORDER (owner, verbatim): *"eu quero que, cada tema encontrado dentro dos
-# .zip, fiquem com o design IGUAL"*. Each `pd-*` design declares `--size-meta`
-# with the size ITS OWN zip states for its meta tier -- `--trace` prints the zip
-# line of every one of them -- and until this block NO rule of lane B read it:
-# every chrome row painted a LITERAL, and those literals are the FIRST zip's
-# (the shared `CHROME` templates were written from
-# `sotto-app-design-directions.zip`). Measured, the defect: `pd-tele` declared
-# 11px and painted 10px.
-#
-# WHY THE SWAP IS HERE AND NOT INSIDE THE TEMPLATES. `CHROME[n]` is SHARED by the
-# two lanes -- it is emitted into `theme-n.css` AND into `panel-designs.css` -- so
-# a literal edited inside a template rewrites `theme-1..5.css` as well, and this
-# lane is ordered not to touch those five files. The swap therefore runs on the
-# EMITTED text of the `pd-*` designs alone, keyed by design, one exact anchor per
-# rule. Each anchor must occur EXACTLY ONCE in its template or the build FAILS: a
-# template that drifts stops the build instead of silently painting the family's
-# size again.
-#
-# WHAT MOVES (the zip line is the authority; every one was re-measured against
-# the .zip member `src/components/panels.tsx`, which is byte-identical to the
-# extracted copy the generator parses):
-#   pd-tele   head  10px   -> 11px     the zip's own `sotto`, panels.tsx:31
-#   pd-bcast  head  9.5px  -> 9.5px    no visible move: it already paints its own
-#                                      meta row (panels.tsx:158) and stops being a
-#                                      literal
-#   pd-mano   draft 12.5px -> 10px     `registro continuo`, panels.tsx:182
-#   pd-cine   brand 11px   -> 13px     the zip's own `sotto`, panels.tsx:253
-#   pd-cine   state 11px   -> 13px     the same tier as the brand above
-#   pd-instr  brand 9px    -> 10px     `PT-BR . 48 kHz`, panels.tsx:340
-#   pd-instr  head  11px   -> 10px     the ON/STBY chip is SOTTO's own node, not
-#                                      the zip's status word: that one is
-#                                      `.status`, which already reads
-#                                      `--size-small`
-#   pd-instr  foot  9px    -> 10px     `PT-BR . 48 kHz`, panels.tsx:340
-#
-# WHAT IS DELIBERATELY UNTOUCHED: `bcast`'s `.chrome__brand` already reads
-# `var(--size-time)`, the design's OWN clock tier (panels.tsx:105), and its
-# `.chrome__tc` is a lane-B-only literal of that same clock -- neither is a number
-# the first zip owned. `bcast`, `mano` and `cine` already had their FOOT row read
-# `var(--size-meta)` from the shared template before this block existed.
+# REMOVED 2026-11-25: LANE B's CHROME META SWAP. It painted each `pd-*` design's
+# own `--size-meta` on the chrome rows, keyed by design, one exact anchor per rule
+# (`pd-tele` head 10px -> the zip's 11px, `pd-mano` draft 12.5px -> 10px, and so
+# on). The rows themselves left the document on 2026-11-06 with the rest of the
+# per-direction chrome, so the swap had nothing left to rewrite and went with the
+# templates it operated on. `--size-meta` is still declared per design and still
+# read: `panel.css` paints the meta tier from it.
 # --------------------------------------------------------------------------- #
-PD_CHROME_META = {
-    1: (("  font-size: 10px;",
-         "  font-size: var(--size-meta);"),),
-    2: (("  font-size: 9.5px;",
-         "  font-size: var(--size-meta);"),),
-    3: (("@S@ .chrome--mano .chrome__draft{ font-size: 12.5px; font-style: italic; color: var(--text-secondary); }",
-         "@S@ .chrome--mano .chrome__draft{ font-size: var(--size-meta); font-style: italic; color: var(--text-secondary); }"),),
-    4: (("@S@ .chrome--cine .chrome__brand{\n  font-size: 11px;",
-         "@S@ .chrome--cine .chrome__brand{\n  font-size: var(--size-meta);"),
-        ("@S@ .chrome--cine .chrome__state{ margin-left: auto; font-size: 11px; font-style: italic; }",
-         "@S@ .chrome--cine .chrome__state{ margin-left: auto; font-size: var(--size-meta); font-style: italic; }"),),
-    5: (("  font-family: var(--font-mono);\n  font-size: 9px;\n  font-weight: 600;",
-         "  font-family: var(--font-mono);\n  font-size: var(--size-meta);\n  font-weight: 600;"),
-        ("  font-size: 11px;",
-         "  font-size: var(--size-meta);"),
-        ("  font-family: var(--font-sans);\n  font-size: 9px;\n  letter-spacing: 0.22em;",
-         "  font-family: var(--font-sans);\n  font-size: var(--size-meta);\n  letter-spacing: 0.22em;"),),
-}
 
 
-def pd_chrome_meta(block, chrome):
-    """Lane B only: the chrome rows paint THIS design's own meta tier.
 
-    `block` is the FILLED `CHROME[chrome]` template; `chrome` selects the anchor
-    set. Nothing here runs for `theme-1..5`: those five keep the exact bytes this
-    generator shipped before this block existed.
-    """
-    pairs = PD_CHROME_META.get(chrome)
-    if not pairs:
-        raise SystemExit('BUILD FAILURE: no pd-chrome anchor set for chrome %r' % (chrome,))
-    out = block
-    for old, new in pairs:
-        n = out.count(old)
-        if n != 1:
-            raise SystemExit('BUILD FAILURE: the pd-chrome anchor for design %d occurs %d '
-                             'time(s), must be exactly 1: %r' % (chrome, n, old[:70]))
-        out = out.replace(old, new, 1)
-    return out
+
 
 
 # --------------------------------------------------------------------------- #
-# `prefers-reduced-motion` FOR THE CHROME — ONE BLOCK, APPENDED TO ALL FIVE.
+# `prefers-reduced-motion` — ONE BLOCK, APPENDED TO ALL FIVE.
 #
-# It has to be `!important`, and that is a measured consequence, not laziness.
-# The chrome's animations are written with real selectors —
-# `body[data-state="live"] .chrome--inst .chrome__led`, and
-# `.chrome__meter i:nth-child(2)` — because that is what makes them specific
-# enough to beat `panel.css`. A plain override can only beat those by repeating
-# every one of them at the same specificity, and the `:nth-child` delays make
-# that a list that drifts the moment one animation is added. `!important` on a
-# reduced-motion block is the standard form of exactly this override, and it is
-# what makes "no motion" TRUE for every animation in the block — including the
-# ones added later.
+# It has to be `!important`, and that is a measured consequence, not laziness:
+# the reveal and the LED are written with real selectors (`[data-theme='n'] .caption__word`
+# and its keyframe), because that is what makes them specific enough to beat
+# `panel.css`. A plain override can only beat those by repeating every one of
+# them at the same specificity, so `!important` is the standard form of exactly
+# this override and it makes "no motion" TRUE for every animation in the block —
+# including the ones added later.
+#
+# THE `.chrome` HALF IS GONE (2026-11-25): the per-direction chrome rows left the
+# document on 2026-11-06 and the templates that styled them went with them. The
+# caption is what still animates, so the caption is what this block settles.
 # --------------------------------------------------------------------------- #
 MOTION = """
-/* ── REDUCED MOTION: nothing in the chrome moves ───────────────────────────── */
+/* ── REDUCED MOTION: nothing in the caption moves ──────────────────────────── */
 @media (prefers-reduced-motion: reduce){
-  @B@ .chrome,
-  @B@ .chrome *,
   @B@ .caption__word,
   @B@ .caption__led,
   @B@ .caption__text,
@@ -2435,23 +1942,6 @@ MOTION = """
 }
 """
 
-# --------------------------------------------------------------------------- #
-# THE STRIP SURFACE OWNS ITS OWN FOOTER — and this rule is in the THEME file, not
-# only in `panel.css`, because of a MEASURED specificity fact: the chrome blocks
-# are addressed as `.chrome--<id>[data-chrome="foot"][data-slot="end"]`
-# (specificity 0,5,0), so `panel.css`'s `body[data-surface="strip"] .status .chrome`
-# (0,3,2) LOSES to them and a direction's footer label leaks into the ~150 px
-# strip. The rule below carries the same two attribute selectors, so it is
-# (0,5,1) — higher — and the strip stays the strip. Both halves are kept: the
-# `panel.css` rule is the belt, this is the braces, and the arm asserts the
-# OUTCOME (nothing of the direction's chrome is on screen on the strip) rather
-# than either rule.
-# --------------------------------------------------------------------------- #
-STRIP_GUARD = """
-/* ── THE STRIP: the direction's chrome stays on the PANEL surface ──────────── */
-@S@ body[data-surface="strip"] .chrome[data-chrome="head"],
-@S@ body[data-surface="strip"] .chrome[data-chrome="foot"]{ display: none; }
-"""
 
 
 def _strip_comments(text):
@@ -2689,14 +2179,6 @@ def scope(block, n):
 # file's own intent is gone without one line of output saying so. Measured
 # 2026-10-11: two tokens broke it, and both belong to the `mano` direction.
 #
-#   --font-serif  the `mano` chrome's brand face. It was declared NOWHERE -- not
-#                 in this repo, not by any script -- so the declaration
-#                 `font-family: var(--font-serif)` never resolved and
-#                 `.chrome__brand` INHERITED its parent instead:
-#                 `.chrome--mano[data-chrome="head"]`, which this same theme sets
-#                 to `var(--font-sans)` (theme-3: "Newsreader", Georgia, serif).
-#                 Pointing the token at `--font-sans` is that same stack, STATED
-#                 instead of inherited.
 #   --w-op        STAMPED AT RUNTIME by `app/panel/panel.js` (`paintWords`), one
 #                 value per word span. Both of its consumers already read
 #                 `var(--w-op, 1)`, so 1 IS the value they paint with before the
@@ -2721,8 +2203,6 @@ def scope(block, n):
 #                 the dial, but this file's rule has specificity (0,1,1) and
 #                 arrives last, so the theme's literal size won.
 CONSUMED_NOT_OWNED = {
-    '--font-serif': ('var(--font-sans)',
-                     "the mano chrome's brand face, which inherited --font-sans"),
     '--w-op': ('1',
                "the value panel.js paintWords stamps over, and the consumers' own fallback"),
     '--caption-scale': ('1',
@@ -2778,7 +2258,6 @@ BRAND_METRICS = """/* THE WORDMARK'S METRICS, pinned to the shared rule (owner, 
  * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
  * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
  * specificity rule in this file cannot put them back. */
-{sel} .chrome__brand {{ font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }}
 {sel} .wordmark__text {{ font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }}
 """
 
@@ -2858,14 +2337,14 @@ def build(t):
         font_caption=t.get('caption_family', 'var(--font-sans)'),
         font_closed=t.get('closed_family', 'var(--font-sans)'),
     )
-    chrome_text = fill(CHROME[chrome], t)
-    if t.get('sel'):
-        # LANE B ONLY -- the chrome paints THIS design's own meta size (PD_CHROME_META)
-        chrome_text = pd_chrome_meta(chrome_text, chrome)
+    # NO CHROME BLOCK (2026-11-25): the five per-direction chrome rows left the
+    # document on 2026-11-06 (owner: *"NO DIRECTION-SPECIFIC FOOTER ... the meter,
+    # `LIVE / EM ESPERA`, `· · ·` and `OUVINDO / EM ESPERA` were words about the
+    # panel, not facts"*), so the templates that styled them, the strip guard that
+    # hid them on the strip and the lane-B meta-size swap all went with them. A
+    # rule about a node that cannot exist is a rule about nothing.
     text = (head + scope(skin, sel) + "\n"
-            + scope(chrome_text, sel) + "\n"
             + scope(fill(t.get('sig', ''), t), sel) + "\n"
-            + scope(STRIP_GUARD, sel) + "\n"
             + scope(MOTION, sel) + "\n"
             + BRAND_METRICS.format(sel=":root[data-theme='%s']" % sel) + "\n")
     return resolve_consumed(text, sel)
@@ -3193,8 +2672,6 @@ PD_SIG = {
        "  border-color: transparent;\n  border-radius: var(--radius-lg);\n  box-shadow: none;\n}\n"
        "@S@ .panel__header { padding: 24px 28px 0; }\n"
        "@S@ .wordmark { display: none; }\n"
-       "@S@ .chrome--tele .chrome__dot { width: 5px; height: 5px; border-radius: 999px; background: @idle@; }\n"
-       "@S@ body[data-state=\"live\"] .chrome--tele .chrome__dot { background: @accent@; }\n"
        "@S@ .captions__body { padding: 96px 28px 56px; }\n"
        "@S@ .captions__list { gap: 14px; }\n"
        "@B@ .caption { padding: 0; border-left: 0; background: transparent; }\n"
@@ -3204,15 +2681,11 @@ PD_SIG = {
        "  border-color: transparent;\n  border-radius: var(--radius-lg);\n  box-shadow: none;\n}\n"
        "@S@ .panel__header { padding: 14px 16px 10px; border-bottom: 1px solid @line@; }\n"
        "@S@ .wordmark { display: none; }\n"
-       "@S@ .chrome--bcast .chrome__dot { width: 7px; height: 7px; border-radius: 999px; background: @idle@; }\n"
-       "@S@ body[data-state=\"live\"] .chrome--bcast .chrome__dot { background: @accent@; }\n"
-       "@S@ .chrome--bcast .chrome__tc { font-size: 12px; font-weight: 500; color: @text_primary@; font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }\n"
        "@S@ .captions__body { padding: 80px 16px 12px; }\n"
        "@S@ .captions__list { gap: 9px; }\n"
        "@B@ .caption { padding: 0; border-left: 0; background: transparent; }\n"
        "@B@ .caption--provisional { border-left: 2px solid @accent@; background: @prov_bg@; padding: 6px 8px 6px 12px; }\n"
-       "@S@ .caption__time { font-size: 12px; color: @text_muted@; font-variant-numeric: tabular-nums; }\n"
-       "@S@ .chrome--bcast[data-chrome=\"foot\"] { border-top: 1px solid @line@; padding: 10px 16px; }\n",
+       "@S@ .caption__time { font-size: 12px; color: @text_muted@; font-variant-numeric: tabular-nums; }\n",
     3: "@S@ .panel {\n  background: rgba(12, 12, 15, 0.62);\n"
        "  border-color: transparent;\n  border-radius: var(--radius-lg);\n  box-shadow: none;\n}\n"
        "@S@ .panel::before {\n  content: \"\";\n  position: absolute;\n"
@@ -3230,9 +2703,7 @@ PD_SIG = {
        "@S@ .panel__header { padding: 32px 36px 0; }\n"
        "@S@ .wordmark {\n  display: flex;\n  position: absolute;\n"
        "  right: 36px;\n  bottom: 28px;\n  z-index: 4;\n}\n"
-       "@S@ .wordmark__mark { display: none; }\n"
        "@S@ .wordmark__name { font-family: var(--font-sans); font-size: 13px; font-style: italic; font-weight: 400; letter-spacing: 0; color: @text_muted@; }\n"
-       "@S@ .wordmark__tag { display: none; }\n"
        "@S@ .captions__body { padding: 128px 36px 80px; }\n"
        "@S@ .captions__list { gap: 26px; }\n"
        "@B@ .caption { padding: 0; border-left: 0; background: transparent; }\n"
@@ -3242,18 +2713,10 @@ PD_SIG = {
        "  border-color: transparent;\n  border-radius: var(--radius-lg);\n  box-shadow: none;\n}\n"
        "@S@ .panel__header { padding: 16px 20px 14px; border-bottom: 1px solid @line@; }\n"
        "@S@ .wordmark { display: none; }\n"
-       "@S@ .chrome--inst .chrome__meter { display: flex; align-items: flex-end; gap: 3px; height: 18px; }\n"
-       "@S@ .chrome--inst .chrome__meter i { width: 3px; border-radius: 4px; background: @idle@; }\n"
-       "@S@ .chrome--inst .chrome__meter i:nth-child(1) { height: 5px; }\n"
-       "@S@ .chrome--inst .chrome__meter i:nth-child(2) { height: 8px; }\n"
-       "@S@ .chrome--inst .chrome__meter i:nth-child(3) { height: 4px; }\n"
-       "@S@ .chrome--inst .chrome__meter i:nth-child(n+4) { display: none; }\n"
-       "@S@ body[data-state=\"live\"] .chrome--inst .chrome__meter i { background: @accent@; }\n"
        "@S@ .captions__body { padding: 64px 20px 24px; }\n"
        "@S@ .captions__list { gap: 13px; }\n"
        "@B@ .caption { padding: 0; border-left: 0; background: transparent; margin-left: 16px; }\n"
-       "@S@ .caption__time { font-size: 12px; color: @text_muted@; font-variant-numeric: tabular-nums; }\n"
-       "@S@ .chrome--inst[data-chrome=\"foot\"] { border-top: 1px solid @line@; padding: 12px 20px; }\n",
+       "@S@ .caption__time { font-size: 12px; color: @text_muted@; font-variant-numeric: tabular-nums; }\n",
 }
 
 HEAD_PD = '''/* Sotto -- {name} ({sel}).

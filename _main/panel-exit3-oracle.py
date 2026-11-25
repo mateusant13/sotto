@@ -768,6 +768,24 @@ def build_neg_mutant() -> tuple[bool, str, dict]:
     return True, '', info
 
 
+def child_verdict(text):
+    """The JSON object a `--unit` child printed, even with noise around it.
+
+    MEASURED 2026-11-25: the child imports the shell, the shell's WASAPI
+    modules build comtypes objects, and at interpreter TEARDOWN comtypes'
+    `__del__` raised an access violation whose "Exception ignored" text landed
+    on the merged stderr AFTER the verdict. `json.loads(whole_text)` then
+    rejected a complete verdict, and the negative arm reported "printed no JSON
+    verdict" about a child that had printed one. The verdict is the first `{`
+    through the LAST `}`, wherever the noise sits around it.
+    """
+    start = text.find('{')
+    end = text.rfind('}')
+    if start < 0 or end <= start:
+        raise ValueError('no JSON object in the child output')
+    return json.loads(text[start:end + 1])
+
+
 def neg_arm(report: dict) -> list[str]:
     """Run the unit arms against the reverted COPY and require them to go RED.
 
@@ -790,7 +808,7 @@ def neg_arm(report: dict) -> list[str]:
     text = proc.stdout.decode('utf-8', 'replace')
     report['neg_arm']['child_rc'] = proc.returncode
     try:
-        child = json.loads(text)
+        child = child_verdict(text)
     except ValueError:
         return [f'NEGATIVE ARM: the mutant run printed no JSON verdict '
                 f'(rc={proc.returncode}): {text[-400:]!r}']
@@ -862,7 +880,7 @@ def neg_arm_e(report: dict) -> list[str]:
     text = proc.stdout.decode('utf-8', 'replace')
     report['neg_arm_e']['child_rc'] = proc.returncode
     try:
-        child = json.loads(text)
+        child = child_verdict(text)
     except ValueError:
         return [f'NEGATIVE ARM E: the mutant run printed no JSON verdict '
                 f'(rc={proc.returncode}): {text[-400:]!r}']
@@ -1065,7 +1083,7 @@ def criterion_neg_arm(report: dict) -> list[str]:
     text = proc.stdout.decode('utf-8', 'replace')
     report['neg_arm_criterion'] = {'mutant': path, 'child_rc': proc.returncode}
     try:
-        child = json.loads(text)
+        child = child_verdict(text)
     except ValueError:
         return ["NEGATIVE ARM (criterion): the mutant printed no JSON verdict (rc=%d): %r"
                 % (proc.returncode, text[-300:])]
@@ -1245,4 +1263,15 @@ def main() -> int:
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    _code = main()
+    # THE VERDICT IS ALREADY ON STDOUT. Leave WITHOUT interpreter teardown:
+    # importing the shell builds comtypes objects, and on this box their
+    # `__del__` raises an access violation during finalisation (measured
+    # 2026-11-25 -- a flood of "Exception ignored ... access violation writing
+    # 0x0" and a child exiting 0xC0000005 after printing a complete verdict).
+    # A crash after the verdict must not mask the verdict.
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    finally:
+        os._exit(_code)

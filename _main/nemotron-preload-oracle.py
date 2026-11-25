@@ -725,6 +725,7 @@ if second != \"\":
                     "preactivation loading overlay leaked"),
             )
             bridges.append(bridge)
+            case_spawn_s = time.monotonic()
             if not bridge.start("preload"):
                 case_failures.append("real WorkerBridge refused fake-child preload")
                 return case_failures
@@ -776,9 +777,20 @@ if second != \"\":
             # after run 8 published `fake child did not exit on parent pipe EOF`, so a
             # 5.0 s window was naming a defect that was not there -- and a false MISSING
             # costs a whole battery run.
+            # MEASURED AGAIN 2026-11-25 and the ladder grew a DERIVED term: under the
+            # battery's `--io very-low` cage on a loaded box the child had already
+            # answered START_CAPTURE (it was alive and functional) yet the fixed
+            # 5+10 s ladder still ran out. A clock set before the machine answered is
+            # not a limit, so the budget now comes from the cost this run MEASURED for
+            # the child to come up (`capture-started` minus spawn), times four, and
+            # never below the old 15 s.
+            startup_s = max(0.0, time.monotonic() - case_spawn_s)
+            eof_budget_s = min(60.0, max(15.0, 4.0 * startup_s))
+            print('NEG-CHILD eof budget=%.1fs (child startup measured %.2fs)'
+                  % (eof_budget_s, startup_s), flush=True)
             waited_s = 0.0
             exited = True
-            for window in (5.0, 10.0):
+            for window in (eof_budget_s / 3.0, 2.0 * eof_budget_s / 3.0):
                 try:
                     child.wait(timeout=window)
                 except Exception:

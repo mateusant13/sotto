@@ -1208,7 +1208,16 @@ async function run(dir, opts = {}) {
   report.fragmentFilesMissing = inv.fragmentFilesMissing || [];
   const only = Array.isArray(opts.only) && opts.only.length ? opts.only : ONLY;
   const entries = inv.entries.filter((e) => !only.length || only.includes(e.name));
-  const browser = await chromium.launch({ channel: 'msedge', headless: true });
+  /* ONE BROWSER PER PROCESS, BORROWED WHEN THE CALLER OWNS ONE (2026-11-25).
+   * `--neg-arm` runs THIRTEEN passes with a short inventory; before this it paid
+   * thirteen `chromium.launch(channel=msedge)` calls, which is the dominant cost
+   * of the arm (measured 2026-11-25: 13 mutants / 81.4 s uncaged, and over the
+   * 240 s step deadline under the battery's `--io very-low` cage, where the
+   * launch is what slows down). Each mutant still gets a fresh CONTEXT
+   * (`openPanel`), so the isolation is unchanged; only the process is reused, and
+   * only the owner of the browser closes it. */
+  const borrowed = opts.browser || null;
+  const browser = borrowed || await chromium.launch({ channel: 'msedge', headless: true });
   let session = null;
   try {
     session = await openPanel(browser, dir);
@@ -1318,7 +1327,7 @@ async function run(dir, opts = {}) {
       };
   } finally {
     await closeSession(session);
-    await closeBrowser(browser);
+    if (!borrowed) await closeBrowser(browser);
   }
   report.inventoryOk = inv.ok;
   /* THE FLOOR IS A FLOOR, NOT A TAUTOLOGY: with 59 entries the caption face floor
@@ -1525,6 +1534,11 @@ async function negativeArm() {
   const tmp = fs.mkdtempSync(path.join(fixtureTempRoot('THEMES'), 'sotto-themes-neg-'));
   const results = [];
   let caught = 0;
+  /* ONE LAUNCH FOR THE WHOLE ARM (2026-11-25). Thirteen mutants used to pay
+   * thirteen `chromium.launch` calls; only the CONTEXT has to be fresh, and
+   * `openPanel` already builds one per pass. The browser is closed in the
+   * `finally`, so a mutant that throws cannot leave a headless Edge behind. */
+  const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
     /* UMA COPIA, RESTAURADA POR BYTES ENTRE MUTANTES (2026-11-12, MEDIDO).
      * A versao anterior copiava a arvore `app/panel` inteira por mutante: medido
@@ -1565,7 +1579,7 @@ async function negativeArm() {
       console.log('THEMES mutant %d/%d %s', results.length + 1, MUTANTS.length, mutant.name);
       let report;
       try {
-        report = await run(copy, { only: SHORT });
+        report = await run(copy, { only: SHORT, browser });
       } catch (err) {
         console.log('THEMES mutant %s CRASHED before it could be judged: %s',
           mutant.name, (err && err.message) || err);
@@ -1588,6 +1602,7 @@ async function negativeArm() {
     }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
+    await closeBrowser(browser);
   }
   for (const r of results) console.log(`${r.ok ? 'CAUGHT' : 'NOT-CAUGHT'} ${r.name} -- ${r.why}`);
   const ok = caught === MUTANTS.length;

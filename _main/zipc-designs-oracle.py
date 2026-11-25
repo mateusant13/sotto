@@ -38,12 +38,14 @@ GENERATOR = os.path.join(HERE, "_design-lane", "gen_zipc.py")
 THEMES = ["GlassCards", "Hairline", "Paper", "Quotes", "Ledger",
           "Feed", "Bubbles", "Timeline", "Chips", "Gutter"]
 
-# The 17 tokens 'theme-tune.js' can write (its FIELDS table, 17 entries).
+# The tune tokens 'theme-tune.js' can write (its FIELDS table). WAS 17; the
+# typing-speed knob left on 2026-11-25 with the reveal it timed (`--type-step`),
+# so the live count is 16 and the pair count below follows it.
 TUNE_TOKENS = [
     "--font-sans", "--size-caption", "--leading-caption", "--weight-caption",
     "--tracking-caption", "--caption-upper", "--size-closed", "--leading-closed",
     "--weight-closed", "--accent", "--text-secondary", "--text-provisional",
-    "--bg-slab", "--bg-slab-strong", "--radius-lg", "--motion-in", "--type-step",
+    "--bg-slab", "--bg-slab-strong", "--radius-lg", "--motion-in",
 ]
 
 # A property is STRUCTURAL when its VALUE changes the shape of the design rather

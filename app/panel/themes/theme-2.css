@@ -11,26 +11,27 @@
  * 2. Switching is ONE attribute write: `document.documentElement.dataset.theme`.
  *    No `@import`, no `url()` outside the repo, no network, no per-theme JS.
  * 3. It sets the tokens `panel.css`/`surface.js` consume (see the `:root` block),
- *    and it re-skins COLOUR, TYPE and SURFACE. It ALSO carries its own header
- *    line, footer line, state indicator and control placement (the `CHROME`
- *    block at the end of this file, added 2026-10-08 when the owner asked for
- *    each direction to have its own face); what it never does is touch the
- *    caption's TEXT, the transcript's rows or the shell's own status sentence.
+ *    and it re-skins COLOUR, TYPE and SURFACE. It carries NO header line, footer
+ *    line, state indicator or meter: the `CHROME` block that used to close this
+ *    file was retired with its markup (owner, 2026-11-06: *"NO
+ *    DIRECTION-SPECIFIC FOOTER ... words about the panel, not facts"*), and the
+ *    panel's status is the shell's own `#status-dot` + `#status-text`. What this
+ *    file never does is touch the caption's TEXT, the transcript's rows or that
+ *    status sentence.
  * 4. This file adds NO keyframe and NO transform to a caption's text. Here
- *    `--motion-in` covers colour and surface only. The single keyframe
- *    animation a caption carries is the TYPING REVEAL on the forming line's
- *    newest word, and it is declared in `panel.css`, never in a theme: one
- *    owner per animation, so a theme cannot fight it or double it.
- * 5. `prefers-reduced-motion: reduce` zeroes THIS file's colour transitions and
- *    the chrome's movement, and it deliberately does NOT silence the typing
- *    reveal: that reveal is the owner's explicit request (2026-10-08) and it is
- *    the reason the reduced-motion blocks below exclude `.caption__ch`. The
- *    reveal's own off switch is the token `--type-step: 0ms`. Before
- *    2026-10-08 this file (and `panel.css`) silenced it under reduced motion,
- *    which made the feature INVISIBLE on the owner's own machine: Windows
- *    reports client-area animations off there, so Chromium answers
- *    `prefers-reduced-motion: reduce` and the animation was disabled by the
- *    very query written to honour it.
+ *    `--motion-in` covers colour and surface only. The forming line's newest
+ *    word is styled by `panel.css` alone (`[data-typing]`), and since the
+ *    owner's 2026-11-02 order (*"SEM FADE"*) that rule settles the word with
+ *    `animation: none !important` — so no reveal runs in any theme, and the
+ *    `--type-step` delay that timed it is gone (2026-11-25).
+ * 5. `prefers-reduced-motion: reduce` zeroes THIS file's colour transitions.
+ *    It gates no reveal, because there is no reveal left to gate. Before
+ *    2026-10-08 this file (and `panel.css`) silenced the typing reveal under
+ *    reduced motion, which made the feature INVISIBLE on the owner's own
+ *    machine: Windows reports client-area animations off there, so Chromium
+ *    answers `prefers-reduced-motion: reduce` and the animation was disabled by
+ *    the very query written to honour it. That is why no reveal rule here is
+ *    conditioned on a media query.
  *
  * MEASURED FROM: the zip's own source, `sotto-app-design-directions.zip`,
  * unpacked at `_main/_design-lane/zips/directions/`. EVERY value in this file is
@@ -86,22 +87,9 @@
      declared in exactly one place. */
   --theme-swatch: #FF6A55;
 
-  /* ── THE LETTER-SWAP GLITCH (owner, 2026-10-18) ───────────────────────────
-     `app/panel/letter-swap.js` animates a row when the Parakeet rewrites a line
-     the Nemotron streamed. It reads `--ls-glitch`, and at 0 the animation is
-     byte-for-byte the one that shipped before the glitch existed: opacity and
-     transform only, every colour falling back to `transparent`.
-
-     The owner asked for it verbatim: *"como se fosse um glitch/cyberpunk/
-     animacao hacker. mas tem que combinar com cada tema"*. These four are
-     DERIVED FROM THE THEME'S OWN ACCENT rather than tuned per design, so 45
-     themes get a swap in their own colours without a single hand adjustment --
-     and a design that wants it stronger or quieter overrides `--ls-glitch`
-     alone, because it is declared in exactly one place per theme. */
-  --ls-accent-a: #FF6A55;
-  --ls-accent-b: rgba(255, 106, 85, 0.12);
-  --ls-split: 2px;
-  --ls-glitch: 0.45;
+  /* `--ls-accent-a/-b`, `--ls-split` and `--ls-glitch` were here for the retired
+     `letter-swap.js` glitch and had ZERO readers (`base-themes-oracle` ARM B,
+     2026-11-25). See `gen_themes.py` §LETTER-SWAP for the whole history. */
 
   /* ── STATE: colour carries information here, never decoration ─────────── */
   /* D6, CLOSED: `--busy` stood here and had 0 readers in the whole panel. The zip
@@ -203,9 +191,6 @@
   font-weight: var(--weight-brand);
   font-size: 12px;
 }
-:root[data-theme='theme-2'] .wordmark__tag {
-  color: var(--text-muted);
-}
 :root[data-theme='theme-2'] .icon-button,
 :root[data-theme='theme-2'] .strip-button {
   border-color: var(--line-strong);
@@ -222,7 +207,6 @@
 :root[data-theme='theme-2'] .icon-button:focus-visible,
 :root[data-theme='theme-2'] .strip-button:focus-visible,
 :root[data-theme='theme-2'] .reveal-button:focus-visible,
-:root[data-theme='theme-2'] .search__button:focus-visible,
 :root[data-theme='theme-2'] .dialog-button:focus-visible,
 :root[data-theme='theme-2'] .history__path:focus-visible,
 :root[data-theme='theme-2'] .hist:focus-visible,
@@ -375,22 +359,6 @@
 :root[data-theme='theme-2'] .history__path:hover {
   color: var(--accent);
 }
-:root[data-theme='theme-2'] .search__input {
-  border-color: var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--bg-slab-strong) 60%, transparent);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-}
-:root[data-theme='theme-2'] .search__input::placeholder {
-  color: var(--text-muted);
-}
-:root[data-theme='theme-2'] .search__input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-:root[data-theme='theme-2'] .search__button,
-:root[data-theme='theme-2'] .search__clear,
 :root[data-theme='theme-2'] .reveal-button {
   border-color: var(--line-strong);
   border-radius: var(--radius-sm);
@@ -399,8 +367,6 @@
   font-family: var(--font-sans);
   font-size: var(--size-small);
 }
-:root[data-theme='theme-2'] .search__button:hover,
-:root[data-theme='theme-2'] .search__clear:hover,
 :root[data-theme='theme-2'] .reveal-button:hover {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -604,9 +570,7 @@
 :root[data-theme='theme-2'] .panel__header,
 :root[data-theme='theme-2'] .panel__header *,
 :root[data-theme='theme-2'] .status,
-:root[data-theme='theme-2'] .status *,
-:root[data-theme='theme-2'] .chrome,
-:root[data-theme='theme-2'] .chrome * {
+:root[data-theme='theme-2'] .status * {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: var(--motion-in);
   transition-timing-function: ease;
@@ -631,100 +595,6 @@
   :root[data-theme='theme-2'] .listening span {
     animation: none;
   }
-}
-:root[data-theme='theme-2'] .wordmark {
-  display: none;
-}
-:root[data-theme='theme-2'] .chrome--bcast .chrome__brand {
-  font-family: var(--font-mono);
-  font-size: var(--size-time);
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: none;
-  color: var(--text-secondary);
-}
-:root[data-theme='theme-2'] body:not([data-surface="strip"]) .panel__header {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 6px 10px;
-}
-:root[data-theme='theme-2'] .chrome--bcast[data-chrome="head"] {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-:root[data-theme='theme-2'] .chrome--bcast .chrome__state {
-  color: var(--accent);
-  font-weight: 600;
-}
-:root[data-theme='theme-2'] .chrome--bcast .chrome__rec {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: 99px;
-  background: var(--idle);
-}
-:root[data-theme='theme-2'] body[data-state="live"] .chrome--bcast .chrome__rec {
-  background: var(--accent);
-  animation: sotto-2-rec 1.6s ease-out infinite;
-}
-@keyframes sotto-2-rec {
-  0% {
-    opacity: 1;
-  }
-  70% {
-    opacity: 0.35;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-:root[data-theme='theme-2'] .chrome--bcast .chrome__chan {
-  color: var(--text-muted);
-}
-:root[data-theme='theme-2'] .chrome--bcast .chrome__tc {
-  margin-left: auto;
-  color: var(--text-primary);
-  letter-spacing: 0.08em;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  flex: none;
-}
-:root[data-theme='theme-2'] body:not([data-surface="strip"]) .panel__controls {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: end;
-  gap: 4px;
-}
-:root[data-theme='theme-2'] .panel__controls .icon-button {
-  border-radius: 3px;
-}
-:root[data-theme='theme-2'] .chrome--bcast[data-chrome="foot"] {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: var(--size-meta);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-:root[data-theme='theme-2'] .chrome--bcast[data-chrome="foot"][data-slot="start"] {
-  order: -1;
-  color: var(--accent);
-}
-:root[data-theme='theme-2'] .chrome--bcast[data-chrome="foot"][data-slot="end"] {
-  order: 9;
-  color: var(--accent);
 }
 :root[data-theme='theme-2'] .caption--provisional .caption__text {
   font-size: calc(var(--size-caption) * var(--caption-scale));
@@ -753,13 +623,7 @@
     transform: none;
   }
 }
-:root[data-theme='theme-2'] body[data-surface="strip"] .chrome[data-chrome="head"],
-:root[data-theme='theme-2'] body[data-surface="strip"] .chrome[data-chrome="foot"] {
-  display: none;
-}
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme='theme-2'] body .chrome,
-  :root[data-theme='theme-2'] body .chrome *,
   :root[data-theme='theme-2'] body .caption__word,
   :root[data-theme='theme-2'] body .caption__led,
   :root[data-theme='theme-2'] body .caption__text,
@@ -772,7 +636,6 @@
  * *"o `sotto` escrito em pixels diferentes, não tá padronizado"*). Family and colour
  * stay per direction; size, weight and tracking do not. Appended LAST, so an equal
  * specificity rule in this file cannot put them back. */
-:root[data-theme='theme-2'] .chrome__brand { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 :root[data-theme='theme-2'] .wordmark__text { font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 
 /* -- TOKENS THIS THEME CONSUMES AND DOES NOT OWN ---------------------------

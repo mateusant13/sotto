@@ -79,7 +79,6 @@
   --bg-slab-strong: rgba(26,18,13,0.52);
   --radius-lg: 22px;
   --motion-in: 180ms;
-  --type-step: 45ms;
   --accent: #E9A85B;
   --accent-soft: rgba(255,222,180,0.07);
   --theme-swatch: #E9A85B;
@@ -130,10 +129,6 @@
 :root[data-theme='GlassCards'] .caption--provisional .caption__text {
   color: var(--text-provisional);
   font-style: normal;
-}
-
-:root[data-theme='GlassCards'] .caption--provisional .caption__word[data-typing] {
-  animation-delay: var(--type-step);
 }
 
 :root[data-theme='GlassCards'] .panel {
@@ -299,7 +294,6 @@
   --bg-slab-strong: rgba(9,15,21,0.34);
   --radius-lg: 14px;
   --motion-in: 260ms;
-  --type-step: 45ms;
   --accent: #9FC4D8;
   --accent-soft: rgba(159,196,216,0.06);
   --theme-swatch: #9FC4D8;
@@ -350,10 +344,6 @@
 :root[data-theme='Hairline'] .caption--provisional .caption__text {
   color: var(--text-provisional);
   font-style: normal;
-}
-
-:root[data-theme='Hairline'] .caption--provisional .caption__word[data-typing] {
-  animation-delay: var(--type-step);
 }
 
 :root[data-theme='Hairline'] .panel {
@@ -537,7 +527,6 @@
   --bg-slab-strong: rgba(26,18,13,0.96);
   --radius-lg: 10px;
   --motion-in: 160ms;
-  --type-step: 45ms;
   --accent: #C4562F;
   --accent-soft: rgba(196,86,47,0.10);
   --theme-swatch: #C4562F;
@@ -588,10 +577,6 @@
 :root[data-theme='Paper'] .caption--provisional .caption__text {
   color: var(--text-provisional);
   font-style: normal;
-}
-
-:root[data-theme='Paper'] .caption--provisional .caption__word[data-typing] {
-  animation-delay: var(--type-step);
 }
 
 :root[data-theme='Paper'] .panel {
@@ -744,7 +729,6 @@
   --bg-slab-strong: rgba(32,22,16,0.58);
   --radius-lg: 18px;
   --motion-in: 200ms;
-  --type-step: 45ms;
   --accent: #E8C69B;
   --accent-soft: rgba(232,198,155,0.07);
   --theme-swatch: #E8C69B;
@@ -795,10 +779,6 @@
 :root[data-theme='Quotes'] .caption--provisional .caption__text {
   color: var(--text-provisional);
   font-style: normal;
-}
-
-:root[data-theme='Quotes'] .caption--provisional .caption__word[data-typing] {
-  animation-delay: var(--type-step);
 }
 
 :root[data-theme='Quotes'] .panel {
@@ -977,7 +957,6 @@
   --bg-slab-strong: rgba(17,21,16,0.6);
   --radius-lg: 6px;
   --motion-in: 140ms;
-  --type-step: 45ms;
   --accent: #D8B060;
   --accent-soft: rgba(216,176,96,0.07);
   --theme-swatch: #D8B060;
@@ -1028,10 +1007,6 @@
 :root[data-theme='Ledger'] .caption--provisional .caption__text {
   color: var(--text-provisional);
   font-style: normal;
-}
-
-:root[data-theme='Ledger'] .caption--provisional .caption__word[data-typing] {
-  animation-delay: var(--type-step);
 }
 
 :root[data-theme='Ledger'] .panel {
@@ -1206,7 +1181,6 @@
   --bg-slab-strong: rgba(12,12,20,0.72);
   --radius-lg: 12px;
   --motion-in: 700ms;
-  --type-step: 45ms;
   --accent: #8B93F2;
   --accent-soft: rgba(139,147,242,0.07);
   --theme-swatch: #8B93F2;
@@ -1257,10 +1231,6 @@
 :root[data-theme='Feed'] .caption--provisional .caption__text {
   color: var(--text-provisional);
   font-style: normal;
-}
-
-:root[data-theme='Feed'] .caption--provisional .caption__word[data-typing] {
-  animation-delay: var(--type-step);
 }
 
 :root[data-theme='Feed'] .panel {
@@ -1503,7 +1473,6 @@
   --bg-slab-strong: rgba(29,23,42,0.56);
   --radius-lg: 20px;
   --motion-in: 220ms;
-  --type-step: 45ms;
   --accent: #D8A7E8;
   --accent-soft: rgba(216,167,232,0.08);
   --theme-swatch: #D8A7E8;
@@ -1554,10 +1523,6 @@
 :root[data-theme='Bubbles'] .caption--provisional .caption__text {
   color: var(--text-provisional);
   font-style: normal;
-}
-
-:root[data-theme='Bubbles'] .caption--provisional .caption__word[data-typing] {
-  animation-delay: var(--type-step);
 }
 
 :root[data-theme='Bubbles'] .panel {
@@ -1727,7 +1692,6 @@
   --bg-slab-strong: rgba(13,19,23,0.5);
   --radius-lg: 16px;
   --motion-in: 500ms;
-  --type-step: 45ms;
   --accent: #BED6DC;
   --accent-soft: rgba(190,214,220,0.07);
   --theme-swatch: #BED6DC;
@@ -1778,10 +1742,6 @@
 :root[data-theme='Timeline'] .caption--provisional .caption__text {
   color: var(--text-provisional);
   font-style: normal;
-}
-
-:root[data-theme='Timeline'] .caption--provisional .caption__word[data-typing] {
-  animation-delay: var(--type-step);
 }
 
 :root[data-theme='Timeline'] .panel {
@@ -1966,7 +1926,6 @@
   --bg-slab-strong: rgba(24,14,11,0.66);
   --radius-lg: 14px;
   --motion-in: 500ms;
-  --type-step: 45ms;
   --accent: #FFC496;
   --accent-soft: rgba(255,196,150,0.08);
   --theme-swatch: #FFC496;
@@ -2017,10 +1976,6 @@
 :root[data-theme='Chips'] .caption--provisional .caption__text {
   color: var(--text-provisional);
   font-style: normal;
-}
-
-:root[data-theme='Chips'] .caption--provisional .caption__word[data-typing] {
-  animation-delay: var(--type-step);
 }
 
 :root[data-theme='Chips'] .panel {
@@ -2212,7 +2167,6 @@
   --bg-slab-strong: rgba(20,28,30,0.96);
   --radius-lg: 16px;
   --motion-in: 500ms;
-  --type-step: 45ms;
   --accent: #4A6B74;
   --accent-soft: rgba(74,107,116,0.10);
   --theme-swatch: #4A6B74;
@@ -2263,10 +2217,6 @@
 :root[data-theme='Gutter'] .caption--provisional .caption__text {
   color: var(--text-provisional);
   font-style: normal;
-}
-
-:root[data-theme='Gutter'] .caption--provisional .caption__word[data-typing] {
-  animation-delay: var(--type-step);
 }
 
 :root[data-theme='Gutter'] .panel {

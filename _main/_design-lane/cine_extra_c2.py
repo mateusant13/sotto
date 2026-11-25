@@ -160,9 +160,6 @@ def _tokens(d):
       --font-closed    <- `fonts.caption` (DECISION in the plan: this zip reuses the
                           caption family for its history row text)
       --size-caption   <- `_SIZE_CAPTION` (decision 1)
-      --type-step      <- `0ms`: this zip reveals by WORD (`WordRun` + `.word-in`), and
-                          `0ms` is the documented off switch for the per-character
-                          reveal, not a deleted rule.
       --cine-scrim     <- the BOTTOM stop of the design's own first `overlay`, i.e. the
                           darkest point of its legibility gradient — where the caption
                           sits (`App.tsx` anchors it at `bottom: caption.bottom`). The
@@ -197,7 +194,6 @@ def _tokens(d):
         '--leading-caption': d['leading'],
         '--weight-caption': d['weight'],
         '--tracking-caption': d['tracking'],
-        '--type-step': '0ms',
         '--cine-scrim': d['scrim'],
         # the radius scale, as fractions of the design's own stated radius
         '--radius-sm': '%gpx' % round(r * 0.34),
@@ -244,7 +240,8 @@ _KEYFRAMES = """/* ── THE WORD REVEAL — declared ONCE for all six `cinemat
  * WHY THE REVEAL IS PER WORD: `WordRun` renders one span per word and gives the span
  * at index `revealed - 1` the class `.word-in`; the key includes the word's text, so
  * a changed word REMOUNTS and the animation restarts. The panel's per-character
- * machinery is switched off through `--type-step: 0ms`.
+ * machinery is switched off (its old `--type-step: 0ms` switch left with the
+ * token, 2026-11-25).
  *
  * THE CARET IS THE SET'S FORMING MARKER (see the file header, rule 4): in five of
  * this zip's six variants the forming text is styled IDENTICALLY to the settled
@@ -486,8 +483,9 @@ def _css(d):
     # ── the reveal ──────────────────────────────────────────────────────────────
     w('/* THE REVEAL — one WORD at a time, `wordIn 0.42s cubic-bezier(0.22,1,0.36,1)`')
     w(' * from the zip\'s own `index.css`, with `both` fill. The panel\'s char-by-char')
-    w(' * reveal is switched OFF through `--type-step: 0ms`, the documented off switch,')
-    w(' * because two animations on one character\'s opacity multiply. NO `color:`')
+    w(' * reveal is switched OFF (its `--type-step: 0ms` switch left with the token,')
+    w(' * 2026-11-25) because two animations on one character\'s opacity multiply.')
+    w(' * NO `color:`')
     w(' * HERE: this zip never recolours a forming word — the accent\'s only job on the')
     w(' * live line is the caret below. */')
     w('@S@ .caption--provisional .caption__word[data-typing] {')

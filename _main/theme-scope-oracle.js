@@ -51,8 +51,13 @@ const DIR = ARG_DIR > -1 ? process.argv[ARG_DIR + 1] : path.join(__dirname, '..'
 const FILES = [1, 2, 3, 4, 5].map((n) => ({ n, file: 'theme-' + n + '.css' }));
 const NEG_ARM = process.argv.includes('--neg-arm');
 
-/** The six selectors the 2026-10-11 defect leaked, in the order the template writes them. */
-const LEAKED = ['.panel__header', '.panel__header *', '.status', '.status *', '.chrome', '.chrome *'];
+/** The selectors the 2026-10-11 defect leaked, in the order the template writes them.
+ *  RE-AIMED 2026-11-25: `.chrome` and `.chrome *` were the last two members and the
+ *  whole chrome row left the panel (owner, 2026-11-06; the generator stopped emitting
+ *  it 2026-11-25), so the group this arm guards is the four REAL nodes. The arm's job
+ *  is unchanged -- the leaked group must stay ONE rule, fully scoped, not fragmented --
+ *  and `fragment-group` below proves the arm still says no. */
+const LEAKED = ['.panel__header', '.panel__header *', '.status', '.status *'];
 
 const sha256 = (b) => crypto.createHash('sha256').update(b).digest('hex');
 
@@ -224,6 +229,24 @@ function revertScoping(text, n) {
   return { text: text.slice(0, idx) + lines.join(',' + d.NL) + text.slice(idx + d.from.length), changed: bare.length - 2 };
 }
 
+/** Split the leaked group into TWO rules with the same members, each scoped.
+ *  This is the arm-B control: the group is intact in coverage but no longer ONE
+ *  rule, which is exactly the "fragmented or rebuilt" case ARM B names. */
+function fragmentGroup(text, n) {
+  const d = defectGroup(text, n);
+  if (!d) return { text: text, changed: 0 };
+  const members = d.group.members;
+  const head = members.slice(0, 2).join(',' + d.NL);
+  const tail = members.slice(2).join(',' + d.NL);
+  const idx = text.indexOf(d.from);
+  if (idx < 0) return { text: text, changed: 0 };
+  return {
+    text: text.slice(0, idx) + head + ' {' + d.NL + '  transition-duration: var(--motion-in);' + d.NL + '}' + d.NL
+          + tail + text.slice(idx + d.from.length),
+    changed: 3,
+  };
+}
+
 /** Re-scope every member of that group to ANOTHER theme. */
 function foreignScope(text, n) {
   const d = defectGroup(text, n);
@@ -292,10 +315,17 @@ if (!NEG_ARM) {
 const MUT = [
   { name: 'revert-scoping theme-1',         n: 1, file: 'theme-1.css', mutate: revertScoping, names: 'NOT scoped to theme-1' },
   { name: 'revert-scoping theme-5',         n: 5, file: 'theme-5.css', mutate: revertScoping, names: 'NOT scoped to theme-5' },
-  { name: 'revert-token-block theme-3',     n: 3, file: 'theme-3.css', mutate: revertTokens,  names: '--font-serif' },
-  { name: 'drop-only---font-serif theme-3', n: 3, file: 'theme-3.css', mutate: (t) => dropDecl(t, '--font-serif'), names: '--font-serif' },
+  { name: 'revert-token-block theme-3',     n: 3, file: 'theme-3.css', mutate: revertTokens,  names: '--w-op' },
+  /* RE-AIMED 2026-11-25: this pair used to name `--font-serif`, the `mano` brand
+   * face. The node that read it was `.chrome--mano .chrome__brand`, which left the
+   * document on 2026-11-06, so the token lost its last consumer and the generator
+   * stopped declaring it (2026-11-25) -- a mutant that deletes a declaration which
+   * does not exist is GREEN for the wrong reason. `--caption-scale` is the live
+   * second token of that block: the owner's own size dial. */
+  { name: 'drop-only---caption-scale t3',   n: 3, file: 'theme-3.css', mutate: (t) => dropDecl(t, '--caption-scale'), names: '--caption-scale' },
   { name: 'drop-only---w-op theme-3',       n: 3, file: 'theme-3.css', mutate: (t) => dropDecl(t, '--w-op'),       names: '--w-op' },
   { name: 'foreign-scope theme-2',          n: 2, file: 'theme-2.css', mutate: foreignScope,  names: 'ANOTHER theme' },
+  { name: 'fragment-group theme-4',         n: 4, file: 'theme-4.css', mutate: fragmentGroup, names: 'fragmented or rebuilt' },
 ];
 
 console.log('');

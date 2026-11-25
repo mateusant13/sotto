@@ -2,15 +2,12 @@
 """unfinished-items-coverage-oracle -- every unfinished item, from every source the objective names, in ONE
 place, with the rule that a NEW unfinished item turns this RED.
 
-The objective names the sources explicitly: AGENTS.md open risks, a _main/DEBT-LEDGER.md, docs/audit/,
-the lease-audit TO-BE-ANSWERED-BY-OWNER.md, and lane receipts and briefs. Two of those do NOT exist where
-the objective says, and saying so with a search is part of the job:
-
-  * _main/DEBT-LEDGER.md does NOT exist in the product root. The ledger lives in the PARKED tree:
-    _moved/aireplay/_main/DEBT-LEDGER.md (463 lines) and, a 68-line copy, in the laneH worktree.
-  * TO-BE-ANSWERED-BY-OWNER.md exists TWICE under _moved/aireplay: the lane one (8 questions) and the
-    lease-audit one (7 questions). Both are owner questions about the PARKED product, not rows of the
-    live map.
+The objective named five sources. Three are live and are enumerated below: AGENTS.md open risks,
+`docs/audit/`, and `_main/receipt-*.md`. Two are GONE and are reported as such, not crashed on:
+`_main/DEBT-LEDGER.md` never existed in the product root (the ledger lived in the parked `_moved/` tree)
+and the `TO-BE-ANSWERED-BY-OWNER.md` files lived there too. MEASURED 2026-11-25: the whole `_moved/`
+tree is absent from this checkout, so those four paths print `ABSENT (parked tree removed)` and the
+enumerator no longer dies reading them -- the absence is a fact about the product, not a crash.
   * docs/audit/ holds 46 markdown files; the map gate counts 43 finding-docs. This oracle prints the
     difference by NAME instead of leaving the gap to be guessed.
 
@@ -57,6 +54,13 @@ NUM_IN_MAP = re.compile(r"^- \*\*(APPLIED|OPEN):\*\* (\d+)", re.MULTILINE)
 def read(path):
     with open(path, encoding="utf-8", errors="replace") as handle:
         return handle.read()
+
+
+def agents_open_ids(path):
+    """The strict open-risk markers of one AGENTS.md-like file, as ids."""
+    lines = read(path).split("\n")
+    strict = [ln.strip() for ln in lines if "RISCO ABERTO" in ln or "OPEN RISK" in ln]
+    return strict, [marker_id(ln) for ln in strict]
 
 
 def ascii_safe(text):
@@ -106,9 +110,8 @@ def main(argv=None):
 
     # ---- 2. AGENTS.md open risks + qualified claims ------------------------
     agents = read(AGENTS).split("\n")
-    strict = [ln.strip() for ln in agents if "RISCO ABERTO" in ln or "OPEN RISK" in ln]
+    strict, ids = agents_open_ids(AGENTS)
     qualified = [ln.strip() for ln in agents if QUALIFIED.search(ln)]
-    ids = [marker_id(ln) for ln in strict]
     say("  2. AGENTS.md: %d strict open-risk marker(s), %d line(s) carrying a load-bearing qualifier"
         % (len(strict), len(qualified)))
     for ident in ids:
@@ -120,10 +123,20 @@ def main(argv=None):
         if ident not in ids:
             say("       gone (closed or reworded): " + ident)
 
-    # ---- 3. the two ledgers -------------------------------------------------
+    # ---- 3/4. the parked-tree sources: REMOVED, and said so ----------------
+    # MEASURED 2026-11-25: the whole `_moved/` tree is gone from this checkout,
+    # so the two debt ledgers and the two owner-question files this oracle was
+    # built around do not exist. `read()` on them used to kill the run with
+    # FileNotFoundError -- the instrument was measuring a product that had been
+    # parked away, and it read that absence as a crash instead of as a fact.
+    # Nothing live replaced them: the product's own open work lives in
+    # `docs/audit/00-MAPA-CONSOLIDADO.md` (section 1) and in the receipts
+    # (section 6), which are still enumerated below.
+    for path in (LEDGER_A, LEDGER_B, OWNER_A, OWNER_B):
+        state = "present" if os.path.exists(path) else "ABSENT (parked tree removed)"
+        say("  3/4. %s: %s" % (os.path.relpath(path, ROOT), state))
     for path in (LEDGER_A, LEDGER_B):
         if not os.path.exists(path):
-            say("  3. " + path + ": ABSENT")
             continue
         lines = read(path).split("\n")
         rows = [ln for ln in lines if LEDGER_ROW.match(ln)]
@@ -137,12 +150,10 @@ def main(argv=None):
             say("       %-16s %s%s" % (name, ln.strip()[-58:], "   <-- UNCLASSIFIED" if fresh else ""))
             if fresh:
                 wrong.append("a NEW open ledger row is unclassified: " + name)
-
-    # ---- 4. the owner question files ---------------------------------------
     for path in (OWNER_A, OWNER_B):
+        if not os.path.exists(path):
+            continue
         text = read(path)
-        # The two files spell their headings differently ("Q1." vs "Q1 -"), so the pattern may not
-        # require the dot: the first version of this arm pinned 8 for a file it then found 0 in.
         titles = re.findall(r"^## (Q\d+\b.*)$", text, re.MULTILINE)
         pinned = PIN_OWNER_QUESTION_COUNTS[path]
         say("  4. %s: %d owner question(s), pinned %d" % (os.path.relpath(path, ROOT), len(titles), pinned))
@@ -169,22 +180,28 @@ def main(argv=None):
 
     # ---- 7. control --------------------------------------------------------
     if args.neg_arm:
+        # RE-ANCHORED 2026-11-25: the control used to plant a question in a COPY
+        # of `_moved/aireplay/.../TO-BE-ANSWERED-BY-OWNER.md`. That file is gone
+        # with the parked tree, so `shutil.copyfile` died with FileNotFoundError
+        # and the control could no longer say NO. The live source is AGENTS.md:
+        # a planted open risk must come back UNCLASSIFIED through the same rule
+        # section 2 uses.
         work = os.path.join(tempfile.gettempdir(), "coverage-neg")
         os.makedirs(work, exist_ok=True)
-        fake = os.path.join(work, "TO-BE-ANSWERED-BY-OWNER.md")
-        shutil.copyfile(OWNER_B, fake)
+        fake = os.path.join(work, "AGENTS.md")
+        shutil.copyfile(AGENTS, fake)
         with open(fake, "a", encoding="utf-8", newline="") as handle:
-            handle.write("\n## Q99. UMA PERGUNTA NOVA QUE NINGUEM CLASSIFICOU\n")
-        titles = re.findall(r"^## (Q\d+\b.*)$", read(fake), re.MULTILINE)
-        say("  7. CONTROL (a COPY with a planted question): %d question(s) seen, pinned %d"
-            % (len(titles), PIN_OWNER_QUESTION_COUNTS[OWNER_B]))
-        if len(titles) != PIN_OWNER_QUESTION_COUNTS[OWNER_B] + 1:
-            wrong.append("control: the planted question was NOT seen -- the enumerator is not reading the file")
-        if len(titles) == PIN_OWNER_QUESTION_COUNTS[OWNER_B]:
-            wrong.append("control: the planted question did not move the count")
+            handle.write("\n- **RISCO ABERTO QUE NINGUEM CLASSIFICOU (CONTROLE) -- planted**\n")
+        _strict, seen = agents_open_ids(fake)
+        fresh = [ident for ident in seen if ident not in PIN_AGENTS_MARKERS]
+        say("  7. CONTROL (a COPY of AGENTS.md with a planted open risk): %d marker(s) seen, "
+            "%d unclassified" % (len(seen), len(fresh)))
+        if not fresh:
+            wrong.append("control: the planted open risk was NOT seen -- the enumerator is not reading the file")
         else:
-            say("       CONTROL FIRED: the planted Q99 is a new id -- the same rule that fails the real files")
-            say("       when their counts move. A control that cannot say NO is not a control.")
+            say("       CONTROL FIRED: %s" % fresh[0][:60])
+            say("       the planted marker is a new id -- the same rule that fails the real file when a"
+                " new open risk appears. A control that cannot say NO is not a control.")
         os.remove(fake)
     else:
         say("  7. CONTROL not run (pass --neg-arm)")

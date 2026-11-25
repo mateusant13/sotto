@@ -178,6 +178,24 @@ def class_universe():
         for m in re.finditer(r"classList\.(?:add|toggle|remove)\(([^)]*)\)", t):
             for q in re.finditer(r'["\x27\x60]([^"\x27\x60]*)["\x27\x60]', m.group(1)):
                 names.update(x for x in q.group(1).split() if re.match(r"^[A-Za-z][A-Za-z0-9_-]*$", x))
+        # THE ELEMENT-FACTORY FORM (fixed 2026-11-25). `theme-tune.js` builds its
+        # whole dialog as `el('div', 'tune-row')` / `el('p', 'pause-dialog__honest')`
+        # -- the class name is the SECOND ARGUMENT of a helper, never a `class=`
+        # or `classList` call. Without this the builder reported 6 live classes as
+        # "unmatchable", and an arm that accuses the document for the shape of its
+        # own helper is measuring the scanner, not the stylesheet. The helper is
+        # read out of the module rather than assumed: its 2nd parameter must be
+        # named `cls`/`className`/`klass`, and only calls to that name count.
+        for hm in re.finditer(r"function\s+(\w+)\s*\(([^)]*)\)", t):
+            params = [p.strip().split('=')[0].strip() for p in hm.group(2).split(',')]
+            if len(params) < 2 or params[1] not in ('cls', 'className', 'klass'):
+                continue
+            helper = hm.group(1)
+            for cm in re.finditer(r"\b" + re.escape(helper) +
+                                  r"\(\s*[\x27\x60][^\x27\x60]*[\x27\x60]\s*,\s*"
+                                  r"[\x27\x60]([^\x27\x60]*)[\x27\x60]", t):
+                names.update(x for x in cm.group(1).split()
+                             if re.match(r"^[A-Za-z][A-Za-z0-9_-]*$", x))
         per_module[s] = names
         universe |= names
     return universe, per_module, scripts

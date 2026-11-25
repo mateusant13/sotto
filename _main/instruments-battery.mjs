@@ -171,10 +171,16 @@ const py = [
   // to the gesture on 2026-10-20. The row stays in the list: the acceptance
   // register cites it (_main/aceitacao-dono.md A1 and D4) and
   // _main/aceitacao-gate.py requires a cited instrument to be LISTED here.
-  ['_main/hotkey-cycle-oracle.py', 'Alt+C gesture 1/2/3 (caption, 1st, right)'],
-  ['_main/hotkey-cycle-oracle.py --neg-arm', 'Alt+C gesture neg (3 mutants)'],
+  // RETIRED 2026-11-25: `_main/hotkey-cycle-oracle.py` no longer exists. The
+  // owner replaced the three-state cycle (1/2/3 taps) on 2026-11-01 with
+  // Alt+C = alternate the panels and Ctrl+Space = live captions, and
+  // `_main/altc-gesture-oracle.py` is the instrument that measures THAT
+  // contract (it runs in the house battery as `altc-gesture` + its
+  // `red-as-expected` pair). Listing a deleted file made two rows exit 2 --
+  // a red that measured nothing but the list itself.
+  ['_main/altc-gesture-oracle.py', 'Alt+C alternates the panels (live gesture owner)'],
   ['_main/panel-chrome-gate.py', 'panel chrome: footer labels, no browser'],
-  ['_main/panel-chrome-gate.py --neg-arm', 'panel chrome neg (3 mutants)'],
+  ['_main/panel-chrome-gate.py --neg-arm', 'panel chrome neg (4 mutants)'],
   ['_main/theme-lightness-census.py --neg-arm', 'no white theme: neg (white injected)'],
   ['_main/cine-themes-oracle.py --neg-arm', 'cine themes neg (8 mutants)'],
   ['_main/cinematic-designs-oracle.py --neg-arm', 'cinematic designs neg (6)'],

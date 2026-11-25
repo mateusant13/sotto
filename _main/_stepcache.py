@@ -101,14 +101,100 @@ _HASH_CACHE = {}
 # alguem acabou de escrever nunca e' cacheado.
 _HASH_STABLE_S = 2.0
 
+# O MESMO MEMO, MAS ATRAVES DE PROCESSOS (medido 2026-11-25). O memo acima vive
+# dentro de UM processo, e cada passo da bateria e' um processo novo: a
+# populacao de deps medida nesta arvore e' 522 ficheiros / **868,9 MB**, dos
+# quais 690 MB sao o `encoder.onnx.data` do nemotron e 38,6 MB um log de
+# sessao. Hashear isso a cada `sotto-state-page.py --write` custa 33 s nativo e
+# passou dos 240 s do portao de prazo sob o tecto `--io very-low` (medido
+# 2026-11-25: `STEP-DEADLINE exceeded step=red-as-expected-state-page`). A
+# chave e' EXACTAMENTE a do memo em memoria -- `abspath|st_mtime_ns|st_size`,
+# com o mesmo portao de 2 s de ficheiro parado --, logo o preco e' o mesmo que
+# a casa ja' aceitou (um ficheiro reescrito no mesmo nanossegundo com o mesmo
+# tamanho devolveria o hash antigo). O ficheiro tem TECTO e e' escrito por
+# `os.replace`, portanto um processo que morra a meio nao deixa memo truncado;
+# dois processos a escrever ao mesmo tempo perdem entradas, nunca corrompem
+# (perder uma entrada custa um re-hash, nao um veredito). `SOTTO_HASH_NO_CACHE=1`
+# desliga as duas camadas.
+_HASH_MEMO_PATH = os.path.join(REPO, "_cache", "hash-memo.json")
+_HASH_MEMO_CAP = 6000
+_HASH_MEMO = None
+_HASH_MEMO_DIRTY = False
+
+
+def _memo_key(abspath: str, st) -> str:
+    return "%s|%d|%d" % (abspath, st.st_mtime_ns, st.st_size)
+
+
+def _memo_get(key: str):
+    global _HASH_MEMO
+    if _HASH_MEMO is None:
+        _HASH_MEMO = {}
+        if not _HASH_NO_CACHE:
+            try:
+                with open(_HASH_MEMO_PATH, "r", encoding="utf-8") as fh:
+                    loaded = json.load(fh)
+                if isinstance(loaded, dict):
+                    _HASH_MEMO = loaded
+            except (OSError, ValueError):
+                _HASH_MEMO = {}
+    return _HASH_MEMO.get(key)
+
+
+def _memo_put(key: str, digest: str) -> None:
+    global _HASH_MEMO_DIRTY
+    if _HASH_NO_CACHE:
+        return
+    _memo_get(key)
+    _HASH_MEMO[key] = digest
+    _HASH_MEMO_DIRTY = True
+
+
+def _memo_flush() -> None:
+    """Write the memo once per process, trimmed by RANKED retention.
+
+    The key carries `st_mtime_ns`, so "newest" is read from the key itself: the
+    cap keeps the newest `_HASH_MEMO_CAP` entries, which is exactly the set of
+    files that changed most recently -- an old, untouched file is the one a
+    re-hash costs least to lose.
+    """
+    global _HASH_MEMO_DIRTY
+    if not _HASH_MEMO_DIRTY or _HASH_NO_CACHE or not _HASH_MEMO:
+        return
+    try:
+        if len(_HASH_MEMO) > _HASH_MEMO_CAP:
+            def mtime_of(item):
+                try:
+                    return int(item[0].rsplit("|", 2)[1])
+                except (IndexError, ValueError):
+                    return 0
+            keep = sorted(_HASH_MEMO.items(), key=mtime_of, reverse=True)[:_HASH_MEMO_CAP]
+            _HASH_MEMO.clear()
+            _HASH_MEMO.update(dict(keep))
+        os.makedirs(os.path.dirname(_HASH_MEMO_PATH), exist_ok=True)
+        tmp = _HASH_MEMO_PATH + ".tmp%d" % os.getpid()
+        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(_HASH_MEMO, fh, separators=(",", ":"), sort_keys=True)
+        os.replace(tmp, _HASH_MEMO_PATH)
+    except (OSError, ValueError):
+        return
+    _HASH_MEMO_DIRTY = False
+
+
+import atexit  # noqa: E402  (kept beside the memo it serves)
+
+atexit.register(_memo_flush)
+
 
 def sha256_file(path: str) -> str:
     """sha256 of a file's BYTES. Missing file -> None (never an exception)."""
     try:
         st = os.stat(path)
-        key = (os.path.abspath(path), st.st_mtime_ns, st.st_size)
+        abspath = os.path.abspath(path)
+        key = (abspath, st.st_mtime_ns, st.st_size)
     except (OSError, ValueError):
         key = None
+        abspath = ""
     stable = False
     if key is not None:
         try:
@@ -119,6 +205,10 @@ def sha256_file(path: str) -> str:
         cached = _HASH_CACHE.get(key)
         if cached is not None:
             return cached
+        disk = _memo_get(_memo_key(abspath, st))
+        if disk is not None:
+            _HASH_CACHE[key] = disk
+            return disk
     try:
         h = hashlib.sha256()
         with open(path, "rb") as fh:
@@ -132,6 +222,7 @@ def sha256_file(path: str) -> str:
         return None
     if key is not None and stable and not _HASH_NO_CACHE:
         _HASH_CACHE[key] = digest
+        _memo_put(_memo_key(abspath, st), digest)
     return digest
 
 

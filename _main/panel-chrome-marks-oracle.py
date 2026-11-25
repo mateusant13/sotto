@@ -118,12 +118,19 @@ def evaluate(files):
                else ("C7", "ok", "no scrollIntoView / scrollTop=0 in panel.html"))
 
     # C8 -- live state + X on the right + the transcript control gone.
+    # RE-AIMED 2026-11-25: this row used to look for the `tele` chrome footer
+    # (`data-slot="end"` / `chrome--tele`), which left the document on 2026-11-06.
+    # The two things it actually wants still exist and are named directly: the
+    # live state is `#status-dot` (with `#status-text` beside it) and the X is the
+    # hide control. A row that cannot find its subject says so instead of passing.
     gone = 'id="history-toggle"' in html or "history__toggle" in css
-    tele = 'data-slot="end"' in html or "chrome--tele" in html
+    dot = 'id="status-dot"' in html and 'id="status-text"' in html
+    x_right = 'id="hide-button"' in html
     if gone:
         out.append(("C8", "gap", "the transcript control is still in the markup"))
-    elif not tele:
-        out.append(("C8", "gap", "cannot find the tele chrome to check the X"))
+    elif not (dot and x_right):
+        out.append(("C8", "gap", "no status dot (%r) or no hide control (%r) in the markup"
+                    % (dot, x_right)))
     else:
         out.append(("C8", "ok", "live state + X present, no transcript control"))
 

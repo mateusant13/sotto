@@ -315,6 +315,39 @@ def battery(engine, root: str, tag: str):
         % (rc_q, out_q.splitlines()[:1], row_q.get("rc"),
            (row_q.get("log_sha256") or "-")[:8], hit_q, why_q))
 
+    # (r) O MEMO DE HASH ATRAVES DE PROCESSOS NAO SERVE UM HASH VELHO (arm
+    # nova 2026-11-25, com o memo em `_stepcache.sha256_file`). O memo em
+    # memoria ja' existia; o de DISCO nasceu porque 522 deps / 868,9 MB eram
+    # re-hasheados por um `--write` (33 s nativos, >240 s sob `--io very-low`).
+    # A arm pergunta exactamente o que o memo pode estragar: o MESMO tamanho
+    # escrito de novo, com `st_mtime_ns` novo, TEM de dar outro digest.
+    memo_path = os.path.join(root, "memo-%s.json" % tag)
+    engine._HASH_MEMO_PATH = memo_path
+    engine._HASH_MEMO = {}
+    engine._HASH_CACHE.clear()
+    fx_r = Fix(root, tag + "-r")
+    # NO SLEEP: the memo's gate is "the file has been still for 2 s", which
+    # `os.utime` answers directly. Sleeping 2,2 s per mutant cost +40 s on this
+    # step when it was first written (measured 2026-11-25: the oracle went from
+    # 7,78 s to 52,1 s, and the battery's +5 % budget ratchet would refuse that).
+    now = time.time()
+    with open(fx_r.dep, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("AAAA\n")
+    os.utime(fx_r.dep, (now - 10.0, now - 10.0))
+    r_first = engine.sha256_file(fx_r.dep)
+    r_second = engine.sha256_file(fx_r.dep)
+    with open(fx_r.dep, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("BBBB\n")
+    os.utime(fx_r.dep, (now - 9.0, now - 9.0))
+    r_third = engine.sha256_file(fx_r.dep)
+    memo_hit = bool(engine._HASH_MEMO)
+    ok_r = (bool(r_first) and r_first == r_second and memo_hit
+            and bool(r_third) and r_third != r_first)
+    add(ok_r, "r memo de disco: mesmo conteudo HIT, mesmo tamanho reescrito MISS",
+        "first=%s second=%s third=%s memo_entries=%d"
+        % ((r_first or "-")[:8], (r_second or "-")[:8],
+           (r_third or "-")[:8], len(engine._HASH_MEMO or {})))
+
     return rows
 
 
@@ -359,6 +392,14 @@ MUTANTS = [
      ["q passo com deps vazio e MEDIDO e nunca cacheado"],
      '        fp, missing, uncached = None, [], "no-deps: measured, never a cache hit"',
      '        return False, "no-deps: refusing to record a step with no deps"'),
+    # O DEFEITO QUE O MEMO DE DISCO TORNA POSSIVEL (2026-11-25): a chave perde
+    # `st_mtime_ns`, logo um ficheiro reescrito com o MESMO tamanho responde
+    # com o digest ANTIGO -- e o passo que depende dele nunca volta a correr.
+    # A arm r tem de o apanhar; nenhuma outra arm toca no memo.
+    ("memo-serve-hash-velho",
+     ["r memo de disco: mesmo conteudo HIT, mesmo tamanho reescrito MISS"],
+     '    return "%s|%d|%d" % (abspath, st.st_mtime_ns, st.st_size)',
+     '    return "%s|%d" % (abspath, st.st_size)'),
 ]
 
 
