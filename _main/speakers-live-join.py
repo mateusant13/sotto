@@ -169,6 +169,13 @@ def main(argv=None):
         sidecar_state = _stop(sidecar)
 
     captions = _read_jsonl(work_log, "caption")
+    # THE VERDICT READS THE PRODUCT'S OWN OUTPUT. The worker already decided
+    # (its `source` ends in `/voice:speaker-N` when the bridge named the line),
+    # so re-deciding here with a synthetic epoch -- `tap_ms - start` -- measures
+    # the instrument's arithmetic, not the product: the tap happens AFTER the
+    # line closed, and that shift alone can move the line out of its segment.
+    # MEASURED 2026-11-25: a replay built that way said "0 of 49" on a log
+    # where the worker had stamped 84 lines.
     attributed = [c for c in captions
                   if re.search(r"/voice:speaker-\d+\s*$",
                                str(c.get("source") or ""))]

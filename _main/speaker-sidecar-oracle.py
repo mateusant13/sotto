@@ -650,40 +650,66 @@ def gpu_policy_battery(mod) -> list:
             rejected = "'cpu' or 'cuda'" in str(exc)
         chk(rejected, "requested provider %r is refused by name" % requested)
 
-    # THE ENDPOINT PICKER, WHICH HAD NO GATE (2026-11-24). The live join was
-    # silent because `_open_endpoint` read `spec["default"]` while the specs
-    # writer writes `is_default`: the default branch never matched, so the
-    # sidecar diarized whatever ranked first (`VoiceMeeter Input`) while the
-    # worker transcribed the real call. These arms are the difference.
-    default_not_first = [
-        {"name": "VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)", "endpoint_id": "vm"},
-        {"name": "Headphones (Realtek)", "endpoint_id": "hp", "is_default": True},
-    ]
-    chk(mod._open_endpoint(default_not_first).get("endpoint_id") == "hp",
-        "the DEFAULT endpoint wins even when it is not first in the rank",
-        repr(mod._open_endpoint(default_not_first)))
-    chk(mod._open_endpoint(default_not_first, "voicemeeter").get("endpoint_id") == "vm",
-        "an explicit device name still wins over the default")
-    chk(mod._open_endpoint([]) is None, "no endpoints means None, not a crash")
-
-    class Probe:
-        endpoint_id = "hp2"
-
-    unflagged = [{"name": "VoiceMeeter Input", "endpoint_id": "vm"},
-                 {"name": "Speakers", "endpoint_id": "hp2"}]
+    # THE ENDPOINT PICKER, WHICH HAD NO GATE (2026-11-24), AND THE SECOND
+    # DEFECT THE JOIN FOUND (2026-11-25). Two measured failures set the order:
+    # `spec["default"]` was never written (the writer writes `is_default`), and
+    # the static default is NOT what the worker opens -- Windows keeps one
+    # default per role (E_CONSOLE vs E_MULTIMEDIA), so the sidecar captured
+    # `VoiceMeeter Input` while the worker transcribed `Fones de ouvido
+    # (soundcore Space Q45)`: 91 captions, ZERO attributed. The worker's rung A
+    # follows the LIVE meter (`live_endpoint_order`); the picker now asks that
+    # same question first, so both halves open one endpoint by construction.
+    #
+    # Every arm STUBS `wasapi_loopback`, because an arm that reads the real
+    # device on this box cannot fail: the machine is always rendering
+    # something, so the fixture would be ignored and the arm would "pass" by
+    # accident (measured: the first draft of these arms did exactly that).
     prior_wasapi = sys.modules.get("wasapi_loopback", missing)
-    sys.modules["wasapi_loopback"] = types.SimpleNamespace(
-        default_render_endpoint=lambda: Probe())
-    try:
-        picked = mod._open_endpoint(unflagged)
-    finally:
-        if prior_wasapi is missing:
-            sys.modules.pop("wasapi_loopback", None)
-        else:
-            sys.modules["wasapi_loopback"] = prior_wasapi
-    chk(picked and picked.get("endpoint_id") == "hp2",
-        "with no spec flagged, GetDefaultAudioEndpoint decides (not the rank)",
-        repr(picked))
+
+    def _stub(live_entries, default_id):
+        class _Probe:
+            endpoint_id = default_id
+        return types.SimpleNamespace(
+            live_endpoint_order=lambda: list(live_entries),
+            default_render_endpoint=lambda: _Probe())
+
+    def _pick(specs, live_entries=(), wanted=None, default_id="hp2"):
+        sys.modules["wasapi_loopback"] = _stub(live_entries, default_id)
+        try:
+            return mod._open_endpoint(specs, wanted)
+        finally:
+            if prior_wasapi is missing:
+                sys.modules.pop("wasapi_loopback", None)
+            else:
+                sys.modules["wasapi_loopback"] = prior_wasapi
+
+    two = [
+        {"name": "VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)", "endpoint_id": "vm"},
+        {"name": "Fones de ouvido (soundcore Space Q45)", "endpoint_id": "hp",
+         "is_default": True},
+    ]
+    chk((_pick(two) or {}).get("endpoint_id") == "hp",
+        "with nothing rendering, the DEFAULT wins even when it is not first",
+        repr(_pick(two)))
+    chk((_pick(two, wanted="voicemeeter") or {}).get("endpoint_id") == "vm",
+        "an explicit device name still wins over everything")
+    chk((_pick(two, [{"endpoint_id": "vm", "name": "VoiceMeeter Input",
+                      "meter_peak": 0.0},
+                     {"endpoint_id": "hp", "name": "Fones de ouvido",
+                      "meter_peak": 0.31}]) or {}).get("endpoint_id") == "hp",
+        "the endpoint RENDERING NOW wins over the static default (the worker's rule)")
+    silent = [{"name": "A", "endpoint_id": "a"},
+              {"name": "B", "endpoint_id": "b2"}]
+    chk((_pick(silent, [], default_id="b2") or {}).get("endpoint_id") == "b2",
+        "no live meter and no flagged default: GetDefaultAudioEndpoint decides",
+        repr(_pick(silent, [], default_id="b2")))
+    chk((_pick(silent, [{"endpoint_id": "zzz", "name": "not in the specs",
+                         "meter_peak": 0.22}]) or {}).get("endpoint_id") == "zzz",
+        "a live endpoint missing from the spec list is still opened by id")
+    chk(_pick([], []) is None, "no endpoints and nothing rendering means None")
+    chk((_pick([], [{"endpoint_id": "live", "name": "live",
+                     "meter_peak": 0.2}]) or {}).get("endpoint_id") == "live",
+        "an empty spec list is not a refusal: the live endpoint is still opened")
 
     out.extend(watch_policy_battery(mod))
     return out
@@ -1618,6 +1644,22 @@ MUTANTS = [
     ("a-cadence-outlives-the-window",
      "DEFAULT_EVERY_S = 10.0",
      "DEFAULT_EVERY_S = 40.0"),
+    # THE PICKER'S SECOND DEFECT (2026-11-25): the sidecar and the worker must
+    # ask the SAME question. A picker that skips the live meter, or that reads
+    # it backwards, captures a different endpoint than the one being
+    # transcribed -- 91 captions, 0 attributed, no crash and no error.
+    ("the-live-meter-rule-removed",
+     "    for entry in live or ():\n"
+     "        if not entry.get(\"meter_peak\"):\n"
+     "            continue",
+     "    for entry in ():\n"
+     "        if not entry.get(\"meter_peak\"):\n"
+     "            continue"),
+    ("the-meter-peak-read-backwards",
+     "        if not entry.get(\"meter_peak\"):\n"
+     "            continue",
+     "        if entry.get(\"meter_peak\"):\n"
+     "            continue"),
 ]
 
 

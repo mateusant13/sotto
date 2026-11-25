@@ -336,17 +336,44 @@ proporciona ou entao com modelo que separa vozes."* e, quando recebeu um pedido 
   declina SEM chamar o modelo. A barra nao desce -- o que muda e' o que o modelo ve'.
   **MEDIDO 2026-11-24**: no JOIN ao vivo a fala do dono ocupava 2-8 % de 20 s, a janela inteira era
   recusada em quase todos os tiques e 7 legendas reais saiam sem voz.
+- **A IDENTIDADE DE SLOT EM FALA ESPARSA NAO ESTA RESOLVIDA, e agora esta' MEDIDA a razao.**
+  `StableSpeakerSlots` casa por TEMPO FALADO PARTILHADO; quando duas janelas nao partilham fala
+  nenhuma (12 s de silencio entre falas do dono), a mesma pessoa ganha outro slot -- medido: **UMA
+  voz -> 3 slots** num fixture esparso de 88 s. A via "obvia" (embedding por segmento +
+  limiar de cosseno) foi **CONSTRUIDA E REFUTADA** no mesmo dia:
+  `_main/_slot-cosine-distribution.py` em 120 s da call multi-voz do dono mede
+  **mesma voz min +0,655** contra **vozes diferentes max +0,743** -- o intervalo de limiar e'
+  **VAZIO**, logo nao existe cosseno que separe estas populacoes com este modelo neste audio. O custo
+  fica declarado: durante fala esparsa o painel pode pintar **uma cor a mais** para a mesma pessoa;
+  um nome errado nao e' aceitavel, e por isso nao ha limiar no codigo.
 - **Um payload `"fake": true` e' RECUSADO pelo nome**, nao pela idade: o oraculo escreve fixtures
   frescas, e uma fixture fresca a nomear vozes reais e' o cracha a mentir que o `speaker_bridge`
   existe para impedir.
-- **As provas, e elas correm:** `_main/speaker-sidecar-oracle.py` (95/95, 8/8 mutantes; inclui o
-  recorte esparso, o deslocamento absoluto, o declinio sem inferencia e o `_open_endpoint`),
+- **As provas, e elas correm:** `_main/speaker-sidecar-oracle.py` (98/98, 10/10 mutantes; inclui o
+  recorte esparso, o deslocamento absoluto, o declinio sem inferencia e sete arms do
+  `_open_endpoint`),
   `_main/sidecar-wiring-oracle.py` (26/26, mutante do BELOW_NORMAL apanhado; inclui `--speakers`
   default ON lido do AST),
   `_main/_sidecar-replay-real.py` em 60 s da call Discord REAL de 2026-11-16 (2 slots, 6 janelas,
   0 vazias, 97,8 s de CPU), e `_main/speakers-live-join.py` -- o JOIN que nunca tinha corrido: arranca
   sidecar + worker com `CREATE_NO_WINDOW`, vida limitada, e exige payload real/fresco e linhas
-  carimbadas; silencio responde `CANNOT-MEASURE reason=silence`, nunca verde.
+  carimbadas; silencio responde `CANNOT-MEASURE reason=silence`, nunca verde. **O veredicto le a
+  SAIDA DO PRODUTO (o JSONL do worker), nunca a reconstroi**: um replay com epoch sintetico
+  (`tap_ms - start`) disse "0 de 49" num log onde o worker tinha carimbado **84** linhas -- o
+  `tap_ms` acontece DEPOIS de a linha fechar (0,15-1,4 s), e esse deslocamento tira a linha do
+  segmento (medido 2026-11-25).
+- **AS DUAS METADES TEM DE ABRIR O MESMO ENDPOINT, E O WORKER E' QUEM DECIDE QUAL (medido
+  2026-11-25).** O segundo join vivo publicou payload sao a cada 10 s, o worker imprimiu **91
+  legendas reais**, e `attributed_captions` foi **0** -- sem erro nenhum dos dois lados. O sidecar
+  dizia `capturing 'WASAPI loopback: VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)'` e o worker
+  escrevia `device:WASAPI loopback: Fones de ouvido (soundcore Space Q45)`. Causa: o Windows tem UM
+  default por function (`E_CONSOLE` vs `E_MULTIMEDIA`) e as duas metades perguntavam coisas
+  diferentes -- o worker segue o **pico do `IAudioMeterInformation` ao vivo** (`live_endpoint_order()`,
+  rung A do `sotto_worker.py`), o sidecar seguia o `is_default`/`GetDefaultAudioEndpoint` estatico.
+  Lei: `_open_endpoint` pergunta o que o worker pergunta -- nome pedido -> **endpoint que esta' a
+  RENDERIZAR AGORA** -> default do SO -> ranking -- e abre um endpoint vivo mesmo que ele falte da
+  lista de specs. Nenhum instrumento do picker le o dispositivo REAL: os arms injetam
+  `wasapi_loopback` (um arm que le o dispositivo desta maquina "passa" sem testar nada, medido).
 - **Modelo de separacao continua REFUTADO para esta via**: MossFormer2_SS_16K sobre 60 s da mesma call
   gastou **1335,107 s (RTF 22,25)** e pos 210 palavras no stream 0 e 2 no stream 1 contra 211 no mix
   (`_main/bench/logs/moss-after.log`).

@@ -297,6 +297,17 @@ class StableSpeakerSlots:
 
         Returns `(segments, mapping, created)` so a caller -- and the oracle --
         can see which local label became which slot, and which slots are new.
+
+        A voiceprint second pass was BUILT AND REFUTED here (2026-11-24):
+        `_main/_slot-cosine-distribution.py` on 120 s of the owner's
+        multi-speaker call measures SAME-speaker cosine min +0,655 against
+        DIFFERENT-speaker max +0,743 -- an EMPTY threshold interval, i.e. no
+        cosine value can separate the two populations with this model on this
+        audio. The consequence is disclosed rather than papered over: when
+        speech is sparse enough that two windows share no spoken span, the same
+        person can take a second slot (measured: one voice -> 3 slots on a
+        sparse 88 s fixture). A second colour is the accepted cost; a wrong
+        name would not be, which is why there is no threshold here.
         """
         by_local = {}
         for s in segments or ():
@@ -335,6 +346,7 @@ class StableSpeakerSlots:
             mapping[loc] = slot
             used_loc.add(loc)
             used_slot.add(slot)
+
         created = []
         for loc in sorted(by_local):
             if loc not in mapping:
@@ -1392,16 +1404,43 @@ def _open_endpoint(specs, wanted=None):
     The sidecar then diarized a virtual cable Discord does not render to (fala
     3-9 %) while the worker transcribed the real call.
 
-    The order is now: the name the owner asked for; the endpoint the OS calls
-    default; and only then the rank. `GetDefaultAudioEndpoint` is asked directly
-    when no spec is flagged, because "no spec is flagged" is not "there is no
-    default".
+    The order is now the WORKER's own rule, a name the owner asked for, and
+    only then the static default/rank:
+
+    1. `--device` substring, if given;
+    2. **the endpoint whose live IAudioMeterInformation peak is non-zero** --
+       the same `live_endpoint_order()` answer `sotto_worker.py`'s rung A uses,
+       so both halves open the SAME endpoint by construction;
+    3. the OS default render endpoint;
+    4. the ranking order.
+
+    WHY 2 IS NOT OPTIONAL (MEASURED 2026-11-25, second live join): with the
+    static default the sidecar captured `VoiceMeeter Input (… VAIO)` while the
+    worker transcribed **`Fones de ouvido (soundcore Space Q45)`** -- 91 real
+    captions, ZERO attributed, because Windows has separate defaults per role
+    (`GetDefaultAudioEndpoint` here defaults to E_CONSOLE) and the worker had
+    already moved to the live meter rule. Two halves asking two questions is
+    the defect; the fix is to ask the worker's question.
     """
     if wanted:
         for spec in specs:
             if wanted.lower() in str(spec.get("name", "")).lower():
                 return spec
         return None
+    try:
+        import wasapi_loopback                                       # noqa: PLC0415
+        live = wasapi_loopback.live_endpoint_order()
+    except Exception:  # noqa: BLE001 -- enumeration failure leaves the defaults
+        live = []
+    for entry in live or ():
+        if not entry.get("meter_peak"):
+            continue
+        eid = entry.get("endpoint_id")
+        for spec in specs:
+            if eid and spec.get("endpoint_id") == eid:
+                return spec
+        return {"name": "WASAPI loopback: %s" % entry.get("name"),
+                "endpoint_id": eid}
     for spec in specs:
         if spec.get("is_default") or spec.get("default"):
             return spec

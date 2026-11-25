@@ -103,7 +103,8 @@ def main(argv=None):
     print("audio %.1f s  threshold %.2f" % (dur, args.threshold))
 
     sdk = S._load_sherpa_diarizer(S.DEFAULT_SEG_MODEL, S.DEFAULT_EMB_MODEL,
-                                  threads=args.threads, threshold=args.threshold)
+                                  threads=args.threads, threshold=args.threshold,
+                                  provider=S.DIARIZER_PROVIDER)
     ex = extractor(args.threads)
 
     # (A) UMA PASSAGEM: a verdade-terra ESTRUTURAL -- quem é quem no ficheiro
