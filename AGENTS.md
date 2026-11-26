@@ -421,6 +421,126 @@ proporciona ou entao com modelo que separa vozes."* e, quando recebeu um pedido 
 - **A FAIXA ABRE NO MONITOR DO CURSOR.** `select_display_for_point` escolhe por contenção física, depois `MONITOR_DEFAULTTONEAREST`, depois primário; o rect é clampado à WORK AREA daquele monitor (DPI por monitor, escalado uma vez). `primary_display()` não é o caminho do strip. Detalhe: `docs/shell-contract.md`; prova: `_main/multi-monitor-oracle.py` (6 braços).
 - **UI 100% PT-BR (2026-11-25).** Bandeja: `Abrir painel`, `Desativar/Ativar atalho Alt+C`, `Desligar/Ligar legendas (Ctrl+Space)`, `Editar posicao da legenda`, `Sair do Sotto`; painel e faixa com rótulos PT-BR, incluindo as cadeias escritas em RUNTIME pelo `panel.js` (medido: `_main/panel-language-oracle.js` → `VERDICT: PASS`, braço negativo derruba). Detalhe: `docs/spec/08-PANELS-UX.md`; provas: `_main/tray-menu-oracle.py` (27 arms) e `_main/tray-quit-probe.py`.
 
+## LIVE PIPELINE VERIFICATION — THE END-TO-END WORKFLOW, WITH NO OWNER IN IT (2026-11-26)
+
+Owner order, verbatim: *"anota no teu agents.md todo o workflow end to end que tu tem que fazer pra
+tu nao depender de mim nem uma unica vez"*. Every step below is a lane's own job. None of it needs
+his hands, his browser, his profile or his word. What it must never do is touch his environment.
+
+**MEASURED 2026-11-26, and the reason this section exists:** a lane asked the owner to restart the
+app, play a video and run a command; he answered *"i will not do this. YOU will do this"*. The lane
+then drove HIS Chrome tab on port 9222 — unpausing the video he had left paused — and he answered
+*"é tu que ta despausando a merda do video que eu deixei pausado inves de tu fazer na porra do TEU
+AMBIENTE?"*. Both mistakes are closed by the recipe below.
+
+### 0. The browser is YOURS, always
+
+- **Never his Chrome, never port 9222, never his profile, never his tab.** Port 9222 with
+  `--user-data-dir=C:\ChromeDebugProfile` is HIS session; opening, playing, muting, seeking or
+  closing anything there is the defect the order above names.
+- Your instance, exactly this shape (hidden, silent, throwaway profile):
+  `chrome.exe --headless=new --user-data-dir=I:\cc-tmp\sotto-lane-chrome --remote-debugging-port=9340
+  --remote-debugging-address=127.0.0.1 --mute-audio --autoplay-policy=no-user-gesture-required
+  --no-first-run --no-default-browser-check --disable-background-timer-throttling
+  --disable-renderer-backgrounding --disable-backgrounding-occluded-windows --window-size=1280,720`
+  launched with `CREATE_NO_WINDOW` + `STARTF_USESHOWWINDOW`/`wShowWindow=0` (no console, no window).
+  `--mute-audio` is the browser-level mute: the room hears nothing without touching his device.
+- Pick the video from a public URL; `/json/new?url=` may open `about:blank`, so navigate with
+  `Page.navigate` and poll `document.title` (bounded 30 s) before believing the page loaded.
+- If you touched his tab by accident, restore it in the same turn — `mp.seekTo(<his timestamp>)`,
+  `mp.pauseVideo()`, `mp.unMute()`, delete any `muted`/`volume` pin you installed — then say so.
+
+### 1. Launch the shell hidden, aimed at YOUR port
+
+```
+python -c "..."            # kill ONLY your previous instance: pid read from the log's
+                           # SHELL_STARTUP_STAGE line, then psutil cmdline must contain
+                           # 'sotto_webview.py' BEFORE the kill (a foreign cmdline is empty)
+SOTTO_LANE_LAUNCH=1 SOTTO_YT_CDP_PORT=9340 python _main/keepalive.py   # backgrounded, no deadline
+```
+`SOTTO_LANE_LAUNCH=1` gives the hidden launch and the job-object keepalive;
+`SOTTO_YT_CDP_PORT=9340` is what stops the shell from adopting his tab (`resolve_port`,
+`youtube_cdp_source.py:81-95`). Readiness is a bounded grep of `_main/webview-run.log`, 120 s, and
+each stage is named when it is missing:
+
+| stage | line that proves it |
+|---|---|
+| shell alive | `SHELL_STARTUP_STAGE pid=<p> stage=pre-lock` |
+| tab adopted | `YOUTUBE_CDP_ATTACH_OK ... pick=<vid>` |
+| frames flowing | `YOUTUBE_CDP_SOURCE state=attached` |
+| captions read | `YOUTUBE_TICK_MS ... rows=N` and `YT_FRAME src=external:youtube:track` |
+
+`CAPTION_WANTED_START on=false reason=lane(SOTTO_LANE_LAUNCH=1)` is EXPECTED and is not a defect:
+lane mode never paints on his screen. Consequence, and it must be stated in every receipt — with
+`_caption_wanted=false` there are no cues and no `CAPTION_PAINT_SURFACE`, so paint cadence and the
+reveal clock cannot be judged live; the pause/clock/seek half can. Painting requires the strip on
+his screen: that needs his word in that session, never a lane's own decision.
+
+### 2. Drive the real player, demand the receipts
+
+`py -3 _main/yt-live-freeze-drive.py --port 9340` (also `--plan pause-only`, `--fast`,
+`--selftest`). It calls the player's own API (`mp.pauseVideo`/`playVideo`/`seekTo`) and then
+requires that the shell witnessed each action in its own log. Three refusals by name: no `/watch`
+tab, a player not playing at start, and a receipt that is not BORN AFTER its step — a line from
+before the action proves nothing.
+
+### 3. Judge, with the exit code that belongs to each instrument
+
+```
+py -3 _main/yt-pause-disagreement-oracle.py --log _main/webview-run.log   # 0 CLEAN | 1 CONTRADICTED | 3 CANNOT-MEASURE
+py -3 _main/product-soak-oracle.py --minutes 0                            # 0 PASS | 1 FAIL | 3 CANNOT-MEASURE
+py -3 _main/yt-diag-truth-oracle.py                                       # 0 GREEN | 1 RED
+py -3 _main/yt-live-freeze-drive.py --port 9340                           # 0 PASS | 1 FAIL | 3 CANNOT-MEASURE
+```
+`--minutes 0` judges whatever session exists; a real >=5 min session uses the default bar. Zero
+captions in the window is `CANNOT-MEASURE why=no-cues`, never PASS (2026-11-26).
+
+### 4. Teardown, and leave nothing behind
+
+Kill YOUR chrome by the pid you launched (its profile is `I:\cc-tmp\sotto-lane-chrome`, delete only
+that exact path), kill the shell by the pid the log named, and let `keepalive.py` exit on its own
+(it watches for the app to die). Never kill a process by a generic name filter.
+
+### 5. What the first complete run measured (2026-11-26, video TGOe1w8m5OU)
+
+- Pause, resume and two seeks reached the player; the shell answered `YOUTUBE_PAUSE_DISAGREED
+  clock_rate=0.45`, `YOUTUBE_PAUSE_PROVEN held_s=17.4`, `YOUTUBE_SEEK_RESYNC was=761.87
+  now=759.43`; `yt-pause-disagreement-oracle --log` returned `episodes=2 contradicted=0 CLEAN` rc 0.
+- **The seek receipt arrived 11 s after the seek, and one caption read blocked 16437 ms**
+  (`EXTERNAL_CAPTIONS_READ_MS ... phases={'painted': 15906, 'track': 16422}`); the loop fell to
+  `YOUTUBE_LOOP_HZ hz=0.1..1.5` (median 0.5 against a 4 Hz intent) and the shell wrote nothing at
+  all for 112 s while the box sat at 91.5 % CPU / 72 % commit. A slow read in the 4 Hz loop is the
+  measured mechanism of "the subtitles worked two seconds and then froze", and the per-stage budget
+  for that read is the open slice.
+
+### 6. EVERY test class, and the recipe that runs it with no owner in it
+
+Owner's clarification, verbatim: *"eu to falando QUALQUER tipo de teste, nao só esse"*. The rule is
+the same for all of them: a test either runs inside the lane's own environment or it is a HOLE named
+`CANNOT-MEASURE`, never a request to him. Nothing below needs his screen, his browser, his audio
+device, his word or his clock.
+
+| class | the command | what it proves | boundary it must never cross |
+|---|---|---|---|
+| caption pipeline, offline | `py -3 _main/caption-timeline.py --selftest`, `_main/yt-producer-soak-oracle.py`, `_main/yt-reveal-hold-oracle.py` | the clock, the cue handoff and the reveal hold, on fixtures in the product's own log shape | none — pure code, no window |
+| overlay pixels | `py -3 _main/overlay-ink-oracle.py` | the real GDI+ bitmap from `overlay_paint._layout` off-screen: ink exists, follows the text, caches per line | never `--show`, never a visible overlay |
+| history store | `py -3 _main/history-replay-oracle.py` | 200 captions through the real `history_merge` into a temp store in the store's own format; idempotent on `start=` | writes only a unique temp dir |
+| pause / seek / clock | `py -3 _main/yt-pause-disagreement-oracle.py`, `_main/youtube-monotonic-oracle.py`, `_main/yt-diag-truth-oracle.py` | the pause witness, the seek resync and the `why=` label, on source arms and on a real log with `--log` | reads only |
+| live YouTube pipeline | §1–§3 above, port 9340 + your own Chrome | attach, frames, pause proof, seek witness, receipts born after each action | never port 9222 |
+| Gemini/panel UI surface | `python app/webview/panel_state.py --read`, `_main/panel-language-oracle.js`, `_main/tray-menu-oracle.py`, `_main/multi-monitor-oracle.py` | what the panel published, the PT-BR strings written at RUNTIME, the tray menu, the strip's monitor rect | read/state only, panel hidden |
+| hotkeys and gestures | `py -3 _main/altc-gesture-oracle.py`, `_main/altc-soak-oracle.py` | single tap never opens the right panel, double tap does, 200 taps leave no growth | never synthetic input (`keybd_event`/`SendInput`) — it measures Windows, not Sotto |
+| audio capture, mic, sidecar | `py -3 _main/speaker-sidecar-oracle.py`, `_main/capture-share-oracle.py`, `_main/audio-ring-journal-oracle.py` | mixer gain, leftover mic audio, BUSY refusal, the captured block shared by one reader, the ring's retention | never open or mute a real device; fakes only; `owner-audio-gate.py` refuses a write |
+| ASR engines / worker | fixture audio through the worker, `_main/redux-gpu-unavailable-oracle.py`, `_main/config-truth-oracle.py` | the placement attestation, the decode contract, the config defaults table | never the owner's audio; a model load only in a caged run |
+| shell cost | `py -3 _main/shell-thread-budget-oracle.py`, `_main/console-window-audit.py` | CPU per named thread under the ratchet, no console window opened anywhere | no `--show`; the ratchet is not raised to pass |
+| wiring / dead code | `py -3 _main/dead-unwired-oracle.py`, `_main/battery-wiring-oracle.py` | every module has a caller or is documented dead; every instrument is in the battery | reads only |
+| the whole battery | `_main\_audit-verify-all.cmd` (caged, per-step deadline) | every gate, its red arm, and the exit code that IS the verdict | one heavy job at a time; `SOTTO_BATTERY_NOCAGE=1` only with a stated reason |
+| the angle matrix | `python <skills>/_packs/task/project-harness/scripts/harness_run.py --project H:/sotto` | each feature × angle cell answers with a command and a red arm, or is a HOLE | a HOLE is reported, never papered over |
+
+Two standing consequences. First, when a test genuinely needs his screen, his audio device or his
+account, that is a HOLE with a named reason (`CANNOT-MEASURE`), listed in the receipt — and it is
+never converted into "the owner should run this". Second, a new instrument ships with its red arm
+and with its row in the battery in the SAME change; an instrument nobody runs is not an instrument.
+
 ## UMA PAUSA QUE A MEDIDA DESMENTIU NAO APAGA O ECRA (ordem do dono, 2026-11-26)
 
 Verbatim: *"i just opened sotto, went to youtube, subtitles from youtube worked for like 2 seconds and
