@@ -169,3 +169,24 @@ relogio*, nao pela ausencia — duas maneiras de nao dizer a verdade.
 - Para fechar: instalar/repor a distro `ubuntu-bend` (acao de sistema, do dono) e correr
   `python _main/bend-laws-gate.py` -> `BEND-GATE VERDICT: PASS`. Ate' la', a afirmacao
   "as leis provam o modelo" tem de ser lida como `UNMEASURED` nesta maquina.
+
+## DOIS PORTÕES PROMETIAM UM FICHEIRO QUE NÃO EXISTE (medido 2026-11-26)
+
+`AGENTS.md` apresentava dois checques como armados sobre um baseline em disco. O `git ls-files` de
+2026-11-26 diz que **nenhum dos dois ficheiros existe**, e cada portão tinha o seu próprio jeito de
+não dizer nada:
+
+|portão|o que a prosa prometia|o que o código fazia|o que faz agora|
+|---|---|---|---|
+|`_main/shell-thread-budget-oracle.py`|ratchet de +20 % sobre `_main/shell-thread-budget-baseline.json`|`if baseline:` com `baseline={}` → **o ratchet desaparecia em silêncio**|imprime `RATCHET absent reason=no-baseline file=...` e mantém os tectos absolutos (total 25 %, fio 15 %, fio mais quente COM NOME)|
+|`_main/owner-screen-gate.py`|dívida congelada em `_main/owner-screen-baseline.json`|`except: return {'ceiling': 0, ...}` — mais duro, mas mudo|imprime `OWNER-SCREEN baseline=absent file=... ceiling=0`|
+
+- **Prova do primeiro (sem shell viva):** `main()` conduzido com uma leitura injectada
+  (`total=5,0 %`, dois fios com nome) e um baseline inexistente → `rc 0`, a linha
+  `RATCHET absent reason=no-baseline ...` impressa e `VERDICT: PASS` decidido pelos tectos.
+- **Prova do segundo:** `python _main/owner-screen-gate.py` → `baseline=absent`, 1330 ficheiros de
+  produto, `achados=0`, `VERDICT PASS`.
+- **O que continua NÃO MEDIDO:** o **valor** do ratchet. Ele só existe depois de um arranque fresco
+  da shell medir `python _main/shell-thread-budget-oracle.py --update`; a instância do dono
+  (pid 53752, criada 11:45:10) é anterior ao código desta sessão, e uma lane não a põe na tela dele.
+  Até lá o ratchet está **desarmado**, dito pelo próprio oráculo, não escondido.

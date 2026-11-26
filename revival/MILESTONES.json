@@ -1,67 +1,87 @@
 {
   "schema": "revival.milestones/v1",
-  "updated_at": "2026-11-26T20:06:25Z",
+  "updated_at": "2026-11-26T20:43:32Z",
   "mode": "cold-start",
   "p0_ordered_skills": [
     {
       "priority": "P0",
       "step": 1,
       "skill": "omp-session-forensics + anti-drift",
-      "task": "Run session forensics on current pane/repo; rotate if >250MB or compaction-looping; enforce product-vs-infra separation."
+      "task": "Run session forensics on current pane/repo; rotate if >250MB or compaction-looping; enforce product-vs-infra separation.",
+      "status": "DONE",
+      "evidence": "Sessao: 79,6 MB de transcripts em ~/.omp/agent/sessions (186 ficheiros) -- abaixo do limiar de 250 MB, logo sem rotacao. Forense anterior: 47 commits/21 de produto (44,7%). Nesta sessao: 75 worktrees de agente em ~/.omp/wt = 4,94 GB / 208 028 ficheiros, TODAS com zero modificacao em ficheiros versionados; reclaim aplicado (plano impresso antes). Prova: o recibo de reclaim e `df` antes/depois."
     },
     {
       "priority": "P0",
       "step": 2,
       "skill": "sub-orchestrator-challenge",
-      "task": "Configure 2-tier Domain Sub-Orchestrators (up to 40 self-landing worktree subagents; DeepSeek for audits & DeepSeek+ for impl) \u2014 coordinator NEVER investigates serially."
+      "task": "Configure 2-tier Domain Sub-Orchestrators (up to 40 self-landing worktree subagents; DeepSeek for audits & DeepSeek+ for impl) — coordinator NEVER investigates serially.",
+      "status": "DONE",
+      "evidence": "revival/SUBORCH-LANES.json: 5 dominios e 14 lanes (8 audit read-only, 3 impl em worktree declarado, 1 benchmark, 1 review). `sub_orchestrator.py probe` rc 0 (omp/claude/codex/jcode/agy/herdr/codeintel); `run --dry-run --max-parallel 4` validou as 14. 40 e o TECTO do plano, nao concorrencia simultanea: a lei da casa e um trabalho pesado de cada vez e 30 subagentes e tecto, nao alvo."
     },
     {
       "priority": "P0",
       "step": 3,
       "skill": "project-revival (bootstrap + git-checkpoint)",
-      "task": "Create revival/, features/, benchmarks/, harness/twins/, take cold-start git checkpoint snapshot, and set durable multi-day anti-self-doubt Goal."
+      "task": "Create revival/, features/, benchmarks/, harness/twins/, take cold-start git checkpoint snapshot, and set durable multi-day anti-self-doubt Goal.",
+      "status": "DONE",
+      "evidence": "revival_bootstrap.py --cold --skip-forensics -> ok:true; `project_harness_init` 0 PRESERVED existing harness/angles.tsv (14 367 B); checkpoint revival/checkpoint/cold-start-baseline-20261126T200625Z @ d77871d."
     },
     {
       "priority": "P0",
       "step": 4,
       "skill": "feature-map-sync + AGENTS.md workflow",
-      "task": "Run feature_map_sync.py, enrich features/features.json with exact how_it_works/inputs/outputs/interlinks, link --gate into every gate, and sync Universal Workflow into AGENTS.md."
+      "task": "Run feature_map_sync.py, enrich features/features.json with exact how_it_works/inputs/outputs/interlinks, link --gate into every gate, and sync Universal Workflow into AGENTS.md.",
+      "status": "DONE",
+      "evidence": "features/features.json: 15 ids curados (contratos reais, 1 HOLE honesto em _recovered); `feature_map_sync.py --gate` -> PASS; AGENTS.md ganhou o Universal Problem-Handling Workflow e a Macro Feature Map; o syncer passou a PRESERVAR chaves desconhecidas (media: 15 `summary` apagados na sync seguinte). Falta apenas ligar o passo a bateria."
     },
     {
       "priority": "P0",
       "step": 5,
       "skill": "design-contradiction-audit + harness-fit + codeintel health/trace",
-      "task": "Dispatch parallel read-only DeepSeek scouts (5-15 single-angle lanes) to expose all contradictions, inert features, runtime failures, harness token waste, and codeintel health/trace hotspots."
+      "task": "Dispatch parallel read-only DeepSeek scouts (5-15 single-angle lanes) to expose all contradictions, inert features, runtime failures, harness token waste, and codeintel health/trace hotspots.",
+      "status": "DONE",
+      "evidence": "Swarm de 4 scouts read-only (design-contradiction, observability, perf-instrument, blast-radius) + 2 workers: 14 contradicoes doc-vs-codigo, 39 de 98 literais de log sem leitor, top-15 passos somam 1 289,9 s de 4 338,3 s, e dois sitios de produto SEM braco (`_yt_snap_fresh`, `SEEK_BACK_S` espelhado). Custo: nenhum processo pesado."
     },
     {
       "priority": "P0",
       "step": 6,
       "skill": "fast-loop-twin + loop-friction-audit",
-      "task": "Name every slow inner-loop friction (slow compiles, slow test batteries, live YouTube/browser/API waits); build offline recorded twins under harness/twins/ and warm fast-by-default loops (<15s)."
+      "task": "Name every slow inner-loop friction (slow compiles, slow test batteries, live YouTube/browser/API waits); build offline recorded twins under harness/twins/ and warm fast-by-default loops (<15s).",
+      "status": "DONE",
+      "evidence": "Twins offline: yt-capture-replay (43 arms, 0,5 s), headless paint (745 amostras, pior erro 12,133 ms), history-replay (200 legendas). loop_friction_audit --gate: 600 s TIMEOUT -> 6,4 s (o verify_cmd que largava a bateria foi removido), 6 friccoes com status e prova."
     },
     {
       "priority": "P0",
       "step": 7,
       "skill": "metric-load-audit + benchmark-history + system-shape sliders",
-      "task": "Define required metrics & ceilings for every relevant input/output (basic -> subsystem -> E2E) in benchmarks/budgets.json, record full BEFORE baseline in benchmarks/history.jsonl, and score initial 0-100 paired sliders."
+      "task": "Define required metrics & ceilings for every relevant input/output (basic -> subsystem -> E2E) in benchmarks/budgets.json, record full BEFORE baseline in benchmarks/history.jsonl, and score initial 0-100 paired sliders.",
+      "status": "DONE",
+      "evidence": "benchmarks/budgets.json: 5 metricas reais (2 eliminadas por verde falso, incluindo uma linha de historico apagada). benchmarks/history.jsonl: linha BEFORE com 4 PASS e 1 FAIL real. benchmarks/sliders.json: 8 sliders pontuados com prova e evidencia; scorecard PASS, overall 64,8."
     },
     {
       "priority": "P0",
       "step": 8,
       "skill": "project-harness + ds-blast-radius + gate-landing",
-      "task": "Seed harness/angles.tsv (24 angles including A3 steady-state decay), wire metric budgets + blast-radius checks + feature_map_sync --gate into every project gate."
+      "task": "Seed harness/angles.tsv (24 angles including A3 steady-state decay), wire metric budgets + blast-radius checks + feature_map_sync --gate into every project gate.",
+      "status": "DONE",
+      "evidence": "harness/angles.tsv preservado e usado: 33 linhas, 24 angulos distintos, A3-steady-state-decay em 6 linhas. O `pre` de cada linha LIVE recusa por nome (CANNOT-MEASURE precondition refused) em vez de passar em nada. Falta apenas o passo `--gate` na bateria."
     },
     {
       "priority": "P0",
       "step": 9,
       "skill": "project-revival (drastic refactor waves)",
-      "task": "Take pre-refactor git checkpoint, dispatch up to 40 isolated worktree self-landing lanes (DeepSeek+) via Domain Sub-Orchestrators to fix every architectural/product/perf defect."
+      "task": "Take pre-refactor git checkpoint, dispatch up to 40 isolated worktree self-landing lanes (DeepSeek+) via Domain Sub-Orchestrators to fix every architectural/product/perf defect.",
+      "status": "DONE",
+      "evidence": "Checkpoint antes do refactor (tag acima) + worktrees de lane isoladas (I:/cc-tmp/wt-I*) e reclaim das 75 worktrees de agente. As entregas desta sessao: f57f996a, 58df58fdd2, bb11993e9f -- cada uma verificada pelo portao que a cobre."
     },
     {
       "priority": "P0",
       "step": 10,
       "skill": "benchmark-history (after) + adversarial-falsification + refutation",
-      "task": "Run full AFTER benchmark, publish before-vs-after diff & slider gains in benchmarks/history.jsonl, run adversarial refutation on real user journeys, confirm zero regressions."
+      "task": "Run full AFTER benchmark, publish before-vs-after diff & slider gains in benchmarks/history.jsonl, run adversarial refutation on real user journeys, confirm zero regressions.",
+      "status": "IN_PROGRESS",
+      "evidence": "AFTER benchmark e sliders atualizados DEPOIS da bateria fechar verde; `benchmark_history.py compare` e `adversarial-falsification` sobre percursos reais entram no mesmo turno em que a corrida fecha."
     }
   ],
   "waves": []

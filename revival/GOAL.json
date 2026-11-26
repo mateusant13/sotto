@@ -1,11 +1,11 @@
 {
   "schema": "revival.goal/v1",
   "created_at": "2026-11-26T20:06:25Z",
-  "updated_at": "2026-11-26T20:06:25Z",
+  "updated_at": "2026-11-26T20:43:32Z",
   "status": "active",
   "horizon": "multi-day",
   "statement": "Sotto: YouTube captions in sync (right display at the right time, pause at the right time) and real-time local transcription on the same overlay, with no bugs -- owner: 'i want sotto to be fucking finished and with no bugs'",
-  "charter": "MULTI-DAY EXECUTION CHARTER: Never doubt yourself or declare the mission impossible. It is ALWAYS possible to achieve this goal \u2014 when blocked, shift angles, invent a tool or offline twin, decompose into smaller verifiable slices, snapshot with git, and keep advancing continuously across sessions until 100% of acceptance criteria carry real receipts.",
+  "charter": "MULTI-DAY EXECUTION CHARTER: Never doubt yourself or declare the mission impossible. It is ALWAYS possible to achieve this goal — when blocked, shift angles, invent a tool or offline twin, decompose into smaller verifiable slices, snapshot with git, and keep advancing continuously across sessions until 100% of acceptance criteria carry real receipts.",
   "model_policy": {
     "audits_and_scouts": "cheapest capable model (prefer DeepSeek)",
     "implementations_and_orchestration": "DeepSeek or higher (prefer DeepSeek)"
