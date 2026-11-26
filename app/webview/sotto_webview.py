@@ -73,6 +73,7 @@ import prose_punct
 #: O DONO UNICO DA REGRA "uma pausa desmentida nao e' pausa" (2026-11-26). Puro:
 #: o oraculo conduz `pause_proven` sem subir a shell nem tocar no dispositivo.
 import youtube_clock
+import yt_read_budget
 #: A CORRIDA que o decodificador inventou (`come come come ...`), cortada no
 #: texto ja' emitido (2026-11-11). Puro, e com a mesma regra estreita que o
 #: oraculo executa; ver `app/webview/text_normalize.py`.
@@ -5446,9 +5447,32 @@ class ExternalCaptionWatcher(threading.Thread):
                 # chegava ao ecra enquanto o snapshot aquecia).
                 self._yt_health_tick(self._yt_cdp_source, time.monotonic())
             else:
-                self.yt_cdp_rows = None
-                got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd,
-                                                     with_rect=True)
+                # A ARVORE DE ACESSIBILIDADE TEM ORCAMENTO (2026-11-26,
+                # MEDIDO no dono: uma leitura de 15906 ms, o laco a 4 Hz
+                # caiu a 0,1-1,5 Hz e a legenda congelou). Uma leitura
+                # acima do orcamento compra um hold proporcional ao que
+                # gastou e, enquanto ele dura, servimos as ultimas
+                # palavras em vez de bloquear o laco outra vez. O hold e'
+                # NOMEADO: `YOUTUBE_UIA_SLOW_BUDGET ms=.. hold_s=..`.
+                _now0 = time.monotonic()
+                if yt_read_budget.serving_cached(
+                        getattr(self, '_yt_uia_blocked_until', 0.0), _now0):
+                    _last = getattr(self, '_yt_uia_last_got', None) or {}
+                    got = {'words': list(_last.get('words') or ()),
+                           'items': [], 'why': 'uia-backoff'}
+                else:
+                    self.yt_cdp_rows = None
+                    got = youtube_captions.painted_words(uia, UIA, hwnd=hwnd,
+                                                         with_rect=True)
+                    if got:
+                        self._yt_uia_last_got = got
+                    _serve, _until, _event = yt_read_budget.decide(
+                        (time.monotonic() - _now0) * 1000.0,
+                        getattr(self, '_yt_uia_blocked_until', 0.0),
+                        time.monotonic())
+                    self._yt_uia_blocked_until = _until
+                    if _event:
+                        log(_event)
             if got and got.get("items"):
                 self.yt_paint_items = got["items"]
             self._yt_prof("paint", _t0)

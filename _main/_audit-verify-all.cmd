@@ -1657,6 +1657,22 @@ if exist _main\altc-soak-oracle.py (
 call :step red-as-expected-altc-soak 1 "_main\altc-soak-oracle.py;app\webview\hotkey_gesture.py" "%OUT%\altc-soak-neg.log" python _main\altc-soak-oracle.py --neg-arm
 call :expectred red-as-expected-altc-soak !STEP_RC! "%OUT%\altc-soak-neg.log" "NEG-ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-altc-soak MISSING "%OUT%\altc-soak-neg.log" "NEG-ARM VERDICT: PASS" )
+REM `yt-read-budget` (2026-11-26): o ramo UIA da leitura da legenda ganhou um
+REM ORCAMENTO com recusa nomeada. MEDIDO no dono: `EXTERNAL_CAPTIONS_READ_MS
+REM ms=16437.0 phases={'painted': 15906.0}` -- uma leitura, o laco a 4 Hz caiu a
+REM 0,1-1,5 Hz e a legenda congelou. Agora uma leitura acima do orcamento compra
+REM um hold proporcional (`YOUTUBE_UIA_SLOW_BUDGET ms=.. hold_s=..`) e o laco
+REM serve as ultimas palavras em vez de bloquear outra vez. Os arms simulam a
+REM cadencia com os numeros DELE (0,067 Hz sem envelope contra 2,95 Hz com) e o
+REM braco de ordem recusa um shell que toque na arvore antes de perguntar.
+if exist _main\yt-read-budget-oracle.py (
+ call :step yt-read-budget 0 "_main\yt-read-budget-oracle.py;app\webview\yt_read_budget.py;app\webview\sotto_webview.py" "%OUT%\yt-read-budget.log" python _main\yt-read-budget-oracle.py
+ call :record yt-read-budget !STEP_RC!
+) else ( call :record yt-read-budget MISSING )
+if exist _main\yt-read-budget-oracle.py (
+call :step red-as-expected-yt-read-budget 1 "_main\yt-read-budget-oracle.py;app\webview\yt_read_budget.py;app\webview\sotto_webview.py" "%OUT%\yt-read-budget-neg.log" python _main\yt-read-budget-oracle.py --neg-arm
+call :expectred red-as-expected-yt-read-budget !STEP_RC! "%OUT%\yt-read-budget-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-yt-read-budget MISSING "%OUT%\yt-read-budget-neg.log" "NEG-ARM VERDICT: PASS" )
 REM `yt-producer-soak` (2026-11-26): 5 MINUTOS SIMULADOS de leitura com um
 REM produtor que publica no proprio relogio (1 s, 3 s e os 8,8 s medidos na
 REM sessao do dono). Julga que CADA publicacao sai uma vez, dentro da janela de

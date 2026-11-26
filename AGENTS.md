@@ -445,6 +445,24 @@ AMBIENTE?"*. Both mistakes are closed by the recipe below.
   --disable-renderer-backgrounding --disable-backgrounding-occluded-windows --window-size=1280,720`
   launched with `CREATE_NO_WINDOW` + `STARTF_USESHOWWINDOW`/`wShowWindow=0` (no console, no window).
   `--mute-audio` is the browser-level mute: the room hears nothing without touching his device.
+- **A signed-out profile cannot play YouTube — MEASURED 2026-11-26, three profiles.** A clean
+  `--user-data-dir` opens the watch page, the DOM is complete, and
+  `movie_player.getPlayerResponse().playabilityStatus.status` is `LOGIN_REQUIRED` with
+  `streamingData.adaptiveFormats` empty: `video.readyState` stays 0, `currentTime` stays 0, and no
+  caption segment ever appears. The consent cookies (`SOCS=CAI`, `CONSENT=YES+1`) do not lift it, and
+  neither `--headless=new` nor an off-screen window changes it — it is YouTube's session policy, not a
+  browser setting. The shell says the same thing from its side: attach succeeds
+  (`YOUTUBE_CDP_ATTACH_OK pick=<vid>`) and every later snapshot is `rs=0`, so the source publishes
+  `state=dead-tab`. Consequences, in order: (1) a lane's own environment covers attach, snapshot
+  parsing, the pause/seek/clock rules and the read envelope, and it reports the playback half as
+  `CANNOT-MEASURE reason=youtube-login-required` when no session exists; (2) a burner login inside the
+  lane profile is the owner-free way to close that half; (3) the owner's own profile is never the
+  answer, even though it is what makes playback work.
+- **Free the port before relaunching — MEASURED 2026-11-26.** A Chrome that was just killed holds
+  `9340` for a couple of seconds; the next launch exits with `ConnectionRefused` and a lane that only
+  retries the *new* process waits forever. The recipe polls `/json/version` until it fails, then
+  launches, then polls until it answers — and captures the child's stderr to a file so a dead browser
+  names its own reason instead of a bare refusal.
 - Pick the video from a public URL; `/json/new?url=` may open `about:blank`, so navigate with
   `Page.navigate` and poll `document.title` (bounded 30 s) before believing the page loaded.
 - If you touched his tab by accident, restore it in the same turn — `mp.seekTo(<his timestamp>)`,
@@ -803,8 +821,8 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **440045 B**,
-  **5017 CRLF** / 0 bare LF, sha256 `52A1A90103589CFD20E929874BA00702133C8E7AB4E750C7C047886A725F4609`.
+- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **441493 B**,
+  **5033 CRLF** / 0 bare LF, sha256 `1080F819976B545A21B59745FFFDACB23D3D24608A1F741A5EBD3F6B31FC6664`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
@@ -834,7 +852,10 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
   fusao dao 200 linhas distintas num ficheiro na forma do store, cada linha entregue duas
   vezes nao duplica nada (a forma do defeito "517 de 2077"), crescer reescreve, repetir
   noutro `start` entra e encolher nao apaga o rabo -- o que fecha tambem a idempotencia no
-  transcrito. E `altc-soak` + `red-as-expected-altc-soak`: 200 toques de Alt+C a 3 s no
+  transcrito. E `yt-read-budget` + `red-as-expected-yt-read-budget`: o ramo UIA da leitura da
+  legenda ganhou ORCAMENTO com recusa nomeada (`YOUTUBE_UIA_SLOW_BUDGET ms=.. hold_s=..`)
+  -- a cadencia simulada com os numeros DELE vai de 0,067 Hz (a leitura de 15906 ms a
+  bloquear o laco de 4 Hz) para 2,95 Hz. E `altc-soak` + `red-as-expected-altc-soak`: 200 toques de Alt+C a 3 s no
   modulo puro, provando que toque unico nunca abre o painel da direita e que nenhum
   contentor do modulo cresce em 200 chamadas.)
 

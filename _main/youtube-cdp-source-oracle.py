@@ -862,6 +862,16 @@ def arms(module_path=MODULE, shell_path=SHELL, instrument_path=INSTRUMENT,
 
         tabs4 = [{"url": "https://www.youtube.com/watch?v=AAAAAAAAAAA" + str(i),
                   "webSocketDebuggerUrl": "ws%d" % i} for i in range(4)]
+        # O POOL NASCE FORA DO CRONOMETRO (medido 2026-11-26). O `_probe_pool`
+        # cria os seis fios na PRIMEIRA pergunta, e numa maquina carregada esse
+        # arranque custou ~1 s: o braco via `seq=1.36s par=1.35s` com o
+        # mecanismo a funcionar (fora do oracle, no mesmo processo:
+        # paralelo 0,30 s contra fila 1,20 s). Aquecer o pool antes de medir
+        # tira o custo de ARRANQUE da comparacao sem afrouxar a afirmacao, que
+        # continua a ser de ORDEM -- quatro sondas simultaneas pagam ~uma
+        # latencia, quatro em fila pagam quatro.
+        mod.probe_tabs(tabs4, connect=_slow_connect, timeout=1.0,
+                       gap_s=0.0, parallel=True)
         t0 = time.time()
         seq_probes = mod.probe_tabs(tabs4, connect=_slow_connect, timeout=1.0,
                                     gap_s=0.0, parallel=False)
