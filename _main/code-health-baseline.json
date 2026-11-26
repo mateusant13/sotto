@@ -60,16 +60,6 @@
       "max_func": 0,
       "max_func_name": ""
     },
-    "app/panel/history-gallery.js": {
-      "bytes": 7638,
-      "classes": 0,
-      "defs": 0,
-      "except_pass": 0,
-      "globals": 0,
-      "lines": 191,
-      "max_func": 0,
-      "max_func_name": ""
-    },
     "app/panel/history-source.js": {
       "bytes": 8692,
       "classes": 0,
@@ -121,22 +111,22 @@
       "max_func_name": ""
     },
     "app/panel/panel.css": {
-      "bytes": 163931,
+      "bytes": 162874,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 3745,
+      "lines": 3685,
       "max_func": 0,
       "max_func_name": ""
     },
     "app/panel/panel.js": {
-      "bytes": 243012,
+      "bytes": 242539,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 4908,
+      "lines": 4896,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -151,12 +141,12 @@
       "max_func_name": ""
     },
     "app/panel/skin-layout.css": {
-      "bytes": 17056,
+      "bytes": 16952,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 347,
+      "lines": 345,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -201,12 +191,12 @@
       "max_func_name": ""
     },
     "app/panel/theme-tune.js": {
-      "bytes": 46251,
+      "bytes": 46104,
       "classes": 0,
       "defs": 0,
       "except_pass": 0,
       "globals": 0,
-      "lines": 1068,
+      "lines": 1058,
       "max_func": 0,
       "max_func_name": ""
     },
@@ -261,12 +251,12 @@
       "max_func_name": "drag_plan"
     },
     "app/webview/caption_overlay.py": {
-      "bytes": 108802,
+      "bytes": 110258,
       "classes": 8,
       "defs": 10,
       "except_pass": 8,
       "globals": 0,
-      "lines": 2156,
+      "lines": 2180,
       "max_func": 184,
       "max_func_name": "__init__"
     },
@@ -491,12 +481,12 @@
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1542318,
+      "bytes": 1553574,
       "classes": 29,
       "defs": 184,
-      "except_pass": 74,
+      "except_pass": 75,
       "globals": 10,
-      "lines": 28456,
+      "lines": 28650,
       "max_func": 446,
       "max_func_name": "main"
     },
@@ -509,6 +499,16 @@
       "lines": 395,
       "max_func": 58,
       "max_func_name": "_on_event"
+    },
+    "app/webview/stall_heartbeat.py": {
+      "bytes": 7348,
+      "classes": 0,
+      "defs": 6,
+      "except_pass": 2,
+      "globals": 0,
+      "lines": 206,
+      "max_func": 46,
+      "max_func_name": "main"
     },
     "app/webview/text_normalize.py": {
       "bytes": 6669,
@@ -631,12 +631,12 @@
       "max_func_name": "_run"
     },
     "app/webview/youtube_clock.py": {
-      "bytes": 7692,
+      "bytes": 9572,
       "classes": 0,
-      "defs": 5,
+      "defs": 6,
       "except_pass": 0,
       "globals": 0,
-      "lines": 184,
+      "lines": 216,
       "max_func": 37,
       "max_func_name": "instant"
     },
@@ -669,6 +669,26 @@
       "lines": 551,
       "max_func": 66,
       "max_func_name": "painted_rows"
+    },
+    "app/webview/yt_cdp_retry.py": {
+      "bytes": 2168,
+      "classes": 0,
+      "defs": 3,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 64,
+      "max_func": 12,
+      "max_func_name": "next_delay"
+    },
+    "app/webview/yt_read_budget.py": {
+      "bytes": 2699,
+      "classes": 0,
+      "defs": 2,
+      "except_pass": 0,
+      "globals": 0,
+      "lines": 63,
+      "max_func": 17,
+      "max_func_name": "decide"
     },
     "app/webview/z_order.py": {
       "bytes": 6652,
@@ -711,12 +731,12 @@
       "max_func_name": "_flush"
     },
     "worker/audio_ring.py": {
-      "bytes": 38741,
+      "bytes": 40798,
       "classes": 1,
-      "defs": 7,
-      "except_pass": 5,
+      "defs": 8,
+      "except_pass": 6,
       "globals": 0,
-      "lines": 807,
+      "lines": 846,
       "max_func": 83,
       "max_func_name": "__init__"
     },
@@ -971,13 +991,13 @@
       "max_func_name": "speaker_for_window"
     },
     "worker/speaker_sidecar.py": {
-      "bytes": 95500,
+      "bytes": 96681,
       "classes": 3,
       "defs": 28,
       "except_pass": 6,
       "globals": 0,
-      "lines": 1971,
-      "max_func": 280,
+      "lines": 1991,
+      "max_func": 296,
       "max_func_name": "main"
     },
     "worker/stable_words.py": {
