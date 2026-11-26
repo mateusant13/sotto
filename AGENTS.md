@@ -662,6 +662,22 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
   `panel-chrome` + `panel-chrome-neg` e `base-themes` + `base-themes-neg` -- os dois instrumentos
   existiam e nenhum estava ligado a esta bateria.)
 
+## `git rm --cached` SO' CONTA QUANDO `git ls-tree HEAD` CONCORDA (medido 2026-11-26)
+
+**Duas vezes nesta sessao um `git rm --cached` devolveu rc=0 e o commit seguinte NAO levou a remocao**
+(`.opencode/goal.json`: `93a63b0` mudou so' o `.gitignore` e o ficheiro continuou versionado; antes, os
+tres registos de gate deram `commit rc=1 -- no changes added to commit`). O rc do `rm` mede o indice,
+o rc do `commit` mede que ALGO entrou -- nenhum dos dois mede o que ficou em `HEAD`. A regra:
+
+- Depois de destrackear, a prova e' **lida da arvore publicada**, nao do rc: `git ls-tree HEAD <dir>`
+  **sem** o caminho, `git ls-files --error-unmatch <path>` a falhar, e `git show --stat --oneline HEAD`
+  a mostrar a DELECAO (`| N ------`). Um caminho cujo `git check-ignore` imprime uma regra e' estado,
+  nao fonte (`.opencode/.closure-gate*.json`, `.opencode/goal*.json`, `.steady-watcher.json`).
+- Commit por caminho (`git commit -m ... -- <path>`) ja' engoliu uma remocao encenada; commit de
+  indice (sem `-- <path>`, so' com o que esta' encenado) levou-a. Preferir o segundo e verificar a
+  arvore depois.
+- Um commit de indice puro nao corre a bateria: `SOTTO_SKIP_RUN_ALL=1`, e a mensagem diz que o fez.
+
 ## O EOL DO REPO E' UMA REGRA (medido 2026-11-15)
 
 **Um comando que se chama `--verify` ou verifica, ou nao existe.** `_main/_make-gitattributes.py
