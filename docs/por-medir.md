@@ -113,3 +113,28 @@
   `WEBVIEW2_INIT_FAILED 0x80010108 RPC_E_DISCONNECTED` as 12:34:53 e `0x80080005 CO_E_SERVER_EXEC_FAILURE`
   as 12:35:05, com `PANEL_V2_GATE=RED` e nenhum `PANEL_SHOW_COST`. E' a limitacao de pane ja' registada
   em `AGENTS.md`; a medicao exige o Alt+C do dono num arranque dele. CANNOT-MEASURE aqui, NOT a pass.
+
+- **O tecto do diarizador depois do `42b7420f` (2026-11-26) — `fixed, NOT verified`.** A janela
+  `DEFAULT_WINDOW_S` desceu de 20,0 s para 10,0 s porque `S.tick` mediu, sobre 11,9 s de áudio real
+  (`_main/_cache/...-12s-16k.wav`, `provider=cpu`, 2 fios), **RTF 0,037 com janela 10 s** contra
+  **RTF 0,768 com janela 20 s** (0,38 s de CPU por tique contra 15,36 s) — o penhasco medido é 40×.
+  O que NÃO está medido: a CPU do processo `python.exe` do sidecar **depois de ele arrancar com o
+  código novo**. O processo vivo é o `python.exe(73436)`, criado 11:45:10, anterior ao commit; uma
+  lane não reinicia a app dele. A medição é `_main/shell-thread-cpu.py <pid> --seconds 8` na árvore
+  dele depois do próximo arranque. Antes: **40,9 % de um núcleo**. Esperado: **~7,6 %**.
+
+- **A cadência de pintura e do relógio de revelação com o painel ABERTO (2026-11-26).** Com
+  `SOTTO_LANE_LAUNCH=1` a shell publica `CAPTION_WANTED_START on=false reason=lane` e
+  `_caption_wanted=false`: não há cues nem `CAPTION_PAINT_SURFACE`, logo a cadência de pintura e o
+  relógio de revelação não podem ser julgados de uma lane. A metade que corre (attach, snapshot,
+  pausa, seek, leitura, histórico) está coberta por `yt-pause-disagreement`, `youtube-monotonic`,
+  `yt-diag-truth`, `product-soak`. A outra metade exige a faixa na tela dele — buraco nomeado, não
+  decisão de lane.
+
+- **O YouTube a tocar de um perfil de lane (medido 2026-11-26, três perfis).** Um `--user-data-dir`
+  limpo abre a página, o DOM fica completo e
+  `movie_player.getPlayerResponse().playabilityStatus.status == LOGIN_REQUIRED` com
+  `streamingData.adaptiveFormats` vazio: `readyState` fica 0 e nenhum segmento de legenda aparece.
+  Os cookies de consentimento não levantam isso, e nem `--headless=new` nem janela fora do ecrã mudam
+  nada — é política de sessão do YouTube. `CANNOT-MEASURE reason=youtube-login-required`; a via
+  livre de dono é um login descartável dentro do perfil da lane, e o perfil dele nunca é a resposta.
