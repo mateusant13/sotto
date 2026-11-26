@@ -146,6 +146,19 @@ def analyse(session, duration, history_rows, day=None, minutes=5.0):
               if ' CAPTION_WINDOW_BLANKED ' in row['body']
               or ' EXTERNAL_CAPTIONS_RELEASED ' in row['body']]
 
+    # ZERO CUES NAO E' UMA SESSAO SEM DEFEITO -- E' UMA SESSAO SEM PRODUTO
+    # (2026-11-26, encontrado ao auditar este juiz). Nenhum braco exigia uma
+    # legenda: uma janela de 5 min com pinturas e ZERO textos entregues passava
+    # em a/b/c/d e imprimia PASS, porque "nenhuma cue por dentro do buraco" e'
+    # verdade quando nao ha cue nenhuma. Um veredicto sobre "as legendas
+    # funcionam" precisa de pelo menos uma legenda para julgar; sem ela o
+    # honesto e' CANNOT-MEASURE, nunca verde.
+    if not cues:
+        results['b'] = (False, 'nenhuma cue entregue na sessao')
+        return {'a': results['a'], 'b': results['b'],
+                'verdict': 'CANNOT-MEASURE', 'why': 'no-cues',
+                'duration': duration}
+
     # b CADENCIA -- o buraco medido e' entre pinturas, e so' conta se uma cue
     # chegou por dentro dele: com o video parado nao ha o que pintar.
     worst_gap, worst_at, stalled = 0.0, None, False
@@ -239,7 +252,8 @@ def _stamp(offset):
                                             total % 60.0)
 
 
-def _fixture(minutes=6, paint_gap=0.5, finals=8, history=True, agree=True):
+def _fixture(minutes=6, paint_gap=0.5, finals=8, history=True, agree=True,
+             cues=True):
     """Uma sessao sintetica na FORMA da do dono, com os numeros sob controlo."""
     lines = [_stamp(0) + ' sotto: SHELL_STARTUP_STAGE pid=1 stage=pre-lock']
     span = minutes * 60.0
@@ -247,8 +261,9 @@ def _fixture(minutes=6, paint_gap=0.5, finals=8, history=True, agree=True):
     index = 0
     while step < span:
         clock = 100.0 + step
-        lines.append(_stamp(step) + ' sotto: EXTERNAL_CAPTION_DRAWN '
-                     'rows=2 lines=["a", "b"]')
+        if cues:
+            lines.append(_stamp(step) + ' sotto: EXTERNAL_CAPTION_DRAWN '
+                         'rows=2 lines=["a", "b"]')
         if step % 10.0 < 1e-9 and step > 0:
             lines.append(_stamp(step) + ' sotto: YOUTUBE_PAUSE_DISAGREED '
                          'paused_flag=True clock_rate=0.50 t=%.2f vid=X' % clock)
@@ -304,15 +319,27 @@ def neg_arm():
     else:
         print('  PASS  a fixture boa passa (a/b/c/d verdes)')
     specs = (
-        # (label, fixture kwargs, arm that must break)
-        ('paint-stall-12s', dict(paint_gap=12.0), 'b'),
-        ('no-paints-at-all', dict(paint_gap=1e9), 'b'),
-        ('history-silent', dict(history=False), 'd'),
-        ('short-session', dict(minutes=2), 'a'),
+        # (label, fixture kwargs, arm that must break, expected refusal)
+        ('paint-stall-12s', dict(paint_gap=12.0), 'b', None),
+        ('no-paints-at-all', dict(paint_gap=1e9), 'b', None),
+        ('no-cues-at-all', dict(cues=False), 'b', 'no-cues'),
+        ('history-silent', dict(history=False), 'd', None),
+        ('short-session', dict(minutes=2), 'a', None),
     )
-    for label, kwargs, owner in specs:
+    for label, kwargs, owner, refusal in specs:
         text, rows = _fixture(**kwargs)
         got = judge_fixture(text, rows)
+        if refusal:
+            # Uma sessao sem legendas tem de ser RECUSADA, nao aprovada: ate'
+            # 2026-11-26 este juiz imprimia PASS nela.
+            if got.get('verdict') == 'CANNOT-MEASURE' and got.get('why') == refusal:
+                print('  GREEN mutant %-18s refused by name: %s'
+                      % (label, got.get('why')))
+                caught += 1
+            else:
+                print('  RED   mutant %-18s NOT refused (%s/%s) -- gate blind'
+                      % (label, got.get('verdict'), got.get('why')))
+            continue
         if got.get('verdict') == 'CANNOT-MEASURE' and owner != 'a':
             print('  RED   mutant %-18s fixture nem chegou a medir (%s)'
                   % (label, got.get('why')))
