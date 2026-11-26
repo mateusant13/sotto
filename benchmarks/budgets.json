@@ -12,7 +12,7 @@
       "direction": "lower_is_better",
       "ceiling": 20000.0,
       "timeout_s": 120.0,
-      "command": "python _main/battery-budget-oracle.py",
+      "command": "python _main/battery-budget-oracle.py --policy cap40",
       "parse_mode": "wall_ms",
       "parse_pattern": "",
       "owner_paths": [
@@ -23,20 +23,20 @@
         "_main/_audit-verify-all.cmd"
       ],
       "red_arm_cmd": "python _main/battery-budget-oracle.py --neg-arm",
-      "note": "Nao corre a bateria (seria recursao): le' o historico e recusa-se quando o ratchet de tempo por passo cai. MEDIDO 2026-11-26: o passo real deu RED com 2391 s totais e VERDE com 1080 s, logo este oraculo sabe ficar vermelho."
+      "note": "Nao corre a bateria (seria recursao): le' o historico e recusa-se quando o ratchet de tempo por passo cai. MEDIDO 2026-11-26: o passo real deu RED com 2391 s totais e VERDE com 1080 s, logo este oraculo sabe ficar vermelho. MEDIDO 2026-11-26 (run #11): sem a bandeira o proprio oraculo RECUSA -- o baseline foi medido sob 'cap40' e comparar populacoes diferentes seria dizer PASS sobre nada. O `--policy` diz QUAL populacao, nao sobe tecto nenhum."
     },
     {
       "id": "subsystem.feature_map_gate_ms",
       "tier": "subsystem",
       "input_desc": "`feature_map_sync.py --repo . --gate`",
       "output_desc": "features stay in sync with tracked files and AGENTS.md",
-      "metric_name": "cpu_ms",
+      "metric_name": "wall_ms",
       "unit": "ms",
       "direction": "lower_is_better",
       "ceiling": 15000.0,
       "timeout_s": 120.0,
       "command": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/feature_map_sync.py --repo . --gate",
-      "parse_mode": "cpu_ms",
+      "parse_mode": "wall_ms",
       "parse_pattern": "",
       "owner_paths": [
         "features/features.json",
@@ -47,20 +47,21 @@
         "_main/_audit-verify-all.cmd"
       ],
       "red_arm_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/feature_map_sync.py --repo . --gate --selftest",
-      "note": "Gate real: recusa um mapa desactualizado. MEDIDO 2026-11-26 na primeira sincronizacao: 15 features. MEDIDO 2026-11-26: julga cpu_ms, nao wall_ms -- o mesmo codigo deu 510,31 ms e 1353,11 ms de parede em corridas diferentes (jaula de 40% de CPU) e o trabalho nao mudou; a parede de um passo dentro de um tecto de CPU mede o escalonador."
+      "note": "Gate real: recusa um mapa desactualizado. MEDIDO 2026-11-26 na primeira sincronizacao: 15 features. ADOPTED v3.1 (2026-11-26): a medicao passa a ser best-of-3 de parede com piso de ruido de 250 ms e tolerancia de 25%, e cada linha grava `host_cpu_pct`, logo uma linha faminta NOMEIA-SE. O instrumento `cpu_ms` que eu tinha posto (amostragem psutil da arvore do filho: 344/390 ms num ciclo, 62/1068 num sleep) foi substituido porque o script e' canonico da frota e o proximo reload deita fora qualquer fork.",
+      "samples": 3
     },
     {
       "id": "subsystem.tooling_intent_ms",
       "tier": "subsystem",
       "input_desc": "348 instrumentos em `_main`",
       "output_desc": "cada ferramenta declara BLOCKS/NO-BUG e o ratchet nao cresce",
-      "metric_name": "cpu_ms",
+      "metric_name": "wall_ms",
       "unit": "ms",
       "direction": "lower_is_better",
       "ceiling": 30000.0,
       "timeout_s": 240.0,
       "command": "python _main/tooling-intent-oracle.py",
-      "parse_mode": "cpu_ms",
+      "parse_mode": "wall_ms",
       "parse_pattern": "",
       "owner_paths": [
         "_main/tooling-intent-oracle.py",
@@ -70,7 +71,8 @@
         "_main/_audit-verify-all.cmd"
       ],
       "red_arm_cmd": "python _main/tooling-intent-oracle.py --neg-arm",
-      "note": "MEDIDO 2026-11-26: PASS com 202 declaradas e 143 no baseline (ratchet 159). MEDIDO 2026-11-26: julga cpu_ms, nao wall_ms -- o mesmo codigo deu 510,31 ms e 1353,11 ms de parede em corridas diferentes (jaula de 40% de CPU) e o trabalho nao mudou; a parede de um passo dentro de um tecto de CPU mede o escalonador."
+      "note": "MEDIDO 2026-11-26: PASS com 202 declaradas e 143 no baseline (ratchet 159). ADOPTED v3.1 (2026-11-26): a medicao passa a ser best-of-3 de parede com piso de ruido de 250 ms e tolerancia de 25%, e cada linha grava `host_cpu_pct`, logo uma linha faminta NOMEIA-SE. O instrumento `cpu_ms` que eu tinha posto (amostragem psutil da arvore do filho: 344/390 ms num ciclo, 62/1068 num sleep) foi substituido porque o script e' canonico da frota e o proximo reload deita fora qualquer fork.",
+      "samples": 3
     },
     {
       "id": "basic.yt_capture_replay_ms",

@@ -37,6 +37,7 @@ import os
 import runpy
 import subprocess
 import sys
+import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -242,6 +243,63 @@ TIMING_STEPS = frozenset({
     'lag-note-cost')})
 
 
+class _CpuSampler:
+    """O tempo de CPU da arvore do filho, enquanto ele vive.
+
+    POR QUE NAO `os.times()`/`resource`: medido 2026-11-26 nesta maquina --
+    `resource` nao existe no Windows e `os.times().children_user + children_system`
+    devolve **0.0 sempre** (o CPython no Windows nao preenche os campos dos
+    filhos). Um zero constante e' um verde que nao pode falhar.
+
+    Conhecido-respondido: ciclo de CPU de 8 M iteracoes = 344 ms de `cpu_s` para
+    390 ms de parede; `time.sleep(1.0)` = 62 ms para 1068 ms de parede.
+    """
+
+    def __init__(self, proc, box):
+        self.proc = proc
+        self.box = box
+        self.stop_flag = threading.Event()
+        self.thread = threading.Thread(target=self._loop, name='cpu-sampler',
+                                       daemon=True)
+
+    def start(self):
+        self.thread.start()
+
+    def stop(self):
+        self.stop_flag.set()
+        self.thread.join(timeout=1.0)
+
+    def _loop(self):
+        best = None
+        try:
+            import psutil
+        except Exception:  # noqa: BLE001 -- sem psutil nao ha numero, e None e' honesto
+            return
+        proc = None
+        while not self.stop_flag.is_set():
+            try:
+                proc = proc or psutil.Process(self.proc.pid)
+                total = 0.0
+                seen = [proc]
+                try:
+                    seen.extend(proc.children(recursive=True))
+                except Exception:  # noqa: BLE001 -- amostra sem a arvore ainda vale
+                    pass
+                for one in seen:
+                    try:
+                        ct = one.cpu_times()
+                        total += ct.user + ct.system
+                    except Exception:  # noqa: BLE001 -- processo ja' saiu
+                        pass
+                if best is None or total > best:
+                    best = total
+            except Exception:  # noqa: BLE001 -- o filho ja' nao existe
+                pass
+            self.stop_flag.wait(0.05)
+        if best is not None:
+            self.box['cpu_s'] = round(best, 3)
+
+
 def child_flags(step: str) -> tuple[int, str]:
     """`creationflags` do filho e o MOTIVO, lido do NOME do passo."""
     base = 0x08000000  # CREATE_NO_WINDOW
@@ -250,8 +308,16 @@ def child_flags(step: str) -> tuple[int, str]:
     return base | BELOW_NORMAL, 'demoted'
 
 
-def run_with_deadline(argv, seconds=None, log=print):
-    """Corre `argv`, corta-a no prazo, devolve (rc, killed)."""
+def run_with_deadline(argv, seconds=None, log=print, cpu_box=None):
+    """Corre `argv`, corta-a no prazo, devolve (rc, killed).
+
+    `cpu_box`, quando dado, recebe `cpu_s` = o tempo de CPU da ARVORE do filho,
+    amostrado a 50 ms e guardado o MAXIMO (medido 2026-11-26: o filho que faz
+    um trabalho de 0,36 s custa 62,1 s de PAREDE dentro da jaula da bateria
+    `--cpu 40 --io very-low`, 170x, enquanto o CPU e' o mesmo -- a parede da
+    jaula mede o duty cycle dela, nao o passo. Um filho mais curto do que uma
+    amostra devolve `None`, nunca um zero que passaria por numero).
+    """
     seconds = resolve_seconds(seconds)
     ns = runpy.run_path(os.path.join(HERE, 'hidden-launch.py'))
     t0 = time.monotonic()
@@ -263,12 +329,19 @@ def run_with_deadline(argv, seconds=None, log=print):
     proc = ns['popen'](list(argv), creationflags=flags)
     if why == 'demoted':
         log('STEP-PRIORITY step=%s class=BELOW_NORMAL' % (step or '<unnamed>'))
+    sampler = _CpuSampler(proc, cpu_box) if cpu_box is not None else None
+    if sampler is not None:
+        sampler.start()
     job = job_create()
     in_job = bool(job) and job_assign(job, proc.pid)
     try:
         rc = proc.wait(timeout=seconds)
+        if sampler is not None:
+            sampler.stop()
         return int(rc), []
     except subprocess.TimeoutExpired:
+        if sampler is not None:
+            sampler.stop()
         before = {pid for pid, _ in descendants(proc.pid)} | {proc.pid}
         if in_job:
             job_terminate(job)
@@ -545,7 +618,7 @@ def _record_args(own):
         log=take('--record-log'))
 
 
-def _write_record(kw, rc):
+def _write_record(kw, rc, cpu_s=None):
     """Escreve a linha da cache no processo que JA' correu o passo.
 
     Duas recusas sao de proposito: um `--record-step` sem `--record-state`
@@ -564,7 +637,7 @@ def _write_record(kw, rc):
         ok, reason = stepcache.record(
             kw['step'], kw['deps'], rc, log=kw.get('log'),
             expect_rc=kw['expect_rc'], state_path=kw['state_path'],
-            t0=kw.get('t0'), policy=kw.get('policy'))
+            t0=kw.get('t0'), policy=kw.get('policy'), cpu_s=cpu_s)
         if not ok:
             sys.stderr.write('STEP-RECORD-FAILED step=%s reason=%s\n'
                              % (kw['step'], reason))
@@ -610,9 +683,10 @@ def main(argv):
     if not child:
         sys.stderr.write('step-deadline: sem comando depois de `--`\n')
         return 1
-    rc, _ = run_with_deadline(child, seconds=seconds)
+    cpu = {}
+    rc, _ = run_with_deadline(child, seconds=seconds, cpu_box=cpu)
     if record:
-        _write_record(record, rc)
+        _write_record(record, rc, cpu.get('cpu_s'))
     return rc
 
 

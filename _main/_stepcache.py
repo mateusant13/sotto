@@ -415,7 +415,8 @@ def step_elapsed(t0, log_path=None):
 
 
 def record(step: str, deps, rc: int, log=None, expect_rc: int = 0,
-           state_path: str = DEFAULT_STATE, t0=None, policy=None) -> tuple:
+           state_path: str = DEFAULT_STATE, t0=None, policy=None,
+           cpu_s=None) -> tuple:
     """(ok, reason). Records the step AS IT RAN. A step whose deps are missing
     is NOT recorded: there would be nothing to invalidate it later.
 
@@ -462,6 +463,11 @@ def record(step: str, deps, rc: int, log=None, expect_rc: int = 0,
         entry["elapsed_s"] = round(elapsed, 3)
     if policy:
         entry["policy"] = policy
+    # O CUSTO DE CPU DO PASSO (medido pelo wrapper; ver `_CpuSampler` em
+    # step-deadline.py): a parede dentro da jaula da bateria mede o duty cycle da
+    # jaula. `None` quando a amostragem nao deu numero -- nunca um zero.
+    if cpu_s is not None:
+        entry["cpu_s"] = round(float(cpu_s), 3)
     state.setdefault("steps", {})[step] = entry
     state["version"] = STATE_VERSION
     if not save_state(state, state_path):
