@@ -421,6 +421,28 @@ proporciona ou entao com modelo que separa vozes."* e, quando recebeu um pedido 
 - **A FAIXA ABRE NO MONITOR DO CURSOR.** `select_display_for_point` escolhe por contenção física, depois `MONITOR_DEFAULTTONEAREST`, depois primário; o rect é clampado à WORK AREA daquele monitor (DPI por monitor, escalado uma vez). `primary_display()` não é o caminho do strip. Detalhe: `docs/shell-contract.md`; prova: `_main/multi-monitor-oracle.py` (6 braços).
 - **UI 100% PT-BR (2026-11-25).** Bandeja: `Abrir painel`, `Desativar/Ativar atalho Alt+C`, `Desligar/Ligar legendas (Ctrl+Space)`, `Editar posicao da legenda`, `Sair do Sotto`; painel e faixa com rótulos PT-BR, incluindo as cadeias escritas em RUNTIME pelo `panel.js` (medido: `_main/panel-language-oracle.js` → `VERDICT: PASS`, braço negativo derruba). Detalhe: `docs/spec/08-PANELS-UX.md`; provas: `_main/tray-menu-oracle.py` (27 arms) e `_main/tray-quit-probe.py`.
 
+## UMA PAUSA QUE A MEDIDA DESMENTIU NAO APAGA O ECRA (ordem do dono, 2026-11-26)
+
+Verbatim: *"i just opened sotto, went to youtube, subtitles from youtube worked for like 2 seconds and
+then froze, when i unpaused it still did not worked"*. O log dele (pid 57008) mostra as duas
+testemunhas a discordar no MESMO tick: `YOUTUBE_PAUSE_DISAGREED clock_rate=0.58` as .508 e
+`YOUTUBE_PAUSE_PROVEN held_s=0.25` as .756, e o `CAPTION_WINDOW_BLANKED` a seguir.
+
+- **Uma so' regra, um so' dono:** `youtube_clock.pause_proven(clock_static, clock_moving)`. O
+  movimento MEDIDO ganha sempre que as duas testemunhas discordam; `_now_paused` e a testemunha da
+  borda derivam dela, e nao existe segunda copia inline (o oraculo recusa uma).
+- **O espelho `yt_source_paused` e' o portao que recusa cada linha seguinte** (`external_caption`).
+  Arma-lo com uma pausa desmentida e' o congelamento: o ecra nao volta ao despausar. Nenhum caminho
+  pode arma-lo sem `pause_proven`.
+- **Um diagnostico nao sobrevive a' foto que o produziu:** `_yt_diag_now` le as linhas no limite dos
+  leitores (1,2 s, era 8 s) e imprime `why='painted-stale'` quando o rotulo preso e a contagem fresca
+  nao podem ser do mesmo instante. Portoes: `_main/yt-pause-disagreement-oracle.py` e
+  `_main/yt-diag-truth-oracle.py`, os dois na bateria com o seu `red-as-expected`.
+- **A prova depois do reinicio dele e' um comando:**
+  `python _main/yt-pause-disagreement-oracle.py --log _main/webview-run.log` -> `CLEAN`. A janela
+  DEFAULT e' a ultima sessao (`SHELL_STARTUP_STAGE`); `--since 'YYYY-MM-DD HH:MM'` escolhe outra.
+  Medido no log historico: 18 episodios contraditos antes do fix, e 1 na sessao dele.
+
 ## O RUNTIME DE WEBVIEW2: a MAIOR instalada, e nenhum pin (ordem do dono, 2026-11-11)
 
 Verbatim: *"WEBVIEW2 RUNTIME ORDER FROM THE OWNER (2026-11-11): use the GREATER version. This is a

@@ -137,7 +137,7 @@ def neg_arm(clock, shell_src):
     return all(c for _, c in caught) and len(caught) == 2
 
 
-def log_verdict(path):
+def log_verdict(path, since=None):
     """A CONTRADICAO NO LOG, QUE E' A UNICA PROVA QUE O DONO PODE PRODUZIR (2026-11-26).
 
     O dono reinicia, abre um video e a linha do tempo existe. Este modo le o
@@ -146,9 +146,11 @@ def log_verdict(path):
     menos de 5 linhas de um `YOUTUBE_PAUSE_DISAGREED`, no mesmo video e com o
     `t` igual, e' exactamente o defeito de 2026-11-26.
 
-    Nao entra nos arms nem na bateria: o log HISTORICO tem o defeito, logo uma
-    arm que o julgasse nascia vermelha. Ele corre depois da proxima sessao do
-    dono, e o veredicto e' `CLEAN` ou `CONTRADICTED` com as linhas nomeadas.
+    O log e' APPEND-ONLY e guarda meses: julgar o ficheiro inteiro acusa o codigo
+    ANTIGO para sempre (medido: 18 episodios contraditos, todos anteriores ao
+    fix). Por isso a janela DEFAULT e' a ULTIMA sessao -- da ultima linha
+    `SHELL_STARTUP_STAGE` em diante -- que e' exactamente a pergunta do dono
+    depois de reiniciar. `--since 'YYYY-MM-DD HH:MM'` escolhe outra janela.
     """
     import re
     try:
@@ -157,6 +159,20 @@ def log_verdict(path):
     except OSError as exc:
         print('YT-PAUSE-LOG CANNOT-MEASURE reason=%r' % (exc,))
         return 3
+    start = 0
+    if since:
+        for n, line in enumerate(lines):
+            if line.startswith(since):
+                start = n
+                break
+        else:
+            print('YT-PAUSE-LOG CANNOT-MEASURE reason=since-not-found since=%r' % (since,))
+            return 3
+    else:
+        for n, line in enumerate(lines):
+            if 'SHELL_STARTUP_STAGE' in line and 'stage=pre-lock' in line:
+                start = n
+    lines = lines[start:]
     pat = re.compile(r'YOUTUBE_PAUSE_(DISAGREED|PROVEN)\b.*?t=([0-9.]+)'
                      r'.*?vid=(\S+)')
     seen, bad = [], []
@@ -194,7 +210,14 @@ def main(argv=None):
         if i + 1 >= len(argv):
             print('--log needs a path')
             return 2
-        return log_verdict(argv[i + 1])
+        since = None
+        if '--since' in argv:
+            j = argv.index('--since')
+            if j + 1 >= len(argv):
+                print('--since needs a prefix, e.g. "2026-11-26 02:37"')
+                return 2
+            since = argv[j + 1]
+        return log_verdict(argv[i + 1], since)
     clock = load(CLOCK, 'youtube_clock_live')
     shell_src = read(SHELL)
 
