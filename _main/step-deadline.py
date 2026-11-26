@@ -220,6 +220,36 @@ def resolve_seconds(seconds=None):
     return value
 
 
+# PASSO CUJO NUMERO E' TEMPO NAO SE DESCARREGA (medido 2026-11-26, DM do watcher).
+#
+# Dois DMs de stutter seguidos (`dm-81956dec`, `dm-ba046cdf`) acusaram
+# `python.exe` = um filho de passo da MINHA bateria como a maior pressao do
+# episodio, com `tick-gap, not-scheduled` -- o governador a ser escalonado atras
+# de um passo meu. Um teste nao compete com o dono. O wrapper por onde passam os
+# ~600 passos e' este, logo a classe de prioridade poe-se AQUI: o filho arranca
+# `BELOW_NORMAL` e o dono deixa de esperar por ele.
+#
+# A EXCECAO E' DECLARADA, nao descoberta: um passo cujo TODO o trabalho e' um
+# numero de parede/ms nao pode ser descarregado -- descarrega-lo muda o numero.
+BELOW_NORMAL = 0x00004000
+TIMING_STEPS = frozenset({
+    'paint-cost', 'shell-thread-budget', 'tree-cost', 'youtube-cdp-latency',
+    'yt-read-budget', 'caption-lag-budget', 'cost-watchdog', 'device-ladder-cost',
+    'lag-note-cost',
+}) | frozenset({'red-as-expected-' + n for n in (
+    'paint-cost', 'shell-thread-budget', 'tree-cost', 'youtube-cdp-latency',
+    'yt-read-budget', 'caption-lag-budget', 'cost-watchdog', 'device-ladder-cost',
+    'lag-note-cost')})
+
+
+def child_flags(step: str) -> tuple[int, str]:
+    """`creationflags` do filho e o MOTIVO, lido do NOME do passo."""
+    base = 0x08000000  # CREATE_NO_WINDOW
+    if step in TIMING_STEPS:
+        return base, 'timing-step'
+    return base | BELOW_NORMAL, 'demoted'
+
+
 def run_with_deadline(argv, seconds=None, log=print):
     """Corre `argv`, corta-a no prazo, devolve (rc, killed)."""
     seconds = resolve_seconds(seconds)
@@ -228,7 +258,11 @@ def run_with_deadline(argv, seconds=None, log=print):
     # A SAIDA DO FILHO VAI PARA O NOSSO STDOUT -- a bateria redireciona-a para o
     # log do passo, e o log E' EVIDENCIA: devnull aqui apagava o veredicto de cada
     # oraculo (medido nesta sessao: o filho escreveu `ran` e o log ficou vazio).
-    proc = ns['popen'](list(argv))
+    step = os.environ.get('SOTTO_STEP_NAME') or ''
+    flags, why = child_flags(step)
+    proc = ns['popen'](list(argv), creationflags=flags)
+    if why == 'demoted':
+        log('STEP-PRIORITY step=%s class=BELOW_NORMAL' % (step or '<unnamed>'))
     job = job_create()
     in_job = bool(job) and job_assign(job, proc.pid)
     try:
@@ -366,7 +400,52 @@ def selftest():
           % (rc, len(killed), 'PASS' if a7 else 'FAIL'))
     ok &= a7
 
-    print('STEP-DEADLINE SELFTEST: %s (7 arms)' % ('PASS' if ok else 'FAIL'))
+    # A8/A9: A CLASSE DE PRIORIDADE DO FILHO (medido 2026-11-26, dois DMs de
+    # stutter que nomearam um filho de passo como a maior pressao do episodio).
+    # O filho LE A SUA PROPRIA classe com GetPriorityClass e escreve-a num
+    # ficheiro: o braco julga a RELACAO (passo comum descarregado, passo de
+    # medicao nao), nunca o pedido que este wrapper fez.
+    # A MARCA TIPADA E' OBRIGATORIA: sem `argtypes`, o pseudo-handle -1 de
+    # `GetCurrentProcess` e' passado como c_int e `GetPriorityClass` devolve 0
+    # (medido: `0x0` nos dois arms, sem erro nenhum).
+    probe = ('import ctypes, sys\n'
+             'k = ctypes.WinDLL("kernel32")\n'
+             'k.GetCurrentProcess.restype = ctypes.c_void_p\n'
+             'k.GetPriorityClass.argtypes = [ctypes.c_void_p]\n'
+             'k.GetPriorityClass.restype = ctypes.c_uint32\n'
+             'h = k.GetCurrentProcess()\n'
+             'open(sys.argv[1], "w").write(str(k.GetPriorityClass(h)))\n')
+    tmpd = tempfile.mkdtemp(prefix='sotto-prio-')
+
+    def read_class(step_name):
+        path = os.path.join(tmpd, 'prio-%s.txt' % (step_name or 'unnamed'))
+        saved_step = os.environ.get('SOTTO_STEP_NAME')
+        os.environ['SOTTO_STEP_NAME'] = step_name
+        try:
+            run_with_deadline([py, '-c', probe, path], seconds=30)
+        finally:
+            if saved_step is None:
+                os.environ.pop('SOTTO_STEP_NAME', None)
+            else:
+                os.environ['SOTTO_STEP_NAME'] = saved_step
+        try:
+            return int(open(path, encoding='utf-8').read().strip())
+        except (OSError, ValueError):
+            return 0
+
+    got_common = read_class('nemotron-preload')
+    a8 = got_common == BELOW_NORMAL
+    print('A8 passo comum lido do FILHO: 0x%X (quer 0x%X) -> %s'
+          % (got_common, BELOW_NORMAL, 'PASS' if a8 else 'FAIL'))
+    ok &= a8
+
+    got_timing = read_class('paint-cost')
+    a9 = got_timing != BELOW_NORMAL and got_timing != 0
+    print('A9 passo de MEDICAO nao e\' descarregado: 0x%X -> %s'
+          % (got_timing, 'PASS' if a9 else 'FAIL'))
+    ok &= a9
+
+    print('STEP-DEADLINE SELFTEST: %s (9 arms)' % ('PASS' if ok else 'FAIL'))
     return 0 if ok else 1
 
 
