@@ -541,6 +541,30 @@ bloco.
   (`is_foreign_script_caption(text)`), `[CODE] worker/engine_policy.py:372`
   (chamada real).
 
+## `app/webview/yt_read_budget.py`
+
+- **O que faz** — Decide se a leitura da legenda do YouTube pode esperar: devolve se deve servir a ultima fala em cache e ate' quando, por orcamento. `UIA_BUDGET_MS` e o tecto de uma leitura; `decide(elapsed_ms, blocked_until, now)` devolve `(serve, until, event)` e um evento com nome quando arma a espera, com o hold proporcional ao que a leitura passou do orcamento (`HOLD_SCALE`, piso `HOLD_MIN_S`); `serving_cached` diz se a espera ainda vale.
+- **Quem o chama** — `SottoShell._yt_tick`/o caminho da legenda externa: o ramo UIA pergunta `yt_read_budget.UIA_BUDGET_MS` e chama `decide` (`[CODE] app/webview/sotto_webview.py:4567-4568`), o ramo que serve a fala anterior chama `serving_cached` e `decide` (`[CODE] app/webview/sotto_webview.py:5474-5485`).
+- **O que escreve/le** — Nao escreve ficheiros; publica `YOUTUBE_UIA_SLOW_BUDGET ms=.. hold_s=..` no log da shell quando arma a espera.
+- **Quando falha** — Uma leitura dentro do orcamento nao arma nada; acima dele o hold e' nomeado, nunca um bloqueio mudo -- sem o evento, uma leitura lenta e' indistinguivel de uma leitura que nao aconteceu.
+- **Evidencia** — `[CODE] app/webview/yt_read_budget.py:35-58`. `[MEASURED]` 2026-11-26: `python _main/yt-read-budget-oracle.py` -> 13/13 arms e 9/9 mutantes apanhados; a simulacao de cadencia com os numeros do log do dono vai de 0,067 Hz (a leitura de 15906 ms a bloquear o laco de 4 Hz) para 2,95 Hz.
+
+## `app/webview/yt_cdp_retry.py`
+
+- **O que faz** — Trata uma falha ao arrancar a fonte CDP como ESPERA e nao como lapide: `next_delay(attempts)` dobra 5 s ate' 60 s (`FIRST_DELAY_S`, `MAX_DELAY_S`, `SCALE`), `arm` devolve o instante e o evento `YOUTUBE_CDP_SOURCE_RETRY tries=.. next_s=..`, e `due` responde se ja' e' hora de tentar outra vez. Um `False` com zero falhas registadas e' outro dono a estacionar a fonte, e `due` recusa-o por nome.
+- **Quem o chama** — `SottoShell._yt_cdp_step` pergunta `due` antes de tentar (`[CODE] app/webview/sotto_webview.py:5576-5577`) e arma com `arm` nos dois ramos de falha, import e arranque (`[CODE] app/webview/sotto_webview.py:5618-5643`).
+- **O que escreve/le** — Contadores em memoria (`_yt_cdp_fail_tries`, `_yt_cdp_retry_at`) e a linha de log acima; sem ficheiros.
+- **Quando falha** — Sem a espera, uma excepcao transitoria de `start()` desligava o caminho barato da legenda ate' ao fim da sessao; com ela, a fonte volta e o log diz quando.
+- **Evidencia** — `[CODE] app/webview/yt_cdp_retry.py:27-64`. `[MEASURED]` 2026-11-26: `python _main/yt-cdp-retry-oracle.py` -> 11/11 arms e 9/9 mutantes apanhados (incluindo o import que falhava a 4 Hz e a fonte estacionada que nao pode ser ressuscitada).
+
+## `app/webview/stall_heartbeat.py`
+
+- **O que faz** — E' a TERCEIRA testemunha de um silencio no log: um processo proprio, a 1 Hz (`TICK_S`), que escreve `n`/`t`/`m` no seu ficheiro e morre com a shell (EOF no stdin, ou o pai a desaparecer por `psutil`). `scan(rows, gap_s)` e `tail_gaps(path, ...)` devolvem os buracos com o tamanho de cada um, para `_main/stall-attr.py` separar uma paragem da MAQUINA de uma paragem do GIL da shell.
+- **Quem o chama** — `SottoShell._start_stall_heartbeat` larga-o como PRIMEIRO passo do `CAPTION_PIPELINE_ORDER` (`[CODE] app/webview/sotto_webview.py:19221-19240`, `:19336`); `_main/stall-attr.py` le os buracos com `tail_gaps` (`[CODE] _main/stall-attr.py:113-114`).
+- **O que escreve/le** — `_main/_cache/stall-heartbeat.log`, uma linha por tique, escrita antes de qualquer vigia poder correr.
+- **Quando falha** — Sem ficheiro, vazio, ou mais velho do que 60 s, `stall-attr` responde `CANNOT-MEASURE` e nunca verde: a ausencia de um batimento nao e' prova de saude.
+- **Evidencia** — `[CODE] app/webview/stall_heartbeat.py:45-89`. `[MEASURED]` 2026-11-26: `python _main/stall-heartbeat-oracle.py` -> 10/10 arms e 12/12 mutantes; `_main/stall-attr.py --selftest` 5 fixtures e `--neg-arm` 1/1. O episodio que o justificou: 112,2 s de silencio da shell com `history/audio/gaps.jsonl:258` a medir 111,241 s do lado do worker.
+
 ## `worker/capture_share.py`
 
 - **O que faz** — Publica o bloco PCM 16 kHz mono float32 que o worker JÁ entregou à ASR (loopback + micro misturados por `mic_tap`) para um único leitor local, o `speaker_sidecar`. Um segundo cliente recebe `BUSY`; a fila é limitada a `QUEUE_BLOCKS` e o que transborda é CONTADO em `CAPTURE_SHARE_DROP dropped=N`, nunca silenciosamente; sem cliente, `publish()` é um bool e não copia nada. O sidecar tem 2 s para ligar e, se falhar, abre o seu próprio tap com `CAPTURE_SHARE fallback reason=<...>`.

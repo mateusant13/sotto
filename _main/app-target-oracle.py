@@ -660,6 +660,7 @@ def arm_j(mod, arm, ctx):
                              env=dict(env, **{'OMP_NUM_THREADS': '1', 'MKL_NUM_THREADS': '1', 'OPENBLAS_NUM_THREADS': '1', 'NUMEXPR_NUM_THREADS': '1', 'VECLIB_MAXIMUM_THREADS': '1'}),
                              cwd=os.path.dirname(os.path.dirname(SHELL)),
                              creationflags=0x08000000 | 0x00004000,
+                             startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                              capture_output=True, text=True, timeout=180)
         try:
             return json.loads(out.stdout.strip().splitlines()[-1])

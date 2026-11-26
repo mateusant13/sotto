@@ -272,6 +272,7 @@ def arm_executes(path=SHELL):
                              text=True, timeout=180,
                              env=dict(os.environ, **{'OMP_NUM_THREADS': '1', 'MKL_NUM_THREADS': '1', 'OPENBLAS_NUM_THREADS': '1', 'NUMEXPR_NUM_THREADS': '1', 'VECLIB_MAXIMUM_THREADS': '1'}),
                              creationflags=0x08000000 | 0x00004000,
+                             startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0),
                              cwd=ROOT)
     except subprocess.TimeoutExpired:
         return False, "timeout"

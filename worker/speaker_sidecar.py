@@ -68,6 +68,7 @@ DEFAULT_RATE = 16000
 #: 0,38 s de CPU/tique (RTF 0,037); janela 20 s = 15,36 s (RTF 0,768) -- 40x, e
 #: o dobro do tempo real. O default era 20 s: 154 % de um nucleo em teoria e
 #: 40,9 % MEDIDOS no processo do dono (2026-11-26). Ver AGENTS.md.
+DEFAULT_WINDOW_S = 10.0
 DEFAULT_EVERY_S = 5.0
 #: O DIARIZADOR PEDE CPU POR NOME, e o numero que o justifica esta' medido:
 #: `_main/_diar-run.py --provider cpu` deu DER 0,03 % na verdade do fabricante,

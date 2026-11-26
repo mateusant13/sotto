@@ -62,6 +62,7 @@ import os
 import statistics
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(os.environ.get("SOTTO_ROOT")
@@ -353,8 +354,14 @@ def build(source):
     """O namespace com `time`/`log` e as funcoes REAIS ligadas ao observador."""
     if str(WEBVIEW) not in sys.path:
         sys.path.insert(0, str(WEBVIEW))
+    import youtube_clock                                          # noqa: PLC0415
     bodies = extract(source, EXTRACTED)
+    # `youtube_clock` ENTRA AQUI (2026-11-26): o `3a9035e` pos a regra da
+    # pausa (`youtube_clock.pause_proven`) DENTRO do corpo real do snapshot, e
+    # um namespace sem o modulo matava o braco B1/B2 em `NameError` -- o corpo
+    # executado tem de ver o que o produto ve.
     ns = {"time": Clock, "log": _log, "os": os,
+          "youtube_clock": youtube_clock,
           # `_yt_mark` e' um helper de MODULO (perfil de fase); aqui so' precisa
           # de nao rebentar, nao de medir nada.
           "_yt_mark": lambda *_a, **_k: None,
@@ -414,6 +421,18 @@ class ForeignPlayer(Player):
 
     def _yt_mark(self, *_a):
         return None
+
+    def _yt_snap_fresh(self, snap):
+        """A FRESCURA E' DA FOTO (2026-11-26). O `3a9035e` pos a frescura no
+        caminho da pausa (`_yt_snap_fresh`) e este duplo nasceu antes dela: sem
+        o metodo, o braco B1/B2 morria em `AttributeError` e o neg-arm inteiro
+        saia por excecao -- um controlo que nao julga nada. A regra que ele
+        copia e' a do produto: o carimbo da propria foto, nao um proxy."""
+        try:
+            stamp = float(snap.get('stamp'))
+        except (TypeError, ValueError, AttributeError):
+            return False
+        return (time.monotonic() - stamp) <= 1.2
 
 
 def foreign_state_arm(ns, track):
