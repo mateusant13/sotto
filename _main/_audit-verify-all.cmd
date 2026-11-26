@@ -1535,6 +1535,44 @@ REM Nasceram do defeito que o dono reportou verbatim: "subtitles from youtube
 REM worked for like 2 seconds and then froze, when i unpaused it still did not
 REM worked". `yt-pause-disagreement` (uma pausa que a MEDIDA desmentiu nao apaga
 REM o ecra nem arma o espelho `yt_source_paused`, que recusa cada linha seguinte);
+REM `yt-capture-replay` (o fixture do player, julgado pelo codigo do produto).
+REM O par nasceu da ordem do dono de 2026-11-26 -- *"por que EU tenho que manda
+REM tu fazer uma snapshot do youtube...?"* -- e o fixture GRAVADO e' o que a
+REM lane larga sozinha: `_main/yt-snapshot-capture.py` grava (posicao, paused,
+REM readyState) a 50 ms e este oraculo replaia pelo relogio simulado. Nenhum
+REM dos dois abre janela nem toca a porta 9222; o passo NAO larga browser (le'
+REM o fixture que ja' esta' em `_main\fixtures\`), logo nao e' `heavy`.
+if exist _main\yt-capture-replay-oracle.py (
+ call :step yt-capture-replay 0 "_main\yt-capture-replay-oracle.py;app\webview\youtube_clock.py;app\webview\youtube_monotonic.py" "%OUT%\yt-capture-replay.log" python _main\yt-capture-replay-oracle.py
+ call :record yt-capture-replay !STEP_RC!
+) else ( call :record yt-capture-replay MISSING )
+if exist _main\yt-capture-replay-oracle.py (
+call :step red-as-expected-yt-capture-replay 1 "_main\yt-capture-replay-oracle.py;app\webview\youtube_clock.py;app\webview\youtube_monotonic.py" "%OUT%\yt-capture-replay-neg.log" python _main\yt-capture-replay-oracle.py --neg-arm
+call :expectred red-as-expected-yt-capture-replay !STEP_RC! "%OUT%\yt-capture-replay-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-yt-capture-replay MISSING "%OUT%\yt-capture-replay-neg.log" "NEG-ARM: PASS" )
+REM `yt-headless-paint` (a metade dos PIXEIS, fora do ecra: o bitmap GDI+ real
+REM de `overlay_paint._layout`, lido por `LockBits`). Nao abre janela nem
+REM dispositivo -- o proprio passo imprime `windows_opened=0` -- logo NAO e' heavy.
+if exist _main\yt-headless-paint-oracle.py (
+ call :step yt-headless-paint 0 "_main\yt-headless-paint-oracle.py;app\webview\headless_paint.py;app\webview\overlay_paint.py" "%OUT%\yt-headless-paint.log" python _main\yt-headless-paint-oracle.py
+ call :record yt-headless-paint !STEP_RC!
+) else ( call :record yt-headless-paint MISSING )
+if exist _main\yt-headless-paint-oracle.py (
+call :step red-as-expected-yt-headless-paint 1 "_main\yt-headless-paint-oracle.py;app\webview\headless_paint.py" "%OUT%\yt-headless-paint-neg.log" python _main\yt-headless-paint-oracle.py --neg-arm
+call :expectred red-as-expected-yt-headless-paint !STEP_RC! "%OUT%\yt-headless-paint-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-yt-headless-paint MISSING "%OUT%\yt-headless-paint-neg.log" "NEG-ARM: PASS" )
+REM `yt-lane-session` LARGA UM CHROME REAL (o braco `real-chrome-signed-out`), logo
+REM e' `heavy`: nao corre sem `SOTTO_BATTERY_HEAVY=1`, e o braco de rede continua
+REM a dizer `CANNOT-MEASURE` quando o Chrome nao responde. Porta 9222 recusada
+REM por nome dentro do proprio instrumento.
+if exist _main\yt-lane-session-oracle.py (
+ call :step heavy yt-lane-session 0 "_main\yt-lane-session-oracle.py;app\webview\youtube_cdp_source.py" "%OUT%\yt-lane-session.log" python _main\yt-lane-session-oracle.py
+ call :record yt-lane-session !STEP_RC!
+) else ( call :record yt-lane-session MISSING )
+if exist _main\yt-lane-session-oracle.py (
+call :step heavy red-as-expected-yt-lane-session 1 "_main\yt-lane-session-oracle.py" "%OUT%\yt-lane-session-neg.log" python _main\yt-lane-session-oracle.py --neg-arm
+call :expectred red-as-expected-yt-lane-session !STEP_RC! "%OUT%\yt-lane-session-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-yt-lane-session MISSING "%OUT%\yt-lane-session-neg.log" "NEG-ARM: PASS" )
 REM `yt-diag-truth` (o rotulo `why='painted'` nao sobrevive a' foto que o
 REM produziu). Os dois correm sobre fakes: nenhum abre dispositivo, browser ou
 REM janela, e o `--neg-arm` de cada um muta uma COPIA do ficheiro vivo.
@@ -4825,9 +4863,15 @@ REM python for every step, and one more per step would be a tax on every run
 REM to serve one mode.
 echo.>"%CACHE_STATE%.t0"
 set "SOTTO_STEP_NAME=!S_NAME!"
-pythonw _main\step-deadline.py --seconds %SOTTO_STEP_DEADLINE_S% -- !S_CMD! > "!S_LOG!" 2>&1
+REM O REGISTO DA CACHE NO MESMO INTERPRETADOR (medido 2026-11-26): este passo
+REM arrancava DOIS `pythonw` -- o prazo e, a seguir, o `_stepcache.py record`
+REM (0,07 s cada, 348 passos por corrida). O wrapper agora escreve a linha com o
+REM rc e o `t0` que ja' tem, e uma falha de registo imprime
+REM `STEP-RECORD-FAILED step=<nome> reason=<...>` no log do passo SEM tocar no rc:
+REM sem registo a proxima corrida recomputa -- cache MISS, nunca verde falso.
+set "S_RECORD=--record-step "!S_NAME!" --record-expect !S_EXPECT! --record-deps "!S_DEPS!" --record-state "%CACHE_STATE%" --record-t0 "%CACHE_STATE%.t0" --record-policy "!CAGE_POLICY!" --record-log "!S_LOG!""
+pythonw _main\step-deadline.py --seconds %SOTTO_STEP_DEADLINE_S% !S_RECORD! -- !S_CMD! > "!S_LOG!" 2>&1
 set "STEP_RC=!ERRORLEVEL!"
-pythonw _main\_stepcache.py record --step "!S_NAME!" --expect-rc !S_EXPECT! --deps "!S_DEPS!" --rc !STEP_RC! --log "!S_LOG!" --state "%CACHE_STATE%" --t0 "%CACHE_STATE%.t0" --policy "!CAGE_POLICY!" >nul 2>&1
 exit /b 0
 :step_fastskip
 REM THE FAST MODE (owner, 2026-10-21: *"a bateria deve ser rapida"*). This step

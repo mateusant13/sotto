@@ -51,7 +51,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, ".."))
 BATTERY = os.path.join(HERE, "_audit-verify-all.cmd")
 STATE = os.path.join(ROOT, "_cache", "battery-steps.json")
-#: O marcador que o `:expectred` do `.cmd` ja' exige na linha seguinte.
+#: O marcador que o `:expectred` do `.cmd` ja' exige na linha seguinte. O
+#: `record` REAL e' a linha `call :expectred <nome> !STEP_RC! "<log>" "<texto>"`
+#: -- cada oraculo imprime o seu, e exigir um literal unico reprovava braços que
+#: estavam certos (medido 2026-11-26: `load-shedding`, `youtube-cdp-boot` e
+#: `gaming-hotkey` recusados com o marcador presente na forma DELES).
 MARKER = "NEG-ARM: PASS"
 #: Prazo por sonda. Um `--neg-arm` medido custa 40-60 s; 240 s e' o piso da casa
 #: (`SOTTO_STEP_DEADLINE_S`) e um corte NAO conta como aprovacao.
@@ -91,6 +95,21 @@ def candidates(lines, state):
     return out
 
 
+def expected_marker(lines, idx):
+    """O texto que o `:expectred` da linha seguinte exige, ou None."""
+    m = re.match(r'^call :expectred \S+ !STEP_RC! "[^"]*" "([^"]*)"', lines[idx + 1].rstrip("\r\n")) \
+        if idx + 1 < len(lines) else None
+    return m.group(1) if m else None
+
+
+_LAST_OUT = {}
+
+
+def _stdout_has(oracle, want):
+    """A saida da ULTIMA sonda contem o texto que o `:expectred` exige?"""
+    return want.lower() in _LAST_OUT.get(oracle, "").lower()
+
+
 def probe(oracle):
     """Corre `--neg-arm` com prazo. Devolve (rc, seconds, marker_seen)."""
     t0 = time.monotonic()
@@ -99,7 +118,9 @@ def probe(oracle):
             [sys.executable, os.path.join(ROOT, oracle.replace("\\", os.sep)), "--neg-arm"],
             cwd=ROOT, capture_output=True, text=True, timeout=PROBE_DEADLINE_S,
             encoding="utf-8", errors="replace")
-        return proc.returncode, time.monotonic() - t0, MARKER in (proc.stdout + proc.stderr)
+        out = proc.stdout + proc.stderr
+        _LAST_OUT[oracle] = out
+        return proc.returncode, time.monotonic() - t0, MARKER in out
     except subprocess.TimeoutExpired:
         return 124, time.monotonic() - t0, False
 
@@ -142,6 +163,11 @@ def main(argv=None):
     convert, total_saved = [], 0.0
     for cost, name, oracle, idx, _m in cands:
         rc, secs, marker = probe(oracle)
+        want = expected_marker(lines, idx)
+        if want:
+            # O contrato e' o do `.cmd`: rc=1 E o texto que o `:expectred` exige.
+            rc2, secs2, _ = None, None, None
+            marker = _stdout_has(oracle, want)
         ok = contract_holds(rc, marker) and secs + args.min_saved_s < cost
         saved = cost - secs
         verdict = "CONVERTE" if ok else (

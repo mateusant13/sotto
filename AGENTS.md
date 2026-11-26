@@ -910,8 +910,9 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **445321 B**,
-  **5077 CRLF** / 0 bare LF, sha256 `D14F9057EB5A54F2F6247DC298240E3AB9EFCEE6B528C11982ABD4F6DF2C2DDA`.
+- **PIN do ficheiro (re-medido 2026-11-26, depois do par `yt-capture-replay`):**
+  `_main\_audit-verify-all.cmd` = **448809 B**, **5115 CRLF** / 0 bare LF, sha256
+  `EF7ED87D24B7EF7739560AA50532E745A774C8E5126B4C340ABE7F82A9124518`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
@@ -1084,6 +1085,38 @@ o numero que protege, o mecanismo (comando + rc + o que um skip significa) e o o
 segundos/contagens -- e depois re-medir qualquer pin deste ficheiro que a mudanca tenha tocado. A
 fonte longa da regra vive na skill `extreme-optimization-audit` §L12-bis/§L12-ter e no `task-resolver`
 ("Test economy and the carry-forward duty").
+
+## O COMPORTAMENTO DO PLAYER GRAVA-SE EM BYTES E REPRODUZ-SE OFFLINE (medido 2026-11-26)
+
+Ordem do dono, verbatim: *"por que EU tenho que mandar tu fazer uma snapshot do youtube pra pegar o
+comportamento exato e reproduzir offline? por que nenhuma das skills te ajuda a ver as coisas por essa
+visao?"*. A resposta e' um PAR, e ele existe para que nenhuma lane volte a julgar um congelamento sobre
+o log da shell:
+
+- **`_main/yt-snapshot-capture.py` GRAVA o player**, nao o log: `currentTime`, `paused`, `readyState`,
+  `rate`, o segmento visivel e as linhas da janela, a cada `--interval-ms` (50 ms), com DOIS carimbos
+  (`perf_ms`/`epoch_ms`), mais o guiao (`play`/`pause`/`seek`) com o instante em que cada accao foi
+  pedida. Chrome proprio (porta propria, perfil proprio, `--mute-audio`, escondido); a porta 9222 e'
+  RECUSADA POR NOME. MEDIDO 2026-11-26, `dQw4w9WgXcQ`: 466 amostras, `readyState=4` em 99,4 %,
+  a pausa real (6,18 s imovel por 4 s) e um **recuo real de 11,16 -> 0,00** na amostragem do seek.
+- **`_main/yt-capture-replay-oracle.py` REPLAIA o fixture pelo relogio simulado** e pergunta ao CODIGO
+  DO PRODUTO -- `youtube_clock.pause_proven`, `youtube_monotonic.SeekWitness`/`advance`/`decide`,
+  importados, nao reescritos -- o que ele teria decidido. Bracos: (a) um video a ANDAR nunca e' provado
+  em pausa, (b) uma pausa a serio continua a apagar, (c) um recuo gravado e' um seek NOMEADO uma vez,
+  (d) o instante servido nao recua sem testemunha, (e) o fixture teve media (>90 % `rs>0`), (f) as
+  constantes do espelho concordam com a shell. `--neg-arm` **6/6** (o defeito historico inteiro -- espelho
+  estatico CEGO + `pause_proven` a aceitar so' a bandeira -- e' o mutante de (a)).
+- **As epocas que o fixture gravado nao tem entram num fixture DERIVADO que carrega a origem**: E1 a foto
+  velha de 5,9 s, E2 a bandeira `paused=True` com `clock_rate=0.58`, E3 um recuo de 1,0 s abaixo do
+  `SEEK_BACK_S`. Sem elas o `--neg-arm` deu **1/5** e tres bracos nao sabiam ficar vermelhos -- um braco
+  que nao pode falhar e' um verde falso, e foi assim que ele apareceu.
+- **O QUE NAO SE MEDE, DITO:** o texto da cue nao e' obtenivel sem sessao. MEDIDO 2026-11-26: numa lane
+  sem login o YouTube devolve **`200` com 0 bytes** para TODAS as faixas -- 26 faixas em 3 videos --, logo
+  o braco (g) responde `CANNOT-MEASURE why=no-caption-segment` e um fixture sem cue nunca vira PASS. A
+  frescura da foto tambem e' um HOLE aqui (o `stamp` nasce no momento da leitura): o dono dela e'
+  `_main/yt-pause-disagreement-oracle.py`.
+- **Portao:** o par `yt-capture-replay` + `red-as-expected-yt-capture-replay` na bateria, lendo os
+  fixtures que ja' estao em `_main/fixtures/`; nenhum dos dois larga browser, janela ou dispositivo.
 
 ## UM BRACO QUE LE UMA LISTA ENTRE DOIS PASSOS DO PRODUTOR NAO E' UM BRACO (medido 2026-11-26)
 

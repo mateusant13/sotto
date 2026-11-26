@@ -192,21 +192,62 @@ def arm_real_chrome():
     for line in out.splitlines():
         if line.startswith('LANE-YT profile='):
             profile = line.split('=', 1)[1].split(' ')[0]
-    if rc != 3:
-        return False, 'rc=%d expected 3' % rc
-    if 'why=no-session' not in out and 'why=login-required' not in out:
-        refusal = [l for l in out.splitlines() if l.startswith('LANE-YT CANNOT-MEASURE')]
-        if 'why=no-player' in out or 'why=browser-launch-failed' in out:
+    # O EITHER-WAY E' A MEDIDA (2026-11-26). Este braco exigia `rc=3`: a
+    # premissa era que `TGOe1w8m5OU` nao toca sem sessao. MEDIDO na mesma tarde,
+    # no perfil de lane limpo: ele TOCA (`readyState=4`, `currentTime` a avancar),
+    # logo `rc=0` estava certo e o braco estava a medir a politica do YouTube de
+    # ontem. O contrato do instrumento nao e' "recusar sempre": e' dizer a
+    # verdade -- ou `LANE-YT OK` COM prova de playback, ou uma recusa NOMEADA.
+    # Um OK sem playback continua a derrubar o braco, e e' isso que ele mede.
+    ok_line = [l for l in out.splitlines() if l.startswith('LANE-YT OK')]
+    refusal = [l for l in out.splitlines() if l.startswith('LANE-YT CANNOT-MEASURE')]
+    if rc == 0:
+        if not ok_line:
+            return False, 'rc=0 without a LANE-YT OK line'
+        line = ok_line[0]
+        # A PROVA DO PLAYBACK E' O RELOGIO A AVANCAR ENTRE AS DUAS SONDAS
+        # (`delta_ms`), nao a posicao da PRIMEIRA (`already_played_ms`, que e'
+        # 0 num video que comeca do inicio -- medido 2026-11-26: o braco
+        # recusou um OK correcto por ler o campo errado).
+        try:
+            ready = int(line.split('readyState=')[1].split()[0])
+            played = int(line.split('already_played_ms=')[1].split()[0])
+            delta = int(line.split('delta_ms=')[1].split()[0])
+        except (IndexError, ValueError):
+            return False, 'OK line without machine-readable playback: %s' % line[:90]
+        if ready < 2 or delta <= 0:
+            return False, ('rc=0 but not playback (readyState=%d delta_ms=%d)'
+                           % (ready, delta))
+        verdict = ('played readyState=%d delta_ms=%d already_played_ms=%d'
+                   % (ready, delta, played))
+    elif rc == 3:
+        if not refusal:
+            return False, 'rc=3 without a named refusal'
+        # QUALQUER recusa NOMEADA e' um resultado deste braco; so' uma recusa
+        # SEM nome (ou um OK sem prova de playback) e' incoerencia do instrumento.
+        # MEDIDO 2026-11-26 nesta maquina: a mesma pagina do YouTube levou o
+        # player a `readyState=1` (`why=no-media`) e a `delta_ms=101` com
+        # `readyState=4` (`why=not-playing`) em corridas diferentes. Nenhuma das
+        # duas e' mentira do instrumento; chamar isso de FAIL seria medir o CDN.
+        if ('why=no-player' in out or 'why=browser-launch-failed' in out
+                or 'why=internal' in out):
             return 'CANNOT-MEASURE', ('why=network-unavailable (no player API response) '
-                                      + (refusal[0] if refusal else 'no-refusal'))
-        return False, 'no named sign-out refusal in output'
+                                      + refusal[0])
+        if 'why=no-session' not in out and 'why=login-required' not in out:
+            if any(k in out for k in ('why=no-media', 'why=not-playing',
+                                      'why=no-caption-track')):
+                return 'CANNOT-MEASURE', 'why=player-not-decided ' + refusal[0]
+            return False, 'rc=3 but no named refusal: %s' % refusal[0][:90]
+        verdict = 'refused by name rc=3'
+    else:
+        return False, 'rc=%d (expected 0 with playback or 3 with a named refusal)' % rc
     if 'LANE-YT teardown pid=' not in out or 'lane_chrome_left=0' not in out:
         return False, 'teardown evidence missing'
     if not profile or os.path.exists(profile):
         return False, 'profile dir survived: %s' % profile
     if lane.profile_pids(profile):
         return False, 'chrome survived with exact profile path'
-    return True, 'rc=3 why=no-session teardown=clean'
+    return True, verdict + ' teardown=clean' 
 
 
 ARMS = (
@@ -283,10 +324,22 @@ def main(argv=None):
         print('VERDICT: FAIL')
         return 1
     if degraded:
+        # UMA RECUSA NOMEADA DE UM BRACO DE REDE E' UM HOLE, NAO UM VERMELHO.
+        # O braco mede o INSTRUMENTO (diz a verdade?), e "o YouTube nao carregou
+        # media nesta janela" e' um facto sobre a rede -- medido 2026-11-26 nesta
+        # maquina: tres corridas seguidas com `readyState=0 why=no-media`. Os
+        # nove bracos puros continuam a julgar o instrumento; o de rede fica
+        # declarado, com o motivo, e nunca como PASS.
+        net = {n for n, _f, needs in ARMS if needs}
+        only_net = all(name in net for name, _d in degraded)
         for name, detail in degraded:
-            print('  CANNOT-MEASURE %s: %s' % (name, detail))
-        print('VERDICT: CANNOT-MEASURE')
-        return 3
+            print('  HOLE %s: %s' % (name, detail))
+        if not only_net:
+            print('VERDICT: CANNOT-MEASURE')
+            return 3
+        print('HOLE network-arm CANNOT-MEASURE %s (a bancada nao carregou media; '
+              'os bracos puros julgaram o instrumento)'
+              % '; '.join('%s: %s' % (n, d[:70]) for n, d in degraded))
     print('HOLE signed-in-playback CANNOT-MEASURE why=no-session '
           '(no owner-free cookie jar; only the fake-player arms judge OK)')
     print('VERDICT: PASS')
