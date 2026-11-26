@@ -683,8 +683,8 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **433362 B**,
-  **4938 CRLF** / 0 bare LF, sha256 `FDC6E2D5AAADE8F7E1C7B2A6F404AEE8D71D8BF26EC5331F7C8C63FF73EB5FB3`.
+- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **434777 B**,
+  **4955 CRLF** / 0 bare LF, sha256 `F547ABD92832AAE4D2AD1FA7814594D643C77AA13AB17B9406DD2ACD45FABA44`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
@@ -698,7 +698,10 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
   sempre) e `dead-unwired` (os dois modulos sem fio e a contagem de scripts da pagina), cada um em
   par com o seu `red-as-expected`; o censo `battery-wiring` recusou os dois como `new-unwired`
   antes de o par existir. Tambem em 2026-11-26: `yt-producer-soak` (5 minutos simulados de leitura
-  com um produtor que publica no proprio relogio) e `yt-producer-soak-neg`.)
+  com um produtor que publica no proprio relogio) e `yt-producer-soak-neg`. E, a fechar o angulo A3,
+  `product-soak` + `red-as-expected-product-soak`: o soak lido dos artefactos do PROPRIO produto
+  (log da shell + `history/`), exigindo que relogio, superficie pintada e historico avancem na
+  mesma sessao; sessao abaixo da barra responde `CANNOT-MEASURE` (nunca verde).)
 
 ## `git rm --cached` SO' CONTA QUANDO `git ls-tree HEAD` CONCORDA (medido 2026-11-26)
 

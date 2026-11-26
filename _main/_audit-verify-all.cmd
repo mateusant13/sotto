@@ -1578,6 +1578,23 @@ if exist _main\dead-unwired-oracle.py (
 call :step red-as-expected-dead-unwired 1 "_main\dead-unwired-oracle.py;app\panel\panel.html;app\webview\sotto_webview.py" "%OUT%\dead-unwired-neg.log" python _main\dead-unwired-oracle.py --neg-arm
 call :expectred red-as-expected-dead-unwired !STEP_RC! "%OUT%\dead-unwired-neg.log" "NEG-ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-dead-unwired MISSING "%OUT%\dead-unwired-neg.log" "NEG-ARM VERDICT: PASS" )
+REM `product-soak` (2026-11-26): o SOAK DE PRODUTO, lido dos artefactos do
+REM proprio produto (o log da shell e `history/`), e nao de um duble. Ele exige
+REM que os tres contadores que uma legenda precisa avancem na MESMA sessao -- o
+REM RELOGIO, a SUPERFICIE PINTADA e o HISTORICO -- e recusa um buraco de pintura
+REM maior que 3 s enquanto chegam cues (a forma exacta do congelamento medido a
+REM 2026-11-26: 9,20 s com cues a entrar). Sessao mais curta que a barra responde
+REM CANNOT-MEASURE, nunca verde. O passo roda a fixture (nao depende do log do
+REM dono); o braco negativo derruba-o com quatro mutantes, e o controlo prova que
+REM a fixture boa passa -- um portao que recusa tudo tambem e' cego.
+if exist _main\product-soak-oracle.py (
+ call :step product-soak 0 "_main\product-soak-oracle.py;_main\caption-timeline.py" "%OUT%\product-soak.log" python _main\product-soak-oracle.py --fixture
+ call :record product-soak !STEP_RC!
+) else ( call :record product-soak MISSING )
+if exist _main\product-soak-oracle.py (
+call :step red-as-expected-product-soak 1 "_main\product-soak-oracle.py" "%OUT%\product-soak-neg.log" python _main\product-soak-oracle.py --neg-arm
+call :expectred red-as-expected-product-soak !STEP_RC! "%OUT%\product-soak-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-product-soak MISSING "%OUT%\product-soak-neg.log" "NEG-ARM VERDICT: PASS" )
 REM `yt-producer-soak` (2026-11-26): 5 MINUTOS SIMULADOS de leitura com um
 REM produtor que publica no proprio relogio (1 s, 3 s e os 8,8 s medidos na
 REM sessao do dono). Julga que CADA publicacao sai uma vez, dentro da janela de
