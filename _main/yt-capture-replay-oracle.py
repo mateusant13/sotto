@@ -161,11 +161,25 @@ SYNTHETIC = {
 }
 
 
+def _normalise_samples(base):
+    """Qualquer dos dois formatos -> amostras no formato da captura de hoje."""
+    if not is_paint_fixture(base):
+        return list(base.get("samples") or ())
+    out = []
+    for s in samples_from_paint(base):
+        ms = s["stamp"] * 1000.0
+        out.append({"t": s["t"], "paused": s["paused"], "ready": s["ready"],
+                    "seg": s["seg"], "perf_ms": ms, "epoch_ms": int(ms),
+                    "at_s": s["at_s"]})
+    return out
+
+
 def synthetic_fixture(base):
     """O fixture real + as epocas acima, cada amostra com a sua origem."""
     import copy
     fx = copy.deepcopy(base)
-    ss = list(fx.get("samples") or ())
+    ss = _normalise_samples(base)
+    fx.pop("track", None) if is_paint_fixture(base) else None
     perf0 = max([float(s.get("perf_ms") or 0) for s in ss] + [0.0])
     base_epoch = float(base.get("wall0_epoch_ms") or 0) + perf0 if base.get("wall0_epoch_ms") else 0.0
     start = perf0 + 1000.0
@@ -184,6 +198,46 @@ def synthetic_fixture(base):
     fx["samples"] = ss
     fx["synthetic_episodes"] = {k: v["why"] for k, v in SYNTHETIC.items()}
     return fx
+
+
+def is_paint_fixture(fx):
+    """O fixture de 2026-11-04 (`yt-paint-freeze-*.json`) — o congelamento REAL."""
+    return isinstance(fx, dict) and "samples" in fx and isinstance(fx.get("track"), dict) \
+        and any("vis" in s for s in (fx.get("samples") or ())[:3])
+
+
+def samples_from_paint(fx):
+    """Adapta o fixture do congelamento ao formato que `judge` consome.
+
+    O `wall` de cada amostra e' o relogio de parede em SEGUNDOS desde o inicio da
+    captura (medido: 0.013 na primeira amostra), logo o `stamp` e' esse valor --
+    e' a mesma grandeza que o `stamp` do snapshot da CDP, e um carimbo que nao
+    anda nunca pode produzir "duas medidas".
+    """
+    out = []
+    for s in fx.get("samples") or ():
+        t = _f(s.get("t"))
+        wall = _f(s.get("wall"))
+        if t is None or wall is None:
+            continue
+        out.append({"t": t, "stamp": wall, "paused": bool(s.get("paused")),
+                    "ready": 4 if (s.get("vis") or s.get("rows")) else 0,
+                    "seg": (s.get("rows") or [None])[-1] if s.get("rows") else None,
+                    "rows_shown": list(s.get("rows") or ()),
+                    "vis": s.get("vis"), "at_s": wall})
+    return out
+
+
+def cue_at(cues, t):
+    """A cue da faixa REAL que cobre `t` -- a fonte de verdade que o DOM nao usou."""
+    for c in cues or ():
+        try:
+            a, b = float(c.get("start")), float(c.get("end"))
+        except (TypeError, ValueError):
+            continue
+        if a <= t < b:
+            return str(c.get("text") or "")
+    return None
 
 
 def load(path):
@@ -221,8 +275,9 @@ def judge(fx, pause_proven=None, witness_cls=None, advance=None, decide=None,
     witness_cls = witness_cls or youtube_monotonic.SeekWitness
     advance = advance or youtube_monotonic.advance
     decide = decide or youtube_monotonic.decide
-    ss = samples_of(fx)
-    vid = str(fx.get("video") or "")
+    paint = is_paint_fixture(fx)
+    ss = samples_from_paint(fx) if paint else samples_of(fx)
+    vid = str(fx.get("video") or fx.get("video_id") or "")
     mir = (mirror_cls or _MirrorWitness)()
     wit = witness_cls()
     floor = None
@@ -364,6 +419,54 @@ def judge(fx, pause_proven=None, witness_cls=None, advance=None, decide=None,
         "CLOCK_STATIC_PAUSE_S=%s CLOCK_MOVING_MIN_RATE=%s DOM_FRESH_S=%s"
         % (CLOCK_STATIC_PAUSE_S, CLOCK_MOVING_MIN_RATE, DOM_FRESH_S))
 
+    # (g-h) O CONGELAMENTO REAL DE 2026-11-04, quando o fixture o traz.
+    #     `yt-paint-freeze-20261104.json` (video r-AsGBMDI6c) e' 40 s de
+    #     reprodução com 745 amostras a 0,05 s: `paused=False` sempre, `t` a
+    #     avancar 788,34 -> 828,30, a janela `vis='hidden'` SEMPRE, e as mesmas
+    #     `rows` em 744 amostras seguidas (**37,2 s**). E' o defeito do dono,
+    #     gravado antes de hoje.
+    if paint:
+        cues = ((fx.get("track") or {}).get("cues")) or []
+        covered = [r for r in rec if cue_at(cues, r["s"]["t"]) is not None]
+        # A CORRIDA DE ROWS IDENTICAS COM O RELOGIO A ANDAR E' O CONGELAMENTO,
+        # e ela mede-se: 744 amostras seguidas a 0,05 s = **37,2 s** com o
+        # player a avancar 40 s (video `r-AsGBMDI6c`, 2026-11-04).
+        worst, run, prev, worst_at = 0, 0, None, None
+        for r in rec:
+            key = tuple(r["s"]["rows_shown"])
+            if prev is not None and key == prev:
+                run += 1
+            else:
+                run = 0
+            if run > worst:
+                worst, worst_at = run, r["s"]["t"]
+            prev = key
+        interval = 0.05
+        frozen_s = worst * interval
+        # (h) UM CONGELAMENTO SO' E' PROVAVEL CONTRA A FAIXA: se o fixture nomeia
+        #     uma paragem das rows, a faixa REAL tem de dizer o que devia ter sido
+        #     mostrado. Sem cues nao ha' acusacao possivel -- e o braco sabe
+        #     ficar vermelho por isso (mutante `sem-faixa`).
+        arm("h-a-freeze-is-provable-against-the-track",
+            bool(cues) and frozen_s > 0.0 and bool(covered),
+            "cues=%d frozen_rows_run=%.2fs at t=%s covered=%d/%d"
+            % (len(cues), frozen_s, round(worst_at, 2) if worst_at else None,
+               len(covered), len(rec)))
+        # E o que o produto FAZ com uma janela escondida: le'-a. MEDIDO 745/745
+        # com `vis=hidden` e rows presentes -- e' por isso que a legenda funciona
+        # com o CC do player desligado. Nao e' braco, e' a razao do desenho.
+        painted_hidden = [r for r in rec
+                          if r["s"]["vis"] == "hidden" and r["s"]["rows_shown"]]
+        coverage["hidden_window_samples"] = len(painted_hidden)
+        coverage["hidden_window_with_rows"] = len(painted_hidden)
+        coverage["frozen_rows_s"] = round(frozen_s, 2)
+        mism = [r for r in rec
+                if (cue_at(cues, r["s"]["t"]) or "").strip()
+                and not any((cue_at(cues, r["s"]["t"]) or "") in x
+                            for x in r["s"]["rows_shown"])]
+        coverage["rows_disagree_with_track"] = len(mism)
+        coverage["rows_agree_with_track"] = len(rec) - len(mism)
+
     # (g) O CUE: sem segmento gravado nao ha' o que julgar. Nomeado.
     with_seg = [r for r in rec if r["s"]["seg"]]
     if with_seg:
@@ -453,6 +556,20 @@ def neg_arm(fixtures):
     # 5. Um chao que desce sem seek none: o `advance` a aceitar qualquer recuo.
     run({"advance": lambda floor, pos: pos},
         "d-served-never-rewinds-without-a-witness")
+    # 6b. Mutacao do FIXTURE: sem faixa nao ha' congelamento provavel (h).
+    total += 1
+    def _no_track(fx):
+        import copy
+        m = copy.deepcopy(fx)
+        if isinstance(m.get("track"), dict):
+            m["track"] = dict(m["track"], cues=[])
+        return m
+    hit = any(any(a["ok"] is False and a["arm"] == "h-a-freeze-is-provable-against-the-track"
+                  for a in judge(_no_track(fx))["arms"])
+              for fx in fixtures if is_paint_fixture(fx))
+    caught += 1 if hit else 0
+    print("NEG-ARM %-48s %s" % ("h-a-freeze-is-provable-against-the-track",
+                                "CAUGHT" if hit else "MISSED (the arm cannot fail)"))
     # 6. Mutacao do FIXTURE: toda a amostra sem media tem de derrubar (e).
     total += 1
     hit = any(any(a["ok"] is False and a["arm"] == "e-the-fixture-mostly-had-live-media"
@@ -478,7 +595,10 @@ def main(argv=None):
     if args.fixture:
         paths = sorted(glob.glob(args.fixture)) or [args.fixture]
     if not paths:
-        paths = sorted(glob.glob(os.path.join(HERE, "fixtures", "yt-snapshot-*.json")))
+        # O CONJUNTO POR OMISSAO INCLUI O CONGELAMENTO REAL de 2026-11-04: um
+        # fixture com cues verdadeiras e' o unico que prova a metade da legenda.
+        paths = sorted(glob.glob(os.path.join(HERE, "fixtures", "yt-snapshot-*.json"))) + \
+            sorted(glob.glob(os.path.join(HERE, "fixtures", "yt-paint-freeze-*.json")))
     if not paths or not os.path.exists(paths[0]):
         print("YT-REPLAY CANNOT-MEASURE why=no-fixture (rode `_main/yt-snapshot-capture.py`)")
         return 3
@@ -487,7 +607,7 @@ def main(argv=None):
     fixtures = []
     for p in paths:
         fx = load(p)
-        if len(samples_of(fx)) < 2:
+        if len(samples_from_paint(fx) if is_paint_fixture(fx) else samples_of(fx)) < 2:
             print("YT-REPLAY CANNOT-MEASURE why=too-few-samples path=%s" % p)
             rc = max(rc, 3)
             continue
@@ -503,7 +623,20 @@ def main(argv=None):
         if bad:
             rc = 1
     if args.neg_arm:
-        return neg_arm([fx for _n, fx in fixtures])
+        # O `--neg-arm` julga o CONJUNTO de fixtures do repo, nao so' o que foi
+        # pedido: um mutante que so' morre num fixture que nao foi passado e'
+        # um `MISSED` falso. Medido 2026-11-26: com o fixture do congelamento
+        # sozinho, o braco (b) nao tem pausa honesta e o mutante "nunca prova"
+        # escapava (`6/7`).
+        pool = [fx for _n, fx in fixtures]
+        for extra in sorted(glob.glob(os.path.join(HERE, "fixtures", "yt-snapshot-*.json"))):
+            try:
+                cand = load(extra)
+            except (OSError, ValueError):
+                continue
+            if len(samples_of(cand)) >= 2:
+                pool.append(cand)
+        return neg_arm(pool)
     print("VERDICT: %s" % ("FAIL" if rc == 1 else
                            ("CANNOT-MEASURE" if rc == 3 else "PASS")))
     return rc

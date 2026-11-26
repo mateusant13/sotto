@@ -1110,6 +1110,15 @@ o log da shell:
   velha de 5,9 s, E2 a bandeira `paused=True` com `clock_rate=0.58`, E3 um recuo de 1,0 s abaixo do
   `SEEK_BACK_S`. Sem elas o `--neg-arm` deu **1/5** e tres bracos nao sabiam ficar vermelhos -- um braco
   que nao pode falhar e' um verde falso, e foi assim que ele apareceu.
+- **O CONGELAMENTO DO DONO JA' ESTAVA GRAVADO, a 2026-11-04, e ninguem o tinha lido:**
+  `_main/fixtures/yt-paint-freeze-20261104.json` (video `r-AsGBMDI6c`) sao **745 amostras a 0,05 s**
+  com `paused=False`, `t` a avancar 788,34 -> 828,30 e as MESMAS `rows` em 744 amostras seguidas --
+  **37,2 s** com o relogio a andar. A janela esteve `vis=hidden` nas 745 (e' por isso que a legenda
+  funciona com o CC do player desligado: o produto le' uma janela escondida, de proposito). A faixa
+  REAL capturada tem **671 cues** e cobre 563/745 instantes. O braco
+  `h-a-freeze-is-provable-against-the-track` exige as tres coisas juntas (ha' cues, ha' corrida
+  congelada, ha' cobertura) e o mutante `sem-faixa` derruba-o. O conjunto por omissao do oraculo
+  inclui este fixture: **43 bracos** em tres fixtures, `--neg-arm` **7/7**.
 - **O QUE NAO SE MEDE, DITO:** o texto da cue nao e' obtenivel sem sessao. MEDIDO 2026-11-26: numa lane
   sem login o YouTube devolve **`200` com 0 bytes** para TODAS as faixas -- 26 faixas em 3 videos --, logo
   o braco (g) responde `CANNOT-MEASURE why=no-caption-segment` e um fixture sem cue nunca vira PASS. A
