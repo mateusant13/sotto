@@ -164,6 +164,12 @@ def classify(subject: str, text: str) -> str:
     if s.startswith("commit") or "private-commit reservation" in head:
         return "COMMIT-pressure"
     if s.startswith("stutter") or "stutter" in s:
+        # A DM QUE SE DECLARA CANNOT-MEASURE NAO TEM TAXA (medido 2026-11-26,
+        # dm-81956dec: `signals: tick-gap, not-scheduled`). O numero amostrado e'
+        # uma POSICAO NA FILA, e o proprio watcher diz isso. Inventar uma taxa
+        # aqui seria a mentira que a DM recusa; o que sobra e' a IDENTIDADE.
+        if "cannot-measure" in s:
+            return "STUTTER-unmeasured"
         io_marks = ("mb/s", "ops/s", " io ", "logical i/o")
         return "STUTTER-io" if any(x in s for x in io_marks) else "STUTTER-cpu"
     return ""
@@ -190,6 +196,9 @@ def find_claim(class_name: str, subject: str, fields: dict[str, str], at: dict[s
             unit = "% " + m.group(0).split("%", 1)[1].strip()
             return Claim("cpu", float(m.group(1)), unit, m.group(0).strip(),
                          parse_window(subject, fields), subj_line)
+
+    if class_name == "STUTTER-unmeasured":
+        return Claim("identity", 0.0, "unmeasured", subject.strip(), 0.0, subj_line)
 
     if class_name == "STUTTER-cpu":
         m = re.search(r"\bcpu\s+" + NUM_RE + r"\s*%", subject, re.I)
@@ -478,6 +487,10 @@ def render_body(dm: dict, root: str, mine: int, my_chain: list[tuple[str, int, s
 
 
 def mechanism(dm: dict, claim: Claim, m: Measurement | None) -> str:
+    if claim.metric == "identity":
+        return ("the DM refuses its own rate (`CANNOT-MEASURE`), so no rate is judged. "
+                "What the DM does assert is identity and chain, and that is what this "
+                "tool checked against the owning tree.")
     if claim.metric == "commit":
         ratio = (claim.value / 0.16) if claim.value else 0.0
         return (f"private commit is a pagefile-backed reservation, not touched pages "
@@ -574,12 +587,31 @@ def main(argv: list[str] | None = None) -> int:
     mine, my_chain = my_pid_owned(args.root)
     live = live_chain(culprit_pid)
     mine_tree = bool(live) and owns(live, args.root)
-    verdict = "MISATTRIBUTED" if not mine_tree else "ACCEPT"
+    proof = "culprit-pid"
+    if not live:
+        # O CULPADO MORTO AINDA TEM DONO, e a prova esta na PROPRIA cadeia da DM:
+        # os ancestrais declarados nela continuam vivos e dizem de quem era o
+        # passo. MEDIDO 2026-11-26 (dm-81956dec): pid 72760 morto, e
+        # `python.exe(52096)` (o ceiling que a DM cita) + `cmd.exe(92652)` = a
+        # minha bateria. Sem esta metade um DM verdadeiro sai `owned=no` so'
+        # porque o passo terminou antes da pergunta.
+        for _n, _p in chain_all[1:]:
+            _anc = live_chain(_p)
+            if _anc and owns(_anc, args.root):
+                mine_tree, live, proof = True, _anc, "ancestor-pid=%d" % _p
+                break
+    # UM PID MORTO NAO E' UM PID ALHEIO (medido 2026-11-26): `MISATTRIBUTED`
+    # afirma que a arvore e' de outro; com o culpado morto e nenhum ancestral
+    # vivo desse lado, essa afirmacao nao se prova e o nome honesto e' `UNKNOWN`.
+    if mine_tree:
+        verdict = "ACCEPT"
+    else:
+        verdict = "UNKNOWN" if not live else "MISATTRIBUTED"
 
     facts = [
         f"DM-TRIAGE dm={dm_id} class={class_name} culprit={culprit_name}({culprit_pid}) "
         f"alive={'yes' if live else 'no'} owned={'yes' if mine_tree else 'no'} "
-        f"verdict-chain={verdict}",
+        f"verdict-chain={verdict} proof={proof}",
         f"DM-TRIAGE claim={claim.raw!r} metric={claim.metric} window={claim.window_s:g}s "
         f"source=DM line {claim.source_line}",
         f"DM-TRIAGE ceiling={ceiling.text!r} source={ceiling.source}",
@@ -591,6 +623,16 @@ def main(argv: list[str] | None = None) -> int:
     ]
     if args.facts_only:
         print("\n".join(facts[:5] + [facts[6]]))
+        return 0
+
+    if claim.metric == "identity":
+        # A identidade E' a resposta que existe; a taxa fica RECUSADA pelo nome,
+        # nunca um 0,0 disfarcado de medicao.
+        print("\n".join(facts), file=sys.stderr)
+        print(f"DM-TRIAGE CANNOT-MEASURE why=no-rate-in-claim class={class_name} "
+              f"culprit={culprit_name}({culprit_pid}) "
+              f"alive={'yes' if live else 'no'} owned={'yes' if mine_tree else 'no'} "
+              f"verdict-chain={verdict} proof={proof} refute=nothing-to-refute")
         return 0
 
     if not live:
