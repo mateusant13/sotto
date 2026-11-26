@@ -1146,6 +1146,16 @@ def run(shell_path, gesture_path, overlay_path, gaming_path):
         while time.monotonic() - t0 < seconds:
             pattern.match(probe)
 
+    # O DONO NAO ESPERA ATRAS DE UM TESTE (medido 2026-11-26, DM do watcher).
+    # O watcher apanhou `python.exe(72760)` = este oraculo (`--neg-arm`) como a
+    # maior pressao do episodio, com sinais `tick-gap, not-scheduled`: o
+    # governador estava a ser escalonado atras dele. O `hold_the_gil` abaixo e'
+    # um ciclo em C que NAO larga o GIL por 0,45 s -- de proposito, e' o
+    # fenomeno que o braco reproduz. A PRIORIDADE nao muda esse braco (o GIL e'
+    # interno ao processo: a thread observadora continua travada), logo baixar a
+    # classe do PROCESSO aqui e' a cura certa -- o dono deixa de esperar e o arm
+    # mede o mesmo `max_gap_ms`.
+    print('ARM (h) prioridade do processo: %s' % _lower_me())
     hold_the_gil(0.45)
     windows3.gate.set()
     wait_until(lambda: bool(presses7), 2.0)
@@ -1339,6 +1349,28 @@ MUTANTS = (("foreground-stolen-on-toggle", _mutate_overlay_steal),
            ("show-exception-swallowed", _mutate_show_attr_missing))
 
 _NEG_MUTANTS = len(MUTANTS)
+
+
+def _lower_me(class_hex=0x00004000):
+    """Poe ESTE processo em BELOW_NORMAL -- e LE' DE VOLTA o valor aplicado.
+
+    Um teste que queima CPU de proposito (um ciclo em C que nao larga o GIL) nao
+    tem o direito de competir com o dono. MEDIDO 2026-11-26: o watcher nomeou
+    este oraculo como a maior pressao de um episodio de stutter, com o governador
+    a apanhar `tick-gap` a escalona-lo. A classe de prioridade nao toca no braco
+    (o GIL e' interno), mas tira este processo da frente do dono.
+    Devolve a classe LIDA DE VOLTA (`GetPriorityClass`), nunca o pedido.
+    """
+    try:
+        k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        k32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        k32.GetPriorityClass.argtypes = [ctypes.c_void_p]
+        k32.GetPriorityClass.restype = ctypes.c_uint32
+        handle = k32.GetCurrentProcess()
+        k32.SetPriorityClass(handle, class_hex)
+        return int(k32.GetPriorityClass(handle))
+    except Exception:  # noqa: BLE001 -- a prioridade nunca derruba um braco
+        return 0
 
 
 def neg_arm():
