@@ -396,7 +396,12 @@ def main(argv=None):
             print('LANE-YT CANNOT-MEASURE why=browser-launch-failed stderr=%s'
                   % err_path)
         else:
-            ws, _tab = connect_page(port)
+            ws, _tab = None, None
+            for _attempt in range(10):
+                ws, _tab = connect_page(port)
+                if ws is not None:
+                    break
+                time.sleep(0.5)
             if ws is None:
                 print('LANE-YT CANNOT-MEASURE why=no-player (no page target)')
             else:
@@ -434,7 +439,7 @@ def main(argv=None):
                             break
                         time.sleep(0.5)
                     first = None
-                    deadline = time.time() + 12.0
+                    deadline = time.time() + 25.0
                     while time.time() < deadline:
                         first = json.loads(_eval(ws, PLAY_PROBE_JS, 6) or '{}')
                         if first.get('status'):

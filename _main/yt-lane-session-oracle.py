@@ -195,8 +195,10 @@ def arm_real_chrome():
     if rc != 3:
         return False, 'rc=%d expected 3' % rc
     if 'why=no-session' not in out and 'why=login-required' not in out:
+        refusal = [l for l in out.splitlines() if l.startswith('LANE-YT CANNOT-MEASURE')]
         if 'why=no-player' in out or 'why=browser-launch-failed' in out:
-            return 'CANNOT-MEASURE', 'why=network-unavailable (no player API response)'
+            return 'CANNOT-MEASURE', ('why=network-unavailable (no player API response) '
+                                      + (refusal[0] if refusal else 'no-refusal'))
         return False, 'no named sign-out refusal in output'
     if 'LANE-YT teardown pid=' not in out or 'lane_chrome_left=0' not in out:
         return False, 'teardown evidence missing'
@@ -285,6 +287,8 @@ def main(argv=None):
             print('  CANNOT-MEASURE %s: %s' % (name, detail))
         print('VERDICT: CANNOT-MEASURE')
         return 3
+    print('HOLE signed-in-playback CANNOT-MEASURE why=no-session '
+          '(no owner-free cookie jar; only the fake-player arms judge OK)')
     print('VERDICT: PASS')
     return 0
 

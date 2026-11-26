@@ -432,8 +432,10 @@ def render_body(dm: dict, root: str, mine: int, my_chain: list[tuple[str, int, s
     out.append(f"   DM:     {claim.raw} [{claim.unit}, quoted window {claim.window_s:g} s] "
                f"(DM line {claim.source_line})")
     if "machine" in claim.unit:
-        out.append(f"   NOTE: the DM's denominator is the whole machine "
-                   f"({psutil.cpu_count()} logical CPUs); my cpu row is % of ONE core.")
+        ncpu = psutil.cpu_count() or 1
+        out.append(f"   NOTE: the DM's denominator is the whole machine ({ncpu} logical "
+                   f"CPUs): {claim.value:g}% of machine = {claim.value * ncpu:.1f}% of one "
+                   f"core; my row below is % of ONE core.")
     if measured is None:
         out.append("   mine:   NO READING — see the named refusal above; a dead/foreign "
                    "process cannot be re-measured.")
