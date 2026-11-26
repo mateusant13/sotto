@@ -991,12 +991,12 @@
       "max_func_name": "speaker_for_window"
     },
     "worker/speaker_sidecar.py": {
-      "bytes": 96681,
+      "bytes": 96705,
       "classes": 3,
       "defs": 28,
       "except_pass": 6,
       "globals": 0,
-      "lines": 1991,
+      "lines": 1992,
       "max_func": 296,
       "max_func_name": "main"
     },
