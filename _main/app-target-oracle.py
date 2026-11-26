@@ -654,8 +654,12 @@ def arm_j(mod, arm, ctx):
         env = {k: v for k, v in os.environ.items()
                if k not in ('SOTTO_REDUX_LIVE', 'SOTTO_REDUX_WHEN_HIDDEN')}
         env.update(overrides)
-        out = subprocess.run([sys.executable, '-c', probe], env=env,
+        # UM FILHO DE TESTE TAMBEM TEM TECTO (AGENTS.md, 2026-11-26): este filho
+        # importa a shell inteira; sem tecto ele competia com o dono.
+        out = subprocess.run([sys.executable, '-c', probe],
+                             env=dict(env, **{'OMP_NUM_THREADS': '1', 'MKL_NUM_THREADS': '1', 'OPENBLAS_NUM_THREADS': '1', 'NUMEXPR_NUM_THREADS': '1', 'VECLIB_MAXIMUM_THREADS': '1'}),
                              cwd=os.path.dirname(os.path.dirname(SHELL)),
+                             creationflags=0x08000000 | 0x00004000,
                              capture_output=True, text=True, timeout=180)
         try:
             return json.loads(out.stdout.strip().splitlines()[-1])

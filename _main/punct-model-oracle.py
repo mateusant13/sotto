@@ -517,8 +517,11 @@ sys.exit(0 if ok else 1)
 '''
     import subprocess  # noqa: PLC0415
 
+    # UM FILHO DE TESTE TAMBEM TEM TECTO (AGENTS.md, 2026-11-26).
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                       timeout=180)
+                       timeout=180,
+                       env=dict(os.environ, **{'OMP_NUM_THREADS': '1', 'MKL_NUM_THREADS': '1', 'OPENBLAS_NUM_THREADS': '1', 'NUMEXPR_NUM_THREADS': '1', 'VECLIB_MAXIMUM_THREADS': '1'}),
+                       creationflags=0x08000000 | 0x00004000)
     print((r.stdout or "").strip()[:400])
     return r.returncode
 

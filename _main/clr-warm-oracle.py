@@ -265,8 +265,13 @@ def arm_executes(path=SHELL):
         "      %% (res, (t2-t1)*1000, (c1-c0)*1000, sched, (t1-t0)*1000))\n"
         % (APP, path, SCHED_PROBE_N, SCHED_PROBE_S, SCHED_PROBE_S))
     try:
+        # UM FILHO DE TESTE TAMBEM TEM TECTO (AGENTS.md, 2026-11-26): este filho
+        # importa a shell inteira. MEDIDO num irmao desta classe: 300 por cento
+        # de um nucleo sem tecto; BELOW_NORMAL + um fio por pool e' a forma.
         out = subprocess.run([sys.executable, "-c", code], capture_output=True,
                              text=True, timeout=180,
+                             env=dict(os.environ, **{'OMP_NUM_THREADS': '1', 'MKL_NUM_THREADS': '1', 'OPENBLAS_NUM_THREADS': '1', 'NUMEXPR_NUM_THREADS': '1', 'VECLIB_MAXIMUM_THREADS': '1'}),
+                             creationflags=0x08000000 | 0x00004000,
                              cwd=ROOT)
     except subprocess.TimeoutExpired:
         return False, "timeout"
