@@ -167,9 +167,23 @@ def analyse(session, duration, history_rows, day=None, minutes=5.0):
             stalled = not excused
             if excused:
                 worst_gap, worst_at = 0.0, None
+        # O TECTO DA REVELACAO, AO LADO DA CADENCIA (2026-11-26): um
+        # `CAPTION_REVEAL_HELD` diz que o relogio do overlay parou no tecto de
+        # `PLAYER_HOLD_S` porque nenhuma leitura nova chegou. Ele nao muda o
+        # veredicto (o tecto existe para nao inventar video), mas sem o numero no
+        # relatorio um episodio de "congelou" continua a citar so' o buraco de
+        # pintura e nao a causa.
+        held = [row for row in session if ' CAPTION_REVEAL_HELD ' in row['body']]
+        lost = 0.0
+        for row in held:
+            found = re.search(r'lost_s=([0-9.]+)', row['body'])
+            if found:
+                lost = max(lost, float(found.group(1)))
         results['b'] = (not stalled,
-                        'worst_gap=%.2fs at=%s paints=%d cues=%d'
-                        % (worst_gap, worst_at, len(paints), len(cues)))
+                        'worst_gap=%.2fs at=%s paints=%d cues=%d '
+                        'reveal_held=%d max_lost_s=%.2f'
+                        % (worst_gap, worst_at, len(paints), len(cues),
+                           len(held), lost))
 
     # c RELOGIO -- o `t=` das linhas de pausa/seek nao pode recuar sem um
     # testemunho de seek/troca de video, e tem de avancar.

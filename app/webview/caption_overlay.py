@@ -252,7 +252,7 @@ class _PlayerCue:
     Um seek para tras NAO leva o `floor` (ver `_cue_from`).
     """
 
-    def __init__(self, rows, t, at=None, capacity=PLAYER_ROWS, rate=1.0):
+    def __init__(self, rows, t, at=None, capacity=PLAYER_ROWS, rate=1.0, log=None):
         self.rows = []
         for row in rows or ():
             if isinstance(row, dict):
@@ -290,10 +290,33 @@ class _PlayerCue:
         self.first_paint_t = None
         self.paint_texts = []
         self.logged = False
+        #: O TECTO DO RELOGIO ERA MUDO (2026-11-26). `PLAYER_HOLD_S` existe para
+        #: nao inventar video que ninguem mediu: passados 3,0 s sem uma leitura
+        #: nova o relogio da revelacao PARA no fim do cue. So' que ele parava
+        #: calado -- e o dono, que ouve o audio a continuar, ve uma linha
+        #: congelada e chama-lhe "travou". MEDIDO nos proprios logs dele: o
+        #: produtor chegou a estar 8,2 s (02:38:08) e 8,71 s sem publicar, ou
+        #: seja 5,2 s de revelacao perdidos por episodio COM o ecra a mostrar a
+        #: linha antiga. Uma linha por cue (nunca por quadro) nomeia o episodio.
+        self.log = log or (lambda message: None)
+        self.held_logged = False
+        #: O MAIOR `gap - PLAYER_HOLD_S` visto neste cue, em segundos. E o
+        #: numero que `_main/yt-reveal-hold-oracle.py` julga, e o que o recibo
+        #: de um incidente cita: sem ele, "congelou" continua a ser impressao.
+        self.held_s = 0.0
 
     def clock(self, now=None):
         now = time.monotonic() if now is None else float(now)
-        elapsed = min(max(0.0, now - self.at), PLAYER_HOLD_S)
+        gap = max(0.0, now - self.at)
+        elapsed = min(gap, PLAYER_HOLD_S)
+        if gap > PLAYER_HOLD_S:
+            self.held_s = max(self.held_s, gap - PLAYER_HOLD_S)
+            if not self.held_logged:
+                self.held_logged = True
+                self.log('CAPTION_REVEAL_HELD gap_s=%.2f hold_s=%.2f lost_s=%.2f '
+                         't=%.3f rows=%d'
+                         % (gap, PLAYER_HOLD_S, gap - PLAYER_HOLD_S,
+                            self.t, len(self.rows)))
         t = self.t + elapsed * self.rate
         if self.floor is not None:
             t = max(t, self.floor)
@@ -1810,7 +1833,8 @@ class NativeCaptionOverlay:
             self.log('CAPTION_CUE_INVALID payload=%r' % (payload,))
             return None
         at = (payload or {}).get('at')
-        new = _PlayerCue(rows, t, at=at, rate=(payload or {}).get('rate'))
+        new = _PlayerCue(rows, t, at=at, rate=(payload or {}).get('rate'),
+                         log=self.log)
         if not new.rows:
             # SEM LINHAS NAO HA' CUE: o overlay desenha o texto que recebeu, em
             # vez de ficar vazio -- um payload vazio e' o mesmo caso do

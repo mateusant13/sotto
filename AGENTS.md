@@ -683,8 +683,8 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **434777 B**,
-  **4955 CRLF** / 0 bare LF, sha256 `F547ABD92832AAE4D2AD1FA7814594D643C77AA13AB17B9406DD2ACD45FABA44`.
+- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **436259 B**,
+  **4972 CRLF** / 0 bare LF, sha256 `BD2669533FC88B62087043712C60E796AF229C6DA86C008115FD48676B4A3155`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
@@ -701,7 +701,11 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
   com um produtor que publica no proprio relogio) e `yt-producer-soak-neg`. E, a fechar o angulo A3,
   `product-soak` + `red-as-expected-product-soak`: o soak lido dos artefactos do PROPRIO produto
   (log da shell + `history/`), exigindo que relogio, superficie pintada e historico avancem na
-  mesma sessao; sessao abaixo da barra responde `CANNOT-MEASURE` (nunca verde).)
+  mesma sessao; sessao abaixo da barra responde `CANNOT-MEASURE` (nunca verde).
+  E `yt-reveal-hold` + `red-as-expected-yt-reveal-hold`: o tecto de 3 s do relogio da
+  revelacao (`_PlayerCue.clock`) parava a linha em SILENCIO -- agora nomeia o episodio
+  (`CAPTION_REVEAL_HELD gap_s=.. lost_s=..`) e o oraculo prova que ele nunca inventa mais
+  de `PLAYER_HOLD_S` de video, com o buraco de 8,2 s medido no log dele como arm.)
 
 ## `git rm --cached` SO' CONTA QUANDO `git ls-tree HEAD` CONCORDA (medido 2026-11-26)
 

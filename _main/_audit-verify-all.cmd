@@ -1595,6 +1595,23 @@ if exist _main\product-soak-oracle.py (
 call :step red-as-expected-product-soak 1 "_main\product-soak-oracle.py" "%OUT%\product-soak-neg.log" python _main\product-soak-oracle.py --neg-arm
 call :expectred red-as-expected-product-soak !STEP_RC! "%OUT%\product-soak-neg.log" "NEG-ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-product-soak MISSING "%OUT%\product-soak-neg.log" "NEG-ARM VERDICT: PASS" )
+REM `yt-reveal-hold` (2026-11-26): o tecto de 3 s do relogio da revelacao parava
+REM a linha em SILENCIO (`_PlayerCue.clock`), e o dono -- que ouve o audio a
+REM continuar -- via uma linha congelada. Medido nos logs dele: 8,2 s e 8,71 s
+REM sem publicacao, ou seja 5,2-5,7 s de revelacao perdidos por episodio. As arms
+REM correm o `_PlayerCue` REAL com o relogio injectado: 60 publicacoes revelam; o
+REM buraco de 8,2 s para no tecto e escreve UMA linha `CAPTION_REVEAL_HELD`; o
+REM tecto e' de tempo de PAREDE (2x nao dobra a extrapolacao) e uma pausa nao
+REM inventa video. O braco negativo derruba a testemunha, sobe o tecto para 30 s e
+REM apaga o tecto -- cada mutante na SUA arm.
+if exist _main\yt-reveal-hold-oracle.py (
+ call :step yt-reveal-hold 0 "_main\yt-reveal-hold-oracle.py;app\webview\caption_overlay.py;app\webview\youtube_reveal.py" "%OUT%\yt-reveal-hold.log" python _main\yt-reveal-hold-oracle.py
+ call :record yt-reveal-hold !STEP_RC!
+) else ( call :record yt-reveal-hold MISSING )
+if exist _main\yt-reveal-hold-oracle.py (
+call :step red-as-expected-yt-reveal-hold 1 "_main\yt-reveal-hold-oracle.py;app\webview\caption_overlay.py" "%OUT%\yt-reveal-hold-neg.log" python _main\yt-reveal-hold-oracle.py --neg-arm
+call :expectred red-as-expected-yt-reveal-hold !STEP_RC! "%OUT%\yt-reveal-hold-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-yt-reveal-hold MISSING "%OUT%\yt-reveal-hold-neg.log" "NEG-ARM VERDICT: PASS" )
 REM `yt-producer-soak` (2026-11-26): 5 MINUTOS SIMULADOS de leitura com um
 REM produtor que publica no proprio relogio (1 s, 3 s e os 8,8 s medidos na
 REM sessao do dono). Julga que CADA publicacao sai uma vez, dentro da janela de
