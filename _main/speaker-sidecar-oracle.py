@@ -1241,6 +1241,15 @@ def watch_main_capture_order_battery(mod) -> list:
 
     wasapi_name = "wasapi_loopback"
     prior_wasapi = sys.modules.get(wasapi_name)
+    # ISOLATION, MEDIDO 2026-11-26: o `main` consulta o registo VIVO do
+    # `capture_share` e, numa maquina com o worker do dono a publicar, o braco
+    # recebia um cliente (share nao-None) e nunca chegava a construir o tap --
+    # `calls=['load']`. O sujeito deste braco e' a ORDEM dos guardas, nao o
+    # registo do transporte: com `connect_client` a devolver None ele mede o
+    # que promete, com ou sem app aberta.
+    prior_share = sys.modules.get("capture_share")
+    sys.modules["capture_share"] = types.SimpleNamespace(
+        connect_client=lambda **_kw: None)
     wasapi = types.SimpleNamespace(loopback_device_specs=lambda: [{
         "name": "fake endpoint", "rate": 48000, "default": True,
     }])
@@ -1298,6 +1307,10 @@ def watch_main_capture_order_battery(mod) -> list:
     finally:
         mod._load_powerset, mod._tap_for = prior_loader, prior_tap
         mod.resume_evicted_total = prior_evicted
+        if prior_share is None:
+            sys.modules.pop("capture_share", None)
+        else:
+            sys.modules["capture_share"] = prior_share
         if prior_wasapi is None:
             sys.modules.pop(wasapi_name, None)
         else:
@@ -2199,7 +2212,7 @@ MUTANTS = [
     # ponte, e um payload atrasado um tick ja e' velho. O check do intervalo
     # tem de o apanhar.
     ("a-cadence-outlives-the-window",
-     "DEFAULT_EVERY_S = 10.0",
+     "DEFAULT_EVERY_S = 5.0",
      "DEFAULT_EVERY_S = 40.0"),
     # THE PICKER'S SECOND DEFECT (2026-11-25): the sidecar and the worker must
     # ask the SAME question. A picker that skips the live meter, or that reads

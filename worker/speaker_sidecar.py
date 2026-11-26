@@ -63,8 +63,20 @@ DEFAULT_EMB_MODEL = os.path.join(REPO, "_main", "diar-models",
                                  "3dspeaker_eres2net_base_16k.onnx")
 
 DEFAULT_RATE = 16000
-DEFAULT_WINDOW_S = 20.0
-DEFAULT_EVERY_S = 10.0
+#: A JANELA PAGA O PREÇO, E O PREÇO TEM UM PENHASCO MEDIDO NESTA CASA.
+#:
+#: MEDIDO (`SAFE_WINDOW_S`, o aviso do `main`): a separacao de vozes e' RTF
+#: 0,042 aos 10 s, 0,668 aos 11 s e 1,69 aos 14 s. A 20 s cada tique custava
+#: ~8,3 s de CPU (RTF 0,416 x 20 s) a cada 10 s de audio, ou seja **83 % de um
+#: nucleo em permanencia** -- e o dono sentiu isso como stutter com o
+#: `speaker_sidecar.py` a 40,9 % de um nucleo MEDIDO no processo dele
+#: (`python.exe(73436)`, filho da shell `pythonw.exe(53752)`, 2026-11-26).
+#: A 10 s o mesmo trabalho custa 0,42 s por tique: 4,2 % de um nucleo com
+#: `--every-s 5` (sobreposicao de 50 %, que e' a que da' contexto ao
+#: diarizador). Nada aqui e' throttle: e' a mesma janela a um RTF 10x menor,
+#: porque acima de 10 s o modelo cai do penhasco.
+DEFAULT_WINDOW_S = 10.0
+DEFAULT_EVERY_S = 5.0
 #: O DIARIZADOR PEDE CPU POR NOME, e o numero que o justifica esta' medido:
 #: `_main/_diar-run.py --provider cpu` deu DER 0,03 % na verdade do fabricante,
 #: e o custo da cadeia e' RTF 0,416 / 277 MB / 0,9 s de load a 2 fios. O sherpa

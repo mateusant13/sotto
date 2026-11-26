@@ -311,6 +311,31 @@ pico contra **3,90 GB** do ternário, com transcrição byte-idêntica.
   não faz ao vivo. Não integrar de novo sem um checkpoint com português e sem tradução --
   `_main/receipt-20261030-ark-asr-vs-parakeet.md`, `_main/engine-compare.py` para re-medir.
 
+## A JANELA DO DIARIZADOR TEM UM PENHASCO, E ELE FOI PAGO NA MAQUINA DO DONO (2026-11-26)
+
+O dono reportou stutter outra vez e o watcher nomeou o maior consumidor: **`python.exe(73436)` =
+`worker/speaker_sidecar.py`, 8,6 % de um núcleo no tique do episódio** — filho da shell DELE
+(`pythonw.exe(53752)`), ou seja código de produto, não instrumento de lane. Re-medido por mim:
+**40,9 % de um núcleo** com o processo vivo.
+
+- **A medição que faltava**: `S.tick()` sobre 11,9 s de áudio real da call, com o mesmo diarizador
+  (`provider=cpu`, 2 fios). MEDIDO: **janela 10 s = 0,38 s de CPU por tique (RTF 0,037)**;
+  **janela 20 s = 15,36 s de CPU por tique (RTF 0,768)** — 40x, e o dobro do tempo real.
+- **A lei**: um default `--window-s` acima de `SAFE_WINDOW_S` (10 s) paga o penhasco e gira o
+  processo em permanência. `DEFAULT_WINDOW_S` passou a **10.0** e `DEFAULT_EVERY_S` a **5.0**
+  (sobreposição de 50 %, que é a que dá contexto ao diarizador): custo esperado **7,6 % de um
+  núcleo** em vez de 154 % teóricos / 40,9 % medidos.
+- **Nada disto é throttle**: é a MESMA janela a um RTF 40x menor, porque o modelo cai do penhasco
+  acima de 10 s (o próprio `main` já avisava, com a tabela 0,042@10 s / 0,668@11 s / 1,69@14 s).
+- **`fixed, NOT verified`** até ele reiniciar: a instância dele carrega o código anterior.
+  O número do processo em execução mede-se com `python _main/shell-thread-cpu.py <pid>` e o
+  veredicto da atribuição com `stall-attr`.
+- **Portão**: `_main/speaker-sidecar-oracle.py` (142/142 arms, 21/21 mutantes) — e dois arms dele
+  eram VERMELHOS por isolamento, não por produto: o braço da ordem dos guardas lia o registo VIVO
+  do `capture_share` e, com o worker do dono a publicar, nunca construía o tap (`calls=['load']`).
+  Agora ele substitui `capture_share` por um stub com `connect_client -> None`. Um braço que
+  depende do estado ambiente da máquina mede o ambiente, não o contrato.
+
 ## POR VOZ E' O DEFAULT: O SIDECAR NOMEIA, O WORKER CARIMBA (2026-11-24)
 
 Ordem do dono, verbatim: *"sotto é pra conseguir distinguir cada voz/camada de audio e saber
