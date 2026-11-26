@@ -5548,8 +5548,17 @@ class ExternalCaptionWatcher(threading.Thread):
             # caia a 0,1-1,5 Hz e o ecra congelava -- sem erro nenhum a
             # vista. Agora a falha arma um COOLDOWN: 5 s a duplicar ate'
             # 60 s, e cada armar escreve `YOUTUBE_CDP_SOURCE_RETRY`.
+            # UM SENTINELA QUE NINGUEM DERRUBOU NAO E' UM COOLDOWN (2026-11-26).
+            # `False` com zero falhas registadas quer dizer que OUTRO dono
+            # estacionou a fonte (um fixture, um teste, um `SOTTO_*`), e
+            # ressuscita-la aqui punha um CDP vivo a' frente do caminho que
+            # esse dono queria medir -- medido: `youtube-foreign-paint`
+            # passou a vermelho por isto. So' o que NOS falhamos volta.
+            _tries = int(getattr(self, '_yt_cdp_fail_tries', 0))
+            if _tries <= 0:
+                return None
             _now = time.monotonic()
-            if not yt_cdp_retry.due(getattr(self, '_yt_cdp_fail_tries', 0),
+            if not yt_cdp_retry.due(_tries,
                                     getattr(self, '_yt_cdp_retry_at', 0.0),
                                     _now):
                 return None

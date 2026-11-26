@@ -116,7 +116,34 @@ def arms(mod):
     # importar -- e a escrever a linha -- a cada tick de 4 Hz.
     ok10, why10 = import_branch_arms(shell)
     arm('a10-import-failure-arms-cooldown', ok10, why10)
+    # A11 -- UM SENTINELA QUE NINGUEM DERRUBOU NAO VOLTA (2026-11-26). `False`
+    # com zero falhas e' a fonte estacionada por OUTRO dono (fixture, teste);
+    # ressuscita-la punha um CDP vivo a' frente do que ele queria medir --
+    # medido: `youtube-foreign-paint` foi a vermelho (A2/A3) e voltou a verde
+    # com esta guarda.
+    ok11, why11 = parked_source_guard(shell)
+    arm('a11-a-parked-source-is-not-resurrected', ok11, why11)
     return out
+
+
+def shell_wiring(text):
+    """The heartbeat-style wiring: `due` asked before re-arming."""
+    gate = text.find('if not yt_cdp_retry.due(')
+    return 0 <= gate < text.find("log('YOUTUBE_CDP_SOURCE_COOLDOWN_END"), 'gate=%d' % gate
+
+
+def parked_source_guard(text):
+    """`False` with no recorded failure must return None, before `due`."""
+    i = text.find('if source is False:')
+    if i < 0:
+        return False, 'the sentinel branch is gone'
+    tail = text[i:]
+    end = tail.find("log('YOUTUBE_CDP_SOURCE_COOLDOWN_END")
+    if end < 0:
+        return False, 'the cooldown log is gone'
+    block = tail[:end]
+    guard = '_tries <= 0' in block and 'return None' in block
+    return guard, 'guard=%s' % guard
 
 
 def import_branch_arms(text):
@@ -168,6 +195,10 @@ MUTANTS = [
 
 #: Mutantes do TEXTO da shell (o a10 le a shell, nao o modulo puro).
 SHELL_MUTANTS = [
+    ('parked-source-resurrected',
+     "            if _tries <= 0:\r\n                return None\r\n",
+     ""),
+
     ('import-failure-not-armed',
      "            log('YOUTUBE_CDP_SOURCE import_failed=%r' % (exc,))\r\n            self._yt_cdp_source = False\r\n            _tries = int(getattr(self, '_yt_cdp_fail_tries', 0)) + 1\r\n            self._yt_cdp_fail_tries = _tries\r\n            _at, _delay, _event = yt_cdp_retry.arm(_tries, time.monotonic())",
      "            log('YOUTUBE_CDP_SOURCE import_failed=%r' % (exc,))\r\n            self._yt_cdp_source = False\r\n            _tries = int(getattr(self, '_yt_cdp_fail_tries', 0)) + 1\r\n            self._yt_cdp_fail_tries = _tries\r\n            _at, _delay, _event = (0.0, 0.0, '')"),
@@ -206,7 +237,12 @@ def neg_arm():
         if old not in src:
             print('  %-36s MUTANT-BROKEN (anchor missing)' % name)
             continue
-        ok, _why = import_branch_arms(src.replace(old, new, 1))
+        # CADA MUTANTE E' JULGADO PELO PREDICADO QUE ELE ATAKA: chamar so' um
+        # deles deixa passar o outro (medido: `parked-source-resurrected`
+        # SURVIVED porque este laco so' perguntava ao `import_branch_arms`).
+        mutated = src.replace(old, new, 1)
+        ok = all(fn(mutated)[0] for fn in
+                 (import_branch_arms, parked_source_guard, shell_wiring))
         if ok:
             print('  %-36s SURVIVED -- the gate is blind here' % name)
         else:
