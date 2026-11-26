@@ -1180,6 +1180,16 @@ def run_mutant_isolated(path):
 
     env = dict(os.environ)
     env['PYTHONUNBUFFERED'] = '1'
+    # UM FILHO DE TESTE NAO PRECISA DE UM EXERCITO DE FIOS (2026-11-26, MEDIDO).
+    # O watcher apanhou `python.exe(56424)` -- este mutante -- a **153,5 % de um
+    # nucleo** e a medir 0,075 s de atraso no relogio dele, com a maquina a
+    # esperar. Reproduzido aqui: UM mutante chega a **300,2 %** de um nucleo
+    # (o `load_shell` + o `arm_hidden` a subir um WebView2 real) sem tecto
+    # nenhum. O trabalho e' o mesmo que a bateria pede; o custo e' que nao pode
+    # ser pago a frente do que o dono esta a fazer.
+    for _k in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS',
+               'NUMEXPR_NUM_THREADS', 'VECLIB_MAXIMUM_THREADS'):
+        env[_k] = '1'
     # `Popen` e nao `subprocess.run`: um corte sem pid nao tem COMO ser atribuido, e
     # foi assim que o `rc=124` deste passo chegou duas vezes sem dizer quem estava a
     # correr (`--freeze-capture`, 2026-11-12).
@@ -1188,7 +1198,10 @@ def run_mutant_isolated(path):
          '--mutant-only', path, '--deadline', str(MUTANT_ARM_DEADLINE_S)],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         stdin=subprocess.DEVNULL,
-        creationflags=CREATE_NO_WINDOW, cwd=HERE, env=env,
+        # 0x00004000 = BELOW_NORMAL_PRIORITY_CLASS: o mutante nunca fica a'
+        # frente do trabalho interativo do dono. Um tecto de CPU nao basta --
+        # medido 2026-11-26, a violencia deste filho e' de PRIORIDADE.
+        creationflags=CREATE_NO_WINDOW | 0x00004000, cwd=HERE, env=env,
         startupinfo=_hidden_startupinfo())
     try:
         out, err = proc.communicate(timeout=MUTANT_ARM_DEADLINE_S + 60)

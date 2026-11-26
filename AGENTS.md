@@ -634,6 +634,26 @@ empilhadas na mesma queixa, e a segunda nao era da shell:
   `PLAYER_HOLD_S` segura a linha, o orcamento serve a ultima leitura), que e' o que as regras de
   2026-11-26 acima ja' fazem.
 
+## UM FILHO DE TESTE TAMBEM TEM TECTO, E O DONO NAO ESPERA ATRAS DELE (medido 2026-11-26)
+
+O watcher mandou o stutter com nome e pid: `python.exe(56424)` =
+`_main/panel-hidden-at-startup-oracle.py --mutant-only ... --deadline 90.0`, **153,5 % de um nucleo**
+no episodio, com o relogio do proprio governor 2,2 s atrasado. A arvore era a minha (bateria caged
+`--cpu 40`), o filho era meu, e a atribuicao estava certa.
+
+- **Reproduzido, e e' a CLASSE:** UM mutante daquele oraculo chega a **300,2 %** de um nucleo durante
+  **7,1 s** -- ele faz `load_shell` (o `sotto_webview.py` inteiro) **e** `arm_hidden`, que sobe um
+  WebView2 real. Nenhum tecto: nem fios, nem prioridade.
+- **A cura, e ela e' do codigo, nao do governor:** `OMP/MKL/OPENBLAS/NUMEXPR/VECLIB=1` no ambiente do
+  filho e `CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS` na largada. Medido depois: pico **272,5 %**,
+  prioridade **16384** (BELOW_NORMAL), rc 0, **7,3 s** -- o trabalho continua a COMPLETAR.
+- **O custo residual e' NOMEADO, nao escondido:** subir um WebView2 custa ~2,7 nucleos por ~7 s, e
+  isso e' intrinseco ao gate (o produto faz o mesmo quando arranca). O que a prioridade garante e' que
+  o dono nunca espera atras dele; a bateria continua a ser **um trabalho pesado de cada vez**.
+- **A REGRA PARA QUALQUER INSTRUMENTO NOVO:** um passo que larga um filho pesado declara (1) o numero
+  de fios do filho, (2) a prioridade, (3) o prazo, (4) que corre sozinho. Um filho de teste com a
+  prioridade do dono e sem tecto de fios e' o stutter que ele reporta, vestido de gate.
+
 ## O RUNTIME DE WEBVIEW2: a MAIOR instalada, e nenhum pin (ordem do dono, 2026-11-11)
 
 Verbatim: *"WEBVIEW2 RUNTIME ORDER FROM THE OWNER (2026-11-11): use the GREATER version. This is a
