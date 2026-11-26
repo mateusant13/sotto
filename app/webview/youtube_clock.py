@@ -184,7 +184,7 @@ def rebase(floor, t, invented, eps=0.05):
     return now if (base - now) <= ours + eps else base
 
 
-def pause_proven(clock_static, clock_moving):
+def pause_proven(clock_static, clock_moving, photo_fresh):
     """A PAUSA SO' E' VERDADEIRA QUANDO O RELOGIO NAO A DESMENTIU (2026-11-26).
 
     O DEFEITO, medido no log do dono (2026-11-26 02:38:01, pid 57008): no MESMO
@@ -202,6 +202,15 @@ def pause_proven(clock_static, clock_moving):
     desmente a bandeira, nunca o contrario. Aqui ela tambem desmente a pausa
     curta. `clock_moving` ganha sempre que as duas discordam no mesmo tick.
 
+    A FOTO VELHA TAMBEM NAO PROVA PAUSA (2026-11-26, o resto do mesmo episodio).
+    `_yt_clock_static` compara a posicao com a ultima DIFERENTE: numa paragem de
+    produtor de 5,9 s (`YOUTUBE_SNAPSHOT_STALE age_ms=5891` as 02:38:08.713) o
+    relogio nao pode andar, logo "parado" e' o que uma foto velha sempre diz --
+    e o portao apagou o ecra as 02:38:10.436 (`YOUTUBE_PAUSE_PROVEN
+    held_s=0.6`) sem uma unica pintura ate' a shell sair, 13 s depois. Uma foto
+    em cache nao e' uma medicao (a lei que ja' vale para `why='painted'`): sem
+    foto do tick, a pausa e' DESCONHECIDA, e o desconhecido nao apaga nada.
+
     Devolve `bool`: a pausa vale (True) ou foi desmentida / nao medida (False).
     """
-    return bool(clock_static) and not bool(clock_moving)
+    return bool(photo_fresh) and bool(clock_static) and not bool(clock_moving)

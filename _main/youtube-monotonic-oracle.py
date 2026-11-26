@@ -323,6 +323,24 @@ class _Player:
         self.last_rows = ['the theme hotkey?']
         self.shell = _Shell()
 
+    #: O SHELL DE VERDADE PERGUNTA A IDADE DA FOTO AO PROPRIO `stamp` (2026-11-26,
+    #: `_yt_snap_fresh`). O duplo responde a MESMA pergunta pela mesma fonte -- uma
+    #: foto sem carimbo nao e' fresca -- para o `_yt_cdp_snapshot` real poder ser
+    #: conduzido sem uma segunda definicao da regra dentro do oraculo.
+    DOM_FRESH_S = 1.2
+
+    def _yt_snap_fresh(self, snap):
+        try:
+            stamp = float(snap.get('stamp'))
+        except (TypeError, ValueError, AttributeError):
+            return False
+        # O RELOGIO E' O DO ORACULO. O metodo extraido recebe `time` como
+        # `_Clock` no namespace dele (`ns`), mas ESTE duplo vive no modulo do
+        # oraculo, onde `time` e' o de verdade: comparar com ele dava `fresh=False`
+        # sempre (carimbos 200-204 contra 2,5e5 s) e as arms 19/19b/20 acusavam
+        # o codigo certo. `_Clock.now` e' o mesmo instante para os dois.
+        return (_Clock().monotonic() - stamp) <= self.DOM_FRESH_S
+
     def _yt_cdp_ensure(self, *_a):
         return self._yt_cdp_source
 

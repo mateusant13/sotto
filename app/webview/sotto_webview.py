@@ -938,8 +938,8 @@ HISTORY_ROUTES = ('final', 'provisional-draft', 'batch')
 #: `routeFor` else-half manufactured `final` when the worker stamped no route at
 #: all (P1 `4fb5b25380cbc8269977e22e`). Outside this list nothing is written.
 #: The Node twin is `ROUTE_SOURCES` in `app/panel/history-store.js` -- and that
-#: twin is NOT on the shipped page: `panel.html` loads eleven scripts and none of
-#: them is `history-store.js` (measured 2026-10-11), so THIS tuple is the one the
+#: twin is NOT on the shipped page: `panel.html` loads 12 page scripts and none of
+#: them is `history-store.js` (counted 2026-11-26), so THIS tuple is the one the
 #: owner's transcript actually passes through and the Node one is read only by
 #: oracles. BOTH were missing `'worker-stamped-producer'` until 2026-10-11 -- the
 #: token `caption-formulation.js routeSourceFor` returns for a line that DECLARES
@@ -6085,7 +6085,25 @@ class ExternalCaptionWatcher(threading.Thread):
                 # dono so', para o oraculo poder conduzi-lo: dois veredictos
                 # opostos no mesmo tick sao um defeito, e o que decide e' o que
                 # MEDIU movimento.
-                _paused_proven = youtube_clock.pause_proven(_ct_static, _mv_moving)
+                _photo_fresh = self._yt_snap_fresh(snap)
+                _paused_proven = youtube_clock.pause_proven(
+                    _ct_static, _mv_moving, _photo_fresh)
+                if _flag_paused and _ct_static and not _mv_moving \
+                        and not _photo_fresh:
+                    # A FOTO NAO E' DESTE TICK: o relogio nao pode andar
+                    # numa foto velha, logo `held_s` mede a IDADE DA
+                    # FOTO, nao a pausa. Nomeia-se e nao se apaga nada.
+                    if not getattr(self, '_yt_stale_photo_logged', False):
+                        self._yt_stale_photo_logged = True
+                        log('YOUTUBE_PAUSE_STALE_PHOTO held_s=%.2f '
+                            'age_ms=%.0f t=%.2f vid=%s'
+                            % (_ct_held,
+                               1000.0 * (time.monotonic()
+                                         - float(snap.get('stamp') or 0.0)),
+                               float(snap.get('t') or 0.0),
+                               str(getattr(self, 'yt_video_id', '') or '')))
+                if _photo_fresh:
+                    self._yt_stale_photo_logged = False
                 if _paused_proven:
                     # A PAUSA PROVADA: a posicao esta' parada ha'
                     # `CLOCK_STATIC_PAUSE_S` entre leituras DISTINTAS. E' a unica
@@ -6343,6 +6361,17 @@ class ExternalCaptionWatcher(threading.Thread):
         log('YOUTUBE_UIA_SKIPPED reason=%s age_ms=%s left_ms=%.0f'
             % (reason, ('%.0f' % (age * 1000.0)) if age is not None else 'none',
                left_s * 1000.0))
+
+    def _yt_snap_fresh(self, snap):
+        """A FOTO E' DESTE TICK? A idade vem do `stamp` dela, nunca de um
+        proxy (`yt_live_paint_at` sobe com qualquer produtor). Falso quando
+        nao ha' carimbo legivel: sem medida, a foto nao vale como medida."""
+        try:
+            stamp = float(snap.get('stamp'))
+        except (TypeError, ValueError, AttributeError):
+            return False
+        return ((time.monotonic() - stamp)
+                <= float(getattr(self, 'DOM_FRESH_S', 1.2)))
 
     def _yt_dom_is_source(self):
         """O DOM do player esta' a entregar as linhas AGORA?

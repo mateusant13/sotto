@@ -428,9 +428,18 @@ then froze, when i unpaused it still did not worked"*. O log dele (pid 57008) mo
 testemunhas a discordar no MESMO tick: `YOUTUBE_PAUSE_DISAGREED clock_rate=0.58` as .508 e
 `YOUTUBE_PAUSE_PROVEN held_s=0.25` as .756, e o `CAPTION_WINDOW_BLANKED` a seguir.
 
-- **Uma so' regra, um so' dono:** `youtube_clock.pause_proven(clock_static, clock_moving)`. O
-  movimento MEDIDO ganha sempre que as duas testemunhas discordam; `_now_paused` e a testemunha da
-  borda derivam dela, e nao existe segunda copia inline (o oraculo recusa uma).
+- **Uma so' regra, um so' dono:** `youtube_clock.pause_proven(clock_static, clock_moving,
+  photo_fresh)`. O movimento MEDIDO ganha sempre que as duas testemunhas discordam; `_now_paused` e a
+  testemunha da borda derivam dela, e nao existe segunda copia inline (o oraculo recusa uma). A
+  tabela de verdade sao 8 combinacoes, e o oraculo conduz as 8.
+- **FOTO VELHA NAO PROVA PAUSA (o resto do mesmo episodio).** `_yt_clock_static` compara com a ultima
+  posicao DIFERENTE, logo "parado" e' o que uma foto de 5,9 s sempre diz: `YOUTUBE_SNAPSHOT_STALE
+  age_ms=5891` (02:38:08.713) e o apagar decidido as 02:38:10.436 (`held_s=0.6`) deixaram 13 s sem
+  UMA pintura -- *"when i unpaused it still did not worked"*. A frescura vem do `stamp` da propria
+  foto (`_yt_snap_fresh`, `DOM_FRESH_S = 1.2`), nunca de um proxy; sem foto do tick a pausa e'
+  DESCONHECIDA e o desconhecido nao apaga nada (`YOUTUBE_PAUSE_STALE_PHOTO held_s=.. age_ms=..`, uma
+  linha por episodio). Uma pausa DE VERDADE continua a apagar: a CDP publica a 80 ms, a foto e' fresca,
+  `arm19-static-pause-still-blanks` e `arm20-cached-snapshot-is-not-a-second-measure` seguem verdes.
 - **O espelho `yt_source_paused` e' o portao que recusa cada linha seguinte** (`external_caption`).
   Arma-lo com uma pausa desmentida e' o congelamento: o ecra nao volta ao despausar. Nenhum caminho
   pode arma-lo sem `pause_proven`.
@@ -674,8 +683,8 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **429952 B**,
-  **4901 CRLF** / 0 bare LF, sha256 `F9AC48533CF232E1F00DB960E0B1A418F002AFFD310E12A63D9176C8D889DD56`.
+- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **432203 B**,
+  **4925 CRLF** / 0 bare LF, sha256 `BD240DAF576C4FF00E84A31421CC84889701CD6F21AB01260A2F3B172DDB7A40`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
@@ -685,7 +694,10 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
   existiam e nenhum estava ligado a esta bateria. 2026-11-26: entraram dois pares novos do
   congelamento da legenda do YouTube -- `yt-pause-disagreement` (uma pausa que a MEDIDA desmentiu
   nao apaga o ecra) e `yt-diag-truth` (o rotulo `why='painted'` nao sobrevive a' foto que o
-  produziu).)
+  produziu). 2026-11-26: entraram `audio-ring-journal` (o journal do anel de audio crescia para
+  sempre) e `dead-unwired` (os dois modulos sem fio e a contagem de scripts da pagina), cada um em
+  par com o seu `red-as-expected`; o censo `battery-wiring` recusou os dois como `new-unwired`
+  antes de o par existir.)
 
 ## `git rm --cached` SO' CONTA QUANDO `git ls-tree HEAD` CONCORDA (medido 2026-11-26)
 

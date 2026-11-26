@@ -1022,8 +1022,76 @@ rc=0
 
 Porque isto fecha a reclamacao: o painel nao tem superficie de erro (0 nodes com class *error*/alert/failed) e o teto de respawn existe, com `BRIDGE_RESTART_SUPPRESSED ... why=restarting-cannot-fix-a-routing-problem`: o shell para de tentar em vez de repetir para sempre.
 
+## R32 — a legenda do YouTube congela em ~2 s e nao volta ao despausar
+
+- fonte: owner, 2026-11-26, verbatim: *"i just opened sotto, went to youtube, subtitles from youtube
+  worked for like 2 seconds and then froze, when i unpaused it still did not worked"*.
+
+status: fixed, NOT verified on his screen (the app on his desktop still carries the old bytes until he
+restarts; a lane never puts the app on his screen).
+
+cause, from his own log (pid 57008, `_main/webview-run.log`):
+
+```
+02:38:01.508 YOUTUBE_PAUSE_DISAGREED paused_flag=True clock_rate=0.58 t=645.25
+02:38:01.756 YOUTUBE_PAUSE_PROVEN witness=flag+clock-static held_s=0.2 t=645.25
+02:38:01.764 CAPTION_WINDOW_BLANKED reason=youtube-paused epoch=3
+02:38:09.834 YOUTUBE_PAUSE_RESUMED witness=clock-moved pause_s=8.1
+02:38:10.436 CAPTION_WINDOW_BLANKED reason=youtube-paused epoch=4
+```
+
+Two witnesses measured different windows: `_yt_clock_moving` since the previous snapshot (~8 s),
+`_yt_clock_static` since the last DIFFERENT position (0.25 s). The blank consulted only the second, so
+0.25 s of buffer wiped a moving video; and `yt_source_paused` stayed armed, and `external_caption`
+refuses every later player line while armed -- which is why unpausing did not recover.
+
+fix (commit `ec4e9b237f`): one owner, `youtube_clock.pause_proven(clock_static, clock_moving)`; the
+measured movement overrides a proven pause, and `_now_paused` plus the edge witness derive from it.
+Also `_yt_diag_now` now reads rows at the readers' 1.2 s bound (was 8 s) and prints
+`why='painted-stale'` when the sticky label cannot be from the same instant as the fresh count.
+
+evidence: `python _main/yt-pause-disagreement-oracle.py` -> YT-PAUSE-DISAGREEMENT VERDICT: GREEN (2 arms)
+
+```
+    [PASS] a-regra     a pausa desmentida e recusada -- 4/4 combinacoes
+    [PASS] b-ligacao   o shell deriva o apagar e a testemunha da regra -- uma chamada, um dono
+    YT-PAUSE-DISAGREEMENT VERDICT: GREEN (2 arms)
+```
+
+rc=0
+
+evidence: `python _main/yt-pause-disagreement-oracle.py --neg-arm` -> NEG-ARM VERDICT: PASS, rc=1
+
+```
+    NEG-ARM a-regra  CAUGHT
+    NEG-ARM b-ligacao CAUGHT
+    NEG-ARM VERDICT: PASS
+```
+
+evidence: `python _main/yt-diag-truth-oracle.py` -> YT-DIAG-TRUTH VERDICT: GREEN (4/4), rc=0; with
+`--neg-arm` -> NEG-ARM a-rotulo CAUGHT, rc=1.
+
+evidence: `python _main/youtube-monotonic-oracle.py` -> YOUTUBE-MONOTONIC VERDICT GREEN -- 30 PASS / 0
+FAIL (arm18 already proves that a `paused=True` flag alone does not blank).
+
+known-answer run on the real log (`--log _main/webview-run.log`): the LAST session reports 2 pause
+episodes and 1 contradicted (`t=645.25 vid=Mcet7uKf_c0` -- his freeze); the whole file reports 47
+episodes and 5 contradicted, i.e. the class was systemic. A clean synthetic timeline returns `CLEAN`,
+so the detector can pass as well as fail.
+
+the one command that closes it after his restart:
+
+```
+python _main/yt-pause-disagreement-oracle.py --log _main/webview-run.log
+```
+
+must print `YT-PAUSE-LOG VERDICT: CLEAN`.
+
 ## O que continua aberto
 
 Nada: todas as seccoes acima fecharam com o comando a devolver 0 e a saida esperada.
+
+Uma excepcao nomeada, e ela nao e' uma reclamacao: R32 fecha no CODIGO e nos portoes, e a metade
+"verified" depende de ele reiniciar a app e abrir um video. O comando acima e' o veredicto.
 
 Unassigned complaints: none

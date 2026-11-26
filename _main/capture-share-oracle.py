@@ -407,6 +407,40 @@ def arm_fallback(bundle, tmp, cs_override=None):
                   % (rc, counter["taps"], counter["starts"], named, out[-200:]))
 
 
+# ── (i) a BUSY slot degrades to NO DIARIZATION, not to a second device pair ──
+def arm_busy_slot(bundle, tmp):
+    """MEDIDO 2026-11-26: com a slot ocupada, o sidecar abria o SEU loopback+micro
+    enquanto o worker ja' capturava nos MESMOS endpoints (`taps=1`,
+    `MIC_CAPTURE mic=fake`) -- o "UMA CAPTURA, UM LEITOR" do AGENTS.md violado
+    pelo proprio fallback. A degradacao correcta e' NOMEADA e sem dispositivo:
+    rc=2, `fallback reason=busy`, `no diarization`, zero taps, zero micros."""
+    cs = bundle["cs"]
+    port = free_port()
+    pub = raw = None
+    try:
+        pub = cs.Publisher(port=port, log=lambda _m: None).start()
+        # Um cliente cru segura a slot sem `connect_client` (o HELLO e' publico).
+        raw = socket.create_connection(("127.0.0.1", port), timeout=2.0)
+        raw.sendall(cs.HELLO)
+        reply = raw.recv(32)
+        counter = {"taps": 0, "starts": 0}
+        rc, out = run_sidecar_watch(bundle, port, "1", counter, tmp)
+        named = "CAPTURE_SHARE fallback reason=busy" in out
+        degraded = "no diarization" in out
+        ok = (reply.startswith(b"OK") and rc == 2 and named and degraded
+              and counter["taps"] == 0 and counter["starts"] == 0
+              and "MIC_CAPTURE" not in out)
+        return result(ok, "i busy slot degrades to no second device",
+                      "rc=%d taps=%d starts=%d named=%s degraded=%s out=%r"
+                      % (rc, counter["taps"], counter["starts"], named,
+                         degraded, out[-160:]))
+    finally:
+        if raw is not None:
+            raw.close()
+        if pub is not None:
+            pub.stop()
+
+
 # ── (e) explicit off switch beats a live publisher ──────────────────────────
 def arm_disabled(bundle, tmp, cs_override=None):
     cs = bundle["cs"]
@@ -524,6 +558,7 @@ ARMS = [
     ("f one worker device / zero client devices", arm_one_device),
     ("g a stranger cannot eject the slot holder", arm_stranger),
     ("h an orderly stop is not a failure", arm_orderly_stop),
+    ("i busy slot degrades to no second device", arm_busy_slot),
 ]
 
 #: (label, source file, old, new, owning arm). Every mutation must make the
@@ -575,6 +610,12 @@ MUTANTS = [
      "            except (OSError, socket.timeout):\n"
      "                self._disconnect(\"handshake failed\")\n"
      "                # A STRANGER'S FAILED HANDSHAKE MUST NOT EJECT THE CLIENT THAT\n"),
+    ("busy-fallback-opens-second-pair", "sidecar",
+     '    if busy:\n'
+     '        print("sidecar: no diarization -- capture slot busy; "\n'
+     '              "no second device opened")\n'
+     '        return 2\n',
+     ''),
     ("orderly-stop-looks-like-crash", "cs",
      "                    if not self._stop.is_set():\n"
      "                        self._fail(\"publisher-closed\")\n"
@@ -586,12 +627,13 @@ MUTANTS = [
 ]
 
 
-def bundle_for(cs_path=CS_PATH, worker_path=WORKER_PATH):
+def bundle_for(cs_path=CS_PATH, worker_path=WORKER_PATH, sidecar_path=SIDECAR_PATH):
     return {
         "cs": load_module(cs_path, fresh_name("capture_share_live")),
-        "sidecar": SIDECAR_PATH,
+        "sidecar": sidecar_path,
         "worker": worker_path,
         "cs_path": cs_path,
+        "sidecar_path": sidecar_path,
     }
 
 
@@ -602,7 +644,9 @@ def run_arms(bundle, tmp, cs_override=None, worker_path=None, only=None):
         if argv and name not in argv:
             continue
         try:
-            if name.startswith("d ") or name.startswith("e "):
+            if name.startswith("i "):
+                out.append(fn(bundle, tmp))
+            elif name.startswith("d ") or name.startswith("e "):
                 out.append(fn(bundle, tmp, cs_override))
             elif name.startswith("f "):
                 out.append(fn(bundle, tmp, worker_path))
@@ -640,8 +684,9 @@ def main(argv=None):
         print("NEGATIVE ARM (mutated sources must go RED)")
         caught, weak = 0, 0
         for label, target, old, new in MUTANTS:
-            key = "cs" if target == "cs" else "worker"
-            path = bundle["cs_path"] if key == "cs" else bundle["worker"]
+            key = target if target in ("cs", "worker", "sidecar") else "worker"
+            path = {"cs": bundle["cs_path"], "worker": bundle["worker"],
+                    "sidecar": bundle["sidecar_path"]}[key]
             src = source(path)
             if old not in src:
                 print("  RED   mutant %-28s ANCHOR MISSING -- oracle is stale" % label)
@@ -653,7 +698,9 @@ def main(argv=None):
             try:
                 mutant_bundle = bundle_for(
                     cs_path=mutant_path if key == "cs" else bundle["cs_path"],
-                    worker_path=mutant_path if key == "worker" else bundle["worker"])
+                    worker_path=mutant_path if key == "worker" else bundle["worker"],
+                    sidecar_path=(mutant_path if key == "sidecar"
+                                  else bundle["sidecar_path"]))
                 owner = next(name for name, _fn in ARMS
                              if name.startswith(
                                  {"publish-truncates-a-byte": "a ",
@@ -663,6 +710,7 @@ def main(argv=None):
                                   "disable-env-ignored": "e ",
                                   "worker-opens-two-taps": "f ",
                                   "stranger-ejects-slot": "g ",
+                                  "busy-fallback-opens-second-pair": "i ",
                                   "orderly-stop-looks-like-crash": "h "}[label]))
                 rows = run_arms(mutant_bundle, tmp, only=owner)
             except Exception as exc:                            # noqa: BLE001

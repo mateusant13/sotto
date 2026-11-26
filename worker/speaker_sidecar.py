@@ -1810,11 +1810,27 @@ def main(argv=None) -> int:
 
     share = None
     local = {"tap": None}
+    # O MOTIVO DO TRANSPORTE E' LIDO, NAO SO' IMPRESSO (2026-11-26). `BUSY`
+    # significa que o WORKER publica -- e o worker ja' abriu o loopback e o
+    # micro para isso. O ramo local abaixo abriria um SEGUNDO par nos MESMOS
+    # endpoints (medido: `taps=1`, `MIC_CAPTURE mic=fake` com BUSY), que e'
+    # exactamente o que `AGENTS.md` proibe: "UMA CAPTURA, UM LEITOR ... Nenhum
+    # segundo loopback/micro em execucao conjunta". Sem diarizacao e' uma
+    # degradacao NOMEADA; dois taps e' o defeito.
+    share_log = []
     try:
         import capture_share                                       # noqa: PLC0415
-        share = capture_share.connect_client(log=print)
+        share = capture_share.connect_client(log=share_log.append)
     except Exception as exc:  # noqa: BLE001 -- a broken transport must not kill capture
-        print("CAPTURE_SHARE fallback reason=unavailable (%s)" % type(exc).__name__)
+        share_log.append("CAPTURE_SHARE fallback reason=unavailable (%s)"
+                         % type(exc).__name__)
+    for _line in share_log:
+        print(_line)
+    busy = any("fallback reason=busy" in _line for _line in share_log)
+    if busy:
+        print("sidecar: no diarization -- capture slot busy; "
+              "no second device opened")
+        return 2
 
     def _open_local_tap(reason):
         """Re-open the old capture if the shared stream dies mid-call."""

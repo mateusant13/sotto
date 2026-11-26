@@ -1554,6 +1554,30 @@ if exist _main\yt-diag-truth-oracle.py (
 call :step red-as-expected-yt-diag-truth 1 "_main\yt-diag-truth-oracle.py;app\webview\sotto_webview.py" "%OUT%\yt-diag-truth-neg.log" python _main\yt-diag-truth-oracle.py --neg-arm
 call :expectred red-as-expected-yt-diag-truth !STEP_RC! "%OUT%\yt-diag-truth-neg.log" "NEG-ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-yt-diag-truth MISSING "%OUT%\yt-diag-truth-neg.log" "NEG-ARM VERDICT: PASS" )
+REM `audio-ring-journal` (2026-11-26): o journal do anel de audio
+REM (`lines.jsonl`, `index.jsonl`, `gaps.jsonl`) crescia para sempre -- o
+REM `_prune` so' descia nas pastas de dia. O passo julga o tecto por ficheiro, a
+REM ligacao ao `_prune`/`append_line_anchor` e o manifesto de stores do layout.
+if exist _main\audio-ring-journal-oracle.py (
+ call :step audio-ring-journal 0 "_main\audio-ring-journal-oracle.py;worker\audio_ring.py;docs\layout.md" "%OUT%\audio-ring-journal.log" python _main\audio-ring-journal-oracle.py
+ call :record audio-ring-journal !STEP_RC!
+) else ( call :record audio-ring-journal MISSING )
+if exist _main\audio-ring-journal-oracle.py (
+call :step red-as-expected-audio-ring-journal 1 "_main\audio-ring-journal-oracle.py;worker\audio_ring.py" "%OUT%\audio-ring-journal-neg.log" python _main\audio-ring-journal-oracle.py --neg-arm
+call :expectred red-as-expected-audio-ring-journal !STEP_RC! "%OUT%\audio-ring-journal-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-audio-ring-journal MISSING "%OUT%\audio-ring-journal-neg.log" "NEG-ARM VERDICT: PASS" )
+REM `dead-unwired` (2026-11-26): os dois modulos guardados e SEM FIO
+REM (`app/panel/history-store.js`, `worker/discord_streams.py`) continuam sem
+REM chamador, e o comentario da shell nomeia a contagem REAL de scripts da pagina
+REM -- o dia em que uma tag `src` ou um `import` aparecer, a prosa passa a mentir.
+if exist _main\dead-unwired-oracle.py (
+ call :step dead-unwired 0 "_main\dead-unwired-oracle.py;app\panel\panel.html;app\webview\sotto_webview.py;worker\discord_streams.py;app\panel\history-store.js" "%OUT%\dead-unwired.log" python _main\dead-unwired-oracle.py
+ call :record dead-unwired !STEP_RC!
+) else ( call :record dead-unwired MISSING )
+if exist _main\dead-unwired-oracle.py (
+call :step red-as-expected-dead-unwired 1 "_main\dead-unwired-oracle.py;app\panel\panel.html;app\webview\sotto_webview.py" "%OUT%\dead-unwired-neg.log" python _main\dead-unwired-oracle.py --neg-arm
+call :expectred red-as-expected-dead-unwired !STEP_RC! "%OUT%\dead-unwired-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-dead-unwired MISSING "%OUT%\dead-unwired-neg.log" "NEG-ARM VERDICT: PASS" )
 REM `discord-streams` (2026-11-25): o passo emanava do mesmo oraculo que atende a
 REM auditoria de desenho, e o censo `battery-wiring` recusou-o por estar sem passo.
 REM Ele julga `worker/discord_streams.py` (uma arvore de PCM por falante vira uma

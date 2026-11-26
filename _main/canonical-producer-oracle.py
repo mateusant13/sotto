@@ -757,7 +757,7 @@ def main() -> int:
     store_text = HISTORY_STORE.read_text(encoding="utf-8")
     # RE-BASELINED 2026-10-11, same reason as arm B above: this check pinned the LATENT
     # defect (the token absent). It is now a REQUIREMENT over BOTH twins, and the LIVE
-    # twin is the shell one -- `panel.html` loads eleven scripts and `history-store.js`
+    # twin is the shell one -- `panel.html` loads 12 page scripts (counted 2026-11-26) and `history-store.js`
     # is not among them, so the Node file below is read by oracles only.
     check("C", "the store's src= allow-list carries every token routeSourceFor declares",
           "'worker-stamped-producer'" in store_text,

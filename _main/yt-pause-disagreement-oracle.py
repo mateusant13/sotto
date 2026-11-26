@@ -62,29 +62,38 @@ def read(path):
 
 
 def arm_truth(clock):
-    """As quatro combinacoes: so' a pausa NAO desmentida vale."""
+    """As OITO combinacoes: so' a pausa NAO desmentida E COM FOTO DO TICK vale."""
     cases = [
-        ((True, False), True, 'parado e sem movimento: a pausa vale'),
-        ((True, True), False, 'parado em 0,25 s mas a foto diz que andou: RECUSA'),
-        ((False, True), False, 'o relogio andou: nao ha pausa'),
-        ((False, False), False, 'sem medida de pausa: nao ha pausa'),
+        ((True, False, True), True, 'parado, sem movimento, foto deste tick: a pausa vale'),
+        ((True, True, True), False, 'parado em 0,25 s mas a foto diz que andou: RECUSA'),
+        ((False, True, True), False, 'o relogio andou: nao ha pausa'),
+        ((False, False, True), False, 'sem medida de pausa: nao ha pausa'),
+        ((True, False, False), False,
+         'FOTO VELHA: o relogio nao pode andar numa foto de 5,9 s, logo held_s '
+         'mede a idade da foto (02:38:08.713 -> :10.436, 13 s de ecra congelado)'),
+        ((True, True, False), False, 'foto velha E desmentida: recusa duas vezes'),
+        ((False, True, False), False, 'foto velha sem medida de pausa'),
+        ((False, False, False), False, 'foto velha, relogio parado, sem prova'),
     ]
     ok, detail = True, []
-    for (static, moving), want, why in cases:
-        got = bool(clock.pause_proven(static, moving))
+    for (static, moving, fresh), want, why in cases:
+        got = bool(clock.pause_proven(static, moving, fresh))
         if got != want:
             ok = False
-            detail.append('static=%s moving=%s got=%s want=%s (%s)'
-                          % (static, moving, got, want, why))
-    return ok, '; '.join(detail) or '4/4 combinacoes'
+            detail.append('static=%s moving=%s fresh=%s got=%s want=%s (%s)'
+                          % (static, moving, fresh, got, want, why))
+    return ok, '; '.join(detail) or '8/8 combinacoes'
 
 
 def arm_wiring(shell_src):
     """O shell deriva `_paused_proven` da funcao, e `_now_paused` dela."""
     problems = []
-    if '_paused_proven = youtube_clock.pause_proven(_ct_static, _mv_moving)' \
-            not in shell_src:
-        problems.append('o shell nao chama youtube_clock.pause_proven para _paused_proven')
+    if '_paused_proven = youtube_clock.pause_proven(' not in shell_src \
+            or '_ct_static, _mv_moving, _photo_fresh)' not in shell_src:
+        problems.append('o shell nao chama youtube_clock.pause_proven com as TRES '
+                        'testemunhas (estatica, movimento, frescura)')
+    if '_photo_fresh = self._yt_snap_fresh(snap)' not in shell_src:
+        problems.append('a frescura da foto nao vem de _yt_snap_fresh(snap)')
     if '_now_paused = bool(_paused_proven)' not in shell_src:
         problems.append('_now_paused nao deriva de _paused_proven')
     # NENHUMA SEGUNDA COPIA DA REGRA: um `and not _mv_moving` inline volta a
@@ -113,8 +122,9 @@ def neg_arm(clock, shell_src):
     try:
         # M1: a regra deixa de recusar a pausa desmentida.
         src = read(CLOCK)
-        bad = src.replace('return bool(clock_static) and not bool(clock_moving)',
-                          'return bool(clock_static) or bool(clock_moving)')
+        bad = src.replace('return bool(photo_fresh) and bool(clock_static) '
+                          'and not bool(clock_moving)',
+                          'return bool(clock_static) and not bool(clock_moving)')
         if bad == src:
             print('NEG-ARM a-regra  ARM-MISSING (a linha mudou de forma)')
         else:
@@ -123,6 +133,15 @@ def neg_arm(clock, shell_src):
             ok, _ = arm_truth(mod)
             caught.append(('a-regra', not ok))
             print('NEG-ARM a-regra  %s' % ('CAUGHT' if not ok else 'NOT-CAUGHT'))
+        # M3: a dimensao da frescura desaparece da chamada viva.
+        bad3 = shell_src.replace('_ct_static, _mv_moving, _photo_fresh)',
+                                 '_ct_static, _mv_moving, True)')
+        if bad3 == shell_src:
+            print('NEG-ARM b-frescura ARM-MISSING')
+        else:
+            ok3, _ = arm_wiring(bad3)
+            caught.append(('b-frescura', not ok3))
+            print('NEG-ARM b-frescura %s' % ('CAUGHT' if not ok3 else 'NOT-CAUGHT'))
         # M2: o shell volta a derivar o apagar da pausa curta.
         bad2 = shell_src.replace('_now_paused = bool(_paused_proven)',
                                  '_now_paused = bool(_ct_static)')
@@ -134,7 +153,7 @@ def neg_arm(clock, shell_src):
             print('NEG-ARM b-ligacao %s' % ('CAUGHT' if not ok2 else 'NOT-CAUGHT'))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    return all(c for _, c in caught) and len(caught) == 2
+    return all(c for _, c in caught) and len(caught) == 3
 
 
 def log_verdict(path, since=None):

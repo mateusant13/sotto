@@ -97,6 +97,61 @@ DROP_LOG_EVERY_S = 10.0
 #: tecto: acima disto a poda guarda as ultimas GAP_ROWS_KEEP linhas.
 GAP_FILE_MAX_BYTES = 512 * 1024
 GAP_ROWS_KEEP = 2000
+#: OS DOIS INDICES DA RAIZ TAMBEM TEM TECTO (medido 2026-11-26): `_prune` so'
+#: desce nas PASTAS de dia (`os.path.isdir(d)`), logo `index.jsonl` (115 KB) e
+#: `lines.jsonl` (30 KB) ficavam na raiz e nunca eram visitados -- dois ficheiros
+#: append-only sem tecto, exactamente a classe que esta casa ja' pagou. Eles
+#: crescem a cada segmento (index) e a cada legenda fechada (lines), entao a
+#: poda guarda as ultimas N linhas acima do tecto de bytes.
+INDEX_FILE_MAX_BYTES = 512 * 1024
+INDEX_ROWS_KEEP = 2000
+LINES_FILE_MAX_BYTES = 1024 * 1024
+LINES_ROWS_KEEP = 4000
+
+
+def _trim_jsonl_file(path, cap_bytes, keep_rows, log=None):
+    """Um journal append-only tem tecto: acima de `cap_bytes` fica o mais NOVO.
+
+    Um marcador por pausa do tap e' barato, mas um ficheiro que so' cresce e' a
+    classe que esta casa ja' pagou (`AGENTS.md`, "a store is a cache with
+    retention"). A leitura so' acontece ACIMA do tecto, logo o custo normal e'
+    um `getsize`; a escrita e' atomica (`os.replace` de um `.trim`), para um
+    leitor que abra o ficheiro a meio nunca ver metade das linhas.
+
+    Medido 2026-11-26: `_prune` so' desce nas PASTAS de dia, e `index.jsonl` /
+    `lines.jsonl` vivem na raiz do ring -- dois ficheiros append-only sem tecto.
+    Por isso a regra vive aqui, e nao dentro do `_prune`, para o escritor de
+    `lines.jsonl` a poder chamar mesmo com o ring desligado.
+    """
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return 0
+    if size <= cap_bytes:
+        return 0
+    try:
+        with open(path, encoding='utf-8') as fh:
+            rows = fh.readlines()
+    except OSError:
+        return 0
+    keep = rows[-keep_rows:]
+    tmp = path + '.trim'
+    try:
+        with open(tmp, 'w', encoding='utf-8') as fh:
+            fh.writelines(keep)
+        os.replace(tmp, path)
+    except OSError as exc:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        if log is not None:
+            log('%s_trim_failed error=%r' % (os.path.basename(path).split('.')[0], exc))
+        return 0
+    if log is not None:
+        log('%s_trimmed kept=%d of=%d'
+            % (os.path.basename(path).split('.')[0], len(keep), len(rows)))
+    return len(rows) - len(keep)
 
 ENV_ENABLED = 'SOTTO_AUDIO_RING'
 ENV_HOURS = 'SOTTO_AUDIO_RING_HOURS'
@@ -691,36 +746,15 @@ class AudioRing:
         if deleted:
             self._log('pruned files=%d mb_freed=%.1f mb_left=%.1f'
                       % (deleted, freed / (1024.0 * 1024.0), total))
-        self._trim_gap_journal()
+        self._trim_jsonl('gaps.jsonl', GAP_FILE_MAX_BYTES, GAP_ROWS_KEEP)
+        self._trim_jsonl('index.jsonl', INDEX_FILE_MAX_BYTES, INDEX_ROWS_KEEP)
+        self._trim_jsonl('lines.jsonl', LINES_FILE_MAX_BYTES, LINES_ROWS_KEEP)
         return {'deleted': deleted, 'mb_left': round(total, 1)}
 
-    def _trim_gap_journal(self):
-        """`gaps.jsonl` tem tecto: acima de GAP_FILE_MAX_BYTES fica o mais novo.
-
-        Um marcador por pausa do tap e' barato, mas um ficheiro que so' cresce e'
-        a classe que esta casa ja' pagou. A leitura so' acontece acima do tecto.
-        """
-        p = os.path.join(self.dir, 'gaps.jsonl')
-        try:
-            size = os.path.getsize(p)
-        except OSError:
-            return 0
-        if size <= GAP_FILE_MAX_BYTES:
-            return 0
-        try:
-            with open(p, encoding='utf-8') as fh:
-                rows = fh.readlines()
-        except OSError:
-            return 0
-        keep = rows[-GAP_ROWS_KEEP:]
-        try:
-            with open(p, 'w', encoding='utf-8') as fh:
-                fh.writelines(keep)
-        except OSError as exc:
-            self._log('gaps_trim_failed error=%r' % (exc,))
-            return 0
-        self._log('gaps_trimmed kept=%d of=%d' % (len(keep), len(rows)))
-        return len(rows) - len(keep)
+    def _trim_jsonl(self, name, cap_bytes, keep_rows):
+        """Um journal do DIRECTORIO DO RING tem tecto (a regra vive em `_trim_jsonl_file`)."""
+        return _trim_jsonl_file(os.path.join(self.dir, name), cap_bytes,
+                                keep_rows, self._log)
 
     def close(self, timeout=15.0):
         if not self.enabled:
@@ -756,6 +790,11 @@ def append_line_anchor(root, t0, t1, text, extra=None):
             rec.update(extra)
         with open(os.path.join(d, 'lines.jsonl'), 'a', encoding='utf-8') as fh:
             fh.write(json.dumps(rec, separators=(',', ':'), ensure_ascii=False) + '\n')
+        # O TECTO FECHA-SE AQUI TAMBEM (2026-11-26): este escritor corre com o
+        # ring LIGADO OU DESLIGADO, e um journal que so' cresce nao espera pelo
+        # proximo `_prune` de um objecto que pode nem existir.
+        _trim_jsonl_file(os.path.join(d, 'lines.jsonl'), LINES_FILE_MAX_BYTES,
+                         LINES_ROWS_KEEP)
         return True
     except Exception:  # noqa: BLE001 -- um indice nao derruba a legenda
         return False
