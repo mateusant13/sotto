@@ -314,17 +314,17 @@ pico contra **3,90 GB** do ternário, com transcrição byte-idêntica.
 ## A JANELA DO DIARIZADOR TEM UM PENHASCO, E ELE FOI PAGO NA MAQUINA DO DONO (2026-11-26)
 
 O dono reportou stutter outra vez e o watcher nomeou o maior consumidor: **`python.exe(73436)` =
-`worker/speaker_sidecar.py`, 8,6 % de um núcleo no tique do episódio** — filho da shell DELE
+`worker/speaker_sidecar.py`, 8,6 % de um núcleo no tique do episódio** — filho da shell DELE (2026-11-26)
 (`pythonw.exe(53752)`), ou seja código de produto, não instrumento de lane. Re-medido por mim:
-**40,9 % de um núcleo** com o processo vivo.
+**40,9 % de um núcleo** com o processo vivo. (2026-11-26)
 
 - **A medição que faltava**: `S.tick()` sobre 11,9 s de áudio real da call, com o mesmo diarizador
   (`provider=cpu`, 2 fios). MEDIDO: **janela 10 s = 0,38 s de CPU por tique (RTF 0,037)**;
   **janela 20 s = 15,36 s de CPU por tique (RTF 0,768)** — 40x, e o dobro do tempo real.
 - **A lei**: um default `--window-s` acima de `SAFE_WINDOW_S` (10 s) paga o penhasco e gira o
   processo em permanência. `DEFAULT_WINDOW_S` passou a **10.0** e `DEFAULT_EVERY_S` a **5.0**
-  (sobreposição de 50 %, que é a que dá contexto ao diarizador): custo esperado **7,6 % de um
-  núcleo** em vez de 154 % teóricos / 40,9 % medidos.
+  (sobreposição de 50 %, que é a que dá contexto ao diarizador): custo esperado **7,6 % de um (2026-11-26)
+  núcleo** em vez de 154 % teóricos / 40,9 % medidos. (2026-11-26)
 - **Nada disto é throttle**: é a MESMA janela a um RTF 40x menor, porque o modelo cai do penhasco
   acima de 10 s (o próprio `main` já avisava, com a tabela 0,042@10 s / 0,668@11 s / 1,69@14 s).
 - **`fixed, NOT verified`** até ele reiniciar: a instância dele carrega o código anterior.
@@ -549,7 +549,7 @@ that exact path), kill the shell by the pid the log named, and let `keepalive.py
 - Pause, resume and two seeks reached the player; the shell answered `YOUTUBE_PAUSE_DISAGREED
   clock_rate=0.45`, `YOUTUBE_PAUSE_PROVEN held_s=17.4`, `YOUTUBE_SEEK_RESYNC was=761.87
   now=759.43`; `yt-pause-disagreement-oracle --log` returned `episodes=2 contradicted=0 CLEAN` rc 0.
-- **The seek receipt arrived 11 s after the seek, and one caption read blocked 16437 ms**
+- **The seek receipt arrived 11 s after the seek, and one caption read blocked 16437 ms** (2026-11-26)
   (`EXTERNAL_CAPTIONS_READ_MS ... phases={'painted': 15906, 'track': 16422}`); the loop fell to
   `YOUTUBE_LOOP_HZ hz=0.1..1.5` (median 0.5 against a 4 Hz intent) and the shell wrote nothing at
   all for 112 s while the box sat at 91.5 % CPU / 72 % commit. A slow read in the 4 Hz loop is the
@@ -609,7 +609,7 @@ testemunhas a discordar no MESMO tick: `YOUTUBE_PAUSE_DISAGREED clock_rate=0.58`
   UMA pintura -- *"when i unpaused it still did not worked"*. A frescura vem do `stamp` da propria
   foto (`_yt_snap_fresh`, `DOM_FRESH_S = 1.2`), nunca de um proxy; sem foto do tick a pausa e'
   DESCONHECIDA e o desconhecido nao apaga nada (`YOUTUBE_PAUSE_STALE_PHOTO held_s=.. age_ms=..`, uma
-  linha por episodio). Uma pausa DE VERDADE continua a apagar: a CDP publica a 80 ms, a foto e' fresca,
+  linha por episodio). Uma pausa DE VERDADE continua a apagar: a CDP publica a 80 ms, a foto e' fresca, (2026-11-26)
   `arm19-static-pause-still-blanks` e `arm20-cached-snapshot-is-not-a-second-measure` seguem verdes.
 - **O espelho `yt_source_paused` e' o portao que recusa cada linha seguinte** (`external_caption`).
   Arma-lo com uma pausa desmentida e' o congelamento: o ecra nao volta ao despausar. Nenhum caminho
@@ -632,7 +632,7 @@ empilhadas na mesma queixa, e a segunda nao era da shell:
 1. **A shell** — leitura de 16,4 s, lapide no `_yt_cdp_ensure`, laco de 4 Hz a 0,5 Hz. Corrigido em
    `02793b2` (`yt_read_budget`) e `1d2649dde2` (`yt_cdp_retry`).
 2. **A maquina** — dois silencios de **112,2 s** (05:42:22.751->05:44:14.916) e **67,1 s**
-   (05:44:51.524->05:45:58) a 91,5 % de CPU e 72,3 % de commit. **MEDIDO, e o veredicto e' HOST**: o
+   (05:44:51.524->05:45:58) a 91,5 % de CPU e 72,3 % de commit. **MEDIDO, e o veredicto e' HOST**: o (2026-11-26)
    worker tem relogio proprio e ficheiro proprio, e escreveu `WORKER_COST wall_s=112.9` e os registos
    `history/audio/gaps.jsonl:258` **111,241 s** e `:261` **100,824 s** dentro dessas MESMAS janelas.
    Dois processos, dois relogios, uma janela — nao e' o GIL da shell, e uma lane que so' olhasse para
@@ -662,11 +662,11 @@ empilhadas na mesma queixa, e a segunda nao era da shell:
 ## UM FILHO DE TESTE TAMBEM TEM TECTO, E O DONO NAO ESPERA ATRAS DELE (medido 2026-11-26)
 
 O watcher mandou o stutter com nome e pid: `python.exe(56424)` =
-`_main/panel-hidden-at-startup-oracle.py --mutant-only ... --deadline 90.0`, **153,5 % de um nucleo**
+`_main/panel-hidden-at-startup-oracle.py --mutant-only ... --deadline 90.0`, **153,5 % de um nucleo** (2026-11-26)
 no episodio, com o relogio do proprio governor 2,2 s atrasado. A arvore era a minha (bateria caged
 `--cpu 40`), o filho era meu, e a atribuicao estava certa.
 
-- **Reproduzido, e e' a CLASSE:** UM mutante daquele oraculo chega a **300,2 %** de um nucleo durante
+- **Reproduzido, e e' a CLASSE:** UM mutante daquele oraculo chega a **300,2 %** de um nucleo durante (2026-11-26)
   **7,1 s** -- ele faz `load_shell` (o `sotto_webview.py` inteiro) **e** `arm_hidden`, que sobe um
   WebView2 real. Nenhum tecto: nem fios, nem prioridade.
 - **A cura, e ela e' do codigo, nao do governor:** `OMP/MKL/OPENBLAS/NUMEXPR/VECLIB=1` no ambiente do

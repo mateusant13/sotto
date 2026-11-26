@@ -452,11 +452,24 @@ def _arm_boot_order(shell_mod, port):
         attached_ms = int((time.monotonic() - _t0) * 1000)
         fails = [ln for ln in lines if "CAPTION_PIPELINE_STEP_FAILED step=worker" in ln]
         order_log = [ln for ln in lines if "CAPTION_PIPELINE_ORDER" in ln]
+        # A ORDEM E' UMA RELACAO, NAO UMA LISTA FIXA (medido 2026-11-26): o
+        # literal `steps=cdp,watcher,worker` ficou vermelho quando o passo
+        # `heartbeat` entrou PRIMEIRO (`a27e342`) -- e o invariante que este
+        # braco promete nunca foi "exatamente estes tres", foi "a fonte CDP e'
+        # despachada ANTES do watcher, e o watcher antes do worker". Uma lista
+        # fixa volta a mentir na proxima vez que um passo entrar.
+        steps = []
+        if order_log:
+            tail = order_log[0].split("steps=", 1)
+            if len(tail) == 2:
+                steps = [s.strip() for s in tail[1].split(",") if s.strip()]
+        order_ok = False
+        if all(name in steps for name in ("cdp", "watcher", "worker")):
+            order_ok = steps.index("cdp") < steps.index("watcher") < steps.index("worker")
         ok = (events == ["cdp", "watcher", "worker"]
               and not sh.source_at_watcher
               and bool(fails)
-              and bool(order_log)
-              and "steps=cdp,watcher,worker" in order_log[0]
+              and order_ok
               and bool(source is not None and source is not False))
         return ok, ("events=%s source_at_watcher=%s attached_ms=%d "
                     "worker_fail_logged=%s %r"
@@ -872,18 +885,18 @@ def neg_arm():
 
         # 2) O OBSERVADOR SO' ARRANCA DEPOIS DO WORKER (a ordem antiga).
         mut2 = os.path.join(tmp, "shell_ordem_antiga.py")
-        body2 = src.replace(cut("        steps = (\n"
-            "            ('cdp', _cdp_step),\n"
-            "            ('watcher', lambda: self.start_external_caption_watcher()),\n"
-            "            ('worker', lambda: self.start_worker(\n"
-            "                self._worker_autostart_reason(self.args))),\n"
-            "        )"),
-            cut("        steps = (\n"
-            "            ('cdp', _cdp_step),\n"
-            "            ('worker', lambda: self.start_worker(\n"
-            "                self._worker_autostart_reason(self.args))),\n"
-            "            ('watcher', lambda: self.start_external_caption_watcher()),\n"
-            "        )"), 1)
+        # A MUTACAO TROCA SO' AS DUAS ENTRADAS QUE ESTE BRACO JULGA (medido
+        # 2026-11-26): o texto inteiro do bloco mudou quando o `heartbeat`
+        # entrou primeiro, e a mutacao deixou de aplicar sem avisar o produto.
+        # Agora as duas linhas sao trocadas por NOME, e o resto do bloco fica.
+        _WATCH = cut("            ('watcher', lambda: self.start_external_caption_watcher()),\n")
+        _WORK = cut("            ('worker', lambda: self.start_worker(\n"
+                    "                self._worker_autostart_reason(self.args))),\n")
+        assert src.count(_WATCH) == 1 and src.count(_WORK) == 1, (
+            "os passos do watcher/worker nao estao onde este braco os procura")
+        body2 = src.replace(_WATCH, "\x00WATCH\x00", 1)
+        body2 = body2.replace(_WORK, _WATCH, 1)
+        body2 = body2.replace("\x00WATCH\x00", _WORK, 1)
         assert body2 != src, "a mutacao da ordem nao aplicou"
         io.open(mut2, "w", encoding="utf-8", newline="").write(body2)
         got2 = dict((n, ok) for n, ok, _ in arms(shell_path=mut2))
