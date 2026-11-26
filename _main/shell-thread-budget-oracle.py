@@ -338,6 +338,16 @@ def main(argv):
               'total=%.1f%% top=%s:%.1f%%' % (total, data['top_name'], data['top_pct']))
         return 0
     log_read = log_worst()
+    if not baseline:
+        # UM CHECQUE QUE NAO ESTA' ARMADO TEM DE DIZER O NOME (medido 2026-11-26:
+        # `AGENTS.md` prometia o ratchet de +20% sobre este ficheiro e o ficheiro
+        # nao existe, logo `if baseline:` apagava o ratchet EM SILENCIO). Os tectos
+        # absolutos continuam a julgar; o ratchet so' existe depois de um arranque
+        # fresco medir `--update`.
+        print('SHELL-THREAD-BUDGET RATCHET absent reason=no-baseline '
+              'file=_main/shell-thread-budget-baseline.json '
+              '-- tectos absolutos armados; o ratchet de +%.0f%% so depois de '
+              '`--update` num arranque fresco' % ((RATCHET - 1) * 100))
     report(reading, baseline, pid, log_read)
     ok, bad = judge(reading, baseline, log_read)
     if not ok:

@@ -227,6 +227,11 @@ def _baseline():
     try:
         return json.load(io.open(BASELINE, encoding='utf-8'))
     except Exception:                     # noqa: BLE001 -- ausente = zero
+        # AUSENTE E' NOMEADO, NAO MUDO: o tecto 0 e' mais duro que qualquer
+        # ficheiro (qualquer achado falha), mas o leitor tem de saber que a
+        # divida congelada em `_main/owner-screen-baseline.json` nao existe.
+        print('OWNER-SCREEN baseline=absent file=_main/owner-screen-baseline.json '
+              '-- ceiling=0, qualquer achado falha')
         return {'ceiling': 0, 'files': {}}
 
 
