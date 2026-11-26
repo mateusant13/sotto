@@ -74,7 +74,7 @@ def load_state():
 
 
 def candidates(lines, state):
-    """[(cost, name, oracle, index, match)] dos passos convertiveis, caros primeiro."""
+    """[(cost, name, oracle, index, match)] dos passos candidatos_com_ganho_aparente, caros primeiro."""
     out = []
     for i, line in enumerate(lines):
         m = LINE_RE.match(line.rstrip("\r\n"))
@@ -145,7 +145,8 @@ def rewrite(line, oracle):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--limit", type=int, default=0, help="so' os N mais caros (0 = todos)")
-    ap.add_argument("--apply", action="store_true", help="reescreve o .cmd para os que passam")
+    ap.add_argument("--apply", action="store_true",
+                    help="REFUSADO: medido 2026-11-26, a conversao nao poupa nada (ver docstring)")
     ap.add_argument("--min-saved-s", type=float, default=0.0,
                     help="so' converte quando a sonda poupa pelo menos isto")
     args = ap.parse_args(argv)
@@ -170,16 +171,31 @@ def main(argv=None):
             marker = _stdout_has(oracle, want)
         ok = contract_holds(rc, marker) and secs + args.min_saved_s < cost
         saved = cost - secs
-        verdict = "CONVERTE" if ok else (
+        verdict = "GANHO-APARENTE" if ok else (
             "recusa-rc" if rc != 1 else
             "recusa-sem-marcador" if not marker else "sem-ganho")
         print("%-42s %8.1fs %8.1fs %5d %s" % (name, cost, secs, rc, verdict))
         if ok:
             convert.append((name, oracle, idx, saved))
             total_saved += saved
-    print("\nconvertiveis=%d  poupanca medida=%.0f s" % (len(convert), total_saved))
+    print("\ncandidatos_com_ganho_aparente=%d  poupanca medida=%.0f s" % (len(convert), total_saved))
     if not args.apply:
         print("(sem --apply: nada foi escrito)")
+    else:
+        # A HIPOTESE FOI REFUTADA PELA MEDIDA, e o `--apply` fica fechado por isso.
+        # Ele existia para trocar um par `:step`+`:expectred` por um `:step` que
+        # corre o `--neg-arm` do proprio oraculo. MEDIDO 2026-11-26, nos 8
+        # candidatos: o passo da bateria JA' e' exatamente essa invocacao -- a
+        # diferenca (143.9 s vs 45.8 s no primeiro) e' o WRAPPER (step-deadline,
+        # cache, deps), nao uma prova duplicada. A conversao que ele escrevia
+        # ainda colava a linha do `:expectred` a' do `:step` (sem CRLF) e repetia
+        # `--neg-arm` -- um `--apply` que estraga a bateria para poupar zero.
+        # O que ESTE ficheiro mede (o custo por passo e a relacao custo/ganho)
+        # continua valido; o que ele nao faz, e nao deve fazer, e' reescrever.
+        print("CENSO-APPLY REFUSED -- a conversao nao poupa nada: o passo da bateria ja' e' "
+              "o `--neg-arm` do oraculo, e a diferenca medida e' o wrapper "
+              "(step-deadline + cache + deps). Nada foi escrito.")
+        return 2
         return 0 if convert else 3
     for name, oracle, idx, _saved in convert:
         lines[idx] = rewrite(lines[idx], oracle)

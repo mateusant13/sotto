@@ -1118,6 +1118,28 @@ o log da shell:
 - **Portao:** o par `yt-capture-replay` + `red-as-expected-yt-capture-replay` na bateria, lendo os
   fixtures que ja' estao em `_main/fixtures/`; nenhum dos dois larga browser, janela ou dispositivo.
 
+## UM PASSO `red-as-expected` NAO E' UMA PROVA DUPLICADA (medido 2026-11-26)
+
+Hipotese levantada e refutada a 2026-11-26: 92 passos `red-as-expected-*`, 89 cujo
+oraculo ja' traz `--neg-arm`, e uma diferenca de **143,9 s (passo da bateria) contra 45,8 s (o mesmo
+`--neg-arm` sozinho)**. Parecia prova duplicada a 3x. Nao e': o passo da bateria **ja' e'** essa
+invocacao, e a diferenca e' o **wrapper** -- `step-deadline.py`, `_stepcache`, as `deps` e o registo.
+`_main/_red-arm-census.py --apply` escrevia a "conversao" e foi **fechado por medicao** (`rc=2`,
+`CENSO-APPLY REFUSED`), por duas razoes que se viram no mesmo minuto:
+
+- ele **nao poupa nada** (medido 2026-11-26) -- trocar `:step`+`:expectred` por outro `:step` e' a
+  mesma chamada;
+- ele **estragava a bateria** (medido 2026-11-26): colava a linha do `:expectred` a' do `:step` (sem
+  CRLF) e repetia
+  `--neg-arm` (`... --neg-arm --neg-armcall :expectred ...`), com o `.cmd` a ficar em 448 841 B /
+  5 111 CRLF em vez de 448 809 / 5 115. Revertido com `git checkout --`, pin reconferido.
+
+A licao que fica vale para qualquer reescritor de `.cmd`: **o `rc` de um rewriter nao mede o
+ficheiro**; a prova e' reler o `.cmd` (bytes, CRLF, `grep -c "call :step"`, o par intacto) e correr
+`_main/battery-launch.py --verify`. E o ganho de tempo da bateria nao vem de apagar passos: vem de
+**nao repetir trabalho** -- o registo por passo (feito no `step-deadline.py`, rows byte-identicas) e
+o cache por conteudo, que ja' existe.
+
 ## UM BRACO QUE LE UMA LISTA ENTRE DOIS PASSOS DO PRODUTOR NAO E' UM BRACO (medido 2026-11-26)
 
 Medido nesta maquina: `nemotron-preload` deu **10/12** dentro da jaula da bateria e **12/12** sozinho
