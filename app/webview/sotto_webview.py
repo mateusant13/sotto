@@ -5581,8 +5581,19 @@ class ExternalCaptionWatcher(threading.Thread):
         try:
             import youtube_cdp_source
         except Exception as exc:  # noqa: BLE001
+            # O IMPORT QUE FALHA TAMBEM ARMA O COOLDOWN (2026-11-26).
+            # Sem isto, `due(0, 0.0, now)` e' sempre verdadeiro e este
+            # ramo repetia a importacao -- e a LINHA -- a cada tick do
+            # laco de 4 Hz: um enxurrada de log onde o dono precisa de
+            # ler a causa. Uma falha e' uma falha, venha do import ou
+            # do `start()`.
             log('YOUTUBE_CDP_SOURCE import_failed=%r' % (exc,))
             self._yt_cdp_source = False
+            _tries = int(getattr(self, '_yt_cdp_fail_tries', 0)) + 1
+            self._yt_cdp_fail_tries = _tries
+            _at, _delay, _event = yt_cdp_retry.arm(_tries, time.monotonic())
+            self._yt_cdp_retry_at = _at
+            log(_event)
             return None
         # UMA FONTE POR PROCESSO (2026-11-09). Medido no log do dono: 675
         # `YOUTUBE_CDP_SOURCE state=attached` em 600 s, todas identicas -- o memo

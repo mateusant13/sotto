@@ -99,7 +99,7 @@ def arms(mod):
         'the old behaviour is the failure this arm exists to catch')
 
     # A7 -- the shell asks `due` before it re-arms, and resets on success
-    shell = open(SHELL, 'r', encoding='utf-8', errors='replace').read()
+    shell = open(SHELL, 'r', encoding='utf-8', errors='replace', newline='').read()
     gate = shell.find('if not yt_cdp_retry.due(')
     reset = shell.find('self._yt_cdp_fail_tries = 0')
     armgold = shell.find('self._yt_cdp_source = False')
@@ -111,7 +111,31 @@ def arms(mod):
     arm('a9-events-are-named',
         'YOUTUBE_CDP_SOURCE_RETRY' in shell and 'YOUTUBE_CDP_SOURCE_COOLDOWN_END' in shell,
         'ok')
+    # A10 -- A FALHA DO IMPORT TAMBEM ARMA O COOLDOWN (2026-11-26). Sem isso
+    # `due(0, 0.0, now)` e' sempre verdadeiro e o ramo do import voltava a
+    # importar -- e a escrever a linha -- a cada tick de 4 Hz.
+    ok10, why10 = import_branch_arms(shell)
+    arm('a10-import-failure-arms-cooldown', ok10, why10)
     return out
+
+
+def import_branch_arms(text):
+    """The `import youtube_cdp_source` failure block must arm the cooldown."""
+    i = text.find('YOUTUBE_CDP_SOURCE import_failed=')
+    if i < 0:
+        return False, 'the import-failure block is gone'
+    # O RAMO ACABA NO PRIMEIRO `return None` DEPOIS DA LINHA -- nao no proximo
+    # marcador do ficheiro: entre os dois vive o ramo do `start()`, que tambem
+    # arma o cooldown, e uma janela larga deixaria o mutante do import passar.
+    tail = text[i:]
+    end = tail.find('return None')
+    if end < 0:
+        return False, 'the block has no end marker'
+    block = tail[:end]
+    armed = 'yt_cdp_retry.arm(' in block
+    counted = '_yt_cdp_fail_tries = _tries' in block
+    return (armed and counted,
+            'armed=%s counted=%s' % (armed, counted))
 
 
 def run(mod=None, label='live'):
@@ -142,6 +166,14 @@ MUTANTS = [
 ]
 
 
+#: Mutantes do TEXTO da shell (o a10 le a shell, nao o modulo puro).
+SHELL_MUTANTS = [
+    ('import-failure-not-armed',
+     "            log('YOUTUBE_CDP_SOURCE import_failed=%r' % (exc,))\r\n            self._yt_cdp_source = False\r\n            _tries = int(getattr(self, '_yt_cdp_fail_tries', 0)) + 1\r\n            self._yt_cdp_fail_tries = _tries\r\n            _at, _delay, _event = yt_cdp_retry.arm(_tries, time.monotonic())",
+     "            log('YOUTUBE_CDP_SOURCE import_failed=%r' % (exc,))\r\n            self._yt_cdp_source = False\r\n            _tries = int(getattr(self, '_yt_cdp_fail_tries', 0)) + 1\r\n            self._yt_cdp_fail_tries = _tries\r\n            _at, _delay, _event = (0.0, 0.0, '')"),
+]
+
+
 def neg_arm():
     caught = total = 0
     tmp = tempfile.mkdtemp(prefix='yt-cdp-retry-neg-')
@@ -166,6 +198,19 @@ def neg_arm():
                 print('  %-36s SURVIVED -- the gate is blind here' % name)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    # A MESMA LICAO DO LADO DA SHELL: um arm de texto so' vale se um mutante
+    # do TEXTO o derruba. Sem isto o a10 seria uma verificacao de leitura.
+    for name, old, new in SHELL_MUTANTS:
+        total += 1
+        src = open(SHELL, 'r', encoding='utf-8', errors='replace', newline='').read()
+        if old not in src:
+            print('  %-36s MUTANT-BROKEN (anchor missing)' % name)
+            continue
+        ok, _why = import_branch_arms(src.replace(old, new, 1))
+        if ok:
+            print('  %-36s SURVIVED -- the gate is blind here' % name)
+        else:
+            caught += 1
     print('NEG-ARM %d/%d CAUGHT' % (caught, total))
     if caught == total:
         print('NEG-ARM VERDICT: PASS')
