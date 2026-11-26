@@ -201,6 +201,74 @@ def drawn(rows):
     return out
 
 
+#: O QUE EXPLICA UM `CAPTION_APPLIED` SEM PINTURA (2026-11-26).
+#: `CAPTION_APPLIED` e' o painel a dizer que aplicou a linha; a testemunha do
+#: ECRRA e' `CAPTION_PAINT_SURFACE` (`_main/boot-interaction-oracle.py`
+#: `PAINT_WITNESSES`). A janela e' 2 s porque o push e o apply sao caminhos
+#: diferentes do MESMO evento (medido no log do dono, 2026-11-26: o apply das
+#: 02:38:11.784 caiu 1,27 s depois da ultima pintura, 10.512).
+APPLIED_WITNESS_S = 2.0
+#: Um `CAPTION_APPLIED` sem pintura so' se explica por uma RAZAO NOMEADA de que o
+#: ecra nao ia mudar. `CAPTION_PROVISIONAL_PAINT` NAO explica: ele e' o caminho
+#: da PAGINA, e um painel que aplica o que o overlay nunca recebeu e' o defeito.
+APPLIED_EXCUSES = ('CAPTION_WINDOW_BLANKED', 'CAPTION_KEPT_ON_HIDE',
+                   'EXTERNAL_CAPTIONS_RELEASED', 'CAPTION_IDLE_HIDE')
+
+
+def applies(rows):
+    out = []
+    for row in rows:
+        if ' CAPTION_APPLIED ' not in row['body']:
+            continue
+        matched = re.search(r'text="(.*?)(?:\\"|") count=', row['body'])
+        out.append({'t': row['t'],
+                    'text': matched.group(1) if matched else ''})
+    return out
+
+
+def check_applied(rows, paint_rows=None):
+    """APPLIED-UNPAINTED: o painel aplicou uma linha que o ecra nunca pintou.
+
+    MEDIDO no log do dono (2026-11-26 02:38:10.436 -> 11.784): a janela foi
+    apagada pela pausa provada, o painel recebeu duas linhas
+    (`CAPTION_APPLIED text="To 12 times efficiency."`) e NENHUMA
+    `CAPTION_PAINT_SURFACE` saiu ate' a shell sair 12 s depois -- o dono viu a
+    legenda congelar. Aquele caso era EXPLICADO (`CAPTION_WINDOW_BLANKED
+    reason=youtube-paused` a 1,35 s), e e' isso que este detector aceita; o que
+    ele recusa e' o apply sem pintura e sem razao nenhuma, que e' como um painel
+    a funcionar sozinho se apresenta.
+    """
+    paint_rows = paints(rows) if paint_rows is None else paint_rows
+    applied = applies(rows)
+    excuses = []
+    for row in rows:
+        if any(token in row['body'] for token in APPLIED_EXCUSES):
+            excuses.append(row['t'])
+    out = []
+    for item in applied:
+        when = item['t']
+        words = set(_words(item['text']))
+        excused = False
+        for paint in paint_rows:
+            if paint['t'] is None or when is None:
+                continue
+            if abs(paint['t'] - when) > APPLIED_WITNESS_S:
+                continue
+            if not words or words <= set(_words(paint['text'])):
+                excused = True
+                break
+        if not excused:
+            for stamp in excuses:
+                if stamp is None or when is None:
+                    continue
+                if abs(stamp - when) <= APPLIED_WITNESS_S:
+                    excused = True
+                    break
+        if not excused:
+            out.append(item)
+    return out
+
+
 def paints(rows):
     out = []
     for row in rows:
@@ -567,6 +635,7 @@ def judge(rows, ceiling_s=HOLD_CEILING_S):
     stall = check_stall(paint_rows)
     late_plate = check_plate_late(rows, paint_rows)
     pause_freeze = check_pause_freeze(rows)
+    blind = check_applied(rows, paint_rows)
     failures = []
     if frozen:
         failures.append('LAND-FROZEN')
@@ -580,6 +649,8 @@ def judge(rows, ceiling_s=HOLD_CEILING_S):
         failures.append('PLATE-LATE')
     if pause_freeze:
         failures.append('PAUSE-FREEZE')
+    if blind:
+        failures.append('APPLIED-UNPAINTED')
     return {
         'land_records': len(land_rows),
         'land_distinct': len({row['key'] for row in land_rows}),
@@ -590,6 +661,7 @@ def judge(rows, ceiling_s=HOLD_CEILING_S):
         'dups': dups,
         'late_plate': late_plate,
         'pause_freeze': pause_freeze,
+        'applied_blind': blind,
         'holds': holds,
         'stall': stall,
         'failures': failures,
@@ -625,6 +697,10 @@ def report(path, pid=None, ceiling_s=HOLD_CEILING_S, limit=6):
         item = result['pause_freeze'][0]
         print(f'  PAUSE-FREEZE ecra={item["held_s"]}s com o video a andar '
               f'frames={item["new_frames"]}')
+    if result['applied_blind']:
+        for item in result['applied_blind'][:limit]:
+            print(f'  APPLIED-UNPAINTED text={item["text"]!r} '
+                  f'(nenhuma pintura nem razao em {APPLIED_WITNESS_S:g}s)')
     if result['late_plate']:
         item = result['late_plate'][0]
         print(f'  PLATE-LATE   {item["late_ms"]}ms theme={item["theme"]} '
@@ -683,6 +759,10 @@ def _selftest():
                   f'n={len(result["holds"])}'))
     cases.append(('A5 veredicto FAIL na fixture',
                   result['verdict'] == 'FAIL', result['verdict']))
+    # A9: o painel aplicou 5 s depois da ultima pintura e da ultima razao
+    # nomeada -- nada explica aquela linha no ecra.
+    cases.append(('A9 APPLIED-UNPAINTED visto', bool(result['applied_blind']),
+                  f'n={len(result["applied_blind"])}'))
 
     # A6: a fixture sem o congelamento -- o land muda de tupla a cada linha. O
     # detector TEM de calar, senao ele acusa qualquer sessao longa.
@@ -697,6 +777,22 @@ def _selftest():
         handle.write('\n'.join(clean_lines) + '\n')
     clean_rows, _ = parse_log(clean_path)
     clean_result = judge(clean_rows)
+    # A10: o MESMO apply, 0,4 s depois de uma razao NOMEADA (`CAPTION_WINDOW_
+    # BLANKED`), tem de ficar em silencio -- a janela nao ia mudar e a razao esta'
+    # escrita. Sem esta arm o detector acusaria toda pausa do dono, que e' o
+    # `HOLD` legitimo.
+    excused = FIXTURE.replace(
+        '2026-11-12 19:21:39.000 sotto: CAPTION_APPLIED',
+        '2026-11-12 19:21:34.500 sotto: CAPTION_APPLIED')
+    excused_path = os.path.join(os.path.dirname(path), 'excused.log')
+    with io.open(excused_path, 'w', encoding='utf-8', newline='') as handle:
+        handle.write(excused)
+    excused_rows, _ = parse_log(excused_path)
+    excused_result = judge(excused_rows)
+    cases.append(('A10 apply explicado por razao nomeada cala',
+                  not excused_result['applied_blind'],
+                  f'n={len(excused_result["applied_blind"])}'))
+
     cases.append(('A6 sem congelamento o detector cala',
                   not clean_result['frozen'],
                   f'n={len(clean_result["frozen"])}'))
@@ -797,7 +893,7 @@ def _neg_arm():
     fixture provaria so' que a fixture mudou.
     """
     global check_frozen, check_rows, check_dups, check_hold, check_plate_late
-    global check_pause_freeze
+    global check_pause_freeze, check_applied
     import tempfile
     path = os.path.join(tempfile.mkdtemp(prefix='caption-timeline-neg-'), 'fixture.log')
     with io.open(path, 'w', encoding='utf-8', newline='') as handle:
@@ -807,28 +903,30 @@ def _neg_arm():
     caught = []
 
     saved = (check_frozen, check_rows, check_dups, check_hold, check_plate_late,
-             check_pause_freeze)
+             check_pause_freeze, check_applied)
     for label, target_name in (('M1 land-frozen', 'check_frozen'),
                                ('M2 row-clip', 'check_rows'),
                                ('M3 dup-paint', 'check_dups'),
                                ('M4 long-hold', 'check_hold'),
                                ('M5 plate-late', 'check_plate_late'),
-                               ('M6 pause-freeze', 'check_pause_freeze')):
+                               ('M6 pause-freeze', 'check_pause_freeze'),
+                               ('M7 applied-unpainted', 'check_applied')):
         (check_frozen, check_rows, check_dups, check_hold, check_plate_late,
-         check_pause_freeze) = saved
+         check_pause_freeze, check_applied) = saved
         globals()[target_name] = lambda *a, **k: []
         muted = judge(rows)
         wanted = {'M1 land-frozen': 'LAND-FROZEN', 'M2 row-clip': 'ROW-CLIP',
                   'M3 dup-paint': 'DUP-PAINT', 'M4 long-hold': 'LONG-HOLD',
                   'M5 plate-late': 'PLATE-LATE',
-                  'M6 pause-freeze': 'PAUSE-FREEZE'}[label]
+                  'M6 pause-freeze': 'PAUSE-FREEZE',
+                  'M7 applied-unpainted': 'APPLIED-UNPAINTED'}[label]
         good = wanted in baseline['failures'] and wanted not in muted['failures']
         caught.append(good)
         print(('CAUGHT ' if good else 'MISSED ') + label
               + f'  antes={wanted in baseline["failures"]} '
                 f'depois={wanted in muted["failures"]}')
     (check_frozen, check_rows, check_dups, check_hold, check_plate_late,
-     check_pause_freeze) = saved
+     check_pause_freeze, check_applied) = saved
     ok = all(caught)
     print(f'NEG-ARM: {"PASS" if ok else "FAIL"} -- {sum(caught)}/{len(caught)}')
     return 1 if ok else 0

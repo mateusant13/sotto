@@ -683,8 +683,8 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **432203 B**,
-  **4925 CRLF** / 0 bare LF, sha256 `BD240DAF576C4FF00E84A31421CC84889701CD6F21AB01260A2F3B172DDB7A40`.
+- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **433362 B**,
+  **4938 CRLF** / 0 bare LF, sha256 `FDC6E2D5AAADE8F7E1C7B2A6F404AEE8D71D8BF26EC5331F7C8C63FF73EB5FB3`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
@@ -697,7 +697,8 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
   produziu). 2026-11-26: entraram `audio-ring-journal` (o journal do anel de audio crescia para
   sempre) e `dead-unwired` (os dois modulos sem fio e a contagem de scripts da pagina), cada um em
   par com o seu `red-as-expected`; o censo `battery-wiring` recusou os dois como `new-unwired`
-  antes de o par existir.)
+  antes de o par existir. Tambem em 2026-11-26: `yt-producer-soak` (5 minutos simulados de leitura
+  com um produtor que publica no proprio relogio) e `yt-producer-soak-neg`.)
 
 ## `git rm --cached` SO' CONTA QUANDO `git ls-tree HEAD` CONCORDA (medido 2026-11-26)
 

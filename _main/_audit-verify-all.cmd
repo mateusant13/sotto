@@ -1578,6 +1578,19 @@ if exist _main\dead-unwired-oracle.py (
 call :step red-as-expected-dead-unwired 1 "_main\dead-unwired-oracle.py;app\panel\panel.html;app\webview\sotto_webview.py" "%OUT%\dead-unwired-neg.log" python _main\dead-unwired-oracle.py --neg-arm
 call :expectred red-as-expected-dead-unwired !STEP_RC! "%OUT%\dead-unwired-neg.log" "NEG-ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-dead-unwired MISSING "%OUT%\dead-unwired-neg.log" "NEG-ARM VERDICT: PASS" )
+REM `yt-producer-soak` (2026-11-26): 5 MINUTOS SIMULADOS de leitura com um
+REM produtor que publica no proprio relogio (1 s, 3 s e os 8,8 s medidos na
+REM sessao do dono). Julga que CADA publicacao sai uma vez, dentro da janela de
+REM frescura, e que a cadencia nao abre buraco -- o mutante que perde uma
+REM publicacao em cada tres tem de estourar o tecto de cadencia.
+if exist _main\yt-producer-soak-oracle.py (
+ call :step yt-producer-soak 0 "_main\yt-producer-soak-oracle.py;app\webview\sotto_webview.py" "%OUT%\yt-producer-soak.log" python _main\yt-producer-soak-oracle.py
+ call :record yt-producer-soak !STEP_RC!
+) else ( call :record yt-producer-soak MISSING )
+if exist _main\yt-producer-soak-oracle.py (
+call :step red-as-expected-yt-producer-soak 1 "_main\yt-producer-soak-oracle.py;app\webview\sotto_webview.py" "%OUT%\yt-producer-soak-neg.log" python _main\yt-producer-soak-oracle.py --neg-arm
+call :expectred red-as-expected-yt-producer-soak !STEP_RC! "%OUT%\yt-producer-soak-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-yt-producer-soak MISSING "%OUT%\yt-producer-soak-neg.log" "NEG-ARM VERDICT: PASS" )
 REM `discord-streams` (2026-11-25): o passo emanava do mesmo oraculo que atende a
 REM auditoria de desenho, e o censo `battery-wiring` recusou-o por estar sem passo.
 REM Ele julga `worker/discord_streams.py` (uma arvore de PCM por falante vira uma
