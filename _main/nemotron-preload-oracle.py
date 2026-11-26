@@ -711,12 +711,24 @@ if second != \"\":
         def run_case(early_open):
             case_failures = []
             status_events = []
+            # QUANDO o filho falou pela primeira vez, por NOME (medido 2026-11-26).
+            # O `startup_s` abaixo chamava-se "child startup" mas media o caso
+            # INTEIRO (do spawn ate' o fecho do stdin), que inclui o preload, a
+            # activacao e o dreno -- e 4x isso, limitado a 60 s, e' o orcamento
+            # que os dois janelas de espera gastam. Num passo cuja medicao quieta
+            # e' 82 s, um caso que responda tarde esticava a espera por um
+            # motivo que nao e' o filho. O comentario do sitio dizia
+            # "(`capture-started` minus spawn)": agora e' isso que ele mede.
+            status_times = {}
+            def _on_status(*event):
+                status_events.append(event)
+                status_times.setdefault(str(event[0]), time.monotonic())
             bridge = shell.WorkerBridge(
                 command=sys.executable,
                 worker_path=fake_path,
                 extra_args=[],
                 log=lambda _line: None,
-                on_status=lambda *event: status_events.append(event),
+                on_status=_on_status,
                 on_caption=lambda *_args: None,
                 on_stats=lambda *_args: None,
                 on_cost=lambda *_args: None,
@@ -814,7 +826,8 @@ if second != \"\":
             # not a limit, so the budget now comes from the cost this run MEASURED for
             # the child to come up (`capture-started` minus spawn), times four, and
             # never below the old 15 s.
-            startup_s = max(0.0, time.monotonic() - case_spawn_s)
+            answered_s = status_times.get('capture-started')
+            startup_s = max(0.0, answered_s - case_spawn_s) if answered_s else 0.0
             eof_budget_s = min(60.0, max(15.0, 4.0 * startup_s))
             print('NEG-CHILD eof budget=%.1fs (child startup measured %.2fs)'
                   % (eof_budget_s, startup_s), flush=True)

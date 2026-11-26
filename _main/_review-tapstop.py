@@ -109,3 +109,15 @@ elif after:
           '    self.on_block(...)`')
 else:
     print('VERDICT: held in this run')
+
+# O VEREDICTO E' O CODIGO DE SAIDA (medido 2026-11-26): este probe imprimia
+# UPHELD/INCONSISTENT/REFUTED e caia no fim em rc 0, logo a bateria lia "passou"
+# em qualquer dos tres -- um passo que nao pode ficar vermelho. Fica assim:
+#   UPHELD   -> 0  (a guarda esta' no ficheiro vivo e nenhum callback a atravessa)
+#   held     -> 0  (sem guarda no ficheiro, nada chegou depois do stop())
+#   INCONSISTENT / REFUTED -> 1 (o defeito que este probe descreve esta' de volta)
+# O unico caso verde e' `not after`: nenhum callback chegou depois de stop()
+# devolver. Com a guarda no ficheiro isso e' UPHELD; sem a guarda, `held`. Um
+# callback a mais e' INCONSISTENT (guarda presente e a atravessar) ou REFUTED
+# (a garantia nao existe) -- os dois sao o defeito que este probe descreve.
+raise SystemExit(0 if not after else 1)

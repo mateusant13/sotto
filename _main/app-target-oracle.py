@@ -710,7 +710,19 @@ def run_arms(mod, run_cmd=None):
     return results
 
 
-def report(label, results, expected):
+#: ARM b ENUMERA OS PROCESSOS REAIS da maquina (`EnumProcesses` + a arvore de pais)
+#: e por isso mede o AMBIENTE, nao o contrato: medido 2026-11-26, dentro da jaula da
+#: bateria com a sessao do agente a correr, `python.exe` legitimamente aparece como
+#: raiz de arvore, e as oito linhas `candidate ... is a tree ROOT` poem a arm b a
+#: vermelho sem produto nenhum estar errado. No meio dos mutantes isso virava
+#: `NEG-ARM FAIL: os mutantes sobreviveram (['M3 ...'])` -- um mutante ACUSADO de
+#: sobreviver porque uma arm alheia a ele ficou vermelha pelo escalonador.
+#: A regra da casa: uma arm que le estado ambiente mede o ambiente. Ela continua a
+#: CORRER e a ser IMPRESSA; so' nao decide o veredicto dos mutantes.
+ENV_SENSITIVE = frozenset({'b'})
+
+
+def report(label, results, expected, env_sensitive=frozenset()):
     say('')
     say(f'== {label}')
     matched = True
@@ -719,6 +731,14 @@ def report(label, results, expected):
         green = not arm.bad
         want_green = expected[name]
         same = green == want_green
+        if name in env_sensitive and not same:
+            # NAO JULGA, MAS DIZ O NOME (o numero existe e e' lido, so' nao vota).
+            say(f'  ARM {name}  [{"GREEN" if green else "RED "}]  '
+                f'expected [{"GREEN" if want_green else "RED "}]  '
+                f'{TITLES[name]}   <-- ENV-SENSITIVE, not counted')
+            for bad in arm.bad[:3]:
+                say(f'      env: {bad}')
+            continue
         matched = matched and same
         say(f'  ARM {name}  [{"GREEN" if green else "RED "}]  '
             f'expected [{"GREEN" if want_green else "RED "}]  '
@@ -819,7 +839,8 @@ def main(argv=None):
             (expect_m4, 'M4 hidden default assigned', RUN_CMD, m4)):
         module = load_shell(shell, 'app_target_oracle_' + label.split()[0].lower())
         results = run_arms(module, run_cmd=batch)
-        ok = report(f'{label} -- exactly ONE arm must be RED', results, expected)
+        ok = report(f'{label} -- exactly ONE arm must be RED', results, expected,
+                    env_sensitive=ENV_SENSITIVE)
         reds = [n for n in ARMS if results[n].bad]
         verdicts.append((label, ok, reds, expected))
 

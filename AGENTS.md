@@ -52,8 +52,10 @@ somando **1276 % de um nucleo**; o `2` foi aplicado **duas vezes no mesmo proces
 para o separador e `intra_op_num_threads=2` para a sessao ASR), logo o total do processo era 4 fios.
 
 - **The budget is the SUM over every pool alive in the process, and it is declared as a process
-  total.** `worker/engine_serialization.py` is the shipped example of the arithmetic (`total`, `live`,
-  `small`, `batch`); a second library beside the first spends the same budget, it does not double it.
+  total.** A aritmetica nao vive num modulo a parte (o `worker/engine_serialization.py` que esta prosa citava
+  nunca existiu -- medido 2026-11-26, `git ls-files` vazio): ela esta inline no unico sitio que
+  escreve a linha `THREADS process_budget=`, em `worker/sotto_worker.py`; uma segunda biblioteca ao
+  lado da primeira gasta o MESMO orcamento, nao o dobra.
 - **The process PRINTS what the libraries actually hold**: `THREADS process_budget=<n>
   torch=<torch.get_num_threads()> ort_intra=<session value> env OMP=.. MKL=.. OPENBLAS=..`. A ceiling
   the process never states is a claim, and this repo's rule is that an unmeasured limit is not a limit.
@@ -694,7 +696,8 @@ ninguém vê violar:
 A shell do Sotto não passa pasta nenhuma: `apply_webview2_environment` mexe em três knobs e nenhum é o
 runtime, o código não contém `BrowserExecutableFolder` nem a variável
 `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`, e a knob do pywebview está vazia
-(`webview.settings['WEBVIEW2_RUNTIME_PATH'] = None`). `UNMEASURED`: o processo do Sotto a correr
+(nenhuma atribuicao a `WEBVIEW2_RUNTIME_PATH` existe em `app/` nem em `worker/` -- medido
+2026-11-26; `_main/webview2-runtime-oracle.py` le a knob, nao a escreve). `UNMEASURED`: o processo do Sotto a correr
 **depois** de reiniciar (uma lane não a põe na tela dele).
 
 **PORTÃO (o invariante não fica em prosa): par `webview2-runtime` + `red-as-expected-webview2-runtime`
@@ -791,7 +794,9 @@ na hora, porque um literal ali seria o próprio pin que ele proíbe.
   num ficheiro (`out://`, `runs/`, `_main/*.log`) e dizer o caminho; um instrumento que precisa de
   resposta pergunta por ficheiro e volta a ler o ficheiro, nunca por caixa de diálogo.
   **Portão:** `_main/owner-screen-gate.py` (com o seu `red-as-expected-owner-screen`); a dívida
-  anterior à regra vive congelada em `_main/owner-screen-baseline.json` e **não pode crescer**.
+  anterior à regra **congela em `_main/owner-screen-baseline.json`, que hoje NAO EXISTE** (medido
+  2026-11-26) e por isso o tecto e' `ceiling=0` -- mais duro que qualquer ficheiro, e o portao
+  imprime `OWNER-SCREEN baseline=absent file=...` em vez de o esconder.
 - **A GUARDA É O QUE O WINDOWS RESPEITA.** `windowsHide: true` (JS) ou `CREATE_NO_WINDOW` +
   `startupinfo` (`STARTF_USESHOWWINDOW`/`wShowWindow=0`, Python). `detached: true` **não** é guarda --
   deixa o filho sem consola e a próxima largada pinta outra vez. O censo julga o **nó EXACTO** da
@@ -910,9 +915,9 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26, depois do par `yt-capture-replay`):**
-  `_main\_audit-verify-all.cmd` = **448809 B**, **5115 CRLF** / 0 bare LF, sha256
-  `EF7ED87D24B7EF7739560AA50532E745A774C8E5126B4C340ABE7F82A9124518`.
+- **PIN do ficheiro (re-medido 2026-11-26, depois do par `dm-triage` e dos seis passos da
+  `project-revival`):** `_main\_audit-verify-all.cmd` = **452321 B**, **5155 CRLF** / 0 bare LF,
+  sha256 `DA5EF87783A4D05A0E7142E2A8929BBF10345FEE1B2D71255C838740737A6266`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
@@ -949,6 +954,13 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
   e uma boa largada em 300 s de ticks a 4 Hz contra o controle da lapide. E `yt-read-budget` + `red-as-expected-yt-read-budget`: o ramo UIA da leitura da
   legenda ganhou ORCAMENTO com recusa nomeada (`YOUTUBE_UIA_SLOW_BUDGET ms=.. hold_s=..`)
   -- a cadencia simulada com os numeros DELE vai de 0,067 Hz (a leitura de 15906 ms a
+  2026-11-26, a fechar o revival: entraram `dm-triage` + `red-as-expected-dm-triage` (o oraculo
+  do triage de uma queixa de stutter estava `new-unwired`, e um instrumento que nunca corre nao
+  e' um instrumento) e os seis passos da skill `project-revival` que julgam o ESTADO do projeto
+  -- `feature-map-gate`, `benchmark-gate`, `friction-gate` e o `--selftest` de cada um (que e'
+  o braco vermelho: cada selftest prova la' dentro que um repo regredido devolve rc != 0). Cada
+  par e' guardado por `if exist`, logo uma maquina sem a skill publica `:record ... MISSING`
+  em vez de um verde.
   bloquear o laco de 4 Hz) para 2,95 Hz. E `altc-soak` + `red-as-expected-altc-soak`: 200 toques de Alt+C a 3 s no
   modulo puro, provando que toque unico nunca abre o painel da direita e que nenhum
   contentor do modulo cresce em 200 chamadas.)
@@ -1001,9 +1013,12 @@ um **TAB**; um blob binario publica `i/-text` e nao conta como divergente.
    media CPU por fio com o NOME e tinha **zero chamadores**. O passo e' o par
    `shell-thread-budget` + `red-as-expected-shell-thread-budget` (`_main/shell-thread-budget-oracle.py`,
    medido 2026-11-08:
-   total <= 25 % de um nucleo, um fio <= 15 %, o fio mais quente COM NOME, ratchet de +20 % sobre
-   `_main/shell-thread-budget-baseline.json`; sem shell viva ele diz `VERDICT: SKIPPED`, e um passo
-   saltado nunca e' um portao que passou). Um instrumento que devolve `None` por defeito proprio e'
+   total <= 25 % de um nucleo, um fio <= 15 %, o fio mais quente COM NOME, e um ratchet de +20 %
+   sobre `_main/shell-thread-budget-baseline.json` -- ficheiro que hoje NAO EXISTE (medido
+   2026-11-26), logo o ratchet so' se arma depois de um arranque fresco medir `--update`, e ate' la'
+   o oraculo imprime `RATCHET absent reason=no-baseline` (um checque desarmado diz o nome, nunca
+   desaparece); sem shell viva ele diz `VERDICT: SKIPPED`, e um passo saltado nunca e' um portao que
+   passou). Um instrumento que devolve `None` por defeito proprio e'
    indistinguivel de "nao houve nada".
 
 **O DEVER DE TRANSPORTE desta lei:** quem mexer num laco que se auto-cronometra corre

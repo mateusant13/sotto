@@ -4653,6 +4653,46 @@ if exist _main\sotto-state-page.py (
   call :step always red-as-expected-state-page 1 "_main\sotto-state-page.py;docs\state-generated.md;_main\_audit-verify-all.cmd;_main\_stepcache.py" "%OUT%\state-page-neg.log" python _main\sotto-state-page.py --neg-arm
   call :expectred red-as-expected-state-page !STEP_RC! "%OUT%\state-page-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-state-page MISSING "%OUT%\state-page-neg.log" "NEG-ARM PASS" )
+REM `dm-triage` (2026-11-26): o oraculo do instrumento que TRIAGA uma queixa de
+REM stutter -- sem ele o `battery-wiring` acusava `dm-triage-oracle.py` como
+REM `new-unwired` (sem passo e sem licenca no baseline), e um instrumento que
+REM nunca corre nao e' um instrumento. Custo medido 2026-11-26: 4,0 s positivo,
+REM 1,0 s negativo.
+if exist _main\dm-triage-oracle.py (
+  call :step dm-triage 0 "_main\dm-triage-oracle.py;_main\dm-triage.py" "%OUT%\dm-triage.log" python _main\dm-triage-oracle.py
+  call :record dm-triage !STEP_RC!
+) else ( call :record dm-triage MISSING )
+if exist _main\dm-triage-oracle.py (
+  call :step red-as-expected-dm-triage 1 "_main\dm-triage-oracle.py;_main\dm-triage.py" "%OUT%\dm-triage-neg.log" python _main\dm-triage-oracle.py --neg-arm
+  call :expectred red-as-expected-dm-triage !STEP_RC! "%OUT%\dm-triage-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-dm-triage MISSING "%OUT%\dm-triage-neg.log" "NEG-ARM: PASS" )
+REM --- PROJECT REVIVAL v3.0.1 (2026-11-26) -------------------------------------------------
+REM Os tres portoes da skill `project-revival` que julgam o ESTADO DO PROJETO (mapa de features,
+REM tectos de metrica, friccao do loop interno). Cada um tem o seu `--selftest` ao lado, e o
+REM selftest E' o braco vermelho: os tres provam la' dentro que um repo REGRIDIDO devolve rc != 0
+REM (`feature_map_sync`: feature nova sem re-sync -> rc 1; `benchmark_history`: metrica acima do
+REM tecto -> rc 1; `loop_friction_audit`: verify_cmd com rc != 0 -> rc 1). Sem essa prova um
+REM `--gate` verde seria indistinguivel de um gate cego.
+REM Custo medido 2026-11-26 (fora da jaula): feature_map 1,8 s / benchmark 2,6 s / friction 6,4 s.
+set "REVIVAL=C:\Users\Administrador\.agents\skills\project-revival\scripts"
+if exist "%REVIVAL%\feature_map_sync.py" (
+  call :step feature-map-gate 0 "features\features.json;features\INDEX.md;AGENTS.md;%REVIVAL%\feature_map_sync.py" "%OUT%\feature-map-gate.log" python "%REVIVAL%\feature_map_sync.py" --repo . --gate
+  call :record feature-map-gate !STEP_RC!
+  call :step feature-map-selftest 0 "%REVIVAL%\feature_map_sync.py" "%OUT%\feature-map-selftest.log" python "%REVIVAL%\feature_map_sync.py" --selftest
+  call :record feature-map-selftest !STEP_RC!
+) else ( call :record feature-map-gate MISSING & call :record feature-map-selftest MISSING )
+if exist "%REVIVAL%\benchmark_history.py" (
+  call :step benchmark-gate 0 "benchmarks\budgets.json;benchmarks\history.jsonl;%REVIVAL%\benchmark_history.py" "%OUT%\benchmark-gate.log" python "%REVIVAL%\benchmark_history.py" run --repo . --label battery --gate
+  call :record benchmark-gate !STEP_RC!
+  call :step benchmark-selftest 0 "%REVIVAL%\benchmark_history.py" "%OUT%\benchmark-selftest.log" python "%REVIVAL%\benchmark_history.py" --selftest
+  call :record benchmark-selftest !STEP_RC!
+) else ( call :record benchmark-gate MISSING & call :record benchmark-selftest MISSING )
+if exist "%REVIVAL%\loop_friction_audit.py" (
+  call :step friction-gate 0 "revival\FRICTION.json;%REVIVAL%\loop_friction_audit.py" "%OUT%\friction-gate.log" python "%REVIVAL%\loop_friction_audit.py" measure --repo . --gate
+  call :record friction-gate !STEP_RC!
+  call :step friction-selftest 0 "%REVIVAL%\loop_friction_audit.py" "%OUT%\friction-selftest.log" python "%REVIVAL%\loop_friction_audit.py" --selftest
+  call :record friction-selftest !STEP_RC!
+) else ( call :record friction-gate MISSING & call :record friction-selftest MISSING )
 echo.
 echo =============== BATTERY SUMMARY ===============
 echo steps    : !N!   gate=!GATES!  control=!CTRLS!  skipped=!SKIPN!  expect-red=!REDS!  missing=!MISSINGN!  cached=!CACHEDN!

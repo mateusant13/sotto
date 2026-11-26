@@ -90,7 +90,15 @@ def check(label, want_start):
 a_ok = all([
     check('no flags at all (double-click)', True),
     check('--show only', True),
-    check('--probe-v2 3', True),
+    # `--probe-v2` E' UMA SONDA LIMITADA PELO PROPRIO TIMER (SottoShell linha
+    # 15849) e esta' em `MEASUREMENT_FLAGS` desde 2026-11-12: um probe de 3 s
+    # que carregasse um modelo de 1,9 GB e abrisse um tap de audio pagava tudo
+    # isso para medir o PAINEL. O dono da verdade e' a tabela unica em
+    # `sotto_webview.py:13854` (portao `_main/measurement-flags-oracle.py`), e a
+    # docstring de `_worker_autostart_reason` diz o mesmo: medicao nao arranca
+    # worker. Este braco pedia `True` -- uma EXPECTATIVA errada do probe, que
+    # manteve a PARTE A vermelha desde entao (medido 2026-11-26).
+    check('--probe-v2 3', False),
     check('--no-worker', False),
     check('SOTTO_NO_WORKER=1', False),
     check('SOTTO_NO_WORKER=0', True),
@@ -245,3 +253,9 @@ say(f'PART A (F1 rule): {"GREEN" if a_ok else "RED"}')
 say(f'PART B (F3 rule): {"GREEN" if b_ok else "RED"}')
 with open(os.path.join(ROOT, '_main', '_review-f1f3.log'), 'w', encoding='utf-8') as fh:
     fh.write('\n'.join(out) + '\n')
+# UMA REVISAO QUE IMPRIME UM VEREDICTO TEM DE O DEVOLVER (medido 2026-11-26).
+# Ate' aqui este ficheiro escrevia PART A/B GREEN|RED e caia no fim: rc 0 sempre,
+# com a bateria a ler o rc (`_audit-verify-all.cmd:4908-4922`), logo era um passo
+# que NAO PODIA ficar vermelho -- um verde falso, o pior tipo de portao.
+# A CONVENCAO DESTA CASA: 0 = o codigo de HOJE satisfaz a regra; 1 = nao satisfaz.
+sys.exit(0 if (a_ok and b_ok) else 1)
