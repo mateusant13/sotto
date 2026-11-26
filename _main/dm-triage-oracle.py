@@ -31,11 +31,15 @@ correspondente fique vermelho; um mutante que nao derrube o seu arm e' um
 Uso: python _main/dm-triage-oracle.py [--neg-arm]
 rc 0 = PASS (todos os arms), rc 1 = FAIL, rc 3 = CANNOT-MEASURE.
 """
+# NO-BUG: a ferramenta de triagem de DMs nao tinha oraculo nem linha na bateria; o
+# defeito medido (dm-81956dec) foi a propria recusa `why=unparsed-section` e nao
+# ha' id de ledger para ele -- a cura e' este par de arms.
 from __future__ import annotations
 
 import argparse
 import os
 import re
+import runpy
 import shutil
 import subprocess
 import sys
@@ -96,20 +100,27 @@ no numbers, no culprit.
 """
 
 
+# A LARGADA E' A DA CASA: `hidden-launch` poe CREATE_NO_WINDOW **e** o
+# `startupinfo` com STARTF_USESHOWWINDOW/SW_HIDE. So' `creationflags` e' o
+# WEAK-FLAG que o `console-window-audit` recusa (medido 2026-11-26: dois sitios
+# deste ficheiro derrubaram o passo), porque herda a consola do pai.
+_LAUNCH = runpy.run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      "hidden-launch.py"))
+
+
 def dead_pid() -> int:
     """Um pid que EXISTIU e morreu -- a morte e' o facto, nao um chute."""
-    proc = subprocess.Popen([PY, "-c", "raise SystemExit(0)"],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            creationflags=0x08000000)
+    proc = _LAUNCH["popen"]([PY, "-c", "raise SystemExit(0)"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     proc.wait(timeout=60)
     return proc.pid
 
 
 def run_tool(tool: Path, dm: Path, extra: list[str], root: str) -> tuple[int, str, str]:
-    proc = subprocess.run([PY, str(tool), str(dm), "--root", root] + extra,
-                          capture_output=True, text=True, timeout=120,
-                          creationflags=0x08000000)
-    return proc.returncode, proc.stdout, proc.stderr
+    proc = _LAUNCH["popen"]([PY, str(tool), str(dm), "--root", root] + extra,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    out, err = proc.communicate(timeout=120)
+    return proc.returncode, out, err
 
 
 def arm(name: str, tool: Path, dm: Path, extra: list[str], rc: int,

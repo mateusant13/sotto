@@ -314,6 +314,28 @@ def _selftest_source():
     return None
 
 
+def pid_alive(pid):
+    """Vivo = o handle abre E ainda nao terminou (WAIT_TIMEOUT), nunca um chute.
+
+    Um pid reaproveitado depois de morto nao passa por aqui: o handle de um pid
+    ja' terminado espera para sempre (`WAIT_OBJECT_0`), e o de um pid inexistente
+    nem abre.
+    """
+    import ctypes
+    k = ctypes.WinDLL('kernel32', use_last_error=True)
+    k.OpenProcess.restype = ctypes.c_void_p
+    k.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    k.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    k.CloseHandle.argtypes = [ctypes.c_void_p]
+    h = k.OpenProcess(0x00100000 | 0x1000, False, int(pid))  # SYNCHRONIZE|QUERY_LIMITED
+    if not h:
+        return False
+    try:
+        return k.WaitForSingleObject(ctypes.c_void_p(h), 0) == 0x102  # WAIT_TIMEOUT
+    finally:
+        k.CloseHandle(ctypes.c_void_p(h))
+
+
 def _selftest():
     """Braco de controlo: a primitiva tem de largar um filho que ESCREVE e que e' `high`.
 
@@ -355,11 +377,29 @@ def _selftest():
     if not ok:
         print('SELFTEST FAIL -- CreateProcessAsUser err=%d (fonte pid=%d)' % (err, source))
         return 1
+    # ESPERAR NAO E' AFROUXAR, E O RELOGIO NAO E' O DIAGNOSTICO (medido 2026-11-26:
+    # dentro da bateria engaiolada, com o filho em BELOW_NORMAL, a janela de 10 s
+    # expirou e o braco disse "criado mas nao executou codigo" -- com a MESMA
+    # maquina a dar `SELFTEST PASS` 4,5 s depois, fora da corrida). O defeito era
+    # do INSTRUMENTO: ele media o escalonador, nao a primitiva. Agora distingue os
+    # tres desfechos e nomeia cada um:
+    #   - o ficheiro apareceu                     -> mediu o que veio medir,
+    #   - o filho MORREU sem escrever             -> FAIL com o rc DELE,
+    #   - o filho continua vivo no fim da janela  -> FAIL `still-alive` (30 s).
     body = ''
-    for _ in range(40):
+    child_alive = True
+    deadline_polls = 120  # 120 x 0,25 s = 30 s
+    for _ in range(deadline_polls):
         time.sleep(0.25)
         if os.path.exists(out):
             body = open(out, encoding='utf-8').read().strip()
+            if body:
+                break
+        try:
+            child_alive = pid_alive(int(child))
+        except Exception:  # noqa: BLE001 -- a sonda de vida nunca derruba o braco
+            child_alive = True
+        if not child_alive and not os.path.exists(out):
             break
     for path in (probe, out):
         try:
@@ -367,7 +407,12 @@ def _selftest():
         except OSError:
             pass
     if not body:
-        print('SELFTEST FAIL -- o filho pid=%d foi criado mas nao executou codigo' % child)
+        if not child_alive:
+            print('SELFTEST FAIL -- o filho pid=%d MORREU sem escrever (criado, nao '
+                  'executou o probe)' % child)
+        else:
+            print('SELFTEST FAIL -- o filho pid=%d ainda VIVO ao fim de 30 s sem '
+                  'escrever o probe (reason=still-alive)' % child)
         return 1
     sid = body.split('integridade=')[-1].strip()
     level = int(sid.rsplit('-', 1)[-1]) if sid.startswith('S-1-16-') else -1

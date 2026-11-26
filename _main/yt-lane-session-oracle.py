@@ -1,4 +1,12 @@
 #!/usr/bin/env python
+# NO-BUG: o instrumento de sessao de lane nasceu sem oraculo próprio; o defeito
+# medido (2026-11-26) foi a leitura de `already_played_ms` em vez de `delta_ms`,
+# que aceitava `readyState=4` com `delta_ms=0` como "tocou". Nao ha' id de
+# ledger para ele -- a cura e' este par de arms.
+# BATTERY-HEAVY: app-window -- este instrumento LARGA um Chrome proprio (headless,
+# perfil efemero em `I:\cc-tmp`, `--mute-audio`, porta da lane 9341) e le uma
+# pagina real do YouTube; o porto 9222 do dono e' recusado pelo nome. A classe
+# pesada da bateria so' corre com opt-in, um trabalho de cada vez.
 # -*- coding: utf-8 -*-
 """Gate for ``_main/yt-lane-session.py``: six named arms, each with a falsifier.
 

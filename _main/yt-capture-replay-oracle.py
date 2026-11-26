@@ -1,6 +1,8 @@
 #!/usr/bin/env python
-# BLOCKS: "the caption froze / the pause was wrong" judged ONLY against what the
-#         log said, with no record of what the player actually did per instant.
+# O DEFEITO QUE ISTO RESPONDE (a queixa do dono, verbatim): "the caption froze /
+# the pause was wrong" -- julgado SO' contra o que o log dizia, sem nenhum
+# registo do que o leitor fez por instante. Nao ha' id de ledger: a cura e' o
+# proprio par captura+replay (ver `docs/por-medir.md`).
 # NO-BUG: the player's timeline must be captured as bytes and replayed OFFLINE
 #         through the product's own pause/seek/clock functions.
 """yt-capture-replay-oracle -- o fixture do player, julgado pelo codigo do produto.

@@ -206,12 +206,40 @@ def _wsl_path(win_path):
     return value
 
 
+def _distro_installed():
+    """A distro aparece em `wsl -l -q`? (True|False|None). UTF-16-LE, medida 2026-11-26.
+
+    O `wsl.exe` imprime esta lista em UTF-16-LE e o erro de distro ausente para o
+    STDOUT de um processo sem consola (`stderr` vazio, medido): julgar a mensagem
+    em vez da LISTA lia `''` e classificava uma dependencia ausente como FAIL de
+    infra.
+    """
+    try:
+        proc = subprocess.run(["wsl", "-l", "-q"], capture_output=True,
+                              timeout=_WSL_PROBE_S,
+                              creationflags=subprocess.CREATE_NO_WINDOW,
+                              startupinfo=subprocess.STARTUPINFO(
+                                  dwFlags=subprocess.STARTF_USESHOWWINDOW,
+                                  wShowWindow=0))
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    text = (proc.stdout or b"").decode("utf-16-le", errors="replace").replace("\x00", "")
+    names = {line.strip().casefold() for line in text.splitlines() if line.strip()}
+    return DISTRO.casefold() in names
+
+
 def _wsl_alive():
     """(True|False|None, motivo). None = a maquina nao respondeu no prazo curto."""
     try:
         proc = subprocess.run(
             ["wsl", "-d", DISTRO, "-e", "true"],
-            capture_output=True, text=True, timeout=_WSL_PROBE_S,
+            # O `wsl.exe` desta maquina responde em UTF-8 para falhas de distro e
+            # em cp850 para outras; `text=True` sozinho rebentava com
+            # `UnicodeDecodeError: 0xe3` e escondia a causa (`WSL_E_DISTRO_NOT_FOUND`).
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=_WSL_PROBE_S,
         creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0))
     except subprocess.TimeoutExpired:
         return (None, "wsl did not answer in %.0f s -- a %s nao responde "
@@ -220,8 +248,19 @@ def _wsl_alive():
     except (OSError, subprocess.SubprocessError) as exc:
         return (False, "cannot run wsl: %r" % (exc,))
     if proc.returncode != 0:
+        detail = ((proc.stderr or "") + (proc.stdout or "")).strip()
+        # DISTRO AUSENTE NAO E' DISTRO QUEBRADA (medido 2026-11-26:
+        # `WSL_E_DISTRO_NOT_FOUND` -- `wsl -d ubuntu-bend -- echo ok` responde
+        # "Nao ha' distribuicao com o nome fornecido"). Uma distro que nao esta'
+        # instalada e' uma DEPENDENCIA AUSENTE: as leis nao foram verificadas, e
+        # o nome honesto e' SKIP (`BEND-GATE SKIPPED`), nunca um FAIL que fala
+        # da maquina, nem um PASS. Uma distro PRESENTE que nao responde ou que
+        # falha continua a ser `EXIT_INFRA`.
+        if "WSL_E_DISTRO_NOT_FOUND" in detail or _distro_installed() is False:
+            return (None, "the distro '%s' is NOT INSTALLED (WSL_E_DISTRO_NOT_FOUND); "
+                          "no law was verified on this machine" % DISTRO)
         return (False, "the distro '%s' is not usable (rc=%d): %s"
-                % (DISTRO, proc.returncode, ((proc.stderr or "").strip())[:300]))
+                % (DISTRO, proc.returncode, detail[:300]))
     return (True, "")
 
 

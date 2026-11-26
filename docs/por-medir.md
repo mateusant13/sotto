@@ -149,3 +149,23 @@
   tempo nao distingue foto velha de leitura nova). Dono: `_main/yt-pause-disagreement-oracle.py`.
 - **A pausa/seek na instalacao do dono**: `fixed, NOT verified` — os pids 53752/73436 correm codigo
   anterior aos commits de 2026-11-26.
+
+## A CAMADA DE PROVA DO BEND NAO ESTA A SER VERIFICADA NESTA MAQUINA (medido 2026-11-26)
+
+`wsl -l -q` nesta maquina lista **`bluetest`** e mais nada (lido dos bytes UTF-16-LE:
+`b\0l\0u\0e\0t\0e\0s\0t\0`). A distro `ubuntu-bend`, onde o portao do Bend corre
+(`bend PROOF.bend --verdict`, nunca `--check-only`, pela regra do Bend 2 neste `AGENTS.md`), **nao
+existe aqui**. O `_main/bend-laws-gate.py` classificava isso como `BEND-GATE FAIL ... not usable` e a
+bateria publicava RED de INFRA; antes disso, `_wsl_alive` expirava e o passo era SKIPPED *pelo
+relogio*, nao pela ausencia — duas maneiras de nao dizer a verdade.
+
+- A sonda agora pergunta a LISTA (`_distro_installed`), nao a mensagem de erro: o `wsl.exe` imprime o
+  erro de distro ausente para o **stdout** de um processo sem consola (`stderr` vazio, medido) e a
+  lista em UTF-16-LE. Uma distro AUSENTE sai `BEND-GATE SKIPPED: ... NOT INSTALLED` (rc 0, casado
+  pelo `:skipped` da bateria); uma distro PRESENTE que nao responde continua `EXIT_INFRA`.
+- **O que isto NAO faz:** as leis do Bend continuam **NAO VERIFICADAS** neste estado. `LAWS.bend` /
+  `PROOF.bend` e os `NEGATIVE_*.bend` nao foram executados nesta corrida, e nenhum arm desta sessao
+  os substitui. O log do passo diz isso com todas as letras, e a linha da bateria e' `skipped`.
+- Para fechar: instalar/repor a distro `ubuntu-bend` (acao de sistema, do dono) e correr
+  `python _main/bend-laws-gate.py` -> `BEND-GATE VERDICT: PASS`. Ate' la', a afirmacao
+  "as leis provam o modelo" tem de ser lida como `UNMEASURED` nesta maquina.
